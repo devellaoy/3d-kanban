@@ -7,6 +7,7 @@
 // Only turns of runs the engine started move a task: someone typing into a task worker's terminal
 // while no run is going doesn't.
 
+import { mkdirSync } from 'node:fs';
 import path from 'node:path';
 import type { FloorDef } from '../../building.js';
 import type { Floor } from '../../floor.js';
@@ -773,7 +774,10 @@ export class Orchestrator {
     // How it launches.
     const addDirs: string[] = [];
     if (refsFile) addDirs.push(path.dirname(refsFile));
-    if (this.ctx.repo.listAttachments(task.id).length) addDirs.push(path.join(this.ctx.filesDir, 'uploads'));
+    // Always: a file sent later in an answer typed into the live session must be readable without a prompt.
+    const uploads = path.join(this.ctx.filesDir, 'uploads');
+    mkdirSync(uploads, { recursive: true, mode: 0o700 });
+    addDirs.push(uploads);
     const investigate = task.type === 'investigate' && role === 'implementer';
     if (investigate) addDirs.push(reportDir(this.ctx, task.id));
     for (const r of taskRepos(def, task)) if (!r.primary && (r.kind === 'folder' || folder)) addDirs.push(r.dir);
@@ -1575,7 +1579,7 @@ export class Orchestrator {
         const text = answer?.trim();
         if (!text) return 'Type your answer, or answer in the terminal';
         const files = this.ctx.repo.linkAttachments(attachmentIds ?? [], taskId);
-        const err = this.answer(asking, [text, this.compose.filesText(task.project, files)].filter(Boolean).join('\n\n'), who);
+        const err = this.answer(asking, [text, this.compose.filesInline(files)].filter(Boolean).join(' '), who);
         if (!err) this.linked(task.project, this.addComment(task.project, { taskId, authorKind: 'user', authorName: who.name, kind: 'message', text, runId: asking.runId }), files);
         return err;
       }
@@ -1709,7 +1713,7 @@ export class Orchestrator {
       // (or an unknown one) is answered in the terminal: the comment waits for the turn's end.
       const asking = this.asking(task);
       const own = this.ctx.repo.listAttachments(taskId).filter((a) => a.commentId === c.id);
-      if (asking?.asks === 'question' && !this.answer(asking, [c.text, this.compose.filesText(task.project, own)].filter(Boolean).join('\n\n'), who)) return;
+      if (asking?.asks === 'question' && !this.answer(asking, [c.text, this.compose.filesInline(own)].filter(Boolean).join(' '), who)) return;
       const live = this.liveOf(task.id);
       const err = await this.apply(taskId, { type: 'comment', text: c.text, busy: !!live || task.runState !== 'idle' }, { who, commentId });
       if (err) this.note(task, `Couldn't hand the comment to the agent: ${err}`);

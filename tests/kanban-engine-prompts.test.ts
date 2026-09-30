@@ -125,6 +125,10 @@ test('filesText lists the given files by name and path, and is empty for none', 
   const text = compose.filesText('proj', [{ name: 'mock.png', stored: 'abc.png' }]);
   assert.match(text, /^Files attached to the task/);
   assert.ok(text.includes(`- mock.png: ${path.join(ctx.filesDir, 'uploads', 'abc.png')}`));
+  assert.equal(compose.filesInline([]), '');
+  const inline = compose.filesInline([{ stored: 'abc.png' }, { stored: 'd.pdf' }]);
+  assert.doesNotMatch(inline, /\n/);
+  assert.ok(inline.includes(path.join(ctx.filesDir, 'uploads', 'abc.png')) && inline.includes(path.join(ctx.filesDir, 'uploads', 'd.pdf')));
 });
 
 test('the workspace lines: predicted before the hire, real paths after, folders by their own path', (t) => {

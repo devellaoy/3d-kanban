@@ -154,6 +154,12 @@ export class Composer {
     return this.filesText(task.project, this.ctx.repo.listAttachments(task.id));
   }
 
+  /** The files on one line, for an answer typed into a terminal (a newline there may submit it); empty when none. */
+  filesInline(files: { stored: string }[]): string {
+    if (!files.length) return '';
+    return `(attached files, read them: ${files.map((a) => path.join(this.ctx.filesDir, 'uploads', a.stored)).join(', ')})`;
+  }
+
   /** The 'kanban.attachments' block for these files (name and path on this machine); empty when none. */
   filesText(project: string, files: { name: string; stored: string }[]): string {
     if (!files.length) return '';

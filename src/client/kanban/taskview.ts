@@ -542,7 +542,7 @@ class View implements TaskView {
         const open = workerId && this.o.openTerminal ? h('button.btn.small', { type: 'button', onclick: () => this.o.openTerminal?.(workerId, task.project) }, '⌨️ Open its terminal') : null;
         box.append(h('div.kb-row', {}, h('b', {}, 'Answer the agent'), h('small.kb-muted', {}, 'It is typed into its terminal, as if you typed it there.'), open));
       }
-      wrap.replaceChildren(ta, h('div.kb-row', {}, attach.el, h('small.kb-muted', {}, 'Ctrl/⌘ + Enter sends'), h('span.grow'), send));
+      wrap.replaceChildren(ta, h('div.kb-row', {}, attach.el, h('span.grow'), send), h('small.kb-muted', {}, 'Ctrl/⌘ + Enter sends'));
       box.append(wrap);
     }
     return box;

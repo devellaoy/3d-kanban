@@ -120,7 +120,7 @@ allowed: `todo → in_progress` (= start), `waiting|review → done`, `done → 
   only a `question` is typed into. `continue(answer)` and `commented()` type the text into that
   worker's PTY (upstream's `WorkerManager.prompt`, which answers a TUI question as a person typing
   does) and keep it as a user comment (`continue` adds it; a comment is already stored); the files
-  of that message (`attachmentIds`, or the comment's own) follow as `Composer.filesText` paths; nothing goes
+  of that message (`attachmentIds`, or the comment's own) follow on the same line (`Composer.filesInline`: a newline may submit a question picker); nothing goes
   to `pendingMessages` (a queued answer would wait for a turn end that the question holds up). The
   engine does not apply `working` itself: the task stays `waiting`/`agent_asking` until the worker's
   own hooks move it on (`needs_input` → `working`, the machine's `working`, as when it's answered at
@@ -374,7 +374,7 @@ For a signed-in browser (the session is checked by server.ts, and non-GET reques
 - `GET /kanban`, `/kanban.html`: the board page. Signed out, it redirects to `/login?next=/kanban`.
 - `POST /api/kanban/upload?name=<file name>[&task=<id>]`: the body is the file's raw bytes and `Content-Type`
   is its type (sniffed from the extension when missing). At most 20 MB. It returns `200 {attachment}`, or
-  `400/404/405/413 {error}`. The file is stored as `<filesDir>/uploads/<id>-<ascii name>` with mode 600.
+  `400/404/405/413 {error}`. The file is stored as `<filesDir>/uploads/<id>-<ascii name>` with mode 600. Every kanban launch gets that folder as an `--add-dir`, so files sent later are readable.
   Without `task` it stays unattached until `task.create` / `comment.add` names its id.
 - `GET /api/kanban/attachments/<id>`: serves the file with its type, `nosniff` and a sandboxing CSP.
   PNG, JPEG, GIF, WebP, AVIF and BMP are served inline; anything else (SVG and HTML included) as a download.
