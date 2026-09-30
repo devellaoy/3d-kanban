@@ -1,6 +1,6 @@
 // The few styles the kanban's pieces need inside upstream's pages (the 3D office and /lite load
 // style.css, not kanban.css): the repository chip and filter on the boards, the PR review picker and
-// the task worker's message dialog.
+// the task worker's message dialog, the queue board's kanban toggle.
 // Put in once, the first time one of them is drawn.
 
 const CSS = `
@@ -21,6 +21,8 @@ const CSS = `
 .kb-scope-contract { margin: 8px 0 0; }
 .kb-scope-contract summary { cursor: pointer; font-size: 12px; font-weight: 900; }
 .kb-scope-contract pre { margin: 6px 0 0; padding: 8px; white-space: pre-wrap; font-size: 12px; background: #f3f1ee; border: 2px dashed var(--ink); border-radius: 10px; color: var(--muted); }
+/* The 📋 queue board's kanban toggle (ui/queue.ts) takes a row of its own under the text. */
+.queue-add > .kanban-queue-toggle { flex: 1 1 100%; min-width: 0; }
 /* A task worker's P (ui/prompt.ts): three buttons don't fit beside the hint, so the window is wider and the hint gets a row of its own. */
 .modal:has(> footer > .kb-raw) { width: min(620px, 100%); }
 .modal footer:has(> .kb-raw) { flex-wrap: wrap; row-gap: 8px; }

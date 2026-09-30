@@ -52,6 +52,7 @@ class FakeEl {
   children: unknown[] = [];
   attrs = new Map<string, string>();
   classList = { toggle: () => {}, add: () => {}, remove: () => {}, contains: () => false };
+  style: Record<string, string> = {};
   constructor(readonly tagName: string) {}
   setAttribute(k: string, v: string) {
     this.attrs.set(k, v);
@@ -63,6 +64,7 @@ class FakeEl {
     this.children = c;
   }
   addEventListener() {}
+  remove() {}
 }
 
 /** The DOM and storage the modules touch, as stand-ins; returns the storage. */
@@ -109,4 +111,47 @@ test('the kanban hire toggle starts off in every new dialog, even after one had 
   box.checked = true;
   assert.equal(first.on(), true);
   assert.equal(kanbanSection(opt, provider).on(), false);
+});
+
+test('the 📋 queue board’s kanban toggle makes a task with no desk of its own, started, and says it was made', async () => {
+  installFakeDom();
+  const g = globalThis as { document: { getElementById(id: string): unknown } };
+  const getElementById = g.document.getElementById;
+  const toasts = new FakeEl('div');
+  g.document.getElementById = (id: string) => (id === 'toasts' ? toasts : null);
+  try {
+    const { kanbanSection } = await import('../src/client/kanban/hireform.js');
+    const sent: Record<string, unknown>[] = [];
+    let hear: (msg: unknown) => void = () => {};
+    const net = {
+      up: true,
+      onMessage: (fn: (msg: unknown) => void) => void (hear = fn),
+      onStatus: () => {},
+      send(msg: Record<string, unknown>) {
+        sent.push(msg);
+        queueMicrotask(() => hear({ t: 'kanban.ok', rid: msg.rid, taskId: 7 }));
+      },
+    };
+    let created: number | undefined;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const opt = { net: net as any, project: 'proj', deskId: () => undefined, deskLabel: 'the next free desk', queued: true as const, onCreated: (id: number) => void (created = id) };
+    const provider = { value: () => 'claude', element: new FakeEl('div') } as never;
+    const section = kanbanSection(opt, provider);
+    assert.equal(section.on(), false, 'off in a freshly opened queue board');
+    (((section.element as unknown as FakeEl).children[0] as FakeEl).children[0] as FakeEl).checked = true;
+    section.send('Fix the login\nIt loops on Safari', { provider: 'claude' });
+    assert.equal(sent.length, 1);
+    const msg = sent[0] as { t: string; start?: boolean; deskId?: string; task: { project: string; title: string; description: string; tool?: string } };
+    assert.equal(msg.t, 'kanban.task.create');
+    assert.equal(msg.start, true, 'it starts now: the engine seats it or queues it');
+    assert.equal('deskId' in msg, false, 'no desk of its own');
+    assert.equal(msg.task.project, 'proj');
+    assert.equal(msg.task.title, 'Fix the login');
+    assert.equal(msg.task.tool, 'claude');
+    await new Promise((r) => setTimeout(r, 0));
+    assert.equal(created, 7, 'the queue board hears it was made (and looks at the floor’s tasks again)');
+    assert.match(String((toasts.children[0] as FakeEl).children[0]), /Task #7 is on the kanban: it starts at the next free desk, or waits its turn/);
+  } finally {
+    g.document.getElementById = getElementById;
+  }
 });

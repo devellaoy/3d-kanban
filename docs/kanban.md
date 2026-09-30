@@ -78,6 +78,10 @@ and the office's defaults.
 locked (add to it with a comment), and a task moved back to To do can be edited again apart from
 those two.
 
+In the office, a hire at a desk and the **📋 Task queue**'s form can tick **🗂️ Run as a kanban task**
+(type, plan, review rounds and repositories; the agent is the form's own, Claude Code or Codex): the
+task is made and started at once, at that desk or, from the queue, at the next free one.
+
 ## The process
 
 1. **Plan** (when *Plan first* is on): the agent plans read-only. It ends with the plan (the line
@@ -139,7 +143,9 @@ did:
 A task done this way sends its other workers at rest home too, as moving it to Done does.
 
 A project runs at most *tasks at once* tasks (default 2); more are **queued** in In progress and start
-when a slot frees up. A hire also needs a free desk on the project's floor and room under the office's
+when a slot frees up. A task made from the office's 📋 Task queue with **🗂️ Run as a kanban task** starts
+the same way, at the next free desk (the queue's own *workers at once* doesn't count it), and the queue
+board lists it under *🗂️ Kanban on this floor* while it waits. A hire also needs a free desk on the project's floor and room under the office's
 worker limit (`--max-workers`, ⚙️ Settings): when there's none, the start or the phase (a reviewer's
 hire, say) is **queued** too, with a line saying why, and starts by itself as soon as a worker goes
 home anywhere in the office (or at the next minute's look). A task counts once against the worker

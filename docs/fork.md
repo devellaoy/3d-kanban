@@ -181,7 +181,7 @@ New files are not seams (they can't conflict): `src/{server,shared,client}/kanba
 | `src/client/ui/ask.ts` | import; `AskWorker.task`, `AskOptions.kanbanOption`; `pick()`, the body, `send()` | Kanban toggle for a new worker; `🗂️ #14` on a task worker's button | Same |
 | `src/client/ui/boards.ts` | `BoardActions.kanbanTask?` | Optional action | 🗂️ Kanban task in an issue |
 | `src/client/ui/pull.ts` | `openIssue()` footer | 🗂️ Kanban task button when `actions.kanbanTask` | Same |
-| `src/client/ui/queue.ts` | import; `render()` parts | `kanbanQueueSection(net)` (kanban/office3d) | Read-only 🗂️ Kanban on this floor |
+| `src/client/ui/queue.ts` | imports; `openQueue()`: the kanban toggle before the form, the form's children, `submit()`'s kanban branch, `render()` parts, the `unsubs`/`tick`/`onClose`/first `render()` lines | `kanbanSection(queueOption(net))` (kanban/hireform, kanban/office3d), `kanbanQueueSection(net, watch.tasks())`, `kanbanQueueWatch` | **🗂️ Run as a kanban task** on the queue board; 🗂️ Kanban on this floor with the tasks waiting their turn |
 | `src/client/ui/hud.ts` | help list | `J` text; `E/P/R/X 🗂️` rows | The H help |
 | `src/client/lite.ts` | imports; `workerCard()` sub line, `promptWorker()`, `sendToWorker()` (`askWorker`), `boardActions().kanbanTask`, `fixLostWorktree()` send home | The same on the 2D view (its terminal gets the tabs from terminal.ts) | Same |
 | `src/client/main.ts`, `src/client/lite.ts` | `sendToWorker()`'s `onSubmit` | `askWorker(net, to, prompt)` (kanban/office3d): `asComment` for a task implementer whose task the engine carries on, else upstream's `worker.prompt` | Ask → an existing task worker is a message on its task |
