@@ -92,8 +92,12 @@ allowed: `todo → in_progress` (= start), `waiting|review → done`, `done → 
       sharing `message.id`); and, if the last assistant `tool_use` is `ExitPlanMode`, its `input.plan`.
       A last message that calls any other tool is not a final answer (`complete: false`): the Stop hook
       can come before Claude has logged the reply after that tool's result, so the engine reads the log
-      again (`readTries` × `readPauseMs`). If it never catches up, the answer the Stop hook carried
-      (`last_assistant_message`) is the turn's text.
+      again (`readTries` × `readPauseMs`, about 3 s, so a turn that really ends at a tool call, an
+      interrupt say, waits that long and isn't hung). If it never catches up, the answer the Stop hook
+      carried (`last_assistant_message`, capped) is the turn's text, alone: never while the log's last
+      tool call has no result yet (`toolRunning`), because a Stop then didn't come from Claude (anything
+      in the agent's shell has the hook token) and could carry a verdict. Without that answer (an older
+      CLI, a run re-attached after a restart) the log's last text goes on, and the office logs a warning.
     - codex: rollout JSONL: the last `event_msg` with `payload.type === 'task_complete'` → `payload.last_agent_message`
       (fallback: last `response_item` assistant message).
 - Phase changes that need different launch flags **relaunch** the worker (`--resume <sessionId>` +

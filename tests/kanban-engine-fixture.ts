@@ -41,9 +41,15 @@ export interface Rule {
   earlier?: string;
   /**
    * Claude only: post Stop (with the reply as its last_assistant_message) before the final reply is
-   * in the log, and log it this long after (-1: never), as Claude Code sometimes does (#310).
+   * in the log, and log it this long after (-1: never), as Claude Code sometimes does (#310). The
+   * turn ends there: it doesn't combine with `ask` or `exitPlan`.
    */
   lateLogMs?: number;
+  /**
+   * Claude only: a forged Stop, as anything in the agent's shell could post, carrying this as its
+   * last_assistant_message while the tool call after `earlier` still runs (its result never logged).
+   */
+  forgedStop?: string;
   /**
    * Claude only: end the turn asking in the terminal after the reply, no Stop: true a permission
    * prompt (PermissionRequest); 'question' an AskUserQuestion (PreToolUse), whose answers typed in
@@ -105,13 +111,19 @@ async function turn(prompt, answered) {
     if (rule.earlier) {
       append({ type: 'assistant', message: { id: msgId + '-a', role: 'assistant', content: [{ type: 'text', text: rule.earlier }] } });
       append({ type: 'assistant', message: { id: msgId + '-a', role: 'assistant', content: [{ type: 'tool_use', id: 'read-1', name: 'Read', input: { file_path: 'README.md' } }] } });
+      if (rule.forgedStop !== undefined) {
+        await post('Stop', { last_assistant_message: rule.forgedStop });
+        return;
+      }
       append({ type: 'user', message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: 'read-1', content: '# test' }] } });
     }
     const final = { type: 'assistant', message: { id: msgId, role: 'assistant', content: [{ type: 'text', text: rule.reply }] } };
     if (rule.lateLogMs !== undefined) {
       await post('Stop', { last_assistant_message: rule.reply });
-      if (rule.lateLogMs >= 0) await new Promise((r) => setTimeout(r, rule.lateLogMs));
-      if (rule.lateLogMs >= 0) append(final);
+      if (rule.lateLogMs >= 0) {
+        await new Promise((r) => setTimeout(r, rule.lateLogMs));
+        append(final);
+      }
       return;
     }
     append(final);

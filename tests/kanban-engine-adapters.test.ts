@@ -108,7 +108,7 @@ test('claude transcript: a last message that calls a tool is not the final answe
   ];
   assert.deepEqual(readClaudeTurn(write('early.jsonl', early)), { text: 'The after shots look sharp. Cleaning up last.', complete: false });
   // Not even the tool's result logged yet.
-  assert.deepEqual(readClaudeTurn(write('no-result.jsonl', early.slice(0, 3))), { text: 'The after shots look sharp. Cleaning up last.', complete: false });
+  assert.deepEqual(readClaudeTurn(write('no-result.jsonl', early.slice(0, 3))), { text: 'The after shots look sharp. Cleaning up last.', complete: false, toolRunning: true });
   // A subagent's tool result doesn't make the main turn's final answer unfinished, nor its tool calls.
   const done = write('done.jsonl', [
     ...early,

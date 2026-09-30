@@ -62,6 +62,8 @@ export function readClaudeTurn(file: string): TurnResult | undefined {
   let apiError: string | undefined;
   let answered = false;
   let toolPending = false;
+  // The last message's tool calls still without a result in the log.
+  let running = new Set<unknown>();
   for (const line of lines.slice(from + 1)) {
     if (line.isSidechain === true) continue;
     const msg = isObj(line.message) ? line.message : undefined;
@@ -74,6 +76,7 @@ export function readClaudeTurn(file: string): TurnResult | undefined {
         texts = [];
         apiError = undefined;
         toolPending = false;
+        running = new Set();
       }
       message = id;
       for (const b of content) {
@@ -89,15 +92,17 @@ export function readClaudeTurn(file: string): TurnResult | undefined {
           } else {
             exitPlan = false;
             toolPending = true;
+            running.add(b.id);
           }
         }
       }
-    } else if (line.type === 'user' && planToolId) {
+    } else if (line.type === 'user') {
+      for (const b of content) if (b.type === 'tool_result') running.delete(b.tool_use_id);
       // ExitPlanMode answered (approved or not): the plan is no longer what the turn ended on.
-      if (content.some((b) => b.type === 'tool_result' && b.tool_use_id === planToolId)) exitPlan = false;
+      if (planToolId && content.some((b) => b.type === 'tool_result' && b.tool_use_id === planToolId)) exitPlan = false;
     }
   }
-  return { text: texts.join('\n\n'), ...(plan !== undefined ? { plan } : {}), ...(exitPlan ? { exitPlan } : {}), complete: answered && !toolPending && (texts.length > 0 || exitPlan), ...(apiError ? { apiError } : {}) };
+  return { text: texts.join('\n\n'), ...(plan !== undefined ? { plan } : {}), ...(exitPlan ? { exitPlan } : {}), complete: answered && !toolPending && (texts.length > 0 || exitPlan), ...(apiError ? { apiError } : {}), ...(running.size ? { toolRunning: true } : {}) };
 }
 
 export const claudeAdapter: TaskAgentAdapter = {

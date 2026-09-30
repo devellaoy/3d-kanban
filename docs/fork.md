@@ -258,7 +258,9 @@ New files are not seams (they can't conflict): `src/{server,shared,client}/kanba
   user prompt. `ExitPlanMode` shows up as a `tool_use` block
   whose `input.plan` is the plan. The Stop hook can arrive before the final message is in the log (it
   then ends at a tool's result), so a last message with a tool call isn't the final answer; the Stop
-  hook's payload carries `last_assistant_message`, the fallback when the log doesn't catch up.
+  hook's payload carries `last_assistant_message`, the fallback when the log doesn't catch up (the fix
+  relies on it: without it, a log that never catches up still gives what the agent said on the way,
+  with a warning in the office's log).
 - Codex rollout JSONL (`~/.codex/sessions/YYYY/MM/DD/rollout-*.jsonl`): `event_msg` / `task_complete`
   carries `last_agent_message`.
 - Claude flags: `--permission-mode <mode>`, `--disallowedTools`, `--plugin-dir <path>` (skills as a plugin),

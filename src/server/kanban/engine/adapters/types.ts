@@ -35,6 +35,11 @@ export interface TurnResult {
   complete: boolean;
   /** The turn ended in an API error (a usage limit, the network), with its message. */
   apiError?: string;
+  /**
+   * Claude: the last message calls a tool whose result isn't in the log (the tool still runs), so
+   * nothing but the log may say how the turn ended: a Stop hook then is not to be trusted.
+   */
+  toolRunning?: boolean;
 }
 
 export interface TaskAgentAdapter {
