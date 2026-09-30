@@ -194,7 +194,7 @@ New files are not seams (they can't conflict): `src/{server,shared,client}/kanba
 | `src/client/login.html`, `src/client/join.html`, `src/client/claim.html` | `<head>` after the icon | `theme-color` only | The installed app's colour on the sign-in pages |
 | `src/client/ui/prompt.ts` | `sendHomeDialog()` `choices` | "`kanban3d prune` tidies up later" | The command is `kanban3d` |
 | `src/client/ui/accounts.ts` | shared-password note (off) | "run `kanban3d accounts password on`" | Same |
-| `src/client/world/sky.ts` | `INDOOR_FOG`, `hazeAt()`, `ROOM_PARS` with `skyInsideOf()` (split out of `PARS`), `HAZE_PARS`' `skyInRoom()`, `HAZE`, `onBeforeCompile` | Anything inside the office keeps a tenth of the outdoor fog; taken as it is from upstream PR #207 (closed unmerged, issue #122 still open) | The weather's fog doesn't come into the office |
+| `src/client/world/sky.ts` | `INDOOR_FOG`, `ROOM_*`, `WALL_TOP`, `hazeAt()`, `wingRoom()`, `roomAt()`, `indoorAt()`, `ROOM_VARYING`, `ROOM_PARS` with `skyInsideOf()` (split out of `PARS`), `SPRITE_WORLD`, `HAZE_PARS`' `skyInRoom()`, `HAZE`, `onBeforeCompile`, `Sky.setWing()` | Anything inside the office keeps a tenth of the outdoor fog, when you're inside too; upstream PR #207 (closed unmerged, issue #122 still open), plus the fork's own camera check, sprites' haze and the TypeScript mirrors the tests use | The weather's fog doesn't come into the office |
 
 ### Build, packaging, deploy, docs
 
