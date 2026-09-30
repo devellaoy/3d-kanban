@@ -40,6 +40,11 @@ export interface TurnResult {
    * nothing but the log may say how the turn ended: a Stop hook then is not to be trusted.
    */
   toolRunning?: boolean;
+  /**
+   * Claude: how many of the run's background agents are still working (their last event in the log
+   * is a launch or a resume, not a notification). The turn's Stop then isn't the run's end. Absent when none.
+   */
+  background?: number;
 }
 
 export interface TaskAgentAdapter {

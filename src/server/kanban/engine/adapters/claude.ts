@@ -37,6 +37,58 @@ function isRealPrompt(line: Record<string, unknown>): boolean {
   return blocks.some((b) => b.type === 'text' || b.type === 'image') && !blocks.some((b) => b.type === 'tool_result');
 }
 
+function messageText(line: Record<string, unknown>): string {
+  const content = isObj(line.message) ? line.message.content : undefined;
+  if (typeof content === 'string') return content;
+  return Array.isArray(content) ? content.filter(isObj).map((b) => (b.type === 'text' && typeof b.text === 'string' ? b.text : '')).join('\n') : '';
+}
+
+/** Claude Code's own prompt to itself when a background agent finishes (older CLIs set no origin). */
+function isTaskNotification(line: Record<string, unknown>): boolean {
+  if (line.type !== 'user') return false;
+  return (isObj(line.origin) && line.origin.kind === 'task-notification') || messageText(line).startsWith('<task-notification>');
+}
+
+/**
+ * How many background agents the run has working: each one's last event in the log is its launch or a
+ * resume (SendMessage), not a notification. Only the office's last prompt's window counts, so an earlier
+ * run's agents don't; none when the log's tail is cut before that prompt. Bash's run_in_background isn't one.
+ */
+export function backgroundLeft(lines: Record<string, unknown>[]): number {
+  let from = -1;
+  for (let i = lines.length - 1; i >= 0; i--) {
+    if (isRealPrompt(lines[i]) && !isTaskNotification(lines[i])) {
+      from = i;
+      break;
+    }
+  }
+  if (from < 0) return 0;
+  const agents = new Map<string, boolean>();
+  // A notification prompt nothing has answered yet: Claude is about to take the resumed turn's work up.
+  let unanswered = false;
+  for (const line of lines.slice(from + 1)) {
+    if (line.isSidechain === true) continue;
+    if (line.type === 'assistant') unanswered = false;
+    const res = isObj(line.toolUseResult) ? line.toolUseResult : undefined;
+    if (res?.isAsync === true && res.status === 'async_launched') {
+      const id = res.agentId ?? res.taskId;
+      if (typeof id === 'string') agents.set(id, true);
+    } else if (res && typeof res.resumedAgentId === 'string') agents.set(res.resumedAgentId, true);
+    else if (!res && line.type === 'user') {
+      const content = isObj(line.message) && Array.isArray(line.message.content) ? line.message.content.filter(isObj) : [];
+      for (const b of content) {
+        const t = b.type === 'tool_result' ? (typeof b.content === 'string' ? b.content : Array.isArray(b.content) ? b.content.filter(isObj).map((c) => c.text).join('\n') : '') : '';
+        const id = t.startsWith('Async agent launched successfully') ? /agentId:\s*([\w-]+)/.exec(t)?.[1] : undefined;
+        if (id) agents.set(id, true);
+      }
+    }
+    const note = isTaskNotification(line) ? messageText(line) : line.type === 'attachment' && isObj(line.attachment) && line.attachment.commandMode === 'task-notification' && typeof line.attachment.prompt === 'string' ? line.attachment.prompt : '';
+    for (const m of note.matchAll(/<task-id>([^<]*)<\/task-id>/g)) agents.set(m[1].trim(), false);
+    if (isTaskNotification(line)) unanswered = true;
+  }
+  return [...agents.values()].filter(Boolean).length + (unanswered ? 1 : 0);
+}
+
 /**
  * The turn after the last real prompt. Its `text` is the final answer only: the text blocks of the
  * turn's last assistant message (Claude logs one message's blocks as lines sharing its message id),
@@ -102,7 +154,8 @@ export function readClaudeTurn(file: string): TurnResult | undefined {
       if (planToolId && content.some((b) => b.type === 'tool_result' && b.tool_use_id === planToolId)) exitPlan = false;
     }
   }
-  return { text: texts.join('\n\n'), ...(plan !== undefined ? { plan } : {}), ...(exitPlan ? { exitPlan } : {}), complete: answered && !toolPending && (texts.length > 0 || exitPlan), ...(apiError ? { apiError } : {}), ...(running.size ? { toolRunning: true } : {}) };
+  const left = backgroundLeft(lines);
+  return { text: texts.join('\n\n'), ...(plan !== undefined ? { plan } : {}), ...(exitPlan ? { exitPlan } : {}), complete: answered && !toolPending && (texts.length > 0 || exitPlan), ...(apiError ? { apiError } : {}), ...(running.size ? { toolRunning: true } : {}), ...(left ? { background: left } : {}) };
 }
 
 export const claudeAdapter: TaskAgentAdapter = {
