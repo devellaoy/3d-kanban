@@ -96,7 +96,10 @@ task is made and started at once, at that desk or, from the queue, at the next f
    changes requested). Only the reviewer's final answer counts, and only a verdict line of its own at
    its end: one quoted (`>`) or in a code block, or said in an earlier message, is none. Changes requested → the implementer **fixes** → the next round. After the last
    round's fix the reviewer looks once more if *review the last fix too* is on; otherwise the task goes
-   to Review.
+   to Review. In the 3D office the reviewer takes no desk: it walks in and stands behind the
+   implementer's chair, looking over its shoulder at its screen (E there opens the reviewer's terminal),
+   so a review round never needs a free desk. Only when the task has no desk yet (its implementer never
+   sat down) does the reviewer take the next free seat.
 4. **Review column**: read the result. **🔍 Run a review round** runs one more round by hand (it ends
    in Review). **🔀 Create PRs** / **🛠️ Fix PRs** start the PR phase (see below). **🗜️ Compact**
    compacts the agent's session. **🏠 Release worktree** sends the task's workers home and keeps the

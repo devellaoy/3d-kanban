@@ -99,7 +99,8 @@ curl -fsSL https://raw.githubusercontent.com/devellaoy/3d-kanban/main/deploy/pro
   fix → the Review column → Done. Comments put the agent back to work, and answer it when it asks in
   its terminal; usage limits are retried by themselves. A task that finds no free desk or the office's
   worker limit full is queued and starts when there's room, as the account that made it (a task counts
-  once against the limit: its reviewer never waits for its own implementer's place); a task waiting on a person is announced on the
+  once against the limit: its reviewer never waits for its own implementer's place, and it takes no desk
+  either: it stands behind the implementer's chair, watching over its shoulder); a task waiting on a person is announced on the
   office's Slack / Discord webhook. Claude Code and Codex.
 - **A kanban page** at `/kanban` (**J** or **🗂️ Kanban** in the office, a link on `/lite`). A
   task's view (conversation, plan, runs, the change and its commits read from git, an

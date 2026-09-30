@@ -1532,6 +1532,8 @@ export class Worker {
   bouncing = false;
   /** You're close enough to read its card: it lands the hop it's in and stands still until you walk away. */
   held = false;
+  /** 3d-kanban: a task's reviewer standing behind its implementer: with no laptop, it watches rather than types while working. */
+  watching = false;
   private bounceT = 0;
   private spawnT = 0;
   /** Seconds left jumping for joy (its pull request just merged). */
@@ -2036,7 +2038,7 @@ export class Worker {
     const act: Act =
       hopping || (this.bouncing && this.status === 'done') ? 'up'
       : this.status === 'needs_input' ? 'waiting'
-      : this.status === 'working' ? (this.action ?? 'type')
+      : this.status === 'working' ? (this.action ?? (this.watching ? 'rest' : 'type')) // 3d-kanban: watching
       : 'rest';
     const s = this.pose(act, dt, t);
     // A zombie at rest stands with its arms out in front of it, groping, listing to one side and swaying.
