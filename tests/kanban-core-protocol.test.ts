@@ -86,7 +86,15 @@ test('good messages come through rebuilt, without anything the validator did not
   });
   // Every type the protocol has is known to the validator.
   for (const t of ['kanban.unsubscribe', 'kanban.settings.get', 'kanban.skills.list', 'kanban.skills.sync']) assert.deepEqual(good({ t }), { t });
-  assert.equal(KANBAN_CLIENT_TYPES.size, 33);
+  assert.deepEqual(good({ t: 'kanban.project.repo.clone', project: 'web', remote: 'acme/api', name: ' API ' }), { t: 'kanban.project.repo.clone', project: 'web', remote: 'acme/api', name: 'API' });
+  // A task started at a desk: a desk or bean bag, never a board agent's kiosk or a meeting chair.
+  assert.deepEqual(good({ t: 'kanban.task.start', id: 2, deskId: 'desk-3', x: 1 }), { t: 'kanban.task.start', id: 2, deskId: 'desk-3' });
+  assert.deepEqual(good({ t: 'kanban.task.create', task: { project: 'web', title: 'x' }, start: true, deskId: 'beanbag-1' }), { t: 'kanban.task.create', task: { project: 'web', title: 'x' }, start: true, deskId: 'beanbag-1' });
+  for (const deskId of ['station-issues', 'meeting-1', 'desk-999', 7, '']) {
+    refused({ t: 'kanban.task.start', id: 2, deskId }, /deskId must be a desk/);
+    refused({ t: 'kanban.task.create', task: { project: 'web', title: 'x' }, deskId }, /deskId must be a desk/);
+  }
+  assert.equal(KANBAN_CLIENT_TYPES.size, 34);
 });
 
 test("the primary repository's id is its floor's, up to 40 characters, and repoIds take it", () => {

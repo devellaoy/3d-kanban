@@ -11,7 +11,6 @@ import type { KanbanSettings } from '../../shared/kanban/types.js';
 import { KANBAN_CONTRACTS, PROMPT_CONTRACT, isKanbanPromptId, kanbanPromptSource } from '../../shared/kanban/prompts.js';
 import { kanbanApi } from './api';
 import { officeCss } from './officecss';
-import { t } from './i18n';
 import { run } from './ui';
 
 export interface PromptScope {
@@ -32,18 +31,18 @@ export function promptScope(net: Net, changed: () => void): PromptScope {
   let settings: KanbanSettings | null = null;
   let project = '';
   let current: PromptId | null = null;
-  const sel = h('select', { 'aria-label': t('promptScope') }) as HTMLSelectElement;
+  const sel = h('select', { 'aria-label': 'Where this wording applies' }) as HTMLSelectElement;
   const state = h('span');
-  const reset = h('button.btn.small', { type: 'button', title: t('resetHint') }, `↺ ${t('resetToOffice')}`) as HTMLButtonElement;
+  const reset = h('button.btn.small', { type: 'button', title: 'Drop this project’s text and use the office’s again' }, '↺ Back to the office’s') as HTMLButtonElement;
   const contract = h('details.kb-scope-contract');
-  const bar = h('div.kb-scope-bar', {}, h('span', {}, `🗂️ ${t('promptScopeLabel')}`), sel, state, reset);
+  const bar = h('div.kb-scope-bar', {}, h('span', {}, '🗂️ For'), sel, state, reset);
   const el = h('div.kb-scope', {}, bar, contract);
 
   const projectText = (id: PromptId) => (project && isKanbanPromptId(id) ? settings?.projects[project]?.prompts[id] : undefined);
 
   const paintOptions = () => {
     const floors = store.floors.filter((f) => !f.cloning);
-    sel.replaceChildren(h('option', { value: '' }, `🏢 ${t('wholeOffice')}`), ...floors.map((f) => h('option', { value: f.id }, f.name)));
+    sel.replaceChildren(h('option', { value: '' }, '🏢 The whole office'), ...floors.map((f) => h('option', { value: f.id }, f.name)));
     if (!floors.some((f) => f.id === project)) project = '';
     sel.value = project;
   };
@@ -58,19 +57,19 @@ export function promptScope(net: Net, changed: () => void): PromptScope {
       if (!kanban) return;
       if (sel.options.length !== store.floors.filter((f) => !f.cloning).length + 1) paintOptions();
       sel.disabled = busy || !settings;
-      sel.title = busy ? t('promptScopeBusy') : '';
+      sel.title = busy ? 'Save or undo your changes first' : '';
       const src = kanbanPromptSource(id, { office: store.prompts.custom as Partial<Record<string, { text: string }>>, project: project ? (settings?.projects[project]?.prompts ?? {}) : {} });
-      state.textContent = project ? (src.scope === 'project' ? t('scopeNow.project') : t('scopeProjectUsesOffice')) : t('scopeOfficeAll');
+      state.textContent = project ? (src.scope === 'project' ? 'This project’s own text' : 'This project uses the office’s text: saving gives it its own') : 'Every project without its own text uses this';
       reset.classList.toggle('hidden', !project || src.scope !== 'project' || !store.me.admin);
       const c = PROMPT_CONTRACT[id];
       contract.classList.toggle('hidden', !c);
-      contract.replaceChildren(...(c ? [h('summary', {}, `🔒 ${t('contractBlock')}`), h('pre', { 'aria-readonly': 'true' }, KANBAN_CONTRACTS[c])] : []));
+      contract.replaceChildren(...(c ? [h('summary', {}, '🔒 Added by the office after it (can’t be changed)'), h('pre', { 'aria-readonly': 'true' }, KANBAN_CONTRACTS[c])] : []));
     },
     save(id, text) {
       if (!project || !isKanbanPromptId(id)) return false;
       const office = kanbanPromptSource(id, { office: store.prompts.custom as Partial<Record<string, { text: string }>> }).text.trim();
       // The office's own words saved for a project would only hide later office-wide changes.
-      void run(() => api.request({ t: 'kanban.project.prompt.set', project, id, text: text.trim() === office ? null : text }), undefined, 'saved');
+      void run(() => api.request({ t: 'kanban.project.prompt.set', project, id, text: text.trim() === office ? null : text }), undefined, 'Saved');
       return true;
     },
     close: () => off(),
@@ -82,7 +81,7 @@ export function promptScope(net: Net, changed: () => void): PromptScope {
   });
   reset.addEventListener('click', () => {
     if (!project || !current) return;
-    void run(() => api.request({ t: 'kanban.project.prompt.set', project, id: current!, text: null }), reset, 'saved');
+    void run(() => api.request({ t: 'kanban.project.prompt.set', project, id: current!, text: null }), reset, 'Saved');
   });
   const off = api.on((msg: KanbanServerMsg) => {
     if (msg.t !== 'kanban.settings' && msg.t !== 'kanban.snapshot') return;

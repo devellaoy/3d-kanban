@@ -42,17 +42,23 @@ New files are not seams (they can't conflict): `src/{server,shared,client}/kanba
 | `src/server/github.ts` | `MergeWatch.ring(n, repo?)`, `look()` and the new `pullKey()` | Merges are keyed by `repo#n` instead of `n` | A project's repositories can have PRs with the same number; the gong must ring once per PR |
 | `src/server/github.ts` | `GitHub` constructor: `nameWithOwner?`, `pullsOnly` params | Optional owner/name and a pulls-only switch | A project's other repository gets a `GitHub` of its own that fetches only PRs |
 | `src/server/github.ts` | `refreshIssues()` / `refreshPulls()` item mapping *(unmarked)*, `refresh()` *(unmarked)* | `...(this.nameWithOwner ? { repo } : {})` on every issue and PR; `refresh()` skips issues when `pullsOnly` | Each card knows its repository (`GhIssue.repo` / `GhPull.repo`) |
-| `src/server/workers.ts` | `SpawnExtra`, `WorkerObservation` (new exported types after `WorkerRepo`) | What the engine passes to `spawn` (launch args, reuse of a worktree, resume session, `kanban` role, env, `settingsFile: 'kanban'`) and what observers hear | The engine hires ordinary PTY workers with per-phase flags and follows their status/hooks |
+| `src/server/workers.ts` | `SpawnExtra`, `WorkerObservation` (new exported types after `WorkerRepo`) | What the engine passes to `spawn` (launch args, reuse of a worktree, resume session, `kanban` role, env, `settingsFile: 'kanban'`, `bases`: the branch to cut each checkout's worktree from) and what observers hear | The engine hires ordinary PTY workers with per-phase flags and follows their status/hooks |
 | `src/server/workers.ts` | `Worker.extra` field | `{ launchArgs, env, settingsFile, reused }` kept per worker | Relaunches and restarts keep the phase flags |
 | `src/server/workers.ts` | `WorkerManager` fields `kanbanSettingsPath`, `observers`; constructor *(unmarked)* | `claude-hooks-kanban.json` path next to `claude-hooks.json` | Kanban workers' own Claude `--settings` file |
 | `src/server/workers.ts` | `spawn(…, extra?: SpawnExtra)` last param and body *(unmarked)* | `extra.reuse` seats the worker in an existing worktree/workspace (no new worktree); `resumeSessionId`, `kanban` copied into `info`; `w.extra` stored | Reviewers share the task's worktree; a new hire resumes the task's session |
-| `src/server/workers.ts` | new methods `relaunch()`, `addObserver()`, `launchArgsOf()`, `transcripts()`, private `observe()` | Stop + `--resume` with new flags; observer registry; read-only accessors | Phase changes that need other permission flags; the engine reads transcripts (M0 below) |
+| `src/server/workers.ts` | `spawn()`'s `capacity.full()` line; `SpawnExtra.countsWith` | The worker limit isn't checked for a hire whose `extra.countsWith` worker (the task's implementer) is still here; the hire is counted as usual once seated | A task counts once against the worker limit: its reviewer never waits for the place its own implementer holds, which nothing would free |
+| `src/server/workers.ts` | new methods `relaunch()`, `addObserver()`, `launchArgsOf()`, `transcripts()`, private `observe()` | Stop + `--resume` with new flags; `relaunch({ model, effort })` checks them with `validateWorkerModel/Effort`, sets `info.model/effort` and emits the update; observer registry; read-only accessors | Phase changes that need other permission flags, and the task's model/effort changed since the hire; the engine reads transcripts (M0 below) |
+| `src/server/workers.ts` | `spawn()`'s worktree line, `makeWorkspace(…, bases?)` and its two `create()` calls, `fetchBase(branch?)` | `extra.bases[path.resolve(dir)]` passed to `Worktrees.create` for the floor's checkout and each other repository; `fetchBase` passes a branch to `Worktrees.fetch` | A kanban task's configured base branch (the primary's too) is what its worktrees are cut from; ordinary workers pass none, so upstream's rule stays |
+| `src/server/worktrees.ts` | `create(…, baseBranch?)`, new private `baseStartPoint()`, `fetch(branch?)` and its `fetchedFor` field | `baseBranch` cuts from `origin/<branch>`, else the local branch, and returns an error when neither exists; `fetch` fetches that branch instead of the checkout's (a fetch of another branch in flight is waited for, then this one runs) | Same |
 | `src/server/workers.ts` | `kill()` | A `reused` worker always goes home with cleanup `keep` | A reviewer must never delete the task's worktree |
 | `src/server/workers.ts` | `observe(...)` calls in `kill()` *(unmarked, `removed`)*, `handleHook()` *(unmarked, `hook`)*, `setStatus()` *(unmarked)*, `launch()`'s lost-folder path, the PTY `onExit` handler, `startFailed()` | Observers hear removals, hooks, status changes and exits | A run whose worker exits or can't start is interrupted, not left running |
 | `src/server/workers.ts` | `launch()`: `--settings` choice *(unmarked)*, claude and codex arg building, env | `settingsFile === 'kanban'` picks the kanban hook file; `extra.launchArgs` go before the resume/prompt args; `extra.env` is merged under the office's variables; task workers get `AIKANBAN_API_BASE` (hook URL) and `AIKANBAN_TASK_ID` | Per-phase permission flags; ai-kanban's env names keep existing skills working |
 | `src/server/workers.ts` | `writeHookSettings()` | Also writes `claude-hooks-kanban.json` with `skipDangerousModePermissionPrompt: true` | Bypass-mode phases start without the TUI confirmation |
 | `src/server/workers.ts` | `writeOfficeCommands()` | Adds `office-tasks` to the commands written into `<data>/bin/` | Every worker can read other tasks from its PATH |
 | `src/server/workers.ts` | `persist()` / `load()` *(unmarked in load)*, new `validKanban()`, `validExtra()` | `kanban` and `extra` saved in and read back from `workers.json` | Task workers survive an office restart as task workers |
+| `src/server/workers.ts` | `DepartureIntent` import; `Worker.departure`; `kill(…, intent?)` | Who sent a worker home and why (`sent-home`, `queue`, `meeting`, `merged`, `released`, `engine`), kept on the worker and passed to observers with `removed` | One departure path for every way a worker leaves; the engine writes one status comment per departure |
+| `src/server/workers.ts` | `keepGuards` field, `addKeepGuard()`, its check in `kill()` | A guard forces cleanup `keep` while the kanban still needs the worktree | Another worker of the task sits in it, or a run is live |
+| `src/server/workers.ts` | `setKanbanSummary()` | Sets `WorkerInfo.kanban` and sends the ordinary `worker.update` | The desk card and /lite follow the task without a kanban subscription |
 | `src/server/office-workers.ts` | after `MCP_READ_ONLY` | New `MCP_TASK_TOOLS` (`get_task`, `search_tasks`) | Task workers are launched allowing them (upstream's read-only list stays as it is) |
 | `src/server/floor.ts` | imports | `parseRepoFloorId`, `projectRepos` (kanban/projects) and `floorPulled` (kanban/integrations/pulls/board) | The floor's PR board covers the project's repositories and tells the kanban |
 | `src/server/floor.ts` | `openPullIn()` (new, beside `openPull`) | The open PR for a branch in any list | Other repositories' lists |
@@ -61,6 +67,12 @@ New files are not seams (they can't conflict): `src/{server,shared,client}/kanba
 | `src/server/floor.ts` | `merged(n, by, repo?)` | `repo` for a PR in another repository | Gong keying (see github.ts) |
 | `src/server/floor.ts` | new section "the project's other repositories' pull requests": `pullsState()`, `githubFor()`, `pullsOf()`, `boardOf()`, `otherRepo()`, `refreshBoards()`, `boardPulled()` | Merged PR list, per-repo `GitHub` lookup, merge watch over all lists; `floorPulled(this)` at the end of `boardPulled()` | Multi-repo PR board; the kanban's linked PR states follow the board |
 | `src/server/floor.ts` | `sendLandedHome()` and `landed()` *(unmarked)* | `pullsOf` passed to `landedWorkers`/`landedWork` is `this.pullsOf` | Leave-on-merge sees the other repositories' PRs |
+| `src/server/floor.ts` | import; `sendHome(id, cleanup, intent?)`; leave-on-merge's `kill(…, { reason: 'merged' })` | The departure intent passed through to `WorkerManager.kill` | Same |
+| `src/server/leave-on-merge.ts` | `notLeaving()` | A worker of a task in progress, or with a run under way, is never picked | Leave-on-merge doesn't stop a task mid-work |
+| `src/server/meetings.ts` | import; `MeetingWorkers.kill(id, intent?)`; its two calls | `{ by: 'The meeting', reason: 'meeting' }` | Same departure path |
+| `src/server/queue.ts` | import; `QueueWorkers.kill(…, intent?)`; the recycle call | `{ by: 'The queue', reason: 'queue' }` | Same |
+| `src/server/webhook.ts` | `announce()` (new method) | Posts a kanban announcement ("🗂️ #14 … needs plan approval in …") like a worker's `needs_input` alert | A task waiting on a person reaches the team's notifications |
+| `src/server/config.ts` | `Config.hookPort`; `--hook-port` parsing and `AGENT_OFFICE_HOOK_PORT`; the check in `loadConfig`; `HELP` text *(unmarked)* | Pins the loopback hook server's port | Scripts outside the office (ai-kanban's) can reach it |
 | `src/server/building.ts` | imports *(unmarked)*, `FloorDef.repos?` | `repos?: ProjectRepo[]` on a floor | Project = floor with several repositories |
 | `src/server/building.ts` | `setRepos()` (new, before `newDef`) | Sets or clears a floor's repositories and saves `floors.json` | Called by the kanban after `validateProjectRepos` |
 | `src/server/building.ts` | `load()` | `loadRepos(s.repos, …)` after each floor | Reads the repositories back from `floors.json` |
@@ -76,8 +88,15 @@ New files are not seams (they can't conflict): `src/{server,shared,client}/kanba
 | `src/server/server.ts` | `handleMessage()` before the `switch` | `kanban.*` messages to `kanban.handleWs`; `worker.pr` goes to `kanban.engine.prForWorker` first, upstream's `openPr` only on `PR_FALLBACK` | "O" has an agent write the PR |
 | `src/server/server.ts` | `gh.merge`, `gh.comment`, `gh.close`, `gh.labels` cases | `repo` picks `floor.githubFor(repo)`; merge passes it to `floor.merged` | Another repository's PRs and issues |
 | `src/server/server.ts` | `shutdown` | `kanban.shutdown()` | Engine, plugins and database close |
+| `src/server/server.ts` | `/assets/` route | Serves only files under `assets/` | An encoded `../` reached the signed-in pages' shells without a session |
 | `src/server/server.ts` | `gh.merge`, `gh.comment`, `gh.close`, `gh.labels` replies | `gh.merged` / `gh.commented` / `gh.closed` / `gh.labeled` echo the request's `repo` | The PR window matches a reply to the right repository's PR |
 | `src/server/server.ts` | `gh.close`, issue branch | `dropIssue(n)` only when the issue is the primary repository's | The queue holds the primary repository's issues; another repository's #n isn't one |
+| `src/server/server.ts` | after the floors open: `installKanban({…})`'s `capacity`, `runAs`, `notify` | `machine.full()`, the sign-ins, `webhook.announce()` | Task hires queue for the worker limit, keep upstream's sign-in rule, and waiting tasks are announced |
+| `src/server/server.ts` | `worker.prompt` case | `kanban.workerPrompt(info, text, caller, msg.asComment === true)` first; upstream's typing-in (and issue claim) when it hands back `undefined`; with `issue`, the claim after the comment is in | P / Ask / an issue card on a task worker is a task comment, only when the fork's dialogs send `asComment`; everything else types in as upstream |
+| `src/server/server.ts` | `worker.resume` case | `kanban.workerResume(info, caller)` first | R on a task worker whose task waits is Retry |
+| `src/server/server.ts` | `worker.kill` case; `/office/workers` send-home route | The intent `{ by, reason, done? }` (`msg.kanban.done`) to `floor.sendHome` | X can move the task to Done; leave-on-merge's reason |
+| `src/server/server.ts` | hook server: `listenHooks(cfg.hookPort ?? lastHookPort)` and the fallback message | A pinned hook port | See config.ts |
+| `src/server/server.ts` | HTTP: after `/favicon.svg`, before the session check | `/manifest.webmanifest` (`application/manifest+json`), `/sw.js` (`Service-Worker-Allowed: /`), `/offline.html`, `/icons/*`, all `no-cache` and without a session | The PWA: the browser fetches the manifest, icons and worker without the cookie ([configuration](configuration.md#pwa)) |
 
 ### Shared
 
@@ -85,6 +104,8 @@ New files are not seams (they can't conflict): `src/{server,shared,client}/kanba
 |---|---|---|---|
 | `src/shared/prompts.ts` | import, `PromptGroup`, `PROMPT_GROUPS`, end of `DEFS` | `'kanban'` group ("🗂️ Kanban tasks") and `...KANBAN_PROMPT_DEFS` | Every kanban prompt shows in upstream's prompt editor and `prompts.json` |
 | `src/shared/protocol.ts` | import, `WorkerInfo.kanban` | `{ taskId, role: 'implementer' \| 'reviewer' }` | A task worker says whose it is |
+| `src/shared/protocol.ts` | `worker.prompt` | `asComment?: true` | A comment on a task worker's task (the fork's dialogs only); without it, typed in as upstream |
+| `src/shared/protocol.ts` | `worker.kill` | `kanban?: { done?: boolean }` | X can move the task to Done |
 | `src/shared/protocol.ts` | `GhIssue.repo`, `GhPull.repo` | owner/name of the card's repository | Multi-repo boards |
 | `src/shared/protocol.ts` | `gh.merge` / `gh.comment` / `gh.close` / `gh.labels` and their replies | optional `repo?: string` | Same |
 | `src/shared/protocol.ts` | `ClientMsg`, `ServerMsg` unions *(unmarked)* | `\| KanbanClientMsg`, `\| KanbanServerMsg` | The kanban's WS messages ride upstream's socket |
@@ -113,6 +134,33 @@ New files are not seams (they can't conflict): `src/{server,shared,client}/kanba
 | `src/client/main.ts` | `pullRequestFor()`, `pullRequestsFor()` lookups | PR matched by number and repo | "O" opens the right card |
 | `src/client/lite.ts` | `showMeeting` `openPr` | Same lookup | Same |
 | `src/client/ui/repos.ts` | import; `render()` | A project repo's PR on this floor's board opens in the PR window | Multi-repo workers' PRs |
+| `src/client/main.ts` | imports; `officeLink` after `chose3d`; `followOfficeLink()` (new, after `openKanban`) called at the end of the `welcome` and `floor.enter` cases | The kanban's 📍 Show in 3D link `/?floor=&worker=&desk=`: in on that floor, to the desk, the worker window on its Task tab | One world, two views |
+| `src/client/main.ts` | `syncWorkers()` (`setTask`, name tag, `kanbanNames`), the retry-countdown `setInterval` after `meetingCard` | A task worker's card `🗂️ #14 · title` / `phase round · waiting`, name tag `Ada · #14`, ⏳ countdown | The desk shows the task |
+| `src/client/main.ts` | `cameFrom()`, `yours()` | `kanbanStarter(createdBy)`: from the doors; a task you started is yours | Kanban hires |
+| `src/client/main.ts` | `promptAtDesk()` (title "✨ Hire at", `kanbanOption`, `promptTaskWorker` branch), `hireAtDesk()`, `sendToWorker()` (`kanbanOption`, task on the buttons, no reviewers) | Hire as a kanban task; P at a task worker is a message on its task | docs/kanban-coupling.md |
+| `src/client/main.ts` | `killWorker()` top | `sendTaskWorkerHome()` (kanban/sendhome) | Move to Done on X |
+| `src/client/main.ts` | `openKanban()`, `goToNextWaiting()` toast, `openWorkerTerminal(…, tab)` | J opens the task you face (`tab=conversation`); N says what the task waits on | Same |
+| `src/client/main.ts` | `boardActions().kanbanTask`, `interact()` (P with a card at an empty desk, R), `dropCard()` (`cardToTaskWorker`), `cardTaskAt()` (new), `carryHint()` P, `deskHint()` title/task/R | Issue cards as kanban tasks; only a task's own issue goes to its worker; R retries | Same |
+| `src/client/state.ts` | `rememberFloor()` | exported | The deep link comes in on its floor |
+| `src/client/notify.ts` | import; `waitingOnSomeone()` | `taskWaiting()` first | N, the count and the compass follow the task |
+| `src/client/interaction.ts` | import; `R` | `canRetry()` too | R retries a waiting task |
+| `src/client/ui/terminal.ts` | import; `TerminalOptions.tab`; `mountWorkerTabs()` before `ro.observe(host)`; `tabs?.destroy()` in `onClose` | A task worker's window: 🖥️ Terminal / 🗂️ Task #14 (kanban/worker3d); upstream's 🌿 Changes stays in the header | The task view inside the worker window |
+| `src/client/ui/terminal.ts` | the backdrop's `dragenter` and `drop` handlers | `inTaskPane(e.target)` (kanban/office): a drop on the task pane isn't uploaded and typed into the terminal | Files for the task's composer never reach the PTY |
+| `src/client/ui/prompt.ts` | import; `PromptOptions.kanbanOption`, `rawLabel`, `onSubmit` `raw`; `openPrompt()` toggle, paint, `send(raw)`; `SendHomeOptions.extra` and the body | The "🗂️ Run as a kanban task" toggle (kanban/hireform); "Type straight into the terminal instead"; the task block in send-home | Same |
+| `src/client/ui/ask.ts` | import; `AskWorker.task`, `AskOptions.kanbanOption`; `pick()`, the body, `send()` | Kanban toggle for a new worker; `🗂️ #14` on a task worker's button | Same |
+| `src/client/ui/boards.ts` | `BoardActions.kanbanTask?` | Optional action | 🗂️ Kanban task in an issue |
+| `src/client/ui/pull.ts` | `openIssue()` footer | 🗂️ Kanban task button when `actions.kanbanTask` | Same |
+| `src/client/ui/queue.ts` | import; `render()` parts | `kanbanQueueSection(net)` (kanban/office3d) | Read-only 🗂️ Kanban on this floor |
+| `src/client/ui/hud.ts` | help list | `J` text; `E/P/R/X 🗂️` rows | The H help |
+| `src/client/lite.ts` | imports; `workerCard()` sub line, `promptWorker()`, `sendToWorker()` (`askWorker`), `boardActions().kanbanTask`, `fixLostWorktree()` send home | The same on the 2D view (its terminal gets the tabs from terminal.ts) | Same |
+| `src/client/main.ts`, `src/client/lite.ts` | `sendToWorker()`'s `onSubmit` | `askWorker(net, to, prompt)` (kanban/office3d): `asComment` for a task implementer whose task the engine carries on, else upstream's `worker.prompt` | Ask → an existing task worker is a message on its task |
+| `src/client/player.ts` | `SHOULDER`…`tapNdc()` (new, after `CENTER`, with `eyeSees()`, which takes the scene's camera so its ray can meet sprites); `onClick` doc; `pointerdown`, `pointerup` (third person with the mouse free: the tapped point), drag `pointermove`, `canLock`, `setView()`, `look()`, third-person `facing` in `update()` (after first person's, every frame but on a `walkPath`; upstream's turn in the steering block removed), `updateCamera()` target/offset | Third person captures the mouse and looks around like first person (no drag to orbit, clicks are the crosshair's, taps with the mouse free are where you tapped), faces where the camera looks standing or walking, camera over the right shoulder | Third person plays like first person, only the camera is behind you |
+| `src/client/main.ts` | import; `shotAim()` heading/toss pitch; `ballHint()` key; `renderCrosshair()` `show`; *Clicking the world* header; `eyeRay`; `aimedAt()` (`raycaster.near`, `pickables` const, `eyeSees` line of sight with `camera`, `withinReach`) and new `inTheWay()` after it; `aimedNote` (upstream's mouse `pointer` removed); `player.onClick` tail (third person with the mouse free: upstream's tap path, at reach without slack); the per-frame `target` block; `pickTarget()` left unused | The crosshair in third person too: the camera's ray through it, ignoring what's between the camera and you, within reach of your eyes and in their line of sight | Same |
+| `src/client/hanging.ts` | `pointerlockchange` cancel; `update()` ray; `place()`'s third-person `mouse.copy(ndc)` removed (nothing read it) | The crosshair, not the mouse, in third person too | Same |
+| `src/client/ui/settings.ts` | `VIEWS` third-person text | "The mouse looks around like in first person" | Same |
+| `src/client/ui/hud.ts` | help list | `Mouse` row for both views, 🏀 text, `Wheel` instead of `Drag / wheel` | Same |
+| `src/client/index.html`, `src/client/lite.html` | `<head>` after the icon; after the entry `<script>` | Manifest, apple-touch-icon, `theme-color` (index only; lite had one), `apple-mobile-web-app-capable`; `<script type="module" src="./pwa.ts">` | The PWA: installable, and `pwa.ts` registers `public/sw.js` |
+| `src/client/login.html`, `src/client/join.html`, `src/client/claim.html` | `<head>` after the icon | `theme-color` only | The installed app's colour on the sign-in pages |
 
 ### Build, packaging, deploy, docs
 
@@ -126,10 +174,13 @@ New files are not seams (they can't conflict): `src/{server,shared,client}/kanba
 | `bin/office-workers.js` | import; `runTool()`; `tools/list`, `tools/call` *(unmarked)* | `get_task` / `search_tasks` from `office-tasks.js`, listed only when `tasksVisible(env)` (`AIKANBAN_API_BASE` or `AGENT_OFFICE_TASKS` set) | MCP tools for task workers |
 | `deploy/container/Dockerfile` | build stage | `python3 make g++`; `npm rebuild better-sqlite3` after `npm ci --ignore-scripts` | Native module needs its binary |
 | `CLAUDE.md` | whole file *(unmarked)* | Replaced with the fork's rules; upstream's PR/merge workflow rules removed on purpose | This fork has no upstream-style PR workflow |
-| `README.md` | top | Fork section above upstream's README, which follows unchanged | What this fork is |
-| `docs/features.md` | *A floor per project*, *One task across several projects*, *One-click PRs*, *PR board* | An "*In 3d-kanban*" sentence at the end of each, pointing to [kanban.md](kanban.md) | The upstream docs don't contradict the fork |
+| `README.md` | top | Fork section above upstream's README, which follows unchanged (its *Mouse drag / wheel* row is flagged there as out of date) | What this fork is |
+| `docs/features.md` | *A floor per project*, *One task across several projects*, *One-click PRs*, *PR board*, *Walk around*, *Basketball* | An "*In 3d-kanban*" sentence at the end of each, pointing to [kanban.md](kanban.md) | The upstream docs don't contradict the fork |
 | `docs/configuration.md` | *Where the office keeps things* | An "*In 3d-kanban*" paragraph before *Command line* (kanban data, settings, migration) | Same |
-| `docs/controls.md` | keys table (`O` text, new `J` row); new section *In the kanban view* | The fork's keys | Same |
+| `docs/controls.md` | keys table (`O` text, new `J` row; `Mouse`, `Click`, `Wheel` rows for the third person that looks around like first); new section *In the kanban view* | The fork's keys | Same |
+| `vite.config.ts` | imports (`createHash`, `writeFileSync`); `pwaBuild()` (new, before `defineConfig`); `plugins` | Writes the build's id into `dist/public/sw.js` (`'__PWA_BUILD__'`) | Each build's `/assets/` get a cache of their own |
+| `docs/configuration.md` | end of the file | Section *PWA* (the fork's) | How to install it, HTTPS, updates |
+| `README.md` | fork section | A PWA bullet | Same |
 
 ### How to re-apply after an upstream merge
 
@@ -159,7 +210,8 @@ New files are not seams (they can't conflict): `src/{server,shared,client}/kanba
 - Claude and Codex hooks both report `session_id` and `transcript_path` (upstream already stores them).
   Hook output is discarded (`>/dev/null`), so the office can't answer hooks; the engine reads results instead.
 - Claude transcript JSONL: `type: 'assistant'` lines carry `message.content[]` blocks; the turn's final
-  text is the `text` blocks after the last user prompt. `ExitPlanMode` shows up as a `tool_use` block
+  text is the `text` blocks of the last assistant message (its lines share `message.id`) after the last
+  user prompt. `ExitPlanMode` shows up as a `tool_use` block
   whose `input.plan` is the plan.
 - Codex rollout JSONL (`~/.codex/sessions/YYYY/MM/DD/rollout-*.jsonl`): `event_msg` / `task_complete`
   carries `last_agent_message`.

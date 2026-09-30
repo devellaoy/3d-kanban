@@ -44,6 +44,8 @@ export class Worktrees {
   private fetching?: Promise<void>;
   /** The last fetch's error, so the office's log says it once rather than on every hire. */
   private fetchError?: string;
+  /** 3d-kanban: the branch the last fetch was of (see fetch). */
+  private fetchedFor?: string;
 
   constructor(private dir: string) {
     this.root = real(dir);
@@ -57,11 +59,17 @@ export class Worktrees {
    * For a worker across repositories, `sub` puts it in the folder of that name in the workspace
    * `slug`, which is in `root` (the worker's own floor, when that isn't this project). The path it
    * returns is relative to `root`.
+   *
+   * 3d-kanban: `baseBranch` cuts it from that branch instead of the one the project is on (see
+   * baseStartPoint), and fails when there's no such branch.
    */
-  create(slug: string, sub?: string, root = this.dir): (Required<Omit<WorktreeRef, 'made'>> & { from?: string; note?: string }) | string {
+  create(slug: string, sub?: string, root = this.dir, baseBranch?: string): (Required<Omit<WorktreeRef, 'made'>> & { from?: string; note?: string }) | string {
     try {
-      const from = this.currentBranch();
-      const { base, note } = this.startPoint(from);
+      // 3d-kanban: a configured base branch, else the branch the project is on.
+      const from = baseBranch ?? this.currentBranch();
+      const start = baseBranch ? this.baseStartPoint(baseBranch) : this.startPoint(from);
+      if (typeof start === 'string') return start;
+      const { base, note } = start;
       const rel = path.join(WORKTREES_DIR, slug, sub ?? '');
       const branch = `${BRANCH_PREFIX}${slug}`;
       this.gitSync(['worktree', 'add', '-b', branch, path.resolve(root, rel), base]);
@@ -77,10 +85,12 @@ export class Worktrees {
    * Resolves either way: offline, or with no origin, worktrees start from what's here. Undefined when
    * there's nothing to wait for (a fetch this recent, or no branch to fetch).
    */
-  fetch(): Promise<void> | undefined {
-    if (this.fetching) return this.fetching;
-    if (Date.now() - this.fetchedAt < FETCH_FRESH_MS) return undefined;
-    const from = this.currentBranch();
+  fetch(branch?: string): Promise<void> | undefined {
+    // 3d-kanban: `branch` fetches that one (a configured base branch) rather than the one the project is on.
+    if (this.fetching) return this.fetchedFor === (branch ?? this.currentBranch()) ? this.fetching : this.fetching.then(() => this.fetch(branch));
+    if (Date.now() - this.fetchedAt < FETCH_FRESH_MS && this.fetchedFor === (branch ?? this.currentBranch())) return undefined;
+    const from = branch ?? this.currentBranch();
+    this.fetchedFor = from;
     if (!from || !this.hasOrigin()) return undefined;
     // Never stop to ask for a password: there's nobody at the office's terminal to type it.
     const env = { ...process.env, GIT_TERMINAL_PROMPT: '0' };
@@ -128,6 +138,22 @@ export class Worktrees {
     // Both moved on: the PR goes to origin's, so start there and say what's left behind.
     const n = Number(this.gitSync(['rev-list', '--count', head, '--not', remote]));
     return { base: remote, note: `starts from origin/${from}, without the ${n} commit${n === 1 ? '' : 's'} on ${from} that origin doesn't have` };
+  }
+
+  /**
+   * 3d-kanban: where a worktree cut from a configured base branch starts: origin's copy of it, which
+   * its pull request goes to, else the local branch when origin doesn't have it (or there's no
+   * origin). What went wrong when neither exists, rather than quietly the branch the project is on.
+   */
+  private baseStartPoint(branch: string): { base: string; note?: string } | string {
+    for (const ref of [`refs/remotes/origin/${branch}`, `refs/heads/${branch}`]) {
+      try {
+        return { base: this.gitSync(['rev-parse', '--verify', '--quiet', `${ref}^{commit}`]) };
+      } catch {
+        // not this one
+      }
+    }
+    return `The base branch ${branch} isn't in ${this.dir}, neither locally nor on origin: fix the base branch in the project's repository settings`;
   }
 
   private isAncestor(a: string, b: string): boolean {

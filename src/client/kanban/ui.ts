@@ -2,13 +2,12 @@
 // its ✕, labelled fields, selects, a tab strip, and a way to run a request from a button.
 
 import { h, openModal, toast, type Modal } from '../ui/dom';
-import { t, type Key } from './i18n';
 
 type Child = Node | string | null | undefined | false;
 
 /** A dialog's frame: a header with its title and ✕, a body and an optional footer. */
 export function dialog(cls: string, title: string, body: HTMLElement, footer?: HTMLElement | null, headerExtra: Child[] = []): { el: HTMLElement; close: HTMLButtonElement } {
-  const close = h('button.btn.close', { type: 'button', 'aria-label': t('close'), title: t('closeEsc') }, '✕') as HTMLButtonElement;
+  const close = h('button.btn.close', { type: 'button', 'aria-label': 'Close', title: 'Close (Esc)' }, '✕') as HTMLButtonElement;
   const el = h(`div.modal.${cls}`, { role: 'dialog', 'aria-label': title, 'aria-modal': 'true' }, h('header', {}, h('h2', {}, title), ...headerExtra, close), body, footer ?? null);
   return { el, close };
 }
@@ -108,15 +107,15 @@ export function tabStrip<T extends string>(tabs: readonly { id: T; label: string
  * Runs a request from a button: the button waits while it's under way, and a refusal from the
  * office shows as a toast. Resolves to the answer, or undefined when it failed.
  */
-export async function run<T>(what: () => Promise<T>, button?: HTMLButtonElement | null, done?: Key): Promise<T | undefined> {
+export async function run<T>(what: () => Promise<T>, button?: HTMLButtonElement | null, done?: string): Promise<T | undefined> {
   if (button?.disabled) return undefined;
   if (button) button.disabled = true;
   try {
     const out = await what();
-    if (done) toast(t(done));
+    if (done) toast(done);
     return out;
   } catch (err) {
-    toast((err as Error).message || t('failed'), 'error');
+    toast((err as Error).message || 'That didn’t work', 'error');
     return undefined;
   } finally {
     if (button) button.disabled = false;
@@ -126,7 +125,7 @@ export async function run<T>(what: () => Promise<T>, button?: HTMLButtonElement 
 /** A yes/no question before something that can't be undone. */
 export function confirmBox(title: string, text: string, yes: string, onYes: () => void, danger = true) {
   const yesBtn = h(danger ? 'button.btn.danger' : 'button.btn.primary', { type: 'button' }, yes) as HTMLButtonElement;
-  const noBtn = h('button.btn', { type: 'button' }, t('cancel'));
+  const noBtn = h('button.btn', { type: 'button' }, 'Cancel');
   const d = dialog('kb-confirm', title, h('div.body', {}, h('p', {}, text)), h('footer', {}, noBtn, yesBtn));
   const modal = showDialog(d);
   noBtn.addEventListener('click', () => modal.close());

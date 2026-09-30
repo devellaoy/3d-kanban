@@ -2,6 +2,8 @@ import type { AgentEffort, AgentProvider, LostBranch, ServerMsg, WorktreeCleanup
 import { h, openModal } from './dom';
 import { store } from '../state';
 import { providerPicker, type ProviderPicker } from './provider';
+// 3d-kanban: the "Run as a kanban task" toggle in the hire dialog.
+import { kanbanSection, type KanbanOption } from '../kanban/hireform';
 
 export interface PromptOptions {
   title: string;
@@ -19,7 +21,11 @@ export interface PromptOptions {
   providerOption?: boolean;
   /** Other floors' projects a new worker in its own worktree can work in too (see WorkerInfo.repos). */
   repoOptions?: { id: string; name: string }[];
-  onSubmit(text: string, opts: { worktree: boolean; provider?: AgentProvider; model?: string; effort?: AgentEffort; repos: string[] }): void;
+  /** 3d-kanban: offer "🗂️ Run as a kanban task" (hiring only); while it's on, sending makes the task instead of calling onSubmit. */
+  kanbanOption?: KanbanOption;
+  /** 3d-kanban: a second button that sends with `raw` (a task implementer's "type straight into the terminal"). */
+  rawLabel?: string;
+  onSubmit(text: string, opts: { worktree: boolean; provider?: AgentProvider; model?: string; effort?: AgentEffort; repos: string[]; raw?: boolean }): void;
 }
 
 const WT_KEY = 'agent-office.worktree';
@@ -69,19 +75,43 @@ export function openPrompt(opts: PromptOptions) {
   const provider: ProviderPicker | null = opts.providerOption ? providerPicker(store.project, 'prompt-provider') : null;
   const submit = h('button.btn.primary', { type: 'submit' }, opts.submitLabel ?? 'Send ✨');
   const cancel = h('button.btn', { type: 'button' }, 'Cancel');
+  // 3d-kanban: the kanban toggle and the raw button.
+  const kanban = opts.kanbanOption ? kanbanSection(opts.kanbanOption, provider) : null;
+  const rawBtn = opts.rawLabel ? h('button.btn.kb-raw', { type: 'button' }, opts.rawLabel) : null;
   const form = h(
     'form.modal',
     { role: 'dialog', 'aria-label': opts.title },
     h('header', {}, h('h2', {}, opts.title)),
-    h('div.body', {}, opts.warning ? h('p.setting-note.bad', { style: 'margin:0 0 10px', role: 'alert' }, opts.warning) : null, opts.subtitle ? h('p', { style: 'margin:0 0 10px;font-weight:700;color:var(--muted)' }, opts.subtitle) : null, ta, provider?.element ?? null, wtRow, repos.element),
-    h('footer', {}, h('span.grow', {}, 'Enter to send · Shift+Enter for a new line'), cancel, submit),
+    h('div.body', {}, opts.warning ? h('p.setting-note.bad', { style: 'margin:0 0 10px', role: 'alert' }, opts.warning) : null, opts.subtitle ? h('p', { style: 'margin:0 0 10px;font-weight:700;color:var(--muted)' }, opts.subtitle) : null, ta, provider?.element ?? null, wtRow, repos.element, kanban?.element ?? null),
+    h('footer', {}, h('span.grow', {}, 'Enter to send · Shift+Enter for a new line'), cancel, rawBtn, submit),
   ) as HTMLFormElement;
   form.noValidate = true;
+  // 3d-kanban: while the toggle is on, a task is made: no worktree options (the engine has its own), its own title.
+  const kanbanPaint = (on: boolean) => {
+    wtRow?.classList.toggle('hidden', on);
+    repos.element?.classList.toggle('hidden', on);
+    // The subtitle is about hiring ("start with an empty prompt"): a task needs its text, and says so below.
+    form.querySelector(':scope > .body > p:not(.setting-note)')?.classList.toggle('hidden', on);
+    form.querySelector(':scope > header > h2')!.textContent = on ? (opts.kanbanOption?.title ?? opts.title) : opts.title;
+    submit.textContent = on ? '🗂️ Create & start' : (opts.submitLabel ?? 'Send ✨');
+    ta.placeholder = on ? 'What’s the task? Its first line is the title' : (opts.placeholder ?? 'What should the worker work on?');
+  };
+  if (kanban) {
+    kanban.onChange(kanbanPaint);
+    kanbanPaint(kanban.on());
+  }
 
   const modal = openModal(form);
   cancel.addEventListener('click', () => modal.close());
-  const send = () => {
+  const send = (raw?: boolean) => {
     const text = ta.value.trim();
+    // 3d-kanban: the hire makes a kanban task, which needs its text.
+    if (kanban?.on()) {
+      if (!text) return ta.focus();
+      if (provider && !provider.valid()) return;
+      modal.close();
+      return kanban.send(text, { provider: provider?.value(), model: provider?.model(), effort: provider?.effort() });
+    }
     if (!text && !opts.allowEmpty) {
       ta.focus();
       return;
@@ -96,8 +126,9 @@ export function openPrompt(opts: PromptOptions) {
       }
     }
     const worktree = !!opts.worktreeOption && wtBox.checked;
-    opts.onSubmit(text, { worktree, provider: provider?.value(), model: provider?.model(), effort: provider?.effort(), repos: worktree ? repos.value() : [] });
+    opts.onSubmit(text, { worktree, provider: provider?.value(), model: provider?.model(), effort: provider?.effort(), repos: worktree ? repos.value() : [], ...(raw ? { raw } : {}) }); // 3d-kanban: raw
   };
+  rawBtn?.addEventListener('click', () => send(true)); // 3d-kanban
   form.addEventListener('submit', (e) => {
     e.preventDefault();
     send();
@@ -138,6 +169,8 @@ export interface SendHomeOptions {
   /** Asks the office what the worktree holds; the answer comes back through routeWorktreeMessage. */
   ask(): void;
   onConfirm(cleanup: WorktreeCleanup): void;
+  /** 3d-kanban: a block over the choices (a task worker's task, kanban/sendhome.ts). */
+  extra?: HTMLElement;
 }
 
 /** Whoever is waiting to hear what a worker's worktree holds, by worker id. */
@@ -219,6 +252,7 @@ export function sendHomeDialog(opts: SendHomeOptions) {
     h(
       'div.body',
       {},
+      opts.extra ?? null, // 3d-kanban
       h('p', { style: 'margin:0 0 12px;font-weight:700' }, `This stops the session at ${opts.where} for everyone and frees the desk. ${opts.name} worked ${across ? `in worktrees of ${across.join(', ')}, each` : 'in its own worktree'} on 🌿 ${branch}:`),
       list,
       status,

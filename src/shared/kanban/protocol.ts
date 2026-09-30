@@ -33,6 +33,7 @@ import type {
   TaskType,
 } from './types.js';
 import { KANBAN_EFFORTS, KANBAN_TOOLS, PR_REVIEW_MAX, TASK_STATUSES, TASK_TYPES } from './types.js';
+import { DESK_BY_ID } from '../layout.js';
 
 // --- Limits ---------------------------------------------------------------------------------------
 
@@ -149,12 +150,16 @@ export type KanbanClientMsg =
   | Req<{ t: 'kanban.task.get'; id: number; comments?: number }>
   /** Older comments (before comment id `before`); answered with kanban.comments. */
   | Req<{ t: 'kanban.comments.page'; id: number; before?: number; limit?: number }>
-  /** Answered with kanban.ok {taskId} (and startError when start was asked for and couldn't). */
-  | Req<{ t: 'kanban.task.create'; task: KanbanTaskInput; start?: boolean }>
+  /**
+   * Answered with kanban.ok {taskId} (and startError when start was asked for and couldn't).
+   * `deskId`: with start, its worker is hired at that desk (see kanban.task.start).
+   */
+  | Req<{ t: 'kanban.task.create'; task: KanbanTaskInput; start?: boolean; deskId?: string }>
   | Req<{ t: 'kanban.task.update'; id: number; patch: KanbanTaskPatch }>
   /** A drag between columns (see moves.ts). */
   | Req<{ t: 'kanban.task.move'; id: number; to: TaskStatus }>
-  | Req<{ t: 'kanban.task.start'; id: number }>
+  /** `deskId`: hire its worker at that desk (a desk or bean bag, not a board agent's kiosk or a meeting chair); refused when it's taken or not built. */
+  | Req<{ t: 'kanban.task.start'; id: number; deskId?: string }>
   | Req<{ t: 'kanban.task.stop'; id: number }>
   /** Carry on from waiting; `answer` answers the plan's questions (or what the agent asked). */
   | Req<{ t: 'kanban.task.continue'; id: number; answer?: string }>
@@ -177,6 +182,11 @@ export type KanbanClientMsg =
   | Req<{ t: 'kanban.settings.set'; settings: KanbanSettingsPatch }>
   | Req<{ t: 'kanban.project.settings.set'; project: string; settings: Partial<ProjectSettings> }>
   | Req<{ t: 'kanban.project.repos.set'; project: string; repos: ProjectRepoInput[] }>
+  /**
+   * Admins: clones `remote` (owner/name) into the building's projects folder (or reuses a checkout of
+   * it that's there) and adds it to the project's repositories; answered with kanban.ok once it's in.
+   */
+  | Req<{ t: 'kanban.project.repo.clone'; project: string; remote: string; name?: string }>
   /** A project's own text for a kanban prompt; null goes back to the office's. */
   | Req<{ t: 'kanban.project.prompt.set'; project: string; id: string; text: string | null }>
   /** Answered with kanban.issues. */
@@ -290,6 +300,13 @@ function optOneOf<T extends string>(v: unknown, name: string, all: readonly T[])
 }
 function project(v: unknown): string {
   if (typeof v !== 'string' || !PROJECT_ID_RE.test(v)) bad('project must be a floor id');
+  return v as string;
+}
+/** A seat a task's worker can be hired at: a desk or bean bag of the layout, not a board agent's kiosk or a meeting chair. */
+function deskId(v: unknown): string | undefined {
+  if (v === undefined) return undefined;
+  const desk = typeof v === 'string' && v.length <= 40 ? DESK_BY_ID.get(v) : undefined;
+  if (!desk || desk.station || desk.room) bad('deskId must be a desk of the floor');
   return v as string;
 }
 function model(v: unknown): string | undefined {
@@ -474,6 +491,7 @@ export const KANBAN_CLIENT_TYPES = new Set<string>([
   'kanban.settings.get', 'kanban.settings.set', 'kanban.project.settings.set', 'kanban.project.repos.set', 'kanban.project.prompt.set',
   'kanban.issues.list', 'kanban.issues.refresh', 'kanban.issues.createTask', 'kanban.skills.list', 'kanban.skills.sync',
   'kanban.secrets.set', 'kanban.pr.review', 'kanban.pr.bundle',
+  'kanban.project.repo.clone',
 ] satisfies KanbanClientType[]);
 
 /** Whether a raw message is meant for the kanban (its `t` starts with `kanban.`). */
@@ -530,13 +548,18 @@ function parse(raw: unknown): KanbanClientMsg {
       const limit = optInt(r.limit, 'limit', 1, KANBAN_LIMITS.commentsPage);
       return m({ t: 'kanban.comments.page', id: id(r.id), ...(before !== undefined ? { before } : {}), ...(limit !== undefined ? { limit } : {}) });
     }
-    case 'kanban.task.create':
-      return m({ t: 'kanban.task.create', task: taskInput(r.task), ...(bool(r.start, 'start') ? { start: true } : {}) });
+    case 'kanban.task.create': {
+      const desk = deskId(r.deskId);
+      return m({ t: 'kanban.task.create', task: taskInput(r.task), ...(bool(r.start, 'start') ? { start: true } : {}), ...(desk ? { deskId: desk } : {}) });
+    }
     case 'kanban.task.update':
       return m({ t: 'kanban.task.update', id: id(r.id), patch: taskPatch(r.patch) });
     case 'kanban.task.move':
       return m({ t: 'kanban.task.move', id: id(r.id), to: oneOf(r.to, 'to', TASK_STATUSES) });
-    case 'kanban.task.start':
+    case 'kanban.task.start': {
+      const desk = deskId(r.deskId);
+      return m({ t: 'kanban.task.start', id: id(r.id), ...(desk ? { deskId: desk } : {}) });
+    }
     case 'kanban.task.stop':
     case 'kanban.task.retry':
     case 'kanban.task.review':
@@ -567,6 +590,12 @@ function parse(raw: unknown): KanbanClientMsg {
       return m({ t: 'kanban.project.settings.set', project: project(r.project), settings: settingsObj(r.settings, 'settings') as Partial<ProjectSettings> });
     case 'kanban.project.repos.set':
       return m({ t: 'kanban.project.repos.set', project: project(r.project), repos: repoInputs(r.repos) });
+    case 'kanban.project.repo.clone': {
+      const remote = text(r.remote, 'The GitHub repository', KANBAN_LIMITS.remote).trim();
+      if (!GH_REPO_RE.test(remote)) bad('The GitHub repository is owner/name');
+      const name = optText(r.name, "The repository's name", 100)?.trim();
+      return m({ t: 'kanban.project.repo.clone', project: project(r.project), remote, ...(name ? { name } : {}) });
+    }
     case 'kanban.project.prompt.set': {
       if (typeof r.id !== 'string' || !/^kanban\.[a-zA-Z.]{1,60}$/.test(r.id)) bad('id must be a kanban prompt id');
       const body = r.text === null ? null : text(r.text, 'The prompt', KANBAN_LIMITS.promptText, { empty: true });

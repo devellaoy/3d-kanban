@@ -12,12 +12,14 @@ export interface KanbanEngine extends KanbanEngineApi {
   /** Starts following the office's workers (and sweeps retries); called once the context is complete. */
   begin(): void;
   dispose(): void;
+  /** A task's card changed (ctx.taskChanged): its workers' WorkerInfo.kanban follows. (Optional for stand-ins in tests.) */
+  cardChanged?(taskId: number): void;
 }
 
 export function createEngine(ctx: KanbanContext, options: EngineOptions = {}): KanbanEngine {
   const o = new Orchestrator(ctx, options);
   return {
-    start: (id, who) => o.start(id, who),
+    start: (id, who, opts) => o.start(id, who, opts),
     stop: (id, who) => o.stop(id, who),
     continue: (id, who, answer) => o.continue(id, who, answer),
     retry: (id, who) => o.retry(id, who),
@@ -27,9 +29,11 @@ export function createEngine(ctx: KanbanContext, options: EngineOptions = {}): K
     pr: (id, who, mode) => o.pr(id, who, mode),
     compact: (id, who) => o.compact(id, who),
     release: (id, who) => o.release(id, who),
+    releaseIdle: (id, who) => o.releaseIdle(id, who),
     commented: (id, commentId, who) => o.commented(id, commentId, who),
     prForWorker: (floorId, workerId, who) => o.prForWorker(floorId, workerId, who),
     reviewPrs: (req, who) => o.reviewPrs(req, who),
+    cardChanged: (id) => o.syncSummaries(ctx.repo.getTask(id)),
     begin: () => o.begin(),
     dispose: () => o.dispose(),
   };

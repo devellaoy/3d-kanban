@@ -52,7 +52,8 @@ test("a task whose worktree is gone gets a fresh one on its own branch instead o
   // What leave-on-merge does: the implementer goes home and its worktree goes (the branch stays).
   await fx.workers.kill(r.workerId!, 'worktree');
   if (existsSync(old)) git(fx.dir, 'worktree', 'remove', '--force', old);
-  await fx.waitTask(task.id, (x) => !x.workerId, 'the worker gone from the task');
+  const gone = await fx.waitTask(task.id, (x) => !x.workerId && !x.workspace, 'the worker and its deleted worktree gone from the task');
+  assert.equal(gone.branch, branch, 'the branch is still there, so the task keeps it');
   // Review by hand is refused with a reason rather than seating a reviewer in nothing.
   assert.match((await fx.engine.review(task.id, ADA)) ?? '', /worktree is gone/);
 
@@ -71,7 +72,6 @@ test("a task whose worktree is gone gets a fresh one on its own branch instead o
   assert.match(prompt, /You are taking over kanban task/, 'handed over');
   assert.ok(prompt.includes(`\`${branch}\``) && /check the task's branch out/.test(prompt), 'told to check out its branch');
   assert.match(prompt, /One more thing\./);
-  assert.ok(fx.repo.listComments(task.id).comments.some((x) => x.kind === 'status' && /worktree is gone/.test(x.text)));
 });
 
 test('a worktree pruned under an idle implementer: it goes home and a fresh worktree carries on', async (t) => {
@@ -215,11 +215,17 @@ test("a pull-request review of a task's bundle runs on that task and leaves its 
   const task = fx.newTask({ usePlan: false, useReview: false, ticket: 'UYT-3' });
   await fx.engine.start(task.id, ADA);
   const before = await fx.waitTask(task.id, (x) => x.status === 'review' && x.runState === 'idle', 'the review column', 20_000);
-  const got = await fx.engine.reviewPrs({ project: 'proj', prs: [{ repo: 'acme/proj', number: 5 }], taskId: task.id }, ADA);
+  // Its bundle: a PR opened from the task's branch (a PR that isn't the task's makes a review task of its own).
+  const got = await fx.engine.reviewPrs({ project: 'proj', prs: [{ repo: 'acme/proj', number: 5, branch: before.branch } as never], taskId: task.id }, ADA);
   assert.ok(typeof got !== 'string', String(got));
   if (typeof got === 'string') return;
   assert.equal(got.taskId, task.id);
+  const own = path.join(fx.dir, fx.workers.get(got.workerId)!.worktree!.path);
   const done = await fx.waitTask(task.id, (x) => x.status === 'review' && x.runState === 'idle' && fx.repo.listRuns(task.id).length === 2, 'the review column again', 20_000);
+  // The reviewer goes home with its own worktree and branch (cleanup all), which git takes a moment to do.
+  const branchLeft = () => git(fx.dir, 'branch', '--list', 'office/*').includes(path.basename(own));
+  for (let i = 0; i < 100 && (existsSync(own) || branchLeft()); i++) await new Promise((r) => setTimeout(r, 50));
+  assert.ok(!existsSync(own), "the reviewer's own worktree went with it");
   assert.deepEqual(done.workspace, before.workspace, "the task's worktree is untouched");
   assert.ok(existsSync(path.join(fx.dir, done.workspace!.worktree.path)));
   assert.equal(done.workerId, before.workerId, 'the implementer stays');

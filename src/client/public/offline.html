@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="theme-color" content="#fff1de" />
+    <title>Offline · 3D Kanban</title>
+    <!-- 3d-kanban: the service worker's stand-in for a page when the office can't be reached (sw.js).
+         Self-contained: it's shown with the network gone. It's served at the page's own address, so
+         a reload is that page again. -->
+    <style>
+      html, body { height: 100%; margin: 0; }
+      body {
+        display: grid; place-items: center; background: #fffaf3; color: #2b2d42;
+        font: 700 16px/1.4 'Nunito', ui-rounded, 'SF Pro Rounded', system-ui, -apple-system, sans-serif;
+      }
+      .card { max-width: 360px; margin: 24px; padding: 28px 24px; text-align: center; background: #fff1de; border: 3px solid #2b2d42; border-radius: 16px; box-shadow: 0 4px 0 #2b2d42; }
+      h1 { margin: 12px 0 6px; font-size: 20px; font-weight: 900; }
+      p { margin: 0 0 16px; color: #7a6f65; }
+      button { font: inherit; font-weight: 900; padding: 8px 18px; color: #fff; background: #ff8a5b; border: 3px solid #2b2d42; border-radius: 12px; box-shadow: 0 3px 0 #2b2d42; cursor: pointer; }
+      button:active { transform: translateY(2px); box-shadow: 0 1px 0 #2b2d42; }
+      svg { width: 72px; height: 72px; }
+    </style>
+  </head>
+  <body>
+    <main class="card" role="status" aria-live="polite">
+      <svg viewBox="0 0 64 64" aria-hidden="true"><rect x="6" y="30" width="52" height="8" rx="3" fill="#e0a96d"/><rect x="18" y="14" width="28" height="18" rx="3" fill="#2b2d42"/><rect x="21" y="17" width="22" height="12" rx="1" fill="#7cf29a"/><circle cx="32" cy="50" r="9" fill="#ff8a5b"/><circle cx="29" cy="48" r="1.8" fill="#222"/><circle cx="35" cy="48" r="1.8" fill="#222"/></svg>
+      <h1>The office is offline. Reconnecting…</h1>
+      <p id="say">Trying again in a few seconds.</p>
+      <button id="now" type="button">Try now</button>
+    </main>
+    <script>
+      (() => {
+        const say = document.getElementById('say');
+        let wait = 3;
+        let timer;
+        const retry = async () => {
+          clearTimeout(timer);
+          say.textContent = 'Trying…';
+          try {
+            const res = await fetch('/api/health', { cache: 'no-store' });
+            if (res.ok) return location.reload();
+          } catch {}
+          wait = Math.min(wait * 2, 30);
+          say.textContent = `Trying again in ${wait} seconds.`;
+          timer = setTimeout(retry, wait * 1000);
+        };
+        document.getElementById('now').addEventListener('click', retry);
+        addEventListener('online', retry);
+        timer = setTimeout(retry, wait * 1000);
+      })();
+    </script>
+  </body>
+</html>

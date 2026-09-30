@@ -14,13 +14,13 @@ walk up to its desk in the 3D office.
   the floor you're on.
 - From the 2D view (`/lite`): **🗂️ Kanban** in the top bar.
 - Directly: `/kanban` (the project you picked last), `/kanban?project=<floor id>`, `/kanban?task=14`
-  (opens task #14's detail), `/kanban?settings=1` (opens the kanban settings; ⚙️ Settings → 🤖 Workers
+  (opens task #14's detail; `&tab=changes` on that tab: `conversation`, `plan`, `runs`, `terminal`,
+  `changes`, `prs`), `/kanban?settings=1` (opens the kanban settings; ⚙️ Settings → 🤖 Workers
   → **🗂️ Kanban settings…** in the office links there).
 - **🏢 3D** in the kanban's top bar goes back to the 3D office, on the floor of the project you're
   looking at.
 
-Signed out, `/kanban` sends you to the sign-in page and back. The page is in English or Finnish: the
-browser's language until you pick one with the **EN/FI** selector.
+Signed out, `/kanban` sends you to the sign-in page and back.
 
 The top bar has the project picker (or **All projects**), a search box (`#12`, words, a ticket id, a
 repository; **/** focuses it), counts (🗂️ on the board, 🚧 running, 🙋 waiting on you, 👀 ready for
@@ -36,7 +36,7 @@ column) and **⚙️** settings. Keys: see [Controls](controls.md#in-the-kanban-
 | **In progress** | The engine is running a phase (plan, implement, review, fix…), or the task is queued for a slot. |
 | **Waiting** | Needs you: the plan has questions, the plan waits for approval, the agent asks in its terminal, it was stopped, a phase failed or was interrupted, or a usage limit (it retries by itself, with a countdown). |
 | **Review** | The automation is finished. Read the result, comment, run another review round, open PRs, or move it to Done. |
-| **Done** | Accepted by you. Only you move tasks here. |
+| **Done** | Accepted by you: you move it here, send its implementer home with *the task is done*, or leave-on-merge sends it home once every PR of the task has merged. |
 | **Archive** | Done tasks after the archive days, and tasks archived by hand; off the board (**🗄️ Archive** shows them). |
 
 Drag a card, use its **⋯** button, or press **M** on a focused card. Columns a card can't go to are
@@ -53,6 +53,9 @@ greyed out with the reason. What you can do by hand:
   Continue, Retry or a comment).
 
 Done tasks go to the archive by themselves after the *archive after* days in the settings.
+Moving a task to Done or to the archive (by hand or by itself) sends its workers that are at rest
+home, worktree kept. An agent still asking in its terminal (the task waits with *the agent is asking*)
+goes home too: its run is stopped, with a line saying so, and nothing of the task stays running.
 
 ## Creating a task
 
@@ -79,7 +82,7 @@ those two.
 
 1. **Plan** (when *Plan first* is on): the agent plans read-only. It ends with the plan (the line
    `PLAN READY`), or with `QUESTIONS:`. Questions put the task in Waiting: answer in the box and
-   **Send the answer**, or **▶️ Continue** without one (the agent makes and names its assumptions).
+   **Send the answer**, or **▶️ Continue without answering** (the agent makes and names its assumptions).
    With plan approval *wait for approval* a finished plan waits for **✅ Approve the plan** or
    **✍️ Request changes** (the Plan tab); *implement straight away* accepts it by itself.
 2. **Implement**: the agent works in its own worktree (a workspace with a worktree of each repository,
@@ -87,7 +90,8 @@ those two.
    repository, there's nothing to review and the task goes to Review.
 3. **Review rounds**: a reviewer (its own worker, tool, model and effort, sharing the task's worktree)
    reviews and ends with `REVIEW: APPROVED` or `REVIEW: CHANGES_REQUESTED` (no verdict counts as
-   changes requested). Changes requested → the implementer **fixes** → the next round. After the last
+   changes requested). Only the reviewer's final answer counts, and only a verdict line of its own at
+   its end: one quoted (`>`) or in a code block, or said in an earlier message, is none. Changes requested → the implementer **fixes** → the next round. After the last
    round's fix the reviewer looks once more if *review the last fix too* is on; otherwise the task goes
    to Review.
 4. **Review column**: read the result. **🔍 Run a review round** runs one more round by hand (it ends
@@ -95,14 +99,76 @@ those two.
    compacts the agent's session. **🏠 Release worktree** sends the task's workers home and keeps the
    worktree for later. Move it to **Done** when you accept it.
 
+When the agent asks something in its terminal (Waiting, *the agent is asking*), answer it there, or,
+when it asks a question, in the **Answer the agent** box (**⌨️ Open its terminal** is next to it): the
+answer is kept as your comment and typed into its terminal, as if you typed it there, and the same run
+carries on (the task is In progress again once the agent goes on; a question with several parts keeps
+it waiting until the last is answered). A comment on the task does the same. When it asks for a
+permission (or the office can't tell what it waits on), the task says *answer it in its terminal*
+with **⌨️ Open its terminal** and no answer box: nothing is typed for you, since Enter would pick the
+prompt's highlighted option. A comment then is kept and goes to the agent once that turn is over.
+There is no Continue without an answer then: its run is still going.
+
 **⏹️ Stop** interrupts a running turn (Esc into its terminal; the worker goes home, worktree kept, if
 it doesn't stop in a few seconds). A failed or interrupted phase waits with **🔁 Retry** (run it again)
 and **▶️ Continue**. After an office restart a run is picked up again when its worker is still at
 its desk; a run whose worker went away (or exited) is marked interrupted.
 
+### Sending a task's worker home
+
+A task's worker is an ordinary worker at a desk: **X** (or the CLI's `office-workers home`, the queue
+making room, a meeting, leave-on-merge, 🏠 Release) sends it home, and the task hears about it. Each
+departure puts exactly one line in the task's conversation, saying who sent it home and what that
+did:
+
+- **The implementer, nothing running**: the task stays in its column. Sent home with *the task is
+  done*, it goes to Done. A task in In progress with nothing running waits with Retry, and one waiting
+  out a usage limit no longer carries on by itself (Retry when it should).
+- **The implementer mid-run**: the run is stopped and the task waits with **🔁 Retry** (or goes to Done
+  with *the task is done*).
+- **The reviewer**: its review round is dropped. Comments that came in while it reviewed go to the
+  agent now; otherwise the task goes to Review.
+- **Leave-on-merge** never picks a worker of a task in In progress or with a run going. When it sends
+  one home, the task goes to Done only if every pull request linked to it has merged (none open or a
+  draft).
+- **The worktree**: whatever you pick, it stays while another worker of the task sits in it or a run
+  of the task is going (a Retry carries on there). When it was deleted, the task forgets it and its
+  sessions, and keeps its branch if git still has it here or on origin: the next run gets a fresh
+  worktree on that branch.
+
+A task done this way sends its other workers at rest home too, as moving it to Done does.
+
 A project runs at most *tasks at once* tasks (default 2); more are **queued** in In progress and start
-when a slot frees up. A hire needs a free desk on the project's floor and room under the office's
-worker limit; when there's none the phase fails and the task waits with Retry.
+when a slot frees up. A hire also needs a free desk on the project's floor and room under the office's
+worker limit (`--max-workers`, ⚙️ Settings): when there's none, the start or the phase (a reviewer's
+hire, say) is **queued** too, with a line saying why, and starts by itself as soon as a worker goes
+home anywhere in the office (or at the next minute's look). A task counts once against the worker
+limit: its reviewer never waits for the place its own implementer (still at its desk for the fixes)
+holds, though it counts while it's there, so other hires still find the office full. A queued run
+keeps its task's slot of *tasks at once*, so more tasks don't start meanwhile and take the desks it's
+waiting for. A queued start keeps the desk it was
+started at; when that desk is taken by then, its worker sits at the next free one and the conversation
+says so. Later hires (after 🏠 Release, a Retry) prefer the task's desk when it's free. ⏹️ Stop takes a
+task out of the queue, and so does moving it to Done (or the archive, or back to To do): a task out of
+the process is never hired for. 🏠 Release keeps a usage-limit wait's auto-resume: the task still
+carries on by itself when the limit resets, on a new hire; only **X** in the office turns it off.
+
+Every hire for a task runs as **the account that made the task**, on its own sign-ins, whoever set it
+off: a comment, Continue, Approve, Retry, the queue or the usage-limit resume. Someone else's comment
+is theirs, but the hire it causes is the creator's (and resumes the creator's session). A task with
+no creator account (made on the shared password, or migrated) runs as whoever set it off, else on the
+office's own sign-in. When the creator isn't signed in to Claude, the task waits (failed) with
+upstream's sign-in message, saying whose sign-in is missing, instead of starting on the office's
+sign-in: they sign in under ☰ → 🔐 Your sign-ins, then Retry. Every
+hire that cuts a worktree fetches the base branch first (each repository's), as upstream's hires do.
+A repository with a *base branch* in the project's settings (the primary one included) gets its
+worktree cut from that branch on origin, else from the local one, whatever its checkout is on; the
+first prompt names it. When that branch is in neither, the start fails and says so. A repository
+without one starts from the branch its checkout is on, as upstream.
+
+When a task waits on a person, the office's team notifications (the Slack / Discord webhook of ⚙️
+Settings or `--webhook`) get one line per transition: "🗂️ #14 <title> needs plan approval / has
+questions / is ready for review in <project>".
 
 ### Settings
 
@@ -134,6 +200,8 @@ back to work:
 - The agent is at rest: the comment is its next turn (typed into its terminal, or a worker is hired
   again with the task's session and worktree). In Waiting on the plan, it's an answer or a change
   request for the plan.
+- The agent is asking a question in its terminal: the comment is the answer, typed in there now (see
+  above). Asking for a permission: the comment is queued until that turn is over.
 - The agent is busy (a review included): the comment is queued (marked *waiting*) and delivered at its
   next rest. Comments that came in during a review are worked on when the review cycle ends, and that
   work is reviewed again when the task has review on.
@@ -141,23 +209,51 @@ back to work:
 On To do, Done and archived tasks a comment is just kept. Comments take attachments too
 (**Ctrl/⌘ + Enter** sends).
 
+In the 3D office, what you tell a task's **implementer** while the task is in progress, waiting or in
+review is a comment too: **P** ("💬 Message task #N"), the task's issue card dropped on its desk, and
+**Ask** → that worker post it as a comment from you (`worker.prompt` with `asComment`), and the engine
+follows and reviews the turn as above. Anything else typed at a worker (its terminal's say box, "Type
+straight into the terminal instead", upstream's own prompts) goes into its terminal as keys and is not a
+comment. For a task in To do, Done or the archive the office offers the ordinary prompt, and the server
+refuses a comment sent there. A task's **reviewer** refuses comments ("… is reviewing task #N"). **R** on a task worker whose task waits with
+Retry (stopped, failed, interrupted, a usage limit) is the task's 🔁 Retry. The task's agent, model,
+effort and review override can be changed whenever no run is going; the next phase picks them up, and a
+new tool starts a fresh session with the task's handoff.
+
 ## The detail panel
 
-Click a card (or Enter on it). Its tabs:
+Click a card (or Enter on it). The panel's tab is kept in the page's link (`&tab=`). Its head has
+**📍 Show in 3D**: the 3D office at the task's worker's desk (`/?floor=<project>&worker=<id>&desk=<id>`),
+or on its floor when it has no worker. Its tabs:
 
 - **Overview**: what it waits for (with the answer box), the actions, summary, description,
-  acceptance criteria, attachments and details (type, agent, plan, review rounds, branch, workspace,
-  queued comments, who made it).
+  acceptance criteria, **📑 Reports** (an investigation's report files: shown in place, Markdown
+  rendered, or downloaded), attachments and details (type, agent, plan, review rounds, branch,
+  workspace, queued comments, who made it). **✏️ Change the agent** there picks the task's agent,
+  model and effort whenever nothing runs; the office may refuse it (the reason shows as a message).
+  The next phase runs on the new ones: a new agent is hired for another agent, and the worker at the
+  desk is restarted on its session with the new model and effort.
+  **🔍 Run a review round** is offered in Review, and in Waiting too when the task has a worktree and
+  isn't waiting on its plan.
 - **Conversation**: see *Comments*.
 - **Plan**: every version (draft, accepted, superseded), with approve and request-changes on the
   latest.
 - **Runs**: each phase run (phase, round, role, agent, status, verdict), and the task's history.
 - **Terminal**: the task worker's live terminal, as at its desk (you can type in it). A task on
   another project's floor takes you to that floor first.
-- **Changes**: what the worker changed, per repository (upstream's Changes window: files, diff,
-  commit).
+- **Changes**: what the task changed, read by the office from git, with or without a worker: a
+  repository picker, **Whole change** (the branch against its base, `origin/<base>` or the local base)
+  or **Per commit**, and, while the task has a worktree, **✏️ Uncommitted** (its edits and new files).
+  Each file's diff opens on its own; a diff over 2 MB is cut. It reads the task's worktree while there
+  is one, else the task's branch in the project's checkout (fetched from origin in the background now
+  and then, never waited for). While a worker is at its desk, **🔴 Open the live Changes window**
+  opens upstream's window on its checkout.
 - **PRs**: the task's pull requests with their state, **Create/Push & update PRs**, **Fix PRs**, and
   **🔍 Review these N PRs together**.
+
+The panel is the **shared task view** (`src/client/kanban/taskview.ts`), which the 3D office uses too
+(a window of its own, or a tab of the worker window). There it has no Terminal tab (the worker
+window has the terminal), no Edit or Move, and a **🗂️ Open in the kanban** link instead of Show in 3D.
 
 ## Projects and repositories
 
@@ -216,19 +312,23 @@ draft issues), the Jira key.
   open PRs.
   - 🔍 with several PRs: a reviewer is hired in a worktree of its own (never the floor's checkout, never
     the task's) and reads them with `gh pr view` / `gh pr diff`. The review is written into the task
-    the PRs belong to, or a new **investigate** task *PR review: owner/repo#1, …* (with the ticket
-    they share, if any), which goes to Review with the reviewer's findings and verdict. Retry reviews
-    them again.
-  - 🤝 with several PRs: the floor's meeting room reviews them as one change set; the brief lists every
-    PR. The combined review is posted on one of them, which must be in the project's primary
-    repository.
+    the PRs belong to when every one of them is that task's (linked to it, or opened from its branch);
+    PRs of different tasks, or of no task (one of the *other open PRs*, say), get a new **investigate**
+    task *PR review: owner/repo#1, …* (with the ticket they share, if any, and a line naming the tasks
+    involved), which goes to Review with the reviewer's findings and verdict. Retry reviews them again.
+  - 🤝 with several PRs: the floor's meeting room reviews them as one change set; the brief (the
+    *Review panel of several pull requests* prompt) lists every PR. The combined review is posted on
+    one of them, which must be in the project's primary repository.
 
 ## Prompts
 
 Every prompt the kanban sends is editable: plan, replan, branch naming, checkout, implement,
 implement (folder project), investigate, review, next review round, fix, comment, acceptance
-criteria, open PRs, fix PRs, review PRs together, carry on, compact, language, reading other tasks
-and handoff. Each lists its `{{placeholders}}`.
+criteria, open PRs, fix PRs, review PRs together, the review panel of several PRs, carry on, compact, language, reading other tasks
+and handoff, and the smaller texts they're built from (Continue without answers, what the user said
+since, the ticket line, attached files, the project's instructions and their parts, the referenced
+tasks file, the accepted plan, what the task did, and the handoff's summary and comments). Each lists
+its `{{placeholders}}`.
 
 - **Office-wide**: ⚙️ Settings → 🤖 Workers → **📝 Edit the prompts…**, group **🗂️ Kanban tasks**
   (kept in the office's `prompts.json`, like upstream's prompts).
@@ -301,6 +401,14 @@ at least 16 characters; only its SHA-256 is kept), every `/api/v1` request must 
 `Authorization: Bearer <key>` or `X-API-Key: <key>`. **Starting a task** over `/api/v1` (`start: true`,
 or `/start`) is refused until a key is set, since it runs an agent as the office's user.
 
+**Scripts outside the office** (jira-loop, the old ai-kanban skills run by hand) find the hook server
+at `http://127.0.0.1:<port>`, where `<port>` is in the file `<data>/hook-port` (for an office in
+`~/agent-office`: `~/agent-office/.agent-office/hook-port`), rewritten at every start. The office keeps
+the last start's port when it's free. To pin it, start the office with `--hook-port <n>` (or
+`AGENT_OFFICE_HOOK_PORT=<n>`): then `AIKANBAN_API_BASE=http://127.0.0.1:<n>` can be set once in the
+script's environment. When the pinned port is taken, the office says so and listens elsewhere, and the
+file has the port it got.
+
 ## Where the data is
 
 `<data>` is the office's data folder: `~/agent-office/.agent-office` (move `~/agent-office` with
@@ -319,6 +427,7 @@ or `/start`) is refused until a key is set, since it runs an agent as the office
 | `<data>/kanban/legacy/` | ai-kanban's stream logs, when migrated with `--with-stream-logs`. |
 | `<data>/floors.json` | The floors, with each project's repositories. |
 | `<data>/claude-hooks-kanban.json`, `<data>/bin/office-tasks` | Task workers' Claude settings; the `office-tasks` command. |
+| `<data>/hook-port` | The hook server's port (upstream's file), for scripts outside the office; see `--hook-port`. |
 
 Worktrees are upstream's: under the floor's checkout, `.agent-office/worktrees/` (a multi-repository
 task's workspace folder there holds a worktree of each of its repositories).

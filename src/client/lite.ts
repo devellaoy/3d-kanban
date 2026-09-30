@@ -19,6 +19,11 @@ import { openBoard, type BoardActions } from './ui/boards';
 import { openPull, routePullMessage } from './ui/pull';
 // 3d-kanban: a worker's PR by its repository too, on a project with several.
 import { findItem, ownPullRepo } from './kanban/ghrepo';
+// 3d-kanban: task workers on the 2D view.
+import { kanbanChip, promptKind } from './kanban/office';
+import { askWorker, hireOption, promptTaskWorker } from './kanban/office3d';
+import { issueTask } from './kanban/hireform';
+import { sendTaskWorkerHome } from './kanban/sendhome';
 import { openQueue } from './ui/queue';
 import { openAsk } from './ui/ask';
 import { openMeeting, type MeetingPreset } from './ui/meeting';
@@ -161,6 +166,7 @@ function workerCard(w: WorkerInfo): HTMLElement {
           ? w.task?.summary && `✅ ${w.task.summary}`
           : (w.task?.summary ?? w.activity);
   const sub = [
+    w.kanban && kanbanChip(w, Date.now()), // 3d-kanban: its task
     w.kind === 'agent' ? `⚙️ ${providerLabel(w.provider, store.project)}${badge ? ` · ${badge}` : ''}` : '🐚 shell',
     desk && (desk.station ? `📌 ${desk.label}` : desk.label),
     w.worktree && `🌿 ${w.worktree.branch}`,
@@ -237,7 +243,9 @@ function fixLostWorktree(w: WorkerInfo) {
       toast(all ? `Rebuilding ${others.length + 1} worktrees…` : `Rebuilding ${w.name}'s worktree…`);
       net.send({ t: 'worker.rebuild', workerId: w.id, all });
     },
+    // 3d-kanban: a task worker's dialog has its task in it.
     sendHome: () =>
+      sendTaskWorkerHome(net, w, DESK_BY_ID.get(w.deskId)?.label ?? 'its desk') ||
       sendHomeDialog({
         workerId: w.id,
         name: w.name,
@@ -253,6 +261,8 @@ function fixLostWorktree(w: WorkerInfo) {
 function promptWorker(id: string) {
   const w = store.workers.get(id);
   if (!w) return;
+  // 3d-kanban: a message on its task (or its terminal, for a reviewer).
+  if (promptTaskWorker(net, w, () => openWorker(id))) return;
   openPrompt({
     title: `✍️ Prompt ${w.name}`,
     subtitle: w.status === 'working' ? `${w.name} is busy, so this waits in its input box until it's done.` : undefined,
@@ -271,18 +281,20 @@ function sendToWorker(title: string, text: { context?: string; initial?: string 
   if (!store.project) return toast('Pick a floor first', 'warn');
   // The back office's desks too, as far as the floor's built out (see WING).
   const desk = nextFreeSeat((id) => !!store.workerAtDesk(id), store.floorPlan.wing)?.id;
-  const awake = [...store.workers.values()].filter((w) => w.kind === 'agent' && !isAsleep(w.status));
+  // 3d-kanban: not a task's reviewer, which takes nothing but its terminal.
+  const awake = [...store.workers.values()].filter((w) => w.kind === 'agent' && !isAsleep(w.status) && promptKind(w) !== 'terminal');
   if (!desk && !awake.length) return toast('Every desk and bean bag is taken — send a worker home first', 'warn');
   openAsk({
     title,
     ...text,
     newDesk: desk ? DESK_BY_ID.get(desk)!.label : undefined,
-    workers: awake.map((w) => ({ id: w.id, name: w.name, color: w.color, status: w.status })),
+    workers: awake.map((w) => ({ id: w.id, name: w.name, color: w.color, status: w.status, task: w.kanban?.taskId })), // 3d-kanban: task
+    kanbanOption: desk ? hireOption(net, () => desk, DESK_BY_ID.get(desk)!.label) : undefined, // 3d-kanban
     worktreeOption: !!store.project.branch,
     providerOption: true,
     repoOptions: store.floors.filter((f) => f.id !== store.floor && f.branch && !f.cloning).map((f) => ({ id: f.id, name: f.name })),
     onSubmit: (prompt, to, worktree, provider, model, effort, repos) => {
-      if (to) net.send({ t: 'worker.prompt', workerId: to, prompt });
+      if (to) askWorker(net, to, prompt); // 3d-kanban: a message on its task for a task worker
       else if (desk) hire(desk, prompt, worktree, provider, model, effort, repos);
     },
   });
@@ -302,6 +314,11 @@ function boardActions(): BoardActions {
       openWorker(w.id);
     },
     meeting: (preset) => showMeeting(preset),
+    // 3d-kanban: the issue as a kanban task, at the next free desk (or wherever the engine finds one).
+    kanbanTask: (it) => {
+      const desk = nextFreeSeat((id) => !!store.workerAtDesk(id), store.floorPlan.wing)?.id;
+      issueTask(net, it, desk, desk ? DESK_BY_ID.get(desk)!.label : 'the next free desk');
+    },
   };
 }
 

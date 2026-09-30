@@ -6,7 +6,7 @@ import { h } from '../ui/dom';
 import type { KanbanProjectInfo, KanbanTaskCard } from '../../shared/kanban/types.js';
 import { isRunning } from '../../shared/kanban/moves.js';
 import { cardRepoNames, countdown, needsAttention, phaseBadge, prTone, showsRepoChips } from './model';
-import { countdownUnits, phaseName, t, toolName, waitingName } from './i18n';
+import { COUNTDOWN_UNITS, phaseName, PR_STATE_NAMES, toolName, waitingName } from './labels';
 
 const TILTS = ['-0.8deg', '0.6deg', '-0.3deg', '0.9deg', '0deg', '-0.6deg'];
 const PINS = ['#ef476f', '#118ab2', '#06d6a0', '#ffd166'];
@@ -24,7 +24,7 @@ export interface CardHandlers {
 export function ticketChip(ticket: string, url?: string): HTMLElement {
   const label = `🎫 ${ticket}`;
   return url
-    ? h('a.kb-chip.ticket', { href: url, target: '_blank', rel: 'noopener noreferrer', title: t('openTicket'), onclick: ((e: Event) => e.stopPropagation()) as EventListener }, label)
+    ? h('a.kb-chip.ticket', { href: url, target: '_blank', rel: 'noopener noreferrer', title: 'Open the ticket', onclick: ((e: Event) => e.stopPropagation()) as EventListener }, label)
     : h('span.kb-chip.ticket', {}, label);
 }
 
@@ -32,10 +32,10 @@ export function taskCard(c: KanbanTaskCard, project: KanbanProjectInfo | undefin
   const running = isRunning(c) && c.status !== 'done';
   const badge = phaseBadge(c);
   const chips: (Node | null)[] = [];
-  if (showProject && project) chips.push(h('span.kb-chip.project', { title: t('project') }, `🏢 ${project.name}`));
+  if (showProject && project) chips.push(h('span.kb-chip.project', { title: 'Project' }, `🏢 ${project.name}`));
   if (c.ticket) chips.push(ticketChip(c.ticket, c.ticketUrl));
-  if (showsRepoChips(c, project)) for (const name of cardRepoNames(c, project)) chips.push(h('span.kb-chip.repo', { title: t('repository') }, `📦 ${name}`));
-  if (c.type === 'investigate') chips.push(h('span.kb-chip.type', {}, `🔎 ${t('type.investigate')}`));
+  if (showsRepoChips(c, project)) for (const name of cardRepoNames(c, project)) chips.push(h('span.kb-chip.repo', { title: 'Repository' }, `📦 ${name}`));
+  if (c.type === 'investigate') chips.push(h('span.kb-chip.type', {}, '🔎 Investigate'));
   for (const tag of c.tags.slice(0, 3)) chips.push(h('span.kb-chip.tag', {}, `#${tag}`));
 
   const prs = c.prs.length
@@ -46,7 +46,7 @@ export function taskCard(c: KanbanTaskCard, project: KanbanProjectInfo | undefin
           const repo = project?.repos.find((r) => r.id === p.repoId)?.name ?? p.repo ?? p.repoId;
           return h(
             'a.kb-pr',
-            { class: prTone(p.state), href: p.url, target: '_blank', rel: 'noopener noreferrer', title: `${repo} #${p.number}: ${t(`pr.${prTone(p.state)}`)}`, onclick: ((e: Event) => e.stopPropagation()) as EventListener },
+            { class: prTone(p.state), href: p.url, target: '_blank', rel: 'noopener noreferrer', title: `${repo} #${p.number}: ${PR_STATE_NAMES[prTone(p.state)]}`, onclick: ((e: Event) => e.stopPropagation()) as EventListener },
             `🔀 ${project && project.repos.length > 1 ? `${repo} ` : ''}#${p.number}`,
           );
         }),
@@ -57,9 +57,9 @@ export function taskCard(c: KanbanTaskCard, project: KanbanProjectInfo | undefin
     c.status === 'waiting' && c.waitingReason
       ? h('div.kb-wait', { class: needsAttention(c) ? 'attention' : '' }, `${c.waitingReason === 'usage_limit' ? '⏳' : '🙋'} ${waitingName(c.waitingReason)}${c.waitingText ? `: ${c.waitingText}` : ''}`)
       : null;
-  const retry = c.retryAt ? h('div.kb-retry', { 'data-retry-at': String(c.retryAt) }, `🔁 ${t('retryIn', { time: countdown(c.retryAt, now, countdownUnits()) })}`) : null;
+  const retry = c.retryAt ? h('div.kb-retry', { 'data-retry-at': String(c.retryAt) }, `🔁 retries in ${countdown(c.retryAt, now, COUNTDOWN_UNITS)}`) : null;
 
-  const moveBtn = h('button.kb-move', { type: 'button', 'aria-label': t('moveTaskN', { id: c.id }), title: t('moveHint') }, '⋯');
+  const moveBtn = h('button.kb-move', { type: 'button', 'aria-label': `Move #${c.id}`, title: 'Move to another column (M)' }, '⋯');
   moveBtn.addEventListener('click', (e) => {
     e.stopPropagation();
     handlers.moveMenu(c.id, moveBtn);
@@ -80,9 +80,9 @@ export function taskCard(c: KanbanTaskCard, project: KanbanProjectInfo | undefin
       'div.kb-card-top',
       {},
       h('span.kb-id', {}, `#${c.id}`),
-      running ? h('span.kb-pulse', { title: t('running'), 'aria-label': t('running') }) : null,
+      running ? h('span.kb-pulse', { title: 'Running', 'aria-label': 'Running' }) : null,
       badge ? h('span.kb-phase', { class: badge.phase }, `${phaseName(badge.phase)}${badge.round ? ` ${badge.round}` : ''}`) : null,
-      h('span.kb-tool', { title: `${toolName(c.tool)}${c.model ? ` · ${c.model}` : ''}${c.reviewTool && c.useReview ? ` · ${t('reviewer')}: ${toolName(c.reviewTool)}` : ''}` }, TOOL_ICON[c.tool]),
+      h('span.kb-tool', { title: `${toolName(c.tool)}${c.model ? ` · ${c.model}` : ''}${c.reviewTool && c.useReview ? ` · Reviewer: ${toolName(c.reviewTool)}` : ''}` }, TOOL_ICON[c.tool]),
       moveBtn,
     ),
     h('div.kb-title', {}, c.title),
@@ -91,7 +91,7 @@ export function taskCard(c: KanbanTaskCard, project: KanbanProjectInfo | undefin
     waitLine,
     retry,
     c.commentCount || c.pendingCount
-      ? h('div.kb-foot', {}, c.commentCount ? h('span', { title: t('comments') }, `💬 ${c.commentCount}`) : null, c.pendingCount ? h('span.kb-pending', { title: t('pendingHint') }, `✉️ ${c.pendingCount} ${t('pending')}`) : null)
+      ? h('div.kb-foot', {}, c.commentCount ? h('span', { title: 'Comments' }, `💬 ${c.commentCount}`) : null, c.pendingCount ? h('span.kb-pending', { title: 'Written while the agent was busy: it gets it at its next pause' }, `✉️ ${c.pendingCount} waiting`) : null)
       : null,
   );
   el.addEventListener('click', () => handlers.open(c.id));
@@ -114,6 +114,6 @@ export function taskCard(c: KanbanTaskCard, project: KanbanProjectInfo | undefin
 export function tickCountdowns(root: ParentNode, now = Date.now()) {
   for (const el of root.querySelectorAll<HTMLElement>('[data-retry-at]')) {
     const at = Number(el.dataset.retryAt);
-    el.textContent = `🔁 ${t('retryIn', { time: countdown(at, now, countdownUnits()) })}`;
+    el.textContent = `🔁 retries in ${countdown(at, now, COUNTDOWN_UNITS)}`;
   }
 }

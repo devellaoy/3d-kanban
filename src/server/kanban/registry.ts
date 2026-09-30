@@ -42,7 +42,8 @@ export type KanbanLoopbackHandler = (req: IncomingMessage, res: ServerResponse, 
 
 /** What the engine offers the other parts (implemented in engine/). Errors are returned as strings. */
 export interface KanbanEngineApi {
-  start(taskId: number, who: KanbanCaller): Promise<string | void>;
+  /** `deskId`: its worker is hired at that desk, which must be free and built (else why not). */
+  start(taskId: number, who: KanbanCaller, opts?: { deskId?: string }): Promise<string | void>;
   stop(taskId: number, who: KanbanCaller): Promise<string | void>;
   continue(taskId: number, who: KanbanCaller, answer?: string): Promise<string | void>;
   retry(taskId: number, who: KanbanCaller): Promise<string | void>;
@@ -52,6 +53,11 @@ export interface KanbanEngineApi {
   pr(taskId: number, who: KanbanCaller, mode: 'create' | 'fix'): Promise<string | void>;
   compact(taskId: number, who: KanbanCaller): Promise<string | void>;
   release(taskId: number, who: KanbanCaller): Promise<string | void>;
+  /**
+   * The task went to done or archived: its workers that are at rest go home, worktree kept (reason
+   * `released`). (Optional only so stand-ins in tests needn't have it.)
+   */
+  releaseIdle?(taskId: number, who: KanbanCaller): Promise<void>;
   /** A user comment was stored: resume the task's work with it when its state allows. */
   commented(taskId: number, commentId: number, who: KanbanCaller): Promise<void>;
   /**
@@ -69,6 +75,12 @@ export interface KanbanEngineApi {
    * reviewer, or to why not.
    */
   reviewPrs(req: KanbanPrReviewRequest, who: KanbanCaller): Promise<{ taskId: number; workerId: string } | string>;
+}
+
+/** The part of upstream's RunAs (workers.ts) the engine asks before it hires as an account. */
+export interface KanbanRunAs {
+  claudeReady(owner: string): boolean;
+  why(which: 'claude'): string;
 }
 
 /** What prForWorker answers to hand "O" back to upstream's draft PR. */
@@ -128,6 +140,12 @@ export interface KanbanContext {
   /** To every browser subscribed to `project` (or to all projects, when project is null). */
   broadcast(msg: KanbanServerMsg, project: string | null): void;
   toast(floorId: string, text: string, level?: 'info' | 'warn' | 'error'): void;
+  /** Why the office can't take another worker now (its worker limit, upstream Capacity.full), if it can't. */
+  capacity?(): string | undefined;
+  /** Upstream's sign-in rule (RunAs): whether an account's Claude sign-in is ready, and what to tell it when it isn't. */
+  runAs?: KanbanRunAs;
+  /** The office's team notifications (upstream's webhook): one line about a task waiting on a person. */
+  notify?(title: string, detail?: string): void;
   engine: KanbanEngineApi;
   pulls: KanbanPullsApi;
   refs: KanbanRefsApi;

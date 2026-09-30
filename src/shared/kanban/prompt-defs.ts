@@ -352,6 +352,25 @@ Reply with your findings, the most serious first, each with its repository, file
 
 {{language}}`,
   },
+  'kanban.pr.panel': {
+    group: 'kanban',
+    label: 'Review panel of several pull requests',
+    used: "The brief of a 🤝 review panel called on several pull requests at once (the meeting's prompt, which every worker at the table is told). Upstream's panel posts its combined review on one pull request of the floor's own repository ({{posted}}). The 🤝 button on the office's PR board, for one pull request, keeps using its own “review panel” prompt.",
+    vars: {
+      prs: 'The pull requests, one per line: owner/repo#number, its title, its branch and its URL',
+      project: TASK_VARS.project,
+      task: 'A line naming the kanban task they belong to (its number and title); empty when they are not one task’s',
+      posted: 'The number of the pull request the combined review is posted on',
+      postedRepo: "That pull request's repository (owner/name)",
+    },
+    needs: ['prs', 'posted'],
+    text: `Review these pull requests in the project {{project}} together, as one change set; they belong to one change:
+{{prs}}
+
+{{task}}
+
+The pull request named below (#{{posted}} of {{postedRepo}}) is only where the combined review is posted: review every one of them. Read each with \`gh pr view <number> -R <owner/name> --comments\` and \`gh pr diff <number> -R <owner/name>\`. Look at them as one change: do they fit together across the repositories, is anything missing in one that another relies on. In the combined review, say which pull request each finding is in.`,
+  },
   'kanban.continue': {
     group: 'kanban',
     label: 'Carry on after an interruption',
@@ -421,6 +440,121 @@ Your workspace, with the work so far on the task's branch:
 Look at the branch's commits and uncommitted changes (git log, git status, git diff) before you do anything, so you know what is already done. Then wait for the next instruction, which follows.
 
 {{language}}`,
+  },
+  'kanban.defaultAnswer': {
+    group: 'kanban',
+    label: 'Plan · Continue without answers',
+    used: "The answer the planning session gets when the user presses Continue on a plan's questions without answering them. Goes into the “Plan · answers and change requests” prompt as its {{answer}}.",
+    vars: { taskId: TASK_VARS.taskId },
+    text: 'Go ahead without the answers: make reasonable assumptions for the open questions, say which in the plan, and finish it.',
+  },
+  'kanban.sinceSaid': {
+    group: 'kanban',
+    label: 'Plan · what the user said since (fresh session)',
+    used: 'Added after the plan prompt when a fresh session (the old one is gone, or the tool changed) plans again after the user answered or asked for changes.',
+    vars: { text: "The user's answers or requested changes" },
+    needs: ['text'],
+    text: `The user has since said:
+{{text}}`,
+  },
+  'kanban.ticket': {
+    group: 'kanban',
+    label: 'Ticket line',
+    used: 'The {{ticket}} of the task prompts, when the task has a ticket.',
+    vars: { ticket: 'The ticket id (UYT-1415, gh:owner/repo#12)', url: "The ticket's link in parentheses, with a space before it; empty when there's none" },
+    needs: ['ticket'],
+    text: 'Ticket: {{ticket}}{{url}}',
+  },
+  'kanban.attachments': {
+    group: 'kanban',
+    label: 'Attached files',
+    used: 'The {{attachments}} of the task prompts, when files are attached to the task.',
+    vars: { files: 'One line per file: its name and its path on this machine' },
+    needs: ['files'],
+    text: `Files attached to the task (read them):
+{{files}}`,
+  },
+  'kanban.instructions': {
+    group: 'kanban',
+    label: "Project's instructions",
+    used: "The {{instructions}} of the task prompts, when the project's kanban settings or its repositories have instructions. Each part is one of the three prompts below.",
+    vars: { parts: 'The general, testing and per-repository instructions, each under its own heading' },
+    needs: ['parts'],
+    text: `The project's instructions:
+
+{{parts}}`,
+  },
+  'kanban.instructions.general': {
+    group: 'kanban',
+    label: "Project's instructions · general",
+    used: "The general instructions from the project's kanban settings, as a part of the project's instructions.",
+    vars: { text: 'The instructions' },
+    needs: ['text'],
+    text: `General:
+{{text}}`,
+  },
+  'kanban.instructions.testing': {
+    group: 'kanban',
+    label: "Project's instructions · testing",
+    used: "The testing instructions from the project's kanban settings, as a part of the project's instructions.",
+    vars: { text: 'The instructions' },
+    needs: ['text'],
+    text: `Testing and verifying:
+{{text}}`,
+  },
+  'kanban.instructions.repo': {
+    group: 'kanban',
+    label: "Project's instructions · a repository's",
+    used: "A repository's own instructions (from the project's repositories), as a part of the project's instructions.",
+    vars: { repo: "The repository's name", text: 'The instructions' },
+    needs: ['text'],
+    text: `In {{repo}}:
+{{text}}`,
+  },
+  'kanban.refsFile': {
+    group: 'kanban',
+    label: 'Referenced tasks file',
+    used: 'The {{refsFile}} of “Reading other tasks” in a read-only plan phase, when the tasks the task refers to were fetched into a file before the turn.',
+    vars: { file: "The file's path" },
+    needs: ['file'],
+    text: 'The tasks this one refers to were fetched for you into {{file}}: read it before you rely on them.',
+  },
+  'kanban.acceptedPlan': {
+    group: 'kanban',
+    label: 'Accepted plan',
+    used: 'The {{plan}} of the task prompts and the handoff, when the task has an accepted plan.',
+    vars: { plan: "The plan's text" },
+    needs: ['plan'],
+    text: `The accepted plan:
+
+{{plan}}`,
+  },
+  'kanban.prSummary': {
+    group: 'kanban',
+    label: 'Pull requests · what the task did',
+    used: "The {{summary}} of “Open pull requests” for a task, when it has a summary.",
+    vars: { summary: "The task's latest summary" },
+    needs: ['summary'],
+    text: `What the task did:
+{{summary}}`,
+  },
+  'kanban.handoff.summary': {
+    group: 'kanban',
+    label: 'Handoff · latest summary',
+    used: 'The {{summary}} of “Handoff to a new session”, when the task has a summary.',
+    vars: { summary: "The task's latest summary" },
+    needs: ['summary'],
+    text: `The latest summary:
+{{summary}}`,
+  },
+  'kanban.handoff.comments': {
+    group: 'kanban',
+    label: 'Handoff · latest comments',
+    used: 'The {{recent}} of “Handoff to a new session”, when the task has comments.',
+    vars: { comments: 'The latest comments, oldest first, one line each' },
+    needs: ['comments'],
+    text: `The latest comments:
+{{comments}}`,
   },
 } satisfies Record<string, PromptDef>;
 

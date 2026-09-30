@@ -62,3 +62,29 @@ export async function currentBranch(dir: string): Promise<string | undefined> {
     return undefined;
   }
 }
+
+/**
+ * Whether a branch is still there after its worktree was deleted: in the checkout at `dir`, or on its
+ * origin. When origin can't be asked (offline, say), it counts as there: a branch name is only
+ * dropped from a task once git has said it's in neither place.
+ */
+export async function branchExists(dir: string, branch: string): Promise<boolean> {
+  try {
+    await git(dir, ['show-ref', '--verify', '--quiet', `refs/heads/${branch}`]);
+    return true;
+  } catch {
+    // not here: origin, then
+  }
+  try {
+    await git(dir, ['remote', 'get-url', 'origin']);
+  } catch {
+    return false;
+  }
+  try {
+    await run('git', ['ls-remote', '--exit-code', '--heads', 'origin', branch], { cwd: dir, encoding: 'utf8', timeout: 15_000, env: { ...process.env, GIT_TERMINAL_PROMPT: '0' } });
+    return true;
+  } catch (err) {
+    // 2: origin answered, and hasn't got it.
+    return (err as { code?: unknown }).code !== 2;
+  }
+}

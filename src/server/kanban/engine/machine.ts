@@ -7,6 +7,7 @@
 // column. A comment resumes the work; a resume turn is reviewed again when the task has review on.
 
 import type { KanbanRole, PlanApproval, RunPhase, RunState, TaskStatus, TaskType, WaitingReason } from '../../../shared/kanban/types.js';
+import { KANBAN_PROMPT_DEFS } from '../../../shared/kanban/prompt-defs.js';
 
 /** The part of a task the machine decides about. */
 export interface MachineState {
@@ -33,6 +34,8 @@ export interface MachineConfig {
   /** Review rounds, 1..10. */
   rounds: number;
   reReviewLastFix: boolean;
+  /** What Continue without an answer tells a plan with questions (the kanban.defaultAnswer prompt, filled in). */
+  defaultAnswer?: string;
 }
 
 /**
@@ -66,6 +69,10 @@ export type Effect =
 export type MachineEvent =
   /** Start from To do, or a queued start whose slot came free. `slot`: there's room under maxConcurrent. */
   | { type: 'start'; slot: boolean }
+  /** A run couldn't get a worker: no free desk, or the office's worker limit is full (`text` says which). It waits, queued. */
+  | { type: 'noRoom'; text: string }
+  /** A queued run (see noRoom) has room now: it starts as it was. */
+  | { type: 'dequeue'; run: Extract<Effect, { type: 'run' }> }
   /** A plan turn ended. `pending`: comments came in meanwhile. */
   | { type: 'planned'; outcome: 'ready' | 'questions'; pending?: boolean }
   /** An implement (or investigate) turn ended. `changes`: anything differs from the base in any repository. */
@@ -89,7 +96,10 @@ export type MachineEvent =
   /** The agent is working again after asking (someone answered in the terminal). */
   | { type: 'working' }
   | { type: 'stop' }
-  | { type: 'stopped'; by?: string }
+  /** The run stopped: by Stop (`by`), or its worker was sent home mid-run (`text` says so). */
+  | { type: 'stopped'; by?: string; text?: string }
+  /** The reviewer was sent home mid-round: the round is dropped. `pending`: comments came in meanwhile. */
+  | { type: 'reviewAbandoned'; pending?: boolean }
   | { type: 'failed'; error: string }
   /** A usage limit or lost connection: try again at `retryAt` (attempt number `attempts`). */
   | { type: 'limited'; retryAt: number; attempts: number; text?: string }
@@ -116,7 +126,13 @@ const PLAN_WAITING: readonly (WaitingReason | undefined)[] = ['plan_questions', 
 /** Why a task waits after something went wrong with a run: Retry puts it back to work. */
 const RETRYABLE: readonly (WaitingReason | undefined)[] = ['stopped', 'failed', 'interrupted', 'usage_limit', 'agent_asking'];
 
-const DEFAULT_ANSWER = 'Go ahead without the answers: make reasonable assumptions for the open questions, say which in the plan, and finish it.';
+/** The default of the kanban.defaultAnswer prompt, when the config doesn't bring the layered one. */
+const DEFAULT_ANSWER = KANBAN_PROMPT_DEFS['kanban.defaultAnswer'].text;
+
+/** Whether Retry puts the task back to work (it waits after something went wrong with a run). */
+export function canRetry(s: Pick<MachineState, 'status' | 'runState' | 'waitingReason'>): boolean {
+  return s.status === 'waiting' && !busy(s) && RETRYABLE.includes(s.waitingReason);
+}
 
 /** Whether the engine is busy with it: a run going, starting, queued or being stopped. */
 export function busy(s: Pick<MachineState, 'runState'>): boolean {
@@ -185,6 +201,15 @@ export function next(s: MachineState, e: MachineEvent, t: MachineTask, cfg: Mach
       if (s.status !== 'todo' && !(s.status === 'in_progress' && s.runState === 'queued') && !(s.status === 'waiting' && !s.phase)) return no('Only a task in To do can be started');
       if (!e.slot) return ok(moved(s, { status: 'in_progress', runState: 'queued', phase: undefined, reviewRound: 0 }), { type: 'note', text: 'Queued: the project is running as many tasks as it may at once. It starts when one finishes.' });
       return firstRun(s, t);
+
+    case 'noRoom':
+      // It keeps its column and phase (a compact stays where it is), so the card still says what's to come.
+      return ok({ ...s, runState: 'queued' }, { type: 'note', text: e.text });
+
+    case 'dequeue':
+      if (s.runState !== 'queued') return no('It is not queued');
+      if (e.run.phase === 'compact') return ok({ ...s, runState: 'starting', phase: 'compact' }, e.run);
+      return ok(running(s, e.run.phase), e.run);
 
     case 'planned': {
       if (!automated) return ok({ ...s, runState: 'idle' });
@@ -262,7 +287,13 @@ export function next(s: MachineState, e: MachineEvent, t: MachineTask, cfg: Mach
 
     case 'stopped':
       if (!automated) return ok({ ...s, runState: 'idle' });
-      return ok(waiting(s, 'stopped', e.by ? `Stopped by ${e.by}` : 'Stopped'));
+      return ok(waiting(s, 'stopped', e.text ?? (e.by ? `Stopped by ${e.by}` : 'Stopped')));
+
+    case 'reviewAbandoned':
+      // Nobody reviews it now: the comments typed meanwhile are worked on, or it's the user's to look at.
+      if (!automated) return ok({ ...s, runState: 'idle' });
+      if (e.pending) return deliverPending(s, false);
+      return toReview(s);
 
     case 'failed':
       if (!automated) return ok({ ...s, runState: 'idle' });
@@ -281,7 +312,7 @@ export function next(s: MachineState, e: MachineEvent, t: MachineTask, cfg: Mach
       return ok(waiting(s, 'interrupted', e.text ?? 'Its worker went away mid-run: Retry to carry on'));
 
     case 'retry': {
-      if (s.status !== 'waiting' || busy(s) || !RETRYABLE.includes(s.waitingReason)) return no('Only a stopped, failed or interrupted task can be retried');
+      if (!canRetry(s)) return no('Only a stopped, failed or interrupted task can be retried');
       if (!e.last) return firstRun(s, t);
       const { phase, round, role } = e.last;
       return ok(running(s, phase), { type: 'run', phase, role, prompt: 'continue', ...(round !== undefined ? { round } : {}) });
@@ -290,7 +321,7 @@ export function next(s: MachineState, e: MachineEvent, t: MachineTask, cfg: Mach
     case 'continue': {
       if (s.status !== 'waiting' || busy(s)) return no('Only a waiting task can be continued');
       const answer = e.answer?.trim();
-      if (s.waitingReason === 'plan_questions') return ok(running(s, 'plan'), { type: 'run', phase: 'plan', role: 'implementer', prompt: 'replan', text: answer || DEFAULT_ANSWER });
+      if (s.waitingReason === 'plan_questions') return ok(running(s, 'plan'), { type: 'run', phase: 'plan', role: 'implementer', prompt: 'replan', text: answer || cfg.defaultAnswer || DEFAULT_ANSWER });
       if (s.waitingReason === 'plan_approval') {
         if (answer) return ok(running(s, 'plan'), { type: 'planFeedback', text: answer }, { type: 'run', phase: 'plan', role: 'implementer', prompt: 'replan', text: answer });
         return ok(running(s, 'implement'), { type: 'acceptPlan' }, { type: 'run', phase: 'implement', role: 'implementer', prompt: 'implement' });

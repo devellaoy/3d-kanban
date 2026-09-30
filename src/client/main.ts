@@ -11,7 +11,7 @@ import { MEETING_PATTERNS, meetingStage } from '../shared/meetings';
 import { isAsleep, isBusy, workerPr } from '../shared/status';
 import { Net } from './net';
 import { store, lastFloor, lastSpot, loadProfile, loadSettings, rememberSpot, saveSettings, workerForPull, type Profile, type Spot, type Topic } from './state';
-import { EYE_HEIGHT, PlayerController, groundAt, isTyping } from './player';
+import { EYE_HEIGHT, PlayerController, alongRay, eyeSees, groundAt, isTyping, withinReach } from './player'; // 3d-kanban: alongRay, eyeSees, withinReach
 import { Climber, gripOf, type Arrival, type Grip, type Way } from './climb';
 import { Driver } from './driving';
 import { Caffeine } from './caffeine';
@@ -105,11 +105,23 @@ import { offerLite, touchOnly } from './ui/litesuggest';
 import { openDeskLabel, openExpand } from './ui/floorplan';
 // 3d-kanban: a worker's PR by its repository too, on a project with several.
 import { findItem, ownPullRepo } from './kanban/ghrepo';
+// 3d-kanban: task workers in the office (docs/kanban-coupling.md).
+import { canRetry, kanbanCard, kanbanOf, kanbanStarter, kanbanUrl, parseOfficeLink, promptKind, waitText, withoutOfficeLink, workerLabel, type OfficeLink, type WorkerTab } from './kanban/office';
+import { askWorker, cardToTaskWorker, hireOption, promptTaskWorker, promptWorker, retryTask } from './kanban/office3d';
+import { issueTask } from './kanban/hireform';
+import { sendTaskWorkerHome } from './kanban/sendhome';
+import { rememberFloor } from './state';
 
 // The loading screen stays up until there's an office to see (see boot and whoami at the end).
 const loading = loadingScreen(onModelsProgress);
 // Came here from the 2D view's 🏢 3D button: it isn't offered straight back.
 const chose3d = new URLSearchParams(location.search).has('3d');
+// 3d-kanban: the kanban's 📍 Show in 3D (`/?floor=…&worker=…&desk=…`): in on that floor, then to the desk (see followOfficeLink).
+let officeLink: (OfficeLink & { rode?: boolean }) | null = parseOfficeLink(location.search);
+if (officeLink) {
+  rememberFloor(officeLink.floor);
+  history.replaceState(null, '', location.pathname + withoutOfficeLink(location.search));
+}
 if (chose3d) history.replaceState(null, '', location.pathname);
 /** Offers the 2D view (/lite) where the 3D is hard going. */
 const offer2d = (why: 'touch' | 'slow') => chose3d || offerLite(why);
@@ -1118,6 +1130,7 @@ net.onMessage((msg) => {
       else if (msg.version !== bootVersion || restarting()) showUpgraded(msg.upgrade);
       upgradePhase = msg.upgrade.phase;
       voice.syncPeers();
+      followOfficeLink(); // 3d-kanban
       break;
     }
     case 'signins':
@@ -1150,6 +1163,7 @@ net.onMessage((msg) => {
         lift()?.setOpen(true);
       }
       offTheRoof();
+      followOfficeLink(); // 3d-kanban
       break;
     case 'ball':
       ballNews(true);
@@ -2059,7 +2073,13 @@ function syncWorkers() {
     v.model.setPr(workerPr(w, store.pulls.items, store.queue.tasks));
     v.model.setLost(!!w.lost);
     const engineBadge = w.kind === 'agent' ? modelBadge(w.provider, w.model, w.effort) : undefined;
-    v.model.setTask(meetingCard(w) ?? (w.task && w.kind === 'agent' ? { ...w.task, name: `${providerLabel(w.provider, store.project)}${engineBadge ? ` · ${engineBadge}` : ''} · ${w.task.name}` } : w.task));
+    // 3d-kanban: a task worker's card is its task's, and its name tag says which (#14).
+    if ((w.kanban || kanbanNames.has(w.id)) && kanbanNames.get(w.id) !== workerLabel(w)) {
+      v.model.setName(workerLabel(w));
+      if (w.kanban) kanbanNames.set(w.id, workerLabel(w));
+      else kanbanNames.delete(w.id);
+    }
+    v.model.setTask(meetingCard(w) ?? kanbanCard(w, Date.now()) ?? (w.task && w.kind === 'agent' ? { ...w.task, name: `${providerLabel(w.provider, store.project)}${engineBadge ? ` · ${engineBadge}` : ''} · ${w.task.name}` } : w.task));
     const deskDef = plan().byId.get(w.deskId);
     // Keys clack while it types, not while it reads, watches its tests or browses.
     if (deskDef) sound.setTyping(w.id, deskDef.x, deskDef.z, w.status === 'working' && (!w.action || w.action === 'edit'));
@@ -2085,6 +2105,7 @@ function syncWorkers() {
     }
     sound.removeTypist(id);
     workerViews.delete(id);
+    kanbanNames.delete(id); // 3d-kanban
   }
   arrangeSeats();
   // Whoever's waiting on someone lines up for the throne, the one who's waited longest first.
@@ -2123,6 +2144,8 @@ function cameFrom(w: WorkerInfo): [number, number] | undefined {
   const h = plan().herald;
   if (w.via === 'herald' && h) return [h.x + Math.sin(h.rotY) * 1.1, h.z + Math.cos(h.rotY) * 1.1];
   if (w.createdBy.endsWith('(queue)')) return [plan().door.x, plan().door.z];
+  // 3d-kanban: the kanban's hires come in by the doors too.
+  if (kanbanStarter(w.createdBy) !== undefined) return [plan().door.x, plan().door.z];
   return undefined;
 }
 
@@ -2146,7 +2169,7 @@ store.on('jail', syncJail);
 /** Hired by you (at a desk, or through the queue), or last given something to do by you. */
 function yours(w: WorkerInfo): boolean {
   const name = store.peers.get(store.you)?.name ?? store.profile.name;
-  return w.createdBy === name || w.createdBy === `${name} (queue)` || w.lastInput?.by === name;
+  return w.createdBy === name || w.createdBy === `${name} (queue)` || w.lastInput?.by === name || kanbanStarter(w.createdBy) === name; // 3d-kanban: a task you started
 }
 
 /**
@@ -2165,6 +2188,17 @@ function meetingCard(w: WorkerInfo): WorkerTask | undefined {
   if (!t || t.state === 'done') return { name: `👂 ${role} · round ${m.round} of ${m.rounds}`, summary: t ? 'Part written: listening' : 'Listening' };
   return { name: `💬 ${role} · round ${m.round} of ${m.rounds}`, summary: t.state === 'working' ? t.doing : `${t.doing} (up next)` };
 }
+
+/** 3d-kanban: the name tag each task worker shows ("Ada · #14"), to redraw it only when it changes. */
+const kanbanNames = new Map<string, string>();
+// 3d-kanban: a task's ⏳ retry countdown on its worker's card ticks down between worker updates.
+setInterval(() => {
+  const now = Date.now();
+  for (const w of store.workers.values()) {
+    if (!w.kanban?.retryAt || meetingCard(w)) continue;
+    workerViews.get(w.id)?.model.setTask(kanbanCard(w, now));
+  }
+}, 1000);
 
 /**
  * A seat or kiosk shows it's free (its '+', or the board agent waiting there) only while nobody's at
@@ -2329,19 +2363,22 @@ function promptAtDesk(deskId: string) {
   if (!w) {
     if (officeIsFull()) return;
     openPrompt({
-      title: `✨ New task at ${desk.label}`,
+      title: `✨ Hire at ${desk.label}`, // 3d-kanban: "task" is a kanban task now
       subtitle: 'A fresh worker will sit down and start on this right away.',
       warning: pressureNote(store.machine),
       submitLabel: 'Hire & start',
       providerOption: true,
       worktreeOption: !!store.project?.branch,
       repoOptions: repoChoices(),
+      kanbanOption: hireOption(net, () => deskId, desk.label), // 3d-kanban
       onSubmit: (text, o) => hire(deskId, text, o.worktree, o.provider, o.model, o.effort, undefined, o.repos),
     });
   } else if (w.lost) {
     fixLostWorktree(w);
   } else if (isAsleep(w.status)) {
     toast(`${w.name} is asleep — press R to resume first`, 'warn');
+  } else if (promptTaskWorker(net, w, () => openWorkerTerminal(w.id))) {
+    // 3d-kanban: a message on its task (or its terminal, for a reviewer).
   } else if (w.kind === 'shell') {
     openPrompt({
       title: `🐚 Run in ${w.name}`,
@@ -2372,6 +2409,7 @@ function hireAtDesk(deskId: string) {
     providerOption: true,
     worktreeOption: !!store.project?.branch,
     repoOptions: repoChoices(),
+    kanbanOption: hireOption(net, () => deskId, desk.label), // 3d-kanban
     onSubmit: (text, o) => hire(deskId, text || undefined, o.worktree, o.provider, o.model, o.effort, undefined, o.repos),
   });
 }
@@ -2381,6 +2419,8 @@ function killWorker(id: string) {
   if (!w) return;
   const where = plan().byId.get(w.deskId)?.label ?? 'the desk';
   const session = w.kind === 'shell' ? 'shared shell' : `${providerLabel(w.provider, store.project)} session`;
+  // 3d-kanban: a task worker's dialog has its task in it (Move to Done), and says so to the engine.
+  if (sendTaskWorkerHome(net, w, where)) return;
   if (w.meeting) {
     // The meeting's worktree is the whole table's: it's tidied away once they've all gone.
     const m = store.meeting.current;
@@ -2474,7 +2514,32 @@ function prReady(w: WorkerInfo) {
 
 /** 3d-kanban: the kanban view, showing the project of the floor you're on. */
 function openKanban() {
-  location.assign(`/kanban${store.floor ? `?project=${encodeURIComponent(store.floor)}` : ''}`);
+  // Facing a task worker's desk: its task, on the conversation.
+  const w = target?.kind === 'desk' && target.deskId ? store.workerAtDesk(target.deskId) : undefined;
+  location.assign(kanbanUrl(store.floor, w));
+}
+
+/** 3d-kanban: after the welcome (or the elevator), the 📍 Show in 3D link's floor, desk and worker window. */
+function followOfficeLink() {
+  const link = officeLink;
+  if (!link || !store.floor || trip) return;
+  if (store.floor !== link.floor) {
+    // One ride over: the floor.enter it ends with comes back here.
+    if (link.rode || !store.floors.some((f) => f.id === link.floor && !f.cloning)) {
+      officeLink = null;
+      return void toast('🗂️ Couldn’t get to that floor', 'warn');
+    }
+    link.rode = true;
+    return switchFloor(link.floor);
+  }
+  officeLink = null;
+  setTimeout(() => {
+    const w = link.worker ? store.workers.get(link.worker) : undefined;
+    const deskId = w?.deskId ?? link.desk;
+    if (deskId) goToDesk(deskId);
+    if (w) openWorkerTerminal(w.id, undefined, 'task');
+    else if (link.worker) toast('That worker has gone home since', 'warn');
+  }, 400);
 }
 
 /** O at a desk: see the worker's pull request, or push its branch and open one. */
@@ -2603,7 +2668,10 @@ function goToNextWaiting() {
   standAt(desk);
   const waiting = waitingInOrder(store.workers.values());
   const of = waiting.length > 1 ? ` (${waiting.findIndex((x) => x.id === w.id) + 1} of ${waiting.length})` : '';
-  nextToast = toast(`${w.status === 'needs_input' ? `🙋 ${w.name} needs input` : `✅ ${w.name} is done`}${of}. E opens its terminal`);
+  // 3d-kanban: a task worker says what its task waits on.
+  const k = kanbanOf(w);
+  const task = k ? waitText(k, Date.now()) : '';
+  nextToast = toast(`${task ? `🗂️ #${k!.taskId} · ${w.name}: ${task}` : w.status === 'needs_input' ? `🙋 ${w.name} needs input` : `✅ ${w.name} is done`}${of}. E opens its terminal`);
 }
 
 /** The waiting worker you're standing at, if any: N skips it while anyone else is waiting. */
@@ -2649,12 +2717,12 @@ function pointToWaiting(now: number) {
 }
 
 /** Opening a sleeping worker's terminal wakes it, so there's nothing to press first. */
-function openWorkerTerminal(id: string, find?: TerminalFind) {
+function openWorkerTerminal(id: string, find?: TerminalFind, tab?: WorkerTab) {
   const w = store.workers.get(id);
   if (!w) return;
   if (w.lost) return fixLostWorktree(w);
   if (isAsleep(w.status)) resumeWorker(w);
-  openTerminal(net, id, () => openWorkerChanges(id), find);
+  openTerminal(net, id, () => openWorkerChanges(id), find, { tab }); // 3d-kanban: tab
 }
 
 /** 🔎 the chat and every terminal; a terminal line opens that terminal right at it. */
@@ -2857,7 +2925,8 @@ function turnPage() {
 /** A prompt from the boards goes to a new worker at a free desk, or to one already at a desk. */
 function sendToWorker(title: string, text: { context?: string; initial?: string }) {
   const desk = freeDesk();
-  const awake = [...store.workers.values()].filter((w) => w.kind === 'agent' && !isAsleep(w.status));
+  // 3d-kanban: not a task's reviewer, which takes nothing but its terminal.
+  const awake = [...store.workers.values()].filter((w) => w.kind === 'agent' && !isAsleep(w.status) && promptKind(w) !== 'terminal');
   if (!desk && !awake.length) {
     toast('Every desk and bean bag is taken — send a worker home first', 'warn');
     return;
@@ -2866,12 +2935,13 @@ function sendToWorker(title: string, text: { context?: string; initial?: string 
     title,
     ...text,
     newDesk: desk ? plan().byId.get(desk)!.label : undefined,
-    workers: awake.map((w) => ({ id: w.id, name: w.name, color: w.color, status: w.status })),
+    workers: awake.map((w) => ({ id: w.id, name: w.name, color: w.color, status: w.status, task: w.kanban?.taskId })), // 3d-kanban: task
     worktreeOption: !!store.project?.branch,
     providerOption: true,
     repoOptions: repoChoices(),
+    kanbanOption: desk ? hireOption(net, () => desk, plan().byId.get(desk)!.label) : undefined, // 3d-kanban
     onSubmit: (prompt, to, worktree, provider, model, effort, repos) => {
-      if (to) net.send({ t: 'worker.prompt', workerId: to, prompt });
+      if (to) askWorker(net, to, prompt); // 3d-kanban: a message on its task for a task worker
       else if (desk) hire(desk, prompt, worktree, provider, model, effort, undefined, repos);
     },
   });
@@ -2885,6 +2955,11 @@ function boardActions() {
     meeting: (preset: MeetingPreset) => showMeeting(preset),
     goToDesk,
     pickUp,
+    // 3d-kanban: the issue as a kanban task, at the desk nearest you (or wherever the engine finds one).
+    kanbanTask: (it: GhIssue) => {
+      const desk = freeDesk() ?? undefined;
+      issueTask(net, it, desk, desk ? plan().byId.get(desk)!.label : 'the next free desk');
+    },
   };
 }
 
@@ -2915,10 +2990,13 @@ function interact(target: Interactable | null, key: DeskKey, note = aimedNote) {
     // Nobody is hired at the meeting table: a meeting seats its own workers there.
     if (!w && plan().byId.get(target.deskId)?.room) return key === 'E' ? showMeeting() : undefined;
     if (key === 'B' && !w) return openShell(target.deskId);
+    // 3d-kanban: P with an issue card at an empty desk makes it a kanban task there.
+    if (key === 'P' && carrying && !w) return cardTaskAt(target.deskId, carrying);
     if (key === 'P') return promptAtDesk(target.deskId);
     if (key === 'E') return w ? openWorkerTerminal(w.id) : hireAtDesk(target.deskId);
     if (key === 'C' && w) return openWorkerChanges(w.id);
     if (key === 'R' && w && isAsleep(w.status)) return resumeWorker(w);
+    if (key === 'R' && w && retryTask(net, w)) return; // 3d-kanban: its task waits: retry it
     if (key === 'X' && w) return killWorker(w.id);
     if (key === 'O' && w) return pullRequestFor(w);
     return;
@@ -3163,7 +3241,7 @@ function shotAim(): { from: THREE.Vector3; heading: number; pitch: number; ideal
   const rim = HOOP.rim;
   const first = player.view === 'first';
   // First person, the ball goes where you look; third, from over your head the way you face.
-  const facing = first ? player.camYaw + Math.PI : player.facing;
+  const facing = player.camYaw + Math.PI; // 3d-kanban: third person too, where the crosshair points
   const from = first ? camera.position.clone() : new THREE.Vector3(player.pos.x, player.pos.y + 1.95, player.pos.z);
   from.x += Math.sin(facing) * 0.3;
   from.z += Math.cos(facing) * 0.3;
@@ -3177,7 +3255,7 @@ function shotAim(): { from: THREE.Vector3; heading: number; pitch: number; ideal
     return { from, heading: facing, pitch, ideal: atHoop ? idealSpeed(from, pitch) : null };
   }
   // Facing about the right way, your character squares up to the hoop.
-  if (!atHoop) return { from, heading: facing, pitch: throwPitch(0.15), ideal: null };
+  if (!atHoop) return { from, heading: facing, pitch: throwPitch(Math.asin(camera.getWorldDirection(lookDir).y)), ideal: null }; // 3d-kanban: up or down the crosshair
   const pitch = underCeiling(from, throwPitch(lookAtRim(from)));
   return { from, heading: toRim, pitch, ideal: idealSpeed(from, pitch) };
 }
@@ -3311,7 +3389,7 @@ function ballHint(): Hint {
     parts: [
       h('span.title', {}, '🏀 Ball in hand'),
       streak > 1 ? aside(`🔥 ${streak} in a row`) : '',
-      windFrom ? aside('let go in the green!') : key(first ? 'E / Click' : 'E', 'Hold to shoot'),
+      windFrom ? aside('let go in the green!') : key('E / Click', 'Hold to shoot'), // 3d-kanban: third person clicks too
       key('Q', 'Drop it'),
     ],
   };
@@ -3401,7 +3479,9 @@ function dropCard(it: Interactable, card: CarriedIssue, note: GhIssue | null): b
   const w = store.workerAtDesk(it.deskId);
   const why = w ? cantTakeCard(w) : hiringPaused() ? '💸 Budget spent — hiring resumes tomorrow' : '';
   if (why) toast(why, 'warn');
-  else if (w) {
+  else if (w && cardToTaskWorker(net, w, card.issue, prompt, putDown)) {
+    // 3d-kanban: only the task's own issue goes to a task worker, as a message on the task.
+  } else if (w) {
     net.send({ t: 'worker.prompt', workerId: w.id, prompt, issue: card.issue });
     putDown();
   } else if (!officeIsFull()) {
@@ -3410,6 +3490,15 @@ function dropCard(it: Interactable, card: CarriedIssue, note: GhIssue | null): b
     putDown();
   }
   return true;
+}
+
+/** 3d-kanban: P with a card at an empty desk: the issue as a kanban task, starting there. */
+function cardTaskAt(deskId: string, card: CarriedIssue) {
+  if (hiringPaused()) return toast('💸 Budget spent — hiring resumes tomorrow', 'warn');
+  if (officeIsFull()) return;
+  const it = store.issues.items.find((i) => i.number === card.issue && !i.repo);
+  issueTask(net, { number: card.issue, title: card.title, url: it?.url ?? '', body: it?.body }, deskId, plan().byId.get(deskId)!.label);
+  putBack();
 }
 
 /** The card left your hands for a desk or the queue (the office says who took it). */
@@ -3588,6 +3677,7 @@ function gongRang(why: GongWhy, pr?: number) {
 let target: Interactable | null = null;
 let hintKey = '';
 
+// 3d-kanban: unused now that third person aims with the crosshair too; left as upstream has it.
 function pickTarget(): Interactable | null {
   // Nearly everything you can use is upstairs; down on the street you're under it all, but for the
   // elevator's stop in the garage.
@@ -3836,7 +3926,7 @@ function carryHint(card: CarriedIssue, it: Interactable | null): Hint {
     const w = store.workerAtDesk(it.deskId);
     if (!w) {
       const paused = hiringPaused();
-      return { k: String(paused), parts: parts(paused ? h('span.cost', {}, '💸 Budget spent — hiring resumes tomorrow') : key('E', 'Hire a worker for it')) };
+      return { k: String(paused), parts: parts(paused ? h('span.cost', {}, '💸 Budget spent — hiring resumes tomorrow') : key('E', 'Hire a worker for it'), paused ? '' : key('P', '🗂️ Kanban task')) }; // 3d-kanban: P
     }
     const why = cantTakeCard(w);
     return { k: w.id + w.status + why, parts: parts(why ? aside(why) : key('E', `Hand it to ${w.name}`)) };
@@ -3891,10 +3981,16 @@ function deskHint(deskId: string): Hint {
   const workerProvider = w.kind === 'agent' ? resolvedProvider(w.provider, store.project) : undefined;
   const spent = w.kind === 'agent' && w.usage ? usageLabel(w.usage, workerProvider) : '';
   const shell = w.kind === 'shell';
+  // 3d-kanban: a task worker's task, and R to retry it while it waits.
+  const card = kanbanCard(w, Date.now());
+  const task = card ? `${card.name} · ${card.summary}` : '';
+  const retry = !isAsleep(w.status) && canRetry(w);
   return {
-    k: w.status + w.id + (w.pr?.number ?? '') + (w.repos?.map((r) => r.pr?.number ?? '-').join() ?? '') + (w.prOpening ? '!' : '') + doing + spent + (sign ?? ''),
+    k: w.status + w.id + (w.pr?.number ?? '') + (w.repos?.map((r) => r.pr?.number ?? '-').join() ?? '') + (w.prOpening ? '!' : '') + doing + spent + (sign ?? '') + task,
     parts: [
-      h('span.title', {}, `${sign ? `🪧 ${sign} · ` : ''}${w.name} · ${STATUS_LABEL[w.status]}`),
+      h('span.title', {}, `${sign ? `🪧 ${sign} · ` : ''}${workerLabel(w)} · ${STATUS_LABEL[w.status]}`), // 3d-kanban: workerLabel
+      task ? aside(clip(task, 90)) : '', // 3d-kanban
+      retry ? key('R', 'Retry task') : '', // 3d-kanban
       doing ? aside(doing) : '',
       spent ? h('span.cost', { title: usageTitle(w.usage!, workerProvider) }, spent) : '',
       key('E', 'Open terminal'),
@@ -4018,7 +4114,7 @@ function renderHangHint(el: HTMLElement) {
 let crossKey = '';
 const finePointer = window.matchMedia('(pointer: fine)').matches;
 function renderCrosshair() {
-  const show = player.view === 'first' && !modalOpen() && !golf.active && !thrower.active;
+  const show = !modalOpen() && !golf.active && !thrower.active; // 3d-kanban: in third person too
   const free = show && finePointer && player.canLock && !player.locked;
   const k = `${show}|${!!target}|${free}|${relookOnKey}`;
   if (k === crossKey) return;
@@ -4325,19 +4421,23 @@ document.addEventListener('pointerlockchange', () => {
   if (player.locked) relookOnKey = false;
 });
 
-// ---- Clicking the world: use what's under the crosshair (first person) or the mouse (third) ----------
+// ---- Clicking the world: use what's under the crosshair (3d-kanban: in third person too) ------------
 const raycaster = new THREE.Raycaster();
 const CROSSHAIR = new THREE.Vector2(0, 0);
-/** How close (meters from your eyes) you must be to use each kind of thing. */
+/** How close (meters from your eyes) you must be to use each kind of thing. 3d-kanban: your eyes, not the camera, in third person too. */
 const REACH: Record<InteractKind, number> = { desk: 4.5, station: 4.5, coffee: 3, issues: 9, pulls: 9, services: 9, queue: 9, tv: 10, decor: 9, smoke: 3, elevator: 4.5, gong: 3.5, dog: 3.2, jukebox: 4, seat: 3, whiteboard: 7, cabinet: 4, ladder: 3, pole: 4, meeting: 7, bar: 3.5, dj: 6, golf: 3.5, ball: 3.2, bookshelf: 4, darts: 4, axe: 5.5, telescope: 3.5, car: 4, expand: 8, herald: 5 };
 const eye = new THREE.Vector3();
+const eyeRay = new THREE.Raycaster(); // 3d-kanban: see eyeSees
 
 /** What the ray through `ndc` lands on first, whether it is within reach (plus `slack` meters), and where it hit. */
 function aimedAt(ndc: THREE.Vector2, slack = 0): { it: Interactable; near: boolean; hit: THREE.Intersection } | null {
   raycaster.setFromCamera(ndc, camera);
   eye.set(player.pos.x, player.pos.y + EYE_HEIGHT, player.pos.z);
+  // 3d-kanban: from the camera behind you in third person, nothing between it and you counts (you included).
+  raycaster.near = player.view === 'third' ? alongRay(raycaster.ray.origin, raycaster.ray.direction, eye) : 0;
   // (Workers standing in line in the castle carry their spot's interactable: see Court.)
-  for (const hit of raycaster.intersectObjects(upTop && roof ? roof.pickables : inOffice() ? [office.group, dog.root] : world.pickables, true)) {
+  const pickables = upTop && roof ? roof.pickables : inOffice() ? [office.group, dog.root] : world.pickables; // 3d-kanban: for eyeSees too
+  for (const hit of raycaster.intersectObjects(pickables, true)) {
     let it: Interactable | undefined;
     let shown = true;
     for (let o: THREE.Object3D | null = hit.object; o; o = o.parent) {
@@ -4346,9 +4446,21 @@ function aimedAt(ndc: THREE.Vector2, slack = 0): { it: Interactable; near: boole
     }
     if (!shown) continue;
     if (!it || it.off) return null; // a wall, the floor, a plant… is in the way
-    return { it, near: hit.point.distanceTo(eye) <= REACH[it.kind] + slack, hit };
+    // 3d-kanban: in third person your eyes must see it too, not just the camera over your shoulder.
+    if (player.view === 'third' && !eyeSees(eye, hit.point, pickables, (h) => inTheWay(h, it), camera, eyeRay)) return null;
+    return { it, near: withinReach(hit.point, eye, REACH[it.kind] + slack), hit }; // 3d-kanban: withinReach
   }
   return null;
+}
+
+/** 3d-kanban: whether a hit on the way from your eyes to `it` is something else in front of it (not hidden, not `it` itself). */
+function inTheWay(hit: THREE.Intersection, it: Interactable): boolean {
+  let other: Interactable | undefined;
+  for (let o: THREE.Object3D | null = hit.object; o; o = o.parent) {
+    if (!o.visible) return false;
+    other ??= o.userData.interact as Interactable | undefined;
+  }
+  return other !== it;
 }
 
 /** Sitting on the map's throne. */
@@ -4375,15 +4487,8 @@ function noteUnder(aim: { it: Interactable; hit: THREE.Intersection } | null): G
   return n === undefined ? null : (store.issues.items.find((i) => i.number === n) ?? null);
 }
 
-/** The note on the issues board under the crosshair (or, in third person, the mouse), which E takes. */
+/** The note on the issues board under the crosshair, which E takes. 3d-kanban: in third person too, not under the mouse. */
 let aimedNote: GhIssue | null = null;
-/** Where the mouse is over the scene, for pointing at notes in third person; null when it's off it. */
-let pointer: THREE.Vector2 | null = null;
-canvas.addEventListener('pointermove', (e) => {
-  const r = canvas.getBoundingClientRect();
-  (pointer ??= new THREE.Vector2()).set(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1);
-});
-canvas.addEventListener('pointerleave', () => (pointer = null));
 
 player.onClick = (ndc) => {
   // At the tee, a click is you steadying the mouse to aim: nothing else is in reach.
@@ -4401,19 +4506,22 @@ player.onClick = (ndc) => {
     hanger.place(ndc);
     return;
   }
-  if (player.view === 'first') {
-    // Reach out even at nothing, like poking the air.
-    reach();
-    if (target) interact(target, 'E');
+  // 3d-kanban: in third person with the mouse free (a touch screen), what you tapped, as upstream,
+  // within the same reach of your eyes as the crosshair.
+  if (player.view === 'third' && !player.locked) {
+    const aim = aimedAt(ndc);
+    if (!aim) return;
+    if (!aim.near) {
+      toast('Walk closer to that first');
+      return;
+    }
+    use(aim.it, 'E', noteUnder(aim));
     return;
   }
-  const aim = aimedAt(ndc, 2.5);
-  if (!aim) return;
-  if (!aim.near) {
-    toast('Walk closer to that first');
-    return;
-  }
-  use(aim.it, 'E', noteUnder(aim));
+  // 3d-kanban: third person uses what's under the crosshair too, as first person does.
+  // Reach out even at nothing, like poking the air.
+  reach();
+  if (target) interact(target, 'E');
 };
 
 // Chat
@@ -4888,17 +4996,11 @@ function frame(ts?: number) {
 
   aimedNote = null;
   if (modalOpen() || telescope.active || hanger.active || climber.active || golf.active || thrower.active || driver.active) target = null;
-  else if (firstPerson) {
+  else {
+    // 3d-kanban: in third person too, what's under the crosshair (see aimedAt), not what's nearest.
     const aim = aimedAt(CROSSHAIR);
     target = aim?.near ? aim.it : (throneTarget() ?? mySeat() ?? (inOffice() ? ballAtFeet() : null));
     if (aim?.near) aimedNote = noteUnder(aim);
-  } else {
-    target = throneTarget() ?? mySeat() ?? pickTarget();
-    // By the issues board, the mouse points at the note you'd take.
-    if (target?.kind === 'issues' && pointer) {
-      const aim = aimedAt(pointer, 2.5);
-      if (aim?.near) aimedNote = noteUnder(aim);
-    }
   }
   issuesTex.lift(aimedNote?.number ?? null);
   renderHint();

@@ -1,6 +1,9 @@
 import { defineConfig, type Plugin } from 'vite';
 import { createReadStream, existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
 import { join, resolve, sep } from 'node:path';
+// 3d-kanban: the service worker's build id (pwaBuild below).
+import { createHash } from 'node:crypto';
+import { writeFileSync } from 'node:fs';
 
 // The whiteboard's fonts (Excalidraw's hand-drawn Virgil/Excalifont and friends), served by the
 // office itself rather than a CDN. Excalidraw looks for them under window.EXCALIDRAW_ASSET_PATH;
@@ -34,10 +37,30 @@ function excalidrawFonts(): Plugin {
   };
 }
 
+// 3d-kanban: the service worker's build id. public/sw.js is copied as it is, then its '__PWA_BUILD__'
+// becomes a hash of this build's file names (hashed by content) and the offline page, so each build's
+// /assets/ get a cache of their own and the last build's is dropped (docs/configuration.md#pwa).
+function pwaBuild(): Plugin {
+  const MARK = "'__PWA_BUILD__'";
+  return {
+    name: 'pwa-build',
+    apply: 'build',
+    writeBundle(options, bundle) {
+      const dir = options.dir ?? resolve(import.meta.dirname, 'dist/public');
+      const sw = join(dir, 'sw.js');
+      const src = readFileSync(sw, 'utf8');
+      if (!src.includes(MARK)) throw new Error(`${sw} has no ${MARK} to replace`);
+      const id = createHash('sha256').update(Object.keys(bundle).sort().join('\n')).update(readFileSync(join(dir, 'offline.html'))).digest('hex').slice(0, 12);
+      writeFileSync(sw, src.replace(MARK, JSON.stringify(id)));
+    },
+  };
+}
+
 export default defineConfig({
   root: resolve(import.meta.dirname, 'src/client'),
   publicDir: resolve(import.meta.dirname, 'src/client/public'),
-  plugins: [excalidrawFonts()],
+  // 3d-kanban: pwaBuild, the service worker's build id.
+  plugins: [excalidrawFonts(), pwaBuild()],
   define: {
     __EXCALIDRAW_ASSETS__: JSON.stringify(EXCALIDRAW_ASSETS),
   },

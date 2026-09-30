@@ -4,35 +4,38 @@
 
 import { h } from '../ui/dom';
 import type { KanbanServerMsg } from '../../shared/kanban/protocol.js';
-import { KANBAN_TOOLS, SKILL_PHASES, type KanbanSettings, type KanbanTool, type SkillPhase, type SkillSelection } from '../../shared/kanban/types.js';
+import { KANBAN_TOOLS, SKILL_PHASES, type KanbanSettings, type KanbanTool, type SkillInfo, type SkillPhase, type SkillSelection } from '../../shared/kanban/types.js';
 import type { KanbanApi } from './api';
 import { skillUsage } from './model';
 import { kstore } from './store';
-import { t, toolName } from './i18n';
+import { toolName } from './labels';
 import { run } from './ui';
 
 type SkillsMsg = Extract<KanbanServerMsg, { t: 'kanban.skills' }>;
+
+const ORIGIN_NAMES: Record<SkillInfo['origin'], string> = { bundled: 'the office', user: 'you', account: 'an account', repo: 'a repository' };
+const PHASE_NAMES: Record<SkillPhase, string> = { plan: 'Plan', implement: 'Implement', review: 'Review', pr: 'Pull requests' };
 
 let cache: SkillsMsg | null = null;
 
 export function skillsPane(api: KanbanApi, projectId: string, s: KanbanSettings): HTMLElement {
   const list = h('div.kb-skill-list', { 'aria-live': 'polite' });
   const grid = h('div.kb-skill-grid');
-  const sync = h('button.btn.kb-admin', { type: 'button', title: t('syncHint') }, `🔄 ${t('syncSkills')}`) as HTMLButtonElement;
-  const save = h('button.btn.primary.kb-admin', { type: 'button' }, t('save')) as HTMLButtonElement;
+  const sync = h('button.btn.kb-admin', { type: 'button', title: 'Look for skills again and install the office’s own' }, '🔄 Sync') as HTMLButtonElement;
+  const save = h('button.btn.primary.kb-admin', { type: 'button' }, 'Save') as HTMLButtonElement;
   const selection: SkillSelection = structuredClone(s.projects[projectId]?.skills ?? {});
   const projectName = (id: string) => kstore.projectOf(id)?.name ?? id;
 
   const paintList = () => {
-    if (!cache) return list.replaceChildren(h('p.kb-muted', {}, t('loading')));
+    if (!cache) return list.replaceChildren(h('p.kb-muted', {}, 'Loading…'));
     if (cache.error) list.replaceChildren(h('p.kb-error', {}, `⚠️ ${cache.error}`));
     else list.replaceChildren();
-    if (!cache.skills.length) return list.append(h('p.kb-muted', {}, t('noSkills')));
+    if (!cache.skills.length) return list.append(h('p.kb-muted', {}, 'No skills found.'));
     list.append(
       h(
         'table.kb-table',
         {},
-        h('thead', {}, h('tr', {}, h('th', {}, t('skill')), h('th', {}, t('tool')), h('th', {}, t('origin')), h('th', {}, t('installedIn')), h('th', {}, t('usedBy')))),
+        h('thead', {}, h('tr', {}, h('th', {}, 'Skill'), h('th', {}, 'Agent'), h('th', {}, 'From'), h('th', {}, 'Installed in'), h('th', {}, 'Used by'))),
         h(
           'tbody',
           {},
@@ -42,7 +45,7 @@ export function skillsPane(api: KanbanApi, projectId: string, s: KanbanSettings)
               {},
               h('td', {}, h('b', {}, k.name), h('div.kb-muted', {}, k.description)),
               h('td', {}, toolName(k.tool)),
-              h('td', {}, h('span.kb-chip', { title: k.location }, t(`origin.${k.origin}`))),
+              h('td', {}, h('span.kb-chip', { title: k.location }, ORIGIN_NAMES[k.origin])),
               h('td', {}, ...(k.installedIn.length ? k.installedIn.map((p) => h('code.kb-path', {}, p)) : [h('span.kb-muted', {}, '—')])),
               h('td', {}, skillUsage(kstore.settings ?? s, k.name, k.tool).map(projectName).join(', ') || '—'),
             ),
@@ -59,7 +62,7 @@ export function skillsPane(api: KanbanApi, projectId: string, s: KanbanSettings)
       const picked = selection[phase]?.[tool] ?? [];
       // A picked skill the office can't find any more still shows, to be taken off.
       for (const n of picked) if (!names.includes(n)) names.push(n);
-      const summary = h('summary', {}, picked.length ? picked.join(', ') : t('none'));
+      const summary = h('summary', {}, picked.length ? picked.join(', ') : 'none');
       return h(
         'td',
         {},
@@ -75,12 +78,12 @@ export function skillsPane(api: KanbanApi, projectId: string, s: KanbanSettings)
               else now.delete(n);
               selection[phase] = { ...selection[phase], [tool]: [...now] };
               // Not redrawn: that would shut the list being picked from.
-              summary.textContent = now.size ? [...now].join(', ') : t('none');
+              summary.textContent = now.size ? [...now].join(', ') : 'none';
             });
             const missing = !skills.some((k) => k.name === n && k.tool === tool);
-            return h('label.kb-check', { class: missing ? 'missing' : '', title: missing ? t('skillMissing') : '' }, box, h('span', {}, `${n}${missing ? ' ⚠️' : ''}`));
+            return h('label.kb-check', { class: missing ? 'missing' : '', title: missing ? 'Picked, but the office can’t find it' : '' }, box, h('span', {}, `${n}${missing ? ' ⚠️' : ''}`));
           }),
-          names.length ? null : h('small.kb-muted', {}, t('noSkillsFor', { tool: toolName(tool) })),
+          names.length ? null : h('small.kb-muted', {}, `No skills for ${toolName(tool)}`),
         ),
       );
     };
@@ -88,8 +91,8 @@ export function skillsPane(api: KanbanApi, projectId: string, s: KanbanSettings)
       h(
         'table.kb-table',
         {},
-        h('thead', {}, h('tr', {}, h('th', {}, t('phase')), ...KANBAN_TOOLS.map((x) => h('th', {}, toolName(x))))),
-        h('tbody', {}, ...SKILL_PHASES.map((ph) => h('tr', {}, h('th', {}, t(`skillPhase.${ph}`)), ...KANBAN_TOOLS.map((x) => cell(ph, x))))),
+        h('thead', {}, h('tr', {}, h('th', {}, 'Phase'), ...KANBAN_TOOLS.map((x) => h('th', {}, toolName(x))))),
+        h('tbody', {}, ...SKILL_PHASES.map((ph) => h('tr', {}, h('th', {}, PHASE_NAMES[ph]), ...KANBAN_TOOLS.map((x) => cell(ph, x))))),
       ),
     );
   };
@@ -99,8 +102,8 @@ export function skillsPane(api: KanbanApi, projectId: string, s: KanbanSettings)
     paintList();
     paintGrid();
   };
-  sync.addEventListener('click', () => void run(() => api.request<SkillsMsg>({ t: 'kanban.skills.sync' }), sync, 'synced').then((m) => m && m.t === 'kanban.skills' && load(m)));
-  save.addEventListener('click', () => void run(() => api.request({ t: 'kanban.project.settings.set', project: projectId, settings: { skills: selection } }), save, 'saved'));
+  sync.addEventListener('click', () => void run(() => api.request<SkillsMsg>({ t: 'kanban.skills.sync' }), sync, 'Skills synced').then((m) => m && m.t === 'kanban.skills' && load(m)));
+  save.addEventListener('click', () => void run(() => api.request({ t: 'kanban.project.settings.set', project: projectId, settings: { skills: selection } }), save, 'Saved'));
   paintList();
   paintGrid();
   api.request<SkillsMsg>({ t: 'kanban.skills.list' }).then(load, (err: Error) => {
@@ -110,8 +113,8 @@ export function skillsPane(api: KanbanApi, projectId: string, s: KanbanSettings)
   return h(
     'div.kb-pane',
     {},
-    h('fieldset', {}, h('legend', {}, t('skillsFound')), h('div.kb-row', {}, h('p.kb-hint', {}, t('skillsHint')), h('span.grow'), sync), list),
-    h('fieldset', {}, h('legend', {}, t('skillsForProject', { name: projectName(projectId) })), h('p.kb-hint', {}, t('skillsPickHint')), grid, h('div.kb-row.kb-save', {}, h('span.grow'), save)),
+    h('fieldset', {}, h('legend', {}, 'Skills'), h('div.kb-row', {}, h('p.kb-hint', {}, 'Skills the office found on this machine.'), h('span.grow'), sync), list),
+    h('fieldset', {}, h('legend', {}, `Skills for ${projectName(projectId)}`), h('p.kb-hint', {}, 'Which skills each phase is told to use, per agent.'), grid, h('div.kb-row.kb-save', {}, h('span.grow'), save)),
   );
 }
 

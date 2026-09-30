@@ -87,7 +87,8 @@ export function lastFloor(): string | null {
   }
 }
 
-function rememberFloor(id: string | null) {
+// 3d-kanban: exported, so a link onto a floor (the kanban's 📍 Show in 3D) comes in on it.
+export function rememberFloor(id: string | null) {
   try {
     if (id) localStorage.setItem(FLOOR_KEY, id);
   } catch {

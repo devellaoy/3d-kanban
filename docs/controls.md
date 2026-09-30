@@ -6,7 +6,9 @@ Back to the [README](../README.md).
 | --- | --- |
 | W A S D / arrows | Walk (hold Shift to run); on the ladder, W and S climb; in a car, W is the gas, S brakes and reverses, A and D steer |
 | Space | Jump (you can land on desks, couches and the cars in the garage); in a car, brake |
-| Mouse drag / wheel | Orbit / zoom the camera |
+| Mouse | Look around, the same in first and third person: click the office to capture the mouse, Esc frees it. The dot in the middle of the screen (the crosshair) is what you aim at, and closing a window puts you straight back to looking around. In third person your character turns to face where the camera looks, standing still too |
+| Click | Use what the crosshair is on, like E (with the basketball, hold to shoot). In third person it has to be in reach of your character's eyes and in their sight, not just the camera's (no using a desk past the end of a wall beside you). With the mouse free (a touch screen), a tap in third person uses what you tapped instead, with the same reach and sight |
+| Wheel | Third person: zoom the camera in or out |
 | E | Interact: hire a worker, open its terminal, read a board, take an issue's note off the board, prompt a board agent, call a meeting in the meeting room, draw on the whiteboard, read the docs at the bookshelf, watch the TV, sit down (or get up), ride the elevator, climb the ladder (or get off it), slide down a fire pole, grab a coffee, take a smoke break, tee off at the golf tee, pet the dog, pick up the basketball (then hold E and let go to shoot), order a drink at the rooftop bar, blow the DJ's air horn, step up to the dart board or the axe lane on the roof (then hold Space and let go to throw), get into one of the cars in the garage (behind the wheel, or beside whoever's driving) or out of it, knock through the north wall past the gong for 2 more desks (at the **🚧 Room to grow** sign). In the [castle](maps.md#the-castle): sit on the throne, where E is for whoever's first in line (or the Hand of the King, with nobody waiting), and speak to the Hand to send out a new worker |
 | K | On the castle's throne: speak to the Hand of the King, to send out a new worker |
 | P | Prompt: give a task to a new worker, or to the one at this desk |
@@ -16,7 +18,7 @@ Back to the [README](../README.md).
 | X | Send a worker home (frees the desk; a worker with its own worktree asks what to do with it). In the [castle](maps.md#the-castle), the Kingsguard takes it down to the dungeon |
 | L | Hang a big sign over the desk you face (*Operations*, *Code cleanup*), in one of seven colors; again to change it or take it down |
 | O | Have an agent open the pull request for a worker on its own branch (it pushes and writes it up; a kanban task's worker runs the task's PR step), or see the one it has (a worker across several projects gets one in each) |
-| J | The kanban view (`/kanban`), on the project of the floor you're on. Its **🏢 3D** button brings you back to the same floor |
+| J | The kanban view (`/kanban`), on the project of the floor you're on; facing a kanban task's worker, that task's conversation. Its **🏢 3D** button brings you back to the same floor |
 | N | Go to the worker that has waited longest on someone; again for the next one |
 | F | Hang a picture from the web on a wall (scroll to size it, click to hang it) |
 | Q | Put back the issue card you're carrying, or drop the basketball |
@@ -30,6 +32,21 @@ Back to the [README](../README.md).
 | Tab | The ☰ menu: every window, and what shows on screen |
 | Esc | Close any window (a terminal too) and get back to looking around |
 | Ctrl + [ | Send Esc to a terminal instead, to close a menu like Claude's `/skills` or interrupt Claude. **⎋ Esc** in the terminal's header does the same |
+
+### At a kanban task's worker
+
+A worker hired for a [kanban task](kanban-coupling.md) (its card says `🗂️ #14 · …`, its name tag `Ada · #14`) takes some keys its own way:
+
+| Key | Action |
+| --- | --- |
+| E | Its window has tabs: **🖥️ Terminal** (the terminal as usual, with the keys), **🗂️ Task #14** (the task as the kanban shows it: the conversation with its composer and history, the plan, runs and verdicts, changes, PRs and actions). The worker's changes are the window's own **🌿 Changes** button. It opens on the tab you last had for that worker. Typing in the task's composer, or files dropped on it, never reach the terminal |
+| P | While the task is in progress, waiting or in review: **💬 Message task #14**, it goes on the task's conversation and the kanban process carries on with it; **Type straight into the terminal instead** sends it as keys. For a task in To do, Done or the archive, P is the ordinary prompt. Ask a worker → a task's worker is a message on its task the same way. A reviewer only takes its terminal. With an issue card in hand, P at an empty desk makes the issue a kanban task there |
+| R | Retry the task when it waits (stopped, failed, interrupted) |
+| X | Send it home: **Move task #14 to Done** is ticked when the task is in review, unticked otherwise; the worktree choices are upstream's. A reviewer's review round is abandoned |
+| J | That task's conversation on the kanban |
+| N | Counts it while its task waits on a person (a question, the plan's approval, a failed phase) or its review is unseen |
+
+Hiring at an empty desk (E or P), or a new worker from **✍️ Ask a worker**, can tick **🗂️ Run as a kanban task (plan → implement → review)**: the task goes on the kanban and starts at that desk. The box starts unticked in every new dialog. The kanban's **📍 Show in 3D** opens `/?floor=<id>&worker=<id>&desk=<id>`: the office takes you to that floor and desk and opens the worker's window on its task.
 
 You can also click a nearby desk to interact with it, or click a worker in the Workers panel (**🤖 Workers**, top right) to open its terminal.
 

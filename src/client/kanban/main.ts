@@ -23,12 +23,14 @@ import { openIssues } from './issues';
 import { boardStats, deepLink, EMPTY_FILTER, filterActive, parseDeepLink, STATE_FILTERS, TICKET_FILTERS, type BoardFilter, type StateFilter, type TicketFilter } from './model';
 import { openKanbanSettings } from './settings';
 import { kstore } from './store';
-import { LANGS, lang, onLang, setLang, t, toolName, type Lang } from './i18n';
+import { toolName } from './labels';
 import { run, select, textInput } from './ui';
 
 const link = parseDeepLink(location.search);
 const FILTER_KEY = 'kanban.filter';
 const PROJECT_KEY = 'kanban.project';
+const STATE_FILTER_NAMES: Record<StateFilter, string> = { all: 'Any state', running: 'Running', attention: 'Needs you', retrying: 'Waiting to retry', has_pr: 'Has a PR' };
+const TICKET_FILTER_NAMES: Record<TicketFilter, string> = { any: 'Ticket or not', with: 'With a ticket', without: 'Without a ticket' };
 
 // ---- Who you are, and the connection --------------------------------------------------------------
 const saved = loadProfile();
@@ -95,9 +97,10 @@ const board = new Board({
 });
 
 const detail = new DetailPanel({
-  api,
+  net,
   root: detailEl,
   openTask: (id) => openTask(id),
+  tabChanged: (tab) => history.replaceState(null, '', `${location.pathname}${deepLink(location.search, { tab })}`),
   closed: () => {
     history.replaceState(null, '', `${location.pathname}${deepLink(location.search, { task: null })}`);
     board.render();
@@ -113,8 +116,9 @@ const detail = new DetailPanel({
 let lastOpened: number | null = null;
 function openTask(id: number, tab?: string) {
   lastOpened = id;
+  const same = detail.id === id;
   detail.open(id, isDetailTab(tab) ? tab : undefined);
-  history.replaceState(null, '', `${location.pathname}${deepLink(location.search, { task: id })}`);
+  history.replaceState(null, '', `${location.pathname}${deepLink(location.search, { task: id, ...(same && !tab ? {} : { tab: detail.tab }) })}`);
   board.render();
 }
 
@@ -142,8 +146,8 @@ function showTerminal(workerId: string) {
  */
 function onFloor(project: string, workerId: string, then: () => void) {
   if (store.floor === project && store.workers.has(workerId)) return then();
-  if (store.floor === project) return toast(t('workerGone'), 'warn');
-  const note = toast(t('goingToFloor', { name: kstore.projectOf(project)?.name ?? project }));
+  if (store.floor === project) return toast('That worker isn’t here any more', 'warn');
+  const note = toast(`Going to ${kstore.projectOf(project)?.name ?? project}’s floor…`);
   let done = false;
   const check = () => {
     if (done || store.floor !== project) return;
@@ -153,20 +157,20 @@ function onFloor(project: string, workerId: string, then: () => void) {
     clearTimeout(timer);
     note.remove();
     if (store.workers.has(workerId)) then();
-    else toast(t('workerGone'), 'warn');
+    else toast('That worker isn’t here any more', 'warn');
   };
   const offFloor = store.on('floor', check);
   const offWorkers = store.on('workers', check);
   const timer = setTimeout(() => {
     offFloor();
     offWorkers();
-    if (!done) toast(t('floorTimeout'), 'error');
+    if (!done) toast('Couldn’t get to that floor', 'error');
   }, 8000);
   net.send({ t: 'floor.go', floor: project });
 }
 
 // ---- The top bar ----------------------------------------------------------------------------------
-const search = textInput('', { type: 'search', id: 'kb-search', placeholder: t('searchPlaceholder'), 'aria-label': t('search') });
+const search = textInput('', { type: 'search', id: 'kb-search', placeholder: 'Search: #12, words, ticket, repo… (/)', 'aria-label': 'Search' });
 search.addEventListener('input', () => {
   filter.q = search.value;
   clearBtn.classList.toggle('hidden', !filterActive(filter));
@@ -178,49 +182,44 @@ let clearBtn = h('button.btn.small.hidden', { type: 'button' });
 function renderBar() {
   const searching = document.activeElement === search;
   const projects = kstore.projects;
-  const projectSel = select<string>([['', `🏢 ${t('allProjects')}`], ...projects.map((p) => [p.id, `🏢 ${p.name}${p.open ? '' : ` (${t('closed')})`}`] as const)], kstore.project ?? '', { 'aria-label': t('project'), id: 'kb-project' });
+  const projectSel = select<string>([['', '🏢 All projects'], ...projects.map((p) => [p.id, `🏢 ${p.name}${p.open ? '' : ' (closed)'}`] as const)], kstore.project ?? '', { 'aria-label': 'Project', id: 'kb-project' });
   // A remembered project that's gone: all of them instead.
   if (kstore.loaded && kstore.project && !projects.some((p) => p.id === kstore.project)) projectSel.value = '';
   projectSel.addEventListener('change', () => pickProject(projectSel.value || null));
 
   const repos = (kstore.project ? kstore.projectOf(kstore.project)?.repos : projects.flatMap((p) => p.repos.map((r) => ({ ...r, name: `${p.name} / ${r.name}` })))) ?? [];
   const uniqueRepos = [...new Map(repos.map((r) => [r.id, r])).values()];
-  const repoSel = select<string>([['', `📦 ${t('allRepos')}`], ...uniqueRepos.map((r) => [r.id, `📦 ${r.name}`] as const)], filter.repos[0] ?? '', { 'aria-label': t('repository') });
+  const repoSel = select<string>([['', '📦 All repos'], ...uniqueRepos.map((r) => [r.id, `📦 ${r.name}`] as const)], filter.repos[0] ?? '', { 'aria-label': 'Repository' });
   repoSel.classList.toggle('hidden', uniqueRepos.length < 2 && !filter.repos.length);
   repoSel.addEventListener('change', () => setFilter({ repos: repoSel.value ? [repoSel.value] : [] }));
-  const stateSel = select<StateFilter>(STATE_FILTERS.map((s) => [s, t(`filter.${s}`)] as const), filter.state, { 'aria-label': t('state') });
+  const stateSel = select<StateFilter>(STATE_FILTERS.map((s) => [s, STATE_FILTER_NAMES[s]] as const), filter.state, { 'aria-label': 'State' });
   stateSel.addEventListener('change', () => setFilter({ state: stateSel.value as StateFilter }));
-  const toolSel = select<string>([['', t('allTools')], ...KANBAN_TOOLS.map((x) => [x, toolName(x)] as const)], filter.tools[0] ?? '', { 'aria-label': t('tool') });
+  const toolSel = select<string>([['', 'All agents'], ...KANBAN_TOOLS.map((x) => [x, toolName(x)] as const)], filter.tools[0] ?? '', { 'aria-label': 'Agent' });
   toolSel.addEventListener('change', () => setFilter({ tools: toolSel.value ? [toolSel.value as KanbanTool] : [] }));
-  const ticketSel = select<TicketFilter>(TICKET_FILTERS.map((x) => [x, t(`ticketFilter.${x}`)] as const), filter.ticket, { 'aria-label': t('ticket') });
+  const ticketSel = select<TicketFilter>(TICKET_FILTERS.map((x) => [x, TICKET_FILTER_NAMES[x]] as const), filter.ticket, { 'aria-label': 'Ticket' });
   ticketSel.addEventListener('change', () => setFilter({ ticket: ticketSel.value as TicketFilter }));
-  clearBtn = h('button.btn.small', { type: 'button', class: filterActive(filter) ? '' : 'hidden', onclick: () => clearFilters() }, `✕ ${t('clearFilters')}`);
+  clearBtn = h('button.btn.small', { type: 'button', class: filterActive(filter) ? '' : 'hidden', onclick: () => clearFilters() }, '✕ Clear');
 
-  const langSel = select<Lang>(LANGS.map((l) => [l, l.toUpperCase()] as const), lang(), { 'aria-label': t('language'), title: t('language') });
-  langSel.addEventListener('change', () => setLang(langSel.value as Lang));
-  const to3d = h('a.btn', { href: '/?3d=1', title: t('to3dHint') }, `🏢 ${t('to3d')}`);
+  const to3d = h('a.btn', { href: '/?3d=1', title: 'Back to the 3D office, on this project’s floor' }, '🏢 3D');
   to3d.addEventListener('click', () => {
     // The 3D office opens on the floor this page is on (it reads the same remembered floor).
     if (kstore.project && store.floor !== kstore.project) net.send({ t: 'floor.go', floor: kstore.project });
   });
 
-  search.placeholder = t('searchPlaceholder');
-  search.setAttribute('aria-label', t('search'));
   bar.replaceChildren(
-    h('div.kb-bar-row', {}, h('h1.kb-brand', {}, '🗂️ ', h('span', {}, t('kanban'))), projectSel, search, h('span.grow'), statsEl, h('button.btn', { type: 'button', id: 'kb-issues', onclick: showIssues, title: t('issuesHint'), 'aria-label': t('issues') }, '📌 ', h('span.kb-lbl', {}, t('issues'))), h('button.btn.primary', { type: 'button', id: 'kb-new', onclick: () => newTask(), title: 'N' }, `＋ ${t('newTask')}`)),
+    h('div.kb-bar-row', {}, h('h1.kb-brand', {}, '🗂️ ', h('span', {}, 'Kanban')), projectSel, search, h('span.grow'), statsEl, h('button.btn', { type: 'button', id: 'kb-issues', onclick: showIssues, title: "The project's issues from its issue sources: make tasks of them", 'aria-label': 'Issues' }, '📌 ', h('span.kb-lbl', {}, 'Issues')), h('button.btn.primary', { type: 'button', id: 'kb-new', onclick: () => newTask(), title: 'N' }, '＋ New task')),
     h(
       'div.kb-bar-row.kb-filters',
-      { role: 'group', 'aria-label': t('filters') },
+      { role: 'group', 'aria-label': 'Filters' },
       repoSel,
       stateSel,
       toolSel,
       ticketSel,
       clearBtn,
       h('span.grow'),
-      h('button.btn.small', { type: 'button', 'aria-pressed': String(archiveOpen), onclick: toggleArchive, title: t('archiveHint2') }, `🗄️ ${t('archive')}`),
-      langSel,
+      h('button.btn.small', { type: 'button', 'aria-pressed': String(archiveOpen), onclick: toggleArchive, title: 'Show the archived tasks as a column' }, '🗄️ Archive'),
       to3d,
-      h('button.btn.small', { type: 'button', onclick: () => showSettings(), 'aria-label': t('settings'), title: t('settings') }, '⚙️'),
+      h('button.btn.small', { type: 'button', onclick: () => showSettings(), 'aria-label': 'Settings', title: 'Settings' }, '⚙️'),
     ),
   );
   paintStats();
@@ -230,15 +229,15 @@ function renderBar() {
 /** The counts in the top bar, and the tab's title: redrawn on their own, so the search box keeps its focus. */
 function paintStats() {
   const s = boardStats(kstore.tasks.values(), kstore.project);
-  statsEl.setAttribute('aria-label', t('stats'));
+  statsEl.setAttribute('aria-label', 'Board counts');
   statsEl.replaceChildren(
-    h('span', { title: t('statTotal') }, `🗂️ ${s.total}`),
-    h('span', { title: t('statRunning') }, `🚧 ${s.running}`),
-    h('span', { class: s.attention ? 'hot' : '', title: t('statAttention') }, `🙋 ${s.attention}`),
-    h('span', { title: t('statReview') }, `👀 ${s.review}`),
+    h('span', { title: 'Tasks on the board' }, `🗂️ ${s.total}`),
+    h('span', { title: 'Running now' }, `🚧 ${s.running}`),
+    h('span', { class: s.attention ? 'hot' : '', title: 'Waiting on you' }, `🙋 ${s.attention}`),
+    h('span', { title: 'Ready for your review' }, `👀 ${s.review}`),
   );
   const name = kstore.projectOf(kstore.project ?? undefined)?.name;
-  document.title = `${s.attention ? `(${s.attention}) ` : ''}${name ? `${name} · ` : ''}${t('kanban')} · Agent Office`;
+  document.title = `${s.attention ? `(${s.attention}) ` : ''}${name ? `${name} · ` : ''}Kanban · Agent Office`;
 }
 
 function setFilter(patch: Partial<BoardFilter>) {
@@ -300,7 +299,7 @@ function newTask() {
 
 function showIssues() {
   const p = kstore.project ?? (kstore.projectOf(store.floor ?? undefined) ? store.floor : kstore.projects[0]?.id);
-  if (!p) return toast(t('noProjects'), 'warn');
+  if (!p) return toast('No projects yet: add a floor in the 3D office first.', 'warn');
   openIssues(api, p, (id) => openTask(id));
 }
 
@@ -311,13 +310,11 @@ function showSettings(first?: Parameters<typeof openKanbanSettings>[1]['first'])
 // ---- Messages -------------------------------------------------------------------------------------
 let linkOpened = false;
 api.on((msg: KanbanServerMsg) => {
+  // The open task's view follows its own deltas (taskview.ts); the page keeps the board.
   const changed = kstore.apply(msg);
-  if (msg.t === 'kanban.task') detail.cardChanged(msg.task.id);
-  if (msg.t === 'kanban.task.removed') detail.removed(msg.id);
-  detail.apply(msg);
   if (msg.t === 'kanban.snapshot' && changed && !linkOpened) {
     linkOpened = true;
-    if (link.task) openTask(link.task);
+    if (link.task) openTask(link.task, link.tab);
     if (link.settings) showSettings();
   }
   if (changed) {
@@ -325,7 +322,6 @@ api.on((msg: KanbanServerMsg) => {
     if (msg.t === 'kanban.task' || msg.t === 'kanban.task.removed') paintStats();
     else renderBar();
     board.render();
-    if (msg.t !== 'kanban.task' && detail.id !== null) detail.render();
   }
 });
 
@@ -356,13 +352,11 @@ net.onMessage((msg) => {
     case 'upgrade':
       if (msg.state.phase === 'restarting') {
         net.expectRestart();
-        toast(t('restarting'));
+        toast('⬆️ The office is restarting on its new version. Back in a minute.');
       }
       break;
   }
 });
-// A worker's name and state in the detail's Terminal tab come from the floor's workers.
-store.on('workers', () => detail.workersChanged());
 
 // ---- Keys -----------------------------------------------------------------------------------------
 const typing = (e: KeyboardEvent) => {
@@ -395,18 +389,10 @@ new ResizeObserver(() => document.documentElement.style.setProperty('--kb-bar-h'
 // Every retry countdown ticks by itself.
 setInterval(() => tickCountdowns(document), 1000);
 
-onLang(() => {
-  document.documentElement.lang = lang();
-  $('conn').textContent = t('reconnecting');
-  renderBar();
-  board.render();
-  if (detail.id !== null) detail.render();
-});
-
 // ---- In -------------------------------------------------------------------------------------------
 function askName(done: (name: string) => void) {
-  const input = h('input', { type: 'text', maxlength: 24, placeholder: t('yourName'), 'aria-label': t('yourName'), autocomplete: 'nickname' }) as HTMLInputElement;
-  const form = h('form.modal.lite-name', {}, h('header', {}, h('h2', {}, `👋 ${t('whoIsIt')}`)), h('div.body', {}, h('p', {}, t('nameWhy')), input), h('footer', {}, h('button.btn.primary', { type: 'submit' }, t('comeIn'))));
+  const input = h('input', { type: 'text', maxlength: 24, placeholder: 'Your name', 'aria-label': 'Your name', autocomplete: 'nickname' }) as HTMLInputElement;
+  const form = h('form.modal.lite-name', {}, h('header', {}, h('h2', {}, '👋 Who is it?')), h('div.body', {}, h('p', {}, 'Your teammates see this name on what you write and send.'), input), h('footer', {}, h('button.btn.primary', { type: 'submit' }, 'Come on in')));
   const modal = openModal(form, { escCloses: false, backdropCloses: false });
   form.addEventListener('submit', (e) => {
     e.preventDefault();
@@ -418,8 +404,6 @@ function askName(done: (name: string) => void) {
   setTimeout(() => input.focus(), 30);
 }
 
-document.documentElement.lang = lang();
-$('conn').textContent = t('reconnecting');
 renderBar();
 board.render();
 

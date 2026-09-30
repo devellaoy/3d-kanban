@@ -6,6 +6,8 @@ import { createIssues } from './issues/index.js';
 import { createPullsParts } from './pulls/index.js';
 import { createRefs as createRefsApi, createRefsPlugin } from './refs/index.js';
 import { createSkills } from './skills/index.js';
+import { createChangesPlugin } from './changes/index.js';
+import { createReportsPlugin } from './reports/index.js';
 
 /** Every integration plugin, in the order they are consulted. */
 export const integrationPlugins: KanbanPluginFactory[] = [
@@ -13,6 +15,8 @@ export const integrationPlugins: KanbanPluginFactory[] = [
   (ctx) => createPullsParts(ctx).plugin,
   (ctx) => createRefsPlugin(ctx),
   (ctx) => createSkills(ctx).plugin,
+  (ctx) => createChangesPlugin(ctx),
+  (ctx) => createReportsPlugin(ctx),
 ];
 
 export function createPulls(ctx: KanbanContext): KanbanPullsApi {

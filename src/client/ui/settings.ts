@@ -11,7 +11,7 @@ import { openPromptEditor, rewrittenPrompts } from './prompts';
 
 const VIEWS: [ViewMode, string, string][] = [
   ['first', '👀 First person', 'See through your own eyes. Click the office to look around with the mouse and click things to use them. Esc frees the mouse.'],
-  ['third', '🎥 Third person', 'Follow your character from behind. Drag to orbit the camera, scroll to zoom, and click things to use them.'],
+  ['third', '🎥 Third person', 'Follow your character from behind. The mouse looks around like in first person (click to start), scroll to zoom.'],
 ];
 
 const THEME_LABEL: Record<ThemePick, string> = { auto: '📅 By the calendar', halloween: '🎃 Halloween', christmas: '🎄 Christmas', off: 'Off' };

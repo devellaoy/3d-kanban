@@ -17,6 +17,7 @@ import {
   phaseBadge,
   pickerRows,
   repoIdFrom,
+  reviewTaskOf,
   sameRepoPick,
   showsRepoChips,
   skillUsage,
@@ -204,6 +205,17 @@ test('the PR picker lists this PR once, then its bundle, then the others, withou
   const rows = pickerRows(self, bundle, others);
   assert.deepEqual(rows.related.map((r) => `${r.repo}#${r.number}`), ['acme/api#9']);
   assert.deepEqual(rows.rest.map((r) => `${r.repo}#${r.number}`), ['acme/docs#1']);
+});
+
+test("the PR picker's review goes into a task only when every picked PR is that one task's bundle item", () => {
+  const item = (repo: string, number: number, taskId?: number) => ({ repo, number, url: 'u', title: `${repo}#${number}`, state: 'OPEN' as const, ...(taskId !== undefined ? { taskId } : {}) });
+  const bundle = [item('acme/web', 5, 3), item('ACME/api', 9, 3), item('acme/api', 11, 4), item('acme/docs', 1)];
+  assert.equal(reviewTaskOf(['acme/web#5', 'acme/api#9'], bundle), 3, 'all the same task (any way of writing the repository)');
+  assert.equal(reviewTaskOf(['acme/web#5'], bundle), 3);
+  assert.equal(reviewTaskOf(['acme/web#5', 'acme/api#11'], bundle), undefined, 'two tasks: a review task of its own');
+  assert.equal(reviewTaskOf(['acme/web#5', 'acme/docs#1'], bundle), undefined, 'a bundle item of no task');
+  assert.equal(reviewTaskOf(['acme/web#5', 'acme/other#2'], bundle), undefined, 'one of the other open PRs');
+  assert.equal(reviewTaskOf([], bundle), undefined);
 });
 
 test('repository ids for the settings editor are short, valid and unique', () => {

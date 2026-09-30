@@ -6,6 +6,7 @@ import { mkdirSync } from 'node:fs';
 import path from 'node:path';
 import type { FloorDef } from '../../building.js';
 import { workspaceNames } from '../../workers.js';
+import { Worktrees } from '../../worktrees.js';
 import type { KanbanContext } from '../registry.js';
 import { projectRepos, parseRepoFloorId } from '../projects.js';
 import { resolveKanbanPrompt, withContract, type KanbanContractId, type KanbanPromptId } from '../../../shared/kanban/prompts.js';
@@ -81,7 +82,12 @@ export function reposText(def: FloorDef, task: Pick<KanbanTask, 'repoIds' | 'wor
     return [...lines, ...folders].join('\n');
   }
   const git = repos.filter((r) => r.kind === 'git');
-  const base = (r: ProjectRepo) => (r.baseBranch ? `\`${r.baseBranch}\`` : 'the branch its checkout is on');
+  // What the hire really cuts it from (SpawnExtra.bases): the configured base branch, which it fails
+  // without, else the branch the checkout is on.
+  const base = (r: ProjectRepo) => {
+    const on = r.baseBranch ?? new Worktrees(r.dir).currentBranch();
+    return on ? `\`${on}\`` : 'the commit its checkout is on';
+  };
   if (git.length <= 1) return [`- \`.\` (the folder you start in): ${repos[0].name}${remoteOf(repos[0])}, on a fresh branch the office cut from ${base(repos[0])}`, ...folders].join('\n');
   const names = workspaceNames(git.map((r) => r.dir));
   return [...git.map((r, i) => `- \`./${names[i]}/\`: ${r.name}${remoteOf(r)}, on a fresh branch the office cut from ${base(r)}`), ...folders].join('\n');
@@ -135,17 +141,19 @@ export class Composer {
 
   private instructions(def: FloorDef, task: KanbanTask): string {
     const ps = this.ctx.settings.project(task.project);
+    const p = task.project;
     const parts: string[] = [];
-    if (ps.generalInstructions.trim()) parts.push(`General:\n${ps.generalInstructions.trim()}`);
-    if (ps.testingInstructions.trim()) parts.push(`Testing and verifying:\n${ps.testingInstructions.trim()}`);
-    for (const r of taskRepos(def, task)) if (r.instructions?.trim()) parts.push(`In ${r.name}:\n${r.instructions.trim()}`);
-    return parts.length ? `The project's instructions:\n\n${parts.join('\n\n')}` : '';
+    if (ps.generalInstructions.trim()) parts.push(this.text('kanban.instructions.general', p, { text: ps.generalInstructions.trim() }));
+    if (ps.testingInstructions.trim()) parts.push(this.text('kanban.instructions.testing', p, { text: ps.testingInstructions.trim() }));
+    for (const r of taskRepos(def, task)) if (r.instructions?.trim()) parts.push(this.text('kanban.instructions.repo', p, { repo: r.name, text: r.instructions.trim() }));
+    const filled = parts.filter((x) => x.trim());
+    return filled.length ? this.text('kanban.instructions', p, { parts: filled.join('\n\n') }) : '';
   }
 
   private attachments(task: KanbanTask): string {
     const files = this.ctx.repo.listAttachments(task.id);
     if (!files.length) return '';
-    return `Files attached to the task (read them):\n${files.map((a) => `- ${a.name}: ${path.join(this.ctx.filesDir, 'uploads', a.stored)}`).join('\n')}`;
+    return this.text('kanban.attachments', task.project, { files: files.map((a) => `- ${a.name}: ${path.join(this.ctx.filesDir, 'uploads', a.stored)}`).join('\n') });
   }
 
   /** Every placeholder the task prompts share. */
@@ -157,18 +165,18 @@ export class Composer {
       title: task.title,
       description: task.description.trim() || task.title,
       project: def.name,
-      ticket: task.ticket ? `Ticket: ${task.ticket}${task.ticketUrl ? ` (${task.ticketUrl})` : ''}` : '',
+      ticket: task.ticket ? this.text('kanban.ticket', task.project, { ticket: task.ticket, url: task.ticketUrl ? ` (${task.ticketUrl})` : '' }) : '',
       attachments: this.attachments(task),
       repos: reposText(def, task, floorDir),
       instructions: this.instructions(def, task),
       goal: task.goal?.trim() ? this.text('kanban.goal', task.project, { criteria: task.goal.trim() }) : '',
       taskRefs: this.text('kanban.taskRefs', task.project, {
         taskId: task.id,
-        refsFile: x.refsFile ? `The tasks this one refers to were fetched for you into ${x.refsFile}: read it before you rely on them.` : '',
+        refsFile: x.refsFile ? this.text('kanban.refsFile', task.project, { file: x.refsFile }) : '',
       }),
       skills: this.skillsLine(task, tool, x.phase),
       language: this.text('kanban.language', task.project),
-      plan: accepted ? `The accepted plan:\n\n${accepted.text.trim()}` : '',
+      plan: accepted ? this.text('kanban.acceptedPlan', task.project, { plan: accepted.text.trim() }) : '',
       branchInstructions: x.checkout
         ? this.checkout(task, x.checkout)
         : this.ctx.settings.project(task.project).branchInstructions.trim() || this.text('kanban.branch', task.project, { taskId: task.id, slug: slugify(task.title), ticketId: task.ticket ? slugify(task.ticket.replace(/^ghp?:/, ''), 30) : String(task.id) }),
@@ -225,7 +233,7 @@ export class Composer {
             ticket: v.ticket,
             ticketId: v.ticketId,
             repos: v.repos,
-            summary: task.summary?.trim() ? `What the task did:\n${task.summary.trim()}` : '',
+            summary: task.summary?.trim() ? this.text('kanban.prSummary', p, { summary: task.summary.trim() }) : '',
             skills: v.skills,
             language: v.language,
           }),
@@ -259,9 +267,9 @@ export class Composer {
       description: task.description.trim() || task.title,
       project: def.name,
       status: `${task.status.replace('_', ' ')}${task.phase ? `, phase ${task.phase}` : ''}`,
-      plan: accepted ? `The accepted plan:\n\n${accepted.text.trim()}` : '',
-      summary: task.summary?.trim() ? `The latest summary:\n${task.summary.trim()}` : '',
-      recent: recent.length ? `The latest comments:\n${recent.join('\n')}` : '',
+      plan: accepted ? this.text('kanban.acceptedPlan', task.project, { plan: accepted.text.trim() }) : '',
+      summary: task.summary?.trim() ? this.text('kanban.handoff.summary', task.project, { summary: task.summary.trim() }) : '',
+      recent: recent.length ? this.text('kanban.handoff.comments', task.project, { comments: recent.join('\n') }) : '',
       repos: reposText(def, task, floorDir),
       language: this.text('kanban.language', task.project),
     });

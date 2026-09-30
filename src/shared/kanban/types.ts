@@ -53,6 +53,13 @@ export type WaitingReason =
   | 'interrupted'; // its worker went away mid-run (office restart, sent home)
 export const WAITING_REASONS: readonly WaitingReason[] = ['plan_questions', 'plan_approval', 'agent_asking', 'stopped', 'failed', 'usage_limit', 'interrupted'];
 
+/**
+ * What an agent asking in its terminal (agent_asking) waits on, as its hooks said: a question
+ * (AskUserQuestion, Codex's request_user_input), which an answer from the kanban is typed into, or a
+ * permission prompt, answered only in the terminal. Unknown (none given): answered in the terminal too.
+ */
+export type AskingKind = 'question' | 'permission';
+
 /** The agent CLIs the kanban process drives. Other providers stay ordinary office workers. */
 export type KanbanTool = 'claude' | 'codex';
 export const KANBAN_TOOLS: readonly KanbanTool[] = ['claude', 'codex'];
@@ -141,6 +148,8 @@ export interface KanbanTask {
   waitingReason?: WaitingReason;
   /** A line for the waiting column: the error, the agent's question... */
   waitingText?: string;
+  /** agent_asking only: what the agent waits on, while its run is followed (kept in memory, never stored). */
+  askingKind?: AskingKind;
   /** The review round it's in or last finished (0: none yet). */
   reviewRound: number;
   /** The implementer's tool, model and effort. */
@@ -181,6 +190,23 @@ export interface KanbanTask {
   doneAt?: number;
   archivedAt?: number;
   legacy?: LegacyRef;
+  /** The desk its implementer is hired at: the one it was started at, else where it last sat. Re-hires prefer it when it's free. */
+  deskId?: string;
+  /** The account that made it, whose sign-ins its drained, retried and swept hires run on (server-side; not sent to browsers). */
+  createdByAccount?: string;
+  /** The run waiting for a desk or for room under the office's worker limit (runState `queued`). */
+  queuedRun?: QueuedRun;
+}
+
+/** A run the engine couldn't hire a worker for yet (KanbanTask.queuedRun): started as it is once there's room. */
+export interface QueuedRun {
+  phase: RunPhase;
+  role: KanbanRole;
+  /** The engine's prompt kind (engine/machine.ts PromptKind). */
+  prompt: string;
+  round?: number;
+  pending?: boolean;
+  text?: string;
 }
 
 /** A task as the board shows it: no description body, just what the card's badges need. */
@@ -205,6 +231,7 @@ export interface KanbanTaskCard {
   reviewTool?: KanbanTool;
   waitingReason?: WaitingReason;
   waitingText?: string;
+  askingKind?: AskingKind;
   retryAt?: number;
   prs: { repoId: string; repo?: string; number: number; url: string; state: KanbanPrLink['state'] }[];
   tags: string[];
@@ -528,3 +555,124 @@ export interface KanbanPrBundleItem extends PrRef {
 
 /** The most pull requests one review takes. */
 export const PR_REVIEW_MAX = 20;
+
+// --- A task's changes and reports, over HTTP (integrations/changes, integrations/reports) ---------
+
+/** One file of a change, as the Changes tab lists it. */
+export interface KanbanChangedFile {
+  path: string;
+  /** Where a renamed or copied file came from. */
+  oldPath?: string;
+  status: 'added' | 'modified' | 'deleted' | 'renamed' | 'copied' | 'typechange' | 'unmerged' | 'untracked';
+  additions: number;
+  deletions: number;
+  binary?: boolean;
+}
+
+/** A diff: its files and its unified text, cut at a cap (`truncated`). */
+export interface KanbanDiff {
+  files: KanbanChangedFile[];
+  diff: string;
+  truncated: boolean;
+}
+
+/** One commit of a task's branch (base..branch). */
+export interface KanbanCommit {
+  hash: string;
+  subject: string;
+  author: string;
+  /** ISO 8601. */
+  date: string;
+}
+
+/**
+ * A repository of a task as the Changes tab reads it: from the task's workspace (its worktree) while
+ * there is one, else from the branch in the project's own checkout.
+ */
+export interface KanbanRepoChangesInfo {
+  /** ProjectRepo.id. */
+  id: string;
+  name: string;
+  source: 'worktree' | 'checkout';
+  /** What the change is measured against (origin/main, main, or the commit the worktree was cut from). */
+  base?: string;
+  baseCommit?: string;
+  branch?: string;
+  headCommit?: string;
+  /** Why there's nothing to show, when there isn't. */
+  error?: string;
+}
+
+/** GET /api/kanban/tasks/<id>/changes (no repo): the task's repositories. */
+export interface KanbanChangesList {
+  taskId: number;
+  repos: KanbanRepoChangesInfo[];
+}
+
+/** GET /api/kanban/tasks/<id>/changes?repo=<id>: one repository's whole change, and its uncommitted work. */
+export interface KanbanRepoChanges extends KanbanRepoChangesInfo, KanbanDiff {
+  taskId: number;
+  /** Uncommitted edits and new files in the worktree; null without a workspace. */
+  workingTree: KanbanDiff | null;
+}
+
+/** GET /api/kanban/tasks/<id>/commits?repo=<id>. */
+export interface KanbanCommitList extends KanbanRepoChangesInfo {
+  taskId: number;
+  commits: KanbanCommit[];
+  /** How many files the worktree has uncommitted (the "Uncommitted" pseudo entry); null without a workspace. */
+  uncommitted: number | null;
+}
+
+/** GET /api/kanban/tasks/<id>/commit?repo=<id>&hash=<sha>. */
+export interface KanbanCommitChanges extends KanbanDiff {
+  taskId: number;
+  repo: string;
+  commit: KanbanCommit;
+}
+
+/** A report file an investigation wrote (GET /api/kanban/tasks/<id>/reports). */
+export interface KanbanReportFile {
+  /** Its path under the task's report folder, with `/` between folders. */
+  name: string;
+  size: number;
+  mtime: number;
+}
+
+// --- Task workers in the 3D office (docs/kanban-coupling.md) ---------------------------------------
+
+/**
+ * WorkerInfo.kanban: the task a worker works on, and its card as it is now. The engine keeps it
+ * current (WorkerManager.setKanbanSummary), so every 3D and /lite client has it with the ordinary
+ * worker.update. Only taskId and role are there from the hire on; the rest follows the card.
+ */
+export interface KanbanWorkerSummary {
+  taskId: number;
+  role: KanbanRole;
+  title?: string;
+  status?: TaskStatus;
+  phase?: RunPhase;
+  /** The engine's state of it: anything but idle means a run is under way (or queued, or stopping). */
+  runState?: RunState;
+  /** The review round in progress or last finished, and how many the task has. */
+  round?: number;
+  rounds?: number;
+  waitingReason?: WaitingReason;
+  retryAt?: number;
+}
+
+/** Why a worker leaves its desk: which of the office's paths sent it home. */
+export type DepartureReason = 'sent-home' | 'queue' | 'meeting' | 'merged' | 'released' | 'engine';
+export const DEPARTURE_REASONS: readonly DepartureReason[] = ['sent-home', 'queue', 'meeting', 'merged', 'released', 'engine'];
+
+/**
+ * What a worker is sent home with (Floor.sendHome, WorkerManager.kill): kept on the worker before it
+ * goes, and read by the engine when a task worker leaves (the rules in docs/kanban-coupling.md).
+ * `by` is who sent it (a person's name, or the part of the office that did); `done` asks for its task
+ * to be done.
+ */
+export interface DepartureIntent {
+  by: string;
+  done?: boolean;
+  reason: DepartureReason;
+}

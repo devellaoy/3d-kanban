@@ -117,6 +117,11 @@ export class Webhook {
     this.latest.delete(id);
   }
 
+  /** 3d-kanban: a kanban task waiting on a person ("🗂️ #14 … needs plan approval in …"), posted like a worker's alert. */
+  announce(title: string, detail?: string) {
+    if (this.saved) void this.post({ kind: 'needs_input', title, ...(detail ? { detail: oneLine(detail, 300) } : {}) });
+  }
+
   /** Posts a test message. Resolves to an error message if it didn't get through. */
   test(by: string): Promise<string | undefined> {
     if (!this.saved) return Promise.resolve('No webhook is set');

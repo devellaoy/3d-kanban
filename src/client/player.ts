@@ -28,6 +28,60 @@ const DRAG_LOOK_SPEED = 0.005;
 const SETTLE_REST = 100;
 const SETTLE_MAX = 150;
 const CENTER = new THREE.Vector2(0, 0);
+// 3d-kanban: third person looks around like first person (see docs/controls.md): the mouse turns
+// the camera, which sits behind you and over your right shoulder, so the crosshair isn't on you.
+/** How far right of your head the third-person camera looks past, in meters. */
+export const SHOULDER = 0.75;
+/** How far the third-person camera tips: a little from below you, up to looking well down on you. */
+export const THIRD_PITCH_MIN = -0.3;
+export const THIRD_PITCH_MAX = 1.3;
+/** Height of the point the third-person camera looks at, above your feet. */
+const THIRD_TARGET = 1.3;
+
+/** 3d-kanban: where the third-person camera sits from the point it looks at, for its heading, tilt and distance. */
+export function orbitOffset(yaw: number, pitch: number, dist: number, out = new THREE.Vector3()): THREE.Vector3 {
+  return out.set(Math.sin(yaw) * Math.cos(pitch), Math.sin(pitch), Math.cos(yaw) * Math.cos(pitch)).multiplyScalar(dist);
+}
+
+/** 3d-kanban: `side` meters to the right of a camera with heading `yaw` (it looks along -sin, -cos). */
+export function shoulderOffset(yaw: number, side = SHOULDER, out = new THREE.Vector3()): THREE.Vector3 {
+  return out.set(Math.cos(yaw) * side, 0, -Math.sin(yaw) * side);
+}
+
+/**
+ * 3d-kanban: how far along a ray (unit `dir` from `origin`) `at` is: from the third-person camera,
+ * what the crosshair's ray meets before it gets to you is behind you (or you), and doesn't count.
+ */
+export function alongRay(origin: THREE.Vector3, dir: THREE.Vector3, at: THREE.Vector3): number {
+  return Math.max(0, (at.x - origin.x) * dir.x + (at.y - origin.y) * dir.y + (at.z - origin.z) * dir.z);
+}
+
+/** 3d-kanban: whether something the crosshair's ray hit at `point` is within `reach` of your eyes (not the camera). */
+export function withinReach(point: THREE.Vector3, eye: THREE.Vector3, reach: number): boolean {
+  return point.distanceTo(eye) <= reach;
+}
+
+/**
+ * 3d-kanban: whether your eyes see `point`, not just the camera over your shoulder: nothing among
+ * `objects` that `blocks` (a wall, say, not the thing itself) is on the way to it from `eye`.
+ * `camera` is the one the scene is drawn with: a sprite (a name tag, a sign) faces it, and
+ * three.js throws on a ray without one that meets a sprite, which stopped every frame after it.
+ */
+export function eyeSees(eye: THREE.Vector3, point: THREE.Vector3, objects: THREE.Object3D[], blocks: (hit: THREE.Intersection) => boolean, camera: THREE.Camera, rc = new THREE.Raycaster()): boolean {
+  const dist = eye.distanceTo(point);
+  // Short of the point itself, so the surface that was hit doesn't count as in the way of itself.
+  if (dist < 0.03) return true;
+  rc.set(eye, point.clone().sub(eye).divideScalar(dist));
+  rc.camera = camera;
+  rc.near = 0;
+  rc.far = dist - 0.02;
+  return !rc.intersectObjects(objects, true).some(blocks);
+}
+
+/** 3d-kanban: a tap or click at (clientX, clientY) on `rect`, in normalized device coordinates. */
+export function tapNdc(clientX: number, clientY: number, rect: { left: number; top: number; width: number; height: number }, out = new THREE.Vector2()): THREE.Vector2 {
+  return out.set(((clientX - rect.left) / rect.width) * 2 - 1, -((clientY - rect.top) / rect.height) * 2 + 1);
+}
 
 export class PlayerController {
   pos = new THREE.Vector3();
@@ -85,7 +139,8 @@ export class PlayerController {
   riding = false;
   /**
    * A click (not a drag) on the scene, in normalized device coordinates.
-   * In first person it is always the crosshair, (0, 0).
+   * It is the crosshair, (0, 0), in third person too, but for a tap or click with the mouse free
+   * there, which is where it landed (3d-kanban).
    */
   onClick: ((ndc: THREE.Vector2) => void) | null = null;
   private keys = new Set<string>();
@@ -156,14 +211,14 @@ export class PlayerController {
 
     dom.addEventListener('pointerdown', (e) => {
       if (!this.enabled) return;
-      if (this.view === 'first' && e.pointerType === 'mouse' && !this.lockFailed) {
+      if (e.pointerType === 'mouse' && !this.lockFailed) { // 3d-kanban: third person too
         if (this.locked) {
           if (e.button === 0) this.onClick?.(CENTER);
           return;
         }
         this.lock();
       }
-      // Drag to orbit (third person) or to look around (first person without pointer lock).
+      // Drag to look around without pointer lock (3d-kanban: in third person too, no more orbiting).
       this.drag = { x: e.clientX, y: e.clientY, moved: 0 };
     });
     window.addEventListener('pointerup', (e) => {
@@ -171,11 +226,8 @@ export class PlayerController {
       this.drag = null;
       // A click that captured the mouse is not also a click on the world.
       if (!d || d.moved > 5 || !this.enabled || this.locked || this.lockPending || e.target !== dom) return;
-      if (this.view === 'first') this.onClick?.(CENTER);
-      else {
-        const r = dom.getBoundingClientRect();
-        this.onClick?.(new THREE.Vector2(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1));
-      }
+      // 3d-kanban: in third person, with the mouse free (a touch screen), where you tapped, as upstream.
+      this.onClick?.(this.view === 'first' ? CENTER : tapNdc(e.clientX, e.clientY, dom.getBoundingClientRect()));
     });
     window.addEventListener('pointermove', (e) => {
       const now = performance.now();
@@ -201,11 +253,7 @@ export class PlayerController {
       this.drag.x = e.clientX;
       this.drag.y = e.clientY;
       this.drag.moved += Math.abs(dx) + Math.abs(dy);
-      if (this.view === 'first') this.look(dx * DRAG_LOOK_SPEED, dy * DRAG_LOOK_SPEED);
-      else {
-        this.camYaw -= dx * 0.006;
-        this.camPitch = THREE.MathUtils.clamp(this.camPitch + dy * 0.004, 0.05, 1.3);
-      }
+      this.look(dx * DRAG_LOOK_SPEED, dy * DRAG_LOOK_SPEED); // 3d-kanban: no orbit, third person looks around too
     });
     document.addEventListener('pointerlockchange', () => {
       this.lockPending = false;
@@ -248,7 +296,7 @@ export class PlayerController {
 
   /** Whether clicking the scene will capture the mouse for looking around. */
   get canLock(): boolean {
-    return this.view === 'first' && !this.lockFailed && typeof this.dom.requestPointerLock === 'function';
+    return !this.lockFailed && typeof this.dom.requestPointerLock === 'function'; // 3d-kanban: third person too
   }
 
   setView(view: ViewMode) {
@@ -259,7 +307,7 @@ export class PlayerController {
     } else {
       // Start the orbit camera behind where you were looking.
       this.camYaw = this.facing - Math.PI;
-      this.unlock();
+      // 3d-kanban: the mouse stays captured, looking around in third person too.
     }
     this.view = view;
     this.updateCamera(true);
@@ -340,7 +388,9 @@ export class PlayerController {
 
   private look(dx: number, dy: number) {
     this.camYaw -= dx;
-    this.lookPitch = THREE.MathUtils.clamp(this.lookPitch - dy, -1.45, 1.45);
+    // 3d-kanban: in third person the camera tips over you instead (down the mouse, up the camera goes).
+    if (this.view === 'third') this.camPitch = THREE.MathUtils.clamp(this.camPitch + dy, THIRD_PITCH_MIN, THIRD_PITCH_MAX);
+    else this.lookPitch = THREE.MathUtils.clamp(this.lookPitch - dy, -1.45, 1.45);
   }
 
   /** Sits you down in `place`, facing the way it does. In first person you look out from it; in third the camera stays put. */
@@ -440,6 +490,8 @@ export class PlayerController {
     }
     if (this.path && this.enabled) this.followPath(dt);
     if (this.view === 'first') this.facing = Math.atan2(Math.sin(this.camYaw + Math.PI), Math.cos(this.camYaw + Math.PI));
+    // 3d-kanban: third person faces where the camera looks too, standing or walking (not on a walk of its own, which turns you along it).
+    else if (!this.path) this.facing += Math.atan2(Math.sin(this.camYaw + Math.PI - this.facing), Math.cos(this.camYaw + Math.PI - this.facing)) * Math.min(1, dt * 14);
     if (steering) {
       const len = Math.hypot(ix, iz);
       ix /= len;
@@ -455,12 +507,7 @@ export class PlayerController {
       const speed = (k.has('ShiftLeft') || k.has('ShiftRight') ? RUN : WALK) * this.speedBoost;
       this.tryMove(this.pos.x + dx * speed * dt, this.pos.z);
       this.tryMove(this.pos.x, this.pos.z + dz * speed * dt);
-      if (this.view === 'third') {
-        const want = Math.atan2(dx, dz);
-        let diff = want - this.facing;
-        diff = Math.atan2(Math.sin(diff), Math.cos(diff));
-        this.facing += diff * Math.min(1, dt * 14);
-      }
+      // 3d-kanban: third person turns to the camera above, walking or not (was: to the way you walk).
     }
 
     // Never below the street: past the edge of the grass there's nothing else to stand on.
@@ -540,12 +587,9 @@ export class PlayerController {
       this.shake();
       return;
     }
-    const target = new THREE.Vector3(this.pos.x, this.pos.y + this.stepOffset + this.lift + 1.3, this.pos.z);
-    const off = new THREE.Vector3(
-      Math.sin(this.camYaw) * Math.cos(this.camPitch),
-      Math.sin(this.camPitch),
-      Math.cos(this.camYaw) * Math.cos(this.camPitch),
-    ).multiplyScalar(this.camDist);
+    const target = new THREE.Vector3(this.pos.x, this.pos.y + this.stepOffset + this.lift + THIRD_TARGET, this.pos.z);
+    target.add(shoulderOffset(this.camYaw)); // 3d-kanban: over your shoulder
+    const off = orbitOffset(this.camYaw, this.camPitch, this.camDist); // 3d-kanban
     const cam = target.clone().add(off);
     // Keep the camera on your side of the outside walls, so they never block the view: inside the
     // room while you're in the office, out of the building while you're outside or on the balcony.

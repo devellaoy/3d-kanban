@@ -34,6 +34,8 @@ import { DSH_PROFILE_DEFAULT, DshSession, dshArgs, terminalSafe, writeDshPatch }
 import { DropStore } from './drops.js';
 import { screenSnapshot } from './screen.js';
 import type { Capacity } from './machine.js';
+// 3d-kanban: what a worker is sent home with (see kill).
+import type { DepartureIntent } from '../shared/kanban/types.js';
 
 type HeadlessTerminal = InstanceType<typeof headless.Terminal>;
 type Worktree = NonNullable<WorkerInfo['worktree']>;
@@ -127,13 +129,26 @@ export interface SpawnExtra {
   kanban?: WorkerInfo['kanban'];
   env?: Record<string, string>;
   settingsFile?: 'kanban';
+  /** The branch to cut each fresh worktree from, by its checkout's folder (path.resolve'd); a checkout not named here starts from the branch it is on. */
+  bases?: Record<string, string>;
+  /**
+   * A task's reviewer: its implementer's worker id. While that worker is here the hire isn't held to
+   * the worker limit, which the implementer already counts toward for the task (it is still counted
+   * once it's here, so other hires see it).
+   */
+  countsWith?: string;
 }
 
-/** 3d-kanban: what an observer (addObserver) hears. A hook is heard before the status change it causes. */
+/**
+ * 3d-kanban: what an observer (addObserver) hears. A hook is heard before the status change it causes.
+ * `removed` comes with the intent it was sent home with (`departure`); `cleaned` follows once kill may
+ * have deleted its worktree, for whoever keeps track of that folder to look.
+ */
 export interface WorkerObservation {
   workerId: string;
   info: WorkerInfo;
-  event: 'status' | 'hook' | 'removed';
+  event: 'status' | 'hook' | 'removed' | 'cleaned';
+  departure?: DepartureIntent;
   status?: WorkerStatus;
   hookEvent?: string;
   tool?: string;
@@ -226,6 +241,8 @@ interface Worker {
   rebuilding?: boolean;
   /** 3d-kanban: how the kanban engine launches it (see SpawnExtra); `reused`: it sits in someone else's worktree. */
   extra?: { launchArgs?: string[]; env?: Record<string, string>; settingsFile?: 'kanban'; reused?: boolean };
+  /** 3d-kanban: what it was sent home with (see kill), for the observers. */
+  departure?: DepartureIntent;
 }
 
 export interface WorkerEvents {
@@ -245,6 +262,8 @@ export class WorkerManager {
   private kanbanSettingsPath: string;
   /** 3d-kanban: who hears about status changes and hooks (see addObserver). */
   private observers = new Set<WorkerObserver>();
+  /** 3d-kanban: who may keep a worker's worktree as it goes home (see addKeepGuard). */
+  private keepGuards = new Set<(info: WorkerInfo) => boolean>();
   private trees: Worktrees;
   private agentPath: string | null = null;
   readonly defaultProvider: AgentProvider;
@@ -408,10 +427,11 @@ export class WorkerManager {
 
   /**
    * Fetches the branch the project is on, so a worktree made next starts from what's on GitHub now
-   * (see Worktrees.fetch). Undefined when there's nothing to wait for.
+   * (see Worktrees.fetch). Undefined when there's nothing to wait for. 3d-kanban: `branch`, a
+   * configured base branch, is fetched instead.
    */
-  fetchBase(): Promise<void> | undefined {
-    return this.trees.fetch();
+  fetchBase(branch?: string): Promise<void> | undefined {
+    return this.trees.fetch(branch);
   }
 
   deskOccupied(deskId: string): boolean {
@@ -449,7 +469,8 @@ export class WorkerManager {
       if (paused) return paused;
     }
     if (owner && selectedProvider === 'claude' && this.runAs && !this.runAs.claudeReady(owner)) return this.runAs.why('claude');
-    const full = this.capacity?.full();
+    // 3d-kanban: a task's reviewer never waits for the place its own implementer holds (SpawnExtra.countsWith).
+    const full = extra?.countsWith && this.workers.has(extra.countsWith) ? undefined : this.capacity?.full();
     if (full) return full;
     const used = new Set([...this.workers.values()].map((w) => w.info.name.replace(/ 🐚$/, '')));
     const agent = seat.station && STATION_AGENT[seat.station];
@@ -459,7 +480,8 @@ export class WorkerManager {
     let others: WorkerRepo[] | undefined = extra?.reuse?.repos;
     if (worktree && !extra?.reuse) {
       const slug = `${name.toLowerCase()}-${id.slice(0, 4)}`;
-      const made = repos.length ? this.makeWorkspace(slug, repos) : this.trees.create(slug);
+      // 3d-kanban: a kanban task's configured base branches (see SpawnExtra.bases).
+      const made = repos.length ? this.makeWorkspace(slug, repos, extra?.bases) : this.trees.create(slug, undefined, undefined, extra?.bases?.[path.resolve(this.dir)]);
       if (typeof made === 'string') return made;
       if ('repos' in made) {
         ({ worktree: wt, repos: others } = made);
@@ -513,7 +535,7 @@ export class WorkerManager {
    * (the 'worker.repos' prompt, as CLAUDE.md and AGENTS.md). All or nothing: when one repository
    * can't have its worktree, the ones already made are taken out again.
    */
-  private makeWorkspace(slug: string, repos: RepoSource[]): { worktree: NonNullable<WorkerInfo['worktree']>; repos: WorkerRepo[]; notes: string[] } | string {
+  private makeWorkspace(slug: string, repos: RepoSource[], bases?: SpawnExtra['bases']): { worktree: NonNullable<WorkerInfo['worktree']>; repos: WorkerRepo[]; notes: string[] } | string {
     // A branch can only be checked out once per repository, and two floors can be checkouts of the same one.
     const seen = new Map<string, string>();
     const own = this.trees.commonDir();
@@ -536,7 +558,8 @@ export class WorkerManager {
       })();
       return why;
     };
-    const first = this.trees.create(slug, names[0]);
+    // 3d-kanban: `bases` (see SpawnExtra.bases).
+    const first = this.trees.create(slug, names[0], undefined, bases?.[path.resolve(this.dir)]);
     if (typeof first === 'string') return fail(first);
     const { note, ...primary } = first;
     const notes = note ? [`${names[0]} ${note}`] : [];
@@ -544,7 +567,7 @@ export class WorkerManager {
     const others: WorkerRepo[] = [];
     for (const [i, r] of repos.entries()) {
       const trees = new Worktrees(r.dir);
-      const wt = trees.create(slug, names[i + 1], this.dir);
+      const wt = trees.create(slug, names[i + 1], this.dir, bases?.[path.resolve(r.dir)]);
       if (typeof wt === 'string') return fail(`${r.name}: ${wt}`);
       if (wt.note) notes.push(`${names[i + 1]} ${wt.note}`);
       made.push({ trees, ref: { ...wt, path: path.relative(r.dir, path.join(this.dir, wt.path)) } });
@@ -600,13 +623,25 @@ export class WorkerManager {
   /**
    * 3d-kanban: stops a running agent and starts it again on the same session (--resume), with new
    * launch arguments (a phase needing other permission flags) and `prompt` as its next message.
-   * Resolves to what went wrong, if anything.
+   * `model` / `effort`, when the keys are there, replace the worker's own (undefined clears them), as
+   * spawn checks them. Resolves to what went wrong, if anything.
    */
-  async relaunch(id: string, opts: { launchArgs?: string[]; prompt?: string; env?: Record<string, string> } = {}): Promise<string | undefined> {
+  async relaunch(id: string, opts: { launchArgs?: string[]; prompt?: string; env?: Record<string, string>; model?: string; effort?: AgentEffort } = {}): Promise<string | undefined> {
     const w = this.workers.get(id);
     if (!w) return 'No such worker';
     if (w.info.kind !== 'agent' || w.dsh) return `${w.info.name} can't be relaunched`;
     if (!w.info.sessionId) return `${w.info.name} has no session to carry on yet`;
+    const setModel = 'model' in opts;
+    const setEffort = 'effort' in opts;
+    const modelError = setModel ? validateWorkerModel('agent', w.info.provider, opts.model) : undefined;
+    if (modelError) return modelError;
+    const effortError = setEffort ? validateWorkerEffort('agent', w.info.provider, opts.effort) : undefined;
+    if (effortError) return effortError;
+    if ((setModel && w.info.model !== opts.model) || (setEffort && w.info.effort !== opts.effort)) {
+      if (setModel) w.info.model = opts.model;
+      if (setEffort) w.info.effort = opts.effort;
+      this.emitUpdate(w);
+    }
     if (opts.launchArgs) (w.extra ??= {}).launchArgs = [...opts.launchArgs];
     // 3d-kanban: a phase may bring other variables (its skills, say), like its other flags.
     if (opts.env) (w.extra ??= {}).env = { ...opts.env };
@@ -636,6 +671,23 @@ export class WorkerManager {
   addObserver(fn: WorkerObserver): () => void {
     this.observers.add(fn);
     return () => this.observers.delete(fn);
+  }
+
+  /**
+   * 3d-kanban: `guard` says when a worker's worktree must stay as it goes home, whatever cleanup was
+   * asked for (the kanban keeps a task's worktree while it's still needed there); returns how to stop.
+   */
+  addKeepGuard(guard: (info: WorkerInfo) => boolean): () => void {
+    this.keepGuards.add(guard);
+    return () => this.keepGuards.delete(guard);
+  }
+
+  /** 3d-kanban: a task worker's card as it is now (WorkerInfo.kanban), for every browser with the worker's update. */
+  setKanbanSummary(id: string, summary: NonNullable<WorkerInfo['kanban']>) {
+    const w = this.workers.get(id);
+    if (!w?.info.kanban || JSON.stringify(w.info.kanban) === JSON.stringify(summary)) return;
+    w.info.kanban = summary;
+    this.emitUpdate(w);
   }
 
   /** 3d-kanban: the phase flags a worker launches with now (see SpawnExtra.launchArgs), so the engine knows when a phase needs a relaunch. */
@@ -703,11 +755,14 @@ export class WorkerManager {
    * pull request's head commit) is work delivered. Resolves once that's done, with a line for the team
    * about the worktree.
    */
-  async kill(id: string, cleanup?: WorktreeCleanup, landed?: string, landedRepos?: Record<string, string | undefined>): Promise<{ note?: string; error?: string }> {
+  async kill(id: string, cleanup?: WorktreeCleanup, landed?: string, landedRepos?: Record<string, string | undefined>, intent?: DepartureIntent): Promise<{ note?: string; error?: string }> {
     const w = this.workers.get(id);
     if (!w) return {};
-    // 3d-kanban: a worker seated in a task's worktree (SpawnExtra.reuse) never takes it away.
-    if (w.extra?.reused) cleanup = 'keep';
+    // 3d-kanban: why it goes, for the observers; and a task's worktree stays while the kanban still
+    // needs it there (see addKeepGuard). Without the kanban, a worker seated in someone else's
+    // worktree (SpawnExtra.reuse) never takes it away.
+    if (intent) w.departure = intent;
+    if (this.keepGuards.size ? [...this.keepGuards].some((g) => g(w.info)) : w.extra?.reused) cleanup = 'keep';
     this.workers.delete(id);
     this.namer.forget(id);
     clearTimeout(w.scanTimer);
@@ -726,13 +781,14 @@ export class WorkerManager {
     this.drops.remove(id);
     this.events.remove(id, w.info);
     this.persist();
-    this.observe(w, { event: 'removed' });
+    this.observe(w, { event: 'removed', departure: w.departure });
     // A meeting's worktree is everyone at the table's: the meeting tidies it away once they've all gone.
     if (!w.info.worktree || w.info.meeting) return {};
     // On the branch its work is on, should it have switched since it last came to rest.
     const wt = await this.current(w.info.worktree);
     const name = w.info.name;
-    if (w.info.repos?.length) return this.clearRepos(w.info, cleanup, landed, landedRepos);
+    // 3d-kanban: observers hear once its worktrees have been dealt with (see WorkerObservation).
+    if (w.info.repos?.length) return this.clearRepos(w.info, cleanup, landed, landedRepos).finally(() => this.observe(w, { event: 'cleaned' }));
     if (!cleanup) {
       const work = describeWork(await this.trees.inspect(wt, landed));
       if (work) return { note: `Kept ${name}'s worktree and branch ${wt.branch} — it has ${work}` };
@@ -759,6 +815,8 @@ export class WorkerManager {
     }
     const error = await this.trees.remove(gone, cleanup);
     if (error) return { error: `Couldn't delete ${name}'s worktree: ${error}` };
+    // 3d-kanban: observers hear that its worktree went (see WorkerObservation).
+    this.observe(w, { event: 'cleaned' });
     if (cleanup === 'worktree') return { note: `Deleted ${name}'s worktree${kept || ` and kept branch ${wt.branch}`}` };
     return { note: `Deleted ${name}'s worktree and branch ${gone.branch}${kept && `,${kept}`}` };
   }

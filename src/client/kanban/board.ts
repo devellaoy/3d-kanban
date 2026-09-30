@@ -7,11 +7,19 @@ import { h, toast } from '../ui/dom';
 import { BOARD_COLUMNS, type KanbanTaskCard, type TaskStatus } from '../../shared/kanban/types.js';
 import { columnsOf, dropZones, filterActive, type BoardFilter } from './model';
 import { taskCard } from './card';
-import { columnName, moveReason, t } from './i18n';
+import { columnName } from './labels';
 import { kstore } from './store';
 import { dialog, showDialog } from './ui';
 
 const COLUMN_ICON: Record<TaskStatus, string> = { todo: '📥', in_progress: '🚧', waiting: '🙋', review: '👀', done: '✅', archived: '🗄️' };
+const EMPTY_TEXT: Record<TaskStatus, string> = {
+  todo: 'Nothing to do. ＋ New task adds one.',
+  in_progress: 'Nothing running',
+  waiting: 'Nobody is waiting on you',
+  review: 'Nothing to review',
+  done: 'Nothing done yet',
+  archived: 'The archive is empty',
+};
 
 export interface BoardOptions {
   root: HTMLElement;
@@ -61,7 +69,7 @@ export class Board {
           if (this.o.selected() === c.id) el.classList.add('selected');
           ul.append(el);
         }
-        if (!cards.length) ul.append(h('p.kb-empty', {}, !kstore.loaded ? t('loading') : filterActive(f) && all[status].length ? t('noneMatch') : t(`empty.${status}`)));
+        if (!cards.length) ul.append(h('p.kb-empty', {}, !kstore.loaded ? 'Loading…' : filterActive(f) && all[status].length ? 'Nothing matches the filters' : EMPTY_TEXT[status]));
         const hidden = all[status].length - cards.length;
         const section = h(
           'section.kb-col',
@@ -70,8 +78,8 @@ export class Board {
             'h3.kb-col-head',
             {},
             h('span', {}, `${COLUMN_ICON[status]} ${columnName(status)}`),
-            h('span.kb-count', { title: hidden ? t('hiddenByFilter', { n: hidden }) : '' }, hidden ? `${cards.length}/${all[status].length}` : String(cards.length)),
-            status === 'archived' ? h('button.btn.small', { type: 'button', onclick: () => this.o.toggleArchive(), 'aria-label': t('hideArchive') }, '✕') : null,
+            h('span.kb-count', { title: hidden ? `${hidden} hidden by the filters` : '' }, hidden ? `${cards.length}/${all[status].length}` : String(cards.length)),
+            status === 'archived' ? h('button.btn.small', { type: 'button', onclick: () => this.o.toggleArchive(), 'aria-label': 'Hide the archive' }, '✕') : null,
           ),
           h('div.kb-drop-why', { 'aria-hidden': 'true' }),
           ul,
@@ -119,7 +127,7 @@ export class Board {
       s.classList.toggle('drop-no', !z?.ok && status !== card.status);
       s.classList.toggle('drop-home', status === card.status);
       const why = s.querySelector('.kb-drop-why');
-      if (why) why.textContent = z?.ok ? (z.action === 'start' ? `▶️ ${t('moveStarts')}` : t('dropHere')) : z?.reason ? moveReason(z.reason) : '';
+      if (why) why.textContent = z?.ok ? (z.action === 'start' ? '▶️ Starts the task' : 'Drop here') : z?.reason ?? '';
     }
   }
 
@@ -147,7 +155,7 @@ export class Board {
       if (!card) return;
       const z = dropZones(card).find((x) => x.to === status);
       if (!z?.ok) {
-        if (z?.reason) toast(moveReason(z.reason), 'warn');
+        if (z?.reason) toast(z.reason, 'warn');
         return;
       }
       void this.o.move(card.id, status);
@@ -160,14 +168,14 @@ export class Board {
     if (!card) return;
     const zones = dropZones(card);
     const body = h('div.body.kb-move-menu', { role: 'menu' });
-    const d = dialog('kb-move-dialog', t('moveTaskN', { id }), body);
+    const d = dialog('kb-move-dialog', `Move #${id}`, body);
     const modal = showDialog(d);
     for (const z of zones) {
       const b = h(
         'button.btn.kb-move-to',
-        { type: 'button', role: 'menuitem', disabled: !z.ok, title: z.ok ? '' : moveReason(z.reason ?? '') },
+        { type: 'button', role: 'menuitem', disabled: !z.ok, title: z.ok ? '' : z.reason ?? '' },
         h('span', {}, `${COLUMN_ICON[z.to]} ${columnName(z.to)}`),
-        z.ok ? (z.action === 'start' ? h('small.kb-starts', {}, `▶️ ${t('moveStarts')}`) : z.action === 'reset' ? h('small', {}, t('moveResets')) : null) : h('small', {}, moveReason(z.reason ?? '')),
+        z.ok ? (z.action === 'start' ? h('small.kb-starts', {}, '▶️ Starts the task') : z.action === 'reset' ? h('small', {}, 'Starts over: the automation’s state is cleared') : null) : h('small', {}, z.reason ?? ''),
       ) as HTMLButtonElement;
       b.addEventListener('click', () => {
         modal.close();

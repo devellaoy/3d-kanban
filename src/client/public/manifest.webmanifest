@@ -1,0 +1,22 @@
+{
+  "id": "/kanban",
+  "name": "3D Kanban",
+  "short_name": "3D Kanban",
+  "description": "A 3D office where agents plan, build and review your tasks on a kanban board.",
+  "start_url": "/kanban",
+  "scope": "/",
+  "display": "standalone",
+  "theme_color": "#fff1de",
+  "background_color": "#fffaf3",
+  "icons": [
+    { "src": "/icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "/icons/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" },
+    { "src": "/favicon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }
+  ],
+  "shortcuts": [
+    { "name": "3D office", "short_name": "3D", "description": "Walk around the office", "url": "/", "icons": [{ "src": "/icons/icon-192.png", "sizes": "192x192", "type": "image/png" }] },
+    { "name": "Kanban", "short_name": "Kanban", "description": "The task board", "url": "/kanban", "icons": [{ "src": "/icons/icon-192.png", "sizes": "192x192", "type": "image/png" }] },
+    { "name": "2D view", "short_name": "2D", "description": "The office without the 3D", "url": "/lite", "icons": [{ "src": "/icons/icon-192.png", "sizes": "192x192", "type": "image/png" }] }
+  ]
+}

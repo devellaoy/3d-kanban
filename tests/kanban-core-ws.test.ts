@@ -202,7 +202,9 @@ test('edits: structural fields only in To do, the description locked once starte
 
   await ada.ask({ t: 'kanban.task.start', id: 1 });
   errorOf(await ada.ask({ t: 'kanban.task.update', id: 1, patch: { description: 'third' } }), /description is locked/);
-  errorOf(await ada.ask({ t: 'kanban.task.update', id: 1, patch: { tool: 'claude' } }), /tool can only be changed while the task is in To do/);
+  // Who carries it out only while no run is going; the rest of how it runs only in To do.
+  errorOf(await ada.ask({ t: 'kanban.task.update', id: 1, patch: { tool: 'claude' } }), /tool can only be changed while no run is going/);
+  errorOf(await ada.ask({ t: 'kanban.task.update', id: 1, patch: { usePlan: false } }), /usePlan can only be changed while the task is in To do/);
   // Sending the same description back (a whole form) is no change.
   okOf(await ada.ask({ t: 'kanban.task.update', id: 1, patch: { description: 'second', title: 'Better title', tags: ['a'], ticket: 'UYT-9' } }));
   task = kanban.ctx.repo.getTask(1)!;

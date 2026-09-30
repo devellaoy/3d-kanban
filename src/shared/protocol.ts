@@ -15,6 +15,7 @@ import type { PromptId } from './prompts.js';
 import type { DrinkId } from './rooftop.js';
 import type { WbElement, WbPointer, WhiteboardView } from './whiteboard.js';
 import type { KanbanClientMsg, KanbanServerMsg } from './kanban/protocol.js';
+import type { KanbanWorkerSummary } from './kanban/types.js';
 
 export type WorkerStatus =
   | 'starting' // PTY launched, agent booting
@@ -153,8 +154,8 @@ export interface WorkerInfo {
   workingSince?: number;
   /** Sent out by a map's herald (the castle's Hand of the King), so every browser has it run to its seat from beside them. */
   via?: 'herald';
-  /** 3d-kanban: hired by the kanban engine for a task, as its implementer or reviewer (see src/server/kanban). */
-  kanban?: { taskId: number; role: 'implementer' | 'reviewer' };
+  /** 3d-kanban: hired by the kanban engine for a task, as its implementer or reviewer, with the task's card as it is now (see src/server/kanban). */
+  kanban?: KanbanWorkerSummary;
 }
 
 /** Where the branch of a worker whose worktree was deleted still is (see WorkerInfo.lost). */
@@ -1134,7 +1135,8 @@ export type ClientMsg =
   /** With `repos` (other floors' ids), the worker works in their repositories too, each in a worktree of its own (see WorkerInfo.repos). */
   | { t: 'worker.spawn'; deskId: string; prompt?: string; worktree?: boolean; kind?: WorkerKind; provider?: AgentProvider; model?: string; effort?: AgentEffort; issue?: number; repos?: string[]; via?: 'herald' }
   | { t: 'worker.resume'; workerId: string }
-  | { t: 'worker.kill'; workerId: string; cleanup?: WorktreeCleanup }
+  /** 3d-kanban: `kanban.done` asks for a task worker's task to be done as it goes (see docs/kanban-coupling.md). */
+  | { t: 'worker.kill'; workerId: string; cleanup?: WorktreeCleanup; kanban?: { done?: boolean } }
   /** Asks what the worker's worktree holds; answered with a `worker.worktree` message. */
   | { t: 'worker.worktree'; workerId: string }
   /** Puts a lost worker's worktree back and starts it again (see WorkerInfo.lost); `all`: every lost worker on the floor. */
@@ -1142,7 +1144,7 @@ export type ClientMsg =
   | { t: 'worker.attach'; workerId: string }
   | { t: 'worker.detach'; workerId: string }
   /** With `issue`, the prompt hands the worker that GitHub issue, which is taken as for worker.spawn. */
-  | { t: 'worker.prompt'; workerId: string; prompt: string; issue?: number }
+  | { t: 'worker.prompt'; workerId: string; prompt: string; issue?: number; asComment?: true } // 3d-kanban: `asComment` makes it a comment on a task worker's task (else typed in, as upstream)
   /**
    * A prompt for the agent standing by a board (`deskId` is its kiosk, see STATIONS in layout). It's
    * typed into its session, which is woken up first if it's asleep, or hired there when nobody is.

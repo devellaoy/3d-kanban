@@ -18,9 +18,10 @@ import { projectRepos } from '../src/server/kanban/projects.js';
 import type { KanbanContext } from '../src/server/kanban/registry.js';
 import { KanbanSecrets, KanbanSettingsStore } from '../src/server/kanban/settings.js';
 import { Ledger } from '../src/server/usage.js';
-import { WorkerManager } from '../src/server/workers.js';
+import { WorkerManager, type RunAs } from '../src/server/workers.js';
+import type { Capacity } from '../src/server/machine.js';
 import type { KanbanServerMsg } from '../src/shared/kanban/protocol.js';
-import type { KanbanTask } from '../src/shared/kanban/types.js';
+import type { DepartureIntent, KanbanTask } from '../src/shared/kanban/types.js';
 
 /** How a fake agent answers a prompt: the first rule whose `when` (a regex) matches it. */
 export interface Rule {
@@ -36,6 +37,17 @@ export interface Rule {
   git?: string[];
   /** Exit mid-turn instead of answering. */
   exit?: boolean;
+  /** Say this in a message of its own first (with a tool call after it, as a real turn goes), before the final `reply`. */
+  earlier?: string;
+  /**
+   * Claude only: end the turn asking in the terminal after the reply, no Stop: true a permission
+   * prompt (PermissionRequest); 'question' an AskUserQuestion (PreToolUse), whose answers typed in
+   * (`questions` of them, 1 by default) end it with a PostToolUse, `answerDelayMs` after the last,
+   * and the turn goes on by the rule matching the last answer.
+   */
+  ask?: boolean | 'question';
+  questions?: number;
+  answerDelayMs?: number;
 }
 
 export interface Invocation {
@@ -71,25 +83,45 @@ const post = (event, payload) => new Promise((resolve) => {
   req.end(JSON.stringify({ session_id: session, transcript_path: transcript, ...payload }));
 });
 const rules = () => JSON.parse(fs.readFileSync(process.env.FAKE_KANBAN_RULES, 'utf8'));
-async function turn(prompt) {
+let questions = 0;
+let answerDelay = 0;
+async function turn(prompt, answered) {
   record({ prompt });
-  await post('UserPromptSubmit', { prompt });
+  if (!answered) await post('UserPromptSubmit', { prompt });
   const rule = rules().find((r) => new RegExp(r.when).test(prompt)) || { reply: 'OK' };
   if (rule.delayMs) await new Promise((r) => setTimeout(r, rule.delayMs));
   if (rule.exit) process.exit(3);
   if (rule.git) cp.execFileSync('git', rule.git, { cwd: process.cwd(), stdio: 'ignore' });
   if (rule.commit) cp.execFileSync('git', ['-c', 'user.name=Fake', '-c', 'user.email=fake@example.com', 'commit', '--allow-empty', '-q', '-m', rule.commit], { cwd: process.cwd() });
   if (kind === 'claude') {
+    // One API message's blocks are logged as lines sharing its id, as Claude Code does.
+    const msgId = 'msg-' + process.pid + '-' + Date.now();
     append({ type: 'user', message: { role: 'user', content: prompt } });
-    append({ type: 'assistant', message: { role: 'assistant', content: [{ type: 'text', text: rule.reply }] } });
+    if (rule.earlier) {
+      append({ type: 'assistant', message: { id: msgId + '-a', role: 'assistant', content: [{ type: 'text', text: rule.earlier }] } });
+      append({ type: 'assistant', message: { id: msgId + '-a', role: 'assistant', content: [{ type: 'tool_use', id: 'read-1', name: 'Read', input: { file_path: 'README.md' } }] } });
+      append({ type: 'user', message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: 'read-1', content: '# test' }] } });
+    }
+    append({ type: 'assistant', message: { id: msgId, role: 'assistant', content: [{ type: 'text', text: rule.reply }] } });
+    if (rule.ask === 'question') {
+      await post('PreToolUse', { tool_name: 'AskUserQuestion', tool_input: { questions: [{ question: rule.reply }] } });
+      questions = rule.questions || 1;
+      answerDelay = rule.answerDelayMs || 0;
+      return;
+    }
+    if (rule.ask) {
+      await post('PermissionRequest', { tool_name: 'Bash', tool_input: { command: 'rm -rf build' } });
+      return;
+    }
     if (rule.exitPlan) {
-      append({ type: 'assistant', message: { role: 'assistant', content: [{ type: 'tool_use', id: 'plan-' + Date.now(), name: 'ExitPlanMode', input: { plan: rule.exitPlan } }] } });
+      append({ type: 'assistant', message: { id: msgId, role: 'assistant', content: [{ type: 'tool_use', id: 'plan-' + Date.now(), name: 'ExitPlanMode', input: { plan: rule.exitPlan } }] } });
       await post('PreToolUse', { tool_name: 'ExitPlanMode', tool_input: { plan: rule.exitPlan } });
       await post('PermissionRequest', { tool_name: 'ExitPlanMode' });
       return;
     }
   } else {
     append({ type: 'event_msg', payload: { type: 'user_message', message: prompt } });
+    if (rule.earlier) append({ type: 'response_item', payload: { type: 'message', role: 'assistant', content: [{ type: 'output_text', text: rule.earlier }] } });
     append({ type: 'response_item', payload: { type: 'message', role: 'assistant', content: [{ type: 'output_text', text: rule.reply }] } });
     append({ type: 'event_msg', payload: { type: 'task_complete', last_agent_message: rule.reply } });
   }
@@ -108,7 +140,17 @@ process.stdin.on('data', (chunk) => {
     if (start < 0 || end < start) break;
     const prompt = buf.slice(start + 6, end);
     buf = buf.slice(end + 6);
-    chain = chain.then(() => turn(prompt));
+    if (questions > 1) {
+      questions--;
+      chain = chain.then(() => record({ prompt, answer: true }));
+    } else if (questions === 1) {
+      questions = 0;
+      chain = chain.then(async () => {
+        if (answerDelay) await new Promise((r) => setTimeout(r, answerDelay));
+        await post('PostToolUse', { tool_name: 'AskUserQuestion' });
+        await turn(prompt, true);
+      });
+    } else chain = chain.then(() => turn(prompt));
   }
   if (buf.includes('\x1b') && !buf.includes('\x1b[')) {
     buf = '';
@@ -176,7 +218,7 @@ function isolate(root: string, bin: string): () => void {
   };
 }
 
-export async function engineFixture(opts: { engine?: EngineOptions; repos?: FloorDef['repos'] } = {}): Promise<EngineFixture> {
+export async function engineFixture(opts: { engine?: EngineOptions; repos?: FloorDef['repos']; capacity?: Capacity; runAs?: RunAs; notify?: (title: string, detail?: string) => void } = {}): Promise<EngineFixture> {
   const root = mkdtempSync(path.join(tmpdir(), 'kanban-engine-'));
   const dir = path.join(root, 'proj');
   makeRepo(dir);
@@ -219,9 +261,9 @@ export async function engineFixture(opts: { engine?: EngineOptions; repos?: Floo
   const data = path.join(root, 'data');
   mkdirSync(data, { recursive: true });
   const toasts: string[] = [];
-  workers = new WorkerManager(dir, data, path.join(bin, 'claude'), [], { url: hookUrl, token: '' }, { update() {}, remove() {}, data() {}, screen() {}, toast: (t) => void toasts.push(t) }, new Ledger(data, { pauseHiring: false }, () => {}, () => {}));
+  workers = new WorkerManager(dir, data, path.join(bin, 'claude'), [], { url: hookUrl, token: '' }, { update() {}, remove() {}, data() {}, screen() {}, toast: (t) => void toasts.push(t) }, new Ledger(data, { pauseHiring: false }, () => {}, () => {}), opts.capacity, undefined, opts.runAs);
   const def: FloorDef = { id: 'proj', name: 'Proj', dir, repo: 'acme/proj', palette: 0, addedBy: 'test', addedAt: 0, ...(opts.repos ? { repos: opts.repos } : {}) };
-  const floor = { id: 'proj', dir, workers, project: { name: 'Proj', dir, branch: 'main' }, sendHome: (id: string, cleanup?: 'keep' | 'worktree' | 'all') => workers.kill(id, cleanup) } as unknown as Floor;
+  const floor = { id: 'proj', dir, workers, project: { name: 'Proj', dir, branch: 'main' }, sendHome: (id: string, cleanup?: 'keep' | 'worktree' | 'all', intent?: DepartureIntent) => workers.kill(id, cleanup, undefined, undefined, intent) } as unknown as Floor;
   const repo = new KanbanRepository(openKanbanDb(':memory:'));
   const kanbanData = path.join(root, 'kanban-data');
   mkdirSync(kanbanData, { recursive: true });
@@ -242,6 +284,9 @@ export async function engineFixture(opts: { engine?: EngineOptions; repos?: Floo
     hookUrl,
     broadcast: (msg) => void broadcasts.push(msg),
     toast: (_f, text) => void toasts.push(text),
+    ...(opts.capacity ? { capacity: () => opts.capacity!.full() } : {}),
+    ...(opts.runAs ? { runAs: opts.runAs } : {}),
+    ...(opts.notify ? { notify: opts.notify } : {}),
     engine: undefined as unknown as KanbanContext['engine'],
     pulls: { bundle: async () => 'no', review: async () => 'no' },
     refs: { referencedTasksFile: () => undefined },

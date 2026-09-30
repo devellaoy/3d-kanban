@@ -448,7 +448,8 @@ export async function startServer(cfg: Config) {
           continue;
         }
         toastFloor(floor, why ? `🏠 ${who} sent ${w.name} home: ${why}` : `${who} sent ${w.name} home`);
-        const { note, error } = await floor.sendHome(w.id, ask.cleanup);
+        // 3d-kanban: who sent it and why (see WorkerManager.kill); `merged` is leave-on-merge's.
+        const { note, error } = await floor.sendHome(w.id, ask.cleanup, { by: who, reason: why ? 'merged' : 'sent-home' });
         if (note) toastFloor(floor, note);
         if (error) toastFloor(floor, error, 'warn');
         results.push({ worker: w.name, id: w.id, went: true, ...(note ? { note } : {}), ...(error ? { error } : {}) });
@@ -538,7 +539,11 @@ export async function startServer(cfg: Config) {
   } catch {
     // first start
   }
-  await listenHooks(lastHookPort).catch(() => listenHooks(0));
+  // 3d-kanban: --hook-port / AGENT_OFFICE_HOOK_PORT pins it, for scripts outside the office (docs/kanban.md).
+  await listenHooks(cfg.hookPort ?? lastHookPort).catch(() => {
+    if (cfg.hookPort) console.error(`agent-office: --hook-port ${cfg.hookPort} is taken, so the hook server listens elsewhere (see ${hookPortPath})`);
+    return listenHooks(0);
+  });
   const hookPort = (hookServer.address() as { port: number }).port;
   writeFileSync(hookPortPath, String(hookPort), { mode: 0o600 });
 
@@ -739,6 +744,10 @@ export async function startServer(cfg: Config) {
     officePrompts: () => prompts.state().custom,
     hookUrl: `http://127.0.0.1:${hookPort}`,
     toast: (id, text, level) => toastFloor(floors.get(id), text, level),
+    // 3d-kanban: task hires wait (queued) for the worker limit, keep to upstream's sign-in rule, and a task waiting on a person is announced.
+    capacity: () => machine.full(),
+    runAs: signins,
+    notify: (title, detail) => webhook.announce(title, detail),
   });
   /** 3d-kanban: who a connection is, to the kanban. */
   const kanbanCaller = (c: Client): KanbanCaller => ({ clientId: c.id, accountId: c.accountId, name: c.peer.name, admin: meOf(c.accountId).admin });
@@ -975,7 +984,8 @@ export async function startServer(cfg: Config) {
 
       if (p.startsWith('/assets/')) {
         const file = publicFile(p);
-        if (file) return serveFile(res, file, true);
+        // 3d-kanban: only files in assets/ (an encoded ../ reached the signed-in pages' shells without a session).
+        if (file && file.startsWith(path.join(publicDir, 'assets') + path.sep)) return serveFile(res, file, true);
         res.writeHead(404).end();
         return;
       }
@@ -983,6 +993,22 @@ export async function startServer(cfg: Config) {
       if (p === '/claim' || p === '/claim.html') return serveFile(res, path.join(publicDir, 'claim.html'), false);
       if (p === '/join' || p === '/join.html') return serveFile(res, path.join(publicDir, 'join.html'), false);
       if (p === '/favicon.svg') return serveFile(res, path.join(publicDir, 'favicon.svg'), false);
+      // 3d-kanban: the PWA's manifest, service worker, icons and offline page, before sign-in: the
+      // browser fetches them without the session (docs/configuration.md#pwa).
+      if (p === '/manifest.webmanifest' || p === '/sw.js' || p === '/offline.html' || (p.startsWith('/icons/') && !p.includes('..'))) {
+        const file = publicFile(p);
+        if (!file) return void res.writeHead(404, { 'content-type': 'text/plain' }).end('Not found');
+        const type = p === '/manifest.webmanifest' ? 'application/manifest+json' : p === '/sw.js' ? 'application/javascript; charset=utf-8' : (MIME[path.extname(file)] ?? 'application/octet-stream');
+        res.writeHead(200, {
+          'content-type': type,
+          'cache-control': 'no-cache',
+          ...(p === '/sw.js' ? { 'service-worker-allowed': '/' } : {}),
+          'x-content-type-options': 'nosniff',
+          'x-frame-options': 'DENY',
+          'referrer-policy': 'no-referrer',
+        });
+        return void createReadStream(file).pipe(res);
+      }
 
       const session = auth.fromRequest(req);
       if (!session) {
@@ -1816,6 +1842,12 @@ export async function startServer(cfg: Config) {
       }
       case 'worker.resume': {
         const w = worker(msg.workerId);
+        // 3d-kanban: R on a task worker whose task waits is the task's Retry (see docs/kanban-coupling.md).
+        const retried = w && kanban.workerResume(w.info, kanbanCaller(c));
+        if (retried) {
+          void retried.then((err) => warn(c, err || undefined));
+          break;
+        }
         warn(c, w ? w.floor.workers.resume(w.wid) : 'No such worker');
         break;
       }
@@ -1824,7 +1856,8 @@ export async function startServer(cfg: Config) {
         if (!w) break;
         const { floor, info } = w;
         // The worker leaves right away; its worktree is dealt with after that, and the outcome follows.
-        const done = floor.sendHome(info.id, CLEANUPS.has(String(msg.cleanup)) ? msg.cleanup : undefined);
+        // 3d-kanban: who sent it, and whether its kanban task is done with it (see WorkerManager.kill).
+        const done = floor.sendHome(info.id, CLEANUPS.has(String(msg.cleanup)) ? msg.cleanup : undefined, { by: who, reason: 'sent-home', ...(msg.kanban?.done === true ? { done: true } : {}) });
         toastFloor(floor, `${who} sent ${info.name} home`);
         void done.then(({ note, error }) => {
           if (note) toastFloor(floor, note);
@@ -1885,6 +1918,18 @@ export async function startServer(cfg: Config) {
       }
       case 'worker.prompt': {
         const w = worker(msg.workerId);
+        // 3d-kanban: `asComment` (the fork's dialogs: P's Message task, a card on a task worker's desk, Ask) to a task worker is a task comment; else typed in as below.
+        const commented = w && kanban.workerPrompt(w.info, str(msg.prompt, 20000), kanbanCaller(c), msg.asComment === true);
+        if (commented) {
+          const issue = issueNumber(msg.issue);
+          void commented.then((err) => {
+            if (err) return warn(c, err);
+            if (!issue) return;
+            toastFloor(w.floor, `${who} handed issue #${issue} to ${w.info.name}'s task #${w.info.kanban!.taskId}`);
+            takeIssue(c, w.floor, issue);
+          });
+          break;
+        }
         const err = w ? w.floor.workers.prompt(w.wid, str(msg.prompt, 20000), who) : 'No such worker';
         warn(c, err);
         const issue = w?.info.kind === 'agent' ? issueNumber(msg.issue) : undefined;

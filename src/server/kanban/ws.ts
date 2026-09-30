@@ -51,11 +51,17 @@ export function checkRepoIds(ctx: KanbanContext, project: string, repoIds: strin
 }
 
 /** The fields of a patch that shape how the task runs: set only while it's in To do. */
-const STRUCTURAL: (keyof KanbanTaskPatch)[] = ['type', 'repoIds', 'tool', 'model', 'effort', 'usePlan', 'planApproval', 'useReview', 'goal', 'review', 'implementPermission'];
+const STRUCTURAL: (keyof KanbanTaskPatch)[] = ['type', 'repoIds', 'usePlan', 'planApproval', 'useReview', 'goal', 'implementPermission'];
+/**
+ * Who carries it out (the implementer's tool, model and effort, and the review override): set
+ * whenever no run is live. The next phase's hire picks them up; a new tool's session gets the handoff.
+ */
+const EXECUTOR: (keyof KanbanTaskPatch)[] = ['tool', 'model', 'effort', 'review'];
 
 /**
  * A browser's edit as a repository update, or why it isn't allowed: structural fields only in To do,
- * the repositories only before the first start, the description locked from the first start on.
+ * the executor only while no run is live, the repositories only before the first start, the
+ * description locked from the first start on.
  */
 export function taskUpdateFrom(ctx: KanbanContext, task: KanbanTask, patch: KanbanTaskPatch): TaskUpdate | string {
   if (task.status === 'archived') return 'Bring it back from the archive first';
@@ -63,6 +69,8 @@ export function taskUpdateFrom(ctx: KanbanContext, task: KanbanTask, patch: Kanb
   if (patch.description !== undefined && patch.description !== task.description && started) return 'The description is locked once the task has started: add a comment instead';
   const structural = STRUCTURAL.filter((k) => patch[k] !== undefined);
   if (structural.length && task.status !== 'todo') return `${structural.join(', ')} can only be changed while the task is in To do`;
+  const executor = EXECUTOR.filter((k) => patch[k] !== undefined);
+  if (executor.length && isRunning(task)) return `${executor.join(', ')} can only be changed while no run is going: stop it first`;
   if (patch.repoIds !== undefined && task.startedAt) return 'Its repositories are set once it has started';
   const why = checkRepoIds(ctx, task.project, patch.repoIds);
   if (why) return why;
@@ -100,10 +108,12 @@ export function archiveOldTasks(ctx: KanbanContext, now = Date.now()): number[] 
   const moved: number[] = [];
   for (const t of ctx.repo.tasksWhere({ status: ['done'] })) {
     if ((t.doneAt ?? t.updatedAt) > cutoff) continue;
-    ctx.repo.updateTask(t.id, { status: 'archived', archivedAt: now });
+    ctx.repo.updateTask(t.id, { status: 'archived', archivedAt: now, ...(t.runState === 'queued' ? { runState: 'idle' as const, queuedRun: null } : {}) });
     ctx.repo.appendEvent(t.id, 'archived', { auto: true, afterDays: days }, now);
     ctx.taskChanged(t.id);
     moved.push(t.id);
+    // Its workers still at their desks go home, worktree kept (docs/kanban-coupling.md).
+    void ctx.engine.releaseIdle?.(t.id, { name: 'Kanban', admin: true }).catch((err: Error) => console.error(`agent-office: the kanban couldn't send archived task #${t.id}'s workers home: ${err.message}`));
   }
   return moved;
 }
@@ -170,10 +180,12 @@ export function createCorePlugin(ctx: KanbanContext, subs: KanbanSubscriptions):
       if (!task) return;
       const want = m.comments ?? COMMENTS_PAGE;
       const page = want > 0 ? ctx.repo.listComments(task.id, { limit: want }) : { comments: [], more: ctx.repo.countComments(task.id) > 0 };
+      // Whose account it runs as stays on the server.
+      const { createdByAccount: _account, ...shown } = task;
       c.send({
         t: 'kanban.task.detail',
         ...(m.rid ? { rid: m.rid } : {}),
-        task,
+        task: shown,
         comments: page.comments,
         commentsMore: page.more,
         runs: ctx.repo.listRuns(task.id),
@@ -217,13 +229,15 @@ export function createCorePlugin(ctx: KanbanContext, subs: KanbanSubscriptions):
         overrides,
         tags: input.tags ?? [],
         createdBy: c.name,
+        // Its drained, retried and swept hires run on this account's sign-ins.
+        ...(c.accountId ? { createdByAccount: c.accountId } : {}),
       });
       if (input.attachmentIds?.length) ctx.repo.linkAttachments(input.attachmentIds, task.id);
       ctx.repo.appendEvent(task.id, 'created', { by: c.name });
       ctx.taskChanged(task.id);
       let startError: string | undefined;
       if (m.start) {
-        const err = await ctx.engine.start(task.id, c);
+        const err = await ctx.engine.start(task.id, c, m.deskId ? { deskId: m.deskId } : undefined);
         if (typeof err === 'string' && err) startError = err;
         ctx.taskChanged(task.id);
       }
@@ -277,11 +291,15 @@ export function createCorePlugin(ctx: KanbanContext, subs: KanbanSubscriptions):
       }
       if (m.to === 'done') Object.assign(up, { doneAt: now, archivedAt: null });
       if (m.to === 'archived') up.archivedAt = now;
+      // Out of the process: a run it had queued never starts (the drain would hire for it).
+      if ((m.to === 'done' || m.to === 'archived' || m.to === 'todo') && task.runState === 'queued') Object.assign(up, { runState: 'idle', queuedRun: null } satisfies TaskUpdate);
       if (task.status === 'done' && m.to === 'review') up.doneAt = null;
       ctx.repo.updateTask(task.id, up);
       ctx.repo.appendEvent(task.id, 'moved', { by: c.name, from: task.status, to: m.to, ...(check.action === 'reset' ? { reset: true } : {}) });
       ctx.taskChanged(task.id);
       ok(c, m.rid, { taskId: task.id });
+      // Done with: its workers at rest go home, worktree kept (docs/kanban-coupling.md).
+      if (m.to === 'done' || m.to === 'archived') await ctx.engine.releaseIdle?.(task.id, c).catch((err: Error) => console.error(`agent-office: the kanban couldn't send task #${task.id}'s workers home: ${err.message}`));
     },
 
     'kanban.task.delete': (c, m) => {
@@ -314,7 +332,7 @@ export function createCorePlugin(ctx: KanbanContext, subs: KanbanSubscriptions):
       if (ctx.repo.getTask(task.id)) ctx.taskChanged(task.id);
     },
 
-    'kanban.task.start': viaEngine<'kanban.task.start'>((m, who) => ctx.engine.start(m.id, who)),
+    'kanban.task.start': viaEngine<'kanban.task.start'>((m, who) => ctx.engine.start(m.id, who, m.deskId ? { deskId: m.deskId } : undefined)),
     'kanban.task.stop': viaEngine<'kanban.task.stop'>((m, who) => ctx.engine.stop(m.id, who)),
     'kanban.task.continue': viaEngine<'kanban.task.continue'>((m, who) => ctx.engine.continue(m.id, who, m.answer)),
     'kanban.task.retry': viaEngine<'kanban.task.retry'>((m, who) => ctx.engine.retry(m.id, who)),

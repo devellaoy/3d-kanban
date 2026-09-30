@@ -10,7 +10,7 @@ import type { KanbanEffort, KanbanPrBundleItem, KanbanPrBundleKey, KanbanPrRevie
 import { PR_REVIEW_MAX } from '../../../../shared/kanban/types.js';
 import type { AgentEffort, GhPull, MeetingRequest } from '../../../../shared/protocol.js';
 import { sameRepo } from '../../../../shared/floors.js';
-import { fillPrompt } from '../../../../shared/prompts.js';
+import { resolveKanbanPrompt } from '../../../../shared/kanban/prompts.js';
 import { gh } from '../../../github.js';
 import { floorPullsListeners, type PulledFloor } from './board.js';
 import type { GhRunner } from '../issues/source.js';
@@ -18,18 +18,6 @@ import { fail, ok } from '../util.js';
 import { findBundle, prState, type BundleBy, type RepoPulls } from './bundle.js';
 
 const FIELDS = 'number,title,url,state,isDraft,headRefName';
-
-/**
- * What a 🤝 review panel of several PRs is about (the meeting's prompt, which every worker at the
- * table is told as the brief's `about`). Upstream's panel takes one pull request, the one its review
- * is posted on ({{posted}}); this makes the table review all of them as one change set.
- */
-export const PR_PANEL_BRIEF = `Review these pull requests in the project {{project}} together, as one change set; they belong to one change:
-{{prs}}
-
-{{task}}
-
-The pull request named below (#{{posted}} of {{postedRepo}}) is only where the combined review is posted: review every one of them. Read each with \`gh pr view <number> -R <owner/name> --comments\` and \`gh pr diff <number> -R <owner/name>\`. Look at them as one change: do they fit together across the repositories, is anything missing in one that another relies on. In the combined review, say which pull request each finding is in.`;
 
 /** A PR as a review names it, with what its list says about it. */
 export type ReviewPr = PrRef & { title?: string; url?: string; branch?: string };
@@ -158,7 +146,8 @@ export function createPullsParts(ctx: KanbanContext, opts: PullsOptions = {}) {
     if (req.tool && !floor.project.agentProviders.includes(req.tool)) return `${req.tool} isn't set up on this office`;
     const request: MeetingRequest = {
       pattern: 'review',
-      prompt: fillPrompt(PR_PANEL_BRIEF, { ...reviewVars(req, checked.prs), posted: String(posted.number), postedRepo: posted.repo }),
+      // The brief is the layered kanban.pr.panel prompt (default → office → project), editable like the others.
+      prompt: resolveKanbanPrompt('kanban.pr.panel', { office: ctx.officePrompts(), project: ctx.settings.project(req.project).prompts }, { ...reviewVars(req, checked.prs), posted: String(posted.number), postedRepo: posted.repo }),
       title: `Review of ${checked.prs.map((p) => `${p.repo}#${p.number}`).join(', ')}`.slice(0, 100),
       roles: [],
       pr: posted.number,

@@ -32,6 +32,9 @@ import { createEngine, type KanbanEngine } from './engine/index.js';
 import { createPulls, createRefs, integrationPlugins } from './integrations/index.js';
 import { parseKanbanClientMsg, ridOf, type KanbanClientType, type KanbanServerMsg } from '../../shared/kanban/protocol.js';
 import type { ProjectRepo } from '../../shared/kanban/types.js';
+import type { WorkerInfo } from '../../shared/protocol.js';
+import type { KanbanRunAs } from './registry.js';
+import { promptTaskWorker, resumeTaskWorker } from './coupling.js';
 
 /** What the office hands the kanban. */
 export interface KanbanOffice {
@@ -48,6 +51,12 @@ export interface KanbanOffice {
   /** The loopback hook server's base URL. */
   hookUrl: string;
   toast(floorId: string, text: string, level?: 'info' | 'warn' | 'error'): void;
+  /** Why the office can't take another worker now (upstream's Capacity.full: its worker limit), if it can't. */
+  capacity?(): string | undefined;
+  /** Upstream's sign-in rule (signins as RunAs): task hires run on their owner's own Claude sign-in. */
+  runAs?: KanbanRunAs;
+  /** The office's team notifications (upstream's webhook). */
+  notify?(title: string, detail?: string): void;
 }
 
 export interface KanbanInstallOptions extends KanbanOffice {
@@ -76,6 +85,10 @@ export interface Kanban {
   clientGone(clientId: string): void;
   /** Floors (or their repositories) may have changed: subscribers hear the projects when they did. */
   projectsChanged(): void;
+  /** A prompt to a worker on someone's behalf: `asComment`, a task comment for a task worker (see coupling.ts); undefined: upstream types it in. */
+  workerPrompt(info: WorkerInfo, text: string, who: KanbanCaller, asComment?: boolean): Promise<string | void> | undefined;
+  /** R on a worker: the task's Retry for a task worker whose task waits (see coupling.ts); undefined: upstream resumes it. */
+  workerResume(info: WorkerInfo, who: KanbanCaller): Promise<string | void> | undefined;
   shutdown(): void;
 }
 
@@ -155,6 +168,9 @@ export function installKanban(opts: KanbanInstallOptions): Kanban {
     hookUrl: opts.hookUrl,
     broadcast,
     toast: (floorId: string, text: string, level?: 'info' | 'warn' | 'error') => opts.toast(floorId, text, level),
+    ...(opts.capacity ? { capacity: () => opts.capacity!() } : {}),
+    ...(opts.runAs ? { runAs: opts.runAs } : {}),
+    ...(opts.notify ? { notify: (title: string, detail?: string) => opts.notify!(title, detail) } : {}),
     card: (taskId: number) =>
       repo.card(taskId, (t) => {
         const r = settings.effectiveReview(t.project, t.overrides);
@@ -164,7 +180,9 @@ export function installKanban(opts: KanbanInstallOptions): Kanban {
       const card = ctx.card(taskId);
       if (card) {
         taskProjects.set(taskId, card.project);
-        return broadcast({ t: 'kanban.task', task: card }, card.project);
+        broadcast({ t: 'kanban.task', task: card }, card.project);
+        // Its workers in the 3D office show the card too (WorkerInfo.kanban).
+        return (ctx.engine as Partial<KanbanEngine> | undefined)?.cardChanged?.(taskId);
       }
       const was = taskProjects.get(taskId);
       taskProjects.delete(taskId);
@@ -277,6 +295,8 @@ export function installKanban(opts: KanbanInstallOptions): Kanban {
       projectsSent = json;
       broadcast({ t: 'kanban.projects', projects }, null);
     },
+    workerPrompt: (info, text, who, asComment) => (closed ? undefined : promptTaskWorker(ctx, info, text, who, asComment)),
+    workerResume: (info, who) => (closed ? undefined : resumeTaskWorker(ctx, info, who)),
     shutdown() {
       if (closed) return;
       closed = true;

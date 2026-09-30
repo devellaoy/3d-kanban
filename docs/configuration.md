@@ -55,3 +55,31 @@ agent-office accounts [list | invite [name] [--admin] | revoke <name> | role <na
   Invite, list and revoke people's own accounts, and switch the shared password
   off or on. Works while the office runs.
 ```
+
+## PWA
+
+*In 3d-kanban* the office is an installable app (a PWA) that opens on the kanban, with shortcuts to the
+3D office and the 2D view.
+
+- **Install it** from the browser, on the office's own address: Chrome and Edge show an install button
+  in the address bar (or ⋮ → **Install 3D Kanban**, on Android **Add to Home screen**); Safari on iOS is
+  Share → **Add to Home Screen**; Safari on the Mac is File → **Add to Dock**. It opens as a window of
+  its own on `/kanban` (on iOS the home-screen app keeps its own cookies, so you sign in there once).
+- **HTTPS, except on localhost.** Browsers only run the app's service worker on `http://localhost` or
+  over HTTPS. For the office on your network, use a real certificate (`--tls-cert`/`--tls-key`, Caddy or
+  nginx in front with `--trust-proxy`, or Tailscale), or `--self-signed`; a self-signed certificate works
+  for the app only once the device trusts it (installed in its certificate store), since browsers refuse
+  a service worker on a certificate warning. Without it the office works as before, just not installable
+  or offline.
+- **Offline.** The pages are always fetched fresh (they're for the signed-in only, and never cached).
+  When the office can't be reached, whether the network or the office is down or it's restarting behind a
+  proxy, a page says *The office is offline. Reconnecting…* and reloads by itself when it's back. The
+  socket, `/api/*` and the sign-in pages are never touched by the service worker; only the build's hashed
+  files under `/assets/` are cached, one cache per build.
+- **Updates.** After the office is upgraded, an open window shows **⬆️ Update available** with
+  **Reload**: that switches to the new version and reloads. ✕ puts it off until the next time the page
+  opens. It also checks for a new version every hour.
+
+The manifest (`/manifest.webmanifest`), the service worker (`/sw.js`), the icons (`/icons/`) and the
+offline page are served without a session. The icons are made from `src/client/public/favicon.svg` by
+`node scripts/pwa-icons.mjs` (with playwright-core's Chromium or an installed Chrome) and checked in.

@@ -54,6 +54,8 @@ export interface Config {
   maxWorkers?: number;
   /** Slack / Discord webhook to post to when a worker needs input or finishes ('' turns it off). */
   webhook?: string;
+  /** 3d-kanban: --hook-port / AGENT_OFFICE_HOOK_PORT, the loopback hook server's port, pinned (else the last office's, see server.ts). */
+  hookPort?: number;
   /** Where the office is: its sun and live weather follow this city's forecast. */
   city?: string;
   /** Weather pinned for good, instead of made up or forecast. */
@@ -141,6 +143,9 @@ Options:
       --webhook <url>     Post to this Slack or Discord webhook when a worker
                           needs input or finishes (env AGENT_OFFICE_WEBHOOK).
                           Also settable from ⚙️ Settings in the office; "" turns it off
+      --hook-port <n>     Keep the loopback hook server on this port (env
+                          AGENT_OFFICE_HOOK_PORT), for scripts that call it.
+                          It's always written to .agent-office/hook-port
       --city <name>       Put the office in a real city, e.g. "Berlin" or
                           "Portland, Oregon" (env AGENT_OFFICE_CITY): the sun
                           keeps its hours of daylight and the weather outside
@@ -226,6 +231,8 @@ export function loadConfig(argv: string[]): Config {
   let budgetPause = !!process.env.AGENT_OFFICE_BUDGET_PAUSE && process.env.AGENT_OFFICE_BUDGET_PAUSE !== '0';
   let maxWorkers = process.env.AGENT_OFFICE_MAX_WORKERS || '';
   let webhook = process.env.AGENT_OFFICE_WEBHOOK;
+  // 3d-kanban: a pinned hook port (see Config.hookPort).
+  let hookPort = process.env.AGENT_OFFICE_HOOK_PORT || '';
   let city = process.env.AGENT_OFFICE_CITY || '';
   let weather = process.env.AGENT_OFFICE_WEATHER || '';
   const iceServers: RTCIceServerLike[] = [{ urls: ['stun:stun.l.google.com:19302', 'stun:stun1.l.google.com:19302'] }];
@@ -295,6 +302,10 @@ export function loadConfig(argv: string[]): Config {
       case '--webhook':
         webhook = takeValue(argv, i++, a);
         break;
+      // 3d-kanban: see Config.hookPort.
+      case '--hook-port':
+        hookPort = takeValue(argv, i++, a);
+        break;
       case '--home':
         home = path.resolve(takeValue(argv, i++, a));
         homeGiven = true;
@@ -341,6 +352,12 @@ export function loadConfig(argv: string[]): Config {
   const workerLimit = maxWorkers ? parseWorkerLimit(maxWorkers) : undefined;
   if (maxWorkers && workerLimit === undefined) {
     console.error(`agent-office: --max-workers needs a whole number from 1 to ${MAX_WORKER_LIMIT}, e.g. --max-workers 6`);
+    process.exit(2);
+  }
+  // 3d-kanban: see Config.hookPort.
+  const pinnedHookPort = hookPort ? Number(hookPort) : undefined;
+  if (pinnedHookPort !== undefined && !(Number.isInteger(pinnedHookPort) && pinnedHookPort >= 1 && pinnedHookPort <= 65535)) {
+    console.error('agent-office: --hook-port needs a port number from 1 to 65535, e.g. --hook-port 7999');
     process.exit(2);
   }
   weather = weather.trim().toLowerCase();
@@ -442,6 +459,7 @@ export function loadConfig(argv: string[]): Config {
     budgetPause,
     maxWorkers: workerLimit,
     webhook,
+    ...(pinnedHookPort ? { hookPort: pinnedHookPort } : {}),
     city: city.trim() || undefined,
     weather: (weather as Weather) || undefined,
   };

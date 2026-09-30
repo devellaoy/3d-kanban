@@ -5,6 +5,7 @@
 
 import type Database from 'better-sqlite3';
 import type {
+  AskingKind,
   CommentAuthorKind,
   CommentKind,
   KanbanAttachment,
@@ -54,6 +55,9 @@ export interface NewTask {
   branch?: string;
   workspace?: TaskWorkspace;
   createdBy: string;
+  /** The account that made it (see KanbanTask.createdByAccount). */
+  createdByAccount?: string;
+  deskId?: string;
   createdAt?: number;
   updatedAt?: number;
   startedAt?: number;
@@ -147,8 +151,11 @@ const TASK_COLUMNS: Record<string, string> = {
   finishedAt: 'finished_at',
   doneAt: 'done_at',
   archivedAt: 'archived_at',
+  deskId: 'desk_id',
+  createdByAccount: 'created_by_account',
+  queuedRun: 'queued_run',
 };
-const JSON_FIELDS = new Set(['overrides', 'workspace', 'pendingMessages', 'flags', 'tags']);
+const JSON_FIELDS = new Set(['overrides', 'workspace', 'pendingMessages', 'flags', 'tags', 'queuedRun']);
 const BOOL_FIELDS = new Set(['usePlan', 'useReview']);
 
 function json<T>(v: unknown, fallback: T): T {
@@ -162,7 +169,7 @@ function json<T>(v: unknown, fallback: T): T {
 }
 const opt = <T>(v: unknown): T | undefined => (v === null || v === undefined ? undefined : (v as T));
 const toDb = (field: string, v: unknown): unknown => {
-  if (v === undefined || v === null) return JSON_FIELDS.has(field) && field !== 'workspace' ? (field === 'tags' || field === 'pendingMessages' ? '[]' : '{}') : null;
+  if (v === undefined || v === null) return JSON_FIELDS.has(field) && field !== 'workspace' && field !== 'queuedRun' ? (field === 'tags' || field === 'pendingMessages' ? '[]' : '{}') : null;
   if (JSON_FIELDS.has(field)) return JSON.stringify(v);
   if (BOOL_FIELDS.has(field)) return v ? 1 : 0;
   return v;
@@ -170,6 +177,15 @@ const toDb = (field: string, v: unknown): unknown => {
 
 export class KanbanRepository {
   constructor(readonly db: Database.Database) {}
+
+  /** What each task's agent asking in its terminal waits on (KanbanTask.askingKind): the engine's, in memory only. */
+  private askingKinds = new Map<number, AskingKind>();
+
+  /** Sets (or with undefined, clears) what the task's asking agent waits on; shown only while it's agent_asking. */
+  setAskingKind(taskId: number, kind: AskingKind | undefined) {
+    if (kind) this.askingKinds.set(taskId, kind);
+    else this.askingKinds.delete(taskId);
+  }
 
   /** Runs `fn` in one transaction (nested calls join it). */
   transaction<T>(fn: () => T): T {
@@ -213,10 +229,10 @@ export class KanbanRepository {
       .prepare(
         `INSERT INTO tasks (id, project, title, description, type, status, ticket, ticket_url, tool, model, effort, use_plan, plan_approval, use_review, goal,
           overrides, tags, flags, summary, branch, worktree, created_by, created_at, updated_at, started_at, finished_at, done_at, archived_at,
-          legacy_source, legacy_id, migrated_at)
+          legacy_source, legacy_id, migrated_at, created_by_account, desk_id)
          VALUES (@id, @project, @title, @description, @type, @status, @ticket, @ticketUrl, @tool, @model, @effort, @usePlan, @planApproval, @useReview, @goal,
           @overrides, @tags, @flags, @summary, @branch, @worktree, @createdBy, @createdAt, @updatedAt, @startedAt, @finishedAt, @doneAt, @archivedAt,
-          @legacySource, @legacyId, @migratedAt)`,
+          @legacySource, @legacyId, @migratedAt, @createdByAccount, @deskId)`,
       )
       .run({
         id,
@@ -250,6 +266,8 @@ export class KanbanRepository {
         legacySource: t.legacy?.source ?? null,
         legacyId: t.legacy?.id ?? null,
         migratedAt: t.legacy?.migratedAt ?? null,
+        createdByAccount: t.createdByAccount ?? null,
+        deskId: t.deskId ?? null,
       });
     if (t.repoIds?.length) this.setTaskRepos(id, t.repoIds);
     this.db.prepare(`INSERT INTO meta (key, value) VALUES ('next_task_id', ?) ON CONFLICT(key) DO UPDATE SET value = MAX(CAST(value AS INTEGER), CAST(excluded.value AS INTEGER))`).run(String(id + 1));
@@ -712,6 +730,10 @@ export class KanbanRepository {
       doneAt: opt(r.done_at),
       archivedAt: opt(r.archived_at),
       legacy,
+      deskId: opt(r.desk_id),
+      createdByAccount: opt(r.created_by_account),
+      queuedRun: json<KanbanTask['queuedRun']>(r.queued_run, undefined),
+      askingKind: r.waiting_reason === 'agent_asking' ? this.askingKinds.get(id) : undefined,
     };
     for (const k of Object.keys(t) as (keyof KanbanTask)[]) if (t[k] === undefined) delete t[k];
     if (!Array.isArray(t.tags)) t.tags = [];
@@ -835,6 +857,7 @@ export function toCard(t: KanbanTask, commentCount: number, review?: CardReview)
     reviewTool: t.useReview ? r?.tool : undefined,
     waitingReason: t.waitingReason,
     waitingText: t.waitingText,
+    askingKind: t.askingKind,
     retryAt: t.retryAt,
     prs: t.prs.map((p) => clean({ repoId: p.repoId, repo: p.repo, number: p.number, url: p.url, state: p.state })),
     tags: t.tags,

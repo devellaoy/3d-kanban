@@ -37,6 +37,11 @@ function isRealPrompt(line: Record<string, unknown>): boolean {
   return blocks.some((b) => b.type === 'text' || b.type === 'image') && !blocks.some((b) => b.type === 'tool_result');
 }
 
+/**
+ * The turn after the last real prompt. Its `text` is the final answer only: the text blocks of the
+ * turn's last assistant message (Claude logs one message's blocks as lines sharing its message id),
+ * never what it said on the way, so a verdict or marker it quoted earlier doesn't count.
+ */
 export function readClaudeTurn(file: string): TurnResult | undefined {
   const lines = readJsonLines(file);
   if (!lines) return undefined;
@@ -47,7 +52,8 @@ export function readClaudeTurn(file: string): TurnResult | undefined {
       break;
     }
   }
-  const texts: string[] = [];
+  let texts: string[] = [];
+  let message: unknown;
   let plan: string | undefined;
   let exitPlan = false;
   let planToolId: string | undefined;
@@ -59,6 +65,13 @@ export function readClaudeTurn(file: string): TurnResult | undefined {
     const content = Array.isArray(msg?.content) ? msg.content.filter(isObj) : [];
     if (line.type === 'assistant') {
       answered = true;
+      // A new message: what an earlier one said is no longer the final answer.
+      const id = msg?.id;
+      if (id === undefined || id !== message) {
+        texts = [];
+        apiError = undefined;
+      }
+      message = id;
       for (const b of content) {
         if (b.type === 'text' && typeof b.text === 'string' && b.text.trim()) {
           texts.push(b.text.trim());

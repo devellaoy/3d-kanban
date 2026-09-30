@@ -185,7 +185,7 @@ export function phaseBadge(card: Pick<KanbanTaskCard, 'phase' | 'reviewRound' | 
   return { phase: card.phase };
 }
 
-/** How long until `at`: "45 s", "4 min 05 s", "2 h 10 min"; `now` for "now". Units come from the caller's language. */
+/** How long until `at`: "45 s", "4 min 05 s", "2 h 10 min"; `now` for "now". The caller can name the units. */
 export function countdown(at: number, now: number, units: { s: string; min: string; h: string; now: string } = { s: 's', min: 'min', h: 'h', now: 'now' }): string {
   const left = Math.ceil((at - now) / 1000);
   if (left <= 0) return units.now;
@@ -204,20 +204,39 @@ export function prTone(state: KanbanTaskCard['prs'][number]['state']): 'open' | 
 
 // --- The URL --------------------------------------------------------------------------------------
 
-/** `?task=12` opens its detail; `?project=api` picks the project. Whatever else is there stays. */
-export function parseDeepLink(search: string): { task?: number; project?: string; settings: boolean } {
+/**
+ * `?task=12` opens its detail (`&tab=changes` on that tab); `?project=api` picks the project.
+ * Whatever else is there stays.
+ */
+export function parseDeepLink(search: string): { task?: number; project?: string; tab?: TaskTab; settings: boolean } {
   const q = new URLSearchParams(search);
   const task = Number(q.get('task'));
   const project = q.get('project') ?? undefined;
-  return { ...(Number.isSafeInteger(task) && task > 0 ? { task } : {}), ...(project && /^[a-z0-9-]{1,40}$/.test(project) ? { project } : {}), settings: q.has('settings') };
+  const tab = q.get('tab');
+  const hasTask = Number.isSafeInteger(task) && task > 0;
+  return {
+    ...(hasTask ? { task } : {}),
+    ...(project && /^[a-z0-9-]{1,40}$/.test(project) ? { project } : {}),
+    // A tab is only a tab of a task: without one it means nothing.
+    ...(hasTask && isTaskTab(tab) ? { tab } : {}),
+    settings: q.has('settings'),
+  };
 }
 
-/** The page's query with the open task (and project) in it, for history.replaceState. */
-export function deepLink(search: string, set: { task?: number | null; project?: string | null }): string {
+/** The page's query with the open task (its tab) and project in it, for history.replaceState. */
+export function deepLink(search: string, set: { task?: number | null; project?: string | null; tab?: TaskTab | null }): string {
   const q = new URLSearchParams(search);
   if (set.task !== undefined) {
     if (set.task) q.set('task', String(set.task));
-    else q.delete('task');
+    else {
+      q.delete('task');
+      q.delete('tab');
+    }
+  }
+  if (set.tab !== undefined) {
+    // Overview is where a task opens anyway: the link stays short.
+    if (set.tab && set.tab !== 'overview' && q.has('task')) q.set('tab', set.tab);
+    else q.delete('tab');
   }
   if (set.project !== undefined) {
     if (set.project) q.set('project', set.project);
@@ -226,6 +245,77 @@ export function deepLink(search: string, set: { task?: number | null; project?: 
   q.delete('settings');
   const s = q.toString();
   return s ? `?${s}` : '';
+}
+
+/** The 3D office at a task's worker's desk (`/?floor=api&worker=w-1&desk=d3`), or on its floor when no worker is known. */
+export function showIn3dLink(project: string, workerId?: string, deskId?: string): string {
+  const q = new URLSearchParams({ floor: project });
+  const id = /^[\w-]{1,64}$/;
+  if (workerId && id.test(workerId)) {
+    q.set('worker', workerId);
+    if (deskId && id.test(deskId)) q.set('desk', deskId);
+  }
+  return `/?${q.toString()}`;
+}
+
+// --- The task view --------------------------------------------------------------------------------
+
+/** The tabs of a task's view (taskview.ts), in order. */
+export type TaskTab = 'overview' | 'conversation' | 'plan' | 'runs' | 'terminal' | 'changes' | 'prs';
+export const TASK_TABS: readonly TaskTab[] = ['overview', 'conversation', 'plan', 'runs', 'terminal', 'changes', 'prs'];
+
+export function isTaskTab(v: unknown): v is TaskTab {
+  return typeof v === 'string' && (TASK_TABS as readonly string[]).includes(v);
+}
+
+/**
+ * The tabs a task view shows: every one on the kanban page; embedded (the 3D worker window's task
+ * tab), no Terminal, since that window has the worker's terminal already.
+ */
+export function visibleTabs(embedded: boolean): TaskTab[] {
+  return TASK_TABS.filter((tab) => !(embedded && tab === 'terminal'));
+}
+
+/** The tab to open: the asked one when the view shows it, else Overview. */
+export function tabFor(asked: unknown, embedded: boolean): TaskTab {
+  return isTaskTab(asked) && visibleTabs(embedded).includes(asked) ? asked : 'overview';
+}
+
+/** One file's part of a unified diff (from its `diff --git` line to the next one). */
+export interface DiffPart {
+  /** The file's path after the change (before it, for a deleted file). */
+  path: string;
+  text: string;
+}
+
+/** The path a `diff --git a/x b/y` block is about: from its +++/--- lines, else its rename line, else the header. */
+function diffPartPath(lines: string[]): string {
+  for (const l of lines) if (l.startsWith('+++ b/')) return l.slice(6);
+  for (const l of lines) if (l.startsWith('--- a/')) return l.slice(6);
+  for (const l of lines) if (l.startsWith('rename to ')) return l.slice(10);
+  const rest = lines[0]?.slice('diff --git '.length) ?? '';
+  // `a/<p> b/<p>`: both halves name the same path when nothing was renamed.
+  const half = (rest.length - 1) / 2;
+  if (Number.isInteger(half) && rest.startsWith('a/') && rest.slice(half + 1).startsWith('b/') && rest.slice(2, half) === rest.slice(half + 3)) return rest.slice(2, half);
+  const m = / b\/(.*)$/.exec(rest);
+  return m ? m[1] : rest;
+}
+
+/** A unified diff cut into its files, in order (the Changes tab shows each under its file). */
+export function splitDiff(diff: string): DiffPart[] {
+  const parts: DiffPart[] = [];
+  let cur: string[] | null = null;
+  const flush = () => {
+    if (cur) parts.push({ path: diffPartPath(cur), text: cur.join('\n') });
+  };
+  for (const line of diff.split('\n')) {
+    if (line.startsWith('diff --git ')) {
+      flush();
+      cur = [line];
+    } else if (cur) cur.push(line);
+  }
+  flush();
+  return parts;
 }
 
 // --- Issues ---------------------------------------------------------------------------------------
@@ -258,6 +348,21 @@ export function pickerRows(self: PrRef & { title: string; url: string }, bundle:
     return true;
   };
   return { self, related: bundle.filter(fresh), rest: others.filter(fresh) };
+}
+
+/**
+ * The task a review of the picked PRs (their refKeys) goes into: the one task every picked PR is a
+ * bundle item of. PRs of different tasks, or any PR of no task the bundle knows (one of the other
+ * open PRs, say), give none, and the review is a new task of its own.
+ */
+export function reviewTaskOf(picked: Iterable<string>, bundle: KanbanPrBundleItem[]): number | undefined {
+  let taskId: number | undefined;
+  for (const k of picked) {
+    const id = bundle.find((b) => refKey(b) === k)?.taskId;
+    if (id === undefined || (taskId !== undefined && id !== taskId)) return undefined;
+    taskId = id;
+  }
+  return taskId;
 }
 
 // --- Settings -------------------------------------------------------------------------------------

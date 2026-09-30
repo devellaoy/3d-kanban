@@ -5,10 +5,9 @@ import { h } from '../ui/dom';
 import { markdown } from '../ui/markdown';
 import { splitTaskRefs } from './attach';
 import { deepLink } from './model';
-import { t } from './i18n';
 
 /** Rendered markdown, its #123 references opening the task in the detail panel. */
-export function renderMarkdown(src: string, openTask: (id: number) => void, empty = t('noDescription')): HTMLElement {
+export function renderMarkdown(src: string, openTask: (id: number) => void, empty = 'No description.'): HTMLElement {
   if (!src.trim()) return h('div.md', {}, h('p.none', {}, empty));
   const el = markdown(src);
   const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT, {
@@ -23,7 +22,9 @@ export function renderMarkdown(src: string, openTask: (id: number) => void, empt
     for (const p of parts) {
       if (typeof p === 'string') frag.append(p);
       else {
-        const a = h('a.kb-ref', { href: deepLink(location.search, { task: p.task }), title: t('openTaskN', { id: p.task }) }, p.text);
+        // Off the kanban page (a task view in the 3D office) the link still goes to the task on the kanban.
+        const href = location.pathname.startsWith('/kanban') ? deepLink(location.search, { task: p.task }) : `/kanban?task=${p.task}`;
+        const a = h('a.kb-ref', { href, title: `Open task #${p.task}` }, p.text);
         a.addEventListener('click', (e) => {
           if (e.metaKey || e.ctrlKey || e.shiftKey) return;
           e.preventDefault();

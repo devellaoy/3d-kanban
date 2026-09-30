@@ -1203,6 +1203,8 @@ export function openIssue(first: GhIssue, net: Net, actions: BoardActions) {
       queueProvider.element,
       queue,
       pickUp,
+      // 3d-kanban: planned, built and reviewed on the kanban, by a worker at a free desk.
+      actions.kanbanTask ? h('button.btn', { type: 'button', title: 'A kanban task for it (plan → implement → review), started at a free desk', onclick: () => (modal.close(), actions.kanbanTask!(it)) }, '🗂️ Kanban task') : null,
       h('button.btn.primary', { type: 'button', onclick: () => actions.assign(issuePrompt(it), `Hand issue #${it.number} to a worker`) }, '🤖 Hand to a worker'),
     ),
   );

@@ -182,6 +182,16 @@ INSERT INTO meta (key, value) VALUES ('next_task_id', '1');
 
 export const MIGRATIONS: Migration[] = [
   { version: 1, name: 'initial schema', up: (db) => db.exec(INITIAL) },
+  {
+    version: 2,
+    name: 'task desk, creator account and queued run',
+    // desk_id: the desk its implementer is hired at (the one it was started at, else where it last sat).
+    // created_by_account: whose sign-ins its drained, retried and swept hires run on. queued_run: the
+    // run waiting for a desk or for room under the office's worker limit (JSON, see QueuedRun).
+    up: (db) => db.exec(`ALTER TABLE tasks ADD COLUMN desk_id TEXT;
+ALTER TABLE tasks ADD COLUMN created_by_account TEXT;
+ALTER TABLE tasks ADD COLUMN queued_run TEXT;`),
+  },
 ];
 
 /** The schema version this build expects. */

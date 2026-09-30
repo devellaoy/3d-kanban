@@ -90,6 +90,8 @@ export function notLeaving(w: WorkerInfo): string | undefined {
   if (w.kind !== 'agent') return 'a shell';
   if (w.meeting) return 'at the meeting table';
   if (DESK_BY_ID.get(w.deskId)?.station) return 'a board agent';
+  // 3d-kanban: a kanban task still in progress, or with a run under way, keeps its workers (see WorkerInfo.kanban).
+  if (w.kanban && (w.kanban.status === 'in_progress' || (w.kanban.runState !== undefined && w.kanban.runState !== 'idle'))) return 'on a kanban task still at work';
   if (isBusy(w.status)) return w.status === 'needs_input' ? 'waiting on someone' : 'still working';
   if (w.prOpening) return 'opening a pull request';
   if (w.viewers.length) return `${w.viewers.join(', ')} ${w.viewers.length === 1 ? 'has' : 'have'} its terminal open`;

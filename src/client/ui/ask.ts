@@ -3,6 +3,8 @@ import { h, openModal, STATUS_LABEL } from './dom';
 import { store } from '../state';
 import { providerPicker, type ProviderPicker } from './provider';
 import { repoPicker } from './prompt';
+// 3d-kanban: a new worker can take it on as a kanban task.
+import { kanbanSection, type KanbanOption } from '../kanban/hireform';
 
 // Send a prompt about an issue or PR to a worker: a new one at a free desk, or one already sitting
 // at a desk (it lands in their input box, queued if they're busy).
@@ -12,6 +14,8 @@ export interface AskWorker {
   name: string;
   color: string;
   status: WorkerStatus;
+  /** 3d-kanban: its kanban task, shown on its button ("#14"). */
+  task?: number;
 }
 
 export interface AskOptions {
@@ -30,6 +34,8 @@ export interface AskOptions {
   providerOption?: boolean;
   /** Other floors' projects a new worker in its own worktree can work in too (see WorkerInfo.repos). */
   repoOptions?: { id: string; name: string }[];
+  /** 3d-kanban: offer "🗂️ Run as a kanban task" for the new worker; while it's on, sending makes the task instead of calling onSubmit. */
+  kanbanOption?: KanbanOption;
   /** `to` is a worker id, or null for a new worker. */
   onSubmit(prompt: string, to: string | null, worktree: boolean, provider?: AgentProvider, model?: string, effort?: AgentEffort, repos?: string[]): void;
 }
@@ -51,6 +57,9 @@ export function openAsk(opts: AskOptions) {
   const repos = repoPicker(opts.worktreeOption ? opts.repoOptions : undefined, wtBox);
   const provider: ProviderPicker | null = opts.providerOption ? providerPicker(store.project, 'ask-provider') : null;
   const submit = h('button.btn.primary', { type: 'submit' });
+  // 3d-kanban: the kanban toggle, for a new worker.
+  const kanban = opts.kanbanOption && opts.newDesk ? kanbanSection(opts.kanbanOption, provider) : null;
+  const kanbanOn = () => !to && !!kanban?.on();
 
   const choices = h('div.seg.ask-to');
   const pick = (id: string | null) => {
@@ -60,10 +69,18 @@ export function openAsk(opts: AskOptions) {
     repos.element?.classList.toggle('hidden', !!id);
     provider?.element.classList.toggle('hidden', !!id);
     submit.textContent = id ? 'Send ✨' : 'Hire & start';
+    // 3d-kanban: the toggle for a new worker only; while it's on, no worktree options.
+    kanban?.element.classList.toggle('hidden', !!id);
+    if (kanbanOn()) {
+      wtRow.classList.add('hidden');
+      repos.element?.classList.add('hidden');
+      submit.textContent = '🗂️ Create & start';
+    }
   };
+  kanban?.onChange(() => pick(to)); // 3d-kanban
   if (opts.newDesk) choices.append(h('button.btn', { type: 'button', 'data-to': '', onclick: () => pick(null) }, `✨ New worker · ${opts.newDesk}`));
   for (const w of opts.workers) {
-    choices.append(h('button.btn', { type: 'button', 'data-to': w.id, title: `Type it into ${w.name}'s prompt`, onclick: () => pick(w.id) }, h('span.dot', { style: `background:${w.color}` }), w.name, h('small', {}, STATUS_LABEL[w.status] ?? w.status)));
+    choices.append(h('button.btn', { type: 'button', 'data-to': w.id, title: w.task ? `A message on task #${w.task}: the kanban process carries on with it` : `Type it into ${w.name}'s prompt`, onclick: () => pick(w.id) }, h('span.dot', { style: `background:${w.color}` }), w.name, w.task ? h('small', {}, `🗂️ #${w.task}`) : null, h('small', {}, STATUS_LABEL[w.status] ?? w.status))); // 3d-kanban: task
   }
 
   const cancel = h('button.btn', { type: 'button' }, 'Cancel');
@@ -82,6 +99,7 @@ export function openAsk(opts: AskOptions) {
       provider?.element ?? null,
       wtRow,
       repos.element,
+      kanban?.element ?? null, // 3d-kanban
     ),
     h('footer', {}, h('span.grow', {}, 'Enter to send · Shift+Enter for a new line'), cancel, submit),
   ) as HTMLFormElement;
@@ -98,6 +116,8 @@ export function openAsk(opts: AskOptions) {
     }
     if (!to && provider && !provider.valid()) return;
     modal.close();
+    // 3d-kanban: a new worker on a kanban task; the context goes first in its description.
+    if (kanbanOn()) return kanban!.send(text, { provider: provider?.value(), model: provider?.model(), effort: provider?.effort() }, opts.context);
     if (!to && opts.worktreeOption) {
       try {
         localStorage.setItem(WT_KEY, wtBox.checked ? '1' : '0');

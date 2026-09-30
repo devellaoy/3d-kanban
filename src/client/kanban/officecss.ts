@@ -1,5 +1,6 @@
 // The few styles the kanban's pieces need inside upstream's pages (the 3D office and /lite load
-// style.css, not kanban.css): the repository chip and filter on the boards, and the PR review picker.
+// style.css, not kanban.css): the repository chip and filter on the boards, the PR review picker and
+// the task worker's message dialog.
 // Put in once, the first time one of them is drawn.
 
 const CSS = `
@@ -20,6 +21,12 @@ const CSS = `
 .kb-scope-contract { margin: 8px 0 0; }
 .kb-scope-contract summary { cursor: pointer; font-size: 12px; font-weight: 900; }
 .kb-scope-contract pre { margin: 6px 0 0; padding: 8px; white-space: pre-wrap; font-size: 12px; background: #f3f1ee; border: 2px dashed var(--ink); border-radius: 10px; color: var(--muted); }
+/* A task worker's P (ui/prompt.ts): three buttons don't fit beside the hint, so the window is wider and the hint gets a row of its own. */
+.modal:has(> footer > .kb-raw) { width: min(620px, 100%); }
+.modal footer:has(> .kb-raw) { flex-wrap: wrap; row-gap: 8px; }
+.modal footer:has(> .kb-raw) > .grow { flex-basis: 100%; }
+/* Its title ("💬 Message task #14 (continues the kanban process)") wraps rather than being cut off on a phone. */
+.modal:has(> footer > .kb-raw) > header h2 { white-space: normal; overflow-wrap: anywhere; line-height: 1.25; }
 `;
 
 export function officeCss() {

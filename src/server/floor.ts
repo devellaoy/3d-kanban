@@ -31,6 +31,8 @@ import { officePrompt, type PromptSource } from './prompts.js';
 import { parseRepoFloorId, projectRepos } from './kanban/projects.js';
 // 3d-kanban: the kanban hears when the PR board has fresh lists (its tasks' linked PRs' states).
 import { floorPulled } from './kanban/integrations/pulls/board.js';
+// 3d-kanban: what a worker is sent home with (see sendHome).
+import type { DepartureIntent } from '../shared/kanban/types.js';
 import { sameRepo } from '../shared/floors.js';
 
 type ToastLevel = 'info' | 'warn' | 'error';
@@ -269,7 +271,8 @@ export class Floor {
         seat: (deskId, by, prompt, provider, model, effort, meeting, owner) => this.workers.spawn(deskId, by, prompt, false, 'agent', provider, model, effort, meeting, owner),
         prompt: (id, text, by) => this.workers.prompt(id, text, by),
         write: (id, data, by) => this.workers.write(id, data, by),
-        kill: (id) => this.workers.kill(id),
+        // 3d-kanban: with why it goes (see WorkerManager.kill).
+        kill: (id, intent) => this.workers.kill(id, undefined, undefined, undefined, intent),
       },
       this.project.branch ? new Worktrees(def.dir) : undefined,
       {
@@ -464,14 +467,16 @@ export class Floor {
    * worktree and branch go unless they hold work, where what its merged pull requests delivered
    * doesn't count. Resolves with the line about its worktree.
    */
-  sendHome(workerId: string, cleanup?: WorktreeCleanup): Promise<{ note?: string; error?: string }> {
+  sendHome(workerId: string, cleanup?: WorktreeCleanup, intent?: DepartureIntent): Promise<{ note?: string; error?: string }> {
     const info = this.workers.get(workerId);
     const landed = info && this.landed(info);
-    return this.workers.kill(workerId, cleanup, landed?.head, landed?.heads);
+    // 3d-kanban: `intent` says who sent it and why (see WorkerManager.kill).
+    return this.workers.kill(workerId, cleanup, landed?.head, landed?.heads, intent);
   }
 
   private goHome(worker: WorkerInfo, why: string, head?: string, heads?: Record<string, string | undefined>) {
-    const done = this.workers.kill(worker.id, undefined, head, heads);
+    // 3d-kanban: leave-on-merge's departure (see WorkerManager.kill).
+    const done = this.workers.kill(worker.id, undefined, head, heads, { by: 'Leave-on-merge', reason: 'merged' });
     this.ctx.toast(this, `🏠 ${worker.name} went home: ${why}`);
     void done.then(({ note, error }) => {
       if (note) this.ctx.toast(this, note);

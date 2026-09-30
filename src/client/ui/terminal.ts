@@ -12,6 +12,9 @@ import { findLine } from '../../shared/search';
 import { DROP_MAX_BYTES, droppedPaths } from '../../shared/drops';
 import { providerLabel, providerUsageNote, providerUsageState, providerWaitingLabel, resolvedProvider } from './provider';
 import { naturalKey } from './termkeys';
+// 3d-kanban: a task worker's window has tabs: the terminal and its kanban task; files dropped on the task pane aren't the terminal's.
+import { mountWorkerTabs, type WorkerTabs } from '../kanban/worker3d';
+import { inTaskPane, type WorkerTab } from '../kanban/office';
 
 /** A line to scroll to once the terminal has loaded: a search hit (see search.ts). */
 export interface TerminalFind {
@@ -68,6 +71,8 @@ export interface TerminalOptions {
    * take the focus as it opens either, so a phone's keyboard stays down until you tap into it.
    */
   keypad?: boolean;
+  /** 3d-kanban: a task worker's window opens on this tab (the kanban's 📍 Show in 3D asks for the task). */
+  tab?: WorkerTab;
 }
 
 /** The keypad's keys: what each types, or a function of the terminal for the ones that depend on its mode. */
@@ -327,6 +332,7 @@ export function openTerminal(net: Net, workerId: string, onChanges?: () => void,
       clearInterval(typingTimer);
       ro.disconnect();
       net.send({ t: 'worker.detach', workerId });
+      tabs?.destroy(); // 3d-kanban
       term.dispose();
       if (current?.modal === modal) current = null;
     },
@@ -413,7 +419,7 @@ export function openTerminal(net: Net, workerId: string, onChanges?: () => void,
     el.classList.remove('dropping');
   };
   modal.backdrop.addEventListener('dragenter', (e) => {
-    if (!hasFiles(e)) return;
+    if (!hasFiles(e) || inTaskPane(e.target)) return; // 3d-kanban: not over the task pane
     e.preventDefault();
     dragDepth++;
     el.classList.add('dropping');
@@ -430,6 +436,7 @@ export function openTerminal(net: Net, workerId: string, onChanges?: () => void,
     if (!hasFiles(e)) return;
     e.preventDefault();
     dragEnd();
+    if (inTaskPane(e.target)) return; // 3d-kanban: files dropped on the task pane are the task's, not the terminal's
     void insertFiles([...e.dataTransfer!.files]);
   });
   // A picture on the clipboard with no text (a screenshot) pastes like a dropped file. Caught on the
@@ -479,6 +486,8 @@ export function openTerminal(net: Net, workerId: string, onChanges?: () => void,
     term.focus();
   });
 
+  // 3d-kanban: the tabs, once the terminal is open (xterm measures its cells as it opens).
+  const tabs: WorkerTabs | null = mountWorkerTabs(net, info, el, [host, keypad], { tab: opts.tab, focusTerminal: () => term.focus() });
   ro.observe(host);
   refresh();
   net.send({ t: 'worker.attach', workerId });

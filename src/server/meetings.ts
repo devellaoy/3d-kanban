@@ -9,6 +9,8 @@ import { fmtTokens, isAgentEffort, isAgentProvider, tokensOf, type AgentChoice, 
 import { validateWorkerEffort, validateWorkerModel } from './agents.js';
 import { gitError, type WorktreeRef, type WorktreeState } from './worktrees.js';
 import { PROMPTS, fillPrompt, type PromptId, type PromptVars } from '../shared/prompts.js';
+// 3d-kanban: what a worker is sent home with (see MeetingWorkers.kill).
+import type { DepartureIntent } from '../shared/kanban/types.js';
 
 const execFileP = promisify(execFile);
 
@@ -23,7 +25,8 @@ export interface MeetingWorkers {
   prompt(id: string, text: string, by?: string): string | undefined;
   /** Keys into its terminal: Esc, to stop what it's doing. */
   write(id: string, data: string, by: string): void;
-  kill(id: string): Promise<{ note?: string; error?: string }>;
+  /** 3d-kanban: `intent`: why it goes (see WorkerManager.kill). */
+  kill(id: string, intent?: DepartureIntent): Promise<{ note?: string; error?: string }>;
 }
 
 /** Git for the meeting's own worktree: made when it starts, tidied away once everyone has gone home. */
@@ -204,7 +207,8 @@ export class MeetingRoom {
       const text = `${this.brief(m, i)}\n\n${part ? this.ask(m, part) : this.say('meeting.wait')}`;
       const w = this.workers.seat(m.seats[i].deskId, `${by} (meeting)`, text, provider, model, effort, { id, worktree }, owner);
       if (typeof w === 'string') {
-        for (const s of m.seats) if (s.workerId) void this.workers.kill(s.workerId);
+        // 3d-kanban: the meeting sends them home (see WorkerManager.kill).
+        for (const s of m.seats) if (s.workerId) void this.workers.kill(s.workerId, { by: 'The meeting', reason: 'meeting' });
         if (worktree && this.trees) void this.trees.remove(worktree, 'all');
         return w;
       }
@@ -457,7 +461,8 @@ export class MeetingRoom {
     if (m.cleared) return;
     m.cleared = true;
     const here = new Set(this.workers.list().map((w) => w.id));
-    await Promise.all(m.seats.filter((s) => s.workerId && here.has(s.workerId)).map((s) => this.workers.kill(s.workerId!)));
+    // 3d-kanban: the meeting sends them home (see WorkerManager.kill).
+    await Promise.all(m.seats.filter((s) => s.workerId && here.has(s.workerId)).map((s) => this.workers.kill(s.workerId!, { by: 'The meeting', reason: 'meeting' })));
     const wt = m.worktree;
     if (!wt || !this.trees) return this.persist();
     // Kept with the floor's state already (keepNotes): the notes, and a review panel's review, which

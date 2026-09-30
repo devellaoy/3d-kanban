@@ -5,6 +5,8 @@ import { h, openModal, timeAgo, STATUS_LABEL } from './dom';
 import { confirmDialog } from './prompt';
 import { providerPicker, providerLabel, providerUsageState, providerWaitingLabel, resolvedProvider, modelBadge } from './provider';
 import { officeFull } from '../../shared/machine';
+// 3d-kanban: the floor's kanban tasks, read-only.
+import { kanbanQueueSection } from '../kanban/office3d';
 
 export interface QueueActions {
   openTerminal(workerId: string): void;
@@ -170,6 +172,7 @@ export function openQueue(net: Net, actions: QueueActions) {
       section('⏳ Up next', queued),
       section('✅ Finished', done, h('button.btn', { type: 'button', onclick: () => net.send({ t: 'queue.clear' }) }, 'Clear')),
       running.length + queued.length + done.length ? null : h('div.queue-empty', {}, 'Nothing on the queue yet.'),
+      kanbanQueueSection(net), // 3d-kanban
     ];
     list.replaceChildren(...parts.filter((n): n is HTMLElement => n !== null));
   };

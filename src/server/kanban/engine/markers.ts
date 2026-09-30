@@ -14,6 +14,59 @@ function bare(line: string): string {
 
 const lines = (text: string) => text.replace(/\r\n?/g, '\n').split('\n');
 
+/**
+ * Every line of a text, bare, with whether a marker may be on it: not inside a fenced code block and
+ * not a `>` quote, which is where an agent cites what it read (another review, the contract itself).
+ * An unclosed fence runs to the end, so nothing after it counts either.
+ */
+function markerLines(text: string): { line: string; marker: boolean }[] {
+  const out: { line: string; marker: boolean }[] = [];
+  let fence: string | undefined;
+  for (const l of lines(text)) {
+    const t = l.trim();
+    const f = /^(`{3,}|~{3,})/.exec(t);
+    if (f) {
+      if (!fence) fence = f[1];
+      else if (f[1][0] === fence[0] && f[1].length >= fence.length && /^[`~]+$/.test(t)) fence = undefined;
+      out.push({ line: bare(l), marker: false });
+      continue;
+    }
+    out.push({ line: bare(l), marker: !fence && !t.startsWith('>') });
+  }
+  return out;
+}
+
+/**
+ * The lines a plan marker may be on: not a `>` quote and not inside a CLOSED code block (where an
+ * agent cites the contract or shows an example). A fence left open to the end hides nothing: a
+ * forgotten closing ``` must not swallow the PLAN READY after it.
+ */
+function planMarkers(text: string): string[] {
+  const all = markerLines(text);
+  let open = -1;
+  let fence: string | undefined;
+  lines(text).forEach((l, i) => {
+    const t = l.trim();
+    const f = /^(`{3,}|~{3,})/.exec(t);
+    if (!f) return;
+    if (!fence) {
+      fence = f[1];
+      open = i;
+    } else if (f[1][0] === fence[0] && f[1].length >= fence.length && /^[`~]+$/.test(t)) fence = undefined;
+  });
+  return all.flatMap((l, i) => {
+    const quoted = lines(text)[i].trim().startsWith('>');
+    const inOpenFence = fence !== undefined && i > open;
+    return l.marker || (inOpenFence && !quoted) ? [l.line] : [];
+  });
+}
+
+/** The lines a PR: line may be on: every line but `>` quotes (an agent may well list its PRs in a code block). */
+const prMarkerLines = (text: string) => lines(text).flatMap((l) => (l.trim().startsWith('>') ? [] : [bare(l)]));
+
+/** How far from the end a review's verdict may be: the contract makes it the last line; a closing word after it is forgiven. */
+const VERDICT_TAIL = 3;
+
 /** An absolute path to a Markdown file: where plan mode wrote the plan, which makes the question marks in it no questions. */
 const ABSOLUTE_MD = /(?:^|[\s(`'"[<])(?:\/|~\/|[A-Za-z]:[\\/])[^\s`'"()<>\]]*\.md\b/m;
 
@@ -24,7 +77,7 @@ const ABSOLUTE_MD = /(?:^|[\s(`'"[<])(?:\/|~\/|[A-Za-z]:[\\/])[^\s`'"()<>\]]*\.m
  * mode (Claude's ExitPlanMode), which is a finished plan unless it still has a QUESTIONS: heading.
  */
 export function planOutcome(text: string, exitPlan = false): PlanOutcome {
-  const all = lines(text).map(bare);
+  const all = planMarkers(text);
   if (all.some((l) => l === PLAN_READY)) return 'ready';
   // Upper case, as the contract spells it: a plan's own "## Open questions" section is no heading.
   if (all.some((l) => l.replace(/^#+\s*/, '').startsWith(QUESTIONS_HEADING))) return 'questions';
@@ -42,14 +95,20 @@ export function stripPlanMarkers(text: string): string {
     .trim();
 }
 
-/** The review's verdict: the last line that is a REVIEW: line decides; none is changes requested. */
+/**
+ * The review's verdict, from the final answer's last few non-empty lines only: the last of them that
+ * is a REVIEW: line of its own (not in a code block, not a quote) decides. A verdict further up (an
+ * earlier review quoted, a summary before the findings) is none; no verdict is changes requested.
+ */
 export function reviewVerdict(text: string): ReviewVerdict {
-  let verdict: ReviewVerdict = 'changes_requested';
-  for (const l of lines(text)) {
-    const m = REVIEW_LINE.exec(bare(l));
-    if (m) verdict = m[1] === 'APPROVED' ? 'approved' : 'changes_requested';
+  const tail = markerLines(text)
+    .filter((l) => l.line)
+    .slice(-VERDICT_TAIL);
+  for (const l of tail.reverse()) {
+    const m = l.marker ? REVIEW_LINE.exec(l.line) : null;
+    if (m) return m[1] === 'APPROVED' ? 'approved' : 'changes_requested';
   }
-  return verdict;
+  return 'changes_requested';
 }
 
 /** A review's findings, without its verdict lines (what the fix prompt hands the implementer). */
@@ -70,8 +129,8 @@ export interface PrLine {
 /** The pull requests a PR turn reported, one `PR: <url>` line each (duplicates once). */
 export function prLines(text: string): PrLine[] {
   const out = new Map<string, PrLine>();
-  for (const l of lines(text)) {
-    const m = PR_LINE.exec(bare(l).replace(/[.,;)]+$/, ''));
+  for (const l of prMarkerLines(text)) {
+    const m = PR_LINE.exec(l.replace(/[.,;)]+$/, ''));
     if (!m) continue;
     const url = m[1];
     const gh = /^https?:\/\/github\.com\/([\w.-]+\/[\w.-]+)\/pull\/(\d+)/.exec(url);

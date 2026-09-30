@@ -27,6 +27,7 @@ function isContextMessage(text: string): boolean {
   return /^\s*<(?:environment_context|user_instructions|permissions instructions|INSTRUCTIONS)\b/i.test(text) || text.startsWith('# AGENTS.md instructions');
 }
 
+/** The turn after the last prompt; its `text` is the final answer (task_complete's last_agent_message, else the last assistant message). */
 export function readCodexTurn(file: string): TurnResult | undefined {
   const lines = readJsonLines(file);
   if (!lines) return undefined;

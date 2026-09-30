@@ -12,9 +12,8 @@ import type { KanbanServerMsg } from '../../shared/kanban/protocol.js';
 import { PR_REVIEW_MAX, type KanbanPrBundleItem, type PrRef } from '../../shared/kanban/types.js';
 import { kanbanApi, type KanbanOk } from './api';
 import { repoOfItem } from './boardrepos';
-import { pickerRows, refKey } from './model';
+import { pickerRows, refKey, reviewTaskOf } from './model';
 import { officeCss } from './officecss';
-import { t } from './i18n';
 import { dialog, run, showDialog } from './ui';
 
 type BundleMsg = Extract<KanbanServerMsg, { t: 'kanban.pr.bundle' }>;
@@ -37,10 +36,10 @@ export function openReviewPicker(net: Net, pull: GhPull, mode: 'review' | 'panel
   const picked = new Set<string>([refKey(self)]);
 
   const list = h('div.kb-pr-lists');
-  const note = h('p.kb-note', {}, t('pickerNote'));
-  const justThis = h('button.btn', { type: 'button', title: t('justThisHint') }, t('justThis')) as HTMLButtonElement;
+  const note = h('p.kb-note', {}, 'PRs of the same branch or task in the project’s other repositories are picked with it. Add any other open PR of the project.');
+  const justThis = h('button.btn', { type: 'button', title: 'Review only this pull request, as before' }, 'Just this PR') as HTMLButtonElement;
   const go = h('button.btn.primary', { type: 'button' }) as HTMLButtonElement;
-  const d = dialog('kb-pr-picker', mode === 'panel' ? `🤝 ${t('pickerPanelTitle', { n: pull.number })}` : `🔍 ${t('pickerTitle', { n: pull.number })}`, h('div.body', {}, note, list), h('footer', {}, h('span.grow'), justThis, go));
+  const d = dialog('kb-pr-picker', mode === 'panel' ? `🤝 Review panel for PR #${pull.number}: which PRs?` : `🔍 Review PR #${pull.number}: which PRs?`, h('div.body', {}, note, list), h('footer', {}, h('span.grow'), justThis, go));
   const modal = showDialog(d);
 
   const others = () =>
@@ -56,7 +55,7 @@ export function openReviewPicker(net: Net, pull: GhPull, mode: 'review' | 'panel
       if (box.checked) {
         if (picked.size >= PR_REVIEW_MAX) {
           box.checked = false;
-          return toast(t('pickerMax', { n: PR_REVIEW_MAX }), 'warn');
+          return toast(`One review takes at most ${PR_REVIEW_MAX} PRs`, 'warn');
         }
         picked.add(k);
       } else picked.delete(k);
@@ -69,17 +68,17 @@ export function openReviewPicker(net: Net, pull: GhPull, mode: 'review' | 'panel
     const rows = pickerRows(self, bundle, others());
     list.replaceChildren(
       h('ul.kb-pr-list', {}, row(self, 'this')),
-      ...(loading ? [h('p.kb-note', {}, t('pickerLoading'))] : []),
+      ...(loading ? [h('p.kb-note', {}, 'Looking for the PRs that go with it…')] : []),
       ...(error ? [h('p.kb-err', {}, `⚠️ ${error}`)] : []),
-      ...(rows.related.length ? [h('h5', {}, t('pickerRelated')), h('ul.kb-pr-list', {}, ...rows.related.map((p) => row(p)))] : !loading && !error ? [h('p.kb-note', {}, t('pickerNoRelated'))] : []),
-      ...(rows.rest.length ? [h('h5', {}, t('pickerOthers')), h('ul.kb-pr-list', {}, ...rows.rest.map((p) => row(p)))] : []),
+      ...(rows.related.length ? [h('h5', {}, 'Belong with it'), h('ul.kb-pr-list', {}, ...rows.related.map((p) => row(p)))] : !loading && !error ? [h('p.kb-note', {}, 'No other PRs share its branch or task.')] : []),
+      ...(rows.rest.length ? [h('h5', {}, 'Other open PRs in this project'), h('ul.kb-pr-list', {}, ...rows.rest.map((p) => row(p)))] : []),
     );
     paintGo();
   };
 
   const onlySelf = () => picked.size === 1 && picked.has(refKey(self));
   const paintGo = () => {
-    go.textContent = onlySelf() ? (mode === 'panel' ? t('pickerPanelOne') : t('pickerReviewOne')) : t('pickerTogether', { n: picked.size });
+    go.textContent = onlySelf() ? (mode === 'panel' ? 'Call the panel for this PR' : 'Review this PR') : `Review ${picked.size} PRs together`;
     go.disabled = picked.size === 0;
   };
 
@@ -98,15 +97,14 @@ export function openReviewPicker(net: Net, pull: GhPull, mode: 'review' | 'panel
       const p = all.find((x) => refKey(x) === k);
       if (p) prs.push({ repo: p.repo, number: p.number });
     }
-    // A task's bundle keeps its task, so the review is written into it.
-    const tasks = new Set(bundle.filter((b) => picked.has(refKey(b))).map((b) => b.taskId));
-    const taskId = tasks.size === 1 ? [...tasks][0] : undefined;
+    // One task's PRs keep their task, so the review is written into it; any other mix is a new task.
+    const taskId = reviewTaskOf(picked, bundle);
     // 🤝 keeps being a panel for several PRs too: the meeting room reviews them as one change set.
     const ok = await run(() => api.request<KanbanOk>({ t: 'kanban.pr.review', project, prs, ...(taskId ? { taskId } : {}), ...(mode === 'panel' ? { panel: true } : {}) }), go);
     if (!ok) return;
     modal.close();
     // The review is a kanban task of its own now (or goes into the bundle's task).
-    toast(ok.taskId ? t('pickerStartedTask', { n: prs.length, id: ok.taskId }) : t('pickerStarted', { n: prs.length }));
+    toast(ok.taskId ? `A reviewer takes the ${prs.length} PRs together: task #${ok.taskId}` : `A reviewer takes the ${prs.length} PRs together`);
   });
 
   paint();

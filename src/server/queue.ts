@@ -5,6 +5,8 @@ import { isAgentEffort, isAgentProvider, isClaudeModel, type AgentChoice, type A
 import { DESK_BY_ID, SEATS, nextFreeSeat } from '../shared/layout.js';
 import { isValidDshModel, isValidGrokModel, isValidMuseModel, isValidOpenCodeModel, validateWorkerEffort, validateWorkerModel } from './agents.js';
 import { PROMPTS } from '../shared/prompts.js';
+// 3d-kanban: what a worker is sent home with (see QueueWorkers.kill).
+import type { DepartureIntent } from '../shared/kanban/types.js';
 
 /** What the queue needs from the worker manager. Narrow on purpose, so a smoke test can fake it. */
 export interface QueueWorkers {
@@ -16,8 +18,8 @@ export interface QueueWorkers {
   /** How many rows the floor's back office is built out, for its desks (see WING). */
   wing?(): number;
   spawn(deskId: string, by: string, prompt: string, worktree: boolean, kind: 'agent', provider: AgentProvider, model?: string, effort?: AgentEffort, meeting?: undefined, owner?: string): WorkerInfo | string;
-  /** Resolves with a line about what became of the worker's worktree. */
-  kill(id: string): Promise<{ note?: string; error?: string }>;
+  /** Resolves with a line about what became of the worker's worktree. 3d-kanban: `intent`: why it goes (see WorkerManager.kill). */
+  kill(id: string, cleanup?: undefined, landed?: undefined, landedRepos?: undefined, intent?: DepartureIntent): Promise<{ note?: string; error?: string }>;
   /** Fetches what a new worktree starts from; undefined when there's nothing to wait for (see Worktrees.fetch). */
   fetchBase?(): Promise<void> | undefined;
 }
@@ -291,7 +293,8 @@ export class TaskQueue {
   private recycleDesk(): string | undefined {
     const pick = this.recyclable();
     if (!pick) return undefined;
-    const done = this.workers.kill(pick.w.id);
+    // 3d-kanban: the queue sends it home (see WorkerManager.kill).
+    const done = this.workers.kill(pick.w.id, undefined, undefined, undefined, { by: 'The queue', reason: 'queue' });
     this.events.toast(`📋 ${pick.w.name} went home after ${label(pick.t)} to make room for the next task`, 'info');
     void done.then(({ note, error }) => {
       if (note) this.events.toast(note, 'info');

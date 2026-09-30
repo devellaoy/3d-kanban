@@ -6,6 +6,12 @@
     <meta name="theme-color" content="#fff1de" />
     <title>Kanban · Agent Office</title>
     <link rel="icon" href="/favicon.svg" />
+    <!-- 3d-kanban: the PWA: manifest, icons, installed-app look; pwa.ts registers the service worker (docs/configuration.md#pwa). -->
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-title" content="3D Kanban" />
     <link rel="stylesheet" href="./kanban/kanban.css" />
   </head>
   <body class="kanban">
@@ -17,5 +23,7 @@
     <div id="conn" class="conn hidden" role="status">Reconnecting…</div>
     <div id="modal-root"></div>
     <script type="module" src="./kanban/main.ts"></script>
+    <!-- 3d-kanban: the PWA's service worker (pwa.ts). -->
+    <script type="module" src="./pwa.ts"></script>
   </body>
 </html>

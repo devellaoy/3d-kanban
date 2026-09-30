@@ -4,7 +4,6 @@
 import { h, toast } from '../ui/dom';
 import type { KanbanAttachment } from '../../shared/kanban/types.js';
 import { attachmentMarkdown, attachmentUrl, formatSize, insertAt, pastedName, uploadAttachment } from './attach';
-import { t } from './i18n';
 
 export interface AttachBox {
   el: HTMLElement;
@@ -19,7 +18,7 @@ export function attachBox(opts: { target: HTMLTextAreaElement; dropZone?: HTMLEl
   let uploading = 0;
   const list = h('ul.kb-attachments', { 'aria-live': 'polite' });
   const input = h('input', { type: 'file', multiple: true, class: 'hidden', tabindex: -1, 'aria-hidden': 'true' }) as HTMLInputElement;
-  const pick = h('button.btn.small', { type: 'button', title: t('attachHint') }, `📎 ${t('attach')}`);
+  const pick = h('button.btn.small', { type: 'button', title: 'Attach files (or paste / drop them)' }, '📎 Attach');
   pick.addEventListener('click', () => input.click());
   input.addEventListener('change', () => {
     void add([...(input.files ?? [])]);
@@ -38,7 +37,7 @@ export function attachBox(opts: { target: HTMLTextAreaElement; dropZone?: HTMLEl
             'button.kb-x',
             {
               type: 'button',
-              'aria-label': t('removeFile', { name: a.name }),
+              'aria-label': `Remove ${a.name}`,
               onclick: () => {
                 done.splice(done.indexOf(a), 1);
                 paint();
@@ -49,7 +48,7 @@ export function attachBox(opts: { target: HTMLTextAreaElement; dropZone?: HTMLEl
           ),
         ),
       ),
-      ...(uploading ? [h('li.kb-attachment.busy', {}, `⏳ ${t('uploading', { n: uploading })}`)] : []),
+      ...(uploading ? [h('li.kb-attachment.busy', {}, `⏳ Uploading ${uploading}…`)] : []),
     );
   };
 
@@ -57,7 +56,7 @@ export function attachBox(opts: { target: HTMLTextAreaElement; dropZone?: HTMLEl
     const max = opts.max ?? 20;
     for (const f of files) {
       if (done.length + uploading >= max) {
-        toast(t('tooManyFiles', { n: max }), 'warn');
+        toast(`At most ${max} files`, 'warn');
         break;
       }
       uploading++;
@@ -103,6 +102,8 @@ export function attachBox(opts: { target: HTMLTextAreaElement; dropZone?: HTMLEl
     const files = [...(e.dataTransfer?.files ?? [])];
     if (!files.length) return;
     e.preventDefault();
+    // Not on to a window's own drop zone too (the worker window's terminal would type their paths in).
+    e.stopPropagation();
     void add(files);
   });
 

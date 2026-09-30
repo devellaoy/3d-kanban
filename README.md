@@ -12,12 +12,24 @@ kanban board beside the 3D office. Agent Office is © 2026 AgentSystemLabs under
 What the fork adds:
 
 - **A task process**: plan (with questions, auto or manual approval) → implement → 1–10 review rounds ⇄
-  fix → the Review column → Done. Comments put the agent back to work; usage limits are retried by
-  themselves. Claude Code and Codex.
-- **A kanban page** at `/kanban` (**J** or **🗂️ Kanban** in the office, a link on `/lite`), in English
-  and Finnish.
+  fix → the Review column → Done. Comments put the agent back to work, and answer it when it asks in
+  its terminal; usage limits are retried by themselves. A task that finds no free desk or the office's
+  worker limit full is queued and starts when there's room, as the account that made it (a task counts
+  once against the limit: its reviewer never waits for its own implementer's place); a task waiting on a person is announced on the
+  office's Slack / Discord webhook. Claude Code and Codex.
+- **A kanban page** at `/kanban` (**J** or **🗂️ Kanban** in the office, a link on `/lite`). A
+  task's view (conversation, plan, runs, the change and its commits read from git, an
+  investigation's reports, PRs) is one shared piece, on the kanban and in the office's windows.
+- **One world, two views**: a task's workers are ordinary workers at desks. Sending one home (**X**,
+  leave-on-merge, the queue, a meeting) is an event on its task, and can mark it done; a task moved to
+  Done sends its idle workers home, and stops a run whose agent is still asking in its terminal (see [docs/kanban.md](docs/kanban.md#sending-a-tasks-worker-home)).
+  In the office, a task worker's card says `🗂️ #14 · …`; **E** opens its window with a **🗂️ Task** tab
+  (the task's conversation, plan and runs), **P** is a message on its task while it's in progress,
+  waiting or in review, **R** retries it, and a hire can tick **🗂️ Run as a kanban task** ([controls](docs/controls.md#at-a-kanban-tasks-worker),
+  [the contract](docs/kanban-coupling.md)).
 - **Projects with several repositories**: a floor is a project, and a task gets a worktree of each of
-  its repositories on one branch. The issues and PR boards show every repository.
+  its repositories on one branch, cut from each repository's configured base branch (else the branch
+  its checkout is on). The issues and PR boards show every repository.
 - **Issue sources per project**: GitHub repositories, GitHub Projects v2 and Jira, made into tasks in a click.
 - **Agent-written pull requests**: **O** at a desk and the task's PR phase have the agent push and open
   (or fix) the PRs in every repository.
@@ -26,8 +38,20 @@ What the fork adds:
 - **Editable prompts**, office-wide or per project, with the process's contract blocks kept fixed.
 - **Skills** per project, phase and agent (Claude via `--plugin-dir`, Codex synced into its home).
 - **Task references for agents**: `office-tasks get 14`, the MCP tools `get_task` / `search_tasks`, and
-  ai-kanban's `/api/tasks/reference` and `/api/v1` on the loopback hook server.
+  ai-kanban's `/api/tasks/reference` and `/api/v1` on the loopback hook server (its port is in
+  `<data>/hook-port`; `--hook-port <n>` pins it for scripts outside the office, see
+  [docs/kanban.md](docs/kanban.md#agents-reading-other-tasks)).
 - **A migration from ai-kanban**: projects, tasks (with their ids), comments, plans and settings.
+- **Third person that plays like first person**: the mouse looks around (click to capture it, no drag
+  to orbit), the camera sits over your shoulder, and the crosshair shows what you use, within the same
+  reach of your character's eyes as in first person and only what they can see (on a touch screen, a
+  tap uses what you tapped); your character faces where the camera looks; the wheel zooms
+  ([controls](docs/controls.md)). Upstream's *Mouse drag /
+  wheel* row below is out of date.
+- **An installable app (PWA)**: install the office from the browser; it opens on the kanban, with
+  shortcuts to the 3D office and the 2D view, shows *The office is offline. Reconnecting…* while it can't
+  reach the office, and offers **Reload** when a new version is out. HTTPS is needed except on
+  localhost ([configuration](docs/configuration.md#pwa)).
 
 Migrating from ai-kanban (see [the guide](docs/migration.md)):
 

@@ -21,17 +21,22 @@ import {
   type ProjectSettings,
   type ReviewSettings,
 } from '../../shared/kanban/types.js';
-import { KANBAN_CONTRACTS, KANBAN_PROMPT_DEFS, KANBAN_PROMPT_IDS, PROMPT_CONTRACT, kanbanPromptSource, type KanbanPromptId } from '../../shared/kanban/prompts.js';
+import { KANBAN_CONTRACTS, KANBAN_PROMPT_DEFS, KANBAN_PROMPT_IDS, PROMPT_CONTRACT, kanbanPromptSource, type KanbanPromptId, type KanbanPromptScope } from '../../shared/kanban/prompts.js';
 import type { KanbanApi } from './api';
 import { KANBAN_DEFAULTS, projectDefaults, REVIEW_DEFAULTS } from './defaults';
 import { repoIdFrom } from './model';
 import { kstore } from './store';
 import { skillsPane } from './skills';
-import { effortName, t, toolName } from './i18n';
+import { APPROVAL_NAMES, effortName, SOURCE_KIND_NAMES, toolName } from './labels';
 import { checkbox, dialog, field, numberInput, numberValue, run, select, showDialog, tabStrip, textArea, textInput } from './ui';
 
 export type SettingsTab = 'general' | 'projects' | 'sources' | 'prompts' | 'skills' | 'secrets';
 const TABS: readonly SettingsTab[] = ['general', 'projects', 'sources', 'prompts', 'skills', 'secrets'];
+const TAB_NAMES: Record<SettingsTab, string> = { general: 'General', projects: 'Projects', sources: 'Issue sources', prompts: 'Prompts', skills: 'Skills', secrets: 'Secrets' };
+const PERMISSION_NAMES: Record<ImplementPermission, string> = { bypass: 'without permission prompts', 'workspace-write': 'in Codex’s workspace sandbox' };
+/** A prompt's scope: the short tag in the list, and the line over the editor. */
+const SCOPE_TAGS: Record<KanbanPromptScope, string> = { default: 'default', office: 'office', project: 'project' };
+const SCOPE_NOW: Record<KanbanPromptScope, string> = { default: 'The default text', office: 'The office’s text', project: 'This project’s own text' };
 
 export interface SettingsOptions {
   first?: SettingsTab;
@@ -41,11 +46,11 @@ export interface SettingsOptions {
 }
 
 /** A save button that says whether you may. */
-function saveButton(label = t('save')): HTMLButtonElement {
+function saveButton(label = 'Save'): HTMLButtonElement {
   const b = h('button.btn.primary', { type: 'button' }, label) as HTMLButtonElement;
   if (!kstore.me.admin) {
     b.disabled = true;
-    b.title = t('adminsOnly');
+    b.title = 'Only admins can change this';
   }
   return b;
 }
@@ -59,13 +64,13 @@ function lockForNonAdmins(root: HTMLElement) {
 const optionalModel = (v: string) => v.trim() || null;
 
 function reviewFields(r: Partial<ReviewSettings>, base: ReviewSettings | null) {
-  const tool = select<KanbanTool | ''>([...(base ? [] : ([['', t('default')]] as const)), ...KANBAN_TOOLS.map((x) => [x, toolName(x)] as const)], r.tool ?? (base ? base.tool : ''));
-  const model = textInput(r.model ?? '', { maxlength: KANBAN_LIMITS.model, placeholder: t('default') });
-  const effort = select<KanbanEffort | ''>([['', t('default')], ...KANBAN_EFFORTS.map((e) => [e, effortName(e)] as const)], r.effort ?? '');
+  const tool = select<KanbanTool | ''>([...(base ? [] : ([['', 'Default']] as const)), ...KANBAN_TOOLS.map((x) => [x, toolName(x)] as const)], r.tool ?? (base ? base.tool : ''));
+  const model = textInput(r.model ?? '', { maxlength: KANBAN_LIMITS.model, placeholder: 'Default' });
+  const effort = select<KanbanEffort | ''>([['', 'Default'], ...KANBAN_EFFORTS.map((e) => [e, effortName(e)] as const)], r.effort ?? '');
   const rounds = numberInput(r.rounds ?? base?.rounds ?? REVIEW_DEFAULTS.rounds, 1, 10);
-  const reRev = checkbox(t('reReviewLastFix'), r.reReviewLastFix ?? base?.reReviewLastFix ?? REVIEW_DEFAULTS.reReviewLastFix);
-  const sandbox = checkbox(t('reviewSandbox'), r.sandbox ?? base?.sandbox ?? REVIEW_DEFAULTS.sandbox);
-  const el = h('div.kb-subfields', {}, field(t('reviewer'), tool), field(t('model'), model), field(t('effort'), effort), field(t('rounds'), rounds, t('roundsHint')), reRev.el, sandbox.el);
+  const reRev = checkbox('Review the last fix too', r.reReviewLastFix ?? base?.reReviewLastFix ?? REVIEW_DEFAULTS.reReviewLastFix);
+  const sandbox = checkbox('Keep the reviewer off the web', r.sandbox ?? base?.sandbox ?? REVIEW_DEFAULTS.sandbox);
+  const el = h('div.kb-subfields', {}, field('Reviewer', tool), field('Model', model), field('Effort', effort), field('Rounds', rounds, '1–10 review rounds, each followed by a fix when changes are asked for'), reRev.el, sandbox.el);
   const value = (): { tool?: KanbanTool; model: string | null; effort: KanbanEffort | null; rounds: number; reReviewLastFix: boolean; sandbox: boolean } => ({
     ...(tool.value ? { tool: tool.value as KanbanTool } : {}),
     model: optionalModel(model.value),
@@ -81,32 +86,32 @@ export function openKanbanSettings(api: KanbanApi, o: SettingsOptions) {
   let tab: SettingsTab = o.first ?? 'general';
   let project = o.project ?? kstore.project ?? kstore.projects[0]?.id ?? '';
   const body = h('div.kb-settings-body');
-  const projectPick = h('label.kb-settings-project', {}, h('span', {}, t('project')));
-  const note = h('p.kb-settings-note', {}, kstore.me.admin ? t('settingsAdmin') : t('settingsReadOnly'));
-  const strip = tabStrip(TABS.map((x) => ({ id: x, label: t(`stab.${x}`) })), tab, (x) => {
+  const projectPick = h('label.kb-settings-project', {}, h('span', {}, 'Project'));
+  const note = h('p.kb-settings-note', {}, kstore.me.admin ? 'For the whole office. Changes apply to tasks from their next phase.' : 'Only admins can change these. This is how they’re set now.');
+  const strip = tabStrip(TABS.map((x) => ({ id: x, label: TAB_NAMES[x] })), tab, (x) => {
     tab = x;
     paint();
-  }, t('settings'));
-  const d = dialog('kb-settings', `⚙️ ${t('kanbanSettings')}`, h('div.body', {}, strip.el, projectPick, note, body));
+  }, 'Settings');
+  const d = dialog('kb-settings', '⚙️ Kanban settings', h('div.body', {}, strip.el, projectPick, note, body));
   const modal = showDialog(d, { backdropCloses: false, onClose: () => off() });
 
   const paintProjectPick = () => {
     const perProject = tab !== 'general' && tab !== 'secrets';
     projectPick.classList.toggle('hidden', !perProject || !kstore.projects.length);
-    const sel = select(kstore.projects.map((p) => [p.id, p.name] as const), project, { 'aria-label': t('project') });
+    const sel = select(kstore.projects.map((p) => [p.id, p.name] as const), project, { 'aria-label': 'Project' });
     sel.addEventListener('change', () => {
       project = sel.value;
       paint();
     });
-    projectPick.replaceChildren(h('span', {}, t('project')), sel);
-    note.textContent = !kstore.me.admin ? t('settingsReadOnly') : perProject ? t('settingsProject') : t('settingsAdmin');
+    projectPick.replaceChildren(h('span', {}, 'Project'), sel);
+    note.textContent = !kstore.me.admin ? 'Only admins can change these. This is how they’re set now.' : perProject ? 'For the project picked here only. Changes apply to its tasks from their next phase.' : 'For the whole office. Changes apply to tasks from their next phase.';
   };
 
   const paint = () => {
     paintProjectPick();
     const s = kstore.settings;
-    if (!s) return body.replaceChildren(h('p.kb-muted', {}, t('loading')));
-    if (tab !== 'general' && tab !== 'secrets' && !kstore.projectOf(project)) return body.replaceChildren(h('p.kb-muted', {}, t('noProjects')));
+    if (!s) return body.replaceChildren(h('p.kb-muted', {}, 'Loading…'));
+    if (tab !== 'general' && tab !== 'secrets' && !kstore.projectOf(project)) return body.replaceChildren(h('p.kb-muted', {}, 'No projects yet: add a floor in the 3D office first.'));
     const panes: Record<SettingsTab, () => HTMLElement> = {
       general: () => generalPane(api, s),
       projects: () => projectPane(api, project, s),
@@ -141,14 +146,14 @@ export function openKanbanSettings(api: KanbanApi, o: SettingsOptions) {
 function generalPane(api: KanbanApi, s: KanbanSettings): HTMLElement {
   const dft = s.defaults;
   const tool = select<KanbanTool>(KANBAN_TOOLS.map((x) => [x, toolName(x)] as const), dft.tool);
-  const model = textInput(dft.model ?? '', { maxlength: KANBAN_LIMITS.model, placeholder: t('default') });
-  const effort = select<KanbanEffort | ''>([['', t('default')], ...KANBAN_EFFORTS.map((e) => [e, effortName(e)] as const)], dft.effort ?? '');
-  const usePlan = checkbox(t('usePlan'), dft.usePlan);
-  const approval = select<PlanApproval>([['auto', t('approval.auto')], ['manual', t('approval.manual')]], dft.planApproval);
-  const useReview = checkbox(t('useReview'), dft.useReview);
-  const perm = select<ImplementPermission>([['bypass', t('perm.bypass')], ['workspace-write', t('perm.workspace-write')]], dft.implementPermission);
+  const model = textInput(dft.model ?? '', { maxlength: KANBAN_LIMITS.model, placeholder: 'Default' });
+  const effort = select<KanbanEffort | ''>([['', 'Default'], ...KANBAN_EFFORTS.map((e) => [e, effortName(e)] as const)], dft.effort ?? '');
+  const usePlan = checkbox('Plan first', dft.usePlan);
+  const approval = select<PlanApproval>([['auto', APPROVAL_NAMES.auto], ['manual', APPROVAL_NAMES.manual]], dft.planApproval);
+  const useReview = checkbox('Review rounds', dft.useReview);
+  const perm = select<ImplementPermission>([['bypass', PERMISSION_NAMES.bypass], ['workspace-write', PERMISSION_NAMES['workspace-write']]], dft.implementPermission);
   const review = reviewFields(s.review, s.review);
-  const auto = checkbox(t('autoResume'), s.autoResume.enabled);
+  const auto = checkbox('Resume after a usage limit or a network break', s.autoResume.enabled);
   const attempts = numberInput(s.autoResume.maxAttempts, 0, 50);
   const waitHours = numberInput(s.autoResume.maxWaitHours, 1, 168);
   const archive = numberInput(s.archiveAfterDays, 0, 3650);
@@ -161,15 +166,15 @@ function generalPane(api: KanbanApi, s: KanbanSettings): HTMLElement {
       archiveAfterDays: numberValue(archive, 0, 3650, KANBAN_DEFAULTS.archiveAfterDays),
     };
     // null clears a model or an effort (the server takes it as "back to the default").
-    void run(() => api.request({ t: 'kanban.settings.set', settings: settings as unknown as KanbanSettingsPatch }), save, 'saved');
+    void run(() => api.request({ t: 'kanban.settings.set', settings: settings as unknown as KanbanSettingsPatch }), save, 'Saved');
   });
   return h(
     'div.kb-pane',
     {},
-    h('fieldset', {}, h('legend', {}, t('newTaskDefaults')), h('div.kb-three', {}, field(t('tool'), tool), field(t('model'), model), field(t('effort'), effort)), h('div.kb-two', {}, usePlan.el, field(t('planApproval'), approval)), useReview.el, field(t('implementPermission'), perm, t('permHint'))),
-    h('fieldset', {}, h('legend', {}, t('reviewDefaults')), review.el),
-    h('fieldset', {}, h('legend', {}, t('autoResume')), auto.el, h('div.kb-two', {}, field(t('maxAttempts'), attempts), field(t('maxWaitHours'), waitHours)), h('small.kb-hint', {}, t('autoResumeHint'))),
-    h('fieldset', {}, h('legend', {}, t('archive')), field(t('archiveDays'), archive, t('archiveHint'))),
+    h('fieldset', {}, h('legend', {}, 'New tasks'), h('div.kb-three', {}, field('Agent', tool), field('Model', model), field('Effort', effort)), h('div.kb-two', {}, usePlan.el, field('Plan approval', approval)), useReview.el, field('Implementation runs', perm, 'How implement, fix and PR phases run. Plans and reviews are always read-only.')),
+    h('fieldset', {}, h('legend', {}, 'Reviews'), review.el),
+    h('fieldset', {}, h('legend', {}, 'Resume after a usage limit or a network break'), auto.el, h('div.kb-two', {}, field('Tries at most', attempts), field('Waits at most (hours)', waitHours)), h('small.kb-hint', {}, 'A task that stopped on a usage limit is tried again when the limit resets.')),
+    h('fieldset', {}, h('legend', {}, 'Archive'), field('Archive done tasks after (days)', archive, '0 keeps them on the board')),
     h('div.kb-row.kb-save', {}, h('span.grow'), save),
   );
 }
@@ -185,19 +190,19 @@ function projectPane(api: KanbanApi, projectId: string, s: KanbanSettings): HTML
   const rows: Row[] = [];
   const list = h('div.kb-repos');
   const makeRow = (r: ProjectRepo | ProjectRepoInput): Row => {
-    const name = textInput(r.name, { maxlength: 100, 'aria-label': t('repoName') });
-    const dir = textInput(r.dir, { maxlength: 4096, placeholder: '/Users/me/code/api', 'aria-label': t('repoDir'), disabled: r.primary });
-    const kind = select<'git' | 'folder'>([['git', 'git'], ['folder', t('folder')]], r.kind ?? 'git', { 'aria-label': t('repoKind'), disabled: r.primary });
-    const remote = textInput(r.remote ?? '', { maxlength: 200, placeholder: 'owner/name', 'aria-label': t('repoRemote') });
-    const base = textInput(r.baseBranch ?? '', { maxlength: KANBAN_LIMITS.branch, placeholder: 'main', 'aria-label': t('baseBranch') });
-    const ins = textArea(r.instructions ?? '', { rows: 2, maxlength: KANBAN_LIMITS.promptText, placeholder: t('repoInstructions'), 'aria-label': t('repoInstructions') });
-    const remove = h('button.btn.small.kb-admin', { type: 'button', 'aria-label': t('removeRepo', { name: r.name }), disabled: r.primary, title: r.primary ? t('primaryFixed') : '' }, '✕');
+    const name = textInput(r.name, { maxlength: 100, 'aria-label': 'Name' });
+    const dir = textInput(r.dir, { maxlength: 4096, placeholder: '/Users/me/code/api', 'aria-label': 'Folder', disabled: r.primary });
+    const kind = select<'git' | 'folder'>([['git', 'git'], ['folder', 'folder']], r.kind ?? 'git', { 'aria-label': 'Kind', disabled: r.primary });
+    const remote = textInput(r.remote ?? '', { maxlength: 200, placeholder: 'owner/name', 'aria-label': 'GitHub (owner/name)' });
+    const base = textInput(r.baseBranch ?? '', { maxlength: KANBAN_LIMITS.branch, placeholder: 'main', 'aria-label': 'Base branch' });
+    const ins = textArea(r.instructions ?? '', { rows: 2, maxlength: KANBAN_LIMITS.promptText, placeholder: 'Instructions for work in this repository', 'aria-label': 'Instructions for work in this repository' });
+    const remove = h('button.btn.small.kb-admin', { type: 'button', 'aria-label': `Remove ${r.name}`, disabled: r.primary, title: r.primary ? 'The floor’s own repository stays' : '' }, '✕');
     const el = h(
       'div.kb-repo',
       { class: r.primary ? 'primary' : '' },
-      h('div.kb-repo-head', {}, h('b', {}, r.primary ? `⭐ ${t('primary')}` : `📦 ${r.id}`), h('span.grow'), remove),
-      h('div.kb-three', {}, field(t('repoName'), name), field(t('repoKind'), kind), field(t('baseBranch'), base)),
-      h('div.kb-two', {}, field(t('repoDir'), dir, r.primary ? t('primaryHint') : undefined), field(t('repoRemote'), remote)),
+      h('div.kb-repo-head', {}, h('b', {}, r.primary ? '⭐ Primary (the floor)' : `📦 ${r.id}`), h('span.grow'), remove),
+      h('div.kb-three', {}, field('Name', name), field('Kind', kind), field('Base branch', base)),
+      h('div.kb-two', {}, field('Folder', dir, r.primary ? 'The floor’s checkout: change it from the elevator in the 3D office' : undefined), field('GitHub (owner/name)', remote)),
       ins,
     );
     const row: Row = {
@@ -222,11 +227,11 @@ function projectPane(api: KanbanApi, projectId: string, s: KanbanSettings): HTML
   };
   for (const r of info.repos) rows.push(makeRow(r));
   list.append(...rows.map((r) => r.el));
-  const addDir = textInput('', { placeholder: t('addRepoPlaceholder'), 'aria-label': t('addRepo') });
-  const addBtn = h('button.btn.kb-admin', { type: 'button' }, `＋ ${t('addRepo')}`);
+  const addDir = textInput('', { placeholder: '/absolute/path/to/checkout', 'aria-label': 'Add a local repository' });
+  const addBtn = h('button.btn.kb-admin', { type: 'button' }, '＋ Add a local repository');
   addBtn.addEventListener('click', () => {
     const dir = addDir.value.trim();
-    if (!dir.startsWith('/') && !/^[A-Za-z]:[\\/]/.test(dir)) return toast(t('absolutePath'), 'warn');
+    if (!dir.startsWith('/') && !/^[A-Za-z]:[\\/]/.test(dir)) return toast('Give the folder as an absolute path', 'warn');
     const name = dir.replace(/[\\/]+$/, '').split(/[\\/]/).pop() || 'repo';
     const id = repoIdFrom(name, new Set(rows.map((r) => r.read().id)));
     const row = makeRow({ id, name, dir, primary: false, kind: 'git' });
@@ -234,22 +239,22 @@ function projectPane(api: KanbanApi, projectId: string, s: KanbanSettings): HTML
     list.append(row.el);
     addDir.value = '';
   });
-  const saveRepos = saveButton(t('saveRepos'));
+  const saveRepos = saveButton('Save repositories');
   saveRepos.addEventListener('click', () => {
     const repos = rows.map((r) => r.read());
     const bad = repos.find((r) => r.remote && !GH_REPO_RE.test(r.remote));
-    if (bad) return toast(t('badRemote', { name: bad.name }), 'warn');
-    void run(() => api.request({ t: 'kanban.project.repos.set', project: projectId, repos }), saveRepos, 'saved');
+    if (bad) return toast(`${bad.name}: GitHub is owner/name`, 'warn');
+    void run(() => api.request({ t: 'kanban.project.repos.set', project: projectId, repos }), saveRepos, 'Saved');
   });
 
   // Instructions and overrides
-  const branch = textArea(ps.branchInstructions, { rows: 3, maxlength: KANBAN_LIMITS.promptText, placeholder: t('branchInsPlaceholder') });
+  const branch = textArea(ps.branchInstructions, { rows: 3, maxlength: KANBAN_LIMITS.promptText, placeholder: 'e.g. gh-{issue}/short-slug' });
   const general = textArea(ps.generalInstructions, { rows: 4, maxlength: KANBAN_LIMITS.promptText });
   const testing = textArea(ps.testingInstructions, { rows: 4, maxlength: KANBAN_LIMITS.promptText });
   const maxConc = numberInput(ps.maxConcurrent, 1, 20);
-  const approval = select<PlanApproval | ''>([['', t('defaultIs', { v: t(`approval.${s.defaults.planApproval}`) })], ['auto', t('approval.auto')], ['manual', t('approval.manual')]], ps.planApproval ?? '');
-  const perm = select<ImplementPermission | ''>([['', t('defaultIs', { v: t(`perm.${s.defaults.implementPermission}`) })], ['bypass', t('perm.bypass')], ['workspace-write', t('perm.workspace-write')]], ps.implementPermission ?? '');
-  const overrideReview = checkbox(t('reviewOverrideProject'), !!ps.review);
+  const approval = select<PlanApproval | ''>([['', `Default (${APPROVAL_NAMES[s.defaults.planApproval]})`], ['auto', APPROVAL_NAMES.auto], ['manual', APPROVAL_NAMES.manual]], ps.planApproval ?? '');
+  const perm = select<ImplementPermission | ''>([['', `Default (${PERMISSION_NAMES[s.defaults.implementPermission]})`], ['bypass', PERMISSION_NAMES.bypass], ['workspace-write', PERMISSION_NAMES['workspace-write']]], ps.implementPermission ?? '');
+  const overrideReview = checkbox('Its own review settings', !!ps.review);
   const review = reviewFields(ps.review ?? {}, { ...s.review, ...ps.review });
   const paintReview = () => review.el.classList.toggle('hidden', !overrideReview.box.checked);
   overrideReview.box.addEventListener('change', paintReview);
@@ -267,26 +272,26 @@ function projectPane(api: KanbanApi, projectId: string, s: KanbanSettings): HTML
       implementPermission: perm.value || null,
       review: overrideReview.box.checked ? { ...rv, model: rv.model ?? undefined, effort: rv.effort ?? undefined } : null,
     };
-    void run(() => api.request({ t: 'kanban.project.settings.set', project: projectId, settings: settings as Partial<ProjectSettings> }), save, 'saved');
+    void run(() => api.request({ t: 'kanban.project.settings.set', project: projectId, settings: settings as Partial<ProjectSettings> }), save, 'Saved');
   });
 
   return h(
     'div.kb-pane',
     {},
-    h('fieldset', {}, h('legend', {}, t('repositories')), h('p.kb-hint', {}, t('reposEditorHint')), list, h('div.kb-row', {}, addDir, addBtn), h('div.kb-row.kb-save', {}, h('span.grow'), saveRepos)),
+    h('fieldset', {}, h('legend', {}, 'Repositories'), h('p.kb-hint', {}, 'A project works across these. Tasks get a worktree of each on the same branch.'), list, h('div.kb-row', {}, addDir, addBtn), h('div.kb-row.kb-save', {}, h('span.grow'), saveRepos)),
     h(
       'fieldset',
       {},
-      h('legend', {}, t('instructions')),
-      field(t('branchIns'), branch, t('branchInsHint')),
-      field(t('generalIns'), general),
-      field(t('testingIns'), testing),
+      h('legend', {}, 'Instructions'),
+      field('Branch naming', branch, 'Empty: the default (see Prompts → Branch naming)'),
+      field('General instructions', general),
+      field('Debugging and testing', testing),
     ),
     h(
       'fieldset',
       {},
-      h('legend', {}, t('projectOverrides')),
-      h('div.kb-three', {}, field(t('maxConcurrent'), maxConc), field(t('planApproval'), approval), field(t('implementPermission'), perm)),
+      h('legend', {}, 'This project'),
+      h('div.kb-three', {}, field('Tasks at once', maxConc), field('Plan approval', approval), field('Implementation runs', perm)),
       overrideReview.el,
       review.el,
     ),
@@ -305,20 +310,20 @@ function sourcesPane(api: KanbanApi, projectId: string, s: KanbanSettings): HTML
   const list = h('div.kb-sources');
 
   const makeSource = (src: IssueSourceConfig) => {
-    const remove = h('button.btn.small.kb-admin', { type: 'button', 'aria-label': t('removeSource') }, '✕');
-    const head = h('div.kb-repo-head', {}, h('b', {}, t(`src.${src.kind}`)), h('span.grow'), remove);
+    const remove = h('button.btn.small.kb-admin', { type: 'button', 'aria-label': 'Remove this source' }, '✕');
+    const head = h('div.kb-repo-head', {}, h('b', {}, SOURCE_KIND_NAMES[src.kind]), h('span.grow'), remove);
     let read: () => IssueSourceConfig | string;
     let fields: HTMLElement;
     if (src.kind === 'github-repo') {
       const picks = remotes.map((r) => ({ r, c: checkbox(r, src.repos.includes(r)) }));
       const assignee = textInput(src.filters.assignee ?? '', { placeholder: '@me' });
       const labels = textInput((src.filters.labels ?? []).join(', '), { placeholder: 'bug, ai' });
-      const state = select<'open' | 'closed' | 'all'>([['open', t('issueState.open')], ['closed', t('issueState.closed')], ['all', t('all')]], src.filters.state ?? 'open');
+      const state = select<'open' | 'closed' | 'all'>([['open', 'open'], ['closed', 'closed'], ['all', 'all']], src.filters.state ?? 'open');
       fields = h(
         'div',
         {},
-        field(t('sourceRepos'), h('div.kb-repo-checks', {}, ...picks.map((p) => p.c.el), ...(remotes.length ? [] : [h('small.kb-muted', {}, t('noRemotes'))])), t('sourceReposHint')),
-        h('div.kb-three', {}, field(t('assignee'), assignee), field(t('labels'), labels), field(t('state'), state)),
+        field('Repositories', h('div.kb-repo-checks', {}, ...picks.map((p) => p.c.el), ...(remotes.length ? [] : [h('small.kb-muted', {}, 'No repository of the project has a GitHub remote')])), 'None picked: every repository of the project on GitHub'),
+        h('div.kb-three', {}, field('Assignee', assignee), field('Labels', labels), field('State', state)),
       );
       read = () => ({
         id: src.id,
@@ -335,12 +340,12 @@ function sourcesPane(api: KanbanApi, projectId: string, s: KanbanSettings): HTML
       fields = h(
         'div',
         {},
-        h('div.kb-two', {}, field(t('ghOwner'), owner), field(t('ghNumber'), number)),
-        h('div.kb-three', {}, field(t('assignee'), assignee), field(t('status'), status), field(t('iteration'), iteration)),
-        h('small.kb-hint', {}, t('ghProjectHint')),
+        h('div.kb-two', {}, field('Owner (user or organisation)', owner), field('Project number', number)),
+        h('div.kb-three', {}, field('Assignee', assignee), field('Status', status), field('Iteration', iteration)),
+        h('small.kb-hint', {}, 'Reading Projects needs a scope of its own: run gh auth refresh -s read:project on the office’s machine.'),
       );
       read = () => {
-        if (!/^[A-Za-z0-9_.-]+$/.test(owner.value.trim())) return t('ghOwnerNeeded');
+        if (!/^[A-Za-z0-9_.-]+$/.test(owner.value.trim())) return 'A GitHub project needs its owner';
         return {
           id: src.id,
           kind: 'github-project',
@@ -360,14 +365,14 @@ function sourcesPane(api: KanbanApi, projectId: string, s: KanbanSettings): HTML
       fields = h(
         'div',
         {},
-        h('div.kb-two', {}, field(t('jiraSite'), site), field(t('jiraKeys'), keys)),
-        h('div.kb-three', {}, field(t('assignee'), assignee), field(t('epic'), epic), field(t('labels'), labels)),
-        h('div.kb-two', {}, field(t('statusNot'), notStatus), field(t('extraJql'), jql)),
-        h('small.kb-hint', {}, s && kstore.secrets.jira.configured ? t('jiraTokenSet', { site: kstore.secrets.jira.site ?? '' }) : t('jiraTokenHint')),
+        h('div.kb-two', {}, field('Jira site', site), field('Project keys', keys)),
+        h('div.kb-three', {}, field('Assignee', assignee), field('Epic', epic), field('Labels', labels)),
+        h('div.kb-two', {}, field('Leave out status categories', notStatus), field('Extra JQL', jql)),
+        h('small.kb-hint', {}, s && kstore.secrets.jira.configured ? `The Jira token is set in Secrets (${kstore.secrets.jira.site ?? ''}).` : 'The Jira e-mail and API token go in Settings → Secrets.'),
       );
       read = () => {
         const host = site.value.trim().replace(/^https?:\/\//, '').replace(/\/+$/, '');
-        if (!/^[A-Za-z0-9.-]+(:\d+)?$/.test(host)) return t('jiraSiteNeeded');
+        if (!/^[A-Za-z0-9.-]+(:\d+)?$/.test(host)) return 'A Jira source needs its site, like yourteam.atlassian.net';
         return {
           id: src.id,
           kind: 'jira',
@@ -400,7 +405,7 @@ function sourcesPane(api: KanbanApi, projectId: string, s: KanbanSettings): HTML
     'github-project': () => ({ id: newId(), kind: 'github-project', owner: '', number: 1, filters: {} }),
     jira: () => ({ id: newId(), kind: 'jira', site: kstore.secrets.jira.site ?? '', projectKeys: [], filters: {} }),
   };
-  const adders = (Object.keys(blank) as IssueSourceKind[]).map((k) => h('button.btn.small.kb-admin', { type: 'button', onclick: () => makeSource(blank[k]()) }, `＋ ${t(`src.${k}`)}`));
+  const adders = (Object.keys(blank) as IssueSourceKind[]).map((k) => h('button.btn.small.kb-admin', { type: 'button', onclick: () => makeSource(blank[k]()) }, `＋ ${SOURCE_KIND_NAMES[k]}`));
   const save = saveButton();
   save.addEventListener('click', () => {
     const out: IssueSourceConfig[] = [];
@@ -409,9 +414,9 @@ function sourcesPane(api: KanbanApi, projectId: string, s: KanbanSettings): HTML
       if (typeof v === 'string') return toast(v, 'warn');
       out.push(v);
     }
-    void run(() => api.request({ t: 'kanban.project.settings.set', project: projectId, settings: { issueSources: out } }), save, 'saved');
+    void run(() => api.request({ t: 'kanban.project.settings.set', project: projectId, settings: { issueSources: out } }), save, 'Saved');
   });
-  return h('div.kb-pane', {}, h('p.kb-hint', {}, t('sourcesHint')), list, h('div.kb-row', {}, ...adders), h('div.kb-row.kb-save', {}, h('span.grow'), save));
+  return h('div.kb-pane', {}, h('p.kb-hint', {}, 'Where the project’s issues come from. Filters narrow what’s fetched.'), list, h('div.kb-row', {}, ...adders), h('div.kb-row.kb-save', {}, h('span.grow'), save));
 }
 
 // --- Prompts ---------------------------------------------------------------------------------------
@@ -419,23 +424,23 @@ function sourcesPane(api: KanbanApi, projectId: string, s: KanbanSettings): HTML
 function promptsPane(api: KanbanApi, projectId: string, s: KanbanSettings, openEditor: (id: KanbanPromptId) => void): HTMLElement {
   let current: KanbanPromptId = KANBAN_PROMPT_IDS[0];
   const layers = () => ({ office: store.prompts.custom as Partial<Record<string, { text: string }>>, project: kstore.settings?.projects[projectId]?.prompts ?? s.projects[projectId]?.prompts ?? {} });
-  const nav = h('nav.kb-prompt-list', { 'aria-label': t('prompts') });
+  const nav = h('nav.kb-prompt-list', { 'aria-label': 'Prompts' });
   const head = h('h4');
   const used = h('p.kb-hint');
   const scope = h('span.kb-scope');
-  const ta = textArea('', { rows: 14, spellcheck: 'false', maxlength: KANBAN_LIMITS.promptText, 'aria-label': t('prompt') });
+  const ta = textArea('', { rows: 14, spellcheck: 'false', maxlength: KANBAN_LIMITS.promptText, 'aria-label': 'Prompt' });
   const vars = h('div.kb-vars');
   const contract = h('div.kb-contract');
-  const save = saveButton(t('saveForProject'));
-  const reset = h('button.btn.kb-admin', { type: 'button', title: t('resetHint') }, `↺ ${t('resetToOffice')}`) as HTMLButtonElement;
-  const office = h('button.btn', { type: 'button' }, `📝 ${t('officeText')}`);
+  const save = saveButton('Save for this project');
+  const reset = h('button.btn.kb-admin', { type: 'button', title: 'Drop this project’s text and use the office’s again' }, '↺ Back to the office’s') as HTMLButtonElement;
+  const office = h('button.btn', { type: 'button' }, '📝 Edit the office-wide text');
 
   const paintNav = () => {
     const l = layers();
     nav.replaceChildren(
       ...KANBAN_PROMPT_IDS.map((id) => {
         const src = kanbanPromptSource(id, l);
-        return h('button.kb-prompt-item', { type: 'button', class: id === current ? 'on' : '', 'aria-current': String(id === current), onclick: () => pick(id) }, h('span', {}, KANBAN_PROMPT_DEFS[id].label), h('small', { class: src.scope }, t(`scope.${src.scope}`)));
+        return h('button.kb-prompt-item', { type: 'button', class: id === current ? 'on' : '', 'aria-current': String(id === current), onclick: () => pick(id) }, h('span', {}, KANBAN_PROMPT_DEFS[id].label), h('small', { class: src.scope }, SCOPE_TAGS[src.scope]));
       }),
     );
   };
@@ -445,22 +450,22 @@ function promptsPane(api: KanbanApi, projectId: string, s: KanbanSettings, openE
     const src = kanbanPromptSource(id, layers());
     head.textContent = def.label;
     used.textContent = def.used;
-    scope.textContent = t(`scopeNow.${src.scope}`);
+    scope.textContent = SCOPE_NOW[src.scope];
     scope.className = `kb-scope ${src.scope}`;
     ta.value = src.text;
     reset.disabled = src.scope !== 'project' || !kstore.me.admin;
     vars.replaceChildren(...Object.entries(def.vars as Record<string, string>).map(([k, v]) => h('span.kb-var', { title: v }, h('code', {}, `{{${k}}}`))));
     const c = PROMPT_CONTRACT[id];
-    contract.replaceChildren(...(c ? [h('h5', {}, `🔒 ${t('contractBlock')}`), h('pre', { 'aria-readonly': 'true' }, KANBAN_CONTRACTS[c])] : []));
+    contract.replaceChildren(...(c ? [h('h5', {}, '🔒 Added by the office after it (can’t be changed)'), h('pre', { 'aria-readonly': 'true' }, KANBAN_CONTRACTS[c])] : []));
     paintNav();
   };
   save.addEventListener('click', () => {
     const text = ta.value.replace(/\r\n?/g, '\n').trim();
     const officeText = kanbanPromptSource(current, { office: layers().office }).text.trim();
     // The office's own words saved for a project would only hide later office-wide changes.
-    void run(() => api.request({ t: 'kanban.project.prompt.set', project: projectId, id: current, text: text === officeText ? null : text }), save, 'saved');
+    void run(() => api.request({ t: 'kanban.project.prompt.set', project: projectId, id: current, text: text === officeText ? null : text }), save, 'Saved');
   });
-  reset.addEventListener('click', () => void run(() => api.request({ t: 'kanban.project.prompt.set', project: projectId, id: current, text: null }), reset, 'saved'));
+  reset.addEventListener('click', () => void run(() => api.request({ t: 'kanban.project.prompt.set', project: projectId, id: current, text: null }), reset, 'Saved'));
   office.addEventListener('click', () => openEditor(current));
   const off = kstore.on('settings', () => {
     if (!nav.isConnected) return off();
@@ -479,46 +484,46 @@ function promptsPane(api: KanbanApi, projectId: string, s: KanbanSettings, openE
 
 function secretsPane(api: KanbanApi): HTMLElement {
   const sec = kstore.secrets;
-  const status = (on: boolean, extra = '') => h('span.kb-secret', { class: on ? 'on' : '' }, on ? `✅ ${t('configured')}${extra}` : `— ${t('notConfigured')}`);
+  const status = (on: boolean, extra = '') => h('span.kb-secret', { class: on ? 'on' : '' }, on ? `✅ configured${extra}` : '— not set');
   const site = textInput(sec.jira.site ?? '', { placeholder: 'yourteam.atlassian.net', autocomplete: 'off' });
   const email = textInput('', { placeholder: 'me@example.com', autocomplete: 'off', type: 'email' });
-  const token = h('input', { type: 'password', autocomplete: 'new-password', placeholder: sec.jira.configured ? '••••••••' : '', 'aria-label': t('jiraToken') }) as HTMLInputElement;
-  const saveJira = saveButton(t('saveJira'));
-  const clearJira = h('button.btn.kb-admin', { type: 'button', disabled: !sec.jira.configured }, t('clear')) as HTMLButtonElement;
+  const token = h('input', { type: 'password', autocomplete: 'new-password', placeholder: sec.jira.configured ? '••••••••' : '', 'aria-label': 'API token' }) as HTMLInputElement;
+  const saveJira = saveButton('Save Jira');
+  const clearJira = h('button.btn.kb-admin', { type: 'button', disabled: !sec.jira.configured }, 'Clear') as HTMLButtonElement;
   saveJira.addEventListener('click', () => {
-    if (!site.value.trim() || !email.value.trim() || !token.value.trim()) return toast(t('jiraAllNeeded'), 'warn');
-    void run(() => api.request({ t: 'kanban.secrets.set', jira: { site: site.value.trim(), email: email.value.trim(), token: token.value.trim() } }), saveJira, 'saved').then((ok) => {
+    if (!site.value.trim() || !email.value.trim() || !token.value.trim()) return toast('Jira needs the site, the e-mail and the token', 'warn');
+    void run(() => api.request({ t: 'kanban.secrets.set', jira: { site: site.value.trim(), email: email.value.trim(), token: token.value.trim() } }), saveJira, 'Saved').then((ok) => {
       if (ok) token.value = '';
     });
   });
-  clearJira.addEventListener('click', () => void run(() => api.request({ t: 'kanban.secrets.set', jira: null }), clearJira, 'saved'));
+  clearJira.addEventListener('click', () => void run(() => api.request({ t: 'kanban.secrets.set', jira: null }), clearJira, 'Saved'));
 
-  const key = h('input', { type: 'password', autocomplete: 'new-password', placeholder: sec.apiKey.configured ? '••••••••' : '', 'aria-label': t('apiKey'), minlength: 16 }) as HTMLInputElement;
-  const gen = h('button.btn.kb-admin', { type: 'button', title: t('generateHint') }, `🎲 ${t('generate')}`);
+  const key = h('input', { type: 'password', autocomplete: 'new-password', placeholder: sec.apiKey.configured ? '••••••••' : '', 'aria-label': 'API key', minlength: 16 }) as HTMLInputElement;
+  const gen = h('button.btn.kb-admin', { type: 'button', title: 'Make a random key (copy it before saving: it isn’t shown again)' }, '🎲 Generate');
   gen.addEventListener('click', () => {
     const bytes = crypto.getRandomValues(new Uint8Array(24));
     key.value = [...bytes].map((b) => b.toString(16).padStart(2, '0')).join('');
     key.type = 'text';
     key.select();
   });
-  const saveKey = saveButton(t('saveKey'));
-  const clearKey = h('button.btn.kb-admin', { type: 'button', disabled: !sec.apiKey.configured }, t('clear')) as HTMLButtonElement;
+  const saveKey = saveButton('Save the key');
+  const clearKey = h('button.btn.kb-admin', { type: 'button', disabled: !sec.apiKey.configured }, 'Clear') as HTMLButtonElement;
   saveKey.addEventListener('click', () => {
-    if (key.value.trim().length < 16) return toast(t('keyTooShort'), 'warn');
-    void run(() => api.request({ t: 'kanban.secrets.set', apiKey: key.value.trim() }), saveKey, 'saved').then((ok) => {
+    if (key.value.trim().length < 16) return toast('The key needs at least 16 characters', 'warn');
+    void run(() => api.request({ t: 'kanban.secrets.set', apiKey: key.value.trim() }), saveKey, 'Saved').then((ok) => {
       if (ok) {
         key.value = '';
         key.type = 'password';
       }
     });
   });
-  clearKey.addEventListener('click', () => void run(() => api.request({ t: 'kanban.secrets.set', apiKey: null }), clearKey, 'saved'));
+  clearKey.addEventListener('click', () => void run(() => api.request({ t: 'kanban.secrets.set', apiKey: null }), clearKey, 'Saved'));
 
   return h(
     'div.kb-pane',
     {},
-    h('p.kb-hint', {}, t('secretsHint')),
-    h('fieldset', {}, h('legend', {}, 'Jira'), h('p', {}, status(sec.jira.configured, sec.jira.site ? ` · ${sec.jira.site}` : '')), h('div.kb-three', {}, field(t('jiraSite'), site), field(t('jiraEmail'), email), field(t('jiraToken'), token, t('jiraTokenWhere'))), h('div.kb-row.kb-save', {}, h('span.grow'), clearJira, saveJira)),
-    h('fieldset', {}, h('legend', {}, t('apiKey')), h('p', {}, status(sec.apiKey.configured)), h('p.kb-hint', {}, t('apiKeyHint')), h('div.kb-row', {}, key, gen), h('div.kb-row.kb-save', {}, h('span.grow'), clearKey, saveKey)),
+    h('p.kb-hint', {}, 'Written here, kept on the office’s machine only: this page is only told whether they’re set.'),
+    h('fieldset', {}, h('legend', {}, 'Jira'), h('p', {}, status(sec.jira.configured, sec.jira.site ? ` · ${sec.jira.site}` : '')), h('div.kb-three', {}, field('Jira site', site), field('E-mail', email), field('API token', token, 'id.atlassian.com → Security → API tokens')), h('div.kb-row.kb-save', {}, h('span.grow'), clearJira, saveJira)),
+    h('fieldset', {}, h('legend', {}, 'API key'), h('p', {}, status(sec.apiKey.configured)), h('p.kb-hint', {}, 'For the loopback /api/v1 (jira-loop, jira-kanban-feeder). At least 16 characters.'), h('div.kb-row', {}, key, gen), h('div.kb-row.kb-save', {}, h('span.grow'), clearKey, saveKey)),
   );
 }

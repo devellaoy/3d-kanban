@@ -3,11 +3,16 @@
 // everything else under `kanban.*` is a delta. One bus per Net, so the kanban page, the prompt
 // editor's project scope and the PR board's review picker can all listen without adding handlers
 // to the Net each time they open (it has no way to take one back).
+//
+// The office keeps one delta filter per connection (kanban.subscribe {project}; the last one wins).
+// A page that subscribes itself (the kanban page) owns that filter. Anything else that needs a
+// project's deltas (a task view in the 3D office) asks with watch(): the bus subscribes for the
+// watched projects together (one of them, or all when they differ), and unsubscribes when the last
+// watch ends. Watches never touch a filter a page owns: they ride on it.
 
 import type { Net } from '../net';
 import type { ServerMsg } from '../../shared/protocol';
 import type { KanbanClientMsg, KanbanServerMsg } from '../../shared/kanban/protocol.js';
-import { t } from './i18n';
 
 type WithoutRid<T> = T extends unknown ? Omit<T, 'rid'> : never;
 export type KanbanRequest = WithoutRid<KanbanClientMsg>;
@@ -36,11 +41,21 @@ export class KanbanApi {
   private seq = 0;
   private pending = new Map<string, Pending>();
   private listeners = new Set<(msg: KanbanServerMsg) => void>();
+  private watches = new Map<number, string>();
+  private watchSeq = 0;
+  /** Something subscribed the connection itself: its filter stands, watches ride on it. */
+  private owned = false;
+  /** The filter the watches last asked for; undefined when they asked for none. */
+  private watching: string | null | undefined = undefined;
 
   constructor(private net: Net) {
     net.onMessage((msg: ServerMsg) => {
-      // A new connection has forgotten what was asked on the old one.
-      if (msg.t === 'welcome') this.failAll(t('connectionLost'));
+      // A new connection has forgotten what was asked on the old one (a page subscribes again itself).
+      if (msg.t === 'welcome') {
+        this.failAll('The connection to the office was lost: try again');
+        this.watching = undefined;
+        this.syncWatches();
+      }
       if (typeof msg.t !== 'string' || !msg.t.startsWith('kanban.')) return;
       const k = msg as KanbanServerMsg;
       const rid = 'rid' in k ? k.rid : undefined;
@@ -55,7 +70,7 @@ export class KanbanApi {
       for (const fn of this.listeners) fn(k);
     });
     net.onStatus((up) => {
-      if (!up) this.failAll(t('connectionLost'));
+      if (!up) this.failAll('The connection to the office was lost: try again');
     });
   }
 
@@ -71,7 +86,45 @@ export class KanbanApi {
 
   /** Sends without waiting for the answer (deltas still come). */
   send(msg: KanbanRequest) {
+    this.claims(msg);
     this.net.send(msg as KanbanClientMsg);
+  }
+
+  /**
+   * Asks for `project`'s deltas (kanban.task, kanban.comment, kanban.run, kanban.plan) until the
+   * returned function is called. Heard through on(), like every other kanban message.
+   */
+  watch(project: string): () => void {
+    const id = ++this.watchSeq;
+    this.watches.set(id, project);
+    this.syncWatches();
+    return () => {
+      if (this.watches.delete(id)) this.syncWatches();
+    };
+  }
+
+  /** Whether the connection's filter is a page's own (then watches send nothing). */
+  get pageSubscribed(): boolean {
+    return this.owned;
+  }
+
+  /** A page's own subscribe takes the filter over from the watches for good. */
+  private claims(msg: KanbanRequest) {
+    if (msg.t !== 'kanban.subscribe' && msg.t !== 'kanban.unsubscribe') return;
+    this.owned = true;
+    this.watching = undefined;
+  }
+
+  private syncWatches() {
+    if (this.owned || !this.net.up) return;
+    const projects = new Set(this.watches.values());
+    const want = projects.size === 0 ? undefined : projects.size === 1 ? [...projects][0] : null;
+    if (want === this.watching) return;
+    const had = this.watching;
+    this.watching = want;
+    if (want === undefined) {
+      if (had !== undefined) this.net.send({ t: 'kanban.unsubscribe' });
+    } else this.net.send({ t: 'kanban.subscribe', project: want });
   }
 
   /**
@@ -79,12 +132,13 @@ export class KanbanApi {
    * KanbanError carrying the office's reason when it says no, or when nothing comes back.
    */
   request<T extends KanbanServerMsg = KanbanServerMsg>(msg: KanbanRequest): Promise<T> {
-    if (!this.net.up) return Promise.reject(new KanbanError(t('notConnected')));
+    if (!this.net.up) return Promise.reject(new KanbanError('Not connected to the office'));
+    this.claims(msg);
     const rid = `k${Date.now().toString(36)}${(this.seq++).toString(36)}`;
     return new Promise<T>((resolve, reject) => {
       const timer = setTimeout(() => {
         this.pending.delete(rid);
-        reject(new KanbanError(t('noAnswer')));
+        reject(new KanbanError('The office didn’t answer'));
       }, ANSWER_MS);
       this.pending.set(rid, { resolve: resolve as (m: KanbanServerMsg) => void, reject, timer });
       this.net.send({ ...msg, rid } as KanbanClientMsg);

@@ -20,7 +20,7 @@ function scratch(t: { after(fn: () => void): void }) {
 
 // Synthetic transcripts in the shapes docs/fork.md's M0 notes describe (no real session content).
 const cUser = (content: unknown, extra: object = {}) => ({ type: 'user', message: { role: 'user', content }, ...extra });
-const cAssistant = (content: unknown[], extra: object = {}) => ({ type: 'assistant', message: { role: 'assistant', content }, ...extra });
+const cAssistant = (content: unknown[], extra: object = {}, id?: string) => ({ type: 'assistant', message: { ...(id ? { id } : {}), role: 'assistant', content }, ...extra });
 const text = (t: string) => ({ type: 'text', text: t });
 
 test('claude launch flags per phase, with the review sandbox, extra dirs, models and plugin extras', () => {
@@ -89,7 +89,8 @@ test('claude transcript: the text after the last real prompt, skipping tool resu
     { type: 'system', subtype: 'stop_hook_summary' },
   ]);
   const r = readClaudeTurn(file);
-  assert.deepEqual(r, { text: 'Let me look.\n\nAll fixed.\n\nREVIEW: CHANGES_REQUESTED', complete: true });
+  // The final answer only: what it said on the way ("Let me look.") isn't part of it.
+  assert.deepEqual(r, { text: 'All fixed.\n\nREVIEW: CHANGES_REQUESTED', complete: true });
   // A prompt with only an image and text blocks counts as a prompt; one still being answered isn't complete.
   const open = write('open.jsonl', [cUser('x'), cAssistant([text('a')]), cUser([text('Look at this'), { type: 'image', source: {} }])]);
   assert.deepEqual(readClaudeTurn(open), { text: '', complete: false });
@@ -102,10 +103,11 @@ test('claude transcript: ExitPlanMode is the plan, until it is answered', (t) =>
     cUser('Plan task #4'),
     cAssistant([text('Reading the code first.'), { type: 'tool_use', id: 'g', name: 'Grep', input: {} }]),
     cUser([{ type: 'tool_result', tool_use_id: 'g', content: '' }]),
-    cAssistant([text('Here is the plan.\n\nPLAN READY')]),
-    cAssistant([{ type: 'tool_use', id: 'p1', name: 'ExitPlanMode', input: { plan: '1. Change a\n2. Test b' } }]),
+    // One message, logged as a line per block with the message's id.
+    cAssistant([text('Here is the plan.\n\nPLAN READY')], {}, 'msg_2'),
+    cAssistant([{ type: 'tool_use', id: 'p1', name: 'ExitPlanMode', input: { plan: '1. Change a\n2. Test b' } }], {}, 'msg_2'),
   ]);
-  assert.deepEqual(readClaudeTurn(pending), { text: 'Reading the code first.\n\nHere is the plan.\n\nPLAN READY', plan: '1. Change a\n2. Test b', exitPlan: true, complete: true });
+  assert.deepEqual(readClaudeTurn(pending), { text: 'Here is the plan.\n\nPLAN READY', plan: '1. Change a\n2. Test b', exitPlan: true, complete: true });
   const answered = write('answered.jsonl', [
     cUser('Plan task #4'),
     cAssistant([{ type: 'tool_use', id: 'p1', name: 'ExitPlanMode', input: { plan: 'The plan' } }]),

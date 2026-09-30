@@ -21,7 +21,11 @@ export interface LaunchOptions {
 
 /** A turn's result, as far as the log has it. */
 export interface TurnResult {
-  /** The final text of the turn (empty when there is none yet). */
+  /**
+   * The final answer of the turn: its last assistant message only (Claude: that message's text blocks;
+   * Codex: task_complete's last_agent_message), empty when there is none yet. Markers and verdicts are
+   * read from this alone.
+   */
   text: string;
   /** Claude's ExitPlanMode plan, when the turn ended by leaving plan mode. */
   plan?: string;

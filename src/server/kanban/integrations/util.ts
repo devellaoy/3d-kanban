@@ -153,6 +153,7 @@ export async function createIntegrationTask(
       planApproval: ctx.settings.planApproval(input.project),
       useReview: d.useReview,
       createdBy: who.name,
+      ...(who.accountId ? { createdByAccount: who.accountId } : {}),
     });
   });
   if (!existed) {
