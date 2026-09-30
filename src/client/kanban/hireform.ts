@@ -26,6 +26,10 @@ export interface KanbanOption {
   deskLabel: string;
   /** The dialog's title while the toggle is on. */
   title?: string;
+  /** Made from the 📋 queue board: no desk of its own, it starts at the next free one or waits its turn. */
+  queued?: true;
+  /** The task was made (its id). */
+  onCreated?: (taskId: number) => void;
 }
 
 export interface KanbanSection {
@@ -92,7 +96,9 @@ export function kanbanSection(opt: KanbanOption, provider: ProviderPicker | null
     reviewRow.classList.toggle('hidden', investigate);
     approval.disabled = !plan.checked;
     rounds.disabled = !review.checked;
-    note.textContent = `Its first line is the title and all of it the description. It goes on the kanban and starts at ${opt.deskLabel} now.`;
+    note.textContent = opt.queued
+      ? "Its first line is the title and all of it the description. It goes on the kanban and starts at the next free desk now; when the project's tasks at once, the desks or the worker limit are full, it waits in In progress and starts by itself (the queue's “workers at once” doesn't count it)."
+      : `Its first line is the title and all of it the description. It goes on the kanban and starts at ${opt.deskLabel} now.`;
   };
 
   const fill = () => {
@@ -164,7 +170,7 @@ export function kanbanSection(opt: KanbanOption, provider: ProviderPicker | null
         primaryId: repos.find((r) => r.primary)?.id,
         ...agent,
       };
-      createTask(opt.net, form, opt.deskLabel);
+      createTask(opt.net, form, opt.deskLabel, opt.onCreated);
     },
   };
 }
@@ -181,8 +187,8 @@ function taskToast(net: Net, text: string, taskId: number, level: 'info' | 'warn
   el.append(open);
 }
 
-/** Sends the task and says how it went. */
-export function createTask(net: Net, form: HireTaskForm, deskLabel: string) {
+/** Sends the task and says how it went. Without a desk, the engine seats it at a free one or queues it. */
+export function createTask(net: Net, form: HireTaskForm, deskLabel: string, onCreated?: (taskId: number) => void) {
   const made = hireTaskMsg(form);
   if ('error' in made) return void toast(made.error, 'warn');
   kanbanApi(net)
@@ -190,7 +196,9 @@ export function createTask(net: Net, form: HireTaskForm, deskLabel: string) {
     .then((ok) => {
       if (!ok.taskId) return;
       if (ok.startError) taskToast(net, `🗂️ Task #${ok.taskId} is in To do, but couldn't start: ${ok.startError}`, ok.taskId, 'warn');
+      else if (!form.deskId) taskToast(net, `🗂️ Task #${ok.taskId} is on the kanban: it starts at ${deskLabel}, or waits its turn`, ok.taskId);
       else taskToast(net, `🗂️ Task #${ok.taskId} starts at ${deskLabel}`, ok.taskId);
+      onCreated?.(ok.taskId);
     })
     .catch((err: Error) => toast(`🗂️ ${err.message}`, 'error'));
 }

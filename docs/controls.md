@@ -46,7 +46,7 @@ A worker hired for a [kanban task](kanban-coupling.md) (its card says `🗂️ #
 | J | That task's conversation on the kanban |
 | N | Counts it while its task waits on a person (a question, the plan's approval, a failed phase) or its review is unseen |
 
-Hiring at an empty desk (E or P), or a new worker from **✍️ Ask a worker**, can tick **🗂️ Run as a kanban task (plan → implement → review)**: the task goes on the kanban and starts at that desk. The box starts unticked in every new dialog. The kanban's **📍 Show in 3D** opens `/?floor=<id>&worker=<id>&desk=<id>`: the office takes you to that floor and desk and opens the worker's window on its task.
+Hiring at an empty desk (E or P), or a new worker from **✍️ Ask a worker**, can tick **🗂️ Run as a kanban task (plan → implement → review)**: the task goes on the kanban and starts at that desk. The box starts unticked in every new dialog. The **📋 Task queue** form has the same box: ticked, **Start as a kanban task** puts the task on the kanban, where it starts at the next free desk or waits its turn (it's listed under *🗂️ Kanban on this floor* meanwhile). The kanban's **📍 Show in 3D** opens `/?floor=<id>&worker=<id>&desk=<id>`: the office takes you to that floor and desk and opens the worker's window on its task.
 
 You can also click a nearby desk to interact with it, or click a worker in the Workers panel (**🤖 Workers**, top right) to open its terminal.
 
