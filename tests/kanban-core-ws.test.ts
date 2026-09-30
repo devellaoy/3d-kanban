@@ -346,6 +346,13 @@ test('settings, projects, prompts and secrets are for admins; everyone may read 
   await bob.ask({ t: 'kanban.subscribe', project: 'docs' });
   const read = await bob.ask({ t: 'kanban.settings.get' });
   assert.equal(read.t, 'kanban.settings');
+  // ⚙️ Settings without a board: the settings, the projects and who you are, no cards.
+  const meta = await bob.ask({ t: 'kanban.meta.get' });
+  assert.equal(meta.t, 'kanban.meta');
+  assert.deepEqual(meta.me, { admin: false, name: 'Bob' });
+  assert.ok(Array.isArray(meta.projects) && meta.projects.length > 0);
+  assert.ok(meta.settings && meta.secrets);
+  assert.equal('tasks' in meta, false);
   for (const msg of [
     { t: 'kanban.settings.set', settings: { archiveAfterDays: 3 } },
     { t: 'kanban.project.settings.set', project: 'web', settings: { maxConcurrent: 5 } },

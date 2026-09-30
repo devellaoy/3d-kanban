@@ -179,6 +179,8 @@ export type KanbanClientMsg =
   | Req<{ t: 'kanban.comment.add'; id: number; text: string; attachmentIds?: string[] }>
   /** Answered with kanban.settings. */
   | Req<{ t: 'kanban.settings.get' }>
+  /** The settings with the projects and who you are, without the board (⚙️ Settings); answered with kanban.meta. */
+  | Req<{ t: 'kanban.meta.get' }>
   | Req<{ t: 'kanban.settings.set'; settings: KanbanSettingsPatch }>
   | Req<{ t: 'kanban.project.settings.set'; project: string; settings: Partial<ProjectSettings> }>
   | Req<{ t: 'kanban.project.repos.set'; project: string; repos: ProjectRepoInput[] }>
@@ -243,6 +245,7 @@ export type KanbanServerMsg =
   | { t: 'kanban.run'; run: KanbanRun; project: string }
   | { t: 'kanban.plan'; plan: KanbanPlan; project: string }
   | { t: 'kanban.settings'; rid?: string; settings: KanbanSettings; secrets: SecretStatus }
+  | { t: 'kanban.meta'; rid?: string; projects: KanbanProjectInfo[]; settings: KanbanSettings; secrets: SecretStatus; me: { admin: boolean; name: string } }
   | { t: 'kanban.projects'; projects: KanbanProjectInfo[] }
   | { t: 'kanban.issues'; rid?: string; project: string; items: NormalizedIssue[]; error?: string; fetchedAt: number; loading: boolean }
   | { t: 'kanban.skills'; rid?: string; skills: SkillInfo[]; error?: string }
@@ -488,7 +491,7 @@ export const KANBAN_CLIENT_TYPES = new Set<string>([
   'kanban.task.create', 'kanban.task.update', 'kanban.task.move', 'kanban.task.start', 'kanban.task.stop',
   'kanban.task.continue', 'kanban.task.retry', 'kanban.task.review', 'kanban.plan.approve', 'kanban.plan.requestChanges',
   'kanban.task.pr', 'kanban.task.compact', 'kanban.task.release', 'kanban.task.delete', 'kanban.comment.add',
-  'kanban.settings.get', 'kanban.settings.set', 'kanban.project.settings.set', 'kanban.project.repos.set', 'kanban.project.prompt.set',
+  'kanban.settings.get', 'kanban.meta.get', 'kanban.settings.set', 'kanban.project.settings.set', 'kanban.project.repos.set', 'kanban.project.prompt.set',
   'kanban.issues.list', 'kanban.issues.refresh', 'kanban.issues.createTask', 'kanban.skills.list', 'kanban.skills.sync',
   'kanban.secrets.set', 'kanban.pr.review', 'kanban.pr.bundle',
   'kanban.project.repo.clone',
@@ -536,6 +539,7 @@ function parse(raw: unknown): KanbanClientMsg {
       return m({ t: t as 'kanban.subscribe', project: nullableProject(r.project), ...(bool(r.includeArchived, 'includeArchived') ? { includeArchived: true } : {}) });
     case 'kanban.unsubscribe':
     case 'kanban.settings.get':
+    case 'kanban.meta.get':
     case 'kanban.skills.list':
     case 'kanban.skills.sync':
       return m({ t: t as 'kanban.unsubscribe' });

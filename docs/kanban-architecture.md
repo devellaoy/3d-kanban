@@ -303,6 +303,8 @@ answers `kanban.ok {rid, ...}` or `kanban.error {rid, message}`. Deltas are push
     `kanban.ok {}` (`taskId` when one was given, which also gets a status comment).
   - `issues.list`, `issues.refresh`, `issues.createTask` (idempotent by ticket, `kanban.ok {taskId, existed}`),
     `skills.list` are for anyone signed in.
+  - `meta.get` (anyone signed in) is answered with `kanban.meta {projects, settings, secrets, me}`: what a
+    snapshot says besides the cards, for ⚙️ Settings on a page without a board (the 3D office).
   - Admin only (upstream `meOf(accountId).admin`): `settings.set`, `project.settings.set`, `project.repos.set`,
     `project.prompt.set`, `secrets.set`, `skills.sync`. `secrets.set` is answered with `kanban.settings` (configured flags
     only). The `/api/v1` key is stored as `sha256:<hex>`.
