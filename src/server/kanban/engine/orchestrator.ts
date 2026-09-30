@@ -57,6 +57,11 @@ interface Live {
   exitPlan: boolean;
   /** What its agent's needs_input waits on, as its hooks last said (heardAsk); unknown when unset. */
   asks?: AskingKind;
+  /**
+   * Claude's final answer as its Stop hook gave it (`last_assistant_message`): what the turn said
+   * when its session log still hasn't caught up by the time the engine reads it (see readResult).
+   */
+  stopText?: string;
   /** Its turn has ended and is being dealt with. */
   ended: boolean;
   stopping?: { by?: string; timer?: NodeJS.Timeout };
@@ -989,6 +994,11 @@ export class Orchestrator {
     if (o.event === 'hook') {
       if ((o.hookEvent === 'PreToolUse' || o.hookEvent === 'PermissionRequest') && o.tool === 'ExitPlanMode') live.exitPlan = true;
       else if (o.hookEvent === 'PreToolUse' && o.tool) live.exitPlan = false;
+      if (o.hookEvent === 'UserPromptSubmit') live.stopText = undefined;
+      else if (o.hookEvent === 'Stop') {
+        const last = (o.payload as { last_assistant_message?: unknown } | undefined)?.last_assistant_message;
+        live.stopText = typeof last === 'string' && last.trim() ? last.trim() : undefined;
+      }
       this.heardAsk(live, o);
       const source = (o.payload as { source?: unknown } | undefined)?.source;
       if (live.phase === 'compact' && o.hookEvent === 'SessionStart' && source === 'compact') void this.serial(live.taskId, () => this.turnEnded(live));
@@ -1246,7 +1256,11 @@ export class Orchestrator {
     clearTimeout(live.stopping?.timer);
   }
 
-  /** The turn's result from the session log, read again while the log is still catching up. */
+  /**
+   * The turn's result from the session log, read again while the log is still catching up: the Stop
+   * hook can come before Claude has logged its final answer (the log then ends at a tool's result).
+   * A log that never catches up falls back on the answer the Stop hook carried.
+   */
   private async readResult(live: Live): Promise<TurnResult | undefined> {
     const workers = this.ctx.floor(live.floorId)?.workers;
     const adapter = this.adapters[live.tool];
@@ -1258,6 +1272,7 @@ export class Orchestrator {
       if (result?.complete) return result;
       await sleep(this.opts.readPauseMs);
     }
+    if (live.stopText) return { ...result, text: live.stopText, complete: true };
     return result;
   }
 

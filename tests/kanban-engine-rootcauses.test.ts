@@ -104,6 +104,27 @@ for (const tool of ['claude', 'codex'] as const) {
   });
 }
 
+test('claude: a Stop hook ahead of the final answer in the log waits for it, else takes the answer the hook carried (#310)', async (t) => {
+  const fx = await engineFixture();
+  t.after(() => fx.close());
+  fx.settings.setProject('proj', { review: { tool: 'claude', rounds: 1 } });
+  fx.setRules([
+    // The log catches up a moment after the Stop hook.
+    { when: 'Implement kanban task', earlier: 'The after shots look sharp. Cleaning up last.', reply: 'The fog stays outside now.', commit: 'Work', lateLogMs: 200 },
+    // The log never catches up: the Stop hook's last_assistant_message is the answer.
+    { when: 'This is review round 1 of', earlier: 'Reading the diff.', reply: 'No findings.\n\nREVIEW: APPROVED', lateLogMs: -1 },
+  ]);
+  const task = fx.newTask({ usePlan: false });
+  assert.equal(await fx.engine.start(task.id, ADA), undefined);
+  await fx.waitTask(task.id, (x) => x.status === 'review' && x.runState === 'idle', 'the review column', 40_000);
+  const runs = fx.repo.listRuns(task.id);
+  assert.deepEqual(runs.map((r) => `${r.phase}/${r.verdict ?? '-'}`), ['implement/-', 'review/approved']);
+  const comments = fx.repo.listComments(task.id).comments;
+  assert.equal(comments.find((c) => c.kind === 'result')?.text, 'The fog stays outside now.', 'the result is the final answer, not what it said on the way');
+  assert.equal(comments.find((c) => c.kind === 'review')?.text, 'No findings.\n\nREVIEW: APPROVED');
+  assert.equal(runs[0].summary, 'The fog stays outside now.');
+});
+
 // --- 2. A model or effort change takes effect ------------------------------------------------------
 
 test('plan waiting, the model and effort changed, approve: the relaunch runs on the new ones; same flags relaunch too', async (t) => {
