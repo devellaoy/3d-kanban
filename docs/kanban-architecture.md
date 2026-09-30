@@ -90,6 +90,8 @@ allowed: `todo → in_progress` (= start), `waiting|review → done`, `done → 
     - claude: transcript JSONL (`WorkerInfo` tracker transcript path from hooks): the `text` blocks of the
       last assistant message after the last real user message (Claude logs one message's blocks as lines
       sharing `message.id`); and, if the last assistant `tool_use` is `ExitPlanMode`, its `input.plan`.
+      `TurnResult.background` counts the run's background agents still working (an async launch or a
+      `SendMessage` resume in the log with no task-notification after it, since the office's last prompt).
       A last message that calls any other tool is not a final answer (`complete: false`): the Stop hook
       can come before Claude has logged the reply after that tool's result, so the engine reads the log
       again (`readTries` × `readPauseMs`, about 3 s, so a turn that really ends at a tool call, an
@@ -110,6 +112,15 @@ allowed: `todo → in_progress` (= start), `waiting|review → done`, `done → 
 - Turn end = the worker goes `done` (Stop hook) or `needs_input`. `needs_input` in the plan phase with
   `ExitPlanMode` pending = the plan is finished. `needs_input` otherwise → task `waiting`
   ("the agent is asking in its terminal"), its run still live.
+- A Claude Stop isn't the turn's end while the run's background agents still work (`TurnResult.background`):
+  Claude Code's own skills run implementers and reviewers that way, ends the turn with "I'll wait for it"
+  and resumes by itself with a new turn and Stop when the agent is done. The task stays in progress, and
+  that next Stop is heard from the hook (the worker's status stays `done`, so upstream emits nothing).
+  ExitPlanMode isn't held back, and ⏹️ Stop while waiting stops the run at once (no Esc, the worker is
+  at rest). Only background *agents* are counted: Bash `run_in_background` tasks and agent-team teammates also
+  resume Claude but aren't, so such a run can still end early. ⏹️ Stop while waiting doesn't stop the helper
+  agents themselves: when they report back, Claude answers in its terminal, outside the run. There is no
+  timeout; Stop is the way out.
 - **What it waits on** (`Live.asks`, `heardAsk`, in memory only): from the worker's hooks, heard before
   the status they cause. A `PreToolUse` of `AskUserQuestion` (Codex: `request_user_input`) is a
   `question`; a `PermissionRequest` or a `permission_prompt` notification is a `permission`; another

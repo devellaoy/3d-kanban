@@ -286,6 +286,12 @@ New files are not seams (they can't conflict): `src/{server,shared,client}/kanba
   with a warning in the office's log).
 - Codex rollout JSONL (`~/.codex/sessions/YYYY/MM/DD/rollout-*.jsonl`): `event_msg` / `task_complete`
   carries `last_agent_message`.
+- Claude's background agents: an async launch is a user line with `toolUseResult.isAsync` and
+  `status: 'async_launched'` (`agentId`); a `SendMessage` resume has `toolUseResult.resumedAgentId`; the end
+  is a `<task-notification>` (a user line with `origin.kind: 'task-notification'`, or a `queued_command`
+  attachment inside another turn) naming the `<task-id>`. A notification counts as a real prompt for the
+  final answer, but not as the office's prompt that opens the window agents are counted in. A Claude CLI
+  restart between phases stops the previous phase's background agents, which the window handles.
 - Claude flags: `--permission-mode <mode>`, `--disallowedTools`, `--plugin-dir <path>` (skills as a plugin),
   `--resume <id>`, `--session-id <uuid>`; `--json-schema` only works with `--print`, so interactive review
   verdicts are parsed from the final text. The setting `skipDangerousModePermissionPrompt` exists
