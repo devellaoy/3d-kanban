@@ -13,6 +13,7 @@ import { isKanbanPromptId } from '../../shared/kanban/prompts.js';
 import { PROMPT_MAX } from '../../shared/prompts.js';
 import { COMMENTS_PAGE, publicAttachment, type TaskUpdate } from './db/repository.js';
 import { projectInfo } from './projects.js';
+import { refreshWall, wallChanged } from './integrations/issues/wall.js';
 import { ORPHAN_MAX_AGE_MS, removeAttachmentFiles, sweepOrphanUploads, uploadRoutes } from './uploads.js';
 
 const DAY_MS = 24 * 60 * 60_000;
@@ -363,6 +364,11 @@ export function createCorePlugin(ctx: KanbanContext, subs: KanbanSubscriptions):
       if (!ctx.project(m.project)) return fail(c, m.rid, `There's no project ${m.project}`);
       ctx.settings.setProject(m.project, m.settings);
       settingsChanged();
+      // The floor's issues board follows the sources: theirs now, or its own repository's without any.
+      if (m.settings && 'issueSources' in m.settings) {
+        refreshWall(m.project);
+        wallChanged(m.project);
+      }
       ok(c, m.rid);
     },
     'kanban.project.repos.set': (c, m) => {

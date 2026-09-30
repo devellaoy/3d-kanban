@@ -15,7 +15,7 @@ import type { PromptId } from './prompts.js';
 import type { DrinkId } from './rooftop.js';
 import type { WbElement, WbPointer, WhiteboardView } from './whiteboard.js';
 import type { KanbanClientMsg, KanbanServerMsg } from './kanban/protocol.js';
-import type { KanbanWorkerSummary } from './kanban/types.js';
+import type { IssueSourceKind, KanbanWorkerSummary } from './kanban/types.js';
 
 export type WorkerStatus =
   | 'starting' // PTY launched, agent booting
@@ -286,6 +286,8 @@ export interface WorktreeState {
 export interface CarriedIssue {
   issue: number;
   title: string;
+  /** 3d-kanban: the ticket key of a card from the project's issue sources (issue is 0 for one that isn't a GitHub issue). */
+  key?: string;
 }
 
 export interface PeerInfo {
@@ -356,6 +358,14 @@ export interface GhIssue {
   comments: number;
   /** 3d-kanban: owner/name of the repository it's in, on a project with several (see Floor.pullsState). */
   repo?: string;
+  /** 3d-kanban: the ticket key, for a card from the project's issue sources (number is 0 for one that isn't a GitHub issue). */
+  key?: string;
+  /** 3d-kanban: the issue source it came from. */
+  source?: IssueSourceKind;
+  /** 3d-kanban: the source's own status (Jira's "In Progress", a project's column). */
+  status?: string;
+  /** 3d-kanban: the kanban task already made from it. */
+  taskId?: number;
 }
 
 export interface GhPull {
@@ -395,6 +405,8 @@ export interface QueueTask {
   effort?: AgentEffort;
   /** The GitHub issue it came from, when it did. */
   issue?: number;
+  /** 3d-kanban: the ticket key of the issue-source card it came from, when it did. */
+  issueKey?: string;
   title: string;
   prompt: string;
   addedBy: string;
@@ -1127,13 +1139,13 @@ export type ClientMsg =
   /** You sat down in a place on a couch, a beanbag, a chair or the bench (see seatAt in layout), or got up again (no seat). */
   | { t: 'sit'; seat?: string }
   /** You picked an issue card up off the board (or put it down again, no issue): everyone sees it in your hands. */
-  | { t: 'carry'; issue?: number; title?: string }
+  | { t: 'carry'; issue?: number; title?: string; issueKey?: string } // 3d-kanban: issueKey
   /** An emote (hold G, or 1–6): everyone else on your floor sees your character do it. Rate limited, see EmoteBucket. */
   | { t: 'emote'; emote: EmoteId }
   | { t: 'profile'; name: string; color: string; look: Look }
   /** With `issue`, the worker is there for that GitHub issue: it's assigned on GitHub (so it moves to In progress) and taken off the queue. */
   /** With `repos` (other floors' ids), the worker works in their repositories too, each in a worktree of its own (see WorkerInfo.repos). */
-  | { t: 'worker.spawn'; deskId: string; prompt?: string; worktree?: boolean; kind?: WorkerKind; provider?: AgentProvider; model?: string; effort?: AgentEffort; issue?: number; repos?: string[]; via?: 'herald' }
+  | { t: 'worker.spawn'; deskId: string; prompt?: string; worktree?: boolean; kind?: WorkerKind; provider?: AgentProvider; model?: string; effort?: AgentEffort; issue?: number; repos?: string[]; via?: 'herald'; issueKey?: string } // 3d-kanban: issueKey
   | { t: 'worker.resume'; workerId: string }
   /** 3d-kanban: `kanban.done` asks for a task worker's task to be done as it goes (see docs/kanban-coupling.md). */
   | { t: 'worker.kill'; workerId: string; cleanup?: WorktreeCleanup; kanban?: { done?: boolean } }
@@ -1144,7 +1156,7 @@ export type ClientMsg =
   | { t: 'worker.attach'; workerId: string }
   | { t: 'worker.detach'; workerId: string }
   /** With `issue`, the prompt hands the worker that GitHub issue, which is taken as for worker.spawn. */
-  | { t: 'worker.prompt'; workerId: string; prompt: string; issue?: number; asComment?: true } // 3d-kanban: `asComment` makes it a comment on a task worker's task (else typed in, as upstream)
+  | { t: 'worker.prompt'; workerId: string; prompt: string; issue?: number; asComment?: true; issueKey?: string } // 3d-kanban: `asComment` makes it a comment on a task worker's task (else typed in, as upstream); issueKey
   /**
    * A prompt for the agent standing by a board (`deskId` is its kiosk, see STATIONS in layout). It's
    * typed into its session, which is woken up first if it's asleep, or hired there when nobody is.
@@ -1172,7 +1184,7 @@ export type ClientMsg =
   | { t: 'gh.close'; kind: 'issue' | 'pull'; number: number; repo?: string; comment?: string; reason?: GhCloseReason; deleteBranch?: boolean }
   /** Put labels on an issue or PR and take others off, as the server's gh account; answered with gh.labeled. */
   | { t: 'gh.labels'; kind: 'issue' | 'pull'; number: number; repo?: string; add: string[]; remove: string[] }
-  | { t: 'queue.add'; prompt: string; title?: string; issue?: number; provider?: AgentProvider; model?: string; effort?: AgentEffort }
+  | { t: 'queue.add'; prompt: string; title?: string; issue?: number; provider?: AgentProvider; model?: string; effort?: AgentEffort; issueKey?: string } // 3d-kanban: issueKey
   | { t: 'queue.remove'; taskId: string }
   /** Move a queued task up (-1) or down (+1) the queue. */
   | { t: 'queue.move'; taskId: string; delta: number }

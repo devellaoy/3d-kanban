@@ -12,6 +12,7 @@ import { githubRepoSource } from './github-repo.js';
 import { githubProjectSource } from './github-project.js';
 import { jiraSource } from './jira.js';
 import type { IssueSource, IssueSourceIo } from './source.js';
+import { setWallProvider, toGhIssue, wallChanged } from './wall.js';
 
 export const ISSUE_SOURCES: Record<IssueSourceConfig['kind'], IssueSource> = {
   'github-repo': githubRepoSource,
@@ -84,6 +85,7 @@ export function createIssues(ctx: KanbanContext, opts: IssuesOptions = {}) {
     const sources = ctx.settings.project(project).issueSources;
     cache.set(project, { ...state(project), loading: true });
     ctx.broadcast(message(project), project);
+    wallChanged(project);
     const p = (async () => {
       const got = await Promise.allSettled(sources.map((s) => ISSUE_SOURCES[s.kind].list(s, io(project))));
       const items: NormalizedIssue[] = [];
@@ -104,6 +106,7 @@ export function createIssues(ctx: KanbanContext, opts: IssuesOptions = {}) {
     })().finally(() => {
       running.delete(project);
       ctx.broadcast(message(project), project);
+      wallChanged(project);
     });
     running.set(project, p);
     return p;
@@ -113,6 +116,22 @@ export function createIssues(ctx: KanbanContext, opts: IssuesOptions = {}) {
     const s = state(project);
     const watched = now() - (asked.get(project) ?? 0) < WATCH_MS;
     return !s.loading && now() - s.fetchedAt >= (watched ? WATCHED_REFRESH_MS : IDLE_REFRESH_MS);
+  };
+
+  /** The 3D office's issues board (wall.ts): the project's cards, while it has issue sources. */
+  const wall = (project: string) => {
+    if (!ctx.project(project) || !ctx.settings.project(project).issueSources.length) return undefined;
+    const s = state(project);
+    // The project's GitHub repositories: their issues open in the office's own issue window.
+    const repos = ctx.repos(project).flatMap((r) => (r.remote ? [r.remote] : []));
+    const items = s.items.map((i) => toGhIssue(i, ctx.repo.findTaskByTicket(project, i.key)?.id, repos));
+    return { items, fetchedAt: s.fetchedAt, loading: s.loading || (!s.fetchedAt && !s.error), ...(s.error ? { error: s.error } : {}) };
+  };
+  /** Someone is on the project's floor: fetch at the pace for issues someone looks at, and now when they're due. */
+  const watch = (project: string) => {
+    if (!ctx.project(project) || !ctx.settings.project(project).issueSources.length) return;
+    asked.set(project, now());
+    if (due(project)) void refresh(project).catch(() => {});
   };
 
   const plugin: KanbanPlugin = {
@@ -140,10 +159,12 @@ export function createIssues(ctx: KanbanContext, opts: IssuesOptions = {}) {
         if (!issue) return fail(c, m.rid, `${m.issueKey} isn't among the project's issues (any more)`);
         const made = await createIntegrationTask(ctx, { project: m.project, title: issue.title, description: issueDescription(issue), ticket: issue.key, ticketUrl: issue.url }, c, m.start);
         ctx.broadcast(message(m.project), m.project);
+        wallChanged(m.project);
         ok(c, m.rid, { taskId: made.task.id, existed: made.existed, ...(made.startError ? { startError: made.startError } : {}) });
       },
     },
     start() {
+      setWallProvider(wall, watch, (project) => void refresh(project).catch(() => {}));
       timer = setInterval(() => {
         for (const def of ctx.projects()) {
           if (!ctx.settings.project(def.id).issueSources.length) continue;
@@ -154,9 +175,10 @@ export function createIssues(ctx: KanbanContext, opts: IssuesOptions = {}) {
     },
     stop() {
       clearInterval(timer);
+      setWallProvider(undefined);
     },
   };
-  return { plugin, refresh, state, message };
+  return { plugin, refresh, state, message, wall, watch };
 }
 
 /** A task's description from its issue: the issue's text, then where it came from. */
