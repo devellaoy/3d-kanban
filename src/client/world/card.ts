@@ -2,6 +2,9 @@ import * as THREE from 'three';
 import type { CarriedIssue } from '../../shared/protocol';
 import { NOTE_COLORS, PINS, wrap } from './boards';
 import { toon, toonUnique } from './toon';
+// 3d-kanban: a card from the project's issue sources shows its key and is told apart by it.
+import { cardId, cardLabel, noteSeed } from '../../shared/kanban/issuecard.js';
+import { store } from '../state';
 
 const W = 320;
 const H = 240;
@@ -16,17 +19,19 @@ function issueCard(card: CarriedIssue, width: number): THREE.Mesh {
   canvas.width = W;
   canvas.height = H;
   const g = canvas.getContext('2d')!;
-  const color = NOTE_COLORS[card.issue % NOTE_COLORS.length];
+  const seed = noteSeed({ number: card.issue, key: card.key }); // 3d-kanban
+  const color = NOTE_COLORS[seed % NOTE_COLORS.length];
   g.fillStyle = color;
   g.fillRect(0, 0, W, H);
   g.fillStyle = '#2b2d42';
-  g.font = `900 52px ${FONT}`;
-  g.fillText(`#${card.issue}`, 22, 84);
+  const label = cardLabel({ number: card.issue, key: card.key }, store.currentFloor()?.repo); // 3d-kanban
+  g.font = `900 ${label.length > 9 ? 36 : 52}px ${FONT}`;
+  g.fillText(label, 22, 84, W - 44);
   g.font = `700 28px ${FONT}`;
   wrap(g, card.title, W - 44, 4).forEach((line, i) => g.fillText(line, 22, 128 + i * 30));
   g.beginPath();
   g.arc(W / 2, 20, 12, 0, Math.PI * 2);
-  g.fillStyle = PINS[card.issue % PINS.length];
+  g.fillStyle = PINS[seed % PINS.length];
   g.fill();
   g.lineWidth = 3;
   g.strokeStyle = '#2b2d42';
@@ -46,7 +51,7 @@ function issueCard(card: CarriedIssue, width: number): THREE.Mesh {
 /** The issue card someone holds, under `parent`: swapped for another card, or dropped (null). */
 export class HeldCard {
   private mesh: THREE.Mesh | null = null;
-  private issue = 0;
+  private issue = ''; // 3d-kanban: cardId
 
   constructor(
     private parent: THREE.Object3D,
@@ -58,7 +63,7 @@ export class HeldCard {
   }
 
   set(card: CarriedIssue | null | undefined) {
-    if ((card?.issue ?? 0) === this.issue) return;
+    if ((card ? cardId(card) : '') === this.issue) return;
     if (this.mesh) {
       this.parent.remove(this.mesh);
       this.mesh.geometry.dispose();
@@ -67,7 +72,7 @@ export class HeldCard {
       face.dispose();
       this.mesh = null;
     }
-    this.issue = card?.issue ?? 0;
+    this.issue = card ? cardId(card) : '';
     if (!card) return;
     this.mesh = issueCard(card, this.width);
     this.parent.add(this.mesh);

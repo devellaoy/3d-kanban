@@ -59,8 +59,8 @@ import { openSearch } from './ui/search';
 import { openChanges, openChangesFor, routeChangesMessage } from './ui/changes';
 import { openRepoPulls, workerRepos } from './ui/repos';
 import { openPrompt, confirmDialog, sendHomeDialog, lostWorktreeDialog, routeWorktreeMessage, worktreePref } from './ui/prompt';
-import { issuePrompt, openBoard } from './ui/boards';
-import { openIssue, openPull, routePullMessage } from './ui/pull';
+import { openBoard } from './ui/boards';
+import { openPull, routePullMessage } from './ui/pull';
 import { openAsk } from './ui/ask';
 import { openTeam, routeTeamMessage } from './ui/team';
 import { openAccounts, routeAccountsMessage } from './ui/accounts';
@@ -96,7 +96,7 @@ import { whereabouts } from './ui/whereabouts';
 import { wayTo } from './walkto';
 import { DESK_KEYS, interactionAvailable, type DeskKey } from './interaction';
 import { MeetingBoardTexture, MeetingSignTexture } from './world/meeting';
-import { issueMeeting, openMeeting, type MeetingPreset } from './ui/meeting';
+import { openMeeting, type MeetingPreset } from './ui/meeting';
 import { TelescopeView } from './telescope';
 import { onModelsProgress, preloadModels } from './world/models';
 import { loadingScreen } from './ui/loading';
@@ -108,7 +108,9 @@ import { findItem, ownPullRepo } from './kanban/ghrepo';
 // 3d-kanban: task workers in the office (docs/kanban-coupling.md).
 import { canRetry, kanbanCard, kanbanOf, kanbanStarter, kanbanUrl, parseOfficeLink, promptKind, waitText, withoutOfficeLink, workerLabel, type OfficeLink, type WorkerTab } from './kanban/office';
 import { askWorker, cardToTaskWorker, hireOption, promptTaskWorker, promptWorker, retryTask } from './kanban/office3d';
-import { issueTask } from './kanban/hireform';
+// 3d-kanban: issue cards from the project's issue sources (kanban/issuecards.ts).
+import { cardFields, cardMeeting, cardOfIssue, cardOnQueue, cardPrompt, cardTask, issueCardLabel, openCard } from './kanban/issuecards';
+import { cardId } from '../shared/kanban/issuecard.js';
 import { sendTaskWorkerHome } from './kanban/sendhome';
 import { rememberFloor } from './state';
 
@@ -238,17 +240,17 @@ function showOn(mesh: THREE.Mesh, texture: THREE.Texture) {
 }
 /** The issue card in your hands, taken off this floor's issues board (see Carrying an issue card), or null. */
 let carrying: CarriedIssue | null = null;
-/** Issues whose cards someone on this floor is carrying around, so they're missing from the board. */
-function offBoard(): Set<number> {
-  const off = new Set<number>();
-  if (carrying) off.add(carrying.issue);
-  for (const p of store.peers.values()) if (p.carrying && p.id !== store.you && store.onMyFloor(p)) off.add(p.carrying.issue);
+/** Issues whose cards someone on this floor is carrying around, so they're missing from the board. 3d-kanban: by cardId (an issue source's key). */
+function offBoard(): Set<string> {
+  const off = new Set<string>();
+  if (carrying) off.add(cardId(carrying));
+  for (const p of store.peers.values()) if (p.carrying && p.id !== store.you && store.onMyFloor(p)) off.add(cardId(p.carrying));
   return off;
 }
 const issuesTex = new BoardTexture('issues');
 const renderIssuesBoard = () => {
   const off = offBoard();
-  issuesTex.render(off.size ? { ...store.issues, items: store.issues.items.filter((i) => !off.has(i.number)) } : store.issues);
+  issuesTex.render(off.size ? { ...store.issues, items: store.issues.items.filter((i) => !off.has(cardId(i))) } : store.issues); // 3d-kanban: cardId
 };
 mountBoard(office.boardMeshes.issues, issuesTex.texture, renderIssuesBoard, ['issues']);
 let carriedOff = '';
@@ -538,7 +540,7 @@ function teeOff() {
   if (golf.active || trip || climber.active) return;
   const other = teeTaken();
   if (other) return toast(`🏌️ ${other} is on the tee — wait your turn`, 'warn');
-  if (carrying) return toast(`✋ Your hands are full: put #${carrying.issue} down first (Q)`, 'warn');
+  if (carrying) return toast(`✋ Your hands are full: put ${issueCardLabel(carrying)} down first (Q)`, 'warn'); // 3d-kanban: its label
   if (player.seat) standUp();
   if (hanger.active) hanger.cancel();
   if (walkingTo) stopWalking();
@@ -1110,7 +1112,7 @@ net.onMessage((msg) => {
       offTheRoof();
       if (voice.inVoice || voice.sharing) net.send({ t: 'voice', voice: voice.inVoice, muted: voice.muted, sharing: voice.sharing });
       if (player.seat) net.send({ t: 'sit', seat: player.seat.key });
-      if (carrying) net.send({ t: 'carry', issue: carrying.issue, title: carrying.title });
+      if (carrying) net.send({ t: 'carry', issue: carrying.issue, title: carrying.title, ...(carrying.key ? { issueKey: carrying.key } : {}) }); // 3d-kanban: issueKey
       if (shownDrink) net.send({ t: 'act', drink: shownDrink });
       if (golf.active) net.send({ t: 'act', golf: true });
       if (thrower.playing) net.send({ t: 'act', throwing: thrower.playing });
@@ -1148,7 +1150,7 @@ net.onMessage((msg) => {
       if (!trip) takenAway();
       // The card belongs to the board downstairs (or up): the office already put it back there.
       if (carrying) {
-        toast(`📌 #${carrying.issue} stayed behind on the other floor's board`);
+        toast(`📌 ${issueCardLabel(carrying)} stayed behind on the other floor's board`); // 3d-kanban: its label
         setCarrying(null);
       }
       // So does the ball: it's back under that floor's hoop.
@@ -2338,8 +2340,8 @@ function officeIsFull(): boolean {
   return true;
 }
 
-function hire(deskId: string, prompt?: string, worktree = false, provider?: AgentProvider, model?: string, effort?: AgentEffort, issue?: number, repos?: string[], via?: 'herald') {
-  net.send({ t: 'worker.spawn', deskId, prompt, worktree, provider, model, effort, issue, repos: repos?.length ? repos : undefined, via });
+function hire(deskId: string, prompt?: string, worktree = false, provider?: AgentProvider, model?: string, effort?: AgentEffort, issue?: number, repos?: string[], via?: 'herald', issueKey?: string) {
+  net.send({ t: 'worker.spawn', deskId, prompt, worktree, provider, model, effort, issue, repos: repos?.length ? repos : undefined, via, ...(issueKey ? { issueKey } : {}) }); // 3d-kanban: issueKey
   // The moment notifications start to matter: ask once (it has to come from a key press or click).
   if (settings.notify && notifyPermission() === 'default' && !askedToNotify) {
     askedToNotify = true;
@@ -2833,9 +2835,9 @@ function paletteEntries(): PaletteEntry[] {
       at('issues', 'the Issues board', {
         icon: '📌',
         kind: 'Issue',
-        title: `#${issue.number} ${issue.title}`,
-        detail: [issue.state.toLowerCase(), ...issue.labels.map((l) => l.name), issue.author].join(' · '),
-        open: () => openIssue(issue, net, boardActions()),
+        title: `${issueCardLabel(issue)} ${issue.title}`, // 3d-kanban: a card from the issue sources has its key
+        detail: [issue.status ?? issue.state.toLowerCase(), ...issue.labels.map((l) => l.name), issue.author].filter(Boolean).join(' · '),
+        open: () => openCard(issue, net, boardActions()),
       }),
     );
   }
@@ -2958,7 +2960,7 @@ function boardActions() {
     // 3d-kanban: the issue as a kanban task, at the desk nearest you (or wherever the engine finds one).
     kanbanTask: (it: GhIssue) => {
       const desk = freeDesk() ?? undefined;
-      issueTask(net, it, desk, desk ? plan().byId.get(desk)!.label : 'the next free desk');
+      cardTask(net, it, desk, desk ? plan().byId.get(desk)!.label : 'the next free desk');
     },
   };
 }
@@ -3010,7 +3012,7 @@ function interact(target: Interactable | null, key: DeskKey, note = aimedNote) {
   }
   // A note on the issues board: E takes it straight off the cork, O opens it to read first.
   if (note && key === 'E') return pickUp(note);
-  if (note && key === 'O') return openIssue(note, net, boardActions());
+  if (note && key === 'O') return openCard(note, net, boardActions()); // 3d-kanban: a card from the issue sources too
   if (key !== 'E') return;
   if (target.kind === 'elevator') showElevator();
   else if (target.kind === 'issues' || target.kind === 'pulls') openBoard(target.kind, net, boardActions());
@@ -3405,11 +3407,11 @@ function ballAtFeet(): Interactable | null {
 
 // ---- Carrying an issue card ------------------------------------------------------------------------
 function setCarrying(card: CarriedIssue | null) {
-  if ((card?.issue ?? 0) === (carrying?.issue ?? 0)) return;
+  if ((card ? cardId(card) : '') === (carrying ? cardId(carrying) : '')) return; // 3d-kanban: cardId
   carrying = card;
   me.carry(card);
   hands.carry(card);
-  net.send({ t: 'carry', issue: card?.issue, title: card?.title });
+  net.send({ t: 'carry', issue: card?.issue, title: card?.title, ...(card?.key ? { issueKey: card.key } : {}) }); // 3d-kanban: issueKey
   carriedOff = [...offBoard()].join(',');
   renderIssuesBoard();
   hintKey = '';
@@ -3419,17 +3421,18 @@ function setCarrying(card: CarriedIssue | null) {
 function pickUp(it: GhIssue) {
   closeAllModals();
   dropBall();
-  if (carrying?.issue === it.number) return;
-  if (carrying) toast(`📌 #${carrying.issue} went back on the board`);
-  setCarrying({ issue: it.number, title: it.title });
+  // 3d-kanban: a card from the project's issue sources by its key.
+  if (carrying && cardId(carrying) === cardId(it)) return;
+  if (carrying) toast(`📌 ${issueCardLabel(carrying)} went back on the board`);
+  setCarrying(cardOfIssue(it));
   sound.paper();
-  toast(`✋ You took #${it.number} off the board: take it to an empty desk, a worker or the 📋 queue and press E`);
+  toast(`✋ You took ${issueCardLabel(it)} off the board: take it to an empty desk, a worker or the 📋 queue and press E`);
 }
 
 /** Q, or E at the issues board: the card goes back where it came from. */
 function putBack() {
   if (!carrying) return;
-  toast(`📌 #${carrying.issue} is back on the board`);
+  toast(`📌 ${issueCardLabel(carrying)} is back on the board`); // 3d-kanban: its label
   setCarrying(null);
   sound.paper();
 }
@@ -3446,12 +3449,15 @@ function dropCard(it: Interactable, card: CarriedIssue, note: GhIssue | null): b
     else putBack();
     return true;
   }
-  const prompt = issuePrompt({ number: card.issue, title: card.title });
+  // 3d-kanban: a card from the project's issue sources goes by its key, with its own prompt.
+  const prompt = cardPrompt(card);
+  const name = issueCardLabel(card);
+  const ids = cardFields(card);
   if (it.kind === 'queue') {
-    if (onQueue(card.issue)) toast(`#${card.issue} is already on the queue`, 'warn');
+    if (cardOnQueue(card)) toast(`${name} is already on the queue`, 'warn');
     else {
       const { provider, model, effort } = officeChoice(store.project);
-      net.send({ t: 'queue.add', prompt, title: `#${card.issue} ${card.title}`, issue: card.issue, provider, model, effort });
+      net.send({ t: 'queue.add', prompt, title: `${name} ${card.title}`, ...ids, provider, model, effort });
       putDown();
     }
     return true;
@@ -3459,7 +3465,7 @@ function dropCard(it: Interactable, card: CarriedIssue, note: GhIssue | null): b
   // At the meeting room: a meeting about it, and the card goes back up on the board.
   if (it.kind === 'meeting' || (it.kind === 'desk' && it.deskId && plan().byId.get(it.deskId)?.room && !store.workerAtDesk(it.deskId))) {
     putBack();
-    showMeeting(issueMeeting(card.issue, card.title));
+    showMeeting(cardMeeting(card)); // 3d-kanban
     return true;
   }
   // To the herald: someone's sent out for it, to the first free seat.
@@ -3470,7 +3476,7 @@ function dropCard(it: Interactable, card: CarriedIssue, note: GhIssue | null): b
     else if (!officeIsFull()) {
       const { provider, model, effort } = officeChoice(store.project);
       heraldHires.set(deskId, { floor: store.floor, at: performance.now() });
-      hire(deskId, prompt, !!store.project?.branch && worktreePref(), provider, model, effort, card.issue, undefined, 'herald');
+      hire(deskId, prompt, !!store.project?.branch && worktreePref(), provider, model, effort, ids.issue, undefined, 'herald', ids.issueKey); // 3d-kanban: issueKey
       putDown();
     }
     return true;
@@ -3479,14 +3485,14 @@ function dropCard(it: Interactable, card: CarriedIssue, note: GhIssue | null): b
   const w = store.workerAtDesk(it.deskId);
   const why = w ? cantTakeCard(w) : hiringPaused() ? '💸 Budget spent — hiring resumes tomorrow' : '';
   if (why) toast(why, 'warn');
-  else if (w && cardToTaskWorker(net, w, card.issue, prompt, putDown)) {
+  else if (w && cardToTaskWorker(net, w, card, prompt, putDown)) {
     // 3d-kanban: only the task's own issue goes to a task worker, as a message on the task.
   } else if (w) {
-    net.send({ t: 'worker.prompt', workerId: w.id, prompt, issue: card.issue });
+    net.send({ t: 'worker.prompt', workerId: w.id, prompt, ...ids }); // 3d-kanban: ids
     putDown();
   } else if (!officeIsFull()) {
     const { provider, model, effort } = officeChoice(store.project);
-    hire(it.deskId, prompt, !!store.project?.branch && worktreePref(), provider, model, effort, card.issue);
+    hire(it.deskId, prompt, !!store.project?.branch && worktreePref(), provider, model, effort, ids.issue, undefined, undefined, ids.issueKey); // 3d-kanban: issueKey
     putDown();
   }
   return true;
@@ -3496,8 +3502,7 @@ function dropCard(it: Interactable, card: CarriedIssue, note: GhIssue | null): b
 function cardTaskAt(deskId: string, card: CarriedIssue) {
   if (hiringPaused()) return toast('💸 Budget spent — hiring resumes tomorrow', 'warn');
   if (officeIsFull()) return;
-  const it = store.issues.items.find((i) => i.number === card.issue && !i.repo);
-  issueTask(net, { number: card.issue, title: card.title, url: it?.url ?? '', body: it?.body }, deskId, plan().byId.get(deskId)!.label);
+  cardTask(net, card, deskId, plan().byId.get(deskId)!.label);
   putBack();
 }
 
@@ -3505,11 +3510,6 @@ function cardTaskAt(deskId: string, card: CarriedIssue) {
 function putDown() {
   setCarrying(null);
   sound.paper();
-}
-
-function onQueue(issue: number): boolean {
-  const t = store.taskForIssue(issue);
-  return !!t && t.status !== 'done';
 }
 
 /** Why the worker at a desk can't be handed an issue card right now, or '' when it can. */
@@ -3738,7 +3738,7 @@ function renderHint() {
     if (world.herald && target?.kind !== 'herald') hint.parts.push(key('K', plan().herald!.name));
     if (target?.kind !== 'seat') hint.parts.push(key('W A S D', 'Get up'));
   }
-  const k = `${withBall ? 'ball!' : `${target?.kind}${target?.deskId ?? ''}`}|${carrying?.issue ?? ''}|${throne}|${hint.k}`;
+  const k = `${withBall ? 'ball!' : `${target?.kind}${target?.deskId ?? ''}`}|${carrying ? cardId(carrying) : ''}|${throne}|${hint.k}`;
   if (k === hintKey) return;
   hintKey = k;
   el.replaceChildren(...hint.parts);
@@ -3908,11 +3908,11 @@ function hintFor(it: Interactable): Hint {
 
 /** With an issue card in your hands: what E does with it here, and how to put it back. */
 function carryHint(card: CarriedIssue, it: Interactable | null): Hint {
-  const parts = (...mid: (HTMLElement | string)[]) => [h('span.title', {}, `🗂️ #${card.issue} in hand`), ...mid, key('Q', 'Put it back')];
-  if (it?.kind === 'issues') return aimedNote ? { k: String(aimedNote.number), parts: parts(key('E', `Swap it for #${aimedNote.number}`)) } : { k: '', parts: parts(key('E', 'Pin it back up')) };
+  const parts = (...mid: (HTMLElement | string)[]) => [h('span.title', {}, `🗂️ ${issueCardLabel(card)} in hand`), ...mid, key('Q', 'Put it back')]; // 3d-kanban: its label
+  if (it?.kind === 'issues') return aimedNote ? { k: cardId(aimedNote), parts: parts(key('E', `Swap it for ${issueCardLabel(aimedNote)}`)) } : { k: '', parts: parts(key('E', 'Pin it back up')) };
   if (it?.kind === 'ball') return { k: 'ball', parts: parts(aside('🏀 hands full')) };
   if (it?.kind === 'queue') {
-    const on = onQueue(card.issue);
+    const on = cardOnQueue(card); // 3d-kanban: by its key too
     return { k: String(on), parts: parts(on ? aside('already on the queue') : key('E', 'Put it on the queue')) };
   }
   if (it?.kind === 'herald') {
@@ -4484,7 +4484,7 @@ function throneTarget(): Interactable | null {
 function noteUnder(aim: { it: Interactable; hit: THREE.Intersection } | null): GhIssue | null {
   if (aim?.it.kind !== 'issues' || aim.hit.object !== world.boardMeshes.issues || !aim.hit.uv) return null;
   const n = issuesTex.noteAt(aim.hit.uv);
-  return n === undefined ? null : (store.issues.items.find((i) => i.number === n) ?? null);
+  return n === undefined ? null : (store.issues.items.find((i) => cardId(i) === n) ?? null); // 3d-kanban: cardId
 }
 
 /** The note on the issues board under the crosshair, which E takes. 3d-kanban: in third person too, not under the mouse. */
@@ -5002,7 +5002,7 @@ function frame(ts?: number) {
     target = aim?.near ? aim.it : (throneTarget() ?? mySeat() ?? (inOffice() ? ballAtFeet() : null));
     if (aim?.near) aimedNote = noteUnder(aim);
   }
-  issuesTex.lift(aimedNote?.number ?? null);
+  issuesTex.lift(aimedNote ? cardId(aimedNote) : null); // 3d-kanban: cardId
   renderHint();
   renderCrosshair();
 
