@@ -776,8 +776,12 @@ export class Orchestrator {
     if (refsFile) addDirs.push(path.dirname(refsFile));
     // Always: a file sent later in an answer typed into the live session must be readable without a prompt.
     const uploads = path.join(this.ctx.filesDir, 'uploads');
-    mkdirSync(uploads, { recursive: true, mode: 0o700 });
-    addDirs.push(uploads);
+    try {
+      mkdirSync(uploads, { recursive: true, mode: 0o700 });
+      addDirs.push(uploads);
+    } catch (err) {
+      console.error(`agent-office: couldn't make the kanban's uploads folder: ${(err as Error).message}`);
+    }
     const investigate = task.type === 'investigate' && role === 'implementer';
     if (investigate) addDirs.push(reportDir(this.ctx, task.id));
     for (const r of taskRepos(def, task)) if (!r.primary && (r.kind === 'folder' || folder)) addDirs.push(r.dir);
