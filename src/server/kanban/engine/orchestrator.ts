@@ -65,6 +65,8 @@ interface Live {
   stopText?: string;
   /** Its turn has ended and is being dealt with. */
   ended: boolean;
+  /** Its turn stopped while background agents it set off still work: the run goes on until a Stop with none left. */
+  background?: boolean;
   stopping?: { by?: string; timer?: NodeJS.Timeout };
   compactTimer?: NodeJS.Timeout;
 }
@@ -1027,6 +1029,10 @@ export class Orchestrator {
       else if (o.hookEvent === 'PreToolUse' && o.tool) live.exitPlan = false;
       if (o.hookEvent === 'UserPromptSubmit') live.stopText = undefined;
       else if (o.hookEvent === 'Stop' && live.tool === 'claude') live.stopText = stopMessage(o.payload);
+      // The worker stays `done` across the resumed turn (upstream drops an unchanged status), so its Stop is heard here.
+      // The resumed turn has started (these hooks also set the worker `working`): its end is a normal `done` again.
+      if (live.background && (o.hookEvent === 'PreToolUse' || o.hookEvent === 'UserPromptSubmit')) live.background = false;
+      if (o.hookEvent === 'Stop' && live.background) void this.serial(live.taskId, () => this.turnEnded(live));
       this.heardAsk(live, o);
       const source = (o.payload as { source?: unknown } | undefined)?.source;
       if (live.phase === 'compact' && o.hookEvent === 'SessionStart' && source === 'compact') void this.serial(live.taskId, () => this.turnEnded(live));
@@ -1336,9 +1342,20 @@ export class Orchestrator {
     }
   }
 
+  /** How many of the run's background agents the log shows still working. */
+  private backgroundLeft(live: Live): number {
+    const file = this.ctx.floor(live.floorId)?.workers.transcripts(live.workerId)?.claude;
+    return (file && this.adapters.claude.readTurnResult(file)?.background) || 0;
+  }
+
   /** A run's turn is over: read what it said, keep it, and move the task on. `planExit`: ExitPlanMode. */
   private async turnEnded(live: Live, planExit = false) {
     if (live.ended || this.live.get(live.workerId) !== live) return;
+    if (!planExit && live.tool === 'claude' && live.phase !== 'compact') {
+      live.background = this.backgroundLeft(live) > 0;
+      // Stop #1's answer is the interim "I'll wait" text, never the run's.
+      if (live.background) return void (live.stopText = undefined);
+    }
     live.ended = true;
     this.forget(live);
     const floor = this.ctx.floor(live.floorId);
@@ -1481,6 +1498,9 @@ export class Orchestrator {
     }
     const floor = this.ctx.floor(live.floorId);
     live.stopping = { ...(who ? { by: who.name } : {}) };
+    // Its worker is at rest, waiting on the background agents: nothing to interrupt.
+    if (live.background && this.backgroundLeft(live) > 0) return void this.serial(task.id, () => this.stoppedRun(live));
+    live.background = false;
     floor?.workers.write(live.workerId, ESC, who?.name ?? 'Kanban');
     live.stopping.timer = setTimeout(() => {
       if (this.live.get(live.workerId) !== live || live.ended) return;
