@@ -57,7 +57,7 @@ must be found by hand. Line numbers drift; the "where" column names the function
 
 New files are not seams (they can't conflict): `src/{server,shared,client}/kanban/**`,
 `src/client/kanban.html`, `bin/office-tasks.js`, `scripts/migrate-ai-kanban/`, `skills/`,
-`tests/kanban-*.test.ts`, `tsconfig.scripts.json`, `docs/kanban.md`, `docs/kanban-architecture.md`,
+`tests/kanban-*.test.ts`, `tests/sky.test.ts` (upstream PR #207's, so it would conflict only if upstream adds the same file), `tsconfig.scripts.json`, `docs/kanban.md`, `docs/kanban-architecture.md`,
 `docs/migration.md`, `docs/fork.md`.
 
 ### Server
@@ -96,6 +96,8 @@ New files are not seams (they can't conflict): `src/{server,shared,client}/kanba
 | `src/server/leave-on-merge.ts` | `notLeaving()` | A worker of a task in progress, or with a run under way, is never picked | Leave-on-merge doesn't stop a task mid-work |
 | `src/server/meetings.ts` | import; `MeetingWorkers.kill(id, intent?)`; its two calls | `{ by: 'The meeting', reason: 'meeting' }` | Same departure path |
 | `src/server/queue.ts` | import; `QueueWorkers.kill(…, intent?)`; the recycle call | `{ by: 'The queue', reason: 'queue' }` | Same |
+| `src/server/queue.ts` | `QueueEvents.claimIssue(…, key?)`; `add(…, issueKey?)`, `retry()`, `dropIssue(issue, key?)`, the claim in `pump()`, `load()`, `label()` | A task carries `issueKey` (a card from the project's issue sources): deduplicated, dropped and claimed by it, and kept across restarts | Issue-source cards on the 📋 queue ([Issue sources](kanban.md#issue-sources)) |
+| `src/server/floor.ts` | imports; `offWall` field; the `GitHub` constructor's issues callback; `onWallIssues()` in the constructor; `watchWall()` in the refresh timer; `offWall()` in `shutdown()`; the queue's `claimIssue`; new section "the issues board from the project's issue sources": `issuesState()`, `claimCard()`, `cardKey()` | The issues board is `wallIssues(id)` (kanban/integrations/issues/wall.ts) when the project has issue sources, else upstream's (whose callback then doesn't emit); a card is claimed on GitHub by the number in its key (another repository's with `-R`), a Jira or project card isn't; `cardKey()` takes a key from a client only when it's a card on this floor's board | The 3D issues board from the kanban's issue sources |
 | `src/server/webhook.ts` | `announce()` (new method) | Posts a kanban announcement ("🗂️ #14 … needs plan approval in …") like a worker's `needs_input` alert | A task waiting on a person reaches the team's notifications |
 | `src/server/config.ts` | `Config.hookPort`; `--hook-port` parsing and `AGENT_OFFICE_HOOK_PORT`; the check in `loadConfig`; `HELP` text *(unmarked)* | Pins the loopback hook server's port | Scripts outside the office (ai-kanban's) can reach it |
 | `src/server/building.ts` | imports *(unmarked)*, `FloorDef.repos?` | `repos?: ProjectRepo[]` on a floor | Project = floor with several repositories |
@@ -119,6 +121,8 @@ New files are not seams (they can't conflict): `src/{server,shared,client}/kanba
 | `src/server/server.ts` | after the floors open: `installKanban({…})`'s `capacity`, `runAs`, `notify` | `machine.full()`, the sign-ins, `webhook.announce()` | Task hires queue for the worker limit, keep upstream's sign-in rule, and waiting tasks are announced |
 | `src/server/server.ts` | `worker.prompt` case | `kanban.workerPrompt(info, text, caller, msg.asComment === true)` first; upstream's typing-in (and issue claim) when it hands back `undefined`; with `issue`, the claim after the comment is in | P / Ask / an issue card on a task worker is a task comment, only when the fork's dialogs send `asComment`; everything else types in as upstream |
 | `src/server/server.ts` | `worker.resume` case | `kanban.workerResume(info, caller)` first | R on a task worker whose task waits is Retry |
+| `src/server/server.ts` | imports (`refreshWall`); `floorView()` `issues`; `carry`, `worker.spawn`, `worker.prompt` and `queue.add` cases; `takeIssue(c, floor, n, key?)`; `gh.close`'s issue branch | `issues: floor.issuesState()`; `issueKey` from those messages only through `floor.cardKey()` (a card on that floor's board, checked before `queue.add` stores it); the claim goes through `floor.claimCard()`; a closed issue refreshes the sources' board a moment later | Same |
+| `src/server/server.ts` | `gh.refresh` case | `refreshWall(floor.id, 0)` after upstream's refresh | 🔄 Refresh on the issues board fetches the project's issue sources again too |
 | `src/server/server.ts` | `worker.kill` case; `/office/workers` send-home route | The intent `{ by, reason, done? }` (`msg.kanban.done`) to `floor.sendHome` | X can move the task to Done; leave-on-merge's reason |
 | `src/server/server.ts` | hook server: `listenHooks(cfg.hookPort ?? lastHookPort)` and the fallback message | A pinned hook port | See config.ts |
 | `src/server/upgrade.ts` | `findAppDir()` | The install is found by `package.json` `name === '3d-kanban'` | The package is renamed ([Name and releases](#name-and-releases)); without it self-upgrades on a provisioned server would look in the wrong folder |
@@ -138,6 +142,7 @@ New files are not seams (they can't conflict): `src/{server,shared,client}/kanba
 | `src/shared/protocol.ts` | `worker.prompt` | `asComment?: true` | A comment on a task worker's task (the fork's dialogs only); without it, typed in as upstream |
 | `src/shared/protocol.ts` | `worker.kill` | `kanban?: { done?: boolean }` | X can move the task to Done |
 | `src/shared/protocol.ts` | `GhIssue.repo`, `GhPull.repo` | owner/name of the card's repository | Multi-repo boards |
+| `src/shared/protocol.ts` | import; `GhIssue.key/source/status/taskId`, `CarriedIssue.key`, `QueueTask.issueKey`; `carry`, `worker.spawn`, `worker.prompt`, `queue.add` | The ticket key of a card from the project's issue sources (number 0 for one that isn't a GitHub issue) and `issueKey?` on the messages that hand one out | The 3D issues board from the kanban's issue sources |
 | `src/shared/protocol.ts` | `gh.merge` / `gh.comment` / `gh.close` / `gh.labels` and their replies | optional `repo?: string` | Same |
 | `src/shared/protocol.ts` | `ClientMsg`, `ServerMsg` unions *(unmarked)* | `\| KanbanClientMsg`, `\| KanbanServerMsg` | The kanban's WS messages ride upstream's socket |
 
@@ -172,6 +177,12 @@ New files are not seams (they can't conflict): `src/{server,shared,client}/kanba
 | `src/client/main.ts` | `killWorker()` top | `sendTaskWorkerHome()` (kanban/sendhome) | Move to Done on X |
 | `src/client/main.ts` | `openKanban()`, `goToNextWaiting()` toast, `openWorkerTerminal(…, tab)` | J opens the task you face (`tab=conversation`); N says what the task waits on | Same |
 | `src/client/main.ts` | `boardActions().kanbanTask`, `interact()` (P with a card at an empty desk, R), `dropCard()` (`cardToTaskWorker`), `cardTaskAt()` (new), `carryHint()` P, `deskHint()` title/task/R | Issue cards as kanban tasks; only a task's own issue goes to its worker; R retries | Same |
+| `src/client/main.ts` | imports (kanban/issuecards, `cardId`; `issuePrompt`, `openIssue`, `issueMeeting`, `issueTask` no longer); `offBoard()`, `renderIssuesBoard`, `teeOff()`, the reconnect `carry`, `floor.enter`'s toast; `hire()`'s `issue` (a number, or a card's `cardFields`); the command palette's issues; `boardActions().kanbanTask`; `interact()` O on a note; `setCarrying()`, `pickUp()`, `putBack()`, `dropCard()`, `cardTaskAt()`; `onQueue()` removed (`cardOnQueue`); `carryHint()`; the hint key; `noteUnder()`; `issuesTex.lift()` | A card is told apart by `cardId` (its key, else `#n`), named by `issueCardLabel`, handed out with `cardFields` (`issue` for the floor's own issue, `issueKey`) and `cardPrompt`, opened with `openCard` | Issue-source cards on the board, in your hands and at every drop target |
+| `src/client/world/boards.ts` | import; `DrawnNote.id`, `lifted`, `noteAt()`, `lift()`; `render()`'s tilt, color and number | Notes by `cardId`, colored by `noteSeed`, labelled `UYT-1415` / `api#12`, with `🗂️ #N` for a card made into a task | Same |
+| `src/client/world/card.ts` | import; `issueCard()` color, pin and label; `HeldCard.issue` | The carried card shows its label and is swapped by `cardId` | Same |
+| `src/client/ui/boards.ts` | imports; `issueColumns()` in progress (a keyed card's queue task by `taskForCard`); `queueChip(issue, key?)`; `card(…, onLabels \| null, label?)`; the issues column's cards (one `card()` call); `openIssue` import | Every issue card opens with `openCard`; one with a key has its source, status and task chips, and labels only for the project's GitHub issues | Same |
+| `src/client/ui/pull.ts` | import; `openIssue()`'s `renderFrame()` queue task | `taskForCard(it)` for a card with a key, else upstream's `taskForIssue` | Another repository's #12 isn't the floor's #12 on the queue |
+| `src/client/lite.ts` | import; `boardActions().kanbanTask` | `cardTask` (kanban/issuecards) instead of `issueTask` | A card from the issue sources becomes its task by its key on the 2D view too |
 | `src/client/state.ts` | `rememberFloor()` | exported | The deep link comes in on its floor |
 | `src/client/notify.ts` | import; `waitingOnSomeone()` | `taskWaiting()` first | N, the count and the compass follow the task |
 | `src/client/interaction.ts` | import; `R` | `canRetry()` too | R retries a waiting task |
@@ -181,7 +192,7 @@ New files are not seams (they can't conflict): `src/{server,shared,client}/kanba
 | `src/client/ui/ask.ts` | import; `AskWorker.task`, `AskOptions.kanbanOption`; `pick()`, the body, `send()` | Kanban toggle for a new worker; `🗂️ #14` on a task worker's button | Same |
 | `src/client/ui/boards.ts` | `BoardActions.kanbanTask?` | Optional action | 🗂️ Kanban task in an issue |
 | `src/client/ui/pull.ts` | `openIssue()` footer | 🗂️ Kanban task button when `actions.kanbanTask` | Same |
-| `src/client/ui/queue.ts` | import; `render()` parts | `kanbanQueueSection(net)` (kanban/office3d) | Read-only 🗂️ Kanban on this floor |
+| `src/client/ui/queue.ts` | imports; `openQueue()`: the kanban toggle before the form, the form's children, `submit()`'s kanban branch, `render()` parts, the `unsubs`/`tick`/`onClose`/first `render()` lines | `kanbanSection(queueOption(net))` (kanban/hireform, kanban/office3d), `kanbanQueueSection(net, watch.tasks())`, `kanbanQueueWatch` | **🗂️ Run as a kanban task** on the queue board; 🗂️ Kanban on this floor with the tasks waiting their turn |
 | `src/client/ui/hud.ts` | help list | `J` text; `E/P/R/X 🗂️` rows | The H help |
 | `src/client/lite.ts` | imports; `workerCard()` sub line, `promptWorker()`, `sendToWorker()` (`askWorker`), `boardActions().kanbanTask`, `fixLostWorktree()` send home | The same on the 2D view (its terminal gets the tabs from terminal.ts) | Same |
 | `src/client/main.ts`, `src/client/lite.ts` | `sendToWorker()`'s `onSubmit` | `askWorker(net, to, prompt)` (kanban/office3d): `asComment` for a task implementer whose task the engine carries on, else upstream's `worker.prompt` | Ask → an existing task worker is a message on its task |
@@ -194,6 +205,7 @@ New files are not seams (they can't conflict): `src/{server,shared,client}/kanba
 | `src/client/login.html`, `src/client/join.html`, `src/client/claim.html` | `<head>` after the icon | `theme-color` only | The installed app's colour on the sign-in pages |
 | `src/client/ui/prompt.ts` | `sendHomeDialog()` `choices` | "`kanban3d prune` tidies up later" | The command is `kanban3d` |
 | `src/client/ui/accounts.ts` | shared-password note (off) | "run `kanban3d accounts password on`" | Same |
+| `src/client/world/sky.ts` | `INDOOR_FOG`, `ROOM_*`, `WALL_TOP`, `hazeAt()`, `wingRoom()`, `roomAt()`, `indoorAt()`, `ROOM_VARYING`, `ROOM_PARS` with `skyInsideOf()` (split out of `PARS`), `SPRITE_WORLD`, `HAZE_PARS`' `skyInRoom()`, `HAZE`, `onBeforeCompile`, `Sky.setWing()` | Anything inside the office keeps a tenth of the outdoor fog, when you're inside too; upstream PR #207 (closed unmerged, issue #122 still open), plus the fork's own camera check, sprites' haze and the TypeScript mirrors the tests use | The weather's fog doesn't come into the office |
 
 ### Build, packaging, deploy, docs
 
@@ -217,6 +229,8 @@ New files are not seams (they can't conflict): `src/{server,shared,client}/kanba
 | `README.md` | top | Fork section above upstream's README, which follows unchanged (its *Mouse drag / wheel* row is flagged there as out of date) | What this fork is |
 | `docs/features.md` | *A floor per project*, *One task across several projects*, *One-click PRs*, *PR board*, *Walk around*, *Basketball* | An "*In 3d-kanban*" sentence at the end of each, pointing to [kanban.md](kanban.md) | The upstream docs don't contradict the fork |
 | `docs/configuration.md` | *Where the office keeps things* | An "*In 3d-kanban*" paragraph before *Command line* (kanban data, settings, migration) | Same |
+| `docs/features.md` | *Day and night, and weather* | Last sentence: fog is kept out of doors | Same as `sky.ts` above |
+| `docs/how-it-works.md` *(unmarked)* | *Sky* | The haze sentence on the room you're in (from upstream PR #207) | Same |
 | `docs/controls.md` | keys table (`O` text, new `J` row; `Mouse`, `Click`, `Wheel` rows for the third person that looks around like first); new section *In the kanban view* | The fork's keys | Same |
 | `vite.config.ts` | imports (`createHash`, `writeFileSync`); `pwaBuild()` (new, before `defineConfig`); `plugins` | Writes the build's id into `dist/public/sw.js` (`'__PWA_BUILD__'`) | Each build's `/assets/` get a cache of their own |
 | `docs/configuration.md` | end of the file | Section *PWA* (the fork's) | How to install it, HTTPS, updates |
@@ -241,6 +255,8 @@ New files are not seams (they can't conflict): `src/{server,shared,client}/kanba
    - New `gh.*` messages or `/api/gh/*` routes upstream adds that act on one PR or issue: give them the
      same `repo` → `githubFor()` handling, or they act on the floor's own repository.
    - `floorView()` and the floor's `gh.pulls` callback still send `pullsState()`.
+   - `src/client/world/sky.ts`: if upstream fixes its issue #122 (fog indoors) its own way, take upstream's
+     version and drop the fork's (upstream PR #207) along with `tests/sky.test.ts`.
 4. Re-check `package.json` (dependencies, `files`, `typecheck`, `migrate:ai-kanban`), `vite.config.ts`
    inputs and the Dockerfile's `better-sqlite3` rebuild; keep this fork's `AGENTS.md` and the pointer
    `CLAUDE.md` (`@AGENTS.md`), resolving any upstream change to `CLAUDE.md` in favour of the pointer.
@@ -256,7 +272,11 @@ New files are not seams (they can't conflict): `src/{server,shared,client}/kanba
 - Claude transcript JSONL: `type: 'assistant'` lines carry `message.content[]` blocks; the turn's final
   text is the `text` blocks of the last assistant message (its lines share `message.id`) after the last
   user prompt. `ExitPlanMode` shows up as a `tool_use` block
-  whose `input.plan` is the plan.
+  whose `input.plan` is the plan. The Stop hook can arrive before the final message is in the log (it
+  then ends at a tool's result), so a last message with a tool call isn't the final answer; the Stop
+  hook's payload carries `last_assistant_message`, the fallback when the log doesn't catch up (the fix
+  relies on it: without it, a log that never catches up still gives what the agent said on the way,
+  with a warning in the office's log).
 - Codex rollout JSONL (`~/.codex/sessions/YYYY/MM/DD/rollout-*.jsonl`): `event_msg` / `task_complete`
   carries `last_agent_message`.
 - Claude flags: `--permission-mode <mode>`, `--disallowedTools`, `--plugin-dir <path>` (skills as a plugin),

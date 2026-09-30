@@ -109,12 +109,12 @@ curl -fsSL https://raw.githubusercontent.com/devellaoy/3d-kanban/main/deploy/pro
   Done sends its idle workers home, and stops a run whose agent is still asking in its terminal (see [docs/kanban.md](docs/kanban.md#sending-a-tasks-worker-home)).
   In the office, a task worker's card says `🗂️ #14 · …`; **E** opens its window with a **🗂️ Task** tab
   (the task's conversation, plan and runs), **P** is a message on its task while it's in progress,
-  waiting or in review, **R** retries it, and a hire can tick **🗂️ Run as a kanban task** ([controls](docs/controls.md#at-a-kanban-tasks-worker),
+  waiting or in review, **R** retries it, and a hire, or the 📋 Task queue's form, can tick **🗂️ Run as a kanban task** ([controls](docs/controls.md#at-a-kanban-tasks-worker),
   [the contract](docs/kanban-coupling.md)).
 - **Projects with several repositories**: a floor is a project, and a task gets a worktree of each of
   its repositories on one branch, cut from each repository's configured base branch (else the branch
   its checkout is on). The issues and PR boards show every repository.
-- **Issue sources per project**: GitHub repositories, GitHub Projects v2 and Jira, made into tasks in a click.
+- **Issue sources per project**: GitHub repositories, GitHub Projects v2 and Jira, made into tasks in a click. They are also the 3D office's 📌 Issues board, cards you carry to desks, workers and the queue.
 - **Agent-written pull requests**: **O** at a desk and the task's PR phase have the agent push and open
   (or fix) the PRs in every repository.
 - **Multi-PR reviews**: 🔍 Review and 🤝 Review panel pick the PRs that belong together across the

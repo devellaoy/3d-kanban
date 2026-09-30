@@ -1,7 +1,7 @@
 import { execFileSync } from 'node:child_process';
 import { mkdirSync } from 'node:fs';
 import path from 'node:path';
-import type { ChangesState, FloorInfo, GhPull, GhState, PeerInfo, ProjectInfo, ServerMsg, WorkerInfo } from '../shared/protocol.js';
+import type { ChangesState, FloorInfo, GhIssue, GhPull, GhState, PeerInfo, ProjectInfo, ServerMsg, WorkerInfo } from '../shared/protocol.js';
 import { isBusy } from '../shared/status.js';
 import { DESK_BY_ID } from '../shared/layout.js';
 import type { FloorDef } from './building.js';
@@ -31,6 +31,9 @@ import { officePrompt, type PromptSource } from './prompts.js';
 import { parseRepoFloorId, projectRepos } from './kanban/projects.js';
 // 3d-kanban: the kanban hears when the PR board has fresh lists (its tasks' linked PRs' states).
 import { floorPulled } from './kanban/integrations/pulls/board.js';
+// 3d-kanban: the issues board shows the project's issue sources when it has any (see issuesState).
+import { claimGhKey, onWallIssues, refreshWall, wallIssues, watchWall } from './kanban/integrations/issues/wall.js';
+import { isPrimaryIssue, parseGhKey } from '../shared/kanban/issuecard.js';
 // 3d-kanban: what a worker is sent home with (see sendHome).
 import type { DepartureIntent } from '../shared/kanban/types.js';
 import { sameRepo } from '../shared/floors.js';
@@ -148,6 +151,8 @@ export class Floor {
   /** Workers sent home on a map that locks them up (see MapPlan.sendHome). */
   readonly jail: Jail;
   private timer: NodeJS.Timeout;
+  /** 3d-kanban: stops hearing about the project's issue-source cards (see issuesState). */
+  private offWall: () => void;
   /** Pull requests merging, to ring the gong for. */
   private merges = new MergeWatch();
   /** A look for workers whose pull request merged, due shortly (see sendLandedHome). */
@@ -226,7 +231,7 @@ export class Floor {
 
     this.github = new GitHub(
       def.dir,
-      (state) => ctx.emit(this, { t: 'gh.issues', state }),
+      (state) => void (wallIssues(this.id) ? undefined : ctx.emit(this, { t: 'gh.issues', state })), // 3d-kanban: not while the board shows the project's issue sources
       (state) => {
         // 3d-kanban: the board shows every repository of the project (the same list as upstream's for one).
         ctx.emit(this, { t: 'gh.pulls', state: this.pullsState() });
@@ -243,9 +248,9 @@ export class Floor {
         this.sendLandedHome();
       },
       toast: (text, level) => ctx.toast(this, text, level),
-      claimIssue: (issue, owner) => {
+      claimIssue: (issue, owner, key) => {
         const as = ctx.ghAs(owner);
-        return typeof as === 'string' ? Promise.resolve(as) : this.github.claim(issue, as);
+        return typeof as === 'string' ? Promise.resolve(as) : this.claimCard(issue, key, as); // 3d-kanban: a card from the issue sources too
       },
       refreshGitHub: () => void this.github.refresh(),
       hiringPaused: () => ctx.ledger.hiringPaused,
@@ -326,18 +331,56 @@ export class Floor {
 
     void this.github.refresh();
     this.refreshBoards();
+    // 3d-kanban: the issues board hears when the project's issue-source cards change.
+    this.offWall = onWallIssues(this.id, () => ctx.emit(this, { t: 'gh.issues', state: this.issuesState() }));
     // A floor with people on it, or work under way, keeps its boards fresh; the others check in now and then.
     this.timer = setInterval(() => {
       if (this.active() || Date.now() - this.github.issues.fetchedAt > IDLE_REFRESH_MS) {
         void this.github.refresh();
         this.refreshBoards();
       }
+      if (this.active()) watchWall(this.id); // 3d-kanban
     }, REFRESH_MS);
   }
 
   /** Pull request `n` merged (`by` someone, from the PR window): the gong rings, once per PR. 3d-kanban: `repo` when it's in another of the project's repositories. */
   merged(n: number, by?: string, repo?: string) {
     if (this.merges.ring(n, this.otherRepo(repo))) this.ctx.emit(this, { t: 'gong', why: 'merged', pr: n, by });
+  }
+
+  // --- 3d-kanban: the issues board from the project's issue sources --------------------------------
+
+  /**
+   * The issues board's list: the cards of the project's issue sources (Settings → Issue sources) when
+   * it has any, else upstream's, the floor's own repository's.
+   */
+  issuesState(): GhState<GhIssue> {
+    return wallIssues(this.id) ?? this.github.issues;
+  }
+
+  /**
+   * Assigns a card's issue on GitHub to `as` (else the office's gh): one of the floor's own issues as
+   * upstream does, another repository's by its key. A card that isn't a GitHub issue (Jira, a project's
+   * draft) is left be. Resolves to why not, or nothing.
+   */
+  async claimCard(issue: number | undefined, key: string | undefined, as?: GhAs): Promise<string | undefined> {
+    if (!key) return issue ? this.github.claim(issue, as) : undefined;
+    // The issue is the one the key names, whatever number came with it.
+    const gh = parseGhKey(key);
+    if (!gh) return undefined;
+    const err = isPrimaryIssue({ number: gh.number, key }, this.def.repo) ? await this.github.claim(gh.number, as) : await claimGhKey(key, this.dir, as?.env);
+    if (!err) refreshWall(this.id);
+    return err;
+  }
+
+  /**
+   * A card's key as a client sent it, when it's one of the cards on this floor's board from the
+   * project's issue sources; anything else is dropped, so nobody can have an issue claimed (or queued)
+   * that the board doesn't show.
+   */
+  cardKey(v: unknown): string | undefined {
+    if (typeof v !== 'string' || !v) return undefined;
+    return wallIssues(this.id)?.items.some((i) => i.key === v) ? v : undefined;
   }
 
   // --- 3d-kanban: the project's other repositories' pull requests --------------------------------
@@ -518,6 +561,7 @@ export class Floor {
   /** With `keep` (a restart), the workers' terminals keep running for the next office to pick up. */
   shutdown(keep = false) {
     clearInterval(this.timer);
+    this.offWall(); // 3d-kanban
     clearTimeout(this.landedTimer);
     this.dog.stop();
     this.github.stop();

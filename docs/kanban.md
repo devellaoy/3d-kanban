@@ -77,6 +77,10 @@ and the office's defaults.
 locked (add to it with a comment), and a task moved back to To do can be edited again apart from
 those two.
 
+In the office, a hire at a desk and the **📋 Task queue**'s form can tick **🗂️ Run as a kanban task**
+(type, plan, review rounds and repositories; the agent is the form's own, Claude Code or Codex): the
+task is made and started at once, at that desk or, from the queue, at the next free one.
+
 ## The process
 
 1. **Plan** (when *Plan first* is on): the agent plans read-only. It ends with the plan (the line
@@ -138,7 +142,9 @@ did:
 A task done this way sends its other workers at rest home too, as moving it to Done does.
 
 A project runs at most *tasks at once* tasks (default 2); more are **queued** in In progress and start
-when a slot frees up. A hire also needs a free desk on the project's floor and room under the office's
+when a slot frees up. A task made from the office's 📋 Task queue with **🗂️ Run as a kanban task** starts
+the same way, at the next free desk (the queue's own *workers at once* doesn't count it), and the queue
+board lists it under *🗂️ Kanban on this floor* while it waits. A hire also needs a free desk on the project's floor and room under the office's
 worker limit (`--max-workers`, ⚙️ Settings): when there's none, the start or the phase (a reviewer's
 hire, say) is **queued** too, with a line saying why, and starts by itself as soon as a worker goes
 home anywhere in the office (or at the next minute's look). A task counts once against the worker
@@ -300,6 +306,34 @@ instead, and is never made twice.
 Issues are fetched again every 90 seconds while someone looks at them, every 10 minutes otherwise, and
 with **Refresh**. Keys: `gh:owner/repo#12` (GitHub issues), `ghp:<owner>/<number>#<item>` (project
 draft issues), the Jira key.
+
+### On the 3D issues board
+
+A floor whose project has issue sources shows *their* issues on its 📌 Issues board (the cork on the
+wall, **E** there, and the ☰ search) instead of its own repository's; a project without any keeps the
+floor's GitHub issues, as upstream. Each note says what it is: `#12` for one of the floor's own
+issues, `api#12` for another GitHub repository's, the Jira key (`UYT-1415`) or `draft …` for a
+project's draft, and **🗂️ #N** once it has been made into a task. The list is the same as in
+**📌 Issues** on the kanban (its filters, its 90-second / 10-minute refresh); someone on the floor
+counts as looking at it.
+
+Every card works like upstream's: **E** at a note takes it off the cork, **O** opens it, and in your
+hands it goes to an empty desk (E hires a worker for it, **P** makes it a kanban task there), to a
+worker, to the 📋 queue, to the herald or to the meeting room. The worker's prompt names the issue's
+source and link (a GitHub issue of another repository: `gh issue view N -R owner/name`); a card made
+into a task is never made twice (the office looks for one with its key, archived too, and makes the task
+from the source's whole text). **🔄 Refresh** on the issues window fetches the sources again. One of the project's GitHub issues opens in the office's issue window
+(comments, labels, close); any other card opens a window with what the source says and the same
+actions. Taking a card assigns it on GitHub when it's a GitHub issue (to your own GitHub sign-in, or
+the office's); a Jira or project card isn't assigned anywhere: its kanban task is what links it. The
+office only takes a card that is on the floor's board: a key the board doesn't show is ignored.
+
+Mind what the sources hold: whoever can write a Jira issue, a project item or an issue of a
+repository outside the project writes text that reaches a coding agent that can run commands. A
+worker handed such a card gets its link and its description quoted between markers as data, told not
+to follow instructions in it beyond the issue; a GitHub issue is read with `gh issue view`, as upstream
+reads its own. A kanban task made from a card keeps the description as its own, as the kanban's
+**📌 Issues** always has: pick sources whose writers you trust.
 
 ## Pull requests
 

@@ -97,6 +97,29 @@ test('claude transcript: the text after the last real prompt, skipping tool resu
   assert.equal(readClaudeTurn(path.join(path.dirname(file), 'missing.jsonl')), undefined);
 });
 
+test('claude transcript: a last message that calls a tool is not the final answer yet (the Stop hook can beat the log)', (t) => {
+  const write = scratch(t);
+  // #306: the Stop hook came while the log still ended at a tool's result, before the final answer.
+  const early = [
+    cUser('Implement task #306'),
+    cAssistant([text('The after shots look sharp. Cleaning up last.')], {}, 'msg_a'),
+    cAssistant([{ type: 'tool_use', id: 't1', name: 'Bash', input: { command: 'git log' } }], {}, 'msg_a'),
+    cUser([{ type: 'tool_result', tool_use_id: 't1', content: 'abc123 Fix' }]),
+  ];
+  assert.deepEqual(readClaudeTurn(write('early.jsonl', early)), { text: 'The after shots look sharp. Cleaning up last.', complete: false });
+  // Not even the tool's result logged yet.
+  assert.deepEqual(readClaudeTurn(write('no-result.jsonl', early.slice(0, 3))), { text: 'The after shots look sharp. Cleaning up last.', complete: false, toolRunning: true });
+  // A subagent's tool result doesn't make the main turn's final answer unfinished, nor its tool calls.
+  const done = write('done.jsonl', [
+    ...early,
+    cAssistant([text('The fog stays outside now.')], {}, 'msg_b'),
+    cAssistant([{ type: 'tool_use', id: 's1', name: 'Read', input: {} }], { isSidechain: true }),
+    cUser([{ type: 'tool_result', tool_use_id: 's1', content: 'x' }], { isSidechain: true }),
+    { type: 'system', subtype: 'stop_hook_summary' },
+  ]);
+  assert.deepEqual(readClaudeTurn(done), { text: 'The fog stays outside now.', complete: true });
+});
+
 test('claude transcript: ExitPlanMode is the plan, until it is answered', (t) => {
   const write = scratch(t);
   const pending = write('plan.jsonl', [

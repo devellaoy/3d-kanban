@@ -57,6 +57,12 @@ interface Live {
   exitPlan: boolean;
   /** What its agent's needs_input waits on, as its hooks last said (heardAsk); unknown when unset. */
   asks?: AskingKind;
+  /**
+   * Claude's final answer as its Stop hook gave it (`last_assistant_message`): what the turn said
+   * when its session log still hasn't caught up by the time the engine reads it (see readResult).
+   * Claude's only: a Codex turn's end is in its log (task_complete).
+   */
+  stopText?: string;
   /** Its turn has ended and is being dealt with. */
   ended: boolean;
   stopping?: { by?: string; timer?: NodeJS.Timeout };
@@ -109,6 +115,8 @@ const OFFICE: KanbanCaller = { name: 'Kanban', admin: true };
 /** How the engine sends its own workers home: nothing for removed() to act on, it has seen to the task itself. */
 const ENGINE: DepartureIntent = { by: 'Kanban', reason: 'engine' };
 const SUMMARY_MAX = 20_000;
+/** How much of a Stop hook's final answer is kept (it becomes a comment, a summary, a PR comment). */
+const STOP_TEXT_MAX = 100_000;
 const PENDING_MAX = 50;
 const ESC = '\x1b';
 const RESTING = new Set(['done', 'idle', 'needs_input', 'exited']);
@@ -120,6 +128,11 @@ const ASKS_UNKNOWN = 'The agent is waiting on something in its terminal: answer 
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 const clip = (s: string, max: number) => (s.length > max ? `${s.slice(0, max)}…` : s);
+/** The final answer a Claude Stop hook carries (`last_assistant_message`), capped; undefined without one. */
+const stopMessage = (payload: unknown) => {
+  const last = (payload as { last_assistant_message?: unknown } | undefined)?.last_assistant_message;
+  return typeof last === 'string' && last.trim() ? clip(last.trim(), STOP_TEXT_MAX) : undefined;
+};
 const sameArgs = (a: string[] | undefined, b: string[]) => !!a && a.length === b.length && a.every((x, i) => x === b[i]);
 /**
  * A prompt as it may be typed into a terminal: prompts go in as a bracketed paste, so an escape in a
@@ -989,6 +1002,8 @@ export class Orchestrator {
     if (o.event === 'hook') {
       if ((o.hookEvent === 'PreToolUse' || o.hookEvent === 'PermissionRequest') && o.tool === 'ExitPlanMode') live.exitPlan = true;
       else if (o.hookEvent === 'PreToolUse' && o.tool) live.exitPlan = false;
+      if (o.hookEvent === 'UserPromptSubmit') live.stopText = undefined;
+      else if (o.hookEvent === 'Stop' && live.tool === 'claude') live.stopText = stopMessage(o.payload);
       this.heardAsk(live, o);
       const source = (o.payload as { source?: unknown } | undefined)?.source;
       if (live.phase === 'compact' && o.hookEvent === 'SessionStart' && source === 'compact') void this.serial(live.taskId, () => this.turnEnded(live));
@@ -1246,7 +1261,14 @@ export class Orchestrator {
     clearTimeout(live.stopping?.timer);
   }
 
-  /** The turn's result from the session log, read again while the log is still catching up. */
+  /**
+   * The turn's result from the session log, read again while the log is still catching up: the Stop
+   * hook can come before Claude has logged its final answer (the log then ends at a tool's result).
+   * A log that never catches up falls back on the answer the Stop hook carried (its text only, as a
+   * final answer of its own), but never while the log's last tool call is still running: a Stop then
+   * didn't come from Claude (anything run in the agent's shell has the hook token, and could carry
+   * a verdict of its own choosing): what the log has goes on, as it does without a Stop answer.
+   */
   private async readResult(live: Live): Promise<TurnResult | undefined> {
     const workers = this.ctx.floor(live.floorId)?.workers;
     const adapter = this.adapters[live.tool];
@@ -1258,6 +1280,10 @@ export class Orchestrator {
       if (result?.complete) return result;
       await sleep(this.opts.readPauseMs);
     }
+    if (live.tool !== 'claude' || result?.complete) return result;
+    if (result && !result.toolRunning && live.stopText) return { text: live.stopText, complete: true };
+    const why = !result ? 'no session log' : result.toolRunning ? 'a Stop while a tool was still running' : 'no last_assistant_message in its Stop hook';
+    console.warn(`agent-office: kanban task #${live.taskId}: the ${live.phase} run's final answer never reached its session log (${why}): going on with the last text the log has`);
     return result;
   }
 

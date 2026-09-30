@@ -31,6 +31,7 @@ whatever happens to the task shows on the worker. This page is the contract betw
 | **O** | The task's PR phase (unchanged). |
 | **E** | The worker window has tabs **🖥️ Terminal** / **🗂️ Task #N**: the task tab is the same task view as the kanban page (description, conversation with composer and history, plan, runs and verdicts, changes, PRs, actions). The worker's own changes stay upstream's 🌿 Changes button in the window's header. Files dropped on the task pane go to its composer's attachments, never into the terminal. |
 | Hire at a desk with "🗂️ Run as a kanban task" | `kanban.task.create {…, start: true, deskId}`: the task starts at that desk. The toggle starts off in every new dialog. |
+| 📋 Task queue with "🗂️ Run as a kanban task" | `kanban.task.create {…, start: true}` without `deskId`: the engine seats it at the next free desk or queues it (tasks at once, desks, the worker limit). The queue's *workers at once* doesn't count it, and upstream's queue never holds it. The toggle starts off each time the board opens. |
 | J | Facing a task worker's desk: `/kanban?project=<floor>&task=<id>`; elsewhere: the board. |
 
 ## Whose account a hire runs as
@@ -61,15 +62,21 @@ instead; the task waits (failed) with upstream's reason, naming whose sign-in is
   N ("next waiting") includes task workers waiting on a person.
 - "📍 Show in 3D" on the kanban opens `/?floor=<id>&worker=<workerId>&desk=<deskId>`; the 3D client
   goes to that floor and that desk.
-- The 📋 queue board shows a read-only "🗂️ Kanban on this floor" section (upstream's queue itself is
-  unchanged).
+- The 📋 queue board's form can make a kanban task (above), and its "🗂️ Kanban on this floor" section
+  lists the floor's task workers and the started tasks waiting their turn (`runState: 'queued'`, no worker
+  at a desk yet), read with `kanban.snapshot` while the board is open (never `kanban.subscribe`, which
+  would take the connection's one delta filter). Upstream's queue itself is unchanged.
 
 ## Messages (additive)
 
 - `worker.kill {workerId, cleanup?, kanban?: {done?: boolean}}`
-- `worker.prompt {workerId, prompt, issue?, asComment?: true}`: typed in as upstream by default;
+- `worker.prompt {workerId, prompt, issue?, asComment?: true, issueKey?}`: typed in as upstream by default;
   `asComment` makes it a comment on a task worker's task. The earlier `raw` flag is gone: an older
   client's `raw: true` is ignored and types in, which is what it asked for.
+- `issueKey?` on `carry`, `worker.spawn`, `worker.prompt` and `queue.add` (and `CarriedIssue.key`,
+  `QueueTask.issueKey`): the ticket key of a card from the project's issue sources on the 3D issues board
+  (`issue` is then only for one of the floor's own GitHub issues). A card dropped on a task worker is its
+  task's own when the task's ticket is that key.
 - `kanban.task.create {…KanbanTaskInput, deskId?}`, `kanban.task.start {id, deskId?}`
 - `kanban.task.update` accepts tool/model/effort (and the review override) whenever no run is live.
 

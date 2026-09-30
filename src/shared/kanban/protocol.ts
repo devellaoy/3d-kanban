@@ -194,8 +194,8 @@ export type KanbanClientMsg =
   /** Answered with kanban.issues. */
   | Req<{ t: 'kanban.issues.list'; project: string }>
   | Req<{ t: 'kanban.issues.refresh'; project: string }>
-  /** Idempotent by ticket: answered with kanban.ok {taskId, existed}. */
-  | Req<{ t: 'kanban.issues.createTask'; project: string; issueKey: string; start?: boolean }>
+  /** Idempotent by ticket: answered with kanban.ok {taskId, existed}. `deskId` (with start): where its worker sits (the 3D office's P with a card). */
+  | Req<{ t: 'kanban.issues.createTask'; project: string; issueKey: string; start?: boolean; deskId?: string }>
   /** Answered with kanban.skills. */
   | Req<{ t: 'kanban.skills.list' }>
   | Req<{ t: 'kanban.skills.sync' }>
@@ -250,7 +250,7 @@ export type KanbanServerMsg =
   | { t: 'kanban.issues'; rid?: string; project: string; items: NormalizedIssue[]; error?: string; fetchedAt: number; loading: boolean }
   | { t: 'kanban.skills'; rid?: string; skills: SkillInfo[]; error?: string }
   | { t: 'kanban.pr.bundle'; rid?: string; project: string; key: KanbanPrBundleKey; prs: KanbanPrBundleItem[]; error?: string }
-  | { t: 'kanban.ok'; rid?: string; taskId?: number; commentId?: number; workerId?: string; existed?: boolean; startError?: string }
+  | { t: 'kanban.ok'; rid?: string; taskId?: number; commentId?: number; workerId?: string; existed?: boolean; startError?: string; started?: true }
   | { t: 'kanban.error'; rid?: string; message: string };
 
 export type KanbanServerType = KanbanServerMsg['t'];
@@ -608,8 +608,10 @@ function parse(raw: unknown): KanbanClientMsg {
     case 'kanban.issues.list':
     case 'kanban.issues.refresh':
       return m({ t: t as 'kanban.issues.list', project: project(r.project) });
-    case 'kanban.issues.createTask':
-      return m({ t: 'kanban.issues.createTask', project: project(r.project), issueKey: text(r.issueKey, 'issueKey', KANBAN_LIMITS.issueKey).trim(), ...(bool(r.start, 'start') ? { start: true } : {}) });
+    case 'kanban.issues.createTask': {
+      const desk = deskId(r.deskId);
+      return m({ t: 'kanban.issues.createTask', project: project(r.project), issueKey: text(r.issueKey, 'issueKey', KANBAN_LIMITS.issueKey).trim(), ...(bool(r.start, 'start') ? { start: true } : {}), ...(desk ? { deskId: desk } : {}) });
+    }
     case 'kanban.secrets.set': {
       const out: { t: 'kanban.secrets.set'; jira?: { site: string; email: string; token: string } | null; apiKey?: string | null } = { t: 'kanban.secrets.set' };
       if (r.jira === null) out.jira = null;

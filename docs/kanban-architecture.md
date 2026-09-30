@@ -90,6 +90,14 @@ allowed: `todo → in_progress` (= start), `waiting|review → done`, `done → 
     - claude: transcript JSONL (`WorkerInfo` tracker transcript path from hooks): the `text` blocks of the
       last assistant message after the last real user message (Claude logs one message's blocks as lines
       sharing `message.id`); and, if the last assistant `tool_use` is `ExitPlanMode`, its `input.plan`.
+      A last message that calls any other tool is not a final answer (`complete: false`): the Stop hook
+      can come before Claude has logged the reply after that tool's result, so the engine reads the log
+      again (`readTries` × `readPauseMs`, about 3 s, so a turn that really ends at a tool call, an
+      interrupt say, waits that long and isn't hung). If it never catches up, the answer the Stop hook
+      carried (`last_assistant_message`, capped) is the turn's text, alone: never while the log's last
+      tool call has no result yet (`toolRunning`), because a Stop then didn't come from Claude (anything
+      in the agent's shell has the hook token) and could carry a verdict. Without that answer (an older
+      CLI, a run re-attached after a restart) the log's last text goes on, and the office logs a warning.
     - codex: rollout JSONL: the last `event_msg` with `payload.type === 'task_complete'` → `payload.last_agent_message`
       (fallback: last `response_item` assistant message).
 - Phase changes that need different launch flags **relaunch** the worker (`--resume <sessionId>` +
@@ -301,10 +309,15 @@ answers `kanban.ok {rid, ...}` or `kanban.error {rid, message}`. Deltas are push
     its brief, the layered `kanban.pr.panel` prompt (office + project layers), lists every PR, the review is
     posted on one of the primary repository's; a single PR from the office's PR board keeps upstream's `pull.panel`) and is answered with
     `kanban.ok {}` (`taskId` when one was given, which also gets a status comment).
-  - `issues.list`, `issues.refresh`, `issues.createTask` (idempotent by ticket, `kanban.ok {taskId, existed}`),
+  - `issues.list`, `issues.refresh`, `issues.createTask` (idempotent by ticket, archived tasks included, `kanban.ok {taskId, existed}`; `start` with `deskId` starts it, or the one already made while it waits in To do, at that desk: the 3D office's P with a card; `started` or `startError` says how it went),
     `skills.list` are for anyone signed in.
   - `meta.get` (anyone signed in) is answered with `kanban.meta {projects, settings, secrets, me}`: what a
     snapshot says besides the cards, for ⚙️ Settings on a page without a board (the 3D office).
+  - The same cached issues are the 3D issues board of a project with issue sources
+    (`integrations/issues/wall.ts`): the floor's upstream `gh.issues` carries them as `GhIssue`s with
+    `key`, `source`, `status` and `taskId` (`number` only for a GitHub issue of one of the project's
+    repositories, else 0), and falls back to upstream's list without sources. Cards are handed out with
+    `issueKey` (see kanban-coupling.md, Messages).
   - Admin only (upstream `meOf(accountId).admin`): `settings.set`, `project.settings.set`, `project.repos.set`,
     `project.prompt.set`, `secrets.set`, `skills.sync`. `secrets.set` is answered with `kanban.settings` (configured flags
     only). The `/api/v1` key is stored as `sha256:<hex>`.
