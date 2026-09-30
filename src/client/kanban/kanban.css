@@ -125,7 +125,6 @@ a.kb-chip:hover { background: var(--paper-2); }
 
 /* ---- Dialogs ---- */
 .modal.kb-create { width: min(820px, 100%); }
-.modal.kb-settings { width: min(1040px, 100%); height: min(820px, calc(100vh - 32px)); }
 .modal.kb-issues-window { width: min(900px, 100%); height: min(760px, calc(100vh - 32px)); }
 .modal.kb-move-dialog { width: min(380px, 100%); }
 .modal.kb-pr-picker { width: min(640px, 100%); }
@@ -160,41 +159,10 @@ a.kb-chip:hover { background: var(--paper-2); }
 .kb-move-to small { width: 100%; font-size: 12px; font-weight: 700; color: var(--muted); }
 .kb-move-to .kb-starts { color: #1b7f5b; }
 
-/* Settings */
-.modal.kb-settings > .body { display: flex; flex-direction: column; gap: 10px; flex: 1; min-height: 0; padding-top: 10px; }
-.modal.kb-settings .kb-tabs { background: none; padding: 0; }
-.kb-settings-project { display: flex !important; align-items: center; gap: 8px; margin: 0 !important; }
-.kb-settings-project.hidden { display: none !important; }
-.kb-settings-project select { max-width: 320px; }
-.kb-settings-note { margin: 0; font-size: 12px; font-weight: 700; color: var(--muted); }
-.kb-settings-body { flex: 1; min-height: 0; overflow-y: auto; }
-.kb-pane { display: flex; flex-direction: column; gap: 12px; }
-.kb-save { position: sticky; bottom: 0; padding: 8px 0 2px; background: linear-gradient(transparent, var(--paper) 30%); }
-.kb-repos, .kb-sources { display: flex; flex-direction: column; gap: 10px; }
-.kb-repo, .kb-source { padding: 10px; border: 2px solid var(--ink); border-radius: 12px; background: var(--paper); display: flex; flex-direction: column; gap: 8px; }
-.kb-repo.primary { background: #fffbe6; }
-.kb-repo-head { display: flex; align-items: center; gap: 8px; }
-.kb-prompts { display: grid; grid-template-columns: 240px minmax(0, 1fr); gap: 12px; }
-.kb-prompt-list { display: flex; flex-direction: column; gap: 2px; max-height: 560px; overflow-y: auto; }
-.kb-prompt-item { display: flex; justify-content: space-between; gap: 6px; padding: 6px 8px; font: 800 13px var(--font); text-align: left; border: 2px solid transparent; border-radius: 10px; background: none; color: var(--ink); cursor: pointer; }
-.kb-prompt-item:hover { background: var(--paper-2); }
-.kb-prompt-item.on { border-color: var(--ink); background: #fff; }
-.kb-prompt-item small { font-weight: 800; color: var(--muted); }
-.kb-prompt-item small.project { color: #9d4edd; }
-.kb-prompt-item small.office { color: #118ab2; }
+/* The prompt editor's project scope (promptscope.ts); ⚙️ Settings' own styles are in settings.css. */
 .kb-scope { padding: 1px 8px; font-size: 12px; font-weight: 900; border: 2px solid var(--ink); border-radius: 999px; background: #fff; }
 .kb-scope.project { background: #f3e8ff; }
 .kb-scope.office { background: #e0f2fe; }
-.kb-prompts textarea { font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace; font-size: 13px; }
-.kb-vars { display: flex; flex-wrap: wrap; gap: 4px; margin: 6px 0; }
-.kb-var code { font-size: 12px; padding: 1px 5px; border: 1px solid #e3d9cc; border-radius: 6px; background: #fff; }
-.kb-contract pre { margin: 0; padding: 10px; white-space: pre-wrap; font-size: 12px; background: #f3f1ee; border: 2px dashed var(--ink); border-radius: 10px; color: var(--muted); }
-.kb-contract h5 { margin: 8px 0 4px; font-size: 12px; }
-.kb-secret { font-weight: 900; }
-.kb-secret.on { color: #1b7f5b; }
-.kb-path { display: block; font-size: 11px; }
-.kb-skill-pick summary { cursor: pointer; font-size: 12px; font-weight: 800; }
-.kb-skill-pick[open] { padding: 6px; border: 2px solid var(--ink); border-radius: 10px; background: #fff; display: flex; flex-direction: column; gap: 4px; }
 
 /* Issues */
 .modal.kb-issues-window > .body { display: flex; flex-direction: column; gap: 10px; flex: 1; min-height: 0; }
@@ -226,7 +194,6 @@ a.kb-chip:hover { background: var(--paper-2); }
   .kb-stats { display: none; }
   #kb-project { flex: 1 1 120px; }
   #kb-issues .kb-lbl { display: none; }
-  .kb-save { position: static; background: none; }
   .modal.kb-create footer .grow { display: none; }
   .kb-filters { flex-wrap: nowrap; overflow-x: auto; padding-bottom: 2px; }
   .kb-filters select, .kb-filters .btn { flex: none; }
@@ -236,10 +203,8 @@ a.kb-chip:hover { background: var(--paper-2); }
   .kb-detail { top: 0; width: 100vw !important; border-left: 0; z-index: 45; }
   .kb-resize { display: none; }
   .kb-two, .kb-three { grid-template-columns: minmax(0, 1fr); }
-  .kb-prompts { grid-template-columns: minmax(0, 1fr); }
-  .kb-prompt-list { max-height: 180px; }
   .backdrop { padding: 0; }
-  .modal.kb-create, .modal.kb-settings, .modal.kb-issues-window { width: 100%; height: 100dvh; max-height: 100dvh; border: 0; border-radius: 0; box-shadow: none; }
+  .modal.kb-create, .modal.kb-issues-window { width: 100%; height: 100dvh; max-height: 100dvh; border: 0; border-radius: 0; box-shadow: none; }
   .modal.term, .modal.desk-changes { width: 100%; height: 100dvh; max-height: 100dvh; border: 0; border-radius: 0; }
   .modal textarea, .modal input[type=text], .modal select { font-size: 16px; }
 }
