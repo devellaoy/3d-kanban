@@ -4,14 +4,15 @@
 // terminal and changes. Picking a project also takes you to its floor, so 🏢 3D opens where you were.
 
 import { Net } from '../net';
-import { AVATAR_COLORS, lastFloor, loadProfile, saveProfile, store } from '../state';
+import { AVATAR_COLORS, lastFloor, loadProfile, loadSettings, saveProfile, saveSettings, store } from '../state';
 import { randomLook } from '../../shared/avatar';
 import { $, h, modalOpen, openModal, toast } from '../ui/dom';
 import { openTerminal, openTerminalFor, routeTerminalMessage } from '../ui/terminal';
 import { openChanges, openChangesFor, routeChangesMessage } from '../ui/changes';
 import { routeWorktreeMessage } from '../ui/prompt';
 import { routePullMessage } from '../ui/pull';
-import { openPromptEditor } from '../ui/prompts';
+import { openSettings } from '../ui/settings';
+import { DesktopNotifier } from '../notify';
 import type { KanbanServerMsg } from '../../shared/kanban/protocol.js';
 import { KANBAN_TOOLS, type KanbanTool, type TaskStatus } from '../../shared/kanban/types.js';
 import { kanbanApi, type KanbanError, type KanbanOk } from './api';
@@ -21,7 +22,6 @@ import { openCreate } from './create';
 import { DetailPanel, isDetailTab } from './detail';
 import { openIssues } from './issues';
 import { boardStats, deepLink, EMPTY_FILTER, filterActive, parseDeepLink, STATE_FILTERS, TICKET_FILTERS, type BoardFilter, type StateFilter, type TicketFilter } from './model';
-import { openKanbanSettings } from './settings';
 import { kstore } from './store';
 import { toolName } from './labels';
 import { run, select, textInput } from './ui';
@@ -303,8 +303,41 @@ function showIssues() {
   openIssues(api, p, (id) => openTask(id));
 }
 
-function showSettings(first?: Parameters<typeof openKanbanSettings>[1]['first']) {
-  openKanbanSettings(api, { first, project: kstore.project ?? undefined, openPromptEditor: (id) => openPromptEditor(net, id) });
+/** Your own settings, kept in this browser like the 3D office's: what the settings window changes. */
+const settings = loadSettings();
+let notifier: DesktopNotifier | undefined;
+
+/** The office's ⚙️ Settings, the same window as in the 3D office, opened on 🗂️ Kanban (📁 Projects is on this board's project). */
+function showSettings() {
+  // The 3D office in another tab may have changed them since this page loaded: saving here writes them all.
+  Object.assign(settings, loadSettings());
+  notifier ??= new DesktopNotifier(() => settings.notify, () => {});
+  openSettings(
+    net,
+    settings,
+    (s) => {
+      Object.assign(settings, s);
+      saveSettings(settings);
+    },
+    () => {
+      // The character editor draws in 3D: loaded only when it's asked for.
+      void import('../ui/character').then(({ openCharacter }) =>
+        openCharacter(false, (p) => {
+          store.profile = p;
+          net.send({ t: 'profile', name: p.name, color: p.color, look: p.look });
+        }),
+      );
+    },
+    () => {},
+    notifier,
+    () => {
+      void fetch('/api/logout', { method: 'POST' })
+        .catch(() => {})
+        .then(() => (location.href = '/login'));
+    },
+    undefined,
+    'kanban',
+  );
 }
 
 // ---- Messages -------------------------------------------------------------------------------------

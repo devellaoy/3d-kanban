@@ -311,6 +311,8 @@ answers `kanban.ok {rid, ...}` or `kanban.error {rid, message}`. Deltas are push
     `kanban.ok {}` (`taskId` when one was given, which also gets a status comment).
   - `issues.list`, `issues.refresh`, `issues.createTask` (idempotent by ticket, archived tasks included, `kanban.ok {taskId, existed}`; `start` with `deskId` starts it, or the one already made while it waits in To do, at that desk: the 3D office's P with a card; `started` or `startError` says how it went),
     `skills.list` are for anyone signed in.
+  - `meta.get` (anyone signed in) is answered with `kanban.meta {projects, settings, secrets, me}`: what a
+    snapshot says besides the cards, for ⚙️ Settings on a page without a board (the 3D office).
   - The same cached issues are the 3D issues board of a project with issue sources
     (`integrations/issues/wall.ts`): the floor's upstream `gh.issues` carries them as `GhIssue`s with
     `key`, `source`, `status` and `taskId` (`number` only for a GitHub issue of one of the project's

@@ -178,7 +178,7 @@ export const jiraSource: IssueSource = {
   async list(config, io: IssueSourceIo) {
     const c = config as JiraConfig;
     const jira = io.jira;
-    if (!jira) throw new Error('Jira isn’t set up: an admin enters the site, e-mail and API token in the kanban settings');
+    if (!jira) throw new Error('Jira isn’t set up: an admin enters the site, e-mail and API token in ⚙️ Settings → 🗂️ Kanban');
     // The token only ever goes to the site it was given for.
     if (jira.site.toLowerCase() !== c.site.toLowerCase()) throw new Error(`The Jira API token is for ${jira.site}, not ${c.site}`);
     if (!c.filters.epic) return search(io, jira, buildJql(c), c.id);

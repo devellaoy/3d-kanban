@@ -1,10 +1,14 @@
-// The kanban's settings, for admins (everyone else reads them): the office's defaults for new tasks
-// and their reviews; per project its repositories, instructions and overrides, its issue sources,
-// its own wording of the kanban prompts and which skills each phase gets; and the secrets, which
-// the browser only ever writes (it's told whether they're set, never what they are).
+// The kanban's settings, as two categories of the office's ⚙️ Settings (ui/settings.ts), for admins
+// (everyone else reads them): the office's defaults for new tasks and their reviews, the skills and
+// the secrets, which the browser only ever writes (it's told whether they're set, never what they
+// are); per project its repositories, instructions and overrides, its issue sources, its own wording
+// of the kanban prompts and which skills each phase gets.
 
+import './settings.css';
 import { h, toast } from '../ui/dom';
+import type { Net } from '../net';
 import { store } from '../state';
+import { openPromptEditor } from '../ui/prompts';
 import type { KanbanServerMsg, KanbanSettingsPatch, ProjectRepoInput } from '../../shared/kanban/protocol.js';
 import { GH_REPO_RE, KANBAN_LIMITS } from '../../shared/kanban/protocol.js';
 import {
@@ -22,28 +26,24 @@ import {
   type ReviewSettings,
 } from '../../shared/kanban/types.js';
 import { KANBAN_CONTRACTS, KANBAN_PROMPT_DEFS, KANBAN_PROMPT_IDS, PROMPT_CONTRACT, kanbanPromptSource, type KanbanPromptId, type KanbanPromptScope } from '../../shared/kanban/prompts.js';
-import type { KanbanApi } from './api';
+import { kanbanApi, type KanbanApi, type KanbanError } from './api';
 import { KANBAN_DEFAULTS, projectDefaults, REVIEW_DEFAULTS } from './defaults';
 import { repoIdFrom } from './model';
 import { kstore } from './store';
-import { skillsPane } from './skills';
+import { loadSkills, skillsOverview, skillsPane } from './skills';
+import type { KanbanSettingsPane } from './settingsslot';
+import { Cleanups, settingsRedraw } from './settingsflow';
 import { APPROVAL_NAMES, effortName, SOURCE_KIND_NAMES, toolName } from './labels';
-import { checkbox, dialog, field, numberInput, numberValue, run, select, showDialog, tabStrip, textArea, textInput } from './ui';
+import { checkbox, field, numberInput, numberValue, run, select, tabStrip, textArea, textInput } from './ui';
 
-export type SettingsTab = 'general' | 'projects' | 'sources' | 'prompts' | 'skills' | 'secrets';
-const TABS: readonly SettingsTab[] = ['general', 'projects', 'sources', 'prompts', 'skills', 'secrets'];
-const TAB_NAMES: Record<SettingsTab, string> = { general: 'General', projects: 'Projects', sources: 'Issue sources', prompts: 'Prompts', skills: 'Skills', secrets: 'Secrets' };
+/** The tabs of 📁 Projects. */
+export type ProjectTab = 'project' | 'sources' | 'skills' | 'prompts';
+const PROJECT_TABS: readonly ProjectTab[] = ['project', 'sources', 'skills', 'prompts'];
+const TAB_NAMES: Record<ProjectTab, string> = { project: '⚙️ Project', sources: '📌 Issue sources', skills: '🧩 Skills', prompts: '📝 Prompts' };
 const PERMISSION_NAMES: Record<ImplementPermission, string> = { bypass: 'without permission prompts', 'workspace-write': 'in Codex’s workspace sandbox' };
 /** A prompt's scope: the short tag in the list, and the line over the editor. */
 const SCOPE_TAGS: Record<KanbanPromptScope, string> = { default: 'default', office: 'office', project: 'project' };
 const SCOPE_NOW: Record<KanbanPromptScope, string> = { default: 'The default text', office: 'The office’s text', project: 'This project’s own text' };
-
-export interface SettingsOptions {
-  first?: SettingsTab;
-  project?: string;
-  /** Upstream's prompt editor, for a prompt's office-wide text. */
-  openPromptEditor(id: KanbanPromptId): void;
-}
 
 /** A save button that says whether you may. */
 function saveButton(label = 'Save'): HTMLButtonElement {
@@ -82,68 +82,159 @@ function reviewFields(r: Partial<ReviewSettings>, base: ReviewSettings | null) {
   return { el, value };
 }
 
-export function openKanbanSettings(api: KanbanApi, o: SettingsOptions) {
-  let tab: SettingsTab = o.first ?? 'general';
-  let project = o.project ?? kstore.project ?? kstore.projects[0]?.id ?? '';
-  const body = h('div.kb-settings-body');
-  const projectPick = h('label.kb-settings-project', {}, h('span', {}, 'Project'));
-  const note = h('p.kb-settings-note', {}, kstore.me.admin ? 'For the whole office. Changes apply to tasks from their next phase.' : 'Only admins can change these. This is how they’re set now.');
-  const strip = tabStrip(TABS.map((x) => ({ id: x, label: TAB_NAMES[x] })), tab, (x) => {
-    tab = x;
-    paint();
-  }, 'Settings');
-  const d = dialog('kb-settings', '⚙️ Kanban settings', h('div.body', {}, strip.el, projectPick, note, body));
-  const modal = showDialog(d, { backdropCloses: false, onClose: () => off() });
+/**
+ * The kanban's two categories of ⚙️ Settings, drawn into upstream's window on any page (settingsslot.ts
+ * loads this the first time one is shown): 🗂️ Kanban (the office's defaults, secrets and skills) and
+ * 📁 Projects (one project's settings, picked at the top). On the kanban page the board's own
+ * subscription keeps kstore current; anywhere else (the 3D office) this asks for the kanban's settings
+ * itself (kanban.meta.get: no cards) and follows them with a watch while the window is open.
+ */
+export function kanbanSettingsPanes(net: Net): { panes: Record<KanbanSettingsPane, HTMLElement>; close(): void } {
+  const api = kanbanApi(net);
+  const own = !api.pageSubscribed;
+  let tab: ProjectTab = 'project';
+  let project = '';
+  const pickProject = () => {
+    if (kstore.projectOf(project)) return;
+    project = [kstore.project, store.floor].find((id) => id && kstore.projectOf(id)) ?? kstore.projects[0]?.id ?? '';
+  };
 
-  const paintProjectPick = () => {
-    const perProject = tab !== 'general' && tab !== 'secrets';
-    projectPick.classList.toggle('hidden', !perProject || !kstore.projects.length);
+  // 🗂️ Kanban: the defaults, then the secrets and the skills (the long list last). The secrets redraw on their own when
+  // they change, the rest only when the settings first come in (what you typed stays).
+  const officeEl = h('div.kb-set');
+  const secretsSlot = h('div.kb-set-secrets');
+  const paintSecrets = () => {
+    const pane = secretsPane(api);
+    lockForNonAdmins(pane);
+    secretsSlot.replaceChildren(pane);
+  };
+  // What the drawn panes listen to, taken down when they're drawn again or the window shuts.
+  const officeCleanups = new Cleanups();
+  const projectCleanups = new Cleanups();
+  // Drawn only from settings fresh from the office: on a page without a board, what kstore kept from
+  // the last time is stale (saving it would write old values back), so it waits for the snapshot.
+  let ready = !own;
+  const paintOffice = () => {
+    officeCleanups.run();
+    const s = kstore.settings;
+    if (!s || !ready) return officeEl.replaceChildren(h('p.kb-muted', {}, 'Loading…'));
+    const note = h('p.kb-settings-note', {}, kstore.me.admin ? 'For the whole office. Changes apply to tasks from their next phase.' : 'Only admins can change these. This is how they’re set now.');
+    const general = generalPane(api, s, own);
+    const skills = h('div.kb-pane', {}, skillsOverview(api, s, officeCleanups));
+    lockForNonAdmins(general);
+    lockForNonAdmins(skills);
+    paintSecrets();
+    officeEl.replaceChildren(note, general, secretsSlot, skills);
+  };
+
+  // 📁 Projects: the project, its tabs, the picked tab's pane.
+  const projectsEl = h('div.kb-set');
+  const projectPick = h('label.kb-settings-project', {}, h('span', {}, 'Project'));
+  const note = h('p.kb-settings-note');
+  const body = h('div.kb-settings-body');
+  const strip = tabStrip(PROJECT_TABS.map((x) => ({ id: x, label: TAB_NAMES[x] })), tab, (x) => {
+    tab = x;
+    paintProject();
+  }, 'Project settings');
+  projectsEl.append(projectPick, strip.el, note, body);
+  /** The project picker alone: a project added or renamed shows without redrawing what you're typing. */
+  const paintPicker = () => {
     const sel = select(kstore.projects.map((p) => [p.id, p.name] as const), project, { 'aria-label': 'Project' });
     sel.addEventListener('change', () => {
       project = sel.value;
-      paint();
+      paintProject();
     });
     projectPick.replaceChildren(h('span', {}, 'Project'), sel);
-    note.textContent = !kstore.me.admin ? 'Only admins can change these. This is how they’re set now.' : perProject ? 'For the project picked here only. Changes apply to its tasks from their next phase.' : 'For the whole office. Changes apply to tasks from their next phase.';
+    projectPick.classList.toggle('hidden', !kstore.projects.length);
+    strip.el.classList.toggle('hidden', !kstore.projects.length);
   };
-
-  const paint = () => {
-    paintProjectPick();
+  const paintProject = () => {
+    projectCleanups.run();
+    pickProject();
+    paintPicker();
+    note.textContent = kstore.me.admin ? 'For the project picked here only. Changes apply to its tasks from their next phase.' : 'Only admins can change these. This is how they’re set now.';
     const s = kstore.settings;
-    if (!s) return body.replaceChildren(h('p.kb-muted', {}, 'Loading…'));
-    if (tab !== 'general' && tab !== 'secrets' && !kstore.projectOf(project)) return body.replaceChildren(h('p.kb-muted', {}, 'No projects yet: add a floor in the 3D office first.'));
-    const panes: Record<SettingsTab, () => HTMLElement> = {
-      general: () => generalPane(api, s),
-      projects: () => projectPane(api, project, s),
+    if (!s || !ready) return body.replaceChildren(h('p.kb-muted', {}, 'Loading…'));
+    if (!kstore.projectOf(project)) return body.replaceChildren(h('p.kb-muted', {}, 'No projects yet: add a floor in the 3D office first.'));
+    const panes: Record<ProjectTab, () => HTMLElement> = {
+      project: () => projectPane(api, project, s),
       sources: () => sourcesPane(api, project, s),
-      prompts: () => promptsPane(api, project, s, o.openPromptEditor),
-      skills: () => skillsPane(api, project, s),
-      secrets: () => secretsPane(api),
+      skills: () => skillsPane(api, project, s, projectCleanups),
+      prompts: () => promptsPane(api, project, s, (id) => openPromptEditor(net, id), projectCleanups),
     };
     const pane = panes[tab]();
     lockForNonAdmins(pane);
     body.replaceChildren(pane);
   };
 
-  // Someone else saved meanwhile: the pane shows what's saved now (what you typed and didn't save goes).
-  const offApi = api.on((msg: KanbanServerMsg) => {
-    if (msg.t === 'kanban.projects' && !kstore.projectOf(project)) paint();
-  });
-  // What's configured changes only by saving here (or elsewhere): the secrets pane says so at once.
-  const offSettings = kstore.on('settings', () => {
-    if (tab === 'secrets') paint();
-  });
-  const off = () => {
-    offApi();
-    offSettings();
+  const paint = () => {
+    paintOffice();
+    paintProject();
   };
+  const redraw = settingsRedraw(own, !!kstore.settings);
+  let admin = kstore.me.admin;
+  const offs: (() => void)[] = [
+    // Someone else saved meanwhile: the pane shows what's saved now (what you typed and didn't save goes).
+    kstore.on('projects', () => {
+      if (!kstore.projectOf(project)) paintProject();
+      else paintPicker();
+    }),
+    kstore.on('settings', () => {
+      if (redraw() === 'all') {
+        ready = true;
+        return paint();
+      }
+      // What's configured changes only by saving (here or elsewhere): the secrets say so at once.
+      paintSecrets();
+    }),
+    // Every snapshot says who you are again: only a change of rights redraws.
+    kstore.on('me', () => {
+      if (kstore.me.admin === admin) return;
+      admin = kstore.me.admin;
+      paint();
+    }),
+  ];
+
+  if (own) {
+    // No board here keeps kstore current: this asks, and hears the settings while the window is open.
+    offs.push(
+      api.on((msg: KanbanServerMsg) => {
+        if (msg.t === 'kanban.meta' || msg.t === 'kanban.snapshot') kstore.applyMeta(msg);
+        else if (msg.t === 'kanban.settings' || msg.t === 'kanban.projects') kstore.apply(msg);
+      }),
+    );
+    // The office tells settings changes to whoever follows a project, any one: the watch starts before
+    // asking, so nothing falls between the answer and it. A floor is a project; with none there's
+    // nothing to follow, and only your own saves show while the window is open.
+    const watched = store.floor ?? store.floors.find((f) => !f.cloning)?.id;
+    if (watched) offs.push(api.watch(watched));
+    const load = () => {
+      loadSkills(api);
+      return api.request({ t: 'kanban.meta.get' }).catch((err: KanbanError) => {
+        // A connection that went or started over asks again once the office welcomes it.
+        if (ready || err.lost) return;
+        const why = h('p.kb-muted', {}, `The kanban’s settings didn’t load (${err.message}): open this again.`);
+        officeEl.replaceChildren(why);
+        body.replaceChildren(why.cloneNode(true));
+      });
+    };
+    offs.push(api.onWelcome(() => void load()));
+    if (api.up) void load();
+  } else loadSkills(api);
   paint();
-  return modal;
+  return {
+    panes: { kanban: officeEl, projects: projectsEl },
+    close: () => {
+      for (const off of offs.splice(0)) off();
+      officeCleanups.run();
+      projectCleanups.run();
+    },
+  };
 }
 
 // --- General ---------------------------------------------------------------------------------------
 
-function generalPane(api: KanbanApi, s: KanbanSettings): HTMLElement {
+function generalPane(api: KanbanApi, s: KanbanSettings, refetch: boolean): HTMLElement {
   const dft = s.defaults;
   const tool = select<KanbanTool>(KANBAN_TOOLS.map((x) => [x, toolName(x)] as const), dft.tool);
   const model = textInput(dft.model ?? '', { maxlength: KANBAN_LIMITS.model, placeholder: 'Default' });
@@ -166,7 +257,10 @@ function generalPane(api: KanbanApi, s: KanbanSettings): HTMLElement {
       archiveAfterDays: numberValue(archive, 0, 3650, KANBAN_DEFAULTS.archiveAfterDays),
     };
     // null clears a model or an effort (the server takes it as "back to the default").
-    void run(() => api.request({ t: 'kanban.settings.set', settings: settings as unknown as KanbanSettingsPatch }), save, 'Saved');
+    void run(() => api.request({ t: 'kanban.settings.set', settings: settings as unknown as KanbanSettingsPatch }), save, 'Saved').then((ok) => {
+      // The saved settings come to subscribers only: without a board, ask for them.
+      if (ok && refetch) api.request({ t: 'kanban.settings.get' }).catch(() => {});
+    });
   });
   return h(
     'div.kb-pane',
@@ -370,7 +464,7 @@ function sourcesPane(api: KanbanApi, projectId: string, s: KanbanSettings): HTML
         h('div.kb-two', {}, field('Jira site', site), field('Project keys', keys)),
         h('div.kb-three', {}, field('Assignee', assignee), field('Epic', epic), field('Labels', labels)),
         h('div.kb-two', {}, field('Leave out status categories', notStatus), field('Extra JQL', jql)),
-        h('small.kb-hint', {}, s && kstore.secrets.jira.configured ? `The Jira token is set in Secrets (${kstore.secrets.jira.site ?? ''}).` : 'The Jira e-mail and API token go in Settings → Secrets.'),
+        h('small.kb-hint', {}, s && kstore.secrets.jira.configured ? `The Jira token is set in 🗂️ Kanban (${kstore.secrets.jira.site ?? ''}).` : 'The Jira e-mail and API token go in 🗂️ Kanban → Jira.'),
       );
       read = () => {
         const host = site.value.trim().replace(/^https?:\/\//, '').replace(/\/+$/, '');
@@ -423,7 +517,7 @@ function sourcesPane(api: KanbanApi, projectId: string, s: KanbanSettings): HTML
 
 // --- Prompts ---------------------------------------------------------------------------------------
 
-function promptsPane(api: KanbanApi, projectId: string, s: KanbanSettings, openEditor: (id: KanbanPromptId) => void): HTMLElement {
+function promptsPane(api: KanbanApi, projectId: string, s: KanbanSettings, openEditor: (id: KanbanPromptId) => void, cleanups: Cleanups): HTMLElement {
   let current: KanbanPromptId = KANBAN_PROMPT_IDS[0];
   const layers = () => ({ office: store.prompts.custom as Partial<Record<string, { text: string }>>, project: kstore.settings?.projects[projectId]?.prompts ?? s.projects[projectId]?.prompts ?? {} });
   const nav = h('nav.kb-prompt-list', { 'aria-label': 'Prompts' });
@@ -469,10 +563,7 @@ function promptsPane(api: KanbanApi, projectId: string, s: KanbanSettings, openE
   });
   reset.addEventListener('click', () => void run(() => api.request({ t: 'kanban.project.prompt.set', project: projectId, id: current, text: null }), reset, 'Saved'));
   office.addEventListener('click', () => openEditor(current));
-  const off = kstore.on('settings', () => {
-    if (!nav.isConnected) return off();
-    pick(current);
-  });
+  cleanups.add(kstore.on('settings', () => pick(current)));
   pick(current);
   return h(
     'div.kb-pane.kb-prompts',

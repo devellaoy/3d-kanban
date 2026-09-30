@@ -1,6 +1,7 @@
-// Settings → Skills: every skill the office found (bundled with it, the user's, an account's, a
-// repository's), which config homes it's installed in and which projects use it; a sync that installs
-// the office's own again; and, per project, which skills each phase gets for each tool.
+// The kanban's skills in ⚙️ Settings: under 🗂️ Kanban every skill the office found (bundled with it,
+// the user's, an account's, a repository's), which config homes it's installed in and which projects
+// use it, and a sync that installs the office's own again; under 📁 Projects → Skills, per project,
+// which skills each phase gets for each tool.
 
 import { h } from '../ui/dom';
 import type { KanbanServerMsg } from '../../shared/kanban/protocol.js';
@@ -10,6 +11,7 @@ import { skillUsage } from './model';
 import { kstore } from './store';
 import { toolName } from './labels';
 import { run } from './ui';
+import { Cleanups, Listeners } from './settingsflow';
 
 type SkillsMsg = Extract<KanbanServerMsg, { t: 'kanban.skills' }>;
 
@@ -17,13 +19,28 @@ const ORIGIN_NAMES: Record<SkillInfo['origin'], string> = { bundled: 'the office
 const PHASE_NAMES: Record<SkillPhase, string> = { plan: 'Plan', implement: 'Implement', review: 'Review', pr: 'Pull requests' };
 
 let cache: SkillsMsg | null = null;
+/** The panes drawn now, redrawn when the list comes in or is synced. */
+const painters = new Listeners();
 
-export function skillsPane(api: KanbanApi, projectId: string, s: KanbanSettings): HTMLElement {
+function load(msg: SkillsMsg) {
+  cache = msg;
+  painters.call();
+}
+
+/** Asks the office for the list once (each time ⚙️ Settings opens): every pane that follows it redraws. */
+export function loadSkills(api: KanbanApi) {
+  api.request<SkillsMsg>({ t: 'kanban.skills.list' }).then(load, (err: Error) => load({ t: 'kanban.skills', skills: cache?.skills ?? [], error: err.message }));
+}
+
+/** Redraws with `paint` whenever the list comes in, until `cleanups` run (the pane is replaced or the window shut). */
+function follow(paint: () => void, cleanups: Cleanups) {
+  cleanups.add(painters.add(paint));
+}
+
+/** Every skill the office found, which projects use it, and 🔄 Sync (office-wide). */
+export function skillsOverview(api: KanbanApi, s: KanbanSettings, cleanups: Cleanups): HTMLElement {
   const list = h('div.kb-skill-list', { 'aria-live': 'polite' });
-  const grid = h('div.kb-skill-grid');
   const sync = h('button.btn.kb-admin', { type: 'button', title: 'Look for skills again and install the office’s own' }, '🔄 Sync') as HTMLButtonElement;
-  const save = h('button.btn.primary.kb-admin', { type: 'button' }, 'Save') as HTMLButtonElement;
-  const selection: SkillSelection = structuredClone(s.projects[projectId]?.skills ?? {});
   const projectName = (id: string) => kstore.projectOf(id)?.name ?? id;
 
   const paintList = () => {
@@ -54,6 +71,20 @@ export function skillsPane(api: KanbanApi, projectId: string, s: KanbanSettings)
       ),
     );
   };
+
+  sync.addEventListener('click', () => void run(() => api.request<SkillsMsg>({ t: 'kanban.skills.sync' }), sync, 'Skills synced').then((m) => m && m.t === 'kanban.skills' && load(m)));
+  const el = h('fieldset', {}, h('legend', {}, 'Skills'), h('div.kb-row', {}, h('p.kb-hint', {}, 'Skills the office found on this machine.'), h('span.grow'), sync), list);
+  paintList();
+  follow(paintList, cleanups);
+  return el;
+}
+
+/** Which skills each phase of `projectId`'s tasks is told to use, per agent. */
+export function skillsPane(api: KanbanApi, projectId: string, s: KanbanSettings, cleanups: Cleanups): HTMLElement {
+  const grid = h('div.kb-skill-grid');
+  const save = h('button.btn.primary.kb-admin', { type: 'button' }, 'Save') as HTMLButtonElement;
+  const selection: SkillSelection = structuredClone(s.projects[projectId]?.skills ?? {});
+  const projectName = (id: string) => kstore.projectOf(id)?.name ?? id;
 
   const paintGrid = () => {
     const skills = cache?.skills ?? [];
@@ -97,24 +128,9 @@ export function skillsPane(api: KanbanApi, projectId: string, s: KanbanSettings)
     );
   };
 
-  const load = (msg: SkillsMsg) => {
-    cache = msg;
-    paintList();
-    paintGrid();
-  };
-  sync.addEventListener('click', () => void run(() => api.request<SkillsMsg>({ t: 'kanban.skills.sync' }), sync, 'Skills synced').then((m) => m && m.t === 'kanban.skills' && load(m)));
   save.addEventListener('click', () => void run(() => api.request({ t: 'kanban.project.settings.set', project: projectId, settings: { skills: selection } }), save, 'Saved'));
-  paintList();
+  const el = h('div.kb-pane', {}, h('fieldset', {}, h('legend', {}, `Skills for ${projectName(projectId)}`), h('p.kb-hint', {}, 'Which skills each phase is told to use, per agent.'), grid, h('div.kb-row.kb-save', {}, h('span.grow'), save)));
   paintGrid();
-  api.request<SkillsMsg>({ t: 'kanban.skills.list' }).then(load, (err: Error) => {
-    cache = { t: 'kanban.skills', skills: cache?.skills ?? [], error: err.message };
-    paintList();
-  });
-  return h(
-    'div.kb-pane',
-    {},
-    h('fieldset', {}, h('legend', {}, 'Skills'), h('div.kb-row', {}, h('p.kb-hint', {}, 'Skills the office found on this machine.'), h('span.grow'), sync), list),
-    h('fieldset', {}, h('legend', {}, `Skills for ${projectName(projectId)}`), h('p.kb-hint', {}, 'Which skills each phase is told to use, per agent.'), grid, h('div.kb-row.kb-save', {}, h('span.grow'), save)),
-  );
+  follow(paintGrid, cleanups);
+  return el;
 }
-

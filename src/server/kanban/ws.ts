@@ -357,6 +357,9 @@ export function createCorePlugin(ctx: KanbanContext, subs: KanbanSubscriptions):
     'kanban.task.release': viaEngine<'kanban.task.release'>((m, who) => ctx.engine.release(m.id, who)),
 
     'kanban.settings.get': (c, m) => c.send({ t: 'kanban.settings', ...(m.rid ? { rid: m.rid } : {}), settings: ctx.settings.get(), secrets: ctx.secrets.status() }),
+    // What ⚙️ Settings needs without a board: no cards are built.
+    'kanban.meta.get': (c, m) =>
+      c.send({ t: 'kanban.meta', ...(m.rid ? { rid: m.rid } : {}), projects: projectInfos(ctx), settings: ctx.settings.get(), secrets: ctx.secrets.status(), me: { admin: c.admin, name: c.name } }),
     'kanban.settings.set': (c, m) => {
       if (!adminOnly(c, m.rid)) return;
       ctx.settings.set(m.settings);
