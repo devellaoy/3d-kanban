@@ -15,7 +15,7 @@ import { gh } from '../../../github.js';
 import { floorPullsListeners, type PulledFloor } from './board.js';
 import type { GhRunner } from '../issues/source.js';
 import { fail, ok } from '../util.js';
-import { findBundle, prState, type BundleBy, type RepoPulls } from './bundle.js';
+import { branchPrs, findBundle, prState, type BundleBy, type RepoPulls } from './bundle.js';
 
 const FIELDS = 'number,title,url,state,isDraft,headRefName';
 
@@ -166,12 +166,13 @@ export function createPullsParts(ctx: KanbanContext, opts: PullsOptions = {}) {
 
   /**
    * A floor's PR board has fresh lists: its tasks' linked PRs take the states GitHub has for them
-   * now (a PR is matched by repository and number, else by URL), and the browsers hear about the
-   * cards that changed. Returns those tasks' ids.
+   * now (a PR is matched by repository and number, else by URL), and the PRs from a task's branch
+   * that nobody has linked yet (active tasks' branches only) are linked to it (branchPrs: whatever phase opened them, however the
+   * agent worded its answer). The browsers hear about the cards that changed. Returns those tasks' ids.
    */
-  const syncPrStates = (project: string, pulls: Pick<GhPull, 'number' | 'url' | 'state' | 'isDraft' | 'repo'>[]): number[] => {
+  const syncPrStates = (project: string, pulls: (Pick<GhPull, 'number' | 'url' | 'state' | 'isDraft' | 'repo'> & { headRefName?: string; baseRefName?: string })[]): number[] => {
+    if (!pulls.length) return [];
     const links = ctx.repo.prLinksOfProject(project);
-    if (!links.length || !pulls.length) return [];
     const repos = ctx.repos(project);
     const home = repos.find((r) => r.primary)?.remote;
     const remoteOf = (repoId: string) => repos.find((r) => r.id === repoId)?.remote;
@@ -181,6 +182,11 @@ export function createPullsParts(ctx: KanbanContext, opts: PullsOptions = {}) {
       const p = pulls.find((x) => x.number === l.number && !!repo && sameRepo(x.repo ?? home, repo)) ?? pulls.find((x) => !!l.url && x.url === l.url);
       if (!p) continue;
       if (ctx.repo.setPrLinkState(l.taskId, l.repoId, l.number, prState(p))) changed.add(l.taskId);
+    }
+    const tasks = ctx.repo.listTasks(project).filter((t) => t.status !== 'done').map((t) => ({ id: t.id, branch: t.branch, status: t.status, branches: ctx.repo.repoBranches(t.id) }));
+    for (const b of branchPrs(tasks, pulls, repos.filter((r) => r.kind === 'git'), home, (repo, number) => ctx.repo.tasksOfPr(repo, number).length > 0)) {
+      ctx.repo.upsertPrLink(b.taskId, { repoId: b.repoId, repo: b.repo, number: b.pull.number, url: b.pull.url, state: prState(b.pull), branch: b.branch });
+      changed.add(b.taskId);
     }
     for (const id of changed) ctx.taskChanged(id);
     return [...changed];

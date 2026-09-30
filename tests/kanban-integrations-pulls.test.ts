@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { mkdirSync } from 'node:fs';
 import path from 'node:path';
 import { MergeWatch } from '../src/server/github.js';
-import { findBundle, mentionsTicket, prState, ticketToken, type RepoPulls } from '../src/server/kanban/integrations/pulls/bundle.js';
+import { branchPrs, findBundle, mentionsTicket, prState, ticketToken, type RepoPulls } from '../src/server/kanban/integrations/pulls/bundle.js';
 import { createPullsParts } from '../src/server/kanban/integrations/pulls/index.js';
 import { floorPulled } from '../src/server/kanban/integrations/pulls/board.js';
 import { PR_REVIEW_MAX } from '../src/shared/kanban/types.js';
@@ -203,6 +203,71 @@ test("a task's linked PRs take the board's states when its floor's PRs come back
   changed.length = 0;
   floorPulled({ id: 'web', pullsState: () => ({ items: [{ number: 3, url: 'https://github.com/o/api/pull/3', state: 'OPEN', isDraft: false, repo: 'o/api' } as GhPull], fetchedAt: 1, loading: false }) });
   assert.deepEqual(changed, [], 'the plugin stopped listening');
+});
+
+test("a PR from a task's branch is linked to it when the floor's PRs come back: any repository, not closed, not shared, not taken", () => {
+  const { ctx } = project();
+  const changed: number[] = [];
+  ctx.taskChanged = (id: number) => void changed.push(id);
+  const mk = (title: string, branch?: string) => {
+    const t = ctx.repo.createTask({ project: 'web', title, tool: 'claude', usePlan: true, planApproval: 'auto', useReview: true, createdBy: 't' });
+    if (branch) ctx.repo.updateTask(t.id, { branch });
+    return t;
+  };
+  const a = mk('A', 'kanban/a');
+  ctx.repo.setRepoBranch(a.id, 'api', 'kanban/a');
+  const s1 = mk('S1', 'kanban/shared');
+  const s2 = mk('S2', 'kanban/shared');
+  const other = mk('Other', 'kanban/other');
+  ctx.repo.upsertPrLink(other.id, { repoId: 'web', repo: 'o/web', number: 20, url: 'https://github.com/o/web/pull/20', state: 'OPEN' });
+  const gone = mk('Gone', 'kanban/gone');
+  ctx.repo.updateTask(gone.id, { status: 'archived' });
+  const pull = (n: number, branch: string, repo: string, state = 'OPEN') => ({ number: n, title: `PR ${n}`, url: `https://github.com/${repo}/pull/${n}`, state, isDraft: false, headRefName: branch, repo }) as GhPull;
+  const parts = createPullsParts(ctx);
+  const got = parts.syncPrStates('web', [
+    pull(10, 'kanban/a', 'o/web'),
+    pull(4, 'kanban/a', 'O/Api'),
+    pull(11, 'kanban/x', 'o/web'),
+    pull(12, 'kanban/a', 'o/web', 'CLOSED'),
+    pull(13, 'kanban/shared', 'o/web'),
+    pull(20, 'kanban/a', 'o/web'),
+    pull(14, 'kanban/gone', 'o/web'),
+  ]);
+  assert.deepEqual(got, [a.id]);
+  assert.deepEqual(changed, [a.id]);
+  assert.deepEqual(ctx.repo.listPrLinks(a.id).map((l) => `${l.repoId}#${l.number}:${l.state}:${l.branch}`).sort(), ['api#4:OPEN:kanban/a', 'web#10:OPEN:kanban/a']);
+  assert.equal(ctx.repo.listPrLinks(s1.id).length + ctx.repo.listPrLinks(s2.id).length, 0, 'a branch two tasks share is nobody’s');
+  assert.deepEqual(ctx.repo.listPrLinks(other.id).map((l) => l.number), [20], 'a PR another task has stays with it');
+  assert.equal(ctx.repo.listPrLinks(gone.id).length, 0, 'an archived task is left alone');
+  assert.deepEqual(parts.syncPrStates('web', [pull(10, 'kanban/a', 'o/web')]), [], 'nothing new, nothing changed');
+});
+
+test('branch linking: a done task does not own its branch, integration branches and bases link to nothing', () => {
+  const { ctx } = project();
+  const mk = (title: string, branch: string, status?: 'done') => {
+    const t = ctx.repo.createTask({ project: 'web', title, tool: 'claude', usePlan: true, planApproval: 'auto', useReview: true, createdBy: 't' });
+    ctx.repo.updateTask(t.id, { branch, ...(status ? { status } : {}) });
+    return t;
+  };
+  const old = mk('Old', 'kanban/re', 'done');
+  const fresh = mk('Fresh', 'kanban/re');
+  const dev = mk('Dev', 'kanban/dev-task');
+  ctx.repo.setRepoBranch(dev.id, 'api', 'develop');
+  const pull = (n: number, head: string, base: string, repo: string) => ({ number: n, title: `PR ${n}`, url: `https://github.com/${repo}/pull/${n}`, state: 'OPEN', isDraft: false, headRefName: head, baseRefName: base, repo }) as GhPull;
+  const parts = createPullsParts(ctx);
+  parts.syncPrStates('web', [pull(1, 'kanban/re', 'main', 'o/web'), pull(2, 'develop', 'main', 'o/api'), pull(3, 'kanban/dev-task', 'develop', 'o/api'), pull(4, 'main', 'main', 'o/web')]);
+  assert.deepEqual(ctx.repo.listPrLinks(fresh.id).map((l) => l.number), [1], 'the done task with the same branch name does not block it');
+  assert.equal(ctx.repo.listPrLinks(old.id).length, 0, 'and gets nothing');
+  assert.equal(ctx.repo.listPrLinks(dev.id).length, 0, 'develop→main is a release, not the task’s; main is nobody’s');
+});
+
+test('branchPrs: by repository and branch, the primary repository falls back to the task’s own branch', () => {
+  const repos = [{ id: 'web', remote: 'o/web', primary: true }, { id: 'api', remote: 'o/api', primary: false }];
+  const p = (number: number, headRefName: string | undefined, repo?: string, state = 'OPEN') => ({ number, url: `u${number}`, state, isDraft: false, headRefName, ...(repo ? { repo } : {}) });
+  const tasks = [{ id: 1, branch: 'b1', branches: { api: 'b1-api' } }];
+  const got = branchPrs(tasks, [p(1, 'b1'), p(2, 'b1', 'o/api'), p(3, 'b1-api', 'o/api'), p(4, undefined), p(5, 'b1', 'o/web', 'MERGED'), p(6, 'b1', 'o/lib')], repos, 'o/web', () => false);
+  assert.deepEqual(got.map((g) => `${g.taskId}:${g.repoId}#${g.pull.number}`), ['1:web#1', '1:api#3', '1:web#5']);
+  assert.deepEqual(branchPrs(tasks, [p(1, 'b1')], repos, 'o/web', () => true), []);
 });
 
 test('kanban.pr.review takes panel, kanban.pr.bundle takes includeClosed: true or false, nothing else', () => {

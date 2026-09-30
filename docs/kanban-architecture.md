@@ -135,13 +135,22 @@ allowed: `todo → in_progress` (= start), `waiting|review → done`, `done → 
 - Markers (appended by the engine as a non-editable contract block, never user-editable):
   - plan: a line `PLAN READY` → ready; a `QUESTIONS:` heading → questions; Claude's `ExitPlanMode` → ready;
     none of these, but ≥ 2 `?` and no absolute `.md` path → questions (replan); otherwise ready.
-  - pr: one `PR: <url>` line per pull request opened or updated; each is linked to the task (`pr_links`).
+  - pr: one `PR: <url>` line per pull request opened or updated; each is linked to the task (`pr_links`). The line
+    starts with `PR` or `Pull request` (optionally `created`/`opened`/`updated`, a list bullet and bold allowed) and a
+    colon; the URL is bare, `<url>` or a Markdown link, text after it is fine, any http(s) host. Any other
+    `https://github.com/<owner>/<repo>/pull/<n>` URL in the answer (not in a `>` quote) counts too, but is
+    linked only when it is one of the task's repositories', no other task has it and the board lists it from the task's branch. GitHub URLs are reduced to
+    `…/pull/<n>` (no `/files`, `#…`, `?…`), duplicates count once. Wording is no longer what decides, though:
+    when the floor's PR board syncs (`syncPrStates`), a PR (open, draft or merged, not closed) whose head branch is an active task's branch
+    (the task's own per-repository branch; the primary repository falls back to the task's `branch`) is linked to
+    it in any phase, unless the branch is shared by several active tasks (done and archived tasks own none), the branch is an integration branch (`main`, `master`, `develop`, `dev`, `trunk`, or the base of any PR the board lists for that repository) or the PR is already some task's. A `pr`/`pr-fix`
+    turn's end asks the floor's boards for its git repositories to refresh at once, so that link shows up quickly.
   - review: read from the final answer's last 3 non-empty lines only: the **last** of them matching
     `^\s*REVIEW:\s*(APPROVED|CHANGES_REQUESTED)\s*$` as a line of its own (emphasis allowed) decides; none →
     changes requested.
   - A review verdict never counts inside a fenced code block (```` ``` ```` / `~~~`, an unclosed one runs to
     the end) or in a `>` quote. Plan markers ignore quotes and *closed* code blocks, but an unclosed fence
-    hides nothing after it. `PR:` lines ignore only quotes (an agent may list its PRs in a code block).
+    hides nothing after it. PR lines ignore only quotes (an agent may list its PRs in a code block).
 - Plan approval: `auto` (ready → implement) or `manual` (ready → `waiting` until the user approves).
 - Review: `rounds` (1–10), `reReviewLastFix` (default true). A reviewer is a separate worker (its own tool,
   model, effort) sharing the task's worktree (spawned with `reuse`), sent home with cleanup `keep`.
@@ -400,4 +409,4 @@ closes the database.
 (`engine.pr(taskId, 'create')`); any other agent worker gets the layered `kanban.pr.create` prompt (with the `pr`
 contract) typed into its session, or resumed with it when it's asleep. Only a shell worker answers `'fallback'`
 (`PR_FALLBACK`), and only then does upstream's own `openPr` (a draft PR without an agent) run. PR states of the
-tasks' linked PRs follow the floor's PR board (`floorPulled` → integrations/pulls `syncPrStates`).
+tasks' linked PRs follow the floor's PR board (`floorPulled` → integrations/pulls `syncPrStates`): their states, and PRs from a task's branch that no task has yet get linked to it.

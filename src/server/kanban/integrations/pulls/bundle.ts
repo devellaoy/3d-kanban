@@ -4,7 +4,8 @@
 // rules are tested without GitHub.
 
 import type { GhPull } from '../../../../shared/protocol.js';
-import type { KanbanPrBundleItem, KanbanPrLink, KanbanTask } from '../../../../shared/kanban/types.js';
+import { sameRepo } from '../../../../shared/floors.js';
+import type { KanbanPrBundleItem, KanbanPrLink, KanbanTask, ProjectRepo } from '../../../../shared/kanban/types.js';
 
 /** A project repository's pull requests, as the board (or gh) listed them. */
 export interface RepoPulls {
@@ -38,6 +39,65 @@ export function ticketToken(ticket: string | undefined): string | undefined {
 export function mentionsTicket(text: string, token: string): boolean {
   const esc = token.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
   return new RegExp(`(^|[^A-Za-z0-9])${esc}(?![0-9])`, 'i').test(text);
+}
+
+/** A PR the board lists that belongs to a task by its branch. */
+export interface BranchPr {
+  taskId: number;
+  repoId: string;
+  /** The project repository's owner/name. */
+  repo: string;
+  branch: string;
+  pull: Pick<GhPull, 'number' | 'url' | 'state' | 'isDraft'>;
+}
+
+/** Branches that are nobody's work: a PR from one is a release or a fork's, not a task's. */
+const INTEGRATION_BRANCHES = new Set(['main', 'master', 'develop', 'dev', 'trunk']);
+
+/**
+ * The PRs (open, draft or merged, not closed) whose head branch is an active task's branch in that
+ * repository (the primary repository's falls back to the task's own `branch`), for PRs no task has
+ * yet (`linked`). Done and archived tasks own no branch. A branch two active tasks share is
+ * nobody's. Integration branches are skipped: main, master, develop, dev, trunk, and any branch the
+ * board lists as some PR's base in that repository. `home` is the primary remote, the repository of
+ * a board item that names none.
+ */
+export function branchPrs(
+  tasks: (Pick<KanbanTask, 'id' | 'branch' | 'status'> & { branches?: Record<string, string> })[],
+  pulls: (Pick<GhPull, 'number' | 'url' | 'state' | 'isDraft'> & { repo?: string; headRefName?: string; baseRefName?: string })[],
+  repos: Pick<ProjectRepo, 'id' | 'remote' | 'primary'>[],
+  home: string | undefined,
+  linked: (repo: string, number: number) => boolean,
+): BranchPr[] {
+  const repoOf = (p: { repo?: string }) => {
+    const repo = p.repo ?? home;
+    return repo ? repos.find((x) => x.remote && sameRepo(x.remote, repo)) : undefined;
+  };
+  const owners = new Map<string, Set<number>>();
+  for (const t of tasks) {
+    if (t.status === 'done' || t.status === 'archived') continue;
+    for (const r of repos) {
+      const branch = t.branches?.[r.id] ?? (r.primary ? t.branch : undefined);
+      if (!r.remote || !branch) continue;
+      const key = `${r.id}\n${branch}`;
+      owners.set(key, (owners.get(key) ?? new Set()).add(t.id));
+    }
+  }
+  const bases = new Set<string>();
+  for (const p of pulls) if (p.baseRefName) bases.add(`${repoOf(p)?.id}\n${p.baseRefName}`);
+  const out: BranchPr[] = [];
+  const seen = new Set<string>();
+  for (const p of pulls) {
+    const r = repoOf(p);
+    if (!r?.remote || !p.headRefName || prState(p) === 'CLOSED') continue;
+    if (INTEGRATION_BRANCHES.has(p.headRefName.toLowerCase()) || bases.has(`${r.id}\n${p.headRefName}`)) continue;
+    const ids = owners.get(`${r.id}\n${p.headRefName}`);
+    const key = `${r.id}#${p.number}`;
+    if (ids?.size !== 1 || seen.has(key) || linked(r.remote, p.number)) continue;
+    seen.add(key);
+    out.push({ taskId: [...ids][0], repoId: r.id, repo: r.remote, branch: p.headRefName, pull: p });
+  }
+  return out;
 }
 
 /**
