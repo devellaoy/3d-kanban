@@ -34,6 +34,18 @@ export class KanbanStore {
     return id ? this.projects.find((p) => p.id === id) : undefined;
   }
 
+  /**
+   * Takes what a snapshot says about the office (the projects, the settings, who you are) and leaves
+   * the board's cards alone: for ⚙️ Settings outside the kanban page, which has no board.
+   */
+  applyMeta(snap: Pick<Extract<KanbanServerMsg, { t: 'kanban.snapshot' }>, 'projects' | 'settings' | 'secrets' | 'me'>) {
+    this.projects = snap.projects;
+    this.settings = snap.settings;
+    this.secrets = snap.secrets;
+    this.me = snap.me;
+    for (const t of ['projects', 'settings', 'me'] as KanbanTopic[]) this.emit(t);
+  }
+
   /** Takes in a message from the office; returns whether the board changed. */
   apply(msg: KanbanServerMsg): boolean {
     switch (msg.t) {
