@@ -41,6 +41,8 @@ function isRealPrompt(line: Record<string, unknown>): boolean {
  * The turn after the last real prompt. Its `text` is the final answer only: the text blocks of the
  * turn's last assistant message (Claude logs one message's blocks as lines sharing its message id),
  * never what it said on the way, so a verdict or marker it quoted earlier doesn't count.
+ * A last message that calls a tool (ExitPlanMode aside) isn't a final answer: the Stop hook can come
+ * before Claude has logged the reply after that tool's result, so the turn isn't complete yet.
  */
 export function readClaudeTurn(file: string): TurnResult | undefined {
   const lines = readJsonLines(file);
@@ -59,6 +61,7 @@ export function readClaudeTurn(file: string): TurnResult | undefined {
   let planToolId: string | undefined;
   let apiError: string | undefined;
   let answered = false;
+  let toolPending = false;
   for (const line of lines.slice(from + 1)) {
     if (line.isSidechain === true) continue;
     const msg = isObj(line.message) ? line.message : undefined;
@@ -70,6 +73,7 @@ export function readClaudeTurn(file: string): TurnResult | undefined {
       if (id === undefined || id !== message) {
         texts = [];
         apiError = undefined;
+        toolPending = false;
       }
       message = id;
       for (const b of content) {
@@ -82,7 +86,10 @@ export function readClaudeTurn(file: string): TurnResult | undefined {
             plan = typeof input.plan === 'string' ? input.plan : plan;
             exitPlan = true;
             planToolId = typeof b.id === 'string' ? b.id : undefined;
-          } else exitPlan = false;
+          } else {
+            exitPlan = false;
+            toolPending = true;
+          }
         }
       }
     } else if (line.type === 'user' && planToolId) {
@@ -90,7 +97,7 @@ export function readClaudeTurn(file: string): TurnResult | undefined {
       if (content.some((b) => b.type === 'tool_result' && b.tool_use_id === planToolId)) exitPlan = false;
     }
   }
-  return { text: texts.join('\n\n'), ...(plan !== undefined ? { plan } : {}), ...(exitPlan ? { exitPlan } : {}), complete: answered && (texts.length > 0 || exitPlan), ...(apiError ? { apiError } : {}) };
+  return { text: texts.join('\n\n'), ...(plan !== undefined ? { plan } : {}), ...(exitPlan ? { exitPlan } : {}), complete: answered && !toolPending && (texts.length > 0 || exitPlan), ...(apiError ? { apiError } : {}) };
 }
 
 export const claudeAdapter: TaskAgentAdapter = {
