@@ -11,7 +11,7 @@ import path from 'node:path';
 import type { FloorDef } from '../../building.js';
 import type { Floor } from '../../floor.js';
 import type { WorkerManager, WorkerObservation } from '../../workers.js';
-import { DESK_BY_ID, deskBuilt, nextFreeSeat } from '../../../shared/layout.js';
+import { DESK_BY_ID, deskBuilt, nextFreeSeat, watchSpotOf } from '../../../shared/layout.js';
 import type { WorkerInfo } from '../../../shared/protocol.js';
 import { isBusy } from '../../../shared/status.js';
 import { withContract } from '../../../shared/kanban/prompts.js';
@@ -411,8 +411,10 @@ export class Orchestrator {
     for (const t of queued) {
       const floor = this.ctx.floor(project);
       if (!floor) return;
-      // No room for this one; a reviewer whose implementer is still at its desk may have it (see sharesLimit).
-      if (this.noRoom(floor, undefined, t.queuedRun && this.sharesLimit(t, t.queuedRun.role, floor))) continue;
+      // No room for this one; a reviewer whose implementer is still at its desk may have it (see sharesLimit),
+      // and needs no desk of its own when it can stand behind its implementer's (see watchSpotFor).
+      const watch = t.queuedRun?.role === 'reviewer' ? this.watchSpotFor(t, floor) : undefined;
+      if (this.noRoom(floor, watch, t.queuedRun && this.sharesLimit(t, t.queuedRun.role, floor))) continue;
       if (!t.queuedRun && this.busyCount(project) >= max) return;
       await this.serial(t.id, async () => {
         const task = this.ctx.repo.getTask(t.id);
@@ -459,11 +461,24 @@ export class Orchestrator {
    * `countsWith` (see sharesLimit): the worker limit isn't this hire's to wait for.
    */
   private noRoom(floor: Floor, preferred?: string, countsWith?: string): string | undefined {
-    const desk = (preferred && !this.deskRefusal(floor, preferred)) || nextFreeSeat((id) => floor.workers.deskOccupied(id), floor.workers.wing?.() ?? 0);
+    const desk = (preferred && !this.deskRefusal(floor, preferred, !!DESK_BY_ID.get(preferred)?.watch)) || nextFreeSeat((id) => floor.workers.deskOccupied(id), floor.workers.wing?.() ?? 0);
     if (!desk) return "Queued: there's no free desk on the floor for its worker. It starts by itself when one frees.";
     if (countsWith) return undefined;
     const full = this.ctx.capacity?.();
     return full ? `Queued: ${full.replace(/[.\s]+$/, '')}. It starts by itself when the office has room.` : undefined;
+  }
+
+  /**
+   * Where a task's reviewer goes: the spot behind its implementer's chair, over its shoulder, watching
+   * its screen, so a review takes no desk. The implementer's desk while it's there, else the desk the
+   * task last sat at (it comes back there for the fixes). Undefined when there's neither (the reviewer
+   * then takes the next free seat, as any hire does).
+   */
+  private watchSpotFor(task: Pick<KanbanTask, 'workerId' | 'deskId'>, floor: Floor): string | undefined {
+    const deskId = (task.workerId && floor.workers.get(task.workerId)?.deskId) || task.deskId;
+    const desk = deskId ? DESK_BY_ID.get(deskId) : undefined;
+    if (!desk || desk.station || desk.room || desk.watch) return undefined;
+    return watchSpotOf(desk.id);
   }
 
   /**
@@ -715,7 +730,8 @@ export class Orchestrator {
       info = undefined;
     }
     const owner = hireOwner(fresh, via.who);
-    const preferred = role === 'implementer' ? (via.deskId ?? fresh.deskId) : undefined;
+    // A reviewer stands behind its implementer's chair rather than taking a desk of its own (see watchSpotFor).
+    const preferred = role === 'implementer' ? (via.deskId ?? fresh.deskId) : this.watchSpotFor(fresh, floor);
     const countsWith = this.sharesLimit(fresh, role, floor);
     if (!info) {
       // A new hire runs on its owner's own Claude sign-in (upstream's rule), never on the office's
@@ -791,7 +807,7 @@ export class Orchestrator {
 
     // A new hire.
     // The task's desk (the one it was started at, or where it last sat) when it's free, else the next free one.
-    const desk = (preferred && !this.deskRefusal(floor, preferred) ? preferred : undefined) ?? nextFreeSeat((id) => floor.workers.deskOccupied(id), floor.workers.wing?.() ?? 0)?.id;
+    const desk = (preferred && !this.deskRefusal(floor, preferred, role === 'reviewer') ? preferred : undefined) ?? nextFreeSeat((id) => floor.workers.deskOccupied(id), floor.workers.wing?.() ?? 0)?.id;
     if (!desk) {
       // Taken while its base was fetched: back to the queue.
       this.finishRun(run.id, task.project, { status: 'interrupted', error: 'There was no free desk for its worker' });
@@ -1491,9 +1507,9 @@ export class Orchestrator {
   }
 
   /** Why a task's worker can't be hired at `deskId` now, if it can't: a desk or bean bag that's built and free. */
-  private deskRefusal(floor: Floor, deskId: string): string | undefined {
+  private deskRefusal(floor: Floor, deskId: string, watch = false): string | undefined {
     const desk = DESK_BY_ID.get(deskId);
-    if (!desk || desk.station || desk.room) return `${deskId} isn't a desk a task's worker can be hired at`;
+    if (!desk || desk.station || desk.room || !!desk.watch !== watch) return `${deskId} isn't a desk a task's worker can be hired at`;
     if (!deskBuilt(desk, floor.workers.wing?.() ?? 0)) return `${desk.label} isn't built on this floor yet`;
     if (floor.workers.deskOccupied(deskId)) return `${desk.label} is taken: pick a free desk`;
     return undefined;

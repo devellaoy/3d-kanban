@@ -35,7 +35,7 @@ import { ChatLog } from './history.js';
 import { Arcade, HighScores } from './cabinet.js';
 import type { ChatLine, ClientMsg, FloorInfo, FloorView, Me, MeetingRequest, PeerInfo, SearchResults, ServerMsg, ServicesState, SignInKind, WorkerInfo } from '../shared/protocol.js';
 import { GH_COMMENT_MAX, GH_LABEL_MAX, isAgentEffort, isAgentProvider } from '../shared/protocol.js';
-import { DESK_BY_ID, elevatorSpot, nextFreeSeat, streetBelow } from '../shared/layout.js';
+import { DESK_BY_ID, elevatorSpot, nextFreeSeat, streetBelow, watchSpotOf } from '../shared/layout.js';
 import { OFFICE_MAP, seatHereOn } from '../shared/maps/index.js';
 import { EMPTY_PLAN } from '../shared/floorplan.js';
 import { JUKEBOX_TUNES, STREAM } from '../shared/jukebox.js';
@@ -2444,7 +2444,7 @@ export async function startServer(cfg: Config) {
       case 'floor.shrink': {
         const floor = here();
         if (!floor) break;
-        const r = floor.plan.shrink((id) => floor.workers.deskOccupied(id));
+        const r = floor.plan.shrink((id) => floor.workers.deskOccupied(id) || floor.workers.deskOccupied(watchSpotOf(id))); // 3d-kanban: a reviewer standing behind it too
         if (typeof r === 'string') return warn(c, r);
         planChanged(floor);
         toastFloor(floor, `🧱 ${who} walled the back office back up, and ${r.map((id) => DESK_BY_ID.get(id)?.label).join(' and ')} went with it`);

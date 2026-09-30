@@ -302,11 +302,11 @@ function project(v: unknown): string {
   if (typeof v !== 'string' || !PROJECT_ID_RE.test(v)) bad('project must be a floor id');
   return v as string;
 }
-/** A seat a task's worker can be hired at: a desk or bean bag of the layout, not a board agent's kiosk or a meeting chair. */
+/** A seat a task's worker can be hired at: a desk or bean bag of the layout, not a board agent's kiosk, a meeting chair or a reviewer's spot behind a seat. */
 function deskId(v: unknown): string | undefined {
   if (v === undefined) return undefined;
   const desk = typeof v === 'string' && v.length <= 40 ? DESK_BY_ID.get(v) : undefined;
-  if (!desk || desk.station || desk.room) bad('deskId must be a desk of the floor');
+  if (!desk || desk.station || desk.room || desk.watch) bad('deskId must be a desk of the floor');
   return v as string;
 }
 function model(v: unknown): string | undefined {

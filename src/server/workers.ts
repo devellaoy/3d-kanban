@@ -456,6 +456,8 @@ export class WorkerManager {
     if (!seat) return 'Unknown desk';
     if (!deskBuilt(seat, this.wing())) return `${seat.label} isn't built yet: expand the back office first`;
     if (this.deskOccupied(deskId)) return seat.station ? `The ${STATION_AGENT[seat.station].name} is already there` : `That ${seat.beanbag ? 'bean bag' : 'desk'} is taken`;
+    // 3d-kanban: only a task's reviewer stands behind a seat, watching its implementer (see WATCH_SPOTS).
+    if (seat.watch && extra?.kanban?.role !== 'reviewer') return 'Only a kanban task\'s reviewer stands behind a desk';
     if (kind === 'shell' && seat.station) return 'A board agent is always an agent, not a shell';
     if (seat.station && !prompt?.trim()) return 'Tell the board agent what to do';
     if (!seat.room !== !meeting) return seat.room ? 'Only a meeting seats workers at the meeting table: call one in the meeting room' : 'A meeting seats its workers at the meeting table';

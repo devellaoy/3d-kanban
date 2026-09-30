@@ -21,6 +21,8 @@ export interface DeskDef {
   room?: boolean;
   /** A desk in the back office (see WING): there once the floor is built out this many rows. */
   wing?: number;
+  /** 3d-kanban: the spot behind this seat's chair where a task's reviewer stands watching (see WATCH_SPOTS). */
+  watch?: string;
 }
 
 const DESK_WIDTH = 2.2;
@@ -190,8 +192,23 @@ export const MEETING_SEATS: DeskDef[] = (
 /** The board on the meeting room's back (south) wall that shows the meeting's output file as it's written. */
 export const MEETING_BOARD = { x: MEETING_TABLE.x, y: 1.95, z: FLOOR.maxZ - 0.08, width: 3.6, height: 1.2 } as const;
 
+/**
+ * 3d-kanban: the spot behind each seat (a desk or a bean bag) where a kanban task's reviewer stands, over
+ * its implementer's shoulder, instead of taking a seat of its own. Each has its seat's place and turn
+ * (the way in and out goes past that chair); `watch` is the seat's id. Only the kanban hires there.
+ */
+export function watchSpots(seats: readonly DeskDef[]): DeskDef[] {
+  return seats.map((d) => ({ ...d, id: watchSpotOf(d.id), label: `Behind ${d.label}`, watch: d.id }));
+}
+/** 3d-kanban: the id of the spot behind seat `deskId`. */
+export function watchSpotOf(deskId: string): string {
+  return `watch-${deskId}`;
+}
+/** 3d-kanban: see watchSpots. */
+export const WATCH_SPOTS: DeskDef[] = watchSpots(SEATS);
+
 /** Any place a worker can be by id: the seats (the back office's included), the board agents' kiosks and the meeting room's chairs. */
-export const DESK_BY_ID = new Map([...SEATS, ...STATIONS, ...MEETING_SEATS].map((d) => [d.id, d]));
+export const DESK_BY_ID = new Map([...SEATS, ...STATIONS, ...MEETING_SEATS, ...WATCH_SPOTS].map((d) => [d.id, d])); // 3d-kanban: WATCH_SPOTS
 
 /**
  * The seat a new worker takes when nobody picks one: the first free desk (in the back office too, as
