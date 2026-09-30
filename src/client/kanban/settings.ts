@@ -26,21 +26,15 @@ import {
   type ReviewSettings,
 } from '../../shared/kanban/types.js';
 import { KANBAN_CONTRACTS, KANBAN_PROMPT_DEFS, KANBAN_PROMPT_IDS, PROMPT_CONTRACT, kanbanPromptSource, type KanbanPromptId, type KanbanPromptScope } from '../../shared/kanban/prompts.js';
-import { kanbanApi, type KanbanApi } from './api';
+import { kanbanApi, type KanbanApi, type KanbanError } from './api';
 import { KANBAN_DEFAULTS, projectDefaults, REVIEW_DEFAULTS } from './defaults';
 import { repoIdFrom } from './model';
 import { kstore } from './store';
-import { skillsOverview, skillsPane } from './skills';
+import { loadSkills, skillsOverview, skillsPane } from './skills';
+import type { KanbanSettingsPane } from './settingsslot';
 import { Cleanups, settingsRedraw } from './settingsflow';
 import { APPROVAL_NAMES, effortName, SOURCE_KIND_NAMES, toolName } from './labels';
 import { checkbox, field, numberInput, numberValue, run, select, tabStrip, textArea, textInput } from './ui';
-
-/** The kanban's categories in ⚙️ Settings (ui/settings.ts), after upstream's own. */
-export const KANBAN_PANES = [
-  { id: 'kanban', icon: '🗂️', label: 'Kanban', blurb: 'What new kanban tasks start with, their reviews, resuming and archiving, the skills the office found, and the secrets for Jira and the API.' },
-  { id: 'projects', icon: '📁', label: 'Projects', blurb: 'Per project: its repositories and instructions, where its issues come from, which skills its phases get and its own wording of the kanban prompts.' },
-] as const;
-export type KanbanSettingsPane = (typeof KANBAN_PANES)[number]['id'];
 
 /** The tabs of 📁 Projects. */
 export type ProjectTab = 'project' | 'sources' | 'skills' | 'prompts';
@@ -89,31 +83,11 @@ function reviewFields(r: Partial<ReviewSettings>, base: ReviewSettings | null) {
 }
 
 /**
- * What to do when the office welcomes a connection (again): one at a time per connection, as Net keeps
- * its handlers for good. Not on the socket's open: the kanban bus drops what was asked before the welcome.
- */
-const upHooks = new WeakMap<Net, { fn?: () => void }>();
-function whenUp(net: Net, fn: () => void): () => void {
-  let slot = upHooks.get(net);
-  if (!slot) {
-    const s: { fn?: () => void } = {};
-    upHooks.set(net, (slot = s));
-    net.onMessage((msg) => {
-      if (msg.t === 'welcome') s.fn?.();
-    });
-  }
-  const mine = slot;
-  mine.fn = fn;
-  return () => {
-    if (mine.fn === fn) mine.fn = undefined;
-  };
-}
-
-/**
- * The kanban's two categories of ⚙️ Settings, drawn into upstream's window on any page: 🗂️ Kanban (the
- * office's defaults, skills and secrets) and 📁 Projects (one project's settings, picked at the top).
- * On the kanban page the board's own subscription keeps kstore current; anywhere else (the 3D office)
- * this asks for the kanban's settings itself and follows them with a watch while the window is open.
+ * The kanban's two categories of ⚙️ Settings, drawn into upstream's window on any page (settingsslot.ts
+ * loads this the first time one is shown): 🗂️ Kanban (the office's defaults, secrets and skills) and
+ * 📁 Projects (one project's settings, picked at the top). On the kanban page the board's own
+ * subscription keeps kstore current; anywhere else (the 3D office) this asks for the kanban's settings
+ * itself (kanban.meta.get: no cards) and follows them with a watch while the window is open.
  */
 export function kanbanSettingsPanes(net: Net): { panes: Record<KanbanSettingsPane, HTMLElement>; close(): void } {
   const api = kanbanApi(net);
@@ -163,9 +137,8 @@ export function kanbanSettingsPanes(net: Net): { panes: Record<KanbanSettingsPan
     paintProject();
   }, 'Project settings');
   projectsEl.append(projectPick, strip.el, note, body);
-  const paintProject = () => {
-    projectCleanups.run();
-    pickProject();
+  /** The project picker alone: a project added or renamed shows without redrawing what you're typing. */
+  const paintPicker = () => {
     const sel = select(kstore.projects.map((p) => [p.id, p.name] as const), project, { 'aria-label': 'Project' });
     sel.addEventListener('change', () => {
       project = sel.value;
@@ -174,6 +147,11 @@ export function kanbanSettingsPanes(net: Net): { panes: Record<KanbanSettingsPan
     projectPick.replaceChildren(h('span', {}, 'Project'), sel);
     projectPick.classList.toggle('hidden', !kstore.projects.length);
     strip.el.classList.toggle('hidden', !kstore.projects.length);
+  };
+  const paintProject = () => {
+    projectCleanups.run();
+    pickProject();
+    paintPicker();
     note.textContent = kstore.me.admin ? 'For the project picked here only. Changes apply to its tasks from their next phase.' : 'Only admins can change these. This is how they’re set now.';
     const s = kstore.settings;
     if (!s || !ready) return body.replaceChildren(h('p.kb-muted', {}, 'Loading…'));
@@ -199,6 +177,7 @@ export function kanbanSettingsPanes(net: Net): { panes: Record<KanbanSettingsPan
     // Someone else saved meanwhile: the pane shows what's saved now (what you typed and didn't save goes).
     kstore.on('projects', () => {
       if (!kstore.projectOf(project)) paintProject();
+      else paintPicker();
     }),
     kstore.on('settings', () => {
       if (redraw() === 'all') {
@@ -218,32 +197,30 @@ export function kanbanSettingsPanes(net: Net): { panes: Record<KanbanSettingsPan
 
   if (own) {
     // No board here keeps kstore current: this asks, and hears the settings while the window is open.
-    let unwatch: (() => void) | undefined;
     offs.push(
       api.on((msg: KanbanServerMsg) => {
-        if (msg.t === 'kanban.snapshot') kstore.applyMeta(msg);
+        if (msg.t === 'kanban.meta' || msg.t === 'kanban.snapshot') kstore.applyMeta(msg);
         else if (msg.t === 'kanban.settings' || msg.t === 'kanban.projects') kstore.apply(msg);
       }),
-      () => unwatch?.(),
     );
-    const load = () =>
-      api
-        .request({ t: 'kanban.snapshot', project: store.floor ?? null })
-        .then(() => {
-          // The settings reach whoever follows a project: any one will do.
-          const watched = [store.floor, kstore.projects[0]?.id].find((id) => id && kstore.projectOf(id));
-          if (watched && !unwatch && offs.length) unwatch = api.watch(watched);
-        })
-        .catch((err: Error) => {
-          if (ready) return;
-          const why = h('p.kb-muted', {}, `The kanban’s settings didn’t load (${err.message}): open this again.`);
-          officeEl.replaceChildren(why);
-          body.replaceChildren(why.cloneNode(true));
-        });
-    // Not connected yet (or again): they load once the office is there.
-    offs.push(whenUp(net, () => void load()));
+    // The office tells settings changes to whoever follows a project, any one: the watch starts before
+    // asking, so nothing falls between the answer and it. A floor is a project; with none there's
+    // nothing to follow, and only your own saves show while the window is open.
+    const watched = store.floor ?? store.floors.find((f) => !f.cloning)?.id;
+    if (watched) offs.push(api.watch(watched));
+    const load = () => {
+      loadSkills(api);
+      return api.request({ t: 'kanban.meta.get' }).catch((err: KanbanError) => {
+        // A connection that went or started over asks again once the office welcomes it.
+        if (ready || err.lost) return;
+        const why = h('p.kb-muted', {}, `The kanban’s settings didn’t load (${err.message}): open this again.`);
+        officeEl.replaceChildren(why);
+        body.replaceChildren(why.cloneNode(true));
+      });
+    };
+    offs.push(api.onWelcome(() => void load()));
     if (api.up) void load();
-  }
+  } else loadSkills(api);
   paint();
   return {
     panes: { kanban: officeEl, projects: projectsEl },

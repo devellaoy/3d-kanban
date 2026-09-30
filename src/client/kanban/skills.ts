@@ -27,10 +27,14 @@ function load(msg: SkillsMsg) {
   painters.call();
 }
 
-/** Asks for the list and redraws with `paint` whenever it's in, until `cleanups` run (the pane is replaced or the window shut). */
-function follow(api: KanbanApi, paint: () => void, cleanups: Cleanups) {
-  cleanups.add(painters.add(paint));
+/** Asks the office for the list once (each time ⚙️ Settings opens): every pane that follows it redraws. */
+export function loadSkills(api: KanbanApi) {
   api.request<SkillsMsg>({ t: 'kanban.skills.list' }).then(load, (err: Error) => load({ t: 'kanban.skills', skills: cache?.skills ?? [], error: err.message }));
+}
+
+/** Redraws with `paint` whenever the list comes in, until `cleanups` run (the pane is replaced or the window shut). */
+function follow(paint: () => void, cleanups: Cleanups) {
+  cleanups.add(painters.add(paint));
 }
 
 /** Every skill the office found, which projects use it, and 🔄 Sync (office-wide). */
@@ -71,7 +75,7 @@ export function skillsOverview(api: KanbanApi, s: KanbanSettings, cleanups: Clea
   sync.addEventListener('click', () => void run(() => api.request<SkillsMsg>({ t: 'kanban.skills.sync' }), sync, 'Skills synced').then((m) => m && m.t === 'kanban.skills' && load(m)));
   const el = h('fieldset', {}, h('legend', {}, 'Skills'), h('div.kb-row', {}, h('p.kb-hint', {}, 'Skills the office found on this machine.'), h('span.grow'), sync), list);
   paintList();
-  follow(api, paintList, cleanups);
+  follow(paintList, cleanups);
   return el;
 }
 
@@ -127,6 +131,6 @@ export function skillsPane(api: KanbanApi, projectId: string, s: KanbanSettings,
   save.addEventListener('click', () => void run(() => api.request({ t: 'kanban.project.settings.set', project: projectId, settings: { skills: selection } }), save, 'Saved'));
   const el = h('div.kb-pane', {}, h('fieldset', {}, h('legend', {}, `Skills for ${projectName(projectId)}`), h('p.kb-hint', {}, 'Which skills each phase is told to use, per agent.'), grid, h('div.kb-row.kb-save', {}, h('span.grow'), save)));
   paintGrid();
-  follow(api, paintGrid, cleanups);
+  follow(paintGrid, cleanups);
   return el;
 }

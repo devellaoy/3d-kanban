@@ -32,15 +32,14 @@ test('removing a listener removes that one, and cleanups take them all down once
   const painters = new Listeners();
   const calls: string[] = [];
   const cleanups = new Cleanups();
-  const paint = () => calls.push('a');
-  cleanups.add(painters.add(paint));
+  cleanups.add(painters.add(() => calls.push('a')));
   cleanups.add(painters.add(() => calls.push('b')));
-  // The same function added again (a pane drawn twice) is a listener of its own.
-  const again = painters.add(paint);
+  const c = () => calls.push('c');
+  const stopC = painters.add(c);
   assert.equal(painters.size, 3);
   painters.call();
-  assert.deepEqual(calls, ['a', 'b', 'a']);
-  again();
+  assert.deepEqual(calls, ['a', 'b', 'c']);
+  stopC();
   assert.equal(painters.size, 2);
   cleanups.run();
   assert.equal(painters.size, 0);
@@ -48,7 +47,7 @@ test('removing a listener removes that one, and cleanups take them all down once
   // Running again does nothing more.
   cleanups.run();
   painters.call();
-  assert.deepEqual(calls, ['a', 'b', 'a']);
+  assert.deepEqual(calls, ['a', 'b', 'c']);
 });
 
 test('a listener removed while the others are being called is not called', () => {

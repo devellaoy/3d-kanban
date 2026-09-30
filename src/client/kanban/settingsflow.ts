@@ -20,16 +20,14 @@ export class Cleanups {
   }
 }
 
-/** A set of listeners where the function that removes one removes that one. */
+/** A set of listeners; add() returns what removes that one. */
 export class Listeners {
   private fns = new Set<() => void>();
 
   add(fn: () => void): () => void {
-    // A wrapper of its own, so the same function added twice is two listeners.
-    const entry = () => fn();
-    this.fns.add(entry);
+    this.fns.add(fn);
     return () => {
-      this.fns.delete(entry);
+      this.fns.delete(fn);
     };
   }
 

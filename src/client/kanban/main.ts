@@ -309,6 +309,8 @@ let notifier: DesktopNotifier | undefined;
 
 /** The office's ⚙️ Settings, the same window as in the 3D office, opened on 🗂️ Kanban (📁 Projects is on this board's project). */
 function showSettings() {
+  // The 3D office in another tab may have changed them since this page loaded: saving here writes them all.
+  Object.assign(settings, loadSettings());
   notifier ??= new DesktopNotifier(() => settings.notify, () => {});
   openSettings(
     net,

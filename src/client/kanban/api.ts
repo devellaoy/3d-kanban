@@ -18,11 +18,12 @@ type WithoutRid<T> = T extends unknown ? Omit<T, 'rid'> : never;
 export type KanbanRequest = WithoutRid<KanbanClientMsg>;
 export type KanbanOk = Extract<KanbanServerMsg, { t: 'kanban.ok' }>;
 
-/** A request the office turned down (kanban.error: `fromOffice`), or one it never answered. */
+/** A request the office turned down (kanban.error: `fromOffice`), or one it never answered (`lost`: the connection went or started over). */
 export class KanbanError extends Error {
   constructor(
     message: string,
     readonly fromOffice = false,
+    readonly lost = false,
   ) {
     super(message);
   }
@@ -41,6 +42,7 @@ export class KanbanApi {
   private seq = 0;
   private pending = new Map<string, Pending>();
   private listeners = new Set<(msg: KanbanServerMsg) => void>();
+  private welcomes = new Set<() => void>();
   private watches = new Map<number, string>();
   private watchSeq = 0;
   /** Something subscribed the connection itself: its filter stands, watches ride on it. */
@@ -55,6 +57,7 @@ export class KanbanApi {
         this.failAll('The connection to the office was lost: try again');
         this.watching = undefined;
         this.syncWatches();
+        for (const fn of [...this.welcomes]) fn();
       }
       if (typeof msg.t !== 'string' || !msg.t.startsWith('kanban.')) return;
       const k = msg as KanbanServerMsg;
@@ -82,6 +85,12 @@ export class KanbanApi {
   on(fn: (msg: KanbanServerMsg) => void): () => void {
     this.listeners.add(fn);
     return () => this.listeners.delete(fn);
+  }
+
+  /** Runs `fn` each time the office welcomes the connection (again): what was asked before is lost then. Returns how to stop. */
+  onWelcome(fn: () => void): () => void {
+    this.welcomes.add(fn);
+    return () => this.welcomes.delete(fn);
   }
 
   /** Sends without waiting for the answer (deltas still come). */
@@ -132,7 +141,7 @@ export class KanbanApi {
    * KanbanError carrying the office's reason when it says no, or when nothing comes back.
    */
   request<T extends KanbanServerMsg = KanbanServerMsg>(msg: KanbanRequest): Promise<T> {
-    if (!this.net.up) return Promise.reject(new KanbanError('Not connected to the office'));
+    if (!this.net.up) return Promise.reject(new KanbanError('Not connected to the office', false, true));
     this.claims(msg);
     const rid = `k${Date.now().toString(36)}${(this.seq++).toString(36)}`;
     return new Promise<T>((resolve, reject) => {
@@ -148,7 +157,7 @@ export class KanbanApi {
   private failAll(why: string) {
     for (const [rid, p] of this.pending) {
       clearTimeout(p.timer);
-      p.reject(new KanbanError(why));
+      p.reject(new KanbanError(why, false, true));
       this.pending.delete(rid);
     }
   }

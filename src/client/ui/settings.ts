@@ -8,8 +8,8 @@ import { DOG_NAME_MAX, cleanDogName } from '../../shared/dog';
 import { h, openModal, timeAgo } from './dom';
 import { agentFields, choiceLabel, officeChoice } from './provider';
 import { openPromptEditor, rewrittenPrompts } from './prompts';
-// 3d-kanban: the kanban's settings are categories of this window.
-import { KANBAN_PANES, kanbanSettingsPanes, type KanbanSettingsPane } from '../kanban/settings';
+// 3d-kanban: the kanban's settings are categories of this window, loaded when one is first shown.
+import { KANBAN_PANES, kanbanSettingsSlots, type KanbanSettingsPane } from '../kanban/settingsslot';
 
 const VIEWS: [ViewMode, string, string][] = [
   ['first', '👀 First person', 'See through your own eyes. Click the office to look around with the mouse and click things to use them. Esc frees the mouse.'],
@@ -506,7 +506,7 @@ export function openSettings(net: Net, settings: Settings, onChange: (s: Setting
   const signOut = h('button.btn', { type: 'button' }, '🚪 Sign out');
   signOut.addEventListener('click', onSignOut);
   const character = h('button.btn', { type: 'button' }, account ? '🧍 Change your look' : '🧍 Change your look & name');
-  const kanban = kanbanSettingsPanes(net); // 3d-kanban
+  const kanban = kanbanSettingsSlots(net); // 3d-kanban
   const panes: Record<SettingsPane, Node[]> = {
     you: [
       setting('Your character', null, character),
@@ -562,6 +562,7 @@ export function openSettings(net: Net, settings: Settings, onChange: (s: Setting
   }
   const show = (id: SettingsPane) => {
     lastPane = id;
+    kanban.shown(id); // 3d-kanban
     for (const [t, tab] of tabs) {
       tab.classList.toggle('on', t === id);
       tab.setAttribute('aria-selected', String(t === id));
