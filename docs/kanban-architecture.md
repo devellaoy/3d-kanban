@@ -303,6 +303,11 @@ answers `kanban.ok {rid, ...}` or `kanban.error {rid, message}`. Deltas are push
     `kanban.ok {}` (`taskId` when one was given, which also gets a status comment).
   - `issues.list`, `issues.refresh`, `issues.createTask` (idempotent by ticket, `kanban.ok {taskId, existed}`),
     `skills.list` are for anyone signed in.
+  - The same cached issues are the 3D issues board of a project with issue sources
+    (`integrations/issues/wall.ts`): the floor's upstream `gh.issues` carries them as `GhIssue`s with
+    `key`, `source`, `status` and `taskId` (`number` only for a GitHub issue of one of the project's
+    repositories, else 0), and falls back to upstream's list without sources. Cards are handed out with
+    `issueKey` (see kanban-coupling.md, Messages).
   - Admin only (upstream `meOf(accountId).admin`): `settings.set`, `project.settings.set`, `project.repos.set`,
     `project.prompt.set`, `secrets.set`, `skills.sync`. `secrets.set` is answered with `kanban.settings` (configured flags
     only). The `/api/v1` key is stored as `sha256:<hex>`.

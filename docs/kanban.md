@@ -298,6 +298,25 @@ Issues are fetched again every 90 seconds while someone looks at them, every 10 
 with **Refresh**. Keys: `gh:owner/repo#12` (GitHub issues), `ghp:<owner>/<number>#<item>` (project
 draft issues), the Jira key.
 
+### On the 3D issues board
+
+A floor whose project has issue sources shows *their* issues on its 📌 Issues board (the cork on the
+wall, **E** there, and the ☰ search) instead of its own repository's; a project without any keeps the
+floor's GitHub issues, as upstream. Each note says what it is: `#12` for one of the floor's own
+issues, `api#12` for another GitHub repository's, the Jira key (`UYT-1415`) or `draft …` for a
+project's draft, and **🗂️ #N** once it has been made into a task. The list is the same as in
+**📌 Issues** on the kanban (its filters, its 90-second / 10-minute refresh); someone on the floor
+counts as looking at it.
+
+Every card works like upstream's: **E** at a note takes it off the cork, **O** opens it, and in your
+hands it goes to an empty desk (E hires a worker for it, **P** makes it a kanban task there), to a
+worker, to the 📋 queue, to the herald or to the meeting room. The worker's prompt names the issue's
+source and link (a GitHub issue of another repository: `gh issue view N -R owner/name`); a card made
+into a task is never made twice. One of the project's GitHub issues opens in the office's issue window
+(comments, labels, close); any other card opens a window with what the source says and the same
+actions. Taking a card assigns it on GitHub when it's a GitHub issue (to your own GitHub sign-in, or
+the office's); a Jira or project card isn't assigned anywhere: its kanban task is what links it.
+
 ## Pull requests
 
 - **O at a desk** (3D office) has an agent write the pull request instead of the office drafting one.

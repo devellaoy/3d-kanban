@@ -67,9 +67,13 @@ instead; the task waits (failed) with upstream's reason, naming whose sign-in is
 ## Messages (additive)
 
 - `worker.kill {workerId, cleanup?, kanban?: {done?: boolean}}`
-- `worker.prompt {workerId, prompt, issue?, asComment?: true}`: typed in as upstream by default;
+- `worker.prompt {workerId, prompt, issue?, asComment?: true, issueKey?}`: typed in as upstream by default;
   `asComment` makes it a comment on a task worker's task. The earlier `raw` flag is gone: an older
   client's `raw: true` is ignored and types in, which is what it asked for.
+- `issueKey?` on `carry`, `worker.spawn`, `worker.prompt` and `queue.add` (and `CarriedIssue.key`,
+  `QueueTask.issueKey`): the ticket key of a card from the project's issue sources on the 3D issues board
+  (`issue` is then only for one of the floor's own GitHub issues). A card dropped on a task worker is its
+  task's own when the task's ticket is that key.
 - `kanban.task.create {…KanbanTaskInput, deskId?}`, `kanban.task.start {id, deskId?}`
 - `kanban.task.update` accepts tool/model/effort (and the review override) whenever no run is live.
 
