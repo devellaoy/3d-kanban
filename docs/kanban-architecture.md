@@ -174,8 +174,9 @@ allowed: `todo → in_progress` (= start), `waiting|review → done`, `done → 
   hire nor the drain waits for a free desk for it (`watchSpotFor`, `noRoom`). Without a desk to stand
   behind, or with that spot taken, it takes the next free seat as before. Only a kanban reviewer can be
   hired at a watch spot (`WorkerManager.spawn`); a start's `deskId` can't be one. Walling up the back
-  office counts a reviewer behind one of its desks as someone there. The client builds the spot's view on
-  the watched seat's own (`client/kanban/watch3d.ts`), so it stands where that seat is on every map.
+  office counts a reviewer behind one of its desks as someone there. The client builds the spot's view beside
+  the watched seat's own, in its frame (`client/kanban/watch3d.ts`), so it stands where that seat is on every
+  map and still shows while the seat is hidden (a bean bag put away once its implementer went home).
 - A worker that exits (or can't start because its folder is gone) during a run interrupts it: task `waiting`
   (`interrupted`), with Retry offered.
 - **Departures** ([kanban-coupling.md](kanban-coupling.md)): every send-home path passes an intent

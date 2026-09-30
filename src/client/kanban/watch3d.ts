@@ -1,9 +1,10 @@
 // A task's reviewer in the 3D office: it takes no desk of its own but stands behind its implementer's
 // chair, over the shoulder, looking at the implementer's screen (the server hires it at the seat's
 // watch spot, `watch-<seat id>`, see WATCH_SPOTS in shared/layout.ts). No map builds a view for those
-// spots: the first time a worker is there, one is made here as part of the watched seat's own view (so
-// it's where that seat is on whichever map, and goes wherever the seat goes) and kept in `world.desks`
-// like any other seat, so everything that looks a worker's seat up there finds it.
+// spots: the first time a worker is there, one is made here beside the watched seat's own view, placed
+// and turned as that seat is (so it's where the seat is on whichever map), and kept in `world.desks`
+// like any other seat, so everything that looks a worker's seat up there finds it. It isn't inside the
+// seat's view: a bean bag nobody sits on is put away (hidden), and the reviewer behind it must still show.
 
 import * as THREE from 'three';
 import type { DeskView, Interactable } from '../world/office';
@@ -31,8 +32,12 @@ export function seatView(world: World, deskId: string): DeskView | undefined {
 
 /** The spot behind `seat`'s chair, in the seat's own frame (its chair on +z, its desk toward -z). */
 function watchView(seat: DeskView, def: DeskView['def']): DeskView {
+  // In the seat's frame, but not in its group, so it shows whether or not the seat does.
   const group = new THREE.Group();
-  seat.group.add(group);
+  group.position.copy(seat.group.position);
+  group.quaternion.copy(seat.group.quaternion);
+  group.scale.copy(seat.group.scale);
+  (seat.group.parent ?? seat.group).add(group);
   const chair = seat.seatAnchor.position;
   const x = chair.x + SIDE;
   const z = chair.z + BACK;
@@ -61,8 +66,8 @@ function watchView(seat: DeskView, def: DeskView['def']): DeskView {
   group.add(stage);
 
   // Aimed at, it's the reviewer's (E opens its terminal), not the implementer's desk it stands at.
-  seat.group.updateWorldMatrix(true, false);
-  const at = seat.group.localToWorld(new THREE.Vector3(x, 0, z));
+  group.updateWorldMatrix(true, false);
+  const at = group.localToWorld(new THREE.Vector3(x, 0, z));
   const it: Interactable = { kind: 'desk', deskId: def.id, x: at.x, z: at.z, radius: 0.8 };
   group.userData.interact = it;
 
