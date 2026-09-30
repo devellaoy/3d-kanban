@@ -157,6 +157,26 @@ test('manual plan approval, and stop while the agent works', async (t) => {
   assert.ok(stopped.workspace, 'the worktree stays with the task');
 });
 
+test('files sent with a plan change request are linked to the task and its comment, and reach the planner', async (t) => {
+  const fx = await engineFixture();
+  t.after(() => fx.close());
+  fx.setRules([{ when: 'You are planning kanban task', reply: 'Plan text.\n\nPLAN READY', exitPlan: 'The plan' }, { when: 'The user replied about the plan', reply: 'Plan again.\n\nPLAN READY', exitPlan: 'The plan 2' }]);
+  const task = fx.newTask({ planApproval: 'manual', useReview: false });
+  await fx.engine.start(task.id, ADA);
+  await fx.waitTask(task.id, (x) => x.status === 'waiting' && x.waitingReason === 'plan_approval', 'the plan approval');
+  const up = fx.repo.addAttachment({ id: 'a'.repeat(32), name: 'mock.png', mime: 'image/png', size: 3, stored: 'a'.repeat(32) + '.png', createdBy: 'Ada', createdAt: Date.now() });
+  const mark = fx.history(task.id).length;
+  assert.equal(await fx.engine.requestPlanChanges(task.id, ADA, 'Use the mock', [up.id]), undefined);
+  const linked = fx.repo.getAttachment(up.id)!;
+  assert.equal(linked.taskId, task.id);
+  const comment = fx.repo.listComments(task.id).comments.find((c) => c.text === 'Use the mock')!;
+  assert.equal(linked.commentId, comment.id);
+  assert.ok(fx.broadcasts.some((m) => m.t === 'kanban.comment' && m.comment.id === comment.id && m.comment.attachmentIds.length === 1), 'the comment went out again with its file');
+  await fx.sawTask(task.id, (x) => x.runState === 'running' || x.phase === 'plan', 'the replan', 15_000, mark);
+  await fx.waitTask(task.id, (x) => x.status === 'waiting' && x.waitingReason === 'plan_approval' && fx.repo.listRuns(task.id).length >= 2, 'the new plan', 30_000);
+  assert.ok(fx.invocations().some((i) => /The user replied about the plan/.test(i.prompt ?? i.args.join(' ')) && /Files attached to the task/.test(i.prompt ?? i.args.join(' ')) && /mock\.png: .*a{32}\.png/.test(i.prompt ?? i.args.join(' '))), 'the planner got the file path');
+});
+
 test('prForWorker: a plain worker gets the PR prompt in its terminal, a shell is the fallback', async (t) => {
   const fx = await engineFixture();
   t.after(() => fx.close());

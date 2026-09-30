@@ -339,7 +339,7 @@ export function createCorePlugin(ctx: KanbanContext, subs: KanbanSubscriptions):
 
     'kanban.task.start': viaEngine<'kanban.task.start'>((m, who) => ctx.engine.start(m.id, who, m.deskId ? { deskId: m.deskId } : undefined)),
     'kanban.task.stop': viaEngine<'kanban.task.stop'>((m, who) => ctx.engine.stop(m.id, who)),
-    'kanban.task.continue': viaEngine<'kanban.task.continue'>((m, who) => ctx.engine.continue(m.id, who, m.answer)),
+    'kanban.task.continue': viaEngine<'kanban.task.continue'>((m, who) => ctx.engine.continue(m.id, who, m.answer, m.attachmentIds)),
     'kanban.task.retry': viaEngine<'kanban.task.retry'>((m, who) => ctx.engine.retry(m.id, who)),
     'kanban.task.review': viaEngine<'kanban.task.review'>((m, who) => ctx.engine.review(m.id, who)),
     'kanban.plan.approve': viaEngine<'kanban.plan.approve'>(async (m, who) => {
@@ -351,7 +351,7 @@ export function createCorePlugin(ctx: KanbanContext, subs: KanbanSubscriptions):
       }
       return ctx.engine.approvePlan(m.id, who);
     }),
-    'kanban.plan.requestChanges': viaEngine<'kanban.plan.requestChanges'>((m, who) => ctx.engine.requestPlanChanges(m.id, who, m.text)),
+    'kanban.plan.requestChanges': viaEngine<'kanban.plan.requestChanges'>((m, who) => ctx.engine.requestPlanChanges(m.id, who, m.text, m.attachmentIds)),
     'kanban.task.pr': viaEngine<'kanban.task.pr'>((m, who) => ctx.engine.pr(m.id, who, m.mode)),
     'kanban.task.compact': viaEngine<'kanban.task.compact'>((m, who) => ctx.engine.compact(m.id, who)),
     'kanban.task.release': viaEngine<'kanban.task.release'>((m, who) => ctx.engine.release(m.id, who)),

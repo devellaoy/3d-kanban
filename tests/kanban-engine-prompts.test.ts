@@ -119,6 +119,14 @@ test('every prompt the engine sends is filled in completely and ends with its ph
   assert.ok(compose.build('resume', def, inv, 'codex', dir, { phase: 'resume', text: 'x' }).endsWith(KANBAN_CONTRACTS.investigateSafety));
 });
 
+test('filesText lists the given files by name and path, and is empty for none', (t) => {
+  const { compose, ctx } = setup(t);
+  assert.equal(compose.filesText('proj', []), '');
+  const text = compose.filesText('proj', [{ name: 'mock.png', stored: 'abc.png' }]);
+  assert.match(text, /^Files attached to the task/);
+  assert.ok(text.includes(`- mock.png: ${path.join(ctx.filesDir, 'uploads', 'abc.png')}`));
+});
+
 test('the workspace lines: predicted before the hire, real paths after, folders by their own path', (t) => {
   const { def, dir, repo } = setup(t);
   const task = repo.createTask({ project: 'proj', title: 'X', tool: 'claude', usePlan: true, planApproval: 'auto', useReview: true, createdBy: 'Ada' });

@@ -151,9 +151,13 @@ export class Composer {
   }
 
   private attachments(task: KanbanTask): string {
-    const files = this.ctx.repo.listAttachments(task.id);
+    return this.filesText(task.project, this.ctx.repo.listAttachments(task.id));
+  }
+
+  /** The 'kanban.attachments' block for these files (name and path on this machine); empty when none. */
+  filesText(project: string, files: { name: string; stored: string }[]): string {
     if (!files.length) return '';
-    return this.text('kanban.attachments', task.project, { files: files.map((a) => `- ${a.name}: ${path.join(this.ctx.filesDir, 'uploads', a.stored)}`).join('\n') });
+    return this.text('kanban.attachments', project, { files: files.map((a) => `- ${a.name}: ${path.join(this.ctx.filesDir, 'uploads', a.stored)}`).join('\n') });
   }
 
   /** Every placeholder the task prompts share. */
@@ -209,7 +213,7 @@ export class Composer {
       case 'plan':
         return seal(this.text('kanban.plan', p, v));
       case 'replan':
-        return seal(this.text('kanban.replan', p, { taskId: task.id, answer: x.text ?? '', language: v.language }));
+        return seal(this.text('kanban.replan', p, { taskId: task.id, answer: x.text ?? '', attachments: v.attachments, language: v.language }));
       case 'implement':
         return seal(this.text(isFolderProject(def) ? 'kanban.implement.folder' : 'kanban.implement', p, v));
       case 'investigate':

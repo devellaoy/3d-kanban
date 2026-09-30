@@ -62,11 +62,13 @@ This turn is for planning only. Read whatever code, docs and referenced tasks yo
     group: 'kanban',
     label: 'Plan · answers and change requests',
     used: 'Sent to the planning session when the user answers its questions or asks for changes to the plan. The office appends the plan contract again.',
-    vars: { taskId: TASK_VARS.taskId, answer: "The user's answers or requested changes", language: TASK_VARS.language },
+    vars: { taskId: TASK_VARS.taskId, answer: "The user's answers or requested changes", attachments: TASK_VARS.attachments, language: TASK_VARS.language },
     needs: ['answer'],
     text: `The user replied about the plan for task #{{taskId}}:
 
 {{answer}}
+
+{{attachments}}
 
 Take this into account and write the whole plan again, complete, so it can be read on its own. Still don't change any files.
 

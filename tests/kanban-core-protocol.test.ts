@@ -72,6 +72,9 @@ test('good messages come through rebuilt, without anything the validator did not
   assert.deepEqual(good({ t: 'kanban.task.update', id: 1, patch: { ticket: '', model: null, goal: '  ', review: null } }), { t: 'kanban.task.update', id: 1, patch: { ticket: null, model: null, goal: null, review: null } });
   assert.deepEqual(good({ t: 'kanban.task.move', id: 1, to: 'done' }), { t: 'kanban.task.move', id: 1, to: 'done' });
   assert.deepEqual(good({ t: 'kanban.task.continue', id: 1, answer: '   ' }), { t: 'kanban.task.continue', id: 1 });
+  assert.deepEqual(good({ t: 'kanban.task.continue', id: 1, answer: 'x', attachmentIds: [] }), { t: 'kanban.task.continue', id: 1, answer: 'x' });
+  assert.deepEqual(good({ t: 'kanban.task.continue', id: 1, attachmentIds: ['b'.repeat(16)] }), { t: 'kanban.task.continue', id: 1, attachmentIds: ['b'.repeat(16)] });
+  assert.deepEqual(good({ t: 'kanban.plan.requestChanges', id: 1, text: 'Less', attachmentIds: ['b'.repeat(16)] }), { t: 'kanban.plan.requestChanges', id: 1, text: 'Less', attachmentIds: ['b'.repeat(16)] });
   assert.deepEqual(good({ t: 'kanban.comment.add', id: 1, text: '', attachmentIds: ['b'.repeat(16)] }), { t: 'kanban.comment.add', id: 1, text: '', attachmentIds: ['b'.repeat(16)] });
   assert.deepEqual(good({ t: 'kanban.plan.approve', id: 1, planId: 4 }), { t: 'kanban.plan.approve', id: 1, planId: 4 });
   assert.deepEqual(good({ t: 'kanban.task.pr', id: 1, mode: 'fix' }), { t: 'kanban.task.pr', id: 1, mode: 'fix' });
@@ -132,6 +135,8 @@ test('bad messages are refused with a reason, and their rid is still found for t
   refused({ t: 'kanban.task.move', id: 1, to: 'later' }, /to must be one of/);
   refused({ t: 'kanban.comment.add', id: 1, text: '  ' }, /comment can't be empty/);
   refused({ t: 'kanban.plan.requestChanges', id: 1, text: '' }, /can't be empty/);
+  refused({ t: 'kanban.plan.requestChanges', id: 1, text: 'x', attachmentIds: ['../x'] }, /attachment ids/);
+  refused({ t: 'kanban.task.continue', id: 1, attachmentIds: ['../x'] }, /attachment ids/);
   refused({ t: 'kanban.task.pr', id: 1, mode: 'merge' }, /mode must be/);
   refused({ t: 'kanban.settings.set', settings: [] }, /must be an object/);
   refused({ t: 'kanban.settings.set', settings: { x: 'y'.repeat(KANBAN_LIMITS.settingsJson) } }, /too big/);

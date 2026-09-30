@@ -361,6 +361,13 @@ export class Orchestrator {
     return comment;
   }
 
+  /** Links uploads already attached to the task to its new comment, and sends the comment again so clients show them. */
+  private linked(project: string, comment: KanbanComment, files: { id: string }[]) {
+    if (!files.length) return;
+    this.ctx.repo.linkAttachments(files.map((f) => f.id), comment.taskId, comment.id);
+    this.ctx.broadcast({ t: 'kanban.comment', comment: this.ctx.repo.getComment(comment.id) ?? comment, project }, project);
+  }
+
   /** A line from the office in the task's conversation (the repository never repeats one). */
   private note(task: Pick<KanbanTask, 'id' | 'project'>, text: string, runId?: number) {
     this.addComment(task.project, { taskId: task.id, authorKind: 'system', authorName: 'Kanban', kind: 'status', text, ...(runId !== undefined ? { runId } : {}) });
@@ -1558,7 +1565,7 @@ export class Orchestrator {
     });
   }
 
-  continue(taskId: number, who: KanbanCaller, answer?: string): Promise<string | void> {
+  continue(taskId: number, who: KanbanCaller, answer?: string, attachmentIds?: string[]): Promise<string | void> {
     return this.op(taskId, async (task) => {
       const asking = this.asking(task);
       if (asking) {
@@ -1567,12 +1574,14 @@ export class Orchestrator {
         // pick its highlighted option.
         const text = answer?.trim();
         if (!text) return 'Type your answer, or answer in the terminal';
-        const err = this.answer(asking, text, who);
-        if (!err) this.addComment(task.project, { taskId, authorKind: 'user', authorName: who.name, kind: 'message', text, runId: asking.runId });
+        const files = this.ctx.repo.linkAttachments(attachmentIds ?? [], taskId);
+        const err = this.answer(asking, [text, this.compose.filesText(task.project, files)].filter(Boolean).join('\n\n'), who);
+        if (!err) this.linked(task.project, this.addComment(task.project, { taskId, authorKind: 'user', authorName: who.name, kind: 'message', text, runId: asking.runId }), files);
         return err;
       }
       if (this.liveOf(task.id)) return 'It is still running: answer in its terminal, or stop it first';
-      if (answer?.trim()) this.addComment(task.project, { taskId, authorKind: 'user', authorName: who.name, kind: 'message', text: answer.trim() });
+      const files = this.ctx.repo.linkAttachments(attachmentIds ?? [], taskId);
+      if (answer?.trim()) this.linked(task.project, this.addComment(task.project, { taskId, authorKind: 'user', authorName: who.name, kind: 'message', text: answer.trim() }), files);
       return this.apply(taskId, { type: 'continue', answer, last: this.lastRun(taskId) }, { who });
     });
   }
@@ -1626,9 +1635,10 @@ export class Orchestrator {
     });
   }
 
-  requestPlanChanges(taskId: number, who: KanbanCaller, text: string): Promise<string | void> {
+  requestPlanChanges(taskId: number, who: KanbanCaller, text: string, attachmentIds?: string[]): Promise<string | void> {
     return this.op(taskId, (task) => {
-      if (text.trim()) this.addComment(task.project, { taskId, authorKind: 'user', authorName: who.name, kind: 'message', text: text.trim() });
+      const files = this.ctx.repo.linkAttachments(attachmentIds ?? [], taskId);
+      if (text.trim()) this.linked(task.project, this.addComment(task.project, { taskId, authorKind: 'user', authorName: who.name, kind: 'message', text: text.trim() }), files);
       return this.apply(taskId, { type: 'requestPlanChanges', text }, { who });
     });
   }
@@ -1698,7 +1708,8 @@ export class Orchestrator {
       // Queued, it would wait for a turn's end that the question itself holds up. A permission prompt
       // (or an unknown one) is answered in the terminal: the comment waits for the turn's end.
       const asking = this.asking(task);
-      if (asking?.asks === 'question' && !this.answer(asking, c.text, who)) return;
+      const own = this.ctx.repo.listAttachments(taskId).filter((a) => a.commentId === c.id);
+      if (asking?.asks === 'question' && !this.answer(asking, [c.text, this.compose.filesText(task.project, own)].filter(Boolean).join('\n\n'), who)) return;
       const live = this.liveOf(task.id);
       const err = await this.apply(taskId, { type: 'comment', text: c.text, busy: !!live || task.runState !== 'idle' }, { who, commentId });
       if (err) this.note(task, `Couldn't hand the comment to the agent: ${err}`);

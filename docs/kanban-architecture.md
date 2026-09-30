@@ -119,7 +119,8 @@ allowed: `todo → in_progress` (= start), `waiting|review → done`, `done → 
 - **Answering it from the kanban** (`waiting`/`agent_asking`, the live run's worker `needs_input`):
   only a `question` is typed into. `continue(answer)` and `commented()` type the text into that
   worker's PTY (upstream's `WorkerManager.prompt`, which answers a TUI question as a person typing
-  does) and keep it as a user comment (`continue` adds it; a comment is already stored); nothing goes
+  does) and keep it as a user comment (`continue` adds it; a comment is already stored); the files
+  of that message (`attachmentIds`, or the comment's own) follow as `Composer.filesText` paths; nothing goes
   to `pendingMessages` (a queued answer would wait for a turn end that the question holds up). The
   engine does not apply `working` itself: the task stays `waiting`/`agent_asking` until the worker's
   own hooks move it on (`needs_input` → `working`, the machine's `working`, as when it's answered at
@@ -306,7 +307,10 @@ answers `kanban.ok {rid, ...}` or `kanban.error {rid, message}`. Deltas are push
     then `engine.commented`.
   - `plan.approve {planId}`: only the latest plan version can be approved.
   - Start, stop, continue, retry, review, plan approve and request-changes, pr, compact and release go to
-    `ctx.engine`. A returned string becomes `kanban.error`.
+    `ctx.engine`. A returned string becomes `kanban.error`. `task.continue` and `plan.requestChanges` take
+    `attachmentIds?` like `comment.add`: the engine links them to the task and to the comment it adds
+    (before applying, so the prompt sees them), and sends that comment again with its files. The replan
+    prompt has `{{attachments}}` (as resume does).
   - `pr.bundle {project, taskId | branch | ticket, includeClosed?}` (integrations/pulls): the PRs that belong
     together across the project's repositories, open and draft ones only unless `includeClosed`; answered with
     `kanban.pr.bundle` (an `error` in it rather than `kanban.error` when the lists couldn't be read).

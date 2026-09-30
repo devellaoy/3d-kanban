@@ -162,13 +162,13 @@ export type KanbanClientMsg =
   | Req<{ t: 'kanban.task.start'; id: number; deskId?: string }>
   | Req<{ t: 'kanban.task.stop'; id: number }>
   /** Carry on from waiting; `answer` answers the plan's questions (or what the agent asked). */
-  | Req<{ t: 'kanban.task.continue'; id: number; answer?: string }>
+  | Req<{ t: 'kanban.task.continue'; id: number; answer?: string; attachmentIds?: string[] }>
   /** Run the failed / interrupted phase again. */
   | Req<{ t: 'kanban.task.retry'; id: number }>
   /** One more review round, by hand. */
   | Req<{ t: 'kanban.task.review'; id: number }>
   | Req<{ t: 'kanban.plan.approve'; id: number; planId?: number }>
-  | Req<{ t: 'kanban.plan.requestChanges'; id: number; text: string }>
+  | Req<{ t: 'kanban.plan.requestChanges'; id: number; text: string; attachmentIds?: string[] }>
   /** Have the agent open (create) or fix the task's pull requests. */
   | Req<{ t: 'kanban.task.pr'; id: number; mode: 'create' | 'fix' }>
   | Req<{ t: 'kanban.task.compact'; id: number }>
@@ -573,14 +573,18 @@ function parse(raw: unknown): KanbanClientMsg {
       return m({ t: t as 'kanban.task.start', id: id(r.id) });
     case 'kanban.task.continue': {
       const answer = optText(r.answer, 'The answer', KANBAN_LIMITS.answer);
-      return m({ t: 'kanban.task.continue', id: id(r.id), ...(answer?.trim() ? { answer } : {}) });
+      const ids = attachmentIds(r.attachmentIds);
+      return m({ t: 'kanban.task.continue', id: id(r.id), ...(answer?.trim() ? { answer } : {}), ...(ids?.length ? { attachmentIds: ids } : {}) });
     }
     case 'kanban.plan.approve': {
       const planId = optInt(r.planId, 'planId', 1, Number.MAX_SAFE_INTEGER);
       return m({ t: 'kanban.plan.approve', id: id(r.id), ...(planId !== undefined ? { planId } : {}) });
     }
-    case 'kanban.plan.requestChanges':
-      return m({ t: 'kanban.plan.requestChanges', id: id(r.id), text: text(r.text, 'What to change', KANBAN_LIMITS.answer) });
+    case 'kanban.plan.requestChanges': {
+      const body = text(r.text, 'What to change', KANBAN_LIMITS.answer);
+      const ids = attachmentIds(r.attachmentIds);
+      return m({ t: 'kanban.plan.requestChanges', id: id(r.id), text: body, ...(ids?.length ? { attachmentIds: ids } : {}) });
+    }
     case 'kanban.task.pr':
       return m({ t: 'kanban.task.pr', id: id(r.id), mode: oneOf(r.mode, 'mode', ['create', 'fix'] as const) });
     case 'kanban.comment.add': {
