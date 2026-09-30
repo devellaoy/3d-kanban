@@ -19,6 +19,7 @@ import {
   officeLink,
   parseOfficeLink,
   promptKind,
+  queuedKanbanTasks,
   TabMemory,
   tabLabel,
   taskWaiting,
@@ -29,7 +30,7 @@ import {
   type HireTaskForm,
 } from '../src/client/kanban/office.js';
 import type { WorkerInfo } from '../src/shared/protocol.js';
-import type { KanbanWorkerSummary } from '../src/shared/kanban/types.js';
+import type { KanbanTaskCard, KanbanWorkerSummary } from '../src/shared/kanban/types.js';
 import { showIn3dLink } from '../src/client/kanban/model.js';
 
 const NOW = 1_000_000;
@@ -204,4 +205,15 @@ test('a prompt to a task worker, R, and who started it', () => {
   assert.equal(canRetry(k({ role: 'reviewer', status: 'waiting' })), false);
   assert.equal(kanbanStarter('Sam (kanban #14)'), 'Sam');
   assert.equal(kanbanStarter('Sam (queue)'), undefined);
+});
+
+test('the queue board lists the kanban tasks waiting their turn that no worker at a desk shows', () => {
+  const card = (id: number, status: KanbanTaskCard['status'], runState: KanbanTaskCard['runState']) => ({ id, status, runState }) as KanbanTaskCard;
+  const cards = [card(9, 'in_progress', 'queued'), card(3, 'in_progress', 'queued'), card(4, 'in_progress', 'running'), card(5, 'todo', 'idle'), card(6, 'waiting', 'idle'), card(7, 'in_progress', 'queued')];
+  assert.deepEqual(
+    queuedKanbanTasks(cards, new Set([7])).map((c) => c.id),
+    [3, 9],
+    'queued ones only, oldest first; #7 (its reviewer waits while its implementer sits at a desk) is on its worker’s row',
+  );
+  assert.deepEqual(queuedKanbanTasks([], new Set()), []);
 });

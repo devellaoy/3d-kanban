@@ -1,8 +1,9 @@
 // What the 3D office and the 2D view do with a task worker (docs/kanban-coupling.md, "3D actions → task
 // events"): P or ✍️ onto it, an issue card handed to it, R when its task waits, the hire dialogs' kanban
-// option, and the queue board's read-only kanban section. The pure parts are in office.ts.
+// option, and the queue board's kanban toggle and section. The pure parts are in office.ts.
 
 import type { KanbanServerMsg } from '../../shared/kanban/protocol.js';
+import type { KanbanTaskCard } from '../../shared/kanban/types.js';
 import type { WorkerInfo } from '../../shared/protocol';
 import type { Net } from '../net';
 import { store } from '../state';
@@ -10,10 +11,11 @@ import { h, toast } from '../ui/dom';
 import { openPrompt } from '../ui/prompt';
 import { kanbanApi } from './api';
 import type { KanbanOption } from './hireform';
-import { canRetry, cardIsTasks, kanbanChip, kanbanOf, kanbanUrl, promptKind, takesMessage } from './office';
+import { canRetry, cardIsTasks, kanbanChip, kanbanOf, kanbanUrl, promptKind, queuedKanbanTasks, takesMessage } from './office';
 import { officeCss } from './officecss';
 
 type Detail = Extract<KanbanServerMsg, { t: 'kanban.task.detail' }>;
+type Snapshot = Extract<KanbanServerMsg, { t: 'kanban.snapshot' }>;
 
 /**
  * `worker.prompt`; `asComment` makes it a comment on a task worker's task (docs/kanban-coupling.md,
@@ -98,30 +100,92 @@ export function hireOption(net: Net, deskId: () => string | undefined, deskLabel
 }
 
 /**
- * The queue board's read-only "🗂️ Kanban on this floor": its task workers, each opening its task, and
- * a link to the kanban. Null when nobody on the floor has a task.
+ * The 📋 queue board's kanban toggle, for the floor you're on (undefined off a project's floor): the
+ * task has no desk of its own, so the engine seats it at the next free one or queues it.
  */
-export function kanbanQueueSection(net: Net): HTMLElement | null {
+export function queueOption(net: Net, onCreated?: (taskId: number) => void): KanbanOption | undefined {
+  const project = store.floor;
+  if (!project || !store.project) return undefined;
+  officeCss();
+  return { net, project, deskId: () => undefined, deskLabel: 'the next free desk', queued: true, onCreated };
+}
+
+/**
+ * The floor's kanban tasks while the queue board is open, for the ones waiting their turn. A plain
+ * kanban.snapshot, never kanban.subscribe: that would take the connection's one delta filter (a task
+ * window's, say). At most one request a second; one asked for meanwhile follows it.
+ */
+export function kanbanQueueWatch(net: Net, rerender: () => void) {
+  let tasks: KanbanTaskCard[] = [];
+  let stopped = false;
+  let busy = false;
+  let again = false;
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const fetch = () => {
+    const project = store.floor;
+    if (stopped) return;
+    if (!project) {
+      tasks = [];
+      return rerender();
+    }
+    busy = true;
+    kanbanApi(net)
+      .request<Snapshot>({ t: 'kanban.snapshot', project })
+      .then((s) => (tasks = s.tasks.filter((t) => t.project === project)))
+      .catch(() => (tasks = []))
+      .finally(() => {
+        busy = false;
+        if (stopped) return;
+        rerender();
+        timer = setTimeout(() => {
+          timer = undefined;
+          if (again) refresh();
+        }, 1000);
+      });
+  };
+  const refresh = () => {
+    again = false;
+    if (busy || timer) {
+      again = true;
+      return;
+    }
+    fetch();
+  };
+  return {
+    tasks: () => tasks,
+    refresh,
+    stop() {
+      stopped = true;
+      if (timer) clearTimeout(timer);
+    },
+  };
+}
+
+/**
+ * The queue board's "🗂️ Kanban on this floor": its task workers, each opening its task, the tasks
+ * waiting their turn (`tasks`: the floor's cards, from kanbanQueueWatch), and a link to the kanban.
+ * Null when there's nothing to show.
+ */
+export function kanbanQueueSection(net: Net, tasks: readonly KanbanTaskCard[] = []): HTMLElement | null {
   const now = Date.now();
   const workers = [...store.workers.values()].filter((w) => w.kanban).sort((a, b) => a.kanban!.taskId - b.kanban!.taskId || a.id.localeCompare(b.id));
-  if (!workers.length) return null;
+  const waiting = queuedKanbanTasks(tasks, new Set(workers.map((w) => w.kanban!.taskId)));
+  if (!workers.length && !waiting.length) return null;
+  const open = (id: number) => h('button.btn', { type: 'button', onclick: () => void import('./taskview').then((m) => m.openTaskWindow(net, id)) }, '🗂️ Task');
   return h(
     'div',
     {},
-    h('h4', {}, '🗂️ Kanban on this floor', h('span.count', {}, String(workers.length)), h('a', { href: kanbanUrl(store.floor), style: 'margin-left:auto;font-size:13px' }, 'Open the kanban ↗')),
+    h('h4', {}, '🗂️ Kanban on this floor', h('span.count', {}, String(workers.length + waiting.length)), h('a', { href: kanbanUrl(store.floor), style: 'margin-left:auto;font-size:13px' }, 'Open the kanban ↗')),
     h(
       'ul.queue-list',
       {},
-      ...workers.map((w) =>
+      ...workers.map((w) => h('li', {}, h('div.queue-main', {}, h('div.queue-title', {}, kanbanChip(w, now)), h('div.queue-meta', {}, w.name)), h('div.queue-actions', {}, open(w.kanban!.taskId)))),
+      ...waiting.map((t) =>
         h(
           'li',
-          {},
-          h('div.queue-main', {}, h('div.queue-title', {}, kanbanChip(w, now)), h('div.queue-meta', {}, w.name)),
-          h(
-            'div.queue-actions',
-            {},
-            h('button.btn', { type: 'button', onclick: () => void import('./taskview').then((m) => m.openTaskWindow(net, w.kanban!.taskId)) }, '🗂️ Task'),
-          ),
+          { class: 'queued' },
+          h('div.queue-main', {}, h('div.queue-title', {}, `🗂️ #${t.id} ${t.title}`), h('div.queue-meta', {}, `⏳ waiting for a desk or a slot · by ${t.createdBy}`)),
+          h('div.queue-actions', {}, open(t.id)),
         ),
       ),
     ),
