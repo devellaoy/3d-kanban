@@ -110,6 +110,7 @@ import { canRetry, kanbanCard, kanbanOf, kanbanStarter, kanbanUrl, parseOfficeLi
 import { askWorker, cardToTaskWorker, hireOption, promptTaskWorker, promptWorker, retryTask } from './kanban/office3d';
 import { issueTask } from './kanban/hireform';
 import { sendTaskWorkerHome } from './kanban/sendhome';
+import { seatView } from './kanban/watch3d';
 import { rememberFloor } from './state';
 
 // The loading screen stays up until there's an office to see (see boot and whoami at the end).
@@ -2026,7 +2027,7 @@ const HOLD_LEAVE = 5;
 function syncWorkers() {
   for (const w of store.workers.values()) {
     let v = workerViews.get(w.id);
-    const desk = world.desks.get(w.deskId);
+    const desk = seatView(world, w.deskId); // 3d-kanban: a reviewer's spot behind its implementer's chair too
     if (!desk) continue;
     if (!v) {
       departures.vacate(w.deskId);
@@ -2041,7 +2042,8 @@ function syncWorkers() {
       const beside = desk.def.station ? new THREE.Vector3(0.62, 0.9, 0) : new THREE.Vector3(0.64, 0.5, -0.1);
       model.setPropSpot(model.root.worldToLocal(desk.laptopAnchor.localToWorld(beside)));
       // Called to a meeting just now: out of the elevator and over to the table, one after another.
-      if (desk.def.room && !seatedAlready) arrivals.add(model, desk);
+      // 3d-kanban: a task's reviewer walks in the same way, to behind its implementer's chair.
+      if ((desk.def.room || desk.def.watch) && !seatedAlready) arrivals.add(model, desk);
       // In the castle, a worker at the tables gets up and walks about (see Court): a new one runs in to its seat.
       else if (court && inCourt(w)) court.add(w.id, model, desk, seatedAlready ? undefined : cameFrom(w));
       const laptop = new Laptop(world.device);
@@ -2119,7 +2121,7 @@ function syncWorkers() {
 /** A worker that sits at the tables (not a board agent or at the meeting table): it gets up and lines up for the throne. */
 function inCourt(w: WorkerInfo): boolean {
   const d = plan().byId.get(w.deskId);
-  return w.kind === 'agent' && !!d && !d.station && !d.room && !w.meeting;
+  return w.kind === 'agent' && !!d && !d.station && !d.room && !d.watch && !w.meeting; // 3d-kanban: !d.watch
 }
 
 /**
@@ -4950,7 +4952,7 @@ function frame(ts?: number) {
     v.model.held = d < (v.model.held ? HOLD_LEAVE : HOLD_NEAR);
     v.model.update(dt, t);
     // A board agent's kiosk has no laptop to paint (see buildKiosk).
-    if (!desk.station) v.laptop.update(dt, store.screens.get(id), Math.hypot(desk.x - camPos.x, desk.z - camPos.z));
+    if (!desk.station && !desk.watch) v.laptop.update(dt, store.screens.get(id), Math.hypot(desk.x - camPos.x, desk.z - camPos.z)); // 3d-kanban: nor a reviewer's spot
   }
   for (const a of idleAgents) if (a.view.vacancy.visible) a.model.update(dt, t);
   departures.update(dt, t);
