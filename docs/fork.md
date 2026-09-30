@@ -213,7 +213,7 @@ New files are not seams (they can't conflict): `src/{server,shared,client}/kanba
 | `tsconfig.scripts.json` | new file | Type-checks `scripts/**/*.ts` | The migration script is outside `src/` |
 | `bin/office-workers.js` | import; `runTool()`; `tools/list`, `tools/call` *(unmarked)* | `get_task` / `search_tasks` from `office-tasks.js`, listed only when `tasksVisible(env)` (`AIKANBAN_API_BASE` or `AGENT_OFFICE_TASKS` set) | MCP tools for task workers |
 | `deploy/container/Dockerfile` | build stage | `python3 make g++`; `npm rebuild better-sqlite3` after `npm ci --ignore-scripts` | Native module needs its binary |
-| `CLAUDE.md` | whole file *(unmarked)* | Replaced with the fork's rules; upstream's PR/merge workflow rules removed on purpose | This fork has no upstream-style PR workflow |
+| `AGENTS.md`, `CLAUDE.md` | whole files *(unmarked)* | `AGENTS.md` holds the fork's rules, replacing upstream's `CLAUDE.md` content (its PR/merge workflow rules removed on purpose); `CLAUDE.md` is only the one-line pointer `@AGENTS.md` (Claude Code's import), not a symlink, so Windows checkouts work | This fork has no upstream-style PR workflow; one rules file every agent (Codex, OpenCode, Claude Code…) reads |
 | `README.md` | top | Fork section above upstream's README, which follows unchanged (its *Mouse drag / wheel* row is flagged there as out of date) | What this fork is |
 | `docs/features.md` | *A floor per project*, *One task across several projects*, *One-click PRs*, *PR board*, *Walk around*, *Basketball* | An "*In 3d-kanban*" sentence at the end of each, pointing to [kanban.md](kanban.md) | The upstream docs don't contradict the fork |
 | `docs/configuration.md` | *Where the office keeps things* | An "*In 3d-kanban*" paragraph before *Command line* (kanban data, settings, migration) | Same |
@@ -242,7 +242,8 @@ New files are not seams (they can't conflict): `src/{server,shared,client}/kanba
      same `repo` → `githubFor()` handling, or they act on the floor's own repository.
    - `floorView()` and the floor's `gh.pulls` callback still send `pullsState()`.
 4. Re-check `package.json` (dependencies, `files`, `typecheck`, `migrate:ai-kanban`), `vite.config.ts`
-   inputs and the Dockerfile's `better-sqlite3` rebuild; keep this fork's `CLAUDE.md`.
+   inputs and the Dockerfile's `better-sqlite3` rebuild; keep this fork's `AGENTS.md` and the pointer
+   `CLAUDE.md` (`@AGENTS.md`), resolving any upstream change to `CLAUDE.md` in favour of the pointer.
 5. `npm install && npm run typecheck && npm test && npm run build`, then by hand: a kanban task through
    plan → implement → review → PR, **O** at an ordinary worker's desk, the PR board of a multi-repo
    project, and the 3D office itself.
