@@ -133,6 +133,41 @@ test('a card as a kanban task: at the desk, from the source’s whole text, once
   assert.equal(opts.length, 1, 'an archived task isn’t started again');
 });
 
+test('a card whose task waits in To do: P starts it at the desk, a failed start says why and can be tried again', async () => {
+  let fail = 'No free desk';
+  const ctx = makeCtx([def('app', '/tmp/app', { repo: 'o/app' })], { start: () => fail || undefined });
+  const opts: unknown[] = [];
+  const start = ctx.engine.start;
+  ctx.engine.start = (async (id: number, who: unknown, o: unknown) => (opts.push(o), start(id, who as never))) as typeof ctx.engine.start;
+  ctx.settings.setProject('app', { issueSources: [{ id: 'j', kind: 'github-repo', repos: ['o/lib'], filters: {} }] as IssueSourceConfig[] });
+  const issues = createIssues(ctx, { gh: async () => JSON.stringify([{ number: 4, title: 'Four', url: 'https://github.com/o/lib/issues/4', body: 'b', state: 'OPEN', assignees: [], labels: [], updatedAt: '2026-09-02T10:00:00Z' }]) });
+  const c = client();
+  const create = async (rid: string, deskId?: string) => {
+    await issues.plugin.ws!['kanban.issues.createTask']!(c, { t: 'kanban.issues.createTask', project: 'app', issueKey: 'gh:o/lib#4', rid, ...(deskId ? { start: true, deskId } : {}) });
+    return c.got.at(-1) as { t: string; taskId: number; existed: boolean; started?: true; startError?: string };
+  };
+  // Made on the kanban first: it waits in To do.
+  const made = await create('r1');
+  assert.equal(ctx.repo.getTask(made.taskId)!.status, 'todo');
+  assert.equal(opts.length, 0);
+
+  const failed = await create('r2', 'd1');
+  assert.deepEqual(failed, { t: 'kanban.ok', rid: 'r2', taskId: made.taskId, existed: true, startError: 'No free desk' });
+  assert.deepEqual(opts, [{ deskId: 'd1' }]);
+  assert.equal(ctx.repo.getTask(made.taskId)!.status, 'todo', 'still waiting: it can be tried again');
+
+  fail = '';
+  const started = await create('r3', 'd2');
+  assert.deepEqual(started, { t: 'kanban.ok', rid: 'r3', taskId: made.taskId, existed: true, started: true });
+  assert.deepEqual(opts, [{ deskId: 'd1' }, { deskId: 'd2' }]);
+  assert.equal(ctx.repo.getTask(made.taskId)!.status, 'in_progress');
+
+  const again = await create('r4', 'd3');
+  assert.deepEqual(again, { t: 'kanban.ok', rid: 'r4', taskId: made.taskId, existed: true }, 'under way: only named');
+  assert.equal(opts.length, 2, 'not started twice');
+  assert.equal(ctx.repo.listTasks('app').length, 1);
+});
+
 test('claiming a card: a GitHub issue of any repository by its key, nothing else', async () => {
   const calls: { args: string[]; env?: Record<string, string> }[] = [];
   const run = (async (args: string[], _cwd: string, _t?: number, env?: Record<string, string>) => (calls.push({ args, env }), '')) as Parameters<typeof claimGhKey>[3];

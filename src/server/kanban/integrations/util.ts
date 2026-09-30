@@ -105,7 +105,7 @@ export function clip(s: string | undefined, max: number): string {
   return t.length > max ? `${t.slice(0, max)}\n… (cut: ${(t.length - max).toLocaleString('en-US')} more characters)` : t;
 }
 
-export const ok = (c: KanbanClient, rid: string | undefined, extra: { taskId?: number; workerId?: string; existed?: boolean; startError?: string } = {}) =>
+export const ok = (c: KanbanClient, rid: string | undefined, extra: { taskId?: number; workerId?: string; existed?: boolean; startError?: string; started?: true } = {}) =>
   c.send({ t: 'kanban.ok', ...(rid ? { rid } : {}), ...extra });
 export const fail = (c: KanbanClient, rid: string | undefined, message: string) => c.send({ t: 'kanban.error', ...(rid ? { rid } : {}), message });
 

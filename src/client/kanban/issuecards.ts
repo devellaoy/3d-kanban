@@ -168,8 +168,8 @@ export function cardTask(net: Net, card: AnyCard, deskId: string | undefined, de
     .request<KanbanOk>({ t: 'kanban.issues.createTask', project, issueKey: card.key, start: true, ...(deskId ? { deskId } : {}) })
     .then((ok) => {
       if (!ok.taskId) return;
-      const text = ok.existed ? `🗂️ ${name} is already task #${ok.taskId}` : `🗂️ ${name} is task #${ok.taskId} now, starting at ${deskLabel}`;
-      const el = toast(ok.startError ? `${text}: ${ok.startError}` : text, ok.startError || ok.existed ? 'warn' : 'info');
+      const text = !ok.existed ? `🗂️ ${name} is task #${ok.taskId} now, starting at ${deskLabel}` : ok.started ? `🗂️ ${name} was already task #${ok.taskId}: it starts at ${deskLabel}` : ok.startError ? `🗂️ ${name} is task #${ok.taskId}` : `🗂️ ${name} is already task #${ok.taskId}`;
+      const el = toast(ok.startError ? `${text}: ${ok.startError}` : text, ok.startError || (ok.existed && !ok.started) ? 'warn' : 'info');
       // The toasts don't take the mouse; this button does.
       const open = h('button.btn.small', { type: 'button', style: 'pointer-events:auto;margin-left:8px' }, 'open');
       open.addEventListener('click', () => {

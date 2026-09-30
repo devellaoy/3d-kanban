@@ -247,7 +247,7 @@ export type KanbanServerMsg =
   | { t: 'kanban.issues'; rid?: string; project: string; items: NormalizedIssue[]; error?: string; fetchedAt: number; loading: boolean }
   | { t: 'kanban.skills'; rid?: string; skills: SkillInfo[]; error?: string }
   | { t: 'kanban.pr.bundle'; rid?: string; project: string; key: KanbanPrBundleKey; prs: KanbanPrBundleItem[]; error?: string }
-  | { t: 'kanban.ok'; rid?: string; taskId?: number; commentId?: number; workerId?: string; existed?: boolean; startError?: string }
+  | { t: 'kanban.ok'; rid?: string; taskId?: number; commentId?: number; workerId?: string; existed?: boolean; startError?: string; started?: true }
   | { t: 'kanban.error'; rid?: string; message: string };
 
 export type KanbanServerType = KanbanServerMsg['t'];

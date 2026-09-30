@@ -153,14 +153,21 @@ export function createIssues(ctx: KanbanContext, opts: IssuesOptions = {}) {
       'kanban.issues.createTask': async (c, m) => {
         if (!ctx.project(m.project)) return fail(c, m.rid, `There's no project ${m.project}`);
         const existing = ctx.repo.findTaskByTicket(m.project, m.issueKey);
-        if (existing) return ok(c, m.rid, { taskId: existing.id, existed: true });
+        if (existing) {
+          // Made before (on the kanban, or a start that failed): one in To do starts now, at the desk asked for; any other (running, done, archived) is only named.
+          if (!m.start || existing.status !== 'todo') return ok(c, m.rid, { taskId: existing.id, existed: true });
+          const err = await ctx.engine.start(existing.id, c, m.deskId ? { deskId: m.deskId } : undefined);
+          ctx.taskChanged(existing.id);
+          wallChanged(m.project);
+          return ok(c, m.rid, { taskId: existing.id, existed: true, ...(typeof err === 'string' && err ? { startError: err } : { started: true }) });
+        }
         let issue = state(m.project).items.find((i) => i.key === m.issueKey);
         if (!issue) issue = (await refresh(m.project)).items.find((i) => i.key === m.issueKey);
         if (!issue) return fail(c, m.rid, `${m.issueKey} isn't among the project's issues (any more)`);
         const made = await createIntegrationTask(ctx, { project: m.project, title: issue.title, description: issueDescription(issue), ticket: issue.key, ticketUrl: issue.url }, c, m.start, m.deskId ? { deskId: m.deskId } : undefined);
         ctx.broadcast(message(m.project), m.project);
         wallChanged(m.project);
-        ok(c, m.rid, { taskId: made.task.id, existed: made.existed, ...(made.startError ? { startError: made.startError } : {}) });
+        ok(c, m.rid, { taskId: made.task.id, existed: made.existed, ...(made.startError ? { startError: made.startError } : m.start && !made.existed ? { started: true } : {}) });
       },
     },
     start() {
