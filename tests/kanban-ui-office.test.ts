@@ -209,11 +209,11 @@ test('a prompt to a task worker, R, and who started it', () => {
 
 test('the queue board lists the kanban tasks waiting their turn that no worker at a desk shows', () => {
   const card = (id: number, status: KanbanTaskCard['status'], runState: KanbanTaskCard['runState']) => ({ id, status, runState }) as KanbanTaskCard;
-  const cards = [card(9, 'in_progress', 'queued'), card(3, 'in_progress', 'queued'), card(4, 'in_progress', 'running'), card(5, 'todo', 'idle'), card(6, 'waiting', 'idle'), card(7, 'in_progress', 'queued')];
+  const cards = [card(9, 'in_progress', 'queued'), card(3, 'in_progress', 'queued'), card(4, 'in_progress', 'running'), card(5, 'todo', 'idle'), card(6, 'waiting', 'idle'), card(7, 'in_progress', 'queued'), card(8, 'waiting', 'queued')];
   assert.deepEqual(
     queuedKanbanTasks(cards, new Set([7])).map((c) => c.id),
-    [3, 9],
-    'queued ones only, oldest first; #7 (its reviewer waits while its implementer sits at a desk) is on its worker’s row',
+    [3, 8, 9],
+    'queued ones only, whatever their column (#8: a resume queued in Waiting), oldest first; #7 (its reviewer waits while its implementer sits at a desk) is on its worker’s row',
   );
   assert.deepEqual(queuedKanbanTasks([], new Set()), []);
 });

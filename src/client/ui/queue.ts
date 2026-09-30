@@ -56,9 +56,14 @@ export function openQueue(net: Net, actions: QueueActions) {
   const ta = h('textarea', { rows: 2, placeholder: 'Describe a task for the next free worker…', 'aria-label': 'New task' }) as HTMLTextAreaElement;
   const provider = providerPicker(store.project, 'queue-provider');
   const addBtn = h('button.btn.primary', { type: 'submit' }, 'Add to queue');
-  // 3d-kanban: "🗂️ Run as a kanban task" (render is hoisted; the watch refreshes it).
+  // 3d-kanban: "🗂️ Run as a kanban task" (render is hoisted; the watch refreshes it). The text is
+  // cleared once the task is made, so a refused one can be fixed and sent again.
   const watch = kanbanQueueWatch(net, () => render());
-  const kanbanOpt = queueOption(net, () => watch.refresh());
+  let kanbanText = '';
+  const kanbanOpt = queueOption(net, () => {
+    if (ta.value.trim() === kanbanText) ta.value = '';
+    watch.refresh();
+  });
   const kanban = kanbanOpt ? kanbanSection(kanbanOpt, provider) : null;
   kanban?.onChange((on) => {
     addBtn.textContent = on ? 'Start as a kanban task' : 'Add to queue';
@@ -73,8 +78,8 @@ export function openQueue(net: Net, actions: QueueActions) {
       return;
     }
     if (!provider.valid()) return;
-    if (kanban?.on()) kanban.send(text, { provider: provider.value(), model: provider.model(), effort: provider.effort() }); // 3d-kanban
-    else net.send({ t: 'queue.add', prompt: text, provider: provider.value(), model: provider.model(), effort: provider.effort() });
+    if (kanban?.on()) return void kanban.send((kanbanText = text), { provider: provider.value(), model: provider.model(), effort: provider.effort() }); // 3d-kanban
+    net.send({ t: 'queue.add', prompt: text, provider: provider.value(), model: provider.model(), effort: provider.effort() });
     ta.value = '';
   };
   form.addEventListener('submit', (e) => {
@@ -195,8 +200,8 @@ export function openQueue(net: Net, actions: QueueActions) {
     full = k;
     render();
   };
-  const unsubs = [store.on('queue', render), store.on('workers', render), store.on('issues', render), store.on('machine', machineChanged), store.on('workers', watch.refresh)];
-  const tick = setInterval(() => (render(), watch.refresh()), 30_000);
+  const unsubs = [store.on('queue', render), store.on('workers', render), store.on('issues', render), store.on('machine', machineChanged), store.on('workers', watch.workersChanged)];
+  const tick = setInterval(render, 30_000);
   const modal = openModal(el, {
     doing: '📥 at the queue',
     onClose: () => {
@@ -207,6 +212,6 @@ export function openQueue(net: Net, actions: QueueActions) {
   });
   close.addEventListener('click', () => modal.close());
   render();
-  watch.refresh(); // 3d-kanban
+  watch.workersChanged(); // 3d-kanban: the first look
   setTimeout(() => ta.focus(), 30);
 }

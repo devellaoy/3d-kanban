@@ -167,11 +167,12 @@ export function kanbanUrl(floor: string | null, w?: Pick<WorkerInfo, 'kanban'>):
 }
 
 /**
- * The queue board's kanban tasks waiting their turn (started, but queued for a slot, a desk or the
- * worker limit) that no worker at a desk shows already (`seated`: the task ids of the floor's task workers).
+ * The queue board's kanban tasks waiting their turn that no worker at a desk shows already (`seated`:
+ * the task ids of the floor's task workers): a start queued for a slot, a desk or the worker limit, and
+ * any later run queued the same way (a resume or fix whose task keeps its column, Waiting say).
  */
 export function queuedKanbanTasks(cards: readonly KanbanTaskCard[], seated: ReadonlySet<number>): KanbanTaskCard[] {
-  return cards.filter((c) => c.status === 'in_progress' && c.runState === 'queued' && !seated.has(c.id)).sort((a, b) => a.id - b.id);
+  return cards.filter((c) => c.runState === 'queued' && !seated.has(c.id)).sort((a, b) => a.id - b.id);
 }
 
 /** The office's own deep link: onto a floor, at a worker's desk (the kanban's 📍 Show in 3D). */
