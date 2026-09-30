@@ -124,7 +124,7 @@ Runtime state (`runStatus`, pids, worktree slots, retries, pending resumes) is r
 | `agentTool`, `defaultModel`, `defaultEffort` | The office's task defaults |
 | `autoResume*` | The office's auto-resume settings |
 | `implementPermissionMode` | Listed: implement phases run in the office's own mode (bypass by default) |
-| API keys | Not migrated (ai-kanban only kept their hashes): set a new key in the kanban settings |
+| API keys | Not migrated (ai-kanban only kept their hashes): set a new key in ⚙️ Settings → 🗂️ Kanban |
 
 ## Using ai-kanban's skills and scripts afterwards
 
@@ -138,14 +138,14 @@ the `kanban-task-refs` skill and scripts written for ai-kanban keep working:
 - A minimal `/api/v1`: `GET /api/v1/projects`, `GET /api/v1/tasks?ticketId=&q=&status=&projectId=&scope=&limit=&offset=`,
   `GET /api/v1/tasks/:id`, `POST /api/v1/tasks` (`{title, description, projectId, ticketId?, start?, taskType?, usePlan?}`,
   idempotent on `ticketId` within the project) and `POST /api/v1/tasks/:id/start`. Loopback only;
-  once an API key is set in the kanban settings (only its sha256 is kept), every request must
+  once an API key is set in ⚙️ Settings → 🗂️ Kanban (only its sha256 is kept), every request must
   send it as `Authorization: Bearer <key>` or `X-API-Key: <key>`. `projectId` is a floor id.
 - **Starting a task needs an API key.** Without one, `POST /api/v1/tasks {start: true}` and
   `POST /api/v1/tasks/:id/start` are refused with `403 api.startNeedsKey`, and nothing is created.
   A started task runs an agent that can do anything the office's user can, and without a key any
   process on the machine (another user's too) could start one. Reading and creating tasks in `todo`
   still work without a key, as in ai-kanban. For jira-loop or jira-kanban-feeder with `start: true`,
-  set a key in the kanban settings and give it to the script.
+  set a key in ⚙️ Settings → 🗂️ Kanban and give it to the script.
 - Both routes refuse what a web page open in this machine's browser could send them. That covers
   cross-site requests (CSRF) and DNS rebinding:
   - The `Host` header must be `127.0.0.1:<port>`, `localhost:<port>` or `[::1]:<port>`, with the

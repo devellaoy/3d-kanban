@@ -112,7 +112,7 @@ const V1_MESSAGES: Record<string, string> = {
   'api.remoteDenied': 'The API only answers requests from this machine.',
   'api.missingKey': 'An API key is set, so send it as "Authorization: Bearer <key>" or "X-API-Key: <key>".',
   'api.invalidKey': 'Unknown API key.',
-  'api.startNeedsKey': 'Starting a task over the API needs an API key: set one in the kanban settings and send it.',
+  'api.startNeedsKey': 'Starting a task over the API needs an API key: set one in ⚙️ Settings → 🗂️ Kanban and send it.',
   'request.invalid': 'The request could not be read.',
   'request.tooBig': `The request body may be at most ${BODY_MAX / 1024} KB.`,
   'task.notFound': 'Task not found.',

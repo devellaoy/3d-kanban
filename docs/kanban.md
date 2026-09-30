@@ -15,8 +15,7 @@ walk up to its desk in the 3D office.
 - From the 2D view (`/lite`): **🗂️ Kanban** in the top bar.
 - Directly: `/kanban` (the project you picked last), `/kanban?project=<floor id>`, `/kanban?task=14`
   (opens task #14's detail; `&tab=changes` on that tab: `conversation`, `plan`, `runs`, `terminal`,
-  `changes`, `prs`), `/kanban?settings=1` (opens the kanban settings; ⚙️ Settings → 🤖 Workers
-  → **🗂️ Kanban settings…** in the office links there).
+  `changes`, `prs`), `/kanban?settings=1` (opens ⚙️ Settings on **🗂️ Kanban**).
 - **🏢 3D** in the kanban's top bar goes back to the 3D office, on the floor of the project you're
   looking at.
 
@@ -26,7 +25,7 @@ The top bar has the project picker (or **All projects**), a search box (`#12`, w
 repository; **/** focuses it), counts (🗂️ on the board, 🚧 running, 🙋 waiting on you, 👀 ready for
 review), **📌 Issues**, **＋ New task** (**N**), filters (repository, state: running / needs you /
 waiting to retry / has a PR, agent, ticket or not), **🗄️ Archive** (shows archived tasks as a
-column) and **⚙️** settings. Keys: see [Controls](controls.md#in-the-kanban-view).
+column) and **⚙️** Settings (the office's own window, as in the 3D office). Keys: see [Controls](controls.md#in-the-kanban-view).
 
 ## Columns and moves
 
@@ -172,24 +171,28 @@ questions / is ready for review in <project>".
 
 ### Settings
 
-⚙️ in the kanban's top bar. Admins change them; everyone else sees them read-only. Changes apply to
+The kanban's settings are part of the office's ⚙️ Settings (from the ☰ menu in the 3D office, or ⚙️ in
+the kanban's top bar, which opens the same window): **🗂️ Kanban** holds the office-wide ones (*New
+tasks*, *Reviews*, *Resume*, *Archive*, the secrets and the skills the office found), **📁 Projects**
+those of the project picked at its top, in the tabs **⚙️ Project**, **📌 Issue sources**, **🧩 Skills**
+and **📝 Prompts**. Admins change them; everyone else sees them read-only. Changes apply to
 tasks from their next phase. The review setting that applies to a task is the office's, the project's
 over it, and the task's own over both.
 
 | Setting | Where | Default | What it does |
 |---|---|---|---|
-| Agent, model, effort | General → New tasks | Claude, its default | The implementer of new tasks. The default model applies only when the task uses the default agent. |
-| Plan first | General → New tasks | on | New tasks start with a plan. |
-| Plan approval | General → New tasks; Projects; per task | implement straight away | *implement straight away* (`auto`) or *wait for approval* (`manual`). Set on a task when it's made. |
-| Review rounds | General → New tasks | on | New tasks get reviewed. |
-| Implementation runs | General → New tasks; Projects | without permission prompts | How implement, fix, resume and PR phases run. *In Codex's workspace sandbox* (`-s workspace-write -a never`) only changes Codex; Claude always runs these phases in bypass mode. |
-| Reviewer: agent, model, effort | General → Reviews; Projects; per task | Claude | Who reviews. |
-| Rounds | General → Reviews; Projects; per task | 2 | 1–10 review rounds. |
-| Review the last fix too | General → Reviews; Projects; per task | on | One more review after the last round's fix. |
-| Keep the reviewer off the web | General → Reviews; Projects | on | Claude reviewers get no WebFetch/WebSearch (Bash keeps the network, for `gh`). A Codex review round always runs in Codex's read-only sandbox (no network); a Codex multi-PR review in its workspace sandbox with the network on, for `gh`. |
-| Resume after a usage limit or a network break | General | on, 5 tries, 6 hours | A turn cut short by a usage limit or a lost connection is retried by itself: at the reset time the message names (plus a minute), else after 5, 10, 20… minutes (at most an hour apart). It gives up after *tries at most* or *waits at most (hours)*; then it waits for Retry. |
-| Archive done tasks after (days) | General | 30 | 0 keeps them on the board. Checked at start-up and hourly. |
-| Repositories, instructions, tasks at once | Projects | — | See *Projects and repositories*. |
+| Agent, model, effort | 🗂️ Kanban → New tasks | Claude, its default | The implementer of new tasks. The default model applies only when the task uses the default agent. |
+| Plan first | 🗂️ Kanban → New tasks | on | New tasks start with a plan. |
+| Plan approval | 🗂️ Kanban → New tasks; 📁 Projects; per task | implement straight away | *implement straight away* (`auto`) or *wait for approval* (`manual`). Set on a task when it's made. |
+| Review rounds | 🗂️ Kanban → New tasks | on | New tasks get reviewed. |
+| Implementation runs | 🗂️ Kanban → New tasks; 📁 Projects | without permission prompts | How implement, fix, resume and PR phases run. *In Codex's workspace sandbox* (`-s workspace-write -a never`) only changes Codex; Claude always runs these phases in bypass mode. |
+| Reviewer: agent, model, effort | 🗂️ Kanban → Reviews; 📁 Projects; per task | Claude | Who reviews. |
+| Rounds | 🗂️ Kanban → Reviews; 📁 Projects; per task | 2 | 1–10 review rounds. |
+| Review the last fix too | 🗂️ Kanban → Reviews; 📁 Projects; per task | on | One more review after the last round's fix. |
+| Keep the reviewer off the web | 🗂️ Kanban → Reviews; 📁 Projects | on | Claude reviewers get no WebFetch/WebSearch (Bash keeps the network, for `gh`). A Codex review round always runs in Codex's read-only sandbox (no network); a Codex multi-PR review in its workspace sandbox with the network on, for `gh`. |
+| Resume after a usage limit or a network break | 🗂️ Kanban | on, 5 tries, 6 hours | A turn cut short by a usage limit or a lost connection is retried by itself: at the reset time the message names (plus a minute), else after 5, 10, 20… minutes (at most an hour apart). It gives up after *tries at most* or *waits at most (hours)*; then it waits for Retry. |
+| Archive done tasks after (days) | 🗂️ Kanban | 30 | 0 keeps them on the board. Checked at start-up and hourly. |
+| Repositories, instructions, tasks at once | 📁 Projects → ⚙️ Project | — | See *Projects and repositories*. |
 
 ## Comments
 
@@ -260,7 +263,7 @@ window has the terminal), no Edit or Move, and a **🗂️ Open in the kanban** 
 A project is a floor of the building. The floor's own checkout is the **primary** repository; a floor
 without more repositories is a one-repository project, as in upstream agent-office.
 
-Settings → **Projects** (pick the project at the top) → **Repositories**: **＋ Add a local
+⚙️ Settings → **📁 Projects** (pick the project at the top) → **⚙️ Project** → **Repositories**: **＋ Add a local
 repository** with its absolute folder, then name, kind (git or folder), GitHub `owner/name`, base
 branch and instructions for work in it, and **Save repositories**. At most 8 besides the primary.
 The primary's folder is changed from the elevator in the 3D office, not here. When the floor knows
@@ -282,7 +285,7 @@ repository chip and a repository filter.
 
 ## Issue sources
 
-Settings → **Issue sources**, per project: **GitHub repositories**, a **GitHub project** (Projects
+⚙️ Settings → **📁 Projects** → **📌 Issue sources**, per project: **GitHub repositories**, a **GitHub project** (Projects
 v2) or **Jira**, up to 10 per project. **📌 Issues** on the board lists them (search, and filter by
 source, status, label and assignee); **＋ Create task** makes a task in To do from one (title, body
 plus a *Source:* link, the ticket key and link). An issue already made into a task shows its number
@@ -292,7 +295,7 @@ instead, and is never made twice.
 |---|---|---|
 | GitHub repositories | repositories (none picked: every repository of the project with a GitHub remote), assignee (`@me` or a login), labels (all of them), state (open, closed, all) | `gh` signed in on the office's machine |
 | GitHub project | owner (user or organisation), project number, assignee (`@me` or a login), status, iteration | `gh auth refresh -s read:project` on the office's machine: `gh` doesn't ask for that scope by default |
-| Jira | site (`yourteam.atlassian.net`), project keys, assignee (`me`, an account id or e-mail), epic, labels, status categories to leave out (default *Done*), extra JQL (no ORDER BY) | Settings → **Secrets** → Jira: site, e-mail and API token (id.atlassian.com → Security → API tokens). The token is used only for the site it was given for. |
+| Jira | site (`yourteam.atlassian.net`), project keys, assignee (`me`, an account id or e-mail), epic, labels, status categories to leave out (default *Done*), extra JQL (no ORDER BY) | ⚙️ Settings → **🗂️ Kanban** → **Jira**: site, e-mail and API token (id.atlassian.com → Security → API tokens). The token is used only for the site it was given for. |
 
 Issues are fetched again every 90 seconds while someone looks at them, every 10 minutes otherwise, and
 with **Refresh**. Keys: `gh:owner/repo#12` (GitHub issues), `ghp:<owner>/<number>#<item>` (project
@@ -341,7 +344,7 @@ its `{{placeholders}}`.
 
 - **Office-wide**: ⚙️ Settings → 🤖 Workers → **📝 Edit the prompts…**, group **🗂️ Kanban tasks**
   (kept in the office's `prompts.json`, like upstream's prompts).
-- **Per project**: the kanban's Settings → **Prompts** (or the *For* picker above a kanban prompt in
+- **Per project**: ⚙️ Settings → **📁 Projects** → **📝 Prompts** (or the *For* picker above a kanban prompt in
   the office's editor). A project's text wins over the office's; **Back to the office's** drops it.
   Saving the office's own text for a project stores nothing.
 - The layers, lowest first: the default → the office's → the project's.
@@ -354,7 +357,7 @@ Only admins save prompts.
 
 ## Skills
 
-Settings → **Skills** lists every skill the office finds, with where it's from and installed and which
+⚙️ Settings → **🗂️ Kanban** → **Skills** lists every skill the office finds, with where it's from and installed and which
 projects use it:
 
 - the office's own (`skills/claude`, `skills/codex` in this install),
@@ -363,7 +366,7 @@ projects use it:
 - each signed-in account's Claude home (`<data>/homes/<id>/claude/skills`),
 - each project repository's `.claude/skills`.
 
-Per project, pick which skills each phase (plan, implement, review, pull requests) is told to use,
+Per project (**📁 Projects** → **🧩 Skills**), pick which skills each phase (plan, implement, review, pull requests) is told to use,
 per agent (Claude, Codex). The phase prompt names them.
 
 - **Claude**: the picked office and repository skills go into a generated plugin
@@ -405,7 +408,7 @@ Rules for both: the hook server listens on 127.0.0.1 only, and requests from any
 refused. The `Host` header must be `127.0.0.1`, `localhost` or `[::1]` with the hook server's port (no
 DNS rebinding); an `Origin` must be that same host, and `Sec-Fetch-Site`, when sent, `same-origin` or
 `none` (no web pages); `OPTIONS` is refused and no CORS headers are ever sent; a `POST` must be
-`Content-Type: application/json` and at most 256 KB. Once an **API key** is set (Settings → Secrets;
+`Content-Type: application/json` and at most 256 KB. Once an **API key** is set (⚙️ Settings → 🗂️ Kanban;
 at least 16 characters; only its SHA-256 is kept), every `/api/v1` request must send it as
 `Authorization: Bearer <key>` or `X-API-Key: <key>`. **Starting a task** over `/api/v1` (`start: true`,
 or `/start`) is refused until a key is set, since it runs an agent as the office's user.

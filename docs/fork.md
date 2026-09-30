@@ -156,7 +156,7 @@ New files are not seams (they can't conflict): `src/{server,shared,client}/kanba
 | `src/client/lite.ts` | `renderFloors()` | Keeps the link on `/kanban?project=<floor>` | Same |
 | `src/client/ui/boards.ts` | import; `openBoard()` header (`repoSlot`) and `render()` | Repository filter select and chips, from `kanban/boardrepos` | A multi-repo project's boards |
 | `src/client/ui/hud.ts` | help list | `O` text (agent opens PRs); new `J` line | The H help matches the behaviour |
-| `src/client/ui/settings.ts` | Workers pane, after *Prompts* | A *Kanban* row linking `/kanban?settings=1` | The kanban's own settings live on its page |
+| `src/client/ui/settings.ts` | import; `SettingsPane` (`\| KanbanSettingsPane`); `PANES` (`...KANBAN_PANES`); `const kanban = kanbanSettingsPanes(net)` before `panes`; `panes.kanban`, `panes.projects`; `kanban.close()` in `onClose` | The kanban's categories 🗂️ Kanban and 📁 Projects (kanban/settings.ts), after 🤖 Workers | The kanban's settings are part of the office's own ⚙️ Settings, not a window of their own; the kanban page's ⚙️ opens this same window |
 | `src/client/ui/prompts.ts` | import, `openPromptEditor()`: `scope`, `saved()`, `paint()`, `save`, `onClose` | `promptScope()` (kanban/promptscope): project scope picker and the read-only contract block for kanban prompts | Office vs project layering in upstream's editor |
 | `src/client/ui/pull.ts` | import; PR window footer | 🔍 Review and 🤝 Review panel first open `openReviewPicker()` (kanban/prpicker) | Multi-PR review; "just this one" keeps upstream's flow |
 | `src/client/ui/pull.ts` | waiter maps, `routePullMessage` | Waiters keyed by kind + number + repo; replies matched by repo when they carry one | `api#5` isn't the primary's #5 |
