@@ -109,7 +109,7 @@ import { findItem, ownPullRepo } from './kanban/ghrepo';
 import { canRetry, kanbanCard, kanbanOf, kanbanStarter, kanbanUrl, parseOfficeLink, promptKind, waitText, withoutOfficeLink, workerLabel, type OfficeLink, type WorkerTab } from './kanban/office';
 import { askWorker, cardToTaskWorker, hireOption, promptTaskWorker, promptWorker, retryTask } from './kanban/office3d';
 // 3d-kanban: issue cards from the project's issue sources (kanban/issuecards.ts).
-import { cardFields, cardMeeting, cardOfIssue, cardOnQueue, cardPrompt, cardTask, issueCardLabel, openCard } from './kanban/issuecards';
+import { cardFields, cardMeeting, cardOnQueue, cardPrompt, cardTask, issueCardLabel, openCard, takeCard } from './kanban/issuecards';
 import { cardId } from '../shared/kanban/issuecard.js';
 import { sendTaskWorkerHome } from './kanban/sendhome';
 import { rememberFloor } from './state';
@@ -2340,8 +2340,10 @@ function officeIsFull(): boolean {
   return true;
 }
 
-function hire(deskId: string, prompt?: string, worktree = false, provider?: AgentProvider, model?: string, effort?: AgentEffort, issue?: number, repos?: string[], via?: 'herald', issueKey?: string) {
-  net.send({ t: 'worker.spawn', deskId, prompt, worktree, provider, model, effort, issue, repos: repos?.length ? repos : undefined, via, ...(issueKey ? { issueKey } : {}) }); // 3d-kanban: issueKey
+function hire(deskId: string, prompt?: string, worktree = false, provider?: AgentProvider, model?: string, effort?: AgentEffort, issue?: number | { issue?: number; issueKey?: string }, repos?: string[], via?: 'herald') {
+  // 3d-kanban: `issue` can be a card's fields (kanban/issuecards cardFields): the floor's own issue's number and an issue source's key.
+  const ids = typeof issue === 'object' ? issue : { issue };
+  net.send({ t: 'worker.spawn', deskId, prompt, worktree, provider, model, effort, issue: ids.issue, repos: repos?.length ? repos : undefined, via, ...(ids.issueKey ? { issueKey: ids.issueKey } : {}) });
   // The moment notifications start to matter: ask once (it has to come from a key press or click).
   if (settings.notify && notifyPermission() === 'default' && !askedToNotify) {
     askedToNotify = true;
@@ -3424,7 +3426,7 @@ function pickUp(it: GhIssue) {
   // 3d-kanban: a card from the project's issue sources by its key.
   if (carrying && cardId(carrying) === cardId(it)) return;
   if (carrying) toast(`📌 ${issueCardLabel(carrying)} went back on the board`);
-  setCarrying(cardOfIssue(it));
+  setCarrying(takeCard(it));
   sound.paper();
   toast(`✋ You took ${issueCardLabel(it)} off the board: take it to an empty desk, a worker or the 📋 queue and press E`);
 }
@@ -3476,7 +3478,7 @@ function dropCard(it: Interactable, card: CarriedIssue, note: GhIssue | null): b
     else if (!officeIsFull()) {
       const { provider, model, effort } = officeChoice(store.project);
       heraldHires.set(deskId, { floor: store.floor, at: performance.now() });
-      hire(deskId, prompt, !!store.project?.branch && worktreePref(), provider, model, effort, ids.issue, undefined, 'herald', ids.issueKey); // 3d-kanban: issueKey
+      hire(deskId, prompt, !!store.project?.branch && worktreePref(), provider, model, effort, ids, undefined, 'herald'); // 3d-kanban: ids
       putDown();
     }
     return true;
@@ -3492,7 +3494,7 @@ function dropCard(it: Interactable, card: CarriedIssue, note: GhIssue | null): b
     putDown();
   } else if (!officeIsFull()) {
     const { provider, model, effort } = officeChoice(store.project);
-    hire(it.deskId, prompt, !!store.project?.branch && worktreePref(), provider, model, effort, ids.issue, undefined, undefined, ids.issueKey); // 3d-kanban: issueKey
+    hire(it.deskId, prompt, !!store.project?.branch && worktreePref(), provider, model, effort, ids); // 3d-kanban: ids
     putDown();
   }
   return true;

@@ -334,6 +334,14 @@ export class KanbanRepository {
     return row && this.task(row);
   }
 
+  /** Each ticket of the project's tasks and the first task made for it, in one query (the 3D issues board's 🗂️ #N). */
+  ticketTaskIds(project: string): Map<string, number> {
+    const rows = this.db.prepare("SELECT ticket, id FROM tasks WHERE project = ? AND ticket IS NOT NULL AND ticket <> '' ORDER BY id").all(project) as { ticket: string; id: number }[];
+    const out = new Map<string, number>();
+    for (const r of rows) if (!out.has(r.ticket)) out.set(r.ticket, r.id);
+    return out;
+  }
+
   findTaskByLegacy(source: string, legacyId: number): KanbanTask | undefined {
     const row = this.db.prepare('SELECT * FROM tasks WHERE legacy_source = ? AND legacy_id = ?').get(source, legacyId) as Row | undefined;
     return row && this.task(row);

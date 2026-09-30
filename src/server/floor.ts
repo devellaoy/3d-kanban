@@ -33,7 +33,7 @@ import { parseRepoFloorId, projectRepos } from './kanban/projects.js';
 import { floorPulled } from './kanban/integrations/pulls/board.js';
 // 3d-kanban: the issues board shows the project's issue sources when it has any (see issuesState).
 import { claimGhKey, onWallIssues, refreshWall, wallIssues, watchWall } from './kanban/integrations/issues/wall.js';
-import { isPrimaryIssue } from '../shared/kanban/issuecard.js';
+import { isPrimaryIssue, parseGhKey } from '../shared/kanban/issuecard.js';
 // 3d-kanban: what a worker is sent home with (see sendHome).
 import type { DepartureIntent } from '../shared/kanban/types.js';
 import { sameRepo } from '../shared/floors.js';
@@ -231,7 +231,7 @@ export class Floor {
 
     this.github = new GitHub(
       def.dir,
-      () => ctx.emit(this, { t: 'gh.issues', state: this.issuesState() }), // 3d-kanban: the project's issue sources when it has any
+      (state) => void (wallIssues(this.id) ? undefined : ctx.emit(this, { t: 'gh.issues', state })), // 3d-kanban: not while the board shows the project's issue sources
       (state) => {
         // 3d-kanban: the board shows every repository of the project (the same list as upstream's for one).
         ctx.emit(this, { t: 'gh.pulls', state: this.pullsState() });
@@ -365,9 +365,22 @@ export class Floor {
    */
   async claimCard(issue: number | undefined, key: string | undefined, as?: GhAs): Promise<string | undefined> {
     if (!key) return issue ? this.github.claim(issue, as) : undefined;
-    const err = issue && isPrimaryIssue({ number: issue, key }, this.def.repo) ? await this.github.claim(issue, as) : await claimGhKey(key, this.dir, as?.env);
-    refreshWall(this.id);
+    // The issue is the one the key names, whatever number came with it.
+    const gh = parseGhKey(key);
+    if (!gh) return undefined;
+    const err = isPrimaryIssue({ number: gh.number, key }, this.def.repo) ? await this.github.claim(gh.number, as) : await claimGhKey(key, this.dir, as?.env);
+    if (!err) refreshWall(this.id);
     return err;
+  }
+
+  /**
+   * A card's key as a client sent it, when it's one of the cards on this floor's board from the
+   * project's issue sources; anything else is dropped, so nobody can have an issue claimed (or queued)
+   * that the board doesn't show.
+   */
+  cardKey(v: unknown): string | undefined {
+    if (typeof v !== 'string' || !v) return undefined;
+    return wallIssues(this.id)?.items.some((i) => i.key === v) ? v : undefined;
   }
 
   // --- 3d-kanban: the project's other repositories' pull requests --------------------------------

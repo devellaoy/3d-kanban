@@ -322,7 +322,15 @@ into a task is never made twice (the office looks for one with its key, archived
 from the source's whole text). **🔄 Refresh** on the issues window fetches the sources again. One of the project's GitHub issues opens in the office's issue window
 (comments, labels, close); any other card opens a window with what the source says and the same
 actions. Taking a card assigns it on GitHub when it's a GitHub issue (to your own GitHub sign-in, or
-the office's); a Jira or project card isn't assigned anywhere: its kanban task is what links it.
+the office's); a Jira or project card isn't assigned anywhere: its kanban task is what links it. The
+office only takes a card that is on the floor's board: a key the board doesn't show is ignored.
+
+Mind what the sources hold: whoever can write a Jira issue, a project item or an issue of a
+repository outside the project writes text that reaches a coding agent that can run commands. A
+worker handed such a card gets its link and its description quoted between markers as data, told not
+to follow instructions in it beyond the issue; a GitHub issue is read with `gh issue view`, as upstream
+reads its own. A kanban task made from a card keeps the description as its own, as the kanban's
+**📌 Issues** always has: pick sources whose writers you trust.
 
 ## Pull requests
 

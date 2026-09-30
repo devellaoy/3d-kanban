@@ -4,12 +4,14 @@ import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { cardId, cardLabel, isPrimaryIssue, labelColor, noteSeed, parseGhKey } from '../src/shared/kanban/issuecard.js';
-import { claimGhKey, onWallIssues, toGhIssue, wallChanged, wallIssues, watchWall } from '../src/server/kanban/integrations/issues/wall.js';
+import { claimGhKey, onWallIssues, refreshWall, toGhIssue, wallChanged, wallIssues, wallSourcesChanged, watchWall } from '../src/server/kanban/integrations/issues/wall.js';
+import { createIntegrationTask } from '../src/server/kanban/integrations/util.js';
+import { Floor } from '../src/server/floor.js';
 import { createIssues } from '../src/server/kanban/integrations/issues/index.js';
 import { TaskQueue, type QueueWorkers } from '../src/server/queue.js';
 import type { IssueSourceConfig, NormalizedIssue } from '../src/shared/kanban/types.js';
 import type { WorkerInfo } from '../src/shared/protocol.js';
-import { client, def, makeCtx } from './kanban-integrations-ctx.js';
+import { client, def, makeCtx, WHO } from './kanban-integrations-ctx.js';
 
 // --- Cards --------------------------------------------------------------------------------------
 
@@ -86,7 +88,7 @@ test('the board: the sources’ cards while the project has any, upstream’s li
   assert.deepEqual(wallIssues('app'), { items: [], fetchedAt: 0, loading: true }, 'not fetched yet: loading');
 
   await issues.refresh('app');
-  assert.ok(heard >= 2, 'the floor hears when a refresh starts and ends');
+  assert.equal(heard, 1, 'the floor hears once, when the refresh is over');
   const board = wallIssues('app')!;
   assert.deepEqual(board.items.map((i) => [i.key, i.number]), [['gh:o/app#12', 12], ['gh:o/lib#12', 0]], 'o/lib isn’t one of the project’s repositories');
   assert.equal(board.loading, false);
@@ -235,4 +237,103 @@ test('queue: a saved queue from before keys loads as it was', (t) => {
   assert.equal(q.state().tasks[0].issue, 5);
   assert.equal(q.state().tasks[0].issueKey, undefined);
   assert.equal(q.dropIssue(5), true);
+});
+
+// --- Review fixes ---------------------------------------------------------------------------------
+
+const ghList = (repo: string, n: number) => JSON.stringify([{ number: n, title: `${repo} ${n}`, url: `https://github.com/${repo}/issues/${n}`, body: '', state: 'OPEN', assignees: [], labels: [], updatedAt: '2026-09-02T10:00:00Z' }]);
+
+test('only a card on the floor’s board is taken from a client, and a claim goes by the key’s own number', async (t) => {
+  const ctx = makeCtx([def('app', '/tmp/app', { repo: 'o/app' })]);
+  ctx.settings.setProject('app', { issueSources: [{ id: 's', kind: 'github-repo', repos: ['o/app'], filters: {} }] as IssueSourceConfig[] });
+  const issues = createIssues(ctx, { gh: async () => ghList('o/app', 12) });
+  issues.plugin.start!();
+  t.after(() => issues.plugin.stop!());
+  await issues.refresh('app');
+
+  const claimed: number[] = [];
+  const floor = { id: 'app', dir: '/tmp/app', def: { repo: 'o/app' }, github: { claim: async (n: number) => (claimed.push(n), undefined) } };
+  const cardKey = (v: unknown) => Floor.prototype.cardKey.call(floor as never, v);
+  assert.equal(cardKey('gh:o/app#12'), 'gh:o/app#12');
+  assert.equal(cardKey('gh:victim/repo#1'), undefined, 'not on the board: dropped');
+  assert.equal(cardKey(42), undefined);
+  assert.equal(Floor.prototype.cardKey.call({ id: 'other' } as never, 'gh:o/app#12'), undefined, 'another floor’s card');
+
+  assert.equal(await Floor.prototype.claimCard.call(floor as never, 999, 'gh:o/app#12'), undefined);
+  assert.deepEqual(claimed, [12], 'the key’s number, not the one sent with it');
+  assert.equal(await Floor.prototype.claimCard.call(floor as never, 5, 'UYT-1'), undefined);
+  assert.deepEqual(claimed, [12], 'a Jira card is never claimed');
+});
+
+test('sources saved while a fetch runs: the old sources’ cards go, and the new ones are fetched after it', async (t) => {
+  const ctx = makeCtx([def('app', '/tmp/app', { repo: 'o/app' })]);
+  ctx.settings.setProject('app', { issueSources: [{ id: 'a', kind: 'github-repo', repos: ['o/old'], filters: {} }] as IssueSourceConfig[] });
+  let release!: () => void;
+  const gate = new Promise<void>((r) => (release = r));
+  const asked: string[] = [];
+  const issues = createIssues(ctx, {
+    gh: async (args) => {
+      const repo = args[args.indexOf('-R') + 1];
+      asked.push(repo);
+      if (repo === 'o/old') await gate;
+      return ghList(repo, 1);
+    },
+  });
+  issues.plugin.start!();
+  t.after(() => issues.plugin.stop!());
+  const first = issues.refresh('app');
+  ctx.settings.setProject('app', { issueSources: [{ id: 'b', kind: 'github-repo', repos: ['o/new'], filters: {} }] as IssueSourceConfig[] });
+  wallSourcesChanged('app');
+  assert.deepEqual(wallIssues('app')!.items, [], 'the old cards are gone at once');
+  release();
+  await first;
+  await new Promise((r) => setTimeout(r, 20));
+  assert.deepEqual(asked, ['o/old', 'o/new'], 'fetched again, after the one under way');
+  assert.deepEqual(wallIssues('app')!.items.map((i) => i.key), ['gh:o/new#1'], 'the old fetch’s cards never come back');
+
+  ctx.settings.setProject('app', { issueSources: [] });
+  wallSourcesChanged('app');
+  assert.equal(wallIssues('app'), undefined, 'no sources: the floor’s own list');
+});
+
+test('refreshWall waits a moment, so a run of claims fetches once; a project without sources is never fetched', async (t) => {
+  const ctx = makeCtx([def('app', '/tmp/app', { repo: 'o/app' }), def('bare', '/tmp/bare')]);
+  ctx.settings.setProject('app', { issueSources: [{ id: 's', kind: 'github-repo', repos: ['o/app'], filters: {} }] as IssueSourceConfig[] });
+  let calls = 0;
+  const issues = createIssues(ctx, { gh: async () => (calls++, ghList('o/app', 1)) });
+  issues.plugin.start!();
+  t.after(() => issues.plugin.stop!());
+  refreshWall('app', 30);
+  refreshWall('app', 30);
+  refreshWall('app', 30);
+  refreshWall('bare', 0);
+  assert.equal(calls, 0);
+  await new Promise((r) => setTimeout(r, 80));
+  assert.equal(calls, 1);
+});
+
+test('the board is built once until its cards may change, and follows tasks made, retitled or deleted', async (t) => {
+  const ctx = makeCtx([def('app', '/tmp/app', { repo: 'o/app' })]);
+  ctx.settings.setProject('app', { issueSources: [{ id: 's', kind: 'github-repo', repos: ['o/app'], filters: {} }] as IssueSourceConfig[] });
+  const issues = createIssues(ctx, { gh: async () => ghList('o/app', 7) });
+  issues.plugin.start!();
+  t.after(() => issues.plugin.stop!());
+  await issues.refresh('app');
+  const board = wallIssues('app');
+  assert.equal(wallIssues('app'), board, 'the same board until something changes');
+
+  const made = await createIntegrationTask(ctx, { project: 'app', title: 'Seven', description: '', ticket: 'gh:o/app#7' }, WHO, true);
+  assert.equal(made.started, true);
+  assert.equal(wallIssues('app')!.items[0].taskId, made.task.id, 'a task made with the card’s ticket shows on it');
+  assert.deepEqual(ctx.repo.ticketTaskIds('app'), new Map([['gh:o/app#7', made.task.id]]));
+
+  // Someone made it a moment earlier: an existing task in To do is started, and says so.
+  ctx.repo.updateTask(made.task.id, { status: 'todo' });
+  const again = await createIntegrationTask(ctx, { project: 'app', title: 'Seven', description: '', ticket: 'gh:o/app#7' }, WHO, true);
+  assert.equal(again.existed, true);
+  assert.equal(again.started, true);
+
+  ctx.repo.deleteTask(made.task.id);
+  wallChanged('app');
+  assert.equal(wallIssues('app')!.items[0].taskId, undefined, 'a deleted task leaves the card');
 });

@@ -53,7 +53,7 @@ import { isBarGame, tossOk, type BarGame } from '../shared/bargames.js';
 // 3d-kanban: the kanban task process (see docs/fork.md).
 import { installKanban, type Kanban } from './kanban/index.js';
 import { PR_FALLBACK, type KanbanCaller, type KanbanClient } from './kanban/registry.js';
-import { isKanbanMsg, KANBAN_LIMITS } from '../shared/kanban/protocol.js';
+import { isKanbanMsg } from '../shared/kanban/protocol.js';
 import { refreshWall } from './kanban/integrations/issues/wall.js';
 
 const MIME: Record<string, string> = {
@@ -201,8 +201,6 @@ function spotFrom(q: URLSearchParams): ReturnType<typeof arrivalSpot> {
   return Number.isFinite(x) && Number.isFinite(z) ? arrivalSpot({ x, y, z, rotY }) : undefined;
 }
 const issueNumber = (v: unknown) => (Number.isInteger(v) && (v as number) > 0 ? (v as number) : undefined);
-/** 3d-kanban: an issue-source card's ticket key (`gh:owner/repo#12`, `UYT-1415`), else undefined. */
-const issueKey = (v: unknown) => (typeof v === 'string' && v.trim() && v.length <= KANBAN_LIMITS.ticket ? v.trim() : undefined);
 const COLOR_RE = /^#[0-9a-fA-F]{6}$/;
 const TOO_MANY_ATTEMPTS = 'Too many attempts. Try again in a few minutes.';
 /** WebSocket close code for a session that stopped counting: the account was revoked, or the shared password switched off. */
@@ -1682,7 +1680,7 @@ export async function startServer(cfg: Config) {
         // Everyone on the floor sees the issue card in their hands, and whoever comes in later too.
         const issue = issueNumber(msg.issue);
         // 3d-kanban: a card from the project's issue sources has its key (and no number unless it's the floor's own issue).
-        const key = issueKey(msg.issueKey);
+        const key = floorOf(c)?.cardKey(msg.issueKey);
         if (issue === c.peer.carrying?.issue && key === c.peer.carrying?.key) break;
         if (issue !== undefined || key) c.peer.carrying = { issue: issue ?? 0, title: str(msg.title, 200), ...(key ? { key } : {}) };
         else delete c.peer.carrying;
@@ -1836,7 +1834,7 @@ export async function startServer(cfg: Config) {
         const hire = () => {
           const r = floor.workers.spawn(str(msg.deskId, 32), who, str(msg.prompt, 20000) || undefined, msg.worktree === true, kind, msg.provider, model, effort, undefined, c.accountId, repos, msg.via === 'herald' ? 'herald' : undefined);
           const issue = kind === 'agent' ? issueNumber(msg.issue) : undefined;
-          const key = kind === 'agent' ? issueKey(msg.issueKey) : undefined; // 3d-kanban
+          const key = kind === 'agent' ? floor.cardKey(msg.issueKey) : undefined; // 3d-kanban: only a card on the floor's board
           const across = repos.length ? ` across ${[floor.def.name, ...repos.map((x) => x.name)].join(' + ')}` : '';
           if (typeof r === 'string') warn(c, r);
           else toastFloor(floor, kind === 'shell' ? `${who} opened a shell at a desk` : `${who} hired ${r.name}${issue ? ` for issue #${issue}` : key ? ` for ${key}` : r.prompt ? ' with a task' : ''}${across}`);
@@ -1929,7 +1927,7 @@ export async function startServer(cfg: Config) {
         const commented = w && kanban.workerPrompt(w.info, str(msg.prompt, 20000), kanbanCaller(c), msg.asComment === true);
         if (commented) {
           const issue = issueNumber(msg.issue);
-          const key = issueKey(msg.issueKey);
+          const key = w.floor.cardKey(msg.issueKey);
           void commented.then((err) => {
             if (err) return warn(c, err);
             if (!issue && !key) return;
@@ -1941,7 +1939,7 @@ export async function startServer(cfg: Config) {
         const err = w ? w.floor.workers.prompt(w.wid, str(msg.prompt, 20000), who) : 'No such worker';
         warn(c, err);
         const issue = w?.info.kind === 'agent' ? issueNumber(msg.issue) : undefined;
-        const key = w?.info.kind === 'agent' ? issueKey(msg.issueKey) : undefined; // 3d-kanban
+        const key = w?.info.kind === 'agent' ? w.floor.cardKey(msg.issueKey) : undefined; // 3d-kanban: only a card on the floor's board
         if (w && !err && (issue || key)) {
           toastFloor(w.floor, `${who} handed issue ${issue ? `#${issue}` : key} to ${w.info.name}`);
           takeIssue(c, w.floor, issue, key);
@@ -2021,7 +2019,7 @@ export async function startServer(cfg: Config) {
       case 'gh.refresh': {
         const floor = floorOf(c);
         void floor?.github.refresh();
-        if (floor) refreshWall(floor.id); // 3d-kanban: the issues board from the project's issue sources, too
+        if (floor) refreshWall(floor.id, 0); // 3d-kanban: the issues board from the project's issue sources, too
         break;
       }
       case 'gh.merge': {
@@ -2118,7 +2116,7 @@ export async function startServer(cfg: Config) {
               // Nobody should be seated for an issue that's closed.
               // 3d-kanban: the queue holds the primary repository's issues only; another repository's #n isn't one of them.
               const dropped = github === floor.github && floor.queue.dropIssue(n);
-              refreshWall(floor.id); // 3d-kanban: the issues board from the project's issue sources, too
+              refreshWall(floor.id); // 3d-kanban: the issues board from the project's issue sources, too (after a moment; nothing without any)
               toastFloor(floor, `${who} closed issue #${n}${reason === 'not planned' ? ' as not planned' : ''}${dropped ? ' and took it off the queue' : ''}`);
             }),
           (error) => sendTo(c, { t: 'gh.closed', kind, number: n, ...(ghRepo ? { repo: ghRepo } : {}), error }),
@@ -2167,7 +2165,7 @@ export async function startServer(cfg: Config) {
         const effort = isAgentEffort(msg.effort) ? msg.effort : undefined;
         // Its worker runs on the sign-ins of whoever queued it, whenever it gets a desk.
         withSignIn(c, claudeFor(msg.provider ?? floor.workers.officeDefault.provider), () => {
-          const key = issueKey(msg.issueKey); // 3d-kanban
+          const key = floor.cardKey(msg.issueKey); // 3d-kanban: only a card on the floor's board, checked before it's stored
           const err = floor.queue.add(str(msg.prompt, 20000), who, str(msg.title, 200), issue, msg.provider, model, effort, c.accountId, key);
           if (err) warn(c, err);
           else toastFloor(floor, `📋 ${who} queued ${issue !== undefined ? `issue #${issue}` : key ? key : 'a task'}`);

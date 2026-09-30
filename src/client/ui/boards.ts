@@ -2,7 +2,7 @@ import type { AgentEffort, AgentProvider, GhIssue, GhLabel, GhPull, WorkerInfo }
 import type { Net } from '../net';
 import { store, workerForPull } from '../state';
 import { h, openModal, timeAgo } from './dom';
-import { labelChip, openIssue, openLabels, openPull } from './pull';
+import { labelChip, openLabels, openPull } from './pull'; // 3d-kanban: issues open with openCard
 import { providerLabel } from './provider';
 import type { MeetingPreset } from './meeting';
 import { officePrompt } from './prompts';
@@ -302,10 +302,8 @@ export function openBoard(kind: 'issues' | 'pulls', net: Net, actions: BoardActi
       for (const col of issueColumns(inRepo(store.issues.items, shownRepo))) {
         body.append(
           column(col, all, (it, i) =>
-            // 3d-kanban: a card from the project's issue sources has its key, its source and status, and its kanban task.
-            it.key
-              ? card(noteSeed(it), it.title, [chip(it), ...sourceChips(it), ...labelChips(it.labels), queueChip(it.number, it.key), it.assignees.length ? `👤 ${it.assignees.join(', ')}` : '', timeAgo(it.updatedAt)], i, () => openCard(it, net, actions), it.number > 0 ? () => openLabels('issue', it, net) : null, issueCardLabel(it))
-              : card(it.number, it.title, [chip(it), ...labelChips(it.labels), queueChip(it.number), it.assignees.length ? `👤 ${it.assignees.join(', ')}` : `by ${it.author}`, it.comments ? `💬 ${it.comments}` : '', timeAgo(it.updatedAt)], i, () => openIssue(it, net, actions), () => openLabels('issue', it, net)),
+            // 3d-kanban: a card from the project's issue sources: its key, its source and status, its kanban task, and labels only for a GitHub issue of the project.
+            card(noteSeed(it), it.title, [chip(it), ...sourceChips(it), ...labelChips(it.labels), queueChip(it.number, it.key), it.assignees.length ? `👤 ${it.assignees.join(', ')}` : it.author ? `by ${it.author}` : '', it.comments ? `💬 ${it.comments}` : '', timeAgo(it.updatedAt)], i, () => openCard(it, net, actions), it.number > 0 ? () => openLabels('issue', it, net) : null, issueCardLabel(it)),
           ),
         );
       }
