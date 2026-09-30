@@ -170,7 +170,7 @@ allowed: `todo → in_progress` (= start), `waiting|review → done`, `done → 
   A reviewer isn't seated without the task's worktree; a manual review is refused until the agent has set one up.
 - **The reviewer's spot**: a task's reviewer (not a `pr-review` one, which has no implementer) is hired at
   the watch spot behind its implementer's seat (`watch-<seat id>`, `WATCH_SPOTS` in `shared/layout.ts`;
-  the implementer's current desk, else `task.deskId`), not at a desk: it takes no seat, and neither the
+  the implementer's current desk, else `task.deskId` while nobody but the task's own worker sits there), not at a desk: it takes no seat, and neither the
   hire nor the drain waits for a free desk for it (`watchSpotFor`, `noRoom`). Without a desk to stand
   behind, or with that spot taken, it takes the next free seat as before. Only a kanban reviewer can be
   hired at a watch spot (`WorkerManager.spawn`); a start's `deskId` can't be one. Walling up the back
