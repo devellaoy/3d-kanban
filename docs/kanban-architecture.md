@@ -309,8 +309,13 @@ answers `kanban.ok {rid, ...}` or `kanban.error {rid, message}`. Deltas are push
     its brief, the layered `kanban.pr.panel` prompt (office + project layers), lists every PR, the review is
     posted on one of the primary repository's; a single PR from the office's PR board keeps upstream's `pull.panel`) and is answered with
     `kanban.ok {}` (`taskId` when one was given, which also gets a status comment).
-  - `issues.list`, `issues.refresh`, `issues.createTask` (idempotent by ticket, `kanban.ok {taskId, existed}`),
+  - `issues.list`, `issues.refresh`, `issues.createTask` (idempotent by ticket, archived tasks included, `kanban.ok {taskId, existed}`; `start` with `deskId` starts it, or the one already made while it waits in To do, at that desk: the 3D office's P with a card; `started` or `startError` says how it went),
     `skills.list` are for anyone signed in.
+  - The same cached issues are the 3D issues board of a project with issue sources
+    (`integrations/issues/wall.ts`): the floor's upstream `gh.issues` carries them as `GhIssue`s with
+    `key`, `source`, `status` and `taskId` (`number` only for a GitHub issue of one of the project's
+    repositories, else 0), and falls back to upstream's list without sources. Cards are handed out with
+    `issueKey` (see kanban-coupling.md, Messages).
   - Admin only (upstream `meOf(accountId).admin`): `settings.set`, `project.settings.set`, `project.repos.set`,
     `project.prompt.set`, `secrets.set`, `skills.sync`. `secrets.set` is answered with `kanban.settings` (configured flags
     only). The `/api/v1` key is stored as `sha256:<hex>`.

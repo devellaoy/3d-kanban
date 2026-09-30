@@ -375,8 +375,9 @@ export function canRetry(w: Pick<WorkerInfo, 'kanban'>): boolean {
   return !!k && k.role === 'implementer' && k.status === 'waiting' && (k.runState ?? 'idle') === 'idle' && !!k.waitingReason && RETRYABLE.includes(k.waitingReason);
 }
 
-/** Whether an issue card is the task's own: its ticket is the issue's key. */
-export function cardIsTasks(ticket: string | undefined, repo: string | undefined, issue: number): boolean {
+/** Whether an issue card is the task's own: its ticket is the issue's key (`cardKey`, a card from the project's issue sources). */
+export function cardIsTasks(ticket: string | undefined, repo: string | undefined, issue: number, cardKey?: string): boolean {
+  if (cardKey) return !!ticket && ticket === cardKey;
   const key = issueTicket(repo, issue);
   return !!ticket && !!key && ticket === key;
 }

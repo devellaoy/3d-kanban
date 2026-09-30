@@ -4,6 +4,7 @@
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import type { KanbanCaller, KanbanClient, KanbanContext } from '../registry.js';
 import type { KanbanTask, TaskType } from '../../../shared/kanban/types.js';
+import { wallChanged } from './issues/wall.js';
 
 /** The most a JSON request body may be. */
 export const BODY_MAX = 256 * 1024;
@@ -105,7 +106,7 @@ export function clip(s: string | undefined, max: number): string {
   return t.length > max ? `${t.slice(0, max)}\n… (cut: ${(t.length - max).toLocaleString('en-US')} more characters)` : t;
 }
 
-export const ok = (c: KanbanClient, rid: string | undefined, extra: { taskId?: number; workerId?: string; existed?: boolean; startError?: string } = {}) =>
+export const ok = (c: KanbanClient, rid: string | undefined, extra: { taskId?: number; workerId?: string; existed?: boolean; startError?: string; started?: true } = {}) =>
   c.send({ t: 'kanban.ok', ...(rid ? { rid } : {}), ...extra });
 export const fail = (c: KanbanClient, rid: string | undefined, message: string) => c.send({ t: 'kanban.error', ...(rid ? { rid } : {}), message });
 
@@ -130,7 +131,8 @@ export async function createIntegrationTask(
   input: IntegrationTaskInput,
   who: KanbanCaller,
   start = false,
-): Promise<{ task: KanbanTask; existed: boolean; startError?: string }> {
+  startOpts?: { deskId?: string },
+): Promise<{ task: KanbanTask; existed: boolean; startError?: string; started?: boolean }> {
   const ticket = input.ticket?.trim() || undefined;
   let existed = true;
   const task = ctx.repo.transaction(() => {
@@ -160,11 +162,15 @@ export async function createIntegrationTask(
     ctx.repo.appendEvent(task.id, 'created', { by: who.name, ...(ticket ? { ticket } : {}) });
     ctx.taskChanged(task.id);
   }
+  // A new task with a ticket: the 3D issues board's card says which task it became.
+  if (!existed && ticket) wallChanged(input.project);
   let startError: string | undefined;
+  let started = false;
   if (start && task.status === 'todo') {
-    const err = await ctx.engine.start(task.id, who);
+    const err = await ctx.engine.start(task.id, who, startOpts);
     if (typeof err === 'string' && err) startError = err;
+    else started = true;
     ctx.taskChanged(task.id);
   }
-  return { task: ctx.repo.getTask(task.id) ?? task, existed, ...(startError ? { startError } : {}) };
+  return { task: ctx.repo.getTask(task.id) ?? task, existed, ...(startError ? { startError } : {}), ...(started ? { started } : {}) };
 }

@@ -22,7 +22,7 @@ import { findItem, ownPullRepo } from './kanban/ghrepo';
 // 3d-kanban: task workers on the 2D view.
 import { kanbanChip, promptKind } from './kanban/office';
 import { askWorker, hireOption, promptTaskWorker } from './kanban/office3d';
-import { issueTask } from './kanban/hireform';
+import { cardTask } from './kanban/issuecards'; // 3d-kanban: a card from the issue sources too
 import { sendTaskWorkerHome } from './kanban/sendhome';
 import { openQueue } from './ui/queue';
 import { openAsk } from './ui/ask';
@@ -317,7 +317,7 @@ function boardActions(): BoardActions {
     // 3d-kanban: the issue as a kanban task, at the next free desk (or wherever the engine finds one).
     kanbanTask: (it) => {
       const desk = nextFreeSeat((id) => !!store.workerAtDesk(id), store.floorPlan.wing)?.id;
-      issueTask(net, it, desk, desk ? DESK_BY_ID.get(desk)!.label : 'the next free desk');
+      cardTask(net, it, desk, desk ? DESK_BY_ID.get(desk)!.label : 'the next free desk');
     },
   };
 }

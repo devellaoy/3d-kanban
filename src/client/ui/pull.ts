@@ -12,6 +12,8 @@ import { providerPicker } from './provider';
 import { openReviewPicker } from '../kanban/prpicker';
 // 3d-kanban: which of the project's repositories a PR or issue is in (kanban/ghrepo.ts).
 import { ghKey, ghLabel, ghRepoField, ghUrl, ghWaiter, namedRepo, sameItem } from '../kanban/ghrepo';
+// 3d-kanban: the queue's task for a card from the project's issue sources.
+import { taskForCard } from '../kanban/issuecards';
 
 // The windows behind the board cards. A PR opens on its conversation (description, comments,
 // reviews, line comments, checks) with a Files tab for the diff, where you tick files off as
@@ -1222,7 +1224,7 @@ export function openIssue(first: GhIssue, net: Net, actions: BoardActions) {
     );
     pill.className = `pill ${isOpen ? 'done' : 'offline'}`;
     pill.textContent = isOpen ? 'open' : 'closed';
-    const task = store.taskForIssue(it.number);
+    const task = it.key ? taskForCard(it) : store.taskForIssue(it.number); // 3d-kanban: a card from the issue sources by its key
     const onQueue = !!task && task.status !== 'done';
     closeIssue.classList.toggle('hidden', !isOpen);
     pickUp?.classList.toggle('hidden', !isOpen);

@@ -4,7 +4,8 @@
 
 import type { KanbanServerMsg } from '../../shared/kanban/protocol.js';
 import type { KanbanTaskCard } from '../../shared/kanban/types.js';
-import type { WorkerInfo } from '../../shared/protocol';
+import type { CarriedIssue, WorkerInfo } from '../../shared/protocol';
+import { cardLabel } from '../../shared/kanban/issuecard.js';
 import type { Net } from '../net';
 import { store } from '../state';
 import { h, toast } from '../ui/dom';
@@ -21,8 +22,8 @@ type Snapshot = Extract<KanbanServerMsg, { t: 'kanban.snapshot' }>;
  * `worker.prompt`; `asComment` makes it a comment on a task worker's task (docs/kanban-coupling.md,
  * Messages). Without it the server types it straight in, as upstream does.
  */
-export function promptWorker(net: Net, workerId: string, prompt: string, asComment?: boolean, issue?: number) {
-  net.send({ t: 'worker.prompt', workerId, prompt, ...(issue !== undefined ? { issue } : {}), ...(asComment ? { asComment: true as const } : {}) });
+export function promptWorker(net: Net, workerId: string, prompt: string, asComment?: boolean, issue?: number, issueKey?: string) {
+  net.send({ t: 'worker.prompt', workerId, prompt, ...(issue ? { issue } : {}), ...(issueKey ? { issueKey } : {}), ...(asComment ? { asComment: true as const } : {}) });
 }
 
 /** Ask → an existing worker: a message on its task for a task implementer the engine carries on (promptKind), else upstream's prompt. */
@@ -62,19 +63,20 @@ export function promptTaskWorker(net: Net, w: WorkerInfo, openTerminal: () => vo
  * An issue card handed to a task worker: only the task's own issue goes to it (as a message on the
  * task); any other is refused, so a task isn't taken off course. `done` puts the card down.
  */
-export function cardToTaskWorker(net: Net, w: WorkerInfo, issue: number, prompt: string, done: () => void): boolean {
+export function cardToTaskWorker(net: Net, w: WorkerInfo, card: CarriedIssue, prompt: string, done: () => void): boolean {
   const k = kanbanOf(w);
   if (!k) return false;
+  const name = cardLabel({ number: card.issue, key: card.key }, store.currentFloor()?.repo);
   if (k.role === 'reviewer') {
-    toast(`🔍 ${w.name} is reviewing task #${k.taskId}: hand #${issue} to someone else`, 'warn');
+    toast(`🔍 ${w.name} is reviewing task #${k.taskId}: hand ${name} to someone else`, 'warn');
     return true;
   }
   kanbanApi(net)
     .request<Detail>({ t: 'kanban.task.get', id: k.taskId, comments: 0 })
     .then((d) => {
-      if (!cardIsTasks(d.task.ticket, store.currentFloor()?.repo, issue)) return void toast(`🗂️ ${w.name} is on task #${k.taskId}, not #${issue}: take the card to an empty desk (P makes it a kanban task)`, 'warn');
+      if (!cardIsTasks(d.task.ticket, store.currentFloor()?.repo, card.issue, card.key)) return void toast(`🗂️ ${w.name} is on task #${k.taskId}, not ${name}: take the card to an empty desk (P makes it a kanban task)`, 'warn');
       // A message on the task while the engine carries it; out of the process, upstream's prompt.
-      promptWorker(net, w.id, prompt, takesMessage(d.task.status), issue);
+      promptWorker(net, w.id, prompt, takesMessage(d.task.status), card.issue, card.key);
       done();
     })
     .catch((err: Error) => toast(`🗂️ ${err.message}`, 'error'));

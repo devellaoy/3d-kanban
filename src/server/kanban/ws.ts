@@ -13,6 +13,7 @@ import { isKanbanPromptId } from '../../shared/kanban/prompts.js';
 import { PROMPT_MAX } from '../../shared/prompts.js';
 import { COMMENTS_PAGE, publicAttachment, type TaskUpdate } from './db/repository.js';
 import { projectInfo } from './projects.js';
+import { wallChanged, wallSourcesChanged } from './integrations/issues/wall.js';
 import { ORPHAN_MAX_AGE_MS, removeAttachmentFiles, sweepOrphanUploads, uploadRoutes } from './uploads.js';
 
 const DAY_MS = 24 * 60 * 60_000;
@@ -235,6 +236,8 @@ export function createCorePlugin(ctx: KanbanContext, subs: KanbanSubscriptions):
       if (input.attachmentIds?.length) ctx.repo.linkAttachments(input.attachmentIds, task.id);
       ctx.repo.appendEvent(task.id, 'created', { by: c.name });
       ctx.taskChanged(task.id);
+      // The 3D issues board's card for its ticket says which task it became.
+      if (task.ticket) wallChanged(task.project);
       let startError: string | undefined;
       if (m.start) {
         const err = await ctx.engine.start(task.id, c, m.deskId ? { deskId: m.deskId } : undefined);
@@ -252,6 +255,7 @@ export function createCorePlugin(ctx: KanbanContext, subs: KanbanSubscriptions):
       ctx.repo.updateTask(task.id, up);
       ctx.repo.appendEvent(task.id, 'edited', { by: c.name, fields: Object.keys(m.patch) });
       ctx.taskChanged(task.id);
+      if ('ticket' in m.patch) wallChanged(task.project);
       ok(c, m.rid, { taskId: task.id });
     },
 
@@ -312,6 +316,7 @@ export function createCorePlugin(ctx: KanbanContext, subs: KanbanSubscriptions):
       ctx.repo.deleteTask(task.id);
       removeAttachmentFiles(ctx.filesDir, files);
       ctx.taskChanged(task.id);
+      if (task.ticket) wallChanged(task.project);
       ok(c, m.rid, { taskId: task.id });
     },
 
@@ -363,6 +368,8 @@ export function createCorePlugin(ctx: KanbanContext, subs: KanbanSubscriptions):
       if (!ctx.project(m.project)) return fail(c, m.rid, `There's no project ${m.project}`);
       ctx.settings.setProject(m.project, m.settings);
       settingsChanged();
+      // The floor's issues board follows the sources: theirs now, or its own repository's without any.
+      if (m.settings && 'issueSources' in m.settings) wallSourcesChanged(m.project);
       ok(c, m.rid);
     },
     'kanban.project.repos.set': (c, m) => {
