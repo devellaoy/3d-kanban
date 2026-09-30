@@ -275,3 +275,34 @@ test('stop during the resumed turn, after the agent reported back, interrupts th
   assert.equal(fx.invocations().some((i) => i.interrupted), true, 'Esc was typed');
   assert.equal(fx.repo.listRuns(task.id).at(-1)?.status, 'stopped');
 });
+
+test('a log that lags behind the first Stop (the launch not logged yet) still holds the run for the background agent', async (t) => {
+  const fx = await engineFixture();
+  t.after(() => fx.close());
+  fx.setRules([{ when: 'Implement kanban task', background: 'Waiting for the helper agent.', reply: 'Changed the redirect; tests pass.', commit: 'Work', launchLateMs: 100, backgroundMs: 1500 }]);
+  const task = fx.newTask({ usePlan: false, useReview: false });
+  await fx.engine.start(task.id, ADA);
+  await fx.waitTask(task.id, (x) => x.phase === 'implement' && x.runState === 'running', 'the implement turn');
+  await new Promise((r) => setTimeout(r, 700));
+  assert.equal(fx.task(task.id).status, 'in_progress');
+  const done = await fx.waitTask(task.id, (x) => x.status === 'review', 'the review column', 15_000);
+  assert.equal(done.summary, 'Changed the redirect; tests pass.');
+  assert.deepEqual(fx.repo.listComments(task.id).comments.filter((c) => c.kind === 'result').map((c) => c.text), ['Changed the redirect; tests pass.']);
+});
+
+test('stop after the resumed turn\'s reply is logged but before its Stop: the Stop hook finishes the stop, the worker is not sent home', async (t) => {
+  const fx = await engineFixture({ engine: { stopGraceMs: 6000 } });
+  t.after(() => fx.close());
+  fx.setRules([{ when: 'Implement kanban task', background: 'Waiting for the helper agent.', reply: 'Done.', backgroundMs: 300, resumeStopMs: 1500 }]);
+  const task = fx.newTask({ usePlan: false, useReview: false });
+  await fx.engine.start(task.id, ADA);
+  const running = await fx.waitTask(task.id, (x) => x.phase === 'implement' && x.runState === 'running', 'the implement turn');
+  // The reply is logged about 300 ms after the first Stop, the second Stop 1500 ms after that.
+  await new Promise((r) => setTimeout(r, 1000));
+  const at = Date.now();
+  assert.equal(await fx.engine.stop(task.id, ADA), undefined);
+  await fx.waitTask(task.id, (x) => x.status === 'waiting' && x.waitingReason === 'stopped', 'the stop', 5000);
+  assert.ok(Date.now() - at < 4000, 'stopped by the Stop hook, not by the send-home timer');
+  assert.equal(fx.repo.listRuns(task.id).at(-1)?.status, 'stopped');
+  assert.ok(running.workerId && fx.workers.get(running.workerId), 'the worker was not sent home');
+});

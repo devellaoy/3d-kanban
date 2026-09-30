@@ -1029,9 +1029,11 @@ export class Orchestrator {
       else if (o.hookEvent === 'PreToolUse' && o.tool) live.exitPlan = false;
       if (o.hookEvent === 'UserPromptSubmit') live.stopText = undefined;
       else if (o.hookEvent === 'Stop' && live.tool === 'claude') live.stopText = stopMessage(o.payload);
-      // The worker stays `done` across the resumed turn (upstream drops an unchanged status), so its Stop is heard here.
       // The resumed turn has started (these hooks also set the worker `working`): its end is a normal `done` again.
       if (live.background && (o.hookEvent === 'PreToolUse' || o.hookEvent === 'UserPromptSubmit')) live.background = false;
+      // A Stop while stopping is the stop done (the worker may stay `done`, which emits no status).
+      if (o.hookEvent === 'Stop' && live.stopping) return void this.serial(live.taskId, () => this.stoppedRun(live));
+      // The worker stays `done` across the resumed turn (upstream drops an unchanged status), so its Stop is heard here.
       if (o.hookEvent === 'Stop' && live.background) void this.serial(live.taskId, () => this.turnEnded(live));
       this.heardAsk(live, o);
       const source = (o.payload as { source?: unknown } | undefined)?.source;
@@ -1310,7 +1312,7 @@ export class Orchestrator {
       await sleep(this.opts.readPauseMs);
     }
     if (live.tool !== 'claude' || result?.complete) return result;
-    if (result && !result.toolRunning && live.stopText) return { text: live.stopText, complete: true };
+    if (result && !result.toolRunning && live.stopText) return { text: live.stopText, complete: true, ...(result.background ? { background: result.background } : {}) };
     const why = !result ? 'no session log' : result.toolRunning ? 'a Stop while a tool was still running' : 'no last_assistant_message in its Stop hook';
     console.warn(`agent-office: kanban task #${live.taskId}: the ${live.phase} run's final answer never reached its session log (${why}): going on with the last text the log has`);
     return result;
@@ -1342,6 +1344,15 @@ export class Orchestrator {
     }
   }
 
+  /** The turn stopped on background agents: the run goes on, and its next Stop is heard from the hook. */
+  private async holdForBackground(live: Live) {
+    live.background = true;
+    // Stop #1's answer is the interim "I'll wait" text, never the run's.
+    live.stopText = undefined;
+    // A Stop pressed while the log was read took the Esc path: the worker is at rest, so it ends here.
+    if (live.stopping) await this.stoppedRun(live);
+  }
+
   /** How many of the run's background agents the log shows still working. */
   private backgroundLeft(live: Live): number {
     const file = this.ctx.floor(live.floorId)?.workers.transcripts(live.workerId)?.claude;
@@ -1351,16 +1362,18 @@ export class Orchestrator {
   /** A run's turn is over: read what it said, keep it, and move the task on. `planExit`: ExitPlanMode. */
   private async turnEnded(live: Live, planExit = false) {
     if (live.ended || this.live.get(live.workerId) !== live) return;
-    if (!planExit && live.tool === 'claude' && live.phase !== 'compact') {
-      live.background = this.backgroundLeft(live) > 0;
-      // Stop #1's answer is the interim "I'll wait" text, never the run's.
-      if (live.background) return void (live.stopText = undefined);
-    }
+    const held = !planExit && live.tool === 'claude' && live.phase !== 'compact';
+    if (held && this.backgroundLeft(live) > 0) return this.holdForBackground(live);
+    // Read before ending: a log that lags (the launch's result not in it yet) shows the background agents only by now.
+    // Nothing else ends the run meanwhile: they all go through `serial`, and this re-checks after the wait.
+    const result = live.phase === 'compact' ? { text: '', complete: true } : await this.readResult(live);
+    if (live.ended || this.live.get(live.workerId) !== live) return;
+    if (held && result?.background) return this.holdForBackground(live);
+    live.background = false;
     live.ended = true;
     this.forget(live);
     const floor = this.ctx.floor(live.floorId);
     const info = floor?.workers.get(live.workerId);
-    const result = live.phase === 'compact' ? { text: '', complete: true } : await this.readResult(live);
     let task = this.ctx.repo.getTask(live.taskId);
     if (!task) return;
     // Sessions and branches, as they are now.

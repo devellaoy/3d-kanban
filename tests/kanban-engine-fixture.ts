@@ -49,6 +49,10 @@ export interface Rule {
   backgroundMs?: number;
   /** With `background`: the resumed turn runs a tool this long (PreToolUse, no result yet) before it replies. */
   resumeToolMs?: number;
+  /** With `background`: the first Stop comes with the log ending at the Agent call; its result and the interim text are logged this long after. */
+  launchLateMs?: number;
+  /** With `background`: the second Stop comes this long after the reply is logged. */
+  resumeStopMs?: number;
   /**
    * Claude only: post Stop (with the reply as its last_assistant_message) before the final reply is
    * in the log, and log it this long after (-1: never), as Claude Code sometimes does (#310). The
@@ -131,9 +135,18 @@ async function turn(prompt, answered) {
     if (rule.background !== undefined) {
       const agent = 'agent-' + msgId;
       append({ type: 'assistant', message: { id: msgId + '-bg', role: 'assistant', content: [{ type: 'tool_use', id: 'bg-1', name: 'Agent', input: { run_in_background: true } }] } });
-      append({ type: 'user', message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: 'bg-1', content: [{ type: 'text', text: 'Async agent launched successfully.\nagentId: ' + agent + ' (internal ID)' }] }] }, toolUseResult: { isAsync: true, status: 'async_launched', agentId: agent } });
-      append({ type: 'assistant', message: { id: msgId + '-wait', role: 'assistant', content: [{ type: 'text', text: rule.background }] } });
-      await post('Stop', { last_assistant_message: rule.background });
+      const launched = () => {
+        append({ type: 'user', message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: 'bg-1', content: [{ type: 'text', text: 'Async agent launched successfully.\nagentId: ' + agent + ' (internal ID)' }] }] }, toolUseResult: { isAsync: true, status: 'async_launched', agentId: agent } });
+        append({ type: 'assistant', message: { id: msgId + '-wait', role: 'assistant', content: [{ type: 'text', text: rule.background }] } });
+      };
+      if (rule.launchLateMs) {
+        await post('Stop', { last_assistant_message: rule.background });
+        await new Promise((r) => setTimeout(r, rule.launchLateMs));
+        launched();
+      } else {
+        launched();
+        await post('Stop', { last_assistant_message: rule.background });
+      }
       await new Promise((r) => setTimeout(r, rule.backgroundMs ?? 300));
       append({ type: 'user', origin: { kind: 'task-notification', producer: 'session-task' }, message: { role: 'user', content: '<task-notification>\n<task-id>' + agent + '</task-id>\n<status>completed</status>\n</task-notification>' } });
       if (rule.resumeToolMs) {
@@ -143,6 +156,7 @@ async function turn(prompt, answered) {
         append({ type: 'user', message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: 'bg-2', content: 'ok' }] } });
       }
       append({ type: 'assistant', message: { id: msgId, role: 'assistant', content: [{ type: 'text', text: rule.reply }] } });
+      if (rule.resumeStopMs) await new Promise((r) => setTimeout(r, rule.resumeStopMs));
       await post('Stop', { last_assistant_message: rule.reply });
       return;
     }

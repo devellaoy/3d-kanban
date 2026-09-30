@@ -115,12 +115,13 @@ allowed: `todo → in_progress` (= start), `waiting|review → done`, `done → 
 - A Claude Stop isn't the turn's end while the run's background agents still work (`TurnResult.background`):
   Claude Code's own skills run implementers and reviewers that way, ends the turn with "I'll wait for it"
   and resumes by itself with a new turn and Stop when the agent is done. The task stays in progress, and
-  that next Stop is heard from the hook (the worker's status stays `done`, so upstream emits nothing).
+  that next Stop is heard from the hook (the log is read before the check decides, so a lagging log doesn't
+  end the run on the interim text) (the worker's status stays `done`, so upstream emits nothing).
   ExitPlanMode isn't held back, and ⏹️ Stop while waiting stops the run at once (no Esc, the worker is
   at rest). Only background *agents* are counted: Bash `run_in_background` tasks and agent-team teammates also
   resume Claude but aren't, so such a run can still end early. ⏹️ Stop while waiting doesn't stop the helper
   agents themselves: when they report back, Claude answers in its terminal, outside the run. There is no
-  timeout; Stop is the way out.
+  timeout; Stop is the way out. A Stop hook heard while a stop is under way finishes it.
 - **What it waits on** (`Live.asks`, `heardAsk`, in memory only): from the worker's hooks, heard before
   the status they cause. A `PreToolUse` of `AskUserQuestion` (Codex: `request_user_input`) is a
   `question`; a `PermissionRequest` or a `permission_prompt` notification is a `permission`; another
