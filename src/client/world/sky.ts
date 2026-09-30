@@ -30,13 +30,77 @@ export const HAZE_MAX = 300;
  */
 const HAZE_CLEAR = 6;
 const HAZE_ABOVE = 17.5;
+// 3d-kanban: indoor fog (upstream PR #207): INDOOR_FOG, hazeAt(), ROOM_PARS, skyInRoom() and HAZE; the fork's
+// own on top: ROOM_* constants, roomAt()/indoorAt(), the camera-indoors check and the sprites' haze.
+/**
+ * How much of the outdoor fog is left on anything inside the office, where the room's own walls are
+ * the only thing between you and the far end of it (see HAZE): the weather is out of doors, and a
+ * foggy afternoon shouldn't haze the desks. Enough still hangs in the air for the room to read as a
+ * room rather than as a photograph.
+ */
+const INDOOR_FOG = 0.1;
+/**
+ * The room a fragment is in, as ROOM_PARS draws it: how far past the walls' inner faces it still
+ * counts, where under the floor it stops, and over how many metres out it fades to outdoors.
+ */
+const ROOM_GIVE = 0.02;
+const ROOM_FLOOR = -0.06;
+const ROOM_EDGE = 0.12;
+/** The office's walls, where the room you're in stops and the shaft up through its open top goes on. */
+export const WALL_TOP = WALL_HEIGHT + 0.005;
 
 /**
  * How far off something's lost in the haze (with the fog's far edge down on the street at `far`),
  * seen from or standing `above` meters over the street, whichever's higher (see HAZE).
  */
 export function hazeReach(above: number, far: number): number {
-  return Math.min(HAZE_MAX, far * (1 + Math.max(0, above - HAZE_CLEAR) / HAZE_ABOVE));
+  return Math.min(HAZE_MAX, far * hazeScale(above));
+}
+
+/** How many times as far off the haze is `above` metres over the street as down on it (skyReach in HAZE). */
+function hazeScale(above: number): number {
+  return 1 + Math.max(0, above - HAZE_CLEAR) / HAZE_ABOVE;
+}
+
+/**
+ * How much of the haze is on something `depth` metres off, in a linear fog from `near` to `far`,
+ * with `above` the higher of your eye and it over the street, and `indoor` (0–1) how much of it is in
+ * the room you're standing in (see indoorAt). HAZE's arithmetic for a THREE.Fog, which is the fog the
+ * office uses, in numbers so the tests can hold the constants against the office: keep the two in sync.
+ */
+export function hazeAt(depth: number, near: number, far: number, above: number, indoor = 0): number {
+  const out = Math.max(THREE.MathUtils.smoothstep(depth / hazeScale(above), near, far), THREE.MathUtils.smoothstep(depth, HAZE_MAX * 0.45, HAZE_MAX));
+  return out * THREE.MathUtils.lerp(1, INDOOR_FOG, indoor);
+}
+
+type Point = { x: number; y: number; z: number };
+/** The back office, as the skyWing uniform holds it (see wingRoom), or null on a floor without one. */
+export type WingBox = { minX: number; maxX: number; minZ: number; maxZ: number } | null;
+
+/** The back office on a floor built out `level` rows, as far as the room goes (skyWing), or null without one. */
+export function wingRoom(level: number): WingBox {
+  return level > 0 ? { minX: WING.minX - ROOM_GIVE, maxX: WING.maxX + ROOM_GIVE, minZ: wingMinZ(level) - ROOM_GIVE, maxZ: FLOOR.minZ } : null;
+}
+
+/** How far `p` is outside the box from `min` to `max` (0 inside it): GLSL's length( max( d, 0.0 ) ). */
+function outside(p: Point, min: Point, max: Point): number {
+  return Math.hypot(Math.max(0, min.x - p.x, p.x - max.x), Math.max(0, min.y - p.y, p.y - max.y), Math.max(0, min.z - p.z, p.z - max.z));
+}
+
+/** skyInsideOf in ROOM_PARS, in numbers: 1 inside the office's walls up to `top` or in the back office, 0 out of doors. */
+export function roomAt(p: Point, top: number, wing: WingBox): number {
+  const room = outside(p, { x: FLOOR.minX - ROOM_GIVE, y: ROOM_FLOOR, z: FLOOR.minZ - ROOM_GIVE }, { x: FLOOR.maxX + ROOM_GIVE, y: top, z: FLOOR.maxZ + ROOM_GIVE });
+  const back = wing ? outside(p, { x: wing.minX, y: ROOM_FLOOR, z: wing.minZ }, { x: wing.maxX, y: WALL_TOP, z: wing.maxZ }) + (p.y >= WALL_TOP ? 1 : 0) : Infinity;
+  return 1 - THREE.MathUtils.smoothstep(Math.min(room, back), 0, ROOM_EDGE);
+}
+
+/**
+ * skyInRoom in HAZE_PARS, in numbers: how much of the room you're in, seen from `eye`, keeps the
+ * fog off `p`. Both have to be indoors: from the street the office behind its windows is as lost in
+ * the fog as anything else that far off.
+ */
+export function indoorAt(eye: Point, p: Point, wing: WingBox = null): number {
+  return roomAt(p, WALL_TOP, wing) * roomAt(eye, WALL_TOP, wing);
 }
 /** The building, walls included: the office upstairs and the garage under it. */
 const B = { minX: FLOOR.minX - WALL_T, maxX: FLOOR.maxX + WALL_T, minZ: FLOOR.minZ - WALL_T, maxZ: FLOOR.maxZ + WALL_T } as const;
@@ -68,11 +132,40 @@ const uniforms = {
 };
 
 const v3 = (x: number, y: number, z: number) => `vec3(${x.toFixed(3)}, ${y.toFixed(3)}, ${z.toFixed(3)})`;
+/** How far up that shaft counts as the office, five floors or so of the open middle of the building. */
+const SHAFT_TOP = 40;
 
-const PARS = /* glsl */ `
+/** Where a fragment is in the world, worked out in the vertex shader (WORLD, or SPRITE_WORLD). */
+const ROOM_VARYING = /* glsl */ `
 varying vec3 vSkyWorld;
+`;
+
+/**
+ * Which room a fragment is in, for every material with fog and every lit one: the lamps (SURFACE) and
+ * the haze (HAZE) both need to know, and the haze is also wanted by the unlit ones (glass, signs,
+ * outlines, sprites), which get nothing else. Mirrored by roomAt: keep the two in sync.
+ */
+const ROOM_PARS = /* glsl */ `
+${ROOM_VARYING}
 uniform float skyOn;
 uniform float skyInside;
+uniform vec4 skyWing;
+
+// Inside the office's walls, up to the given height and no further, or in the back office's, up to
+// its ceiling and no further: the roof over it, and the cornice over where the wall came down, are
+// outdoors.
+float skyInsideOf( vec3 p, float top ) {
+  vec3 d = max( ${v3(FLOOR.minX - ROOM_GIVE, ROOM_FLOOR, FLOOR.minZ - ROOM_GIVE)} - p, p - vec3( ${(FLOOR.maxX + ROOM_GIVE).toFixed(3)}, top, ${(FLOOR.maxZ + ROOM_GIVE).toFixed(3)} ) );
+  vec3 w = max( vec3( skyWing.x, ${ROOM_FLOOR.toFixed(3)}, skyWing.z ) - p, p - vec3( skyWing.y, ${WALL_TOP.toFixed(3)}, skyWing.w ) );
+  float wing = length( max( w, 0.0 ) ) + step( ${WALL_TOP.toFixed(3)}, p.y );
+  return 1.0 - smoothstep( 0.0, ${ROOM_EDGE.toFixed(3)}, min( length( max( d, 0.0 ) ), wing ) );
+}
+
+// Up through the office's open top, as far as its light reaches.
+float skyInOffice( vec3 p ) { return skyInsideOf( p, ${SHAFT_TOP.toFixed(1)} ); }
+`;
+
+const PARS = /* glsl */ `
 uniform vec3 skyOffice;
 uniform vec3 skyGarage;
 uniform int skyLampCount;
@@ -83,16 +176,6 @@ uniform vec3 skyLampMax;
 uniform float skyWet;
 uniform float skySnow;
 uniform float skyDrop;
-uniform vec4 skyWing;
-
-// Inside the office's walls (and up through its open top), or the back office's, up to its ceiling
-// and no further: its roof, and the cornice over where the wall came down, are outdoors.
-float skyInOffice( vec3 p ) {
-  vec3 d = max( ${v3(FLOOR.minX - 0.02, -0.06, FLOOR.minZ - 0.02)} - p, p - ${v3(FLOOR.maxX + 0.02, 40, FLOOR.maxZ + 0.02)} );
-  vec3 w = max( vec3( skyWing.x, -0.06, skyWing.z ) - p, p - vec3( skyWing.y, ${(WALL_HEIGHT + 0.005).toFixed(3)}, skyWing.w ) );
-  float wing = length( max( w, 0.0 ) ) + step( ${(WALL_HEIGHT + 0.005).toFixed(3)}, p.y );
-  return 1.0 - smoothstep( 0.0, 0.12, min( length( max( d, 0.0 ) ), wing ) );
-}
 
 // Under the bottom floor: walled at the back and on the west side, open to the street on the south and east.
 float skyInGarage( vec3 p ) {
@@ -145,11 +228,18 @@ const WORLD = /* glsl */ `
 }
 `;
 
+/** A sprite has no project_vertex (it draws a quad facing you round its centre), so it's where its centre is. */
+const SPRITE_WORLD = /* glsl */ `
+vSkyWorld = modelMatrix[ 3 ].xyz;
+`;
+
 /**
  * The haze, over three.js's own fog: it thins out with height over the street (see HAZE_ABOVE), as
  * thin as it is at your eye or at what you're looking at, whichever is higher. So from high up you
  * see further, the street below included, and from down on the street the top of the building is
  * as clear as the view from up there. Past HAZE_MAX there's nothing to see, whatever the height.
+ * Inside the office it is only ever a tenth of that (see INDOOR_FOG): the weather is out of doors,
+ * so a foggy afternoon leaves the desks, the workers and the far wall as clear as any other day.
  */
 const HAZE_PARS_VERTEX = /* glsl */ `
 #ifdef USE_FOG
@@ -168,9 +258,15 @@ const HAZE_PARS = /* glsl */ `
 #ifdef USE_FOG
   varying float vSkyFogY;
   uniform float skyStreet;
+  // How much of the room around you a fragment is in, 0–1: nothing outdoors, nothing seen from
+  // outdoors (from the street the office through its windows is as foggy as the rest), where the
+  // sky is off while your hands are drawn, or inside a map of its own (which sets its own fog, see
+  // World.mood). Mirrored by indoorAt: keep the two in sync.
+  float skyInRoom( vec3 p ) { return skyInsideOf( p, ${WALL_TOP.toFixed(3)} ) * skyInsideOf( cameraPosition, ${WALL_TOP.toFixed(3)} ) * skyOn * skyInside; }
 #endif
 `;
 
+/** Mirrored by hazeAt (for THREE.Fog): keep the two in sync. */
 const HAZE = /* glsl */ `
 #ifdef USE_FOG
   #ifdef FOG_EXP2
@@ -181,24 +277,37 @@ const HAZE = /* glsl */ `
     float skyReach = 1.0 + max( max( cameraPosition.y, vSkyFogY ) - skyStreet - ${HAZE_CLEAR.toFixed(1)}, 0.0 ) / ${HAZE_ABOVE.toFixed(1)};
     float fogFactor = max( smoothstep( fogNear, fogFar, vFogDepth / skyReach ), smoothstep( ${(HAZE_MAX * 0.45).toFixed(1)}, ${HAZE_MAX.toFixed(1)}, vFogDepth ) );
   #endif
-  gl_FragColor.rgb = mix( gl_FragColor.rgb, fogColor, fogFactor );
+  gl_FragColor.rgb = mix( gl_FragColor.rgb, fogColor, fogFactor * mix( 1.0, ${INDOOR_FOG.toFixed(2)}, skyInRoom( vSkyWorld ) ) );
 #endif
 `;
 
-// Everything with fog gets the haze above; every lit material also gets the lines before that,
-// sharing one set of uniforms. Nothing else in the office uses onBeforeCompile, so this is its
-// default; unlit ones (glass, signs, outlines) only get the haze.
+// 3d-kanban: indoor fog (upstream PR #207): ROOM_PARS goes to every foggy material, not just the lit ones;
+// the vertex shader gets only ROOM_VARYING, and sprites keep the haze (SPRITE_WORLD).
+// Everything with fog gets the haze above, and knows which room it's in to work it out; every lit
+// material also gets the lines before that, sharing one set of uniforms. Nothing else in the office
+// uses onBeforeCompile, so this is its default; unlit ones (glass, signs, outlines) only get the haze.
 THREE.Material.prototype.onBeforeCompile = function (shader) {
-  if (shader.fragmentShader.includes('#include <fog_fragment>')) {
+  const foggy = shader.fragmentShader.includes('#include <fog_fragment>');
+  const lit = shader.fragmentShader.includes('#include <lights_fragment_end>');
+  if (!foggy && !lit) return;
+  shader.uniforms.skyOn = uniforms.skyOn;
+  shader.uniforms.skyInside = uniforms.skyInside;
+  shader.uniforms.skyWing = uniforms.skyWing;
+  // Which room a fragment is in goes to everything with fog, for the haze over it; the lamps and
+  // the lamplight from them are the lit materials' alone. The vertex shader only works out where
+  // it is. Sprites have no project_vertex (and no lights): they're where their centre is.
+  const sprite = !shader.vertexShader.includes('#include <project_vertex>');
+  shader.vertexShader = shader.vertexShader.replace('#include <common>', `#include <common>\n${ROOM_VARYING}`);
+  if (!sprite) shader.vertexShader = shader.vertexShader.replace('#include <project_vertex>', `#include <project_vertex>\n${WORLD}`);
+  shader.fragmentShader = shader.fragmentShader.replace('#include <common>', `#include <common>\n${lit ? `${ROOM_PARS}\n${PARS}` : ROOM_PARS}`);
+  if (foggy) {
     shader.uniforms.skyStreet = uniforms.skyStreet;
-    shader.vertexShader = shader.vertexShader.replace('#include <fog_pars_vertex>', `#include <fog_pars_vertex>\n${HAZE_PARS_VERTEX}`).replace('#include <fog_vertex>', `#include <fog_vertex>\n${HAZE_VERTEX}`);
+    shader.vertexShader = shader.vertexShader.replace('#include <fog_pars_vertex>', `#include <fog_pars_vertex>\n${HAZE_PARS_VERTEX}`).replace('#include <fog_vertex>', `#include <fog_vertex>\n${HAZE_VERTEX}${sprite ? SPRITE_WORLD : ''}`);
     shader.fragmentShader = shader.fragmentShader.replace('#include <fog_pars_fragment>', `#include <fog_pars_fragment>\n${HAZE_PARS}`).replace('#include <fog_fragment>', HAZE);
   }
-  if (!shader.fragmentShader.includes('#include <lights_fragment_end>')) return;
+  if (!lit) return;
   Object.assign(shader.uniforms, uniforms);
-  shader.vertexShader = shader.vertexShader.replace('#include <common>', '#include <common>\nvarying vec3 vSkyWorld;').replace('#include <project_vertex>', `#include <project_vertex>\n${WORLD}`);
   shader.fragmentShader = shader.fragmentShader
-    .replace('#include <common>', `#include <common>\n${PARS}`)
     .replace('#include <lights_fragment_begin>', `${SURFACE}\n#include <lights_fragment_begin>`)
     .replace('#include <lights_fragment_end>', `#include <lights_fragment_end>\n${LIGHT}`);
 };
@@ -602,7 +711,8 @@ export class Sky {
   setWing(level: number) {
     const minZ = wingMinZ(level);
     wingBox = level > 0 ? { minX: WING.minX - WALL_T, maxX: WING.maxX + WALL_T, minZ: minZ - WALL_T, maxZ: FLOOR.minZ } : null;
-    if (level > 0) uniforms.skyWing.value.set(WING.minX - 0.02, WING.maxX + 0.02, minZ - 0.02, FLOOR.minZ);
+    const room = wingRoom(level); // 3d-kanban: the same box roomAt is tested with
+    if (room) uniforms.skyWing.value.set(room.minX, room.maxX, room.minZ, room.maxZ);
     else uniforms.skyWing.value.set(1, 0, 1, 0);
   }
 

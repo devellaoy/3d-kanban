@@ -57,7 +57,7 @@ must be found by hand. Line numbers drift; the "where" column names the function
 
 New files are not seams (they can't conflict): `src/{server,shared,client}/kanban/**`,
 `src/client/kanban.html`, `bin/office-tasks.js`, `scripts/migrate-ai-kanban/`, `skills/`,
-`tests/kanban-*.test.ts`, `tsconfig.scripts.json`, `docs/kanban.md`, `docs/kanban-architecture.md`,
+`tests/kanban-*.test.ts`, `tests/sky.test.ts` (upstream PR #207's, so it would conflict only if upstream adds the same file), `tsconfig.scripts.json`, `docs/kanban.md`, `docs/kanban-architecture.md`,
 `docs/migration.md`, `docs/fork.md`.
 
 ### Server
@@ -194,6 +194,7 @@ New files are not seams (they can't conflict): `src/{server,shared,client}/kanba
 | `src/client/login.html`, `src/client/join.html`, `src/client/claim.html` | `<head>` after the icon | `theme-color` only | The installed app's colour on the sign-in pages |
 | `src/client/ui/prompt.ts` | `sendHomeDialog()` `choices` | "`kanban3d prune` tidies up later" | The command is `kanban3d` |
 | `src/client/ui/accounts.ts` | shared-password note (off) | "run `kanban3d accounts password on`" | Same |
+| `src/client/world/sky.ts` | `INDOOR_FOG`, `ROOM_*`, `WALL_TOP`, `hazeAt()`, `wingRoom()`, `roomAt()`, `indoorAt()`, `ROOM_VARYING`, `ROOM_PARS` with `skyInsideOf()` (split out of `PARS`), `SPRITE_WORLD`, `HAZE_PARS`' `skyInRoom()`, `HAZE`, `onBeforeCompile`, `Sky.setWing()` | Anything inside the office keeps a tenth of the outdoor fog, when you're inside too; upstream PR #207 (closed unmerged, issue #122 still open), plus the fork's own camera check, sprites' haze and the TypeScript mirrors the tests use | The weather's fog doesn't come into the office |
 
 ### Build, packaging, deploy, docs
 
@@ -217,6 +218,8 @@ New files are not seams (they can't conflict): `src/{server,shared,client}/kanba
 | `README.md` | top | Fork section above upstream's README, which follows unchanged (its *Mouse drag / wheel* row is flagged there as out of date) | What this fork is |
 | `docs/features.md` | *A floor per project*, *One task across several projects*, *One-click PRs*, *PR board*, *Walk around*, *Basketball* | An "*In 3d-kanban*" sentence at the end of each, pointing to [kanban.md](kanban.md) | The upstream docs don't contradict the fork |
 | `docs/configuration.md` | *Where the office keeps things* | An "*In 3d-kanban*" paragraph before *Command line* (kanban data, settings, migration) | Same |
+| `docs/features.md` | *Day and night, and weather* | Last sentence: fog is kept out of doors | Same as `sky.ts` above |
+| `docs/how-it-works.md` *(unmarked)* | *Sky* | The haze sentence on the room you're in (from upstream PR #207) | Same |
 | `docs/controls.md` | keys table (`O` text, new `J` row; `Mouse`, `Click`, `Wheel` rows for the third person that looks around like first); new section *In the kanban view* | The fork's keys | Same |
 | `vite.config.ts` | imports (`createHash`, `writeFileSync`); `pwaBuild()` (new, before `defineConfig`); `plugins` | Writes the build's id into `dist/public/sw.js` (`'__PWA_BUILD__'`) | Each build's `/assets/` get a cache of their own |
 | `docs/configuration.md` | end of the file | Section *PWA* (the fork's) | How to install it, HTTPS, updates |
@@ -241,6 +244,8 @@ New files are not seams (they can't conflict): `src/{server,shared,client}/kanba
    - New `gh.*` messages or `/api/gh/*` routes upstream adds that act on one PR or issue: give them the
      same `repo` → `githubFor()` handling, or they act on the floor's own repository.
    - `floorView()` and the floor's `gh.pulls` callback still send `pullsState()`.
+   - `src/client/world/sky.ts`: if upstream fixes its issue #122 (fog indoors) its own way, take upstream's
+     version and drop the fork's (upstream PR #207) along with `tests/sky.test.ts`.
 4. Re-check `package.json` (dependencies, `files`, `typecheck`, `migrate:ai-kanban`), `vite.config.ts`
    inputs and the Dockerfile's `better-sqlite3` rebuild; keep this fork's `AGENTS.md` and the pointer
    `CLAUDE.md` (`@AGENTS.md`), resolving any upstream change to `CLAUDE.md` in favour of the pointer.
