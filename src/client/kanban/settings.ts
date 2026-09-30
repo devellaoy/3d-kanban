@@ -31,6 +31,7 @@ import { KANBAN_DEFAULTS, projectDefaults, REVIEW_DEFAULTS } from './defaults';
 import { repoIdFrom } from './model';
 import { kstore } from './store';
 import { skillsOverview, skillsPane } from './skills';
+import { Cleanups, settingsRedraw } from './settingsflow';
 import { APPROVAL_NAMES, effortName, SOURCE_KIND_NAMES, toolName } from './labels';
 import { checkbox, field, numberInput, numberValue, run, select, tabStrip, textArea, textInput } from './ui';
 
@@ -133,12 +134,19 @@ export function kanbanSettingsPanes(net: Net): { panes: Record<KanbanSettingsPan
     lockForNonAdmins(pane);
     secretsSlot.replaceChildren(pane);
   };
+  // What the drawn panes listen to, taken down when they're drawn again or the window shuts.
+  const officeCleanups = new Cleanups();
+  const projectCleanups = new Cleanups();
+  // Drawn only from settings fresh from the office: on a page without a board, what kstore kept from
+  // the last time is stale (saving it would write old values back), so it waits for the snapshot.
+  let ready = !own;
   const paintOffice = () => {
+    officeCleanups.run();
     const s = kstore.settings;
-    if (!s) return officeEl.replaceChildren(h('p.kb-muted', {}, 'Loading…'));
+    if (!s || !ready) return officeEl.replaceChildren(h('p.kb-muted', {}, 'Loading…'));
     const note = h('p.kb-settings-note', {}, kstore.me.admin ? 'For the whole office. Changes apply to tasks from their next phase.' : 'Only admins can change these. This is how they’re set now.');
     const general = generalPane(api, s, own);
-    const skills = h('div.kb-pane', {}, skillsOverview(api, s));
+    const skills = h('div.kb-pane', {}, skillsOverview(api, s, officeCleanups));
     lockForNonAdmins(general);
     lockForNonAdmins(skills);
     paintSecrets();
@@ -156,6 +164,7 @@ export function kanbanSettingsPanes(net: Net): { panes: Record<KanbanSettingsPan
   }, 'Project settings');
   projectsEl.append(projectPick, strip.el, note, body);
   const paintProject = () => {
+    projectCleanups.run();
     pickProject();
     const sel = select(kstore.projects.map((p) => [p.id, p.name] as const), project, { 'aria-label': 'Project' });
     sel.addEventListener('change', () => {
@@ -167,13 +176,13 @@ export function kanbanSettingsPanes(net: Net): { panes: Record<KanbanSettingsPan
     strip.el.classList.toggle('hidden', !kstore.projects.length);
     note.textContent = kstore.me.admin ? 'For the project picked here only. Changes apply to its tasks from their next phase.' : 'Only admins can change these. This is how they’re set now.';
     const s = kstore.settings;
-    if (!s) return body.replaceChildren(h('p.kb-muted', {}, 'Loading…'));
+    if (!s || !ready) return body.replaceChildren(h('p.kb-muted', {}, 'Loading…'));
     if (!kstore.projectOf(project)) return body.replaceChildren(h('p.kb-muted', {}, 'No projects yet: add a floor in the 3D office first.'));
     const panes: Record<ProjectTab, () => HTMLElement> = {
       project: () => projectPane(api, project, s),
       sources: () => sourcesPane(api, project, s),
-      skills: () => skillsPane(api, project, s),
-      prompts: () => promptsPane(api, project, s, (id) => openPromptEditor(net, id)),
+      skills: () => skillsPane(api, project, s, projectCleanups),
+      prompts: () => promptsPane(api, project, s, (id) => openPromptEditor(net, id), projectCleanups),
     };
     const pane = panes[tab]();
     lockForNonAdmins(pane);
@@ -184,7 +193,7 @@ export function kanbanSettingsPanes(net: Net): { panes: Record<KanbanSettingsPan
     paintOffice();
     paintProject();
   };
-  let loaded = !!kstore.settings;
+  const redraw = settingsRedraw(own, !!kstore.settings);
   let admin = kstore.me.admin;
   const offs: (() => void)[] = [
     // Someone else saved meanwhile: the pane shows what's saved now (what you typed and didn't save goes).
@@ -192,8 +201,8 @@ export function kanbanSettingsPanes(net: Net): { panes: Record<KanbanSettingsPan
       if (!kstore.projectOf(project)) paintProject();
     }),
     kstore.on('settings', () => {
-      if (!loaded) {
-        loaded = true;
+      if (redraw() === 'all') {
+        ready = true;
         return paint();
       }
       // What's configured changes only by saving (here or elsewhere): the secrets say so at once.
@@ -226,7 +235,7 @@ export function kanbanSettingsPanes(net: Net): { panes: Record<KanbanSettingsPan
           if (watched && !unwatch && offs.length) unwatch = api.watch(watched);
         })
         .catch((err: Error) => {
-          if (kstore.settings) return;
+          if (ready) return;
           const why = h('p.kb-muted', {}, `The kanban’s settings didn’t load (${err.message}): open this again.`);
           officeEl.replaceChildren(why);
           body.replaceChildren(why.cloneNode(true));
@@ -240,6 +249,8 @@ export function kanbanSettingsPanes(net: Net): { panes: Record<KanbanSettingsPan
     panes: { kanban: officeEl, projects: projectsEl },
     close: () => {
       for (const off of offs.splice(0)) off();
+      officeCleanups.run();
+      projectCleanups.run();
     },
   };
 }
@@ -529,7 +540,7 @@ function sourcesPane(api: KanbanApi, projectId: string, s: KanbanSettings): HTML
 
 // --- Prompts ---------------------------------------------------------------------------------------
 
-function promptsPane(api: KanbanApi, projectId: string, s: KanbanSettings, openEditor: (id: KanbanPromptId) => void): HTMLElement {
+function promptsPane(api: KanbanApi, projectId: string, s: KanbanSettings, openEditor: (id: KanbanPromptId) => void, cleanups: Cleanups): HTMLElement {
   let current: KanbanPromptId = KANBAN_PROMPT_IDS[0];
   const layers = () => ({ office: store.prompts.custom as Partial<Record<string, { text: string }>>, project: kstore.settings?.projects[projectId]?.prompts ?? s.projects[projectId]?.prompts ?? {} });
   const nav = h('nav.kb-prompt-list', { 'aria-label': 'Prompts' });
@@ -575,10 +586,7 @@ function promptsPane(api: KanbanApi, projectId: string, s: KanbanSettings, openE
   });
   reset.addEventListener('click', () => void run(() => api.request({ t: 'kanban.project.prompt.set', project: projectId, id: current, text: null }), reset, 'Saved'));
   office.addEventListener('click', () => openEditor(current));
-  const off = kstore.on('settings', () => {
-    if (!nav.isConnected) return off();
-    pick(current);
-  });
+  cleanups.add(kstore.on('settings', () => pick(current)));
   pick(current);
   return h(
     'div.kb-pane.kb-prompts',
