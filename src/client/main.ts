@@ -2036,6 +2036,7 @@ function syncWorkers() {
       model.setCostume(store.theme.active);
       model.setOutfit(plan().agents.outfit === 'peasant' ? 'peasant' : null);
       model.setAge(ageOf(w));
+      model.watching = !!desk.def.watch; // 3d-kanban: a reviewer behind its implementer doesn't type
       desk.seatAnchor.add(model.root);
       // Its globe floats beside the laptop (or the kiosk's counter), out from behind the card over
       // its head and the back of its chair, so it shows from across the room.

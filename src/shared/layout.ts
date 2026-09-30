@@ -207,7 +207,10 @@ export function watchSpotOf(deskId: string): string {
 /** 3d-kanban: see watchSpots. */
 export const WATCH_SPOTS: DeskDef[] = watchSpots(SEATS);
 
-/** Any place a worker can be by id: the seats (the back office's included), the board agents' kiosks and the meeting room's chairs. */
+/**
+ * Any place a worker can be by id: the seats (the back office's included), the board agents' kiosks and the meeting room's chairs.
+ * 3d-kanban: and the spots behind the seats (WATCH_SPOTS, `watch` set), so iterating it isn't only seats.
+ */
 export const DESK_BY_ID = new Map([...SEATS, ...STATIONS, ...MEETING_SEATS, ...WATCH_SPOTS].map((d) => [d.id, d])); // 3d-kanban: WATCH_SPOTS
 
 /**

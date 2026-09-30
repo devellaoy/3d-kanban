@@ -350,9 +350,8 @@ export function planMap(input: unknown): MapPlan {
   const sendHome = planSendHome(c.sendHome, bounds, free, dungeon);
   const outfit = c.agents?.outfit === 'peasant' ? 'peasant' : 'none';
   const ageMinutes = c.agents?.ageMinutes === undefined ? 0 : num(c.agents.ageMinutes, 'agents.ageMinutes', 0, 100000);
-  const byId = new Map([...desks, ...overflow, ...stations, ...meeting].map((d) => [d.id, d]));
+  const byId = new Map([...desks, ...overflow, ...stations, ...meeting, ...watchSpots([...desks, ...overflow])].map((d) => [d.id, d])); // 3d-kanban: watchSpots
   for (const d of byId.values()) inside(d.x, d.z, d.label);
-  for (const d of watchSpots([...desks, ...overflow])) byId.set(d.id, d); // 3d-kanban: a reviewer's spot behind each seat
   return {
     id,
     name,
