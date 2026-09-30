@@ -111,6 +111,28 @@ test('the board: the sources’ cards while the project has any, upstream’s li
   assert.equal(wallIssues('app'), undefined, 'no plugin, no sources’ board');
 });
 
+test('a card as a kanban task: at the desk, from the source’s whole text, once per key (archived too)', async () => {
+  const ctx = makeCtx([def('app', '/tmp/app', { repo: 'o/app' })]);
+  const opts: unknown[] = [];
+  const start = ctx.engine.start;
+  ctx.engine.start = (async (id: number, who: unknown, o: unknown) => (opts.push(o), start(id, who as never))) as typeof ctx.engine.start;
+  ctx.settings.setProject('app', { issueSources: [{ id: 's1', kind: 'github-repo', repos: ['o/lib'], filters: {} }] as IssueSourceConfig[] });
+  const long = `${'x'.repeat(5000)}\n\nAcceptance: it works`;
+  const issues = createIssues(ctx, { gh: async () => JSON.stringify([{ number: 3, title: 'Long', url: 'https://github.com/o/lib/issues/3', body: long, state: 'OPEN', assignees: [], labels: [], updatedAt: '2026-09-02T10:00:00Z' }]) });
+  const c = client();
+  await issues.plugin.ws!['kanban.issues.createTask']!(c, { t: 'kanban.issues.createTask', project: 'app', issueKey: 'gh:o/lib#3', start: true, deskId: 'd3', rid: 'r1' });
+  const made = c.got.at(-1) as { t: string; taskId: number; existed: boolean };
+  assert.equal(made.existed, false);
+  assert.deepEqual(opts, [{ deskId: 'd3' }], 'started at the desk');
+  assert.match(ctx.repo.getTask(made.taskId)!.description, /Acceptance: it works\n\nSource: /, 'the whole text, not the board’s cut');
+
+  ctx.repo.updateTask(made.taskId, { status: 'archived' });
+  await issues.plugin.ws!['kanban.issues.createTask']!(c, { t: 'kanban.issues.createTask', project: 'app', issueKey: 'gh:o/lib#3', start: true, deskId: 'd4', rid: 'r2' });
+  assert.deepEqual(c.got.at(-1), { t: 'kanban.ok', rid: 'r2', taskId: made.taskId, existed: true });
+  assert.equal(ctx.repo.listTasks('app', { includeArchived: true }).length, 1);
+  assert.equal(opts.length, 1, 'an archived task isn’t started again');
+});
+
 test('claiming a card: a GitHub issue of any repository by its key, nothing else', async () => {
   const calls: { args: string[]; env?: Record<string, string> }[] = [];
   const run = (async (args: string[], _cwd: string, _t?: number, env?: Record<string, string>) => (calls.push({ args, env }), '')) as Parameters<typeof claimGhKey>[3];

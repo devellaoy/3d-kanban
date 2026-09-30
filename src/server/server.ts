@@ -2018,9 +2018,12 @@ export async function startServer(cfg: Config) {
       case 'term.resize':
         if (c.attached.has(msg.workerId)) workerFloor(msg.workerId)?.workers.resize(msg.workerId, num(msg.cols), num(msg.rows));
         break;
-      case 'gh.refresh':
-        void floorOf(c)?.github.refresh();
+      case 'gh.refresh': {
+        const floor = floorOf(c);
+        void floor?.github.refresh();
+        if (floor) refreshWall(floor.id); // 3d-kanban: the issues board from the project's issue sources, too
         break;
+      }
       case 'gh.merge': {
         const floor = here();
         const n = num(msg.number);

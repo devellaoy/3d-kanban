@@ -130,6 +130,7 @@ export async function createIntegrationTask(
   input: IntegrationTaskInput,
   who: KanbanCaller,
   start = false,
+  startOpts?: { deskId?: string },
 ): Promise<{ task: KanbanTask; existed: boolean; startError?: string }> {
   const ticket = input.ticket?.trim() || undefined;
   let existed = true;
@@ -162,7 +163,7 @@ export async function createIntegrationTask(
   }
   let startError: string | undefined;
   if (start && task.status === 'todo') {
-    const err = await ctx.engine.start(task.id, who);
+    const err = await ctx.engine.start(task.id, who, startOpts);
     if (typeof err === 'string' && err) startError = err;
     ctx.taskChanged(task.id);
   }

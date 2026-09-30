@@ -12,7 +12,6 @@ import { store } from '../state';
 import { h, toast } from '../ui/dom';
 import { officeChoice, type ProviderPicker } from '../ui/provider';
 import { kanbanApi, type KanbanOk } from './api';
-import { cardLabel } from '../../shared/kanban/issuecard.js';
 import { hireTaskMsg, issueDescription, issueTicket, kanbanTool, STATUS_TEXT, titleFrom, type HireTaskForm } from './office';
 
 type Snapshot = Extract<KanbanServerMsg, { t: 'kanban.snapshot' }>;
@@ -202,22 +201,20 @@ export function createTask(net: Net, form: HireTaskForm, deskLabel: string) {
  * `gh:owner/repo#12`, the issue's title, its body and link. kanban.task.create doesn't look for a task
  * with the same ticket, so this does first: one in To do starts at the desk, any other is only named.
  */
-export function issueTask(net: Net, issue: Pick<GhIssue, 'number' | 'title' | 'url'> & { body?: string; repo?: string; key?: string }, deskId: string | undefined, deskLabel: string) {
+export function issueTask(net: Net, issue: Pick<GhIssue, 'number' | 'title' | 'url'> & { body?: string; repo?: string }, deskId: string | undefined, deskLabel: string) {
   const project = store.floor;
   if (!project) return void toast('Go to a project’s floor first', 'warn');
   const agent = officeChoice(store.project);
   if (!kanbanTool(agent.provider)) return void toast('The kanban process runs on Claude Code or Codex: pick one of them as the office’s worker in ⚙️ Settings', 'warn');
-  // A card from the project's issue sources has its ticket key already (Jira's has no number).
-  const ticket = issue.key ?? issueTicket(issue.repo ?? store.currentFloor()?.repo, issue.number);
-  const name = cardLabel(issue, store.currentFloor()?.repo);
+  const ticket = issueTicket(issue.repo ?? store.currentFloor()?.repo, issue.number);
   const api = kanbanApi(net);
   snapshot(net, project)
     .then((s) => {
       const same: KanbanTaskCard | undefined = ticket ? s.tasks.find((t) => t.ticket === ticket) : undefined;
       if (same?.status === 'todo') {
-        return api.request<KanbanOk>({ t: 'kanban.task.start', id: same.id, ...(deskId ? { deskId } : {}) }).then(() => taskToast(net, `🗂️ ${name} was already task #${same.id}: it starts at ${deskLabel}`, same.id));
+        return api.request<KanbanOk>({ t: 'kanban.task.start', id: same.id, ...(deskId ? { deskId } : {}) }).then(() => taskToast(net, `🗂️ #${issue.number} was already task #${same.id}: it starts at ${deskLabel}`, same.id));
       }
-      if (same) return taskToast(net, `🗂️ ${name} is already task #${same.id} (${STATUS_TEXT[same.status]})`, same.id, 'warn');
+      if (same) return taskToast(net, `🗂️ #${issue.number} is already task #${same.id} (${STATUS_TEXT[same.status]})`, same.id, 'warn');
       const repos = s.projects.find((p) => p.id === project)?.repos ?? [];
       createTask(
         net,

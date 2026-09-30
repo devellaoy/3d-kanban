@@ -9,11 +9,12 @@ import { cardId, cardLabel, isPrimaryIssue, parseGhKey } from '../../shared/kanb
 import type { Net } from '../net';
 import { store } from '../state';
 import { issuePrompt, type BoardActions } from '../ui/boards';
-import { h, openModal } from '../ui/dom';
+import { h, openModal, toast } from '../ui/dom';
 import { markdown } from '../ui/markdown';
 import { issueMeeting, type MeetingPreset } from '../ui/meeting';
 import { providerPicker } from '../ui/provider';
 import { labelChip, openIssue } from '../ui/pull';
+import { kanbanApi, type KanbanOk } from './api';
 import { issueTask } from './hireform';
 import { SOURCE_KIND_NAMES } from './labels';
 
@@ -35,8 +36,18 @@ export function issueCardLabel(it: AnyCard): string {
   return cardLabel({ number: numberOf(it), key: it.key, repo: 'repo' in it ? it.repo : undefined }, primaryRepo());
 }
 
+/**
+ * What the source said about the card last taken off the board, so the card in your hands still
+ * knows its link and text when a refresh of the sources drops it from the board meanwhile.
+ */
+const carried = new Map<string, GhIssue>();
+
 /** The card in your hands for a board card: the floor's own issue's number (0 for any other), and its key. */
 export function cardOfIssue(it: GhIssue): CarriedIssue {
+  if (it.key) {
+    carried.clear();
+    carried.set(cardId(it), it);
+  }
   return { issue: isOwnIssue(it) ? it.number : 0, title: it.title, ...(it.key ? { key: it.key } : {}) };
 }
 
@@ -46,6 +57,32 @@ export function issueOfCard(card: AnyCard): GhIssue | undefined {
   return store.issues.items.find((i) => cardId(i) === id);
 }
 
+/**
+ * Everything known about a card: the board's, else what it said when it was taken, else what its key
+ * says (a GitHub issue's link comes from it; a Jira key is all there is to go on).
+ */
+function sourceOf(card: AnyCard): GhIssue {
+  if ('number' in card) return card;
+  const known = issueOfCard(card) ?? carried.get(cardId(card));
+  if (known) return known;
+  const gh = parseGhKey(card.key);
+  return {
+    number: card.issue,
+    title: card.title,
+    state: 'OPEN',
+    url: gh ? `https://github.com/${gh.repo}/issues/${gh.number}` : '',
+    author: '',
+    labels: [],
+    assignees: [],
+    createdAt: '',
+    updatedAt: '',
+    body: '',
+    comments: 0,
+    ...(gh ? { repo: gh.repo } : {}),
+    ...(card.key ? { key: card.key } : {}),
+  };
+}
+
 /** What a message about the card says which issue it is: the floor's own issue's number, the source's key. */
 export function cardFields(card: CarriedIssue): { issue?: number; issueKey?: string } {
   return { ...(card.issue > 0 ? { issue: card.issue } : {}), ...(card.key ? { issueKey: card.key } : {}) };
@@ -53,12 +90,18 @@ export function cardFields(card: CarriedIssue): { issue?: number; issueKey?: str
 
 /** Whether the card's task is on the 📋 queue and not done. */
 export function cardOnQueue(card: CarriedIssue): boolean {
-  return store.queue.tasks.some((t) => t.status !== 'done' && ((card.key && t.issueKey === card.key) || (card.issue > 0 && t.issue === card.issue)));
+  const t = taskForCard({ number: card.issue, key: card.key });
+  return !!t && t.status !== 'done';
 }
 
-/** The 📋 queue's task for a card: the one not done, else the last one (as state.ts taskForIssue). */
+/**
+ * The 📋 queue's task for a card: the one not done, else the last one (as state.ts taskForIssue). A
+ * card with a key is its task's by that key; one of the floor's own issues also by its number when the
+ * task was queued without one (an agent's, or from before). Another repository's #12 is never the floor's.
+ */
 export function taskForCard(it: { number: number; key?: string }): QueueTask | undefined {
-  const tasks = store.queue.tasks.filter((t) => (it.key ? t.issueKey === it.key : t.issue === it.number));
+  const own = it.number > 0 && (!it.key || isPrimaryIssue({ number: it.number, key: it.key }, primaryRepo()));
+  const tasks = store.queue.tasks.filter((t) => (it.key && t.issueKey === it.key) || (own && !t.issueKey && t.issue === it.number));
   return tasks.find((t) => t.status !== 'done') ?? tasks[tasks.length - 1];
 }
 
@@ -93,34 +136,54 @@ export function cardIssuePrompt(it: GhIssue): string {
   return isOwnIssue(it) ? issuePrompt(it) : sourcePrompt(it);
 }
 
-/** The prompt for a carried card: from the board's card while it's there. */
+/** The prompt for a carried card: one of the floor's own issues by its number, any other from what its source said. */
 export function cardPrompt(card: CarriedIssue): string {
-  const it = issueOfCard(card);
-  if (isOwnIssue(card) || !it) return issuePrompt({ number: card.issue, title: card.title });
-  return sourcePrompt(it);
+  if (isOwnIssue(card)) return issuePrompt({ number: card.issue, title: card.title });
+  return sourcePrompt(sourceOf(card));
 }
 
 /** What 🤝 Meeting about a card starts with. */
 export function cardMeeting(card: AnyCard): MeetingPreset {
   const n = numberOf(card);
   if (isOwnIssue(card)) return issueMeeting(n, card.title);
-  const it = 'number' in card ? card : issueOfCard(card);
+  const it = sourceOf(card);
   const label = issueCardLabel(card);
   const gh = parseGhKey(card.key);
-  const read = gh ? `Read it first with gh issue view ${gh.number} -R ${gh.repo} --comments.` : [it?.url ?? '', it?.body.trim() ?? ''].filter(Boolean).join('\n\n');
-  return { title: `${label} ${card.title}`, prompt: `${it ? sourceName(it) : label}: “${card.title}”. ${read}`.trim() };
+  const read = gh ? `Read it first with gh issue view ${gh.number} -R ${gh.repo} --comments.` : [it.url, it.body.trim()].filter(Boolean).join('\n\n');
+  return { title: `${label} ${card.title}`, prompt: `${sourceName(it)}: “${card.title}”. ${read}`.trim() };
 }
 
-/** P with a card at an empty desk, or 🗂️ Kanban task: the card's issue as a kanban task (once per ticket). */
+/**
+ * P with a card at an empty desk, or 🗂️ Kanban task: the card's issue as a kanban task, once per ticket.
+ * A card from the issue sources goes by the server's kanban.issues.createTask, which makes it from the
+ * source's whole text, finds a task already made from it (archived too, or made a moment ago by someone
+ * else) and starts one in To do at the desk. Upstream's card (no key) goes as before.
+ */
 export function cardTask(net: Net, card: AnyCard, deskId: string | undefined, deskLabel: string) {
-  const it = 'number' in card ? card : issueOfCard(card);
-  const n = numberOf(card);
-  issueTask(net, { number: n, title: card.title, url: it?.url ?? '', body: it?.body, ...(it?.repo ? { repo: it.repo } : {}), ...(card.key ? { key: card.key } : {}) }, deskId, deskLabel);
+  const it = sourceOf(card);
+  const project = store.floor;
+  if (!card.key || !project) return issueTask(net, { number: numberOf(card), title: card.title, url: it.url, body: it.body, ...(it.repo ? { repo: it.repo } : {}) }, deskId, deskLabel);
+  const name = issueCardLabel(card);
+  kanbanApi(net)
+    .request<KanbanOk>({ t: 'kanban.issues.createTask', project, issueKey: card.key, start: true, ...(deskId ? { deskId } : {}) })
+    .then((ok) => {
+      if (!ok.taskId) return;
+      const text = ok.existed ? `🗂️ ${name} is already task #${ok.taskId}` : `🗂️ ${name} is task #${ok.taskId} now, starting at ${deskLabel}`;
+      const el = toast(ok.startError ? `${text}: ${ok.startError}` : text, ok.startError || ok.existed ? 'warn' : 'info');
+      // The toasts don't take the mouse; this button does.
+      const open = h('button.btn.small', { type: 'button', style: 'pointer-events:auto;margin-left:8px' }, 'open');
+      open.addEventListener('click', () => {
+        el.remove();
+        void import('./taskview').then((m) => m.openTaskWindow(net, ok.taskId!));
+      });
+      el.append(open);
+    })
+    .catch((err: Error) => toast(`🗂️ ${err.message}`, 'error'));
 }
 
-/** 📋 Add to queue for a card that isn't one of the floor's own issues: queued by its key. */
+/** 📋 Add to queue for a card from the issue sources: queued by its key (and the floor's own issue's number). */
 function queueCard(net: Net, it: GhIssue, provider?: AgentProvider, model?: string, effort?: AgentEffort) {
-  net.send({ t: 'queue.add', prompt: sourcePrompt(it), title: `${issueCardLabel(it)} ${it.title}`, ...cardFields(cardOfIssue(it)), provider, model, effort });
+  net.send({ t: 'queue.add', prompt: cardIssuePrompt(it), title: `${issueCardLabel(it)} ${it.title}`, ...cardFields(cardOfIssue(it)), provider, model, effort });
 }
 
 /**
@@ -129,7 +192,9 @@ function queueCard(net: Net, it: GhIssue, provider?: AgentProvider, model?: stri
  * a repository outside the project) this one.
  */
 export function openCard(it: GhIssue, net: Net, actions: BoardActions) {
-  if (isOwnIssue(it)) return openIssue(it, net, actions);
+  if (!it.key) return openIssue(it, net, actions);
+  // The floor's own issue from the sources: upstream's window and prompts, queued with its key too.
+  if (isOwnIssue(it)) return openIssue(it, net, { ...actions, queue: (_prompt, _title, _issue, provider, model, effort) => queueCard(net, it, provider, model, effort) });
   if (it.number > 0) {
     return openIssue(it, net, {
       ...actions,

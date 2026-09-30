@@ -312,7 +312,8 @@ Every card works like upstream's: **E** at a note takes it off the cork, **O** o
 hands it goes to an empty desk (E hires a worker for it, **P** makes it a kanban task there), to a
 worker, to the 📋 queue, to the herald or to the meeting room. The worker's prompt names the issue's
 source and link (a GitHub issue of another repository: `gh issue view N -R owner/name`); a card made
-into a task is never made twice. One of the project's GitHub issues opens in the office's issue window
+into a task is never made twice (the office looks for one with its key, archived too, and makes the task
+from the source's whole text). **🔄 Refresh** on the issues window fetches the sources again. One of the project's GitHub issues opens in the office's issue window
 (comments, labels, close); any other card opens a window with what the source says and the same
 actions. Taking a card assigns it on GitHub when it's a GitHub issue (to your own GitHub sign-in, or
 the office's); a Jira or project card isn't assigned anywhere: its kanban task is what links it.

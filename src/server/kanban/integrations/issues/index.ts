@@ -157,7 +157,7 @@ export function createIssues(ctx: KanbanContext, opts: IssuesOptions = {}) {
         let issue = state(m.project).items.find((i) => i.key === m.issueKey);
         if (!issue) issue = (await refresh(m.project)).items.find((i) => i.key === m.issueKey);
         if (!issue) return fail(c, m.rid, `${m.issueKey} isn't among the project's issues (any more)`);
-        const made = await createIntegrationTask(ctx, { project: m.project, title: issue.title, description: issueDescription(issue), ticket: issue.key, ticketUrl: issue.url }, c, m.start);
+        const made = await createIntegrationTask(ctx, { project: m.project, title: issue.title, description: issueDescription(issue), ticket: issue.key, ticketUrl: issue.url }, c, m.start, m.deskId ? { deskId: m.deskId } : undefined);
         ctx.broadcast(message(m.project), m.project);
         wallChanged(m.project);
         ok(c, m.rid, { taskId: made.task.id, existed: made.existed, ...(made.startError ? { startError: made.startError } : {}) });

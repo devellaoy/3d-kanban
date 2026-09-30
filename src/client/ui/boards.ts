@@ -55,7 +55,7 @@ const byUpdated = (a: { updatedAt: string }, b: { updatedAt: string }) => b.upda
 
 function issueColumns(items: GhIssue[]): Column<GhIssue>[] {
   const open = items.filter((i) => i.state === 'OPEN');
-  const inProgress = open.filter((i) => i.assignees.length > 0 || i.labels.some((l) => /progress|doing|wip|started/i.test(l.name)) || store.taskForIssue(i.number)?.status === 'running' || (!!i.key && (taskForCard(i)?.status === 'running' || /progress|doing|review|käynnissä/i.test(i.status ?? '')))); // 3d-kanban: an issue source's status
+  const inProgress = open.filter((i) => i.assignees.length > 0 || i.labels.some((l) => /progress|doing|wip|started/i.test(l.name)) || (i.key ? taskForCard(i) : store.taskForIssue(i.number))?.status === 'running' || (!!i.key && /progress|doing|review|käynnissä/i.test(i.status ?? ''))); // 3d-kanban: an issue source's card by its key, and its status
   const todo = open.filter((i) => !inProgress.includes(i));
   return [
     { key: 'open', title: '📥 Open', items: todo },
