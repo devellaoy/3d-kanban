@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="theme-color" content="#fff1de" />
+    <title>Kanban · Agent Office</title>
+    <link rel="icon" href="/favicon.svg" />
+    <link rel="stylesheet" href="./kanban/kanban.css" />
+  </head>
+  <body class="kanban">
+    <!-- The kanban view (kanban/main.ts): the task process as a board beside the 3D office. -->
+    <header id="kb-bar" class="kb-bar"></header>
+    <main id="kb-board" class="kb-board" aria-label="Board"></main>
+    <aside id="kb-detail" class="kb-detail hidden" role="complementary"></aside>
+    <div id="toasts" role="status" aria-live="polite"></div>
+    <div id="conn" class="conn hidden" role="status">Reconnecting…</div>
+    <div id="modal-root"></div>
+    <script type="module" src="./kanban/main.ts"></script>
+  </body>
+</html>

@@ -1,0 +1,334 @@
+// The kanban task process as a pure transition function (docs/kanban-architecture.md §4):
+// next(state, event, config) → the task's new state and what the orchestrator has to do about it.
+// No I/O here: the orchestrator reads the agents' results, asks git whether anything changed, and
+// hands the outcome in as an event; this decides the column, the phase and the next run.
+//
+// The flow: plan → (waiting for answers or approval) → implement → review round k ⇄ fix → review
+// column. A comment resumes the work; a resume turn is reviewed again when the task has review on.
+
+import type { KanbanRole, PlanApproval, RunPhase, RunState, TaskStatus, TaskType, WaitingReason } from '../../../shared/kanban/types.js';
+
+/** The part of a task the machine decides about. */
+export interface MachineState {
+  status: TaskStatus;
+  phase?: RunPhase;
+  runState: RunState;
+  waitingReason?: WaitingReason;
+  waitingText?: string;
+  /** The review round in progress or last finished (0: none yet). */
+  reviewRound: number;
+  retryAt?: number;
+  retryAttempts: number;
+}
+
+/** What the machine reads about the task besides its state. */
+export interface MachineTask {
+  type: TaskType;
+  usePlan: boolean;
+  useReview: boolean;
+  planApproval: PlanApproval;
+}
+
+export interface MachineConfig {
+  /** Review rounds, 1..10. */
+  rounds: number;
+  reReviewLastFix: boolean;
+}
+
+/**
+ * Which prompt a run is sent with. The orchestrator fills it in; `continue` is the short "carry on"
+ * for a session that was cut off (it falls back to the phase's own prompt when there is no session).
+ */
+export type PromptKind = 'plan' | 'replan' | 'implement' | 'investigate' | 'review' | 'rereview' | 'fix' | 'resume' | 'continue' | 'pr.create' | 'pr.fix' | 'compact' | 'pr.review';
+
+export type Effect =
+  /**
+   * Start a run. `round` undefined on a review or fix: a manual round (review() by hand), which ends
+   * in the review column. `pending`: its text is the comments queued while the worker was busy.
+   * `text`: what the user said (an answer, a comment, requested plan changes).
+   */
+  | { type: 'run'; phase: RunPhase; role: KanbanRole; prompt: PromptKind; round?: number; pending?: boolean; text?: string }
+  /** The latest draft plan becomes the accepted one. */
+  | { type: 'acceptPlan' }
+  /** Record what the user asked to change on the latest draft. */
+  | { type: 'planFeedback'; text: string }
+  /** The review cycle is over: the reviewer goes home (its worktree is the task's, so it stays). */
+  | { type: 'reviewerHome' }
+  /** Interrupt the running turn (Esc into its terminal; a kill if it doesn't stop). */
+  | { type: 'interrupt' }
+  /** Keep the comment for the worker's next rest. */
+  | { type: 'queueComment' }
+  /** A line from the office in the task's conversation. */
+  | { type: 'note'; text: string }
+  /** The automation finished: it's in the review column now. */
+  | { type: 'finished' };
+
+export type MachineEvent =
+  /** Start from To do, or a queued start whose slot came free. `slot`: there's room under maxConcurrent. */
+  | { type: 'start'; slot: boolean }
+  /** A plan turn ended. `pending`: comments came in meanwhile. */
+  | { type: 'planned'; outcome: 'ready' | 'questions'; pending?: boolean }
+  /** An implement (or investigate) turn ended. `changes`: anything differs from the base in any repository. */
+  | { type: 'implemented'; changes: boolean; pending?: boolean }
+  /** A review turn ended with its verdict (round undefined: a manual round). */
+  | { type: 'reviewed'; round?: number; approved: boolean; pending?: boolean }
+  /** A fix turn ended (round undefined: after a manual round). */
+  | { type: 'fixed'; round?: number; changes: boolean; pending?: boolean }
+  /** A resume turn (a comment worked on) ended. */
+  | { type: 'resumed'; changes: boolean; pending?: boolean }
+  /** A pr or pr-fix turn ended. */
+  | { type: 'prDone'; pending?: boolean }
+  /** A compact turn ended. */
+  | { type: 'compacted'; pending?: boolean }
+  /** A review of several pull requests together (KanbanEngineApi.reviewPrs). */
+  | { type: 'prReview' }
+  /** That review's turn ended. */
+  | { type: 'prReviewed'; pending?: boolean }
+  /** The agent asks something in its terminal (needs_input outside a finished plan). */
+  | { type: 'asking'; text?: string }
+  /** The agent is working again after asking (someone answered in the terminal). */
+  | { type: 'working' }
+  | { type: 'stop' }
+  | { type: 'stopped'; by?: string }
+  | { type: 'failed'; error: string }
+  /** A usage limit or lost connection: try again at `retryAt` (attempt number `attempts`). */
+  | { type: 'limited'; retryAt: number; attempts: number; text?: string }
+  /** A usage limit that can't be waited out (too many attempts, or too long a wait). */
+  | { type: 'gaveUp'; text: string }
+  /** Its worker went away mid-run (an office restart, sent home). */
+  | { type: 'interrupted'; text?: string }
+  /** Run the last phase again. `last`: the task's latest run, if it has one. */
+  | { type: 'retry'; last?: { phase: RunPhase; round?: number; role: KanbanRole } }
+  /** Carry on from Waiting, with the user's answer when there is one. */
+  | { type: 'continue'; answer?: string; last?: { phase: RunPhase; round?: number; role: KanbanRole } }
+  | { type: 'approvePlan' }
+  | { type: 'requestPlanChanges'; text: string }
+  /** A user's comment. `busy`: the worker is in the middle of a turn (or asking in its terminal). */
+  | { type: 'comment'; text: string; busy: boolean }
+  /** One review round by hand. */
+  | { type: 'review' }
+  | { type: 'pr'; mode: 'create' | 'fix' }
+  | { type: 'compact' };
+
+export type Transition = { state: MachineState; effects: Effect[] } | { error: string };
+
+const PLAN_WAITING: readonly (WaitingReason | undefined)[] = ['plan_questions', 'plan_approval'];
+/** Why a task waits after something went wrong with a run: Retry puts it back to work. */
+const RETRYABLE: readonly (WaitingReason | undefined)[] = ['stopped', 'failed', 'interrupted', 'usage_limit', 'agent_asking'];
+
+const DEFAULT_ANSWER = 'Go ahead without the answers: make reasonable assumptions for the open questions, say which in the plan, and finish it.';
+
+/** Whether the engine is busy with it: a run going, starting, queued or being stopped. */
+export function busy(s: Pick<MachineState, 'runState'>): boolean {
+  return s.runState !== 'idle';
+}
+
+/** The state with the waiting and retry fields cleared, and the rest as given. */
+function moved(s: MachineState, patch: Partial<MachineState>): MachineState {
+  return { ...s, waitingReason: undefined, waitingText: undefined, retryAt: undefined, ...patch };
+}
+
+function running(s: MachineState, phase: RunPhase, patch: Partial<MachineState> = {}): MachineState {
+  return moved(s, { status: 'in_progress', runState: 'starting', phase, ...patch });
+}
+
+function waiting(s: MachineState, reason: WaitingReason, text?: string, patch: Partial<MachineState> = {}): MachineState {
+  return { ...s, status: 'waiting', runState: 'idle', waitingReason: reason, waitingText: text, retryAt: undefined, ...patch };
+}
+
+/** The review column: the automation is done with it. */
+function toReview(s: MachineState, extra: Effect[] = []): { state: MachineState; effects: Effect[] } {
+  return { state: moved(s, { status: 'review', runState: 'idle', retryAttempts: 0 }), effects: [{ type: 'finished' }, ...extra] };
+}
+
+const ok = (state: MachineState, ...effects: Effect[]) => ({ state, effects });
+const no = (error: string): Transition => ({ error });
+
+/** The first run of a task: its plan, or straight to the work. */
+function firstRun(s: MachineState, t: MachineTask): { state: MachineState; effects: Effect[] } {
+  if (t.type === 'investigate') return ok(running(s, 'implement', { reviewRound: 0, retryAttempts: 0 }), { type: 'run', phase: 'implement', role: 'implementer', prompt: 'investigate' });
+  if (t.usePlan) return ok(running(s, 'plan', { reviewRound: 0, retryAttempts: 0 }), { type: 'run', phase: 'plan', role: 'implementer', prompt: 'plan' });
+  return ok(running(s, 'implement', { reviewRound: 0, retryAttempts: 0 }), { type: 'run', phase: 'implement', role: 'implementer', prompt: 'implement' });
+}
+
+/** Comments that came in during a turn are worked on before anything else. */
+function deliverPending(s: MachineState, planning: boolean, extra: Effect[] = []): { state: MachineState; effects: Effect[] } {
+  if (planning) return ok(running(s, 'plan', { retryAttempts: 0 }), ...extra, { type: 'run', phase: 'plan', role: 'implementer', prompt: 'replan', pending: true });
+  return ok(running(s, 'resume', { retryAttempts: 0 }), ...extra, { type: 'run', phase: 'resume', role: 'implementer', prompt: 'resume', pending: true });
+}
+
+/** The implementation (or a comment's work) is done: review it, or hand it to the user. */
+function afterWork(s: MachineState, t: MachineTask, changes: boolean): { state: MachineState; effects: Effect[] } {
+  if (t.type === 'investigate') return toReview(s);
+  if (!t.useReview) return toReview(s);
+  if (!changes) return toReview(s, [{ type: 'note', text: 'Nothing changed against the base branch in any repository, so there was nothing to review.' }]);
+  return ok(running(s, 'review', { reviewRound: 1, retryAttempts: 0 }), { type: 'run', phase: 'review', role: 'reviewer', prompt: 'review', round: 1 });
+}
+
+/** The phase a comment or an answer resumes with, from where the task waits. */
+function resumeWith(s: MachineState, text: string, pending = false): { state: MachineState; effects: Effect[] } {
+  if (s.status === 'waiting' && PLAN_WAITING.includes(s.waitingReason)) {
+    // Feedback belongs to a plan the user saw ready; answers to questions are just the next turn.
+    const feedback: Effect[] = s.waitingReason === 'plan_approval' ? [{ type: 'planFeedback', text }] : [];
+    return ok(running(s, 'plan'), ...feedback, { type: 'run', phase: 'plan', role: 'implementer', prompt: 'replan', text, ...(pending ? { pending } : {}) });
+  }
+  return ok(running(s, 'resume'), { type: 'run', phase: 'resume', role: 'implementer', prompt: 'resume', text, ...(pending ? { pending } : {}) });
+}
+
+export function next(s: MachineState, e: MachineEvent, t: MachineTask, cfg: MachineConfig): Transition {
+  const rounds = Math.min(10, Math.max(1, Math.round(cfg.rounds)));
+  // A turn's end only moves a task the automation still has: one dragged to Done (or back to To do)
+  // meanwhile keeps its column.
+  const automated = s.status === 'in_progress' || s.status === 'waiting';
+  switch (e.type) {
+    case 'start':
+      if (s.status !== 'todo' && !(s.status === 'in_progress' && s.runState === 'queued') && !(s.status === 'waiting' && !s.phase)) return no('Only a task in To do can be started');
+      if (!e.slot) return ok(moved(s, { status: 'in_progress', runState: 'queued', phase: undefined, reviewRound: 0 }), { type: 'note', text: 'Queued: the project is running as many tasks as it may at once. It starts when one finishes.' });
+      return firstRun(s, t);
+
+    case 'planned': {
+      if (!automated) return ok({ ...s, runState: 'idle' });
+      if (e.pending) return deliverPending(s, true);
+      if (e.outcome === 'questions') return ok(waiting(s, 'plan_questions', 'The plan has questions for you', { phase: 'plan', retryAttempts: 0 }));
+      if (t.planApproval === 'manual') return ok(waiting(s, 'plan_approval', 'The plan is ready for your approval', { phase: 'plan', retryAttempts: 0 }));
+      return ok(running(s, 'implement', { retryAttempts: 0 }), { type: 'acceptPlan' }, { type: 'run', phase: 'implement', role: 'implementer', prompt: 'implement' });
+    }
+
+    case 'implemented':
+    case 'resumed':
+      if (!automated) return ok({ ...s, runState: 'idle' });
+      if (e.pending) return deliverPending(s, false);
+      return afterWork(s, t, e.changes);
+
+    case 'reviewed': {
+      if (!automated) return ok({ ...s, runState: 'idle' }, { type: 'reviewerHome' });
+      const r = e.round;
+      // The review cycle is over (approved, or the final re-review still wants changes), but comments
+      // came in while it ran: they're worked on first, and the result is reviewed again as usual.
+      if (e.pending && (e.approved || (r !== undefined && r > rounds))) {
+        const said = e.approved ? (r === undefined ? 'The review approved the work.' : `The review approved the work in round ${r}.`) : 'The final re-review still asks for changes: see its findings.';
+        return deliverPending(s, false, [{ type: 'reviewerHome' }, { type: 'note', text: `${said} Comments came in while it ran: the agent works on them now.` }]);
+      }
+      if (e.approved) return toReview(s, [{ type: 'reviewerHome' }, { type: 'note', text: r === undefined ? 'The review approved the work.' : `The review approved the work in round ${r}.` }]);
+      if (r !== undefined && r > rounds) {
+        return toReview(s, [{ type: 'reviewerHome' }, { type: 'note', text: 'The final re-review still asks for changes: see its findings. Comment to have them worked on.' }]);
+      }
+      return ok(running(s, 'fix', { retryAttempts: 0 }), { type: 'run', phase: 'fix', role: 'implementer', prompt: 'fix', ...(r !== undefined ? { round: r } : {}) });
+    }
+
+    case 'fixed': {
+      if (!automated) return ok({ ...s, runState: 'idle' }, { type: 'reviewerHome' });
+      if (e.pending) return deliverPending(s, false, [{ type: 'reviewerHome' }]);
+      const r = e.round;
+      if (r === undefined) return toReview(s, [{ type: 'reviewerHome' }]);
+      if (r < rounds || cfg.reReviewLastFix) {
+        return ok(running(s, 'review', { reviewRound: r + 1, retryAttempts: 0 }), { type: 'run', phase: 'review', role: 'reviewer', prompt: 'rereview', round: r + 1 });
+      }
+      return toReview(s, [{ type: 'reviewerHome' }]);
+    }
+
+    case 'prDone':
+    case 'compacted':
+      if (!automated && e.type === 'prDone') return ok({ ...s, runState: 'idle' });
+      if (e.pending) return deliverPending(s, false);
+      if (e.type === 'prDone') return toReview(s);
+      // Compacting doesn't move the task: it stays in the column it was compacted in, and one waiting
+      // keeps why (plan questions, a failure...), so Continue and Retry still do what they did before.
+      return ok({ ...s, runState: 'idle', retryAttempts: 0 });
+
+    case 'prReview':
+      if (busy(s)) return no('Stop it first: it is running');
+      if (s.status === 'archived') return no('An archived task gets no reviews');
+      return ok(running(s, 'pr-review', { retryAttempts: 0 }), { type: 'run', phase: 'pr-review', role: 'reviewer', prompt: 'pr.review' });
+
+    case 'prReviewed':
+      if (!automated) return ok({ ...s, runState: 'idle' }, { type: 'reviewerHome' });
+      if (e.pending) return deliverPending(s, false, [{ type: 'reviewerHome' }]);
+      return toReview(s, [{ type: 'reviewerHome' }]);
+
+    case 'asking':
+      if (!automated) return ok(s);
+      return ok(waiting(s, 'agent_asking', e.text ?? 'The agent is asking something in its terminal', { runState: 'idle' }));
+
+    case 'working':
+      if (s.status !== 'waiting' || s.waitingReason !== 'agent_asking') return ok(s);
+      return ok(moved(s, { status: 'in_progress', runState: 'running' }));
+
+    case 'stop':
+      if (s.runState === 'queued') return ok(waiting(s, 'stopped', 'Stopped before it started'));
+      if (s.runState === 'idle' && !(s.status === 'waiting' && s.waitingReason === 'agent_asking')) return no('It is not running');
+      if (s.runState === 'stopping') return no('It is already stopping');
+      return ok({ ...s, runState: 'stopping' }, { type: 'interrupt' });
+
+    case 'stopped':
+      if (!automated) return ok({ ...s, runState: 'idle' });
+      return ok(waiting(s, 'stopped', e.by ? `Stopped by ${e.by}` : 'Stopped'));
+
+    case 'failed':
+      if (!automated) return ok({ ...s, runState: 'idle' });
+      return ok(waiting(s, 'failed', e.error));
+
+    case 'limited':
+      if (!automated) return ok({ ...s, runState: 'idle' });
+      return ok({ ...waiting(s, 'usage_limit', e.text ?? 'A usage limit or a lost connection interrupted it: it carries on by itself'), retryAt: e.retryAt, retryAttempts: e.attempts });
+
+    case 'gaveUp':
+      if (!automated) return ok({ ...s, runState: 'idle' });
+      return ok(waiting(s, 'usage_limit', e.text, { retryAttempts: s.retryAttempts }));
+
+    case 'interrupted':
+      if (!automated) return ok({ ...s, runState: 'idle' });
+      return ok(waiting(s, 'interrupted', e.text ?? 'Its worker went away mid-run: Retry to carry on'));
+
+    case 'retry': {
+      if (s.status !== 'waiting' || busy(s) || !RETRYABLE.includes(s.waitingReason)) return no('Only a stopped, failed or interrupted task can be retried');
+      if (!e.last) return firstRun(s, t);
+      const { phase, round, role } = e.last;
+      return ok(running(s, phase), { type: 'run', phase, role, prompt: 'continue', ...(round !== undefined ? { round } : {}) });
+    }
+
+    case 'continue': {
+      if (s.status !== 'waiting' || busy(s)) return no('Only a waiting task can be continued');
+      const answer = e.answer?.trim();
+      if (s.waitingReason === 'plan_questions') return ok(running(s, 'plan'), { type: 'run', phase: 'plan', role: 'implementer', prompt: 'replan', text: answer || DEFAULT_ANSWER });
+      if (s.waitingReason === 'plan_approval') {
+        if (answer) return ok(running(s, 'plan'), { type: 'planFeedback', text: answer }, { type: 'run', phase: 'plan', role: 'implementer', prompt: 'replan', text: answer });
+        return ok(running(s, 'implement'), { type: 'acceptPlan' }, { type: 'run', phase: 'implement', role: 'implementer', prompt: 'implement' });
+      }
+      if (answer) return ok(running(s, 'resume'), { type: 'run', phase: 'resume', role: 'implementer', prompt: 'resume', text: answer });
+      return next(s, { type: 'retry', last: e.last }, t, cfg);
+    }
+
+    case 'approvePlan':
+      if (s.status !== 'waiting' || busy(s) || !PLAN_WAITING.includes(s.waitingReason)) return no('There is no plan waiting for approval');
+      return ok(running(s, 'implement'), { type: 'acceptPlan' }, { type: 'run', phase: 'implement', role: 'implementer', prompt: 'implement' });
+
+    case 'requestPlanChanges':
+      if (s.status !== 'waiting' || busy(s) || !PLAN_WAITING.includes(s.waitingReason)) return no('There is no plan waiting for changes');
+      if (!e.text.trim()) return no('Say what to change');
+      return resumeWith(s, e.text.trim());
+
+    case 'comment':
+      if (s.status === 'todo' || s.status === 'done' || s.status === 'archived') return ok(s);
+      if (e.busy || busy(s)) return ok(s, { type: 'queueComment' });
+      return resumeWith(s, e.text);
+
+    case 'review':
+      if (busy(s)) return no('Stop it first: it is running');
+      if (t.type === 'investigate') return no('An investigation has no changes to review');
+      if (s.status !== 'review' && !(s.status === 'waiting' && !PLAN_WAITING.includes(s.waitingReason))) return no('Only a task in Waiting or Review can be reviewed by hand');
+      return ok(running(s, 'review'), { type: 'run', phase: 'review', role: 'reviewer', prompt: 'review' });
+
+    case 'pr':
+      if (busy(s)) return no('Stop it first: it is running');
+      if (t.type === 'investigate') return no('An investigation has no changes to open pull requests for');
+      if (s.status !== 'review' && s.status !== 'waiting' && s.status !== 'done') return no('Pull requests are opened from Waiting, Review or Done');
+      return ok(running(s, e.mode === 'create' ? 'pr' : 'pr-fix'), { type: 'run', phase: e.mode === 'create' ? 'pr' : 'pr-fix', role: 'implementer', prompt: e.mode === 'create' ? 'pr.create' : 'pr.fix' });
+
+    case 'compact':
+      if (busy(s)) return no('Stop it first: it is running');
+      if (s.status !== 'review' && s.status !== 'waiting') return no('Only a task in Waiting or Review can be compacted');
+      // Stays in its column: only the run shows.
+      return ok({ ...s, runState: 'starting', phase: 'compact' }, { type: 'run', phase: 'compact', role: 'implementer', prompt: 'compact' });
+  }
+}
