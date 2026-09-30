@@ -1413,6 +1413,7 @@ export class Orchestrator {
       case 'pr-fix': {
         say('result', text);
         this.recordPrs(task, text);
+        this.refreshPrBoards(task);
         if (live.phase === 'pr') this.update(task.id, { flags: { ...(this.ctx.repo.getTask(task.id)?.flags ?? task.flags), prRequested: true } });
         event = { type: 'prDone', pending };
         break;
@@ -1431,7 +1432,11 @@ export class Orchestrator {
     void this.drain(task.project);
   }
 
-  /** The pull requests a PR turn reported (PR: lines), kept on the task by repository. */
+  /**
+   * The pull requests a PR turn reported, kept on the task by repository. `PR:` lines are linked as
+   * they are; a PR only mentioned by URL (loose) is linked when it is one of the task's repositories',
+   * no other task has it and the board lists it from the task's branch.
+   */
   private recordPrs(task: KanbanTask, text: string) {
     const def = this.ctx.project(task.project);
     const repos = def ? taskRepos(def, task) : [];
@@ -1442,10 +1447,33 @@ export class Orchestrator {
       const repo = repos.find((r) => r.remote && pr.repo && r.remote.toLowerCase() === pr.repo.toLowerCase());
       const repoId = repo?.id ?? task.project;
       const branch = branches[repoId] ?? task.branch;
+      if (pr.loose && (!repo?.remote || !pr.repo || !sameRepo(repo.remote, pr.repo) || this.ctx.repo.tasksOfPr(pr.repo, pr.number).some((id) => id !== task.id) || !this.boardHas(task, repo.remote, pr.number, branch))) continue;
       this.ctx.repo.upsertPrLink(task.id, { repoId, ...(pr.repo ? { repo: pr.repo } : {}), number: pr.number, url: pr.url, state: 'OPEN', ...(branch ? { branch } : {}) });
       changed = true;
     }
     if (changed) this.pushTask(this.ctx.repo.getTask(task.id));
+  }
+
+  /** Whether the floor's PR board lists that PR with the task's branch as its head (how a loose URL is confirmed as the task's). */
+  private boardHas(task: KanbanTask, remote: string, number: number, branch: string | undefined): boolean {
+    try {
+      const items = this.ctx.floor(task.project)?.githubFor(remote)?.pulls.items;
+      return !!branch && !!items?.some((p) => p.number === number && p.headRefName === branch);
+    } catch {
+      return false;
+    }
+  }
+
+  /** After a PR turn the floor's PR board lists the new PR at once (its sync then links it by branch, whatever the answer said). */
+  private refreshPrBoards(task: KanbanTask) {
+    try {
+      const def = this.ctx.project(task.project);
+      const floor = this.ctx.floor(task.project);
+      if (!def || !floor) return;
+      for (const r of taskRepos(def, task)) if (r.kind === 'git' && r.remote) void floor.githubFor(r.remote)?.refresh().catch(() => {});
+    } catch {
+      /* a missing floor or board is no reason to fail the turn */
+    }
   }
 
   /** A usage limit or lost connection: retry later, within autoResume's limits. */

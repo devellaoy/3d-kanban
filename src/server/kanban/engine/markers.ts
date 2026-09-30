@@ -2,7 +2,7 @@
 // or asks questions, a review's verdict, the pull requests a PR turn opened, and whether the turn was
 // cut short by a usage limit or the network. Pure: the orchestrator hands in the text it read.
 
-import { PLAN_READY, PR_LINE, QUESTIONS_HEADING, REVIEW_LINE } from '../../../shared/kanban/prompts.js';
+import { PLAN_READY, QUESTIONS_HEADING, REVIEW_LINE } from '../../../shared/kanban/prompts.js';
 import type { ReviewVerdict } from '../../../shared/kanban/types.js';
 
 export type PlanOutcome = 'ready' | 'questions';
@@ -124,17 +124,41 @@ export interface PrLine {
   /** owner/name, for a github.com pull request URL. */
   repo?: string;
   number?: number;
+  /** Only a github.com pull request URL somewhere in the text, not a `PR: <url>` line. */
+  loose?: true;
 }
 
-/** The pull requests a PR turn reported, one `PR: <url>` line each (duplicates once). */
+/** `PR: <url>` as a line starts: optional bullet and emphasis, `PR` or `Pull request` (created/opened/updated), a colon, then the URL. */
+const PR_NAMED = /^(?:(?:[-+*]|\d+[.)])\s+)?[*_`]*(?:PR|Pull request)(?:\s+(?:created|opened|updated))?[*_`]*\s*:[*_`]*\s*(.*)$/i;
+/** The URL after the colon: `<url>`, a Markdown link's, or a bare one. */
+const PR_URL = /^(?:<(https?:\/\/[^>\s]+)>|\[[^\]]*\]\((https?:\/\/[^)\s]+)\)|(https?:\/\/\S+))/;
+const GH_PULL = /https?:\/\/github\.com\/([\w.-]+\/[\w.-]+)\/pull\/(\d+)/i;
+const GH_PULL_ANY = /https:\/\/github\.com\/[\w.-]+\/[\w.-]+\/pull\/\d+/gi;
+
+/** A PR URL as the office keeps it: a github.com one is reduced to its pull request (no /files, #..., ?...). */
+function prLine(url: string): PrLine {
+  const gh = GH_PULL.exec(url);
+  return gh ? { url: `https://github.com/${gh[1]}/pull/${gh[2]}`, repo: gh[1], number: Number(gh[2]) } : { url };
+}
+
+/**
+ * The pull requests a PR turn reported (duplicates once, first appearance first): a line that starts
+ * `PR: <url>` (see PR_NAMED), else any github.com pull request URL elsewhere in the text, marked
+ * `loose`. A named line wins over a loose mention of the same PR. Quotes don't count.
+ */
 export function prLines(text: string): PrLine[] {
   const out = new Map<string, PrLine>();
   for (const l of prMarkerLines(text)) {
-    const m = PR_LINE.exec(l.replace(/[.,;)]+$/, ''));
-    if (!m) continue;
-    const url = m[1];
-    const gh = /^https?:\/\/github\.com\/([\w.-]+\/[\w.-]+)\/pull\/(\d+)/.exec(url);
-    out.set(url, gh ? { url, repo: gh[1], number: Number(gh[2]) } : { url });
+    const named = PR_NAMED.exec(l);
+    const u = named ? PR_URL.exec(named[1]) : null;
+    if (u) {
+      const hit = prLine((u[1] ?? u[2] ?? u[3]).replace(/[.,;)>\]]+$/, ''));
+      if (!out.get(hit.url) || out.get(hit.url)!.loose) out.set(hit.url, hit);
+    }
+    for (const m of l.matchAll(GH_PULL_ANY)) {
+      const hit = prLine(m[0]);
+      if (!out.has(hit.url)) out.set(hit.url, { ...hit, loose: true });
+    }
   }
   return [...out.values()];
 }
