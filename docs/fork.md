@@ -10,6 +10,31 @@ Back to the [README](../README.md).
   `git init && git add -A && git commit -m "3d-kanban on agent-office 665aeec"`, then
   `git remote add upstream https://github.com/AgentSystemLabs/agent-office.git && git fetch upstream`.
 
+## Name and releases
+
+3d-kanban is its own product, published at https://github.com/devellaoy/3d-kanban, so that it never
+clashes with an upstream install on the same machine:
+
+- The npm package is `3d-kanban` and its command `kanban3d` (`package.json` `bin`); the entry file
+  keeps upstream's name, `bin/agent-office.js`, to keep the seams small.
+- `install.sh` / `install.ps1` download the release asset `3d-kanban.tgz` from this repository's
+  releases, install it in `~/.local/share/3d-kanban` (Windows `%LOCALAPPDATA%\3d-kanban`) and write
+  a `kanban3d` launcher. The fork's first release, v0.1.3, still carried `agent-office.tgz`; both
+  installers fall back to that name.
+- `.github/workflows/release.yml` publishes `v<major.minor>.<commits on main>` with `3d-kanban.tgz`.
+- The command starts with a letter because PowerShell reads a bare `3d-kanban` as the number `3d`
+  followed by `-kanban`; `kanban3d` runs as it is in PowerShell, cmd and Git Bash.
+- What stays upstream's on purpose: the `AGENT_OFFICE_*` environment variables (the office and the
+  installers read them), the data home `~/agent-office` and its `.agent-office` folder (the docs and
+  the ai-kanban migration rely on it), the `agent-office` MCP server's name, log prefixes
+  (`agent-office: …`), the product name *Agent Office* in the UI, and a server's own names from
+  `deploy/provision.sh` (`/opt/agent-office`, the `agent-office` service, `/etc/agent-office`,
+  `agent-office-team`), which existing servers and their upgrades rely on.
+- The kanban's `better-sqlite3` 13 needs Node.js 22, so `engines`, both installers and
+  `deploy/provision.sh` require 22 instead of upstream's 20. npm runs its implicit `node-gyp rebuild` on
+  install (the package has a `binding.gyp` and no install script), a no-op build when its bundled
+  prebuild fits but one that still needs Python 3, make and a C++ toolchain.
+
 ## Sync policy
 
 Upstream moves fast (hundreds of commits in its first days, mostly in `main.ts`, `server.ts`,
@@ -96,6 +121,12 @@ New files are not seams (they can't conflict): `src/{server,shared,client}/kanba
 | `src/server/server.ts` | `worker.resume` case | `kanban.workerResume(info, caller)` first | R on a task worker whose task waits is Retry |
 | `src/server/server.ts` | `worker.kill` case; `/office/workers` send-home route | The intent `{ by, reason, done? }` (`msg.kanban.done`) to `floor.sendHome` | X can move the task to Done; leave-on-merge's reason |
 | `src/server/server.ts` | hook server: `listenHooks(cfg.hookPort ?? lastHookPort)` and the fallback message | A pinned hook port | See config.ts |
+| `src/server/upgrade.ts` | `findAppDir()` | The install is found by `package.json` `name === '3d-kanban'` | The package is renamed ([Name and releases](#name-and-releases)); without it self-upgrades on a provisioned server would look in the wrong folder |
+| `src/server/config.ts` | `HELP` title and *Usage* lines | `kanban3d` instead of `agent-office` | The command is `kanban3d` |
+| `src/server/setup.ts` | `SETUP_HELP` title and *Usage*; `walkthrough()`'s "run `kanban3d setup` again" | Same | Same |
+| `src/server/accounts.ts` | `HELP` title and *Usage*; the hints in `runAccounts()` (no office yet, no accounts yet, admin first) | Same | Same |
+| `src/server/cli.ts` | `passwordLine()` | `(kanban3d accounts)` | Same |
+| `src/server/decor.ts` | picture fetch `user-agent` | `3d-kanban; +https://github.com/devellaoy/3d-kanban` | Sites see this fork's name and address |
 | `src/server/server.ts` | HTTP: after `/favicon.svg`, before the session check | `/manifest.webmanifest` (`application/manifest+json`), `/sw.js` (`Service-Worker-Allowed: /`), `/offline.html`, `/icons/*`, all `no-cache` and without a session | The PWA: the browser fetches the manifest, icons and worker without the cookie ([configuration](configuration.md#pwa)) |
 
 ### Shared
@@ -161,6 +192,8 @@ New files are not seams (they can't conflict): `src/{server,shared,client}/kanba
 | `src/client/ui/hud.ts` | help list | `Mouse` row for both views, 🏀 text, `Wheel` instead of `Drag / wheel` | Same |
 | `src/client/index.html`, `src/client/lite.html` | `<head>` after the icon; after the entry `<script>` | Manifest, apple-touch-icon, `theme-color` (index only; lite had one), `apple-mobile-web-app-capable`; `<script type="module" src="./pwa.ts">` | The PWA: installable, and `pwa.ts` registers `public/sw.js` |
 | `src/client/login.html`, `src/client/join.html`, `src/client/claim.html` | `<head>` after the icon | `theme-color` only | The installed app's colour on the sign-in pages |
+| `src/client/ui/prompt.ts` | `sendHomeDialog()` `choices` | "`kanban3d prune` tidies up later" | The command is `kanban3d` |
+| `src/client/ui/accounts.ts` | shared-password note (off) | "run `kanban3d accounts password on`" | Same |
 
 ### Build, packaging, deploy, docs
 
@@ -170,6 +203,13 @@ New files are not seams (they can't conflict): `src/{server,shared,client}/kanba
 | `package.json` *(unmarked)* | `dependencies`, `devDependencies` | `better-sqlite3`, `@types/better-sqlite3` | The kanban's database |
 | `package.json` *(unmarked)* | `scripts` | `migrate:ai-kanban` (tsx `scripts/migrate-ai-kanban/index.ts`); `typecheck` also runs `tsc -p tsconfig.scripts.json --noEmit` | The migration and its type check |
 | `package.json` *(unmarked)* | `files` | `skills` | The bundled skills ship with the package |
+| `package.json`, `package-lock.json` *(unmarked)* | `name`, `bin`, `engines` | `3d-kanban`, `{ "3d-kanban": "bin/agent-office.js" }`, `node >=22` | [Name and releases](#name-and-releases) |
+| `install.sh` | header comment, `REPO`/`NAME`/`MARKER`/`INSTALL_DIR`, `die()`, `check_requirements()`, `install_release()`, `write_launcher()`, `main()` messages | `devellaoy/3d-kanban`, asset `3d-kanban.tgz` (falling back to `agent-office.tgz` for v0.1.3), `~/.local/share/3d-kanban`, launcher `3d-kanban`, Node 22, a build-tools hint when `npm ci` fails | Same |
+| `install.ps1` | header comment, `$repo`/`$name`/`$marker`/`$installDir`, `Check-Requirements`, `Install-Release`, `Write-Launcher`, messages | The same as `install.sh`, for `%LOCALAPPDATA%\3d-kanban` and `3d-kanban.cmd` | Same |
+| `.github/workflows/release.yml` | header comment; *Pack the release*; *Install it with install.sh*; *Publish* | `3d-kanban-<version>.tgz` → `3d-kanban.tgz` (and the entry file checked in it), `bin/3d-kanban --help` checked, the release notes lead with the install lines of `$GITHUB_REPOSITORY` | Same |
+| `deploy/provision.sh` | header comment, `APP_REPO` default, the *Installing* step, the Node check | `https://github.com/devellaoy/3d-kanban.git`; installs Node 22 when it finds an older one | A server gets this fork (a clone built in place, not the release asset) |
+| `deploy/aws.sh`, `deploy/azure.sh` | `cmd_up()` `APP_REPO` fallback | `https://github.com/devellaoy/3d-kanban` when the clone has no GitHub origin | Same |
+| `deploy/fly.sh`, `deploy/railway.sh`, `deploy/dokploy.sh` | "run this from a clone of …" errors | `3d-kanban` | Same |
 | `tsconfig.scripts.json` | new file | Type-checks `scripts/**/*.ts` | The migration script is outside `src/` |
 | `bin/office-workers.js` | import; `runTool()`; `tools/list`, `tools/call` *(unmarked)* | `get_task` / `search_tasks` from `office-tasks.js`, listed only when `tasksVisible(env)` (`AIKANBAN_API_BASE` or `AGENT_OFFICE_TASKS` set) | MCP tools for task workers |
 | `deploy/container/Dockerfile` | build stage | `python3 make g++`; `npm rebuild better-sqlite3` after `npm ci --ignore-scripts` | Native module needs its binary |
@@ -181,6 +221,9 @@ New files are not seams (they can't conflict): `src/{server,shared,client}/kanba
 | `vite.config.ts` | imports (`createHash`, `writeFileSync`); `pwaBuild()` (new, before `defineConfig`); `plugins` | Writes the build's id into `dist/public/sw.js` (`'__PWA_BUILD__'`) | Each build's `/assets/` get a cache of their own |
 | `docs/configuration.md` | end of the file | Section *PWA* (the fork's) | How to install it, HTTPS, updates |
 | `README.md` | fork section | A PWA bullet | Same |
+| `README.md` | fork section *Install*; upstream part *(unmarked)*: badges, the install lines, *Requirements* (Node 22, build tools), *Run locally* commands and clone, the deploy sections' clones, `provision.sh` line, *Add users* commands, *Development*'s release sentence | `devellaoy/3d-kanban` and the `3d-kanban` command everywhere an instruction installs or runs it | No instruction installs upstream by mistake |
+| `docs/self-hosting.md`, `docs/aws.md`, `docs/azure.md`, `docs/fly.md`, `docs/railway.md`, `docs/dokploy.md` *(unmarked)* | `provision.sh` lines, clones, "install/pull the latest …", commands and the systemd `ExecStart` | Same | Same |
+| `docs/configuration.md`, `docs/maps.md` *(unmarked)* | *Command line* usage lines; `3d-kanban <dir>` mentions | Same | Same |
 
 ### How to re-apply after an upstream merge
 

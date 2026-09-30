@@ -171,6 +171,13 @@ export function makeRepo(dir: string) {
   git(dir, 'commit', '-q', '-m', 'init');
 }
 
+/** A task as one `repo.updateTask` left it, with the run going at that moment and when it was. */
+export interface TaskSnapshot {
+  task: KanbanTask;
+  runId?: number;
+  at: number;
+}
+
 export interface EngineFixture {
   root: string;
   dir: string;
@@ -186,6 +193,15 @@ export interface EngineFixture {
   task(id: number): KanbanTask;
   newTask(patch?: Partial<Parameters<KanbanRepository['createTask']>[0]>): KanbanTask;
   waitTask(id: number, pred: (t: KanbanTask) => boolean, what: string, timeout?: number): Promise<KanbanTask>;
+  /** Every state the task was updated to, oldest first. */
+  history(id: number): TaskSnapshot[];
+  /**
+   * Waits until the task was, at any update from `history(id)[since]` on, in a state `pred` accepts, and
+   * returns that update. For a state the engine may already have left by the time a poll looks (in
+   * progress between an answer typed in and the turn's end, when the fake agent is quick), where
+   * `waitTask` would miss it on a slow machine.
+   */
+  sawTask(id: number, pred: (t: KanbanTask) => boolean, what: string, timeout?: number, since?: number): Promise<TaskSnapshot>;
   close(): Promise<void>;
 }
 
@@ -265,6 +281,18 @@ export async function engineFixture(opts: { engine?: EngineOptions; repos?: Floo
   const def: FloorDef = { id: 'proj', name: 'Proj', dir, repo: 'acme/proj', palette: 0, addedBy: 'test', addedAt: 0, ...(opts.repos ? { repos: opts.repos } : {}) };
   const floor = { id: 'proj', dir, workers, project: { name: 'Proj', dir, branch: 'main' }, sendHome: (id: string, cleanup?: 'keep' | 'worktree' | 'all', intent?: DepartureIntent) => workers.kill(id, cleanup, undefined, undefined, intent) } as unknown as Floor;
   const repo = new KanbanRepository(openKanbanDb(':memory:'));
+  // Every update is kept, so a test can check a state the task only passed through (sawTask).
+  const history = new Map<number, TaskSnapshot[]>();
+  const updateTask = repo.updateTask.bind(repo);
+  repo.updateTask = (id, patch) => {
+    const t = updateTask(id, patch);
+    if (t) {
+      let list = history.get(id);
+      if (!list) history.set(id, (list = []));
+      list.push({ task: t, runId: repo.activeRun(id)?.id, at: Date.now() });
+    }
+    return t;
+  };
   const kanbanData = path.join(root, 'kanban-data');
   mkdirSync(kanbanData, { recursive: true });
   const settings = new KanbanSettingsStore(kanbanData);
@@ -319,6 +347,19 @@ export async function engineFixture(opts: { engine?: EngineOptions; repos?: Floo
       }
       assert.ok(pred(t), `timed out waiting for ${what}: status ${t.status}, phase ${t.phase}, runState ${t.runState}, waiting ${t.waitingReason ?? '-'} ${t.waitingText ?? ''}`);
       return t;
+    },
+    history: (id) => [...(history.get(id) ?? [])],
+    async sawTask(id, pred, what, timeout = 15_000, since = 0) {
+      const end = Date.now() + timeout;
+      const find = () => (history.get(id) ?? []).slice(since).find((s) => pred(s.task));
+      let hit = find();
+      while (!hit && Date.now() < end) {
+        await new Promise((r) => setTimeout(r, 30));
+        hit = find();
+      }
+      const seen = (history.get(id) ?? []).slice(since).map((s) => `${s.task.status}/${s.task.phase ?? '-'}/${s.task.runState}`);
+      assert.ok(hit, `timed out waiting for ${what}; the task went through: ${seen.join(' → ') || 'no updates'}`);
+      return hit;
     },
     async close() {
       engine.dispose();

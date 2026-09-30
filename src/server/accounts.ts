@@ -283,15 +283,16 @@ export class Accounts {
   }
 }
 
-const HELP = `agent-office accounts — who can sign in to the office
+// 3d-kanban: the command is `kanban3d` (here and in the hints below).
+const HELP = `kanban3d accounts — who can sign in to the office
 
 Usage:
-  agent-office accounts [list]                 Accounts, open invites, and the shared password
-  agent-office accounts invite [name] [--admin]
+  kanban3d accounts [list]                    Accounts, open invites, and the shared password
+  kanban3d accounts invite [name] [--admin]
                                                Make a single-use invite link (valid 7 days)
-  agent-office accounts revoke <name>          Delete an account; it's signed out at once
-  agent-office accounts role <name> admin|member
-  agent-office accounts password on|off        Whether the shared office password still works
+  kanban3d accounts revoke <name>             Delete an account; it's signed out at once
+  kanban3d accounts role <name> admin|member
+  kanban3d accounts password on|off           Whether the shared office password still works
 
 Options:
   -d, --dir <dir>   The office's directory: the project it was started in, or its
@@ -326,7 +327,7 @@ export function accountsCommand(argv: string[]): number {
   try {
     statSync(dataDir);
   } catch {
-    console.error(`agent-office accounts: no office has run in ${dir} yet — start it once with \`agent-office\` there`);
+    console.error(`agent-office accounts: no office has run in ${dir} yet — start it once with \`kanban3d\` there`);
     return 1;
   }
   const accounts = new Accounts(dataDir);
@@ -340,7 +341,7 @@ export function accountsCommand(argv: string[]): number {
       for (const a of s.accounts) {
         console.log(`  ${a.name.padEnd(NAME_MAX)}  ${a.role.padEnd(6)}  since ${day(a.createdAt)}  ${a.lastSeenAt ? `last seen ${day(a.lastSeenAt)}` : 'never signed in'}`);
       }
-      if (!s.accounts.length) console.log('  none yet: `agent-office accounts invite <name> --admin` makes you one');
+      if (!s.accounts.length) console.log('  none yet: `kanban3d accounts invite <name> --admin` makes you one');
       if (s.invites.length) {
         console.log(`\nOpen invites (${s.invites.length}):`);
         for (const v of s.invites) console.log(`  ${(v.name ?? '(they pick)').padEnd(NAME_MAX)}  ${v.role.padEnd(6)}  by ${v.createdBy}, until ${day(v.expiresAt)}  /join#${v.token}`);
@@ -372,7 +373,7 @@ export function accountsCommand(argv: string[]): number {
     case 'password': {
       if (arg !== 'on' && arg !== 'off') return usage('password takes on or off');
       if (arg === 'off' && !accounts.state(new Set()).accounts.some((a) => a.role === 'admin')) {
-        return fail('make an admin account first (`agent-office accounts invite <name> --admin`), or nobody could manage the office');
+        return fail('make an admin account first (`kanban3d accounts invite <name> --admin`), or nobody could manage the office');
       }
       accounts.setSharedPassword(arg === 'on');
       console.log(arg === 'on' ? 'The shared office password works again.' : 'The shared office password no longer signs anyone in; people who used it are signed out within seconds.');

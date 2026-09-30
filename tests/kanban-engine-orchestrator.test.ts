@@ -64,8 +64,9 @@ test('claude: plan → implement → review CHANGES_REQUESTED → fix → review
     { when: 'This is review round 1 of', reply: 'Good.\nREVIEW: APPROVED' },
     { when: 'Open the pull requests for', reply: 'Opened it.\nPR: https://github.com/acme/proj/pull/42' },
   ]);
+  const mark = fx.history(task.id).length;
   await fx.engine.commented(task.id, comment.id, ADA);
-  await fx.waitTask(task.id, (x) => x.phase === 'resume' || x.phase === 'review', 'the resume');
+  await fx.sawTask(task.id, (x) => x.phase === 'resume', 'the resume', 15_000, mark);
   const resumed = await fx.waitTask(task.id, (x) => x.status === 'review' && x.runState === 'idle' && fx.repo.listRuns(task.id).length === 7, 'the review after the comment', 30_000);
   assert.deepEqual(fx.repo.listRuns(task.id).slice(5).map((r) => r.phase), ['resume', 'review']);
   assert.equal(resumed.summary, 'Renamed it as asked.');

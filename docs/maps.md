@@ -20,7 +20,7 @@ A long stone hall with a timber roof, pillars and pointed arches down both sides
 
 ## Maps of your own
 
-A map is plain JSON. Put a file in the office's `.agent-office/maps/` folder: `~/agent-office/.agent-office/maps/` for an office started without a project, or `<dir>/.agent-office/maps/` for `agent-office <dir>`. It's read whenever someone opens ⚙️ Settings or joins, so there's nothing to restart: open Settings and it's in the list. A map that won't load is listed with why.
+A map is plain JSON. Put a file in the office's `.agent-office/maps/` folder: `~/agent-office/.agent-office/maps/` for an office started without a project, or `<dir>/.agent-office/maps/` for `kanban3d <dir>`. It's read whenever someone opens ⚙️ Settings or joins, so there's nothing to restart: open Settings and it's in the list. A map that won't load is listed with why.
 
 The easy way is to start from the castle and change only what you want. This one moves the issues board, and the Issues agent's lectern under it, three bays down the west wall, and makes the line shorter:
 

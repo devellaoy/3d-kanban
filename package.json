@@ -1,10 +1,10 @@
 {
-  "name": "agent-office",
+  "name": "3d-kanban",
   "version": "0.1.0",
   "description": "A cartoon 3D multiplayer office where your team spawns Claude Code workers at desks, shares live terminals, talks over voice, and tracks GitHub issues and PRs.",
   "type": "module",
   "bin": {
-    "agent-office": "bin/agent-office.js"
+    "kanban3d": "bin/agent-office.js"
   },
   "files": [
     "bin",
@@ -23,7 +23,7 @@
     "prepare": "npm run build"
   },
   "engines": {
-    "node": ">=20"
+    "node": ">=22"
   },
   "license": "MIT",
   "dependencies": {

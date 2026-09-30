@@ -5,7 +5,7 @@ The full story behind `deploy/dokploy.sh`. The short version is in the [README](
 You need a **[Dokploy](https://dokploy.com) server** and an **API key** for it, plus `ssh`, `curl`, `git`, Node.js and a clone of this repo. Make the key in Dokploy under **Settings → Profile → API/CLI Keys**, and leave its rate limiting off: the script checks on the build every few seconds.
 
 ```bash
-git clone https://github.com/AgentSystemLabs/agent-office && cd agent-office
+git clone https://github.com/devellaoy/3d-kanban && cd 3d-kanban
 export DOKPLOY_API_KEY=<your key>
 deploy/dokploy.sh up --url https://dokploy.example.com --claude-token "$(claude setup-token)"
 ```
@@ -66,7 +66,7 @@ deploy/dokploy.sh reset-password       # new password, shown once; signs everyon
 deploy/dokploy.sh ssh | logs           # a shell in the container / follow the office's logs
 ```
 
-**Updating.** Pull the latest agent-office into your clone and run `deploy/dokploy.sh update`. **⬆️ Upgrade the office** in the **☰** menu is for servers set up with `deploy/provision.sh`: a container's code comes from its image. If a build fails, its log is on the application's **Deployments** tab in Dokploy (`status` prints the link).
+**Updating.** Pull the latest 3d-kanban into your clone and run `deploy/dokploy.sh update`. **⬆️ Upgrade the office** in the **☰** menu is for servers set up with `deploy/provision.sh`: a container's code comes from its image. If a build fails, its log is on the application's **Deployments** tab in Dokploy (`status` prints the link).
 
 **Claude sign-in.** Pass `--claude-token "$(claude setup-token)"` (your Claude subscription) or `--anthropic-api-key <key>`; either becomes an environment variable of the application. Or pass neither, and run `/login` in the first worker's terminal: that sign-in is kept on the volume.
 

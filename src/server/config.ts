@@ -68,14 +68,15 @@ export interface RTCIceServerLike {
   credential?: string;
 }
 
-const HELP = `agent-office — a 3D office for your team and its Claude Code / OpenCode / Codex / Grok / Muse / DeepSeek Harness workers
+// 3d-kanban: the command is `kanban3d` (package.json's bin), so it can sit beside an upstream agent-office install.
+const HELP = `kanban3d — a 3D office for your team and its Claude Code / OpenCode / Codex / Grok / Muse / DeepSeek Harness workers
 
 Usage:
-  agent-office [options]
-  agent-office [dir] [options]
-  agent-office setup [--projects <dir>] [--project <owner/repo>]...
-  agent-office prune [dir] [--dry-run] [--force]
-  agent-office accounts [list|invite|revoke|role|password] ...
+  kanban3d [options]
+  kanban3d [dir] [options]
+  kanban3d setup [--projects <dir>] [--project <owner/repo>]...
+  kanban3d prune [dir] [--dry-run] [--force]
+  kanban3d accounts [list|invite|revoke|role|password] ...
 
 Runs the office. Every project is a floor of the building: ride the elevator,
 pick one of the repositories your \`gh\` login can see, and the office clones it

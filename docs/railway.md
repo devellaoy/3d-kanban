@@ -5,7 +5,7 @@ The full story behind `deploy/railway.sh`. The short version is in the [README](
 You need the **Railway CLI 5 or newer, logged in** (`railway login`; update an older one with `railway upgrade` or `brew upgrade railway`), plus `ssh`, `curl`, Node.js and a clone of this repo:
 
 ```bash
-git clone https://github.com/AgentSystemLabs/agent-office && cd agent-office
+git clone https://github.com/devellaoy/3d-kanban && cd 3d-kanban
 deploy/railway.sh up --claude-token "$(claude setup-token)"
 ```
 
@@ -63,7 +63,7 @@ deploy/railway.sh reset-password       # new password, shown once; signs everyon
 deploy/railway.sh ssh | logs           # a shell in the container / follow the office's logs
 ```
 
-**Updating.** Pull the latest agent-office into your clone and run `deploy/railway.sh update`. **⬆️ Upgrade the office** in the **☰** menu is for servers set up with `deploy/provision.sh`: a container's code comes from its image.
+**Updating.** Pull the latest 3d-kanban into your clone and run `deploy/railway.sh update`. **⬆️ Upgrade the office** in the **☰** menu is for servers set up with `deploy/provision.sh`: a container's code comes from its image.
 
 **Claude sign-in.** Pass `--claude-token "$(claude setup-token)"` (your Claude subscription) or `--anthropic-api-key <key>`; either becomes a variable on the service. Or pass neither, and run `/login` in the first worker's terminal: that sign-in is kept on the volume.
 

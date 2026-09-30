@@ -5,7 +5,7 @@ The full story behind `deploy/azure.sh`. The short version is in the [README](..
 It's the Azure twin of [`deploy/aws.sh`](aws.md): the same commands, the same [`deploy/provision.sh`](../deploy/provision.sh) on the machine, and the same rule that the office is only ever reached through an SSH tunnel. If you have the Azure CLI signed in (`az login`), one command gives you your own office on an Azure VM:
 
 ```bash
-git clone https://github.com/AgentSystemLabs/agent-office && cd agent-office
+git clone https://github.com/devellaoy/3d-kanban && cd 3d-kanban
 deploy/azure.sh up
 ```
 
@@ -80,7 +80,7 @@ deploy/azure.sh open                     # tunnel + open the office in your brow
 deploy/azure.sh service 5173             # open a worker's web server from the 🌐 Services board
 deploy/azure.sh status                   # VM, address, office up?, team, allowed IPs
 deploy/azure.sh resize Standard_D8as_v5  # bigger or smaller VM; same address, a few minutes of downtime
-deploy/azure.sh update                   # install the latest agent-office and restart
+deploy/azure.sh update                   # install the latest 3d-kanban and restart
 deploy/azure.sh reset-password           # new password, shown once; signs everyone out
 deploy/azure.sh ssh | logs               # get on the VM / follow the office logs
 ```

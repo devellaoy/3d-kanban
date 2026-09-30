@@ -1,11 +1,14 @@
 #!/usr/bin/env bash
-# Puts Agent Office on an Ubuntu or Debian server, with one line run on it (as root or a sudo user):
+# Puts Agent Office (3d-kanban) on an Ubuntu or Debian server, with one line run on it (as root or a sudo user):
 #
-#   curl -fsSL https://raw.githubusercontent.com/AgentSystemLabs/agent-office/main/deploy/provision.sh | bash
+#   curl -fsSL https://raw.githubusercontent.com/devellaoy/3d-kanban/main/deploy/provision.sh | bash
 #
 # or from your own computer:
 #
-#   ssh root@203.0.113.7 'curl -fsSL https://raw.githubusercontent.com/AgentSystemLabs/agent-office/main/deploy/provision.sh | bash'
+#   ssh root@203.0.113.7 'curl -fsSL https://raw.githubusercontent.com/devellaoy/3d-kanban/main/deploy/provision.sh | bash'
+#
+# 3d-kanban: it installs a clone of this fork (APP_REPO), built in place; the server's own names
+# (/opt/agent-office, the agent-office service, /etc/agent-office) stay upstream's.
 #
 # It installs Node.js, git, the GitHub CLI and Claude Code, and runs the office as a systemd service
 # that listens on the server's loopback only. You reach it through an SSH tunnel, or, given
@@ -86,7 +89,7 @@ if [[ -n "$DOMAIN" && -n "$TAILSCALE" ]]; then
   exit 2
 fi
 
-APP_REPO="${APP_REPO:-https://github.com/AgentSystemLabs/agent-office.git}"
+APP_REPO="${APP_REPO:-https://github.com/devellaoy/3d-kanban.git}"
 APP_REF="${APP_REF:-main}"
 # deploy/aws.sh brings its own claim token and shows the way in itself; run by hand, this does.
 STANDALONE=0
@@ -141,7 +144,8 @@ as_user() {
   else sudo -u "$RUN_USER" -H --preserve-env=ANTHROPIC_API_KEY env PATH="$RUN_PATH" "$@"; fi
 }
 
-if ! node_major=$(as_user node -p 'process.versions.node.split(".")[0]' 2>/dev/null) || [[ "$node_major" -lt 20 ]]; then
+# 3d-kanban: 22 or newer, which the kanban's database module (better-sqlite3) needs.
+if ! node_major=$(as_user node -p 'process.versions.node.split(".")[0]' 2>/dev/null) || [[ "$node_major" -lt 22 ]]; then
   step "Installing Node.js 22"
   quiet "${APT[@]}" update
   quiet "${APT[@]}" install ca-certificates curl
@@ -320,9 +324,14 @@ fi
 [[ -n "${GIT_EMAIL:-}" ]] && as_user git config --global user.email "$GIT_EMAIL"
 as_user git config --global init.defaultBranch main
 
-step "Installing agent-office ($APP_REF) from $APP_REPO"
+step "Installing 3d-kanban ($APP_REF) from $APP_REPO"
 sudo install -d -o "$RUN_USER" -g "$RUN_GROUP" /opt/agent-office
 if [[ -d /opt/agent-office/.git ]]; then
+  # 3d-kanban: a checkout made from another repository (upstream agent-office, say) follows APP_REPO from now on,
+  # so this run and the office's own self-upgrade (git fetch origin) install 3d-kanban.
+  if [[ "$(as_user git -C /opt/agent-office remote get-url origin 2>/dev/null)" != "$APP_REPO" ]]; then
+    quiet as_user git -C /opt/agent-office remote set-url origin "$APP_REPO"
+  fi
   quiet as_user git -C /opt/agent-office fetch --depth 1 origin "$APP_REF"
   quiet as_user git -C /opt/agent-office reset --hard FETCH_HEAD
 else

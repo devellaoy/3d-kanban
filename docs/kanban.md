@@ -422,7 +422,7 @@ file has the port it got.
 
 `<data>` is the office's data folder: `~/agent-office/.agent-office` (move `~/agent-office` with
 `--home` or `AGENT_OFFICE_HOME`), or `<project>/.agent-office` for an office started in a project
-(`agent-office <dir>`). See [Configuration](configuration.md#where-the-office-keeps-things).
+(`kanban3d <dir>`). See [Configuration](configuration.md#where-the-office-keeps-things).
 
 | Path | What |
 |---|---|

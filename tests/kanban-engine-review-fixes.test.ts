@@ -140,7 +140,8 @@ test('a review queued for a desk runs once one frees although the limit is full 
 
 // --- 2. Answering an agent that asks in its terminal ----------------------------------------------
 
-const ASK: Rule = { when: 'Implement kanban task', reply: 'Shall I use v1 or v2 of the API?', ask: 'question', answerDelayMs: 400 };
+// answerDelayMs: the window in which the task still waits after an answer is typed (stillAsking checks it).
+const ASK: Rule = { when: 'Implement kanban task', reply: 'Shall I use v1 or v2 of the API?', ask: 'question', answerDelayMs: 1000 };
 const PERMISSION: Rule = { when: 'Implement kanban task', reply: 'I need to clean build/ first.', ask: true };
 const ANSWERED: Rule = { when: '^yes, use v2$', reply: 'Used v2.', commit: 'Use v2' };
 
@@ -170,6 +171,7 @@ test('agent asking a question → continue with an answer: stored as a comment, 
   assert.equal(task.askingKind, 'question');
   assert.equal(fx.repo.card(task.id)?.askingKind, 'question', 'the card says so too');
 
+  const mark = fx.history(task.id).length;
   assert.equal(await fx.engine.continue(task.id, ADA, 'yes, use v2'), undefined);
   // Typed, but the agent hasn't gone on yet (its PostToolUse comes later): the task still waits.
   const now = stillAsking(fx, task.id);
@@ -177,17 +179,27 @@ test('agent asking a question → continue with an answer: stored as a comment, 
   const said = fx.repo.listComments(task.id).comments.filter((c) => c.authorKind === 'user');
   assert.deepEqual(said.map((c) => [c.authorName, c.text, c.pending ?? false]), [['Ada', 'yes, use v2', false]]);
 
-  const going = await fx.waitTask(task.id, (x) => x.status === 'in_progress', 'in progress once its hook says working');
-  assert.equal(going.runState, 'running');
-  assert.equal(going.waitingReason, undefined);
-  assert.equal(going.askingKind, undefined);
+  // The fake agent's turn after the answer is quick, so the task may be in review before a poll looks:
+  // what counts is that it went in progress on the same run once its hook said so.
+  const going = await fx.sawTask(task.id, (x) => x.status === 'in_progress', 'in progress once its hook says working', 15_000, mark);
+  assert.equal(going.task.runState, 'running');
+  assert.equal(going.task.waitingReason, undefined);
+  assert.equal(going.task.askingKind, undefined);
+  assert.equal(going.runId, run.id, 'going on on the same run');
 
   const done = await fx.waitTask(task.id, (x) => x.status === 'review' && x.runState === 'idle', 'the review column', 20_000);
   assert.equal(typed(fx, 'yes, use v2'), 1, 'typed into the PTY once');
   const runs = fx.repo.listRuns(task.id);
   assert.deepEqual(runs.map((r) => r.id), [run.id], 'the same run, no resume run after it');
   assert.equal(runs[0].status, 'succeeded');
-  assert.equal(done.summary, 'Used v2.');
+  assert.ok((runs[0].finishedAt ?? 0) >= going.at, 'the run ended after it went on with the answer');
+  assert.equal(done.summary, 'Used v2.', "the turn's result is the answered one");
+  const after = fx.history(task.id).slice(mark);
+  const from = after.indexOf(going);
+  assert.ok(
+    after.slice(from).every((s) => s.task.status !== 'waiting'),
+    `never waiting again after it went on: ${after.map((s) => s.task.status).join(' → ')}`,
+  );
 });
 
 test('agent asking a question → a plain comment is the answer, typed in at once, never queued', async (t) => {
@@ -254,8 +266,10 @@ test('agent asking several questions → after the first answer is typed the tas
   assert.equal(fx.workers.get(task.workerId!)?.status, 'needs_input');
   assert.equal(stillAsking(fx, task.id).askingKind, 'question', 'still asking, still a question');
 
+  const mark = fx.history(task.id).length;
   assert.equal(await fx.engine.continue(task.id, ADA, 'yes, use v2'), undefined);
-  await fx.waitTask(task.id, (x) => x.status === 'in_progress' || x.status === 'review', 'going on after the last answer');
+  const going = await fx.sawTask(task.id, (x) => x.status === 'in_progress', 'going on after the last answer', 15_000, mark);
+  assert.equal(going.runId, run.id, 'on the same run');
   const done = await fx.waitTask(task.id, (x) => x.status === 'review' && x.runState === 'idle', 'the review column', 20_000);
   assert.equal(done.summary, 'Used v2.');
   assert.deepEqual(fx.repo.listRuns(task.id).map((r) => [r.id, r.status]), [[run.id, 'succeeded']]);

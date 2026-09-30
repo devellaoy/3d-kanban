@@ -3,6 +3,8 @@ name: Release
 # Every change to the app that lands on main is built, tested and published as a GitHub release,
 # and install.sh installs the newest one. The version is package.json's major.minor plus the
 # number of commits on main (v0.1.68, v0.1.69, ...); bump package.json for a new minor.
+# 3d-kanban: releases of devellaoy/3d-kanban (this repository), with the asset 3d-kanban.tgz, which
+# install.sh and install.ps1 download.
 #
 # Pull requests get the same build, tests and a real install of the packed release through
 # install.sh, but publish nothing.
@@ -71,13 +73,15 @@ jobs:
           cp package-lock.json npm-shrinkwrap.json
           npm pkg set 'files[]=npm-shrinkwrap.json'
           npm pack --ignore-scripts
-          mv "agent-office-$version.tgz" agent-office.tgz
-          tar -tzf agent-office.tgz | grep -qx 'package/npm-shrinkwrap.json'
+          # 3d-kanban: the package and its release asset are named 3d-kanban.
+          mv "3d-kanban-$version.tgz" 3d-kanban.tgz
+          tar -tzf 3d-kanban.tgz | grep -qx 'package/npm-shrinkwrap.json'
+          tar -tzf 3d-kanban.tgz | grep -qx 'package/bin/agent-office.js'
           echo "version=$version" >> "$GITHUB_OUTPUT"
 
       - name: Install it with install.sh and start it
         env:
-          AGENT_OFFICE_TARBALL: ${{ github.workspace }}/agent-office.tgz
+          AGENT_OFFICE_TARBALL: ${{ github.workspace }}/3d-kanban.tgz
           AGENT_OFFICE_INSTALL_DIR: ${{ runner.temp }}/install
           AGENT_OFFICE_BIN_DIR: ${{ runner.temp }}/bin
           AGENT_OFFICE_HOME: ${{ runner.temp }}/office
@@ -85,7 +89,8 @@ jobs:
         run: |
           bash install.sh
           cd "$RUNNER_TEMP"
-          "$RUNNER_TEMP/bin/agent-office" --host 127.0.0.1 --port 4700 --password ci > office.log 2>&1 &
+          "$RUNNER_TEMP/bin/kanban3d" --help | grep -q '^kanban3d '
+          "$RUNNER_TEMP/bin/kanban3d" --host 127.0.0.1 --port 4700 --password ci > office.log 2>&1 &
           office=$!
           for _ in $(seq 60); do
             code=$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:4700/login.html || true)
@@ -107,4 +112,5 @@ jobs:
             echo "$TAG is already released"
             exit 0
           fi
-          gh release create "$TAG" agent-office.tgz --target "$GITHUB_SHA" --title "$TAG" --generate-notes --latest
+          notes="Install or update: \`curl -fsSL https://raw.githubusercontent.com/$GITHUB_REPOSITORY/main/install.sh | bash\` (macOS, Linux) or \`irm https://raw.githubusercontent.com/$GITHUB_REPOSITORY/main/install.ps1 | iex\` (Windows PowerShell)."
+          gh release create "$TAG" 3d-kanban.tgz --target "$GITHUB_SHA" --title "$TAG" --notes "$notes" --generate-notes --latest

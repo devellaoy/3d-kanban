@@ -6,10 +6,94 @@ plan, implement, review and fix each task at desks on the project's floor, and y
 kanban board beside the 3D office. Agent Office is © 2026 AgentSystemLabs under the
 [MIT License](LICENSE), which this fork keeps.
 
-- [The kanban: user guide](docs/kanban.md) · [Migrating from ai-kanban](docs/migration.md) ·
+- [Install](#install) · [The kanban: user guide](docs/kanban.md) · [Migrating from ai-kanban](docs/migration.md) ·
   [Fork notes: seams and upstream sync](docs/fork.md) · [Kanban architecture](docs/kanban-architecture.md)
 
-What the fork adds:
+## Install
+
+3d-kanban is a product of its own: it installs as the `kanban3d` command, in its own folder, beside
+an upstream `agent-office` install if you have one.
+
+**What you need** on the machine that runs it:
+
+- **Node.js 22 or newer** (the kanban's database module, better-sqlite3, needs 22).
+- **Python 3, make and a C++ compiler.** better-sqlite3 ships prebuilt binaries (macOS, Linux and
+  Windows, x64 and arm64), but npm still runs its native build step on install, which fails without
+  them, and compiles it when there is no binary for your platform. macOS: `xcode-select --install`;
+  Debian/Ubuntu: `sudo apt install build-essential python3`; Windows: tick *Tools for Native Modules*
+  in the Node.js installer (or install Visual Studio Build Tools with *Desktop development with C++*).
+  The terminals' module (node-pty) comes prebuilt and needs nothing.
+- **git**, and the **GitHub CLI** signed in (`gh auth login`), for projects, worktrees and the issue
+  and PR boards.
+- **Claude Code** (`claude`) or **Codex** (`codex`), signed in: the kanban's tasks run on them (the
+  office's other agents stay ordinary workers).
+
+macOS and Linux:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/devellaoy/3d-kanban/main/install.sh | bash
+```
+
+Windows, in PowerShell:
+
+```powershell
+irm https://raw.githubusercontent.com/devellaoy/3d-kanban/main/install.ps1 | iex
+```
+
+The installer downloads the newest [release](https://github.com/devellaoy/3d-kanban/releases)
+(`3d-kanban.tgz`), installs it in `~/.local/share/3d-kanban` (Windows: `%LOCALAPPDATA%\3d-kanban`),
+puts a `kanban3d` command in `~/.local/bin` (Windows: `%LOCALAPPDATA%\3d-kanban\bin`, added to your
+PATH) and starts the office; next time just run `kanban3d`, in PowerShell, cmd and
+Git Bash alike. `AGENT_OFFICE_INSTALL_ONLY=1` installs
+without starting, `AGENT_OFFICE_VERSION=v0.1.4` picks a release; the other settings are at the top of
+[`install.sh`](install.sh) and [`install.ps1`](install.ps1).
+
+The one-line installer needs a published release: the [Release workflow](.github/workflows/release.yml)
+publishes one (`v0.1.<commits on main>`, with the asset `3d-kanban.tgz`) whenever a change to the app
+lands on `main` and its build, tests and test install pass, a few minutes after the push. (The first
+release, v0.1.3, came before the rename: it still says `agent-office` in its help, but installs as
+`kanban3d` all the same.) To run the newest `main` before its release, or if the workflow failed,
+install from source:
+
+```bash
+git clone https://github.com/devellaoy/3d-kanban.git && cd 3d-kanban && npm install && npm install -g .
+kanban3d
+```
+
+(`npm install` also builds the client and the server; `npm install -g .` puts `kanban3d` on your PATH.)
+
+**Updating.** Run the install line again: it installs the newest release, points `kanban3d` at it and
+removes the versions nothing runs any more. Your data isn't touched. From source:
+`git pull && npm install && npm install -g .`
+
+**Where things live.** The program is in the install folder above (`versions/<tag>`, and `current`
+names the one in use). Your data is where upstream keeps it: `~/agent-office` (move it with `--home`
+or `AGENT_OFFICE_HOME`), whose `.agent-office` folder holds the password, accounts, floors, chat and
+the kanban's `kanban.sqlite`, `kanban-settings.json` and uploads; new projects are cloned next to it
+unless you pick another workspace folder. The office still reads upstream's `AGENT_OFFICE_*`
+environment variables (`AGENT_OFFICE_HOME`, `AGENT_OFFICE_PASSWORD`, `AGENT_OFFICE_HOOK_PORT`, …), and
+the installers take theirs (`AGENT_OFFICE_INSTALL_DIR`, `AGENT_OFFICE_BIN_DIR`, …). An upstream
+`agent-office` on the same machine uses the same data folder and port by default: don't run both at
+once on them, or start one with `--home <another folder>` and `--port <another port>`.
+
+**Coming from ai-kanban.** The migration runs from a clone of this repository (it isn't in the release)
+and writes into the office's data folder above (`--home` picks another). See
+[the guide](docs/migration.md):
+
+```sh
+git clone https://github.com/devellaoy/3d-kanban.git && cd 3d-kanban && npm install
+npm run migrate:ai-kanban -- --from ~/.ai-kanban/data          # a dry run: reports, writes nothing
+npm run migrate:ai-kanban -- --from ~/.ai-kanban/data --apply  # for real, with the office stopped
+```
+
+**On a server** (Ubuntu or Debian), one line installs a clone of this fork as a systemd service; see
+[below](#deploy-to-any-ubuntu-or-debian-server) and [docs/self-hosting.md](docs/self-hosting.md):
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/devellaoy/3d-kanban/main/deploy/provision.sh | bash
+```
+
+## What the fork adds
 
 - **A task process**: plan (with questions, auto or manual approval) → implement → 1–10 review rounds ⇄
   fix → the Review column → Done. Comments put the agent back to work, and answer it when it asks in
@@ -53,14 +137,8 @@ What the fork adds:
   reach the office, and offers **Reload** when a new version is out. HTTPS is needed except on
   localhost ([configuration](docs/configuration.md#pwa)).
 
-Migrating from ai-kanban (see [the guide](docs/migration.md)):
-
-```sh
-npm run migrate:ai-kanban -- --from ~/.ai-kanban/data          # a dry run: reports, writes nothing
-npm run migrate:ai-kanban -- --from ~/.ai-kanban/data --apply  # for real, with the office stopped
-```
-
-Everything below is upstream's README, unchanged.
+Everything below is upstream's README, unchanged except that its install and run commands point at
+this fork: the `devellaoy/3d-kanban` repository and its releases, and the `kanban3d` command.
 
 ---
 
@@ -80,8 +158,8 @@ Everything below is upstream's README, unchanged.
 Sit **Claude Code**, **Codex**, **OpenCode**, **Grok**, **Muse** and **DeepSeek Harness** workers at desks, watch each one's terminal on the laptop in front of it,
 and jump into any of them together. Every GitHub repo is a floor of the building.
 
-[![Release](https://img.shields.io/github/v/release/AgentSystemLabs/agent-office?style=flat-square&color=e8c547&label=release)](https://github.com/AgentSystemLabs/agent-office/releases)
-[![Build](https://img.shields.io/github/actions/workflow/status/AgentSystemLabs/agent-office/release.yml?style=flat-square&label=build)](https://github.com/AgentSystemLabs/agent-office/actions)
+[![Release](https://img.shields.io/github/v/release/devellaoy/3d-kanban?style=flat-square&color=e8c547&label=release)](https://github.com/devellaoy/3d-kanban/releases)
+[![Build](https://img.shields.io/github/actions/workflow/status/devellaoy/3d-kanban/release.yml?style=flat-square&label=build)](https://github.com/devellaoy/3d-kanban/actions)
 [![License](https://img.shields.io/badge/license-MIT-blue?style=flat-square)](LICENSE)
 [![Platform](https://img.shields.io/badge/platform-macOS%20%7C%20Linux%20%7C%20Windows-lightgrey?style=flat-square)](#run-locally)
 [![Built with TypeScript](https://img.shields.io/badge/built%20with-TypeScript-3178c6?style=flat-square)](https://www.typescriptlang.org)
@@ -89,7 +167,7 @@ and jump into any of them together. Every GitHub repo is a floor of the building
 [**Run locally**](#run-locally) · [**Deploy to AWS**](#deploy-to-aws-ec2) · [**Azure**](#deploy-to-azure) · [**Railway**](#deploy-to-railway) · [**Fly.io**](#deploy-to-flyio) · [**Dokploy**](#deploy-to-dokploy) · [**Any server**](#deploy-to-any-ubuntu-or-debian-server) · [**Add users**](#add-users) · [**Controls**](#controls) · [**Features**](docs/features.md) · [**How it works**](docs/how-it-works.md)
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/AgentSystemLabs/agent-office/main/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/devellaoy/3d-kanban/main/install.sh | bash
 ```
 
 </div>
@@ -114,7 +192,7 @@ There's a lot more (a rooftop bar, an office dog, an arcade, supercars in the ga
 
 On the machine that runs the office:
 
-- **Node.js 20+**
+- **Node.js 22+**, and Python 3, make and a C++ compiler for the kanban's database module (see [Install](#install))
 - At least one agent CLI, signed in as the user that runs the office: **Claude Code** (`claude`), **Codex** (`codex`), **OpenCode** (`opencode`), **Grok** (`grok`), **Muse** (`muse`) or **DeepSeek Harness** (`dsh`). With [accounts](#add-users), everyone can sign in to their own Claude from the office instead.
 - **git**, and the **GitHub CLI** (`gh auth login`) for cloning repos and the issue and PR boards
 
@@ -123,16 +201,16 @@ On the machine that runs the office:
 Install the latest release and start the office:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/AgentSystemLabs/agent-office/main/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/devellaoy/3d-kanban/main/install.sh | bash
 ```
 
 On Windows, in PowerShell:
 
 ```powershell
-irm https://raw.githubusercontent.com/AgentSystemLabs/agent-office/main/install.ps1 | iex
+irm https://raw.githubusercontent.com/devellaoy/3d-kanban/main/install.ps1 | iex
 ```
 
-This puts an `agent-office` command on your PATH, so next time just run `agent-office`. Run the install line again to update. The installer's settings (a particular release, install without starting) are listed at the top of [`install.sh`](install.sh) and [`install.ps1`](install.ps1).
+This puts a `kanban3d` command on your PATH, so next time just run `kanban3d`. Run the install line again to update. The installer's settings (a particular release, install without starting) are listed at the top of [`install.sh`](install.sh) and [`install.ps1`](install.ps1).
 
 The first time it starts, it walks you through setting up, right in the terminal:
 
@@ -147,12 +225,12 @@ Walk to an empty desk, press **E** and hire a worker.
 Common options:
 
 ```bash
-agent-office ~/code/my-project              # use a project you already have as the first floor
-agent-office --password 'correct horse'     # choose the password
-agent-office --port 4700
-agent-office --agent grok                   # default agent: claude, codex, opencode, grok, muse or dsh
-agent-office --no-open                      # print the sign-in link instead of opening a browser
-agent-office setup                          # the first-start walkthrough again (office stopped)
+kanban3d ~/code/my-project              # use a project you already have as the first floor
+kanban3d --password 'correct horse'     # choose the password
+kanban3d --port 4700
+kanban3d --agent grok                   # default agent: claude, codex, opencode, grok, muse or dsh
+kanban3d --no-open                      # print the sign-in link instead of opening a browser
+kanban3d setup                          # the first-start walkthrough again (office stopped)
 ```
 
 Every option is in [docs/configuration.md](docs/configuration.md). Choosing models and providers per worker is in [docs/agents.md](docs/agents.md).
@@ -160,10 +238,10 @@ Every option is in [docs/configuration.md](docs/configuration.md). Choosing mode
 To run it from a clone instead:
 
 ```bash
-git clone https://github.com/AgentSystemLabs/agent-office && cd agent-office
+git clone https://github.com/devellaoy/3d-kanban && cd 3d-kanban
 npm install          # also builds the client and server
-npm install -g .     # puts `agent-office` on your PATH
-agent-office
+npm install -g .     # puts `kanban3d` on your PATH
+kanban3d
 ```
 
 > Only your computer can reach the office: it listens on `127.0.0.1`. `--host 0.0.0.0` lets your network in, but over plain http, where voice and screen sharing don't work. To share the office with a team, put it on a server: [AWS](#deploy-to-aws-ec2), [Azure](#deploy-to-azure), [Railway](#deploy-to-railway), [Fly.io](#deploy-to-flyio), [Dokploy](#deploy-to-dokploy) or [any Ubuntu or Debian machine](#deploy-to-any-ubuntu-or-debian-server).
@@ -173,7 +251,7 @@ agent-office
 One script, using only the AWS CLI. You need the **AWS CLI signed in** (`aws configure` or `aws sso login`), `ssh`, `curl` and a clone of this repo:
 
 ```bash
-git clone https://github.com/AgentSystemLabs/agent-office && cd agent-office
+git clone https://github.com/devellaoy/3d-kanban && cd 3d-kanban
 deploy/aws.sh up --project your-org/your-repo --claude-token "$(claude setup-token)"
 ```
 
@@ -205,7 +283,7 @@ deploy/aws.sh open                # tunnel + open the office (Ctrl-C closes the 
 deploy/aws.sh status              # machine, address, is the office up, who's invited
 deploy/aws.sh logs                # follow the office's logs
 deploy/aws.sh ssh                 # a shell on the machine
-deploy/aws.sh update              # install the latest agent-office and restart
+deploy/aws.sh update              # install the latest 3d-kanban and restart
 deploy/aws.sh resize t3.2xlarge   # bigger or smaller machine, same address
 deploy/aws.sh pause               # stop the machine; only the disk and IP are billed
 deploy/aws.sh resume              # start it again and open it
@@ -219,7 +297,7 @@ You can also upgrade from inside the office: **☰ → ⬆️ Upgrade the office
 The same thing on an Azure VM, using only the Azure CLI. You need the **Azure CLI signed in** (`az login`), `ssh`, `curl` and a clone of this repo:
 
 ```bash
-git clone https://github.com/AgentSystemLabs/agent-office && cd agent-office
+git clone https://github.com/devellaoy/3d-kanban && cd 3d-kanban
 deploy/azure.sh up --project your-org/your-repo --claude-token "$(claude setup-token)"
 ```
 
@@ -232,7 +310,7 @@ Every command from the AWS script works the same, with `deploy/azure.sh` in its 
 No machine to look after: one script, using the Railway CLI. You need the **Railway CLI 5 or newer, logged in** (`railway login`), `ssh`, `curl`, Node.js and a clone of this repo:
 
 ```bash
-git clone https://github.com/AgentSystemLabs/agent-office && cd agent-office
+git clone https://github.com/devellaoy/3d-kanban && cd 3d-kanban
 deploy/railway.sh up --claude-token "$(claude setup-token)"
 ```
 
@@ -261,7 +339,7 @@ The details, and what's on the volume, are in [docs/railway.md](docs/railway.md)
 The same container on a [Fly.io](https://fly.io) machine, using flyctl. You need **flyctl logged in** (`fly auth login`), `ssh`, `curl`, Node.js and a clone of this repo:
 
 ```bash
-git clone https://github.com/AgentSystemLabs/agent-office && cd agent-office
+git clone https://github.com/devellaoy/3d-kanban && cd 3d-kanban
 deploy/fly.sh up --claude-token "$(claude setup-token)"
 ```
 
@@ -292,7 +370,7 @@ deploy/fly.sh destroy                 # delete the app and its volume (asks firs
 Already run a [Dokploy](https://dokploy.com) server? One script puts the office on it, through Dokploy's API. You need an **API key** (Dokploy: **Settings → Profile → API/CLI Keys**, with rate limiting off), `ssh`, `curl`, `git`, Node.js and a clone of this repo:
 
 ```bash
-git clone https://github.com/AgentSystemLabs/agent-office && cd agent-office
+git clone https://github.com/devellaoy/3d-kanban && cd 3d-kanban
 export DOKPLOY_API_KEY=<your key>
 deploy/dokploy.sh up --url https://dokploy.example.com --claude-token "$(claude setup-token)"
 ```
@@ -322,7 +400,7 @@ The details, and what's on the volume, are in [docs/dokploy.md](docs/dokploy.md)
 Another cloud, or your own machine? Run one line on the server, as root or as a user with sudo:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/AgentSystemLabs/agent-office/main/deploy/provision.sh | bash
+curl -fsSL https://raw.githubusercontent.com/devellaoy/3d-kanban/main/deploy/provision.sh | bash
 ```
 
 It installs Node 22, git, the GitHub CLI, Claude Code and the office as a systemd service. Run as root, it creates an `agentoffice` user to run the office, so workers never run as root. The office listens on `127.0.0.1:4600` only, and the script ends by printing the SSH tunnel command and a link that shows the office password once. Run the same line again to update.
@@ -360,10 +438,10 @@ Their key logs in as a locked-down `office` user that can only forward to the of
 The same works from a terminal on the office's machine, even while it runs:
 
 ```bash
-agent-office accounts                      # accounts and open invites
-agent-office accounts invite ada --admin   # prints a single-use /join#… link
-agent-office accounts role ada member
-agent-office accounts revoke ada           # signed out within seconds
+kanban3d accounts                      # accounts and open invites
+kanban3d accounts invite ada --admin   # prints a single-use /join#… link
+kanban3d accounts role ada member
+kanban3d accounts revoke ada           # signed out within seconds
 ```
 
 On the EC2 machine, run it through `deploy/aws.sh ssh` (on Azure, `deploy/azure.sh ssh`):
@@ -377,9 +455,9 @@ deploy/dokploy.sh ssh 'node /opt/agent-office/bin/agent-office.js accounts invit
 
 **Their own Claude and GitHub.** With accounts, everyone's workers run on their own Claude plan, and the office acts on GitHub as them: comments, merges, labels, pushes and pull requests show up under their name. The first time someone comes in, **🔐 Your sign-ins** opens (it's in the **☰** menu too). *Sign in with Claude* gives them Claude's sign-in page and takes back the code it shows. *Sign in with GitHub* shows a one-time code for github.com/login/device. They can paste a token from `claude setup-token`, or a GitHub token, instead. A 🐚 shell they open at a desk runs as them, so `claude auth login` and `gh auth login` typed there work too. Admins can use the office machine's own sign-ins instead. Each account's sign-ins live in `.agent-office/homes/<account>/`, and revoking the account deletes them. The boards are read with the machine's own `gh`, so that account needs read access to the repos. Running it just for yourself, with no accounts, none of this applies.
 
-**3. Turn off the shared password.** Until you do, anyone who knows the office password can get in, as an admin. Once everyone has an account, switch it off in **🔑 Accounts** (signed in with your own admin account), or `agent-office accounts password off`.
+**3. Turn off the shared password.** Until you do, anyone who knows the office password can get in, as an admin. Once everyone has an account, switch it off in **🔑 Accounts** (signed in with your own admin account), or `kanban3d accounts password off`.
 
-**Removing someone.** Revoke their account in **🔑 Accounts** (or `agent-office accounts revoke <name>`), and on a server also remove them in **👥 Invite teammates** (on AWS, `deploy/aws.sh uninvite <name>`; on Railway, `deploy/railway.sh uninvite <name>`; on Fly.io, `deploy/fly.sh uninvite <name>`; on Dokploy, `deploy/dokploy.sh uninvite <name>`) to take away their SSH keys and drop open tunnels (other teammates just reconnect). If the shared password is still on, change it with `deploy/aws.sh reset-password` (or `deploy/railway.sh reset-password`, `deploy/fly.sh reset-password` or `deploy/dokploy.sh reset-password`).
+**Removing someone.** Revoke their account in **🔑 Accounts** (or `kanban3d accounts revoke <name>`), and on a server also remove them in **👥 Invite teammates** (on AWS, `deploy/aws.sh uninvite <name>`; on Railway, `deploy/railway.sh uninvite <name>`; on Fly.io, `deploy/fly.sh uninvite <name>`; on Dokploy, `deploy/dokploy.sh uninvite <name>`) to take away their SSH keys and drop open tunnels (other teammates just reconnect). If the shared password is still on, change it with `deploy/aws.sh reset-password` (or `deploy/railway.sh reset-password`, `deploy/fly.sh reset-password` or `deploy/dokploy.sh reset-password`).
 
 ## Controls
 
@@ -414,7 +492,7 @@ npm test
 
 Server edits restart the server, not the workers. After changing `ptyhost.ts`, bump `PTY_PROTOCOL` in `ptys.ts` so the next server replaces the PTY host.
 
-Every change to the app that lands on `main` is published as a GitHub release by [`.github/workflows/release.yml`](.github/workflows/release.yml), and `install.sh` installs the newest one. Bump `package.json`'s version to start a new minor.
+Every change to the app that lands on `main` is published as a GitHub release of `devellaoy/3d-kanban` (asset `3d-kanban.tgz`) by [`.github/workflows/release.yml`](.github/workflows/release.yml), and `install.sh` and `install.ps1` install the newest one. Bump `package.json`'s version to start a new minor.
 
 ## More
 

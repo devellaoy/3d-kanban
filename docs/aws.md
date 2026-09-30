@@ -5,7 +5,7 @@ The full story behind `deploy/aws.sh`. The short version is in the [README](../R
 If you have the AWS CLI logged in, one command gives you your own office on EC2. No Terraform needed:
 
 ```bash
-git clone https://github.com/AgentSystemLabs/agent-office && cd agent-office
+git clone https://github.com/devellaoy/3d-kanban && cd 3d-kanban
 deploy/aws.sh up
 ```
 
@@ -25,7 +25,7 @@ What `up` does, in about 2 minutes:
 1. Creates an SSH key pair (kept in `~/.config/agent-office/aws/<name>/`).
 2. Creates a security group that opens **only SSH (port 22), and only to your current IP**. The office itself is never on the internet.
 3. Gives the machine a fixed Elastic IP and launches a **t3.xlarge** (4 vCPU, 16 GiB) Ubuntu 24.04 instance with a 50 GiB disk.
-4. Runs the same [`deploy/provision.sh`](../deploy/provision.sh) as [any server](self-hosting.md): it installs Node 22, git, the GitHub CLI and **Claude Code**, clones the latest agent-office from GitHub and runs `npm i`. The office keeps its data in `~/agent-office` on the machine and clones projects into `~/workspace/<owner>/<repo>`.
+4. Runs the same [`deploy/provision.sh`](../deploy/provision.sh) as [any server](self-hosting.md): it installs Node 22, git, the GitHub CLI and **Claude Code**, clones the latest 3d-kanban (`devellaoy/3d-kanban`, or the origin of the clone you run it from) from GitHub and runs `npm i`. The office keeps its data in `~/agent-office` on the machine and clones projects into `~/workspace/<owner>/<repo>`.
 5. Runs the office under systemd with `Restart=always`, so it comes back after a crash or a reboot, and `KillMode=process`, so restarting it leaves the workers running. It listens on `127.0.0.1:4600` on the machine, so the only way in is an SSH tunnel.
 6. Opens an SSH tunnel and your browser at `http://localhost:4600`. **The first page shows the office password once. Write it down.** The server then keeps only a hash, so nobody can display the password again.
 7. The office opens on its elevator with no floors yet. It lists every repository your GitHub token can see: pick one and it becomes the first floor.
@@ -67,7 +67,7 @@ deploy/aws.sh allow 203.0.113.7    # let an IP reach SSH (CIDR ok; "me", "anywhe
 deploy/aws.sh revoke 203.0.113.7   # …and take it back
 deploy/aws.sh status               # instance, address, office up?, team, allowed IPs
 deploy/aws.sh resize t3.2xlarge    # bigger or smaller machine; same address, ~1-2 min of downtime
-deploy/aws.sh update               # install the latest agent-office and restart
+deploy/aws.sh update               # install the latest 3d-kanban and restart
 deploy/aws.sh reset-password       # new password, shown once; signs everyone out
 deploy/aws.sh ssh | logs           # get on the box / follow the office logs
 ```

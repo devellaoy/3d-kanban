@@ -5,7 +5,7 @@ The full story behind `deploy/fly.sh`. The short version is in the [README](../R
 You need an up-to-date **flyctl, logged in** (`fly auth login`; [install it](https://fly.io/docs/flyctl/install/) with `brew install flyctl` or `curl -L https://fly.io/install.sh | sh`, and update an old one with `fly version upgrade`), plus `ssh`, `curl`, Node.js and a clone of this repo:
 
 ```bash
-git clone https://github.com/AgentSystemLabs/agent-office && cd agent-office
+git clone https://github.com/devellaoy/3d-kanban && cd 3d-kanban
 deploy/fly.sh up --claude-token "$(claude setup-token)"
 ```
 
@@ -66,7 +66,7 @@ deploy/fly.sh reset-password          # new password, shown once; signs everyone
 deploy/fly.sh ssh | logs              # a shell in the machine / follow the office's logs
 ```
 
-**Updating.** Pull the latest agent-office into your clone and run `deploy/fly.sh update`. **⬆️ Upgrade the office** in the **☰** menu is for servers set up with `deploy/provision.sh`: a Fly machine's code comes from its image.
+**Updating.** Pull the latest 3d-kanban into your clone and run `deploy/fly.sh update`. **⬆️ Upgrade the office** in the **☰** menu is for servers set up with `deploy/provision.sh`: a Fly machine's code comes from its image.
 
 **Machine size.** A `shared-cpu-4x` with 8 GB is plenty for a few workers. Shared CPUs are made for bursts, though, and Fly slows one down that stays busy for long. If workers build and test all day, move to dedicated CPUs: `deploy/fly.sh resize performance-2x` (memory stays, unless you add it: `resize performance-4x 16gb`). `fly platform vm-sizes` lists the sizes. The volume can grow too, never shrink: `fly volumes extend -a <app> <volume-id> -s 100`.
 

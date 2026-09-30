@@ -45,12 +45,13 @@ test('an asComment prompt to a task implementer is a comment its agent works on;
   const info = fx.workers.get(task.workerId!)!;
 
   // P (or Ask → this worker): a user comment from whoever typed it, and the engine follows the turn.
+  const mark = fx.history(task.id).length;
   assert.equal(await promptTaskWorker(ctx, info, 'Also handle the logout', GRACE, true), undefined);
   const comment = fx.repo.listComments(task.id).comments.find((c) => c.authorKind === 'user');
   assert.equal(comment?.authorName, 'Grace');
   assert.equal(comment?.text, 'Also handle the logout');
   assert.ok(fx.broadcasts.some((m) => m.t === 'kanban.comment' && m.comment.id === comment!.id));
-  await fx.waitTask(task.id, (x) => x.runState !== 'idle' || x.phase === 'resume', 'the comment worked on');
+  await fx.sawTask(task.id, (x) => x.runState !== 'idle' || x.phase === 'resume', 'the comment worked on', 15_000, mark);
   let x = await fx.waitTask(task.id, (y) => y.status === 'review' && y.runState === 'idle', 'back in review', 30_000);
   assert.equal(x.summary, 'Handled the logout too.');
   assert.ok(fx.repo.listRuns(task.id).some((r) => r.phase === 'resume' && r.status === 'succeeded'));

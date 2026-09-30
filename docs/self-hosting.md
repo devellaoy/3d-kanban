@@ -5,15 +5,15 @@ Any Ubuntu or Debian server, with one line, or set up by hand behind Caddy or ng
 Run this on any Ubuntu or Debian server, as root or as a user with sudo:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/AgentSystemLabs/agent-office/main/deploy/provision.sh | bash
+curl -fsSL https://raw.githubusercontent.com/devellaoy/3d-kanban/main/deploy/provision.sh | bash
 ```
 
-Or run it from your computer without logging in first: `ssh root@203.0.113.7 'curl -fsSL https://raw.githubusercontent.com/AgentSystemLabs/agent-office/main/deploy/provision.sh | bash'`.
+Or run it from your computer without logging in first: `ssh root@203.0.113.7 'curl -fsSL https://raw.githubusercontent.com/devellaoy/3d-kanban/main/deploy/provision.sh | bash'`.
 
 It takes a few minutes the first time:
 
 1. Installs Node.js 22, git, the GitHub CLI and **Claude Code**. Run as root, it creates an `agentoffice` user and runs the office as that user, so workers never run as root.
-2. Clones agent-office into `/opt/agent-office` and runs it under systemd. `Restart=always` brings it back after a crash or a reboot, and `KillMode=process` keeps workers running through a restart. It listens on `127.0.0.1:4600` only. The office keeps its data in `~/agent-office` and clones projects into `~/workspace/<owner>/<repo>`.
+2. Clones 3d-kanban (this fork, `https://github.com/devellaoy/3d-kanban`) into `/opt/agent-office` and runs it under systemd. `Restart=always` brings it back after a crash or a reboot, and `KillMode=process` keeps workers running through a restart. It listens on `127.0.0.1:4600` only. The office keeps its data in `~/agent-office` and clones projects into `~/workspace/<owner>/<repo>`.
 3. Sets up **👥 Invite teammates**. Teammates' SSH keys log in as a separate `office` user that can only forward to the office port: no shell, no other ports.
 4. Offers to sign the GitHub CLI in, if it's running in a terminal.
 5. Prints how to get in:
@@ -32,7 +32,7 @@ Everything goes through SSH, so there are no certificates to manage, and `localh
 **On your own domain.** Point a DNS record at the server, open ports 80 and 443, and add `--domain`:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/AgentSystemLabs/agent-office/main/deploy/provision.sh | bash -s -- --domain office.example.com
+curl -fsSL https://raw.githubusercontent.com/devellaoy/3d-kanban/main/deploy/provision.sh | bash -s -- --domain office.example.com
 ```
 
 It installs [Caddy](https://caddyserver.com), which gets a certificate from Let's Encrypt by itself and serves the office on https://office.example.com. The claim link is then `https://office.example.com/claim?t=…`. Give teammates an invite link each from **🔑 Accounts**.
@@ -40,12 +40,12 @@ It installs [Caddy](https://caddyserver.com), which gets a certificate from Let'
 **On your Tailscale network.** No domain, and no ports to open: add `--tailscale`, and the server joins your tailnet and serves the office on `https://agent-office.<your-tailnet>.ts.net` with [Tailscale Serve](https://tailscale.com/kb/1312/serve), which brings its own certificate:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/AgentSystemLabs/agent-office/main/deploy/provision.sh | bash -s -- --tailscale
+curl -fsSL https://raw.githubusercontent.com/devellaoy/3d-kanban/main/deploy/provision.sh | bash -s -- --tailscale
 ```
 
 It prints a link to add the machine to your tailnet (or pass `--tailscale-auth-key tskey-auth-…`), and the first time, one that turns on MagicDNS and HTTPS Certificates for the tailnet. It waits for each. `--tailscale-hostname` names the machine (`agent-office` by default). Then anyone on your tailnet opens the link, and workers' web servers get links of their own, `https://agent-office.<your-tailnet>.ts.net:<port>`, still behind the office sign-in. For someone outside your tailnet, share the machine with them from Tailscale's Machines page. Re-running the script keeps it on the tailnet. Turn off key expiry for the machine on that page, or it drops off after 180 days. The details, and what else the tailnet can reach on the machine, are in the [AWS reference](aws.md#tailscale), since `deploy/aws.sh up --tailscale` does the same thing.
 
-**Setting it up by hand** (another distribution, or your own proxy): run `agent-office`, which listens on `127.0.0.1` only, and reach it through `ssh -L 4600:localhost:4600 you@server`. Or put it behind HTTPS on a domain, which voice and screen sharing need, with Caddy:
+**Setting it up by hand** (another distribution, or your own proxy): install it (see [Install](../README.md#install)) and run `kanban3d`, which listens on `127.0.0.1` only, and reach it through `ssh -L 4600:localhost:4600 you@server`. Or put it behind HTTPS on a domain, which voice and screen sharing need, with Caddy:
 
 ```caddy
 # /etc/caddy/Caddyfile
@@ -55,8 +55,8 @@ office.example.com {
 ```
 
 ```bash
-agent-office setup --projects ~/workspace --project owner/repo   # once; or pick projects in the office
-agent-office --host 127.0.0.1 --trust-proxy --password "$(openssl rand -base64 18)"
+kanban3d setup --projects ~/workspace --project owner/repo   # once; or pick projects in the office
+kanban3d --host 127.0.0.1 --trust-proxy --password "$(openssl rand -base64 18)"
 ```
 
 Caddy proxies WebSockets out of the box. With nginx, forward the Host and Upgrade headers:
@@ -87,7 +87,7 @@ User=dev
 WorkingDirectory=/home/dev
 # generate with: openssl rand -base64 24
 Environment=AGENT_OFFICE_PASSWORD=<a long random password>
-ExecStart=/usr/bin/env agent-office --host 127.0.0.1 --trust-proxy
+ExecStart=/usr/bin/env 3d-kanban --host 127.0.0.1 --trust-proxy
 Restart=on-failure
 # Restarting the office leaves the workers' terminals running for the next one to pick up.
 KillMode=process

@@ -412,7 +412,7 @@ team_members() { remote "agent-office-team list"; } # "<name> <number of keys>" 
 cmd_up() {
   preflight
   need ssh-keygen
-  [[ -f "$REPO_DIR/$DOCKERFILE" ]] || die "run this from a clone of agent-office ($DOCKERFILE is missing)"
+  [[ -f "$REPO_DIR/$DOCKERFILE" ]] || die "run this from a clone of 3d-kanban ($DOCKERFILE is missing)" # 3d-kanban: this fork
 
   local gh_token="$GH_TOKEN_ARG"
   if [[ -z "$gh_token" && $NO_GH_TOKEN -eq 0 ]] && command -v gh >/dev/null 2>&1; then

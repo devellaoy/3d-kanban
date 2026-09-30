@@ -21,10 +21,11 @@ const SHOWN = 12;
 /** Folders people keep their code in, in the home folder: the first one that's there is the suggestion. */
 const CODE_FOLDERS = ['Workspace', 'workspace', 'Developer', 'code', 'Code', 'projects', 'Projects', 'repos', 'src', 'dev', 'git', 'GitHub', 'github'];
 
-const SETUP_HELP = `agent-office setup — pick where projects are cloned and which ones are floors
+// 3d-kanban: the command is `kanban3d`.
+const SETUP_HELP = `kanban3d setup — pick where projects are cloned and which ones are floors
 
 Usage:
-  agent-office setup [--projects <dir>] [--project <owner/repo>]... [--home <dir>]
+  kanban3d setup [--projects <dir>] [--project <owner/repo>]... [--home <dir>]
 
 In a terminal it walks you through it: the workspace folder new projects are cloned
 into, signing the GitHub CLI in, and picking repositories to clone as floors. Given
@@ -143,7 +144,7 @@ async function walkthrough(building: Building, dataDir: string, askFolder: boole
   if (askFolder) await pickFolder(building);
   const login = await githubLogin(dataDir);
   if (!login) {
-    console.log('\n  Add projects from the elevator in the office once gh is ready (or run `agent-office setup` again).');
+    console.log('\n  Add projects from the elevator in the office once gh is ready (or run `kanban3d setup` again).');
     return;
   }
   await pickProjects(building, login);
