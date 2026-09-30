@@ -119,7 +119,7 @@ export function createPullsParts(ctx: KanbanContext, opts: PullsOptions = {}) {
     };
   };
 
-  const review = async (req: KanbanPrReviewRequest, who: KanbanCaller): Promise<{ taskId: number; workerId: string } | string> => {
+  const review = async (req: KanbanPrReviewRequest, who: KanbanCaller): Promise<{ taskId: number; workerId?: string } | string> => {
     const checked = await checkReview(req);
     if (typeof checked === 'string') return checked;
     const { panel: _, ...rest } = req;
@@ -213,7 +213,7 @@ export function createPullsParts(ctx: KanbanContext, opts: PullsOptions = {}) {
         }
         const got = await review(req, c);
         if (typeof got === 'string') return fail(c, m.rid, got);
-        ok(c, m.rid, { taskId: got.taskId, workerId: got.workerId });
+        ok(c, m.rid, { taskId: got.taskId, ...(got.workerId ? { workerId: got.workerId } : {}) });
       },
     },
     start() {

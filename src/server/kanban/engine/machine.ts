@@ -108,9 +108,9 @@ export type MachineEvent =
   /** Its worker went away mid-run (an office restart, sent home). */
   | { type: 'interrupted'; text?: string }
   /** Run the last phase again. `last`: the task's latest run, if it has one. */
-  | { type: 'retry'; last?: { phase: RunPhase; round?: number; role: KanbanRole } }
+  | { type: 'retry'; last?: LastRun }
   /** Carry on from Waiting, with the user's answer when there is one. */
-  | { type: 'continue'; answer?: string; last?: { phase: RunPhase; round?: number; role: KanbanRole } }
+  | { type: 'continue'; answer?: string; last?: LastRun }
   | { type: 'approvePlan' }
   | { type: 'requestPlanChanges'; text: string }
   /** A user's comment. `busy`: the worker is in the middle of a turn (or asking in its terminal). */
@@ -119,6 +119,17 @@ export type MachineEvent =
   | { type: 'review' }
   | { type: 'pr'; mode: 'create' | 'fix' }
   | { type: 'compact' };
+
+/**
+ * The run Retry and Continue carry on. `fresh`: it never started (stopped while queued), so it goes
+ * with its phase's own prompt rather than "carry on" to a session that never worked on it.
+ */
+export interface LastRun {
+  phase: RunPhase;
+  round?: number;
+  role: KanbanRole;
+  fresh?: boolean;
+}
 
 export type Transition = { state: MachineState; effects: Effect[] } | { error: string };
 
@@ -165,6 +176,26 @@ function firstRun(s: MachineState, t: MachineTask): { state: MachineState; effec
   if (t.type === 'investigate') return ok(running(s, 'implement', { reviewRound: 0, retryAttempts: 0 }), { type: 'run', phase: 'implement', role: 'implementer', prompt: 'investigate' });
   if (t.usePlan) return ok(running(s, 'plan', { reviewRound: 0, retryAttempts: 0 }), { type: 'run', phase: 'plan', role: 'implementer', prompt: 'plan' });
   return ok(running(s, 'implement', { reviewRound: 0, retryAttempts: 0 }), { type: 'run', phase: 'implement', role: 'implementer', prompt: 'implement' });
+}
+
+/** The prompt a run of `phase` that never started is retried with (plan and resume carry on: what the user said went with the queue). */
+function ownPrompt(phase: RunPhase, round: number | undefined, t: MachineTask): PromptKind {
+  switch (phase) {
+    case 'implement':
+      return t.type === 'investigate' ? 'investigate' : 'implement';
+    case 'review':
+      return round !== undefined && round > 1 ? 'rereview' : 'review';
+    case 'fix':
+      return 'fix';
+    case 'pr':
+      return 'pr.create';
+    case 'pr-fix':
+      return 'pr.fix';
+    case 'pr-review':
+      return 'pr.review';
+    default:
+      return 'continue';
+  }
 }
 
 /** Comments that came in during a turn are worked on before anything else. */
@@ -314,8 +345,8 @@ export function next(s: MachineState, e: MachineEvent, t: MachineTask, cfg: Mach
     case 'retry': {
       if (!canRetry(s)) return no('Only a stopped, failed or interrupted task can be retried');
       if (!e.last) return firstRun(s, t);
-      const { phase, round, role } = e.last;
-      return ok(running(s, phase), { type: 'run', phase, role, prompt: 'continue', ...(round !== undefined ? { round } : {}) });
+      const { phase, round, role, fresh } = e.last;
+      return ok(running(s, phase), { type: 'run', phase, role, prompt: fresh ? ownPrompt(phase, round, t) : 'continue', ...(round !== undefined ? { round } : {}) });
     }
 
     case 'continue': {

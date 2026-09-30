@@ -193,7 +193,9 @@ function projectPane(api: KanbanApi, projectId: string, s: KanbanSettings): HTML
     const name = textInput(r.name, { maxlength: 100, 'aria-label': 'Name' });
     const dir = textInput(r.dir, { maxlength: 4096, placeholder: '/Users/me/code/api', 'aria-label': 'Folder', disabled: r.primary });
     const kind = select<'git' | 'folder'>([['git', 'git'], ['folder', 'folder']], r.kind ?? 'git', { 'aria-label': 'Kind', disabled: r.primary });
-    const remote = textInput(r.remote ?? '', { maxlength: 200, placeholder: 'owner/name', 'aria-label': 'GitHub (owner/name)' });
+    // The floor's own GitHub repository, when it knows one, is the primary's: it isn't edited here.
+    const fixedRemote = r.primary ? info.repo : undefined;
+    const remote = textInput(fixedRemote ?? r.remote ?? '', { maxlength: 200, placeholder: 'owner/name', 'aria-label': 'GitHub (owner/name)', disabled: !!fixedRemote });
     const base = textInput(r.baseBranch ?? '', { maxlength: KANBAN_LIMITS.branch, placeholder: 'main', 'aria-label': 'Base branch' });
     const ins = textArea(r.instructions ?? '', { rows: 2, maxlength: KANBAN_LIMITS.promptText, placeholder: 'Instructions for work in this repository', 'aria-label': 'Instructions for work in this repository' });
     const remove = h('button.btn.small.kb-admin', { type: 'button', 'aria-label': `Remove ${r.name}`, disabled: r.primary, title: r.primary ? 'The floor’s own repository stays' : '' }, '✕');
@@ -202,7 +204,7 @@ function projectPane(api: KanbanApi, projectId: string, s: KanbanSettings): HTML
       { class: r.primary ? 'primary' : '' },
       h('div.kb-repo-head', {}, h('b', {}, r.primary ? '⭐ Primary (the floor)' : `📦 ${r.id}`), h('span.grow'), remove),
       h('div.kb-three', {}, field('Name', name), field('Kind', kind), field('Base branch', base)),
-      h('div.kb-two', {}, field('Folder', dir, r.primary ? 'The floor’s checkout: change it from the elevator in the 3D office' : undefined), field('GitHub (owner/name)', remote)),
+      h('div.kb-two', {}, field('Folder', dir, r.primary ? 'The floor’s checkout: change it from the elevator in the 3D office' : undefined), field('GitHub (owner/name)', remote, fixedRemote ? `The floor’s own repository is ${fixedRemote}; add another repository instead, or re-add the floor` : undefined)),
       ins,
     );
     const row: Row = {

@@ -263,7 +263,13 @@ without more repositories is a one-repository project, as in upstream agent-offi
 Settings → **Projects** (pick the project at the top) → **Repositories**: **＋ Add a local
 repository** with its absolute folder, then name, kind (git or folder), GitHub `owner/name`, base
 branch and instructions for work in it, and **Save repositories**. At most 8 besides the primary.
-The primary's folder is changed from the elevator in the 3D office, not here.
+The primary's folder is changed from the elevator in the 3D office, not here. When the floor knows
+its GitHub repository (it was added from GitHub, or its checkout has one), that is the primary's
+`owner/name`, shown read-only: saving another is refused ("The floor's own repository is
+owner/name; add another repository instead, or re-add the floor"). A floor without one (a local
+checkout not on GitHub) takes the `owner/name` saved for the primary, and the kanban uses it
+everywhere it needs the primary's repository: the issue sources' repositories, the PR bundles and
+reviews, linking the agent's `PR:` lines, and the prompts' list of repositories.
 
 A task gets a worktree of each git repository it works in, all on the same branch (named by the
 project's *Branch naming* instructions, else `kanban/<ticket or task id>-<slug>`). A *folder*
@@ -311,7 +317,10 @@ draft issues), the Jira key.
   upstream's single-PR flow. The PRs tab's **Review these N PRs together** does the same for a task's
   open PRs.
   - 🔍 with several PRs: a reviewer is hired in a worktree of its own (never the floor's checkout, never
-    the task's) and reads them with `gh pr view` / `gh pr diff`. The review is written into the task
+    the task's) and reads them with `gh pr view` / `gh pr diff`. With no free desk, or the office at its
+    worker limit, the review's task is queued like any other hire and starts by itself when there's
+    room (⏹️ Stop, or moving the task to Done, takes it out of the queue; a queued run stopped that way is
+    listed as stopped before it started, and 🔁 Retry runs that one, the PR review or review round). The review is written into the task
     the PRs belong to when every one of them is that task's (linked to it, or opened from its branch);
     PRs of different tasks, or of no task (one of the *other open PRs*, say), get a new **investigate**
     task *PR review: owner/repo#1, …* (with the ticket they share, if any, and a line naming the tasks

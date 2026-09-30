@@ -29,7 +29,12 @@ document disagree, fix one of them in the same change.
 - **Project = floor.** A floor (`FloorDef` in `floors.json`) is a project. `FloorDef.repos?: ProjectRepo[]`
   lists its repositories. The floor's own `dir`/`repo` is always the **primary** repository
   (the floor's `.agent-office/` data stays there, as upstream). A floor without `repos` is a
-  one-repository project exactly as upstream has it.
+  one-repository project exactly as upstream has it. The primary's `remote` is `FloorDef.repo` when the
+  floor has one (`validateProjectRepos` refuses another: "The floor's own repository is owner/name; add
+  another repository instead, or re-add the floor"; the settings form shows it read-only), else the
+  one saved for the primary in `repos`. Kanban code reads the primary's owner/name only through
+  `projectRepos` (issue sources, PR bundles and reviews, `pr_links` matching, the prompts' `{{repos}}`,
+  the refs bundle), never `FloorDef.repo`; upstream's own uses of `FloorDef.repo` are unchanged.
 - **Task** (`KanbanTask`): a unit of work on one project, touching the project's repositories
   (all of them by default, or a chosen subset `repoIds`). Ids are integers (`#123`), global across projects.
 - **Run**: one phase execution of a task (`plan`, `implement`, `review`, `fix`, `resume`, `pr`, `pr-fix`,
@@ -151,7 +156,11 @@ allowed: `todo → in_progress` (= start), `waiting|review → done`, `done → 
   sends `taskId` only when every picked PR is a bundle item of that one task. A reviewer worker (role `reviewer`,
   tool/model/effort from the request or the review settings) is hired fresh in a worktree of its own for the
   repositories involved (never the floor's checkout, never the task's worktree) with the `kanban.pr.review` prompt
-  and the `prReview` contract, reading the pull requests with `gh pr view` / `gh pr diff`. Its final text is an
+  and the `prReview` contract, reading the pull requests with `gh pr view` / `gh pr diff`. A reviewer that finds no
+  free desk or the worker limit full (`noRoom`) is queued as any hire is (`runState: 'queued'`, `queuedRun` phase
+  `pr-review`; the new task is kept, and `reviewPrs` answers with its `taskId` and no `workerId`); the drain's
+  `dequeue` runs `launchPrReview` again with the pull requests of the task's `pr.review` event. Only real refusals
+  (validation, a missing base branch, sign-in) fail, and a new task that never got its reviewer is deleted. Its final text is an
   agent `review` comment with the verdict on the run; the reviewer goes home with cleanup `all` (its own worktree
   only) and the task goes to `review`. The request is kept as a `pr.review` task event, so Retry reviews again.
 - A worktree that is gone (leave-on-merge sent its worker home, or it was pruned) is never reused: before a run
@@ -288,7 +297,7 @@ answers `kanban.ok {rid, ...}` or `kanban.error {rid, message}`. Deltas are push
     project exists, every PR is in one of its GitHub repositories and exists, each once, at most 20, `taskId`
     is the project's), then run by the engine (`engine.reviewPrs`, §4) and answered with
     `kanban.ok {taskId, workerId}`: the review's task (the given one, or a new `investigate` task) and its
-    reviewer. With `panel: true` it goes to the floor's meeting room instead (upstream's 🤝 review panel;
+    reviewer (no `workerId` when the review is queued for a desk or the worker limit). With `panel: true` it goes to the floor's meeting room instead (upstream's 🤝 review panel;
     its brief, the layered `kanban.pr.panel` prompt (office + project layers), lists every PR, the review is
     posted on one of the primary repository's; a single PR from the office's PR board keeps upstream's `pull.panel`) and is answered with
     `kanban.ok {}` (`taskId` when one was given, which also gets a status comment).

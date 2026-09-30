@@ -104,7 +104,9 @@ export function openReviewPicker(net: Net, pull: GhPull, mode: 'review' | 'panel
     if (!ok) return;
     modal.close();
     // The review is a kanban task of its own now (or goes into the bundle's task).
-    toast(ok.taskId ? `A reviewer takes the ${prs.length} PRs together: task #${ok.taskId}` : `A reviewer takes the ${prs.length} PRs together`);
+    // No reviewer yet (a panel, or no room in the office: the review task is queued and starts by itself).
+    if (ok.taskId && !ok.workerId && mode !== 'panel') toast(`The review of the ${prs.length} PRs is queued: task #${ok.taskId} starts when the office has room`);
+    else toast(ok.taskId ? `A reviewer takes the ${prs.length} PRs together: task #${ok.taskId}` : `A reviewer takes the ${prs.length} PRs together`);
   });
 
   paint();

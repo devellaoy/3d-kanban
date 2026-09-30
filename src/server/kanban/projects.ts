@@ -13,7 +13,7 @@ import path from 'node:path';
 import type { FloorDef } from '../building.js';
 import type { RepoSource } from '../workers.js';
 import { MAX_REPOS } from '../workers.js';
-import { normalizeRepo } from '../../shared/floors.js';
+import { normalizeRepo, sameRepo } from '../../shared/floors.js';
 import type { KanbanProjectInfo, KanbanSettings, ProjectRepo } from '../../shared/kanban/types.js';
 import { PROJECT_ID_RE, REPO_ID_RE, type ProjectRepoInput } from '../../shared/kanban/protocol.js';
 import { BRANCH_RE } from './repos-file.js';
@@ -32,19 +32,26 @@ export function primaryRepo(def: Pick<FloorDef, 'id' | 'name' | 'dir' | 'repo'>)
   return { id: def.id, name: def.name, kind: isGit(def.dir) ? 'git' : 'folder', dir: def.dir, ...(def.repo ? { remote: def.repo } : {}), primary: true };
 }
 
-/** A project's repositories, the primary first. The primary always follows the floor itself. */
+/**
+ * A project's repositories, the primary first. The primary always follows the floor itself: its
+ * checkout, and its GitHub repository when the floor knows one (FloorDef.repo); a floor that doesn't
+ * (a local checkout) takes the remote saved for the primary. Every kanban consumer of the primary's
+ * owner/name goes through here, never FloorDef.repo.
+ */
 export function projectRepos(def: FloorDef): ProjectRepo[] {
   const base = primaryRepo(def);
   if (!def.repos?.length) return [base];
   const saved = def.repos.find((r) => r.primary);
-  const primary: ProjectRepo = { ...base, ...(saved ? { name: saved.name, kind: saved.kind, ...(saved.baseBranch ? { baseBranch: saved.baseBranch } : {}), ...(saved.instructions ? { instructions: saved.instructions } : {}) } : {}), id: def.id, dir: def.dir, primary: true };
+  const remote = def.repo ?? saved?.remote;
+  const primary: ProjectRepo = { ...base, ...(saved ? { name: saved.name, kind: saved.kind, ...(remote ? { remote } : {}), ...(saved.baseBranch ? { baseBranch: saved.baseBranch } : {}), ...(saved.instructions ? { instructions: saved.instructions } : {}) } : {}), id: def.id, dir: def.dir, primary: true };
   return [primary, ...def.repos.filter((r) => !r.primary)];
 }
 
 /**
  * Checks a project's repositories as the settings dialog sends them: absolute folders that are
  * there (a git checkout for kind 'git'), unique ids, names and folders, and exactly one primary,
- * which is the floor's own checkout with the floor's id. Returns them cleaned up, or why not.
+ * which is the floor's own checkout with the floor's id, and whose GitHub repository is the floor's
+ * when the floor knows one (FloorDef.repo). Returns them cleaned up, or why not.
  */
 export function validateProjectRepos(def: FloorDef, input: ProjectRepoInput[]): ProjectRepo[] | string {
   if (!Array.isArray(input) || !input.length) return 'A project has at least its own repository';
@@ -82,13 +89,14 @@ export function validateProjectRepos(def: FloorDef, input: ProjectRepoInput[]): 
     if (kind === 'git' && !git) return `${name}: ${dir} isn't a git checkout (pick “folder” for a plain folder)`;
     const remote = r.remote === undefined || r.remote === '' ? undefined : normalizeRepo(r.remote);
     if (r.remote && !remote) return `${name}: the GitHub repository is owner/name`;
+    if (r.primary && def.repo && remote && !sameRepo(remote, def.repo)) return `The floor's own repository is ${def.repo}; add another repository instead, or re-add the floor`;
     if (r.baseBranch !== undefined && r.baseBranch !== '' && !BRANCH_RE.test(r.baseBranch)) return `${name}: that isn't a branch name`;
     out.push({
       id: r.primary ? def.id : r.id,
       name,
       kind,
       dir,
-      ...(remote ? { remote } : r.primary && def.repo ? { remote: def.repo } : {}),
+      ...(r.primary && def.repo ? { remote: def.repo } : remote ? { remote } : {}),
       ...(r.baseBranch ? { baseBranch: r.baseBranch } : {}),
       primary: !!r.primary,
       ...(r.instructions?.trim() ? { instructions: r.instructions.slice(0, 20_000) } : {}),

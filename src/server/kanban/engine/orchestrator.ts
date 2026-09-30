@@ -25,7 +25,7 @@ import { claudeAdapter } from './adapters/claude.js';
 import { codexAdapter } from './adapters/codex.js';
 import type { TaskAgentAdapter, TurnResult } from './adapters/types.js';
 import { Composer, isFolderProject, reportDir, reposText, skillPhase, taskRepos, workerReposText, type ComposeExtra } from './compose.js';
-import { next, type Effect, type MachineEvent, type MachineState, type PromptKind } from './machine.js';
+import { next, type Effect, type LastRun, type MachineEvent, type MachineState, type PromptKind } from './machine.js';
 import { backoffMs, looksInterrupted, planOutcome, prLines, resetTime, reviewFindings, reviewVerdict, stripPlanMarkers } from './markers.js';
 import { branchExists, currentBranch, hasChanges, missingFolders } from './workspace.js';
 
@@ -359,11 +359,26 @@ export class Orchestrator {
     return run;
   }
 
-  /** The run Retry and Continue carry on: the latest, not counting compacts (they only tidy the session). */
-  private lastRun(taskId: number): { phase: RunPhase; round?: number; role: KanbanRole } | undefined {
+  /**
+   * The run Retry and Continue carry on: the latest, not counting compacts (they only tidy the session).
+   * One stopped with no worker never started (see queuedStopped): it goes again as it would have.
+   */
+  private lastRun(taskId: number): LastRun | undefined {
     const runs = this.ctx.repo.listRuns(taskId).filter((r) => r.phase !== 'compact');
     const last = runs[runs.length - 1];
-    return last && { phase: last.phase, ...(last.round !== undefined ? { round: last.round } : {}), role: last.role };
+    const fresh = last?.status === 'stopped' && !last.workerId && !last.sessionId;
+    return last && { phase: last.phase, ...(last.round !== undefined ? { round: last.round } : {}), role: last.role, ...(fresh ? { fresh } : {}) };
+  }
+
+  /**
+   * A queued run taken out of the queue before it started (Stop, a move): recorded as a stopped run of
+   * its phase and round, with no worker or session, as a stopped live run is, so Retry runs that one.
+   */
+  private queuedStopped(task: KanbanTask, q: QueuedRun, error: string) {
+    const review = this.reviewSettings(task);
+    const tool: KanbanTool = q.phase === 'pr-review' ? (this.lastPrReview(task.id)?.tool ?? review.tool) : q.role === 'reviewer' ? review.tool : task.tool;
+    const run = this.ctx.repo.createRun({ taskId: task.id, phase: q.phase, ...(q.round !== undefined ? { round: q.round } : {}), role: q.role, tool, status: 'stopped' });
+    this.finishRun(run.id, task.project, { status: 'stopped', error });
   }
 
   private liveOf(taskId: number): Live | undefined {
@@ -404,6 +419,7 @@ export class Orchestrator {
         if (!task || task.runState !== 'queued') return;
         // A queued task may have been moved out of the process since (to do, done, archived): no hire then.
         if (task.status !== 'in_progress' && task.status !== 'waiting' && task.status !== 'review') {
+          if (task.queuedRun) this.queuedStopped(task, task.queuedRun, 'The task left the process before it started');
           this.update(t.id, { runState: 'idle', queuedRun: null });
           return;
         }
@@ -880,7 +896,7 @@ export class Orchestrator {
    * pull requests are in (never the floor's checkout, never the task's worktree), with the review's
    * read-only flags. A Retry reviews them again from the start.
    */
-  private async launchPrReview(task: KanbanTask, def: FloorDef, floor: Floor, via: Via): Promise<string | undefined> {
+  private async launchPrReview(task: KanbanTask, def: FloorDef, floor: Floor, via: Via): Promise<string | NoRoom | undefined> {
     if (isFolderProject(def)) return 'A folder project has no pull requests to review';
     const req = via.prReview ?? this.lastPrReview(task.id);
     if (!req?.prs.length) return 'There are no pull requests to review: pick them again';
@@ -912,19 +928,29 @@ export class Orchestrator {
     const extras = this.ctx.workerExtras(task.id, tool, skillPhase('pr-review'));
     const launchArgs = adapter.launchArgs('pr-review', { permission: this.ctx.settings.implementPermission(task.project, task.overrides), sandbox: review.sandbox, model, effort, extra: extras.args });
 
+    const owner = hireOwner(task, via.who);
+    const signIn = owner && tool === 'claude' && this.ctx.runAs && !this.ctx.runAs.claudeReady(owner) ? this.signInMissing(task, owner, via.who) : undefined;
+    const countsWith = this.sharesLimit(this.ctx.repo.getTask(task.id) ?? task, 'reviewer', floor);
+    // No desk, or the office's worker limit: queued as any hire is (the drain runs it again, the
+    // pull requests from its pr.review event).
+    const full = signIn ? undefined : this.noRoom(floor, undefined, countsWith);
+    if (full) return { queued: full };
+
     const run = this.ctx.repo.createRun({ taskId: task.id, phase: 'pr-review', role: 'reviewer', tool, model, effort });
     this.ctx.broadcast({ t: 'kanban.run', run, project: task.project }, task.project);
     const fail = (err: string) => {
       this.finishRun(run.id, task.project, { status: 'failed', error: err });
       return err;
     };
-    const owner = hireOwner(task, via.who);
-    if (owner && tool === 'claude' && this.ctx.runAs && !this.ctx.runAs.claudeReady(owner)) return fail(this.signInMissing(task, owner, via.who));
+    if (signIn) return fail(signIn);
     await this.freshBase(floor, def, involved);
     const desk = nextFreeSeat((id) => floor.workers.deskOccupied(id), floor.workers.wing?.() ?? 0)?.id;
-    if (!desk) return fail('There is no free desk on the floor for a reviewer');
+    if (!desk) {
+      // Taken while its bases were fetched: back to the queue.
+      this.finishRun(run.id, task.project, { status: 'interrupted', error: 'There was no free desk for its reviewer' });
+      return { queued: this.noRoom(floor, undefined, countsWith) ?? "Queued: there's no free desk on the floor for its worker. It starts by itself when one frees." };
+    }
     const by = `${via.who?.name ?? 'Kanban'} (kanban #${task.id})`;
-    const countsWith = this.sharesLimit(this.ctx.repo.getTask(task.id) ?? task, 'reviewer', floor);
     const hired = floor.workers.spawn(desk, by, prompt, true, 'agent', tool, adapter.spawnModel(model), adapter.spawnEffort(effort), undefined, owner, repoSources(def, involved), undefined, {
       launchArgs,
       bases: baseBranches(def, involved),
@@ -1475,7 +1501,12 @@ export class Orchestrator {
 
   stop(taskId: number, who: KanbanCaller): Promise<string | void> {
     // A task asking in its terminal is idle but its run still goes: the machine stops that too.
-    return this.op(taskId, () => this.apply(taskId, { type: 'stop' }, { who }));
+    return this.op(taskId, async (task) => {
+      const queued = task.runState === 'queued' ? task.queuedRun : undefined;
+      const err = await this.apply(taskId, { type: 'stop' }, { who });
+      if (!err && queued) this.queuedStopped(task, queued, `Stopped by ${who.name} before it started`);
+      return err;
+    });
   }
 
   continue(taskId: number, who: KanbanCaller, answer?: string): Promise<string | void> {
@@ -1604,7 +1635,7 @@ export class Orchestrator {
         const where = task.status === 'done' ? 'Done' : 'the archive';
         this.finishRun(live.runId, live.floorId, { status: 'stopped', error: `${who.name} moved the task to ${where}` });
         this.note(task, `${who.name} moved the task to ${where}, so its ${live.phase === 'review' || live.phase === 'pr-review' ? 'review round' : `${live.phase} run`} was stopped.`, live.runId);
-      }
+      } else if (task.queuedRun) this.queuedStopped(task, task.queuedRun, `${who.name} moved the task to ${task.status === 'done' ? 'Done' : 'the archive'} before it started`);
       if (live || task.runState !== 'idle' || task.queuedRun) this.update(task.id, { runState: 'idle', queuedRun: null, waitingReason: null, waitingText: null, retryAt: null });
       await this.sendIdleHome(task.id, who.name, live?.workerId);
     }).then(() => undefined);
@@ -1634,7 +1665,7 @@ export class Orchestrator {
    * request names, or on a new investigate task for it. The request comes checked (KanbanPullsApi.review);
    * this checks only what the engine itself needs.
    */
-  async reviewPrs(req: KanbanPrReviewRequest, who: KanbanCaller): Promise<{ taskId: number; workerId: string } | string> {
+  async reviewPrs(req: KanbanPrReviewRequest, who: KanbanCaller): Promise<{ taskId: number; workerId?: string } | string> {
     const def = this.ctx.project(req.project);
     if (!def) return `There's no project ${req.project}`;
     if (!this.watch(req.project)) return "The project's floor isn't open, so there's nowhere to seat a reviewer";
@@ -1691,6 +1722,11 @@ export class Orchestrator {
       return this.apply(task.id, { type: 'prReview' }, { who, prReview: request });
     });
     const task = this.ctx.repo.getTask(taskId);
+    if (!err && task?.runState === 'queued' && task.queuedRun?.phase === 'pr-review') {
+      // No room now (a desk, the worker limit): the task waits in the queue and the review starts by itself.
+      this.note(task, `${who.name} asked for a review of ${labels.join(', ')}`);
+      return { taskId };
+    }
     const workerId = task?.reviewerWorkerId;
     const info = workerId ? this.ctx.floor(req.project)?.workers.get(workerId) : undefined;
     if (err || !task || !workerId || !info) {

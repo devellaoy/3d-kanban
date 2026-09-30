@@ -72,9 +72,9 @@ export interface KanbanEngineApi {
    * or on a new investigate task in `req.project`. A reviewer worker in a worktree of its own reads
    * them; its final text becomes an agent comment with the verdict, and the task goes to the review
    * column. The request is already checked (see KanbanPullsApi.review). Resolves to the task and the
-   * reviewer, or to why not.
+   * reviewer (no reviewer yet when there's no room for one: the task is queued), or to why not.
    */
-  reviewPrs(req: KanbanPrReviewRequest, who: KanbanCaller): Promise<{ taskId: number; workerId: string } | string>;
+  reviewPrs(req: KanbanPrReviewRequest, who: KanbanCaller): Promise<{ taskId: number; workerId?: string } | string>;
 }
 
 /** The part of upstream's RunAs (workers.ts) the engine asks before it hires as an account. */
@@ -96,9 +96,9 @@ export interface KanbanPullsApi {
   /**
    * A review of several PRs at once: checks them (the project's repositories', there, no more than
    * PR_REVIEW_MAX), then has the engine run it (KanbanEngineApi.reviewPrs). Resolves to the review's
-   * task and its reviewer, or to why not.
+   * task and its reviewer (none yet when it's queued), or to why not.
    */
-  review(req: KanbanPrReviewRequest, who: KanbanCaller): Promise<{ taskId: number; workerId: string } | string>;
+  review(req: KanbanPrReviewRequest, who: KanbanCaller): Promise<{ taskId: number; workerId?: string } | string>;
   /**
    * 🤝 The same PRs to the floor's meeting room: upstream's review panel, briefed with all of them.
    * Resolves to why not, if it couldn't. (Optional only so stand-ins in tests needn't have it.)
