@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { JQL_INCOMPLETE, browseJql, checkUserJql, keyProject, scopeClause } from '../src/server/kanban/integrations/issues/browse/jql.js';
+import { JQL_BACKSLASH, JQL_INCOMPLETE, browseJql, checkUserJql, keyProject, scopeClause } from '../src/server/kanban/integrations/issues/browse/jql.js';
 import { projectQuery } from '../src/server/kanban/integrations/issues/browse/projectquery.js';
 import { parseBrowseFilters, parseBrowseMsg } from '../src/shared/kanban/browse.js';
 import type { BrowseFilters } from '../src/shared/kanban/browse.js';
@@ -72,6 +72,15 @@ test('user JQL cannot break out of the scope: unbalanced parentheses and quotes 
   // Parentheses and ORDER BY inside a literal are only text.
   for (const good of ['summary ~ ") OR (project = B"', "summary ~ 'a ) b'", 'summary ~ "order by x"', '(a = 1 OR b = 2) AND c = "d\\"e)"', 'priority in (High, Low)']) checkUserJql(good);
   assert.equal(jql({ statusCategory: 'all', jql: 'a = 1 OR b = 2' }), `${SCOPE_JQL} AND (a = 1 OR b = 2) ORDER BY updated DESC`, 'AND-ed in parentheses');
+});
+
+test('user JQL: a backslash outside a literal is refused (Jira reads \\" there too), inside quotes it works', () => {
+  const bypass = `summary ~ a\\") OR project = OTHER OR (summary ~ '"\\''`;
+  assert.throws(() => checkUserJql(bypass), new RegExp(JQL_BACKSLASH));
+  assert.throws(() => jql({ jql: bypass }), /backslash/);
+  assert.throws(() => checkUserJql('summary ~ a\\b'), /backslash/);
+  checkUserJql('summary ~ "a\\"b" AND text ~ \'c\\\'d\'');
+  assert.ok(jql({ statusCategory: 'all', jql: 'summary ~ "a\\"b"' }).includes('(summary ~ "a\\"b")'));
 });
 
 // --- GitHub ---------------------------------------------------------------------------------------

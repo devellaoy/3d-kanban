@@ -364,8 +364,9 @@ site and the office only ever shows the source's own projects.
   in progress, done, all), status, assignee (anyone, nobody, **Me** or a person), issue type, labels,
   and per source: Jira fix version, sprint (or *open sprints*) and epic, GitHub iteration.
 - **Raw JQL** (Jira). A box for extra JQL, added to the filters with AND. It must be one complete
-  expression (balanced quotes and parentheses, no `ORDER BY`: the office sorts by the last update) and
-  is always inside the source's project keys, so it can't reach another project.
+  expression (balanced quotes and parentheses, no backslash outside quotes, no `ORDER BY`: the office
+  sorts by the last update) and is added after the source's project keys. As a second guard, issues
+  outside the source's projects are dropped from the results. Counts aren't shown while raw JQL is in use.
 - **Me.** On Jira it is the account you pinned with **📌 This is me** (in an issue's assignee panel; per
   site, in your browser); until you have pinned one the option says so. On GitHub it is your own GitHub
   sign-in.

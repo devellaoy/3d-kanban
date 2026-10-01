@@ -16,11 +16,13 @@ export const JIRA_KEY_RE = /^[A-Za-z][A-Za-z0-9_]*-\d+$/;
 export const keyProject = (key: string): string => key.slice(0, key.lastIndexOf('-')).toUpperCase();
 
 export const JQL_INCOMPLETE = 'The JQL must be a complete expression (balanced parentheses and quotes)';
+export const JQL_BACKSLASH = 'A backslash is only allowed inside quotes in the JQL';
 
 /**
  * Refuses user JQL that isn't one complete expression: an unclosed quote, parentheses that don't
  * balance (`x) OR (project = B` would break out of the scope), or an ORDER BY (the office sorts).
- * It walks the text, skipping "…" and '…' literals and their escapes.
+ * It walks the text, skipping "…" and '…' literals and their escapes. A backslash outside a literal is
+ * refused: Jira reads `\"` there too, which would hide a quote from this walk (and so the scope's end).
  */
 export function checkUserJql(jql: string): void {
   let depth = 0;
@@ -40,6 +42,7 @@ export function checkUserJql(jql: string): void {
       outside += ' ';
       continue;
     }
+    if (ch === '\\') throw new Error(JQL_BACKSLASH);
     if (ch === '(') depth++;
     else if (ch === ')' && --depth < 0) throw new Error(JQL_INCOMPLETE);
     outside += ch;

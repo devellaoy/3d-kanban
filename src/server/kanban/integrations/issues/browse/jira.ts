@@ -60,6 +60,12 @@ function sprintFieldOf(io: IssueActIo, scope: JiraConfig, caches: JiraCaches): P
   return p;
 }
 
+/** Whether the issue is in one of the scope's projects (its project field, else the key's prefix): a query that escaped the scope still can't show another project. */
+const inScope = (issue: BrowseIssue, scope: Pick<JiraConfig, 'projectKeys'>): boolean => {
+  const project = (issue.project ?? keyProject(issue.key)).toUpperCase();
+  return scope.projectKeys.some((k) => k.toUpperCase() === project);
+};
+
 const category = (s: any): StatusCategory | undefined => (s?.statusCategory?.key === 'new' || s?.statusCategory?.key === 'indeterminate' || s?.statusCategory?.key === 'done' ? s.statusCategory.key : undefined);
 
 /** One issue of a search or a single read as a browse issue. `sprintField`: where its sprints are. */
@@ -99,8 +105,8 @@ export function jiraBrowseIssue(raw: any, site: string, sourceId: string, sprint
 /** One page of issues for the query; `next` is the token of the following page. */
 export async function jiraSearchPage(io: IssueActIo, scope: JiraConfig, jql: string, caches: JiraCaches, cursor?: string, textSearch = false): Promise<{ items: BrowseIssue[]; next?: string }> {
   const sprintField = await sprintFieldOf(io, scope, caches);
-  const body = await call(io, scope, 'POST', '/rest/api/3/search/jql', { jql, fields: [...FIELDS, ...(sprintField ? [sprintField] : [])], maxResults: PAGE, ...(cursor ? { nextPageToken: cursor } : {}) }, textSearch);
-  const items = (body.issues ?? []).flatMap((raw: any) => jiraBrowseIssue(raw, scope.site, scope.id, sprintField) ?? []);
+  const body = await call(io, scope, 'POST', '/rest/api/3/search/jql', { jql, fields: [...new Set([...FIELDS, 'project']), ...(sprintField ? [sprintField] : [])], maxResults: PAGE, ...(cursor ? { nextPageToken: cursor } : {}) }, textSearch);
+  const items = (body.issues ?? []).flatMap((raw: any) => jiraBrowseIssue(raw, scope.site, scope.id, sprintField) ?? []).filter((i: BrowseIssue) => inScope(i, scope));
   const next = typeof body.nextPageToken === 'string' && body.nextPageToken && body.isLast !== true ? body.nextPageToken : undefined;
   return { items, ...(next ? { next } : {}) };
 }
@@ -110,9 +116,9 @@ export function jiraPage(io: IssueActIo, scope: JiraConfig, filters: BrowseFilte
   return jiraSearchPage(io, scope, browseJql(scope, filters, where), caches, cursor, !!filters.q);
 }
 
-/** The approximate count for the query; `{}` when Jira can't say (a failed count never fails a page). Cached for a minute. */
+/** The approximate count for the query; `{}` when Jira can't say (a failed count never fails a page). Cached for a minute per site, source and query. */
 export async function jiraCount(io: IssueActIo, scope: JiraConfig, jql: string, caches: JiraCaches, now = Date.now()): Promise<number | undefined> {
-  const key = `${scope.site.toLowerCase()}|${jql}`;
+  const key = `${scope.site.toLowerCase()}|${scope.id}|${jql}`;
   const hit = caches.counts.get(key);
   if (hit && now - hit.at < COUNT_TTL_MS) return hit.count;
   let count: number | undefined;
@@ -186,6 +192,7 @@ export async function jiraGet(io: IssueActIo, scope: JiraConfig, key: string, ca
   const raw = await call(io, scope, 'GET', `/rest/api/3/issue/${encodeURIComponent(key)}?fields=${[...FIELDS, 'description', ...(sprintField ? [sprintField] : [])].join(',')}`);
   const issue = jiraBrowseIssue(raw, scope.site, scope.id, sprintField);
   if (!issue) throw new Error(`Jira didn’t return ${key}`);
+  if (!inScope(issue, scope)) throw new Error(`${key} isn't among the source's projects (${scope.projectKeys.join(', ')})`);
   return issue;
 }
 

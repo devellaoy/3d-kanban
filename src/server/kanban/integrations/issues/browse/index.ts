@@ -104,6 +104,8 @@ export function createBrowse(ctx: KanbanContext, deps: BrowseDeps) {
 
     'kanban.browse.count': scoped<Msg<'kanban.browse.count'>>(async (c, m, { cfg, io }) => {
       if (cfg.kind === 'github-project') return reply(c, m, { t: 'kanban.browseCount', count: (await ghPage(io, cfg, m.filters, m.group, undefined, 1)).total });
+      // Raw JQL can't be checked after the fact (a count has no issues to look at), so it gets no count.
+      if (m.filters.jql?.trim()) return reply(c, m, { t: 'kanban.browseCount' });
       const jql = browseJql(cfg, m.filters, { topLevel: true, version: m.group, epic: m.epic }, false);
       const count = await jiraCount(io, cfg, jql, caches);
       reply(c, m, { t: 'kanban.browseCount', ...(count !== undefined ? { count } : {}) });

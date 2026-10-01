@@ -449,7 +449,9 @@ answers `kanban.ok {rid, ...}` or `kanban.error {rid, message}`. Deltas are push
     (one approximate count; `count` is missing when the source couldn't tell), `kanban.browsePage {items, next?, total?}` (for
     `page` and `children`) and `kanban.browseIssue {issue}` (the full record with its `taskId`); `browse.people` is answered
     with `kanban.issuePeople`. Jira JQL is built on the server: the source's project keys come first and are never optional,
-    and the user's `jql` is checked as one complete expression (`checkUserJql`) and AND-ed in parentheses.
+    and the user's `jql` is checked (`checkUserJql`: one complete expression, no backslash outside a quoted literal) and AND-ed in
+    parentheses. As a second line, every issue a Jira search or read returns must be in the source's projects (its `project`
+    field, else the key's prefix) or it is dropped (a single issue is refused), and `browse.count` answers no count for raw JQL.
     - **Actions and the browsed cache.** `issue.*` and `issues.createTask` accept an issue that is on the project's list, one
       acted on lately, **one opened from Browse** (`kanban.browse.issue` keeps it in a bounded per-project set, 300 issues for
       12 hours, the oldest let go first), or else one the server **loads again** from a source of the project (within that

@@ -136,6 +136,18 @@ test('Jira page: the JQL stays inside the scope, the cursor round-trips, and iss
   assert.match((await ask('kanban.browse.page', { scope: 'j', filters: {}, group: 'released' })).message, /version must be an id/);
 });
 
+test('Jira page: an issue of another project is dropped, and one issue of another project is refused', async () => {
+  const { ask } = setup({
+    http: jiraSite((c) => {
+      if (c.url.endsWith('/search/jql')) return { body: { issues: [raw('UYT-1'), raw('OTHER-9', { project: { key: 'OTHER' } }), raw('UYT-2', { project: { key: 'OTHER' } })], isLast: true } };
+      if (c.url.includes('/issue/UYT-7')) return { body: raw('UYT-7', { project: { key: 'OTHER' } }) };
+      return undefined;
+    }),
+  });
+  assert.deepEqual((await ask('kanban.browse.page', { scope: 'j', filters: {} })).items.map((i: any) => i.key), ['UYT-1']);
+  assert.match((await ask('kanban.browse.issue', { scope: 'j', issueKey: 'UYT-7' })).message, /among the source's projects/);
+});
+
 test('Jira text search: a 400 becomes a friendly line, a 429 too', async () => {
   const { ask } = setup({ http: jiraSite((c) => (c.url.endsWith('/search/jql') ? { status: c.body.jql.includes('text ~') ? 400 : 429, body: { errorMessages: ['bad'] } } : undefined)) });
   assert.match((await ask('kanban.browse.page', { scope: 'j', filters: { q: 'a[b' } })).message, /couldn’t search for that text/);
@@ -153,6 +165,14 @@ test('Jira count: asked lazily, cached for a minute, and a failed count answers 
   const got = await failing.ask('kanban.browse.count', { scope: 'j', filters: {}, group: '7' });
   assert.equal(got.t, 'kanban.browseCount');
   assert.equal(got.count, undefined);
+});
+
+test('Jira count: raw JQL gets no count and asks Jira nothing', async () => {
+  const { ask, http } = setup();
+  const got = await ask('kanban.browse.count', { scope: 'j', filters: { jql: 'summary ~ "x"' }, group: '7' });
+  assert.equal(got.t, 'kanban.browseCount');
+  assert.equal(got.count, undefined);
+  assert.equal(http.calls.filter((c) => c.url.endsWith('/approximate-count')).length, 0);
 });
 
 test('Jira children: the sub-tasks of a key, all statuses, inside the scope', async () => {
