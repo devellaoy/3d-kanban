@@ -948,17 +948,18 @@ export class Orchestrator {
    * investigation, a folder project, no branch yet, or already on it).
    */
   private async checkoutFor(task: KanbanTask, def: FloorDef, floorDir: string, role: KanbanRole, phase: RunPhase, freshTree: boolean): Promise<string | undefined> {
-    if (role !== 'implementer' || phase === 'plan' || (task.type === 'investigate' && phase !== 'pr-fix') || !task.branch || isFolderProject(def)) return undefined;
+    // A Fix PRs run works on each open PR's own branch, whatever branch the task (an investigation's, say) has.
+    const prs = phase === 'pr-fix' ? openPrs(task).filter((p) => p.branch) : [];
+    const branch = task.branch ?? prs[0]?.branch;
+    if (role !== 'implementer' || phase === 'plan' || (task.type === 'investigate' && phase !== 'pr-fix') || !branch || isFolderProject(def)) return undefined;
+    const branches = { ...this.ctx.repo.repoBranches(task.id), ...Object.fromEntries(prs.map((p) => [p.repoId, p.branch])) };
+    const want = taskRepos(def, task).filter((r) => r.kind === 'git').map((r) => [r.name, branches[r.id] ?? branch]);
     if (!freshTree) {
       if (!task.workspace) return undefined;
       const on = await currentBranch(path.join(floorDir, task.workspace.worktree.path));
-      if (!on || on === task.branch) return undefined;
+      if (!on || (prs.length ? want.every(([, b]) => b === on) : on === task.branch)) return undefined;
     }
-    const branches = this.ctx.repo.repoBranches(task.id);
-    return taskRepos(def, task)
-      .filter((r) => r.kind === 'git')
-      .map((r) => `- ${r.name}: \`${branches[r.id] ?? task.branch}\``)
-      .join('\n');
+    return want.map(([name, b]) => `- ${name}: \`${b}\``).join('\n');
   }
 
   /** The task's workspace is gone: its workers go home, and it (and the sessions that ran there) is forgotten; its branch stays. */
@@ -1816,12 +1817,10 @@ export class Orchestrator {
       if (this.liveOf(task.id)) return Promise.resolve('Stop it first: it is running');
       if (this.folder(task.project)) return Promise.resolve('A folder project has no git repositories to open pull requests in');
       // A task whose worktree went still has its branch: a fresh worktree checks it out (see launch).
-      // Fixing with no branch of its own: the task takes the one its open pull request is from.
-      const prBranch = mode === 'fix' && !task.branch ? openPrs(task).find((p) => p.branch)?.branch : undefined;
-      if (!task.workspace && !task.branch && !prBranch) return Promise.resolve('It has no work to open pull requests for yet');
+      // Fixing, an open pull request's branch is work enough (checkoutFor sends the agent to it).
+      if (!task.workspace && !task.branch && !(mode === 'fix' && openPrs(task).some((p) => p.branch))) return Promise.resolve('It has no work to open pull requests for yet');
       const fix = mode === 'fix' ? canFixPrs(task) : undefined;
       if (fix && !fix.ok) return Promise.resolve(fix.reason);
-      if (prBranch) this.update(task.id, { branch: prBranch });
       return this.apply(taskId, { type: 'pr', mode }, { who });
     });
   }

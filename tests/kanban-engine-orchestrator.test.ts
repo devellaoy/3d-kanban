@@ -1,12 +1,13 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { createPullsParts } from '../src/server/kanban/integrations/pulls/index.js';
 import { floorPulled } from '../src/server/kanban/integrations/pulls/board.js';
 import type { GhPull } from '../src/shared/protocol.js';
 import type { KanbanTask } from '../src/shared/kanban/types.js';
-import { ADA, engineFixture, type Invocation } from './kanban-engine-fixture.js';
+import { ADA, engineFixture, makeRepo, type Invocation } from './kanban-engine-fixture.js';
 import { grantDir } from '../src/server/kanban/uploads.js';
 
 const hasArgs = (inv: Invocation, ...args: string[]) => args.every((a) => inv.args.includes(a));
@@ -549,7 +550,7 @@ test('a run held for background agents that never report back goes on after back
   assert.ok(fx.repo.listComments(task.id).comments.some((c) => c.authorKind === 'system' && /Waited 1 s for its background agents/.test(c.text)));
 });
 
-test('Fix PRs on an investigation with an open PR runs the implementer pr-fix phase with the normal flags and the PR branch, no report folder', async (t) => {
+test('Fix PRs on an investigation checks out the PR branch, not the investigation branch, and no report folder is granted', async (t) => {
   const fx = await engineFixture();
   t.after(() => fx.close());
   fx.setRules([
@@ -562,19 +563,43 @@ test('Fix PRs on an investigation with an open PR runs the implementer pr-fix ph
   assert.match((await fx.engine.pr(task.id, ADA, 'create')) ?? '', /investigation/, 'no PR is opened for an investigation');
   assert.match((await fx.engine.pr(task.id, ADA, 'fix')) ?? '', /no open pull requests/);
 
-  fx.repo.upsertPrLink(task.id, { repoId: 'proj', repo: 'acme/proj', number: 5, url: 'https://github.com/acme/proj/pull/5', state: 'OPEN', branch: 'fix/their-branch' });
-  fx.repo.updateTask(task.id, { branch: null });
-  fx.repo.setRepoBranch(task.id, 'proj', null);
+  // The investigation left its own working branch on the task; the PR is on another.
+  fx.repo.updateTask(task.id, { branch: 'office/scratch' });
+  fx.repo.setRepoBranch(task.id, 'proj', 'office/scratch');
+  fx.repo.upsertPrLink(task.id, { repoId: 'proj', repo: 'acme/proj', number: 5, url: 'https://github.com/acme/proj/pull/5', state: 'OPEN', branch: 'fix/the-pr-branch' });
   const before = fx.invocations().length;
   assert.equal(await fx.engine.pr(task.id, ADA, 'fix'), undefined);
-  assert.equal(fx.task(task.id).branch, 'fix/their-branch', 'the PR branch stands in for a missing task branch');
   await fx.waitTask(task.id, (x) => x.status === 'review' && x.runState === 'idle' && fx.repo.listRuns(task.id).some((r) => r.phase === 'pr-fix' && r.status === 'succeeded'), 'the pr-fix run');
+  assert.equal(fx.task(task.id).branch, 'office/scratch', "the task's own branch is left alone");
   const run = fx.repo.listRuns(task.id).find((r) => r.phase === 'pr-fix')!;
   assert.equal(run.role, 'implementer');
   const inv = fx.invocations().slice(before).filter((i) => i.kind === 'claude');
   const text = inv.map((i) => i.prompt ?? i.args.join(' ')).join('\n');
   assert.match(text, /Address the open review comments[\s\S]*https:\/\/github\.com\/acme\/proj\/pull\/5/);
-  assert.match(text, /fix\/their-branch/, 'told to check out the PR branch');
+  assert.match(text, /fix\/the-pr-branch/, 'told to check out the PR branch');
+  assert.ok(!text.includes('office/scratch'), "not told to check out the investigation's branch");
   assert.ok(!text.includes('investigateSafety') && !/read-only/i.test(inv.map((i) => i.args.join(' ')).join(' ')));
   assert.ok(!fx.invocations().slice(before).some((i) => i.args.some((a) => a.includes('reports'))), 'no report folder is granted');
+});
+
+test('Fix PRs in two repositories checks out the PR branch only where the task has an open PR', async (t) => {
+  const api = path.join(mkdtempSync(path.join(tmpdir(), 'kanban-api-')), 'api');
+  makeRepo(api);
+  const fx = await engineFixture({ repos: [{ id: 'api', name: 'api', kind: 'git', dir: api, remote: 'acme/api', primary: false }] });
+  t.after(() => fx.close());
+  fx.setRules([{ when: 'Address the open review comments', reply: 'Answered the comments.' }, { when: 'nvestigat', reply: 'Found it.' }]);
+  const task = fx.newTask({ type: 'investigate', usePlan: false, useReview: false });
+  assert.equal(await fx.engine.start(task.id, ADA), undefined);
+  await fx.waitTask(task.id, (x) => x.status === 'review' && x.runState === 'idle', 'the investigation done');
+  fx.repo.updateTask(task.id, { branch: 'office/scratch' });
+  fx.repo.setRepoBranch(task.id, 'proj', 'office/scratch');
+  fx.repo.setRepoBranch(task.id, 'api', 'office/api-scratch');
+  fx.repo.upsertPrLink(task.id, { repoId: 'proj', repo: 'acme/proj', number: 5, url: 'https://github.com/acme/proj/pull/5', state: 'OPEN', branch: 'fix/the-pr-branch' });
+  const before = fx.invocations().length;
+  assert.equal(await fx.engine.pr(task.id, ADA, 'fix'), undefined);
+  await fx.waitTask(task.id, (x) => x.status === 'review' && x.runState === 'idle' && fx.repo.listRuns(task.id).some((r) => r.phase === 'pr-fix' && r.status === 'succeeded'), 'the pr-fix run');
+  const text = fx.invocations().slice(before).filter((i) => i.kind === 'claude').map((i) => i.prompt ?? i.args.join(' ')).join('\n');
+  assert.match(text, /- [^\n]*`fix\/the-pr-branch`/);
+  assert.match(text, /- api: `office\/api-scratch`/);
+  assert.ok(!text.includes('office/scratch`'), "the repository with the PR isn't sent to the investigation's branch");
 });
