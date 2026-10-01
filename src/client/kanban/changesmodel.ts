@@ -113,3 +113,52 @@ export function liveStale(prev: Pick<ChangesState, 'head' | 'ahead' | 'subject'>
   const moved = prev.head !== next.head || prev.ahead !== next.ahead || prev.subject !== next.subject;
   return { commits: moved, whole: true };
 }
+
+/**
+ * What a mode needs read over HTTP for its repository. Per commit needs the commits; everything else,
+ * and Per commit too while the worker is followed live, needs the whole change, whose worktree part
+ * (against HEAD) says what is uncommitted: the live list can't (see readsHttp).
+ */
+export function httpNeeds(mode: ChangesMode, live: boolean): { whole: boolean; commits: boolean } {
+  return { whole: mode !== 'commits' || live, commits: mode === 'commits' };
+}
+
+/**
+ * How many files are uncommitted: the worktree against HEAD when it has been read (null: no
+ * worktree), else, for a moment, the live list's own flags; undefined while neither is known.
+ */
+export function uncommittedOf(againstHead: number | null | undefined, live: Pick<ChangesState, 'files' | 'error'> | null | undefined): number | null | undefined {
+  if (againstHead !== undefined) return againstHead;
+  return live && !live.error ? live.files.filter((f) => f.uncommitted).length : undefined;
+}
+
+/**
+ * The latest read of each key: an answer is taken only when no newer read of its key has started,
+ * and the key hasn't been forgotten since (the source changed, ↻), so a slow old answer never
+ * overwrites a fresh one.
+ */
+export class LatestReads {
+  private latest = new Map<string, number>();
+  private seq = 0;
+
+  start(key: string): number {
+    const token = ++this.seq;
+    this.latest.set(key, token);
+    return token;
+  }
+
+  /** Whether the answer to `token` is still wanted (once: it's the key's last word). */
+  take(key: string, token: number): boolean {
+    if (this.latest.get(key) !== token) return false;
+    this.latest.delete(key);
+    return true;
+  }
+
+  forget(key: string) {
+    this.latest.delete(key);
+  }
+
+  clear() {
+    this.latest.clear();
+  }
+}

@@ -4,7 +4,7 @@
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { changesModes, floorOfRepo, liveFloor, liveRow, liveStale, prOfRepo, readsHttp, repoOfFloor, sortRepos, stepRow, taskRow } from '../src/client/kanban/changesmodel.js';
+import { LatestReads, changesModes, floorOfRepo, httpNeeds, liveFloor, liveRow, liveStale, prOfRepo, readsHttp, uncommittedOf, repoOfFloor, sortRepos, stepRow, taskRow } from '../src/client/kanban/changesmodel.js';
 import { parseRepoFloorId, repoFloorId } from '../src/shared/kanban/repofloor.js';
 import { repoFloorId as serverRepoFloorId } from '../src/server/kanban/projects.js';
 import type { ChangedFile, WorkerRepo } from '../src/shared/protocol.js';
@@ -106,4 +106,35 @@ test('a live state that moved the branch makes the commits stale, an amend inclu
   assert.deepEqual(liveStale(s('a'), s('b')), { commits: true, whole: true });
   assert.deepEqual(liveStale(s('a'), s('a', 3)), { commits: true, whole: true });
   assert.deepEqual(liveStale(s('a'), s('a', 2, 'other')), { commits: true, whole: true });
+});
+
+test('opened on All changes while live, the view still reads the worktree against HEAD for Uncommitted', () => {
+  // A committed file put back as the base had it: the live list (from the base) has nothing...
+  const liveState = { files: [] as ChangedFile[] };
+  // ...but the worktree differs from HEAD: the button, the counts and commit/discard go by that.
+  assert.deepEqual(httpNeeds('all', true), { whole: true, commits: false });
+  assert.deepEqual(httpNeeds('commits', true), { whole: true, commits: true });
+  assert.deepEqual(httpNeeds('commits', false), { whole: false, commits: true });
+  assert.equal(uncommittedOf(1, liveState), 1);
+  assert.deepEqual(changesModes(uncommittedOf(1, liveState)!, 'all'), ['all', 'commits', 'uncommitted']);
+  // Until it's read, the live flags stand in; no worktree is null.
+  assert.equal(uncommittedOf(undefined, { files: [live({ uncommitted: true }), live({ path: 'b' })] }), 1);
+  assert.equal(uncommittedOf(undefined, { files: [], error: 'x' }), undefined);
+  assert.equal(uncommittedOf(null, liveState), null);
+});
+
+test('an older HTTP answer never overwrites a newer one, nor one forgotten since', () => {
+  const r = new LatestReads();
+  const before = r.start('whole:api');
+  const after = r.start('whole:api');
+  // Answers in the reverse order: the newer one is taken, the old one arriving last is dropped.
+  assert.equal(r.take('whole:api', after), true);
+  assert.equal(r.take('whole:api', before), false);
+  // The source changed while a read was on its way.
+  const pending = r.start('commits:api');
+  r.forget('commits:api');
+  assert.equal(r.take('commits:api', pending), false);
+  const other = r.start('whole:web');
+  r.clear();
+  assert.equal(r.take('whole:web', other), false);
 });
