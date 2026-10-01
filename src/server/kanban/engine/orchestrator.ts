@@ -171,6 +171,8 @@ export class Orchestrator {
   private floors = new Map<string, { workers: WorkerManager; off: () => void }>();
   /** One thing at a time per task: an operation or a turn's end. */
   private chains = new Map<number, Promise<unknown>>();
+  /** The tasks whose workspace fingerprint failed (logged once, until it works again). */
+  private unprinted = new Set<number>();
   /** When a task's run of usage limits began, to cap the total wait (autoResume.maxWaitHours). */
   private limitSince = new Map<number, number>();
   private sweepTimer?: NodeJS.Timeout;
@@ -582,12 +584,28 @@ export class Orchestrator {
 
   // --- Applying the machine -----------------------------------------------------------------------
 
+  /** Stores the workspace as the task now stands in the Review column (KanbanTask.handoffFingerprint); never throws. */
+  private async storeHandoff(taskId: number): Promise<void> {
+    try {
+      const fresh = this.ctx.repo.getTask(taskId);
+      if (fresh?.status !== 'review') return;
+      const print = await this.fingerprint(fresh);
+      if (this.ctx.repo.getTask(taskId)?.status === 'review') this.update(taskId, { handoffFingerprint: print ?? null });
+    } catch (err) {
+      console.error(`agent-office: couldn't store kanban task #${taskId}'s handoff fingerprint: ${(err as Error).message}`);
+    }
+  }
+
   /** The task's workspace as it is now (workspaceFingerprint); undefined when there is no git to ask. */
   private async fingerprint(task: KanbanTask): Promise<string | undefined> {
     const floor = this.ctx.floor(task.project);
     if (this.folder(task.project) || !floor || !task.workspace) return undefined;
     const print = await workspaceFingerprint(floor.dir, task.workspace);
-    if (print === undefined) console.error(`agent-office: couldn't fingerprint kanban task #${task.id}'s workspace, so a comment's work on it is always reviewed`);
+    if (print !== undefined) this.unprinted.delete(task.id);
+    else if (!this.unprinted.has(task.id)) {
+      this.unprinted.add(task.id);
+      console.error(`agent-office: couldn't fingerprint kanban task #${task.id}'s workspace, so a comment's work on it is always reviewed`);
+    }
     return print;
   }
 
@@ -620,11 +638,10 @@ export class Orchestrator {
       const err = await this.effect(taskId, effect, via);
       if (err && !error) error = err;
     }
-    // Last, so the git calls delay none of the other effects: what the user got in the Review column.
-    if (tr.effects.some((x) => x.type === 'finished')) {
-      const fresh = this.ctx.repo.getTask(taskId);
-      if (fresh?.status === 'review') this.update(taskId, { handoffFingerprint: (await this.fingerprint(fresh)) ?? null });
-    }
+    // What the user got in the Review column, taken on the task's chain after this op so the git calls delay nothing. Not when a
+    // resume changed nothing (the baseline still holds), nor for a task that is never reviewed again.
+    const unchanged = e.type === 'resumed' && e.since === 'handoff' && !e.changes;
+    if (tr.effects.some((x) => x.type === 'finished') && !unchanged && task.type !== 'investigate' && task.useReview) void this.serial(taskId, () => this.storeHandoff(taskId));
     return error;
   }
 

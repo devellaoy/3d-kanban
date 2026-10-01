@@ -255,7 +255,7 @@ export function next(s: MachineState, e: MachineEvent, t: MachineTask, cfg: Mach
     case 'resumed':
       if (!automated) return ok({ ...s, runState: 'idle' });
       if (e.pending) return deliverPending(s, false);
-      return afterWork(s, t, e.changes, e.type === 'resumed' ? e.since : undefined);
+      return afterWork(s, t, e.changes, 'since' in e ? e.since : undefined);
 
     case 'reviewed': {
       if (!automated) return ok({ ...s, runState: 'idle' }, { type: 'reviewerHome' });
