@@ -63,9 +63,7 @@ export type AskingKind = 'question' | 'permission';
 /** The agent CLIs the kanban process drives. Other providers stay ordinary office workers. */
 export type KanbanTool = 'claude' | 'codex';
 export const KANBAN_TOOLS: readonly KanbanTool[] = ['claude', 'codex'];
-export function isKanbanTool(v: unknown): v is KanbanTool {
-  return v === 'claude' || v === 'codex';
-}
+export const isKanbanTool = (v: unknown): v is KanbanTool => v === 'claude' || v === 'codex';
 
 /**
  * Reasoning effort as the kanban picks it. Claude takes low…max (`--effort`); Codex takes
@@ -196,6 +194,8 @@ export interface KanbanTask {
   createdByAccount?: string;
   /** The run waiting for a desk or for room under the office's worker limit (runState `queued`). */
   queuedRun?: QueuedRun;
+  /** What its workspace held when it last came to the Review column (workspaceFingerprint): a comment's work that leaves it so is not reviewed again. */
+  handoffFingerprint?: string;
 }
 
 /** A run the engine couldn't hire a worker for yet (KanbanTask.queuedRun): started as it is once there's room. */

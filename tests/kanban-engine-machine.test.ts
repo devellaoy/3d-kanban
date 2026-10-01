@@ -103,6 +103,18 @@ test('round limits: every round asks for changes, with and without a re-review o
   assert.equal(r.state.status, 'review');
 });
 
+test('a resume that changed nothing since the task came to Review goes back to Review, one that changed something is reviewed', () => {
+  const inReview: MachineState = { status: 'review', runState: 'idle', phase: 'review', reviewRound: 1, retryAttempts: 0 };
+  const comment: MachineEvent = { type: 'comment', text: 'Anything else?', busy: false };
+  const same = drive([comment, { type: 'resumed', changes: false, since: 'handoff' }], {}, {}, inReview);
+  assert.equal(same.state.status, 'review');
+  assert.deepEqual(runs(same.steps), ['resume']);
+  assert.ok(same.last.effects.some((e) => e.type === 'note' && /nothing new to review/.test(e.text)));
+  const changed = drive([comment, { type: 'resumed', changes: true, since: 'handoff' }], {}, {}, inReview);
+  assert.deepEqual(runs(changed.steps), ['resume', 'review:1']);
+  assert.equal(changed.state.reviewRound, 1);
+});
+
 test('no review without changes, without review on, or for an investigation', () => {
   let r = drive([{ type: 'start', slot: true }, { type: 'planned', outcome: 'ready' }, { type: 'implemented', changes: false }]);
   assert.equal(r.state.status, 'review');

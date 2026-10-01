@@ -192,6 +192,13 @@ export const MIGRATIONS: Migration[] = [
 ALTER TABLE tasks ADD COLUMN created_by_account TEXT;
 ALTER TABLE tasks ADD COLUMN queued_run TEXT;`),
   },
+  {
+    version: 3,
+    name: 'task handoff fingerprint',
+    // handoff_fingerprint: the workspace as the user last got it in the Review column (workspaceFingerprint),
+    // so a comment's work that changes nothing since is not reviewed again.
+    up: (db) => db.exec('ALTER TABLE tasks ADD COLUMN handoff_fingerprint TEXT;'),
+  },
 ];
 
 /** The schema version this build expects. */

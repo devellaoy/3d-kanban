@@ -2,8 +2,10 @@
 // branches started (no changes, no review), which branch each repository is on now, and whether its
 // folders are still there at all.
 
-import { execFile } from 'node:child_process';
-import { existsSync } from 'node:fs';
+import { createHash, type Hash } from 'node:crypto';
+import { execFile, spawn } from 'node:child_process';
+import { createReadStream, existsSync } from 'node:fs';
+import { lstat, readlink } from 'node:fs/promises';
 import path from 'node:path';
 import { promisify } from 'node:util';
 import type { WorkerInfo } from '../../../shared/protocol.js';
@@ -30,8 +32,7 @@ async function changedSince(dir: string, base: string | undefined): Promise<bool
  */
 export async function hasChanges(floorDir: string, ws: TaskWorkspace | undefined): Promise<boolean> {
   if (!ws) return true;
-  const dirs = [{ dir: path.join(floorDir, ws.worktree.path), base: ws.worktree.base }, ...(ws.repos ?? []).map((r) => ({ dir: path.join(floorDir, r.path), base: r.base }))];
-  for (const d of dirs) {
+  for (const d of repoFolders(floorDir, ws)) {
     try {
       if (await changedSince(d.dir, d.base)) return true;
     } catch {
@@ -41,9 +42,90 @@ export async function hasChanges(floorDir: string, ws: TaskWorkspace | undefined
   return false;
 }
 
+/** The folders of a workspace with the base each started from, primary first. */
+function repoFolders(floorDir: string, ws: TaskWorkspace): { dir: string; base: string | undefined }[] {
+  return [{ dir: path.join(floorDir, ws.worktree.path), base: ws.worktree.base }, ...(ws.repos ?? []).map((r) => ({ dir: path.join(floorDir, r.path), base: r.base }))];
+}
+
 /** The folders of a workspace, primary first. */
 function folders(floorDir: string, ws: TaskWorkspace): string[] {
-  return [path.join(floorDir, ws.worktree.path), ...(ws.repos ?? []).map((r) => path.join(floorDir, r.path))];
+  return repoFolders(floorDir, ws).map((d) => d.dir);
+}
+
+/**
+ * Runs git (without its fsmonitor daemon) and hands back its raw stdout, or feeds it to `sink` as it comes
+ * (a diff can be big) and hands back nothing. Throws on a failure, and kills git when `signal` aborts.
+ */
+function gitOut(cwd: string, args: string[], signal: AbortSignal, sink?: Hash): Promise<Buffer> {
+  return new Promise((resolve, reject) => {
+    const child = spawn('git', ['-c', 'core.fsmonitor=false', ...args], { cwd, stdio: ['ignore', 'pipe', 'ignore'], signal });
+    const chunks: Buffer[] = [];
+    child.stdout.on('data', (c: Buffer) => (sink ? sink.update(c) : chunks.push(c)));
+    child.on('error', reject);
+    child.on('close', (code) => (code === 0 ? resolve(Buffer.concat(chunks)) : reject(new Error(`git ${args[0]} exited with ${code}`))));
+  });
+}
+
+const sha256 = (b: Buffer | string): string => createHash('sha256').update(b).digest('hex');
+
+/** One folder's part of the fingerprint, nested repositories and checked-out submodules included. Throws when git or the disk can't say. */
+async function folderPrint(dir: string, signal: AbortSignal): Promise<string> {
+  const head = (await gitOut(dir, ['rev-parse', 'HEAD'], signal)).toString().trim();
+  const diff = createHash('sha256');
+  await gitOut(dir, ['diff', 'HEAD', '--binary', '--no-ext-diff', '--no-textconv', '--ignore-submodules=none'], signal, diff);
+  const files = (await gitOut(dir, ['ls-files', '-o', '--exclude-standard', '-z'], signal)).toString().split('\0').filter(Boolean);
+  const prints: string[] = [];
+  for (const f of files) prints.push(`${f}\0${await untrackedPrint(dir, f, signal)}`);
+  const links = (await gitOut(dir, ['ls-files', '-s', '-z'], signal)).toString().split('\0').filter((l) => l.startsWith('160000 ')).map((l) => l.slice(l.indexOf('\t') + 1));
+  for (const l of links) {
+    const full = path.join(dir, l);
+    // An uninitialised submodule (no checkout) holds nothing of its own.
+    if (existsSync(path.join(full, '.git'))) prints.push(`s:${l}\0${await folderPrint(full, signal)}`);
+  }
+  return [dir, head, diff.digest('hex'), prints.join('\n')].join('\0');
+}
+
+/**
+ * What an untracked entry holds: a link's target, a nested repository's own fingerprint, or a file's
+ * mode and contents. Nothing is written anywhere. Only an entry that vanished meanwhile is 'gone'; any
+ * other trouble (or a FIFO, socket or device, which could block) throws.
+ */
+async function untrackedPrint(dir: string, rel: string, signal: AbortSignal): Promise<string> {
+  const full = path.join(dir, rel);
+  let st;
+  try {
+    st = await lstat(full);
+  } catch (err) {
+    if ((err as { code?: unknown }).code === 'ENOENT') return 'gone';
+    throw err;
+  }
+  if (st.isSymbolicLink()) return `l:${await readlink(full)}`;
+  if (st.isDirectory()) return `d:${await folderPrint(full, signal)}`;
+  if (!st.isFile()) throw new Error(`${full} is not a file`);
+  const hash = createHash('sha256');
+  for await (const chunk of createReadStream(full, { signal })) hash.update(chunk as Buffer);
+  return `f:${st.mode & 0o111 ? 'x' : '-'}${hash.digest('hex')}`;
+}
+
+/**
+ * What the workspace holds now, per repository: HEAD, the tracked changes and the untracked files'
+ * contents (ignored ones not). Undefined when git can't say, or it takes longer than `timeoutMs` in
+ * all: the caller then counts it as changed.
+ */
+export async function workspaceFingerprint(floorDir: string, ws: TaskWorkspace | undefined, timeoutMs = 15_000): Promise<string | undefined> {
+  if (!ws) return undefined;
+  const ctl = new AbortController();
+  const timer = setTimeout(() => ctl.abort(), timeoutMs);
+  timer.unref();
+  try {
+    const parts: string[] = [];
+    for (const d of repoFolders(floorDir, ws)) parts.push(await folderPrint(d.dir, ctl.signal));
+    return sha256(parts.join('\0\0'));
+  } catch {
+    return undefined;
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 /**

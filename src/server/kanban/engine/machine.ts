@@ -4,9 +4,10 @@
 // hands the outcome in as an event; this decides the column, the phase and the next run.
 //
 // The flow: plan → (waiting for answers or approval) → implement → review round k ⇄ fix → review
-// column. A comment resumes the work; a resume turn is reviewed again when the task has review on.
+// column. A comment resumes the work; a resume turn is reviewed again when the task has review on,
+// unless it changed nothing since the task last came to Review.
 
-import type { KanbanRole, PlanApproval, RunPhase, RunState, TaskStatus, TaskType, WaitingReason } from '../../../shared/kanban/types.js';
+import type { KanbanRole, KanbanTask, PlanApproval, QueuedRun, RunPhase, RunState, TaskStatus, TaskType, WaitingReason } from '../../../shared/kanban/types.js';
 import { prStatusOk } from '../../../shared/kanban/prs.js';
 import { KANBAN_PROMPT_DEFS } from '../../../shared/kanban/prompt-defs.js';
 
@@ -82,8 +83,8 @@ export type MachineEvent =
   | { type: 'reviewed'; round?: number; approved: boolean; pending?: boolean }
   /** A fix turn ended (round undefined: after a manual round). */
   | { type: 'fixed'; round?: number; changes: boolean; pending?: boolean }
-  /** A resume turn (a comment worked on) ended. */
-  | { type: 'resumed'; changes: boolean; pending?: boolean }
+  /** A resume turn (a comment worked on) ended. `since` 'handoff': `changes` counts from when the task last came to Review rather than from the base branch. */
+  | { type: 'resumed'; changes: boolean; since?: 'handoff'; pending?: boolean }
   /** A pr or pr-fix turn ended. */
   | { type: 'prDone'; pending?: boolean }
   /** A review of several pull requests together (KanbanEngineApi.reviewPrs). */
@@ -203,10 +204,10 @@ function deliverPending(s: MachineState, planning: boolean, extra: Effect[] = []
 }
 
 /** The implementation (or a comment's work) is done: review it, or hand it to the user. */
-function afterWork(s: MachineState, t: MachineTask, changes: boolean): { state: MachineState; effects: Effect[] } {
+function afterWork(s: MachineState, t: MachineTask, changes: boolean, since?: 'handoff'): { state: MachineState; effects: Effect[] } {
   if (t.type === 'investigate') return toReview(s);
   if (!t.useReview) return toReview(s);
-  if (!changes) return toReview(s, [{ type: 'note', text: 'Nothing changed against the base branch in any repository, so there was nothing to review.' }]);
+  if (!changes) return toReview(s, [{ type: 'note', text: since === 'handoff' ? 'Nothing changed since the task last came to Review, so there was nothing new to review.' : 'Nothing changed against the base branch in any repository, so there was nothing to review.' }]);
   return ok(running(s, 'review', { reviewRound: 1, retryAttempts: 0 }), { type: 'run', phase: 'review', role: 'reviewer', prompt: 'review', round: 1 });
 }
 
@@ -251,7 +252,7 @@ export function next(s: MachineState, e: MachineEvent, t: MachineTask, cfg: Mach
     case 'resumed':
       if (!automated) return ok({ ...s, runState: 'idle' });
       if (e.pending) return deliverPending(s, false);
-      return afterWork(s, t, e.changes);
+      return afterWork(s, t, e.changes, 'since' in e ? e.since : undefined);
 
     case 'reviewed': {
       if (!automated) return ok({ ...s, runState: 'idle' }, { type: 'reviewerHome' });
@@ -381,3 +382,14 @@ export function next(s: MachineState, e: MachineEvent, t: MachineTask, cfg: Mach
       return ok(running(s, e.mode === 'create' ? 'pr' : 'pr-fix'), { type: 'run', phase: e.mode === 'create' ? 'pr' : 'pr-fix', role: 'implementer', prompt: e.mode === 'create' ? 'pr.create' : 'pr.fix' });
   }
 }
+
+export type RunEffect = Extract<Effect, { type: 'run' }>;
+
+/** The part of a stored task the machine decides about. */
+export function stateOf(t: KanbanTask): MachineState {
+  return { status: t.status, phase: t.phase, runState: t.runState, waitingReason: t.waitingReason, waitingText: t.waitingText, reviewRound: t.reviewRound, retryAt: t.retryAt, retryAttempts: t.retryAttempts };
+}
+
+/** A run effect as a task keeps it while it waits for a desk (KanbanTask.queuedRun), and back. */
+export const queuedOf = (eff: RunEffect): QueuedRun => ({ phase: eff.phase, role: eff.role, prompt: eff.prompt, ...(eff.round !== undefined ? { round: eff.round } : {}), ...(eff.pending ? { pending: true } : {}), ...(eff.text !== undefined ? { text: eff.text } : {}) });
+export const runOf = (q: QueuedRun): RunEffect => ({ type: 'run', phase: q.phase, role: q.role, prompt: q.prompt as PromptKind, ...(q.round !== undefined ? { round: q.round } : {}), ...(q.pending ? { pending: true } : {}), ...(q.text !== undefined ? { text: q.text } : {}) });

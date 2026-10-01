@@ -30,9 +30,10 @@ import type { TaskAgentAdapter, TurnResult } from './adapters/types.js';
 import { Composer, isFolderProject, reportDir, reposText, skillPhase, taskRepos, workerReposText, type ComposeExtra } from './compose.js';
 import { canFixPrs } from '../../../shared/kanban/prs.js';
 import { fixTargetsOf, forkTest, polledPulls } from '../integrations/pulls/prfix.js';
-import { next, type Effect, type LastRun, type MachineEvent, type MachineState, type PromptKind } from './machine.js';
+import { next, queuedOf, runOf, stateOf, type Effect, type LastRun, type MachineEvent, type PromptKind, type RunEffect } from './machine.js';
 import { backoffMs, looksInterrupted, planOutcome, prLines, resetTime, reviewFindings, reviewVerdict, stripPlanMarkers } from './markers.js';
 import { branchExists, checkoutLines, currentBranch, homeCleanup, hasChanges, missingFolders } from './workspace.js';
+import { Handoffs } from './handoff.js';
 
 export interface EngineOptions {
   /** How often due retries, queued tasks and newly opened floors are looked at (60 s). */
@@ -104,11 +105,6 @@ interface NoRoom {
   queued: string;
 }
 
-type RunEffect = Extract<Effect, { type: 'run' }>;
-
-const queuedOf = (eff: RunEffect): QueuedRun => ({ phase: eff.phase, role: eff.role, prompt: eff.prompt, ...(eff.round !== undefined ? { round: eff.round } : {}), ...(eff.pending ? { pending: true } : {}), ...(eff.text !== undefined ? { text: eff.text } : {}) });
-const runOf = (q: QueuedRun): RunEffect => ({ type: 'run', phase: q.phase, role: q.role, prompt: q.prompt as PromptKind, ...(q.round !== undefined ? { round: q.round } : {}), ...(q.pending ? { pending: true } : {}), ...(q.text !== undefined ? { text: q.text } : {}) });
-
 /** A pull request as a review request may name it: the pulls plugin hands on what it looked up. */
 type ReviewedPr = PrRef & { title?: string; url?: string; branch?: string };
 
@@ -154,10 +150,6 @@ const sameArgs = (a: string[] | undefined, b: string[]) => !!a && a.length === b
  */
 const typeable = (s: string) => s.replace(/[\x00-\x08\x0b-\x1f\x7f]/g, '');
 
-function stateOf(t: KanbanTask): MachineState {
-  return { status: t.status, phase: t.phase, runState: t.runState, waitingReason: t.waitingReason, waitingText: t.waitingText, reviewRound: t.reviewRound, retryAt: t.retryAt, retryAttempts: t.retryAttempts };
-}
-
 export class Orchestrator {
   private live = new Map<string, Live>();
   /**
@@ -179,6 +171,7 @@ export class Orchestrator {
   private trees = new Map<string, Worktrees>();
   private adapters: Record<KanbanTool, TaskAgentAdapter>;
   private compose: Composer;
+  private handoffs: Handoffs;
   private opts: Required<Omit<EngineOptions, 'adapters'>>;
   private disposed = false;
 
@@ -188,6 +181,7 @@ export class Orchestrator {
   ) {
     this.adapters = { claude: claudeAdapter, codex: codexAdapter, ...options.adapters };
     this.compose = new Composer(ctx);
+    this.handoffs = new Handoffs(ctx, (p) => this.folder(p), (id, patch) => this.update(id, patch));
     this.opts = {
       sweepMs: options.sweepMs ?? 60_000,
       stopGraceMs: options.stopGraceMs ?? 4000,
@@ -605,6 +599,7 @@ export class Orchestrator {
       waitingReason: s.waitingReason,
       waitingText: s.waitingText,
       reviewRound: s.reviewRound,
+      ...(e.type === 'start' && task.handoffFingerprint ? { handoffFingerprint: null } : {}),
       retryAt: s.retryAt,
       retryAttempts: s.retryAttempts,
       // Out of the queue, however it went (started, stopped): its queued run is no more.
@@ -617,6 +612,8 @@ export class Orchestrator {
       const err = await this.effect(taskId, effect, via);
       if (err && !error) error = err;
     }
+    // Taken on the task's chain after this op, so the git calls delay nothing.
+    if (this.handoffs.due(task, e, tr.effects)) void this.serial(taskId, () => this.handoffs.store(taskId));
     return error;
   }
 
@@ -1546,7 +1543,7 @@ export class Orchestrator {
       case 'resume':
         say('result', text);
         this.update(task.id, { summary: clip(text, SUMMARY_MAX) });
-        event = { type: 'resumed', changes: task.type === 'investigate' ? false : await changes(), pending };
+        event = await this.handoffs.resumed(task, pending, changes);
         break;
       case 'pr':
       case 'pr-fix': {
