@@ -1,0 +1,23 @@
+/* 3d-kanban: YouTube on the Office TV (youtube/screen.ts, youtube/window.ts). */
+
+/* CSS3DRenderer's layer, just behind the canvas in #app: the player shows through the TV's hole. */
+.ytv-layer { position: absolute; inset: 0; pointer-events: none; }
+/* Watching it big: over the TV window's backdrop (.backdrop is z-index 50), lined up with its slot; the window says what's on. */
+.ytv-layer.ytv-up { z-index: 51; }
+.ytv-layer.ytv-up .ytv-caption { display: none; }
+.ytv-layer * { pointer-events: none !important; }
+
+.ytv-screen { position: relative; width: 1280px; height: 720px; background: #000; overflow: hidden; }
+.ytv-host, .ytv-screen iframe { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; }
+.ytv-caption:empty, .ytv-notice[hidden] { display: none; }
+.ytv-caption { position: absolute; left: 24px; top: 96px; max-width: calc(100% - 48px); padding: 8px 16px; border-radius: 12px; background: rgba(27, 29, 46, .72); color: #fff; font: 800 26px/1.25 Nunito, ui-rounded, system-ui, sans-serif; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ytv-notice { position: absolute; left: 50%; bottom: 28px; transform: translateX(-50%); padding: 12px 22px; border-radius: 14px; background: rgba(27, 29, 46, .85); color: #fff; font: 800 32px/1.2 Nunito, ui-rounded, system-ui, sans-serif; white-space: nowrap; }
+
+.modal.ytv-window { width: min(1100px, calc(100vw - 32px)); }
+/* The player is lined up over this, from the layer above the backdrop. */
+.ytv-slot { width: min(100%, calc((100vh - 360px) * 16 / 9)); min-width: min(100%, 356px); aspect-ratio: 16 / 9; border-radius: 10px; background: #000; margin: 0 auto 14px; }
+.ytv-slot[hidden] { display: none; }
+.ytv-now { display: flex; align-items: center; gap: 12px; }
+.ytv-now .svc-main { flex: 1; min-width: 0; }
+.ytv-now a.btn { text-decoration: none; }
+.ytv-jb-note { margin-top: 6px; }

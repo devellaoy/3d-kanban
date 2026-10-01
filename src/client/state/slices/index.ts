@@ -32,6 +32,7 @@ import { theme } from './theme';
 import { upgrade } from './upgrade';
 import { usage } from './usage';
 import { whiteboard } from './whiteboard';
+import { youtube } from '../../youtube/slice'; // 3d-kanban
 
 export const SLICES: readonly Slice[] = [
   presence,
@@ -61,4 +62,5 @@ export const SLICES: readonly Slice[] = [
   team,
   accounts,
   signins,
+  youtube, // 3d-kanban: YouTube on the Office TV
 ];

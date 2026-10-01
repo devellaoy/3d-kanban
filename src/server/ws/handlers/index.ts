@@ -2,6 +2,7 @@
 // floor. A new feature adds its handler file and a line here.
 import type { ClientMsg } from '../../../shared/protocol.js';
 import { kanbanHandlers, kanbanHooks } from '../../kanban/ws/handlers.js'; // 3d-kanban
+import { youtubeHandlers, youtubeView } from '../../youtube/handlers.js'; // 3d-kanban
 import { accountsHandlers } from './accounts.js';
 import { ballHandlers, ballHooks, ballView } from './ball.js';
 import { cabinetHandlers, cabinetHooks, cabinetView } from './cabinet.js';
@@ -49,6 +50,7 @@ export const handlers: HandlerMap<ClientMsg> = {
   ...whiteboardHandlers,
   ...workerHandlers,
   ...kanbanHandlers, // 3d-kanban
+  ...youtubeHandlers, // 3d-kanban: YouTube on the Office TV
 };
 
 /**
@@ -75,4 +77,5 @@ export const views: ViewPieces = {
   whiteboard: whiteboardView,
   meeting: meetingView,
   cabinet: cabinetView,
+  youtube: youtubeView, // 3d-kanban: YouTube on the Office TV
 };

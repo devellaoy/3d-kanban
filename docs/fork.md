@@ -65,7 +65,7 @@ must be found by hand. Line numbers drift; the "where" column names the function
 New files are not seams (they can't conflict): `src/{server,shared,client}/kanban/**` (on the server
 including `ws/`, `http/`, `workers.ts` (`KanbanWorkers`, which `WorkerManager` extends), `launch.ts` and
 `office.ts`; on the client `install3d.ts`, `views3d.ts`, `shoulder.ts`, `camera3d.ts` and `sensitivity.ts` among the 3D office's pieces),
-`src/client/kanban.html`, `bin/office-tasks.js`, `scripts/migrate-ai-kanban/`, `skills/`,
+`src/{server,shared,client}/youtube/**` (YouTube on the Office TV, see [YouTube on the Office TV](#youtube-on-the-office-tv) below), `src/client/kanban.html`, `bin/office-tasks.js`, `scripts/migrate-ai-kanban/`, `skills/`,
 `tests/kanban-*.test.ts`, `tests/sky.test.ts` (upstream PR #207's, so it would conflict only if upstream adds the same file), `tsconfig.scripts.json`, `docs/kanban.md`, `docs/kanban-architecture.md`,
 `docs/migration.md`, `docs/fork.md`.
 
@@ -75,6 +75,8 @@ including `ws/`, `http/`, `workers.ts` (`KanbanWorkers`, which `WorkerManager` e
 |---|---|---|---|
 | `src/server/setup.ts` | `interactive()` | `isatty(0)` / `isatty(1)` instead of opening `process.stdin` / `process.stdout` | The Windows backend can block while opening concurrently's piped stdin; `npm run dev` keeps the same command on every platform |
 | `src/server/tasks.ts` | `generate()` | Treat a rejected launch as a failed optional naming attempt | Optional task naming falls back instead of raising an unhandled rejection when Windows cannot spawn a batch shim |
+| `src/server/ws/handlers/index.ts` | imports; end of `handlers`; end of `views` | `...youtubeHandlers`, `youtube: youtubeView` (youtube/handlers.ts) | The Office TV's YouTube messages, and what's on it in the floor view |
+| `src/server/ws/handlers/jukebox.ts` | import; `jukebox.play` before `floor.jukebox.play(…)`; after `jukeboxChanged` in `jukebox.play` and `jukebox.skip` | `youtubeFromJukebox(ctx, c, floor, msg.url)` (a YouTube link goes on the TV; the jukebox can't play it); `youtubeMakesWay(ctx, floor)` (the jukebox on takes YouTube off the TV) | A YouTube link in the jukebox's box doesn't fail; two songs never play at once |
 | `src/server/github.ts` | `MergeWatch.ring(n, repo?)`, `look()` and the new `pullKey()` | Merges are keyed by `repo#n` instead of `n` | A project's repositories can have PRs with the same number; the gong must ring once per PR |
 | `src/server/github.ts` | `GitHub` constructor: `nameWithOwner?`, `pullsOnly` params | Optional owner/name and a pulls-only switch | A project's other repository gets a `GitHub` of its own that fetches only PRs |
 | `src/server/github.ts` | `refreshIssues()` / `refreshPulls()` item mapping *(unmarked)*, `refresh()` *(unmarked)* | `...(this.nameWithOwner ? { repo } : {})` on every issue and PR; `refresh()` skips issues when `pullsOnly` | Each card knows its repository (`GhIssue.repo` / `GhPull.repo`) |
@@ -149,6 +151,8 @@ including `ws/`, `http/`, `workers.ts` (`KanbanWorkers`, which `WorkerManager` e
 
 | File | Where | What | Why |
 |---|---|---|---|
+| `src/shared/protocol.ts` | import; `ClientMsg`, `ServerMsg` | `\| YoutubeClientMsg`, `\| YoutubeServerMsg` at the end, after the kanban's | `tv.youtube.*` ride the office's socket |
+| `src/shared/protocol/floors.ts` | import; `FloorView.youtube` (last) | `YoutubeTvState \| null` | Someone arriving on a floor is told what's on its TV and since when |
 | `src/shared/prompts.ts` | import, `PromptGroup`, `PROMPT_GROUPS`, end of `DEFS` | `'kanban'` group ("🗂️ Kanban tasks") and `...KANBAN_PROMPT_DEFS` | Every kanban prompt shows in upstream's prompt editor and `prompts.json` |
 | `src/shared/prompts.ts` | import, `PromptGroup`, `PROMPT_GROUPS`, end of `DEFS` | `'kanban'` group ("🗂️ Kanban tasks") and `...KANBAN_PROMPT_DEFS` | Every kanban prompt shows in upstream's prompt editor and `prompts.json` |
 | `src/shared/protocol/workers.ts` | import; `WorkerInfo.kanban` | `{ taskId, role: 'implementer' \| 'reviewer', … }` (`KanbanWorkerSummary`) | A task worker says whose it is |
@@ -168,6 +172,12 @@ including `ws/`, `http/`, `workers.ts` (`KanbanWorkers`, which `WorkerManager` e
 
 | File | Where | What | Why |
 |---|---|---|---|
+| `src/client/main.ts`, `src/client/core/parts.ts` | import; the line after `installKanban3d`; `Parts.youtube`; the `installTv` and `installSeating` lines' deps | `parts.youtube = installYoutubeTv(ctx, parts)`; `youtube: () => parts.youtube` | YouTube on the Office TV (youtube/install.ts) |
+| `src/client/features/tv/index.ts` | import; `TvDeps.youtube?`; the `tv` interaction's `hint` and `use` | `deps.youtube?.().tvHint()` first; `deps.youtube?.().tvUse() \|\| deps.watch()` | With no screen shared, E at the TV opens its window (YouTube big, or a link box and *Share your screen instead*), and the hint says what's on; a share keeps upstream's hint and viewer |
+| `src/client/features/seating/index.ts` | import; `SeatingDeps.youtube?`; `tvShowing()`; new `watchTv`; its two calls in `useSeat()` | `\|\| deps.youtube?.().showing()`; `deps.youtube?.().watch() \|\| deps.watchShare()` | The couch opens the TV's window while YouTube is on it |
+| `src/client/features/jukebox/ui.ts` | import; the body after the stream note; `play()` first line | `jukeboxTvNote()`; `if (youtubeToTv(net, url)) return;` (youtube/jukebox.ts) | A YouTube link pasted there goes on the TV, and the window says so |
+| `src/client/state/slices/index.ts` | import; end of `SLICES` | `youtube` (youtube/slice.ts) | `store.youtube`, after the jukebox's slice so the office's clock from `pong` is fresh |
+| `src/client/core/scene.ts` | `makeRenderer()` | `alpha: true` | The TV's screen is drawn as a hole in the canvas (alpha 0, youtube/screen.ts) and YouTube's player, in a CSS3DRenderer layer behind it, shows through. Everything else is opaque as before (`scene.background` clears with alpha 1) |
 | `src/client/core/parts.ts` | import; `Parts.kanban3d` | `Made<typeof installKanban3d>` | The kanban's own pieces of the 3D office, reached by the other parts |
 | `src/client/main.ts` | import; the line after the other installs | `parts.kanban3d = installKanban3d(ctx, core, parts)` | J, the kanban's menu entry and its 📍 Show in 3D link (kanban/install3d.ts, which also owns `openKanban()`, the `KeyJ` binding, `followOfficeLink()` and the retry-countdown tick) |
 | `src/client/features/hud/index.ts` | `HudParts` (`'kanban3d'`); the menu list | A `kanban` entry (🗂️ Kanban, key J, section *Open*) | In the ☰ menu |
@@ -243,6 +253,11 @@ including `ws/`, `http/`, `workers.ts` (`KanbanWorkers`, which `WorkerManager` e
 | `vite.config.ts` | `rollupOptions.input` | `kanban: src/client/kanban.html` | The kanban page is built |
 | `tests/size.test.ts` | `FORK_CEILINGS` (new, after `CEILINGS`); `sources()`; the ceiling lookup | The kanban's own code (`src/{client,server,shared}/kanban/`) is left out of the 600-line guard; `FORK_CEILINGS` holds `world/sky.ts` (upstream PR #207's indoor fog) and `ui/settings.ts` (the kanban's settings panes and the mouse sensitivity row), which may never grow past it | The fork's seams push those two upstream files over upstream's own ceiling; the rest of the budget is upstream's ([Code layout](code-layout.md#the-size-guard)) |
 | `tests/client-store.test.ts` | the saved settings' shape | `mouseSensitivity: 1` | The fork's ⚙️ Settings field is part of what the browser remembers |
+| `tests/client-store.test.ts` | the store's keys; a new store's fields; *every slice … is registered* | `'youtube'`, `youtube: null`; the slice from `src/client/youtube/slice.ts` | The fork's slice lives outside `state/slices/` |
+| `tests/server-dispatch.test.ts` | the welcome's keys | `slice(-18)` ending in `'youtube'` | The floor view's fork field |
+| `src/client/ui/help.ts`, `docs/controls.md` | `Click / E` row; the `E` row | "watch the TV (or put a YouTube link on it)" | The help matches the behaviour |
+| `docs/features.md` | *Take a seat*, *Jukebox*; new bullet after *Screen sharing* | *In 3d-kanban* sentences; *YouTube on the Office TV* | Same |
+| `README.md` | fork section | A *YouTube on the Office TV* bullet | Same |
 | `docs/code-layout.md` | end of the intro | An *In 3d-kanban* paragraph | Where the fork's code joins the registries |
 | `package.json` *(unmarked)* | `dependencies`, `devDependencies` | `better-sqlite3`, `@types/better-sqlite3` | The kanban's database |
 | `package.json` *(unmarked)* | `scripts` | `migrate:ai-kanban` (tsx `scripts/migrate-ai-kanban/index.ts`); `typecheck` also runs `tsc -p tsconfig.scripts.json --noEmit` | The migration and its type check |
@@ -270,6 +285,15 @@ including `ws/`, `http/`, `workers.ts` (`KanbanWorkers`, which `WorkerManager` e
 | `README.md` | fork section *Install*; upstream part *(unmarked)*: badges, the install lines, *Requirements* (Node 22, build tools), *Run locally* commands and clone, the deploy sections' clones, `provision.sh` line, *Add users* commands, *Development*'s release sentence | `devellaoy/3d-kanban` and the `3d-kanban` command everywhere an instruction installs or runs it | No instruction installs upstream by mistake |
 | `docs/self-hosting.md`, `docs/aws.md`, `docs/azure.md`, `docs/fly.md`, `docs/railway.md`, `docs/dokploy.md` *(unmarked)* | `provision.sh` lines, clones, "install/pull the latest …", commands and the systemd `ExecStart` | Same | Same |
 | `docs/configuration.md`, `docs/maps.md` *(unmarked)* | *Command line* usage lines; `3d-kanban <dir>` mentions | Same | Same |
+
+### YouTube on the Office TV
+
+The fork's own folders `src/{shared,server,client}/youtube/` (see `docs/features.md`):
+
+- `shared/youtube/link.ts` tells YouTube and YouTube Music links apart (`parseYoutubeLink`, `isYoutubeUrl`) and holds `YoutubeTvState`; `protocol.ts` has `tv.youtube.play` / `.stop` / `.ended` and `tv.youtube`.
+- `server/youtube/tv.ts` is a floor's TV (`.agent-office/youtube-tv.json`), kept per floor in a `WeakMap` by `handlers.ts` (no field on `Floor`); `titles.ts` asks YouTube's oEmbed for the title (no API key).
+- `client/youtube/screen.ts` plays it in YouTube's IFrame Player API, in a `CSS3DRenderer` layer in `#app` just before the canvas, lined up with `office.tvScreen`, whose material is swapped for a hole while it shows (the original comes back after). The TV window (`window.ts`) lines the same iframe up with its slot from the layer raised over the backdrop (an iframe that moves in the page reloads). `install.ts` hands the TV and the couch their `youtube` deps.
+- What the TV shows, first to last: a shared screen (`talk.currentShares()`, yours too), YouTube, the idle card.
 
 ### How to re-apply after an upstream merge
 
@@ -310,6 +334,7 @@ including `ws/`, `http/`, `workers.ts` (`KanbanWorkers`, which `WorkerManager` e
      `net.connect`; moving it either way silently breaks the link.
    - `tests/size.test.ts` still excludes the kanban folders and keeps `FORK_CEILINGS`, each the file's exact
      length (the "only gets shorter" test asks for it to be lowered, or dropped once upstream's limit holds it).
+   - The renderer keeps `alpha: true` (`core/scene.ts`); the TV fixture still names its screen `tvScreen` with a `PlaneGeometry` of `TV.width × TV.height` facing +z (`world/office/room.ts`), which `youtube/screen.ts` lines the player up with; the `tv` interaction and the couch's `seat.tv` still come through `features/tv` and `features/seating`.
    - `src/client/world/sky.ts`: if upstream fixes its issue #122 (fog indoors) its own way, take upstream's
      version and drop the fork's (upstream PR #207) along with `tests/sky.test.ts`.
    - `src/client/ui/termtabs.{ts,css}` are upstream #212's files verbatim: upstream's version wins.
