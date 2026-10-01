@@ -120,6 +120,8 @@ There is no Continue without an answer then: its run is still going.
 A task stays In progress while the agent's background helper agents still work, until the agent has
 answered after them (at most 3 hours, then it goes on with what the agent said). ⏹️ Stop during that wait
 sends the worker home, worktree kept, which stops its helper agents too.
+The worker shows as working in the 3D office and in /lite until the run ends, also while its background
+agents or teammates still work, instead of flickering between done and working.
 
 **⏹️ Stop** interrupts a running turn (Esc into its terminal; the worker goes home, worktree kept, if
 it doesn't stop in a few seconds). A failed or interrupted phase waits with **🔁 Retry** (run it again)
