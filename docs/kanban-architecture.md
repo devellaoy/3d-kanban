@@ -475,7 +475,7 @@ and `user-skills/codex/*` into the machine's `<claude home>/skills/` and `<codex
 `defaultRoots` finds), marking its copies with `.office-user-skill.json` (the source hash, `skillHash(dir, { skipDeps })`):
 a marked or ai-kanban (`.aikanban-sync`) copy is overwritten when the source changed, an unmarked one is left alone.
 `AGENT_OFFICE_USER_SKILLS=off` disables it; a source under `.agent-office/worktrees/` is skipped unless it is `on`.
-The skills integration's 🔄 Sync (`skills.sync`) runs the same sync without those guards. See docs/kanban.md.
+The skills integration's 🔄 Sync (`skills.sync`) runs the same sync without the worktree guard (`off` still stops it). See docs/kanban.md.
 
 Compatibility for existing ai-kanban skills/scripts (integrations/compat/v1.ts): task workers get env
 `AIKANBAN_API_BASE` (the hook server URL) and `AIKANBAN_TASK_ID`.

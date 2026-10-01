@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, statSync, utimesSync, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, utimesSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -92,7 +92,21 @@ test('a skill nobody marked is the user\'s and stays untouched', () => {
   assert.equal(res.find((r) => r.name === 'beta (codex)')?.status, 'installed', 'the others go on');
 });
 
-test('a failed first install leaves no folder behind, and the next run installs it', () => {
+test('a failed install is reported, the others go on, and the next run installs it', () => {
+  const s = setup();
+  // The Claude home's skills/ is a file: nothing can be made under it, on any platform or user.
+  mkdirSync(s.claudeHome, { recursive: true });
+  const skills = path.join(s.claudeHome, 'skills');
+  writeFileSync(skills, '');
+  const res = s.run();
+  assert.equal(res.find((r) => r.name === 'alpha (claude)')?.status, 'failed');
+  assert.equal(res.find((r) => r.name === 'beta (codex)')?.status, 'installed');
+  rmSync(skills);
+  assert.equal(s.run().find((r) => r.name === 'alpha (claude)')?.status, 'installed');
+});
+
+// chmod 000 doesn't stop Windows or root from reading the file.
+test('a failed first install leaves no folder behind, and the next run installs it', { skip: process.platform === 'win32' || process.getuid?.() === 0 }, () => {
   const s = setup();
   // An unreadable file: cpSync cannot copy it.
   const locked = path.join(s.source, 'claude', 'alpha', 'scripts', 'run.js');
