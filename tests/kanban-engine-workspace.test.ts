@@ -125,3 +125,26 @@ test('a fingerprint that takes too long is undefined', async (t) => {
   assert.equal(await workspaceFingerprint(f.floor, f.ws, 1), undefined);
   assert.ok(await f.print());
 });
+
+test('a checked-out submodule is fingerprinted: its edits and untracked files count', async (t) => {
+  const f = fixture();
+  t.after(f.done);
+  const other = mkdtempSync(path.join(tmpdir(), 'kanban-sub-'));
+  t.after(() => rmSync(other, { recursive: true, force: true }));
+  git(other, 'init', '-q', '-b', 'main');
+  writeFileSync(path.join(other, 's.txt'), 'one\n');
+  git(other, 'add', '.');
+  git(other, 'commit', '-q', '-m', 'sub');
+  git(f.dir, '-c', 'protocol.file.allow=always', 'submodule', 'add', '-q', other, 'sub');
+  git(f.dir, 'commit', '-q', '-m', 'add the submodule');
+  const clean = await f.print();
+  writeFileSync(path.join(f.dir, 'sub', 's.txt'), 'two\n');
+  const dirty = await f.print();
+  assert.ok(clean && dirty && dirty !== clean, 'a dirty submodule');
+  writeFileSync(path.join(f.dir, 'sub', 's.txt'), 'three\n');
+  const more = await f.print();
+  assert.ok(more && more !== dirty, 'a further edit');
+  writeFileSync(path.join(f.dir, 'sub', 'new.txt'), 'x\n');
+  const added = await f.print();
+  assert.ok(added && added !== more, 'an untracked file in it');
+});

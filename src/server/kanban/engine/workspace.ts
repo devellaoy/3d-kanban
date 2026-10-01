@@ -2,7 +2,7 @@
 // branches started (no changes, no review), which branch each repository is on now, and whether its
 // folders are still there at all.
 
-import { createHash } from 'node:crypto';
+import { createHash, type Hash } from 'node:crypto';
 import { execFile, spawn } from 'node:child_process';
 import { createReadStream, existsSync } from 'node:fs';
 import { lstat, readlink } from 'node:fs/promises';
@@ -47,14 +47,19 @@ function repoFolders(floorDir: string, ws: TaskWorkspace): { dir: string; base: 
 }
 
 /** The folders of a workspace, primary first. */
-const folders = (floorDir: string, ws: TaskWorkspace): string[] => repoFolders(floorDir, ws).map((d) => d.dir);
+function folders(floorDir: string, ws: TaskWorkspace): string[] {
+  return repoFolders(floorDir, ws).map((d) => d.dir);
+}
 
-/** Runs git and hands back its raw stdout (a diff can be big). Throws on a failure, and kills git when `signal` aborts. */
-function gitOut(cwd: string, args: string[], signal: AbortSignal): Promise<Buffer> {
+/**
+ * Runs git (without its fsmonitor daemon) and hands back its raw stdout, or feeds it to `sink` as it comes
+ * (a diff can be big) and hands back nothing. Throws on a failure, and kills git when `signal` aborts.
+ */
+function gitOut(cwd: string, args: string[], signal: AbortSignal, sink?: Hash): Promise<Buffer> {
   return new Promise((resolve, reject) => {
-    const child = spawn('git', args, { cwd, stdio: ['ignore', 'pipe', 'ignore'], signal });
+    const child = spawn('git', ['-c', 'core.fsmonitor=false', ...args], { cwd, stdio: ['ignore', 'pipe', 'ignore'], signal });
     const chunks: Buffer[] = [];
-    child.stdout.on('data', (c: Buffer) => chunks.push(c));
+    child.stdout.on('data', (c: Buffer) => (sink ? sink.update(c) : chunks.push(c)));
     child.on('error', reject);
     child.on('close', (code) => (code === 0 ? resolve(Buffer.concat(chunks)) : reject(new Error(`git ${args[0]} exited with ${code}`))));
   });
@@ -62,14 +67,21 @@ function gitOut(cwd: string, args: string[], signal: AbortSignal): Promise<Buffe
 
 const sha256 = (b: Buffer | string): string => createHash('sha256').update(b).digest('hex');
 
-/** One folder's part of the fingerprint, nested repositories included. Throws when git or the disk can't say. */
+/** One folder's part of the fingerprint, nested repositories and checked-out submodules included. Throws when git or the disk can't say. */
 async function folderPrint(dir: string, signal: AbortSignal): Promise<string> {
   const head = (await gitOut(dir, ['rev-parse', 'HEAD'], signal)).toString().trim();
-  const diff = sha256(await gitOut(dir, ['diff', 'HEAD', '--binary', '--no-ext-diff', '--no-textconv'], signal));
+  const diff = createHash('sha256');
+  await gitOut(dir, ['diff', 'HEAD', '--binary', '--no-ext-diff', '--no-textconv', '--ignore-submodules=none'], signal, diff);
   const files = (await gitOut(dir, ['ls-files', '-o', '--exclude-standard', '-z'], signal)).toString().split('\0').filter(Boolean);
   const prints: string[] = [];
   for (const f of files) prints.push(`${f}\0${await untrackedPrint(dir, f, signal)}`);
-  return [dir, head, diff, prints.join('\n')].join('\0');
+  const links = (await gitOut(dir, ['ls-files', '-s', '-z'], signal)).toString().split('\0').filter((l) => l.startsWith('160000 ')).map((l) => l.slice(l.indexOf('\t') + 1));
+  for (const l of links) {
+    const full = path.join(dir, l);
+    // An uninitialised submodule (no checkout) holds nothing of its own.
+    if (existsSync(path.join(full, '.git'))) prints.push(`s:${l}\0${await folderPrint(full, signal)}`);
+  }
+  return [dir, head, diff.digest('hex'), prints.join('\n')].join('\0');
 }
 
 /**
