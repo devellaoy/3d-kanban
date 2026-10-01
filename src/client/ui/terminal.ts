@@ -439,7 +439,8 @@ export function openTerminal(net: Net, workerId: string, onChanges?: () => void,
     if (!hasFiles(e)) return;
     e.preventDefault();
     dragEnd();
-    if (inTaskPane(e.target) || termHidden()) return; // 3d-kanban: files dropped on the task pane are the task's; none go to a hidden terminal
+    if (inTaskPane(e.target)) return; // 3d-kanban: files dropped on the task pane are the task's, not the terminal's
+    if (termHidden()) return void toast('Switch to the terminal’s tab to drop files into it', 'info'); // 3d-kanban: none go to a hidden terminal
     void insertFiles([...e.dataTransfer!.files]);
   });
   // A picture on the clipboard with no text (a screenshot) pastes like a dropped file. Caught on the
