@@ -11,7 +11,7 @@ whatever happens to the task shows on the worker. This page is the contract betw
 
 - `WorkerInfo.kanban` links a worker to its task:
   `{ taskId, role: 'implementer' | 'reviewer', title?, status?, phase?, round?, rounds?, waitingReason?, retryAt? }`.
-  The engine keeps the summary current (`WorkerManager.setKanbanSummary`), so it reaches every 3D and
+  The engine keeps the summary current (`WorkerManager.setKanbanSummary`, which `WorkerManager` takes from `KanbanWorkers` in `src/server/kanban/workers.ts`), so it reaches every 3D and
   /lite client through the ordinary `worker.update` — the 3D client needs no kanban subscription for it.
 - A task has at most one implementer and one reviewer at a time. Most workers have no task; a worker
   gets one only on opt-in (the hire toggle, an issue card turned into a task, or the kanban's Start).

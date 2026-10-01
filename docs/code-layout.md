@@ -6,6 +6,10 @@ Where the code lives, and where a new feature's pieces go. The office used to gr
 
 There are three parts: `src/client` (the page, built by Vite, with three.js), `src/server` (Node) and `src/shared` (types and pure code both use, with no Node imports).
 
+## In 3d-kanban
+
+This fork's kanban code lives in `src/client/kanban/`, `src/server/kanban/` and `src/shared/kanban/`, outside the registries' own folders. It joins them through a few fixed lines: `kanbanHandlers` and `kanbanHooks` in `src/server/ws/handlers/index.ts` (the WS messages), `kanbanRoutes` in `src/server/http/routes/index.ts` (the HTTP routes), `openKanban` in `src/server/server.ts`, `installKanban3d` in `src/client/main.ts` (with `Parts.kanban3d` in `core/parts.ts`), and the other seams listed in [fork.md](fork.md). The size guard leaves the kanban folders out (see [The size guard](#the-size-guard)).
+
 ## Client
 
 ### `main.ts` and the context
@@ -87,5 +91,7 @@ One adapter file in `src/server/providers/`, one entry in `PROVIDERS` in `src/se
 ## The size guard
 
 `tests/size.test.ts` holds every `.ts` and `.css` file under `src/` to 600 lines. It asks `git ls-files` for them (tracked, and new ones that aren't ignored) rather than walking the folder, so a worktree checked out inside the repo can't trip it. The files that were longer when it came in are listed in `CEILINGS`, each with the length it had then: they may shrink, but never grow past it. Once one is down to 600 lines or fewer, or gone, the test fails until you take it off the list, so the list only gets shorter.
+
+In 3d-kanban the guard skips `src/{client,server,shared}/kanban/`, and `FORK_CEILINGS` holds the two upstream files the fork's seams push over their ceiling (`world/sky.ts`, `ui/settings.ts`); they may never grow either.
 
 When it fails, split the file along the registries: a feature's code goes in its folder, a message handler in its domain's file, a tick or a key in the feature it's for, and what the page keeps of it in its own slice. Raising a ceiling, or adding a file to the list, only hands the problem to the next person, so the honest way to make room is to split the file. When you shrink a listed file, lower its ceiling to its new length in the same change, so it can't grow back.
