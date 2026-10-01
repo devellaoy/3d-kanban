@@ -186,15 +186,21 @@
 :root[data-theme="glossy"] body.kanban,
 :root[data-theme="glossy"] body.lite { background: linear-gradient(180deg, #fbfbfd 0, var(--bg) 320px) var(--bg); }
 
-/* Frosted glass: the windows, the ☰ menu, the HUD's panels and the top bars. Where backdrop-filter
-   isn't supported they stay translucent white over the page, which still reads. */
+/* Frosted glass on the kanban and the 2D view: the windows, the ☰ menu, the top bars and the toasts.
+   Where backdrop-filter isn't supported they stay translucent white over the page, which still reads. */
 @supports ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
-  :root[data-theme="glossy"] :is(.modal, .hud-menu, #hud .panel, .dock-btn, .kb-bar, .lite-bar, .kb-detail, .toast) {
+  :root[data-theme="glossy"] :is(body.kanban, body.lite) :is(.modal, .hud-menu, .kb-bar, .lite-bar, .kb-detail, .toast) {
     -webkit-backdrop-filter: var(--glass-blur);
     backdrop-filter: var(--glass-blur);
   }
 }
-/* Without the blur behind them, the detail panel and the toasts need to be solid enough to read. */
+/* No blur in the 3D office: its canvas redraws every frame, so every blurred element over it would be
+   blurred again every frame, real GPU work on laptops and phones. A whiter glass reads over the moving
+   scene instead; the hairline, shadow and highlight stay. The windows and the ☰ menu, which open over
+   the HUD's own text, are near opaque so that text doesn't show through them. */
+:root[data-theme="glossy"] body:not(.kanban, .lite) :is(#hud .panel, .dock-btn, .toast) { --paper: rgba(255, 255, 255, .9); }
+:root[data-theme="glossy"] body:not(.kanban, .lite) :is(.modal, .hud-menu) { --paper: rgba(255, 255, 255, .97); }
+/* The detail panel holds long text, so it is solid enough to read even without the blur. */
 :root[data-theme="glossy"] .kb-detail { background: rgba(255, 255, 255, .86); }
 
 /* Glossy pill buttons: a soft top-lit gradient and a highlight along the top edge. */
@@ -214,7 +220,7 @@
 /* A picked segment (the Theme row, the camera view) is the accent, as Apple's; green stays for done. */
 :root[data-theme="glossy"] .btn.on { background-color: var(--accent); color: var(--text-on-accent); }
 :root[data-theme="glossy"] .dock-btn { background-color: var(--paper); }
-:root[data-theme="glossy"] .dock-btn:hover { background-color: rgba(255, 255, 255, .9); }
+:root[data-theme="glossy"] .dock-btn:hover { background-color: #fff; }
 /* A button held down (a shown panel, the open menu): the accent's wash, as the base's paper-2 is too faint here. */
 :root[data-theme="glossy"] :is(.btn[aria-pressed=true], .dock-menu[aria-expanded=true]) { background-color: #dcebfb; border-color: rgba(0, 113, 227, .3); }
 
