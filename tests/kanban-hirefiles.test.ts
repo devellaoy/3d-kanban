@@ -79,3 +79,14 @@ test('--add-dir is for Claude and Codex only, and files of one name keep both', 
   assert.deepEqual(readdirSync(dir).sort(), ['2-a.txt', '3-a.txt', 'a.txt']);
   assert.equal(readFileSync(path.join(dir, '2-a.txt'), 'utf8'), '2');
 });
+
+test('names that differ only in case keep both files, as the disk may not tell them apart', (t) => {
+  const { repo, filesDir, add, drops } = setup(t);
+  const r = hireFiles(repo, filesDir, [add('Notes.txt', 'big'), add('notes.txt', 'small')], 'Ada', drops, 'w1');
+  assert.ok(r && typeof r !== 'string');
+  const dir = path.join(drops, 'w1');
+  assert.deepEqual(readdirSync(dir).sort(), ['2-notes.txt', 'Notes.txt']);
+  assert.equal(readFileSync(path.join(dir, 'Notes.txt'), 'utf8'), 'big');
+  assert.equal(readFileSync(path.join(dir, '2-notes.txt'), 'utf8'), 'small');
+  assert.match(r.text, /- Notes\.txt: .*\n- 2-notes\.txt: /);
+});

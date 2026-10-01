@@ -31,8 +31,9 @@ export function hireFiles(repo: Pick<KanbanRepository, 'getAttachment'>, filesDi
       if (!existsSync(src)) throw new Error('gone');
       const base = dropName(a!.name, a!.mime);
       let name = base;
-      for (let n = 2; used.has(name); n++) name = `${n}-${base}`; // two files of one name keep both
-      used.add(name);
+      // Two files of one name keep both, Notes.txt and notes.txt too (macOS's and Windows' disks don't tell them apart).
+      for (let n = 2; used.has(name.toLowerCase()); n++) name = `${n}-${base}`;
+      used.add(name.toLowerCase());
       const dest = path.join(dir, name);
       copyFileSync(src, dest, constants.COPYFILE_FICLONE);
       chmodSync(dest, 0o600);
