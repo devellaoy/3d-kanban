@@ -135,21 +135,24 @@ allowed: `todo → in_progress` (= start), `waiting|review → done`, `done → 
 - Markers (appended by the engine as a non-editable contract block, never user-editable):
   - plan: a line `PLAN READY` → ready; a `QUESTIONS:` heading → questions; Claude's `ExitPlanMode` → ready;
     none of these, but ≥ 2 `?` and no absolute `.md` path → questions (replan); otherwise ready.
-  - pr: one `PR: <url>` line per pull request opened or updated; each is linked to the task (`pr_links`). The line
-    starts with `PR` or `Pull request` (optionally `created`/`opened`/`updated`, a list bullet and bold allowed) and a
-    colon; the URL is bare, `<url>` or a Markdown link, text after it is fine, any http(s) host. Any other
-    `https://github.com/<owner>/<repo>/pull/<n>` URL in the answer (not in a `>` quote) is "loose": the turn
-    does not link it itself, the board sync below does. GitHub URLs are reduced to `…/pull/<n>` (no `/files`,
-    `#…`, `?…`), duplicates count once. Wording is no longer what decides: when the floor's PR board syncs
-    (`syncPrStates`), a PR (open, draft or merged, not closed) whose head branch is an active task's branch
-    (the task's own per-repository branch; the primary repository falls back to the task's `branch`) is linked to
-    it in any phase, unless the branch is shared by several active tasks (done and archived tasks own none), the
-    branch is an integration branch (`main`, `master`, `develop`, `dev`, `trunk`; a task's branch that another PR
-    is stacked on is still its), or the PR is already some task's. Ownership is checked across all projects, by
-    repository (a link without one through its repoId), number or URL. A fork's PR with the same branch name is
-    left out: `gh pr view --json isCrossRepository` must say false (cached per PR; a gh error links nothing and
-    is retried at the next sync). A `pr`/`pr-fix` turn's end asks the floor's boards for its git repositories to
-    refresh at once, so that link shows up quickly.
+  - pr: one `PR: <url>` line per pull request opened or updated. The line starts with `PR` or `Pull request`
+    (optionally `created`/`opened`/`updated`; a list bullet and bold are allowed) and a colon; the URL is bare,
+    `<url>` or a Markdown link, text after it is fine, any http(s) host (`PR_LINE` in `shared/kanban/prompts.ts`
+    is the one rule). GitHub URLs are reduced to `…/pull/<n>` (no `/files`, `#…`, `?…`) and duplicates count once
+    (case-insensitively). Such a PR is linked to the task (`pr_links`) only when it is a GitHub PR of one of the
+    task's repositories and no other task, of any project, has it (by repository, number or URL). A URL anywhere
+    else in the answer is not reported at all.
+  - Branch linking: whatever the answer says, when the floor's PR board syncs (`syncPrStates`) an open or draft PR
+    is linked to the task whose branch is its head branch (the task's per-repository branch; the primary
+    repository falls back to the task's `branch`), in any phase. Not linked: merged or closed PRs; PRs created
+    before the task; a head that is an integration branch (`main`, `master`, `develop`, `dev`, `trunk`) or the
+    repository's default branch (`gh repo view`); a branch owned by several active tasks, in any project (done and
+    archived tasks own none); a PR that is already some task's, in any project (by repository, with a link
+    lacking one resolved through its repoId, number or URL); a fork's PR with the same branch name (`gh pr view
+    --json isCrossRepository` must say false). The gh answers are cached (a PR's head repository never changes),
+    a failed question isn't repeated for 5 minutes and links nothing meanwhile. Each such link is a `pr.linked`
+    event (`{ repo, number, by: 'branch' }`). A `pr`/`pr-fix` turn's end asks the floor's boards for the task's git
+    repositories to refresh at once, so the link shows up quickly.
   - review: read from the final answer's last 3 non-empty lines only: the **last** of them matching
     `^\s*REVIEW:\s*(APPROVED|CHANGES_REQUESTED)\s*$` as a line of its own (emphasis allowed) decides; none →
     changes requested.

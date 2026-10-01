@@ -46,13 +46,23 @@ export function mentionsTicket(text: string, token: string): boolean {
  * through its repoId in its own project: `remoteOf`) and number, or by URL. Unlike
  * KanbanRepository.tasksOfPr it finds links made without a repository.
  */
-export function prOwners(links: (Pick<KanbanPrLink, 'repoId' | 'repo' | 'number' | 'url'> & { taskId: number; project: string })[], remoteOf: (project: string, repoId: string) => string | undefined, repo: string, number: number, url: string): number[] {
+export function prOwners(links: (Pick<KanbanPrLink, 'repoId' | 'repo' | 'number' | 'url'> & { taskId: number; project: string })[], remoteOf: (project: string, repoId: string) => string | undefined, pr: { repo: string; number: number; url: string }): number[] {
   const ids = new Set<number>();
   for (const l of links) {
     const r = l.repo ?? remoteOf(l.project, l.repoId);
-    if ((l.number === number && !!r && sameRepo(r, repo)) || (!!l.url && l.url === url)) ids.add(l.taskId);
+    if ((l.number === pr.number && !!r && sameRepo(r, pr.repo)) || (!!l.url && l.url === pr.url)) ids.add(l.taskId);
   }
   return [...ids];
+}
+
+/** An active task with its branches, as KanbanRepository.activeTaskBranches reads them. */
+export interface BranchTask {
+  id: number;
+  project: string;
+  createdAt: number;
+  branch?: string;
+  /** By repo id. */
+  branches: Record<string, string>;
 }
 
 /** A PR the board lists that belongs to a task by its branch. */
@@ -69,45 +79,47 @@ export interface BranchPr {
 const INTEGRATION_BRANCHES = new Set(['main', 'master', 'develop', 'dev', 'trunk']);
 
 /**
- * The PRs (open, draft or merged, not closed) whose head branch is an active task's branch in that
- * repository (the primary repository's falls back to the task's own `branch`), for PRs no task has
- * yet (`linked`). Done and archived tasks own no branch. A branch two active tasks share is
- * nobody's. Integration branches (main, master, develop, dev, trunk) are skipped; a task's branch
- * another PR is stacked on stays its. `home` is the primary remote, the repository of a board item
- * that names none.
+ * The open or draft PRs whose head branch is an active task's in that repository, created no
+ * earlier than the task (a PR with no readable createdAt isn't), of the `project` being synced.
+ * `tasks` (the active ones of every project: done and archived own no branch) is only read when
+ * some pull has a head that isn't an integration branch. A branch is owned per repository
+ * (`reposOf` says each project's) and the primary repository's falls back to the task's `branch`;
+ * a (repository, branch) with several owners, in any project, is nobody's. Merged and closed PRs
+ * and integration branches (main, master, develop, dev, trunk) are skipped; a task's branch another
+ * PR is stacked on stays its. `home` is the primary remote, the repository of a board item that
+ * names none; `linked` says a PR is some task's already.
  */
 export function branchPrs(
-  tasks: (Pick<KanbanTask, 'id' | 'branch' | 'status'> & { branches?: Record<string, string> })[],
-  pulls: (Pick<GhPull, 'number' | 'url' | 'state' | 'isDraft'> & { repo?: string; headRefName?: string })[],
-  repos: Pick<ProjectRepo, 'id' | 'remote' | 'primary'>[],
+  project: string,
+  tasks: () => BranchTask[],
+  pulls: (Pick<GhPull, 'number' | 'url' | 'state' | 'isDraft'> & { repo?: string; headRefName?: string; createdAt?: string })[],
+  reposOf: (project: string) => Pick<ProjectRepo, 'id' | 'kind' | 'remote' | 'primary'>[],
   home: string | undefined,
-  linked: (repo: string, number: number, url: string) => boolean,
+  linked: (pr: { repo: string; number: number; url: string }) => boolean,
 ): BranchPr[] {
-  const repoOf = (p: { repo?: string }) => {
-    const repo = p.repo ?? home;
-    return repo ? repos.find((x) => x.remote && sameRepo(x.remote, repo)) : undefined;
-  };
-  const owners = new Map<string, Set<number>>();
-  for (const t of tasks) {
-    if (t.status === 'done' || t.status === 'archived') continue;
-    for (const r of repos) {
-      const branch = t.branches?.[r.id] ?? (r.primary ? t.branch : undefined);
-      if (!r.remote || !branch) continue;
-      const key = `${r.id}\n${branch}`;
-      owners.set(key, (owners.get(key) ?? new Set()).add(t.id));
+  const heads = pulls.filter((p) => p.headRefName && !INTEGRATION_BRANCHES.has(p.headRefName.toLowerCase()) && (prState(p) === 'OPEN' || prState(p) === 'DRAFT'));
+  if (!heads.length) return [];
+  const owners = new Map<string, { task: BranchTask; repoId: string; remote: string }[]>();
+  for (const t of tasks()) {
+    for (const r of reposOf(t.project)) {
+      const branch = t.branches[r.id] ?? (r.primary ? t.branch : undefined);
+      if (r.kind !== 'git' || !r.remote || !branch) continue;
+      const key = `${r.remote.toLowerCase()}\n${branch}`;
+      owners.set(key, [...(owners.get(key) ?? []), { task: t, repoId: r.id, remote: r.remote }]);
     }
   }
   const out: BranchPr[] = [];
   const seen = new Set<string>();
-  for (const p of pulls) {
-    const r = repoOf(p);
-    if (!r?.remote || !p.headRefName || prState(p) === 'CLOSED') continue;
-    if (INTEGRATION_BRANCHES.has(p.headRefName.toLowerCase())) continue;
-    const ids = owners.get(`${r.id}\n${p.headRefName}`);
-    const key = `${r.id}#${p.number}`;
-    if (ids?.size !== 1 || seen.has(key) || linked(r.remote, p.number, p.url)) continue;
+  for (const p of heads) {
+    const repo = p.repo ?? home;
+    const mine = repo ? owners.get(`${repo.toLowerCase()}\n${p.headRefName}`) : undefined;
+    if (mine?.length !== 1 || mine[0].task.project !== project) continue;
+    const { task, repoId, remote } = mine[0];
+    const created = Date.parse(p.createdAt ?? '');
+    const key = `${remote.toLowerCase()}#${p.number}`;
+    if (!(created >= task.createdAt) || seen.has(key) || linked({ repo: remote, number: p.number, url: p.url })) continue;
     seen.add(key);
-    out.push({ taskId: [...ids][0], repoId: r.id, repo: r.remote, branch: p.headRefName, pull: p });
+    out.push({ taskId: task.id, repoId, repo: remote, branch: p.headRefName!, pull: p });
   }
   return out;
 }

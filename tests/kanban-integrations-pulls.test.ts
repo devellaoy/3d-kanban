@@ -55,7 +55,9 @@ test('MergeWatch keys by repository and number: two repositories’ #10 are two 
 });
 
 /** gh for a repository's PRs: none of them from a fork, or none asked. */
-const notFork = async () => '{"isCrossRepository":false}';
+const notFork = async (args: string[]) => (args[0] === 'repo' ? 'main\n' : '{"isCrossRepository":false}');
+/** A PR created after the tasks of a test were. */
+const LATER = new Date(Date.now() + 60_000).toISOString();
 const noGh = async () => Promise.reject(new Error('gh not needed'));
 
 function project() {
@@ -227,7 +229,7 @@ test("a PR from a task's branch is linked to it when the floor's PRs come back: 
   ctx.repo.upsertPrLink(other.id, { repoId: 'web', repo: 'o/web', number: 20, url: 'https://github.com/o/web/pull/20', state: 'OPEN' });
   const gone = mk('Gone', 'kanban/gone');
   ctx.repo.updateTask(gone.id, { status: 'archived' });
-  const pull = (n: number, branch: string, repo: string, state = 'OPEN') => ({ number: n, title: `PR ${n}`, url: `https://github.com/${repo}/pull/${n}`, state, isDraft: false, headRefName: branch, repo }) as GhPull;
+  const pull = (n: number, branch: string, repo: string, state = 'OPEN') => ({ number: n, title: `PR ${n}`, url: `https://github.com/${repo}/pull/${n}`, state, isDraft: false, headRefName: branch, repo, createdAt: LATER }) as GhPull;
   const parts = createPullsParts(ctx, { gh: notFork });
   const got = await parts.syncPrStates('web', [
     pull(10, 'kanban/a', 'o/web'),
@@ -258,7 +260,7 @@ test('branch linking: a done task does not own its branch, integration branches 
   const fresh = mk('Fresh', 'kanban/re');
   const dev = mk('Dev', 'kanban/dev-task');
   ctx.repo.setRepoBranch(dev.id, 'api', 'develop');
-  const pull = (n: number, head: string, base: string, repo: string) => ({ number: n, title: `PR ${n}`, url: `https://github.com/${repo}/pull/${n}`, state: 'OPEN', isDraft: false, headRefName: head, baseRefName: base, repo }) as GhPull;
+  const pull = (n: number, head: string, base: string, repo: string) => ({ number: n, title: `PR ${n}`, url: `https://github.com/${repo}/pull/${n}`, state: 'OPEN', isDraft: false, headRefName: head, baseRefName: base, repo, createdAt: LATER }) as GhPull;
   const parts = createPullsParts(ctx, { gh: notFork });
   await parts.syncPrStates('web', [pull(1, 'kanban/re', 'main', 'o/web'), pull(2, 'develop', 'main', 'o/api'), pull(3, 'kanban/dev-task', 'develop', 'o/api'), pull(4, 'main', 'main', 'o/web')]);
   assert.deepEqual(ctx.repo.listPrLinks(fresh.id).map((l) => l.number), [1], 'the done task with the same branch name does not block it');
@@ -275,7 +277,7 @@ test('branch linking: stacked PRs each link to their own task', async () => {
   };
   const a = mk('A', 'office/a');
   const b = mk('B', 'office/b');
-  const pull = (n: number, head: string, base: string) => ({ number: n, title: `PR ${n}`, url: `https://github.com/o/web/pull/${n}`, state: 'OPEN', isDraft: false, headRefName: head, baseRefName: base, repo: 'o/web' }) as GhPull;
+  const pull = (n: number, head: string, base: string) => ({ number: n, title: `PR ${n}`, url: `https://github.com/o/web/pull/${n}`, state: 'OPEN', isDraft: false, headRefName: head, baseRefName: base, repo: 'o/web', createdAt: LATER }) as GhPull;
   await createPullsParts(ctx, { gh: notFork }).syncPrStates('web', [pull(1, 'office/a', 'main'), pull(2, 'office/b', 'office/a')]);
   assert.deepEqual(ctx.repo.listPrLinks(a.id).map((l) => l.number), [1], 'A is the base of B, and still A’s');
   assert.deepEqual(ctx.repo.listPrLinks(b.id).map((l) => l.number), [2]);
@@ -293,31 +295,24 @@ test('branch linking: a PR linked without its repository is still that task’s'
   // A's links have no repository: #7 resolves through its repoId, #8's repoId is no repository of the project any more.
   ctx.repo.upsertPrLink(a.id, { repoId: 'web', number: 7, url: 'https://github.com/o/web/pull/7', state: 'OPEN' });
   ctx.repo.upsertPrLink(a.id, { repoId: 'gone', number: 8, url: 'https://github.com/o/web/pull/8', state: 'OPEN' });
-  const pull = (n: number, head: string, url = `https://github.com/o/web/pull/${n}`) => ({ number: n, title: `PR ${n}`, url, state: 'OPEN', isDraft: false, headRefName: head, baseRefName: 'main', repo: 'o/web' }) as GhPull;
+  const pull = (n: number, head: string, url = `https://github.com/o/web/pull/${n}`) => ({ number: n, title: `PR ${n}`, url, state: 'OPEN', isDraft: false, headRefName: head, baseRefName: 'main', repo: 'o/web', createdAt: LATER }) as GhPull;
   // #7 matched by repoId and number, #8 by its URL alone.
   await createPullsParts(ctx, { gh: notFork }).syncPrStates('web', [pull(7, 'office/b'), pull(8, 'office/b')]);
   assert.deepEqual(ctx.repo.listPrLinks(b.id), [], 'not linked to B as well');
   assert.deepEqual(ctx.repo.listPrLinks(a.id).map((l) => l.number).sort(), [7, 8]);
 });
 
-test('branch linking: a fork’s PR with the task’s branch name, or a PR gh cannot vouch for, is not linked (and asked again later)', async () => {
+test('branch linking: a fork’s PR with the task’s branch name is not linked, and gh is asked about it once', async () => {
   const { ctx } = project();
   const a = ctx.repo.createTask({ project: 'web', title: 'A', tool: 'claude', usePlan: true, planApproval: 'auto', useReview: true, createdBy: 't' });
   ctx.repo.updateTask(a.id, { branch: 'office/a' });
   const asked: string[] = [];
-  let answer: () => string = () => '{"isCrossRepository":true}';
-  const parts = createPullsParts(ctx, { gh: async (args) => (asked.push(`${args[4]}#${args[2]}`), answer()) });
-  const pull = (n: number) => ({ number: n, title: `PR ${n}`, url: `https://github.com/o/web/pull/${n}`, state: 'OPEN', isDraft: false, headRefName: 'office/a', repo: 'o/web' }) as GhPull;
+  const parts = createPullsParts(ctx, { gh: async (args) => (asked.push(args.slice(0, 3).join(' ')), args[0] === 'repo' ? 'main' : `{"isCrossRepository":${args[2] === '5'}}`) });
+  const pull = (n: number) => ({ number: n, title: `PR ${n}`, url: `https://github.com/o/web/pull/${n}`, state: 'OPEN', isDraft: false, headRefName: 'office/a', repo: 'o/web', createdAt: LATER }) as GhPull;
   assert.deepEqual(await parts.syncPrStates('web', [pull(5)]), []);
   assert.deepEqual(await parts.syncPrStates('web', [pull(5)]), []);
-  assert.deepEqual(asked, ['o/web#5'], 'a fork stays a fork: asked once');
-  answer = () => {
-    throw new Error('gh failed');
-  };
-  assert.deepEqual(await parts.syncPrStates('web', [pull(6)]), [], 'no word from gh: no link');
-  answer = () => '{"isCrossRepository":false}';
-  assert.deepEqual(await parts.syncPrStates('web', [pull(6)]), [a.id], 'the next sync asks again');
-  assert.deepEqual(ctx.repo.listPrLinks(a.id).map((l) => l.number), [6]);
+  assert.deepEqual(asked.filter((x) => x.startsWith('pr view')), ['pr view 5'], 'a fork stays a fork: asked once');
+  assert.deepEqual(await parts.syncPrStates('web', [pull(6)]), [a.id]);
 });
 
 test('branch linking: a PR another project’s task has, linked by repoId only, is not taken', async () => {
@@ -330,17 +325,86 @@ test('branch linking: a PR another project’s task has, linked by repoId only, 
   const repos = ctx.repos;
   ctx.repos = (id: string) => (id === 'web2' ? [{ id: 'w2', name: 'w2', kind: 'git', dir: '/x', remote: 'o/web', primary: true }] : repos(id));
   ctx.repo.upsertPrLink(theirs.id, { repoId: 'w2', number: 7, url: 'https://github.com/o/web/pull/7?x', state: 'OPEN' });
-  await createPullsParts(ctx, { gh: notFork }).syncPrStates('web', [{ number: 7, title: 'PR', url: 'https://github.com/o/web/pull/7', state: 'OPEN', isDraft: false, headRefName: 'office/a', repo: 'o/web' } as GhPull]);
+  await createPullsParts(ctx, { gh: notFork }).syncPrStates('web', [{ number: 7, title: 'PR', url: 'https://github.com/o/web/pull/7', state: 'OPEN', isDraft: false, headRefName: 'office/a', repo: 'o/web', createdAt: LATER } as GhPull]);
   assert.deepEqual(ctx.repo.listPrLinks(mine.id), [], 'the other project’s task has #7');
 });
 
-test('branchPrs: by repository and branch, the primary repository falls back to the task’s own branch', () => {
-  const repos = [{ id: 'web', remote: 'o/web', primary: true }, { id: 'api', remote: 'o/api', primary: false }];
-  const p = (number: number, headRefName: string | undefined, repo?: string, state = 'OPEN') => ({ number, url: `u${number}`, state, isDraft: false, headRefName, ...(repo ? { repo } : {}) });
-  const tasks = [{ id: 1, branch: 'b1', branches: { api: 'b1-api' } }];
-  const got = branchPrs(tasks, [p(1, 'b1'), p(2, 'b1', 'o/api'), p(3, 'b1-api', 'o/api'), p(4, undefined), p(5, 'b1', 'o/web', 'MERGED'), p(6, 'b1', 'o/lib')], repos, 'o/web', () => false);
-  assert.deepEqual(got.map((g) => `${g.taskId}:${g.repoId}#${g.pull.number}`), ['1:web#1', '1:api#3', '1:web#5']);
-  assert.deepEqual(branchPrs(tasks, [p(1, 'b1')], repos, 'o/web', () => true), []);
+test('branchPrs: by repository and branch, the primary repository falls back to the task’s own branch, open PRs created after the task', () => {
+  const repos = [{ id: 'web', kind: 'git' as const, remote: 'o/web', primary: true }, { id: 'api', kind: 'git' as const, remote: 'o/api', primary: false }];
+  const p = (number: number, headRefName: string | undefined, repo?: string, state = 'OPEN', createdAt = LATER) => ({ number, url: `u${number}`, state, isDraft: false, headRefName, createdAt, ...(repo ? { repo } : {}) });
+  const tasks = [{ id: 1, project: 'web', createdAt: Date.now(), branch: 'b1', branches: { api: 'b1-api' } }];
+  const got = branchPrs('web', () => tasks, [p(1, 'b1'), p(2, 'b1', 'o/api'), p(3, 'b1-api', 'O/API'), p(4, undefined), p(5, 'b1', 'o/web', 'MERGED'), p(6, 'b1', 'o/lib'), p(7, 'b1', 'o/web', 'OPEN', '2001-01-01T00:00:00Z'), p(8, 'b1', 'o/web', 'OPEN', 'soon')], () => repos, 'o/web', () => false);
+  assert.deepEqual(got.map((g) => `${g.taskId}:${g.repoId}#${g.pull.number}`), ['1:web#1', '1:api#3'], 'merged, older than the task or undated: no');
+  assert.deepEqual(branchPrs('web', () => tasks, [p(1, 'b1')], () => repos, 'o/web', () => true), []);
+  assert.deepEqual(branchPrs('other', () => tasks, [p(1, 'b1')], () => repos, 'o/web', () => false), [], 'a task of another project');
+  assert.deepEqual(branchPrs('web', () => assert.fail('no head to look up'), [p(1, 'main'), p(2, undefined)], () => repos, 'o/web', () => false), [], 'the tasks are not even read');
+});
+
+test('branch linking: a PR needs gh to say it is no fork’s, and the head is not the default branch; each link is an event', async () => {
+  const { ctx } = project();
+  const mk = (title: string, branch: string) => {
+    const t = ctx.repo.createTask({ project: 'web', title, tool: 'claude', usePlan: true, planApproval: 'auto', useReview: true, createdBy: 't' });
+    ctx.repo.updateTask(t.id, { branch });
+    return t;
+  };
+  const a = mk('A', 'office/a');
+  const b = mk('B', 'trunky');
+  const asked: string[] = [];
+  let now = 1_000_000;
+  let fail = true;
+  const parts = createPullsParts(ctx, {
+    now: () => now,
+    gh: async (args) => {
+      asked.push(args.slice(0, 3).join(' '));
+      if (fail) throw new Error('gh failed');
+      return args[0] === 'repo' ? 'trunky\n' : '{"isCrossRepository":false}';
+    },
+  });
+  const pull = (n: number, head: string) => ({ number: n, title: `PR ${n}`, url: `https://github.com/o/web/pull/${n}`, state: 'OPEN', isDraft: false, headRefName: head, repo: 'o/web', createdAt: LATER }) as GhPull;
+  assert.deepEqual(await parts.syncPrStates('web', [pull(1, 'office/a')]), [], 'gh failed: no link');
+  const before = asked.length;
+  await parts.syncPrStates('web', [pull(1, 'office/a')]);
+  assert.equal(asked.length, before, 'not asked again within five minutes');
+  now += 5 * 60_000;
+  fail = false;
+  assert.deepEqual(await parts.syncPrStates('web', [pull(1, 'office/a'), pull(2, 'trunky')]), [a.id], 'the default branch (trunky here) is nobody’s');
+  assert.equal(ctx.repo.listPrLinks(b.id).length, 0);
+  assert.deepEqual(ctx.repo.listEvents(a.id).filter((e) => e.kind === 'pr.linked').map((e) => e.data), [{ repo: 'o/web', number: 1, by: 'branch' }]);
+});
+
+test('branch linking: one in-flight gh question per PR, and nothing is written once the plugin stopped', async () => {
+  const { ctx } = project();
+  const t = ctx.repo.createTask({ project: 'web', title: 'A', tool: 'claude', usePlan: true, planApproval: 'auto', useReview: true, createdBy: 't' });
+  ctx.repo.updateTask(t.id, { branch: 'office/a' });
+  let calls = 0;
+  let release!: () => void;
+  const gate = new Promise<void>((r) => (release = r));
+  const parts = createPullsParts(ctx, { gh: async (args) => (calls++, await gate, args[0] === 'repo' ? 'main' : '{"isCrossRepository":false}') });
+  const pull = { number: 1, title: 'PR', url: 'https://github.com/o/web/pull/1', state: 'OPEN', isDraft: false, headRefName: 'office/a', repo: 'o/web', createdAt: LATER } as GhPull;
+  parts.plugin.start!();
+  const one = parts.syncPrStates('web', [pull]);
+  const two = parts.syncPrStates('web', [pull]);
+  parts.plugin.stop!();
+  release();
+  await Promise.all([one, two]);
+  assert.equal(calls, 2, 'fork and default branch, once each');
+  assert.deepEqual(ctx.repo.listPrLinks(t.id), [], 'stopped meanwhile: nothing written');
+});
+
+test('branch linking: two projects with an active task on the same repository and branch own it jointly, so nobody', async () => {
+  const { ctx } = project();
+  const repos = ctx.repos;
+  ctx.repos = (id: string) => (id === 'web2' ? [{ id: 'w2', name: 'w2', kind: 'git', dir: '/x', remote: 'o/web', primary: true }] : repos(id));
+  const mk = (project: string) => {
+    const t = ctx.repo.createTask({ project, title: project, tool: 'claude', usePlan: true, planApproval: 'auto', useReview: true, createdBy: 't' });
+    ctx.repo.updateTask(t.id, { branch: 'office/same' });
+    return t;
+  };
+  const a = mk('web');
+  const b = mk('web2');
+  const pull = { number: 1, title: 'PR', url: 'https://github.com/o/web/pull/1', state: 'OPEN', isDraft: false, headRefName: 'office/same', repo: 'o/web', createdAt: LATER } as GhPull;
+  await createPullsParts(ctx, { gh: notFork }).syncPrStates('web', [pull]);
+  assert.deepEqual([ctx.repo.listPrLinks(a.id), ctx.repo.listPrLinks(b.id)], [[], []]);
 });
 
 test('kanban.pr.review takes panel, kanban.pr.bundle takes includeClosed: true or false, nothing else', () => {
