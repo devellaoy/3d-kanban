@@ -63,6 +63,15 @@ test('no part of the office imports main.ts: it only puts them together', () => 
   }
 });
 
+test('the kanban page loads no three.js and none of the 3D office: its Settings window leaves the sky line to the caller', () => {
+  // It is the PWA's start page; ui/settings.ts is shared with the 3D office, so a stray import of world/ would drag three.js in.
+  for (const f of graph(path.join(client, 'kanban', 'main.ts'))) {
+    const rel = path.relative(client, f);
+    assert.doesNotMatch(read(f), /from 'three(?:\/[^']*)?'/, `${rel} (loaded by kanban/main.ts) imports three.js`);
+    assert.ok(!/^(core|features|input|world|player)\//.test(rel), `kanban/main.ts loads ${rel}, part of the 3D office`);
+  }
+});
+
 test('the 2D view loads no three.js, and none of the 3D office: what it shares with it is three.js-free', () => {
   const lite = graph(path.join(client, 'lite.ts'));
   for (const f of lite) {

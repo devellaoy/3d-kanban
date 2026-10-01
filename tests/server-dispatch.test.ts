@@ -397,6 +397,11 @@ test('settings, accounts, sign-ins and the boards answer as before', async () =>
   assert.equal(await told('Eve took'), 'Eve took the holiday decorations down');
   a.send({ t: 'map.set', map: 'nowhere' });
   await warned('There’s no map by that name, or it won’t load: see ⚙️ Settings');
+  // The sky's clock switches only on a real `true`, never on something merely truthy.
+  a.send({ t: 'sky.clock', real: 'yes' } as never);
+  a.send({ t: 'sky.clock', real: true });
+  assert.equal((await a.take('sky', (m) => !!m.state.realTime)).state.realTime, true);
+  assert.equal(await told('🕰️'), '🕰️ Eve put the sky on the real time of day');
   a.send({ t: 'machine.limit', limit: 0 });
   await warned('The worker limit is a whole number from 1 to 500');
   a.send({ t: 'machine.limit', limit: 3 });

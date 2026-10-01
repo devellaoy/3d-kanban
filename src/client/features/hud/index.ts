@@ -169,7 +169,7 @@ export function installHud(ctx: Ctx, core: CoreState, parts: HudParts) {
       () => sound.ding('done'),
       parts.notifier,
       signOut,
-      store.sky ? { now: describeSky(store.sky, store.officeNow()), live: !!store.sky.city } : undefined,
+      store.sky ? { now: describeSky(store.sky, store.officeNow()), live: !!store.sky.city, describe: (s) => describeSky(s, store.officeNow()) } : undefined,
       pane,
     );
   }

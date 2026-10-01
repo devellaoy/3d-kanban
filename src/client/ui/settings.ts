@@ -2,7 +2,7 @@ import './settings.css';
 import type { Net } from '../net';
 import { store, type Settings, type ViewMode } from '../state';
 import { askNotifyPermission, notifyPermission, type DesktopNotifier } from '../notify';
-import type { ThemePick, WebhookKind } from '../../shared/protocol';
+import type { SkyState, ThemePick, WebhookKind } from '../../shared/protocol';
 import { THEME_PICKS } from '../../shared/theme';
 import { mapChoices } from '../../shared/maps';
 import { DOG_NAME_MAX, cleanDogName } from '../../shared/dog';
@@ -40,8 +40,8 @@ const PANES: { id: SettingsPane; icon: string; label: string; blurb: string }[] 
 /** Where ⚙️ Settings was last, so it opens there again. */
 let lastPane: SettingsPane = 'you';
 
-/** `outside` describes the sky over the office (see describeSky), once the server has said. `first` opens on that category instead of the last one. */
-export function openSettings(net: Net, settings: Settings, onChange: (s: Settings) => void, onCharacter: () => void, previewSound: () => void, notifier: DesktopNotifier, onSignOut: () => void, outside?: { now: string; live: boolean }, first?: SettingsPane) {
+/** `outside` describes the sky over the office (see describeSky; `describe` words a later one), once the server has said. `first` opens on that category instead of the last one. */
+export function openSettings(net: Net, settings: Settings, onChange: (s: Settings) => void, onCharacter: () => void, previewSound: () => void, notifier: DesktopNotifier, onSignOut: () => void, outside?: { now: string; live: boolean; describe: (s: SkyState) => string }, first?: SettingsPane) {
   const seg = h('div.seg', { role: 'radiogroup', 'aria-label': 'Camera view' });
   const note = h('p.setting-note');
   const paint = () => {
