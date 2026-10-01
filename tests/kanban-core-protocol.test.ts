@@ -100,7 +100,7 @@ test('good messages come through rebuilt, without anything the validator did not
     refused({ t: 'kanban.task.start', id: 2, deskId }, /deskId must be a desk/);
     refused({ t: 'kanban.task.create', task: { project: 'web', title: 'x' }, deskId }, /deskId must be a desk/);
   }
-  assert.equal(KANBAN_CLIENT_TYPES.size, 37);
+  assert.equal(KANBAN_CLIENT_TYPES.size, 43);
 });
 
 test("the primary repository's id is its floor's, up to 40 characters, and repoIds take it", () => {
@@ -197,4 +197,34 @@ test('the VS Code requests take a task number or a worker id', () => {
   refused({ t: 'kanban.task.vscode', id: '4' }, /task number/);
   refused({ t: 'kanban.worker.vscode' }, /workerId/);
   refused({ t: 'kanban.worker.vscode', workerId: 5 }, /workerId/);
+});
+
+test('the issue actions are keyed by issue and checked field by field', () => {
+  const base = { project: 'web', issueKey: 'UYT-12' };
+  assert.deepEqual(good({ t: 'kanban.issue.transitions', ...base, rid: 'r1' }), { t: 'kanban.issue.transitions', ...base, rid: 'r1' });
+  assert.deepEqual(good({ t: 'kanban.issue.comments', ...base }), { t: 'kanban.issue.comments', ...base });
+  for (const transitionId of ['31', 'p:PVT_a1:PVTI_b2:PVTSSF_c3:f75ad846', 'gh:close:not_planned', 'gh:reopen']) assert.ok(good({ t: 'kanban.issue.transition', ...base, transitionId }), transitionId);
+  refused({ t: 'kanban.issue.transition', ...base, transitionId: 'a b' }, /transitionId/);
+  refused({ t: 'kanban.issue.transition', ...base, transitionId: 'x'.repeat(501) }, /transitionId/);
+  refused({ t: 'kanban.issue.transition', ...base }, /transitionId/);
+  // A comment: text, not empty, as long as a task's comment.
+  assert.ok(good({ t: 'kanban.issue.comment', ...base, text: 'x'.repeat(KANBAN_LIMITS.comment) }));
+  refused({ t: 'kanban.issue.comment', ...base, text: '  ' }, /empty/);
+  refused({ t: 'kanban.issue.comment', ...base, text: 'x'.repeat(KANBAN_LIMITS.comment + 1) }, /too long/);
+  // The people search is optional and short.
+  assert.deepEqual(good({ t: 'kanban.issue.people', ...base, query: ' ma ' }), { t: 'kanban.issue.people', ...base, query: 'ma' });
+  assert.deepEqual(good({ t: 'kanban.issue.people', ...base }), { t: 'kanban.issue.people', ...base });
+  refused({ t: 'kanban.issue.people', ...base, query: 'x'.repeat(101) }, /too long/);
+  // Assigning: me, a person's id, or nobody.
+  assert.deepEqual(good({ t: 'kanban.issue.assign', ...base, to: { me: true } }), { t: 'kanban.issue.assign', ...base, to: { me: true } });
+  assert.deepEqual(good({ t: 'kanban.issue.assign', ...base, to: { id: '712020:ab-cd' } }), { t: 'kanban.issue.assign', ...base, to: { id: '712020:ab-cd' } });
+  assert.deepEqual(good({ t: 'kanban.issue.assign', ...base, to: null }), { t: 'kanban.issue.assign', ...base, to: null });
+  refused({ t: 'kanban.issue.assign', ...base }, /to must be/);
+  refused({ t: 'kanban.issue.assign', ...base, to: { me: false } }, /person id/);
+  refused({ t: 'kanban.issue.assign', ...base, to: { id: 'a b' } }, /person id/);
+  refused({ t: 'kanban.issue.assign', ...base, to: { id: 'x'.repeat(201) } }, /person id/);
+  // The key and the project are checked on every one.
+  refused({ t: 'kanban.issue.comments', project: 'Web!', issueKey: 'A-1' }, /floor id/);
+  refused({ t: 'kanban.issue.comments', project: 'web', issueKey: 'x'.repeat(401) }, /too long/);
+  refused({ t: 'kanban.issue.comments', project: 'web' }, /issueKey/);
 });

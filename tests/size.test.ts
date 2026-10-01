@@ -43,7 +43,6 @@ const CEILINGS: Readonly<Record<string, number>> = {
   'src/client/kanban/taskview.ts': 959,
   'src/server/kanban/db/repository.ts': 901,
   'src/client/kanban/changesview.ts': 831,
-  'src/shared/kanban/protocol.ts': 711,
   'src/shared/kanban/types.ts': 692,
   'src/client/kanban/settings.ts': 663,
 };

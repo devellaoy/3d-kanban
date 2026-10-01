@@ -20,7 +20,6 @@ import type {
   KanbanTask,
   KanbanTaskCard,
   KanbanTool,
-  NormalizedIssue,
   PlanApproval,
   PrRef,
   ProjectRepo,
@@ -33,51 +32,19 @@ import type {
   TaskType,
 } from './types.js';
 import { KANBAN_EFFORTS, KANBAN_TOOLS, PR_REVIEW_MAX, TASK_STATUSES, TASK_TYPES } from './types.js';
-import { DESK_BY_ID } from '../layout.js';
+import { Bad, KANBAN_LIMITS, MODEL_RE, PROJECT_ID_RE, bad, bool, deskId, id, isObj, list, model, nullableText, oneOf, optInt, optOneOf, optText, project, text, workerId, type Obj, type Req } from './validate.js';
+import { ISSUE_OPS_CLIENT_TYPE_LIST, parseIssueOpsMsg, type IssueOpsClientMsg, type IssueOpsServerMsg } from './issueops.js';
 
 // --- Limits ---------------------------------------------------------------------------------------
 
-export const KANBAN_LIMITS = {
-  rid: 64,
-  title: 300,
-  description: 100_000,
-  comment: 50_000,
-  answer: 50_000,
-  /** Room for the longest keys the issue sources make: `gh:<owner>/<name>#<n>` takes GH_REPO_RE's 201 characters and more. */
-  ticket: 400,
-  url: 2000,
-  goal: 20_000,
-  tag: 40,
-  tags: 20,
-  model: 100,
-  attachments: 20,
-  repoIds: 16,
-  /** The same keys as ticket. */
-  issueKey: 400,
-  branch: 200,
-  promptText: 20_000,
-  secret: 4096,
-  commentsPage: 200,
-  /** owner/name (GH_REPO_RE, up to 201 characters) or a GitHub URL of it. */
-  remote: 300,
-  /**
-   * How big a settings object the browser may send, as JSON. A project's settings hold three
-   * instruction texts and a rewrite of every kanban prompt (PROMPT_MAX each), and JSON can double
-   * that with escapes; still under the office's 2 MB WebSocket messages.
-   */
-  settingsJson: 1_500_000,
-} as const;
+export { KANBAN_LIMITS, PROJECT_ID_RE, MODEL_RE } from './validate.js';
 
-/** A floor id (see Building.newDef). */
-export const PROJECT_ID_RE = /^[a-z0-9-]{1,40}$/;
 /**
  * A ProjectRepo id. Short, so `<floorId>~<repoId>` (the synthetic RepoSource.floor of a project's other
  * repositories) fits in the 64 characters upstream's Changes messages take.
  */
 export const REPO_ID_RE = /^[a-z0-9][a-z0-9-]{0,19}$/;
 export const ATTACHMENT_ID_RE = /^[a-f0-9]{16,64}$/;
-/** Claude aliases (opus, sonnet[1m]) and Codex ids (gpt-5.1-codex), nothing that looks like a flag. */
-export const MODEL_RE = /^[A-Za-z0-9][\w.:/[\]-]{0,99}$/;
 /** owner/name on GitHub. */
 export const GH_REPO_RE = /^[A-Za-z0-9_.-]{1,100}\/[A-Za-z0-9_.-]{1,100}$/;
 
@@ -138,8 +105,6 @@ export type ProjectRepoInput = Omit<ProjectRepo, 'kind'> & { kind?: ProjectRepo[
 
 // --- Browser → server -----------------------------------------------------------------------------
 
-type Req<T> = T & { rid?: string };
-
 export type KanbanClientMsg =
   /** Deltas for one project, or (null) all of them; answered with kanban.snapshot. */
   | Req<{ t: 'kanban.subscribe'; project: string | null; includeArchived?: boolean }>
@@ -194,11 +159,6 @@ export type KanbanClientMsg =
   | Req<{ t: 'kanban.project.repo.clone'; project: string; remote: string; name?: string }>
   /** A project's own text for a kanban prompt; null goes back to the office's. */
   | Req<{ t: 'kanban.project.prompt.set'; project: string; id: string; text: string | null }>
-  /** Answered with kanban.issues. */
-  | Req<{ t: 'kanban.issues.list'; project: string }>
-  | Req<{ t: 'kanban.issues.refresh'; project: string }>
-  /** Idempotent by ticket: answered with kanban.ok {taskId, existed}. `deskId` (with start): where its worker sits (the 3D office's P with a card). */
-  | Req<{ t: 'kanban.issues.createTask'; project: string; issueKey: string; start?: boolean; deskId?: string }>
   /** Answered with kanban.skills. */
   | Req<{ t: 'kanban.skills.list' }>
   | Req<{ t: 'kanban.skills.sync' }>
@@ -213,7 +173,8 @@ export type KanbanClientMsg =
   /** The pull requests that belong together (open and draft ones; merged and closed too with includeClosed); answered with kanban.pr.bundle. */
   | Req<{ t: 'kanban.pr.bundle'; project: string; includeClosed?: boolean } & KanbanPrBundleKey>
   /** The task that owns a pull request, and whether its agent can fix it now: kanban.pr.owner. */
-  | Req<{ t: 'kanban.pr.owner'; project: string; repo: string; number: number }>;
+  | Req<{ t: 'kanban.pr.owner'; project: string; repo: string; number: number }>
+  | IssueOpsClientMsg;
 
 export type KanbanClientType = KanbanClientMsg['t'];
 
@@ -252,87 +213,17 @@ export type KanbanServerMsg =
   | { t: 'kanban.settings'; rid?: string; settings: KanbanSettings; secrets: SecretStatus }
   | { t: 'kanban.meta'; rid?: string; projects: KanbanProjectInfo[]; settings: KanbanSettings; secrets: SecretStatus; me: { admin: boolean; name: string } }
   | { t: 'kanban.projects'; projects: KanbanProjectInfo[] }
-  | { t: 'kanban.issues'; rid?: string; project: string; items: NormalizedIssue[]; error?: string; fetchedAt: number; loading: boolean }
   | { t: 'kanban.skills'; rid?: string; skills: SkillInfo[]; error?: string }
   | { t: 'kanban.pr.bundle'; rid?: string; project: string; key: KanbanPrBundleKey; prs: KanbanPrBundleItem[]; error?: string }
   | { t: 'kanban.pr.owner'; rid?: string; taskId: number | null; title?: string; fixable: boolean; reason?: string }
   | { t: 'kanban.ok'; rid?: string; taskId?: number; commentId?: number; workerId?: string; existed?: boolean; startError?: string; started?: true }
+  | IssueOpsServerMsg
   | { t: 'kanban.error'; rid?: string; message: string };
 
 export type KanbanServerType = KanbanServerMsg['t'];
 
 // --- The validator --------------------------------------------------------------------------------
 
-class Bad extends Error {}
-const bad = (why: string): never => {
-  throw new Bad(why);
-};
-
-type Obj = Record<string, unknown>;
-const isObj = (v: unknown): v is Obj => !!v && typeof v === 'object' && !Array.isArray(v);
-
-function text(v: unknown, name: string, max: number, opts: { empty?: boolean } = {}): string {
-  if (typeof v !== 'string') bad(`${name} must be text`);
-  const s = (v as string).replace(/\r\n?/g, '\n');
-  if (s.length > max) bad(`${name} is too long (at most ${max.toLocaleString('en-US')} characters)`);
-  if (!opts.empty && !s.trim()) bad(`${name} can't be empty`);
-  return s;
-}
-function optText(v: unknown, name: string, max: number): string | undefined {
-  return v === undefined ? undefined : text(v, name, max, { empty: true });
-}
-/** undefined: leave it; null: clear it. */
-function nullableText(v: unknown, name: string, max: number): string | null | undefined {
-  if (v === null) return null;
-  return optText(v, name, max);
-}
-function id(v: unknown, name = 'id'): number {
-  if (!Number.isSafeInteger(v) || (v as number) <= 0) bad(`${name} must be a task number`);
-  return v as number;
-}
-function workerId(v: unknown): string {
-  if (typeof v !== 'string' || !v || v.length > 100) bad('workerId must be a worker id');
-  return v as string;
-}
-function optInt(v: unknown, name: string, min: number, max: number): number | undefined {
-  if (v === undefined) return undefined;
-  if (!Number.isSafeInteger(v) || (v as number) < min || (v as number) > max) bad(`${name} must be a whole number from ${min} to ${max}`);
-  return v as number;
-}
-function bool(v: unknown, name: string): boolean | undefined {
-  if (v === undefined) return undefined;
-  if (typeof v !== 'boolean') bad(`${name} must be true or false`);
-  return v as boolean;
-}
-function oneOf<T extends string>(v: unknown, name: string, all: readonly T[]): T {
-  if (typeof v !== 'string' || !(all as readonly string[]).includes(v)) bad(`${name} must be one of ${all.join(', ')}`);
-  return v as T;
-}
-function optOneOf<T extends string>(v: unknown, name: string, all: readonly T[]): T | undefined {
-  return v === undefined ? undefined : oneOf(v, name, all);
-}
-function project(v: unknown): string {
-  if (typeof v !== 'string' || !PROJECT_ID_RE.test(v)) bad('project must be a floor id');
-  return v as string;
-}
-/** A seat a task's worker can be hired at: a desk or bean bag of the layout, not a board agent's kiosk, a meeting chair or a reviewer's spot behind a seat. */
-function deskId(v: unknown): string | undefined {
-  if (v === undefined) return undefined;
-  const desk = typeof v === 'string' && v.length <= 40 ? DESK_BY_ID.get(v) : undefined;
-  if (!desk || desk.station || desk.room || desk.watch) bad('deskId must be a desk of the floor');
-  return v as string;
-}
-function model(v: unknown): string | undefined {
-  if (v === undefined || v === '') return undefined;
-  if (typeof v !== 'string' || !MODEL_RE.test(v)) bad('model must be a model id like opus or gpt-5-codex');
-  return v as string;
-}
-function list<T>(v: unknown, name: string, max: number, item: (x: unknown) => T): T[] {
-  if (!Array.isArray(v)) bad(`${name} must be a list`);
-  const arr = v as unknown[];
-  if (arr.length > max) bad(`${name} can have at most ${max} entries`);
-  return [...new Set(arr.map(item))];
-}
 function repoIds(v: unknown): string[] | null | undefined {
   if (v === undefined) return undefined;
   if (v === null) return null;
@@ -501,6 +392,7 @@ function bundleKey(r: Obj): KanbanPrBundleKey {
  * typecheck. The office's handler map takes its kanban entries from it too (src/server/kanban/ws/handlers.ts).
  */
 export const KANBAN_CLIENT_TYPE_LIST: Readonly<Record<KanbanClientType, true>> = {
+  ...ISSUE_OPS_CLIENT_TYPE_LIST,
   'kanban.subscribe': true,
   'kanban.unsubscribe': true,
   'kanban.snapshot': true,
@@ -528,9 +420,6 @@ export const KANBAN_CLIENT_TYPE_LIST: Readonly<Record<KanbanClientType, true>> =
   'kanban.project.repos.set': true,
   'kanban.project.rename': true,
   'kanban.project.prompt.set': true,
-  'kanban.issues.list': true,
-  'kanban.issues.refresh': true,
-  'kanban.issues.createTask': true,
   'kanban.skills.list': true,
   'kanban.skills.sync': true,
   'kanban.secrets.set': true,
@@ -578,6 +467,7 @@ function parse(raw: unknown): KanbanClientMsg {
   if (r.rid !== undefined && ridOf(r) === undefined) bad(`rid must be text of at most ${KANBAN_LIMITS.rid} characters`);
   const rid = ridOf(r);
   const m = (msg: WithoutRid<KanbanClientMsg>): KanbanClientMsg => (rid ? { ...msg, rid } : msg) as KanbanClientMsg;
+  if (t in ISSUE_OPS_CLIENT_TYPE_LIST) return m(parseIssueOpsMsg(t as keyof typeof ISSUE_OPS_CLIENT_TYPE_LIST, r));
   const nullableProject = (v: unknown) => (v === null || v === undefined ? null : project(v));
   switch (t as KanbanClientType) {
     case 'kanban.subscribe':
@@ -657,13 +547,6 @@ function parse(raw: unknown): KanbanClientMsg {
       if (typeof r.id !== 'string' || !/^kanban\.[a-zA-Z.]{1,60}$/.test(r.id)) bad('id must be a kanban prompt id');
       const body = r.text === null ? null : text(r.text, 'The prompt', KANBAN_LIMITS.promptText, { empty: true });
       return m({ t: 'kanban.project.prompt.set', project: project(r.project), id: r.id as string, text: body });
-    }
-    case 'kanban.issues.list':
-    case 'kanban.issues.refresh':
-      return m({ t: t as 'kanban.issues.list', project: project(r.project) });
-    case 'kanban.issues.createTask': {
-      const desk = deskId(r.deskId);
-      return m({ t: 'kanban.issues.createTask', project: project(r.project), issueKey: text(r.issueKey, 'issueKey', KANBAN_LIMITS.issueKey).trim(), ...(bool(r.start, 'start') ? { start: true } : {}), ...(desk ? { deskId: desk } : {}) });
     }
     case 'kanban.secrets.set': {
       const out: { t: 'kanban.secrets.set'; jira?: { site: string; email: string; token: string } | null; apiKey?: string | null } = { t: 'kanban.secrets.set' };
