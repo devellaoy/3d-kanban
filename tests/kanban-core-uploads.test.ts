@@ -9,7 +9,7 @@ import type { IncomingMessage, ServerResponse } from 'node:http';
 import type { FloorDef } from '../src/server/building.js';
 import { installKanban } from '../src/server/kanban/index.js';
 import type { KanbanEngine } from '../src/server/kanban/engine/index.js';
-import { UPLOAD_MAX_BYTES, displayName, handleUpload, mimeOf, storedName, sweepOrphanUploads } from '../src/server/kanban/uploads.js';
+import { UPLOAD_MAX_BYTES, displayName, grantDir, grantFiles, handleUpload, mimeOf, removeGrant, storedName, sweepOrphanUploads } from '../src/server/kanban/uploads.js';
 import type { KanbanAttachment } from '../src/shared/kanban/types.js';
 
 type Ctx = { after(fn: () => void): void };
@@ -169,4 +169,25 @@ test('uploads nothing took are swept away with their files', async (t) => {
   assert.equal(sweepOrphanUploads(kanban.ctx, 200), 1);
   assert.deepEqual(readdirSync(uploads), [`${'2'.repeat(32)}-f.txt`]);
   assert.equal(kanban.ctx.repo.getAttachment('1'.repeat(32)), undefined);
+});
+
+test('grant folders: copies of a task\'s files, private, a missing source skipped, removed with the task', async (t) => {
+  const { kanban, uploads } = await office(t);
+  const dir = kanban.ctx.filesDir;
+  mkdirSync(uploads, { recursive: true });
+  writeFileSync(path.join(uploads, `${'1'.repeat(32)}-a.txt`), 'one');
+  writeFileSync(path.join(uploads, `${'2'.repeat(32)}-b.txt`), 'two');
+  const rows = [{ stored: `${'2'.repeat(32)}-b.txt` }, { stored: `${'9'.repeat(32)}-gone.txt` }, { stored: `${'1'.repeat(32)}-a.txt` }];
+  const got = grantFiles(dir, 5, rows);
+  assert.deepEqual(got, [`${'2'.repeat(32)}-b.txt`, `${'1'.repeat(32)}-a.txt`].map((f) => path.join(grantDir(dir, 5), f)), 'in order, the gone one skipped');
+  assert.equal(path.dirname(got[0]), path.join(dir, 'grants', 'task-5'));
+  assert.equal(readFileSync(got[1], 'utf8'), 'one');
+  assert.equal(statSync(grantDir(dir, 5)).mode & 0o777, 0o700);
+  assert.equal(statSync(path.join(dir, 'grants')).mode & 0o777, 0o700);
+  assert.deepEqual(grantFiles(dir, 5, rows), got, 'again is the same');
+  assert.deepEqual(grantFiles(dir, 6, []), [], 'an empty folder is still made');
+  assert.ok(existsSync(grantDir(dir, 6)));
+  removeGrant(dir, 5);
+  assert.ok(!existsSync(grantDir(dir, 5)));
+  assert.ok(existsSync(path.join(uploads, `${'1'.repeat(32)}-a.txt`)), 'the upload itself stays');
 });

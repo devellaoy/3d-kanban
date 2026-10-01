@@ -31,13 +31,13 @@ function fakeEngine(calls: string[], answers: Partial<Record<string, string>> = 
         say('stop', id);
         ctx.repo.updateTask(id, { status: 'waiting', runState: 'idle', waitingReason: 'stopped' });
       },
-      async continue(id, _who, answer) {
-        calls.push(`continue #${id} ${answer ?? ''}`.trim());
+      async continue(id, _who, answer, files) {
+        calls.push(`continue #${id} ${answer ?? ''}${files ? ` [${files}]` : ''}`.trim());
       },
       retry: async (id) => say('retry', id),
       review: async (id) => say('review', id),
       approvePlan: async (id) => say('approvePlan', id),
-      requestPlanChanges: async (id, _who, text) => void calls.push(`requestPlanChanges #${id} ${text}`),
+      requestPlanChanges: async (id, _who, text, files) => void calls.push(`requestPlanChanges #${id} ${text}${files ? ` [${files}]` : ''}`),
       pr: async (id, _who, mode) => void calls.push(`pr #${id} ${mode}`),
       compact: async (id) => say('compact', id),
       async release(id) {
@@ -325,9 +325,11 @@ test('the process is the engine’s: its answers come back as ok or error', asyn
   okOf(await ada.ask({ t: 'kanban.task.pr', id: 1, mode: 'create' }));
   okOf(await ada.ask({ t: 'kanban.plan.requestChanges', id: 1, text: 'Smaller steps' }));
   okOf(await ada.ask({ t: 'kanban.task.release', id: 1 }));
+  okOf(await ada.ask({ t: 'kanban.task.continue', id: 1, answer: 'See file', attachmentIds: ['c'.repeat(32)] }));
+  okOf(await ada.ask({ t: 'kanban.plan.requestChanges', id: 1, text: 'As drawn', attachmentIds: ['d'.repeat(32)] }));
   errorOf(await ada.ask({ t: 'kanban.task.retry', id: 1 }), /Nothing to retry/);
   errorOf(await ada.ask({ t: 'kanban.task.stop', id: 2 }), /no task #2/);
-  assert.deepEqual(calls.slice(1), ['continue #1 Use Postgres', 'review #1', 'compact #1', 'pr #1 create', 'requestPlanChanges #1 Smaller steps', 'release #1', 'retry #1']);
+  assert.deepEqual(calls.slice(1), ['continue #1 Use Postgres', 'review #1', 'compact #1', 'pr #1 create', 'requestPlanChanges #1 Smaller steps', 'release #1', `continue #1 See file [${'c'.repeat(32)}]`, `requestPlanChanges #1 As drawn [${'d'.repeat(32)}]`, 'retry #1']);
 
   // Approving a plan by id: only the latest version can be.
   const p1 = kanban.ctx.repo.addPlan(1, 'v1');

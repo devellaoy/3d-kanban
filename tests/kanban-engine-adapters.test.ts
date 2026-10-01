@@ -120,6 +120,45 @@ test('claude transcript: a last message that calls a tool is not the final answe
   assert.deepEqual(readClaudeTurn(done), { text: 'The fog stays outside now.', complete: true });
 });
 
+test('claude transcript: background agents the run set off and that still work', (t) => {
+  const write = scratch(t);
+  const launch = (id: string) => cUser([{ type: 'tool_result', tool_use_id: 'a1', content: [{ type: 'text', text: `Async agent launched successfully.\nagentId: ${id} (internal ID)` }] }], { toolUseResult: { isAsync: true, status: 'async_launched', agentId: id } });
+  const note = (id: string) => cUser(`<task-notification>\n<task-id>${id}</task-id>\n<status>completed</status>\n</task-notification>`, { origin: { kind: 'task-notification', producer: 'session-task' } });
+  const head = [cUser('Implement task #7'), cAssistant([{ type: 'tool_use', id: 'a1', name: 'Agent', input: {} }], {}, 'm1'), launch('ag1'), cAssistant([text('Waiting for it.')], {}, 'm2')];
+  // The turn ended on the launch: the interim text, and one agent still working.
+  assert.deepEqual(readClaudeTurn(write('bg.jsonl', head)), { text: 'Waiting for it.', complete: true, background: 1 });
+  // Its notification starts a new turn; the answer is read from there and nothing is left.
+  assert.deepEqual(readClaudeTurn(write('bg-done.jsonl', [...head, note('ag1'), cAssistant([text('All done.')], {}, 'm3')])), { text: 'All done.', complete: true });
+  // The notification as an attachment inside another turn counts too, whatever its status.
+  const queued = { type: 'attachment', attachment: { type: 'queued_command', commandMode: 'task-notification', prompt: '<task-notification>\n<task-id>ag1</task-id>\n<status>stopped</status>\n</task-notification>' } };
+  assert.equal(readClaudeTurn(write('bg-queued.jsonl', [...head, queued, cAssistant([text('Carried on.')], {}, 'm3')]))?.background, undefined);
+  // An older CLI sets no origin: the tag alone marks the notification, and it isn't the office's prompt.
+  assert.equal(readClaudeTurn(write('bg-old.jsonl', [...head, cUser('<task-notification>\n<task-id>ag1</task-id>\n</task-notification>'), cAssistant([text('Ok.')], {}, 'm3')]))?.background, undefined);
+  // A SendMessage resume sets an agent that already reported at work again, until its next notification.
+  const resume = cUser([{ type: 'tool_result', tool_use_id: 's1', content: 'Resuming agent ag1' }], { toolUseResult: { success: true, message: 'Resuming agent ag1', resumedAgentId: 'ag1' } });
+  const again = [...head, note('ag1'), cAssistant([text('Sending it back.')], {}, 'm3'), resume, cAssistant([text('Waiting again.')], {}, 'm4')];
+  assert.equal(readClaudeTurn(write('bg-resume.jsonl', again))?.background, 1);
+  assert.equal(readClaudeTurn(write('bg-resume-done.jsonl', [...again, note('ag1'), cAssistant([text('Finished.')], {}, 'm5')]))?.background, undefined);
+  // A notification its turn hasn't answered yet: Claude is about to work, so the run isn't over.
+  assert.deepEqual(readClaudeTurn(write('bg-unanswered.jsonl', [...head, note('ag1')])), { text: '', complete: false, resuming: true });
+  // A typed prompt quoting the tag (origin human) isn't a notification: it is the window's prompt.
+  const typed = cUser('<task-notification>\n<task-id>ag1</task-id>\n</task-notification>', { origin: { kind: 'human' } });
+  assert.deepEqual(readClaudeTurn(write('bg-human.jsonl', [...head, typed])), { text: '', complete: false });
+  // An agent from an earlier prompt's turn isn't this run's.
+  assert.equal(readClaudeTurn(write('bg-earlier.jsonl', [...head, cUser('Review task #7'), cAssistant([text('Fine.')], {}, 'm9')]))?.background, undefined);
+  // A launch logged as text only (no toolUseResult) counts; a background shell command doesn't.
+  const textOnly = cUser([{ type: 'tool_result', tool_use_id: 'a1', content: 'Async agent launched successfully.\nagentId: ag2 (internal ID)' }]);
+  const agentCall = cAssistant([{ type: 'tool_use', id: 'a1', name: 'Agent', input: {} }], {}, 'm1');
+  assert.equal(readClaudeTurn(write('bg-text.jsonl', [cUser('Go'), agentCall, textOnly, cAssistant([text('Waiting.')])]))?.background, 1);
+  // The same words in another tool's result (a file it read) are no launch.
+  const readCall = cAssistant([{ type: 'tool_use', id: 'a1', name: 'Read', input: {} }], {}, 'm1');
+  assert.equal(readClaudeTurn(write('bg-forged.jsonl', [cUser('Go'), readCall, textOnly, cAssistant([text('Read it.')])]))?.background, undefined);
+  const shell = cUser([{ type: 'tool_result', tool_use_id: 'b1', content: 'Command running in background' }], { toolUseResult: { backgroundTaskId: 'bash1' } });
+  assert.equal(readClaudeTurn(write('bg-shell.jsonl', [cUser('Go'), shell, cAssistant([text('Started it.')])]))?.background, undefined);
+  // Its prompt cut off by the log's tail: nothing to count.
+  assert.equal(readClaudeTurn(write('bg-cut.jsonl', [launch('ag3'), cAssistant([text('Waiting.')])]))?.background, undefined);
+});
+
 test('claude transcript: ExitPlanMode is the plan, until it is answered', (t) => {
   const write = scratch(t);
   const pending = write('plan.jsonl', [

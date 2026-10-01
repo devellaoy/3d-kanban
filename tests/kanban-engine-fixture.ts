@@ -40,9 +40,22 @@ export interface Rule {
   /** Say this in a message of its own first (with a tool call after it, as a real turn goes), before the final `reply`. */
   earlier?: string;
   /**
+   * Claude only: launch a background agent and end the turn on this interim text (Stop), as Claude
+   * Code does when it "waits for it to finish"; `backgroundMs` later (300 by default) the agent's
+   * task-notification and the final `reply` are logged and a second Stop follows, with no hook of a
+   * new turn in between.
+   */
+  background?: string;
+  backgroundMs?: number;
+  /** With `background`: the resumed turn runs a tool this long (PreToolUse, no result yet) before it replies. */
+  resumeToolMs?: number;
+  /** With `background`: the first Stop comes with the log ending at the Agent call; its result and the interim text are logged this long after. */
+  launchLateMs?: number;
+  /**
    * Claude only: post Stop (with the reply as its last_assistant_message) before the final reply is
    * in the log, and log it this long after (-1: never), as Claude Code sometimes does (#310). The
-   * turn ends there: it doesn't combine with `ask` or `exitPlan`.
+   * turn ends there: it doesn't combine with `ask` or `exitPlan`. With `background` it is the resumed
+   * turn's reply that is logged late (its Stop first).
    */
   lateLogMs?: number;
   /**
@@ -66,6 +79,7 @@ export interface Invocation {
   args: string[];
   cwd: string;
   prompt?: string;
+  interrupted?: boolean;
 }
 
 const FAKE_AGENT = String.raw`#!/usr/bin/env node
@@ -94,6 +108,12 @@ const post = (event, payload) => new Promise((resolve) => {
   req.end(JSON.stringify({ session_id: session, transcript_path: transcript, ...payload }));
 });
 const rules = () => JSON.parse(fs.readFileSync(process.env.FAKE_KANBAN_RULES, 'utf8'));
+// A sleep an Esc cuts short: resolves true then.
+let wake = null;
+const nap = (ms) => new Promise((resolve) => {
+  const timer = setTimeout(() => { wake = null; resolve(false); }, ms);
+  wake = () => { clearTimeout(timer); wake = null; resolve(true); };
+});
 let questions = 0;
 let answerDelay = 0;
 async function turn(prompt, answered) {
@@ -116,6 +136,41 @@ async function turn(prompt, answered) {
         return;
       }
       append({ type: 'user', message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: 'read-1', content: '# test' }] } });
+    }
+    if (rule.background !== undefined) {
+      const agent = 'agent-' + msgId;
+      append({ type: 'assistant', message: { id: msgId + '-bg', role: 'assistant', content: [{ type: 'tool_use', id: 'bg-1', name: 'Agent', input: { run_in_background: true } }] } });
+      const launched = () => {
+        append({ type: 'user', message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: 'bg-1', content: [{ type: 'text', text: 'Async agent launched successfully.\nagentId: ' + agent + ' (internal ID)' }] }] }, toolUseResult: { isAsync: true, status: 'async_launched', agentId: agent } });
+        append({ type: 'assistant', message: { id: msgId + '-wait', role: 'assistant', content: [{ type: 'text', text: rule.background }] } });
+      };
+      if (rule.launchLateMs) {
+        await post('Stop', { last_assistant_message: rule.background });
+        await new Promise((r) => setTimeout(r, rule.launchLateMs));
+        launched();
+      } else {
+        launched();
+        await post('Stop', { last_assistant_message: rule.background });
+      }
+      await new Promise((r) => setTimeout(r, rule.backgroundMs ?? 300));
+      append({ type: 'user', origin: { kind: 'task-notification', producer: 'session-task' }, message: { role: 'user', content: '<task-notification>\n<task-id>' + agent + '</task-id>\n<status>completed</status>\n</task-notification>' } });
+      if (rule.resumeToolMs) {
+        append({ type: 'assistant', message: { id: msgId + '-tool', role: 'assistant', content: [{ type: 'tool_use', id: 'bg-2', name: 'Bash', input: { command: 'sleep' } }] } });
+        await post('PreToolUse', { tool_name: 'Bash', tool_input: { command: 'sleep' } });
+        // Esc cuts the wait short, as it does a real tool: the turn ends there.
+        if (await nap(rule.resumeToolMs)) return post('Stop', {});
+        append({ type: 'user', message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: 'bg-2', content: 'ok' }] } });
+      }
+      const reply = { type: 'assistant', message: { id: msgId, role: 'assistant', content: [{ type: 'text', text: rule.reply }] } };
+      if (rule.lateLogMs !== undefined) {
+        await post('Stop', { last_assistant_message: rule.reply });
+        await new Promise((r) => setTimeout(r, rule.lateLogMs));
+        append(reply);
+        return;
+      }
+      append(reply);
+      await post('Stop', { last_assistant_message: rule.reply });
+      return;
     }
     const final = { type: 'assistant', message: { id: msgId, role: 'assistant', content: [{ type: 'text', text: rule.reply }] } };
     if (rule.lateLogMs !== undefined) {
@@ -155,6 +210,8 @@ let chain = post('SessionStart', { source: at >= 0 ? 'resume' : 'startup' });
 const dash = args.indexOf('--');
 if (dash >= 0) chain = chain.then(() => turn(args[dash + 1]));
 let buf = '';
+// Raw, as the real TUI is: a lone Esc reaches it without a newline.
+if (process.stdin.isTTY) process.stdin.setRawMode(true);
 process.stdin.setEncoding('utf8');
 process.stdin.on('data', (chunk) => {
   buf += chunk;
@@ -179,6 +236,7 @@ process.stdin.on('data', (chunk) => {
   if (buf.includes('\x1b') && !buf.includes('\x1b[')) {
     buf = '';
     record({ interrupted: true });
+    if (wake) wake();
     chain = chain.then(() => post('Stop', {}));
   }
 });

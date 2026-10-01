@@ -11,7 +11,7 @@
 // else as a download, never sniffed and never able to run script on the office's origin.
 
 import { randomBytes } from 'node:crypto';
-import { createReadStream, existsSync, mkdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { chmodSync, constants, copyFileSync, createReadStream, existsSync, mkdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import type { KanbanCaller, KanbanContext, KanbanHttpHandler } from './registry.js';
@@ -47,6 +47,36 @@ const BY_EXT: Record<string, string> = {
 
 export function uploadsDir(filesDir: string): string {
   return path.join(filesDir, 'uploads');
+}
+
+/** The one folder a task's agents may read files from: copies of the task's attachments, nobody else's. */
+export function grantDir(filesDir: string, taskId: number): string {
+  return path.join(filesDir, 'grants', `task-${taskId}`);
+}
+
+/** Makes sure the task's grant folder holds a copy of each file (a clone where the disk can); returns their paths there, in order. A file gone from the uploads is skipped. */
+export function grantFiles(filesDir: string, taskId: number, rows: Pick<AttachmentRow, 'stored'>[]): string[] {
+  const dir = grantDir(filesDir, taskId);
+  mkdirSync(dir, { recursive: true, mode: 0o700 });
+  // The mode only applies to a folder this call made.
+  chmodSync(path.dirname(dir), 0o700);
+  chmodSync(dir, 0o700);
+  const out: string[] = [];
+  for (const r of rows) {
+    const src = attachmentPath(filesDir, r);
+    const dst = path.join(dir, path.basename(r.stored));
+    if (!existsSync(dst)) {
+      if (!existsSync(src)) continue;
+      copyFileSync(src, dst, constants.COPYFILE_FICLONE);
+    }
+    out.push(dst);
+  }
+  return out;
+}
+
+/** Removes a task's grant folder (the task was deleted). */
+export function removeGrant(filesDir: string, taskId: number) {
+  rmSync(grantDir(filesDir, taskId), { recursive: true, force: true });
 }
 
 /** The name people see: the file's own, without folders or control characters. */

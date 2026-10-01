@@ -90,6 +90,9 @@ allowed: `todo → in_progress` (= start), `waiting|review → done`, `done → 
     - claude: transcript JSONL (`WorkerInfo` tracker transcript path from hooks): the `text` blocks of the
       last assistant message after the last real user message (Claude logs one message's blocks as lines
       sharing `message.id`); and, if the last assistant `tool_use` is `ExitPlanMode`, its `input.plan`.
+      `TurnResult.background` counts the run's background agents still working (an async launch or a
+      `SendMessage` resume in the log with no task-notification after it, since the office's last prompt);
+      `resuming` says the last prompt is a notification no assistant line has answered yet.
       A last message that calls any other tool is not a final answer (`complete: false`): the Stop hook
       can come before Claude has logged the reply after that tool's result, so the engine reads the log
       again (`readTries` × `readPauseMs`, about 3 s, so a turn that really ends at a tool call, an
@@ -110,6 +113,21 @@ allowed: `todo → in_progress` (= start), `waiting|review → done`, `done → 
 - Turn end = the worker goes `done` (Stop hook) or `needs_input`. `needs_input` in the plan phase with
   `ExitPlanMode` pending = the plan is finished. `needs_input` otherwise → task `waiting`
   ("the agent is asking in its terminal"), its run still live.
+- A Claude Stop isn't the turn's end while the run's background agents still work: Claude Code's own skills
+  run implementers and reviewers that way, end the turn with "I'll wait for it" and resume by themselves
+  with a new turn and Stop when the agent is done. The engine reads the log first and decides on that one
+  result (`TurnResult.background`, so a lagging log doesn't end the run on the interim text; `resuming`,
+  once: a Stop that raced the notification, which Claude is about to answer). The task stays in progress, and
+  the next Stop is heard from the hook (the worker's status stays `done`, so upstream emits nothing). A
+  run already held takes a Stop on an unanswered notification as the resumed turn's own, with the Stop
+  hook's `last_assistant_message` as the fallback. ExitPlanMode isn't held back. A hold ends after
+  `backgroundWaitMs` (3 h) without a Stop: a note says so and the run goes on with what its log says.
+  ⏹️ Stop while held sends the worker home (worktree kept, Retry carries on in the session), which
+  stops its helper agents; once the turn has resumed it is Esc as usual, and a Stop hook heard while a
+  stop is under way finishes it. Only background *agents* are counted: Bash `run_in_background` tasks and
+  agent-team teammates also resume Claude but aren't, so such a run can still end early. Known limit:
+  someone typing a prompt into a held worker's terminal starts a new window, so the agents still working
+  stop being counted and the run can end on that prompt's reply.
 - **What it waits on** (`Live.asks`, `heardAsk`, in memory only): from the worker's hooks, heard before
   the status they cause. A `PreToolUse` of `AskUserQuestion` (Codex: `request_user_input`) is a
   `question`; a `PermissionRequest` or a `permission_prompt` notification is a `permission`; another
@@ -119,7 +137,8 @@ allowed: `todo → in_progress` (= start), `waiting|review → done`, `done → 
 - **Answering it from the kanban** (`waiting`/`agent_asking`, the live run's worker `needs_input`):
   only a `question` is typed into. `continue(answer)` and `commented()` type the text into that
   worker's PTY (upstream's `WorkerManager.prompt`, which answers a TUI question as a person typing
-  does) and keep it as a user comment (`continue` adds it; a comment is already stored); nothing goes
+  does) and keep it as a user comment (`continue` adds it, with its files, only once the answer went in; a comment is already stored); the files
+  of that message (`attachmentIds`, or the comment's own) follow on the same line, as paths in the task's grant folder (`Composer.filesInline`: a newline may submit a question picker); nothing goes
   to `pendingMessages` (a queued answer would wait for a turn end that the question holds up). The
   engine does not apply `working` itself: the task stays `waiting`/`agent_asking` until the worker's
   own hooks move it on (`needs_input` → `working`, the machine's `working`, as when it's answered at
@@ -274,7 +293,7 @@ allowed: `todo → in_progress` (= start), `waiting|review → done`, `done → 
   `PRAGMA user_version` in `server/kanban/db/migrations.ts`). `<officeData>` is the office data dir upstream
   uses (`~/agent-office` by default).
 - `<officeData>/.agent-office/kanban-settings.json` (`schemaVersion`), `kanban-secrets.json` (chmod 600).
-- `<officeData>/.agent-office/kanban/uploads/`, `kanban/reports/task-<id>/`, `kanban/refs/task-<id>/`,
+- `<officeData>/.agent-office/kanban/uploads/`, `kanban/grants/task-<id>/`, `kanban/reports/task-<id>/`, `kanban/refs/task-<id>/`,
   `kanban/skills/plugin-<hash>/` (generated Claude skill plugins), `kanban/legacy/` (migrated stream logs).
 - Migration 2 adds `tasks.desk_id`, `tasks.created_by_account` (never sent to browsers) and `tasks.queued_run`.
   Migrations are forward-only (there is no down step): once a build with migration 2 has opened the
@@ -323,7 +342,12 @@ answers `kanban.ok {rid, ...}` or `kanban.error {rid, message}`. Deltas are push
     then `engine.commented`.
   - `plan.approve {planId}`: only the latest plan version can be approved.
   - Start, stop, continue, retry, review, plan approve and request-changes, pr, compact and release go to
-    `ctx.engine`. A returned string becomes `kanban.error`.
+    `ctx.engine`. A returned string becomes `kanban.error`. `task.continue` and `plan.requestChanges` take
+    `attachmentIds?` like `comment.add`. The files are resolved first without linking; the message
+    (its text plus the files' grant paths, as one `answer` / `text`, so a replan sees which files are new)
+    goes to the machine, and only if that is accepted does the engine add the user's comment and link the
+    files to the task and the comment, with a single broadcast. A refused request leaves no comment and no
+    links. Either may be empty when the other is there. The replan prompt has no `{{attachments}}`.
   - `pr.bundle {project, taskId | branch | ticket, includeClosed?}` (integrations/pulls): the PRs that belong
     together across the project's repositories, open and draft ones only unless `includeClosed`; answered with
     `kanban.pr.bundle` (an `error` in it rather than `kanban.error` when the lists couldn't be read).
@@ -387,7 +411,7 @@ For a signed-in browser (the session is checked by server.ts, and non-GET reques
 - `GET /kanban`, `/kanban.html`: the board page. Signed out, it redirects to `/login?next=/kanban`.
 - `POST /api/kanban/upload?name=<file name>[&task=<id>]`: the body is the file's raw bytes and `Content-Type`
   is its type (sniffed from the extension when missing). At most 20 MB. It returns `200 {attachment}`, or
-  `400/404/405/413 {error}`. The file is stored as `<filesDir>/uploads/<id>-<ascii name>` with mode 600.
+  `400/404/405/413 {error}`. The file is stored as `<filesDir>/uploads/<id>-<ascii name>` with mode 600. Agents never get that shared folder: each task has `<filesDir>/grants/task-<id>/` (mode 700, `uploads.grantFiles`, cloned/copied from the uploads when a launch or a prompt needs them), and every launch of the task gets that one as an `--add-dir`, so files sent later are readable. It goes with the task (`task.delete`). The uploads folder is chmod 700 at start-up.
   Without `task` it stays unattached until `task.create` / `comment.add` names its id.
 - `GET /api/kanban/attachments/<id>`: serves the file with its type, `nosniff` and a sandboxing CSP.
   PNG, JPEG, GIF, WebP, AVIF and BMP are served inline; anything else (SVG and HTML included) as a download.
