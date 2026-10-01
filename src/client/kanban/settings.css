@@ -7,7 +7,7 @@
 .kb-set .grow { flex: 1; }
 .kb-set .kb-muted { color: var(--muted); font-weight: var(--fw-medium); }
 .kb-set .kb-hint { display: block; margin: 4px 0 0; font-size: var(--fs-xs); font-weight: var(--fw-semibold); color: var(--muted); }
-.kb-set .kb-error { padding: 8px 10px; border: 2px solid var(--bad); border-radius: 10px; background: var(--bad-wash); font-weight: var(--fw-bold); }
+.kb-set .kb-error { padding: 8px 10px; border: var(--bw-sm) solid var(--bad); border-radius: 10px; background: var(--bad-wash); font-weight: var(--fw-bold); }
 .kb-set .btn.small { padding: 4px 9px; font-size: var(--fs-sm); border-radius: 10px; box-shadow: var(--shadow-xs); }
 .kb-set .kb-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .kb-set .kb-chip { display: inline-flex; align-items: center; max-width: 100%; padding: 1px 7px; font-size: var(--fs-2xs); font-weight: var(--fw-bold); line-height: 18px; background: var(--field); border: var(--bw-sm) solid var(--ink); border-radius: var(--radius-pill); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -58,7 +58,7 @@
 .kb-set .kb-prompts { display: grid; grid-template-columns: 220px minmax(0, 1fr); gap: 12px; }
 .kb-set .kb-prompts h4 { margin: 0; }
 .kb-set .kb-prompt-list { display: flex; flex-direction: column; gap: 2px; max-height: 560px; overflow-y: auto; }
-.kb-set .kb-prompt-item { display: flex; justify-content: space-between; gap: 6px; padding: 6px 8px; font: var(--fw-bold) var(--fs-sm) var(--font); text-align: left; border: 2px solid transparent; border-radius: 10px; background: none; color: var(--text); cursor: pointer; }
+.kb-set .kb-prompt-item { display: flex; justify-content: space-between; gap: 6px; padding: 6px 8px; font: var(--fw-bold) var(--fs-sm) var(--font); text-align: left; border: var(--bw-sm) solid transparent; border-radius: 10px; background: none; color: var(--text); cursor: pointer; }
 .kb-set .kb-prompt-item:hover { background: var(--field-hover); }
 .kb-set .kb-prompt-item.on { border-color: var(--ink); background: var(--field); }
 .kb-set .kb-prompt-item small { font-weight: var(--fw-bold); color: var(--muted); }
@@ -75,7 +75,7 @@
 
 /* Skills and secrets */
 .kb-set .kb-table { width: 100%; border-collapse: collapse; font-size: var(--fs-sm); }
-.kb-set .kb-table th, .kb-set .kb-table td { padding: 6px 8px; border-bottom: 2px solid var(--rule-soft); text-align: left; vertical-align: top; }
+.kb-set .kb-table th, .kb-set .kb-table td { padding: 6px 8px; border-bottom: var(--bw-sm) solid var(--rule-soft); text-align: left; vertical-align: top; }
 .kb-set .kb-table th { font-weight: var(--fw-heavy); font-size: var(--fs-xs); color: var(--muted); }
 .kb-set .kb-skill-list { overflow-x: auto; }
 .kb-set .kb-path { display: block; font-size: var(--fs-2xs); }

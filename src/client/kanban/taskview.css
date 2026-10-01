@@ -78,7 +78,7 @@
 .kb-tv textarea:focus, .kb-tv input[type=text]:focus { border-color: var(--accent); }
 .kb-tv select { height: 36px; padding: 0 8px; font: var(--fw-bold) var(--fs-sm) var(--font); color: var(--text); background: var(--field); border: var(--bw) solid var(--ink); border-radius: var(--radius-sm); max-width: 100%; }
 .kb-tv label { display: inline; margin: 0; font-size: inherit; }
-.kb-tv .kb-error { padding: 8px 10px; border: 2px solid var(--bad); border-radius: 10px; background: var(--bad-wash); font-weight: var(--fw-bold); }
+.kb-tv .kb-error { padding: 8px 10px; border: var(--bw-sm) solid var(--bad); border-radius: 10px; background: var(--bad-wash); font-weight: var(--fw-bold); }
 
 /* The agent switch */
 .kb-tv .kb-agent-edit summary { cursor: pointer; font-size: var(--fs-xs); font-weight: var(--fw-bold); }
@@ -142,7 +142,7 @@
 .kb-tv .kb-worker { flex: 1; display: flex; align-items: center; gap: 8px; min-width: 0; }
 .kb-tv .kb-worker .dot { width: 12px; height: 12px; border-radius: 50%; border: var(--bw-sm) solid var(--ink); flex: none; }
 .kb-tv .kb-table { width: 100%; border-collapse: collapse; font-size: var(--fs-sm); }
-.kb-tv .kb-table th, .kb-tv .kb-table td { padding: 6px 8px; border-bottom: 2px solid var(--rule-soft); text-align: left; vertical-align: top; }
+.kb-tv .kb-table th, .kb-tv .kb-table td { padding: 6px 8px; border-bottom: var(--bw-sm) solid var(--rule-soft); text-align: left; vertical-align: top; }
 .kb-tv .kb-table th { font-weight: var(--fw-heavy); font-size: var(--fs-xs); color: var(--muted); }
 .kb-tv .kb-files { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 8px; }
 .kb-tv .kb-files li { display: flex; flex-direction: column; gap: 2px; max-width: 180px; font-size: var(--fs-xs); }

@@ -108,7 +108,7 @@
 
 .hint {
   position: absolute; left: 50%; bottom: 28px; transform: translateX(-50%);
-  background: var(--strong); color: var(--paper); border: 3px solid var(--paper); border-radius: 14px;
+  background: var(--strong); color: var(--paper); border: var(--bw) solid var(--paper); border-radius: 14px;
   padding: 10px 16px; font-weight: var(--fw-bold); font-size: var(--fs-lg); box-shadow: 0 4px 0 rgba(0,0,0,.35);
   display: flex; gap: 14px; align-items: center; flex-wrap: wrap; justify-content: center; max-width: min(720px, calc(100vw - 380px));
   pointer-events: none !important;
@@ -118,7 +118,7 @@
 /* Winding up a shot with the basketball: the marker runs up and down; let go in the green. */
 .shot-meter {
   position: absolute; left: 50%; bottom: 92px; width: 240px; height: 18px; transform: translateX(-50%);
-  background: var(--strong); border: 3px solid var(--paper); border-radius: 10px; box-shadow: 0 4px 0 rgba(0,0,0,.35);
+  background: var(--strong); border: var(--bw) solid var(--paper); border-radius: 10px; box-shadow: 0 4px 0 rgba(0,0,0,.35);
   overflow: hidden; pointer-events: none !important;
 }
 .shot-meter .sweet {

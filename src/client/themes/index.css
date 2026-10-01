@@ -1,3 +1,5 @@
 /* Every theme's tokens. Adding a theme: its file next to this one, one @import here, one row in
    themes/index.ts. tokens.css is the default theme and the contract the others fill. */
 @import './tokens.css';
+@import './dark.css';
+@import './glossy.css';

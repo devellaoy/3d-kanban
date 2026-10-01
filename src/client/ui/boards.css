@@ -22,7 +22,7 @@
 .col-filter { flex-direction: column; align-items: stretch; gap: 8px; max-height: 45%; flex-shrink: 0; }
 .col-labels { display: flex; flex-wrap: wrap; gap: 5px; overflow: auto; min-height: 0; }
 .col-labels > small { color: var(--muted); font-weight: var(--fw-semibold); }
-.label-pick { display: inline-flex; align-items: center; gap: 4px; padding: 2px 6px 2px 2px; border: 2px solid transparent; border-radius: var(--radius-pill); background: none; color: var(--muted); font: inherit; font-size: var(--fs-2xs); font-weight: var(--fw-bold); cursor: pointer; opacity: .55; }
+.label-pick { display: inline-flex; align-items: center; gap: 4px; padding: 2px 6px 2px 2px; border: var(--bw-sm) solid transparent; border-radius: var(--radius-pill); background: none; color: var(--muted); font: inherit; font-size: var(--fs-2xs); font-weight: var(--fw-bold); cursor: pointer; opacity: .55; }
 .label-pick:hover { opacity: 1; }
 .label-pick[aria-pressed="true"] { opacity: 1; border-color: var(--ink); background: var(--field); color: var(--text); }
 .label-pick:focus-visible { outline: none; opacity: 1; box-shadow: 0 0 0 2px var(--accent); }

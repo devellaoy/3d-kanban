@@ -12,7 +12,7 @@
 /* The filter box is styled in styles/base.css, after the frame's text box rule. */
 .pd-side input[type=text]:focus { border-color: var(--accent); }
 .pd-files { list-style: none; margin: 0; padding: 0; flex: 1; overflow: auto; display: flex; flex-direction: column; gap: 1px; }
-.pd-files li { display: flex; align-items: center; gap: 6px; padding: 3px 6px 3px calc(6px + var(--depth, 0) * 14px); border: 2px solid transparent; border-radius: 8px; font-size: var(--fs-sm); font-weight: var(--fw-semibold); cursor: pointer; min-width: 0; }
+.pd-files li { display: flex; align-items: center; gap: 6px; padding: 3px 6px 3px calc(6px + var(--depth, 0) * 14px); border: var(--bw-sm) solid transparent; border-radius: 8px; font-size: var(--fs-sm); font-weight: var(--fw-semibold); cursor: pointer; min-width: 0; }
 .pd-files li:hover { background: color-mix(in srgb, var(--field) 75%, transparent); }
 .pd-files li.on { background: var(--field); border-color: var(--ink); }
 .pd-files li.reviewed .pd-path { color: var(--muted); }

@@ -4,8 +4,8 @@
 .md > :last-child { margin-bottom: 0; }
 .md p, .md ul, .md ol, .md blockquote, .md pre, .md table, .md details { margin: 0 0 12px; }
 .md h1, .md h2, .md h3, .md h4, .md h5, .md h6 { margin: 20px 0 8px; font-weight: var(--fw-heavy); line-height: 1.25; }
-.md h1 { font-size: 22px; padding-bottom: 5px; border-bottom: 2px solid color-mix(in srgb, var(--text) 12%, transparent); }
-.md h2 { font-size: 19px; padding-bottom: 4px; border-bottom: 2px solid color-mix(in srgb, var(--text) 12%, transparent); }
+.md h1 { font-size: 22px; padding-bottom: 5px; border-bottom: var(--bw-sm) solid color-mix(in srgb, var(--text) 12%, transparent); }
+.md h2 { font-size: 19px; padding-bottom: 4px; border-bottom: var(--bw-sm) solid color-mix(in srgb, var(--text) 12%, transparent); }
 .md h3 { font-size: 16.5px; }
 .md h4 { font-size: var(--fs-lg); }
 .md h5, .md h6 { font-size: var(--fs-md); color: var(--muted); }
@@ -26,8 +26,8 @@
 .md th { background: var(--paper-2); font-weight: var(--fw-heavy); }
 .md tr:nth-child(2n) td { background: var(--paper); }
 .md img { max-width: 100%; border-radius: 6px; }
-.md hr { border: 0; border-top: 2px dashed var(--rule-md); margin: 18px 0; }
-.md details { border: 2px solid var(--rule-md-2); border-radius: 10px; padding: 6px 12px; }
+.md hr { border: 0; border-top: var(--bw-sm) dashed var(--rule-md); margin: 18px 0; }
+.md details { border: var(--bw-sm) solid var(--rule-md-2); border-radius: 10px; padding: 6px 12px; }
 .md details[open] > summary { margin-bottom: 6px; }
 .md summary { cursor: pointer; font-weight: var(--fw-bold); }
 .md kbd { font: 11.5px var(--font-mono); border: 1.5px solid var(--ink); border-bottom-width: 3px; border-radius: 6px; padding: 0 5px; background: var(--field); }

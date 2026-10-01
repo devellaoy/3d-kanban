@@ -116,11 +116,11 @@ a.kb-chip:hover { background: var(--field-hover); }
 .kb-tab.on { background: var(--paper); border-color: var(--ink); }
 .kb-tab-n { min-width: 18px; padding: 0 5px; border-radius: var(--radius-pill); background: var(--strong); color: var(--text-on-strong); font-size: var(--fs-2xs); line-height: 18px; text-align: center; }
 .kb-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
-.kb-error { padding: 8px 10px; border: 2px solid var(--bad); border-radius: 10px; background: var(--bad-wash); font-weight: var(--fw-bold); }
+.kb-error { padding: 8px 10px; border: var(--bw-sm) solid var(--bad); border-radius: 10px; background: var(--bad-wash); font-weight: var(--fw-bold); }
 .kb-ref { font-weight: var(--fw-heavy); }
 .kb-desc-box.kb-dropping { outline: 3px dashed var(--accent); outline-offset: 2px; }
 .kb-table { width: 100%; border-collapse: collapse; font-size: var(--fs-sm); }
-.kb-table th, .kb-table td { padding: 6px 8px; border-bottom: 2px solid var(--rule-soft); text-align: left; vertical-align: top; }
+.kb-table th, .kb-table td { padding: 6px 8px; border-bottom: var(--bw-sm) solid var(--rule-soft); text-align: left; vertical-align: top; }
 .kb-table th { font-weight: var(--fw-heavy); font-size: var(--fs-xs); color: var(--muted); }
 
 /* ---- Dialogs ---- */

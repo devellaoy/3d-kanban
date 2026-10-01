@@ -7,5 +7,5 @@
 .ask-to .btn .dot { width: 10px; height: 10px; }
 .ask-context { margin-top: 12px; font-size: var(--fs-sm); }
 .ask-context summary { cursor: pointer; font-weight: var(--fw-bold); color: var(--muted); }
-.ask-context pre { margin: 6px 0 0; white-space: pre-wrap; overflow-wrap: anywhere; font: var(--fs-xs)/1.5 var(--font-mono); background: var(--paper-2); border: 2px solid color-mix(in srgb, var(--text) 20%, transparent); border-radius: 10px; padding: 8px 10px; }
+.ask-context pre { margin: 6px 0 0; white-space: pre-wrap; overflow-wrap: anywhere; font: var(--fs-xs)/1.5 var(--font-mono); background: var(--paper-2); border: var(--bw-sm) solid color-mix(in srgb, var(--text) 20%, transparent); border-radius: 10px; padding: 8px 10px; }
 .modal label.ask-wt { display: flex; gap: 8px; align-items: center; margin: 10px 0 0; cursor: pointer; }

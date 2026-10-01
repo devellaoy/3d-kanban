@@ -36,7 +36,7 @@
 .queue-limit { display: flex; align-items: center; gap: 6px; font-size: var(--fs-sm); font-weight: var(--fw-bold); color: var(--muted); white-space: nowrap; }
 .queue-limit .btn { padding: 1px 9px; font-size: var(--fs-lg); }
 .queue-limit b { min-width: 58px; text-align: center; color: var(--text); font-size: var(--fs-lg); }
-.queue-empty { margin-top: 16px; text-align: center; padding: 18px 8px; border: 3px dashed var(--muted); border-radius: 14px; font-weight: var(--fw-bold); }
+.queue-empty { margin-top: 16px; text-align: center; padding: 18px 8px; border: var(--bw) dashed var(--muted); border-radius: 14px; font-weight: var(--fw-bold); }
 @media (max-width: 640px) {
   .queue-limit span { display: none; }
 }

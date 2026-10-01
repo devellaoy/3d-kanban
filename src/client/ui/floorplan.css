@@ -8,5 +8,5 @@
 .modal.expand { width: min(500px, 100%); }
 .expand-status p { margin: 0 0 10px; font-weight: var(--fw-semibold); }
 .expand-rows { display: flex; gap: 8px; margin: 4px 0 12px; }
-.expand-rows span { flex: 1; text-align: center; padding: 8px 0; border: 3px dashed var(--muted); border-radius: var(--radius-sm); font-weight: var(--fw-bold); color: var(--muted); }
+.expand-rows span { flex: 1; text-align: center; padding: 8px 0; border: var(--bw) dashed var(--muted); border-radius: var(--radius-sm); font-weight: var(--fw-bold); color: var(--muted); }
 .expand-rows span.on { border-style: solid; border-color: var(--ink); background: var(--paper-2); color: var(--text); }

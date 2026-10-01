@@ -22,7 +22,7 @@
 .elevator .repo-search { display: flex; gap: 8px; }
 .elevator .repo-search input { flex: 1; }
 .elevator .repo-list { margin-top: 8px; max-height: 280px; overflow: auto; border: var(--bw) solid var(--ink); border-radius: var(--radius-sm); background: var(--field); }
-.elevator .repo { display: flex; gap: 8px; align-items: baseline; padding: 7px 10px; border-bottom: 2px solid var(--paper-2); cursor: pointer; }
+.elevator .repo { display: flex; gap: 8px; align-items: baseline; padding: 7px 10px; border-bottom: var(--bw-sm) solid var(--paper-2); cursor: pointer; }
 .elevator .repo:last-child { border-bottom: 0; }
 .elevator .repo:hover { background: var(--field-hover); }
 .elevator .repo.sel { background: var(--accent-soft); }

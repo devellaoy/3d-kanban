@@ -5,7 +5,7 @@
 .search-results { overflow: auto; min-height: 0; flex: 1; display: flex; flex-direction: column; gap: 14px; padding: 4px 2px 2px; }
 .search-group h4 { margin: 0 0 6px; font-size: var(--fs-sm); font-weight: var(--fw-heavy); display: flex; align-items: center; gap: 6px; }
 .search-group ul { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
-.search-hit { padding: 6px 10px; border: 2px solid color-mix(in srgb, var(--text) 15%, transparent); border-radius: 10px; background: var(--field); font-size: var(--fs-md); min-width: 0; }
+.search-hit { padding: 6px 10px; border: var(--bw-sm) solid color-mix(in srgb, var(--text) 15%, transparent); border-radius: 10px; background: var(--field); font-size: var(--fs-md); min-width: 0; }
 .search-hit.term { background: var(--code-bg); color: var(--code-text-2); border-color: var(--code-bg); cursor: pointer; }
 .search-hit.term:hover, .search-hit.term:focus-visible { outline: var(--focus-ring); outline-offset: 0; }
 .search-hit code { font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace; font-size: 12.5px; white-space: pre-wrap; overflow-wrap: anywhere; }

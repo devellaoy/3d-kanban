@@ -4,7 +4,7 @@
 .modal.gh-window.issue { width: min(920px, 100%); }
 .modal.gh-window header .pill { font-size: var(--fs-xs); }
 .pill.merged { background: var(--purple); color: var(--text-on-strong); }
-.gh-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding: 8px 16px; font-size: var(--fs-sm); font-weight: var(--fw-semibold); color: var(--muted); border-bottom: 2px solid color-mix(in srgb, var(--text) 15%, transparent); }
+.gh-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding: 8px 16px; font-size: var(--fs-sm); font-weight: var(--fw-semibold); color: var(--muted); border-bottom: var(--bw-sm) solid color-mix(in srgb, var(--text) 15%, transparent); }
 .gh-meta b { color: var(--text); font-weight: var(--fw-heavy); }
 .gh-meta code { font: var(--fs-xs) var(--font-mono); background: var(--info-soft); color: var(--link-strong); border-radius: 6px; padding: 1px 6px; }
 .gh-pm { font: var(--fw-bold) var(--fs-xs) var(--font-mono); white-space: nowrap; }
@@ -28,7 +28,7 @@
 .gh-avatar { width: 24px; height: 24px; flex: none; border-radius: 50%; border: var(--bw-sm) solid var(--ink); color: var(--text-on-strong); font-size: var(--fs-xs); font-weight: var(--fw-heavy); display: inline-grid; place-items: center; }
 .gh-card { background: var(--field); border: var(--bw-sm) solid var(--ink); border-radius: 14px; box-shadow: var(--shadow-sm); overflow: clip; }
 /* article.gh-card outranks the frame's .modal header, whatever order the sheets load in. */
-article.gh-card > header { display: flex; align-items: center; gap: 8px; padding: 7px 12px; background: var(--paper-2); border-bottom: 2px solid color-mix(in srgb, var(--text) 15%, transparent); font-size: var(--fs-sm); font-weight: var(--fw-semibold); color: var(--muted); }
+article.gh-card > header { display: flex; align-items: center; gap: 8px; padding: 7px 12px; background: var(--paper-2); border-bottom: var(--bw-sm) solid color-mix(in srgb, var(--text) 15%, transparent); font-size: var(--fs-sm); font-weight: var(--fw-semibold); color: var(--muted); }
 .gh-card > header:last-child { border-bottom: 0; }
 .gh-card > header b { color: var(--text); font-weight: var(--fw-heavy); }
 .gh-card > header .grow { flex: 1; }
@@ -51,7 +51,7 @@ article.gh-card > header { display: flex; align-items: center; gap: 8px; padding
 .gh-compose .seg { gap: 4px; }
 .gh-compose-body { padding: 10px 12px 0; }
 .gh-compose textarea { display: block; min-height: 96px; }
-.gh-compose-preview { min-height: 96px; background: var(--field); border: 3px dashed color-mix(in srgb, var(--text) 25%, transparent); border-radius: var(--radius-sm); }
+.gh-compose-preview { min-height: 96px; background: var(--field); border: var(--bw) dashed color-mix(in srgb, var(--text) 25%, transparent); border-radius: var(--radius-sm); }
 .gh-compose-preview .gh-quiet { padding: 12px; }
 .gh-compose .gh-merge-result { margin: 10px 12px 0; }
 .gh-compose-foot { display: flex; align-items: center; gap: 10px; padding: 10px 12px 12px; font-size: var(--fs-xs); font-weight: var(--fw-semibold); color: var(--muted); }

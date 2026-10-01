@@ -1,0 +1,242 @@
+/* The "Glossy" appearance: light and airy in the manner of Apple's apps — frosted translucent panels,
+   hairline borders, layered soft shadows, glossy pill buttons and the system font. The tokens first
+   (every one in tokens.css, see the comments there for what each one is for), then the few component
+   rules tokens can't say. */
+
+:root[data-theme="glossy"] {
+  color-scheme: light;
+
+  /* ---- Surfaces ---- */
+  --bg: #f5f5f7;
+  --bg-login: #f5f5f7;
+  --paper: rgba(255, 255, 255, .72);
+  --paper-2: rgba(242, 242, 247, .72);
+  --field: #ffffff;
+  --field-hover: #f2f2f7;
+  --field-off: #ececf0;
+  --overlay: rgba(0, 0, 0, .22);
+  --scrim: rgba(255, 255, 255, .6);
+
+  /* ---- Text ---- */
+  --text: #1d1d1f;
+  --muted: #6e6e73;
+  --text-on-accent: #ffffff;
+  --accent-ink: #ffffff;
+  --strong: #1d1d1f;
+  --text-on-strong: #ffffff;
+  --link: #0066cc;
+  --link-strong: #004c99;
+
+  /* ---- Lines ---- */
+  --ink: rgba(0, 0, 0, .08);
+  --bw: 1px;
+  --bw-sm: 1px;
+  --focus-ring: 3px solid rgba(0, 113, 227, .5);
+  --rule-soft: rgba(0, 0, 0, .06);
+  --rule-code: rgba(0, 0, 0, .1);
+
+  /* ---- Shadows ---- */
+  --shadow: 0 1px 2px rgba(0, 0, 0, .06), 0 4px 16px rgba(0, 0, 0, .06);
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, .08), 0 2px 6px rgba(0, 0, 0, .05);
+  --shadow-xs: 0 1px 2px rgba(0, 0, 0, .08);
+  --shadow-lg: 0 2px 6px rgba(0, 0, 0, .06), 0 20px 60px rgba(0, 0, 0, .18);
+  --shadow-pressed: 0 0 1px rgba(0, 0, 0, .12);
+  --press: 0px;
+  --shadow-side: -1px 0 0 rgba(0, 0, 0, .04), -12px 0 32px rgba(0, 0, 0, .06);
+
+  /* ---- Shape ---- */
+  --radius: 16px;
+  --radius-sm: 12px;
+  --radius-lg: 18px;
+  --radius-pill: 999px;
+
+  /* ---- Accent and status ---- */
+  /* Apple's system colours, the accessible variants where white text sits on them. */
+  --accent: #0071e3;
+  --accent-hover: #0077ed;
+  --good: #248a3d;
+  --warn: #ffcc00;
+  --bad: #d70015;
+  --info: #5ac8fa;
+  --good-soft: #e3f6e8;
+  --warn-soft: #fff6d6;
+  --bad-soft: #ffe5e7;
+  --info-soft: #e5f1fd;
+  --good-ink: #1f7a35;
+  --warn-ink: #946200;
+  --warn-hot: #ff9f0a;
+  --accent-soft: #e8f1fc;
+  --accent-text: #0071e3;
+  --bad-hover: #ffd5d8;
+  --alert-hover: #ffdadd;
+  --good-hover: #d3f0db;
+  --bad-wash: #fff2f3;
+  --warn-wash: #fffbea;
+  --good-wash: #f0faf2;
+  --info-wash: #f0f6fe;
+  --run-bg: #ebf8ee;
+  --ok-bg: #f3faf5;
+  --drop-ok: #e7f7ec;
+  --drop-ok-over: #d3f0db;
+  --bad-ink: #d70015;
+  --danger-ink: #d70015;
+  --diff-add: #e6f6ea;
+  --diff-del: #ffebec;
+  --diff-add-ink: #1f7a35;
+  --diff-del-ink: #d70015;
+  --diff-add-gutter: #d7efdd;
+  --diff-del-gutter: #ffd9dc;
+  --pd-bg: #f5f5f7;
+  --pd-add: #eaf7ee;
+  --pd-add-gutter: #d7efdd;
+  --pd-del: #fff0f1;
+  --pd-del-gutter: #ffdcdf;
+  --pd-hunk: #eef4fd;
+  --pd-hunk-gutter: #e1ecfb;
+  --pd-hunk-ink: #0066cc;
+  --pd-flash: #fff1b8;
+  --gutter-bg: #fafafa;
+  --gutter-ink: #a1a1a6;
+  --gutter-ink-2: #8e8e93;
+
+  /* ---- Kanban notes and chips ---- */
+  /* Paler, cleaner notes that sit straight. */
+  --note-yellow: #fff6d1;
+  --note-blue: #e1eeff;
+  --note-pink: #ffe6eb;
+  --note-green: #e2f6e5;
+  --note-grey: #ebeef0;
+  --note-slate: #e8e8ed;
+  --note-peach: #ffefd9;
+  --note-card-blue: #eef5ff;
+  --bad-tint: #fff0f2;
+  --note-card-green: #eefaf0;
+  --note-card-grey: #f4f5f7;
+  --note-card-slate: #f2f2f4;
+  --note-tilt: 0;
+  --tint-blue: #e8f1fc;
+  --tint-purple: #f2ebfb;
+  --tint-cyan: #e5f7fa;
+  --tint-magenta: #fbe9fb;
+  --tint-orange: #ffe8cc;
+  --tint-violet: #efe8fc;
+  --tint-grey: #ececf0;
+  --tint-wash: #f5f5f7;
+  --purple: #8944ab;
+  --teal: #0a7ea4;
+  --amber: #c98a00;
+  --scope-you: #e5f1fd;
+  --scope-floor: #e3f6e8;
+  --scope-office: #ffefd9;
+  --hint-cost: #a5ecfb;
+  --track: #e5e5ea;
+
+  /* ---- Code and terminals ---- */
+  --code-bg: #1d1d1f;
+  --code-text: #f5f5f7;
+  --code-text-2: #e8e8ed;
+  --code-inline: #f0f0f2;
+  --callout-note: #eef4fd;
+  --callout-tip: #eaf7ee;
+  --callout-warn: #fff8e0;
+  --callout-caution: #fff0f1;
+  --reader-bg: #ffffff;
+  --status-bg: #f2f2f7;
+  --field-quiet: #f7f7f9;
+  --rule-md: rgba(0, 0, 0, .12);
+  --rule-md-2: rgba(0, 0, 0, .08);
+  --rule-quote: rgba(0, 0, 0, .18);
+
+  /* ---- Type ---- */
+  --font: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Helvetica Neue', system-ui, sans-serif;
+  --font-mono: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+  --fw-medium: 400;
+  --fw-semibold: 500;
+  --fw-bold: 600;
+  --fw-heavy: 700;
+  --fs-2xs: 12px;
+  --fs-xs: 12px;
+  --fs-sm: 13px;
+  --fs-md: 14px;
+  --fs-lg: 15px;
+  --fs-xl: 16px;
+  --fs-2xl: 18px;
+  --fs-3xl: 20px;
+
+  /* ---- Glass ---- */
+  --glass-blur: saturate(180%) blur(20px);
+}
+
+/* ---- Components: only what the tokens can't say ---- */
+
+/* Scrollbars, the selection and the page: a faint cool gradient behind the kanban and the 2D view. */
+:root[data-theme="glossy"] { scrollbar-color: rgba(0, 0, 0, .22) transparent; }
+:root[data-theme="glossy"] ::selection { background: rgba(0, 113, 227, .22); }
+:root[data-theme="glossy"] body { line-height: 1.45; letter-spacing: -.005em; }
+:root[data-theme="glossy"] body.kanban,
+:root[data-theme="glossy"] body.lite { background: linear-gradient(180deg, #fbfbfd 0, var(--bg) 320px) var(--bg); }
+
+/* Frosted glass: the windows, the ☰ menu, the HUD's panels and the top bars. Where backdrop-filter
+   isn't supported they stay translucent white over the page, which still reads. */
+@supports ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  :root[data-theme="glossy"] :is(.modal, .hud-menu, #hud .panel, .dock-btn, .kb-bar, .lite-bar, .kb-detail, .toast) {
+    -webkit-backdrop-filter: var(--glass-blur);
+    backdrop-filter: var(--glass-blur);
+  }
+}
+/* Without the blur behind them, the detail panel and the toasts need to be solid enough to read. */
+:root[data-theme="glossy"] .kb-detail { background: rgba(255, 255, 255, .86); }
+
+/* Glossy pill buttons: a soft top-lit gradient and a highlight along the top edge. */
+:root[data-theme="glossy"] .btn {
+  border-radius: var(--radius-pill);
+  background-image: linear-gradient(180deg, rgba(255, 255, 255, .9), rgba(255, 255, 255, 0));
+  box-shadow: var(--shadow-sm), inset 0 1px 0 rgba(255, 255, 255, .6);
+  border-color: rgba(0, 0, 0, .1);
+}
+:root[data-theme="glossy"] .btn:active { box-shadow: var(--shadow-pressed), inset 0 1px 2px rgba(0, 0, 0, .08); }
+:root[data-theme="glossy"] :is(.btn.primary, .btn.on, .btn.danger) {
+  background-image: linear-gradient(180deg, rgba(255, 255, 255, .22), rgba(255, 255, 255, 0));
+  border-color: rgba(0, 0, 0, .06);
+}
+:root[data-theme="glossy"] .btn.primary:hover { background-color: var(--accent-hover); }
+:root[data-theme="glossy"] .dock-btn { background-color: var(--paper); }
+:root[data-theme="glossy"] .dock-btn:hover { background-color: rgba(255, 255, 255, .9); }
+/* A button held down (a shown panel, the open menu): the accent's wash, as the base's paper-2 is too faint here. */
+:root[data-theme="glossy"] :is(.btn[aria-pressed=true], .dock-menu[aria-expanded=true]) { background-color: #dcebfb; border-color: rgba(0, 113, 227, .3); }
+
+/* Text fields: a hairline a shade darker than the panels', so an empty field still shows. */
+:root[data-theme="glossy"] :is(textarea, input:not([type=checkbox], [type=radio], [type=range]), select) { border-color: rgba(0, 0, 0, .14); }
+:root[data-theme="glossy"] :is(textarea, input:not([type=checkbox], [type=radio], [type=range]), select):focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(0, 113, 227, .2); }
+
+/* Windows and the ☰ menu: soft layered shadow instead of the hard ink one. */
+:root[data-theme="glossy"] .hud-menu { border-radius: var(--radius-lg); box-shadow: var(--shadow-lg); }
+:root[data-theme="glossy"] .modal header,
+:root[data-theme="glossy"] .modal footer { background: rgba(250, 250, 252, .6); }
+
+/* The kanban: columns a white frosted sheet, headers a soft tint of their colour. */
+:root[data-theme="glossy"] .kb-col { background: rgba(255, 255, 255, .6); }
+:root[data-theme="glossy"] .kb-col-head { border-radius: calc(var(--radius) - var(--bw)) calc(var(--radius) - var(--bw)) 0 0; letter-spacing: .02em; }
+:root[data-theme="glossy"] .kb-card { border-radius: var(--radius-sm); }
+:root[data-theme="glossy"] .kb-card::before { width: 8px; height: 8px; margin-left: -4px; top: -4px; border: 0; box-shadow: 0 1px 2px rgba(0, 0, 0, .25); }
+
+/* The bars' controls: at least 36px tall. */
+:root[data-theme="glossy"] .kb-bar .btn.small,
+:root[data-theme="glossy"] .kb-filters select { height: 36px; }
+
+/* The menu's switches, as iOS draws them. */
+:root[data-theme="glossy"] .switch { background: #e9e9eb; border-color: transparent; }
+:root[data-theme="glossy"] .switch::after { background: #fff; border-color: transparent; box-shadow: 0 1px 3px rgba(0, 0, 0, .25); }
+:root[data-theme="glossy"] .menu-toggle[aria-checked=true] .switch { background: #34c759; }
+
+/* The sign-in card: frosted, with a soft shadow and a glossy button. */
+:root[data-theme="glossy"] .card {
+  border-radius: 22px; box-shadow: var(--shadow-lg);
+  -webkit-backdrop-filter: var(--glass-blur); backdrop-filter: var(--glass-blur);
+}
+:root[data-theme="glossy"] .card button {
+  border-radius: var(--radius-pill); border-color: transparent;
+  background-image: linear-gradient(180deg, rgba(255, 255, 255, .22), rgba(255, 255, 255, 0));
+  box-shadow: var(--shadow-sm), inset 0 1px 0 rgba(255, 255, 255, .35);
+}
+:root[data-theme="glossy"] .card button:active { transform: none; }
