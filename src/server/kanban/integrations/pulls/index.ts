@@ -11,7 +11,7 @@ import { canFixPrs } from '../../../../shared/kanban/prs.js';
 import { PR_REVIEW_MAX } from '../../../../shared/kanban/types.js';
 import type { AgentEffort, GhPull, MeetingRequest } from '../../../../shared/protocol.js';
 import { sameRepo } from '../../../../shared/floors.js';
-import { resolveKanbanPrompt } from '../../../../shared/kanban/prompts.js';
+import { resolveKanbanPrompt, withContract } from '../../../../shared/kanban/prompts.js';
 import { gh } from '../../../github.js';
 import { floorPullsListeners, type PulledFloor } from './board.js';
 import type { GhRunner } from '../issues/source.js';
@@ -155,8 +155,8 @@ export function createPullsParts(ctx: KanbanContext, opts: PullsOptions = {}) {
     if (req.tool && !floor.project.agentProviders.includes(req.tool)) return `${req.tool} isn't set up on this office`;
     const request: MeetingRequest = {
       pattern: 'review',
-      // The brief is the layered kanban.pr.panel prompt (default → office → project), editable like the others.
-      prompt: resolveKanbanPrompt('kanban.pr.panel', { office: ctx.officePrompts(), project: ctx.settings.project(req.project).prompts }, { ...reviewVars(req, checked.prs), posted: String(posted.number), postedRepo: posted.repo }),
+      // The brief is the layered kanban.pr.panel prompt (default → office → project), editable like the others, sealed with the panel contract.
+      prompt: withContract(resolveKanbanPrompt('kanban.pr.panel', { office: ctx.officePrompts(), project: ctx.settings.project(req.project).prompts }, { ...reviewVars(req, checked.prs), posted: String(posted.number), postedRepo: posted.repo }), 'panel'),
       title: `Review of ${checked.prs.map((p) => `${p.repo}#${p.number}`).join(', ')}`.slice(0, 100),
       roles: [],
       pr: posted.number,

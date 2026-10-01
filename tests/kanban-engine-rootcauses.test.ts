@@ -14,7 +14,7 @@ import { readClaudeTurn } from '../src/server/kanban/engine/adapters/claude.js';
 import { readCodexTurn } from '../src/server/kanban/engine/adapters/codex.js';
 import { planOutcome, prLines, reviewVerdict } from '../src/server/kanban/engine/markers.js';
 import { createPullsParts } from '../src/server/kanban/integrations/pulls/index.js';
-import { KANBAN_PROMPT_DEFS } from '../src/shared/kanban/prompts.js';
+import { KANBAN_CONTRACTS, KANBAN_PROMPT_DEFS } from '../src/shared/kanban/prompts.js';
 import { PROMPTS } from '../src/shared/prompts.js';
 import type { MeetingRequest } from '../src/shared/protocol.js';
 import { ADA, engineFixture, makeRepo, type Invocation } from './kanban-engine-fixture.js';
@@ -280,7 +280,7 @@ test('🤝 the multi-PR panel brief is the kanban.pr.panel prompt: an office rew
   assert.match(started[0].prompt, /^Review these pull requests in the project web together/, 'the default');
   office = { 'kanban.pr.panel': { text: 'Office brief for {{project}}: {{prs}}\nPosted on {{postedRepo}}#{{posted}}.' } };
   assert.equal(await call(), undefined);
-  assert.equal(started[1].prompt, 'Office brief for web: - o/api#3 “Login API” (branch feat/login) https://github.com/x/y/pull/3\n- o/web#10 “Login” (branch feat/login) https://github.com/x/y/pull/10\nPosted on o/web#10.');
+  assert.equal(started[1].prompt, `Office brief for web: - o/api#3 “Login API” (branch feat/login) https://github.com/x/y/pull/3\n- o/web#10 “Login” (branch feat/login) https://github.com/x/y/pull/10\nPosted on o/web#10.\n\n${KANBAN_CONTRACTS.panel}`, 'sealed with the panel contract');
   pc.settings.setProject('web', { prompts: { 'kanban.pr.panel': 'Project brief: {{prs}}' } });
   assert.equal(await call(), undefined);
   assert.match(started[2].prompt, /^Project brief: - o\/api#3/);

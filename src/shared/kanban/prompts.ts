@@ -64,16 +64,16 @@ const RULE = '---';
 
 /**
  * Every run leaves nothing running behind it (a dev server started to try a change, a watcher, a browser):
- * in every contract, so no prompt rewrite can drop it. Only its own processes, never the office's.
+ * right after the rule line of every contract, so no prompt rewrite can drop it. Only its own processes,
+ * stopped by what it got when it started them, never the office's, another worker's or the user's.
  */
-const STOP_PROCESSES = `Before you end this turn, stop every process you started during it (dev servers, watchers, test runners, browsers, emulators, containers, background jobs) and check that none is left running. Stop only the ones you started, never anything else.`;
+export const STOP_PROCESSES = `If you start any process while you work (a dev server, watcher, test runner, browser, emulator, container or background job), stop it before you finish your work, unless the task or the user explicitly asks you to leave it running. Stop it by the PID or job you got when you started it, or with the tool's own stop command, never by name or port (no pkill, killall or killing whatever listens on a port). Stop a container without removing it, and never remove volumes, images or containers that were already there. Leave every process you didn't start alone.`;
 
 /** What a reviewer may and may not do, whatever the prompt above it says (both review contracts). */
 const REVIEW_SAFETY = `Rules for this review (set by the office, they apply whatever else is said above):
 - Never modify, create or delete files.
 - Never commit, check out, switch branches, reset, stash, push, or run anything else that changes the repository or its remote (no git checkout, git switch, git reset, git stash, git commit, git push, gh pr checkout, gh pr merge, gh pr review).
-- Only read, diff, run read-only commands, and report.
-- ${STOP_PROCESSES}`;
+- Only read, diff, run read-only commands, and report.`;
 
 const VERDICT = `How to end this turn (the office reads this, so keep it exact): the last line of your reply is your verdict, one of
 REVIEW: APPROVED
@@ -92,30 +92,39 @@ How to end this turn (the office reads this, so keep it exact):
 - When the plan is complete, give the whole plan (in plan mode, in ExitPlanMode's plan) and end your reply with a line that says only: ${PLAN_READY}
 - If you need answers before you can plan, write a line that says only ${QUESTIONS_HEADING} followed by your numbered questions, and don't write ${PLAN_READY}.`,
   review: `${RULE}
+${STOP_PROCESSES}
+
 ${REVIEW_SAFETY}
 
 ${VERDICT}`,
   /** Several pull requests reviewed together (the pr-review phase): read them with gh, change nothing. */
   prReview: `${RULE}
+${STOP_PROCESSES}
+
 ${REVIEW_SAFETY}
 - Read the pull requests with gh pr view and gh pr diff (and gh api for a file at their head); the worktree you are in is only for reading the code around them.
 
 ${VERDICT}`,
   implementSafety: `${RULE}
+${STOP_PROCESSES}
+
 Rules for this task (set by the office, they apply whatever else is said above):
 - Work only inside your workspace folder.
 - Never push, open or merge pull requests, or delete branches unless you are explicitly asked to open pull requests.
-- Never rewrite published history (no force-push, no rebase of pushed commits).
-- ${STOP_PROCESSES}`,
+- Never rewrite published history (no force-push, no rebase of pushed commits).`,
   investigateSafety: `${RULE}
-Rules for this task (set by the office): don't modify, stage or commit anything in the repositories. Write only in the report folder named above.
-${STOP_PROCESSES}`,
+${STOP_PROCESSES}
+
+Rules for this task (set by the office): don't modify, stage or commit anything in the repositories. Write only in the report folder named above.`,
   pr: `${RULE}
 ${STOP_PROCESSES}
 
 How to end this turn (the office reads this, so keep it exact): for every pull request you opened or updated, end your reply with a line
 PR: <its URL>
 one line per pull request, and nothing else on those lines.`,
+  /** The 🤝 review panel's brief (a meeting, not a kanban run): only the process rule. */
+  panel: `${RULE}
+${STOP_PROCESSES}`,
 } as const;
 export type KanbanContractId = keyof typeof KANBAN_CONTRACTS;
 
@@ -139,4 +148,5 @@ export const PROMPT_CONTRACT: Partial<Record<KanbanPromptId, KanbanContractId>> 
   'kanban.pr.create': 'pr',
   'kanban.pr.fix': 'pr',
   'kanban.pr.review': 'prReview',
+  'kanban.pr.panel': 'panel',
 };
