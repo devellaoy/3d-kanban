@@ -12,6 +12,7 @@ import { parked, type CarSeat, type CarState } from '../shared/garage';
 import { OFFICE_MAP, planOf, type MapPlan } from '../shared/maps';
 // 3d-kanban: a PR's worker by its repository too, on a project with several.
 import { namedRepo, workerForRepoPull } from './kanban/ghrepo';
+import { shownWorker } from './kanban/status';
 
 export type Topic = 'peers' | 'workers' | 'issues' | 'pulls' | 'chat' | 'project' | 'screens' | 'team' | 'upgrade' | 'services' | 'decor' | 'floorPlan' | 'usage' | 'limits' | 'queue' | 'me' | 'accounts' | 'signins' | 'notify' | 'machine' | 'floors' | 'floor' | 'projectsDir' | 'repos' | 'dog' | 'jukebox' | 'sky' | 'theme' | 'map' | 'leaveOnMerge' | 'whiteboard' | 'drawing' | 'cabinet' | 'cabinetFrame' | 'meeting' | 'prompts' | 'ball' | 'cars' | 'jail';
 
@@ -310,7 +311,7 @@ class Store {
     this.floor = v.floor;
     rememberFloor(v.floor);
     this.project = v.project;
-    this.workers = new Map(v.workers.map((w) => [w.id, w]));
+    this.workers = new Map(v.workers.map((w) => [w.id, shownWorker(w, this.workers.get(w.id))])); // 3d-kanban
     this.screens.clear(); // fresh full frames follow
     this.issues = v.issues;
     this.pulls = v.pulls;
@@ -415,7 +416,7 @@ class Store {
         this.emit('peers');
         break;
       case 'worker.update':
-        this.workers.set(msg.worker.id, msg.worker);
+        this.workers.set(msg.worker.id, shownWorker(msg.worker, this.workers.get(msg.worker.id))); // 3d-kanban
         this.emit('workers');
         break;
       case 'worker.remove':
