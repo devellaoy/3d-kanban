@@ -31,8 +31,7 @@ localStorage.setItem('agent-office.pace', 'full')
 
 ## What else changed
 
-- **GPU.** The office asks for the default GPU, not the high-performance one. A laptop with two GPUs no longer wakes the discrete one. Apple Silicon has one GPU, so nothing changes there. The picture is identical: same antialiasing, pixel ratio of `min(devicePixelRatio, 2)`, shadows and outlines.
-- **Voice level sampler.** It ran 25 times a second all the time. It now runs only while you're in voice or connected to someone.
+- **Voice level sampler.** It ran 25 times a second all the time. It now runs only while there's a voice to sample: your mic, or someone's voice coming in. Everyone else in the office is connected to you whether or not they're in voice, so a silent connection doesn't keep it running.
 - **Aim raycast.** What you're pointing at is reused for up to 100 ms while the camera hasn't moved.
 - **Per-frame allocations.** Positions arrays and snowflakes are no longer created again every frame.
 - **Typing sound.** It is scheduled 250 ms ahead, so it doesn't stutter at 15 frames a second.
@@ -60,9 +59,9 @@ The shadow map is rendered once per drawn frame. The outline pass turns shadows 
 
 ### CPU or GPU
 
-Each frame costs about 10–11 ms of main-thread time. Most of it is submitting about 2000–2700 draw calls: the scene, its shadow pass and the toon outline pass, plus the hands. The JavaScript per frame (animation, raycast, matrices) is small next to that.
+**Unmeasured on real hardware.** The numbers above come from software GL, where the GPU's work runs on the CPU. They can't say how a real machine splits the cost between its CPU and its GPU.
 
-So the cost scales with the number of frames drawn. That is why pacing is the big win. On a real GPU, the GPU side also scales with frames drawn.
+What they do show: each frame costs about 9–11 ms of main-thread time. Most of it is submitting about 1700–2700 draw calls: the scene, its shadow pass and the toon outline pass, plus the hands. The JavaScript per frame (animation, raycast, matrices) is small next to that. Both the CPU's share (submitting draw calls) and the GPU's (drawing them) grow with the number of frames drawn, so pacing helps whichever turns out to dominate. Which one does is still to be measured: Chrome's Performance panel with *GPU* on, on a Mac with a real GPU.
 
 ### Energy
 
@@ -80,10 +79,11 @@ Ranked by gain against risk.
 Done:
 
 1. **Pacing.** Big gain, low risk.
-2. **Default GPU.** Big on Intel Macs with two GPUs, none on Apple Silicon, no visual change. If the integrated GPU can't hold the frame rate on a big display, this can be reverted.
-3. **Timers and per-frame allocations.** Small gain, no risk.
+2. **Timers and per-frame allocations.** Small gain, no risk.
 
 Not done:
+
+- **The default GPU instead of `powerPreference: 'high-performance'`.** On a laptop with two GPUs, `'high-performance'` keeps the discrete one awake while the tab is open, so asking for the default one could save a lot of battery there (Apple Silicon has one GPU, so nothing would change). It stays as it is until it's measured on real hardware: walking must still run at the screen's full rate on the integrated GPU, and Apple Silicon must not get slower. Nothing measured here (software GL) can show either.
 
 - **A lower pixel ratio while moving.** It lowers the quality.
 - **Refreshing shadows less often than drawing.** Shadows would lag behind moving people.
