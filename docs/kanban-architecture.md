@@ -218,6 +218,10 @@ allowed: `todo → in_progress` (= start), `waiting|review → done`, `done → 
   - A review verdict never counts inside a fenced code block (```` ``` ```` / `~~~`, an unclosed one runs to
     the end) or in a `>` quote. Plan markers ignore quotes and *closed* code blocks, but an unclosed fence
     hides nothing after it. PR lines ignore only quotes (an agent may list its PRs in a code block).
+- Every contract block (plan, review, prReview, implementSafety, investigateSafety, pr) also tells the agent to
+  stop, before its turn ends, every process it started during the turn (dev servers, watchers, test runners,
+  browsers, emulators, containers, background jobs) and only those, never anything else (the office's own
+  processes included). It sits in the fixed block so no rewrite of a prompt can drop it.
 - Plan approval: `auto` (ready → implement) or `manual` (ready → `waiting` until the user approves).
 - Review: `rounds` (1–10), `reReviewLastFix` (default false). A reviewer is a separate worker (its own tool,
   model, effort) sharing the task's worktree (spawned with `reuse`), sent home with cleanup `keep`.

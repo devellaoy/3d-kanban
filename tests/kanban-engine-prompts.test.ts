@@ -189,6 +189,13 @@ test('the review contracts forbid changing anything, and no rewrite of the promp
   assert.ok(withContract('Mine', 'prReview').endsWith(KANBAN_CONTRACTS.prReview));
 });
 
+test('every contract tells the agent to stop the processes it started, so no rewrite of the prompt can drop it', () => {
+  for (const [id, c] of Object.entries(KANBAN_CONTRACTS)) {
+    assert.match(c, /stop every process you started during it/, id);
+    assert.match(c, /Stop only the ones you started/, `${id} keeps the office's own processes alive`);
+  }
+});
+
 test('kanban.checkout: a fresh worktree is told to check out the branch the task already has', (t) => {
   const { def, dir, repo, compose } = setup(t);
   const task = repo.createTask({ project: 'proj', title: 'X', tool: 'claude', usePlan: false, planApproval: 'auto', useReview: true, createdBy: 'Ada', branch: 'kanban/uyt-1-x' });

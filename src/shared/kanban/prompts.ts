@@ -62,11 +62,18 @@ export const PR_URL = /^(?:<(https?:\/\/[^>\s]+)>|\[[^\]]*\]\((https?:\/\/[^)\s]
 
 const RULE = '---';
 
+/**
+ * Every run leaves nothing running behind it (a dev server started to try a change, a watcher, a browser):
+ * in every contract, so no prompt rewrite can drop it. Only its own processes, never the office's.
+ */
+const STOP_PROCESSES = `Before you end this turn, stop every process you started during it (dev servers, watchers, test runners, browsers, emulators, containers, background jobs) and check that none is left running. Stop only the ones you started, never anything else.`;
+
 /** What a reviewer may and may not do, whatever the prompt above it says (both review contracts). */
 const REVIEW_SAFETY = `Rules for this review (set by the office, they apply whatever else is said above):
 - Never modify, create or delete files.
 - Never commit, check out, switch branches, reset, stash, push, or run anything else that changes the repository or its remote (no git checkout, git switch, git reset, git stash, git commit, git push, gh pr checkout, gh pr merge, gh pr review).
-- Only read, diff, run read-only commands, and report.`;
+- Only read, diff, run read-only commands, and report.
+- ${STOP_PROCESSES}`;
 
 const VERDICT = `How to end this turn (the office reads this, so keep it exact): the last line of your reply is your verdict, one of
 REVIEW: APPROVED
@@ -79,6 +86,8 @@ Approve only when nothing in your findings has to change. Don't write either lin
  */
 export const KANBAN_CONTRACTS = {
   plan: `${RULE}
+${STOP_PROCESSES}
+
 How to end this turn (the office reads this, so keep it exact):
 - When the plan is complete, give the whole plan (in plan mode, in ExitPlanMode's plan) and end your reply with a line that says only: ${PLAN_READY}
 - If you need answers before you can plan, write a line that says only ${QUESTIONS_HEADING} followed by your numbered questions, and don't write ${PLAN_READY}.`,
@@ -96,10 +105,14 @@ ${VERDICT}`,
 Rules for this task (set by the office, they apply whatever else is said above):
 - Work only inside your workspace folder.
 - Never push, open or merge pull requests, or delete branches unless you are explicitly asked to open pull requests.
-- Never rewrite published history (no force-push, no rebase of pushed commits).`,
+- Never rewrite published history (no force-push, no rebase of pushed commits).
+- ${STOP_PROCESSES}`,
   investigateSafety: `${RULE}
-Rules for this task (set by the office): don't modify, stage or commit anything in the repositories. Write only in the report folder named above.`,
+Rules for this task (set by the office): don't modify, stage or commit anything in the repositories. Write only in the report folder named above.
+${STOP_PROCESSES}`,
   pr: `${RULE}
+${STOP_PROCESSES}
+
 How to end this turn (the office reads this, so keep it exact): for every pull request you opened or updated, end your reply with a line
 PR: <its URL>
 one line per pull request, and nothing else on those lines.`,
