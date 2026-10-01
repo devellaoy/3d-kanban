@@ -2,6 +2,7 @@ import { execFile } from 'node:child_process';
 import type { GhCheck, GhCloseReason, GhComment, GhIssue, GhIssueDetail, GhLabel, GhMergeMethod, GhPull, GhPullDetail, GhRepoInfo, GhReviewComment, GhState } from '../shared/protocol.js';
 import type { GhAs } from './signins.js';
 import { checkoutRepo, repoApi, repoFlag } from './kanban/ghrepo.js';
+import { DIFF_TOO_LARGE, diffFromFiles, type GhPrFile } from './kanban/prfiles.js';
 
 const REFRESH_MS = 90_000;
 /** How long the repo's list of labels is kept before the label picker asks GitHub again. */
@@ -212,9 +213,17 @@ export class GitHub {
     };
   }
 
-  /** The PR's unified diff, as `git diff` prints it. */
-  pullDiff(n: number): Promise<string> {
-    return gh(['pr', 'diff', String(n), ...repoFlag(this.target), '--color', 'never'], this.dir, 60_000);
+  /** The PR's unified diff, as `git diff` prints it (built from the files API when it's too big for GitHub). */
+  async pullDiff(n: number): Promise<string> {
+    try {
+      return await gh(['pr', 'diff', String(n), ...repoFlag(this.target), '--color', 'never'], this.dir, 60_000);
+    } catch (err) {
+      // 3d-kanban: GitHub won't send the .diff of a PR over 300 files; build it from the files API.
+      if (!DIFF_TOO_LARGE.test((err as Error).message)) throw err;
+      const jq = '.[] | {filename, status, previous_filename, patch, additions, deletions}';
+      const out = await gh(['api', repoApi(this.target, `pulls/${n}/files?per_page=100`), '--paginate', '--jq', jq], this.dir, 120_000);
+      return diffFromFiles(out.split('\n').filter((l) => l.trim()).map((l) => JSON.parse(l) as GhPrFile));
+    }
   }
 
   async issueDetail(n: number, me?: string): Promise<GhIssueDetail> {

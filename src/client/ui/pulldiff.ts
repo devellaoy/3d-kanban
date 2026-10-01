@@ -79,6 +79,7 @@ export function parseDiff(text: string): DiffFile[] {
       } else if (line.startsWith('rename to ')) f.path = line.slice(10);
       else if (line.startsWith('Binary files ') || line === 'GIT binary patch') f.binary = true;
       else if (line.startsWith('+++ ') && line !== '+++ /dev/null') f.path = unprefix(line.slice(4));
+      else if (line.startsWith('\\ ')) f.lines.push({ kind: 'note', text: line.slice(2) }); // 3d-kanban: a note before any hunk (a file GitHub's files API sent no patch for) shows instead of "No changes"
       continue;
     }
     const c = line[0];
