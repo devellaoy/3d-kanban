@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { DIFF_TOO_LARGE, diffFromFiles, type GhPrFile } from '../src/server/kanban/prfiles.js';
+import { DIFF_TOO_LARGE, diffFromFiles, pullDiffOrFiles, resetPrFilesCache, type GhPrFile } from '../src/server/kanban/prfiles.js';
 
 // pulldiff.ts pulls in the markdown renderer, which wants a DOM-ish `window` when it loads (just enough for
 // DOMPurify to set up); parseDiff itself needs no DOM.
@@ -11,6 +11,7 @@ const { parseDiff } = await import('../src/client/ui/github/pulldiff.js');
 test('DIFF_TOO_LARGE matches the too-large message and nothing else gh says', () => {
   const big = "could not find pull request diff: HTTP 406: Sorry, the diff exceeded the maximum number of files (300). Consider using 'List pull requests files' API or locally cloning the repository instead. (https://api.github.com/repos/devellaoy/3d-kanban/pulls/24) PullRequest.diff too_large";
   assert.ok(DIFF_TOO_LARGE.test(big));
+  assert.ok(!DIFF_TOO_LARGE.test('gh: HTTP 406: Not Acceptable'));
   for (const other of ["gh can't find this repository on GitHub", "gh isn't signed in to GitHub", 'timed out']) assert.ok(!DIFF_TOO_LARGE.test(other), other);
 });
 
@@ -48,12 +49,88 @@ test('a patch without a trailing newline does not run into the next file', () =>
   assert.deepEqual(d.map((f) => [f.path, f.status, f.additions, f.deletions]), [['a.txt', 'M', 1, 1], ['z.txt', 'A', 1, 0]]);
 });
 
-test('a file with no patch and no changed lines is binary, not too large', () => {
+test('a file with no patch and no changed lines gets a neutral note, not a binary claim', () => {
   const d = parseDiff(diffFromFiles([
     { filename: 'logo.png', status: 'added', additions: 0, deletions: 0 },
     { filename: 'icon.png', status: 'modified', additions: 0, deletions: 0 },
+    { filename: 'dir/.gitkeep', status: 'added', additions: 0, deletions: 0 },
   ]));
-  assert.deepEqual(d.map((f) => [f.path, f.status, f.binary, f.lines.length]), [['logo.png', 'A', true, 0], ['icon.png', 'M', true, 0]]);
+  const note = { kind: 'note', text: 'No text changes to show (binary, empty or mode-only) — open the file on GitHub.' };
+  assert.deepEqual(d.map((f) => [f.path, f.status, f.binary, f.lines]), [['logo.png', 'A', false, [note]], ['icon.png', 'M', false, [note]], ['dir/.gitkeep', 'A', false, [note]]]);
+});
+
+test('a copied file is a new file with a note saying where from', () => {
+  const d = parseDiff(diffFromFiles([
+    { filename: 'b.txt', status: 'copied', previous_filename: 'a\nb.txt', patch: '@@ -0,0 +1 @@\n+x', additions: 1, deletions: 0 },
+  ]));
+  assert.deepEqual(d.map((f) => [f.path, f.status, f.additions]), [['b.txt', 'A', 1]]);
+  assert.deepEqual(d[0].lines[0], { kind: 'note', text: 'Copied from a\\nb.txt' });
+});
+
+test('a PR with more files than GitHub lists ends with a visible note', () => {
+  const d = parseDiff(diffFromFiles([{ filename: 'a.txt', status: 'added', patch: '@@ -0,0 +1 @@\n+x', additions: 1, deletions: 0 }], 3001));
+  assert.equal(d.length, 2);
+  assert.equal(d[1].path, '⋯ 3000 more files not listed by GitHub');
+  assert.deepEqual(d[1].lines, [{ kind: 'note', text: 'GitHub lists only the first 1 of 3001 files — open the pull request on GitHub for the rest.' }]);
+  assert.equal(parseDiff(diffFromFiles([{ filename: 'a.txt', status: 'added', additions: 0, deletions: 0 }], 1)).length, 1);
+});
+
+test('a note-only file hashes differently when its counts change', () => {
+  const h = (n: number) => parseDiff(diffFromFiles([{ filename: 'big.json', status: 'modified', additions: n, deletions: 1 }]))[0].hash;
+  assert.notEqual(h(5000), h(5001));
+  assert.equal(h(5000), h(5000));
+});
+
+const TOO_BIG = new Error('HTTP 406: Sorry, the diff exceeded the maximum number of files (300). PullRequest.diff too_large');
+function fakeGh(sha: () => string) {
+  const calls: string[] = [];
+  const run = async (args: string[]) => {
+    const api = args[1];
+    calls.push(api.endsWith('/pulls/7') ? 'meta' : 'files');
+    if (api.endsWith('/pulls/7')) return JSON.stringify({ sha: sha(), files: 1 });
+    return JSON.stringify({ filename: 'a.txt', status: 'added', patch: '@@ -0,0 +1 @@\n+' + sha(), additions: 1, deletions: 0 }) + '\n';
+  };
+  return { run, calls };
+}
+
+test('pullDiffOrFiles passes a normal diff through', async () => {
+  resetPrFilesCache();
+  const { run, calls } = fakeGh(() => 's1');
+  assert.equal(await pullDiffOrFiles(run, 'o/r', 7, '/x', async () => 'plain'), 'plain');
+  assert.deepEqual(calls, []);
+});
+
+test('pullDiffOrFiles builds from the files API when too large, then reuses it per head sha', async () => {
+  resetPrFilesCache();
+  let sha = 's1';
+  const { run, calls } = fakeGh(() => sha);
+  let diffCalls = 0;
+  const diff = async () => { diffCalls++; throw TOO_BIG; };
+  const first = await pullDiffOrFiles(run, 'o/r', 7, '/x', diff);
+  assert.match(first, /\+s1/);
+  assert.deepEqual(calls, ['meta', 'files']);
+  assert.equal(await pullDiffOrFiles(run, 'o/r', 7, '/x', diff), first);
+  assert.deepEqual(calls, ['meta', 'files', 'meta']);
+  assert.equal(diffCalls, 1);
+  sha = 's2';
+  assert.match(await pullDiffOrFiles(run, 'o/r', 7, '/x', diff), /\+s2/);
+  assert.deepEqual(calls, ['meta', 'files', 'meta', 'meta', 'files']);
+});
+
+test('pullDiffOrFiles rethrows other errors', async () => {
+  resetPrFilesCache();
+  const { run, calls } = fakeGh(() => 's1');
+  await assert.rejects(pullDiffOrFiles(run, 'o/r', 7, '/x', async () => { throw new Error('timed out'); }), /timed out/);
+  assert.deepEqual(calls, []);
+});
+
+test('pullDiffOrFiles turns a maxBuffer overflow into a friendly message', async () => {
+  resetPrFilesCache();
+  const run = async (args: string[]) => {
+    if (args[1].endsWith('/pulls/7')) return JSON.stringify({ sha: 's1', files: 1 });
+    throw new Error('stdout maxBuffer length exceeded');
+  };
+  await assert.rejects(pullDiffOrFiles(run, 'o/r', 7, '/x', async () => { throw TOO_BIG; }), /too big to show here — open it on GitHub/);
 });
 
 test('a file name that looks like diff headers stays one file with its own name', () => {
@@ -70,7 +147,7 @@ test('a file name that looks like diff headers stays one file with its own name'
   assert.deepEqual(d.map((f) => [f.path, f.oldPath, f.status, f.binary]), [
     [evil, undefined, 'M', false],
     [`new ${odd}`, odd, 'R', false],
-    ['img\n.png', undefined, 'A', true],
+    ['img\n.png', undefined, 'A', false],
     ['ä ö.txt', undefined, 'D', false],
   ]);
   assert.deepEqual(d[0].lines.filter((l) => l.kind !== 'hunk').map((l) => [l.kind, l.text]), [['del', 'old'], ['add', 'new']]);

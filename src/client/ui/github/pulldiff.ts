@@ -40,16 +40,17 @@ function unprefix(p: string): string {
 
 // 3d-kanban: a path git quoted ("a/x\ny", "\303\244.txt"): \n, \t, \" and the like, and octal bytes of UTF-8.
 const C_ESCAPES: Record<string, number> = { a: 7, b: 8, t: 9, n: 10, v: 11, f: 12, r: 13 };
+const ENC = new TextEncoder();
+const DEC = new TextDecoder();
 function unquote(p: string): string {
   if (p.length < 2 || !p.startsWith('"') || !p.endsWith('"')) return p;
-  const enc = new TextEncoder();
   const bytes: number[] = [];
   for (const m of p.slice(1, -1).matchAll(/\\([0-7]{3}|[\s\S])|[^\\]+/g)) {
-    if (m[1] === undefined) bytes.push(...enc.encode(m[0]));
+    if (m[1] === undefined) bytes.push(...ENC.encode(m[0]));
     else if (m[1].length === 3) bytes.push(parseInt(m[1], 8));
     else bytes.push(C_ESCAPES[m[1]] ?? m[1].charCodeAt(0));
   }
-  return new TextDecoder().decode(new Uint8Array(bytes));
+  return DEC.decode(new Uint8Array(bytes));
 }
 
 export function parseDiff(text: string): DiffFile[] {
@@ -94,7 +95,7 @@ export function parseDiff(text: string): DiffFile[] {
       } else if (line.startsWith('rename to ')) f.path = unquote(line.slice(10)); // 3d-kanban: unquote
       else if (line.startsWith('Binary files ') || line === 'GIT binary patch') f.binary = true;
       else if (line.startsWith('+++ ') && line !== '+++ /dev/null') f.path = unprefix(line.slice(4));
-      else if (line.startsWith('\\ ')) f.lines.push({ kind: 'note', text: line.slice(2) }); // 3d-kanban: a note before any hunk (a file GitHub's files API sent no patch for) shows instead of "No changes"
+      else if (line.startsWith('\\ ')) { f.lines.push({ kind: 'note', text: line.slice(2) }); changes.push(line); } // 3d-kanban: a note before any hunk (a file GitHub's files API sent no patch for) shows instead of "No changes"; it counts toward the hash
       continue;
     }
     const c = line[0];
