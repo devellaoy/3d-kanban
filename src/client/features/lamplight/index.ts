@@ -25,7 +25,13 @@ export function installLamplight(ctx: Ctx, parts: Pick<Parts, 'stage' | 'place'>
   ctx.ticks.add('env', ({ dt }) => {
     const { sun } = parts.stage;
     const { sky } = ctx;
-    // A map of its own (the castle) lights itself (see World.mood), and the roof's out under the sky.
+    // A map of its own (the castle) lights itself (see World.mood): the office's lamplight goes at once, not
+    // eased out over its first seconds, and leaves its light alone from then on.
+    if (!ctx.inOffice()) {
+      if (indoorness === 0) return;
+      indoorness = 0;
+    }
+    // The roof's out under the sky.
     const inside = ctx.inOffice() && !ctx.upTop() && parts.place.indoors();
     indoorness += ((inside ? 1 : 0) - indoorness) * (1 - Math.exp(-dt * 3));
     if (indoorness > 0.001) {
