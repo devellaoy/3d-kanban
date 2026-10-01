@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { FLOOR, SLAB, STREET_Y, WING, inWing, wingMinZ } from '../../shared/layout';
 import type { ViewMode } from '../state';
 import type { Collider } from '../world/types';
+import { armFraction, easeArm } from './arm';
 import { ceilingAt, groundAt } from './collide';
 import { THIRD_TARGET, orbitOffset, shoulderOffset } from './shoulder';
 import type { OrbitEase } from './camera3d';
@@ -110,8 +111,17 @@ export function aimCamera(camera: THREE.PerspectiveCamera, p: Followed, bob: num
     else cam.z = R.maxZ + e;
   }
   p.ease.place(camera, ideal, cam, snap, moved, dt); // on the orbit, moved by the walls (was: lerp 0.25)
+  // The camera is part of your body: the arm from your head to it stops short of anything solid in between.
+  const head = armHead.set(p.pos.x, p.pos.y + p.stepOffset + lift + THIRD_TARGET, p.pos.z);
+  const arm = (p.ease.arm = easeArm(p.ease.arm, armFraction(head, camera.position, p.colliders, p.pos.y), dt, snap));
+  if (arm < 1) {
+    camera.position.sub(head).multiplyScalar(arm).add(head);
+    p.ease.lastShown.copy(camera.position);
+  }
   camera.lookAt(target);
 }
+
+const armHead = new THREE.Vector3();
 
 /** The jitters: the view trembles a little, on top of wherever you're looking. Drunk, it rolls and sways. `t` is the jitters' clock. */
 export function shakeCamera(camera: THREE.PerspectiveCamera, t: number, drunk: number, jitter: number) {

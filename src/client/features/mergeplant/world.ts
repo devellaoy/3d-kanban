@@ -7,8 +7,8 @@ import { MAX_STAGE } from './model';
 // The merge plant: a potted plant in the lounge that grows a stage for every merge (see model.ts) and
 // goes limp when a week passes without one. Seven stages, from a sprout to a flowering bush.
 
-/** In the lounge's north-west corner, clear of the couch and the elevator. */
-export const MERGE_PLANT = { x: 10, z: -5.6 } as const;
+/** In the lounge's north-east corner, off the walkway: clear of the couch, the TV, the Services board (above it), the gong and the beanbag seats. */
+export const MERGE_PLANT = { x: 17.2, z: -12.2 } as const;
 
 export interface MergePlant {
   /** Sets the stage (0 to MAX_STAGE) and how limp it is (0 perky to 1 drooping). `snap` skips the growing. */
@@ -90,7 +90,7 @@ export const mergePlant: Fixture<'mergePlant'> = (site) => {
   spark.visible = false;
   root.add(spark);
 
-  const interactable: Interactable = { kind: 'mergeplant', x: x + 0.7, z: z + 0.7, radius: 1.8 };
+  const interactable: Interactable = { kind: 'mergeplant', x: x - 0.8, z: z + 0.8, radius: 1.8 };
   root.userData.interact = interactable;
   const collider: Collider = { minX: x - 0.4, maxX: x + 0.4, minZ: z - 0.4, maxZ: z + 0.4, top: 0.5 };
 

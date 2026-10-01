@@ -1,12 +1,12 @@
 import * as THREE from 'three';
-import { BOARDS, LOFT, MACHINE_MONITOR, PLANTS, SEATING_BY_ID, STAIRS, STREET_Y, TV, WALL_HEIGHT, plantByWing } from '../../../shared/layout';
+import { BOARDS, LOFT, MACHINE_MONITOR, SEATING_BY_ID, STAIRS, STREET_Y, TV, WALL_HEIGHT } from '../../../shared/layout';
 import { wallFacing } from '../../../shared/decor';
 import type { NightParts } from '../outside';
 import { mesh, roundedBox, textPlane, toon, toonUnique } from '../toon';
 import type { Collider, Interactable } from '../types';
 import type { Fixture } from './fixture';
 import { PALETTE } from './materials';
-import { coffeeTable, floorPlant, loungeCouch, pendant, plant, pouf, wallBoard } from './props';
+import { coffeeTable, loungeCouch, pendant, pouf, wallBoard } from './props';
 import { seatable } from './seats';
 
 // The room itself, past its walls and its seats: the rugs, what the sky lights and darkens, the boards
@@ -20,8 +20,6 @@ declare module '../types' {
     tvScreen: THREE.Mesh;
     /** The monitor on the west wall showing how busy the office's machine is (features/boards/machine.ts). */
     machineScreen: THREE.Mesh;
-    /** The potted plants round the room, in PLANTS' order. At Christmas world/holiday.ts hides their leaves (plantLeaves()) and stands a little tree in each pot. */
-    plants: THREE.Group[];
   }
 }
 
@@ -154,23 +152,6 @@ export const lounge: Fixture = (site) => {
     seatable(seat, id, 1.4, site.interactables);
   }
   return {};
-};
-
-/** Plants around the room: the ones in the way into the back office go while it's built out (see the wing). */
-export const plants: Fixture<'plants'> = (site) => {
-  const pots: THREE.Group[] = [];
-  for (const [i, spot] of PLANTS.entries()) {
-    const [x, z, s] = spot;
-    const p = plant(floorPlant(i), s);
-    p.position.set(x, 0, z);
-    site.group.add(p);
-    pots.push(p);
-    const r = 0.3 * s;
-    const collider: Collider = { minX: x - r, maxX: x + r, minZ: z - r, maxZ: z + r, top: 0.5 * s };
-    site.colliders.push(collider);
-    if (plantByWing(spot)) site.inTheWay.push({ group: p, collider });
-  }
-  return { handle: { plants: pots } };
 };
 
 /** Ceiling lamps (cartoon pendants), hung on long cords down from the high ceiling. */

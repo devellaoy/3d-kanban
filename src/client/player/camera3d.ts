@@ -20,6 +20,8 @@ export class OrbitEase {
   rawCorr = new THREE.Vector3();
   lastIdeal = new THREE.Vector3();
   corrEasing = false;
+  /** How much of the spring arm (head to camera) is shown: pulled in by walls at once, let out slowly (see arm.ts). */
+  arm = 1;
   corrKnown = false;
 
   /** First person: keep the third-person values in step, so switching views starts from where you look. */
@@ -29,6 +31,7 @@ export class OrbitEase {
     this.lastPitch = pitch;
     this.lastDist = dist;
     this.corrKnown = false;
+    this.arm = 1;
   }
 
   /** The mouse is never a jump, so it shows at once. */
