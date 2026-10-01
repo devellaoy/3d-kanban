@@ -7,8 +7,16 @@
 // seat's view: a bean bag nobody sits on is put away (hidden), and the reviewer behind it must still show.
 
 import * as THREE from 'three';
-import type { DeskView, Interactable } from '../world/office';
+import type { DeskView, Interactable } from '../world/types';
 import type { World } from '../world/world';
+
+// A task's reviewer standing behind its implementer has no laptop: it watches rather than types while working
+// (Worker.update reads this). A field added here, to keep upstream's worker.ts within its size ceiling.
+declare module '../world/character/worker' {
+  interface Worker {
+    watching?: boolean;
+  }
+}
 
 /** How far to the side of the chair (to its right, seen from the chair) and back from it the reviewer stands. */
 const SIDE = 0.55;

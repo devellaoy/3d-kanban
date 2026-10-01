@@ -44,6 +44,8 @@ export interface EngineOptions {
   compactTimeoutMs?: number;
   /** A run held for its background agents goes on with what its log says after this long without a Stop (3 h). */
   backgroundWaitMs?: number;
+  /** A phase that finds its own worker still busy (its teammates keep it working) waits this long for it to rest before it fails (10 min). */
+  busyWaitMs?: number;
   adapters?: Partial<Record<KanbanTool, TaskAgentAdapter>>;
   now?: () => number;
 }
@@ -70,9 +72,9 @@ interface Live {
   stopText?: string;
   /** Its turn has ended and is being dealt with. */
   ended: boolean;
-  /** Its turn stopped while background agents it set off still work: the run goes on until a Stop with none left. */
+  /** Its turn stopped while background agents or teammates it set off still work: the run goes on until a Stop with none left. */
   background?: boolean;
-  /** It has been held for background agents at least once: a later Stop on an unanswered notification is the resumed turn's own. */
+  /** It has been held for background agents or teammates at least once: a later Stop on an unanswered notification is the resumed turn's own. */
   held?: boolean;
   holdTimer?: NodeJS.Timeout;
   stopping?: { by?: string; timer?: NodeJS.Timeout };
@@ -136,6 +138,9 @@ const QUESTION_TOOL = /(?:^|[._])(?:AskUserQuestion|ask_user_question|request_us
 const ASKS_PERMISSION = 'The agent is asking for a permission in its terminal: answer it there (⌨️ Open its terminal)';
 const ASKS_UNKNOWN = 'The agent is waiting on something in its terminal: answer it there (⌨️ Open its terminal)';
 
+/** A hook payload from a subagent or a teammate: Claude Code adds `agent_id` only to those. */
+const agentHook = (payload: unknown): boolean => typeof (payload as { agent_id?: unknown } | undefined)?.agent_id === 'string';
+
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 const clip = (s: string, max: number) => (s.length > max ? `${s.slice(0, max)}…` : s);
 /** The final answer a Claude Stop hook carries (`last_assistant_message`), capped; undefined without one. */
@@ -156,6 +161,13 @@ function stateOf(t: KanbanTask): MachineState {
 
 export class Orchestrator {
   private live = new Map<string, Live>();
+  /**
+   * When each worker's Claude process last started (its SessionStart hook: startup or resume), for readTurnResult's `since`;
+   * dropped when the worker exits or goes. After an office restart it's unknown until the next SessionStart: sinceOf falls back to the run's start.
+   */
+  private procSince = new Map<string, number>();
+  /** A phase waiting for its own busy worker to rest (see untilRests), by task: Stop cancels it, as the task's chain is held until it ends. */
+  private busyWaits = new Map<number, (by?: string) => void>();
   private floors = new Map<string, { workers: WorkerManager; off: () => void }>();
   /** One thing at a time per task: an operation or a turn's end. */
   private chains = new Map<number, Promise<unknown>>();
@@ -184,6 +196,7 @@ export class Orchestrator {
       readPauseMs: options.readPauseMs ?? 250,
       compactTimeoutMs: options.compactTimeoutMs ?? 180_000,
       backgroundWaitMs: options.backgroundWaitMs ?? 3 * 3_600_000,
+      busyWaitMs: options.busyWaitMs ?? 600_000,
       now: options.now ?? Date.now,
     };
   }
@@ -829,6 +842,21 @@ export class Orchestrator {
       return err;
     };
 
+    // Its own worker still busy, or its teammates still at work (they wake the lead again after a turn's end): the phase starts when all rest.
+    const teamWork = (id: string) => {
+      const prior = this.live.get(id);
+      return tool === 'claude' && this.teammatesWork(floor, id, prior ? this.sinceOf(prior) : this.procSince.get(id));
+    };
+    if (info && info.kind === 'agent' && info.kanban?.taskId === task.id && (info.status === 'working' || info.status === 'starting' || teamWork(info.id))) {
+      const waited = await this.untilRests(floor, info.id, task.id, () => teamWork(info!.id));
+      if (waited.cancelled) {
+        // Stopped while it waited: nothing was prompted, and the run ends as stopped.
+        this.finishRun(run.id, task.project, { status: 'stopped' });
+        await this.apply(task.id, { type: 'stopped', ...(waited.by ? { by: waited.by } : {}) });
+        return undefined;
+      }
+      info = floor.workers.get(info.id);
+    }
     if (info && info.kind === 'agent' && info.status !== 'working' && info.status !== 'starting') {
       x.checkout = await this.checkoutFor(fresh, def, floor.dir, role, eff.phase, false);
       const prompt = typeable(withCheckout(build(eff.prompt === 'continue' && !info.sessionId ? this.freshKind(fresh, eff.phase) : eff.prompt)));
@@ -1039,7 +1067,14 @@ export class Orchestrator {
 
   private observed(floorId: string, o: WorkerObservation) {
     if (this.disposed) return;
+    if (o.event === 'hook' && o.hookEvent === 'SessionStart' && !agentHook(o.payload)) {
+      const source = (o.payload as { source?: unknown } | undefined)?.source;
+      if (source === 'startup' || source === 'resume') this.procSince.set(o.workerId, this.opts.now());
+    }
+    // Its process is over: a later one (relaunch) says when it started by its own SessionStart.
+    if (o.event === 'status' && o.status === 'exited') this.procSince.delete(o.workerId);
     if (o.event === 'removed') {
+      this.procSince.delete(o.workerId);
       const taskId = o.info.kanban?.taskId ?? this.live.get(o.workerId)?.taskId;
       if (taskId !== undefined) void this.serial(taskId, () => this.removed(o.workerId, o.info, o.departure));
       // A desk freed, and room under the office's worker limit (every floor's): queued tasks look again.
@@ -1054,6 +1089,14 @@ export class Orchestrator {
     const live = this.live.get(o.workerId);
     if (!live || live.ended || live.floorId !== floorId) return;
     if (o.event === 'hook') {
+      // A subagent's or teammate's hook (it runs in the lead's process, so it reaches the lead's worker): none of the lead's turn,
+      // but its question or permission prompt is still what the worker's needs_input waits on.
+      if (agentHook(o.payload)) {
+        const question = !!o.tool && QUESTION_TOOL.test(o.tool);
+        const ask = o.hookEvent === 'PermissionRequest' || o.hookEvent === 'PostToolUse' || o.hookEvent === 'PostToolUseFailure' || (o.hookEvent === 'PreToolUse' && question) || (o.hookEvent === 'Notification' && (o.payload as { notification_type?: unknown } | undefined)?.notification_type === 'permission_prompt');
+        if (ask) this.heardAsk(live, o);
+        return;
+      }
       if ((o.hookEvent === 'PreToolUse' || o.hookEvent === 'PermissionRequest') && o.tool === 'ExitPlanMode') live.exitPlan = true;
       else if (o.hookEvent === 'PreToolUse' && o.tool) live.exitPlan = false;
       if (o.hookEvent === 'UserPromptSubmit') live.stopText = undefined;
@@ -1134,7 +1177,7 @@ export class Orchestrator {
     if (live.phase === 'plan' && live.tool === 'claude') {
       // ExitPlanMode asks for approval: that is the plan being done. The hook says so, or the transcript.
       const file = this.ctx.floor(live.floorId)?.workers.transcripts(live.workerId)?.claude;
-      if (live.exitPlan || (file && this.adapters.claude.readTurnResult(file)?.exitPlan)) return this.turnEnded(live, true);
+      if (live.exitPlan || (file && this.adapters.claude.readTurnResult(file, { since: this.sinceOf(live) })?.exitPlan)) return this.turnEnded(live, true);
     }
     const task = this.ctx.repo.getTask(live.taskId);
     if (!task || (task.status === 'waiting' && task.waitingReason === 'agent_asking')) return;
@@ -1337,7 +1380,7 @@ export class Orchestrator {
     for (let i = 0; i < this.opts.readTries; i++) {
       const logs = workers?.transcripts(live.workerId);
       const file = live.tool === 'claude' ? logs?.claude : logs?.codex;
-      result = file ? adapter.readTurnResult(file) : undefined;
+      result = file ? adapter.readTurnResult(file, { since: this.sinceOf(live) }) : undefined;
       if (result?.complete) return result;
       await sleep(this.opts.readPauseMs);
     }
@@ -1372,6 +1415,46 @@ export class Orchestrator {
       const id = def && taskRepos(def, task).find((x) => path.resolve(x.dir) === path.resolve(r.dir))?.id;
       if (id) this.ctx.repo.setRepoBranch(task.id, id, await pick(r.path, r.branch, undefined, known[id]));
     }
+  }
+
+  /** When the worker's Claude process started: its SessionStart, else (an office restart) when the run began. */
+  private sinceOf(live: Live): number | undefined {
+    return this.procSince.get(live.workerId) ?? this.ctx.repo.getRun(live.runId)?.startedAt;
+  }
+
+  /** Whether the worker's Claude teammates (agent teams) still work, from their transcripts. */
+  private teammatesWork(floor: Floor, id: string, since: number | undefined): boolean {
+    const file = floor.workers.transcripts(id)?.claude;
+    return !!file && !!this.adapters.claude.readTurnResult(file, { since })?.background;
+  }
+
+  /** Resolves when the worker is at rest (or gone) and `team` says its teammates are too (polled), or after busyWaitMs (the caller looks at it again), or `cancelled` when the task is stopped meanwhile. */
+  private untilRests(floor: Floor, id: string, taskId: number, team: () => boolean): Promise<{ cancelled: boolean; by?: string }> {
+    return new Promise((resolve) => {
+      const rested = () => {
+        const status = floor.workers.get(id)?.status;
+        return !status || (status !== 'working' && status !== 'starting' && !team());
+      };
+      let off = () => {};
+      const finish = (cancelled = false, by?: string) => {
+        clearTimeout(timer);
+        clearInterval(poll);
+        off();
+        if (this.busyWaits.get(taskId) === cancel) this.busyWaits.delete(taskId);
+        resolve({ cancelled, ...(by ? { by } : {}) });
+      };
+      const cancel = (by?: string) => finish(true, by);
+      this.busyWaits.set(taskId, cancel);
+      const timer = setTimeout(() => finish(), this.opts.busyWaitMs);
+      timer.unref?.();
+      // Teammates finishing is no status of the worker's: look again every so often.
+      const poll = setInterval(() => rested() && finish(), 1000);
+      poll.unref?.();
+      off = floor.workers.addObserver((o) => {
+        if (o.workerId === id && (o.event === 'removed' || (o.event === 'status' && rested()))) finish();
+      });
+      if (rested()) finish();
+    });
   }
 
   /** The turn stopped on background agents: the run goes on, and its next Stop is heard from the hook. */
@@ -1635,6 +1718,12 @@ export class Orchestrator {
   }
 
   stop(taskId: number, who: KanbanCaller): Promise<string | void> {
+    // A phase waiting for its own busy worker holds the task's chain: cancel it first, and the stop is done when it has wound up.
+    const waiting = this.busyWaits.get(taskId);
+    if (waiting) {
+      waiting(who.name);
+      return this.serial(taskId, async () => undefined);
+    }
     // A task asking in its terminal is idle but its run still goes: the machine stops that too.
     return this.op(taskId, async (task) => {
       const queued = task.runState === 'queued' ? task.queuedRun : undefined;

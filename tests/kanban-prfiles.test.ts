@@ -6,7 +6,7 @@ import { DIFF_TOO_LARGE, diffFromFiles, type GhPrFile } from '../src/server/kanb
 // DOMPurify to set up); parseDiff itself needs no DOM.
 class Stub {}
 (globalThis as { window?: unknown }).window ??= { document: { nodeType: 9, createElement: () => ({}), implementation: { createHTMLDocument() {} } }, Element: Stub, Node: Stub };
-const { parseDiff } = await import('../src/client/ui/pulldiff.js');
+const { parseDiff } = await import('../src/client/ui/github/pulldiff.js');
 
 test('DIFF_TOO_LARGE matches the too-large message and nothing else gh says', () => {
   const big = "could not find pull request diff: HTTP 406: Sorry, the diff exceeded the maximum number of files (300). Consider using 'List pull requests files' API or locally cloning the repository instead. (https://api.github.com/repos/devellaoy/3d-kanban/pulls/24) PullRequest.diff too_large";

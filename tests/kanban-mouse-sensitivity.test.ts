@@ -2,8 +2,8 @@
 import test, { type TestContext } from 'node:test';
 import assert from 'node:assert/strict';
 import * as THREE from 'three';
-import { PlayerController } from '../src/client/player.js';
-import { loadSettings } from '../src/client/state.js';
+import { PlayerController } from '../src/client/player/index.js';
+import { loadSettings } from '../src/client/state/index.js';
 import type { Collider } from '../src/client/world/office.js';
 import { FLOOR, SLAB } from '../src/shared/layout.js';
 
