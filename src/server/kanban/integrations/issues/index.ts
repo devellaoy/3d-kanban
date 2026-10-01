@@ -13,6 +13,7 @@ import { githubProjectSource } from './github-project.js';
 import { jiraSource } from './jira.js';
 import type { IssueSource, IssueSourceIo } from './source.js';
 import { refreshWall, setWallProvider, toGhIssue, wallChanged } from './wall.js';
+import { claimIssueForTask } from './autoassign.js';
 import { issueActionHandlers, type IssuePatch } from './actions.js';
 import type { GhIssue, GhState } from '../../../../shared/protocol.js';
 
@@ -272,7 +273,12 @@ export function createIssues(ctx: KanbanContext, opts: IssuesOptions = {}) {
           const err = await ctx.engine.start(existing.id, c, m.deskId ? { deskId: m.deskId } : undefined);
           ctx.taskChanged(existing.id);
           wallChanged(m.project);
-          return ok(c, m.rid, { taskId: existing.id, existed: true, ...(typeof err === 'string' && err ? { startError: err } : { started: true }) });
+          const failed = typeof err === 'string' && err;
+          ok(c, m.rid, { taskId: existing.id, existed: true, ...(failed ? { startError: failed } : { started: true }) });
+          if (failed) return;
+          const listed = state(m.project).items.find((i) => i.key === m.issueKey) ?? (await refresh(m.project)).items.find((i) => i.key === m.issueKey);
+          if (listed) await claimIssueForTask(ctx, { patch, io }, m.project, withChange(m.project, listed), c);
+          return;
         }
         let issue = state(m.project).items.find((i) => i.key === m.issueKey);
         if (!issue) issue = (await refresh(m.project)).items.find((i) => i.key === m.issueKey);
@@ -281,6 +287,8 @@ export function createIssues(ctx: KanbanContext, opts: IssuesOptions = {}) {
         ctx.broadcast(message(m.project), m.project);
         wallChanged(m.project);
         ok(c, m.rid, { taskId: made.task.id, existed: made.existed, ...(made.startError ? { startError: made.startError } : made.started ? { started: true } : {}) });
+        // A start that failed takes nothing.
+        if (!made.existed && !made.startError) await claimIssueForTask(ctx, { patch, io }, m.project, withChange(m.project, issue), c);
       },
     },
     start() {

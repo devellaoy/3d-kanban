@@ -1,6 +1,6 @@
 import { test, mock } from 'node:test';
 import assert from 'node:assert/strict';
-import { ghAssign, ghComment, ghComments, ghPeople, ghStateTransition, ghStateTransitions } from '../src/server/kanban/integrations/issues/github-ops.js';
+import { ghAssign, ghClaimIfUnassigned, ghComment, ghComments, ghPeople, ghStateTransition, ghStateTransitions } from '../src/server/kanban/integrations/issues/github-ops.js';
 import { jiraAssign, jiraCall, jiraComment, jiraComments, jiraPeople, jiraTransition, jiraTransitions, textToAdf } from '../src/server/kanban/integrations/issues/jira-ops.js';
 import { PROJECT_WRITE_SCOPE_ERROR, boardTransitions, projectTransition, resolveBoards } from '../src/server/kanban/integrations/issues/project-ops.js';
 import { createIssues } from '../src/server/kanban/integrations/issues/index.js';
@@ -165,7 +165,7 @@ test('GitHub assign: the current assignees are read fresh and replaced by the on
   // Someone else: the others come off, the person goes on.
   assert.equal(await ghAssign(act({ gh, env: ENV }), 'o/r', 5, { id: 'pekka' }), 'pekka');
   assert.deepEqual(edits().at(-1), ['5', '-R', 'o/r', '--remove-assignee=old', '--remove-assignee=maija', '--add-assignee=pekka']);
-  assert.deepEqual(calls[0], { args: ['issue', 'view', '5', '-R', 'o/r', '--json', 'assignees'], env: ENV }, 'read first, with the person’s sign-in');
+  assert.deepEqual(calls[0], { args: ['issue', 'view', '5', '-R', 'o/r', '--json', 'assignees,state'], env: ENV }, 'read first, with the person’s sign-in');
   // Already there: only the others come off.
   assert.equal(await ghAssign(act({ gh }), 'o/r', 5, { id: 'MAIJA' }), 'MAIJA');
   assert.deepEqual(edits().at(-1), ['5', '-R', 'o/r', '--remove-assignee=old']);
@@ -192,6 +192,25 @@ test('GitHub assign me: the login is asked once per sign-in, and with the assign
   assert.ok(calls.slice(0, 2).every((c) => c.args[0] === 'api' || c.args[1] === 'view'), 'both reads before the edit');
   await ghAssign(act({ gh, env: { GH_CONFIG_DIR: '/h/other' } }), 'o/r', 5, { me: true });
   assert.equal(calls.filter((c) => c.args[0] === 'api').length, 2, 'another sign-in, another login');
+});
+
+test('GitHub claim: an issue nobody has gets the signed-in person, one with an assignee is left alone', async () => {
+  let assignees: string[] = [];
+  let state = 'OPEN';
+  const { gh, calls } = ghStub((args) => (args[1] === 'view' ? JSON.stringify({ state, assignees: assignees.map((login) => ({ login })) }) : args[0] === 'api' ? 'claimer\n' : ''));
+  const env = { GH_CONFIG_DIR: '/h/claim-a' };
+  assert.equal(await ghClaimIfUnassigned(act({ gh, env }), 'o/r', 7), 'claimer');
+  assert.deepEqual(calls.map((c) => c.args), [['issue', 'view', '7', '-R', 'o/r', '--json', 'assignees,state'], ['api', 'user', '--jq', '.login'], ['issue', 'edit', '7', '-R', 'o/r', '--add-assignee=claimer']]);
+  assert.ok(calls.every((c) => c.env === env), 'all under the person’s sign-in');
+  assignees = ['maija'];
+  calls.length = 0;
+  assert.equal(await ghClaimIfUnassigned(act({ gh, env: { GH_CONFIG_DIR: '/h/claim-b' } }), 'o/r', 7), undefined);
+  assert.deepEqual(calls.map((c) => c.args[1]), ['view', 'user'], 'the read and the login, no edit');
+  assignees = [];
+  state = 'CLOSED';
+  calls.length = 0;
+  assert.equal(await ghClaimIfUnassigned(act({ gh, env }), 'o/r', 7), undefined, 'closed (a board’s copy doesn’t say): left alone');
+  assert.deepEqual(calls.map((c) => c.args[1]).filter((x) => x === 'edit'), []);
 });
 
 test('GitHub close and reopen; a pull request’s state is left alone', async () => {
@@ -306,6 +325,9 @@ function setup(opts: { ghAs?: KanbanContext['ghAs']; status?: () => string; stat
   const stub = ghStub((args) => {
     const query = args.find((a) => a.startsWith('query=')) ?? '';
     if (args[0] === 'issue' && args[1] === 'view' && args.at(-1) === 'state') return JSON.stringify({ state: opts.state?.() ?? 'OPEN' });
+    // A task made from the issue takes it (autoassign.ts): nobody has it, and gh is signed in as panu.
+    if (args[0] === 'issue' && args[1] === 'view' && args.at(-1) === 'assignees,state') return JSON.stringify({ assignees: [], state: opts.state?.() ?? 'OPEN' });
+    if (args[0] === 'api' && args[1] === 'user') return 'panu\n';
     if (args[0] === 'issue' && args[1] === 'list') return JSON.stringify([item(5, 'Five')]);
     if (query.includes('updateProjectV2ItemFieldValue')) return '{"data":{}}';
     if (query.includes('projectItems')) return issueItems(board({ status: status() }));
@@ -410,6 +432,7 @@ test('a status change shows at once everywhere, says who made it, and is put on 
   const off = onWallIssues('app', () => void wallHeard++);
   ctx.changed.length = 0;
   ctx.sent.length = 0;
+  ctx.toasts.length = 0;
   await ws['kanban.issue.transition']!(c, { t: 'kanban.issue.transition', project: 'app', issueKey: 'gh:o/r#5', transitionId: 'p:PVT_1:PVTI_1:PVTSSF_1:a4', rid: 'w1' });
   off();
   assert.deepEqual(last(c, 'kanban.ok'), { t: 'kanban.ok', rid: 'w1' });

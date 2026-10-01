@@ -23,6 +23,8 @@ export interface KanbanCaller {
 export interface KanbanClient extends KanbanCaller {
   clientId: string;
   send(msg: KanbanServerMsg): void;
+  /** A warning toast to this connection only. */
+  warn?(text: string): void;
 }
 
 /** The worker a hook-server request came from (bearer token already checked). */

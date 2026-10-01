@@ -79,9 +79,10 @@ export function makeCtx(defs: FloorDef[] = [], opts: { start?: (id: number) => s
 export const WHO: KanbanCaller = { name: 'Tester', admin: true, accountId: 'acc1' };
 
 /** A browser connection that keeps what it's sent. */
-export function client(admin = true, accountId?: string): KanbanClient & { got: KanbanServerMsg[] } {
+export function client(admin = true, accountId?: string): KanbanClient & { got: KanbanServerMsg[]; warned: string[] } {
   const got: KanbanServerMsg[] = [];
-  return { clientId: 'c1', name: 'Tester', admin, ...(accountId ? { accountId } : {}), got, send: (m) => void got.push(m) };
+  const warned: string[] = [];
+  return { clientId: 'c1', name: 'Tester', admin, ...(accountId ? { accountId } : {}), got, warned, send: (m) => void got.push(m), warn: (text) => void warned.push(text) };
 }
 
 export function def(id: string, dir: string, extra: Partial<FloorDef> = {}): FloorDef {

@@ -12,7 +12,7 @@ import type { KanbanClientMsg, KanbanClientType } from '../../../../shared/kanba
 import type { IssueAssignTo, IssueTransition } from '../../../../shared/kanban/issueops.js';
 import type { IssueSourceConfig, NormalizedIssue } from '../../../../shared/kanban/types.js';
 import { parseGhKey } from '../../../../shared/kanban/issuecard.js';
-import type { KanbanClient, KanbanContext, KanbanPlugin } from '../../registry.js';
+import type { KanbanCaller, KanbanClient, KanbanContext, KanbanPlugin } from '../../registry.js';
 import { fail, ok } from '../util.js';
 import { GH_REOPEN, ghAssign, ghComment, ghComments, ghIssueState, ghPeople, ghStateTransition, ghStateTransitions } from './github-ops.js';
 import { jiraAssign, jiraComment, jiraComments, jiraPeople, jiraTransition, jiraTransitions } from './jira-ops.js';
@@ -44,7 +44,7 @@ type Target = { kind: 'jira'; site: string } | { kind: 'draft'; itemId: string }
 export const DRAFT_NO_COMMENTS = 'Draft issues have no comments';
 export const DRAFT_NO_ASSIGNEE = 'Convert the draft to an issue on GitHub to assign it';
 
-function route(sources: IssueSourceConfig[], issue: NormalizedIssue): Target | string {
+export function route(sources: IssueSourceConfig[], issue: NormalizedIssue): Target | string {
   if (issue.source === 'jira') {
     const jira = sources.find((s) => s.kind === 'jira' && s.id === issue.sourceId) ?? sources.find((s) => s.kind === 'jira');
     return jira && jira.kind === 'jira' ? { kind: 'jira', site: jira.site } : 'The project has no Jira source';
@@ -58,6 +58,25 @@ function route(sources: IssueSourceConfig[], issue: NormalizedIssue): Target | s
     return { kind: 'gh', ...gh, isPr: /\/pull\/\d+/.test(issue.url), closed };
   }
   return `${issue.key} isn't an issue the office can act on`;
+}
+
+/** The identity GitHub runs under for a person, as taking a card does: their own sign-in, else the office's gh (`shared`); the reason when they can't have one. */
+export function ghIoFor(ctx: KanbanContext, base: IssueSourceIo, caller: KanbanCaller): IssueActIo | string {
+  const as = ctx.ghAs?.(caller.accountId);
+  if (typeof as === 'string') return as;
+  const env = as?.env;
+  return { ...base, ...(env ? { env } : {}), who: caller.name, shared: !env };
+}
+
+/** A write went through: show it (the cached issue, the floor toast) and say who did it on the issue's task. */
+export function announce(ctx: KanbanContext, patchIssue: ActionDeps['patch'], project: string, issueKey: string, emoji: string, line: string, patch?: IssuePatch): void {
+  if (patch) patchIssue(project, issueKey, patch);
+  ctx.toast(project, `${emoji} ${line}`, 'info');
+  const task = ctx.repo.findTaskByTicket(project, issueKey);
+  if (task) {
+    ctx.repo.addComment({ taskId: task.id, authorKind: 'system', authorName: 'Kanban', kind: 'status', text: line });
+    ctx.taskChanged(task.id);
+  }
 }
 
 const projectTarget = (t: Extract<Target, { kind: 'draft' | 'gh' }>): ProjectTarget => (t.kind === 'draft' ? { itemId: t.itemId } : { repo: t.repo, number: t.number });
@@ -84,11 +103,10 @@ export function issueActionHandlers(ctx: KanbanContext, deps: ActionDeps): NonNu
       let io: IssueActIo;
       if (target.kind === 'jira') io = { ...base, who: c.name, shared: true };
       else {
-        // GitHub runs as the person, as taking a card does. A write without a sign-in of theirs says why not; a read goes by the office's gh.
-        const as = ctx.ghAs?.(c.accountId);
-        if (typeof as === 'string' && write) return fail(c, m.rid, as);
-        const env = typeof as === 'string' ? undefined : as?.env;
-        io = { ...base, ...(env ? { env } : {}), who: c.name, shared: !env };
+        // GitHub runs as the person. A write without a sign-in of theirs says why not; a read goes by the office's gh.
+        const own = ghIoFor(ctx, base, c);
+        if (typeof own === 'string' && write) return fail(c, m.rid, own);
+        io = typeof own === 'string' ? { ...base, who: c.name, shared: true } : own;
       }
       try {
         await go(c, m, { issue, target, io, boards: sources.filter((s): s is ProjectConfig => s.kind === 'github-project') });
@@ -100,13 +118,7 @@ export function issueActionHandlers(ctx: KanbanContext, deps: ActionDeps): NonNu
   /** A write went through: show it, say who did it (floor toast, the issue's task), and answer. */
   const wrote = (c: KanbanClient, m: { project: string; issueKey: string; rid?: string }, issue: NormalizedIssue, emoji: string, line: string, patch?: IssuePatch) => {
     deps.remember(m.project, issue);
-    if (patch) deps.patch(m.project, m.issueKey, patch);
-    ctx.toast(m.project, `${emoji} ${line}`, 'info');
-    const task = ctx.repo.findTaskByTicket(m.project, m.issueKey);
-    if (task) {
-      ctx.repo.addComment({ taskId: task.id, authorKind: 'system', authorName: 'Kanban', kind: 'status', text: line });
-      ctx.taskChanged(task.id);
-    }
+    announce(ctx, deps.patch, m.project, m.issueKey, emoji, line, patch);
     ok(c, m.rid);
   };
 
