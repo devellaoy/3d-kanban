@@ -2,7 +2,7 @@
 // or asks questions, a review's verdict, the pull requests a PR turn opened, and whether the turn was
 // cut short by a usage limit or the network. Pure: the orchestrator hands in the text it read.
 
-import { PLAN_READY, PR_LINE, QUESTIONS_HEADING, REVIEW_LINE } from '../../../shared/kanban/prompts.js';
+import { PLAN_READY, PR_LINE, PR_URL, QUESTIONS_HEADING, REVIEW_LINE } from '../../../shared/kanban/prompts.js';
 import type { ReviewVerdict } from '../../../shared/kanban/types.js';
 
 export type PlanOutcome = 'ready' | 'questions';
@@ -126,15 +126,28 @@ export interface PrLine {
   number?: number;
 }
 
-/** The pull requests a PR turn reported, one `PR: <url>` line each (duplicates once). */
+const GH_PULL = /^https?:\/\/github\.com\/([\w.-]+\/[\w.-]+)\/pull\/(\d+)/i;
+
+/** A PR URL as the office keeps it: a github.com one is reduced to its pull request (no /files, #..., ?...). */
+function prLine(url: string): PrLine {
+  const gh = GH_PULL.exec(url);
+  return gh ? { url: `https://github.com/${gh[1]}/pull/${gh[2]}`, repo: gh[1], number: Number(gh[2]) } : { url };
+}
+
+/**
+ * The pull requests a PR turn reported, one `PR: <url>` line each (see PR_LINE; duplicates once,
+ * first appearance first). A URL anywhere else in the text isn't reported: the board sync links a
+ * PR from the task's branch. Quotes don't count.
+ */
 export function prLines(text: string): PrLine[] {
   const out = new Map<string, PrLine>();
   for (const l of prMarkerLines(text)) {
-    const m = PR_LINE.exec(l.replace(/[.,;)]+$/, ''));
-    if (!m) continue;
-    const url = m[1];
-    const gh = /^https?:\/\/github\.com\/([\w.-]+\/[\w.-]+)\/pull\/(\d+)/.exec(url);
-    out.set(url, gh ? { url, repo: gh[1], number: Number(gh[2]) } : { url });
+    const named = PR_LINE.exec(l);
+    const u = named ? PR_URL.exec(named[1]) : null;
+    if (!u) continue;
+    const hit = prLine((u[1] ?? u[2] ?? u[3]).replace(/[.,;)>\]]+$/, ''));
+    const key = hit.url.toLowerCase();
+    if (!out.has(key)) out.set(key, hit);
   }
   return [...out.values()];
 }

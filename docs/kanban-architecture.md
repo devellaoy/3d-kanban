@@ -154,13 +154,30 @@ allowed: `todo → in_progress` (= start), `waiting|review → done`, `done → 
 - Markers (appended by the engine as a non-editable contract block, never user-editable):
   - plan: a line `PLAN READY` → ready; a `QUESTIONS:` heading → questions; Claude's `ExitPlanMode` → ready;
     none of these, but ≥ 2 `?` and no absolute `.md` path → questions (replan); otherwise ready.
-  - pr: one `PR: <url>` line per pull request opened or updated; each is linked to the task (`pr_links`).
+  - pr: one `PR: <url>` line per pull request opened or updated. The line starts with `PR` or `Pull request`
+    (optionally `created`/`opened`/`updated`; a list bullet and bold are allowed) and a colon; the URL is bare,
+    `<url>` or a Markdown link, text after it is fine, any http(s) host (`PR_LINE` in `shared/kanban/prompts.ts`
+    is the one rule). GitHub URLs are reduced to `…/pull/<n>` (no `/files`, `#…`, `?…`) and duplicates count once
+    (case-insensitively). Such a PR is linked to the task (`pr_links`) only when it is a GitHub PR of one of the
+    task's repositories and no other task, of any project, has it (by repository, number or URL). A URL anywhere
+    else in the answer is not reported at all.
+  - Branch linking: whatever the answer says, when the floor's PR board syncs (`syncPrStates`) an open or draft PR
+    is linked to the task whose branch is its head branch (the task's per-repository branch; the primary
+    repository falls back to the task's `branch`), in any phase. Not linked: merged or closed PRs; PRs created
+    before the task; a head that is an integration branch (`main`, `master`, `develop`, `dev`, `trunk`) or the
+    repository's default branch (`gh repo view`); a branch owned by several active tasks, in any project (done and
+    archived tasks own none); a PR that is already some task's, in any project (by repository, with a link
+    lacking one resolved through its repoId, number or URL); a fork's PR with the same branch name (`gh pr view
+    --json isCrossRepository` must say false). The gh answers are cached (a PR's head repository never changes),
+    a failed question isn't repeated for 5 minutes and links nothing meanwhile. Each such link is a `pr.linked`
+    event (`{ repo, number, by: 'branch' }`). A `pr`/`pr-fix` turn's end asks the floor's boards for the task's git
+    repositories to refresh at once, so the link shows up quickly.
   - review: read from the final answer's last 3 non-empty lines only: the **last** of them matching
     `^\s*REVIEW:\s*(APPROVED|CHANGES_REQUESTED)\s*$` as a line of its own (emphasis allowed) decides; none →
     changes requested.
   - A review verdict never counts inside a fenced code block (```` ``` ```` / `~~~`, an unclosed one runs to
     the end) or in a `>` quote. Plan markers ignore quotes and *closed* code blocks, but an unclosed fence
-    hides nothing after it. `PR:` lines ignore only quotes (an agent may list its PRs in a code block).
+    hides nothing after it. PR lines ignore only quotes (an agent may list its PRs in a code block).
 - Plan approval: `auto` (ready → implement) or `manual` (ready → `waiting` until the user approves).
 - Review: `rounds` (1–10), `reReviewLastFix` (default true). A reviewer is a separate worker (its own tool,
   model, effort) sharing the task's worktree (spawned with `reuse`), sent home with cleanup `keep`.
@@ -424,4 +441,4 @@ closes the database.
 (`engine.pr(taskId, 'create')`); any other agent worker gets the layered `kanban.pr.create` prompt (with the `pr`
 contract) typed into its session, or resumed with it when it's asleep. Only a shell worker answers `'fallback'`
 (`PR_FALLBACK`), and only then does upstream's own `openPr` (a draft PR without an agent) run. PR states of the
-tasks' linked PRs follow the floor's PR board (`floorPulled` → integrations/pulls `syncPrStates`).
+tasks' linked PRs follow the floor's PR board (`floorPulled` → integrations/pulls `syncPrStates`): their states, and PRs from an active task's branch that no task has yet (and that aren't a fork's) get linked to it.

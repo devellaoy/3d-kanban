@@ -15,7 +15,7 @@ import { gh } from '../../../github.js';
 import { floorPullsListeners, type PulledFloor } from './board.js';
 import type { GhRunner } from '../issues/source.js';
 import { fail, ok } from '../util.js';
-import { findBundle, prState, type BundleBy, type RepoPulls } from './bundle.js';
+import { branchPrs, findBundle, prOwners, prState, type BundleBy, type RepoPulls } from './bundle.js';
 
 const FIELDS = 'number,title,url,state,isDraft,headRefName';
 
@@ -24,7 +24,13 @@ export type ReviewPr = PrRef & { title?: string; url?: string; branch?: string }
 
 export interface PullsOptions {
   gh?: GhRunner;
+  /** The clock, for the back-off after a failed gh question. */
+  now?: () => number;
 }
+
+/** How long a gh question that failed isn't asked again, and how many answers are kept. */
+const ASK_BACKOFF_MS = 5 * 60_000;
+const ASK_KEPT = 2000;
 
 /** A project's GitHub repositories: owner/name and ProjectRepo. */
 function githubRepos(ctx: KanbanContext, project: string): (ProjectRepo & { remote: string })[] {
@@ -41,6 +47,7 @@ function claudeEffort(e: KanbanEffort | undefined): AgentEffort | undefined {
 const isOpen = (p: { state: string }) => p.state !== 'MERGED' && p.state !== 'CLOSED';
 
 export function createPullsParts(ctx: KanbanContext, opts: PullsOptions = {}) {
+  const now = opts.now ?? Date.now;
   const runGh = opts.gh ?? ((args: string[], cwd: string, timeout?: number) => gh(args, cwd, timeout));
 
   /** A repository's PRs: the open floor's board list when it has one, else straight from gh. */
@@ -165,14 +172,68 @@ export function createPullsParts(ctx: KanbanContext, opts: PullsOptions = {}) {
   };
 
   /**
-   * A floor's PR board has fresh lists: its tasks' linked PRs take the states GitHub has for them
-   * now (a PR is matched by repository and number, else by URL), and the browsers hear about the
-   * cards that changed. Returns those tasks' ids.
+   * A gh question asked once per key: its answer kept (the newest ASK_KEPT), a question in flight
+   * shared, a failure (or no answer) not asked again for ASK_BACKOFF_MS. Resolves to undefined
+   * when there is no answer.
    */
-  const syncPrStates = (project: string, pulls: Pick<GhPull, 'number' | 'url' | 'state' | 'isDraft' | 'repo'>[]): number[] => {
+  const asked = <T>(ask: (key: string) => Promise<T | undefined>) => {
+    const known = new Map<string, T>();
+    const flying = new Map<string, Promise<T | undefined>>();
+    const failed = new Map<string, number>();
+    return {
+      get(key: string): Promise<T | undefined> {
+        if (known.has(key)) return Promise.resolve(known.get(key));
+        const going = flying.get(key);
+        if (going) return going;
+        const at = failed.get(key);
+        if (at !== undefined && now() - at < ASK_BACKOFF_MS) return Promise.resolve(undefined);
+        const p = ask(key)
+          .catch(() => undefined)
+          .then((v) => {
+            if (v === undefined) failed.set(key, now());
+            else {
+              failed.delete(key);
+              known.set(key, v);
+              if (known.size > ASK_KEPT) known.delete(known.keys().next().value!);
+            }
+            flying.delete(key);
+            return v;
+          });
+        flying.set(key, p);
+        return p;
+      },
+      clear() {
+        known.clear();
+        flying.clear();
+        failed.clear();
+      },
+    };
+  };
+  /** Whether a PR's head is in another repository (a fork); that never changes. Key: owner/name#number, lower-cased. */
+  const forks = asked(async (key) => {
+    const at = key.lastIndexOf('#');
+    const v = (JSON.parse(await runGh(['pr', 'view', key.slice(at + 1), '-R', key.slice(0, at), '--json', 'isCrossRepository'], ctx.dataDir)) as { isCrossRepository?: unknown }).isCrossRepository;
+    return typeof v === 'boolean' ? v : undefined;
+  });
+  /** A repository's default branch, by gh. Key: owner/name, lower-cased. */
+  const defaultBranches = asked(async (repo) => (await runGh(['repo', 'view', repo, '--json', 'defaultBranchRef', '--jq', '.defaultBranchRef.name'], ctx.dataDir)).trim() || undefined);
+  let stopped = false;
+
+  /**
+   * A floor's PR board has fresh lists: its tasks' linked PRs take the states GitHub has for them
+   * now (a PR is matched by repository and number, else by URL), and the open PRs from an active
+   * task's branch that no task of any project has linked yet are linked to it (branchPrs: whatever
+   * phase opened them, however the agent worded its answer), once gh says the head isn't a fork's
+   * nor the repository's default branch (a repository gh can't answer for waits for the next
+   * sync). Each such link is an event on the task. The browsers hear about the cards that changed.
+   * Returns those tasks' ids.
+   */
+  const syncPrStates = async (project: string, pulls: (Pick<GhPull, 'number' | 'url' | 'state' | 'isDraft' | 'repo'> & { headRefName?: string; createdAt?: string })[]): Promise<number[]> => {
+    if (!pulls.length) return [];
     const links = ctx.repo.prLinksOfProject(project);
-    if (!links.length || !pulls.length) return [];
-    const repos = ctx.repos(project);
+    const reposMemo = new Map<string, ProjectRepo[]>();
+    const reposOf = (proj: string) => reposMemo.get(proj) ?? (reposMemo.set(proj, ctx.repos(proj)), reposMemo.get(proj)!);
+    const repos = reposOf(project);
     const home = repos.find((r) => r.primary)?.remote;
     const remoteOf = (repoId: string) => repos.find((r) => r.id === repoId)?.remote;
     const changed = new Set<number>();
@@ -182,11 +243,27 @@ export function createPullsParts(ctx: KanbanContext, opts: PullsOptions = {}) {
       if (!p) continue;
       if (ctx.repo.setPrLinkState(l.taskId, l.repoId, l.number, prState(p))) changed.add(l.taskId);
     }
+    // Some task's already, in any project: a link names its repository, or only its repoId, or its URL (prOwners).
+    const linked = (pr: { repo: string; number: number; url: string }) => prOwners(ctx.repo.prLinksMatching(pr.number, pr.url), (proj, repoId) => reposOf(proj).find((r) => r.id === repoId)?.remote, pr).length > 0;
+    const candidates = branchPrs(project, () => ctx.repo.activeTaskBranches(), pulls, reposOf, home, linked);
+    const own = await Promise.all(
+      candidates.map(async (b) => {
+        const [fork, base] = await Promise.all([forks.get(`${b.repo.toLowerCase()}#${b.pull.number}`), defaultBranches.get(b.repo.toLowerCase())]);
+        return fork === false && base !== undefined && base !== b.branch ? b : undefined;
+      }),
+    );
+    if (stopped) return [...changed];
+    for (const b of own) {
+      if (!b || linked({ repo: b.repo, number: b.pull.number, url: b.pull.url })) continue;
+      ctx.repo.upsertPrLink(b.taskId, { repoId: b.repoId, repo: b.repo, number: b.pull.number, url: b.pull.url, state: prState(b.pull), branch: b.branch });
+      ctx.repo.appendEvent(b.taskId, 'pr.linked', { repo: b.repo, number: b.pull.number, by: 'branch' });
+      changed.add(b.taskId);
+    }
     for (const id of changed) ctx.taskChanged(id);
     return [...changed];
   };
 
-  const onBoard = (floor: PulledFloor) => void syncPrStates(floor.id, floor.pullsState().items);
+  const onBoard = (floor: PulledFloor) => void syncPrStates(floor.id, floor.pullsState().items).catch((err) => console.error("agent-office: syncing a floor's linked pull requests failed:", err));
 
   const api: KanbanPullsApi = {
     async bundle(project, by, o) {
@@ -217,10 +294,14 @@ export function createPullsParts(ctx: KanbanContext, opts: PullsOptions = {}) {
       },
     },
     start() {
+      stopped = false;
       floorPullsListeners.add(onBoard);
     },
     stop() {
+      stopped = true;
       floorPullsListeners.delete(onBoard);
+      forks.clear();
+      defaultBranches.clear();
     },
   };
   return { api, plugin, checkReview, bundleItems, syncPrStates, prState };
