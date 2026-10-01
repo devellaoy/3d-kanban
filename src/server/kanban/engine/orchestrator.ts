@@ -30,7 +30,7 @@ import type { TaskAgentAdapter, TurnResult } from './adapters/types.js';
 import { Composer, isFolderProject, reportDir, reposText, skillPhase, taskRepos, workerReposText, type ComposeExtra } from './compose.js';
 import { next, type Effect, type LastRun, type MachineEvent, type MachineState, type PromptKind } from './machine.js';
 import { backoffMs, looksInterrupted, planOutcome, prLines, resetTime, reviewFindings, reviewVerdict, stripPlanMarkers } from './markers.js';
-import { branchExists, currentBranch, hasChanges, missingFolders } from './workspace.js';
+import { branchExists, currentBranch, hasChanges, missingFolders, workspaceFingerprint } from './workspace.js';
 
 export interface EngineOptions {
   /** How often due retries, queued tasks and newly opened floors are looked at (60 s). */
@@ -582,6 +582,15 @@ export class Orchestrator {
 
   // --- Applying the machine -----------------------------------------------------------------------
 
+  /** The task's workspace as it is now (workspaceFingerprint); undefined when there is no git to ask. */
+  private async fingerprint(task: KanbanTask): Promise<string | undefined> {
+    const floor = this.ctx.floor(task.project);
+    if (this.folder(task.project) || !floor || !task.workspace) return undefined;
+    const print = await workspaceFingerprint(floor.dir, task.workspace);
+    if (print === undefined) console.error(`agent-office: couldn't fingerprint kanban task #${task.id}'s workspace, so a comment's work on it is always reviewed`);
+    return print;
+  }
+
   /** Feeds an event to the machine, saves the task's new state and carries out the effects. */
   private async apply(taskId: number, e: MachineEvent, via: Via = {}): Promise<string | undefined> {
     const task = this.ctx.repo.getTask(taskId);
@@ -598,6 +607,7 @@ export class Orchestrator {
       waitingReason: s.waitingReason,
       waitingText: s.waitingText,
       reviewRound: s.reviewRound,
+      ...(e.type === 'start' && task.handoffFingerprint ? { handoffFingerprint: null } : {}),
       retryAt: s.retryAt,
       retryAttempts: s.retryAttempts,
       // Out of the queue, however it went (started, stopped): its queued run is no more.
@@ -609,6 +619,11 @@ export class Orchestrator {
     for (const effect of tr.effects) {
       const err = await this.effect(taskId, effect, via);
       if (err && !error) error = err;
+    }
+    // Last, so the git calls delay none of the other effects: what the user got in the Review column.
+    if (tr.effects.some((x) => x.type === 'finished')) {
+      const fresh = this.ctx.repo.getTask(taskId);
+      if (fresh?.status === 'review') this.update(taskId, { handoffFingerprint: (await this.fingerprint(fresh)) ?? null });
     }
     return error;
   }
@@ -1554,7 +1569,11 @@ export class Orchestrator {
       case 'resume':
         say('result', text);
         this.update(task.id, { summary: clip(text, SUMMARY_MAX) });
-        event = { type: 'resumed', changes: task.type === 'investigate' ? false : await changes(), pending };
+        if (task.type !== 'investigate' && task.handoffFingerprint) {
+          // Reviewed again only when something differs from how the task last came to Review.
+          const now = await this.fingerprint(task);
+          event = { type: 'resumed', changes: now === undefined || now !== task.handoffFingerprint, since: 'handoff', pending };
+        } else event = { type: 'resumed', changes: task.type === 'investigate' ? false : await changes(), pending };
         break;
       case 'pr':
       case 'pr-fix': {

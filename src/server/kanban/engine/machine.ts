@@ -4,7 +4,8 @@
 // hands the outcome in as an event; this decides the column, the phase and the next run.
 //
 // The flow: plan → (waiting for answers or approval) → implement → review round k ⇄ fix → review
-// column. A comment resumes the work; a resume turn is reviewed again when the task has review on.
+// column. A comment resumes the work; a resume turn is reviewed again when the task has review on,
+// unless it changed nothing since the task last came to Review.
 
 import type { KanbanRole, PlanApproval, RunPhase, RunState, TaskStatus, TaskType, WaitingReason } from '../../../shared/kanban/types.js';
 import { KANBAN_PROMPT_DEFS } from '../../../shared/kanban/prompt-defs.js';
@@ -81,8 +82,8 @@ export type MachineEvent =
   | { type: 'reviewed'; round?: number; approved: boolean; pending?: boolean }
   /** A fix turn ended (round undefined: after a manual round). */
   | { type: 'fixed'; round?: number; changes: boolean; pending?: boolean }
-  /** A resume turn (a comment worked on) ended. */
-  | { type: 'resumed'; changes: boolean; pending?: boolean }
+  /** A resume turn (a comment worked on) ended. `since` 'handoff': `changes` counts from when the task last came to Review rather than from the base branch. */
+  | { type: 'resumed'; changes: boolean; since?: 'handoff'; pending?: boolean }
   /** A pr or pr-fix turn ended. */
   | { type: 'prDone'; pending?: boolean }
   /** A compact turn ended. */
@@ -205,10 +206,10 @@ function deliverPending(s: MachineState, planning: boolean, extra: Effect[] = []
 }
 
 /** The implementation (or a comment's work) is done: review it, or hand it to the user. */
-function afterWork(s: MachineState, t: MachineTask, changes: boolean): { state: MachineState; effects: Effect[] } {
+function afterWork(s: MachineState, t: MachineTask, changes: boolean, since?: 'handoff'): { state: MachineState; effects: Effect[] } {
   if (t.type === 'investigate') return toReview(s);
   if (!t.useReview) return toReview(s);
-  if (!changes) return toReview(s, [{ type: 'note', text: 'Nothing changed against the base branch in any repository, so there was nothing to review.' }]);
+  if (!changes) return toReview(s, [{ type: 'note', text: since === 'handoff' ? 'Nothing changed since the task last came to Review, so there was nothing new to review.' : 'Nothing changed against the base branch in any repository, so there was nothing to review.' }]);
   return ok(running(s, 'review', { reviewRound: 1, retryAttempts: 0 }), { type: 'run', phase: 'review', role: 'reviewer', prompt: 'review', round: 1 });
 }
 
@@ -254,7 +255,7 @@ export function next(s: MachineState, e: MachineEvent, t: MachineTask, cfg: Mach
     case 'resumed':
       if (!automated) return ok({ ...s, runState: 'idle' });
       if (e.pending) return deliverPending(s, false);
-      return afterWork(s, t, e.changes);
+      return afterWork(s, t, e.changes, e.type === 'resumed' ? e.since : undefined);
 
     case 'reviewed': {
       if (!automated) return ok({ ...s, runState: 'idle' }, { type: 'reviewerHome' });

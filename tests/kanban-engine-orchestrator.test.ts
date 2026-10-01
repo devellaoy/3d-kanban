@@ -524,3 +524,80 @@ test('a run held for background agents that never report back goes on after back
   assert.equal(done.summary, 'Waiting for the helper agent.');
   assert.ok(fx.repo.listComments(task.id).comments.some((c) => c.authorKind === 'system' && /Waited 1 s for its background agents/.test(c.text)));
 });
+
+const reviewRuns = (fx: Awaited<ReturnType<typeof engineFixture>>, id: number) => fx.repo.listRuns(id).filter((r) => r.phase === 'review').length;
+
+/** A task through implement and an approving review into the Review column. */
+async function reviewed(fx: Awaited<ReturnType<typeof engineFixture>>) {
+  fx.setRules([
+    { when: 'Implement kanban task', reply: 'Done.', commit: 'Work' },
+    { when: 'You are reviewing the work', reply: 'Fine.\n\nREVIEW: APPROVED' },
+  ]);
+  const task = fx.newTask({ usePlan: false });
+  assert.equal(await fx.engine.start(task.id, ADA), undefined);
+  return fx.waitTask(task.id, (x) => x.status === 'review' && x.runState === 'idle', 'the review column', 30_000);
+}
+
+async function comment(fx: Awaited<ReturnType<typeof engineFixture>>, id: number, text: string) {
+  const c = fx.repo.addComment({ taskId: id, authorKind: 'user', authorName: 'Ada', text }).comment;
+  await fx.engine.commented(id, c.id, ADA);
+}
+
+test('a comment whose work changes nothing since the task came to Review goes back to Review without a new review round', async (t) => {
+  const fx = await engineFixture();
+  t.after(() => fx.close());
+  const done = await reviewed(fx);
+  await fx.waitTask(done.id, (x) => !!x.handoffFingerprint, 'the stored fingerprint');
+  fx.setRules([{ when: 'commented on task', reply: 'It already works that way.' }]);
+  await comment(fx, done.id, 'Does it handle logout?');
+  await fx.waitTask(done.id, (x) => x.status === 'review' && x.runState === 'idle' && fx.repo.listRuns(done.id).some((r) => r.phase === 'resume' && r.status === 'succeeded'), 'the resume ended', 30_000);
+  assert.equal(reviewRuns(fx, done.id), 1, 'no new review round');
+  assert.ok(fx.repo.listComments(done.id).comments.some((c) => c.authorKind === 'system' && /nothing new to review/.test(c.text)));
+});
+
+test('a comment whose work commits is reviewed again, and its arrival stores a new fingerprint', async (t) => {
+  const fx = await engineFixture();
+  t.after(() => fx.close());
+  const done = await reviewed(fx);
+  const first = (await fx.waitTask(done.id, (x) => !!x.handoffFingerprint, 'the stored fingerprint')).handoffFingerprint;
+  fx.setRules([{ when: 'commented on task', reply: 'Renamed.', commit: 'Rename' }, { when: 'You are reviewing the work', reply: 'Good.\n\nREVIEW: APPROVED' }]);
+  await comment(fx, done.id, 'Rename it.');
+  await fx.waitTask(done.id, (x) => x.status === 'review' && x.runState === 'idle' && reviewRuns(fx, x.id) === 2, 'the second review', 30_000);
+  await fx.waitTask(done.id, (x) => !!x.handoffFingerprint && x.handoffFingerprint !== first, 'a new fingerprint for the new arrival');
+});
+
+test('a manual round that is stopped, then a comment that changes nothing, runs no review', async (t) => {
+  const fx = await engineFixture();
+  t.after(() => fx.close());
+  const done = await reviewed(fx);
+  await fx.waitTask(done.id, (x) => !!x.handoffFingerprint, 'the stored fingerprint');
+  fx.setRules([{ when: 'You are reviewing the work', reply: 'Slow.\n\nREVIEW: APPROVED', delayMs: 20_000 }]);
+  assert.equal(await fx.engine.review(done.id, ADA), undefined);
+  await fx.waitTask(done.id, (x) => x.phase === 'review' && x.runState === 'running', 'the manual round', 20_000);
+  await new Promise((r) => setTimeout(r, 300));
+  assert.equal(await fx.engine.stop(done.id, ADA), undefined);
+  await fx.waitTask(done.id, (x) => x.status === 'waiting' && x.waitingReason === 'stopped', 'the stop');
+  const before = reviewRuns(fx, done.id);
+  fx.setRules([{ when: 'commented on task', reply: 'Nothing to change.' }]);
+  await comment(fx, done.id, 'Anything else?');
+  await fx.waitTask(done.id, (x) => x.status === 'review' && x.runState === 'idle', 'back in Review', 30_000);
+  assert.equal(reviewRuns(fx, done.id), before, 'no review run after the comment');
+});
+
+test('a resume that ran before the task ever came to Review is judged against the base branch, so it is reviewed', async (t) => {
+  const fx = await engineFixture();
+  t.after(() => fx.close());
+  fx.setRules([
+    { when: 'Implement kanban task', reply: 'Implemented.', commit: 'Work', delayMs: 1200 },
+    { when: 'commented on task', reply: 'Nothing more to do.' },
+    { when: 'You are reviewing the work', reply: 'Fine.\n\nREVIEW: APPROVED' },
+  ]);
+  const task = fx.newTask({ usePlan: false, useReview: true });
+  assert.equal(await fx.engine.start(task.id, ADA), undefined);
+  await fx.waitTask(task.id, (x) => x.runState === 'running', 'the implement turn');
+  await comment(fx, task.id, 'One more thing.');
+  assert.equal(fx.task(task.id).handoffFingerprint, undefined);
+  await fx.waitTask(task.id, (x) => x.status === 'review' && x.runState === 'idle' && fx.repo.listRuns(task.id).some((r) => r.phase === 'resume' && r.status === 'succeeded') && reviewRuns(fx, x.id) >= 1, 'a review after the resume', 40_000);
+  const phases = fx.repo.listRuns(task.id).map((r) => r.phase);
+  assert.ok(phases.includes('resume') && phases.lastIndexOf('review') > phases.indexOf('resume'), 'a review run comes after the resume run');
+});

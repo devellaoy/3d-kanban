@@ -196,6 +196,8 @@ export interface KanbanTask {
   createdByAccount?: string;
   /** The run waiting for a desk or for room under the office's worker limit (runState `queued`). */
   queuedRun?: QueuedRun;
+  /** What its workspace held when it last came to the Review column (workspaceFingerprint): a comment's work that leaves it so is not reviewed again. */
+  handoffFingerprint?: string;
 }
 
 /** A run the engine couldn't hire a worker for yet (KanbanTask.queuedRun): started as it is once there's room. */

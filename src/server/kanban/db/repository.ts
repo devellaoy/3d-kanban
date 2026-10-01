@@ -154,6 +154,7 @@ const TASK_COLUMNS: Record<string, string> = {
   deskId: 'desk_id',
   createdByAccount: 'created_by_account',
   queuedRun: 'queued_run',
+  handoffFingerprint: 'handoff_fingerprint',
 };
 const JSON_FIELDS = new Set(['overrides', 'workspace', 'pendingMessages', 'flags', 'tags', 'queuedRun']);
 const BOOL_FIELDS = new Set(['usePlan', 'useReview']);
@@ -761,6 +762,7 @@ export class KanbanRepository {
       deskId: opt(r.desk_id),
       createdByAccount: opt(r.created_by_account),
       queuedRun: json<KanbanTask['queuedRun']>(r.queued_run, undefined),
+      handoffFingerprint: opt(r.handoff_fingerprint),
       askingKind: r.waiting_reason === 'agent_asking' ? this.askingKinds.get(id) : undefined,
     };
     for (const k of Object.keys(t) as (keyof KanbanTask)[]) if (t[k] === undefined) delete t[k];
