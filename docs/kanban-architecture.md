@@ -440,7 +440,7 @@ Compatibility for existing ai-kanban skills/scripts (integrations/compat/v1.ts):
 
 ## 9. HTTP routes
 
-For a signed-in browser (the session is checked by server.ts, and non-GET requests must be same-origin):
+For a signed-in browser (the session is checked by the route table in `src/server/http/routes/index.ts`, where `kanbanRoutes` from `src/server/kanban/http/routes.ts` sit, and non-GET requests must be same-origin):
 
 - `GET /kanban`, `/kanban.html`: the board page. Signed out, it redirects to `/login?next=/kanban`.
 - `POST /api/kanban/upload?name=<file name>[&task=<id>]`: the body is the file's raw bytes and `Content-Type`
@@ -478,9 +478,11 @@ and toast. It then creates `pulls`, `refs` and the engine, and the plugins: the 
 `integrationPlugins`. The first plugin to claim a WS type keeps it. `workerExtras` merges the plugins'
 `workerArgs`/`workerEnv`, and a plugin that throws loses only its own part. `engine.begin()` and every
 `plugin.start()` run once everything exists; `shutdown()` stops the plugins, disposes of the engine and
-closes the database.
+closes the database. `startServer` (`src/server/server.ts`) calls `openKanban` (`src/server/kanban/office.ts`) once
+the floors are open and keeps the result as `ctx.kanban`; `kanbanHandlers` (WS, `kanban/ws/handlers.ts`) and
+`kanbanRoutes` (HTTP, `kanban/http/routes.ts`) join the office's own registries.
 
-"O" at a desk (`worker.pr`) goes to `engine.prForWorker` first: a task worker's task gets its `pr` phase
+"O" at a desk (`worker.pr`, `src/server/ws/handlers/workers.ts`) goes to `engine.prForWorker` first: a task worker's task gets its `pr` phase
 (`engine.pr(taskId, 'create')`); any other agent worker gets the layered `kanban.pr.create` prompt (with the `pr`
 contract) typed into its session, or resumed with it when it's asleep. Only a shell worker answers `'fallback'`
 (`PR_FALLBACK`), and only then does upstream's own `openPr` (a draft PR without an agent) run. PR states of the

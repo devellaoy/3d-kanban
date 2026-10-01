@@ -1,7 +1,7 @@
 import { canLabel } from '../shared/floorplan';
 import type { GhIssue, WorkerInfo } from '../shared/protocol';
 import { isAsleep } from '../shared/status';
-import type { Interactable } from './world/office';
+import type { Interactable } from './world/types';
 // 3d-kanban: R retries a task that waits.
 import { canRetry } from './kanban/office';
 

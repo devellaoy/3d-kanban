@@ -486,17 +486,51 @@ function bundleKey(r: Obj): KanbanPrBundleKey {
   return { ticket: text(r.ticket, 'The ticket', KANBAN_LIMITS.ticket).trim() };
 }
 
-/** Every message type the browser may send. */
-export const KANBAN_CLIENT_TYPES = new Set<string>([
-  'kanban.subscribe', 'kanban.unsubscribe', 'kanban.snapshot', 'kanban.task.get', 'kanban.comments.page',
-  'kanban.task.create', 'kanban.task.update', 'kanban.task.move', 'kanban.task.start', 'kanban.task.stop',
-  'kanban.task.continue', 'kanban.task.retry', 'kanban.task.review', 'kanban.plan.approve', 'kanban.plan.requestChanges',
-  'kanban.task.pr', 'kanban.task.compact', 'kanban.task.release', 'kanban.task.delete', 'kanban.comment.add',
-  'kanban.settings.get', 'kanban.meta.get', 'kanban.settings.set', 'kanban.project.settings.set', 'kanban.project.repos.set', 'kanban.project.rename', 'kanban.project.prompt.set',
-  'kanban.issues.list', 'kanban.issues.refresh', 'kanban.issues.createTask', 'kanban.skills.list', 'kanban.skills.sync',
-  'kanban.secrets.set', 'kanban.pr.review', 'kanban.pr.bundle',
-  'kanban.project.repo.clone',
-] satisfies KanbanClientType[]);
+/**
+ * Every message type the browser may send, once: a type of KanbanClientMsg missing here fails the
+ * typecheck. The office's handler map takes its kanban entries from it too (src/server/kanban/ws/handlers.ts).
+ */
+export const KANBAN_CLIENT_TYPE_LIST: Readonly<Record<KanbanClientType, true>> = {
+  'kanban.subscribe': true,
+  'kanban.unsubscribe': true,
+  'kanban.snapshot': true,
+  'kanban.task.get': true,
+  'kanban.comments.page': true,
+  'kanban.task.create': true,
+  'kanban.task.update': true,
+  'kanban.task.move': true,
+  'kanban.task.start': true,
+  'kanban.task.stop': true,
+  'kanban.task.continue': true,
+  'kanban.task.retry': true,
+  'kanban.task.review': true,
+  'kanban.plan.approve': true,
+  'kanban.plan.requestChanges': true,
+  'kanban.task.pr': true,
+  'kanban.task.compact': true,
+  'kanban.task.release': true,
+  'kanban.task.delete': true,
+  'kanban.comment.add': true,
+  'kanban.settings.get': true,
+  'kanban.meta.get': true,
+  'kanban.settings.set': true,
+  'kanban.project.settings.set': true,
+  'kanban.project.repos.set': true,
+  'kanban.project.rename': true,
+  'kanban.project.prompt.set': true,
+  'kanban.issues.list': true,
+  'kanban.issues.refresh': true,
+  'kanban.issues.createTask': true,
+  'kanban.skills.list': true,
+  'kanban.skills.sync': true,
+  'kanban.secrets.set': true,
+  'kanban.pr.review': true,
+  'kanban.pr.bundle': true,
+  'kanban.project.repo.clone': true,
+};
+
+/** The same types, for checking a message's. */
+export const KANBAN_CLIENT_TYPES: ReadonlySet<string> = new Set(Object.keys(KANBAN_CLIENT_TYPE_LIST));
 
 /** Whether a raw message is meant for the kanban (its `t` starts with `kanban.`). */
 export function isKanbanMsg(raw: unknown): raw is { t: string } {

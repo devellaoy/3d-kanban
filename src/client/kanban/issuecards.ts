@@ -8,12 +8,13 @@ import type { AgentEffort, AgentProvider, CarriedIssue, GhIssue, QueueTask } fro
 import { cardId, cardLabel, isPrimaryIssue, parseGhKey } from '../../shared/kanban/issuecard.js';
 import type { Net } from '../net';
 import { store } from '../state';
-import { issuePrompt, type BoardActions } from '../ui/boards';
+import { issuePrompt, type BoardActions } from '../ui/github/prompts';
 import { h, openModal, toast } from '../ui/dom';
 import { markdown } from '../ui/markdown';
 import { issueMeeting, type MeetingPreset } from '../ui/meeting';
 import { providerPicker } from '../ui/provider';
-import { labelChip, openIssue } from '../ui/pull';
+import { openIssue } from '../ui/github/issue-window';
+import { labelChip } from '../ui/github/labels';
 import { kanbanApi, type KanbanOk } from './api';
 import { issueTask } from './hireform';
 import { SOURCE_KIND_NAMES } from './labels';

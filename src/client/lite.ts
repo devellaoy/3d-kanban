@@ -15,7 +15,8 @@ import { $, clip, closeAllModals, doingNow, h, onDoingChange, onModalChange, ope
 import { openTerminal, openTerminalFor, routeTerminalMessage } from './ui/terminal';
 import { openChanges, openChangesFor, routeChangesMessage } from './ui/changes';
 import { lostWorktreeDialog, openPrompt, routeWorktreeMessage, sendHomeDialog } from './ui/prompt';
-import { openBoard, type BoardActions } from './ui/boards';
+import { openBoard } from './ui/boards';
+import type { BoardActions } from './ui/github/prompts';
 import { openPull, routePullMessage } from './ui/pull';
 // 3d-kanban: a worker's PR by its repository too, on a project with several.
 import { findItem, ownPullRepo } from './kanban/ghrepo';
@@ -31,8 +32,11 @@ import { openSignIns } from './ui/signins';
 import { modelBadge, providerLabel } from './ui/provider';
 import { byUrgency, waitingInOrder, waitingLabel } from './nextup';
 import { askNotifyPermission, DesktopNotifier, notifyPermission, waitingOnSomeone } from './notify';
+import { repoChoices } from './shared/hiring';
+// The tab title counts the workers waiting on someone, on every floor, as the 3D office's does.
+import { renderTitle } from './shared/title';
 
-// Sent here because this browser can't draw the 3D office (see main.ts).
+// Sent here because this browser can't draw the 3D office (see noWebGL in core/scene.ts).
 if (new URLSearchParams(location.search).get('why') === 'webgl') {
   history.replaceState(null, '', location.pathname);
   toast("This browser can't draw the 3D office (WebGL is off or missing), so here's the 2D view", 'warn');
@@ -127,14 +131,6 @@ floorSelect.addEventListener('change', () => {
 store.on('floors', renderFloors);
 store.on('floor', renderFloors);
 store.on('project', renderFloors);
-
-/** The tab title counts the workers waiting on someone, on every floor, as the 3D office's does. */
-function renderTitle() {
-  const elsewhere = store.floors.reduce((n, f) => n + (f.id === store.floor ? 0 : f.waiting), 0);
-  const waiting = waitingInOrder(store.workers.values()).length + elsewhere;
-  const name = store.project?.name;
-  document.title = `${waiting ? `(${waiting}) ` : ''}${name ? `${name} · ` : ''}Agent Office`;
-}
 
 // ---- Workers ------------------------------------------------------------------------------------
 /** What each worker was last, to tell when one starts waiting on someone. */
@@ -292,7 +288,7 @@ function sendToWorker(title: string, text: { context?: string; initial?: string 
     kanbanOption: desk ? hireOption(net, () => desk, DESK_BY_ID.get(desk)!.label) : undefined, // 3d-kanban
     worktreeOption: !!store.project.branch,
     providerOption: true,
-    repoOptions: store.floors.filter((f) => f.id !== store.floor && f.branch && !f.cloning).map((f) => ({ id: f.id, name: f.name })),
+    repoOptions: repoChoices(),
     onSubmit: (prompt, to, worktree, provider, model, effort, repos) => {
       if (to) askWorker(net, to, prompt); // 3d-kanban: a message on its task for a task worker
       else if (desk) hire(desk, prompt, worktree, provider, model, effort, repos);

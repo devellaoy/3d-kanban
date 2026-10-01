@@ -80,7 +80,7 @@ function installFakeDom() {
 test('Ask → an existing worker: asComment only to a task implementer the engine carries on', async () => {
   installFakeDom();
   const { askWorker } = await import('../src/client/kanban/office3d.js');
-  const { store } = await import('../src/client/state.js');
+  const { store } = await import('../src/client/state/index.js');
   const sent: unknown[] = [];
   const net = { send: (m: unknown) => void sent.push(m) } as never;
   const worker = (id: string, kanban?: KanbanWorkerSummary) => store.workers.set(id, { id, name: id, kanban } as WorkerInfo);
