@@ -14,7 +14,7 @@ import { issueCardLabel, openCard, sourceChips, taskForCard } from '../kanban/is
 import { noteSeed } from '../../shared/kanban/issuecard.js';
 
 const TILTS = ['-1.2deg', '0.8deg', '-0.4deg', '1.4deg', '0deg', '-0.9deg'];
-const NOTE_COLORS = ['#fff7b0', '#ffd6e0', '#caffbf', '#bde0fe', '#ffe5b4'];
+const NOTE_COLORS = ['var(--note-yellow)', 'var(--note-pink)', 'var(--note-green)', 'var(--note-blue)', 'var(--note-peach)'];
 
 interface Column<T> {
   /** Names the column in your saved label filters. */
@@ -305,8 +305,8 @@ export function openBoard(kind: 'issues' | 'pulls', net: Net, actions: BoardActi
                 `by ${it.author}`,
                 it.reviewDecision === 'CHANGES_REQUESTED' ? '🛠 changes requested' : '',
                 CHECK_ICON[it.checks],
-                h('span', { style: 'color:#2a9d4b' }, `+${it.additions}`),
-                h('span', { style: 'color:#c3423f' }, `-${it.deletions}`),
+                h('span', { style: 'color:var(--diff-add-ink)' }, `+${it.additions}`),
+                h('span', { style: 'color:var(--diff-del-ink)' }, `-${it.deletions}`),
                 timeAgo(it.updatedAt),
               ],
               i,

@@ -13,7 +13,7 @@ import { errorBox, spinnerRow } from './pieces';
 export function labelChip(l: GhLabel) {
   const n = parseInt(l.color.slice(1), 16);
   const lum = Number.isNaN(n) ? 1 : (0.299 * ((n >> 16) & 255) + 0.587 * ((n >> 8) & 255) + 0.114 * (n & 255)) / 255;
-  return h('span.label', { style: `background:${l.color};color:${lum < 0.55 ? '#fff' : 'var(--ink)'}` }, l.name);
+  return h('span.label', { style: `background:${l.color};color:${lum < 0.55 ? '#fff' : 'var(--text)'}` }, l.name);
 }
 
 /**

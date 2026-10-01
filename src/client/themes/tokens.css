@@ -1,0 +1,170 @@
+/* The theme contract: every token the office's styles use, with the default ("Office") theme's values.
+   Each other theme (dark.css, glossy.css, ...) is a `:root[data-theme="<id>"]` block that sets the
+   same tokens, and tests/appearance.test.ts fails when one leaves a token out. Styles use these
+   tokens and never a raw colour, border width or font weight, so a new look is one file here.
+
+   A page without data-theme (or with "default") gets the values below. */
+
+:root, :root[data-theme="default"] {
+  color-scheme: light;
+
+  /* ---- Surfaces ---- */
+  --bg: #bfe3ff;            /* the page behind everything (the sky behind the 3D office) */
+  --bg-login: #ffe8cc;      /* the sign-in, join and claim pages' background */
+  --paper: #fffaf3;         /* a surface: panels, windows, cards */
+  --paper-2: #fff1de;       /* a secondary surface: window headers and footers, bars, hover rows */
+  --field: #fff;            /* the white of buttons, inputs and list rows */
+  --field-hover: #fff1de;   /* a button or row under the pointer, and the selected row */
+  --field-off: #f3f1ee;     /* a disabled input, an exited worker, a quiet note box */
+  --overlay: rgba(43, 45, 66, .45);   /* the backdrop behind a window */
+  --scrim: rgba(255, 255, 255, .6);   /* a veil over a bar: the hovered tab */
+
+  /* ---- Text ---- */
+  --text: #2b2d42;          /* body text and headings */
+  --muted: #7a6f65;         /* secondary text: ids, hints, meta lines */
+  --text-on-accent: #fff;   /* text on an --accent fill (primary buttons) */
+  --accent-ink: #ffffff;    /* the same, kept for older rules */
+  --strong: #2b2d42;        /* a dark fill: count badges, the selected tab */
+  --text-on-strong: #fff;   /* text on a --strong, --good or --bad fill */
+  --link: #1d6fd6;          /* links and the info-blue text */
+  --link-strong: #1d4f91;   /* inline code on an --info-soft chip */
+
+  /* ---- Lines ---- */
+  /* --ink is the LINE colour: borders and the hard shadow's colour. It is not a text colour any more
+     (that is --text), so a theme with hairlines just sets it to a faint colour. */
+  --ink: #2b2d42;
+  --bw: 3px;                /* a border: panels, buttons, inputs, windows */
+  --bw-sm: 2px;             /* a thinner border: chips, pills, rows, small buttons */
+  --focus-ring: 3px solid var(--accent);   /* the keyboard focus outline (offset stays in the rule) */
+  --rule-soft: #eee3d6;     /* a faint divider inside a table or list */
+  --rule-code: #e3d9cc;     /* the outline of inline code */
+
+  /* ---- Shadows ---- */
+  --shadow: 0 4px 0 var(--ink);       /* a panel, a column, a note */
+  --shadow-sm: 0 3px 0 var(--ink);    /* a button, a list row */
+  --shadow-xs: 0 2px 0 var(--ink);    /* a small button */
+  --shadow-lg: 0 6px 0 var(--ink);    /* a window; a lifted note */
+  --shadow-pressed: 0 1px 0 var(--ink);   /* a button while pressed */
+  --press: 2px;                       /* how far a pressed button moves down (translateY) */
+  --shadow-side: -4px 0 0 rgba(43, 45, 66, .12);   /* the detail panel's edge */
+
+  /* ---- Shape ---- */
+  --radius: 16px;           /* panels, columns */
+  --radius-sm: 12px;        /* buttons, inputs, cards' insides */
+  --radius-lg: 20px;        /* windows */
+  --radius-pill: 999px;     /* pills, chips, count badges */
+
+  /* ---- Accent and status ---- */
+  --accent: #ff8a5b;
+  --accent-hover: #ff8a5b;
+  --good: #06d6a0;
+  --warn: #ffd166;
+  --bad: #ef476f;
+  --info: #5bc0eb;
+  --good-soft: #d8f5e3;     /* soft backgrounds: a done pill, an open PR, an added line */
+  --warn-soft: #fff3c4;     /* a warning toast, a pending comment, a ticket chip */
+  --bad-soft: #ffd6e0;      /* an error toast, a waiting pill, a closed PR */
+  --info-soft: #e0f2fe;     /* an idle pill, an info note */
+  --good-ink: #1b7f5b;      /* status text on a plain surface */
+  --warn-ink: #9a6700;
+  --warn-hot: #ffb703;      /* a lost worker's pill */
+  --accent-soft: #ffe3d6;   /* the accent's hover wash */
+  --accent-text: #d9480f;   /* accent-coloured text on a plain surface (a menu's main action) */
+  --bad-hover: #ffc2d1;     /* a --bad-soft button under the pointer */
+  --alert-hover: #ffd0dc;   /* a --bad-tint row under the pointer */
+  --good-hover: #c3efd5;    /* a --good-soft row under the pointer */
+  --bad-wash: #fff0f3;      /* the faintest error and warning backgrounds: an error box, ... */
+  --warn-wash: #fffbe6;     /* ... the picked row of a list */
+  --good-wash: #eefff0;     /* ... an accepted plan */
+  --info-wash: #eef6ff;     /* ... your comment */
+  --run-bg: #e7f8ee;        /* a running queue row */
+  --ok-bg: #f3fbf6;         /* a signed-in account's card */
+  --drop-ok: #e3fff3;       /* a column a dragged card can be dropped in */
+  --drop-ok-over: #c8f7e2;  /* ... and the one it is over */
+  --bad-ink: #c9184a;
+  --danger-ink: #c3423f;    /* a form error line, a deleted diff line's text */
+  --diff-add: #d8f5e3;      /* an added line's background */
+  --diff-del: #ffe3ea;      /* a removed line's background */
+  --diff-add-ink: #2a9d4b;  /* an added count or line's text */
+  --diff-del-ink: #c3423f;  /* a removed count or line's text */
+  --diff-add-gutter: #c9f0d5;   /* the line-number column of an added line (the Changes window) */
+  --diff-del-gutter: #ffcbd7;
+  --pd-bg: #efe6da;         /* the pull request diff's background, and its lines: */
+  --pd-add: #e6f8ec;
+  --pd-add-gutter: #cdf0d8;
+  --pd-del: #ffebee;
+  --pd-del-gutter: #ffd3dc;
+  --pd-hunk: #e8f2ff;
+  --pd-hunk-gutter: #dbe9fb;
+  --pd-hunk-ink: #3a6ea5;
+  --pd-flash: #ffe8a3;      /* the line you jumped to, flashing */
+  --gutter-bg: #faf6f0;     /* a diff's line numbers */
+  --gutter-ink: #a39a91;
+  --gutter-ink-2: #9a9088;
+
+  /* ---- Kanban notes and chips ---- */
+  --note-yellow: #fff7b0;   /* To do: the column head and the card */
+  --note-blue: #bde0fe;     /* In progress: the column head */
+  --note-pink: #ffd6e0;     /* Waiting: the column head */
+  --note-green: #caffbf;    /* Review: the column head */
+  --note-grey: #e2ece9;     /* Done: the column head */
+  --note-slate: #dee2e6;    /* Archived: the column head, an offline pill */
+  --note-peach: #ffe5b4;    /* a note on a team board */
+  --note-card-blue: #dcefff;    /* the card colours of In progress, Review, Done and Archived; Waiting is --bad-tint */
+  --bad-tint: #ffe3ea;      /* a waiting card, a failed check's header (a --bad-soft one step lighter) */
+  --note-card-green: #dcffd2;
+  --note-card-grey: #eef4f1;
+  --note-card-slate: #f1f1f1;
+  --note-tilt: 1;           /* 1: sticky notes lean a little (the --tilt of a card), 0: they sit straight */
+  --tint-blue: #e7f0ff;     /* a repo chip, a PR phase */
+  --tint-purple: #f3e8ff;   /* a project chip, a scope */
+  --tint-cyan: #e0f7fa;     /* a type chip */
+  --tint-magenta: #fde2ff;  /* the plan phase */
+  --tint-orange: #ffd6a5;   /* the fix phase */
+  --tint-violet: #e5d4ff;   /* a merged PR */
+  --tint-grey: #e9ecef;     /* a draft PR */
+  --tint-wash: #f8f9fa;     /* a tag chip */
+  --purple: #9d4edd;        /* a merged pill, a project's name */
+  --teal: #118ab2;          /* an office's name */
+  --amber: #e0a100;         /* a warning callout's edge */
+  --scope-you: #dff3fb;     /* the "you", "floor" and "office" tags of a setting */
+  --scope-floor: #d7f7ec;
+  --scope-office: #ffe6d9;
+  --hint-cost: #a5ecfb;     /* the cost in the HUD's hint, on the --strong bubble */
+  --track: #f1e4d3;         /* the empty part of a meter */
+
+  /* ---- Code and terminals ---- */
+  --code-bg: #1e1f2e;       /* a code block and the terminal's body */
+  --code-text: #e9ecef;     /* text on --code-bg */
+  --code-text-2: #e6e6f0;   /* the same, in a search hit */
+  --code-inline: #f3ebe0;   /* inline code and the pull request page's background */
+  --callout-note: #eaf3ff;  /* a Markdown callout's background (its edge is --link, --diff-add-ink, --purple, --amber, --diff-del-ink) */
+  --callout-tip: #e6f8ec;
+  --callout-warn: #fff6d6;
+  --callout-caution: #ffebee;
+  --reader-bg: #fffdf8;     /* the bookshelf's reading page */
+  --status-bg: #eef0f2;     /* a neutral status line */
+  --field-quiet: #f6f3ee;   /* a system comment, a plain-text report */
+  --rule-md: #ddd0bf;       /* Markdown's table, rule and details lines */
+  --rule-md-2: #ebe1d4;
+  --rule-quote: #d9cbb8;    /* a blockquote's bar */
+
+  /* ---- Type ---- */
+  --font: 'Nunito', ui-rounded, 'SF Pro Rounded', system-ui, -apple-system, sans-serif;
+  --font-mono: ui-monospace, Menlo, monospace;
+  --fw-medium: 600;
+  --fw-semibold: 700;
+  --fw-bold: 800;
+  --fw-heavy: 900;
+  --fs-2xs: 11px;
+  --fs-xs: 12px;
+  --fs-sm: 13px;
+  --fs-md: 14px;
+  --fs-lg: 15px;
+  --fs-xl: 16px;
+  --fs-2xl: 18px;
+  --fs-3xl: 20px;
+
+  /* ---- Glass ---- */
+  --glass-blur: none;       /* backdrop-filter of windows and HUD panels (a glass theme blurs here) */
+}
