@@ -228,7 +228,7 @@ back to work:
   work is reviewed again when the task has review on.
 
 On To do, Done and archived tasks a comment is just kept. Comments take attachments too,
-and so do the answer box and the plan's **Request changes** (**Ctrl/⌘ + Enter** sends); files alone are enough. An agent can read only its own task's files (copies in `kanban/grants/task-<id>/`). After upgrading, a live agent session started before this change is relaunched once at its next turn (its launch arguments change); until then a file sent into it may need a permission prompt.
+and so do the answer box and the plan's **Request changes** (**Shift + Enter** or **Ctrl/⌘ + Enter** sends); files alone are enough. An agent can read only its own task's files (copies in `kanban/grants/task-<id>/`). After upgrading, a live agent session started before this change is relaunched once at its next turn (its launch arguments change); until then a file sent into it may need a permission prompt.
 
 In the 3D office, what you tell a task's **implementer** while the task is in progress, waiting or in
 review is a comment too: **P** ("💬 Message task #N"), the task's issue card dropped on its desk, and

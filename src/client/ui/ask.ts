@@ -6,6 +6,7 @@ import { providerPicker, type ProviderPicker } from './provider';
 import { repoPicker } from './prompt';
 // 3d-kanban: a new worker can take it on as a kanban task.
 import { kanbanSection, type KanbanOption } from '../kanban/hireform';
+import { onSendKey, sendHint } from '../kanban/sendkey'; // 3d-kanban
 
 // Send a prompt about an issue or PR to a worker: a new one at a free desk, or one already sitting
 // at a desk (it lands in their input box, queued if they're busy).
@@ -102,7 +103,7 @@ export function openAsk(opts: AskOptions) {
       repos.element,
       kanban?.element ?? null, // 3d-kanban
     ),
-    h('footer', {}, h('span.grow', {}, 'Enter to send · Shift+Enter for a new line'), cancel, submit),
+    h('footer', {}, h('span.grow', {}, sendHint() /* 3d-kanban: #328 */), cancel, submit),
   ) as HTMLFormElement;
   form.noValidate = true;
   pick(to);
@@ -140,12 +141,7 @@ export function openAsk(opts: AskOptions) {
     e.preventDefault();
     send();
   });
-  ta.addEventListener('keydown', (e) => {
-    if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) {
-      e.preventDefault();
-      send();
-    }
-  });
+  onSendKey(ta, () => send()); // 3d-kanban: #328
   setTimeout(() => {
     ta.focus();
     ta.setSelectionRange(ta.value.length, ta.value.length);

@@ -4,6 +4,7 @@ import { h } from '../dom';
 import { markdown } from '../markdown';
 import { commentWaiters } from './api';
 import { ghKey, ghRepoField } from '../../kanban/ghrepo'; // 3d-kanban
+import { isSendKey, sendHint } from '../../kanban/sendkey'; // 3d-kanban
 import { DRAFT_KEY, pref, savePref } from './prefs';
 
 // ---- Comment box --------------------------------------------------------------------------------
@@ -27,7 +28,7 @@ export function commentBox(kind: 'issue' | 'pull', number: number, itemUrl: stri
   const waitKey = ghKey(kind, number, repo);
   let busy = false;
   let timer = 0;
-  const ta = h('textarea', { rows: 4, placeholder: 'Leave a comment. Markdown works; ⌘/Ctrl+Enter posts it.', 'aria-label': 'Comment' }) as HTMLTextAreaElement;
+  const ta = h('textarea', { rows: 4, placeholder: `Leave a comment. Markdown works; ${sendHint()}.` /* 3d-kanban: #328 */, 'aria-label': 'Comment' }) as HTMLTextAreaElement;
   ta.value = pref<string>(draftKey, '');
   const shown = h('div.gh-compose-preview.hidden');
   const write = h('button.btn.on', { type: 'button' }, 'Write');
@@ -102,7 +103,7 @@ export function commentBox(kind: 'issue' | 'pull', number: number, itemUrl: stri
 
   ta.addEventListener('input', () => (saveDraft(), sync()));
   ta.addEventListener('keydown', (e) => {
-    if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
+    if (isSendKey(e)) { // 3d-kanban: #328
       e.preventDefault();
       submit();
     }
