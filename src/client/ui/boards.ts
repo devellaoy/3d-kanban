@@ -8,6 +8,7 @@ import type { BoardActions } from './github/prompts';
 import { openPull } from './github/pull-window';
 import { providerLabel } from './provider';
 // Repository chips and filter for a multi-repository project's boards.
+import { browseButton } from '../kanban/browse3d';
 import { boardRepos, inRepo, keptRepo, tabRepos, loadRepoFilter, repoChip, openByRepo, repoFilterSelect, repoTabs, saveRepoFilter } from '../kanban/boardrepos';
 // Cards from the project's issue sources (Jira, a GitHub project, other repositories), by their key.
 import { issueCardLabel, openCard, sourceChips, taskForCard } from '../kanban/issuecards';
@@ -141,7 +142,7 @@ export function openBoard(kind: 'issues' | 'pulls', net: Net, actions: BoardActi
   const repoSlot = h('span');
   // The PR board picks its repository from tabs below the header instead.
   const tabs = kind === 'pulls' ? repoTabs((r) => pickRepo(r)) : null;
-  const el = h('div.modal.board', { role: 'dialog', 'aria-label': kind === 'issues' ? 'Issues board' : 'Pull requests board' }, h('header', {}, h('h2', {}, kind === 'issues' ? '📌 Issues' : '🔀 Pull Requests'), status, repoSlot, refresh, close), tabs?.el ?? null, body);
+  const el = h('div.modal.board', { role: 'dialog', 'aria-label': kind === 'issues' ? 'Issues board' : 'Pull requests board' }, h('header', {}, h('h2', {}, kind === 'issues' ? '📌 Issues' : '🔀 Pull Requests'), status, repoSlot, kind === 'issues' ? browseButton(net, actions) : null, refresh, close), tabs?.el ?? null, body);
 
   const filters = loadFilters(kind);
   /** What each column's filter box holds (column key → text), for as long as the board is open. */

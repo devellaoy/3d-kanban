@@ -1,0 +1,95 @@
+/* 🔎 Browse issues (browse.ts, browsetree.ts): on the kanban page and in the 3D office and /lite, so it
+   brings all its own styles (the 3D office doesn't load kanban.css). Tokens only. */
+.modal.kb-browse-window { width: min(980px, 100%); height: min(820px, calc(100vh - 32px)); font-size: var(--fs-md); }
+.modal.kb-browse-window > .body { display: flex; flex-direction: column; gap: 8px; flex: 1; min-height: 0; padding: 12px 16px; overflow: hidden; }
+.modal.kb-browse-window > .body > * { flex: none; min-width: 0; }
+
+/* ---- The bar and the filters ---- */
+.kb-br-bar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.kb-br-bar.off > :not(.kb-br-scope) { display: none; }
+.kb-br-scope { display: contents; }
+.kb-browse-window .kb-br-bar select { flex: 0 1 240px; }
+.kb-browse-window .kb-br-bar input[type=search] { flex: 1 1 220px; }
+.kb-browse-window .kb-br-bar select, .kb-browse-window .kb-br-bar input[type=search] { width: auto; min-width: 0; height: 38px; padding: 0 10px; font: var(--fw-bold) var(--fs-md) var(--font); color: var(--text); background: var(--field); border: var(--bw) solid var(--ink); border-radius: var(--radius-sm); outline: none; }
+.kb-br-filters { display: flex; flex-wrap: wrap; gap: 6px; }
+.kb-browse-window .kb-br-filters select, .kb-browse-window .kb-br-filters input[type=search] { width: auto; max-width: 220px; min-width: 0; height: 32px; padding: 0 8px; font: var(--fw-bold) var(--fs-sm) var(--font); color: var(--text); background: var(--field); border: var(--bw-sm) solid var(--ink); border-radius: 10px; outline: none; }
+.kb-browse-window .kb-br-filters .kb-br-labels { width: 180px; }
+.kb-browse-window select:focus, .kb-browse-window input:focus, .kb-browse-window textarea:focus { border-color: var(--accent); }
+.kb-browse-window .btn.small { padding: 4px 10px; font-size: var(--fs-sm); border-width: var(--bw-sm); border-radius: 10px; box-shadow: var(--shadow-xs); }
+.kb-browse-window .kb-br-bar .btn.small { height: 38px; }
+.kb-br-jqlbtn[aria-pressed=true] { background: var(--warn-soft); }
+.kb-br-jql { display: flex; flex-direction: column; gap: 6px; }
+.kb-browse-window .kb-br-jql textarea { width: 100%; min-height: 54px; padding: 6px 10px; font: var(--fw-medium) var(--fs-sm) var(--font-mono); color: var(--text); background: var(--field); border: var(--bw-sm) solid var(--ink); border-radius: 10px; outline: none; resize: vertical; box-sizing: border-box; }
+.kb-br-jqlfoot { display: flex; align-items: center; gap: 8px; }
+.kb-br-jqlfoot small { flex: 1; }
+.kb-br-scopechip { font-size: var(--fs-xs); background: var(--tint-purple); }
+
+/* Someone…: the people search */
+.kb-br-picker { display: flex; flex-direction: column; gap: 6px; padding: 8px; border: var(--bw-sm) dashed var(--ink); border-radius: 12px; background: var(--paper-2); }
+.kb-browse-window .kb-br-picker input[type=search] { width: 100%; max-width: 360px; height: 34px; padding: 0 10px; font: var(--fw-bold) var(--fs-sm) var(--font); color: var(--text); background: var(--field); border: var(--bw-sm) solid var(--ink); border-radius: 10px; outline: none; }
+.kb-br-people { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 4px; max-height: 140px; overflow-y: auto; }
+.kb-br-person { display: inline-flex; align-items: baseline; gap: 6px; padding: 4px 10px; font: var(--fw-semibold) var(--fs-sm) var(--font); color: var(--text); background: var(--field); border: var(--bw-sm) solid var(--ink); border-radius: var(--radius-pill); cursor: pointer; }
+.kb-br-person:hover { background: var(--field-hover); }
+.kb-br-person small { color: var(--muted); }
+
+/* ---- Lines ---- */
+.kb-br-quiet { margin: 0; font-size: var(--fs-sm); font-weight: var(--fw-semibold); color: var(--muted); }
+.kb-br-error { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; margin: 2px 0; padding: 6px 8px; font-size: var(--fs-sm); font-weight: var(--fw-bold); border: var(--bw-sm) solid var(--bad); border-radius: 10px; background: var(--bad-wash); overflow-wrap: anywhere; }
+.kb-br-error > span { flex: 1; min-width: 0; }
+.kb-br-empty-proj { margin: 12px 0; padding: 12px 14px; font-weight: var(--fw-bold); line-height: 1.5; border: var(--bw-sm) dashed var(--ink); border-radius: 12px; background: var(--field); }
+
+/* ---- The tree ---- */
+.kb-br-treebox { flex: 1; min-height: 0; overflow-y: auto; overflow-x: hidden; padding: 6px; border: var(--bw-sm) solid var(--ink); border-radius: var(--radius-sm); background: var(--field); }
+.modal.kb-browse-window > .body > .kb-br-treebox { flex: 1 1 auto; }
+.kb-br-list { list-style: none; margin: 0; padding: 0; }
+.kb-br-sub { margin-left: 11px; padding-left: 8px; border-left: var(--bw-sm) solid var(--rule-soft); }
+.kb-br-tail:empty { display: none; }
+.kb-br-tail { padding: 3px 0 4px 26px; }
+.kb-br-empty { padding: 3px 0 3px 26px; font-size: var(--fs-sm); font-weight: var(--fw-semibold); color: var(--muted); }
+
+.kb-br-row { display: flex; align-items: center; flex-wrap: wrap; gap: 2px 6px; min-height: 30px; padding: 2px 6px 2px 0; border-radius: 8px; }
+.kb-br-row:hover, .kb-br-row:focus-within { background: var(--field-hover); }
+.kb-br-tog { flex: none; width: 22px; height: 22px; display: inline-flex; align-items: center; justify-content: center; padding: 0; font: var(--fw-heavy) var(--fs-sm) var(--font); color: var(--text); background: none; border: 0; border-radius: 6px; cursor: pointer; }
+.kb-br-tog:hover { background: var(--paper-2); }
+.kb-br-tog:focus-visible { outline: var(--focus-ring); outline-offset: 1px; }
+.kb-br-tog.leaf { color: var(--muted); cursor: default; font-size: var(--fs-2xs); }
+.kb-br-key { flex: none; font-size: var(--fs-xs); font-weight: var(--fw-heavy); color: var(--muted); font-variant-numeric: tabular-nums; }
+.kb-br-title { flex: 1 1 200px; min-width: 0; padding: 0; font: var(--fw-bold) var(--fs-md) var(--font); color: var(--text); text-align: left; background: none; border: 0; cursor: pointer; overflow-wrap: anywhere; }
+button.kb-br-title:hover { text-decoration: underline; }
+button.kb-br-title:focus-visible { outline: var(--focus-ring); outline-offset: 2px; border-radius: 4px; }
+.kb-br-title.plain { cursor: default; color: var(--muted); }
+.kb-br-gtitle { flex: 1 1 200px; min-width: 0; font-weight: var(--fw-heavy); overflow-wrap: anywhere; }
+.kb-br-row.group { min-height: 34px; }
+.kb-br-row.group.released .kb-br-gtitle, .kb-br-row.group.none .kb-br-gtitle { color: var(--muted); }
+.kb-br-row.epic .kb-br-title { font-weight: var(--fw-heavy); }
+.kb-br-row.done .kb-br-title { color: var(--muted); }
+.kb-br-meta { display: inline-flex; align-items: center; flex-wrap: wrap; gap: 4px; margin-left: auto; }
+.kb-br-count:not(:empty) { min-width: 22px; padding: 0 7px; font-size: var(--fs-2xs); font-weight: var(--fw-heavy); line-height: 18px; text-align: center; color: var(--text-on-strong); background: var(--strong); border-radius: var(--radius-pill); }
+.kb-br-prog, .kb-br-date { font-size: var(--fs-2xs); font-weight: var(--fw-bold); color: var(--muted); white-space: nowrap; }
+.kb-browse-window .btn.small.kb-br-task { padding: 1px 8px; font-size: var(--fs-xs); background: var(--accent); color: var(--text-on-accent); }
+.kb-browse-window .btn.small.kb-br-more { padding: 3px 10px; font-size: var(--fs-xs); }
+
+/* Chips (kanban.css has them too, but the 3D office doesn't load it) */
+.kb-browse-window .kb-chip { display: inline-flex; align-items: center; max-width: 180px; padding: 0 7px; font-size: var(--fs-2xs); font-weight: var(--fw-bold); line-height: 17px; color: var(--text); background: var(--field); border: var(--bw-sm) solid var(--ink); border-radius: var(--radius-pill); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.kb-browse-window .kb-chip.type { background: var(--tint-cyan); }
+.kb-browse-window .kb-chip.who { background: var(--tint-wash); color: var(--muted); }
+.kb-browse-window .kb-chip.cat-new, .kb-browse-window .kb-chip.cat-none { background: var(--status-bg); }
+.kb-browse-window .kb-chip.cat-indeterminate { background: var(--info-soft); }
+.kb-browse-window .kb-chip.cat-done { background: var(--good-soft); }
+
+/* Last, so it beats the display of the rules above. */
+.modal.kb-browse-window [hidden] { display: none; }
+
+@media (max-width: 700px) {
+  .modal.kb-browse-window { width: 100%; height: 100dvh; max-height: 100dvh; border: 0; border-radius: 0; box-shadow: none; }
+  .modal.kb-browse-window > .body { padding: 10px; }
+  .kb-browse-window .kb-br-bar select { flex: 1 1 100%; }
+  .kb-browse-window .kb-br-bar input[type=search], .kb-browse-window .kb-br-filters select, .kb-browse-window .kb-br-filters input[type=search], .kb-browse-window textarea, .kb-browse-window .kb-br-picker input[type=search] { font-size: 16px; }
+  .kb-browse-window .kb-br-filters select, .kb-browse-window .kb-br-filters input[type=search] { flex: 1 1 140px; max-width: none; }
+  .kb-browse-window .kb-br-filters .kb-br-labels { width: auto; }
+  .kb-br-jqlfoot small { display: none; }
+  .kb-br-jqlfoot { justify-content: flex-end; }
+  .kb-br-sub { margin-left: 6px; padding-left: 5px; }
+  .kb-br-title, .kb-br-gtitle { flex-basis: 140px; }
+  .kb-browse-window .kb-chip { max-width: 130px; }
+}

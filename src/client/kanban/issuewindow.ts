@@ -2,7 +2,7 @@
 // the source says, the actions on it (issueactions.ts) and its kanban task. It follows the office's
 // kanban.issues, so a status or assignee changed from here (or elsewhere) shows as soon as it's back.
 
-import { h, timeAgo } from '../ui/dom';
+import { h, timeAgo, toast } from '../ui/dom';
 import type { NormalizedIssue } from '../../shared/kanban/types.js';
 import type { KanbanApi, KanbanOk } from './api';
 import { issueActions } from './issueactions';
@@ -11,11 +11,22 @@ import { SOURCE_KIND_NAMES } from './labels';
 import { renderMarkdown } from './md';
 import { dialog, run, showDialog } from './ui';
 
-export function openIssueWindow(api: KanbanApi, projectId: string, first: NormalizedIssue, openTask: (id: number) => void) {
+/**
+ * `reload` fetches the issue again (a browsed one is not on the issues list, so nothing else keeps it
+ * current): called after a change made from the panel, and its answer repaints the window.
+ */
+export function openIssueWindow(api: KanbanApi, projectId: string, first: NormalizedIssue, openTask: (id: number) => void, opts: { reload?: () => Promise<NormalizedIssue | undefined> } = {}) {
   let it = first;
   const chips = h('span.kb-chips');
   const task = h('button.btn.primary', { type: 'button' }) as HTMLButtonElement;
-  const panel = issueActions(api, projectId, actionIssue(it), { openTask: (id) => (modal.close(), openTask(id)) });
+  const start = h('button.btn', { type: 'button', title: 'Make a kanban task of it and start it at a free desk' }, '▶ Create & start') as HTMLButtonElement;
+  const reload = async () => {
+    const fresh = await opts.reload?.();
+    if (!fresh) return;
+    it = { ...fresh, taskId: fresh.taskId ?? it.taskId };
+    paint();
+  };
+  const panel = issueActions(api, projectId, actionIssue(it), { openTask: (id) => (modal.close(), openTask(id)), onChanged: () => void reload() });
   const url = safeUrl(it.url);
   const body = h(
     'div.body',
@@ -24,7 +35,7 @@ export function openIssueWindow(api: KanbanApi, projectId: string, first: Normal
     h('div.kb-iw-desc', {}, renderMarkdown(it.body, (id) => (modal.close(), openTask(id)))),
     panel.el,
   );
-  const d = dialog('kb-issue-window', it.title, body, h('footer', {}, h('span.grow'), task));
+  const d = dialog('kb-issue-window', it.title, body, h('footer', {}, h('span.grow'), start, task));
   const paint = () => {
     chips.replaceChildren(
       h('span.kb-chip', {}, SOURCE_KIND_NAMES[it.source]),
@@ -35,6 +46,7 @@ export function openIssueWindow(api: KanbanApi, projectId: string, first: Normal
       it.updatedAt ? h('small.kb-muted', {}, `updated ${timeAgo(it.updatedAt)}`) : '',
     );
     task.textContent = it.taskId ? `↗ #${it.taskId}` : '＋ Create task';
+    start.style.display = it.taskId ? 'none' : '';
     task.title = it.taskId ? 'Open the kanban task made from it' : 'Make a kanban task of it';
     panel.update(actionIssue(it));
   };
@@ -48,6 +60,14 @@ export function openIssueWindow(api: KanbanApi, projectId: string, first: Normal
       it = { ...it, taskId: ok.taskId };
       paint();
     }
+  });
+  start.addEventListener('click', async () => {
+    const ok = await run(() => api.request<KanbanOk>({ t: 'kanban.issues.createTask', project: projectId, issueKey: it.key, start: true }), start);
+    if (!ok?.taskId) return;
+    it = { ...it, taskId: ok.taskId };
+    paint();
+    if (ok.startError) toast(`Task #${ok.taskId} was made, but it didn't start: ${ok.startError}`, 'warn');
+    else toast(ok.started ? `Task #${ok.taskId} started` : `Task #${ok.taskId} is in To do`);
   });
   const off = api.on((msg) => {
     if (msg.t !== 'kanban.issues' || msg.project !== projectId) return;

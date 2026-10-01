@@ -439,6 +439,22 @@ answers `kanban.ok {rid, ...}` or `kanban.error {rid, message}`. Deltas are push
       3D board (`wallChanged`, then a debounced `refreshWall`), toasts the floor and adds a status comment to the issue's task.
       The overlay is dropped when a fetch that started 10 s or more after the write completes without source errors, or after
       2 minutes, so a fetch under way (or Jira's lagging search) can't undo the change.
+  - `browse.scopes | options | groups | count | page | children | issue | people` (`{project, scope, …}`, defined in
+    `shared/kanban/browse.ts`, joined into the unions by `issueops.ts`; handlers in `integrations/issues/browse/`; for anyone
+    signed in) browse **all** of a source's issues, not just its list. `scope` is an `IssueSourceConfig.id` of the project: only a
+    `jira` source with project keys and a `github-project` source can be browsed (`kanban.browse.scopes` lists them as
+    `kanban.browseScopes {scopes, me?}`; one that can't has `disabled` saying why). Every message is stateless and paged: a
+    `cursor` is Jira's `nextPageToken` or GitHub's `endCursor`, opaque to the browser and bounded in the parser. Answers:
+    `kanban.browseOptions` (filter choices), `kanban.browseGroups` (the top-level tree nodes, no counts), `kanban.browseCount`
+    (one approximate count; `count` is missing when the source couldn't tell), `kanban.browsePage {items, next?, total?}` (for
+    `page` and `children`) and `kanban.browseIssue {issue}` (the full record with its `taskId`); `browse.people` is answered
+    with `kanban.issuePeople`. Jira JQL is built on the server: the source's project keys come first and are never optional,
+    and the user's `jql` is checked as one complete expression (`checkUserJql`) and AND-ed in parentheses.
+    - **Actions and the browsed cache.** `issue.*` and `issues.createTask` accept an issue that is on the project's list, one
+      acted on lately, **one opened from Browse** (`kanban.browse.issue` keeps it in a bounded per-project set, 300 issues for
+      12 hours, the oldest let go first), or else one the server **loads again** from a source of the project (within that
+      source's scope: its project keys, its board). A key outside every source's scope is still refused. A write patches the
+      browsed copy as it does the acted-on one.
   - `issues.list`, `issues.refresh`, `issues.createTask` (idempotent by ticket, archived tasks included, `kanban.ok {taskId, existed}`; `start` with `deskId` starts it, or the one already made while it waits in To do, at that desk: the 3D office's P with a card; `started` or `startError` says how it went),
     `skills.list` are for anyone signed in.
   - `meta.get` (anyone signed in) is answered with `kanban.meta {projects, settings, secrets, me}`: what a
