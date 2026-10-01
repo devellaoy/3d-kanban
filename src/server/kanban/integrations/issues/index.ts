@@ -273,9 +273,11 @@ export function createIssues(ctx: KanbanContext, opts: IssuesOptions = {}) {
           const err = await ctx.engine.start(existing.id, c, m.deskId ? { deskId: m.deskId } : undefined);
           ctx.taskChanged(existing.id);
           wallChanged(m.project);
-          ok(c, m.rid, { taskId: existing.id, existed: true, ...(typeof err === 'string' && err ? { startError: err } : { started: true }) });
-          const listed = state(m.project).items.find((i) => i.key === m.issueKey);
-          if (!(typeof err === 'string' && err) && listed) await claimIssueForTask(ctx, { patch, io }, m.project, withChange(m.project, listed), c);
+          const failed = typeof err === 'string' && err;
+          ok(c, m.rid, { taskId: existing.id, existed: true, ...(failed ? { startError: failed } : { started: true }) });
+          if (failed) return;
+          const listed = state(m.project).items.find((i) => i.key === m.issueKey) ?? (await refresh(m.project)).items.find((i) => i.key === m.issueKey);
+          if (listed) await claimIssueForTask(ctx, { patch, io }, m.project, withChange(m.project, listed), c);
           return;
         }
         let issue = state(m.project).items.find((i) => i.key === m.issueKey);

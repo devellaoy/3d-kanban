@@ -165,7 +165,7 @@ test('GitHub assign: the current assignees are read fresh and replaced by the on
   // Someone else: the others come off, the person goes on.
   assert.equal(await ghAssign(act({ gh, env: ENV }), 'o/r', 5, { id: 'pekka' }), 'pekka');
   assert.deepEqual(edits().at(-1), ['5', '-R', 'o/r', '--remove-assignee=old', '--remove-assignee=maija', '--add-assignee=pekka']);
-  assert.deepEqual(calls[0], { args: ['issue', 'view', '5', '-R', 'o/r', '--json', 'assignees'], env: ENV }, 'read first, with the person’s sign-in');
+  assert.deepEqual(calls[0], { args: ['issue', 'view', '5', '-R', 'o/r', '--json', 'assignees,state'], env: ENV }, 'read first, with the person’s sign-in');
   // Already there: only the others come off.
   assert.equal(await ghAssign(act({ gh }), 'o/r', 5, { id: 'MAIJA' }), 'MAIJA');
   assert.deepEqual(edits().at(-1), ['5', '-R', 'o/r', '--remove-assignee=old']);
@@ -205,12 +205,12 @@ test('GitHub claim: an issue nobody has gets the signed-in person, one with an a
   assignees = ['maija'];
   calls.length = 0;
   assert.equal(await ghClaimIfUnassigned(act({ gh, env: { GH_CONFIG_DIR: '/h/claim-b' } }), 'o/r', 7), undefined);
-  assert.deepEqual(calls.map((c) => c.args[1]), ['view'], 'only the read');
+  assert.deepEqual(calls.map((c) => c.args[1]), ['view', 'user'], 'the read and the login, no edit');
   assignees = [];
   state = 'CLOSED';
   calls.length = 0;
   assert.equal(await ghClaimIfUnassigned(act({ gh, env }), 'o/r', 7), undefined, 'closed (a board’s copy doesn’t say): left alone');
-  assert.deepEqual(calls.map((c) => c.args[1]), ['view']);
+  assert.deepEqual(calls.map((c) => c.args[1]).filter((x) => x === 'edit'), []);
 });
 
 test('GitHub close and reopen; a pull request’s state is left alone', async () => {
@@ -443,7 +443,7 @@ test('a status change shows at once everywhere, says who made it, and is put on 
   assert.deepEqual(ctx.toasts, [{ floor: 'app', text: '🔀 Tester moved gh:o/r#5 → Shipped', level: 'info' }]);
   assert.ok(ctx.changed.includes(taskId));
   const lines = ctx.repo.listComments(taskId).comments.filter((x) => x.kind === 'status');
-  assert.deepEqual(lines.map((x) => [x.authorKind, x.text]), [['system', 'Tester took gh:o/r#5: assigned to panu'], ['system', 'Tester moved gh:o/r#5 → Shipped']]);
+  assert.deepEqual(lines.map((x) => [x.authorKind, x.text]), [['system', 'Tester moved gh:o/r#5 → Shipped']]);
 });
 
 test('closing, commenting and assigning say who did it; a closed repository issue shows as closed', async () => {
@@ -631,7 +631,7 @@ test('a comment under the office’s gh is signed, and goes on the issue’s tas
   assert.equal(post.env, undefined, 'the office’s gh');
   assert.ok(post.args.at(-1)!.endsWith('\n\n— Tester via Agent Office'));
   const lines = ctx.repo.listComments(taskId).comments.filter((x) => x.kind === 'status');
-  assert.deepEqual(lines.map((x) => [x.authorKind, x.text]), [['system', 'Tester took gh:o/r#5: assigned to panu'], ['system', 'Tester commented on gh:o/r#5']], 'the task took the issue first');
+  assert.deepEqual(lines.map((x) => [x.authorKind, x.text]), [['system', 'Tester commented on gh:o/r#5']]);
   assert.ok(ctx.changed.includes(taskId));
 });
 

@@ -110,11 +110,12 @@ export async function ghIssueState(io: IssueActIo, repo: string, n: number): Pro
   }
 }
 
-/** The logins an issue has now (read fresh: the board's list may be a minute old). */
-async function currentAssignees(io: IssueActIo, repo: string, n: number): Promise<string[]> {
-  const out = await run(io, ['issue', 'view', String(n), '-R', repo, '--json', 'assignees']);
+/** The logins and the state an issue has now (read fresh: the board's list may be a minute old). */
+async function liveIssue(io: IssueActIo, repo: string, n: number): Promise<{ assignees: string[]; state?: string }> {
+  const out = await run(io, ['issue', 'view', String(n), '-R', repo, '--json', 'assignees,state']);
   try {
-    return ((JSON.parse(out || '{}').assignees ?? []) as { login?: string }[]).map((a) => String(a.login ?? '')).filter(Boolean);
+    const now = JSON.parse(out || '{}') as { assignees?: { login?: string }[]; state?: string };
+    return { assignees: (now.assignees ?? []).map((a) => String(a.login ?? '')).filter(Boolean), ...(now.state ? { state: now.state.toUpperCase() } : {}) };
   } catch {
     throw new Error(`gh gave something that isn't JSON for ${repo}#${n}`);
   }
@@ -138,7 +139,7 @@ export async function ghAssign(io: IssueActIo, repo: string, n: number, to: Issu
   // Under the office's own gh, `me` would be the office's account, not the person.
   if (to && 'me' in to && io.shared) throw new Error('Assign to me needs your own GitHub sign-in: pick a person instead');
   // `me` is whoever gh is signed in as: named, so it isn't removed and added in one go.
-  const [want, had] = await Promise.all([to ? ('me' in to ? ghLogin(io) : Promise.resolve(to.id)) : Promise.resolve(undefined), currentAssignees(io, repo, n)]);
+  const [want, { assignees: had }] = await Promise.all([to ? ('me' in to ? ghLogin(io) : Promise.resolve(to.id)) : Promise.resolve(undefined), liveIssue(io, repo, n)]);
   const same = (a: string) => a.toLowerCase() === want?.toLowerCase();
   const args = ['issue', 'edit', String(n), '-R', repo];
   // --flag=value, so a login starting with "-" is never read as a flag.
@@ -148,18 +149,15 @@ export async function ghAssign(io: IssueActIo, repo: string, n: number, to: Issu
   return want;
 }
 
-/** Takes an open issue nobody has: assigns the signed-in person to it, as taking a card does. Resolves to their login, or undefined when it was closed or had an assignee. */
+/**
+ * Takes an open issue nobody has: assigns the signed-in person to it, as taking a card does. Resolves to
+ * their login, or undefined when it was closed or had an assignee. The read and the add are two steps: a
+ * person who takes it in between ends up next to us (`--add-assignee` adds).
+ */
 export async function ghClaimIfUnassigned(io: IssueActIo, repo: string, n: number): Promise<string | undefined> {
   // Read fresh: the list may be minutes old, and a board's copy doesn't say whether the issue is closed.
-  const out = await run(io, ['issue', 'view', String(n), '-R', repo, '--json', 'assignees,state']);
-  let now: { assignees?: unknown[]; state?: string };
-  try {
-    now = JSON.parse(out || '{}');
-  } catch {
-    throw new Error(`gh gave something that isn't JSON for ${repo}#${n}`);
-  }
-  if (now.assignees?.length || (now.state && now.state.toUpperCase() !== 'OPEN')) return undefined;
-  const login = await ghLogin(io);
+  const [now, login] = await Promise.all([liveIssue(io, repo, n), ghLogin(io)]);
+  if (now.assignees.length || (now.state && now.state !== 'OPEN')) return undefined;
   await run(io, ['issue', 'edit', String(n), '-R', repo, `--add-assignee=${login}`]);
   return login;
 }

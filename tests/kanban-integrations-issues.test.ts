@@ -4,6 +4,7 @@ import { adfToText, buildJql, jiraSource, jqlQuote } from '../src/server/kanban/
 import { ghIssueArgs, githubRepoSource, parseGhIssues } from '../src/server/kanban/integrations/issues/github-repo.js';
 import { PROJECT_SCOPE_ERROR, filterProjectItems, githubProjectSource, parseProjectPage, projectArgs, projectError } from '../src/server/kanban/integrations/issues/github-project.js';
 import { createIssues, issueDescription } from '../src/server/kanban/integrations/issues/index.js';
+import { claimIssueForTask } from '../src/server/kanban/integrations/issues/autoassign.js';
 import type { IssueSourceIo } from '../src/server/kanban/integrations/issues/source.js';
 import type { IssueSourceConfig } from '../src/shared/kanban/types.js';
 import { client, def, makeCtx } from './kanban-integrations-ctx.js';
@@ -164,7 +165,10 @@ function claimSetup(opts: { ghAs?: Parameters<typeof makeCtx>[1] extends infer O
   const gh: IssueSourceIo['gh'] = async (args) => {
     calls.push(args);
     if (args[1] === 'list') return JSON.stringify(data.map((i) => ({ number: i.number, title: `Issue ${i.number}`, url: i.url ?? `https://github.com/o/app/issues/${i.number}`, body: '', state: i.state ?? 'OPEN', assignees: (i.assignees ?? []).map((login) => ({ login })), labels: [], updatedAt: '2026-09-02T10:00:00Z' })));
-    if (args[1] === 'view') return JSON.stringify({ assignees: (data.find((i) => String(i.number) === args[2])?.assignees ?? []).map((login) => ({ login })) });
+    if (args[1] === 'view') {
+      const i = data.find((x) => String(x.number) === args[2]);
+      return JSON.stringify({ state: i?.state ?? 'OPEN', assignees: (i?.assignees ?? []).map((login) => ({ login })) });
+    }
     if (args[0] === 'api') return `${opts.login ?? 'panu'}\n`;
     if (args[1] === 'edit' && opts.fail) throw new Error('gh: forbidden');
     return '';
@@ -176,7 +180,7 @@ function claimSetup(opts: { ghAs?: Parameters<typeof makeCtx>[1] extends infer O
     return c.got.at(-1) as { t: string; taskId: number };
   };
   const edits = () => calls.filter((a) => a[1] === 'edit');
-  return { ctx, issues, c, make, edits };
+  return { ctx, issues, c, make, edits, gh, calls };
 }
 const env = (dir: string) => ({ ghAs: () => ({ env: { GH_CONFIG_DIR: dir } }) });
 
@@ -204,6 +208,12 @@ test('an issue that has an assignee, a Jira key, a pull request or a closed issu
   for (const n of [1, 2, 3]) assert.equal((await make(`gh:o/app#${n}`)).t, 'kanban.ok');
   assert.deepEqual(edits(), []);
   assert.deepEqual(ctx.toasts, []);
+  // A board's copy has no state of its own: GitHub is asked, and a closed issue is left alone.
+  const board = claimSetup({ ...env('/h/claim-6'), issues: [{ number: 1, state: 'CLOSED' }] });
+  const listed = { source: 'github-project' as const, sourceId: 'p', key: 'gh:o/app#1', title: 'One', url: 'https://github.com/o/app/issues/1', body: '', labels: [], status: 'Todo', updatedAt: '' };
+  await claimIssueForTask(board.ctx, { patch: () => {}, io: () => io({ gh: board.gh }) }, 'app', listed, client(true, 'acc1'));
+  assert.ok(board.calls.some((a) => a[1] === 'view'), 'asked');
+  assert.deepEqual(board.edits(), []);
   // Jira: no gh write either (the source isn't even reachable, so the issue is never found: the task isn't made).
   const jira = claimSetup({ sources: [{ id: 'j', kind: 'jira', site: 'x.atlassian.net', projectKeys: ['UYT'], filters: {} }] as IssueSourceConfig[] });
   assert.equal((await jira.make('UYT-1')).t, 'kanban.error');
@@ -221,12 +231,13 @@ test('no GitHub sign-in of the person: no call is made and the task is made all 
 });
 
 test('a failed assignment is a warning and the task stands', async () => {
-  const { ctx, issues, make } = claimSetup({ ...env('/h/claim-3'), fail: true });
+  const { ctx, issues, c, make } = claimSetup({ ...env('/h/claim-3'), fail: true });
   await issues.refresh('app');
   const made = await make('gh:o/app#1');
   assert.equal(made.t, 'kanban.ok');
   assert.ok(ctx.repo.getTask(made.taskId));
-  assert.deepEqual(ctx.toasts, [{ floor: 'app', text: '👤 Couldn’t assign gh:o/app#1: gh: forbidden', level: 'warn' }]);
+  assert.deepEqual(c.warned, ['👤 Couldn’t assign gh:o/app#1: gh: forbidden']);
+  assert.deepEqual(ctx.toasts, [], 'the floor is not told');
 });
 
 test('a sign-in that can’t be got ready is a warning too, after the one answer', async () => {
@@ -241,14 +252,16 @@ test('a sign-in that can’t be got ready is a warning too, after the one answer
   assert.equal(made.t, 'kanban.ok');
   assert.equal(c.got.length, before + 1, 'answered once, no kanban.error after it');
   assert.deepEqual(edits(), []);
-  assert.deepEqual(ctx.toasts, [{ floor: 'app', text: '👤 Couldn’t assign gh:o/app#1: EACCES: gh home', level: 'warn' }]);
+  assert.deepEqual(c.warned, ['👤 Couldn’t assign gh:o/app#1: EACCES: gh home']);
+  assert.deepEqual(ctx.toasts, []);
 });
 
-test('without a sign-in of their own, the office’s gh is who gets the issue', async () => {
-  const { issues, make, edits } = claimSetup({ ghAs: () => undefined, login: 'office-bot' });
+test('without a sign-in of their own (the office’s shared gh), the issue is left alone', async () => {
+  const { ctx, issues, make, edits } = claimSetup({ ghAs: () => undefined, login: 'office-bot' });
   await issues.refresh('app');
-  await make('gh:o/app#1');
-  assert.deepEqual(edits(), [['issue', 'edit', '1', '-R', 'o/app', '--add-assignee=office-bot']]);
+  assert.equal((await make('gh:o/app#1')).t, 'kanban.ok');
+  assert.deepEqual(edits(), []);
+  assert.deepEqual(ctx.toasts, []);
 });
 
 test('a task whose start failed does not take its issue', async () => {
@@ -272,4 +285,12 @@ test('starting an existing To do task from its issue assigns it too; only naming
   assert.equal(started.taskId, todo.id);
   assert.equal(edits().length, 2);
   assert.deepEqual(edits()[1], ['issue', 'edit', '2', '-R', 'o/app', '--add-assignee=panu']);
+});
+
+test('starting a To do task from its issue with nothing cached refreshes the list and assigns it', async () => {
+  const { ctx, make, edits, calls } = claimSetup(env('/h/claim-7'));
+  const todo = ctx.repo.createTask({ project: 'app', title: 'Issue 1', ticket: 'gh:o/app#1', tool: 'claude', usePlan: false, planApproval: 'auto', useReview: false, createdBy: 'T' });
+  assert.equal(calls.length, 0, 'nothing fetched yet');
+  assert.equal((await make('gh:o/app#1', true)).taskId, todo.id);
+  assert.deepEqual(edits(), [['issue', 'edit', '1', '-R', 'o/app', '--add-assignee=panu']]);
 });
