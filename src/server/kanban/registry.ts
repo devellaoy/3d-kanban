@@ -150,6 +150,11 @@ export interface KanbanContext {
   capacity?(): string | undefined;
   /** Upstream's sign-in rule (RunAs): whether an account's Claude sign-in is ready, and what to tell it when it isn't. */
   runAs?: KanbanRunAs;
+  /**
+   * How gh runs for an account (upstream's signins.ghAs): `{env}` as them, undefined as the office's own
+   * gh (no account, or an admin's choice), or a string: why it can't (they have no GitHub sign-in).
+   */
+  ghAs?(accountId?: string): { env: Record<string, string> } | string | undefined;
   /** The office's team notifications (upstream's webhook): one line about a task waiting on a person. */
   notify?(title: string, detail?: string): void;
   engine: KanbanEngineApi;

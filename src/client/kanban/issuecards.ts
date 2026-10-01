@@ -13,9 +13,11 @@ import { h, openModal, toast } from '../ui/dom';
 import { markdown } from '../ui/markdown';
 import { issueMeeting, type MeetingPreset } from '../ui/meeting';
 import { providerPicker } from '../ui/provider';
-import { openIssue } from '../ui/github/issue-window';
+import { openIssue, type IssueWindowExtras } from '../ui/github/issue-window';
 import { labelChip } from '../ui/github/labels';
 import { kanbanApi, type KanbanOk } from './api';
+import { issueActions } from './issueactions';
+import { actionIssue, actionsTarget, closesOrReopens, keyedComment, safeUrl } from './issueactionsmodel';
 import { issueTask } from './hireform';
 import { SOURCE_KIND_NAMES } from './labels';
 import { sameWindowAppLinks } from './md';
@@ -55,10 +57,8 @@ export function takeCard(it: GhIssue): CarriedIssue {
   return cardOfIssue(it);
 }
 
-/** A link from a source, only when it's http(s): nothing else goes into an href. */
-export function safeUrl(url: string | undefined): string {
-  return url && /^https?:\/\//i.test(url) ? url : '';
-}
+/** A link from a source, only when it's http(s) (issueactionsmodel.ts). */
+export { safeUrl };
 
 /** The board's card for a carried one (undefined once it's gone from the board). */
 export function issueOfCard(card: AnyCard): GhIssue | undefined {
@@ -215,6 +215,35 @@ function queueCard(net: Net, it: GhIssue, provider?: AgentProvider, model?: stri
   net.send({ t: 'queue.add', prompt: cardIssuePrompt(it), title: `${issueCardLabel(it)} ${it.title}`, ...cardFields(cardOfIssue(it)), provider, model, effort });
 }
 
+const openTaskIn3d = (net: Net) => (id: number) => void import('./taskview').then((m) => m.openTaskWindow(net, id));
+
+/**
+ * What upstream's window gets for a keyed card: its status and assignee actions (it has comments and
+ * close of its own; a change made here fetches the issue again, so a reopen shows), and its comments
+ * posted by the card's key, so they are signed and land on its task as the kanban's are. Nothing for a
+ * card without a key: upstream's own issue keeps its window as it was.
+ */
+function keyedExtras(net: Net, card: GhIssue): IssueWindowExtras {
+  const to = actionsTarget(card, store.floor);
+  if (!to) return {};
+  const api = kanbanApi(net);
+  let off: (() => void) | undefined;
+  return {
+    extra: (first, reload) => {
+      // Only a close or reopen changes what the window shows of the issue itself.
+      const panel = issueActions(api, to.project, actionIssue(first), { sections: ['status', 'assignee'], openTask: openTaskIn3d(net), onChanged: (_what, moved) => moved && closesOrReopens(moved.id) && reload() });
+      // Kept while the card is off the list (a closed issue can drop off it): the window works on what it knew.
+      off = store.on('issues', () => {
+        const fresh = issueOfCard(first);
+        if (fresh) panel.update(actionIssue(fresh));
+      });
+      return panel.el;
+    },
+    closed: () => off?.(),
+    postComment: async (text) => void (await api.request(keyedComment(card, to.project, text)!)),
+  };
+}
+
 /**
  * A board card's window. One of the floor's own issues opens upstream's; another of the project's
  * GitHub repositories' too, with its actions going by its key; anything else (Jira, a project's draft,
@@ -225,7 +254,8 @@ export function openCard(it: GhIssue, net: Net, actions: BoardActions) {
   // Queued with its key, whichever window it opens in.
   const keyed: BoardActions = { ...actions, queue: (_prompt, _title, _issue, provider, model, effort) => queueCard(net, it, provider, model, effort) };
   // The floor's own issue from the sources: upstream's window and prompts.
-  if (isOwnIssue(it)) return openIssue(it, net, keyed);
+  const extra = keyedExtras(net, it);
+  if (isOwnIssue(it)) return openIssue(it, net, keyed, extra);
   if (it.number > 0) {
     const label = (title: string) => title.replace(`#${it.number}`, issueCardLabel(it));
     return openIssue(it, net, {
@@ -233,7 +263,7 @@ export function openCard(it: GhIssue, net: Net, actions: BoardActions) {
       assign: (_prompt, title) => actions.assign(sourcePrompt(it), label(title)),
       ask: (_context, title) => actions.ask(`${sourceName(it)}: “${it.title}”. ${readHint(it)}`, label(title)),
       meeting: () => actions.meeting(cardMeeting(it)),
-    });
+    }, extra);
   }
   openSourceIssue(it, net, keyed);
 }
@@ -246,6 +276,8 @@ function openSourceIssue(first: GhIssue, net: Net, actions: BoardActions) {
   const pill = h('span.pill.done', {}, it.source ? SOURCE_KIND_NAMES[it.source] : 'issue');
   const meta = h('div.gh-meta');
   const body = h('div.gh-items');
+  const to = actionsTarget(it, store.floor);
+  const panel = to ? issueActions(kanbanApi(net), to.project, actionIssue(it), { openTask: (id) => (modal.close(), openTaskIn3d(net)(id)) }) : null;
   const queueProvider = providerPicker(store.project, `issue-provider-${cardId(it)}`, 'Queue on');
   const queue = h('button.btn', { type: 'button' }) as HTMLButtonElement;
   queue.addEventListener('click', () => {
@@ -265,7 +297,7 @@ function openSourceIssue(first: GhIssue, net: Net, actions: BoardActions) {
     { role: 'dialog', 'aria-label': `Issue ${label}` },
     h('header', {}, pill, h('h2', { title: `${label} ${it.title}` }, `${label} ${it.title}`), close),
     meta,
-    h('div.gh-body', {}, h('div.gh-conv', {}, h('div.gh-col', {}, body))),
+    h('div.gh-body', {}, h('div.gh-conv', {}, h('div.gh-col', {}, body, panel?.el ?? null))),
     h(
       'footer',
       {},
@@ -296,6 +328,7 @@ function openSourceIssue(first: GhIssue, net: Net, actions: BoardActions) {
     queue.title = onQueue ? '' : 'A worker picks it up by itself when a desk is free and there is room under the worker limit';
     task.textContent = it.taskId ? `↗ Task #${it.taskId}` : '🗂️ Kanban task';
     task.title = it.taskId ? 'The kanban task made from it' : 'A kanban task for it (plan → implement → review), started at a free desk';
+    panel?.update(actionIssue(it));
   };
   const unsubs = [
     store.on('issues', () => {

@@ -344,7 +344,7 @@ allowed: `todo → in_progress` (= start), `waiting|review → done`, `done → 
 
 ## 6. WS protocol
 
-All kanban messages are `kanban.*` (`src/shared/kanban/protocol.ts`, `KanbanClientMsg` / `KanbanServerMsg`),
+All kanban messages are `kanban.*` (`src/shared/kanban/protocol.ts`, `KanbanClientMsg` / `KanbanServerMsg`; the validators are in `validate.ts`, the issue messages in `issueops.ts`),
 joined into upstream's `ClientMsg` / `ServerMsg` unions. Requests may carry `rid` (string); the server
 answers `kanban.ok {rid, ...}` or `kanban.error {rid, message}`. Deltas are pushed to subscribed clients
 (`kanban.subscribe {project: floorId | null}`), no polling.
@@ -411,6 +411,25 @@ answers `kanban.ok {rid, ...}` or `kanban.error {rid, message}`. Deltas are push
     its brief, the layered `kanban.pr.panel` prompt (office + project layers), lists every PR, the review is
     posted on one of the primary repository's; a single PR from the office's PR board keeps upstream's `pull.panel`) and is answered with
     `kanban.ok {}` (`taskId` when one was given, which also gets a status comment).
+  - `issue.transitions | transition | comments | comment | people | assign` (`{project, issueKey, …}`, defined with the
+    `issues.*` messages in `shared/kanban/issueops.ts`; handlers in `integrations/issues/actions.ts`; for anyone signed in) act on one
+    issue of an issue source. The reads are answered with `kanban.issueTransitions {current?, transitions, cannot?, note?}`,
+    `kanban.issueComments {items, cannot?}` and `kanban.issuePeople {items, cannot?}` (names of their own, so no
+    answer is mistaken for a request; `cannot` says why nothing can be offered, `note` that some choices were left
+    out); the writes with `kanban.ok`. A transition id is opaque to the browser: Jira's number,
+    `p:<projectId>:<itemId>:<fieldId>:<optionId>` (a Projects v2 Status option, checked again against a fresh read before
+    it is written) or `gh:close` / `gh:close:not_planned` / `gh:reopen`.
+    - Only keys on the project's cached list are accepted. **Routing is by key**, not by `sourceId` (the list keeps one
+      source's copy of a key two sources both list): a Jira key goes to Jira (the site of the project's Jira source),
+      `ghp:…` to the board's Status, `gh:owner/repo#N` to GitHub for comments and assignees and, for its status, to the Status
+      options of the project's `github-project` sources that hold it (`projectItems`) plus GitHub's close / reopen.
+    - Identity: Jira always uses the kanban-secrets token; GitHub runs as `KanbanContext.ghAs(accountId)` (wired from
+      `signins.ghAs`): `{env}` is the person, `undefined` the office's gh, a string refuses with it. Under a shared identity a
+      comment is signed `— <name> via Agent Office`.
+    - A write patches the cached issue (an **overlay** per key: status, assignee), pushes `kanban.issues`, tells the
+      3D board (`wallChanged`, then a debounced `refreshWall`), toasts the floor and adds a status comment to the issue's task.
+      The overlay is dropped when a fetch that started 10 s or more after the write completes without source errors, or after
+      2 minutes, so a fetch under way (or Jira's lagging search) can't undo the change.
   - `issues.list`, `issues.refresh`, `issues.createTask` (idempotent by ticket, archived tasks included, `kanban.ok {taskId, existed}`; `start` with `deskId` starts it, or the one already made while it waits in To do, at that desk: the 3D office's P with a card; `started` or `startError` says how it went),
     `skills.list` are for anyone signed in.
   - `meta.get` (anyone signed in) is answered with `kanban.meta {projects, settings, secrets, me}`: what a

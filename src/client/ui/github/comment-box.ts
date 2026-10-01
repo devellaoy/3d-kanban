@@ -22,7 +22,8 @@ export interface CommentBox {
  * as that account rather than as you. The draft is kept per item until it is posted, so Esc or a
  * closed window doesn't lose it.
  */
-export function commentBox(kind: 'issue' | 'pull', number: number, itemUrl: string, net: Net, onPosted: (c: GhComment) => void, repo?: string): CommentBox {
+/** `send`: posts the comment some other way than gh.comment (a card from the issue sources goes by its key), calling `sent` after it went through. */
+export function commentBox(kind: 'issue' | 'pull', number: number, itemUrl: string, net: Net, onPosted: (c: GhComment) => void, repo?: string, send?: { post(body: string): Promise<void>; sent(): void }): CommentBox {
   const draftKey = `${DRAFT_KEY}${itemUrl}`;
   // `repo` for an item of another of the project's repositories.
   const waitKey = ghKey(kind, number, repo);
@@ -82,6 +83,19 @@ export function commentBox(kind: 'issue' | 'pull', number: number, itemUrl: stri
     busy = true;
     result.classList.add('hidden');
     sync();
+    if (send) {
+      send
+        .post(body)
+        .then(() => {
+          ta.value = '';
+          saveDraft();
+          setPreview(false);
+          send.sent();
+        })
+        .catch((err: Error) => fail(err.message || 'The comment didn’t go through'))
+        .finally(() => ((busy = false), sync()));
+      return;
+    }
     commentWaiters.set(waitKey, (msg) => {
       settle();
       if (msg.comment) {

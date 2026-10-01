@@ -1,6 +1,7 @@
 // A project's issues from its issue sources (GitHub repositories, a GitHub Projects board, Jira), in
 // one list: filter chips by source, status, label and assignee, a refresh, and "Create task" on each
-// (idempotent by the issue's key: an issue already made into a task opens that task instead).
+// (idempotent by the issue's key: an issue already made into a task opens that task instead). Its title
+// opens the issue's own window (issuewindow.ts).
 
 import { h, timeAgo } from '../ui/dom';
 import type { KanbanServerMsg } from '../../shared/kanban/protocol.js';
@@ -8,6 +9,7 @@ import type { NormalizedIssue } from '../../shared/kanban/types.js';
 import type { KanbanApi, KanbanOk } from './api';
 import { filterIssues } from './model';
 import { kstore } from './store';
+import { openIssueWindow } from './issuewindow';
 import { SOURCE_KIND_NAMES } from './labels';
 import { dialog, run, select, showDialog, textInput } from './ui';
 
@@ -77,7 +79,7 @@ export function openIssues(api: KanbanApi, projectId: string, openTask: (id: num
         'div.kb-issue-main',
         {},
         h('a.kb-issue-key', { href: i.url, target: '_blank', rel: 'noopener noreferrer' }, i.key),
-        h('span.kb-issue-title', {}, i.title),
+        h('button.kb-issue-title.kb-issue-open', { type: 'button', title: 'Open it: status, assignee and comments', onclick: () => openIssueWindow(api, projectId, i, (id) => (modal.close(), openTask(id))) }, i.title),
         h(
           'span.kb-chips',
           {},

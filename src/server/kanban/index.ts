@@ -57,6 +57,8 @@ export interface KanbanOffice {
   capacity?(): string | undefined;
   /** Upstream's sign-in rule (signins as RunAs): task hires run on their owner's own Claude sign-in. */
   runAs?: KanbanRunAs;
+  /** How gh runs for an account (signins.ghAs), for the actions on issues (see KanbanContext.ghAs). */
+  ghAs?(accountId?: string): { env: Record<string, string> } | string | undefined;
   /** The office's team notifications (upstream's webhook). */
   notify?(title: string, detail?: string): void;
 }
@@ -185,6 +187,7 @@ export function installKanban(opts: KanbanInstallOptions): Kanban {
     toast: (floorId: string, text: string, level?: 'info' | 'warn' | 'error') => opts.toast(floorId, text, level),
     ...(opts.capacity ? { capacity: () => opts.capacity!() } : {}),
     ...(opts.runAs ? { runAs: opts.runAs } : {}),
+    ...(opts.ghAs ? { ghAs: (accountId?: string) => opts.ghAs!(accountId) } : {}),
     ...(opts.notify ? { notify: (title: string, detail?: string) => opts.notify!(title, detail) } : {}),
     card: (taskId: number) =>
       repo.card(taskId, (t) => {
