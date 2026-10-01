@@ -39,12 +39,12 @@ export interface ActionDeps {
 }
 
 /** Where an issue's actions go. */
-type Target = { kind: 'jira'; site: string } | { kind: 'draft'; itemId: string } | { kind: 'gh'; repo: string; number: number; isPr: boolean; closed: boolean };
+export type Target = { kind: 'jira'; site: string } | { kind: 'draft'; itemId: string } | { kind: 'gh'; repo: string; number: number; isPr: boolean; closed: boolean };
 
 export const DRAFT_NO_COMMENTS = 'Draft issues have no comments';
 export const DRAFT_NO_ASSIGNEE = 'Convert the draft to an issue on GitHub to assign it';
 
-function route(sources: IssueSourceConfig[], issue: NormalizedIssue): Target | string {
+export function route(sources: IssueSourceConfig[], issue: NormalizedIssue): Target | string {
   if (issue.source === 'jira') {
     const jira = sources.find((s) => s.kind === 'jira' && s.id === issue.sourceId) ?? sources.find((s) => s.kind === 'jira');
     return jira && jira.kind === 'jira' ? { kind: 'jira', site: jira.site } : 'The project has no Jira source';

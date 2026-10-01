@@ -337,7 +337,7 @@ per repository of the project below its header (📦 All, then every repository,
 ⚙️ Settings → **📁 Projects** → **📌 Issue sources**, per project: **GitHub repositories**, a **GitHub project** (Projects
 v2) or **Jira**, up to 10 per project. **📌 Issues** on the board lists them (search, and filter by
 source, status, label and assignee); **＋ Create task** makes a task in To do from one (title, body
-plus a *Source:* link, the ticket key and link). An issue already made into a task shows its number
+plus a *Source:* link, the ticket key and link); an open GitHub issue nobody has is assigned to you then (as taking a card does, under your GitHub sign-in), and an issue with an assignee is left alone. An issue already made into a task shows its number
 instead, and is never made twice.
 
 | Source | Filters | Needs |

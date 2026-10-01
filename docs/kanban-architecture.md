@@ -439,7 +439,7 @@ answers `kanban.ok {rid, ...}` or `kanban.error {rid, message}`. Deltas are push
       3D board (`wallChanged`, then a debounced `refreshWall`), toasts the floor and adds a status comment to the issue's task.
       The overlay is dropped when a fetch that started 10 s or more after the write completes without source errors, or after
       2 minutes, so a fetch under way (or Jira's lagging search) can't undo the change.
-  - `issues.list`, `issues.refresh`, `issues.createTask` (idempotent by ticket, archived tasks included, `kanban.ok {taskId, existed}`; `start` with `deskId` starts it, or the one already made while it waits in To do, at that desk: the 3D office's P with a card; `started` or `startError` says how it went),
+  - `issues.list`, `issues.refresh`, `issues.createTask` (idempotent by ticket, archived tasks included, `kanban.ok {taskId, existed}`; `start` with `deskId` starts it, or the one already made while it waits in To do, at that desk: the 3D office's P with a card; `started` or `startError` says how it went; a new task, or one started from To do (not one whose start failed), takes an unassigned open GitHub issue (read fresh) (not a pull request, a draft or Jira) for the person, under their gh sign-in as taking a card does, or the office's gh when the admin chose it, after answering: a failure is a warn toast),
     `skills.list` are for anyone signed in.
   - `meta.get` (anyone signed in) is answered with `kanban.meta {projects, settings, secrets, me}`: what a
     snapshot says besides the cards, for ⚙️ Settings on a page without a board (the 3D office).

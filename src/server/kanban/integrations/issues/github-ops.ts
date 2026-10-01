@@ -147,3 +147,19 @@ export async function ghAssign(io: IssueActIo, repo: string, n: number, to: Issu
   if (args.length > 5) await run(io, args);
   return want;
 }
+
+/** Takes an open issue nobody has: assigns the signed-in person to it, as taking a card does. Resolves to their login, or undefined when it was closed or had an assignee. */
+export async function ghClaimIfUnassigned(io: IssueActIo, repo: string, n: number): Promise<string | undefined> {
+  // Read fresh: the list may be minutes old, and a board's copy doesn't say whether the issue is closed.
+  const out = await run(io, ['issue', 'view', String(n), '-R', repo, '--json', 'assignees,state']);
+  let now: { assignees?: unknown[]; state?: string };
+  try {
+    now = JSON.parse(out || '{}');
+  } catch {
+    throw new Error(`gh gave something that isn't JSON for ${repo}#${n}`);
+  }
+  if (now.assignees?.length || (now.state && now.state.toUpperCase() !== 'OPEN')) return undefined;
+  const login = await ghLogin(io);
+  await run(io, ['issue', 'edit', String(n), '-R', repo, `--add-assignee=${login}`]);
+  return login;
+}
