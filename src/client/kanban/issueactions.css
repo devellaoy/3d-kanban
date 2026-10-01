@@ -1,43 +1,43 @@
 /* The actions on an issue of an issue source (issueactions.ts): in the kanban's issue window and the 3D
    office's issue windows, so it brings all its own styles (the 3D office doesn't load kanban.css). */
-.kb-ia { display: flex; flex-direction: column; gap: 10px; min-width: 0; font-size: 14px; }
+.kb-ia { display: flex; flex-direction: column; gap: 10px; min-width: 0; font-size: var(--fs-md); }
 .kb-ia [hidden] { display: none !important; }
-.kb-ia-sec { padding: 10px 12px; border: 3px solid var(--ink); border-radius: 14px; background: #fff; min-width: 0; }
+.kb-ia-sec { padding: 10px 12px; border: var(--bw) solid var(--ink); border-radius: 14px; background: var(--field); min-width: 0; }
 .kb-ia-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 8px; }
-.kb-ia-head h4 { margin: 0; font-size: 13px; font-weight: 900; text-transform: uppercase; letter-spacing: .04em; }
-.kb-ia-now { padding: 1px 9px; font-size: 13px; font-weight: 900; border: 2px solid var(--ink); border-radius: 999px; background: #fff3c4; overflow-wrap: anywhere; }
+.kb-ia-head h4 { margin: 0; font-size: var(--fs-sm); font-weight: var(--fw-heavy); text-transform: uppercase; letter-spacing: .04em; }
+.kb-ia-now { padding: 1px 9px; font-size: var(--fs-sm); font-weight: var(--fw-heavy); border: var(--bw-sm) solid var(--ink); border-radius: var(--radius-pill); background: var(--warn-soft); overflow-wrap: anywhere; }
 .kb-ia-head .kb-ia-icon { margin-left: auto; }
 .kb-ia-body { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
 .kb-ia-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
-.kb-ia .btn.small { padding: 4px 9px; font-size: 13px; border-radius: 10px; box-shadow: 0 2px 0 var(--ink); }
-.kb-ia .btn.small[aria-pressed=true] { background: #fff3c4; }
-.kb-ia-quiet { margin: 0; font-size: 13px; font-weight: 700; color: var(--muted); }
+.kb-ia .btn.small { padding: 4px 9px; font-size: var(--fs-sm); border-radius: 10px; box-shadow: var(--shadow-xs); }
+.kb-ia .btn.small[aria-pressed=true] { background: var(--warn-soft); }
+.kb-ia-quiet { margin: 0; font-size: var(--fs-sm); font-weight: var(--fw-semibold); color: var(--muted); }
 .kb-ia-quiet.grow { flex: 1; }
-.kb-ia-quiet a, .kb-ia-note a { font-weight: 900; }
-.kb-ia-note { margin: 0; padding: 6px 8px; font-size: 13px; font-weight: 800; border: 2px dashed var(--ink); border-radius: 10px; background: #fff8e1; }
-.kb-ia-error { margin: 0; padding: 6px 8px; font-size: 13px; font-weight: 800; border: 2px solid var(--bad); border-radius: 10px; background: #fff0f3; }
-.kb-ia select.kb-ia-select, .kb-ia input[type=search] { width: 100%; max-width: 420px; height: 40px; padding: 0 10px; font: 800 14px var(--font); color: var(--ink); background: #fff; border: 3px solid var(--ink); border-radius: 12px; outline: none; }
+.kb-ia-quiet a, .kb-ia-note a { font-weight: var(--fw-heavy); }
+.kb-ia-note { margin: 0; padding: 6px 8px; font-size: var(--fs-sm); font-weight: var(--fw-bold); border: var(--bw-sm) dashed var(--ink); border-radius: 10px; background: var(--warn-wash); }
+.kb-ia-error { margin: 0; padding: 6px 8px; font-size: var(--fs-sm); font-weight: var(--fw-bold); border: var(--bw-sm) solid var(--bad); border-radius: 10px; background: var(--bad-wash); }
+.kb-ia select.kb-ia-select, .kb-ia input[type=search] { width: 100%; max-width: 420px; height: 40px; padding: 0 10px; font: var(--fw-bold) var(--fs-md) var(--font); color: var(--text); background: var(--field); border: var(--bw) solid var(--ink); border-radius: 12px; outline: none; }
 .kb-ia select:focus, .kb-ia input:focus, .kb-ia textarea:focus { border-color: var(--accent); }
-.kb-ia select:disabled, .kb-ia textarea:disabled { background: #f3f1ee; color: var(--muted); }
-.kb-ia-picker { display: flex; flex-direction: column; gap: 6px; padding: 8px; border: 2px dashed var(--ink); border-radius: 12px; background: var(--paper); }
+.kb-ia select:disabled, .kb-ia textarea:disabled { background: var(--field-off); color: var(--muted); }
+.kb-ia-picker { display: flex; flex-direction: column; gap: 6px; padding: 8px; border: var(--bw-sm) dashed var(--ink); border-radius: 12px; background: var(--paper); }
 .kb-ia-people { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; max-height: 220px; overflow-y: auto; }
 .kb-ia-people li { display: flex; align-items: center; gap: 6px; }
-.kb-ia-person { flex: 1; min-width: 0; display: flex; align-items: baseline; gap: 8px; padding: 6px 10px; font: 700 14px var(--font); color: var(--ink); text-align: left; background: #fff; border: 2px solid var(--ink); border-radius: 10px; cursor: pointer; }
+.kb-ia-person { flex: 1; min-width: 0; display: flex; align-items: baseline; gap: 8px; padding: 6px 10px; font: var(--fw-semibold) var(--fs-md) var(--font); color: var(--text); text-align: left; background: var(--field); border: var(--bw-sm) solid var(--ink); border-radius: 10px; cursor: pointer; }
 .kb-ia-person:hover { background: var(--paper-2); }
 .kb-ia-person b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.kb-ia-person small { color: var(--muted); font-weight: 700; }
+.kb-ia-person small { color: var(--muted); font-weight: var(--fw-semibold); }
 .kb-ia-pin { flex: none; }
 .kb-ia-comments { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
-.kb-ia-comment { padding: 8px 12px 10px; border: 2px solid var(--ink); border-radius: 12px; background: var(--paper); min-width: 0; overflow-wrap: anywhere; }
-.kb-ia-comment header { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 0 0 4px; padding: 0; font-size: 13px; background: none; border: 0; }
-.kb-ia-comment header time { margin-left: auto; font-size: 12px; font-weight: 700; color: var(--muted); }
-.kb-ia-comment header a { text-decoration: none; font-weight: 900; }
-.kb-ia-comment .md { padding: 0; font-size: 14px; }
+.kb-ia-comment { padding: 8px 12px 10px; border: var(--bw-sm) solid var(--ink); border-radius: 12px; background: var(--paper); min-width: 0; overflow-wrap: anywhere; }
+.kb-ia-comment header { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 0 0 4px; padding: 0; font-size: var(--fs-sm); background: none; border: 0; }
+.kb-ia-comment header time { margin-left: auto; font-size: var(--fs-xs); font-weight: var(--fw-semibold); color: var(--muted); }
+.kb-ia-comment header a { text-decoration: none; font-weight: var(--fw-heavy); }
+.kb-ia-comment .md { padding: 0; font-size: var(--fs-md); }
 .kb-ia-comment .md p { margin: 0 0 6px; }
 .kb-ia-comment .md p:last-child { margin-bottom: 0; }
 .kb-ia-comment .md img { max-width: 100%; }
 .kb-ia-composer { display: flex; flex-direction: column; gap: 6px; }
-.kb-ia textarea { width: 100%; min-height: 70px; padding: 8px 10px; font: inherit; font-size: 14px; color: var(--ink); background: #fff; border: 2px solid var(--ink); border-radius: 12px; outline: none; resize: vertical; box-sizing: border-box; }
+.kb-ia textarea { width: 100%; min-height: 70px; padding: 8px 10px; font: inherit; font-size: var(--fs-md); color: var(--text); background: var(--field); border: var(--bw-sm) solid var(--ink); border-radius: 12px; outline: none; resize: vertical; box-sizing: border-box; }
 @media (max-width: 700px) {
   .kb-ia textarea, .kb-ia input[type=search], .kb-ia select { font-size: 16px; }
   .kb-ia select.kb-ia-select, .kb-ia input[type=search] { max-width: none; }
@@ -51,9 +51,9 @@
 .modal.kb-issue-window > .body > * { flex: none; }
 .modal.kb-issue-window > header h2 { white-space: normal; overflow-wrap: anywhere; }
 .kb-iw-top { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; }
-.kb-iw-key { font-weight: 900; font-size: 13px; }
-.kb-iw-desc { padding: 10px 12px; border: 2px dashed var(--ink); border-radius: 12px; background: #fff; overflow-wrap: anywhere; max-height: 320px; overflow-y: auto; }
-.kb-iw-desc .md { padding: 0; font-size: 14px; }
+.kb-iw-key { font-weight: var(--fw-heavy); font-size: var(--fs-sm); }
+.kb-iw-desc { padding: 10px 12px; border: var(--bw-sm) dashed var(--ink); border-radius: 12px; background: var(--field); overflow-wrap: anywhere; max-height: 320px; overflow-y: auto; }
+.kb-iw-desc .md { padding: 0; font-size: var(--fs-md); }
 .kb-iw-desc .md img { max-width: 100%; }
 @media (max-width: 700px) {
   .modal.kb-issue-window { width: 100%; height: 100dvh; max-height: 100dvh; border: 0; border-radius: 0; box-shadow: none; }
@@ -61,5 +61,5 @@
 }
 
 /* A row's title in the issues list opens its window. */
-.kb-issue-open { padding: 0; font: inherit; font-weight: 900; color: var(--ink); text-align: left; background: none; border: 0; cursor: pointer; overflow-wrap: anywhere; }
+.kb-issue-open { padding: 0; font: inherit; font-weight: var(--fw-heavy); color: var(--text); text-align: left; background: none; border: 0; cursor: pointer; overflow-wrap: anywhere; }
 .kb-issue-open:hover { text-decoration: underline; }
