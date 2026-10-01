@@ -1,10 +1,11 @@
 // The worker window's tabs (E at a task worker's desk, or its card on the 2D view): 🖥️ Terminal (upstream's
-// terminal, as it is), 🗂️ Task #14 (the shared task view, embedded: conversation with its composer and
-// history, plan, runs, PRs); its changes are the header's 🌿 Changes button, which opens the task's
-// Changes window (kanban/changesview, every repository and per commit), not a tab here. The
-// task view is mounted the first time its tab opens and destroyed with the window; the tab chosen is
-// remembered per worker for the session (the Task tab until another is picked). A worker without a
-// task gets no tabs: upstream's window.
+// terminal and its web page tabs, upstream #212, as they are), 🗂️ Task #14 (the shared task view, embedded:
+// conversation with its composer and history, plan, runs, PRs); its changes are the header's 🌿 Changes
+// button, which opens the task's Changes window (kanban/changesview, every repository and per commit), not
+// a tab here. The task view is mounted the first time its tab opens and destroyed with the window; the tab
+// chosen is remembered per worker for the session (the Task tab until another is picked). The task tab
+// hides everything of the terminal side at window level (the kb-on-task class), so termtabs' own hidden
+// state is untouched. A worker without a task gets no tabs: upstream's window.
 //
 // Keys: the terminal only reads the keys typed into its own textarea, and the office's keys are off
 // while any window is open, so the task's composer is safe from both; its keydowns are stopped at the
@@ -21,6 +22,8 @@ const CSS = `
 .modal.term .worker-tabs { display: flex; gap: 6px; padding: 6px 10px 0; background: var(--paper); border-bottom: 3px solid var(--ink); }
 .modal.term .worker-tabs button { padding: 6px 12px; font: 800 13px var(--font); color: var(--ink); background: #f3f1ee; border: 3px solid var(--ink); border-bottom: 0; border-radius: 10px 10px 0 0; cursor: pointer; }
 .modal.term .worker-tabs button.on { background: #fff; }
+/* The task tab hides the whole terminal side (the terminal, its web page tabs, the keypad) at window level. */
+.modal.term.kb-on-task > :not(header, .worker-tabs, .worker-task) { display: none !important; }
 .modal.term .worker-task { flex: 1; min-height: 0; overflow: auto; background: #fff; color: var(--ink); }
 `;
 
@@ -43,10 +46,10 @@ export interface WorkerTabs {
 }
 
 /**
- * Puts the tabs into a worker's terminal window `el`, between its header and the terminal's `panes`
- * (the terminal and the keypad); null for a worker without a task, whose window stays upstream's.
+ * Puts the tabs into a worker's terminal window `el`: the strip under its header, the task pane right
+ * after `anchor` (the terminal's own area); null for a worker without a task, whose window stays upstream's.
  */
-export function mountWorkerTabs(net: Net, w: WorkerInfo, el: HTMLElement, panes: (HTMLElement | null)[], opts: WorkerTabsOptions): WorkerTabs | null {
+export function mountWorkerTabs(net: Net, w: WorkerInfo, el: HTMLElement, anchor: HTMLElement, opts: WorkerTabsOptions): WorkerTabs | null {
   const tabs = workerTabs(w);
   if (!tabs.length) return null;
   css();
@@ -66,7 +69,7 @@ export function mountWorkerTabs(net: Net, w: WorkerInfo, el: HTMLElement, panes:
     strip.append(b);
   }
   el.querySelector(':scope > header')!.after(strip);
-  (panes.find(Boolean) ?? strip).after(pane);
+  anchor.after(pane);
 
   let view: { destroy(): void } | null = null;
   let destroyed = false;
@@ -78,7 +81,7 @@ export function mountWorkerTabs(net: Net, w: WorkerInfo, el: HTMLElement, panes:
       b.classList.toggle('on', t === tab);
       b.setAttribute('aria-selected', String(t === tab));
     }
-    for (const p of panes) p?.classList.toggle('hidden', tab !== 'terminal');
+    el.classList.toggle('kb-on-task', tab === 'task');
     pane.classList.toggle('hidden', tab !== 'task');
     if (tab === 'terminal') return void setTimeout(opts.focusTerminal, 0);
     // Out of the terminal, so its keys stop going to the worker.
