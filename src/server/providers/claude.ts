@@ -144,8 +144,8 @@ function claudeHook(h: WorkerHandle, event: string, payload: any): boolean {
       h.bootBlocked = false;
       info.action = undefined;
       if (typeof payload?.prompt === 'string') {
-        info.activity = truncate(payload.prompt, 80);
-        h.notePrompt(payload.prompt);
+        const shown = h.notePrompt(payload.prompt);
+        if (shown.trim()) info.activity = truncate(shown, 80);
       }
       if (info.status !== 'working') h.setStatus('working');
       else h.emit();

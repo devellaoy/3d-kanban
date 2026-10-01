@@ -129,6 +129,8 @@ export interface Worker {
   handle?: WorkerHandle;
   /** Test runs and builds that have failed in a row (see FAILS_TO_DESPAIR). */
   failStreak: number;
+  /** The attached-files block its first launch prompt ends with; its first prompt hook takes it off (see withoutLaunchTail). Not kept. */
+  launchTail?: string;
   /** Its latest prompts and tool calls, for naming its task. */
   prompts: string[];
   tools: string[];
@@ -193,8 +195,8 @@ export interface WorkerHandle<S = unknown> {
   emit(): void;
   /** Saves every worker (workers.json). */
   persist(): void;
-  /** A new message for it: shown right away, and its task (re)named. */
-  notePrompt(prompt: string): void;
+  /** A new message for it: shown right away, and its task (re)named. Gives back the text worth showing of it (its launch tail taken off). */
+  notePrompt(prompt: string): string;
   /** A tool call it made, for naming its task. */
   noteTool(tool: string): void;
   /** A new conversation, so a new task. */
@@ -233,7 +235,7 @@ export interface WorkerContext {
   cwd(info: WorkerInfo): string;
   /** What a worker's terminal runs. */
   command(info: WorkerInfo): string;
-  notePrompt(w: Worker, prompt: string): void;
+  notePrompt(w: Worker, prompt: string): string;
   /** Keeps `worktree.branch` on the branch its worktree is on (see WorkerTrees.sync). */
   syncBranch(w: Worker): Promise<void>;
 }

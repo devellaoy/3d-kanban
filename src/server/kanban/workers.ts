@@ -129,6 +129,7 @@ export abstract class KanbanWorkers {
   protected hired(w: Worker, owner: string | undefined, extra: SpawnExtra | undefined) {
     w.owner = owner;
     w.extra = kanbanExtra(extra);
+    w.launchTail = extra?.promptTail;
     if (extra?.resumeSessionId) w.info.sessionId = extra.resumeSessionId;
     if (extra?.kanban) w.info.kanban = { taskId: extra.kanban.taskId, role: extra.kanban.role };
   }

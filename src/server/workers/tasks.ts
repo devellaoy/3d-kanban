@@ -37,19 +37,21 @@ export class WorkerTasks {
     });
   }
 
-  /** A new message for the worker: show it right away, and have its task (re)named. */
-  notePrompt(w: Worker, prompt: string) {
-    if (w.info.kind !== 'agent') return;
-    const clean = prompt.replace(/\s+/g, ' ').trim();
+  /** A new message for the worker: show it right away, and have its task (re)named. Gives back what is worth showing of it: the message without its launch tail (see withoutLaunchTail). */
+  notePrompt(w: Worker, prompt: string): string {
+    const text = withoutLaunchTail(w, prompt);
+    if (w.info.kind !== 'agent') return text;
+    const clean = text.replace(/\s+/g, ' ').trim();
     // Bare slash commands (/model, /compact), repeats and the office's own carry-on aren't new work.
-    if (!clean || /^\/\S+$/.test(clean) || w.prompts.at(-1) === clean || clean === CARRY_ON_PROMPT) return;
+    if (!clean || /^\/\S+$/.test(clean) || w.prompts.at(-1) === clean || clean === CARRY_ON_PROMPT) return text;
     w.prompts = [...w.prompts, clean].slice(-TASK_PROMPTS);
     const hadTask = !!w.info.task;
     if (!hadTask) w.info.task = fallbackTask(clean);
-    if (!providerAdapter(w.info.provider)?.namesTasks) return;
+    if (!providerAdapter(w.info.provider)?.namesTasks) return text;
     // "yes", "go ahead", "2": a reply within the same task, not worth a new name.
-    if (hadTask && clean.length < 16) return;
+    if (hadTask && clean.length < 16) return text;
     this.name(w);
+    return text;
   }
 
   noteTool(w: Worker, tool: string) {
@@ -84,4 +86,18 @@ export class WorkerTasks {
     const previous = w.info.task && w.prompts.length > 1 ? w.info.task : undefined;
     this.namer.request(w.info.id, { prompts: w.prompts, tools: w.tools, previous, epoch: w.taskEpoch });
   }
+}
+
+/**
+ * The first prompt a hire's provider reports back is its whole launch prompt, ending with the block of
+ * attached files (Worker.launchTail). Takes that block off, once, so it never reaches the activity line
+ * or the task's naming; any other prompt comes back as it was.
+ */
+export function withoutLaunchTail(w: Worker, prompt: string): string {
+  const tail = w.launchTail?.trim();
+  if (!tail) return prompt;
+  const text = prompt.trimEnd();
+  if (!text.endsWith(tail)) return prompt;
+  w.launchTail = undefined;
+  return text.slice(0, text.length - tail.length).trimEnd();
 }
