@@ -313,8 +313,8 @@ Only admins add a folder, since it gives the project's agents that folder on the
 admin is an account with the admin role or, while the office has no accounts, anyone signed in with the
 shared office password. An office started in a subfolder of a git repository (`agent-office <dir>`)
 keeps running git there as before, while the kanban treats that project as a folder project (no
-worktrees); a folder added later that has no `.git` of its own never runs git, and doesn't borrow the
-repository around it.
+worktrees); a folder added later that has no `.git` of its own doesn't borrow the repository around it: the
+office only adds `.agent-office/` to that repository's exclude list and otherwise never uses its git.
 
 An admin can rename a project: ⚙️ Settings → **📁 Projects** → **⚙️ Project** → **Project name** →
 **Rename** (1-100 characters, not another project's name, in any case). The name shows in the elevator,

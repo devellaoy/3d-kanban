@@ -131,7 +131,12 @@ export class GitHub {
 
   /** The repository its gh calls name: the given one, else the checkout's origin, never gh's pick among the remotes (see ghrepo.ts). */
   private get target(): string | undefined {
-    return this.nameWithOwner ?? checkoutRepo(this.dir);
+    return this.nameWithOwner ?? (this.off ? undefined : checkoutRepo(this.dir));
+  }
+
+  /** Every call that would run gh or git starts here: a project that isn't a git repository refuses it with `off`. */
+  private guard() {
+    if (this.off) throw new Error(this.off);
   }
 
   start() {
@@ -157,6 +162,7 @@ export class GitHub {
 
   /** The repository's full name and how it lets PRs merge. Asked once (again after a failure). */
   repoInfo(): Promise<GhRepoInfo> {
+    if (this.off) return Promise.reject(new Error(this.off));
     this.repo ??= gh(['repo', 'view', ...(this.target ? [this.target] : []), '--json', 'nameWithOwner,squashMergeAllowed,mergeCommitAllowed,rebaseMergeAllowed'], this.dir).then((out) => {
       const r = JSON.parse(out);
       const methods = (['squash', 'merge', 'rebase'] as const).filter((m) => r[{ squash: 'squashMergeAllowed', merge: 'mergeCommitAllowed', rebase: 'rebaseMergeAllowed' }[m]]);
@@ -168,6 +174,7 @@ export class GitHub {
 
   /** Who the office's own gh is signed in as, which is who it comments as for everyone without their own. Asked once; '' when gh can't say. */
   viewer(): Promise<string> {
+    if (this.off) return Promise.resolve('');
     this.login ??= gh(['api', 'user', '--jq', '.login'], this.dir).then((out) => out.trim());
     this.login.catch(() => (this.login = undefined));
     return this.login.catch(() => '');
@@ -178,6 +185,7 @@ export class GitHub {
    * GitHub login of whoever asked, when they're signed in to their own; else it's the office's.
    */
   async pullDetail(n: number, me?: string): Promise<GhPullDetail> {
+    this.guard();
     const fields = 'number,body,state,isDraft,reviewDecision,headRefName,baseRefName,mergeable,mergeStateStatus,commits,comments,reviews,statusCheckRollup';
     const jq = '.[] | {id, in_reply_to_id, path, line, side, body, user: .user.login, created_at, html_url}';
     const [view, lines, repo, viewer] = await Promise.all([
@@ -225,11 +233,13 @@ export class GitHub {
 
   /** The PR's unified diff, as `git diff` prints it. */
   pullDiff(n: number): Promise<string> {
+    if (this.off) return Promise.reject(new Error(this.off));
     // A PR over GitHub's 300-file diff limit is built from the files API instead (prfiles.ts).
     return pullDiffOrFiles(gh, this.target, n, this.dir, () => gh(['pr', 'diff', String(n), ...repoFlag(this.target), '--color', 'never'], this.dir, 60_000));
   }
 
   async issueDetail(n: number, me?: string): Promise<GhIssueDetail> {
+    this.guard();
     const [view, viewer] = await Promise.all([gh(['issue', 'view', String(n), ...repoFlag(this.target), '--json', 'number,state,body,comments'], this.dir), me ?? this.viewer()]);
     const i = JSON.parse(view);
     return { number: i.number, state: i.state, body: String(i.body ?? ''), comments: commentsOf(i.comments), viewer };
@@ -242,6 +252,7 @@ export class GitHub {
   async comment(kind: 'issue' | 'pull', n: number, body: string, as?: GhAs): Promise<{ comment?: GhComment; error?: string }> {
     let comment: GhComment;
     try {
+      this.guard();
       // -f sends the body as a plain string: no @file reading, no {owner} filling in.
       const jq = '{id: .node_id, author: {login: .user.login}, body, createdAt: .created_at, url: .html_url}';
       const out = await gh(['api', '--method', 'POST', repoApi(this.target, `issues/${n}/comments`), '-f', `body=${body}`, '--jq', jq], this.dir, undefined, as?.env);
@@ -259,6 +270,7 @@ export class GitHub {
    * read from a file. Resolves to the review's URL.
    */
   async review(n: number, file: string, as?: GhAs): Promise<string> {
+    this.guard();
     // -F reads @file's contents as the value.
     const url = (await gh(['api', '--method', 'POST', repoApi(this.target, `pulls/${n}/reviews`), '-F', `body=@${file}`, '-f', 'event=COMMENT', '--jq', '.html_url'], this.dir, 60_000, as?.env)).trim();
     void this.refreshPulls();
@@ -306,6 +318,7 @@ export class GitHub {
 
   /** Every label the repository has, for the label picker. Asked again after a minute (or a failure). */
   repoLabels(): Promise<GhLabel[]> {
+    if (this.off) return Promise.reject(new Error(this.off));
     if (!this.labelList || Date.now() - this.labelList.at > LABELS_MS) {
       const list = gh(['api', repoApi(this.target, 'labels?per_page=100'), '--paginate', '--jq', '.[] | {name, color, description}'], this.dir).then((out) =>
         out
@@ -329,6 +342,7 @@ export class GitHub {
     const jq = '[.[] | {name, color}]';
     let now: GhLabel[] | undefined;
     try {
+      this.guard();
       // -f labels[]=… sends a JSON array of plain strings: no @file reading, no {owner} filling in.
       if (add.length) now = labels(JSON.parse(await gh(['api', '--method', 'POST', path, ...add.flatMap((l) => ['-f', `labels[]=${l}`]), '--jq', jq], this.dir, undefined, as?.env)));
       for (const l of remove) {
@@ -380,6 +394,7 @@ export class GitHub {
   /** Assigns the issue to `as` (else the office's own gh), which moves it to In progress on the board. */
   async claim(issue: number, as?: GhAs): Promise<string | undefined> {
     try {
+      this.guard();
       await gh(['issue', 'edit', String(issue), ...repoFlag(this.target), '--add-assignee', '@me'], this.dir, undefined, as?.env);
     } catch (err) {
       return (err as Error).message;

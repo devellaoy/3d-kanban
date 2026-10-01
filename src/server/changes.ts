@@ -372,6 +372,7 @@ export class Changes {
   private async action(workerId: string, repo: string | undefined, label: string, fn: (t: ChangesTarget, w: Watch) => Promise<string | undefined>): Promise<string | undefined> {
     const t = this.target(workerId, repo);
     if (!t) return 'No such worker';
+    if (t.noGit) return t.noGit;
     const key = watchKey(workerId, repo);
     const w = this.entry(workerId, repo);
     if (w.busy) return `Hold on — still ${w.busy.toLowerCase().replace(/…$/, '')}`;
@@ -396,7 +397,7 @@ export class Changes {
     w.polling = true;
     try {
       const t = this.target(w.workerId, w.repo);
-      const state = t?.noGit ? errorState(w, t.cwd, t.noGit) : t ? await this.compute(w, t) : errorState(w, '', 'No such worker');
+      const state = t ? await this.compute(w, t) : errorState(w, '', 'No such worker');
       if (w.busy) state.busy = w.busy;
       const key = JSON.stringify({ ...state, at: 0 });
       if (key !== w.lastKey) {
@@ -448,6 +449,8 @@ export class Changes {
   }
 
   private async compute({ workerId, repo }: { workerId: string; repo?: string }, t: ChangesTarget): Promise<ChangesState> {
+    // Never git here: the folder may sit inside some other repository that a diff would be taken from.
+    if (t.noGit) return errorState({ workerId, repo }, t.cwd, t.noGit);
     try {
       const base = await this.baseCommit(t);
       const [numstat, names, status] = await Promise.all([
