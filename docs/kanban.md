@@ -303,7 +303,9 @@ everywhere it needs the primary's repository: the issue sources' repositories, t
 reviews, linking the agent's `PR:` lines, and the prompts' list of repositories. Another git
 repository with an empty GitHub field follows its checkout's `origin` (github.com only): the PR
 board, the kanban's PR features and the GitHub issue sources use that `owner/name`, and the field
-shows it as its placeholder.
+shows it as its placeholder. The origin is only a fallback: pin an `owner/name` in the field to lock
+the repository, so a changed `origin` (say `git remote set-url` in a worktree, which shares
+`.git/config`) can't redirect what the office polls and acts on.
 Saving the form keeps the field empty; type an `owner/name` to pin one.
 
 A task gets a worktree of each git repository it works in, all on the same branch (named by the

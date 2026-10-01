@@ -1,12 +1,12 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { keptRepo, tabRepos } from '../src/client/kanban/boardrepos.js';
+import { keptRepo, openByRepo, tabRepos } from '../src/client/kanban/boardrepos.js';
 
 const card = (repo: string, n = 1) => ({ url: `https://github.com/${repo}/pull/${n}`, repo });
 const configured = ['acme/web', 'acme/api'];
 
 // What boards.ts does for the PR board's tabs.
-const shown = (value: string, items: { url: string; repo?: string }[], conf?: string[]) => keptRepo(value, tabRepos(items, conf), conf);
+const shown = (value: string, items: { url: string; repo?: string }[], conf?: string[]) => keptRepo(value, tabRepos(items, conf));
 
 test('a picked repository with cards stays picked', () => {
   assert.equal(shown('acme/api', [card('acme/web'), card('acme/api', 2)], configured), 'acme/api');
@@ -32,14 +32,21 @@ test('a single-repository floor (no configured list) drops a stale choice', () =
   assert.equal(shown('acme/web', [card('acme/web')]), 'acme/web');
 });
 
-test('All stays All', () => assert.equal(keptRepo('', ['acme/web'], configured), ''));
+test('All stays All', () => assert.equal(keptRepo('', ['acme/web']), ''));
 
 test('matching ignores case and returns the list spelling', () => {
-  assert.equal(keptRepo('ACME/api', ['acme/api'], configured), 'acme/api');
+  assert.equal(keptRepo('ACME/api', ['acme/api']), 'acme/api');
   assert.deepEqual(tabRepos([card('Acme/Web')], ['acme/web', 'acme/api']), ['acme/api', 'Acme/Web']);
 });
 
 test('tabRepos includes configured repositories with no pull requests', () => {
   assert.deepEqual(tabRepos([card('acme/web')], ['acme/docs']), ['acme/docs', 'acme/web']);
   assert.deepEqual(tabRepos([card('acme/web')]), ['acme/web']);
+});
+
+test('openByRepo counts the open items per repository and in all', () => {
+  const open = (repo: string, state = 'OPEN') => ({ ...card(repo), state });
+  const { counts, total } = openByRepo([open('acme/web'), open('acme/web'), open('acme/api'), open('acme/api', 'MERGED')]);
+  assert.equal(total, 3);
+  assert.deepEqual([...counts], [['acme/web', 2], ['acme/api', 1]]);
 });

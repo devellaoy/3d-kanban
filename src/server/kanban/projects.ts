@@ -38,13 +38,35 @@ export function primaryRepo(def: Pick<FloorDef, 'id' | 'name' | 'dir' | 'repo'>)
  * checkout, and its GitHub repository when the floor knows one (FloorDef.repo); a floor that doesn't
  * (a local checkout) takes the remote saved for the primary. Every kanban consumer of the primary's
  * owner/name goes through here, never FloorDef.repo. Another git repository with no saved GitHub
- * repository takes the one its checkout's origin names (github.com only); a saved one always wins.
+ * repository takes the one its checkout's origin names (github.com only) unless another repository
+ * of the project already has it (a second clone or worktree); a saved one always wins.
  */
 export function projectRepos(def: FloorDef): ProjectRepo[] {
-  return projectReposSaved(def).map((r) => {
-    const remote = r.primary || r.kind !== 'git' || r.remote ? undefined : checkoutRepo(r.dir);
-    return remote ? { ...r, remote } : r;
+  return projectReposResolved(def).map(({ detectedRemote, ...r }) => (detectedRemote ? { ...r, remote: detectedRemote } : r));
+}
+
+/**
+ * The project's repositories as saved (`remote`), each with the remote read from its checkout's
+ * origin as `detectedRemote` instead while none is saved. A detected remote is dropped when it is the
+ * primary's, a saved one's or an earlier detected one's, so one GitHub repository never has two boards.
+ */
+function projectReposResolved(def: FloorDef): ProjectRepo[] {
+  const saved = projectReposSaved(def);
+  const taken = saved.map((r) => r.remote).filter((r): r is string => !!r);
+  return saved.map((r) => {
+    if (r.primary || r.kind !== 'git' || r.remote) return r;
+    const found = checkoutRepo(r.dir);
+    if (!found || taken.some((t) => sameRepo(t, found))) return r;
+    taken.push(found);
+    return { ...r, detectedRemote: found };
   });
+}
+
+/** The repositories in `list` once each (ignoring case), in the first spelling met. */
+export function uniqueRepos(list: (string | undefined)[]): string[] {
+  const out: string[] = [];
+  for (const r of list) if (r && !out.some((o) => sameRepo(o, r))) out.push(r);
+  return out;
 }
 
 /** projectRepos as saved: no remote read from the checkouts. */
@@ -128,20 +150,13 @@ export function repoSources(def: FloorDef, repoIds: string[] | null): RepoSource
 /** A project as the kanban lists it. */
 export function projectInfo(def: FloorDef, settings: KanbanSettings, open: boolean): KanbanProjectInfo {
   const p = settings.projects[def.id];
-  const saved = projectReposSaved(def);
   return {
     id: def.id,
     name: def.name,
     ...(def.repo ? { repo: def.repo } : {}),
     dir: def.dir,
     // A remote read from a checkout is not sent as `remote`: the settings form would save it.
-    repos: projectRepos(def).map((r, i) => {
-      if (r.remote && !saved[i].remote) {
-        const { remote, ...rest } = r;
-        return { ...rest, detectedRemote: remote };
-      }
-      return r;
-    }),
+    repos: projectReposResolved(def),
     open,
     settings: {
       maxConcurrent: p?.maxConcurrent ?? 2,

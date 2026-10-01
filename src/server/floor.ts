@@ -28,7 +28,7 @@ import type { Ledger } from './usage.js';
 import type { Capacity } from './machine.js';
 import { officePrompt, type PromptSource } from './prompts.js';
 // 3d-kanban: the PR board covers every repository of the project (see pullsState).
-import { parseRepoFloorId, projectRepos } from './kanban/projects.js';
+import { parseRepoFloorId, projectRepos, uniqueRepos } from './kanban/projects.js';
 import { checkoutRepo } from './kanban/ghrepo.js';
 // 3d-kanban: the kanban hears when the PR board has fresh lists (its tasks' linked PRs' states).
 import { floorPulled } from './kanban/integrations/pulls/board.js';
@@ -401,7 +401,8 @@ export class Floor {
       items: [...own.items.map((p) => (this.def.repo && !p.repo ? { ...p, repo: this.def.repo } : p)), ...states.flatMap((b) => b.pulls.items)],
       fetchedAt: Math.max(own.fetchedAt, ...states.map((b) => b.pulls.fetchedAt)),
       loading: own.loading || states.some((b) => b.pulls.loading),
-      repos: [...new Map([this.def.repo ?? checkoutRepo(this.dir), ...[...this.boards.values()].map((b) => b.remote)].filter((r): r is string => !!r).map((r) => [r.toLowerCase(), r] as const)).values()],
+      // The floor's own board lists the repository GitHub.target names (FloorDef.repo, else the origin); the others are projectRepos'.
+      repos: uniqueRepos([this.def.repo ?? checkoutRepo(this.dir), ...projectRepos(this.def).filter((r) => !r.primary).map((r) => r.remote)]),
       ...(errors.length ? { error: errors.join(' · ') } : {}),
     };
   }

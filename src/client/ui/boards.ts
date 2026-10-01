@@ -299,8 +299,11 @@ export function openBoard(kind: 'issues' | 'pulls', net: Net, actions: BoardActi
     }
     // 3d-kanban: only the picked repository's cards, each with its repository's chip.
     const repos = tabs ? tabRepos(st.items, store.pulls.repos) : boardRepos(st.items);
-    const shownRepo = tabs ? keptRepo(repo, repos, store.pulls.repos) : repos.includes(repo) ? repo : '';
-    if (tabs) tabs.update(repos, shownRepo, openByRepo(store.pulls.items), store.pulls.items.filter((p) => p.state === 'OPEN').length);
+    const shownRepo = tabs ? keptRepo(repo, repos) : repos.includes(repo) ? repo : '';
+    if (tabs) {
+      const open = openByRepo(store.pulls.items);
+      tabs.update(repos, shownRepo, open.counts, open.total);
+    }
     else repoSlot.replaceChildren(repoFilterSelect(repos, repo, pickRepo));
     const chip = (it: GhIssue | GhPull) => (repos.length > 1 ? repoChip(it) : '');
     const all = boardLabels(st.items);

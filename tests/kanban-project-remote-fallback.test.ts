@@ -58,3 +58,24 @@ test('repoSources and projectInfo', (t) => {
   assert.equal(saved.remote, 'acme/pinned');
   assert.equal(saved.detectedRemote, undefined);
 });
+
+test('a detected remote that another repository of the project has is dropped', (t) => {
+  const web = repo(t, 'https://github.com/acme/web.git');
+  const first = repo(t, 'https://github.com/acme/api.git');
+  const clone = repo(t, 'git@github.com:Acme/api.git');
+  const ofPrimary = repo(t, 'https://github.com/acme/web-primary.git');
+  const d = def('web', web, {
+    repo: 'acme/web-primary',
+    repos: [
+      { id: 'web', name: 'web', kind: 'git', dir: web, primary: true },
+      { id: 'a', name: 'a', kind: 'git', dir: first, primary: false },
+      { id: 'b', name: 'b', kind: 'git', dir: clone, primary: false },
+      { id: 'c', name: 'c', kind: 'git', dir: ofPrimary, primary: false },
+    ],
+  });
+  assert.deepEqual(projectRepos(d).map((r) => r.remote), ['acme/web-primary', 'acme/api', undefined, undefined]);
+  const settings = { projects: {}, defaults: { planApproval: 'manual' }, review: { rounds: 1 } } as unknown as KanbanSettings;
+  assert.deepEqual(projectInfo(d, settings, true).repos.map((r) => r.detectedRemote), [undefined, 'acme/api', undefined, undefined]);
+  const pinned = def('web', web, { repos: [...d.repos!.slice(0, 2), { ...d.repos![2], remote: 'acme/api' }] });
+  assert.deepEqual(projectRepos(pinned).map((r) => r.remote), [undefined, undefined, 'acme/api']);
+});

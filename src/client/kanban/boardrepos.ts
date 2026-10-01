@@ -26,21 +26,26 @@ export function tabRepos(items: { url: string; repo?: string }[], configured: st
 }
 
 /**
- * The repository a kept choice still means: `value` (in the spelling of the list) while it is a tab
- * or one of the project's `configured` repositories, else '' (All). Without `configured` (a one-repo
- * floor, an older server) a repository that has no cards is stale. Judged by the configuration, not
- * the cards, so an empty or failed load keeps the choice.
+ * The repository a kept choice still means: `value` in the spelling of `repos` (the PR board's tabs,
+ * which include the project's configured repositories, see tabRepos) while it is one of them, else ''
+ * (All). Judged by the tabs, not the cards, so an empty or failed load keeps the choice; a one-repo
+ * floor's stale value is not in them.
  */
-export function keptRepo(value: string, repos: string[], configured?: string[]): string {
-  if (!value) return '';
-  return [...repos, ...(configured ?? [])].find((r) => sameRepo(r, value)) ?? '';
+export function keptRepo(value: string, repos: string[]): string {
+  return (value && repos.find((r) => sameRepo(r, value))) || '';
 }
 
-/** How many of the items are open, per repository, for the PR board's tabs. */
-export function openByRepo(items: { url: string; repo?: string; state: string }[]): Map<string, number> {
-  const n = new Map<string, number>();
-  for (const it of items) if (it.state === 'OPEN') n.set(repoOfItem(it), (n.get(repoOfItem(it)) ?? 0) + 1);
-  return n;
+/** How many of the items are open, per repository, and in all, for the PR board's tabs. */
+export function openByRepo(items: { url: string; repo?: string; state: string }[]): { counts: Map<string, number>; total: number } {
+  const counts = new Map<string, number>();
+  let total = 0;
+  for (const it of items) {
+    if (it.state !== 'OPEN') continue;
+    const r = repoOfItem(it);
+    counts.set(r, (counts.get(r) ?? 0) + 1);
+    total++;
+  }
+  return { counts, total };
 }
 
 /** Only the items of `repo` ('' = all of them). */
@@ -91,8 +96,9 @@ export function repoFilterSelect(repos: string[], value: string, onChange: (repo
 /**
  * The PR board's repository tabs, below its header: 📦 All, then one per repository with its open PRs.
  * `update` keeps the buttons it already has (keyed by repository), so focus survives the board's
- * re-renders. A kept choice whose repository has no PRs still shows, picked, as long as the repository is
- * in the project (boards.ts decides that with keptRepo), rather than quietly falling back to All. Hidden while there's only one repository.
+ * re-renders. `repos` are the board's tabs (tabRepos), so a repository of the project with no PRs still has
+ * its tab, and a kept choice of it stays picked (boards.ts decides that with keptRepo) rather than quietly
+ * falling back to All. Hidden while there's only one repository.
  */
 export function repoTabs(onChange: (repo: string) => void): { el: HTMLElement; update(repos: string[], value: string, counts: Map<string, number>, total: number): void } {
   officeCss();
@@ -122,8 +128,7 @@ export function repoTabs(onChange: (repo: string) => void): { el: HTMLElement; u
   return {
     el,
     update(repos, value, counts, total) {
-      const shown = value && !repos.includes(value) ? [...repos, value].sort((a, b) => a.localeCompare(b)) : repos;
-      const order = ['', ...shown];
+      const order = ['', ...repos];
       for (const [repo, b] of tabs) if (!order.includes(repo)) (b.remove(), tabs.delete(repo));
       order.forEach((repo, i) => {
         const b = tabOf(repo);
@@ -138,7 +143,7 @@ export function repoTabs(onChange: (repo: string) => void): { el: HTMLElement; u
         b.tabIndex = repo === value ? 0 : -1;
         if (el.children[i] !== b) el.insertBefore(b, el.children[i] ?? null);
       });
-      el.classList.toggle('hidden', shown.length < 2);
+      el.classList.toggle('hidden', repos.length < 2);
       // A newly picked tab scrolls into sight in a narrow row (a phone, many repositories).
       if (picked !== value) (picked = value), tabs.get(value)?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
     },
