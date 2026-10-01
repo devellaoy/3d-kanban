@@ -184,7 +184,7 @@ export function kanbanQueueSection(net: Net, tasks: readonly KanbanTaskCard[] = 
   return h(
     'div',
     {},
-    h('h4', {}, '🗂️ Kanban on this floor', h('span.count', {}, String(workers.length + waiting.length)), h('a', { href: kanbanUrl(store.floor), style: 'margin-left:auto;font-size:13px' }, 'Open the kanban ↗')),
+    h('h4', {}, '🗂️ Kanban on this floor', h('span.count', {}, String(workers.length + waiting.length)), h('a', { href: kanbanUrl(store.floor), style: 'margin-left:auto;font-size:13px' }, 'Open the kanban')),
     h(
       'ul.queue-list',
       {},
