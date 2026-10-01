@@ -139,7 +139,6 @@
 .kb-tv .kb-worker-row { display: flex; align-items: center; gap: 10px; padding: 8px 10px; border: 2px solid var(--ink); border-radius: 12px; background: #fff; }
 .kb-tv .kb-worker { flex: 1; display: flex; align-items: center; gap: 8px; min-width: 0; }
 .kb-tv .kb-worker .dot { width: 12px; height: 12px; border-radius: 50%; border: 2px solid var(--ink); flex: none; }
-.kb-tv .kb-repo-buttons { display: flex; flex-wrap: wrap; gap: 8px; }
 .kb-tv .kb-table { width: 100%; border-collapse: collapse; font-size: 13px; }
 .kb-tv .kb-table th, .kb-tv .kb-table td { padding: 6px 8px; border-bottom: 2px solid #eee3d6; text-align: left; vertical-align: top; }
 .kb-tv .kb-table th { font-weight: 900; font-size: 12px; color: var(--muted); }
@@ -156,39 +155,9 @@
 .kb-tv .kb-report > pre { margin: 8px 0 0; padding: 8px; white-space: pre-wrap; font-size: 12px; background: #f6f3ee; color: var(--ink); border-radius: 8px; max-height: 480px; overflow: auto; }
 .kb-tv .kb-report .md { margin-top: 6px; }
 
-/* Changes */
-.kb-tv .kb-changes-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
-.kb-tv .kb-seg { display: inline-flex; border: 3px solid var(--ink); border-radius: 12px; overflow: hidden; background: #fff; }
-.kb-tv .kb-seg button { padding: 5px 10px; font: 800 13px var(--font); color: var(--ink); background: #fff; border: 0; border-left: 2px solid var(--ink); cursor: pointer; }
-.kb-tv .kb-seg button:first-child { border-left: 0; }
-.kb-tv .kb-seg button[aria-pressed=true] { background: var(--accent); color: #fff; }
-.kb-tv .kb-seg button:disabled { opacity: .45; cursor: default; }
-.kb-tv .kb-changes-src { font-size: 12px; font-weight: 700; color: var(--muted); overflow-wrap: anywhere; }
-.kb-tv .kb-changes-src code { font-size: 12px; }
-.kb-tv .kb-commits { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
-.kb-tv .kb-commit { display: flex; align-items: baseline; gap: 8px; width: 100%; padding: 5px 8px; font: 700 13px var(--font); color: var(--ink); text-align: left; background: #fff; border: 2px solid var(--ink); border-radius: 10px; cursor: pointer; }
-.kb-tv .kb-commit.on { background: #e7f0ff; box-shadow: inset 5px 0 0 var(--accent); }
-.kb-tv .kb-commit code { flex: none; font-size: 12px; color: var(--muted); }
-.kb-tv .kb-commit .kb-commit-subject { flex: 1; min-width: 0; overflow-wrap: anywhere; }
-.kb-tv .kb-commit small { flex: none; font-size: 11px; color: var(--muted); }
-/* The picked commit's heading: its hash and subject as they are, not in capitals. */
-.kb-tv .kb-detail-body h4.kb-commit-head { margin: 8px 0 6px; text-transform: none; letter-spacing: 0; font-size: 14px; }
-.kb-tv .kb-commit-head code { font-size: 12px; color: var(--muted); }
-.kb-tv .kb-difffiles { display: flex; flex-direction: column; gap: 6px; }
-.kb-tv .kb-difffile { border: 2px solid var(--ink); border-radius: 10px; background: #fff; overflow: hidden; }
-.kb-tv .kb-difffile > summary { display: flex; align-items: center; gap: 8px; padding: 5px 8px; cursor: pointer; font-size: 13px; font-weight: 800; background: var(--paper-2); }
-.kb-tv .kb-difffile[open] > summary { border-bottom: 2px solid var(--ink); }
-.kb-tv .kb-difffile .kb-path { flex: 1; min-width: 0; overflow-wrap: anywhere; font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace; font-size: 12px; }
-.kb-tv .kb-difffile .kb-path .dir { color: var(--muted); }
-.kb-tv .kb-fstat { flex: none; width: 20px; text-align: center; font-size: 11px; font-weight: 900; border: 2px solid var(--ink); border-radius: 6px; background: #fff; }
-.kb-tv .kb-fstat.added, .kb-tv .kb-fstat.untracked { background: #d8f5e3; }
-.kb-tv .kb-fstat.deleted { background: #ffd6e0; }
-.kb-tv .kb-fstat.renamed, .kb-tv .kb-fstat.copied { background: #e7f0ff; }
-.kb-tv .kb-pm { flex: none; font-size: 12px; font-weight: 900; font-variant-numeric: tabular-nums; }
-.kb-tv .kb-pm .add { color: #1b7f5b; }
-.kb-tv .kb-pm .del { color: #c9184a; }
-.kb-tv .kb-difffile .diff-lines { overflow-x: auto; padding-bottom: 4px; }
-.kb-tv .kb-difffile .kb-muted { margin: 6px 10px; font-size: 12px; }
+/* Changes: the task's Changes view (changesview.ts, its own styles) fills the tab edge to edge. */
+.kb-tv .kb-detail-body[data-tab=changes] { padding: 0; gap: 0; overflow: hidden; }
+.kb-tv .kb-tv-changes { flex: 1; min-height: 0; display: flex; flex-direction: column; }
 
 /* Embedded (a 3D window's tab, or the standalone task window) */
 .kb-tv.embedded .kb-detail-head { padding: 10px 12px 8px; }

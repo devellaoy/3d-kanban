@@ -110,7 +110,6 @@ const detail = new DetailPanel({
   edit: (task) => openCreate(api, { task }),
   moveMenu: (id) => board.moveMenu(id),
   openTerminal: (workerId, project) => onFloor(project, workerId, () => showTerminal(workerId)),
-  openChanges: (workerId, project, repo) => onFloor(project, workerId, () => openChanges(net, workerId, () => showTerminal(workerId), repo)),
 });
 
 let lastOpened: number | null = null;

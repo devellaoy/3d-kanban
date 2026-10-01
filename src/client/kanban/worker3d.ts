@@ -1,6 +1,7 @@
 // The worker window's tabs (E at a task worker's desk, or its card on the 2D view): 🖥️ Terminal (upstream's
 // terminal, as it is), 🗂️ Task #14 (the shared task view, embedded: conversation with its composer and
-// history, plan, runs, changes, PRs); the worker's changes stay upstream's own 🌿 Changes button. The
+// history, plan, runs, PRs); its changes are the header's 🌿 Changes button, which opens the task's
+// Changes window (kanban/changesview, every repository and per commit), not a tab here. The
 // task view is mounted the first time its tab opens and destroyed with the window; the tab chosen is
 // remembered per worker for the session (the Task tab until another is picked). A worker without a
 // task gets no tabs: upstream's window.
@@ -84,7 +85,8 @@ export function mountWorkerTabs(net: Net, w: WorkerInfo, el: HTMLElement, panes:
         if (destroyed || view) return;
         // "Open its terminal" (an agent asking there) is this window's other tab.
         const openTerminal = (id: string) => (id === w.id ? show('terminal') : toast('That is the task’s other worker: open its terminal at its desk', 'info'));
-        view = m.mountTaskView(pane, { net, taskId, embedded: true, openTerminal });
+        // No Changes tab: the window's header has 🌿 Changes, which opens the task's Changes window.
+        view = m.mountTaskView(pane, { net, taskId, embedded: true, changesTab: false, openTerminal });
         if (current === 'task') pane.querySelector<HTMLElement>('.kb-tab.on')?.focus({ preventScroll: true });
       });
     }
