@@ -13,6 +13,7 @@ import { isKanbanPromptId } from '../../shared/kanban/prompts.js';
 import { PROMPT_MAX } from '../../shared/prompts.js';
 import { COMMENTS_PAGE, publicAttachment, type TaskUpdate } from './db/repository.js';
 import { projectInfo } from './projects.js';
+import { openFor, taskFolders, workerFolders } from './vscode.js';
 import { wallChanged, wallSourcesChanged } from './integrations/issues/wall.js';
 import { chmodSync, existsSync } from 'node:fs';
 import { ORPHAN_MAX_AGE_MS, removeAttachmentFiles, removeGrant, sweepOrphanUploads, uploadsDir, uploadRoutes } from './uploads.js';
@@ -321,6 +322,33 @@ export function createCorePlugin(ctx: KanbanContext, subs: KanbanSubscriptions):
       ctx.taskChanged(task.id);
       if (task.ticket) wallChanged(task.project);
       ok(c, m.rid, { taskId: task.id });
+    },
+
+    'kanban.task.vscode': async (c, m) => {
+      if (!adminOnly(c, m.rid)) return;
+      const task = taskOf(c, m.rid, m.id);
+      if (!task) return;
+      try {
+        await openFor(ctx, await taskFolders(ctx, task), `task #${task.id}`, `task-${task.project}-${task.id}`);
+        ok(c, m.rid);
+      } catch (err) {
+        fail(c, m.rid, (err as Error).message);
+      }
+    },
+    'kanban.worker.vscode': async (c, m) => {
+      if (!adminOnly(c, m.rid)) return;
+      for (const def of ctx.projects()) {
+        const floor = ctx.floor(def.id);
+        const info = floor?.workers.get(m.workerId);
+        if (!floor || !info) continue;
+        try {
+          await openFor(ctx, await workerFolders(ctx, floor, info), `worker ${info.name}`, `worker-${info.id}`);
+          return ok(c, m.rid);
+        } catch (err) {
+          return fail(c, m.rid, (err as Error).message);
+        }
+      }
+      fail(c, m.rid, `There's no worker ${m.workerId}`);
     },
 
     'kanban.comment.add': async (c, m) => {

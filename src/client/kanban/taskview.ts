@@ -30,6 +30,7 @@ import { renderMarkdown } from './md';
 import { REVIEW_DEFAULTS } from './defaults';
 import { cardRepoNames, countdown, needsAttention, phaseBadge, prTone, showIn3dLink, tabFor, visibleTabs, type TaskTab } from './model';
 import { kstore } from './store';
+import { onSendKey, sendHint } from './sendkey';
 import { mountChangesView, type ChangesViewHandle } from './changesview';
 import { APPROVAL_NAMES, columnName, COUNTDOWN_UNITS, effortName, fmtDuration, fmtTime, phaseName, PR_STATE_NAMES, toolName, waitingName } from './labels';
 import { run, select, tabStrip, textArea } from './ui';
@@ -303,9 +304,15 @@ class View implements TaskView {
     if (task && !this.embedded) {
       const w = task.workerId ? store.workers.get(task.workerId) : undefined;
       links.push(h('a.btn.small', { href: showIn3dLink(task.project, task.workerId, w?.deskId), title: 'The 3D office, at this task’s worker (or on its floor)' }, '📍 Show in 3D'));
+      // The 3D worker window has its own 🧩 VSCode in its header (kanban/vscode), so only here.
+      if (kstore.me.admin) {
+        const code = h('button.btn.small', { type: 'button', title: 'Open this task’s folder in VS Code on the office’s computer: its worktree, or all its repositories’ worktrees in one window' }, '🧩 VSCode') as HTMLButtonElement;
+        code.addEventListener('click', () => void this.req({ t: 'kanban.task.vscode', id: task.id }, code, 'Opening VS Code…'));
+        links.push(code);
+      }
     }
     if (task && this.embedded) {
-      links.push(h('a.btn.small', { href: `/kanban?project=${encodeURIComponent(task.project)}&task=${id}${this.current !== 'overview' ? `&tab=${this.current}` : ''}`, target: '_blank', rel: 'noopener' }, '🗂️ Open in the kanban'));
+      links.push(h('a.btn.small', { href: `/kanban?project=${encodeURIComponent(task.project)}&task=${id}${this.current !== 'overview' ? `&tab=${this.current}` : ''}` }, '🗂️ Open in the kanban'));
     }
     let close: HTMLElement | null = null;
     if (this.o.onClose) {
@@ -382,12 +389,7 @@ class View implements TaskView {
       const ta = this.draftArea(key, attrs);
       const wrap = h('div.kb-answerbox');
       const box = { ta, wrap, attach: attachBox({ target: ta, dropZone: wrap, taskId: () => this.taskId, insertLinks: false }), go: () => {} };
-      ta.addEventListener('keydown', (e) => {
-        if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
-          e.preventDefault();
-          box.go();
-        }
-      });
+      onSendKey(ta, () => box.go());
       this.fileBoxes.set(key, (b = box));
     }
     b.ta.placeholder = String(attrs.placeholder ?? '');
@@ -544,7 +546,7 @@ class View implements TaskView {
         const open = workerId && this.o.openTerminal ? h('button.btn.small', { type: 'button', onclick: () => this.o.openTerminal?.(workerId, task.project) }, '⌨️ Open its terminal') : null;
         box.append(h('div.kb-row', {}, h('b', {}, 'Answer the agent'), h('small.kb-muted', {}, 'It is typed into its terminal, as if you typed it there.'), open));
       }
-      wrap.replaceChildren(ta, h('div.kb-row', {}, attach.el, h('span.grow'), send), h('small.kb-muted', {}, 'Ctrl/⌘ + Enter sends'));
+      wrap.replaceChildren(ta, h('div.kb-row', {}, attach.el, h('span.grow'), send), h('small.kb-muted', {}, sendHint()));
       box.append(wrap);
     }
     return box;
@@ -666,7 +668,7 @@ class View implements TaskView {
   private makeComposer(task: KanbanTask) {
     const ta = textArea('', { rows: 3, placeholder: 'Write a comment, answer, or tell the agent what to do next… (paste or drop files)', 'aria-label': 'Comment', 'data-focus': 'comment' });
     const send = h('button.btn.primary', { type: 'button' }, 'Send') as HTMLButtonElement;
-    const hint = h('small.kb-muted', {}, `Ctrl/⌘ + Enter sends · ${task.status === 'todo' || task.status === 'done' ? 'a comment is kept with the task' : 'a comment puts the agent back to work'}`);
+    const hint = h('small.kb-muted', {}, `${sendHint()} · ${task.status === 'todo' || task.status === 'done' ? 'a comment is kept with the task' : 'a comment puts the agent back to work'}`);
     const wrap = h('div.kb-composer');
     const attach = attachBox({ target: ta, dropZone: wrap, taskId: () => this.taskId, insertLinks: false });
     const go = async () => {
@@ -681,12 +683,7 @@ class View implements TaskView {
       }
     };
     send.addEventListener('click', () => void go());
-    ta.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
-        e.preventDefault();
-        void go();
-      }
-    });
+    onSendKey(ta, () => void go());
     wrap.append(ta, h('div.kb-row', {}, attach.el, h('span.grow'), send), hint);
     return { el: wrap, ta, attach };
   }

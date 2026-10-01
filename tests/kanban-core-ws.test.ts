@@ -372,6 +372,8 @@ test('settings, projects, prompts and secrets are for admins; everyone may read 
     { t: 'kanban.project.rename', project: 'web', name: 'Shop' },
     { t: 'kanban.project.prompt.set', project: 'web', id: 'kanban.plan', text: 'x' },
     { t: 'kanban.secrets.set', apiKey: 'k'.repeat(20) },
+    { t: 'kanban.task.vscode', id: 1 },
+    { t: 'kanban.worker.vscode', workerId: 'w1' },
   ]) errorOf(await bob.ask(msg), /Only an admin/);
 
   okOf(await boss.ask({ t: 'kanban.settings.set', settings: { archiveAfterDays: 9999, review: { rounds: 3 } } }));

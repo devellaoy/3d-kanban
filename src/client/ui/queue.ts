@@ -9,6 +9,7 @@ import { officeFull } from '../../shared/machine';
 // The floor's kanban tasks, read-only.
 import { kanbanQueueSection, kanbanQueueWatch, queueOption } from '../kanban/office3d';
 import { kanbanSection } from '../kanban/hireform';
+import { onSendKey } from '../kanban/sendkey';
 
 export interface QueueActions {
   openTerminal(workerId: string): void;
@@ -87,12 +88,7 @@ export function openQueue(net: Net, actions: QueueActions) {
     e.preventDefault();
     submit();
   });
-  ta.addEventListener('keydown', (e) => {
-    if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) {
-      e.preventDefault();
-      submit();
-    }
-  });
+  onSendKey(ta, submit);
 
   const section = (title: string, tasks: QueueTask[], extra?: HTMLElement) => {
     if (!tasks.length) return null;

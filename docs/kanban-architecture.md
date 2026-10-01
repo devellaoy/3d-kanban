@@ -17,6 +17,7 @@ document disagree, fix one of them in the same change.
   - `src/shared/kanban/` — types, WS protocol, move rules, prompt defaults (browser + server).
   - `src/server/kanban/` — database, settings, projects, engine, issues, refs, skills, HTTP/WS glue.
   - `src/client/kanban/` + `src/client/kanban.html` — the kanban page.
+  - `src/{shared,server,client}/youtube/` — YouTube on the Office TV (see fork.md).
   - `bin/office-tasks.js`, `scripts/migrate-ai-kanban/`, `skills/`, `tests/kanban-*.test.ts`, `docs/kanban*.md`.
   General code (the shoulder camera, the GitHub repo picker, PR file lists and so on) lives where it
   belongs, outside these folders, and any file may be changed where that is the clean solution.
@@ -389,6 +390,11 @@ answers `kanban.ok {rid, ...}` or `kanban.error {rid, message}`. Deltas are push
     goes to the machine, and only if that is accepted does the engine add the user's comment and link the
     files to the task and the comment, with a single broadcast. A refused request leaves no comment and no
     links. Either may be empty when the other is there. The replan prompt has no `{{attachments}}`.
+  - `task.vscode {id}` and `worker.vscode {workerId}` (admins only) open the task's or worker's folder in
+    VS Code on the office's machine (`src/server/kanban/vscode.ts`): one worktree, or a generated
+    `.code-workspace` of all its repositories' worktrees (in `<data>/kanban/workspaces/`), or the project's
+    checkout(s) before the task has run; an ordinary worker's worktree or workspace, else the floor's checkout.
+    Answered with `kanban.ok`, or `kanban.error` when VS Code can't be found or started.
   - `pr.bundle {project, taskId | branch | ticket, includeClosed?}` (integrations/pulls): the PRs that belong
     together across the project's repositories, open and draft ones only unless `includeClosed`; answered with
     `kanban.pr.bundle` (an `error` in it rather than `kanban.error` when the lists couldn't be read).

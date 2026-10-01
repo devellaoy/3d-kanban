@@ -105,6 +105,10 @@ curl -fsSL https://raw.githubusercontent.com/devellaoy/3d-kanban/main/deploy/pro
 - **A kanban page** at `/kanban` (**J** or **🗂️ Kanban** in the office, a link on `/lite`). A
   task's view (conversation, plan, runs, the change and its commits read from git, an
   investigation's reports, PRs) is one shared piece, on the kanban and in the office's windows.
+- **🧩 VSCode**: the task view's head on the kanban and every worker's terminal window (3D office and
+  `/lite`) open the task's or worker's folder in VS Code on the office's machine: its worktree, or all
+  its repositories' worktrees in one window. Admins only. VS Code must be installed there: on macOS in
+  `/Applications` is enough, elsewhere `code` must be on the PATH ([docs/kanban.md](docs/kanban.md#the-detail-panel)).
 - **One world, two views**: a task's workers are ordinary workers at desks. Sending one home (**X**,
   leave-on-merge, the queue, a meeting) is an event on its task, and can mark it done; a task moved to
   Done sends its idle workers home, and stops a run whose agent is still asking in its terminal (see [docs/kanban.md](docs/kanban.md#sending-a-tasks-worker-home)).
@@ -136,6 +140,10 @@ curl -fsSL https://raw.githubusercontent.com/devellaoy/3d-kanban/main/deploy/pro
   ([controls](docs/controls.md)). Upstream's *Mouse drag /
   wheel* row below is out of date.
 - **Mouse sensitivity**: ⚙️ Settings → 🧍 You, 25–200% of the usual look speed, kept in your browser.
+- **YouTube on the Office TV**: press **E** at the lounge TV (or paste a YouTube / YouTube Music link
+  into the jukebox) and the whole floor sees and hears the same video or song at the same point, in
+  YouTube's own player on the TV; sit on the couch or press **E** again to watch it big. A screen share
+  still has the TV first ([features](docs/features.md#youtube-on-the-office-tv)).
 - **An installable app (PWA)**: install the office from the browser; it opens on the kanban, with
   shortcuts to the 3D office and the 2D view, shows *The office is offline. Reconnecting…* while it can't
   reach the office, and offers **Reload** when a new version is out. HTTPS is needed except on
@@ -477,6 +485,7 @@ deploy/dokploy.sh ssh 'node /opt/agent-office/bin/agent-office.js accounts invit
 | X | Send a worker home |
 | L | Hang a sign over a desk ("Operations", "Code cleanup") |
 | T / Enter | Chat |
+| Enter, in a prompt box | A new line; Shift + Enter or ⌘/Ctrl + Enter sends (on a phone, tap the send button) |
 | V | Join voice; then hold V to talk |
 | M | Mute / unmute in voice |
 | Tab | The ☰ menu: every window |
@@ -493,6 +502,8 @@ npm run dev          # Vite with hot reload on :5173, the server on :4600 (passw
 npm run typecheck
 npm test
 ```
+
+See [testing notes](docs/testing.md) for platform-specific fixture and filesystem checks.
 
 Server edits restart the server, not the workers. After changing `ptyhost.ts`, bump `PTY_PROTOCOL` in `ptys.ts` so the next server replaces the PTY host.
 

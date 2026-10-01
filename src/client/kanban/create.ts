@@ -10,6 +10,7 @@ import type { KanbanApi, KanbanOk } from './api';
 import { attachBox } from './attachbox';
 import { KANBAN_DEFAULTS, REVIEW_DEFAULTS } from './defaults';
 import { sameRepoPick } from './model';
+import { isSendKey } from './sendkey';
 import { kstore } from './store';
 import { APPROVAL_NAMES, effortName, toolName } from './labels';
 import { checkbox, dialog, field, numberInput, numberValue, run, select, showDialog, textArea, textInput } from './ui';
@@ -215,9 +216,9 @@ export function openCreate(api: KanbanApi, o: CreateOptions = {}) {
   createBtn.addEventListener('click', () => void submit(false, createBtn));
   startBtn.addEventListener('click', () => void submit(true, startBtn));
   body.addEventListener('keydown', (e) => {
-    if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
+    if (isSendKey(e) && !(e.target as HTMLElement | null)?.closest?.('button, select, input[type=checkbox]')) {
       e.preventDefault();
-      void submit(false, createBtn);
+      if (!e.repeat) void submit(false, createBtn);
     }
   });
 }

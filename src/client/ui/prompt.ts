@@ -5,6 +5,7 @@ import { store } from '../state';
 import { providerPicker, type ProviderPicker } from './provider';
 // The "Run as a kanban task" toggle in the hire dialog.
 import { kanbanSection, type KanbanOption } from '../kanban/hireform';
+import { onSendKey, sendHint } from '../kanban/sendkey';
 
 export interface PromptOptions {
   title: string;
@@ -84,7 +85,7 @@ export function openPrompt(opts: PromptOptions) {
     { role: 'dialog', 'aria-label': opts.title },
     h('header', {}, h('h2', {}, opts.title)),
     h('div.body', {}, opts.warning ? h('p.setting-note.bad', { style: 'margin:0 0 10px', role: 'alert' }, opts.warning) : null, opts.subtitle ? h('p', { style: 'margin:0 0 10px;font-weight:700;color:var(--muted)' }, opts.subtitle) : null, ta, provider?.element ?? null, wtRow, repos.element, kanban?.element ?? null),
-    h('footer', {}, h('span.grow', {}, 'Enter to send · Shift+Enter for a new line'), cancel, rawBtn, submit),
+    h('footer', {}, h('span.grow', {}, sendHint()), cancel, rawBtn, submit),
   ) as HTMLFormElement;
   form.noValidate = true;
   // While the toggle is on, a task is made: no worktree options (the engine has its own), its own title.
@@ -134,12 +135,7 @@ export function openPrompt(opts: PromptOptions) {
     e.preventDefault();
     send();
   });
-  ta.addEventListener('keydown', (e) => {
-    if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) {
-      e.preventDefault();
-      send();
-    }
-  });
+  onSendKey(ta, () => send());
   setTimeout(() => {
     ta.focus();
     ta.setSelectionRange(ta.value.length, ta.value.length);

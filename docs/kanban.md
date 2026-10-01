@@ -227,7 +227,7 @@ back to work:
   work is reviewed again when the task has review on.
 
 On To do, Done and archived tasks a comment is just kept. Comments take attachments too,
-and so do the answer box and the plan's **Request changes** (**Ctrl/⌘ + Enter** sends); files alone are enough. An agent can read only its own task's files (copies in `kanban/grants/task-<id>/`). After upgrading, a live agent session started before this change is relaunched once at its next turn (its launch arguments change); until then a file sent into it may need a permission prompt.
+and so do the answer box and the plan's **Request changes** (**Shift + Enter** or **Ctrl/⌘ + Enter** sends); files alone are enough. An agent can read only its own task's files (copies in `kanban/grants/task-<id>/`). After upgrading, a live agent session started before this change is relaunched once at its next turn (its launch arguments change); until then a file sent into it may need a permission prompt.
 
 In the 3D office, what you tell a task's **implementer** while the task is in progress, waiting or in
 review is a comment too: **P** ("💬 Message task #N"), the task's issue card dropped on its desk, and
@@ -244,7 +244,15 @@ new tool starts a fresh session with the task's handoff.
 
 Click a card (or Enter on it). The panel's tab is kept in the page's link (`&tab=`). Its head has
 **📍 Show in 3D**: the 3D office at the task's worker's desk (`/?floor=<project>&worker=<id>&desk=<id>`),
-or on its floor when it has no worker. Its tabs:
+or on its floor when it has no worker, and, for admins, **🧩 VSCode**: the task's folder opened in VS
+Code on the office's machine. A task with one repository opens its worktree; one with several opens all
+its repositories' worktrees in one window, through a generated `.code-workspace` file (kept in
+`<data>/kanban/workspaces/`); before the task has run (no worktree yet) it opens the project's
+checkout(s). Every worker's terminal window (the 3D office's **E**, and `/lite`) has the same **🧩 VSCode**
+in its header, for kanban workers and ordinary ones alike: an ordinary worker opens its worktree (or its
+workspace of several repositories), or the floor's checkout when it has none. On a narrow screen the
+button is just 🧩. VS Code must be installed on the office's machine: on macOS in `/Applications` is
+enough, elsewhere the `code` command must be on the PATH. Its tabs:
 
 - **Overview**: what it waits for (with the answer box), the actions, summary, description,
   acceptance criteria, **📑 Reports** (an investigation's report files: shown in place, Markdown
@@ -278,7 +286,10 @@ or on its floor when it has no worker. Its tabs:
 
 The panel is the **shared task view** (`src/client/kanban/taskview.ts`), which the 3D office uses too
 (a window of its own, or a tab of the worker window). There it has no Terminal tab (the worker
-window has the terminal, whose tab also has upstream's **+ Web page** tabs; while focus is inside a web page, Esc doesn't close the window, the ✕ does), no Edit or Move, and a **🗂️ Open in the kanban** link instead of Show in 3D.
+window has the terminal, whose tab also has upstream's **+ Web page** tabs; while focus is inside a web page, Esc doesn't close the window, the ✕ does), no Edit or Move, and a **🗂️ Open in the kanban** link (it opens the kanban in the same window) instead of Show in 3D (and no 🧩 VSCode: the worker
+window's header has it).
+
+The office's own links (its buttons, and links in descriptions, comments and issue texts) open in the same window, so you don't get a second character in the office; external links and attachments open in a new tab. On the kanban page a link to a task (`/kanban?task=12`) in a description or comment opens it in the panel, as `#12` does, so a half-written comment isn't lost to a reload.
 
 ## Projects and repositories
 

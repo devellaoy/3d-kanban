@@ -173,6 +173,10 @@ export type KanbanClientMsg =
   | Req<{ t: 'kanban.task.pr'; id: number; mode: 'create' | 'fix' }>
   /** Send the task's workers home, keeping the worktree for later. */
   | Req<{ t: 'kanban.task.delete'; id: number }>
+  /** Admins: opens the task's folder(s) in VS Code on the office's machine; answered with kanban.ok. */
+  | Req<{ t: 'kanban.task.vscode'; id: number }>
+  /** Admins: the same for a worker's folder(s), task worker or not. */
+  | Req<{ t: 'kanban.worker.vscode'; workerId: string }>
   /** Answered with kanban.ok {commentId}. */
   | Req<{ t: 'kanban.comment.add'; id: number; text: string; attachmentIds?: string[] }>
   /** Answered with kanban.settings. */
@@ -285,6 +289,10 @@ function nullableText(v: unknown, name: string, max: number): string | null | un
 function id(v: unknown, name = 'id'): number {
   if (!Number.isSafeInteger(v) || (v as number) <= 0) bad(`${name} must be a task number`);
   return v as number;
+}
+function workerId(v: unknown): string {
+  if (typeof v !== 'string' || !v || v.length > 100) bad('workerId must be a worker id');
+  return v as string;
 }
 function optInt(v: unknown, name: string, min: number, max: number): number | undefined {
   if (v === undefined) return undefined;
@@ -510,6 +518,8 @@ export const KANBAN_CLIENT_TYPE_LIST: Readonly<Record<KanbanClientType, true>> =
   'kanban.plan.requestChanges': true,
   'kanban.task.pr': true,
   'kanban.task.delete': true,
+  'kanban.task.vscode': true,
+  'kanban.worker.vscode': true,
   'kanban.comment.add': true,
   'kanban.settings.get': true,
   'kanban.meta.get': true,
@@ -604,7 +614,10 @@ function parse(raw: unknown): KanbanClientMsg {
     case 'kanban.task.retry':
     case 'kanban.task.review':
     case 'kanban.task.delete':
+    case 'kanban.task.vscode':
       return m({ t: t as 'kanban.task.start', id: id(r.id) });
+    case 'kanban.worker.vscode':
+      return m({ t: 'kanban.worker.vscode', workerId: workerId(r.workerId) });
     case 'kanban.task.continue': {
       const answer = optText(r.answer, 'The answer', KANBAN_LIMITS.answer);
       const ids = attachmentIds(r.attachmentIds);

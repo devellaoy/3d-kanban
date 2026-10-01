@@ -51,6 +51,9 @@ Taking upstream changes is ordinary merge or cherry-pick work, only when the use
    `tests/kanban-launch-argv.test.ts` pins how a kanban hire's agent is launched (`extra` last in
    `WorkerManager.spawn`, `extraArgs` before `--resume` and the prompt), and
    `tests/kanban-welcome-views.test.ts` pins that the PR and issue boards follow the project's repositories.
+   For YouTube on the Office TV, the renderer keeps `alpha: true` (`core/scene.ts`), and the TV fixture still
+   names its screen `tvScreen`, a `PlaneGeometry` of `TV.width × TV.height` facing +z (`world/office/room.ts`),
+   which `youtube/screen.ts` lines the player up with.
    Also check `package.json` (dependencies, `files`, `typecheck`), `vite.config.ts` inputs, the Dockerfile's
    `better-sqlite3` rebuild, and keep this fork's `AGENTS.md` and the pointer `CLAUDE.md` (`@AGENTS.md`).
 
