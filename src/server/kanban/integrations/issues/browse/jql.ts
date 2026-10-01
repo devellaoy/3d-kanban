@@ -61,6 +61,8 @@ export interface JqlWhere {
   parent?: string;
   /** Leave sub-tasks out (the tree shows them under their parent). */
   topLevel?: boolean;
+  /** With topLevel: leave them out even in a narrowed search (a count of the top-level issues that match). */
+  strict?: boolean;
 }
 
 /** `project IN (…)`: the scope, which a source without project keys doesn't have. */
@@ -85,6 +87,9 @@ function keyOf(v: string): string {
  * "all", a text, type, status, assignee, labels, sprint or raw JQL). A narrowed search doesn't leave sub-tasks out:
  * it finds the ones that match, and the page sends their parents with them (jira.ts).
  */
+/** Whether anything but the status category narrows the search (see narrows). */
+export const narrowsBeyondCategory = (f: BrowseFilters): boolean => narrows({ ...f, statusCategory: 'all' });
+
 export function narrows(f: BrowseFilters): boolean {
   return !!((f.statusCategory ?? 'open') !== 'all' || f.q?.trim() || f.issueType || f.status || f.assignee || f.labels?.length || f.sprint || f.jql?.trim());
 }
@@ -139,7 +144,7 @@ function filterClauses(f: BrowseFilters, relaxed = false): string[] {
  */
 export function browseJql(scope: Pick<JiraConfig, 'projectKeys'>, filters: BrowseFilters, where: JqlWhere = {}, order = true): string {
   // A top-level page of a narrowed search keeps the sub-tasks that match (see narrows).
-  const relaxed = !!where.topLevel && narrows(filters);
+  const relaxed = !!where.topLevel && !where.strict && narrows(filters);
   const parts = [scopeClause(scope), ...filterClauses(filters, relaxed)];
   if (where.topLevel && !relaxed) parts.push('issuetype not in subTaskIssueTypes()');
   if (where.version) parts.push(versionClause(where.version, relaxed));

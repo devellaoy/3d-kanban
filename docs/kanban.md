@@ -381,9 +381,10 @@ site and the office only ever shows the source's own projects.
   version and epic of that story. Pick the type *Sub-task* or type a sub-task's key to find one. A
   completed GitHub iteration chosen in the iteration filter shows its own node.
 - **Counts and pages.** Opening a node fetches its first page; the counts are asked for one at a time,
-  are approximate on Jira and show nothing when the source can't tell (on Jira also not for a version or
-  epic node while sub-tasks are searched, as in the point above: they take the version and epic of their
-  story, which a count can't follow, so the counts appear with the status filter on *All*). **Load more** fetches the next page.
+  are approximate on Jira and show nothing when the source can't tell. On Jira a version or epic node
+  counts its stories and tasks that match (sub-tasks show under them, uncounted, as in an epic's
+  done/total); with any filter beyond the status (search, type, assignee and so on) it shows no count,
+  since sub-tasks then take the version and epic of their story, which a count can't follow. **Load more** fetches the next page.
 - **Needs.** Jira: the token in ⚙️ Settings → 🗂️ Kanban (as for the other Jira features). GitHub project:
   `gh auth refresh -s read:project` on the office's machine; without it the window says so.
 

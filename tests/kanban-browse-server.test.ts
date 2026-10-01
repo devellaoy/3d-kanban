@@ -237,10 +237,19 @@ test('Jira count: a narrowed search in a version or epic group has no count (inh
     assert.equal(got.t, 'kanban.browseCount');
     assert.equal(got.count, undefined);
   }
-  assert.equal((await ask('kanban.browse.count', { scope: 'j', filters: { statusCategory: 'done' }, group: '7' })).count, undefined, 'a status category narrows too');
   assert.equal(count().length, 0);
   assert.equal((await ask('kanban.browse.count', { scope: 'j', filters: { statusCategory: 'all' }, group: '7' })).count, 12);
   assert.equal(count().length, 1);
+});
+
+test('Jira count: a search narrowed by the status category alone counts the top-level issues that match, sub-tasks left out', async () => {
+  const { ask, http } = setup();
+  const count = () => http.calls.filter((c) => c.url.endsWith('/approximate-count'));
+  assert.equal((await ask('kanban.browse.count', { scope: 'j', filters: { statusCategory: 'done' }, group: '7' })).count, 12);
+  assert.equal(count()[0].body.jql, 'project IN ("UYT") AND statusCategory = Done AND issuetype not in subTaskIssueTypes() AND fixVersion = 7');
+  // The default ("Not done") too, and in an epic node.
+  assert.equal((await ask('kanban.browse.count', { scope: 'j', filters: {}, group: '7', epic: 'UYT-1' })).count, 12);
+  assert.match(count()[1].body.jql, /statusCategory != Done AND issuetype not in subTaskIssueTypes\(\) AND fixVersion = 7 AND parent = "UYT-1"$/);
 });
 
 test('Jira count: raw JQL gets no count and asks Jira nothing', async () => {

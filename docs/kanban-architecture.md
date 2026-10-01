@@ -459,8 +459,9 @@ answers `kanban.ok {rid, ...}` or `kanban.error {rid, message}`. Deltas are push
       items flagged `context: true` (they don't match the filters; the tree nests the sub-tasks under them, and they count as
       neither done nor total). A sub-task has no version or epic of its own, so for a version or epic node the JQL lets
       sub-tasks without a version (any, for an epic) through and the server keeps the ones whose parent's versions / epic fit;
-      pages may come back shorter. For the same reason `browse.count` answers no count (`{}`, no Jira call) for a narrowed
-      search in a version or epic group. A context copy of an issue never replaces the matching record when pages are merged
+      pages may come back shorter. For the same reason `browse.count` answers no count (`{}`, no Jira call) for a search
+      narrowed by more than the status category in a version or epic group; one narrowed by the status category alone (the
+      default *Not done*) counts the top-level issues that match (`strict` JQL, sub-tasks left out), as `groupByEpic` counts. A context copy of an issue never replaces the matching record when pages are merged
       (`mergeIssues`), so a story that matched on one page keeps its place in the epic's totals. `groupByEpic` nests an item whose `parent.key` is another loaded item under it.
     - **Tasks.** Every item of a `browsePage` (and each `parent`) carries `taskId` when a task was made from it.
     - **GitHub scope.** An issue may be opened or expanded when it is an item of the scope's board **or** its parent chain
