@@ -17,15 +17,6 @@ export interface FramePacer {
   readonly mode: PaceMode;
   /** Full rate for `ms` (an ease still running). */
   hold(ms: number): void;
-  /** Forces a mode (for measuring), or null to work it out again. */
-  force(mode: PaceMode | null): void;
-  /** Frames drawn and skipped so far. */
-  readonly drawn: number;
-  readonly skipped: number;
-  /** The average ms a drawn frame's ticks took, over the last 60. */
-  readonly workMs: number;
-  /** Reports how long a drawn frame's ticks took (ms). */
-  worked(ms: number): void;
   /** This frame and the one before were at full rate: its timings mean something. */
   readonly full: boolean;
 }
@@ -39,21 +30,15 @@ export function installFramePace(ctx: Ctx, core: CoreState): FramePacer {
     // No storage: the usual pace.
   }
   let held = false;
-  let forced: PaceMode | null = null;
   let mode: PaceMode = 'active';
   let wasActive = false;
   let full = false;
-  let drawn = 0;
-  let skipped = 0;
-  const work = new Array<number>(60).fill(0);
-  let worked = 0;
-  let workSum = 0;
 
   const poke = () => pace.poke(performance.now());
   const opts = { capture: true, passive: true } as const;
   for (const type of ['keydown', 'keyup', 'pointermove', 'wheel', 'touchstart']) window.addEventListener(type, poke, opts);
   window.addEventListener('pointerdown', () => ((held = true), poke()), opts);
-  for (const type of ['pointerup', 'pointercancel']) window.addEventListener(type, () => ((held = false), poke()), opts);
+  for (const type of ['pointerup', 'pointercancel', 'contextmenu']) window.addEventListener(type, () => ((held = false), poke()), opts);
   window.addEventListener('blur', () => ((held = false), poke()));
   window.addEventListener('focus', poke);
   document.addEventListener('visibilitychange', poke);
@@ -69,16 +54,14 @@ export function installFramePace(ctx: Ctx, core: CoreState): FramePacer {
       const { player } = ctx;
       const cam = ctx.camera.matrixWorld.elements;
       let moved = false;
-      for (let i = 0; i < 16; i++) if (cam[i] !== seen[i]) moved = true;
+      for (let i = 0; i < 16 && !moved; i++) moved = cam[i] !== seen[i];
       if (moved) {
         seen.set(cam);
         pace.hold(performance.now(), 300);
       }
       const busy = ctx.activities.busy() || ctx.view.covered() || ctx.view.filtering() || core.trip !== null || held;
-      mode = always ? 'active' : (forced ?? pace.mode(performance.now(), { moving: player.moving || !player.grounded, busy, modal: modalOpen(), focused: document.hasFocus() }));
+      mode = always ? 'active' : pace.mode(performance.now(), { moving: player.moving || !player.grounded, busy, modal: modalOpen(), focused: document.hasFocus() });
       const due = pace.due(ts, mode);
-      if (due) drawn++;
-      else skipped++;
       full = due && mode === 'active' && wasActive;
       if (due) wasActive = mode === 'active';
       return due;
@@ -87,20 +70,6 @@ export function installFramePace(ctx: Ctx, core: CoreState): FramePacer {
       return mode;
     },
     hold: (ms) => pace.hold(performance.now(), ms),
-    force: (m) => void (forced = m),
-    get drawn() {
-      return drawn;
-    },
-    get skipped() {
-      return skipped;
-    },
-    get workMs() {
-      return workSum / Math.min(60, Math.max(1, worked));
-    },
-    worked(ms) {
-      workSum += ms - work[worked % 60];
-      work[worked++ % 60] = ms;
-    },
     get full() {
       return full;
     },

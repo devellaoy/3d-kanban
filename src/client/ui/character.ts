@@ -77,7 +77,7 @@ class Preview {
     const frame = (now: number) => {
       const dt = Math.min(0.1, (now - last) / 1000);
       last = now;
-      if (!document.hidden) this.tick(dt, now / 1000);
+      this.tick(dt, now / 1000);
       this.raf = requestAnimationFrame(frame);
     };
     this.raf = requestAnimationFrame(frame);

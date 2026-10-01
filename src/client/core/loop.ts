@@ -6,7 +6,6 @@
 import * as THREE from 'three';
 import { SlowFrames } from '../framerate';
 import { EYE_HEIGHT } from '../player';
-import type { Grip } from '../features/climbing/controller';
 import { renderCaffeine } from '../features/coffee/meter';
 import type { Ctx } from './context';
 import type { CoreState } from './ctx';
@@ -41,9 +40,6 @@ export function installLoop(ctx: Ctx, core: CoreState, parts: Pick<Parts, 'stage
   let fallV = 0;
   const lookDir = new THREE.Vector3();
   const headPos = new THREE.Vector3();
-  /** Where everyone is, and who's holding on to what, rebuilt each frame in the same arrays. */
-  const scratchSpots: { x: number; y: number; z: number }[] = [];
-  const scratchPeople: { x: number; y: number; z: number; grip: Grip | null }[] = [];
   /** Frames coming too slowly for the 3D to be any fun: the 2D view is offered. */
   const slowFrames = new SlowFrames();
 
@@ -134,16 +130,6 @@ export function installLoop(ctx: Ctx, core: CoreState, parts: Pick<Parts, 'stage
     }
   }
 
-  /** Writes someone's place and grip as entry `n` of scratchPeople, and returns the next. */
-  function putPerson(n: number, v: { x: number; y: number; z: number }, grip: Grip | null): number {
-    const o = (scratchPeople[n] ??= { x: 0, y: 0, z: 0, grip: null });
-    o.x = v.x;
-    o.y = v.y;
-    o.z = v.z;
-    o.grip = grip;
-    return n + 1;
-  }
-
   /** The building and what's in it: its doors, its floors, the jukebox's lights, the smoke and the confetti. */
   function updateWorld({ dt, t }: Frame) {
     const { player, office, camera, sound } = ctx;
@@ -151,22 +137,9 @@ export function installLoop(ctx: Ctx, core: CoreState, parts: Pick<Parts, 'stage
     const { departures, sendoffs, arrivals } = parts.views;
     const court = parts.worlds.court();
     if (!core.upTop) {
-      const spots = scratchSpots;
-      spots.length = 0;
-      spots.push(player.pos);
-      for (const r of remotes.values()) spots.push(r.person.root.position);
-      for (const v of departures.positions()) spots.push(v);
-      for (const v of sendoffs.positions()) spots.push(v);
-      for (const v of arrivals.positions()) spots.push(v);
-      if (court) for (const v of court.positions()) spots.push(v);
-      ctx.world().update(t, dt, spots);
+      ctx.world().update(t, dt, [player.pos, ...[...remotes.values()].map((r) => r.person.root.position), ...departures.positions(), ...sendoffs.positions(), ...arrivals.positions(), ...(court?.positions() ?? [])]);
       if (ctx.inOffice()) {
-        // Everyone's place and grip for the stack, in objects kept from frame to frame (it only reads them).
-        let n = 0;
-        n = putPerson(n, player.pos, ctx.view.grip());
-        for (const r of remotes.values()) n = putPerson(n, r.person.root.position, r.grip);
-        scratchPeople.length = n;
-        office.stack.update(dt, scratchPeople, camera.position);
+        office.stack.update(dt, [{ x: player.pos.x, y: player.pos.y, z: player.pos.z, grip: ctx.view.grip() }, ...[...remotes.values()].map((r) => ({ x: r.person.root.position.x, y: r.person.root.position.y, z: r.person.root.position.z, grip: r.grip }))], camera.position);
         office.jukebox.update(t, dt, sound.beat());
       }
     }
@@ -228,9 +201,7 @@ export function frameLoop(ctx: Ctx, loading: { drew(): void }, pacer: FramePacer
     if (!pacer.due(ts ?? performance.now())) return void requestAnimationFrame(frame);
     timer.update(ts);
     const delta = timer.getDelta();
-    const start = performance.now();
-    ctx.ticks.run({ delta, dt: Math.min(delta, 0.1), t: timer.getElapsed(), now: start });
-    pacer.worked(performance.now() - start);
+    ctx.ticks.run({ delta, dt: Math.min(delta, 0.1), t: timer.getElapsed(), now: performance.now() });
     loading.drew();
     requestAnimationFrame(frame);
   }

@@ -37,7 +37,10 @@ export class FramePace {
   private lastInput = -Infinity;
   private heldUntil = -Infinity;
   private lastTs: number | null = null;
-  private gaps: number[] = [];
+  /** The latest gaps, in a ring that's never reallocated, and a scratch copy to sort. */
+  private readonly gaps = new Float64Array(GAPS);
+  private readonly sorted = new Float64Array(GAPS);
+  private seen = 0;
   private interval = 1000 / 60;
   private since = Infinity;
   private lastMode: PaceMode = 'active';
@@ -63,10 +66,13 @@ export class FramePace {
     if (this.lastTs !== null) {
       const gap = ts - this.lastTs;
       if (gap > 0 && gap <= MAX_GAP_MS) {
-        this.gaps.push(gap);
-        if (this.gaps.length > GAPS) this.gaps.shift();
-        const sorted = [...this.gaps].sort((a, b) => a - b);
-        this.interval = sorted[sorted.length >> 1];
+        this.gaps[this.seen++ % GAPS] = gap;
+        // The median: every gap until the ring has filled, then once a ring's worth.
+        if (this.seen <= GAPS || this.seen % GAPS === 0) {
+          const n = Math.min(this.seen, GAPS);
+          this.sorted.set(this.gaps.subarray(0, n));
+          this.interval = this.sorted.subarray(0, n).sort()[n >> 1];
+        }
       }
     }
     this.lastTs = ts;

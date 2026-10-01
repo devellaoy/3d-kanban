@@ -27,19 +27,18 @@ To turn pacing off, run this in the browser console and reload. The office then 
 localStorage.setItem('agent-office.pace', 'full')
 ```
 
-`__office.pace` in the console shows the mode, and how many frames were drawn and skipped, and the work time (`workMs`). `__office.pace.force('idle')` pins a mode for measuring, and `__office.pace.force(null)` lets the office choose again.
+`__office.pace` in the console shows the current `mode`.
 
 ## What else changed
 
-- **Voice level sampler.** It ran 25 times a second all the time. It now runs only while there's a voice to sample: your mic, or someone's voice coming in. Everyone else in the office is connected to you whether or not they're in voice, so a silent connection doesn't keep it running.
-- **Aim raycast.** What you're pointing at is reused for up to 100 ms while the camera hasn't moved.
-- **Per-frame allocations.** Positions arrays and snowflakes are no longer created again every frame.
-- **Typing sound.** It is scheduled 250 ms ahead, so it doesn't stutter at 15 frames a second.
+- **Voice level sampler.** It ran 25 times a second all the time. It now runs only while a voice is actually coming in (the peer is in voice and not muted) or your own mic is on and unmuted. Everyone else in the office is connected to you whether or not they're in voice, so a silent or muted connection doesn't keep it running.
+- **Per-frame allocations.** Snowflakes are no longer created again every frame, and the screen refresh rate is worked out without allocating.
 
 ## Measurements
 
 Method: a local office with 6 workers (fake agents) at their desks. Headless Chrome 154 driven by Playwright on an Apple Silicon Mac, 1280×900, device pixel ratio 1. It used software GL (SwiftShader), so the GPU work ran on the CPU. Absolute numbers are higher than on a real GPU. The ratios are what count.
 
+- Drawn frames per second come from counting rendered frames in a measurement script.
 - Main thread ms is the time spent inside the `requestAnimationFrame` callback.
 - CPU is all of headless Chrome's processes (`ps` cumulative CPU time over 18 seconds).
 

@@ -40,7 +40,7 @@ export class Typing {
 
   scheduleTyping(now: number) {
     // Schedule a little ahead on the audio clock so the rhythm doesn't wobble with the frame rate.
-    const horizon = now + 0.25;
+    const horizon = now + 0.12;
     for (const t of this.typists.values()) {
       if (!t.on) continue;
       if (!t.panner) {
