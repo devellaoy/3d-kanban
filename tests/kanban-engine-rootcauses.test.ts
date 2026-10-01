@@ -87,7 +87,7 @@ for (const tool of ['claude', 'codex'] as const) {
   test(`${tool} review: an approval quoted in an earlier message with findings at the end goes to the fix phase`, async (t) => {
     const fx = await engineFixture();
     t.after(() => fx.close());
-    fx.settings.setProject('proj', { review: { tool, rounds: 1 } });
+    fx.settings.setProject('proj', { review: { tool, rounds: 1, reReviewLastFix: true } });
     fx.setRules([
       { when: 'Implement kanban task', reply: 'Done.', commit: 'Work' },
       { when: 'This is review round 1 of', earlier: 'The last review said:\nREVIEW: APPROVED', reply: 'Findings:\n1. The redirect drops the query string.' },

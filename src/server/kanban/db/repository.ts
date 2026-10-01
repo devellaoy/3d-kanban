@@ -25,6 +25,7 @@ import type {
   TaskOverrides,
   TaskWorkspace,
 } from '../../../shared/kanban/types.js';
+import { TASK_COLUMNS, json, opt, toDb } from './columns.js';
 
 /** The most history lines a task keeps; older ones go as new ones come. */
 export const TASK_EVENTS_CAP = 2000;
@@ -111,69 +112,6 @@ export interface AttachmentRow extends KanbanAttachment {
 export type CardReview = (task: Pick<KanbanTask, 'project' | 'overrides'>) => { rounds: number; tool: KanbanTool };
 
 type Row = Record<string, unknown>;
-
-const TASK_COLUMNS: Record<string, string> = {
-  project: 'project',
-  title: 'title',
-  description: 'description',
-  type: 'type',
-  status: 'status',
-  ticket: 'ticket',
-  ticketUrl: 'ticket_url',
-  phase: 'phase',
-  runState: 'run_state',
-  waitingReason: 'waiting_reason',
-  waitingText: 'waiting_text',
-  reviewRound: 'review_round',
-  tool: 'tool',
-  model: 'model',
-  effort: 'effort',
-  usePlan: 'use_plan',
-  planApproval: 'plan_approval',
-  useReview: 'use_review',
-  goal: 'goal',
-  overrides: 'overrides',
-  sessionId: 'session_id',
-  reviewerSessionId: 'reviewer_session_id',
-  workerId: 'worker_id',
-  reviewerWorkerId: 'reviewer_worker_id',
-  branch: 'branch',
-  workspace: 'worktree',
-  pendingMessages: 'pending_messages',
-  retryAt: 'retry_at',
-  retryAttempts: 'retry_attempts',
-  flags: 'flags',
-  tags: 'tags',
-  summary: 'summary',
-  createdBy: 'created_by',
-  updatedAt: 'updated_at',
-  startedAt: 'started_at',
-  finishedAt: 'finished_at',
-  doneAt: 'done_at',
-  archivedAt: 'archived_at',
-  deskId: 'desk_id',
-  createdByAccount: 'created_by_account',
-  queuedRun: 'queued_run',
-};
-const JSON_FIELDS = new Set(['overrides', 'workspace', 'pendingMessages', 'flags', 'tags', 'queuedRun']);
-const BOOL_FIELDS = new Set(['usePlan', 'useReview']);
-
-function json<T>(v: unknown, fallback: T): T {
-  if (typeof v !== 'string' || !v) return fallback;
-  try {
-    const parsed = JSON.parse(v) as unknown;
-    return parsed === null || parsed === undefined ? fallback : (parsed as T);
-  } catch {
-    return fallback;
-  }
-}
-const opt = <T>(v: unknown): T | undefined => (v === null || v === undefined ? undefined : (v as T));
-const toDb = (field: string, v: unknown): unknown => {
-  if (v === undefined || v === null) return JSON_FIELDS.has(field) && field !== 'workspace' && field !== 'queuedRun' ? (field === 'tags' || field === 'pendingMessages' ? '[]' : '{}') : null;
-  if (JSON_FIELDS.has(field)) return JSON.stringify(v);
-  if (BOOL_FIELDS.has(field)) return v ? 1 : 0;
-  return v;
-};
 
 export class KanbanRepository {
   constructor(readonly db: Database.Database) {}
@@ -761,6 +699,7 @@ export class KanbanRepository {
       deskId: opt(r.desk_id),
       createdByAccount: opt(r.created_by_account),
       queuedRun: json<KanbanTask['queuedRun']>(r.queued_run, undefined),
+      handoffFingerprint: opt(r.handoff_fingerprint),
       askingKind: r.waiting_reason === 'agent_asking' ? this.askingKinds.get(id) : undefined,
     };
     for (const k of Object.keys(t) as (keyof KanbanTask)[]) if (t[k] === undefined) delete t[k];

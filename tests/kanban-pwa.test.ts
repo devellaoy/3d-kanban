@@ -1,4 +1,4 @@
-// 3d-kanban: the PWA: manifest, icons, the pages' tags, and the service worker's routing and caching
+// The PWA: manifest, icons, the pages' tags, and the service worker's routing and caching
 // (src/client/public/sw.js, run in a vm with a fake `self`).
 import test from 'node:test';
 import assert from 'node:assert/strict';

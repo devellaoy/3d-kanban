@@ -4,7 +4,7 @@ import { execFileSync } from 'node:child_process';
 import { chmodSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import { checkoutRepo, repoApi, repoFlag } from '../src/server/kanban/ghrepo.js';
+import { checkoutRepo, repoApi, repoFlag } from '../src/server/ghrepo.js';
 import { GitHub } from '../src/server/github.js';
 
 /** A checkout of a fork: origin is the fork, upstream the repository it was forked from (gh's own pick). */

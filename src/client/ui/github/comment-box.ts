@@ -3,7 +3,8 @@ import type { Net } from '../../net';
 import { h } from '../dom';
 import { markdown } from '../markdown';
 import { commentWaiters } from './api';
-import { ghKey, ghRepoField } from '../../kanban/ghrepo'; // 3d-kanban
+import { ghKey, ghRepoField } from './ghrepo';
+import { isSendKey, sendHint } from '../../kanban/sendkey';
 import { DRAFT_KEY, pref, savePref } from './prefs';
 
 // ---- Comment box --------------------------------------------------------------------------------
@@ -23,11 +24,11 @@ export interface CommentBox {
  */
 export function commentBox(kind: 'issue' | 'pull', number: number, itemUrl: string, net: Net, onPosted: (c: GhComment) => void, repo?: string): CommentBox {
   const draftKey = `${DRAFT_KEY}${itemUrl}`;
-  // 3d-kanban: `repo` for an item of another of the project's repositories.
+  // `repo` for an item of another of the project's repositories.
   const waitKey = ghKey(kind, number, repo);
   let busy = false;
   let timer = 0;
-  const ta = h('textarea', { rows: 4, placeholder: 'Leave a comment. Markdown works; ⌘/Ctrl+Enter posts it.', 'aria-label': 'Comment' }) as HTMLTextAreaElement;
+  const ta = h('textarea', { rows: 4, placeholder: `Leave a comment. Markdown works; ${sendHint()}.`, 'aria-label': 'Comment' }) as HTMLTextAreaElement;
   ta.value = pref<string>(draftKey, '');
   const shown = h('div.gh-compose-preview.hidden');
   const write = h('button.btn.on', { type: 'button' }, 'Write');
@@ -97,12 +98,12 @@ export function commentBox(kind: 'issue' | 'pull', number: number, itemUrl: stri
       fail('No answer from the office. Reload the conversation to see whether the comment went through before posting it again.');
       sync();
     }, 45_000);
-    net.send({ t: 'gh.comment', kind, number, body, ...ghRepoField(repo) }); // 3d-kanban: repo
+    net.send({ t: 'gh.comment', kind, number, body, ...ghRepoField(repo) });
   };
 
   ta.addEventListener('input', () => (saveDraft(), sync()));
   ta.addEventListener('keydown', (e) => {
-    if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
+    if (isSendKey(e)) {
       e.preventDefault();
       submit();
     }

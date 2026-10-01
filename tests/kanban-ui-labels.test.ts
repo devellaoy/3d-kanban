@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { columnName, effortName, fmtAgo, fmtDuration, phaseName, toolName, waitingName } from '../src/client/kanban/labels.js';
+import { timeAgo } from '../src/client/ui/dom.js';
+import { columnName, effortName, fmtDuration, phaseName, toolName, waitingName } from '../src/client/kanban/labels.js';
 import { KANBAN_EFFORTS, KANBAN_TOOLS, RUN_PHASES, TASK_STATUSES, WAITING_REASONS } from '../src/shared/kanban/types.js';
 
 test('every column, phase, agent, effort and waiting reason has a name', () => {
@@ -19,5 +20,5 @@ test('durations and times ago read in English', () => {
   assert.equal(fmtDuration(12 * 60_000), '12 min');
   assert.equal(fmtDuration(65 * 60_000), '1 h 05 min');
   const now = Date.UTC(2026, 8, 30, 12);
-  assert.equal(fmtAgo(now - 5 * 60_000, now), '5 min ago');
+  assert.equal(timeAgo(now - 5 * 60_000, now), '5m ago');
 });

@@ -12,7 +12,7 @@
 #
 # Releases go in ~/.local/share/3d-kanban and a `kanban3d` command in ~/.local/bin, so
 # afterwards `kanban3d` starts it too. Run the curl line again to update to the newest release.
-# (3d-kanban: its own install folder and command, so it sits beside an upstream agent-office install.
+# (Its own install folder and command, so it sits beside an upstream agent-office install.
 # The office itself still reads the AGENT_OFFICE_* variables and keeps its data in ~/agent-office.)
 #
 # Environment:
@@ -52,7 +52,7 @@ check_requirements() {
     Darwin | Linux) ;;
     *) die "3d-kanban runs on macOS and Linux. On Windows, run this inside WSL." ;;
   esac
-  # 3d-kanban: Node.js 22, which the kanban's database module (better-sqlite3) needs.
+  # Node.js 22, which the kanban's database module (better-sqlite3) needs.
   have node || die "3d-kanban needs Node.js 22 or newer. Get it from https://nodejs.org (or nvm), then run this again."
   local major
   major="$(node -p 'process.versions.node.split(".")[0]')"

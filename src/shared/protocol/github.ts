@@ -22,15 +22,15 @@ export interface GhIssue {
   updatedAt: string;
   body: string;
   comments: number;
-  /** 3d-kanban: owner/name of the repository it's in, on a project with several (see Floor.pullsState). */
+  /** owner/name of the repository it's in, on a project with several (see Floor.pullsState). */
   repo?: string;
-  /** 3d-kanban: the ticket key, for a card from the project's issue sources (number is 0 for one that isn't a GitHub issue). */
+  /** The ticket key, for a card from the project's issue sources (number is 0 for one that isn't a GitHub issue). */
   key?: string;
-  /** 3d-kanban: the issue source it came from. */
+  /** The issue source it came from. */
   source?: IssueSourceKind;
-  /** 3d-kanban: the source's own status (Jira's "In Progress", a project's column). */
+  /** The source's own status (Jira's "In Progress", a project's column). */
   status?: string;
-  /** 3d-kanban: the kanban task already made from it. */
+  /** The kanban task already made from it. */
   taskId?: number;
 }
 
@@ -46,6 +46,8 @@ export interface GhPull {
   headRefName: string;
   /** The commit its branch is at on GitHub (for a merged PR, the last one merged). */
   headRefOid?: string;
+  /** Its head is in another repository (a fork's): somebody else's branch, not the project's own. */
+  isCrossRepository?: boolean;
   baseRefName: string;
   createdAt: string;
   updatedAt: string;
@@ -55,7 +57,7 @@ export interface GhPull {
   body: string;
   /** Issues it closes ("closes #12" in its description), as GitHub links them. */
   closes: number[];
-  /** 3d-kanban: owner/name of the repository it's in, on a project with several (see Floor.pullsState). */
+  /** owner/name of the repository it's in, on a project with several (see Floor.pullsState). */
   repo?: string;
 }
 
@@ -64,7 +66,7 @@ export interface GhState<T> {
   error?: string;
   fetchedAt: number;
   loading: boolean;
-  /** 3d-kanban: the PR board's repositories (owner/name) on a project with several, PRs or not (see Floor.pullsState). */
+  /** The PR board's repositories (owner/name) on a project with several, PRs or not (see Floor.pullsState). */
   repos?: string[];
 }
 
@@ -154,7 +156,7 @@ export const GH_LABEL_MAX = 100;
 export type GitHubClientMsg =
   | { t: 'gh.refresh' }
   /** Merge a pull request; the answer comes back as gh.merged. */
-  // 3d-kanban: `repo` (owner/name) for a PR or issue in another of the project's repositories.
+  // `repo` (owner/name) for a PR or issue in another of the project's repositories.
   | { t: 'gh.merge'; number: number; repo?: string; method: GhMergeMethod; deleteBranch: boolean; auto?: boolean }
   /** Comment on an issue or a PR's conversation, as the server's gh account; answered with gh.commented. */
   | { t: 'gh.comment'; kind: 'issue' | 'pull'; number: number; repo?: string; body: string }
@@ -167,7 +169,7 @@ export type GitHubServerMsg =
   | { t: 'gh.issues'; state: GhState<GhIssue> }
   | { t: 'gh.pulls'; state: GhState<GhPull> }
   /** Sent to whoever asked for the merge. */
-  // 3d-kanban: `repo` echoes the request's, for a PR in another of the project's repositories.
+  // `repo` echoes the request's, for a PR in another of the project's repositories.
   | { t: 'gh.merged'; number: number; repo?: string; error?: string }
   /** Sent to whoever commented: the comment as GitHub saved it, or why it wasn't. */
   | { t: 'gh.commented'; kind: 'issue' | 'pull'; number: number; repo?: string; comment?: GhComment; error?: string }

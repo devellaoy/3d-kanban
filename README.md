@@ -7,7 +7,7 @@ kanban board beside the 3D office. Agent Office is © 2026 AgentSystemLabs under
 [MIT License](LICENSE), which this fork keeps.
 
 - [Install](#install) · [The kanban: user guide](docs/kanban.md) · [Migrating from ai-kanban](docs/migration.md) ·
-  [Fork notes: seams and upstream sync](docs/fork.md) · [Kanban architecture](docs/kanban-architecture.md)
+  [Origin and upstream](docs/fork.md) · [Kanban architecture](docs/kanban-architecture.md)
 
 ## Install
 
@@ -96,8 +96,8 @@ curl -fsSL https://raw.githubusercontent.com/devellaoy/3d-kanban/main/deploy/pro
 ## What the fork adds
 
 - **A task process**: plan (with questions, auto or manual approval) → implement → 1–10 review rounds ⇄
-  fix → the Review column → Done. Comments put the agent back to work, and answer it when it asks in
-  its terminal; usage limits are retried by themselves. A task that finds no free desk or the office's
+  fix → the Review column → Done. Comments put the agent back to work (a comment whose work changes nothing since the task came to
+  Review doesn't start a review round), and answer it when it asks in its terminal; usage limits are retried by themselves. A task that finds no free desk or the office's
   worker limit full is queued and starts when there's room, as the account that made it (a task counts
   once against the limit: its reviewer never waits for its own implementer's place, and it takes no desk
   either: it stands behind the implementer's chair, watching over its shoulder); a task waiting on a person is announced on the
@@ -149,8 +149,8 @@ curl -fsSL https://raw.githubusercontent.com/devellaoy/3d-kanban/main/deploy/pro
   reach the office, and offers **Reload** when a new version is out. HTTPS is needed except on
   localhost ([configuration](docs/configuration.md#pwa)).
 
-Everything below is upstream's README, unchanged except that its install and run commands point at
-this fork: the `devellaoy/3d-kanban` repository and its releases, and the `kanban3d` command.
+The rest is the office's own guide, from upstream agent-office; its install and run commands point at
+this repository (`devellaoy/3d-kanban`, its releases and the `kanban3d` command).
 
 ---
 
@@ -485,6 +485,7 @@ deploy/dokploy.sh ssh 'node /opt/agent-office/bin/agent-office.js accounts invit
 | X | Send a worker home |
 | L | Hang a sign over a desk ("Operations", "Code cleanup") |
 | T / Enter | Chat |
+| Enter, in a prompt box | A new line; Shift + Enter or ⌘/Ctrl + Enter sends (on a phone, tap the send button) |
 | V | Join voice; then hold V to talk |
 | M | Mute / unmute in voice |
 | Tab | The ☰ menu: every window |

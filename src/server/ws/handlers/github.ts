@@ -3,12 +3,12 @@
 import type { GitHubClientMsg } from '../../../shared/protocol.js';
 import { GH_COMMENT_MAX, GH_LABEL_MAX } from '../../../shared/protocol.js';
 import { num, str } from '../../office/input.js';
-import { ghRepoOf, notInProject } from '../../kanban/office.js'; // 3d-kanban
-import { refreshWall } from '../../kanban/integrations/issues/wall.js'; // 3d-kanban
+import { ghRepoOf, notInProject } from '../../kanban/office.js';
+import { refreshWall } from '../../kanban/integrations/issues/wall.js';
 import { here } from './common.js';
 import type { HandlerMap, ViewPieces } from './types.js';
 
-// 3d-kanban: the project's issue sources when it has any, and every repository of the project (see Floor.pullsState).
+// The project's issue sources when it has any, and every repository of the project (see Floor.pullsState).
 export const issuesView: ViewPieces['issues'] = (_ctx, floor) => floor?.issuesState() ?? { items: [], fetchedAt: 0, loading: false };
 export const pullsView: ViewPieces['pulls'] = (_ctx, floor) => floor?.pullsState() ?? { items: [], fetchedAt: 0, loading: false };
 
@@ -16,7 +16,7 @@ export const githubHandlers = {
   'gh.refresh'(ctx, c) {
     const floor = ctx.floorOf(c);
     void floor?.github.refresh();
-    if (floor) refreshWall(floor.id, 0); // 3d-kanban: the issues board from the project's issue sources, too
+    if (floor) refreshWall(floor.id, 0); // the issues board from the project's issue sources, too
   },
   'gh.merge'(ctx, c, msg) {
     const who = c.peer.name;
@@ -24,7 +24,7 @@ export const githubHandlers = {
     const n = num(msg.number);
     const method = (['squash', 'merge', 'rebase'] as const).find((m) => m === msg.method);
     if (!floor || !Number.isSafeInteger(n) || n <= 0 || !method) return;
-    // 3d-kanban: `repo` for a PR or issue in another of the project's repositories.
+    // `repo` for a PR or issue in another of the project's repositories.
     const ghRepo = ghRepoOf((msg as { repo?: unknown }).repo);
     const github = floor.githubFor(ghRepo);
     if (!github) {
@@ -57,7 +57,7 @@ export const githubHandlers = {
       ctx.sendTo(c, { t: 'gh.commented', kind, number: n, error: invalid });
       return;
     }
-    // 3d-kanban: `repo` for a PR or issue in another of the project's repositories.
+    // `repo` for a PR or issue in another of the project's repositories.
     const ghRepo = ghRepoOf((msg as { repo?: unknown }).repo);
     const github = floor.githubFor(ghRepo);
     if (!github) {
@@ -81,7 +81,7 @@ export const githubHandlers = {
     const kind = msg.kind === 'issue' || msg.kind === 'pull' ? msg.kind : undefined;
     if (!floor || !Number.isSafeInteger(n) || n <= 0 || !kind) return;
     const reason = msg.reason === 'not planned' ? 'not planned' : 'completed';
-    // 3d-kanban: `repo` for a PR or issue in another of the project's repositories.
+    // `repo` for a PR or issue in another of the project's repositories.
     const ghRepo = ghRepoOf((msg as { repo?: unknown }).repo);
     const github = floor.githubFor(ghRepo);
     if (!github) {
@@ -96,9 +96,9 @@ export const githubHandlers = {
           if (error) return;
           if (kind === 'pull') return ctx.toastFloor(floor, `${who} closed PR #${n} without merging`);
           // Nobody should be seated for an issue that's closed.
-          // 3d-kanban: the queue holds the primary repository's issues only; another repository's #n isn't one of them.
+          // The queue holds the primary repository's issues only; another repository's #n isn't one of them.
           const dropped = github === floor.github && floor.queue.dropIssue(n);
-          refreshWall(floor.id); // 3d-kanban: the issues board from the project's issue sources, too (after a moment; nothing without any)
+          refreshWall(floor.id); // the issues board from the project's issue sources, too (after a moment; nothing without any)
           ctx.toastFloor(floor, `${who} closed issue #${n}${reason === 'not planned' ? ' as not planned' : ''}${dropped ? ' and took it off the queue' : ''}`);
         }),
       (error) => ctx.sendTo(c, { t: 'gh.closed', kind, number: n, ...(ghRepo ? { repo: ghRepo } : {}), error }),
@@ -117,7 +117,7 @@ export const githubHandlers = {
       ctx.sendTo(c, { t: 'gh.labeled', kind, number: n, error: 'No labels to change' });
       return;
     }
-    // 3d-kanban: `repo` for a PR or issue in another of the project's repositories.
+    // `repo` for a PR or issue in another of the project's repositories.
     const ghRepo = ghRepoOf((msg as { repo?: unknown }).repo);
     const github = floor.githubFor(ghRepo);
     if (!github) {

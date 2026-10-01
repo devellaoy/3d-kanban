@@ -27,7 +27,7 @@ import { CARRY_ON_PROMPT, WorkerTasks } from './tasks.js';
 import { flushScreens, fullScreens, newTerm, offlineBanner, screenText, type HeadlessTerminal } from './terminal.js';
 import type { HookEnv, OpenedPr, RepoSource, RunAs, SpawnExtra, Worker, WorkerContext, WorkerEvents, WorkerHandle } from './types.js';
 import { clamp, safeEq, truncate } from './util.js';
-import { COLORS, KanbanWorkers, NAMES, kanbanExtraArgs, kanbanSetup, newWorker, type DepartureIntent } from './worker.js'; // 3d-kanban: KanbanWorkers and friends, via worker.js
+import { COLORS, KanbanWorkers, NAMES, kanbanExtraArgs, kanbanSetup, newWorker, type DepartureIntent } from './worker.js'; // KanbanWorkers and friends, via worker.js
 import { WorkerTrees, lostMessage } from './worktree.js';
 
 const SCREEN_INTERVAL_MS = 250;
@@ -88,7 +88,7 @@ export class WorkerManager extends KanbanWorkers {
     private runAs?: RunAs,
     /** The DSH profile a DeepSeek Harness worker boots (default "acp"). */
     dshProfile: string = DSH_PROFILE_DEFAULT,
-  ) { super(); // 3d-kanban
+  ) { super();
     this.defaultProvider = configuredProvider(agentCmd);
     this.trees = new Worktrees(dir);
     this.statePath = path.join(dataDir, 'workers.json');
@@ -205,7 +205,7 @@ export class WorkerManager extends KanbanWorkers {
    * Fetches the branch the project is on, so a worktree made next starts from what's on GitHub now
    * (see Worktrees.fetch). Undefined when there's nothing to wait for.
    */
-  fetchBase(branch?: string): Promise<void> | undefined { // 3d-kanban: `branch`, a configured base branch, is fetched instead
+  fetchBase(branch?: string): Promise<void> | undefined { // `branch`, a configured base branch, is fetched instead
     return this.trees.fetch(branch);
   }
 
@@ -228,7 +228,7 @@ export class WorkerManager extends KanbanWorkers {
     const effortError = validateWorkerEffort(kind, selectedProvider, effort);
     if (effortError) return effortError;
     const seat = DESK_BY_ID.get(deskId);
-    if (!seat || (seat.watch && extra?.kanban?.role !== 'reviewer')) return seat ? "Only a kanban task's reviewer stands behind a desk" : 'Unknown desk'; // 3d-kanban: a task's reviewer watches its implementer from behind a seat (see WATCH_SPOTS)
+    if (!seat || (seat.watch && extra?.kanban?.role !== 'reviewer')) return seat ? "Only a kanban task's reviewer stands behind a desk" : 'Unknown desk'; // a task's reviewer watches its implementer from behind a seat (see WATCH_SPOTS)
     if (!deskBuilt(seat, this.wing())) return `${seat.label} isn't built yet: expand the back office first`;
     if (this.deskOccupied(deskId)) return seat.station ? `The ${STATION_AGENT[seat.station].name} is already there` : `That ${seat.beanbag ? 'bean bag' : 'desk'} is taken`;
     if (kind === 'shell' && seat.station) return 'A board agent is always an agent, not a shell';
@@ -245,7 +245,7 @@ export class WorkerManager extends KanbanWorkers {
     }
     const signIn = providerAdapter(selectedProvider)?.signIn;
     if (owner && signIn && this.runAs && !this.runAs.claudeReady(owner)) return this.runAs.why(signIn);
-    const full = extra?.countsWith && this.workers.has(extra.countsWith) ? undefined : this.capacity?.full(); // 3d-kanban: a task's reviewer doesn't wait for its implementer's place (SpawnExtra.countsWith)
+    const full = extra?.countsWith && this.workers.has(extra.countsWith) ? undefined : this.capacity?.full(); // a task's reviewer doesn't wait for its implementer's place (SpawnExtra.countsWith)
     if (full) return full;
     const used = new Set([...this.workers.values()].map((w) => w.info.name.replace(/ 🐚$/, '')));
     const agent = seat.station && STATION_AGENT[seat.station];
@@ -255,7 +255,7 @@ export class WorkerManager extends KanbanWorkers {
     let others: WorkerRepo[] | undefined = extra?.reuse?.repos;
     if (worktree && !extra?.reuse) {
       const slug = `${name.toLowerCase()}-${id.slice(0, 4)}`;
-      const made = repos.length ? this.makeWorkspace(slug, repos, extra?.bases) : this.trees.create(slug, undefined, undefined, extra?.bases?.[path.resolve(this.dir)]); // 3d-kanban: a task's base branches
+      const made = repos.length ? this.makeWorkspace(slug, repos, extra?.bases) : this.trees.create(slug, undefined, undefined, extra?.bases?.[path.resolve(this.dir)]); // a task's base branches
       if (typeof made === 'string') return made;
       if ('repos' in made) {
         ({ worktree: wt, repos: others } = made);
@@ -291,7 +291,7 @@ export class WorkerManager extends KanbanWorkers {
       meeting: meeting?.id,
     };
     const w = newWorker(info, newTracker());
-    this.hired(w, owner, extra); // 3d-kanban: its owner, and how the kanban launches it
+    this.hired(w, owner, extra); // its owner, and how the kanban launches it
     this.workers.set(id, w);
     if (info.prompt) this.tasks.notePrompt(w, info.prompt);
     // A board agent is told what it's there for ahead of its first request (which is what shows).
@@ -370,7 +370,7 @@ export class WorkerManager extends KanbanWorkers {
    */
   async kill(id: string, cleanup?: WorktreeCleanup, landed?: string, landedRepos?: Record<string, string | undefined>, intent?: DepartureIntent): Promise<{ note?: string; error?: string }> {
     const w = this.workers.get(id);
-    if (!w) return {}; else cleanup = this.departing(w, intent, cleanup); // 3d-kanban: why it goes, and whether a task's worktree stays, decided before anything lets go of it
+    if (!w) return {}; else cleanup = this.departing(w, intent, cleanup); // why it goes, and whether a task's worktree stays, decided before anything lets go of it
     this.workers.delete(id);
     this.tasks.forget(id);
     clearTimeout(w.scanTimer);
@@ -389,7 +389,7 @@ export class WorkerManager extends KanbanWorkers {
     this.drops.remove(id);
     this.events.remove(id, w.info);
     this.persist();
-    return this.worktrees.sendHome(w.info, cleanup, landed, landedRepos, (event) => this.observe(w, { event, departure: w.departure })); // 3d-kanban: observers hear it go and its worktree dealt with
+    return this.worktrees.sendHome(w.info, cleanup, landed, landedRepos, (event) => this.observe(w, { event, departure: w.departure })); // observers hear it go and its worktree dealt with
   }
 
   /**
@@ -639,7 +639,7 @@ export class WorkerManager extends KanbanWorkers {
     if (this.worktrees.checkLost(w)) {
       clockWork(info, 'exited');
       info.status = 'exited';
-      this.emitted(w, { event: 'status', status: 'exited' }); // 3d-kanban: observers hear it too, so a task whose worktree is gone isn't left running
+      this.emitted(w, { event: 'status', status: 'exited' }); // observers hear it too, so a task whose worktree is gone isn't left running
       return;
     }
     // The new terminal starts with what the last one showed (on a resume), or with what was saved
@@ -664,10 +664,10 @@ export class WorkerManager extends KanbanWorkers {
     const commandPath = isShell ? undefined : configured ? this.agentPath : resolveCommand(command);
     const base = isShell ? (WIN && !process.env.SHELL ? [] : ['-l']) : configured ? [...this.agentArgs] : [];
     // Its provider's command line, and anything it sets for this run (see ProviderAdapter.launch).
-    const plan: LaunchPlan = adapter ? adapter.launch({ h: this.handleOf(w), args: base, prompt, resumeSessionId, station, setup: kanbanSetup(w, adapter, this.setups[adapter.id]), extraArgs: kanbanExtraArgs(w, adapter, this.setups[adapter.id]) }) : { args: base }; // 3d-kanban: the task's settings file and flags (plus Codex's hook trust)
+    const plan: LaunchPlan = adapter ? adapter.launch({ h: this.handleOf(w), args: base, prompt, resumeSessionId, station, setup: kanbanSetup(w, adapter, this.setups[adapter.id]), extraArgs: kanbanExtraArgs(w, adapter, this.setups[adapter.id]) }) : { args: base }; // the task's settings file and flags (plus Codex's hook trust)
     const { args } = plan;
     if (plan.rotateToken) w.hookToken = randomBytes(16).toString('hex');
-    const env = { ...childEnv(), ...w.extra?.env }; // 3d-kanban: the engine's own variables, under the office's (which they can't replace)
+    const env = { ...childEnv(), ...w.extra?.env }; // the engine's own variables, under the office's (which they can't replace)
     Object.assign(env, {
       TERM: 'xterm-256color',
       COLORTERM: 'truecolor',
@@ -675,7 +675,7 @@ export class WorkerManager extends KanbanWorkers {
       AGENT_OFFICE_HOOK_URL: this.hook.url,
       AGENT_OFFICE_HOOK_TOKEN: w.hookToken,
     });
-    Object.assign(env, plan.env, info.kanban && { AIKANBAN_API_BASE: this.hook.url, AIKANBAN_TASK_ID: String(info.kanban.taskId) }); // 3d-kanban: how a task's agent reaches the kanban (ai-kanban's names, so existing skills keep working)
+    Object.assign(env, plan.env, info.kanban && { AIKANBAN_API_BASE: this.hook.url, AIKANBAN_TASK_ID: String(info.kanban.taskId) }); // how a task's agent reaches the kanban (ai-kanban's names, so existing skills keep working)
     // Whichever agent it runs, a worker reaches the office's workers with office-workers, and a board
     // agent the queue with office-queue.
     if (this.officeBin) {
@@ -824,7 +824,7 @@ export class WorkerManager extends KanbanWorkers {
       if (w.viewers.size) this.events.data(info.id, msg, [...w.viewers.keys()]);
       w.screenDirty = true;
       w.unsaved = true;
-      this.emitted(w, { event: 'status', status: 'exited' }); // 3d-kanban: observers hear it exit, so a task's run it was on doesn't wait for it forever
+      this.emitted(w, { event: 'status', status: 'exited' }); // observers hear it exit, so a task's run it was on doesn't wait for it forever
       this.persist();
       void this.worktrees.syncBranch(w);
     });
@@ -851,7 +851,7 @@ export class WorkerManager extends KanbanWorkers {
     w.screenDirty = true;
     w.unsaved = true;
     this.events.toast(`Could not start ${what}: ${message}`, 'error');
-    this.emitted(w, { event: 'status', status: 'exited' }); // 3d-kanban: observers hear it too (see launch)
+    this.emitted(w, { event: 'status', status: 'exited' }); // observers hear it too (see launch)
   }
 
   /** What a worker's terminal runs: the shell, the configured agent command, or another provider's CLI. */
@@ -917,7 +917,7 @@ export class WorkerManager extends KanbanWorkers {
       w.info.acked = status === 'done' && (w.viewers.size > 0 || !!w.info.meeting);
       w.info.waitingSince = Date.now();
     } else w.info.acked = true;
-    this.emitted(w, { event: 'status', status }); // 3d-kanban
+    this.emitted(w, { event: 'status', status });
     // What a restarted office picks the worker back up as, should its terminal outlive this one.
     if (w.pty?.id || w.dsh) this.persist();
     // At rest: it may have made a branch of its own this turn, and opened its PR from there.
@@ -940,7 +940,7 @@ export class WorkerManager extends KanbanWorkers {
 
   /** What a worker's provider adapter is handed of it (see WorkerHandle): made once, kept on the worker. */
   private handleOf(w: Worker): WorkerHandle {
-    return (w.handle ??= this.observable(w, { // 3d-kanban: its adapter's hooks are heard by the observers too
+    return (w.handle ??= this.observable(w, { // its adapter's hooks are heard by the observers too
       get info() {
         return w.info;
       },

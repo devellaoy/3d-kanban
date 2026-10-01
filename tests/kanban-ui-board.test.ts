@@ -127,7 +127,7 @@ test('drop zones come straight from shared/kanban/moves.ts, for every status and
     for (const runState of RUN_STATES) {
       for (const hasWorker of [false, true]) {
         const c = card(1, { status, runState, workerId: hasWorker ? 'w1' : undefined });
-        const subject = { status, runState, hasWorker };
+        const subject = { status, runState };
         assert.deepEqual(dropTargets(c), moveTargets(subject));
         for (const z of dropZones(c)) {
           const check = checkMove(subject, z.to);
@@ -141,11 +141,11 @@ test('drop zones come straight from shared/kanban/moves.ts, for every status and
   }
 });
 
-test('the rules the board shows: todo ↔ done never, a reviewer counts as a worker for a reset', () => {
+test('the rules the board shows: todo ↔ done never, a worker at rest does not stop a reset', () => {
   assert.deepEqual(dropTargets(card(1, { status: 'todo' })), ['in_progress', 'archived']);
   assert.ok(!dropTargets(card(1, { status: 'done' })).includes('todo'));
   assert.ok(dropTargets(card(1, { status: 'review' })).includes('todo'));
-  assert.ok(!dropTargets(card(1, { status: 'review', reviewerWorkerId: 'r1' })).includes('todo'));
+  assert.ok(dropTargets(card(1, { status: 'review', reviewerWorkerId: 'r1' })).includes('todo'), 'its workers go home as it resets');
   assert.deepEqual(dropTargets(card(1, { status: 'in_progress', runState: 'running' })), []);
 });
 

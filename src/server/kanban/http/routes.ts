@@ -1,4 +1,4 @@
-// The fork's HTTP routes (docs/fork.md, "Server"), added to the route table in http/routes/index.ts:
+// The kanban's HTTP routes, added to the route table in http/routes/index.ts:
 // the PWA's files and the kanban page, before the sign-in check, and the kanban's API, after it.
 import type http from 'node:http';
 import { createReadStream } from 'node:fs';

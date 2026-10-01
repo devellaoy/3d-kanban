@@ -1,5 +1,5 @@
 // Reading FloorDef.repos out of floors.json (see projects.ts). Kept apart from projects.ts, and free
-// of the worker code, because upstream's building.ts imports it (a seam, see docs/fork.md).
+// of the worker code, because building.ts imports it.
 
 import path from 'node:path';
 import { normalizeRepo } from '../../shared/floors.js';

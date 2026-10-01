@@ -1,5 +1,5 @@
 // Regressions from the devil's-advocate review of the engine: comments typed during a review, tasks
-// whose worktree is gone, workers that exit mid-run, compacting a waiting task, and pull-request
+// whose worktree is gone, workers that exit mid-run, and pull-request
 // reviews as engine runs.
 
 import test from 'node:test';
@@ -129,7 +129,7 @@ test('an agent that exits mid-run interrupts the run: the task waits with Retry,
   await fx.waitTask(task.id, (x) => x.status === 'review' && x.runState === 'idle', 'the review column after the retry', 20_000);
 });
 
-test('upstream seam: a worker whose folder is gone at launch is heard exiting', async (t) => {
+test('a worker whose folder is gone at launch is heard exiting', async (t) => {
   const fx = await engineFixture();
   t.after(() => fx.close());
   const heard: WorkerObservation[] = [];
@@ -141,25 +141,6 @@ test('upstream seam: a worker whose folder is gone at launch is heard exiting', 
   assert.equal(fx.workers.get(info.id)?.status, 'exited');
   assert.ok(fx.workers.get(info.id)?.lost);
   assert.ok(heard.some((o) => o.workerId === info.id && o.event === 'status' && o.status === 'exited'));
-});
-
-test('compacting a waiting task keeps why it waits, and Retry then carries on the run before the compact', async (t) => {
-  const fx = await engineFixture();
-  t.after(() => fx.close());
-  fx.setRules([{ when: 'Implement kanban task', reply: '' }, { when: '/compact', reply: 'Compacted.' }]);
-  const task = fx.newTask({ usePlan: false, useReview: false });
-  await fx.engine.start(task.id, ADA);
-  const failed = await fx.waitTask(task.id, (x) => x.status === 'waiting' && x.runState === 'idle', 'the failed turn', 20_000);
-  assert.equal(failed.waitingReason, 'failed');
-  assert.equal(await fx.engine.compact(task.id, ADA), undefined);
-  const compacted = await fx.waitTask(task.id, (x) => x.runState === 'idle' && fx.repo.listRuns(task.id).length === 2, 'the compact', 20_000);
-  assert.equal(compacted.status, 'waiting');
-  assert.equal(compacted.waitingReason, 'failed');
-  assert.equal(compacted.waitingText, failed.waitingText);
-  fx.setRules([{ when: 'cut short', reply: 'Done now.', commit: 'Work' }]);
-  assert.equal(await fx.engine.retry(task.id, ADA), undefined);
-  await fx.waitTask(task.id, (x) => x.status === 'review' && x.runState === 'idle', 'the review column', 20_000);
-  assert.deepEqual(fx.repo.listRuns(task.id).map((r) => r.phase), ['implement', 'compact', 'implement'], 'Retry ran the implement again, not the compact');
 });
 
 test('a pull-request review is an engine run: a new investigate task, a reviewer in its own worktree, its verdict, then home', async (t) => {

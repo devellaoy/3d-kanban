@@ -83,14 +83,14 @@ export function installBasketball(ctx: Ctx, deps: BasketballDeps) {
     use: onE(() => takeBall()),
   });
 
-  const lookDir = new THREE.Vector3(); // 3d-kanban
+  const lookDir = new THREE.Vector3();
   /** How a shot of yours goes from where you are: out of your hands, which way (a heading), how steep, and how hard it takes to sink it (null: you're not shooting at the hoop). */
   function shotAim(): { from: THREE.Vector3; heading: number; pitch: number; ideal: number | null } {
     const player = ctx.player;
     const rim = HOOP.rim;
     const first = player.view === 'first';
     // First person, the ball goes where you look; third, from over your head the way you face.
-    const facing = player.camYaw + Math.PI; // 3d-kanban: third person too, where the crosshair points
+    const facing = player.camYaw + Math.PI; // third person too, where the crosshair points
     const from = first ? ctx.camera.position.clone() : new THREE.Vector3(player.pos.x, player.pos.y + 1.95, player.pos.z);
     from.x += Math.sin(facing) * 0.3;
     from.z += Math.cos(facing) * 0.3;
@@ -104,7 +104,7 @@ export function installBasketball(ctx: Ctx, deps: BasketballDeps) {
       return { from, heading: facing, pitch, ideal: atHoop ? idealSpeed(from, pitch) : null };
     }
     // Facing about the right way, your character squares up to the hoop.
-    if (!atHoop) return { from, heading: facing, pitch: throwPitch(Math.asin(ctx.camera.getWorldDirection(lookDir).y)), ideal: null }; // 3d-kanban: up or down the crosshair
+    if (!atHoop) return { from, heading: facing, pitch: throwPitch(Math.asin(ctx.camera.getWorldDirection(lookDir).y)), ideal: null }; // up or down the crosshair
     const pitch = underCeiling(from, throwPitch(lookAtRim(from)));
     return { from, heading: toRim, pitch, ideal: idealSpeed(from, pitch) };
   }
@@ -243,7 +243,7 @@ export function installBasketball(ctx: Ctx, deps: BasketballDeps) {
       parts: [
         h('span.title', {}, '🏀 Ball in hand'),
         streak > 1 ? aside(`🔥 ${streak} in a row`) : '',
-        windFrom ? aside('let go in the green!') : key('E / Click', 'Hold to shoot'), // 3d-kanban: third person clicks too
+        windFrom ? aside('let go in the green!') : key('E / Click', 'Hold to shoot'), // third person clicks too
         key('Q', 'Drop it'),
       ],
     };

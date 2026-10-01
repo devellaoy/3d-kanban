@@ -1,4 +1,4 @@
-// 3d-kanban: registers the service worker (public/sw.js) on the 3D office, /lite and /kanban, each
+// Registers the service worker (public/sw.js) on the 3D office, /lite and /kanban, each
 // through its own <script type="module" src="./pwa.ts"> (docs/configuration.md#pwa). Only in a
 // production build and a secure context (https, or localhost): a browser won't run one otherwise,
 // and under the vite dev server it would only get in the way.

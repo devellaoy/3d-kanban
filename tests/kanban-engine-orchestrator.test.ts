@@ -1,12 +1,14 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { createPullsParts } from '../src/server/kanban/integrations/pulls/index.js';
 import { floorPulled } from '../src/server/kanban/integrations/pulls/board.js';
 import type { GhPull } from '../src/shared/protocol.js';
 import type { KanbanTask } from '../src/shared/kanban/types.js';
-import { ADA, engineFixture, type Invocation } from './kanban-engine-fixture.js';
+import { ADA, engineFixture, makeRepo, type Invocation } from './kanban-engine-fixture.js';
 import { grantDir } from '../src/server/kanban/uploads.js';
 
 const hasArgs = (inv: Invocation, ...args: string[]) => args.every((a) => inv.args.includes(a));
@@ -289,6 +291,30 @@ test('start-up: a run whose worker is gone is interrupted, and Retry carries the
   assert.ok(fx.invocations().some((i) => !i.prompt && /^Implement kanban task/.test(i.args[i.args.length - 1] ?? '')));
 });
 
+test('start-up: a compact left by an older office is dropped, the task rests where it was and no compact prompt is ever composed', async (t) => {
+  const fx = await engineFixture();
+  t.after(() => fx.close());
+  const queued = fx.newTask({ usePlan: false, useReview: false });
+  fx.repo.updateTask(queued.id, { status: 'review', phase: 'compact', runState: 'queued', queuedRun: { phase: 'compact', role: 'implementer', prompt: 'compact' } });
+  const running = fx.newTask({ usePlan: false, useReview: false });
+  fx.repo.updateTask(running.id, { status: 'waiting', waitingReason: 'failed', waitingText: 'Boom', phase: 'compact', runState: 'running', workerId: 'gone-worker' });
+  const run = fx.repo.createRun({ taskId: running.id, phase: 'compact', tool: 'claude', workerId: 'gone-worker' });
+  fx.engine.dispose();
+  const { createEngine } = await import('../src/server/kanban/engine/index.js');
+  const engine = createEngine(fx.ctx, { readPauseMs: 50 });
+  t.after(() => engine.dispose());
+  engine.begin();
+  const q = await fx.waitTask(queued.id, (x) => x.runState === 'idle', 'the queued compact dropped');
+  assert.equal(q.status, 'review', 'its column is kept');
+  assert.equal(q.queuedRun, undefined);
+  const r = await fx.waitTask(running.id, (x) => x.runState === 'idle', 'the running compact dropped');
+  assert.equal(r.status, 'waiting');
+  assert.equal(r.waitingReason, 'failed', 'a compact never moved its task');
+  assert.equal(fx.repo.getRun(run.id)?.status, 'interrupted');
+  await new Promise((res) => setTimeout(res, 300));
+  assert.equal(fx.invocations().length, 0, 'nothing was hired or typed for either');
+});
+
 test('a usage limit waits with retryAt, and the sweep carries on by itself', async (t) => {
   let clock = Date.now();
   const fx = await engineFixture({ engine: { sweepMs: 150, now: () => clock } });
@@ -523,4 +549,178 @@ test('a run held for background agents that never report back goes on after back
   const done = await fx.waitTask(task.id, (x) => x.status === 'review', 'the review column', 15_000);
   assert.equal(done.summary, 'Waiting for the helper agent.');
   assert.ok(fx.repo.listComments(task.id).comments.some((c) => c.authorKind === 'system' && /Waited 1 s for its background agents/.test(c.text)));
+});
+
+const reviewRuns = (fx: Awaited<ReturnType<typeof engineFixture>>, id: number) => fx.repo.listRuns(id).filter((r) => r.phase === 'review').length;
+
+/** A task through implement and an approving review into the Review column. */
+async function reviewed(fx: Awaited<ReturnType<typeof engineFixture>>) {
+  fx.setRules([
+    { when: 'Implement kanban task', reply: 'Done.', commit: 'Work' },
+    { when: 'You are reviewing the work', reply: 'Fine.\n\nREVIEW: APPROVED' },
+  ]);
+  const task = fx.newTask({ usePlan: false });
+  assert.equal(await fx.engine.start(task.id, ADA), undefined);
+  return fx.waitTask(task.id, (x) => x.status === 'review' && x.runState === 'idle', 'the review column', 30_000);
+}
+
+async function comment(fx: Awaited<ReturnType<typeof engineFixture>>, id: number, text: string) {
+  const c = fx.repo.addComment({ taskId: id, authorKind: 'user', authorName: 'Ada', text }).comment;
+  await fx.engine.commented(id, c.id, ADA);
+}
+
+test('a comment whose work changes nothing since the task came to Review goes back to Review without a new review round', async (t) => {
+  const fx = await engineFixture();
+  t.after(() => fx.close());
+  const done = await reviewed(fx);
+  await fx.waitTask(done.id, (x) => !!x.handoffFingerprint, 'the stored fingerprint');
+  fx.setRules([{ when: 'commented on task', reply: 'It already works that way.' }]);
+  await comment(fx, done.id, 'Does it handle logout?');
+  await fx.waitTask(done.id, (x) => x.status === 'review' && x.runState === 'idle' && fx.repo.listRuns(done.id).some((r) => r.phase === 'resume' && r.status === 'succeeded'), 'the resume ended', 30_000);
+  assert.equal(reviewRuns(fx, done.id), 1, 'no new review round');
+  assert.ok(fx.repo.listComments(done.id).comments.some((c) => c.authorKind === 'system' && /nothing new to review/.test(c.text)));
+});
+
+test('a comment whose work commits is reviewed again, and its arrival stores a new fingerprint', async (t) => {
+  const fx = await engineFixture();
+  t.after(() => fx.close());
+  const done = await reviewed(fx);
+  const first = (await fx.waitTask(done.id, (x) => !!x.handoffFingerprint, 'the stored fingerprint')).handoffFingerprint;
+  fx.setRules([{ when: 'commented on task', reply: 'Renamed.', commit: 'Rename' }, { when: 'You are reviewing the work', reply: 'Good.\n\nREVIEW: APPROVED' }]);
+  await comment(fx, done.id, 'Rename it.');
+  await fx.waitTask(done.id, (x) => x.status === 'review' && x.runState === 'idle' && reviewRuns(fx, x.id) === 2, 'the second review', 30_000);
+  await fx.waitTask(done.id, (x) => !!x.handoffFingerprint && x.handoffFingerprint !== first, 'a new fingerprint for the new arrival');
+});
+
+test('a manual round that is stopped, then a comment that changes nothing, runs no review', async (t) => {
+  const fx = await engineFixture();
+  t.after(() => fx.close());
+  const done = await reviewed(fx);
+  await fx.waitTask(done.id, (x) => !!x.handoffFingerprint, 'the stored fingerprint');
+  fx.setRules([{ when: 'You are reviewing the work', reply: 'Slow.\n\nREVIEW: APPROVED', delayMs: 20_000 }]);
+  assert.equal(await fx.engine.review(done.id, ADA), undefined);
+  await fx.waitTask(done.id, (x) => x.phase === 'review' && x.runState === 'running', 'the manual round', 20_000);
+  await new Promise((r) => setTimeout(r, 300));
+  assert.equal(await fx.engine.stop(done.id, ADA), undefined);
+  await fx.waitTask(done.id, (x) => x.status === 'waiting' && x.waitingReason === 'stopped', 'the stop');
+  const before = reviewRuns(fx, done.id);
+  fx.setRules([{ when: 'commented on task', reply: 'Nothing to change.' }]);
+  await comment(fx, done.id, 'Anything else?');
+  await fx.waitTask(done.id, (x) => x.status === 'review' && x.runState === 'idle', 'back in Review', 30_000);
+  assert.equal(reviewRuns(fx, done.id), before, 'no review run after the comment');
+});
+
+test('a resume that ran before the task ever came to Review is judged against the base branch, so it is reviewed', async (t) => {
+  const fx = await engineFixture();
+  t.after(() => fx.close());
+  fx.setRules([
+    { when: 'Implement kanban task', reply: 'Implemented.', commit: 'Work', delayMs: 1200 },
+    { when: 'commented on task', reply: 'Nothing more to do.' },
+    { when: 'You are reviewing the work', reply: 'Fine.\n\nREVIEW: APPROVED' },
+  ]);
+  const task = fx.newTask({ usePlan: false, useReview: true });
+  assert.equal(await fx.engine.start(task.id, ADA), undefined);
+  await fx.waitTask(task.id, (x) => x.runState === 'running', 'the implement turn');
+  await comment(fx, task.id, 'One more thing.');
+  assert.equal(fx.task(task.id).handoffFingerprint, undefined);
+  await fx.waitTask(task.id, (x) => x.status === 'review' && x.runState === 'idle' && fx.repo.listRuns(task.id).some((r) => r.phase === 'resume' && r.status === 'succeeded') && reviewRuns(fx, x.id) >= 1, 'a review after the resume', 40_000);
+  const phases = fx.repo.listRuns(task.id).map((r) => r.phase);
+  assert.ok(phases.includes('resume') && phases.lastIndexOf('review') > phases.indexOf('resume'), 'a review run comes after the resume run');
+});
+
+test('Fix PRs on an investigation checks out the PR branch, not the investigation branch, and no report folder is granted', async (t) => {
+  const fx = await engineFixture();
+  t.after(() => fx.close());
+  fx.setRules([
+    { when: 'Address the open review comments', reply: 'Answered the comments.' },
+    { when: 'nvestigat', reply: 'Found it.' },
+  ]);
+  const task = fx.newTask({ type: 'investigate', usePlan: false, useReview: false });
+  assert.equal(await fx.engine.start(task.id, ADA), undefined);
+  await fx.waitTask(task.id, (x) => x.status === 'review' && x.runState === 'idle', 'the investigation done');
+  assert.match((await fx.engine.pr(task.id, ADA, 'create')) ?? '', /investigation/, 'no PR is opened for an investigation');
+  assert.match((await fx.engine.pr(task.id, ADA, 'fix')) ?? '', /no open pull requests/);
+
+  // The investigation left its own working branch on the task; the PR is on another.
+  fx.repo.updateTask(task.id, { branch: 'office/scratch' });
+  fx.repo.setRepoBranch(task.id, 'proj', 'office/scratch');
+  fx.repo.upsertPrLink(task.id, { repoId: 'proj', repo: 'acme/proj', number: 5, url: 'https://github.com/acme/proj/pull/5', state: 'OPEN', branch: 'fix/the-pr-branch' });
+  const before = fx.invocations().length;
+  assert.equal(await fx.engine.pr(task.id, ADA, 'fix'), undefined);
+  await fx.waitTask(task.id, (x) => x.status === 'review' && x.runState === 'idle' && fx.repo.listRuns(task.id).some((r) => r.phase === 'pr-fix' && r.status === 'succeeded'), 'the pr-fix run');
+  assert.equal(fx.task(task.id).branch, 'office/scratch', "the task's own branch is left alone");
+  const run = fx.repo.listRuns(task.id).find((r) => r.phase === 'pr-fix')!;
+  assert.equal(run.role, 'implementer');
+  const inv = fx.invocations().slice(before).filter((i) => i.kind === 'claude');
+  const text = inv.map((i) => i.prompt ?? i.args.join(' ')).join('\n');
+  assert.match(text, /Address the open review comments[\s\S]*https:\/\/github\.com\/acme\/proj\/pull\/5/);
+  assert.match(text, /fix\/the-pr-branch/, 'told to check out the PR branch');
+  assert.ok(!text.includes('office/scratch'), "not told to check out the investigation's branch");
+  assert.ok(!text.includes('investigateSafety') && !/read-only/i.test(inv.map((i) => i.args.join(' ')).join(' ')));
+  assert.ok(!fx.invocations().slice(before).some((i) => i.args.some((a) => a.includes('reports'))), 'no report folder is granted');
+});
+
+test('Fix PRs in two repositories checks out the PR branch only where the task has an open PR', async (t) => {
+  const api = path.join(mkdtempSync(path.join(tmpdir(), 'kanban-api-')), 'api');
+  makeRepo(api);
+  const fx = await engineFixture({ repos: [{ id: 'api', name: 'api', kind: 'git', dir: api, remote: 'acme/api', primary: false }] });
+  t.after(() => fx.close());
+  fx.setRules([{ when: 'Address the open review comments', reply: 'Answered the comments.' }, { when: 'nvestigat', reply: 'Found it.' }]);
+  const task = fx.newTask({ type: 'investigate', usePlan: false, useReview: false });
+  assert.equal(await fx.engine.start(task.id, ADA), undefined);
+  await fx.waitTask(task.id, (x) => x.status === 'review' && x.runState === 'idle', 'the investigation done');
+  fx.repo.updateTask(task.id, { branch: 'office/scratch' });
+  fx.repo.setRepoBranch(task.id, 'proj', 'office/scratch');
+  fx.repo.setRepoBranch(task.id, 'api', 'office/api-scratch');
+  fx.repo.upsertPrLink(task.id, { repoId: 'proj', repo: 'acme/proj', number: 5, url: 'https://github.com/acme/proj/pull/5', state: 'OPEN', branch: 'fix/the-pr-branch' });
+  const before = fx.invocations().length;
+  assert.equal(await fx.engine.pr(task.id, ADA, 'fix'), undefined);
+  await fx.waitTask(task.id, (x) => x.status === 'review' && x.runState === 'idle' && fx.repo.listRuns(task.id).some((r) => r.phase === 'pr-fix' && r.status === 'succeeded'), 'the pr-fix run');
+  const text = fx.invocations().slice(before).filter((i) => i.kind === 'claude').map((i) => i.prompt ?? i.args.join(' ')).join('\n');
+  assert.match(text, /- [^\n]*`fix\/the-pr-branch`/);
+  assert.match(text, /- api: `office\/api-scratch`/);
+  assert.ok(!text.includes('office/scratch`'), "the repository with the PR isn't sent to the investigation's branch");
+});
+
+test("Fix PRs checks each repository's worktree on its own: the primary on the PR branch doesn't excuse the others", async (t) => {
+  const api = path.join(mkdtempSync(path.join(tmpdir(), 'kanban-api-')), 'api');
+  makeRepo(api);
+  const fx = await engineFixture({ repos: [{ id: 'api', name: 'api', kind: 'git', dir: api, remote: 'acme/api', primary: false }] });
+  t.after(() => fx.close());
+  fx.setRules([{ when: 'Address the open review comments', reply: 'Answered the comments.' }, { when: 'nvestigat', reply: 'Found it.' }]);
+  const task = fx.newTask({ type: 'investigate', usePlan: false, useReview: false });
+  assert.equal(await fx.engine.start(task.id, ADA), undefined);
+  const done = await fx.waitTask(task.id, (x) => x.status === 'review' && x.runState === 'idle', 'the investigation done');
+  const ws = done.workspace;
+  assert.ok(ws?.repos?.some((r) => r.name === 'api'), 'the workspace has a worktree for api');
+  // Both PRs are on feature/x; the primary's worktree is already there, api's isn't.
+  for (const [repoId, repo, number] of [['proj', 'acme/proj', 5], ['api', 'acme/api', 6]] as const) {
+    fx.repo.upsertPrLink(task.id, { repoId, repo, number, url: `https://github.com/${repo}/pull/${number}`, state: 'OPEN', branch: 'feature/x' });
+  }
+  execFileSync('git', ['checkout', '-q', '-b', 'feature/x'], { cwd: path.join(fx.dir, ws!.worktree.path) });
+  const before = fx.invocations().length;
+  assert.equal(await fx.engine.pr(task.id, ADA, 'fix'), undefined);
+  await fx.waitTask(task.id, (x) => x.status === 'review' && x.runState === 'idle' && fx.repo.listRuns(task.id).some((r) => r.phase === 'pr-fix' && r.status === 'succeeded'), 'the pr-fix run');
+  const text = fx.invocations().slice(before).filter((i) => i.kind === 'claude').map((i) => i.prompt ?? i.args.join(' ')).join('\n');
+  assert.match(text, /- api: `feature\/x`/, "api is told to check out the PR's branch");
+});
+
+test("Fix PRs twice: the PR: lines of the answers don't move the PR's head branch to the task's", async (t) => {
+  const fx = await engineFixture();
+  t.after(() => fx.close());
+  fx.setRules([{ when: 'Address the open review comments', reply: 'Answered the comments.\nPR: https://github.com/acme/proj/pull/5' }, { when: 'nvestigat', reply: 'Found it.' }]);
+  const task = fx.newTask({ type: 'investigate', usePlan: false, useReview: false });
+  assert.equal(await fx.engine.start(task.id, ADA), undefined);
+  await fx.waitTask(task.id, (x) => x.status === 'review' && x.runState === 'idle', 'the investigation done');
+  fx.repo.updateTask(task.id, { branch: 'office/scratch' });
+  fx.repo.setRepoBranch(task.id, 'proj', 'office/scratch');
+  fx.repo.upsertPrLink(task.id, { repoId: 'proj', repo: 'acme/proj', number: 5, url: 'https://github.com/acme/proj/pull/5', state: 'OPEN', branch: 'fix/the-pr-branch' });
+  for (const round of [1, 2]) {
+    const before = fx.invocations().length;
+    assert.equal(await fx.engine.pr(task.id, ADA, 'fix'), undefined);
+    await fx.waitTask(task.id, (x) => x.runState === 'idle' && fx.repo.listRuns(task.id).filter((r) => r.phase === 'pr-fix' && r.status === 'succeeded').length === round, `pr-fix run ${round}`);
+    assert.deepEqual(fx.repo.listPrLinks(task.id).map((p) => [p.number, p.branch]), [[5, 'fix/the-pr-branch']], `the link keeps its branch after run ${round}`);
+    const text = fx.invocations().slice(before).filter((i) => i.kind === 'claude').map((i) => i.prompt ?? i.args.join(' ')).join('\n');
+    if (round === 2) assert.ok(!text.includes('office/scratch`'), "the second run isn't sent to the task's own branch");
+  }
 });

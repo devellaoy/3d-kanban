@@ -1,4 +1,4 @@
-// 3d-kanban: the store's slice for YouTube on the Office TV, last in SLICES (state/slices/index.ts), so
+// The store's slice for YouTube on the Office TV, last in SLICES (state/slices/index.ts), so
 // the office's clock from 'pong' (the jukebox's slice) is up to date when it's read here.
 import type { YoutubeTvState } from '../../shared/youtube/link';
 import type { Slice, Store } from '../state/store';

@@ -27,9 +27,8 @@ import { renderLimits } from '../../ui/limits';
 import { modelBadge, providerLabel } from '../../ui/provider';
 import { renderUsage } from '../../ui/usage';
 import { Worker } from '../../world/character';
-// 3d-kanban: task workers in the office (docs/kanban-coupling.md).
-import { kanbanCard, kanbanStarter } from '../../kanban/office';
-import { forgetTaskWorker, tagTaskWorker } from '../../kanban/views3d';
+// Task workers in the office (docs/kanban-coupling.md).
+import { kanbanCard, kanbanStarter, workerLabel } from '../../kanban/office';
 import { seatView } from '../../kanban/watch3d';
 import { Jail } from './jail';
 import { Laptop } from './laptop';
@@ -41,6 +40,34 @@ declare module '../../world/types' {
   interface InteractKinds {
     expand: true;
   }
+}
+
+/** The name tag each task worker shows ("Ada · #14"), to redraw it only when it changes. */
+const names = new Map<string, string>();
+
+/** Redraws `model`'s name tag when `w`'s label changed: a task worker's says which task. */
+export function tagTaskWorker(model: Worker, w: WorkerInfo) {
+  if ((w.kanban || names.has(w.id)) && names.get(w.id) !== workerLabel(w)) {
+    model.setName(workerLabel(w));
+    if (w.kanban) names.set(w.id, workerLabel(w));
+    else names.delete(w.id);
+  }
+}
+
+/** A worker's gone: forget its name tag. */
+export function forgetTaskWorker(id: string) {
+  names.delete(id);
+}
+
+/** A task's ⏳ retry countdown on its worker's card ticks down between worker updates. */
+export function tickRetryCountdown(views: ReadonlyMap<string, { model: Worker }>, meetingCard: (w: WorkerInfo) => WorkerTask | undefined) {
+  return setInterval(() => {
+    const now = Date.now();
+    for (const w of store.workers.values()) {
+      if (!w.kanban?.retryAt || meetingCard(w)) continue;
+      views.get(w.id)?.model.setTask(kanbanCard(w, now));
+    }
+  }, 1000);
 }
 
 export interface WorkerView {
@@ -119,7 +146,7 @@ export function installWorkerViews(ctx: Ctx, core: CoreState, parts: WorkerViews
     const court = parts.worlds.court();
     for (const w of store.workers.values()) {
       let v = workerViews.get(w.id);
-      const desk = seatView(world, w.deskId); // 3d-kanban: a reviewer's spot behind its implementer's chair too
+      const desk = seatView(world, w.deskId); // a reviewer's spot behind its implementer's chair too
       if (!desk) continue;
       if (!v) {
         departures.vacate(w.deskId);
@@ -128,14 +155,14 @@ export function installWorkerViews(ctx: Ctx, core: CoreState, parts: WorkerViews
         model.setCostume(store.theme.active);
         model.setOutfit(plan().agents.outfit === 'peasant' ? 'peasant' : null);
         model.setAge(ageOf(w));
-        model.watching = !!desk.def.watch; // 3d-kanban: a reviewer behind its implementer doesn't type
+        model.watching = !!desk.def.watch; // a reviewer behind its implementer doesn't type
         desk.seatAnchor.add(model.root);
         // Its globe floats beside the laptop (or the kiosk's counter), out from behind the card over
         // its head and the back of its chair, so it shows from across the room.
         const beside = desk.def.station ? new THREE.Vector3(0.62, 0.9, 0) : new THREE.Vector3(0.64, 0.5, -0.1);
         model.setPropSpot(model.root.worldToLocal(desk.laptopAnchor.localToWorld(beside)));
         // Called to a meeting just now: out of the elevator and over to the table, one after another.
-        // 3d-kanban: a task's reviewer walks in the same way, to behind its implementer's chair.
+        // A task's reviewer walks in the same way, to behind its implementer's chair.
         if ((desk.def.room || desk.def.watch) && !seatedAlready) arrivals.add(model, desk);
         // In the castle, a worker at the tables gets up and walks about (see Court): a new one runs in to its seat.
         else if (court && inCourt(w)) court.add(w.id, model, desk, seatedAlready ? undefined : cameFrom(w));
@@ -168,7 +195,7 @@ export function installWorkerViews(ctx: Ctx, core: CoreState, parts: WorkerViews
       v.model.setPr(workerPr(w, store.pulls.items, store.queue.tasks));
       v.model.setLost(!!w.lost);
       const engineBadge = w.kind === 'agent' ? modelBadge(w.provider, w.model, w.effort) : undefined;
-      tagTaskWorker(v.model, w); // 3d-kanban: a task worker's name tag says which task (#14)
+      tagTaskWorker(v.model, w); // a task worker's name tag says which task (#14)
       v.model.setTask(meetingCard(w) ?? kanbanCard(w, Date.now()) ?? (w.task && w.kind === 'agent' ? { ...w.task, name: `${providerLabel(w.provider, store.project)}${engineBadge ? ` · ${engineBadge}` : ''} · ${w.task.name}` } : w.task));
       const deskDef = plan().byId.get(w.deskId);
       // Keys clack while it types, not while it reads, watches its tests or browses.
@@ -195,7 +222,7 @@ export function installWorkerViews(ctx: Ctx, core: CoreState, parts: WorkerViews
       }
       sound.removeTypist(id);
       workerViews.delete(id);
-      forgetTaskWorker(id); // 3d-kanban
+      forgetTaskWorker(id);
     }
     arrangeSeats();
     // Whoever's waiting on someone lines up for the throne, the one who's waited longest first.
@@ -209,7 +236,7 @@ export function installWorkerViews(ctx: Ctx, core: CoreState, parts: WorkerViews
   /** A worker that sits at the tables (not a board agent or at the meeting table): it gets up and lines up for the throne. */
   function inCourt(w: WorkerInfo): boolean {
     const d = plan().byId.get(w.deskId);
-    return w.kind === 'agent' && !!d && !d.station && !d.room && !d.watch && !w.meeting; // 3d-kanban: !d.watch
+    return w.kind === 'agent' && !!d && !d.station && !d.room && !d.watch && !w.meeting;
   }
 
   /**
@@ -232,7 +259,7 @@ export function installWorkerViews(ctx: Ctx, core: CoreState, parts: WorkerViews
     const h = plan().herald;
     if (w.via === 'herald' && h) return [h.x + Math.sin(h.rotY) * 1.1, h.z + Math.cos(h.rotY) * 1.1];
     if (w.createdBy.endsWith('(queue)')) return [plan().door.x, plan().door.z];
-    // 3d-kanban: the kanban's hires come in by the doors too.
+    // The kanban's hires come in by the doors too.
     if (kanbanStarter(w.createdBy) !== undefined) return [plan().door.x, plan().door.z];
     return undefined;
   }
@@ -257,7 +284,7 @@ export function installWorkerViews(ctx: Ctx, core: CoreState, parts: WorkerViews
   /** Hired by you (at a desk, or through the queue), or last given something to do by you. */
   function yours(w: WorkerInfo): boolean {
     const name = store.peers.get(store.you)?.name ?? store.profile.name;
-    return w.createdBy === name || w.createdBy === `${name} (queue)` || w.lastInput?.by === name || kanbanStarter(w.createdBy) === name; // 3d-kanban: a task you started
+    return w.createdBy === name || w.createdBy === `${name} (queue)` || w.lastInput?.by === name || kanbanStarter(w.createdBy) === name; // a task you started
   }
 
   /**
@@ -311,7 +338,7 @@ export function installWorkerViews(ctx: Ctx, core: CoreState, parts: WorkerViews
       v.model.held = d < (v.model.held ? HOLD_LEAVE : HOLD_NEAR);
       v.model.update(dt, t);
       // A board agent's kiosk has no laptop to paint (see buildKiosk).
-      if (!desk.station && !desk.watch) v.laptop.update(dt, store.screens.get(id), Math.hypot(desk.x - camPos.x, desk.z - camPos.z)); // 3d-kanban: nor a reviewer's spot
+      if (!desk.station && !desk.watch) v.laptop.update(dt, store.screens.get(id), Math.hypot(desk.x - camPos.x, desk.z - camPos.z)); // nor a reviewer's spot
     }
     for (const a of parts.worlds.idleAgents()) if (a.view.vacancy.visible) a.model.update(dt, t);
     departures.update(dt, t);
@@ -444,6 +471,6 @@ export function installWorkerViews(ctx: Ctx, core: CoreState, parts: WorkerViews
     heraldSeat,
     heraldHires,
     burstOver,
-    meetingCard, // 3d-kanban: for the retry countdown (kanban/install3d.ts)
+    meetingCard, // for the retry countdown (kanban/install3d.ts)
   };
 }

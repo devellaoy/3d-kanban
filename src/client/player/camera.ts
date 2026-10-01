@@ -3,8 +3,8 @@ import { FLOOR, SLAB, STREET_Y, WING, inWing, wingMinZ } from '../../shared/layo
 import type { ViewMode } from '../state';
 import type { Collider } from '../world/types';
 import { ceilingAt, groundAt } from './collide';
-import { THIRD_TARGET, orbitOffset, shoulderOffset } from '../kanban/shoulder'; // 3d-kanban
-import type { OrbitEase } from '../kanban/camera3d'; // 3d-kanban
+import { THIRD_TARGET, orbitOffset, shoulderOffset } from './shoulder';
+import type { OrbitEase } from './camera3d';
 
 // The camera: your eyes in first person, or following you round in third without going through the
 // walls, and the view trembling after too much coffee or rolling after too much to drink.
@@ -38,7 +38,7 @@ export interface Followed {
   riding: boolean;
   colliders: Collider[];
   street: number;
-  /** 3d-kanban: the third-person camera's easing state. */
+  /** The third-person camera's easing state. */
   ease: OrbitEase;
 }
 
@@ -48,17 +48,17 @@ export interface Followed {
  */
 export function aimCamera(camera: THREE.PerspectiveCamera, p: Followed, bob: number, lift: number, snap: boolean, dt = 0) {
   if (p.view === 'first') {
-    p.ease.sync(p.camYaw, p.camPitch, p.camDist); // 3d-kanban
+    p.ease.sync(p.camYaw, p.camPitch, p.camDist);
     camera.position.set(p.pos.x, p.pos.y + EYE_HEIGHT + bob + p.stepOffset + lift, p.pos.z);
     camera.rotation.set(p.lookPitch, p.camYaw, 0);
     return;
   }
-  const shown = p.ease.orbit(p.camYaw, p.camPitch, p.camDist, snap, dt); // 3d-kanban: gaps ease out, the mouse doesn't lag
-  const moved = p.ease.movedBy(camera, snap); // 3d-kanban
+  const shown = p.ease.orbit(p.camYaw, p.camPitch, p.camDist, snap, dt); // gaps ease out, the mouse doesn't lag
+  const moved = p.ease.movedBy(camera, snap);
   const target = new THREE.Vector3(p.pos.x, p.pos.y + p.stepOffset + lift + THIRD_TARGET, p.pos.z);
-  target.add(shoulderOffset(shown.yaw)); // 3d-kanban: over your shoulder
-  const off = orbitOffset(shown.yaw, shown.pitch, shown.dist); // 3d-kanban
-  const ideal = target.clone().add(off); // 3d-kanban
+  target.add(shoulderOffset(shown.yaw)); // over your shoulder
+  const off = orbitOffset(shown.yaw, shown.pitch, shown.dist);
+  const ideal = target.clone().add(off);
   const cam = ideal.clone();
   // Keep the camera on your side of the outside walls, so they never block the view: inside the
   // room while you're in the office, out of the building while you're outside or on the balcony.
@@ -109,7 +109,7 @@ export function aimCamera(camera: THREE.PerspectiveCamera, p: Followed, bob: num
     else if (side === 2) cam.z = R.minZ - e;
     else cam.z = R.maxZ + e;
   }
-  p.ease.place(camera, ideal, cam, snap, moved, dt); // 3d-kanban: on the orbit, moved by the walls (was: lerp 0.25)
+  p.ease.place(camera, ideal, cam, snap, moved, dt); // on the orbit, moved by the walls (was: lerp 0.25)
   camera.lookAt(target);
 }
 

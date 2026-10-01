@@ -11,7 +11,7 @@ import { store } from '../../state';
 import { clip, h, toast } from '../../ui/dom';
 import { BACKSWING_TIME, IMPACT, type Person } from '../../world/character';
 import { GolfBalls, PIN_DISTANCE, TEE_BALL, fly, pinText, type Flight, type Hit, type Shot } from './world';
-import { issueCardLabel } from '../../kanban/issuecards'; // 3d-kanban
+import { issueCardLabel } from '../../kanban/issuecards';
 
 // The kinds of thing you can use that this defines (see InteractKinds in world/types.ts).
 declare module '../../world/types' {
@@ -137,7 +137,7 @@ export function installGolf(ctx: Ctx, deps: GolfDeps) {
     const other = teeTaken();
     if (other) return toast(`🏌️ ${other} is on the tee — wait your turn`, 'warn');
     const carrying = ctx.carrying();
-    if (carrying) return toast(`✋ Your hands are full: put ${issueCardLabel(carrying)} down first (Q)`, 'warn'); // 3d-kanban: its label
+    if (carrying) return toast(`✋ Your hands are full: put ${issueCardLabel(carrying)} down first (Q)`, 'warn');
     if (ctx.player.seat) deps.standUp();
     ctx.activities.stopAll('start');
     deps.stopWalking();

@@ -21,7 +21,7 @@ export const queueHandlers = {
     const effort = isAgentEffort(msg.effort) ? msg.effort : undefined;
     // Its worker runs on the sign-ins of whoever queued it, whenever it gets a desk.
     ctx.withSignIn(c, ctx.claudeFor(msg.provider ?? floor.workers.officeDefault.provider), () => {
-      const key = floor.cardKey(msg.issueKey); // 3d-kanban: only a card on the floor's board, checked before it's stored
+      const key = floor.cardKey(msg.issueKey); // only a card on the floor's board, checked before it's stored
       const err = floor.queue.add(str(msg.prompt, 20000), who, str(msg.title, 200), issue, msg.provider, model, effort, c.accountId, key);
       if (err) ctx.warn(c, err);
       else ctx.toastFloor(floor, `📋 ${who} queued ${issue !== undefined ? `issue #${issue}` : key ? key : 'a task'}`);

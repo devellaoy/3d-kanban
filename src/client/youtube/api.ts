@@ -1,4 +1,4 @@
-// 3d-kanban: YouTube's IFrame Player API (https://developers.google.com/youtube/iframe_api_reference),
+// YouTube's IFrame Player API (https://developers.google.com/youtube/iframe_api_reference),
 // loaded from YouTube the first time something's on the TV. Only the parts the Office TV uses are typed.
 
 /** The player's states (YT.PlayerState). */

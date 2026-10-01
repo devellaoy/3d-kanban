@@ -4,9 +4,10 @@ import type { Net } from '../../net';
 import { store, workerForPull } from '../../state';
 import { h, openModal, type Modal } from '../dom';
 import { officePrompt } from '../prompts';
-// 3d-kanban: the PR review picker, and which of the project's repositories a PR is in (kanban/ghrepo.ts).
+// The PR review picker, and which of the project's repositories a PR is in (github/ghrepo.ts).
 import { openReviewPicker } from '../../kanban/prpicker';
-import { ghLabel, ghUrl, sameItem } from '../../kanban/ghrepo';
+import { prOwner } from '../../kanban/prowner';
+import { ghLabel, ghUrl, sameItem } from './ghrepo';
 import { getJson, getText } from './api';
 import { openClose } from './close';
 import { commentBox } from './comment-box';
@@ -24,10 +25,11 @@ import { buildTree, looksGenerated, parseDiff, renderFileDiff, renderThread, rep
 export function openPull(first: GhPull, net: Net, actions: BoardActions) {
   let it = first;
   const itemUrl = it.url;
-  // 3d-kanban: which of the project's repositories it's in (none: the floor's own, as upstream).
+  // Which of the project's repositories it's in (none: the floor's own, as upstream).
   const repo = first.repo;
   const label = ghLabel(it.number, repo);
   const reviewed = new Reviewed(it.url);
+  const owner = prOwner(net, () => it); // the task that owns it
   let detail: GhPullDetail | null = null;
   let detailError = '';
   let files: DiffFile[] | null = null;
@@ -58,13 +60,13 @@ export function openPull(first: GhPull, net: Net, actions: BoardActions) {
     detail.comments.push(c);
     renderConv();
     renderFrame();
-  }, repo); // 3d-kanban: repo
+  }, repo);
   conv.append(h('div.gh-col', {}, thread, comment.el));
   const filesPane = h('div.pd');
   const footBtns = h('span.gh-foot');
   const el = h(
     'div.modal.gh-window',
-    { role: 'dialog', 'aria-label': `Pull request ${label}`, tabindex: -1 }, // 3d-kanban: label
+    { role: 'dialog', 'aria-label': `Pull request ${label}`, tabindex: -1 },
     h('header', {}, pill, title, reload, close),
     meta,
     h('nav.gh-tabs', { role: 'tablist' }, tabConv, tabFiles),
@@ -82,7 +84,7 @@ export function openPull(first: GhPull, net: Net, actions: BoardActions) {
     const [word, cls] = stateOf(it);
     pill.className = `pill ${cls}`;
     pill.textContent = word;
-    title.textContent = `${label} ${it.title}`; // 3d-kanban: label
+    title.textContent = `${label} ${it.title}`;
     title.title = repo ? `${repo}#${it.number} ${it.title}` : it.title;
     const commits = detail ? `${detail.commits} commit${detail.commits === 1 ? '' : 's'}` : 'its commits';
     meta.replaceChildren(
@@ -118,7 +120,7 @@ export function openPull(first: GhPull, net: Net, actions: BoardActions) {
       ...nodes(
       w ? h('button.btn', { type: 'button', onclick: () => actions.goToDesk(w.deskId) }, `🪑 Go to ${w.name}'s desk`) : null,
       h('button.btn', { type: 'button', title: 'Send a worker your own prompt about this PR', onclick: () => actions.ask(pullContext(it), `Ask about PR #${it.number}`) }, '✍️ Ask a worker…'),
-      // 3d-kanban: both reviews first ask which of the project's PRs go with it (kanban/prpicker.ts).
+      // Both reviews first ask which of the project's PRs go with it (kanban/prpicker.ts).
       isOpen ? h('button.btn', { type: 'button', onclick: () => openReviewPicker(net, it, 'review', () => actions.assign(reviewPrompt(it), `Review PR #${it.number}`)) }, '🔍 Review') : null,
       isOpen
         ? h('button.btn', { type: 'button', title: 'A few workers review it in the meeting room, each through its own lens, and the office posts one combined review', onclick: () => openReviewPicker(net, it, 'panel', () => actions.meeting({ pattern: 'review', pr: it.number, title: `Review of PR #${it.number}`, prompt: officePrompt('pull.panel', pullVars(it)) })) }, '🤝 Review panel…')
@@ -128,6 +130,7 @@ export function openPull(first: GhPull, net: Net, actions: BoardActions) {
         : isOpen
           ? h('button.btn', { type: 'button', title: 'A worker addresses the review comments, gets the checks green, then merges', onclick: handToWorker }, '🤖 Fix comments & merge')
           : null,
+      isOpen ? owner.button() : null, // 🛠️ Fix via task #N
       isOpen ? h('button.btn', { type: 'button', title: 'Close this pull request without merging it', onclick: () => openClose('pull', it, net, loadAll) }, '🚫 Close PR…') : null,
       isOpen ? merge : null,
       ),
@@ -483,18 +486,20 @@ export function openPull(first: GhPull, net: Net, actions: BoardActions) {
     detailError = '';
     diffError = '';
     renderConv();
-    getJson<GhPullDetail>(ghUrl(`/api/gh/pull?number=${it.number}`, repo)) // 3d-kanban: repo
+    getJson<GhPullDetail>(ghUrl(`/api/gh/pull?number=${it.number}`, repo))
       .then((d) => {
         if (g !== generation) return;
         detail = d;
         comment.setViewer(d.viewer);
+        // Who owns it is asked once, on open, and again when its state changes (a merged PR is nobody's to fix).
+        if (d.state !== it.state) owner.load(renderFrame);
         it = { ...it, state: d.state, isDraft: d.isDraft, reviewDecision: d.reviewDecision };
         // Line comments go into the diff, so draw it again with them.
         if (files) setupFiles();
       })
       .catch((err) => g === generation && (detailError = (err as Error).message))
       .finally(() => g === generation && (renderFrame(), renderConv()));
-    getText(ghUrl(`/api/gh/pull/diff?number=${it.number}`, repo)) // 3d-kanban: repo
+    getText(ghUrl(`/api/gh/pull/diff?number=${it.number}`, repo))
       .then((text) => {
         if (g !== generation) return;
         files = parseDiff(text);
@@ -509,13 +514,13 @@ export function openPull(first: GhPull, net: Net, actions: BoardActions) {
   });
 
   const unsub = store.on('pulls', () => {
-    const fresh = store.pulls.items.find((p) => sameItem(p, it)); // 3d-kanban: in its repository
+    const fresh = store.pulls.items.find((p) => sameItem(p, it)); // in its repository
     if (!fresh) return;
     it = detail ? { ...fresh, state: fresh.state === 'OPEN' ? detail.state : fresh.state } : fresh;
     renderFrame();
   });
   const modal: Modal = openModal(el, {
-    doing: `🔀 reading PR ${label}`, // 3d-kanban: label
+    doing: `🔀 reading PR ${label}`,
     onClose: () => {
       unsub();
       comment.dispose();
@@ -524,6 +529,7 @@ export function openPull(first: GhPull, net: Net, actions: BoardActions) {
   close.addEventListener('click', () => modal.close());
   renderFrame();
   setupFiles();
+  owner.load(renderFrame);
   loadAll();
   setTimeout(() => el.focus({ preventScroll: true }), 30);
 }

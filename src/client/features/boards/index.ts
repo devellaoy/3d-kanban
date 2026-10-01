@@ -11,8 +11,8 @@ import { store, type Topic } from '../../state';
 import { openBoard } from '../../ui/boards';
 import type { BoardActions } from '../../ui/github/prompts';
 import { clip } from '../../ui/dom';
-import { cardId } from '../../../shared/kanban/issuecard.js'; // 3d-kanban: an issue source's card by its key
-import { openCard } from '../../kanban/issuecards'; // 3d-kanban: a card from the issue sources opens too
+import { cardId } from '../../../shared/kanban/issuecard.js'; // an issue source's card by its key
+import { openCard } from '../../kanban/issuecards'; // a card from the issue sources opens too
 import { openServices } from '../../ui/services';
 import { BoardTexture, QueueBoardTexture, ServicesBoardTexture } from './world';
 import { MachineTexture } from './machine';
@@ -57,10 +57,10 @@ export function installBoards(ctx: Ctx, deps: BoardsDeps) {
   }
   /** Issues whose cards someone on this floor is carrying around, so they're missing from the board. */
   function offBoard(): Set<string> {
-    const off = new Set<string>(); // 3d-kanban: by cardId (an issue source's key)
+    const off = new Set<string>(); // by cardId (an issue source's key)
     const carrying = ctx.carrying();
-    if (carrying) off.add(cardId(carrying)); // 3d-kanban: cardId
-    for (const p of store.peers.values()) if (p.carrying && p.id !== store.you && store.onMyFloor(p)) off.add(cardId(p.carrying)); // 3d-kanban: cardId
+    if (carrying) off.add(cardId(carrying));
+    for (const p of store.peers.values()) if (p.carrying && p.id !== store.you && store.onMyFloor(p)) off.add(cardId(p.carrying));
     return off;
   }
   const issuesTex = new BoardTexture('issues');
@@ -108,7 +108,7 @@ export function installBoards(ctx: Ctx, deps: BoardsDeps) {
     use: (_it, key, note) => {
       // A note on the issues board: E takes it straight off the cork, O opens it to read first.
       if (note && key === 'E') return deps.pickUp(note);
-      if (note && key === 'O') return openCard(note, ctx.net, deps.boardActions()); // 3d-kanban
+      if (note && key === 'O') return openCard(note, ctx.net, deps.boardActions());
       if (key === 'E') openBoard('issues', ctx.net, deps.boardActions());
     },
   });

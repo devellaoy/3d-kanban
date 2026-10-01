@@ -1,4 +1,4 @@
-// 3d-kanban: YouTube's own player on the Office TV. The player is an iframe (YouTube's terms: no
+// YouTube's own player on the Office TV. The player is an iframe (YouTube's terms: no
 // pulling its sound or picture out, no hiding it), so it isn't drawn by WebGL: three.js's
 // CSS3DRenderer puts it in a layer just behind the canvas, lined up with the TV's screen, and the
 // screen is drawn as a hole in the canvas (alpha 0) so the player shows through it, behind whatever

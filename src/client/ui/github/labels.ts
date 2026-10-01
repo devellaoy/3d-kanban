@@ -3,7 +3,7 @@ import type { GhIssue, GhLabel, GhPull } from '../../../shared/protocol';
 import type { Net } from '../../net';
 import { h, openModal } from '../dom';
 import { repoUrlOf } from '../markdown';
-import { ghKey, ghLabel, ghRepoField, ghUrl } from '../../kanban/ghrepo'; // 3d-kanban
+import { ghKey, ghLabel, ghRepoField, ghUrl } from './ghrepo';
 import { getJson, labelWaiters } from './api';
 import { errorBox, spinnerRow } from './pieces';
 
@@ -21,7 +21,7 @@ export function labelChip(l: GhLabel) {
  * then save, and the office's gh account adds and takes off the difference.
  */
 export function openLabels(kind: 'issue' | 'pull', it: GhIssue | GhPull, net: Net, onSaved?: (labels: GhLabel[]) => void) {
-  // 3d-kanban: by the repository it's in too.
+  // By the repository it's in too.
   const key = ghKey(kind, it.number, it.repo);
   const label = ghLabel(it.number, it.repo);
   const had = new Set(it.labels.map((l) => l.name));
@@ -44,7 +44,7 @@ export function openLabels(kind: 'issue' | 'pull', it: GhIssue | GhPull, net: Ne
   const save = h('button.btn.primary', { type: 'button' }, '🏷️ Save labels');
   const el = h(
     'div.modal.gh-merge.gh-labeler',
-    { role: 'dialog', 'aria-label': `Labels on ${noun} ${label}` }, // 3d-kanban: label
+    { role: 'dialog', 'aria-label': `Labels on ${noun} ${label}` },
     h('header', {}, h('h2', {}, `🏷️ Labels on ${noun} ${label}`)),
     h('div.body', {}, h('p.gh-merge-title', {}, it.title), filter, list, none, result),
     h('footer', {}, summary, cancel, save),
@@ -100,7 +100,7 @@ export function openLabels(kind: 'issue' | 'pull', it: GhIssue | GhPull, net: Ne
     error = '';
     repo = null;
     render();
-    getJson<GhLabel[]>(ghUrl('/api/gh/labels', it.repo)) // 3d-kanban: that repository's labels
+    getJson<GhLabel[]>(ghUrl('/api/gh/labels', it.repo)) // that repository's labels
       .then((l) => (repo = l))
       .catch((err) => (error = (err as Error).message))
       .finally(render);
@@ -133,7 +133,7 @@ export function openLabels(kind: 'issue' | 'pull', it: GhIssue | GhPull, net: Ne
       settle();
       fail('No answer from the office. Look at the board to see whether the labels changed before saving again.');
     }, 45_000);
-    net.send({ t: 'gh.labels', kind, number: it.number, add, remove, ...ghRepoField(it.repo) }); // 3d-kanban: repo
+    net.send({ t: 'gh.labels', kind, number: it.number, add, remove, ...ghRepoField(it.repo) });
   };
 
   filter.addEventListener('input', applyFilter);

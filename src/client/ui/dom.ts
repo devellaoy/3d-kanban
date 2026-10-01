@@ -144,9 +144,10 @@ export function toast(text: string, level: 'info' | 'warn' | 'error' = 'info'): 
   return el;
 }
 
-export function timeAgo(iso: string | number): string {
+/** "5m ago", from `now`. */
+export function timeAgo(iso: string | number, now = Date.now()): string {
   const t = typeof iso === 'number' ? iso : Date.parse(iso);
-  const s = Math.max(0, (Date.now() - t) / 1000);
+  const s = Math.max(0, (now - t) / 1000);
   if (s < 60) return 'just now';
   if (s < 3600) return `${Math.floor(s / 60)}m ago`;
   if (s < 86400) return `${Math.floor(s / 3600)}h ago`;

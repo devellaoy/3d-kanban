@@ -5,8 +5,8 @@ import { store } from '../../state';
 import { h, openModal, timeAgo } from '../dom';
 import { issueMeeting } from '../meeting';
 import { providerPicker } from '../provider';
-// 3d-kanban: which of the project's repositories an issue is in (kanban/ghrepo.ts), and the queue's task for a card from the issue sources.
-import { ghLabel, ghUrl, sameItem } from '../../kanban/ghrepo';
+// Which of the project's repositories an issue is in (github/ghrepo.ts), and the queue's task for a card from the issue sources.
+import { ghLabel, ghUrl, sameItem } from './ghrepo';
 import { taskForCard } from '../../kanban/issuecards';
 import { getJson } from './api';
 import { openClose } from './close';
@@ -20,7 +20,7 @@ import { issueContext, issuePrompt, type BoardActions } from './prompts';
 export function openIssue(first: GhIssue, net: Net, actions: BoardActions) {
   let it = first;
   const itemUrl = it.url;
-  // 3d-kanban: which of the project's repositories it's in (none: the floor's own, as upstream).
+  // Which of the project's repositories it's in (none: the floor's own, as upstream).
   const repo = first.repo;
   const label = ghLabel(it.number, repo);
   let detail: GhIssueDetail | null = null;
@@ -33,7 +33,7 @@ export function openIssue(first: GhIssue, net: Net, actions: BoardActions) {
     if (!detail) return load();
     detail.comments.push(c);
     render();
-  }, repo); // 3d-kanban: repo
+  }, repo);
   conv.append(h('div.gh-col', {}, thread, comment.el));
   // The footer stays put and renderFrame only shows, hides and relabels, so a board refresh never
   // pulls focus out of the provider picker.
@@ -50,7 +50,7 @@ export function openIssue(first: GhIssue, net: Net, actions: BoardActions) {
   const meta = h('div.gh-meta');
   const el = h(
     'div.modal.gh-window.issue',
-    { role: 'dialog', 'aria-label': `Issue ${label}` }, // 3d-kanban: label
+    { role: 'dialog', 'aria-label': `Issue ${label}` },
     h('header', {}, pill, h('h2', { title: repo ? `${repo}#${it.number} ${it.title}` : it.title }, `${label} ${it.title}`), close),
     meta,
     h('div.gh-body', {}, conv),
@@ -64,7 +64,7 @@ export function openIssue(first: GhIssue, net: Net, actions: BoardActions) {
       queueProvider.element,
       queue,
       pickUp,
-      // 3d-kanban: planned, built and reviewed on the kanban, by a worker at a free desk.
+      // planned, built and reviewed on the kanban, by a worker at a free desk.
       actions.kanbanTask ? h('button.btn', { type: 'button', title: 'A kanban task for it (plan → implement → review), started at a free desk', onclick: () => (modal.close(), actions.kanbanTask!(it)) }, '🗂️ Kanban task') : null,
       h('button.btn.primary', { type: 'button', onclick: () => actions.assign(issuePrompt(it), `Hand issue #${it.number} to a worker`) }, '🤖 Hand to a worker'),
     ),
@@ -83,7 +83,7 @@ export function openIssue(first: GhIssue, net: Net, actions: BoardActions) {
     );
     pill.className = `pill ${isOpen ? 'done' : 'offline'}`;
     pill.textContent = isOpen ? 'open' : 'closed';
-    const task = it.key ? taskForCard(it) : store.taskForIssue(it.number); // 3d-kanban: a card from the issue sources by its key
+    const task = it.key ? taskForCard(it) : store.taskForIssue(it.number); // a card from the issue sources by its key
     const onQueue = !!task && task.status !== 'done';
     closeIssue.classList.toggle('hidden', !isOpen);
     pickUp?.classList.toggle('hidden', !isOpen);
@@ -105,7 +105,7 @@ export function openIssue(first: GhIssue, net: Net, actions: BoardActions) {
     const g = ++generation;
     error = '';
     render();
-    getJson<GhIssueDetail>(ghUrl(`/api/gh/issue?number=${it.number}`, repo)) // 3d-kanban: repo
+    getJson<GhIssueDetail>(ghUrl(`/api/gh/issue?number=${it.number}`, repo))
       .then((d) => {
         if (g !== generation) return;
         detail = d;
@@ -117,7 +117,7 @@ export function openIssue(first: GhIssue, net: Net, actions: BoardActions) {
   }
   const unsubs = [
     store.on('issues', () => {
-      const fresh = store.issues.items.find((i) => sameItem(i, it)); // 3d-kanban: in its repository
+      const fresh = store.issues.items.find((i) => sameItem(i, it)); // in its repository
       if (!fresh) return;
       // The board can lag behind a close made from here.
       it = detail ? { ...fresh, state: fresh.state === 'OPEN' ? detail.state : fresh.state } : fresh;
@@ -126,7 +126,7 @@ export function openIssue(first: GhIssue, net: Net, actions: BoardActions) {
     store.on('queue', renderFrame),
   ];
   const modal = openModal(el, {
-    doing: `📋 reading issue ${label}`, // 3d-kanban: label
+    doing: `📋 reading issue ${label}`,
     onClose: () => {
       comment.dispose();
       unsubs.forEach((u) => u());

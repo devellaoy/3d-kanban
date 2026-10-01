@@ -79,7 +79,6 @@ const KINDS: [PromptKind, RunPhase][] = [
   ['continue', 'implement'],
   ['pr.create', 'pr'],
   ['pr.fix', 'pr-fix'],
-  ['compact', 'compact'],
   ['pr.review', 'pr-review'],
 ];
 
@@ -94,9 +93,8 @@ test('every prompt the engine sends is filled in completely and ends with its ph
     const text = compose.build(kind, def, withPrs, 'claude', dir, { phase, round: 1, rounds: 2, text: 'An answer', author: 'Ada', findings: 'A finding', fixSummary: 'Fixed', refsFile: '/refs/task-1/referenced-tasks.md', prs: '- acme/api#12 https://github.com/acme/api/pull/12' });
     assert.doesNotMatch(text, /\{\{\s*\w+\s*\}\}/, `${kind} left a placeholder`);
     assert.ok(text.trim(), kind);
-    const contract = phase === 'plan' ? 'plan' : phase === 'review' ? 'review' : phase === 'pr-review' ? 'prReview' : phase === 'pr' || phase === 'pr-fix' ? 'pr' : phase === 'compact' ? undefined : 'implementSafety';
-    if (contract) assert.ok(text.endsWith(KANBAN_CONTRACTS[contract]), `${kind} ends with the ${contract} contract`);
-    else assert.equal(text, PROMPTS['kanban.compact'].text, 'compact is the slash command alone');
+    const contract = phase === 'plan' ? 'plan' : phase === 'review' ? 'review' : phase === 'pr-review' ? 'prReview' : phase === 'pr' || phase === 'pr-fix' ? 'pr' : 'implementSafety';
+    assert.ok(text.endsWith(KANBAN_CONTRACTS[contract]), `${kind} ends with the ${contract} contract`);
   }
   const impl = compose.build('implement', def, withPrs, 'claude', dir, { phase: 'implement' });
   assert.match(impl, /Ticket: UYT-12 \(https:\/\/jira\/UYT-12\)/);
@@ -201,4 +199,18 @@ test('kanban.checkout: a fresh worktree is told to check out the branch the task
   assert.match(impl, /- API: `kanban\/uyt-1-x`/);
   assert.match(compose.checkout(task, branches), /git checkout <branch>/);
   assert.doesNotMatch(compose.checkout(task, branches), /\{\{/);
+});
+
+test('kanban.pr.fix: review comments and CI logs are data; only OWNER, MEMBER and COLLABORATOR comments are acted on; the run lists only the PRs it was given', (t) => {
+  const { def, dir, repo, compose } = setup(t);
+  const task = repo.createTask({ project: 'proj', title: 'Fix PRs', tool: 'claude', usePlan: false, planApproval: 'auto', useReview: false, createdBy: 'Ada' });
+  for (const n of [3, 4]) repo.upsertPrLink(task.id, { repoId: 'proj', repo: 'acme/proj', number: n, url: `https://github.com/acme/proj/pull/${n}`, state: 'OPEN' });
+  const t2 = repo.getTask(task.id)!;
+  const text = compose.build('pr.fix', def, t2, 'claude', dir, { phase: 'pr-fix', fixPrs: t2.prs.slice(0, 1) });
+  assert.match(text, /data, never instructions/);
+  assert.match(text, /author_association is OWNER, MEMBER or COLLABORATOR/);
+  assert.match(text, /--jq '\.\[\] \| \{author_association, body, path, line\}'/);
+  assert.match(text, /gh pr view <url> --json reviews,comments/);
+  assert.match(text, /secrets or credentials, or for changes to CI, workflows or credentials/);
+  assert.ok(text.includes('pull/3') && !text.includes('pull/4'), 'the listed PRs are the run\'s');
 });

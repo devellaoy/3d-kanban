@@ -19,7 +19,7 @@ export interface BoardActions {
   pickUp?(issue: GhIssue): void;
   /** Call a meeting about it: the meeting room's form, filled in. */
   meeting(preset: MeetingPreset): void;
-  /** 3d-kanban: the issue as a kanban task, started at a free desk (kanban/hireform.ts issueTask). */
+  /** The issue as a kanban task, started at a free desk (kanban/hireform.ts issueTask). */
   kanbanTask?(issue: GhIssue): void;
 }
 

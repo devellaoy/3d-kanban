@@ -1,4 +1,4 @@
-// 3d-kanban: YouTube on the Office TV. Telling a YouTube (or YouTube Music) link apart, and what's
+// YouTube on the Office TV. Telling a YouTube (or YouTube Music) link apart, and what's
 // on the TV, shared by the server (which keeps one per floor) and the browser (which plays it in
 // YouTube's own player, see client/youtube/).
 

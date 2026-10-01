@@ -14,7 +14,7 @@ import { worktreePref } from '../../ui/prompt';
 import { officeChoice } from '../../ui/provider';
 import { hiringPaused } from '../../ui/usage';
 import type { Interactable } from '../../world/types';
-// 3d-kanban: cards from the project's issue sources, by their key, and a card as a kanban task.
+// Cards from the project's issue sources, by their key, and a card as a kanban task.
 import { cardId } from '../../../shared/kanban/issuecard.js';
 import { cardFields, cardMeeting, cardOnQueue, cardPrompt, cardTask, issueCardLabel, takeCard } from '../../kanban/issuecards';
 import { cardToTaskWorker } from '../../kanban/office3d';
@@ -31,7 +31,7 @@ export interface CarryingDeps {
   /** Drops the ball, if it's in your hands (see features/basketball). */
   dropBall(): void;
   /** Hires a worker at `deskId` (see hire in features/workers/actions.ts). */
-  hire(deskId: string, prompt?: string, worktree?: boolean, provider?: AgentProvider, model?: string, effort?: AgentEffort, issue?: number | { issue?: number; issueKey?: string }, repos?: string[], via?: 'herald'): void; // 3d-kanban: or a card's fields
+  hire(deskId: string, prompt?: string, worktree?: boolean, provider?: AgentProvider, model?: string, effort?: AgentEffort, issue?: number | { issue?: number; issueKey?: string }, repos?: string[], via?: 'herald'): void; // or a card's fields
   /** The seat the herald sends a new worker to (see heraldSeat in features/workers/views.ts). */
   heraldSeat(): string | undefined;
   /** Seats you've just sent a worker out to from the herald, so a second goes elsewhere. */
@@ -44,11 +44,11 @@ export interface CarryingDeps {
 
 export function installCarrying(ctx: Ctx, deps: CarryingDeps) {
   function setCarrying(card: CarriedIssue | null) {
-    if ((card ? cardId(card) : '') === (ctx.carrying() ? cardId(ctx.carrying()!) : '')) return; // 3d-kanban: cardId
+    if ((card ? cardId(card) : '') === (ctx.carrying() ? cardId(ctx.carrying()!) : '')) return;
     deps.hold(card);
     ctx.me.carry(card);
     ctx.hands.carry(card);
-    ctx.net.send({ t: 'carry', issue: card?.issue, title: card?.title, ...(card?.key ? { issueKey: card.key } : {}) }); // 3d-kanban: issueKey
+    ctx.net.send({ t: 'carry', issue: card?.issue, title: card?.title, ...(card?.key ? { issueKey: card.key } : {}) });
     deps.boards.cardMoved();
     ctx.hint.invalidate();
   }
@@ -58,7 +58,7 @@ export function installCarrying(ctx: Ctx, deps: CarryingDeps) {
     closeAllModals();
     deps.dropBall();
     const carrying = ctx.carrying();
-    // 3d-kanban: a card from the project's issue sources by its key.
+    // A card from the project's issue sources by its key.
     if (carrying && cardId(carrying) === cardId(it)) return;
     if (carrying) toast(`📌 ${issueCardLabel(carrying)} went back on the board`);
     setCarrying(takeCard(it));
@@ -70,7 +70,7 @@ export function installCarrying(ctx: Ctx, deps: CarryingDeps) {
   function putBack() {
     const carrying = ctx.carrying();
     if (!carrying) return;
-    toast(`📌 ${issueCardLabel(carrying)} is back on the board`); // 3d-kanban: its label
+    toast(`📌 ${issueCardLabel(carrying)} is back on the board`);
     setCarrying(null);
     ctx.sound.paper();
   }
@@ -95,7 +95,7 @@ export function installCarrying(ctx: Ctx, deps: CarryingDeps) {
       else putBack();
       return true;
     }
-    // 3d-kanban: a card from the project's issue sources goes by its key, with its own prompt.
+    // A card from the project's issue sources goes by its key, with its own prompt.
     const prompt = cardPrompt(card);
     const name = issueCardLabel(card);
     const ids = cardFields(card);
@@ -111,7 +111,7 @@ export function installCarrying(ctx: Ctx, deps: CarryingDeps) {
     // At the meeting room: a meeting about it, and the card goes back up on the board.
     if (it.kind === 'meeting' || (it.kind === 'desk' && it.deskId && ctx.plan().byId.get(it.deskId)?.room && !store.workerAtDesk(it.deskId))) {
       putBack();
-      deps.showMeeting(cardMeeting(card)); // 3d-kanban
+      deps.showMeeting(cardMeeting(card));
       return true;
     }
     // To the herald: someone's sent out for it, to the first free seat.
@@ -122,7 +122,7 @@ export function installCarrying(ctx: Ctx, deps: CarryingDeps) {
       else if (!deps.officeIsFull()) {
         const { provider, model, effort } = officeChoice(store.project);
         deps.heraldHires.set(deskId, { floor: store.floor, at: performance.now() });
-        deps.hire(deskId, prompt, !!store.project?.branch && worktreePref(), provider, model, effort, ids, undefined, 'herald'); // 3d-kanban: ids
+        deps.hire(deskId, prompt, !!store.project?.branch && worktreePref(), provider, model, effort, ids, undefined, 'herald');
         putDown();
       }
       return true;
@@ -132,13 +132,13 @@ export function installCarrying(ctx: Ctx, deps: CarryingDeps) {
     const why = w ? cantTakeCard(w) : hiringPaused() ? '💸 Budget spent — hiring resumes tomorrow' : '';
     if (why) toast(why, 'warn');
     else if (w && cardToTaskWorker(ctx.net, w, card, prompt, putDown)) {
-      // 3d-kanban: only the task's own issue goes to a task worker, as a message on the task.
+      // Only the task's own issue goes to a task worker, as a message on the task.
     } else if (w) {
-      ctx.net.send({ t: 'worker.prompt', workerId: w.id, prompt, ...ids }); // 3d-kanban: ids
+      ctx.net.send({ t: 'worker.prompt', workerId: w.id, prompt, ...ids });
       putDown();
     } else if (!deps.officeIsFull()) {
       const { provider, model, effort } = officeChoice(store.project);
-      deps.hire(it.deskId, prompt, !!store.project?.branch && worktreePref(), provider, model, effort, ids); // 3d-kanban: ids
+      deps.hire(it.deskId, prompt, !!store.project?.branch && worktreePref(), provider, model, effort, ids);
       putDown();
     }
     return true;
@@ -150,7 +150,7 @@ export function installCarrying(ctx: Ctx, deps: CarryingDeps) {
     ctx.sound.paper();
   }
 
-  /** 3d-kanban: P with a card at an empty desk: the issue as a kanban task, starting there. */
+  /** P with a card at an empty desk: the issue as a kanban task, starting there. */
   function cardTaskAt(deskId: string, card: CarriedIssue) {
     if (hiringPaused()) return toast('💸 Budget spent — hiring resumes tomorrow', 'warn');
     if (deps.officeIsFull()) return;
@@ -174,7 +174,7 @@ export function installCarrying(ctx: Ctx, deps: CarryingDeps) {
     if (it?.kind === 'issues') return aimedNote ? { k: cardId(aimedNote), parts: parts(key('E', `Swap it for ${issueCardLabel(aimedNote)}`)) } : { k: '', parts: parts(key('E', 'Pin it back up')) };
     if (it?.kind === 'ball') return { k: 'ball', parts: parts(aside('🏀 hands full')) };
     if (it?.kind === 'queue') {
-      const on = cardOnQueue(card); // 3d-kanban: by its key too
+      const on = cardOnQueue(card); // by its key too
       return { k: String(on), parts: parts(on ? aside('already on the queue') : key('E', 'Put it on the queue')) };
     }
     if (it?.kind === 'herald') {
@@ -188,7 +188,7 @@ export function installCarrying(ctx: Ctx, deps: CarryingDeps) {
       const w = store.workerAtDesk(it.deskId);
       if (!w) {
         const paused = hiringPaused();
-        return { k: String(paused), parts: parts(paused ? h('span.cost', {}, '💸 Budget spent — hiring resumes tomorrow') : key('E', 'Hire a worker for it'), paused ? '' : key('P', '🗂️ Kanban task')) }; // 3d-kanban: P
+        return { k: String(paused), parts: parts(paused ? h('span.cost', {}, '💸 Budget spent — hiring resumes tomorrow') : key('E', 'Hire a worker for it'), paused ? '' : key('P', '🗂️ Kanban task')) };
       }
       const why = cantTakeCard(w);
       return { k: w.id + w.status + why, parts: parts(why ? aside(why) : key('E', `Hand it to ${w.name}`)) };

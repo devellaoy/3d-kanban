@@ -27,15 +27,15 @@ import { landedWork, landedWorkers, type Landed } from './leave-on-merge.js';
 import type { Ledger } from './usage.js';
 import type { Capacity } from './machine.js';
 import { officePrompt, type PromptSource } from './prompts.js';
-// 3d-kanban: the PR board covers every repository of the project (see pullsState).
+// The PR board covers every repository of the project (see pullsState).
 import { parseRepoFloorId, projectRepos, uniqueRepos } from './kanban/projects.js';
-import { checkoutRepo } from './kanban/ghrepo.js';
-// 3d-kanban: the kanban hears when the PR board has fresh lists (its tasks' linked PRs' states).
+import { checkoutRepo } from './ghrepo.js';
+// The kanban hears when the PR board has fresh lists (its tasks' linked PRs' states).
 import { floorPulled } from './kanban/integrations/pulls/board.js';
-// 3d-kanban: the issues board shows the project's issue sources when it has any (see issuesState).
+// The issues board shows the project's issue sources when it has any (see issuesState).
 import { claimGhKey, onWallIssues, refreshWall, wallIssues, watchWall } from './kanban/integrations/issues/wall.js';
 import { isPrimaryIssue, parseGhKey } from '../shared/kanban/issuecard.js';
-// 3d-kanban: what a worker is sent home with (see sendHome).
+// What a worker is sent home with (see sendHome).
 import type { DepartureIntent } from '../shared/kanban/types.js';
 import { sameRepo } from '../shared/floors.js';
 
@@ -88,7 +88,7 @@ function openPull(floor: Floor, branch: string): { number: number; url: string }
   return openPullIn(floor.github.pulls.items, branch);
 }
 
-/** 3d-kanban: the open pull request in a list whose head is `branch` (a project's other repository's list too). */
+/** The open pull request in a list whose head is `branch` (a project's other repository's list too). */
 function openPullIn(pulls: GhPull[], branch: string): { number: number; url: string } | undefined {
   const pr = pulls.find((p) => p.state === 'OPEN' && p.headRefName === branch);
   return pr ? { number: pr.number, url: pr.url } : undefined;
@@ -152,7 +152,7 @@ export class Floor {
   /** Workers sent home on a map that locks them up (see MapPlan.sendHome). */
   readonly jail: Jail;
   private timer: NodeJS.Timeout;
-  /** 3d-kanban: stops hearing about the project's issue-source cards (see issuesState). */
+  /** Stops hearing about the project's issue-source cards (see issuesState). */
   private offWall: () => void;
   /** Pull requests merging, to ring the gong for. */
   private merges = new MergeWatch();
@@ -161,7 +161,7 @@ export class Floor {
   /** Workers across repositories whose worktrees are being checked before they go home. */
   private landing = new Set<string>();
   /**
-   * 3d-kanban: the PR lists of the project's other git repositories (FloorDef.repos with a GitHub
+   * The PR lists of the project's other git repositories (FloorDef.repos with a GitHub
    * remote), by ProjectRepo id, each fetched in that repository's checkout. `github` stays the floor's
    * own repository, exactly as upstream has it; the board shows them all (see pullsState).
    */
@@ -232,9 +232,9 @@ export class Floor {
 
     this.github = new GitHub(
       def.dir,
-      (state) => void (wallIssues(this.id) ? undefined : ctx.emit(this, { t: 'gh.issues', state })), // 3d-kanban: not while the board shows the project's issue sources
+      (state) => void (wallIssues(this.id) ? undefined : ctx.emit(this, { t: 'gh.issues', state })), // not while the board shows the project's issue sources
       (state) => {
-        // 3d-kanban: the board shows every repository of the project (the same list as upstream's for one).
+        // The board shows every repository of the project (the same list as upstream's for one).
         ctx.emit(this, { t: 'gh.pulls', state: this.pullsState() });
         this.queue?.onPulls(state.items);
         if (state.loading || state.error) return;
@@ -251,7 +251,7 @@ export class Floor {
       toast: (text, level) => ctx.toast(this, text, level),
       claimIssue: (issue, owner, key) => {
         const as = ctx.ghAs(owner);
-        return typeof as === 'string' ? Promise.resolve(as) : this.claimCard(issue, key, as); // 3d-kanban: a card from the issue sources too
+        return typeof as === 'string' ? Promise.resolve(as) : this.claimCard(issue, key, as); // a card from the issue sources too
       },
       refreshGitHub: () => void this.github.refresh(),
       hiringPaused: () => ctx.ledger.hiringPaused,
@@ -277,7 +277,7 @@ export class Floor {
         seat: (deskId, by, prompt, provider, model, effort, meeting, owner) => this.workers.spawn(deskId, by, prompt, false, 'agent', provider, model, effort, meeting, owner),
         prompt: (id, text, by) => this.workers.prompt(id, text, by),
         write: (id, data, by) => this.workers.write(id, data, by),
-        // 3d-kanban: with why it goes (see WorkerManager.kill).
+        // With why it goes (see WorkerManager.kill).
         kill: (id, intent) => this.workers.kill(id, undefined, undefined, undefined, intent),
       },
       this.project.branch ? new Worktrees(def.dir) : undefined,
@@ -305,7 +305,7 @@ export class Floor {
         const r = w.repos?.find((x) => x.floor === repo);
         if (!r) return undefined;
         const other = ctx.floor(r.floor);
-        // 3d-kanban: one of this project's own other repositories (a synthetic `<floor>~<repo>` id).
+        // One of this project's own other repositories (a synthetic `<floor>~<repo>` id).
         const board = this.boardOf(r.floor);
         return {
           name: w.name,
@@ -332,7 +332,7 @@ export class Floor {
 
     void this.github.refresh();
     this.refreshBoards();
-    // 3d-kanban: the issues board hears when the project's issue-source cards change.
+    // The issues board hears when the project's issue-source cards change.
     this.offWall = onWallIssues(this.id, () => ctx.emit(this, { t: 'gh.issues', state: this.issuesState() }));
     // A floor with people on it, or work under way, keeps its boards fresh; the others check in now and then.
     this.timer = setInterval(() => {
@@ -340,16 +340,16 @@ export class Floor {
         void this.github.refresh();
         this.refreshBoards();
       }
-      if (this.active()) watchWall(this.id); // 3d-kanban
+      if (this.active()) watchWall(this.id);
     }, REFRESH_MS);
   }
 
-  /** Pull request `n` merged (`by` someone, from the PR window): the gong rings, once per PR. 3d-kanban: `repo` when it's in another of the project's repositories. */
+  /** Pull request `n` merged (`by` someone, from the PR window): the gong rings, once per PR. `repo` when it's in another of the project's repositories. */
   merged(n: number, by?: string, repo?: string) {
     if (this.merges.ring(n, this.otherRepo(repo))) this.ctx.emit(this, { t: 'gong', why: 'merged', pr: n, by });
   }
 
-  // --- 3d-kanban: the issues board from the project's issue sources --------------------------------
+  // --- the issues board from the project's issue sources --------------------------------
 
   /**
    * The issues board's list: the cards of the project's issue sources (Settings → Issue sources) when
@@ -384,7 +384,7 @@ export class Floor {
     return wallIssues(this.id)?.items.some((i) => i.key === v) ? v : undefined;
   }
 
-  // --- 3d-kanban: the project's other repositories' pull requests --------------------------------
+  // --- the project's other repositories' pull requests --------------------------------
 
   /**
    * The PR board's list: the floor's own repository's pull requests and, for a project with several
@@ -467,7 +467,7 @@ export class Floor {
     }
     this.sendLandedHome();
     this.ctx.pullsChanged(this);
-    // 3d-kanban: the tasks' linked pull requests take the states on the board.
+    // The tasks' linked pull requests take the states on the board.
     floorPulled(this);
   }
 
@@ -517,12 +517,12 @@ export class Floor {
   sendHome(workerId: string, cleanup?: WorktreeCleanup, intent?: DepartureIntent): Promise<{ note?: string; error?: string }> {
     const info = this.workers.get(workerId);
     const landed = info && this.landed(info);
-    // 3d-kanban: `intent` says who sent it and why (see WorkerManager.kill).
+    // `intent` says who sent it and why (see WorkerManager.kill).
     return this.workers.kill(workerId, cleanup, landed?.head, landed?.heads, intent);
   }
 
   private goHome(worker: WorkerInfo, why: string, head?: string, heads?: Record<string, string | undefined>) {
-    // 3d-kanban: leave-on-merge's departure (see WorkerManager.kill).
+    // leave-on-merge's departure (see WorkerManager.kill).
     const done = this.workers.kill(worker.id, undefined, head, heads, { by: 'Leave-on-merge', reason: 'merged' });
     this.ctx.toast(this, `🏠 ${worker.name} went home: ${why}`);
     void done.then(({ note, error }) => {
@@ -565,7 +565,7 @@ export class Floor {
   /** With `keep` (a restart), the workers' terminals keep running for the next office to pick up. */
   shutdown(keep = false) {
     clearInterval(this.timer);
-    this.offWall(); // 3d-kanban
+    this.offWall();
     clearTimeout(this.landedTimer);
     this.dog.stop();
     this.github.stop();

@@ -11,7 +11,8 @@ import type { KanbanContext } from '../registry.js';
 import { projectRepos, parseRepoFloorId } from '../projects.js';
 import { grantFiles } from '../uploads.js';
 import { resolveKanbanPrompt, withContract, type KanbanContractId, type KanbanPromptId } from '../../../shared/kanban/prompts.js';
-import type { KanbanTask, KanbanTool, ProjectRepo, RunPhase, SkillPhase, TaskWorkspace } from '../../../shared/kanban/types.js';
+import { openPrs } from '../../../shared/kanban/prs.js';
+import type { KanbanPrLink, KanbanTask, KanbanTool, ProjectRepo, RunPhase, SkillPhase, TaskWorkspace } from '../../../shared/kanban/types.js';
 import type { WorkerInfo } from '../../../shared/protocol.js';
 import type { PromptKind } from './machine.js';
 import { skillHint } from '../integrations/skills/index.js';
@@ -119,6 +120,8 @@ export interface ComposeExtra {
   checkout?: string;
   /** A pull-request review: the pull requests, the line naming their task, and the reviewer's own workspace. */
   prs?: string;
+  /** Fix PRs: the open pull requests the run works on. */
+  fixPrs?: Pick<KanbanPrLink, 'repo' | 'repoId' | 'url'>[];
   prTask?: string;
   prRepos?: string;
 }
@@ -204,7 +207,6 @@ export class Composer {
     if (phase === 'review') return 'review';
     if (phase === 'pr' || phase === 'pr-fix') return 'pr';
     if (phase === 'pr-review') return 'prReview';
-    if (phase === 'compact') return undefined;
     return task.type === 'investigate' ? 'investigateSafety' : 'implementSafety';
   }
 
@@ -250,11 +252,10 @@ export class Composer {
           }),
         );
       case 'pr.fix': {
-        const prs = task.prs.filter((pr) => pr.state === 'OPEN' || pr.state === 'DRAFT').map((pr) => `- ${pr.repo ?? pr.repoId}: ${pr.url}`);
+        // The launch says which of the open PRs it may work on (fixTargets); a stand-alone build lists them all.
+        const prs = (x.fixPrs ?? openPrs(task)).map((pr) => `- ${pr.repo ?? pr.repoId}: ${pr.url}`);
         return seal(this.text('kanban.pr.fix', p, { taskId: task.id, prs: prs.join('\n'), repos: v.repos, language: v.language }));
       }
-      case 'compact':
-        return this.text('kanban.compact', p);
       case 'pr.review':
         return seal(this.text('kanban.pr.review', p, { prs: x.prs ?? '', project: def.name, task: x.prTask ?? '', repos: x.prRepos ?? v.repos, language: v.language }));
     }

@@ -1,4 +1,4 @@
-// Who hears that a floor's PR board has fresh lists. Floor.boardPulled (an upstream seam) tells
+// Who hears that a floor's PR board has fresh lists. Floor.boardPulled tells
 // them; the pull-request plugin listens while it runs, to keep its tasks' linked PRs' states up to
 // date. A module of its own so floor.ts needn't import the plugin, nor the plugin the whole floor.
 

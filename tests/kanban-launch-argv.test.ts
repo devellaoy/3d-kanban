@@ -1,4 +1,4 @@
-// How a kanban hire's agent is launched (docs/fork.md, "Server": workers/manager.ts launch()): the
+// How a kanban hire's agent is launched (workers/manager.ts launch()): the
 // phase's own flags (SpawnExtra.launchArgs) come before the resume and the prompt arguments, Claude
 // runs on the kanban settings file when asked, and a task worker's environment names its task.
 import test from 'node:test';

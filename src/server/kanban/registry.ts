@@ -51,8 +51,12 @@ export interface KanbanEngineApi {
   approvePlan(taskId: number, who: KanbanCaller): Promise<string | void>;
   requestPlanChanges(taskId: number, who: KanbanCaller, text: string, attachmentIds?: string[]): Promise<string | void>;
   pr(taskId: number, who: KanbanCaller, mode: 'create' | 'fix'): Promise<string | void>;
-  compact(taskId: number, who: KanbanCaller): Promise<string | void>;
-  release(taskId: number, who: KanbanCaller): Promise<string | void>;
+  /**
+   * The task is moved back to To do or deleted: its workers at rest go home, worktree kept (reason
+   * `released`); a run live only because the agent asks in its terminal is stopped. Resolves to why
+   * not when it is running.
+   */
+  sendWorkersHome(taskId: number, who: KanbanCaller, why: 'reset' | 'delete'): Promise<string | void>;
   /**
    * The task went to done or archived: its workers that are at rest go home, worktree kept (reason
    * `released`). (Optional only so stand-ins in tests needn't have it.)
