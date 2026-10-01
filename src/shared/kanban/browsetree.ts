@@ -64,7 +64,10 @@ export interface ItemNode extends Progress {
 
 export type TreeNode = EpicNode | ItemNode;
 
-/** The loaded issues plus a newer page: an issue seen before is replaced where it was, a new one goes last. */
+/**
+ * The loaded issues plus a newer page: an issue seen before is replaced where it was, a new one goes last.
+ * A `context` copy (a parent that only came to hold a sub-task) never replaces a matching record.
+ */
 export function mergeIssues(prev: BrowseIssue[], more: BrowseIssue[]): BrowseIssue[] {
   const out = [...prev];
   const at = new Map(out.map((i, n) => [i.key, n]));
@@ -73,7 +76,7 @@ export function mergeIssues(prev: BrowseIssue[], more: BrowseIssue[]): BrowseIss
     if (n === undefined) {
       at.set(i.key, out.length);
       out.push(i);
-    } else out[n] = i;
+    } else if (!(i.context && !out[n].context)) out[n] = i;
   }
   return out;
 }

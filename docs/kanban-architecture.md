@@ -453,15 +453,18 @@ answers `kanban.ok {rid, ...}` or `kanban.error {rid, message}`. Deltas are push
     parentheses. As a second line, every issue a Jira search or read returns must be in the source's projects (its `project`
     field, else the key's prefix) or it is dropped (a single issue is refused), and `browse.count` answers no count for raw JQL.
     - **Sub-tasks and context.** A top-level Jira page leaves sub-tasks out (the tree fetches them under their story), unless the
-      filters narrow the search beyond status category, version and epic (text, type, status, assignee, labels, sprint, raw JQL).
+      filters narrow the search beyond version and epic (a status category other than `all`, which includes the default `open`;
+      text, type, status, assignee, labels, sprint, raw JQL).
       Then matching sub-tasks are returned, and their parents that aren't on the page come in one extra `key in (…)` search as
       items flagged `context: true` (they don't match the filters; the tree nests the sub-tasks under them, and they count as
       neither done nor total). A sub-task has no version or epic of its own, so for a version or epic node the JQL lets
       sub-tasks without a version (any, for an epic) through and the server keeps the ones whose parent's versions / epic fit;
-      pages may come back shorter. `groupByEpic` nests an item whose `parent.key` is another loaded item under it.
+      pages may come back shorter. For the same reason `browse.count` answers no count (`{}`, no Jira call) for a narrowed
+      search in a version or epic group. A context copy of an issue never replaces the matching record when pages are merged
+      (`mergeIssues`), so a story that matched on one page keeps its place in the epic's totals. `groupByEpic` nests an item whose `parent.key` is another loaded item under it.
     - **Tasks.** Every item of a `browsePage` (and each `parent`) carries `taskId` when a task was made from it.
     - **GitHub scope.** An issue may be opened or expanded when it is an item of the scope's board **or** its parent chain
-      (`Issue.parent`, up to 5 levels) reaches one; any other key is refused. A completed iteration named by the `iteration`
+      (`Issue.parent`, up to 8 levels, GitHub's maximum nesting) reaches one; any other key is refused. A completed iteration named by the `iteration`
       filter comes back as its own group.
     - **Actions and the browsed cache.** `issue.*` and `issues.createTask` accept an issue that is on the project's list, one
       acted on lately, **one opened from Browse** (`kanban.browse.issue` keeps it in a bounded per-project set, 300 issues for

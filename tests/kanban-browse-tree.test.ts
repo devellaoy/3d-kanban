@@ -41,6 +41,22 @@ test('a story carries its sub-task count, and the progress is from the loaded on
   assert.deepEqual(progress([issue('a', { statusCategory: 'done' }), issue('b')]), { done: 1, total: 2 });
 });
 
+test('a context copy never replaces a matching record, in either page order; a matching one replaces a context copy', () => {
+  const E = issue('UYT-1', { issueType: 'Epic', hierarchy: 1 });
+  const story = issue('S', { parent: EPIC_A, statusCategory: 'done' });
+  const sub = issue('T', { parent: { key: 'S', title: 'S' }, subtask: true, statusCategory: 'done' });
+  const counts = (items: ReturnType<typeof issue>[]) => groupByEpic(items).map((n) => [n.id, n.done, n.total]);
+  // The story matched on page one; page two has its sub-task and the story again as context.
+  const first = mergeIssues([E, story], [{ ...story, context: true }, sub]);
+  assert.equal(first.find((i) => i.key === 'S')!.context, undefined);
+  assert.deepEqual(counts(first), [['epic:UYT-1', 1, 1]]);
+  // The context copy came first; the matching story arrives later and takes its place.
+  const second = mergeIssues([E, { ...story, context: true }, sub], [story]);
+  assert.equal(second.find((i) => i.key === 'S')!.context, undefined);
+  assert.deepEqual(counts(second), [['epic:UYT-1', 1, 1]]);
+  assert.deepEqual(second.map((i) => i.key), ['UYT-1', 'S', 'T']);
+});
+
 test('epic detection: hierarchy level 1 or a type called Epic', () => {
   assert.ok(isEpicType('Initiative', 1) && isEpicType('epic') && !isEpicType('Story', 0) && !isEpicType());
   assert.ok(isEpic(issue('E', { issueType: 'Epic' })) && !isEpic(issue('S', { issueType: 'Story' })));

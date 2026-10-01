@@ -194,9 +194,20 @@ test('Jira sub-tasks: a version group goes by the parent’s versions, an epic b
 
 test('Jira sub-tasks: without anything narrowing, they are still left out (the tree shows them under their story)', async () => {
   const { ask, http } = setup({ http: subtaskSite() });
-  await ask('kanban.browse.page', { scope: 'j', filters: { statusCategory: 'new', version: '7' }, group: '7', epic: 'UYT-1' });
+  await ask('kanban.browse.page', { scope: 'j', filters: { statusCategory: 'all', version: '7' }, group: '7', epic: 'UYT-1' });
   assert.equal(searches(http).length, 1);
   assert.ok(searches(http)[0].includes('issuetype not in subTaskIssueTypes()') && !searches(http)[0].includes(' OR '));
+});
+
+test('Jira sub-tasks: a status category finds a matching sub-task under a story of another status; "all" leaves sub-tasks out of top-level pages', async () => {
+  const { ask, http } = setup({ http: subtaskSite() });
+  const got = await ask('kanban.browse.page', { scope: 'j', filters: { statusCategory: 'done' } });
+  assert.ok(!searches(http)[0].includes('not in subTaskIssueTypes') && searches(http)[0].includes('statusCategory = Done'));
+  assert.deepEqual(got.items.map((i: any) => [i.key, i.context]), [['UYT-10', true], ['UYT-11', undefined]]);
+  const dflt = await ask('kanban.browse.page', { scope: 'j', filters: {} });
+  assert.deepEqual(dflt.items.map((i: any) => i.key), ['UYT-10', 'UYT-11'], 'the default (open) is a status category too');
+  await ask('kanban.browse.page', { scope: 'j', filters: { statusCategory: 'all' } });
+  assert.ok(searches(http).at(-1)!.includes('issuetype not in subTaskIssueTypes()'));
 });
 
 test('Jira text search: a 400 becomes a friendly line, a 429 too', async () => {
@@ -208,14 +219,28 @@ test('Jira text search: a 400 becomes a friendly line, a 429 too', async () => {
 test('Jira count: asked lazily, cached for a minute, and a failed count answers without one', async () => {
   const { ask, http } = setup();
   const count = () => http.calls.filter((c) => c.url.endsWith('/approximate-count'));
-  assert.equal((await ask('kanban.browse.count', { scope: 'j', filters: {}, group: '7' })).count, 12);
-  assert.equal(count()[0].body.jql, 'project IN ("UYT") AND statusCategory != Done AND issuetype not in subTaskIssueTypes() AND fixVersion = 7');
-  await ask('kanban.browse.count', { scope: 'j', filters: {}, group: '7' });
+  assert.equal((await ask('kanban.browse.count', { scope: 'j', filters: { statusCategory: 'all' }, group: '7' })).count, 12);
+  assert.equal(count()[0].body.jql, 'project IN ("UYT") AND issuetype not in subTaskIssueTypes() AND fixVersion = 7');
+  await ask('kanban.browse.count', { scope: 'j', filters: { statusCategory: 'all' }, group: '7' });
   assert.equal(count().length, 1, 'the second came from the cache');
   const failing = setup({ http: jiraSite((c) => (c.url.endsWith('/approximate-count') ? { status: 400 } : undefined)) });
-  const got = await failing.ask('kanban.browse.count', { scope: 'j', filters: {}, group: '7' });
+  const got = await failing.ask('kanban.browse.count', { scope: 'j', filters: { statusCategory: 'all' }, group: '7' });
   assert.equal(got.t, 'kanban.browseCount');
   assert.equal(got.count, undefined);
+});
+
+test('Jira count: a narrowed search in a version or epic group has no count (inherited grouping can’t be counted), a plain one does', async () => {
+  const { ask, http } = setup();
+  const count = () => http.calls.filter((c) => c.url.endsWith('/approximate-count'));
+  for (const where of [{ group: '7' }, { group: 'none' }, { epic: 'UYT-1', group: '7' }, { epic: 'none', group: '7' }]) {
+    const got = await ask('kanban.browse.count', { scope: 'j', filters: { statusCategory: 'all', q: 'x' }, ...where });
+    assert.equal(got.t, 'kanban.browseCount');
+    assert.equal(got.count, undefined);
+  }
+  assert.equal((await ask('kanban.browse.count', { scope: 'j', filters: { statusCategory: 'done' }, group: '7' })).count, undefined, 'a status category narrows too');
+  assert.equal(count().length, 0);
+  assert.equal((await ask('kanban.browse.count', { scope: 'j', filters: { statusCategory: 'all' }, group: '7' })).count, 12);
+  assert.equal(count().length, 1);
 });
 
 test('Jira count: raw JQL gets no count and asks Jira nothing', async () => {
@@ -417,9 +442,15 @@ test('GitHub sub-issues that are not board items open and expand when their pare
   const off = setup({ gh: gh([[OTHER], []]) });
   assert.match((await off.ask('kanban.browse.issue', { scope: 'p', issueKey: 'gh:o/r#30' })).message, /isn't on the board o\/1/);
   assert.match((await off.ask('kanban.browse.children', { scope: 'p', issueKey: 'gh:o/r#30', nodeId: 'I_30' })).message, /isn't on the board/);
-  // Further up than the levels followed is not followed.
-  const far = setup({ gh: gh([[], [], [], [], [], [BOARD_ITEM]]) });
+  // GitHub nests sub-issues 8 levels deep: a level-6 and a level-8 child reach the board item at the top, a chain longer than that is not followed.
+  const up = (hops: number) => [...Array(hops - 1).fill([]), [BOARD_ITEM]];
+  for (const hops of [5, 7, 8]) {
+    const deep = setup({ gh: gh(up(hops)) });
+    assert.equal((await deep.ask('kanban.browse.issue', { scope: 'p', issueKey: 'gh:o/r#30' })).t, 'kanban.browseIssue', `${hops} parent hops`);
+  }
+  const far = setup({ gh: gh(up(9)) });
   assert.match((await far.ask('kanban.browse.issue', { scope: 'p', issueKey: 'gh:o/r#30' })).message, /isn't on the board/);
+  assert.match((await far.ask('kanban.browse.children', { scope: 'p', issueKey: 'gh:o/r#30', nodeId: 'I_30' })).message, /isn't on the board/);
 });
 
 test('load: a gh: key of the project’s repository is fetched with gh issue view, one of another repository is not', async () => {

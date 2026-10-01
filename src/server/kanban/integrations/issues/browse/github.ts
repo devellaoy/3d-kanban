@@ -79,8 +79,8 @@ const CHILDREN_QUERY = `query($id: ID!, $after: String) { node(id: $id) { ... on
 
 /** The parent chain of an issue, `levels` deep, each with the boards it is an item of. */
 const chain = (levels: number): string => `parent { ${BOARDS} ${levels > 1 ? chain(levels - 1) : ''} }`;
-/** How far up a sub-issue's parents are followed to find the board. */
-const ANCESTOR_LEVELS = 5;
+/** How far up a sub-issue's parents are followed to find the board: GitHub nests sub-issues 8 levels deep, so 7 hops reach the top. */
+const ANCESTOR_LEVELS = 8;
 const ANCESTORS_QUERY = `query($id: ID!) { node(id: $id) { ... on Issue { ${chain(ANCESTOR_LEVELS)} } } }`;
 
 type Vars = [flag: '-f' | '-F', name: string, value: string][];

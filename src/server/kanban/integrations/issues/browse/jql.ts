@@ -81,12 +81,12 @@ function keyOf(v: string): string {
 }
 
 /**
- * Whether the filters narrow the search beyond the status category, the version and the epic (a text,
- * type, status, assignee, labels, sprint or raw JQL). A narrowed search doesn't leave sub-tasks out:
+ * Whether the filters narrow the search beyond the version and the epic (a status category other than
+ * "all", a text, type, status, assignee, labels, sprint or raw JQL). A narrowed search doesn't leave sub-tasks out:
  * it finds the ones that match, and the page sends their parents with them (jira.ts).
  */
 export function narrows(f: BrowseFilters): boolean {
-  return !!(f.q?.trim() || f.issueType || f.status || f.assignee || f.labels?.length || f.sprint || f.jql?.trim());
+  return !!((f.statusCategory ?? 'open') !== 'all' || f.q?.trim() || f.issueType || f.status || f.assignee || f.labels?.length || f.sprint || f.jql?.trim());
 }
 
 const SUBTASK = 'issuetype in subTaskIssueTypes()';

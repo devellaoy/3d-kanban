@@ -156,7 +156,7 @@ test('the parser rejects a bad cursor, over-long values and values that could br
 
 test('a narrowed top-level query keeps sub-tasks and relaxes the version and epic clauses; an unnarrowed one leaves them out', () => {
   const scope = { projectKeys: ['UYT'] };
-  assert.ok(!narrows({ statusCategory: 'all', version: '7', epic: 'none' }) && narrows({ q: 'x' }) && narrows({ issueType: 'Sub-task' }) && narrows({ jql: 'a = 1' }) && !narrows({ labels: [] }));
+  assert.ok(!narrows({ statusCategory: 'all', version: '7', epic: 'none' }) && narrows({}) && narrows({ statusCategory: 'done' }) && narrows({ q: 'x' }) && narrows({ issueType: 'Sub-task' }) && narrows({ jql: 'a = 1' }) && !narrows({ statusCategory: 'all', labels: [] }));
   const plain = browseJql(scope, { statusCategory: 'all' }, { topLevel: true, version: '7', epic: 'UYT-1' });
   assert.equal(plain, 'project IN ("UYT") AND issuetype not in subTaskIssueTypes() AND fixVersion = 7 AND parent = "UYT-1" ORDER BY updated DESC');
   const narrowed = browseJql(scope, { statusCategory: 'all', issueType: 'Sub-task' }, { topLevel: true, version: '7', epic: 'none' });
