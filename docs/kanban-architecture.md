@@ -143,7 +143,7 @@ allowed: `todo → in_progress` (= start), `waiting|review → done`, `done → 
     `…/pull/<n>` (no `/files`, `#…`, `?…`), duplicates count once. Wording is no longer what decides, though:
     when the floor's PR board syncs (`syncPrStates`), a PR (open, draft or merged, not closed) whose head branch is an active task's branch
     (the task's own per-repository branch; the primary repository falls back to the task's `branch`) is linked to
-    it in any phase, unless the branch is shared by several active tasks (done and archived tasks own none), the branch is an integration branch (`main`, `master`, `develop`, `dev`, `trunk`, or the base of any PR the board lists for that repository) or the PR is already some task's. A `pr`/`pr-fix`
+    it in any phase, unless the branch is shared by several active tasks (done and archived tasks own none), the branch is an integration branch (`main`, `master`, `develop`, `dev`, `trunk`; a task's branch that another PR is stacked on is still its) or the PR is already some task's. A `pr`/`pr-fix`
     turn's end asks the floor's boards for its git repositories to refresh at once, so that link shows up quickly.
   - review: read from the final answer's last 3 non-empty lines only: the **last** of them matching
     `^\s*REVIEW:\s*(APPROVED|CHANGES_REQUESTED)\s*$` as a line of its own (emphasis allowed) decides; none →

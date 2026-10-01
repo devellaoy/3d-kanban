@@ -170,7 +170,7 @@ export function createPullsParts(ctx: KanbanContext, opts: PullsOptions = {}) {
    * that nobody has linked yet (active tasks' branches only) are linked to it (branchPrs: whatever phase opened them, however the
    * agent worded its answer). The browsers hear about the cards that changed. Returns those tasks' ids.
    */
-  const syncPrStates = (project: string, pulls: (Pick<GhPull, 'number' | 'url' | 'state' | 'isDraft' | 'repo'> & { headRefName?: string; baseRefName?: string })[]): number[] => {
+  const syncPrStates = (project: string, pulls: (Pick<GhPull, 'number' | 'url' | 'state' | 'isDraft' | 'repo'> & { headRefName?: string })[]): number[] => {
     if (!pulls.length) return [];
     const links = ctx.repo.prLinksOfProject(project);
     const repos = ctx.repos(project);

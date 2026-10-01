@@ -58,13 +58,13 @@ const INTEGRATION_BRANCHES = new Set(['main', 'master', 'develop', 'dev', 'trunk
  * The PRs (open, draft or merged, not closed) whose head branch is an active task's branch in that
  * repository (the primary repository's falls back to the task's own `branch`), for PRs no task has
  * yet (`linked`). Done and archived tasks own no branch. A branch two active tasks share is
- * nobody's. Integration branches are skipped: main, master, develop, dev, trunk, and any branch the
- * board lists as some PR's base in that repository. `home` is the primary remote, the repository of
- * a board item that names none.
+ * nobody's. Integration branches (main, master, develop, dev, trunk) are skipped; a task's branch
+ * another PR is stacked on stays its. `home` is the primary remote, the repository of a board item
+ * that names none.
  */
 export function branchPrs(
   tasks: (Pick<KanbanTask, 'id' | 'branch' | 'status'> & { branches?: Record<string, string> })[],
-  pulls: (Pick<GhPull, 'number' | 'url' | 'state' | 'isDraft'> & { repo?: string; headRefName?: string; baseRefName?: string })[],
+  pulls: (Pick<GhPull, 'number' | 'url' | 'state' | 'isDraft'> & { repo?: string; headRefName?: string })[],
   repos: Pick<ProjectRepo, 'id' | 'remote' | 'primary'>[],
   home: string | undefined,
   linked: (repo: string, number: number) => boolean,
@@ -83,14 +83,12 @@ export function branchPrs(
       owners.set(key, (owners.get(key) ?? new Set()).add(t.id));
     }
   }
-  const bases = new Set<string>();
-  for (const p of pulls) if (p.baseRefName) bases.add(`${repoOf(p)?.id}\n${p.baseRefName}`);
   const out: BranchPr[] = [];
   const seen = new Set<string>();
   for (const p of pulls) {
     const r = repoOf(p);
     if (!r?.remote || !p.headRefName || prState(p) === 'CLOSED') continue;
-    if (INTEGRATION_BRANCHES.has(p.headRefName.toLowerCase()) || bases.has(`${r.id}\n${p.headRefName}`)) continue;
+    if (INTEGRATION_BRANCHES.has(p.headRefName.toLowerCase())) continue;
     const ids = owners.get(`${r.id}\n${p.headRefName}`);
     const key = `${r.id}#${p.number}`;
     if (ids?.size !== 1 || seen.has(key) || linked(r.remote, p.number)) continue;

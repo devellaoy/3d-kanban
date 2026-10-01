@@ -242,7 +242,7 @@ test("a PR from a task's branch is linked to it when the floor's PRs come back: 
   assert.deepEqual(parts.syncPrStates('web', [pull(10, 'kanban/a', 'o/web')]), [], 'nothing new, nothing changed');
 });
 
-test('branch linking: a done task does not own its branch, integration branches and bases link to nothing', () => {
+test('branch linking: a done task does not own its branch, integration branches link to nothing', () => {
   const { ctx } = project();
   const mk = (title: string, branch: string, status?: 'done') => {
     const t = ctx.repo.createTask({ project: 'web', title, tool: 'claude', usePlan: true, planApproval: 'auto', useReview: true, createdBy: 't' });
@@ -259,6 +259,21 @@ test('branch linking: a done task does not own its branch, integration branches 
   assert.deepEqual(ctx.repo.listPrLinks(fresh.id).map((l) => l.number), [1], 'the done task with the same branch name does not block it');
   assert.equal(ctx.repo.listPrLinks(old.id).length, 0, 'and gets nothing');
   assert.equal(ctx.repo.listPrLinks(dev.id).length, 0, 'develop→main is a release, not the task’s; main is nobody’s');
+});
+
+test('branch linking: stacked PRs each link to their own task', () => {
+  const { ctx } = project();
+  const mk = (title: string, branch: string) => {
+    const t = ctx.repo.createTask({ project: 'web', title, tool: 'claude', usePlan: true, planApproval: 'auto', useReview: true, createdBy: 't' });
+    ctx.repo.updateTask(t.id, { branch });
+    return t;
+  };
+  const a = mk('A', 'office/a');
+  const b = mk('B', 'office/b');
+  const pull = (n: number, head: string, base: string) => ({ number: n, title: `PR ${n}`, url: `https://github.com/o/web/pull/${n}`, state: 'OPEN', isDraft: false, headRefName: head, baseRefName: base, repo: 'o/web' }) as GhPull;
+  createPullsParts(ctx).syncPrStates('web', [pull(1, 'office/a', 'main'), pull(2, 'office/b', 'office/a')]);
+  assert.deepEqual(ctx.repo.listPrLinks(a.id).map((l) => l.number), [1], 'A is the base of B, and still A’s');
+  assert.deepEqual(ctx.repo.listPrLinks(b.id).map((l) => l.number), [2]);
 });
 
 test('branchPrs: by repository and branch, the primary repository falls back to the task’s own branch', () => {
