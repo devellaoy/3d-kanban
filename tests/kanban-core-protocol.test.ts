@@ -9,7 +9,7 @@ import { PROMPT_MAX } from '../src/shared/prompts.js';
 import { INSTRUCTIONS_MAX } from '../src/server/kanban/settings.js';
 import { KANBAN_PROMPT_IDS } from '../src/shared/kanban/prompts.js';
 
-const at = (status: TaskStatus, over: Partial<MoveSubject> = {}): MoveSubject => ({ status, runState: 'idle', hasWorker: false, ...over });
+const at = (status: TaskStatus, over: Partial<MoveSubject> = {}): MoveSubject => ({ status, runState: 'idle', ...over });
 
 test('the manual moves are the documented ones', () => {
   const allowed: Record<TaskStatus, TaskStatus[]> = {
@@ -30,7 +30,6 @@ test('the manual moves are the documented ones', () => {
   const no = (r: ReturnType<typeof checkMove>) => (r.ok ? '' : r.reason);
   assert.match(no(checkMove(at('todo'), 'done')), /only once it has been worked on/);
   assert.match(no(checkMove(at('done'), 'todo')), /only once it has been worked on/);
-  assert.match(no(checkMove(at('review', { hasWorker: true }), 'todo')), /Release/);
   assert.match(no(checkMove(at('waiting', { runState: 'queued' }), 'todo')), /Stop it first/);
   assert.match(no(checkMove(at('waiting', { runState: 'running' }), 'archived')), /Stop it first/);
   assert.match(no(checkMove(at('in_progress'), 'done')), /stop it first/);
@@ -100,7 +99,7 @@ test('good messages come through rebuilt, without anything the validator did not
     refused({ t: 'kanban.task.start', id: 2, deskId }, /deskId must be a desk/);
     refused({ t: 'kanban.task.create', task: { project: 'web', title: 'x' }, deskId }, /deskId must be a desk/);
   }
-  assert.equal(KANBAN_CLIENT_TYPES.size, 35);
+  assert.equal(KANBAN_CLIENT_TYPES.size, 34);
 });
 
 test("the primary repository's id is its floor's, up to 40 characters, and repoIds take it", () => {

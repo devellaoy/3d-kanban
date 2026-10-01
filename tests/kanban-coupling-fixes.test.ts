@@ -37,7 +37,7 @@ async function releasedInReview(fx: EngineFixture, patch: Parameters<EngineFixtu
   const task = fx.newTask({ usePlan: false, useReview: false, ...patch });
   assert.equal(await fx.engine.start(task.id, who), undefined);
   const r = await fx.waitTask(task.id, (x) => x.status === 'review' && x.runState === 'idle', 'review', 30_000);
-  assert.equal(await fx.engine.release(r.id, who), undefined);
+  await fx.workers.kill(r.workerId!, 'keep', undefined, undefined, { by: who.name, reason: 'released' });
   return fx.waitTask(r.id, (x) => !x.workerId, 'released');
 }
 
@@ -132,7 +132,7 @@ const coreOf = (fx: EngineFixture) => {
     t.after(() => fx!.close());
     fx.setRules([IMPLEMENT]);
     const { q, sh } = await queuedReview(fx, state);
-    assert.equal(checkMove({ status: q.status, runState: q.runState, hasWorker: false }, to).ok, true);
+    assert.equal(checkMove({ status: q.status, runState: q.runState }, to).ok, true);
     await coreOf(fx).send({ t: 'kanban.task.move', rid: 'm1', id: q.id, to });
     const moved = fx.task(q.id);
     assert.equal(moved.status, to);
@@ -189,7 +189,7 @@ test('releasing the worker of a task waiting on a usage limit keeps its auto-res
   const first = limited.workerId!;
   assert.ok(limited.retryAt);
 
-  assert.equal(await fx.engine.release(task.id, BOB), undefined);
+  await fx.workers.kill(first, 'keep', undefined, undefined, { by: BOB.name, reason: 'released' });
   const released = await fx.waitTask(task.id, (x) => !x.workerId && !fx.workers.get(first), 'released');
   assert.equal(released.retryAt, limited.retryAt, 'a release leaves the auto-resume due');
   assert.equal(released.waitingReason, 'usage_limit');

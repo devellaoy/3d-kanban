@@ -45,8 +45,9 @@ greyed out with the reason. What you can do by hand:
 - **Waiting / Review → Done**, **Done → Review**, **Archive → Done**.
 - **Waiting / Review → To do** starts over: the automation's state (phase, round, sessions, worker ids,
   queued comments, retries) and the workspace are cleared; the branch stays, and the next start gets
-  a fresh worktree whose agent checks that branch out first. Not while it runs, and not while a worker
-  is still attached (**🏠 Release worktree** first).
+  a fresh worktree whose agent checks that branch out first. Not while it runs. Workers still at their
+  desks go home first and the worktree stays on disk: the task's conversation says where, and on which
+  branch.
 - **Anything → Archive**, except while it runs.
 - Not allowed: To do ↔ Done, and moving into In progress, Waiting or Review any other way (use
   Continue, Retry or a comment).
@@ -102,8 +103,7 @@ task is made and started at once, at that desk or, from the queue, at the next f
    so a review round never needs a free desk. Only when the task has no desk yet (its implementer never
    sat down) does the reviewer take the next free seat.
 4. **Review column**: read the result. **🔍 Run a review round** runs one more round by hand (it ends
-   in Review). **🔀 Create PRs** / **🛠️ Fix PRs** start the PR phase (see below). **🏠 Release worktree** sends the task's workers home and keeps the
-   worktree for later. Move it to **Done** when you accept it.
+   in Review). **🔀 Create PRs** / **🛠️ Fix PRs** start the PR phase (see below). Move it to **Done** when you accept it.
 
 When the agent asks something in its terminal (Waiting, *the agent is asking*), answer it there, or,
 when it asks a question, in the **Answer the agent** box (**⌨️ Open its terminal** is next to it): the
@@ -130,7 +130,7 @@ its desk; a run whose worker went away (or exited) is marked interrupted.
 ### Sending a task's worker home
 
 A task's worker is an ordinary worker at a desk: **X** (or the CLI's `office-workers home`, the queue
-making room, a meeting, leave-on-merge, 🏠 Release) sends it home, and the task hears about it. Each
+making room, a meeting, leave-on-merge, moving the task back to To do or deleting it) sends it home, and the task hears about it. Each
 departure puts exactly one line in the task's conversation, saying who sent it home and what that
 did:
 
@@ -163,9 +163,9 @@ holds, though it counts while it's there, so other hires still find the office f
 keeps its task's slot of *tasks at once*, so more tasks don't start meanwhile and take the desks it's
 waiting for. A queued start keeps the desk it was
 started at; when that desk is taken by then, its worker sits at the next free one and the conversation
-says so. Later hires (after 🏠 Release, a Retry) prefer the task's desk when it's free. ⏹️ Stop takes a
+says so. Later hires (after a send-home, a Retry) prefer the task's desk when it's free. ⏹️ Stop takes a
 task out of the queue, and so does moving it to Done (or the archive, or back to To do): a task out of
-the process is never hired for. 🏠 Release keeps a usage-limit wait's auto-resume: the task still
+the process is never hired for. A send-home that isn't **X** (a move to Done, a reset) keeps a usage-limit wait's auto-resume: the task still
 carries on by itself when the limit resets, on a new hire; only **X** in the office turns it off.
 
 Every hire for a task runs as **the account that made the task**, on its own sign-ins, whoever set it

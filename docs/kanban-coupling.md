@@ -20,8 +20,8 @@ whatever happens to the task shows on the worker. This page is the contract betw
 
 | 3D action | Rule |
 |---|---|
-| **X** send home (any path: WS `worker.kill`, HTTP/CLI home, queue recycle, meetings, leave-on-merge, engine releases) | One path: the intent `{ by, done?, reason }` is recorded on the worker before it goes and read by the engine's `removed()`. Exactly one status comment per departure. |
-| … implementer, no live run | `kanban.done === true` → task **done**. Otherwise it keeps its column (in_progress without a run → waiting). Only X (`reason: 'sent-home'`) clears `retryAt`: a release (the Release button, a move to done) or the office's own recycling leaves a usage-limit auto-resume due, and the sweep hires a new worker for it. |
+| **X** send home (any path: WS `worker.kill`, HTTP/CLI home, queue recycle, meetings, leave-on-merge, engine sends) | One path: the intent `{ by, done?, reason }` is recorded on the worker before it goes and read by the engine's `removed()`. Exactly one status comment per departure. |
+| … implementer, no live run | `kanban.done === true` → task **done**. Otherwise it keeps its column (in_progress without a run → waiting). Only X (`reason: 'sent-home'`) clears `retryAt`: a move to done or back to To do or the office's own recycling leaves a usage-limit auto-resume due, and the sweep hires a new worker for it. |
 | … implementer, live run | The run is **stopped** ("<by> sent <name> home"), task → waiting with Retry — or done when `done === true`. |
 | … reviewer | The round is abandoned; queued messages are delivered, otherwise task → review. |
 | … leave-on-merge (`reason: 'merged'`) | Task → done only when every linked PR is merged and none is open or draft. Workers of in_progress tasks or tasks with a live run are never picked. |

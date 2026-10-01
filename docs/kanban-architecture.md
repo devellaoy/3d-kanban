@@ -268,7 +268,7 @@ allowed: `todo → in_progress` (= start), `waiting|review → done`, `done → 
   (a Stop that timed out is `stopped`). Every other one writes exactly one status comment and applies:
   implementer with a live run → run `stopped`, task `waiting` (`stopped`, Retry), or `done` with `done`;
   implementer without one → `done` with `done`, else it keeps its column (`in_progress` with nothing running →
-  `waiting`/`interrupted`; `retryAt` cleared only for `sent-home`, so a release keeps a usage-limit auto-resume); reviewer with a live run → the round is dropped (`reviewAbandoned`):
+  `waiting`/`interrupted`; `retryAt` cleared only for `sent-home`, so any other send-home keeps a usage-limit auto-resume); reviewer with a live run → the round is dropped (`reviewAbandoned`):
   pending comments are delivered, else → `review`. With `reason: 'merged'`, `done` means every `pr_links` row is
   `MERGED`. A task made done this way stops its other run and releases its other workers at rest.
 - **Worktree guard** (`WorkerManager.addKeepGuard`): cleanup is forced to `keep` while another worker of the
@@ -308,7 +308,7 @@ allowed: `todo → in_progress` (= start), `waiting|review → done`, `done → 
   whose cycle ends. Work a person resumes (a comment, Retry or Continue on a task whose implementer is at
   its desk) doesn't take a slot; only when people set more such tasks going at once than the floor has
   seats can every seat be an implementer waiting on its own reviewer, and then a person frees a desk
-  (⏹️ Stop one of those tasks, then 🏠 Release it).
+  (⏹️ Stop one of those tasks, then send its worker home with **X**).
 - A new hire runs as `via.owner ?? caller.accountId ?? tasks.created_by_account` (drains, sweeps and Retry
   pass the creator's account). Upstream's sign-in rule applies (`ctx.runAs`): an owner not signed in to
   Claude gets `waiting` (`failed`) with `runAs.why`, never the office's sign-in. A hire that cuts a worktree
@@ -367,18 +367,20 @@ answers `kanban.ok {rid, ...}` or `kanban.error {rid, message}`. Deltas are push
     task is in `todo`; `tool, model, effort, review` whenever no run is live (`isRunning` false): the next
     phase hires the new tool, whose fresh session gets the handoff. `repoIds` only before the first start. The
     description is locked from the first start (sending the unchanged text is fine). No edits while archived.
-  - `task.move`: `checkMove` (moves.ts), where `hasWorker` means one of the task's workers is still at a desk.
+  - `task.move`: `checkMove` (moves.ts), which only looks at the column and the run state. Workers at rest don't stop a move: the engine sends them
+    home first (`engine.sendWorkersHome(id, who, 'reset')`, cleanup `keep`, reason `released`; a run live only
+    because the agent asks in its terminal is finished as `stopped`).
     `start` runs `engine.start`. `reset` clears the automation state (phase, run state, waiting, round,
     sessions, worker ids, pending messages, retries, `finishedAt`, `doneAt`) **and the workspace**; it keeps
-    `task.branch` and `startedAt`. The next start seats a fresh worktree whose agent is told to check that
+    `task.branch` and `startedAt`, and says in a status comment where the worktree stayed and on which branch. The next start seats a fresh worktree whose agent is told to check that
     branch out (`kanban.checkout`), rather than reusing a worktree that may be gone by then.
     `done` sets `doneAt`; `archived` sets `archivedAt`.
-  - `task.delete`: only by its creator or an admin. It is refused while running or while a worker is attached.
-    Its attachment files are deleted too.
+  - `task.delete`: only by its creator or an admin. It is refused while running; workers at rest go home first
+    (`engine.sendWorkersHome(id, who, 'delete')`), their worktree and branches stay. Its attachment files are deleted too.
   - `comment.add`: stored, attachments linked, `kanban.comment` pushed and `kanban.ok {commentId}` sent;
     then `engine.commented`.
   - `plan.approve {planId}`: only the latest plan version can be approved.
-  - Start, stop, continue, retry, review, plan approve and request-changes, pr and release go to
+  - Start, stop, continue, retry, review, plan approve and request-changes and pr go to
     `ctx.engine`. A returned string becomes `kanban.error`. `task.continue` and `plan.requestChanges` take
     `attachmentIds?` like `comment.add`. The files are resolved first without linking; the message
     (its text plus the files' grant paths, as one `answer` / `text`, so a replan sees which files are new)

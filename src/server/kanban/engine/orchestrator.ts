@@ -1821,18 +1821,26 @@ export class Orchestrator {
     });
   }
 
-  release(taskId: number, who: KanbanCaller): Promise<string | void> {
+  /**
+   * The task is sent back to To do or deleted: its workers at rest go home, worktree kept. A run still
+   * live is an agent asking in its terminal (needs_input), which nobody will answer now: it is finished
+   * as stopped and its worker goes too. A reset forgets the workspace, so the task says where it stayed.
+   */
+  sendWorkersHome(taskId: number, who: KanbanCaller, why: 'reset' | 'delete'): Promise<string | void> {
     return this.op(taskId, async (task) => {
-      if (this.liveOf(task.id) || task.runState !== 'idle' || task.status === 'in_progress') return 'Stop it first: it is running';
-      const floor = this.ctx.floor(task.project);
-      const ids = [task.workerId, task.reviewerWorkerId].filter((x): x is string => !!x);
-      if (!ids.length) return 'It has no worker to release';
-      // Its worktree and session stay on the task, for whoever carries on later.
-      this.update(task.id, { workerId: null, reviewerWorkerId: null, reviewerSessionId: null });
-      for (const id of ids) {
-        const info = floor?.workers.get(id);
-        if (info) await floor!.sendHome(id, this.homeCleanup(task, info), { by: who.name, reason: 'released' });
+      if (task.runState !== 'idle' || task.status === 'in_progress') return 'Stop it first: it is running';
+      const live = this.liveOf(task.id);
+      if (live) {
+        live.ended = true;
+        this.forget(live);
+        this.finishRun(live.runId, live.floorId, { status: 'stopped', error: `${who.name} ${why === 'reset' ? 'moved the task back to To do' : 'deleted the task'}` });
+        this.note(task, `${who.name} ${why === 'reset' ? 'moved the task back to To do' : 'deleted the task'}, so its ${live.phase === 'review' || live.phase === 'pr-review' ? 'review round' : `${live.phase} run`} was stopped.`, live.runId);
       }
+      const floor = this.ctx.floor(task.project);
+      const going = floor?.workers.list().filter((w) => w.kanban?.taskId === task.id && (w.id === live?.workerId || !isBusy(w.status))) ?? [];
+      for (const w of going) await floor!.sendHome(w.id, 'keep', { by: who.name, reason: 'released' });
+      const wt = task.workspace?.worktree;
+      if (why === 'reset' && wt) this.note(task, `${going.length ? 'Its workers went home. ' : ''}The worktree was kept at ${floor ? path.join(floor.dir, wt.path) : wt.path} on branch ${wt.branch}.`);
       return undefined;
     });
   }

@@ -211,12 +211,29 @@ test('an implementer at rest sent home with cleanup all while its reviewer works
   assert.equal(homeNotes(fx, task.id).length, 1, 'the engine sending its reviewer home says nothing of its own');
 });
 
+test('sendWorkersHome (a reset to To do, a delete): the worker at rest goes home, the worktree stays and the task says where; a running task is refused', async (t) => {
+  const fx = await engineFixture();
+  t.after(() => fx.close());
+  fx.setRules([IMPLEMENT]);
+  const r = await inReview(fx);
+  const wt = worktreeOf(fx, r);
+  assert.equal(await fx.engine.sendWorkersHome(r.id, ADA, 'reset'), undefined);
+  await fx.waitTask(r.id, (x) => !x.workerId, 'the worker gone');
+  assert.equal(fx.workers.get(r.workerId!), undefined, 'it went home');
+  assert.ok(existsSync(wt), 'its worktree stayed');
+  const kept = fx.repo.listComments(r.id).comments.find((c) => c.kind === 'status' && /worktree was kept/.test(c.text));
+  assert.ok(kept, 'the task says where the worktree stayed');
+  assert.ok(kept!.text.includes(wt) && kept!.text.includes(r.workspace!.worktree.branch), kept!.text);
+  fx.repo.updateTask(r.id, { runState: 'running' });
+  assert.match(String(await fx.engine.sendWorkersHome(r.id, ADA, 'delete')), /Stop it first/);
+});
+
 test('a re-hired implementer sitting in the task worktree, sent home with cleanup all when nobody else is there and nothing runs: the worktree goes', async (t) => {
   const fx = await engineFixture();
   t.after(() => fx.close());
   fx.setRules([IMPLEMENT, RESUME]);
   const r = await inReview(fx);
-  assert.equal(await fx.engine.release(r.id, ADA), undefined);
+  await fx.workers.kill(r.workerId!, 'keep', undefined, undefined, { by: 'Ada', reason: 'released' });
   await fx.waitTask(r.id, (x) => !x.workerId, 'released');
   const { comment } = fx.repo.addComment({ taskId: r.id, authorKind: 'user', authorName: 'Ada', kind: 'message', text: 'Rename it please' });
   await fx.engine.commented(r.id, comment.id, ADA);

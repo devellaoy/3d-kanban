@@ -493,11 +493,8 @@ class View implements TaskView {
         add(`🔀 ${task.prs.length ? 'Push & update PRs' : 'Create PRs'}`, '.primary', (b) => void this.req({ t: 'kanban.task.pr', id, mode: 'create' }, b, 'An agent is on the pull requests'), 'The agent pushes and opens (or updates) a pull request in every repository with commits');
       }
     }
-    if (hasWorker && !running) {
-      add('🏠 Release worktree', '', (b) => confirmBox('Release worktree', `Send the workers of #${id} home? The worktree stays, and the next comment or action hires a worker again.`, 'Release worktree', () => void this.req({ t: 'kanban.task.release', id }, b, 'Released'), false), 'Sends the task’s workers home, keeping the worktree for later');
-    }
     if (task.status !== 'in_progress' && this.o.moveMenu) add('↔️ Move…', '', () => this.o.moveMenu?.(id), 'Move to another column (M)');
-    if (!running) add('🗑️ Delete', '.danger', (b) => confirmBox(`Delete #${id}?`, 'The task, its conversation, plans and runs are deleted for good. Its branches and pull requests stay.', 'Delete', () => void this.req({ t: 'kanban.task.delete', id }, b)));
+    if (!running) add('🗑️ Delete', '.danger', (b) => confirmBox(`Delete #${id}?`, `The task, its conversation, plans and runs are deleted for good. ${hasWorker ? 'Its workers go home. ' : ''}${task.workspace ? `Its worktree (${task.workspace.worktree.path}), its branches` : 'Its branches'} and pull requests stay.`, 'Delete', () => void this.req({ t: 'kanban.task.delete', id }, b)));
     return bar;
   }
 
