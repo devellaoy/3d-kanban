@@ -12,9 +12,7 @@ export function installCodexLimits(ctx: Ctx) {
   let timer = 0;
 
   function follow() {
-    const shown = on();
-    wantCodexLimits(ctx.net, 'panel', shown);
-    const run = shown && document.visibilityState === 'visible';
+    const run = on() && document.visibilityState === 'visible';
     if (run && !timer) timer = window.setInterval(renderCodexLimits, 30_000);
     else if (!run && timer) {
       clearInterval(timer);
@@ -23,9 +21,14 @@ export function installCodexLimits(ctx: Ctx) {
     if (run) renderCodexLimits();
   }
 
-  onPanelChange((id) => id === 'codexLimits' && follow());
+  onPanelChange((id) => {
+    if (id !== 'codexLimits') return;
+    wantCodexLimits(ctx.net, 'panel', on());
+    follow();
+  });
   document.addEventListener('visibilitychange', follow);
   store.on('codexLimits', () => on() && renderCodexLimits());
   document.getElementById('codex-limits')?.addEventListener('click', () => on() && refreshCodexLimits(ctx.net));
+  wantCodexLimits(ctx.net, 'panel', on());
   follow();
 }

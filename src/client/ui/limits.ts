@@ -15,6 +15,12 @@ export function fmtReset(at: number, now = Date.now()): string {
   return new Date(at).toLocaleString(undefined, { weekday: 'short', hour: 'numeric', minute: '2-digit' });
 }
 
+/** "2:05 PM": when a reading was taken. */
+export const hhmm = (at: number) => new Date(at).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
+
+/** Numbers that failed to refresh, or that are older than STALE_MS. */
+export const isOld = (s: { status: string; at: number }, now = Date.now()) => s.status === 'error' || now - s.at > STALE_MS;
+
 export const level = (pct: number) => (pct >= 90 ? 'over' : pct >= 75 ? 'near' : '');
 
 function windowRow(w: PlanWindow, now: number): HTMLElement[] {

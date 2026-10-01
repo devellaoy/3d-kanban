@@ -3,11 +3,9 @@
 import type { PlanWindow } from '../../shared/protocol';
 import { store } from '../state';
 import { $, h } from '../ui/dom';
-import { fmtReset, level, STALE_MS } from '../ui/limits';
+import { fmtReset, hhmm, isOld, level } from '../ui/limits';
 import { panelHide } from '../ui/menu';
 import './codex-limits.css';
-
-const hhmm = (at: number) => new Date(at).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
 
 /** A dial: a ring filled to the share used. */
 function dial(pct: number): HTMLElement {
@@ -35,7 +33,7 @@ function noteOf(s: typeof store.codexLimits): string {
     case 'error':
       return s.windows.length ? `Couldn’t read them just now · as of ${hhmm(s.at)}` : 'Couldn’t read them';
     case 'ready':
-      return Date.now() - s.at > STALE_MS ? `As of ${hhmm(s.at)}` : '';
+      return isOld(s) ? `As of ${hhmm(s.at)}` : '';
     default:
       return s.windows.length ? '' : 'Checking the Codex sign-in…';
   }
