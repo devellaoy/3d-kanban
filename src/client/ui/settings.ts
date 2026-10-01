@@ -14,6 +14,7 @@ import { KANBAN_PANES, kanbanSettingsSlots, type KanbanSettingsPane } from '../k
 import { mouseSensitivityRow } from './sensitivity';
 import { appearanceRow } from './appearance';
 import { setting } from './settingrow';
+import { outsideSetting } from './settings-sky';
 
 const VIEWS: [ViewMode, string, string][] = [
   ['first', '👀 First person', 'See through your own eyes. Click the office to look around with the mouse and click things to use them. Esc frees the mouse.'],
@@ -494,6 +495,8 @@ export function openSettings(net: Net, settings: Settings, onChange: (s: Setting
     if (e.key === 'Enter') renameDog();
   });
 
+  // What the sky's doing, and which clock it keeps (see settings-sky.ts).
+  const sky = outside && outsideSetting(net, outside, (body) => setting('Outside', 'office', ...body));
   const account = store.me.account;
   const signOut = h('button.btn', { type: 'button' }, '🚪 Sign out');
   signOut.addEventListener('click', onSignOut);
@@ -520,16 +523,7 @@ export function openSettings(net: Net, settings: Settings, onChange: (s: Setting
     building: [
       setting('Map', 'office', mapRow, mapNote, mapBad),
       setting('Holiday theme', 'office', themeRow, themeNote),
-      ...(outside
-        ? [
-            setting(
-              'Outside',
-              'office',
-              h('p.outside-now', {}, outside.now),
-              h('p.setting-note', {}, outside.live ? 'Everyone sees the same sky: a whole day and night every hour, and the live weather where it is.' : 'Everyone sees the same sky: a whole day and night every hour, and weather that comes and goes. Start the office with --city to use a real city’s forecast.'),
-            ),
-          ]
-        : []),
+      ...(sky ? [sky.section] : []),
       dogSection,
       setting('Workspace folder', 'office', dirRow, dirActions, dirNote),
     ],
@@ -591,6 +585,7 @@ export function openSettings(net: Net, settings: Settings, onChange: (s: Setting
     doing: '⚙️ in settings',
     onClose: () => {
       [offNotify, offDog, offTheme, appearance.off, offMap, offLeave].forEach((off) => off());
+      sky?.off();
       offLimit.forEach((off) => off());
       offDir.forEach((off) => off());
       offPrompts.forEach((off) => off());
