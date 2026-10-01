@@ -5,6 +5,9 @@ import path from 'node:path';
 /** The name ending a picture dropped without one gets, so the agent can tell it's a picture. */
 const PICTURE_EXT: Record<string, string> = { 'image/png': '.png', 'image/jpeg': '.jpg', 'image/gif': '.gif', 'image/webp': '.webp' };
 
+/** Where a project's workers' drops are kept (the DropStore of its floor's workers, whose data folder is <project>/.agent-office). */
+export const dropsDirOf = (projectDir: string): string => path.join(projectDir, '.agent-office', 'drops');
+
 /**
  * Files dropped or pasted into a worker's terminal from a browser (see shared/drops.ts), kept in
  * .agent-office/drops/<worker id>/ so the program there can open them by path. They go with the worker.

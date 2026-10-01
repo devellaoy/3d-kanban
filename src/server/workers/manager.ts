@@ -250,7 +250,7 @@ export class WorkerManager extends KanbanWorkers {
     const used = new Set([...this.workers.values()].map((w) => w.info.name.replace(/ 🐚$/, '')));
     const agent = seat.station && STATION_AGENT[seat.station];
     const name = agent ? agent.name : (NAMES.find((n) => !used.has(n)) ?? `Worker ${this.workers.size + 1}`);
-    const id = randomBytes(6).toString('hex');
+    const id = extra?.id && !this.workers.has(extra.id) ? extra.id : randomBytes(6).toString('hex');
     let wt: WorkerInfo['worktree'] = meeting?.worktree ?? extra?.reuse?.worktree;
     let others: WorkerRepo[] | undefined = extra?.reuse?.repos;
     if (worktree && !extra?.reuse) {
@@ -295,7 +295,7 @@ export class WorkerManager extends KanbanWorkers {
     this.workers.set(id, w);
     if (info.prompt) this.tasks.notePrompt(w, info.prompt);
     // A board agent is told what it's there for ahead of its first request (which is what shows).
-    this.launch(w, seat.station && info.prompt ? `${stationBrief(seat.station, this.prompts)}\n\n${info.prompt}` : info.prompt, extra?.resumeSessionId);
+    this.launch(w, [seat.station && info.prompt ? `${stationBrief(seat.station, this.prompts)}\n\n${info.prompt}` : info.prompt, extra?.promptTail].filter(Boolean).join('\n\n') || undefined, extra?.resumeSessionId);
     this.persist();
     return info;
   }

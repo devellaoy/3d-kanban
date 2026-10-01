@@ -1,12 +1,17 @@
 // Workers at their desks and the board agents at their kiosks: hiring them, their terminals, their
 // worktrees and pull requests.
+import { randomBytes } from 'node:crypto';
+import { rmSync } from 'node:fs';
+import path from 'node:path';
 import { MAX_REPOS, type RepoSource } from '../../workers.js';
 import { OPEN_CODE_MODEL_MAX } from '../../../shared/providers.js';
 import { isAgentEffort, isAgentProvider, type WorkerClientMsg } from '../../../shared/protocol.js';
 import { issueNumber, num, str } from '../../office/input.js';
 import { kanbanCaller } from '../../kanban/office.js';
 import { prViaKanban } from '../../kanban/ws/pr.js';
+import { dropsDirOf } from '../../drops.js';
 import { here, workerOf } from './common.js';
+import type { SpawnExtra } from '../../workers/types.js';
 import type { FeatureHooks, HandlerMap, ViewPieces } from './types.js';
 
 const CLEANUPS = new Set(['keep', 'worktree', 'all']);
@@ -38,7 +43,18 @@ export const workerHandlers = {
     }
     // A shell is theirs too: `claude auth login` or `gh auth login` typed there signs them in.
     const hire = () => {
-      const r = floor.workers.spawn(str(msg.deskId, 32), who, str(msg.prompt, 20000) || undefined, msg.worktree === true, kind, msg.provider, model, effort, undefined, c.accountId, repos, msg.via === 'herald' ? 'herald' : undefined);
+      // Files attached to a direct hire go to its drops folder before it exists, and into its first prompt (see kanban/hirefiles.ts).
+      const id = randomBytes(6).toString('hex');
+      const drops = dropsDirOf(floor.dir);
+      let extra: SpawnExtra | undefined;
+      if (kind === 'agent' && Array.isArray(msg.attachmentIds) && msg.attachmentIds.length) {
+        if (!ctx.kanban) return ctx.warn(c, 'Attachments need the kanban');
+        const files = ctx.kanban.hireFiles(msg.attachmentIds, c.accountId ? who : undefined, drops, id, msg.provider ?? floor.workers.officeDefault.provider);
+        if (typeof files === 'string') return ctx.warn(c, files);
+        if (files) extra = { id, promptTail: files.text, ...(files.launchArgs ? { launchArgs: files.launchArgs } : {}) };
+      }
+      const r = floor.workers.spawn(str(msg.deskId, 32), who, str(msg.prompt, 20000) || undefined, msg.worktree === true, kind, msg.provider, model, effort, undefined, c.accountId, repos, msg.via === 'herald' ? 'herald' : undefined, extra);
+      if (extra && (typeof r === 'string' || r.id !== id)) rmSync(path.join(drops, id), { recursive: true, force: true }); // the hire didn't happen: its files go
       const issue = kind === 'agent' ? issueNumber(msg.issue) : undefined;
       const key = kind === 'agent' ? floor.cardKey(msg.issueKey) : undefined; // only a card on the floor's board
       const across = repos.length ? ` across ${[floor.def.name, ...repos.map((x) => x.name)].join(' + ')}` : '';

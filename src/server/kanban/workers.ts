@@ -161,7 +161,7 @@ function codexLog(w: Worker): CodexLog | undefined {
   return w.info.provider === 'codex' ? (w.state as CodexLog) : undefined;
 }
 
-/** How a kanban hire is launched, kept on its worker (Worker.extra); undefined for any other hire. */
+/** How a hire is launched, kept on its worker (Worker.extra): a kanban hire's flags and settings, a direct hire's attached-files folder; undefined for any other hire. Its `id` and `promptTail` are for the first launch only and aren't kept. */
 function kanbanExtra(extra: SpawnExtra | undefined): Worker['extra'] {
   return extra && { launchArgs: extra.launchArgs && [...extra.launchArgs], env: extra.env && { ...extra.env }, settingsFile: extra.settingsFile, reused: !!extra.reuse };
 }

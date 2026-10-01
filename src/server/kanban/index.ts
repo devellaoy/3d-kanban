@@ -7,6 +7,7 @@
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import path from 'node:path';
 import type { FloorDef } from '../building.js';
+import type { AgentProvider } from '../../shared/providers.js';
 import type { Floor } from '../floor.js';
 import type {
   KanbanCaller,
@@ -27,6 +28,7 @@ import { kanbanDbPath, openKanbanDb } from './db/open.js';
 import { KanbanSecrets, KanbanSettingsStore } from './settings.js';
 import { primaryRepo, projectRepos, validateProjectRepos } from './projects.js';
 import { attachmentPath } from './uploads.js';
+import { hireFiles } from './hirefiles.js';
 import { createCorePlugin, projectInfos } from './ws.js';
 import { createEngine, type KanbanEngine } from './engine/index.js';
 import { createPulls, createRefs, integrationPlugins } from './integrations/index.js';
@@ -93,6 +95,8 @@ export interface Kanban {
   workerPrompt(info: WorkerInfo, text: string, who: KanbanCaller, asComment?: boolean): Promise<string | void> | undefined;
   /** R on a worker: the task's Retry for a task worker whose task waits (see coupling.ts); undefined: upstream resumes it. */
   workerResume(info: WorkerInfo, who: KanbanCaller): Promise<string | void> | undefined;
+  /** Files attached to a direct hire (see hirefiles.ts): copied for the worker, with the prompt's file list and launch flags; a string: why not; undefined: none. */
+  hireFiles(ids: unknown, who: string | undefined, dropsDir: string, workerId: string, provider?: AgentProvider): { text: string; launchArgs?: string[] } | string | undefined;
   shutdown(): void;
 }
 
@@ -315,6 +319,7 @@ export function installKanban(opts: KanbanInstallOptions): Kanban {
     },
     workerPrompt: (info, text, who, asComment) => (closed ? undefined : promptTaskWorker(ctx, info, text, who, asComment)),
     workerResume: (info, who) => (closed ? undefined : resumeTaskWorker(ctx, info, who)),
+    hireFiles: (ids, who, dropsDir, workerId, provider) => (closed ? undefined : hireFiles(repo, filesDir, ids, who, dropsDir, workerId, provider)),
     shutdown() {
       if (closed) return;
       closed = true;

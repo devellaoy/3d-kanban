@@ -61,6 +61,10 @@ export interface SpawnExtra {
    * once it's here, so other hires see it).
    */
   countsWith?: string;
+  /** A hire whose files were set up before it existed (a direct hire's attachments, in drops/<id>/): the worker gets this id. */
+  id?: string;
+  /** Launch-only text after the first prompt (a direct hire's attached files); not kept in info.prompt. */
+  promptTail?: string;
 }
 
 /**

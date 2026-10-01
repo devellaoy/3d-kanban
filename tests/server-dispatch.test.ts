@@ -446,6 +446,11 @@ test('settings, accounts, sign-ins and the boards answer as before', async () =>
   await warned('Unknown agent provider');
   a.send({ t: 'worker.spawn', deskId: 'desk-1', kind: 'shell', repos: ['nope'] });
   await warned('That project is no longer in the building');
+  // Files attached to a direct hire are checked before the desk is (a real hire can't run here: the stand-in agent exits at once, so the launch prompt itself is covered in kanban-hirefiles.test.ts).
+  a.send({ t: 'worker.spawn', deskId: 'desk-1', attachmentIds: ['nope'] });
+  await warned('Bad attachments');
+  a.send({ t: 'worker.spawn', deskId: 'desk-1', attachmentIds: ['e'.repeat(32)] });
+  await warned('An attached file is gone: attach it again');
   a.send({ t: 'worker.kill', workerId: 'nope' });
   a.send({ t: 'worker.detach', workerId: 'nope' });
   a.send({ t: 'worker.attach', workerId: 'nope' });
