@@ -33,7 +33,7 @@ column) and **⚙️** Settings (the office's own window, as in the 3D office). 
 |---|---|
 | **To do** | Not started. Can still be edited. |
 | **In progress** | The engine is running a phase (plan, implement, review, fix…), or the task is queued for a slot. |
-| **Waiting** | Needs you: the plan has questions, the plan waits for approval, the agent asks in its terminal, it was stopped, a phase failed or was interrupted, or a usage limit (it retries by itself, with a countdown). |
+| **Waiting** | Needs you: the plan has questions, the plan waits for approval, the agent asks in its terminal, it was stopped, a phase failed or was interrupted, or a usage limit (it retries by itself, with a countdown; for Codex, at the account's own reset time when it knows it). |
 | **Review** | The automation is finished. Read the result, comment, run another review round, open PRs, or move it to Done. |
 | **Done** | Accepted by you: you move it here, send its implementer home with *the task is done*, or leave-on-merge sends it home once every PR of the task has merged. |
 | **Archive** | Done tasks after the archive days, and tasks archived by hand; off the board (**🗄️ Archive** shows them). |
@@ -199,7 +199,7 @@ over it, and the task's own over both.
 
 | Setting | Where | Default | What it does |
 |---|---|---|---|
-| Agent, model, effort | 🗂️ Kanban → New tasks | Claude, its default | The implementer of new tasks. The default model applies only when the task uses the default agent. |
+| Agent, model, effort | 🗂️ Kanban → New tasks | Claude, its default | The implementer of new tasks. The default model applies only when the task uses the default agent. Where Codex is the agent (or the reviewer), the task view's Agent row and the create form show a small readout of the Codex plan's 5-hour and weekly use; it is read only while it's on screen (see [Codex limits](features.md)). |
 | Plan first | 🗂️ Kanban → New tasks | on | New tasks start with a plan. |
 | Plan approval | 🗂️ Kanban → New tasks; 📁 Projects; per task | implement straight away | *implement straight away* (`auto`) or *wait for approval* (`manual`). Set on a task when it's made. |
 | Review rounds | 🗂️ Kanban → New tasks | on | New tasks get reviewed. |
@@ -208,7 +208,7 @@ over it, and the task's own over both.
 | Rounds | 🗂️ Kanban → Reviews; 📁 Projects; per task | 2 | 1–10 review rounds. |
 | Review the last fix too | 🗂️ Kanban → Reviews; 📁 Projects; per task | off | One more review after the last round's fix. |
 | Keep the reviewer off the web | 🗂️ Kanban → Reviews; 📁 Projects | on | Claude reviewers get no WebFetch/WebSearch (Bash keeps the network, for `gh`). A Codex review round always runs in Codex's read-only sandbox (no network); a Codex multi-PR review in its workspace sandbox with the network on, for `gh`. |
-| Resume after a usage limit or a network break | 🗂️ Kanban | on, 5 tries, 6 hours | A turn cut short by a usage limit or a lost connection is retried by itself: at the reset time the message names (plus a minute), else after 5, 10, 20… minutes (at most an hour apart). It gives up after *tries at most* or *waits at most (hours)*; then it waits for Retry. |
+| Resume after a usage limit or a network break | 🗂️ Kanban | on, 5 tries, 6 hours | A turn cut short by a usage limit or a lost connection is retried by itself: at the reset time the message names (plus a minute); for a Codex run whose message names none, when the Codex account's window that is at 100% starts over (plus a minute; the lookup waits at most 5 seconds and takes numbers up to 2 minutes old); else after 5, 10, 20… minutes (at most an hour apart). It gives up after *tries at most* or *waits at most (hours)*; then it waits for Retry. |
 | Archive done tasks after (days) | 🗂️ Kanban | 30 | 0 keeps them on the board. Checked at start-up and hourly. |
 | Project name | 📁 Projects → ⚙️ Project (admin) | the repository's or folder's name | See *Projects and repositories*. The id, folder and repository don't change. |
 | Repositories, instructions, tasks at once | 📁 Projects → ⚙️ Project | — | See *Projects and repositories*. |
