@@ -33,7 +33,7 @@ import { checkoutRepo } from './ghrepo.js';
 // The kanban hears when the PR board has fresh lists (its tasks' linked PRs' states).
 import { floorPulled } from './kanban/integrations/pulls/board.js';
 // The issues board shows the project's issue sources when it has any (see issuesState).
-import { claimGhKey, onWallIssues, refreshWall, wallIssues, watchWall } from './kanban/integrations/issues/wall.js';
+import { claimGhKey, onWallIssues, refreshWall, wallIssues, wallKnows, watchWall } from './kanban/integrations/issues/wall.js';
 import { isPrimaryIssue, parseGhKey } from '../shared/kanban/issuecard.js';
 // What a worker is sent home with (see sendHome).
 import type { DepartureIntent } from '../shared/kanban/types.js';
@@ -376,12 +376,13 @@ export class Floor {
 
   /**
    * A card's key as a client sent it, when it's one of the cards on this floor's board from the
-   * project's issue sources; anything else is dropped, so nobody can have an issue claimed (or queued)
-   * that the board doesn't show.
+   * project's issue sources, or an issue the project knows within their scope (browsed or acted on,
+   * though the filters keep it off the board); anything else is dropped, so nobody can have an issue
+   * claimed (or queued) that the project doesn't know.
    */
   cardKey(v: unknown): string | undefined {
     if (typeof v !== 'string' || !v) return undefined;
-    return wallIssues(this.id)?.items.some((i) => i.key === v) ? v : undefined;
+    return wallIssues(this.id)?.items.some((i) => i.key === v) || wallKnows(this.id, v) ? v : undefined;
   }
 
   // --- the project's other repositories' pull requests --------------------------------

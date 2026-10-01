@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { JQL_BACKSLASH, JQL_INCOMPLETE, browseJql, checkUserJql, keyProject, scopeClause } from '../src/server/kanban/integrations/issues/browse/jql.js';
+import { JQL_BACKSLASH, JQL_INCOMPLETE, browseJql, narrows, checkUserJql, keyProject, scopeClause } from '../src/server/kanban/integrations/issues/browse/jql.js';
 import { projectQuery } from '../src/server/kanban/integrations/issues/browse/projectquery.js';
 import { parseBrowseFilters, parseBrowseMsg } from '../src/shared/kanban/browse.js';
 import type { BrowseFilters } from '../src/shared/kanban/browse.js';
@@ -152,4 +152,14 @@ test('the parser rejects a bad cursor, over-long values and values that could br
   refuse({ project: 'App' }, /project must be/);
   assert.throws(() => parseBrowseMsg('kanban.browse.issue', { t: 'kanban.browse.issue', project: 'app', scope: 's', issueKey: 'k'.repeat(401) }), /too long/);
   assert.throws(() => parseBrowseMsg('kanban.browse.children', { t: 'kanban.browse.children', project: 'app', scope: 's', issueKey: 'A-1', nodeId: 'a b' }), /nodeId/);
+});
+
+test('a narrowed top-level query keeps sub-tasks and relaxes the version and epic clauses; an unnarrowed one leaves them out', () => {
+  const scope = { projectKeys: ['UYT'] };
+  assert.ok(!narrows({ statusCategory: 'all', version: '7', epic: 'none' }) && narrows({ q: 'x' }) && narrows({ issueType: 'Sub-task' }) && narrows({ jql: 'a = 1' }) && !narrows({ labels: [] }));
+  const plain = browseJql(scope, { statusCategory: 'all' }, { topLevel: true, version: '7', epic: 'UYT-1' });
+  assert.equal(plain, 'project IN ("UYT") AND issuetype not in subTaskIssueTypes() AND fixVersion = 7 AND parent = "UYT-1" ORDER BY updated DESC');
+  const narrowed = browseJql(scope, { statusCategory: 'all', issueType: 'Sub-task' }, { topLevel: true, version: '7', epic: 'none' });
+  assert.equal(narrowed, 'project IN ("UYT") AND issuetype = "Sub-task" AND (fixVersion = 7 OR (issuetype in subTaskIssueTypes() AND fixVersion is EMPTY)) AND (parent is EMPTY OR issuetype in subTaskIssueTypes()) ORDER BY updated DESC');
+  assert.ok(!browseJql(scope, { q: 'x' }, { parent: 'UYT-1' }).includes('OR '), 'children of an issue are not relaxed');
 });

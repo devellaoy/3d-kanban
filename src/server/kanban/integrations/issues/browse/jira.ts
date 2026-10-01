@@ -7,10 +7,11 @@
 import type { BrowseFilters, BrowseGroup, BrowseIssue, BrowseOptions, StatusCategory } from '../../../../../shared/kanban/browse.js';
 import type { IssuePerson } from '../../../../../shared/kanban/issueops.js';
 import type { IssueSourceConfig } from '../../../../../shared/kanban/types.js';
-import { jiraIssue } from '../jira.js';
+import { jiraIssue, jqlQuote } from '../jira.js';
 import { jiraCall } from '../jira-ops.js';
 import type { IssueActIo } from '../source.js';
-import { JIRA_KEY_RE, browseJql, keyProject, scopeClause, type JqlWhere } from './jql.js';
+import { isEpicType } from '../../../../../shared/kanban/browsetree.js';
+import { JIRA_KEY_RE, browseJql, keyProject, narrows, scopeClause, type JqlWhere } from './jql.js';
 
 type JiraConfig = Extract<IssueSourceConfig, { kind: 'jira' }>;
 
@@ -111,9 +112,52 @@ export async function jiraSearchPage(io: IssueActIo, scope: JiraConfig, jql: str
   return { items, ...(next ? { next } : {}) };
 }
 
+const isSubtask = (i: BrowseIssue): boolean => i.subtask === true || i.hierarchy === -1;
+
+/**
+ * A narrowed search's page (jql.ts `narrows`) has sub-tasks in it. The ones whose parent doesn't
+ * fit the version or epic asked for go (a sub-task has no version or epic of its own: its parent's
+ * decide), and the parents that aren't on the page are fetched in one search and added, flagged
+ * `context`, in front of their first sub-task, so the tree can nest the sub-tasks under them.
+ */
+async function withContext(io: IssueActIo, scope: JiraConfig, page: { items: BrowseIssue[]; next?: string }, filters: BrowseFilters, where: JqlWhere, caches: JiraCaches) {
+  const subs = page.items.filter(isSubtask);
+  if (!subs.length) return page;
+  const onPage = new Map(page.items.map((i) => [i.key, i]));
+  const missing = [...new Set(subs.flatMap((s) => (s.parent && !onPage.has(s.parent.key) && JIRA_KEY_RE.test(s.parent.key) ? [s.parent.key] : [])))];
+  const fetched = missing.length ? (await jiraSearchPage(io, scope, `${scopeClause(scope)} AND key in (${missing.map(jqlQuote).join(', ')})`, caches)).items : [];
+  const parents = new Map([...onPage, ...fetched.map((i): [string, BrowseIssue] => [i.key, i])]);
+  const versions = [filters.version, where.version].filter((v): v is string => !!v);
+  const epics = [filters.epic, where.epic].filter((e): e is string => !!e);
+  const fits = (sub: BrowseIssue, up?: BrowseIssue): boolean => {
+    if (!versions.length && !epics.length) return true;
+    if (!up) return false;
+    const own = sub.fixVersions?.length ? sub.fixVersions : (up.fixVersions ?? []);
+    const epic = up.parent && isEpicType(up.parent.type, up.parent.hierarchy) ? up.parent.key : undefined;
+    return versions.every((v) => (v === 'none' ? !own.length : own.some((x) => x.id === v))) && epics.every((e) => (e === 'none' ? !epic : epic === e));
+  };
+  const items: BrowseIssue[] = [];
+  const added = new Set<string>();
+  for (const i of page.items) {
+    if (!isSubtask(i)) {
+      items.push(i);
+      continue;
+    }
+    const up = i.parent ? parents.get(i.parent.key) : undefined;
+    if (!fits(i, up)) continue;
+    if (up && !onPage.has(up.key) && !added.has(up.key)) {
+      added.add(up.key);
+      items.push({ ...up, context: true });
+    }
+    items.push(i);
+  }
+  return { ...page, items };
+}
+
 /** A page of the filters' issues in `where`. */
-export function jiraPage(io: IssueActIo, scope: JiraConfig, filters: BrowseFilters, where: JqlWhere, caches: JiraCaches, cursor?: string) {
-  return jiraSearchPage(io, scope, browseJql(scope, filters, where), caches, cursor, !!filters.q);
+export async function jiraPage(io: IssueActIo, scope: JiraConfig, filters: BrowseFilters, where: JqlWhere, caches: JiraCaches, cursor?: string) {
+  const page = await jiraSearchPage(io, scope, browseJql(scope, filters, where), caches, cursor, !!filters.q);
+  return where.topLevel && narrows(filters) ? withContext(io, scope, page, filters, where, caches) : page;
 }
 
 /** The approximate count for the query; `{}` when Jira can't say (a failed count never fails a page). Cached for a minute per site, source and query. */

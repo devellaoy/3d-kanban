@@ -80,8 +80,31 @@ function keyOf(v: string): string {
   return jqlQuote(v);
 }
 
+/**
+ * Whether the filters narrow the search beyond the status category, the version and the epic (a text,
+ * type, status, assignee, labels, sprint or raw JQL). A narrowed search doesn't leave sub-tasks out:
+ * it finds the ones that match, and the page sends their parents with them (jira.ts).
+ */
+export function narrows(f: BrowseFilters): boolean {
+  return !!(f.q?.trim() || f.issueType || f.status || f.assignee || f.labels?.length || f.sprint || f.jql?.trim());
+}
+
+const SUBTASK = 'issuetype in subTaskIssueTypes()';
+
+/** A fix version clause. `relaxed`: a sub-task with no version of its own passes too (its parent's versions decide, after the search). */
+function versionClause(v: string, relaxed: boolean): string {
+  if (idOr(v, 'none', 'The version') === 'none') return 'fixVersion is EMPTY';
+  return relaxed ? `(fixVersion = ${v} OR (${SUBTASK} AND fixVersion is EMPTY))` : `fixVersion = ${v}`;
+}
+
+/** An epic clause. `relaxed`: every sub-task passes too (the epic of its parent decides, after the search). */
+function epicClause(e: string, relaxed: boolean): string {
+  const base = e === 'none' ? 'parent is EMPTY' : `parent = ${keyOf(e)}`;
+  return relaxed ? `(${base} OR ${SUBTASK})` : base;
+}
+
 /** The filters as JQL clauses (not the scope). */
-function filterClauses(f: BrowseFilters): string[] {
+function filterClauses(f: BrowseFilters, relaxed = false): string[] {
   const out: string[] = [];
   const q = f.q?.trim();
   if (q) out.push(JIRA_KEY_RE.test(q) ? `(text ~ ${jqlQuote(q)} OR key = ${jqlQuote(q.toUpperCase())})` : `text ~ ${jqlQuote(q)}`);
@@ -102,9 +125,9 @@ function filterClauses(f: BrowseFilters): string[] {
   if (f.status) out.push(`status = ${jqlQuote(f.status)}`);
   if (f.issueType) out.push(`issuetype = ${jqlQuote(f.issueType)}`);
   for (const l of f.labels ?? []) out.push(`labels = ${jqlQuote(l)}`);
-  if (f.version) out.push(idOr(f.version, 'none', 'The version') === 'none' ? 'fixVersion is EMPTY' : `fixVersion = ${f.version}`);
+  if (f.version) out.push(versionClause(f.version, relaxed));
   if (f.sprint) out.push(idOr(f.sprint, 'open', 'The sprint') === 'open' ? 'sprint in openSprints()' : `sprint = ${f.sprint}`);
-  if (f.epic) out.push(f.epic === 'none' ? 'parent is EMPTY' : `parent = ${keyOf(f.epic)}`);
+  if (f.epic) out.push(epicClause(f.epic, relaxed));
   const a = f.assignee;
   if (a) out.push('id' in a ? `assignee = ${jqlQuote(a.id)}` : 'none' in a ? 'assignee is EMPTY' : 'assignee is not EMPTY');
   return out;
@@ -115,10 +138,12 @@ function filterClauses(f: BrowseFilters): string[] {
  * source has none). `order: false` for a count, which takes no ORDER BY.
  */
 export function browseJql(scope: Pick<JiraConfig, 'projectKeys'>, filters: BrowseFilters, where: JqlWhere = {}, order = true): string {
-  const parts = [scopeClause(scope), ...filterClauses(filters)];
-  if (where.topLevel) parts.push('issuetype not in subTaskIssueTypes()');
-  if (where.version) parts.push(idOr(where.version, 'none', 'The version') === 'none' ? 'fixVersion is EMPTY' : `fixVersion = ${where.version}`);
-  if (where.epic) parts.push(where.epic === 'none' ? 'parent is EMPTY' : `parent = ${keyOf(where.epic)}`);
+  // A top-level page of a narrowed search keeps the sub-tasks that match (see narrows).
+  const relaxed = !!where.topLevel && narrows(filters);
+  const parts = [scopeClause(scope), ...filterClauses(filters, relaxed)];
+  if (where.topLevel && !relaxed) parts.push('issuetype not in subTaskIssueTypes()');
+  if (where.version) parts.push(versionClause(where.version, relaxed));
+  if (where.epic) parts.push(epicClause(where.epic, relaxed));
   if (where.parent) parts.push(`parent = ${keyOf(where.parent)}`);
   const extra = filters.jql?.trim();
   if (extra) {

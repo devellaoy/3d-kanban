@@ -317,6 +317,7 @@ export function createIssues(ctx: KanbanContext, opts: IssuesOptions = {}) {
         watch,
         refresh: (project) => void (hasSources(project) ? refresh(project).catch(() => {}) : undefined),
         forget: (project) => void walls.delete(project),
+        known: (project, key) => find(project, key) !== undefined,
         sourcesChanged,
       });
       timer = setInterval(() => {

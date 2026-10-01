@@ -1,10 +1,13 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { createIssues } from '../src/server/kanban/integrations/issues/index.js';
-import { wallSourcesChanged } from '../src/server/kanban/integrations/issues/wall.js';
+import { wallIssues, wallSourcesChanged } from '../src/server/kanban/integrations/issues/wall.js';
 import { PROJECT_SCOPE_ERROR } from '../src/server/kanban/integrations/issues/github-project.js';
 import type { KanbanServerMsg } from '../src/shared/kanban/protocol.js';
 import type { IssueSourceConfig } from '../src/shared/kanban/types.js';
+import { groupByEpic } from '../src/shared/kanban/browsetree.js';
+import { Floor } from '../src/server/floor.js';
+import { presenceHandlers } from '../src/server/ws/handlers/presence.js';
 import { client, def, makeCtx } from './kanban-integrations-ctx.js';
 
 const SITE = 'team.atlassian.net';
@@ -148,6 +151,54 @@ test('Jira page: an issue of another project is dropped, and one issue of anothe
   assert.match((await ask('kanban.browse.issue', { scope: 'j', issueKey: 'UYT-7' })).message, /among the source's projects/);
 });
 
+// --- Sub-tasks in a narrowed search ---------------------------------------------------------------
+
+const EPIC_UP = { key: 'UYT-1', fields: { summary: 'Epic A', status: { name: 'To Do', statusCategory: { key: 'new' } }, issuetype: { name: 'Epic', hierarchyLevel: 1 } } };
+const STORY_UP = { key: 'UYT-10', fields: { summary: 'Story', status: { name: 'To Do', statusCategory: { key: 'new' } }, issuetype: { name: 'Story', hierarchyLevel: 0 } } };
+const SUBTASK = raw('UYT-11', { issuetype: { name: 'Sub-task', hierarchyLevel: -1, subtask: true }, parent: STORY_UP });
+const STORY = raw('UYT-10', { parent: EPIC_UP, fixVersions: [{ id: '7', name: '1.0' }], subtasks: [{ key: 'UYT-11', fields: { status: { statusCategory: { key: 'new' } } } }] });
+/** A site whose search finds the sub-task, and whose `key in (…)` search finds its story. */
+const subtaskSite = () => jiraSite((c) => (c.url.endsWith('/search/jql') ? { body: { issues: [c.body.jql.includes('key in (') ? STORY : SUBTASK], isLast: true } } : undefined));
+const searches = (http: ReturnType<typeof fetchStub>) => http.calls.filter((c) => c.url.endsWith('/search/jql')).map((c) => c.body.jql as string);
+
+test('Jira sub-tasks: a narrowed search keeps them and sends their parent as context, nested under the right epic', async () => {
+  const { ask, http } = setup({ http: subtaskSite() });
+  const got = await ask('kanban.browse.page', { scope: 'j', filters: { issueType: 'Sub-task' } });
+  const [main, parents] = searches(http);
+  assert.ok(!main.includes('subTaskIssueTypes'), 'sub-tasks are not left out');
+  assert.equal(parents, 'project IN ("UYT") AND key in ("UYT-10")', 'the missing parents come in one search, inside the scope');
+  assert.deepEqual(got.items.map((i: any) => [i.key, i.context]), [['UYT-10', true], ['UYT-11', undefined]]);
+  const tree = groupByEpic(got.items);
+  assert.deepEqual(tree.map((n) => [n.id, n.items.map((i) => i.key), n.nodes[0].children.map((c) => c.issue.key), n.done, n.total]), [['epic:UYT-1', ['UYT-10'], ['UYT-11'], 0, 0]]);
+});
+
+test('Jira sub-tasks: searching a sub-task’s key finds it', async () => {
+  const { ask, http } = setup({ http: subtaskSite() });
+  const got = await ask('kanban.browse.page', { scope: 'j', filters: { q: 'UYT-11' } });
+  assert.match(searches(http)[0], /key = "UYT-11"/);
+  assert.deepEqual(got.items.map((i: any) => i.key), ['UYT-10', 'UYT-11']);
+});
+
+test('Jira sub-tasks: a version group goes by the parent’s versions, an epic by the parent’s epic', async () => {
+  const { ask, http } = setup({ http: subtaskSite() });
+  const keys = async (filters: object, where: object) => (await ask('kanban.browse.page', { scope: 'j', filters, ...where })).items.map((i: any) => i.key);
+  const f = { issueType: 'Sub-task' };
+  assert.deepEqual(await keys(f, { group: '7' }), ['UYT-10', 'UYT-11']);
+  assert.ok(searches(http)[0].includes('(fixVersion = 7 OR (issuetype in subTaskIssueTypes() AND fixVersion is EMPTY))'));
+  assert.deepEqual(await keys(f, { group: '8' }), [], 'the parent is in another version');
+  assert.deepEqual(await keys(f, { group: 'none' }), [], 'the parent has a version');
+  assert.deepEqual(await keys(f, { group: '7', epic: 'UYT-1' }), ['UYT-10', 'UYT-11']);
+  assert.deepEqual(await keys(f, { group: '7', epic: 'UYT-9' }), [], 'the parent’s epic is another');
+  assert.deepEqual(await keys(f, { group: '7', epic: 'none' }), [], 'the parent has an epic');
+});
+
+test('Jira sub-tasks: without anything narrowing, they are still left out (the tree shows them under their story)', async () => {
+  const { ask, http } = setup({ http: subtaskSite() });
+  await ask('kanban.browse.page', { scope: 'j', filters: { statusCategory: 'new', version: '7' }, group: '7', epic: 'UYT-1' });
+  assert.equal(searches(http).length, 1);
+  assert.ok(searches(http)[0].includes('issuetype not in subTaskIssueTypes()') && !searches(http)[0].includes(' OR '));
+});
+
 test('Jira text search: a 400 becomes a friendly line, a 429 too', async () => {
   const { ask } = setup({ http: jiraSite((c) => (c.url.endsWith('/search/jql') ? { status: c.body.jql.includes('text ~') ? 400 : 429, body: { errorMessages: ['bad'] } } : undefined)) });
   assert.match((await ask('kanban.browse.page', { scope: 'j', filters: { q: 'a[b' } })).message, /couldn’t search for that text/);
@@ -181,6 +232,20 @@ test('Jira children: the sub-tasks of a key, all statuses, inside the scope', as
   assert.equal(got.issueKey, 'UYT-1');
   assert.equal(http.calls.find((c) => c.url.endsWith('/search/jql'))!.body.jql, 'project IN ("UYT") AND parent = "UYT-1" ORDER BY updated DESC');
   assert.match((await ask('kanban.browse.children', { scope: 'j', issueKey: 'nokey' })).message, /isn’t a Jira issue key/);
+});
+
+test('tasks: items of a page and the epics they sit under carry the task made from them', async () => {
+  const epicUp = { key: 'UYT-1', fields: { summary: 'Epic A', issuetype: { name: 'Epic', hierarchyLevel: 1 } } };
+  const { ask, ctx } = setup({ http: jiraSite((c) => (c.url.endsWith('/search/jql') ? { body: { issues: [raw('UYT-1'), raw('UYT-2', { parent: epicUp })], isLast: true } } : undefined)) });
+  assert.equal((await ask('kanban.browse.page', { scope: 'j', filters: {} })).items[1].parent.taskId, undefined);
+  const mine = (key: string) => (ctx.repo.findTaskByTicket('app', key) ?? undefined)?.id;
+  await ask('kanban.issues.createTask', { issueKey: 'UYT-1' });
+  await ask('kanban.issues.createTask', { issueKey: 'UYT-2' });
+  const got = await ask('kanban.browse.page', { scope: 'j', filters: {} });
+  assert.deepEqual([got.items[0].taskId, got.items[1].taskId, got.items[1].parent.taskId], [mine('UYT-1'), mine('UYT-2'), mine('UYT-1')]);
+  assert.ok(mine('UYT-1') !== undefined);
+  const kids = await ask('kanban.browse.children', { scope: 'j', issueKey: 'UYT-1' });
+  assert.equal(kids.items[1].taskId, mine('UYT-2'));
 });
 
 test('Jira options: statuses with categories, types, versions and open epics', async () => {
@@ -295,6 +360,15 @@ test('GitHub groups: iterations (current first, completed under a node) or Statu
   assert.deepEqual((await byStatus.ask('kanban.browse.groups', { scope: 'p', filters: {} })).groups.map((g: any) => g.id), ['s:Todo', 's:Doing', 'no:status']);
 });
 
+test('GitHub groups: a completed iteration named by the filter is its own group', async () => {
+  const iter = (title: string, startDate: string) => ({ id: title, title, startDate, duration: 14 });
+  const fields = [{ __typename: 'ProjectV2IterationField', name: 'Iteration', configuration: { iterations: [iter('S1', '2026-09-01')], completedIterations: [iter('S0', '2026-08-01')] } }];
+  const { ask } = setup({ gh: ghStub(() => JSON.stringify({ data: { repositoryOwner: { projectV2: { fields: { nodes: fields } } } } })) });
+  const got = await ask('kanban.browse.groups', { scope: 'p', filters: { iteration: 'S0' } });
+  assert.deepEqual(got.groups.map((g: any) => [g.id, g.kind, g.released]), [['i:S0', 'iteration', undefined]]);
+  assert.deepEqual((await ask('kanban.browse.groups', { scope: 'p', filters: { iteration: 'S1' } })).groups.map((g: any) => g.id), ['i:S1']);
+});
+
 test('GitHub children: only the sub-issues of an issue that is on the board', async () => {
   const sub = (n: number) => ({ id: `I_${n}`, number: n, title: `Sub ${n}`, url: `https://github.com/o/r/issues/${n}`, state: n === 2 ? 'CLOSED' : 'OPEN', updatedAt: 'u', repository: { nameWithOwner: 'o/r' }, assignees: { nodes: [] }, labels: { nodes: [] }, projectItems: { nodes: [{ id: `PVTI_${n}`, project: { owner: { login: 'o' }, number: 1 }, status: { name: 'Done' } }] } });
   const onBoard = { project: { owner: { login: 'o' }, number: 1 } };
@@ -318,6 +392,36 @@ test('GitHub issue: its body and Status come from the board item; an issue off t
   assert.match((await ask('kanban.browse.issue', { scope: 'p', issueKey: 'ghp:evil/9#PVTI_1' })).message, /isn't an issue of the board/);
 });
 
+test('GitHub sub-issues that are not board items open and expand when their parents lead to the board; otherwise they are refused', async () => {
+  const BOARD_ITEM = { project: { owner: { login: 'o' }, number: 1 } };
+  const OTHER = { project: { owner: { login: 'o' }, number: 2 } };
+  const sub = (n: number) => ({ __typename: 'Issue', ...ITEM(n).content, body: 'b', projectItems: { nodes: [] } });
+  const subIssue = (n: number) => ({ ...ITEM(n).content, projectItems: { nodes: [] } });
+  /** `chain`: what the issue's parents are (nearest first), each with the boards it is an item of. */
+  const gh = (chain: unknown[][]) => ghStub((a) => {
+    const query = q(a);
+    if (query.includes('issueOrPullRequest')) return JSON.stringify({ data: { repository: { issueOrPullRequest: sub(30) } } });
+    if (query.includes('subIssues')) return JSON.stringify({ data: { node: { projectItems: { nodes: [] }, subIssues: { totalCount: 1, pageInfo: { hasNextPage: false }, nodes: [subIssue(31)] } } } });
+    const nest = (up: unknown[][]): unknown => (up.length ? { projectItems: { nodes: up[0] }, parent: nest(up.slice(1)) } : null);
+    return JSON.stringify({ data: { node: { parent: nest(chain) } } });
+  });
+  const ok = setup({ gh: gh([[OTHER], [], [BOARD_ITEM]]) });
+  const opened = await ok.ask('kanban.browse.issue', { scope: 'p', issueKey: 'gh:o/r#30' });
+  assert.equal(opened.t, 'kanban.browseIssue', opened.message);
+  assert.equal(opened.issue.key, 'gh:o/r#30');
+  const kids = await ok.ask('kanban.browse.children', { scope: 'p', issueKey: 'gh:o/r#30', nodeId: 'I_30' });
+  assert.deepEqual(kids.items.map((i: any) => i.key), ['gh:o/r#31']);
+  // The browsed sub-issue takes the actions too.
+  assert.equal((await ok.ask('kanban.issue.comments', { issueKey: 'gh:o/r#30' })).t, 'kanban.issueComments');
+
+  const off = setup({ gh: gh([[OTHER], []]) });
+  assert.match((await off.ask('kanban.browse.issue', { scope: 'p', issueKey: 'gh:o/r#30' })).message, /isn't on the board o\/1/);
+  assert.match((await off.ask('kanban.browse.children', { scope: 'p', issueKey: 'gh:o/r#30', nodeId: 'I_30' })).message, /isn't on the board/);
+  // Further up than the levels followed is not followed.
+  const far = setup({ gh: gh([[], [], [], [], [], [BOARD_ITEM]]) });
+  assert.match((await far.ask('kanban.browse.issue', { scope: 'p', issueKey: 'gh:o/r#30' })).message, /isn't on the board/);
+});
+
 test('load: a gh: key of the project’s repository is fetched with gh issue view, one of another repository is not', async () => {
   const view = ghStub((a) => (a[0] === 'issue' && a[1] === 'view' ? JSON.stringify({ number: 8, title: 'Eight', url: 'https://github.com/o/r/issues/8', body: '', state: 'OPEN', assignees: [], labels: [], updatedAt: 'u' }) : '{"data":{}}'));
   const { ask } = setup({ gh: view, sources: [REPO] });
@@ -331,4 +435,23 @@ test('load: a gh: key of the project’s repository is fetched with gh issue vie
 test('server messages the browse window gets are in the protocol’s union', () => {
   const m: KanbanServerMsg = { t: 'kanban.browseCount', project: 'app', scope: 'j' };
   assert.equal(m.t, 'kanban.browseCount');
+});
+
+test('a browsed issue the source filters keep off the wall is still the floor’s to queue or carry; an arbitrary key is not', async (t) => {
+  const { ask, issues } = setup({ sources: [JIRA] });
+  issues.plugin.start!();
+  t.after(() => issues.plugin.stop!());
+  await ask('kanban.browse.issue', { scope: 'j', issueKey: 'UYT-77' });
+  assert.deepEqual(wallIssues('app')!.items, [], 'not on the wall');
+  const floor = { id: 'app' };
+  const cardKey = (v: unknown) => Floor.prototype.cardKey.call(floor as never, v);
+  assert.equal(cardKey('UYT-77'), 'UYT-77');
+  assert.equal(cardKey('UYT-78'), undefined, 'never browsed');
+  assert.equal(cardKey('gh:victim/repo#1'), undefined);
+  assert.equal(Floor.prototype.cardKey.call({ id: 'other' } as never, 'UYT-77'), undefined, 'another floor');
+  // Carrying keeps the key (queue.add takes the same cardKey before it stores one).
+  const peer: any = {};
+  const sent: unknown[] = [];
+  presenceHandlers.carry({ floorOf: () => ({ cardKey }), broadcast: (m: unknown) => sent.push(m) } as never, { peer } as never, { t: 'carry', issueKey: 'UYT-77', title: 'Seventy-seven' } as never);
+  assert.equal(peer.carrying?.key, 'UYT-77');
 });

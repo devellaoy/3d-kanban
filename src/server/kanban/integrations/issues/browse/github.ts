@@ -77,7 +77,23 @@ const CHILDREN_QUERY = `query($id: ID!, $after: String) { node(id: $id) { ... on
   subIssues(first: ${PAGE}, after: $after) { totalCount pageInfo { hasNextPage endCursor } nodes { ${ISSUE(false)} ${BOARDS} } }
 } } }`;
 
+/** The parent chain of an issue, `levels` deep, each with the boards it is an item of. */
+const chain = (levels: number): string => `parent { ${BOARDS} ${levels > 1 ? chain(levels - 1) : ''} }`;
+/** How far up a sub-issue's parents are followed to find the board. */
+const ANCESTOR_LEVELS = 5;
+const ANCESTORS_QUERY = `query($id: ID!) { node(id: $id) { ... on Issue { ${chain(ANCESTOR_LEVELS)} } } }`;
+
 type Vars = [flag: '-f' | '-F', name: string, value: string][];
+
+/** Whether an issue's parent chain (the issue itself not included) reaches an item of the board. */
+async function parentOnBoard(io: IssueSourceIo, c: ProjectConfig, nodeId: string): Promise<boolean> {
+  let at = (await graphql(io, ANCESTORS_QUERY, [['-f', 'id', nodeId]])).node;
+  for (let n = 0; n < ANCESTOR_LEVELS && at?.parent; n++) {
+    at = at.parent;
+    if (itemOnBoard(at.projectItems?.nodes, c)) return true;
+  }
+  return false;
+}
 
 /** One GraphQL call: the answer's `data`. gh's token errors become the text that says what to run. */
 async function graphql(io: IssueSourceIo, query: string, vars: Vars): Promise<any> {
@@ -165,6 +181,9 @@ export async function ghGroups(io: IssueSourceIo, c: ProjectConfig, filters: Bro
     if (released) return f.iteration.completed.sort((a, b) => b.start.localeCompare(a.start)).map((i) => iter(i, true));
     const wanted = (g: BrowseGroup) => !filters.iteration || g.title === filters.iteration;
     const groups = f.iteration.active.sort((a, b) => a.start.localeCompare(b.start)).map((i) => iter(i, false)).filter(wanted);
+    // A completed iteration named by the filter is its own group (else it would hide behind the collapsed node, which a filter removes).
+    const done = filters.iteration && !groups.length ? f.iteration.completed.find((i) => i.title === filters.iteration) : undefined;
+    if (done) return [iter(done, false)];
     const finished: BrowseGroup[] = f.iteration.completed.length && !filters.iteration ? [{ id: 'completed', title: 'Completed iterations', kind: 'released' }] : [];
     return [...groups, ...finished, ...(filters.iteration ? [] : [{ id: 'no:iteration', title: 'No iteration', kind: 'none' as const }])];
   }
@@ -190,7 +209,7 @@ export async function ghOptions(io: IssueSourceIo, c: ProjectConfig): Promise<Br
 export async function ghChildren(io: IssueSourceIo, c: ProjectConfig, nodeId: string, cursor?: string): Promise<{ items: BrowseIssue[]; next?: string; total: number }> {
   const node = (await graphql(io, CHILDREN_QUERY, [['-f', 'id', nodeId], ...(cursor ? ([['-f', 'after', cursor]] as Vars) : [])])).node;
   if (!node?.subIssues) throw new Error('That isn’t an issue with sub-issues');
-  if (!itemOnBoard(node.projectItems?.nodes, c)) throw new Error(`That issue isn't on the board ${c.owner}/${c.number}`);
+  if (!itemOnBoard(node.projectItems?.nodes, c) && !(await parentOnBoard(io, c, nodeId))) throw new Error(`That issue isn't on the board ${c.owner}/${c.number}, nor under an item of it`);
   const url = `https://github.com/${c.owner}`;
   const items = (node.subIssues.nodes ?? []).flatMap((n: any) => {
     // The sub-issue's Status and Iteration are those of its item on this board, when it is on it.
@@ -210,8 +229,9 @@ export async function ghGet(io: IssueSourceIo, c: ProjectConfig, key: string): P
     const found = (await graphql(io, ISSUE_QUERY, [['-f', 'owner', owner], ['-f', 'name', name], ['-F', 'number', String(gh.number)]])).repository?.issueOrPullRequest;
     const item = found ? itemOnBoard(found.projectItems?.nodes, c) : undefined;
     if (!found) throw new Error(`${key} wasn't found on GitHub (or gh can't see it)`);
-    if (!item) throw new Error(`${key} isn't on the board ${c.owner}/${c.number}`);
-    const issue = browseIssue({ id: item.id, status: item.status, iteration: item.iteration, content: found }, c, url);
+    // A sub-issue that isn't an item of the board is the board's when its parents lead to one that is.
+    if (!item && !(found.__typename === 'Issue' && typeof found.id === 'string' && (await parentOnBoard(io, c, found.id)))) throw new Error(`${key} isn't on the board ${c.owner}/${c.number}`);
+    const issue = browseIssue({ id: item?.id, status: item?.status, iteration: item?.iteration, content: found }, c, url);
     if (!issue) throw new Error(`${key} can't be shown`);
     return issue;
   }

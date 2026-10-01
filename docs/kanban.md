@@ -374,6 +374,11 @@ site and the office only ever shows the source's own projects.
   into one node, and issues without a version or an epic are under *No version* and *No epic* (a site that
   still uses the old *Epic Link* field lists everything under *No epic*). GitHub: the board's iteration
   (or its Status, when it has no iterations) → items → sub-issues.
+- **Sub-tasks in searches.** Without a search or filter they sit under their story. Once you search or
+  filter by text, type, status, assignee, label, sprint or JQL, matching sub-tasks are found too, shown
+  under their story (a dimmed one that doesn't match itself, only there to hold them) and under the
+  version and epic of that story. Pick the type *Sub-task* or type a sub-task's key to find one. A
+  completed GitHub iteration chosen in the iteration filter shows its own node.
 - **Counts and pages.** Opening a node fetches its first page; the counts are asked for one at a time,
   are approximate on Jira and show nothing when the source can't tell. **Load more** fetches the next page.
 - **Needs.** Jira: the token in ⚙️ Settings → 🗂️ Kanban (as for the other Jira features). GitHub project:

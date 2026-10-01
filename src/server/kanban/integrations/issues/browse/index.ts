@@ -5,7 +5,7 @@
 // out under the shared token (so the office's name signs what it writes, as everywhere), GitHub
 // reads by the office's gh.
 
-import type { BrowseClientMsg, BrowseScope, BrowseServerMsg } from '../../../../../shared/kanban/browse.js';
+import type { BrowseClientMsg, BrowseIssue, BrowseScope, BrowseServerMsg } from '../../../../../shared/kanban/browse.js';
 import { parseGhKey } from '../../../../../shared/kanban/issuecard.js';
 import type { IssueSourceConfig, NormalizedIssue } from '../../../../../shared/kanban/types.js';
 import type { KanbanClient, KanbanContext, KanbanPlugin } from '../../../registry.js';
@@ -50,6 +50,17 @@ export function createBrowse(ctx: KanbanContext, deps: BrowseDeps) {
 
   const reply = (c: KanbanClient, m: { project: string; scope: string; rid?: string }, msg: Record<string, unknown> & { t: BrowseServerMsg['t'] }) =>
     c.send({ ...msg, ...(m.rid ? { rid: m.rid } : {}), project: m.project, scope: m.scope } as unknown as BrowseServerMsg);
+
+  /** The page's issues (and their parents) with the task already made from each. */
+  const withTasks = (project: string, items: BrowseIssue[]): BrowseIssue[] => {
+    const tasks = ctx.repo.ticketTaskIds(project);
+    if (!tasks.size) return items;
+    return items.map((i) => {
+      const taskId = tasks.get(i.key);
+      const up = i.parent ? tasks.get(i.parent.key) : undefined;
+      return taskId === undefined && up === undefined ? i : { ...i, ...(taskId !== undefined ? { taskId } : {}), ...(i.parent && up !== undefined ? { parent: { ...i.parent, taskId: up } } : {}) };
+    });
+  };
 
   /** Checks the project and the scope, then runs `go`; any error it throws is the answer. */
   const scoped =
@@ -114,21 +125,21 @@ export function createBrowse(ctx: KanbanContext, deps: BrowseDeps) {
     'kanban.browse.page': scoped<Msg<'kanban.browse.page'>>(async (c, m, { cfg, io }) => {
       if (cfg.kind === 'github-project') {
         const page = await ghPage(io, cfg, m.filters, m.group, m.cursor);
-        return reply(c, m, { t: 'kanban.browsePage', items: page.items, total: page.total, ...(page.next ? { next: page.next } : {}) });
+        return reply(c, m, { t: 'kanban.browsePage', items: withTasks(m.project, page.items), total: page.total, ...(page.next ? { next: page.next } : {}) });
       }
       const page = await jiraPage(io, cfg, m.filters, { topLevel: true, version: m.group, epic: m.epic }, caches, m.cursor);
-      reply(c, m, { t: 'kanban.browsePage', items: page.items, ...(page.next ? { next: page.next } : {}) });
+      reply(c, m, { t: 'kanban.browsePage', items: withTasks(m.project, page.items), ...(page.next ? { next: page.next } : {}) });
     }),
 
     'kanban.browse.children': scoped<Msg<'kanban.browse.children'>>(async (c, m, { cfg, io }) => {
       if (cfg.kind === 'github-project') {
         if (!m.nodeId) throw new Error('GitHub sub-issues are asked for by the issue’s node id');
         const page = await ghChildren(io, cfg, m.nodeId, m.cursor);
-        return reply(c, m, { t: 'kanban.browsePage', issueKey: m.issueKey, items: page.items, total: page.total, ...(page.next ? { next: page.next } : {}) });
+        return reply(c, m, { t: 'kanban.browsePage', issueKey: m.issueKey, items: withTasks(m.project, page.items), total: page.total, ...(page.next ? { next: page.next } : {}) });
       }
       if (!JIRA_KEY_RE.test(m.issueKey)) throw new Error(`${m.issueKey} isn’t a Jira issue key`);
       const page = await jiraSearchPage(io, cfg, browseJql(cfg, { statusCategory: 'all' }, { parent: m.issueKey }), caches, m.cursor);
-      reply(c, m, { t: 'kanban.browsePage', issueKey: m.issueKey, items: page.items, ...(page.next ? { next: page.next } : {}) });
+      reply(c, m, { t: 'kanban.browsePage', issueKey: m.issueKey, items: withTasks(m.project, page.items), ...(page.next ? { next: page.next } : {}) });
     }),
 
     'kanban.browse.issue': scoped<Msg<'kanban.browse.issue'>>(async (c, m, { cfg, io }) => {

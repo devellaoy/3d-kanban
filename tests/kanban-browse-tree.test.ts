@@ -61,6 +61,13 @@ test('Load more keeps the order: old epics grow in place, new ones come after, N
   assert.deepEqual([t2[0].done, t2[0].total, t2[0].statusCategory], [1, 2, 'done']);
 });
 
+test('a sub-task nests under its story, a context story counts for nothing, and a sub-task with no loaded parent goes by its own epic or None', () => {
+  const story = issue('S1', { parent: EPIC_A, context: true });
+  const tree = groupByEpic([story, issue('S1-1', { subtask: true, parent: { key: 'S1', title: 'S' }, statusCategory: 'done' }), issue('S2', { parent: EPIC_A, statusCategory: 'done' }), issue('X-1', { subtask: true, parent: { key: 'GONE', title: 'G' } })]);
+  assert.deepEqual(tree.map((n) => [n.id, n.items.map((i) => i.key), n.done, n.total]), [['epic:UYT-1', ['S1', 'S2'], 1, 1], ['epic:none', ['X-1'], 0, 1]]);
+  assert.deepEqual(tree[0].nodes.map((n) => [n.issue.key, n.children.map((c) => c.issue.key), n.done, n.total]), [['S1', ['S1-1'], 1, 1], ['S2', [], 0, 0]]);
+});
+
 test('no issues, no nodes; the same issue twice is once', () => {
   assert.deepEqual(groupByEpic([]), []);
   assert.equal(groupByEpic([issue('A'), issue('A')])[0].items.length, 1);

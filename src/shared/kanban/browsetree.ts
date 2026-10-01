@@ -50,8 +50,10 @@ export interface EpicNode extends Progress {
   /** What the epic's status is known to be: from its own record, else from what its issues' `parent` said. */
   status?: string;
   statusCategory?: BrowseIssue['statusCategory'];
-  /** The loaded issues of the epic (never the epic itself), in the order they came. */
+  /** The loaded top-level issues of the epic (never the epic itself, nor an issue nested under another one), in the order they came. */
   items: BrowseIssue[];
+  /** `items` as nodes, in the same order, with the loaded sub-tasks under their parent. */
+  nodes: ItemNode[];
 }
 
 /** An issue and the loaded issues nested under it (GitHub sub-issues, Jira sub-tasks once fetched). `done` / `total` are of the direct children. */
@@ -78,49 +80,56 @@ export function mergeIssues(prev: BrowseIssue[], more: BrowseIssue[]): BrowseIss
 
 /**
  * The issues of one version (or any list) as epics, first seen first, then "No epic" when some issue
- * has none. The same issue twice is kept once (the later copy).
+ * has none. The same issue twice is kept once (the later copy). An issue whose `parent` is another
+ * loaded (non-epic) issue nests under it (a sub-task under its story, which may be a `context` issue
+ * that only came to hold it); the rest go by their epic. `context` issues count in neither `done`
+ * nor `total`.
  */
 export function groupByEpic(items: BrowseIssue[]): EpicNode[] {
+  const all = mergeIssues([], items);
+  const forest = nest(all.filter((i) => !isEpic(i)));
   const nodes = new Map<string, EpicNode>();
   const node = (key: string, title: string): EpicNode => {
     let n = nodes.get(key);
     if (!n) {
-      n = { id: `epic:${key}`, kind: 'epic', key, title, items: [], done: 0, total: 0 };
+      n = { id: `epic:${key}`, kind: 'epic', key, title, items: [], nodes: [], done: 0, total: 0 };
       nodes.set(key, n);
     }
     return n;
   };
-  const none: BrowseIssue[] = [];
-  for (const i of mergeIssues([], items)) {
+  const none: ItemNode[] = [];
+  for (const i of all) {
     if (isEpic(i)) {
       const n = node(i.key, i.title);
       n.issue = i;
       n.title = i.title;
       if (i.status) n.status = i.status;
       if (i.statusCategory) n.statusCategory = i.statusCategory;
-    } else if (i.parent && isEpicType(i.parent.type, i.parent.hierarchy)) {
+    }
+  }
+  for (const root of forest) {
+    const i = root.issue;
+    if (i.parent && isEpicType(i.parent.type, i.parent.hierarchy)) {
       const n = node(i.parent.key, i.parent.title);
-      n.items.push(i);
+      n.nodes.push(root);
       // The epic's own record, when it comes, has the final say.
       if (!n.issue) {
         if (i.parent.status) n.status = i.parent.status;
         if (i.parent.statusCategory) n.statusCategory = i.parent.statusCategory;
       }
-    } else none.push(i);
+    } else none.push(root);
   }
   const out = [...nodes.values()];
-  if (none.length) out.push({ id: 'epic:none', kind: 'none', title: 'No epic', items: none, done: 0, total: 0 });
-  for (const n of out) Object.assign(n, progress(n.items));
+  if (none.length) out.push({ id: 'epic:none', kind: 'none', title: 'No epic', items: [], nodes: none, done: 0, total: 0 });
+  for (const n of out) {
+    n.items = n.nodes.map((x) => x.issue);
+    Object.assign(n, progress(n.items.filter((i) => !i.context)));
+  }
   return out;
 }
 
-/**
- * Board items as a forest: an item whose `parent` is among the items nests under it, any other is a
- * root. Roots and children keep the order they came in; a loop of parents (it can't happen, but
- * data is data) leaves its members as roots.
- */
-export function groupProjectItems(items: BrowseIssue[]): ItemNode[] {
-  const all = mergeIssues([], items);
+/** The issues as a forest: one whose `parent` is among them nests under it, any other is a root (a loop of parents leaves its members as roots). Both keep the order they came in. */
+function nest(all: BrowseIssue[]): ItemNode[] {
   const byKey = new Map(all.map((i) => [i.key, i]));
   const nodes = new Map<string, ItemNode>(all.map((i) => [i.key, { issue: i, children: [], done: 0, total: 0 }]));
   const loops = (i: BrowseIssue): boolean => {
@@ -139,8 +148,17 @@ export function groupProjectItems(items: BrowseIssue[]): ItemNode[] {
     if (up && !loops(i)) up.children.push(me);
     else roots.push(me);
   }
-  for (const n of nodes.values()) Object.assign(n, progress(n.children.map((c) => c.issue)));
+  for (const n of nodes.values()) Object.assign(n, progress(n.children.map((c) => c.issue).filter((c) => !c.context)));
   return roots;
+}
+
+/**
+ * Board items as a forest: an item whose `parent` is among the items nests under it, any other is a
+ * root. Roots and children keep the order they came in; a loop of parents (it can't happen, but
+ * data is data) leaves its members as roots.
+ */
+export function groupProjectItems(items: BrowseIssue[]): ItemNode[] {
+  return nest(mergeIssues([], items));
 }
 
 /**

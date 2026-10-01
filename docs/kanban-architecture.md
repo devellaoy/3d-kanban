@@ -452,6 +452,17 @@ answers `kanban.ok {rid, ...}` or `kanban.error {rid, message}`. Deltas are push
     and the user's `jql` is checked (`checkUserJql`: one complete expression, no backslash outside a quoted literal) and AND-ed in
     parentheses. As a second line, every issue a Jira search or read returns must be in the source's projects (its `project`
     field, else the key's prefix) or it is dropped (a single issue is refused), and `browse.count` answers no count for raw JQL.
+    - **Sub-tasks and context.** A top-level Jira page leaves sub-tasks out (the tree fetches them under their story), unless the
+      filters narrow the search beyond status category, version and epic (text, type, status, assignee, labels, sprint, raw JQL).
+      Then matching sub-tasks are returned, and their parents that aren't on the page come in one extra `key in (…)` search as
+      items flagged `context: true` (they don't match the filters; the tree nests the sub-tasks under them, and they count as
+      neither done nor total). A sub-task has no version or epic of its own, so for a version or epic node the JQL lets
+      sub-tasks without a version (any, for an epic) through and the server keeps the ones whose parent's versions / epic fit;
+      pages may come back shorter. `groupByEpic` nests an item whose `parent.key` is another loaded item under it.
+    - **Tasks.** Every item of a `browsePage` (and each `parent`) carries `taskId` when a task was made from it.
+    - **GitHub scope.** An issue may be opened or expanded when it is an item of the scope's board **or** its parent chain
+      (`Issue.parent`, up to 5 levels) reaches one; any other key is refused. A completed iteration named by the `iteration`
+      filter comes back as its own group.
     - **Actions and the browsed cache.** `issue.*` and `issues.createTask` accept an issue that is on the project's list, one
       acted on lately, **one opened from Browse** (`kanban.browse.issue` keeps it in a bounded per-project set, 300 issues for
       12 hours, the oldest let go first), or else one the server **loads again** from a source of the project (within that
@@ -465,7 +476,9 @@ answers `kanban.ok {rid, ...}` or `kanban.error {rid, message}`. Deltas are push
     (`integrations/issues/wall.ts`): the floor's upstream `gh.issues` carries them as `GhIssue`s with
     `key`, `source`, `status` and `taskId` (`number` only for a GitHub issue of one of the project's
     repositories, else 0), and falls back to upstream's list without sources. Cards are handed out with
-    `issueKey` (see kanban-coupling.md, Messages).
+    `issueKey` (see kanban-coupling.md, Messages). `Floor.cardKey` accepts a key the wall lists **or** one the project knows
+    within its scope (`wallKnows`: on the list, acted on, or browsed, though the filters keep it off the wall), so queueing,
+    carrying or handing a browsed issue keeps its `issueKey`; any other key is dropped.
   - Admin only (upstream `meOf(accountId).admin`): `settings.set`, `project.settings.set`, `project.repos.set`,
     `project.rename`, `project.prompt.set`, `secrets.set`, `skills.sync`. `secrets.set` is answered with `kanban.settings` (configured flags
     only). The `/api/v1` key is stored as `sha256:<hex>`.

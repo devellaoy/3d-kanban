@@ -18,6 +18,8 @@ export interface WallProvider {
   refresh(project: string): void;
   /** The cards may have changed (a task made from one, a refresh): drop the built board. */
   forget(project: string): void;
+  /** Whether the project knows the issue within its scope: one on its list, acted on, or browsed (the browsed set only holds scoped issues). */
+  known(project: string, key: string): boolean;
   /** The project's sources changed: its old cards go, and the new ones are fetched (after one under way). */
   sourcesChanged(project: string): void;
 }
@@ -47,6 +49,16 @@ export function wallIssues(project: string): GhState<GhIssue> | undefined {
   } catch (err) {
     console.error("agent-office: the issues board couldn't read the project's issue sources:", err);
     return undefined;
+  }
+}
+
+/** Whether the project knows the issue key within its sources' scope although the board may not list it (a browsed or acted-on issue). */
+export function wallKnows(project: string, key: string): boolean {
+  try {
+    return provider?.known(project, key) ?? false;
+  } catch (err) {
+    console.error("agent-office: the issues board couldn't look the issue up:", err);
+    return false;
   }
 }
 

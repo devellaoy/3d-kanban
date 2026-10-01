@@ -69,10 +69,14 @@ export type BrowseIssue = NormalizedIssue & {
   /** A GitHub project's iteration (its title). */
   iteration?: string;
   /** The issue above this one (Jira's `parent`: the epic of a story, the story of a sub-task; GitHub's parent issue). */
-  parent?: { key: string; title: string; type?: string; hierarchy?: number; status?: string; statusCategory?: StatusCategory };
+  parent?: { key: string; title: string; type?: string; hierarchy?: number; status?: string; statusCategory?: StatusCategory; /** The task made from the parent, when there is one (so an epic's header can link to it). */ taskId?: number };
   /** Sub-tasks (Jira) or sub-issues (GitHub), and how many are done. */
   childCount?: number;
   childDone?: number;
+  /** The issue doesn't match the filters; it is sent as the parent of a matching sub-task, which the tree nests under it. Counts as neither done nor total. */
+  context?: true;
+  /** The task made from this issue, when there is one. */
+  taskId?: number;
   /** A GitHub issue's node id, which `kanban.browse.children` needs. */
   nodeId?: string;
 };
