@@ -125,12 +125,10 @@ export async function jiraPeople(io: IssueActIo, site: string, key: string, quer
     .map((u: any): IssuePerson => ({ id: String(u.accountId), name: String(u.displayName ?? u.accountId), ...(u.avatarUrls?.['48x48'] ? { avatar: String(u.avatarUrls['48x48']) } : {}) }));
 }
 
-/** Assigns the issue to a person by account id, or to nobody. Resolves to the new assignee's name. */
+/** Assigns the issue to a person by account id, or to nobody. Resolves to the new assignee's name (as the browser said it, else the id). */
 export async function jiraAssign(io: IssueActIo, site: string, key: string, to: IssueAssignTo): Promise<string | undefined> {
   // The token is shared, so the office can't tell which Jira user `me` is: the browser sends the account id it remembers.
   if (to && 'me' in to) throw new Error('The office doesn’t know which Jira user you are: pick yourself in the list and pin it as “This is me”');
   await jiraCall(io, site, 'PUT', `${issuePath(key)}/assignee`, { accountId: to ? to.id : null });
-  if (!to) return undefined;
-  const now = await jiraCall(io, site, 'GET', `${issuePath(key)}?fields=assignee`);
-  return String(now.fields?.assignee?.displayName ?? to.id);
+  return to ? (to.name ?? to.id) : undefined;
 }

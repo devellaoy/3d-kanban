@@ -40,8 +40,8 @@ export interface IssuePerson {
   avatar?: string;
 }
 
-/** Who an issue is assigned to: the asker (`me`), a person from the people list, or nobody (null). */
-export type IssueAssignTo = { me: true } | { id: string } | null;
+/** Who an issue is assigned to: the asker (`me`), a person from the people list (`name` for the toast), or nobody (null). */
+export type IssueAssignTo = { me: true } | { id: string; name?: string } | null;
 
 type IssueReq<T> = Req<{ project: string; issueKey: string } & T>;
 
@@ -99,7 +99,8 @@ function assignTo(v: unknown): IssueAssignTo {
   if (!isObj(v)) return bad('to must be {me: true}, {id} or null');
   if (v.me === true) return { me: true };
   if (typeof v.id !== 'string' || !PERSON_ID_RE.test(v.id)) return bad('to.id must be a person id');
-  return { id: v.id };
+  const name = optText(v.name, 'to.name', 200)?.trim();
+  return { id: v.id, ...(name ? { name } : {}) };
 }
 
 /** Checks the fields of an issue message (its type is already known to be in the list) and rebuilds it. */

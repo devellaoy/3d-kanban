@@ -219,6 +219,9 @@ test('the issue actions are keyed by issue and checked field by field', () => {
   assert.deepEqual(good({ t: 'kanban.issue.assign', ...base, to: { me: true } }), { t: 'kanban.issue.assign', ...base, to: { me: true } });
   assert.deepEqual(good({ t: 'kanban.issue.assign', ...base, to: { id: '712020:ab-cd' } }), { t: 'kanban.issue.assign', ...base, to: { id: '712020:ab-cd' } });
   assert.deepEqual(good({ t: 'kanban.issue.assign', ...base, to: null }), { t: 'kanban.issue.assign', ...base, to: null });
+  assert.deepEqual(good({ t: 'kanban.issue.assign', ...base, to: { id: '71:a', name: ' Maija M ' } }), { t: 'kanban.issue.assign', ...base, to: { id: '71:a', name: 'Maija M' } });
+  assert.deepEqual(good({ t: 'kanban.issue.assign', ...base, to: { id: '71:a', name: ' ' } }), { t: 'kanban.issue.assign', ...base, to: { id: '71:a' } });
+  refused({ t: 'kanban.issue.assign', ...base, to: { id: '71:a', name: 'x'.repeat(201) } }, /too long/);
   refused({ t: 'kanban.issue.assign', ...base }, /to must be/);
   refused({ t: 'kanban.issue.assign', ...base, to: { me: false } }, /person id/);
   refused({ t: 'kanban.issue.assign', ...base, to: { id: 'a b' } }, /person id/);

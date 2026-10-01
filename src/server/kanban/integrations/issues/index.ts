@@ -33,6 +33,8 @@ const TICK_MS = 30_000;
 const OVERLAY_SETTLE_MS = 10_000;
 /** A change shown before a fetch has it is dropped after this long, whatever the fetches say. */
 const OVERLAY_TTL_MS = 2 * 60_000;
+/** An issue acted on stays open to actions this long after, even when the list has lost it (a closed one: Reopen). */
+const ACTED_TTL_MS = 30 * 60_000;
 /** How much of a body goes out in a list (the task made from it gets it all). */
 const LIST_BODY = 4000;
 
@@ -70,34 +72,41 @@ export function createIssues(ctx: KanbanContext, opts: IssuesOptions = {}) {
   const walls = new Map<string, GhState<GhIssue>>();
   /** Changes made through the actions (status, assignee), shown over the fetched issues until a fetch started after them has them. */
   const overlay = new Map<string, Map<string, { fields: IssuePatch; at: number }>>();
+  /** Issues acted on lately, as they were: for more actions on them only (never the list or the board). */
+  const acted = new Map<string, Map<string, { issue: NormalizedIssue; at: number }>>();
   let timer: NodeJS.Timeout | undefined;
   /** Per project, the fetch that follows a change by long enough to have seen it (see patch). */
   const settling = new Map<string, NodeJS.Timeout>();
 
   const state = (project: string): IssuesState => cache.get(project) ?? { items: [], fetchedAt: 0, loading: false };
 
+  /** The issue with the change made to it since it was fetched, if any (a change older than its time to live is not shown). */
+  const withChange = (project: string, i: NormalizedIssue): NormalizedIssue => {
+    const o = overlay.get(project)?.get(i.key);
+    if (!o || now() - o.at >= OVERLAY_TTL_MS) return i;
+    const next = { ...i };
+    if (o.fields.status !== undefined) next.status = o.fields.status;
+    if (o.fields.assignee === null) delete next.assignee;
+    else if (o.fields.assignee !== undefined) next.assignee = o.fields.assignee;
+    return next;
+  };
+
   /** The project's issues with the changes made since they were fetched. */
-  const current = (project: string): NormalizedIssue[] => {
+  const current = (project: string): NormalizedIssue[] => (overlay.get(project)?.size ? state(project).items.map((i) => withChange(project, i)) : state(project).items);
+
+  /** Lets go of the changes (and acted-on issues) past their time to live; the reads above only skip them. */
+  const sweep = (project: string) => {
     const over = overlay.get(project);
-    const items = state(project).items;
-    if (!over?.size) return items;
-    for (const [key, o] of over) if (now() - o.at >= OVERLAY_TTL_MS) over.delete(key);
-    return items.map((i) => {
-      const f = over.get(i.key)?.fields;
-      if (!f) return i;
-      const next = { ...i };
-      if (f.status !== undefined) next.status = f.status;
-      if (f.assignee === null) delete next.assignee;
-      else if (f.assignee !== undefined) next.assignee = f.assignee;
-      return next;
-    });
+    if (over) for (const [key, o] of over) if (now() - o.at >= OVERLAY_TTL_MS) over.delete(key);
+    const kept = acted.get(project);
+    if (kept) for (const [key, a] of kept) if (now() - a.at >= ACTED_TTL_MS) kept.delete(key);
   };
 
   /** A fetch that began at `startedAt` is over: the changes it was started late enough to have seen are in it now. */
   const settle = (project: string, startedAt: number) => {
     const over = overlay.get(project);
-    if (!over) return;
-    for (const [key, o] of over) if (startedAt >= o.at + OVERLAY_SETTLE_MS) over.delete(key);
+    if (over) for (const [key, o] of over) if (startedAt >= o.at + OVERLAY_SETTLE_MS) over.delete(key);
+    sweep(project);
   };
 
   /** The list as it goes out: the tasks already made from each, and bodies cut to size. */
@@ -179,11 +188,18 @@ export function createIssues(ctx: KanbanContext, opts: IssuesOptions = {}) {
     return board;
   };
 
+  /** Fetches once the fetch under way (if any) is over, so the one that runs started after now. */
+  const refreshAfter = (project: string) => {
+    const had = running.get(project);
+    void (had ? had.catch(() => undefined).then(() => refresh(project)) : refresh(project)).catch(() => {});
+  };
+
   /** The sources were saved: the old ones' cards go now, and the new ones are fetched once any fetch under way is over. */
   const sourcesChanged = (project: string) => {
     generation.set(project, (generation.get(project) ?? 0) + 1);
     cache.delete(project);
     overlay.delete(project);
+    acted.delete(project);
     walls.delete(project);
     if (!hasSources(project)) return;
     const had = running.get(project);
@@ -198,6 +214,7 @@ export function createIssues(ctx: KanbanContext, opts: IssuesOptions = {}) {
 
   /** A change made through an issue action: shown at once on the kanban and the 3D board, then fetched again. */
   const patch = (project: string, key: string, fields: IssuePatch) => {
+    sweep(project);
     const over = overlay.get(project) ?? new Map();
     overlay.set(project, over);
     over.set(key, { fields: { ...over.get(key)?.fields, ...fields }, at: now() });
@@ -208,7 +225,8 @@ export function createIssues(ctx: KanbanContext, opts: IssuesOptions = {}) {
     clearTimeout(settling.get(project));
     const t = setTimeout(() => {
       settling.delete(project);
-      if (hasSources(project)) void refresh(project).catch(() => {});
+      // One already under way may have started too soon to have seen the change: another follows it.
+      if (hasSources(project)) refreshAfter(project);
     }, OVERLAY_SETTLE_MS + 2000);
     t.unref?.();
     settling.set(project, t);
@@ -217,7 +235,21 @@ export function createIssues(ctx: KanbanContext, opts: IssuesOptions = {}) {
   const plugin: KanbanPlugin = {
     name: 'issues',
     ws: {
-      ...issueActionHandlers(ctx, { find: (project, key) => current(project).find((i) => i.key === key), patch, io }),
+      ...issueActionHandlers(ctx, {
+        find: (project, key) => {
+          const listed = state(project).items.find((x) => x.key === key);
+          if (listed) return withChange(project, listed);
+          const before = acted.get(project)?.get(key);
+          return before && now() - before.at < ACTED_TTL_MS ? before.issue : undefined;
+        },
+        patch,
+        io,
+        remember: (project, issue) => {
+          const kept = acted.get(project) ?? new Map();
+          acted.set(project, kept);
+          kept.set(issue.key, { issue, at: now() });
+        },
+      }),
       'kanban.issues.list': (c, m) => {
         if (!ctx.project(m.project)) return fail(c, m.rid, `There's no project ${m.project}`);
         asked.set(m.project, now());
@@ -264,6 +296,7 @@ export function createIssues(ctx: KanbanContext, opts: IssuesOptions = {}) {
           if (!ctx.settings.project(def.id).issueSources.length) continue;
           if (due(def.id)) void refresh(def.id).catch(() => {});
         }
+        for (const def of ctx.projects()) sweep(def.id);
       }, TICK_MS);
       timer.unref?.();
     },

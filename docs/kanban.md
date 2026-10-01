@@ -360,7 +360,7 @@ its own comments and close) gets its **status** and **assignee** there.
 - **Status.** Jira: the issue's own transitions, whatever the project's workflow calls them. One that
   asks for fields (a resolution, say) is listed but disabled: *do it in Jira*. GitHub issue: the
   Status options of the project's GitHub boards that hold it (grouped by board), then **Close
-  (completed)**, **Close (not planned)** or **Reopen**. A pull request only has the board's Status.
+  (completed)**, **Close (not planned)** or **Reopen** (which of them is read from GitHub: it is closed or open now). A pull request only has the board's Status.
   A project draft: its board's Status.
 - **Comments.** The newest 50, oldest first, and a box to add one (Enter makes a new line,
   Shift/⌘/Ctrl+Enter sends). A comment written under an identity everyone shares ends with
@@ -371,15 +371,20 @@ its own comments and close) gets its **status** and **assignee** there.
   which Jira user you are: pick yourself once and pin it (**📌 This is me**); your browser remembers
   it per site and **Assign to me** uses it. A draft can't be assigned: convert it to an issue on GitHub.
 
-Whose sign-in is used: **Jira** always the token in ⚙️ Settings → 🗂️ Kanban. **GitHub** your own
-sign-in (☰ → 🔐 Your sign-ins), or the office's `gh` when an admin chose that for you; with neither it
-says why and does nothing, as taking a card does. Changing a GitHub project's Status needs `gh`'s
+Whose sign-in is used: **Jira** always the token in ⚙️ Settings → 🗂️ Kanban, so every Jira change
+(transitions, assignee, comments) is made as *the token's* Jira account, whoever clicked; only a comment
+carries the person's name (`— <name> via Agent Office`), the rest is told by the floor toast and the task
+line. Scope that token's permissions in Jira accordingly. **GitHub** writes use your own sign-in (☰ → 🔐
+Your sign-ins), or the office's `gh` when an admin chose that for you; with neither they say why and do
+nothing, as taking a card does. Reading (statuses, comments, who can be assigned) falls back to the
+office's `gh` instead of refusing. **Assign to me** on GitHub needs your own sign-in, not the office's. Changing a GitHub project's Status needs `gh`'s
 `project` scope (reading only `read:project`): run `gh auth refresh -s project` on the machine whose
 sign-in is used.
 
 Everyone sees the change at once: the kanban list and the 3D board show it before the next fetch, the
 floor gets a toast saying who did it (`🔀 Panu moved UYT-12 → In Review`), and when the issue has a
-kanban task, a status line is added to it. Only issues on the project's list can be changed.
+kanban task, a status line is added to it. Only issues on the project's list can be changed; one you just
+changed stays open to more changes for half an hour even when the list has lost it (a closed issue: Reopen).
 
 ### On the 3D issues board
 

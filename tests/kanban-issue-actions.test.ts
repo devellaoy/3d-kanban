@@ -101,15 +101,16 @@ test('Jira people: the assignable users matching the search, app users left out'
   assert.deepEqual(got, [{ id: '71:a', name: 'Maija M', avatar: 'https://a/48' }, { id: '71:b', name: 'Pekka' }]);
 });
 
-test('Jira assign: a PUT of the account id or null, and `me` is not guessed', async () => {
-  const { fetch, calls } = fetchStub((c) => (c.method === 'PUT' ? { status: 204 } : { body: { fields: { assignee: { displayName: 'Maija M' } } } }));
-  assert.equal(await jiraAssign(act({ fetch }), SITE, 'UYT-12', { id: '71:a' }), 'Maija M');
+test('Jira assign: a PUT of the account id or null, no second read, and `me` is not guessed', async () => {
+  const { fetch, calls } = fetchStub(() => ({ status: 204 }));
+  assert.equal(await jiraAssign(act({ fetch }), SITE, 'UYT-12', { id: '71:a', name: 'Maija M' }), 'Maija M');
   assert.equal(calls[0].method, 'PUT');
   assert.equal(calls[0].url, `https://${SITE}/rest/api/3/issue/UYT-12/assignee`);
   assert.deepEqual(calls[0].body, { accountId: '71:a' });
+  assert.equal(await jiraAssign(act({ fetch }), SITE, 'UYT-12', { id: '71:b' }), '71:b', 'the id when no name was sent');
   assert.equal(await jiraAssign(act({ fetch }), SITE, 'UYT-12', null), undefined);
   assert.deepEqual(calls[2].body, { accountId: null });
-  assert.equal(calls.length, 3, 'unassigning needs no second read');
+  assert.equal(calls.length, 3, 'only the writes');
   await assert.rejects(jiraAssign(act({ fetch }), SITE, 'UYT-12', { me: true }), /pick yourself in the list/);
 });
 
@@ -145,11 +146,16 @@ test('GitHub comments: the newest fifty by GraphQL, oldest first; a comment goes
   assert.equal(calls[calls0 + 1].args.at(-1), 'body=hi\n\n— Panu via Agent Office');
 });
 
-test('GitHub people: the repository’s assignees whose login has the search', async () => {
-  const { gh, calls } = ghStub(() => JSON.stringify([{ login: 'maija', avatar_url: 'https://a/m' }, { login: 'Pekka' }, { login: 'maisa' }]));
-  assert.deepEqual(await ghPeople(act({ gh, env: ENV }), 'o/r', 'MA'), [{ id: 'maija', name: 'maija', login: 'maija', avatar: 'https://a/m' }, { id: 'maisa', name: 'maisa', login: 'maisa' }]);
-  assert.deepEqual(calls[0], { args: ['api', 'repos/o/r/assignees?per_page=100'], env: ENV });
-  assert.equal((await ghPeople(act({ gh }), 'o/r')).length, 3);
+test('GitHub people: GitHub searches the repository’s assignable users', async () => {
+  const { gh, calls } = ghStub(() => JSON.stringify({ data: { repository: { assignableUsers: { nodes: [{ login: 'maija', name: 'Maija M', avatarUrl: 'https://a/m' }, { login: 'maisa', name: null, avatarUrl: '' }] } } } }));
+  assert.deepEqual(await ghPeople(act({ gh, env: ENV }), 'o/r', ' ma '), [{ id: 'maija', name: 'Maija M', login: 'maija', avatar: 'https://a/m' }, { id: 'maisa', name: 'maisa', login: 'maisa' }]);
+  const args = calls[0].args;
+  assert.deepEqual(args.slice(0, 2), ['api', 'graphql']);
+  assert.match(args.find((a) => a.startsWith('query='))!, /assignableUsers\(query: \$q, first: 20\)/);
+  assert.ok(args.includes('owner=o') && args.includes('name=r') && args.includes('q=ma'));
+  assert.equal(calls[0].env, ENV);
+  await ghPeople(act({ gh }), 'o/r');
+  assert.ok(!calls[1].args.some((a) => a.startsWith('q=')), 'no search: every assignable user');
 });
 
 test('GitHub assign: the current assignees are read fresh and replaced by the one wanted', async () => {
@@ -174,6 +180,18 @@ test('GitHub assign: the current assignees are read fresh and replaced by the on
   const before = calls.length;
   await ghAssign(act({ gh }), 'o/r', 5, null);
   assert.equal(calls.length, before + 1, 'only the read');
+});
+
+test('GitHub assign me: the login is asked once per sign-in, and with the assignees at the same time', async () => {
+  const { gh, calls } = ghStub((args) => (args[0] === 'api' ? 'cache-tester\n' : JSON.stringify({ assignees: [] })));
+  const env = { GH_CONFIG_DIR: '/h/cache-test' };
+  assert.equal(await ghAssign(act({ gh, env }), 'o/r', 5, { me: true }), 'cache-tester');
+  assert.equal(await ghAssign(act({ gh, env }), 'o/r', 6, { me: true }), 'cache-tester');
+  assert.equal(calls.filter((c) => c.args[0] === 'api').length, 1, 'asked once');
+  assert.equal(calls.filter((c) => c.args[1] === 'view').length, 2);
+  assert.ok(calls.slice(0, 2).every((c) => c.args[0] === 'api' || c.args[1] === 'view'), 'both reads before the edit');
+  await ghAssign(act({ gh, env: { GH_CONFIG_DIR: '/h/other' } }), 'o/r', 5, { me: true });
+  assert.equal(calls.filter((c) => c.args[0] === 'api').length, 2, 'another sign-in, another login');
 });
 
 test('GitHub close and reopen; a pull request’s state is left alone', async () => {
@@ -260,7 +278,7 @@ test('a token without the project scope gets the text that says what to run', as
 const REPO_SRC: IssueSourceConfig = { id: 'r', kind: 'github-repo', repos: ['o/r'], filters: {} };
 const JIRA_SRC: IssueSourceConfig = { id: 'j', kind: 'jira', site: SITE, projectKeys: ['UYT'], filters: {} };
 const item = (n: number, title: string) => ({ number: n, title, url: `https://github.com/o/r/issues/${n}`, body: '', state: 'OPEN', assignees: [], labels: [], updatedAt: '2026-09-01T00:00:00Z' });
-const projectPage = (status: string) =>
+const projectPage = (status: string, listed = true) =>
   JSON.stringify({
     data: {
       viewer: { login: 'panu' },
@@ -270,7 +288,7 @@ const projectPage = (status: string) =>
           url: 'https://github.com/orgs/o/projects/1',
           items: {
             pageInfo: { hasNextPage: false },
-            nodes: [
+            nodes: !listed ? [] : [
               { id: 'PVTI_1', isArchived: false, updatedAt: '2026-09-01T00:00:00Z', status: { name: status }, content: { __typename: 'Issue', number: 5, title: 'Five', url: 'https://github.com/o/r/issues/5', body: '', state: 'OPEN', updatedAt: '2026-09-01T00:00:00Z', repository: { nameWithOwner: 'o/r' }, assignees: { nodes: [] }, labels: { nodes: [] } } },
               { id: 'PVTI_2', isArchived: false, updatedAt: '2026-08-01T00:00:00Z', status: { name: 'Inbox' }, content: { __typename: 'DraftIssue', title: 'A draft', body: '', updatedAt: '2026-08-01T00:00:00Z', assignees: { nodes: [] } } },
             ],
@@ -281,19 +299,26 @@ const projectPage = (status: string) =>
   });
 
 /** A project whose repository source and board source both list gh:o/r#5 (the repository's copy wins the dedup). */
-function setup(opts: { ghAs?: KanbanContext['ghAs']; status?: () => string; now?: () => number; sources?: IssueSourceConfig[] } = {}) {
+function setup(opts: { ghAs?: KanbanContext['ghAs']; status?: () => string; state?: () => string; listed?: () => boolean; hold?: () => Promise<void> | undefined; now?: () => number; sources?: IssueSourceConfig[] } = {}) {
   const ctx = makeCtx([def('app', '/tmp/app', { repo: 'o/r' })], { ghAs: opts.ghAs });
   ctx.settings.setProject('app', { issueSources: opts.sources ?? [REPO_SRC, PROJECT_SOURCE] });
   const status = opts.status ?? (() => 'Doing');
-  const { gh, calls } = ghStub((args) => {
+  const stub = ghStub((args) => {
     const query = args.find((a) => a.startsWith('query=')) ?? '';
+    if (args[0] === 'issue' && args[1] === 'view' && args.at(-1) === 'state') return JSON.stringify({ state: opts.state?.() ?? 'OPEN' });
     if (args[0] === 'issue' && args[1] === 'list') return JSON.stringify([item(5, 'Five')]);
     if (query.includes('updateProjectV2ItemFieldValue')) return '{"data":{}}';
     if (query.includes('projectItems')) return issueItems(board({ status: status() }));
     if (query.includes('node(id')) return JSON.stringify({ data: { node: board({ itemId: 'PVTI_2', status: 'Inbox' }) } });
-    if (query.includes('viewer')) return projectPage(status());
+    if (query.includes('viewer')) return projectPage(status(), opts.listed?.() ?? true);
     return '[]';
   });
+  const calls = stub.calls;
+  // A fetch can be held up by the test (hold returns a promise to wait for).
+  const gh: typeof stub.gh = async (...a) => {
+    if (a[0][0] === 'api' && a[0].some((x) => x.includes('viewer'))) await opts.hold?.();
+    return stub.gh(...a);
+  };
   const http = fetchStub(() => ({ body: {} }));
   const issues = createIssues(ctx, { gh, fetch: http.fetch, ...(opts.now ? { now: opts.now } : {}) });
   return { ctx, issues, calls, http, ws: issues.plugin.ws! };
@@ -335,12 +360,13 @@ test('a draft: the board’s Status works, comments and assignees say why not', 
   assert.match(last(c, 'kanban.error').message, /Convert the draft/);
 });
 
-test('only issues on the project’s list, and GitHub only as a person who has a sign-in', async () => {
+test('only issues on the project’s list; GitHub reads go by the office’s gh without a sign-in, writes are refused', async () => {
   const seen: (string | undefined)[] = [];
+  const NO_SIGNIN = 'You have no GitHub sign-in: sign in (☰ → 🔐 Your sign-ins)';
   const { issues, ws, calls } = setup({
     ghAs: (id) => {
       seen.push(id);
-      return id === 'nosignin' ? 'You have no GitHub sign-in: sign in (☰ → 🔐 Your sign-ins)' : id === 'acc1' ? { env: { GH_CONFIG_DIR: '/h/acc1' } } : undefined;
+      return id === 'nosignin' ? NO_SIGNIN : id === 'acc1' ? { env: { GH_CONFIG_DIR: '/h/acc1' } } : undefined;
     },
   });
   await issues.refresh('app');
@@ -349,17 +375,29 @@ test('only issues on the project’s list, and GitHub only as a person who has a
   assert.match(last(c, 'kanban.error').message, /isn't among the project's issues/);
   await ws['kanban.issue.comments']!(c, { t: 'kanban.issue.comments', project: 'nope', issueKey: 'gh:o/r#5' });
   assert.match(last(c, 'kanban.error').message, /no project nope/);
+  seen.length = 0;
+  // Without a sign-in: reads run as the office's gh ...
   const none = client(false, 'nosignin');
+  for (const t of ['kanban.issue.comments', 'kanban.issue.transitions', 'kanban.issue.people'] as const) {
+    const before = calls.length;
+    await ws[t]!(none, { t, project: 'app', issueKey: 'gh:o/r#5' } as never);
+    assert.notEqual(none.got.at(-1)!.t, 'kanban.error', t);
+    assert.ok(calls.length > before && calls.slice(before).every((x) => x.env === undefined), `${t} ran as the office`);
+  }
+  // ... writes are refused with the reason, and gh isn't run.
   const before = calls.length;
-  await ws['kanban.issue.comments']!(none, { t: 'kanban.issue.comments', project: 'app', issueKey: 'gh:o/r#5', rid: 'y' });
-  assert.deepEqual(last(none, 'kanban.error'), { t: 'kanban.error', rid: 'y', message: 'You have no GitHub sign-in: sign in (☰ → 🔐 Your sign-ins)' });
-  assert.equal(calls.length, before, 'no gh ran');
+  await ws['kanban.issue.comment']!(none, { t: 'kanban.issue.comment', project: 'app', issueKey: 'gh:o/r#5', text: 'hi', rid: 'y' });
+  assert.deepEqual(last(none, 'kanban.error'), { t: 'kanban.error', rid: 'y', message: NO_SIGNIN });
+  await ws['kanban.issue.assign']!(none, { t: 'kanban.issue.assign', project: 'app', issueKey: 'gh:o/r#5', to: null, rid: 'z' });
+  assert.equal(last(none, 'kanban.error').message, NO_SIGNIN);
+  await ws['kanban.issue.transition']!(none, { t: 'kanban.issue.transition', project: 'app', issueKey: 'gh:o/r#5', transitionId: 'gh:close' });
+  assert.equal(last(none, 'kanban.error').message, NO_SIGNIN);
+  assert.equal(calls.length, before, 'no gh ran for the writes');
   // With a sign-in, gh runs as them; the shared password (no account) is the office's gh.
   await ws['kanban.issue.comments']!(c, { t: 'kanban.issue.comments', project: 'app', issueKey: 'gh:o/r#5' });
   assert.deepEqual(calls.at(-1)!.env, { GH_CONFIG_DIR: '/h/acc1' });
   await ws['kanban.issue.comments']!(client(), { t: 'kanban.issue.comments', project: 'app', issueKey: 'gh:o/r#5' });
   assert.equal(calls.at(-1)!.env, undefined);
-  assert.deepEqual(seen, ['nosignin', 'acc1', undefined], 'asked for the caller’s account each time');
 });
 
 test('a status change shows at once everywhere, says who made it, and is put on the issue’s task', async () => {
@@ -572,4 +610,96 @@ test('a comment under the office’s gh is signed, and goes on the issue’s tas
   const lines = ctx.repo.listComments(taskId).comments.filter((x) => x.kind === 'status');
   assert.deepEqual(lines.map((x) => [x.authorKind, x.text]), [['system', 'Tester commented on gh:o/r#5']]);
   assert.ok(ctx.changed.includes(taskId));
+});
+
+test('open or closed is GitHub’s word now: a board’s copy offers Reopen when closed, a repository’s stale one too', async () => {
+  let state = 'CLOSED';
+  for (const sources of [[PROJECT_SOURCE], [REPO_SRC, PROJECT_SOURCE]]) {
+    const { issues, ws, calls } = setup({ ghAs: () => undefined, state: () => state, sources });
+    await issues.refresh('app');
+    const c = client(true, 'acc1');
+    await ws['kanban.issue.transitions']!(c, { t: 'kanban.issue.transitions', project: 'app', issueKey: 'gh:o/r#5' });
+    const names = last(c, 'kanban.issueTransitions').transitions.map((t) => t.name);
+    assert.ok(names.includes('Reopen') && !names.some((n) => n.startsWith('Close')), names.join());
+    assert.ok(calls.some((x) => x.args[0] === 'issue' && x.args[1] === 'view' && x.args.at(-1) === 'state'));
+    state = 'OPEN';
+    await ws['kanban.issue.transitions']!(c, { t: 'kanban.issue.transitions', project: 'app', issueKey: 'gh:o/r#5' });
+    const open = last(c, 'kanban.issueTransitions').transitions.map((t) => t.name);
+    assert.ok(open.includes('Close (completed)') && !open.includes('Reopen'), open.join());
+    state = 'CLOSED';
+  }
+});
+
+test('an issue acted on can be acted on again after the list has lost it (Reopen), for a while', async () => {
+  let clock = 1000;
+  let state = 'OPEN';
+  let listed = true;
+  const { ctx, issues, ws, calls } = setup({ ghAs: () => undefined, now: () => clock, state: () => state, listed: () => listed, sources: [PROJECT_SOURCE] });
+  await issues.refresh('app');
+  const c = client(true, 'acc1');
+  await ws['kanban.issue.transition']!(c, { t: 'kanban.issue.transition', project: 'app', issueKey: 'gh:o/r#5', transitionId: 'gh:close' });
+  assert.deepEqual(calls.at(-1)!.args.slice(0, 3), ['issue', 'close', '5']);
+  // GitHub closed it; the next fetch no longer lists it.
+  state = 'CLOSED';
+  listed = false;
+  clock = 20_000;
+  await issues.refresh('app');
+  assert.ok(!issues.message('app').items.some((i) => i.key === 'gh:o/r#5'), 'gone from the list');
+  assert.ok(!issues.wall('app')!.items.some((i) => i.key === 'gh:o/r#5'), 'and from the board');
+  await ws['kanban.issue.transitions']!(c, { t: 'kanban.issue.transitions', project: 'app', issueKey: 'gh:o/r#5' });
+  assert.ok(last(c, 'kanban.issueTransitions').transitions.some((t) => t.id === 'gh:reopen'));
+  await ws['kanban.issue.transition']!(c, { t: 'kanban.issue.transition', project: 'app', issueKey: 'gh:o/r#5', transitionId: 'gh:reopen', rid: 'ro' });
+  assert.deepEqual(last(c, 'kanban.ok'), { t: 'kanban.ok', rid: 'ro' });
+  assert.deepEqual(calls.at(-1)!.args.slice(0, 3), ['issue', 'reopen', '5']);
+  assert.ok(ctx.toasts.at(-1)!.text.endsWith('→ Open'));
+  // Other keys are still refused, and so is this one once the memory has run out.
+  await ws['kanban.issue.comments']!(c, { t: 'kanban.issue.comments', project: 'app', issueKey: 'gh:o/r#6' });
+  assert.match(last(c, 'kanban.error').message, /isn't among/);
+  clock += 31 * 60_000;
+  await ws['kanban.issue.comments']!(c, { t: 'kanban.issue.comments', project: 'app', issueKey: 'gh:o/r#5' });
+  assert.match(last(c, 'kanban.error').message, /isn't among/);
+});
+
+test('the settling fetch waits for one already under way, so one that started late enough always runs', async (t) => {
+  mock.timers.enable({ apis: ['setTimeout'] });
+  t.after(() => mock.timers.reset());
+  let clock = 1000;
+  let release!: () => void;
+  let hold = false;
+  const { issues, ws, calls } = setup({ now: () => clock, sources: [PROJECT_SOURCE], hold: () => (hold ? ((hold = false), new Promise<void>((r) => (release = r))) : undefined) });
+  await issues.refresh('app');
+  const c = client(true, 'acc1');
+  clock = 5000;
+  await ws['kanban.issue.transition']!(c, { t: 'kanban.issue.transition', project: 'app', issueKey: 'gh:o/r#5', transitionId: 'p:PVT_1:PVTI_1:PVTSSF_1:a4' });
+  const shown = () => issues.message('app').items.find((i) => i.key === 'gh:o/r#5')!.status;
+  assert.equal(shown(), 'Shipped');
+  // A fetch starts (too early to have seen the change) and is still running when the timer fires.
+  clock = 6000;
+  hold = true;
+  const early = issues.refresh('app');
+  const fetches = () => calls.filter((x) => x.args.some((a) => a.startsWith('query=') && a.includes('viewer'))).length;
+  const was = fetches();
+  clock = 17_000;
+  mock.timers.tick(12_000);
+  assert.equal(fetches(), was, 'the timer started no second fetch beside the held one');
+  release();
+  await early;
+  assert.equal(shown(), 'Shipped', 'the early fetch did not clear the change');
+  for (let i = 0; i < 20; i++) await new Promise((r) => setImmediate(r));
+  assert.equal(fetches(), was + 2, 'a fresh fetch followed it');
+  assert.equal(shown(), 'Doing', 'and it, started 12 s after the write, did');
+  issues.plugin.stop?.();
+});
+
+test('reading an issue does not drop its change, and the lists do not mutate on read', async () => {
+  let clock = 1000;
+  const { issues, ws } = setup({ now: () => clock, sources: [PROJECT_SOURCE] });
+  await issues.refresh('app');
+  const c = client(true, 'acc1');
+  await ws['kanban.issue.transition']!(c, { t: 'kanban.issue.transition', project: 'app', issueKey: 'gh:o/r#5', transitionId: 'p:PVT_1:PVTI_1:PVTSSF_1:a4' });
+  const status = () => issues.message('app').items.find((i) => i.key === 'gh:o/r#5')!.status;
+  clock += 121_000;
+  assert.equal(status(), 'Doing', 'past its time to live it is not shown');
+  clock = 3000;
+  assert.equal(status(), 'Shipped', 'reading did not delete it: it shows again when the clock says it is young');
 });

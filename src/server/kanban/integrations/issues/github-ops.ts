@@ -78,20 +78,36 @@ export async function ghComment(io: IssueActIo, repo: string, n: number, text: s
   await run(io, ['api', '--method', 'POST', `repos/${repo}/issues/${n}/comments`, '-f', `body=${body}`]);
 }
 
-/** Who may be assigned in the repository, whose login contains `query`. */
+const PEOPLE_QUERY = `query($owner: String!, $name: String!, $q: String) {
+  repository(owner: $owner, name: $name) { assignableUsers(query: $q, first: 20) { nodes { login name avatarUrl } } }
+}`;
+
+/** Who may be assigned in the repository, GitHub matching `query` against logins and names (so a big organisation's list is complete). */
 export async function ghPeople(io: IssueActIo, repo: string, query = ''): Promise<IssuePerson[]> {
-  const out = await run(io, ['api', `repos/${repo}/assignees?per_page=100`]);
-  let raw: unknown;
+  const [owner, name] = repo.split('/');
+  const q = query.trim();
+  const out = await run(io, ['api', 'graphql', '-f', `query=${PEOPLE_QUERY}`, '-f', `owner=${owner}`, '-f', `name=${name}`, ...(q ? ['-f', `q=${q}`] : [])]);
+  let raw: any;
   try {
-    raw = JSON.parse(out || '[]');
+    raw = JSON.parse(out || '{}');
   } catch {
     throw new Error(`gh gave something that isn't JSON for the assignees of ${repo}`);
   }
-  const q = query.trim().toLowerCase();
-  return (Array.isArray(raw) ? raw : [])
-    .filter((u: any) => typeof u?.login === 'string' && u.login.toLowerCase().includes(q))
-    .slice(0, 20)
-    .map((u: any): IssuePerson => ({ id: u.login, name: u.login, login: u.login, ...(typeof u.avatar_url === 'string' ? { avatar: u.avatar_url } : {}) }));
+  if (Array.isArray(raw?.errors) && raw.errors.length) throw new Error(raw.errors.map((e: any) => e.message ?? '').join('; '));
+  const nodes: any[] = raw?.data?.repository?.assignableUsers?.nodes ?? [];
+  return nodes
+    .filter((u) => typeof u?.login === 'string')
+    .map((u): IssuePerson => ({ id: u.login, name: String(u.name || u.login), login: u.login, ...(typeof u.avatarUrl === 'string' && u.avatarUrl ? { avatar: u.avatarUrl } : {}) }));
+}
+
+/** Whether the issue is open now, from GitHub (the board's copy has no state of its own, and a repository's may be a minute old). Undefined when it can't be told. */
+export async function ghIssueState(io: IssueActIo, repo: string, n: number): Promise<'OPEN' | 'CLOSED' | undefined> {
+  try {
+    const state = String(JSON.parse(await run(io, ['issue', 'view', String(n), '-R', repo, '--json', 'state'])).state ?? '').toUpperCase();
+    return state === 'OPEN' || state === 'CLOSED' ? state : undefined;
+  } catch {
+    return undefined;
+  }
 }
 
 /** The logins an issue has now (read fresh: the board's list may be a minute old). */
@@ -104,14 +120,25 @@ async function currentAssignees(io: IssueActIo, repo: string, n: number): Promis
   }
 }
 
+/** Who gh is signed in as, kept per sign-in (a person's gh config dir, or the office's): it doesn't change under a running office. */
+const logins = new Map<string, string>();
+
+async function ghLogin(io: IssueActIo): Promise<string> {
+  const key = io.env?.GH_CONFIG_DIR ?? 'office';
+  const known = logins.get(key);
+  if (known) return known;
+  const login = (await run(io, ['api', 'user', '--jq', '.login'])).trim();
+  if (!login) throw new Error('gh didn’t say who it is signed in as');
+  logins.set(key, login);
+  return login;
+}
+
 /** Makes the asker (`me`), one person, or nobody the issue's only assignee. Resolves to the assignee's login. */
 export async function ghAssign(io: IssueActIo, repo: string, n: number, to: IssueAssignTo): Promise<string | undefined> {
   // Under the office's own gh, `me` would be the office's account, not the person.
   if (to && 'me' in to && io.shared) throw new Error('Assign to me needs your own GitHub sign-in: pick a person instead');
-  // `me` is whoever gh is signed in as (the person's own sign-in, or the office's): named, so it isn't removed and added in one go.
-  const want = to ? ('me' in to ? (await run(io, ['api', 'user', '--jq', '.login'])).trim() : to.id) : undefined;
-  if (to && !want) throw new Error('gh didn’t say who it is signed in as');
-  const had = await currentAssignees(io, repo, n);
+  // `me` is whoever gh is signed in as: named, so it isn't removed and added in one go.
+  const [want, had] = await Promise.all([to ? ('me' in to ? ghLogin(io) : Promise.resolve(to.id)) : Promise.resolve(undefined), currentAssignees(io, repo, n)]);
   const same = (a: string) => a.toLowerCase() === want?.toLowerCase();
   const args = ['issue', 'edit', String(n), '-R', repo];
   // --flag=value, so a login starting with "-" is never read as a flag.
