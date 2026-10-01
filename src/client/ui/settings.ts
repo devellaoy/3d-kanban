@@ -40,8 +40,8 @@ const PANES: { id: SettingsPane; icon: string; label: string; blurb: string }[] 
 /** Where ⚙️ Settings was last, so it opens there again. */
 let lastPane: SettingsPane = 'you';
 
-/** `outside` describes the sky over the office (see describeSky; `describe` words a later one), once the server has said. `first` opens on that category instead of the last one. */
-export function openSettings(net: Net, settings: Settings, onChange: (s: Settings) => void, onCharacter: () => void, previewSound: () => void, notifier: DesktopNotifier, onSignOut: () => void, outside?: { now: string; live: boolean; describe: (s: SkyState) => string }, first?: SettingsPane) {
+/** `outside` describes the sky over the office (`describe`, see describeSky), once the server has said. `first` opens on that category instead of the last one. */
+export function openSettings(net: Net, settings: Settings, onChange: (s: Settings) => void, onCharacter: () => void, previewSound: () => void, notifier: DesktopNotifier, onSignOut: () => void, outside?: { live: boolean; describe: (s: SkyState) => string }, first?: SettingsPane) {
   const seg = h('div.seg', { role: 'radiogroup', 'aria-label': 'Camera view' });
   const note = h('p.setting-note');
   const paint = () => {

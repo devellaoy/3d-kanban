@@ -111,6 +111,8 @@ export class Sky {
   private misses = 0;
   /** The sky keeps the real time of day, not a day every hour (see setClock). */
   private realTime: boolean;
+  /** What placeFile holds, as last read or written, so an unchanged forecast doesn't write it again. */
+  private savedPlace = '';
 
   constructor(
     private opts: { city?: string; weather?: Weather; realTime?: boolean; placeFile?: string; clockFile?: string },
@@ -122,18 +124,23 @@ export class Sky {
     const weather = opts.weather ? pinned(opts.weather) : opts.city ? pinned('clear') : wander(null, now.getMonth(), here.lat < 0);
     // The city where the last forecast put it, so a restart is already there before the next one comes.
     const known = opts.city ? this.knownPlace(opts.city) : undefined;
-    this.state = known
-      ? { lat: known.lat, lon: known.lon, utcOffset: known.utcOffset, ...weather, city: known.name, ...(this.realTime ? { realTime: true } : {}) }
-      : { ...here, utcOffset: -now.getTimezoneOffset(), ...weather, ...(this.realTime ? { realTime: true } : {}) };
+    this.state = this.withClock(known ? { lat: known.lat, lon: known.lon, utcOffset: known.utcOffset, ...weather, city: known.name } : { ...here, utcOffset: -now.getTimezoneOffset(), ...weather });
     if (known) this.place = { lat: known.lat, lon: known.lon, name: known.name };
   }
 
-  /** Where the last forecast for `city` put it (see placeFile), if it's that city. */
+  /**
+   * Where the last forecast for `city` put it (see placeFile), if it's that city. Only a head start: its
+   * utcOffset is the one of that forecast, so after a restart across a daylight-saving change the sky (and
+   * the calendar's clock, see server/theme.ts) is an hour off until the first forecast comes in.
+   */
   private knownPlace(city: string): { lat: number; lon: number; name: string; utcOffset: number } | undefined {
     if (!this.opts.placeFile) return undefined;
     try {
-      const p = JSON.parse(readFileSync(this.opts.placeFile, 'utf8'));
-      return p?.city === city && [p.lat, p.lon, p.utcOffset].every(Number.isFinite) && typeof p.name === 'string' ? p : undefined;
+      const raw = readFileSync(this.opts.placeFile, 'utf8');
+      const p = JSON.parse(raw);
+      if (!(p?.city === city && [p.lat, p.lon, p.utcOffset].every(Number.isFinite) && typeof p.name === 'string')) return undefined;
+      this.savedPlace = raw;
+      return p;
     } catch {
       return undefined;
     }
@@ -181,9 +188,14 @@ export class Sky {
     }
   }
 
+  /** `s` with the clock the sky keeps: realTime only when it's the real time of day. */
+  private withClock(s: SkyState): SkyState {
+    const { realTime: _, ...rest } = s;
+    return this.realTime ? { ...rest, realTime: true } : rest;
+  }
+
   private set(next: SkyState) {
-    const { realTime: _, ...rest } = next;
-    next = this.realTime ? { ...rest, realTime: true } : rest;
+    next = this.withClock(next);
     if (JSON.stringify(next) === JSON.stringify(this.state)) return;
     this.state = next;
     this.onChange(next);
@@ -218,9 +230,11 @@ export class Sky {
       if (this.warned) console.log(`agent-office: the weather for ${name} came through`);
       this.warned = false;
       this.misses = 0;
-      if (this.opts.placeFile) {
+      const place = JSON.stringify({ city, lat, lon, name, utcOffset });
+      if (this.opts.placeFile && place !== this.savedPlace) {
         try {
-          writeFileSync(this.opts.placeFile, JSON.stringify({ city, lat, lon, name, utcOffset }));
+          writeFileSync(this.opts.placeFile, place);
+          this.savedPlace = place;
         } catch {
           // Only a head start for the next restart.
         }

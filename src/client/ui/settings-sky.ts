@@ -6,17 +6,17 @@ import { h } from './dom';
 import type { SkyState } from '../../shared/protocol';
 
 /**
- * The setting, made by `frame` from what goes in it: the sky now (`outside`; `describe` words a sky the
- * server sends later, so this file stays clear of the 3D world's code), the
- * real time of day or a whole day and night every hour as buttons, and a note. Kept up to date until `off`.
+ * The setting, made by `frame` from what goes in it: the sky now (`outside.describe` words it, so this file
+ * stays clear of the 3D world's code), the real time of day or a whole day and night every hour as buttons,
+ * and a note. Kept up to date until `off`.
  */
-export function outsideSetting(net: Net, outside: { now: string; live: boolean; describe: (s: SkyState) => string }, frame: (body: Node[]) => HTMLElement): { section: HTMLElement; off: () => void } {
+export function outsideSetting(net: Net, outside: { live: boolean; describe: (s: SkyState) => string }, frame: (body: Node[]) => HTMLElement): { section: HTMLElement; off: () => void } {
   const row = h('div.seg', { role: 'radiogroup', 'aria-label': 'The sky’s clock' });
   const now = h('p.outside-now');
   const note = h('p.setting-note');
   const paint = () => {
     const real = !!store.sky?.realTime;
-    now.textContent = store.sky ? outside.describe(store.sky) : outside.now;
+    if (store.sky) now.textContent = outside.describe(store.sky);
     row.replaceChildren(
       ...[true, false].map((r) =>
         h(
