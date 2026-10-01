@@ -18,6 +18,7 @@ import type { UsageClientMsg, UsageServerMsg } from './protocol/usage.js';
 import type { WorkerClientMsg, WorkerServerMsg } from './protocol/workers.js';
 import type { KanbanClientMsg, KanbanServerMsg } from './kanban/protocol.js';
 import type { YoutubeClientMsg, YoutubeServerMsg } from './youtube/protocol.js';
+import type { CodexLimitsClientMsg, CodexLimitsServerMsg } from './codex-limits/protocol.js';
 
 export * from './protocol/accounts.js';
 export * from './protocol/agents.js';
@@ -56,7 +57,8 @@ export type ClientMsg =
   | CarClientMsg
   | DogClientMsg
   | KanbanClientMsg // the kanban's messages ride the office's socket
-  | YoutubeClientMsg; // YouTube on the Office TV
+  | YoutubeClientMsg // YouTube on the Office TV
+  | CodexLimitsClientMsg; // the Codex sign-in's allowance
 
 export type ServerMsg =
   | PresenceServerMsg
@@ -72,4 +74,5 @@ export type ServerMsg =
   | UsageServerMsg
   | ToysServerMsg
   | KanbanServerMsg
-  | YoutubeServerMsg; // YouTube on the Office TV
+  | YoutubeServerMsg // YouTube on the Office TV
+  | CodexLimitsServerMsg; // the Codex sign-in's allowance

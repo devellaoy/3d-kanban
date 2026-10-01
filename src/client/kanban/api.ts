@@ -50,7 +50,7 @@ export class KanbanApi {
   /** The filter the watches last asked for; undefined when they asked for none. */
   private watching: string | null | undefined = undefined;
 
-  constructor(private net: Net) {
+  constructor(readonly net: Net) {
     net.onMessage((msg: ServerMsg) => {
       // A new connection has forgotten what was asked on the old one (a page subscribes again itself).
       if (msg.t === 'welcome') {

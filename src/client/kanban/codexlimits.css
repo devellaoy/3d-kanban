@@ -1,0 +1,7 @@
+/* The Codex sign-in's allowance, by a task's Codex agent */
+.kb-codex-limits { margin-left: 8px; padding: 1px 7px; border: var(--bw-sm) solid var(--ink); border-radius: var(--radius-pill); background: var(--field); font-size: var(--fs-xs); font-weight: var(--fw-bold); color: var(--muted); white-space: nowrap; font-variant-numeric: tabular-nums; }
+.kb-codex-limits.near { background: var(--warn-soft); color: var(--text); }
+.kb-codex-limits.over { background: var(--bad-soft); color: var(--text); }
+.kb-codex-note { margin-top: 6px; grid-column: 1 / -1; }
+.kb-codex-note .kb-codex-limits { margin-left: 0; }
+.kb-codex-limits.old { border-style: dashed; background: transparent; color: var(--muted); }

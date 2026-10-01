@@ -77,7 +77,7 @@ const welcome = () =>
 const FLOOR_TOPICS = ['floor', 'project', 'workers', 'issues', 'pulls', 'queue', 'meeting', 'decor', 'floorPlan', 'services', 'dog', 'jukebox', 'whiteboard', 'drawing', 'cabinet', 'cabinetFrame', 'ball', 'cars', 'jail'];
 
 /** Every topic, to listen for them all. */
-const TOPICS = ['peers', 'workers', 'issues', 'pulls', 'chat', 'project', 'screens', 'team', 'upgrade', 'services', 'decor', 'floorPlan', 'usage', 'limits', 'queue', 'me', 'accounts', 'signins', 'notify', 'machine', 'floors', 'floor', 'projectsDir', 'repos', 'dog', 'jukebox', 'sky', 'theme', 'map', 'leaveOnMerge', 'whiteboard', 'drawing', 'cabinet', 'cabinetFrame', 'meeting', 'prompts', 'ball', 'cars', 'jail'] as const;
+const TOPICS = ['peers', 'workers', 'issues', 'pulls', 'chat', 'project', 'screens', 'team', 'upgrade', 'services', 'decor', 'floorPlan', 'usage', 'limits', 'queue', 'me', 'accounts', 'signins', 'notify', 'machine', 'floors', 'floor', 'projectsDir', 'repos', 'dog', 'jukebox', 'sky', 'theme', 'map', 'leaveOnMerge', 'whiteboard', 'drawing', 'cabinet', 'cabinetFrame', 'meeting', 'prompts', 'ball', 'cars', 'jail', 'codexLimits'] as const;
 
 /** Every message the store takes in (and one it doesn't), and the topics it fires, in the order it has always fired them. */
 const RUN: [ServerMsg, string[]][] = [
@@ -112,6 +112,7 @@ const RUN: [ServerMsg, string[]][] = [
   [msg({ t: 'wb.update', elements: [el('e2', 0)] }), []],
   [msg({ t: 'wb.people', people: ['p-a'] }), ['drawing']],
   [msg({ t: 'usage', state: {} }), ['usage']],
+  [msg({ t: 'codex-limits', state: { status: 'ready', windows: [], at: 1, checkedAt: 1 } }), ['codexLimits']],
   [msg({ t: 'limits', state: {} }), ['limits']],
   [msg({ t: 'queue', state: { tasks: [], maxWorkers: 1 } }), ['queue']],
   [msg({ t: 'meeting', state: { current: null, past: [] } }), ['meeting']],
@@ -221,7 +222,7 @@ test('what the browser remembers keeps its keys and shapes', () => {
 
 test("the store's keys are its state, as window.__office shows them", () => {
   // As the office had them before its store was split into slices: methods and the slices aren't among them.
-  assert.deepEqual(Object.keys(store).sort(), ['accounts', 'ball', 'cabinet', 'cabinetFrame', 'cars', 'carsAt', 'chat', 'clock', 'decor', 'dog', 'dogStart', 'drawing', 'floor', 'floorPlan', 'floors', 'ice', 'invites', 'issues', 'jail', 'jukebox', 'leaveOnMerge', 'limits', 'machine', 'map', 'me', 'meeting', 'notify', 'peers', 'profile', 'project', 'projectsDir', 'prompts', 'pulls', 'queue', 'repos', 'screens', 'services', 'signins', 'sky', 'subs', 'team', 'theme', 'upgrade', 'usage', 'whiteboard', 'workers', 'you', 'youtube' /* 3d-kanban */]);
+  assert.deepEqual(Object.keys(store).sort(), ['accounts', 'ball', 'cabinet', 'cabinetFrame', 'cars', 'carsAt', 'chat', 'clock', 'codexLimits', 'decor', 'dog', 'dogStart', 'drawing', 'floor', 'floorPlan', 'floors', 'ice', 'invites', 'issues', 'jail', 'jukebox', 'leaveOnMerge', 'limits', 'machine', 'map', 'me', 'meeting', 'notify', 'peers', 'profile', 'project', 'projectsDir', 'prompts', 'pulls', 'queue', 'repos', 'screens', 'services', 'signins', 'sky', 'subs', 'team', 'theme', 'upgrade', 'usage', 'whiteboard', 'workers', 'you', 'youtube' /* 3d-kanban */]);
 });
 
 test('a new store starts every field where it always has', async () => {
@@ -246,6 +247,7 @@ test('a new store starts every field where it always has', async () => {
       whiteboard: [], drawing: [], cabinet: { player: null, scores: [] }, cabinetFrame: null, ball: {},
       cars: parked(), carsAt: [], jail: { prisoners: [], bones: 0 },
       team: null, accounts: null, signins: null,
+      codexLimits: { status: 'off', windows: [], at: 0, checkedAt: 0 }, // 3d-kanban: the Codex limits (codex-limits/slice.ts)
       youtube: null, // 3d-kanban: the Office TV's YouTube (youtube/slice.ts)
     },
   );
@@ -258,7 +260,7 @@ test('every slice in state/slices is registered, once', async () => {
   const dir = path.join(import.meta.dirname, '../src/client/state/slices');
   const slices = [...Object.values(core)];
   // 3d-kanban: the fork's slice, outside state/slices (docs/fork.md).
-  slices.push((await import('../src/client/youtube/slice.js')).youtube);
+  slices.push((await import('../src/client/youtube/slice.js')).youtube, (await import('../src/client/codex-limits/slice.js')).codexLimits);
   for (const f of readdirSync(dir).filter((f) => f.endsWith('.ts') && f !== 'index.ts')) {
     const exported = Object.values(await import(pathToFileURL(path.join(dir, f)).href));
     assert.ok(exported.length, `${f} exports its slice`);

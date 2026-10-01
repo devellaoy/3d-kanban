@@ -65,6 +65,7 @@ import { installWorkerActions } from './features/workers/actions';
 import { installWorkerViews } from './features/workers/views';
 import { installKanban3d } from './kanban/install3d';
 import { installYoutubeTv } from './youtube/install';
+import { installCodexLimits } from './codex-limits/install';
 import { initAppearance } from './themes';
 
 // The chosen appearance (⚙️ Settings → Theme), on the page and followed across tabs.
@@ -186,6 +187,7 @@ parts.talk = installVoice(ctx, { tv: parts.tv });
 parts.hud = installHud(ctx, core, parts);
 parts.kanban3d = installKanban3d(ctx, core, parts); // J, the kanban's menu entry and its 📍 Show in 3D link
 parts.youtube = installYoutubeTv(ctx, parts); // YouTube on the Office TV
+installCodexLimits(ctx); // the Codex limits panel
 
 // ---- Main loop ---------------------------------------------------------------------------------------
 fitWindow(ctx);

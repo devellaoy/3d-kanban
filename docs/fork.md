@@ -65,6 +65,8 @@ clashes with an upstream install on the same machine:
   install (the package has a `binding.gyp` and no install script), a no-op build when its bundled
   prebuild fits but one that still needs Python 3, make and a C++ toolchain.
 
+The Codex limits reader (`src/server/codex-limits/`) is adapted from the still-unmerged upstream PR #232: if it merges, reconcile with it and prefer ours.
+
 ## Sync policy
 
 Upstream is no longer kept mergeable through a seam list: the fork edits upstream's files freely (#327).

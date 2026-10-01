@@ -4,7 +4,7 @@ import { $, h } from './dom';
 import { panelHide } from './menu';
 
 /** Numbers older than this say when they were read. */
-const STALE_MS = 10 * 60_000;
+export const STALE_MS = 10 * 60_000;
 
 /** "in 12m", "in 2h 5m", or "Tue 5:00 AM" once it is more than a day out. */
 export function fmtReset(at: number, now = Date.now()): string {
@@ -15,7 +15,13 @@ export function fmtReset(at: number, now = Date.now()): string {
   return new Date(at).toLocaleString(undefined, { weekday: 'short', hour: 'numeric', minute: '2-digit' });
 }
 
-const level = (pct: number) => (pct >= 90 ? 'over' : pct >= 75 ? 'near' : '');
+/** "2:05 PM": when a reading was taken. */
+export const hhmm = (at: number) => new Date(at).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
+
+/** Numbers that failed to refresh, or that are older than STALE_MS. */
+export const isOld = (s: { status: string; at: number }, now = Date.now()) => s.status === 'error' || now - s.at > STALE_MS;
+
+export const level = (pct: number) => (pct >= 90 ? 'over' : pct >= 75 ? 'near' : '');
 
 function windowRow(w: PlanWindow, now: number): HTMLElement[] {
   const pct = Math.round(w.pct);

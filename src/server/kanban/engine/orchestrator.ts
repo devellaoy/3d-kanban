@@ -31,7 +31,8 @@ import { Composer, isFolderProject, reportDir, reposText, skillPhase, taskRepos,
 import { canFixPrs } from '../../../shared/kanban/prs.js';
 import { fixTargetsOf, forkTest, polledPulls } from '../integrations/pulls/prfix.js';
 import { next, queuedOf, runOf, stateOf, type Effect, type LastRun, type MachineEvent, type PromptKind, type RunEffect } from './machine.js';
-import { backoffMs, looksInterrupted, planOutcome, prLines, resetTime, reviewFindings, reviewVerdict, stripPlanMarkers } from './markers.js';
+import { backoffMs, looksInterrupted, planOutcome, prLines, reviewFindings, reviewVerdict, stripPlanMarkers } from './markers.js';
+import { limitReset } from './limitreset.js';
 import { branchExists, checkoutLines, currentBranch, homeCleanup, hasChanges, missingFolders } from './workspace.js';
 import { Handoffs } from './handoff.js';
 
@@ -1613,12 +1614,13 @@ export class Orchestrator {
     const since = this.limitSince.get(task.id) ?? now;
     this.limitSince.set(task.id, since);
     const said = result.apiError ?? result.text;
+    const resetP = limitReset(this.ctx, live, said, now); // started first: its worker's Codex home is read before the run is finished
     this.finishRun(live.runId, task.project, { status: 'failed', error: clip(`Interrupted: ${said}`, 2000), ...(sessionId ? { sessionId } : {}) });
-    const reset = resetTime(said, now);
-    const at = reset !== undefined ? reset + 60_000 : now + backoffMs(attempts);
+    const reset = await resetP;
+    const at = reset !== undefined ? reset + 60_000 : this.opts.now() + backoffMs(attempts);
     if (!auto.enabled || attempts > auto.maxAttempts || at - since > auto.maxWaitHours * 3_600_000) {
       this.limitSince.delete(task.id);
-      await this.apply(task.id, { type: 'gaveUp', text: clip(`A usage limit or a lost connection stopped it${auto.enabled ? ` (${attempts - 1} tries)` : ''}: Retry once it has reset. ${said}`, 500) });
+      await this.apply(task.id, { type: 'gaveUp', text: clip(`A usage limit or a lost connection stopped it${auto.enabled ? ` (${attempts - 1} tries)` : ''}: Retry once it has reset${reset !== undefined ? ` (${new Date(reset).toLocaleString('en-GB')})` : ''}. ${said}`, 500) });
     } else {
       this.note(task, `A usage limit or a lost connection interrupted it. It carries on by itself at ${new Date(at).toLocaleString('en-GB')}.`);
       await this.apply(task.id, { type: 'limited', retryAt: at, attempts, text: clip(said, 300) });

@@ -61,6 +61,8 @@ export interface KanbanOffice {
   ghAs?(accountId?: string): { env: Record<string, string> } | string | undefined;
   /** The office's team notifications (upstream's webhook). */
   notify?(title: string, detail?: string): void;
+  /** The Codex account's limit reset (see KanbanContext.codexResetAt). */
+  codexResetAt?(codexHome?: string): Promise<number | undefined>;
 }
 
 export interface KanbanInstallOptions extends KanbanOffice {
@@ -188,6 +190,7 @@ export function installKanban(opts: KanbanInstallOptions): Kanban {
     ...(opts.capacity ? { capacity: () => opts.capacity!() } : {}),
     ...(opts.runAs ? { runAs: opts.runAs } : {}),
     ...(opts.ghAs ? { ghAs: (accountId?: string) => opts.ghAs!(accountId) } : {}),
+    ...(opts.codexResetAt ? { codexResetAt: (home?: string) => opts.codexResetAt!(home) } : {}),
     ...(opts.notify ? { notify: (title: string, detail?: string) => opts.notify!(title, detail) } : {}),
     card: (taskId: number) =>
       repo.card(taskId, (t) => {

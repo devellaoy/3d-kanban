@@ -2,6 +2,7 @@ import http from 'node:http';
 import https from 'node:https';
 import type { Config } from './config.js';
 import { resolveCommand } from './workers.js';
+import { closeCodexLimits } from './codex-limits/index.js';
 import type { Ctx } from './office/context.js';
 import { messaging } from './office/messaging.js';
 import { createCore } from './office/core.js';
@@ -68,6 +69,7 @@ export async function startServer(cfg: Config, opts: StartOptions = {}) {
     for (const f of ctx.floors.values()) f.shutdown(keep);
     ctx.ledger.flush();
     ctx.limits.close();
+    closeCodexLimits(ctx);
     for (const a of ctx.accountLimits.values()) a.reader.close();
     ctx.signins.shutdown();
     ctx.kanban?.shutdown(); // its engine and plugins stop, and its database closes

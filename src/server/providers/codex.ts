@@ -27,7 +27,7 @@ interface CodexSetup {
 }
 
 /** Where a Codex worker's sessions are logged, for reading its usage. */
-function codexHome(cwd: string, env: NodeJS.ProcessEnv): string {
+export function codexHome(cwd: string, env: NodeJS.ProcessEnv): string {
   return path.resolve(cwd, env.CODEX_HOME || path.join(env.HOME || homedir(), '.codex'));
 }
 
