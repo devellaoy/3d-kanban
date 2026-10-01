@@ -165,7 +165,8 @@ test('claude transcript: teammates (agent teams) still working, from their own t
   t.after(() => rmSync(dir, { recursive: true, force: true }));
   let n = 0;
   const at = (s: number) => new Date(Date.UTC(2026, 9, 1, 6, 0, s)).toISOString();
-  const withTs = (lines: object[], s: number) => lines.map((l, i) => ({ timestamp: at(s + i), ...l }));
+  // An idle body's own time defaults to its line's (`idle()`'s placeholder), as a notification logged on time has it.
+  const withTs = (lines: object[], s: number) => lines.map((l, i) => JSON.parse(JSON.stringify({ timestamp: at(s + i), ...l }).replace(/__LINE__/g, at(s + i))) as object);
   /** A lead log (with its teammates' transcripts beside it, as Claude Code keeps them), as the lead's file. */
   const lead = (lines: object[], team: Record<string, object[]> = {}) => {
     const file = path.join(dir, `lead${++n}.jsonl`);
@@ -193,7 +194,7 @@ test('claude transcript: teammates (agent teams) still working, from their own t
     cUser([{ type: 'tool_result', tool_use_id: id, content: [text('{"success":true}')] }], { toolUseResult: { success: true, message: `Message sent to ${to}'s inbox`, routing: { sender: 'team-lead', target: `@${to}` } } }),
   ];
   const tag = (id: string, body: string, attrs = '') => `<teammate-message teammate_id="${id}" color="blue"${attrs}>\n${body}\n</teammate-message>`;
-  const idle = (from: string, extra: object = {}) => JSON.stringify({ type: 'idle_notification', from, idleReason: 'available', ...extra });
+  const idle = (from: string, extra: object = {}) => JSON.stringify({ type: 'idle_notification', from, timestamp: '__LINE__', idleReason: 'available', ...extra });
   const mail = (...tags: string[]) => cUser(`Another Claude session sent a message:\n${tags.join('\n')}`);
   const msgFrom = (id: string, ...blocks: object[]) => ({ type: 'assistant', message: { id: `t-${id}`, role: 'assistant', content: blocks } });
   const wait = cAssistant([text('Waiting for the teammates.')], {}, 'mw');
@@ -267,6 +268,24 @@ test('claude transcript: teammates (agent teams) still working, from their own t
   const woken = { a: sender('b', 18), b: withTs([cUser(tag('a', 'again')), msgFrom('1', { type: 'tool_use', id: 'x', name: 'Bash', input: {} })], 24) };
   assert.equal(readClaudeTurn(lead(stale, woken))?.background, 1);
   assert.deepEqual(teammateTags(messageTextOf(mail(tag('b', idle('b', { timestamp: at(15) }))))), [{ from: 'b', type: 'idle_notification', at: Date.parse(at(15)) }]);
+
+  // An idle body with no timestamp is dated by the lead's line.
+  const undated = [...withTs([cUser('Implement task #7'), ...spawn('a', 's1'), wait], 1), ...withTs([mail(tag('a', idle('a', { timestamp: undefined }))), cAssistant([text('a is idle.')], {}, 'm9')], 40)];
+  assert.equal(readClaudeTurn(lead(undated, { a: own([msgFrom('2', { type: 'tool_use', id: 'x', name: 'Bash', input: {} })], 20) }))?.background, undefined);
+
+  // A rest and a wake on the same ms: working.
+  const tie = [...withTs([cUser('Implement task #7'), ...spawn('b', 's2'), wait], 1), ...withTs([cAssistant([{ type: 'tool_use', id: 'q1', name: 'SendMessage', input: { to: 'b' } }], {}, 'mq')], 29), { ...send('b', 'q1')[1], timestamp: at(30) }, ...withTs([mail(tag('b', idle('b', { timestamp: at(30) }))), cAssistant([text('b.')], {}, 'm9')], 40)];
+  assert.equal(readClaudeTurn(lead(tie, { b: own([msgFrom('3', text('Done.'))], 3) }))?.background, 1);
+
+  // A meta with only `agentType` (no `name`) still names the sender: its late "[to b]" is suppressed all the same.
+  const nameless = lead(late, answered);
+  writeFileSync(path.join(path.dirname(nameless), path.basename(nameless, '.jsonl'), 'subagents', 'agent-aa-abc.meta.json'), JSON.stringify({ agentType: 'a', taskKind: 'in_process_teammate' }));
+  assert.equal(readClaudeTurn(nameless)?.background, undefined);
+
+  // A late termination is dated by its own time: an old one doesn't override the lead's later wake of b; one newer than b's last line rests it.
+  const ended = (stamp: number, s: number) => [...withTs([cUser('Implement task #7'), ...spawn('b', 's2'), wait, ...send('b', 'q1')], 26), ...withTs([mail(tag('b', JSON.stringify({ type: 'teammate_terminated', from: 'b', timestamp: at(stamp) }))), cAssistant([text('b ended.')], {}, 'm9')], s)];
+  assert.equal(readClaudeTurn(lead(ended(20, 60), { b: own([msgFrom('3', text('Done.'))], 3) }))?.background, 1);
+  assert.equal(readClaudeTurn(lead(ended(70, 80), { b: own([msgFrom('3', { type: 'tool_use', id: 'x', name: 'Bash', input: {} })], 3) }))?.background, undefined);
 
   // A teammate closing with a message to the lead ("[to main]": a name that is no teammate's) wakes nobody, with or without a transcript.
   const report = withTs([cUser('Implement task #7'), ...spawn('a', 's1'), wait, mail(tag('a', idle('a', { summary: '[to main] done' }))), cAssistant([text('Done.')], {}, 'm9')], 1);

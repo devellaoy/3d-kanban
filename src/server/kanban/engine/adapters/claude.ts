@@ -84,8 +84,8 @@ const OPEN_TAG = /<teammate-message((?:\s+[\w-]+="[^"]*")*)\s*>/g;
 
 /**
  * The `<teammate-message>` tags of a line's text: who sent each, and for a JSON body (an idle notification
- * and the like) its `type`, `summary` and own `timestamp` (`at`, ms). The body is the text between the tags, parsed whole: it can hold
- * `}` and `>` (a result's code), which a pattern for the JSON would cut short.
+ * and the like) its `type`, `summary` and own `timestamp` (`at`, ms). The body is the text between the
+ * tags, parsed whole: it can hold `}` and `>` (a result's code), which a pattern for the JSON would cut short.
  */
 export function teammateTags(text: string): { from: string; type?: string; summary?: string; at?: number }[] {
   const out: { from: string; type?: string; summary?: string; at?: number }[] = [];
@@ -136,7 +136,8 @@ const atOf = (line: Record<string, unknown>): number => (typeof line.timestamp =
 /**
  * The messages sent (SendMessage) in a log from `start` on, each a wake (busy) of its recipient at the
  * line's own time: SendMessage's `routing.target`, else (an older CLI) the call's `to`. The recipient may
- * be no teammate (the lead, `main`): the caller drops such names.
+ * be no teammate (the lead, `main`): the caller drops such names. Split out of `teammateEvents` so a
+ * teammate's transcript can reuse it; the lead's log is walked twice, which is cheap.
  */
 export function messagesSent(lines: Record<string, unknown>[], start: number): TeammateEvent[] {
   const events: TeammateEvent[] = [];
@@ -250,6 +251,7 @@ export function teammatesBusy(leadFile: string, since: number, events: TeammateE
   const own = new Map<string, { last: number; busy: boolean }>();
   // The peer DMs the transcripts read hold, and whose transcripts those were.
   const sent: TeammateEvent[] = [];
+  // Keyed by `teammateName`, as an event's `relayedBy` is: the two must match, or a summary isn't suppressed.
   const read = new Set<string>();
   let metas: string[] = [];
   try {
@@ -295,14 +297,16 @@ export function teammatesBusy(leadFile: string, since: number, events: TeammateE
   // A name no spawn or meta makes a teammate (the lead's own, in a teammate's "[to main]") is never counted.
   for (const e of events) if (e.spawn && !own.has(e.name)) own.set(e.name, { last: -1, busy: true });
   // The newest word the lead's log has of each name since the process began, and of a broadcast.
+  // On the same ms a wake beats a rest: an error on the side of working, as `own` does.
+  const newer = (e: TeammateEvent, than: TeammateEvent) => e.at > than.at || (e.at === than.at && e.busy);
   const word = new Map<string, TeammateEvent>();
   let all: TeammateEvent | undefined;
   for (const e of [...events, ...sent]) {
     if (e.at < since || (e.relayedBy && read.has(e.relayedBy))) continue;
     // A broadcast counts only when it woke (busy): a rest is no one's but its sender's.
     if (e.name === '*') {
-      if (e.busy && (!all || e.at > all.at)) all = e;
-    } else if (!word.has(e.name) || e.at > word.get(e.name)!.at) word.set(e.name, e);
+      if (e.busy && (!all || newer(e, all))) all = e;
+    } else if (!word.has(e.name) || newer(e, word.get(e.name)!)) word.set(e.name, e);
   }
   let busy = 0;
   for (const [name, { last, busy: tail }] of own) {

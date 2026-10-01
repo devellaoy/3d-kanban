@@ -146,15 +146,15 @@ allowed: `todo → in_progress` (= start), `waiting|review → done`, `done → 
   (a teammate that last wrote between the process's start and the run's is then counted dead). A
   transcript is read from its last 512 KB, and not at all when its file's mtime is older than `since`; of
   several transcripts of one name (a respawn) the one written last speaks; one that can't be read counts as
-  working (an error is no rest). The lead's log only covers the lag
-  of theirs: a spawn, a `SendMessage` to one (`routing.target`, else the call's `to`; `*` is everyone) wakes it,
-  as does a teammate's message to another, read from the sender's own transcript at its own time (the idle
-  notification's `[to Y]` summary counts only when the sender's transcript can't be read: that notification
-  can reach the lead minutes late, naming a message already answered); an idle notification, shutdown or
-  termination rests it (dated by its own timestamp, as it can reach the lead late) (only for names that are teammates: spawned, or with a transcript; a teammate's
-  `[to main]` to the lead wakes nobody), each when newer than the teammate's last line. A teammate's message to the lead is
-  no prompt of the office's: it doesn't open a new window (`start`) and counts as a prompt to answer
-  (`resuming`), so the background agents launched before it still count.
+  working (an error is no rest). The lead's log only covers the lag of theirs: a spawn or a `SendMessage` to
+  one (`routing.target`, else the call's `to`; `*` is everyone) wakes it, as does a teammate's message to
+  another, read from the sender's own transcript at its own time (the idle notification's `[to Y]` summary
+  counts only when the sender's transcript can't be read: such a notification can reach the lead minutes
+  late, naming a message already answered); an idle notification, shutdown or termination rests it, dated by
+  its own timestamp for the same reason (only for names that are teammates: spawned, or with a transcript; a
+  teammate's `[to main]` to the lead wakes nobody), each when newer than the teammate's last line. A
+  teammate's message to the lead is no prompt of the office's: it doesn't open a new window (`start`) and
+  counts as a prompt to answer (`resuming`), so the background agents launched before it still count.
 - A hook whose payload has an `agent_id` comes from a subagent or teammate, which run in the lead's process
   and so reach its worker (upstream may set the worker `working` for them). The engine ignores those for
   its bookkeeping: the plan exit, the Stop text, the end of a hold are the
