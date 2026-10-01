@@ -452,17 +452,34 @@ answers `kanban.ok {rid, ...}` or `kanban.error {rid, message}`. Deltas are push
     and the user's `jql` is checked (`checkUserJql`: one complete expression, no backslash outside a quoted literal) and AND-ed in
     parentheses. As a second line, every issue a Jira search or read returns must be in the source's projects (its `project`
     field, else the key's prefix) or it is dropped (a single issue is refused), and `browse.count` answers no count for raw JQL.
-    - **Sub-tasks and context.** A top-level Jira page leaves sub-tasks out (the tree fetches them under their story), unless the
-      filters narrow the search beyond version and epic (a status category other than `all`, which includes the default `open`;
-      text, type, status, assignee, labels, sprint, raw JQL).
-      Then matching sub-tasks are returned, and their parents that aren't on the page come in one extra `key in (…)` search as
-      items flagged `context: true` (they don't match the filters; the tree nests the sub-tasks under them, and they count as
-      neither done nor total). A sub-task has no version or epic of its own, so for a version or epic node the JQL lets
-      sub-tasks without a version (any, for an epic) through and the server keeps the ones whose parent's versions / epic fit;
-      pages may come back shorter. For the same reason `browse.count` answers no count (`{}`, no Jira call) for a search
-      narrowed by more than the status category in a version or epic group; one narrowed by the status category alone (the
-      default *Not done*) counts the top-level issues that match (`strict` JQL, sub-tasks left out), as `groupByEpic` counts. A context copy of an issue never replaces the matching record when pages are merged
+    - **Sub-tasks and context.** A top-level Jira page is a page of the group's *stories*, with the group's clause as it is
+      when nothing narrows (`fixVersion = V`, `parent = E`; no relaxing for sub-tasks), so a page is never empty while `next`
+      exists (but for the epics dropped by "No epic", below) and the sub-tasks never decide what is on it. A second scoped search
+      then brings the sub-tasks that match the filters for **that page's stories only** (`issuetype in subTaskIssueTypes() AND
+      parent in (<page keys>) AND <filters>`, all of them, up to 4 pages of 50), returned after their story; a sub-task has no
+      version or epic of its own, so those clauses are left out of it. A search narrowed beyond the status category (text, type,
+      status, assignee, labels, sprint, raw JQL) can match a sub-task whose story doesn't. Jira has no "parents of", so the
+      matching sub-tasks of the scope (the 100 last updated, key and parent only, cached a minute) are asked for first and the
+      page lists the stories that match **or** are one of those parents (`(<filters> OR key in (…))`); a story that doesn't match
+      itself (one more `key in (…) AND <filters>` search) is flagged `context: true` (the tree nests the sub-tasks under it; it
+      counts as neither done nor total). The trade-off: a sub-task beyond those 100 isn't reached through a story that doesn't
+      match (narrow further; the story's own children are one click away), and a sub-task that matches only the status category
+      (the default *Not done*) under a story that doesn't is not listed, since the stories decide there (otherwise every open
+      sub-task of the project would be a lookup on every page). A page costs 2 searches (the stories, their sub-tasks), 4 with a
+      narrowing beyond the category. `browse.count` answers no count (`{}`, no Jira call) for a search narrowed by more than the
+      status category (the rows include stories a count can't see) and for raw JQL; otherwise it counts the top-level issues that
+      match with the same strict clause the page pages by, as `groupByEpic` counts. "No epic" (`parent is EMPTY`, true of epics too) adds
+      `issuetype != Epic` and the page drops what `isEpic` says is one (a renamed type); a site with no `Epic` type 400s on that
+      clause, and so does a text like `UTF-8` with the `key = "UTF-8"` clause (it is added only for a project of the scope), so a 400 on
+      a page that has either clause is retried once without them (`where.lenient`; the count of such a search is then missing).
+      User JQL may call only `currentUser, openSprints, closedSprints, futureSprints, subTaskIssueTypes, standardIssueTypes, now,
+      startOf/endOf Day|Week|Month|Year` (`checkUserJql` refuses any other name before a parenthesis, quoted or not): `membersOf`,
+      `issueFunction`, the versions functions and so on would read beyond the scope. A context copy of an issue never replaces the matching record when pages are merged
       (`mergeIssues`), so a story that matched on one page keeps its place in the epic's totals. `groupByEpic` nests an item whose `parent.key` is another loaded item under it.
+    - **Caches.** In memory per office: counts (Jira and GitHub, `items(query:){totalCount}` with no nodes), a board's iteration and
+      Status fields, the Jira versions per source page and the sub-task parents live 60 s (500 entries at most; a failure is never kept); the
+      Sprint field id lives until the office restarts (a failed ask is forgotten at once, a site without one is asked again in a
+      minute); a person's GitHub login 10 minutes (a failure not at all). `load` (below) remembers a key it found nothing for for 60 s.
     - **Tasks.** Every item of a `browsePage` (and each `parent`) carries `taskId` when a task was made from it.
     - **GitHub scope.** An issue may be opened or expanded when it is an item of the scope's board **or** its parent chain
       (`Issue.parent`, up to 8 levels, GitHub's maximum nesting) reaches one; any other key is refused. A completed iteration named by the `iteration`
@@ -470,8 +487,11 @@ answers `kanban.ok {rid, ...}` or `kanban.error {rid, message}`. Deltas are push
     - **Actions and the browsed cache.** `issue.*` and `issues.createTask` accept an issue that is on the project's list, one
       acted on lately, **one opened from Browse** (`kanban.browse.issue` keeps it in a bounded per-project set, 300 issues for
       12 hours, the oldest let go first), or else one the server **loads again** from a source of the project (within that
-      source's scope: its project keys, its board). A key outside every source's scope is still refused. A write patches the
-      browsed copy as it does the acted-on one.
+      source's scope: its project keys, its board; a GitHub issue and its parent chain are read once and tested against each board).
+      A key outside every source's scope is still refused, and a key that wasn't found isn't asked for again for a minute. A write patches the
+      browsed copy as it does the acted-on one. **An issue opened from Browse can be queued, carried or handed to a worker even if
+      the source's filters leave it off the board, so its text can reach an agent's prompt once a person starts it** (accepted: a person acts, and the scope
+      is the source's own).
   - `issues.list`, `issues.refresh`, `issues.createTask` (idempotent by ticket, archived tasks included, `kanban.ok {taskId, existed}`; `start` with `deskId` starts it, or the one already made while it waits in To do, at that desk: the 3D office's P with a card; `started` or `startError` says how it went),
     `skills.list` are for anyone signed in.
   - `meta.get` (anyone signed in) is answered with `kanban.meta {projects, settings, secrets, me}`: what a
@@ -482,7 +502,7 @@ answers `kanban.ok {rid, ...}` or `kanban.error {rid, message}`. Deltas are push
     repositories, else 0), and falls back to upstream's list without sources. Cards are handed out with
     `issueKey` (see kanban-coupling.md, Messages). `Floor.cardKey` accepts a key the wall lists **or** one the project knows
     within its scope (`wallKnows`: on the list, acted on, or browsed, though the filters keep it off the wall), so queueing,
-    carrying or handing a browsed issue keeps its `issueKey`; any other key is dropped.
+    carrying or handing a browsed issue keeps its `issueKey` (its text can then reach an agent's prompt, see above); any other key is dropped.
   - Admin only (upstream `meOf(accountId).admin`): `settings.set`, `project.settings.set`, `project.repos.set`,
     `project.rename`, `project.prompt.set`, `secrets.set`, `skills.sync`. `secrets.set` is answered with `kanban.settings` (configured flags
     only). The `/api/v1` key is stored as `sha256:<hex>`.

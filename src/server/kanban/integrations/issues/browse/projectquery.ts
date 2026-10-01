@@ -30,6 +30,8 @@ export function projectQuery(filters: BrowseFilters, group?: string): string {
   if (filters.issueType) parts.push(`type:${quote(filters.issueType)}`);
   for (const l of filters.labels ?? []) parts.push(`label:${quote(l)}`);
   const a = filters.assignee;
+  // An id starting with @ would be a qualifier's own word (`@me` is the office's gh, not the asker), and a space would end the qualifier.
+  if (a && 'id' in a && (a.id.startsWith('@') || /[\s"]/.test(a.id))) throw new Error('A GitHub login can’t start with @ or have spaces or quotes');
   if (a) parts.push('id' in a ? `assignee:${a.id}` : 'none' in a ? 'no:assignee' : 'has:assignee');
   if (group) parts.push(groupClause(group));
   const q = filters.q?.trim();

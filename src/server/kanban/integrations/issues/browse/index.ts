@@ -13,7 +13,7 @@ import { fail } from '../../util.js';
 import { ghPeople } from '../github-ops.js';
 import { parseGhIssues } from '../github-repo.js';
 import type { IssueActIo, IssueSourceIo } from '../source.js';
-import { ghChildren, ghGet, ghGroups, ghLogin, ghOptions, ghPage } from './github.js';
+import { ghChildren, ghCount, ghGet, ghGetOn, ghGroups, ghLogin, ghOptions, ghPage } from './github.js';
 import { jiraCount, jiraGet, jiraOptions, jiraPage, jiraScopePeople, jiraSearchPage, jiraVersions, newJiraCaches } from './jira.js';
 import { JIRA_KEY_RE, browseJql, keyProject, narrowsBeyondCategory } from './jql.js';
 
@@ -27,6 +27,11 @@ export interface BrowseDeps {
   /** Keeps a browsed issue, so the actions on it (status, comments, assignee, a task) accept it. */
   browsed(project: string, issue: NormalizedIssue): void;
 }
+
+/** How long a person's GitHub login is remembered, and a key `load` found nothing for. */
+const LOGIN_TTL_MS = 10 * 60_000;
+const MISS_TTL_MS = 60_000;
+const MISS_MAX = 500;
 
 export const NO_KEYS = 'Add project keys to the Jira source to browse it';
 
@@ -43,8 +48,10 @@ const scopeOf = (s: Browsable): BrowseScope =>
 
 export function createBrowse(ctx: KanbanContext, deps: BrowseDeps) {
   const caches = newJiraCaches();
-  /** The GitHub login each account's own gh signs in as. */
-  const logins = new Map<string, Promise<string | undefined>>();
+  /** The GitHub login each account's own gh signs in as: kept for ten minutes, a failed ask not at all. */
+  const logins = new Map<string, { at: number; p: Promise<string | undefined> }>();
+  /** The keys `load` found nothing for, and when (so an action on a key that isn't the project's doesn't ask GitHub or Jira every time). */
+  const missed = new Map<string, number>();
 
   const actIo = (project: string, who: string): IssueActIo => ({ ...deps.io(project), who, shared: true });
 
@@ -82,12 +89,20 @@ export function createBrowse(ctx: KanbanContext, deps: BrowseDeps) {
     const as = ctx.ghAs?.(c.accountId);
     // Only a person's own sign-in says who they are: the office's gh is everybody's.
     if (!as || typeof as === 'string' || !c.accountId) return Promise.resolve(undefined);
-    let p = logins.get(c.accountId);
-    if (!p) {
-      p = ghLogin(deps.io(project), as.env).catch(() => undefined);
-      logins.set(c.accountId, p);
-    }
-    return p;
+    const hit = logins.get(c.accountId);
+    if (hit && Date.now() - hit.at < LOGIN_TTL_MS) return hit.p;
+    const id = c.accountId;
+    const entry = {
+      at: Date.now(),
+      p: ghLogin(deps.io(project), as.env)
+        .catch(() => undefined)
+        .then((login) => {
+          if (!login && logins.get(id) === entry) logins.delete(id);
+          return login;
+        }),
+    };
+    logins.set(id, entry);
+    return entry.p;
   };
 
   const ws: NonNullable<KanbanPlugin['ws']> = {
@@ -99,30 +114,29 @@ export function createBrowse(ctx: KanbanContext, deps: BrowseDeps) {
     },
 
     'kanban.browse.options': scoped<Msg<'kanban.browse.options'>>(async (c, m, { cfg, io }) => {
-      reply(c, m, { t: 'kanban.browseOptions', options: cfg.kind === 'jira' ? await jiraOptions(io, cfg) : await ghOptions(io, cfg) });
+      reply(c, m, { t: 'kanban.browseOptions', options: cfg.kind === 'jira' ? await jiraOptions(io, cfg, caches) : await ghOptions(io, cfg, caches) });
     }),
 
     'kanban.browse.groups': scoped<Msg<'kanban.browse.groups'>>(async (c, m, { cfg, io }) => {
-      if (cfg.kind === 'github-project') return reply(c, m, { t: 'kanban.browseGroups', groups: await ghGroups(io, cfg, m.filters, m.released) });
+      if (cfg.kind === 'github-project') return reply(c, m, { t: 'kanban.browseGroups', groups: await ghGroups(io, cfg, m.filters, m.released, caches) });
       // The unreleased versions page by page; then, on the last page, the collapsed node of the released ones and "No version".
       const f = m.filters;
       const only = (g: { id: string }) => !f.version || g.id === f.version;
       if (f.version === 'none') return reply(c, m, { t: 'kanban.browseGroups', groups: [{ id: 'none', title: 'No version', kind: 'none' }] });
-      const found = await jiraVersions(io, cfg, !!m.released, m.cursor);
+      const found = await jiraVersions(io, cfg, !!m.released, m.cursor, caches);
       const tail = m.released || found.next ? [] : [...(f.version ? [] : [{ id: 'released', title: 'Released versions', kind: 'released' as const }, { id: 'none', title: 'No version', kind: 'none' as const }])];
       reply(c, m, { t: 'kanban.browseGroups', groups: [...found.groups.filter(only), ...tail], ...(found.next ? { next: found.next } : {}) });
     }),
 
     'kanban.browse.count': scoped<Msg<'kanban.browse.count'>>(async (c, m, { cfg, io }) => {
-      if (cfg.kind === 'github-project') return reply(c, m, { t: 'kanban.browseCount', count: (await ghPage(io, cfg, m.filters, m.group, undefined, 1)).total });
+      if (cfg.kind === 'github-project') return reply(c, m, { t: 'kanban.browseCount', count: await ghCount(io, cfg, m.filters, m.group, caches) });
       // Raw JQL can't be checked after the fact (a count has no issues to look at), so it gets no count.
       if (m.filters.jql?.trim()) return reply(c, m, { t: 'kanban.browseCount' });
-      // A search narrowed by more than the status category, in a version or epic group, relaxes the grouping (sub-tasks inherit
-      // it, decided after the search), which a count can't follow. One narrowed by the status category alone (the default "Not
-      // done") counts the top-level issues that match: the rows the group shows, as an epic's done/total counts them.
-      const f = m.filters;
-      if (narrowsBeyondCategory(f) && (m.group || m.epic || f.version || f.epic)) return reply(c, m, { t: 'kanban.browseCount' });
-      const jql = browseJql(cfg, m.filters, { topLevel: true, strict: true, version: m.group, epic: m.epic }, false);
+      // A search narrowed by more than the status category also lists the stories that have a matching sub-task (jira.ts), which
+      // a count can't follow: no count. One narrowed by the status category alone (the default "Not done") counts the top-level
+      // issues that match: the rows the group shows, as an epic's done/total counts them.
+      if (narrowsBeyondCategory(m.filters)) return reply(c, m, { t: 'kanban.browseCount' });
+      const jql = browseJql(cfg, m.filters, { topLevel: true, version: m.group, epic: m.epic }, false);
       const count = await jiraCount(io, cfg, jql, caches);
       reply(c, m, { t: 'kanban.browseCount', ...(count !== undefined ? { count } : {}) });
     }),
@@ -171,6 +185,18 @@ export function createBrowse(ctx: KanbanContext, deps: BrowseDeps) {
    * boards. Anything else, or any failure, is undefined.
    */
   const load = async (project: string, key: string): Promise<NormalizedIssue | undefined> => {
+    const at = `${project}|${key}`;
+    const seen = missed.get(at);
+    if (seen !== undefined && Date.now() - seen < MISS_TTL_MS) return undefined;
+    const found = await fetchOwn(project, key);
+    if (!found) {
+      if (missed.size >= MISS_MAX) missed.delete(missed.keys().next().value as string);
+      missed.set(at, Date.now());
+    } else missed.delete(at);
+    return found;
+  };
+
+  const fetchOwn = async (project: string, key: string): Promise<NormalizedIssue | undefined> => {
     const sources = ctx.settings.project(project).issueSources;
     const io = actIo(project, 'Agent Office');
     try {
@@ -178,16 +204,10 @@ export function createBrowse(ctx: KanbanContext, deps: BrowseDeps) {
         const jira = sources.find((s): s is JiraConfig => s.kind === 'jira' && s.projectKeys.some((k) => k.toUpperCase() === keyProject(key)));
         return jira ? await jiraGet(io, jira, key, caches) : undefined;
       }
+      // The issue and its parent chain are read once and tested against each board (not one fetch per board).
       const boards = sources.filter((s): s is ProjectConfig => s.kind === 'github-project');
-      const draft = /^ghp:([^/#]+)\/(\d+)#/.exec(key);
-      for (const b of boards) {
-        if (draft && !(sameRepo(draft[1], b.owner) && Number(draft[2]) === b.number)) continue;
-        try {
-          return await ghGet(io, b, key);
-        } catch {
-          // Not on this board: the next one.
-        }
-      }
+      const found = boards.length ? await ghGetOn(io, boards, key).catch(() => undefined) : undefined;
+      if (found) return found;
       const gh = parseGhKey(key);
       const repos = [...io.projectRepos, ...sources.flatMap((s) => (s.kind === 'github-repo' ? s.repos : []))];
       if (!gh || !repos.some((r) => sameRepo(r, gh.repo))) return undefined;

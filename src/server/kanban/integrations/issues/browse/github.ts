@@ -11,6 +11,8 @@ import type { IssueSourceConfig } from '../../../../../shared/kanban/types.js';
 import { ghIssueKey } from '../github-repo.js';
 import { projectError, projectItem } from '../github-project.js';
 import type { IssueSourceIo } from '../source.js';
+import { memo } from './cache.js';
+import type { JiraCaches } from './jira.js';
 import { projectQuery } from './projectquery.js';
 
 type ProjectConfig = Extract<IssueSourceConfig, { kind: 'github-project' }>;
@@ -43,6 +45,14 @@ fragment P on ProjectV2 {
     pageInfo { hasNextPage endCursor }
     nodes { id isArchived updatedAt ${STATUS} ${ITERATION} ${CONTENT(false)} }
   }
+}`)}`;
+
+/** The count of the items for a filter, and nothing else (no items are read). */
+export const BROWSE_COUNT_QUERY = `query($owner: String!, $number: Int!, $q: String) {
+  ${ON_OWNER(`
+}
+fragment P on ProjectV2 {
+  items(query: $q) { totalCount }
 }`)}`;
 
 /** The board's iterations (current and upcoming, and completed) and its Status options. */
@@ -85,14 +95,15 @@ const ANCESTORS_QUERY = `query($id: ID!) { node(id: $id) { ... on Issue { ${chai
 
 type Vars = [flag: '-f' | '-F', name: string, value: string][];
 
-/** Whether an issue's parent chain (the issue itself not included) reaches an item of the board. */
-async function parentOnBoard(io: IssueSourceIo, c: ProjectConfig, nodeId: string): Promise<boolean> {
+/** The first of the boards that an issue's parent chain (the issue itself not included) reaches an item of. */
+async function parentOnBoard(io: IssueSourceIo, boards: ProjectConfig[], nodeId: string): Promise<ProjectConfig | undefined> {
   let at = (await graphql(io, ANCESTORS_QUERY, [['-f', 'id', nodeId]])).node;
   for (let n = 0; n < ANCESTOR_LEVELS && at?.parent; n++) {
     at = at.parent;
-    if (itemOnBoard(at.projectItems?.nodes, c)) return true;
+    const board = boards.find((b) => itemOnBoard(at.projectItems?.nodes, b));
+    if (board) return board;
   }
-  return false;
+  return undefined;
 }
 
 /** One GraphQL call: the answer's `data`. gh's token errors become the text that says what to run. */
@@ -157,9 +168,17 @@ export async function ghPage(io: IssueSourceIo, c: ProjectConfig, filters: Brows
   return { items, ...(info?.hasNextPage && info.endCursor ? { next: String(info.endCursor) } : {}), total: Number(board.items?.totalCount ?? items.length) };
 }
 
-/** The board's iteration and Status fields. */
-async function fieldsOf(io: IssueSourceIo, c: ProjectConfig) {
-  const fields: any[] = boardOf(await graphql(io, BROWSE_FIELDS_QUERY, boardVars(c)), c).fields?.nodes ?? [];
+/** The count of the board's items for the filters and group: asked of GitHub without reading any item, and remembered for a minute. */
+export async function ghCount(io: IssueSourceIo, c: ProjectConfig, filters: BrowseFilters, group: string | undefined, caches?: JiraCaches): Promise<number> {
+  const q = projectQuery(filters, group);
+  const make = async () => Number(boardOf(await graphql(io, BROWSE_COUNT_QUERY, [...boardVars(c), ...(q ? ([['-f', 'q', q]] as Vars) : [])]), c).items?.totalCount ?? 0);
+  return caches ? memo(caches.counts, `gh|${c.owner.toLowerCase()}/${c.number}|${q}`, make).then((n) => n ?? 0) : make();
+}
+
+/** The board's iteration and Status fields (remembered for a minute per board when `caches` is given). */
+async function fieldsOf(io: IssueSourceIo, c: ProjectConfig, caches?: JiraCaches) {
+  const make = async () => ((boardOf(await graphql(io, BROWSE_FIELDS_QUERY, boardVars(c)), c).fields?.nodes ?? []) as any[]);
+  const fields = caches ? ((await memo(caches.fields, `${c.owner.toLowerCase()}/${c.number}`, make)) as any[]) : await make();
   const named = (type: string, name: string) => fields.find((f) => f?.__typename === type && String(f.name).toLowerCase() === name);
   const iteration = named('ProjectV2IterationField', 'iteration');
   const iterations = (list: any[]) => (Array.isArray(list) ? list : []).filter((i) => typeof i?.title === 'string').map((i) => ({ title: String(i.title), start: String(i.startDate ?? '') }));
@@ -174,8 +193,8 @@ async function fieldsOf(io: IssueSourceIo, c: ProjectConfig) {
  * collapsed node, which `released` opens) if the board has an Iteration field, else one per Status
  * option. Then the items with none. No counts: they are asked for when a group is in view.
  */
-export async function ghGroups(io: IssueSourceIo, c: ProjectConfig, filters: BrowseFilters, released = false): Promise<BrowseGroup[]> {
-  const f = await fieldsOf(io, c);
+export async function ghGroups(io: IssueSourceIo, c: ProjectConfig, filters: BrowseFilters, released = false, caches?: JiraCaches): Promise<BrowseGroup[]> {
+  const f = await fieldsOf(io, c, caches);
   if (f.iteration) {
     const iter = (i: { title: string; start: string }, done: boolean): BrowseGroup => ({ id: `i:${i.title}`, title: i.title, kind: 'iteration', ...(done ? { released: true } : {}), ...(i.start ? { releaseDate: i.start } : {}) });
     if (released) return f.iteration.completed.sort((a, b) => b.start.localeCompare(a.start)).map((i) => iter(i, true));
@@ -193,8 +212,8 @@ export async function ghGroups(io: IssueSourceIo, c: ProjectConfig, filters: Bro
 }
 
 /** The filter choices: the Status options, the iterations and the organisation's issue types. */
-export async function ghOptions(io: IssueSourceIo, c: ProjectConfig): Promise<BrowseOptions> {
-  const [f, types] = await Promise.all([fieldsOf(io, c), graphql(io, TYPES_QUERY, [['-f', 'owner', c.owner]]).catch(() => ({}))]);
+export async function ghOptions(io: IssueSourceIo, c: ProjectConfig, caches?: JiraCaches): Promise<BrowseOptions> {
+  const [f, types] = await Promise.all([fieldsOf(io, c, caches), graphql(io, TYPES_QUERY, [['-f', 'owner', c.owner]]).catch(() => ({}))]);
   return {
     statuses: [],
     issueTypes: ((types.repositoryOwner?.issueTypes?.nodes ?? []) as any[]).map((t) => String(t.name)),
@@ -209,7 +228,7 @@ export async function ghOptions(io: IssueSourceIo, c: ProjectConfig): Promise<Br
 export async function ghChildren(io: IssueSourceIo, c: ProjectConfig, nodeId: string, cursor?: string): Promise<{ items: BrowseIssue[]; next?: string; total: number }> {
   const node = (await graphql(io, CHILDREN_QUERY, [['-f', 'id', nodeId], ...(cursor ? ([['-f', 'after', cursor]] as Vars) : [])])).node;
   if (!node?.subIssues) throw new Error('That isn’t an issue with sub-issues');
-  if (!itemOnBoard(node.projectItems?.nodes, c) && !(await parentOnBoard(io, c, nodeId))) throw new Error(`That issue isn't on the board ${c.owner}/${c.number}, nor under an item of it`);
+  if (!itemOnBoard(node.projectItems?.nodes, c) && !(await parentOnBoard(io, [c], nodeId))) throw new Error(`That issue isn't on the board ${c.owner}/${c.number}, nor under an item of it`);
   const url = `https://github.com/${c.owner}`;
   const items = (node.subIssues.nodes ?? []).flatMap((n: any) => {
     // The sub-issue's Status and Iteration are those of its item on this board, when it is on it.
@@ -222,24 +241,39 @@ export async function ghChildren(io: IssueSourceIo, c: ProjectConfig, nodeId: st
 
 /** One issue (`gh:owner/repo#12`) or draft (`ghp:owner/number#<item>`) of the board, with its body. Anything not on the board is refused. */
 export async function ghGet(io: IssueSourceIo, c: ProjectConfig, key: string): Promise<BrowseIssue> {
+  const got = await ghGetOn(io, [c], key);
+  if (!got) throw new Error(`${key} isn't on the board ${c.owner}/${c.number}`);
+  return got;
+}
+
+/**
+ * The same for the first of several boards that has it: the issue and its parent chain are read once,
+ * and each board is tested against that (not one fetch per board). Undefined when none has it.
+ */
+export async function ghGetOn(io: IssueSourceIo, boards: ProjectConfig[], key: string): Promise<BrowseIssue | undefined> {
   const gh = parseGhKey(key);
-  const url = `https://github.com/${c.owner}`;
   if (gh) {
     const [owner, name] = gh.repo.split('/');
     const found = (await graphql(io, ISSUE_QUERY, [['-f', 'owner', owner], ['-f', 'name', name], ['-F', 'number', String(gh.number)]])).repository?.issueOrPullRequest;
-    const item = found ? itemOnBoard(found.projectItems?.nodes, c) : undefined;
     if (!found) throw new Error(`${key} wasn't found on GitHub (or gh can't see it)`);
-    // A sub-issue that isn't an item of the board is the board's when its parents lead to one that is.
-    if (!item && !(found.__typename === 'Issue' && typeof found.id === 'string' && (await parentOnBoard(io, c, found.id)))) throw new Error(`${key} isn't on the board ${c.owner}/${c.number}`);
-    const issue = browseIssue({ id: item?.id, status: item?.status, iteration: item?.iteration, content: found }, c, url);
+    let board = boards.find((b) => itemOnBoard(found.projectItems?.nodes, b));
+    // A sub-issue that isn't an item of a board is the board's when its parents lead to one that is.
+    if (!board && found.__typename === 'Issue' && typeof found.id === 'string') board = await parentOnBoard(io, boards, found.id);
+    if (!board) return undefined;
+    const item = itemOnBoard(found.projectItems?.nodes, board);
+    const issue = browseIssue({ id: item?.id, status: item?.status, iteration: item?.iteration, content: found }, board, `https://github.com/${board.owner}`);
     if (!issue) throw new Error(`${key} can't be shown`);
     return issue;
   }
   const draft = /^ghp:([^/#]+)\/(\d+)#(.+)$/.exec(key);
-  if (!draft || draft[1].toLowerCase() !== c.owner.toLowerCase() || Number(draft[2]) !== c.number) throw new Error(`${key} isn't an issue of the board ${c.owner}/${c.number}`);
+  const board = draft && boards.find((b) => draft[1].toLowerCase() === b.owner.toLowerCase() && Number(draft[2]) === b.number);
+  if (!draft || !board) {
+    if (boards.length === 1) throw new Error(`${key} isn't an issue of the board ${boards[0].owner}/${boards[0].number}`);
+    return undefined;
+  }
   const node = (await graphql(io, DRAFT_QUERY, [['-f', 'id', draft[3]]])).node;
-  if (!node || !itemOnBoard([node], c)) throw new Error(`${key} isn't on the board ${c.owner}/${c.number}`);
-  const issue = browseIssue(node, c, url);
+  if (!node || !itemOnBoard([node], board)) return undefined;
+  const issue = browseIssue(node, board, `https://github.com/${board.owner}`);
   if (!issue) throw new Error(`${key} can't be shown`);
   return issue;
 }

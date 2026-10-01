@@ -374,17 +374,22 @@ site and the office only ever shows the source's own projects.
   into one node, and issues without a version or an epic are under *No version* and *No epic* (a site that
   still uses the old *Epic Link* field lists everything under *No epic*). GitHub: the board's iteration
   (or its Status, when it has no iterations) → items → sub-issues.
-- **Sub-tasks in searches.** With the status filter on *All* and no other filter they sit under their
-  story. Once you pick a status category (*Open* is the default, so normally), or search or filter by
-  text, type, status, assignee, label, sprint or JQL, matching sub-tasks are found too, shown
-  under their story (a dimmed one that doesn't match itself, only there to hold them) and under the
-  version and epic of that story. Pick the type *Sub-task* or type a sub-task's key to find one. A
-  completed GitHub iteration chosen in the iteration filter shows its own node.
+- **Sub-tasks in searches.** A node lists its stories and tasks, and under each one the sub-tasks that
+  match the filters (all of its sub-tasks with the status filter on *All*). Search or filter by text,
+  type, status, assignee, label, sprint or JQL and a story that doesn't match itself but has a matching
+  sub-task is listed too, dimmed, only to hold it. That lookup covers the 100 matching sub-tasks last
+  updated: narrow the search further when one is missing (the story's own sub-tasks are one click away).
+  With the status filter alone (*Open*, the default, *To do*, ...), the stories' own status decides, so
+  an open sub-task under a *Done* story shows only when you pick *All*. Pick the type *Sub-task* or type a
+  sub-task's key to find one. *No epic* lists the issues with no epic (not the epics). Your own JQL may
+  call only `currentUser()`, `openSprints()`, `closedSprints()`, `futureSprints()`,
+  `subTaskIssueTypes()`, `standardIssueTypes()`, `now()` and the `startOf…()`/`endOf…()` day, week,
+  month and year functions. A completed GitHub iteration chosen in the iteration filter shows its own node.
 - **Counts and pages.** Opening a node fetches its first page; the counts are asked for one at a time,
   are approximate on Jira and show nothing when the source can't tell. On Jira a version or epic node
   counts its stories and tasks that match (sub-tasks show under them, uncounted, as in an epic's
   done/total); with any filter beyond the status (search, type, assignee and so on) it shows no count,
-  since sub-tasks then take the version and epic of their story, which a count can't follow. **Load more** fetches the next page.
+  since the listed stories then include ones with a matching sub-task, which a count can't follow. **Load more** fetches the next page.
 - **Needs.** Jira: the token in ⚙️ Settings → 🗂️ Kanban (as for the other Jira features). GitHub project:
   `gh auth refresh -s read:project` on the office's machine; without it the window says so.
 
@@ -394,7 +399,8 @@ Click an issue to open it. On the kanban page that is the issue window (*Working
 `/lite` it is the card window: its status, assignee and comments panel, **🗂️ Kanban task**, **🤖 Hand to a
 worker**, **📋 Add to queue**, **🤝 Meeting** and **✋ Pick it up**, as for any other card. Closing it
 returns to the browse window. An issue opened from Browse stays open to changes whether or not the
-sources' list holds it.
+sources' list holds it, and it can be queued, carried or handed to a worker even if the source's filters
+leave it off the board: its text then reaches the agent's prompt once a person starts it.
 
 ### Working on an issue
 

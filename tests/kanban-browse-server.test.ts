@@ -151,69 +151,125 @@ test('Jira page: an issue of another project is dropped, and one issue of anothe
   assert.match((await ask('kanban.browse.issue', { scope: 'j', issueKey: 'UYT-7' })).message, /among the source's projects/);
 });
 
-// --- Sub-tasks in a narrowed search ---------------------------------------------------------------
+// --- Pages of stories, and the sub-tasks that match under them -------------------------------------
 
 const EPIC_UP = { key: 'UYT-1', fields: { summary: 'Epic A', status: { name: 'To Do', statusCategory: { key: 'new' } }, issuetype: { name: 'Epic', hierarchyLevel: 1 } } };
 const STORY_UP = { key: 'UYT-10', fields: { summary: 'Story', status: { name: 'To Do', statusCategory: { key: 'new' } }, issuetype: { name: 'Story', hierarchyLevel: 0 } } };
 const SUBTASK = raw('UYT-11', { issuetype: { name: 'Sub-task', hierarchyLevel: -1, subtask: true }, parent: STORY_UP });
 const STORY = raw('UYT-10', { parent: EPIC_UP, fixVersions: [{ id: '7', name: '1.0' }], subtasks: [{ key: 'UYT-11', fields: { status: { statusCategory: { key: 'new' } } } }] });
-/** A site whose search finds the sub-task, and whose `key in (…)` search finds its story. */
-const subtaskSite = () => jiraSite((c) => (c.url.endsWith('/search/jql') ? { body: { issues: [c.body.jql.includes('key in (') ? STORY : SUBTASK], isLast: true } } : undefined));
+/**
+ * A site whose searches answer by what they ask: the sub-tasks of some parents, the stories of a page,
+ * which of some keys match, and which sub-tasks match anywhere (their parents are what is wanted).
+ * `matching`: the keys the "which match" search finds.
+ */
+const subtaskSite = (matching: string[] = [], stories: unknown[] = [STORY]) =>
+  jiraSite((c) => {
+    if (!c.url.endsWith('/search/jql')) return undefined;
+    const jql: string = c.body.jql;
+    if (jql.includes('parent in (')) return { body: { issues: [SUBTASK], isLast: true } };
+    if (jql.includes('not in subTaskIssueTypes')) return { body: { issues: stories, nextPageToken: 'more', isLast: false } };
+    if (jql.includes('key in (')) return { body: { issues: matching.map((k) => ({ key: k, fields: {} })), isLast: true } };
+    return { body: { issues: [{ key: 'UYT-11', fields: { parent: { key: 'UYT-10' } } }], isLast: true } };
+  });
 const searches = (http: ReturnType<typeof fetchStub>) => http.calls.filter((c) => c.url.endsWith('/search/jql')).map((c) => c.body.jql as string);
 
-test('Jira sub-tasks: a narrowed search keeps them and sends their parent as context, nested under the right epic', async () => {
+test('Jira page: a group’s stories are paged strictly, then one search brings the matching sub-tasks of that page’s stories only', async () => {
+  const { ask, http } = setup({ http: subtaskSite() });
+  const got = await ask('kanban.browse.page', { scope: 'j', filters: {}, group: '7', epic: 'UYT-1' });
+  const [stories, subs] = searches(http);
+  assert.equal(searches(http).length, 2, 'the default (Not done) is two searches: no look at unrelated sub-tasks');
+  assert.equal(stories, 'project IN ("UYT") AND statusCategory != Done AND issuetype not in subTaskIssueTypes() AND fixVersion = 7 AND parent = "UYT-1" ORDER BY updated DESC');
+  assert.equal(subs, 'project IN ("UYT") AND statusCategory != Done AND issuetype in subTaskIssueTypes() AND parent in ("UYT-10") ORDER BY updated DESC');
+  assert.deepEqual(got.items.map((i: any) => [i.key, i.context]), [['UYT-10', undefined], ['UYT-11', undefined]], 'a sub-task follows its story');
+  assert.equal(got.next, 'more', 'the stories decide the next page');
+  assert.deepEqual(groupByEpic(got.items).map((n) => [n.id, n.nodes[0].children.map((c) => c.issue.key)]), [['epic:UYT-1', ['UYT-11']]]);
+});
+
+test('Jira page: a page never loses its stories to sub-tasks: only the stories’ own clause pages, and a page with none has no sub-task search', async () => {
+  const { ask, http } = setup({ http: subtaskSite([], []) });
+  const got = await ask('kanban.browse.page', { scope: 'j', filters: { statusCategory: 'all' }, group: 'none' });
+  assert.deepEqual(got.items, []);
+  assert.equal(searches(http).length, 1);
+  assert.equal(searches(http)[0], 'project IN ("UYT") AND issuetype not in subTaskIssueTypes() AND fixVersion is EMPTY ORDER BY updated DESC');
+});
+
+test('Jira page: a search narrowed beyond the status category lists a story that has a matching sub-task, flagged context, nested under its epic', async () => {
   const { ask, http } = setup({ http: subtaskSite() });
   const got = await ask('kanban.browse.page', { scope: 'j', filters: { issueType: 'Sub-task' } });
-  const [main, parents] = searches(http);
-  assert.ok(!main.includes('subTaskIssueTypes'), 'sub-tasks are not left out');
-  assert.equal(parents, 'project IN ("UYT") AND key in ("UYT-10")', 'the missing parents come in one search, inside the scope');
+  const [lookup, stories, matched, subs] = searches(http);
+  assert.equal(lookup, 'project IN ("UYT") AND statusCategory != Done AND issuetype = "Sub-task" AND issuetype in subTaskIssueTypes() ORDER BY updated DESC', 'the matching sub-tasks of the scope say whose parents to list');
+  assert.equal(http.calls.filter((c) => c.body?.jql === lookup)[0].body.maxResults, 100);
+  assert.ok(stories.includes('((statusCategory != Done AND issuetype = "Sub-task") OR key in ("UYT-10")) AND issuetype not in subTaskIssueTypes()'));
+  assert.equal(matched, 'project IN ("UYT") AND statusCategory != Done AND issuetype = "Sub-task" AND key in ("UYT-10") ORDER BY updated DESC');
+  assert.ok(subs.includes('parent in ("UYT-10")') && !subs.includes('fixVersion'));
   assert.deepEqual(got.items.map((i: any) => [i.key, i.context]), [['UYT-10', true], ['UYT-11', undefined]]);
   const tree = groupByEpic(got.items);
   assert.deepEqual(tree.map((n) => [n.id, n.items.map((i) => i.key), n.nodes[0].children.map((c) => c.issue.key), n.done, n.total]), [['epic:UYT-1', ['UYT-10'], ['UYT-11'], 0, 0]]);
+  // A story that matches itself is not context.
+  const own = setup({ http: subtaskSite(['UYT-10']) });
+  assert.deepEqual((await own.ask('kanban.browse.page', { scope: 'j', filters: { issueType: 'Sub-task' } })).items.map((i: any) => [i.key, i.context]), [['UYT-10', undefined], ['UYT-11', undefined]]);
 });
 
-test('Jira sub-tasks: searching a sub-task’s key finds it', async () => {
+test('Jira page: searching a sub-task’s key finds it through its story; a group never relaxes', async () => {
   const { ask, http } = setup({ http: subtaskSite() });
-  const got = await ask('kanban.browse.page', { scope: 'j', filters: { q: 'UYT-11' } });
+  const got = await ask('kanban.browse.page', { scope: 'j', filters: { q: 'UYT-11' }, group: '7' });
   assert.match(searches(http)[0], /key = "UYT-11"/);
   assert.deepEqual(got.items.map((i: any) => i.key), ['UYT-10', 'UYT-11']);
+  assert.ok(searches(http).every((j) => !/fixVersion = 7 OR \(/.test(j)) && searches(http)[1].includes('AND fixVersion = 7'));
 });
 
-test('Jira sub-tasks: a version group goes by the parent’s versions, an epic by the parent’s epic', async () => {
+test('Jira page: a status category alone leaves the stories to decide (no sub-task lookup), "all" brings every sub-task of the page', async () => {
   const { ask, http } = setup({ http: subtaskSite() });
-  const keys = async (filters: object, where: object) => (await ask('kanban.browse.page', { scope: 'j', filters, ...where })).items.map((i: any) => i.key);
-  const f = { issueType: 'Sub-task' };
-  assert.deepEqual(await keys(f, { group: '7' }), ['UYT-10', 'UYT-11']);
-  assert.ok(searches(http)[0].includes('(fixVersion = 7 OR (issuetype in subTaskIssueTypes() AND fixVersion is EMPTY))'));
-  assert.deepEqual(await keys(f, { group: '8' }), [], 'the parent is in another version');
-  assert.deepEqual(await keys(f, { group: 'none' }), [], 'the parent has a version');
-  assert.deepEqual(await keys(f, { group: '7', epic: 'UYT-1' }), ['UYT-10', 'UYT-11']);
-  assert.deepEqual(await keys(f, { group: '7', epic: 'UYT-9' }), [], 'the parent’s epic is another');
-  assert.deepEqual(await keys(f, { group: '7', epic: 'none' }), [], 'the parent has an epic');
-});
-
-test('Jira sub-tasks: without anything narrowing, they are still left out (the tree shows them under their story)', async () => {
-  const { ask, http } = setup({ http: subtaskSite() });
-  await ask('kanban.browse.page', { scope: 'j', filters: { statusCategory: 'all', version: '7' }, group: '7', epic: 'UYT-1' });
-  assert.equal(searches(http).length, 1);
-  assert.ok(searches(http)[0].includes('issuetype not in subTaskIssueTypes()') && !searches(http)[0].includes(' OR '));
-});
-
-test('Jira sub-tasks: a status category finds a matching sub-task under a story of another status; "all" leaves sub-tasks out of top-level pages', async () => {
-  const { ask, http } = setup({ http: subtaskSite() });
-  const got = await ask('kanban.browse.page', { scope: 'j', filters: { statusCategory: 'done' } });
-  assert.ok(!searches(http)[0].includes('not in subTaskIssueTypes') && searches(http)[0].includes('statusCategory = Done'));
-  assert.deepEqual(got.items.map((i: any) => [i.key, i.context]), [['UYT-10', true], ['UYT-11', undefined]]);
-  const dflt = await ask('kanban.browse.page', { scope: 'j', filters: {} });
-  assert.deepEqual(dflt.items.map((i: any) => i.key), ['UYT-10', 'UYT-11'], 'the default (open) is a status category too');
+  await ask('kanban.browse.page', { scope: 'j', filters: { statusCategory: 'done' } });
+  assert.equal(searches(http).length, 2);
+  assert.ok(searches(http)[0].includes('statusCategory = Done AND issuetype not in subTaskIssueTypes()') && searches(http)[1].includes('statusCategory = Done AND issuetype in subTaskIssueTypes() AND parent in'));
+  http.calls.length = 0;
   await ask('kanban.browse.page', { scope: 'j', filters: { statusCategory: 'all' } });
-  assert.ok(searches(http).at(-1)!.includes('issuetype not in subTaskIssueTypes()'));
+  assert.equal(searches(http)[1], 'project IN ("UYT") AND issuetype in subTaskIssueTypes() AND parent in ("UYT-10") ORDER BY updated DESC');
+});
+
+test('Jira page: "No epic" does not list the epics, and a site with no Epic type still answers (the clause is retried without)', async () => {
+  const EPIC = raw('UYT-1', { issuetype: { name: 'Epic', hierarchyLevel: 1 } });
+  const { ask, http } = setup({ http: subtaskSite([], [EPIC, raw('UYT-2')]) });
+  const got = await ask('kanban.browse.page', { scope: 'j', filters: { statusCategory: 'all' }, epic: 'none' });
+  assert.ok(searches(http)[0].includes('issuetype != Epic AND parent is EMPTY'));
+  assert.deepEqual(got.items.map((i: any) => i.key), ['UYT-2'], 'an epic that gets through (a renamed type) is dropped by its level');
+  const noEpic = setup({ http: jiraSite((c) => (c.url.endsWith('/search/jql') ? (c.body.jql.includes('!= Epic') ? { status: 400, body: { errorMessages: ['no Epic'] } } : { body: { issues: [raw('UYT-2')], isLast: true } }) : undefined)) });
+  assert.deepEqual((await noEpic.ask('kanban.browse.page', { scope: 'j', filters: { statusCategory: 'all' }, epic: 'none' })).items.map((i: any) => i.key), ['UYT-2']);
+  assert.equal(searches(noEpic.http).length, 3, 'the 400, the retry (stories), the sub-tasks');
+});
+
+test('Jira text search: a key-like text of another project (UTF-8) has no key clause; one of the scope’s that Jira refuses is retried without it', async () => {
+  const { ask, http } = setup({ http: jiraSite((c) => (c.url.endsWith('/search/jql') ? { body: { issues: [], isLast: true } } : undefined)) });
+  await ask('kanban.browse.page', { scope: 'j', filters: { q: 'UTF-8' } });
+  await ask('kanban.browse.page', { scope: 'j', filters: { q: 'ZZ-1' } });
+  assert.ok(searches(http).every((j) => !j.includes('key =')));
+  const refusing = setup({ http: jiraSite((c) => (c.url.endsWith('/search/jql') ? (c.body.jql.includes('key = "UYT-9"') ? { status: 400, body: {} } : { body: { issues: [raw('UYT-3')], isLast: true } }) : undefined)) });
+  const got = await refusing.ask('kanban.browse.page', { scope: 'j', filters: { q: 'UYT-9' } });
+  assert.deepEqual(got.items.map((i: any) => i.key), ['UYT-3']);
+  assert.ok(searches(refusing.http).some((j) => j.includes('key = "UYT-9"')) && searches(refusing.http).some((j) => j.includes('text ~ "UYT-9"') && !j.includes('key =')));
 });
 
 test('Jira text search: a 400 becomes a friendly line, a 429 too', async () => {
   const { ask } = setup({ http: jiraSite((c) => (c.url.endsWith('/search/jql') ? { status: c.body.jql.includes('text ~') ? 400 : 429, body: { errorMessages: ['bad'] } } : undefined)) });
   assert.match((await ask('kanban.browse.page', { scope: 'j', filters: { q: 'a[b' } })).message, /couldn’t search for that text/);
   assert.match((await ask('kanban.browse.page', { scope: 'j', filters: {} })).message, /rate-limiting the office/);
+});
+
+test('Jira page: the Sprint field id is asked again after a failure, and a failure is never kept', async () => {
+  let fieldCalls = 0;
+  const { ask, http } = setup({
+    http: jiraSite((c) => {
+      if (c.url.endsWith('/rest/api/3/field')) return ++fieldCalls === 1 ? { status: 500, body: {} } : undefined;
+      return undefined;
+    }),
+  });
+  await ask('kanban.browse.page', { scope: 'j', filters: { statusCategory: 'all' } });
+  assert.ok(!http.calls.find((c) => c.url.endsWith('/search/jql'))!.body.fields.includes('customfield_10020'));
+  await ask('kanban.browse.page', { scope: 'j', filters: { statusCategory: 'all' } });
+  assert.ok(http.calls.filter((c) => c.url.endsWith('/search/jql')).at(-1)!.body.fields.includes('customfield_10020'), 'asked again, and found');
+  await ask('kanban.browse.page', { scope: 'j', filters: { statusCategory: 'all' } });
+  assert.equal(fieldCalls, 2, 'a found one stays');
 });
 
 test('Jira count: asked lazily, cached for a minute, and a failed count answers without one', async () => {
@@ -297,6 +353,13 @@ test('Jira options: statuses with categories, types, versions and open epics', a
   assert.deepEqual(options.epics, [{ key: 'UYT-5', title: 'Big epic' }]);
 });
 
+test('Jira options: a site with no Epic type (the epic search is a 400) still gives the other choices, with no epics', async () => {
+  const { ask } = setup({ http: jiraSite((c) => (c.url.endsWith('/search/jql') ? { status: 400, body: { errorMessages: ['The value Epic does not exist'] } } : c.url.endsWith('/project/UYT/statuses') ? { body: [{ name: 'Task', statuses: [{ name: 'To Do', statusCategory: { key: 'new' } }] }] } : undefined)) });
+  const got = await ask('kanban.browse.options', { scope: 'j' });
+  assert.equal(got.t, 'kanban.browseOptions', got.message);
+  assert.deepEqual([got.options.epics, got.options.issueTypes], [[], ['Task']]);
+});
+
 test('the issue handler: the full record with its task; a browsed key then takes the actions and a task', async () => {
   const { ask, ctx, http } = setup();
   const got = await ask('kanban.browse.issue', { scope: 'j', issueKey: 'UYT-77' });
@@ -352,6 +415,54 @@ test('once the browsed cache has dropped a key, load fetches it again inside the
   assert.match((await ask('kanban.issue.comments', { issueKey: 'gh:evil/repo#1' })).message, /isn't among the project's issues/);
 });
 
+test('load: a key that isn’t found is not asked for again for a minute (Jira), and a gh key is read once for all the boards, not once per board', async (t) => {
+  t.mock.timers.enable({ apis: ['Date'], now: 1_000_000 });
+  const { ask, http } = setup({ http: jiraSite((c) => (c.url.includes('/issue/UYT-5?') ? { status: 404, body: {} } : undefined)) });
+  const fetched = () => http.calls.filter((c) => c.url.includes('/issue/UYT-5?')).length;
+  assert.match((await ask('kanban.issue.comments', { issueKey: 'UYT-5' })).message, /isn't among the project's issues/);
+  assert.match((await ask('kanban.issue.comments', { issueKey: 'UYT-5' })).message, /isn't among the project's issues/);
+  assert.equal(fetched(), 1);
+  t.mock.timers.tick(61_000);
+  await ask('kanban.issue.comments', { issueKey: 'UYT-5' });
+  assert.equal(fetched(), 2, 'asked again after a minute');
+
+  const BOARD2: IssueSourceConfig = { id: 'p2', kind: 'github-project', owner: 'o', number: 2, filters: {} };
+  const off = { id: 'I_5', ...ITEM(5).content, projectItems: { nodes: [] } };
+  const gh = ghStub((a) => {
+    if (q(a).includes('issueOrPullRequest')) return JSON.stringify({ data: { repository: { issueOrPullRequest: { __typename: 'Issue', ...off } } } });
+    if (a[0] === 'issue') return new Error('not found');
+    return JSON.stringify({ data: { node: { parent: { projectItems: { nodes: [] } } } } });
+  });
+  const two = setup({ gh, sources: [BOARD, BOARD2] });
+  assert.match((await two.ask('kanban.issue.comments', { issueKey: 'gh:o/r#5' })).message, /isn't among the project's issues/);
+  assert.equal(gh.calls.filter((a) => q(a).includes('issueOrPullRequest')).length, 1, 'the issue is read once for two boards');
+  assert.equal(gh.calls.filter((a) => q(a).includes('parent {') && !q(a).includes('issueOrPullRequest')).length, 1, 'and so is its parent chain');
+  const before = gh.calls.length;
+  await two.ask('kanban.issue.comments', { issueKey: 'gh:o/r#5' });
+  assert.equal(gh.calls.length, before, 'a miss is remembered');
+  // On the second board: found with one read.
+  const onSecond = ghStub((a) => (q(a).includes('issueOrPullRequest') ? JSON.stringify({ data: { repository: { issueOrPullRequest: { __typename: 'Issue', ...off, projectItems: { nodes: [{ id: 'PVTI_5', project: { owner: { login: 'o' }, number: 2 }, status: { name: 'Doing' } }] } } } } }) : '[]'));
+  const found = setup({ gh: onSecond, sources: [BOARD, BOARD2] });
+  assert.equal((await found.ask('kanban.issue.comments', { issueKey: 'gh:o/r#5' })).t, 'kanban.issueComments');
+});
+
+test('scopes: a failed GitHub login is asked again at once, a found one is kept for ten minutes', async (t) => {
+  t.mock.timers.enable({ apis: ['Date'], now: 1_000_000 });
+  let answer: string | Error = new Error('gh is not signed in');
+  const gh = ghStub((a) => (a[0] === 'api' && a[1] === 'user' ? answer : '[]'));
+  const { ask } = setup({ gh, ghAs: () => ({ env: { GH_CONFIG_DIR: '/h/m' } }) });
+  const logins = () => gh.calls.filter((a) => a[0] === 'api' && a[1] === 'user').length;
+  assert.equal((await ask('kanban.browse.scopes', {})).me, undefined);
+  answer = 'maija\n';
+  assert.deepEqual((await ask('kanban.browse.scopes', {})).me, { github: 'maija' }, 'the failure was not kept');
+  await ask('kanban.browse.scopes', {});
+  assert.equal(logins(), 2);
+  t.mock.timers.tick(11 * 60_000);
+  answer = 'maija2\n';
+  assert.deepEqual((await ask('kanban.browse.scopes', {})).me, { github: 'maija2' }, 'asked again after the time to live');
+  assert.equal(logins(), 3);
+});
+
 test('Jira people come from the scope’s projects', async () => {
   const { ask, http } = setup({ http: jiraSite((c) => (c.url.includes('multiProjectSearch') ? { body: [{ accountId: '71:a', displayName: 'Maija' }, { accountId: 'b', accountType: 'app' }] } : undefined)) });
   const got = await ask('kanban.browse.people', { scope: 'j', query: 'ma' });
@@ -375,13 +486,39 @@ test('GitHub page: the query variable is sent, the cursor goes both ways, items 
   assert.deepEqual(got.items[1].parent, { key: 'gh:o/r#1', title: 'P' });
 });
 
-test('GitHub count asks for one item and reads totalCount; a missing scope says what to run', async () => {
-  const gh = ghStub(() => boardAnswer([ITEM(1)]));
+test('GitHub count asks for the count alone (no items are read), caches it for a minute; a missing scope says what to run', async () => {
+  const gh = ghStub(() => boardAnswer([]));
   const { ask } = setup({ gh });
   assert.equal((await ask('kanban.browse.count', { scope: 'p', filters: {}, group: 's:Doing' })).count, 7);
-  assert.equal(arg(gh.calls[0], 'first'), '1');
+  assert.ok(q(gh.calls[0]).includes('items(query: $q) { totalCount }') && !q(gh.calls[0]).includes('nodes'), 'a count-only query');
+  assert.equal(arg(gh.calls[0], 'q'), 'is:open status:"Doing"');
+  assert.equal(arg(gh.calls[0], 'first'), undefined);
+  assert.equal((await ask('kanban.browse.count', { scope: 'p', filters: {}, group: 's:Doing' })).count, 7);
+  assert.equal(gh.calls.length, 1, 'the second came from the cache');
+  await ask('kanban.browse.count', { scope: 'p', filters: {}, group: 's:Todo' });
+  assert.equal(gh.calls.length, 2, 'another group is another count');
   const denied = setup({ gh: ghStub(() => new Error('Your token has not been granted the required scopes: read:project')) });
   assert.equal((await denied.ask('kanban.browse.page', { scope: 'p', filters: {} })).message, PROJECT_SCOPE_ERROR);
+  assert.equal((await denied.ask('kanban.browse.count', { scope: 'p', filters: {} })).message, PROJECT_SCOPE_ERROR);
+});
+
+test('the board’s fields and the Jira versions are asked once a minute, not on every groups call; a failure is not kept', async () => {
+  let fail = true;
+  const gh = ghStub(() => (fail ? new Error('boom') : JSON.stringify({ data: { repositoryOwner: { projectV2: { fields: { nodes: [{ __typename: 'ProjectV2SingleSelectField', name: 'Status', options: [{ name: 'Todo' }] }] } } } } })));
+  const { ask } = setup({ gh });
+  assert.equal((await ask('kanban.browse.groups', { scope: 'p', filters: {} })).t, 'kanban.error');
+  fail = false;
+  await ask('kanban.browse.groups', { scope: 'p', filters: {} });
+  await ask('kanban.browse.groups', { scope: 'p', filters: {} });
+  await ask('kanban.browse.options', { scope: 'p' });
+  assert.equal(gh.calls.filter((a) => q(a).includes('fields(first')).length, 2, 'one failed, one kept');
+  const jira = setup();
+  await jira.ask('kanban.browse.groups', { scope: 'j', filters: {} });
+  await jira.ask('kanban.browse.groups', { scope: 'j', filters: {} });
+  await jira.ask('kanban.browse.options', { scope: 'j' });
+  assert.equal(jira.http.calls.filter((c) => c.url.includes('status=unreleased')).length, 1);
+  await jira.ask('kanban.browse.groups', { scope: 'j', filters: {}, released: true });
+  assert.equal(jira.http.calls.filter((c) => c.url.includes('status=released')).length, 1);
 });
 
 test('GitHub groups: iterations (current first, completed under a node) or Status options', async () => {

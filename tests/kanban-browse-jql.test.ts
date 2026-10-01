@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { JQL_BACKSLASH, JQL_INCOMPLETE, browseJql, narrows, checkUserJql, keyProject, scopeClause } from '../src/server/kanban/integrations/issues/browse/jql.js';
+import { JQL_BACKSLASH, JQL_FUNCTIONS_ERROR, JQL_INCOMPLETE, browseJql, narrows, narrowsBeyondCategory, checkUserJql, keyLike, keyProject, scopeClause } from '../src/server/kanban/integrations/issues/browse/jql.js';
 import { projectQuery } from '../src/server/kanban/integrations/issues/browse/projectquery.js';
 import { parseBrowseFilters, parseBrowseMsg } from '../src/shared/kanban/browse.js';
 import type { BrowseFilters } from '../src/shared/kanban/browse.js';
@@ -154,12 +154,53 @@ test('the parser rejects a bad cursor, over-long values and values that could br
   assert.throws(() => parseBrowseMsg('kanban.browse.children', { t: 'kanban.browse.children', project: 'app', scope: 's', issueKey: 'A-1', nodeId: 'a b' }), /nodeId/);
 });
 
-test('a narrowed top-level query keeps sub-tasks and relaxes the version and epic clauses; an unnarrowed one leaves them out', () => {
+test('top-level queries are strict: the version and the epic stay as they are, narrowed or not', () => {
   const scope = { projectKeys: ['UYT'] };
-  assert.ok(!narrows({ statusCategory: 'all', version: '7', epic: 'none' }) && narrows({}) && narrows({ statusCategory: 'done' }) && narrows({ q: 'x' }) && narrows({ issueType: 'Sub-task' }) && narrows({ jql: 'a = 1' }) && !narrows({ statusCategory: 'all', labels: [] }));
-  const plain = browseJql(scope, { statusCategory: 'all' }, { topLevel: true, version: '7', epic: 'UYT-1' });
-  assert.equal(plain, 'project IN ("UYT") AND issuetype not in subTaskIssueTypes() AND fixVersion = 7 AND parent = "UYT-1" ORDER BY updated DESC');
-  const narrowed = browseJql(scope, { statusCategory: 'all', issueType: 'Sub-task' }, { topLevel: true, version: '7', epic: 'none' });
-  assert.equal(narrowed, 'project IN ("UYT") AND issuetype = "Sub-task" AND (fixVersion = 7 OR (issuetype in subTaskIssueTypes() AND fixVersion is EMPTY)) AND (parent is EMPTY OR issuetype in subTaskIssueTypes()) ORDER BY updated DESC');
-  assert.ok(!browseJql(scope, { q: 'x' }, { parent: 'UYT-1' }).includes('OR '), 'children of an issue are not relaxed');
+  assert.ok(!narrows({ statusCategory: 'all', version: '7', epic: 'none' }) && narrows({}) && narrows({ statusCategory: 'done' }) && narrows({ q: 'x' }) && narrows({ jql: 'a = 1' }) && !narrows({ statusCategory: 'all', labels: [] }));
+  assert.ok(!narrowsBeyondCategory({}) && !narrowsBeyondCategory({ statusCategory: 'done' }) && narrowsBeyondCategory({ q: 'x' }) && narrowsBeyondCategory({ issueType: 'Sub-task' }));
+  const strict = 'project IN ("UYT") AND issuetype = "Sub-task" AND issuetype not in subTaskIssueTypes() AND fixVersion = 7 AND parent = "UYT-1" ORDER BY updated DESC';
+  assert.equal(browseJql(scope, { statusCategory: 'all', issueType: 'Sub-task' }, { topLevel: true, version: '7', epic: 'UYT-1' }), strict);
+  assert.ok(!browseJql(scope, { q: 'x' }, { topLevel: true, version: '7', epic: 'UYT-1' }).includes(' OR '), 'a narrowed page doesn’t relax the group');
+});
+
+test('"No epic" leaves the epics out (parent is EMPTY is true of them too), unless the site has no Epic type', () => {
+  const scope = { projectKeys: ['UYT'] };
+  const none = browseJql(scope, { statusCategory: 'all' }, { topLevel: true, epic: 'none' }, false);
+  assert.equal(none, 'project IN ("UYT") AND issuetype not in subTaskIssueTypes() AND issuetype != Epic AND parent is EMPTY');
+  assert.ok(browseJql(scope, { statusCategory: 'all', epic: 'none' }, { topLevel: true }, false).includes('issuetype != Epic'));
+  assert.ok(!browseJql(scope, { statusCategory: 'all' }, { topLevel: true, epic: 'none', lenient: true }, false).includes('Epic'));
+  assert.ok(!browseJql(scope, { statusCategory: 'all' }, { topLevel: true, epic: 'UYT-1' }, false).includes('Epic'));
+});
+
+test('a text that looks like a key gets the key clause only for one of the scope’s projects (Jira 400s for an unknown one: UTF-8)', () => {
+  const scope = { projectKeys: ['UYT', 'app'] };
+  assert.ok(keyLike('UYT-12', scope) && keyLike('app-1', scope) && !keyLike('UTF-8', scope) && !keyLike('COVID-19', scope) && !keyLike('uyt 1', scope));
+  assert.equal(browseJql(scope, { statusCategory: 'all', q: 'UTF-8' }, {}, false), 'project IN ("UYT", "app") AND text ~ "UTF-8"');
+  assert.equal(browseJql(scope, { statusCategory: 'all', q: 'COVID-19' }, {}, false), 'project IN ("UYT", "app") AND text ~ "COVID-19"');
+  assert.ok(browseJql(scope, { statusCategory: 'all', q: 'app-3' }, {}, false).includes('key = "APP-3"'));
+  assert.ok(!browseJql(scope, { statusCategory: 'all', q: 'uyt-3' }, { lenient: true }, false).includes('key ='), 'the retry leaves it out');
+});
+
+test('sub-task queries: the page’s parents only, no version or epic of their own; a story that has a match is "or one of the keys"', () => {
+  const scope = { projectKeys: ['UYT'] };
+  const f: BrowseFilters = { statusCategory: 'all', issueType: 'Sub-task', version: '7', epic: 'UYT-1' };
+  assert.equal(browseJql(scope, f, { subtasksOf: ['UYT-10', 'UYT-11'] }, false), 'project IN ("UYT") AND issuetype = "Sub-task" AND issuetype in subTaskIssueTypes() AND parent in ("UYT-10", "UYT-11")');
+  assert.equal(browseJql(scope, { statusCategory: 'all' }, { subtasksOf: [] }, false), 'project IN ("UYT") AND issuetype in subTaskIssueTypes()');
+  assert.throws(() => browseJql(scope, f, { subtasksOf: ['x" OR project = B'] }), /isn’t a Jira issue key/);
+  assert.equal(browseJql(scope, { statusCategory: 'all', q: 'x', jql: 'a = 1' }, { topLevel: true, orKeys: ['UYT-3'], version: '7' }, false), 'project IN ("UYT") AND ((text ~ "x" AND (a = 1)) OR key in ("UYT-3")) AND issuetype not in subTaskIssueTypes() AND fixVersion = 7');
+  assert.equal(browseJql(scope, { statusCategory: 'all' }, { keys: ['UYT-3'] }, false), 'project IN ("UYT") AND key in ("UYT-3")');
+});
+
+test('user JQL may call only the allow-listed functions: the others read other projects', () => {
+  for (const ok of ['assignee = currentUser()', 'sprint in openSprints()', 'updated > startOfWeek("-1w")', 'issuetype in subTaskIssueTypes()', 'created > now()', 'status in ("A", "B") AND (labels = x OR labels = y)', 'status NOT IN (A)', 'labels = "foo(bar)"', 'summary ~ "a(b"']) assert.doesNotThrow(() => checkUserJql(ok), ok);
+  for (const bad of ['issueFunction in linkedIssuesOf("project = B")', 'assignee in membersOf("g")', 'fixVersion in releasedVersions()', 'issue in votedIssues()', 'x = ISSUEFUNCTION  ("a")', '"membersOf"("g")', 'fixVersion in(latestReleasedVersion(B))', 'issue in watchedIssues ()']) assert.throws(() => checkUserJql(bad), (e: Error) => e.message === JQL_FUNCTIONS_ERROR, bad);
+  assert.match(JQL_FUNCTIONS_ERROR, /currentUser\(\), .*openSprints\(\)/);
+  assert.ok(!/membersOf|releasedVersions/.test(JQL_FUNCTIONS_ERROR));
+});
+
+test('a board query refuses an assignee that starts with @ (@me would be the office’s gh), spaces and quotes', () => {
+  assert.throws(() => projectQuery({ assignee: { id: '@me' } }), /can’t start with @/);
+  assert.throws(() => projectQuery({ assignee: { id: 'a b' } }), /can’t start with @/);
+  assert.throws(() => projectQuery({ assignee: { id: 'a"b' } }), /can’t start with @/);
+  assert.equal(projectQuery({ assignee: { id: 'maija' } }), 'is:open assignee:maija');
 });

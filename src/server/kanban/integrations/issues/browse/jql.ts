@@ -19,10 +19,20 @@ export const JQL_INCOMPLETE = 'The JQL must be a complete expression (balanced p
 export const JQL_BACKSLASH = 'A backslash is only allowed inside quotes in the JQL';
 
 /**
+ * The only functions the user's JQL may call. Others read beyond the scope (`issueFunction`, `membersOf`,
+ * `linkedIssues`, the versions of every project) and would show other projects' data under the shared token.
+ */
+export const JQL_FUNCTIONS = ['currentUser', 'openSprints', 'closedSprints', 'futureSprints', 'subTaskIssueTypes', 'standardIssueTypes', 'now', 'startOfDay', 'endOfDay', 'startOfWeek', 'endOfWeek', 'startOfMonth', 'endOfMonth', 'startOfYear', 'endOfYear'];
+export const JQL_FUNCTIONS_ERROR = `The JQL can only use these functions: ${JQL_FUNCTIONS.map((f) => `${f}()`).join(', ')}`;
+/** Words that sit before a parenthesis without being a function call. */
+const BEFORE_PAREN = new Set(['and', 'or', 'not', 'in', 'was']);
+
+/**
  * Refuses user JQL that isn't one complete expression: an unclosed quote, parentheses that don't
  * balance (`x) OR (project = B` would break out of the scope), or an ORDER BY (the office sorts).
  * It walks the text, skipping "…" and '…' literals and their escapes. A backslash outside a literal is
  * refused: Jira reads `\"` there too, which would hide a quote from this walk (and so the scope's end).
+ * A function call (a name before a parenthesis, quoted or not) is refused unless it is in JQL_FUNCTIONS.
  */
 export function checkUserJql(jql: string): void {
   let depth = 0;
@@ -39,6 +49,7 @@ export function checkUserJql(jql: string): void {
         }
       }
       if (!closed) throw new Error(JQL_INCOMPLETE);
+      if (/^\s*\(/.test(jql.slice(i + 1))) throw new Error(JQL_FUNCTIONS_ERROR);
       outside += ' ';
       continue;
     }
@@ -48,6 +59,10 @@ export function checkUserJql(jql: string): void {
     outside += ch;
   }
   if (depth !== 0) throw new Error(JQL_INCOMPLETE);
+  for (const [, name] of outside.matchAll(/([^\s()"',=!<>~]+)\s*\(/g)) {
+    const n = name.toLowerCase();
+    if (!BEFORE_PAREN.has(n) && !JQL_FUNCTIONS.some((f) => f.toLowerCase() === n)) throw new Error(JQL_FUNCTIONS_ERROR);
+  }
   if (/\border\s+by\b/i.test(outside)) throw new Error('The JQL can’t have ORDER BY: the office sorts by the last update');
 }
 
@@ -55,14 +70,20 @@ export function checkUserJql(jql: string): void {
 export interface JqlWhere {
   /** A fix version id, or `none`. */
   version?: string;
-  /** An epic's key (its issues), or `none` (issues with no parent). */
+  /** An epic's key (its issues), or `none` (issues with no parent that aren't epics). */
   epic?: string;
   /** A parent's key: its sub-tasks. */
   parent?: string;
   /** Leave sub-tasks out (the tree shows them under their parent). */
   topLevel?: boolean;
-  /** With topLevel: leave them out even in a narrowed search (a count of the top-level issues that match). */
-  strict?: boolean;
+  /** Sub-tasks (of these parents, or of any when empty) that match the filters. A sub-task has no version or epic of its own: its parent's decide, so those clauses are left out. */
+  subtasksOf?: string[];
+  /** With topLevel: the issues that match the filters, or are one of these keys (a story that has a matching sub-task). */
+  orKeys?: string[];
+  /** Only these keys (which of a page's stories match the filters). */
+  keys?: string[];
+  /** Leave out the clauses Jira may refuse (the key search of a text, the Epic exclusion): the retry after a 400. */
+  lenient?: boolean;
 }
 
 /** `project IN (…)`: the scope, which a source without project keys doesn't have. */
@@ -84,35 +105,32 @@ function keyOf(v: string): string {
 
 /**
  * Whether the filters narrow the search beyond the version and the epic (a status category other than
- * "all", a text, type, status, assignee, labels, sprint or raw JQL). A narrowed search doesn't leave sub-tasks out:
- * it finds the ones that match, and the page sends their parents with them (jira.ts).
+ * "all", a text, type, status, assignee, labels, sprint or raw JQL). A narrowed page also brings the
+ * matching sub-tasks of its stories (jira.ts).
  */
-/** Whether anything but the status category narrows the search (see narrows). */
-export const narrowsBeyondCategory = (f: BrowseFilters): boolean => narrows({ ...f, statusCategory: 'all' });
-
 export function narrows(f: BrowseFilters): boolean {
   return !!((f.statusCategory ?? 'open') !== 'all' || f.q?.trim() || f.issueType || f.status || f.assignee || f.labels?.length || f.sprint || f.jql?.trim());
 }
 
+/** Whether anything but the status category narrows the search (see narrows). */
+export const narrowsBeyondCategory = (f: BrowseFilters): boolean => narrows({ ...f, statusCategory: 'all' });
+
+/** Whether a text looks like a key of one of the scope's projects (so `key = "X-1"` is a clause Jira accepts: it 400s for a project that doesn't exist, as in "UTF-8"). */
+export const keyLike = (q: string, scope: Pick<JiraConfig, 'projectKeys'>): boolean => JIRA_KEY_RE.test(q) && scope.projectKeys.some((k) => k.toUpperCase() === keyProject(q));
+
 const SUBTASK = 'issuetype in subTaskIssueTypes()';
 
-/** A fix version clause. `relaxed`: a sub-task with no version of its own passes too (its parent's versions decide, after the search). */
-function versionClause(v: string, relaxed: boolean): string {
-  if (idOr(v, 'none', 'The version') === 'none') return 'fixVersion is EMPTY';
-  return relaxed ? `(fixVersion = ${v} OR (${SUBTASK} AND fixVersion is EMPTY))` : `fixVersion = ${v}`;
-}
+/** A fix version clause. */
+const versionClause = (v: string): string => (idOr(v, 'none', 'The version') === 'none' ? 'fixVersion is EMPTY' : `fixVersion = ${v}`);
 
-/** An epic clause. `relaxed`: every sub-task passes too (the epic of its parent decides, after the search). */
-function epicClause(e: string, relaxed: boolean): string {
-  const base = e === 'none' ? 'parent is EMPTY' : `parent = ${keyOf(e)}`;
-  return relaxed ? `(${base} OR ${SUBTASK})` : base;
-}
+/** An epic clause: an epic's issues, or the ones with no parent (an epic has none either: see browseJql). */
+const epicClause = (e: string): string => (e === 'none' ? 'parent is EMPTY' : `parent = ${keyOf(e)}`);
 
-/** The filters as JQL clauses (not the scope). */
-function filterClauses(f: BrowseFilters, relaxed = false): string[] {
+/** The filters as JQL clauses (not the scope, the version, the epic or the raw JQL). */
+function filterClauses(scope: Pick<JiraConfig, 'projectKeys'>, f: BrowseFilters, lenient: boolean): string[] {
   const out: string[] = [];
   const q = f.q?.trim();
-  if (q) out.push(JIRA_KEY_RE.test(q) ? `(text ~ ${jqlQuote(q)} OR key = ${jqlQuote(q.toUpperCase())})` : `text ~ ${jqlQuote(q)}`);
+  if (q) out.push(!lenient && keyLike(q, scope) ? `(text ~ ${jqlQuote(q)} OR key = ${jqlQuote(q.toUpperCase())})` : `text ~ ${jqlQuote(q)}`);
   switch (f.statusCategory ?? 'open') {
     case 'open':
       out.push('statusCategory != Done');
@@ -130,9 +148,7 @@ function filterClauses(f: BrowseFilters, relaxed = false): string[] {
   if (f.status) out.push(`status = ${jqlQuote(f.status)}`);
   if (f.issueType) out.push(`issuetype = ${jqlQuote(f.issueType)}`);
   for (const l of f.labels ?? []) out.push(`labels = ${jqlQuote(l)}`);
-  if (f.version) out.push(versionClause(f.version, relaxed));
   if (f.sprint) out.push(idOr(f.sprint, 'open', 'The sprint') === 'open' ? 'sprint in openSprints()' : `sprint = ${f.sprint}`);
-  if (f.epic) out.push(epicClause(f.epic, relaxed));
   const a = f.assignee;
   if (a) out.push('id' in a ? `assignee = ${jqlQuote(a.id)}` : 'none' in a ? 'assignee is EMPTY' : 'assignee is not EMPTY');
   return out;
@@ -143,17 +159,26 @@ function filterClauses(f: BrowseFilters, relaxed = false): string[] {
  * source has none). `order: false` for a count, which takes no ORDER BY.
  */
 export function browseJql(scope: Pick<JiraConfig, 'projectKeys'>, filters: BrowseFilters, where: JqlWhere = {}, order = true): string {
-  // A top-level page of a narrowed search keeps the sub-tasks that match (see narrows).
-  const relaxed = !!where.topLevel && !where.strict && narrows(filters);
-  const parts = [scopeClause(scope), ...filterClauses(filters, relaxed)];
-  if (where.topLevel && !relaxed) parts.push('issuetype not in subTaskIssueTypes()');
-  if (where.version) parts.push(versionClause(where.version, relaxed));
-  if (where.epic) parts.push(epicClause(where.epic, relaxed));
-  if (where.parent) parts.push(`parent = ${keyOf(where.parent)}`);
   const extra = filters.jql?.trim();
-  if (extra) {
-    checkUserJql(extra);
-    parts.push(`(${extra})`);
+  if (extra) checkUserJql(extra);
+  const sub = !!where.subtasksOf;
+  const mine = [...filterClauses(scope, filters, !!where.lenient), ...(extra ? [`(${extra})`] : [])];
+  const parts = [scopeClause(scope)];
+  // A story with a matching sub-task is listed too, though its own clauses may not match: the filters, or one of the keys.
+  if (where.orKeys?.length && mine.length) parts.push(`((${mine.join(' AND ')}) OR key in (${where.orKeys.map(keyOf).join(', ')}))`);
+  else parts.push(...mine);
+  if (where.keys) parts.push(`key in (${where.keys.map(keyOf).join(', ')})`);
+  if (where.topLevel) parts.push('issuetype not in subTaskIssueTypes()');
+  // `parent is EMPTY` is true of an epic too: "No epic" doesn't list the epics themselves. Jira refuses a type that doesn't exist (a site with no "Epic"), hence lenient; the page also drops epics by their level.
+  if (where.topLevel && !where.lenient && !sub && (where.epic === 'none' || filters.epic === 'none')) parts.push('issuetype != Epic');
+  if (sub) {
+    parts.push(SUBTASK);
+    if (where.subtasksOf!.length) parts.push(`parent in (${where.subtasksOf!.map(keyOf).join(', ')})`);
+  } else {
+    // A sub-task has no version or epic of its own: its parent's decide, so a query for sub-tasks leaves them out.
+    for (const v of [filters.version, where.version]) if (v) parts.push(versionClause(v));
+    for (const e of [filters.epic, where.epic]) if (e) parts.push(epicClause(e));
   }
+  if (where.parent) parts.push(`parent = ${keyOf(where.parent)}`);
   return `${parts.join(' AND ')}${order ? ' ORDER BY updated DESC' : ''}`;
 }
