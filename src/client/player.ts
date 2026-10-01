@@ -93,6 +93,22 @@ export class PlayerController {
   camYaw = Math.PI * 0.15;
   camPitch = 0.42;
   camDist = 7.5;
+  // 3d-kanban: the third-person camera follows camYaw/camPitch/camDist rigidly (the mouse, a turning car), except that a
+  // jump in one (wheel notch, a seat, golf) is left as a gap that eases out. last* are the values at the previous frame.
+  private yawGap = 0;
+  private pitchGap = 0;
+  private distGap = 0;
+  private lastYaw = Math.PI * 0.15;
+  private lastPitch = 0.42;
+  private lastDist = 7.5;
+  /** Where updateCamera last put the camera: if it's elsewhere, golf or throwing moved it and it eases back. */
+  private lastShown = new THREE.Vector3();
+  /** 3d-kanban: how far the walls moved the camera off its ideal spot, as last shown and as last measured. */
+  private shownCorr = new THREE.Vector3();
+  private rawCorr = new THREE.Vector3();
+  private lastIdeal = new THREE.Vector3();
+  private corrEasing = false;
+  private corrKnown = false;
   /** First-person look up (+) / down (-). */
   lookPitch = -0.08;
   view: ViewMode = 'first';
@@ -388,8 +404,13 @@ export class PlayerController {
 
   private look(dx: number, dy: number) {
     this.camYaw -= dx;
+    this.lastYaw -= dx; // 3d-kanban: the mouse is never a jump, so it shows at once
     // 3d-kanban: in third person the camera tips over you instead (down the mouse, up the camera goes).
-    if (this.view === 'third') this.camPitch = THREE.MathUtils.clamp(this.camPitch + dy, THIRD_PITCH_MIN, THIRD_PITCH_MAX);
+    if (this.view === 'third') {
+      const before = this.camPitch;
+      this.camPitch = THREE.MathUtils.clamp(this.camPitch + dy, THIRD_PITCH_MIN, THIRD_PITCH_MAX);
+      this.lastPitch += this.camPitch - before;
+    }
     else this.lookPitch = THREE.MathUtils.clamp(this.lookPitch - dy, -1.45, 1.45);
   }
 
@@ -460,7 +481,7 @@ export class PlayerController {
       this.stepOffset *= Math.exp(-dt * 16);
       this.bob = 0;
       this.jitterT += dt;
-      this.updateCamera();
+      this.updateCamera(false, dt);
       return;
     }
     if (this.seat) {
@@ -468,7 +489,7 @@ export class PlayerController {
         this.moving = false;
         this.facing = this.seat.rotY;
         this.jitterT += dt;
-        this.updateCamera();
+        this.updateCamera(false, dt);
         return;
       }
       this.stand();
@@ -491,7 +512,7 @@ export class PlayerController {
     if (this.path && this.enabled) this.followPath(dt);
     if (this.view === 'first') this.facing = Math.atan2(Math.sin(this.camYaw + Math.PI), Math.cos(this.camYaw + Math.PI));
     // 3d-kanban: third person faces where the camera looks too, standing or walking (not on a walk of its own, which turns you along it).
-    else if (!this.path) this.facing += Math.atan2(Math.sin(this.camYaw + Math.PI - this.facing), Math.cos(this.camYaw + Math.PI - this.facing)) * Math.min(1, dt * 14);
+    else if (!this.path) this.facing += Math.atan2(Math.sin(this.camYaw + Math.PI - this.facing), Math.cos(this.camYaw + Math.PI - this.facing)) * (1 - Math.exp(-dt * 25));
     if (steering) {
       const len = Math.hypot(ix, iz);
       ix /= len;
@@ -541,7 +562,7 @@ export class PlayerController {
     const bob = walking ? Math.abs(Math.sin(this.walkPhase)) * 0.035 : 0;
     this.bob += (bob - this.bob) * Math.min(1, dt * 18);
     this.jitterT += dt;
-    this.updateCamera();
+    this.updateCamera(false, dt);
   }
 
   /** A step along `path`: toward its next corner, turning (and in first person, looking) the way you go. */
@@ -580,17 +601,42 @@ export class PlayerController {
     }
   }
 
-  updateCamera(snap = false) {
+  updateCamera(snap = false, dt = 0) {
     if (this.view === 'first') {
+      // 3d-kanban: keep the third-person values in step, so switching views starts from where you look.
+      this.yawGap = this.pitchGap = this.distGap = 0;
+      this.lastYaw = this.camYaw;
+      this.lastPitch = this.camPitch;
+      this.lastDist = this.camDist;
+      this.corrKnown = false;
       this.camera.position.set(this.pos.x, this.pos.y + EYE_HEIGHT + this.bob + this.stepOffset + this.lift, this.pos.z);
       this.camera.rotation.set(this.lookPitch, this.camYaw, 0);
       this.shake();
       return;
     }
+    // 3d-kanban: a jump in yaw, pitch or distance becomes a gap that eases out (same at any frame rate); smaller,
+    // continuous changes (the mouse, a car turning, a rig) are followed as they are.
+    const dYaw = Math.atan2(Math.sin(this.camYaw - this.lastYaw), Math.cos(this.camYaw - this.lastYaw));
+    if (snap) this.yawGap = this.pitchGap = this.distGap = 0;
+    else {
+      if (Math.abs(dYaw) > 0.15) this.yawGap += dYaw;
+      if (Math.abs(this.camPitch - this.lastPitch) > 0.15) this.pitchGap += this.camPitch - this.lastPitch;
+      if (Math.abs(this.camDist - this.lastDist) > 0.3) this.distGap += this.camDist - this.lastDist;
+      const k = Math.exp(-dt * 12);
+      this.yawGap *= k;
+      this.pitchGap *= k;
+      this.distGap *= k;
+    }
+    this.lastYaw = this.camYaw;
+    this.lastPitch = this.camPitch;
+    this.lastDist = this.camDist;
+    const yaw = this.camYaw - this.yawGap;
+    const moved = !snap && this.corrKnown && this.camera.position.distanceTo(this.lastShown) > 0.01;
     const target = new THREE.Vector3(this.pos.x, this.pos.y + this.stepOffset + this.lift + THIRD_TARGET, this.pos.z);
-    target.add(shoulderOffset(this.camYaw)); // 3d-kanban: over your shoulder
-    const off = orbitOffset(this.camYaw, this.camPitch, this.camDist); // 3d-kanban
-    const cam = target.clone().add(off);
+    target.add(shoulderOffset(yaw)); // 3d-kanban: over your shoulder
+    const off = orbitOffset(yaw, this.camPitch - this.pitchGap, this.camDist - this.distGap); // 3d-kanban
+    const ideal = target.clone().add(off);
+    const cam = ideal.clone();
     // Keep the camera on your side of the outside walls, so they never block the view: inside the
     // room while you're in the office, out of the building while you're outside or on the balcony.
     // And under the loft, its roof or the garage ceiling.
@@ -640,8 +686,31 @@ export class PlayerController {
       else if (side === 2) cam.z = R.minZ - e;
       else cam.z = R.maxZ + e;
     }
-    if (snap) this.camera.position.copy(cam);
-    else this.camera.position.lerp(cam, 0.25);
+    // 3d-kanban: the camera sits exactly on the orbit, moved by the walls. Sliding along a wall follows it rigidly; a jump
+    // in the move (inside to outside, the vault, the garage, the roof) is eased in instead of cutting.
+    const corr = cam.sub(ideal);
+    if (snap || !this.corrKnown) {
+      this.shownCorr.copy(corr);
+      this.corrEasing = false;
+    } else if (moved) {
+      // Someone else (golf, throwing) put the camera there: ease from it back to the orbit.
+      this.shownCorr.copy(this.camera.position).sub(ideal);
+      this.corrEasing = true;
+    }
+    if (!snap && this.corrKnown) {
+      // The walls' move changes at most twice as much as the orbit spot moved (turning fast past a wall): more is a jump.
+      if (corr.distanceTo(this.rawCorr) > 0.5 + 2 * ideal.distanceTo(this.lastIdeal)) this.corrEasing = true;
+      if (this.corrEasing) {
+        this.shownCorr.lerp(corr, 1 - Math.exp(-dt * 20));
+        if (this.shownCorr.distanceTo(corr) < 0.01) this.corrEasing = false;
+      }
+      if (!this.corrEasing) this.shownCorr.copy(corr);
+    }
+    this.rawCorr.copy(corr);
+    this.lastIdeal.copy(ideal);
+    this.corrKnown = true;
+    this.camera.position.copy(ideal).add(this.shownCorr);
+    this.lastShown.copy(this.camera.position);
     this.camera.lookAt(target);
     this.shake();
   }
