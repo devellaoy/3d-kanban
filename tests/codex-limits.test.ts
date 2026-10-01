@@ -84,9 +84,9 @@ test('nothing that names the account crosses: accountId, credits and the rest ar
 
 const ready = (windows: CodexLimits['windows'], reached?: boolean): CodexLimits => ({ status: 'ready', windows, at: 1, checkedAt: 1, ...(reached ? { reached } : {}) });
 
-test('pickReset: the earliest reset among the windows at 100%', () => {
+test('pickReset: the latest reset among the windows at 100%', () => {
   assert.equal(pickReset(ready([{ label: '5-hour', pct: 100, resetsAt: 5000 }, { label: 'Weekly', pct: 40, resetsAt: 90_000 }])), 5000);
-  assert.equal(pickReset(ready([{ label: '5-hour', pct: 100, resetsAt: 5000 }, { label: 'Weekly', pct: 100, resetsAt: 90_000 }])), 5000);
+  assert.equal(pickReset(ready([{ label: '5-hour', pct: 100, resetsAt: 5000 }, { label: 'Weekly', pct: 100, resetsAt: 90_000 }])), 90_000);
   assert.equal(pickReset(ready([{ label: '5-hour', pct: 40, resetsAt: 5000 }, { label: 'Weekly', pct: 100, resetsAt: 90_000 }])), 90_000);
 });
 
@@ -232,30 +232,45 @@ test('no codex: status missing, never asked; it looks again later', async (t) =>
   assert.equal(r.reader.state.status, 'ready');
 });
 
-test('latest: a young cache is used; an old one is read; a slow read is given up on after waitMs', async (t) => {
+test('fresh: reads at once whatever the cache and the 20-second gap; a read already under way does not count; a slow one is given up on after waitMs', async (t) => {
   const r = rig(t);
-  assert.equal((await r.reader.latest(120_000, 5000))?.status, 'ready');
+  await r.reader.refresh();
   assert.equal(r.calls.length, 1);
-  await r.reader.latest(120_000, 5000);
-  assert.equal(r.calls.length, 1, 'cached');
+  assert.equal((await r.reader.fresh(5000))?.status, 'ready');
+  assert.equal(r.calls.length, 2, 'read again straight away');
   assert.equal(r.reader.watching, 0);
   await r.advance(3 * 60_000);
-  assert.equal(r.calls.length, 1, 'asking for it starts no polling');
-  let release!: () => void;
+  assert.equal(r.calls.length, 2, 'asking for it starts no polling');
+  // A read that began before the call is waited for, and another follows it.
+  const gates: (() => void)[] = [];
   const slow = rig(t, { second: true });
   const r2 = new CodexLimitsReader({
     codexPath: () => '/bin/codex',
     env: {},
     onChange: () => {},
-    ask: () => new Promise<Answer>((res) => (release = () => res(good))),
+    ask: () => new Promise<Answer>((res) => gates.push(() => res(good))),
     now: slow.clock,
   });
   t.after(() => r2.close());
-  const p = r2.latest(1000, 5000);
+  void r2.refresh();
+  await flush();
+  await slow.advance(1000);
+  const p = r2.fresh(5000);
+  await flush();
+  assert.equal(gates.length, 1);
+  gates[0]();
+  await flush();
+  await flush();
+  assert.equal(gates.length, 2, 'a new read after the old one');
+  gates[1]();
+  assert.equal((await p)?.status, 'ready');
+  // A read that never finishes: undefined after waitMs.
+  const r3 = new CodexLimitsReader({ codexPath: () => '/bin/codex', env: {}, onChange: () => {}, ask: () => new Promise<Answer>(() => {}), now: slow.clock });
+  t.after(() => r3.close());
+  const q = r3.fresh(5000);
   await flush();
   t.mock.timers.tick(5000);
-  assert.equal(await p, undefined);
-  release();
+  assert.equal(await q, undefined);
 });
 
 test('close ends a running read', async (t) => {
@@ -415,4 +430,20 @@ test('registry: a client that left (the closed hook) or was signed out is not se
   release();
   await until(() => o.sent.some((s) => s.to === 'a' && s.msg.state?.status === 'ready'));
   assert.deepEqual([...new Set(o.sent.map((s) => s.to))], ['a']);
+});
+
+test('registry: resetAt reads afresh: a poll at 97%, then the limit is hit, and the reset of the window now at 100% comes back', async (t) => {
+  const o = office();
+  const percents = [97, 100];
+  let reads = 0;
+  const reg = codexLimitsOf(o.ctx, {
+    codexPath: () => '/bin/codex',
+    ask: async () => ({ result: { rateLimits: { planType: 'plus', primary: win(percents[Math.min(reads++, 1)], 300, 1_800_000_000) } }, auth: 'chatgpt' }),
+  });
+  t.after(() => closeCodexLimits(o.ctx));
+  reg.watch(o.join('a'));
+  await until(() => reads === 1);
+  await until(() => o.sent.some((s) => s.msg.state?.status === 'ready'));
+  assert.equal(await reg.resetAt(), 1_800_000_000_000, 'the cache said 97%, a fresh read says 100%');
+  assert.equal(reads, 2);
 });

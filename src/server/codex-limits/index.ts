@@ -15,8 +15,7 @@ import { CodexLimitsReader, pickReset, type Ask } from './reader.js';
 const IDLE_MS = 30 * 60_000;
 /** A missing `codex` is looked for again at most this often. */
 const LOOK_AGAIN_MS = 10 * 60_000;
-/** The kanban takes numbers this young, and waits at most this long for new ones. */
-const KANBAN_MAX_AGE_MS = 2 * 60_000;
+/** The kanban reads the numbers afresh, and waits at most this long for them. */
 const KANBAN_WAIT_MS = 5_000;
 
 /** The same home spelled two ways (a symlink, a relative path) is one. */
@@ -115,7 +114,7 @@ export class CodexLimitsRegistry {
 
   /** When the limit a Codex run on `home` (the office's, when not given) hit starts over; undefined when unknown. */
   async resetAt(home?: string): Promise<number | undefined> {
-    const state = await this.readerFor(home ? normaliseHome(home) : officeHome()).latest(KANBAN_MAX_AGE_MS, KANBAN_WAIT_MS);
+    const state = await this.readerFor(home ? normaliseHome(home) : officeHome()).fresh(KANBAN_WAIT_MS);
     return state ? pickReset(state) : undefined;
   }
 

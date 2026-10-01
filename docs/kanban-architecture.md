@@ -297,7 +297,7 @@ allowed: `todo → in_progress` (= start), `waiting|review → done`, `done → 
   and the task stays in `todo`. A queued start takes any free desk when its slot comes.
 - A compact (queued or running) left by an older office is dropped at start-up: the task goes `idle` in the
   column it was in, and the run is closed `interrupted`. Retry and Continue skip such runs.
-- Usage limit / network interruption in the final text → `retryAt` + `retryAttempts`, swept every 60 s. The reset time is the text's own (`resetTime`) or, for a Codex run, `ctx.codexResetAt(codexHome)` (`engine/limitreset.ts`): the earliest reset among the account's Codex windows at 100%, from `src/server/codex-limits/` (at most 5 s waiting, numbers up to 2 min old); unknown or failing → `backoffMs`.
+- Usage limit / network interruption in the final text → `retryAt` + `retryAttempts`, swept every 60 s. The reset time is the text's own (`resetTime`) or, for a Codex run, `ctx.codexResetAt(codexHome)` (`engine/limitreset.ts`): the latest reset among the account's Codex windows at 100%, from a fresh read by `src/server/codex-limits/` (`fresh`, at most 5 s waiting); unknown or failing → `backoffMs`.
 - On start-up, runs left `running` whose worker is gone become `interrupted` (task `waiting`, retry offered);
   a run whose worker is still at its desk is followed again.
 - A run that can't start (the floor isn't open, the tool's CLI refuses) fails: task `waiting` (`failed`) with

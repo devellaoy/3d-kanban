@@ -81,13 +81,14 @@ export function codexPlanLimits(answer: unknown, auth: string | null | undefined
 }
 
 /**
- * When the limit that stopped Codex starts over (ms since epoch): the earliest reset among the
- * windows at 100%. Codex doesn't say which window it reached, so with none at 100% it's unknown.
+ * When the limit that stopped Codex starts over (ms since epoch): the latest reset among the
+ * windows at 100% (Codex stays blocked until every exhausted window has reset). It doesn't say which
+ * window it reached, so with none at 100% it's unknown.
  */
 export function pickReset(state: CodexLimits): number | undefined {
   if (state.status !== 'ready') return undefined;
   const resets = state.windows.filter((w) => w.pct >= 100 && w.resetsAt !== undefined).map((w) => w.resetsAt!);
-  return resets.length ? Math.min(...resets) : undefined;
+  return resets.length ? Math.max(...resets) : undefined;
 }
 
 /** Starts `codex app-server`, asks for the rate limits and stops it again. Never rejects. */
@@ -161,6 +162,7 @@ export class CodexLimitsReader {
   private running: Promise<void> | undefined;
   private abort: AbortController | undefined;
   private lastRead = 0;
+  private startedAt = 0;
   /** How long after the last read the next automatic one is due (what that read came to decides). */
   private wait = 0;
   private fails = 0;
@@ -210,20 +212,31 @@ export class CodexLimitsReader {
     return this.read();
   }
 
-  /** The numbers if they're younger than `maxAgeMs`, else read them, giving up (undefined) after `waitMs`. */
-  async latest(maxAgeMs: number, waitMs: number): Promise<CodexLimits | undefined> {
+  /**
+   * Numbers read after this call, whatever the age of the cache or the gap since the last read (a
+   * run that just hit its limit must see the limit): a read already under way when it's called
+   * doesn't count, so another follows it. Undefined if that takes longer than `waitMs`.
+   */
+  async fresh(waitMs: number): Promise<CodexLimits | undefined> {
     if (this.closed) return undefined;
-    this.touched = this.now();
-    const fresh = () => this.limits.checkedAt > 0 && this.now() - this.limits.checkedAt < maxAgeMs;
-    if (fresh()) return this.limits;
+    const asked = this.now();
+    this.touched = asked;
+    const done = async () => {
+      while (!this.closed) {
+        if (!this.running) return void (await this.read());
+        const started = this.startedAt;
+        await this.running;
+        if (started >= asked) return;
+      }
+    };
     let timer: NodeJS.Timeout | undefined;
     const gaveUp = new Promise<void>((res) => {
       timer = setTimeout(res, waitMs);
       timer.unref();
     });
-    await Promise.race([this.refresh(), gaveUp]);
+    await Promise.race([done(), gaveUp]);
     clearTimeout(timer);
-    return fresh() ? this.limits : undefined;
+    return this.limits.checkedAt >= asked ? this.limits : undefined;
   }
 
   close() {
@@ -253,6 +266,7 @@ export class CodexLimitsReader {
 
   private read(): Promise<void> {
     this.stopTimer();
+    this.startedAt = this.now();
     this.running = this.doRead().finally(() => {
       this.running = undefined;
       this.abort = undefined;
