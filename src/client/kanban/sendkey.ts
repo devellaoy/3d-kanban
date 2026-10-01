@@ -17,12 +17,11 @@ export function sendHint(): string {
   return isMac() ? '⇧/⌘+Enter sends · Enter for a new line' : 'Shift/Ctrl+Enter sends · Enter for a new line';
 }
 
-/** Makes `go` run on the send key in `el` (and keeps the key from typing a newline). */
+/** Makes `go` run on the send key in `el` (and keeps the key from typing a newline); a held key sends once, not on every repeat. */
 export function onSendKey(el: HTMLElement, go: () => void): void {
   el.addEventListener('keydown', (e) => {
-    if (isSendKey(e)) {
-      e.preventDefault();
-      go();
-    }
+    if (!isSendKey(e)) return;
+    e.preventDefault();
+    if (!e.repeat) go();
   });
 }

@@ -218,7 +218,7 @@ export function openCreate(api: KanbanApi, o: CreateOptions = {}) {
   body.addEventListener('keydown', (e) => {
     if (isSendKey(e) && !(e.target as HTMLElement | null)?.closest?.('button, select, input[type=checkbox]')) {
       e.preventDefault();
-      void submit(false, createBtn);
+      if (!e.repeat) void submit(false, createBtn);
     }
   });
 }
