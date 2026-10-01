@@ -581,8 +581,8 @@ function parse(raw: unknown): KanbanClientMsg {
       return m({ t: 'kanban.plan.approve', id: id(r.id), ...(planId !== undefined ? { planId } : {}) });
     }
     case 'kanban.plan.requestChanges': {
-      const body = text(r.text, 'What to change', KANBAN_LIMITS.answer);
       const ids = attachmentIds(r.attachmentIds);
+      const body = ids?.length ? text(r.text ?? '', 'What to change', KANBAN_LIMITS.answer, { empty: true }) : text(r.text, 'What to change', KANBAN_LIMITS.answer);
       return m({ t: 'kanban.plan.requestChanges', id: id(r.id), text: body, ...(ids?.length ? { attachmentIds: ids } : {}) });
     }
     case 'kanban.task.pr':

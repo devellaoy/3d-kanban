@@ -75,6 +75,8 @@ test('good messages come through rebuilt, without anything the validator did not
   assert.deepEqual(good({ t: 'kanban.task.continue', id: 1, answer: 'x', attachmentIds: [] }), { t: 'kanban.task.continue', id: 1, answer: 'x' });
   assert.deepEqual(good({ t: 'kanban.task.continue', id: 1, attachmentIds: ['b'.repeat(16)] }), { t: 'kanban.task.continue', id: 1, attachmentIds: ['b'.repeat(16)] });
   assert.deepEqual(good({ t: 'kanban.plan.requestChanges', id: 1, text: 'Less', attachmentIds: ['b'.repeat(16)] }), { t: 'kanban.plan.requestChanges', id: 1, text: 'Less', attachmentIds: ['b'.repeat(16)] });
+  assert.deepEqual(good({ t: 'kanban.plan.requestChanges', id: 1, attachmentIds: ['b'.repeat(16)] }), { t: 'kanban.plan.requestChanges', id: 1, text: '', attachmentIds: ['b'.repeat(16)] });
+  refused({ t: 'kanban.plan.requestChanges', id: 1, text: '' }, /What to change/);
   assert.deepEqual(good({ t: 'kanban.comment.add', id: 1, text: '', attachmentIds: ['b'.repeat(16)] }), { t: 'kanban.comment.add', id: 1, text: '', attachmentIds: ['b'.repeat(16)] });
   assert.deepEqual(good({ t: 'kanban.plan.approve', id: 1, planId: 4 }), { t: 'kanban.plan.approve', id: 1, planId: 4 });
   assert.deepEqual(good({ t: 'kanban.task.pr', id: 1, mode: 'fix' }), { t: 'kanban.task.pr', id: 1, mode: 'fix' });

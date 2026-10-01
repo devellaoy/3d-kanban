@@ -520,14 +520,15 @@ class View implements TaskView {
     }
     if (task.waitingReason === 'plan_questions' || task.waitingReason === 'agent_asking') {
       const asking = task.waitingReason === 'agent_asking';
-      const { ta, attach, wrap } = this.fileBox('answer', { rows: 4, placeholder: asking ? 'Your answer…' : 'Your answers… (paste or drop files)', 'aria-label': asking ? 'Answer the agent' : 'Answer' });
+      const fb = this.fileBox('answer', { rows: 4, placeholder: asking ? 'Your answer…' : 'Your answers… (paste or drop files)', 'aria-label': asking ? 'Answer the agent' : 'Answer' });
+      const { ta, attach, wrap } = fb;
       const send = h('button.btn.primary', { type: 'button' }, 'Send the answer') as HTMLButtonElement;
       const go = async () => {
         const answer = ta.value.trim();
         const ids = attach.ids();
         if (!answer && !ids.length) return ta.focus();
         if (attach.busy()) return toast('Wait for the files to finish uploading', 'warn');
-        const ok = await this.req({ t: 'kanban.task.continue', id: task.id, answer: answer || '📎', ...(ids.length ? { attachmentIds: ids } : {}) }, send, 'Answer sent');
+        const ok = await this.req({ t: 'kanban.task.continue', id: task.id, answer, ...(ids.length ? { attachmentIds: ids } : {}) }, send, 'Answer sent');
         if (ok) {
           ta.value = '';
           attach.clear();
@@ -535,7 +536,7 @@ class View implements TaskView {
         }
       };
       send.addEventListener('click', () => void go());
-      this.fileBoxes.get('answer')!.go = () => void go();
+      fb.go = () => void go();
       if (asking) {
         // The asking worker is the reviewer during a review round, else the implementer.
         const workerId = task.phase === 'review' || task.phase === 'pr-review' ? task.reviewerWorkerId : task.workerId;
@@ -730,7 +731,8 @@ class View implements TaskView {
     const latest = plans[0];
     const out: HTMLElement[] = [];
     if (latest.status === 'draft' && task.status === 'waiting' && !isRunning(task)) {
-      const { ta, attach, wrap } = this.fileBox('planChanges', { rows: 4, placeholder: 'What should change in the plan? (paste or drop files)', 'aria-label': 'Request changes' });
+      const fb = this.fileBox('planChanges', { rows: 4, placeholder: 'What should change in the plan? (paste or drop files)', 'aria-label': 'Request changes' });
+      const { ta, attach, wrap } = fb;
       const approve = h('button.btn.primary', { type: 'button' }, '✅ Approve the plan') as HTMLButtonElement;
       const changes = h('button.btn', { type: 'button' }, '✍️ Request changes') as HTMLButtonElement;
       approve.addEventListener('click', () => void this.req({ t: 'kanban.plan.approve', id: task.id, planId: latest.id }, approve, 'Plan approved'));
@@ -739,14 +741,14 @@ class View implements TaskView {
         const ids = attach.ids();
         if (!text && !ids.length) return ta.focus();
         if (attach.busy()) return toast('Wait for the files to finish uploading', 'warn');
-        if (await this.req({ t: 'kanban.plan.requestChanges', id: task.id, text: text || '📎', ...(ids.length ? { attachmentIds: ids } : {}) }, changes, 'Sent to the planner')) {
+        if (await this.req({ t: 'kanban.plan.requestChanges', id: task.id, text, ...(ids.length ? { attachmentIds: ids } : {}) }, changes, 'Sent to the planner')) {
           ta.value = '';
           attach.clear();
           this.drafts().delete('planChanges');
         }
       };
       changes.addEventListener('click', () => void go());
-      this.fileBoxes.get('planChanges')!.go = () => void go();
+      fb.go = () => void go();
       wrap.replaceChildren(ta, h('div.kb-row', {}, attach.el, h('span.grow'), changes, approve));
       out.push(h('section.kb-plan-act', {}, h('h4', {}, `Plan v${latest.version} waits for you`), wrap));
     }
