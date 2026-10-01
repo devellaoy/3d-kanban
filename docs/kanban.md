@@ -290,7 +290,7 @@ The panel is the **shared task view** (`src/client/kanban/taskview.ts`), which t
 window has the terminal, whose tab also has upstream's **+ Web page** tabs; while focus is inside a web page, Esc doesn't close the window, the ✕ does), no Edit or Move, and a **🗂️ Open in the kanban** link (it opens the kanban in the same window) instead of Show in 3D (and no 🧩 VSCode: the worker
 window's header has it).
 
-The office's own links (its buttons, and links in descriptions, comments and issue texts) open in the same window, so you don't get a second character in the office; external links and attachments open in a new tab.
+The office's own links (its buttons, and links in descriptions, comments and issue texts) open in the same window, so you don't get a second character in the office; external links and attachments open in a new tab. On the kanban page a link to a task (`/kanban?task=12`) in a description or comment opens it in the panel, as `#12` does, so a half-written comment isn't lost to a reload.
 
 ## Projects and repositories
 

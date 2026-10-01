@@ -385,8 +385,9 @@ export function skillUsage(settings: Pick<KanbanSettings, 'projects'>, name: str
 
 // --- Links ----------------------------------------------------------------------------------------
 
-// The office's own pages, as the server routes them (server/http/routes/pages.ts, kanban/http/routes.ts).
-const APP_PAGES = new Set(['/', '/index.html', '/kanban', '/kanban.html', '/lite', '/lite.html', '/login', '/login.html', '/join', '/join.html', '/claim', '/claim.html']);
+// The office's own pages, as the server routes them (server/http/routes/pages.ts, kanban/http/routes.ts;
+// tests/kanban-links.test.ts checks the two agree).
+export const APP_PAGES: ReadonlySet<string> = new Set(['/', '/index.html', '/kanban', '/kanban.html', '/lite', '/lite.html', '/login', '/login.html', '/join', '/join.html', '/claim', '/claim.html']);
 
 const LOOPBACK = new Set(['localhost', '127.0.0.1', '[::1]']);
 
@@ -395,12 +396,25 @@ function sameOffice(u: URL, b: URL): boolean {
   return u.origin === b.origin || (u.protocol === b.protocol && u.port === b.port && LOOPBACK.has(u.hostname) && LOOPBACK.has(b.hostname));
 }
 
-/** Whether a link leads to one of this office's own pages, which open in the same window. */
-export function isAppPage(href: string, base: string): boolean {
+/** The link as a URL when it leads to one of this office's own pages, else null. */
+function appPageUrl(href: string, base: string): URL | null {
   try {
     const u = new URL(href, base);
-    return (u.protocol === 'http:' || u.protocol === 'https:') && sameOffice(u, new URL(base)) && APP_PAGES.has(u.pathname);
+    return (u.protocol === 'http:' || u.protocol === 'https:') && sameOffice(u, new URL(base)) && APP_PAGES.has(u.pathname) ? u : null;
   } catch {
-    return false;
+    return null;
   }
+}
+
+/** Whether a link leads to one of this office's own pages, which open in the same window. */
+export function isAppPage(href: string, base: string): boolean {
+  return appPageUrl(href, base) !== null;
+}
+
+/** The task a link to the kanban opens (/kanban?task=12), so the kanban can show it without reloading. */
+export function kanbanTaskOf(href: string, base: string): number | null {
+  const u = appPageUrl(href, base);
+  if (!u || (u.pathname !== '/kanban' && u.pathname !== '/kanban.html')) return null;
+  const id = Number(u.searchParams.get('task'));
+  return Number.isInteger(id) && id > 0 ? id : null;
 }
