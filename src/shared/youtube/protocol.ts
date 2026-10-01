@@ -8,10 +8,10 @@ export type YoutubeClientMsg =
   /** Take it off the TV. */
   | { t: 'tv.youtube.stop' }
   /**
-   * What's on (the play that started at `startedAt`) has played to its end, or YouTube won't play it
+   * What's on (the play `id`) has played to its end, or YouTube won't play it
    * here (`blocked`: its error code). `next`: a playlist has another video after it.
    */
-  | { t: 'tv.youtube.ended'; startedAt: number; next?: boolean; blocked?: number };
+  | { t: 'tv.youtube.ended'; id: string; next?: boolean; blocked?: number };
 
 export type YoutubeServerMsg =
   /** What's on this floor's TV now; null for nothing. */

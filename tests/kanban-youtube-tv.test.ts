@@ -12,6 +12,7 @@ import WebSocket from 'ws';
 import { loadConfig } from '../src/server/config.js';
 import { startServer } from '../src/server/server.js';
 import { YoutubeTv } from '../src/server/youtube/tv.js';
+import { youtubeTvOf } from '../src/server/youtube/handlers.js';
 import { youtubeTitles } from '../src/server/youtube/titles.js';
 import { isYoutubeUrl, parseStart, parseYoutubeLink, youtubeTitle, youtubeUrl } from '../src/shared/youtube/link.js';
 import type { ServerMsg } from '../src/shared/protocol.js';
@@ -94,27 +95,29 @@ test("a floor's TV keeps what's on and since when, checks every link, and keeps 
   const dir = mkdtempSync(path.join(tmpdir(), 'youtube-tv-'));
   try {
     let now = 1_000_000;
-    const tv = new YoutubeTv(dir, () => now);
+    let n = 0;
+    const tv = new YoutubeTv(dir, () => now, () => `play-${++n}`);
     assert.equal(tv.state(), null);
     assert.deepEqual(tv.play('https://vimeo.com/1', 'Ada'), { error: "That isn't a YouTube link" });
     assert.equal(tv.state(), null);
 
     const r = tv.play(`https://youtu.be/${ID}?t=30`, 'Ada');
     assert.ok('state' in r);
-    assert.deepEqual(r.state, { videoId: ID, start: 30, url: `https://www.youtube.com/watch?v=${ID}&t=30s`, by: 'Ada', startedAt: 1_000_000, elapsed: 0 });
+    assert.deepEqual(r.state, { videoId: ID, start: 30, url: `https://www.youtube.com/watch?v=${ID}&t=30s`, id: 'play-1', by: 'Ada', startedAt: 1_000_000, elapsed: 0 });
     now += 5000;
     assert.equal(tv.state()?.elapsed, 5000, 'how far it has played, for a browser whose clock is not compared yet');
-    assert.equal(tv.titled(123, 'Wrong play'), false, 'a title for another play is dropped');
-    assert.equal(tv.titled(1_000_000, 'Never Gonna Give You Up'), true);
+    assert.equal(tv.titled('play-0', 'Wrong play'), false, 'a title for another play is dropped');
+    assert.equal(tv.titled('play-1', 'Never Gonna Give You Up'), true);
 
     const again = new YoutubeTv(dir, () => now);
     assert.deepEqual(again.state(), { ...tv.state(), elapsed: 5000 }, 'the office picks it up where it was after a restart');
     assert.deepEqual(JSON.parse(readFileSync(path.join(dir, 'youtube-tv.json'), 'utf8')).videoId, ID);
 
     // The end, said by every browser on the floor: only the first one counts.
-    assert.equal(tv.ended(999, false), null, 'an older play');
-    assert.equal(tv.ended(1_000_000, false), 'stopped');
-    assert.equal(tv.ended(1_000_000, false), null);
+    assert.equal(tv.ended('play-0', false), null, 'an older play');
+    assert.equal(tv.ended(1_000_000, false), null, 'a play is named by its id, not its start time');
+    assert.equal(tv.ended('play-1', false), 'stopped');
+    assert.equal(tv.ended('play-1', false), null);
     assert.equal(tv.state(), null);
     assert.equal(new YoutubeTv(dir).state(), null);
     assert.equal(tv.stop(), false);
@@ -127,17 +130,37 @@ test("a playlist goes on to its next video when a browser says there is one, and
   const dir = mkdtempSync(path.join(tmpdir(), 'youtube-tv-'));
   try {
     let now = 5000;
-    const tv = new YoutubeTv(dir, () => now);
+    let n = 0;
+    const tv = new YoutubeTv(dir, () => now, () => `play-${++n}`);
     assert.ok('state' in tv.play(`https://www.youtube.com/watch?v=${ID}&list=PLabc123&index=1&t=20`, 'Bo'));
-    tv.titled(5000, 'My list');
+    tv.titled('play-1', 'My list');
     now = 9000;
-    assert.equal(tv.ended(5000, true), 'next');
+    assert.equal(tv.ended('play-1', true), 'next');
     const s = tv.state()!;
-    assert.deepEqual([s.list, s.index, s.start, s.startedAt, s.videoId, s.title, s.by], ['PLabc123', 1, 0, 9000, undefined, undefined, 'Bo']);
+    assert.deepEqual([s.list, s.index, s.start, s.startedAt, s.id, s.videoId, s.title, s.by], ['PLabc123', 1, 0, 9000, 'play-2', undefined, undefined, 'Bo']);
     assert.equal(s.url, 'https://www.youtube.com/playlist?list=PLabc123&index=2');
     assert.deepEqual(new YoutubeTv(dir, () => now).state(), tv.state(), 'kept across a restart at its place in the list');
-    assert.equal(tv.ended(5000, true), null, 'the same end, said again by a slower browser');
-    assert.equal(tv.ended(9000, false), 'stopped');
+    assert.equal(tv.ended('play-1', true), null, 'the same end, said again by a slower browser');
+    assert.equal(tv.ended('play-2', false), 'stopped');
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('two plays in the same millisecond are two plays: a late title or end for the first leaves the second alone', () => {
+  const dir = mkdtempSync(path.join(tmpdir(), 'youtube-tv-'));
+  try {
+    const tv = new YoutubeTv(dir, () => 42);
+    const first = tv.play(`https://youtu.be/${ID}`, 'Ada');
+    const second = tv.play('https://youtu.be/aqz-KE-bpKQ', 'Bo');
+    assert.ok('state' in first && 'state' in second);
+    assert.equal(first.state.startedAt, second.state.startedAt);
+    assert.notEqual(first.state.id, second.state.id);
+    assert.equal(tv.titled(first.state.id, 'Never Gonna Give You Up'), false);
+    assert.equal(tv.ended(first.state.id, false), null);
+    assert.equal(tv.state()?.videoId, 'aqz-KE-bpKQ');
+    assert.equal(tv.state()?.title, undefined);
+    assert.equal(new YoutubeTv(dir).state()?.id, second.state.id, 'the id is kept across a restart');
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
@@ -268,12 +291,13 @@ test('the floor sees and hears the same video: the jukebox goes quiet, a late jo
   assert.equal(typeof on.startedAt, 'number');
   const titled = (await b.take('tv.youtube', (m) => !!m.state?.title)).state!;
   assert.equal(titled.title, 'Never Gonna Give You Up');
-  assert.equal(titled.startedAt, on.startedAt);
+  assert.equal(titled.id, on.id);
   assert.equal((await b.take('toast', (m) => m.text.startsWith('📺'))).text, '📺 Ada put “Never Gonna Give You Up” on the TV (the jukebox is off meanwhile)');
 
   // Someone coming in later is told where it started, on the office's clock, and how far it's got.
   const c = await Browser.open('Cy');
   const late = (await c.take('welcome')).youtube!;
+  assert.equal(late.id, on.id);
   assert.equal(late.startedAt, on.startedAt);
   assert.equal(late.title, 'Never Gonna Give You Up');
   assert.ok(late.elapsed >= 0 && late.elapsed < 5000);
@@ -283,8 +307,8 @@ test('the floor sees and hears the same video: the jukebox goes quiet, a late jo
   assert.equal((await a.take('toast', (m) => m.level === 'warn')).text, "That isn't a YouTube link");
 
   // Every browser says it has ended: the floor hears it once.
-  a.send({ t: 'tv.youtube.ended', startedAt: on.startedAt });
-  b.send({ t: 'tv.youtube.ended', startedAt: on.startedAt });
+  a.send({ t: 'tv.youtube.ended', id: on.id });
+  b.send({ t: 'tv.youtube.ended', id: on.id });
   assert.equal((await c.take('tv.youtube')).state, null);
   assert.equal(await c.got('tv.youtube'), false, 'said once');
 
@@ -305,6 +329,18 @@ test('the floor sees and hears the same video: the jukebox goes quiet, a late jo
   c.send({ t: 'tv.youtube.stop' });
   assert.equal((await a.take('tv.youtube', (m) => m.state === null)).state, null);
   assert.equal((await a.take('toast', (m) => m.text.includes(' took '))).text, '📺 Cy took “Never Gonna Give You Up” off the TV');
+
+  // YouTube won't play it here: a private or removed video (100) is told apart from one kept off other sites (150).
+  for (const [code, said] of [
+    [100, '🚫 “Never Gonna Give You Up” is private, or was taken down'],
+    [150, '🚫 YouTube won\'t let “Never Gonna Give You Up” play outside youtube.com'],
+  ] as const) {
+    a.send({ t: 'tv.youtube.play', url: `https://www.youtube.com/watch?v=${ID}` });
+    // The play that's on now, as the floor was told it (earlier plays' messages are still in the inbox).
+    const blocked = (await c.take('tv.youtube', (m) => !!m.state?.title && m.state.id === youtubeTvOf(office.floors()[0]).state()?.id)).state!;
+    b.send({ t: 'tv.youtube.ended', id: blocked.id, blocked: code });
+    assert.equal((await c.take('toast', (m) => m.text.startsWith('🚫'))).text, said);
+  }
 
   for (const x of [a, b, c]) x.close();
 });

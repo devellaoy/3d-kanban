@@ -18,6 +18,8 @@ export interface YoutubeLink {
 export interface YoutubeTvState extends YoutubeLink {
   /** The link as it was put on, made canonical, for "Open on YouTube". */
   url: string;
+  /** Which play this is: a token of its own, never reused (two plays can start in the same millisecond). */
+  id: string;
   /** Who put it on. */
   by: string;
   /** When it was at `start`, on the office's clock (see the 'pong' message), so everyone sees the same frame. */

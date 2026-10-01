@@ -1,4 +1,5 @@
 // 3d-kanban: what's on one floor's Office TV from YouTube, saved in .agent-office/youtube-tv.json.
+import { randomUUID } from 'node:crypto';
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { parseYoutubeLink, youtubeUrl, type YoutubeTvState } from '../../shared/youtube/link.js';
@@ -17,6 +18,8 @@ export class YoutubeTv {
   constructor(
     dataDir: string,
     private readonly now: () => number = Date.now,
+    /** A new play's id (see YoutubeTvState.id). */
+    private readonly newId: () => string = randomUUID,
   ) {
     this.file = path.join(dataDir, 'youtube-tv.json');
     this.load();
@@ -30,7 +33,7 @@ export class YoutubeTv {
   play(url: unknown, by: string): { state: YoutubeTvState } | { error: string } {
     const l = parseYoutubeLink(url);
     if ('error' in l) return l;
-    this.set({ ...l, url: youtubeUrl(l), by: by.slice(0, 24), startedAt: this.now() });
+    this.set({ ...l, url: youtubeUrl(l), id: this.newId(), by: by.slice(0, 24), startedAt: this.now() });
     return { state: this.state()! };
   }
 
@@ -43,15 +46,15 @@ export class YoutubeTv {
   }
 
   /**
-   * The play that started at `startedAt` is over: a playlist with `next` goes on to its next video,
+   * The play `id` is over: a playlist with `next` goes on to its next video,
    * anything else comes off. Only the first browser to say so counts (the rest name an older play).
    */
-  ended(startedAt: unknown, next: boolean): 'next' | 'stopped' | null {
-    if (!this.s || startedAt !== this.s.startedAt) return null;
+  ended(id: unknown, next: boolean): 'next' | 'stopped' | null {
+    if (!this.s || id !== this.s.id) return null;
     if (next && this.s.list) {
       const { videoId: _v, title: _t, ...rest } = this.s;
       const index = (this.s.index ?? 0) + 1;
-      this.set({ ...rest, index, start: 0, url: youtubeUrl({ list: rest.list, index, start: 0 }), startedAt: this.now() });
+      this.set({ ...rest, index, start: 0, url: youtubeUrl({ list: rest.list, index, start: 0 }), id: this.newId(), startedAt: this.now() });
       return 'next';
     }
     this.stop();
@@ -59,8 +62,8 @@ export class YoutubeTv {
   }
 
   /** The title YouTube gave it, if it's still the play that was asked about. */
-  titled(startedAt: number, title: string): boolean {
-    if (!this.s || this.s.startedAt !== startedAt || !title) return false;
+  titled(id: string, title: string): boolean {
+    if (!this.s || this.s.id !== id || !title) return false;
     this.s = { ...this.s, title: title.slice(0, 200) };
     this.save();
     return true;
@@ -83,6 +86,7 @@ export class YoutubeTv {
         // The saved start: the link's own `t=` is where it was put on from.
         start: typeof s.start === 'number' && s.start >= 0 ? s.start : l.start,
         url: youtubeUrl(l),
+        id: typeof s.id === 'string' && s.id ? s.id.slice(0, 64) : this.newId(),
         by: typeof s.by === 'string' ? s.by.slice(0, 24) : 'Someone',
         startedAt: s.startedAt,
         ...(typeof s.title === 'string' && s.title ? { title: s.title.slice(0, 200) } : {}),

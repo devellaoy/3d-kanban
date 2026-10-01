@@ -58,7 +58,7 @@ export function openTvWindow(deps: TvWindowDeps) {
     const y = store.youtube;
     const who = deps.sharing();
     const error = deps.screen.errorText();
-    const k = JSON.stringify([y?.startedAt, y?.title, y?.index, who, error, deps.screen.needsClick()]);
+    const k = JSON.stringify([y?.id, y?.title, y?.index, who, error, deps.screen.needsClick()]);
     if (k === drawn) return;
     drawn = k;
     const showSlot = !!y && !who;

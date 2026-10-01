@@ -291,7 +291,7 @@ including `ws/`, `http/`, `workers.ts` (`KanbanWorkers`, which `WorkerManager` e
 The fork's own folders `src/{shared,server,client}/youtube/` (see `docs/features.md`):
 
 - `shared/youtube/link.ts` tells YouTube and YouTube Music links apart (`parseYoutubeLink`, `isYoutubeUrl`) and holds `YoutubeTvState`; `protocol.ts` has `tv.youtube.play` / `.stop` / `.ended` and `tv.youtube`.
-- `server/youtube/tv.ts` is a floor's TV (`.agent-office/youtube-tv.json`), kept per floor in a `WeakMap` by `handlers.ts` (no field on `Floor`); `titles.ts` asks YouTube's oEmbed for the title (no API key).
+- `server/youtube/tv.ts` is a floor's TV (`.agent-office/youtube-tv.json`); each play has an `id` of its own (titles and ends name it, `startedAt` only keeps time), kept per floor in a `WeakMap` by `handlers.ts` (no field on `Floor`); `titles.ts` asks YouTube's oEmbed for the title (no API key).
 - `client/youtube/screen.ts` plays it in YouTube's IFrame Player API, in a `CSS3DRenderer` layer in `#app` just before the canvas, lined up with `office.tvScreen`, whose material is swapped for a hole while it shows (the original comes back after). The TV window (`window.ts`) lines the same iframe up with its slot from the layer raised over the backdrop (an iframe that moves in the page reloads). `install.ts` hands the TV and the couch their `youtube` deps.
 - What the TV shows, first to last: a shared screen (`talk.currentShares()`, yours too), YouTube, the idle card.
 

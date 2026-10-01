@@ -28,7 +28,7 @@ const changed = (ctx: Ctx, floor: Floor) => ctx.toFloor(floor, { t: 'tv.youtube'
 function lookUpTitle(ctx: Ctx, floor: Floor, s: YoutubeTvState, done?: (title: string) => void) {
   void youtubeTitles.fetch(s.url).then((title) => {
     const tv = youtubeTvOf(floor);
-    if (title && tv.titled(s.startedAt, title)) changed(ctx, floor);
+    if (title && tv.titled(s.id, title)) changed(ctx, floor);
     done?.(title ?? youtubeTitle(s));
   });
 }
@@ -42,7 +42,7 @@ function play(ctx: Ctx, floor: Floor, url: unknown, who: string): string | undef
   changed(ctx, floor);
   lookUpTitle(ctx, floor, r.state, (title) => {
     // Only if it's still on: nobody changed it while YouTube was asked.
-    if (youtubeTvOf(floor).state()?.startedAt === r.state.startedAt) ctx.toastFloor(floor, `📺 ${who} put “${title}” on the TV${quiet ? ' (the jukebox is off meanwhile)' : ''}`);
+    if (youtubeTvOf(floor).state()?.id === r.state.id) ctx.toastFloor(floor, `📺 ${who} put “${title}” on the TV${quiet ? ' (the jukebox is off meanwhile)' : ''}`);
   });
   return undefined;
 }
@@ -86,10 +86,13 @@ export const youtubeHandlers = {
     const tv = youtubeTvOf(floor);
     const was = tv.state();
     const blocked = typeof msg.blocked === 'number' ? msg.blocked : undefined;
-    const r = tv.ended(msg.startedAt, msg.next === true);
+    const r = tv.ended(msg.id, msg.next === true);
     if (!r || !was) return;
     changed(ctx, floor);
-    if (blocked !== undefined) ctx.toastFloor(floor, `🚫 YouTube won't let “${youtubeTitle(was)}” play outside youtube.com${r === 'next' ? ': on to the next one' : ''}`, 'warn');
+    const next = r === 'next' ? ': on to the next one' : '';
+    // 100 is a video that's private or gone; the others, one whose owner keeps it on youtube.com.
+    if (blocked === 100) ctx.toastFloor(floor, `🚫 “${youtubeTitle(was)}” is private, or was taken down${next}`, 'warn');
+    else if (blocked !== undefined) ctx.toastFloor(floor, `🚫 YouTube won't let “${youtubeTitle(was)}” play outside youtube.com${next}`, 'warn');
     if (r === 'next') lookUpTitle(ctx, floor, tv.state()!);
   },
 } satisfies HandlerMap<YoutubeClientMsg>;

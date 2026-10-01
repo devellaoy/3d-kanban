@@ -20,12 +20,12 @@ export function installYoutubeTv(ctx: Ctx, parts: YoutubeParts) {
   const screen = new TvScreen(ctx, { shareOn: () => shares().length > 0, settings: () => parts.settings });
 
   // Someone coming in with something on, while the browser still wants a click before it can be heard.
-  let greeted = 0;
+  let greeted = '';
   store.on('youtube', () => {
     screen.changed();
     const y = store.youtube;
-    if (y && greeted !== y.startedAt && !navigator.userActivation?.hasBeenActive) toast(`📺 “${youtubeTitle(y)}” is on the TV: click the office to hear it`);
-    greeted = y?.startedAt ?? 0;
+    if (y && greeted !== y.id && !navigator.userActivation?.hasBeenActive) toast(`📺 “${youtubeTitle(y)}” is on the TV: click the office to hear it`);
+    greeted = y?.id ?? '';
     ctx.hint.invalidate();
   });
   ctx.ticks.add('render', ({ now }) => screen.frame(now));
@@ -64,7 +64,7 @@ export function installYoutubeTv(ctx: Ctx, parts: YoutubeParts) {
       const error = screen.errorText();
       const quiet = screen.needsClick();
       return {
-        k: `yt|${y.startedAt}|${y.title}|${y.index}|${error}|${quiet}`,
+        k: `yt|${y.id}|${y.title}|${y.index}|${error}|${quiet}`,
         parts: [hintTitle('📺 Office TV'), aside(`▶ ${clip(youtubeTitle(y), 40)} · ${y.by}`), error ? aside(error) : '', quiet ? aside('🔇 click to hear') : '', key('E', 'Watch it big')],
       };
     },

@@ -54,12 +54,12 @@ export class TvScreen {
   private player: YtPlayer | null = null;
   private ready = false;
   private making = false;
-  /** The play the player has loaded (its `startedAt`), and its playlist. */
-  private loaded: { startedAt: number; list?: string } | null = null;
+  /** The play the player has loaded (its `id`), its playlist, and when it was loaded (performance.now()). */
+  private loaded: { id: string; list?: string; at: number } | null = null;
   /** The plays already said to be over, so it's said once. */
-  private told = new Set<number>();
+  private told = new Set<string>();
   /** YouTube's error for the play that's on, if it gave one. */
-  private error: { startedAt: number; text: string } | null = null;
+  private error: { id: string; text: string } | null = null;
   /** The page has had a click or a key, so the browser lets the TV be heard. */
   private unlocked = navigator.userActivation?.hasBeenActive ?? false;
   private blockedAutoplay = false;
@@ -124,7 +124,7 @@ export class TvScreen {
 
   /** YouTube's error for what's on, if it gave one. */
   errorText(): string | undefined {
-    return this.error && this.error.startedAt === store.youtube?.startedAt ? this.error.text : undefined;
+    return this.error && this.error.id === store.youtube?.id ? this.error.text : undefined;
   }
 
   /** Lines the player up with `slot` (the TV window's), or back on the TV with null. */
@@ -253,14 +253,14 @@ export class TvScreen {
   private load(y: YoutubeOnTv) {
     const p = this.player!;
     const at = youtubeAt(y);
-    const same = this.loaded?.startedAt === y.startedAt;
+    const same = this.loaded?.id === y.id;
     if (y.list) {
       // The playlist went on by itself (YouTube plays the next one): only the clock is put right.
       if (this.loaded?.list === y.list && p.getPlaylistIndex() === y.index) this.seek(at);
       else p.loadPlaylist({ list: y.list, listType: 'playlist', index: y.index ?? 0, startSeconds: at });
     } else if (!same && y.videoId) p.loadVideoById({ videoId: y.videoId, startSeconds: at });
     else this.seek(at);
-    this.loaded = { startedAt: y.startedAt, list: y.list };
+    this.loaded = { id: y.id, list: y.list, at: performance.now() };
     this.stuckSince = 0;
     if (this.shown !== 'yes') p.pauseVideo();
     this.applyVolume(true);
@@ -273,21 +273,21 @@ export class TvScreen {
 
   /** Back on after the share ended, or you came back to the office: where everyone else is now. */
   private resume(y: YoutubeOnTv) {
-    if (this.loaded?.startedAt !== y.startedAt) return this.load(y);
+    if (this.loaded?.id !== y.id) return this.load(y);
     this.seek(youtubeAt(y));
   }
 
   /** In step with everyone else: out by more than DRIFT, it jumps; stopped when it shouldn't be, it plays. */
   private sync(y: YoutubeOnTv, now: number) {
     const p = this.player;
-    if (!p || !this.ready || this.loaded?.startedAt !== y.startedAt) return;
+    if (!p || !this.ready || this.loaded?.id !== y.id) return;
     const state = p.getPlayerState();
     const want = youtubeAt(y, now);
     const data = p.getVideoData?.();
     // Live streams have no fixed point to be at; nor has the last video, while the next one loads.
     if (data?.isLive || (y.videoId && data?.video_id && data.video_id !== y.videoId)) return;
     const duration = p.getDuration();
-    if (duration > 0 && !y.list && want >= duration - 0.5 && !this.told.has(y.startedAt)) return this.over(y);
+    if (duration > 0 && !y.list && want >= duration - 0.5 && !this.told.has(y.id)) return this.over(y);
     if (state === YT_STATE.ended) return;
     if (state !== YT_STATE.playing && state !== YT_STATE.buffering) {
       p.playVideo();
@@ -306,6 +306,17 @@ export class TvScreen {
     if (Math.abs(p.getCurrentTime() - want) > DRIFT) p.seekTo(want, true);
   }
 
+  /**
+   * Whether a player event can be about the play that's on, not the last one, whose `ended` or error
+   * can still be on its way from the iframe just after the next one loads (`within` ms). Its own end
+   * that soon (a start past its length) is found by sync instead.
+   */
+  private current(y: YoutubeOnTv, within: number): boolean {
+    if (this.loaded?.id !== y.id || performance.now() - this.loaded.at < within) return false;
+    const data = this.player?.getVideoData?.();
+    return !(y.videoId && !y.list && data?.video_id && data.video_id !== y.videoId);
+  }
+
   private stateChanged(state: number) {
     const y = store.youtube;
     if (!y) return;
@@ -313,32 +324,32 @@ export class TvScreen {
       this.blockedAutoplay = false;
       this.paint();
     }
-    if (state === YT_STATE.ended) this.over(y);
+    if (state === YT_STATE.ended && this.current(y, 1000)) this.over(y);
     // A playlist went on to its next video by itself: the office hears it from whoever's first.
-    if (y.list && state === YT_STATE.playing && this.player && this.player.getPlaylistIndex() > (y.index ?? 0) && !this.told.has(y.startedAt)) this.over(y, true);
+    if (y.list && state === YT_STATE.playing && this.player && this.player.getPlaylistIndex() > (y.index ?? 0) && !this.told.has(y.id) && this.current(y, 1000)) this.over(y, true);
   }
 
   /** What's on has played to its end: the office takes it off, or goes on to a playlist's next video. */
   private over(y: YoutubeOnTv, next?: boolean) {
-    if (this.told.has(y.startedAt)) return;
-    this.told.add(y.startedAt);
+    if (this.told.has(y.id)) return;
+    this.told.add(y.id);
     const p = this.player;
     const list = p?.getPlaylist();
     const more = next ?? (!!y.list && !!list && (y.index ?? 0) + 1 < list.length);
-    this.ctx.net.send({ t: 'tv.youtube.ended', startedAt: y.startedAt, ...(more ? { next: true } : {}) });
+    this.ctx.net.send({ t: 'tv.youtube.ended', id: y.id, ...(more ? { next: true } : {}) });
   }
 
   private failed(code: number) {
     const y = store.youtube;
-    if (!y) return;
-    this.error = { startedAt: y.startedAt, text: youtubeError(code) };
+    if (!y || !this.current(y, 250)) return;
+    this.error = { id: y.id, text: youtubeError(code) };
     this.paint();
     this.ctx.hint.invalidate();
-    if (BLOCKED.has(code) && !this.told.has(y.startedAt)) {
-      this.told.add(y.startedAt);
+    if (BLOCKED.has(code) && !this.told.has(y.id)) {
+      this.told.add(y.id);
       const list = this.player?.getPlaylist();
       const more = !!y.list && !!list && (y.index ?? 0) + 1 < list.length;
-      this.ctx.net.send({ t: 'tv.youtube.ended', startedAt: y.startedAt, blocked: code, ...(more ? { next: true } : {}) });
+      this.ctx.net.send({ t: 'tv.youtube.ended', id: y.id, blocked: code, ...(more ? { next: true } : {}) });
     }
   }
 
