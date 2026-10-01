@@ -422,6 +422,7 @@ const telescope = new TelescopeView(
 // Everyone arrives by elevator (the welcome says exactly where).
 placeInCar();
 player.view = settings.view;
+player.setMouseSensitivity(settings.mouseSensitivity);
 const hands = new Hands(store.profile.color, me.skinColor);
 const caffeine = new Caffeine();
 /** No shaking the view for the coffee jitters when the system asks for less motion. */
@@ -4723,6 +4724,7 @@ function showSettings(pane?: SettingsPane) {
         hud.refresh();
       }
       player.setView(settings.view);
+      player.setMouseSensitivity(settings.mouseSensitivity);
       sound.setVolume(settings.volume, settings.muted);
       sound.setMusicVolume(settings.music, settings.musicMuted);
     },

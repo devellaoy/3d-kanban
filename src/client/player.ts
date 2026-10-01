@@ -161,6 +161,8 @@ export class PlayerController {
   onClick: ((ndc: THREE.Vector2) => void) | null = null;
   private keys = new Set<string>();
   private drag: { x: number; y: number; moved: number } | null = null;
+  /** 3d-kanban: ⚙️ Settings' mouse sensitivity, a multiplier on mouse look, captured or dragging (see setMouseSensitivity). */
+  private sensitivity = 1;
   /** Set when this browser won't lock the pointer; first person falls back to drag-to-look. */
   private lockFailed = false;
   private lockPending = false;
@@ -260,7 +262,7 @@ export class PlayerController {
         }
         // Some platforms report a bogus huge jump right after locking.
         const clamp = (v: number) => THREE.MathUtils.clamp(v, -250, 250);
-        this.look(clamp(e.movementX) * LOOK_SPEED, clamp(e.movementY) * LOOK_SPEED);
+        this.look(clamp(e.movementX) * LOOK_SPEED * this.sensitivity, clamp(e.movementY) * LOOK_SPEED * this.sensitivity);
         return;
       }
       if (!this.drag) return;
@@ -269,7 +271,9 @@ export class PlayerController {
       this.drag.x = e.clientX;
       this.drag.y = e.clientY;
       this.drag.moved += Math.abs(dx) + Math.abs(dy);
-      this.look(dx * DRAG_LOOK_SPEED, dy * DRAG_LOOK_SPEED); // 3d-kanban: no orbit, third person looks around too
+      // 3d-kanban: mouse sensitivity is the mouse's; a finger dragging on a touch screen keeps its speed.
+      const speed = DRAG_LOOK_SPEED * (e.pointerType === 'mouse' ? this.sensitivity : 1);
+      this.look(dx * speed, dy * speed); // 3d-kanban: no orbit, third person looks around too
     });
     document.addEventListener('pointerlockchange', () => {
       this.lockPending = false;
@@ -313,6 +317,11 @@ export class PlayerController {
   /** Whether clicking the scene will capture the mouse for looking around. */
   get canLock(): boolean {
     return !this.lockFailed && typeof this.dom.requestPointerLock === 'function'; // 3d-kanban: third person too
+  }
+
+  /** 3d-kanban: how far the mouse turns your head, 0.25–2; 1 is upstream's speed. Keys, walking and the wheel aren't affected. */
+  setMouseSensitivity(value: number) {
+    if (Number.isFinite(value)) this.sensitivity = THREE.MathUtils.clamp(value, 0.25, 2);
   }
 
   setView(view: ViewMode) {

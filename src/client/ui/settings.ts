@@ -107,6 +107,22 @@ export function openSettings(net: Net, settings: Settings, onChange: (s: Setting
     });
     return row;
   };
+  // 3d-kanban: how far the mouse turns your head, 25–200%, taking effect as you drag.
+  const sensSlider = h('input', { type: 'range', min: 25, max: 200, step: 5, 'aria-label': 'Mouse sensitivity' });
+  const sensPct = h('span.vol-pct');
+  const paintSens = () => {
+    const v = Math.round(settings.mouseSensitivity * 100);
+    sensSlider.value = String(v);
+    sensSlider.style.setProperty('--fill', `${((v - 25) / 175) * 100}%`);
+    sensPct.textContent = `${v}%`;
+  };
+  paintSens();
+  sensSlider.addEventListener('input', () => {
+    settings = { ...settings, mouseSensitivity: Number(sensSlider.value) / 100 };
+    onChange(settings);
+    paintSens();
+  });
+  const sensRow = h('div.volume', {}, sensSlider, sensPct);
   const soundRow = volumeRow('Office sounds volume', 'volume', 'muted', previewSound);
 
   // Voice chat: an open mic, or muted until you hold V.
@@ -511,6 +527,7 @@ export function openSettings(net: Net, settings: Settings, onChange: (s: Setting
     you: [
       setting('Your character', null, character),
       setting('Camera view', 'you', seg, note),
+      setting('Mouse sensitivity', 'you', sensRow, h('p.setting-note', {}, 'How far the mouse turns your head, in first and third person. 100% is the usual speed.')),
       setting('Signed in', null, h('div.volume', {}, signOut), h('p.setting-note', {}, account ? `As ${account.name}, with your own account (${account.role}).` : 'With the shared office password.')),
     ],
     sound: [
