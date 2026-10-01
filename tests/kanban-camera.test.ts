@@ -344,8 +344,8 @@ test('on a walk of its own in third person, you face the way you walk, not the c
 });
 
 // Third person's camera follows the mouse with no lag, and eases anything else (wheel, vehicles) the same at any frame rate.
-function thirdPerson(t: TestContext) {
-  const c = controller(t);
+function thirdPerson(t: TestContext, dom?: EventTarget) {
+  const c = controller(t, dom);
   c.player.pos.set(0, 0, 0);
   c.player.setView('third');
   c.player.camYaw = 0.3;
@@ -356,6 +356,14 @@ function thirdPerson(t: TestContext) {
   return { ...c, targetOf };
 }
 const THIRD_TARGET_Y = 1.3;
+/** Third person with the mouse captured, so a move turns the camera by its movementX/Y. */
+function thirdPersonLocked(t: TestContext) {
+  const c = thirdPerson(t, Object.assign(new EventTarget(), { requestPointerLock: () => undefined }));
+  Object.defineProperty(c.doc, 'pointerLockElement', { configurable: true, value: c.dom });
+  return c;
+}
+/** Pixels of mouse movement that turn the view by `rad` (LOOK_SPEED in player.ts). */
+const px = (rad: number) => rad / 0.0022;
 
 test('third person: mouse look shows at once, the camera stays on its orbit', (t) => {
   const { player, camera, win, dom, fire, frames, targetOf } = thirdPerson(t);
@@ -395,13 +403,14 @@ test('third person: an outside distance change glides, then arrives', (t) => {
 });
 
 test('third person: turning against a wall keeps the camera in the room, on the clamped orbit every frame', (t) => {
-  const { player, camera, win, dom, fire, frames, targetOf } = thirdPerson(t);
+  const { player, camera, win, fire, frames, targetOf } = thirdPersonLocked(t);
   player.pos.set(0, 0, FLOOR.maxZ - 1);
   player.camYaw = 0;
   player.updateCamera(true);
-  fire(dom, 'pointerdown', { pointerType: 'mouse', clientX: 100, clientY: 100, button: 0 });
   for (let i = 0; i < 40; i++) {
-    fire(win, 'pointermove', { clientX: 100, clientY: 100, movementX: 0.05, movementY: 0 });
+    const yaw = player.camYaw;
+    fire(win, 'pointermove', { clientX: 100, clientY: 100, movementX: px(0.05), movementY: 0 });
+    close(player.camYaw, yaw - 0.05, 1e-9);
     frames(1);
     const ideal = targetOf(player.camYaw).add(new THREE.Vector3(0, 0, FLOOR.maxZ - 1)).add(orbitOffset(player.camYaw, player.camPitch, player.camDist));
     const x = THREE.MathUtils.clamp(ideal.x, FLOOR.minX + 0.4, FLOOR.maxX - 0.4);
@@ -437,4 +446,31 @@ test('third person: a 3 m distance jump glides', (t) => {
   frames(1);
   const d = camera.position.distanceTo(targetOf(player.camYaw));
   assert.ok(d > 3.05 && d < 5.95, `${d}`);
+});
+
+test('third person: the mouse keeps the shown tilt within its limits while an outside tilt change eases out', (t) => {
+  const { player, camera, win, fire, frames, targetOf } = thirdPersonLocked(t);
+  player.camPitch = THIRD_PITCH_MAX;
+  player.updateCamera(true);
+  player.camPitch = 0.32; // a car's
+  frames(1);
+  fire(win, 'pointermove', { clientX: 0, clientY: 0, movementX: 0, movementY: px(2) });
+  for (let i = 0; i < 30; i++) {
+    frames(1);
+    const off = camera.position.clone().sub(targetOf(player.camYaw));
+    assert.ok(Math.asin(off.y / off.length()) <= THIRD_PITCH_MAX + 1e-6, `tilt ${Math.asin(off.y / off.length())}`);
+    // Still behind you: the camera's heading points the way camYaw does, not over the top to the other side.
+    assert.ok(off.x * Math.sin(player.camYaw) + off.z * Math.cos(player.camYaw) > 0, 'behind you');
+  }
+});
+
+test('third person: a small wheel step glides too, then arrives', (t) => {
+  const { player, camera, dom, fire, frames, targetOf } = thirdPerson(t);
+  fire(dom, 'wheel', { deltaY: 20 });
+  close(player.camDist, 3.2);
+  frames(1);
+  const d1 = camera.position.distanceTo(targetOf(player.camYaw));
+  assert.ok(d1 > 3.001 && d1 < 3.199, `after one frame ${d1}`);
+  frames(120);
+  close(camera.position.distanceTo(targetOf(player.camYaw)), 3.2, 1e-3);
 });

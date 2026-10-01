@@ -94,7 +94,7 @@ export class PlayerController {
   camPitch = 0.42;
   camDist = 7.5;
   // 3d-kanban: the third-person camera follows camYaw/camPitch/camDist rigidly (the mouse, a turning car), except that a
-  // jump in one (wheel notch, a seat, golf) is left as a gap that eases out. last* are the values at the previous frame.
+  // jump in one (a seat, golf) or any zoom is left as a gap that eases out. last* are the values at the previous frame.
   private yawGap = 0;
   private pitchGap = 0;
   private distGap = 0;
@@ -410,6 +410,8 @@ export class PlayerController {
       const before = this.camPitch;
       this.camPitch = THREE.MathUtils.clamp(this.camPitch + dy, THIRD_PITCH_MIN, THIRD_PITCH_MAX);
       this.lastPitch += this.camPitch - before;
+      // What's shown stays within the limits too, while an outside jump is still easing out.
+      this.pitchGap = this.camPitch - THREE.MathUtils.clamp(this.camPitch - this.pitchGap, THIRD_PITCH_MIN, THIRD_PITCH_MAX);
     }
     else this.lookPitch = THREE.MathUtils.clamp(this.lookPitch - dy, -1.45, 1.45);
   }
@@ -621,7 +623,7 @@ export class PlayerController {
     else {
       if (Math.abs(dYaw) > 0.15) this.yawGap += dYaw;
       if (Math.abs(this.camPitch - this.lastPitch) > 0.15) this.pitchGap += this.camPitch - this.lastPitch;
-      if (Math.abs(this.camDist - this.lastDist) > 0.3) this.distGap += this.camDist - this.lastDist;
+      this.distGap += this.camDist - this.lastDist; // zoom always glides, however small the step
       const k = Math.exp(-dt * 12);
       this.yawGap *= k;
       this.pitchGap *= k;
