@@ -226,9 +226,8 @@ export function openElevator(opts: ElevatorOptions): void {
     return row;
   };
 
-  /** The one row while a path is typed: the folder, made a floor as it is. */
-  const folderRow = (dir: string) => {
-    const problem = folderProblem(dir, store.me.admin);
+  /** The one row while a path is typed: the folder, made a floor as it is, or why it can't be from here. */
+  const folderRow = (dir: string, problem: string | undefined) => {
     const row = h(
       'div.repo',
       { role: 'option', class: problem ? 'folder off' : 'folder sel', 'aria-selected': String(!problem), 'aria-disabled': String(!!problem), title: problem ?? dir },
@@ -289,7 +288,7 @@ export function openElevator(opts: ElevatorOptions): void {
     const busy = !!adding && 'dir' in adding;
     // When it can't be added from here, the row says why (and the note about what it would do is moot).
     const problem = folderProblem(dir, store.me.admin);
-    listEl.replaceChildren(folderRow(dir));
+    listEl.replaceChildren(folderRow(dir, problem));
     statusEl.replaceChildren(
       busy ? h('p.note.busy', {}, `⏳ Adding ${dir}…`) : problem ? '' : h('p.note', {}, folderNote(dir)),
       ...[error].filter(Boolean).map((e) => h('p.err', {}, e)),

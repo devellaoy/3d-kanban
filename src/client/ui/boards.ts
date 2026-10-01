@@ -257,8 +257,8 @@ export function openBoard(kind: 'issues' | 'pulls', net: Net, actions: BoardActi
   };
 
   const board = () => (kind === 'issues' ? store.issues : store.pulls);
-  // A folder project has nothing on GitHub to load (server/floor-git.ts NOT_GIT): nothing to refresh or say when it was.
-  const notGit = (st: ReturnType<typeof board>) => !!st.error && !st.items.length && /isn't a git repository/.test(st.error);
+  // A folder project has nothing on GitHub to load (GhState.notGit): nothing to refresh or say when it was.
+  const notGit = (st: ReturnType<typeof board>) => !!st.notGit;
   const stamp = () => {
     const st = board();
     status.textContent = notGit(st) ? '' : st.loading ? 'Refreshing…' : st.fetchedAt ? `Updated ${timeAgo(st.fetchedAt)}` : '';
@@ -276,7 +276,7 @@ export function openBoard(kind: 'issues' | 'pulls', net: Net, actions: BoardActi
     const caret = active instanceof HTMLInputElement ? ([active.selectionStart, active.selectionEnd] as const) : null;
     body.replaceChildren();
     refresh.classList.toggle('hidden', notGit(st));
-    if (notGit(st)) return void body.append(h('div.board-error', {}, st.error));
+    if (notGit(st)) return void body.append(h('div.board-error', {}, st.error ?? "This project isn't a git repository, so there are no issues or pull requests to show."));
     if (st.error && !st.items.length) {
       body.append(h('div.board-error', {}, `Couldn't load from GitHub: ${st.error}`, h('br'), h('small', {}, 'The server runs `gh` in the project directory — make sure it is installed and authenticated (gh auth login).')));
       return;

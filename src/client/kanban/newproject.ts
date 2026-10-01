@@ -89,9 +89,10 @@ function openNewProject(net: Net, onCreated: (id: string) => void) {
     input.placeholder = kind === 'dir' ? '/Users/me/work/notes or ~/work/notes' : 'owner/name';
     input.setAttribute('aria-label', kind === 'dir' ? 'Folder path' : 'Repository');
     const value = input.value.trim();
+    const problem = typedProblem();
     if (kind === 'dir') {
       // When it can't be added from here, the error line under it says why instead.
-      noteEl.textContent = busy ? `⏳ Adding ${value}…` : typedProblem() ? '' : folderNote(value || '<folder>');
+      noteEl.textContent = busy ? `⏳ Adding ${value}…` : problem ? '' : folderNote(value || '<folder>');
       create.textContent = busy ? '⏳ Adding…' : 'Create';
     } else {
       const repo = normalizeRepo(value);
@@ -100,7 +101,7 @@ function openNewProject(net: Net, onCreated: (id: string) => void) {
     }
     noteEl.classList.toggle('busy', busy);
     noteEl.classList.toggle('hidden', !noteEl.textContent);
-    create.disabled = busy || !value || !!typedProblem();
+    create.disabled = busy || !value || !!problem;
   };
 
   const fail = (text: string) => {
