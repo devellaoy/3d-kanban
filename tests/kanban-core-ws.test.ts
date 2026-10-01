@@ -547,3 +547,19 @@ test('the projects list is pushed when the floors change, and only then', async 
   kanban.projectsChanged();
   assert.equal(ada.deltas('kanban.projects').at(-1), last);
 });
+
+test('a reset that would send workers home is its maker\'s or an admin\'s, like a delete; one with no workers is anybody\'s', async (t) => {
+  const { client, kanban, calls } = office(t);
+  const ada = client('Ada', false);
+  const bob = client('Bob', false);
+  const boss = client('Boss', true);
+  await ada.ask({ t: 'kanban.task.create', task: { project: 'web', title: 'x' } });
+  kanban.ctx.repo.updateTask(1, { status: 'review', workerId: 'w1' });
+  errorOf(await bob.ask({ t: 'kanban.task.move', id: 1, to: 'todo' }), /Only whoever made it, or an admin/);
+  assert.equal(kanban.ctx.repo.getTask(1)!.status, 'review');
+  assert.ok(!calls.includes('home reset #1'), 'nobody was sent home');
+  okOf(await boss.ask({ t: 'kanban.task.move', id: 1, to: 'todo' }));
+  assert.ok(calls.includes('home reset #1'));
+  kanban.ctx.repo.updateTask(1, { status: 'review', workerId: null });
+  okOf(await bob.ask({ t: 'kanban.task.move', id: 1, to: 'todo' }));
+});
