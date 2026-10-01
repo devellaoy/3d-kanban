@@ -205,6 +205,21 @@
 :root[data-theme="dark"] .kb-bar .btn.small,
 :root[data-theme="dark"] .kb-filters select { height: 36px; }
 
+/* Room for the small controls' 36px touch targets (--hit-min, styles/base.css): each one gets the free
+   space around it that its invisible hit area grows into, so the target is 36px and lands on nothing else. */
+:root[data-theme="dark"] .kb-card-top { margin-bottom: 8px; }
+:root[data-theme="dark"] .kb-attachments { gap: 8px; }
+:root[data-theme="dark"] .kb-attachment { min-height: 36px; gap: 8px; padding: 0 6px 0 12px; }
+:root[data-theme="dark"] .kb-attachment.busy { padding-right: 12px; }
+:root[data-theme="dark"] .pd-files li { min-height: 36px; gap: 10px; padding-left: calc(8px + var(--depth, 0) * 14px); }
+:root[data-theme="dark"] .pd-fh { padding-block: 8px; }
+:root[data-theme="dark"] .term-tab-label { padding-block: 8px; }
+:root[data-theme="dark"] .term-tab-label:not(:last-child) { padding-right: 0; }
+:root[data-theme="dark"] .term-tab-close { margin: 0 6px 0 8px; }
+:root[data-theme="dark"] .menu-row { gap: 4px; }
+:root[data-theme="dark"] .menu-item { min-height: 36px; }
+:root[data-theme="dark"] .side h3 { margin-bottom: 8px; }
+
 /* Sticky notes: a subtle pin, no hard edge. */
 :root[data-theme="dark"] .kb-card { border-radius: var(--radius-sm); }
 :root[data-theme="dark"] .kb-card::before { width: 8px; height: 8px; margin-left: -4px; top: -4px; opacity: .7; border: 0; }
