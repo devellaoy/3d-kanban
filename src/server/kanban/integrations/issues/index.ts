@@ -53,7 +53,7 @@ function sourceLabel(s: IssueSourceConfig): string {
 }
 
 export function createIssues(ctx: KanbanContext, opts: IssuesOptions = {}) {
-  const runGh = opts.gh ?? ((args: string[], cwd: string, timeout?: number) => gh(args, cwd, timeout));
+  const runGh = opts.gh ?? ((args: string[], cwd: string, timeout?: number, env?: Record<string, string>) => gh(args, cwd, timeout, env));
   const doFetch = opts.fetch ?? fetch;
   const now = opts.now ?? Date.now;
   const cache = new Map<string, IssuesState>();
