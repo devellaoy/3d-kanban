@@ -5,8 +5,7 @@
 // plugin the whole floor (as pulls/board.ts).
 
 import type { GhIssue, GhState } from '../../../../shared/protocol.js';
-import type { NormalizedIssue } from '../../../../shared/kanban/types.js';
-import { labelColor, parseGhKey } from '../../../../shared/kanban/issuecard.js';
+import { WALL_BODY, parseGhKey, toGhIssue } from '../../../../shared/kanban/issuecard.js';
 import { gh } from '../../../github.js';
 
 /** What the issues plugin does for the board while it runs. */
@@ -19,6 +18,8 @@ export interface WallProvider {
   refresh(project: string): void;
   /** The cards may have changed (a task made from one, a refresh): drop the built board. */
   forget(project: string): void;
+  /** Whether the project knows the issue within its scope: one on its list, acted on, or browsed (the browsed set only holds scoped issues). */
+  known(project: string, key: string): boolean;
   /** The project's sources changed: its old cards go, and the new ones are fetched (after one under way). */
   sourcesChanged(project: string): void;
 }
@@ -30,41 +31,7 @@ const pending = new Map<string, NodeJS.Timeout>();
 /** How long refreshWall waits, so a run of claims (a queue seating several cards) fetches once. */
 export const WALL_REFRESH_DELAY_MS = 3000;
 
-/** How much of a body goes on the board (the task made from a card gets it all). */
-export const WALL_BODY = 2000;
-
-/**
- * One issue of a source as a card on the board. A GitHub issue of one of `projectRepos` (owner/name)
- * keeps its number, so upstream's issue window and actions work on it; any other card has 0 and is
- * known by its key (an issue of a repository outside the project too: the office can't open it).
- */
-export function toGhIssue(i: NormalizedIssue, taskId?: number, projectRepos: string[] = []): GhIssue {
-  const ghKey = parseGhKey(i.key);
-  const inProject = !!ghKey && projectRepos.some((r) => r.toLowerCase() === ghKey.repo.toLowerCase());
-  const assignees = (i.assignee ?? '')
-    .split(',')
-    .map((a) => a.trim())
-    .filter(Boolean);
-  return {
-    number: inProject ? ghKey!.number : 0,
-    title: i.title,
-    // Every source leaves closed or done issues out unless told otherwise; a GitHub issue says which it is.
-    state: i.source === 'github-repo' && i.status && i.status !== 'OPEN' ? i.status : 'OPEN',
-    url: i.url,
-    author: '',
-    labels: i.labels.map((name) => ({ name, color: labelColor(name) })),
-    assignees,
-    createdAt: i.updatedAt,
-    updatedAt: i.updatedAt,
-    body: i.body.slice(0, WALL_BODY),
-    comments: 0,
-    ...(i.repo || ghKey ? { repo: i.repo ?? ghKey!.repo } : {}),
-    key: i.key,
-    source: i.source,
-    ...(i.status ? { status: i.status } : {}),
-    ...(taskId !== undefined ? { taskId } : {}),
-  };
-}
+export { WALL_BODY, toGhIssue };
 
 /** The issues plugin, while it runs (undefined when it stops). */
 export function setWallProvider(p: WallProvider | undefined) {
@@ -82,6 +49,16 @@ export function wallIssues(project: string): GhState<GhIssue> | undefined {
   } catch (err) {
     console.error("agent-office: the issues board couldn't read the project's issue sources:", err);
     return undefined;
+  }
+}
+
+/** Whether the project knows the issue key within its sources' scope although the board may not list it (a browsed or acted-on issue). */
+export function wallKnows(project: string, key: string): boolean {
+  try {
+    return provider?.known(project, key) ?? false;
+  } catch (err) {
+    console.error("agent-office: the issues board couldn't look the issue up:", err);
+    return false;
   }
 }
 

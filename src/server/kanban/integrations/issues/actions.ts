@@ -5,7 +5,7 @@
 //   - `ghp:…` (a draft on a board): the board's Status;
 //   - `gh:owner/repo#N`: GitHub for comments and assignees, and for its Status the boards of the
 //     project that hold it, then GitHub's own close / reopen.
-// Only issues on the project's cached list are accepted. A write says who made it: a toast on the
+// Only the project's own issues are accepted: the cached list, one acted on or browsed lately, or one loaded fresh from a source of the project. A write says who made it: a toast on the
 // floor and, when the issue has a task, a status line on it.
 
 import type { KanbanClientMsg, KanbanClientType } from '../../../../shared/kanban/protocol.js';
@@ -29,8 +29,10 @@ export interface IssuePatch {
 }
 
 export interface ActionDeps {
-  /** The issue on the project's list (with any pending change applied), else one acted on a little while ago. */
+  /** The issue on the project's list (with any pending change applied), else one acted on or browsed a little while ago. */
   find(project: string, key: string): NormalizedIssue | undefined;
+  /** The issue fetched fresh from its source, when `find` has lost it: only one inside the project's own scope (its Jira project keys, its repositories, its boards). */
+  load(project: string, key: string): Promise<NormalizedIssue | undefined>;
   /** Shows a change at once on the kanban and the 3D board, until a later fetch has it. */
   patch(project: string, key: string, fields: IssuePatch): void;
   io(project: string): IssueSourceIo;
@@ -94,7 +96,7 @@ export function issueActionHandlers(ctx: KanbanContext, deps: ActionDeps): NonNu
     <M extends { project: string; issueKey: string; rid?: string }>(go: (c: KanbanClient, m: M, s: Scope) => Promise<void>, write = false) =>
     async (c: KanbanClient, m: M): Promise<void> => {
       if (!ctx.project(m.project)) return fail(c, m.rid, `There's no project ${m.project}`);
-      const issue = deps.find(m.project, m.issueKey);
+      const issue = deps.find(m.project, m.issueKey) ?? (await deps.load(m.project, m.issueKey));
       if (!issue) return fail(c, m.rid, `${m.issueKey} isn't among the project's issues (any more)`);
       const sources = ctx.settings.project(m.project).issueSources;
       const target = route(sources, issue);

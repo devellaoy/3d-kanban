@@ -4,6 +4,9 @@
 // `UYT-1415`). Numbers collide across repositories and Jira has none, so a card is told apart by its key
 // when it has one. Pure, for the server and the browser alike.
 
+import type { GhIssue } from '../protocol.js';
+import type { NormalizedIssue } from './types.js';
+
 /** A card as far as telling it apart goes: a GitHub issue's number (0 for none) and the source's key. */
 export interface CardRef {
   /** The GitHub issue number; 0 for a card that isn't a GitHub issue (Jira, a project's draft). */
@@ -70,4 +73,40 @@ export function cardHash(id: string): number {
 /** What picks a note's color, pin and tilt: a GitHub issue's number as upstream, else a hash of its key. */
 export function noteSeed(it: { number: number; key?: string }): number {
   return it.number > 0 ? it.number : cardHash(cardId(it));
+}
+
+/** How much of a body goes on the board (the task made from a card gets it all). */
+export const WALL_BODY = 2000;
+
+/**
+ * One issue of a source as a card on the board. A GitHub issue of one of `projectRepos` (owner/name)
+ * keeps its number, so upstream's issue window and actions work on it; any other card has 0 and is
+ * known by its key (an issue of a repository outside the project too: the office can't open it).
+ */
+export function toGhIssue(i: NormalizedIssue, taskId?: number, projectRepos: string[] = []): GhIssue {
+  const ghKey = parseGhKey(i.key);
+  const inProject = !!ghKey && projectRepos.some((r) => r.toLowerCase() === ghKey.repo.toLowerCase());
+  const assignees = (i.assignee ?? '')
+    .split(',')
+    .map((a) => a.trim())
+    .filter(Boolean);
+  return {
+    number: inProject ? ghKey!.number : 0,
+    title: i.title,
+    // Every source leaves closed or done issues out unless told otherwise; a GitHub issue says which it is.
+    state: i.source === 'github-repo' && i.status && i.status !== 'OPEN' ? i.status : 'OPEN',
+    url: i.url,
+    author: '',
+    labels: i.labels.map((name) => ({ name, color: labelColor(name) })),
+    assignees,
+    createdAt: i.updatedAt,
+    updatedAt: i.updatedAt,
+    body: i.body.slice(0, WALL_BODY),
+    comments: 0,
+    ...(i.repo || ghKey ? { repo: i.repo ?? ghKey!.repo } : {}),
+    key: i.key,
+    source: i.source,
+    ...(i.status ? { status: i.status } : {}),
+    ...(taskId !== undefined ? { taskId } : {}),
+  };
 }

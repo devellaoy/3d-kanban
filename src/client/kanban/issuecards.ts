@@ -215,6 +215,9 @@ function queueCard(net: Net, it: GhIssue, provider?: AgentProvider, model?: stri
   net.send({ t: 'queue.add', prompt: cardIssuePrompt(it), title: `${issueCardLabel(it)} ${it.title}`, ...cardFields(cardOfIssue(it)), provider, model, effort });
 }
 
+/** Fetches the card again from its source (a card opened from 🔎 Browse isn't on the board, so nothing else keeps it current). */
+type Reload = () => Promise<GhIssue | undefined>;
+
 const openTaskIn3d = (net: Net) => (id: number) => void import('./taskview').then((m) => m.openTaskWindow(net, id));
 
 /**
@@ -223,7 +226,7 @@ const openTaskIn3d = (net: Net) => (id: number) => void import('./taskview').the
  * posted by the card's key, so they are signed and land on its task as the kanban's are. Nothing for a
  * card without a key: upstream's own issue keeps its window as it was.
  */
-function keyedExtras(net: Net, card: GhIssue): IssueWindowExtras {
+function keyedExtras(net: Net, card: GhIssue, refetch?: Reload): IssueWindowExtras {
   const to = actionsTarget(card, store.floor);
   if (!to) return {};
   const api = kanbanApi(net);
@@ -231,11 +234,13 @@ function keyedExtras(net: Net, card: GhIssue): IssueWindowExtras {
   return {
     extra: (first, reload) => {
       // Only a close or reopen changes what the window shows of the issue itself.
-      const panel = issueActions(api, to.project, actionIssue(first), { sections: ['status', 'assignee'], openTask: openTaskIn3d(net), onChanged: (_what, moved) => moved && closesOrReopens(moved.id) && reload() });
-      // Kept while the card is off the list (a closed issue can drop off it): the window works on what it knew.
+      const refresh = () => void refetch?.().then((g) => g && panel.update(actionIssue(g)));
+      const panel = issueActions(api, to.project, actionIssue(first), { sections: ['status', 'assignee'], openTask: openTaskIn3d(net), onChanged: (_what, moved) => (moved && closesOrReopens(moved.id) ? reload() : refresh()) });
+      // Kept while the card is off the list (a closed issue can drop off it): the window works on what it knew, or what the refetch says.
       off = store.on('issues', () => {
         const fresh = issueOfCard(first);
         if (fresh) panel.update(actionIssue(fresh));
+        else refresh();
       });
       return panel.el;
     },
@@ -249,12 +254,12 @@ function keyedExtras(net: Net, card: GhIssue): IssueWindowExtras {
  * GitHub repositories' too, with its actions going by its key; anything else (Jira, a project's draft,
  * a repository outside the project) this one.
  */
-export function openCard(it: GhIssue, net: Net, actions: BoardActions) {
+export function openCard(it: GhIssue, net: Net, actions: BoardActions, opts?: { reload?: Reload }) {
   if (!it.key) return openIssue(it, net, actions);
   // Queued with its key, whichever window it opens in.
   const keyed: BoardActions = { ...actions, queue: (_prompt, _title, _issue, provider, model, effort) => queueCard(net, it, provider, model, effort) };
   // The floor's own issue from the sources: upstream's window and prompts.
-  const extra = keyedExtras(net, it);
+  const extra = keyedExtras(net, it, opts?.reload);
   if (isOwnIssue(it)) return openIssue(it, net, keyed, extra);
   if (it.number > 0) {
     const label = (title: string) => title.replace(`#${it.number}`, issueCardLabel(it));
@@ -265,11 +270,11 @@ export function openCard(it: GhIssue, net: Net, actions: BoardActions) {
       meeting: () => actions.meeting(cardMeeting(it)),
     }, extra);
   }
-  openSourceIssue(it, net, keyed);
+  openSourceIssue(it, net, keyed, opts?.reload);
 }
 
 /** The window of a card that isn't a GitHub issue of the project: what the source says, and the same actions as upstream's. */
-function openSourceIssue(first: GhIssue, net: Net, actions: BoardActions) {
+function openSourceIssue(first: GhIssue, net: Net, actions: BoardActions, refetch?: Reload) {
   let it = first;
   const label = issueCardLabel(it);
   const close = h('button.btn.close', { type: 'button', 'aria-label': 'Close' }, '✕');
@@ -277,7 +282,7 @@ function openSourceIssue(first: GhIssue, net: Net, actions: BoardActions) {
   const meta = h('div.gh-meta');
   const body = h('div.gh-items');
   const to = actionsTarget(it, store.floor);
-  const panel = to ? issueActions(kanbanApi(net), to.project, actionIssue(it), { openTask: (id) => (modal.close(), openTaskIn3d(net)(id)) }) : null;
+  const panel = to ? issueActions(kanbanApi(net), to.project, actionIssue(it), { openTask: (id) => (modal.close(), openTaskIn3d(net)(id)), onChanged: () => void reload() }) : null;
   const queueProvider = providerPicker(store.project, `issue-provider-${cardId(it)}`, 'Queue on');
   const queue = h('button.btn', { type: 'button' }) as HTMLButtonElement;
   queue.addEventListener('click', () => {
@@ -330,10 +335,17 @@ function openSourceIssue(first: GhIssue, net: Net, actions: BoardActions) {
     task.title = it.taskId ? 'The kanban task made from it' : 'A kanban task for it (plan → implement → review), started at a free desk';
     panel?.update(actionIssue(it));
   };
+  /** What the source says now, for a card that isn't on the board to keep it current. */
+  const reload = async () => {
+    const fresh = await refetch?.();
+    if (!fresh) return;
+    it = fresh;
+    render();
+  };
   const unsubs = [
     store.on('issues', () => {
       const fresh = issueOfCard(it);
-      if (!fresh) return;
+      if (!fresh) return void reload();
       it = fresh;
       render();
     }),

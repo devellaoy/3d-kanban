@@ -5,7 +5,8 @@
 // these into the kanban's unions and calls parseIssueOpsMsg for any type in ISSUE_OPS_CLIENT_TYPE_LIST.
 
 import type { NormalizedIssue } from './types.js';
-import { KANBAN_LIMITS, bad, bool, deskId, isObj, optText, project, text, type Obj, type Req } from './validate.js';
+import { BROWSE_CLIENT_TYPE_LIST, parseBrowseMsg, type BrowseClientMsg, type BrowseServerMsg } from './browse.js';
+import { KANBAN_LIMITS, PERSON_ID_RE, bad, bool, deskId, isObj, optText, project, text, type Obj, type Req } from './validate.js';
 
 /** One way to move an issue on: a Jira transition, a project's Status option, or GitHub's close / reopen. */
 export interface IssueTransition {
@@ -62,7 +63,9 @@ export type IssueOpsClientMsg =
   /** Who the issue can be assigned to, matching `query`; answered with kanban.issuePeople. */
   | IssueReq<{ t: 'kanban.issue.people'; query?: string }>
   /** Answered with kanban.ok. */
-  | IssueReq<{ t: 'kanban.issue.assign'; to: IssueAssignTo }>;
+  | IssueReq<{ t: 'kanban.issue.assign'; to: IssueAssignTo }>
+  /** Browsing all of a source's issues (browse.ts). */
+  | BrowseClientMsg;
 
 export type IssueOpsServerMsg =
   | { t: 'kanban.issues'; rid?: string; project: string; items: NormalizedIssue[]; error?: string; fetchedAt: number; loading: boolean }
@@ -71,7 +74,8 @@ export type IssueOpsServerMsg =
   /** `cannot`: why there are no comments to show or add (a draft has none). */
   | { t: 'kanban.issueComments'; rid?: string; project: string; issueKey: string; items: IssueCommentItem[]; cannot?: string }
   /** `cannot`: why this issue can't be assigned from the office. */
-  | { t: 'kanban.issuePeople'; rid?: string; project: string; issueKey: string; items: IssuePerson[]; cannot?: string };
+  | { t: 'kanban.issuePeople'; rid?: string; project: string; issueKey: string; items: IssuePerson[]; cannot?: string }
+  | BrowseServerMsg;
 
 /** Every issue message the browser may send; protocol.ts spreads it into KANBAN_CLIENT_TYPE_LIST. */
 export const ISSUE_OPS_CLIENT_TYPE_LIST: Readonly<Record<IssueOpsClientMsg['t'], true>> = {
@@ -84,15 +88,17 @@ export const ISSUE_OPS_CLIENT_TYPE_LIST: Readonly<Record<IssueOpsClientMsg['t'],
   'kanban.issue.comment': true,
   'kanban.issue.people': true,
   'kanban.issue.assign': true,
+  ...BROWSE_CLIENT_TYPE_LIST,
 };
 
 /** A transition id: Jira's number, `p:<projectId>:<itemId>:<fieldId>:<optionId>`, or `gh:close` / `gh:close:not_planned` / `gh:reopen`. */
 export const TRANSITION_ID_RE = /^[\w:@.=-]{1,500}$/;
-/** A person's id: a Jira account id (`712020:ab-cd`, `557058:…`), or a GitHub login. */
-export const PERSON_ID_RE = /^[\w:@.-]{1,200}$/;
+export { PERSON_ID_RE };
 const PEOPLE_QUERY_MAX = 100;
 
 type Bare<T> = T extends unknown ? Omit<T, 'rid'> : never;
+
+const isBrowse = (t: string): t is BrowseClientMsg['t'] => t in BROWSE_CLIENT_TYPE_LIST;
 
 function assignTo(v: unknown): IssueAssignTo {
   if (v === null) return null;
@@ -105,6 +111,7 @@ function assignTo(v: unknown): IssueAssignTo {
 
 /** Checks the fields of an issue message (its type is already known to be in the list) and rebuilds it. */
 export function parseIssueOpsMsg(t: IssueOpsClientMsg['t'], r: Obj): Bare<IssueOpsClientMsg> {
+  if (isBrowse(t)) return parseBrowseMsg(t, r);
   const proj = project(r.project);
   switch (t) {
     case 'kanban.issues.list':

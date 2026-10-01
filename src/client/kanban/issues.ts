@@ -3,13 +3,15 @@
 // (idempotent by the issue's key: an issue already made into a task opens that task instead). Its title
 // opens the issue's own window (issuewindow.ts).
 
-import { h, timeAgo } from '../ui/dom';
+import { h, timeAgo, toast } from '../ui/dom';
 import type { KanbanServerMsg } from '../../shared/kanban/protocol.js';
 import type { NormalizedIssue } from '../../shared/kanban/types.js';
 import type { KanbanApi, KanbanOk } from './api';
 import { filterIssues } from './model';
 import { kstore } from './store';
 import { openIssueWindow } from './issuewindow';
+import { openBrowse } from './browse';
+import type { BrowseIssue, BrowseScope } from '../../shared/kanban/browse.js';
 import { SOURCE_KIND_NAMES } from './labels';
 import { dialog, run, select, showDialog, textInput } from './ui';
 
@@ -26,6 +28,7 @@ export function openIssues(api: KanbanApi, projectId: string, openTask: (id: num
   const list = h('ul.kb-issues', { 'aria-live': 'polite' });
   const status = h('span.kb-muted');
   const refresh = h('button.btn', { type: 'button', title: 'Fetch them again from the sources' }, '🔄 Refresh') as HTMLButtonElement;
+  const browse = h('button.btn', { type: 'button', title: 'Every issue of the Jira project or GitHub board, in a tree with filters' }, '🔎 Browse all') as HTMLButtonElement;
   const d = dialog('kb-issues-window', `📌 Issues · ${project?.name ?? projectId}`, h('div.body', {}, h('div.kb-row', {}, search, status), chips, list), null, [refresh]);
   const modal = showDialog(d, {
     onClose: () => off(),
@@ -105,6 +108,20 @@ export function openIssues(api: KanbanApi, projectId: string, openTask: (id: num
     f.q = search.value;
     paint();
   });
+  // Only a project with a source that can be browsed has the button.
+  api.request<Extract<KanbanServerMsg, { t: 'kanban.browseScopes' }>>({ t: 'kanban.browse.scopes', project: projectId }).then(
+    (m) => m.scopes.some((s) => !s.disabled) && refresh.before(browse),
+    () => {},
+  );
+  const openFull = (issue: BrowseIssue, scope: BrowseScope) => {
+    const load = () => api.request<Extract<KanbanServerMsg, { t: 'kanban.browseIssue' }>>({ t: 'kanban.browse.issue', project: projectId, scope: scope.id, issueKey: issue.key }).then((m) => m.issue);
+    load().then(
+      (full) => openIssueWindow(api, projectId, full, openTaskClosing, { reload: () => load().catch(() => undefined) }),
+      (err: Error) => toast(err.message, 'error'),
+    );
+  };
+  const openTaskClosing = (id: number) => (modal.close(), openTask(id));
+  browse.addEventListener('click', () => openBrowse(api, projectId, { open: openFull, openTask: openTaskClosing }));
   refresh.addEventListener('click', () => void run(() => api.request({ t: 'kanban.issues.refresh', project: projectId }), refresh));
   paint();
   api.request<IssuesMsg>({ t: 'kanban.issues.list', project: projectId }).catch((err: Error) => {

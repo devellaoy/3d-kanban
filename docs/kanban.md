@@ -350,6 +350,58 @@ Issues are fetched again every 90 seconds while someone looks at them, every 10 
 with **Refresh**. Keys: `gh:owner/repo#12` (GitHub issues), `ghp:<owner>/<number>#<item>` (project
 draft issues), the Jira key.
 
+### Browsing all issues
+
+**📌 Issues** lists what the sources' own filters let through (your assigned issues, say). To see
+everything of a Jira project or a GitHub project board, press **🔎 Browse all** in the **📌 Issues**
+window's header (it is there when the project has a Jira source with project keys, or a GitHub project
+source). In the 3D office and `/lite` it is the **🔎 Browse** button of the 📌 Issues board. A project with
+several browsable sources has a picker for which one to browse; a Jira source without project keys is
+listed greyed out (*add project keys to the Jira source*), because the Jira token reaches the whole
+site and the office only ever shows the source's own projects.
+
+- **Filters.** Search text (a key such as `UYT-12` works too), status category (open by default, new,
+  in progress, done, all), status, assignee (anyone, nobody, **Me** or a person), issue type, labels,
+  and per source: Jira fix version, sprint (or *open sprints*) and epic, GitHub iteration.
+- **Raw JQL** (Jira). A box for extra JQL, added to the filters with AND. It must be one complete
+  expression (balanced quotes and parentheses, no backslash outside quotes, no `ORDER BY`: the office
+  sorts by the last update) and is added after the source's project keys. As a second guard, issues
+  outside the source's projects are dropped from the results. Counts aren't shown while raw JQL is in use.
+- **Me.** On Jira it is the account you pinned with **📌 This is me** (in an issue's assignee panel; per
+  site, in your browser); until you have pinned one the option says so. On GitHub it is your own GitHub
+  sign-in.
+- **The tree.** Jira: fix version → epic → story or task → sub-tasks. Released versions are collapsed
+  into one node, and issues without a version or an epic are under *No version* and *No epic* (a site that
+  still uses the old *Epic Link* field lists everything under *No epic*). GitHub: the board's iteration
+  (or its Status, when it has no iterations) → items → sub-issues.
+- **Sub-tasks in searches.** A node lists its stories and tasks, and under each one the sub-tasks that
+  match the filters (all of its sub-tasks with the status filter on *All*). Search or filter by text,
+  type, status, assignee, label, sprint or JQL and a story that doesn't match itself but has a matching
+  sub-task is listed too, dimmed, only to hold it. That lookup covers the 100 matching sub-tasks last
+  updated: narrow the search further when one is missing (the story's own sub-tasks are one click away).
+  With the status filter alone (*Open*, the default, *To do*, ...), the stories' own status decides, so
+  an open sub-task under a *Done* story shows only when you pick *All*. Pick the type *Sub-task* or type a
+  sub-task's key to find one. *No epic* lists the issues with no epic (not the epics). Your own JQL may
+  call only `currentUser()`, `openSprints()`, `closedSprints()`, `futureSprints()`,
+  `subTaskIssueTypes()`, `standardIssueTypes()`, `now()` and the `startOf…()`/`endOf…()` day, week,
+  month and year functions. A completed GitHub iteration chosen in the iteration filter shows its own node.
+- **Counts and pages.** Opening a node fetches its first page; the counts are asked for one at a time,
+  are approximate on Jira and show nothing when the source can't tell. On Jira a version or epic node
+  counts its stories and tasks that match (sub-tasks show under them, uncounted, as in an epic's
+  done/total); with any filter beyond the status (search, type, assignee and so on) it shows no count,
+  since the listed stories then include ones with a matching sub-task, which a count can't follow. **Load more** fetches the next page.
+- **Needs.** Jira: the token in ⚙️ Settings → 🗂️ Kanban (as for the other Jira features). GitHub project:
+  `gh auth refresh -s read:project` on the office's machine; without it the window says so.
+
+Click an issue to open it. On the kanban page that is the issue window (*Working on an issue*), with
+**＋ Create task** and **▶ Create & start**, which makes the task and starts it at a free desk in one go
+(*Create & start* is also what a failed start reports: the task is made and waits in To do). In 3D and
+`/lite` it is the card window: its status, assignee and comments panel, **🗂️ Kanban task**, **🤖 Hand to a
+worker**, **📋 Add to queue**, **🤝 Meeting** and **✋ Pick it up**, as for any other card. Closing it
+returns to the browse window. An issue opened from Browse stays open to changes whether or not the
+sources' list holds it, and it can be queued, carried or handed to a worker even if the source's filters
+leave it off the board: its text then reaches the agent's prompt once a person starts it.
+
 ### Working on an issue
 
 Click an issue's title in **📌 Issues** to open its window: the text, and three things you can do to
