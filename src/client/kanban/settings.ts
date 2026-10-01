@@ -157,7 +157,7 @@ export function kanbanSettingsPanes(net: Net): { panes: Record<KanbanSettingsPan
     if (!s || !ready) return body.replaceChildren(h('p.kb-muted', {}, 'Loading…'));
     if (!kstore.projectOf(project)) return body.replaceChildren(h('p.kb-muted', {}, 'No projects yet: add a floor in the 3D office first.'));
     const panes: Record<ProjectTab, () => HTMLElement> = {
-      project: () => projectPane(api, project, s),
+      project: () => projectPane(api, project, s, projectCleanups),
       sources: () => sourcesPane(api, project, s),
       skills: () => skillsPane(api, project, s, projectCleanups),
       prompts: () => promptsPane(api, project, s, (id) => openPromptEditor(net, id), projectCleanups),
@@ -275,12 +275,44 @@ function generalPane(api: KanbanApi, s: KanbanSettings, refetch: boolean): HTMLE
 
 // --- Projects --------------------------------------------------------------------------------------
 
-function projectPane(api: KanbanApi, projectId: string, s: KanbanSettings): HTMLElement {
+/** ⚙️ Project: its name, its repositories, its instructions and overrides. */
+export function projectPane(api: Pick<KanbanApi, 'request'>, projectId: string, s: KanbanSettings, cleanups: Cleanups): HTMLElement {
   const info = kstore.projectOf(projectId)!;
   const ps: ProjectSettings = s.projects[projectId] ?? projectDefaults();
 
+  // The name: what people read in the elevator, on the board and in the prompts. Compared with the
+  // name the office holds now (the pane isn't drawn again when the projects change, the picker is).
+  const projectName = textInput(info.name, { maxlength: 100, 'aria-label': 'Project name' });
+  const rename = saveButton('Rename');
+  const unchanged = () => {
+    const v = projectName.value.trim();
+    return !v || v === kstore.projectOf(projectId)?.name;
+  };
+  const paintRename = () => {
+    if (kstore.me.admin) rename.disabled = unchanged();
+  };
+  // The primary repository is called after the project until it's named otherwise: its box follows a
+  // rename, so saving the repositories afterwards doesn't keep the old name.
+  let shownName = info.name;
+  const renamed = () => {
+    const now = kstore.projectOf(projectId)?.name;
+    if (now && now !== shownName) {
+      const primary = rows.find((r) => r.repo.primary);
+      if (primary && primary.nameBox.value.trim() === shownName) primary.nameBox.value = now;
+      shownName = now;
+    }
+    paintRename();
+  };
+  projectName.addEventListener('input', paintRename);
+  cleanups.add(kstore.on('projects', renamed));
+  paintRename();
+  rename.addEventListener('click', () => {
+    if (unchanged()) return paintRename();
+    void run(() => api.request({ t: 'kanban.project.rename', project: projectId, name: projectName.value.trim() }), rename, 'Renamed').then(paintRename);
+  });
+
   // Repositories
-  type Row = { repo: ProjectRepoInput; el: HTMLElement; read(): ProjectRepoInput };
+  type Row = { repo: ProjectRepoInput; el: HTMLElement; nameBox: HTMLInputElement; read(): ProjectRepoInput };
   const rows: Row[] = [];
   const list = h('div.kb-repos');
   const makeRow = (r: ProjectRepo | ProjectRepoInput): Row => {
@@ -304,6 +336,7 @@ function projectPane(api: KanbanApi, projectId: string, s: KanbanSettings): HTML
     const row: Row = {
       repo: r as ProjectRepoInput,
       el,
+      nameBox: name,
       read: () => ({
         id: r.id,
         name: name.value.trim() || r.name,
@@ -374,6 +407,13 @@ function projectPane(api: KanbanApi, projectId: string, s: KanbanSettings): HTML
   return h(
     'div.kb-pane',
     {},
+    h(
+      'fieldset',
+      {},
+      h('legend', {}, 'Project'),
+      h('div.kb-row.kb-rename', {}, field('Project name', projectName), rename),
+      h('small.kb-hint', {}, `Shown in the elevator, on the board and in the agents’ prompts. Its id (${projectId}), folder and repository stay.`),
+    ),
     h('fieldset', {}, h('legend', {}, 'Repositories'), h('p.kb-hint', {}, 'A project works across these. Tasks get a worktree of each on the same branch.'), list, h('div.kb-row', {}, addDir, addBtn), h('div.kb-row.kb-save', {}, h('span.grow'), saveRepos)),
     h(
       'fieldset',
