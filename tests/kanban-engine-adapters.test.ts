@@ -3,11 +3,12 @@ import assert from 'node:assert/strict';
 import { mkdirSync, mkdtempSync, rmSync, utimesSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
+import { defaultShell } from '../src/server/workers/process.js';
 import { validateWorkerModel } from '../src/server/agents.js';
 import { claudeAdapter, claudeAlias, readClaudeTurn, teammateTags } from '../src/server/kanban/engine/adapters/claude.js';
 import { MODEL_RE } from '../src/shared/kanban/protocol.js';
 import { codexAdapter, readCodexTurn } from '../src/server/kanban/engine/adapters/codex.js';
-import { helpMentionsHookTrust, setCodexHookTrust } from '../src/server/kanban/engine/adapters/codex-hook-trust.js';
+import { codexBypassesHookTrust, helpMentionsHookTrust, probeCodexHookTrust, setCodexHookTrust } from '../src/server/kanban/engine/adapters/codex-hook-trust.js';
 
 function scratch(t: { after(fn: () => void): void }) {
   const dir = mkdtempSync(path.join(tmpdir(), 'kanban-adapters-'));
@@ -372,4 +373,57 @@ test('codex rollout: the last task_complete of the last turn, else the last assi
   assert.deepEqual(readCodexTurn(fallback), { text: 'The answer', complete: true });
   const error = write('error.jsonl', [meta, ...user('Go'), { type: 'event_msg', payload: { type: 'error', message: 'stream disconnected before completion' } }, done(null)]);
   assert.deepEqual(readCodexTurn(error), { text: 'stream disconnected before completion', complete: true, apiError: 'stream disconnected before completion' });
+});
+
+const HELP = 'Options:\n  --dangerously-bypass-hook-trust\n';
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+type ExecCb = (err: unknown, stdout: string, stderr: string) => void;
+
+test('probeCodexHookTrust looks codex up without blocking and falls back to the login shell', async (t) => {
+  t.after(() => setCodexHookTrust(undefined));
+  const calls: string[][] = [];
+  const exec = (file: string, args: string[], _o: unknown, cb: ExecCb) => {
+    calls.push([file, ...args]);
+    setTimeout(() => cb(null, HELP, ''), 100);
+  };
+  const find = async () => {
+    await sleep(100);
+    return null;
+  };
+  const start = performance.now();
+  const p = probeCodexHookTrust({ find, exec });
+  assert.ok(performance.now() - start < 20, 'the call itself returns at once');
+  let settled = false;
+  void p.then(() => (settled = true));
+  await new Promise((r) => setImmediate(r));
+  assert.equal(settled, false);
+  assert.equal(await p, true);
+  assert.equal(codexBypassesHookTrust(), true);
+  assert.equal(calls[0][0], defaultShell());
+  assert.ok(calls[0].at(-1)?.includes('codex --help'));
+});
+
+test('probeCodexHookTrust runs the codex found on PATH and reads the flag from its help', async (t) => {
+  t.after(() => setCodexHookTrust(undefined));
+  const warn = t.mock.method(console, 'warn', () => {});
+  const calls: unknown[][] = [];
+  const run = (help: string) => (file: string, args: string[], _o: unknown, cb: ExecCb) => {
+    calls.push([file, args]);
+    cb(null, help, '');
+  };
+  const find = async () => '/opt/bin/codex';
+  assert.equal(await probeCodexHookTrust({ find, exec: run(HELP) }), true);
+  assert.deepEqual(calls[0], ['/opt/bin/codex', ['--help']]);
+  assert.equal(await probeCodexHookTrust({ find, exec: run('Options:\n  --sandbox\n') }), false);
+  assert.equal(codexBypassesHookTrust(), false);
+  assert.equal(warn.mock.callCount(), 1);
+});
+
+test('probeCodexHookTrust is false when running codex fails', async (t) => {
+  t.after(() => setCodexHookTrust(undefined));
+  setCodexHookTrust(true);
+  const exec = (_f: string, _a: string[], _o: unknown, cb: ExecCb) => cb(new Error('boom'), '', '');
+  assert.equal(await probeCodexHookTrust({ find: async () => '/x/codex', exec }), false);
+  assert.equal(codexBypassesHookTrust(), false);
+  assert.equal(await probeCodexHookTrust({ find: async () => { throw new Error('x'); }, exec }), false);
 });
