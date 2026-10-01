@@ -17,11 +17,13 @@ export interface TestCtx extends KanbanContext {
   sent: { msg: KanbanServerMsg; project: string | null }[];
   toasts: { floor: string; text: string; level?: string }[];
   started: number[];
+  /** Tasks `taskChanged` was called for. */
+  changed: number[];
   floors: Map<string, Floor>;
   tmp: string;
 }
 
-export function makeCtx(defs: FloorDef[] = [], opts: { start?: (id: number) => string | void } = {}): TestCtx {
+export function makeCtx(defs: FloorDef[] = [], opts: { start?: (id: number) => string | void; ghAs?: KanbanContext['ghAs'] } = {}): TestCtx {
   const tmp = mkdtempSync(path.join(os.tmpdir(), 'kanban-int-'));
   const dataDir = path.join(tmp, '.agent-office');
   mkdirSync(dataDir, { recursive: true });
@@ -50,6 +52,7 @@ export function makeCtx(defs: FloorDef[] = [], opts: { start?: (id: number) => s
     sent: [] as TestCtx['sent'],
     toasts: [] as TestCtx['toasts'],
     started: [] as number[],
+    changed: [] as number[],
     broadcast(msg: KanbanServerMsg, project: string | null) {
       ctx.sent.push({ msg, project });
     },
@@ -57,7 +60,8 @@ export function makeCtx(defs: FloorDef[] = [], opts: { start?: (id: number) => s
       ctx.toasts.push({ floor, text, level });
     },
     card: (id: number) => repo.card(id),
-    taskChanged: () => {},
+    taskChanged: (id: number) => void ctx.changed.push(id),
+    ...(opts.ghAs ? { ghAs: opts.ghAs } : {}),
     attachmentFile: () => undefined,
     workerExtras: () => ({ args: [], env: {} }),
   } as unknown as TestCtx;
@@ -75,9 +79,9 @@ export function makeCtx(defs: FloorDef[] = [], opts: { start?: (id: number) => s
 export const WHO: KanbanCaller = { name: 'Tester', admin: true, accountId: 'acc1' };
 
 /** A browser connection that keeps what it's sent. */
-export function client(admin = true): KanbanClient & { got: KanbanServerMsg[] } {
+export function client(admin = true, accountId?: string): KanbanClient & { got: KanbanServerMsg[] } {
   const got: KanbanServerMsg[] = [];
-  return { clientId: 'c1', name: 'Tester', admin, got, send: (m) => void got.push(m) };
+  return { clientId: 'c1', name: 'Tester', admin, ...(accountId ? { accountId } : {}), got, send: (m) => void got.push(m) };
 }
 
 export function def(id: string, dir: string, extra: Partial<FloorDef> = {}): FloorDef {
