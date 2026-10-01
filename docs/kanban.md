@@ -144,7 +144,7 @@ did:
   agent now; otherwise the task goes to Review.
 - **Leave-on-merge** never picks a worker of a task in In progress or with a run going. When it sends
   one home, the task goes to Done only if every pull request linked to it has merged (none open or a
-  draft).
+  draft); it also waits for the pull requests of the project's other repositories.
 - **The worktree**: whatever you pick, it stays while another worker of the task sits in it or a run
   of the task is going (a Retry carries on there). When it was deleted, the task forgets it and its
   sessions, and keeps its branch if git still has it here or on origin: the next run gets a fresh
@@ -245,7 +245,15 @@ new tool starts a fresh session with the task's handoff.
 
 Click a card (or Enter on it). The panel's tab is kept in the page's link (`&tab=`). Its head has
 **📍 Show in 3D**: the 3D office at the task's worker's desk (`/?floor=<project>&worker=<id>&desk=<id>`),
-or on its floor when it has no worker. Its tabs:
+or on its floor when it has no worker, and, for admins, **🧩 VSCode**: the task's folder opened in VS
+Code on the office's machine. A task with one repository opens its worktree; one with several opens all
+its repositories' worktrees in one window, through a generated `.code-workspace` file (kept in
+`<data>/kanban/workspaces/`); before the task has run (no worktree yet) it opens the project's
+checkout(s). Every worker's terminal window (the 3D office's **E**, and `/lite`) has the same **🧩 VSCode**
+in its header, for kanban workers and ordinary ones alike: an ordinary worker opens its worktree (or its
+workspace of several repositories), or the floor's checkout when it has none. On a narrow screen the
+button is just 🧩. VS Code must be installed on the office's machine: on macOS in `/Applications` is
+enough, elsewhere the `code` command must be on the PATH. Its tabs:
 
 - **Overview**: what it waits for (with the answer box), the actions, summary, description,
   acceptance criteria, **📑 Reports** (an investigation's report files: shown in place, Markdown
@@ -279,7 +287,8 @@ or on its floor when it has no worker. Its tabs:
 
 The panel is the **shared task view** (`src/client/kanban/taskview.ts`), which the 3D office uses too
 (a window of its own, or a tab of the worker window). There it has no Terminal tab (the worker
-window has the terminal, whose tab also has upstream's **+ Web page** tabs; while focus is inside a web page, Esc doesn't close the window, the ✕ does), no Edit or Move, and a **🗂️ Open in the kanban** link instead of Show in 3D.
+window has the terminal, whose tab also has upstream's **+ Web page** tabs; while focus is inside a web page, Esc doesn't close the window, the ✕ does), no Edit or Move, and a **🗂️ Open in the kanban** link instead of Show in 3D (and no 🧩 VSCode: the worker
+window's header has it).
 
 ## Projects and repositories
 
@@ -302,7 +311,13 @@ its GitHub repository (it was added from GitHub, or its checkout has one), that 
 owner/name; add another repository instead, or re-add the floor"). A floor without one (a local
 checkout not on GitHub) takes the `owner/name` saved for the primary, and the kanban uses it
 everywhere it needs the primary's repository: the issue sources' repositories, the PR bundles and
-reviews, linking the agent's `PR:` lines, and the prompts' list of repositories.
+reviews, linking the agent's `PR:` lines, and the prompts' list of repositories. Another git
+repository with an empty GitHub field follows its checkout's `origin` (github.com only): the PR
+board, the kanban's PR features and the GitHub issue sources use that `owner/name`, and the field
+shows it as its placeholder. The origin is only a fallback: pin an `owner/name` in the field to lock
+the repository, so a changed `origin` (say `git remote set-url` in a worktree, which shares
+`.git/config`) can't redirect what the office polls and acts on.
+Saving the form keeps the field empty; type an `owner/name` to pin one.
 
 A task gets a worktree of each git repository it works in, all on the same branch (named by the
 project's *Branch naming* instructions, else `kanban/<ticket or task id>-<slug>`). A *folder*
@@ -311,7 +326,8 @@ general and testing instructions (they go into the prompts), *tasks at once*, an
 plan approval, implementation mode and review settings.
 
 With several repositories, the floor's issues and PR boards show every repository's cards with a
-repository chip and a repository filter.
+repository chip. The issues board has a repository filter; the PR board (E at the board) has a tab
+per repository of the project below its header (📦 All, then every repository, with its open PRs, if any).
 
 ## Issue sources
 

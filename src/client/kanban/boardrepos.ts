@@ -3,6 +3,7 @@
 // repository is its `repo` when the office sends one, else read off its GitHub URL.
 
 import { h } from '../ui/dom';
+import { sameRepo } from '../../shared/floors';
 import { repoOfItem } from './ghrepo';
 import { officeCss } from './officecss';
 
@@ -12,6 +13,39 @@ export { repoOfItem };
 /** The repositories a board's items come from, sorted. */
 export function boardRepos(items: { url: string; repo?: string }[]): string[] {
   return [...new Set(items.map(repoOfItem).filter(Boolean))].sort((a, b) => a.localeCompare(b));
+}
+
+/**
+ * The PR board's tabs: the repositories its items come from plus the project's `configured` ones
+ * (which may have no pull requests), sorted and de-duplicated ignoring case.
+ */
+export function tabRepos(items: { url: string; repo?: string }[], configured: string[] = []): string[] {
+  const seen = new Map<string, string>();
+  for (const r of [...boardRepos(items), ...configured]) if (r && !seen.has(r.toLowerCase())) seen.set(r.toLowerCase(), r);
+  return [...seen.values()].sort((a, b) => a.localeCompare(b));
+}
+
+/**
+ * The repository a kept choice still means: `value` in the spelling of `repos` (the PR board's tabs,
+ * which include the project's configured repositories, see tabRepos) while it is one of them, else ''
+ * (All). Judged by the tabs, not the cards, so an empty or failed load keeps the choice; a one-repo
+ * floor's stale value is not in them.
+ */
+export function keptRepo(value: string, repos: string[]): string {
+  return (value && repos.find((r) => sameRepo(r, value))) || '';
+}
+
+/** How many of the items are open, per repository, and in all, for the PR board's tabs. */
+export function openByRepo(items: { url: string; repo?: string; state: string }[]): { counts: Map<string, number>; total: number } {
+  const counts = new Map<string, number>();
+  let total = 0;
+  for (const it of items) {
+    if (it.state !== 'OPEN') continue;
+    const r = repoOfItem(it);
+    counts.set(r, (counts.get(r) ?? 0) + 1);
+    total++;
+  }
+  return { counts, total };
 }
 
 /** Only the items of `repo` ('' = all of them). */
@@ -57,4 +91,61 @@ export function repoFilterSelect(repos: string[], value: string, onChange: (repo
   sel.classList.toggle('hidden', repos.length < 2);
   sel.addEventListener('change', () => onChange(sel.value));
   return sel;
+}
+
+/**
+ * The PR board's repository tabs, below its header: 📦 All, then one per repository with its open PRs.
+ * `update` keeps the buttons it already has (keyed by repository), so focus survives the board's
+ * re-renders. `repos` are the board's tabs (tabRepos), so a repository of the project with no PRs still has
+ * its tab, and a kept choice of it stays picked (boards.ts decides that with keptRepo) rather than quietly
+ * falling back to All. Hidden while there's only one repository.
+ */
+export function repoTabs(onChange: (repo: string) => void): { el: HTMLElement; update(repos: string[], value: string, counts: Map<string, number>, total: number): void } {
+  officeCss();
+  const el = h('div.board-repo-tabs.hidden', { role: 'tablist', 'aria-label': 'Repositories' });
+  const tabs = new Map<string, HTMLButtonElement>();
+  let picked: string | null = null;
+  const tabOf = (repo: string) => {
+    let b = tabs.get(repo);
+    if (!b) {
+      b = h('button.board-repo-tab', { type: 'button', role: 'tab', 'data-repo': repo }, h('span'), h('small')) as HTMLButtonElement;
+      b.addEventListener('click', () => onChange(repo));
+      tabs.set(repo, b);
+    }
+    return b;
+  };
+  el.addEventListener('keydown', (e) => {
+    const list = [...el.children] as HTMLButtonElement[];
+    const at = list.indexOf(document.activeElement as HTMLButtonElement);
+    if (at < 0) return;
+    const to = e.key === 'ArrowRight' ? (at + 1) % list.length : e.key === 'ArrowLeft' ? (at - 1 + list.length) % list.length : e.key === 'Home' ? 0 : e.key === 'End' ? list.length - 1 : -1;
+    if (to < 0) return;
+    e.preventDefault();
+    e.stopPropagation();
+    list[to].focus();
+    onChange(list[to].dataset.repo ?? '');
+  });
+  return {
+    el,
+    update(repos, value, counts, total) {
+      const order = ['', ...repos];
+      for (const [repo, b] of tabs) if (!order.includes(repo)) (b.remove(), tabs.delete(repo));
+      order.forEach((repo, i) => {
+        const b = tabOf(repo);
+        const name = repo ? (repo.split('/').pop() ?? repo) : '📦 All';
+        const n = repo ? (counts.get(repo) ?? 0) : total;
+        const [label, count] = b.children as unknown as [HTMLElement, HTMLElement];
+        if (label.textContent !== name) label.textContent = name;
+        if (count.textContent !== String(n)) count.textContent = String(n);
+        b.title = repo ? `${repo}: ${n} open` : `Every repository: ${n} open`;
+        b.setAttribute('aria-label', `${repo || 'All repositories'}, ${n} open pull request${n === 1 ? '' : 's'}`);
+        b.setAttribute('aria-selected', String(repo === value));
+        b.tabIndex = repo === value ? 0 : -1;
+        if (el.children[i] !== b) el.insertBefore(b, el.children[i] ?? null);
+      });
+      el.classList.toggle('hidden', repos.length < 2);
+      // A newly picked tab scrolls into sight in a narrow row (a phone, many repositories).
+      if (picked !== value) (picked = value), tabs.get(value)?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+    },
+  };
 }

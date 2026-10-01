@@ -100,7 +100,7 @@ test('good messages come through rebuilt, without anything the validator did not
     refused({ t: 'kanban.task.start', id: 2, deskId }, /deskId must be a desk/);
     refused({ t: 'kanban.task.create', task: { project: 'web', title: 'x' }, deskId }, /deskId must be a desk/);
   }
-  assert.equal(KANBAN_CLIENT_TYPES.size, 36);
+  assert.equal(KANBAN_CLIENT_TYPES.size, 38);
 });
 
 test("the primary repository's id is its floor's, up to 40 characters, and repoIds take it", () => {
@@ -186,4 +186,13 @@ test("the validator's limits fit what the rest of the kanban makes", () => {
   assert.ok(good({ t: 'kanban.pr.bundle', project: 'web', ticket: key }));
   // Model ids the adapters take.
   for (const model of ['opus', 'sonnet[1m]', 'claude-opus-4-5-20251101', 'gpt-5.1-codex-max', 'openai/gpt-5']) assert.ok(good({ t: 'kanban.task.create', task: { project: 'web', title: 'x', model } }), model);
+});
+
+test('the VS Code requests take a task number or a worker id', () => {
+  assert.deepEqual(good({ t: 'kanban.task.vscode', id: 4, rid: 'r1' }), { t: 'kanban.task.vscode', id: 4, rid: 'r1' });
+  assert.deepEqual(good({ t: 'kanban.worker.vscode', workerId: 'w-1' }), { t: 'kanban.worker.vscode', workerId: 'w-1' });
+  refused({ t: 'kanban.task.vscode', id: 0 }, /task number/);
+  refused({ t: 'kanban.task.vscode', id: '4' }, /task number/);
+  refused({ t: 'kanban.worker.vscode' }, /workerId/);
+  refused({ t: 'kanban.worker.vscode', workerId: 5 }, /workerId/);
 });

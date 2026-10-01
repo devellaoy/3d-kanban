@@ -17,6 +17,7 @@ import { normalizeRepo, sameRepo } from '../../shared/floors.js';
 import type { KanbanProjectInfo, KanbanSettings, ProjectRepo } from '../../shared/kanban/types.js';
 import { REPO_ID_RE, type ProjectRepoInput } from '../../shared/kanban/protocol.js';
 import { repoFloorId } from '../../shared/kanban/repofloor.js';
+import { checkoutRepo } from './ghrepo.js';
 import { BRANCH_RE } from './repos-file.js';
 
 export { loadRepos } from './repos-file.js';
@@ -36,9 +37,40 @@ export function primaryRepo(def: Pick<FloorDef, 'id' | 'name' | 'dir' | 'repo'>)
  * A project's repositories, the primary first. The primary always follows the floor itself: its
  * checkout, and its GitHub repository when the floor knows one (FloorDef.repo); a floor that doesn't
  * (a local checkout) takes the remote saved for the primary. Every kanban consumer of the primary's
- * owner/name goes through here, never FloorDef.repo.
+ * owner/name goes through here, never FloorDef.repo. Another git repository with no saved GitHub
+ * repository takes the one its checkout's origin names (github.com only) unless another repository
+ * of the project already has it (a second clone or worktree); a saved one always wins.
  */
 export function projectRepos(def: FloorDef): ProjectRepo[] {
+  return projectReposResolved(def).map(({ detectedRemote, ...r }) => (detectedRemote ? { ...r, remote: detectedRemote } : r));
+}
+
+/**
+ * The project's repositories as saved (`remote`), each with the remote read from its checkout's
+ * origin as `detectedRemote` instead while none is saved. A detected remote is dropped when it is the
+ * primary's, a saved one's or an earlier detected one's, so one GitHub repository never has two boards.
+ */
+function projectReposResolved(def: FloorDef): ProjectRepo[] {
+  const saved = projectReposSaved(def);
+  const taken = saved.map((r) => r.remote).filter((r): r is string => !!r);
+  return saved.map((r) => {
+    if (r.primary || r.kind !== 'git' || r.remote) return r;
+    const found = checkoutRepo(r.dir);
+    if (!found || taken.some((t) => sameRepo(t, found))) return r;
+    taken.push(found);
+    return { ...r, detectedRemote: found };
+  });
+}
+
+/** The repositories in `list` once each (ignoring case), in the first spelling met. */
+export function uniqueRepos(list: (string | undefined)[]): string[] {
+  const out: string[] = [];
+  for (const r of list) if (r && !out.some((o) => sameRepo(o, r))) out.push(r);
+  return out;
+}
+
+/** projectRepos as saved: no remote read from the checkouts. */
+function projectReposSaved(def: FloorDef): ProjectRepo[] {
   const base = primaryRepo(def);
   if (!def.repos?.length) return [base];
   const saved = def.repos.find((r) => r.primary);
@@ -123,7 +155,8 @@ export function projectInfo(def: FloorDef, settings: KanbanSettings, open: boole
     name: def.name,
     ...(def.repo ? { repo: def.repo } : {}),
     dir: def.dir,
-    repos: projectRepos(def),
+    // A remote read from a checkout is not sent as `remote`: the settings form would save it.
+    repos: projectReposResolved(def),
     open,
     settings: {
       maxConcurrent: p?.maxConcurrent ?? 2,

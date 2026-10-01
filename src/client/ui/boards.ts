@@ -1,43 +1,17 @@
-import type { AgentEffort, AgentProvider, GhIssue, GhLabel, GhPull, WorkerInfo } from '../../shared/protocol';
+import './boards.css';
+import type { GhIssue, GhLabel, GhPull, WorkerInfo } from '../../shared/protocol';
 import type { Net } from '../net';
 import { store, workerForPull } from '../state';
 import { h, openModal, timeAgo } from './dom';
-import { labelChip, openLabels, openPull } from './pull'; // 3d-kanban: issues open with openCard
+import { labelChip, openLabels } from './github/labels'; // 3d-kanban: issues open with openCard
+import type { BoardActions } from './github/prompts';
+import { openPull } from './github/pull-window';
 import { providerLabel } from './provider';
-import type { MeetingPreset } from './meeting';
-import { officePrompt } from './prompts';
 // 3d-kanban: repository chips and filter for a multi-repository project's boards.
-import { boardRepos, inRepo, loadRepoFilter, repoChip, repoFilterSelect, saveRepoFilter } from '../kanban/boardrepos';
+import { boardRepos, inRepo, keptRepo, tabRepos, loadRepoFilter, repoChip, openByRepo, repoFilterSelect, repoTabs, saveRepoFilter } from '../kanban/boardrepos';
 // 3d-kanban: cards from the project's issue sources (Jira, a GitHub project, other repositories), by their key.
 import { issueCardLabel, openCard, sourceChips, taskForCard } from '../kanban/issuecards';
 import { noteSeed } from '../../shared/kanban/issuecard.js';
-
-export interface BoardActions {
-  /** Start a worker on a ready-made prompt (shown for editing first). */
-  assign(prompt: string, title: string): void;
-  /** Your own prompt about an issue or PR; `context` goes first so the worker knows which. */
-  ask(context: string, title: string): void;
-  /** Walks you to the desk a pull request came from. */
-  goToDesk(deskId: string): void;
-  /** Put an issue on the 📋 task queue; a worker is seated for it when there's room. */
-  queue(prompt: string, title: string, issue: number, provider?: AgentProvider, model?: string, effort?: AgentEffort): void;
-  /** Take the issue's card off the board, to carry to a desk or the queue (not on the 2D view, where there's nobody to carry it). */
-  pickUp?(issue: GhIssue): void;
-  /** Call a meeting about it: the meeting room's form, filled in. */
-  meeting(preset: MeetingPreset): void;
-  /** 3d-kanban: the issue as a kanban task, started at a free desk (kanban/hireform.ts issueTask). */
-  kanbanTask?(issue: GhIssue): void;
-}
-
-/** The task a worker gets for an issue, from the board, a carried card or the queue (the 'issue.work' prompt). */
-export function issuePrompt(it: Pick<GhIssue, 'number' | 'title'> & { url?: string }): string {
-  return officePrompt('issue.work', issueVars(it));
-}
-
-/** What an issue's prompts fill in. A carried card has no URL, but the board usually knows it. */
-export function issueVars(it: Pick<GhIssue, 'number' | 'title'> & { url?: string }) {
-  return { number: it.number, title: it.title, url: it.url ?? store.issues.items.find((i) => i.number === it.number)?.url ?? '' };
-}
 
 const TILTS = ['-1.2deg', '0.8deg', '-0.4deg', '1.4deg', '0deg', '-0.9deg'];
 const NOTE_COLORS = ['#fff7b0', '#ffd6e0', '#caffbf', '#bde0fe', '#ffe5b4'];
@@ -165,7 +139,9 @@ export function openBoard(kind: 'issues' | 'pulls', net: Net, actions: BoardActi
   // 3d-kanban: the repository filter, shown when the cards come from more than one repository.
   let repo = loadRepoFilter(kind, store.floor ?? '');
   const repoSlot = h('span');
-  const el = h('div.modal.board', { role: 'dialog', 'aria-label': kind === 'issues' ? 'Issues board' : 'Pull requests board' }, h('header', {}, h('h2', {}, kind === 'issues' ? '📌 Issues' : '🔀 Pull Requests'), status, repoSlot, refresh, close), body);
+  // 3d-kanban: the PR board picks its repository from tabs below the header instead.
+  const tabs = kind === 'pulls' ? repoTabs((r) => pickRepo(r)) : null;
+  const el = h('div.modal.board', { role: 'dialog', 'aria-label': kind === 'issues' ? 'Issues board' : 'Pull requests board' }, h('header', {}, h('h2', {}, kind === 'issues' ? '📌 Issues' : '🔀 Pull Requests'), status, repoSlot, refresh, close), tabs?.el ?? null, body); // 3d-kanban: tabs
 
   const filters = loadFilters(kind);
   /** What each column's filter box holds (column key → text), for as long as the board is open. */
@@ -272,6 +248,14 @@ export function openBoard(kind: 'issues' | 'pulls', net: Net, actions: BoardActi
     return section;
   };
 
+  // 3d-kanban: show only one repository's cards (the select on the issues board, the tabs on the PR board).
+  const pickRepo = (r: string) => {
+    if (r === repo) return;
+    repo = r;
+    saveRepoFilter(kind, store.floor ?? '', r);
+    render();
+  };
+
   const render = () => {
     const st = kind === 'issues' ? store.issues : store.pulls;
     status.textContent = st.loading ? 'Refreshing…' : st.fetchedAt ? `Updated ${timeAgo(st.fetchedAt)}` : '';
@@ -288,14 +272,13 @@ export function openBoard(kind: 'issues' | 'pulls', net: Net, actions: BoardActi
       return;
     }
     // 3d-kanban: only the picked repository's cards, each with its repository's chip.
-    const repos = boardRepos(st.items);
-    const pickRepo = (r: string) => {
-      repo = r;
-      saveRepoFilter(kind, store.floor ?? '', r);
-      render();
-    };
-    repoSlot.replaceChildren(repoFilterSelect(repos, repo, pickRepo));
-    const shownRepo = repos.includes(repo) ? repo : '';
+    const repos = tabs ? tabRepos(st.items, store.pulls.repos) : boardRepos(st.items);
+    const shownRepo = tabs ? keptRepo(repo, repos) : repos.includes(repo) ? repo : '';
+    if (tabs) {
+      const open = openByRepo(store.pulls.items);
+      tabs.update(repos, shownRepo, open.counts, open.total);
+    }
+    else repoSlot.replaceChildren(repoFilterSelect(repos, repo, pickRepo));
     const chip = (it: GhIssue | GhPull) => (repos.length > 1 ? repoChip(it) : '');
     const all = boardLabels(st.items);
     if (kind === 'issues') {

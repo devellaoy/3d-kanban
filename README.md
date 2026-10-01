@@ -105,6 +105,10 @@ curl -fsSL https://raw.githubusercontent.com/devellaoy/3d-kanban/main/deploy/pro
 - **A kanban page** at `/kanban` (**J** or **🗂️ Kanban** in the office, a link on `/lite`). A
   task's view (conversation, plan, runs, the change and its commits read from git, an
   investigation's reports, PRs) is one shared piece, on the kanban and in the office's windows.
+- **🧩 VSCode**: the task view's head on the kanban and every worker's terminal window (3D office and
+  `/lite`) open the task's or worker's folder in VS Code on the office's machine: its worktree, or all
+  its repositories' worktrees in one window. Admins only. VS Code must be installed there: on macOS in
+  `/Applications` is enough, elsewhere `code` must be on the PATH ([docs/kanban.md](docs/kanban.md#the-detail-panel)).
 - **One world, two views**: a task's workers are ordinary workers at desks. Sending one home (**X**,
   leave-on-merge, the queue, a meeting) is an event on its task, and can mark it done; a task moved to
   Done sends its idle workers home, and stops a run whose agent is still asking in its terminal (see [docs/kanban.md](docs/kanban.md#sending-a-tasks-worker-home)).
@@ -115,7 +119,7 @@ curl -fsSL https://raw.githubusercontent.com/devellaoy/3d-kanban/main/deploy/pro
   [the contract](docs/kanban-coupling.md)).
 - **Projects with several repositories**: a floor is a project, and a task gets a worktree of each of
   its repositories on one branch, cut from each repository's configured base branch (else the branch
-  its checkout is on). The issues and PR boards show every repository. An admin can rename a project
+  its checkout is on). The issues and PR boards show every repository; the PR board (E) has a tab per repository. An admin can rename a project
   in ⚙️ Settings → 📁 Projects; its id, folder and repository stay.
 - **Issue sources per project**: GitHub repositories, GitHub Projects v2 and Jira, made into tasks in a click. They are also the 3D office's 📌 Issues board, cards you carry to desks, workers and the queue.
 - **Agent-written pull requests**: **O** at a desk and the task's PR phase have the agent push and open
@@ -494,7 +498,11 @@ npm run typecheck
 npm test
 ```
 
+See [testing notes](docs/testing.md) for platform-specific fixture and filesystem checks.
+
 Server edits restart the server, not the workers. After changing `ptyhost.ts`, bump `PTY_PROTOCOL` in `ptys.ts` so the next server replaces the PTY host.
+
+[docs/code-layout.md](docs/code-layout.md) says where the code lives, and where a new feature's pieces go.
 
 Every change to the app that lands on `main` is published as a GitHub release of `devellaoy/3d-kanban` (asset `3d-kanban.tgz`) by [`.github/workflows/release.yml`](.github/workflows/release.yml), and `install.sh` and `install.ps1` install the newest one. Bump `package.json`'s version to start a new minor.
 
@@ -511,6 +519,7 @@ Every change to the app that lands on `main` is published as a GitHub release of
 - [Your own server](docs/self-hosting.md): the one-line setup for any Ubuntu or Debian server, or by hand behind Caddy or nginx
 - [Azure reference](docs/azure.md): picking a VM size, pausing, and everything `deploy/azure.sh` does
 - [How it works](docs/how-it-works.md): the architecture, and security notes
+- [Code layout](docs/code-layout.md): where the code lives, adding a feature or an agent provider, and the size guard
 
 ## License
 

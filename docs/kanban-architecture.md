@@ -34,7 +34,9 @@ document disagree, fix one of them in the same change.
   another repository instead, or re-add the floor"; the settings form shows it read-only), else the
   one saved for the primary in `repos`. Kanban code reads the primary's owner/name only through
   `projectRepos` (issue sources, PR bundles and reviews, `pr_links` matching, the prompts' `{{repos}}`,
-  the refs bundle), never `FloorDef.repo`; upstream's own uses of `FloorDef.repo` are unchanged.
+  the refs bundle), never `FloorDef.repo`; another git repository with no saved `remote` gets it from its
+  checkout's `origin` (`checkoutRepo`, github.com only; never written to `floors.json`, and
+  `projectInfo` sends it as `detectedRemote`, not `remote`); upstream's own uses of `FloorDef.repo` are unchanged.
 - **Task** (`KanbanTask`): a unit of work on one project, touching the project's repositories
   (all of them by default, or a chosen subset `repoIds`). Ids are integers (`#123`), global across projects.
 - **Run**: one phase execution of a task (`plan`, `implement`, `review`, `fix`, `resume`, `pr`, `pr-fix`,
@@ -382,6 +384,11 @@ answers `kanban.ok {rid, ...}` or `kanban.error {rid, message}`. Deltas are push
     goes to the machine, and only if that is accepted does the engine add the user's comment and link the
     files to the task and the comment, with a single broadcast. A refused request leaves no comment and no
     links. Either may be empty when the other is there. The replan prompt has no `{{attachments}}`.
+  - `task.vscode {id}` and `worker.vscode {workerId}` (admins only) open the task's or worker's folder in
+    VS Code on the office's machine (`src/server/kanban/vscode.ts`): one worktree, or a generated
+    `.code-workspace` of all its repositories' worktrees (in `<data>/kanban/workspaces/`), or the project's
+    checkout(s) before the task has run; an ordinary worker's worktree or workspace, else the floor's checkout.
+    Answered with `kanban.ok`, or `kanban.error` when VS Code can't be found or started.
   - `pr.bundle {project, taskId | branch | ticket, includeClosed?}` (integrations/pulls): the PRs that belong
     together across the project's repositories, open and draft ones only unless `includeClosed`; answered with
     `kanban.pr.bundle` (an `error` in it rather than `kanban.error` when the lists couldn't be read).
@@ -440,7 +447,7 @@ Compatibility for existing ai-kanban skills/scripts (integrations/compat/v1.ts):
 
 ## 9. HTTP routes
 
-For a signed-in browser (the session is checked by server.ts, and non-GET requests must be same-origin):
+For a signed-in browser (the session is checked by the route table in `src/server/http/routes/index.ts`, where `kanbanRoutes` from `src/server/kanban/http/routes.ts` sit, and non-GET requests must be same-origin):
 
 - `GET /kanban`, `/kanban.html`: the board page. Signed out, it redirects to `/login?next=/kanban`.
 - `POST /api/kanban/upload?name=<file name>[&task=<id>]`: the body is the file's raw bytes and `Content-Type`
@@ -478,9 +485,11 @@ and toast. It then creates `pulls`, `refs` and the engine, and the plugins: the 
 `integrationPlugins`. The first plugin to claim a WS type keeps it. `workerExtras` merges the plugins'
 `workerArgs`/`workerEnv`, and a plugin that throws loses only its own part. `engine.begin()` and every
 `plugin.start()` run once everything exists; `shutdown()` stops the plugins, disposes of the engine and
-closes the database.
+closes the database. `startServer` (`src/server/server.ts`) calls `openKanban` (`src/server/kanban/office.ts`) once
+the floors are open and keeps the result as `ctx.kanban`; `kanbanHandlers` (WS, `kanban/ws/handlers.ts`) and
+`kanbanRoutes` (HTTP, `kanban/http/routes.ts`) join the office's own registries.
 
-"O" at a desk (`worker.pr`) goes to `engine.prForWorker` first: a task worker's task gets its `pr` phase
+"O" at a desk (`worker.pr`, `src/server/ws/handlers/workers.ts`) goes to `engine.prForWorker` first: a task worker's task gets its `pr` phase
 (`engine.pr(taskId, 'create')`); any other agent worker gets the layered `kanban.pr.create` prompt (with the `pr`
 contract) typed into its session, or resumed with it when it's asleep. Only a shell worker answers `'fallback'`
 (`PR_FALLBACK`), and only then does upstream's own `openPr` (a draft PR without an agent) run. PR states of the
