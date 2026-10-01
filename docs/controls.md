@@ -24,6 +24,7 @@ Back to the [README](../README.md).
 | Q | Put back the issue card you're carrying, or drop the basketball |
 | H | These controls; in a car, honk the horn |
 | T / Enter | Chat |
+| Enter, in a prompt box | A new line. **Shift + Enter** or **⌘ + Enter** (Ctrl + Enter) sends |
 | G / 1–6 | Emote: hold G for the wheel (point and let go) or press 1–6 to wave, give a thumbs up, clap, dance, point or facepalm; everyone on your floor sees it |
 | / | Search the chat and every terminal on your floor |
 | Ctrl + K (⌘K on a Mac) | Command palette: find a worker, issue, PR, service, board, teammate or action; Enter opens it, Shift+Enter walks you there first |
@@ -64,7 +65,7 @@ The kanban view (`/kanban`, **🗂️ Kanban** in the ☰ menu or on the 2D view
 | Tab / Shift + Tab | Move between cards and buttons; Enter (or Space) on a card opens its detail |
 | M | On a card: move it to another column (the same as its **⋯** button, and what dragging it does). Columns it can't go to are greyed out with the reason |
 | ← / → | Between the detail's tabs; on the detail's left edge, make the panel wider or narrower |
-| Ctrl + Enter (⌘ + Enter on a Mac) | Send a comment or an answer; save the new-task dialog |
+| Shift + Enter or Ctrl + Enter (⌘ + Enter on a Mac) | Send a comment or an answer; save the new-task dialog |
 | Esc | Close the window on top, then the task's detail |
 
 ## In a terminal
@@ -78,3 +79,5 @@ The prompt edits the way it does in your own terminal (iTerm2's *Natural Text Ed
 | ⌘ + ⌫ | Delete to the start of the line (Mac) |
 | ⌘ + ⌦ | Delete to the end of the line (Mac) |
 | ⌘ + ← / → | Jump to the start / end of the line (Mac) |
+
+Inside a terminal, Shift + Enter is the agent's own new line; the prompt boxes outside the terminal (hire, ask, queue, comments) send with it.
