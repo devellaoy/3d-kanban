@@ -2,12 +2,16 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { EMOTES, EMOTE_BURST, EMOTE_EVERY, EmoteBucket, isEmote } from '../src/shared/emotes.js';
 
-test('the wheel has the six emotes from the issue, each with an emoji', () => {
+test('the wheel has the six emotes from the issue and six seven, each with an emoji', () => {
   assert.deepEqual(
     EMOTES.map((e) => e.id),
-    ['wave', 'thumbs', 'clap', 'dance', 'point', 'facepalm'],
+    ['wave', 'thumbs', 'clap', 'dance', 'point', 'facepalm', 'sixseven'],
   );
   for (const e of EMOTES) assert.ok(e.emoji && e.label && e.seconds > 0);
+});
+
+test('six seven is keyless: keys 1-6 stay the first six', () => {
+  assert.equal(EMOTES.findIndex((e) => e.id === 'sixseven'), 6);
 });
 
 test('only known emotes get through', () => {

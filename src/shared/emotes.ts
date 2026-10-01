@@ -8,6 +8,7 @@ export const EMOTES = [
   { id: 'dance', emoji: '🕺', label: 'Dance', seconds: 4 },
   { id: 'point', emoji: '👉', label: 'Point', seconds: 2 },
   { id: 'facepalm', emoji: '🤦', label: 'Facepalm', seconds: 2.4 },
+  { id: 'sixseven', emoji: '6️⃣7️⃣', label: 'Six seven', seconds: 3 },
 ] as const;
 
 export type Emote = (typeof EMOTES)[number];
