@@ -310,7 +310,7 @@ class View implements TaskView {
       }
     }
     if (task && this.embedded) {
-      links.push(h('a.btn.small', { href: `/kanban?project=${encodeURIComponent(task.project)}&task=${id}${this.current !== 'overview' ? `&tab=${this.current}` : ''}`, title: 'The kanban, on this task, in this window' }, '🗂️ Open in the kanban'));
+      links.push(h('a.btn.small', { href: `/kanban?project=${encodeURIComponent(task.project)}&task=${id}${this.current !== 'overview' ? `&tab=${this.current}` : ''}` }, '🗂️ Open in the kanban'));
     }
     let close: HTMLElement | null = null;
     if (this.o.onClose) {
