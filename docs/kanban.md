@@ -496,6 +496,25 @@ per agent (Claude, Codex). The phase prompt names them.
 - **office-task-refs** (bundled) is given to every task worker, Claude and Codex, whatever is picked:
   it tells the agent how to read another task it's pointed at.
 
+### Skills synced to your own home
+
+The repository's `user-skills/` folder (`claude/*`, `codex/*`) holds skills for the people developing with it:
+`kanban-dev`, `kanban-dev-sonnet` and `kanban-ui-screenshots` for Claude, `kanban-dev` and `kanban-ui-screenshots`
+for Codex (see `user-skills/README.md`). When the server starts they are copied into `<claude home>/skills/<skill>`
+(`$CLAUDE_CONFIG_DIR`, else `~/.claude`) and `<codex home>/skills/<skill>` (`$CODEX_HOME`, else `~/.codex`),
+the way ai-kanban does. **🔄 Sync** (admins) runs it too.
+
+- A copy gets a `.office-user-skill.json` marker. A marked copy is overwritten when the source changed, hand
+  edits included; an unchanged one isn't touched. ai-kanban's own copies (`.aikanban-sync`) are adopted the
+  same way.
+- A skill of the same name with neither marker is yours and stays untouched (a warning is logged and 🔄 Sync reports it).
+- `node_modules` isn't copied and the target's own survives. Files deleted from the source stay in the target.
+- `AGENT_OFFICE_USER_SKILLS=off` turns the start-up sync off. In an agent's worktree
+  (`.agent-office/worktrees/`) it is skipped unless `AGENT_OFFICE_USER_SKILLS=on`.
+
+If ai-kanban runs on the same machine it writes its own copies of the same skills back (and they'd be adopted
+again at the next start). Signed-in accounts' own Claude homes (`<data>/homes/<id>/claude`) don't get these skills.
+
 ## Agents reading other tasks
 
 A task often builds on another ("like #14 planned", "tehtävä 17", "the rest of UYT-1415"). Agents
