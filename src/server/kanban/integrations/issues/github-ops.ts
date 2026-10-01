@@ -106,6 +106,8 @@ async function currentAssignees(io: IssueActIo, repo: string, n: number): Promis
 
 /** Makes the asker (`me`), one person, or nobody the issue's only assignee. Resolves to the assignee's login. */
 export async function ghAssign(io: IssueActIo, repo: string, n: number, to: IssueAssignTo): Promise<string | undefined> {
+  // Under the office's own gh, `me` would be the office's account, not the person.
+  if (to && 'me' in to && io.shared) throw new Error('Assign to me needs your own GitHub sign-in: pick a person instead');
   // `me` is whoever gh is signed in as (the person's own sign-in, or the office's): named, so it isn't removed and added in one go.
   const want = to ? ('me' in to ? (await run(io, ['api', 'user', '--jq', '.login'])).trim() : to.id) : undefined;
   if (to && !want) throw new Error('gh didn’t say who it is signed in as');

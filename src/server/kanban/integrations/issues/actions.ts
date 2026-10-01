@@ -138,8 +138,12 @@ export function issueActionHandlers(ctx: KanbanContext, deps: ActionDeps): NonNu
         to = await ghStateTransition(io, target.repo, target.number, m.transitionId, target.isPr);
         // A repository's list shows its issues' state; a board's Status is not changed by closing.
         if (issue.source === 'github-repo') status = to.startsWith('Closed') ? 'CLOSED' : 'OPEN';
-      } else status = to = await projectTransition(io, projectTarget(target), boards, m.transitionId);
-      wrote(c, m, '🔀', `${c.name} moved ${m.issueKey} → ${to}`, status ? { status } : undefined);
+      } else {
+        to = await projectTransition(io, projectTarget(target), boards, m.transitionId);
+        // A board's Status is the status of a board's own copy; a repository's copy has the issue's open / closed state.
+        if (issue.source === 'github-project') status = to;
+      }
+      wrote(c, m, '🔀', `${c.name} moved ${m.issueKey} → ${to}`, status ? { status } : {});
     }),
 
     'kanban.issue.comments': scoped<Msg<'kanban.issue.comments'>>(async (c, m, { target, io }) => {

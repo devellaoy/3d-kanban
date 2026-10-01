@@ -71,6 +71,8 @@ export function createIssues(ctx: KanbanContext, opts: IssuesOptions = {}) {
   /** Changes made through the actions (status, assignee), shown over the fetched issues until a fetch started after them has them. */
   const overlay = new Map<string, Map<string, { fields: IssuePatch; at: number }>>();
   let timer: NodeJS.Timeout | undefined;
+  /** Per project, the fetch that follows a change by long enough to have seen it (see patch). */
+  const settling = new Map<string, NodeJS.Timeout>();
 
   const state = (project: string): IssuesState => cache.get(project) ?? { items: [], fetchedAt: 0, loading: false };
 
@@ -202,6 +204,14 @@ export function createIssues(ctx: KanbanContext, opts: IssuesOptions = {}) {
     ctx.broadcast(message(project), project);
     wallChanged(project);
     refreshWall(project);
+    // A search that lags behind a write (Jira's) may miss it in that quick fetch; this one starts late enough to clear the change.
+    clearTimeout(settling.get(project));
+    const t = setTimeout(() => {
+      settling.delete(project);
+      if (hasSources(project)) void refresh(project).catch(() => {});
+    }, OVERLAY_SETTLE_MS + 2000);
+    t.unref?.();
+    settling.set(project, t);
   };
 
   const plugin: KanbanPlugin = {
@@ -259,6 +269,8 @@ export function createIssues(ctx: KanbanContext, opts: IssuesOptions = {}) {
     },
     stop() {
       clearInterval(timer);
+      for (const t of settling.values()) clearTimeout(t);
+      settling.clear();
       setWallProvider(undefined);
     },
   };

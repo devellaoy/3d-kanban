@@ -1,4 +1,4 @@
-import { test } from 'node:test';
+import { test, mock } from 'node:test';
 import assert from 'node:assert/strict';
 import { ghAssign, ghComment, ghComments, ghPeople, ghStateTransition, ghStateTransitions } from '../src/server/kanban/integrations/issues/github-ops.js';
 import { jiraAssign, jiraCall, jiraComment, jiraComments, jiraPeople, jiraTransition, jiraTransitions, textToAdf } from '../src/server/kanban/integrations/issues/jira-ops.js';
@@ -363,7 +363,7 @@ test('only issues on the project’s list, and GitHub only as a person who has a
 });
 
 test('a status change shows at once everywhere, says who made it, and is put on the issue’s task', async () => {
-  const { ctx, issues, ws } = setup({ ghAs: () => undefined });
+  const { ctx, issues, ws } = setup({ ghAs: () => undefined, sources: [PROJECT_SOURCE] });
   await issues.refresh('app');
   const c = client(true, 'acc1');
   await ws['kanban.issues.createTask']!(c, { t: 'kanban.issues.createTask', project: 'app', issueKey: 'gh:o/r#5' });
@@ -467,4 +467,52 @@ test('a Jira key goes to Jira with the token’s identity, whoever asks', async 
   assert.match(JSON.stringify(posted.body), /Done here.*Tester via Agent Office/);
   assert.equal(gh.calls.length, 0, 'gh is never run for Jira');
   assert.equal(ctx.toasts.at(-1)!.text, '💬 Tester commented on UYT-12');
+});
+
+test('moving a board item does not turn the repository’s copy into a closed one', async () => {
+  const { issues, ws } = setup({ ghAs: () => undefined });
+  await issues.refresh('app');
+  const c = client(true, 'acc1');
+  await ws['kanban.issue.transition']!(c, { t: 'kanban.issue.transition', project: 'app', issueKey: 'gh:o/r#5', transitionId: 'p:PVT_1:PVTI_1:PVTSSF_1:a3' });
+  assert.equal(last(c, 'kanban.ok').t, 'kanban.ok');
+  assert.equal(issues.message('app').items.find((i) => i.key === 'gh:o/r#5')!.status, 'OPEN');
+  assert.equal(issues.wall('app')!.items.find((i) => i.key === 'gh:o/r#5')!.state, 'OPEN');
+  await ws['kanban.issue.transitions']!(c, { t: 'kanban.issue.transitions', project: 'app', issueKey: 'gh:o/r#5' });
+  const names = last(c, 'kanban.issueTransitions').transitions.map((t) => t.name);
+  assert.ok(names.includes('Close (completed)') && names.includes('Close (not planned)'));
+  assert.ok(!names.includes('Reopen'));
+});
+
+test('GitHub “assign to me” needs a sign-in of one’s own, not the office’s', async () => {
+  const { gh, calls } = ghStub(() => '');
+  await assert.rejects(ghAssign(act({ gh, shared: true }), 'o/r', 5, { me: true }), /needs your own GitHub sign-in/);
+  assert.equal(calls.length, 0);
+  const { issues, ws } = setup({ ghAs: () => undefined });
+  await issues.refresh('app');
+  const c = client(true);
+  await ws['kanban.issue.assign']!(c, { t: 'kanban.issue.assign', project: 'app', issueKey: 'gh:o/r#5', to: { me: true }, rid: 'm' });
+  assert.match(last(c, 'kanban.error').message, /pick a person instead/);
+});
+
+test('a settling fetch follows a write by long enough to clear its change', async (t) => {
+  mock.timers.enable({ apis: ['setTimeout'] });
+  t.after(() => mock.timers.reset());
+  let clock = 1000;
+  const { issues, ws, calls } = setup({ now: () => clock, sources: [PROJECT_SOURCE] });
+  await issues.refresh('app');
+  const c = client(true, 'acc1');
+  clock = 5000;
+  await ws['kanban.issue.transition']!(c, { t: 'kanban.issue.transition', project: 'app', issueKey: 'gh:o/r#5', transitionId: 'p:PVT_1:PVTI_1:PVTSSF_1:a4' });
+  const shown = () => issues.message('app').items.find((i) => i.key === 'gh:o/r#5')!.status;
+  assert.equal(shown(), 'Shipped');
+  const listed = () => calls.filter((x) => x.args.some((a) => a.startsWith('query=') && a.includes('viewer'))).length;
+  const before = listed();
+  mock.timers.tick(11_000);
+  assert.equal(listed(), before, 'not yet');
+  clock = 5000 + 12_000;
+  mock.timers.tick(1000);
+  await issues.refresh('app');
+  assert.equal(listed(), before + 1, 'one fetch, started 12 s after the write');
+  assert.equal(shown(), 'Doing', 'the fetch cleared the change');
+  issues.plugin.stop?.();
 });
