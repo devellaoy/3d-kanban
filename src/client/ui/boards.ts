@@ -7,9 +7,9 @@ import { labelChip, openLabels } from './github/labels'; // issues open with ope
 import type { BoardActions } from './github/prompts';
 import { openPull } from './github/pull-window';
 import { providerLabel } from './provider';
-// repository chips and filter for a multi-repository project's boards.
+// Repository chips and filter for a multi-repository project's boards.
 import { boardRepos, inRepo, keptRepo, tabRepos, loadRepoFilter, repoChip, openByRepo, repoFilterSelect, repoTabs, saveRepoFilter } from '../kanban/boardrepos';
-// cards from the project's issue sources (Jira, a GitHub project, other repositories), by their key.
+// Cards from the project's issue sources (Jira, a GitHub project, other repositories), by their key.
 import { issueCardLabel, openCard, sourceChips, taskForCard } from '../kanban/issuecards';
 import { noteSeed } from '../../shared/kanban/issuecard.js';
 
@@ -136,10 +136,10 @@ export function openBoard(kind: 'issues' | 'pulls', net: Net, actions: BoardActi
   const status = h('span.board-status');
   const refresh = h('button.btn', { title: 'Refresh from GitHub', onclick: () => net.send({ t: 'gh.refresh' }) }, '🔄 Refresh');
   const close = h('button.btn.close', { 'aria-label': 'Close' }, '✕');
-  // the repository filter, shown when the cards come from more than one repository.
+  // The repository filter, shown when the cards come from more than one repository.
   let repo = loadRepoFilter(kind, store.floor ?? '');
   const repoSlot = h('span');
-  // the PR board picks its repository from tabs below the header instead.
+  // The PR board picks its repository from tabs below the header instead.
   const tabs = kind === 'pulls' ? repoTabs((r) => pickRepo(r)) : null;
   const el = h('div.modal.board', { role: 'dialog', 'aria-label': kind === 'issues' ? 'Issues board' : 'Pull requests board' }, h('header', {}, h('h2', {}, kind === 'issues' ? '📌 Issues' : '🔀 Pull Requests'), status, repoSlot, refresh, close), tabs?.el ?? null, body);
 
@@ -248,7 +248,7 @@ export function openBoard(kind: 'issues' | 'pulls', net: Net, actions: BoardActi
     return section;
   };
 
-  // show only one repository's cards (the select on the issues board, the tabs on the PR board).
+  // Show only one repository's cards (the select on the issues board, the tabs on the PR board).
   const pickRepo = (r: string) => {
     if (r === repo) return;
     repo = r;
@@ -271,7 +271,7 @@ export function openBoard(kind: 'issues' | 'pulls', net: Net, actions: BoardActi
       body.append(h('div.board-error', {}, `Couldn't load from GitHub: ${st.error}`, h('br'), h('small', {}, 'The server runs `gh` in the project directory — make sure it is installed and authenticated (gh auth login).')));
       return;
     }
-    // only the picked repository's cards, each with its repository's chip.
+    // Only the picked repository's cards, each with its repository's chip.
     const repos = tabs ? tabRepos(st.items, store.pulls.repos) : boardRepos(st.items);
     const shownRepo = tabs ? keptRepo(repo, repos) : repos.includes(repo) ? repo : '';
     if (tabs) {
@@ -285,7 +285,7 @@ export function openBoard(kind: 'issues' | 'pulls', net: Net, actions: BoardActi
       for (const col of issueColumns(inRepo(store.issues.items, shownRepo))) {
         body.append(
           column(col, all, (it, i) =>
-            // a card from the project's issue sources: its key, its source and status, its kanban task, and labels only for a GitHub issue of the project.
+            // A card from the project's issue sources: its key, its source and status, its kanban task, and labels only for a GitHub issue of the project.
             card(noteSeed(it), it.title, [chip(it), ...sourceChips(it), ...labelChips(it.labels), queueChip(it.number, it.key), it.assignees.length ? `👤 ${it.assignees.join(', ')}` : it.author ? `by ${it.author}` : '', it.comments ? `💬 ${it.comments}` : '', timeAgo(it.updatedAt)], i, () => openCard(it, net, actions), it.number > 0 ? () => openLabels('issue', it, net) : null, issueCardLabel(it)),
           ),
         );

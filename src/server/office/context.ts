@@ -176,7 +176,7 @@ export interface Gates {
   claudeFor(provider: string | undefined): SignInKind | undefined;
 }
 
-/** the kanban task process, installed once the floors are open (kanban/office.ts). */
+/** The kanban task process, installed once the floors are open (kanban/office.ts). */
 export interface KanbanHost {
   kanban?: Kanban;
 }

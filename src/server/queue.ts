@@ -6,7 +6,7 @@ import { DESK_BY_ID, SEATS, nextFreeSeat } from '../shared/layout.js';
 import { validateWorkerEffort, validateWorkerModel } from './agents.js';
 import { savedEffort, savedModel, takesEffort, takesModel } from '../shared/providers.js';
 import { PROMPTS } from '../shared/prompts.js';
-// what a worker is sent home with (see QueueWorkers.kill).
+// What a worker is sent home with (see QueueWorkers.kill).
 import type { DepartureIntent } from '../shared/kanban/types.js';
 
 /** What the queue needs from the worker manager. Narrow on purpose, so a smoke test can fake it. */
@@ -297,7 +297,7 @@ export class TaskQueue {
   private recycleDesk(): string | undefined {
     const pick = this.recyclable();
     if (!pick) return undefined;
-    // the queue sends it home (see WorkerManager.kill).
+    // The queue sends it home (see WorkerManager.kill).
     const done = this.workers.kill(pick.w.id, undefined, undefined, undefined, { by: 'The queue', reason: 'queue' });
     this.events.toast(`📋 ${pick.w.name} went home after ${label(pick.t)} to make room for the next task`, 'info');
     void done.then(({ note, error }) => {
@@ -360,7 +360,7 @@ export class TaskQueue {
       this.events.toast(`📋 ${r.name} sat down at ${DESK_BY_ID.get(desk)?.label ?? 'a desk'} to work on ${label(t)}`, 'info');
       if (t.issue !== undefined || t.issueKey) {
         const issue = t.issue;
-        // an issue-source card by its key (only a GitHub issue is assigned).
+        // An issue-source card by its key (only a GitHub issue is assigned).
         void this.events.claimIssue(issue ?? 0, t.owner, t.issueKey).then((err) => {
           if (err) this.events.toast(`Couldn't assign issue ${label(t)} on GitHub: ${err}`, 'warn');
         });

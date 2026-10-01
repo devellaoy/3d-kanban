@@ -59,7 +59,7 @@ const METHOD_LABEL: Record<GhMergeMethod, string> = { squash: 'Squash and merge'
 
 export function openMerge(it: GhPull, d: GhPullDetail, net: Net, handToWorker: () => void, onMerged: () => void) {
   const st = mergeStatus(d);
-  // which of the project's repositories it's in.
+  // Which of the project's repositories it's in.
   const key = ghKey('pull', it.number, it.repo);
   const label = ghLabel(it.number, it.repo);
   const methods = d.repo.methods;

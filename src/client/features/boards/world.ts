@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import type { GhIssue, GhPull, GhState, QueueState, QueueTask, ServiceInfo, WorkerInfo } from '../../../shared/protocol';
 import { store, workerForPull } from '../../state';
-// an issue-source card is told apart by its key (shared/kanban/issuecard.ts).
+// An issue-source card is told apart by its key (shared/kanban/issuecard.ts).
 import { cardId, cardLabel, noteSeed } from '../../../shared/kanban/issuecard.js';
 
 export const NOTE_COLORS = ['#fff7b0', '#ffd6e0', '#caffbf', '#bde0fe', '#ffe5b4'];
@@ -129,7 +129,7 @@ export class BoardTexture {
       const r = Math.floor(i / cols);
       const x = gx + c * (nw + gx);
       const y = gy + r * (nh + gy);
-      // a card from the issue sources by its key.
+      // A card from the issue sources by its key.
       const id = cardId(it as { number: number; key?: string });
       const seed = noteSeed(it as { number: number; key?: string });
       const tilt = ((seed * 37) % 7 - 3) * 0.012;
@@ -155,7 +155,7 @@ export class BoardTexture {
       const w = this.kind === 'pulls' && workers ? workerForPull(workers.values(), it as GhPull) : undefined;
       const footer = w ? fs * 1.3 : 0;
       g.font = `900 ${Math.round(fs * 1.35)}px Nunito, ui-rounded, system-ui, sans-serif`;
-      // its key (UYT-1415, api#12) and the kanban task made from it.
+      // Its key (UYT-1415, api#12) and the kanban task made from it.
       const issue = this.kind === 'issues' ? (it as GhIssue) : undefined;
       const label = issue?.key ? cardLabel(issue, store.currentFloor()?.repo) : `#${it.number}`;
       g.fillText(label, -nw / 2 + 14, -nh / 2 + fs * 2, nw - 28);

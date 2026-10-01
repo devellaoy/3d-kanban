@@ -63,7 +63,7 @@ export const workerHandlers = {
     if (!w) return;
     const { floor, info } = w;
     // The worker leaves right away; its worktree is dealt with after that, and the outcome follows.
-    // who sent it, and whether its kanban task is done with it (see WorkerManager.kill).
+    // Who sent it, and whether its kanban task is done with it (see WorkerManager.kill).
     const done = floor.sendHome(info.id, CLEANUPS.has(String(msg.cleanup)) ? msg.cleanup : undefined, { by: who, reason: 'sent-home', ...(msg.kanban?.done === true ? { done: true } : {}) });
     ctx.toastFloor(floor, `${who} sent ${info.name} home`);
     void done.then(({ note, error }) => {
@@ -123,7 +123,7 @@ export const workerHandlers = {
   'worker.prompt'(ctx, c, msg) {
     const who = c.peer.name;
     const w = workerOf(ctx, msg.workerId);
-    // `asComment` (the fork's dialogs: P's Message task, a card on a task worker's desk, Ask) to a task worker is a task comment; else typed in as below.
+    // `asComment` (the kanban's dialogs: P's Message task, a card on a task worker's desk, Ask) to a task worker is a task comment; else typed in as below.
     const commented = w && ctx.kanban?.workerPrompt(w.info, str(msg.prompt, 20000), kanbanCaller(ctx, c), msg.asComment === true);
     if (commented) {
       const issue = issueNumber(msg.issue);

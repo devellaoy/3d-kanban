@@ -99,7 +99,7 @@ export interface WorkerInfo {
   workingSince?: number;
   /** Sent out by a map's herald (the castle's Hand of the King), so every browser has it run to its seat from beside them. */
   via?: 'herald';
-  /** hired by the kanban engine for a task, as its implementer or reviewer, with the task's card as it is now (see src/server/kanban). */
+  /** Hired by the kanban engine for a task, as its implementer or reviewer, with the task's card as it is now (see src/server/kanban). */
   kanban?: KanbanWorkerSummary;
 }
 

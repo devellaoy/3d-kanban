@@ -8,7 +8,7 @@ import { refreshWall } from '../../kanban/integrations/issues/wall.js';
 import { here } from './common.js';
 import type { HandlerMap, ViewPieces } from './types.js';
 
-// the project's issue sources when it has any, and every repository of the project (see Floor.pullsState).
+// The project's issue sources when it has any, and every repository of the project (see Floor.pullsState).
 export const issuesView: ViewPieces['issues'] = (_ctx, floor) => floor?.issuesState() ?? { items: [], fetchedAt: 0, loading: false };
 export const pullsView: ViewPieces['pulls'] = (_ctx, floor) => floor?.pullsState() ?? { items: [], fetchedAt: 0, loading: false };
 
@@ -96,7 +96,7 @@ export const githubHandlers = {
           if (error) return;
           if (kind === 'pull') return ctx.toastFloor(floor, `${who} closed PR #${n} without merging`);
           // Nobody should be seated for an issue that's closed.
-          // the queue holds the primary repository's issues only; another repository's #n isn't one of them.
+          // The queue holds the primary repository's issues only; another repository's #n isn't one of them.
           const dropped = github === floor.github && floor.queue.dropIssue(n);
           refreshWall(floor.id); // the issues board from the project's issue sources, too (after a moment; nothing without any)
           ctx.toastFloor(floor, `${who} closed issue #${n}${reason === 'not planned' ? ' as not planned' : ''}${dropped ? ' and took it off the queue' : ''}`);

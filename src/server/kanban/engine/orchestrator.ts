@@ -1281,7 +1281,7 @@ export class Orchestrator {
       line += ': Retry to carry on';
       then = () => this.apply(task.id, { type: 'interrupted', text: `${line}` });
     } else if (role === 'implementer' && task.retryAt && intent.reason === 'sent-home') {
-      // Only X stops the auto-resume: a release (the Release button, a move to done) or the office's own recycling leaves it due.
+      // Only X stops the auto-resume: a release (a move to done) or the office's own recycling leaves it due.
       line += ": it doesn't carry on by itself after the usage limit any more, Retry when it should";
       then = async () => this.update(task.id, { retryAt: null });
     }

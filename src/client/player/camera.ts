@@ -38,7 +38,7 @@ export interface Followed {
   riding: boolean;
   colliders: Collider[];
   street: number;
-  /** the third-person camera's easing state. */
+  /** The third-person camera's easing state. */
   ease: OrbitEase;
 }
 

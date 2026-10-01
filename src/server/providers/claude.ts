@@ -27,7 +27,7 @@ interface ClaudeSetup {
   settings: string;
   /** Its --mcp-config: the office's MCP server. */
   mcp?: string;
-  /** the settings kanban workers run on (see kanban/launch.ts). */
+  /** The settings kanban workers run on (see kanban/launch.ts). */
   kanbanSettings?: string;
 }
 

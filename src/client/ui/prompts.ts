@@ -3,7 +3,7 @@ import type { Net } from '../net';
 import { store } from '../state';
 import { PROMPTS, PROMPT_GROUPS, PROMPT_IDS, PROMPT_MAX, fillPrompt, placeholders, promptText, type PromptGroup, type PromptId, type PromptVars } from '../../shared/prompts';
 import { h, openModal, timeAgo } from './dom';
-// a project scope and the read-only contract for the kanban's prompts.
+// A project scope and the read-only contract for the kanban's prompts.
 import { promptScope } from '../kanban/promptscope';
 
 /** One of the office's prompts, as it has it now (rewritten in ⚙️ Settings, or the default), filled in. */
@@ -30,7 +30,7 @@ const norm = (text: string) => text.replace(/\r\n?/g, '\n').trim();
  */
 export function openPromptEditor(net: Net, first: PromptId = PROMPT_IDS[0]) {
   let current = first;
-  // in a project's scope, a kanban prompt's saved text is that project's own (when it has one).
+  // In a project's scope, a kanban prompt's saved text is that project's own (when it has one).
   const scope = promptScope(net, () => {
     for (const [id, d] of drafts) if (norm(d) === saved(id)) drafts.delete(id);
     if (!drafts.has(current) && ta.value !== saved(current)) ta.value = saved(current);

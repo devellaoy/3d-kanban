@@ -7,7 +7,7 @@
 #
 #   ssh root@203.0.113.7 'curl -fsSL https://raw.githubusercontent.com/devellaoy/3d-kanban/main/deploy/provision.sh | bash'
 #
-# it installs a clone of this fork (APP_REPO), built in place; the server's own names
+# It installs a clone of this repository (APP_REPO), built in place; the server's own names
 # (/opt/agent-office, the agent-office service, /etc/agent-office) stay upstream's.
 #
 # It installs Node.js, git, the GitHub CLI and Claude Code, and runs the office as a systemd service
@@ -327,7 +327,7 @@ as_user git config --global init.defaultBranch main
 step "Installing 3d-kanban ($APP_REF) from $APP_REPO"
 sudo install -d -o "$RUN_USER" -g "$RUN_GROUP" /opt/agent-office
 if [[ -d /opt/agent-office/.git ]]; then
-  # a checkout made from another repository (upstream agent-office, say) follows APP_REPO from now on,
+  # A checkout made from another repository (upstream agent-office, say) follows APP_REPO from now on,
   # so this run and the office's own self-upgrade (git fetch origin) install 3d-kanban.
   if [[ "$(as_user git -C /opt/agent-office remote get-url origin 2>/dev/null)" != "$APP_REPO" ]]; then
     quiet as_user git -C /opt/agent-office remote set-url origin "$APP_REPO"

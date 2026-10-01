@@ -22,7 +22,7 @@ export async function startHookServer(ctx: Ctx): Promise<{ hookServer: http.Serv
     }
     if (url.pathname === '/office/queue') return officeQueue(ctx, req, res, url);
     if (url.pathname === '/office/workers' || url.pathname.startsWith('/office/workers/')) return officeWorkers(ctx, req, res, url);
-    // task routes for workers (their hook token, as /office/workers), and ai-kanban's loopback compatibility routes.
+    // Task routes for workers (their hook token, as /office/workers), and ai-kanban's loopback compatibility routes.
     if (isTasksPath(url.pathname)) return officeTasks(ctx, req, res, url);
     if (isLoopbackPath(url.pathname)) return kanbanLoopback(ctx, req, res, url);
     // Each provider with hooks has its route, /hooks/<provider> (see providers/).

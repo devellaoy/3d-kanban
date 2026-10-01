@@ -38,7 +38,7 @@ function unprefix(p: string): string {
   return q.replace(/^[ab]\//, '');
 }
 
-// a path git quoted ("a/x\ny", "\303\244.txt"): \n, \t, \" and the like, and octal bytes of UTF-8.
+// A path git quoted ("a/x\ny", "\303\244.txt"): \n, \t, \" and the like, and octal bytes of UTF-8.
 const C_ESCAPES: Record<string, number> = { a: 7, b: 8, t: 9, n: 10, v: 11, f: 12, r: 13 };
 const ENC = new TextEncoder();
 const DEC = new TextDecoder();

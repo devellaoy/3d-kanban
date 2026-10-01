@@ -13,7 +13,7 @@ import type { PlanLimits, UsageState } from './usage.js';
 export interface CarriedIssue {
   issue: number;
   title: string;
-  /** the ticket key of a card from the project's issue sources (issue is 0 for one that isn't a GitHub issue). */
+  /** The ticket key of a card from the project's issue sources (issue is 0 for one that isn't a GitHub issue). */
   key?: string;
 }
 

@@ -123,6 +123,6 @@ export interface Parts {
   emotes: Made<typeof installEmotes>;
   talk: Made<typeof installVoice>;
   hud: Made<typeof installHud>;
-  /** the kanban's own pieces of the 3D office (kanban/install3d.ts). */
+  /** The kanban's own pieces of the 3D office (kanban/install3d.ts). */
   kanban3d: Made<typeof installKanban3d>;
 }

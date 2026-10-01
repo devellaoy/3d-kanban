@@ -1,4 +1,4 @@
-// the office's service worker, registered by pwa.ts (docs/configuration.md#pwa).
+// The office's service worker, registered by pwa.ts (docs/configuration.md#pwa).
 //
 // It stays out of the way of everything that needs the session or the socket:
 // - the pages (/, /lite, /kanban) are network-first and never cached (they're for the signed-in

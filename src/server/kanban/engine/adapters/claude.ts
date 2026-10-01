@@ -1,5 +1,5 @@
 // Claude Code as a task agent: its per-phase flags and reading a turn from its transcript JSONL
-// (see M0 in docs/fork.md). The transcript has one line per event; `type: 'assistant'` lines carry
+// (see docs/fork.md, M0 spike results). The transcript has one line per event; `type: 'assistant'` lines carry
 // `message.content[]` blocks (text, tool_use), `type: 'user'` lines are prompts or tool results.
 
 import { readdirSync, readFileSync, statSync } from 'node:fs';

@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import type { CarriedIssue } from '../../../shared/protocol';
 import { NOTE_COLORS, PINS, wrap } from '../boards/world';
 import { toon, toonUnique } from '../../world/toon';
-// a card from the project's issue sources shows its key and is told apart by it.
+// A card from the project's issue sources shows its key and is told apart by it.
 import { cardId, cardLabel, noteSeed } from '../../../shared/kanban/issuecard.js';
 import { store } from '../../state';
 

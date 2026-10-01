@@ -105,7 +105,7 @@ export abstract class KanbanWorkers {
     return args && [...args];
   }
 
-  /** Where a worker's session is logged, for the engine to read its turns (see M0 in docs/fork.md). */
+  /** Where a worker's session is logged, for the engine to read its turns (see docs/fork.md, M0 spike results). */
   transcripts(id: string): { sessionId?: string; claude?: string; codex?: string; codexHome?: string } | undefined {
     const w = this.workers.get(id);
     if (!w) return undefined;

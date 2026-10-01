@@ -52,7 +52,7 @@ export function installHud(ctx: Ctx, core: CoreState, parts: HudParts) {
       { id: 'issues', icon: '📌', label: 'Issues', section: 'Open', count: () => store.issues.items.filter((i) => i.state === 'OPEN').length, run: () => openBoard('issues', net, actions.boardActions()) },
       { id: 'pulls', icon: '🔀', label: 'Pull requests', section: 'Open', count: () => store.pulls.items.filter((p) => p.state === 'OPEN').length, run: () => openBoard('pulls', net, actions.boardActions()) },
       { id: 'queue', icon: '📋', label: 'Task queue', section: 'Open', count: () => store.queue.tasks.filter((t) => t.status !== 'done').length, title: () => 'Issues and tasks waiting for a worker', run: waiting.showQueue },
-      // the kanban view (/kanban), on the floor you're on.
+      // The kanban view (/kanban), on the floor you're on.
       { id: 'kanban', icon: '🗂️', label: 'Kanban', section: 'Open', key: 'J', title: () => 'The kanban: tasks planned, built and reviewed by agents, on this floor’s project', run: () => parts.kanban3d.openKanban() },
       { id: 'services', icon: '🌐', label: 'Services', section: 'Open', count: () => store.services.items.length, title: () => 'Web servers the workers are running', run: () => openServices() },
       { id: 'whiteboard', icon: '📝', label: 'Whiteboard', section: 'Open', title: () => 'Draw together, live', run: () => openWhiteboard(net) },

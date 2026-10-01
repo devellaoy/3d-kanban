@@ -7,7 +7,7 @@ export const HELP_ROWS: readonly (readonly [string, string])[] = [
   ['W A S D', 'Walk (hold Shift to run)'],
   ['Space', 'Jump'],
   ['☕', 'Press E at the coffee machine in the kitchen for a minute of quicker walking and higher jumps. Three cups in a row gives you the jitters'],
-  // third person looks around with the mouse too.
+  // Third person looks around with the mouse too.
   ['Mouse', 'Look around, in first and third person alike (click to capture the mouse, Esc to free it). The dot in the middle of the screen is what you aim at'],
   ['Click / E', "Use what you look at: hire a worker, open its terminal, read a board, call a meeting in the meeting room, watch the TV, put a song on the jukebox, tee off from the balcony, sit on a couch, a beanbag, a chair or the balcony bench (walk off to get up)"],
   ['👥', 'Click someone under "In the office" to walk over to them (on another floor, you ride the elevator first). The line under their name says what they have open or where they are'],
@@ -32,11 +32,11 @@ export const HELP_ROWS: readonly (readonly [string, string])[] = [
   ['F', 'Hang a picture from the web on a wall. Look at a picture and press E to move, edit or take it down'],
   ['Q', 'Put back the issue card in your hands (E at a note on the issues board, or ✋ Pick it up in an issue; then E at an empty desk, a worker or the queue board), or drop the basketball'],
   ['🐶', 'Walk up to the office dog and press E to pet it. When a worker needs input, it runs to that desk and barks. Name it in ⚙️ Settings'],
-  // an agent opens the pull requests now, in every repository the worker works in.
+  // An agent opens the pull requests now, in every repository the worker works in.
   ['O', 'Have the worker’s agent open pull requests for its branch (in every repository it works in, following the prompt in ⚙️ Settings), or see the ones it has'],
-  // the kanban view, on the floor you are on; facing a task's worker, that task.
+  // The kanban view, on the floor you are on; facing a task's worker, that task.
   ['J', 'Switch to the kanban view of this floor’s project (🏢 3D there brings you back). Facing a kanban task’s worker, it opens that task’s conversation'],
-  // the keys at a kanban task's worker.
+  // The keys at a kanban task's worker.
   ['C 🗂️', 'At a kanban task’s worker: the task’s Changes window — a tab per repository, all changes, per commit or uncommitted; live from its checkout while it’s here, with commit, discard and open a PR'],
   ['E 🗂️', 'At a kanban task’s worker, its window has tabs: 🖥️ Terminal and 🗂️ Task #14 (the task’s conversation with its composer, plan, runs and PRs, as on the kanban). It opens on the Task tab the first time, then on the tab you last had; 🌿 Changes in its header opens the task’s Changes window'],
   ['P 🗂️', 'At a kanban task’s worker: a message on its task, which carries the kanban process on (or type straight into its terminal instead). A reviewer only takes its terminal. With an issue card in hand, P at an empty desk makes it a kanban task there'],

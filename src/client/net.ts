@@ -5,7 +5,7 @@ type Handler = (msg: ServerMsg) => void;
 
 /** The sign-in page, coming back to the 2D view afterwards if that's where you are (see login.ts). */
 export function loginUrl(): string {
-  // the kanban page comes back to itself after signing in, like the 2D view.
+  // The kanban page comes back to itself after signing in, like the 2D view.
   if (location.pathname === '/kanban' || location.pathname === '/kanban.html') return '/login?next=/kanban';
   return location.pathname === '/lite' ? '/login?next=/lite' : '/login';
 }

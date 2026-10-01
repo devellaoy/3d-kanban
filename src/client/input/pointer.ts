@@ -27,7 +27,7 @@ export function installPointer(ctx: Ctx, core: CoreState, parts: PointerParts) {
   /** The note on the issues board under the crosshair, which E takes. in third person too, not under the mouse. */
   let aimedNote: GhIssue | null = null;
 
-  // unused now that third person aims with the crosshair too; left as upstream has it.
+  // Unused now that third person aims with the crosshair too; left as upstream has it.
   function pickTarget(): Interactable | null {
     // Nearly everything you can use is upstairs; down on the street you're under it all, but for the
     // elevator's stop in the garage.
@@ -87,7 +87,7 @@ export function installPointer(ctx: Ctx, core: CoreState, parts: PointerParts) {
   function aimedAt(ndc: THREE.Vector2, slack = 0): { it: Interactable; near: boolean; hit: THREE.Intersection } | null {
     raycaster.setFromCamera(ndc, camera);
     eye.set(player.pos.x, player.pos.y + EYE_HEIGHT, player.pos.z);
-    // from the camera behind you in third person, nothing between it and you counts (you included).
+    // From the camera behind you in third person, nothing between it and you counts (you included).
     raycaster.near = player.view === 'third' ? alongRay(raycaster.ray.origin, raycaster.ray.direction, eye) : 0;
     // (Workers standing in line in the castle carry their spot's interactable: see Court.)
     const roof = parts.rooftop.roof();
@@ -101,7 +101,7 @@ export function installPointer(ctx: Ctx, core: CoreState, parts: PointerParts) {
       }
       if (!shown) continue;
       if (!it || it.off) return null; // a wall, the floor, a plant… is in the way
-      // in third person your eyes must see it too, not just the camera over your shoulder.
+      // In third person your eyes must see it too, not just the camera over your shoulder.
       if (player.view === 'third' && !eyeSees(eye, hit.point, pickables, (h) => inTheWay(h, it), camera, eyeRay)) return null;
       // How close you must be to use it is each kind's own (see ctx.interactions).
       return { it, near: withinReach(hit.point, eye, ctx.interactions.reach(it.kind) + slack), hit };
@@ -109,7 +109,7 @@ export function installPointer(ctx: Ctx, core: CoreState, parts: PointerParts) {
     return null;
   }
 
-  /** whether a hit on the way from your eyes to `it` is something else in front of it (not hidden, not `it` itself). */
+  /** Whether a hit on the way from your eyes to `it` is something else in front of it (not hidden, not `it` itself). */
   function inTheWay(hit: THREE.Intersection, it: Interactable): boolean {
     let other: Interactable | undefined;
     for (let o: THREE.Object3D | null = hit.object; o; o = o.parent) {
@@ -143,7 +143,7 @@ export function installPointer(ctx: Ctx, core: CoreState, parts: PointerParts) {
     aimedNote = null;
     if (modalOpen() || parts.telescope.active || ctx.activities.busy()) target = null;
     else {
-      // in third person too, what's under the crosshair (see aimedAt), not what's nearest.
+      // In third person too, what's under the crosshair (see aimedAt), not what's nearest.
       const aim = aimedAt(CROSSHAIR);
       target = aim?.near ? aim.it : (throneTarget() ?? seating.mySeat() ?? (inOffice() ? hoops.ballAtFeet() : null));
       if (aim?.near) aimedNote = noteUnder(aim);
@@ -171,7 +171,7 @@ export function installPointer(ctx: Ctx, core: CoreState, parts: PointerParts) {
       hanger.place(ndc);
       return;
     }
-    // in third person with the mouse free (a touch screen), what you tapped, as upstream,
+    // In third person with the mouse free (a touch screen), what you tapped, as upstream,
     // within the same reach of your eyes as the crosshair.
     if (player.view === 'third' && !player.locked) {
       const aim = aimedAt(ndc);
@@ -183,7 +183,7 @@ export function installPointer(ctx: Ctx, core: CoreState, parts: PointerParts) {
       use(aim.it, 'E', noteUnder(aim));
       return;
     }
-    // third person uses what's under the crosshair too, as first person does.
+    // Third person uses what's under the crosshair too, as first person does.
     // Reach out even at nothing, like poking the air.
     reach();
     if (target) interact(target, 'E');

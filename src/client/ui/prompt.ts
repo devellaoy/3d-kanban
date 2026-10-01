@@ -3,7 +3,7 @@ import type { AgentEffort, AgentProvider, LostBranch, ServerMsg, WorktreeCleanup
 import { h, openModal } from './dom';
 import { store } from '../state';
 import { providerPicker, type ProviderPicker } from './provider';
-// the "Run as a kanban task" toggle in the hire dialog.
+// The "Run as a kanban task" toggle in the hire dialog.
 import { kanbanSection, type KanbanOption } from '../kanban/hireform';
 
 export interface PromptOptions {
@@ -22,9 +22,9 @@ export interface PromptOptions {
   providerOption?: boolean;
   /** Other floors' projects a new worker in its own worktree can work in too (see WorkerInfo.repos). */
   repoOptions?: { id: string; name: string }[];
-  /** offer "🗂️ Run as a kanban task" (hiring only); while it's on, sending makes the task instead of calling onSubmit. */
+  /** Offer "🗂️ Run as a kanban task" (hiring only); while it's on, sending makes the task instead of calling onSubmit. */
   kanbanOption?: KanbanOption;
-  /** a second button that sends with `raw` (a task implementer's "type straight into the terminal"). */
+  /** A second button that sends with `raw` (a task implementer's "type straight into the terminal"). */
   rawLabel?: string;
   onSubmit(text: string, opts: { worktree: boolean; provider?: AgentProvider; model?: string; effort?: AgentEffort; repos: string[]; raw?: boolean }): void;
 }
@@ -76,7 +76,7 @@ export function openPrompt(opts: PromptOptions) {
   const provider: ProviderPicker | null = opts.providerOption ? providerPicker(store.project, 'prompt-provider') : null;
   const submit = h('button.btn.primary', { type: 'submit' }, opts.submitLabel ?? 'Send ✨');
   const cancel = h('button.btn', { type: 'button' }, 'Cancel');
-  // the kanban toggle and the raw button.
+  // The kanban toggle and the raw button.
   const kanban = opts.kanbanOption ? kanbanSection(opts.kanbanOption, provider) : null;
   const rawBtn = opts.rawLabel ? h('button.btn.kb-raw', { type: 'button' }, opts.rawLabel) : null;
   const form = h(
@@ -87,7 +87,7 @@ export function openPrompt(opts: PromptOptions) {
     h('footer', {}, h('span.grow', {}, 'Enter to send · Shift+Enter for a new line'), cancel, rawBtn, submit),
   ) as HTMLFormElement;
   form.noValidate = true;
-  // while the toggle is on, a task is made: no worktree options (the engine has its own), its own title.
+  // While the toggle is on, a task is made: no worktree options (the engine has its own), its own title.
   const kanbanPaint = (on: boolean) => {
     wtRow?.classList.toggle('hidden', on);
     repos.element?.classList.toggle('hidden', on);
@@ -106,7 +106,7 @@ export function openPrompt(opts: PromptOptions) {
   cancel.addEventListener('click', () => modal.close());
   const send = (raw?: boolean) => {
     const text = ta.value.trim();
-    // the hire makes a kanban task, which needs its text.
+    // The hire makes a kanban task, which needs its text.
     if (kanban?.on()) {
       if (!text) return ta.focus();
       if (provider && !provider.valid()) return;
@@ -171,7 +171,7 @@ export interface SendHomeOptions {
   /** Asks the office what the worktree holds; the answer comes back through routeWorktreeMessage. */
   ask(): void;
   onConfirm(cleanup: WorktreeCleanup): void;
-  /** a block over the choices (a task worker's task, kanban/sendhome.ts). */
+  /** A block over the choices (a task worker's task, kanban/sendhome.ts). */
   extra?: HTMLElement;
 }
 
@@ -209,7 +209,7 @@ const CLEANUP_LABEL: Record<WorktreeCleanup, string> = {
 export function sendHomeDialog(opts: SendHomeOptions) {
   const { branch, path } = opts.worktree;
   const across = opts.repos && opts.repos.length > 1 ? opts.repos : undefined;
-  // the command is `kanban3d` (prune).
+  // The command is `kanban3d` (prune).
   const choices: [WorktreeCleanup, string, string][] = across
     ? [
         ['all', 'Delete the worktrees and their branch', `Removes its worktrees of ${across.join(', ')}, and ${branch} in each.`],

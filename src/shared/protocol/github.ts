@@ -24,13 +24,13 @@ export interface GhIssue {
   comments: number;
   /** owner/name of the repository it's in, on a project with several (see Floor.pullsState). */
   repo?: string;
-  /** the ticket key, for a card from the project's issue sources (number is 0 for one that isn't a GitHub issue). */
+  /** The ticket key, for a card from the project's issue sources (number is 0 for one that isn't a GitHub issue). */
   key?: string;
-  /** the issue source it came from. */
+  /** The issue source it came from. */
   source?: IssueSourceKind;
-  /** the source's own status (Jira's "In Progress", a project's column). */
+  /** The source's own status (Jira's "In Progress", a project's column). */
   status?: string;
-  /** the kanban task already made from it. */
+  /** The kanban task already made from it. */
   taskId?: number;
 }
 
@@ -64,7 +64,7 @@ export interface GhState<T> {
   error?: string;
   fetchedAt: number;
   loading: boolean;
-  /** the PR board's repositories (owner/name) on a project with several, PRs or not (see Floor.pullsState). */
+  /** The PR board's repositories (owner/name) on a project with several, PRs or not (see Floor.pullsState). */
   repos?: string[];
 }
 

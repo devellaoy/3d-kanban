@@ -69,7 +69,7 @@ export interface RTCIceServerLike {
   credential?: string;
 }
 
-// the command is `kanban3d` (package.json's bin), so it can sit beside an upstream agent-office install.
+// The command is `kanban3d` (package.json's bin), so it can sit beside an upstream agent-office install.
 const HELP = `kanban3d — a 3D office for your team and its ${AGENT_PROVIDERS.filter((p) => p !== 'custom').map((p) => PROVIDER_META[p].name).join(' / ')} workers
 
 Usage:
@@ -233,7 +233,7 @@ export function loadConfig(argv: string[]): Config {
   let budgetPause = !!process.env.AGENT_OFFICE_BUDGET_PAUSE && process.env.AGENT_OFFICE_BUDGET_PAUSE !== '0';
   let maxWorkers = process.env.AGENT_OFFICE_MAX_WORKERS || '';
   let webhook = process.env.AGENT_OFFICE_WEBHOOK;
-  // a pinned hook port (see Config.hookPort).
+  // A pinned hook port (see Config.hookPort).
   let hookPort = process.env.AGENT_OFFICE_HOOK_PORT || '';
   let city = process.env.AGENT_OFFICE_CITY || '';
   let weather = process.env.AGENT_OFFICE_WEATHER || '';
@@ -304,7 +304,7 @@ export function loadConfig(argv: string[]): Config {
       case '--webhook':
         webhook = takeValue(argv, i++, a);
         break;
-      // see Config.hookPort.
+      // See Config.hookPort.
       case '--hook-port':
         hookPort = takeValue(argv, i++, a);
         break;
@@ -356,7 +356,7 @@ export function loadConfig(argv: string[]): Config {
     console.error(`agent-office: --max-workers needs a whole number from 1 to ${MAX_WORKER_LIMIT}, e.g. --max-workers 6`);
     process.exit(2);
   }
-  // see Config.hookPort.
+  // See Config.hookPort.
   const pinnedHookPort = hookPort ? Number(hookPort) : undefined;
   if (pinnedHookPort !== undefined && !(Number.isInteger(pinnedHookPort) && pinnedHookPort >= 1 && pinnedHookPort <= 65535)) {
     console.error('agent-office: --hook-port needs a port number from 1 to 65535, e.g. --hook-port 7999');

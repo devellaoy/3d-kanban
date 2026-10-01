@@ -11,7 +11,7 @@ const REASON_LABEL: Record<GhCloseReason, string> = { completed: '✅ Completed'
 
 /** Closes an issue (as completed or not planned) or a PR without merging, with an optional comment. */
 export function openClose(kind: 'issue' | 'pull', it: GhIssue | GhPull, net: Net, onClosed: () => void) {
-  // by the repository it's in too.
+  // By the repository it's in too.
   const key = ghKey(kind, it.number, it.repo);
   const label = ghLabel(it.number, it.repo);
   const pull = kind === 'pull' ? (it as GhPull) : null;
@@ -70,7 +70,7 @@ export function openClose(kind: 'issue' | 'pull', it: GhIssue | GhPull, net: Net
       modal.close();
       onClosed();
     });
-    // the repo it's in.
+    // The repo it's in.
     net.send({ t: 'gh.close', kind, number: it.number, comment: comment.value.trim() || undefined, reason: pull ? undefined : reason, deleteBranch: !!pull && del.checked, ...ghRepoField(it.repo) });
   });
   setTimeout(() => comment.focus(), 30);

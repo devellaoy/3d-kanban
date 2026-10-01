@@ -6,7 +6,7 @@ import { h, openModal, timeAgo, STATUS_LABEL } from './dom';
 import { confirmDialog } from './prompt';
 import { providerPicker, providerLabel, providerUsageState, providerWaitingLabel, resolvedProvider, modelBadge } from './provider';
 import { officeFull } from '../../shared/machine';
-// the floor's kanban tasks, read-only.
+// The floor's kanban tasks, read-only.
 import { kanbanQueueSection, kanbanQueueWatch, queueOption } from '../kanban/office3d';
 import { kanbanSection } from '../kanban/hireform';
 

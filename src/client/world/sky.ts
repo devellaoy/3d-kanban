@@ -30,7 +30,7 @@ export const HAZE_MAX = 300;
  */
 const HAZE_CLEAR = 6;
 const HAZE_ABOVE = 17.5;
-// indoor fog (upstream PR #207): INDOOR_FOG, hazeAt(), ROOM_PARS, skyInRoom() and HAZE; the fork's
+// Indoor fog (upstream PR #207): INDOOR_FOG, hazeAt(), ROOM_PARS, skyInRoom() and HAZE; the kanban's
 // own on top: ROOM_* constants, roomAt()/indoorAt(), the camera-indoors check and the sprites' haze.
 /**
  * How much of the outdoor fog is left on anything inside the office, where the room's own walls are
@@ -281,7 +281,7 @@ const HAZE = /* glsl */ `
 #endif
 `;
 
-// indoor fog (upstream PR #207): ROOM_PARS goes to every foggy material, not just the lit ones;
+// Indoor fog (upstream PR #207): ROOM_PARS goes to every foggy material, not just the lit ones;
 // the vertex shader gets only ROOM_VARYING, and sprites keep the haze (SPRITE_WORLD).
 // Everything with fog gets the haze above, and knows which room it's in to work it out; every lit
 // material also gets the lines before that, sharing one set of uniforms. Nothing else in the office

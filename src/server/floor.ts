@@ -27,15 +27,15 @@ import { landedWork, landedWorkers, type Landed } from './leave-on-merge.js';
 import type { Ledger } from './usage.js';
 import type { Capacity } from './machine.js';
 import { officePrompt, type PromptSource } from './prompts.js';
-// the PR board covers every repository of the project (see pullsState).
+// The PR board covers every repository of the project (see pullsState).
 import { parseRepoFloorId, projectRepos, uniqueRepos } from './kanban/projects.js';
 import { checkoutRepo } from './ghrepo.js';
-// the kanban hears when the PR board has fresh lists (its tasks' linked PRs' states).
+// The kanban hears when the PR board has fresh lists (its tasks' linked PRs' states).
 import { floorPulled } from './kanban/integrations/pulls/board.js';
-// the issues board shows the project's issue sources when it has any (see issuesState).
+// The issues board shows the project's issue sources when it has any (see issuesState).
 import { claimGhKey, onWallIssues, refreshWall, wallIssues, watchWall } from './kanban/integrations/issues/wall.js';
 import { isPrimaryIssue, parseGhKey } from '../shared/kanban/issuecard.js';
-// what a worker is sent home with (see sendHome).
+// What a worker is sent home with (see sendHome).
 import type { DepartureIntent } from '../shared/kanban/types.js';
 import { sameRepo } from '../shared/floors.js';
 
@@ -88,7 +88,7 @@ function openPull(floor: Floor, branch: string): { number: number; url: string }
   return openPullIn(floor.github.pulls.items, branch);
 }
 
-/** the open pull request in a list whose head is `branch` (a project's other repository's list too). */
+/** The open pull request in a list whose head is `branch` (a project's other repository's list too). */
 function openPullIn(pulls: GhPull[], branch: string): { number: number; url: string } | undefined {
   const pr = pulls.find((p) => p.state === 'OPEN' && p.headRefName === branch);
   return pr ? { number: pr.number, url: pr.url } : undefined;
@@ -152,7 +152,7 @@ export class Floor {
   /** Workers sent home on a map that locks them up (see MapPlan.sendHome). */
   readonly jail: Jail;
   private timer: NodeJS.Timeout;
-  /** stops hearing about the project's issue-source cards (see issuesState). */
+  /** Stops hearing about the project's issue-source cards (see issuesState). */
   private offWall: () => void;
   /** Pull requests merging, to ring the gong for. */
   private merges = new MergeWatch();
@@ -161,7 +161,7 @@ export class Floor {
   /** Workers across repositories whose worktrees are being checked before they go home. */
   private landing = new Set<string>();
   /**
-   * the PR lists of the project's other git repositories (FloorDef.repos with a GitHub
+   * The PR lists of the project's other git repositories (FloorDef.repos with a GitHub
    * remote), by ProjectRepo id, each fetched in that repository's checkout. `github` stays the floor's
    * own repository, exactly as upstream has it; the board shows them all (see pullsState).
    */
@@ -234,7 +234,7 @@ export class Floor {
       def.dir,
       (state) => void (wallIssues(this.id) ? undefined : ctx.emit(this, { t: 'gh.issues', state })), // not while the board shows the project's issue sources
       (state) => {
-        // the board shows every repository of the project (the same list as upstream's for one).
+        // The board shows every repository of the project (the same list as upstream's for one).
         ctx.emit(this, { t: 'gh.pulls', state: this.pullsState() });
         this.queue?.onPulls(state.items);
         if (state.loading || state.error) return;
@@ -277,7 +277,7 @@ export class Floor {
         seat: (deskId, by, prompt, provider, model, effort, meeting, owner) => this.workers.spawn(deskId, by, prompt, false, 'agent', provider, model, effort, meeting, owner),
         prompt: (id, text, by) => this.workers.prompt(id, text, by),
         write: (id, data, by) => this.workers.write(id, data, by),
-        // with why it goes (see WorkerManager.kill).
+        // With why it goes (see WorkerManager.kill).
         kill: (id, intent) => this.workers.kill(id, undefined, undefined, undefined, intent),
       },
       this.project.branch ? new Worktrees(def.dir) : undefined,
@@ -305,7 +305,7 @@ export class Floor {
         const r = w.repos?.find((x) => x.floor === repo);
         if (!r) return undefined;
         const other = ctx.floor(r.floor);
-        // one of this project's own other repositories (a synthetic `<floor>~<repo>` id).
+        // One of this project's own other repositories (a synthetic `<floor>~<repo>` id).
         const board = this.boardOf(r.floor);
         return {
           name: w.name,
@@ -332,7 +332,7 @@ export class Floor {
 
     void this.github.refresh();
     this.refreshBoards();
-    // the issues board hears when the project's issue-source cards change.
+    // The issues board hears when the project's issue-source cards change.
     this.offWall = onWallIssues(this.id, () => ctx.emit(this, { t: 'gh.issues', state: this.issuesState() }));
     // A floor with people on it, or work under way, keeps its boards fresh; the others check in now and then.
     this.timer = setInterval(() => {
@@ -467,7 +467,7 @@ export class Floor {
     }
     this.sendLandedHome();
     this.ctx.pullsChanged(this);
-    // the tasks' linked pull requests take the states on the board.
+    // The tasks' linked pull requests take the states on the board.
     floorPulled(this);
   }
 

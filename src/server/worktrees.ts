@@ -44,7 +44,7 @@ export class Worktrees {
   private fetching?: Promise<void>;
   /** The last fetch's error, so the office's log says it once rather than on every hire. */
   private fetchError?: string;
-  /** the branch the last fetch was of (see fetch). */
+  /** The branch the last fetch was of (see fetch). */
   private fetchedFor?: string;
 
   constructor(private dir: string) {
@@ -65,7 +65,7 @@ export class Worktrees {
    */
   create(slug: string, sub?: string, root = this.dir, baseBranch?: string): (Required<Omit<WorktreeRef, 'made'>> & { from?: string; note?: string }) | string {
     try {
-      // a configured base branch, else the branch the project is on.
+      // A configured base branch, else the branch the project is on.
       const from = baseBranch ?? this.currentBranch();
       const start = baseBranch ? this.baseStartPoint(baseBranch) : this.startPoint(from);
       if (typeof start === 'string') return start;
@@ -141,7 +141,7 @@ export class Worktrees {
   }
 
   /**
-   * where a worktree cut from a configured base branch starts: origin's copy of it, which
+   * Where a worktree cut from a configured base branch starts: origin's copy of it, which
    * its pull request goes to, else the local branch when origin doesn't have it (or there's no
    * origin). What went wrong when neither exists, rather than quietly the branch the project is on.
    */

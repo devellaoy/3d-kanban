@@ -28,7 +28,7 @@ import { openPull } from '../../ui/pull';
 import { openRepoPulls, workerRepos } from '../../ui/repos';
 import { openTerminal } from '../../ui/terminal';
 import { hiringPaused, usageLabel, usageTitle } from '../../ui/usage';
-// a worker's PR by its repository too, task workers in the office, and issue cards from the issue sources.
+// A worker's PR by its repository too, task workers in the office, and issue cards from the issue sources.
 import { findItem, ownPullRepo } from '../../ui/github/ghrepo';
 import { canRetry, kanbanCard, kanbanOf, promptKind, waitText, workerLabel } from '../../kanban/office';
 import { askWorker, cardToTaskWorker, hireOption, promptTaskWorker, retryTask } from '../../kanban/office3d';
@@ -120,7 +120,7 @@ export function installWorkerActions(ctx: Ctx, core: CoreState, parts: WorkerAct
     } else if (isAsleep(w.status)) {
       toast(`${w.name} is asleep — press R to resume first`, 'warn');
     } else if (promptTaskWorker(net, w, () => openWorkerTerminal(w.id))) {
-      // a message on its task (or its terminal, for a reviewer).
+      // A message on its task (or its terminal, for a reviewer).
     } else if (w.kind === 'shell') {
       openPrompt({
         title: `🐚 Run in ${w.name}`,
@@ -162,7 +162,7 @@ export function installWorkerActions(ctx: Ctx, core: CoreState, parts: WorkerAct
     if (!w) return;
     const where = plan().byId.get(w.deskId)?.label ?? 'the desk';
     const session = w.kind === 'shell' ? 'shared shell' : `${providerLabel(w.provider, store.project)} session`;
-    // a task worker's dialog has its task in it (Move to Done), and says so to the engine.
+    // A task worker's dialog has its task in it (Move to Done), and says so to the engine.
     if (sendTaskWorkerHome(net, w, where)) return;
     if (w.meeting) {
       // The meeting's worktree is the whole table's: it's tidied away once they've all gone.
@@ -259,7 +259,7 @@ export function installWorkerActions(ctx: Ctx, core: CoreState, parts: WorkerAct
   function pullRequestFor(w: WorkerInfo) {
     if (w.repos?.length) return pullRequestsFor(w);
     if (w.pr) {
-      // in the floor's own repository, not another of the project's with the same number.
+      // In the floor's own repository, not another of the project's with the same number.
       const it = findItem(store.pulls.items, w.pr.number, ownPullRepo(w.pr, store.currentFloor()?.repo));
       if (it) openPull(it, net, boardActions());
       else window.open(w.pr.url, '_blank', 'noopener');
@@ -269,7 +269,7 @@ export function installWorkerActions(ctx: Ctx, core: CoreState, parts: WorkerAct
     if (w.lost) return fixLostWorktree(w);
     if (w.prOpening) return;
     if (!prReady(w)) return toast(`${w.name} is still ${STATUS_LABEL[w.status]} — wait until it's done`, 'warn');
-    // the office has an agent do it now (the worker itself, or the task's pr phase).
+    // The office has an agent do it now (the worker itself, or the task's pr phase).
     toast(`🤖 An agent is opening the pull request: ${w.name} pushes ${w.worktree.branch} and writes it up…`);
     net.send({ t: 'worker.pr', workerId: w.id });
   }
@@ -285,14 +285,14 @@ export function installWorkerActions(ctx: Ctx, core: CoreState, parts: WorkerAct
       if (!now || now.prOpening) return;
       if (now.lost) return fixLostWorktree(now);
       if (!prReady(now)) return toast(`${now.name} is still ${STATUS_LABEL[now.status]} — wait until it's done`, 'warn');
-      // an agent opens them now.
+      // An agent opens them now.
       toast(`🤖 An agent is opening the pull requests: ${now.name} pushes ${now.worktree?.branch ?? 'its branch'} in each of its repositories and writes them up…`);
       net.send({ t: 'worker.pr', workerId: now.id });
     };
     if (!workerRepos(w).some((r) => r.pr)) return open();
     openRepoPulls(w.id, {
       openPull: (number, url) => {
-        // in the floor's own repository, not another of the project's with the same number.
+        // In the floor's own repository, not another of the project's with the same number.
         const it = findItem(store.pulls.items, number, ownPullRepo({ url }, store.currentFloor()?.repo));
         if (it) openPull(it, net, boardActions());
         else window.open(url, '_blank', 'noopener');
@@ -403,7 +403,7 @@ export function installWorkerActions(ctx: Ctx, core: CoreState, parts: WorkerAct
     const workerProvider = w.kind === 'agent' ? resolvedProvider(w.provider, store.project) : undefined;
     const spent = w.kind === 'agent' && w.usage ? usageLabel(w.usage, workerProvider) : '';
     const shell = w.kind === 'shell';
-    // a task worker's task, and R to retry it while it waits.
+    // A task worker's task, and R to retry it while it waits.
     const card = kanbanCard(w, Date.now());
     const task = card ? `${card.name} · ${card.summary}` : '';
     const retry = !isAsleep(w.status) && canRetry(w);
@@ -418,7 +418,7 @@ export function installWorkerActions(ctx: Ctx, core: CoreState, parts: WorkerAct
         key('E', 'Open terminal'),
         key('C', 'Changes'),
         isAsleep(w.status) ? key('R', shell ? 'Restart' : 'Resume') : key('P', shell ? 'Run command' : 'Prompt'),
-        // an agent opens it.
+        // An agent opens it.
         w.repos?.length ? reposKey(w) : w.pr ? key('O', `PR #${w.pr.number}`) : w.prOpening ? aside('⏳ Agent opening PR…') : prReady(w) ? key('O', 'Agent opens PR') : '',
         key('X', 'Send home'),
         labelKey,
@@ -430,7 +430,7 @@ export function installWorkerActions(ctx: Ctx, core: CoreState, parts: WorkerAct
   function reposKey(w: WorkerInfo) {
     const repos = workerRepos(w);
     const prs = repos.filter((r) => r.pr).length;
-    // an agent opens them.
+    // An agent opens them.
     if (w.prOpening) return aside('⏳ Agent opening PRs…');
     if (prs) return key('O', `${prs} of ${repos.length} PRs`);
     return prReady(w) ? key('O', `Agent opens PRs (${repos.length} repos)`) : '';
@@ -535,7 +535,7 @@ export function installWorkerActions(ctx: Ctx, core: CoreState, parts: WorkerAct
       meeting: (preset: MeetingPreset) => parts.meeting.showMeeting(preset),
       goToDesk,
       pickUp: parts.cards.pickUp,
-      // the issue as a kanban task, at the desk nearest you (or wherever the engine finds one).
+      // The issue as a kanban task, at the desk nearest you (or wherever the engine finds one).
       kanbanTask: (it: GhIssue) => {
         const desk = freeDesk() ?? undefined;
         cardTask(net, it, desk, desk ? plan().byId.get(desk)!.label : 'the next free desk');

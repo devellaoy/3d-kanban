@@ -40,7 +40,7 @@ export interface OpenedPr {
 }
 
 /**
- * what the kanban engine asks of a worker it hires, as spawn's last argument (see
+ * What the kanban engine asks of a worker it hires, as spawn's last argument (see
  * kanban/workers.ts). `launchArgs` go on the claude/codex command line before the resume and prompt
  * arguments, on every launch; `reuse` seats it in a task's existing worktree or workspace instead of
  * making one (and it never deletes that when it goes home); `resumeSessionId` carries on a session;
@@ -64,7 +64,7 @@ export interface SpawnExtra {
 }
 
 /**
- * what an observer (WorkerManager.addObserver) hears. A hook is heard before the status
+ * What an observer (WorkerManager.addObserver) hears. A hook is heard before the status
  * change it causes. `removed` comes with the intent it was sent home with (`departure`); `cleaned`
  * follows once kill may have deleted its worktree, for whoever keeps track of that folder to look.
  */
@@ -147,9 +147,9 @@ export interface Worker {
   fresh?: { readonly line: number };
   /** Its lost worktree is being put back (see rebuild): the folder coming back mustn't wake it before that's done. */
   rebuilding?: boolean;
-  /** how the kanban engine launches it (see SpawnExtra); `reused`: it sits in someone else's worktree. */
+  /** How the kanban engine launches it (see SpawnExtra); `reused`: it sits in someone else's worktree. */
   extra?: { launchArgs?: string[]; env?: Record<string, string>; settingsFile?: 'kanban'; reused?: boolean };
-  /** what it was sent home with (see WorkerManager.kill), for the observers. */
+  /** What it was sent home with (see WorkerManager.kill), for the observers. */
   departure?: DepartureIntent;
 }
 
@@ -199,7 +199,7 @@ export interface WorkerHandle<S = unknown> {
   scheduleScan(): void;
   /** Types a prompt into its session; says what went wrong, if anything. */
   prompt(text: string): string | undefined;
-  /** a hook event it took, for the observers (WorkerManager.addObserver), before the status change it causes. */
+  /** A hook event it took, for the observers (WorkerManager.addObserver), before the status change it causes. */
   observeHook(hookEvent: string | undefined, tool: string | undefined, payload: unknown): void;
 }
 

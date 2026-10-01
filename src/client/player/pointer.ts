@@ -25,7 +25,7 @@ export abstract class PlayerInput {
   camYaw = Math.PI * 0.15;
   camPitch = 0.42;
   camDist = 7.5;
-  /** what the third-person camera shows of camYaw/camPitch/camDist, easing out jumps (see camera3d.ts). */
+  /** What the third-person camera shows of camYaw/camPitch/camDist, easing out jumps (see camera3d.ts). */
   readonly ease = new OrbitEase();
   /** First-person look up (+) / down (-). */
   lookPitch = -0.08;
@@ -115,7 +115,7 @@ export abstract class PlayerInput {
       this.drag = null;
       // A click that captured the mouse is not also a click on the world.
       if (!d || d.moved > 5 || !this.enabled || this.locked || this.lockPending || e.target !== dom) return;
-      // in third person, with the mouse free (a touch screen), where you tapped, as upstream.
+      // In third person, with the mouse free (a touch screen), where you tapped, as upstream.
       this.onClick?.(this.view === 'first' ? CENTER : tapNdc(e.clientX, e.clientY, dom.getBoundingClientRect()));
     });
     window.addEventListener('pointermove', (e) => {
@@ -142,7 +142,7 @@ export abstract class PlayerInput {
       this.drag.x = e.clientX;
       this.drag.y = e.clientY;
       this.drag.moved += Math.abs(dx) + Math.abs(dy);
-      // mouse sensitivity is the mouse's; a finger dragging on a touch screen keeps its speed.
+      // Mouse sensitivity is the mouse's; a finger dragging on a touch screen keeps its speed.
       const speed = DRAG_LOOK_SPEED * (e.pointerType === 'mouse' ? this.sensitivity : 1);
       this.look(dx * speed, dy * speed); // no orbit, third person looks around too
     });
@@ -190,7 +190,7 @@ export abstract class PlayerInput {
     return !this.lockFailed && typeof this.dom.requestPointerLock === 'function'; // third person too
   }
 
-  /** how far the mouse turns your head, 0.25–2; 1 is upstream's speed. Keys, walking and the wheel aren't affected. */
+  /** How far the mouse turns your head, 0.25–2; 1 is upstream's speed. Keys, walking and the wheel aren't affected. */
   setMouseSensitivity(value: number) {
     if (Number.isFinite(value)) this.sensitivity = THREE.MathUtils.clamp(value, 0.25, 2);
   }
@@ -271,7 +271,7 @@ export abstract class PlayerInput {
   private look(dx: number, dy: number) {
     this.camYaw -= dx;
     this.ease.lookYaw(dx); // the mouse is never a jump, so it shows at once
-    // in third person the camera tips over you instead (down the mouse, up the camera goes).
+    // In third person the camera tips over you instead (down the mouse, up the camera goes).
     if (this.view === 'third') {
       const before = this.camPitch;
       this.camPitch = THREE.MathUtils.clamp(this.camPitch + dy, THIRD_PITCH_MIN, THIRD_PITCH_MAX);

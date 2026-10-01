@@ -14,7 +14,7 @@ import { worktreePref } from '../../ui/prompt';
 import { officeChoice } from '../../ui/provider';
 import { hiringPaused } from '../../ui/usage';
 import type { Interactable } from '../../world/types';
-// cards from the project's issue sources, by their key, and a card as a kanban task.
+// Cards from the project's issue sources, by their key, and a card as a kanban task.
 import { cardId } from '../../../shared/kanban/issuecard.js';
 import { cardFields, cardMeeting, cardOnQueue, cardPrompt, cardTask, issueCardLabel, takeCard } from '../../kanban/issuecards';
 import { cardToTaskWorker } from '../../kanban/office3d';
@@ -58,7 +58,7 @@ export function installCarrying(ctx: Ctx, deps: CarryingDeps) {
     closeAllModals();
     deps.dropBall();
     const carrying = ctx.carrying();
-    // a card from the project's issue sources by its key.
+    // A card from the project's issue sources by its key.
     if (carrying && cardId(carrying) === cardId(it)) return;
     if (carrying) toast(`📌 ${issueCardLabel(carrying)} went back on the board`);
     setCarrying(takeCard(it));
@@ -95,7 +95,7 @@ export function installCarrying(ctx: Ctx, deps: CarryingDeps) {
       else putBack();
       return true;
     }
-    // a card from the project's issue sources goes by its key, with its own prompt.
+    // A card from the project's issue sources goes by its key, with its own prompt.
     const prompt = cardPrompt(card);
     const name = issueCardLabel(card);
     const ids = cardFields(card);
@@ -132,7 +132,7 @@ export function installCarrying(ctx: Ctx, deps: CarryingDeps) {
     const why = w ? cantTakeCard(w) : hiringPaused() ? '💸 Budget spent — hiring resumes tomorrow' : '';
     if (why) toast(why, 'warn');
     else if (w && cardToTaskWorker(ctx.net, w, card, prompt, putDown)) {
-      // only the task's own issue goes to a task worker, as a message on the task.
+      // Only the task's own issue goes to a task worker, as a message on the task.
     } else if (w) {
       ctx.net.send({ t: 'worker.prompt', workerId: w.id, prompt, ...ids });
       putDown();

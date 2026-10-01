@@ -14,7 +14,7 @@ export interface QueueTask {
   effort?: AgentEffort;
   /** The GitHub issue it came from, when it did. */
   issue?: number;
-  /** the ticket key of the issue-source card it came from, when it did. */
+  /** The ticket key of the issue-source card it came from, when it did. */
   issueKey?: string;
   title: string;
   prompt: string;

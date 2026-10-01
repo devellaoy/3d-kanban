@@ -17,7 +17,7 @@ export function routeChangesMessage(msg: ServerMsg) {
   listeners.forEach((fn) => fn(msg));
 }
 
-/** the task's Changes view (kanban/changesview) hears every server message too; the returned function stops it. */
+/** The task's Changes view (kanban/changesview) hears every server message too; the returned function stops it. */
 export function onChangesMessage(fn: (msg: ServerMsg) => void): () => void {
   listeners.add(fn);
   return () => listeners.delete(fn);
@@ -120,7 +120,7 @@ export function openChanges(net: Net, workerId: string, onTerminal?: () => void,
   if (current?.workerId === workerId) return current.show(repo);
   const info = store.workers.get(workerId);
   if (!info) return;
-  // a kanban task's worker gets its task's Changes window instead: every repository, per commit too.
+  // A kanban task's worker gets its task's Changes window instead: every repository, per commit too.
   const task = kanbanOf(info);
   if (task) return void import('../kanban/changesview').then((m) => {
     const old = current;

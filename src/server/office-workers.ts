@@ -175,7 +175,7 @@ const MCP_ENV = ['AGENT_OFFICE_HOOK_URL', 'AGENT_OFFICE_WORKER_ID', 'AGENT_OFFIC
 /** Its tools that only look, which Claude Code workers may call without asking. */
 export const MCP_READ_ONLY = [`mcp__${MCP_NAME}__list_workers`];
 /**
- * its tools that read other kanban tasks (bin/office-workers.js lists them to a worker
+ * Its tools that read other kanban tasks (bin/office-workers.js lists them to a worker
  * with AIKANBAN_API_BASE set). They only look too; kanban task workers are launched allowing them
  * (see integrations/refs), since MCP_READ_ONLY's list is upstream's.
  */

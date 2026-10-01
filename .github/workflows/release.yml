@@ -3,9 +3,9 @@ name: Release
 # Every change to the app that lands on main is built, tested and published as a GitHub release,
 # and install.sh installs the newest one. The version is package.json's major.minor plus the
 # number of commits on main (v0.1.68, v0.1.69, ...); bump package.json for a new minor.
-# 3d-kanban: releases of devellaoy/3d-kanban (this repository), with the asset 3d-kanban.tgz, which
+# Releases of devellaoy/3d-kanban (this repository), with the asset 3d-kanban.tgz, which
 # install.sh and install.ps1 download.
-# 3d-kanban: pull requests don't run this workflow; it runs only when a change is merged to main
+# Pull requests don't run this workflow; it runs only when a change is merged to main
 # (or by hand).
 
 on:
@@ -61,7 +61,7 @@ jobs:
           cp package-lock.json npm-shrinkwrap.json
           npm pkg set 'files[]=npm-shrinkwrap.json'
           npm pack --ignore-scripts
-          # 3d-kanban: the package and its release asset are named 3d-kanban.
+          # The package and its release asset are named 3d-kanban.
           mv "3d-kanban-$version.tgz" 3d-kanban.tgz
           tar -tzf 3d-kanban.tgz | grep -qx 'package/npm-shrinkwrap.json'
           tar -tzf 3d-kanban.tgz | grep -qx 'package/bin/agent-office.js'

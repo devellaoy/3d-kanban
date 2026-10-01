@@ -39,7 +39,7 @@ export function saveWorkers(file: string, workers: Iterable<Worker>, stopping: b
     task: info.task,
     pr: info.pr,
     meeting: info.meeting,
-    // a task worker, and how it's launched (see SpawnExtra).
+    // A task worker, and how it's launched (see SpawnExtra).
     kanban: info.kanban,
     extra,
     workedMs: workedMs(info),

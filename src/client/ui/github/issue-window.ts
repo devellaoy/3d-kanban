@@ -5,7 +5,7 @@ import { store } from '../../state';
 import { h, openModal, timeAgo } from '../dom';
 import { issueMeeting } from '../meeting';
 import { providerPicker } from '../provider';
-// which of the project's repositories an issue is in (github/ghrepo.ts), and the queue's task for a card from the issue sources.
+// Which of the project's repositories an issue is in (github/ghrepo.ts), and the queue's task for a card from the issue sources.
 import { ghLabel, ghUrl, sameItem } from './ghrepo';
 import { taskForCard } from '../../kanban/issuecards';
 import { getJson } from './api';
@@ -20,7 +20,7 @@ import { issueContext, issuePrompt, type BoardActions } from './prompts';
 export function openIssue(first: GhIssue, net: Net, actions: BoardActions) {
   let it = first;
   const itemUrl = it.url;
-  // which of the project's repositories it's in (none: the floor's own, as upstream).
+  // Which of the project's repositories it's in (none: the floor's own, as upstream).
   const repo = first.repo;
   const label = ghLabel(it.number, repo);
   let detail: GhIssueDetail | null = null;

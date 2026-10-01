@@ -4,7 +4,7 @@ import type { Net } from '../../net';
 import { store, workerForPull } from '../../state';
 import { h, openModal, type Modal } from '../dom';
 import { officePrompt } from '../prompts';
-// the PR review picker, and which of the project's repositories a PR is in (github/ghrepo.ts).
+// The PR review picker, and which of the project's repositories a PR is in (github/ghrepo.ts).
 import { openReviewPicker } from '../../kanban/prpicker';
 import { prOwner } from '../../kanban/prowner';
 import { ghLabel, ghUrl, sameItem } from './ghrepo';
@@ -25,7 +25,7 @@ import { buildTree, looksGenerated, parseDiff, renderFileDiff, renderThread, rep
 export function openPull(first: GhPull, net: Net, actions: BoardActions) {
   let it = first;
   const itemUrl = it.url;
-  // which of the project's repositories it's in (none: the floor's own, as upstream).
+  // Which of the project's repositories it's in (none: the floor's own, as upstream).
   const repo = first.repo;
   const label = ghLabel(it.number, repo);
   const reviewed = new Reviewed(it.url);
@@ -120,7 +120,7 @@ export function openPull(first: GhPull, net: Net, actions: BoardActions) {
       ...nodes(
       w ? h('button.btn', { type: 'button', onclick: () => actions.goToDesk(w.deskId) }, `🪑 Go to ${w.name}'s desk`) : null,
       h('button.btn', { type: 'button', title: 'Send a worker your own prompt about this PR', onclick: () => actions.ask(pullContext(it), `Ask about PR #${it.number}`) }, '✍️ Ask a worker…'),
-      // both reviews first ask which of the project's PRs go with it (kanban/prpicker.ts).
+      // Both reviews first ask which of the project's PRs go with it (kanban/prpicker.ts).
       isOpen ? h('button.btn', { type: 'button', onclick: () => openReviewPicker(net, it, 'review', () => actions.assign(reviewPrompt(it), `Review PR #${it.number}`)) }, '🔍 Review') : null,
       isOpen
         ? h('button.btn', { type: 'button', title: 'A few workers review it in the meeting room, each through its own lens, and the office posts one combined review', onclick: () => openReviewPicker(net, it, 'panel', () => actions.meeting({ pattern: 'review', pr: it.number, title: `Review of PR #${it.number}`, prompt: officePrompt('pull.panel', pullVars(it)) })) }, '🤝 Review panel…')

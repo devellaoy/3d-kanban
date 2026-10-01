@@ -71,7 +71,7 @@ export const building: Slice = {
     },
     floors(s, m) {
       s.floors = m.floors;
-      // a floor renamed (from the kanban's settings) renames the top bar of whoever is on it.
+      // A floor renamed (from the kanban's settings) renames the top bar of whoever is on it.
       const here = s.project && s.floors.find((f) => f.id === s.floor);
       if (here && s.project && s.project.name !== here.name) s.project = { ...s.project, name: here.name };
       return ['floors'];

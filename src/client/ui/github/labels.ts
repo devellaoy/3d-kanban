@@ -21,7 +21,7 @@ export function labelChip(l: GhLabel) {
  * then save, and the office's gh account adds and takes off the difference.
  */
 export function openLabels(kind: 'issue' | 'pull', it: GhIssue | GhPull, net: Net, onSaved?: (labels: GhLabel[]) => void) {
-  // by the repository it's in too.
+  // By the repository it's in too.
   const key = ghKey(kind, it.number, it.repo);
   const label = ghLabel(it.number, it.repo);
   const had = new Set(it.labels.map((l) => l.name));

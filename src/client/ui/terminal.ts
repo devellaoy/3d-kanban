@@ -14,7 +14,7 @@ import { DROP_MAX_BYTES, droppedPaths } from '../../shared/drops';
 import { providerLabel, providerUsageNote, providerUsageState, providerWaitingLabel, resolvedProvider } from './provider';
 import { naturalKey } from './termkeys';
 import { termTabs } from './termtabs';
-// a task worker's window has tabs: the terminal and its kanban task; files dropped on the task pane aren't the terminal's.
+// A task worker's window has tabs: the terminal and its kanban task; files dropped on the task pane aren't the terminal's.
 import { mountWorkerTabs, type WorkerTabs } from '../kanban/worker3d';
 import { inTaskPane, type WorkerTab } from '../kanban/office';
 
@@ -73,7 +73,7 @@ export interface TerminalOptions {
    * take the focus as it opens either, so a phone's keyboard stays down until you tap into it.
    */
   keypad?: boolean;
-  /** a task worker's window opens on this tab (the kanban's 📍 Show in 3D asks for the task). */
+  /** A task worker's window opens on this tab (the kanban's 📍 Show in 3D asks for the task). */
   tab?: WorkerTab;
 }
 
@@ -405,7 +405,7 @@ export function openTerminal(net: Net, workerId: string, onChanges?: () => void,
     try {
       const paths = await Promise.all(files.map((f) => uploadDrop(workerId, f)));
       if (current?.modal !== modal) return;
-      // the tab changed while it uploaded: nothing is typed into a terminal you can't see.
+      // The tab changed while it uploaded: nothing is typed into a terminal you can't see.
       if (termHidden()) return void toast('The terminal’s tab was left while the file uploaded, so it wasn’t typed in: drop it again there', 'warn');
       sayTyping();
       sendSize(true);
@@ -493,7 +493,7 @@ export function openTerminal(net: Net, workerId: string, onChanges?: () => void,
     term.focus();
   });
 
-  // the tabs, once the terminal is open (xterm measures its cells as it opens).
+  // The tabs, once the terminal is open (xterm measures its cells as it opens).
   const kanbanTabs: WorkerTabs | null = mountWorkerTabs(net, info, el, host, { tab: opts.tab, focusTerminal: () => void (termHidden() || term.focus()) });
   ro.observe(host);
   refresh();

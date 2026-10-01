@@ -9,7 +9,7 @@ import { DOG_NAME_MAX, cleanDogName } from '../../shared/dog';
 import { h, openModal, timeAgo } from './dom';
 import { agentFields, choiceLabel, officeChoice } from './provider';
 import { openPromptEditor, rewrittenPrompts } from './prompts';
-// the kanban's settings are categories of this window, loaded when one is first shown.
+// The kanban's settings are categories of this window, loaded when one is first shown.
 import { KANBAN_PANES, kanbanSettingsSlots, type KanbanSettingsPane } from '../kanban/settingsslot';
 import { mouseSensitivityRow } from './sensitivity';
 
@@ -548,7 +548,7 @@ export function openSettings(net: Net, settings: Settings, onChange: (s: Setting
       setting('Workers whose pull request merged', 'office', leaveRow, leaveNote),
       setting('Prompts', 'office', promptsOpen, promptsNote),
     ],
-    // the kanban's settings.
+    // The kanban's settings.
     kanban: [kanban.panes.kanban],
     projects: [kanban.panes.projects],
   };

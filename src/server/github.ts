@@ -102,7 +102,7 @@ export class MergeWatch {
   }
 }
 
-/** a pull request by repository and number, so a project's repositories' PR numbers never collide. */
+/** A pull request by repository and number, so a project's repositories' PR numbers never collide. */
 function pullKey(n: number, repo?: string): string {
   return `${repo?.toLowerCase() ?? ''}#${n}`;
 }
@@ -123,11 +123,11 @@ export class GitHub {
     private onPulls: (s: GhState<GhPull>) => void,
     /** owner/name its issues and PRs are marked with: one of a project's other repositories (see Floor.pullsState). */
     readonly nameWithOwner?: string,
-    /** only its pull requests are fetched (a project's other repository has no issues board of its own). */
+    /** Only its pull requests are fetched (a project's other repository has no issues board of its own). */
     private pullsOnly = false,
   ) {}
 
-  /** the repository its gh calls name: the given one, else the checkout's origin, never gh's pick among the remotes (see ghrepo.ts). */
+  /** The repository its gh calls name: the given one, else the checkout's origin, never gh's pick among the remotes (see ghrepo.ts). */
   private get target(): string | undefined {
     return this.nameWithOwner ?? checkoutRepo(this.dir);
   }
@@ -215,7 +215,7 @@ export class GitHub {
 
   /** The PR's unified diff, as `git diff` prints it. */
   pullDiff(n: number): Promise<string> {
-    // a PR over GitHub's 300-file diff limit is built from the files API instead (prfiles.ts).
+    // A PR over GitHub's 300-file diff limit is built from the files API instead (prfiles.ts).
     return pullDiffOrFiles(gh, this.target, n, this.dir, () => gh(['pr', 'diff', String(n), ...repoFlag(this.target), '--color', 'never'], this.dir, 60_000));
   }
 

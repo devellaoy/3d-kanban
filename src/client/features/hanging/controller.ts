@@ -169,7 +169,7 @@ export class Hanger {
   place(ndc?: THREE.Vector2) {
     const cur = this.cur;
     if (!cur) return;
-    // the crosshair in third person too (see update), wherever the click was.
+    // The crosshair in third person too (see update), wherever the click was.
     this.update();
     const at = this.at;
     if (!at) return toast('Aim at a wall to hang it there');

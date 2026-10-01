@@ -55,7 +55,7 @@ export interface Settings {
   pushToTalk: boolean;
   /** Desktop notifications when a worker needs input or finishes while you're in another tab (once the browser allows them). */
   notify: boolean;
-  /** how far the mouse turns your head, 0.25–2 (1 is the usual speed). */
+  /** How far the mouse turns your head, 0.25–2 (1 is the usual speed). */
   mouseSensitivity: number;
   /** Which panels show on screen. */
   hud: Record<HudPanel, boolean>;

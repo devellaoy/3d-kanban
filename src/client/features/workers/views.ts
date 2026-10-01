@@ -27,7 +27,7 @@ import { renderLimits } from '../../ui/limits';
 import { modelBadge, providerLabel } from '../../ui/provider';
 import { renderUsage } from '../../ui/usage';
 import { Worker } from '../../world/character';
-// task workers in the office (docs/kanban-coupling.md).
+// Task workers in the office (docs/kanban-coupling.md).
 import { kanbanCard, kanbanStarter, workerLabel } from '../../kanban/office';
 import { seatView } from '../../kanban/watch3d';
 import { Jail } from './jail';
@@ -162,7 +162,7 @@ export function installWorkerViews(ctx: Ctx, core: CoreState, parts: WorkerViews
         const beside = desk.def.station ? new THREE.Vector3(0.62, 0.9, 0) : new THREE.Vector3(0.64, 0.5, -0.1);
         model.setPropSpot(model.root.worldToLocal(desk.laptopAnchor.localToWorld(beside)));
         // Called to a meeting just now: out of the elevator and over to the table, one after another.
-        // a task's reviewer walks in the same way, to behind its implementer's chair.
+        // A task's reviewer walks in the same way, to behind its implementer's chair.
         if ((desk.def.room || desk.def.watch) && !seatedAlready) arrivals.add(model, desk);
         // In the castle, a worker at the tables gets up and walks about (see Court): a new one runs in to its seat.
         else if (court && inCourt(w)) court.add(w.id, model, desk, seatedAlready ? undefined : cameFrom(w));
@@ -259,7 +259,7 @@ export function installWorkerViews(ctx: Ctx, core: CoreState, parts: WorkerViews
     const h = plan().herald;
     if (w.via === 'herald' && h) return [h.x + Math.sin(h.rotY) * 1.1, h.z + Math.cos(h.rotY) * 1.1];
     if (w.createdBy.endsWith('(queue)')) return [plan().door.x, plan().door.z];
-    // the kanban's hires come in by the doors too.
+    // The kanban's hires come in by the doors too.
     if (kanbanStarter(w.createdBy) !== undefined) return [plan().door.x, plan().door.z];
     return undefined;
   }

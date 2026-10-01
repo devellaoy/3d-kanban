@@ -283,7 +283,7 @@ export class Accounts {
   }
 }
 
-// the command is `kanban3d` (here and in the hints below).
+// The command is `kanban3d` (here and in the hints below).
 const HELP = `kanban3d accounts — who can sign in to the office
 
 Usage:

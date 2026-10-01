@@ -17,7 +17,7 @@ import { $, closeAllModals, h, modalOpen, toast } from '../../ui/dom';
 import { openQueue } from '../../ui/queue';
 import { openSearch } from '../../ui/search';
 import { openTerminal, type TerminalFind } from '../../ui/terminal';
-// task workers in the office (docs/kanban-coupling.md).
+// Task workers in the office (docs/kanban-coupling.md).
 import { kanbanOf, waitText, type WorkerTab } from '../../kanban/office';
 
 /** Registers N (and the Workers panel's count), the compass's tick ('render') and / (search). */
@@ -44,7 +44,7 @@ export function installWaiting(ctx: Ctx, core: CoreState, parts: Pick<Parts, 'wo
     parts.actions.standAt(desk);
     const waiting = waitingInOrder(store.workers.values());
     const of = waiting.length > 1 ? ` (${waiting.findIndex((x) => x.id === w.id) + 1} of ${waiting.length})` : '';
-    // a task worker says what its task waits on.
+    // A task worker says what its task waits on.
     const k = kanbanOf(w);
     const task = k ? waitText(k, Date.now()) : '';
     nextToast = toast(`${task ? `🗂️ #${k!.taskId} · ${w.name}: ${task}` : w.status === 'needs_input' ? `🙋 ${w.name} needs input` : `✅ ${w.name} is done`}${of}. E opens its terminal`);

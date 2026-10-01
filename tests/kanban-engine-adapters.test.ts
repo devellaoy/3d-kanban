@@ -18,7 +18,7 @@ function scratch(t: { after(fn: () => void): void }) {
   };
 }
 
-// Synthetic transcripts in the shapes docs/fork.md's M0 notes describe (no real session content).
+// Synthetic transcripts in the shapes docs/fork.md's M0 spike results describe (no real session content).
 const cUser = (content: unknown, extra: object = {}) => ({ type: 'user', message: { role: 'user', content }, ...extra });
 const cAssistant = (content: unknown[], extra: object = {}, id?: string) => ({ type: 'assistant', message: { ...(id ? { id } : {}), role: 'assistant', content }, ...extra });
 const text = (t: string) => ({ type: 'text', text: t });
