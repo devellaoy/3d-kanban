@@ -1,0 +1,4 @@
+interface:
+  display_name: "Kanban UI Screenshots"
+  short_description: "Selainkuvat ja responsiivisen UI:n varmennus"
+  default_prompt: "Use $kanban-ui-screenshots to render this UI in a real browser and verify it with screenshots and measurements."

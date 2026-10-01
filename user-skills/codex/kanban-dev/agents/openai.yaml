@@ -1,0 +1,4 @@
+interface:
+  display_name: "Kanban Dev"
+  short_description: "Kokonainen toteutus ja todennettu laatutaso"
+  default_prompt: "Use $kanban-dev to deliver the complete agreed outcome with the simplest suitable implementation, a task-specific team, and evidence-based review of completeness and complexity."
