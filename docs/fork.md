@@ -364,6 +364,7 @@ The fork's own folders `src/{shared,server,client}/youtube/` (see `docs/features
   hook's payload carries `last_assistant_message`, the fallback when the log doesn't catch up (the fix
   relies on it: without it, a log that never catches up still gives what the agent said on the way,
   with a warning in the office's log).
+- The kanban's Codex adapter probes `codex --help` once at start for `--dangerously-bypass-hook-trust` and passes it to workers when present (`adapters/codex-hook-trust.ts`).
 - Codex rollout JSONL (`~/.codex/sessions/YYYY/MM/DD/rollout-*.jsonl`): `event_msg` / `task_complete`
   carries `last_agent_message`.
 - Claude's background agents: an async launch is a user line with `toolUseResult.isAsync` and
