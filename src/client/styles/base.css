@@ -112,3 +112,23 @@ a.when:hover { text-decoration: underline; }
 .pd-side input[type=text] { width: 100%; font: inherit; font-size: var(--fs-sm); border: var(--bw-sm) solid var(--ink); border-radius: 10px; padding: 5px 9px; background: var(--field); outline: none; }
 .elevator .dir-change { margin-left: 6px; padding: 1px 8px; font-size: var(--fs-xs); border-width: var(--bw-sm); border-radius: 9px; box-shadow: var(--shadow-xs); vertical-align: baseline; }
 .meeting-field label { margin: 0; }
+
+/* Touch targets: a theme that sets --hit-min (themes/tokens.css) grows the small controls to that size
+   with an invisible ::after centred on them. --hit-t/-r/-b/-l cap how far it may reach up, right, down
+   and left, so a target never lands on a neighbour (the next row, a chip's text, the item beside it).
+   :where() keeps it at no specificity, so any rule that positions one of these controls still wins. */
+:where(.kb-move, .kb-x, .term-tab-close, .panel-x, .pd-tick, .pd-fold, .menu-pin, .close) { position: relative; }
+:where(.kb-move, .kb-x, .term-tab-close, .panel-x, .pd-tick, .pd-fold, .menu-pin, .close)::after {
+  content: ''; position: absolute;
+  top: max(-1 * var(--hit-t, 99px), min(0px, (100% - var(--hit-min)) / 2));
+  right: max(-1 * var(--hit-r, 99px), min(0px, (100% - var(--hit-min)) / 2));
+  bottom: max(-1 * var(--hit-b, 99px), min(0px, (100% - var(--hit-min)) / 2));
+  left: max(-1 * var(--hit-l, 99px), min(0px, (100% - var(--hit-min)) / 2));
+}
+.kb-move { --hit-t: 8px; --hit-r: 8px; --hit-b: 3px; --hit-l: 5px; }   /* the card's edge; the title 4px below; the tool icon */
+.kb-x { --hit-t: 5px; --hit-r: 7px; --hit-b: 5px; --hit-l: 4px; }     /* its chip and half the gap to the next; not the size text */
+.pd-tick { --hit-t: 4px; --hit-r: 5px; --hit-b: 4px; --hit-l: 6px; }  /* inside its own file row */
+.pd-fold { --hit-t: 6px; --hit-r: 7px; --hit-b: 5px; --hit-l: 9px; }  /* inside the file's sticky header */
+.term-tab-close { --hit-t: 4px; --hit-r: 6px; --hit-b: 4px; --hit-l: 0px; }   /* not over its tab's label */
+.panel-x { --hit-t: 7px; --hit-r: 7px; --hit-b: 5px; }                /* above the panel's first row */
+.menu-pin { --hit-t: 0px; --hit-r: 6px; --hit-b: 0px; --hit-l: 1px; } /* rows sit 1px apart; the item is 2px to its left */

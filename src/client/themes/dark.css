@@ -52,6 +52,7 @@
   --radius-sm: 12px;
   --radius-lg: 16px;
   --radius-pill: 999px;
+  --hit-min: 36px;
 
   /* ---- Accent and status ---- */
   /* The primary button is white with dark text, as ChatGPT's; green is the "on" and "done" colour. */
@@ -215,10 +216,3 @@
 :root[data-theme="dark"] .card { border-radius: var(--radius-lg); box-shadow: var(--shadow-lg); }
 :root[data-theme="dark"] .card button { border-radius: var(--radius-pill); }
 :root[data-theme="dark"] .card button:active { transform: none; }
-
-/* Small controls (a card's ⋯, an attachment's ✕, a HUD panel's ✕, a terminal tab's ✕, a diff's tick and
-   fold, the ☰ menu's pin, a window's ✕) keep their drawn size but get a 36px touch target around it. */
-:root[data-theme="dark"] :is(.kb-move, .kb-x, .term-tab-close, .panel-x, .pd-tick, .pd-fold, .menu-pin, .close:not(.corner)) { position: relative; }
-:root[data-theme="dark"] :is(.kb-move, .kb-x, .term-tab-close, .panel-x, .pd-tick, .pd-fold, .menu-pin, .close)::after {
-  content: ''; position: absolute; left: 50%; top: 50%; width: max(100%, 36px); height: max(100%, 36px); translate: -50% -50%;
-}

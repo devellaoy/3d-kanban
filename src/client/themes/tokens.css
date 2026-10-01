@@ -58,6 +58,8 @@
   --radius-sm: 12px;        /* buttons, inputs, cards' insides */
   --radius-lg: 20px;        /* windows */
   --radius-pill: 999px;     /* pills, chips, count badges */
+  --hit-min: 0px;           /* the smallest touch target of a small control (a card's ⋯, a chip's ✕): styles/base.css
+                               grows them to it with an invisible ::after, never onto a neighbour; 0 leaves them as drawn */
 
   /* ---- Accent and status ---- */
   --accent: #ff8a5b;

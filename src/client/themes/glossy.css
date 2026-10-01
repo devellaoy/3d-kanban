@@ -53,6 +53,7 @@
   --radius-sm: 12px;
   --radius-lg: 18px;
   --radius-pill: 999px;
+  --hit-min: 36px;
 
   /* ---- Accent and status ---- */
   /* Apple's system colours, the accessible variants where white text sits on them: white text stays
@@ -252,10 +253,3 @@
   box-shadow: var(--shadow-sm), inset 0 1px 0 rgba(255, 255, 255, .35);
 }
 :root[data-theme="glossy"] .card button:active { transform: none; }
-
-/* Small controls (a card's ⋯, an attachment's ✕, a HUD panel's ✕, a terminal tab's ✕, a diff's tick and
-   fold, the ☰ menu's pin, a window's ✕) keep their drawn size but get a 36px touch target around it. */
-:root[data-theme="glossy"] :is(.kb-move, .kb-x, .term-tab-close, .panel-x, .pd-tick, .pd-fold, .menu-pin, .close:not(.corner)) { position: relative; }
-:root[data-theme="glossy"] :is(.kb-move, .kb-x, .term-tab-close, .panel-x, .pd-tick, .pd-fold, .menu-pin, .close)::after {
-  content: ''; position: absolute; left: 50%; top: 50%; width: max(100%, 36px); height: max(100%, 36px); translate: -50% -50%;
-}
