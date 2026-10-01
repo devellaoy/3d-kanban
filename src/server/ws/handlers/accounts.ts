@@ -3,6 +3,7 @@ import type { AccountsClientMsg } from '../../../shared/protocol.js';
 import type { Ctx } from '../../office/context.js';
 import type { Client } from '../../office/client.js';
 import { str } from '../../office/input.js';
+import { unwatchAccountCodexLimits } from '../../codex-limits/index.js';
 import type { HandlerMap } from './types.js';
 
 /** Whether `c` may manage accounts; if not, they're told so. */
@@ -42,6 +43,7 @@ export const accountsHandlers = {
     ctx.signins.forget(a.id); // and their Claude and GitHub sign-ins go with the account
     ctx.accountLimits.get(a.id)?.reader.close();
     ctx.accountLimits.delete(a.id);
+    unwatchAccountCodexLimits(ctx, a.id); // and they stop watching the Codex limits
   },
   'accounts.role'(ctx, c, msg) {
     const who = c.peer.name;

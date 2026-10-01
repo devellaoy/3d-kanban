@@ -157,6 +157,8 @@ export interface KanbanContext {
   ghAs?(accountId?: string): { env: Record<string, string> } | string | undefined;
   /** The office's team notifications (upstream's webhook): one line about a task waiting on a person. */
   notify?(title: string, detail?: string): void;
+  /** When the Codex limit a run on `codexHome` (the office's, when not given) hit starts over (ms since epoch), if Codex says; for autoResume. */
+  codexResetAt?(codexHome?: string): Promise<number | undefined>;
   engine: KanbanEngineApi;
   pulls: KanbanPullsApi;
   refs: KanbanRefsApi;

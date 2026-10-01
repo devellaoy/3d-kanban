@@ -1,5 +1,6 @@
 // The kanban inside the office's context: installing it once the floors are
 // open, who a connection is to it, and the small lookups the office's handlers share when they touch it.
+import { codexLimitsOf } from '../codex-limits/index.js';
 import type { Client } from '../office/client.js';
 import type { Ctx } from '../office/context.js';
 import { str } from '../office/input.js';
@@ -31,6 +32,8 @@ export function openKanban(ctx: Ctx, hookPort: number): Kanban {
     // GitHub writes on issues (comments, assignees) go out under the person's own gh sign-in, as taking a card does.
     ghAs: (id) => (id ? ctx.signins.ghAs(id) : undefined),
     notify: (title, detail) => ctx.webhook.announce(title, detail),
+    // A Codex usage limit resumes when its account's own limits say they reset.
+    codexResetAt: (home) => codexLimitsOf(ctx).resetAt(home),
   });
 }
 

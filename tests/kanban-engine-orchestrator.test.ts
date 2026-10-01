@@ -336,6 +336,56 @@ test('a usage limit waits with retryAt, and the sweep carries on by itself', asy
   assert.ok(fx.invocations().some((i) => i.prompt && /was cut short/.test(i.prompt)), 'typed into the live session');
 });
 
+test('a Codex usage limit resumes at the reset time its account reports, plus a minute', async (t) => {
+  const clock = Date.now();
+  const fx = await engineFixture({ engine: { sweepMs: 10_000, now: () => clock } });
+  t.after(() => fx.close());
+  const resetAt = clock + 30 * 60_000;
+  let asked = 0;
+  fx.ctx.codexResetAt = async () => {
+    asked++;
+    return resetAt;
+  };
+  fx.setRules([{ when: 'Implement kanban task', reply: "You've hit your usage limit. Try again later." }]);
+  const task = fx.newTask({ tool: 'codex', usePlan: false, useReview: false });
+  await fx.engine.start(task.id, ADA);
+  const limited = await fx.waitTask(task.id, (x) => x.waitingReason === 'usage_limit', 'the usage limit');
+  assert.equal(limited.retryAt, resetAt + 60_000);
+  assert.equal(asked, 1);
+});
+
+test('a Codex usage limit with no reset time known (or a failing lookup) backs off; a Claude one never asks Codex', async (t) => {
+  const clock = Date.now();
+  const fx = await engineFixture({ engine: { sweepMs: 10_000, now: () => clock } });
+  t.after(() => fx.close());
+  let asked = 0;
+  fx.ctx.codexResetAt = async () => {
+    asked++;
+    return undefined;
+  };
+  fx.setRules([{ when: 'Implement kanban task', reply: "You've hit your usage limit. Try again later." }]);
+  const a = fx.newTask({ tool: 'codex', usePlan: false, useReview: false });
+  await fx.engine.start(a.id, ADA);
+  const limitedA = await fx.waitTask(a.id, (x) => x.waitingReason === 'usage_limit', 'the codex usage limit');
+  assert.equal(limitedA.retryAt, clock + 5 * 60_000, 'the first backoff step');
+  fx.ctx.codexResetAt = async () => {
+    throw new Error('app-server is gone');
+  };
+  const b = fx.newTask({ tool: 'codex', usePlan: false, useReview: false });
+  await fx.engine.start(b.id, ADA);
+  const limitedB = await fx.waitTask(b.id, (x) => x.waitingReason === 'usage_limit', 'the failing lookup');
+  assert.equal(limitedB.retryAt, clock + 5 * 60_000);
+  fx.ctx.codexResetAt = async () => {
+    asked++;
+    return clock + 1_800_000;
+  };
+  const askedBefore = asked;
+  const c = fx.newTask({ usePlan: false, useReview: false });
+  await fx.engine.start(c.id, ADA);
+  await fx.waitTask(c.id, (x) => x.waitingReason === 'usage_limit', 'the claude usage limit');
+  assert.equal(asked, askedBefore, 'Codex is not asked about a Claude run');
+});
+
 test('a pr turn: PR: lines link their own repositories’ PRs nobody has; any other PR the board links by branch after the refresh', async (t) => {
   const fx = await engineFixture();
   t.after(() => fx.close());
