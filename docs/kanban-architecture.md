@@ -34,7 +34,9 @@ document disagree, fix one of them in the same change.
   another repository instead, or re-add the floor"; the settings form shows it read-only), else the
   one saved for the primary in `repos`. Kanban code reads the primary's owner/name only through
   `projectRepos` (issue sources, PR bundles and reviews, `pr_links` matching, the prompts' `{{repos}}`,
-  the refs bundle), never `FloorDef.repo`; upstream's own uses of `FloorDef.repo` are unchanged.
+  the refs bundle), never `FloorDef.repo`; another git repository with no saved `remote` gets it from its
+  checkout's `origin` (`checkoutRepo`, github.com only; never written to `floors.json`, and
+  `projectInfo` sends it as `detectedRemote`, not `remote`); upstream's own uses of `FloorDef.repo` are unchanged.
 - **Task** (`KanbanTask`): a unit of work on one project, touching the project's repositories
   (all of them by default, or a chosen subset `repoIds`). Ids are integers (`#123`), global across projects.
 - **Run**: one phase execution of a task (`plan`, `implement`, `review`, `fix`, `resume`, `pr`, `pr-fix`,

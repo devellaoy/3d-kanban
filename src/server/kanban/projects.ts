@@ -17,6 +17,7 @@ import { normalizeRepo, sameRepo } from '../../shared/floors.js';
 import type { KanbanProjectInfo, KanbanSettings, ProjectRepo } from '../../shared/kanban/types.js';
 import { REPO_ID_RE, type ProjectRepoInput } from '../../shared/kanban/protocol.js';
 import { repoFloorId } from '../../shared/kanban/repofloor.js';
+import { checkoutRepo } from './ghrepo.js';
 import { BRANCH_RE } from './repos-file.js';
 
 export { loadRepos } from './repos-file.js';
@@ -36,9 +37,18 @@ export function primaryRepo(def: Pick<FloorDef, 'id' | 'name' | 'dir' | 'repo'>)
  * A project's repositories, the primary first. The primary always follows the floor itself: its
  * checkout, and its GitHub repository when the floor knows one (FloorDef.repo); a floor that doesn't
  * (a local checkout) takes the remote saved for the primary. Every kanban consumer of the primary's
- * owner/name goes through here, never FloorDef.repo.
+ * owner/name goes through here, never FloorDef.repo. Another git repository with no saved GitHub
+ * repository takes the one its checkout's origin names (github.com only); a saved one always wins.
  */
 export function projectRepos(def: FloorDef): ProjectRepo[] {
+  return projectReposSaved(def).map((r) => {
+    const remote = r.primary || r.kind !== 'git' || r.remote ? undefined : checkoutRepo(r.dir);
+    return remote ? { ...r, remote } : r;
+  });
+}
+
+/** projectRepos as saved: no remote read from the checkouts. */
+function projectReposSaved(def: FloorDef): ProjectRepo[] {
   const base = primaryRepo(def);
   if (!def.repos?.length) return [base];
   const saved = def.repos.find((r) => r.primary);
@@ -118,12 +128,20 @@ export function repoSources(def: FloorDef, repoIds: string[] | null): RepoSource
 /** A project as the kanban lists it. */
 export function projectInfo(def: FloorDef, settings: KanbanSettings, open: boolean): KanbanProjectInfo {
   const p = settings.projects[def.id];
+  const saved = projectReposSaved(def);
   return {
     id: def.id,
     name: def.name,
     ...(def.repo ? { repo: def.repo } : {}),
     dir: def.dir,
-    repos: projectRepos(def),
+    // A remote read from a checkout is not sent as `remote`: the settings form would save it.
+    repos: projectRepos(def).map((r, i) => {
+      if (r.remote && !saved[i].remote) {
+        const { remote, ...rest } = r;
+        return { ...rest, detectedRemote: remote };
+      }
+      return r;
+    }),
     open,
     settings: {
       maxConcurrent: p?.maxConcurrent ?? 2,
