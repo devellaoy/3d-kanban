@@ -126,19 +126,23 @@ test('Jira calls: only to the token’s own site, with the 401 text of the sourc
 
 const ENV = { GH_CONFIG_DIR: '/home/maija/gh' };
 
-test('GitHub comments: the newest fifty, oldest first; a comment goes by -f, signed under the office’s gh only', async () => {
-  const many = Array.from({ length: 60 }, (_, i) => ({ id: i + 1, user: { login: 'u' }, body: `c${i + 1}`, created_at: '2026-09-01T00:00:00Z', html_url: `https://github.com/o/r/issues/5#issuecomment-${i + 1}` }));
-  const { gh, calls } = ghStub(() => JSON.stringify(many));
+test('GitHub comments: the newest fifty by GraphQL, oldest first; a comment goes by -f, signed under the office’s gh only', async () => {
+  const nodes = Array.from({ length: 50 }, (_, i) => ({ id: `IC_${i + 11}`, author: { login: 'u' }, body: `c${i + 11}`, createdAt: '2026-09-01T00:00:00Z', url: `https://github.com/o/r/issues/5#issuecomment-${i + 11}` }));
+  const { gh, calls } = ghStub(() => JSON.stringify({ data: { repository: { issueOrPullRequest: { comments: { nodes } } } } }));
   const got = await ghComments(act({ gh, env: ENV }), 'o/r', 5);
-  assert.deepEqual(calls[0], { args: ['api', 'repos/o/r/issues/5/comments?per_page=100'], env: ENV });
+  assert.deepEqual(calls[0].args.slice(0, 2), ['api', 'graphql']);
+  assert.match(calls[0].args.find((a) => a.startsWith('query='))!, /comments\(last: 50\)/);
+  assert.ok(calls[0].args.includes('owner=o') && calls[0].args.includes('name=r') && calls[0].args.includes('number=5'));
+  assert.equal(calls[0].env, ENV);
   assert.equal(got.length, 50);
-  assert.equal(got[0].body, 'c11');
+  assert.deepEqual(got[0], { id: 'IC_11', author: 'u', body: 'c11', createdAt: '2026-09-01T00:00:00Z', url: 'https://github.com/o/r/issues/5#issuecomment-11' });
   assert.equal(got.at(-1)!.body, 'c60');
+  const calls0 = calls.length;
   await ghComment(act({ gh, env: ENV, shared: false }), 'o/r', 5, '@me is not a file\nsecond line');
-  assert.deepEqual(calls[1], { args: ['api', '--method', 'POST', 'repos/o/r/issues/5/comments', '-f', 'body=@me is not a file\nsecond line'], env: ENV });
+  assert.deepEqual(calls[calls0], { args: ['api', '--method', 'POST', 'repos/o/r/issues/5/comments', '-f', 'body=@me is not a file\nsecond line'], env: ENV });
   await ghComment(act({ gh, shared: true }), 'o/r', 5, 'hi');
-  assert.equal(calls[2].env, undefined, 'the office’s own gh');
-  assert.equal(calls[2].args.at(-1), 'body=hi\n\n— Panu via Agent Office');
+  assert.equal(calls[calls0 + 1].env, undefined, 'the office’s own gh');
+  assert.equal(calls[calls0 + 1].args.at(-1), 'body=hi\n\n— Panu via Agent Office');
 });
 
 test('GitHub people: the repository’s assignees whose login has the search', async () => {

@@ -6,7 +6,7 @@ import type { IssueAssignTo, IssueCommentItem, IssuePerson, IssueTransition } fr
 import { attribution, type IssueActIo } from './source.js';
 
 const TIMEOUT_MS = 30_000;
-/** How many comments one read keeps (the newest of the first hundred GitHub sends). */
+/** How many comments one read brings (the newest). */
 const COMMENTS = 50;
 
 const run = (io: IssueActIo, args: string[]) => io.gh(args, io.cwd, TIMEOUT_MS, io.env);
@@ -41,22 +41,33 @@ export async function ghStateTransition(io: IssueActIo, repo: string, n: number,
   throw new Error('That isn’t a way to move this issue');
 }
 
-/** The issue's comments (the newest 50), oldest first. */
+const COMMENTS_QUERY = `query($owner: String!, $name: String!, $number: Int!) {
+  repository(owner: $owner, name: $name) {
+    issueOrPullRequest(number: $number) {
+      ... on Issue { comments(last: ${COMMENTS}) { nodes { id author { login } body createdAt url } } }
+      ... on PullRequest { comments(last: ${COMMENTS}) { nodes { id author { login } body createdAt url } } }
+    }
+  }
+}`;
+
+/** The issue's newest 50 comments, oldest first (GraphQL's `last`, so a long thread shows its end). */
 export async function ghComments(io: IssueActIo, repo: string, n: number): Promise<IssueCommentItem[]> {
-  const out = await run(io, ['api', `repos/${repo}/issues/${n}/comments?per_page=100`]);
-  let raw: unknown;
+  const [owner, name] = repo.split('/');
+  const out = await run(io, ['api', 'graphql', '-f', `query=${COMMENTS_QUERY}`, '-f', `owner=${owner}`, '-f', `name=${name}`, '-F', `number=${n}`]);
+  let raw: any;
   try {
-    raw = JSON.parse(out || '[]');
+    raw = JSON.parse(out || '{}');
   } catch {
     throw new Error(`gh gave something that isn't JSON for the comments of ${repo}#${n}`);
   }
-  if (!Array.isArray(raw)) return [];
-  return raw.slice(-COMMENTS).map((c: any): IssueCommentItem => ({
+  if (Array.isArray(raw?.errors) && raw.errors.length) throw new Error(raw.errors.map((e: any) => e.message ?? '').join('; '));
+  const nodes: any[] = raw?.data?.repository?.issueOrPullRequest?.comments?.nodes ?? [];
+  return nodes.map((c): IssueCommentItem => ({
     id: String(c.id),
-    author: String(c.user?.login ?? 'Someone'),
+    author: String(c.author?.login ?? 'Someone'),
     body: String(c.body ?? ''),
-    createdAt: String(c.created_at ?? ''),
-    ...(typeof c.html_url === 'string' ? { url: c.html_url } : {}),
+    createdAt: String(c.createdAt ?? ''),
+    ...(typeof c.url === 'string' ? { url: c.url } : {}),
   }));
 }
 
