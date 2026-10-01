@@ -229,6 +229,21 @@ test('a failed assignment is a warning and the task stands', async () => {
   assert.deepEqual(ctx.toasts, [{ floor: 'app', text: '👤 Couldn’t assign gh:o/app#1: gh: forbidden', level: 'warn' }]);
 });
 
+test('a sign-in that can’t be got ready is a warning too, after the one answer', async () => {
+  const { ctx, issues, c, make, edits } = claimSetup({
+    ghAs: () => {
+      throw new Error('EACCES: gh home');
+    },
+  });
+  await issues.refresh('app');
+  const before = c.got.length;
+  const made = await make('gh:o/app#1');
+  assert.equal(made.t, 'kanban.ok');
+  assert.equal(c.got.length, before + 1, 'answered once, no kanban.error after it');
+  assert.deepEqual(edits(), []);
+  assert.deepEqual(ctx.toasts, [{ floor: 'app', text: '👤 Couldn’t assign gh:o/app#1: EACCES: gh home', level: 'warn' }]);
+});
+
 test('without a sign-in of their own, the office’s gh is who gets the issue', async () => {
   const { issues, make, edits } = claimSetup({ ghAs: () => undefined, login: 'office-bot' });
   await issues.refresh('app');

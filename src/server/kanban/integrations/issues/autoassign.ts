@@ -18,11 +18,12 @@ export async function claimIssueForTask(ctx: KanbanContext, deps: ClaimDeps, pro
   const target = route(ctx.settings.project(project).issueSources, issue);
   // Jira, a draft, a pull request and a closed issue are left as they are.
   if (typeof target === 'string' || target.kind !== 'gh' || target.isPr || target.closed) return;
-  const as = ctx.ghAs?.(caller.accountId);
-  if (typeof as === 'string') return;
-  const env = as?.env;
-  const io: IssueActIo = { ...deps.io(project), ...(env ? { env } : {}), who: caller.name, shared: !env };
   try {
+    // Inside the try: the task has been answered for already, so even getting the sign-in ready may only fail as a toast.
+    const as = ctx.ghAs?.(caller.accountId);
+    if (typeof as === 'string') return;
+    const env = as?.env;
+    const io: IssueActIo = { ...deps.io(project), ...(env ? { env } : {}), who: caller.name, shared: !env };
     const login = await ghClaimIfUnassigned(io, target.repo, target.number);
     if (!login) return;
     const line = `${caller.name} took ${issue.key}: assigned to ${login}`;

@@ -325,6 +325,9 @@ function setup(opts: { ghAs?: KanbanContext['ghAs']; status?: () => string; stat
   const stub = ghStub((args) => {
     const query = args.find((a) => a.startsWith('query=')) ?? '';
     if (args[0] === 'issue' && args[1] === 'view' && args.at(-1) === 'state') return JSON.stringify({ state: opts.state?.() ?? 'OPEN' });
+    // A task made from the issue takes it (autoassign.ts): nobody has it, and gh is signed in as panu.
+    if (args[0] === 'issue' && args[1] === 'view' && args.at(-1) === 'assignees,state') return JSON.stringify({ assignees: [], state: opts.state?.() ?? 'OPEN' });
+    if (args[0] === 'api' && args[1] === 'user') return 'panu\n';
     if (args[0] === 'issue' && args[1] === 'list') return JSON.stringify([item(5, 'Five')]);
     if (query.includes('updateProjectV2ItemFieldValue')) return '{"data":{}}';
     if (query.includes('projectItems')) return issueItems(board({ status: status() }));
