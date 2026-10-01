@@ -627,3 +627,23 @@ test("Fix PRs checks each repository's worktree on its own: the primary on the P
   const text = fx.invocations().slice(before).filter((i) => i.kind === 'claude').map((i) => i.prompt ?? i.args.join(' ')).join('\n');
   assert.match(text, /- api: `feature\/x`/, "api is told to check out the PR's branch");
 });
+
+test("Fix PRs twice: the PR: lines of the answers don't move the PR's head branch to the task's", async (t) => {
+  const fx = await engineFixture();
+  t.after(() => fx.close());
+  fx.setRules([{ when: 'Address the open review comments', reply: 'Answered the comments.\nPR: https://github.com/acme/proj/pull/5' }, { when: 'nvestigat', reply: 'Found it.' }]);
+  const task = fx.newTask({ type: 'investigate', usePlan: false, useReview: false });
+  assert.equal(await fx.engine.start(task.id, ADA), undefined);
+  await fx.waitTask(task.id, (x) => x.status === 'review' && x.runState === 'idle', 'the investigation done');
+  fx.repo.updateTask(task.id, { branch: 'office/scratch' });
+  fx.repo.setRepoBranch(task.id, 'proj', 'office/scratch');
+  fx.repo.upsertPrLink(task.id, { repoId: 'proj', repo: 'acme/proj', number: 5, url: 'https://github.com/acme/proj/pull/5', state: 'OPEN', branch: 'fix/the-pr-branch' });
+  for (const round of [1, 2]) {
+    const before = fx.invocations().length;
+    assert.equal(await fx.engine.pr(task.id, ADA, 'fix'), undefined);
+    await fx.waitTask(task.id, (x) => x.runState === 'idle' && fx.repo.listRuns(task.id).filter((r) => r.phase === 'pr-fix' && r.status === 'succeeded').length === round, `pr-fix run ${round}`);
+    assert.deepEqual(fx.repo.listPrLinks(task.id).map((p) => [p.number, p.branch]), [[5, 'fix/the-pr-branch']], `the link keeps its branch after run ${round}`);
+    const text = fx.invocations().slice(before).filter((i) => i.kind === 'claude').map((i) => i.prompt ?? i.args.join(' ')).join('\n');
+    if (round === 2) assert.ok(!text.includes('office/scratch`'), "the second run isn't sent to the task's own branch");
+  }
+});

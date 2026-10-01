@@ -1589,7 +1589,8 @@ export class Orchestrator {
       if (pr.number === undefined || !pr.repo) continue;
       const repo = repos.find((r) => r.remote && sameRepo(r.remote, pr.repo!));
       if (!repo || prOwners(this.ctx.repo.prLinksMatching(pr.number, pr.url), remoteOf, { repo: pr.repo, number: pr.number, url: pr.url }).some((id) => id !== task.id)) continue;
-      const branch = branches[repo.id] ?? task.branch;
+      // A link already knows its PR's head branch (Fix PRs checks it out): an answer doesn't move it to the task's.
+      const branch = task.prs.find((p) => p.repoId === repo.id && p.number === pr.number)?.branch ?? branches[repo.id] ?? task.branch;
       this.ctx.repo.upsertPrLink(task.id, { repoId: repo.id, repo: pr.repo, number: pr.number, url: pr.url, state: 'OPEN', ...(branch ? { branch } : {}) });
       changed = true;
     }
