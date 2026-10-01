@@ -18,6 +18,7 @@ import { labelChip } from '../ui/github/labels';
 import { kanbanApi, type KanbanOk } from './api';
 import { issueTask } from './hireform';
 import { SOURCE_KIND_NAMES } from './labels';
+import { sameWindowAppLinks } from './md';
 
 const primaryRepo = () => store.currentFloor()?.repo;
 
@@ -287,7 +288,7 @@ function openSourceIssue(first: GhIssue, net: Net, actions: BoardActions) {
         it.taskId ? h('span', {}, `🗂️ task #${it.taskId}`) : null,
       ].filter((x): x is HTMLElement => !!x),
     );
-    body.replaceChildren(it.body.trim() ? markdown(it.body, safeUrl(it.url) || undefined) : h('p.gh-quiet', {}, 'No description.'));
+    body.replaceChildren(it.body.trim() ? sameWindowAppLinks(markdown(it.body, safeUrl(it.url) || undefined)) : h('p.gh-quiet', {}, 'No description.'));
     const onQueue = cardOnQueue(cardOfIssue(it));
     queueProvider.element.classList.toggle('hidden', onQueue);
     queue.disabled = onQueue;

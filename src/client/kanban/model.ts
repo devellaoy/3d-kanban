@@ -382,3 +382,25 @@ export function skillUsage(settings: Pick<KanbanSettings, 'projects'>, name: str
     .filter(([, p]) => SKILL_PHASES.some((ph) => p.skills[ph]?.[tool]?.includes(name)))
     .map(([id]) => id);
 }
+
+// --- Links ----------------------------------------------------------------------------------------
+
+// The office's own pages, as the server routes them (server/http/routes/pages.ts, kanban/http/routes.ts).
+const APP_PAGES = new Set(['/', '/index.html', '/kanban', '/kanban.html', '/lite', '/lite.html', '/login', '/login.html', '/join', '/join.html', '/claim', '/claim.html']);
+
+const LOOPBACK = new Set(['localhost', '127.0.0.1', '[::1]']);
+
+/** The same server: same origin, or the same port on another name for this computer (an agent's 127.0.0.1 link opened as localhost). */
+function sameOffice(u: URL, b: URL): boolean {
+  return u.origin === b.origin || (u.protocol === b.protocol && u.port === b.port && LOOPBACK.has(u.hostname) && LOOPBACK.has(b.hostname));
+}
+
+/** Whether a link leads to one of this office's own pages, which open in the same window. */
+export function isAppPage(href: string, base: string): boolean {
+  try {
+    const u = new URL(href, base);
+    return (u.protocol === 'http:' || u.protocol === 'https:') && sameOffice(u, new URL(base)) && APP_PAGES.has(u.pathname);
+  } catch {
+    return false;
+  }
+}

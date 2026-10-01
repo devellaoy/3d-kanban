@@ -4,12 +4,22 @@
 import { h } from '../ui/dom';
 import { markdown } from '../ui/markdown';
 import { splitTaskRefs } from './attach';
-import { deepLink } from './model';
+import { deepLink, isAppPage } from './model';
+
+/** Links to the office's own pages open in this window: a second tab would start a second character. */
+export function sameWindowAppLinks(root: HTMLElement): HTMLElement {
+  for (const a of root.querySelectorAll<HTMLAnchorElement>('a[href]')) {
+    if (!isAppPage(a.getAttribute('href') || '', location.href)) continue;
+    a.removeAttribute('target');
+    a.removeAttribute('rel');
+  }
+  return root;
+}
 
 /** Rendered markdown, its #123 references opening the task in the detail panel. */
 export function renderMarkdown(src: string, openTask: (id: number) => void, empty = 'No description.'): HTMLElement {
   if (!src.trim()) return h('div.md', {}, h('p.none', {}, empty));
-  const el = markdown(src);
+  const el = sameWindowAppLinks(markdown(src));
   const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT, {
     acceptNode: (n) => (n.parentElement?.closest('a, code, pre') ? NodeFilter.FILTER_REJECT : NodeFilter.FILTER_ACCEPT),
   });
