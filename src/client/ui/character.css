@@ -7,12 +7,12 @@
 }
 .charsel-stage canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; cursor: grab; touch-action: none; }
 .charsel-stage canvas:active { cursor: grabbing; }
-.charsel-stage .tip { position: absolute; left: 0; right: 0; bottom: 8px; text-align: center; font-size: 12px; font-weight: var(--fw-bold); color: var(--muted); pointer-events: none; }
+.charsel-stage .tip { position: absolute; left: 0; right: 0; bottom: 8px; text-align: center; font-size: var(--fs-xs); font-weight: var(--fw-bold); color: var(--muted); pointer-events: none; }
 /* The options' labels are spaced in styles/base.css, after the frame's label rule. */
 .charsel-opts label:first-child { margin-top: 0; }
 .charsel .swatches { margin-top: 0; }
 .charsel .seg { gap: 6px; }
-.charsel .seg .btn { padding: 4px 10px; font-size: 13px; }
+.charsel .seg .btn { padding: 4px 10px; font-size: var(--fs-sm); }
 @media (max-width: 640px) {
   .charsel .body { grid-template-columns: 1fr; }
   .charsel-stage { min-height: 230px; }

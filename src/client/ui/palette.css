@@ -5,10 +5,10 @@
 .palette-list { list-style: none; margin: 0; padding: 0 8px 8px; overflow: auto; min-height: 0; flex: 1; display: flex; flex-direction: column; gap: 2px; }
 .palette-row { display: flex; align-items: center; gap: 10px; padding: 6px 10px; border: 2px solid transparent; border-radius: 10px; cursor: pointer; min-width: 0; }
 .palette-row.on { background: var(--field); border-color: var(--accent); }
-.palette-icon { font-size: 18px; width: 24px; text-align: center; flex: none; }
+.palette-icon { font-size: var(--fs-2xl); width: 24px; text-align: center; flex: none; }
 .palette-text { display: flex; flex-direction: column; min-width: 0; flex: 1; }
-.palette-title { font-weight: var(--fw-bold); font-size: 14px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.palette-detail { font-size: 12px; font-weight: var(--fw-semibold); color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.palette-kind { font-size: 11px; font-weight: var(--fw-bold); color: var(--muted); text-transform: uppercase; letter-spacing: .04em; flex: none; }
+.palette-title { font-weight: var(--fw-bold); font-size: var(--fs-md); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.palette-detail { font-size: var(--fs-xs); font-weight: var(--fw-semibold); color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.palette-kind { font-size: var(--fs-2xs); font-weight: var(--fw-bold); color: var(--muted); text-transform: uppercase; letter-spacing: .04em; flex: none; }
 .palette-row mark { background: var(--warn); color: var(--text); border-radius: 3px; padding: 0 1px; }
-.palette-empty { margin: 4px 20px 14px; font-size: 13px; font-weight: var(--fw-semibold); color: var(--muted); }
+.palette-empty { margin: 4px 20px 14px; font-size: var(--fs-sm); font-weight: var(--fw-semibold); color: var(--muted); }

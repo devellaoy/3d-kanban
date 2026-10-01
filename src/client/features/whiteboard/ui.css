@@ -2,11 +2,11 @@
 /* Its own window rather than a .modal, whose rules for labels, inputs and textareas would restyle Excalidraw's. */
 .wb-window { background: var(--paper); border: var(--bw) solid var(--ink); border-radius: var(--radius-lg); box-shadow: var(--shadow-lg); width: min(1600px, 100%); height: calc(100vh - 32px); display: flex; flex-direction: column; overflow: hidden; animation: pop .18s ease-out; }
 .wb-window > header { display: flex; align-items: center; gap: 10px; padding: 10px 16px; border-bottom: var(--bw) solid var(--ink); background: var(--paper-2); }
-.wb-window > header h2 { margin: 0; font-size: 18px; font-weight: var(--fw-heavy); flex: none; }
-.wb-people { flex: 1; min-width: 0; display: flex; align-items: center; gap: 6px; overflow: hidden; font-size: 13px; font-weight: var(--fw-bold); }
-.wb-live { flex: none; background: var(--bad); color: var(--text-on-strong); border-radius: 6px; padding: 1px 6px; font-size: 11px; letter-spacing: .06em; }
+.wb-window > header h2 { margin: 0; font-size: var(--fs-2xl); font-weight: var(--fw-heavy); flex: none; }
+.wb-people { flex: 1; min-width: 0; display: flex; align-items: center; gap: 6px; overflow: hidden; font-size: var(--fs-sm); font-weight: var(--fw-bold); }
+.wb-live { flex: none; background: var(--bad); color: var(--text-on-strong); border-radius: 6px; padding: 1px 6px; font-size: var(--fs-2xs); letter-spacing: .06em; }
 .wb-person { display: inline-flex; align-items: center; gap: 5px; background: var(--field); border: var(--bw-sm) solid var(--ink); border-radius: var(--radius-pill); padding: 1px 9px 1px 4px; white-space: nowrap; }
 .wb-person .dot { width: 11px; height: 11px; }
 .wb-alone { color: var(--muted); font-weight: var(--fw-semibold); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .wb-host { flex: 1; min-height: 0; position: relative; background: var(--field); }
-.wb-loading { display: grid; place-items: center; height: 100%; padding: 16px; text-align: center; font-weight: var(--fw-bold); font-size: 16px; color: var(--muted); }
+.wb-loading { display: grid; place-items: center; height: 100%; padding: 16px; text-align: center; font-weight: var(--fw-bold); font-size: var(--fs-xl); color: var(--muted); }

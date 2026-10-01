@@ -2,16 +2,16 @@
 .conn.upgrading { background: var(--warn); color: var(--text); }
 .upgrade .version { display: block; font-weight: var(--fw-semibold); }
 .upgrade .version small { color: var(--muted); font-weight: var(--fw-medium); }
-.upgrade code, .restart code { font: 12px var(--font-mono); background: var(--paper-2); border-radius: 5px; padding: 1px 5px; }
-.upgrade .note { margin: 12px 0 0; font-size: 13px; font-weight: var(--fw-medium); color: var(--muted); line-height: 1.45; }
-.upgrade-status { display: flex; align-items: center; gap: 8px; margin: 12px 0 0; padding: 8px 12px; border: var(--bw-sm) solid var(--ink); border-radius: 10px; font-weight: var(--fw-bold); font-size: 14px; background: var(--info-soft); }
+.upgrade code, .restart code { font: var(--fs-xs) var(--font-mono); background: var(--paper-2); border-radius: 5px; padding: 1px 5px; }
+.upgrade .note { margin: 12px 0 0; font-size: var(--fs-sm); font-weight: var(--fw-medium); color: var(--muted); line-height: 1.45; }
+.upgrade-status { display: flex; align-items: center; gap: 8px; margin: 12px 0 0; padding: 8px 12px; border: var(--bw-sm) solid var(--ink); border-radius: 10px; font-weight: var(--fw-bold); font-size: var(--fs-md); background: var(--info-soft); }
 .upgrade-status.ok { background: var(--good-soft); }
 .upgrade-status.error { background: var(--bad-soft); }
-.upgrade-error { margin: 12px 0 0; white-space: pre-wrap; overflow-wrap: anywhere; font: 12px/1.45 var(--font-mono); background: var(--bad-soft); border: var(--bw-sm) solid var(--ink); border-radius: 10px; padding: 10px; max-height: 240px; overflow: auto; }
-.changes { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; font-size: 14px; font-weight: var(--fw-semibold); max-height: 220px; overflow: auto; }
+.upgrade-error { margin: 12px 0 0; white-space: pre-wrap; overflow-wrap: anywhere; font: var(--fs-xs)/1.45 var(--font-mono); background: var(--bad-soft); border: var(--bw-sm) solid var(--ink); border-radius: 10px; padding: 10px; max-height: 240px; overflow: auto; }
+.changes { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; font-size: var(--fs-md); font-weight: var(--fw-semibold); max-height: 220px; overflow: auto; }
 .modal.restart { width: min(480px, 100%); text-align: center; }
 .modal.restart .body p { margin: 10px 0 0; font-weight: var(--fw-semibold); }
 .modal.restart .upgrade-status { justify-content: center; }
-.modal.restart .note { font-size: 13px; color: var(--muted); }
+.modal.restart .note { font-size: var(--fs-sm); color: var(--muted); }
 .restart-art { font-size: 64px; line-height: 1; animation: bob 1.6s ease-in-out infinite; }
 @keyframes bob { 50% { transform: translateY(-6px); } }

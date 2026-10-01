@@ -2,41 +2,41 @@
    picker each import this sheet. */
 .modal.gh-window { width: min(1400px, 100%); height: min(920px, calc(100vh - 32px)); outline: none; }
 .modal.gh-window.issue { width: min(920px, 100%); }
-.modal.gh-window header .pill { font-size: 12px; }
+.modal.gh-window header .pill { font-size: var(--fs-xs); }
 .pill.merged { background: var(--purple); color: var(--text-on-strong); }
-.gh-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding: 8px 16px; font-size: 13px; font-weight: var(--fw-semibold); color: var(--muted); border-bottom: 2px solid color-mix(in srgb, var(--text) 15%, transparent); }
+.gh-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding: 8px 16px; font-size: var(--fs-sm); font-weight: var(--fw-semibold); color: var(--muted); border-bottom: 2px solid color-mix(in srgb, var(--text) 15%, transparent); }
 .gh-meta b { color: var(--text); font-weight: var(--fw-heavy); }
-.gh-meta code { font: 12px var(--font-mono); background: var(--info-soft); color: var(--link-strong); border-radius: 6px; padding: 1px 6px; }
-.gh-pm { font: var(--fw-bold) 12px var(--font-mono); white-space: nowrap; }
+.gh-meta code { font: var(--fs-xs) var(--font-mono); background: var(--info-soft); color: var(--link-strong); border-radius: 6px; padding: 1px 6px; }
+.gh-pm { font: var(--fw-bold) var(--fs-xs) var(--font-mono); white-space: nowrap; }
 .gh-pm .add { color: var(--diff-add-ink); }
 .gh-pm .del { color: var(--danger-ink); }
 .gh-pm .bin { color: var(--muted); }
 .gh-tabs { display: flex; gap: 4px; padding: 0 12px; border-bottom: var(--bw) solid var(--ink); background: var(--paper); }
-.gh-tab { display: inline-flex; align-items: center; gap: 6px; font: inherit; font-size: 14px; font-weight: var(--fw-bold); color: var(--muted); background: none; border: 0; border-bottom: 4px solid transparent; padding: 9px 12px 7px; margin-bottom: -3px; cursor: pointer; }
+.gh-tab { display: inline-flex; align-items: center; gap: 6px; font: inherit; font-size: var(--fs-md); font-weight: var(--fw-bold); color: var(--muted); background: none; border: 0; border-bottom: 4px solid transparent; padding: 9px 12px 7px; margin-bottom: -3px; cursor: pointer; }
 .gh-tab:hover { color: var(--text); }
 .gh-tab.on { color: var(--text); border-bottom-color: var(--accent); }
-.gh-count { background: var(--paper-2); border: var(--bw-sm) solid var(--ink); border-radius: var(--radius-pill); padding: 0 7px; font-size: 11px; color: var(--text); }
-.gh-progress { font-size: 11px; font-weight: var(--fw-heavy); color: var(--muted); }
+.gh-count { background: var(--paper-2); border: var(--bw-sm) solid var(--ink); border-radius: var(--radius-pill); padding: 0 7px; font-size: var(--fs-2xs); color: var(--text); }
+.gh-progress { font-size: var(--fs-2xs); font-weight: var(--fw-heavy); color: var(--muted); }
 .gh-progress.all { color: var(--diff-add-ink); }
 .gh-body { flex: 1; min-height: 0; display: flex; }
 .gh-conv { flex: 1; min-width: 0; overflow: auto; padding: 18px 16px 24px; background: var(--code-inline); }
 .gh-col { max-width: 900px; margin: 0 auto; display: flex; flex-direction: column; gap: 14px; }
 .gh-foot { display: flex; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
-.modal.gh-window footer a.grow { font-size: 14px; color: var(--link); font-weight: var(--fw-bold); text-decoration: none; }
+.modal.gh-window footer a.grow { font-size: var(--fs-md); color: var(--link); font-weight: var(--fw-bold); text-decoration: none; }
 /* Many actions on a narrow window: they wrap onto a second row rather than run off the edge. */
 .modal.gh-window footer { flex-wrap: wrap; row-gap: 8px; }
-.gh-avatar { width: 24px; height: 24px; flex: none; border-radius: 50%; border: var(--bw-sm) solid var(--ink); color: var(--text-on-strong); font-size: 12px; font-weight: var(--fw-heavy); display: inline-grid; place-items: center; }
+.gh-avatar { width: 24px; height: 24px; flex: none; border-radius: 50%; border: var(--bw-sm) solid var(--ink); color: var(--text-on-strong); font-size: var(--fs-xs); font-weight: var(--fw-heavy); display: inline-grid; place-items: center; }
 .gh-card { background: var(--field); border: var(--bw-sm) solid var(--ink); border-radius: 14px; box-shadow: var(--shadow-sm); overflow: clip; }
 /* article.gh-card outranks the frame's .modal header, whatever order the sheets load in. */
-article.gh-card > header { display: flex; align-items: center; gap: 8px; padding: 7px 12px; background: var(--paper-2); border-bottom: 2px solid color-mix(in srgb, var(--text) 15%, transparent); font-size: 13px; font-weight: var(--fw-semibold); color: var(--muted); }
+article.gh-card > header { display: flex; align-items: center; gap: 8px; padding: 7px 12px; background: var(--paper-2); border-bottom: 2px solid color-mix(in srgb, var(--text) 15%, transparent); font-size: var(--fs-sm); font-weight: var(--fw-semibold); color: var(--muted); }
 .gh-card > header:last-child { border-bottom: 0; }
 .gh-card > header b { color: var(--text); font-weight: var(--fw-heavy); }
 .gh-card > header .grow { flex: 1; }
-.gh-card > header .btn { padding: 2px 10px; font-size: 12px; }
-.gh-card > header code { font: 12px var(--font-mono); color: var(--text); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.gh-card > header .btn { padding: 2px 10px; font-size: var(--fs-xs); }
+.gh-card > header code { font: var(--fs-xs) var(--font-mono); color: var(--text); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .gh-card.is-ok > header { background: var(--good-soft); }
 .gh-card.is-bad > header { background: var(--bad-tint); }
-.gh-badge { font-size: 11px; font-weight: var(--fw-heavy); padding: 1px 8px; border-radius: var(--radius-pill); border: var(--bw-sm) solid var(--ink); background: var(--field); color: var(--text); white-space: nowrap; }
+.gh-badge { font-size: var(--fs-2xs); font-weight: var(--fw-heavy); padding: 1px 8px; border-radius: var(--radius-pill); border: var(--bw-sm) solid var(--ink); background: var(--field); color: var(--text); white-space: nowrap; }
 .gh-badge.ok { background: var(--good); color: var(--text-on-strong); }
 .gh-badge.bad { background: var(--bad); color: var(--text-on-strong); }
 .gh-badge.muted { background: var(--note-slate); }
@@ -54,26 +54,26 @@ article.gh-card > header { display: flex; align-items: center; gap: 8px; padding
 .gh-compose-preview { min-height: 96px; background: var(--field); border: 3px dashed color-mix(in srgb, var(--text) 25%, transparent); border-radius: var(--radius-sm); }
 .gh-compose-preview .gh-quiet { padding: 12px; }
 .gh-compose .gh-merge-result { margin: 10px 12px 0; }
-.gh-compose-foot { display: flex; align-items: center; gap: 10px; padding: 10px 12px 12px; font-size: 12px; font-weight: var(--fw-semibold); color: var(--muted); }
+.gh-compose-foot { display: flex; align-items: center; gap: 10px; padding: 10px 12px 12px; font-size: var(--fs-xs); font-weight: var(--fw-semibold); color: var(--muted); }
 .gh-compose-foot .grow { flex: 1; min-width: 0; }
-.gh-status { display: flex; align-items: flex-start; gap: 8px; padding: 9px 12px; border: var(--bw-sm) solid var(--ink); border-radius: 10px; font-weight: var(--fw-bold); font-size: 14px; line-height: 1.4; background: var(--status-bg); }
+.gh-status { display: flex; align-items: flex-start; gap: 8px; padding: 9px 12px; border: var(--bw-sm) solid var(--ink); border-radius: 10px; font-weight: var(--fw-bold); font-size: var(--fs-md); line-height: 1.4; background: var(--status-bg); }
 .gh-status.ok { background: var(--good-soft); }
 .gh-status.warn { background: var(--warn-soft); }
 .gh-status.bad { background: var(--bad-soft); }
-.gh-checks { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; max-height: 190px; overflow: auto; font-size: 13px; font-weight: var(--fw-semibold); }
+.gh-checks { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; max-height: 190px; overflow: auto; font-size: var(--fs-sm); font-weight: var(--fw-semibold); }
 .gh-checks li { display: flex; gap: 8px; align-items: baseline; }
 .gh-checks a { color: var(--text); text-decoration: none; }
 .gh-checks a:hover { text-decoration: underline; }
 .modal.gh-merge { width: min(580px, 100%); }
 .gh-merge .body { display: flex; flex-direction: column; gap: 10px; }
 .gh-merge .body > label { margin: 4px 0 0; }
-.gh-merge-title { margin: 0; font-weight: var(--fw-heavy); font-size: 16px; }
-.gh-merge-title small { display: block; font: 12px var(--font-mono); color: var(--muted); margin-top: 2px; }
-.gh-merge .seg .btn { padding: 5px 10px; font-size: 13px; }
+.gh-merge-title { margin: 0; font-weight: var(--fw-heavy); font-size: var(--fs-xl); }
+.gh-merge-title small { display: block; font: var(--fs-xs) var(--font-mono); color: var(--muted); margin-top: 2px; }
+.gh-merge .seg .btn { padding: 5px 10px; font-size: var(--fs-sm); }
 .modal label.gh-check { display: flex; align-items: center; gap: 8px; margin: 0; font-weight: var(--fw-semibold); cursor: pointer; }
 .gh-check input { width: 16px; height: 16px; margin: 0; accent-color: var(--accent); }
 .gh-merge-result { display: flex; align-items: center; gap: 8px; padding: 9px 12px; border: var(--bw-sm) solid var(--ink); border-radius: 10px; font-weight: var(--fw-bold); background: var(--info-soft); }
-.gh-merge-result.error { display: block; background: var(--bad-soft); white-space: pre-wrap; overflow-wrap: anywhere; font-weight: var(--fw-semibold); font-size: 13px; }
+.gh-merge-result.error { display: block; background: var(--bad-soft); white-space: pre-wrap; overflow-wrap: anywhere; font-weight: var(--fw-semibold); font-size: var(--fs-sm); }
 /* A label chip (labelChip): on a board's cards, in the windows and in the label picker. */
 .label { padding: 1px 6px; border-radius: var(--radius-pill); border: 1.5px solid var(--ink); color: var(--text); font-size: 10px; font-weight: var(--fw-bold); }
 /* The label picker (openLabels) */
@@ -83,9 +83,9 @@ article.gh-card > header { display: flex; align-items: center; gap: 8px; padding
 .gh-labels li + li { border-top: 1px solid color-mix(in srgb, var(--text) 10%, transparent); }
 .gh-labels label.gh-check { padding: 7px 8px; border-radius: 8px; flex-wrap: wrap; }
 .gh-labels label.gh-check:hover { background: var(--field-hover); }
-.gh-labels .label { font-size: 12px; }
-.gh-labels small { flex-basis: 100%; padding-left: 24px; color: var(--muted); font-weight: var(--fw-medium); font-size: 12px; }
+.gh-labels .label { font-size: var(--fs-xs); }
+.gh-labels small { flex-basis: 100%; padding-left: 24px; color: var(--muted); font-weight: var(--fw-medium); font-size: var(--fs-xs); }
 .gh-labels .gh-error { margin: 8px auto; }
 /* .modal.gh-labeler outranks the frame's .modal footer .grow, whatever order the sheets load in. */
-.modal.gh-labeler footer .grow { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: 13px; }
+.modal.gh-labeler footer .grow { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: var(--fs-sm); }
 .gh-labeler .gh-quiet a { color: var(--link); font-weight: var(--fw-bold); }

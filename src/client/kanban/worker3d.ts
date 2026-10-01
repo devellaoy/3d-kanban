@@ -21,7 +21,7 @@ const memory = new TabMemory();
 
 const CSS = `
 .modal.term .worker-tabs { display: flex; gap: 6px; padding: 6px 10px 0; background: var(--paper); border-bottom: var(--bw) solid var(--ink); }
-.modal.term .worker-tabs button { padding: 6px 12px; font: var(--fw-bold) 13px var(--font); color: var(--text); background: var(--field-off); border: var(--bw) solid var(--ink); border-bottom: 0; border-radius: 10px 10px 0 0; cursor: pointer; }
+.modal.term .worker-tabs button { padding: 6px 12px; font: var(--fw-bold) var(--fs-sm) var(--font); color: var(--text); background: var(--field-off); border: var(--bw) solid var(--ink); border-bottom: 0; border-radius: 10px 10px 0 0; cursor: pointer; }
 .modal.term .worker-tabs button.on { background: var(--field); }
 /* The task tab hides the whole terminal side (the terminal, its web page tabs, the keypad) at window level. */
 .modal.term.kb-on-task > :not(header, .worker-tabs, .worker-task) { display: none !important; }

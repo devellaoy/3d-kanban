@@ -20,7 +20,7 @@ button { font-family: inherit; }
 
 .btn {
   display: inline-flex; align-items: center; gap: 6px;
-  padding: 7px 12px; font-size: 14px; font-weight: var(--fw-bold); color: var(--text);
+  padding: 7px 12px; font-size: var(--fs-md); font-weight: var(--fw-bold); color: var(--text);
   background: var(--field); border: var(--bw) solid var(--ink); border-radius: var(--radius-sm); cursor: pointer;
   box-shadow: var(--shadow-sm); transition: transform .05s;
   white-space: nowrap;
@@ -35,19 +35,19 @@ button { font-family: inherit; }
 /* Status dots and pills, empty lists, key caps, toasts and the reconnecting banner: the office's HUD
    and windows show them, and so does the 2D view. */
 .dot { width: 12px; height: 12px; border-radius: 50%; border: var(--bw-sm) solid var(--ink); flex: none; }
-.pill { font-size: 11px; font-weight: var(--fw-heavy); padding: 2px 7px; border-radius: var(--radius-pill); border: var(--bw-sm) solid var(--ink); white-space: nowrap; }
+.pill { font-size: var(--fs-2xs); font-weight: var(--fw-heavy); padding: 2px 7px; border-radius: var(--radius-pill); border: var(--bw-sm) solid var(--ink); white-space: nowrap; }
 .pill.starting, .pill.idle { background: var(--info-soft); }
 .pill.working { background: var(--warn); }
 .pill.needs_input { background: var(--bad); color: var(--text-on-strong); animation: pulse 1s infinite; }
 .pill.done { background: var(--good); color: var(--text-on-strong); }
 .pill.exited, .pill.offline { background: var(--note-slate); }
 .pill.lost { background: var(--warn-hot); }
-.empty { color: var(--muted); font-size: 13px; font-weight: var(--fw-medium); }
+.empty { color: var(--muted); font-size: var(--fs-sm); font-weight: var(--fw-medium); }
 @keyframes pulse { 50% { transform: scale(1.08); } }
 .key { display: inline-block; min-width: 26px; padding: 1px 7px; margin-right: 5px; border-radius: 7px; background: var(--paper); color: var(--text); text-align: center; font-weight: var(--fw-heavy); box-shadow: 0 2px 0 #999; }
 
 #toasts { position: absolute; top: 72px; left: 50%; transform: translateX(-50%); display: flex; flex-direction: column; gap: 8px; align-items: center; pointer-events: none !important; }
-.toast { background: var(--paper); border: var(--bw) solid var(--ink); border-radius: var(--radius-sm); padding: 8px 14px; font-weight: var(--fw-bold); font-size: 14px; box-shadow: var(--shadow); animation: toast-in .25s ease-out; }
+.toast { background: var(--paper); border: var(--bw) solid var(--ink); border-radius: var(--radius-sm); padding: 8px 14px; font-weight: var(--fw-bold); font-size: var(--fs-md); box-shadow: var(--shadow); animation: toast-in .25s ease-out; }
 .toast.warn { background: var(--warn-soft); }
 .toast.error { background: var(--bad-soft); }
 @keyframes toast-in { from { transform: translateY(-10px); opacity: 0; } }
@@ -60,13 +60,13 @@ button { font-family: inherit; }
 .modal { background: var(--paper); border: var(--bw) solid var(--ink); border-radius: var(--radius-lg); box-shadow: var(--shadow-lg); width: min(560px, 100%); max-height: calc(100vh - 32px); display: flex; flex-direction: column; overflow: hidden; animation: pop .18s ease-out; }
 @keyframes pop { from { transform: scale(.96); opacity: .5; } }
 .modal header { display: flex; align-items: center; gap: 10px; padding: 12px 16px; border-bottom: var(--bw) solid var(--ink); background: var(--paper-2); }
-.modal header h2 { margin: 0; font-size: 18px; font-weight: var(--fw-heavy); flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.modal header h2 { margin: 0; font-size: var(--fs-2xl); font-weight: var(--fw-heavy); flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .modal .body { padding: 16px; overflow: auto; }
 .modal footer { display: flex; gap: 8px; justify-content: flex-end; padding: 12px 16px; border-top: var(--bw) solid var(--ink); background: var(--paper-2); align-items: center; }
-.modal footer .grow { flex: 1; font-size: 12px; color: var(--muted); font-weight: var(--fw-semibold); }
-.modal textarea, .modal input[type=text], .modal input[type=password] { width: 100%; font: inherit; font-size: 15px; border: var(--bw) solid var(--ink); border-radius: var(--radius-sm); padding: 10px 12px; background: var(--field); outline: none; resize: vertical; }
+.modal footer .grow { flex: 1; font-size: var(--fs-xs); color: var(--muted); font-weight: var(--fw-semibold); }
+.modal textarea, .modal input[type=text], .modal input[type=password] { width: 100%; font: inherit; font-size: var(--fs-lg); border: var(--bw) solid var(--ink); border-radius: var(--radius-sm); padding: 10px 12px; background: var(--field); outline: none; resize: vertical; }
 .modal textarea:focus, .modal input[type=text]:focus, .modal input[type=password]:focus { border-color: var(--accent); }
-.modal label { font-weight: var(--fw-bold); font-size: 14px; display: block; margin-bottom: 6px; }
+.modal label { font-weight: var(--fw-bold); font-size: var(--fs-md); display: block; margin-bottom: 6px; }
 .close { width: 34px; height: 34px; padding: 0; justify-content: center; }
 /* The ✕ openModal gives a window without a header of its own. */
 .close.corner { position: absolute; top: 10px; right: 10px; z-index: 1; }
@@ -74,7 +74,7 @@ button { font-family: inherit; }
 /* Pieces several windows share: button rows, the notes under a setting, an input with its buttons,
    color swatches, a list of things to click (services, the jukebox, the bar), a spinner and a when. */
 .seg { display: flex; gap: 8px; flex-wrap: wrap; }
-.setting-note { margin: 10px 0 0; font-size: 13px; font-weight: var(--fw-medium); color: var(--muted); line-height: 1.4; }
+.setting-note { margin: 10px 0 0; font-size: var(--fs-sm); font-weight: var(--fw-medium); color: var(--muted); line-height: 1.4; }
 .setting-note.bad { color: var(--bad); }
 .webhook { display: flex; gap: 8px; }
 .webhook input[type=text] { flex: 1; min-width: 0; }
@@ -91,9 +91,9 @@ button { font-family: inherit; }
 .svc-list .dot { width: 14px; height: 14px; border-radius: 50%; border: var(--bw-sm) solid var(--ink); flex: none; }
 .svc-main { flex: 1; min-width: 0; }
 .svc-title { font-weight: var(--fw-heavy); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.svc-meta { font-size: 12px; font-weight: var(--fw-semibold); color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.svc-list .btn { padding: 3px 10px; font-size: 13px; text-decoration: none; color: inherit; }
-.jb-icon { flex: none; font-size: 18px; }
+.svc-meta { font-size: var(--fs-xs); font-weight: var(--fw-semibold); color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.svc-list .btn { padding: 3px 10px; font-size: var(--fs-sm); text-decoration: none; color: inherit; }
+.jb-icon { flex: none; font-size: var(--fs-2xl); }
 .spinner { width: 16px; height: 16px; flex: none; border-radius: 50%; border: 3px solid color-mix(in srgb, var(--text) 20%, transparent); border-top-color: var(--ink); animation: spin .8s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
 .when { color: var(--muted); font-weight: var(--fw-semibold); text-decoration: none; }
@@ -103,12 +103,12 @@ a.when:hover { text-decoration: underline; }
    the frame's own. Those win by coming later, and a window's sheet loads in no fixed order against
    this one, so they sit here, after the rules they override. */
 .provider-choice label { margin: 0; white-space: nowrap; }
-.provider-model label { margin: 0; font-size: 12px; }
+.provider-model label { margin: 0; font-size: var(--fs-xs); }
 .provider-model input:invalid { border-color: var(--bad); }
-.provider-summary .btn { padding: 3px 9px; font-size: 12px; border-width: var(--bw-sm); border-radius: 9px; box-shadow: var(--shadow-xs); }
+.provider-summary .btn { padding: 3px 9px; font-size: var(--fs-xs); border-width: var(--bw-sm); border-radius: 9px; box-shadow: var(--shadow-xs); }
 .charsel-opts label { margin: 14px 0 8px; }
-.col-search input[type=text] { font-size: 13px; border-width: var(--bw-sm); border-radius: 9px; padding: 5px 26px 5px 9px; }
-.gh-label-edit { padding: 1px 9px; font-size: 12px; box-shadow: var(--shadow-xs); }
-.pd-side input[type=text] { width: 100%; font: inherit; font-size: 13px; border: var(--bw-sm) solid var(--ink); border-radius: 10px; padding: 5px 9px; background: var(--field); outline: none; }
-.elevator .dir-change { margin-left: 6px; padding: 1px 8px; font-size: 12px; border-width: var(--bw-sm); border-radius: 9px; box-shadow: var(--shadow-xs); vertical-align: baseline; }
+.col-search input[type=text] { font-size: var(--fs-sm); border-width: var(--bw-sm); border-radius: 9px; padding: 5px 26px 5px 9px; }
+.gh-label-edit { padding: 1px 9px; font-size: var(--fs-xs); box-shadow: var(--shadow-xs); }
+.pd-side input[type=text] { width: 100%; font: inherit; font-size: var(--fs-sm); border: var(--bw-sm) solid var(--ink); border-radius: 10px; padding: 5px 9px; background: var(--field); outline: none; }
+.elevator .dir-change { margin-left: 6px; padding: 1px 8px; font-size: var(--fs-xs); border-width: var(--bw-sm); border-radius: 9px; box-shadow: var(--shadow-xs); vertical-align: baseline; }
 .meeting-field label { margin: 0; }

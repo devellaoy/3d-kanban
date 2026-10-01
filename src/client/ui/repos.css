@@ -2,6 +2,6 @@
 .repo-pulls { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
 .repo-pulls li { display: flex; align-items: center; gap: 10px; padding: 8px 12px; border: var(--bw) solid var(--ink); border-radius: var(--radius-sm); background: var(--field); font-weight: var(--fw-bold); }
 .repo-pulls li .name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.repo-pulls li .name small { display: block; font-size: 12px; font-weight: var(--fw-medium); color: var(--muted); }
-.repo-pulls li .none { color: var(--muted); font-weight: var(--fw-semibold); font-size: 13px; }
-.repo-pulls li .btn { padding: 3px 10px; font-size: 13px; }
+.repo-pulls li .name small { display: block; font-size: var(--fs-xs); font-weight: var(--fw-medium); color: var(--muted); }
+.repo-pulls li .none { color: var(--muted); font-weight: var(--fw-semibold); font-size: var(--fs-sm); }
+.repo-pulls li .btn { padding: 3px 10px; font-size: var(--fs-sm); }

@@ -8,17 +8,17 @@
 .elevator .floor-btn:disabled { cursor: default; }
 .elevator .floor-btn.here { background: var(--paper-2); box-shadow: none; transform: translateY(var(--press)); }
 .elevator .floor-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; align-items: stretch; }
-.elevator .floor-off { padding: 0 12px; font-size: 16px; }
+.elevator .floor-off { padding: 0 12px; font-size: var(--fs-xl); }
 .elevator .floor-off:hover { background: var(--accent-soft); }
-.elevator .floor-no { width: 34px; height: 34px; border-radius: 50%; border: var(--bw) solid var(--ink); display: grid; place-items: center; font-weight: var(--fw-heavy); font-size: 15px; color: var(--text-on-strong); text-shadow: 0 1px 0 rgba(0, 0, 0, .35); }
+.elevator .floor-no { width: 34px; height: 34px; border-radius: 50%; border: var(--bw) solid var(--ink); display: grid; place-items: center; font-weight: var(--fw-heavy); font-size: var(--fs-lg); color: var(--text-on-strong); text-shadow: 0 1px 0 rgba(0, 0, 0, .35); }
 .elevator .floor-text { display: flex; flex-direction: column; min-width: 0; }
-.elevator .floor-name { font-weight: var(--fw-heavy); font-size: 15px; display: flex; gap: 8px; align-items: baseline; }
-.elevator .here-tag { font-size: 11px; font-weight: var(--fw-bold); color: var(--muted); }
-.elevator .floor-sub { font-size: 12px; font-weight: var(--fw-semibold); color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.elevator .floor-stats { font-size: 13px; font-weight: var(--fw-bold); white-space: nowrap; }
+.elevator .floor-name { font-weight: var(--fw-heavy); font-size: var(--fs-lg); display: flex; gap: 8px; align-items: baseline; }
+.elevator .here-tag { font-size: var(--fs-2xs); font-weight: var(--fw-bold); color: var(--muted); }
+.elevator .floor-sub { font-size: var(--fs-xs); font-weight: var(--fw-semibold); color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.elevator .floor-stats { font-size: var(--fs-sm); font-weight: var(--fw-bold); white-space: nowrap; }
 .elevator .floor-stats .waiting { color: var(--bad); }
 .elevator .add { margin-top: 16px; }
-.elevator .add h3 { margin: 0 0 8px; font-size: 15px; font-weight: var(--fw-heavy); }
+.elevator .add h3 { margin: 0 0 8px; font-size: var(--fs-lg); font-weight: var(--fw-heavy); }
 .elevator .repo-search { display: flex; gap: 8px; }
 .elevator .repo-search input { flex: 1; }
 .elevator .repo-list { margin-top: 8px; max-height: 280px; overflow: auto; border: var(--bw) solid var(--ink); border-radius: var(--radius-sm); background: var(--field); }
@@ -27,10 +27,10 @@
 .elevator .repo:hover { background: var(--field-hover); }
 .elevator .repo.sel { background: var(--accent-soft); }
 .elevator .repo .nm { font-weight: var(--fw-bold); white-space: nowrap; }
-.elevator .repo .desc { flex: 1; min-width: 0; font-size: 12px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.elevator .repo .when { font-size: 11px; color: var(--muted); white-space: nowrap; }
-.elevator .note { margin: 8px 0 0; font-size: 12px; font-weight: var(--fw-semibold); color: var(--muted); overflow-wrap: anywhere; }
+.elevator .repo .desc { flex: 1; min-width: 0; font-size: var(--fs-xs); color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.elevator .repo .when { font-size: var(--fs-2xs); color: var(--muted); white-space: nowrap; }
+.elevator .note { margin: 8px 0 0; font-size: var(--fs-xs); font-weight: var(--fw-semibold); color: var(--muted); overflow-wrap: anywhere; }
 .elevator .note.busy { color: var(--text); }
 /* The folder's Change button: styles/base.css, after the button rules it restyles. */
 .elevator .dir-pick { margin-top: 8px; }
-.elevator .err { margin: 8px 0 0; font-size: 13px; font-weight: var(--fw-bold); color: var(--bad); overflow-wrap: anywhere; }
+.elevator .err { margin: 8px 0 0; font-size: var(--fs-sm); font-weight: var(--fw-bold); color: var(--bad); overflow-wrap: anywhere; }

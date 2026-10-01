@@ -2,18 +2,18 @@
 .modal.settings { width: min(960px, 100%); height: min(760px, calc(100vh - 32px)); }
 .settings-body { flex: 1; min-height: 0; display: grid; grid-template-columns: 220px minmax(0, 1fr); }
 .settings-nav { display: flex; flex-direction: column; gap: 4px; padding: 12px 10px; overflow: auto; background: var(--paper-2); border-right: var(--bw) solid var(--ink); }
-.settings-tab { display: flex; align-items: center; gap: 10px; width: 100%; padding: 9px 12px; text-align: left; font: inherit; font-size: 15px; font-weight: var(--fw-bold); color: var(--text); background: none; border: 2px solid transparent; border-radius: var(--radius-sm); cursor: pointer; }
-.settings-tab .icon { flex: none; width: 22px; font-size: 18px; text-align: center; }
+.settings-tab { display: flex; align-items: center; gap: 10px; width: 100%; padding: 9px 12px; text-align: left; font: inherit; font-size: var(--fs-lg); font-weight: var(--fw-bold); color: var(--text); background: none; border: 2px solid transparent; border-radius: var(--radius-sm); cursor: pointer; }
+.settings-tab .icon { flex: none; width: 22px; font-size: var(--fs-2xl); text-align: center; }
 .settings-tab:hover { background: var(--field); }
 .settings-tab.on { background: var(--field); border-color: var(--ink); box-shadow: var(--shadow-sm); }
 .settings-tab:focus-visible { outline: var(--focus-ring); outline-offset: 1px; }
 .settings-pane { display: flex; flex-direction: column; gap: 12px; min-width: 0; min-height: 0; padding: 18px 22px 24px; overflow: auto; }
-.settings-head h3 { margin: 0; font-size: 20px; font-weight: var(--fw-heavy); }
+.settings-head h3 { margin: 0; font-size: var(--fs-3xl); font-weight: var(--fw-heavy); }
 .settings-head p { margin: 4px 0 0; font-size: 13.5px; font-weight: var(--fw-medium); line-height: 1.4; color: var(--muted); }
 .setting { flex: none; padding: 14px 16px; background: var(--field); border: 2px solid color-mix(in srgb, var(--text) 18%, transparent); border-radius: 14px; }
 .setting-head { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
-.setting-head h4 { margin: 0; font-size: 15px; font-weight: var(--fw-heavy); }
-.scope { margin-left: auto; padding: 1px 8px; font-size: 11px; font-weight: var(--fw-heavy); white-space: nowrap; border: var(--bw-sm) solid var(--ink); border-radius: var(--radius-pill); cursor: default; }
+.setting-head h4 { margin: 0; font-size: var(--fs-lg); font-weight: var(--fw-heavy); }
+.scope { margin-left: auto; padding: 1px 8px; font-size: var(--fs-2xs); font-weight: var(--fw-heavy); white-space: nowrap; border: var(--bw-sm) solid var(--ink); border-radius: var(--radius-pill); cursor: default; }
 .scope.you { background: var(--scope-you); }
 .scope.floor { background: var(--scope-floor); }
 .scope.office { background: var(--scope-office); }
@@ -23,12 +23,12 @@
   .settings-tab { flex: none; width: auto; white-space: nowrap; }
   .settings-pane { padding: 14px; }
 }
-.outside-now { margin: 0; font-size: 15px; font-weight: var(--fw-bold); }
+.outside-now { margin: 0; font-size: var(--fs-lg); font-weight: var(--fw-bold); }
 
 /* Settings: office sounds volume */
 .volume { display: flex; align-items: center; gap: 12px; }
 .volume .btn { flex: none; min-width: 112px; justify-content: center; }
-.vol-pct { flex: none; min-width: 52px; text-align: right; font-weight: var(--fw-heavy); font-size: 14px; }
+.vol-pct { flex: none; min-width: 52px; text-align: right; font-weight: var(--fw-heavy); font-size: var(--fs-md); }
 .volume input[type=range] { flex: 1; min-width: 0; height: 28px; margin: 0; background: transparent; cursor: pointer; -webkit-appearance: none; appearance: none; --fill: 70%; }
 .volume input[type=range]:focus { outline: none; }
 .volume input[type=range]::-webkit-slider-runnable-track { height: 14px; border: var(--bw) solid var(--ink); border-radius: var(--radius-pill); background: linear-gradient(to right, var(--accent) var(--fill), var(--field) var(--fill)); }

@@ -3,13 +3,13 @@
 .signin { border: var(--bw) solid var(--ink); border-radius: 14px; padding: 4px 14px 14px; background: var(--field); }
 .signin.ok { background: var(--ok-bg); }
 .signin .team-head { margin-top: 10px; }
-.signin-who { font-weight: var(--fw-bold); font-size: 14px; overflow-wrap: anywhere; text-align: right; }
+.signin-who { font-weight: var(--fw-bold); font-size: var(--fs-md); overflow-wrap: anywhere; text-align: right; }
 .signin-who.none { color: var(--muted); }
 .signin-body > * { margin-top: 10px; }
 .signin-body .team-status { margin-top: 10px; }
 .signin-actions { display: flex; flex-wrap: wrap; gap: 8px; }
-.signin-steps { margin: 10px 0 0; padding-left: 22px; display: flex; flex-direction: column; gap: 10px; font-weight: var(--fw-semibold); font-size: 14px; line-height: 1.5; }
+.signin-steps { margin: 10px 0 0; padding-left: 22px; display: flex; flex-direction: column; gap: 10px; font-weight: var(--fw-semibold); font-size: var(--fs-md); line-height: 1.5; }
 .signin-steps .btn { display: inline-block; text-decoration: none; }
 .signin-steps .invite-row, .signin-steps .cmd { margin-top: 6px; }
-.signin-code { font-size: 20px !important; letter-spacing: .12em; text-align: center; }
+.signin-code { font-size: var(--fs-3xl) !important; letter-spacing: .12em; text-align: center; }
 .team .note.lead { margin-top: 0; }
