@@ -322,7 +322,7 @@ export function projectPane(api: Pick<KanbanApi, 'request'>, projectId: string, 
     const kind = select<'git' | 'folder'>([['git', 'git'], ['folder', 'folder']], r.kind ?? 'git', { 'aria-label': 'Kind', disabled: r.primary });
     // The floor's own GitHub repository, when it knows one, is the primary's: it isn't edited here.
     const fixedRemote = r.primary ? info.repo : undefined;
-    const remote = textInput(fixedRemote ?? r.remote ?? '', { maxlength: 200, placeholder: 'owner/name', 'aria-label': 'GitHub (owner/name)', disabled: !!fixedRemote });
+    const remote = textInput(fixedRemote ?? r.remote ?? '', { maxlength: 200, placeholder: r.detectedRemote || 'owner/name', title: r.detectedRemote ? 'From the checkout’s origin' : '', 'aria-label': 'GitHub (owner/name)', disabled: !!fixedRemote });
     const base = textInput(r.baseBranch ?? '', { maxlength: KANBAN_LIMITS.branch, placeholder: 'main', 'aria-label': 'Base branch' });
     const ins = textArea(r.instructions ?? '', { rows: 2, maxlength: KANBAN_LIMITS.promptText, placeholder: 'Instructions for work in this repository', 'aria-label': 'Instructions for work in this repository' });
     const remove = h('button.btn.small.kb-admin', { type: 'button', 'aria-label': `Remove ${r.name}`, disabled: r.primary, title: r.primary ? 'The floor’s own repository stays' : '' }, '✕');
@@ -442,7 +442,7 @@ const csv = (v: string) => v.split(',').map((x) => x.trim()).filter(Boolean);
 
 function sourcesPane(api: KanbanApi, projectId: string, s: KanbanSettings): HTMLElement {
   const info = kstore.projectOf(projectId)!;
-  const remotes = info.repos.filter((r) => r.kind === 'git' && r.remote).map((r) => r.remote!);
+  const remotes = info.repos.filter((r) => r.kind === 'git' && (r.remote || r.detectedRemote)).map((r) => (r.remote || r.detectedRemote)!);
   const sources: { read(): IssueSourceConfig | string; el: HTMLElement }[] = [];
   const list = h('div.kb-sources');
 

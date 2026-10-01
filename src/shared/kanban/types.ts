@@ -343,6 +343,8 @@ export interface ProjectRepo {
   dir: string;
   /** owner/name on GitHub. */
   remote?: string;
+  /** Only in KanbanProjectInfo.repos: owner/name read from the checkout's origin while no remote is saved. */
+  detectedRemote?: string;
   /** The branch work is cut from and PRs target; unset: the branch the checkout is on. */
   baseBranch?: string;
   primary: boolean;

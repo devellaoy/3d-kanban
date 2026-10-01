@@ -64,6 +64,8 @@ export interface GhState<T> {
   error?: string;
   fetchedAt: number;
   loading: boolean;
+  /** 3d-kanban: the PR board's repositories (owner/name) on a project with several, PRs or not (see Floor.pullsState). */
+  repos?: string[];
 }
 
 export type GhMergeMethod = 'squash' | 'merge' | 'rebase';
