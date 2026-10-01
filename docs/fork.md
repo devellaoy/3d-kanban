@@ -26,6 +26,8 @@ Back to the [README](../README.md).
 - The fork's deviation: `settings-sky.ts` gets `describe` (the sky's wording) from its caller instead of importing
   `describeSky`, because that would pull three.js into the kanban page, which shares `ui/settings.ts`.
   `features/hud/index.ts` passes it, and `tests/client-structure.test.ts` guards the kanban page's imports.
+  The hud's `describe` words the sky on the office's clock (`store.officeNow()`), like the line Settings opens
+  with; upstream repaints it on the browser's own clock, so keep the fork's when syncing.
 - When #219 merges upstream, syncing it means resolving the same hunks once more (the SHAs differ). Upstream #220
   (the `settings.ts` ceiling in `size.test.ts`) and #221 (party dimming against the lamp boost in `lamplight`) are
   likely to conflict later.
