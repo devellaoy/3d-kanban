@@ -91,7 +91,7 @@ New files are not seams (they can't conflict): `src/{server,shared,client}/kanba
 | `src/server/server.ts` | import; `floor.plan.shrink(…)` callback | Also taken when someone stands behind the desk (`watchSpotOf`) | Walling up the back office never strands a reviewer |
 | `src/server/workers.ts` | `setKanbanSummary()` | Sets `WorkerInfo.kanban` and sends the ordinary `worker.update` | The desk card and /lite follow the task without a kanban subscription |
 | `src/server/office-workers.ts` | after `MCP_READ_ONLY` | New `MCP_TASK_TOOLS` (`get_task`, `search_tasks`) | Task workers are launched allowing them (upstream's read-only list stays as it is) |
-| `src/server/floor.ts` | imports | `parseRepoFloorId`, `projectRepos` (kanban/projects) and `floorPulled` (kanban/integrations/pulls/board) | The floor's PR board covers the project's repositories and tells the kanban |
+| `src/server/floor.ts` | imports | `parseRepoFloorId`, `projectRepos` (kanban/projects), `checkoutRepo` (kanban/ghrepo, the floor's own repository in `pullsState().repos`) and `floorPulled` (kanban/integrations/pulls/board) | The floor's PR board covers the project's repositories and tells the kanban |
 | `src/server/floor.ts` | `openPullIn()` (new, beside `openPull`) | The open PR for a branch in any list | Other repositories' lists |
 | `src/server/floor.ts` | `Floor.boards` field; constructor's `gh.pulls` callback; `refreshBoards()` calls in the constructor, refresh timer and `arrived()` *(unmarked)*; `shutdown()` stops them *(unmarked)* | One pulls-only `GitHub` per other git repository with a remote; the callback emits `pullsState()` and calls `boardPulled()` | The PR board shows every repository of the project |
 | `src/server/changes.ts` | `baseCommit()`'s return type and value, `compute()`'s state | `head` (the `rev-parse HEAD` it already runs) passed on as `ChangesState.head` | Same as `ChangesState.head` below |
@@ -150,6 +150,7 @@ New files are not seams (they can't conflict): `src/{server,shared,client}/kanba
 | `src/shared/protocol.ts` | import, `WorkerInfo.kanban` | `{ taskId, role: 'implementer' \| 'reviewer' }` | A task worker says whose it is |
 | `src/shared/protocol.ts` | `worker.prompt` | `asComment?: true` | A comment on a task worker's task (the fork's dialogs only); without it, typed in as upstream |
 | `src/shared/protocol.ts` | `worker.kill` | `kanban?: { done?: boolean }` | X can move the task to Done |
+| `src/shared/protocol.ts` | `GhState.repos` | optional owner/name list of the project's repositories, set by `pullsState()` on a multi-repo project | The PR board has a tab per repository, PRs or not |
 | `src/shared/protocol.ts` | `GhIssue.repo`, `GhPull.repo` | owner/name of the card's repository | Multi-repo boards |
 | `src/shared/protocol.ts` | import; `GhIssue.key/source/status/taskId`, `CarriedIssue.key`, `QueueTask.issueKey`; `carry`, `worker.spawn`, `worker.prompt`, `queue.add` | The ticket key of a card from the project's issue sources (number 0 for one that isn't a GitHub issue) and `issueKey?` on the messages that hand one out | The 3D issues board from the kanban's issue sources |
 | `src/shared/protocol.ts` | `gh.merge` / `gh.comment` / `gh.close` / `gh.labels` and their replies | optional `repo?: string` | Same |

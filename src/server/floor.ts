@@ -29,6 +29,7 @@ import type { Capacity } from './machine.js';
 import { officePrompt, type PromptSource } from './prompts.js';
 // 3d-kanban: the PR board covers every repository of the project (see pullsState).
 import { parseRepoFloorId, projectRepos } from './kanban/projects.js';
+import { checkoutRepo } from './kanban/ghrepo.js';
 // 3d-kanban: the kanban hears when the PR board has fresh lists (its tasks' linked PRs' states).
 import { floorPulled } from './kanban/integrations/pulls/board.js';
 // 3d-kanban: the issues board shows the project's issue sources when it has any (see issuesState).
@@ -388,7 +389,8 @@ export class Floor {
   /**
    * The PR board's list: the floor's own repository's pull requests and, for a project with several
    * repositories, each other one's, every one marked with its repository (GhPull.repo). A floor with
-   * one repository gets exactly upstream's list.
+   * one repository gets exactly upstream's list. `repos` names every repository of the project (the
+   * floor's own, then the others), so the PR board has a tab for one without pull requests too.
    */
   pullsState(): GhState<GhPull> {
     const own = this.github.pulls;
@@ -399,6 +401,7 @@ export class Floor {
       items: [...own.items.map((p) => (this.def.repo && !p.repo ? { ...p, repo: this.def.repo } : p)), ...states.flatMap((b) => b.pulls.items)],
       fetchedAt: Math.max(own.fetchedAt, ...states.map((b) => b.pulls.fetchedAt)),
       loading: own.loading || states.some((b) => b.pulls.loading),
+      repos: [...new Map([this.def.repo ?? checkoutRepo(this.dir), ...[...this.boards.values()].map((b) => b.remote)].filter((r): r is string => !!r).map((r) => [r.toLowerCase(), r] as const)).values()],
       ...(errors.length ? { error: errors.join(' · ') } : {}),
     };
   }

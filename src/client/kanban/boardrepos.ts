@@ -3,6 +3,7 @@
 // repository is its `repo` when the office sends one, else read off its GitHub URL.
 
 import { h } from '../ui/dom';
+import { sameRepo } from '../../shared/floors';
 import { repoOfItem } from './ghrepo';
 import { officeCss } from './officecss';
 
@@ -12,6 +13,27 @@ export { repoOfItem };
 /** The repositories a board's items come from, sorted. */
 export function boardRepos(items: { url: string; repo?: string }[]): string[] {
   return [...new Set(items.map(repoOfItem).filter(Boolean))].sort((a, b) => a.localeCompare(b));
+}
+
+/**
+ * The PR board's tabs: the repositories its items come from plus the project's `configured` ones
+ * (which may have no pull requests), sorted and de-duplicated ignoring case.
+ */
+export function tabRepos(items: { url: string; repo?: string }[], configured: string[] = []): string[] {
+  const seen = new Map<string, string>();
+  for (const r of [...boardRepos(items), ...configured]) if (r && !seen.has(r.toLowerCase())) seen.set(r.toLowerCase(), r);
+  return [...seen.values()].sort((a, b) => a.localeCompare(b));
+}
+
+/**
+ * The repository a kept choice still means: `value` (in the spelling of the list) while it is a tab
+ * or one of the project's `configured` repositories, else '' (All). Without `configured` (a one-repo
+ * floor, an older server) a repository that has no cards is stale. Judged by the configuration, not
+ * the cards, so an empty or failed load keeps the choice.
+ */
+export function keptRepo(value: string, repos: string[], configured?: string[]): string {
+  if (!value) return '';
+  return [...repos, ...(configured ?? [])].find((r) => sameRepo(r, value)) ?? '';
 }
 
 /** How many of the items are open, per repository, for the PR board's tabs. */
@@ -69,8 +91,8 @@ export function repoFilterSelect(repos: string[], value: string, onChange: (repo
 /**
  * The PR board's repository tabs, below its header: 📦 All, then one per repository with its open PRs.
  * `update` keeps the buttons it already has (keyed by repository), so focus survives the board's
- * re-renders. A kept choice whose repository has no PRs (yet) still shows, picked, while the lists
- * load (boards.ts passes '' once they're in), rather than quietly falling back to All. Hidden while there's only one repository.
+ * re-renders. A kept choice whose repository has no PRs still shows, picked, as long as the repository is
+ * in the project (boards.ts decides that with keptRepo), rather than quietly falling back to All. Hidden while there's only one repository.
  */
 export function repoTabs(onChange: (repo: string) => void): { el: HTMLElement; update(repos: string[], value: string, counts: Map<string, number>, total: number): void } {
   officeCss();

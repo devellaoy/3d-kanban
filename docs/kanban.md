@@ -314,7 +314,7 @@ plan approval, implementation mode and review settings.
 
 With several repositories, the floor's issues and PR boards show every repository's cards with a
 repository chip. The issues board has a repository filter; the PR board (E at the board) has a tab
-per repository below its header (📦 All, then each repository with its open PRs).
+per repository of the project below its header (📦 All, then every repository, with its open PRs, if any).
 
 ## Issue sources
 

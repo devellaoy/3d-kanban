@@ -7,7 +7,7 @@ import { providerLabel } from './provider';
 import type { MeetingPreset } from './meeting';
 import { officePrompt } from './prompts';
 // 3d-kanban: repository chips and filter for a multi-repository project's boards.
-import { boardRepos, inRepo, loadRepoFilter, repoChip, openByRepo, repoFilterSelect, repoTabs, saveRepoFilter } from '../kanban/boardrepos';
+import { boardRepos, inRepo, keptRepo, tabRepos, loadRepoFilter, repoChip, openByRepo, repoFilterSelect, repoTabs, saveRepoFilter } from '../kanban/boardrepos';
 // 3d-kanban: cards from the project's issue sources (Jira, a GitHub project, other repositories), by their key.
 import { issueCardLabel, openCard, sourceChips, taskForCard } from '../kanban/issuecards';
 import { noteSeed } from '../../shared/kanban/issuecard.js';
@@ -298,8 +298,8 @@ export function openBoard(kind: 'issues' | 'pulls', net: Net, actions: BoardActi
       return;
     }
     // 3d-kanban: only the picked repository's cards, each with its repository's chip.
-    const repos = boardRepos(st.items);
-    const shownRepo = repos.includes(repo) || (tabs && st.loading) ? repo : '';
+    const repos = tabs ? tabRepos(st.items, store.pulls.repos) : boardRepos(st.items);
+    const shownRepo = tabs ? keptRepo(repo, repos, store.pulls.repos) : repos.includes(repo) ? repo : '';
     if (tabs) tabs.update(repos, shownRepo, openByRepo(store.pulls.items), store.pulls.items.filter((p) => p.state === 'OPEN').length);
     else repoSlot.replaceChildren(repoFilterSelect(repos, repo, pickRepo));
     const chip = (it: GhIssue | GhPull) => (repos.length > 1 ? repoChip(it) : '');
