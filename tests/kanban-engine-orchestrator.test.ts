@@ -1,5 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { createPullsParts } from '../src/server/kanban/integrations/pulls/index.js';
+import { floorPulled } from '../src/server/kanban/integrations/pulls/board.js';
+import type { GhPull } from '../src/shared/protocol.js';
+import type { KanbanTask } from '../src/shared/kanban/types.js';
 import { ADA, engineFixture, type Invocation } from './kanban-engine-fixture.js';
 
 const hasArgs = (inv: Invocation, ...args: string[]) => args.every((a) => inv.args.includes(a));
@@ -226,28 +230,50 @@ test('a usage limit waits with retryAt, and the sweep carries on by itself', asy
   assert.ok(fx.invocations().some((i) => i.prompt && /was cut short/.test(i.prompt)), 'typed into the live session');
 });
 
-test('a pr turn links only its PR: lines; a URL in other words is left to the board, which it asks to refresh', async (t) => {
+test('a pr turn: PR: lines link their own repositories’ PRs nobody has; any other PR the board links by branch after the refresh', async (t) => {
   const fx = await engineFixture();
   t.after(() => fx.close());
   fx.setRules([
     { when: 'You are planning kanban task', reply: 'Read it.\n\nPLAN READY', exitPlan: '1. Do it' },
     { when: 'Implement kanban task', reply: 'Done.', commit: 'Do it' },
     { when: 'This is review round 1 of', reply: 'Good.\nREVIEW: APPROVED' },
-    { when: 'Open the pull requests for', reply: 'Opened [#7](https://github.com/acme/proj/pull/7) (see also https://github.com/other/x/pull/1).' },
+    { when: 'Open the pull requests for', reply: 'Opened [#7](https://github.com/acme/proj/pull/7).' },
   ]);
   const task = fx.newTask();
   assert.equal(await fx.engine.start(task.id, ADA), undefined);
   await fx.waitTask(task.id, (x) => x.status === 'review' && x.runState === 'idle', 'the review column', 30_000);
-  // A stand-in for the floor's board of the task's repository: what it is asked for is recorded.
+  // The pulls plugin on the fixture's context, and a stand-in for the floor's board: refresh() brings its list, as the real one does.
+  const parts = createPullsParts(fx.ctx, { gh: async (args) => (args[0] === 'repo' ? 'main' : '{"isCrossRepository":false}') });
+  parts.plugin.start!();
+  t.after(() => parts.plugin.stop!());
+  let items: object[] = [];
   const asked: string[] = [];
-  (fx.ctx.floor('proj') as unknown as { githubFor: unknown }).githubFor = (remote: string) => ({ refresh: async () => void asked.push(remote) });
-  assert.equal(await fx.engine.pr(task.id, ADA, 'create'), undefined);
-  await fx.waitTask(task.id, (x) => x.runState === 'idle' && x.flags.prRequested === true, 'the pr turn');
-  assert.deepEqual(fx.task(task.id).prs, [], 'a loose URL is no link from the turn itself');
-  assert.deepEqual(asked, ['acme/proj'], 'but the board is asked to look now');
+  (fx.ctx.floor('proj') as unknown as { githubFor: unknown }).githubFor = (remote: string) => ({
+    refresh: async () => {
+      asked.push(remote);
+      floorPulled({ id: 'proj', pullsState: () => ({ items: items as GhPull[], fetchedAt: 1, loading: false }) });
+    },
+  });
+  const pr = async (expectLinks: (x: KanbanTask) => boolean, what: string) => {
+    assert.equal(await fx.engine.pr(task.id, ADA, 'create'), undefined);
+    return fx.waitTask(task.id, (x) => x.runState === 'idle' && expectLinks(x), what);
+  };
+  await pr((x) => x.flags.prRequested === true, 'the first pr turn');
+  assert.deepEqual(fx.task(task.id).prs, [], 'a Markdown link is no PR: line, and the board did not list it yet');
+  assert.deepEqual(asked, ['acme/proj'], 'but the board was asked to look now');
 
-  fx.setRules([{ when: 'Open the pull requests for', reply: 'Opened it.\nPR: https://github.com/acme/proj/pull/7' }]);
-  assert.equal(await fx.engine.pr(task.id, ADA, 'create'), undefined);
-  const withPr = await fx.waitTask(task.id, (x) => x.runState === 'idle' && x.prs.length > 0, 'the pull request');
-  assert.deepEqual(withPr.prs.map((p) => [p.repoId, p.repo, p.number]), [['proj', 'acme/proj', 7]]);
+  // The board lists #7 from the task's branch: its sync links it, with an event.
+  items = [{ number: 7, title: 'PR', url: 'https://github.com/acme/proj/pull/7', state: 'OPEN', isDraft: false, headRefName: fx.task(task.id).branch, createdAt: new Date(Date.now() + 60_000).toISOString(), repo: 'acme/proj' }];
+  const linked = await pr((x) => x.prs.length > 0, 'the link by branch');
+  assert.deepEqual(linked.prs.map((p) => [p.repoId, p.repo, p.number]), [['proj', 'acme/proj', 7]]);
+  assert.deepEqual(fx.repo.listEvents(task.id).filter((e) => e.kind === 'pr.linked').map((e) => e.data), [{ repo: 'acme/proj', number: 7, by: 'branch' }]);
+
+  // PR: lines: a bold bulleted Markdown link links; another repository's PR and another task's PR (linked by repoId only) do not.
+  const other = fx.newTask();
+  fx.repo.upsertPrLink(other.id, { repoId: 'proj', number: 9, url: 'https://github.com/acme/proj/pull/9', state: 'OPEN' });
+  items = [];
+  fx.setRules([{ when: 'Open the pull requests for', reply: '- **PR:** [#8](https://github.com/acme/proj/pull/8)\nPR: https://github.com/other/x/pull/1\nPR: https://github.com/acme/proj/pull/9' }]);
+  const done = await pr((x) => x.prs.length > 1, 'the PR: lines');
+  assert.deepEqual(done.prs.map((p) => p.number).sort(), [7, 8], 'not other/x#1, not the other task’s #9');
+  assert.deepEqual(fx.task(other.id).prs.map((p) => p.number), [9]);
 });

@@ -21,6 +21,7 @@ import type { NewComment, TaskUpdate } from '../db/repository.js';
 import type { KanbanCaller, KanbanContext } from '../registry.js';
 import { projectRepos, repoSources } from '../projects.js';
 import { sameRepo } from '../../../shared/floors.js';
+import { prOwners } from '../integrations/pulls/bundle.js';
 import { claudeAdapter } from './adapters/claude.js';
 import { codexAdapter } from './adapters/codex.js';
 import type { TaskAgentAdapter, TurnResult } from './adapters/types.js';
@@ -1433,21 +1434,22 @@ export class Orchestrator {
   }
 
   /**
-   * The pull requests a PR turn reported with a `PR:` line, kept on the task by repository. A PR only
-   * mentioned by URL (loose) isn't linked here: the board sync links it by the task's branch, with
-   * its fork and ownership checks, right after refreshPrBoards.
+   * The pull requests a PR turn reported with a `PR:` line, kept on the task by repository: only a
+   * GitHub PR of one of the task's repositories that no other task (of any project) has. A PR the
+   * answer names otherwise is left to the board sync, which links it by the task's branch.
    */
   private recordPrs(task: KanbanTask, text: string) {
     const def = this.ctx.project(task.project);
     const repos = def ? taskRepos(def, task) : [];
     const branches = this.ctx.repo.repoBranches(task.id);
+    const remoteOf = (project: string, repoId: string) => this.ctx.repos(project).find((r) => r.id === repoId)?.remote;
     let changed = false;
     for (const pr of prLines(text)) {
-      if (pr.number === undefined || pr.loose) continue;
-      const repo = repos.find((r) => r.remote && pr.repo && r.remote.toLowerCase() === pr.repo.toLowerCase());
-      const repoId = repo?.id ?? task.project;
-      const branch = branches[repoId] ?? task.branch;
-      this.ctx.repo.upsertPrLink(task.id, { repoId, ...(pr.repo ? { repo: pr.repo } : {}), number: pr.number, url: pr.url, state: 'OPEN', ...(branch ? { branch } : {}) });
+      if (pr.number === undefined || !pr.repo) continue;
+      const repo = repos.find((r) => r.remote && sameRepo(r.remote, pr.repo!));
+      if (!repo || prOwners(this.ctx.repo.prLinksMatching(pr.number, pr.url), remoteOf, { repo: pr.repo, number: pr.number, url: pr.url }).some((id) => id !== task.id)) continue;
+      const branch = branches[repo.id] ?? task.branch;
+      this.ctx.repo.upsertPrLink(task.id, { repoId: repo.id, repo: pr.repo, number: pr.number, url: pr.url, state: 'OPEN', ...(branch ? { branch } : {}) });
       changed = true;
     }
     if (changed) this.pushTask(this.ctx.repo.getTask(task.id));

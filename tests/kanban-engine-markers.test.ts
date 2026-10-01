@@ -45,7 +45,7 @@ test('PR lines: every URL once, GitHub ones with their repository and number', (
   ]);
 });
 
-test('PR lines: other wordings of the line, a loose GitHub URL, quotes ignored, named over loose', () => {
+test('PR lines: other wordings of the line; a URL elsewhere in the text, and quotes, are not reported', () => {
   const at = (n: number, repo = 'o/r') => ({ url: `https://github.com/${repo}/pull/${n}`, repo, number: n });
   assert.deepEqual(prLines('PR: [#12](https://github.com/o/r/pull/12)'), [at(12)]);
   assert.deepEqual(prLines('- PR: https://github.com/o/r/pull/13'), [at(13)]);
@@ -56,11 +56,11 @@ test('PR lines: other wordings of the line, a loose GitHub URL, quotes ignored, 
   assert.deepEqual(prLines('pr opened: https://github.com/o/r/pull/18/files#diff-1?x=1'), [at(18)]);
   assert.deepEqual(prLines('1. PR: <https://github.com/o/r/pull/19>.'), [at(19)]);
   assert.deepEqual(prLines('PR: https://gitlab.com/x/-/merge_requests/3 (draft)'), [{ url: 'https://gitlab.com/x/-/merge_requests/3' }]);
-  assert.deepEqual(prLines('I opened https://github.com/o/r/pull/20/files, see it.'), [{ ...at(20), loose: true }]);
-  assert.deepEqual(prLines('Done: [the PR](https://github.com/o/r/pull/21).'), [{ ...at(21), loose: true }]);
+  assert.deepEqual(prLines('I opened https://github.com/o/r/pull/20/files, see it.'), []);
+  assert.deepEqual(prLines('Done: [the PR](https://github.com/o/r/pull/21).'), []);
   assert.deepEqual(prLines('> PR: https://github.com/o/r/pull/22\n> see https://github.com/o/r/pull/23'), [], 'quotes are not reports');
   assert.deepEqual(prLines('See PR: https://nope in a sentence'), []);
-  assert.deepEqual(prLines('It is https://github.com/o/r/pull/24 here\nPR: https://github.com/o/r/pull/24\nPR: https://github.com/o/r/pull/24\nhttps://github.com/o/r/pull/25'), [at(24), { ...at(25), loose: true }], 'once, the named one wins, first appearance first');
+  assert.deepEqual(prLines('It is https://github.com/o/r/pull/24 here\nPR: https://github.com/o/r/pull/24\nPR: HTTPS://GitHub.com/O/R/pull/24\nPR: http://github.com/o/r/pull/24'), [at(24)], 'once, whatever the case or scheme');
 });
 
 test('usage limits and lost connections, and when they reset', () => {
