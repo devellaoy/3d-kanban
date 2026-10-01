@@ -530,12 +530,11 @@ task's workspace folder there holds a worktree of each of its repositories).
   write its report files, and only its contract keeps it off the repositories. Codex runs these
   phases with `--dangerously-bypass-approvals-and-sandbox` unless the project picks its workspace
   sandbox (an investigation always gets the sandbox, with the report folder writable).
-- Codex task workers run with `--dangerously-bypass-hook-trust` when the installed Codex knows it (the
-  office checks `codex --help` once when it starts). The office's own hooks name each floor's own path
-  and Codex trusts one hash per event, so without the flag a worker would stop at Codex's "Hooks need
-  review" screen whenever it switches projects. It also runs any user or project Codex hooks (e.g. a
-  reviewed repository's `.codex/` hooks) without that review. With an older Codex the screen can still
-  appear.
+- Codex task workers are started with the trusted hashes of the office's own hooks (`-c hooks.state=…`),
+  so Codex's "Hooks need review" screen doesn't stop them when they move between projects (the hook
+  command names each floor's own path, and Codex remembers one trusted hash per event). The user's and
+  the project's own Codex hooks still need review in `/hooks`. If a Codex release changes how it hashes
+  hooks, the screen comes back (nothing breaks).
 - Reviewers can't use editing tools (Claude: no Edit, Write or NotebookEdit; Codex review rounds: its
   read-only sandbox), but a Claude reviewer still has Bash, and a Codex multi-PR reviewer runs in the
   workspace sandbox of its own throwaway worktree (it needs the network for `gh`). That a reviewer runs

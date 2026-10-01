@@ -4,6 +4,7 @@
 // and a worker can be relaunched on its session with other flags.
 import type { AgentEffort, WorkerInfo, WorkerStatus } from '../../shared/protocol.js';
 import type { DepartureIntent } from '../../shared/kanban/types.js';
+import { codexHookTrustArgs } from './codex-trust.js';
 import { validateWorkerEffort, validateWorkerModel } from '../agents.js';
 import type { WorktreeCleanup } from '../worktrees.js';
 import type { SpawnExtra, Worker, WorkerHandle, WorkerObservation, WorkerObserver } from '../workers/types.js';
@@ -169,4 +170,10 @@ function kanbanExtra(extra: SpawnExtra | undefined): Worker['extra'] {
 export function kanbanSetup(w: Worker, adapter: { id: string }, setup: unknown): unknown {
   const s = setup as { settings?: string; kanbanSettings?: string } | undefined;
   return adapter.id === 'claude' && w.extra?.settingsFile === 'kanban' && s?.kanbanSettings ? { ...s, settings: s.kanbanSettings } : setup;
+}
+
+/** The flags a worker's provider launches with: a kanban hire of Codex also gets the trusted hashes of the office's hooks (they name this floor's hook path, so they are made per launch). */
+export function kanbanExtraArgs(w: Worker, adapter: { id: string }, setup: unknown): string[] | undefined {
+  const hook = (setup as { hook?: unknown } | undefined)?.hook;
+  return adapter.id === 'codex' && w.info.kanban && typeof hook === 'string' ? [...codexHookTrustArgs(hook), ...(w.extra?.launchArgs ?? [])] : w.extra?.launchArgs;
 }

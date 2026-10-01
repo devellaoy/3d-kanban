@@ -3,12 +3,10 @@ import assert from 'node:assert/strict';
 import { mkdirSync, mkdtempSync, rmSync, utimesSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import { defaultShell } from '../src/server/workers/process.js';
 import { validateWorkerModel } from '../src/server/agents.js';
 import { claudeAdapter, claudeAlias, readClaudeTurn, teammateTags } from '../src/server/kanban/engine/adapters/claude.js';
 import { MODEL_RE } from '../src/shared/kanban/protocol.js';
 import { codexAdapter, readCodexTurn } from '../src/server/kanban/engine/adapters/codex.js';
-import { codexBypassesHookTrust, helpMentionsHookTrust, probeCodexHookTrust, setCodexHookTrust } from '../src/server/kanban/engine/adapters/codex-hook-trust.js';
 
 function scratch(t: { after(fn: () => void): void }) {
   const dir = mkdtempSync(path.join(tmpdir(), 'kanban-adapters-'));
@@ -61,9 +59,7 @@ test('claude model ids: a full id passes upstream as its alias and runs as itsel
   assert.deepEqual(args.slice(-2), ['--model', 'claude-opus-5-5[1m]']);
 });
 
-test('codex launch flags per phase, the workspace-write setting, models and efforts', (t) => {
-  setCodexHookTrust(false);
-  t.after(() => setCodexHookTrust(undefined));
+test('codex launch flags per phase, the workspace-write setting, models and efforts', () => {
   const base = { permission: 'bypass' as const, sandbox: true };
   assert.deepEqual(codexAdapter.launchArgs('plan', base), ['-s', 'read-only', '-a', 'never']);
   assert.deepEqual(codexAdapter.launchArgs('review', base), ['-s', 'read-only', '-a', 'never']);
@@ -76,28 +72,6 @@ test('codex launch flags per phase, the workspace-write setting, models and effo
   assert.deepEqual(codexAdapter.launchArgs('fix', { ...base, model: 'gpt-5.5', effort: 'max', extra: ['-c', 'x=1'] }), ['--dangerously-bypass-approvals-and-sandbox', '-m', 'gpt-5.5', '-c', 'model_reasoning_effort="xhigh"', '-c', 'x=1']);
   assert.equal(codexAdapter.spawnModel('gpt-5.5'), undefined);
   assert.equal(codexAdapter.spawnEffort('high'), undefined);
-});
-
-test('codex gets --dangerously-bypass-hook-trust first in every phase when the installed codex knows it', (t) => {
-  t.after(() => setCodexHookTrust(undefined));
-  const base = { permission: 'bypass' as const, sandbox: true };
-  const cases: Array<[Parameters<typeof codexAdapter.launchArgs>[0], Parameters<typeof codexAdapter.launchArgs>[1]]> = [
-    ...(['plan', 'review', 'pr-review', 'implement', 'fix', 'resume', 'pr', 'pr-fix'] as const).map((p): [typeof p, typeof base] => [p, base]),
-    ['implement', { ...base, investigate: true, addDirs: ['/reports/task-3'] }],
-    ['implement', { ...base, permission: 'workspace-write', addDirs: ['/uploads'] }],
-  ];
-  for (const [phase, opts] of cases) {
-    setCodexHookTrust(false);
-    const without = codexAdapter.launchArgs(phase, opts);
-    setCodexHookTrust(true);
-    assert.deepEqual(codexAdapter.launchArgs(phase, opts), ['--dangerously-bypass-hook-trust', ...without], phase);
-  }
-});
-
-test('helpMentionsHookTrust finds the flag in codex --help', () => {
-  assert.equal(helpMentionsHookTrust('Options:\n      --dangerously-bypass-hook-trust\n          Run enabled hooks without persisted trust\n'), true);
-  assert.equal(helpMentionsHookTrust('Options:\n  -s, --sandbox <MODE>\n  --dangerously-bypass-approvals-and-sandbox\n'), false);
-  assert.equal(helpMentionsHookTrust(''), false);
 });
 
 test('claude transcript: the text after the last real prompt, skipping tool results, meta lines and subagents', (t) => {
@@ -373,57 +347,4 @@ test('codex rollout: the last task_complete of the last turn, else the last assi
   assert.deepEqual(readCodexTurn(fallback), { text: 'The answer', complete: true });
   const error = write('error.jsonl', [meta, ...user('Go'), { type: 'event_msg', payload: { type: 'error', message: 'stream disconnected before completion' } }, done(null)]);
   assert.deepEqual(readCodexTurn(error), { text: 'stream disconnected before completion', complete: true, apiError: 'stream disconnected before completion' });
-});
-
-const HELP = 'Options:\n  --dangerously-bypass-hook-trust\n';
-const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
-type ExecCb = (err: unknown, stdout: string, stderr: string) => void;
-
-test('probeCodexHookTrust looks codex up without blocking and falls back to the login shell', async (t) => {
-  t.after(() => setCodexHookTrust(undefined));
-  const calls: string[][] = [];
-  const exec = (file: string, args: string[], _o: unknown, cb: ExecCb) => {
-    calls.push([file, ...args]);
-    setTimeout(() => cb(null, HELP, ''), 100);
-  };
-  const find = async () => {
-    await sleep(100);
-    return null;
-  };
-  const start = performance.now();
-  const p = probeCodexHookTrust({ find, exec });
-  assert.ok(performance.now() - start < 20, 'the call itself returns at once');
-  let settled = false;
-  void p.then(() => (settled = true));
-  await new Promise((r) => setImmediate(r));
-  assert.equal(settled, false);
-  assert.equal(await p, true);
-  assert.equal(codexBypassesHookTrust(), true);
-  assert.equal(calls[0][0], defaultShell());
-  assert.ok(calls[0].at(-1)?.includes('codex --help'));
-});
-
-test('probeCodexHookTrust runs the codex found on PATH and reads the flag from its help', async (t) => {
-  t.after(() => setCodexHookTrust(undefined));
-  const warn = t.mock.method(console, 'warn', () => {});
-  const calls: unknown[][] = [];
-  const run = (help: string) => (file: string, args: string[], _o: unknown, cb: ExecCb) => {
-    calls.push([file, args]);
-    cb(null, help, '');
-  };
-  const find = async () => '/opt/bin/codex';
-  assert.equal(await probeCodexHookTrust({ find, exec: run(HELP) }), true);
-  assert.deepEqual(calls[0], ['/opt/bin/codex', ['--help']]);
-  assert.equal(await probeCodexHookTrust({ find, exec: run('Options:\n  --sandbox\n') }), false);
-  assert.equal(codexBypassesHookTrust(), false);
-  assert.equal(warn.mock.callCount(), 1);
-});
-
-test('probeCodexHookTrust is false when running codex fails', async (t) => {
-  t.after(() => setCodexHookTrust(undefined));
-  setCodexHookTrust(true);
-  const exec = (_f: string, _a: string[], _o: unknown, cb: ExecCb) => cb(new Error('boom'), '', '');
-  assert.equal(await probeCodexHookTrust({ find: async () => '/x/codex', exec }), false);
-  assert.equal(codexBypassesHookTrust(), false);
-  assert.equal(await probeCodexHookTrust({ find: async () => { throw new Error('x'); }, exec }), false);
 });

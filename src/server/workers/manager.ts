@@ -27,7 +27,7 @@ import { CARRY_ON_PROMPT, WorkerTasks } from './tasks.js';
 import { flushScreens, fullScreens, newTerm, offlineBanner, screenText, type HeadlessTerminal } from './terminal.js';
 import type { HookEnv, OpenedPr, RepoSource, RunAs, SpawnExtra, Worker, WorkerContext, WorkerEvents, WorkerHandle } from './types.js';
 import { clamp, safeEq, truncate } from './util.js';
-import { COLORS, KanbanWorkers, NAMES, kanbanSetup, newWorker, type DepartureIntent } from './worker.js'; // 3d-kanban: KanbanWorkers and friends, via worker.js
+import { COLORS, KanbanWorkers, NAMES, kanbanExtraArgs, kanbanSetup, newWorker, type DepartureIntent } from './worker.js'; // 3d-kanban: KanbanWorkers and friends, via worker.js
 import { WorkerTrees, lostMessage } from './worktree.js';
 
 const SCREEN_INTERVAL_MS = 250;
@@ -664,7 +664,7 @@ export class WorkerManager extends KanbanWorkers {
     const commandPath = isShell ? undefined : configured ? this.agentPath : resolveCommand(command);
     const base = isShell ? (WIN && !process.env.SHELL ? [] : ['-l']) : configured ? [...this.agentArgs] : [];
     // Its provider's command line, and anything it sets for this run (see ProviderAdapter.launch).
-    const plan: LaunchPlan = adapter ? adapter.launch({ h: this.handleOf(w), args: base, prompt, resumeSessionId, station, setup: kanbanSetup(w, adapter, this.setups[adapter.id]), extraArgs: w.extra?.launchArgs }) : { args: base }; // 3d-kanban: the task's settings file and flags
+    const plan: LaunchPlan = adapter ? adapter.launch({ h: this.handleOf(w), args: base, prompt, resumeSessionId, station, setup: kanbanSetup(w, adapter, this.setups[adapter.id]), extraArgs: kanbanExtraArgs(w, adapter, this.setups[adapter.id]) }) : { args: base }; // 3d-kanban: the task's settings file and flags (plus Codex's hook trust)
     const { args } = plan;
     if (plan.rotateToken) w.hookToken = randomBytes(16).toString('hex');
     const env = { ...childEnv(), ...w.extra?.env }; // 3d-kanban: the engine's own variables, under the office's (which they can't replace)
