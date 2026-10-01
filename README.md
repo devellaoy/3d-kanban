@@ -498,6 +498,8 @@ npm run typecheck
 npm test
 ```
 
+See [testing notes](docs/testing.md) for platform-specific fixture and filesystem checks.
+
 Server edits restart the server, not the workers. After changing `ptyhost.ts`, bump `PTY_PROTOCOL` in `ptys.ts` so the next server replaces the PTY host.
 
 [docs/code-layout.md](docs/code-layout.md) says where the code lives, and where a new feature's pieces go.

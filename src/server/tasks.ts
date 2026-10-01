@@ -99,7 +99,8 @@ export class TaskNamer {
 
   private async generate(ctx: TaskContext): Promise<WorkerTask | null> {
     if (!this.enabled) return null;
-    const out = await run(this.claude!, this.env, this.system(), describe(ctx));
+    // 3d-kanban: synchronous spawn errors also use the optional namer's fallback/backoff.
+    const out = await run(this.claude!, this.env, this.system(), describe(ctx)).catch(() => null);
     const task = out === null ? null : parse(out);
     if (task) this.fails = 0;
     else if (++this.fails >= FAILS_BEFORE_BACKOFF) {

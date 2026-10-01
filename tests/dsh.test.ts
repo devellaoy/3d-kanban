@@ -5,7 +5,8 @@
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
+import { chmodSync, copyFileSync, existsSync, linkSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
+import { rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import {
@@ -42,6 +43,7 @@ const sessionsFile = process.env.DSH_FAKE_SESSIONS;
 /** A fake agent never takes the suite down with it: a bad log path is not a protocol error. */
 const append = (file, text) => { try { if (file) appendFileSync(file, text); } catch { /* ignore */ } };
 append(log, JSON.stringify({
+  pid: process.pid,
   argv: process.argv.slice(2),
   cwd: process.cwd(),
   profile: process.env.AGENT_OFFICE_DSH_PROFILE,
@@ -184,7 +186,8 @@ type Fixture = {
   log: string;
   sessions: string;
   answers: string;
-  close(): void;
+  cleanups: (() => Promise<void>)[];
+  close(): Promise<void>;
 };
 
 /** A temp floor with the fake agent, plus a `dsh` executable that runs it. */
@@ -193,14 +196,20 @@ function fixture(): Fixture {
   const root = realpathSync(mkdtempSync(path.join(tmpdir(), 'agent-office-dsh-')));
   const data = path.join(root, '.agent-office');
   const agent = path.join(root, 'fake-acp-agent.mjs');
-  const dsh = path.join(root, 'dsh');
+  const dsh = path.join(root, process.platform === 'win32' ? 'dsh.exe' : 'dsh');
   const log = path.join(root, 'invocations.jsonl');
   const sessions = path.join(root, 'sessions.txt');
   const answers = path.join(root, 'answers.jsonl');
   mkdirSync(data, { recursive: true });
   writeFileSync(agent, fakeAgent);
-  writeFileSync(dsh, `#!/bin/sh\nexec ${JSON.stringify(process.execPath)} ${JSON.stringify(agent)} "$@"\n`, { mode: 0o700 });
-  chmodSync(dsh, 0o700);
+  if (process.platform === 'win32') {
+    // ACP spawns directly, so use a native executable rather than a batch shim.
+    try { linkSync(process.execPath, dsh); } catch { copyFileSync(process.execPath, dsh); }
+  } else {
+    writeFileSync(dsh, `#!/bin/sh\nexec ${JSON.stringify(process.execPath)} ${JSON.stringify(agent)} "$@"\n`, { mode: 0o700 });
+    chmodSync(dsh, 0o700);
+  }
+  const cleanups: (() => Promise<void>)[] = [];
   writeFileSync(log, '');
   writeFileSync(answers, '');
   return {
@@ -211,8 +220,10 @@ function fixture(): Fixture {
     log,
     sessions,
     answers,
-    close() {
-      rmSync(root, { recursive: true, force: true });
+    cleanups,
+    async close() {
+      for (const cleanup of cleanups.reverse()) await cleanup();
+      await rm(root, { recursive: true, force: true, maxRetries: 20, retryDelay: 50 });
     },
   };
 }
@@ -270,6 +281,10 @@ function startSession(f: Fixture, launch: Partial<DshLaunch> = {}, env: Record<s
     events,
   );
   session.start();
+  f.cleanups.push(async () => {
+    session.close();
+    await waitFor(() => state.exits.length, (n) => n > 0);
+  });
   return { session, state };
 }
 
@@ -490,7 +505,7 @@ test('the patch keeps the floor DSH sessions under the office, and argv puts the
   const patch = writeDshPatch(f.data);
   const body = readFileSync(patch, 'utf8');
   assert.match(body, /session-persistence-jsonl/);
-  assert.ok(body.includes(dshSessionsRoot(f.data)));
+  assert.ok(body.includes(JSON.stringify(dshSessionsRoot(f.data))));
   assert.deepEqual(dshArgs({ profile: 'acp', patches: [patch], extra: ['--model', 'x'] }), ['--model', 'x', '--profile', 'acp', '--patch', patch]);
   assert.deepEqual(dshArgs({ profile: 'acp' }), ['--profile', 'acp']);
 });
@@ -765,7 +780,7 @@ function workerEvents(updates: WorkerInfo[]): WorkerEvents {
 }
 
 function manager(f: Fixture, updates: WorkerInfo[]) {
-  return new WorkerManager(f.root, f.data, f.dsh, [], { url: 'http://127.0.0.1:1', token: '' }, workerEvents(updates), new Ledger(f.data, { pauseHiring: false }, () => {}, () => {}));
+  return new WorkerManager(f.root, f.data, f.dsh, process.platform === 'win32' ? [f.agent] : [], { url: 'http://127.0.0.1:1', token: '' }, workerEvents(updates), new Ledger(f.data, { pauseHiring: false }, () => {}, () => {}));
 }
 
 /**
@@ -791,7 +806,18 @@ function pointFakeAt(t: { after(fn: () => void): void }, f: Fixture) {
 function supervised(t: { after(fn: () => void): void }, f: Fixture, updates: WorkerInfo[]) {
   pointFakeAt(t, f);
   const mgr = manager(f, updates);
-  t.after(() => mgr.shutdown(false));
+  f.cleanups.push(async () => {
+    mgr.shutdown(false);
+    const pids = readFileSync(f.log, 'utf8').split('\n').filter(Boolean)
+      .map((line) => (JSON.parse(line) as { pid?: number }).pid).filter((pid): pid is number => pid !== undefined);
+    await waitFor(() => pids.every((pid) => {
+      try { process.kill(pid, 0); return false; }
+      catch (err) {
+        if ((err as NodeJS.ErrnoException).code !== 'ESRCH') throw err;
+        return true;
+      }
+    }), (stopped) => stopped);
+  });
   return mgr;
 }
 
@@ -819,7 +845,7 @@ test('the office hires a DSH worker over ACP, and its desk shows the work', asyn
 
   // The patch keeps this floor's sessions in the office's own directory.
   const patch = readFileSync(path.join(f.data, 'dsh-patch.yml'), 'utf8');
-  assert.ok(patch.includes(dshSessionsRoot(f.data)));
+  assert.ok(patch.includes(JSON.stringify(dshSessionsRoot(f.data))));
 
   // Answering the permission from the terminal finishes the turn at the desk.
   mgr.write(id, '1\r', 'tester');
