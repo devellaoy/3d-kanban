@@ -366,7 +366,8 @@ its own comments and close) gets its **status** and **assignee** there.
   Shift/⌘/Ctrl+Enter sends). A comment written under an identity everyone shares ends with
   `— <your name> via Agent Office`. A draft has no comments.
 - **Assignee.** **Assign to me**, **Someone else…** (a search of who can be assigned) or **Unassign**.
-  On GitHub it makes the person the only assignee. Jira's token is everyone's, so the office can't know
+  On GitHub it makes the person the only assignee, and **Assign to me** needs your own GitHub sign-in
+  (under the office's `gh` pick yourself from the list instead). Jira's token is everyone's, so the office can't know
   which Jira user you are: pick yourself once and pin it (**📌 This is me**); your browser remembers
   it per site and **Assign to me** uses it. A draft can't be assigned: convert it to an issue on GitHub.
 
