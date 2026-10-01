@@ -1,4 +1,9 @@
 // One-time password reveal: /claim?t=<token>. The server forgets the plaintext as soon as it answers.
+import { applyAppearance, loadAppearance, watchAppearance } from './themes';
+
+applyAppearance(loadAppearance());
+watchAppearance();
+
 const $ = (id: string) => document.getElementById(id)!;
 const token = new URLSearchParams(location.search).get('t') ?? '';
 // Keep the single-use token out of the address bar and history.

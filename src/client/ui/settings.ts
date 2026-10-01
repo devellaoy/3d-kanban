@@ -12,6 +12,8 @@ import { openPromptEditor, rewrittenPrompts } from './prompts';
 // The kanban's settings are categories of this window, loaded when one is first shown.
 import { KANBAN_PANES, kanbanSettingsSlots, type KanbanSettingsPane } from '../kanban/settingsslot';
 import { mouseSensitivityRow } from './sensitivity';
+import { appearanceRow } from './appearance';
+import { setting } from './settingrow';
 
 const VIEWS: [ViewMode, string, string][] = [
   ['first', '👀 First person', 'See through your own eyes. Click the office to look around with the mouse and click things to use them. Esc frees the mouse.'],
@@ -33,18 +35,6 @@ const PANES: { id: SettingsPane; icon: string; label: string; blurb: string }[] 
   { id: 'workers', icon: '🤖', label: 'Workers', blurb: 'What workers start on, how many run at once, when they go home and what the office tells them.' },
   ...KANBAN_PANES, // 🗂️ Kanban, 📁 Projects
 ];
-
-/** Who a setting is for, shown by its name: some are yours alone, some the whole office's. */
-type Scope = 'you' | 'floor' | 'office';
-const SCOPE: Record<Scope, [label: string, title: string]> = {
-  you: ['Just you', 'Only for you, kept in this browser'],
-  floor: ['This floor', 'The same for everyone on this floor'],
-  office: ['Everyone', 'The same for everyone in the building'],
-};
-
-/** One setting: its name and who it's for, then whatever sets it. */
-const setting = (title: string, scope: Scope | null, ...body: Node[]) =>
-  h('div.setting', {}, h('div.setting-head', {}, h('h4', {}, title), scope && h('span.scope', { class: scope, title: SCOPE[scope][1] }, SCOPE[scope][0])), ...body);
 
 /** Where ⚙️ Settings was last, so it opens there again. */
 let lastPane: SettingsPane = 'you';
@@ -514,6 +504,7 @@ export function openSettings(net: Net, settings: Settings, onChange: (s: Setting
       setting('Your character', null, character),
       setting('Camera view', 'you', seg, note),
       setting('Mouse sensitivity', 'you', ...mouseSensitivityRow(() => settings, (s) => onChange((settings = s)))), // ⚙️ Settings' mouse sensitivity (ui/sensitivity.ts)
+      setting('Theme', 'you', ...appearanceRow()), // the pages' look (ui/appearance.ts)
       setting('Signed in', null, h('div.volume', {}, signOut), h('p.setting-note', {}, account ? `As ${account.name}, with your own account (${account.role}).` : 'With the shared office password.')),
     ],
     sound: [

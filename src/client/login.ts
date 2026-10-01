@@ -1,5 +1,10 @@
 export {}; // a module, so its names don't clash with the other pages' scripts
 
+import { applyAppearance, loadAppearance, watchAppearance } from './themes';
+
+applyAppearance(loadAppearance());
+watchAppearance();
+
 const form = document.getElementById('form') as HTMLFormElement;
 const nameRow = document.getElementById('name-row') as HTMLLabelElement;
 const nameInput = document.getElementById('name') as HTMLInputElement;

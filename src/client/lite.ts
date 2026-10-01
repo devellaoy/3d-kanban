@@ -5,6 +5,7 @@
 // anywhere in it.
 
 import { Net } from './net';
+import { applyAppearance, loadAppearance, watchAppearance } from './themes';
 import { AVATAR_COLORS, loadProfile, loadSettings, saveProfile, store } from './state';
 import { randomLook } from '../shared/avatar';
 import { ROOF } from '../shared/rooftop';
@@ -35,6 +36,9 @@ import { askNotifyPermission, DesktopNotifier, notifyPermission, waitingOnSomeon
 import { repoChoices } from './shared/hiring';
 // The tab title counts the workers waiting on someone, on every floor, as the 3D office's does.
 import { renderTitle } from './shared/title';
+
+applyAppearance(loadAppearance());
+watchAppearance();
 
 // Sent here because this browser can't draw the 3D office (see noWebGL in core/scene.ts).
 if (new URLSearchParams(location.search).get('why') === 'webgl') {
