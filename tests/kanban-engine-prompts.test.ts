@@ -10,7 +10,7 @@ import { Composer, reposText, slugify } from '../src/server/kanban/engine/compos
 import type { PromptKind } from '../src/server/kanban/engine/machine.js';
 import type { KanbanContext } from '../src/server/kanban/registry.js';
 import { KanbanSettingsStore } from '../src/server/kanban/settings.js';
-import { KANBAN_CONTRACTS, KANBAN_PROMPT_DEFS, PROMPT_CONTRACT, resolveKanbanPrompt, withContract } from '../src/shared/kanban/prompts.js';
+import { KANBAN_CONTRACTS, KANBAN_PROMPT_DEFS, PROMPT_CONTRACT, STOP_PROCESSES, resolveKanbanPrompt, withContract } from '../src/shared/kanban/prompts.js';
 import { PROMPTS, placeholders } from '../src/shared/prompts.js';
 import type { RunPhase } from '../src/shared/kanban/types.js';
 import { makeRepo } from './kanban-engine-fixture.js';
@@ -187,6 +187,12 @@ test('the review contracts forbid changing anything, and no rewrite of the promp
   }
   assert.equal(PROMPT_CONTRACT['kanban.pr.review'], 'prReview');
   assert.ok(withContract('Mine', 'prReview').endsWith(KANBAN_CONTRACTS.prReview));
+});
+
+test('every contract, the review panel’s included, tells the agent to stop the processes it started, right after the rule line', () => {
+  for (const [id, c] of Object.entries(KANBAN_CONTRACTS)) assert.ok(c.startsWith(`---\n${STOP_PROCESSES}`), id);
+  assert.equal(PROMPT_CONTRACT['kanban.pr.panel'], 'panel');
+  for (const word of ['unless the task or the user explicitly asks', 'by the PID or job', 'never by name or port', 'without removing it', "didn't start alone"]) assert.ok(STOP_PROCESSES.includes(word), word);
 });
 
 test('kanban.checkout: a fresh worktree is told to check out the branch the task already has', (t) => {

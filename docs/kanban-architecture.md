@@ -220,6 +220,13 @@ allowed: `todo → in_progress` (= start), `waiting|review → done`, `done → 
   - A review verdict never counts inside a fenced code block (```` ``` ```` / `~~~`, an unclosed one runs to
     the end) or in a `>` quote. Plan markers ignore quotes and *closed* code blocks, but an unclosed fence
     hides nothing after it. PR lines ignore only quotes (an agent may list its PRs in a code block).
+- Every contract block (plan, review, prReview, implementSafety, investigateSafety, pr, and `panel`, which seals
+  the 🤝 review panel's `kanban.pr.panel` brief) starts, right after its `---` line, with `STOP_PROCESSES`: a process
+  the agent starts while it works (dev server, watcher, test runner, browser, emulator, container, background job)
+  is stopped before it finishes its work, unless the task or the user explicitly asks for it to be left running.
+  It is stopped by its PID or job or the tool's own stop command, never by name or port (no pkill or killall), a
+  container is stopped but not removed, and nothing the agent didn't start is touched (the office's own processes,
+  another worker's or the user's). It sits in the fixed block so no rewrite of a prompt can drop it.
 - Plan approval: `auto` (ready → implement) or `manual` (ready → `waiting` until the user approves).
 - Review: `rounds` (1–10), `reReviewLastFix` (default false). A reviewer is a separate worker (its own tool,
   model, effort) sharing the task's worktree (spawned with `reuse`), sent home with cleanup `keep`.

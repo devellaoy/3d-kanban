@@ -126,7 +126,9 @@ curl -fsSL https://raw.githubusercontent.com/devellaoy/3d-kanban/main/deploy/pro
   (or fix) the PRs in every repository.
 - **Multi-PR reviews**: 🔍 Review and 🤝 Review panel pick the PRs that belong together across the
   repositories and review them as one change.
-- **Editable prompts**, office-wide or per project, with the process's contract blocks kept fixed.
+- **Editable prompts**, office-wide or per project, with the process's contract blocks kept fixed (they also
+  tell every kanban run and review panel to stop the processes it started, such as a dev server, when it
+  finishes, unless it was asked to leave them running).
 - **Skills** per project, phase and agent (Claude via `--plugin-dir`, Codex synced into its home).
 - **Task references for agents**: `office-tasks get 14`, the MCP tools `get_task` / `search_tasks`, and
   ai-kanban's `/api/tasks/reference` and `/api/v1` on the loopback hook server (its port is in
