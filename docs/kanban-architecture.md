@@ -92,7 +92,9 @@ allowed: `todo → in_progress` (= start), `waiting|review → done`, `done → 
       sharing `message.id`); and, if the last assistant `tool_use` is `ExitPlanMode`, its `input.plan`.
       `TurnResult.background` counts the run's background agents still working (an async launch or a
       `SendMessage` resume in the log with no task-notification after it, since the office's last prompt);
-      `resuming` says the last prompt is a notification no assistant line has answered yet.
+      `resuming` says the last prompt is a notification (or a teammate's message) no assistant line has
+      answered yet. `background` counts agent-team teammates working too (below). `readTurnResult(file,
+      { since })` takes the start of the agent's Claude process; Codex ignores it.
       A last message that calls any other tool is not a final answer (`complete: false`): the Stop hook
       can come before Claude has logged the reply after that tool's result, so the engine reads the log
       again (`readTries` × `readPauseMs`, about 3 s, so a turn that really ends at a tool call, an
@@ -124,10 +126,32 @@ allowed: `todo → in_progress` (= start), `waiting|review → done`, `done → 
   `backgroundWaitMs` (3 h) without a Stop: a note says so and the run goes on with what its log says.
   ⏹️ Stop while held sends the worker home (worktree kept, Retry carries on in the session), which
   stops its helper agents; once the turn has resumed it is Esc as usual, and a Stop hook heard while a
-  stop is under way finishes it. Only background *agents* are counted: Bash `run_in_background` tasks and
-  agent-team teammates also resume Claude but aren't, so such a run can still end early. Known limit:
-  someone typing a prompt into a held worker's terminal starts a new window, so the agents still working
-  stop being counted and the run can end on that prompt's reply.
+  stop is under way finishes it. Only background *agents* and teammates are counted: Bash `run_in_background`
+  tasks also resume Claude but aren't, so such a run can still end early. Known limit: someone typing a
+  prompt into a held worker's terminal starts a new window, so the background agents still working stop
+  being counted and the run can end on that prompt's reply (teammates are read whatever the window).
+- **Agent-team teammates** (Claude Code's `Agent` call with a `name`) are counted in `TurnResult.background`
+  too, from their own transcripts beside the lead's (`<log>/subagents/agent-*.jsonl`, `taskKind:
+  in_process_teammate`): one is working when its transcript ends in a message or tool result it hasn't
+  answered, a message that isn't text alone, or nothing said yet. They live as long as the Claude process,
+  so only a teammate whose last line is newer than `since` counts: the process's start, from the worker's
+  `SessionStart` hook (`startup` or `resume`; else the run's start). The lead's log only covers the lag
+  of theirs: a spawn, a `SendMessage` to one (`routing.target`, else the call's `to`; `*` is everyone) or
+  a `[to Y]` summary in another's idle notification wakes it, an idle notification, shutdown or
+  termination rests it (only for names that are teammates: spawned, or with a transcript; a teammate's
+  `[to main]` to the lead wakes nobody), each when newer than the teammate's last line. A teammate's message to the lead is
+  no prompt of the office's: it doesn't open a new window (`start`) and counts as a prompt to answer
+  (`resuming`), so the background agents launched before it still count.
+- A hook whose payload has an `agent_id` comes from a subagent or teammate, which run in the lead's process
+  and so reach its worker (upstream may set the worker `working` for them). The engine ignores those for
+  its bookkeeping: the plan exit, the Stop text, the end of a hold, a heard question and a compact's
+  `SessionStart` are the lead's alone.
+- A phase that finds its own task's worker busy (a teammate's hook kept it `working` after the run ended:
+  a fix after a review, say) waits for the worker to rest, at most `busyWaitMs` (10 min), then starts as
+  usual; only after that wait does the run fail with "is busy: wait for its turn to end". ⏹️ Stop during the
+  wait cancels it (it would otherwise queue behind the task's chain): the run ends as stopped, nothing typed.
+- The clients show a task's worker as working for as long as its run is running (upstream's `done` of a
+  held turn is not shown); see `docs/kanban.md`.
 - **What it waits on** (`Live.asks`, `heardAsk`, in memory only): from the worker's hooks, heard before
   the status they cause. A `PreToolUse` of `AskUserQuestion` (Codex: `request_user_input`) is a
   `question`; a `PermissionRequest` or a `permission_prompt` notification is a `permission`; another

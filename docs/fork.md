@@ -174,6 +174,7 @@ New files are not seams (they can't conflict): `src/{server,shared,client}/kanba
 | `src/client/ui/pull.ts` | waiter maps, `routePullMessage` | Waiters keyed by kind + number + repo; replies matched by repo when they carry one | `api#5` isn't the primary's #5 |
 | `src/client/ui/pull.ts` | `commentBox`, `openMerge`, `openClose`, `openLabels`, `openPull`, `openIssue` | `repo` in gh.* messages, `?repo=` on `/api/gh/*`, titles show `api#5` | Same |
 | `src/client/state.ts` | import; top of `workerForPull()` | A card with `repo` goes to `workerForRepoPull()` | "Go to desk" finds the right worker |
+| `src/client/state.ts` | import; `enter()` (`this.workers = ...`), `case 'worker.update'` | Workers go through `shownWorker()` (kanban/status) on their way into the store | A kanban worker whose run is still going shows as working, not done, in 3D and /lite |
 | `src/client/main.ts` | `pullRequestFor()`, `pullRequestsFor()` lookups | PR matched by number and repo | "O" opens the right card |
 | `src/client/lite.ts` | `showMeeting` `openPr` | Same lookup | Same |
 | `src/client/ui/repos.ts` | import; `render()` | A project repo's PR on this floor's board opens in the PR window | Multi-repo workers' PRs |
@@ -299,6 +300,19 @@ New files are not seams (they can't conflict): `src/{server,shared,client}/kanba
   `queued_command` attachment inside another turn) naming the `<task-id>`. A notification counts as a real prompt for the
   final answer, but not as the office's prompt that opens the window agents are counted in. A Claude CLI
   restart between phases stops the previous phase's background agents, which the window handles.
+- Claude's agent teams (teammates; they run in the lead's process): an `Agent` call with `input.name` gets a
+  `toolUseResult` of `status: 'teammate_spawned'` (`name`, `teammate_id: 'name@session-…'`, `team_name`;
+  its text starts `Spawned successfully`). A `SendMessage` result has `routing.target` (`@name`; the call's
+  `input.to` is the fallback, `*` a broadcast). A teammate's message to the lead is a `user` line with no
+  `origin` whose text is `Another Claude session sent a message:` and one or more
+  `<teammate-message teammate_id="…" …>…</teammate-message>` tags; an idle teammate's body is JSON
+  (`type: 'idle_notification'`, `from`, `idleReason`, `result`, and `summary: '[to Y] …'` when it had just
+  messaged Y), read by parsing the text between the tags whole (a `result` holds `}`). Each teammate has a
+  transcript `<lead log without .jsonl>/subagents/agent-a<name>-<hash>.jsonl` and a `….meta.json` with
+  `taskKind: 'in_process_teammate'` (a background agent's has another kind); at rest it ends in an assistant
+  message of text alone, a message for it is a `user` line (or a `queued_command` attachment mid-turn).
+  Hooks fired inside a subagent or teammate carry `agent_id` (a teammate's turn ends with `SubagentStop`).
+  Every line has an ISO `timestamp`, which the lead's log events are compared to the teammate's with.
 - Claude flags: `--permission-mode <mode>`, `--disallowedTools`, `--plugin-dir <path>` (skills as a plugin),
   `--resume <id>`, `--session-id <uuid>`; `--json-schema` only works with `--print`, so interactive review
   verdicts are parsed from the final text. The setting `skipDangerousModePermissionPrompt` exists
