@@ -205,7 +205,7 @@ over it, and the task's own over both.
 | Implementation runs | 🗂️ Kanban → New tasks; 📁 Projects | without permission prompts | How implement, fix, resume and PR phases run. *In Codex's workspace sandbox* (`-s workspace-write -a never`) only changes Codex; Claude always runs these phases in bypass mode. |
 | Reviewer: agent, model, effort | 🗂️ Kanban → Reviews; 📁 Projects; per task | Claude | Who reviews. |
 | Rounds | 🗂️ Kanban → Reviews; 📁 Projects; per task | 2 | 1–10 review rounds. |
-| Review the last fix too | 🗂️ Kanban → Reviews; 📁 Projects; per task | on | One more review after the last round's fix. |
+| Review the last fix too | 🗂️ Kanban → Reviews; 📁 Projects; per task | off | One more review after the last round's fix. |
 | Keep the reviewer off the web | 🗂️ Kanban → Reviews; 📁 Projects | on | Claude reviewers get no WebFetch/WebSearch (Bash keeps the network, for `gh`). A Codex review round always runs in Codex's read-only sandbox (no network); a Codex multi-PR review in its workspace sandbox with the network on, for `gh`. |
 | Resume after a usage limit or a network break | 🗂️ Kanban | on, 5 tries, 6 hours | A turn cut short by a usage limit or a lost connection is retried by itself: at the reset time the message names (plus a minute), else after 5, 10, 20… minutes (at most an hour apart). It gives up after *tries at most* or *waits at most (hours)*; then it waits for Retry. |
 | Archive done tasks after (days) | 🗂️ Kanban | 30 | 0 keeps them on the board. Checked at start-up and hourly. |

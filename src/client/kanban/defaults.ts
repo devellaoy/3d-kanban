@@ -6,7 +6,7 @@
 import type { KanbanSettings, ProjectSettings, ReviewSettings } from '../../shared/kanban/types.js';
 
 /** DEFAULT_REVIEW. */
-export const REVIEW_DEFAULTS: Readonly<ReviewSettings> = { tool: 'claude', rounds: 2, reReviewLastFix: true, sandbox: true };
+export const REVIEW_DEFAULTS: Readonly<ReviewSettings> = { tool: 'claude', rounds: 2, reReviewLastFix: false, sandbox: true };
 
 /** defaultKanbanSettings(), without schemaVersion and projects. */
 export const KANBAN_DEFAULTS: Readonly<Pick<KanbanSettings, 'defaults' | 'review' | 'autoResume' | 'archiveAfterDays'>> = {
