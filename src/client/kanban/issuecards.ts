@@ -16,6 +16,7 @@ import { providerPicker } from '../ui/provider';
 import { openIssue } from '../ui/github/issue-window';
 import { labelChip } from '../ui/github/labels';
 import { kanbanApi, type KanbanOk } from './api';
+import { issueActions, type ActionIssue, type IssueSection } from './issueactions';
 import { issueTask } from './hireform';
 import { SOURCE_KIND_NAMES } from './labels';
 import { sameWindowAppLinks } from './md';
@@ -215,6 +216,29 @@ function queueCard(net: Net, it: GhIssue, provider?: AgentProvider, model?: stri
   net.send({ t: 'queue.add', prompt: cardIssuePrompt(it), title: `${issueCardLabel(it)} ${it.title}`, ...cardFields(cardOfIssue(it)), provider, model, effort });
 }
 
+/** What the actions panel needs of a board card. */
+const actionIssue = (it: GhIssue): ActionIssue => ({ key: it.key ?? '', url: safeUrl(it.url) || undefined, status: it.status, assignee: it.assignees.join(', ') || undefined });
+
+const openTaskIn3d = (net: Net) => (id: number) => void import('./taskview').then((m) => m.openTaskWindow(net, id));
+
+/**
+ * The status and assignee actions for a keyed card in upstream's window (it has comments and close of
+ * its own). It follows the board until its window is gone.
+ */
+function keyedActions(net: Net, sections: readonly IssueSection[]): ((it: GhIssue) => Node) | undefined {
+  const project = store.floor;
+  if (!project) return undefined;
+  return (first) => {
+    const panel = issueActions(kanbanApi(net), project, actionIssue(first), { sections, openTask: openTaskIn3d(net) });
+    const off = store.on('issues', () => {
+      if (!panel.el.isConnected) return off();
+      const fresh = issueOfCard(first);
+      if (fresh) panel.update(actionIssue(fresh));
+    });
+    return panel.el;
+  };
+}
+
 /**
  * A board card's window. One of the floor's own issues opens upstream's; another of the project's
  * GitHub repositories' too, with its actions going by its key; anything else (Jira, a project's draft,
@@ -225,7 +249,8 @@ export function openCard(it: GhIssue, net: Net, actions: BoardActions) {
   // Queued with its key, whichever window it opens in.
   const keyed: BoardActions = { ...actions, queue: (_prompt, _title, _issue, provider, model, effort) => queueCard(net, it, provider, model, effort) };
   // The floor's own issue from the sources: upstream's window and prompts.
-  if (isOwnIssue(it)) return openIssue(it, net, keyed);
+  const extra = keyedActions(net, ['status', 'assignee']);
+  if (isOwnIssue(it)) return openIssue(it, net, keyed, extra);
   if (it.number > 0) {
     const label = (title: string) => title.replace(`#${it.number}`, issueCardLabel(it));
     return openIssue(it, net, {
@@ -233,7 +258,7 @@ export function openCard(it: GhIssue, net: Net, actions: BoardActions) {
       assign: (_prompt, title) => actions.assign(sourcePrompt(it), label(title)),
       ask: (_context, title) => actions.ask(`${sourceName(it)}: “${it.title}”. ${readHint(it)}`, label(title)),
       meeting: () => actions.meeting(cardMeeting(it)),
-    });
+    }, extra);
   }
   openSourceIssue(it, net, keyed);
 }
@@ -246,6 +271,8 @@ function openSourceIssue(first: GhIssue, net: Net, actions: BoardActions) {
   const pill = h('span.pill.done', {}, it.source ? SOURCE_KIND_NAMES[it.source] : 'issue');
   const meta = h('div.gh-meta');
   const body = h('div.gh-items');
+  const project = store.floor;
+  const panel = it.key && project ? issueActions(kanbanApi(net), project, actionIssue(it), { openTask: (id) => (modal.close(), openTaskIn3d(net)(id)) }) : null;
   const queueProvider = providerPicker(store.project, `issue-provider-${cardId(it)}`, 'Queue on');
   const queue = h('button.btn', { type: 'button' }) as HTMLButtonElement;
   queue.addEventListener('click', () => {
@@ -265,7 +292,7 @@ function openSourceIssue(first: GhIssue, net: Net, actions: BoardActions) {
     { role: 'dialog', 'aria-label': `Issue ${label}` },
     h('header', {}, pill, h('h2', { title: `${label} ${it.title}` }, `${label} ${it.title}`), close),
     meta,
-    h('div.gh-body', {}, h('div.gh-conv', {}, h('div.gh-col', {}, body))),
+    h('div.gh-body', {}, h('div.gh-conv', {}, h('div.gh-col', {}, body, panel?.el ?? null))),
     h(
       'footer',
       {},
@@ -296,6 +323,7 @@ function openSourceIssue(first: GhIssue, net: Net, actions: BoardActions) {
     queue.title = onQueue ? '' : 'A worker picks it up by itself when a desk is free and there is room under the worker limit';
     task.textContent = it.taskId ? `↗ Task #${it.taskId}` : '🗂️ Kanban task';
     task.title = it.taskId ? 'The kanban task made from it' : 'A kanban task for it (plan → implement → review), started at a free desk';
+    panel?.update(actionIssue(it));
   };
   const unsubs = [
     store.on('issues', () => {

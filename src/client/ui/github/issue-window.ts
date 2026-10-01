@@ -17,7 +17,8 @@ import { issueContext, issuePrompt, type BoardActions } from './prompts';
 
 // ---- The issue window -----------------------------------------------------------------------------
 
-export function openIssue(first: GhIssue, net: Net, actions: BoardActions) {
+/** `extra`: more for the top of the conversation (the kanban's status and assignee actions on a card from the issue sources). */
+export function openIssue(first: GhIssue, net: Net, actions: BoardActions, extra?: (it: GhIssue) => Node) {
   let it = first;
   const itemUrl = it.url;
   // Which of the project's repositories it's in (none: the floor's own, as upstream).
@@ -34,7 +35,7 @@ export function openIssue(first: GhIssue, net: Net, actions: BoardActions) {
     detail.comments.push(c);
     render();
   }, repo);
-  conv.append(h('div.gh-col', {}, thread, comment.el));
+  conv.append(h('div.gh-col', {}, extra?.(first) ?? null, thread, comment.el));
   // The footer stays put and renderFrame only shows, hides and relabels, so a board refresh never
   // pulls focus out of the provider picker.
   const closeIssue = h('button.btn', { type: 'button', title: 'Close this issue on GitHub', onclick: () => openClose('issue', it, net, load) }, '✔️ Close issue…');
