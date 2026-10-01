@@ -8,6 +8,7 @@ import type { KanbanTool, RunPhase, SkillInfo, SkillPhase, SkillSelection } from
 import { projectRepos } from '../../projects.js';
 import { fail } from '../util.js';
 import { pluginDir, syncCodexSkills, type SyncResult } from './delivery.js';
+import { syncUserSkillsNow } from '../userskills/index.js';
 import { defaultRoots, discoverSkills, findSkill, type SkillRoots } from './registry.js';
 
 /** The office's own skill every Claude task worker gets (reading other tasks). */
@@ -40,6 +41,8 @@ export function checkSelection(selection: SkillSelection, skills: SkillInfo[]): 
 
 export interface SkillsOptions {
   roots?: (ctx: KanbanContext) => SkillRoots;
+  /** Where user-skills/ is (default: this install's). */
+  userSkills?: string;
 }
 
 export function createSkills(ctx: KanbanContext, opts: SkillsOptions = {}) {
@@ -109,7 +112,8 @@ export function createSkills(ctx: KanbanContext, opts: SkillsOptions = {}) {
 
   const sync = (): SyncResult[] => {
     const skills = registry().filter((s) => s.tool === 'codex' && s.origin === 'bundled');
-    const out = syncCodexSkills(roots().codexHome, skills);
+    const r = roots();
+    const out = [...syncCodexSkills(r.codexHome, skills), ...syncUserSkillsNow({ source: opts.userSkills, claudeHome: r.claudeHome, codexHome: r.codexHome })];
     cached = undefined;
     return out;
   };

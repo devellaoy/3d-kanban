@@ -36,8 +36,11 @@ export function parseFrontmatter(text: string): { name?: string; description?: s
   return { ...(out.name ? { name: out.name } : {}), ...(out.description ? { description: out.description } : {}) };
 }
 
-/** Every file of a skill's folder, relative, sorted (its marker left out), a few levels deep. */
-export function skillFiles(dir: string): string[] {
+/** What skipDeps leaves out at any depth: installed dependencies and the sync markers of user skills. */
+const SKIP_DEPS = new Set(['node_modules', '.office-user-skill.json', '.aikanban-sync']);
+
+/** Every file of a skill's folder, relative, sorted (its marker left out), a few levels deep. skipDeps also leaves out node_modules and the user-skill sync markers. */
+export function skillFiles(dir: string, opts: { skipDeps?: boolean } = {}): string[] {
   const out: string[] = [];
   const walk = (d: string, rel: string, depth: number) => {
     let names: string[];
@@ -48,6 +51,7 @@ export function skillFiles(dir: string): string[] {
     }
     for (const n of names) {
       if (n === MARKER || n === '.DS_Store') continue;
+      if (opts.skipDeps && SKIP_DEPS.has(n)) continue;
       const p = path.join(d, n);
       const r = rel ? `${rel}/${n}` : n;
       try {
@@ -64,9 +68,9 @@ export function skillFiles(dir: string): string[] {
 }
 
 /** A hash of what a skill's folder holds (names and contents), to tell copies apart. */
-export function skillHash(dir: string): string {
+export function skillHash(dir: string, opts?: { skipDeps?: boolean }): string {
   const h = createHash('sha256');
-  for (const f of skillFiles(dir)) {
+  for (const f of skillFiles(dir, opts)) {
     h.update(f).update('\0');
     try {
       h.update(readFileSync(path.join(dir, f)));

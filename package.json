@@ -7,15 +7,17 @@
     "kanban3d": "bin/agent-office.js"
   },
   "imports": {
-    "#tests/css": "./tests/support/css.mjs"
+    "#tests/css": "./tests/support/css.mjs",
+    "#tests/homes": "./tests/support/homes.mjs"
   },
   "files": [
     "bin",
     "dist",
-    "skills"
+    "skills",
+    "user-skills"
   ],
   "scripts": {
-    "test": "node --import tsx --import=#tests/css --test tests/*.test.ts",
+    "test": "node --import tsx --import=#tests/css --import=#tests/homes --test tests/*.test.ts",
     "dev": "concurrently -k \"vite\" \"tsx watch src/server/cli.ts --port 4600 --password dev --no-open\"",
     "build": "npm run build:client && npm run build:server",
     "build:client": "vite build",
