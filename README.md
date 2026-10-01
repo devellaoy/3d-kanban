@@ -493,6 +493,8 @@ npm run typecheck
 npm test
 ```
 
+The same `npm run dev` command works on Windows, macOS and Linux. Stop both development processes with Ctrl+C.
+
 Server edits restart the server, not the workers. After changing `ptyhost.ts`, bump `PTY_PROTOCOL` in `ptys.ts` so the next server replaces the PTY host.
 
 Every change to the app that lands on `main` is published as a GitHub release of `devellaoy/3d-kanban` (asset `3d-kanban.tgz`) by [`.github/workflows/release.yml`](.github/workflows/release.yml), and `install.sh` and `install.ps1` install the newest one. Bump `package.json`'s version to start a new minor.

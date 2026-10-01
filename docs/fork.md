@@ -64,6 +64,7 @@ New files are not seams (they can't conflict): `src/{server,shared,client}/kanba
 
 | File | Where | What | Why |
 |---|---|---|---|
+| `src/server/setup.ts` | `interactive()` | `isatty(0)` / `isatty(1)` instead of opening `process.stdin` / `process.stdout` | The Windows backend can block while opening concurrently's piped stdin; `npm run dev` keeps the same command on every platform |
 | `src/server/github.ts` | `MergeWatch.ring(n, repo?)`, `look()` and the new `pullKey()` | Merges are keyed by `repo#n` instead of `n` | A project's repositories can have PRs with the same number; the gong must ring once per PR |
 | `src/server/github.ts` | `GitHub` constructor: `nameWithOwner?`, `pullsOnly` params | Optional owner/name and a pulls-only switch | A project's other repository gets a `GitHub` of its own that fetches only PRs |
 | `src/server/github.ts` | `refreshIssues()` / `refreshPulls()` item mapping *(unmarked)*, `refresh()` *(unmarked)* | `...(this.nameWithOwner ? { repo } : {})` on every issue and PR; `refresh()` skips issues when `pullsOnly` | Each card knows its repository (`GhIssue.repo` / `GhPull.repo`) |
