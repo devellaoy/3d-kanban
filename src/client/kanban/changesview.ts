@@ -418,7 +418,14 @@ class ChangesView {
     const live = this.live;
     if (this.destroyed || !live) return;
     if (msg.t === 'changes' && msg.state.workerId === live.workerId && msg.state.repo === live.floor) {
+      const prev = live.state;
       live.state = msg.state;
+      // A new commit (or a rebase) on the branch: what was read over HTTP for this repository is old now.
+      if (prev && (prev.ahead !== msg.state.ahead || prev.subject !== msg.state.subject)) {
+        this.commits.delete(this.repoId);
+        this.whole.delete(this.repoId);
+        void this.fetchShown();
+      }
       this.paint();
     } else if (msg.t === 'changes.diff' && msg.workerId === live.workerId && msg.repo === live.floor && msg.path === this.selected && this.diffKey.startsWith('live:')) {
       this.loading = false;

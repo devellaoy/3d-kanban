@@ -50,6 +50,9 @@ export function mountWorkerTabs(net: Net, w: WorkerInfo, el: HTMLElement, panes:
   const tabs = workerTabs(w);
   if (!tabs.length) return null;
   css();
+  // The header's 🌿 Changes opens the task's Changes window: loaded now, so it opens at once (no
+  // moment without a window, when the office would take the mouse back).
+  void import('./changesview');
   const taskId = w.kanban!.taskId;
   const pane = h(`div.${TASK_PANE_CLASS}.hidden`, { role: 'tabpanel', 'aria-label': `Task #${taskId}` });
   // The composer's keys stay in it (Esc still closes the window: it's caught on the way down).
