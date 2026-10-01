@@ -7,7 +7,7 @@ import { providerLabel } from './provider';
 import type { MeetingPreset } from './meeting';
 import { officePrompt } from './prompts';
 // 3d-kanban: repository chips and filter for a multi-repository project's boards.
-import { boardRepos, inRepo, loadRepoFilter, repoChip, repoFilterSelect, saveRepoFilter } from '../kanban/boardrepos';
+import { boardRepos, inRepo, loadRepoFilter, repoChip, openByRepo, repoFilterSelect, repoTabs, saveRepoFilter } from '../kanban/boardrepos';
 // 3d-kanban: cards from the project's issue sources (Jira, a GitHub project, other repositories), by their key.
 import { issueCardLabel, openCard, sourceChips, taskForCard } from '../kanban/issuecards';
 import { noteSeed } from '../../shared/kanban/issuecard.js';
@@ -165,7 +165,9 @@ export function openBoard(kind: 'issues' | 'pulls', net: Net, actions: BoardActi
   // 3d-kanban: the repository filter, shown when the cards come from more than one repository.
   let repo = loadRepoFilter(kind, store.floor ?? '');
   const repoSlot = h('span');
-  const el = h('div.modal.board', { role: 'dialog', 'aria-label': kind === 'issues' ? 'Issues board' : 'Pull requests board' }, h('header', {}, h('h2', {}, kind === 'issues' ? '📌 Issues' : '🔀 Pull Requests'), status, repoSlot, refresh, close), body);
+  // 3d-kanban: the PR board picks its repository from tabs below the header instead.
+  const tabs = kind === 'pulls' ? repoTabs((r) => pickRepo(r)) : null;
+  const el = h('div.modal.board', { role: 'dialog', 'aria-label': kind === 'issues' ? 'Issues board' : 'Pull requests board' }, h('header', {}, h('h2', {}, kind === 'issues' ? '📌 Issues' : '🔀 Pull Requests'), status, repoSlot, refresh, close), tabs?.el ?? null, body); // 3d-kanban: tabs
 
   const filters = loadFilters(kind);
   /** What each column's filter box holds (column key → text), for as long as the board is open. */
@@ -272,6 +274,14 @@ export function openBoard(kind: 'issues' | 'pulls', net: Net, actions: BoardActi
     return section;
   };
 
+  // 3d-kanban: show only one repository's cards (the select on the issues board, the tabs on the PR board).
+  const pickRepo = (r: string) => {
+    if (r === repo) return;
+    repo = r;
+    saveRepoFilter(kind, store.floor ?? '', r);
+    render();
+  };
+
   const render = () => {
     const st = kind === 'issues' ? store.issues : store.pulls;
     status.textContent = st.loading ? 'Refreshing…' : st.fetchedAt ? `Updated ${timeAgo(st.fetchedAt)}` : '';
@@ -289,13 +299,9 @@ export function openBoard(kind: 'issues' | 'pulls', net: Net, actions: BoardActi
     }
     // 3d-kanban: only the picked repository's cards, each with its repository's chip.
     const repos = boardRepos(st.items);
-    const pickRepo = (r: string) => {
-      repo = r;
-      saveRepoFilter(kind, store.floor ?? '', r);
-      render();
-    };
-    repoSlot.replaceChildren(repoFilterSelect(repos, repo, pickRepo));
-    const shownRepo = repos.includes(repo) ? repo : '';
+    const shownRepo = repos.includes(repo) || (tabs && st.loading) ? repo : '';
+    if (tabs) tabs.update(repos, shownRepo, openByRepo(store.pulls.items), store.pulls.items.filter((p) => p.state === 'OPEN').length);
+    else repoSlot.replaceChildren(repoFilterSelect(repos, repo, pickRepo));
     const chip = (it: GhIssue | GhPull) => (repos.length > 1 ? repoChip(it) : '');
     const all = boardLabels(st.items);
     if (kind === 'issues') {

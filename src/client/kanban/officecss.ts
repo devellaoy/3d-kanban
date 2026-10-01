@@ -1,11 +1,18 @@
 // The few styles the kanban's pieces need inside upstream's pages (the 3D office and /lite load
-// style.css, not kanban.css): the repository chip and filter on the boards, the PR review picker and
+// style.css, not kanban.css): the repository chip, filter and tabs on the boards, the PR review picker and
 // the task worker's message dialog, the queue board's kanban toggle.
 // Put in once, the first time one of them is drawn.
 
 const CSS = `
 .repo-chip { display: inline-flex; align-items: center; padding: 0 6px; font-size: 11px; font-weight: 900; border: 2px solid var(--ink); border-radius: 999px; background: #e7f0ff; white-space: nowrap; }
 .board-repo { height: 36px; padding: 0 8px; font: 800 13px var(--font); color: var(--ink); background: #fff; border: 3px solid var(--ink); border-radius: 12px; }
+.board-repo-tabs { flex: none; display: flex; gap: 6px; padding: 8px 12px; overflow-x: auto; overscroll-behavior-x: contain; scrollbar-width: thin; background: var(--paper-2); border-bottom: 3px solid var(--ink); }
+.board-repo-tab { flex: none; display: inline-flex; align-items: center; gap: 6px; padding: 4px 6px 4px 12px; font: 800 13px var(--font); color: var(--ink); white-space: nowrap; background: #fff; border: 3px solid var(--ink); border-radius: 12px; cursor: pointer; }
+.board-repo-tab:hover { background: var(--paper); }
+.board-repo-tab small { min-width: 22px; padding: 0 6px; font-size: 11px; font-weight: 900; text-align: center; border-radius: 999px; background: var(--paper-2); border: 2px solid var(--ink); }
+.board-repo-tab[aria-selected="true"] { color: #fff; background: var(--ink); }
+.board-repo-tab[aria-selected="true"] small { color: var(--ink); background: #fff; border-color: #fff; }
+.board-repo-tab:focus-visible { outline: 3px solid var(--accent); outline-offset: 1px; }
 .modal.kb-pr-picker { width: min(640px, 100%); }
 .kb-pr-picker .body { display: flex; flex-direction: column; gap: 8px; }
 .kb-pr-picker h5 { margin: 8px 0 2px; font-size: 12px; font-weight: 900; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); }

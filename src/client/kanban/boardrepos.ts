@@ -14,6 +14,13 @@ export function boardRepos(items: { url: string; repo?: string }[]): string[] {
   return [...new Set(items.map(repoOfItem).filter(Boolean))].sort((a, b) => a.localeCompare(b));
 }
 
+/** How many of the items are open, per repository, for the PR board's tabs. */
+export function openByRepo(items: { url: string; repo?: string; state: string }[]): Map<string, number> {
+  const n = new Map<string, number>();
+  for (const it of items) if (it.state === 'OPEN') n.set(repoOfItem(it), (n.get(repoOfItem(it)) ?? 0) + 1);
+  return n;
+}
+
 /** Only the items of `repo` ('' = all of them). */
 export function inRepo<T extends { url: string; repo?: string }>(items: T[], repo: string): T[] {
   return repo ? items.filter((it) => repoOfItem(it) === repo) : items;
@@ -57,4 +64,61 @@ export function repoFilterSelect(repos: string[], value: string, onChange: (repo
   sel.classList.toggle('hidden', repos.length < 2);
   sel.addEventListener('change', () => onChange(sel.value));
   return sel;
+}
+
+/**
+ * The PR board's repository tabs, below its header: 📦 All, then one per repository with its open PRs.
+ * `update` keeps the buttons it already has (keyed by repository), so focus survives the board's
+ * re-renders. A kept choice whose repository has no PRs (yet) still shows, picked, while the lists
+ * load (boards.ts passes '' once they're in), rather than quietly falling back to All. Hidden while there's only one repository.
+ */
+export function repoTabs(onChange: (repo: string) => void): { el: HTMLElement; update(repos: string[], value: string, counts: Map<string, number>, total: number): void } {
+  officeCss();
+  const el = h('div.board-repo-tabs.hidden', { role: 'tablist', 'aria-label': 'Repositories' });
+  const tabs = new Map<string, HTMLButtonElement>();
+  let picked: string | null = null;
+  const tabOf = (repo: string) => {
+    let b = tabs.get(repo);
+    if (!b) {
+      b = h('button.board-repo-tab', { type: 'button', role: 'tab', 'data-repo': repo }, h('span'), h('small')) as HTMLButtonElement;
+      b.addEventListener('click', () => onChange(repo));
+      tabs.set(repo, b);
+    }
+    return b;
+  };
+  el.addEventListener('keydown', (e) => {
+    const list = [...el.children] as HTMLButtonElement[];
+    const at = list.indexOf(document.activeElement as HTMLButtonElement);
+    if (at < 0) return;
+    const to = e.key === 'ArrowRight' ? (at + 1) % list.length : e.key === 'ArrowLeft' ? (at - 1 + list.length) % list.length : e.key === 'Home' ? 0 : e.key === 'End' ? list.length - 1 : -1;
+    if (to < 0) return;
+    e.preventDefault();
+    e.stopPropagation();
+    list[to].focus();
+    onChange(list[to].dataset.repo ?? '');
+  });
+  return {
+    el,
+    update(repos, value, counts, total) {
+      const shown = value && !repos.includes(value) ? [...repos, value].sort((a, b) => a.localeCompare(b)) : repos;
+      const order = ['', ...shown];
+      for (const [repo, b] of tabs) if (!order.includes(repo)) (b.remove(), tabs.delete(repo));
+      order.forEach((repo, i) => {
+        const b = tabOf(repo);
+        const name = repo ? (repo.split('/').pop() ?? repo) : '📦 All';
+        const n = repo ? (counts.get(repo) ?? 0) : total;
+        const [label, count] = b.children as unknown as [HTMLElement, HTMLElement];
+        if (label.textContent !== name) label.textContent = name;
+        if (count.textContent !== String(n)) count.textContent = String(n);
+        b.title = repo ? `${repo}: ${n} open` : `Every repository: ${n} open`;
+        b.setAttribute('aria-label', `${repo || 'All repositories'}, ${n} open pull request${n === 1 ? '' : 's'}`);
+        b.setAttribute('aria-selected', String(repo === value));
+        b.tabIndex = repo === value ? 0 : -1;
+        if (el.children[i] !== b) el.insertBefore(b, el.children[i] ?? null);
+      });
+      el.classList.toggle('hidden', shown.length < 2);
+      // A newly picked tab scrolls into sight in a narrow row (a phone, many repositories).
+      if (picked !== value) (picked = value), tabs.get(value)?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+    },
+  };
 }
