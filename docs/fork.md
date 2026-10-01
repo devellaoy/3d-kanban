@@ -191,8 +191,8 @@ New files are not seams (they can't conflict): `src/{server,shared,client}/kanba
 | `src/client/state.ts` | `rememberFloor()` | exported | The deep link comes in on its floor |
 | `src/client/notify.ts` | import; `waitingOnSomeone()` | `taskWaiting()` first | N, the count and the compass follow the task |
 | `src/client/interaction.ts` | import; `R` | `canRetry()` too | R retries a waiting task |
-| `src/client/ui/terminal.ts` | import; `TerminalOptions.tab`; `mountWorkerTabs()` before `ro.observe(host)`; `tabs?.destroy()` in `onClose` | A task worker's window: 🖥️ Terminal / 🗂️ Task #14 (kanban/worker3d); upstream's 🌿 Changes stays in the header | The task view inside the worker window |
-| `src/client/ui/terminal.ts` | the backdrop's `dragenter` and `drop` handlers | `inTaskPane(e.target)` (kanban/office): a drop on the task pane isn't uploaded and typed into the terminal | Files for the task's composer never reach the PTY |
+| `src/client/ui/terminal.ts` | import; `TerminalOptions.tab`; `mountWorkerTabs()` before `ro.observe(host)`; `kanbanTabs?.destroy()` in `onClose` (the variable is `kanbanTabs` because upstream #212's `termTabs()` result is `tabs`) | A task worker's window: 🖥️ Terminal (with upstream's web page tabs) / 🗂️ Task #14 (kanban/worker3d; the task tab hides the terminal side at window level with `kb-on-task`); upstream's 🌿 Changes stays in the header | The task view inside the worker window |
+| `src/client/ui/terminal.ts` | the backdrop's `dragenter` and `drop` handlers | `inTaskPane(e.target)` (kanban/office) or `termHidden()` (a web page tab or the task tab is showing): such a drop isn't uploaded and typed into the terminal | Files for the task's composer never reach the PTY |
 | `src/client/ui/prompt.ts` | import; `PromptOptions.kanbanOption`, `rawLabel`, `onSubmit` `raw`; `openPrompt()` toggle, paint, `send(raw)`; `SendHomeOptions.extra` and the body | The "🗂️ Run as a kanban task" toggle (kanban/hireform); "Type straight into the terminal instead"; the task block in send-home | Same |
 | `src/client/ui/ask.ts` | import; `AskWorker.task`, `AskOptions.kanbanOption`; `pick()`, the body, `send()` | Kanban toggle for a new worker; `🗂️ #14` on a task worker's button | Same |
 | `src/client/ui/boards.ts` | `BoardActions.kanbanTask?` | Optional action | 🗂️ Kanban task in an issue |
@@ -264,6 +264,9 @@ New files are not seams (they can't conflict): `src/{server,shared,client}/kanba
    - `floorView()` and the floor's `gh.pulls` callback still send `pullsState()`.
    - `src/client/world/sky.ts`: if upstream fixes its issue #122 (fog indoors) its own way, take upstream's
      version and drop the fork's (upstream PR #207) along with `tests/sky.test.ts`.
+   - `src/client/ui/termtabs.{ts,css}` are upstream #212's files verbatim: upstream's version wins.
+     worker3d's `kb-on-task` hides the terminal side at window level, so anything upstream adds there
+     hides on the task tab too.
 4. Re-check `package.json` (dependencies, `files`, `typecheck`, `migrate:ai-kanban`), `vite.config.ts`
    inputs and the Dockerfile's `better-sqlite3` rebuild; keep this fork's `AGENTS.md` and the pointer
    `CLAUDE.md` (`@AGENTS.md`), resolving any upstream change to `CLAUDE.md` in favour of the pointer.
