@@ -71,12 +71,12 @@ export interface TaskAgentAdapter {
 /** A session log can be long: its last 16 MB hold the turn the engine wants. */
 const TAIL_BYTES = 16 * 1024 * 1024;
 
-/** The JSON lines of a log (the tail of a big one), skipping any that don't parse. */
-export function readJsonLines(file: string): Record<string, unknown>[] | undefined {
+/** The JSON lines of a log (its last `tailBytes`, 16 MB by default), skipping any that don't parse. */
+export function readJsonLines(file: string, tailBytes = TAIL_BYTES): Record<string, unknown>[] | undefined {
   let text: string;
   try {
     const size = statSync(file).size;
-    const start = Math.max(0, size - TAIL_BYTES);
+    const start = Math.max(0, size - tailBytes);
     const fd = openSync(file, 'r');
     try {
       const buf = Buffer.alloc(size - start);

@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, rmSync, utimesSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { validateWorkerModel } from '../src/server/agents.js';
@@ -174,6 +174,9 @@ test('claude transcript: teammates (agent teams) still working, from their own t
     for (const [name, own] of Object.entries(team)) {
       const base = path.join(dir, `lead${n}`, 'subagents', `agent-a${name}-abc`);
       writeFileSync(`${base}.jsonl`, own.map((l) => JSON.stringify(l)).join('\n') + '\n');
+      // The file's mtime is when it was last written, as the log's last timestamp says.
+      const stamped = own.map((l) => Date.parse((l as { timestamp?: string }).timestamp ?? '')).filter(Boolean);
+      if (stamped.length) utimesSync(`${base}.jsonl`, Math.max(...stamped) / 1000, Math.max(...stamped) / 1000);
       writeFileSync(`${base}.meta.json`, JSON.stringify({ agentType: name, name, taskKind: 'in_process_teammate', teamName: 'session-1' }));
     }
     // A background agent lives there too, and isn't a teammate.
@@ -260,6 +263,43 @@ test('claude transcript: teammates (agent teams) still working, from their own t
   const crowd = withTs([cUser('Implement task #7'), ...spawn('a', 's1'), ...spawn('b', 's2'), mail(tag('a', idle('a', { result }), ' summary="A -> B"'), tag('b', idle('b', { result }))), ...spawn('c', 's3'), wait], 1);
   assert.equal(readClaudeTurn(lead(crowd))?.background, 1);
   assert.deepEqual(teammateTags(messageTextOf(mail(tag('a', idle('a', { result, summary: '[to b] hi' }), ' summary="A -> B"'), tag('b@session-1', 'Report in words.')))), [{ from: 'a', type: 'idle_notification', summary: '[to b] hi' }, { from: 'b' }]);
+
+  // Several transcripts of one name (a respawn): the one written last speaks, whichever the directory lists last.
+  const twin = (oldIsFirst: boolean) => {
+    const file = lead(withTs([cUser('Implement task #7'), ...spawn('a', 's1'), wait], 1));
+    const folder = path.join(path.dirname(file), path.basename(file, '.jsonl'), 'subagents');
+    const put = (id: string, lines: object[]) => {
+      writeFileSync(path.join(folder, `agent-${id}.jsonl`), lines.map((l) => JSON.stringify(l)).join('\n') + '\n');
+      writeFileSync(path.join(folder, `agent-${id}.meta.json`), JSON.stringify({ agentType: 'a', name: 'a', taskKind: 'in_process_teammate' }));
+    };
+    // The dead one ends in a tool call, the live one at rest.
+    put(oldIsFirst ? 'a1' : 'a2', own([msgFrom('2', { type: 'tool_use', id: 'x', name: 'Bash', input: {} })], 5));
+    put(oldIsFirst ? 'a2' : 'a1', own([msgFrom('3', text('Done.'))], 20));
+    return file;
+  };
+  assert.equal(readClaudeTurn(twin(true))?.background, undefined);
+  assert.equal(readClaudeTurn(twin(false))?.background, undefined);
+
+  // A long transcript (more lines than a call can spread) is read from its tail: it rests, or works, by its last lines.
+  const filler = Array.from({ length: 200_000 }, () => '{"type":"progress"}').join('\n');
+  const longOwn = (last: object[]) => `${filler}\n${[...own(last, 10)].map((l) => JSON.stringify(l)).join('\n')}\n`;
+  const longLead = (last: object[]) => {
+    const file = lead(head);
+    writeFileSync(path.join(path.dirname(file), path.basename(file, '.jsonl'), 'subagents', 'agent-along-abc.jsonl'), longOwn(last));
+    writeFileSync(path.join(path.dirname(file), path.basename(file, '.jsonl'), 'subagents', 'agent-along-abc.meta.json'), JSON.stringify({ agentType: 'long', name: 'long', taskKind: 'in_process_teammate' }));
+    return file;
+  };
+  // (a and b have no transcript here but are spawned; the long one is a third teammate.)
+  const base = readClaudeTurn(lead(head))?.background;
+  assert.equal(readClaudeTurn(longLead([msgFrom('9', text('Done.'))]))?.background, base! + 0);
+  assert.equal(readClaudeTurn(longLead([msgFrom('9', { type: 'tool_use', id: 'x', name: 'Bash', input: {} })]))?.background, base! + 1);
+
+  // A transcript that can't be read (a folder in its place) is no rest.
+  const broken = lead(withTs([cUser('Implement task #7'), wait], 1));
+  const brokenDir = path.join(path.dirname(broken), path.basename(broken, '.jsonl'), 'subagents');
+  mkdirSync(path.join(brokenDir, 'agent-abroken-1.jsonl'));
+  writeFileSync(path.join(brokenDir, 'agent-abroken-1.meta.json'), JSON.stringify({ agentType: 'broken', name: 'broken', taskKind: 'in_process_teammate' }));
+  assert.equal(readClaudeTurn(broken)?.background, 1);
 });
 
 test('claude transcript: ExitPlanMode is the plan, until it is answered', (t) => {

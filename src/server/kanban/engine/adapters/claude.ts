@@ -2,7 +2,7 @@
 // (see M0 in docs/fork.md). The transcript has one line per event; `type: 'assistant'` lines carry
 // `message.content[]` blocks (text, tool_use), `type: 'user'` lines are prompts or tool results.
 
-import { readdirSync, readFileSync } from 'node:fs';
+import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { isClaudeModel, type ClaudeModel } from '../../../../shared/protocol.js';
 import type { KanbanEffort, RunPhase } from '../../../../shared/kanban/types.js';
 import { isObj, readJsonLines, type LaunchOptions, type TaskAgentAdapter, type TurnResult } from './types.js';
@@ -79,6 +79,9 @@ const isAgentNotice = (line: Record<string, unknown>): boolean => isTaskNotifica
 /** A teammate's name from a teammate id or a routing target: `server-impl@session-1` → `server-impl`. */
 const teammateName = (v: unknown): string | undefined => (typeof v === 'string' && v.replace(/^@/, '').split('@')[0]) || undefined;
 
+/** A `<teammate-message>` opening tag and its attributes. */
+const OPEN_TAG = /<teammate-message((?:\s+[\w-]+="[^"]*")*)\s*>/g;
+
 /**
  * The `<teammate-message>` tags of a line's text: who sent each, and for a JSON body (an idle notification
  * and the like) its `type` and `summary`. The body is the text between the tags, parsed whole: it can hold
@@ -86,12 +89,22 @@ const teammateName = (v: unknown): string | undefined => (typeof v === 'string' 
  */
 export function teammateTags(text: string): { from: string; type?: string; summary?: string }[] {
   const out: { from: string; type?: string; summary?: string }[] = [];
-  for (const m of text.matchAll(/<teammate-message((?:\s+[\w-]+="[^"]*")*)\s*>([\s\S]*?)<\/teammate-message>/g)) {
+  const close = '</teammate-message>';
+  let at = 0;
+  for (;;) {
+    // Each closing tag by indexOf: a lazy pattern across the body rescans a long text from every opening tag.
+    OPEN_TAG.lastIndex = at;
+    const m = OPEN_TAG.exec(text);
+    if (!m) break;
+    const bodyAt = m.index + m[0].length;
+    const end = text.indexOf(close, bodyAt);
+    if (end < 0) break;
+    at = end + close.length;
     let from = teammateName(/\bteammate_id="([^"]*)"/.exec(m[1])?.[1]);
     let type: string | undefined;
     let summary: string | undefined;
     try {
-      const body = JSON.parse(m[2].trim()) as unknown;
+      const body = JSON.parse(text.slice(bodyAt, end).trim()) as unknown;
       if (isObj(body)) {
         if (typeof body.type === 'string') type = body.type;
         if (typeof body.summary === 'string') summary = body.summary;
@@ -182,18 +195,23 @@ function transcriptBusy(lines: Record<string, unknown>[]): boolean {
   return lines.slice(last + 1).some((l) => l.type === 'user' || (l.type === 'attachment' && isObj(l.attachment) && l.attachment.type === 'queued_command'));
 }
 
+/** A teammate's transcript is read from its last 512 KB: enough for its last message and what follows. */
+const TEAMMATE_TAIL = 512 * 1024;
+
 /**
  * How many of the run's teammates (agent teams) are working, counted from their own transcripts, which
  * Claude Code keeps next to the lead's at `<log without .jsonl>/subagents/agent-*.jsonl` with a `.meta.json`
  * (`taskKind: in_process_teammate`). They live as long as the Claude process: one whose last line is older
- * than `since`, the process's start, died with an earlier one. The lead's log `events` newer than a
+ * than `since`, the process's start, died with an earlier one (its file's mtime says so, unread). Of the
+ * transcripts of one name (a respawn) the one written last speaks. The lead's log `events` newer than a
  * teammate's last line override it (its transcript lags what the lead sent it); one with no transcript
- * yet is busy when the lead spawned it.
+ * yet is busy when the lead spawned it, and one whose transcript can't be read is busy too: an error is
+ * no rest. (A meta that can't be read or parsed is skipped: it is being written, and the spawn event covers it.)
  */
 export function teammatesBusy(leadFile: string, since: number, events: TeammateEvent[]): number {
   const dir = `${leadFile.replace(/\.jsonl$/, '')}/subagents`;
-  const lastAt = new Map<string, number>();
-  const tails = new Map<string, boolean>();
+  // Per teammate name: its transcript's last line (ms) and whether it ends mid-work.
+  const own = new Map<string, { last: number; busy: boolean }>();
   let metas: string[] = [];
   try {
     metas = readdirSync(dir).filter((f) => f.endsWith('.meta.json'));
@@ -201,25 +219,57 @@ export function teammatesBusy(leadFile: string, since: number, events: TeammateE
     // no teammates, or no folder yet
   }
   for (const f of metas) {
+    let name: string | undefined;
     try {
       const meta = JSON.parse(readFileSync(`${dir}/${f}`, 'utf8')) as unknown;
       if (!isObj(meta) || meta.taskKind !== 'in_process_teammate') continue;
-      const name = teammateName(meta.name ?? meta.agentType);
-      if (!name) continue;
-      const lines = readJsonLines(`${dir}/${f.replace(/\.meta\.json$/, '.jsonl')}`) ?? [];
-      lastAt.set(name, Math.max(-1, ...lines.map(atOf).filter(Boolean)));
-      tails.set(name, transcriptBusy(lines));
+      name = teammateName(meta.name ?? meta.agentType);
     } catch {
       // a meta being written
     }
+    if (!name) continue;
+    const file = `${dir}/${f.replace(/\.meta\.json$/, '.jsonl')}`;
+    let last = -1;
+    let busy = true;
+    try {
+      const mtime = statSync(file).mtimeMs;
+      if (mtime < since) {
+        // Written last before the process began: dead, whatever it ended on.
+        last = mtime;
+        busy = false;
+      } else {
+        const lines = readJsonLines(file, TEAMMATE_TAIL);
+        if (lines) {
+          for (let i = lines.length - 1; i >= 0 && last < 0; i--) last = atOf(lines[i]) || -1;
+          busy = transcriptBusy(lines);
+        } else last = Infinity;
+      }
+    } catch {
+      // no transcript yet, or one that can't be read: busy, and newer than any word of the lead's
+      last = Infinity;
+    }
+    const cur = own.get(name);
+    if (!cur || last > cur.last || (last === cur.last && busy)) own.set(name, { last, busy });
   }
   // A name no spawn or meta makes a teammate (the lead's own, in a teammate's "[to main]") is never counted.
-  for (const e of events) if (e.spawn && !lastAt.has(e.name)) lastAt.set(e.name, -1);
+  for (const e of events) if (e.spawn && !own.has(e.name)) own.set(e.name, { last: -1, busy: true });
+  // The newest word the lead's log has of each name since the process began, and of a broadcast.
+  const word = new Map<string, TeammateEvent>();
+  let all: TeammateEvent | undefined;
+  for (const e of events) {
+    if (e.at < since) continue;
+    // A broadcast counts only when it woke (busy): a rest is no one's but its sender's.
+    if (e.name === '*') {
+      if (e.busy && (!all || e.at > all.at)) all = e;
+    } else if (!word.has(e.name) || e.at > word.get(e.name)!.at) word.set(e.name, e);
+  }
   let busy = 0;
-  for (const [name, last] of lastAt) {
-    // The newest word the lead's log has of it, when that is newer than the teammate's own last line.
-    const word = events.filter((e) => (e.name === name || (e.name === '*' && e.busy)) && e.at >= since && e.at > last).sort((a, b) => b.at - a.at)[0];
-    if (word ? word.busy : last >= since && (tails.get(name) ?? true)) busy++;
+  for (const [name, { last, busy: tail }] of own) {
+    // Matching a broadcast to a name is harmless even for one spawned after it: the spawn event is always newer than the broadcast, so it wins.
+    const named = word.get(name);
+    const newest = named && (!all || named.at >= all.at) ? named : all;
+    // The newest word, when that is newer than the teammate's own last line.
+    if (newest && newest.at > last ? newest.busy : last >= since && tail) busy++;
   }
   return busy;
 }
