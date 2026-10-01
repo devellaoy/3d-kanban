@@ -219,6 +219,27 @@ test('agent asking a question → a plain comment is the answer, typed in at onc
   assert.deepEqual(fx.repo.listRuns(task.id).map((r) => [r.id, r.status]), [[run.id, 'succeeded']]);
 });
 
+test('a teammate\'s hooks feed what the agent is asking, but its Stop, prompt, session start and other tools never clear the lead\'s ask', async (t) => {
+  const fx = await engineFixture();
+  t.after(() => fx.close());
+  const { task } = await asking(fx);
+  assert.equal(task.askingKind, 'question');
+  // Only the observation reaches the engine: the worker's own state is left alone.
+  const w = (fx.workers as unknown as { workers: Map<string, unknown> }).workers.get(task.workerId!);
+  const hear = (hookEvent: string, extra: { tool?: string; payload?: object } = {}) => {
+    (fx.workers as unknown as { observe(w: unknown, o: object): void }).observe(w, { event: 'hook', hookEvent, tool: extra.tool, payload: { agent_id: 'helper@session-1', ...extra.payload } });
+    return fx.repo.card(task.id)?.askingKind;
+  };
+  for (const [event, tool] of [['Stop'], ['UserPromptSubmit'], ['SessionStart'], ['PreToolUse', 'Bash']] as const) assert.equal(hear(event, { tool }), 'question', `${event} of a teammate`);
+  assert.equal(hear('Notification', { payload: { notification_type: 'permission_prompt' } }), 'question', 'a question stays a question');
+  assert.equal(hear('PostToolUse', { tool: 'Bash' }), undefined, "a teammate's finished tool forgets it");
+  assert.equal(hear('PermissionRequest', { tool: 'Bash' }), 'permission');
+  assert.equal(hear('PreToolUse', { tool: 'Bash' }), 'permission', "a teammate's other tool leaves it");
+  assert.equal(hear('PreToolUse', { tool: 'AskUserQuestion' }), 'question');
+  assert.equal(hear('PostToolUseFailure', { tool: 'AskUserQuestion' }), undefined);
+  assert.equal(hear('Notification', { payload: { notification_type: 'permission_prompt' } }), 'permission');
+});
+
 test('agent asking → continue without an answer is refused, and nothing is typed or stored', async (t) => {
   const fx = await engineFixture();
   t.after(() => fx.close());

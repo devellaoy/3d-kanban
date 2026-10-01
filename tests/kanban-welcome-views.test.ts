@@ -76,6 +76,11 @@ const card: GhIssue = {
   status: 'To Do',
 };
 
+/** Fixes a board's pull requests at `state`, whatever its refreshes set. */
+function pin(board: GitHub, state: GhState<GhPull>) {
+  Object.defineProperty(board, 'pulls', { get: () => state, set: () => {}, configurable: true });
+}
+
 /** The first welcome a browser signed in with `cookie` gets. */
 function welcome(cookie: string): Promise<Welcome> {
   return new Promise((resolve, reject) => {
@@ -125,9 +130,10 @@ test("a project's floor welcomes you with its other repositories' PRs and its is
   const floor = office.floors()[0];
   // The floor's own repository has one PR; another repository of the project has one too. Its board is
   // what refreshBoards() makes for a git repository with a remote, here filled in instead of fetched.
-  floor.github.pulls = { items: [pull(3)], fetchedAt: 1, loading: false };
+  // Pinned, so the office's own fetches from GitHub (there's no remote here) can't replace them midway.
+  pin(floor.github, { items: [pull(3)], fetchedAt: 1, loading: false });
   const other = new GitHub(tmp, () => {}, () => {}, 'o/api', true);
-  other.pulls = { items: [pull(7, 'o/api')], fetchedAt: 2, loading: false };
+  pin(other, { items: [pull(7, 'o/api')], fetchedAt: 2, loading: false });
   (floor as unknown as { boards: Map<string, unknown> }).boards.set('api', { board: other, dir: tmp, remote: 'o/api' });
   // The project's issue sources, as the issues plugin hands them to the board.
   const sources: GhState<GhIssue> = { items: [card], fetchedAt: 3, loading: false };

@@ -1,10 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, rmSync, utimesSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { validateWorkerModel } from '../src/server/agents.js';
-import { claudeAdapter, claudeAlias, readClaudeTurn } from '../src/server/kanban/engine/adapters/claude.js';
+import { claudeAdapter, claudeAlias, readClaudeTurn, teammateTags } from '../src/server/kanban/engine/adapters/claude.js';
 import { MODEL_RE } from '../src/shared/kanban/protocol.js';
 import { codexAdapter, readCodexTurn } from '../src/server/kanban/engine/adapters/codex.js';
 
@@ -22,6 +22,7 @@ function scratch(t: { after(fn: () => void): void }) {
 const cUser = (content: unknown, extra: object = {}) => ({ type: 'user', message: { role: 'user', content }, ...extra });
 const cAssistant = (content: unknown[], extra: object = {}, id?: string) => ({ type: 'assistant', message: { ...(id ? { id } : {}), role: 'assistant', content }, ...extra });
 const text = (t: string) => ({ type: 'text', text: t });
+const messageTextOf = (l: { message: { content: unknown } }) => String(l.message.content);
 
 test('claude launch flags per phase, with the review sandbox, extra dirs, models and plugin extras', () => {
   const base = { permission: 'bypass' as const, sandbox: false };
@@ -157,6 +158,148 @@ test('claude transcript: background agents the run set off and that still work',
   assert.equal(readClaudeTurn(write('bg-shell.jsonl', [cUser('Go'), shell, cAssistant([text('Started it.')])]))?.background, undefined);
   // Its prompt cut off by the log's tail: nothing to count.
   assert.equal(readClaudeTurn(write('bg-cut.jsonl', [launch('ag3'), cAssistant([text('Waiting.')])]))?.background, undefined);
+});
+
+test('claude transcript: teammates (agent teams) still working, from their own transcripts and the lead\'s log', (t) => {
+  const dir = mkdtempSync(path.join(tmpdir(), 'kanban-team-'));
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
+  let n = 0;
+  const at = (s: number) => new Date(Date.UTC(2026, 9, 1, 6, 0, s)).toISOString();
+  const withTs = (lines: object[], s: number) => lines.map((l, i) => ({ timestamp: at(s + i), ...l }));
+  /** A lead log (with its teammates' transcripts beside it, as Claude Code keeps them), as the lead's file. */
+  const lead = (lines: object[], team: Record<string, object[]> = {}) => {
+    const file = path.join(dir, `lead${++n}.jsonl`);
+    writeFileSync(file, lines.map((l) => JSON.stringify(l)).join('\n') + '\n');
+    mkdirSync(path.join(dir, `lead${n}`, 'subagents'), { recursive: true });
+    for (const [name, own] of Object.entries(team)) {
+      const base = path.join(dir, `lead${n}`, 'subagents', `agent-a${name}-abc`);
+      writeFileSync(`${base}.jsonl`, own.map((l) => JSON.stringify(l)).join('\n') + '\n');
+      // The file's mtime is when it was last written, as the log's last timestamp says.
+      const stamped = own.map((l) => Date.parse((l as { timestamp?: string }).timestamp ?? '')).filter(Boolean);
+      if (stamped.length) utimesSync(`${base}.jsonl`, Math.max(...stamped) / 1000, Math.max(...stamped) / 1000);
+      writeFileSync(`${base}.meta.json`, JSON.stringify({ agentType: name, name, taskKind: 'in_process_teammate', teamName: 'session-1' }));
+    }
+    // A background agent lives there too, and isn't a teammate.
+    writeFileSync(path.join(dir, `lead${n}`, 'subagents', 'agent-bg1.meta.json'), JSON.stringify({ agentType: 'general-purpose', taskKind: 'local_agent' }));
+    writeFileSync(path.join(dir, `lead${n}`, 'subagents', 'agent-bg1.jsonl'), JSON.stringify({ type: 'user', timestamp: at(50), message: { role: 'user', content: 'x' } }) + '\n');
+    return file;
+  };
+  const spawn = (name: string, id: string) => [
+    cAssistant([{ type: 'tool_use', id, name: 'Agent', input: { name } }], {}, `m-${id}`),
+    cUser([{ type: 'tool_result', tool_use_id: id, content: [text(`Spawned successfully.\nagent_id: ${name}@session-1\nname: ${name}`)] }], { toolUseResult: { status: 'teammate_spawned', name, teammate_id: `${name}@session-1`, team_name: 'session-1' } }),
+  ];
+  const send = (to: string, id: string) => [
+    cAssistant([{ type: 'tool_use', id, name: 'SendMessage', input: { to, message: 'again' } }], {}, `m-${id}`),
+    cUser([{ type: 'tool_result', tool_use_id: id, content: [text('{"success":true}')] }], { toolUseResult: { success: true, message: `Message sent to ${to}'s inbox`, routing: { sender: 'team-lead', target: `@${to}` } } }),
+  ];
+  const tag = (id: string, body: string, attrs = '') => `<teammate-message teammate_id="${id}" color="blue"${attrs}>\n${body}\n</teammate-message>`;
+  const idle = (from: string, extra: object = {}) => JSON.stringify({ type: 'idle_notification', from, timestamp: at(0), idleReason: 'available', ...extra });
+  const mail = (...tags: string[]) => cUser(`Another Claude session sent a message:\n${tags.join('\n')}`);
+  const msgFrom = (id: string, ...blocks: object[]) => ({ type: 'assistant', message: { id: `t-${id}`, role: 'assistant', content: blocks } });
+  const wait = cAssistant([text('Waiting for the teammates.')], {}, 'mw');
+
+  // Two teammates just spawned, their transcripts not written yet (the log lags): both are at work.
+  const spawned = lead(withTs([cUser('Implement task #7'), ...spawn('a', 's1'), ...spawn('b', 's2'), wait], 1));
+  assert.deepEqual(readClaudeTurn(spawned), { text: 'Waiting for the teammates.', complete: true, background: 2 });
+
+  // Their own transcripts: one ends in text (at rest), one in a tool call. A message queued for a resting one wakes it.
+  const head = withTs([cUser('Implement task #7'), ...spawn('a', 's1'), ...spawn('b', 's2'), wait], 1);
+  const own = (last: object[], s = 10) => withTs([cUser(tag('team-lead', 'Do it.')), msgFrom('1', { type: 'thinking', thinking: '' }), ...last], s);
+  const mixed = lead(head, { a: own([msgFrom('2', text('Done.'))]), b: own([msgFrom('3', { type: 'tool_use', id: 'x', name: 'Bash', input: {} })]) });
+  assert.equal(readClaudeTurn(mixed)?.background, 1);
+  const queued = { type: 'attachment', attachment: { type: 'queued_command', prompt: 'more' } };
+  assert.equal(readClaudeTurn(lead(head, { a: own([msgFrom('2', text('Done.')), { ...queued, timestamp: at(30) }]), b: own([msgFrom('3', text('Done.'))]) }))?.background, 1);
+  assert.equal(readClaudeTurn(lead(head, { a: own([msgFrom('2', text('Done.')), { ...cUser(tag('team-lead', 'More.')), timestamp: at(30) }]), b: own([msgFrom('3', text('Done.'))]) }))?.background, 1);
+  // Thinking not yet followed by its text is no rest either; a teammate that has said nothing isn't.
+  assert.equal(readClaudeTurn(lead(head, { a: own([]), b: own([msgFrom('3', text('Done.'))]) }))?.background, 1);
+  assert.equal(readClaudeTurn(lead(head, { a: own([msgFrom('2', text('Done.'))]), b: own([msgFrom('3', text('Done.'))]) }))?.background, undefined);
+
+  // A teammate's message isn't the office's prompt: the background agent launched before it still counts, and the turn after it is read.
+  const launch = cUser([{ type: 'tool_result', tool_use_id: 'a1', content: [text('Async agent launched successfully.\nagentId: ag1 (internal ID)')] }], { toolUseResult: { isAsync: true, status: 'async_launched', agentId: 'ag1' } });
+  const bgHead = [cUser('Implement task #7'), cAssistant([{ type: 'tool_use', id: 'a1', name: 'Agent', input: { run_in_background: true } }], {}, 'm1'), launch, cAssistant([text('Waiting.')], {}, 'm2')];
+  const mailed = readClaudeTurn(lead([...bgHead, mail(tag('x', idle('x'))), cAssistant([text('x is at rest.')], {}, 'm3')]));
+  assert.deepEqual(mailed, { text: 'x is at rest.', complete: true, background: 1 });
+  // The last prompt a teammate's message nothing has answered: the lead is about to take its turn.
+  assert.deepEqual(readClaudeTurn(lead([...bgHead, mail(tag('x', 'Report.', ' summary="Done"'))])), { text: '', complete: false, background: 1, resuming: true });
+  // A typed prompt quoting the tag (origin human) is the window's prompt.
+  assert.deepEqual(readClaudeTurn(lead([...bgHead, cUser(tag('x', 'Report.'), { origin: { kind: 'human' } })])), { text: '', complete: false });
+
+  // A teammate of an earlier phase (spawned before the office's last prompt) that this phase wakes with SendMessage is at work
+  // although its transcript still ends at rest.
+  const old = withTs([cUser('Implement task #7'), ...spawn('a', 's1'), wait, cUser('Fix task #7'), ...send('a', 'q1'), wait], 1);
+  const rested = { a: own([msgFrom('2', text('Done.'))], 2) };
+  assert.equal(readClaudeTurn(lead(old, rested))?.background, 1);
+  // ... and it isn't one the lead never wrote to.
+  assert.equal(readClaudeTurn(lead(withTs([cUser('Implement task #7'), ...spawn('a', 's1'), wait, cUser('Fix task #7'), wait], 1), rested))?.background, undefined);
+  // Its transcript newer than the message says it answered: at rest again.
+  assert.equal(readClaudeTurn(lead(old, { a: own([msgFrom('2', text('Done.'))], 40) }))?.background, undefined);
+  // The message to a teammate that can't be found failed: nothing wakes. A broadcast wakes every one.
+  const failed = cUser([{ type: 'tool_result', tool_use_id: 'q1', content: 'no such teammate' }], { toolUseResult: { success: false, message: 'no such teammate' } });
+  assert.equal(readClaudeTurn(lead(withTs([cUser('Fix'), cAssistant([{ type: 'tool_use', id: 'q1', name: 'SendMessage', input: { to: 'a' } }], {}, 'mq'), failed, wait], 1), rested))?.background, undefined);
+  assert.equal(readClaudeTurn(lead(withTs([cUser('Fix'), ...send('*', 'q1').map((l, i) => (i ? { ...l, toolUseResult: { success: true, routing: { target: '*' } } } : l)), wait], 1), { a: own([msgFrom('2', text('Done.'))], 0) }))?.background, 1);
+  // Without a toolUseResult (an older CLI): the call's own `to`.
+  const older = withTs([cUser('Fix'), cAssistant([{ type: 'tool_use', id: 'q1', name: 'SendMessage', input: { to: 'a', message: 'm' } }], {}, 'mq'), cUser([{ type: 'tool_result', tool_use_id: 'q1', content: 'sent' }]), wait], 1);
+  assert.equal(readClaudeTurn(lead(older, { a: own([msgFrom('2', text('Done.'))], 0) }))?.background, 1);
+
+  // A teammate sending another a message goes idle with a "[to Y]" summary: Y is woken, whatever its transcript says yet.
+  const relay = withTs([cUser('Implement task #7'), ...spawn('a', 's1'), ...spawn('b', 's2'), wait, mail(tag('a', idle('a', { summary: '[to b] take over' }))), cAssistant([text('Waiting on b.')], {}, 'm9')], 1);
+  assert.equal(readClaudeTurn(lead(relay, { a: own([msgFrom('2', text('Done.'))], 2), b: own([msgFrom('3', text('Done.'))], 2) }))?.background, 1);
+
+  // A teammate closing with a message to the lead ("[to main]": a name that is no teammate's) wakes nobody, with or without a transcript.
+  const report = withTs([cUser('Implement task #7'), ...spawn('a', 's1'), wait, mail(tag('a', idle('a', { summary: '[to main] done' }))), cAssistant([text('Done.')], {}, 'm9')], 1);
+  assert.equal(readClaudeTurn(lead(report, { a: own([msgFrom('2', text('Done.'))], 2) }))?.background, undefined);
+  assert.equal(readClaudeTurn(lead(report))?.background, undefined);
+
+  // One that last wrote before `since` died with an earlier process, even if its transcript ends in a tool call.
+  const dead = { a: own([msgFrom('2', { type: 'tool_use', id: 'x', name: 'Bash', input: {} })], 5) };
+  const deadLead = lead(withTs([cUser('Implement task #7'), wait], 1), dead);
+  assert.equal(readClaudeTurn(deadLead, { since: Date.UTC(2026, 9, 1, 6, 0, 0) })?.background, 1);
+  assert.equal(readClaudeTurn(deadLead, { since: Date.UTC(2026, 9, 1, 6, 5, 0) })?.background, undefined);
+  // Its spawn before `since` (an earlier process's) wakes nothing either.
+  assert.equal(readClaudeTurn(lead(withTs([cUser('Implement task #7'), ...spawn('a', 's1'), wait], 1)), { since: Date.UTC(2026, 9, 1, 6, 5, 0) })?.background, undefined);
+
+  // Several tags on one line, their JSON bodies holding `}` and `>`: all are read. a and b go to rest; c, spawned after, doesn't.
+  const result = 'Changed `{ a: 1 }` and `x => y`; "}" too';
+  const crowd = withTs([cUser('Implement task #7'), ...spawn('a', 's1'), ...spawn('b', 's2'), mail(tag('a', idle('a', { result }), ' summary="A -> B"'), tag('b', idle('b', { result }))), ...spawn('c', 's3'), wait], 1);
+  assert.equal(readClaudeTurn(lead(crowd))?.background, 1);
+  assert.deepEqual(teammateTags(messageTextOf(mail(tag('a', idle('a', { result, summary: '[to b] hi' }), ' summary="A -> B"'), tag('b@session-1', 'Report in words.')))), [{ from: 'a', type: 'idle_notification', summary: '[to b] hi' }, { from: 'b' }]);
+
+  // Several transcripts of one name (a respawn): the one written last speaks, whichever the directory lists last.
+  const twin = (oldIsFirst: boolean) => {
+    const file = lead(withTs([cUser('Implement task #7'), ...spawn('a', 's1'), wait], 1));
+    const folder = path.join(path.dirname(file), path.basename(file, '.jsonl'), 'subagents');
+    const put = (id: string, lines: object[]) => {
+      writeFileSync(path.join(folder, `agent-${id}.jsonl`), lines.map((l) => JSON.stringify(l)).join('\n') + '\n');
+      writeFileSync(path.join(folder, `agent-${id}.meta.json`), JSON.stringify({ agentType: 'a', name: 'a', taskKind: 'in_process_teammate' }));
+    };
+    // The dead one ends in a tool call, the live one at rest.
+    put(oldIsFirst ? 'a1' : 'a2', own([msgFrom('2', { type: 'tool_use', id: 'x', name: 'Bash', input: {} })], 5));
+    put(oldIsFirst ? 'a2' : 'a1', own([msgFrom('3', text('Done.'))], 20));
+    return file;
+  };
+  assert.equal(readClaudeTurn(twin(true))?.background, undefined);
+  assert.equal(readClaudeTurn(twin(false))?.background, undefined);
+
+  // A long transcript (more lines than a call can spread) is read from its tail: it rests, or works, by its last lines.
+  const filler = Array.from({ length: 200_000 }, () => '{"type":"progress"}').join('\n');
+  const longOwn = (last: object[]) => `${filler}\n${[...own(last, 10)].map((l) => JSON.stringify(l)).join('\n')}\n`;
+  const longLead = (last: object[]) => {
+    const file = lead(head);
+    writeFileSync(path.join(path.dirname(file), path.basename(file, '.jsonl'), 'subagents', 'agent-along-abc.jsonl'), longOwn(last));
+    writeFileSync(path.join(path.dirname(file), path.basename(file, '.jsonl'), 'subagents', 'agent-along-abc.meta.json'), JSON.stringify({ agentType: 'long', name: 'long', taskKind: 'in_process_teammate' }));
+    return file;
+  };
+  // (a and b have no transcript here but are spawned; the long one is a third teammate.)
+  const base = readClaudeTurn(lead(head))?.background;
+  assert.equal(readClaudeTurn(longLead([msgFrom('9', text('Done.'))]))?.background, base! + 0);
+  assert.equal(readClaudeTurn(longLead([msgFrom('9', { type: 'tool_use', id: 'x', name: 'Bash', input: {} })]))?.background, base! + 1);
+
+  // A transcript that can't be read (a folder in its place) is no rest.
+  const broken = lead(withTs([cUser('Implement task #7'), wait], 1));
+  const brokenDir = path.join(path.dirname(broken), path.basename(broken, '.jsonl'), 'subagents');
+  mkdirSync(path.join(brokenDir, 'agent-abroken-1.jsonl'));
+  writeFileSync(path.join(brokenDir, 'agent-abroken-1.meta.json'), JSON.stringify({ agentType: 'broken', name: 'broken', taskKind: 'in_process_teammate' }));
+  assert.equal(readClaudeTurn(broken)?.background, 1);
 });
 
 test('claude transcript: ExitPlanMode is the plan, until it is answered', (t) => {

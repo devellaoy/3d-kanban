@@ -4,6 +4,7 @@
 
 import type { PeerInfo } from '../../shared/protocol';
 import { rememberFloor } from './persist';
+import { shownWorker } from '../kanban/status'; // 3d-kanban
 import type { MsgOf, Slice, Take } from './store';
 
 const peerUpdate: Take<MsgOf<'peer.join' | 'peer.update'>> = (s, m) => {
@@ -92,7 +93,7 @@ export const floor: Slice = {
     s.floor = v.floor;
     rememberFloor(v.floor);
     s.project = v.project;
-    s.workers = new Map(v.workers.map((w) => [w.id, w]));
+    s.workers = new Map(v.workers.map((w) => [w.id, shownWorker(w, s.workers.get(w.id))])); // 3d-kanban: a task worker whose run goes on shows as working
     s.screens.clear(); // fresh full frames follow
     s.issues = v.issues;
     s.pulls = v.pulls;
@@ -101,7 +102,7 @@ export const floor: Slice = {
   },
   on: {
     'worker.update'(s, m) {
-      s.workers.set(m.worker.id, m.worker);
+      s.workers.set(m.worker.id, shownWorker(m.worker, s.workers.get(m.worker.id))); // 3d-kanban
       return ['workers'];
     },
     'worker.remove'(s, m) {

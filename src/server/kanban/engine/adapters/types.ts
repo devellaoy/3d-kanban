@@ -41,12 +41,13 @@ export interface TurnResult {
    */
   toolRunning?: boolean;
   /**
-   * Claude: how many of the run's background agents are still working (their last event in the log is a
-   * launch or a resume, not a notification). The turn's Stop then isn't the run's end. Absent when none.
+   * Claude: how many of the run's background agents and teammates (agent teams) are still working (a
+   * background agent's last event in the log is a launch or a resume, not a notification; a teammate's own
+   * transcript ends mid-work). The turn's Stop then isn't the run's end. Absent when none.
    */
   background?: number;
   /**
-   * Claude: the last prompt is an agent's notification that nothing has answered yet: Claude is about to
+   * Claude: the last prompt is an agent's notification (or a teammate's message) that nothing has answered yet: Claude is about to
    * take that turn, whose own Stop is still to come. Absent otherwise.
    */
   resuming?: boolean;
@@ -56,8 +57,12 @@ export interface TaskAgentAdapter {
   tool: KanbanTool;
   /** The CLI flags for a phase, ahead of the resume and prompt arguments upstream adds. */
   launchArgs(phase: RunPhase, opts: LaunchOptions): string[];
-  /** The last turn of the session logged at `transcriptPath`; undefined when it can't be read. */
-  readTurnResult(transcriptPath: string): TurnResult | undefined;
+  /**
+   * The last turn of the session logged at `transcriptPath`; undefined when it can't be read. `since`: when
+   * the agent's process started (ms): Claude's teammates that last wrote before it died with an earlier
+   * process. Codex ignores it.
+   */
+  readTurnResult(transcriptPath: string, opts?: { since?: number }): TurnResult | undefined;
   /** What upstream's spawn may carry as the worker's model (it validates it); the rest goes in launchArgs. */
   spawnModel(model?: string): string | undefined;
   spawnEffort(effort?: KanbanEffort): 'low' | 'medium' | 'high' | 'xhigh' | 'max' | undefined;
@@ -66,12 +71,12 @@ export interface TaskAgentAdapter {
 /** A session log can be long: its last 16 MB hold the turn the engine wants. */
 const TAIL_BYTES = 16 * 1024 * 1024;
 
-/** The JSON lines of a log (the tail of a big one), skipping any that don't parse. */
-export function readJsonLines(file: string): Record<string, unknown>[] | undefined {
+/** The JSON lines of a log (its last `tailBytes`, 16 MB by default), skipping any that don't parse. */
+export function readJsonLines(file: string, tailBytes = TAIL_BYTES): Record<string, unknown>[] | undefined {
   let text: string;
   try {
     const size = statSync(file).size;
-    const start = Math.max(0, size - TAIL_BYTES);
+    const start = Math.max(0, size - tailBytes);
     const fd = openSync(file, 'r');
     try {
       const buf = Buffer.alloc(size - start);

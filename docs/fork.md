@@ -177,6 +177,7 @@ including `ws/`, `http/`, `workers.ts` (`KanbanWorkers`, which `WorkerManager` e
 | `src/client/state/index.ts` | imports; new `workerForPull()` wrapper over `store.ts`'s | A card with `repo` goes to `workerForRepoPull()` (kanban/ghrepo) | "Go to desk" finds the right worker |
 | `src/client/state/persist.ts` | `rememberFloor()` | A `3d-kanban` comment only: it is exported (and re-exported by `state/index.ts`) | The deep link comes in on its floor |
 | `src/client/state/core.ts` | `building` slice, `floors` | `project.name` follows the current floor's name in the list | A renamed floor renames the top bar, tab title and sign of whoever stands on it |
+| `src/client/state/core.ts` | import; the `floor` slice's `enter()` (`s.workers = ...`) and `worker.update` | Workers go through `shownWorker()` (kanban/status) on their way into the store | A kanban worker whose run is still going shows as working, not done, in 3D and /lite |
 | `src/client/state/persist.ts` | `Settings.mouseSensitivity`; `loadSettings()` default and line after `notify` | A multiplier, 1 by default (settings saved before it get 1), kept within 0.25–2 | How fast the mouse looks around, per person |
 | `src/client/main.ts`, `src/client/features/hud/index.ts` | after `parts.player.view = parts.settings.view`; the settings window's `onChange` after `player.setView` | `player.setMouseSensitivity(settings.mouseSensitivity)` | Applied at startup and as the slider moves |
 | `src/client/ui/help.ts` | `HELP_ROWS` | `O` text (agent opens PRs); `J`, `C/E/P/R/X 🗂️` rows; `Mouse` row for both views, 🏀 text, `Wheel` instead of `Drag / wheel` | The H help matches the behaviour |
@@ -330,6 +331,19 @@ including `ws/`, `http/`, `workers.ts` (`KanbanWorkers`, which `WorkerManager` e
   `queued_command` attachment inside another turn) naming the `<task-id>`. A notification counts as a real prompt for the
   final answer, but not as the office's prompt that opens the window agents are counted in. A Claude CLI
   restart between phases stops the previous phase's background agents, which the window handles.
+- Claude's agent teams (teammates; they run in the lead's process): an `Agent` call with `input.name` gets a
+  `toolUseResult` of `status: 'teammate_spawned'` (`name`, `teammate_id: 'name@session-…'`, `team_name`;
+  its text starts `Spawned successfully`). A `SendMessage` result has `routing.target` (`@name`; the call's
+  `input.to` is the fallback, `*` a broadcast). A teammate's message to the lead is a `user` line with no
+  `origin` whose text is `Another Claude session sent a message:` and one or more
+  `<teammate-message teammate_id="…" …>…</teammate-message>` tags; an idle teammate's body is JSON
+  (`type: 'idle_notification'`, `from`, `idleReason`, `result`, and `summary: '[to Y] …'` when it had just
+  messaged Y), read by parsing the text between the tags whole (a `result` holds `}`). Each teammate has a
+  transcript `<lead log without .jsonl>/subagents/agent-a<name>-<hash>.jsonl` and a `….meta.json` with
+  `taskKind: 'in_process_teammate'` (a background agent's has another kind); at rest it ends in an assistant
+  message of text alone, a message for it is a `user` line (or a `queued_command` attachment mid-turn).
+  Hooks fired inside a subagent or teammate carry `agent_id` (a teammate's turn ends with `SubagentStop`).
+  Every line has an ISO `timestamp`, which the lead's log events are compared to the teammate's with.
 - Claude flags: `--permission-mode <mode>`, `--disallowedTools`, `--plugin-dir <path>` (skills as a plugin),
   `--resume <id>`, `--session-id <uuid>`; `--json-schema` only works with `--print`, so interactive review
   verdicts are parsed from the final text. The setting `skipDangerousModePermissionPrompt` exists

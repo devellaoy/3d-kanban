@@ -2,6 +2,7 @@
 // (see M0 in docs/fork.md). The transcript has one line per event; `type: 'assistant'` lines carry
 // `message.content[]` blocks (text, tool_use), `type: 'user'` lines are prompts or tool results.
 
+import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { isClaudeModel, type ClaudeModel } from '../../../../shared/protocol.js';
 import type { KanbanEffort, RunPhase } from '../../../../shared/kanban/types.js';
 import { isObj, readJsonLines, type LaunchOptions, type TaskAgentAdapter, type TurnResult } from './types.js';
@@ -61,6 +62,218 @@ function isTaskNotification(line: Record<string, unknown>): boolean {
   return messageText(line).startsWith('<task-notification>');
 }
 
+/**
+ * A teammate's message to the lead (agent teams): a `user` line with no origin, as the lead gets it, whose
+ * text is "Another Claude session sent a message:" and its `<teammate-message>` tags. It is no prompt of
+ * the office's, and a typed prompt quoting the tag (origin human) isn't it.
+ */
+function isTeammateMessage(line: Record<string, unknown>): boolean {
+  if (line.type !== 'user' || (isObj(line.origin) && line.origin.kind === 'human')) return false;
+  const text = messageText(line).trimStart();
+  return text.startsWith('<teammate-message') || (text.startsWith('Another Claude session sent a message') && text.includes('<teammate-message'));
+}
+
+/** A line the agent sends itself (a background agent's notification, a teammate's message), not one the office prompted. */
+const isAgentNotice = (line: Record<string, unknown>): boolean => isTaskNotification(line) || isTeammateMessage(line);
+
+/** A teammate's name from a teammate id or a routing target: `server-impl@session-1` → `server-impl`. */
+const teammateName = (v: unknown): string | undefined => (typeof v === 'string' && v.replace(/^@/, '').split('@')[0]) || undefined;
+
+/** A `<teammate-message>` opening tag and its attributes. */
+const OPEN_TAG = /<teammate-message((?:\s+[\w-]+="[^"]*")*)\s*>/g;
+
+/**
+ * The `<teammate-message>` tags of a line's text: who sent each, and for a JSON body (an idle notification
+ * and the like) its `type` and `summary`. The body is the text between the tags, parsed whole: it can hold
+ * `}` and `>` (a result's code), which a pattern for the JSON would cut short.
+ */
+export function teammateTags(text: string): { from: string; type?: string; summary?: string }[] {
+  const out: { from: string; type?: string; summary?: string }[] = [];
+  const close = '</teammate-message>';
+  let at = 0;
+  for (;;) {
+    // Each closing tag by indexOf: a lazy pattern across the body rescans a long text from every opening tag.
+    OPEN_TAG.lastIndex = at;
+    const m = OPEN_TAG.exec(text);
+    if (!m) break;
+    const bodyAt = m.index + m[0].length;
+    const end = text.indexOf(close, bodyAt);
+    if (end < 0) break;
+    at = end + close.length;
+    let from = teammateName(/\bteammate_id="([^"]*)"/.exec(m[1])?.[1]);
+    let type: string | undefined;
+    let summary: string | undefined;
+    try {
+      const body = JSON.parse(text.slice(bodyAt, end).trim()) as unknown;
+      if (isObj(body)) {
+        if (typeof body.type === 'string') type = body.type;
+        if (typeof body.summary === 'string') summary = body.summary;
+        from = teammateName(body.from) ?? from;
+      }
+    } catch {
+      // a report in words, not JSON
+    }
+    if (from) out.push({ from, ...(type ? { type } : {}), ...(summary ? { summary } : {}) });
+  }
+  return out;
+}
+
+/** What the lead's log says of a teammate: it was woken (busy) or went to rest, when. `*`: every teammate (a broadcast). */
+export interface TeammateEvent {
+  name: string;
+  busy: boolean;
+  at: number;
+  /** A spawn: it makes the name a teammate (a wake of any other name, the lead's say, is no teammate's). */
+  spawn?: true;
+}
+
+const atOf = (line: Record<string, unknown>): number => (typeof line.timestamp === 'string' ? Date.parse(line.timestamp) || 0 : 0);
+
+/**
+ * The teammate events in the lead's log from `start` on: a spawn (`teammate_spawned`, or its "Spawned
+ * successfully" text) or a message sent to one (SendMessage's `routing.target`, else the call's `to`)
+ * wakes it (only a teammate: one spawned, or with a transcript, never the lead a teammate reports to); an idle notification (or shutdown, termination) lets its sender rest, and a `[to Y]` summary
+ * in it says its sender woke Y. A teammate's own transcript is the truth; these cover its lag.
+ */
+export function teammateEvents(lines: Record<string, unknown>[], start: number): TeammateEvent[] {
+  const events: TeammateEvent[] = [];
+  if (start < 0) return events;
+  const tools = new Map<unknown, { name: unknown; input: Record<string, unknown> }>();
+  for (const line of lines.slice(start + 1)) {
+    const at = atOf(line);
+    const msg = isObj(line.message) ? line.message : undefined;
+    const content = Array.isArray(msg?.content) ? msg.content.filter(isObj) : [];
+    if (line.type === 'assistant') for (const b of content) if (b.type === 'tool_use') tools.set(b.id, { name: b.name, input: isObj(b.input) ? b.input : {} });
+    if (isTeammateMessage(line)) {
+      for (const t of teammateTags(messageText(line))) {
+        if (t.type === 'idle_notification' || t.type === 'shutdown_approved' || t.type === 'teammate_terminated') events.push({ name: t.from, busy: false, at });
+        const to = t.type === 'idle_notification' ? /^\[to ([^\]\s]+)\]/.exec(t.summary ?? '')?.[1] : undefined;
+        if (to) events.push({ name: teammateName(to) ?? to, busy: true, at });
+      }
+      continue;
+    }
+    if (line.type !== 'user') continue;
+    const res = isObj(line.toolUseResult) ? line.toolUseResult : undefined;
+    if (res?.status === 'teammate_spawned') {
+      const name = teammateName(res.name ?? res.teammate_id);
+      if (name) events.push({ name, busy: true, at, spawn: true });
+      continue;
+    }
+    if (res?.success === false) continue;
+    const routing = isObj(res?.routing) ? res.routing : undefined;
+    if (typeof routing?.target === 'string') {
+      const to = routing.target.replace(/^@/, '');
+      if (to) events.push({ name: to, busy: true, at });
+      continue;
+    }
+    if (res) continue;
+    // No toolUseResult (an older CLI): the call's own words.
+    for (const b of content) {
+      if (b.type !== 'tool_result') continue;
+      const call = tools.get(b.tool_use_id);
+      if (call?.name === 'SendMessage' && typeof call.input.to === 'string') events.push({ name: call.input.to.replace(/^@/, ''), busy: true, at });
+      else if (call?.name === 'Agent' && typeof call.input.name === 'string' && toolResultText(b).startsWith('Spawned successfully')) events.push({ name: call.input.name, busy: true, at, spawn: true });
+    }
+  }
+  return events;
+}
+
+/** Whether a teammate's own transcript ends mid-work: a message or tool result in for it to answer, or its last message isn't text alone, or nothing said yet. */
+function transcriptBusy(lines: Record<string, unknown>[]): boolean {
+  let last = -1;
+  for (let i = lines.length - 1; i >= 0; i--) {
+    if (lines[i].type === 'assistant') {
+      last = i;
+      break;
+    }
+  }
+  if (last < 0) return true;
+  // At rest only after a message of text alone: a tool call, or thinking not yet followed by its text, is work under way.
+  const msg = lines[last].message;
+  const blocks = isObj(msg) && Array.isArray(msg.content) ? msg.content.filter(isObj) : [];
+  if (!blocks.length || blocks.some((b) => b.type !== 'text')) return true;
+  return lines.slice(last + 1).some((l) => l.type === 'user' || (l.type === 'attachment' && isObj(l.attachment) && l.attachment.type === 'queued_command'));
+}
+
+/** A teammate's transcript is read from its last 512 KB: enough for its last message and what follows. */
+const TEAMMATE_TAIL = 512 * 1024;
+
+/**
+ * How many of the run's teammates (agent teams) are working, counted from their own transcripts, which
+ * Claude Code keeps next to the lead's at `<log without .jsonl>/subagents/agent-*.jsonl` with a `.meta.json`
+ * (`taskKind: in_process_teammate`). They live as long as the Claude process: one whose last line is older
+ * than `since`, the process's start, died with an earlier one (its file's mtime says so, unread). Of the
+ * transcripts of one name (a respawn) the one written last speaks. The lead's log `events` newer than a
+ * teammate's last line override it (its transcript lags what the lead sent it); one with no transcript
+ * yet is busy when the lead spawned it, and one whose transcript can't be read is busy too: an error is
+ * no rest. (A meta that can't be read or parsed is skipped: it is being written, and the spawn event covers it.)
+ */
+export function teammatesBusy(leadFile: string, since: number, events: TeammateEvent[]): number {
+  const dir = `${leadFile.replace(/\.jsonl$/, '')}/subagents`;
+  // Per teammate name: its transcript's last line (ms) and whether it ends mid-work.
+  const own = new Map<string, { last: number; busy: boolean }>();
+  let metas: string[] = [];
+  try {
+    metas = readdirSync(dir).filter((f) => f.endsWith('.meta.json'));
+  } catch {
+    // no teammates, or no folder yet
+  }
+  for (const f of metas) {
+    let name: string | undefined;
+    try {
+      const meta = JSON.parse(readFileSync(`${dir}/${f}`, 'utf8')) as unknown;
+      if (!isObj(meta) || meta.taskKind !== 'in_process_teammate') continue;
+      name = teammateName(meta.name ?? meta.agentType);
+    } catch {
+      // a meta being written
+    }
+    if (!name) continue;
+    const file = `${dir}/${f.replace(/\.meta\.json$/, '.jsonl')}`;
+    let last = -1;
+    let busy = true;
+    try {
+      const mtime = statSync(file).mtimeMs;
+      if (mtime < since) {
+        // Written last before the process began: dead, whatever it ended on.
+        last = mtime;
+        busy = false;
+      } else {
+        const lines = readJsonLines(file, TEAMMATE_TAIL);
+        if (lines) {
+          for (let i = lines.length - 1; i >= 0 && last < 0; i--) last = atOf(lines[i]) || -1;
+          busy = transcriptBusy(lines);
+        } else last = Infinity;
+      }
+    } catch {
+      // no transcript yet, or one that can't be read: busy, and newer than any word of the lead's
+      last = Infinity;
+    }
+    const cur = own.get(name);
+    if (!cur || last > cur.last || (last === cur.last && busy)) own.set(name, { last, busy });
+  }
+  // A name no spawn or meta makes a teammate (the lead's own, in a teammate's "[to main]") is never counted.
+  for (const e of events) if (e.spawn && !own.has(e.name)) own.set(e.name, { last: -1, busy: true });
+  // The newest word the lead's log has of each name since the process began, and of a broadcast.
+  const word = new Map<string, TeammateEvent>();
+  let all: TeammateEvent | undefined;
+  for (const e of events) {
+    if (e.at < since) continue;
+    // A broadcast counts only when it woke (busy): a rest is no one's but its sender's.
+    if (e.name === '*') {
+      if (e.busy && (!all || e.at > all.at)) all = e;
+    } else if (!word.has(e.name) || e.at > word.get(e.name)!.at) word.set(e.name, e);
+  }
+  let busy = 0;
+  for (const [name, { last, busy: tail }] of own) {
+    // Matching a broadcast to a name is harmless even for one spawned after it: the spawn event is always newer than the broadcast, so it wins.
+    const named = word.get(name);
+    const newest = named && (!all || named.at >= all.at) ? named : all;
+    // The newest word, when that is newer than the teammate's own last line.
+    if (newest && newest.at > last ? newest.busy : last >= since && tail) busy++;
+  }
+  return busy;
+}
+
 /** A notification's text, as its own turn's prompt or as an attachment inside another turn; '' for any other line. */
 function notificationText(line: Record<string, unknown>): string {
   if (isTaskNotification(line)) return messageText(line);
@@ -108,7 +321,7 @@ export function backgroundLeft(lines: Record<string, unknown>[], start: number):
  * A last message that calls a tool (ExitPlanMode aside) isn't a final answer: the Stop hook can come
  * before Claude has logged the reply after that tool's result, so the turn isn't complete yet.
  */
-export function readClaudeTurn(file: string): TurnResult | undefined {
+export function readClaudeTurn(file: string, opts?: { since?: number }): TurnResult | undefined {
   const lines = readJsonLines(file);
   if (!lines) return undefined;
   // The last real prompt, and the office's own (the last that isn't a notification) the agents are counted from.
@@ -117,7 +330,7 @@ export function readClaudeTurn(file: string): TurnResult | undefined {
   for (let i = lines.length - 1; i >= 0; i--) {
     if (!isRealPrompt(lines[i])) continue;
     if (from < 0) from = i;
-    if (!isTaskNotification(lines[i])) {
+    if (!isAgentNotice(lines[i])) {
       start = i;
       break;
     }
@@ -170,9 +383,10 @@ export function readClaudeTurn(file: string): TurnResult | undefined {
       if (planToolId && content.some((b) => b.type === 'tool_result' && b.tool_use_id === planToolId)) exitPlan = false;
     }
   }
-  const left = backgroundLeft(lines, start);
-  // The last prompt is a notification nothing has answered yet: Claude is about to take its turn.
-  const resuming = from >= 0 && !answered && isTaskNotification(lines[from]);
+  // Background agents and teammates alike: the turn's Stop isn't the run's end while any still works.
+  const left = backgroundLeft(lines, start) + teammatesBusy(file, opts?.since ?? 0, teammateEvents(lines, start));
+  // The last prompt is a notification or a teammate's message nothing has answered yet: Claude is about to take its turn.
+  const resuming = from >= 0 && !answered && isAgentNotice(lines[from]);
   return { text: texts.join('\n\n'), ...(plan !== undefined ? { plan } : {}), ...(exitPlan ? { exitPlan } : {}), complete: answered && !toolPending && (texts.length > 0 || exitPlan), ...(apiError ? { apiError } : {}), ...(running.size ? { toolRunning: true } : {}), ...(left ? { background: left } : {}), ...(resuming ? { resuming } : {}) };
 }
 
