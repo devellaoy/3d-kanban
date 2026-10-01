@@ -556,3 +556,20 @@ test('a move on one board does not change the status another board’s copy show
   await ws['kanban.issue.transition']!(c, { t: 'kanban.issue.transition', project: 'app', issueKey: 'gh:o/r#5', transitionId: 'p:PVT_1:PVTI_1:PVTSSF_1:a4' });
   assert.equal(shown().status, 'Shipped');
 });
+
+test('a comment under the office’s gh is signed, and goes on the issue’s task as a status line', async () => {
+  const { ctx, issues, ws, calls } = setup({ ghAs: () => undefined });
+  await issues.refresh('app');
+  const c = client(true, 'acc1');
+  await ws['kanban.issues.createTask']!(c, { t: 'kanban.issues.createTask', project: 'app', issueKey: 'gh:o/r#5' });
+  const taskId = (c.got.at(-1) as { taskId: number }).taskId;
+  ctx.changed.length = 0;
+  await ws['kanban.issue.comment']!(c, { t: 'kanban.issue.comment', project: 'app', issueKey: 'gh:o/r#5', text: 'Looks fine', rid: 'c1' });
+  assert.deepEqual(last(c, 'kanban.ok'), { t: 'kanban.ok', rid: 'c1' });
+  const post = calls.at(-1)!;
+  assert.equal(post.env, undefined, 'the office’s gh');
+  assert.ok(post.args.at(-1)!.endsWith('\n\n— Tester via Agent Office'));
+  const lines = ctx.repo.listComments(taskId).comments.filter((x) => x.kind === 'status');
+  assert.deepEqual(lines.map((x) => [x.authorKind, x.text]), [['system', 'Tester commented on gh:o/r#5']]);
+  assert.ok(ctx.changed.includes(taskId));
+});
