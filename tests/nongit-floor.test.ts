@@ -53,6 +53,18 @@ test("a GitHub for a folder that isn't a git repository refuses every call befor
   t.after(() => rmSync(dir, { recursive: true, force: true }));
   const calls = fakeTools(t);
   const github = new GitHub(dir, () => {}, () => {}, undefined, false, NOT_GIT);
+  // The board refreshes a call starts on its way out (even when it failed) run in the background:
+  // each one is kept, so the log is read only once they've all finished.
+  const background: Promise<unknown>[] = [];
+  const spy = github as unknown as Record<'refreshIssues' | 'refreshPulls', () => Promise<void>>;
+  for (const name of ['refreshIssues', 'refreshPulls'] as const) {
+    const real = spy[name].bind(github);
+    spy[name] = () => {
+      const p = real();
+      background.push(p);
+      return p;
+    };
+  }
 
   await github.refresh();
   assert.equal(github.issues.error, NOT_GIT);
@@ -68,8 +80,14 @@ test("a GitHub for a folder that isn't a git repository refuses every call befor
   assert.equal(await github.close('issue', 1, {}), NOT_GIT);
   await assert.rejects(github.repoLabels(), { message: NOT_GIT });
   assert.deepEqual(await github.setLabels('issue', 1, ['bug'], []), { error: NOT_GIT });
+  assert.deepEqual(await github.setLabels('pull', 1, [], ['bug']), { error: NOT_GIT });
   assert.equal(await github.claim(1), NOT_GIT);
+  // A failed label change refreshes its board: that has to stay off GitHub too.
+  assert.ok(background.length >= 2, `${background.length} board refreshes started`);
+  await Promise.all(background);
   assert.deepEqual(calls(), []);
+  assert.equal(github.issues.error, NOT_GIT);
+  assert.equal(github.pulls.error, NOT_GIT);
 });
 
 test("a folder inside a git repository gets .agent-office/ in that repository's exclude list", (t) => {

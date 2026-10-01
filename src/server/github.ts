@@ -404,7 +404,8 @@ export class GitHub {
   }
 
   private async refreshIssues() {
-    if (this.issues.loading) return;
+    // Nothing to ask on a project that isn't a git repository (refresh() says so), whoever asks for it.
+    if (this.off || this.issues.loading) return;
     this.issues = { ...this.issues, loading: true };
     this.onIssues(this.issues);
     const asked = Date.now();
@@ -438,7 +439,8 @@ export class GitHub {
   }
 
   private async refreshPulls() {
-    if (this.pulls.loading) return;
+    // Nothing to ask on a project that isn't a git repository (refresh() says so), whoever asks for it.
+    if (this.off || this.pulls.loading) return;
     this.pulls = { ...this.pulls, loading: true };
     this.onPulls(this.pulls);
     const asked = Date.now();
