@@ -81,7 +81,9 @@ export const settingsHandlers = {
     );
   },
   'sky.clock'(ctx, c, msg) {
-    const real = msg.real === true;
+    // Only a real boolean picks a clock: anything else (missing, "yes") leaves the building's clock as it is.
+    if (typeof msg.real !== 'boolean') return;
+    const real = msg.real;
     if (real === !!ctx.sky.state.realTime) return;
     ctx.sky.setClock(real);
     ctx.toastAll(real ? `🕰️ ${c.peer.name} put the sky on the real time of day` : `⏩ ${c.peer.name} set the sky to a whole day every hour`);
