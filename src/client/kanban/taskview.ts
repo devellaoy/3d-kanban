@@ -20,7 +20,7 @@ import type { Net } from '../net';
 import type { KanbanServerMsg } from '../../shared/kanban/protocol.js';
 import { KANBAN_TOOLS, type CommentKind, type KanbanAttachment, type KanbanComment, type KanbanEffort, type KanbanEvent, type KanbanPlan, type KanbanProjectInfo, type KanbanReportFile, type KanbanRole, type KanbanRun, type KanbanSettings, type KanbanTask, type KanbanTaskCard, type KanbanTool, type PlanStatus, type ReviewVerdict, type RunStatus, type TaskStatus, type TaskType } from '../../shared/kanban/types.js';
 import { isRunning } from '../../shared/kanban/moves.js';
-import { canFixPrs, openPrs } from '../../shared/kanban/prs.js';
+import { canFixPrs, openPrs, prStatusOk } from '../../shared/kanban/prs.js';
 import { getJson, kanbanApi, type KanbanApi, type KanbanOk } from './api';
 import { attachmentUrl, formatSize, isImage } from './attach';
 import { attachBox, type AttachBox } from './attachbox';
@@ -824,7 +824,7 @@ class View implements TaskView {
 
   /** 🛠️ Fix PRs, in the action bar and the PRs tab: only where there are open PRs to fix, greyed out (with why) while the task is busy. */
   private fixPrs(task: KanbanTask, bar: HTMLElement) {
-    if (!openPrs(task).length || !['waiting', 'review', 'done'].includes(task.status)) return;
+    if (!openPrs(task).length || !prStatusOk(task.status)) return;
     const can = canFixPrs(task);
     const b = h('button.btn', { type: 'button', disabled: !can.ok, title: can.ok ? 'The agent addresses the review comments and failing checks on the task’s open PRs; it doesn’t merge' : can.reason, 'data-focus': 'act-fix-prs' }, '🛠️ Fix PRs') as HTMLButtonElement;
     b.addEventListener('click', () => void this.req({ t: 'kanban.task.pr', id: task.id, mode: 'fix' }, b, 'An agent is on the pull requests'));

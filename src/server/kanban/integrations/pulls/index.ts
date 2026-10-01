@@ -16,6 +16,7 @@ import { gh } from '../../../github.js';
 import { floorPullsListeners, type PulledFloor } from './board.js';
 import type { GhRunner } from '../issues/source.js';
 import { fail, ok } from '../util.js';
+import { forkTest, polledPulls } from './prfix.js';
 import { branchPrs, findBundle, prOwners, prState, type BundleBy, type RepoPulls } from './bundle.js';
 
 const FIELDS = 'number,title,url,state,isDraft,headRefName';
@@ -229,7 +230,7 @@ export function createPullsParts(ctx: KanbanContext, opts: PullsOptions = {}) {
    * sync). Each such link is an event on the task. The browsers hear about the cards that changed.
    * Returns those tasks' ids.
    */
-  const syncPrStates = async (project: string, pulls: (Pick<GhPull, 'number' | 'url' | 'state' | 'isDraft' | 'repo'> & { headRefName?: string; createdAt?: string })[]): Promise<number[]> => {
+  const syncPrStates = async (project: string, pulls: (Pick<GhPull, 'number' | 'url' | 'state' | 'isDraft' | 'repo'> & { headRefName?: string; createdAt?: string; isCrossRepository?: boolean })[]): Promise<number[]> => {
     if (!pulls.length) return [];
     const links = ctx.repo.prLinksOfProject(project);
     const reposMemo = new Map<string, ProjectRepo[]>();
@@ -288,7 +289,7 @@ export function createPullsParts(ctx: KanbanContext, opts: PullsOptions = {}) {
         const owners = prOwners(ctx.repo.prLinksMatching(pr.number, pr.url), (proj, repoId) => ctx.repos(proj).find((r) => r.id === repoId)?.remote, pr);
         const tasks = owners.map((id) => ctx.repo.getTask(id)).filter((t): t is KanbanTask => !!t && t.project === m.project && t.status !== 'archived');
         const t = tasks.sort((a, b) => b.id - a.id)[0];
-        const check = t ? canFixPrs(t) : undefined;
+        const check = t ? canFixPrs(t, forkTest(polledPulls(ctx.floor(t.project)), ctx.repos(t.project))) : undefined;
         c.send({ t: 'kanban.pr.owner', ...(m.rid ? { rid: m.rid } : {}), taskId: t?.id ?? null, ...(t ? { title: t.title } : {}), fixable: check?.ok === true, ...(check && !check.ok ? { reason: check.reason } : {}) });
       },
       'kanban.pr.review': async (c, m) => {

@@ -16,7 +16,7 @@ import { DESK_BY_ID, deskBuilt, nextFreeSeat, watchSpotOf } from '../../../share
 import type { WorkerInfo } from '../../../shared/protocol.js';
 import { isBusy } from '../../../shared/status.js';
 import { withContract } from '../../../shared/kanban/prompts.js';
-import type { AskingKind, DepartureIntent, KanbanComment, KanbanEffort, KanbanPrReviewRequest, KanbanRole, KanbanRun, KanbanTask, KanbanTool, KanbanWorkerSummary, PrRef, QueuedRun, RunPhase } from '../../../shared/kanban/types.js';
+import type { AskingKind, DepartureIntent, KanbanComment, KanbanEffort, KanbanPrLink, KanbanPrReviewRequest, KanbanRole, KanbanRun, KanbanTask, KanbanTool, KanbanWorkerSummary, PrRef, ProjectRepo, QueuedRun, RunPhase } from '../../../shared/kanban/types.js';
 import { BRANCH_PREFIX, Worktrees } from '../../worktrees.js';
 import type { AttachmentRow, NewComment, TaskUpdate } from '../db/repository.js';
 import { grantDir, grantFiles } from '../uploads.js';
@@ -28,10 +28,11 @@ import { claudeAdapter } from './adapters/claude.js';
 import { codexAdapter } from './adapters/codex.js';
 import type { TaskAgentAdapter, TurnResult } from './adapters/types.js';
 import { Composer, isFolderProject, reportDir, reposText, skillPhase, taskRepos, workerReposText, type ComposeExtra } from './compose.js';
-import { canFixPrs, openPrs } from '../../../shared/kanban/prs.js';
+import { canFixPrs } from '../../../shared/kanban/prs.js';
+import { fixTargetsOf, forkTest, polledPulls } from '../integrations/pulls/prfix.js';
 import { next, type Effect, type LastRun, type MachineEvent, type MachineState, type PromptKind } from './machine.js';
 import { backoffMs, looksInterrupted, planOutcome, prLines, resetTime, reviewFindings, reviewVerdict, stripPlanMarkers } from './markers.js';
-import { allOn, branchExists, currentBranch, hasChanges, missingFolders } from './workspace.js';
+import { branchExists, checkoutLines, currentBranch, homeCleanup, hasChanges, missingFolders } from './workspace.js';
 
 export interface EngineOptions {
   /** How often due retries, queued tasks and newly opened floors are looked at (60 s). */
@@ -255,7 +256,9 @@ export class Orchestrator {
 
   /** Every run left `running` by the last office: re-attached to its worker, or interrupted when that's gone. */
   private reconcile() {
-    // A compact from an older office (the feature is gone): its run is over and its task never moved for it, so it just rests.
+    // Migration for a removed feature (remove once no office from before #327 is left): a compact from an
+    // older office is over and its task never moved for it, so it just rests. A compact waiting in the
+    // queue has no run, so the tasks are asked for here, and the runs below are only finished.
     for (const t of this.ctx.repo.tasksWhere({ runState: ['queued', 'starting', 'running', 'stopping'] })) {
       if (t.queuedRun?.prompt !== 'compact' && t.phase !== 'compact') continue;
       this.update(t.id, { runState: 'idle', queuedRun: null });
@@ -741,7 +744,9 @@ export class Orchestrator {
     const adapter = this.adapters[tool];
     const folder = isFolderProject(def);
     if (folder && (eff.phase === 'pr' || eff.phase === 'pr-fix')) return 'A folder project has no git repositories to open pull requests in';
-    if (eff.phase === 'pr-fix' && !task.prs.some((p) => p.state === 'OPEN' || p.state === 'DRAFT')) return 'The task has no open pull requests to fix';
+    // Only pull requests of the project's own (a fork's, or one from a base branch, is fixed by hand).
+    const fixPrs = eff.phase === 'pr-fix' ? fixTargetsOf(task, def, this.ctx.floor(task.project)) : undefined;
+    if (fixPrs && !fixPrs.length) return 'The task has no open pull requests of its own to fix (a pull request from a fork is fixed by hand)';
 
     // Its worktree is gone (its worker went home with leave-on-merge, or it was pruned): anyone seated
     // there would only be marked lost. The workspace goes, its branch stays, and a fresh worktree takes
@@ -769,6 +774,7 @@ export class Orchestrator {
       findings: eff.prompt === 'fix' ? reviewFindings(this.latestSummary(task.id, 'review') ?? '') : undefined,
       fixSummary: eff.prompt === 'rereview' ? this.latestSummary(task.id, 'fix') : undefined,
       refsFile,
+      fixPrs,
     };
     const fresh = this.ctx.repo.getTask(task.id) ?? task;
     const build = (kind: PromptKind) => this.compose.build(kind, def, fresh, tool, floor.dir, x);
@@ -948,18 +954,12 @@ export class Orchestrator {
    * investigation, a folder project, no branch yet, or already on it).
    */
   private async checkoutFor(task: KanbanTask, def: FloorDef, floorDir: string, role: KanbanRole, phase: RunPhase, freshTree: boolean): Promise<string | undefined> {
+    if (role !== 'implementer' || phase === 'plan' || (task.type === 'investigate' && phase !== 'pr-fix') || isFolderProject(def)) return undefined;
     // A Fix PRs run works on each open PR's own branch, whatever branch the task (an investigation's, say) has.
-    const prs = phase === 'pr-fix' ? openPrs(task).filter((p) => p.branch) : [];
-    const branch = task.branch ?? prs[0]?.branch;
-    if (role !== 'implementer' || phase === 'plan' || (task.type === 'investigate' && phase !== 'pr-fix') || !branch || isFolderProject(def)) return undefined;
-    const branches = { ...this.ctx.repo.repoBranches(task.id), ...Object.fromEntries(prs.map((p) => [p.repoId, p.branch])) };
-    const want = taskRepos(def, task).filter((r) => r.kind === 'git').map((r) => ({ r, b: branches[r.id] ?? branch }));
-    if (!freshTree) {
-      if (!task.workspace) return undefined;
-      const on = await currentBranch(path.join(floorDir, task.workspace.worktree.path));
-      if (!on || (prs.length ? await allOn(floorDir, task.workspace, want) : on === task.branch)) return undefined;
-    }
-    return want.map(({ r, b }) => `- ${r.name}: \`${b}\``).join('\n');
+    const prs = phase === 'pr-fix' ? fixTargetsOf(task, def, this.ctx.floor(task.project)).filter((p) => p.branch) : [];
+    if (!task.branch && !prs.length) return undefined;
+    const saved = { ...this.ctx.repo.repoBranches(task.id), ...Object.fromEntries(prs.map((p) => [p.repoId, p.branch])) };
+    return checkoutLines(floorDir, task, taskRepos(def, task), saved, phase === 'pr-fix', prs.length > 0, freshTree);
   }
 
   /** The task's workspace is gone: its workers go home, and it (and the sessions that ran there) is forgotten; its branch stays. */
@@ -969,12 +969,6 @@ export class Orchestrator {
     for (const id of ids) if (floor.workers.get(id)) await floor.sendHome(id, 'keep', ENGINE);
     const where = gone.map((d) => path.relative(floor.dir, d) || d).join(', ');
     this.note(task, `Its worktree is gone (${where}): a fresh worktree takes over${task.branch ? `, and the agent checks out the task's branch ${task.branch} there first` : ''}.`);
-  }
-
-  /** How a task's worker goes home: a reviewer in a worktree of its own (a pull-request review's) takes it away; the rest keep theirs. */
-  private homeCleanup(task: KanbanTask | undefined, info: WorkerInfo | undefined): 'keep' | 'all' {
-    if (!info?.worktree || info.kanban?.role !== 'reviewer') return 'keep';
-    return info.worktree.path !== task?.workspace?.worktree.path ? 'all' : 'keep';
   }
 
   /** The request of the task's latest pull-request review (for a Retry), as reviewPrs recorded it. */
@@ -1005,7 +999,7 @@ export class Orchestrator {
     const prev = task.reviewerWorkerId ? floor.workers.get(task.reviewerWorkerId) : undefined;
     if (prev) {
       if (prev.status === 'working' || prev.status === 'starting') return `${prev.name} is busy: wait for its turn to end`;
-      await floor.sendHome(prev.id, this.homeCleanup(task, prev), ENGINE);
+      await floor.sendHome(prev.id, homeCleanup(task, prev), ENGINE);
     }
     this.update(task.id, { reviewerWorkerId: null, reviewerSessionId: null });
 
@@ -1297,24 +1291,28 @@ export class Orchestrator {
    */
   private async markDone(task: KanbanTask, by: string) {
     const other = this.liveOf(task.id);
-    if (other) {
-      other.ended = true;
-      this.forget(other);
-      this.finishRun(other.runId, other.floorId, { status: 'stopped', error: `${by} made the task done` });
-    }
+    if (other) this.stopLive(other, `${by} made the task done`);
     const now = this.opts.now();
     this.update(task.id, { status: 'done', doneAt: now, archivedAt: null, runState: 'idle', waitingReason: null, waitingText: null, retryAt: null, finishedAt: task.finishedAt ?? now });
     this.ctx.repo.appendEvent(task.id, 'moved', { by, from: task.status, to: 'done', sentHome: true });
     await this.sendIdleHome(task.id, by, other?.workerId);
   }
 
-  /** The task's workers at rest (and `also`, busy or not) go home with their worktree kept: it's done or archived. */
-  private async sendIdleHome(taskId: number, by: string, also?: string) {
+  /** A run still live on a task is over as stopped, and its worker's turn is no longer followed: `error` says why. */
+  private stopLive(live: Live, error: string) {
+    live.ended = true;
+    this.forget(live);
+    this.finishRun(live.runId, live.floorId, { status: 'stopped', error });
+  }
+
+  /** The task's workers at rest (and `also`, busy or not) go home, their worktree kept unless it was a PR review's own: the task is done, archived, reset or deleted. Returns how many went. */
+  private async sendIdleHome(taskId: number, by: string, also?: string): Promise<number> {
     const task = this.ctx.repo.getTask(taskId);
     const floor = task && this.ctx.floor(task.project);
-    if (!floor) return;
-    const going = floor.workers.list().filter((w) => w.kanban?.taskId === taskId && (w.id === also || !isBusy(w.status)));
-    for (const w of going) await floor.sendHome(w.id, 'keep', { by, reason: 'released' });
+    if (!floor) return 0;
+    const going = floor.workers.list().filter((w) => (w.kanban?.taskId === taskId || w.id === task.workerId || w.id === task.reviewerWorkerId) && (w.id === also || !isBusy(w.status)));
+    for (const w of going) await floor.sendHome(w.id, homeCleanup(task, w), { by, reason: 'released' });
+    return going.length;
   }
 
   /**
@@ -1532,8 +1530,7 @@ export class Orchestrator {
       }
       case 'implement':
         say('result', text);
-        if (task.type === 'investigate') this.update(task.id, { summary: clip(text, SUMMARY_MAX) });
-        else this.update(task.id, { summary: clip(text, SUMMARY_MAX) });
+        this.update(task.id, { summary: clip(text, SUMMARY_MAX) });
         event = { type: 'implemented', changes: task.type === 'investigate' ? false : await changes(), pending };
         break;
       case 'review':
@@ -1566,7 +1563,9 @@ export class Orchestrator {
         event = { type: 'prReviewed', pending };
         break;
       default:
-        // 'compact' only lives in old runs (reconcile drops them): nothing follows one here.
+        // 'compact' only lives in old runs (reconcile drops them), but a run must never be left running: it ends here.
+        this.finishRun(live.runId, task.project, { status: 'interrupted', error: `A ${live.phase} run has nothing to follow it` });
+        this.update(task.id, { runState: 'idle' });
         return;
     }
     this.finishRun(live.runId, task.project, { status: 'succeeded', summary: clip(text, SUMMARY_MAX), ...(verdict ? { verdict } : {}), ...(sessionId ? { sessionId } : {}) });
@@ -1645,14 +1644,14 @@ export class Orchestrator {
     // At rest while its background agents work: nothing to interrupt, so it goes home (worktree kept), which ends the session
     // and its helper agents; its removal (see removed) finishes the stop. A turn that has resumed gets Esc as usual.
     const status = floor?.workers.get(live.workerId)?.status;
-    if (live.background && floor && (status === 'done' || status === 'idle')) return void floor.sendHome(live.workerId, this.homeCleanup(task, floor.workers.get(live.workerId)), ENGINE);
+    if (live.background && floor && (status === 'done' || status === 'idle')) return void floor.sendHome(live.workerId, homeCleanup(task, floor.workers.get(live.workerId)), ENGINE);
     floor?.workers.write(live.workerId, ESC, who?.name ?? 'Kanban');
     live.stopping.timer = setTimeout(() => {
       if (this.live.get(live.workerId) !== live || live.ended) return;
       const f = this.ctx.floor(live.floorId);
       if (!f) return void this.serial(live.taskId, () => this.stoppedRun(live));
       // Its removal (see removed) finishes the stop.
-      void f.sendHome(live.workerId, this.homeCleanup(this.ctx.repo.getTask(live.taskId), f.workers.get(live.workerId)), ENGINE);
+      void f.sendHome(live.workerId, homeCleanup(this.ctx.repo.getTask(live.taskId), f.workers.get(live.workerId)), ENGINE);
     }, this.opts.stopGraceMs);
     live.stopping.timer.unref?.();
   }
@@ -1675,7 +1674,7 @@ export class Orchestrator {
     const floor = this.ctx.floor(task.project);
     this.update(task.id, { reviewerWorkerId: null, reviewerSessionId: null });
     const info = id ? floor?.workers.get(id) : undefined;
-    if (id && info) await floor!.sendHome(id, this.homeCleanup(task, info), ENGINE);
+    if (id && info) await floor!.sendHome(id, homeCleanup(task, info), ENGINE);
   }
 
   // --- The API ------------------------------------------------------------------------------------
@@ -1815,13 +1814,15 @@ export class Orchestrator {
 
   pr(taskId: number, who: KanbanCaller, mode: 'create' | 'fix'): Promise<string | void> {
     return this.op(taskId, (task) => {
+      // Fixing, the shared rule answers first: the server gives the reason the button does.
+      const def = this.ctx.project(task.project);
+      const fix = mode === 'fix' && def ? canFixPrs(task, forkTest(polledPulls(this.ctx.floor(task.project)), projectRepos(def))) : undefined;
+      if (fix && !fix.ok) return Promise.resolve(fix.reason);
       if (this.liveOf(task.id)) return Promise.resolve('Stop it first: it is running');
       if (this.folder(task.project)) return Promise.resolve('A folder project has no git repositories to open pull requests in');
       // A task whose worktree went still has its branch: a fresh worktree checks it out (see launch).
       // Fixing, an open pull request's branch is work enough (checkoutFor sends the agent to it).
-      if (!task.workspace && !task.branch && !(mode === 'fix' && openPrs(task).some((p) => p.branch))) return Promise.resolve('It has no work to open pull requests for yet');
-      const fix = mode === 'fix' ? canFixPrs(task) : undefined;
-      if (fix && !fix.ok) return Promise.resolve(fix.reason);
+      if (!task.workspace && !task.branch && !(fix && fixTargetsOf(task, def!, this.ctx.floor(task.project)).some((p) => p.branch))) return Promise.resolve('It has no work to open pull requests for yet');
       return this.apply(taskId, { type: 'pr', mode }, { who });
     });
   }
@@ -1839,15 +1840,16 @@ export class Orchestrator {
       const going = floor?.workers.list().filter((w) => w.kanban?.taskId === task.id || w.id === task.workerId || w.id === task.reviewerWorkerId) ?? [];
       const busy = going.find((w) => isBusy(w.status) && w.id !== live?.workerId);
       if (busy) return `${busy.name} is still working: stop it or send it home first`;
+      // A delete writes no notes: the task goes right after.
       if (live) {
-        live.ended = true;
-        this.forget(live);
-        this.finishRun(live.runId, live.floorId, { status: 'stopped', error: `${who.name} ${why === 'reset' ? 'moved the task back to To do' : 'deleted the task'}` });
-        this.note(task, `${who.name} ${why === 'reset' ? 'moved the task back to To do' : 'deleted the task'}, so its ${live.phase === 'review' || live.phase === 'pr-review' ? 'review round' : `${live.phase} run`} was stopped.`, live.runId);
+        const did = why === 'reset' ? 'moved the task back to To do' : 'deleted the task';
+        this.stopLive(live, `${who.name} ${did}`);
+        if (why === 'reset') this.note(task, `${who.name} ${did}, so its ${live.phase === 'review' || live.phase === 'pr-review' ? 'review round' : `${live.phase} run`} was stopped.`, live.runId);
       }
-      for (const w of going) await floor!.sendHome(w.id, 'keep', { by: who.name, reason: 'released' });
+      const sent = await this.sendIdleHome(task.id, who.name, live?.workerId);
+      // The path is the floor's own (relative to it), not where the floor sits on the server.
       const wt = task.workspace?.worktree;
-      if (why === 'reset' && wt) this.note(task, `${going.length ? 'Its workers went home. ' : ''}The worktree was kept at ${floor ? path.join(floor.dir, wt.path) : wt.path} on branch ${wt.branch}.`);
+      if (why === 'reset' && wt) this.note(task, `${sent ? 'Its workers went home. ' : ''}The worktree was kept at ${wt.path} on branch ${wt.branch}.`);
       return undefined;
     });
   }
@@ -1863,10 +1865,8 @@ export class Orchestrator {
       if (task.status !== 'done' && task.status !== 'archived') return;
       const live = this.liveOf(task.id);
       if (live) {
-        live.ended = true;
-        this.forget(live);
         const where = task.status === 'done' ? 'Done' : 'the archive';
-        this.finishRun(live.runId, live.floorId, { status: 'stopped', error: `${who.name} moved the task to ${where}` });
+        this.stopLive(live, `${who.name} moved the task to ${where}`);
         this.note(task, `${who.name} moved the task to ${where}, so its ${live.phase === 'review' || live.phase === 'pr-review' ? 'review round' : `${live.phase} run`} was stopped.`, live.runId);
       } else if (task.queuedRun) this.queuedStopped(task, task.queuedRun, `${who.name} moved the task to ${task.status === 'done' ? 'Done' : 'the archive'} before it started`);
       if (live || task.runState !== 'idle' || task.queuedRun) this.update(task.id, { runState: 'idle', queuedRun: null, waitingReason: null, waitingText: null, retryAt: null });

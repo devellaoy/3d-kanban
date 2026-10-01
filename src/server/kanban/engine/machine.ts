@@ -7,6 +7,7 @@
 // column. A comment resumes the work; a resume turn is reviewed again when the task has review on.
 
 import type { KanbanRole, PlanApproval, RunPhase, RunState, TaskStatus, TaskType, WaitingReason } from '../../../shared/kanban/types.js';
+import { prStatusOk } from '../../../shared/kanban/prs.js';
 import { KANBAN_PROMPT_DEFS } from '../../../shared/kanban/prompt-defs.js';
 
 /** The part of a task the machine decides about. */
@@ -376,7 +377,7 @@ export function next(s: MachineState, e: MachineEvent, t: MachineTask, cfg: Mach
     case 'pr':
       if (busy(s)) return no('Stop it first: it is running');
       if (t.type === 'investigate' && e.mode === 'create') return no('An investigation has no changes to open pull requests for');
-      if (s.status !== 'review' && s.status !== 'waiting' && s.status !== 'done') return no('Pull requests are opened from Waiting, Review or Done');
+      if (!prStatusOk(s.status)) return no(`Pull requests are ${e.mode === 'create' ? 'opened' : 'fixed'} from Waiting, Review or Done`);
       return ok(running(s, e.mode === 'create' ? 'pr' : 'pr-fix'), { type: 'run', phase: e.mode === 'create' ? 'pr' : 'pr-fix', role: 'implementer', prompt: e.mode === 'create' ? 'pr.create' : 'pr.fix' });
   }
 }

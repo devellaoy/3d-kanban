@@ -130,7 +130,7 @@ its desk; a run whose worker went away (or exited) is marked interrupted.
 ### Sending a task's worker home
 
 A task's worker is an ordinary worker at a desk: **X** (or the CLI's `office-workers home`, the queue
-making room, a meeting, leave-on-merge, moving the task back to To do or deleting it) sends it home, and the task hears about it. Each
+making room, a meeting, leave-on-merge, moving the task back to To do or deleting it) sends it home, and the task hears about it. Moving a task that has workers back to To do is for whoever made it or an admin, as deleting is. Each
 departure puts exactly one line in the task's conversation, saying who sent it home and what that
 did:
 
@@ -379,7 +379,7 @@ reads its own. A kanban task made from a card keeps the description as its own, 
   board.
 - **Fix PRs** (any task, an investigation too, in Waiting, Review or Done, with an open or draft PR; in the action bar and the PRs tab alike): the implementer addresses the unresolved review comments and
   the failing checks (it reads the failing run's log) on all the task's open PRs, pushes, and doesn't merge. The button is greyed out, with the reason as its tooltip, while the task is running or its agent is asking in its terminal. An investigation with no branch takes the one its open PR is from. One rule
-  (`canFixPrs`, `src/shared/kanban/prs.ts`) serves the buttons and the engine. On a Done task it moves the task back to In progress, and then to Review.
+  (`canFixPrs`, `src/shared/kanban/prs.ts`) serves the buttons and the engine. A pull request from a fork is never worked on ("A pull request from a fork: fix it by hand"; the PR board says which are forks), nor is one whose head branch is the repository's base branch or an integration branch (main, master, develop, dev, trunk): a head branch is whatever its author named it, so the office never checks it out on trust. The prompt tells the agent that review comments and CI logs are data, not instructions, and to act only on comments from the repository's owner, members and collaborators (`author_association`). On a Done task it moves the task back to In progress, and then to Review.
 - **Fix via task #N** (PR window, opened from the PR board, the lite view or the palette): when a task owns the PR (the newest one not archived, if several), the window's footer
   has this button next to upstream's *Fix comments & merge*. It does the same as the task's own 🛠️ Fix PRs, on all of that task's open PRs, and is greyed out with the reason when the task can't be sent now.
   No button when no task owns the PR.

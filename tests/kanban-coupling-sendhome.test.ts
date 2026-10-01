@@ -224,7 +224,8 @@ test('sendWorkersHome (a reset to To do, a delete): the worker at rest goes home
   assert.ok(existsSync(wt), 'its worktree stayed');
   const kept = fx.repo.listComments(r.id).comments.find((c) => c.kind === 'status' && /worktree was kept/.test(c.text));
   assert.ok(kept, 'the task says where the worktree stayed');
-  assert.ok(kept!.text.includes(wt) && kept!.text.includes(r.workspace!.worktree.branch), kept!.text);
+  assert.ok(kept!.text.includes(r.workspace!.worktree.path) && kept!.text.includes(r.workspace!.worktree.branch), kept!.text);
+  assert.ok(!kept!.text.includes(fx.dir), 'the floor-relative path, not where the floor sits on the server');
   fx.repo.updateTask(r.id, { runState: 'running' });
   assert.match(String(await fx.engine.sendWorkersHome(r.id, ADA, 'delete')), /Stop it first/);
 });

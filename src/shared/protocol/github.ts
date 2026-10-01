@@ -46,6 +46,8 @@ export interface GhPull {
   headRefName: string;
   /** The commit its branch is at on GitHub (for a merged PR, the last one merged). */
   headRefOid?: string;
+  /** Its head is in another repository (a fork's): somebody else's branch, not the project's own. */
+  isCrossRepository?: boolean;
   baseRefName: string;
   createdAt: string;
   updatedAt: string;

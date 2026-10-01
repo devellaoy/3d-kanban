@@ -209,7 +209,7 @@ allowed: `todo → in_progress` (= start), `waiting|review → done`, `done → 
     lacking one resolved through its repoId, number or URL); a fork's PR with the same branch name (`gh pr view
     --json isCrossRepository` must say false). The gh answers are cached (a PR's head repository never changes),
     a failed question isn't repeated for 5 minutes and links nothing meanwhile. Each such link is a `pr.linked`
-    event (`{ repo, number, by: 'branch' }`). A `pr`/`pr-fix` turn's end asks the floor's boards for the task's git
+    event (`{ repo, number, by: 'branch' }`); the board's `GhPull.isCrossRepository` skips a fork's PR before gh is asked. A `pr`/`pr-fix` turn's end asks the floor's boards for the task's git
     repositories to refresh at once, so the link shows up quickly.
   - review: read from the final answer's last 3 non-empty lines only: the **last** of them matching
     `^\s*REVIEW:\s*(APPROVED|CHANGES_REQUESTED)\s*$` as a line of its own (emphasis allowed) decides; none →
@@ -370,8 +370,8 @@ answers `kanban.ok {rid, ...}` or `kanban.error {rid, message}`. Deltas are push
     phase hires the new tool, whose fresh session gets the handoff. `repoIds` only before the first start. The
     description is locked from the first start (sending the unchanged text is fine). No edits while archived.
   - `task.move`: `checkMove` (moves.ts), which only looks at the column and the run state. Workers at rest don't stop a move: the engine sends them
-    home first (`engine.sendWorkersHome(id, who, 'reset')`, cleanup `keep`, reason `released`; a run live only
-    because the agent asks in its terminal is finished as `stopped`).
+    home first (`engine.sendWorkersHome(id, who, 'reset')`, cleanup `keep` (`all` for a PR review's reviewer in a worktree of its own), reason `released`; a run live only
+    because the agent asks in its terminal is finished as `stopped`). A reset of a task with workers is for its creator or an admin (as `task.delete`).
     `start` runs `engine.start`. `reset` clears the automation state (phase, run state, waiting, round,
     sessions, worker ids, pending messages, retries, `finishedAt`, `doneAt`) **and the workspace**; it keeps
     `task.branch` and `startedAt`, and says in a status comment where the worktree stayed and on which branch. The next start seats a fresh worktree whose agent is told to check that
@@ -396,7 +396,7 @@ answers `kanban.ok {rid, ...}` or `kanban.error {rid, message}`. Deltas are push
     "Fix via task #N". Answered with `kanban.pr.owner {taskId: number | null, title?, fixable, reason?}`:
     the project's tasks linked to the PR (by repository, repoId or URL: `prOwners`), the newest not archived (none: `taskId` null);
     `fixable` is `canFixPrs` (shared/kanban/prs.ts: not running, not asking in its terminal, in Waiting, Review or
-    Done, with an open or draft PR) and `reason` says why not. The action itself is `pr {id, mode: 'fix'}`.
+    Done, with an open or draft PR that isn't a fork's: the server passes the floor's polled PRs, `isCrossRepository`) and `reason` says why not. The action itself is `pr {id, mode: 'fix'}`.
   - `pr.review {project, prs, taskId?, tool?, model?, effort?, panel?}`: checked by integrations/pulls (the
     project exists, every PR is in one of its GitHub repositories and exists, each once, at most 20, `taskId`
     is the project's), then run by the engine (`engine.reviewPrs`, §4) and answered with

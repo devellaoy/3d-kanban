@@ -6,7 +6,8 @@ import { execFile } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import path from 'node:path';
 import { promisify } from 'node:util';
-import type { ProjectRepo, TaskWorkspace } from '../../../shared/kanban/types.js';
+import type { WorkerInfo } from '../../../shared/protocol.js';
+import type { KanbanTask, ProjectRepo, TaskWorkspace } from '../../../shared/kanban/types.js';
 
 const run = promisify(execFile);
 
@@ -92,14 +93,37 @@ export async function branchExists(dir: string, branch: string): Promise<boolean
 /**
  * Whether each repository's worktree in `ws` is on the branch wanted for it (the primary's is
  * `ws.worktree`, the others' are `ws.repos` by name). Each is asked on its own: the primary being on
- * the right branch says nothing of the others. One with no worktree in `ws` isn't on it.
+ * the right branch says nothing of the others. A repository with no worktree in `ws` (added to the
+ * project after it was made) is left out: no checkout there could ever make it true.
  */
 export async function allOn(floorDir: string, ws: TaskWorkspace, want: { r: ProjectRepo; b: string }[]): Promise<boolean> {
-  const on = await Promise.all(
-    want.map(({ r }) => {
-      const rel = r.primary ? ws.worktree.path : ws.repos?.find((x) => x.name === r.name)?.path;
-      return rel ? currentBranch(path.join(floorDir, rel)) : undefined;
-    }),
-  );
-  return want.every(({ b }, i) => on[i] === b);
+  const there = want.map(({ r, b }) => ({ b, rel: r.primary ? ws.worktree.path : ws.repos?.find((x) => x.name === r.name)?.path })).filter((w) => w.rel);
+  const on = await Promise.all(there.map((w) => currentBranch(path.join(floorDir, w.rel!))));
+  return there.every(({ b }, i) => on[i] === b);
+}
+
+/**
+ * The branch to check out in each git repository, one line each (`saved`: the branches the task or its
+ * PRs have, by repo id). Fixing PRs, only the repositories with a branch of their own are listed, the
+ * task's branch being for a task that has no other; `byPrs` says a PR named one, so the worktree is
+ * asked in every repository, not just the primary. Undefined when nothing is to be checked out, or
+ * the workspace (when it's not `freshTree`) is on its branches already.
+ */
+export async function checkoutLines(floorDir: string, task: Pick<KanbanTask, 'branch' | 'workspace'>, repos: ProjectRepo[], saved: Record<string, string | undefined>, fixing: boolean, byPrs: boolean, freshTree: boolean): Promise<string | undefined> {
+  const git = repos.filter((r) => r.kind === 'git');
+  const own = fixing ? git.filter((r) => saved[r.id]) : [];
+  const want = (own.length ? own : git).map((r) => ({ r, b: saved[r.id] ?? task.branch })).filter((w): w is { r: ProjectRepo; b: string } => !!w.b);
+  if (!want.length) return undefined;
+  if (!freshTree) {
+    if (!task.workspace) return undefined;
+    const on = await currentBranch(path.join(floorDir, task.workspace.worktree.path));
+    if (!on || (byPrs ? await allOn(floorDir, task.workspace, want) : on === task.branch)) return undefined;
+  }
+  return want.map(({ r, b }) => `- ${r.name}: \`${b}\``).join('\n');
+}
+
+/** How a task's worker goes home: a reviewer in a worktree of its own (a pull-request review's) takes it away; the rest keep theirs. */
+export function homeCleanup(task: Pick<KanbanTask, 'workspace'> | undefined, info: WorkerInfo | undefined): 'keep' | 'all' {
+  if (!info?.worktree || info.kanban?.role !== 'reviewer') return 'keep';
+  return info.worktree.path !== task?.workspace?.worktree.path ? 'all' : 'keep';
 }
