@@ -55,7 +55,7 @@ export interface ChangesState {
   ahead: number;
   /** Subject of the newest commit, when ahead > 0. */
   subject?: string;
-  /** 3d-kanban: the checkout's HEAD commit, so the task's Changes view notices an amend or a rebase. */
+  /** the checkout's HEAD commit, so the task's Changes view notices an amend or a rebase. */
   head?: string;
   files: ChangedFile[];
   /** Files left out because there were more than the office lists. */

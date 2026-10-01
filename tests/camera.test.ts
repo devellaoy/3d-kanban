@@ -1,4 +1,4 @@
-// 3d-kanban: third person plays like first person, only the camera is behind you (docs/controls.md).
+// third person plays like first person, only the camera is behind you (docs/controls.md).
 import test, { type TestContext } from 'node:test';
 import assert from 'node:assert/strict';
 import * as THREE from 'three';

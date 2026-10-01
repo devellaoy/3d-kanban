@@ -18,7 +18,7 @@ export interface FloorDef {
   palette: number;
   addedBy: string;
   addedAt: number;
-  /** 3d-kanban: the project's repositories, the floor's own checkout the primary one (see server/kanban/projects.ts). */
+  /** the project's repositories, the floor's own checkout the primary one (see server/kanban/projects.ts). */
   repos?: ProjectRepo[];
 }
 
@@ -229,7 +229,7 @@ export class Building {
     return repos;
   }
 
-  /** 3d-kanban: sets (or, undefined, clears) a floor's repositories, checked by server/kanban/projects.ts. */
+  /** sets (or, undefined, clears) a floor's repositories, checked by server/kanban/projects.ts. */
   setRepos(id: string, repos: ProjectRepo[] | undefined): FloorDef | string {
     const def = this.defs.find((d) => d.id === id);
     if (!def) return 'No such floor';
@@ -239,7 +239,7 @@ export class Building {
     return def;
   }
 
-  /** 3d-kanban: renames a floor (the project's name); its id, folder and repository stay. Returns why not, if not. */
+  /** renames a floor (the project's name); its id, folder and repository stay. Returns why not, if not. */
   setName(id: string, raw: string): FloorDef | string {
     const def = this.defs.find((d) => d.id === id);
     if (!def) return 'No such floor';
@@ -280,7 +280,7 @@ export class Building {
           addedBy: typeof s.addedBy === 'string' ? s.addedBy : '?',
           addedAt: typeof s.addedAt === 'number' ? s.addedAt : Date.now(),
         });
-        // 3d-kanban: a project's repositories (a floor without any is one repository, as always).
+        // a project's repositories (a floor without any is one repository, as always).
         const repos = loadRepos(s.repos, s.id, s.dir);
         if (repos) this.defs[this.defs.length - 1].repos = repos;
       }

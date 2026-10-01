@@ -7,7 +7,7 @@ export const HELP_ROWS: readonly (readonly [string, string])[] = [
   ['W A S D', 'Walk (hold Shift to run)'],
   ['Space', 'Jump'],
   ['☕', 'Press E at the coffee machine in the kitchen for a minute of quicker walking and higher jumps. Three cups in a row gives you the jitters'],
-  // 3d-kanban: third person looks around with the mouse too.
+  // third person looks around with the mouse too.
   ['Mouse', 'Look around, in first and third person alike (click to capture the mouse, Esc to free it). The dot in the middle of the screen is what you aim at'],
   ['Click / E', "Use what you look at: hire a worker, open its terminal, read a board, call a meeting in the meeting room, watch the TV, put a song on the jukebox, tee off from the balcony, sit on a couch, a beanbag, a chair or the balcony bench (walk off to get up)"],
   ['👥', 'Click someone under "In the office" to walk over to them (on another floor, you ride the elevator first). The line under their name says what they have open or where they are'],
@@ -21,7 +21,7 @@ export const HELP_ROWS: readonly (readonly [string, string])[] = [
   ['🏎️', "The Lambos and Ferraris in the garage: E at one gets you behind the wheel, or beside whoever's driving it. W is the gas, S brakes and reverses, A and D steer, Space brakes, H honks and E gets you out. Everyone on your floor sees you drive by"],
   ['🍸', 'The elevator goes up to the rooftop bar: a DJ playing drum and bass under the lights, and the city all around. Press E at the bar for a drink (it goes to your head for a bit) and at the DJ booth for the air horn'],
   ['🎯', 'Up on the roof, in the corner past the DJ: a dart board and an axe-throwing lane. E at either steps up to the line. The mouse (or the arrow keys) aims, and your hand wanders more after a few drinks. Hold Space (or the mouse button) and let go in the green: three darts a visit, five axes a round, chalked up for everyone up there. E steps back'],
-  ['Wheel', 'Zoom the camera in or out in third person'], // 3d-kanban: no more drag to orbit
+  ['Wheel', 'Zoom the camera in or out in third person'], // no more drag to orbit
   ['P', 'Prompt: give a task to a new or existing worker at the desk you face'],
   ['C', 'Changes: what the worker at the desk you face changed — files and diff, commit, discard, open a PR'],
   ['B', 'Open a shared shell (dev servers, git, tests) at an empty desk'],
@@ -32,11 +32,11 @@ export const HELP_ROWS: readonly (readonly [string, string])[] = [
   ['F', 'Hang a picture from the web on a wall. Look at a picture and press E to move, edit or take it down'],
   ['Q', 'Put back the issue card in your hands (E at a note on the issues board, or ✋ Pick it up in an issue; then E at an empty desk, a worker or the queue board), or drop the basketball'],
   ['🐶', 'Walk up to the office dog and press E to pet it. When a worker needs input, it runs to that desk and barks. Name it in ⚙️ Settings'],
-  // 3d-kanban: an agent opens the pull requests now, in every repository the worker works in.
+  // an agent opens the pull requests now, in every repository the worker works in.
   ['O', 'Have the worker’s agent open pull requests for its branch (in every repository it works in, following the prompt in ⚙️ Settings), or see the ones it has'],
-  // 3d-kanban: the kanban view, on the floor you are on; facing a task's worker, that task.
+  // the kanban view, on the floor you are on; facing a task's worker, that task.
   ['J', 'Switch to the kanban view of this floor’s project (🏢 3D there brings you back). Facing a kanban task’s worker, it opens that task’s conversation'],
-  // 3d-kanban: the keys at a kanban task's worker.
+  // the keys at a kanban task's worker.
   ['C 🗂️', 'At a kanban task’s worker: the task’s Changes window — a tab per repository, all changes, per commit or uncommitted; live from its checkout while it’s here, with commit, discard and open a PR'],
   ['E 🗂️', 'At a kanban task’s worker, its window has tabs: 🖥️ Terminal and 🗂️ Task #14 (the task’s conversation with its composer, plan, runs and PRs, as on the kanban). It opens on the Task tab the first time, then on the tab you last had; 🌿 Changes in its header opens the task’s Changes window'],
   ['P 🗂️', 'At a kanban task’s worker: a message on its task, which carries the kanban process on (or type straight into its terminal instead). A reviewer only takes its terminal. With an issue card in hand, P at an empty desk makes it a kanban task there'],

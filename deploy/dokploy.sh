@@ -431,7 +431,7 @@ make_zip() {
 # container's office to answer.
 deploy() {
   need git
-  git -C "$REPO_DIR" rev-parse --git-dir >/dev/null 2>&1 || die "run this from a git clone of 3d-kanban (it uploads the checkout's files)" # 3d-kanban: this fork
+  git -C "$REPO_DIR" rev-parse --git-dir >/dev/null 2>&1 || die "run this from a git clone of 3d-kanban (it uploads the checkout's files)"
   local what zip before was out code i line id st=""
   what=$(git -C "$REPO_DIR" log -1 --format='%h %s')
   [[ -z "$(git -C "$REPO_DIR" status --porcelain)" ]] || what+=", with your uncommitted changes"
@@ -587,7 +587,7 @@ team_members() { remote "agent-office-team list"; } # "<name> <number of keys>" 
 cmd_up() {
   need ssh-keygen
   need git
-  [[ -f "$REPO_DIR/$DOCKERFILE" ]] || die "run this from a clone of 3d-kanban ($DOCKERFILE is missing)" # 3d-kanban: this fork
+  [[ -f "$REPO_DIR/$DOCKERFILE" ]] || die "run this from a clone of 3d-kanban ($DOCKERFILE is missing)"
   mkdir -p "$STATE_DIR"
   chmod 700 "$STATE_DIR"
   preflight

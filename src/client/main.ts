@@ -61,7 +61,7 @@ import { installWalking } from './features/walking';
 import { installWhiteboard } from './features/whiteboard';
 import { installWorkerActions } from './features/workers/actions';
 import { installWorkerViews } from './features/workers/views';
-import { installKanban3d } from './kanban/install3d'; // 3d-kanban
+import { installKanban3d } from './kanban/install3d';
 
 // The loading screen stays up until there's an office to see (see boot and whoami at the end).
 const loading = loadingScreen(onModelsProgress);
@@ -114,7 +114,7 @@ parts.place = installPlace(ctx, core, parts);
 // Everyone arrives by elevator (the welcome says exactly where).
 parts.place.placeInCar();
 parts.player.view = parts.settings.view;
-parts.player.setMouseSensitivity(parts.settings.mouseSensitivity); // 3d-kanban: ⚙️ Settings' mouse sensitivity
+parts.player.setMouseSensitivity(parts.settings.mouseSensitivity); // ⚙️ Settings' mouse sensitivity
 parts.hands = new Hands(store.profile.color, parts.me.skinColor);
 parts.you = installYou(ctx);
 parts.reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
@@ -175,7 +175,7 @@ parts.pointer = installPointer(ctx, core, parts);
 installChat(ctx);
 parts.talk = installVoice(ctx, { tv: parts.tv });
 parts.hud = installHud(ctx, core, parts);
-parts.kanban3d = installKanban3d(ctx, core, parts); // 3d-kanban: J, the kanban's menu entry and its 📍 Show in 3D link
+parts.kanban3d = installKanban3d(ctx, core, parts); // J, the kanban's menu entry and its 📍 Show in 3D link
 
 // ---- Main loop ---------------------------------------------------------------------------------------
 fitWindow(ctx);

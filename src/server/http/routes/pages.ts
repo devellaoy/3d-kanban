@@ -15,7 +15,7 @@ export const pageRoutes = {
     auth: 'public',
     handle(ctx, { res, path: p }) {
       const file = publicFile(ctx.publicDir, p);
-      // 3d-kanban: only files in assets/ (an encoded ../ reached the signed-in pages' shells without a session).
+      // only files in assets/ (an encoded ../ reached the signed-in pages' shells without a session).
       if (file && file.startsWith(path.join(ctx.publicDir, 'assets') + path.sep)) return serveFile(res, file, true);
       res.writeHead(404).end();
     },

@@ -3,7 +3,7 @@ import type { Net } from '../../net';
 import { h } from '../dom';
 import { markdown } from '../markdown';
 import { commentWaiters } from './api';
-import { ghKey, ghRepoField } from './ghrepo'; // 3d-kanban
+import { ghKey, ghRepoField } from './ghrepo';
 import { DRAFT_KEY, pref, savePref } from './prefs';
 
 // ---- Comment box --------------------------------------------------------------------------------
@@ -23,7 +23,7 @@ export interface CommentBox {
  */
 export function commentBox(kind: 'issue' | 'pull', number: number, itemUrl: string, net: Net, onPosted: (c: GhComment) => void, repo?: string): CommentBox {
   const draftKey = `${DRAFT_KEY}${itemUrl}`;
-  // 3d-kanban: `repo` for an item of another of the project's repositories.
+  // `repo` for an item of another of the project's repositories.
   const waitKey = ghKey(kind, number, repo);
   let busy = false;
   let timer = 0;
@@ -97,7 +97,7 @@ export function commentBox(kind: 'issue' | 'pull', number: number, itemUrl: stri
       fail('No answer from the office. Reload the conversation to see whether the comment went through before posting it again.');
       sync();
     }, 45_000);
-    net.send({ t: 'gh.comment', kind, number, body, ...ghRepoField(repo) }); // 3d-kanban: repo
+    net.send({ t: 'gh.comment', kind, number, body, ...ghRepoField(repo) });
   };
 
   ta.addEventListener('input', () => (saveDraft(), sync()));

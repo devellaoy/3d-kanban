@@ -81,7 +81,7 @@ export const presenceHandlers = {
   carry(ctx, c, msg) {
     // Everyone on the floor sees the issue card in their hands, and whoever comes in later too.
     const issue = issueNumber(msg.issue);
-    // 3d-kanban: a card from the project's issue sources has its key (and no number unless it's the floor's own issue).
+    // a card from the project's issue sources has its key (and no number unless it's the floor's own issue).
     const key = ctx.floorOf(c)?.cardKey(msg.issueKey);
     if (issue === c.peer.carrying?.issue && key === c.peer.carrying?.key) return;
     if (issue !== undefined || key) c.peer.carrying = { issue: issue ?? 0, title: str(msg.title, 200), ...(key ? { key } : {}) };

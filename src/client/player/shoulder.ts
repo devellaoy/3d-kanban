@@ -10,31 +10,31 @@ export const THIRD_PITCH_MAX = 1.3;
 /** Height of the point the third-person camera looks at, above your feet. */
 export const THIRD_TARGET = 1.3;
 
-/** 3d-kanban: where the third-person camera sits from the point it looks at, for its heading, tilt and distance. */
+/** where the third-person camera sits from the point it looks at, for its heading, tilt and distance. */
 export function orbitOffset(yaw: number, pitch: number, dist: number, out = new THREE.Vector3()): THREE.Vector3 {
   return out.set(Math.sin(yaw) * Math.cos(pitch), Math.sin(pitch), Math.cos(yaw) * Math.cos(pitch)).multiplyScalar(dist);
 }
 
-/** 3d-kanban: `side` meters to the right of a camera with heading `yaw` (it looks along -sin, -cos). */
+/** `side` meters to the right of a camera with heading `yaw` (it looks along -sin, -cos). */
 export function shoulderOffset(yaw: number, side = SHOULDER, out = new THREE.Vector3()): THREE.Vector3 {
   return out.set(Math.cos(yaw) * side, 0, -Math.sin(yaw) * side);
 }
 
 /**
- * 3d-kanban: how far along a ray (unit `dir` from `origin`) `at` is: from the third-person camera,
+ * how far along a ray (unit `dir` from `origin`) `at` is: from the third-person camera,
  * what the crosshair's ray meets before it gets to you is behind you (or you), and doesn't count.
  */
 export function alongRay(origin: THREE.Vector3, dir: THREE.Vector3, at: THREE.Vector3): number {
   return Math.max(0, (at.x - origin.x) * dir.x + (at.y - origin.y) * dir.y + (at.z - origin.z) * dir.z);
 }
 
-/** 3d-kanban: whether something the crosshair's ray hit at `point` is within `reach` of your eyes (not the camera). */
+/** whether something the crosshair's ray hit at `point` is within `reach` of your eyes (not the camera). */
 export function withinReach(point: THREE.Vector3, eye: THREE.Vector3, reach: number): boolean {
   return point.distanceTo(eye) <= reach;
 }
 
 /**
- * 3d-kanban: whether your eyes see `point`, not just the camera over your shoulder: nothing among
+ * whether your eyes see `point`, not just the camera over your shoulder: nothing among
  * `objects` that `blocks` (a wall, say, not the thing itself) is on the way to it from `eye`.
  * `camera` is the one the scene is drawn with: a sprite (a name tag, a sign) faces it, and
  * three.js throws on a ray without one that meets a sprite, which stopped every frame after it.
@@ -50,7 +50,7 @@ export function eyeSees(eye: THREE.Vector3, point: THREE.Vector3, objects: THREE
   return !rc.intersectObjects(objects, true).some(blocks);
 }
 
-/** 3d-kanban: a tap or click at (clientX, clientY) on `rect`, in normalized device coordinates. */
+/** a tap or click at (clientX, clientY) on `rect`, in normalized device coordinates. */
 export function tapNdc(clientX: number, clientY: number, rect: { left: number; top: number; width: number; height: number }, out = new THREE.Vector2()): THREE.Vector2 {
   return out.set(((clientX - rect.left) / rect.width) * 2 - 1, -((clientY - rect.top) / rect.height) * 2 + 1);
 }

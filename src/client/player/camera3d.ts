@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { THIRD_PITCH_MAX, THIRD_PITCH_MIN } from './shoulder';
 
 /**
- * 3d-kanban: the third-person camera follows camYaw/camPitch/camDist rigidly (the mouse, a turning car), except that a
+ * the third-person camera follows camYaw/camPitch/camDist rigidly (the mouse, a turning car), except that a
  * jump in one (a seat, golf) or any zoom is left as a gap that eases out. last* are the values at the previous frame.
  * The walls' move of the camera off its orbit is eased the same way when it jumps. State and easing of player/camera.ts.
  */

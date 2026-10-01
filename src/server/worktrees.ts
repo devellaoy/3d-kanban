@@ -44,7 +44,7 @@ export class Worktrees {
   private fetching?: Promise<void>;
   /** The last fetch's error, so the office's log says it once rather than on every hire. */
   private fetchError?: string;
-  /** 3d-kanban: the branch the last fetch was of (see fetch). */
+  /** the branch the last fetch was of (see fetch). */
   private fetchedFor?: string;
 
   constructor(private dir: string) {
@@ -60,12 +60,12 @@ export class Worktrees {
    * `slug`, which is in `root` (the worker's own floor, when that isn't this project). The path it
    * returns is relative to `root`.
    *
-   * 3d-kanban: `baseBranch` cuts it from that branch instead of the one the project is on (see
+   * `baseBranch` cuts it from that branch instead of the one the project is on (see
    * baseStartPoint), and fails when there's no such branch.
    */
   create(slug: string, sub?: string, root = this.dir, baseBranch?: string): (Required<Omit<WorktreeRef, 'made'>> & { from?: string; note?: string }) | string {
     try {
-      // 3d-kanban: a configured base branch, else the branch the project is on.
+      // a configured base branch, else the branch the project is on.
       const from = baseBranch ?? this.currentBranch();
       const start = baseBranch ? this.baseStartPoint(baseBranch) : this.startPoint(from);
       if (typeof start === 'string') return start;
@@ -86,7 +86,7 @@ export class Worktrees {
    * there's nothing to wait for (a fetch this recent, or no branch to fetch).
    */
   fetch(branch?: string): Promise<void> | undefined {
-    // 3d-kanban: `branch` fetches that one (a configured base branch) rather than the one the project is on.
+    // `branch` fetches that one (a configured base branch) rather than the one the project is on.
     if (this.fetching) return this.fetchedFor === (branch ?? this.currentBranch()) ? this.fetching : this.fetching.then(() => this.fetch(branch));
     if (Date.now() - this.fetchedAt < FETCH_FRESH_MS && this.fetchedFor === (branch ?? this.currentBranch())) return undefined;
     const from = branch ?? this.currentBranch();
@@ -141,7 +141,7 @@ export class Worktrees {
   }
 
   /**
-   * 3d-kanban: where a worktree cut from a configured base branch starts: origin's copy of it, which
+   * where a worktree cut from a configured base branch starts: origin's copy of it, which
    * its pull request goes to, else the local branch when origin doesn't have it (or there's no
    * origin). What went wrong when neither exists, rather than quietly the branch the project is on.
    */

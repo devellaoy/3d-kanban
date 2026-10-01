@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import type { ViewMode } from '../state';
-import { THIRD_PITCH_MAX, THIRD_PITCH_MIN, tapNdc } from './shoulder'; // 3d-kanban
-import { OrbitEase } from './camera3d'; // 3d-kanban
+import { THIRD_PITCH_MAX, THIRD_PITCH_MIN, tapNdc } from './shoulder';
+import { OrbitEase } from './camera3d';
 
 // Your hands on the controls: the keys you hold, and the mouse, which looks around. In first person a
 // click on the scene captures the mouse (pointer lock); where it won't lock, or in third person, you
@@ -25,7 +25,7 @@ export abstract class PlayerInput {
   camYaw = Math.PI * 0.15;
   camPitch = 0.42;
   camDist = 7.5;
-  /** 3d-kanban: what the third-person camera shows of camYaw/camPitch/camDist, easing out jumps (see camera3d.ts). */
+  /** what the third-person camera shows of camYaw/camPitch/camDist, easing out jumps (see camera3d.ts). */
   readonly ease = new OrbitEase();
   /** First-person look up (+) / down (-). */
   lookPitch = -0.08;
@@ -33,12 +33,12 @@ export abstract class PlayerInput {
   /**
    * A click (not a drag) on the scene, in normalized device coordinates.
    * It is the crosshair, (0, 0), in third person too, but for a tap or click with the mouse free
-   * there, which is where it landed (3d-kanban).
+   * there, which is where it landed.
    */
   onClick: ((ndc: THREE.Vector2) => void) | null = null;
   protected keys = new Set<string>();
   private drag: { x: number; y: number; moved: number } | null = null;
-  /** 3d-kanban: ⚙️ Settings' mouse sensitivity, a multiplier on mouse look, captured or dragging (see setMouseSensitivity). */
+  /** ⚙️ Settings' mouse sensitivity, a multiplier on mouse look, captured or dragging (see setMouseSensitivity). */
   private sensitivity = 1;
   /** Set when this browser won't lock the pointer; first person falls back to drag-to-look. */
   private lockFailed = false;
@@ -100,14 +100,14 @@ export abstract class PlayerInput {
 
     dom.addEventListener('pointerdown', (e) => {
       if (!this.enabled) return;
-      if (e.pointerType === 'mouse' && !this.lockFailed) { // 3d-kanban: third person too
+      if (e.pointerType === 'mouse' && !this.lockFailed) { // third person too
         if (this.locked) {
           if (e.button === 0) this.onClick?.(CENTER);
           return;
         }
         this.lock();
       }
-      // Drag to look around without pointer lock (3d-kanban: in third person too, no more orbiting).
+      // Drag to look around without pointer lock (in third person too, no more orbiting).
       this.drag = { x: e.clientX, y: e.clientY, moved: 0 };
     });
     window.addEventListener('pointerup', (e) => {
@@ -115,7 +115,7 @@ export abstract class PlayerInput {
       this.drag = null;
       // A click that captured the mouse is not also a click on the world.
       if (!d || d.moved > 5 || !this.enabled || this.locked || this.lockPending || e.target !== dom) return;
-      // 3d-kanban: in third person, with the mouse free (a touch screen), where you tapped, as upstream.
+      // in third person, with the mouse free (a touch screen), where you tapped, as upstream.
       this.onClick?.(this.view === 'first' ? CENTER : tapNdc(e.clientX, e.clientY, dom.getBoundingClientRect()));
     });
     window.addEventListener('pointermove', (e) => {
@@ -142,9 +142,9 @@ export abstract class PlayerInput {
       this.drag.x = e.clientX;
       this.drag.y = e.clientY;
       this.drag.moved += Math.abs(dx) + Math.abs(dy);
-      // 3d-kanban: mouse sensitivity is the mouse's; a finger dragging on a touch screen keeps its speed.
+      // mouse sensitivity is the mouse's; a finger dragging on a touch screen keeps its speed.
       const speed = DRAG_LOOK_SPEED * (e.pointerType === 'mouse' ? this.sensitivity : 1);
-      this.look(dx * speed, dy * speed); // 3d-kanban: no orbit, third person looks around too
+      this.look(dx * speed, dy * speed); // no orbit, third person looks around too
     });
     document.addEventListener('pointerlockchange', () => {
       this.lockPending = false;
@@ -187,10 +187,10 @@ export abstract class PlayerInput {
 
   /** Whether clicking the scene will capture the mouse for looking around. */
   get canLock(): boolean {
-    return !this.lockFailed && typeof this.dom.requestPointerLock === 'function'; // 3d-kanban: third person too
+    return !this.lockFailed && typeof this.dom.requestPointerLock === 'function'; // third person too
   }
 
-  /** 3d-kanban: how far the mouse turns your head, 0.25–2; 1 is upstream's speed. Keys, walking and the wheel aren't affected. */
+  /** how far the mouse turns your head, 0.25–2; 1 is upstream's speed. Keys, walking and the wheel aren't affected. */
   setMouseSensitivity(value: number) {
     if (Number.isFinite(value)) this.sensitivity = THREE.MathUtils.clamp(value, 0.25, 2);
   }
@@ -270,8 +270,8 @@ export abstract class PlayerInput {
 
   private look(dx: number, dy: number) {
     this.camYaw -= dx;
-    this.ease.lookYaw(dx); // 3d-kanban: the mouse is never a jump, so it shows at once
-    // 3d-kanban: in third person the camera tips over you instead (down the mouse, up the camera goes).
+    this.ease.lookYaw(dx); // the mouse is never a jump, so it shows at once
+    // in third person the camera tips over you instead (down the mouse, up the camera goes).
     if (this.view === 'third') {
       const before = this.camPitch;
       this.camPitch = THREE.MathUtils.clamp(this.camPitch + dy, THIRD_PITCH_MIN, THIRD_PITCH_MAX);

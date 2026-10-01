@@ -3,13 +3,13 @@ import type { GhIssue, GhLabel, GhPull, WorkerInfo } from '../../shared/protocol
 import type { Net } from '../net';
 import { store, workerForPull } from '../state';
 import { h, openModal, timeAgo } from './dom';
-import { labelChip, openLabels } from './github/labels'; // 3d-kanban: issues open with openCard
+import { labelChip, openLabels } from './github/labels'; // issues open with openCard
 import type { BoardActions } from './github/prompts';
 import { openPull } from './github/pull-window';
 import { providerLabel } from './provider';
-// 3d-kanban: repository chips and filter for a multi-repository project's boards.
+// repository chips and filter for a multi-repository project's boards.
 import { boardRepos, inRepo, keptRepo, tabRepos, loadRepoFilter, repoChip, openByRepo, repoFilterSelect, repoTabs, saveRepoFilter } from '../kanban/boardrepos';
-// 3d-kanban: cards from the project's issue sources (Jira, a GitHub project, other repositories), by their key.
+// cards from the project's issue sources (Jira, a GitHub project, other repositories), by their key.
 import { issueCardLabel, openCard, sourceChips, taskForCard } from '../kanban/issuecards';
 import { noteSeed } from '../../shared/kanban/issuecard.js';
 
@@ -29,7 +29,7 @@ const byUpdated = (a: { updatedAt: string }, b: { updatedAt: string }) => b.upda
 
 function issueColumns(items: GhIssue[]): Column<GhIssue>[] {
   const open = items.filter((i) => i.state === 'OPEN');
-  const inProgress = open.filter((i) => i.assignees.length > 0 || i.labels.some((l) => /progress|doing|wip|started/i.test(l.name)) || (i.key ? taskForCard(i) : store.taskForIssue(i.number))?.status === 'running' || (!!i.key && /progress|doing|review|käynnissä/i.test(i.status ?? ''))); // 3d-kanban: an issue source's card by its key, and its status
+  const inProgress = open.filter((i) => i.assignees.length > 0 || i.labels.some((l) => /progress|doing|wip|started/i.test(l.name)) || (i.key ? taskForCard(i) : store.taskForIssue(i.number))?.status === 'running' || (!!i.key && /progress|doing|review|käynnissä/i.test(i.status ?? ''))); // an issue source's card by its key, and its status
   const todo = open.filter((i) => !inProgress.includes(i));
   return [
     { key: 'open', title: '📥 Open', items: todo },
@@ -102,7 +102,7 @@ function deskChip(w: WorkerInfo) {
 
 /** Where an issue stands on the 📋 queue, for its card. */
 function queueChip(issue: number, key?: string): Node | '' {
-  const t = key ? taskForCard({ number: issue, key }) : store.taskForIssue(issue); // 3d-kanban: by an issue source's key
+  const t = key ? taskForCard({ number: issue, key }) : store.taskForIssue(issue); // by an issue source's key
   if (!t) return '';
   const provider = providerLabel(t.provider, store.project);
   if (t.status === 'queued') return h('span.qchip', {}, `${store.queue.tasks.find((x) => x.status === 'queued') === t ? '📋 up next' : '📋 queued'} · ${provider}`);
@@ -114,7 +114,7 @@ function queueChip(issue: number, key?: string): Node | '' {
   return t.pr ? h('span.qchip.done', {}, `🔀 PR #${t.pr.number} · ${provider}`) : '';
 }
 
-// 3d-kanban: `label` for a card from the issue sources (its key; n is then its note seed), no `onLabels` for one that isn't a GitHub issue of the project.
+// `label` for a card from the issue sources (its key; n is then its note seed), no `onLabels` for one that isn't a GitHub issue of the project.
 function card(n: number, title: string, meta: (Node | string)[], i: number, onclick: () => void, onLabels: (() => void) | null, label = `#${n}`) {
   return h(
     'li.card',
@@ -136,12 +136,12 @@ export function openBoard(kind: 'issues' | 'pulls', net: Net, actions: BoardActi
   const status = h('span.board-status');
   const refresh = h('button.btn', { title: 'Refresh from GitHub', onclick: () => net.send({ t: 'gh.refresh' }) }, '🔄 Refresh');
   const close = h('button.btn.close', { 'aria-label': 'Close' }, '✕');
-  // 3d-kanban: the repository filter, shown when the cards come from more than one repository.
+  // the repository filter, shown when the cards come from more than one repository.
   let repo = loadRepoFilter(kind, store.floor ?? '');
   const repoSlot = h('span');
-  // 3d-kanban: the PR board picks its repository from tabs below the header instead.
+  // the PR board picks its repository from tabs below the header instead.
   const tabs = kind === 'pulls' ? repoTabs((r) => pickRepo(r)) : null;
-  const el = h('div.modal.board', { role: 'dialog', 'aria-label': kind === 'issues' ? 'Issues board' : 'Pull requests board' }, h('header', {}, h('h2', {}, kind === 'issues' ? '📌 Issues' : '🔀 Pull Requests'), status, repoSlot, refresh, close), tabs?.el ?? null, body); // 3d-kanban: tabs
+  const el = h('div.modal.board', { role: 'dialog', 'aria-label': kind === 'issues' ? 'Issues board' : 'Pull requests board' }, h('header', {}, h('h2', {}, kind === 'issues' ? '📌 Issues' : '🔀 Pull Requests'), status, repoSlot, refresh, close), tabs?.el ?? null, body);
 
   const filters = loadFilters(kind);
   /** What each column's filter box holds (column key → text), for as long as the board is open. */
@@ -248,7 +248,7 @@ export function openBoard(kind: 'issues' | 'pulls', net: Net, actions: BoardActi
     return section;
   };
 
-  // 3d-kanban: show only one repository's cards (the select on the issues board, the tabs on the PR board).
+  // show only one repository's cards (the select on the issues board, the tabs on the PR board).
   const pickRepo = (r: string) => {
     if (r === repo) return;
     repo = r;
@@ -271,7 +271,7 @@ export function openBoard(kind: 'issues' | 'pulls', net: Net, actions: BoardActi
       body.append(h('div.board-error', {}, `Couldn't load from GitHub: ${st.error}`, h('br'), h('small', {}, 'The server runs `gh` in the project directory — make sure it is installed and authenticated (gh auth login).')));
       return;
     }
-    // 3d-kanban: only the picked repository's cards, each with its repository's chip.
+    // only the picked repository's cards, each with its repository's chip.
     const repos = tabs ? tabRepos(st.items, store.pulls.repos) : boardRepos(st.items);
     const shownRepo = tabs ? keptRepo(repo, repos) : repos.includes(repo) ? repo : '';
     if (tabs) {
@@ -285,7 +285,7 @@ export function openBoard(kind: 'issues' | 'pulls', net: Net, actions: BoardActi
       for (const col of issueColumns(inRepo(store.issues.items, shownRepo))) {
         body.append(
           column(col, all, (it, i) =>
-            // 3d-kanban: a card from the project's issue sources: its key, its source and status, its kanban task, and labels only for a GitHub issue of the project.
+            // a card from the project's issue sources: its key, its source and status, its kanban task, and labels only for a GitHub issue of the project.
             card(noteSeed(it), it.title, [chip(it), ...sourceChips(it), ...labelChips(it.labels), queueChip(it.number, it.key), it.assignees.length ? `👤 ${it.assignees.join(', ')}` : it.author ? `by ${it.author}` : '', it.comments ? `💬 ${it.comments}` : '', timeAgo(it.updatedAt)], i, () => openCard(it, net, actions), it.number > 0 ? () => openLabels('issue', it, net) : null, issueCardLabel(it)),
           ),
         );

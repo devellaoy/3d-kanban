@@ -2,7 +2,7 @@ import type { GhCheck, GhMergeMethod, GhPull, GhPullDetail } from '../../../shar
 import type { Net } from '../../net';
 import { h, openModal } from '../dom';
 import { mergeWaiters } from './api';
-import { ghKey, ghLabel, ghRepoField } from './ghrepo'; // 3d-kanban
+import { ghKey, ghLabel, ghRepoField } from './ghrepo';
 import { MERGE_KEY, mergePref, savePref } from './prefs';
 
 // ---- Whether a PR can merge ---------------------------------------------------------------------
@@ -59,7 +59,7 @@ const METHOD_LABEL: Record<GhMergeMethod, string> = { squash: 'Squash and merge'
 
 export function openMerge(it: GhPull, d: GhPullDetail, net: Net, handToWorker: () => void, onMerged: () => void) {
   const st = mergeStatus(d);
-  // 3d-kanban: which of the project's repositories it's in.
+  // which of the project's repositories it's in.
   const key = ghKey('pull', it.number, it.repo);
   const label = ghLabel(it.number, it.repo);
   const methods = d.repo.methods;
@@ -94,7 +94,7 @@ export function openMerge(it: GhPull, d: GhPullDetail, net: Net, handToWorker: (
 
   const el = h(
     'div.modal.gh-merge',
-    { role: 'dialog', 'aria-label': `Merge PR ${label}` }, // 3d-kanban: label
+    { role: 'dialog', 'aria-label': `Merge PR ${label}` },
     h('header', {}, h('h2', {}, `🔀 Merge ${label}`)),
     h(
       'div.body',
@@ -113,7 +113,7 @@ export function openMerge(it: GhPull, d: GhPullDetail, net: Net, handToWorker: (
   renderMethods();
   if (!st.can) go.disabled = true;
 
-  const modal = openModal(el, { onClose: () => mergeWaiters.delete(key) }); // 3d-kanban: key
+  const modal = openModal(el, { onClose: () => mergeWaiters.delete(key) });
   cancel.addEventListener('click', () => modal.close());
   worker.addEventListener('click', () => {
     modal.close();
@@ -125,7 +125,7 @@ export function openMerge(it: GhPull, d: GhPullDetail, net: Net, handToWorker: (
     go.disabled = true;
     result.className = 'gh-merge-result';
     result.replaceChildren(h('span.spinner'), auto.checked && st.auto ? 'Asking GitHub to merge it when ready…' : 'Merging…');
-    // 3d-kanban: key.
+    // key.
     mergeWaiters.set(key, (msg) => {
       mergeWaiters.delete(key);
       busy = false;
@@ -138,7 +138,7 @@ export function openMerge(it: GhPull, d: GhPullDetail, net: Net, handToWorker: (
       modal.close();
       onMerged();
     });
-    net.send({ t: 'gh.merge', number: it.number, method, deleteBranch, auto: auto.checked && st.auto, ...ghRepoField(it.repo) }); // 3d-kanban: repo
+    net.send({ t: 'gh.merge', number: it.number, method, deleteBranch, auto: auto.checked && st.auto, ...ghRepoField(it.repo) });
   });
   setTimeout(() => (st.can ? go : cancel).focus(), 30);
 }

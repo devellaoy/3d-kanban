@@ -11,7 +11,7 @@ import { midTurn } from './lifecycle.js';
 import type { Worker } from './types.js';
 import { COLORS, newWorker } from './worker.js';
 import { validRepos } from './worktree.js';
-import { validExtra, validKanban } from '../kanban/launch.js'; // 3d-kanban
+import { validExtra, validKanban } from '../kanban/launch.js';
 
 /** What a worker with a live terminal can be doing. */
 const RUNNING = new Set<unknown>(['starting', 'idle', 'working', 'done', 'needs_input'] satisfies WorkerStatus[]);
@@ -39,7 +39,7 @@ export function saveWorkers(file: string, workers: Iterable<Worker>, stopping: b
     task: info.task,
     pr: info.pr,
     meeting: info.meeting,
-    // 3d-kanban: a task worker, and how it's launched (see SpawnExtra).
+    // a task worker, and how it's launched (see SpawnExtra).
     kanban: info.kanban,
     extra,
     workedMs: workedMs(info),
@@ -103,11 +103,11 @@ export function restoreWorkers(file: string, workers: Map<string, Worker>, defau
         viewerIds: [],
         meeting: typeof s.meeting === 'string' && DESK_BY_ID.get(s.deskId)?.room ? s.meeting : undefined,
         workedMs: typeof s.workedMs === 'number' && Number.isFinite(s.workedMs) && s.workedMs > 0 ? s.workedMs : undefined,
-        ...(validKanban(s.kanban) ? { kanban: validKanban(s.kanban) } : {}), // 3d-kanban
+        ...(validKanban(s.kanban) ? { kanban: validKanban(s.kanban) } : {}),
       };
       const w = newWorker(info, tracker, typeof s.hookToken === 'string' && s.hookToken ? s.hookToken : undefined);
       if (typeof s.owner === 'string' && s.owner) w.owner = s.owner;
-      w.extra = validExtra(s.extra); // 3d-kanban
+      w.extra = validExtra(s.extra);
       usage?.restore?.(w.state, s);
       w.screenDirty = false;
       if (typeof s.pty?.id === 'string') {

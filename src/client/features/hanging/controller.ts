@@ -85,7 +85,7 @@ export class Hanger {
     );
     // Esc frees the mouse before the page ever sees the key; treat that as cancel too.
     document.addEventListener('pointerlockchange', () => {
-      if (this.cur && !this.player.locked) this.cancel(); // 3d-kanban: third person captures the mouse too
+      if (this.cur && !this.player.locked) this.cancel(); // third person captures the mouse too
     });
     store.on('decor', () => {
       const moving = this.cur?.moving;
@@ -169,7 +169,7 @@ export class Hanger {
   place(ndc?: THREE.Vector2) {
     const cur = this.cur;
     if (!cur) return;
-    // 3d-kanban: the crosshair in third person too (see update), wherever the click was.
+    // the crosshair in third person too (see update), wherever the click was.
     this.update();
     const at = this.at;
     if (!at) return toast('Aim at a wall to hang it there');
@@ -199,7 +199,7 @@ export class Hanger {
   update() {
     const cur = this.cur;
     if (!cur) return;
-    this.raycaster.setFromCamera(new THREE.Vector2(0, 0), this.camera); // 3d-kanban: the crosshair in third person too
+    this.raycaster.setFromCamera(new THREE.Vector2(0, 0), this.camera); // the crosshair in third person too
     const hit = aimAtWall(this.raycaster.ray);
     const { w, h } = pictureSize(cur.size, cur.shape);
     const on = hit && clampToWall(hit.wall, hit.u, hit.y, w, h);

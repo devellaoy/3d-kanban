@@ -28,7 +28,7 @@ import type { Arcade, HighScores } from '../cabinet.js';
 import type { FloorInfo, Me, ServerMsg, ServiceInfo, ServicesState, SignInKind } from '../../shared/protocol.js';
 import type { Client } from './client.js';
 import type { Spot } from './input.js';
-import type { Kanban } from '../kanban/index.js'; // 3d-kanban
+import type { Kanban } from '../kanban/index.js';
 
 export type ToastLevel = Extract<ServerMsg, { t: 'toast' }>['level'];
 
@@ -157,7 +157,7 @@ export interface Gates {
    * A worker took on GitHub issue `n` (an issue card dropped on its desk): assign it on GitHub, which
    * moves it to In progress on the board, and take it off the queue so nobody else is seated for it.
    */
-  takeIssue(c: Client, floor: Floor, n: number | undefined, key?: string): void; // 3d-kanban: or an issue-source card by its key
+  takeIssue(c: Client, floor: Floor, n: number | undefined, key?: string): void; // or an issue-source card by its key
   /**
    * Runs `go` once `c` has a sign-in of their own to `which` (only accounts need one: on the shared
    * password it's the office's own). Without one it looks again, since they may have just signed
@@ -176,7 +176,7 @@ export interface Gates {
   claudeFor(provider: string | undefined): SignInKind | undefined;
 }
 
-/** 3d-kanban: the kanban task process, installed once the floors are open (kanban/office.ts). */
+/** the kanban task process, installed once the floors are open (kanban/office.ts). */
 export interface KanbanHost {
   kanban?: Kanban;
 }

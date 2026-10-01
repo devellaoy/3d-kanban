@@ -44,7 +44,7 @@ import type { installWaiting } from '../features/waiting';
 import type { installWalking } from '../features/walking';
 import type { installWorkerActions } from '../features/workers/actions';
 import type { installWorkerViews } from '../features/workers/views';
-import type { installKanban3d } from '../kanban/install3d'; // 3d-kanban
+import type { installKanban3d } from '../kanban/install3d';
 import type { installFocus } from '../input/focus';
 import type { installPointer } from '../input/pointer';
 import type { installArrival } from './arrival';
@@ -123,6 +123,6 @@ export interface Parts {
   emotes: Made<typeof installEmotes>;
   talk: Made<typeof installVoice>;
   hud: Made<typeof installHud>;
-  /** 3d-kanban: the kanban's own pieces of the 3D office (kanban/install3d.ts). */
+  /** the kanban's own pieces of the 3D office (kanban/install3d.ts). */
   kanban3d: Made<typeof installKanban3d>;
 }

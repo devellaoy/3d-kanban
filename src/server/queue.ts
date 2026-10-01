@@ -6,7 +6,7 @@ import { DESK_BY_ID, SEATS, nextFreeSeat } from '../shared/layout.js';
 import { validateWorkerEffort, validateWorkerModel } from './agents.js';
 import { savedEffort, savedModel, takesEffort, takesModel } from '../shared/providers.js';
 import { PROMPTS } from '../shared/prompts.js';
-// 3d-kanban: what a worker is sent home with (see QueueWorkers.kill).
+// what a worker is sent home with (see QueueWorkers.kill).
 import type { DepartureIntent } from '../shared/kanban/types.js';
 
 /** What the queue needs from the worker manager. Narrow on purpose, so a smoke test can fake it. */
@@ -19,7 +19,7 @@ export interface QueueWorkers {
   /** How many rows the floor's back office is built out, for its desks (see WING). */
   wing?(): number;
   spawn(deskId: string, by: string, prompt: string, worktree: boolean, kind: 'agent', provider: AgentProvider, model?: string, effort?: AgentEffort, meeting?: undefined, owner?: string): WorkerInfo | string;
-  /** Resolves with a line about what became of the worker's worktree. 3d-kanban: `intent`: why it goes (see WorkerManager.kill). */
+  /** Resolves with a line about what became of the worker's worktree. `intent`: why it goes (see WorkerManager.kill). */
   kill(id: string, cleanup?: undefined, landed?: undefined, landedRepos?: undefined, intent?: DepartureIntent): Promise<{ note?: string; error?: string }>;
   /** Fetches what a new worktree starts from; undefined when there's nothing to wait for (see Worktrees.fetch). */
   fetchBase?(): Promise<void> | undefined;
@@ -29,7 +29,7 @@ export interface QueueEvents {
   update(state: QueueState): void;
   toast(text: string, level: 'info' | 'warn' | 'error'): void;
   /** Mark the issue as taken on GitHub (as `owner`, when it's an account's task), so the board moves it to In progress. Resolves to an error message when it can't. */
-  claimIssue(issue: number, owner?: string, key?: string): Promise<string | undefined>; // 3d-kanban: key, a card from the project's issue sources
+  claimIssue(issue: number, owner?: string, key?: string): Promise<string | undefined>; // key, a card from the project's issue sources
   /** Ask GitHub for fresh pull requests, to pick up the one a worker just opened. */
   refreshGitHub(): void;
   /** Why no workers may be hired right now (today's budget is spent), if that's so. */
@@ -88,7 +88,7 @@ export class TaskQueue {
 
   /** Queues a task. With no `provider`, it runs on the office's default worker, model and effort included. */
   /** Queues a task; `owner` is the account adding it, whose sign-ins its worker will run on. */
-  add(prompt: string, by: string, title?: string, issue?: number, provider?: AgentProvider, model?: string, effort?: AgentEffort, owner?: string, issueKey?: string): string | undefined { // 3d-kanban: issueKey
+  add(prompt: string, by: string, title?: string, issue?: number, provider?: AgentProvider, model?: string, effort?: AgentEffort, owner?: string, issueKey?: string): string | undefined {
     if (provider === undefined) ({ provider, model, effort } = this.workers.officeDefault ?? { provider: this.workers.defaultProvider });
     if (!isAgentProvider(provider) || (provider === 'custom' && this.workers.defaultProvider !== 'custom')) return 'Unknown agent provider';
     const modelError = validateWorkerModel('agent', provider, model);
@@ -98,7 +98,7 @@ export class TaskQueue {
     const clean = prompt.replace(/\r\n?/g, '\n').trim();
     if (!clean) return 'Empty task';
     if (issue !== undefined && this.tasks.some((t) => t.issue === issue && t.status !== 'done')) return `Issue #${issue} is already on the queue`;
-    if (issueKey && this.tasks.some((t) => t.issueKey === issueKey && t.status !== 'done')) return `${issueKey} is already on the queue`; // 3d-kanban
+    if (issueKey && this.tasks.some((t) => t.issueKey === issueKey && t.status !== 'done')) return `${issueKey} is already on the queue`;
     if (this.tasks.filter((t) => t.status !== 'done').length >= MAX_TASKS) return `The queue is full (${MAX_TASKS} tasks)`;
     const task: QueueTask = {
       id: randomBytes(6).toString('hex'),
@@ -106,7 +106,7 @@ export class TaskQueue {
       model: takesModel(provider) ? model : undefined,
       effort: takesEffort(provider) ? effort : undefined,
       issue,
-      ...(issueKey ? { issueKey } : {}), // 3d-kanban
+      ...(issueKey ? { issueKey } : {}),
       title: (title?.trim() || firstLine(clean)).slice(0, 120),
       prompt: clean,
       addedBy: by,
@@ -131,7 +131,7 @@ export class TaskQueue {
   }
 
   /** Takes a closed issue's waiting task off the queue (a running one carries on). Returns whether there was one. */
-  dropIssue(issue: number | undefined, key?: string): boolean { // 3d-kanban: or by an issue-source card's key
+  dropIssue(issue: number | undefined, key?: string): boolean { // or by an issue-source card's key
     const i = this.tasks.findIndex((t) => ((issue !== undefined && t.issue === issue) || (!!key && t.issueKey === key)) && t.status === 'queued');
     if (i < 0) return false;
     this.tasks.splice(i, 1);
@@ -158,7 +158,7 @@ export class TaskQueue {
     if (!t) return 'No such task';
     if (t.status !== 'done') return 'That task is still on the queue';
     if (t.issue !== undefined && this.tasks.some((x) => x !== t && x.issue === t.issue && x.status !== 'done')) return `Issue #${t.issue} is already on the queue`;
-    if (t.issueKey && this.tasks.some((x) => x !== t && x.issueKey === t.issueKey && x.status !== 'done')) return `${t.issueKey} is already on the queue`; // 3d-kanban
+    if (t.issueKey && this.tasks.some((x) => x !== t && x.issueKey === t.issueKey && x.status !== 'done')) return `${t.issueKey} is already on the queue`;
     this.tasks.splice(this.tasks.indexOf(t), 1);
     const fresh: QueueTask = { id: t.id, provider: t.provider, model: t.model, effort: t.effort, issue: t.issue, ...(t.issueKey ? { issueKey: t.issueKey } : {}), title: t.title, prompt: t.prompt, addedBy: t.addedBy, owner: t.owner, addedAt: Date.now(), status: 'queued' };
     this.tasks.push(fresh);
@@ -297,7 +297,7 @@ export class TaskQueue {
   private recycleDesk(): string | undefined {
     const pick = this.recyclable();
     if (!pick) return undefined;
-    // 3d-kanban: the queue sends it home (see WorkerManager.kill).
+    // the queue sends it home (see WorkerManager.kill).
     const done = this.workers.kill(pick.w.id, undefined, undefined, undefined, { by: 'The queue', reason: 'queue' });
     this.events.toast(`📋 ${pick.w.name} went home after ${label(pick.t)} to make room for the next task`, 'info');
     void done.then(({ note, error }) => {
@@ -360,7 +360,7 @@ export class TaskQueue {
       this.events.toast(`📋 ${r.name} sat down at ${DESK_BY_ID.get(desk)?.label ?? 'a desk'} to work on ${label(t)}`, 'info');
       if (t.issue !== undefined || t.issueKey) {
         const issue = t.issue;
-        // 3d-kanban: an issue-source card by its key (only a GitHub issue is assigned).
+        // an issue-source card by its key (only a GitHub issue is assigned).
         void this.events.claimIssue(issue ?? 0, t.owner, t.issueKey).then((err) => {
           if (err) this.events.toast(`Couldn't assign issue ${label(t)} on GitHub: ${err}`, 'warn');
         });
@@ -396,7 +396,7 @@ export class TaskQueue {
           model: savedModel(provider, s.model),
           effort: savedEffort(provider, s.effort),
           issue: typeof s.issue === 'number' ? s.issue : undefined,
-          ...(typeof s.issueKey === 'string' && s.issueKey ? { issueKey: s.issueKey } : {}), // 3d-kanban
+          ...(typeof s.issueKey === 'string' && s.issueKey ? { issueKey: s.issueKey } : {}),
           title: s.title,
           prompt: s.prompt,
           addedBy: s.addedBy ?? '?',
@@ -428,7 +428,7 @@ export class TaskQueue {
 }
 
 function label(t: QueueTask): string {
-  if (t.issueKey && t.issue === undefined) return t.issueKey; // 3d-kanban
+  if (t.issueKey && t.issue === undefined) return t.issueKey;
   return t.issue !== undefined ? `#${t.issue}` : `“${t.title.length > 40 ? `${t.title.slice(0, 39)}…` : t.title}”`;
 }
 

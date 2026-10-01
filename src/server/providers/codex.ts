@@ -80,7 +80,7 @@ function codexHook(h: WorkerHandle<CodexState>, event: string, payload: unknown)
     onReport() {
       if (report.transcriptPath) s.transcript = report.transcriptPath;
       h.scheduleScan();
-      h.observeHook(report.event, report.tool, payload); // 3d-kanban: heard before the status change it causes
+      h.observeHook(report.event, report.tool, payload); // heard before the status change it causes
     },
     tools: tracker(s),
   });
@@ -93,7 +93,7 @@ export const codex: ProviderAdapter<CodexState, CodexSetup> = {
   prepare: ({ dataDir, mcpScript }) => ({ hook: writeCodexHook(dataDir), mcpScript }),
   launch({ h, args, prompt, resumeSessionId, setup, extraArgs }) {
     args.push(...codexHookArgs(setup.hook), ...(setup.mcpScript ? codexMcpArgs(setup.mcpScript) : []), '--no-alt-screen');
-    if (extraArgs) args.push(...extraArgs); // 3d-kanban: the phase's own flags (sandbox, approvals), ahead of the resume and the prompt
+    if (extraArgs) args.push(...extraArgs); // the phase's own flags (sandbox, approvals), ahead of the resume and the prompt
     if (resumeSessionId) args.push('resume', resumeSessionId);
     if (prompt) args.push('--', prompt);
     tracker(h.state).clear();

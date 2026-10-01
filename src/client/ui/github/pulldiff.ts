@@ -34,11 +34,11 @@ function fnv(s: string): string {
 
 /** `a/src/x.ts` or `"a/odd name.ts"` → `src/x.ts` */
 function unprefix(p: string): string {
-  const q = unquote(p); // 3d-kanban: all of git's C quoting, not just \" and \\
+  const q = unquote(p); // all of git's C quoting, not just \" and \\
   return q.replace(/^[ab]\//, '');
 }
 
-// 3d-kanban: a path git quoted ("a/x\ny", "\303\244.txt"): \n, \t, \" and the like, and octal bytes of UTF-8.
+// a path git quoted ("a/x\ny", "\303\244.txt"): \n, \t, \" and the like, and octal bytes of UTF-8.
 const C_ESCAPES: Record<string, number> = { a: 7, b: 8, t: 9, n: 10, v: 11, f: 12, r: 13 };
 const ENC = new TextEncoder();
 const DEC = new TextDecoder();
@@ -90,12 +90,12 @@ export function parseDiff(text: string): DiffFile[] {
       if (line.startsWith('new file mode')) f.status = 'A';
       else if (line.startsWith('deleted file mode')) f.status = 'D';
       else if (line.startsWith('rename from ')) {
-        f.oldPath = unquote(line.slice(12)); // 3d-kanban: unquote
+        f.oldPath = unquote(line.slice(12));
         f.status = 'R';
-      } else if (line.startsWith('rename to ')) f.path = unquote(line.slice(10)); // 3d-kanban: unquote
+      } else if (line.startsWith('rename to ')) f.path = unquote(line.slice(10));
       else if (line.startsWith('Binary files ') || line === 'GIT binary patch') f.binary = true;
       else if (line.startsWith('+++ ') && line !== '+++ /dev/null') f.path = unprefix(line.slice(4));
-      else if (line.startsWith('\\ ')) { f.lines.push({ kind: 'note', text: line.slice(2) }); changes.push(line); } // 3d-kanban: a note before any hunk (a file GitHub's files API sent no patch for) shows instead of "No changes"; it counts toward the hash
+      else if (line.startsWith('\\ ')) { f.lines.push({ kind: 'note', text: line.slice(2) }); changes.push(line); } // a note before any hunk (a file GitHub's files API sent no patch for) shows instead of "No changes"; it counts toward the hash
       continue;
     }
     const c = line[0];

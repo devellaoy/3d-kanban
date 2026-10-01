@@ -2,7 +2,7 @@ import type { GhCloseReason, GhIssue, GhPull } from '../../../shared/protocol';
 import type { Net } from '../../net';
 import { store, workerForPull } from '../../state';
 import { h, openModal } from '../dom';
-import { ghKey, ghLabel, ghRepoField } from './ghrepo'; // 3d-kanban
+import { ghKey, ghLabel, ghRepoField } from './ghrepo';
 import { closeWaiters } from './api';
 
 // ---- Close dialog -------------------------------------------------------------------------------
@@ -11,7 +11,7 @@ const REASON_LABEL: Record<GhCloseReason, string> = { completed: '✅ Completed'
 
 /** Closes an issue (as completed or not planned) or a PR without merging, with an optional comment. */
 export function openClose(kind: 'issue' | 'pull', it: GhIssue | GhPull, net: Net, onClosed: () => void) {
-  // 3d-kanban: by the repository it's in too.
+  // by the repository it's in too.
   const key = ghKey(kind, it.number, it.repo);
   const label = ghLabel(it.number, it.repo);
   const pull = kind === 'pull' ? (it as GhPull) : null;
@@ -33,7 +33,7 @@ export function openClose(kind: 'issue' | 'pull', it: GhIssue | GhPull, net: Net
 
   const el = h(
     'div.modal.gh-merge',
-    { role: 'dialog', 'aria-label': `Close ${noun} ${label}` }, // 3d-kanban: label
+    { role: 'dialog', 'aria-label': `Close ${noun} ${label}` },
     h('header', {}, h('h2', {}, `${pull ? '🚫' : '✔️'} Close ${pull ? 'PR' : 'issue'} ${label}`)),
     h(
       'div.body',
@@ -70,7 +70,7 @@ export function openClose(kind: 'issue' | 'pull', it: GhIssue | GhPull, net: Net
       modal.close();
       onClosed();
     });
-    // 3d-kanban: the repo it's in.
+    // the repo it's in.
     net.send({ t: 'gh.close', kind, number: it.number, comment: comment.value.trim() || undefined, reason: pull ? undefined : reason, deleteBranch: !!pull && del.checked, ...ghRepoField(it.repo) });
   });
   setTimeout(() => comment.focus(), 30);

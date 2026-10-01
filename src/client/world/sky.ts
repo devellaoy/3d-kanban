@@ -30,7 +30,7 @@ export const HAZE_MAX = 300;
  */
 const HAZE_CLEAR = 6;
 const HAZE_ABOVE = 17.5;
-// 3d-kanban: indoor fog (upstream PR #207): INDOOR_FOG, hazeAt(), ROOM_PARS, skyInRoom() and HAZE; the fork's
+// indoor fog (upstream PR #207): INDOOR_FOG, hazeAt(), ROOM_PARS, skyInRoom() and HAZE; the fork's
 // own on top: ROOM_* constants, roomAt()/indoorAt(), the camera-indoors check and the sprites' haze.
 /**
  * How much of the outdoor fog is left on anything inside the office, where the room's own walls are
@@ -281,7 +281,7 @@ const HAZE = /* glsl */ `
 #endif
 `;
 
-// 3d-kanban: indoor fog (upstream PR #207): ROOM_PARS goes to every foggy material, not just the lit ones;
+// indoor fog (upstream PR #207): ROOM_PARS goes to every foggy material, not just the lit ones;
 // the vertex shader gets only ROOM_VARYING, and sprites keep the haze (SPRITE_WORLD).
 // Everything with fog gets the haze above, and knows which room it's in to work it out; every lit
 // material also gets the lines before that, sharing one set of uniforms. Nothing else in the office
@@ -711,7 +711,7 @@ export class Sky {
   setWing(level: number) {
     const minZ = wingMinZ(level);
     wingBox = level > 0 ? { minX: WING.minX - WALL_T, maxX: WING.maxX + WALL_T, minZ: minZ - WALL_T, maxZ: FLOOR.minZ } : null;
-    const room = wingRoom(level); // 3d-kanban: the same box roomAt is tested with
+    const room = wingRoom(level); // the same box roomAt is tested with
     if (room) uniforms.skyWing.value.set(room.minX, room.maxX, room.minZ, room.maxZ);
     else uniforms.skyWing.value.set(1, 0, 1, 0);
   }

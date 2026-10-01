@@ -11,7 +11,7 @@ const submit = document.getElementById('submit') as HTMLButtonElement;
 
 const NAME_KEY = 'agent-office.login-name';
 /** Where to go once in: the 2D view if that's where you were headed (see loginUrl in net.ts), else the office. */
-// 3d-kanban: back to the kanban too, not just the 2D view (only known pages, never an arbitrary URL).
+// back to the kanban too, not just the 2D view (only known pages, never an arbitrary URL).
 const NEXT_PAGES = ['/lite', '/kanban'];
 const NEXT = NEXT_PAGES.find((p) => p === new URLSearchParams(location.search).get('next')) ?? '/';
 

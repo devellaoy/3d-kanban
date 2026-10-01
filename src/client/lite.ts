@@ -18,12 +18,12 @@ import { lostWorktreeDialog, openPrompt, routeWorktreeMessage, sendHomeDialog } 
 import { openBoard } from './ui/boards';
 import type { BoardActions } from './ui/github/prompts';
 import { openPull, routePullMessage } from './ui/pull';
-// 3d-kanban: a worker's PR by its repository too, on a project with several.
+// a worker's PR by its repository too, on a project with several.
 import { findItem, ownPullRepo } from './ui/github/ghrepo';
-// 3d-kanban: task workers on the 2D view.
+// task workers on the 2D view.
 import { kanbanChip, promptKind } from './kanban/office';
 import { askWorker, hireOption, promptTaskWorker } from './kanban/office3d';
-import { cardTask } from './kanban/issuecards'; // 3d-kanban: a card from the issue sources too
+import { cardTask } from './kanban/issuecards'; // a card from the issue sources too
 import { sendTaskWorkerHome } from './kanban/sendhome';
 import { openQueue } from './ui/queue';
 import { openAsk } from './ui/ask';
@@ -121,7 +121,7 @@ function renderFloors() {
       h('button.btn.lite-go', { type: 'button', onclick: () => net.send({ t: 'floor.go', floor: o.id }) }, `🙋 ${o.waiting} waiting on ${o.name}`, h('span', { 'aria-hidden': 'true' }, '→')),
     ),
   );
-  // 3d-kanban: the kanban link opens on this floor's project.
+  // the kanban link opens on this floor's project.
   ($('to-kanban') as HTMLAnchorElement).href = store.floor ? `/kanban?project=${encodeURIComponent(store.floor)}` : '/kanban';
   renderTitle();
 }
@@ -162,7 +162,7 @@ function workerCard(w: WorkerInfo): HTMLElement {
           ? w.task?.summary && `✅ ${w.task.summary}`
           : (w.task?.summary ?? w.activity);
   const sub = [
-    w.kanban && kanbanChip(w, Date.now()), // 3d-kanban: its task
+    w.kanban && kanbanChip(w, Date.now()),
     w.kind === 'agent' ? `⚙️ ${providerLabel(w.provider, store.project)}${badge ? ` · ${badge}` : ''}` : '🐚 shell',
     desk && (desk.station ? `📌 ${desk.label}` : desk.label),
     w.worktree && `🌿 ${w.worktree.branch}`,
@@ -239,7 +239,7 @@ function fixLostWorktree(w: WorkerInfo) {
       toast(all ? `Rebuilding ${others.length + 1} worktrees…` : `Rebuilding ${w.name}'s worktree…`);
       net.send({ t: 'worker.rebuild', workerId: w.id, all });
     },
-    // 3d-kanban: a task worker's dialog has its task in it.
+    // a task worker's dialog has its task in it.
     sendHome: () =>
       sendTaskWorkerHome(net, w, DESK_BY_ID.get(w.deskId)?.label ?? 'its desk') ||
       sendHomeDialog({
@@ -257,7 +257,7 @@ function fixLostWorktree(w: WorkerInfo) {
 function promptWorker(id: string) {
   const w = store.workers.get(id);
   if (!w) return;
-  // 3d-kanban: a message on its task (or its terminal, for a reviewer).
+  // a message on its task (or its terminal, for a reviewer).
   if (promptTaskWorker(net, w, () => openWorker(id))) return;
   openPrompt({
     title: `✍️ Prompt ${w.name}`,
@@ -277,20 +277,20 @@ function sendToWorker(title: string, text: { context?: string; initial?: string 
   if (!store.project) return toast('Pick a floor first', 'warn');
   // The back office's desks too, as far as the floor's built out (see WING).
   const desk = nextFreeSeat((id) => !!store.workerAtDesk(id), store.floorPlan.wing)?.id;
-  // 3d-kanban: not a task's reviewer, which takes nothing but its terminal.
+  // not a task's reviewer, which takes nothing but its terminal.
   const awake = [...store.workers.values()].filter((w) => w.kind === 'agent' && !isAsleep(w.status) && promptKind(w) !== 'terminal');
   if (!desk && !awake.length) return toast('Every desk and bean bag is taken — send a worker home first', 'warn');
   openAsk({
     title,
     ...text,
     newDesk: desk ? DESK_BY_ID.get(desk)!.label : undefined,
-    workers: awake.map((w) => ({ id: w.id, name: w.name, color: w.color, status: w.status, task: w.kanban?.taskId })), // 3d-kanban: task
-    kanbanOption: desk ? hireOption(net, () => desk, DESK_BY_ID.get(desk)!.label) : undefined, // 3d-kanban
+    workers: awake.map((w) => ({ id: w.id, name: w.name, color: w.color, status: w.status, task: w.kanban?.taskId })),
+    kanbanOption: desk ? hireOption(net, () => desk, DESK_BY_ID.get(desk)!.label) : undefined,
     worktreeOption: !!store.project.branch,
     providerOption: true,
     repoOptions: repoChoices(),
     onSubmit: (prompt, to, worktree, provider, model, effort, repos) => {
-      if (to) askWorker(net, to, prompt); // 3d-kanban: a message on its task for a task worker
+      if (to) askWorker(net, to, prompt); // a message on its task for a task worker
       else if (desk) hire(desk, prompt, worktree, provider, model, effort, repos);
     },
   });
@@ -310,7 +310,7 @@ function boardActions(): BoardActions {
       openWorker(w.id);
     },
     meeting: (preset) => showMeeting(preset),
-    // 3d-kanban: the issue as a kanban task, at the next free desk (or wherever the engine finds one).
+    // the issue as a kanban task, at the next free desk (or wherever the engine finds one).
     kanbanTask: (it) => {
       const desk = nextFreeSeat((id) => !!store.workerAtDesk(id), store.floorPlan.wing)?.id;
       cardTask(net, it, desk, desk ? DESK_BY_ID.get(desk)!.label : 'the next free desk');
@@ -326,7 +326,7 @@ function showMeeting(preset?: MeetingPreset) {
       openPr: (id) => {
         const w = store.workers.get(id);
         if (!w) return;
-        // 3d-kanban: in the floor's own repository, not another of the project's with the same number.
+        // in the floor's own repository, not another of the project's with the same number.
         const it = w.pr && findItem(store.pulls.items, w.pr.number, ownPullRepo(w.pr, store.currentFloor()?.repo));
         if (it) openPull(it, net, boardActions());
         else if (w.pr) window.open(w.pr.url, '_blank', 'noopener');

@@ -50,7 +50,7 @@ test('outdoors the haze still thins as you climb, and still stops at HAZE_MAX', 
   assert.equal(hazeAt(HAZE_MAX * 2, THICK.near, THICK.far, TOP, 0), 1);
 });
 
-// 3d-kanban: which room a point is in (skyInsideOf in the shader, roomAt here), and that the fog is
+// which room a point is in (skyInsideOf in the shader, roomAt here), and that the fog is
 // only kept off it when you're in there too (skyInRoom, indoorAt).
 
 /** Your eye at a desk, and the far corner of the room from it. */

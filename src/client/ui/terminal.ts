@@ -14,7 +14,7 @@ import { DROP_MAX_BYTES, droppedPaths } from '../../shared/drops';
 import { providerLabel, providerUsageNote, providerUsageState, providerWaitingLabel, resolvedProvider } from './provider';
 import { naturalKey } from './termkeys';
 import { termTabs } from './termtabs';
-// 3d-kanban: a task worker's window has tabs: the terminal and its kanban task; files dropped on the task pane aren't the terminal's.
+// a task worker's window has tabs: the terminal and its kanban task; files dropped on the task pane aren't the terminal's.
 import { mountWorkerTabs, type WorkerTabs } from '../kanban/worker3d';
 import { inTaskPane, type WorkerTab } from '../kanban/office';
 
@@ -73,7 +73,7 @@ export interface TerminalOptions {
    * take the focus as it opens either, so a phone's keyboard stays down until you tap into it.
    */
   keypad?: boolean;
-  /** 3d-kanban: a task worker's window opens on this tab (the kanban's 📍 Show in 3D asks for the task). */
+  /** a task worker's window opens on this tab (the kanban's 📍 Show in 3D asks for the task). */
   tab?: WorkerTab;
 }
 
@@ -335,7 +335,7 @@ export function openTerminal(net: Net, workerId: string, onChanges?: () => void,
       clearInterval(typingTimer);
       ro.disconnect();
       net.send({ t: 'worker.detach', workerId });
-      kanbanTabs?.destroy(); // 3d-kanban
+      kanbanTabs?.destroy();
       term.dispose();
       if (current?.modal === modal) current = null;
     },
@@ -398,14 +398,14 @@ export function openTerminal(net: Net, workerId: string, onChanges?: () => void,
   // Files dropped in, or a screenshot pasted, go up to the office's machine and the terminal types
   // where they are, as a terminal does with a file dragged into it: Claude Code attaches a picture.
   let uploading = 0;
-  const termHidden = () => host.getClientRects().length === 0; // 3d-kanban: a web page tab or the task tab is showing
+  const termHidden = () => host.getClientRects().length === 0; // a web page tab or the task tab is showing
   const insertFiles = async (files: File[]) => {
     if (!files.length) return;
     el.classList.toggle('uploading', ++uploading > 0);
     try {
       const paths = await Promise.all(files.map((f) => uploadDrop(workerId, f)));
       if (current?.modal !== modal) return;
-      // 3d-kanban: the tab changed while it uploaded: nothing is typed into a terminal you can't see.
+      // the tab changed while it uploaded: nothing is typed into a terminal you can't see.
       if (termHidden()) return void toast('The terminal’s tab was left while the file uploaded, so it wasn’t typed in: drop it again there', 'warn');
       sayTyping();
       sendSize(true);
@@ -425,7 +425,7 @@ export function openTerminal(net: Net, workerId: string, onChanges?: () => void,
     el.classList.remove('dropping');
   };
   modal.backdrop.addEventListener('dragenter', (e) => {
-    if (!hasFiles(e) || termHidden()) return; // 3d-kanban: not with the terminal hidden (a web page tab or the task tab)
+    if (!hasFiles(e) || termHidden()) return; // not with the terminal hidden (a web page tab or the task tab)
     e.preventDefault();
     dragDepth++;
     el.classList.add('dropping');
@@ -442,8 +442,8 @@ export function openTerminal(net: Net, workerId: string, onChanges?: () => void,
     if (!hasFiles(e)) return;
     e.preventDefault();
     dragEnd();
-    if (inTaskPane(e.target)) return; // 3d-kanban: files dropped on the task pane are the task's, not the terminal's
-    if (termHidden()) return void toast('Switch to the terminal’s tab to drop files into it', 'info'); // 3d-kanban: none go to a hidden terminal
+    if (inTaskPane(e.target)) return; // files dropped on the task pane are the task's, not the terminal's
+    if (termHidden()) return void toast('Switch to the terminal’s tab to drop files into it', 'info'); // none go to a hidden terminal
     void insertFiles([...e.dataTransfer!.files]);
   });
   // A picture on the clipboard with no text (a screenshot) pastes like a dropped file. Caught on the
@@ -493,7 +493,7 @@ export function openTerminal(net: Net, workerId: string, onChanges?: () => void,
     term.focus();
   });
 
-  // 3d-kanban: the tabs, once the terminal is open (xterm measures its cells as it opens).
+  // the tabs, once the terminal is open (xterm measures its cells as it opens).
   const kanbanTabs: WorkerTabs | null = mountWorkerTabs(net, info, el, host, { tab: opts.tab, focusTerminal: () => void (termHidden() || term.focus()) });
   ro.observe(host);
   refresh();

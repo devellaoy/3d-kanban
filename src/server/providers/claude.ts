@@ -9,7 +9,7 @@ import { answered, notified, wantsPermission } from '../workers/lifecycle.js';
 import { shq } from '../workers/process.js';
 import type { WorkerHandle } from '../workers/types.js';
 import { truncate } from '../workers/util.js';
-import { writeKanbanSettings } from '../kanban/launch.js'; // 3d-kanban
+import { writeKanbanSettings } from '../kanban/launch.js';
 import type { ProviderAdapter } from './types.js';
 
 /**
@@ -27,7 +27,7 @@ interface ClaudeSetup {
   settings: string;
   /** Its --mcp-config: the office's MCP server. */
   mcp?: string;
-  /** 3d-kanban: the settings kanban workers run on (see kanban/launch.ts). */
+  /** the settings kanban workers run on (see kanban/launch.ts). */
   kanbanSettings?: string;
 }
 
@@ -128,7 +128,7 @@ function claudeHook(h: WorkerHandle, event: string, payload: any): boolean {
     h.persist();
   }
   h.scheduleScan();
-  h.observeHook(event, typeof payload?.tool_name === 'string' ? payload.tool_name : undefined, payload); // 3d-kanban: heard before the status change it causes
+  h.observeHook(event, typeof payload?.tool_name === 'string' ? payload.tool_name : undefined, payload); // heard before the status change it causes
   switch (event) {
     case 'SessionStart':
       if (payload?.source === 'clear') {
@@ -194,7 +194,7 @@ export const claude: ProviderAdapter<undefined, ClaudeSetup> = {
   scrubPrefixes: ['CLAUDE_CODE_SESSION', 'CLAUDE_CODE_CHILD', 'CLAUDE_CODE_MESSAGING'],
   prepare: ({ dataDir, mcpScript }) => ({
     settings: writeHookSettings(dataDir),
-    kanbanSettings: writeKanbanSettings(path.join(dataDir, 'claude-hooks.json')), // 3d-kanban
+    kanbanSettings: writeKanbanSettings(path.join(dataDir, 'claude-hooks.json')),
     mcp: mcpScript ? writeClaudeMcpConfig(dataDir, mcpScript) : undefined,
   }),
   launch({ h: { info }, args, prompt, resumeSessionId, station, setup, extraArgs }) {
@@ -207,7 +207,7 @@ export const claude: ProviderAdapter<undefined, ClaudeSetup> = {
     if (info.effort) args.push('--effort', info.effort);
     // The queue agent only ever adds to the queue: without these it can't touch the checkout's files.
     if (station === 'queue') args.push('--disallowedTools', ...QUEUE_AGENT_DISALLOWED_TOOLS);
-    if (extraArgs) args.push(...extraArgs); // 3d-kanban: the phase's own flags (permission mode, tools), ahead of the resume and the prompt
+    if (extraArgs) args.push(...extraArgs); // the phase's own flags (permission mode, tools), ahead of the resume and the prompt
     if (resumeSessionId) args.push('--resume', resumeSessionId);
     // `--` so a prompt like "- fix login" is never parsed as a CLI option.
     if (prompt) args.push('--', prompt);

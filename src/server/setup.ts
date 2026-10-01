@@ -21,7 +21,7 @@ const SHOWN = 12;
 /** Folders people keep their code in, in the home folder: the first one that's there is the suggestion. */
 const CODE_FOLDERS = ['Workspace', 'workspace', 'Developer', 'code', 'Code', 'projects', 'Projects', 'repos', 'src', 'dev', 'git', 'GitHub', 'github'];
 
-// 3d-kanban: the command is `kanban3d`.
+// the command is `kanban3d`.
 const SETUP_HELP = `kanban3d setup — pick where projects are cloned and which ones are floors
 
 Usage:

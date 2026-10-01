@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import type { CarriedIssue } from '../../../shared/protocol';
 import { NOTE_COLORS, PINS, wrap } from '../boards/world';
 import { toon, toonUnique } from '../../world/toon';
-// 3d-kanban: a card from the project's issue sources shows its key and is told apart by it.
+// a card from the project's issue sources shows its key and is told apart by it.
 import { cardId, cardLabel, noteSeed } from '../../../shared/kanban/issuecard.js';
 import { store } from '../../state';
 
@@ -19,12 +19,12 @@ function issueCard(card: CarriedIssue, width: number): THREE.Mesh {
   canvas.width = W;
   canvas.height = H;
   const g = canvas.getContext('2d')!;
-  const seed = noteSeed({ number: card.issue, key: card.key }); // 3d-kanban
+  const seed = noteSeed({ number: card.issue, key: card.key });
   const color = NOTE_COLORS[seed % NOTE_COLORS.length];
   g.fillStyle = color;
   g.fillRect(0, 0, W, H);
   g.fillStyle = '#2b2d42';
-  const label = cardLabel({ number: card.issue, key: card.key }, store.currentFloor()?.repo); // 3d-kanban
+  const label = cardLabel({ number: card.issue, key: card.key }, store.currentFloor()?.repo);
   g.font = `900 ${label.length > 9 ? 36 : 52}px ${FONT}`;
   g.fillText(label, 22, 84, W - 44);
   g.font = `700 28px ${FONT}`;
@@ -51,7 +51,7 @@ function issueCard(card: CarriedIssue, width: number): THREE.Mesh {
 /** The issue card someone holds, under `parent`: swapped for another card, or dropped (null). */
 export class HeldCard {
   private mesh: THREE.Mesh | null = null;
-  private issue = ''; // 3d-kanban: cardId
+  private issue = '';
 
   constructor(
     private parent: THREE.Object3D,

@@ -3,7 +3,7 @@ import type { Net } from '../net';
 import { store } from '../state';
 import { PROMPTS, PROMPT_GROUPS, PROMPT_IDS, PROMPT_MAX, fillPrompt, placeholders, promptText, type PromptGroup, type PromptId, type PromptVars } from '../../shared/prompts';
 import { h, openModal, timeAgo } from './dom';
-// 3d-kanban: a project scope and the read-only contract for the kanban's prompts.
+// a project scope and the read-only contract for the kanban's prompts.
 import { promptScope } from '../kanban/promptscope';
 
 /** One of the office's prompts, as it has it now (rewritten in ⚙️ Settings, or the default), filled in. */
@@ -30,7 +30,7 @@ const norm = (text: string) => text.replace(/\r\n?/g, '\n').trim();
  */
 export function openPromptEditor(net: Net, first: PromptId = PROMPT_IDS[0]) {
   let current = first;
-  // 3d-kanban: in a project's scope, a kanban prompt's saved text is that project's own (when it has one).
+  // in a project's scope, a kanban prompt's saved text is that project's own (when it has one).
   const scope = promptScope(net, () => {
     for (const [id, d] of drafts) if (norm(d) === saved(id)) drafts.delete(id);
     if (!drafts.has(current) && ta.value !== saved(current)) ta.value = saved(current);
@@ -121,7 +121,7 @@ export function openPromptEditor(net: Net, first: PromptId = PROMPT_IDS[0]) {
     note.textContent = admin ? 'For the whole office, on every floor. A rewritten prompt is used from the next time it’s sent.' : 'Only admins can change the office’s prompts. This is what they say now.';
     paintItems();
     paintWarnings();
-    scope.paint(current, drafts.size > 0); // 3d-kanban
+    scope.paint(current, drafts.size > 0);
   };
 
   const pick = (id: PromptId) => {
@@ -156,7 +156,7 @@ export function openPromptEditor(net: Net, first: PromptId = PROMPT_IDS[0]) {
   save.addEventListener('click', () => {
     if (!dirty(current)) return;
     const value = norm(ta.value);
-    if (scope.save(current, value)) return; // 3d-kanban: saved for the picked project instead
+    if (scope.save(current, value)) return; // saved for the picked project instead
     net.send({ t: 'prompts.set', id: current, text: value === PROMPTS[current].text ? null : value });
   });
 
@@ -175,7 +175,7 @@ export function openPromptEditor(net: Net, first: PromptId = PROMPT_IDS[0]) {
     onClose: () => {
       offPrompts();
       offMe();
-      scope.close(); // 3d-kanban
+      scope.close();
     },
   });
   close.addEventListener('click', () => modal.close());

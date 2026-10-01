@@ -10,7 +10,7 @@ function findAppDir(): string | undefined {
   let dir = path.dirname(fileURLToPath(import.meta.url));
   for (let i = 0; i < 5; i++, dir = path.dirname(dir)) {
     try {
-      // 3d-kanban: the package is named 3d-kanban.
+      // the package is named 3d-kanban.
       if (JSON.parse(readFileSync(path.join(dir, 'package.json'), 'utf8')).name === '3d-kanban') return dir;
     } catch {
       // keep looking

@@ -28,7 +28,7 @@ import { openPull } from '../../ui/pull';
 import { openRepoPulls, workerRepos } from '../../ui/repos';
 import { openTerminal } from '../../ui/terminal';
 import { hiringPaused, usageLabel, usageTitle } from '../../ui/usage';
-// 3d-kanban: a worker's PR by its repository too, task workers in the office, and issue cards from the issue sources.
+// a worker's PR by its repository too, task workers in the office, and issue cards from the issue sources.
 import { findItem, ownPullRepo } from '../../ui/github/ghrepo';
 import { canRetry, kanbanCard, kanbanOf, promptKind, waitText, workerLabel } from '../../kanban/office';
 import { askWorker, cardToTaskWorker, hireOption, promptTaskWorker, retryTask } from '../../kanban/office3d';
@@ -84,7 +84,7 @@ export function installWorkerActions(ctx: Ctx, core: CoreState, parts: WorkerAct
   }
 
   function hire(deskId: string, prompt?: string, worktree = false, provider?: AgentProvider, model?: string, effort?: AgentEffort, issue?: number | { issue?: number; issueKey?: string }, repos?: string[], via?: 'herald') {
-    // 3d-kanban: `issue` can be a card's fields (kanban/issuecards cardFields): the floor's own issue's number and an issue source's key.
+    // `issue` can be a card's fields (kanban/issuecards cardFields): the floor's own issue's number and an issue source's key.
     const ids = typeof issue === 'object' ? issue : { issue };
     net.send({ t: 'worker.spawn', deskId, prompt, worktree, provider, model, effort, issue: ids.issue, repos: repos?.length ? repos : undefined, via, ...(ids.issueKey ? { issueKey: ids.issueKey } : {}) });
     // The moment notifications start to matter: ask once (it has to come from a key press or click).
@@ -105,14 +105,14 @@ export function installWorkerActions(ctx: Ctx, core: CoreState, parts: WorkerAct
     if (!w) {
       if (officeIsFull()) return;
       openPrompt({
-        title: `✨ Hire at ${desk.label}`, // 3d-kanban: "task" is a kanban task now
+        title: `✨ Hire at ${desk.label}`, // "task" is a kanban task now
         subtitle: 'A fresh worker will sit down and start on this right away.',
         warning: pressureNote(store.machine),
         submitLabel: 'Hire & start',
         providerOption: true,
         worktreeOption: !!store.project?.branch,
         repoOptions: repoChoices(),
-        kanbanOption: hireOption(net, () => deskId, desk.label), // 3d-kanban
+        kanbanOption: hireOption(net, () => deskId, desk.label),
         onSubmit: (text, o) => hire(deskId, text, o.worktree, o.provider, o.model, o.effort, undefined, o.repos),
       });
     } else if (w.lost) {
@@ -120,7 +120,7 @@ export function installWorkerActions(ctx: Ctx, core: CoreState, parts: WorkerAct
     } else if (isAsleep(w.status)) {
       toast(`${w.name} is asleep — press R to resume first`, 'warn');
     } else if (promptTaskWorker(net, w, () => openWorkerTerminal(w.id))) {
-      // 3d-kanban: a message on its task (or its terminal, for a reviewer).
+      // a message on its task (or its terminal, for a reviewer).
     } else if (w.kind === 'shell') {
       openPrompt({
         title: `🐚 Run in ${w.name}`,
@@ -151,7 +151,7 @@ export function installWorkerActions(ctx: Ctx, core: CoreState, parts: WorkerAct
       providerOption: true,
       worktreeOption: !!store.project?.branch,
       repoOptions: repoChoices(),
-      kanbanOption: hireOption(net, () => deskId, desk.label), // 3d-kanban
+      kanbanOption: hireOption(net, () => deskId, desk.label),
       onSubmit: (text, o) => hire(deskId, text || undefined, o.worktree, o.provider, o.model, o.effort, undefined, o.repos),
     });
   }
@@ -162,7 +162,7 @@ export function installWorkerActions(ctx: Ctx, core: CoreState, parts: WorkerAct
     if (!w) return;
     const where = plan().byId.get(w.deskId)?.label ?? 'the desk';
     const session = w.kind === 'shell' ? 'shared shell' : `${providerLabel(w.provider, store.project)} session`;
-    // 3d-kanban: a task worker's dialog has its task in it (Move to Done), and says so to the engine.
+    // a task worker's dialog has its task in it (Move to Done), and says so to the engine.
     if (sendTaskWorkerHome(net, w, where)) return;
     if (w.meeting) {
       // The meeting's worktree is the whole table's: it's tidied away once they've all gone.
@@ -259,7 +259,7 @@ export function installWorkerActions(ctx: Ctx, core: CoreState, parts: WorkerAct
   function pullRequestFor(w: WorkerInfo) {
     if (w.repos?.length) return pullRequestsFor(w);
     if (w.pr) {
-      // 3d-kanban: in the floor's own repository, not another of the project's with the same number.
+      // in the floor's own repository, not another of the project's with the same number.
       const it = findItem(store.pulls.items, w.pr.number, ownPullRepo(w.pr, store.currentFloor()?.repo));
       if (it) openPull(it, net, boardActions());
       else window.open(w.pr.url, '_blank', 'noopener');
@@ -269,7 +269,7 @@ export function installWorkerActions(ctx: Ctx, core: CoreState, parts: WorkerAct
     if (w.lost) return fixLostWorktree(w);
     if (w.prOpening) return;
     if (!prReady(w)) return toast(`${w.name} is still ${STATUS_LABEL[w.status]} — wait until it's done`, 'warn');
-    // 3d-kanban: the office has an agent do it now (the worker itself, or the task's pr phase).
+    // the office has an agent do it now (the worker itself, or the task's pr phase).
     toast(`🤖 An agent is opening the pull request: ${w.name} pushes ${w.worktree.branch} and writes it up…`);
     net.send({ t: 'worker.pr', workerId: w.id });
   }
@@ -285,14 +285,14 @@ export function installWorkerActions(ctx: Ctx, core: CoreState, parts: WorkerAct
       if (!now || now.prOpening) return;
       if (now.lost) return fixLostWorktree(now);
       if (!prReady(now)) return toast(`${now.name} is still ${STATUS_LABEL[now.status]} — wait until it's done`, 'warn');
-      // 3d-kanban: an agent opens them now.
+      // an agent opens them now.
       toast(`🤖 An agent is opening the pull requests: ${now.name} pushes ${now.worktree?.branch ?? 'its branch'} in each of its repositories and writes them up…`);
       net.send({ t: 'worker.pr', workerId: now.id });
     };
     if (!workerRepos(w).some((r) => r.pr)) return open();
     openRepoPulls(w.id, {
       openPull: (number, url) => {
-        // 3d-kanban: in the floor's own repository, not another of the project's with the same number.
+        // in the floor's own repository, not another of the project's with the same number.
         const it = findItem(store.pulls.items, number, ownPullRepo({ url }, store.currentFloor()?.repo));
         if (it) openPull(it, net, boardActions());
         else window.open(url, '_blank', 'noopener');
@@ -403,22 +403,22 @@ export function installWorkerActions(ctx: Ctx, core: CoreState, parts: WorkerAct
     const workerProvider = w.kind === 'agent' ? resolvedProvider(w.provider, store.project) : undefined;
     const spent = w.kind === 'agent' && w.usage ? usageLabel(w.usage, workerProvider) : '';
     const shell = w.kind === 'shell';
-    // 3d-kanban: a task worker's task, and R to retry it while it waits.
+    // a task worker's task, and R to retry it while it waits.
     const card = kanbanCard(w, Date.now());
     const task = card ? `${card.name} · ${card.summary}` : '';
     const retry = !isAsleep(w.status) && canRetry(w);
     return {
       k: w.status + w.id + (w.pr?.number ?? '') + (w.repos?.map((r) => r.pr?.number ?? '-').join() ?? '') + (w.prOpening ? '!' : '') + doing + spent + (sign ?? '') + task,
       parts: [
-        h('span.title', {}, `${sign ? `🪧 ${sign} · ` : ''}${workerLabel(w)} · ${STATUS_LABEL[w.status]}`), // 3d-kanban: workerLabel
-        task ? aside(clip(task, 90)) : '', // 3d-kanban
-        retry ? key('R', 'Retry task') : '', // 3d-kanban
+        h('span.title', {}, `${sign ? `🪧 ${sign} · ` : ''}${workerLabel(w)} · ${STATUS_LABEL[w.status]}`),
+        task ? aside(clip(task, 90)) : '',
+        retry ? key('R', 'Retry task') : '',
         doing ? aside(doing) : '',
         spent ? h('span.cost', { title: usageTitle(w.usage!, workerProvider) }, spent) : '',
         key('E', 'Open terminal'),
         key('C', 'Changes'),
         isAsleep(w.status) ? key('R', shell ? 'Restart' : 'Resume') : key('P', shell ? 'Run command' : 'Prompt'),
-        // 3d-kanban: an agent opens it.
+        // an agent opens it.
         w.repos?.length ? reposKey(w) : w.pr ? key('O', `PR #${w.pr.number}`) : w.prOpening ? aside('⏳ Agent opening PR…') : prReady(w) ? key('O', 'Agent opens PR') : '',
         key('X', 'Send home'),
         labelKey,
@@ -430,7 +430,7 @@ export function installWorkerActions(ctx: Ctx, core: CoreState, parts: WorkerAct
   function reposKey(w: WorkerInfo) {
     const repos = workerRepos(w);
     const prs = repos.filter((r) => r.pr).length;
-    // 3d-kanban: an agent opens them.
+    // an agent opens them.
     if (w.prOpening) return aside('⏳ Agent opening PRs…');
     if (prs) return key('O', `${prs} of ${repos.length} PRs`);
     return prReady(w) ? key('O', `Agent opens PRs (${repos.length} repos)`) : '';
@@ -479,13 +479,13 @@ export function installWorkerActions(ctx: Ctx, core: CoreState, parts: WorkerAct
       // Nobody is hired at the meeting table: a meeting seats its own workers there.
       if (!w && plan().byId.get(it.deskId)?.room) return key === 'E' ? parts.meeting.showMeeting() : undefined;
       if (key === 'B' && !w) return openShell(it.deskId);
-      // 3d-kanban: P with an issue card at an empty desk makes it a kanban task there.
+      // P with an issue card at an empty desk makes it a kanban task there.
       if (key === 'P' && ctx.carrying() && !w) return parts.cards.cardTaskAt(it.deskId, ctx.carrying()!);
       if (key === 'P') return promptAtDesk(it.deskId);
       if (key === 'E') return w ? openWorkerTerminal(w.id) : hireAtDesk(it.deskId);
       if (key === 'C' && w) return openWorkerChanges(w.id);
       if (key === 'R' && w && isAsleep(w.status)) return resumeWorker(w);
-      if (key === 'R' && w && retryTask(net, w)) return; // 3d-kanban: its task waits: retry it
+      if (key === 'R' && w && retryTask(net, w)) return; // its task waits: retry it
       if (key === 'X' && w) return killWorker(w.id);
       if (key === 'O' && w) return pullRequestFor(w);
     },
@@ -505,7 +505,7 @@ export function installWorkerActions(ctx: Ctx, core: CoreState, parts: WorkerAct
   /** A prompt from the boards goes to a new worker at a free desk, or to one already at a desk. */
   function sendToWorker(title: string, text: { context?: string; initial?: string }) {
     const desk = freeDesk();
-    const awake = [...store.workers.values()].filter((w) => w.kind === 'agent' && !isAsleep(w.status) && promptKind(w) !== 'terminal'); // 3d-kanban: not a task's reviewer, which takes nothing but its terminal
+    const awake = [...store.workers.values()].filter((w) => w.kind === 'agent' && !isAsleep(w.status) && promptKind(w) !== 'terminal'); // not a task's reviewer, which takes nothing but its terminal
     if (!desk && !awake.length) {
       toast('Every desk and bean bag is taken — send a worker home first', 'warn');
       return;
@@ -514,13 +514,13 @@ export function installWorkerActions(ctx: Ctx, core: CoreState, parts: WorkerAct
       title,
       ...text,
       newDesk: desk ? plan().byId.get(desk)!.label : undefined,
-      workers: awake.map((w) => ({ id: w.id, name: w.name, color: w.color, status: w.status, task: w.kanban?.taskId })), // 3d-kanban: task
+      workers: awake.map((w) => ({ id: w.id, name: w.name, color: w.color, status: w.status, task: w.kanban?.taskId })),
       worktreeOption: !!store.project?.branch,
       providerOption: true,
       repoOptions: repoChoices(),
-      kanbanOption: desk ? hireOption(net, () => desk, plan().byId.get(desk)!.label) : undefined, // 3d-kanban
+      kanbanOption: desk ? hireOption(net, () => desk, plan().byId.get(desk)!.label) : undefined,
       onSubmit: (prompt, to, worktree, provider, model, effort, repos) => {
-        if (to) askWorker(net, to, prompt); // 3d-kanban: a message on its task for a task worker
+        if (to) askWorker(net, to, prompt); // a message on its task for a task worker
         else if (desk) hire(desk, prompt, worktree, provider, model, effort, undefined, repos);
       },
     });
@@ -535,7 +535,7 @@ export function installWorkerActions(ctx: Ctx, core: CoreState, parts: WorkerAct
       meeting: (preset: MeetingPreset) => parts.meeting.showMeeting(preset),
       goToDesk,
       pickUp: parts.cards.pickUp,
-      // 3d-kanban: the issue as a kanban task, at the desk nearest you (or wherever the engine finds one).
+      // the issue as a kanban task, at the desk nearest you (or wherever the engine finds one).
       kanbanTask: (it: GhIssue) => {
         const desk = freeDesk() ?? undefined;
         cardTask(net, it, desk, desk ? plan().byId.get(desk)!.label : 'the next free desk');
