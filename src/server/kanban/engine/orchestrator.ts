@@ -1834,14 +1834,16 @@ export class Orchestrator {
     return this.op(taskId, async (task) => {
       if (task.runState !== 'idle' || task.status === 'in_progress') return 'Stop it first: it is running';
       const live = this.liveOf(task.id);
+      const floor = this.ctx.floor(task.project);
+      const going = floor?.workers.list().filter((w) => w.kanban?.taskId === task.id || w.id === task.workerId || w.id === task.reviewerWorkerId) ?? [];
+      const busy = going.find((w) => isBusy(w.status) && w.id !== live?.workerId);
+      if (busy) return `${busy.name} is still working: stop it or send it home first`;
       if (live) {
         live.ended = true;
         this.forget(live);
         this.finishRun(live.runId, live.floorId, { status: 'stopped', error: `${who.name} ${why === 'reset' ? 'moved the task back to To do' : 'deleted the task'}` });
         this.note(task, `${who.name} ${why === 'reset' ? 'moved the task back to To do' : 'deleted the task'}, so its ${live.phase === 'review' || live.phase === 'pr-review' ? 'review round' : `${live.phase} run`} was stopped.`, live.runId);
       }
-      const floor = this.ctx.floor(task.project);
-      const going = floor?.workers.list().filter((w) => w.kanban?.taskId === task.id && (w.id === live?.workerId || !isBusy(w.status))) ?? [];
       for (const w of going) await floor!.sendHome(w.id, 'keep', { by: who.name, reason: 'released' });
       const wt = task.workspace?.worktree;
       if (why === 'reset' && wt) this.note(task, `${going.length ? 'Its workers went home. ' : ''}The worktree was kept at ${floor ? path.join(floor.dir, wt.path) : wt.path} on branch ${wt.branch}.`);

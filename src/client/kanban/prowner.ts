@@ -32,7 +32,11 @@ export function prOwner(net: Net, pull: () => GhPull) {
           const id = o.taskId;
           if (id === null) return void (button = null);
           button = h('button.btn', { type: 'button', disabled: !o.fixable, title: o.fixable ? `Task #${id}'s agent addresses the review comments and failing checks on all of the task's open PRs; it doesn't merge` : o.reason }, `🛠️ Fix via task #${id}`) as HTMLButtonElement;
-          button.addEventListener('click', () => void run(() => api.request<KanbanOk>({ t: 'kanban.task.pr', id, mode: 'fix' }), button, `Task #${id}'s agent is on the PR`));
+          button.addEventListener('click', async () => {
+            if (!(await run(() => api.request<KanbanOk>({ t: 'kanban.task.pr', id, mode: 'fix' }), button, `Task #${id}'s agent is on the PR`)) || !button) return;
+            button.disabled = true;
+            button.title = `Task #${id}'s agent is on it`;
+          });
         })
         .catch(() => {
           if (g === generation) button = null;

@@ -7,6 +7,7 @@ import assert from 'node:assert/strict';
 import { existsSync } from 'node:fs';
 import path from 'node:path';
 import { ADA, engineFixture, type EngineFixture, type Rule } from './kanban-engine-fixture.js';
+import type { WorkerInfo } from '../src/shared/protocol.js';
 import type { DepartureIntent } from '../src/shared/kanban/types.js';
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
@@ -226,6 +227,27 @@ test('sendWorkersHome (a reset to To do, a delete): the worker at rest goes home
   assert.ok(kept!.text.includes(wt) && kept!.text.includes(r.workspace!.worktree.branch), kept!.text);
   fx.repo.updateTask(r.id, { runState: 'running' });
   assert.match(String(await fx.engine.sendWorkersHome(r.id, ADA, 'delete')), /Stop it first/);
+});
+
+test('sendWorkersHome: a worker busy on the task outside any run refuses a reset and a delete and nothing changes; a resting extra worker carrying the task goes home too', async (t) => {
+  const fx = await engineFixture();
+  t.after(() => fx.close());
+  fx.setRules([IMPLEMENT]);
+  const r = await inReview(fx);
+  const hired = fx.workers.spawn('desk-9', 'Ada (kanban)', undefined, false, 'agent', 'claude', undefined, undefined, undefined, undefined, [], undefined, { reuse: { worktree: r.workspace!.worktree }, kanban: { taskId: r.id, role: 'reviewer' }, settingsFile: 'kanban' });
+  assert.notEqual(typeof hired, 'string');
+  const extra = hired as WorkerInfo;
+  await sleep(300);
+  extra.status = 'working'; // someone typed straight into its terminal: no kanban run
+  for (const why of ['reset', 'delete'] as const) {
+    assert.match(String(await fx.engine.sendWorkersHome(r.id, ADA, why)), new RegExp(`^${extra.name} is still working: stop it or send it home first$`));
+    assert.ok(fx.workers.get(r.workerId!), 'the implementer stays too');
+    assert.equal(fx.task(r.id).workerId, r.workerId, 'the task is unchanged');
+  }
+  extra.status = 'idle';
+  assert.equal(await fx.engine.sendWorkersHome(r.id, ADA, 'reset'), undefined);
+  assert.equal(fx.workers.get(extra.id), undefined, 'the extra worker went home');
+  assert.equal(fx.workers.get(r.workerId!), undefined);
 });
 
 test('a re-hired implementer sitting in the task worktree, sent home with cleanup all when nobody else is there and nothing runs: the worktree goes', async (t) => {
