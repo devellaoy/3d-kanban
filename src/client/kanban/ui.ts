@@ -121,17 +121,3 @@ export async function run<T>(what: () => Promise<T>, button?: HTMLButtonElement 
     if (button) button.disabled = false;
   }
 }
-
-/** A yes/no question before something that can't be undone. */
-export function confirmBox(title: string, text: string, yes: string, onYes: () => void, danger = true) {
-  const yesBtn = h(danger ? 'button.btn.danger' : 'button.btn.primary', { type: 'button' }, yes) as HTMLButtonElement;
-  const noBtn = h('button.btn', { type: 'button' }, 'Cancel');
-  const d = dialog('kb-confirm', title, h('div.body', {}, h('p', {}, text)), h('footer', {}, noBtn, yesBtn));
-  const modal = showDialog(d);
-  noBtn.addEventListener('click', () => modal.close());
-  yesBtn.addEventListener('click', () => {
-    modal.close();
-    onYes();
-  });
-  setTimeout(() => noBtn.focus(), 40);
-}

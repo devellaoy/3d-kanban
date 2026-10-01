@@ -38,16 +38,6 @@ export function fmtTime(ms: number): string {
   return new Intl.DateTimeFormat('en-GB', { dateStyle: 'short', timeStyle: 'short' }).format(ms);
 }
 
-/** "5 min ago", from `now`. */
-export function fmtAgo(ms: number, now = Date.now()): string {
-  const s = Math.max(0, (now - ms) / 1000);
-  const rtf = new Intl.RelativeTimeFormat('en-GB', { numeric: 'auto', style: 'short' });
-  if (s < 60) return rtf.format(0, 'second');
-  if (s < 3600) return rtf.format(-Math.floor(s / 60), 'minute');
-  if (s < 86400) return rtf.format(-Math.floor(s / 3600), 'hour');
-  return rtf.format(-Math.floor(s / 86400), 'day');
-}
-
 /** "45 s", "12 min", "1 h 05 min". */
 export function fmtDuration(ms: number): string {
   const s = Math.max(0, Math.round(ms / 1000));

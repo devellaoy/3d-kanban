@@ -13,7 +13,8 @@
 // them only when it uses the view.
 
 import './taskview.css';
-import { h, openModal, toast, type Modal } from '../ui/dom';
+import { h, openModal, timeAgo, toast, type Modal } from '../ui/dom';
+import { confirmDialog } from '../ui/prompt';
 import { store } from '../state';
 import type { Net } from '../net';
 import type { KanbanServerMsg } from '../../shared/kanban/protocol.js';
@@ -30,8 +31,8 @@ import { REVIEW_DEFAULTS } from './defaults';
 import { cardRepoNames, countdown, needsAttention, phaseBadge, prTone, showIn3dLink, tabFor, visibleTabs, type TaskTab } from './model';
 import { kstore } from './store';
 import { mountChangesView, type ChangesViewHandle } from './changesview';
-import { APPROVAL_NAMES, columnName, COUNTDOWN_UNITS, effortName, fmtAgo, fmtDuration, fmtTime, phaseName, PR_STATE_NAMES, toolName, waitingName } from './labels';
-import { confirmBox, run, select, tabStrip, textArea } from './ui';
+import { APPROVAL_NAMES, columnName, COUNTDOWN_UNITS, effortName, fmtDuration, fmtTime, phaseName, PR_STATE_NAMES, toolName, waitingName } from './labels';
+import { run, select, tabStrip, textArea } from './ui';
 
 const COMMENTS_PAGE = 30;
 const TAB_NAMES: Record<TaskTab, string> = { overview: 'Overview', conversation: 'Conversation', plan: 'Plan', runs: 'Runs', terminal: 'Terminal', changes: 'Changes', prs: 'PRs' };
@@ -287,7 +288,6 @@ class View implements TaskView {
   }
 
   // --- Frame ------------------------------------------------------------------------------------
-
   render() {
     if (this.destroyed) return;
     const restore = this.focusMark();
@@ -495,7 +495,7 @@ class View implements TaskView {
     }
     this.fixPrs(task, bar);
     if (task.status !== 'in_progress' && this.o.moveMenu) add('↔️ Move…', '', () => this.o.moveMenu?.(id), 'Move to another column (M)');
-    if (!running) add('🗑️ Delete', '.danger', (b) => confirmBox(`Delete #${id}?`, `The task, its conversation, plans and runs are deleted for good. ${hasWorker ? 'Its workers go home. ' : ''}${task.workspace ? `Its worktree (${task.workspace.worktree.path}), its branches` : 'Its branches'} and pull requests stay.`, 'Delete', () => void this.req({ t: 'kanban.task.delete', id }, b)));
+    if (!running) add('🗑️ Delete', '.danger', (b) => confirmDialog(`Delete #${id}?`, `The task, its conversation, plans and runs are deleted for good. ${hasWorker ? 'Its workers go home. ' : ''}${task.workspace ? `Its worktree (${task.workspace.worktree.path}), its branches` : 'Its branches'} and pull requests stay.`, 'Delete', () => void this.req({ t: 'kanban.task.delete', id }, b)));
     return bar;
   }
 
@@ -611,7 +611,7 @@ class View implements TaskView {
       return h(
         'li.kb-report',
         {},
-        h('div.kb-row', {}, h('b', {}, `📄 ${f.name}`), h('small.kb-muted', { title: fmtTime(f.mtime) }, `${formatSize(f.size)} · ${fmtAgo(f.mtime)}`), toggle, h('a.btn.small', { href: `${url(f.name)}?download=1`, download: f.name.split('/').pop() ?? f.name }, '⬇️ Download')),
+        h('div.kb-row', {}, h('b', {}, `📄 ${f.name}`), h('small.kb-muted', { title: fmtTime(f.mtime) }, `${formatSize(f.size)} · ${timeAgo(f.mtime)}`), toggle, h('a.btn.small', { href: `${url(f.name)}?download=1`, download: f.name.split('/').pop() ?? f.name }, '⬇️ Download')),
         shownEl ?? null,
       );
     });
@@ -871,7 +871,7 @@ class View implements TaskView {
                 h('td', {}, h('a', { href: p.url, target: '_blank', rel: 'noopener noreferrer' }, `#${p.number} ↗`)),
                 h('td', {}, h('span.kb-pr', { class: prTone(p.state) }, PR_STATE_NAMES[prTone(p.state)])),
                 h('td', {}, p.branch ? h('code', {}, p.branch) : ''),
-                h('td', {}, fmtAgo(p.updatedAt)),
+                h('td', {}, timeAgo(p.updatedAt)),
               ),
             ),
           ),
@@ -911,7 +911,7 @@ function commentItem(c: KanbanComment, files: Map<string, KanbanAttachment>, ope
       h('b', {}, who),
       c.kind !== 'message' ? h('span.kb-kind', { class: c.kind }, COMMENT_KIND_NAMES[c.kind]) : null,
       c.pending ? h('span.kb-kind.pending', { title: 'Written while the agent was busy: it gets it at its next pause' }, 'waiting') : null,
-      h('time', { datetime: new Date(c.createdAt).toISOString(), title: fmtTime(c.createdAt) }, fmtAgo(c.createdAt)),
+      h('time', { datetime: new Date(c.createdAt).toISOString(), title: fmtTime(c.createdAt) }, timeAgo(c.createdAt)),
     ),
     // System lines are short and many: plain text keeps them quiet.
     c.authorKind === 'system' && c.kind === 'status' ? h('p', {}, c.text) : renderMarkdown(c.text, openTask, ''),

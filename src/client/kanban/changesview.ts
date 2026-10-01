@@ -15,13 +15,13 @@ import { changedImageType, type ChangesState, type ServerMsg } from '../../share
 import type { KanbanChangesList, KanbanCommitChanges, KanbanCommitList, KanbanDiff, KanbanRepoChanges, KanbanRepoChangesInfo, KanbanUncommitted } from '../../shared/kanban/types.js';
 import type { Net } from '../net';
 import { store } from '../state';
-import { h, openModal, type Modal } from '../ui/dom';
+import { h, openModal, timeAgo, type Modal } from '../ui/dom';
 import { confirmDialog, openPrompt } from '../ui/prompt';
 import { onChangesMessage, pathLabel, plusMinus, renderDiff, renderPreview } from '../ui/changes';
 import { getJson } from './api';
 import { LatestReads, branchMoved, changesModes, httpNeeds, liveFloor, liveRow, prOfRepo, repoOfFloor, sortRepos, stepRow, taskRow, uncommittedNow, type ChangeRow, type ChangesMode } from './changesmodel';
 import { holdChangesWatch } from './changeswatch';
-import { fmtAgo, fmtTime } from './labels';
+import { fmtTime } from './labels';
 import { splitDiff } from './model';
 import { kstore } from './store';
 
@@ -597,7 +597,7 @@ class ChangesView {
             } },
           h('code', {}, c.hash.slice(0, 7)),
           h('span.subj', {}, c.subject),
-          h('small', { title: fmtTime(at) }, `${c.author} · ${fmtAgo(at)}`),
+          h('small', { title: fmtTime(at) }, `${c.author} · ${timeAgo(at)}`),
         );
       }),
     );

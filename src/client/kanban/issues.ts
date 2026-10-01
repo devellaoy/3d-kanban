@@ -2,13 +2,13 @@
 // one list: filter chips by source, status, label and assignee, a refresh, and "Create task" on each
 // (idempotent by the issue's key: an issue already made into a task opens that task instead).
 
-import { h } from '../ui/dom';
+import { h, timeAgo } from '../ui/dom';
 import type { KanbanServerMsg } from '../../shared/kanban/protocol.js';
 import type { NormalizedIssue } from '../../shared/kanban/types.js';
 import type { KanbanApi, KanbanOk } from './api';
 import { filterIssues } from './model';
 import { kstore } from './store';
-import { fmtAgo, SOURCE_KIND_NAMES } from './labels';
+import { SOURCE_KIND_NAMES } from './labels';
 import { dialog, run, select, showDialog, textInput } from './ui';
 
 type IssuesMsg = Extract<KanbanServerMsg, { t: 'kanban.issues' }>;
@@ -41,7 +41,7 @@ export function openIssues(api: KanbanApi, projectId: string, openTask: (id: num
 
   const paint = () => {
     const items = state?.items ?? [];
-    status.textContent = state?.loading ? 'Refreshing…' : state?.fetchedAt ? `Updated ${fmtAgo(state.fetchedAt)}` : '';
+    status.textContent = state?.loading ? 'Refreshing…' : state?.fetchedAt ? `Updated ${timeAgo(state.fetchedAt)}` : '';
     const uniq = (xs: (string | undefined)[]) => [...new Set(xs.filter((x): x is string => !!x))].sort((a, b) => a.localeCompare(b));
     chips.replaceChildren(
       ...[
@@ -86,7 +86,7 @@ export function openIssues(api: KanbanApi, projectId: string, openTask: (id: num
           i.assignee ? h('span.kb-chip', {}, `👤 ${i.assignee}`) : null,
           i.epic ? h('span.kb-chip', {}, `🧭 ${i.epic}`) : null,
           ...i.labels.slice(0, 5).map((l) => h('span.kb-chip.tag', {}, l)),
-          h('small.kb-muted', {}, fmtAgo(Date.parse(i.updatedAt))),
+          h('small.kb-muted', {}, timeAgo(i.updatedAt)),
         ),
       ),
       make,

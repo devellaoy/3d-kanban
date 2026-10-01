@@ -146,8 +146,9 @@ export function openPrompt(opts: PromptOptions) {
   }, 30);
 }
 
-export function confirmDialog(title: string, body: string, confirmLabel: string, onConfirm: () => void) {
-  const yes = h('button.btn.danger', { type: 'button' }, confirmLabel);
+/** A yes/no question before something that can't be undone (`danger: false` for a plain primary button). */
+export function confirmDialog(title: string, body: string, confirmLabel: string, onConfirm: () => void, opts: { danger?: boolean } = {}) {
+  const yes = h(opts.danger === false ? 'button.btn.primary' : 'button.btn.danger', { type: 'button' }, confirmLabel);
   const no = h('button.btn', { type: 'button' }, 'Never mind');
   const el = h('div.modal', { role: 'alertdialog', 'aria-label': title }, h('header', {}, h('h2', {}, title)), h('div.body', {}, h('p', { style: 'margin:0;font-weight:700' }, body)), h('footer', {}, no, yes));
   const modal = openModal(el);
