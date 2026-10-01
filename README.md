@@ -7,7 +7,7 @@ kanban board beside the 3D office. Agent Office is © 2026 AgentSystemLabs under
 [MIT License](LICENSE), which this fork keeps.
 
 - [Install](#install) · [The kanban: user guide](docs/kanban.md) · [Migrating from ai-kanban](docs/migration.md) ·
-  [Fork notes: seams and upstream sync](docs/fork.md) · [Kanban architecture](docs/kanban-architecture.md)
+  [Origin and upstream](docs/fork.md) · [Kanban architecture](docs/kanban-architecture.md)
 
 ## Install
 
@@ -141,8 +141,8 @@ curl -fsSL https://raw.githubusercontent.com/devellaoy/3d-kanban/main/deploy/pro
   reach the office, and offers **Reload** when a new version is out. HTTPS is needed except on
   localhost ([configuration](docs/configuration.md#pwa)).
 
-Everything below is upstream's README, unchanged except that its install and run commands point at
-this fork: the `devellaoy/3d-kanban` repository and its releases, and the `kanban3d` command.
+The rest is the office's own guide, from upstream agent-office; its install and run commands point at
+this repository (`devellaoy/3d-kanban`, its releases and the `kanban3d` command).
 
 ---
 

@@ -1,5 +1,5 @@
-// What the kanban engine asks of the worker manager (docs/fork.md, "Server"): the base class
-// WorkerManager extends, so its seams in workers/manager.ts stay one-liners. Observers hear every
+// What the kanban engine asks of the worker manager: the base class
+// WorkerManager extends, so its hooks in workers/manager.ts stay one-liners. Observers hear every
 // worker's status changes and hooks, keep guards keep a task's worktree as its worker goes home,
 // and a worker can be relaunched on its session with other flags.
 import type { AgentEffort, WorkerInfo, WorkerStatus } from '../../shared/protocol.js';

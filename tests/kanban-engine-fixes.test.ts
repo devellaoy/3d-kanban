@@ -129,7 +129,7 @@ test('an agent that exits mid-run interrupts the run: the task waits with Retry,
   await fx.waitTask(task.id, (x) => x.status === 'review' && x.runState === 'idle', 'the review column after the retry', 20_000);
 });
 
-test('upstream seam: a worker whose folder is gone at launch is heard exiting', async (t) => {
+test('a worker whose folder is gone at launch is heard exiting', async (t) => {
   const fx = await engineFixture();
   t.after(() => fx.close());
   const heard: WorkerObservation[] = [];

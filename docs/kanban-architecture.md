@@ -12,13 +12,15 @@ document disagree, fix one of them in the same change.
 ## 1. Ground rules
 
 - Upstream: `AgentSystemLabs/agent-office` at `665aeec571bc03f76cbd16de8d628dd169a48874`
-  (downloaded as a tarball, not a git clone). See [fork.md](fork.md) for the seams and the sync policy.
-- Fork code lives only in:
+  (downloaded as a tarball, not a git clone). See [fork.md](fork.md) for the origin and the sync policy.
+- The kanban is part of the project. Its own code lives in:
   - `src/shared/kanban/` — types, WS protocol, move rules, prompt defaults (browser + server).
   - `src/server/kanban/` — database, settings, projects, engine, issues, refs, skills, HTTP/WS glue.
   - `src/client/kanban/` + `src/client/kanban.html` — the kanban page.
   - `bin/office-tasks.js`, `scripts/migrate-ai-kanban/`, `skills/`, `tests/kanban-*.test.ts`, `docs/kanban*.md`.
-- Upstream files get only small, listed seams (see fork.md). Never reformat or reorder upstream code.
+  General code (the shoulder camera, the GitHub repo picker, PR file lists and so on) lives where it
+  belongs, outside these folders, and any file may be changed where that is the clean solution.
+  The registries and the size guard ([Code layout](code-layout.md)) apply to the kanban like to the rest.
 - Style: upstream's — TypeScript strict, ES modules with `.js` import suffixes, `node:test` tests,
   comments explain *why*, no new UI framework (client uses `h()` / `openModal` from `ui/dom.ts`).
 - Server code never trusts the browser: validate every WS message field (types, lengths, enums).
@@ -497,3 +499,16 @@ the floors are open and keeps the result as `ctx.kanban`; `kanbanHandlers` (WS, 
 contract) typed into its session, or resumed with it when it's asleep. Only a shell worker answers `'fallback'`
 (`PR_FALLBACK`), and only then does upstream's own `openPr` (a draft PR without an agent) run. PR states of the
 tasks' linked PRs follow the floor's PR board (`floorPulled` → integrations/pulls `syncPrStates`): their states, and PRs from an active task's branch that no task has yet (and that aren't a fork's) get linked to it.
+
+## Next merges
+
+Follow-ups not done in #327:
+
+1. The board into the same app shell as the 3D office and lite (`kanban.html`, `kanban/main.ts`, `officecss.ts`).
+2. The `KanbanWorkers` base class of `WorkerManager` becomes composition.
+3. The two Changes windows become one.
+4. The three `git()` helpers, and the two PR-tracking paths (kanban `pr_links`/`pulls` vs GitHub/MergeWatch), become one.
+5. The `kanban/registry.ts` and `coupling.ts` indirection layers go.
+6. Storage: the task↔worker link lives both in `kanban.sqlite` (`tasks.worker_id` …) and in each project's
+   `.agent-office/workers.json` (`WorkerInfo.kanban`), reconciled in `orchestrator.reconcile()`. One owner of the
+   link, or the workers in the same SQLite.
