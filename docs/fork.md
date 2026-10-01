@@ -266,7 +266,8 @@ including `ws/`, `http/`, `workers.ts` (`KanbanWorkers`, which `WorkerManager` e
    - New `gh.*` messages or `/api/gh/*` routes upstream adds that act on one PR or issue: give them the
      same `repo` → `githubFor()` handling, or they act on the floor's own repository.
    - `pullsView` / `issuesView` in `ws/handlers/github.ts` still return `floor.pullsState()` /
-     `floor.issuesState()`, and the floor's `gh.pulls` callback still sends `pullsState()`.
+     `floor.issuesState()`, and the floor's `gh.pulls` callback still sends `pullsState()`
+     (`tests/kanban-welcome-views.test.ts` checks the welcome through the real office).
    - `dispatch()` in `ws/dispatch.ts` still hands a type the map lacks to `kanbanUnknown`, so a `kanban.*`
      type this office doesn't know gets the kanban's error reply instead of going nowhere.
    - `kill()` in `workers/manager.ts` still calls `departing()` first, before the worker is deleted and
