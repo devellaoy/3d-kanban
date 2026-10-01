@@ -4,7 +4,7 @@ import net from 'node:net';
 import os from 'node:os';
 import path from 'node:path';
 import { createInterface } from 'node:readline/promises';
-import { isatty } from 'node:tty'; // 3d-kanban: check fds without opening piped stdin on Windows.
+import { isatty } from 'node:tty'; // 3d-kanban
 import { normalizeRepo, sameRepo } from '../shared/floors.js';
 import type { RepoChoice } from '../shared/protocol.js';
 import { Building, tildify } from './building.js';
@@ -45,7 +45,7 @@ Options:
 
 /** Someone's at a terminal to answer questions. */
 export function interactive(): boolean {
-  // Opening process.stdin can block under tsx watch + concurrently on Windows.
+  // 3d-kanban: isatty() checks the fds without opening process.stdin, which can block under tsx watch + concurrently on Windows.
   return isatty(0) && isatty(1) && !process.env.CI;
 }
 
