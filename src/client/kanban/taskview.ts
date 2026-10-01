@@ -493,9 +493,6 @@ class View implements TaskView {
         add(`🔀 ${task.prs.length ? 'Push & update PRs' : 'Create PRs'}`, '.primary', (b) => void this.req({ t: 'kanban.task.pr', id, mode: 'create' }, b, 'An agent is on the pull requests'), 'The agent pushes and opens (or updates) a pull request in every repository with commits');
       }
     }
-    if ((task.status === 'waiting' || task.status === 'review') && !running && task.sessionId) {
-      add('🗜️ Compact', '', (b) => void this.req({ t: 'kanban.task.compact', id }, b, 'Compacting'), 'The agent compacts its session, to make room for more work');
-    }
     if (hasWorker && !running) {
       add('🏠 Release worktree', '', (b) => confirmBox('Release worktree', `Send the workers of #${id} home? The worktree stays, and the next comment or action hires a worker again.`, 'Release worktree', () => void this.req({ t: 'kanban.task.release', id }, b, 'Released'), false), 'Sends the task’s workers home, keeping the worktree for later');
     }

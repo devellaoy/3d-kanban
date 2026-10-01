@@ -355,7 +355,6 @@ export function createCorePlugin(ctx: KanbanContext, subs: KanbanSubscriptions):
     }),
     'kanban.plan.requestChanges': viaEngine<'kanban.plan.requestChanges'>((m, who) => ctx.engine.requestPlanChanges(m.id, who, m.text, m.attachmentIds)),
     'kanban.task.pr': viaEngine<'kanban.task.pr'>((m, who) => ctx.engine.pr(m.id, who, m.mode)),
-    'kanban.task.compact': viaEngine<'kanban.task.compact'>((m, who) => ctx.engine.compact(m.id, who)),
     'kanban.task.release': viaEngine<'kanban.task.release'>((m, who) => ctx.engine.release(m.id, who)),
 
     'kanban.settings.get': (c, m) => c.send({ t: 'kanban.settings', ...(m.rid ? { rid: m.rid } : {}), settings: ctx.settings.get(), secrets: ctx.secrets.status() }),

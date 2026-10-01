@@ -171,7 +171,6 @@ export type KanbanClientMsg =
   | Req<{ t: 'kanban.plan.requestChanges'; id: number; text: string; attachmentIds?: string[] }>
   /** Have the agent open (create) or fix the task's pull requests. */
   | Req<{ t: 'kanban.task.pr'; id: number; mode: 'create' | 'fix' }>
-  | Req<{ t: 'kanban.task.compact'; id: number }>
   /** Send the task's workers home, keeping the worktree for later. */
   | Req<{ t: 'kanban.task.release'; id: number }>
   | Req<{ t: 'kanban.task.delete'; id: number }>
@@ -507,7 +506,6 @@ export const KANBAN_CLIENT_TYPE_LIST: Readonly<Record<KanbanClientType, true>> =
   'kanban.plan.approve': true,
   'kanban.plan.requestChanges': true,
   'kanban.task.pr': true,
-  'kanban.task.compact': true,
   'kanban.task.release': true,
   'kanban.task.delete': true,
   'kanban.comment.add': true,
@@ -602,7 +600,6 @@ function parse(raw: unknown): KanbanClientMsg {
     case 'kanban.task.stop':
     case 'kanban.task.retry':
     case 'kanban.task.review':
-    case 'kanban.task.compact':
     case 'kanban.task.release':
     case 'kanban.task.delete':
       return m({ t: t as 'kanban.task.start', id: id(r.id) });

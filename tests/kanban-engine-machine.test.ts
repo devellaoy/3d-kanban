@@ -273,7 +273,7 @@ test('a turn ending after the task was moved by hand leaves its column alone', (
   }
 });
 
-test('manual review, pull requests and compact from the review column', () => {
+test('manual review and pull requests from the review column', () => {
   const inReview: MachineState = { ...TODO, status: 'review', phase: 'review', reviewRound: 1 };
   // One manual round: changes requested → a fix → back to Review, no re-review.
   const manual = drive([{ type: 'review' }, { type: 'reviewed', approved: false }, { type: 'fixed', changes: true }], {}, {}, inReview);
@@ -290,14 +290,6 @@ test('manual review, pull requests and compact from the review column', () => {
   assert.equal(runOf(drive([{ type: 'pr', mode: 'fix' }], {}, {}, { ...inReview, status: 'done' }).last.effects)?.prompt, 'pr.fix');
   assert.ok('error' in next({ ...inReview, runState: 'running' }, { type: 'pr', mode: 'create' }, TASK, CFG));
   assert.ok('error' in next(TODO, { type: 'pr', mode: 'create' }, TASK, CFG));
-
-  const compact = drive([{ type: 'compact' }], {}, {}, inReview);
-  assert.equal(compact.state.status, 'review', 'compacting keeps the column');
-  assert.equal(compact.state.phase, 'compact');
-  const compacted = drive([{ type: 'compacted' }], {}, {}, compact.state);
-  assert.equal(compacted.state.status, 'review');
-  assert.equal(compacted.state.runState, 'idle');
-  assert.ok('error' in next(TODO, { type: 'compact' }, TASK, CFG));
 });
 
 test('a comment typed while a review runs is worked on once the review cycle is over, then reviewed again', () => {
@@ -324,24 +316,6 @@ test('a comment typed while a review runs is worked on once the review cycle is 
   // Changes requested with a comment pending: the fix goes first, and the comment at the fix's end (as before).
   const fix = drive([{ type: 'reviewed', round: 1, approved: false, pending: true }], {}, {}, reviewing.state);
   assert.equal(runOf(fix.last.effects)?.phase, 'fix');
-});
-
-test('compacting a waiting task keeps why it waits, so Continue and Retry still work', () => {
-  for (const [reason, event] of [
-    ['plan_questions', { type: 'continue', answer: 'Only the API' }],
-    ['plan_approval', { type: 'approvePlan' }],
-    ['failed', { type: 'retry', last: { phase: 'implement', role: 'implementer' } }],
-    ['stopped', { type: 'continue', last: { phase: 'fix', round: 1, role: 'implementer' } }],
-  ] as const) {
-    const waiting: MachineState = { ...TODO, status: 'waiting', phase: reason.startsWith('plan') ? 'plan' : 'implement', waitingReason: reason, waitingText: `Why: ${reason}` };
-    const compacted = drive([{ type: 'compact' }, { type: 'compacted' }], {}, {}, waiting);
-    assert.equal(compacted.state.status, 'waiting', reason);
-    assert.equal(compacted.state.runState, 'idle', reason);
-    assert.equal(compacted.state.waitingReason, reason);
-    assert.equal(compacted.state.waitingText, `Why: ${reason}`);
-    const on = drive([event as MachineEvent], {}, {}, compacted.state);
-    assert.ok(runOf(on.last.effects), `${reason}: ${event.type} carries on after the compact`);
-  }
 });
 
 test('a pull-request review: its own run, then the review column; comments meanwhile are worked on after', () => {

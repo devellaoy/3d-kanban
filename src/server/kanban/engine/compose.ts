@@ -204,7 +204,6 @@ export class Composer {
     if (phase === 'review') return 'review';
     if (phase === 'pr' || phase === 'pr-fix') return 'pr';
     if (phase === 'pr-review') return 'prReview';
-    if (phase === 'compact') return undefined;
     return task.type === 'investigate' ? 'investigateSafety' : 'implementSafety';
   }
 
@@ -253,8 +252,6 @@ export class Composer {
         const prs = task.prs.filter((pr) => pr.state === 'OPEN' || pr.state === 'DRAFT').map((pr) => `- ${pr.repo ?? pr.repoId}: ${pr.url}`);
         return seal(this.text('kanban.pr.fix', p, { taskId: task.id, prs: prs.join('\n'), repos: v.repos, language: v.language }));
       }
-      case 'compact':
-        return this.text('kanban.compact', p);
       case 'pr.review':
         return seal(this.text('kanban.pr.review', p, { prs: x.prs ?? '', project: def.name, task: x.prTask ?? '', repos: x.prRepos ?? v.repos, language: v.language }));
     }

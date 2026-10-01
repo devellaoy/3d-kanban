@@ -27,7 +27,6 @@ export function createEngine(ctx: KanbanContext, options: EngineOptions = {}): K
     approvePlan: (id, who) => o.approvePlan(id, who),
     requestPlanChanges: (id, who, text, attachmentIds) => o.requestPlanChanges(id, who, text, attachmentIds),
     pr: (id, who, mode) => o.pr(id, who, mode),
-    compact: (id, who) => o.compact(id, who),
     release: (id, who) => o.release(id, who),
     releaseIdle: (id, who) => o.releaseIdle(id, who),
     commented: (id, commentId, who) => o.commented(id, commentId, who),

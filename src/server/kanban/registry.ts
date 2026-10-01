@@ -51,7 +51,6 @@ export interface KanbanEngineApi {
   approvePlan(taskId: number, who: KanbanCaller): Promise<string | void>;
   requestPlanChanges(taskId: number, who: KanbanCaller, text: string, attachmentIds?: string[]): Promise<string | void>;
   pr(taskId: number, who: KanbanCaller, mode: 'create' | 'fix'): Promise<string | void>;
-  compact(taskId: number, who: KanbanCaller): Promise<string | void>;
   release(taskId: number, who: KanbanCaller): Promise<string | void>;
   /**
    * The task went to done or archived: its workers that are at rest go home, worktree kept (reason

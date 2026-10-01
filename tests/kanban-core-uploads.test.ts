@@ -16,7 +16,7 @@ type Ctx = { after(fn: () => void): void };
 
 const idleEngine = (): KanbanEngine => {
   const no = async () => undefined;
-  return { start: no, stop: no, continue: no, retry: no, review: no, approvePlan: no, requestPlanChanges: no, pr: no, compact: no, release: no, prForWorker: no, commented: async () => {}, begin() {}, dispose() {} };
+  return { start: no, stop: no, continue: no, retry: no, review: no, approvePlan: no, requestPlanChanges: no, pr: no, release: no, prForWorker: no, commented: async () => {}, begin() {}, dispose() {} };
 };
 
 async function office(t: Ctx) {

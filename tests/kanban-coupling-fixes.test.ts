@@ -99,16 +99,17 @@ function limitOf(get: () => EngineFixture | undefined) {
   return { state, capacity };
 }
 
-/** A released task in Review with a compact queued behind a full office; `sh` is the shell filling it. */
-async function queuedCompact(fx: EngineFixture, state: { limit: number }) {
+/** A released task in Review with a review queued behind a full office; `sh` is the shell filling it. */
+async function queuedReview(fx: EngineFixture, state: { limit: number }) {
   const r = await releasedInReview(fx);
   await sleep(300);
   const sh = fx.workers.spawn(DESKS[3].id, 'test', undefined, false, 'shell') as { id: string };
   state.limit = 1;
-  assert.equal(await fx.engine.compact(r.id, ADA), undefined);
+  // Queued as the engine does for a review (it would move the card to In progress, so set here: the task keeps its column).
+  fx.repo.updateTask(r.id, { runState: 'queued', queuedRun: { phase: 'review', role: 'reviewer', prompt: 'review' } });
   const q = fx.task(r.id);
   assert.equal(q.runState, 'queued');
-  assert.ok(q.queuedRun, 'the compact waits in the queue');
+  assert.ok(q.queuedRun, 'the review waits in the queue');
   return { q, sh };
 }
 
@@ -124,13 +125,13 @@ const coreOf = (fx: EngineFixture) => {
 {
   // The only way out of the process a queued task has on the board (it's running for the others).
   const to = 'done' as const;
-  test('a queued compact on a Review task, moved to done, leaves the queue and is never hired', async (t) => {
+  test('a queued review on a Review task, moved to done, leaves the queue and is never hired', async (t) => {
     let fx: EngineFixture | undefined;
     const { state, capacity } = limitOf(() => fx);
     fx = await engineFixture({ capacity });
     t.after(() => fx!.close());
     fx.setRules([IMPLEMENT]);
-    const { q, sh } = await queuedCompact(fx, state);
+    const { q, sh } = await queuedReview(fx, state);
     assert.equal(checkMove({ status: q.status, runState: q.runState, hasWorker: false }, to).ok, true);
     await coreOf(fx).send({ t: 'kanban.task.move', rid: 'm1', id: q.id, to });
     const moved = fx.task(q.id);
@@ -151,7 +152,7 @@ test('the drain looks at the task’s column again: a queued run of a task that 
   fx = await engineFixture({ capacity });
   t.after(() => fx!.close());
   fx.setRules([IMPLEMENT]);
-  const { q, sh } = await queuedCompact(fx, state);
+  const { q, sh } = await queuedReview(fx, state);
   // Behind the move's back (another path to done): still queued in the database.
   fx.repo.updateTask(q.id, { status: 'done', doneAt: Date.now() });
   state.limit = Infinity;
@@ -168,7 +169,7 @@ test('the auto-archive takes a queued run out of the queue too', async (t) => {
   const fx = await engineFixture();
   t.after(() => fx.close());
   const task = fx.newTask({ usePlan: false, useReview: false });
-  fx.repo.updateTask(task.id, { status: 'done', doneAt: 1, runState: 'queued', queuedRun: { phase: 'compact', role: 'implementer', prompt: 'compact' } });
+  fx.repo.updateTask(task.id, { status: 'done', doneAt: 1, runState: 'queued', queuedRun: { phase: 'review', role: 'reviewer', prompt: 'review' } });
   const ctx = { ...fx.ctx, taskChanged: () => {}, card: (id: number) => fx.repo.card(id) } as KanbanContext;
   assert.deepEqual(archiveOldTasks(ctx), [task.id]);
   const x = fx.task(task.id);

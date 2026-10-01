@@ -102,8 +102,7 @@ task is made and started at once, at that desk or, from the queue, at the next f
    so a review round never needs a free desk. Only when the task has no desk yet (its implementer never
    sat down) does the reviewer take the next free seat.
 4. **Review column**: read the result. **🔍 Run a review round** runs one more round by hand (it ends
-   in Review). **🔀 Create PRs** / **🛠️ Fix PRs** start the PR phase (see below). **🗜️ Compact**
-   compacts the agent's session. **🏠 Release worktree** sends the task's workers home and keeps the
+   in Review). **🔀 Create PRs** / **🛠️ Fix PRs** start the PR phase (see below). **🏠 Release worktree** sends the task's workers home and keeps the
    worktree for later. Move it to **Done** when you accept it.
 
 When the agent asks something in its terminal (Waiting, *the agent is asking*), answer it there, or,
@@ -401,7 +400,7 @@ reads its own. A kanban task made from a card keeps the description as its own, 
 
 Every prompt the kanban sends is editable: plan, replan, branch naming, checkout, implement,
 implement (folder project), investigate, review, next review round, fix, comment, acceptance
-criteria, open PRs, fix PRs, review PRs together, the review panel of several PRs, carry on, compact, language, reading other tasks
+criteria, open PRs, fix PRs, review PRs together, the review panel of several PRs, carry on, language, reading other tasks
 and handoff, and the smaller texts they're built from (Continue without answers, what the user said
 since, the ticket line, attached files, the project's instructions and their parts, the referenced
 tasks file, the accepted plan, what the task did, and the handoff's summary and comments). Each lists
@@ -514,7 +513,7 @@ task's workspace folder there holds a worktree of each of its repositories).
 
 - The kanban process drives **Claude Code and Codex** only; other providers stay ordinary office
   workers (though **O** works for any agent worker).
-- Every phase runs in an interactive worker. Claude's implement, fix, resume, PR and compact phases,
+- Every phase runs in an interactive worker. Claude's implement, fix, resume and PR phases,
   and investigations, run with `--permission-mode bypassPermissions`; an investigation needs it to
   write its report files, and only its contract keeps it off the repositories. Codex runs these
   phases with `--dangerously-bypass-approvals-and-sandbox` unless the project picks its workspace

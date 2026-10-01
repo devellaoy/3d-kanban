@@ -40,8 +40,6 @@ export interface EngineOptions {
   /** Reading a turn's result again while the log is still being written: tries, and the pause between. */
   readTries?: number;
   readPauseMs?: number;
-  /** A compact that never says it's done is taken as done after this long (3 min). */
-  compactTimeoutMs?: number;
   /** A run held for its background agents goes on with what its log says after this long without a Stop (3 h). */
   backgroundWaitMs?: number;
   /** A phase that finds its own worker still busy (its teammates keep it working) waits this long for it to rest before it fails (10 min). */
@@ -78,7 +76,6 @@ interface Live {
   held?: boolean;
   holdTimer?: NodeJS.Timeout;
   stopping?: { by?: string; timer?: NodeJS.Timeout };
-  compactTimer?: NodeJS.Timeout;
 }
 
 /** What an operation carries into the effects it causes. */
@@ -194,7 +191,6 @@ export class Orchestrator {
       stopGraceMs: options.stopGraceMs ?? 4000,
       readTries: options.readTries ?? 12,
       readPauseMs: options.readPauseMs ?? 250,
-      compactTimeoutMs: options.compactTimeoutMs ?? 180_000,
       backgroundWaitMs: options.backgroundWaitMs ?? 3 * 3_600_000,
       busyWaitMs: options.busyWaitMs ?? 600_000,
       now: options.now ?? Date.now,
@@ -215,10 +211,7 @@ export class Orchestrator {
     clearInterval(this.sweepTimer);
     for (const f of this.floors.values()) f.off();
     this.floors.clear();
-    for (const l of this.live.values()) {
-      clearTimeout(l.stopping?.timer);
-      clearTimeout(l.compactTimer);
-    }
+    for (const l of this.live.values()) clearTimeout(l.stopping?.timer);
     this.live.clear();
   }
 
@@ -261,9 +254,19 @@ export class Orchestrator {
 
   /** Every run left `running` by the last office: re-attached to its worker, or interrupted when that's gone. */
   private reconcile() {
+    // A compact from an older office (the feature is gone): its run is over and its task never moved for it, so it just rests.
+    for (const t of this.ctx.repo.tasksWhere({ runState: ['queued', 'starting', 'running', 'stopping'] })) {
+      if (t.queuedRun?.prompt !== 'compact' && t.phase !== 'compact') continue;
+      this.update(t.id, { runState: 'idle', queuedRun: null });
+      this.note(t, 'Compacting is no longer a feature of the office: the compact from before the restart was dropped.');
+    }
     const runs = this.ctx.repo.runningRuns();
     const attached = new Set<number>();
     for (const run of runs) {
+      if (run.phase === 'compact') {
+        this.finishRun(run.id, this.ctx.repo.getTask(run.taskId)?.project ?? '', { status: 'interrupted', error: 'Compacting is gone: the run was dropped when the office restarted' });
+        continue;
+      }
       const task = this.ctx.repo.getTask(run.taskId);
       if (!task) {
         this.ctx.repo.finishRun(run.id, { status: 'interrupted', error: 'Its task is gone' });
@@ -410,7 +413,7 @@ export class Orchestrator {
   }
 
   /**
-   * The run Retry and Continue carry on: the latest, not counting compacts (they only tidy the session).
+   * The run Retry and Continue carry on: the latest, not counting the compacts older offices ran (they only tidied the session).
    * One stopped with no worker never started (see queuedStopped): it goes again as it would have.
    */
   private lastRun(taskId: number): LastRun | undefined {
@@ -717,8 +720,6 @@ export class Orchestrator {
         return 'pr.create';
       case 'pr-fix':
         return 'pr.fix';
-      case 'compact':
-        return 'compact';
       default:
         return 'continue';
     }
@@ -831,10 +832,6 @@ export class Orchestrator {
     const follow = (workerId: string): Live => {
       const live: Live = { taskId: task.id, runId: run.id, phase: eff.phase, ...(eff.round !== undefined ? { round: eff.round } : {}), role, tool, workerId, floorId: task.project, exitPlan: false, ended: false };
       this.live.set(workerId, live);
-      if (eff.phase === 'compact') {
-        live.compactTimer = setTimeout(() => void this.serial(task.id, () => this.turnEnded(live)), this.opts.compactTimeoutMs);
-        live.compactTimer.unref?.();
-      }
       return live;
     };
     const fail = (err: string) => {
@@ -876,7 +873,6 @@ export class Orchestrator {
         return undefined;
       }
       this.live.delete(info.id);
-      clearTimeout(live.compactTimer);
       // It can't carry on in place (no session yet, say): a new hire in the same worktree takes over.
       await floor.sendHome(info.id, 'keep', ENGINE);
       this.update(task.id, role === 'implementer' ? { workerId: null } : { reviewerWorkerId: null });
@@ -902,8 +898,8 @@ export class Orchestrator {
     x.checkout = await this.checkoutFor(now, def, floor.dir, role, eff.phase, !folder && !now.workspace);
     let prompt = build(kind);
     // A fresh session taking over work already under way is told where things stand first.
-    if (!session && role === 'implementer' && (kind === 'fix' || kind === 'resume' || kind === 'continue' || kind === 'pr.create' || kind === 'pr.fix' || kind === 'compact') && (now.workspace || x.checkout)) {
-      prompt = this.compose.handoff(def, now, floor.dir, kind === 'compact' ? '' : withCheckout(prompt));
+    if (!session && role === 'implementer' && (kind === 'fix' || kind === 'resume' || kind === 'continue' || kind === 'pr.create' || kind === 'pr.fix') && (now.workspace || x.checkout)) {
+      prompt = this.compose.handoff(def, now, floor.dir, withCheckout(prompt));
     } else prompt = withCheckout(prompt);
     if (eff.prompt === 'replan' && !session && text) prompt = `${prompt}\n\n${this.compose.text('kanban.sinceSaid', task.project, { text })}`.trim();
     prompt = typeable(prompt);
@@ -947,11 +943,11 @@ export class Orchestrator {
   /**
    * The task's branch in each repository, one line each, when the worktree the run goes into isn't on
    * it: a fresh one (`freshTree`) for a task that already has a branch, or one still on the branch
-   * the office cut for it. Undefined when there's nothing to check out (a plan or compact, an
+   * the office cut for it. Undefined when there's nothing to check out (a plan, an
    * investigation, a folder project, no branch yet, or already on it).
    */
   private async checkoutFor(task: KanbanTask, def: FloorDef, floorDir: string, role: KanbanRole, phase: RunPhase, freshTree: boolean): Promise<string | undefined> {
-    if (role !== 'implementer' || phase === 'plan' || phase === 'compact' || task.type === 'investigate' || !task.branch || isFolderProject(def)) return undefined;
+    if (role !== 'implementer' || phase === 'plan' || task.type === 'investigate' || !task.branch || isFolderProject(def)) return undefined;
     if (!freshTree) {
       if (!task.workspace) return undefined;
       const on = await currentBranch(path.join(floorDir, task.workspace.worktree.path));
@@ -1108,8 +1104,6 @@ export class Orchestrator {
       // The worker stays `done` across the resumed turn (upstream drops an unchanged status), so its Stop is heard here.
       if (o.hookEvent === 'Stop' && live.background) void this.serial(live.taskId, () => this.turnEnded(live));
       this.heardAsk(live, o);
-      const source = (o.payload as { source?: unknown } | undefined)?.source;
-      if (live.phase === 'compact' && o.hookEvent === 'SessionStart' && source === 'compact') void this.serial(live.taskId, () => this.turnEnded(live));
       return;
     }
     const status = o.status;
@@ -1360,7 +1354,6 @@ export class Orchestrator {
   private forget(live: Live) {
     if (this.live.get(live.workerId) === live) this.live.delete(live.workerId);
     if (live.asks) this.ctx.repo.setAskingKind(live.taskId, undefined);
-    clearTimeout(live.compactTimer);
     clearTimeout(live.holdTimer);
     clearTimeout(live.stopping?.timer);
   }
@@ -1479,10 +1472,10 @@ export class Orchestrator {
   /** A run's turn is over: read what it said, keep it, and move the task on. `planExit`: ExitPlanMode; `force`: the hold's timeout. */
   private async turnEnded(live: Live, planExit = false, force = false) {
     if (live.ended || this.live.get(live.workerId) !== live) return;
-    const watch = !planExit && !force && live.tool === 'claude' && live.phase !== 'compact';
+    const watch = !planExit && !force && live.tool === 'claude';
     // Read before ending: a log that lags (the launch's result not in it yet) shows the background agents only by now.
     // Nothing else ends the run meanwhile: they all go through `serial`, and this re-checks after the wait.
-    const result: TurnResult | undefined = live.phase === 'compact' ? { text: '', complete: true } : await this.readResult(live);
+    const result: TurnResult | undefined = await this.readResult(live);
     if (live.ended || this.live.get(live.workerId) !== live) return;
     // Agents at work, or Stop #1 raced their notification (Claude answers it and stops again); once held, a Stop on an unanswered one is that turn's own.
     if (watch && (result?.background || (result?.resuming && !live.held))) return this.holdForBackground(live);
@@ -1505,7 +1498,7 @@ export class Orchestrator {
       void this.drain(task.project);
       return;
     }
-    if (live.phase !== 'compact' && looksInterrupted(result.text, result.apiError)) {
+    if (looksInterrupted(result.text, result.apiError)) {
       await this.limited(task, live, result, sessionId);
       return;
     }
@@ -1565,14 +1558,14 @@ export class Orchestrator {
         event = { type: 'prDone', pending };
         break;
       }
-      case 'compact':
-        event = { type: 'compacted', pending };
-        break;
       case 'pr-review':
         verdict = reviewVerdict(text);
         say('review', text);
         event = { type: 'prReviewed', pending };
         break;
+      default:
+        // 'compact' only lives in old runs (reconcile drops them): nothing follows one here.
+        return;
     }
     this.finishRun(live.runId, task.project, { status: 'succeeded', summary: clip(text, SUMMARY_MAX), ...(verdict ? { verdict } : {}), ...(sessionId ? { sessionId } : {}) });
     await this.apply(task.id, event, { who: OFFICE });
@@ -1825,14 +1818,6 @@ export class Orchestrator {
       if (!task.workspace && !task.branch) return Promise.resolve('It has no work to open pull requests for yet');
       if (mode === 'fix' && !task.prs.some((p) => p.state === 'OPEN' || p.state === 'DRAFT')) return Promise.resolve('The task has no open pull requests to fix');
       return this.apply(taskId, { type: 'pr', mode }, { who });
-    });
-  }
-
-  compact(taskId: number, who: KanbanCaller): Promise<string | void> {
-    return this.op(taskId, (task) => {
-      if (this.liveOf(task.id)) return Promise.resolve('Stop it first: it is running');
-      if (!task.sessionId && !task.workerId) return Promise.resolve('It has no agent session to compact');
-      return this.apply(taskId, { type: 'compact' }, { who });
     });
   }
 

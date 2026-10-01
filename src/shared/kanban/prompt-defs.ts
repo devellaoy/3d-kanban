@@ -380,13 +380,6 @@ The pull request named below (#{{posted}} of {{postedRepo}}) is only where the c
 
 {{language}}`,
   },
-  'kanban.compact': {
-    group: 'kanban',
-    label: 'Compact the session',
-    used: "Typed into the task's agent session to compact its context (both Claude and Codex take /compact).",
-    vars: {},
-    text: '/compact Keep the task, the accepted plan, the decisions made so far, what is done and what is still left.',
-  },
   'kanban.language': {
     group: 'kanban',
     label: 'Language',

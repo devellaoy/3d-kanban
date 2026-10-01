@@ -40,8 +40,9 @@ document disagree, fix one of them in the same change.
 - **Task** (`KanbanTask`): a unit of work on one project, touching the project's repositories
   (all of them by default, or a chosen subset `repoIds`). Ids are integers (`#123`), global across projects.
 - **Run**: one phase execution of a task (`plan`, `implement`, `review`, `fix`, `resume`, `pr`, `pr-fix`,
-  `compact`, `pr-review`) with its tool, model, session, worker, outcome and verdict. `pr-review` is a
-  review of one or more pull requests together by a reviewer in a worktree of its own (see §4).
+  `pr-review`) with its tool, model, session, worker, outcome and verdict. `pr-review` is a
+  review of one or more pull requests together by a reviewer in a worktree of its own (see §4). Old runs
+  may also say `compact`: the office used to compact a session on request, nothing starts one any more.
 - **Task worker**: an ordinary upstream worker (PTY, live terminal at a desk on the project's floor)
   hired by the engine for a task. `WorkerInfo.kanban = { taskId, role: 'implementer' | 'reviewer', … }`, with the
   task's card as it is now (see §4, *Worker summary*).
@@ -151,7 +152,7 @@ allowed: `todo → in_progress` (= start), `waiting|review → done`, `done → 
   (`resuming`), so the background agents launched before it still count.
 - A hook whose payload has an `agent_id` comes from a subagent or teammate, which run in the lead's process
   and so reach its worker (upstream may set the worker `working` for them). The engine ignores those for
-  its bookkeeping: the plan exit, the Stop text, the end of a hold and a compact's `SessionStart` are the
+  its bookkeeping: the plan exit, the Stop text, the end of a hold are the
   lead's alone. Only their ask hooks (`PermissionRequest`, a `permission_prompt` notification, a question
   tool's `PreToolUse`, a `PostToolUse(Failure)`) reach `heardAsk`: a teammate's own question or permission
   prompt is what the worker's `needs_input` waits on, but its `Stop`, prompt, `SessionStart` and other
@@ -282,8 +283,8 @@ allowed: `todo → in_progress` (= start), `waiting|review → done`, `done → 
 - **A desk**: `engine.start(id, who, {deskId})` (from `kanban.task.start` / `kanban.task.create` `deskId`) hires the
   first worker at that desk; a desk that's taken, not built (`deskBuilt`), a kiosk or a meeting chair is refused
   and the task stays in `todo`. A queued start takes any free desk when its slot comes.
-- Compacting keeps the task's column and, in `waiting`, its `waitingReason`; Retry and Continue go on with the
-  last run before the compact.
+- A compact (queued or running) left by an older office is dropped at start-up: the task goes `idle` in the
+  column it was in, and the run is closed `interrupted`. Retry and Continue skip such runs.
 - Usage limit / network interruption in the final text → `retryAt` + `retryAttempts`, swept every 60 s.
 - On start-up, runs left `running` whose worker is gone become `interrupted` (task `waiting`, retry offered);
   a run whose worker is still at its desk is followed again.
@@ -377,7 +378,7 @@ answers `kanban.ok {rid, ...}` or `kanban.error {rid, message}`. Deltas are push
   - `comment.add`: stored, attachments linked, `kanban.comment` pushed and `kanban.ok {commentId}` sent;
     then `engine.commented`.
   - `plan.approve {planId}`: only the latest plan version can be approved.
-  - Start, stop, continue, retry, review, plan approve and request-changes, pr, compact and release go to
+  - Start, stop, continue, retry, review, plan approve and request-changes, pr and release go to
     `ctx.engine`. A returned string becomes `kanban.error`. `task.continue` and `plan.requestChanges` take
     `attachmentIds?` like `comment.add`. The files are resolved first without linking; the message
     (its text plus the files' grant paths, as one `answer` / `text`, so a replan sees which files are new)

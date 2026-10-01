@@ -289,6 +289,30 @@ test('start-up: a run whose worker is gone is interrupted, and Retry carries the
   assert.ok(fx.invocations().some((i) => !i.prompt && /^Implement kanban task/.test(i.args[i.args.length - 1] ?? '')));
 });
 
+test('start-up: a compact left by an older office is dropped, the task rests where it was and no compact prompt is ever composed', async (t) => {
+  const fx = await engineFixture();
+  t.after(() => fx.close());
+  const queued = fx.newTask({ usePlan: false, useReview: false });
+  fx.repo.updateTask(queued.id, { status: 'review', phase: 'compact', runState: 'queued', queuedRun: { phase: 'compact', role: 'implementer', prompt: 'compact' } });
+  const running = fx.newTask({ usePlan: false, useReview: false });
+  fx.repo.updateTask(running.id, { status: 'waiting', waitingReason: 'failed', waitingText: 'Boom', phase: 'compact', runState: 'running', workerId: 'gone-worker' });
+  const run = fx.repo.createRun({ taskId: running.id, phase: 'compact', tool: 'claude', workerId: 'gone-worker' });
+  fx.engine.dispose();
+  const { createEngine } = await import('../src/server/kanban/engine/index.js');
+  const engine = createEngine(fx.ctx, { readPauseMs: 50 });
+  t.after(() => engine.dispose());
+  engine.begin();
+  const q = await fx.waitTask(queued.id, (x) => x.runState === 'idle', 'the queued compact dropped');
+  assert.equal(q.status, 'review', 'its column is kept');
+  assert.equal(q.queuedRun, undefined);
+  const r = await fx.waitTask(running.id, (x) => x.runState === 'idle', 'the running compact dropped');
+  assert.equal(r.status, 'waiting');
+  assert.equal(r.waitingReason, 'failed', 'a compact never moved its task');
+  assert.equal(fx.repo.getRun(run.id)?.status, 'interrupted');
+  await new Promise((res) => setTimeout(res, 300));
+  assert.equal(fx.invocations().length, 0, 'nothing was hired or typed for either');
+});
+
 test('a usage limit waits with retryAt, and the sweep carries on by itself', async (t) => {
   let clock = Date.now();
   const fx = await engineFixture({ engine: { sweepMs: 150, now: () => clock } });

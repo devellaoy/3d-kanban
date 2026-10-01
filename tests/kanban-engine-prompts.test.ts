@@ -79,7 +79,6 @@ const KINDS: [PromptKind, RunPhase][] = [
   ['continue', 'implement'],
   ['pr.create', 'pr'],
   ['pr.fix', 'pr-fix'],
-  ['compact', 'compact'],
   ['pr.review', 'pr-review'],
 ];
 
@@ -94,9 +93,8 @@ test('every prompt the engine sends is filled in completely and ends with its ph
     const text = compose.build(kind, def, withPrs, 'claude', dir, { phase, round: 1, rounds: 2, text: 'An answer', author: 'Ada', findings: 'A finding', fixSummary: 'Fixed', refsFile: '/refs/task-1/referenced-tasks.md', prs: '- acme/api#12 https://github.com/acme/api/pull/12' });
     assert.doesNotMatch(text, /\{\{\s*\w+\s*\}\}/, `${kind} left a placeholder`);
     assert.ok(text.trim(), kind);
-    const contract = phase === 'plan' ? 'plan' : phase === 'review' ? 'review' : phase === 'pr-review' ? 'prReview' : phase === 'pr' || phase === 'pr-fix' ? 'pr' : phase === 'compact' ? undefined : 'implementSafety';
-    if (contract) assert.ok(text.endsWith(KANBAN_CONTRACTS[contract]), `${kind} ends with the ${contract} contract`);
-    else assert.equal(text, PROMPTS['kanban.compact'].text, 'compact is the slash command alone');
+    const contract = phase === 'plan' ? 'plan' : phase === 'review' ? 'review' : phase === 'pr-review' ? 'prReview' : phase === 'pr' || phase === 'pr-fix' ? 'pr' : 'implementSafety';
+    assert.ok(text.endsWith(KANBAN_CONTRACTS[contract]), `${kind} ends with the ${contract} contract`);
   }
   const impl = compose.build('implement', def, withPrs, 'claude', dir, { phase: 'implement' });
   assert.match(impl, /Ticket: UYT-12 \(https:\/\/jira\/UYT-12\)/);
