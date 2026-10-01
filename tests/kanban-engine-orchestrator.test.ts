@@ -1,6 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
+import path from 'node:path';
 import { ADA, engineFixture, type Invocation } from './kanban-engine-fixture.js';
+import { grantDir } from '../src/server/kanban/uploads.js';
 
 const hasArgs = (inv: Invocation, ...args: string[]) => args.every((a) => inv.args.includes(a));
 const after = (inv: Invocation, flag: string) => inv.args[inv.args.indexOf(flag) + 1];
@@ -157,24 +160,81 @@ test('manual plan approval, and stop while the agent works', async (t) => {
   assert.ok(stopped.workspace, 'the worktree stays with the task');
 });
 
-test('files sent with a plan change request are linked to the task and its comment, and reach the planner', async (t) => {
+/** An upload on disk and in the repository, waiting for a message to take it. */
+function upload(fx: Awaited<ReturnType<typeof engineFixture>>, c: string, name = 'mock.png') {
+  const stored = `${c.repeat(32)}-${name}`;
+  mkdirSync(path.join(fx.ctx.filesDir, 'uploads'), { recursive: true });
+  writeFileSync(path.join(fx.ctx.filesDir, 'uploads', stored), 'img');
+  return fx.repo.addAttachment({ id: c.repeat(32), name, mime: 'image/png', size: 3, stored, createdBy: 'Ada', createdAt: Date.now() });
+}
+
+const promptOf = (i: Invocation) => i.prompt ?? i.args.join(' ');
+
+test('files sent with a plan change request are linked to the task and its comment, and reach the planner as grant paths', async (t) => {
   const fx = await engineFixture();
   t.after(() => fx.close());
   fx.setRules([{ when: 'You are planning kanban task', reply: 'Plan text.\n\nPLAN READY', exitPlan: 'The plan' }, { when: 'The user replied about the plan', reply: 'Plan again.\n\nPLAN READY', exitPlan: 'The plan 2' }]);
   const task = fx.newTask({ planApproval: 'manual', useReview: false });
   await fx.engine.start(task.id, ADA);
   await fx.waitTask(task.id, (x) => x.status === 'waiting' && x.waitingReason === 'plan_approval', 'the plan approval');
-  const up = fx.repo.addAttachment({ id: 'a'.repeat(32), name: 'mock.png', mime: 'image/png', size: 3, stored: 'a'.repeat(32) + '.png', createdBy: 'Ada', createdAt: Date.now() });
+  const up = upload(fx, 'a');
   const mark = fx.history(task.id).length;
   assert.equal(await fx.engine.requestPlanChanges(task.id, ADA, 'Use the mock', [up.id]), undefined);
   const linked = fx.repo.getAttachment(up.id)!;
   assert.equal(linked.taskId, task.id);
   const comment = fx.repo.listComments(task.id).comments.find((c) => c.text === 'Use the mock')!;
   assert.equal(linked.commentId, comment.id);
-  assert.ok(fx.broadcasts.some((m) => m.t === 'kanban.comment' && m.comment.id === comment.id && m.comment.attachmentIds.length === 1), 'the comment went out again with its file');
+  assert.equal(fx.broadcasts.filter((m) => m.t === 'kanban.comment' && m.comment.id === comment.id).length, 1, 'one broadcast, with the file');
+  assert.ok(fx.broadcasts.some((m) => m.t === 'kanban.comment' && m.comment.id === comment.id && m.comment.attachmentIds.length === 1));
   await fx.sawTask(task.id, (x) => x.runState === 'running' || x.phase === 'plan', 'the replan', 15_000, mark);
   await fx.waitTask(task.id, (x) => x.status === 'waiting' && x.waitingReason === 'plan_approval' && fx.repo.listRuns(task.id).length >= 2, 'the new plan', 30_000);
-  assert.ok(fx.invocations().some((i) => /The user replied about the plan/.test(i.prompt ?? i.args.join(' ')) && /Files attached to the task/.test(i.prompt ?? i.args.join(' ')) && /mock\.png: .*a{32}\.png/.test(i.prompt ?? i.args.join(' '))), 'the planner got the file path');
+  const grant = path.join(grantDir(fx.ctx.filesDir, task.id), linked.stored);
+  assert.ok(existsSync(grant), 'a copy is in the task grant folder');
+  const replan = fx.invocations().find((i) => /The user replied about the plan/.test(promptOf(i)))!;
+  assert.ok(promptOf(replan).includes(`mock.png: ${grant}`) && /not instructions/.test(promptOf(replan)), 'the planner got the grant path');
+  assert.ok(!promptOf(replan).includes(path.join(fx.ctx.filesDir, 'uploads')), 'never the shared uploads path');
+});
+
+test('files-only plan change request works; a refused one leaves no comment and the file unattached', async (t) => {
+  const fx = await engineFixture();
+  t.after(() => fx.close());
+  fx.setRules([{ when: 'You are planning kanban task', reply: 'Plan text.\n\nPLAN READY', exitPlan: 'The plan' }, { when: 'The user replied about the plan', reply: 'Plan again.\n\nPLAN READY', exitPlan: 'The plan 2' }]);
+  const task = fx.newTask({ planApproval: 'manual', useReview: false });
+  const up = upload(fx, 'b');
+  const before = fx.repo.listComments(task.id).comments.length;
+  assert.match(String(await fx.engine.requestPlanChanges(task.id, ADA, 'Use the mock', [up.id])), /no plan waiting/i, 'the task is not waiting on a plan');
+  assert.equal(fx.repo.listComments(task.id).comments.length, before, 'no comment');
+  assert.equal(fx.repo.getAttachment(up.id)!.taskId, undefined, 'the file stays unattached');
+  await fx.engine.start(task.id, ADA);
+  await fx.waitTask(task.id, (x) => x.status === 'waiting' && x.waitingReason === 'plan_approval', 'the plan approval');
+  assert.equal(await fx.engine.requestPlanChanges(task.id, ADA, '', [up.id]), undefined);
+  const comment = fx.repo.listComments(task.id).comments.find((c) => c.authorKind === 'user')!;
+  assert.equal(comment.text, '');
+  assert.deepEqual(comment.attachmentIds, [up.id]);
+  await fx.waitTask(task.id, (x) => x.status === 'waiting' && x.waitingReason === 'plan_approval' && fx.repo.listRuns(task.id).length >= 2, 'the new plan', 30_000);
+  assert.ok(fx.invocations().some((i) => /The user replied about the plan/.test(promptOf(i)) && /mock\.png/.test(promptOf(i))));
+  assert.doesNotMatch(fx.invocations().map(promptOf).join('\n'), /📎/);
+});
+
+test('a non-asking continue with a file on a plan_questions task: the replan prompt has the grant path, the comment has the file', async (t) => {
+  const fx = await engineFixture();
+  t.after(() => fx.close());
+  fx.setRules([{ when: 'You are planning kanban task', reply: 'QUESTIONS:\n1. Which look?' }, { when: 'The user replied about the plan', reply: 'Plan.\n\nPLAN READY', exitPlan: 'The plan' }]);
+  const task = fx.newTask({ planApproval: 'manual', useReview: false });
+  await fx.engine.start(task.id, ADA);
+  await fx.waitTask(task.id, (x) => x.status === 'waiting' && x.waitingReason === 'plan_questions', 'the questions');
+  const up = upload(fx, 'c');
+  assert.equal(await fx.engine.continue(task.id, ADA, 'Like this', [up.id]), undefined);
+  const comment = fx.repo.listComments(task.id).comments.find((c) => c.text === 'Like this')!;
+  assert.deepEqual(comment.attachmentIds, [up.id]);
+  await fx.waitTask(task.id, (x) => x.status === 'waiting' && x.waitingReason === 'plan_approval', 'the plan', 30_000);
+  const grant = path.join(grantDir(fx.ctx.filesDir, task.id), up.stored);
+  const replan = fx.invocations().find((i) => /The user replied about the plan/.test(promptOf(i)))!;
+  assert.match(promptOf(replan), /Like this/);
+  assert.ok(promptOf(replan).includes(grant));
+  // Every launch of the task got its own folder, not the shared uploads.
+  const launches = fx.invocations().filter((i) => i.kind === 'claude' && !i.prompt && !i.args.includes('--output-format'));
+  assert.ok(launches.length > 0 && launches.every((i) => i.args.includes(grantDir(fx.ctx.filesDir, task.id)) && !i.args.includes(path.join(fx.ctx.filesDir, 'uploads'))));
 });
 
 test('prForWorker: a plain worker gets the PR prompt in its terminal, a shell is the fallback', async (t) => {

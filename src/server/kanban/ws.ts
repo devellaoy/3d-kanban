@@ -14,7 +14,8 @@ import { PROMPT_MAX } from '../../shared/prompts.js';
 import { COMMENTS_PAGE, publicAttachment, type TaskUpdate } from './db/repository.js';
 import { projectInfo } from './projects.js';
 import { wallChanged, wallSourcesChanged } from './integrations/issues/wall.js';
-import { ORPHAN_MAX_AGE_MS, removeAttachmentFiles, sweepOrphanUploads, uploadRoutes } from './uploads.js';
+import { chmodSync, existsSync } from 'node:fs';
+import { ORPHAN_MAX_AGE_MS, removeAttachmentFiles, removeGrant, sweepOrphanUploads, uploadsDir, uploadRoutes } from './uploads.js';
 
 const DAY_MS = 24 * 60 * 60_000;
 /** How often done tasks are looked at for the archive (and stale uploads for the bin). */
@@ -315,6 +316,7 @@ export function createCorePlugin(ctx: KanbanContext, subs: KanbanSubscriptions):
       const files = ctx.repo.listAttachments(task.id);
       ctx.repo.deleteTask(task.id);
       removeAttachmentFiles(ctx.filesDir, files);
+      removeGrant(ctx.filesDir, task.id);
       ctx.taskChanged(task.id);
       if (task.ticket) wallChanged(task.project);
       ok(c, m.rid, { taskId: task.id });
@@ -427,6 +429,12 @@ export function createCorePlugin(ctx: KanbanContext, subs: KanbanSubscriptions):
     ws,
     http: uploadRoutes(ctx),
     start() {
+      try {
+        // An uploads folder from before it was made private keeps its old mode otherwise.
+        if (existsSync(uploadsDir(ctx.filesDir))) chmodSync(uploadsDir(ctx.filesDir), 0o700);
+      } catch (err) {
+        console.error(`agent-office: couldn't make the kanban's uploads folder private: ${(err as Error).message}`);
+      }
       sweep();
       sweepTimer = setInterval(sweep, SWEEP_EVERY_MS);
       sweepTimer.unref?.();

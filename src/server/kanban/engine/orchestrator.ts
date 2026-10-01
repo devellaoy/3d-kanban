@@ -18,7 +18,8 @@ import { isBusy } from '../../../shared/status.js';
 import { withContract } from '../../../shared/kanban/prompts.js';
 import type { AskingKind, DepartureIntent, KanbanComment, KanbanEffort, KanbanPrReviewRequest, KanbanRole, KanbanRun, KanbanTask, KanbanTool, KanbanWorkerSummary, PrRef, QueuedRun, RunPhase } from '../../../shared/kanban/types.js';
 import { BRANCH_PREFIX, Worktrees } from '../../worktrees.js';
-import type { NewComment, TaskUpdate } from '../db/repository.js';
+import type { AttachmentRow, NewComment, TaskUpdate } from '../db/repository.js';
+import { grantDir, grantFiles } from '../uploads.js';
 import type { KanbanCaller, KanbanContext } from '../registry.js';
 import { projectRepos, repoSources } from '../projects.js';
 import { sameRepo } from '../../../shared/floors.js';
@@ -356,17 +357,23 @@ export class Orchestrator {
     return task;
   }
 
-  private addComment(project: string, c: NewComment): KanbanComment {
-    const { comment, deduped } = this.ctx.repo.addComment(c);
+  /** Adds a comment (the repository never repeats a system one) and sends it once; `attachmentIds` are linked to the task and the comment first. */
+  private addComment(project: string, c: NewComment, attachmentIds?: string[]): KanbanComment {
+    const { comment: added, deduped } = this.ctx.repo.addComment(c);
+    if (attachmentIds?.length) this.ctx.repo.linkAttachments(attachmentIds, c.taskId, added.id);
+    const comment = attachmentIds?.length ? this.ctx.repo.getComment(added.id) ?? added : added;
     if (!deduped) this.ctx.broadcast({ t: 'kanban.comment', comment, project }, project);
     return comment;
   }
 
-  /** Links uploads already attached to the task to its new comment, and sends the comment again so clients show them. */
-  private linked(project: string, comment: KanbanComment, files: { id: string }[]) {
-    if (!files.length) return;
-    this.ctx.repo.linkAttachments(files.map((f) => f.id), comment.taskId, comment.id);
-    this.ctx.broadcast({ t: 'kanban.comment', comment: this.ctx.repo.getComment(comment.id) ?? comment, project }, project);
+  /** The uploads a message may take, without taking them yet: unattached ones, or already this task's (as linkAttachments). */
+  private takable(taskId: number, ids?: string[]): AttachmentRow[] {
+    const rows: AttachmentRow[] = [];
+    for (const id of ids ?? []) {
+      const a = this.ctx.repo.getAttachment(id);
+      if (a && (a.taskId === undefined || a.taskId === taskId) && !rows.some((r) => r.id === id)) rows.push(a);
+    }
+    return rows;
   }
 
   /** A line from the office in the task's conversation (the repository never repeats one). */
@@ -775,12 +782,12 @@ export class Orchestrator {
     const addDirs: string[] = [];
     if (refsFile) addDirs.push(path.dirname(refsFile));
     // Always: a file sent later in an answer typed into the live session must be readable without a prompt.
-    const uploads = path.join(this.ctx.filesDir, 'uploads');
+    // The task's own folder of copies, never the uploads of every task.
     try {
-      mkdirSync(uploads, { recursive: true, mode: 0o700 });
-      addDirs.push(uploads);
+      grantFiles(this.ctx.filesDir, task.id, this.ctx.repo.listAttachments(task.id));
+      addDirs.push(grantDir(this.ctx.filesDir, task.id));
     } catch (err) {
-      console.error(`agent-office: couldn't make the kanban's uploads folder: ${(err as Error).message}`);
+      console.error(`agent-office: couldn't make task #${task.id}'s folder of attached files: ${(err as Error).message}`);
     }
     const investigate = task.type === 'investigate' && role === 'implementer';
     if (investigate) addDirs.push(reportDir(this.ctx, task.id));
@@ -1580,17 +1587,21 @@ export class Orchestrator {
         // Its run is still going, on a question in its terminal: the answer is typed in there. A
         // permission prompt (or who knows what) is answered in the terminal: typed text + Enter would
         // pick its highlighted option.
-        const text = answer?.trim();
-        if (!text) return 'Type your answer, or answer in the terminal';
-        const files = this.ctx.repo.linkAttachments(attachmentIds ?? [], taskId);
-        const err = this.answer(asking, [text, this.compose.filesInline(files)].filter(Boolean).join(' '), who);
-        if (!err) this.linked(task.project, this.addComment(task.project, { taskId, authorKind: 'user', authorName: who.name, kind: 'message', text, runId: asking.runId }), files);
+        const text = answer?.trim() ?? '';
+        const rows = this.takable(taskId, attachmentIds);
+        const typed = [text, this.compose.filesInline(taskId, rows)].filter(Boolean).join(' ');
+        if (!typed) return 'Type your answer, or answer in the terminal';
+        const err = this.answer(asking, typed, who);
+        if (!err) this.addComment(task.project, { taskId, authorKind: 'user', authorName: who.name, kind: 'message', text, runId: asking.runId }, rows.map((r) => r.id));
         return err;
       }
       if (this.liveOf(task.id)) return 'It is still running: answer in its terminal, or stop it first';
-      const files = this.ctx.repo.linkAttachments(attachmentIds ?? [], taskId);
-      if (answer?.trim()) this.linked(task.project, this.addComment(task.project, { taskId, authorKind: 'user', authorName: who.name, kind: 'message', text: answer.trim() }), files);
-      return this.apply(taskId, { type: 'continue', answer, last: this.lastRun(taskId) }, { who });
+      const text = answer?.trim() ?? '';
+      const rows = this.takable(taskId, attachmentIds);
+      const msg = [text, this.compose.filesText(task.project, taskId, rows)].filter(Boolean).join('\n\n');
+      const err = await this.apply(taskId, { type: 'continue', answer: msg, last: this.lastRun(taskId) }, { who });
+      if (!err && (text || rows.length)) this.addComment(task.project, { taskId, authorKind: 'user', authorName: who.name, kind: 'message', text }, rows.map((r) => r.id));
+      return err;
     });
   }
 
@@ -1644,10 +1655,12 @@ export class Orchestrator {
   }
 
   requestPlanChanges(taskId: number, who: KanbanCaller, text: string, attachmentIds?: string[]): Promise<string | void> {
-    return this.op(taskId, (task) => {
-      const files = this.ctx.repo.linkAttachments(attachmentIds ?? [], taskId);
-      if (text.trim()) this.linked(task.project, this.addComment(task.project, { taskId, authorKind: 'user', authorName: who.name, kind: 'message', text: text.trim() }), files);
-      return this.apply(taskId, { type: 'requestPlanChanges', text }, { who });
+    return this.op(taskId, async (task) => {
+      const rows = this.takable(taskId, attachmentIds);
+      const msg = [text.trim(), this.compose.filesText(task.project, taskId, rows)].filter(Boolean).join('\n\n');
+      const err = await this.apply(taskId, { type: 'requestPlanChanges', text: msg }, { who });
+      if (!err) this.addComment(task.project, { taskId, authorKind: 'user', authorName: who.name, kind: 'message', text: text.trim() }, rows.map((r) => r.id));
+      return err;
     });
   }
 
@@ -1716,10 +1729,10 @@ export class Orchestrator {
       // Queued, it would wait for a turn's end that the question itself holds up. A permission prompt
       // (or an unknown one) is answered in the terminal: the comment waits for the turn's end.
       const asking = this.asking(task);
-      const own = this.ctx.repo.listAttachments(taskId).filter((a) => a.commentId === c.id);
-      if (asking?.asks === 'question' && !this.answer(asking, [c.text, this.compose.filesInline(own)].filter(Boolean).join(' '), who)) return;
+      const own = c.attachmentIds.length ? this.ctx.repo.listAttachments(taskId).filter((a) => a.commentId === c.id) : [];
+      if (asking?.asks === 'question' && !this.answer(asking, [c.text, this.compose.filesInline(taskId, own)].filter(Boolean).join(' '), who)) return;
       const live = this.liveOf(task.id);
-      const err = await this.apply(taskId, { type: 'comment', text: c.text, busy: !!live || task.runState !== 'idle' }, { who, commentId });
+      const err = await this.apply(taskId, { type: 'comment', text: [c.text, this.compose.filesText(task.project, taskId, own)].filter(Boolean).join('\n\n'), busy: !!live || task.runState !== 'idle' }, { who, commentId });
       if (err) this.note(task, `Couldn't hand the comment to the agent: ${err}`);
       if (live && task.status === 'waiting' && task.waitingReason === 'agent_asking') {
         const there = asking && asking.asks !== 'question' ? (asking.asks === 'permission' ? ASKS_PERMISSION : ASKS_UNKNOWN) : undefined;

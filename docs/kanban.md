@@ -221,7 +221,7 @@ back to work:
   work is reviewed again when the task has review on.
 
 On To do, Done and archived tasks a comment is just kept. Comments take attachments too,
-and so do the answer box and the plan's **Request changes** (**Ctrl/⌘ + Enter** sends).
+and so do the answer box and the plan's **Request changes** (**Ctrl/⌘ + Enter** sends); files alone are enough. An agent can read only its own task's files (copies in `kanban/grants/task-<id>/`). After upgrading, a live agent session started before this change is relaunched once at its next turn (its launch arguments change); until then a file sent into it may need a permission prompt.
 
 In the 3D office, what you tell a task's **implementer** while the task is in progress, waiting or in
 review is a comment too: **P** ("💬 Message task #N"), the task's issue card dropped on its desk, and
@@ -472,6 +472,7 @@ file has the port it got.
 | `<data>/kanban-settings.json` | The kanban's settings, per project too (mode 600). |
 | `<data>/kanban-secrets.json` | Jira site, e-mail and token; the API key's hash (mode 600). Never sent to a browser. |
 | `<data>/kanban/uploads/` | Attached files (mode 600); ones never attached are removed after a day. |
+| `<data>/kanban/grants/task-<id>/` | Copies of a task's attached files, the one folder its agents may read (mode 700); removed with the task. |
 | `<data>/kanban/reports/task-<id>/` | An investigation's report files. |
 | `<data>/kanban/refs/task-<id>/` | The plan phase's referenced tasks. |
 | `<data>/kanban/skills/` | Generated Claude skill plugins. |
