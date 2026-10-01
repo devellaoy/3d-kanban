@@ -28,7 +28,7 @@ import { claudeAdapter } from './adapters/claude.js';
 import { codexAdapter } from './adapters/codex.js';
 import type { TaskAgentAdapter, TurnResult } from './adapters/types.js';
 import { Composer, isFolderProject, reportDir, reposText, skillPhase, taskRepos, workerReposText, type ComposeExtra } from './compose.js';
-import { canFixPrs } from '../../../shared/kanban/prs.js';
+import { canFixPrs, openPrs } from '../../../shared/kanban/prs.js';
 import { next, type Effect, type LastRun, type MachineEvent, type MachineState, type PromptKind } from './machine.js';
 import { backoffMs, looksInterrupted, planOutcome, prLines, resetTime, reviewFindings, reviewVerdict, stripPlanMarkers } from './markers.js';
 import { branchExists, currentBranch, hasChanges, missingFolders } from './workspace.js';
@@ -813,7 +813,7 @@ export class Orchestrator {
     } catch (err) {
       console.error(`agent-office: couldn't make task #${task.id}'s folder of attached files: ${(err as Error).message}`);
     }
-    const investigate = task.type === 'investigate' && role === 'implementer';
+    const investigate = task.type === 'investigate' && role === 'implementer' && eff.phase !== 'pr-fix';
     if (investigate) addDirs.push(reportDir(this.ctx, task.id));
     for (const r of taskRepos(def, task)) if (!r.primary && (r.kind === 'folder' || folder)) addDirs.push(r.dir);
     const extras = this.ctx.workerExtras(task.id, tool, skillPhase(eff.phase));
@@ -948,7 +948,7 @@ export class Orchestrator {
    * investigation, a folder project, no branch yet, or already on it).
    */
   private async checkoutFor(task: KanbanTask, def: FloorDef, floorDir: string, role: KanbanRole, phase: RunPhase, freshTree: boolean): Promise<string | undefined> {
-    if (role !== 'implementer' || phase === 'plan' || task.type === 'investigate' || !task.branch || isFolderProject(def)) return undefined;
+    if (role !== 'implementer' || phase === 'plan' || (task.type === 'investigate' && phase !== 'pr-fix') || !task.branch || isFolderProject(def)) return undefined;
     if (!freshTree) {
       if (!task.workspace) return undefined;
       const on = await currentBranch(path.join(floorDir, task.workspace.worktree.path));
@@ -1816,11 +1816,12 @@ export class Orchestrator {
       if (this.liveOf(task.id)) return Promise.resolve('Stop it first: it is running');
       if (this.folder(task.project)) return Promise.resolve('A folder project has no git repositories to open pull requests in');
       // A task whose worktree went still has its branch: a fresh worktree checks it out (see launch).
-      if (!task.workspace && !task.branch) return Promise.resolve('It has no work to open pull requests for yet');
-      if (mode === 'fix') {
-        const fix = canFixPrs(task);
-        if (!fix.ok) return Promise.resolve(fix.reason);
-      }
+      // Fixing with no branch of its own: the task takes the one its open pull request is from.
+      const prBranch = mode === 'fix' && !task.branch ? openPrs(task).find((p) => p.branch)?.branch : undefined;
+      if (!task.workspace && !task.branch && !prBranch) return Promise.resolve('It has no work to open pull requests for yet');
+      const fix = mode === 'fix' ? canFixPrs(task) : undefined;
+      if (fix && !fix.ok) return Promise.resolve(fix.reason);
+      if (prBranch) this.update(task.id, { branch: prBranch });
       return this.apply(taskId, { type: 'pr', mode }, { who });
     });
   }

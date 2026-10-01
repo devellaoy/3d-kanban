@@ -288,6 +288,10 @@ test('manual review and pull requests from the review column', () => {
   assert.equal(pr.state.status, 'in_progress');
   assert.equal(drive([{ type: 'prDone' }], {}, {}, pr.state).state.status, 'review');
   assert.equal(runOf(drive([{ type: 'pr', mode: 'fix' }], {}, {}, { ...inReview, status: 'done' }).last.effects)?.prompt, 'pr.fix');
+  const inv = { ...TASK, type: 'investigate' as const };
+  const fixInv = next(inReview, { type: 'pr', mode: 'fix' }, inv, CFG);
+  assert.ok(!('error' in fixInv) && runOf(fixInv.effects)?.prompt === 'pr.fix', 'an investigation can have its PR fixed');
+  assert.ok('error' in next(inReview, { type: 'pr', mode: 'create' }, inv, CFG), 'but opens none');
   assert.ok('error' in next({ ...inReview, runState: 'running' }, { type: 'pr', mode: 'create' }, TASK, CFG));
   assert.ok('error' in next(TODO, { type: 'pr', mode: 'create' }, TASK, CFG));
 });

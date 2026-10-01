@@ -284,7 +284,9 @@ export function createPullsParts(ctx: KanbanContext, opts: PullsOptions = {}) {
       },
       // Which task owns a PR (the newest not archived), for the PR window's "Fix via task #N".
       'kanban.pr.owner': (c, m) => {
-        const tasks = ctx.repo.tasksOfPr(m.repo, m.number).map((id) => ctx.repo.getTask(id)).filter((t): t is KanbanTask => !!t && t.project === m.project && t.status !== 'archived');
+        const pr = { repo: m.repo, number: m.number, url: `https://github.com/${m.repo}/pull/${m.number}` };
+        const owners = prOwners(ctx.repo.prLinksMatching(pr.number, pr.url), (proj, repoId) => ctx.repos(proj).find((r) => r.id === repoId)?.remote, pr);
+        const tasks = owners.map((id) => ctx.repo.getTask(id)).filter((t): t is KanbanTask => !!t && t.project === m.project && t.status !== 'archived');
         const t = tasks.sort((a, b) => b.id - a.id)[0];
         const check = t ? canFixPrs(t) : undefined;
         c.send({ t: 'kanban.pr.owner', ...(m.rid ? { rid: m.rid } : {}), taskId: t?.id ?? null, ...(t ? { title: t.title } : {}), fixable: check?.ok === true, ...(check && !check.ok ? { reason: check.reason } : {}) });

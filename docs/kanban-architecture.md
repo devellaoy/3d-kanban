@@ -394,8 +394,8 @@ answers `kanban.ok {rid, ...}` or `kanban.error {rid, message}`. Deltas are push
     `kanban.pr.bundle` (an `error` in it rather than `kanban.error` when the lists couldn't be read).
   - `pr.owner {project, repo, number}` (integrations/pulls): which task owns a PR, for the PR window's
     "Fix via task #N". Answered with `kanban.pr.owner {taskId: number | null, title?, fixable, reason?}`:
-    the project's tasks linked to the PR (`tasksOfPr`), the newest not archived (none: `taskId` null);
-    `fixable` is `canFixPrs` (shared/kanban/prs.ts: not running, not an investigation, in Waiting, Review or
+    the project's tasks linked to the PR (by repository, repoId or URL: `prOwners`), the newest not archived (none: `taskId` null);
+    `fixable` is `canFixPrs` (shared/kanban/prs.ts: not running, not asking in its terminal, in Waiting, Review or
     Done, with an open or draft PR) and `reason` says why not. The action itself is `pr {id, mode: 'fix'}`.
   - `pr.review {project, prs, taskId?, tool?, model?, effort?, panel?}`: checked by integrations/pulls (the
     project exists, every PR is in one of its GitHub repositories and exists, each once, at most 20, `taskId`

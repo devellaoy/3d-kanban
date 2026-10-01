@@ -377,8 +377,8 @@ reads its own. A kanban task made from a card keeps the description as its own, 
   listing the others. It reports each as a `PR: <url>` line, which the office links to the task; the
   task goes to Review. Linked PRs keep their state (open, draft, merged, closed) from the floor's PR
   board.
-- **Fix PRs** (any task that is not an investigation, in Waiting, Review or Done, with an open or draft PR; in the action bar and the PRs tab alike): the implementer addresses the unresolved review comments and
-  the failing checks (it reads the failing run's log) on all the task's open PRs, pushes, and doesn't merge. The button is greyed out, with the reason as its tooltip, while the task is running. One rule
+- **Fix PRs** (any task, an investigation too, in Waiting, Review or Done, with an open or draft PR; in the action bar and the PRs tab alike): the implementer addresses the unresolved review comments and
+  the failing checks (it reads the failing run's log) on all the task's open PRs, pushes, and doesn't merge. The button is greyed out, with the reason as its tooltip, while the task is running or its agent is asking in its terminal. An investigation with no branch takes the one its open PR is from. One rule
   (`canFixPrs`, `src/shared/kanban/prs.ts`) serves the buttons and the engine. On a Done task it moves the task back to In progress, and then to Review.
 - **Fix via task #N** (PR window, opened from the PR board, the lite view or the palette): when a task owns the PR (the newest one not archived, if several), the window's footer
   has this button next to upstream's *Fix comments & merge*. It does the same as the task's own 🛠️ Fix PRs, on all of that task's open PRs, and is greyed out with the reason when the task can't be sent now.

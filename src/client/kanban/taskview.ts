@@ -824,7 +824,7 @@ class View implements TaskView {
 
   /** 🛠️ Fix PRs, in the action bar and the PRs tab: only where there are open PRs to fix, greyed out (with why) while the task is busy. */
   private fixPrs(task: KanbanTask, bar: HTMLElement) {
-    if (task.type === 'investigate' || !openPrs(task).length || !['waiting', 'review', 'done'].includes(task.status)) return;
+    if (!openPrs(task).length || !['waiting', 'review', 'done'].includes(task.status)) return;
     const can = canFixPrs(task);
     const b = h('button.btn', { type: 'button', disabled: !can.ok, title: can.ok ? 'The agent addresses the review comments and failing checks on the task’s open PRs; it doesn’t merge' : can.reason, 'data-focus': 'act-fix-prs' }, '🛠️ Fix PRs') as HTMLButtonElement;
     b.addEventListener('click', () => void this.req({ t: 'kanban.task.pr', id: task.id, mode: 'fix' }, b, 'An agent is on the pull requests'));

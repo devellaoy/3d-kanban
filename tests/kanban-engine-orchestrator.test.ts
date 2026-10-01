@@ -548,3 +548,33 @@ test('a run held for background agents that never report back goes on after back
   assert.equal(done.summary, 'Waiting for the helper agent.');
   assert.ok(fx.repo.listComments(task.id).comments.some((c) => c.authorKind === 'system' && /Waited 1 s for its background agents/.test(c.text)));
 });
+
+test('Fix PRs on an investigation with an open PR runs the implementer pr-fix phase with the normal flags and the PR branch, no report folder', async (t) => {
+  const fx = await engineFixture();
+  t.after(() => fx.close());
+  fx.setRules([
+    { when: 'Address the open review comments', reply: 'Answered the comments.' },
+    { when: 'nvestigat', reply: 'Found it.' },
+  ]);
+  const task = fx.newTask({ type: 'investigate', usePlan: false, useReview: false });
+  assert.equal(await fx.engine.start(task.id, ADA), undefined);
+  await fx.waitTask(task.id, (x) => x.status === 'review' && x.runState === 'idle', 'the investigation done');
+  assert.match((await fx.engine.pr(task.id, ADA, 'create')) ?? '', /investigation/, 'no PR is opened for an investigation');
+  assert.match((await fx.engine.pr(task.id, ADA, 'fix')) ?? '', /no open pull requests/);
+
+  fx.repo.upsertPrLink(task.id, { repoId: 'proj', repo: 'acme/proj', number: 5, url: 'https://github.com/acme/proj/pull/5', state: 'OPEN', branch: 'fix/their-branch' });
+  fx.repo.updateTask(task.id, { branch: null });
+  fx.repo.setRepoBranch(task.id, 'proj', null);
+  const before = fx.invocations().length;
+  assert.equal(await fx.engine.pr(task.id, ADA, 'fix'), undefined);
+  assert.equal(fx.task(task.id).branch, 'fix/their-branch', 'the PR branch stands in for a missing task branch');
+  await fx.waitTask(task.id, (x) => x.status === 'review' && x.runState === 'idle' && fx.repo.listRuns(task.id).some((r) => r.phase === 'pr-fix' && r.status === 'succeeded'), 'the pr-fix run');
+  const run = fx.repo.listRuns(task.id).find((r) => r.phase === 'pr-fix')!;
+  assert.equal(run.role, 'implementer');
+  const inv = fx.invocations().slice(before).filter((i) => i.kind === 'claude');
+  const text = inv.map((i) => i.prompt ?? i.args.join(' ')).join('\n');
+  assert.match(text, /Address the open review comments[\s\S]*https:\/\/github\.com\/acme\/proj\/pull\/5/);
+  assert.match(text, /fix\/their-branch/, 'told to check out the PR branch');
+  assert.ok(!text.includes('investigateSafety') && !/read-only/i.test(inv.map((i) => i.args.join(' ')).join(' ')));
+  assert.ok(!fx.invocations().slice(before).some((i) => i.args.some((a) => a.includes('reports'))), 'no report folder is granted');
+});
