@@ -114,6 +114,7 @@ parts.place = installPlace(ctx, core, parts);
 // Everyone arrives by elevator (the welcome says exactly where).
 parts.place.placeInCar();
 parts.player.view = parts.settings.view;
+parts.player.setMouseSensitivity(parts.settings.mouseSensitivity); // 3d-kanban: ⚙️ Settings' mouse sensitivity
 parts.hands = new Hands(store.profile.color, parts.me.skinColor);
 parts.you = installYou(ctx);
 parts.reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)');

@@ -269,16 +269,17 @@ export function isTaskTab(v: unknown): v is TaskTab {
 }
 
 /**
- * The tabs a task view shows: every one on the kanban page; embedded (the 3D worker window's task
- * tab), no Terminal, since that window has the worker's terminal already.
+ * The tabs a task view shows: every one on the kanban page; embedded (a task window, the 3D worker
+ * window's task tab), no Terminal, since that window has the worker's terminal already; and without
+ * `changes` (the worker window, whose header's 🌿 Changes opens the same view), no Changes.
  */
-export function visibleTabs(embedded: boolean): TaskTab[] {
-  return TASK_TABS.filter((tab) => !(embedded && tab === 'terminal'));
+export function visibleTabs(embedded: boolean, changes = true): TaskTab[] {
+  return TASK_TABS.filter((tab) => !(embedded && tab === 'terminal') && (changes || tab !== 'changes'));
 }
 
 /** The tab to open: the asked one when the view shows it, else Overview. */
-export function tabFor(asked: unknown, embedded: boolean): TaskTab {
-  return isTaskTab(asked) && visibleTabs(embedded).includes(asked) ? asked : 'overview';
+export function tabFor(asked: unknown, embedded: boolean, changes = true): TaskTab {
+  return isTaskTab(asked) && visibleTabs(embedded, changes).includes(asked) ? asked : 'overview';
 }
 
 /** One file's part of a unified diff (from its `diff --git` line to the next one). */

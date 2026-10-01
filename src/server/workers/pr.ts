@@ -12,6 +12,7 @@ import { run } from './process.js';
 import type { OpenedPr, Worker, WorkerContext } from './types.js';
 import { truncate } from './util.js';
 import { originRepo } from './worktree.js';
+import { checkoutRepo, repoFlag } from '../kanban/ghrepo.js'; // 3d-kanban: gh acts on the checkout's origin
 
 const PR_TITLE_MAX = 72;
 const PR_TASK_MAX = 2500;
@@ -20,14 +21,14 @@ const RELATED_START = '<!-- agent-office:related -->';
 const RELATED_END = '<!-- /agent-office:related -->';
 
 async function findOpenPr(branch: string, cwd: string): Promise<{ number: number; url: string } | undefined> {
-  const out = await gh(['pr', 'list', '--head', branch, '--state', 'open', '--limit', '1', '--json', 'number,url'], cwd);
+  const out = await gh(['pr', 'list', ...repoFlag(checkoutRepo(cwd)), '--head', branch, '--state', 'open', '--limit', '1', '--json', 'number,url'], cwd);
   const found = (JSON.parse(out || '[]') as { number: number; url: string }[])[0];
   return found ? { number: found.number, url: found.url } : undefined;
 }
 
 /** `gh pr create` for a pushed branch; resolves to the new pull request. */
 async function createPr(branch: string, base: string | undefined, title: string, body: string, cwd: string, as?: GhAs): Promise<{ number: number; url: string }> {
-  const out = await gh(['pr', 'create', '--head', branch, ...(base ? ['--base', base] : []), '--title', title, '--body', body], cwd, 60_000, as?.env);
+  const out = await gh(['pr', 'create', ...repoFlag(checkoutRepo(cwd)), '--head', branch, ...(base ? ['--base', base] : []), '--title', title, '--body', body], cwd, 60_000, as?.env);
   const url = out.trim().split('\n').pop() ?? '';
   const number = Number(/\/pull\/(\d+)/.exec(url)?.[1]);
   if (!number) throw new Error(`gh did not return a pull request URL (${truncate(out, 120)})`);

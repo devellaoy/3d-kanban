@@ -254,3 +254,16 @@ export async function workingTree(cwd: string, cap = DIFF_CAP_BYTES): Promise<{ 
   }
   return { files, diff, truncated };
 }
+
+/** How many files differ from HEAD (staged, unstaged or new), from `git status` alone: no diff is read. */
+export async function uncommittedCount(cwd: string): Promise<number> {
+  const recs = fields(await ok(cwd, ['status', '--porcelain=v1', '-z', '-uall']));
+  let n = 0;
+  for (let i = 0; i < recs.length; i++) {
+    if (!recs[i]) continue;
+    n++;
+    // A rename or copy carries its old path in the next field.
+    if (/^[RC]/.test(recs[i])) i++;
+  }
+  return n;
+}

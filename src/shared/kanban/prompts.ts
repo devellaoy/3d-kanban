@@ -52,7 +52,13 @@ export function resolveKanbanPrompt(id: KanbanPromptId, layers: KanbanPromptLaye
 export const PLAN_READY = 'PLAN READY';
 export const QUESTIONS_HEADING = 'QUESTIONS:';
 export const REVIEW_LINE = /^\s*REVIEW:\s*(APPROVED|CHANGES_REQUESTED)\s*$/;
-export const PR_LINE = /^\s*PR:\s*(https?:\/\/\S+)\s*$/;
+/**
+ * A PR line as the office reads it (the contract asks for exactly `PR: <url>`): optional bullet and
+ * emphasis, `PR` or `Pull request` (created/opened/updated), a colon, then what follows in group 1.
+ */
+export const PR_LINE = /^(?:(?:[-+*]|\d+[.)])\s+)?[*_`]*(?:PR|Pull request)(?:\s+(?:created|opened|updated))?[*_`]*\s*:[*_`]*\s*(.*)$/i;
+/** The URL a PR line starts with after its colon: `<url>`, a Markdown link's, or a bare one. */
+export const PR_URL = /^(?:<(https?:\/\/[^>\s]+)>|\[[^\]]*\]\((https?:\/\/[^)\s]+)\)|(https?:\/\/\S+))/;
 
 const RULE = '---';
 

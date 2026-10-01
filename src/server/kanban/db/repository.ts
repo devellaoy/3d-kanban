@@ -655,9 +655,29 @@ export class KanbanRepository {
     return (this.db.prepare('SELECT * FROM pr_links WHERE task_id = ? ORDER BY created_at, repo_id, number').all(taskId) as Row[]).map(prLink);
   }
 
+  /** Every active (not done, not archived) task of any project with its branches, in one query: the owners of a branch when a PR is linked by it. */
+  activeTaskBranches(): { id: number; project: string; createdAt: number; branch?: string; branches: Record<string, string> }[] {
+    const rows = this.db
+      .prepare(`SELECT t.id, t.project, t.created_at, t.branch, r.repo_id, r.branch AS repo_branch FROM tasks t LEFT JOIN task_repos r ON r.task_id = t.id AND r.branch IS NOT NULL WHERE t.status NOT IN ('done', 'archived') ORDER BY t.id`)
+      .all() as Row[];
+    const out = new Map<number, { id: number; project: string; createdAt: number; branch?: string; branches: Record<string, string> }>();
+    for (const r of rows) {
+      let t = out.get(r.id as number);
+      if (!t) out.set(r.id as number, (t = { id: r.id as number, project: r.project as string, createdAt: r.created_at as number, ...(r.branch ? { branch: r.branch as string } : {}), branches: {} }));
+      if (r.repo_id) t.branches[r.repo_id as string] = r.repo_branch as string;
+    }
+    return [...out.values()];
+  }
+
   /** The tasks a pull request belongs to (by owner/name and number). */
   tasksOfPr(repo: string, number: number): number[] {
     return (this.db.prepare('SELECT DISTINCT task_id FROM pr_links WHERE lower(repo) = lower(?) AND number = ?').all(repo, number) as Row[]).map((r) => r.task_id as number);
+  }
+
+  /** Every link, in any project, to a pull request with this number or this URL (the caller narrows it to the repository: a link may have none). */
+  prLinksMatching(number: number, url: string): (KanbanPrLink & { taskId: number; project: string })[] {
+    const rows = this.db.prepare('SELECT l.*, t.project FROM pr_links l JOIN tasks t ON t.id = l.task_id WHERE l.number = ? OR l.url = ?').all(number, url) as Row[];
+    return rows.map((r) => ({ taskId: r.task_id as number, project: r.project as string, ...prLink(r) }));
   }
 
   /** Every pull request linked to a task of `project`, with its task's id (to bring their states up to date). */

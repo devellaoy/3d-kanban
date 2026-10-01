@@ -4,6 +4,7 @@ import type { Net } from '../net';
 import { store } from '../state';
 import { h, openModal, type Modal } from './dom';
 import { confirmDialog, openPrompt } from './prompt';
+import { kanbanOf } from '../kanban/office'; // 3d-kanban
 
 // The Changes window at a desk: the files a worker changed and their diff against the branch the
 // office was opened on, refreshed while the worker works, with commit / discard / open-a-PR.
@@ -16,6 +17,12 @@ export function routeChangesMessage(msg: ServerMsg) {
   listeners.forEach((fn) => fn(msg));
 }
 
+/** 3d-kanban: the task's Changes view (kanban/changesview) hears every server message too; the returned function stops it. */
+export function onChangesMessage(fn: (msg: ServerMsg) => void): () => void {
+  listeners.add(fn);
+  return () => listeners.delete(fn);
+}
+
 /** Whose changes are on screen (and which of its repositories), so a reconnect can watch them again. */
 export function openChangesFor(): { workerId: string; repo?: string } | null {
   return current ? { workerId: current.workerId, repo: current.repo() } : null;
@@ -23,19 +30,19 @@ export function openChangesFor(): { workerId: string; repo?: string } | null {
 
 const STATUS_WORD: Record<ChangedFile['status'], string> = { M: 'modified', A: 'added', D: 'deleted', R: 'renamed', T: 'type changed', '?': 'new file' };
 
-function plusMinus(a: number, d: number, binary = false): HTMLElement {
+export function plusMinus(a: number, d: number, binary = false): HTMLElement { // 3d-kanban: exported
   if (binary) return h('span.pm', {}, h('span.bin', {}, 'binary'));
   return h('span.pm', {}, h('span.add', {}, `+${a}`), ' ', h('span.del', {}, `−${d}`));
 }
 
 /** A path with its folder dimmed, so the file name stands out in a long list. */
-function pathLabel(p: string): HTMLElement {
+export function pathLabel(p: string): HTMLElement { // 3d-kanban: exported
   const i = p.lastIndexOf('/');
   return h('span.path', { title: p }, i >= 0 ? h('span.dir', {}, p.slice(0, i + 1)) : null, p.slice(i + 1));
 }
 
 /** Renders a unified diff: hunk headers, added and removed lines, with line numbers. */
-function renderDiff(text: string, truncated: boolean): HTMLElement {
+export function renderDiff(text: string, truncated: boolean): HTMLElement { // 3d-kanban: exported
   const out = h('div.diff-lines');
   let oldN = 0;
   let newN = 0;
@@ -87,7 +94,7 @@ function imageUrl(workerId: string, repo: string | undefined, f: ChangedFile, si
 }
 
 /** A changed picture, before and after; new and deleted files only have the one side. */
-function renderPreview(workerId: string, repo: string | undefined, f: ChangedFile): HTMLElement {
+export function renderPreview(workerId: string, repo: string | undefined, f: ChangedFile): HTMLElement { // 3d-kanban: exported
   const sides: ('old' | 'new')[] = f.status === '?' || f.status === 'A' ? ['new'] : f.status === 'D' ? ['old'] : ['old', 'new'];
   return h(
     'div.img-preview',
@@ -113,6 +120,13 @@ export function openChanges(net: Net, workerId: string, onTerminal?: () => void,
   if (current?.workerId === workerId) return current.show(repo);
   const info = store.workers.get(workerId);
   if (!info) return;
+  // 3d-kanban: a kanban task's worker gets its task's Changes window instead: every repository, per commit too.
+  const task = kanbanOf(info);
+  if (task) return void import('../kanban/changesview').then((m) => {
+    const old = current;
+    m.openTaskChanges(net, { taskId: task.taskId, workerId, floor: repo, onTerminal });
+    old?.modal.close(); // after: never a moment without a window, which would take the mouse back
+  });
   const previous = current;
 
   let state: ChangesState | null = null;

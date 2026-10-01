@@ -239,6 +239,18 @@ export class Building {
     return def;
   }
 
+  /** 3d-kanban: renames a floor (the project's name); its id, folder and repository stay. Returns why not, if not. */
+  setName(id: string, raw: string): FloorDef | string {
+    const def = this.defs.find((d) => d.id === id);
+    if (!def) return 'No such floor';
+    const name = raw.trim();
+    if (!name || name.length > 100) return 'A project needs a name (at most 100 characters)';
+    if ([...this.defs, ...this.cloning.values()].some((d) => d.id !== id && d.name.toLowerCase() === name.toLowerCase())) return `There's already a project called ${name}`;
+    def.name = name;
+    this.save();
+    return def;
+  }
+
   private newDef(name: string, repo: string | undefined, dir: string, by: string): FloorDef {
     const taken = new Set([...this.defs, ...this.cloning.values()].map((d) => d.id));
     const base = name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 32) || 'floor';

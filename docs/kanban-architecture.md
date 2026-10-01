@@ -26,7 +26,7 @@ document disagree, fix one of them in the same change.
 
 ## 2. Concepts
 
-- **Project = floor.** A floor (`FloorDef` in `floors.json`) is a project. `FloorDef.repos?: ProjectRepo[]`
+- **Project = floor.** A floor (`FloorDef` in `floors.json`) is a project; its name (`FloorDef.name`) can be changed (`kanban.project.rename`, admin), its id never. `FloorDef.repos?: ProjectRepo[]`
   lists its repositories. The floor's own `dir`/`repo` is always the **primary** repository
   (the floor's `.agent-office/` data stays there, as upstream). A floor without `repos` is a
   one-repository project exactly as upstream has it. The primary's `remote` is `FloorDef.repo` when the
@@ -154,13 +154,30 @@ allowed: `todo → in_progress` (= start), `waiting|review → done`, `done → 
 - Markers (appended by the engine as a non-editable contract block, never user-editable):
   - plan: a line `PLAN READY` → ready; a `QUESTIONS:` heading → questions; Claude's `ExitPlanMode` → ready;
     none of these, but ≥ 2 `?` and no absolute `.md` path → questions (replan); otherwise ready.
-  - pr: one `PR: <url>` line per pull request opened or updated; each is linked to the task (`pr_links`).
+  - pr: one `PR: <url>` line per pull request opened or updated. The line starts with `PR` or `Pull request`
+    (optionally `created`/`opened`/`updated`; a list bullet and bold are allowed) and a colon; the URL is bare,
+    `<url>` or a Markdown link, text after it is fine, any http(s) host (`PR_LINE` in `shared/kanban/prompts.ts`
+    is the one rule). GitHub URLs are reduced to `…/pull/<n>` (no `/files`, `#…`, `?…`) and duplicates count once
+    (case-insensitively). Such a PR is linked to the task (`pr_links`) only when it is a GitHub PR of one of the
+    task's repositories and no other task, of any project, has it (by repository, number or URL). A URL anywhere
+    else in the answer is not reported at all.
+  - Branch linking: whatever the answer says, when the floor's PR board syncs (`syncPrStates`) an open or draft PR
+    is linked to the task whose branch is its head branch (the task's per-repository branch; the primary
+    repository falls back to the task's `branch`), in any phase. Not linked: merged or closed PRs; PRs created
+    before the task; a head that is an integration branch (`main`, `master`, `develop`, `dev`, `trunk`) or the
+    repository's default branch (`gh repo view`); a branch owned by several active tasks, in any project (done and
+    archived tasks own none); a PR that is already some task's, in any project (by repository, with a link
+    lacking one resolved through its repoId, number or URL); a fork's PR with the same branch name (`gh pr view
+    --json isCrossRepository` must say false). The gh answers are cached (a PR's head repository never changes),
+    a failed question isn't repeated for 5 minutes and links nothing meanwhile. Each such link is a `pr.linked`
+    event (`{ repo, number, by: 'branch' }`). A `pr`/`pr-fix` turn's end asks the floor's boards for the task's git
+    repositories to refresh at once, so the link shows up quickly.
   - review: read from the final answer's last 3 non-empty lines only: the **last** of them matching
     `^\s*REVIEW:\s*(APPROVED|CHANGES_REQUESTED)\s*$` as a line of its own (emphasis allowed) decides; none →
     changes requested.
   - A review verdict never counts inside a fenced code block (```` ``` ```` / `~~~`, an unclosed one runs to
     the end) or in a `>` quote. Plan markers ignore quotes and *closed* code blocks, but an unclosed fence
-    hides nothing after it. `PR:` lines ignore only quotes (an agent may list its PRs in a code block).
+    hides nothing after it. PR lines ignore only quotes (an agent may list its PRs in a code block).
 - Plan approval: `auto` (ready → implement) or `manual` (ready → `waiting` until the user approves).
 - Review: `rounds` (1–10), `reReviewLastFix` (default true). A reviewer is a separate worker (its own tool,
   model, effort) sharing the task's worktree (spawned with `reuse`), sent home with cleanup `keep`.
@@ -352,7 +369,7 @@ answers `kanban.ok {rid, ...}` or `kanban.error {rid, message}`. Deltas are push
     repositories, else 0), and falls back to upstream's list without sources. Cards are handed out with
     `issueKey` (see kanban-coupling.md, Messages).
   - Admin only (upstream `meOf(accountId).admin`): `settings.set`, `project.settings.set`, `project.repos.set`,
-    `project.prompt.set`, `secrets.set`, `skills.sync`. `secrets.set` is answered with `kanban.settings` (configured flags
+    `project.rename`, `project.prompt.set`, `secrets.set`, `skills.sync`. `secrets.set` is answered with `kanban.settings` (configured flags
     only). The `/api/v1` key is stored as `sha256:<hex>`.
 - Auto-archive: done tasks whose `doneAt` (else `updatedAt`) is older than `settings.archiveAfterDays` move to
   `archived`. This runs at start-up and hourly; `0` means never. Unattached uploads older than a day are removed
@@ -398,13 +415,22 @@ For a signed-in browser (the session is checked by the route table in `src/serve
   Without `task` it stays unattached until `task.create` / `comment.add` names its id.
 - `GET /api/kanban/attachments/<id>`: serves the file with its type, `nosniff` and a sandboxing CSP.
   PNG, JPEG, GIF, WebP, AVIF and BMP are served inline; anything else (SVG and HTML included) as a download.
-- `GET /api/kanban/tasks/<id>/changes[?repo=<repoId>]`, `…/commits?repo=`, `…/commit?repo=&hash=`
+- `GET /api/kanban/tasks/<id>/changes[?repo=<repoId>]`, `…/commits?repo=`, `…/commit?repo=&hash=`, `…/uncommitted?repo=`
   (integrations/changes): the task's repositories; one repository's files and unified diff against its base
   (cut at 2 MB, `truncated`) plus the worktree's uncommitted work (`workingTree`, null without a workspace);
-  `base..branch` commits; one commit's diff (`hash` must match `^[0-9a-f]{7,40}$` and be in `base..branch`).
+  `base..branch` commits; one commit's diff (`hash` must match `^[0-9a-f]{7,40}$` and be in `base..branch`);
+  how many files the worktree has uncommitted against HEAD (`git status` only, null without a workspace).
   Read from the task's worktrees, else its branch in the project's checkout (`origin/<base>...<branch>`, else
   the local base). git runs with argument lists, no shell, timeouts, `GIT_OPTIONAL_LOCKS=0`; a `git fetch` of
-  the checkout runs in the background at most every 5 minutes and is never waited for.
+  the checkout runs in the background at most every 5 minutes and is never waited for. The list carries the
+  task's `project` and each repository's `primary` flag (primary first), so the browser can match a repository
+  to upstream's floor id (`<project>~<repoId>`, none for the primary; `shared/kanban/repofloor.ts`). The task's
+  Changes view (`client/kanban/changesview.ts`: the task view's Changes tab, and the window C opens at a task
+  worker) reads these, and upstream's live `changes.*` WebSocket messages instead for All changes while the
+  worker is on the page's floor. Live, what's uncommitted is the `uncommitted` count (the live list's flags
+  when the worker works in the shared project folder, or until the count is read again after an update);
+  Per commit, and Uncommitted's diff (the worktree against HEAD) while it is open, are read again a moment
+  after the live state changes (the commits only when its `head`, count or subject moved: an amend too).
 - `GET /api/kanban/tasks/<id>/reports`, `…/reports/<name>[?download=1]` (integrations/reports): the files under
   `kanban/reports/task-<id>/` (no dot files, no links); a name is only looked up in that listing, served as
   `text/markdown` or `text/plain` with `nosniff` and a sandboxing CSP, at most 2 MB.
@@ -426,4 +452,4 @@ the floors are open and keeps the result as `ctx.kanban`; `kanbanHandlers` (WS, 
 (`engine.pr(taskId, 'create')`); any other agent worker gets the layered `kanban.pr.create` prompt (with the `pr`
 contract) typed into its session, or resumed with it when it's asleep. Only a shell worker answers `'fallback'`
 (`PR_FALLBACK`), and only then does upstream's own `openPr` (a draft PR without an agent) run. PR states of the
-tasks' linked PRs follow the floor's PR board (`floorPulled` → integrations/pulls `syncPrStates`).
+tasks' linked PRs follow the floor's PR board (`floorPulled` → integrations/pulls `syncPrStates`): their states, and PRs from an active task's branch that no task has yet (and that aren't a fork's) get linked to it.

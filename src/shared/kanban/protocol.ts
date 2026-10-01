@@ -183,6 +183,7 @@ export type KanbanClientMsg =
   | Req<{ t: 'kanban.meta.get' }>
   | Req<{ t: 'kanban.settings.set'; settings: KanbanSettingsPatch }>
   | Req<{ t: 'kanban.project.settings.set'; project: string; settings: Partial<ProjectSettings> }>
+  | Req<{ t: 'kanban.project.rename'; project: string; name: string }>
   | Req<{ t: 'kanban.project.repos.set'; project: string; repos: ProjectRepoInput[] }>
   /**
    * Admins: clones `remote` (owner/name) into the building's projects folder (or reuses a checkout of
@@ -491,7 +492,7 @@ export const KANBAN_CLIENT_TYPES = new Set<string>([
   'kanban.task.create', 'kanban.task.update', 'kanban.task.move', 'kanban.task.start', 'kanban.task.stop',
   'kanban.task.continue', 'kanban.task.retry', 'kanban.task.review', 'kanban.plan.approve', 'kanban.plan.requestChanges',
   'kanban.task.pr', 'kanban.task.compact', 'kanban.task.release', 'kanban.task.delete', 'kanban.comment.add',
-  'kanban.settings.get', 'kanban.meta.get', 'kanban.settings.set', 'kanban.project.settings.set', 'kanban.project.repos.set', 'kanban.project.prompt.set',
+  'kanban.settings.get', 'kanban.meta.get', 'kanban.settings.set', 'kanban.project.settings.set', 'kanban.project.repos.set', 'kanban.project.rename', 'kanban.project.prompt.set',
   'kanban.issues.list', 'kanban.issues.refresh', 'kanban.issues.createTask', 'kanban.skills.list', 'kanban.skills.sync',
   'kanban.secrets.set', 'kanban.pr.review', 'kanban.pr.bundle',
   'kanban.project.repo.clone',
@@ -596,6 +597,8 @@ function parse(raw: unknown): KanbanClientMsg {
       return m({ t: 'kanban.settings.set', settings: settingsObj(r.settings, 'settings') as KanbanSettingsPatch });
     case 'kanban.project.settings.set':
       return m({ t: 'kanban.project.settings.set', project: project(r.project), settings: settingsObj(r.settings, 'settings') as Partial<ProjectSettings> });
+    case 'kanban.project.rename':
+      return m({ t: 'kanban.project.rename', project: project(r.project), name: text(r.name, 'The name', 100).trim() });
     case 'kanban.project.repos.set':
       return m({ t: 'kanban.project.repos.set', project: project(r.project), repos: repoInputs(r.repos) });
     case 'kanban.project.repo.clone': {

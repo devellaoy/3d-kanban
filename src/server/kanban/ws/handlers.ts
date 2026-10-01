@@ -33,6 +33,7 @@ const KANBAN_TYPES: Record<KanbanClientMsg['t'], true> = {
   'kanban.settings.set': true,
   'kanban.project.settings.set': true,
   'kanban.project.repos.set': true,
+  'kanban.project.rename': true,
   'kanban.project.repo.clone': true,
   'kanban.project.prompt.set': true,
   'kanban.issues.list': true,

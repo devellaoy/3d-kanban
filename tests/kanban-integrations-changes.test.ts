@@ -9,8 +9,10 @@ import { mkdirSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { createChangesPlugin } from '../src/server/kanban/integrations/changes/index.js';
+import { Changes } from '../src/server/changes.js';
+import type { ChangesState } from '../src/shared/protocol.js';
 import { HASH_RE, parseNameStatus, parseNumstat } from '../src/server/kanban/integrations/changes/git.js';
-import type { KanbanChangesList, KanbanCommitChanges, KanbanCommitList, KanbanRepoChanges } from '../src/shared/kanban/types.js';
+import type { KanbanChangesList, KanbanCommitChanges, KanbanCommitList, KanbanRepoChanges, KanbanUncommitted } from '../src/shared/kanban/types.js';
 import { def, makeCtx, WHO } from './kanban-integrations-ctx.js';
 
 const git = (cwd: string, ...args: string[]) => execFileSync('git', args, { cwd, encoding: 'utf8', env: { ...process.env, GIT_AUTHOR_NAME: 'T', GIT_AUTHOR_EMAIL: 't@x', GIT_COMMITTER_NAME: 'T', GIT_COMMITTER_EMAIL: 't@x' } }).trim();
@@ -61,6 +63,8 @@ test('changes from the branch in the project checkout (no workspace)', async () 
   const task = ctx.repo.createTask({ project: 'proj', title: 'x', tool: 'claude', usePlan: false, planApproval: 'auto', useReview: false, createdBy: 'T', branch: 'feature' });
   const list = await get<KanbanChangesList>(plugin, `/api/kanban/tasks/${task.id}/changes`);
   assert.equal(list.status, 200);
+  assert.equal(list.body.project, 'proj');
+  assert.equal(list.body.repos[0].primary, true);
   assert.equal(list.body.repos[0].source, 'checkout');
   assert.equal(list.body.repos[0].branch, 'feature');
   assert.equal(list.body.repos[0].base, 'main');
@@ -121,6 +125,49 @@ test('changes from the task worktree include its uncommitted work', async () => 
   assert.equal(cs.body.uncommitted, 2);
 });
 
+test('a worktree’s uncommitted work is measured against HEAD, not the base', async () => {
+  // The view's Uncommitted mode shows this answer, even while it follows the worker live (#316).
+  const { ctx, dir, plugin } = setup();
+  const wt = path.join(dir, '.agent-office', 'worktrees', 't2');
+  git(dir, 'worktree', 'add', '-q', wt, 'feature');
+  const base = git(dir, 'rev-parse', 'main');
+  const task = ctx.repo.createTask({
+    project: 'proj',
+    title: 'x',
+    tool: 'claude',
+    usePlan: false,
+    planApproval: 'auto',
+    useReview: false,
+    createdBy: 'T',
+    branch: 'feature',
+    workspace: { worktree: { path: '.agent-office/worktrees/t2', branch: 'feature', base, from: 'main' } },
+  });
+  const url = `/api/kanban/tasks/${task.id}/changes?repo=proj`;
+  // a.txt has a committed line ("two"); edited again, only the new line is uncommitted.
+  writeFileSync(path.join(wt, 'a.txt'), 'one\ntwo\nthree\n');
+  let wtd = (await get<KanbanRepoChanges>(plugin, url)).body.workingTree!;
+  assert.deepEqual(wtd.files.map((f) => [f.path, f.additions, f.deletions]), [['a.txt', 1, 0]]);
+  assert.match(wtd.diff, /^\+three$/m);
+  assert.doesNotMatch(wtd.diff, /^\+two$/m);
+  // Put back as the base has it: nothing against the base, but uncommitted against HEAD all the same.
+  writeFileSync(path.join(wt, 'a.txt'), 'one\n');
+  wtd = (await get<KanbanRepoChanges>(plugin, url)).body.workingTree!;
+  assert.deepEqual(wtd.files.map((f) => [f.path, f.status, f.additions, f.deletions]), [['a.txt', 'modified', 0, 1]]);
+  assert.match(wtd.diff, /^-two$/m);
+  // The cheap count the live view goes by says the same, from git status alone.
+  writeFileSync(path.join(wt, 'new.txt'), 'fresh\n');
+  const count = await get<KanbanUncommitted>(plugin, `/api/kanban/tasks/${task.id}/uncommitted?repo=proj`);
+  assert.deepEqual(count.body, { taskId: task.id, repo: 'proj', uncommitted: 2 });
+});
+
+test('the uncommitted count is null without a worktree', async () => {
+  const { ctx, plugin } = setup();
+  const task = ctx.repo.createTask({ project: 'proj', title: 'x', tool: 'claude', usePlan: false, planApproval: 'auto', useReview: false, createdBy: 'T', branch: 'feature' });
+  const count = await get<KanbanUncommitted>(plugin, `/api/kanban/tasks/${task.id}/uncommitted?repo=proj`);
+  assert.equal(count.status, 200);
+  assert.equal(count.body.uncommitted, null);
+});
+
 test('a commit hash is validated and must be one of the task’s own commits', async () => {
   const { ctx, dir, plugin } = setup();
   const task = ctx.repo.createTask({ project: 'proj', title: 'x', tool: 'claude', usePlan: false, planApproval: 'auto', useReview: false, createdBy: 'T', branch: 'feature' });
@@ -159,4 +206,34 @@ test('git -z output parsing: renames and binary files', () => {
   assert.deepEqual(nums.get('a.txt'), { additions: 3, deletions: 1, binary: false });
   assert.deepEqual(nums.get('new.txt'), { additions: 0, deletions: 0, binary: false });
   assert.deepEqual(nums.get('b.bin'), { additions: 0, deletions: 0, binary: true });
+});
+
+test('the live Changes state names its HEAD, so an amend is noticed (3d-kanban seam)', async () => {
+  const { dir } = setup();
+  git(dir, 'checkout', '-q', 'feature');
+  const states: ChangesState[] = [];
+  const changes = new Changes(dir, 'main', (id) => (id === 'w1' ? { name: 'W', cwd: dir, rel: '' } : undefined), () => undefined, {
+    state: (st) => void states.push(st),
+    toast() {},
+    refreshGitHub() {},
+  });
+  try {
+    const next = async (n: number) => {
+      for (let i = 0; i < 100 && states.length < n; i++) await new Promise((r) => setTimeout(r, 20));
+      return states[n - 1];
+    };
+    changes.watch('w1', 'c1');
+    const before = await next(1);
+    assert.equal(before.head, git(dir, 'rev-parse', 'HEAD'));
+    // Same count and subject, another commit.
+    git(dir, 'commit', '-q', '--amend', '--no-edit', '--date', '2001-01-01T00:00:00');
+    changes.watch('w1', 'c2');
+    const after = await next(3);
+    assert.equal(after.ahead, before.ahead);
+    assert.equal(after.subject, before.subject);
+    assert.notEqual(after.head, before.head);
+    assert.equal(after.head, git(dir, 'rev-parse', 'HEAD'));
+  } finally {
+    changes.stop();
+  }
 });

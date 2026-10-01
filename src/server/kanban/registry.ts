@@ -133,6 +133,8 @@ export interface KanbanContext {
   repos(id: string): ProjectRepo[];
   /** Sets a project's repositories (validated); a string is why not. */
   setRepos(id: string, repos: ProjectRepo[]): string | void;
+  /** Renames a project (its floor); a string is why not. The id, folder and repositories stay. */
+  setName(id: string, name: string): string | void;
   /** The office-wide custom prompt texts (upstream prompts.json), for prompt layering. */
   officePrompts(): Partial<Record<string, { text: string }>>;
   /** The loopback hook server's base URL (what AIKANBAN_API_BASE is set to). */

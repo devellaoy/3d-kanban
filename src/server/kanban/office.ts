@@ -13,6 +13,15 @@ export function openKanban(ctx: Ctx, hookPort: number): Kanban {
     floors: () => ctx.building.list(),
     floor: (id) => ctx.floors.get(id),
     saveRepos: (id, repos) => ctx.building.setRepos(id, repos),
+    // A project renamed from the kanban's settings: saved, its floor's top bar info too, then the elevator and the kanban hear it.
+    saveName: (id, name) => {
+      const r = ctx.building.setName(id, name);
+      if (typeof r === 'string') return r;
+      const floor = ctx.floors.get(id);
+      if (floor) floor.project.name = r.name;
+      ctx.floorsChanged();
+      return r;
+    },
     officePrompts: () => ctx.prompts.state().custom,
     hookUrl: `http://127.0.0.1:${hookPort}`,
     toast: (id, text, level) => ctx.toastFloor(ctx.floors.get(id), text, level),

@@ -160,7 +160,7 @@ export class PlayerController extends PlayerInput {
       this.stepOffset *= Math.exp(-dt * 16);
       this.bob = 0;
       this.jitterT += dt;
-      this.updateCamera();
+      this.updateCamera(false, dt);
       return;
     }
     if (this.seat) {
@@ -168,7 +168,7 @@ export class PlayerController extends PlayerInput {
         this.moving = false;
         this.facing = this.seat.rotY;
         this.jitterT += dt;
-        this.updateCamera();
+        this.updateCamera(false, dt);
         return;
       }
       this.stand();
@@ -191,7 +191,7 @@ export class PlayerController extends PlayerInput {
     if (this.path && this.enabled) this.followPath(dt);
     if (this.view === 'first') this.facing = Math.atan2(Math.sin(this.camYaw + Math.PI), Math.cos(this.camYaw + Math.PI));
     // 3d-kanban: third person faces where the camera looks too, standing or walking (not on a walk of its own, which turns you along it).
-    else if (!this.path) this.facing += Math.atan2(Math.sin(this.camYaw + Math.PI - this.facing), Math.cos(this.camYaw + Math.PI - this.facing)) * Math.min(1, dt * 14);
+    else if (!this.path) this.facing += Math.atan2(Math.sin(this.camYaw + Math.PI - this.facing), Math.cos(this.camYaw + Math.PI - this.facing)) * (1 - Math.exp(-dt * 25));
     if (steering) {
       const len = Math.hypot(ix, iz);
       ix /= len;
@@ -241,7 +241,7 @@ export class PlayerController extends PlayerInput {
     const bob = walking ? Math.abs(Math.sin(this.walkPhase)) * 0.035 : 0;
     this.bob += (bob - this.bob) * Math.min(1, dt * 18);
     this.jitterT += dt;
-    this.updateCamera();
+    this.updateCamera(false, dt);
   }
 
   /** A step along `path`: toward its next corner, turning (and in first person, looking) the way you go. */
@@ -280,8 +280,8 @@ export class PlayerController extends PlayerInput {
     }
   }
 
-  updateCamera(snap = false) {
-    aimCamera(this.camera, this, this.bob, this.lift, snap);
+  updateCamera(snap = false, dt = 0) {
+    aimCamera(this.camera, this, this.bob, this.lift, snap, dt);
     this.shake();
   }
 

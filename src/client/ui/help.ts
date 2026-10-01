@@ -37,7 +37,8 @@ export const HELP_ROWS: readonly (readonly [string, string])[] = [
   // 3d-kanban: the kanban view, on the floor you are on; facing a task's worker, that task.
   ['J', 'Switch to the kanban view of this floor’s project (🏢 3D there brings you back). Facing a kanban task’s worker, it opens that task’s conversation'],
   // 3d-kanban: the keys at a kanban task's worker.
-  ['E 🗂️', 'At a kanban task’s worker, its window has tabs: 🖥️ Terminal, 🗂️ Task #14 (the task’s conversation with its composer, plan, runs, changes and PRs, as on the kanban) and 📝 Changes. It opens on the tab you last had for that worker'],
+  ['C 🗂️', 'At a kanban task’s worker: the task’s Changes window — a tab per repository, all changes, per commit or uncommitted; live from its checkout while it’s here, with commit, discard and open a PR'],
+  ['E 🗂️', 'At a kanban task’s worker, its window has tabs: 🖥️ Terminal and 🗂️ Task #14 (the task’s conversation with its composer, plan, runs and PRs, as on the kanban). It opens on the Task tab the first time, then on the tab you last had; 🌿 Changes in its header opens the task’s Changes window'],
   ['P 🗂️', 'At a kanban task’s worker: a message on its task, which carries the kanban process on (or type straight into its terminal instead). A reviewer only takes its terminal. With an issue card in hand, P at an empty desk makes it a kanban task there'],
   ['R 🗂️', 'At a kanban task’s worker whose task waits (stopped, failed, interrupted): retry it'],
   ['X 🗂️', 'Sending a kanban task’s worker home can move its task to Done (ticked when the task is in review); a reviewer’s review round is abandoned'],

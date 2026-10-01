@@ -109,12 +109,14 @@ curl -fsSL https://raw.githubusercontent.com/devellaoy/3d-kanban/main/deploy/pro
   leave-on-merge, the queue, a meeting) is an event on its task, and can mark it done; a task moved to
   Done sends its idle workers home, and stops a run whose agent is still asking in its terminal (see [docs/kanban.md](docs/kanban.md#sending-a-tasks-worker-home)).
   In the office, a task worker's card says `🗂️ #14 · …`; **E** opens its window with a **🗂️ Task** tab
-  (the task's conversation, plan and runs), **P** is a message on its task while it's in progress,
+  (the task's conversation, plan and runs), **C** its task's Changes window (every repository, per
+  commit too, the same view as the kanban's Changes tab), **P** is a message on its task while it's in progress,
   waiting or in review, **R** retries it, and a hire, or the 📋 Task queue's form, can tick **🗂️ Run as a kanban task** ([controls](docs/controls.md#at-a-kanban-tasks-worker),
   [the contract](docs/kanban-coupling.md)).
 - **Projects with several repositories**: a floor is a project, and a task gets a worktree of each of
   its repositories on one branch, cut from each repository's configured base branch (else the branch
-  its checkout is on). The issues and PR boards show every repository.
+  its checkout is on). The issues and PR boards show every repository. An admin can rename a project
+  in ⚙️ Settings → 📁 Projects; its id, folder and repository stay.
 - **Issue sources per project**: GitHub repositories, GitHub Projects v2 and Jira, made into tasks in a click. They are also the 3D office's 📌 Issues board, cards you carry to desks, workers and the queue.
 - **Agent-written pull requests**: **O** at a desk and the task's PR phase have the agent push and open
   (or fix) the PRs in every repository.
@@ -133,6 +135,7 @@ curl -fsSL https://raw.githubusercontent.com/devellaoy/3d-kanban/main/deploy/pro
   tap uses what you tapped); your character faces where the camera looks; the wheel zooms
   ([controls](docs/controls.md)). Upstream's *Mouse drag /
   wheel* row below is out of date.
+- **Mouse sensitivity**: ⚙️ Settings → 🧍 You, 25–200% of the usual look speed, kept in your browser.
 - **An installable app (PWA)**: install the office from the browser; it opens on the kanban, with
   shortcuts to the 3D office and the 2D view, shows *The office is offline. Reconnecting…* while it can't
   reach the office, and offers **Reload** when a new version is out. HTTPS is needed except on
@@ -178,7 +181,7 @@ curl -fsSL https://raw.githubusercontent.com/devellaoy/3d-kanban/main/install.sh
 ## What it is
 
 - **A floor per project.** Ride the elevator, pick one of your GitHub repos, and the office clones it and opens a floor for it. Every worker, board and queue on that floor works in that checkout.
-- **Workers at desks.** Walk up to an empty desk, press **E**, and pick Claude Code, Codex, OpenCode, Grok, Muse or DeepSeek Harness. The agent's live terminal shows on its laptop, and anyone can open it and type.
+- **Workers at desks.** Walk up to an empty desk, press **E**, and pick Claude Code, Codex, OpenCode, Grok, Muse or DeepSeek Harness. The agent's live terminal shows on its laptop, and anyone can open it and type. Pin a web page (a linked chat, docs) open in a tab beside it.
 - **You can see who needs you.** A worker that needs input or has finished jumps up and down and dings. Press **N** to go straight to the one that has waited longest.
 - **From your phone, too.** `/lite` is the office in 2D: every worker and what it's waiting on, its terminal with the keys a phone keyboard lacks, and the boards. The 3D office offers it on a phone or a slow computer.
 - **GitHub on the walls.** Issues and pull requests hang on cork boards. Hand an issue to a worker, queue tasks, give a worker its own git worktree and open its PR with one key (if one gets deleted behind the office's back, the worker waits at its desk until you rebuild it). One task can span several projects: the worker gets a worktree of each, and a PR in each that links the others.

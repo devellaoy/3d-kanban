@@ -23,6 +23,7 @@ import { grantDir, grantFiles } from '../uploads.js';
 import type { KanbanCaller, KanbanContext } from '../registry.js';
 import { projectRepos, repoSources } from '../projects.js';
 import { sameRepo } from '../../../shared/floors.js';
+import { prOwners } from '../integrations/pulls/bundle.js';
 import { claudeAdapter } from './adapters/claude.js';
 import { codexAdapter } from './adapters/codex.js';
 import type { TaskAgentAdapter, TurnResult } from './adapters/types.js';
@@ -1476,6 +1477,7 @@ export class Orchestrator {
       case 'pr-fix': {
         say('result', text);
         this.recordPrs(task, text);
+        this.refreshPrBoards(task);
         if (live.phase === 'pr') this.update(task.id, { flags: { ...(this.ctx.repo.getTask(task.id)?.flags ?? task.flags), prRequested: true } });
         event = { type: 'prDone', pending };
         break;
@@ -1494,21 +1496,38 @@ export class Orchestrator {
     void this.drain(task.project);
   }
 
-  /** The pull requests a PR turn reported (PR: lines), kept on the task by repository. */
+  /**
+   * The pull requests a PR turn reported with a `PR:` line, kept on the task by repository: only a
+   * GitHub PR of one of the task's repositories that no other task (of any project) has. A PR the
+   * answer names otherwise is left to the board sync, which links it by the task's branch.
+   */
   private recordPrs(task: KanbanTask, text: string) {
     const def = this.ctx.project(task.project);
     const repos = def ? taskRepos(def, task) : [];
     const branches = this.ctx.repo.repoBranches(task.id);
+    const remoteOf = (project: string, repoId: string) => this.ctx.repos(project).find((r) => r.id === repoId)?.remote;
     let changed = false;
     for (const pr of prLines(text)) {
-      if (pr.number === undefined) continue;
-      const repo = repos.find((r) => r.remote && pr.repo && r.remote.toLowerCase() === pr.repo.toLowerCase());
-      const repoId = repo?.id ?? task.project;
-      const branch = branches[repoId] ?? task.branch;
-      this.ctx.repo.upsertPrLink(task.id, { repoId, ...(pr.repo ? { repo: pr.repo } : {}), number: pr.number, url: pr.url, state: 'OPEN', ...(branch ? { branch } : {}) });
+      if (pr.number === undefined || !pr.repo) continue;
+      const repo = repos.find((r) => r.remote && sameRepo(r.remote, pr.repo!));
+      if (!repo || prOwners(this.ctx.repo.prLinksMatching(pr.number, pr.url), remoteOf, { repo: pr.repo, number: pr.number, url: pr.url }).some((id) => id !== task.id)) continue;
+      const branch = branches[repo.id] ?? task.branch;
+      this.ctx.repo.upsertPrLink(task.id, { repoId: repo.id, repo: pr.repo, number: pr.number, url: pr.url, state: 'OPEN', ...(branch ? { branch } : {}) });
       changed = true;
     }
     if (changed) this.pushTask(this.ctx.repo.getTask(task.id));
+  }
+
+  /** After a PR turn the floor's PR board lists the new PR at once (its sync then links it by branch, whatever the answer said). */
+  private refreshPrBoards(task: KanbanTask) {
+    try {
+      const def = this.ctx.project(task.project);
+      const floor = this.ctx.floor(task.project);
+      if (!def || !floor) return;
+      for (const r of taskRepos(def, task)) if (r.kind === 'git' && r.remote) void floor.githubFor(r.remote)?.refresh().catch(() => {});
+    } catch {
+      /* a missing floor or board is no reason to fail the turn */
+    }
   }
 
   /** A usage limit or lost connection: retry later, within autoResume's limits. */

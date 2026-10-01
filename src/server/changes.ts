@@ -3,6 +3,7 @@ import { readFile, realpath, stat } from 'node:fs/promises';
 import path from 'node:path';
 import type { ImageResult } from './decor.js';
 import { changedImageType, type ChangedFile, type ChangeStatus, type ChangesState } from '../shared/protocol.js';
+import { checkoutRepo, repoFlag } from './kanban/ghrepo.js';
 
 // What a worker changed, for the Changes window at its desk: the files it touched and their diff,
 // against the branch the office was opened on. While anyone has the window open, the office polls
@@ -319,7 +320,7 @@ export class Changes {
       const remote = remotes.includes('origin') ? 'origin' : remotes[0];
       if (!remote) return 'This project has no git remote to push to';
       await git(['push', '-u', remote, s.branch], t.cwd, 120_000, env);
-      const r = await run('gh', ['pr', 'create', '--head', s.branch, '--base', s.prBase, '--title', title.trim(), '--body', body], t.cwd, 120_000, env);
+      const r = await run('gh', ['pr', 'create', ...repoFlag(checkoutRepo(t.cwd, remote)), '--head', s.branch, '--base', s.prBase, '--title', title.trim(), '--body', body], t.cwd, 120_000, env);
       const url = r.out.trim().split('\n').pop() ?? '';
       if (r.code !== 0 || !/^https?:\/\//.test(url)) throw new GitError(reason(r, url || 'gh pr create failed'));
       const number = Number(/\/(\d+)$/.exec(url)?.[1] ?? 0);
@@ -412,7 +413,7 @@ export class Changes {
   }
 
   /** The commit the diff is taken from, and what to call it. */
-  private async baseCommit(t: ChangesTarget): Promise<{ commit: string; label: string; branch?: string; prBase?: string }> {
+  private async baseCommit(t: ChangesTarget): Promise<{ commit: string; label: string; branch?: string; prBase?: string; head: string }> { // 3d-kanban: head
     const head = await git(['rev-parse', '--verify', '--quiet', 'HEAD'], t.cwd).catch(() => {
       throw new GitError('No commits yet');
     });
@@ -441,7 +442,7 @@ export class Changes {
     // With two refs, git takes the merge base with a merge of them both: the newer one's, as a rule.
     const commit = (refs.length && (await gitMaybe(['merge-base', 'HEAD', ...refs], t.cwd))) || head;
     const prBase = onBranch && baseBranch && branch !== baseBranch ? baseBranch : undefined;
-    return { commit, label, branch: onBranch ? branch : undefined, prBase };
+    return { commit, label, branch: onBranch ? branch : undefined, prBase, head }; // 3d-kanban: head
   }
 
   private async compute({ workerId, repo }: { workerId: string; repo?: string }, t: ChangesTarget): Promise<ChangesState> {
@@ -513,7 +514,7 @@ export class Changes {
       const ahead = Number(await gitMaybe(['rev-list', '--count', `${base.commit}..HEAD`], t.cwd)) || 0;
       const subject = ahead ? await gitMaybe(['log', '-1', '--format=%s'], t.cwd) : undefined;
       const pr = base.branch ? this.opened.get(openedKey(repo, base.branch)) ?? (t.openPull ?? this.openPull)(base.branch) : undefined;
-      return { workerId, repo, dir: t.rel, branch: base.branch ?? 'HEAD', base: base.label, ahead, subject, files: list, more: all.length - list.length, prBase: base.prBase, pr, at: Date.now() };
+      return { workerId, repo, dir: t.rel, branch: base.branch ?? 'HEAD', base: base.label, ahead, subject, head: base.head, files: list, more: all.length - list.length, prBase: base.prBase, pr, at: Date.now() }; // 3d-kanban: head
     } catch (err) {
       return errorState({ workerId, repo }, t.rel, err instanceof GitError ? err.message : String((err as Error).message ?? err));
     }

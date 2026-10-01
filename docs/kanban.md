@@ -207,6 +207,7 @@ over it, and the task's own over both.
 | Keep the reviewer off the web | 🗂️ Kanban → Reviews; 📁 Projects | on | Claude reviewers get no WebFetch/WebSearch (Bash keeps the network, for `gh`). A Codex review round always runs in Codex's read-only sandbox (no network); a Codex multi-PR review in its workspace sandbox with the network on, for `gh`. |
 | Resume after a usage limit or a network break | 🗂️ Kanban | on, 5 tries, 6 hours | A turn cut short by a usage limit or a lost connection is retried by itself: at the reset time the message names (plus a minute), else after 5, 10, 20… minutes (at most an hour apart). It gives up after *tries at most* or *waits at most (hours)*; then it waits for Retry. |
 | Archive done tasks after (days) | 🗂️ Kanban | 30 | 0 keeps them on the board. Checked at start-up and hourly. |
+| Project name | 📁 Projects → ⚙️ Project (admin) | the repository's or folder's name | See *Projects and repositories*. The id, folder and repository don't change. |
 | Repositories, instructions, tasks at once | 📁 Projects → ⚙️ Project | — | See *Projects and repositories*. |
 
 ## Comments
@@ -259,24 +260,36 @@ or on its floor when it has no worker. Its tabs:
 - **Runs**: each phase run (phase, round, role, agent, status, verdict), and the task's history.
 - **Terminal**: the task worker's live terminal, as at its desk (you can type in it). A task on
   another project's floor takes you to that floor first.
-- **Changes**: what the task changed, read by the office from git, with or without a worker: a
-  repository picker, **Whole change** (the branch against its base, `origin/<base>` or the local base)
-  or **Per commit**, and, while the task has a worktree, **✏️ Uncommitted** (its edits and new files).
-  Each file's diff opens on its own; a diff over 2 MB is cut. It reads the task's worktree while there
-  is one, else the task's branch in the project's checkout (fetched from origin in the background now
-  and then, never waited for). While a worker is at its desk, **🔴 Open the live Changes window**
-  opens upstream's window on its checkout.
+- **Changes**: the task's **Changes view**, the same one **C** (or 🌿 Changes in the worker's window)
+  opens in the 3D office: upstream's Changes window with a tab per repository of the task (and its PR
+  number), the changed files down the left and one file's diff on the right (j/k or the arrows move),
+  and **All changes** (the branch against its base, `origin/<base>` or the local base), **Per commit**
+  (the branch's commits, the newest picked, each with its own files) and, while the task's worktree
+  has uncommitted work, **✏️ Uncommitted (n)** (the worktree against its HEAD commit). While the task's
+  worker is on this page's floor, All changes follows its checkout live, with upstream's **✅ Commit…**,
+  **🗑️ Discard all** and **🔀 Open PR…**; otherwise the office reads the task's worktree while there is
+  one, else the task's branch in the project's checkout (fetched from origin in the background now and
+  then, never waited for), read-only, with ↻ to read again. Per commit and Uncommitted are always read
+  that way, again whenever the live checkout changes (a new commit, an amend, an edit). A diff over
+  2 MB is cut. The 3D worker window's 🗂️ Task tab has no Changes tab: its header's 🌿 Changes is it.
 - **PRs**: the task's pull requests with their state, **Create/Push & update PRs**, **Fix PRs**, and
   **🔍 Review these N PRs together**.
 
 The panel is the **shared task view** (`src/client/kanban/taskview.ts`), which the 3D office uses too
 (a window of its own, or a tab of the worker window). There it has no Terminal tab (the worker
-window has the terminal), no Edit or Move, and a **🗂️ Open in the kanban** link instead of Show in 3D.
+window has the terminal, whose tab also has upstream's **+ Web page** tabs; while focus is inside a web page, Esc doesn't close the window, the ✕ does), no Edit or Move, and a **🗂️ Open in the kanban** link instead of Show in 3D.
 
 ## Projects and repositories
 
 A project is a floor of the building. The floor's own checkout is the **primary** repository; a floor
 without more repositories is a one-repository project, as in upstream agent-office.
+
+An admin can rename a project: ⚙️ Settings → **📁 Projects** → **⚙️ Project** → **Project name** →
+**Rename** (1-100 characters, not another project's name, in any case). The name shows in the elevator,
+the top bar, the board and the agents' prompts; the project's id, folder and GitHub repository stay.
+Agents already running keep the old name in the prompts they were sent; the next phase uses the new
+one. A primary repository called after the project (as it is until someone names it otherwise) is
+renamed with it, unless one of the project's other repositories already has the new name.
 
 ⚙️ Settings → **📁 Projects** (pick the project at the top) → **⚙️ Project** → **Repositories**: **＋ Add a local
 repository** with its absolute folder, then name, kind (git or folder), GitHub `owner/name`, base
