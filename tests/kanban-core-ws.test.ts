@@ -78,6 +78,7 @@ function office(t: Ctx, opts: { answers?: Partial<Record<string, string>>; plugi
     floors: () => building.list(),
     floor: (id) => (building.list().some((d) => d.id === id) ? ({ id, workers: { get: (w: string) => (live.has(w) ? { id: w } : undefined) } } as unknown as Floor) : undefined),
     saveRepos: (id, repos) => building.setRepos(id, repos),
+    saveName: (id, name) => building.setName(id, name),
     officePrompts: () => ({}),
     hookUrl: 'http://127.0.0.1:9',
     toast: (_floor, text) => void toasts.push(text),
@@ -359,6 +360,7 @@ test('settings, projects, prompts and secrets are for admins; everyone may read 
     { t: 'kanban.settings.set', settings: { archiveAfterDays: 3 } },
     { t: 'kanban.project.settings.set', project: 'web', settings: { maxConcurrent: 5 } },
     { t: 'kanban.project.repos.set', project: 'web', repos: [] },
+    { t: 'kanban.project.rename', project: 'web', name: 'Shop' },
     { t: 'kanban.project.prompt.set', project: 'web', id: 'kanban.plan', text: 'x' },
     { t: 'kanban.secrets.set', apiKey: 'k'.repeat(20) },
   ]) errorOf(await bob.ask(msg), /Only an admin/);
@@ -392,6 +394,29 @@ test('settings, projects, prompts and secrets are for admins; everyone may read 
   // Back to just its own checkout: the floor has no list of its own again.
   okOf(await boss.ask({ t: 'kanban.project.repos.set', project: 'web', repos: [{ id: 'web', name: 'web', dir: web, primary: true }] }));
   assert.ok(!('repos' in building.list()[0]));
+  // Renaming: the floor's name only; its id stays.
+  errorOf(await boss.ask({ t: 'kanban.project.rename', project: 'nope', name: 'Shop' }), /no project nope/);
+  errorOf(await boss.ask({ t: 'kanban.project.rename', project: 'web', name: 'DOCS' }), /already a project called DOCS/);
+  const beforeRename = bob.deltas('kanban.projects').length;
+  okOf(await boss.ask({ t: 'kanban.project.rename', project: 'web', name: '  Shop  ' }));
+  assert.equal(building.list()[0].name, 'Shop');
+  assert.equal(building.list()[0].id, 'web');
+  assert.equal(kanban.ctx.project('web')?.name, 'Shop');
+  const renamed = bob.deltas('kanban.projects');
+  assert.equal(renamed.length, beforeRename + 1);
+  const last = renamed.at(-1)!;
+  assert.equal(last.t === 'kanban.projects' && last.projects.find((p) => p.id === 'web')?.name, 'Shop');
+  // A saved list's primary, called after the project, takes the new name too; one named otherwise keeps its own.
+  okOf(await boss.ask({ t: 'kanban.project.repos.set', project: 'web', repos: [{ id: 'web', name: 'Shop', dir: web, primary: true }, { id: 'api', name: 'API', dir: api, primary: false }] }));
+  okOf(await boss.ask({ t: 'kanban.project.rename', project: 'web', name: 'Store' }));
+  assert.equal(building.list()[0].repos?.find((r) => r.primary)?.name, 'Store');
+  okOf(await boss.ask({ t: 'kanban.project.repos.set', project: 'web', repos: [{ id: 'web', name: 'Front', dir: web, primary: true }, { id: 'api', name: 'API', dir: api, primary: false }] }));
+  okOf(await boss.ask({ t: 'kanban.project.rename', project: 'web', name: 'Shop' }));
+  assert.equal(building.list()[0].repos?.find((r) => r.primary)?.name, 'Front');
+  // Back to just its own checkout under the new name: no list of its own again.
+  okOf(await boss.ask({ t: 'kanban.project.repos.set', project: 'web', repos: [{ id: 'web', name: 'Shop', dir: web, primary: true }] }));
+  assert.ok(!('repos' in building.list()[0]));
+
   // A task may now use api... only while it's in the project.
   await boss.ask({ t: 'kanban.task.create', task: { project: 'web', title: 'x' } });
   errorOf(await boss.ask({ t: 'kanban.task.update', id: 1, patch: { repoIds: ['api'] } }), /isn't one of/);

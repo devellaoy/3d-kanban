@@ -26,7 +26,7 @@ document disagree, fix one of them in the same change.
 
 ## 2. Concepts
 
-- **Project = floor.** A floor (`FloorDef` in `floors.json`) is a project. `FloorDef.repos?: ProjectRepo[]`
+- **Project = floor.** A floor (`FloorDef` in `floors.json`) is a project; its name (`FloorDef.name`) can be changed (`kanban.project.rename`, admin), its id never. `FloorDef.repos?: ProjectRepo[]`
   lists its repositories. The floor's own `dir`/`repo` is always the **primary** repository
   (the floor's `.agent-office/` data stays there, as upstream). A floor without `repos` is a
   one-repository project exactly as upstream has it. The primary's `remote` is `FloorDef.repo` when the
@@ -369,7 +369,7 @@ answers `kanban.ok {rid, ...}` or `kanban.error {rid, message}`. Deltas are push
     repositories, else 0), and falls back to upstream's list without sources. Cards are handed out with
     `issueKey` (see kanban-coupling.md, Messages).
   - Admin only (upstream `meOf(accountId).admin`): `settings.set`, `project.settings.set`, `project.repos.set`,
-    `project.prompt.set`, `secrets.set`, `skills.sync`. `secrets.set` is answered with `kanban.settings` (configured flags
+    `project.rename`, `project.prompt.set`, `secrets.set`, `skills.sync`. `secrets.set` is answered with `kanban.settings` (configured flags
     only). The `/api/v1` key is stored as `sha256:<hex>`.
 - Auto-archive: done tasks whose `doneAt` (else `updatedAt`) is older than `settings.archiveAfterDays` move to
   `archived`. This runs at start-up and hourly; `0` means never. Unattached uploads older than a day are removed

@@ -44,6 +44,7 @@ export function makeCtx(defs: FloorDef[] = [], opts: { start?: (id: number) => s
       return d ? projectRepos(d) : [];
     },
     setRepos: () => 'not in tests',
+    setName: () => 'not in tests',
     officePrompts: () => ({}),
     hookUrl: 'http://127.0.0.1:4555',
     sent: [] as TestCtx['sent'],

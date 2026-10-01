@@ -89,6 +89,7 @@ test('good messages come through rebuilt, without anything the validator did not
     project: 'web',
     repos: [{ id: 'web', name: 'Web', dir: '/w', primary: true, kind: 'git', remote: 'acme/web' }],
   });
+  assert.deepEqual(good({ t: 'kanban.project.rename', project: 'web', name: '  Shop  ' }), { t: 'kanban.project.rename', project: 'web', name: 'Shop' });
   // Every type the protocol has is known to the validator.
   for (const t of ['kanban.unsubscribe', 'kanban.settings.get', 'kanban.meta.get', 'kanban.skills.list', 'kanban.skills.sync']) assert.deepEqual(good({ t }), { t });
   assert.deepEqual(good({ t: 'kanban.project.repo.clone', project: 'web', remote: 'acme/api', name: ' API ' }), { t: 'kanban.project.repo.clone', project: 'web', remote: 'acme/api', name: 'API' });
@@ -99,7 +100,7 @@ test('good messages come through rebuilt, without anything the validator did not
     refused({ t: 'kanban.task.start', id: 2, deskId }, /deskId must be a desk/);
     refused({ t: 'kanban.task.create', task: { project: 'web', title: 'x' }, deskId }, /deskId must be a desk/);
   }
-  assert.equal(KANBAN_CLIENT_TYPES.size, 35);
+  assert.equal(KANBAN_CLIENT_TYPES.size, 36);
 });
 
 test("the primary repository's id is its floor's, up to 40 characters, and repoIds take it", () => {
@@ -150,6 +151,9 @@ test('bad messages are refused with a reason, and their rid is still found for t
   refused({ t: 'kanban.pr.review', project: 'web', prs: [{ repo: 'nope', number: 1 }] }, /owner\/name/);
   refused({ t: 'kanban.pr.bundle', project: 'web', branch: 'a', ticket: 'b' }, /exactly one/);
   refused({ t: 'kanban.project.repos.set', project: 'web', repos: [{ id: 'Bad Id', name: 'x', dir: '/x' }] }, /needs an id/);
+  refused({ t: 'kanban.project.rename', project: 'web' }, /name/i);
+  refused({ t: 'kanban.project.rename', project: 'web', name: '   ' }, /name/i);
+  refused({ t: 'kanban.project.rename', project: 'web', name: 'x'.repeat(101) }, /name/i);
   assert.equal(ridOf({ t: 'kanban.task.get', id: 'x', rid: 'r9' }), 'r9');
   assert.equal(ridOf({ rid: '' }), undefined);
   assert.equal(ridOf(null), undefined);

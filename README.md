@@ -115,7 +115,8 @@ curl -fsSL https://raw.githubusercontent.com/devellaoy/3d-kanban/main/deploy/pro
   [the contract](docs/kanban-coupling.md)).
 - **Projects with several repositories**: a floor is a project, and a task gets a worktree of each of
   its repositories on one branch, cut from each repository's configured base branch (else the branch
-  its checkout is on). The issues and PR boards show every repository.
+  its checkout is on). The issues and PR boards show every repository. An admin can rename a project
+  in ⚙️ Settings → 📁 Projects; its id, folder and repository stay.
 - **Issue sources per project**: GitHub repositories, GitHub Projects v2 and Jira, made into tasks in a click. They are also the 3D office's 📌 Issues board, cards you carry to desks, workers and the queue.
 - **Agent-written pull requests**: **O** at a desk and the task's PR phase have the agent push and open
   (or fix) the PRs in every repository.
