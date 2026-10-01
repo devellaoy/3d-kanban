@@ -41,8 +41,9 @@ function runVerbatim(cmd: string, args: string[], cwd: string, timeout: number, 
 const defaultDeps: VsCodeDeps = { run, resolveCommand, platform: process.platform, env: process.env, runVerbatim };
 
 // cmd.exe reads its command line itself, so what it treats as syntax is escaped with ^ as cross-spawn
-// does (lib/util/escape.js, whose algorithm this follows); the target goes through the code.cmd batch
-// shim too, which parses it a second time (doubleEscape).
+// does (lib/util/escape.js, whose algorithm this follows). Once: VS Code's code.cmd hands %* straight
+// to Code.exe, where the target arrives in its quotes (cross-spawn escapes twice only for npm's
+// node_modules/.bin shims, which pass it on inside an IF block).
 const META = /([()\][%!^"`<>&|;, *?])/g;
 const escapeCommand = (cmd: string) => cmd.replace(META, '^$1');
 function escapeArg(arg: string, doubleEscape: boolean): string {
@@ -56,7 +57,7 @@ function escapeArg(arg: string, doubleEscape: boolean): string {
 
 /** The arguments to cmd.exe that run the batch file `command` with `args`, safe against cmd's parsing of & % ^ and the like. */
 export function winCmdLine(command: string, args: string[]): string[] {
-  return ['/d', '/s', '/c', `"${[escapeCommand(command), ...args.map((a) => escapeArg(a, true))].join(' ')}"`];
+  return ['/d', '/s', '/c', `"${[escapeCommand(command), ...args.map((a) => escapeArg(a, false))].join(' ')}"`];
 }
 
 const TIMEOUT = 15_000;

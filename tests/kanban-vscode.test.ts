@@ -227,13 +227,75 @@ test('several folders open as a workspace file, one as itself', async (t) => {
   await assert.rejects(openFor(ctx, [], 'task #7', 'k', two.d), /no folder/);
 });
 
-test('winCmdLine escapes what cmd.exe would read as syntax', () => {
-  assert.deepEqual(winCmdLine('C:\\Users\\me\\code.cmd', ['C:\\my repos\\a']), ['/d', '/s', '/c', '"C:\\Users\\me\\code.cmd ^^^"C:\\my^^^ repos\\a^^^""']);
-  const amp = winCmdLine('code.cmd', ['C:\\repos\\a&b'])[3];
-  assert.equal(amp, '"code.cmd ^^^"C:\\repos\\a^^^&b^^^""');
-  const pct = winCmdLine('code.cmd', ['C:\\100%\\a^b'])[3];
-  assert.equal(pct, '"code.cmd ^^^"C:\\100^^^%\\a^^^^b^^^""');
-  for (const [line, ch] of [[amp, '&'], [pct, '%']]) for (let i = 0; i < line.length; i++) if (line[i] === ch) assert.equal(line[i - 1], '^');
+/**
+ * What runs when cmd.exe /d /s /c gets `line`, and then VS Code's code.cmd passes %* on to Code.exe:
+ * cmd drops /s's outer quotes, takes ^ as an escape outside quotes, splits commands at an unquoted
+ * & | < >; the batch line parses %* that way again; Code.exe splits its command line into argv.
+ */
+function cmdReceives(line: string): { command: string; argv: string[] } {
+  const parse = (text: string): { tokens: string[]; raw: string } => {
+    const tokens: string[] = [];
+    let raw = '';
+    let tok = '';
+    let quoted = false;
+    for (let i = 0; i < text.length; i++) {
+      const c = text[i];
+      if (!quoted && c === '^') {
+        raw += text[++i];
+        tok += text[i];
+        continue;
+      }
+      if (!quoted && '&|<>'.includes(c)) throw new Error(`cmd would split the command at ${c}: ${text}`);
+      if (c === '"') quoted = !quoted;
+      if (c === ' ' && !quoted) {
+        if (tok) tokens.push(tok);
+        tok = '';
+      } else tok += c;
+      raw += c;
+    }
+    if (tok) tokens.push(tok);
+    return { tokens, raw };
+  };
+  assert.ok(line.startsWith('"') && line.endsWith('"'));
+  const first = parse(line.slice(1, -1));
+  const [command] = first.tokens;
+  // The batch file's %*: everything after its own name, parsed by cmd once more on the batch line.
+  const rest = parse(first.raw.slice(first.raw.indexOf(command) + command.length).trim()).raw;
+  // Code.exe's argv (CommandLineToArgvW, enough for paths: quotes group and go).
+  const argv: string[] = [];
+  let arg = '';
+  let quoted = false;
+  let started = false;
+  for (const c of rest) {
+    if (c === '"') {
+      quoted = !quoted;
+      started = true;
+    } else if (c === ' ' && !quoted) {
+      if (started) argv.push(arg);
+      arg = '';
+      started = false;
+    } else {
+      arg += c;
+      started = true;
+    }
+  }
+  if (started) argv.push(arg);
+  return { command: command.replace(/"/g, ''), argv };
+}
+
+test('winCmdLine escapes what cmd.exe would read as syntax, once for code.cmd', () => {
+  assert.deepEqual(winCmdLine('C:\\Users\\me\\code.cmd', ['C:\\my repos\\a']), ['/d', '/s', '/c', '"C:\\Users\\me\\code.cmd ^"C:\\my^ repos\\a^""']);
+  assert.equal(winCmdLine('code.cmd', ['C:\\repos\\a&b'])[3], '"code.cmd ^"C:\\repos\\a^&b^""');
+  assert.equal(winCmdLine('code.cmd', ['C:\\100%\\a^b'])[3], '"code.cmd ^"C:\\100^%\\a^^b^""');
+});
+
+test('VS Code receives the target exactly, spaces, & % ^ and all', () => {
+  const code = 'C:\\Users\\me\\AppData\\Local\\Programs\\Microsoft VS Code\\bin\\code.cmd';
+  for (const target of ['C:\\repos\\a', 'C:\\my repos\\a b', 'C:\\repos\\a&b', 'C:\\100%\\a^b (1)', 'C:\\x|y\\<z>!', 'C:\\files\\workspaces\\task-web-7.code-workspace']) {
+    const got = cmdReceives(winCmdLine(code, [target])[3]);
+    assert.equal(got.command, code);
+    assert.deepEqual(got.argv, [target], target);
+  }
 });
 
 test('on Windows a .cmd shim runs through cmd.exe with the escaped line, verbatim', async () => {
