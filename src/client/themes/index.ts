@@ -55,13 +55,18 @@ export function saveAppearance(id: AppearanceId): void {
   }
 }
 
-/** Puts an appearance on the page: `data-theme`, the colour scheme, and the installed app's colour. */
+/**
+ * Puts an appearance on the page: `data-theme` and the installed app's colour (each theme's sheet sets
+ * its own `color-scheme`). Does nothing when the page already shows it; the head script sets `data-theme`
+ * before this runs, so the colour is checked too.
+ */
 export function applyAppearance(id: AppearanceId): void {
   const a = appearanceOf(id);
   const root = document.documentElement;
+  const meta = document.querySelector('meta[name="theme-color"]');
+  if (root.dataset.theme === a.id && (!meta || meta.getAttribute('content') === a.themeColor)) return;
   root.dataset.theme = a.id;
-  root.style.colorScheme = a.colorScheme;
-  document.querySelector('meta[name="theme-color"]')?.setAttribute('content', a.themeColor);
+  meta?.setAttribute('content', a.themeColor);
   window.dispatchEvent(new CustomEvent('appearancechange', { detail: a.id }));
 }
 
@@ -80,4 +85,10 @@ export function watchAppearance(): void {
   window.addEventListener('storage', (e) => {
     if (e.key === APPEARANCE_KEY || e.key === null) applyAppearance(loadAppearance());
   });
+}
+
+/** What every page's entry point calls: shows this browser's choice and follows it across tabs. */
+export function initAppearance(): void {
+  applyAppearance(loadAppearance());
+  watchAppearance();
 }

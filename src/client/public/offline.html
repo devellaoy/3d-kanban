@@ -8,7 +8,7 @@
     <!-- The service worker's stand-in for a page when the office can't be reached (sw.js).
          Self-contained: it's shown with the network gone. It's served at the page's own address, so
          a reload is that page again. -->
-    <script>try{var t=localStorage.getItem('agent-office.appearance');if(t)document.documentElement.dataset.theme=t}catch(e){}</script>
+    <script>try{var t=localStorage.getItem('agent-office.appearance');if(t){document.documentElement.dataset.theme=t;var c={default:'#fff1de',dark:'#212121',glossy:'#f5f5f7'}[t];if(c)document.querySelector('meta[name=theme-color]').content=c}}catch(e){}</script>
     <style>
       /* The shared tokens (themes/) are not loaded here, so the three looks' few values are set out as variables. */
       :root {

@@ -17,7 +17,7 @@ import type { ClientMsg, ServerMsg } from '../../../shared/protocol';
 import { WB_MAX_ELEMENT_BYTES, byIndex, newer, type WbElement, type WbPointer } from '../../../shared/whiteboard';
 import { store } from '../../state';
 import { toast } from '../../ui/dom';
-import { appearanceOf, loadAppearance } from '../../themes';
+import { appearanceOf, parseAppearance } from '../../themes';
 
 /** How often your changes, and your mouse, go out while you draw. */
 const SEND_MS = 50;
@@ -283,7 +283,7 @@ export function mountWhiteboard(host: HTMLElement, send: (msg: ClientMsg) => voi
         },
         isCollaborating: true,
         name,
-        theme: appearanceOf(loadAppearance()).colorScheme,
+        theme: appearanceOf(parseAppearance(document.documentElement.dataset.theme)).colorScheme,
         langCode: 'en',
         autoFocus: true,
         aiEnabled: false,

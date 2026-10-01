@@ -144,3 +144,16 @@ test('every page sets its appearance before the stylesheet', () => {
     assert.equal(html.match(/name="theme-color"/g)?.length, 1, `${page}.html has one theme-color`);
   }
 });
+
+test('offline.html has a block and a theme-color for every appearance', () => {
+  const html = read(path.join(client, 'public/offline.html'));
+  for (const a of APPEARANCES) {
+    if (a.id === 'default') continue;
+    assert.ok(html.includes(`[data-theme="${a.id}"]`), `offline.html has a [data-theme="${a.id}"] block`);
+  }
+  const map = html.match(/var c=\{([^}]*)\}/);
+  assert.ok(map, 'offline.html has the id → colour map in its head script');
+  const colours = Object.fromEntries([...map[1].matchAll(/(\w+):'(#[0-9a-f]{6})'/gi)].map((m) => [m[1], m[2].toLowerCase()]));
+  assert.deepEqual(colours, Object.fromEntries(APPEARANCES.map((a) => [a.id, a.themeColor.toLowerCase()])));
+  assert.equal(html.match(/name="theme-color"/g)?.length, 1, 'offline.html has one theme-color');
+});

@@ -127,3 +127,22 @@ test('⚙️ Settings hands the Theme row\'s off() to its onClose', () => {
   const onClose = src.slice(src.indexOf('onClose: () => {'));
   assert.match(onClose.slice(0, onClose.indexOf('\n    },')), /appearance\.off\b/);
 });
+
+test('applying what the page already shows fires no event; a head script that set only data-theme still gets the colour', async () => {
+  const { win, root } = fakePage();
+  const meta = new FakeEl('meta');
+  meta.setAttribute('content', '#fff1de');
+  (globalThis.document as unknown as { querySelector: () => FakeEl }).querySelector = () => meta;
+  const { applyAppearance } = await import('../src/client/themes/index.ts');
+  let changes = 0;
+  win.addEventListener('appearancechange', () => changes++);
+  root.dataset.theme = 'dark'; // what the head script leaves before the module runs
+  applyAppearance('dark');
+  assert.equal(meta.getAttribute('content'), '#212121');
+  assert.equal(changes, 1);
+  applyAppearance('dark');
+  applyAppearance('dark');
+  assert.equal(changes, 1, 'a repeat is not a change');
+  applyAppearance('glossy');
+  assert.equal(changes, 2);
+});

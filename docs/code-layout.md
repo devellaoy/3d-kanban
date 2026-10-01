@@ -59,8 +59,9 @@ They're in `core/registry.ts`, and each is a field of `ctx`. Every registration 
 1. `themes/<id>.css`: the `:root[data-theme="<id>"]` block with a value for every token, first, and after it a short section of component overrides for what tokens can't say.
 2. Its `@import` in `themes/index.css`.
 3. Its row in `APPEARANCES` in `themes/index.ts` (label, icon, `colorScheme`, `themeColor`).
+4. `public/offline.html` keeps its own small copy of the looks (it is shown with no network, so it can't load the sheets): a `:root[data-theme="<id>"]` block of its few variables, and the theme's colour in the id → colour map of its head script.
 
-`tests/appearance.test.ts` checks the file, the import and that every token is defined, and `tests/themes-contrast.test.ts` that each theme's text and fill pairs (text on panels, text on the status colours, a button's label) reach WCAG AA contrast. Prefer a token to an override, never use `!important`, and remember `--ink` is the *line* colour (borders, outlines), not the text colour: text uses `--text` and its siblings. The same test keeps raw colours (hex, `rgb()`) out of the sheets, so a new rule uses a token.
+`tests/appearance.test.ts` checks the file, the import, that every token is defined and that `offline.html` has the block and the colour, and `tests/themes-contrast.test.ts` that each theme's text and fill pairs (text on panels, text on the status colours, a button's label) reach WCAG AA contrast. Prefer a token to an override, never use `!important`, and remember `--ink` is the *line* colour (borders, outlines), not the text colour: text uses `--text` and its siblings. The same test keeps raw colours (hex, `rgb()`) out of the sheets, so a new rule uses a token.
 
 ## Server
 
