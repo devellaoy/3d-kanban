@@ -36,6 +36,9 @@ interface LocalOff {
   at: number;
 }
 
+/** Folders under home that hold keys and settings, never a project. */
+const SECRET_DIRS = ['.ssh', '.aws', '.gnupg', '.config'];
+
 /** How long the list of repositories `gh` can see is reused before it's asked again. */
 const REPOS_TTL_MS = 5 * 60_000;
 const MAX_REPOS = 1000;
@@ -60,6 +63,8 @@ export class Building {
   /** The floor that checkout is, while it is one. */
   private localId?: string;
   private localFile: string;
+  /** The floor addDir just moved the started-in checkout back in as, and the taking off it undid (see forget). */
+  private movedBack?: { id: string; off: LocalOff };
   /** That checkout was taken off the building: a restart doesn't put it back. */
   private localOff?: LocalOff;
 
@@ -240,7 +245,11 @@ export class Building {
     // The office's data folder (.agent-office), the office home it sits in, and anything holding them;
     // except the checkout the office was started in, which holds its own data folder.
     const startedHere = [this.local?.dir, this.localOff?.dir].some((d) => d && realOf(d) === real);
-    if (!startedHere && within(realOf(this.dataDir), real)) return `${shown} is the office's own folder (or holds it) — pick a project's folder`;
+    const data = realOf(this.dataDir);
+    if (!startedHere && (within(data, real) || within(real, data))) return `${shown} is the office's own folder (or holds or is inside it) — pick a project's folder`;
+    // Where the account keeps its secrets and settings: hidden folders straight under home, and anything in or around the usual ones.
+    const home = realOf(os.homedir());
+    if ((path.dirname(real) === home && path.basename(real).startsWith('.')) || SECRET_DIRS.some((n) => within(real, path.join(home, n)) || within(path.join(home, n), real))) return `${shown} is a private folder of your account — pick a project's own folder`;
     if (within(realOf(this.projectsDir), real)) return `${shown} is where the office clones projects (or holds that folder) — pick a project's own folder`;
     for (const d of [...this.defs, ...this.cloning.values()]) {
       const there = realOf(d.dir);
@@ -263,7 +272,9 @@ export class Building {
     }
     const def = this.newDef(path.basename(dir), repo, dir, by);
     // The checkout the office was started in, taken off before: it moves back in.
+    this.movedBack = undefined;
     if (this.localOff && realOf(this.localOff.dir) === real) {
+      this.movedBack = { id: def.id, off: this.localOff };
       this.localId = def.id;
       this.setLocalOff(undefined);
     }
@@ -272,8 +283,12 @@ export class Building {
     return def;
   }
 
-  /** Drops a floor that was just added but couldn't be opened. Unlike remove, it isn't remembered as taken off. */
+  /** Drops a floor that was just added but couldn't be opened. Unlike remove, it isn't remembered as taken off; the started-in checkout that moved back in goes back to being off. */
   forget(id: string): void {
+    if (this.movedBack?.id === id) {
+      this.setLocalOff(this.movedBack.off);
+      this.movedBack = undefined;
+    }
     this.defs = this.defs.filter((d) => d.id !== id);
     if (this.localId === id) this.localId = undefined;
     this.save();

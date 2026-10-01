@@ -129,9 +129,10 @@ export type FloorClientMsg =
   /**
    * A new floor, answered with `floor.added` once it's there: `repo` clones a GitHub repository,
    * `dir` (admins only) makes a folder on the office's machine a floor as it is, git or not.
-   * Exactly one of the two is set.
+   * Exactly one of the two is set. `rid`, made by the client, comes back in the answer, so two
+   * requests for the same repository or folder each hear their own.
    */
-  | { t: 'floor.add'; repo?: string; dir?: string }
+  | { t: 'floor.add'; repo?: string; dir?: string; rid?: string }
   /** Take a floor off the building (admins only). Its checkout stays on disk; everyone on it rides to another floor. */
   | { t: 'floor.remove'; floor: string }
   /** Where new floors are cloned from now on (admins only); '' goes back to the default. */
@@ -150,8 +151,8 @@ export type FloorServerMsg =
   | { t: 'floors'; floors: FloorInfo[] }
   /** Sent to whoever asked. */
   | { t: 'floor.repos'; repos: RepoChoice[]; error?: string }
-  /** Sent to whoever asked for the floor, once it's there (or couldn't be); echoes the `repo` or `dir` asked for. */
-  | { t: 'floor.added'; repo?: string; dir?: string; floor?: string; error?: string }
+  /** Sent to whoever asked for the floor, once it's there (or couldn't be); echoes the `repo` or `dir` and the `rid` asked with. */
+  | { t: 'floor.added'; repo?: string; dir?: string; rid?: string; floor?: string; error?: string }
   /** The projects folder moved (see floor.projectsDir). */
   | { t: 'projectsDir'; state: ProjectsDirState }
   /** Your floor's signs changed, or its back office was built out or walled up. */

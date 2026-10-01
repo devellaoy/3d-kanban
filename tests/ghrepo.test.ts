@@ -45,8 +45,9 @@ test("the floor's boards and actions name the checkout's origin in every gh call
   const dir = forkCheckout();
   const bin = mkdtempSync(path.join(tmpdir(), 'kanban-ghbin-'));
   const log = path.join(bin, 'calls');
-  // A stand-in gh that writes down its arguments, one call per line, and answers with an empty list.
-  writeFileSync(path.join(bin, 'gh'), `#!/bin/sh\nprintf '%s ' "$@" >> '${log}'\necho >> '${log}'\necho '[]'\n`);
+  // A stand-in gh that writes down its arguments, one call per line in a single write (calls run at
+  // the same time, and two writes per call would interleave), and answers with an empty list.
+  writeFileSync(path.join(bin, 'gh'), `#!/bin/sh\nprintf '%s \\n' "$*" >> '${log}'\necho '[]'\n`);
   chmodSync(path.join(bin, 'gh'), 0o755);
   const PATH = process.env.PATH;
   process.env.PATH = `${bin}${path.delimiter}${PATH}`;

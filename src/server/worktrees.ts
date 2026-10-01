@@ -3,6 +3,7 @@ import { existsSync, readdirSync, realpathSync, statSync } from 'node:fs';
 import { rm } from 'node:fs/promises';
 import path from 'node:path';
 import { promisify } from 'node:util';
+import { NO_FSMONITOR } from './floor-git.js';
 import type { LostBranch, WorktreeState } from '../shared/protocol.js';
 
 export type { WorktreeCleanup, WorktreeState } from '../shared/protocol.js';
@@ -94,7 +95,7 @@ export class Worktrees {
     if (!from || !this.hasOrigin()) return undefined;
     // Never stop to ask for a password: there's nobody at the office's terminal to type it.
     const env = { ...process.env, GIT_TERMINAL_PROMPT: '0' };
-    this.fetching = execFileP('git', ['fetch', '--quiet', '--no-tags', 'origin', from], { cwd: this.dir, env, timeout: FETCH_TIMEOUT_MS })
+    this.fetching = execFileP('git', [...NO_FSMONITOR, 'fetch', '--quiet', '--no-tags', 'origin', from], { cwd: this.dir, env, timeout: FETCH_TIMEOUT_MS })
       .then(
         () => (this.fetchError = undefined),
         (err) => {
@@ -368,12 +369,13 @@ export class Worktrees {
     return within(path.join(this.root, WORKTREES_DIR), real(abs));
   }
 
+  // A worker's worktree is somebody's own doing (hiring it): the repository's hooks run, its fsmonitor never does.
   private gitSync(args: string[], cwd = this.dir): string {
-    return execFileSync('git', args, { cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], timeout: 20_000 }).trim();
+    return execFileSync('git', [...NO_FSMONITOR, ...args], { cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], timeout: 20_000 }).trim();
   }
 
   private async git(args: string[], cwd = this.dir): Promise<string> {
-    const { stdout } = await execFileP('git', args, { cwd, encoding: 'utf8', timeout: 60_000, maxBuffer: 16 * 1024 * 1024 });
+    const { stdout } = await execFileP('git', [...NO_FSMONITOR, ...args], { cwd, encoding: 'utf8', timeout: 60_000, maxBuffer: 16 * 1024 * 1024 });
     return stdout.trim();
   }
 }

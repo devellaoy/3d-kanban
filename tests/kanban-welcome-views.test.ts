@@ -132,7 +132,7 @@ test("a project's floor welcomes you with its other repositories' PRs and its is
   // what refreshBoards() makes for a git repository with a remote, here filled in instead of fetched.
   // Pinned, so the office's own fetches from GitHub (there's no remote here) can't replace them midway.
   pin(floor.github, { items: [pull(3)], fetchedAt: 1, loading: false });
-  const other = new GitHub(tmp, () => {}, () => {}, 'o/api', true);
+  const other = new GitHub(tmp, () => {}, () => {}, { nameWithOwner: 'o/api', pullsOnly: true });
   pin(other, { items: [pull(7, 'o/api')], fetchedAt: 2, loading: false });
   (floor as unknown as { boards: Map<string, unknown> }).boards.set('api', { board: other, dir: tmp, remote: 'o/api' });
   // The project's issue sources, as the issues plugin hands them to the board.

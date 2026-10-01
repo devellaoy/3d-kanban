@@ -286,3 +286,44 @@ test("a folder nested in a repository doesn't take that repository's branch or o
   // Upstream's way (started in a subfolder) still sees the repository.
   assert.equal(projectInfo(inner, 'sub', 'claude', []).remote, 'https://github.com/acme/outer.git');
 });
+
+test("the account's private folders and the office's data folder's insides are refused", (t) => {
+  const f = folders(t);
+  const was = process.env.HOME;
+  // A stand-in home with the usual secret folders in it.
+  process.env.HOME = f.base;
+  t.after(() => {
+    if (was === undefined) delete process.env.HOME;
+    else process.env.HOME = was;
+  });
+  for (const n of ['.ssh', '.aws', '.gnupg', '.config/app', '.hidden']) mkdirSync(path.join(f.base, n), { recursive: true });
+  mkdirSync(path.join(f.base, '.ssh', 'keys'));
+  mkdirSync(path.join(f.dataDir, 'sub'));
+  const building = f.building();
+  const bad = (p: string, re: RegExp) => assert.match(String(building.addDir(p, 'Sam')), re, p);
+  for (const p of ['.ssh', '.ssh/keys', '.aws', '.gnupg', '.config', '.config/app', '.hidden']) bad(path.join(f.base, p), /private folder/);
+  bad('~/.hidden', /private folder/);
+  bad(path.join(f.dataDir, 'sub'), /office's own folder/);
+  // A hidden folder deeper down, or a visible one, is a project like any other.
+  mkdirSync(path.join(f.base, 'work', '.dotproject'), { recursive: true });
+  assert.equal(typeof building.addDir(path.join(f.base, 'work', '.dotproject'), 'Sam'), 'object');
+});
+
+test('a started-in checkout that moved back in is off again when its floor could not be opened', (t) => {
+  const f = folders(t);
+  const proj = f.dir('proj');
+  const dataDir = path.join(proj, '.agent-office');
+  mkdirSync(dataDir);
+  const first = new Building(dataDir, f.projects);
+  first.ensureLocal(proj, 'the office');
+  first.remove('proj', 'Sam');
+  const building = new Building(dataDir, f.projects);
+  assert.equal(building.ensureLocal(proj, 'the office'), undefined);
+  const def = building.addDir(proj, 'Sam') as FloorDef;
+  assert.ok(!existsSync(path.join(dataDir, 'local-floor.json')));
+  building.forget(def.id);
+  assert.ok(existsSync(path.join(dataDir, 'local-floor.json')), 'taken off again');
+  assert.ok(!building.isLocal(def.id));
+  // A restart keeps it off, as before.
+  assert.equal(new Building(dataDir, f.projects).ensureLocal(proj, 'the office'), undefined);
+});

@@ -7,10 +7,11 @@ import path from 'node:path';
 import { Changes, type ChangesTarget } from '../src/server/changes.js';
 import { excludeFromGit } from '../src/server/config.js';
 import { NOT_GIT } from '../src/server/floor-git.js';
+import { Docs } from '../src/server/docs.js';
 import { GitHub } from '../src/server/github.js';
 
 const skip = process.platform === 'win32';
-const MSG = "This folder isn't a git repository";
+const MSG = NOT_GIT;
 
 /** Stand-in git and gh that write each call down on one line (one printf, so lines never interleave) and fail. */
 function fakeTools(t: { after(fn: () => void): void }) {
@@ -33,7 +34,7 @@ test("Changes never runs git in a folder that isn't a git repository", { skip },
   const dir = mkdtempSync(path.join(tmpdir(), 'office-nongit-'));
   t.after(() => rmSync(dir, { recursive: true, force: true }));
   const calls = fakeTools(t);
-  const target: ChangesTarget = { name: 'W', cwd: dir, rel: '', noGit: MSG };
+  const target: ChangesTarget = { name: 'W', cwd: dir, rel: '', noGit: true };
   const changes = new Changes(dir, undefined, (id) => (id === 'w1' ? target : undefined), () => undefined, { state() {}, toast() {}, refreshGitHub() {} });
   t.after(() => changes.stop());
 
@@ -52,7 +53,7 @@ test("a GitHub for a folder that isn't a git repository refuses every call befor
   const dir = mkdtempSync(path.join(tmpdir(), 'office-nongit-'));
   t.after(() => rmSync(dir, { recursive: true, force: true }));
   const calls = fakeTools(t);
-  const github = new GitHub(dir, () => {}, () => {}, undefined, false, NOT_GIT);
+  const github = new GitHub(dir, () => {}, () => {}, { off: NOT_GIT });
   // The board refreshes a call starts on its way out (even when it failed) run in the background:
   // each one is kept, so the log is read only once they've all finished.
   const background: Promise<unknown>[] = [];
@@ -69,6 +70,8 @@ test("a GitHub for a folder that isn't a git repository refuses every call befor
   await github.refresh();
   assert.equal(github.issues.error, NOT_GIT);
   assert.equal(github.pulls.error, NOT_GIT);
+  assert.equal(github.issues.notGit, true);
+  assert.equal(github.pulls.notGit, true);
   await assert.rejects(github.repoInfo(), { message: NOT_GIT });
   assert.equal(await github.viewer(), '');
   await assert.rejects(github.pullDetail(1), { message: NOT_GIT });
@@ -98,4 +101,55 @@ test("a folder inside a git repository gets .agent-office/ in that repository's 
   mkdirSync(inner, { recursive: true });
   excludeFromGit(inner);
   assert.match(readFileSync(path.join(root, '.git', 'info', 'exclude'), 'utf8'), /^\.agent-office\/$/m);
+});
+
+test("the bookshelf of a folder that isn't a git floor never asks git", { skip }, async (t) => {
+  const dir = mkdtempSync(path.join(tmpdir(), 'office-nongit-'));
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
+  writeFileSync(path.join(dir, 'README.md'), '# Hello\n');
+  const calls = fakeTools(t);
+  assert.deepEqual((await new Docs(dir, false).list()).files.map((f) => f.path), ['README.md']);
+  assert.deepEqual(calls(), []);
+});
+
+test("a checkout's own config can't run programs from the office's automatic git calls", { skip }, async (t) => {
+  const root = mkdtempSync(path.join(tmpdir(), 'office-nongit-'));
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  const git = (...args: string[]) => execFileSync('git', args, { cwd: root, stdio: 'ignore' });
+  git('init', '-q', '-b', 'main');
+  writeFileSync(path.join(root, 'a.txt'), 'one\n');
+  git('add', '.');
+  git('-c', 'user.email=t@t', '-c', 'user.name=t', 'commit', '-qm', 'init');
+  writeFileSync(path.join(root, 'a.txt'), 'two\n');
+  // Hostile settings: a file-system monitor and an external diff program, each leaving a mark when run.
+  const marks = path.join(root, '..', `${path.basename(root)}-marks`);
+  mkdirSync(marks);
+  t.after(() => rmSync(marks, { recursive: true, force: true }));
+  for (const name of ['fsmonitor', 'diff']) {
+    writeFileSync(path.join(marks, `${name}.sh`), `#!/bin/sh\ntouch '${path.join(marks, name)}'\nexit 1\n`);
+    chmodSync(path.join(marks, `${name}.sh`), 0o755);
+  }
+  git('config', 'core.fsmonitor', path.join(marks, 'fsmonitor.sh'));
+  git('config', 'diff.external', path.join(marks, 'diff.sh'));
+  // Without the office's settings the same commands do run them (so the check below means something).
+  try {
+    execFileSync('git', ['status'], { cwd: root, stdio: 'ignore' });
+    execFileSync('git', ['diff'], { cwd: root, stdio: 'ignore' });
+  } catch {
+    // a failing monitor is no matter
+  }
+  const armed = existsSync(path.join(marks, 'fsmonitor')) && existsSync(path.join(marks, 'diff'));
+  rmSync(path.join(marks, 'fsmonitor'), { force: true });
+  rmSync(path.join(marks, 'diff'), { force: true });
+
+  const target: ChangesTarget = { name: 'W', cwd: root, rel: '' };
+  const changes = new Changes(root, 'main', (id) => (id === 'w1' ? target : undefined), () => undefined, { state() {}, toast() {}, refreshGitHub() {} });
+  t.after(() => changes.stop());
+  changes.watch('w1', 'c1');
+  await new Promise((r) => setTimeout(r, 800));
+  assert.equal((await changes.diff('w1', 'a.txt')) instanceof Object, true);
+  if (armed) {
+    assert.ok(!existsSync(path.join(marks, 'fsmonitor')), 'fsmonitor ran');
+    assert.ok(!existsSync(path.join(marks, 'diff')), 'the external diff ran');
+  }
 });

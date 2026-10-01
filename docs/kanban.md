@@ -304,7 +304,7 @@ is used as it is: nothing is cloned, and it needn't be a git repository. The off
 `<folder>/.agent-office`. Paths that are refused: a relative one, one that doesn't exist or isn't a
 folder, `/` and your home folder, a folder that is or holds the office's data folder (`.agent-office`, so
 the office's home too), the workspace folder or a folder that contains it, and a folder that already is a
-floor or is inside or contains one (the same folder under another name or case counts). A folder with git gets its `origin`'s GitHub
+floor or is inside or contains one (the same folder under another name or case counts), anything inside the data folder, and the private folders of your account (hidden folders straight under home, anything in or around `~/.ssh`, `~/.aws`, `~/.gnupg` and `~/.config`). Adding a folder with git means the office and its agents work in that repository with its own config, so add only folders you trust; the office's automatic git calls run with its file-system monitor and hooks turned off and with no external diff or text-conversion programs. A folder with git gets its `origin`'s GitHub
 repository for its issues and PRs; one without has no worktrees, branches or PRs, and the issue and PR
 boards say it isn't a git repository (the kanban's own tasks work, see *Limits*). The 3D office's elevator
 does the same: type the path (starting with `/` or `~`) into its search box and press **📁 Add folder**.

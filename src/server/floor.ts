@@ -38,7 +38,7 @@ import { isPrimaryIssue, parseGhKey } from '../shared/kanban/issuecard.js';
 // What a worker is sent home with (see sendHome).
 import type { DepartureIntent } from '../shared/kanban/types.js';
 import { sameRepo } from '../shared/floors.js';
-import { NOT_GIT, isGitFloor } from './floor-git.js';
+import { NOT_GIT, SAFE_GIT, isGitFloor } from './floor-git.js';
 
 type ToastLevel = 'info' | 'warn' | 'error';
 
@@ -108,7 +108,7 @@ export function projectInfo(dir: string, name: string, agentCmd: string, agentAr
   const git = (args: string[]) => {
     if (!isGit) return undefined;
     try {
-      return execFileSync('git', args, { cwd: dir, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim();
+      return execFileSync('git', [...SAFE_GIT, ...args], { cwd: dir, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim();
     } catch {
       return undefined;
     }
@@ -133,7 +133,7 @@ export class Floor {
   readonly dir: string;
   readonly project: ProjectInfo;
   /** See isGitFloor: a plain folder runs no git and asks GitHub nothing. */
-  private readonly git: boolean;
+  readonly git: boolean;
   readonly workers: WorkerManager;
   readonly github: GitHub;
   readonly queue: TaskQueue;
@@ -185,7 +185,7 @@ export class Floor {
     excludeFromGit(def.dir);
     this.git = isGitFloor(def.dir, ctx.isLocal(def.id));
     this.project = projectInfo(def.dir, def.name, ctx.agentCmd, ctx.agentArgs, this.git);
-    this.docs = new Docs(def.dir);
+    this.docs = new Docs(def.dir, this.git);
     // Before the workers and the dog: the back office's desks are only there once it's built.
     this.plan = new FloorPlanStore(dataDir);
     this.jail = new Jail(dataDir);
@@ -248,9 +248,7 @@ export class Floor {
         if (state.loading || state.error) return;
         this.boardPulled();
       },
-      undefined,
-      false,
-      this.git ? undefined : NOT_GIT,
+      { off: this.git ? undefined : NOT_GIT },
     );
     // The 📋 task queue seats workers by itself: it watches the workers and links PRs from GitHub.
     this.queue = new TaskQueue(dataDir, this.workers, !!this.project.branch, {
@@ -311,7 +309,7 @@ export class Floor {
       (workerId, repo) => {
         const w = this.workers.get(workerId);
         if (!w) return undefined;
-        if (!repo) return { name: w.name, cwd: w.worktree ? path.join(def.dir, w.worktree.path) : def.dir, rel: w.worktree?.path ?? '', worktreeBase: w.worktree?.base, ...(this.git ? {} : { noGit: "This folder isn't a git repository" }) };
+        if (!repo) return { name: w.name, cwd: w.worktree ? path.join(def.dir, w.worktree.path) : def.dir, rel: w.worktree?.path ?? '', worktreeBase: w.worktree?.base, ...(this.git ? {} : { noGit: true }) };
         // One of the other floors' repositories it works in: diffed against, and PRs opened against, that floor's branch.
         const r = w.repos?.find((x) => x.floor === repo);
         if (!r) return undefined;
@@ -460,7 +458,7 @@ export class Floor {
       const board = new GitHub(r.dir, () => {}, (state) => {
         this.ctx.emit(this, { t: 'gh.pulls', state: this.pullsState() });
         if (!state.loading && !state.error) this.boardPulled();
-      }, r.remote, true);
+      }, { nameWithOwner: r.remote, pullsOnly: true });
       this.boards.set(id, { board, dir: r.dir, remote: r.remote! });
     }
     for (const b of this.boards.values()) void b.board.refresh();
