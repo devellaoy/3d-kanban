@@ -145,6 +145,13 @@ test('the hire form’s kanban.task.create: title, description, desk and the pro
   assert.ok('msg' in many && many.msg.task.review?.rounds === 10);
 });
 
+test('the hire form: attachment ids go on the task, and are left out when there are none', () => {
+  const some = hireTaskMsg(form({ attachmentIds: ['a1', 'b2'] }));
+  assert.ok('msg' in some && JSON.stringify(some.msg.task.attachmentIds) === '["a1","b2"]');
+  const none = hireTaskMsg(form({ attachmentIds: [] }));
+  assert.ok('msg' in none && !('attachmentIds' in none.msg.task));
+});
+
 test('the hire form: repositories keep the primary one, all of them is the default', () => {
   const all = hireTaskMsg(form({ repoIds: ['web'], allRepoIds: ['api', 'web'], primaryId: 'api' }));
   assert.ok('msg' in all && all.msg.task.repoIds === undefined);

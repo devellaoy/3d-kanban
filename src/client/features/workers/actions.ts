@@ -83,10 +83,10 @@ export function installWorkerActions(ctx: Ctx, core: CoreState, parts: WorkerAct
     return true;
   }
 
-  function hire(deskId: string, prompt?: string, worktree = false, provider?: AgentProvider, model?: string, effort?: AgentEffort, issue?: number | { issue?: number; issueKey?: string }, repos?: string[], via?: 'herald') {
+  function hire(deskId: string, prompt?: string, worktree = false, provider?: AgentProvider, model?: string, effort?: AgentEffort, issue?: number | { issue?: number; issueKey?: string }, repos?: string[], via?: 'herald', attachmentIds?: string[]) {
     // `issue` can be a card's fields (kanban/issuecards cardFields): the floor's own issue's number and an issue source's key.
     const ids = typeof issue === 'object' ? issue : { issue };
-    net.send({ t: 'worker.spawn', deskId, prompt, worktree, provider, model, effort, issue: ids.issue, repos: repos?.length ? repos : undefined, via, ...(ids.issueKey ? { issueKey: ids.issueKey } : {}) });
+    net.send({ t: 'worker.spawn', deskId, prompt, worktree, provider, model, effort, issue: ids.issue, repos: repos?.length ? repos : undefined, via, ...(ids.issueKey ? { issueKey: ids.issueKey } : {}), ...(attachmentIds?.length ? { attachmentIds } : {}) });
     // The moment notifications start to matter: ask once (it has to come from a key press or click).
     if (settings.notify && notifyPermission() === 'default' && !askedToNotify) {
       askedToNotify = true;
@@ -104,6 +104,7 @@ export function installWorkerActions(ctx: Ctx, core: CoreState, parts: WorkerAct
     const desk = plan().byId.get(deskId)!;
     if (!w) {
       if (officeIsFull()) return;
+      const kanbanOption = hireOption(net, () => deskId, desk.label);
       openPrompt({
         title: `✨ Hire at ${desk.label}`, // "task" is a kanban task now
         subtitle: 'A fresh worker will sit down and start on this right away.',
@@ -112,8 +113,10 @@ export function installWorkerActions(ctx: Ctx, core: CoreState, parts: WorkerAct
         providerOption: true,
         worktreeOption: !!store.project?.branch,
         repoOptions: repoChoices(),
-        kanbanOption: hireOption(net, () => deskId, desk.label),
-        onSubmit: (text, o) => hire(deskId, text, o.worktree, o.provider, o.model, o.effort, undefined, o.repos),
+        kanbanOption,
+        // Files go to the kanban's uploads, so only where the kanban is (a project's floor).
+        attachments: !!kanbanOption,
+        onSubmit: (text, o) => hire(deskId, text, o.worktree, o.provider, o.model, o.effort, undefined, o.repos, undefined, o.attachmentIds),
       });
     } else if (w.lost) {
       fixLostWorktree(w);
@@ -141,6 +144,7 @@ export function installWorkerActions(ctx: Ctx, core: CoreState, parts: WorkerAct
   function hireAtDesk(deskId: string) {
     const desk = plan().byId.get(deskId)!;
     if (officeIsFull()) return;
+    const kanbanOption = hireOption(net, () => deskId, desk.label);
     openPrompt({
       title: `✨ Hire a worker at ${desk.label}`,
       subtitle: 'You can start with an empty prompt and send work later.',
@@ -151,8 +155,9 @@ export function installWorkerActions(ctx: Ctx, core: CoreState, parts: WorkerAct
       providerOption: true,
       worktreeOption: !!store.project?.branch,
       repoOptions: repoChoices(),
-      kanbanOption: hireOption(net, () => deskId, desk.label),
-      onSubmit: (text, o) => hire(deskId, text || undefined, o.worktree, o.provider, o.model, o.effort, undefined, o.repos),
+      kanbanOption,
+      attachments: !!kanbanOption,
+      onSubmit: (text, o) => hire(deskId, text || undefined, o.worktree, o.provider, o.model, o.effort, undefined, o.repos, undefined, o.attachmentIds),
     });
   }
 

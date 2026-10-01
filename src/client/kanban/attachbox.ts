@@ -1,6 +1,7 @@
 // Attachments on a text box: 📎 to pick files, or paste / drop them onto it. Each is uploaded straight
 // away (see attach.ts) and listed with its size and a ✕; the ids go with the task or comment.
-
+// Its styles load with it: the 3D page has no kanban.css.
+import './attachbox.css';
 import { h, toast } from '../ui/dom';
 import type { KanbanAttachment } from '../../shared/kanban/types.js';
 import { attachmentMarkdown, attachmentUrl, formatSize, insertAt, pastedName, uploadAttachment } from './attach';

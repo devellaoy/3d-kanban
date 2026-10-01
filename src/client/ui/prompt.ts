@@ -1,11 +1,12 @@
 import './prompt.css';
 import type { AgentEffort, AgentProvider, LostBranch, ServerMsg, WorktreeCleanup, WorktreeState } from '../../shared/protocol';
-import { h, openModal } from './dom';
+import { h, openModal, toast } from './dom';
 import { store } from '../state';
 import { providerPicker, type ProviderPicker } from './provider';
 // The "Run as a kanban task" toggle in the hire dialog.
 import { kanbanSection, type KanbanOption } from '../kanban/hireform';
 import { onSendKey, sendHint } from '../kanban/sendkey';
+import { attachBox } from '../kanban/attachbox';
 
 export interface PromptOptions {
   title: string;
@@ -25,9 +26,11 @@ export interface PromptOptions {
   repoOptions?: { id: string; name: string }[];
   /** Offer "🗂️ Run as a kanban task" (hiring only); while it's on, sending makes the task instead of calling onSubmit. */
   kanbanOption?: KanbanOption;
+  /** Files can be attached (📎, paste, drop): they are uploaded to the kanban and their ids go with the hire. */
+  attachments?: boolean;
   /** A second button that sends with `raw` (a task implementer's "type straight into the terminal"). */
   rawLabel?: string;
-  onSubmit(text: string, opts: { worktree: boolean; provider?: AgentProvider; model?: string; effort?: AgentEffort; repos: string[]; raw?: boolean }): void;
+  onSubmit(text: string, opts: { worktree: boolean; provider?: AgentProvider; model?: string; effort?: AgentEffort; repos: string[]; raw?: boolean; attachmentIds?: string[] }): void;
 }
 
 const WT_KEY = 'agent-office.worktree';
@@ -80,11 +83,14 @@ export function openPrompt(opts: PromptOptions) {
   // The kanban toggle and the raw button.
   const kanban = opts.kanbanOption ? kanbanSection(opts.kanbanOption, provider) : null;
   const rawBtn = opts.rawLabel ? h('button.btn.kb-raw', { type: 'button' }, opts.rawLabel) : null;
+  const body = h('div.body', {}, opts.warning ? h('p.setting-note.bad', { style: 'margin:0 0 10px', role: 'alert' }, opts.warning) : null, opts.subtitle ? h('p', { style: 'margin:0 0 10px;font-weight:700;color:var(--muted)' }, opts.subtitle) : null, ta, provider?.element ?? null, wtRow, repos.element, kanban?.element ?? null);
+  const files = opts.attachments ? attachBox({ target: ta, dropZone: body, insertLinks: false }) : null;
+  if (files) ta.after(files.el);
   const form = h(
     'form.modal',
     { role: 'dialog', 'aria-label': opts.title },
     h('header', {}, h('h2', {}, opts.title)),
-    h('div.body', {}, opts.warning ? h('p.setting-note.bad', { style: 'margin:0 0 10px', role: 'alert' }, opts.warning) : null, opts.subtitle ? h('p', { style: 'margin:0 0 10px;font-weight:700;color:var(--muted)' }, opts.subtitle) : null, ta, provider?.element ?? null, wtRow, repos.element, kanban?.element ?? null),
+    body,
     h('footer', {}, h('span.grow', {}, sendHint()), cancel, rawBtn, submit),
   ) as HTMLFormElement;
   form.noValidate = true;
@@ -104,15 +110,19 @@ export function openPrompt(opts: PromptOptions) {
   }
 
   const modal = openModal(form);
+  // A file dropped beside the body's drop zone would have the browser open it in place of the office.
+  if (files) for (const type of ['dragover', 'drop']) modal.backdrop.addEventListener(type, (e) => e.preventDefault());
   cancel.addEventListener('click', () => modal.close());
   const send = (raw?: boolean) => {
     const text = ta.value.trim();
+    if (files?.busy()) return void toast('Files are still uploading', 'warn');
+    const attachmentIds = files?.ids() ?? [];
     // The hire makes a kanban task, which needs its text.
     if (kanban?.on()) {
       if (!text) return ta.focus();
       if (provider && !provider.valid()) return;
       modal.close();
-      return kanban.send(text, { provider: provider?.value(), model: provider?.model(), effort: provider?.effort() });
+      return kanban.send(text, { provider: provider?.value(), model: provider?.model(), effort: provider?.effort(), attachmentIds });
     }
     if (!text && !opts.allowEmpty) {
       ta.focus();
@@ -128,7 +138,7 @@ export function openPrompt(opts: PromptOptions) {
       }
     }
     const worktree = !!opts.worktreeOption && wtBox.checked;
-    opts.onSubmit(text, { worktree, provider: provider?.value(), model: provider?.model(), effort: provider?.effort(), repos: worktree ? repos.value() : [], ...(raw ? { raw } : {}) });
+    opts.onSubmit(text, { worktree, provider: provider?.value(), model: provider?.model(), effort: provider?.effort(), repos: worktree ? repos.value() : [], ...(raw ? { raw } : {}), ...(attachmentIds.length ? { attachmentIds } : {}) });
   };
   rawBtn?.addEventListener('click', () => send(true));
   form.addEventListener('submit', (e) => {

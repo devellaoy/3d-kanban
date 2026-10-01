@@ -38,7 +38,7 @@ export interface KanbanSection {
   on(): boolean;
   onChange(fn: (on: boolean) => void): void;
   /** Makes the task and starts it at the desk; `context` goes before the text in its description. */
-  send(text: string, agent: { provider?: AgentProvider; model?: string; effort?: AgentEffort }, context?: string): void;
+  send(text: string, agent: { provider?: AgentProvider; model?: string; effort?: AgentEffort; attachmentIds?: string[] }, context?: string): void;
 }
 
 /** The project's board as it is now: its repositories, the settings and its tasks (one request). */

@@ -90,14 +90,6 @@
 .kb-tv .kb-composer { display: flex; flex-direction: column; gap: 6px; padding: 10px; border: var(--bw) solid var(--ink); border-radius: 14px; background: var(--field); }
 .kb-tv .kb-composer textarea { border-width: var(--bw-sm); }
 .kb-tv .kb-answerbox { display: flex; flex-direction: column; gap: 6px; }
-.kb-tv .kb-answerbox.kb-dropping { outline: 3px dashed var(--accent); outline-offset: 2px; }
-.kb-tv .kb-composer.kb-dropping { outline: 3px dashed var(--accent); outline-offset: 2px; }
-.kb-tv .kb-attach { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
-.kb-tv .kb-attachments { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 6px; }
-.kb-tv .kb-attachment { display: inline-flex; align-items: center; gap: 6px; padding: 2px 4px 2px 8px; border: var(--bw-sm) solid var(--ink); border-radius: var(--radius-pill); background: var(--field); font-size: var(--fs-xs); font-weight: var(--fw-bold); }
-.kb-tv .kb-attachment a { color: var(--text); text-decoration: none; max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.kb-tv .kb-attachment.busy { border-style: dashed; padding-right: 8px; }
-.kb-tv .kb-x { width: 20px; height: 20px; padding: 0; border: 0; border-radius: 50%; background: var(--paper-2); font: var(--fw-heavy) var(--fs-2xs)/1 var(--font); cursor: pointer; }
 .kb-tv .kb-comments { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 10px; }
 .kb-tv .kb-comment { padding: 8px 12px 10px; border: var(--bw-sm) solid var(--ink); border-radius: var(--radius-sm); background: var(--field); }
 .kb-tv .kb-comment.user { background: var(--info-wash); margin-left: 24px; }

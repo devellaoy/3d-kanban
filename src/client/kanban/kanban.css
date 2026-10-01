@@ -118,7 +118,6 @@ a.kb-chip:hover { background: var(--field-hover); }
 .kb-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .kb-error { padding: 8px 10px; border: var(--bw-sm) solid var(--bad); border-radius: 10px; background: var(--bad-wash); font-weight: var(--fw-bold); }
 .kb-ref { font-weight: var(--fw-heavy); }
-.kb-desc-box.kb-dropping { outline: 3px dashed var(--accent); outline-offset: 2px; }
 .kb-table { width: 100%; border-collapse: collapse; font-size: var(--fs-sm); }
 .kb-table th, .kb-table td { padding: 6px 8px; border-bottom: var(--bw-sm) solid var(--rule-soft); text-align: left; vertical-align: top; }
 .kb-table th { font-weight: var(--fw-heavy); font-size: var(--fs-xs); color: var(--muted); }
@@ -148,12 +147,6 @@ a.kb-chip:hover { background: var(--field-hover); }
 .kb-subfields { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; align-items: start; padding: 10px; border: var(--bw-sm) dashed var(--ink); border-radius: var(--radius-sm); background: var(--paper); }
 .kb-repo-checks { display: flex; flex-wrap: wrap; gap: 6px 16px; }
 .kb-desc-box { display: flex; flex-direction: column; gap: 6px; }
-.kb-attach { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
-.kb-attachments { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 6px; }
-.kb-attachment { display: inline-flex; align-items: center; gap: 6px; padding: 2px 4px 2px 8px; border: var(--bw-sm) solid var(--ink); border-radius: var(--radius-pill); background: var(--field); font-size: var(--fs-xs); font-weight: var(--fw-bold); }
-.kb-attachment a { color: var(--text); text-decoration: none; max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.kb-attachment.busy { border-style: dashed; padding-right: 8px; }
-.kb-x { width: 20px; height: 20px; padding: 0; border: 0; border-radius: 50%; background: var(--paper-2); font: var(--fw-heavy) var(--fs-2xs)/1 var(--font); cursor: pointer; }
 .kb-move-menu { display: flex; flex-direction: column; gap: 8px; }
 .kb-move-to { justify-content: space-between; flex-wrap: wrap; white-space: normal; text-align: left; }
 .kb-move-to small { width: 100%; font-size: var(--fs-xs); font-weight: var(--fw-semibold); color: var(--muted); }

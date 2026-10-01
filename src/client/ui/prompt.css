@@ -13,3 +13,8 @@
 .modal label.repo-pick { display: inline-flex; gap: 5px; align-items: center; margin: 0; padding: 2px 10px 2px 6px; border: var(--bw-sm) solid var(--ink); border-radius: var(--radius-pill); background: var(--field); cursor: pointer; font-weight: var(--fw-bold); }
 .modal label.repo-pick:has(input:checked) { border-color: var(--accent); background: var(--paper-2); }
 .repo-pick input { margin: 0; accent-color: var(--accent); }
+
+/* The hire dialog's attachments (kanban/attachbox.ts, styled in attachbox.css): under the prompt, and the
+   whole body is their drop zone, outlined inside its edge since the body scrolls. */
+.modal > .body > .kb-attach { margin-top: 8px; }
+.modal > .body.kb-dropping { outline-offset: -5px; border-radius: var(--radius-sm); }

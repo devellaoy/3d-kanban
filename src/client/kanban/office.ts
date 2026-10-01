@@ -244,6 +244,8 @@ export interface HireTaskForm {
   effort?: AgentEffort;
   ticket?: string;
   ticketUrl?: string;
+  /** Files already uploaded (kanban/attachbox.ts) to attach to the task. */
+  attachmentIds?: string[];
   /** The title, when it isn't the text's first line (an issue's). */
   title?: string;
 }
@@ -281,6 +283,7 @@ export function hireTaskMsg(f: HireTaskForm): { msg: Omit<TaskCreateMsg, 'rid'> 
     ...(!investigate && f.useReview && f.rounds ? { review: { rounds: Math.min(10, Math.max(1, Math.round(f.rounds))) } } : {}),
     ...(f.ticket ? { ticket: f.ticket.slice(0, KANBAN_LIMITS.ticket) } : {}),
     ...(f.ticketUrl ? { ticketUrl: f.ticketUrl.slice(0, KANBAN_LIMITS.url) } : {}),
+    ...(f.attachmentIds?.length ? { attachmentIds: f.attachmentIds } : {}),
   };
   return { msg: { t: 'kanban.task.create', task, start: true, ...(f.deskId ? { deskId: f.deskId } : {}) } };
 }
