@@ -7,10 +7,9 @@ import { MEETING_SEATS } from '../shared/layout.js';
 import { MAX_MEETING_BUDGET, MEETING_NOTES_DIR, MEETING_PATTERNS, TOKENS_PER_SEAT, isMeetingPattern, meetingRecord, outputProblem, slugify } from '../shared/meetings.js';
 import { fmtTokens, isAgentEffort, isAgentProvider, tokensOf, type AgentChoice, type AgentEffort, type AgentProvider, type Meeting, type MeetingRecord, type MeetingRequest, type MeetingState, type MeetingTurn, type WorkerInfo, type WorkerStatus } from '../shared/protocol.js';
 import { validateWorkerEffort, validateWorkerModel } from './agents.js';
+import { providerMeta, takesEffort, takesModel } from '../shared/providers.js';
 import { gitError, type WorktreeRef, type WorktreeState } from './worktrees.js';
 import { PROMPTS, fillPrompt, type PromptId, type PromptVars } from '../shared/prompts.js';
-// 3d-kanban: what a worker is sent home with (see MeetingWorkers.kill).
-import type { DepartureIntent } from '../shared/kanban/types.js';
 
 const execFileP = promisify(execFile);
 
@@ -25,8 +24,7 @@ export interface MeetingWorkers {
   prompt(id: string, text: string, by?: string): string | undefined;
   /** Keys into its terminal: Esc, to stop what it's doing. */
   write(id: string, data: string, by: string): void;
-  /** 3d-kanban: `intent`: why it goes (see WorkerManager.kill). */
-  kill(id: string, intent?: DepartureIntent): Promise<{ note?: string; error?: string }>;
+  kill(id: string, intent?: import('../shared/kanban/types.js').DepartureIntent): Promise<{ note?: string; error?: string }>; // 3d-kanban: `intent`: why it goes (see WorkerManager.kill)
 }
 
 /** Git for the meeting's own worktree: made when it starts, tidied away once everyone has gone home. */
@@ -131,8 +129,8 @@ export class MeetingRoom {
     const picked = req.provider !== undefined ? { provider: req.provider, model: req.model, effort: req.effort } : (this.workers.officeDefault ?? { provider: this.workers.defaultProvider });
     const provider = picked.provider;
     if (!isAgentProvider(provider) || (provider === 'custom' && this.workers.defaultProvider !== 'custom')) return 'Unknown agent provider';
-    const model = provider === 'claude' || provider === 'opencode' || provider === 'grok' || provider === 'muse' || provider === 'dsh' ? picked.model || undefined : undefined;
-    const effort = (provider === 'claude' || provider === 'grok' || provider === 'muse' || provider === 'dsh') && isAgentEffort(picked.effort) ? picked.effort : undefined;
+    const model = takesModel(provider) ? picked.model || undefined : undefined;
+    const effort = takesEffort(provider) && isAgentEffort(picked.effort) ? picked.effort : undefined;
     const bad = validateWorkerModel('agent', provider, model) ?? validateWorkerEffort('agent', provider, effort);
     if (bad) return bad;
 
@@ -207,8 +205,7 @@ export class MeetingRoom {
       const text = `${this.brief(m, i)}\n\n${part ? this.ask(m, part) : this.say('meeting.wait')}`;
       const w = this.workers.seat(m.seats[i].deskId, `${by} (meeting)`, text, provider, model, effort, { id, worktree }, owner);
       if (typeof w === 'string') {
-        // 3d-kanban: the meeting sends them home (see WorkerManager.kill).
-        for (const s of m.seats) if (s.workerId) void this.workers.kill(s.workerId, { by: 'The meeting', reason: 'meeting' });
+        for (const s of m.seats) if (s.workerId) void this.workers.kill(s.workerId, { by: 'The meeting', reason: 'meeting' }); // 3d-kanban: see WorkerManager.kill
         if (worktree && this.trees) void this.trees.remove(worktree, 'all');
         return w;
       }
@@ -461,8 +458,7 @@ export class MeetingRoom {
     if (m.cleared) return;
     m.cleared = true;
     const here = new Set(this.workers.list().map((w) => w.id));
-    // 3d-kanban: the meeting sends them home (see WorkerManager.kill).
-    await Promise.all(m.seats.filter((s) => s.workerId && here.has(s.workerId)).map((s) => this.workers.kill(s.workerId!, { by: 'The meeting', reason: 'meeting' })));
+    await Promise.all(m.seats.filter((s) => s.workerId && here.has(s.workerId)).map((s) => this.workers.kill(s.workerId!, { by: 'The meeting', reason: 'meeting' }))); // 3d-kanban: see WorkerManager.kill
     const wt = m.worktree;
     if (!wt || !this.trees) return this.persist();
     // Kept with the floor's state already (keepNotes): the notes, and a review panel's review, which
@@ -498,7 +494,7 @@ export class MeetingRoom {
       // A worker sent home took its figures with it: keep the last ones seen.
       if (w?.usage) {
         s.tokens = tokensOf(w.usage);
-        s.cost = w.usage.costKnown === false || (w.provider === 'codex' && w.usage.costKnown !== true) ? undefined : w.usage.cost;
+        s.cost = w.usage.costKnown === false || (!!providerMeta(w.provider)?.usage.noCost && w.usage.costKnown !== true) ? undefined : w.usage.cost;
       }
       tokens += s.tokens ?? 0;
       if (s.tokens && s.cost === undefined) known = false;

@@ -2,7 +2,7 @@
 import test, { type TestContext } from 'node:test';
 import assert from 'node:assert/strict';
 import * as THREE from 'three';
-import { EYE_HEIGHT, PlayerController, SHOULDER, THIRD_PITCH_MAX, THIRD_PITCH_MIN, alongRay, eyeSees, orbitOffset, shoulderOffset, tapNdc, withinReach } from '../src/client/player.js';
+import { EYE_HEIGHT, PlayerController, SHOULDER, THIRD_PITCH_MAX, THIRD_PITCH_MIN, alongRay, eyeSees, orbitOffset, shoulderOffset, tapNdc, withinReach } from '../src/client/player/index.js';
 import type { Collider } from '../src/client/world/office.js';
 import { FLOOR, SLAB } from '../src/shared/layout.js';
 
