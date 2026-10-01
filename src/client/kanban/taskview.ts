@@ -25,6 +25,7 @@ import { getJson, kanbanApi, type KanbanApi, type KanbanOk } from './api';
 import { attachmentUrl, formatSize, isImage } from './attach';
 import { attachBox, type AttachBox } from './attachbox';
 import { TOOL_ICON, ticketChip, tickCountdowns } from './card';
+import { codexLimitsChip } from './codexlimits';
 import { effortSelect, modelInput } from './create';
 import { renderMarkdown } from './md';
 import { REVIEW_DEFAULTS } from './defaults';
@@ -631,7 +632,7 @@ class View implements TaskView {
       ['Repositories', repos.length ? h('span.kb-chips', {}, ...repos.map((r) => h('span.kb-chip.repo', {}, `📦 ${r}`))) : null],
       ['Ticket', task.ticket ? ticketChip(task.ticket, task.ticketUrl) : null],
       ['Type', TYPE_NAMES[task.type]],
-      ['Agent', `${TOOL_ICON[task.tool]} ${toolName(task.tool)}${task.model ? ` · ${task.model}` : ''}${task.effort ? ` · ${effortName(task.effort)}` : ''}`],
+      ['Agent', h('span', {}, `${TOOL_ICON[task.tool]} ${toolName(task.tool)}${task.model ? ` · ${task.model}` : ''}${task.effort ? ` · ${effortName(task.effort)}` : ''}`, task.tool === 'codex' ? codexLimitsChip(this.o.net) : null)],
       ['Plan', task.usePlan ? `on · ${APPROVAL_NAMES[task.planApproval]}` : 'off'],
       [
         'Review',

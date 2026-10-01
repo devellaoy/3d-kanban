@@ -8,6 +8,7 @@ import { KANBAN_EFFORTS, KANBAN_TOOLS, type KanbanEffort, type KanbanTask, type 
 import { KANBAN_LIMITS, type KanbanTaskInput, type KanbanTaskPatch } from '../../shared/kanban/protocol.js';
 import type { KanbanApi, KanbanOk } from './api';
 import { attachBox } from './attachbox';
+import { codexLimitsChip, recheckCodexChips } from './codexlimits';
 import { KANBAN_DEFAULTS, REVIEW_DEFAULTS } from './defaults';
 import { sameRepoPick } from './model';
 import { isSendKey } from './sendkey';
@@ -91,6 +92,13 @@ export function openCreate(api: KanbanApi, o: CreateOptions = {}) {
   const rRounds = numberInput(override?.rounds ?? baseReview().rounds ?? REVIEW_DEFAULTS.rounds, 1, 10, { 'aria-label': 'Rounds' });
   const rReRev = checkbox('Review the last fix too', override?.reReviewLastFix ?? baseReview().reReviewLastFix ?? REVIEW_DEFAULTS.reReviewLastFix);
   rTool.addEventListener('change', rModel.refresh);
+  // The Codex sign-in's allowance, by whichever agent is Codex.
+  const codexChip = (pick: () => string) => {
+    const el = h('div.kb-codex-note', {}, codexLimitsChip(api.net));
+    return { el, paint: () => (el.classList.toggle('hidden', pick() !== 'codex'), recheckCodexChips()) };
+  };
+  const reviewCodex = codexChip(() => rTool.value);
+  rTool.addEventListener('change', reviewCodex.paint);
   const reviewFields = h(
     'div.kb-subfields',
     {},
@@ -98,6 +106,7 @@ export function openCreate(api: KanbanApi, o: CreateOptions = {}) {
     field('Model', rModel.el),
     field('Effort', rEffort),
     field('Rounds', rRounds, '1–10 review rounds, each followed by a fix when changes are asked for'),
+    reviewCodex.el,
     rReRev.el,
   );
   const goal = textArea(editing?.goal ?? pre.goal ?? '', { rows: 3, maxlength: KANBAN_LIMITS.goal, placeholder: 'When is it done? One criterion per line.' });
@@ -107,10 +116,14 @@ export function openCreate(api: KanbanApi, o: CreateOptions = {}) {
   const model = modelInput(editing?.model ?? pre.model ?? '', () => ((tool.value || defaults?.tool || KANBAN_DEFAULTS.defaults.tool) as KanbanTool));
   const effort = effortSelect(editing?.effort ?? pre.effort, 'Default');
   tool.addEventListener('change', model.refresh);
+  const toolCodex = codexChip(() => tool.value || defaults?.tool || KANBAN_DEFAULTS.defaults.tool);
+  tool.addEventListener('change', toolCodex.paint);
 
   const paintDefaults = () => {
     (approval.options[0] as HTMLOptionElement).textContent = `Default (${APPROVAL_NAMES[approvalDefault()]})`;
     (tool.options[0] as HTMLOptionElement).textContent = `Default (${toolName(defaults?.tool ?? KANBAN_DEFAULTS.defaults.tool)})`;
+    toolCodex.paint();
+    reviewCodex.paint();
     model.input.placeholder = defaults?.model ? `Default (${defaults.model})` : 'Default';
     const inv = type.value === 'investigate';
     usePlan.box.disabled = inv;
@@ -139,7 +152,7 @@ export function openCreate(api: KanbanApi, o: CreateOptions = {}) {
       reviewFields,
       field('🎯 Acceptance criteria', goal, 'The agents check the work against these'),
     ),
-    h('fieldset', {}, h('legend', {}, 'Who'), h('div.kb-three', {}, field('Agent', tool), field('Model', model.el), field('Effort', effort))),
+    h('fieldset', {}, h('legend', {}, 'Who'), h('div.kb-three', {}, field('Agent', tool), field('Model', model.el), field('Effort', effort)), toolCodex.el),
   );
 
   const createBtn = h('button.btn', { type: 'button' }, editing ? 'Save' : 'Create') as HTMLButtonElement;

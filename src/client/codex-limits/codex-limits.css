@@ -1,0 +1,10 @@
+/* The Codex limits panel: a dial and a label per window (the rest is the Claude panel's .limits). */
+.codex-limits .cx-win { display: flex; align-items: center; gap: 8px; }
+.codex-limits .dial { --size: 40px; flex: none; width: var(--size); height: var(--size); border-radius: 50%; display: grid; place-items: center; background: conic-gradient(var(--accent) calc(var(--pct) * 1%), var(--paper-2) 0); position: relative; }
+.codex-limits .dial::before { content: ''; position: absolute; inset: 5px; border-radius: 50%; background: var(--paper); }
+.codex-limits .dial b { position: relative; font-size: var(--fs-2xs); font-weight: var(--fw-heavy); font-variant-numeric: tabular-nums; }
+.codex-limits .dial.near { background: conic-gradient(var(--warn) calc(var(--pct) * 1%), var(--paper-2) 0); }
+.codex-limits .dial.over { background: conic-gradient(var(--bad) calc(var(--pct) * 1%), var(--paper-2) 0); }
+.codex-limits .cx-text { display: flex; flex-direction: column; min-width: 0; }
+.codex-limits .cx-text .reset { margin-left: 0; }
+.codex-limits .cx-whose { font-size: var(--fs-2xs); }

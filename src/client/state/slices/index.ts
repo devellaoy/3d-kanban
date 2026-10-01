@@ -33,6 +33,7 @@ import { upgrade } from './upgrade';
 import { usage } from './usage';
 import { whiteboard } from './whiteboard';
 import { youtube } from '../../youtube/slice';
+import { codexLimits } from '../../codex-limits/slice';
 
 export const SLICES: readonly Slice[] = [
   presence,
@@ -63,4 +64,5 @@ export const SLICES: readonly Slice[] = [
   accounts,
   signins,
   youtube, // YouTube on the Office TV
+  codexLimits, // the Codex limits panel and the kanban's readout
 ];
