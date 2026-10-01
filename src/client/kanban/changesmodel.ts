@@ -3,7 +3,7 @@
 // modes a repository offers, which repository is which floor id in upstream's Changes messages, and
 // when the live window's data (the worker's checkout over the WebSocket) can stand in for the HTTP one.
 
-import type { ChangedFile, WorkerInfo } from '../../shared/protocol';
+import type { ChangedFile, ChangesState, WorkerInfo } from '../../shared/protocol';
 import type { KanbanChangedFile, KanbanRepoChangesInfo } from '../../shared/kanban/types.js';
 import { parseRepoFloorId, repoFloorId } from '../../shared/kanban/repofloor.js';
 
@@ -92,4 +92,24 @@ export function stepRow(rows: readonly { path: string }[], selected: string | nu
   if (!rows.length) return null;
   const i = rows.findIndex((r) => r.path === selected);
   return rows[Math.max(0, Math.min(rows.length - 1, i + delta))].path;
+}
+
+/**
+ * Whether a mode reads the office's HTTP answers even while the worker is followed live: Per commit,
+ * and Uncommitted, which is the worktree against HEAD (the live window measures from the branch's
+ * base, so a committed file edited again would show both, and one put back as the base had it none).
+ */
+export function readsHttp(mode: ChangesMode, live: boolean): boolean {
+  return mode !== 'all' || !live;
+}
+
+/**
+ * What a new live state makes stale of what was read over HTTP for its repository: the commits when
+ * the branch moved (a commit, an amend, a rebase: its HEAD, else its count and subject, changed), and
+ * the whole change and the worktree's work whenever the checkout changed at all.
+ */
+export function liveStale(prev: Pick<ChangesState, 'head' | 'ahead' | 'subject'> | null, next: Pick<ChangesState, 'head' | 'ahead' | 'subject'>): { commits: boolean; whole: boolean } {
+  if (!prev) return { commits: false, whole: false };
+  const moved = prev.head !== next.head || prev.ahead !== next.ahead || prev.subject !== next.subject;
+  return { commits: moved, whole: true };
 }

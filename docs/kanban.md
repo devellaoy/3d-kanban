@@ -258,11 +258,12 @@ or on its floor when it has no worker. Its tabs:
   number), the changed files down the left and one file's diff on the right (j/k or the arrows move),
   and **All changes** (the branch against its base, `origin/<base>` or the local base), **Per commit**
   (the branch's commits, the newest picked, each with its own files) and, while the task's worktree
-  has uncommitted work, **✏️ Uncommitted (n)**. While the task's worker is on this page's floor, All
-  changes and Uncommitted follow its checkout live, with upstream's **✅ Commit…**, **🗑️ Discard
-  all** and **🔀 Open PR…**; otherwise the office reads the task's worktree while there is one, else
-  the task's branch in the project's checkout (fetched from origin in the background now and then,
-  never waited for), read-only, with ↻ to read again. Per commit is always read that way. A diff over
+  has uncommitted work, **✏️ Uncommitted (n)** (the worktree against its HEAD commit). While the task's
+  worker is on this page's floor, All changes follows its checkout live, with upstream's **✅ Commit…**,
+  **🗑️ Discard all** and **🔀 Open PR…**; otherwise the office reads the task's worktree while there is
+  one, else the task's branch in the project's checkout (fetched from origin in the background now and
+  then, never waited for), read-only, with ↻ to read again. Per commit and Uncommitted are always read
+  that way, again whenever the live checkout changes (a new commit, an amend, an edit). A diff over
   2 MB is cut. The 3D worker window's 🗂️ Task tab has no Changes tab: its header's 🌿 Changes is it.
 - **PRs**: the task's pull requests with their state, **Create/Push & update PRs**, **Fix PRs**, and
   **🔍 Review these N PRs together**.

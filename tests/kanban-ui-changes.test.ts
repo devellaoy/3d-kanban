@@ -4,7 +4,7 @@
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { changesModes, floorOfRepo, liveFloor, liveRow, prOfRepo, repoOfFloor, sortRepos, stepRow, taskRow } from '../src/client/kanban/changesmodel.js';
+import { changesModes, floorOfRepo, liveFloor, liveRow, liveStale, prOfRepo, readsHttp, repoOfFloor, sortRepos, stepRow, taskRow } from '../src/client/kanban/changesmodel.js';
 import { parseRepoFloorId, repoFloorId } from '../src/shared/kanban/repofloor.js';
 import { repoFloorId as serverRepoFloorId } from '../src/server/kanban/projects.js';
 import type { ChangedFile, WorkerRepo } from '../src/shared/protocol.js';
@@ -87,4 +87,23 @@ test('j/k move through the files and stop at the ends', () => {
   assert.equal(stepRow(rows, 'a', -1), 'a');
   assert.equal(stepRow(rows, null, 1), 'a');
   assert.equal(stepRow([], 'a', 1), null);
+});
+
+test('Per commit and Uncommitted read the office’s answers even while the worker is followed live', () => {
+  // Uncommitted is the worktree against HEAD; the live data is measured from the branch's base.
+  assert.equal(readsHttp('all', true), false);
+  assert.equal(readsHttp('uncommitted', true), true);
+  assert.equal(readsHttp('commits', true), true);
+  assert.equal(readsHttp('all', false), true);
+});
+
+test('a live state that moved the branch makes the commits stale, an amend included', () => {
+  const s = (head: string, ahead = 2, subject = 'fix') => ({ head, ahead, subject });
+  assert.deepEqual(liveStale(null, s('a')), { commits: false, whole: false });
+  // An edit in the worktree: the worktree's work is read again, the commits stay.
+  assert.deepEqual(liveStale(s('a'), s('a')), { commits: false, whole: true });
+  // `git commit --amend --no-edit`: same count, same subject, a new HEAD.
+  assert.deepEqual(liveStale(s('a'), s('b')), { commits: true, whole: true });
+  assert.deepEqual(liveStale(s('a'), s('a', 3)), { commits: true, whole: true });
+  assert.deepEqual(liveStale(s('a'), s('a', 2, 'other')), { commits: true, whole: true });
 });

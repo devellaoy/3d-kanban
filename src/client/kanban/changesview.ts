@@ -19,7 +19,7 @@ import { h, openModal, type Modal } from '../ui/dom';
 import { confirmDialog, openPrompt } from '../ui/prompt';
 import { onChangesMessage, pathLabel, plusMinus, renderDiff, renderPreview } from '../ui/changes';
 import { getJson } from './api';
-import { changesModes, liveFloor, liveRow, prOfRepo, repoOfFloor, sortRepos, stepRow, taskRow, type ChangeRow, type ChangesMode } from './changesmodel';
+import { changesModes, liveFloor, liveRow, liveStale, prOfRepo, readsHttp, repoOfFloor, sortRepos, stepRow, taskRow, type ChangeRow, type ChangesMode } from './changesmodel';
 import { holdChangesWatch } from './changeswatch';
 import { fmtAgo, fmtTime } from './labels';
 import { splitDiff } from './model';
@@ -82,6 +82,8 @@ class ChangesView {
   private whole = new Map<string, KanbanRepoChanges | string>();
   private commits = new Map<string, KanbanCommitList | string>();
   private commit: { key: string; data: KanbanCommitChanges | string } | null = null;
+  /** What was read over HTTP that the live checkout has moved past: kept on screen until it's read again. */
+  private stale = new Set<string>();
   private picked = new Map<string, string>();
   private selected: string | null = null;
   /** What the diff pane shows; a new one draws it again. */
@@ -216,6 +218,8 @@ class ChangesView {
     if (!cur && !want) return false;
     cur?.release();
     this.live = want ? { ...want, state: null, release: holdChangesWatch(this.o.net, want.workerId, want.floor) } : null;
+    // What was read over HTTP before (or before following it live) may be long out of date: read it again.
+    this.forget(this.repoId);
     this.shownSig = null;
     this.loading = false;
     this.diffKey = '';
@@ -230,7 +234,7 @@ class ChangesView {
     if (this.destroyed || !repo || this.info()?.error) return;
     const q = `repo=${encodeURIComponent(repo)}`;
     const load = async <T>(map: Map<string, T | string>, url: string) => {
-      if (map.has(repo)) return;
+      if (map.has(repo) && !this.stale.delete(`${map === this.whole ? 'whole' : 'commits'}:${repo}`)) return;
       const seq = this.seq;
       let got: T | string;
       try {
@@ -252,7 +256,16 @@ class ChangesView {
       if ((!had || !list.commits.some((c) => c.hash === had)) && list.commits.length) this.picked.set(repo, list.commits[0].hash);
       const hash = this.picked.get(repo);
       if (hash && this.commit?.key !== `${repo}:${hash}`) void this.pickCommit(hash);
-    } else if (!this.live) await load(this.whole, `${this.base()}/changes?${q}`);
+    } else if (readsHttp(this.mode, !!this.live)) await load(this.whole, `${this.base()}/changes?${q}`);
+  }
+
+  /** Drops what was read over HTTP for a repository, and the commit picked from it. */
+  private forget(repo: string) {
+    this.whole.delete(repo);
+    this.commits.delete(repo);
+    if (this.commit?.key.startsWith(`${repo}:`)) this.commit = null;
+    this.stale.delete(`whole:${repo}`);
+    this.stale.delete(`commits:${repo}`);
   }
 
   private async pickCommit(hash: string) {
@@ -276,9 +289,9 @@ class ChangesView {
 
   /** Uncommitted files in the repository on screen: null without a worktree, undefined while not known yet. */
   private uncommittedCount(): number | null | undefined {
-    if (this.live) return this.live.state && !this.live.state.error ? this.live.state.files.filter((f) => f.uncommitted).length : undefined;
     const whole = this.whole.get(this.repoId);
-    if (typeof whole === 'object') return whole.workingTree ? whole.workingTree.files.length : null;
+    if (typeof whole === 'object' && !whole.error) return whole.workingTree ? whole.workingTree.files.length : null;
+    if (this.live) return this.live.state && !this.live.state.error ? this.live.state.files.filter((f) => f.uncommitted).length : undefined;
     const commits = this.commits.get(this.repoId);
     if (typeof commits === 'object') return commits.uncommitted;
     return undefined;
@@ -310,11 +323,10 @@ class ChangesView {
       if (typeof c.data === 'string') return { kind: 'error', text: c.data };
       return { kind: 'rows', rows: c.data.files.map((f) => taskRow(f)), more: 0, live: false, parts: partsOf(c.data), truncated: c.data.truncated, empty: ['This commit changes no files.'] };
     }
-    if (this.live) {
+    if (this.live && !readsHttp(this.mode, true)) {
       const s = this.live.state;
       if (!s) return { kind: 'loading' };
       if (s.error) return { kind: 'error', text: `Couldn't read ${this.where()}: ${s.error}` };
-      if (this.mode === 'uncommitted') return { kind: 'rows', rows: s.files.filter((f) => f.uncommitted).map(liveRow), more: 0, live: true, empty: [`Nothing uncommitted in ${this.where()}.`] };
       return {
         kind: 'rows',
         rows: s.files.map(liveRow),
@@ -418,14 +430,13 @@ class ChangesView {
     const live = this.live;
     if (this.destroyed || !live) return;
     if (msg.t === 'changes' && msg.state.workerId === live.workerId && msg.state.repo === live.floor) {
-      const prev = live.state;
+      const stale = liveStale(live.state, msg.state);
       live.state = msg.state;
-      // A new commit (or a rebase) on the branch: what was read over HTTP for this repository is old now.
-      if (prev && (prev.ahead !== msg.state.ahead || prev.subject !== msg.state.subject)) {
-        this.commits.delete(this.repoId);
-        this.whole.delete(this.repoId);
-        void this.fetchShown();
-      }
+      // The checkout moved: what was read over HTTP for this repository is old now. It stays on screen
+      // until the fresh answer is in (the commit picked, too, is checked against the new list).
+      if (stale.whole && this.whole.has(this.repoId)) this.stale.add(`whole:${this.repoId}`);
+      if (stale.commits && this.commits.has(this.repoId)) this.stale.add(`commits:${this.repoId}`);
+      if (stale.whole || stale.commits) void this.fetchShown();
       this.paint();
     } else if (msg.t === 'changes.diff' && msg.workerId === live.workerId && msg.repo === live.floor && msg.path === this.selected && this.diffKey.startsWith('live:')) {
       this.loading = false;
