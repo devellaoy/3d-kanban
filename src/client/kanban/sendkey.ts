@@ -14,7 +14,7 @@ export function isMac(): boolean {
 
 /** The footer/placeholder hint that names the send key. */
 export function sendHint(): string {
-  return isMac() ? '⇧/⌘ + Enter sends · Enter for a new line' : 'Shift/Ctrl + Enter sends · Enter for a new line';
+  return isMac() ? '⇧/⌘+Enter sends · Enter for a new line' : 'Shift/Ctrl+Enter sends · Enter for a new line';
 }
 
 /** Makes `go` run on the send key in `el` (and keeps the key from typing a newline). */

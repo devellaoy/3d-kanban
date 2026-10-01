@@ -33,10 +33,10 @@ test('IME composition, Alt and other keys never send', () => {
 test('the hint names ⌘ on a Mac and Ctrl elsewhere', (t) => {
   globals(t, { navigator: { platform: 'MacIntel', userAgent: '' } });
   assert.equal(isMac(), true);
-  assert.equal(sendHint(), '⇧/⌘ + Enter sends · Enter for a new line');
+  assert.equal(sendHint(), '⇧/⌘+Enter sends · Enter for a new line');
   globals(t, { navigator: { platform: 'Win32', userAgent: '' } });
   assert.equal(isMac(), false);
-  assert.equal(sendHint(), 'Shift/Ctrl + Enter sends · Enter for a new line');
+  assert.equal(sendHint(), 'Shift/Ctrl+Enter sends · Enter for a new line');
   globals(t, { navigator: { userAgentData: { platform: 'macOS' }, platform: 'Win32' } });
   assert.equal(isMac(), true);
 });
