@@ -12,6 +12,7 @@ import { findLine } from '../../shared/search';
 import { DROP_MAX_BYTES, droppedPaths } from '../../shared/drops';
 import { providerLabel, providerUsageNote, providerUsageState, providerWaitingLabel, resolvedProvider } from './provider';
 import { naturalKey } from './termkeys';
+import { termTabs } from './termtabs';
 // 3d-kanban: a task worker's window has tabs: the terminal and its kanban task; files dropped on the task pane aren't the terminal's.
 import { mountWorkerTabs, type WorkerTabs } from '../kanban/worker3d';
 import { inTaskPane, type WorkerTab } from '../kanban/office';
@@ -135,8 +136,9 @@ export function openTerminal(net: Net, workerId: string, onChanges?: () => void,
   const sayBtn = h('button.btn.primary', { type: 'submit' }, 'Send');
   const sayForm = h('form.term-say', {}, say, sayBtn);
   const keypad = opts.keypad ? h('div.term-keypad', {}, keys, sayForm) : null;
+  const tabs = termTabs(workerId, { host, keypad, focusTerm: () => term.focus() });
   // The keypad has an Esc of its own.
-  const el = h('div.modal.term', { role: 'dialog', 'aria-label': `${info.name} terminal` }, h('header', {}, dot, title, pill, cost, viewers, typed, modelsBtn, keypad ? null : escBtn, onChanges ? changesBtn : null, closeBtn), host, keypad);
+  const el = h('div.modal.term', { role: 'dialog', 'aria-label': `${info.name} terminal` }, h('header', {}, dot, title, pill, cost, viewers, typed, modelsBtn, keypad ? null : escBtn, onChanges ? changesBtn : null, closeBtn), tabs.bar, host, tabs.pages, keypad);
 
   const term = new Terminal({
     fontFamily: 'ui-monospace, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace',
@@ -332,7 +334,7 @@ export function openTerminal(net: Net, workerId: string, onChanges?: () => void,
       clearInterval(typingTimer);
       ro.disconnect();
       net.send({ t: 'worker.detach', workerId });
-      tabs?.destroy(); // 3d-kanban
+      kanbanTabs?.destroy(); // 3d-kanban
       term.dispose();
       if (current?.modal === modal) current = null;
     },
@@ -487,7 +489,7 @@ export function openTerminal(net: Net, workerId: string, onChanges?: () => void,
   });
 
   // 3d-kanban: the tabs, once the terminal is open (xterm measures its cells as it opens).
-  const tabs: WorkerTabs | null = mountWorkerTabs(net, info, el, [host, keypad], { tab: opts.tab, focusTerminal: () => term.focus() });
+  const kanbanTabs: WorkerTabs | null = mountWorkerTabs(net, info, el, [host, keypad], { tab: opts.tab, focusTerminal: () => term.focus() });
   ro.observe(host);
   refresh();
   net.send({ t: 'worker.attach', workerId });
