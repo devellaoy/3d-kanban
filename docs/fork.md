@@ -50,7 +50,9 @@ Taking upstream changes is ordinary merge or cherry-pick work, only when the use
 3. Behaviour worth re-checking after a merge, because it can break without a conflict:
    `tests/kanban-launch-argv.test.ts` pins how a kanban hire's agent is launched (`extra` last in
    `WorkerManager.spawn`, `extraArgs` before `--resume` and the prompt), and
-   `tests/kanban-welcome-views.test.ts` pins that the PR and issue boards follow the project's repositories.
+   `tests/kanban-welcome-views.test.ts` pins that the PR and issue boards follow the project's repositories,
+   and `tests/kanban-codex-trust.test.ts` that the hook commands a Codex task worker trusts are still the ones
+   `codexHookArgs` (`server/codex.ts`) gives it.
    For YouTube on the Office TV, the renderer keeps `alpha: true` (`core/scene.ts`), and the TV fixture still
    names its screen `tvScreen`, a `PlaneGeometry` of `TV.width × TV.height` facing +z (`world/office/room.ts`),
    which `youtube/screen.ts` lines the player up with.
@@ -69,6 +71,7 @@ Taking upstream changes is ordinary merge or cherry-pick work, only when the use
   hook's payload carries `last_assistant_message`, the fallback when the log doesn't catch up (the fix
   relies on it: without it, a log that never catches up still gives what the agent said on the way,
   with a warning in the office's log).
+- Codex hook trust (`src/server/kanban/codex-trust.ts`): the office's hooks name each floor's own hook path and Codex keeps one trusted hash per event, so task workers get `-c hooks.state={"/<session-flags>/config.toml:<event>:0:0"={trusted_hash="sha256:…"},…}` for the office's hooks only (the key is the session flags' config, which Codex's `synthetic_layer_path` resolves against `/`, or against `C:\` on Windows as `C:\<session-flags>\config.toml`; then the event in snake_case, group 0, handler 0). The hash mirrors Codex's `hook_hash` / `version_for_toml`: sha256 of the key-sorted JSON of `{event_name, hooks: [normalized handler]}`, the handler being `{type: 'command', command, timeout: 3, async: false}`. `tests/kanban-codex-trust.test.ts` checks the command against `codexHookArgs`; if Codex changes the hashing, the "Hooks need review" screen comes back.
 - Codex rollout JSONL (`~/.codex/sessions/YYYY/MM/DD/rollout-*.jsonl`): `event_msg` / `task_complete`
   carries `last_agent_message`.
 - Claude's background agents: an async launch is a user line with `toolUseResult.isAsync` and
