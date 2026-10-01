@@ -39,6 +39,8 @@ export interface EngineOptions {
   readPauseMs?: number;
   /** A compact that never says it's done is taken as done after this long (3 min). */
   compactTimeoutMs?: number;
+  /** A run held for its background agents goes on with what its log says after this long without a Stop (3 h). */
+  backgroundWaitMs?: number;
   adapters?: Partial<Record<KanbanTool, TaskAgentAdapter>>;
   now?: () => number;
 }
@@ -67,6 +69,9 @@ interface Live {
   ended: boolean;
   /** Its turn stopped while background agents it set off still work: the run goes on until a Stop with none left. */
   background?: boolean;
+  /** It has been held for background agents at least once: a later Stop on an unanswered notification is the resumed turn's own. */
+  held?: boolean;
+  holdTimer?: NodeJS.Timeout;
   stopping?: { by?: string; timer?: NodeJS.Timeout };
   compactTimer?: NodeJS.Timeout;
 }
@@ -175,6 +180,7 @@ export class Orchestrator {
       readTries: options.readTries ?? 12,
       readPauseMs: options.readPauseMs ?? 250,
       compactTimeoutMs: options.compactTimeoutMs ?? 180_000,
+      backgroundWaitMs: options.backgroundWaitMs ?? 3 * 3_600_000,
       now: options.now ?? Date.now,
     };
   }
@@ -1289,6 +1295,7 @@ export class Orchestrator {
     if (this.live.get(live.workerId) === live) this.live.delete(live.workerId);
     if (live.asks) this.ctx.repo.setAskingKind(live.taskId, undefined);
     clearTimeout(live.compactTimer);
+    clearTimeout(live.holdTimer);
     clearTimeout(live.stopping?.timer);
   }
 
@@ -1312,7 +1319,7 @@ export class Orchestrator {
       await sleep(this.opts.readPauseMs);
     }
     if (live.tool !== 'claude' || result?.complete) return result;
-    if (result && !result.toolRunning && live.stopText) return { text: live.stopText, complete: true, ...(result.background ? { background: result.background } : {}) };
+    if (result && !result.toolRunning && live.stopText) return { text: live.stopText, complete: true, ...(result.background ? { background: result.background } : {}), ...(result.resuming ? { resuming: true } : {}) };
     const why = !result ? 'no session log' : result.toolRunning ? 'a Stop while a tool was still running' : 'no last_assistant_message in its Stop hook';
     console.warn(`agent-office: kanban task #${live.taskId}: the ${live.phase} run's final answer never reached its session log (${why}): going on with the last text the log has`);
     return result;
@@ -1345,30 +1352,34 @@ export class Orchestrator {
   }
 
   /** The turn stopped on background agents: the run goes on, and its next Stop is heard from the hook. */
-  private async holdForBackground(live: Live) {
+  private holdForBackground(live: Live) {
     live.background = true;
+    live.held = true;
     // Stop #1's answer is the interim "I'll wait" text, never the run's.
     live.stopText = undefined;
-    // A Stop pressed while the log was read took the Esc path: the worker is at rest, so it ends here.
-    if (live.stopping) await this.stoppedRun(live);
+    clearTimeout(live.holdTimer);
+    live.holdTimer = setTimeout(() => void this.serial(live.taskId, async () => {
+      if (live.ended || this.live.get(live.workerId) !== live) return;
+      const task = this.ctx.repo.getTask(live.taskId);
+      const ms = this.opts.backgroundWaitMs;
+      const waited = ms >= 60_000 ? `${Math.round(ms / 60_000)} min` : `${Math.round(ms / 1000)} s`;
+      console.warn(`agent-office: kanban task #${live.taskId}: no Stop in ${waited} after the ${live.phase} run was held for its background agents: going on with what its log says`);
+      if (task) this.note(task, `Waited ${waited} for its background agents to report back; went on with what its log says.`, live.runId);
+      await this.turnEnded(live, false, true);
+    }), this.opts.backgroundWaitMs);
+    live.holdTimer.unref?.();
   }
 
-  /** How many of the run's background agents the log shows still working. */
-  private backgroundLeft(live: Live): number {
-    const file = this.ctx.floor(live.floorId)?.workers.transcripts(live.workerId)?.claude;
-    return (file && this.adapters.claude.readTurnResult(file)?.background) || 0;
-  }
-
-  /** A run's turn is over: read what it said, keep it, and move the task on. `planExit`: ExitPlanMode. */
-  private async turnEnded(live: Live, planExit = false) {
+  /** A run's turn is over: read what it said, keep it, and move the task on. `planExit`: ExitPlanMode; `force`: the hold's timeout. */
+  private async turnEnded(live: Live, planExit = false, force = false) {
     if (live.ended || this.live.get(live.workerId) !== live) return;
-    const held = !planExit && live.tool === 'claude' && live.phase !== 'compact';
-    if (held && this.backgroundLeft(live) > 0) return this.holdForBackground(live);
+    const watch = !planExit && !force && live.tool === 'claude' && live.phase !== 'compact';
     // Read before ending: a log that lags (the launch's result not in it yet) shows the background agents only by now.
     // Nothing else ends the run meanwhile: they all go through `serial`, and this re-checks after the wait.
-    const result = live.phase === 'compact' ? { text: '', complete: true } : await this.readResult(live);
+    const result: TurnResult | undefined = live.phase === 'compact' ? { text: '', complete: true } : await this.readResult(live);
     if (live.ended || this.live.get(live.workerId) !== live) return;
-    if (held && result?.background) return this.holdForBackground(live);
+    // Agents at work, or Stop #1 raced their notification (Claude answers it and stops again); once held, a Stop on an unanswered one is that turn's own.
+    if (watch && (result?.background || (result?.resuming && !live.held))) return this.holdForBackground(live);
     live.background = false;
     live.ended = true;
     this.forget(live);
@@ -1511,9 +1522,10 @@ export class Orchestrator {
     }
     const floor = this.ctx.floor(live.floorId);
     live.stopping = { ...(who ? { by: who.name } : {}) };
-    // Its worker is at rest, waiting on the background agents: nothing to interrupt.
-    if (live.background && this.backgroundLeft(live) > 0) return void this.serial(task.id, () => this.stoppedRun(live));
-    live.background = false;
+    // At rest while its background agents work: nothing to interrupt, so it goes home (worktree kept), which ends the session
+    // and its helper agents; its removal (see removed) finishes the stop. A turn that has resumed gets Esc as usual.
+    const status = floor?.workers.get(live.workerId)?.status;
+    if (live.background && floor && (status === 'done' || status === 'idle')) return void floor.sendHome(live.workerId, this.homeCleanup(task, floor.workers.get(live.workerId)), ENGINE);
     floor?.workers.write(live.workerId, ESC, who?.name ?? 'Kanban');
     live.stopping.timer = setTimeout(() => {
       if (this.live.get(live.workerId) !== live || live.ended) return;

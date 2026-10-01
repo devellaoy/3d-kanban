@@ -51,12 +51,11 @@ export interface Rule {
   resumeToolMs?: number;
   /** With `background`: the first Stop comes with the log ending at the Agent call; its result and the interim text are logged this long after. */
   launchLateMs?: number;
-  /** With `background`: the second Stop comes this long after the reply is logged. */
-  resumeStopMs?: number;
   /**
    * Claude only: post Stop (with the reply as its last_assistant_message) before the final reply is
    * in the log, and log it this long after (-1: never), as Claude Code sometimes does (#310). The
-   * turn ends there: it doesn't combine with `ask` or `exitPlan`.
+   * turn ends there: it doesn't combine with `ask` or `exitPlan`. With `background` it is the resumed
+   * turn's reply that is logged late (its Stop first).
    */
   lateLogMs?: number;
   /**
@@ -109,6 +108,12 @@ const post = (event, payload) => new Promise((resolve) => {
   req.end(JSON.stringify({ session_id: session, transcript_path: transcript, ...payload }));
 });
 const rules = () => JSON.parse(fs.readFileSync(process.env.FAKE_KANBAN_RULES, 'utf8'));
+// A sleep an Esc cuts short: resolves true then.
+let wake = null;
+const nap = (ms) => new Promise((resolve) => {
+  const timer = setTimeout(() => { wake = null; resolve(false); }, ms);
+  wake = () => { clearTimeout(timer); wake = null; resolve(true); };
+});
 let questions = 0;
 let answerDelay = 0;
 async function turn(prompt, answered) {
@@ -152,11 +157,18 @@ async function turn(prompt, answered) {
       if (rule.resumeToolMs) {
         append({ type: 'assistant', message: { id: msgId + '-tool', role: 'assistant', content: [{ type: 'tool_use', id: 'bg-2', name: 'Bash', input: { command: 'sleep' } }] } });
         await post('PreToolUse', { tool_name: 'Bash', tool_input: { command: 'sleep' } });
-        await new Promise((r) => setTimeout(r, rule.resumeToolMs));
+        // Esc cuts the wait short, as it does a real tool: the turn ends there.
+        if (await nap(rule.resumeToolMs)) return post('Stop', {});
         append({ type: 'user', message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: 'bg-2', content: 'ok' }] } });
       }
-      append({ type: 'assistant', message: { id: msgId, role: 'assistant', content: [{ type: 'text', text: rule.reply }] } });
-      if (rule.resumeStopMs) await new Promise((r) => setTimeout(r, rule.resumeStopMs));
+      const reply = { type: 'assistant', message: { id: msgId, role: 'assistant', content: [{ type: 'text', text: rule.reply }] } };
+      if (rule.lateLogMs !== undefined) {
+        await post('Stop', { last_assistant_message: rule.reply });
+        await new Promise((r) => setTimeout(r, rule.lateLogMs));
+        append(reply);
+        return;
+      }
+      append(reply);
       await post('Stop', { last_assistant_message: rule.reply });
       return;
     }
@@ -224,6 +236,7 @@ process.stdin.on('data', (chunk) => {
   if (buf.includes('\x1b') && !buf.includes('\x1b[')) {
     buf = '';
     record({ interrupted: true });
+    if (wake) wake();
     chain = chain.then(() => post('Stop', {}));
   }
 });

@@ -287,9 +287,11 @@ New files are not seams (they can't conflict): `src/{server,shared,client}/kanba
 - Codex rollout JSONL (`~/.codex/sessions/YYYY/MM/DD/rollout-*.jsonl`): `event_msg` / `task_complete`
   carries `last_agent_message`.
 - Claude's background agents: an async launch is a user line with `toolUseResult.isAsync` and
-  `status: 'async_launched'` (`agentId`); a `SendMessage` resume has `toolUseResult.resumedAgentId`; the end
-  is a `<task-notification>` (a user line with `origin.kind: 'task-notification'`, or a `queued_command`
-  attachment inside another turn) naming the `<task-id>`. A notification counts as a real prompt for the
+  `status: 'async_launched'` (`agentId`; a launch with no `toolUseResult` counts only as an Agent or Task
+  call's result starting `Async agent launched successfully` with an `agentId:` line); a `SendMessage`
+  resume has `toolUseResult.resumedAgentId`; the end is a `<task-notification>` (a user line with
+  `origin.kind: 'task-notification'`, trusted over its text whenever `origin` is there, or a
+  `queued_command` attachment inside another turn) naming the `<task-id>`. A notification counts as a real prompt for the
   final answer, but not as the office's prompt that opens the window agents are counted in. A Claude CLI
   restart between phases stops the previous phase's background agents, which the window handles.
 - Claude flags: `--permission-mode <mode>`, `--disallowedTools`, `--plugin-dir <path>` (skills as a plugin),

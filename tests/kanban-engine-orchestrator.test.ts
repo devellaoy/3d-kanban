@@ -244,7 +244,7 @@ test('a turn that ends on background agents is not the run\'s end: the task wait
   assert.equal(fx.repo.listRuns(task.id).at(-1)?.status, 'succeeded');
 });
 
-test('stop while the turn waits on background agents ends the run at once, the worker stays', async (t) => {
+test('stop while the turn waits on background agents sends the worker home (stopping its helpers), the worktree stays', async (t) => {
   const fx = await engineFixture();
   t.after(() => fx.close());
   fx.setRules([{ when: 'Implement kanban task', background: 'Waiting for the helper agent.', reply: 'Done.', backgroundMs: 20_000 }]);
@@ -254,10 +254,11 @@ test('stop while the turn waits on background agents ends the run at once, the w
   await new Promise((r) => setTimeout(r, 800));
   assert.equal(fx.task(task.id).status, 'in_progress', 'the first Stop did not move it');
   assert.equal(await fx.engine.stop(task.id, ADA), undefined);
-  const stopped = await fx.waitTask(task.id, (x) => x.status === 'waiting' && x.waitingReason === 'stopped', 'the stop', 3000);
+  const stopped = await fx.waitTask(task.id, (x) => x.status === 'waiting' && x.waitingReason === 'stopped', 'the stop', 5000);
   assert.equal(stopped.waitingText, 'Stopped by Ada');
   assert.equal(fx.repo.listRuns(task.id).at(-1)?.status, 'stopped');
-  assert.ok(running.workerId && fx.workers.get(running.workerId), 'the worker was not sent home');
+  assert.ok(running.workerId && !fx.workers.get(running.workerId), 'the worker went home');
+  assert.ok(stopped.workspace, 'the worktree stays with the task');
   assert.equal(fx.invocations().some((i) => i.interrupted), false, 'no Esc was typed');
 });
 
@@ -267,13 +268,14 @@ test('stop during the resumed turn, after the agent reported back, interrupts th
   fx.setRules([{ when: 'Implement kanban task', background: 'Waiting for the helper agent.', reply: 'Done.', backgroundMs: 300, resumeToolMs: 20_000 }]);
   const task = fx.newTask({ usePlan: false, useReview: false });
   await fx.engine.start(task.id, ADA);
-  await fx.waitTask(task.id, (x) => x.phase === 'implement' && x.runState === 'running', 'the implement turn');
+  const running = await fx.waitTask(task.id, (x) => x.phase === 'implement' && x.runState === 'running', 'the implement turn');
   await new Promise((r) => setTimeout(r, 1200));
   assert.equal(fx.task(task.id).status, 'in_progress', 'the resumed turn is still the run');
   assert.equal(await fx.engine.stop(task.id, ADA), undefined);
   await fx.waitTask(task.id, (x) => x.status === 'waiting' && x.waitingReason === 'stopped', 'the stop', 10_000);
   assert.equal(fx.invocations().some((i) => i.interrupted), true, 'Esc was typed');
   assert.equal(fx.repo.listRuns(task.id).at(-1)?.status, 'stopped');
+  assert.ok(running.workerId && fx.workers.get(running.workerId), 'the worker was not sent home: Esc cut the turn and its Stop finished the stop');
 });
 
 test('a log that lags behind the first Stop (the launch not logged yet) still holds the run for the background agent', async (t) => {
@@ -290,19 +292,23 @@ test('a log that lags behind the first Stop (the launch not logged yet) still ho
   assert.deepEqual(fx.repo.listComments(task.id).comments.filter((c) => c.kind === 'result').map((c) => c.text), ['Changed the redirect; tests pass.']);
 });
 
-test('stop after the resumed turn\'s reply is logged but before its Stop: the Stop hook finishes the stop, the worker is not sent home', async (t) => {
-  const fx = await engineFixture({ engine: { stopGraceMs: 6000 } });
+test('Stop #1 racing the agent\'s notification: the run waits for the resumed turn, which ends on its own Stop though its reply is logged late', async (t) => {
+  const fx = await engineFixture();
   t.after(() => fx.close());
-  fx.setRules([{ when: 'Implement kanban task', background: 'Waiting for the helper agent.', reply: 'Done.', backgroundMs: 300, resumeStopMs: 1500 }]);
+  fx.setRules([{ when: 'Implement kanban task', background: 'Waiting for the helper agent.', reply: 'Changed the redirect; tests pass.', commit: 'Work', backgroundMs: 300, lateLogMs: 1500 }]);
   const task = fx.newTask({ usePlan: false, useReview: false });
   await fx.engine.start(task.id, ADA);
-  const running = await fx.waitTask(task.id, (x) => x.phase === 'implement' && x.runState === 'running', 'the implement turn');
-  // The reply is logged about 300 ms after the first Stop, the second Stop 1500 ms after that.
-  await new Promise((r) => setTimeout(r, 1000));
-  const at = Date.now();
-  assert.equal(await fx.engine.stop(task.id, ADA), undefined);
-  await fx.waitTask(task.id, (x) => x.status === 'waiting' && x.waitingReason === 'stopped', 'the stop', 5000);
-  assert.ok(Date.now() - at < 4000, 'stopped by the Stop hook, not by the send-home timer');
-  assert.equal(fx.repo.listRuns(task.id).at(-1)?.status, 'stopped');
-  assert.ok(running.workerId && fx.workers.get(running.workerId), 'the worker was not sent home');
+  const done = await fx.waitTask(task.id, (x) => x.status === 'review', 'the review column', 15_000);
+  assert.equal(done.summary, 'Changed the redirect; tests pass.', "from the resumed turn's Stop, not the interim text");
+});
+
+test('a run held for background agents that never report back goes on after backgroundWaitMs, with a note', async (t) => {
+  const fx = await engineFixture({ engine: { backgroundWaitMs: 800 } });
+  t.after(() => fx.close());
+  fx.setRules([{ when: 'Implement kanban task', background: 'Waiting for the helper agent.', reply: 'Never logged.', commit: 'Work', backgroundMs: 600_000 }]);
+  const task = fx.newTask({ usePlan: false, useReview: false });
+  await fx.engine.start(task.id, ADA);
+  const done = await fx.waitTask(task.id, (x) => x.status === 'review', 'the review column', 15_000);
+  assert.equal(done.summary, 'Waiting for the helper agent.');
+  assert.ok(fx.repo.listComments(task.id).comments.some((c) => c.authorKind === 'system' && /Waited 1 s for its background agents/.test(c.text)));
 });
