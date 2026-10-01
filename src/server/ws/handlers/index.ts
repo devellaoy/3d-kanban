@@ -1,8 +1,8 @@
 // Every message a browser can send, by type, and the features that keep something per person on a
 // floor. A new feature adds its handler file and a line here.
 import type { ClientMsg } from '../../../shared/protocol.js';
-import { kanbanHandlers, kanbanHooks } from '../../kanban/ws/handlers.js'; // 3d-kanban
-import { youtubeHandlers, youtubeView } from '../../youtube/handlers.js'; // 3d-kanban
+import { kanbanHandlers, kanbanHooks } from '../../kanban/ws/handlers.js';
+import { youtubeHandlers, youtubeView } from '../../youtube/handlers.js';
 import { accountsHandlers } from './accounts.js';
 import { ballHandlers, ballHooks, ballView } from './ball.js';
 import { cabinetHandlers, cabinetHooks, cabinetView } from './cabinet.js';
@@ -49,15 +49,15 @@ export const handlers: HandlerMap<ClientMsg> = {
   ...usageHandlers,
   ...whiteboardHandlers,
   ...workerHandlers,
-  ...kanbanHandlers, // 3d-kanban
-  ...youtubeHandlers, // 3d-kanban: YouTube on the Office TV
+  ...kanbanHandlers,
+  ...youtubeHandlers, // YouTube on the Office TV
 };
 
 /**
  * The features that keep something per person on a floor, in the order they let go of it when
  * someone leaves the floor or the office (see FeatureHooks): the order the office has always done it in.
  */
-export const features: readonly FeatureHooks[] = [kanbanHooks /* 3d-kanban */, workerHooks, changesHooks, whiteboardHooks, ballHooks, carHooks, cabinetHooks];
+export const features: readonly FeatureHooks[] = [kanbanHooks, workerHooks, changesHooks, whiteboardHooks, ballHooks, carHooks, cabinetHooks];
 
 /** What someone arriving on a floor is sent (see office/views.ts): a piece from each feature, in the order it has always gone out. */
 export const views: ViewPieces = {
@@ -77,5 +77,5 @@ export const views: ViewPieces = {
   whiteboard: whiteboardView,
   meeting: meetingView,
   cabinet: cabinetView,
-  youtube: youtubeView, // 3d-kanban: YouTube on the Office TV
+  youtube: youtubeView, // YouTube on the Office TV
 };

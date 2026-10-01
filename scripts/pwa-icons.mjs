@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// 3d-kanban: renders the PWA icons (src/client/public/icons/*.png) from src/client/public/favicon.svg
+// Renders the PWA icons (src/client/public/icons/*.png) from src/client/public/favicon.svg
 // with playwright-core's Chromium (a devDependency; `npx playwright-core install chromium` if it has
 // none, or CHROME_PATH=<a Chrome>, or it falls back to an installed Google Chrome). The PNGs are checked in, so the build never needs this: run it again only when the favicon
 // changes, `node scripts/pwa-icons.mjs`.

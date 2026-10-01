@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// office-tasks: other kanban tasks, from inside 3d-kanban: `office-tasks get 14` prints task #14's
+// office-tasks: other kanban tasks, from inside `office-tasks get 14` prints task #14's
 // description, accepted plan, runs and review verdicts, latest comments, repositories and branches,
 // pull requests and report files; `office-tasks search <words>` finds tasks. The office puts it on
 // every worker's PATH and gives each its own address and token in AGENT_OFFICE_HOOK_URL,

@@ -10,7 +10,7 @@
 import { realpathSync } from 'node:fs';
 import { createInterface } from 'node:readline';
 import { fileURLToPath } from 'node:url';
-// 3d-kanban: get_task and search_tasks, for the workers the office tells about tasks (see office-tasks.js).
+// get_task and search_tasks, for the workers the office tells about tasks (see office-tasks.js).
 import { TASK_TOOLS, runTaskTool, tasksVisible } from './office-tasks.js';
 
 const USAGE = `Usage:

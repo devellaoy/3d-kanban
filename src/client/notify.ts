@@ -3,7 +3,7 @@
 
 import type { WorkerInfo } from '../shared/protocol';
 import { alertDetail } from '../shared/status';
-// 3d-kanban: whether a task worker waits on someone is its task's.
+// Whether a task worker waits on someone is its task's.
 import { taskWaiting } from './kanban/office';
 
 export type NotifyPermission = NotificationPermission | 'unsupported';
@@ -27,7 +27,7 @@ export async function askNotifyPermission(): Promise<NotifyPermission> {
 
 /** Waiting on a person: needs input, or finished its turn and nobody has looked yet. */
 export function waitingOnSomeone(w: WorkerInfo): w is WorkerInfo & { status: 'needs_input' | 'done' } {
-  // 3d-kanban: a task worker waits while its task waits on a person (or its review is unseen), not while the engine carries on.
+  // A task worker waits while its task waits on a person (or its review is unseen), not while the engine carries on.
   const task = taskWaiting(w);
   if (task !== undefined) return task;
   return w.status === 'needs_input' || (w.status === 'done' && !w.acked);

@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import type { GhIssue, GhPull, GhState, QueueState, QueueTask, ServiceInfo, WorkerInfo } from '../../../shared/protocol';
 import { store, workerForPull } from '../../state';
-// 3d-kanban: an issue-source card is told apart by its key (shared/kanban/issuecard.ts).
+// An issue-source card is told apart by its key (shared/kanban/issuecard.ts).
 import { cardId, cardLabel, noteSeed } from '../../../shared/kanban/issuecard.js';
 
 export const NOTE_COLORS = ['#fff7b0', '#ffd6e0', '#caffbf', '#bde0fe', '#ffe5b4'];
@@ -26,7 +26,7 @@ export function wrap(ctx: CanvasRenderingContext2D, text: string, maxW: number, 
 
 /** A note as it was last drawn: its middle, size and tilt on the canvas. */
 interface DrawnNote {
-  id: string; // 3d-kanban: cardId, not the number
+  id: string; // cardId, not the number
   x: number;
   y: number;
   w: number;
@@ -41,7 +41,7 @@ export class BoardTexture {
   private ctx: CanvasRenderingContext2D;
   private notes: DrawnNote[] = [];
   /** The note being reached for, drawn lifted off the cork (see lift). */
-  private lifted: string | null = null; // 3d-kanban: cardId
+  private lifted: string | null = null;
   private last: [GhState<GhIssue> | GhState<GhPull>, Map<string, WorkerInfo> | undefined] | null = null;
 
   constructor(private kind: 'issues' | 'pulls') {
@@ -59,7 +59,7 @@ export class BoardTexture {
   }
 
   /** The note at a point on the board's face (its uv), or undefined over bare cork. */
-  noteAt(uv: THREE.Vector2): string | undefined { // 3d-kanban: cardId
+  noteAt(uv: THREE.Vector2): string | undefined {
     const px = uv.x * this.canvas.width;
     const py = (1 - uv.y) * this.canvas.height;
     // Topmost first: later notes are drawn over earlier ones.
@@ -129,7 +129,7 @@ export class BoardTexture {
       const r = Math.floor(i / cols);
       const x = gx + c * (nw + gx);
       const y = gy + r * (nh + gy);
-      // 3d-kanban: a card from the issue sources by its key.
+      // A card from the issue sources by its key.
       const id = cardId(it as { number: number; key?: string });
       const seed = noteSeed(it as { number: number; key?: string });
       const tilt = ((seed * 37) % 7 - 3) * 0.012;
@@ -155,7 +155,7 @@ export class BoardTexture {
       const w = this.kind === 'pulls' && workers ? workerForPull(workers.values(), it as GhPull) : undefined;
       const footer = w ? fs * 1.3 : 0;
       g.font = `900 ${Math.round(fs * 1.35)}px Nunito, ui-rounded, system-ui, sans-serif`;
-      // 3d-kanban: its key (UYT-1415, api#12) and the kanban task made from it.
+      // Its key (UYT-1415, api#12) and the kanban task made from it.
       const issue = this.kind === 'issues' ? (it as GhIssue) : undefined;
       const label = issue?.key ? cardLabel(issue, store.currentFloor()?.repo) : `#${it.number}`;
       g.fillText(label, -nw / 2 + 14, -nh / 2 + fs * 2, nw - 28);

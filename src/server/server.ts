@@ -16,7 +16,7 @@ import { requestHandler } from './http/router.js';
 import { routes } from './http/routes/index.js';
 import { startHookServer } from './hooks/server.js';
 import { acceptWebSockets } from './ws/upgrade.js';
-import { openKanban } from './kanban/office.js'; // 3d-kanban
+import { openKanban } from './kanban/office.js';
 
 /** What a test can set about how the office starts: the client bundle it serves, instead of the built one. */
 export interface StartOptions {
@@ -34,7 +34,7 @@ export async function startServer(cfg: Config, opts: StartOptions = {}) {
   const { hookServer, hookPort } = await startHookServer(ctx);
   Object.assign(ctx, createServices(ctx));
   Object.assign(ctx, await openFloors(ctx, hookPort));
-  ctx.kanban = openKanban(ctx, hookPort); // 3d-kanban: the kanban task process, on the open floors
+  ctx.kanban = openKanban(ctx, hookPort); // the kanban task process, on the open floors
   Object.assign(ctx, createLateServices(ctx));
 
   // --- HTTP ------------------------------------------------------------------------------------
@@ -70,7 +70,7 @@ export async function startServer(cfg: Config, opts: StartOptions = {}) {
     ctx.limits.close();
     for (const a of ctx.accountLimits.values()) a.reader.close();
     ctx.signins.shutdown();
-    ctx.kanban?.shutdown(); // 3d-kanban: its engine and plugins stop, and its database closes
+    ctx.kanban?.shutdown(); // its engine and plugins stop, and its database closes
     for (const c of ctx.clients.values()) c.ws.close();
     server.close();
     hookServer.close();

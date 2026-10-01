@@ -1,7 +1,7 @@
 // The 3D office's issues board from the project's issue sources (Settings → Issue sources). A floor
 // whose project has any shows their issues on its board instead of its own repository's (upstream's
 // `gh issue list`); one without keeps upstream's. The issues plugin provides the list while it runs;
-// floor.ts and server.ts (upstream seams) ask this module, so they needn't import the plugin, nor the
+// floor.ts and server.ts ask this module, so they needn't import the plugin, nor the
 // plugin the whole floor (as pulls/board.ts).
 
 import type { GhIssue, GhState } from '../../../../shared/protocol.js';

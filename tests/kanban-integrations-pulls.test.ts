@@ -415,3 +415,11 @@ test('kanban.pr.review takes panel, kanban.pr.bundle takes includeClosed: true o
   assert.deepEqual(parseKanbanClientMsg({ t: 'kanban.pr.bundle', project: 'web', branch: 'b', includeClosed: true }), { t: 'kanban.pr.bundle', project: 'web', branch: 'b', includeClosed: true });
   assert.match(String(parseKanbanClientMsg({ t: 'kanban.pr.bundle', project: 'web', branch: 'b', includeClosed: 1 })), /includeClosed must be true or false/);
 });
+
+test('branchPrs: a PR the board says is from a fork is never linked by its branch name', () => {
+  const repos = [{ id: 'web', kind: 'git' as const, remote: 'o/web', primary: true }];
+  const tasks = [{ id: 1, project: 'web', createdAt: Date.now(), branch: 'b1', branches: {} }];
+  const p = (number: number, isCrossRepository?: boolean) => ({ number, url: `u${number}`, state: 'OPEN', isDraft: false, headRefName: 'b1', createdAt: LATER, repo: 'o/web', ...(isCrossRepository === undefined ? {} : { isCrossRepository }) });
+  const got = branchPrs('web', () => tasks, [p(1, true), p(2, false), p(3)], () => repos, 'o/web', () => false);
+  assert.deepEqual(got.map((g) => g.pull.number), [2, 3], 'the fork is out; one the board has no word on is left to gh');
+});

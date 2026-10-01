@@ -1,7 +1,7 @@
 import { defineConfig, type Plugin } from 'vite';
 import { createReadStream, existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
 import { join, resolve, sep } from 'node:path';
-// 3d-kanban: the service worker's build id (pwaBuild below).
+// The service worker's build id (pwaBuild below).
 import { createHash } from 'node:crypto';
 import { writeFileSync } from 'node:fs';
 
@@ -37,7 +37,7 @@ function excalidrawFonts(): Plugin {
   };
 }
 
-// 3d-kanban: the service worker's build id. public/sw.js is copied as it is, then its '__PWA_BUILD__'
+// The service worker's build id. public/sw.js is copied as it is, then its '__PWA_BUILD__'
 // becomes a hash of this build's file names (hashed by content) and the offline page, so each build's
 // /assets/ get a cache of their own and the last build's is dropped (docs/configuration.md#pwa).
 function pwaBuild(): Plugin {
@@ -59,7 +59,7 @@ function pwaBuild(): Plugin {
 export default defineConfig({
   root: resolve(import.meta.dirname, 'src/client'),
   publicDir: resolve(import.meta.dirname, 'src/client/public'),
-  // 3d-kanban: pwaBuild, the service worker's build id.
+  // pwaBuild, the service worker's build id.
   plugins: [excalidrawFonts(), pwaBuild()],
   define: {
     __EXCALIDRAW_ASSETS__: JSON.stringify(EXCALIDRAW_ASSETS),
@@ -77,7 +77,7 @@ export default defineConfig({
       input: {
         main: resolve(import.meta.dirname, 'src/client/index.html'),
         lite: resolve(import.meta.dirname, 'src/client/lite.html'),
-        // 3d-kanban: the kanban view (/kanban).
+        // The kanban view (/kanban).
         kanban: resolve(import.meta.dirname, 'src/client/kanban.html'),
         login: resolve(import.meta.dirname, 'src/client/login.html'),
         claim: resolve(import.meta.dirname, 'src/client/claim.html'),

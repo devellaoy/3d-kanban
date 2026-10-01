@@ -131,7 +131,7 @@ export class ImageProxy {
         signal: AbortSignal.timeout(TIMEOUT_MS),
         headers: {
           accept: 'image/avif,image/webp,image/png,image/svg+xml,image/*;q=0.8,*/*;q=0.5',
-          // 3d-kanban: this fork's name and repository.
+          // This project's name and repository.
           'user-agent': 'Mozilla/5.0 (compatible; 3d-kanban; +https://github.com/devellaoy/3d-kanban)',
         },
       });

@@ -1,10 +1,10 @@
 // A project's PR board lists the pull requests of all its repositories (GhPull.repo), so two cards
-// can share a number. For upstream's PR and issue windows (ui/pull.ts) and the desks (main.ts,
+// can share a number. For the PR and issue windows (ui/pull.ts) and the desks (main.ts,
 // state.ts): which repository a request or WS message goes to, keys that tell `api#5` from the
-// primary repository's #5, and lookups by repository and number. No repository: exactly upstream's.
+// primary repository's #5, and lookups by repository and number. No repository: the single-repository behaviour.
 
-import { sameRepo } from '../../shared/floors';
-import type { WorkerInfo } from '../../shared/protocol';
+import { sameRepo } from '../../../shared/floors';
+import type { WorkerInfo } from '../../../shared/protocol';
 
 /** owner/name of an issue or PR: its `repo`, or from its URL (https://github.com/owner/name/pull/12). */
 export function repoOfItem(it: { url: string; repo?: string }): string {

@@ -4,7 +4,7 @@
 
 import type { PeerInfo } from '../../shared/protocol';
 import { rememberFloor } from './persist';
-import { shownWorker } from '../kanban/status'; // 3d-kanban
+import { shownWorker } from '../kanban/status';
 import type { MsgOf, Slice, Take } from './store';
 
 const peerUpdate: Take<MsgOf<'peer.join' | 'peer.update'>> = (s, m) => {
@@ -71,7 +71,7 @@ export const building: Slice = {
     },
     floors(s, m) {
       s.floors = m.floors;
-      // 3d-kanban: a floor renamed (from the kanban's settings) renames the top bar of whoever is on it.
+      // A floor renamed (from the kanban's settings) renames the top bar of whoever is on it.
       const here = s.project && s.floors.find((f) => f.id === s.floor);
       if (here && s.project && s.project.name !== here.name) s.project = { ...s.project, name: here.name };
       return ['floors'];
@@ -93,7 +93,7 @@ export const floor: Slice = {
     s.floor = v.floor;
     rememberFloor(v.floor);
     s.project = v.project;
-    s.workers = new Map(v.workers.map((w) => [w.id, shownWorker(w, s.workers.get(w.id))])); // 3d-kanban: a task worker whose run goes on shows as working
+    s.workers = new Map(v.workers.map((w) => [w.id, shownWorker(w, s.workers.get(w.id))])); // a task worker whose run goes on shows as working
     s.screens.clear(); // fresh full frames follow
     s.issues = v.issues;
     s.pulls = v.pulls;
@@ -102,7 +102,7 @@ export const floor: Slice = {
   },
   on: {
     'worker.update'(s, m) {
-      s.workers.set(m.worker.id, shownWorker(m.worker, s.workers.get(m.worker.id))); // 3d-kanban
+      s.workers.set(m.worker.id, shownWorker(m.worker, s.workers.get(m.worker.id)));
       return ['workers'];
     },
     'worker.remove'(s, m) {

@@ -43,7 +43,7 @@ export const planHandlers = {
     const who = c.peer.name;
     const floor = here(ctx, c);
     if (!floor) return;
-    const r = floor.plan.shrink((id) => floor.workers.deskOccupied(id) || floor.workers.deskOccupied(watchSpotOf(id))); // 3d-kanban: a reviewer standing behind it too
+    const r = floor.plan.shrink((id) => floor.workers.deskOccupied(id) || floor.workers.deskOccupied(watchSpotOf(id))); // a reviewer standing behind it too
     if (typeof r === 'string') return ctx.warn(c, r);
     planChanged(ctx, floor);
     ctx.toastFloor(floor, `🧱 ${who} walled the back office back up, and ${r.map((id) => DESK_BY_ID.get(id)?.label).join(' and ')} went with it`);

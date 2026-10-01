@@ -17,7 +17,7 @@ import { normalizeRepo, sameRepo } from '../../shared/floors.js';
 import type { KanbanProjectInfo, KanbanSettings, ProjectRepo } from '../../shared/kanban/types.js';
 import { REPO_ID_RE, type ProjectRepoInput } from '../../shared/kanban/protocol.js';
 import { repoFloorId } from '../../shared/kanban/repofloor.js';
-import { checkoutRepo } from './ghrepo.js';
+import { checkoutRepo } from '../ghrepo.js';
 import { BRANCH_RE } from './repos-file.js';
 
 export { loadRepos } from './repos-file.js';

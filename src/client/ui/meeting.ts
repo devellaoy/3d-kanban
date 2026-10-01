@@ -8,7 +8,7 @@ import { confirmDialog } from './prompt';
 import { providerPicker } from './provider';
 import { officePrompt } from './prompts';
 import { issueVars } from './github/prompts';
-import { onSendKey } from '../kanban/sendkey'; // 3d-kanban
+import { onSendKey } from '../kanban/sendkey';
 
 /** What a meeting called from an issue, a PR or a task starts out with. */
 export interface MeetingPreset {
@@ -265,7 +265,7 @@ function meetingForm(net: Net, preset: MeetingPreset | undefined, done: () => vo
     toast(`🤝 Calling the ${def().label} meeting: the workers are heading for the meeting room`);
     done();
   };
-  onSendKey(about, send); // 3d-kanban: #328
+  onSendKey(about, send);
   bodyEl.addEventListener('submit', (e) => {
     e.preventDefault();
     send();

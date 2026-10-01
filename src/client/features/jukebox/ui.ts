@@ -3,7 +3,7 @@ import { JUKEBOX_TUNES, STREAM, checkStreamUrl, trackTitle, tuneById } from '../
 import type { Net } from '../../net';
 import { store } from '../../state';
 import { h, openModal, toast } from '../../ui/dom';
-import { jukeboxTvNote, youtubeToTv } from '../../youtube/jukebox'; // 3d-kanban
+import { jukeboxTvNote, youtubeToTv } from '../../youtube/jukebox';
 
 /** The jukebox: what's on, the tunes to pick from, skip and stop, and a box for a stream. */
 export function openJukebox(net: Net, openVolume: () => void) {
@@ -26,7 +26,7 @@ export function openJukebox(net: Net, openVolume: () => void) {
       h('label', { style: 'margin-top:16px' }, 'Or play a stream'),
       h('div.webhook', {}, url, playUrl),
       h('p.setting-note', {}, 'Internet radio or an audio file. It plays from the jukebox, for everyone on this floor.'),
-      jukeboxTvNote(), // 3d-kanban: YouTube goes on the Office TV
+      jukeboxTvNote(), // YouTube goes on the Office TV
     ),
     h('footer', {}, h('span.grow', {}, 'Everyone on this floor hears the same song, louder the closer they are to the lounge.'), volume),
   );
@@ -72,7 +72,7 @@ export function openJukebox(net: Net, openVolume: () => void) {
   };
 
   const play = () => {
-    if (youtubeToTv(net, url)) return; // 3d-kanban: a YouTube link goes on the Office TV
+    if (youtubeToTv(net, url)) return; // A YouTube link goes on the Office TV
     const u = checkStreamUrl(url.value);
     if ('error' in u) {
       toast(u.error, 'warn');

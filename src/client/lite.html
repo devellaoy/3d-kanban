@@ -6,7 +6,7 @@
     <meta name="theme-color" content="#fff1de" />
     <title>Agent Office</title>
     <link rel="icon" href="/favicon.svg" />
-    <!-- 3d-kanban: the PWA: manifest, icons, installed-app look; pwa.ts registers the service worker (docs/configuration.md#pwa). -->
+    <!-- The PWA: manifest, icons, installed-app look; pwa.ts registers the service worker (docs/configuration.md#pwa). -->
     <link rel="manifest" href="/manifest.webmanifest" />
     <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
@@ -21,7 +21,7 @@
         <span class="lite-floor-label">Floor</span>
         <select id="floor" aria-label="Floor"></select>
       </label>
-      <!-- 3d-kanban: the kanban view, on this floor's project (lite.ts keeps the link's floor). -->
+      <!-- The kanban view, on this floor's project (lite.ts keeps the link's floor). -->
       <a id="to-kanban" class="btn" href="/kanban" title="The kanban: tasks planned, built and reviewed by agents">🗂️ Kanban</a>
       <a id="to-3d" class="btn" href="/?3d=1" title="The 3D office, where you walk around">🏢 3D</a>
     </header>
@@ -41,7 +41,7 @@
     <div id="conn" class="conn hidden">Reconnecting…</div>
     <div id="modal-root"></div>
     <script type="module" src="./lite.ts"></script>
-    <!-- 3d-kanban: the PWA's service worker (pwa.ts). -->
+    <!-- The PWA's service worker (pwa.ts). -->
     <script type="module" src="./pwa.ts"></script>
   </body>
 </html>

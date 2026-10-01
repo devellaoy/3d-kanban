@@ -1,4 +1,4 @@
-// 3d-kanban: ⚙️ Settings → You → Mouse sensitivity (docs/controls.md).
+// ⚙️ Settings → You → Mouse sensitivity (docs/controls.md).
 import test, { type TestContext } from 'node:test';
 import assert from 'node:assert/strict';
 import * as THREE from 'three';

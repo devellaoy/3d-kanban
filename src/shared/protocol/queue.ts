@@ -14,7 +14,7 @@ export interface QueueTask {
   effort?: AgentEffort;
   /** The GitHub issue it came from, when it did. */
   issue?: number;
-  /** 3d-kanban: the ticket key of the issue-source card it came from, when it did. */
+  /** The ticket key of the issue-source card it came from, when it did. */
   issueKey?: string;
   title: string;
   prompt: string;
@@ -44,7 +44,7 @@ export interface QueueState {
 }
 
 export type QueueClientMsg =
-  | { t: 'queue.add'; prompt: string; title?: string; issue?: number; provider?: AgentProvider; model?: string; effort?: AgentEffort; issueKey?: string } // 3d-kanban: issueKey
+  | { t: 'queue.add'; prompt: string; title?: string; issue?: number; provider?: AgentProvider; model?: string; effort?: AgentEffort; issueKey?: string }
   | { t: 'queue.remove'; taskId: string }
   /** Move a queued task up (-1) or down (+1) the queue. */
   | { t: 'queue.move'; taskId: string; delta: number }

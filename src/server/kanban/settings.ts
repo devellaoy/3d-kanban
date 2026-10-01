@@ -28,7 +28,7 @@ export const SETTINGS_SCHEMA_VERSION = 1;
 export const INSTRUCTIONS_MAX = 20_000;
 export const MAX_ISSUE_SOURCES = 10;
 
-export const DEFAULT_REVIEW: ReviewSettings = { tool: 'claude', rounds: 2, reReviewLastFix: true, sandbox: true };
+export const DEFAULT_REVIEW: ReviewSettings = { tool: 'claude', rounds: 2, reReviewLastFix: false, sandbox: true };
 
 export function defaultProjectSettings(): ProjectSettings {
   return { branchInstructions: '', generalInstructions: '', testingInstructions: '', maxConcurrent: 2, issueSources: [], prompts: {}, skills: {} };

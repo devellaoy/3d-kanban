@@ -14,7 +14,7 @@
 # which is added to your user PATH, so afterwards `kanban3d` starts it too, in PowerShell, cmd and
 # Git Bash alike. Run the irm line
 # again to update to the newest release. It works in Windows PowerShell 5.1 and PowerShell 7.
-# (3d-kanban: its own install folder and command, so it sits beside an upstream agent-office install.
+# (Its own install folder and command, so it sits beside an upstream agent-office install.
 # The office itself still reads the AGENT_OFFICE_* variables and keeps its data in ~\agent-office.)
 #
 # Environment:
@@ -74,7 +74,7 @@
       Where-Object { $_.Source -match '\.(cmd|bat|exe)$' } | Select-Object -First 1 | ForEach-Object { $_.Source }
 
     function Check-Requirements {
-      # 3d-kanban: Node.js 22, which the kanban's database module (better-sqlite3) needs.
+      # Node.js 22, which the kanban's database module (better-sqlite3) needs.
       if (-not (Have 'node')) { throw '3d-kanban needs Node.js 22 or newer. Get it from https://nodejs.org (or nvm-windows), then run this again.' }
       # No quotes in the expression: Windows PowerShell 5.1 strips them from native command arguments.
       $major = [int](& node -p 'parseInt(process.versions.node)')

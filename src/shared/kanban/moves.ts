@@ -3,12 +3,10 @@
 
 import type { RunState, TaskStatus } from './types.js';
 
-/** What the rules look at: where the task is, whether the engine is busy with it, whether a worker sits on it. */
+/** What the rules look at: where the task is, and whether the engine is busy with it. */
 export interface MoveSubject {
   status: TaskStatus;
   runState: RunState;
-  /** A worker (implementer or reviewer) is still hired for it. */
-  hasWorker: boolean;
 }
 
 /**
@@ -46,7 +44,8 @@ export function checkMove(task: MoveSubject, to: TaskStatus): MoveCheck {
   if (from === 'archived' && to === 'done') return { ok: true, action: 'status' };
   if ((from === 'waiting' || from === 'review') && to === 'todo') {
     if (isRunning(task)) return no('Stop it first: it is running');
-    return task.hasWorker ? no('Send its worker home first (Release), then it can start over') : { ok: true, action: 'reset' };
+    // Workers at rest still hired for it go home as it resets (ws.ts), worktree kept.
+    return { ok: true, action: 'reset' };
   }
   if (from === 'in_progress') return no('It is running: stop it first');
   if (to === 'in_progress') return no('Use Continue, Retry or a comment to put it back to work');

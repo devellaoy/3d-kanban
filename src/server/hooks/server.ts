@@ -9,7 +9,7 @@ import { officeQueue } from './office-queue.js';
 import { officeWorkers } from './office-workers.js';
 import { providerHook } from '../providers/index.js';
 import type { AgentProvider } from '../../shared/providers.js';
-import { isLoopbackPath, isTasksPath, kanbanLoopback, officeTasks } from '../kanban/http/hooks.js'; // 3d-kanban
+import { isLoopbackPath, isTasksPath, kanbanLoopback, officeTasks } from '../kanban/http/hooks.js';
 
 /** Starts the hook server, and says which port it listens on. */
 export async function startHookServer(ctx: Ctx): Promise<{ hookServer: http.Server; hookPort: number }> {
@@ -22,7 +22,7 @@ export async function startHookServer(ctx: Ctx): Promise<{ hookServer: http.Serv
     }
     if (url.pathname === '/office/queue') return officeQueue(ctx, req, res, url);
     if (url.pathname === '/office/workers' || url.pathname.startsWith('/office/workers/')) return officeWorkers(ctx, req, res, url);
-    // 3d-kanban: task routes for workers (their hook token, as /office/workers), and ai-kanban's loopback compatibility routes.
+    // Task routes for workers (their hook token, as /office/workers), and ai-kanban's loopback compatibility routes.
     if (isTasksPath(url.pathname)) return officeTasks(ctx, req, res, url);
     if (isLoopbackPath(url.pathname)) return kanbanLoopback(ctx, req, res, url);
     // Each provider with hooks has its route, /hooks/<provider> (see providers/).
@@ -62,7 +62,7 @@ export async function startHookServer(ctx: Ctx): Promise<{ hookServer: http.Serv
   } catch {
     // first start
   }
-  // 3d-kanban: --hook-port / AGENT_OFFICE_HOOK_PORT pins it, for scripts outside the office (docs/kanban.md).
+  // --hook-port / AGENT_OFFICE_HOOK_PORT pins it, for scripts outside the office (docs/kanban.md).
   await listenHooks(ctx.cfg.hookPort ?? lastHookPort).catch(() => {
     if (ctx.cfg.hookPort) console.error(`agent-office: --hook-port ${ctx.cfg.hookPort} is taken, so the hook server listens elsewhere (see ${hookPortPath})`);
     return listenHooks(0);

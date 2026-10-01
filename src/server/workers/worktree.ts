@@ -97,7 +97,7 @@ export class WorkerTrees {
       })();
       return why;
     };
-    const first = this.ctx.trees.create(slug, names[0], undefined, bases?.[path.resolve(this.ctx.dir)]); // 3d-kanban: `bases` (see SpawnExtra.bases)
+    const first = this.ctx.trees.create(slug, names[0], undefined, bases?.[path.resolve(this.ctx.dir)]); // `bases` (see SpawnExtra.bases)
     if (typeof first === 'string') return fail(first);
     const { note, ...primary } = first;
     const notes = note ? [`${names[0]} ${note}`] : [];
@@ -345,13 +345,13 @@ export class WorkerTrees {
    * merged pull request's head commit) is work delivered. Resolves with a line for the team about it.
    */
   async sendHome(info: WorkerInfo, cleanup?: WorktreeCleanup, landed?: string, landedRepos?: Record<string, string | undefined>, seen?: (event: 'removed' | 'cleaned') => void): Promise<{ note?: string; error?: string }> {
-    seen?.('removed'); // 3d-kanban: the observers hear it go (see WorkerManager.kill) before its worktree is dealt with
+    seen?.('removed'); // the observers hear it go (see WorkerManager.kill) before its worktree is dealt with
     // A meeting's worktree is everyone at the table's: the meeting tidies it away once they've all gone.
     if (!info.worktree || info.meeting) return {};
     // On the branch its work is on, should it have switched since it last came to rest.
     const wt = await this.current(info.worktree);
     const name = info.name;
-    if (info.repos?.length) return this.clearRepos(info, cleanup, landed, landedRepos).finally(() => seen?.('cleaned')); // 3d-kanban
+    if (info.repos?.length) return this.clearRepos(info, cleanup, landed, landedRepos).finally(() => seen?.('cleaned'));
     if (!cleanup) {
       const work = describeWork(await this.ctx.trees.inspect(wt, landed));
       if (work) return { note: `Kept ${name}'s worktree and branch ${wt.branch} — it has ${work}` };
@@ -378,7 +378,7 @@ export class WorkerTrees {
     }
     const error = await this.ctx.trees.remove(gone, cleanup);
     if (error) return { error: `Couldn't delete ${name}'s worktree: ${error}` };
-    seen?.('cleaned'); // 3d-kanban
+    seen?.('cleaned');
     if (cleanup === 'worktree') return { note: `Deleted ${name}'s worktree${kept || ` and kept branch ${wt.branch}`}` };
     return { note: `Deleted ${name}'s worktree and branch ${gone.branch}${kept && `,${kept}`}` };
   }

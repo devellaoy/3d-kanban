@@ -2,7 +2,7 @@ import type { ClientMsg } from '../../shared/protocol.js';
 import type { Ctx } from '../office/context.js';
 import type { Client } from '../office/client.js';
 import { handlers } from './handlers/index.js';
-import { kanbanUnknown } from '../kanban/ws/handlers.js'; // 3d-kanban
+import { kanbanUnknown } from '../kanban/ws/handlers.js';
 
 type AnyHandler = (ctx: Ctx, c: Client, msg: ClientMsg) => void;
 
@@ -12,6 +12,6 @@ type AnyHandler = (ctx: Ctx, c: Client, msg: ClientMsg) => void;
  * type nobody handles, and so does one whose type only turns into a key (`['ping']`).
  */
 export function dispatch(ctx: Ctx, c: Client, msg: ClientMsg): void {
-  if (typeof msg.t !== 'string' || !Object.hasOwn(handlers, msg.t)) return kanbanUnknown(ctx, c, msg); // 3d-kanban: an unknown kanban.* type still gets the kanban's answer
+  if (typeof msg.t !== 'string' || !Object.hasOwn(handlers, msg.t)) return kanbanUnknown(ctx, c, msg); // an unknown kanban.* type still gets the kanban's answer
   (handlers[msg.t] as AnyHandler)(ctx, c, msg);
 }

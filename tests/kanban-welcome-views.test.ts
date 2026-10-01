@@ -1,7 +1,7 @@
 // What someone arriving on a project's floor is sent, through the real office: the PR board covers the
 // project's other repositories, and the issues board shows the cards from the project's issue sources.
-// Both come from upstream's `views` registry (pullsView / issuesView in ws/handlers/github.ts), the seam
-// that would quietly fall back to the floor's own repository if it were lost (docs/fork.md).
+// Both come from upstream's `views` registry (pullsView / issuesView in ws/handlers/github.ts), which
+// would quietly fall back to the floor's own repository if it were lost.
 import { after, before, test } from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';

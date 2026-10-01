@@ -8,7 +8,7 @@ import { fileRoutes } from './files.js';
 import { githubRoutes } from './github.js';
 import { pageRoutes } from './pages.js';
 import { searchRoutes } from './search.js';
-import { kanbanRoutes } from '../../kanban/http/routes.js'; // 3d-kanban
+import { kanbanRoutes } from '../../kanban/http/routes.js';
 
 export const routes: readonly Route[] = [
   // Anyone.
@@ -25,12 +25,12 @@ export const routes: readonly Route[] = [
   pageRoutes.claim,
   pageRoutes.join,
   pageRoutes.favicon,
-  kanbanRoutes.pwa, // 3d-kanban: the PWA's files and the kanban page, before the sign-in check
+  kanbanRoutes.pwa, // the PWA's files and the kanban page, before the sign-in check
   kanbanRoutes.pwaIcons,
   kanbanRoutes.page,
   // Signed in.
   authRoutes.whoami,
-  kanbanRoutes.api, // 3d-kanban
+  kanbanRoutes.api,
   agentRoutes.openCodeModels,
   agentRoutes.grokModels,
   fileRoutes.image,

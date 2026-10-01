@@ -1,4 +1,4 @@
-// 3d-kanban: YouTube on the Office TV in the 3D office. One install line in main.ts (Parts.youtube);
+// YouTube on the Office TV in the 3D office. One install line in main.ts (Parts.youtube);
 // the TV (features/tv) and the couch (features/seating) ask it first through their deps, and the
 // jukebox's window through two seams (see docs/fork.md).
 //

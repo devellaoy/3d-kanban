@@ -2,8 +2,7 @@
 // floor you're on (the task of the worker whose desk you face, on its conversation), and the ☰ menu
 // has an entry for it; the kanban's 📍 Show in 3D link (`/?floor=…&worker=…&desk=…`) takes you in on that
 // floor, then to the desk and the worker's window; and a task's ⏳ retry countdown ticks on its worker's
-// card. Everything else the kanban does in the office is a small seam where the upstream code is
-// (docs/fork.md, Client).
+// card. Everything else the kanban does in the office is done where that code is.
 
 import type { Ctx } from '../core/context';
 import type { CoreState } from '../core/ctx';
@@ -12,7 +11,7 @@ import { store } from '../state';
 import { rememberFloor } from '../state/persist';
 import { toast } from '../ui/dom';
 import { kanbanUrl, parseOfficeLink, withoutOfficeLink, type OfficeLink } from './office';
-import { tickRetryCountdown } from './views3d';
+import { tickRetryCountdown } from '../features/workers/views';
 
 /** The 📍 Show in 3D link this page was opened with, read before anything else moves the address. */
 const opened = parseOfficeLink(location.search);

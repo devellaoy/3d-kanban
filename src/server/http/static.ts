@@ -4,7 +4,7 @@ import { createReadStream, existsSync, statSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-export const MIME: Record<string, string> = { // 3d-kanban: exported, the PWA's files are typed by it too
+export const MIME: Record<string, string> = { // exported, the PWA's files are typed by it too
   '.html': 'text/html; charset=utf-8',
   '.js': 'text/javascript; charset=utf-8',
   '.css': 'text/css; charset=utf-8',

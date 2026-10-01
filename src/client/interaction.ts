@@ -2,7 +2,7 @@ import { canLabel } from '../shared/floorplan';
 import type { GhIssue, WorkerInfo } from '../shared/protocol';
 import { isAsleep } from '../shared/status';
 import type { Interactable } from './world/types';
-// 3d-kanban: R retries a task that waits.
+// R retries a task that waits.
 import { canRetry } from './kanban/office';
 
 export const DESK_KEYS = { KeyE: 'E', KeyP: 'P', KeyR: 'R', KeyX: 'X', KeyB: 'B', KeyC: 'C', KeyO: 'O', KeyL: 'L' } as const;
@@ -31,7 +31,7 @@ export function interactionAvailable(it: Interactable | null, key: DeskKey, stat
     if (!state.worker && state.room) return key === 'E';
     if (key === 'B') return !state.worker;
     if (key === 'P' || key === 'E') return true;
-    if (key === 'R') return !!state.worker && (isAsleep(state.worker.status) || canRetry(state.worker)); // 3d-kanban: canRetry
+    if (key === 'R') return !!state.worker && (isAsleep(state.worker.status) || canRetry(state.worker));
     return !!state.worker && (key === 'C' || key === 'X' || key === 'O');
   }
 

@@ -9,7 +9,7 @@ import { store } from '../../state';
 import type { Arcade } from '../arcade/ui';
 import { toast } from '../../ui/dom';
 import type { Interactable } from '../../world/types';
-import type { installYoutubeTv } from '../../youtube/install'; // 3d-kanban
+import type { installYoutubeTv } from '../../youtube/install';
 
 // The kinds of thing you can use that this defines (see InteractKinds in world/types.ts).
 declare module '../../world/types' {
@@ -29,7 +29,7 @@ export interface SeatingDeps {
   showBar(): void;
   /** What you can use where you are, and what's in the way of looking at it (see usable in input/pointer.ts). */
   usable(): (readonly Interactable[])[];
-  /** 3d-kanban: YouTube on the TV (youtube/install.ts), what the couch watches when nobody's sharing. */
+  /** YouTube on the TV (youtube/install.ts), what the couch watches when nobody's sharing. */
   youtube?(): ReturnType<typeof installYoutubeTv>;
 }
 
@@ -54,9 +54,9 @@ export function installSeating(ctx: Ctx, deps: SeatingDeps) {
 
   /** Someone else's screen is up on the TV. */
   function tvShowing(): boolean {
-    return deps.shares().some(([who]) => who !== 'You') || !!deps.youtube?.().showing(); // 3d-kanban: or YouTube
+    return deps.shares().some(([who]) => who !== 'You') || !!deps.youtube?.().showing(); // or YouTube
   }
-  /** 3d-kanban: the TV's YouTube when nobody's sharing a screen, else the shared one. */
+  /** The TV's YouTube when nobody's sharing a screen, else the shared one. */
   const watchTv = () => deps.youtube?.().watch() || deps.watchShare();
 
   /** E at a seat: sit down on it. Sitting there already, get up, or on the couch facing the TV, watch it. */
@@ -65,7 +65,7 @@ export function installSeating(ctx: Ctx, deps: SeatingDeps) {
     if (!seat) return;
     const player = ctx.player;
     if (player.seat?.seatId === seatId) {
-      if (seat.tv && tvShowing()) watchTv(); // 3d-kanban: watchTv
+      if (seat.tv && tvShowing()) watchTv();
       else if (seat.game) deps.arcade.play();
       else if (seat.bar) deps.showBar();
       else standUp();
@@ -80,7 +80,7 @@ export function installSeating(ctx: Ctx, deps: SeatingDeps) {
     ctx.me.sit(place.hips);
     ctx.net.send({ t: 'sit', seat: place.key });
     // The couch in front of the TV is where you watch whoever's sharing.
-    if (seat.tv && tvShowing()) watchTv(); // 3d-kanban: watchTv
+    if (seat.tv && tvShowing()) watchTv();
   }
 
   function standUp() {

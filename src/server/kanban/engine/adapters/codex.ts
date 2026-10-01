@@ -1,5 +1,5 @@
 // Codex as a task agent: its per-phase flags and reading a turn from its rollout JSONL
-// (~/.codex/sessions/YYYY/MM/DD/rollout-*.jsonl, see M0 in docs/fork.md). Each line is
+// (~/.codex/sessions/YYYY/MM/DD/rollout-*.jsonl, see docs/fork.md, M0 spike results). Each line is
 // `{ type, payload }`: `event_msg` lines are the session's events (user_message, task_complete,
 // error...), `response_item` lines what the model saw and said.
 

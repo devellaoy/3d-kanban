@@ -1,4 +1,4 @@
-// 3d-kanban: the TV window: what's on, big (the TV's own player, lined up with the window's slot), and
+// The TV window: what's on, big (the TV's own player, lined up with the window's slot), and
 // a box to put a YouTube link on, change it or take it off.
 import './youtube.css';
 import { parseYoutubeLink, youtubeTitle } from '../../shared/youtube/link';

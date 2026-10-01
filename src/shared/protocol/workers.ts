@@ -99,7 +99,7 @@ export interface WorkerInfo {
   workingSince?: number;
   /** Sent out by a map's herald (the castle's Hand of the King), so every browser has it run to its seat from beside them. */
   via?: 'herald';
-  /** 3d-kanban: hired by the kanban engine for a task, as its implementer or reviewer, with the task's card as it is now (see src/server/kanban). */
+  /** Hired by the kanban engine for a task, as its implementer or reviewer, with the task's card as it is now (see src/server/kanban). */
   kanban?: KanbanWorkerSummary;
 }
 
@@ -177,9 +177,9 @@ export interface JailState {
 export type WorkerClientMsg =
   /** With `issue`, the worker is there for that GitHub issue: it's assigned on GitHub (so it moves to In progress) and taken off the queue. */
   /** With `repos` (other floors' ids), the worker works in their repositories too, each in a worktree of its own (see WorkerInfo.repos). */
-  | { t: 'worker.spawn'; deskId: string; prompt?: string; worktree?: boolean; kind?: WorkerKind; provider?: AgentProvider; model?: string; effort?: AgentEffort; issue?: number; repos?: string[]; via?: 'herald'; issueKey?: string } // 3d-kanban: issueKey
+  | { t: 'worker.spawn'; deskId: string; prompt?: string; worktree?: boolean; kind?: WorkerKind; provider?: AgentProvider; model?: string; effort?: AgentEffort; issue?: number; repos?: string[]; via?: 'herald'; issueKey?: string }
   | { t: 'worker.resume'; workerId: string }
-  /** 3d-kanban: `kanban.done` asks for a task worker's task to be done as it goes (see docs/kanban-coupling.md). */
+  /** `kanban.done` asks for a task worker's task to be done as it goes (see docs/kanban-coupling.md). */
   | { t: 'worker.kill'; workerId: string; cleanup?: WorktreeCleanup; kanban?: { done?: boolean } }
   /** Asks what the worker's worktree holds; answered with a `worker.worktree` message. */
   | { t: 'worker.worktree'; workerId: string }
@@ -188,7 +188,7 @@ export type WorkerClientMsg =
   | { t: 'worker.attach'; workerId: string }
   | { t: 'worker.detach'; workerId: string }
   /** With `issue`, the prompt hands the worker that GitHub issue, which is taken as for worker.spawn. */
-  | { t: 'worker.prompt'; workerId: string; prompt: string; issue?: number; asComment?: true; issueKey?: string } // 3d-kanban: `asComment` makes it a comment on a task worker's task (else typed in, as upstream); issueKey
+  | { t: 'worker.prompt'; workerId: string; prompt: string; issue?: number; asComment?: true; issueKey?: string } // `asComment` makes it a comment on a task worker's task (else typed in, as upstream); issueKey
   /**
    * A prompt for the agent standing by a board (`deskId` is its kiosk, see STATIONS in layout). It's
    * typed into its session, which is woken up first if it's asleep, or hired there when nobody is.

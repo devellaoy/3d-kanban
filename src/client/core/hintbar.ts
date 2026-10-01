@@ -7,7 +7,7 @@ import type { Ctx } from './context';
 import type { CoreState } from './ctx';
 import { key } from './hint';
 import type { Parts } from './parts';
-import { cardId } from '../../shared/kanban/issuecard.js'; // 3d-kanban
+import { cardId } from '../../shared/kanban/issuecard.js';
 
 export function installHintBar(ctx: Ctx, core: CoreState, parts: Pick<Parts, 'pointer' | 'focus' | 'place' | 'hoops' | 'cards'>) {
   const { player } = ctx;
@@ -48,7 +48,7 @@ export function installHintBar(ctx: Ctx, core: CoreState, parts: Pick<Parts, 'po
     const target = parts.pointer.target();
     const { finePointer } = parts.focus;
     const relookOnKey = parts.focus.relookOnKey();
-    const show = !modalOpen() && !ctx.activities.any('takesCamera'); // 3d-kanban: in third person too
+    const show = !modalOpen() && !ctx.activities.any('takesCamera'); // in third person too
     const free = show && finePointer && player.canLock && !player.locked;
     const k = `${show}|${!!target}|${free}|${relookOnKey}`;
     if (k === crossKey) return;

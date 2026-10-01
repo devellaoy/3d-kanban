@@ -19,8 +19,8 @@ const GRAVITY = 18;
 // What the rest of the client takes from here, wherever it lives now: the eye height (camera.ts), the
 // ground under someone (collide.ts) and isTyping (pointer.ts).
 export { EYE_HEIGHT, groundAt, isTyping };
-// 3d-kanban: third person looks around like first person (see kanban/shoulder.ts).
-export { SHOULDER, THIRD_PITCH_MAX, THIRD_PITCH_MIN, alongRay, eyeSees, orbitOffset, shoulderOffset, tapNdc, withinReach } from '../kanban/shoulder';
+// Third person looks around like first person (see shoulder.ts).
+export { SHOULDER, THIRD_PITCH_MAX, THIRD_PITCH_MIN, alongRay, eyeSees, orbitOffset, shoulderOffset, tapNdc, withinReach } from './shoulder';
 /** Keys that get you up off a seat: walking away, or jumping up. */
 const GET_UP = ['KeyW', 'KeyA', 'KeyS', 'KeyD', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Space'];
 
@@ -87,7 +87,7 @@ export class PlayerController extends PlayerInput {
     } else {
       // Start the orbit camera behind where you were looking.
       this.camYaw = this.facing - Math.PI;
-      // 3d-kanban: the mouse stays captured, looking around in third person too.
+      // The mouse stays captured, looking around in third person too.
     }
     this.view = view;
     this.updateCamera(true);
@@ -190,7 +190,7 @@ export class PlayerController extends PlayerInput {
     }
     if (this.path && this.enabled) this.followPath(dt);
     if (this.view === 'first') this.facing = Math.atan2(Math.sin(this.camYaw + Math.PI), Math.cos(this.camYaw + Math.PI));
-    // 3d-kanban: third person faces where the camera looks too, standing or walking (not on a walk of its own, which turns you along it).
+    // Third person faces where the camera looks too, standing or walking (not on a walk of its own, which turns you along it).
     else if (!this.path) this.facing += Math.atan2(Math.sin(this.camYaw + Math.PI - this.facing), Math.cos(this.camYaw + Math.PI - this.facing)) * (1 - Math.exp(-dt * 25));
     if (steering) {
       const len = Math.hypot(ix, iz);
@@ -207,7 +207,7 @@ export class PlayerController extends PlayerInput {
       const speed = (k.has('ShiftLeft') || k.has('ShiftRight') ? RUN : WALK) * this.effects.speed;
       this.tryMove(this.pos.x + dx * speed * dt, this.pos.z);
       this.tryMove(this.pos.x, this.pos.z + dz * speed * dt);
-      // 3d-kanban: third person turns to the camera above, walking or not (was: to the way you walk).
+      // Third person turns to the camera above, walking or not (was: to the way you walk).
     }
 
     // Never below the street: past the edge of the grass there's nothing else to stand on.
