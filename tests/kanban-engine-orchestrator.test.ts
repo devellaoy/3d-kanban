@@ -434,6 +434,72 @@ test('Stop #1 racing the agent\'s notification: the run waits for the resumed tu
   assert.equal(done.summary, 'Changed the redirect; tests pass.', "from the resumed turn's Stop, not the interim text");
 });
 
+test('a turn that ends on teammates is not the run\'s end: their hooks leave it, and the task waits for the lead\'s own Stop', async (t) => {
+  const fx = await engineFixture();
+  t.after(() => fx.close());
+  fx.setRules([{ when: 'Implement kanban task', teammates: 'The teammate is at it; I will wait for its report.', reply: 'Changed the redirect; tests pass.', commit: 'Work', teammatesMs: 1500 }]);
+  const task = fx.newTask({ usePlan: false, useReview: false });
+  await fx.engine.start(task.id, ADA);
+  const running = await fx.waitTask(task.id, (x) => x.phase === 'implement' && x.runState === 'running', 'the implement turn');
+  // The first Stop has come and so has the teammate's hook (the worker works): the task is still at work.
+  await new Promise((r) => setTimeout(r, 700));
+  assert.equal(fx.task(task.id).status, 'in_progress');
+  assert.equal(fx.repo.listRuns(task.id).at(-1)?.status, 'running');
+  assert.equal(fx.workers.get(running.workerId!)?.status, 'working');
+  const done = await fx.waitTask(task.id, (x) => x.status === 'review', 'the review column', 15_000);
+  assert.equal(done.summary, 'Changed the redirect; tests pass.');
+  assert.deepEqual(fx.repo.listComments(task.id).comments.filter((c) => c.kind === 'result').map((c) => c.text), ['Changed the redirect; tests pass.']);
+  assert.equal(fx.repo.listRuns(task.id).at(-1)?.status, 'succeeded');
+});
+
+const teamFix = [
+  { when: 'Implement kanban task', teammates: 'Waiting for the teammate.', reply: 'Changed the redirect; tests pass.', commit: 'Work', teammatesMs: 200, lateTeamMs: 3000 },
+  { when: 'asks for changes', reply: 'Fixed the missing null check.', commit: 'Null check' },
+  { when: 'This is review round 1 of', reply: '1. src/login.ts:12 misses a null check.\n\nREVIEW: CHANGES_REQUESTED' },
+  { when: 'round 2 of', reply: 'The fix is right.\n\nREVIEW: APPROVED' },
+];
+
+test('a phase that finds its own worker busy (a teammate still hooks it) waits for it to rest instead of failing', async (t) => {
+  const fx = await engineFixture();
+  t.after(() => fx.close());
+  fx.setRules(teamFix);
+  const task = fx.newTask({ usePlan: false });
+  await fx.engine.start(task.id, ADA);
+  const done = await fx.waitTask(task.id, (x) => x.status === 'review' && x.runState === 'idle', 'the review column', 30_000);
+  assert.equal(done.reviewRound, 2);
+  assert.deepEqual(fx.repo.listRuns(task.id).map((r) => `${r.phase}${r.round ? `:${r.round}` : ''}/${r.status}`), ['implement/succeeded', 'review:1/succeeded', 'fix:1/succeeded', 'review:2/succeeded']);
+});
+
+test('a phase whose own worker never rests fails with the busy error after busyWaitMs', async (t) => {
+  const fx = await engineFixture({ engine: { busyWaitMs: 500 } });
+  t.after(() => fx.close());
+  fx.setRules(teamFix.map((r) => (r.teammates ? { ...r, lateTeamMs: 30_000 } : r)));
+  const task = fx.newTask({ usePlan: false });
+  await fx.engine.start(task.id, ADA);
+  const failed = await fx.waitTask(task.id, (x) => x.status === 'waiting' && /is busy/.test(x.waitingText ?? ''), 'the busy failure', 30_000);
+  assert.match(failed.waitingText ?? '', /is busy: wait for its turn to end/);
+});
+
+test('Stop while a phase waits for its busy own worker ends the run as stopped at once, with no prompt typed', async (t) => {
+  const fx = await engineFixture();
+  t.after(() => fx.close());
+  fx.setRules(teamFix.map((r) => (r.teammates ? { ...r, lateTeamMs: 60_000 } : r)));
+  const task = fx.newTask({ usePlan: false });
+  await fx.engine.start(task.id, ADA);
+  const waitingRun = () => fx.repo.listRuns(task.id).some((r) => r.phase === 'fix' && r.status === 'running');
+  for (let i = 0; i < 300 && !waitingRun(); i++) await new Promise((r) => setTimeout(r, 100));
+  assert.ok(waitingRun(), 'the fix run waits for its worker');
+  const at = Date.now();
+  assert.equal(await fx.engine.stop(task.id, ADA), undefined);
+  assert.ok(Date.now() - at < 3000, 'the stop did not wait for the busy worker');
+  const stopped = await fx.waitTask(task.id, (x) => x.status === 'waiting' && x.waitingReason === 'stopped', 'the stop', 5000);
+  assert.equal(stopped.waitingText, 'Stopped by Ada');
+  assert.equal(fx.repo.listRuns(task.id).at(-1)?.status, 'stopped');
+  assert.equal(fx.repo.listRuns(task.id).some((r) => r.status === 'running'), false);
+  await new Promise((r) => setTimeout(r, 500));
+  assert.equal(fx.invocations().some((i) => /asks for changes/.test(i.prompt ?? '')), false, 'no fix prompt was typed');
+});
+
 test('a run held for background agents that never report back goes on after backgroundWaitMs, with a note', async (t) => {
   const fx = await engineFixture({ engine: { backgroundWaitMs: 800 } });
   t.after(() => fx.close());

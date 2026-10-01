@@ -52,6 +52,17 @@ export interface Rule {
   /** With `background`: the first Stop comes with the log ending at the Agent call; its result and the interim text are logged this long after. */
   launchLateMs?: number;
   /**
+   * Claude only: spawn a teammate (agent teams) and end the turn on this interim text (Stop), as the
+   * lead does when it "waits for the report"; the teammate's own transcript ends mid-tool and its own
+   * hook (with an `agent_id`) comes. `teammatesMs` later (300 by default) its report and its idle
+   * notification reach the lead's log, its transcript ends in text, and the final `reply` is logged
+   * with a second Stop and no hook of a new turn in between.
+   */
+  teammates?: string;
+  teammatesMs?: number;
+  /** With `teammates`: after the final Stop a teammate still hooks the lead's worker (it works again), and this long after, the lead's turn on its message stops. */
+  lateTeamMs?: number;
+  /**
    * Claude only: post Stop (with the reply as its last_assistant_message) before the final reply is
    * in the log, and log it this long after (-1: never), as Claude Code sometimes does (#310). The
    * turn ends there: it doesn't combine with `ask` or `exitPlan`. With `background` it is the resumed
@@ -170,6 +181,34 @@ async function turn(prompt, answered) {
       }
       append(reply);
       await post('Stop', { last_assistant_message: rule.reply });
+      return;
+    }
+    if (rule.teammates !== undefined) {
+      const stamp = () => new Date().toISOString();
+      const lead = (o) => append({ timestamp: stamp(), ...o });
+      const team = path.join(process.env.FAKE_TRANSCRIPTS, session, 'subagents');
+      fs.mkdirSync(team, { recursive: true });
+      const own = (o) => fs.appendFileSync(path.join(team, 'agent-ahelper-1.jsonl'), JSON.stringify({ timestamp: stamp(), isSidechain: true, ...o }) + '\n');
+      fs.writeFileSync(path.join(team, 'agent-ahelper-1.meta.json'), JSON.stringify({ agentType: 'helper', name: 'helper', taskKind: 'in_process_teammate', teamName: 'session-1' }));
+      lead({ type: 'assistant', message: { id: msgId + '-tm', role: 'assistant', content: [{ type: 'tool_use', id: 'tm-1', name: 'Agent', input: { name: 'helper' } }] } });
+      lead({ type: 'user', message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: 'tm-1', content: [{ type: 'text', text: 'Spawned successfully.\nagent_id: helper@session-1\nname: helper' }] }] }, toolUseResult: { status: 'teammate_spawned', name: 'helper', teammate_id: 'helper@session-1', team_name: 'session-1' } });
+      own({ type: 'user', message: { role: 'user', content: '<teammate-message teammate_id="team-lead" summary="Go">\nDo it.\n</teammate-message>' } });
+      own({ type: 'assistant', message: { id: 'tm-own-1', role: 'assistant', content: [{ type: 'tool_use', id: 'tm-own-t', name: 'Bash', input: { command: 'work' } }] } });
+      lead({ type: 'assistant', message: { id: msgId + '-wait', role: 'assistant', content: [{ type: 'text', text: rule.teammates }] } });
+      await post('Stop', { last_assistant_message: rule.teammates });
+      // The teammate works: its hooks reach the lead's worker with an agent_id, and are none of the lead's turn.
+      await post('PreToolUse', { tool_name: 'Bash', tool_input: { command: 'work' }, agent_id: 'helper@session-1' });
+      await new Promise((r) => setTimeout(r, rule.teammatesMs ?? 300));
+      own({ type: 'assistant', message: { id: 'tm-own-2', role: 'assistant', content: [{ type: 'text', text: 'Done.' }] } });
+      const idle = JSON.stringify({ type: 'idle_notification', from: 'helper', timestamp: stamp(), idleReason: 'available', summary: '[to main] Done', result: 'Done {with braces}' });
+      lead({ type: 'user', message: { role: 'user', content: 'Another Claude session sent a message:\n<teammate-message teammate_id="helper" color="blue" summary="Done">\nAll done.\n</teammate-message>\n<teammate-message teammate_id="helper" color="blue">\n' + idle + '\n</teammate-message>' } });
+      lead({ type: 'assistant', message: { id: msgId, role: 'assistant', content: [{ type: 'text', text: rule.reply }] } });
+      await post('Stop', { last_assistant_message: rule.reply });
+      if (rule.lateTeamMs) {
+        await post('PreToolUse', { tool_name: 'Bash', tool_input: { command: 'again' }, agent_id: 'helper@session-1' });
+        await new Promise((r) => setTimeout(r, rule.lateTeamMs));
+        await post('Stop', {});
+      }
       return;
     }
     const final = { type: 'assistant', message: { id: msgId, role: 'assistant', content: [{ type: 'text', text: rule.reply }] } };
