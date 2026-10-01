@@ -5,6 +5,7 @@
 import * as THREE from 'three';
 import type { Ctx } from '../../core/context';
 import { hintTitle, key, onE } from '../../core/hint';
+import type { installYoutubeTv } from '../../youtube/install'; // 3d-kanban
 
 // The kinds of thing you can use that this defines (see InteractKinds in world/types.ts).
 declare module '../../world/types' {
@@ -18,6 +19,8 @@ export interface TvDeps {
   shares(): [string, MediaStream][];
   /** Watches what's on the TV full screen, or shares your screen when nobody's sharing (see features/voice). */
   watch(): void;
+  /** 3d-kanban: YouTube on the TV (youtube/install.ts), asked first unless a screen is shared. */
+  youtube?(): ReturnType<typeof installYoutubeTv>;
 }
 
 export function installTv(ctx: Ctx, deps: TvDeps) {
@@ -55,10 +58,12 @@ export function installTv(ctx: Ctx, deps: TvDeps) {
   ctx.interactions.define('tv', {
     reach: 10,
     hint: () => {
+      const yt = deps.youtube?.().tvHint(); // 3d-kanban
+      if (yt) return yt;
       const any = deps.shares().length > 0;
       return { k: String(any), parts: [hintTitle('📺 Office TV'), key('E', any ? 'Watch full screen' : 'Share your screen')] };
     },
-    use: onE(() => deps.watch()),
+    use: onE(() => deps.youtube?.().tvUse() || deps.watch()), // 3d-kanban: tvUse()
   });
 
   let tvStream: MediaStream | null = null;

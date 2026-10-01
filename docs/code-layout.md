@@ -8,7 +8,7 @@ There are three parts: `src/client` (the page, built by Vite, with three.js), `s
 
 ## In 3d-kanban
 
-This fork's kanban code lives in `src/client/kanban/`, `src/server/kanban/` and `src/shared/kanban/`, outside the registries' own folders. It joins them through a few fixed lines: `kanbanHandlers` and `kanbanHooks` in `src/server/ws/handlers/index.ts` (the WS messages), `kanbanRoutes` in `src/server/http/routes/index.ts` (the HTTP routes), `openKanban` in `src/server/server.ts`, `installKanban3d` in `src/client/main.ts` (with `Parts.kanban3d` in `core/parts.ts`), and the other seams listed in [fork.md](fork.md). The size guard leaves the kanban folders out (see [The size guard](#the-size-guard)).
+This fork's kanban code lives in `src/client/kanban/`, `src/server/kanban/` and `src/shared/kanban/`, outside the registries' own folders. It joins them through a few fixed lines: `kanbanHandlers` and `kanbanHooks` in `src/server/ws/handlers/index.ts` (the WS messages), `kanbanRoutes` in `src/server/http/routes/index.ts` (the HTTP routes), `openKanban` in `src/server/server.ts`, `installKanban3d` in `src/client/main.ts` (with `Parts.kanban3d` in `core/parts.ts`), and the other seams listed in [fork.md](fork.md). YouTube on the Office TV is the fork's too, in `src/{client,server,shared}/youtube/`, and joins the same way (`youtubeHandlers` and `youtubeView`, the `youtube` slice, `installYoutubeTv` with `Parts.youtube`). The size guard leaves the kanban folders out (see [The size guard](#the-size-guard)).
 
 ## Client
 

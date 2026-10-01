@@ -17,6 +17,7 @@ import type { BallClientMsg, CabinetClientMsg, CarClientMsg, DecorClientMsg, Dog
 import type { UsageClientMsg, UsageServerMsg } from './protocol/usage.js';
 import type { WorkerClientMsg, WorkerServerMsg } from './protocol/workers.js';
 import type { KanbanClientMsg, KanbanServerMsg } from './kanban/protocol.js'; // 3d-kanban
+import type { YoutubeClientMsg, YoutubeServerMsg } from './youtube/protocol.js'; // 3d-kanban
 
 export * from './protocol/accounts.js';
 export * from './protocol/agents.js';
@@ -54,7 +55,8 @@ export type ClientMsg =
   | BallClientMsg
   | CarClientMsg
   | DogClientMsg
-  | KanbanClientMsg; // 3d-kanban: the kanban's messages ride the office's socket
+  | KanbanClientMsg // 3d-kanban: the kanban's messages ride the office's socket
+  | YoutubeClientMsg; // 3d-kanban: YouTube on the Office TV
 
 export type ServerMsg =
   | PresenceServerMsg
@@ -69,4 +71,5 @@ export type ServerMsg =
   | SettingsServerMsg
   | UsageServerMsg
   | ToysServerMsg
-  | KanbanServerMsg; // 3d-kanban
+  | KanbanServerMsg // 3d-kanban
+  | YoutubeServerMsg; // 3d-kanban: YouTube on the Office TV

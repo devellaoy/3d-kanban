@@ -221,7 +221,7 @@ test('what the browser remembers keeps its keys and shapes', () => {
 
 test("the store's keys are its state, as window.__office shows them", () => {
   // As the office had them before its store was split into slices: methods and the slices aren't among them.
-  assert.deepEqual(Object.keys(store).sort(), ['accounts', 'ball', 'cabinet', 'cabinetFrame', 'cars', 'carsAt', 'chat', 'clock', 'decor', 'dog', 'dogStart', 'drawing', 'floor', 'floorPlan', 'floors', 'ice', 'invites', 'issues', 'jail', 'jukebox', 'leaveOnMerge', 'limits', 'machine', 'map', 'me', 'meeting', 'notify', 'peers', 'profile', 'project', 'projectsDir', 'prompts', 'pulls', 'queue', 'repos', 'screens', 'services', 'signins', 'sky', 'subs', 'team', 'theme', 'upgrade', 'usage', 'whiteboard', 'workers', 'you']);
+  assert.deepEqual(Object.keys(store).sort(), ['accounts', 'ball', 'cabinet', 'cabinetFrame', 'cars', 'carsAt', 'chat', 'clock', 'decor', 'dog', 'dogStart', 'drawing', 'floor', 'floorPlan', 'floors', 'ice', 'invites', 'issues', 'jail', 'jukebox', 'leaveOnMerge', 'limits', 'machine', 'map', 'me', 'meeting', 'notify', 'peers', 'profile', 'project', 'projectsDir', 'prompts', 'pulls', 'queue', 'repos', 'screens', 'services', 'signins', 'sky', 'subs', 'team', 'theme', 'upgrade', 'usage', 'whiteboard', 'workers', 'you', 'youtube' /* 3d-kanban */]);
 });
 
 test('a new store starts every field where it always has', async () => {
@@ -246,6 +246,7 @@ test('a new store starts every field where it always has', async () => {
       whiteboard: [], drawing: [], cabinet: { player: null, scores: [] }, cabinetFrame: null, ball: {},
       cars: parked(), carsAt: [], jail: { prisoners: [], bones: 0 },
       team: null, accounts: null, signins: null,
+      youtube: null, // 3d-kanban: the Office TV's YouTube (youtube/slice.ts)
     },
   );
 });
@@ -256,6 +257,8 @@ test('every slice in state/slices is registered, once', async () => {
   assert.equal(new Set(SLICES).size, SLICES.length);
   const dir = path.join(import.meta.dirname, '../src/client/state/slices');
   const slices = [...Object.values(core)];
+  // 3d-kanban: the fork's slice, outside state/slices (docs/fork.md).
+  slices.push((await import('../src/client/youtube/slice.js')).youtube);
   for (const f of readdirSync(dir).filter((f) => f.endsWith('.ts') && f !== 'index.ts')) {
     const exported = Object.values(await import(pathToFileURL(path.join(dir, f)).href));
     assert.ok(exported.length, `${f} exports its slice`);

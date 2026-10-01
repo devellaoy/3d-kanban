@@ -17,6 +17,7 @@ document disagree, fix one of them in the same change.
   - `src/shared/kanban/` — types, WS protocol, move rules, prompt defaults (browser + server).
   - `src/server/kanban/` — database, settings, projects, engine, issues, refs, skills, HTTP/WS glue.
   - `src/client/kanban/` + `src/client/kanban.html` — the kanban page.
+  - `src/{shared,server,client}/youtube/` — YouTube on the Office TV (see fork.md).
   - `bin/office-tasks.js`, `scripts/migrate-ai-kanban/`, `skills/`, `tests/kanban-*.test.ts`, `docs/kanban*.md`.
 - Upstream files get only small, listed seams (see fork.md). Never reformat or reorder upstream code.
 - Style: upstream's — TypeScript strict, ES modules with `.js` import suffixes, `node:test` tests,

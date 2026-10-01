@@ -8,6 +8,7 @@ import type { CarState } from '../garage.js';
 import type { BallState } from '../hoop.js';
 import type { JukeboxState } from '../jukebox.js';
 import type { WhiteboardView } from '../whiteboard.js';
+import type { YoutubeTvState } from '../youtube/link.js'; // 3d-kanban
 import type { AgentProvider } from './agents.js';
 import type { GhIssue, GhPull, GhState } from './github.js';
 import type { MeetingState } from './meetings.js';
@@ -112,6 +113,8 @@ export interface FloorView {
   cars: CarState[];
   /** Workers sent home and locked up in the dungeon, on a map that has one. */
   jail: JailState;
+  /** 3d-kanban: the YouTube video on the lounge TV, if any (see shared/youtube). */
+  youtube: YoutubeTvState | null;
 }
 
 export type FloorClientMsg =
