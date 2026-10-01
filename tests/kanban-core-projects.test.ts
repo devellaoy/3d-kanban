@@ -146,3 +146,24 @@ test('projectInfo sums up a project for the board', (t) => {
   assert.deepEqual(info.settings, { maxConcurrent: 4, planApproval: 'auto', issueSources: 0, promptOverrides: 1, reviewRounds: 5 });
   assert.equal(projectInfo(def('api', checkout('api')), s, false).settings.reviewRounds, s.review.rounds);
 });
+
+test('Building.setName renames a floor, keeping its id and repositories, and floors.json remembers it', (t) => {
+  const { root, dataDir, checkout } = office(t);
+  const repos = [{ id: 'web', name: 'Web', dir: checkout('web'), primary: true, kind: 'git' as const }];
+  const old = [def('web', repos[0].dir, { repos }), def('api', checkout('api'), { palette: 2 })];
+  writeFileSync(path.join(dataDir, 'floors.json'), JSON.stringify(old));
+  const building = new Building(dataDir, root);
+  const renamed = building.setName('web', '  Shop  ');
+  assert.equal(typeof renamed === 'object' && renamed.name, 'Shop');
+  const again = new Building(dataDir, root).list()[0];
+  assert.deepEqual([again.id, again.name, again.repo, again.repos], ['web', 'Shop', 'acme/web', repos]);
+  assert.equal(JSON.parse(readFileSync(path.join(dataDir, 'floors.json'), 'utf8'))[0].name, 'Shop');
+  // Its own name again, in another case, is fine; another floor's is not; neither is an empty or a long one.
+  assert.equal(typeof building.setName('web', 'SHOP'), 'object');
+  assert.match(String(building.setName('web', 'API')), /already a project called API/);
+  assert.match(String(building.setName('web', '   ')), /needs a name/);
+  assert.match(String(building.setName('web', 'x'.repeat(101))), /needs a name/);
+  assert.equal(typeof building.setName('web', 'x'.repeat(100)), 'object');
+  assert.equal(building.setName('nope', 'Shop'), 'No such floor');
+  assert.equal(building.list()[0].name, 'x'.repeat(100));
+});
