@@ -14,23 +14,31 @@ export interface GhPrFile {
   deletions?: number;
 }
 
+/** A path as git writes it in a diff header: C-quoted when it has a quote, backslash or control character, so a file name can't start a header line of its own. */
+function gitPath(prefix: string, p: string): string {
+  if (!/["\\\x00-\x1f\x7f]/.test(p)) return prefix + p;
+  const esc: Record<string, string> = { '"': '\\"', '\\': '\\\\', '\t': '\\t', '\n': '\\n', '\r': '\\r' };
+  return `"${(prefix + p).replace(/["\\\x00-\x1f\x7f]/g, (c) => esc[c] ?? `\\${c.charCodeAt(0).toString(8).padStart(3, '0')}`)}"`;
+}
+
 /** The files as a unified diff `parseDiff` (client/ui/pulldiff.ts) reads like `gh pr diff`'s. */
 export function diffFromFiles(files: GhPrFile[]): string {
   let out = '';
   for (const f of files) {
     const oldPath = f.previous_filename || f.filename;
+    const [a, b] = [gitPath('a/', oldPath), gitPath('b/', f.filename)];
     const patch = f.patch ?? '';
     const renamed = f.status === 'renamed';
-    out += `diff --git a/${oldPath} b/${f.filename}\n`;
-    if (f.status === 'added') out += `new file mode 100644\n--- /dev/null\n+++ b/${f.filename}\n`;
-    else if (f.status === 'removed') out += `deleted file mode 100644\n--- a/${oldPath}\n+++ /dev/null\n`;
+    out += `diff --git ${a} ${b}\n`;
+    if (f.status === 'added') out += `new file mode 100644\n--- /dev/null\n+++ ${b}\n`;
+    else if (f.status === 'removed') out += `deleted file mode 100644\n--- ${a}\n+++ /dev/null\n`;
     else {
-      if (renamed) out += `rename from ${oldPath}\nrename to ${f.filename}\n`;
-      if (!renamed || patch) out += `--- a/${oldPath}\n+++ b/${f.filename}\n`;
+      if (renamed) out += `rename from ${gitPath('', oldPath)}\nrename to ${gitPath('', f.filename)}\n`;
+      if (!renamed || patch) out += `--- ${a}\n+++ ${b}\n`;
     }
     if (patch) out += patch.endsWith('\n') ? patch : `${patch}\n`;
     // No patch and no changed lines: a binary file (or a pure rename, which needs nothing more).
-    else if (!f.additions && !f.deletions) out += renamed ? '' : `Binary files a/${oldPath} and b/${f.filename} differ\n`;
+    else if (!f.additions && !f.deletions) out += renamed ? '' : `Binary files ${a} and ${b} differ\n`;
     else out += `\\ Too large to show here (+${f.additions ?? 0} −${f.deletions ?? 0}) — open the file on GitHub.\n`;
   }
   return out;

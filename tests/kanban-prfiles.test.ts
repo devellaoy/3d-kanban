@@ -55,3 +55,28 @@ test('a file with no patch and no changed lines is binary, not too large', () =>
   ]));
   assert.deepEqual(d.map((f) => [f.path, f.status, f.binary, f.lines.length]), [['logo.png', 'A', true, 0], ['icon.png', 'M', true, 0]]);
 });
+
+test('a file name that looks like diff headers stays one file with its own name', () => {
+  const evil = 'x.txt\ndiff --git a/spoof.txt b/spoof.txt\n--- a/spoof.txt\n+++ b/spoof.txt\n@@ -1 +1 @@\n-a\n+b';
+  const odd = 'say "hi"\\there\t.md';
+  const text = diffFromFiles([
+    { filename: evil, status: 'modified', patch: '@@ -1 +1 @@\n-old\n+new', additions: 1, deletions: 1 },
+    { filename: `new ${odd}`, previous_filename: odd, status: 'renamed', additions: 0, deletions: 0 },
+    { filename: 'img\n.png', status: 'added', additions: 0, deletions: 0 },
+    { filename: 'ä ö.txt', status: 'removed', patch: '@@ -1 +0,0 @@\n-x', additions: 0, deletions: 1 },
+  ]);
+  assert.ok(!text.split('\n').some((l) => l === 'diff --git a/spoof.txt b/spoof.txt'), 'the name never starts a line of its own');
+  const d = parseDiff(text);
+  assert.deepEqual(d.map((f) => [f.path, f.oldPath, f.status, f.binary]), [
+    [evil, undefined, 'M', false],
+    [`new ${odd}`, odd, 'R', false],
+    ['img\n.png', undefined, 'A', true],
+    ['ä ö.txt', undefined, 'D', false],
+  ]);
+  assert.deepEqual(d[0].lines.filter((l) => l.kind !== 'hunk').map((l) => [l.kind, l.text]), [['del', 'old'], ['add', 'new']]);
+});
+
+test("parseDiff reads git's own octal quoting of a non-ASCII name", () => {
+  const d = parseDiff('diff --git "a/\\303\\244.txt" "b/\\303\\244.txt"\n--- "a/\\303\\244.txt"\n+++ "b/\\303\\244.txt"\n@@ -1 +1 @@\n-a\n+b\n');
+  assert.deepEqual(d.map((f) => [f.path, f.additions, f.deletions]), [['ä.txt', 1, 1]]);
+});
