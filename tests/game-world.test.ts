@@ -41,3 +41,32 @@ test('no solid scenery stands in the road lanes', () => {
   });
   assert.deepEqual(bad.map((c) => `(${c.minX.toFixed(1)}, ${c.minZ.toFixed(1)})`), []);
 });
+
+test('wildflowers, grazing animals and butterflies stay off the pavement too', () => {
+  const { scenic, group } = build();
+  scenic.update(0);
+  let onGround = 0;
+  const bad: string[] = [];
+  const m = new THREE.Matrix4();
+  const v = new THREE.Vector3();
+  group.traverse((o) => {
+    const im = o as THREE.InstancedMesh;
+    if (!im.isInstancedMesh) return;
+    for (let i = 0; i < im.count; i++) {
+      im.getMatrixAt(i, m);
+      v.setFromMatrixPosition(m);
+      // Birds are overhead; everything else is on the ground.
+      if (v.y > 8) continue;
+      onGround++;
+      if (onPaving(v.x, v.z, 0.6)) bad.push(`(${v.x.toFixed(1)}, ${v.z.toFixed(1)})`);
+    }
+  });
+  assert.ok(onGround > 1500, `lots of them (${onGround})`);
+  assert.deepEqual(bad.slice(0, 10), []);
+});
+
+test('the decorations are not solid: nothing small and low (a flower box, a bench, a bush) is a collider', () => {
+  const { colliders } = build();
+  const low = (colliders as unknown as { minX: number; maxX: number; minZ: number; maxZ: number; top: number; bottom: number }[]).filter((c) => c.maxX - c.minX < 3 && c.maxZ - c.minZ < 3 && c.top - c.bottom < 0.6);
+  assert.deepEqual(low, []);
+});

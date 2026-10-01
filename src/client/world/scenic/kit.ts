@@ -173,6 +173,8 @@ export interface Seen {
   maxZ: number;
   /** How high it stands over the street: the taller, the further off it shows over the haze. */
   above: number;
+  /** The furthest off it is worth drawing, for what is small (butterflies): the haze lets it go further. */
+  reach: number;
 }
 
 /** What each part of the loop builds into (see makeKit), in place of what used to be one long builder's locals. */
@@ -195,9 +197,9 @@ export interface ScenicKit {
   colliders: Collider[];
   night: NightParts;
   /** Draws `obj` only when it's near enough to see: its footprint, and how high it stands (see Seen). */
-  cullable(obj: THREE.Object3D, minX: number, maxX: number, minZ: number, maxZ: number, above?: number): void;
+  cullable(obj: THREE.Object3D, minX: number, maxX: number, minZ: number, maxZ: number, above?: number, reach?: number): void;
   /** The same, for something `r` round (x, z). */
-  around(obj: THREE.Object3D, x: number, z: number, r: number, above?: number): void;
+  around(obj: THREE.Object3D, x: number, z: number, r: number, above?: number, reach?: number): void;
   /** Something round and `h` tall at (x, z) that you can't walk through: a trunk, a hay bale. */
   trunk(x: number, z: number, r: number, h: number): void;
   /** Where trees shouldn't go: taken by something else, or the road. */
@@ -208,6 +210,8 @@ export interface ScenicKit {
   place(x: number, z: number, r: number): void;
   /** What `place` took: the tests check none of it is on the pavement. */
   placed: { x: number; z: number; r: number }[];
+  /** Where the cows stand in the pasture (x, z, which way they face): critters.ts draws and moves them. */
+  herd: { x: number; z: number; rot: number }[];
 }
 
 /**
@@ -231,8 +235,8 @@ export function makeKit(group: THREE.Group, colliders: Collider[], night: NightP
     coast: new THREE.Group(),
   };
   const seen: Seen[] = [];
-  const cullable = (obj: THREE.Object3D, minX: number, maxX: number, minZ: number, maxZ: number, above = 10) => seen.push({ obj, minX, maxX, minZ, maxZ, above });
-  const around = (obj: THREE.Object3D, x: number, z: number, r: number, above = 10) => cullable(obj, x - r, x + r, z - r, z + r, above);
+  const cullable = (obj: THREE.Object3D, minX: number, maxX: number, minZ: number, maxZ: number, above = 10, reach = Infinity) => seen.push({ obj, minX, maxX, minZ, maxZ, above, reach });
+  const around = (obj: THREE.Object3D, x: number, z: number, r: number, above = 10, reach = Infinity) => cullable(obj, x - r, x + r, z - r, z + r, above, reach);
   const silo = new THREE.Group();
   const mill = new THREE.Group();
   const light = new THREE.Group();
@@ -244,5 +248,5 @@ export function makeKit(group: THREE.Group, colliders: Collider[], night: NightP
     taken.push({ x, z, r });
     placed.push({ x, z, r });
   };
-  return { kit: { root, labels, rand, parts, silo, mill, light, colliders, night, cullable, around, trunk, taken, free, place, placed }, seen };
+  return { kit: { root, labels, rand, parts, silo, mill, light, colliders, night, cullable, around, trunk, taken, free, place, placed, herd: [] }, seen };
 }

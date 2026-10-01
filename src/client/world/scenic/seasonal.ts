@@ -32,6 +32,15 @@ export function seasonal(kind: Foliage, shade: 0 | 1, base: string): THREE.MeshT
   return mat;
 }
 
+const watchers: ((season: Season) => void)[] = [];
+let shown: Season | null = null;
+
+/** Calls `fn` with the season now (once it's known) and every time it changes: for what comes and goes with it, like wildflowers. */
+export function onSeason(fn: (season: Season) => void) {
+  watchers.push(fn);
+  if (shown) fn(shown);
+}
+
 /** How many materials there are, so a season applied before more were built can be applied again. */
 export const seasonalCount = () => entries.length;
 
@@ -43,4 +52,6 @@ export function applySeason(season: Season) {
     e.mat.color.set(look.color);
     e.mat.visible = !look.bare;
   }
+  shown = season;
+  for (const fn of watchers) fn(season);
 }

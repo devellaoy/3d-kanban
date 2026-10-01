@@ -14,7 +14,7 @@ export const AUTUMN = ['#f4a259', '#e76f51', '#e9c46a'];
  * The leaf material for a tree of `color` from PINES, LEAVES or AUTUMN: one shared by every tree of the
  * same kind and tone (the lighter or the darker half of the palette), which the seasons recolour (see seasonal.ts).
  */
-function foliage(color: string) {
+export function foliage(color: string) {
   if (AUTUMN.includes(color)) return seasonal('autumn', 0, AUTUMN[0]);
   const [kind, palette] = PINES.includes(color) ? (['pine', PINES] as const) : (['leaf', LEAVES] as const);
   const shade = (palette.indexOf(color) % 2) as 0 | 1;

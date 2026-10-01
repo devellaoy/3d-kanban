@@ -5,10 +5,13 @@ import type { Fixture, StreetSite } from '../office/fixture';
 import type { NightParts } from '../outside';
 import { hazeReach } from '../sky';
 import { mergeByColor } from '../toon';
+import { buildBlooms } from './blooms';
 import { buildCoast } from './coast';
+import { buildCritters } from './critters';
 import { buildFarm } from './farm';
 import { G, makeKit } from './kit';
 import { buildMountains } from './mountains';
+import { buildProps } from './props';
 import { buildRoad, buildSigns } from './road';
 import { plantTrees } from './trees';
 import { buildTunnel } from './tunnel';
@@ -52,6 +55,11 @@ export function buildScenic(group: THREE.Group, colliders: Collider[], night: Ni
   buildTunnel(kit, road);
   const { boats, beam } = buildCoast(kit);
   plantTrees(kit);
+  // What's added after the trees has random numbers of its own, so the trees stay where they were.
+  const flowers = buildBlooms(kit);
+  buildProps(kit, flowers);
+  flowers.finish(kit);
+  const critters = buildCritters(kit);
 
   // Merged by material a square of the map at a time, so what's lost in the haze needn't be drawn.
   const TILE = 120;
@@ -88,7 +96,7 @@ export function buildScenic(group: THREE.Group, colliders: Collider[], night: Ni
     cull(eye: THREE.Vector3, street: number, far: number) {
       const up = eye.y - street;
       for (const t of seen) {
-        const reach = hazeReach(Math.max(up, t.above), far) + 10;
+        const reach = Math.min(hazeReach(Math.max(up, t.above), far) + 10, t.reach);
         const dx = Math.max(t.minX - eye.x, 0, eye.x - t.maxX);
         const dz = Math.max(t.minZ - eye.z, 0, eye.z - t.maxZ);
         t.obj.visible = dx * dx + dz * dz < reach * reach;
@@ -97,6 +105,7 @@ export function buildScenic(group: THREE.Group, colliders: Collider[], night: Ni
     update(t: number) {
       sails.rotation.z = -t * 0.7;
       beam.rotation.y = t * 0.8;
+      critters.update(t);
       for (const b of boats) {
         b.g.position.y = G - 0.3 + Math.sin(t * 1.3 + b.phase) * 0.12;
         b.g.rotation.z = Math.sin(t * 0.9 + b.phase) * 0.06;
