@@ -17,9 +17,9 @@ test('the loop leaves one end of the street and comes back to the other, dead st
   assert.ok(LOOP_LENGTH > 1000, `a drive worth taking (${LOOP_LENGTH.toFixed(0)} m, plus the street)`);
 });
 
-test('no bend on it is tighter than a car can take flat out, and a car fits on it all the way round', () => {
-  // The tightest a car turns at top speed.
-  const tightest = DRIVE.wheelbase / Math.tan(steerLimit(DRIVE.top));
+test('no bend on it is tighter than a car can take at 72 km/h, and a car fits on it all the way round', () => {
+  // The tightest a car turns at 20 m/s (72 km/h): quicker than that, the tight bends are taken with the handbrake or off the gas.
+  const tightest = DRIVE.wheelbase / Math.tan(steerLimit(20));
   for (let i = 3; i < LOOP.length - 3; i++) {
     const a = LOOP[i - 3];
     const b = LOOP[i + 3];
@@ -108,12 +108,13 @@ test('each bit of the loop is somewhere: the farm, the pines, the mountains and 
   assert.equal(placeAt(0, -300), null);
 });
 
-test('the office takes a driver out on the loop at their word, and nowhere off it', () => {
+test('the office takes a driver out on the loop at their word, and anywhere on land, but not out to sea', () => {
   const g = new Garage();
   assert.ok(g.enter('ada', 8, 'driver'));
   const p = LOOP[Math.floor(LOOP.length / 2)];
   assert.ok(g.drive('ada', 8, { x: p.x, z: p.z, rotY: 0, speed: 12, steer: 0 }), 'out on the loop');
-  assert.equal(g.drive('ada', 8, { x: p.x, z: p.z + 30, rotY: 0, speed: 12, steer: 0 }), undefined, 'not off across the grass');
+  assert.ok(g.drive('ada', 8, { x: p.x, z: p.z + 30, rotY: 0, speed: 12, steer: 0 }), 'off across the grass is fine');
+  assert.equal(g.drive('ada', 8, { x: -400, z: 100, rotY: 0, speed: 12, steer: 0 }), undefined, 'out in the sea is not');
 });
 
 test('a lap is timed from the line in front of the office all the way round, past every checkpoint', () => {

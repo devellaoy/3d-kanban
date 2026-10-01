@@ -3,11 +3,13 @@
  * horn, laps of the scenic loop, and a car shoving you out of its way. Placing you anywhere gets you
  * out first: see the driver's activity, and placeAt in core/place.ts.
  */
-import { CARS, SEAT_HIPS, type CarSeat } from '../../../shared/garage';
+import { CARS, DRIVE, SEAT_HIPS, roughAt, type CarSeat } from '../../../shared/garage';
 import { PLACES, placeAt as loopPlace } from '../../../shared/scenic';
 import type { Ctx, Hint } from '../../core/context';
 import { aside, hintTitle, key, onE } from '../../core/hint';
 import { Driver } from './controller';
+import { DriveEffects } from './effects';
+import { Speedo } from './speedo';
 import { DESK_KEYS } from '../../interaction';
 import { LapTimer, lapTime } from './laps';
 import { raceTrack } from './racing';
@@ -148,7 +150,7 @@ export function installCars(ctx: Ctx, deps: CarsDeps) {
   }
 
   /** Laps of the scenic loop you've driven (see LapTimer), and your fastest, kept in this browser. */
-  const LAP_KEY = 'agent-office.bestLap';
+  const LAP_KEY = 'agent-office.bestLap2';
   const laps = new LapTimer(
     (() => {
       try {
@@ -175,9 +177,26 @@ export function installCars(ctx: Ctx, deps: CarsDeps) {
     toast(done?.best ? `🏁 Lap of the scenic loop: ${lapTime(time)}, your best yet!` : `🏁 Lap of the scenic loop: ${lapTime(time)} (best ${lapTime(laps.best ?? time)})`, 'info');
   }
 
+  const fx = new DriveEffects();
+  office.cars.group.add(fx.group);
+  const dash = new Speedo();
+  /** How much wider the view is for speed (degrees), eased. */
+  const feel = { fov: 0 };
+  ctx.view.add({ fov: (fov) => fov + feel.fov });
+
   ctx.ticks.add('vehicles', ({ dt, now }) => {
     // The cars first, so whoever's riding in one sits in it where it's got to.
     office.cars.update(dt, store.cars, store.carsAt, now, driver.active ? { car: driver.car!, driving: driver.driving } : null, ctx.camera.position);
+    // Smoke, skid marks, dust and flames, and the cars leaning into corners; then the dash, and the view
+    // widening and rumbling with speed (see view below).
+    fx.update(dt, office.cars.cars, driver.driving ? { car: driver.car!, nitro: driver.nitroOn } : null);
+    const pose = driver.driving ? driver.pose : null;
+    const v = pose ? Math.hypot(pose.speed, pose.slip ?? 0) : 0;
+    const fast = Math.min(1, v / DRIVE.top) ** 1.4;
+    feel.fov += ((pose ? 17 * fast + (driver.nitroOn ? 9 : 0) : 0) - feel.fov) * Math.min(1, dt * 3);
+    if (pose && v > 12) ctx.shake(0.012 + 0.035 * fast + (driver.nitroOn ? 0.035 : 0) + (roughAt(pose.x, pose.z) ? 0.02 * fast : 0));
+    dash.show(!!pose);
+    if (pose) dash.update({ speed: pose.speed, slip: pose.slip ?? 0, nitro: pose.nitro ?? 1, boost: driver.nitroOn, rough: roughAt(pose.x, pose.z) > 0 });
   });
   /** When a car last shoved you out of its way. */
   let shovedAt = 0;
@@ -186,6 +205,10 @@ export function installCars(ctx: Ctx, deps: CarsDeps) {
     if (driver.driving && driver.pose) {
       const lap = laps.update(driver.pose.x, driver.pose.z, now / 1000);
       if (lap !== null) lapDone(lap);
+      if (laps.thrownOut !== null) {
+        laps.thrownOut = null;
+        toast('🏁 That lap doesn’t count: you left the road a long way behind', 'warn');
+      }
       racing.tick(now / 1000, lap);
     } else {
       laps.reset();
@@ -210,7 +233,7 @@ export function installCars(ctx: Ctx, deps: CarsDeps) {
         const mine = driver.car === i && driver.driving;
         if (!c.driver && !mine) continue;
         const pose = office.cars.cars[i]?.pose ?? c;
-        engines.push({ car: i, at: { x: pose.x, y: ctx.player.street + 0.5, z: pose.z }, speed: pose.speed, gas: mine ? driver.gas : Math.min(1, Math.abs(pose.speed) / 10) });
+        engines.push({ car: i, at: { x: pose.x, y: ctx.player.street + 0.5, z: pose.z }, speed: Math.hypot(pose.speed, pose.slip ?? 0), gas: mine ? driver.gas : Math.min(1, Math.abs(pose.speed) / 10), boost: mine ? driver.nitroOn : pose.speed > DRIVE.top + 1.5 });
       }
     }
     ctx.sound.setEngines(engines);
@@ -280,15 +303,14 @@ export function installCars(ctx: Ctx, deps: CarsDeps) {
     const place = pose ? loopPlace(pose.x, pose.z) : null;
     const where = place ? ` · ${PLACES[place].icon} ${PLACES[place].name}` : '';
     if (driver.driving) {
-      const kmh = Math.round(Math.abs(driver.pose?.speed ?? 0) * 3.6);
       const other = name(c?.passenger);
       const now = performance.now() / 1000;
       const done = laps.done && now - laps.done.at < 6 ? laps.done : null;
       const running = laps.running(now);
       const lap = (done ? ` · 🏁 ${lapTime(done.time)}${done.best ? ' best!' : ''}` : running !== null ? ` · ⏱ ${lapTime(running)}` : '') + racing.status(now);
       hint = {
-        k: `drive|${kmh}|${other}|${where}|${lap}`,
-        parts: [h('span.title', {}, `🏎️ ${CARS[i].name}`), aside(`${kmh} km/h${where}${lap}${other ? ` · with ${clip(other, 20)}` : ''}`), key('W A S D', 'Drive'), key('Space', 'Brake'), key('H', 'Honk'), ...racing.keys(), key('E', 'Get out')],
+        k: `drive|${other}|${where}|${lap}`,
+        parts: [h('span.title', {}, `🏎️ ${CARS[i].name}`), aside(`${where}${lap}${other ? ` · with ${clip(other, 20)}` : ''}`.replace(/^ · /, '')), key('W A S D', 'Drive'), key('Shift', 'Nitro'), key('Space', 'Handbrake'), key('H', 'Honk'), ...racing.keys(), key('E', 'Get out')],
       };
     } else {
       const at = name(c?.driver);

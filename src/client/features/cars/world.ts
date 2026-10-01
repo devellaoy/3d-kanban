@@ -8,6 +8,10 @@ import { mergeByMaterial, mesh, toon } from '../../world/toon';
 const WIDTH = 1.9;
 const WHEEL_R = 0.36;
 const WHEEL_Y = 0.37;
+/** Height of the pivot the body leans about. */
+const PIVOT = 0.45;
+/** The fences keeping people out of the sea reach out past this far west (x): see world/scenic/water.ts. */
+const SEA_FENCE = -1500;
 
 /** Wheel arches cut up into the bottom of a side profile, rear to front. */
 function sill(s: THREE.Shape, rearX: number, frontX: number, axles: [number, number], bottom = 0.2) {
@@ -84,6 +88,8 @@ function extrude(shape: THREE.Shape, width: number, bevel: number): THREE.Buffer
 /** A car's model, in parts that change while it's driven. */
 export interface CarModel {
   root: THREE.Group;
+  /** The body's lean (roll and pitch) is this group's rotation; the car's heading is root's. */
+  tilt: THREE.Group;
   /** The painted roof and the glass round the cabin: off while anyone's in it, so their heads fit. */
   top: THREE.Object3D;
   /** With the roof off: the windshield, the two seats and the steering wheel. */
@@ -170,8 +176,15 @@ export function supercar(kind: CarKind, color: string): CarModel {
   const top = mergeByMaterial(closed);
   const inside = mergeByMaterial(open);
   inside.visible = false;
-  root.add(mergeByMaterial(g), top, inside, ...wheels);
-  return { root, top, open: inside, wheels };
+  // The body rolls and pitches on a pivot at its middle (see effects.ts), not about the ground.
+  const tilt = new THREE.Group();
+  tilt.position.y = PIVOT;
+  const inner = new THREE.Group();
+  inner.position.y = -PIVOT;
+  inner.add(mergeByMaterial(g), top, inside, ...wheels);
+  tilt.add(inner);
+  root.add(tilt);
+  return { root, tilt, top, open: inside, wheels };
 }
 
 /** One of the floor's cars, as it's drawn here. */
@@ -270,10 +283,15 @@ export class Fleet {
       const ahead = c.speed ? Math.min(0.25, Math.max(0, (now - (at[v.index] ?? now)) / 1000)) * c.speed : 0;
       const x = c.x + Math.sin(c.rotY) * ahead;
       const z = c.z + Math.cos(c.rotY) * ahead;
-      const far = Math.hypot(x - p.x, z - p.z) > 8;
+      // Flat out it covers a lot of ground between two messages: it carries on at its speed
+      // meanwhile, and the office's word only corrects that, so it doesn't trail behind its target.
+      const far = Math.hypot(x - p.x, z - p.z) > 8 + Math.abs(c.speed) * 0.4;
       const turn = Math.atan2(Math.sin(c.rotY - p.rotY), Math.cos(c.rotY - p.rotY));
-      p.x = far ? x : p.x + (x - p.x) * k;
-      p.z = far ? z : p.z + (z - p.z) * k;
+      const run = far ? 0 : p.speed * dt;
+      const fx = p.x + Math.sin(p.rotY) * run;
+      const fz = p.z + Math.cos(p.rotY) * run;
+      p.x = far ? x : fx + (x - fx) * k;
+      p.z = far ? z : fz + (z - fz) * k;
       p.rotY = far ? c.rotY : p.rotY + turn * k;
       p.speed = c.speed;
       p.steer += (c.steer - p.steer) * k;
@@ -309,7 +327,7 @@ export class Fleet {
   }
 
   /**
-   * What a car bumps into on the street, besides the pavement's edge: whatever stands on it (the
+   * What a car bumps into on the street: whatever stands on it (the
    * garage's columns and walls, street lamps, trees, the elevator, the other cars), but not car
    * `except`'s own boxes. With `near`, only what's within `r` of (x, z): out on the scenic loop
    * there are trees by the thousand, nearly all of them nowhere near you.
@@ -320,6 +338,8 @@ export class Fleet {
     for (const c of this.all) {
       // Not the ground itself (the lawn, the lots), nor anything overhead.
       if (own?.includes(c) || (c.bottom ?? 0) > this.street + 1 || c.top < this.street + 0.3) continue;
+      // Nor the invisible fence keeping people out of the open sea: a car wades into it (see shared/terrain.ts).
+      if (c.fence && c.minX <= SEA_FENCE) continue;
       if (near && (c.minX > near.x + near.r || c.maxX < near.x - near.r || c.minZ > near.z + near.r || c.maxZ < near.z - near.r)) continue;
       out.push(c);
     }

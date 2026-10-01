@@ -5,7 +5,8 @@ import { parseResults, type RaceResult } from './records';
 // best-effort: a private window or a full disk just means it's only for this visit.
 
 const PREFIX = 'office.game.race.';
-const RESULTS = `${PREFIX}results`;
+// "results2", "bestLap2": times from before the cars were quick (round 2) can't be compared with new ones, so they're left behind.
+const RESULTS = `${PREFIX}results2`;
 const GHOST = `${PREFIX}ghost`;
 const GHOST_ON = `${PREFIX}ghostOn`;
 

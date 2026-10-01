@@ -1,3 +1,4 @@
+import { DRIVE, GEARS, GEAR_SPAN } from '../../../shared/garage';
 import type { AudioCore } from '../../sound/core';
 import { biquad, envelope, pick, place, rand } from '../../sound/dsp';
 import type { Pos } from '../../sound/places';
@@ -13,6 +14,9 @@ interface Motor {
   pan: PannerNode;
   /** When it started (the AudioContext's clock). */
   born: number;
+  /** The gear it was in, and until when (the AudioContext's clock) the engine's lifting for a shift. */
+  gear: number;
+  shiftUntil: number;
 }
 
 /** A car somebody's driving: where it is, how fast it's going and how hard it's pushed. */
@@ -21,6 +25,8 @@ export interface Engine {
   at: Pos;
   speed: number;
   gas: number;
+  /** The nitro's burning: the engine screams. */
+  boost?: boolean;
 }
 
 /** The engines of the cars being driven. */
@@ -51,13 +57,18 @@ export class Motors {
       if (now - m.born < 0.7) continue;
       const v = Math.abs(e.speed);
       const push = Math.abs(e.gas);
-      // Up through the gears: the revs climb in each one and drop back as it shifts up.
-      const gear = Math.min(3, Math.floor(v / 5.5));
-      const f = 44 + gear * 7 + Math.min(1.5, (v - gear * 5.5) / 5.5) * 46 + push * 5;
-      m.saw.frequency.setTargetAtTime(f, now, 0.06);
-      m.sub.frequency.setTargetAtTime(f / 2, now, 0.06);
-      m.tone.frequency.setTargetAtTime(240 + f * 5 + push * 450, now, 0.08);
-      m.gain.gain.setTargetAtTime(0.035 + 0.04 * push + 0.025 * Math.min(1, v / 20), now, 0.1);
+      // Up through the gears: the revs climb in each one and drop back as it shifts up, with the
+      // engine lifting for an instant as it does; the nitro takes it on past the top gear.
+      const gear = Math.min(GEARS, 1 + Math.floor(v / GEAR_SPAN)) - 1;
+      if (gear > m.gear) m.shiftUntil = now + 0.13;
+      m.gear = gear;
+      const shifting = now < m.shiftUntil;
+      const f = 42 + gear * 6 + Math.min(1.5, (v - gear * GEAR_SPAN) / GEAR_SPAN) * 50 + push * 6 + (e.boost ? 8 : 0);
+      m.saw.frequency.setTargetAtTime(shifting ? f * 0.82 : f, now, shifting ? 0.02 : 0.06);
+      m.sub.frequency.setTargetAtTime((shifting ? f * 0.82 : f) / 2, now, shifting ? 0.02 : 0.06);
+      m.tone.frequency.setTargetAtTime(240 + f * 5 + push * 450 + (e.boost ? 900 : 0), now, 0.08);
+      const loud = 0.035 + 0.04 * push + 0.03 * Math.min(1, v / DRIVE.top) + (e.boost ? 0.025 : 0);
+      m.gain.gain.setTargetAtTime(shifting ? loud * 0.45 : loud, now, shifting ? 0.015 : 0.1);
     }
     for (const [car, m] of this.motors) {
       if (on.has(car)) continue;
@@ -100,7 +111,7 @@ export class Motors {
     tone.connect(gain).connect(pan);
     saw.start(now);
     sub.start(now);
-    return { saw, sub, tone, gain, pan, born: now };
+    return { saw, sub, tone, gain, pan, born: now, gear: 0, shiftUntil: 0 };
   }
 
 }

@@ -23,20 +23,20 @@ test('the recorder samples at a fixed rate and fills slow frames', () => {
 
 test('poseAt interpolates, wraps angles the short way and holds at the ends', () => {
   const path: GhostPath = {
-    time: 0.2,
+    time: GHOST_DT * 4,
     pts: [
       { x: 0, z: 0, rotY: 3.0 },
       { x: 10, z: 20, rotY: -3.0 },
       { x: 10, z: 20, rotY: -3.0 },
     ],
   };
-  const mid = poseAt(path, 0.05);
+  const mid = poseAt(path, GHOST_DT / 2);
   assert.equal(mid.x, 5);
   assert.equal(mid.z, 10);
   assert.ok(Math.abs(Math.abs(mid.rotY) - Math.PI) < 0.2, `short way round (${mid.rotY})`);
   assert.deepEqual(poseAt(path, -1), { x: 0, z: 0, rotY: 3.0 });
   assert.equal(poseAt(path, 99).x, 10);
-  assert.ok(ghostDone(path, 0.3) && !ghostDone(path, 0.1));
+  assert.ok(ghostDone(path, GHOST_DT * 6) && !ghostDone(path, GHOST_DT * 2));
 });
 
 test('a path survives encoding to a compact string', () => {
@@ -52,8 +52,8 @@ test('a path survives encoding to a compact string', () => {
   });
 });
 
-test('decodePath refuses anything damaged', () => {
-  for (const bad of [null, undefined, '', 'x', '2;3;1,2,3,4,5,6', '1;0;1,2,3,4,5,6', '1;3;1,2,3', '1;3;1,2,3,4,5', '1;3;1,2,3,4,5,$$', '1;3;']) assert.equal(decodePath(bad), null, String(bad));
+test('decodePath refuses anything damaged, or recorded before the cars were quick (version 1)', () => {
+  for (const bad of [null, undefined, '', 'x', '1;3;1,2,3,4,5,6', '3;3;1,2,3,4,5,6', '2;0;1,2,3,4,5,6', '2;3;1,2,3', '2;3;1,2,3,4,5', '2;3;1,2,3,4,5,$$', '2;3;']) assert.equal(decodePath(bad), null, String(bad));
 });
 
 test('a race: five lights a second apart, a random hold, then go', () => {

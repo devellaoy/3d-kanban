@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { CAR, CARS, DRIVE, PAVEMENT, carFits, carPoint, drive, onPavement, overlaps, parked, paved, steerLimit, type CarPose, type Pedals } from '../src/shared/garage.js';
-import { ELEVATOR, ELEVATOR_FRONT, FLOOR, ROAD } from '../src/shared/layout.js';
+import { CAR, CARS, DRIVE, PAVEMENT, boosting, carFits, carPoint, drivable, drive, inBounds, onPavement, overlaps, parked, paved, roughAt, steerLimit, type CarPose, type Pedals } from '../src/shared/garage.js';
+import { ELEVATOR, ELEVATOR_FRONT, FLOOR, ROAD, WALL_T } from '../src/shared/layout.js';
 import { Garage } from '../src/server/garage.js';
 
 const GAS: Pedals = { gas: 1, turn: 0, brake: false };
@@ -42,14 +42,80 @@ test('a car on the gas gets up to top speed and no faster, and rolls to a dead s
   assert.equal(run(p, COAST, 1).z, z);
 });
 
-test('the brake stops it quickly, and S brakes before it reverses', () => {
+test('the brakes stop it quickly, and S brakes before it reverses', () => {
   const fast = { ...still(), speed: DRIVE.top };
-  assert.equal(run(fast, { ...GAS, brake: true }, 1.1).speed, 0, 'the brake beats the gas');
+  const hand = run(fast, { gas: 0, turn: 0, brake: true }, 4.5);
+  assert.equal(hand.speed, 0, 'the handbrake brings it to a stop, going straight');
+  assert.ok(Math.abs(hand.slip ?? 0) < 0.01 && Math.abs(hand.x) < 0.01, 'and it stays straight');
   const back = { gas: -1, turn: 0, brake: false };
   const braking = run(fast, back, 0.5);
-  assert.ok(braking.speed > 0 && braking.speed < fast.speed, 'still going forward, slower');
+  assert.ok(braking.speed > 0 && braking.speed < fast.speed - 10, 'S brakes hard, still going forward but slower');
   const reversing = run(fast, back, 6);
   assert.equal(reversing.speed, -DRIVE.reverse, 'then backs up, only so fast');
+});
+
+test('it is quick: top speed is well over twice the old 20 m/s, and the first 100 km/h comes in a few seconds', () => {
+  assert.ok(DRIVE.top >= 45 && DRIVE.top <= 50);
+  let p = still();
+  let t = 0;
+  while (p.speed < 100 / 3.6) {
+    p = drive(p, GAS, 1 / 60);
+    t += 1 / 60;
+    assert.ok(t < 4, 'took too long');
+  }
+  assert.ok(t > 1.2, `not instant (${t.toFixed(1)} s)`);
+});
+
+test('the nitro: Shift takes it past top speed while the meter lasts, and the meter fills again when it is off', () => {
+  const go: Pedals = { gas: 1, turn: 0, brake: false, boost: true };
+  let p = run(still(), GAS, 12);
+  assert.equal(p.speed, DRIVE.top);
+  assert.equal(p.nitro, 1);
+  p = run(p, go, 2);
+  assert.ok(p.speed > DRIVE.top + 6 && p.speed <= DRIVE.boostTop, `past top speed (${p.speed.toFixed(1)} m/s)`);
+  assert.ok((p.nitro ?? 1) < 0.5, 'and the meter drains');
+  p = run(p, go, 5);
+  assert.equal(p.nitro, 0, 'empty');
+  assert.ok(boosting({ speed: 30, nitro: 0.5 }, go) && !boosting(p, go), 'no boost on an empty meter');
+  // Held down with an empty meter it stays empty; let go and it fills.
+  assert.equal(run(p, go, 2).nitro, 0);
+  const rest = run(p, { ...GAS, boost: false }, 5);
+  assert.ok((rest.nitro ?? 0) > 0.5, 'filling');
+  assert.ok(rest.speed <= DRIVE.top + 1e-9, 'back down to top speed once the nitro is out');
+  assert.ok(run(still(), { ...GAS, boost: true }, 1).nitro! < 1, 'it also helps off the line');
+});
+
+test('grass slows a car down, and a hard turn at speed slides it where the pavement would hold it', () => {
+  const road = run(still(), GAS, 15);
+  const grass = (() => {
+    let p = still();
+    for (let t = 0; t < 15; t += 1 / 60) p = drive(p, GAS, 1 / 60, 1);
+    return p;
+  })();
+  assert.ok(grass.speed > 25 && grass.speed < road.speed - 4, `slower on grass (${grass.speed.toFixed(1)} against ${road.speed.toFixed(1)} m/s) but not stopped`);
+  // Same speed, same wheel: sliding sideways on grass more than on the road.
+  const turn: Pedals = { gas: 0.5, turn: 1, brake: false };
+  const slide = (rough: number) => {
+    let p: CarPose = { ...still(), speed: 40 };
+    let most = 0;
+    for (let t = 0; t < 2; t += 1 / 60) {
+      p = drive(p, turn, 1 / 60, rough);
+      most = Math.max(most, Math.abs(p.slip ?? 0));
+    }
+    return most;
+  };
+  assert.ok(slide(1) > slide(0), 'the grass holds less');
+});
+
+test('the handbrake drifts: the tail comes round, the car slides, and it grips again when you let go', () => {
+  const fast: CarPose = { ...still(), speed: 30 };
+  const clean = run(fast, { gas: 0.4, turn: 1, brake: false }, 1);
+  const drifting = run(fast, { gas: 0.4, turn: 1, brake: true }, 1);
+  assert.ok(Math.abs(drifting.slip ?? 0) > 4, `sliding sideways (${drifting.slip?.toFixed(1)} m/s)`);
+  assert.ok(Math.abs(drifting.slip ?? 0) > 2 * Math.abs(clean.slip ?? 0), 'much more than a clean turn');
+  assert.ok(drifting.rotY > clean.rotY, 'the nose swings round further');
+  const gripped = run(drifting, { gas: 0.4, turn: 0, brake: false }, 2);
+  assert.ok(Math.abs(gripped.slip ?? 0) < 0.8, `straightened out on grip (${gripped.slip?.toFixed(2)} m/s)`);
 });
 
 test('A turns left and D right, going forward; backing up swings the other way', () => {
@@ -68,10 +134,11 @@ test('it turns tighter slowly than flat out, so it never spins at speed', () => 
   // The wheel takes a moment to turn all the way, and then holds there.
   const p = run({ ...still(), speed: 10 }, { gas: 0, turn: 1, brake: false }, 0.05);
   assert.ok(p.steer > 0 && p.steer < steerLimit(10));
-  assert.ok(Math.abs(run(p, { gas: 1, turn: 1, brake: false }, 1).steer - steerLimit(DRIVE.top)) < 0.05);
+  const turned = run(p, { gas: 1, turn: 1, brake: false }, 1);
+  assert.ok(Math.abs(turned.steer - steerLimit(turned.speed)) < 0.05);
 });
 
-test('you can drive out of the garage, across the lot and down the street, but not onto the grass', () => {
+test('you can drive out of the garage, across the lot and down the street, and out over the grass too', () => {
   // A Ferrari backed in facing the street drives straight out onto the road.
   const ferrari = CARS.find((c) => c.kind === 'ferrari')!;
   for (let z = ferrari.z; z <= (ROAD.minZ + ROAD.maxZ) / 2; z += 0.5) assert.ok(onPavement({ ...ferrari, z }), `z ${z}`);
@@ -81,10 +148,13 @@ test('you can drive out of the garage, across the lot and down the street, but n
     assert.ok(onPavement({ x, z: road, rotY: Math.PI / 2 }), `east, x ${x}`);
     assert.ok(onPavement({ x: -x, z: road, rotY: -Math.PI / 2 }), `west, x ${-x}`);
   }
-  assert.ok(!onPavement({ x: 125, z: road + 8, rotY: Math.PI / 2 }), 'not off the side of the loop');
-  assert.ok(!onPavement({ x: -40, z: 18, rotY: 0 }), 'the lawn beside the lot');
-  assert.ok(!onPavement({ x: 0, z: FLOOR.minZ - 1, rotY: Math.PI / 2 }), 'through the back wall');
-  assert.ok(!paved(0, ROAD.maxZ + 1.5), 'the far sidewalk');
+  assert.ok(!onPavement({ x: 125, z: road + 8, rotY: Math.PI / 2 }), 'off the side of the loop is grass...');
+  assert.ok(inBounds({ x: 125, z: road + 8, rotY: Math.PI / 2 }), '...which a car can drive on');
+  assert.ok(!onPavement({ x: -40, z: 18, rotY: 0 }) && inBounds({ x: -40, z: 18, rotY: 0 }), 'the lawn beside the lot');
+  assert.ok(inBounds({ x: 0, z: 200, rotY: 1 }) && roughAt(0, 200) === 1, 'out inside the loop, nothing paved');
+  assert.ok(!inBounds({ x: 0, z: FLOOR.minZ - WALL_T / 2, rotY: Math.PI / 2 }), 'but not through the back wall');
+  assert.ok(!paved(0, ROAD.maxZ + 1.5) && drivable(0, ROAD.maxZ + 1.5), 'the far sidewalk is grass to a car');
+  assert.equal(roughAt(0, road), 0);
   // Nothing sticks out of a paved patch where two meet a corner the car could cut.
   assert.ok(PAVEMENT.every((b) => b.minX < b.maxX && b.minZ < b.maxZ));
 });
@@ -115,9 +185,11 @@ test('the garage: one driver and one passenger a car, and only the driver moves 
   assert.ok(!g.drive('bob', 1, pose), "the passenger doesn't steer");
   assert.deepEqual(g.drive('ann', 1, pose), pose);
   assert.deepEqual({ ...g.state()[1], driver: undefined, passenger: undefined }, { ...pose, driver: undefined, passenger: undefined });
-  assert.ok(!g.drive('ann', 1, { ...pose, x: -60 }), 'not off onto the grass');
+  assert.ok(g.drive('ann', 1, { ...pose, x: -60 }), 'out onto the grass is fine');
+  assert.ok(!g.drive('ann', 1, { ...pose, x: -400 }), 'not out to sea');
+  assert.ok(!g.drive('ann', 1, { ...pose, z: 5000 }), 'nor off the edge of the world');
   assert.ok(!g.drive('ann', 1, { ...pose, speed: Number.NaN }), 'nor any nonsense');
-  assert.equal(g.drive('ann', 1, { ...pose, speed: 999 })?.speed, DRIVE.top, 'no faster than a car goes');
+  assert.equal(g.drive('ann', 1, { ...pose, x: 0, speed: 999 })?.speed, DRIVE.boostTop, 'no faster than a car goes');
   assert.ok(!g.enter('ann', 1, 'bogus' as never));
   // Ann gets out: it stops where she left it, with Bob still in it.
   assert.ok(g.leave('ann'));

@@ -1,11 +1,11 @@
 // The ghost of your best lap: a car's pose sampled at a fixed rate through a lap (from the line to the
 // line), kept compact for localStorage, and played back with interpolation. Pure: no DOM, no three.
 
-/** Seconds between samples (10 a second). */
-export const GHOST_DT = 0.1;
+/** Seconds between samples (20 a second: flat out a car covers 2 to 3 meters between them). */
+export const GHOST_DT = 0.05;
 /** The most samples a lap keeps (ten minutes): a lap that long was never going to be a record. */
-const MAX_POINTS = 6000;
-const VERSION = 1;
+const MAX_POINTS = 12000;
+const VERSION = 2;
 
 export interface GhostPose {
   x: number;

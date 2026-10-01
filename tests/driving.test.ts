@@ -5,9 +5,10 @@ import { PlayerController } from '../src/client/player/index.js';
 import { Driver } from '../src/client/features/cars/controller.js';
 import { Fleet } from '../src/client/features/cars/world.js';
 import type { Collider, Interactable } from '../src/client/world/types.js';
-import { CAR, SEATS, carPoint, onPavement, type CarPose } from '../src/shared/garage.js';
+import { CAR, SEATS, carPoint, drive, inBounds, type CarPose } from '../src/shared/garage.js';
+import { EDGE, WORLD } from '../src/shared/terrain.js';
 import { ROAD, STREET_Y } from '../src/shared/layout.js';
-import { LOOP_LENGTH, STREET_END, nearLoop } from '../src/shared/scenic.js';
+import { CHECKPOINTS, LAKE, LOOP, LOOP_LENGTH, STREET_END, STREET_Z, nearLoop, shoreX } from '../src/shared/scenic.js';
 import { LapTimer } from '../src/client/features/cars/laps.js';
 
 const G = STREET_Y;
@@ -127,25 +128,154 @@ test("beside the driver, you ride along but don't drive", (t) => {
   assert.ok(Math.hypot(s.player.pos.x - seat.x, s.player.pos.z - seat.z) < 1e-6);
 });
 
-test("flat out with no hands, the car rides the scenic loop's edges all the way round, and the lap is timed", (t) => {
+/** Where a driver steering by the road aims: a point ahead on the loop (or along the street, where the loop isn't). */
+function aim(car: CarPose): { x: number; z: number } {
+  const at = nearLoop(car.x, car.z);
+  if (!at || at.d < 0 || at.d > LOOP_LENGTH - 25) return { x: car.x + 30, z: ROAD_Z };
+  return LOOP.find((q) => q.d >= at.d + 22) ?? { x: car.x + 30, z: ROAD_Z };
+}
+
+test('steering by the road, the car goes all the way round the scenic loop, and the lap is timed', (t) => {
   const s = street(t);
   s.fleet.place(BLUE, { x: -20, z: ROAD_Z, rotY: Math.PI / 2, speed: 0, steer: 0 });
   s.driver.enter(BLUE, 'driver');
-  s.keys('KeyW');
   const laps = new LapTimer();
   let lap: number | null = null;
   let furthest = 0;
-  let slowest = Infinity;
-  for (let frame = 0; frame < 60 * 110 && lap === null; frame++) {
-    s.frames(1);
+  let straying = 0;
+  for (let frame = 0; frame < 60 * 140 && lap === null; frame++) {
     const car = s.car();
-    assert.ok(onPavement(car), `on the road at (${car.x.toFixed(1)}, ${car.z.toFixed(1)})`);
-    lap = laps.update(car.x, car.z, frame / 60);
-    const at = nearLoop(car.x, car.z);
-    if (at && Math.abs(car.x) > STREET_END) furthest = Math.max(furthest, at.d);
-    if (frame > 60 * 5) slowest = Math.min(slowest, car.speed);
+    const to = aim(car);
+    const err = Math.atan2(Math.sin(Math.atan2(to.x - car.x, to.z - car.z) - car.rotY), Math.cos(Math.atan2(to.x - car.x, to.z - car.z) - car.rotY));
+    // Cruising at 20 m/s, steering toward the point ahead.
+    s.keys(...(car.speed < 20 ? ['KeyW'] : []), ...(err > 0.02 ? ['KeyA'] : err < -0.02 ? ['KeyD'] : []));
+    s.frames(1);
+    const now = s.car();
+    lap = laps.update(now.x, now.z, frame / 60);
+    const at = nearLoop(now.x, now.z);
+    if (at && Math.abs(now.x) > STREET_END) {
+      furthest = Math.max(furthest, at.d);
+      straying = Math.max(straying, at.off);
+    }
   }
   assert.ok(furthest > LOOP_LENGTH - 20, `all the way round (${furthest.toFixed(0)} of ${LOOP_LENGTH.toFixed(0)} m)`);
-  assert.ok(lap !== null && lap > 60 && lap < 100, `a lap in ${lap?.toFixed(1)} s`);
-  assert.ok(slowest > 10, `bumping round the bends, never stopped (slowest ${slowest.toFixed(1)} m/s)`);
+  assert.ok(straying < 8, `kept to the road (${straying.toFixed(1)} m off at worst)`);
+  assert.ok(lap !== null && lap > 50 && lap < 140, `a lap in ${lap?.toFixed(1)} s`);
+});
+
+test('nothing stops a car at the edge of the road: it drives on across the grass at speed, with nobody bumping into anything', (t) => {
+  const s = street(t);
+  // South off the street, over the sidewalk and away across the fields inside the loop.
+  s.fleet.place(BLUE, { x: 30, z: ROAD_Z, rotY: 0, speed: 0, steer: 0 });
+  s.driver.enter(BLUE, 'driver');
+  s.keys('KeyW');
+  s.frames(60 * 6);
+  const car = s.car();
+  assert.ok(car.z > ROAD.maxZ + 100, `well off the road (z ${car.z.toFixed(0)})`);
+  assert.ok(car.speed > 25, `still quick on the grass (${car.speed.toFixed(1)} m/s)`);
+  assert.deepEqual(s.bumps, [], 'not one crunch');
+  assert.equal(nearLoop(car.x, car.z), null, 'far enough off the loop that it has no say');
+  // And the lap timer, the race and the ghost don't mind it: no road there at all.
+  const laps = new LapTimer();
+  assert.equal(laps.update(car.x, car.z, 1), null);
+  assert.equal(laps.update(car.x + 1, car.z, 1.1), null);
+  assert.equal(laps.running(2), null);
+});
+
+test('a lap that leaves the road a long way behind does not count', () => {
+  const laps = new LapTimer();
+  const z = STREET_Z;
+  laps.update(-1, z, 0);
+  laps.update(1, z, 0.1);
+  for (const d of CHECKPOINTS) {
+    const p = LOOP.find((q) => q.d >= d)!;
+    laps.update(p.x, p.z, 10);
+  }
+  // Cut across the middle of the loop, then the line from the west.
+  assert.equal(laps.update(0, 200, 30), null);
+  assert.equal(laps.update(-30, z, 58), null);
+  assert.equal(laps.update(-1, z, 59), null);
+  assert.equal(laps.update(1, z, 60.5), null);
+  assert.equal(laps.thrownOut, 60.5, 'thrown out');
+  assert.equal(laps.best, null);
+  assert.equal(laps.done, null);
+  // The next one, kept to the road, counts.
+  for (const d of CHECKPOINTS) {
+    const p = LOOP.find((q) => q.d >= d)!;
+    laps.update(p.x, p.z, 70);
+  }
+  laps.update(-1, z, 100);
+  assert.ok(laps.update(1, z, 100.5) !== null, 'a lap');
+});
+
+test('the sea is soft: a car at speed slows right down in the shallows, never ends up out of bounds, and backs out', (t) => {
+  const s = street(t);
+  const z = 100;
+  s.fleet.place(BLUE, { x: shoreX(z) + 60, z, rotY: -Math.PI / 2, speed: 40, steer: 0 });
+  s.driver.enter(BLUE, 'driver');
+  s.keys('KeyW', 'ShiftLeft');
+  let furthest = Infinity;
+  for (let i = 0; i < 60 * 8; i++) {
+    s.frames(1);
+    assert.ok(inBounds(s.car()), `never out of bounds (x ${s.car().x.toFixed(1)})`);
+    furthest = Math.min(furthest, s.car().x - shoreX(z));
+  }
+  assert.ok(furthest < -1 && furthest > -11, `waded in a little way (${furthest.toFixed(1)} m past the waterline)`);
+  assert.ok(Math.abs(s.car().speed) < 6, `crawling (${s.car().speed.toFixed(1)} m/s)`);
+  // Backing out (the water pushes too).
+  s.keys('KeyS');
+  s.frames(60 * 6);
+  assert.ok(s.car().x - shoreX(z) > furthest + 3, 'out of the water again');
+});
+
+test('the lake is soft too, and so is the edge of the world', (t) => {
+  const s = street(t);
+  s.fleet.place(BLUE, { x: LAKE.x - LAKE.rx - 30, z: LAKE.z, rotY: Math.PI / 2, speed: 30, steer: 0 });
+  s.driver.enter(BLUE, 'driver');
+  s.keys('KeyW');
+  s.frames(60 * 6);
+  assert.ok(inBounds(s.car()) && s.car().x < LAKE.x - 4, `stopped in the shallows (x ${s.car().x.toFixed(0)})`);
+  s.keys();
+  s.fleet.place(BLUE, { x: WORLD.maxX - 400, z: 300, rotY: Math.PI / 2, speed: 40, steer: 0 });
+  s.keys('KeyW', 'ShiftLeft');
+  s.frames(60 * 14);
+  assert.ok(inBounds(s.car()) && s.car().x < WORLD.maxX, `held at the edge (x ${s.car().x.toFixed(0)})`);
+  assert.ok(s.car().x > WORLD.maxX - EDGE - 5, 'having driven right out to it');
+});
+
+test('in third person the camera stays where you put it while you drive, rather than swinging back behind the car', (t) => {
+  const s = street(t);
+  s.driver.enter(BLUE, 'driver');
+  const offset = Math.PI + 0.8;
+  s.player.camYaw = s.car().rotY + offset;
+  s.keys('KeyW', 'KeyA');
+  s.frames(90);
+  const turned = s.car().rotY;
+  assert.ok(Math.abs(turned) > 0.3, 'the car has turned');
+  const off = Math.atan2(Math.sin(s.player.camYaw - turned), Math.cos(s.player.camYaw - turned));
+  const want = Math.atan2(Math.sin(offset), Math.cos(offset));
+  assert.ok(Math.abs(off - want) < 1e-6, `same view from the car (${off.toFixed(3)} against ${want.toFixed(3)})`);
+});
+
+test('a car at full tilt leans into a corner and nose-dives on the brakes (the same for every car on the floor)', async () => {
+  const { DriveEffects } = await import('../src/client/features/cars/effects.js');
+  const colliders: Collider[] = [];
+  const fleet = new Fleet(colliders, [] as Interactable[]);
+  const fx = new DriveEffects();
+  const v = fleet.cars[BLUE];
+  let pose: CarPose = { x: 0, z: ROAD_Z, rotY: Math.PI / 2, speed: 40, steer: 0 };
+  // Turning left at 40 m/s.
+  for (let i = 0; i < 90; i++) {
+    pose = drive(pose, { gas: 0.5, turn: 1, brake: false }, 1 / 60);
+    fleet.place(BLUE, pose);
+    fx.update(1 / 60, fleet.cars, null);
+  }
+  assert.ok(v.tilt.rotation.z > 0.02, `rolled out of the turn (${v.tilt.rotation.z.toFixed(3)})`);
+  for (let i = 0; i < 60; i++) {
+    pose = drive(pose, { gas: -1, turn: 0, brake: false }, 1 / 60);
+    fleet.place(BLUE, pose);
+    fx.update(1 / 60, fleet.cars, null);
+  }
+  assert.ok(v.tilt.rotation.x > 0.01, `nose down (${v.tilt.rotation.x.toFixed(3)})`);
+  assert.ok(Math.abs(v.tilt.rotation.z) <= 0.071 && Math.abs(v.tilt.rotation.x) <= 0.051, 'but not far');
 });
