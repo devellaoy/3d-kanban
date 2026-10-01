@@ -137,7 +137,8 @@ allowed: `todo → in_progress` (= start), `waiting|review → done`, `done → 
 - **Answering it from the kanban** (`waiting`/`agent_asking`, the live run's worker `needs_input`):
   only a `question` is typed into. `continue(answer)` and `commented()` type the text into that
   worker's PTY (upstream's `WorkerManager.prompt`, which answers a TUI question as a person typing
-  does) and keep it as a user comment (`continue` adds it; a comment is already stored); nothing goes
+  does) and keep it as a user comment (`continue` adds it, with its files, only once the answer went in; a comment is already stored); the files
+  of that message (`attachmentIds`, or the comment's own) follow on the same line, as paths in the task's grant folder (`Composer.filesInline`: a newline may submit a question picker); nothing goes
   to `pendingMessages` (a queued answer would wait for a turn end that the question holds up). The
   engine does not apply `working` itself: the task stays `waiting`/`agent_asking` until the worker's
   own hooks move it on (`needs_input` → `working`, the machine's `working`, as when it's answered at
@@ -275,7 +276,7 @@ allowed: `todo → in_progress` (= start), `waiting|review → done`, `done → 
   `PRAGMA user_version` in `server/kanban/db/migrations.ts`). `<officeData>` is the office data dir upstream
   uses (`~/agent-office` by default).
 - `<officeData>/.agent-office/kanban-settings.json` (`schemaVersion`), `kanban-secrets.json` (chmod 600).
-- `<officeData>/.agent-office/kanban/uploads/`, `kanban/reports/task-<id>/`, `kanban/refs/task-<id>/`,
+- `<officeData>/.agent-office/kanban/uploads/`, `kanban/grants/task-<id>/`, `kanban/reports/task-<id>/`, `kanban/refs/task-<id>/`,
   `kanban/skills/plugin-<hash>/` (generated Claude skill plugins), `kanban/legacy/` (migrated stream logs).
 - Migration 2 adds `tasks.desk_id`, `tasks.created_by_account` (never sent to browsers) and `tasks.queued_run`.
   Migrations are forward-only (there is no down step): once a build with migration 2 has opened the
@@ -324,7 +325,12 @@ answers `kanban.ok {rid, ...}` or `kanban.error {rid, message}`. Deltas are push
     then `engine.commented`.
   - `plan.approve {planId}`: only the latest plan version can be approved.
   - Start, stop, continue, retry, review, plan approve and request-changes, pr, compact and release go to
-    `ctx.engine`. A returned string becomes `kanban.error`.
+    `ctx.engine`. A returned string becomes `kanban.error`. `task.continue` and `plan.requestChanges` take
+    `attachmentIds?` like `comment.add`. The files are resolved first without linking; the message
+    (its text plus the files' grant paths, as one `answer` / `text`, so a replan sees which files are new)
+    goes to the machine, and only if that is accepted does the engine add the user's comment and link the
+    files to the task and the comment, with a single broadcast. A refused request leaves no comment and no
+    links. Either may be empty when the other is there. The replan prompt has no `{{attachments}}`.
   - `pr.bundle {project, taskId | branch | ticket, includeClosed?}` (integrations/pulls): the PRs that belong
     together across the project's repositories, open and draft ones only unless `includeClosed`; answered with
     `kanban.pr.bundle` (an `error` in it rather than `kanban.error` when the lists couldn't be read).
@@ -388,7 +394,7 @@ For a signed-in browser (the session is checked by server.ts, and non-GET reques
 - `GET /kanban`, `/kanban.html`: the board page. Signed out, it redirects to `/login?next=/kanban`.
 - `POST /api/kanban/upload?name=<file name>[&task=<id>]`: the body is the file's raw bytes and `Content-Type`
   is its type (sniffed from the extension when missing). At most 20 MB. It returns `200 {attachment}`, or
-  `400/404/405/413 {error}`. The file is stored as `<filesDir>/uploads/<id>-<ascii name>` with mode 600.
+  `400/404/405/413 {error}`. The file is stored as `<filesDir>/uploads/<id>-<ascii name>` with mode 600. Agents never get that shared folder: each task has `<filesDir>/grants/task-<id>/` (mode 700, `uploads.grantFiles`, cloned/copied from the uploads when a launch or a prompt needs them), and every launch of the task gets that one as an `--add-dir`, so files sent later are readable. It goes with the task (`task.delete`). The uploads folder is chmod 700 at start-up.
   Without `task` it stays unattached until `task.create` / `comment.add` names its id.
 - `GET /api/kanban/attachments/<id>`: serves the file with its type, `nosniff` and a sandboxing CSP.
   PNG, JPEG, GIF, WebP, AVIF and BMP are served inline; anything else (SVG and HTML included) as a download.
