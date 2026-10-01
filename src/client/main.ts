@@ -67,6 +67,7 @@ import { installWhiteboard } from './features/whiteboard';
 import { installWorkerActions } from './features/workers/actions';
 import { installWorkerViews } from './features/workers/views';
 import { installBuild } from './features/build';
+import { installMap } from './features/map';
 import { installKanban3d } from './kanban/install3d';
 import { installYoutubeTv } from './youtube/install';
 import { installCodexLimits } from './codex-limits/install';
@@ -210,6 +211,7 @@ installSeasons(ctx); // the landscape's seasons
 installCamp(ctx); // the campsite and the hill lookout
 installGarden(ctx, { roof: parts.rooftop.roof }); // the roof garden
 installBuild(ctx); // U: build mode, furnish the floor
+parts.map = installMap(ctx); // `: the map of the scenic loop, and a small map while you drive
 
 // ---- Main loop ---------------------------------------------------------------------------------------
 fitWindow(ctx);
