@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { actionsTarget, keyedComment, groupTransitions, isGithubKey, jiraSite, pinnedMe, transitionLabel } from '../src/client/kanban/issueactionsmodel.js';
+import { actionIssue, actionsTarget, closesOrReopens, keyedComment, safeUrl, shownStatus, groupTransitions, isGithubKey, jiraSite, pinnedMe, transitionLabel } from '../src/client/kanban/issueactionsmodel.js';
 
 test('only a card with a key on a floor with a project gets the issue actions', () => {
   assert.equal(actionsTarget({}, 'demo'), undefined, 'upstream’s key-less issue keeps its own window as it was');
@@ -38,4 +38,23 @@ test('a keyed card’s comment goes by kanban.issue.comment; a key-less one keep
   assert.deepEqual(keyedComment({ key: 'gh:o/r#5' }, 'app', 'Looks fine'), { t: 'kanban.issue.comment', project: 'app', issueKey: 'gh:o/r#5', text: 'Looks fine' });
   assert.equal(keyedComment({}, 'app', 'Looks fine'), undefined);
   assert.equal(keyedComment({ key: 'gh:o/r#5' }, null, 'Looks fine'), undefined);
+});
+
+test('one view of an issue for the panel, from the kanban’s list or a 3D card; only http(s) links', () => {
+  assert.deepEqual(actionIssue({ key: 'UYT-12', url: 'https://acme.atlassian.net/browse/UYT-12', status: 'In Progress', assignee: 'Maija' }), { key: 'UYT-12', url: 'https://acme.atlassian.net/browse/UYT-12', status: 'In Progress', assignee: 'Maija' });
+  assert.deepEqual(actionIssue({ key: 'gh:o/r#5', url: 'javascript:alert(1)', assignees: ['a', 'b'] }), { key: 'gh:o/r#5', url: undefined, status: undefined, assignee: 'a, b' });
+  assert.equal(actionIssue({ url: '', assignees: [] }).assignee, undefined);
+  assert.equal(safeUrl('http://x.test/1'), 'http://x.test/1');
+  assert.equal(safeUrl('data:text/html,hi'), '');
+  assert.equal(safeUrl(undefined), '');
+});
+
+test('the status shown is the choices’ own when they name one; only a close or reopen refetches the window', () => {
+  assert.equal(shownStatus('OPEN', 'In Review'), 'In Review', 'a board’s Status, not the repository copy’s OPEN');
+  assert.equal(shownStatus('In Progress', undefined), 'In Progress');
+  assert.equal(shownStatus(undefined, undefined), '—');
+  assert.ok(closesOrReopens('gh:close:not_planned'));
+  assert.ok(closesOrReopens('gh:reopen'));
+  assert.ok(!closesOrReopens('p:PVT_1:PVTI_1:F:o'));
+  assert.ok(!closesOrReopens('31'));
 });

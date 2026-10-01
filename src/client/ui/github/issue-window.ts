@@ -21,6 +21,8 @@ import { issueContext, issuePrompt, type BoardActions } from './prompts';
 export interface IssueWindowExtras {
   extra?: (it: GhIssue, reload: () => void) => Node;
   postComment?: (body: string) => Promise<void>;
+  /** The window closed. */
+  closed?: () => void;
 }
 
 export function openIssue(first: GhIssue, net: Net, actions: BoardActions, extras: IssueWindowExtras = {}) {
@@ -136,6 +138,7 @@ export function openIssue(first: GhIssue, net: Net, actions: BoardActions, extra
     onClose: () => {
       comment.dispose();
       unsubs.forEach((u) => u());
+      extras.closed?.();
     },
   });
   close.addEventListener('click', () => modal.close());

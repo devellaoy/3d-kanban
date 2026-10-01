@@ -4,6 +4,34 @@
 import type { IssuePerson, IssueTransition } from '../../shared/kanban/issueops.js';
 import { toast } from '../ui/dom';
 
+/** What the panel needs to know of the issue: from the kanban's list, or a 3D card. */
+export interface ActionIssue {
+  key: string;
+  url?: string;
+  status?: string;
+  assignee?: string;
+}
+
+/** A link from a source, only when it's http(s): nothing else goes into an href. */
+export function safeUrl(url: string | undefined): string {
+  return url && /^https?:\/\//i.test(url) ? url : '';
+}
+
+/** The panel's view of an issue from the kanban's list (one assignee) or a 3D card (its assignees). */
+export function actionIssue(i: { key?: string; url: string; status?: string; assignee?: string; assignees?: string[] }): ActionIssue {
+  const assignee = i.assignee ?? (i.assignees?.join(', ') || undefined);
+  return { key: i.key ?? '', url: safeUrl(i.url) || undefined, status: i.status, assignee };
+}
+
+/**
+ * The status to show: the choices' own `current` when they named one (a board's Status option, in the
+ * choices' words), else the issue's (a repository copy says OPEN while its board says "In Review").
+ */
+export const shownStatus = (issueStatus: string | undefined, current: string | undefined) => current ?? issueStatus ?? '—';
+
+/** Whether a move is GitHub's close or reopen, which changes the issue itself (its window fetches it again). */
+export const closesOrReopens = (transitionId: string) => transitionId.startsWith('gh:');
+
 /** Whether the key is a GitHub one (`gh:owner/repo#5`, `ghp:owner/1#item`); anything else is Jira's. */
 export const isGithubKey = (key: string) => /^ghp?:/.test(key);
 
@@ -59,7 +87,9 @@ export function groupTransitions(ts: readonly IssueTransition[]): [string, Issue
   const groups = new Map<string, IssueTransition[]>();
   for (const t of ts) {
     const g = t.group ?? '';
-    groups.set(g, [...(groups.get(g) ?? []), t]);
+    const list = groups.get(g);
+    if (list) list.push(t);
+    else groups.set(g, [t]);
   }
   return [...groups];
 }

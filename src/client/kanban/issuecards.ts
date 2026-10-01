@@ -16,8 +16,8 @@ import { providerPicker } from '../ui/provider';
 import { openIssue, type IssueWindowExtras } from '../ui/github/issue-window';
 import { labelChip } from '../ui/github/labels';
 import { kanbanApi, type KanbanOk } from './api';
-import { issueActions, type ActionIssue } from './issueactions';
-import { actionsTarget, keyedComment } from './issueactionsmodel';
+import { issueActions } from './issueactions';
+import { actionIssue, actionsTarget, closesOrReopens, keyedComment, safeUrl } from './issueactionsmodel';
 import { issueTask } from './hireform';
 import { SOURCE_KIND_NAMES } from './labels';
 import { sameWindowAppLinks } from './md';
@@ -57,10 +57,8 @@ export function takeCard(it: GhIssue): CarriedIssue {
   return cardOfIssue(it);
 }
 
-/** A link from a source, only when it's http(s): nothing else goes into an href. */
-export function safeUrl(url: string | undefined): string {
-  return url && /^https?:\/\//i.test(url) ? url : '';
-}
+/** A link from a source, only when it's http(s) (issueactionsmodel.ts). */
+export { safeUrl };
 
 /** The board's card for a carried one (undefined once it's gone from the board). */
 export function issueOfCard(card: AnyCard): GhIssue | undefined {
@@ -217,9 +215,6 @@ function queueCard(net: Net, it: GhIssue, provider?: AgentProvider, model?: stri
   net.send({ t: 'queue.add', prompt: cardIssuePrompt(it), title: `${issueCardLabel(it)} ${it.title}`, ...cardFields(cardOfIssue(it)), provider, model, effort });
 }
 
-/** What the actions panel needs of a board card. */
-const actionIssue = (it: GhIssue): ActionIssue => ({ key: it.key ?? '', url: safeUrl(it.url) || undefined, status: it.status, assignee: it.assignees.join(', ') || undefined });
-
 const openTaskIn3d = (net: Net) => (id: number) => void import('./taskview').then((m) => m.openTaskWindow(net, id));
 
 /**
@@ -232,16 +227,19 @@ function keyedExtras(net: Net, card: GhIssue): IssueWindowExtras {
   const to = actionsTarget(card, store.floor);
   if (!to) return {};
   const api = kanbanApi(net);
+  let off: (() => void) | undefined;
   return {
     extra: (first, reload) => {
-      const panel = issueActions(api, to.project, actionIssue(first), { sections: ['status', 'assignee'], openTask: openTaskIn3d(net), onChanged: reload });
-      const off = store.on('issues', () => {
-        if (!panel.el.isConnected) return off();
+      // Only a close or reopen changes what the window shows of the issue itself.
+      const panel = issueActions(api, to.project, actionIssue(first), { sections: ['status', 'assignee'], openTask: openTaskIn3d(net), onChanged: (_what, moved) => moved && closesOrReopens(moved.id) && reload() });
+      // Kept while the card is off the list (a closed issue can drop off it): the window works on what it knew.
+      off = store.on('issues', () => {
         const fresh = issueOfCard(first);
         if (fresh) panel.update(actionIssue(fresh));
       });
       return panel.el;
     },
+    closed: () => off?.(),
     postComment: async (text) => void (await api.request(keyedComment(card, to.project, text)!)),
   };
 }

@@ -5,21 +5,18 @@
 import { h, timeAgo } from '../ui/dom';
 import type { NormalizedIssue } from '../../shared/kanban/types.js';
 import type { KanbanApi, KanbanOk } from './api';
-import { issueActions, type ActionIssue } from './issueactions';
+import { issueActions } from './issueactions';
+import { actionIssue, safeUrl } from './issueactionsmodel';
 import { SOURCE_KIND_NAMES } from './labels';
 import { renderMarkdown } from './md';
 import { dialog, run, showDialog } from './ui';
-
-const httpUrl = (url: string) => (/^https?:\/\//i.test(url) ? url : undefined);
-
-export const actionIssue = (i: NormalizedIssue): ActionIssue => ({ key: i.key, url: httpUrl(i.url), status: i.status, assignee: i.assignee });
 
 export function openIssueWindow(api: KanbanApi, projectId: string, first: NormalizedIssue, openTask: (id: number) => void) {
   let it = first;
   const chips = h('span.kb-chips');
   const task = h('button.btn.primary', { type: 'button' }) as HTMLButtonElement;
   const panel = issueActions(api, projectId, actionIssue(it), { openTask: (id) => (modal.close(), openTask(id)) });
-  const url = httpUrl(it.url);
+  const url = safeUrl(it.url);
   const body = h(
     'div.body',
     {},

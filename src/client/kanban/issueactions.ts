@@ -6,24 +6,18 @@
 import './issueactions.css';
 import { h, timeAgo } from '../ui/dom';
 import type { KanbanServerMsg } from '../../shared/kanban/protocol.js';
-import type { IssueCommentItem, IssuePerson } from '../../shared/kanban/issueops.js';
+import type { IssueAssignTo, IssueCommentItem, IssuePerson, IssueTransition } from '../../shared/kanban/issueops.js';
 import type { KanbanApi } from './api';
 import { renderMarkdown } from './md';
 import { onSendKey, sendHint } from './sendkey';
 import { run, textArea, textInput } from './ui';
-import { groupTransitions, isGithubKey, jiraSite, pinnedMe, setPinnedMe, transitionLabel } from './issueactionsmodel';
+import { groupTransitions, isGithubKey, jiraSite, pinnedMe, setPinnedMe, shownStatus, transitionLabel, closesOrReopens, type ActionIssue } from './issueactionsmodel';
 
 type Transitions = Extract<KanbanServerMsg, { t: 'kanban.issueTransitions' }>;
 type Comments = Extract<KanbanServerMsg, { t: 'kanban.issueComments' }>;
 type People = Extract<KanbanServerMsg, { t: 'kanban.issuePeople' }>;
 
-/** What the panel needs to know of the issue: from the kanban's list, or a 3D card. */
-export interface ActionIssue {
-  key: string;
-  url?: string;
-  status?: string;
-  assignee?: string;
-}
+export type { ActionIssue };
 
 export type IssueSection = 'status' | 'assignee' | 'comments';
 
@@ -31,8 +25,8 @@ export interface IssueActionsOpts {
   sections?: readonly IssueSection[];
   /** Where a #123 in a comment goes. */
   openTask?: (id: number) => void;
-  /** After a change made from here went through (the window around it may want to fetch the issue again). */
-  onChanged?: (what: 'status' | 'assignee' | 'comment') => void;
+  /** After a change made from here went through (`moved`: the status choice it took). */
+  onChanged?: (what: 'status' | 'assignee' | 'comment', moved?: IssueTransition) => void;
 }
 
 export function issueActions(api: KanbanApi, project: string, first: ActionIssue, opts: IssueActionsOpts = {}): { el: HTMLElement; update(issue: ActionIssue): void } {
@@ -56,7 +50,7 @@ export function issueActions(api: KanbanApi, project: string, first: ActionIssue
     const reload = h('button.btn.small.kb-ia-icon', { type: 'button', title: 'Load the choices again', 'aria-label': 'Load the status choices again' }, '↻') as HTMLButtonElement;
     let answer: Transitions | null = null;
     let gen = 0;
-    const paintNow = () => (now.textContent = issue.status ?? answer?.current ?? '—');
+    const paintNow = () => (now.textContent = shownStatus(issue.status, answer?.current));
     const load = () => {
       const g = ++gen;
       box.replaceChildren(h('p.kb-ia-quiet', {}, 'Loading the choices…'));
@@ -93,8 +87,13 @@ export function issueActions(api: KanbanApi, project: string, first: ActionIssue
           const ok = await run(() => api.request({ t: 'kanban.issue.transition', ...base, transitionId: t.id }), null, `${issue.key} → ${t.to || t.name}`);
           sel.disabled = false;
           if (!ok) return void (sel.value = '');
-          load();
-          opts.onChanged?.('status');
+          // The office's fresh list repaints the status; the choices load again only when wanted.
+          if (answer?.current && !closesOrReopens(t.id)) answer.current = t.to || t.name;
+          paintNow();
+          const again = h('button.btn.small', { type: 'button', title: 'Load where it can go from here' }, 'Move again…') as HTMLButtonElement;
+          again.addEventListener('click', load);
+          box.replaceChildren(h('div.kb-ia-row', {}, h('span.kb-ia-quiet', {}, `Moved to ${t.to || t.name}.`), again));
+          opts.onChanged?.('status', t);
         });
         parts.push(sel);
         const needs = ts.filter((t) => t.needs?.length);
@@ -132,7 +131,7 @@ export function issueActions(api: KanbanApi, project: string, first: ActionIssue
       mine.title = github ? 'Assign it to your own GitHub sign-in' : me ? `Assign it to ${me.name} (pinned as you on ${site})` : `Pin yourself first: 📌 on your name in the search`;
       none.disabled = !issue.assignee;
     };
-    const assign = (to: { me: true } | { id: string } | null, button: HTMLButtonElement | null, label: string) =>
+    const assign = (to: IssueAssignTo, button: HTMLButtonElement | null, label: string) =>
       run(() => api.request({ t: 'kanban.issue.assign', ...base, to }), button, label).then((ok) => {
         if (!ok) return;
         showPicker(false);
@@ -140,7 +139,7 @@ export function issueActions(api: KanbanApi, project: string, first: ActionIssue
       });
     const person = (p: IssuePerson) => {
       const pick = h('button.kb-ia-person', { type: 'button', title: `Assign ${issue.key} to ${p.name}` }, h('b', {}, p.name), p.login && p.login !== p.name ? h('small', {}, p.login) : null) as HTMLButtonElement;
-      pick.addEventListener('click', () => void assign({ id: p.id }, pick, `${issue.key} → ${p.name}`));
+      pick.addEventListener('click', () => void assign({ id: p.id, name: p.name }, pick, `${issue.key} → ${p.name}`));
       if (!site) return h('li', {}, pick);
       const pinned = pinnedMe(site)?.id === p.id;
       const pin = h('button.btn.small.kb-ia-pin', { type: 'button', 'aria-pressed': String(pinned), title: pinned ? `You are pinned as ${p.name} on ${site}: click to unpin` : `This is me (on ${site}): makes 🙋 Assign to me work` }, pinned ? '📌 Me' : '📌 This is me');
@@ -183,7 +182,7 @@ export function issueActions(api: KanbanApi, project: string, first: ActionIssue
     mine.addEventListener('click', () => {
       if (github) return void assign({ me: true }, mine, `${issue.key} is yours`);
       const me = site ? pinnedMe(site) : undefined;
-      if (me) return void assign({ id: me.id }, mine, `${issue.key} is yours`);
+      if (me) return void assign({ id: me.id, name: me.name }, mine, `${issue.key} is yours`);
       showPicker(true, `Find yourself and press 📌 This is me once: this browser then knows you on ${site || 'this Jira site'}.`);
     });
     other.addEventListener('click', () => showPicker(!!picker.hidden));
