@@ -30,6 +30,15 @@ interface Pair {
   themes?: string[];
 }
 
+/** The light end of glossy's coloured-button gradient, read from the rule itself so the test follows the CSS. */
+const GLOSSY_BTN_TOP = (() => {
+  const css = stripComments(readFileSync(path.join(themes, 'glossy.css'), 'utf8'));
+  const rule = /:root\[data-theme="glossy"\]\s*:is\(\.btn\.primary,\s*\.btn\.on,\s*\.btn\.danger\)\s*\{([^}]*)\}/.exec(css);
+  const top = rule && /linear-gradient\(\s*180deg\s*,\s*(rgba\([^)]*\))/.exec(rule[1]);
+  assert.ok(top, "glossy.css: no linear-gradient(180deg, rgba(...)) in the coloured buttons' rule");
+  return top[1];
+})();
+
 const PAIRS: Pair[] = [
   { fg: '--text', bg: '--paper', min: 4.5, why: 'body text on a panel, window or card', over: { glossy: '--bg' } },
   { fg: '--text', bg: '--paper-2', min: 4.5, why: 'text in a window header or footer, a bar, a hover row', over: { glossy: '--bg' } },
@@ -47,9 +56,9 @@ const PAIRS: Pair[] = [
   { fg: '--text-on-strong', bg: '--purple', min: 4.5, why: 'a merged PR\'s pill' },
   { fg: '--text-on-accent', bg: '--accent', min: 4.5, why: 'a primary button, the sign-in button', except: { default: 'the default look is frozen pixel-identical (white on #ff8a5b is 2.3:1)' } },
   { fg: '--text-on-accent', bg: '--accent-hover', min: 4.5, why: 'a hovered primary button', except: { default: 'the default look is frozen pixel-identical (white on #ff8a5b is 2.3:1)' } },
-  { fg: '--text-on-accent', bg: '--accent', overlay: 'rgba(255, 255, 255, .1)', themes: ['glossy'], min: 4.5, why: 'glossy\'s coloured button at the light top of its gradient (glossy.css .btn.primary/.btn.on and the sign-in button)' },
-  { fg: '--text-on-accent', bg: '--accent-hover', overlay: 'rgba(255, 255, 255, .1)', themes: ['glossy'], min: 4.5, why: 'the same, hovered' },
-  { fg: '--text-on-strong', bg: '--bad', overlay: 'rgba(255, 255, 255, .1)', themes: ['glossy'], min: 4.5, why: 'glossy\'s danger button at the top of its gradient' },
+  { fg: '--text-on-accent', bg: '--accent', overlay: GLOSSY_BTN_TOP, themes: ['glossy'], min: 4.5, why: 'glossy\'s coloured button at the light top of its gradient (glossy.css .btn.primary/.btn.on and the sign-in button)' },
+  { fg: '--text-on-accent', bg: '--accent-hover', overlay: GLOSSY_BTN_TOP, themes: ['glossy'], min: 4.5, why: 'the same, hovered' },
+  { fg: '--text-on-strong', bg: '--bad', overlay: GLOSSY_BTN_TOP, themes: ['glossy'], min: 4.5, why: 'glossy\'s danger button at the top of its gradient' },
   { fg: '--hint-title', bg: '--strong', min: 4.5, why: 'the name of what you face, in the HUD\'s hint bubble' },
   { fg: '--hint-cost', bg: '--strong', min: 4.5, why: 'the cost in the HUD\'s hint bubble' },
   { fg: '--code-text', bg: '--code-bg', min: 4.5, why: 'a code block, the terminal' },

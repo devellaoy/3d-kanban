@@ -41,6 +41,18 @@ function fakePage() {
   const g = globalThis as Record<string, unknown>;
   const storage = new Map<string, string>();
   const win = new EventTarget();
+  // Count the listeners the window holds, per event type.
+  const listening = new Map<string, Set<unknown>>();
+  const add = win.addEventListener.bind(win);
+  const remove = win.removeEventListener.bind(win);
+  win.addEventListener = (type, fn, ...rest) => {
+    listening.set(type, (listening.get(type) ?? new Set()).add(fn));
+    add(type, fn, ...rest);
+  };
+  win.removeEventListener = (type, fn, ...rest) => {
+    listening.get(type)?.delete(fn);
+    remove(type, fn, ...rest);
+  };
   g.Node = FakeEl;
   g.window = win;
   g.localStorage = { getItem: (k: string) => storage.get(k) ?? null, setItem: (k: string, v: string) => void storage.set(k, v) };
@@ -49,7 +61,7 @@ function fakePage() {
     querySelector: () => null,
     documentElement: { dataset: {} as Record<string, string>, style: {} },
   };
-  return { storage, win, root: (g.document as { documentElement: { dataset: Record<string, string> } }).documentElement };
+  return { storage, win, count: (type: string) => listening.get(type)?.size ?? 0, root: (g.document as { documentElement: { dataset: Record<string, string> } }).documentElement };
 }
 
 const checked = (seg: FakeEl) => (seg.children as FakeEl[]).filter((b) => b.getAttribute('aria-checked') === 'true').map((b) => b.textContent);
@@ -83,16 +95,17 @@ test('the Theme row follows a change made in another tab, and clicking the old o
 });
 
 test('a Theme row that has left the page stops listening', async () => {
-  const { win } = fakePage();
+  const { count } = fakePage();
   const { applyAppearance } = await import('../src/client/themes/index.ts');
   const { appearanceRow } = await import('../src/client/ui/appearance.ts');
   const [seg] = appearanceRow() as unknown as [FakeEl, FakeEl];
   seg.isConnected = true;
+  assert.equal(count('appearancechange'), 1);
   applyAppearance('glossy');
   assert.deepEqual(checked(seg), ['✨ Glossy']);
   seg.isConnected = false;
   applyAppearance('dark'); // notices it is gone and unhooks
+  assert.equal(count('appearancechange'), 0, 'the row took its listener off the window');
   applyAppearance('default');
   assert.deepEqual(checked(seg), ['✨ Glossy']);
-  void win;
 });
