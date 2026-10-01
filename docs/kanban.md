@@ -350,6 +350,36 @@ Issues are fetched again every 90 seconds while someone looks at them, every 10 
 with **Refresh**. Keys: `gh:owner/repo#12` (GitHub issues), `ghp:<owner>/<number>#<item>` (project
 draft issues), the Jira key.
 
+### Working on an issue
+
+Click an issue's title in **📌 Issues** to open its window: the text, and three things you can do to
+the issue itself, without leaving the office. In the 3D office the same panel is in the window of a
+Jira or project card, and a numbered GitHub issue of the project (upstream's issue window, which has
+its own comments and close) gets its **status** and **assignee** there.
+
+- **Status.** Jira: the issue's own transitions, whatever the project's workflow calls them. One that
+  asks for fields (a resolution, say) is listed but disabled: *do it in Jira*. GitHub issue: the
+  Status options of the project's GitHub boards that hold it (grouped by board), then **Close
+  (completed)**, **Close (not planned)** or **Reopen**. A pull request only has the board's Status.
+  A project draft: its board's Status.
+- **Comments.** The newest 50, oldest first, and a box to add one (Enter makes a new line,
+  Shift/⌘/Ctrl+Enter sends). A comment written under an identity everyone shares ends with
+  `— <your name> via Agent Office`. A draft has no comments.
+- **Assignee.** **Assign to me**, **Someone else…** (a search of who can be assigned) or **Unassign**.
+  On GitHub it makes the person the only assignee. Jira's token is everyone's, so the office can't know
+  which Jira user you are: pick yourself once and pin it (**📌 This is me**); your browser remembers
+  it per site and **Assign to me** uses it. A draft can't be assigned: convert it to an issue on GitHub.
+
+Whose sign-in is used: **Jira** always the token in ⚙️ Settings → 🗂️ Kanban. **GitHub** your own
+sign-in (☰ → 🔐 Your sign-ins), or the office's `gh` when an admin chose that for you; with neither it
+says why and does nothing, as taking a card does. Changing a GitHub project's Status needs `gh`'s
+`project` scope (reading only `read:project`): run `gh auth refresh -s project` on the machine whose
+sign-in is used.
+
+Everyone sees the change at once: the kanban list and the 3D board show it before the next fetch, the
+floor gets a toast saying who did it (`🔀 Panu moved UYT-12 → In Review`), and when the issue has a
+kanban task, a status line is added to it. Only issues on the project's list can be changed.
+
 ### On the 3D issues board
 
 A floor whose project has issue sources shows *their* issues on its 📌 Issues board (the cork on the
@@ -368,7 +398,7 @@ into a task is never made twice (the office looks for one with its key, archived
 from the source's whole text). **🔄 Refresh** on the issues window fetches the sources again. One of the project's GitHub issues opens in the office's issue window
 (comments, labels, close); any other card opens a window with what the source says and the same
 actions. Taking a card assigns it on GitHub when it's a GitHub issue (to your own GitHub sign-in, or
-the office's); a Jira or project card isn't assigned anywhere: its kanban task is what links it. The
+the office's); taking a Jira or project card doesn't assign it (its kanban task is what links it), but its window can (see *Working on an issue*). The
 office only takes a card that is on the floor's board: a key the board doesn't show is ignored.
 
 Mind what the sources hold: whoever can write a Jira issue, a project item or an issue of a
