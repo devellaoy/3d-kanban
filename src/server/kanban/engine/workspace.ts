@@ -2,8 +2,10 @@
 // branches started (no changes, no review), which branch each repository is on now, and whether its
 // folders are still there at all.
 
-import { execFile } from 'node:child_process';
-import { existsSync } from 'node:fs';
+import { createHash } from 'node:crypto';
+import { execFile, spawn } from 'node:child_process';
+import { createReadStream, existsSync } from 'node:fs';
+import { lstat, readlink } from 'node:fs/promises';
 import path from 'node:path';
 import { promisify } from 'node:util';
 import type { TaskWorkspace } from '../../../shared/kanban/types.js';
@@ -29,8 +31,7 @@ async function changedSince(dir: string, base: string | undefined): Promise<bool
  */
 export async function hasChanges(floorDir: string, ws: TaskWorkspace | undefined): Promise<boolean> {
   if (!ws) return true;
-  const dirs = [{ dir: path.join(floorDir, ws.worktree.path), base: ws.worktree.base }, ...(ws.repos ?? []).map((r) => ({ dir: path.join(floorDir, r.path), base: r.base }))];
-  for (const d of dirs) {
+  for (const d of repoFolders(floorDir, ws)) {
     try {
       if (await changedSince(d.dir, d.base)) return true;
     } catch {
@@ -40,9 +41,77 @@ export async function hasChanges(floorDir: string, ws: TaskWorkspace | undefined
   return false;
 }
 
+/** The folders of a workspace with the base each started from, primary first. */
+function repoFolders(floorDir: string, ws: TaskWorkspace): { dir: string; base: string | undefined }[] {
+  return [{ dir: path.join(floorDir, ws.worktree.path), base: ws.worktree.base }, ...(ws.repos ?? []).map((r) => ({ dir: path.join(floorDir, r.path), base: r.base }))];
+}
+
 /** The folders of a workspace, primary first. */
-function folders(floorDir: string, ws: TaskWorkspace): string[] {
-  return [path.join(floorDir, ws.worktree.path), ...(ws.repos ?? []).map((r) => path.join(floorDir, r.path))];
+const folders = (floorDir: string, ws: TaskWorkspace): string[] => repoFolders(floorDir, ws).map((d) => d.dir);
+
+/** Runs git with `input` on stdin and hands back its raw stdout (a diff can be big). Throws on a failure or a timeout. */
+function gitOut(cwd: string, args: string[], input?: string): Promise<Buffer> {
+  return new Promise((resolve, reject) => {
+    const child = spawn('git', args, { cwd, stdio: ['pipe', 'pipe', 'ignore'] });
+    const chunks: Buffer[] = [];
+    const timer = setTimeout(() => child.kill(), 15_000);
+    child.stdout.on('data', (c: Buffer) => chunks.push(c));
+    child.on('error', (err) => (clearTimeout(timer), reject(err)));
+    child.on('close', (code) => {
+      clearTimeout(timer);
+      if (code === 0) resolve(Buffer.concat(chunks));
+      else reject(new Error(`git ${args[0]} exited with ${code}`));
+    });
+    child.stdin.on('error', () => undefined);
+    child.stdin.end(input ?? '');
+  });
+}
+
+const sha256 = (b: Buffer | string): string => createHash('sha256').update(b).digest('hex');
+
+/** One folder's part of the fingerprint. Throws when git can't say. */
+async function folderPrint(dir: string): Promise<string> {
+  const head = (await gitOut(dir, ['rev-parse', 'HEAD'])).toString().trim();
+  const diff = sha256(await gitOut(dir, ['diff', 'HEAD', '--binary', '--no-ext-diff', '--no-textconv']));
+  const files = (await gitOut(dir, ['ls-files', '-o', '--exclude-standard', '-z'])).toString().split('\0').filter(Boolean);
+  const prints: string[] = [];
+  for (const f of files) prints.push(`${f}\0${await untrackedPrint(dir, f)}`);
+  return [dir, head, diff, prints.join('\n')].join('\0');
+}
+
+/** What an untracked entry holds: a link's target, a nested repository's HEAD, or a file's mode and contents. Nothing is written anywhere. */
+async function untrackedPrint(dir: string, rel: string): Promise<string> {
+  const full = path.join(dir, rel);
+  let st;
+  try {
+    st = await lstat(full);
+  } catch {
+    return 'gone';
+  }
+  try {
+    if (st.isSymbolicLink()) return `l:${await readlink(full)}`;
+    if (st.isDirectory()) return `d:${await gitOut(full, ['rev-parse', 'HEAD']).then((b) => b.toString().trim(), () => '')}`;
+    const hash = createHash('sha256');
+    for await (const chunk of createReadStream(full)) hash.update(chunk as Buffer);
+    return `f:${st.mode & 0o111 ? 'x' : '-'}${hash.digest('hex')}`;
+  } catch {
+    return 'gone';
+  }
+}
+
+/**
+ * What the workspace holds now, per repository: HEAD, the tracked changes and the untracked files'
+ * contents (ignored ones not). Undefined when git can't say: the caller then counts it as changed.
+ */
+export async function workspaceFingerprint(floorDir: string, ws: TaskWorkspace | undefined): Promise<string | undefined> {
+  if (!ws) return undefined;
+  try {
+    const parts: string[] = [];
+    for (const d of repoFolders(floorDir, ws)) parts.push(await folderPrint(d.dir));
+    return sha256(parts.join('\0\0'));
+  } catch {
+    return undefined;
+  }
 }
 
 /**
