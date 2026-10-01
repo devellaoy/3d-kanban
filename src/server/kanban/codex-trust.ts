@@ -24,11 +24,17 @@ export function hookTrustHash(label: string, command: string): string {
   return `sha256:${createHash('sha256').update(JSON.stringify(canonical(identity))).digest('hex')}`;
 }
 
+/** Where Codex says the session flags' hooks come from (its synthetic_layer_path: resolved against `C:\` on Windows, `/` elsewhere). */
+export function sessionFlagsSource(platform: NodeJS.Platform = process.platform): string {
+  return platform === 'win32' ? 'C:\\<session-flags>\\config.toml' : '/<session-flags>/config.toml';
+}
+
 /** `-c hooks.state={…}` marking the office's hooks for this hook path trusted (their key is the session flags' config). */
-export function codexHookTrustArgs(hookPath: string): string[] {
+export function codexHookTrustArgs(hookPath: string, platform: NodeJS.Platform = process.platform): string[] {
+  const source = sessionFlagsSource(platform);
   const entries = CODEX_HOOK_EVENTS.map((event) => {
     const label = snake(event);
-    return `${JSON.stringify(`/<session-flags>/config.toml:${label}:0:0`)}={trusted_hash=${JSON.stringify(hookTrustHash(label, officeHookCommand(hookPath, event)))}}`;
+    return `${JSON.stringify(`${source}:${label}:0:0`)}={trusted_hash=${JSON.stringify(hookTrustHash(label, officeHookCommand(hookPath, event)))}}`;
   });
   return ['-c', `hooks.state={${entries.join(',')}}`];
 }

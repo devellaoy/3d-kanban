@@ -2,21 +2,31 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import { CODEX_HOOK_EVENTS, codexHookArgs } from '../src/server/codex.js';
-import { codexHookTrustArgs, hookTrustHash, officeHookCommand } from '../src/server/kanban/codex-trust.js';
+import { codexHookTrustArgs, hookTrustHash, officeHookCommand, sessionFlagsSource } from '../src/server/kanban/codex-trust.js';
 import { kanbanExtraArgs } from '../src/server/kanban/workers.js';
 import type { Worker } from '../src/server/workers/types.js';
 
 const label = (e: string) => e.replace(/(?<=[a-z])(?=[A-Z])/g, '_').toLowerCase();
 
 test('codexHookTrustArgs: one -c hooks.state table with a trusted hash per event', () => {
-  const args = codexHookTrustArgs('/tmp/floorA/hook.cjs');
+  const args = codexHookTrustArgs('/tmp/floorA/hook.cjs', 'linux');
   assert.equal(args.length, 2);
   assert.equal(args[0], '-c');
   assert.ok(args[1].startsWith('hooks.state={') && args[1].endsWith('}'));
   const entries = args[1].slice('hooks.state={'.length, -1).split('},');
   assert.equal(entries.length, CODEX_HOOK_EVENTS.length);
   CODEX_HOOK_EVENTS.forEach((e, i) => assert.match(entries[i], new RegExp(`^"/<session-flags>/config\\.toml:${label(e)}:0:0"=\\{trusted_hash="sha256:[0-9a-f]{64}"\\}?$`)));
-  assert.notEqual(codexHookTrustArgs('/tmp/floorB/hook.cjs')[1], args[1]);
+  assert.notEqual(codexHookTrustArgs('/tmp/floorB/hook.cjs', 'linux')[1], args[1]);
+});
+
+test("the trust keys follow Codex's session-flags source path per platform", () => {
+  assert.equal(sessionFlagsSource('linux'), '/<session-flags>/config.toml');
+  assert.equal(sessionFlagsSource('darwin'), '/<session-flags>/config.toml');
+  // Windows resolves it against C:\ with its own separators, written as a TOML basic string.
+  assert.equal(sessionFlagsSource('win32'), 'C:\\<session-flags>\\config.toml');
+  const win = codexHookTrustArgs('C:\\office\\hook.cjs', 'win32')[1];
+  assert.ok(win.startsWith('hooks.state={"C:\\\\<session-flags>\\\\config.toml:session_start:0:0"={trusted_hash="sha256:'), win);
+  assert.ok(!win.includes('"/<session-flags>'));
 });
 
 test('the hook command and timeout are the ones codexHookArgs gives', () => {
