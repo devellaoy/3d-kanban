@@ -140,12 +140,19 @@ test('claude transcript: background agents the run set off and that still work',
   assert.equal(readClaudeTurn(write('bg-resume.jsonl', again))?.background, 1);
   assert.equal(readClaudeTurn(write('bg-resume-done.jsonl', [...again, note('ag1'), cAssistant([text('Finished.')], {}, 'm5')]))?.background, undefined);
   // A notification its turn hasn't answered yet: Claude is about to work, so the run isn't over.
-  assert.equal(readClaudeTurn(write('bg-unanswered.jsonl', [...head, note('ag1')]))?.background, 1);
+  assert.deepEqual(readClaudeTurn(write('bg-unanswered.jsonl', [...head, note('ag1')])), { text: '', complete: false, resuming: true });
+  // A typed prompt quoting the tag (origin human) isn't a notification: it is the window's prompt.
+  const typed = cUser('<task-notification>\n<task-id>ag1</task-id>\n</task-notification>', { origin: { kind: 'human' } });
+  assert.deepEqual(readClaudeTurn(write('bg-human.jsonl', [...head, typed])), { text: '', complete: false });
   // An agent from an earlier prompt's turn isn't this run's.
   assert.equal(readClaudeTurn(write('bg-earlier.jsonl', [...head, cUser('Review task #7'), cAssistant([text('Fine.')], {}, 'm9')]))?.background, undefined);
   // A launch logged as text only (no toolUseResult) counts; a background shell command doesn't.
   const textOnly = cUser([{ type: 'tool_result', tool_use_id: 'a1', content: 'Async agent launched successfully.\nagentId: ag2 (internal ID)' }]);
-  assert.equal(readClaudeTurn(write('bg-text.jsonl', [cUser('Go'), textOnly, cAssistant([text('Waiting.')])]))?.background, 1);
+  const agentCall = cAssistant([{ type: 'tool_use', id: 'a1', name: 'Agent', input: {} }], {}, 'm1');
+  assert.equal(readClaudeTurn(write('bg-text.jsonl', [cUser('Go'), agentCall, textOnly, cAssistant([text('Waiting.')])]))?.background, 1);
+  // The same words in another tool's result (a file it read) are no launch.
+  const readCall = cAssistant([{ type: 'tool_use', id: 'a1', name: 'Read', input: {} }], {}, 'm1');
+  assert.equal(readClaudeTurn(write('bg-forged.jsonl', [cUser('Go'), readCall, textOnly, cAssistant([text('Read it.')])]))?.background, undefined);
   const shell = cUser([{ type: 'tool_result', tool_use_id: 'b1', content: 'Command running in background' }], { toolUseResult: { backgroundTaskId: 'bash1' } });
   assert.equal(readClaudeTurn(write('bg-shell.jsonl', [cUser('Go'), shell, cAssistant([text('Started it.')])]))?.background, undefined);
   // Its prompt cut off by the log's tail: nothing to count.

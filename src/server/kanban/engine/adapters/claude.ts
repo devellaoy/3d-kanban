@@ -40,53 +40,65 @@ function isRealPrompt(line: Record<string, unknown>): boolean {
 function messageText(line: Record<string, unknown>): string {
   const content = isObj(line.message) ? line.message.content : undefined;
   if (typeof content === 'string') return content;
-  return Array.isArray(content) ? content.filter(isObj).map((b) => (b.type === 'text' && typeof b.text === 'string' ? b.text : '')).join('\n') : '';
+  if (!Array.isArray(content)) return '';
+  return content.filter(isObj).map((b) => (b.type === 'text' && typeof b.text === 'string' ? b.text : '')).join('\n');
 }
 
-/** Claude Code's own prompt to itself when a background agent finishes (older CLIs set no origin). */
+function toolResultText(block: Record<string, unknown>): string {
+  const c = block.content;
+  if (typeof c === 'string') return c;
+  if (!Array.isArray(c)) return '';
+  return c.filter(isObj).map((b) => (typeof b.text === 'string' ? b.text : '')).join('\n');
+}
+
+/**
+ * Claude Code's own prompt to itself when a background agent finishes. Older CLIs set no origin, so
+ * only a line without one is told by its text: a typed prompt (origin human) quoting the tag isn't it.
+ */
 function isTaskNotification(line: Record<string, unknown>): boolean {
   if (line.type !== 'user') return false;
-  return (isObj(line.origin) && line.origin.kind === 'task-notification') || messageText(line).startsWith('<task-notification>');
+  if (isObj(line.origin)) return line.origin.kind === 'task-notification';
+  return messageText(line).startsWith('<task-notification>');
+}
+
+/** A notification's text, as its own turn's prompt or as an attachment inside another turn; '' for any other line. */
+function notificationText(line: Record<string, unknown>): string {
+  if (isTaskNotification(line)) return messageText(line);
+  const att = isObj(line.attachment) ? line.attachment : undefined;
+  return line.type === 'attachment' && att?.commandMode === 'task-notification' && typeof att.prompt === 'string' ? att.prompt : '';
 }
 
 /**
  * How many background agents the run has working: each one's last event in the log is its launch or a
- * resume (SendMessage), not a notification. Only the office's last prompt's window counts, so an earlier
- * run's agents don't; none when the log's tail is cut before that prompt. Bash's run_in_background isn't one.
+ * resume (SendMessage), not a notification. Counted from `start`, the office's last prompt (so an
+ * earlier run's agents don't count; -1, the log's tail cut before it: none). Bash's run_in_background
+ * isn't one, and a launch known only by its text counts just from an Agent or Task call's result.
  */
-export function backgroundLeft(lines: Record<string, unknown>[]): number {
-  let from = -1;
-  for (let i = lines.length - 1; i >= 0; i--) {
-    if (isRealPrompt(lines[i]) && !isTaskNotification(lines[i])) {
-      from = i;
-      break;
-    }
-  }
-  if (from < 0) return 0;
+export function backgroundLeft(lines: Record<string, unknown>[], start: number): number {
+  if (start < 0) return 0;
   const agents = new Map<string, boolean>();
-  // A notification prompt nothing has answered yet: Claude is about to take the resumed turn's work up.
-  let unanswered = false;
-  for (const line of lines.slice(from + 1)) {
+  const tools = new Map<unknown, unknown>();
+  for (const line of lines.slice(start + 1)) {
     if (line.isSidechain === true) continue;
-    if (line.type === 'assistant') unanswered = false;
+    const msg = isObj(line.message) ? line.message : undefined;
+    const content = Array.isArray(msg?.content) ? msg.content.filter(isObj) : [];
+    if (line.type === 'assistant') for (const b of content) if (b.type === 'tool_use') tools.set(b.id, b.name);
     const res = isObj(line.toolUseResult) ? line.toolUseResult : undefined;
     if (res?.isAsync === true && res.status === 'async_launched') {
       const id = res.agentId ?? res.taskId;
       if (typeof id === 'string') agents.set(id, true);
-    } else if (res && typeof res.resumedAgentId === 'string') agents.set(res.resumedAgentId, true);
+    } else if (typeof res?.resumedAgentId === 'string') agents.set(res.resumedAgentId, true);
     else if (!res && line.type === 'user') {
-      const content = isObj(line.message) && Array.isArray(line.message.content) ? line.message.content.filter(isObj) : [];
       for (const b of content) {
-        const t = b.type === 'tool_result' ? (typeof b.content === 'string' ? b.content : Array.isArray(b.content) ? b.content.filter(isObj).map((c) => c.text).join('\n') : '') : '';
-        const id = t.startsWith('Async agent launched successfully') ? /agentId:\s*([\w-]+)/.exec(t)?.[1] : undefined;
+        if (b.type !== 'tool_result' || (tools.get(b.tool_use_id) !== 'Agent' && tools.get(b.tool_use_id) !== 'Task')) continue;
+        const text = toolResultText(b);
+        const id = text.startsWith('Async agent launched successfully') ? /^agentId:\s*([\w-]+)/m.exec(text)?.[1] : undefined;
         if (id) agents.set(id, true);
       }
     }
-    const note = isTaskNotification(line) ? messageText(line) : line.type === 'attachment' && isObj(line.attachment) && line.attachment.commandMode === 'task-notification' && typeof line.attachment.prompt === 'string' ? line.attachment.prompt : '';
-    for (const m of note.matchAll(/<task-id>([^<]*)<\/task-id>/g)) agents.set(m[1].trim(), false);
-    if (isTaskNotification(line)) unanswered = true;
+    for (const m of notificationText(line).matchAll(/<task-id>([^<]*)<\/task-id>/g)) agents.set(m[1].trim(), false);
   }
-  return [...agents.values()].filter(Boolean).length + (unanswered ? 1 : 0);
+  return [...agents.values()].filter(Boolean).length;
 }
 
 /**
@@ -99,10 +111,14 @@ export function backgroundLeft(lines: Record<string, unknown>[]): number {
 export function readClaudeTurn(file: string): TurnResult | undefined {
   const lines = readJsonLines(file);
   if (!lines) return undefined;
+  // The last real prompt, and the office's own (the last that isn't a notification) the agents are counted from.
   let from = -1;
+  let start = -1;
   for (let i = lines.length - 1; i >= 0; i--) {
-    if (isRealPrompt(lines[i])) {
-      from = i;
+    if (!isRealPrompt(lines[i])) continue;
+    if (from < 0) from = i;
+    if (!isTaskNotification(lines[i])) {
+      start = i;
       break;
     }
   }
@@ -154,8 +170,10 @@ export function readClaudeTurn(file: string): TurnResult | undefined {
       if (planToolId && content.some((b) => b.type === 'tool_result' && b.tool_use_id === planToolId)) exitPlan = false;
     }
   }
-  const left = backgroundLeft(lines);
-  return { text: texts.join('\n\n'), ...(plan !== undefined ? { plan } : {}), ...(exitPlan ? { exitPlan } : {}), complete: answered && !toolPending && (texts.length > 0 || exitPlan), ...(apiError ? { apiError } : {}), ...(running.size ? { toolRunning: true } : {}), ...(left ? { background: left } : {}) };
+  const left = backgroundLeft(lines, start);
+  // The last prompt is a notification nothing has answered yet: Claude is about to take its turn.
+  const resuming = from >= 0 && !answered && isTaskNotification(lines[from]);
+  return { text: texts.join('\n\n'), ...(plan !== undefined ? { plan } : {}), ...(exitPlan ? { exitPlan } : {}), complete: answered && !toolPending && (texts.length > 0 || exitPlan), ...(apiError ? { apiError } : {}), ...(running.size ? { toolRunning: true } : {}), ...(left ? { background: left } : {}), ...(resuming ? { resuming } : {}) };
 }
 
 export const claudeAdapter: TaskAgentAdapter = {

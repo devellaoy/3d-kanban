@@ -41,10 +41,15 @@ export interface TurnResult {
    */
   toolRunning?: boolean;
   /**
-   * Claude: how many of the run's background agents are still working (their last event in the log
-   * is a launch or a resume, not a notification). The turn's Stop then isn't the run's end. Absent when none.
+   * Claude: how many of the run's background agents are still working (their last event in the log is a
+   * launch or a resume, not a notification). The turn's Stop then isn't the run's end. Absent when none.
    */
   background?: number;
+  /**
+   * Claude: the last prompt is an agent's notification that nothing has answered yet: Claude is about to
+   * take that turn, whose own Stop is still to come. Absent otherwise.
+   */
+  resuming?: boolean;
 }
 
 export interface TaskAgentAdapter {
