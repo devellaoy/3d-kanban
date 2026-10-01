@@ -2,7 +2,7 @@
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { store } from '../src/client/state.js';
+import { store } from '../src/client/state/index.js';
 import type { FloorInfo, ProjectInfo } from '../src/shared/protocol.js';
 
 const floor = (id: string, name: string) => ({ id, name, dir: `/x/${id}` }) as FloorInfo;

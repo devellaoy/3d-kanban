@@ -4,6 +4,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { WEATHERS, type Weather } from '../shared/protocol.js';
+import { AGENT_PROVIDERS, PROVIDER_META } from '../shared/providers.js';
 import { MAX_WORKER_LIMIT, parseWorkerLimit } from './machine.js';
 
 export interface Config {
@@ -69,7 +70,7 @@ export interface RTCIceServerLike {
 }
 
 // 3d-kanban: the command is `kanban3d` (package.json's bin), so it can sit beside an upstream agent-office install.
-const HELP = `kanban3d — a 3D office for your team and its Claude Code / OpenCode / Codex / Grok / Muse / DeepSeek Harness workers
+const HELP = `kanban3d — a 3D office for your team and its ${AGENT_PROVIDERS.filter((p) => p !== 'custom').map((p) => PROVIDER_META[p].name).join(' / ')} workers
 
 Usage:
   kanban3d [options]
