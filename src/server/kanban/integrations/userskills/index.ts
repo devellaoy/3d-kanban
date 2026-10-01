@@ -14,8 +14,12 @@ export interface UserSkillsOptions {
   homes?: () => { source?: string; claudeHome: string; codexHome: string };
 }
 
-/** The sync without the start-up guards (the admin's 🔄 Sync): [] when there's no user-skills/ folder. */
+/** The sync without the worktree guard (the admin's 🔄 Sync); AGENT_OFFICE_USER_SKILLS=off still stops it. [] when it's off or there's no user-skills/ folder. */
 export function syncUserSkillsNow(homes: { source?: string; claudeHome: string; codexHome: string }): SyncResult[] {
+  if (process.env.AGENT_OFFICE_USER_SKILLS === 'off') {
+    console.log('agent-office: user skills sync is off (AGENT_OFFICE_USER_SKILLS=off)');
+    return [];
+  }
   const source = homes.source ?? userSkillsDir();
   return source ? syncUserSkills({ source, claudeHome: homes.claudeHome, codexHome: homes.codexHome }) : [];
 }

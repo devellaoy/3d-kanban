@@ -1,13 +1,13 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, statSync, utimesSync, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, statSync, utimesSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { MARKER, SKILL_NAME_RE, discoverSkills, parseFrontmatter, skillHash } from '../src/server/kanban/integrations/skills/registry.js';
 import { AIKANBAN_MARKER, USER_MARKER, syncUserSkills } from '../src/server/kanban/integrations/userskills/sync.js';
-import { createUserSkillsPlugin } from '../src/server/kanban/integrations/userskills/index.js';
+import { createUserSkillsPlugin, syncUserSkillsNow } from '../src/server/kanban/integrations/userskills/index.js';
 import { makeCtx } from './kanban-integrations-ctx.js';
 
 const REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -52,7 +52,7 @@ test('a second run changes nothing', () => {
   const old = new Date(Date.now() - 60_000);
   utimesSync(marker, old, old);
   assert.deepEqual(statuses(s.run()), ['alpha (claude):current', 'beta (codex):current']);
-  assert.equal(statSync(marker).mtimeMs, old.getTime());
+  assert.equal(Math.round(statSync(marker).mtimeMs), Math.round(old.getTime()), 'no writes');
 });
 
 test('a changed source updates the copy, over a hand edit, keeping what only the target has', () => {
@@ -90,6 +90,32 @@ test('a skill nobody marked is the user\'s and stays untouched', () => {
   assert.match(readFileSync(path.join(dest, 'SKILL.md'), 'utf8'), /# mine/);
   assert.ok(!existsSync(path.join(dest, USER_MARKER)));
   assert.equal(res.find((r) => r.name === 'beta (codex)')?.status, 'installed', 'the others go on');
+});
+
+test('a failed first install leaves no folder behind, and the next run installs it', () => {
+  const s = setup();
+  // An unreadable file: cpSync cannot copy it.
+  const locked = path.join(s.source, 'claude', 'alpha', 'scripts', 'run.js');
+  chmodSync(locked, 0o000);
+  const res = s.run();
+  assert.equal(res.find((r) => r.name === 'alpha (claude)')?.status, 'failed');
+  const skills = path.join(s.claudeHome, 'skills');
+  assert.ok(!existsSync(path.join(skills, 'alpha')), 'no unmarked folder');
+  assert.deepEqual(existsSync(skills) ? readdirSync(skills) : [], [], 'no temp folder either');
+  chmodSync(locked, 0o644);
+  assert.equal(s.run().find((r) => r.name === 'alpha (claude)')?.status, 'installed');
+});
+
+test('a copy with our current marker and also .aikanban-sync is brought back and the ai-kanban marker removed', () => {
+  const s = setup();
+  s.run();
+  const dest = path.join(s.claudeHome, 'skills', 'alpha');
+  writeFileSync(path.join(dest, AIKANBAN_MARKER), 'abc');
+  writeFileSync(path.join(dest, 'scripts', 'run.js'), '// ai-kanban version\n');
+  assert.equal(s.run().find((r) => r.name === 'alpha (claude)')?.status, 'updated');
+  assert.equal(readFileSync(path.join(dest, 'scripts', 'run.js'), 'utf8'), '// one\n');
+  assert.ok(!existsSync(path.join(dest, AIKANBAN_MARKER)));
+  assert.equal(s.run().find((r) => r.name === 'alpha (claude)')?.status, 'current');
 });
 
 test('one failing skill does not stop the rest', () => {
@@ -145,6 +171,22 @@ test('the plugin: off blocks, a worktree source blocks unless on', () => {
     assert.equal(start(wt), true, 'on overrides the worktree guard');
     process.env.AGENT_OFFICE_USER_SKILLS = 'off';
     assert.equal(start(wt), false, 'off beats on');
+  } finally {
+    if (keep === undefined) delete process.env.AGENT_OFFICE_USER_SKILLS;
+    else process.env.AGENT_OFFICE_USER_SKILLS = keep;
+  }
+});
+
+test('the admin sync respects off', () => {
+  const keep = process.env.AGENT_OFFICE_USER_SKILLS;
+  try {
+    const s = setup();
+    const homes = { source: s.source, claudeHome: s.claudeHome, codexHome: s.codexHome };
+    process.env.AGENT_OFFICE_USER_SKILLS = 'off';
+    assert.deepEqual(syncUserSkillsNow(homes), []);
+    assert.ok(!existsSync(s.claudeHome));
+    delete process.env.AGENT_OFFICE_USER_SKILLS;
+    assert.equal(syncUserSkillsNow(homes).length, 2);
   } finally {
     if (keep === undefined) delete process.env.AGENT_OFFICE_USER_SKILLS;
     else process.env.AGENT_OFFICE_USER_SKILLS = keep;

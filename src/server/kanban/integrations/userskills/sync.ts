@@ -3,7 +3,7 @@
 // Like ai-kanban's skill sync: a copy this sync made (or ai-kanban's) is brought up to date, one
 // somebody else put there is left alone; files only the target has (node_modules) survive.
 
-import { cpSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { cpSync, existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { KanbanTool } from '../../../../shared/kanban/types.js';
@@ -52,7 +52,17 @@ function syncOne(src: string, dest: string, name: string): SyncResult {
   try {
     const want = skillHash(src, { skipDeps: true });
     if (!existsSync(dest)) {
-      copy(src, dest, want);
+      // Built beside it and moved in whole, so a failed first install never leaves an unmarked folder
+      // that would later read as the user's own.
+      const tmp = `${dest}.tmp-${process.pid}`;
+      try {
+        rmSync(tmp, { recursive: true, force: true });
+        copy(src, tmp, want);
+        renameSync(tmp, dest);
+      } catch (err) {
+        rmSync(tmp, { recursive: true, force: true });
+        throw err;
+      }
       return { name, status: 'installed', detail: dest };
     }
     let marker: { hash?: string } | undefined;
@@ -61,8 +71,9 @@ function syncOne(src: string, dest: string, name: string): SyncResult {
     } catch {
       marker = undefined;
     }
-    if (marker && marker.hash === want) return { name, status: 'current' };
-    if (marker || existsSync(path.join(dest, AIKANBAN_MARKER))) {
+    const adopted = existsSync(path.join(dest, AIKANBAN_MARKER));
+    if (marker && marker.hash === want && !adopted) return { name, status: 'current' };
+    if (marker || adopted) {
       copy(src, dest, want);
       rmSync(path.join(dest, AIKANBAN_MARKER), { force: true });
       return { name, status: 'updated', detail: dest };

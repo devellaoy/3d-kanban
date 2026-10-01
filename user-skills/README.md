@@ -26,13 +26,14 @@ Settings -> Kanban -> Skills runs it too).
 
 - A copy is marked with `.office-user-skill.json` (the source's hash). A marked copy is overwritten when the
   source has changed, even if you edited it by hand; nothing is written when it is current.
-- A copy ai-kanban made (`.aikanban-sync`) is adopted the same way.
+- A copy ai-kanban made (`.aikanban-sync`) is adopted the same way. If ai-kanban runs on the same machine
+  too, whichever app started last wins; 3d-kanban takes the skills back on its next start.
 - A skill of the same name without either marker is yours: it is left alone and a warning is logged.
 - `node_modules` is never copied, and a `node_modules` already in the target survives an update. Files
   deleted from the source stay in the target.
-- `AGENT_OFFICE_USER_SKILLS=off` turns the start-up sync off. An agent's worktree
-  (`.agent-office/worktrees/`) skips it too, so a branch doesn't overwrite your skills, unless
-  `AGENT_OFFICE_USER_SKILLS=on`.
+- `AGENT_OFFICE_USER_SKILLS=off` turns the sync off (the admin's 🔄 Sync too). An agent's worktree
+  (`.agent-office/worktrees/`) skips the start-up sync, so a branch doesn't overwrite your skills, unless
+  `AGENT_OFFICE_USER_SKILLS=on`; 🔄 Sync isn't held back by the worktree rule.
 
 `kanban-ui-screenshots` needs `npm install` in its folder (`<home>/skills/kanban-ui-screenshots`) the first
 time you use it.

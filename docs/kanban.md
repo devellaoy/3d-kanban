@@ -509,11 +509,12 @@ the way ai-kanban does. **🔄 Sync** (admins) runs it too.
   same way.
 - A skill of the same name with neither marker is yours and stays untouched (a warning is logged and 🔄 Sync reports it).
 - `node_modules` isn't copied and the target's own survives. Files deleted from the source stay in the target.
-- `AGENT_OFFICE_USER_SKILLS=off` turns the start-up sync off. In an agent's worktree
-  (`.agent-office/worktrees/`) it is skipped unless `AGENT_OFFICE_USER_SKILLS=on`.
+- `AGENT_OFFICE_USER_SKILLS=off` turns the sync off, 🔄 Sync included. In an agent's worktree
+  (`.agent-office/worktrees/`) the start-up sync is skipped unless `AGENT_OFFICE_USER_SKILLS=on`; 🔄 Sync
+  isn't held back by the worktree rule.
 
-If ai-kanban runs on the same machine it writes its own copies of the same skills back (and they'd be adopted
-again at the next start). Signed-in accounts' own Claude homes (`<data>/homes/<id>/claude`) don't get these skills.
+If ai-kanban runs on the same machine it writes its own copies of the same skills over these: whichever app
+started last wins, and 3d-kanban takes them back (a copy carrying `.aikanban-sync` counts as changed) on its next start. Signed-in accounts' own Claude homes (`<data>/homes/<id>/claude`) don't get these skills.
 
 ## Agents reading other tasks
 
