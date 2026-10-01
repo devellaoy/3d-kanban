@@ -207,6 +207,7 @@ over it, and the task's own over both.
 | Keep the reviewer off the web | 🗂️ Kanban → Reviews; 📁 Projects | on | Claude reviewers get no WebFetch/WebSearch (Bash keeps the network, for `gh`). A Codex review round always runs in Codex's read-only sandbox (no network); a Codex multi-PR review in its workspace sandbox with the network on, for `gh`. |
 | Resume after a usage limit or a network break | 🗂️ Kanban | on, 5 tries, 6 hours | A turn cut short by a usage limit or a lost connection is retried by itself: at the reset time the message names (plus a minute), else after 5, 10, 20… minutes (at most an hour apart). It gives up after *tries at most* or *waits at most (hours)*; then it waits for Retry. |
 | Archive done tasks after (days) | 🗂️ Kanban | 30 | 0 keeps them on the board. Checked at start-up and hourly. |
+| Project name | 📁 Projects → ⚙️ Project (admin) | the repository's or folder's name | See *Projects and repositories*. The id, folder and repository don't change. |
 | Repositories, instructions, tasks at once | 📁 Projects → ⚙️ Project | — | See *Projects and repositories*. |
 
 ## Comments
@@ -277,6 +278,13 @@ window has the terminal), no Edit or Move, and a **🗂️ Open in the kanban** 
 
 A project is a floor of the building. The floor's own checkout is the **primary** repository; a floor
 without more repositories is a one-repository project, as in upstream agent-office.
+
+An admin can rename a project: ⚙️ Settings → **📁 Projects** → **⚙️ Project** → **Project name** →
+**Rename** (1-100 characters, not another project's name, in any case). The name shows in the elevator,
+the top bar, the board and the agents' prompts; the project's id, folder and GitHub repository stay.
+Agents already running keep the old name in the prompts they were sent; the next phase uses the new
+one. A primary repository called after the project (as it is until someone names it otherwise) is
+renamed with it, unless one of the project's other repositories already has the new name.
 
 ⚙️ Settings → **📁 Projects** (pick the project at the top) → **⚙️ Project** → **Repositories**: **＋ Add a local
 repository** with its absolute folder, then name, kind (git or folder), GitHub `owner/name`, base

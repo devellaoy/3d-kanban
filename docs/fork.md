@@ -105,8 +105,10 @@ New files are not seams (they can't conflict): `src/{server,shared,client}/kanba
 | `src/server/config.ts` | `Config.hookPort`; `--hook-port` parsing and `AGENT_OFFICE_HOOK_PORT`; the check in `loadConfig`; `HELP` text *(unmarked)* | Pins the loopback hook server's port | Scripts outside the office (ai-kanban's) can reach it |
 | `src/server/building.ts` | imports *(unmarked)*, `FloorDef.repos?` | `repos?: ProjectRepo[]` on a floor | Project = floor with several repositories |
 | `src/server/building.ts` | `setRepos()` (new, before `newDef`) | Sets or clears a floor's repositories and saves `floors.json` | Called by the kanban after `validateProjectRepos` |
+| `src/server/building.ts` | `setName()` (new, before `newDef`) | Renames a floor (trimmed, 1-100 characters, unique among floors) and saves `floors.json`; the id, folder and repositories stay | A project's name is changed from the kanban's settings |
 | `src/server/building.ts` | `load()` | `loadRepos(s.repos, …)` after each floor | Reads the repositories back from `floors.json` |
 | `src/server/server.ts` | imports | `installKanban`, `PR_FALLBACK`, `KanbanCaller`/`KanbanClient`, `isKanbanMsg` | Wiring |
+| `src/server/server.ts` | `installKanban({…})`: `saveName` | `building.setName`, then the open floor's `project.name`, then `floorsChanged()` | A renamed project reaches the elevator, the top bar of new arrivals and the kanban |
 | `src/server/server.ts` | `floorsChanged()` | `kanban?.projectsChanged()` | The kanban's project list follows the floors |
 | `src/server/server.ts` | hook server: `let kanban`, routes for `/office/tasks*` and `/api/tasks/reference`, `/api/v1*` | New handlers `officeTasks` (worker hook token, like `/office/workers`) and `kanbanLoopback` (the kanban decides who may) | Agents read other tasks; ai-kanban compatibility |
 | `src/server/server.ts` | `officeWorkers` `PullsView` | `pullsOf: (id) => floor.pullsOf(id)` | Finds `<floor>~<repo>` repositories |
@@ -188,6 +190,7 @@ New files are not seams (they can't conflict): `src/{server,shared,client}/kanba
 | `src/client/ui/boards.ts` | imports; `issueColumns()` in progress (a keyed card's queue task by `taskForCard`); `queueChip(issue, key?)`; `card(…, onLabels \| null, label?)`; the issues column's cards (one `card()` call); `openIssue` import | Every issue card opens with `openCard`; one with a key has its source, status and task chips, and labels only for the project's GitHub issues | Same |
 | `src/client/ui/pull.ts` | import; `openIssue()`'s `renderFrame()` queue task | `taskForCard(it)` for a card with a key, else upstream's `taskForIssue` | Another repository's #12 isn't the floor's #12 on the queue |
 | `src/client/lite.ts` | import; `boardActions().kanbanTask` | `cardTask` (kanban/issuecards) instead of `issueTask` | A card from the issue sources becomes its task by its key on the 2D view too |
+| `src/client/state.ts` | `case 'floors':` | `project.name` follows the current floor's name in the list | A renamed floor renames the top bar, tab title and sign of whoever stands on it |
 | `src/client/state.ts` | `rememberFloor()` | exported | The deep link comes in on its floor |
 | `src/client/notify.ts` | import; `waitingOnSomeone()` | `taskWaiting()` first | N, the count and the compass follow the task |
 | `src/client/interaction.ts` | import; `R` | `canRetry()` too | R retries a waiting task |
