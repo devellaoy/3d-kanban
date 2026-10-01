@@ -109,7 +109,8 @@ curl -fsSL https://raw.githubusercontent.com/devellaoy/3d-kanban/main/deploy/pro
   leave-on-merge, the queue, a meeting) is an event on its task, and can mark it done; a task moved to
   Done sends its idle workers home, and stops a run whose agent is still asking in its terminal (see [docs/kanban.md](docs/kanban.md#sending-a-tasks-worker-home)).
   In the office, a task worker's card says `🗂️ #14 · …`; **E** opens its window with a **🗂️ Task** tab
-  (the task's conversation, plan and runs), **P** is a message on its task while it's in progress,
+  (the task's conversation, plan and runs), **C** its task's Changes window (every repository, per
+  commit too, the same view as the kanban's Changes tab), **P** is a message on its task while it's in progress,
   waiting or in review, **R** retries it, and a hire, or the 📋 Task queue's form, can tick **🗂️ Run as a kanban task** ([controls](docs/controls.md#at-a-kanban-tasks-worker),
   [the contract](docs/kanban-coupling.md)).
 - **Projects with several repositories**: a floor is a project, and a task gets a worktree of each of

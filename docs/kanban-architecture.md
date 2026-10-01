@@ -380,7 +380,12 @@ For a signed-in browser (the session is checked by server.ts, and non-GET reques
   `base..branch` commits; one commit's diff (`hash` must match `^[0-9a-f]{7,40}$` and be in `base..branch`).
   Read from the task's worktrees, else its branch in the project's checkout (`origin/<base>...<branch>`, else
   the local base). git runs with argument lists, no shell, timeouts, `GIT_OPTIONAL_LOCKS=0`; a `git fetch` of
-  the checkout runs in the background at most every 5 minutes and is never waited for.
+  the checkout runs in the background at most every 5 minutes and is never waited for. The list carries the
+  task's `project` and each repository's `primary` flag (primary first), so the browser can match a repository
+  to upstream's floor id (`<project>~<repoId>`, none for the primary; `shared/kanban/repofloor.ts`). The task's
+  Changes view (`client/kanban/changesview.ts`: the task view's Changes tab, and the window C opens at a task
+  worker) reads these, and upstream's live `changes.*` WebSocket messages instead for All changes and
+  Uncommitted while the worker is on the page's floor.
 - `GET /api/kanban/tasks/<id>/reports`, `…/reports/<name>[?download=1]` (integrations/reports): the files under
   `kanban/reports/task-<id>/` (no dot files, no links); a name is only looked up in that listing, served as
   `text/markdown` or `text/plain` with `nosniff` and a sandboxing CSP, at most 2 MB.
