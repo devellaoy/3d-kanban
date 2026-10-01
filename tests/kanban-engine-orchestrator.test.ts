@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { execFileSync } from 'node:child_process';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
@@ -602,4 +603,27 @@ test('Fix PRs in two repositories checks out the PR branch only where the task h
   assert.match(text, /- [^\n]*`fix\/the-pr-branch`/);
   assert.match(text, /- api: `office\/api-scratch`/);
   assert.ok(!text.includes('office/scratch`'), "the repository with the PR isn't sent to the investigation's branch");
+});
+
+test("Fix PRs checks each repository's worktree on its own: the primary on the PR branch doesn't excuse the others", async (t) => {
+  const api = path.join(mkdtempSync(path.join(tmpdir(), 'kanban-api-')), 'api');
+  makeRepo(api);
+  const fx = await engineFixture({ repos: [{ id: 'api', name: 'api', kind: 'git', dir: api, remote: 'acme/api', primary: false }] });
+  t.after(() => fx.close());
+  fx.setRules([{ when: 'Address the open review comments', reply: 'Answered the comments.' }, { when: 'nvestigat', reply: 'Found it.' }]);
+  const task = fx.newTask({ type: 'investigate', usePlan: false, useReview: false });
+  assert.equal(await fx.engine.start(task.id, ADA), undefined);
+  const done = await fx.waitTask(task.id, (x) => x.status === 'review' && x.runState === 'idle', 'the investigation done');
+  const ws = done.workspace;
+  assert.ok(ws?.repos?.some((r) => r.name === 'api'), 'the workspace has a worktree for api');
+  // Both PRs are on feature/x; the primary's worktree is already there, api's isn't.
+  for (const [repoId, repo, number] of [['proj', 'acme/proj', 5], ['api', 'acme/api', 6]] as const) {
+    fx.repo.upsertPrLink(task.id, { repoId, repo, number, url: `https://github.com/${repo}/pull/${number}`, state: 'OPEN', branch: 'feature/x' });
+  }
+  execFileSync('git', ['checkout', '-q', '-b', 'feature/x'], { cwd: path.join(fx.dir, ws!.worktree.path) });
+  const before = fx.invocations().length;
+  assert.equal(await fx.engine.pr(task.id, ADA, 'fix'), undefined);
+  await fx.waitTask(task.id, (x) => x.status === 'review' && x.runState === 'idle' && fx.repo.listRuns(task.id).some((r) => r.phase === 'pr-fix' && r.status === 'succeeded'), 'the pr-fix run');
+  const text = fx.invocations().slice(before).filter((i) => i.kind === 'claude').map((i) => i.prompt ?? i.args.join(' ')).join('\n');
+  assert.match(text, /- api: `feature\/x`/, "api is told to check out the PR's branch");
 });

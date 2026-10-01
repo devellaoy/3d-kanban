@@ -31,7 +31,7 @@ import { Composer, isFolderProject, reportDir, reposText, skillPhase, taskRepos,
 import { canFixPrs, openPrs } from '../../../shared/kanban/prs.js';
 import { next, type Effect, type LastRun, type MachineEvent, type MachineState, type PromptKind } from './machine.js';
 import { backoffMs, looksInterrupted, planOutcome, prLines, resetTime, reviewFindings, reviewVerdict, stripPlanMarkers } from './markers.js';
-import { branchExists, currentBranch, hasChanges, missingFolders } from './workspace.js';
+import { allOn, branchExists, currentBranch, hasChanges, missingFolders } from './workspace.js';
 
 export interface EngineOptions {
   /** How often due retries, queued tasks and newly opened floors are looked at (60 s). */
@@ -953,13 +953,13 @@ export class Orchestrator {
     const branch = task.branch ?? prs[0]?.branch;
     if (role !== 'implementer' || phase === 'plan' || (task.type === 'investigate' && phase !== 'pr-fix') || !branch || isFolderProject(def)) return undefined;
     const branches = { ...this.ctx.repo.repoBranches(task.id), ...Object.fromEntries(prs.map((p) => [p.repoId, p.branch])) };
-    const want = taskRepos(def, task).filter((r) => r.kind === 'git').map((r) => [r.name, branches[r.id] ?? branch]);
+    const want = taskRepos(def, task).filter((r) => r.kind === 'git').map((r) => ({ r, b: branches[r.id] ?? branch }));
     if (!freshTree) {
       if (!task.workspace) return undefined;
       const on = await currentBranch(path.join(floorDir, task.workspace.worktree.path));
-      if (!on || (prs.length ? want.every(([, b]) => b === on) : on === task.branch)) return undefined;
+      if (!on || (prs.length ? await allOn(floorDir, task.workspace, want) : on === task.branch)) return undefined;
     }
-    return want.map(([name, b]) => `- ${name}: \`${b}\``).join('\n');
+    return want.map(({ r, b }) => `- ${r.name}: \`${b}\``).join('\n');
   }
 
   /** The task's workspace is gone: its workers go home, and it (and the sessions that ran there) is forgotten; its branch stays. */

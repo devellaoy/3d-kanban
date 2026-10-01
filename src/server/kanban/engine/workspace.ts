@@ -6,7 +6,7 @@ import { execFile } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import path from 'node:path';
 import { promisify } from 'node:util';
-import type { TaskWorkspace } from '../../../shared/kanban/types.js';
+import type { ProjectRepo, TaskWorkspace } from '../../../shared/kanban/types.js';
 
 const run = promisify(execFile);
 
@@ -87,4 +87,19 @@ export async function branchExists(dir: string, branch: string): Promise<boolean
     // 2: origin answered, and hasn't got it.
     return (err as { code?: unknown }).code !== 2;
   }
+}
+
+/**
+ * Whether each repository's worktree in `ws` is on the branch wanted for it (the primary's is
+ * `ws.worktree`, the others' are `ws.repos` by name). Each is asked on its own: the primary being on
+ * the right branch says nothing of the others. One with no worktree in `ws` isn't on it.
+ */
+export async function allOn(floorDir: string, ws: TaskWorkspace, want: { r: ProjectRepo; b: string }[]): Promise<boolean> {
+  const on = await Promise.all(
+    want.map(({ r }) => {
+      const rel = r.primary ? ws.worktree.path : ws.repos?.find((x) => x.name === r.name)?.path;
+      return rel ? currentBranch(path.join(floorDir, rel)) : undefined;
+    }),
+  );
+  return want.every(({ b }, i) => on[i] === b);
 }
