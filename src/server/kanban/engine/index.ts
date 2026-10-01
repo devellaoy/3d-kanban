@@ -21,11 +21,11 @@ export function createEngine(ctx: KanbanContext, options: EngineOptions = {}): K
   return {
     start: (id, who, opts) => o.start(id, who, opts),
     stop: (id, who) => o.stop(id, who),
-    continue: (id, who, answer) => o.continue(id, who, answer),
+    continue: (id, who, answer, attachmentIds) => o.continue(id, who, answer, attachmentIds),
     retry: (id, who) => o.retry(id, who),
     review: (id, who) => o.review(id, who),
     approvePlan: (id, who) => o.approvePlan(id, who),
-    requestPlanChanges: (id, who, text) => o.requestPlanChanges(id, who, text),
+    requestPlanChanges: (id, who, text, attachmentIds) => o.requestPlanChanges(id, who, text, attachmentIds),
     pr: (id, who, mode) => o.pr(id, who, mode),
     compact: (id, who) => o.compact(id, who),
     release: (id, who) => o.release(id, who),

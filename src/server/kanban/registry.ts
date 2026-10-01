@@ -45,11 +45,11 @@ export interface KanbanEngineApi {
   /** `deskId`: its worker is hired at that desk, which must be free and built (else why not). */
   start(taskId: number, who: KanbanCaller, opts?: { deskId?: string }): Promise<string | void>;
   stop(taskId: number, who: KanbanCaller): Promise<string | void>;
-  continue(taskId: number, who: KanbanCaller, answer?: string): Promise<string | void>;
+  continue(taskId: number, who: KanbanCaller, answer?: string, attachmentIds?: string[]): Promise<string | void>;
   retry(taskId: number, who: KanbanCaller): Promise<string | void>;
   review(taskId: number, who: KanbanCaller): Promise<string | void>;
   approvePlan(taskId: number, who: KanbanCaller): Promise<string | void>;
-  requestPlanChanges(taskId: number, who: KanbanCaller, text: string): Promise<string | void>;
+  requestPlanChanges(taskId: number, who: KanbanCaller, text: string, attachmentIds?: string[]): Promise<string | void>;
   pr(taskId: number, who: KanbanCaller, mode: 'create' | 'fix'): Promise<string | void>;
   compact(taskId: number, who: KanbanCaller): Promise<string | void>;
   release(taskId: number, who: KanbanCaller): Promise<string | void>;

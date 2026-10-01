@@ -115,6 +115,8 @@ class View implements TaskView {
   private error = '';
   private current: TaskTab;
   private composer: { el: HTMLElement; ta: HTMLTextAreaElement; attach: AttachBox } | null = null;
+  /** The answer and change-request boxes, kept across redraws so their uploaded files stay. */
+  private fileBoxes = new Map<string, { ta: HTMLTextAreaElement; attach: AttachBox; wrap: HTMLElement; go: () => void }>();
   private loadingOlder = false;
   private refetch: ReturnType<typeof setTimeout> | undefined;
   private strip: ReturnType<typeof tabStrip<TaskTab>> | null = null;
@@ -372,6 +374,26 @@ class View implements TaskView {
     return ta;
   }
 
+  /** A draft text box with a files box, built once (a redraw reuses it); `go` is whatever the latest draw sends with. */
+  private fileBox(key: string, attrs: Record<string, string | number>) {
+    let b = this.fileBoxes.get(key);
+    if (!b) {
+      const ta = this.draftArea(key, attrs);
+      const wrap = h('div.kb-answerbox');
+      const box = { ta, wrap, attach: attachBox({ target: ta, dropZone: wrap, taskId: () => this.taskId, insertLinks: false }), go: () => {} };
+      ta.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
+          e.preventDefault();
+          box.go();
+        }
+      });
+      this.fileBoxes.set(key, (b = box));
+    }
+    b.ta.placeholder = String(attrs.placeholder ?? '');
+    b.ta.setAttribute('aria-label', String(attrs['aria-label'] ?? ''));
+    return b;
+  }
+
   /** The floor's workers changed: only the tab that shows them is redrawn (the Changes view follows them itself). */
   private workersChanged() {
     if (this.destroyed || this.current !== 'terminal') return;
@@ -504,31 +526,31 @@ class View implements TaskView {
     }
     if (task.waitingReason === 'plan_questions' || task.waitingReason === 'agent_asking') {
       const asking = task.waitingReason === 'agent_asking';
-      const ta = this.draftArea('answer', { rows: 4, placeholder: asking ? 'Your answer…' : 'Your answers…', 'aria-label': asking ? 'Answer the agent' : 'Answer' });
+      const fb = this.fileBox('answer', { rows: 4, placeholder: asking ? 'Your answer…' : 'Your answers… (paste or drop files)', 'aria-label': asking ? 'Answer the agent' : 'Answer' });
+      const { ta, attach, wrap } = fb;
       const send = h('button.btn.primary', { type: 'button' }, 'Send the answer') as HTMLButtonElement;
       const go = async () => {
         const answer = ta.value.trim();
-        if (!answer) return ta.focus();
-        const ok = await this.req({ t: 'kanban.task.continue', id: task.id, answer }, send, 'Answer sent');
+        const ids = attach.ids();
+        if (!answer && !ids.length) return ta.focus();
+        if (attach.busy()) return toast('Wait for the files to finish uploading', 'warn');
+        const ok = await this.req({ t: 'kanban.task.continue', id: task.id, answer, ...(ids.length ? { attachmentIds: ids } : {}) }, send, 'Answer sent');
         if (ok) {
           ta.value = '';
+          attach.clear();
           this.drafts().delete('answer');
         }
       };
       send.addEventListener('click', () => void go());
-      ta.addEventListener('keydown', (e) => {
-        if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
-          e.preventDefault();
-          void go();
-        }
-      });
+      fb.go = () => void go();
       if (asking) {
         // The asking worker is the reviewer during a review round, else the implementer.
         const workerId = task.phase === 'review' || task.phase === 'pr-review' ? task.reviewerWorkerId : task.workerId;
         const open = workerId && this.o.openTerminal ? h('button.btn.small', { type: 'button', onclick: () => this.o.openTerminal?.(workerId, task.project) }, '⌨️ Open its terminal') : null;
         box.append(h('div.kb-row', {}, h('b', {}, 'Answer the agent'), h('small.kb-muted', {}, 'It is typed into its terminal, as if you typed it there.'), open));
       }
-      box.append(ta, h('div.kb-row', {}, h('small.kb-muted', {}, 'Ctrl/⌘ + Enter sends'), send));
+      wrap.replaceChildren(ta, h('div.kb-row', {}, attach.el, h('span.grow'), send), h('small.kb-muted', {}, 'Ctrl/⌘ + Enter sends'));
+      box.append(wrap);
     }
     return box;
   }
@@ -715,19 +737,26 @@ class View implements TaskView {
     const latest = plans[0];
     const out: HTMLElement[] = [];
     if (latest.status === 'draft' && task.status === 'waiting' && !isRunning(task)) {
-      const ta = this.draftArea('planChanges', { rows: 4, placeholder: 'What should change in the plan?', 'aria-label': 'Request changes' });
+      const fb = this.fileBox('planChanges', { rows: 4, placeholder: 'What should change in the plan? (paste or drop files)', 'aria-label': 'Request changes' });
+      const { ta, attach, wrap } = fb;
       const approve = h('button.btn.primary', { type: 'button' }, '✅ Approve the plan') as HTMLButtonElement;
       const changes = h('button.btn', { type: 'button' }, '✍️ Request changes') as HTMLButtonElement;
       approve.addEventListener('click', () => void this.req({ t: 'kanban.plan.approve', id: task.id, planId: latest.id }, approve, 'Plan approved'));
-      changes.addEventListener('click', async () => {
+      const go = async () => {
         const text = ta.value.trim();
-        if (!text) return ta.focus();
-        if (await this.req({ t: 'kanban.plan.requestChanges', id: task.id, text }, changes, 'Sent to the planner')) {
+        const ids = attach.ids();
+        if (!text && !ids.length) return ta.focus();
+        if (attach.busy()) return toast('Wait for the files to finish uploading', 'warn');
+        if (await this.req({ t: 'kanban.plan.requestChanges', id: task.id, text, ...(ids.length ? { attachmentIds: ids } : {}) }, changes, 'Sent to the planner')) {
           ta.value = '';
+          attach.clear();
           this.drafts().delete('planChanges');
         }
-      });
-      out.push(h('section.kb-plan-act', {}, h('h4', {}, `Plan v${latest.version} waits for you`), ta, h('div.kb-row', {}, h('span.grow'), changes, approve)));
+      };
+      changes.addEventListener('click', () => void go());
+      fb.go = () => void go();
+      wrap.replaceChildren(ta, h('div.kb-row', {}, attach.el, h('span.grow'), changes, approve));
+      out.push(h('section.kb-plan-act', {}, h('h4', {}, `Plan v${latest.version} waits for you`), wrap));
     }
     for (const p of plans) out.push(planItem(p, (id) => this.openTask(id)));
     return out;

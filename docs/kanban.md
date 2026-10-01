@@ -87,7 +87,8 @@ task is made and started at once, at that desk or, from the queue, at the next f
    `PLAN READY`), or with `QUESTIONS:`. Questions put the task in Waiting: answer in the box and
    **Send the answer**, or **▶️ Continue without answering** (the agent makes and names its assumptions).
    With plan approval *wait for approval* a finished plan waits for **✅ Approve the plan** or
-   **✍️ Request changes** (the Plan tab); *implement straight away* accepts it by itself.
+   **✍️ Request changes** (the Plan tab); *implement straight away* accepts it by itself. The answer
+   box and the change request take files too (📎, paste or drop): they go to the planner as their paths.
 2. **Implement**: the agent works in its own worktree (a workspace with a worktree of each repository,
    on the same branch), commits, and says what it did. If nothing differs from the base branch in any
    repository, there's nothing to review and the task goes to Review.
@@ -109,11 +110,16 @@ When the agent asks something in its terminal (Waiting, *the agent is asking*), 
 when it asks a question, in the **Answer the agent** box (**⌨️ Open its terminal** is next to it): the
 answer is kept as your comment and typed into its terminal, as if you typed it there, and the same run
 carries on (the task is In progress again once the agent goes on; a question with several parts keeps
-it waiting until the last is answered). A comment on the task does the same. When it asks for a
+it waiting until the last is answered). The box takes files like a comment: their paths are typed in
+after your answer. A comment on the task does the same (its files' paths too). When it asks for a
 permission (or the office can't tell what it waits on), the task says *answer it in its terminal*
 with **⌨️ Open its terminal** and no answer box: nothing is typed for you, since Enter would pick the
 prompt's highlighted option. A comment then is kept and goes to the agent once that turn is over.
 There is no Continue without an answer then: its run is still going.
+
+A task stays In progress while the agent's background helper agents still work, until the agent has
+answered after them (at most 3 hours, then it goes on with what the agent said). ⏹️ Stop during that wait
+sends the worker home, worktree kept, which stops its helper agents too.
 
 **⏹️ Stop** interrupts a running turn (Esc into its terminal; the worker goes home, worktree kept, if
 it doesn't stop in a few seconds). A failed or interrupted phase waits with **🔁 Retry** (run it again)
@@ -218,8 +224,8 @@ back to work:
   next rest. Comments that came in during a review are worked on when the review cycle ends, and that
   work is reviewed again when the task has review on.
 
-On To do, Done and archived tasks a comment is just kept. Comments take attachments too
-(**Ctrl/⌘ + Enter** sends).
+On To do, Done and archived tasks a comment is just kept. Comments take attachments too,
+and so do the answer box and the plan's **Request changes** (**Ctrl/⌘ + Enter** sends); files alone are enough. An agent can read only its own task's files (copies in `kanban/grants/task-<id>/`). After upgrading, a live agent session started before this change is relaunched once at its next turn (its launch arguments change); until then a file sent into it may need a permission prompt.
 
 In the 3D office, what you tell a task's **implementer** while the task is in progress, waiting or in
 review is a comment too: **P** ("💬 Message task #N"), the task's issue card dropped on its desk, and
@@ -475,6 +481,7 @@ file has the port it got.
 | `<data>/kanban-settings.json` | The kanban's settings, per project too (mode 600). |
 | `<data>/kanban-secrets.json` | Jira site, e-mail and token; the API key's hash (mode 600). Never sent to a browser. |
 | `<data>/kanban/uploads/` | Attached files (mode 600); ones never attached are removed after a day. |
+| `<data>/kanban/grants/task-<id>/` | Copies of a task's attached files, the one folder its agents may read (mode 700); removed with the task. |
 | `<data>/kanban/reports/task-<id>/` | An investigation's report files. |
 | `<data>/kanban/refs/task-<id>/` | The plan phase's referenced tasks. |
 | `<data>/kanban/skills/` | Generated Claude skill plugins. |

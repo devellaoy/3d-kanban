@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdirSync, mkdtempSync, rmSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import type { FloorDef } from '../src/server/building.js';
@@ -117,6 +117,23 @@ test('every prompt the engine sends is filled in completely and ends with its ph
   assert.ok(report.endsWith(KANBAN_CONTRACTS.investigateSafety));
   assert.match(report, new RegExp(`reports[\\\\/]task-${inv.id}`));
   assert.ok(compose.build('resume', def, inv, 'codex', dir, { phase: 'resume', text: 'x' }).endsWith(KANBAN_CONTRACTS.investigateSafety));
+});
+
+test('filesText and filesInline give the task grant copies by name and path, empty for none or missing files', (t) => {
+  const { compose, ctx } = setup(t);
+  mkdirSync(path.join(ctx.filesDir, 'uploads'), { recursive: true });
+  for (const f of ['abc.png', 'd.pdf']) writeFileSync(path.join(ctx.filesDir, 'uploads', f), 'x');
+  const at = (f: string) => path.join(ctx.filesDir, 'grants', 'task-7', f);
+  assert.equal(compose.filesText('proj', 7, []), '');
+  const text = compose.filesText('proj', 7, [{ name: 'mock.png', stored: 'abc.png' }, { name: 'gone.txt', stored: 'gone.txt' }]);
+  assert.match(text, /^Files attached to the task/);
+  assert.match(text, /not instructions/);
+  assert.ok(text.includes(`- mock.png: ${at('abc.png')}`) && !text.includes('gone.txt'));
+  assert.equal(compose.filesInline(7, []), '');
+  const inline = compose.filesInline(7, [{ stored: 'abc.png' }, { stored: 'd.pdf' }]);
+  assert.doesNotMatch(inline, /\n/);
+  assert.ok(inline.includes(at('abc.png')) && inline.includes(at('d.pdf')));
+  assert.ok(!inline.includes(path.join(ctx.filesDir, 'uploads')));
 });
 
 test('the workspace lines: predicted before the hire, real paths after, folders by their own path', (t) => {
