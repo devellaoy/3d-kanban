@@ -90,7 +90,7 @@ test('a task worker: its picked skills by phase and tool, delivered, hinted, mis
   const r = roots(ctx.tmp, repoDir);
   ctx.settings.setProject('app', { skills: { plan: { claude: ['kanban-dev', 'hellewi-pr', 'ghost'] }, review: { codex: ['my-codex'] } } });
   const t = ctx.repo.createTask({ project: 'app', title: 't', tool: 'claude', usePlan: true, planApproval: 'auto', useReview: true, createdBy: 'u' });
-  const skills = createSkills(ctx, { roots: () => r, userSkills: path.join(ctx.tmp, 'no-user-skills') });
+  const skills = createSkills(ctx, { roots: () => r });
   assert.equal(skillPhase('fix'), 'implement');
   assert.equal(skillPhase('pr-fix'), 'pr');
   assert.deepEqual(pickedSkills({ plan: { claude: ['a'] } }, { plan: { claude: ['b'] } }, 'plan', 'claude'), ['b'], "the task's own pick wins");

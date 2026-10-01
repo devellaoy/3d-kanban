@@ -8,8 +8,15 @@ import type { KanbanTool, RunPhase, SkillInfo, SkillPhase, SkillSelection } from
 import { projectRepos } from '../../projects.js';
 import { fail } from '../util.js';
 import { pluginDir, syncCodexSkills, type SyncResult } from './delivery.js';
-import { syncUserSkillsNow } from '../userskills/index.js';
 import { defaultRoots, discoverSkills, findSkill, type SkillRoots } from './registry.js';
+
+const syncHooks = new Set<() => SyncResult[]>();
+
+/** Registers more syncing for the admin's 🔄 Sync (the user-skills plugin does); returns how to unregister it. */
+export function onSkillsSync(fn: () => SyncResult[]): () => void {
+  syncHooks.add(fn);
+  return () => void syncHooks.delete(fn);
+}
 
 /** The office's own skill every Claude task worker gets (reading other tasks). */
 export const ALWAYS_BUNDLED = ['office-task-refs'];
@@ -41,8 +48,6 @@ export function checkSelection(selection: SkillSelection, skills: SkillInfo[]): 
 
 export interface SkillsOptions {
   roots?: (ctx: KanbanContext) => SkillRoots;
-  /** Where user-skills/ is (default: this install's). */
-  userSkills?: string;
 }
 
 export function createSkills(ctx: KanbanContext, opts: SkillsOptions = {}) {
@@ -113,7 +118,14 @@ export function createSkills(ctx: KanbanContext, opts: SkillsOptions = {}) {
   const sync = (): SyncResult[] => {
     const skills = registry().filter((s) => s.tool === 'codex' && s.origin === 'bundled');
     const r = roots();
-    const out = [...syncCodexSkills(r.codexHome, skills), ...syncUserSkillsNow({ source: opts.userSkills, claudeHome: r.claudeHome, codexHome: r.codexHome })];
+    const out = syncCodexSkills(r.codexHome, skills);
+    for (const hook of syncHooks) {
+      try {
+        out.push(...hook());
+      } catch (err) {
+        out.push({ name: 'sync', status: 'failed', detail: (err as Error).message });
+      }
+    }
     cached = undefined;
     return out;
   };
