@@ -474,3 +474,17 @@ test('third person: a small wheel step glides too, then arrives', (t) => {
   frames(120);
   close(camera.position.distanceTo(targetOf(player.camYaw)), 3.2, 1e-3);
 });
+
+test('third person: the shown tilt stays within its limits when an outside change and a mouse move land in the same frame', (t) => {
+  const { player, camera, win, fire, frames, targetOf } = thirdPersonLocked(t);
+  player.camPitch = THIRD_PITCH_MAX;
+  player.updateCamera(true);
+  player.camPitch = 0.32; // a car's, with no frame before the mouse
+  fire(win, 'pointermove', { clientX: 0, clientY: 0, movementX: 0, movementY: 250 });
+  for (let i = 0; i < 30; i++) {
+    frames(1);
+    const off = camera.position.clone().sub(targetOf(player.camYaw));
+    assert.ok(Math.asin(off.y / off.length()) <= THIRD_PITCH_MAX + 1e-6, `tilt ${Math.asin(off.y / off.length())}`);
+    assert.ok(off.x * Math.sin(player.camYaw) + off.z * Math.cos(player.camYaw) > 0, 'behind you');
+  }
+});

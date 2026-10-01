@@ -410,8 +410,6 @@ export class PlayerController {
       const before = this.camPitch;
       this.camPitch = THREE.MathUtils.clamp(this.camPitch + dy, THIRD_PITCH_MIN, THIRD_PITCH_MAX);
       this.lastPitch += this.camPitch - before;
-      // What's shown stays within the limits too, while an outside jump is still easing out.
-      this.pitchGap = this.camPitch - THREE.MathUtils.clamp(this.camPitch - this.pitchGap, THIRD_PITCH_MIN, THIRD_PITCH_MAX);
     }
     else this.lookPitch = THREE.MathUtils.clamp(this.lookPitch - dy, -1.45, 1.45);
   }
@@ -628,6 +626,9 @@ export class PlayerController {
       this.yawGap *= k;
       this.pitchGap *= k;
       this.distGap *= k;
+      // What's shown stays within the tilt limits (or wherever camPitch itself is), however the mouse and an
+      // outside change landed this frame: past them the camera would tip over you to your front.
+      this.pitchGap = this.camPitch - THREE.MathUtils.clamp(this.camPitch - this.pitchGap, Math.min(THIRD_PITCH_MIN, this.camPitch), Math.max(THIRD_PITCH_MAX, this.camPitch));
     }
     this.lastYaw = this.camYaw;
     this.lastPitch = this.camPitch;
