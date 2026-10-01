@@ -13,6 +13,13 @@ interface Conn {
   screenSender?: RTCRtpSender;
   level: number;
   analyser?: AnalyserNode;
+  /** The audio they send us, once it arrives: muted or ended, there's nothing to sample. */
+  audioTrack?: MediaStreamTrack;
+}
+
+/** Whether a connection has a voice to sample: an analyser on an audio track that's live and not muted. */
+export function hearing(c: Pick<Conn, 'analyser' | 'audioTrack'>): boolean {
+  return !!c.analyser && !!c.audioTrack && c.audioTrack.readyState === 'live' && !c.audioTrack.muted;
 }
 
 type Signal = { description?: RTCSessionDescriptionInit; candidate?: RTCIceCandidateInit | null };
@@ -35,14 +42,17 @@ export class Voice {
   muted = false;
   localLevel = 0;
 
-  /** Samples the voice levels, running only while there's a mic or a connection to sample. */
+  /** Samples the voice levels, running only while there's a voice to sample: yours, or one coming in. */
   private sampler: ReturnType<typeof setInterval> | null = null;
 
   constructor(private net: Net) {}
 
-  /** Starts or stops sampling to match whether there's anything to sample. */
+  /** Starts or stops sampling to match whether there's anything to sample. Everyone else in the 3D
+   * office is connected whether or not they're in voice, so a connection alone isn't enough. */
   private syncSampler() {
-    if (this.mic || this.conns.size) {
+    let any = !!this.localAnalyser;
+    for (const c of this.conns.values()) any ||= hearing(c);
+    if (any) {
       // Often enough for mouths to keep up with syllables.
       this.sampler ??= setInterval(() => this.sampleLevels(), 40);
       return;
@@ -103,7 +113,6 @@ export class Voice {
     } catch (err) {
       return `Microphone unavailable: ${(err as Error).message}`;
     }
-    this.syncSampler();
     this.muted = muted;
     this.talking = false;
     this.mic.getAudioTracks().forEach((t) => (t.enabled = !muted));
@@ -114,6 +123,7 @@ export class Voice {
       this.localAnalyser.fftSize = 1024;
       src.connect(this.localAnalyser);
     }
+    this.syncSampler();
     const track = this.mic.getAudioTracks()[0];
     for (const c of this.conns.values()) c.micSender = c.pc.addTrack(track, this.mic);
     this.changed();
@@ -261,7 +271,6 @@ export class Voice {
     audio.autoplay = true;
     const c: Conn = { pc, polite: store.you < id, makingOffer: false, ignoreOffer: false, audio, level: 0 };
     this.conns.set(id, c);
-    this.syncSampler();
 
     pc.onnegotiationneeded = async () => {
       try {
@@ -282,6 +291,9 @@ export class Voice {
       const stream = streams[0] ?? new MediaStream([track]);
       if (track.kind === 'audio') {
         c.audioStream = stream;
+        c.audioTrack = track;
+        // They join, mute or leave voice: start or stop sampling.
+        for (const type of ['mute', 'unmute', 'ended']) track.addEventListener(type, () => this.syncSampler());
         audio.srcObject = stream;
         void audio.play().catch(() => {
           // Autoplay blocked until the user interacts; retry on the next click.
@@ -298,6 +310,7 @@ export class Voice {
             // analyser is optional
           }
         }
+        this.syncSampler();
       } else {
         c.screen = stream;
         track.addEventListener('unmute', () => this.listeners.forEach((fn) => fn()));
