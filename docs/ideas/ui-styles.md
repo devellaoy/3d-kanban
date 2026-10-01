@@ -223,8 +223,11 @@ että tokenit ([T1](#ehdotettu-toteutusjärjestys)) ja teema-asetus (T2) ovat jo
   Pitkäaikaiseen käyttöön ilme on raskas.
 - **Työ:** M. 98.css hoitaa paljon, mutta se on rajattava ([kirjastot](#kirjastot)).
 - **Riskit:**
-  - 98.css tyylittää paljaat `button`- ja `input`-elementit globaalisti, joten se on pakko eristää
-    `@layer`- tai `@scope`-säännöllä.
+  - 98.css tyylittää paljaat `button`- ja `input`-elementit globaalisti, joten se on pakko
+    **rajata valitsimilla**: `@scope (.theme-w95) { … }` tai jokaisen valitsimen etuliite
+    (build-vaiheessa, esim. PostCSS-prefiksointi). `@layer` ei riitä, koska se säätää vain
+    etusijaa: kerroksen sisällä oleva `button { … }` koskee yhä jokaista sovelluksen painiketta,
+    ellei myöhempi sääntö kumoa sitä. 7.css:n valmis `7.scoped.css` on jo rajattu `.win7`-luokkaan.
   - Pieni fontti (11–12 px) on huono saavutettavuudelle.
   - Microsoftin logoja tai tavaramerkkejä ei saa käyttää. Pelkkä ulkoasu on yleisesti jäljitelty
     (98.css on MIT).
@@ -430,8 +433,10 @@ Muut ehdotetut tyylit:
     kuin kaksi.
   - `color-scheme: dark` kannattaa asettaa tummissa teemoissa, jotta selaimen omat kontrollit
     (vierityspalkit, `select`) tummuvat.
-  - `@layer` (cascade layers, ~96 %) eristää kolmannen osapuolen CSS:n (98.css, 7.css) sovelluksen
-    säännöistä.
+  - `@layer` (cascade layers, ~96 %) järjestää etusijan: kolmannen osapuolen CSS (98.css, 7.css)
+    omaan, matalampaan kerrokseensa, jolloin sovelluksen säännöt voittavat. **Se ei rajaa
+    valitsimia.** Paljaat `button`- ja `input`-säännöt rajataan erikseen `@scope`-säännöllä tai
+    valitsimien etuliitteellä.
 
 ### 2. Teema per käyttäjä
 
@@ -474,8 +479,14 @@ Muut ehdotetut tyylit:
   - **Excalidraw** vaihtuu heti `theme`-propilla. Se tuntee vain `'light'` ja `'dark'`, ja dark on
     `invert(93%) hue-rotate(180deg)` -suodatin, ei oikea paletti. Omat värit tehdään
     `.excalidraw { --color-primary: … }` -muuttujilla.
-  - **3D:n ääriviiva, valot ja sumu** vaihtuvat heti (`OutlineEffect`in parametrit,
-    `scene.background`, `sky.ts`).
+  - **3D:n valot ja sumu** vaihtuvat heti (`scene.background`, `sky.ts`).
+  - **Ääriviiva** ei vaihdu pelkästään parametreja muuttamalla. `OutlineEffect` lukee
+    `defaultColor`- ja `defaultThickness`-arvot vain konstruktorissa, eikä niille ole settereitä.
+    Lisäksi `main.ts:143`:n `effect` on `const`. Vaihtoehdot: (a) teeman vaihtuessa luodaan uusi
+    `OutlineEffect` (seam: `const effect` → vaihdettava viittaus; ääriviivamateriaalien välimuisti
+    rakentuu uudelleen) tai (b) asetetaan materiaalikohtaiset `userData.outlineParameters`
+    (`thickness`, `color`), jotka efekti lukee jokaisella ruudulla. (b) koskee kaikkia materiaaleja
+    ja jo olemassa olevia `{ visible: false }` -asetuksia, joten (a) on yksinkertaisempi.
   - **Toon-ramppi** vaihtuu heti, kun `gradientMap`-tekstuurin data vaihdetaan ja asetetaan
     `needsUpdate`.
   - **Jälkikäsittely** kytketään päälle tai pois lennossa.
@@ -512,7 +523,7 @@ geometria, mutta ei yhtään fullscreen-passia. Antialiasointi tulee canvasin `a
 
 | Säätö | Missä | Hinta |
 |---|---|---|
-| Ääriviivan väri ja paksuus | `OutlineEffect`in `defaultColor`/`defaultThickness` (`main.ts:143`) | 0 |
+| Ääriviivan väri ja paksuus | Uusi `OutlineEffect` teeman `defaultColor`/`defaultThickness`-arvoilla (`main.ts:143`; konstruktorin arvoille ei ole settereitä) | 0 (luonti teemaa vaihdettaessa) |
 | Toon-rampin askeleet (2 = kova pixel/sketch, 5 = pehmeä flat) | `world/toon.ts:gradientMap()` | 0 |
 | Taivas, sumu, valojen värit | `world/sky.ts`, `main.ts` hemi/ambient/sun | 0 |
 | Materiaalien värikartta (paletin vaihto) | `toon(color)` voisi kuljettaa värin teeman `mapColor()`-funktion läpi. Välimuistiavain on jo väri | 0 (vaatii uudelleenlatauksen) |
@@ -545,14 +556,14 @@ fullscreen-passiksi, mikä on sen tärkein etu three.js:n omaan `EffectComposer`
 
 **OutlineEffect ja composer yhdessä:** tehdään oma `RenderPass`-alaluokka, jonka `render()` kutsuu
 `effect.render(scene, camera)` composerin render targetiin. Silloin inverted hull säilyy ja
-jälkikäsittely tulee sen päälle. Tämä pitää kokeilla piikkinä (T7), koska `OutlineEffect` vaihtaa
+jälkikäsittely tulee sen päälle. Tämä pitää kokeilla piikkinä (T6), koska `OutlineEffect` vaihtaa
 materiaaleja `onBeforeRender`-tasolla.
 
 **Antialiasointi:** kun scene piirretään composerin render targetiin, canvasin `antialias: true` ei
 enää vaikuta.
 
 - Tarvitaan `WebGLRenderTarget({ samples: 4 })` composerille (WebGL2 MSAA) tai SMAA/FXAA-passi.
-  Tarkka API on tarkistamatta, joten se kokeillaan T7:ssä.
+  Tarkka API on tarkistamatta, joten se kokeillaan T6:ssä.
 - Pikselöintityylissä MSAA:ta ei tarvita.
 
 **Suorituskyky:**
@@ -607,7 +618,7 @@ siirtyy Googlelle. Lisäksi toimisto voi toimia suljetussa verkossa.
 | Sci-fi HUD | **Orbitron** otsikot, **Share Tech Mono** / Rajdhani teksti | augmented-ui (BSD-2, puhdas CSS, `clip-path`, hiljainen mutta vakaa) tai oma `clip-path` | bloom (pmndrs), Sobel |
 | Glassmorphism | Inter | omat tokenit, `backdrop-filter` | – |
 | Synthwave | Orbitron + Inter | omat tokenit | pmndrs Bloom + LUT |
-| Windows 95 | 98.css:n mukana tuleva pikselifontti | **98.css** (MIT, 4,4 kB gz) rajattuna `@layer`/`@scope`-säännöllä, tai **7.css** (MIT, aktiivinen, valmis `7.scoped.css` `.win7`-luokan alla) | pmndrs ColorDepth (dithering) |
+| Windows 95 | 98.css:n mukana tuleva pikselifontti | **98.css** (MIT, 4,4 kB gz) valitsimet rajattuina `@scope`-säännöllä tai etuliitteellä (`@layer` vain etusijaan), tai **7.css** (MIT, aktiivinen, valmis `7.scoped.css` `.win7`-luokan alla) | pmndrs ColorDepth (dithering) |
 
 **Open Props** (MIT, v1.7.23) on valmis token-kirjasto (värit, varjot, easingit, välit). Sitä voi
 käyttää **primitiivitason** lähteenä, mutta se ei korvaa semanttisia tokeneita, ja kaikki tyylit
@@ -634,25 +645,25 @@ tarvitsevat omat arvonsa joka tapauksessa. Hyöty jää pieneksi. Valinnainen.
 
 ## Ehdotettu toteutusjärjestys
 
-Jokainen tehtävä on oma kanban-tehtävänsä ja oma PR:nsä. Kaikissa varmistetaan `npm run typecheck`,
+Jokainen tehtävä on oma kanban-tehtävänsä ja oma erillinen muutoksensa (commit tai haara). Pull requestit avataan vain, kun käyttäjä pyytää (AGENTS.md); upstream-PR (vaihtoehto a alla) on erillinen käyttäjän päätös. Kaikissa varmistetaan `npm run typecheck`,
 `npm test` ja `npm run build` sekä headless-kuvakaappaus ennen ja jälkeen. Oletusteeman
 kuvakaappausten on pysyttävä **pikselintarkasti samoina** T1:n ja T2:n jälkeen (visuaalinen regressio
 on niissä virhe). Jokaisen teeman modaalin ✕ ja Esc testataan, ja mouse-lookin on palattava.
 
 | # | Tehtävä | Sisältö | Hyväksymiskriteeri | Koko |
 |---|---|---|---|---|
-| **T0** | Nunito oikeasti käyttöön | `@fontsource-variable/nunito` (tai vastaava), import `main.ts`/`kanban/main.ts`/`lite.ts`/`login.ts`. Login-painikkeen `font: inherit`. Canvas-tekstit odottavat `document.fonts.ready` -lupausta ennen ensimmäistä `textTexture`a. | Kuvakaappauksessa Nunito Windowsissa ilman asennettua fonttia, ei verkkopyyntöjä Googlelle | S |
-| **T1** | Tokenien keruu CSS-muuttujiin | Uusi `src/client/theme/tokens.css` (primitiivit, semanttiset, aliakset vanhoille nimille). **Fork-CSS** (`kanban/*.css`, `officecss.ts`) kokonaan tokeneille. Upstream-CSS:n osalta **päätös** (ks. alla). Testi `tests/kanban-theme.test.ts`, joka kieltää uudet hex-värit fork-CSS:ssä tokens.css:n ulkopuolella. | Oletusteema näyttää täsmälleen samalta, fork-CSS:ssä 0 hex-väriä tokens.css:n ulkopuolella | M |
-| **T2** | Teema-asetus ja `data-theme` | `Settings.theme` (`'auto'` oletus), *You*-paneelin valitsin, inline-skripti `<head>`issä (index/lite/kanban/login/claim/join), `theme-color`, `storage`-tapahtuma, `currentTheme()`/`onThemeChange()`. Ensimmäinen lisäteema **Cartoon tumma** (vain tokenit). | Vaihto näkyy heti ilman välähdystä uudelleenlatauksessa, kanban-välilehti seuraa | M |
+| **T0** | Nunito oikeasti käyttöön | `@fontsource-variable/nunito` (tai vastaava), import kaikkiin entry-moduuleihin: `main.ts`, `kanban/main.ts`, `lite.ts`, `login.ts`, `claim.ts` ja `join.ts` (claim- ja join-sivut ovat omia Vite-entryjään, jotka jakavat vain `login.css`:n). Vaihtoehtoisesti `@font-face` jaettuun tyylitiedostoon, jonka kaikki sivut lataavat. Login-painikkeen `font: inherit`. Canvas-tekstit odottavat `document.fonts.ready` -lupausta ennen ensimmäistä `textTexture`a. | Kuvakaappauksissa (toimisto, `/lite`, `/kanban`, login, claim, join) Nunito Windowsissa ilman asennettua fonttia, ei verkkopyyntöjä Googlelle | S |
+| **T1** | Tokenien keruu CSS-muuttujiin | Uusi `src/client/theme/tokens.css` (primitiivit, semanttiset, aliakset vanhoille nimille). **Fork-CSS** (`kanban/*.css`, `officecss.ts`) kokonaan tokeneille. Upstream-CSS:n osalta **päätös** (ks. alla), toteutus T1b:ssä. Testi `tests/kanban-theme.test.ts`, joka kieltää uudet hex-värit fork-CSS:ssä tokens.css:n ulkopuolella. | Oletusteema näyttää täsmälleen samalta, fork-CSS:ssä 0 hex-väriä tokens.css:n ulkopuolella | M |
+| **T1b** | Upstream-CSS:n käsittely | **Tehdään ennen T2:ta**, koska tumma ja kontrastiteema jättäisivät muuten upstream-CSS:n kovakoodatuista väreistä "valkoisia saarekkeita". Toteutetaan T1:n päätöksen mukaan: (a) PR upstreamiin tai (b) forkin päällekirjoituskerros `theme/office.css` niille upstream-säännöille, joita teemat oikeasti muuttavat. | Kaikki ~240 upstream-hex-arvoa joko tokeneina tai tietoisesti jätettyinä (data-värit) | M–L |
+| **T2** | Teema-asetus ja `data-theme` | Edellyttää T1:n ja T1b:n. `Settings.theme` (`'auto'` oletus), *You*-paneelin valitsin, inline-skripti `<head>`issä (index/lite/kanban/login/claim/join), `theme-color`, `storage`-tapahtuma, `currentTheme()`/`onThemeChange()`. Ensimmäinen lisäteema **Cartoon tumma** (vain tokenit). | Vaihto näkyy heti ilman välähdystä uudelleenlatauksessa, kanban-välilehti seuraa | M |
 | **T3** | Korkea kontrasti ja saavutettavuus | `contrast`-teema, `prefers-contrast: more` → auto, `forced-colors`-säännöt (varjottomat reunat), fokusrenkaat, Atkinson Hyperlegible Next. | WCAG 1.4.3 / 1.4.11 tarkistettu kontrastityökalulla kaikille tokenipareille, Windowsin kontrastiteema testattu | S–M |
 | **T4** | Terminaali ja whiteboard teemasta | `termTheme()` korvaa `TERM_THEME`n (`terminal.ts`, `laptop.ts`, hakuosumien värit), lennossa vaihto (`options.theme` uutena objektina), Excalidraw `theme` + `--color-primary`. | Terminaalin ja läppärien värit vaihtuvat tummassa ja kontrastiteemassa | S |
-| **T5** | 3D-teemakoukut ilman jälkikäsittelyä | `Theme.world`: ääriviivan väri ja paksuus, toon-ramppi, taivaan, sumun ja valojen paletti `sky.ts`:n päälle, nimilappujen fontti ja väri (`textTexture`). | Tumma ja kontrastiteema näkyvät 3D:ssä, oletusteeman kuva ennallaan | M |
-| **T6** | Upstream-CSS:n tokenisointi | Toteutetaan T1:n päätöksen mukaan: (a) PR upstreamiin tai (b) forkin päällekirjoituskerros `theme/office.css` niille upstream-säännöille, joita teemat oikeasti muuttavat. | Kaikki ~240 upstream-hex-arvoa joko tokeneina tai tietoisesti jätettyinä (data-värit) | M–L |
-| **T7** | Jälkikäsittelyn infra (piikki + toteutus) | `EffectComposer` + oma RenderPass, jonka sisällä `OutlineEffect`, sekä `OutputPass`, MSAA render target, kädet mukana, *Effects off/low/full* -asetus, `SlowFrames` pudottaa efektit ennen `/lite`-tarjousta. Oletuksena off, joten nykyinen polku pysyy ennallaan. | Efektit pois → sama kuva ja sama ruutuaika kuin nyt; tyhjä passi päällä → ruutuaika mitattu ja kirjattu | M |
-| **T8** | Ensimmäinen "iso" tyyli: Terminal CRT | UI-tokenit ja tyylikohtainen CSS, VT323 / IBM Plex Mono, xterm-fosforiteema, CRT-ShaderPass, reduced-motion-tila. | Kuvakaappaukset (toimisto, modaali, kanban, terminaali), ruutuaika, ✕/Esc toimii | L |
-| **T9** | Pixel | UI, Pixelify Sans / Press Start 2P, `RenderPixelatedPass`, Pixelarticons HUDin näkyvimpiin ikoneihin (vain tässä teemassa). | Kuten T8. Taulujen ja kylttien luettavuus arvioitu | L |
-| **T10** | Paperi / sketch | Excalifont tarjoiltuna Excalidraw-paketista, käsin piirretyt reunat, Sobel- ja hatching-passi, whiteboard sulautuu. | Kuten T8 | L |
-| T11+ | Flat, sci-fi, glass (vain HUD), synthwave (kausiteema), Win95 | Yksi tehtävä per tyyli, kun T1–T7 ovat valmiit | | M–L |
+| **T5** | 3D-teemakoukut ilman jälkikäsittelyä | `Theme.world`: ääriviivan väri ja paksuus (uusi `OutlineEffect` teeman vaihtuessa), toon-ramppi, taivaan, sumun ja valojen paletti `sky.ts`:n päälle, nimilappujen fontti ja väri (`textTexture`). | Tumma ja kontrastiteema näkyvät 3D:ssä, oletusteeman kuva ennallaan | M |
+| **T6** | Jälkikäsittelyn infra (piikki + toteutus) | `EffectComposer` + oma RenderPass, jonka sisällä `OutlineEffect`, sekä `OutputPass`, MSAA render target, kädet mukana, *Effects off/low/full* -asetus, `SlowFrames` pudottaa efektit ennen `/lite`-tarjousta. Oletuksena off, joten nykyinen polku pysyy ennallaan. | Efektit pois → sama kuva ja sama ruutuaika kuin nyt; tyhjä passi päällä → ruutuaika mitattu ja kirjattu | M |
+| **T7** | Ensimmäinen "iso" tyyli: Terminal CRT | UI-tokenit ja tyylikohtainen CSS, VT323 / IBM Plex Mono, xterm-fosforiteema, CRT-ShaderPass, reduced-motion-tila. | Kuvakaappaukset (toimisto, modaali, kanban, terminaali), ruutuaika, ✕/Esc toimii | L |
+| **T8** | Pixel | UI, Pixelify Sans / Press Start 2P, `RenderPixelatedPass`, Pixelarticons HUDin näkyvimpiin ikoneihin (vain tässä teemassa). | Kuten T7. Taulujen ja kylttien luettavuus arvioitu | L |
+| **T9** | Paperi / sketch | Excalifont tarjoiltuna Excalidraw-paketista, käsin piirretyt reunat, Sobel- ja hatching-passi, whiteboard sulautuu. | Kuten T7 | L |
+| T10+ | Flat, sci-fi, glass (vain HUD), synthwave (kausiteema), Win95 | Yksi tehtävä per tyyli, kun T1–T6 ovat valmiit | | M–L |
 
 **T1:n päätös upstream-CSS:stä** on käyttäjän tehtävä. Vaihtoehdot:
 
@@ -683,12 +694,12 @@ Upstream-tiedostot, joihin teemoitus tarvitsee saumat (jokainen rivinä `docs/fo
 | Tiedosto | Missä | Mitä | Tehtävä |
 |---|---|---|---|
 | `src/client/index.html`, `lite.html`, `kanban.html`, `login.html`, `claim.html`, `join.html` | `<head>` | Inline-skripti `data-theme` + `theme-color` ennen CSS:ää; `<link>` `theme/tokens.css` | T2 |
-| `src/client/style.css` | `:root` | Joko ei mitään (vaihtoehdot a/b) tai `@import './theme/tokens.css'` ja `:root`-lohkon muuttujat aliaksiksi | T1/T6 |
+| `src/client/style.css` | `:root` | Joko ei mitään (vaihtoehdot a/b) tai `@import './theme/tokens.css'` ja `:root`-lohkon muuttujat aliaksiksi | T1/T1b |
 | `src/client/login.css` | `:root`, `button` | Omat muuttujat aliaksiksi, `font: inherit` | T0/T1 |
 | `src/client/public/offline.html` | `<style>` | Tokenit tai jätetään oletusteemaan (offline-sivu) | T1 |
 | `src/client/state.ts` | `Settings`, `loadSettings()` | `theme`-kenttä ja oletus (kuten `mouseSensitivity`) | T2 |
 | `src/client/ui/settings.ts` | You-paneeli, `sensRow`in vieressä | Teemavalitsin | T2 |
-| `src/client/main.ts` | renderer-lohko (`:138–143`), render-silmukka (`:5034`, `:5043`), `SlowFrames`-käsittely | Ääriviivan parametrit teemasta, composer, efektien pudotus | T5/T7 |
+| `src/client/main.ts` | renderer-lohko (`:138–143`), render-silmukka (`:5034`, `:5043`), `SlowFrames`-käsittely | `const effect` vaihdettavaksi (uusi `OutlineEffect` teeman arvoilla), composer, efektien pudotus | T5/T6 |
 | `src/client/world/toon.ts` | `gradientMap()`, `textTexture()` | Ramppi ja nimilappujen fontti ja väri teemasta | T5 |
 | `src/client/world/sky.ts` | paletti | Teeman paletti päivän ja sään päälle | T5 |
 | `src/client/ui/termtheme.ts`, `ui/terminal.ts`, `world/laptop.ts` | `TERM_THEME`-käytöt | `termTheme()` + `onThemeChange` | T4 |
