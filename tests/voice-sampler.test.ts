@@ -5,18 +5,21 @@ import assert from 'node:assert/strict';
 // to sample. Everyone else in the 3D office gets a connection whether or not they're in voice, and a
 // silent one mustn't keep it going.
 
-/** An audio track that can be muted, unmuted and ended, like a remote one. */
-class FakeTrack extends EventTarget {
+/** An audio track that can be muted, unmuted and ended, like a remote one (voice.ts assigns its handlers). */
+class FakeTrack {
   kind = 'audio';
   readyState: 'live' | 'ended' = 'live';
   muted = false;
+  onmute: (() => void) | null = null;
+  onunmute: (() => void) | null = null;
+  onended: (() => void) | null = null;
   set(muted: boolean) {
     this.muted = muted;
-    this.dispatchEvent(new Event(muted ? 'mute' : 'unmute'));
+    (muted ? this.onmute : this.onunmute)?.();
   }
   end() {
     this.readyState = 'ended';
-    this.dispatchEvent(new Event('ended'));
+    this.onended?.();
   }
 }
 
@@ -45,11 +48,11 @@ Object.assign(globalThis, {
 const { Voice } = await import('../src/client/voice.js');
 const { store } = await import('../src/client/state/index.js');
 
-/** A Voice with someone else in the office, who isn't in voice, and their connection. */
-function withPeer() {
+/** A Voice with someone else in the office, who isn't in voice unless `inVoice`, and their connection. */
+function withPeer(inVoice = false) {
   const voice = new Voice({ send() {} } as never);
   store.you = 'a';
-  store.peers.set('b', { id: 'b' } as never);
+  store.peers.set('b', { id: 'b', voice: inVoice, muted: false } as never);
   voice.syncPeers();
   const pc = (voice.conns.get('b') as unknown as { pc: FakePeerConnection }).pc;
   const sampling = () => (voice as unknown as { sampler: unknown }).sampler !== null;
@@ -64,7 +67,7 @@ test("someone in the office who isn't in voice doesn't start the sampler", (t) =
 });
 
 test('their voice arriving starts it, and muting, ending or leaving stops it again', (t) => {
-  const { voice, pc, sampling } = withPeer();
+  const { voice, pc, sampling } = withPeer(true);
   t.after(() => voice.reset());
   const track = new FakeTrack();
   pc.ontrack!({ track, streams: [{}] });
@@ -82,4 +85,27 @@ test('their voice arriving starts it, and muting, ending or leaving stops it aga
   store.peers.delete('b');
   voice.syncPeers();
   assert.equal(sampling(), false);
+});
+
+test('someone in voice who signals they are muted stops it, and unmuting starts it again', (t) => {
+  const { voice, pc, sampling } = withPeer(true);
+  t.after(() => voice.reset());
+  pc.ontrack!({ track: new FakeTrack(), streams: [{}] });
+  assert.equal(sampling(), true);
+  store.peers.set('b', { id: 'b', voice: true, muted: true } as never);
+  store.emit('peers');
+  assert.equal(sampling(), false);
+  store.peers.set('b', { id: 'b', voice: true, muted: false } as never);
+  store.emit('peers');
+  assert.equal(sampling(), true);
+});
+
+test("someone with an audio track who isn't in voice doesn't start it", (t) => {
+  const { voice, pc, sampling } = withPeer(false);
+  t.after(() => voice.reset());
+  pc.ontrack!({ track: new FakeTrack(), streams: [{}] });
+  assert.equal(sampling(), false);
+  store.peers.set('b', { id: 'b', voice: true, muted: false } as never);
+  store.emit('peers');
+  assert.equal(sampling(), true);
 });

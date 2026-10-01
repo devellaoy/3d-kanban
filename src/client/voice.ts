@@ -17,8 +17,13 @@ interface Conn {
   audioTrack?: MediaStreamTrack;
 }
 
-/** Whether a connection has a voice to sample: an analyser on an audio track that's live and not muted. */
-export function hearing(c: Pick<Conn, 'analyser' | 'audioTrack'>): boolean {
+/**
+ * Whether a connection has a voice to sample: an analyser on an audio track that's live and not muted,
+ * and (when we know the peer) they've said they're in voice and not muted (muting turns the track's
+ * `enabled` off, which the receiving side never sees as a mute).
+ */
+export function hearing(c: Pick<Conn, 'analyser' | 'audioTrack'>, peer?: { voice: boolean; muted: boolean }): boolean {
+  if (peer && (!peer.voice || peer.muted)) return false;
   return !!c.analyser && !!c.audioTrack && c.audioTrack.readyState === 'live' && !c.audioTrack.muted;
 }
 
@@ -45,13 +50,16 @@ export class Voice {
   /** Samples the voice levels, running only while there's a voice to sample: yours, or one coming in. */
   private sampler: ReturnType<typeof setInterval> | null = null;
 
-  constructor(private net: Net) {}
+  constructor(private net: Net) {
+    // Someone joins voice, or mutes or unmutes: start or stop sampling.
+    store.on('peers', () => this.syncSampler());
+  }
 
   /** Starts or stops sampling to match whether there's anything to sample. Everyone else in the 3D
    * office is connected whether or not they're in voice, so a connection alone isn't enough. */
   private syncSampler() {
-    let any = !!this.localAnalyser;
-    for (const c of this.conns.values()) any ||= hearing(c);
+    let any = !!this.localAnalyser && !this.muted;
+    for (const [id, c] of this.conns) any ||= hearing(c, store.peers.get(id));
     if (any) {
       // Often enough for mouths to keep up with syllables.
       this.sampler ??= setInterval(() => this.sampleLevels(), 40);
@@ -161,6 +169,7 @@ export class Voice {
     if (muted === this.muted) return;
     this.muted = muted;
     this.mic.getAudioTracks().forEach((t) => (t.enabled = !muted));
+    this.syncSampler();
     this.changed();
   }
 
@@ -293,7 +302,7 @@ export class Voice {
         c.audioStream = stream;
         c.audioTrack = track;
         // They join, mute or leave voice: start or stop sampling.
-        for (const type of ['mute', 'unmute', 'ended']) track.addEventListener(type, () => this.syncSampler());
+        track.onmute = track.onunmute = track.onended = () => this.syncSampler();
         audio.srcObject = stream;
         void audio.play().catch(() => {
           // Autoplay blocked until the user interacts; retry on the next click.
@@ -346,6 +355,6 @@ export class Voice {
       return Math.sqrt(s / buf.length);
     };
     this.localLevel = this.localAnalyser && !this.muted ? rms(this.localAnalyser) : 0;
-    for (const c of this.conns.values()) c.level = c.analyser ? rms(c.analyser) : 0;
+    for (const [id, c] of this.conns) c.level = c.analyser && hearing(c, store.peers.get(id)) ? rms(c.analyser) : 0;
   }
 }
