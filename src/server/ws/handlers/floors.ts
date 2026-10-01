@@ -3,6 +3,7 @@
 import type { FloorClientMsg } from '../../../shared/protocol.js';
 import { ROOF } from '../../../shared/rooftop.js';
 import { arrivalSpot, str } from '../../office/input.js';
+import { addFolder } from '../../office/addfloor.js';
 import type { HandlerMap, ViewPieces } from './types.js';
 
 export const projectView: ViewPieces['project'] = (_ctx, floor) => floor?.project ?? null;
@@ -26,6 +27,7 @@ export const floorHandlers = {
   },
   'floor.add'(ctx, c, msg) {
     const who = c.peer.name;
+    if (typeof msg.dir === 'string') return addFolder(ctx, c, msg.dir);
     const repo = str(msg.repo, 200);
     void ctx.building
       .add(repo, who, (def) => {

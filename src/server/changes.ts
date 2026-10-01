@@ -33,6 +33,8 @@ export interface ChangesTarget {
    * that repository's open pull requests are, and how to refresh its boards.
    */
   baseBranch?: string | null;
+  /** Set when the folder isn't a git repository: there's nothing to diff, and git never runs there. */
+  noGit?: string;
   openPull?(branch: string): { number: number; url: string } | undefined;
   refreshGitHub?(): void;
 }
@@ -394,7 +396,7 @@ export class Changes {
     w.polling = true;
     try {
       const t = this.target(w.workerId, w.repo);
-      const state = t ? await this.compute(w, t) : errorState(w, '', 'No such worker');
+      const state = t?.noGit ? errorState(w, t.cwd, t.noGit) : t ? await this.compute(w, t) : errorState(w, '', 'No such worker');
       if (w.busy) state.busy = w.busy;
       const key = JSON.stringify({ ...state, at: 0 });
       if (key !== w.lastKey) {

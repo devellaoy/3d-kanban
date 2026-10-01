@@ -125,6 +125,8 @@ export class GitHub {
     readonly nameWithOwner?: string,
     /** Only its pull requests are fetched (a project's other repository has no issues board of its own). */
     private pullsOnly = false,
+    /** Why there's nothing to ask GitHub (the folder isn't a git repository): both boards just say so, and gh never runs. */
+    private off?: string,
   ) {}
 
   /** The repository its gh calls name: the given one, else the checkout's origin, never gh's pick among the remotes (see ghrepo.ts). */
@@ -142,6 +144,14 @@ export class GitHub {
   }
 
   async refresh() {
+    if (this.off) {
+      if (this.pulls.error) return;
+      this.issues = { items: [], fetchedAt: Date.now(), loading: false, error: this.off };
+      this.pulls = { items: [], fetchedAt: Date.now(), loading: false, error: this.off };
+      this.onIssues(this.issues);
+      this.onPulls(this.pulls);
+      return;
+    }
     await Promise.all([this.pullsOnly ? undefined : this.refreshIssues(), this.refreshPulls()]);
   }
 

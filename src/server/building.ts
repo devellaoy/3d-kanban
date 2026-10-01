@@ -1,5 +1,5 @@
 import { execFile, execFileSync } from 'node:child_process';
-import { accessSync, constants, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { accessSync, constants, existsSync, mkdirSync, readFileSync, readdirSync, realpathSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { FLOOR_PALETTES, MAX_FLOORS, normalizeRepo, sameRepo } from '../shared/floors.js';
@@ -127,14 +127,15 @@ export class Building {
    */
   ensureLocal(dir: string, by: string): FloorDef | undefined {
     const abs = path.resolve(dir);
-    const known = this.defs.find((d) => path.resolve(d.dir) === abs);
+    const real = realOf(abs);
+    const known = this.defs.find((d) => realOf(d.dir) === real);
     this.local = { dir: abs, repo: known?.repo ?? originRepo(abs) };
     if (known) {
       this.localId = known.id;
       if (this.localOff) this.setLocalOff(undefined);
       return known;
     }
-    if (this.localOff && path.resolve(this.localOff.dir) === abs) return undefined;
+    if (this.localOff && realOf(this.localOff.dir) === real) return undefined;
     // Named after its folder, as the office always called it.
     const def = this.newDef(path.basename(abs), this.local.repo, abs, by);
     this.defs.unshift(def);
@@ -214,6 +215,68 @@ export class Building {
     this.defs.push(def);
     this.save();
     return def;
+  }
+
+  /**
+   * Makes an existing folder on the office's machine a floor as it is: nothing is cloned, and git is
+   * optional (a checkout's origin on GitHub is picked up, a plain folder just has no repository).
+   * `raw` is the typed path ('~' is the home folder). Returns the floor, or why it can't be one.
+   */
+  addDir(raw: string, by: string): FloorDef | string {
+    const text = raw.trim();
+    if (!text) return "Type the folder's full path, like ~/work/notes";
+    if (text.length > 1024) return 'That path is too long';
+    const typed = untildify(text);
+    if (!path.isAbsolute(typed)) return "Use the folder's full path, like /Users/me/work/notes or ~/work/notes";
+    const dir = path.resolve(typed);
+    try {
+      if (!statSync(dir).isDirectory()) return `${tildify(dir)} isn't a folder`;
+    } catch {
+      return `${tildify(dir)} doesn't exist on the office's machine`;
+    }
+    const real = realOf(dir);
+    const shown = tildify(dir);
+    if (real === realOf(path.parse(dir).root) || real === realOf(os.homedir())) return `Pick a project's own folder, not ${shown}`;
+    // The office's data folder (.agent-office), the office home it sits in, and anything holding them;
+    // except the checkout the office was started in, which holds its own data folder.
+    const startedHere = [this.local?.dir, this.localOff?.dir].some((d) => d && realOf(d) === real);
+    if (!startedHere && within(realOf(this.dataDir), real)) return `${shown} is the office's own folder (or holds it) — pick a project's folder`;
+    if (within(realOf(this.projectsDir), real)) return `${shown} is where the office clones projects (or holds that folder) — pick a project's own folder`;
+    for (const d of [...this.defs, ...this.cloning.values()]) {
+      const there = realOf(d.dir);
+      if (real === there) return `${shown} is already the ${d.name} floor`;
+      if (within(real, there)) return `${shown} is inside ${d.name}'s checkout`;
+      if (within(there, real)) return `${shown} contains ${d.name}'s checkout`;
+    }
+    if (this.defs.length + this.cloning.size >= MAX_FLOORS) return `The building is full (${MAX_FLOORS} floors)`;
+    try {
+      accessSync(dir, constants.W_OK);
+    } catch {
+      return `The office can't write in ${shown}`;
+    }
+    // Only a folder with a .git of its own is a checkout: one nested in some other repository isn't.
+    const repo = existsSync(path.join(dir, '.git')) ? originRepo(dir) : undefined;
+    if (repo) {
+      const has = this.defs.find((d) => sameRepo(d.repo, repo));
+      if (has) return `${has.repo ?? repo} already has a floor (${has.name})`;
+      if (this.cloning.has(repo.toLowerCase())) return `${repo} is being cloned right now`;
+    }
+    const def = this.newDef(path.basename(dir), repo, dir, by);
+    // The checkout the office was started in, taken off before: it moves back in.
+    if (this.localOff && realOf(this.localOff.dir) === real) {
+      this.localId = def.id;
+      this.setLocalOff(undefined);
+    }
+    this.defs.push(def);
+    this.save();
+    return def;
+  }
+
+  /** Drops a floor that was just added but couldn't be opened. Unlike remove, it isn't remembered as taken off. */
+  forget(id: string): void {
+    this.defs = this.defs.filter((d) => d.id !== id);
+    if (this.localId === id) this.localId = undefined;
+    this.save();
   }
 
   /** Repositories the office's `gh` login can clone, most recently pushed first. */
@@ -334,6 +397,16 @@ export class Building {
 export function tildify(p: string): string {
   const home = os.homedir();
   return p === home || p.startsWith(home + path.sep) ? `~${p.slice(home.length)}` : p;
+}
+
+/** A path with symlinks resolved, so two ways to name a folder compare equal; the path itself when it can't be resolved. */
+function realOf(p: string): string {
+  try {
+    // The native one gives the name's case as it is on disk, so ~/Notes and ~/notes are one folder on a case-insensitive disk.
+    return realpathSync.native(p);
+  } catch {
+    return path.resolve(p);
+  }
 }
 
 function untildify(p: string): string {

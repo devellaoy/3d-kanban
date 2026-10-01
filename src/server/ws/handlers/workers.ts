@@ -34,6 +34,7 @@ export const workerHandlers = {
     for (const id of Array.isArray(msg.repos) ? [...new Set(msg.repos.slice(0, MAX_REPOS + 1).map((x) => str(x, 64)))] : []) {
       const other = ctx.floors.get(id);
       if (!other || other === floor) return ctx.warn(c, other ? "The worker's own floor's project is already in its workspace" : 'That project is no longer in the building');
+      if (!other.project.branch) return ctx.warn(c, `${other.def.name} isn't a git repository, so a worker can't take a worktree of it`);
       repos.push({ floor: other.id, name: other.def.name, repo: other.def.repo, dir: other.dir });
     }
     // A shell is theirs too: `claude auth login` or `gh auth login` typed there signs them in.

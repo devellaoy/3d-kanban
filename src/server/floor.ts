@@ -38,6 +38,7 @@ import { isPrimaryIssue, parseGhKey } from '../shared/kanban/issuecard.js';
 // What a worker is sent home with (see sendHome).
 import type { DepartureIntent } from '../shared/kanban/types.js';
 import { sameRepo } from '../shared/floors.js';
+import { NOT_GIT, isGitFloor } from './floor-git.js';
 
 type ToastLevel = 'info' | 'warn' | 'error';
 
@@ -81,6 +82,8 @@ export interface FloorContext {
   lent(floor: Floor): boolean;
   /** Whether the building's map locks up workers sent home (see MapPlan.sendHome), instead of letting them go. */
   locksUp(): boolean;
+  /** Whether this floor is the checkout the office was started in. */
+  isLocal(id: string): boolean;
 }
 
 /** The open pull request on a floor's board whose head is `branch`. */
@@ -100,9 +103,10 @@ const LANDED_DELAY_MS = 1500;
 const IDLE_REFRESH_MS = 10 * 60_000;
 const REFRESH_MS = 90_000;
 
-/** What `git` says about a checkout: its name, branch and origin for the top bar. */
-export function projectInfo(dir: string, name: string, agentCmd: string, agentArgs: string[]): ProjectInfo {
+/** What `git` says about a checkout: its name, branch and origin for the top bar. A folder that isn't a git floor has neither. */
+export function projectInfo(dir: string, name: string, agentCmd: string, agentArgs: string[], isGit = true): ProjectInfo {
   const git = (args: string[]) => {
+    if (!isGit) return undefined;
     try {
       return execFileSync('git', args, { cwd: dir, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim();
     } catch {
@@ -128,6 +132,8 @@ export class Floor {
   readonly id: string;
   readonly dir: string;
   readonly project: ProjectInfo;
+  /** See isGitFloor: a plain folder runs no git and asks GitHub nothing. */
+  private readonly git: boolean;
   readonly workers: WorkerManager;
   readonly github: GitHub;
   readonly queue: TaskQueue;
@@ -175,8 +181,9 @@ export class Floor {
     this.dir = def.dir;
     const dataDir = path.join(def.dir, '.agent-office');
     mkdirSync(dataDir, { recursive: true, mode: 0o700 });
-    excludeFromGit(def.dir);
-    this.project = projectInfo(def.dir, def.name, ctx.agentCmd, ctx.agentArgs);
+    this.git = isGitFloor(def.dir, ctx.isLocal(def.id));
+    if (this.git) excludeFromGit(def.dir);
+    this.project = projectInfo(def.dir, def.name, ctx.agentCmd, ctx.agentArgs, this.git);
     this.docs = new Docs(def.dir);
     // Before the workers and the dog: the back office's desks are only there once it's built.
     this.plan = new FloorPlanStore(dataDir);
@@ -240,6 +247,9 @@ export class Floor {
         if (state.loading || state.error) return;
         this.boardPulled();
       },
+      undefined,
+      false,
+      this.git ? undefined : NOT_GIT,
     );
     // The 📋 task queue seats workers by itself: it watches the workers and links PRs from GitHub.
     this.queue = new TaskQueue(dataDir, this.workers, !!this.project.branch, {
@@ -300,7 +310,7 @@ export class Floor {
       (workerId, repo) => {
         const w = this.workers.get(workerId);
         if (!w) return undefined;
-        if (!repo) return { name: w.name, cwd: w.worktree ? path.join(def.dir, w.worktree.path) : def.dir, rel: w.worktree?.path ?? '', worktreeBase: w.worktree?.base };
+        if (!repo) return { name: w.name, cwd: w.worktree ? path.join(def.dir, w.worktree.path) : def.dir, rel: w.worktree?.path ?? '', worktreeBase: w.worktree?.base, ...(this.git ? {} : { noGit: "This folder isn't a git repository" }) };
         // One of the other floors' repositories it works in: diffed against, and PRs opened against, that floor's branch.
         const r = w.repos?.find((x) => x.floor === repo);
         if (!r) return undefined;
@@ -402,7 +412,7 @@ export class Floor {
       fetchedAt: Math.max(own.fetchedAt, ...states.map((b) => b.pulls.fetchedAt)),
       loading: own.loading || states.some((b) => b.pulls.loading),
       // The floor's own board lists the repository GitHub.target names (FloorDef.repo, else the origin); the others are projectRepos'.
-      repos: uniqueRepos([this.def.repo ?? checkoutRepo(this.dir), ...projectRepos(this.def).filter((r) => !r.primary).map((r) => r.remote)]),
+      repos: uniqueRepos([this.def.repo ?? (this.git ? checkoutRepo(this.dir) : undefined), ...projectRepos(this.def).filter((r) => !r.primary).map((r) => r.remote)]),
       ...(errors.length ? { error: errors.join(' · ') } : {}),
     };
   }
