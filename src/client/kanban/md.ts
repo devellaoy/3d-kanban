@@ -4,12 +4,34 @@
 import { h } from '../ui/dom';
 import { markdown } from '../ui/markdown';
 import { splitTaskRefs } from './attach';
-import { deepLink } from './model';
+import { deepLink, isAppPage, kanbanTaskOf } from './model';
+
+/** Links to the office's own pages open in this window: a second tab would start a second character. */
+export function sameWindowAppLinks(root: HTMLElement): HTMLElement {
+  for (const a of root.querySelectorAll<HTMLAnchorElement>('a[href]')) {
+    if (!isAppPage(a.getAttribute('href') || '', location.href)) continue;
+    a.removeAttribute('target');
+    a.removeAttribute('rel');
+  }
+  return root;
+}
 
 /** Rendered markdown, its #123 references opening the task in the detail panel. */
 export function renderMarkdown(src: string, openTask: (id: number) => void, empty = 'No description.'): HTMLElement {
   if (!src.trim()) return h('div.md', {}, h('p.none', {}, empty));
-  const el = markdown(src);
+  const el = sameWindowAppLinks(markdown(src));
+  // On the kanban page a link to a task opens it in the detail panel, as #123 does: a reload would lose a draft.
+  if (location.pathname.startsWith('/kanban')) {
+    for (const a of el.querySelectorAll<HTMLAnchorElement>('a[href]')) {
+      const task = kanbanTaskOf(a.getAttribute('href') || '', location.href);
+      if (task === null) continue;
+      a.addEventListener('click', (e) => {
+        if (e.metaKey || e.ctrlKey || e.shiftKey) return;
+        e.preventDefault();
+        openTask(task);
+      });
+    }
+  }
   const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT, {
     acceptNode: (n) => (n.parentElement?.closest('a, code, pre') ? NodeFilter.FILTER_REJECT : NodeFilter.FILTER_ACCEPT),
   });
