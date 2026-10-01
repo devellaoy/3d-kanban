@@ -126,7 +126,7 @@ export function issueActions(api: KanbanApi, project: string, first: ActionIssue
     const paintWho = () => {
       who.textContent = issue.assignee ? `👤 ${issue.assignee}` : 'Unassigned';
       const me = site ? pinnedMe(site) : undefined;
-      mine.title = github ? 'Assign it to the GitHub account the office acts as for you' : me ? `Assign it to ${me.name} (pinned as you on ${site})` : `Pin yourself first: 📌 on your name in the search`;
+      mine.title = github ? 'Assign it to your own GitHub sign-in' : me ? `Assign it to ${me.name} (pinned as you on ${site})` : `Pin yourself first: 📌 on your name in the search`;
       none.disabled = !issue.assignee;
     };
     const assign = (to: { me: true } | { id: string } | null, button: HTMLButtonElement | null, label: string) =>
