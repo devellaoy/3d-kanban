@@ -6,7 +6,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import type { FloorDef } from '../src/server/building.js';
 import type { KanbanContext } from '../src/server/kanban/registry.js';
-import { openFor, openInVsCode, taskFolders, workerFolders, writeWorkspace, type VsCodeDeps } from '../src/server/kanban/vscode.js';
+import { openFor, openInVsCode, taskFolders, winCmdLine, workerFolders, writeWorkspace, type VsCodeDeps } from '../src/server/kanban/vscode.js';
 import type { KanbanTask, ProjectRepo, TaskWorkspace } from '../src/shared/kanban/types.js';
 import type { WorkerInfo } from '../src/shared/protocol.js';
 
@@ -38,11 +38,12 @@ function setup(t: Ctx, over: { repos?: (root: string) => ProjectRepo[] } = {}) {
   const ctx = {
     filesDir: path.join(root, 'files'),
     project: (id: string) => (id === 'web' ? def : undefined),
-    repo: { getTask: (id: number) => tasks.get(id) },
+    repo: { getTask: (id: number) => tasks.get(id), repoBranches: (id: number) => branches.get(id) ?? {} },
   } as unknown as KanbanContext;
   const tasks = new Map<number, KanbanTask>();
+  const branches = new Map<number, Record<string, string>>();
   const task = (over: Partial<KanbanTask> = {}) => ({ id: 7, project: 'web', ...over }) as KanbanTask;
-  return { root, dir, def, ctx, tasks, task };
+  return { root, dir, def, ctx, tasks, branches, task };
 }
 
 const apiRepo = (root: string): ProjectRepo => ({ id: 'api', name: 'Api', kind: 'git', dir: checkout(path.join(root, 'api')), primary: false });
@@ -86,11 +87,26 @@ test('a removed worktree, or a plain folder that is no worktree of the repositor
 });
 
 test('a renamed branch in the task worktree still opens the worktree', async (t) => {
-  const { dir, ctx, task } = setup(t);
+  const { dir, ctx, task, branches } = setup(t);
   const wt = worktree(dir, path.join(dir, '.agent-office', 'worktrees', 'r'), 'office/x');
   git(wt, 'branch', '-m', 'gh-1/x');
-  const folders = await taskFolders(ctx, task({ workspace: wsOf({ path: '.agent-office/worktrees/r', branch: 'office/x' }) }));
-  assert.deepEqual(folders, [{ name: 'Shop', dir: wt }]);
+  const workspace = wsOf({ path: '.agent-office/worktrees/r', branch: 'office/x' });
+  // Until the office has recorded the rename it can't tell it's the task's.
+  assert.deepEqual(await taskFolders(ctx, task({ workspace })), [{ name: 'Shop', dir }]);
+  // As Orchestrator.syncBranch records it: task.branch, and the branch of the repository.
+  assert.deepEqual(await taskFolders(ctx, task({ workspace, branch: 'gh-1/x' })), [{ name: 'Shop', dir: wt }]);
+  branches.set(7, { web: 'gh-1/x' });
+  assert.deepEqual(await taskFolders(ctx, task({ workspace })), [{ name: 'Shop', dir: wt }]);
+});
+
+test("a worktree made later at the path of the task's removed one is not the task's", async (t) => {
+  const { dir, ctx, task } = setup(t);
+  const at = path.join(dir, '.agent-office', 'worktrees', 'same');
+  worktree(dir, at, 'office/a');
+  git(dir, 'worktree', 'remove', '--force', at);
+  worktree(dir, at, 'office/b-unknown');
+  const folders = await taskFolders(ctx, task({ workspace: wsOf({ path: '.agent-office/worktrees/same', branch: 'office/a' }) }));
+  assert.deepEqual(folders, [{ name: 'Shop', dir }]);
 });
 
 test('a task without a workspace opens the checkouts of its repositories, and a folder repository too', async (t) => {
@@ -157,7 +173,7 @@ test('writeWorkspace writes the workspace file, replacing the last one', (t) => 
 
 /** Deps that record their commands; `fail` names the commands that fail, `found` what `code` resolves to. */
 function deps(platform: NodeJS.Platform, over: { fail?: string[]; found?: string | null; env?: NodeJS.ProcessEnv } = {}) {
-  const calls: { cmd: string; args: string[]; timeout?: number; env?: Record<string, string> }[] = [];
+  const calls: { cmd: string; args: string[]; timeout?: number; env?: Record<string, string>; verbatim?: true }[] = [];
   const d: VsCodeDeps = {
     run: async (cmd, args, _cwd, timeout, env) => {
       calls.push({ cmd, args, timeout, env });
@@ -166,6 +182,10 @@ function deps(platform: NodeJS.Platform, over: { fail?: string[]; found?: string
     },
     resolveCommand: () => (over.found === undefined ? '/usr/bin/code' : over.found),
     platform,
+    runVerbatim: async (cmd, args, _cwd, timeout, env) => {
+      calls.push({ cmd, args, timeout, env, verbatim: true });
+      return '';
+    },
     env: over.env ?? { PATH: '/bin', NODE_OPTIONS: '--x', ELECTRON_RUN_AS_NODE: '1', AIKANBAN_TASK_ID: '3', CLAUDE_CODE_X: '1', ANTHROPIC_API_KEY: 'k', AGENT_OFFICE_HOOK_TOKEN: 't', HOME: '/h' },
   };
   return { d, calls };
@@ -205,4 +225,20 @@ test('several folders open as a workspace file, one as itself', async (t) => {
   assert.equal(target, path.join(root, 'files', 'workspaces', 'task-web-7.code-workspace'));
   assert.deepEqual(two.calls[0].args, [target]);
   await assert.rejects(openFor(ctx, [], 'task #7', 'k', two.d), /no folder/);
+});
+
+test('winCmdLine escapes what cmd.exe would read as syntax', () => {
+  assert.deepEqual(winCmdLine('C:\\Users\\me\\code.cmd', ['C:\\my repos\\a']), ['/d', '/s', '/c', '"C:\\Users\\me\\code.cmd ^^^"C:\\my^^^ repos\\a^^^""']);
+  const amp = winCmdLine('code.cmd', ['C:\\repos\\a&b'])[3];
+  assert.equal(amp, '"code.cmd ^^^"C:\\repos\\a^^^&b^^^""');
+  const pct = winCmdLine('code.cmd', ['C:\\100%\\a^b'])[3];
+  assert.equal(pct, '"code.cmd ^^^"C:\\100^^^%\\a^^^^b^^^""');
+  for (const [line, ch] of [[amp, '&'], [pct, '%']]) for (let i = 0; i < line.length; i++) if (line[i] === ch) assert.equal(line[i - 1], '^');
+});
+
+test('on Windows a .cmd shim runs through cmd.exe with the escaped line, verbatim', async () => {
+  const { d, calls } = deps('win32', { found: 'C:\\bin\\code.cmd', env: { ComSpec: 'C:\\Windows\\cmd.exe', PATH: 'p' } });
+  await openInVsCode('C:\\a&b', d);
+  assert.equal(calls.length, 1);
+  assert.deepEqual(calls[0], { cmd: 'C:\\Windows\\cmd.exe', args: winCmdLine('C:\\bin\\code.cmd', ['C:\\a&b']), timeout: 15_000, env: { ComSpec: 'C:\\Windows\\cmd.exe', PATH: 'p' }, verbatim: true });
 });

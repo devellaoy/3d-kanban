@@ -2,6 +2,7 @@
 // several as a generated .code-workspace file kept under the kanban's files. The launch is a
 // command on the office's own machine, so the browser only ever names a task or a worker, never a path.
 
+import { execFile } from 'node:child_process';
 import { existsSync, mkdirSync, realpathSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import path from 'node:path';
@@ -24,9 +25,39 @@ export interface VsCodeDeps {
   resolveCommand: typeof resolveCommand;
   platform: NodeJS.Platform;
   env: NodeJS.ProcessEnv;
+  /** Runs a command with its arguments passed to Windows as they are (for cmd.exe's command line). */
+  runVerbatim: (cmd: string, args: string[], cwd: string, timeout: number, env: Record<string, string>) => Promise<string>;
 }
 
-const defaultDeps: VsCodeDeps = { run, resolveCommand, platform: process.platform, env: process.env };
+function runVerbatim(cmd: string, args: string[], cwd: string, timeout: number, env: Record<string, string>): Promise<string> {
+  return new Promise((resolve, reject) => {
+    execFile(cmd, args, { cwd, encoding: 'utf8', timeout, env, windowsVerbatimArguments: true }, (err, stdout, stderr) => {
+      if (err) reject(new Error((stderr || err.message).trim().split('\n').filter(Boolean).slice(-2).join(' ') || `${cmd} failed`));
+      else resolve(stdout.trim());
+    });
+  });
+}
+
+const defaultDeps: VsCodeDeps = { run, resolveCommand, platform: process.platform, env: process.env, runVerbatim };
+
+// cmd.exe reads its command line itself, so what it treats as syntax is escaped with ^ as cross-spawn
+// does (lib/util/escape.js, whose algorithm this follows); the target goes through the code.cmd batch
+// shim too, which parses it a second time (doubleEscape).
+const META = /([()\][%!^"`<>&|;, *?])/g;
+const escapeCommand = (cmd: string) => cmd.replace(META, '^$1');
+function escapeArg(arg: string, doubleEscape: boolean): string {
+  let out = `${arg}`;
+  out = out.replace(/(?=(\\+?)?)\1"/g, '$1$1\\"');
+  out = out.replace(/(?=(\\+?)?)\1$/, '$1$1');
+  out = `"${out}"`;
+  out = out.replace(META, '^$1');
+  return doubleEscape ? out.replace(META, '^$1') : out;
+}
+
+/** The arguments to cmd.exe that run the batch file `command` with `args`, safe against cmd's parsing of & % ^ and the like. */
+export function winCmdLine(command: string, args: string[]): string[] {
+  return ['/d', '/s', '/c', `"${[escapeCommand(command), ...args.map((a) => escapeArg(a, true))].join(' ')}"`];
+}
 
 const TIMEOUT = 15_000;
 
@@ -42,39 +73,46 @@ function unique(folders: VsFolder[]): VsFolder[] {
 }
 
 /**
- * Whether `dir` is there and is a worktree of the repository at `repo` (the branch it is on doesn't
- * matter: agents rename theirs). A folder that was deleted, or one that is only a plain directory, isn't.
+ * Whether the folder of a task's workspace entry is still the task's: it is there, it is a worktree
+ * of the repository at `repo` (when that is known), and the branch it is on is one the task has
+ * for it (`owned`: as cut, as recorded after a rename). The branch's name may have changed, but a
+ * worktree somebody else made at the same path, on another branch, is not the task's.
  */
-async function isWorktreeOf(dir: string, repo: string): Promise<boolean> {
+async function ownsWorktree(dir: string, repo: string | undefined, owned: Set<string>): Promise<boolean> {
   if (!existsSync(dir)) return false;
   try {
-    const listed = await run('git', ['-C', repo, 'worktree', 'list', '--porcelain'], repo, 10_000);
-    const want = realpathSync(dir);
-    return listed
-      .split('\n')
-      .filter((l) => l.startsWith('worktree '))
-      .some((l) => {
-        try {
-          return realpathSync(l.slice('worktree '.length)) === want;
-        } catch {
-          return false;
-        }
-      });
+    if (repo) {
+      const listed = await run('git', ['-C', repo, 'worktree', 'list', '--porcelain'], repo, 10_000);
+      const want = realpathSync(dir);
+      const inList = listed
+        .split('\n')
+        .filter((l) => l.startsWith('worktree '))
+        .some((l) => {
+          try {
+            return realpathSync(l.slice('worktree '.length)) === want;
+          } catch {
+            return false;
+          }
+        });
+      if (!inList) return false;
+    }
+    return owned.has(await run('git', ['-C', dir, 'rev-parse', '--abbrev-ref', 'HEAD'], dir, 10_000));
   } catch {
     return false;
   }
 }
 
-/** The folders a task works in, primary first: its worktrees (the repositories' checkouts when those are gone) and its plain folders. */
+/** The folders a task works in, primary first: its worktrees (the repositories' checkouts when those are gone or aren't the task's any more) and its plain folders. */
 export async function taskFolders(ctx: KanbanContext, task: KanbanTask): Promise<VsFolder[]> {
   const def = ctx.project(task.project);
   if (!def) throw new Error(`There's no project ${task.project}`);
   const repos = taskRepos(def, task);
   if (!task.workspace) return unique(repos.map((r) => ({ name: r.name, dir: r.dir })));
   const out: VsFolder[] = [];
+  const recorded = ctx.repo.repoBranches(task.id);
   for (const w of workspaceDirs(def.dir, def, task.workspace)) {
-    const usable = w.repo ? await isWorktreeOf(w.dir, w.repo.dir) : existsSync(w.dir);
-    const dir = usable ? w.dir : w.repo?.dir;
+    const owned = new Set([w.branch, w.repo ? recorded[w.repo.id] : undefined, !w.repo || w.repo.primary ? task.branch : undefined].filter((b): b is string => !!b));
+    const dir = (await ownsWorktree(w.dir, w.repo?.dir, owned)) ? w.dir : w.repo?.dir;
     if (dir) out.push({ name: w.repo?.name ?? path.basename(dir), dir });
   }
   for (const r of repos) if (!r.primary && r.kind === 'folder') out.push({ name: r.name, dir: r.dir });
@@ -139,7 +177,7 @@ export async function openInVsCode(target: string, deps: VsCodeDeps = defaultDep
     // A .cmd shim (Windows) can only be started through cmd.
     const cmd = deps.platform === 'win32' && /\.(cmd|bat)$/i.test(code);
     try {
-      await (cmd ? deps.run(deps.env.ComSpec || 'cmd.exe', ['/c', code, target], cwd, TIMEOUT, scrubbed(deps.env)) : deps.run(code, [target], cwd, TIMEOUT, scrubbed(deps.env)));
+      await (cmd ? deps.runVerbatim(deps.env.ComSpec || 'cmd.exe', winCmdLine(code, [target]), cwd, TIMEOUT, scrubbed(deps.env)) : deps.run(code, [target], cwd, TIMEOUT, scrubbed(deps.env)));
       return;
     } catch (err) {
       failure = (err as Error).message;
