@@ -415,13 +415,22 @@ For a signed-in browser (the session is checked by server.ts, and non-GET reques
   Without `task` it stays unattached until `task.create` / `comment.add` names its id.
 - `GET /api/kanban/attachments/<id>`: serves the file with its type, `nosniff` and a sandboxing CSP.
   PNG, JPEG, GIF, WebP, AVIF and BMP are served inline; anything else (SVG and HTML included) as a download.
-- `GET /api/kanban/tasks/<id>/changes[?repo=<repoId>]`, `…/commits?repo=`, `…/commit?repo=&hash=`
+- `GET /api/kanban/tasks/<id>/changes[?repo=<repoId>]`, `…/commits?repo=`, `…/commit?repo=&hash=`, `…/uncommitted?repo=`
   (integrations/changes): the task's repositories; one repository's files and unified diff against its base
   (cut at 2 MB, `truncated`) plus the worktree's uncommitted work (`workingTree`, null without a workspace);
-  `base..branch` commits; one commit's diff (`hash` must match `^[0-9a-f]{7,40}$` and be in `base..branch`).
+  `base..branch` commits; one commit's diff (`hash` must match `^[0-9a-f]{7,40}$` and be in `base..branch`);
+  how many files the worktree has uncommitted against HEAD (`git status` only, null without a workspace).
   Read from the task's worktrees, else its branch in the project's checkout (`origin/<base>...<branch>`, else
   the local base). git runs with argument lists, no shell, timeouts, `GIT_OPTIONAL_LOCKS=0`; a `git fetch` of
-  the checkout runs in the background at most every 5 minutes and is never waited for.
+  the checkout runs in the background at most every 5 minutes and is never waited for. The list carries the
+  task's `project` and each repository's `primary` flag (primary first), so the browser can match a repository
+  to upstream's floor id (`<project>~<repoId>`, none for the primary; `shared/kanban/repofloor.ts`). The task's
+  Changes view (`client/kanban/changesview.ts`: the task view's Changes tab, and the window C opens at a task
+  worker) reads these, and upstream's live `changes.*` WebSocket messages instead for All changes while the
+  worker is on the page's floor. Live, what's uncommitted is the `uncommitted` count (the live list's flags
+  when the worker works in the shared project folder, or until the count is read again after an update);
+  Per commit, and Uncommitted's diff (the worktree against HEAD) while it is open, are read again a moment
+  after the live state changes (the commits only when its `head`, count or subject moved: an amend too).
 - `GET /api/kanban/tasks/<id>/reports`, `…/reports/<name>[?download=1]` (integrations/reports): the files under
   `kanban/reports/task-<id>/` (no dot files, no links); a name is only looked up in that listing, served as
   `text/markdown` or `text/plain` with `nosniff` and a sandboxing CSP, at most 2 MB.

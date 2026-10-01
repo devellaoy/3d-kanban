@@ -40,6 +40,14 @@ test('the task view shows every tab on the page, and no Terminal embedded', () =
   assert.equal(tabFor('bogus', false), 'overview');
 });
 
+test('the worker window’s task tab has no Changes tab (its header’s 🌿 Changes opens the view)', () => {
+  assert.deepEqual(visibleTabs(true, false), ['overview', 'conversation', 'plan', 'runs', 'prs']);
+  assert.deepEqual(visibleTabs(false, false), ['overview', 'conversation', 'plan', 'runs', 'terminal', 'prs']);
+  assert.equal(tabFor('changes', true, false), 'overview');
+  assert.equal(tabFor('changes', true, true), 'changes');
+  assert.equal(tabFor('plan', true, false), 'plan');
+});
+
 test('📍 Show in 3D goes to the worker’s desk, or to the floor', () => {
   assert.equal(showIn3dLink('api', 'w-1', 'd3'), '/?floor=api&worker=w-1&desk=d3');
   assert.equal(showIn3dLink('api', 'w-1'), '/?floor=api&worker=w-1');

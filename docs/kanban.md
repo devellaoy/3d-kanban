@@ -259,13 +259,18 @@ or on its floor when it has no worker. Its tabs:
 - **Runs**: each phase run (phase, round, role, agent, status, verdict), and the task's history.
 - **Terminal**: the task worker's live terminal, as at its desk (you can type in it). A task on
   another project's floor takes you to that floor first.
-- **Changes**: what the task changed, read by the office from git, with or without a worker: a
-  repository picker, **Whole change** (the branch against its base, `origin/<base>` or the local base)
-  or **Per commit**, and, while the task has a worktree, **✏️ Uncommitted** (its edits and new files).
-  Each file's diff opens on its own; a diff over 2 MB is cut. It reads the task's worktree while there
-  is one, else the task's branch in the project's checkout (fetched from origin in the background now
-  and then, never waited for). While a worker is at its desk, **🔴 Open the live Changes window**
-  opens upstream's window on its checkout.
+- **Changes**: the task's **Changes view**, the same one **C** (or 🌿 Changes in the worker's window)
+  opens in the 3D office: upstream's Changes window with a tab per repository of the task (and its PR
+  number), the changed files down the left and one file's diff on the right (j/k or the arrows move),
+  and **All changes** (the branch against its base, `origin/<base>` or the local base), **Per commit**
+  (the branch's commits, the newest picked, each with its own files) and, while the task's worktree
+  has uncommitted work, **✏️ Uncommitted (n)** (the worktree against its HEAD commit). While the task's
+  worker is on this page's floor, All changes follows its checkout live, with upstream's **✅ Commit…**,
+  **🗑️ Discard all** and **🔀 Open PR…**; otherwise the office reads the task's worktree while there is
+  one, else the task's branch in the project's checkout (fetched from origin in the background now and
+  then, never waited for), read-only, with ↻ to read again. Per commit and Uncommitted are always read
+  that way, again whenever the live checkout changes (a new commit, an amend, an edit). A diff over
+  2 MB is cut. The 3D worker window's 🗂️ Task tab has no Changes tab: its header's 🌿 Changes is it.
 - **PRs**: the task's pull requests with their state, **Create/Push & update PRs**, **Fix PRs**, and
   **🔍 Review these N PRs together**.
 

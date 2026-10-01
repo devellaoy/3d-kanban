@@ -1,7 +1,7 @@
 // A task in full, in a panel down the right of the board (the whole screen on a phone), dragged wider
 // or narrower by its left edge. What's in it is the shared task view (taskview.ts), the same one the
 // 3D office shows; this panel is only its frame on the kanban page, and the page's hooks into it
-// (another task, edit, move, upstream's terminal and Changes windows, the ?tab= link).
+// (another task, edit, move, upstream's terminal window, the ?tab= link).
 
 import { h } from '../ui/dom';
 import type { Net } from '../net';
@@ -25,7 +25,6 @@ export interface DetailOptions {
   edit(task: KanbanTask): void;
   moveMenu(id: number): void;
   openTerminal(workerId: string, project: string): void;
-  openChanges(workerId: string, project: string, repo?: string): void;
 }
 
 export class DetailPanel {
@@ -59,7 +58,6 @@ export class DetailPanel {
         edit: (task) => this.o.edit(task),
         moveMenu: (task) => this.o.moveMenu(task),
         openTerminal: (w, p) => this.o.openTerminal(w, p),
-        openChanges: (w, p, r) => this.o.openChanges(w, p, r),
       });
     }
     this.o.root.classList.remove('hidden');

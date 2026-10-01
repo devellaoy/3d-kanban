@@ -8,6 +8,7 @@
 //   GET /api/kanban/tasks/<id>/changes?repo=<repoId>        → KanbanRepoChanges
 //   GET /api/kanban/tasks/<id>/commits?repo=<repoId>        → KanbanCommitList
 //   GET /api/kanban/tasks/<id>/commit?repo=<repoId>&hash=<sha> → KanbanCommitChanges
+//   GET /api/kanban/tasks/<id>/uncommitted?repo=<repoId>     → KanbanUncommitted (git status only)
 //
 // Git runs read-only, with argument lists and timeouts. The only network is a `git fetch` of the
 // project's checkout, started in the background at most every few minutes and never waited for: the
@@ -18,13 +19,13 @@ import { existsSync } from 'node:fs';
 import path from 'node:path';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import type { KanbanContext, KanbanPlugin } from '../../registry.js';
-import type { KanbanChangesList, KanbanCommitChanges, KanbanCommitList, KanbanRepoChanges, KanbanRepoChangesInfo, KanbanTask, ProjectRepo } from '../../../../shared/kanban/types.js';
+import type { KanbanChangesList, KanbanCommitChanges, KanbanCommitList, KanbanRepoChanges, KanbanUncommitted, KanbanRepoChangesInfo, KanbanTask, ProjectRepo } from '../../../../shared/kanban/types.js';
 import { PROJECT_ID_RE, REPO_ID_RE } from '../../../../shared/kanban/protocol.js';
 import { repoFloorId } from '../../projects.js';
 import { sendJson } from '../util.js';
-import { HASH_RE, REF_RE, branchOf, commitDiff, commitOf, commitsIn, diffRange, firstCommit, originHead, workingTree } from './git.js';
+import { HASH_RE, REF_RE, branchOf, commitDiff, commitOf, commitsIn, diffRange, firstCommit, originHead, uncommittedCount, workingTree } from './git.js';
 
-const ROUTE_RE = /^\/api\/kanban\/tasks\/(\d{1,12})\/(changes|commits|commit)$/;
+const ROUTE_RE = /^\/api\/kanban\/tasks\/(\d{1,12})\/(changes|commits|commit|uncommitted)$/;
 /** A checkout is fetched at most this often. */
 const FETCH_EVERY_MS = 5 * 60_000;
 const FETCH_TIMEOUT_MS = 60_000;
@@ -64,7 +65,7 @@ function worktreeOf(ctx: KanbanContext, task: KanbanTask, repo: ProjectRepo): { 
 
 /** Works out where `repo`'s change is and what it's measured against. */
 export async function locate(ctx: KanbanContext, task: KanbanTask, repo: ProjectRepo, kick?: (dir: string) => void): Promise<Located> {
-  const base: KanbanRepoChangesInfo = { id: repo.id, name: repo.name, source: 'checkout' };
+  const base: KanbanRepoChangesInfo = { id: repo.id, name: repo.name, ...(repo.primary ? { primary: true } : {}), source: 'checkout' };
   if (repo.kind !== 'git') return { info: { ...base, error: 'A folder repository has no git history to show' }, worktree: false };
   const wt = worktreeOf(ctx, task, repo);
   if (wt) {
@@ -119,7 +120,7 @@ export function createChangesPlugin(ctx: KanbanContext, opts: ChangesOptions = {
     const repos = taskRepos(ctx, task);
     const repoParam = url.searchParams.get('repo');
     if (m[2] === 'changes' && repoParam === null) {
-      const list: KanbanChangesList = { taskId: task.id, repos: await Promise.all(repos.map(async (r) => (await locate(ctx, task, r, kick)).info)) };
+      const list: KanbanChangesList = { taskId: task.id, project: task.project, repos: await Promise.all(repos.map(async (r) => (await locate(ctx, task, r, kick)).info)) };
       return sendJson(res, 200, list), true;
     }
     if (!repoParam || !(REPO_ID_RE.test(repoParam) || PROJECT_ID_RE.test(repoParam))) return sendJson(res, 400, { error: 'repo must be one of the task’s repository ids' }), true;
@@ -129,6 +130,10 @@ export function createChangesPlugin(ctx: KanbanContext, opts: ChangesOptions = {
     if (m[2] === 'commit' && (!hash || !HASH_RE.test(hash))) return sendJson(res, 400, { error: 'hash must be a commit id (7 to 40 hex digits)' }), true;
     const at = await locate(ctx, task, repo, kick);
     try {
+      if (m[2] === 'uncommitted') {
+        const out: KanbanUncommitted = { taskId: task.id, repo: repo.id, uncommitted: at.worktree && at.dir ? await uncommittedCount(at.dir) : null };
+        return sendJson(res, 200, out), true;
+      }
       if (m[2] === 'changes') {
         const whole = at.dir && at.baseSha && at.headSha ? await diffRange(at.dir, [`${at.baseSha}...${at.headSha}`]) : { files: [], diff: '', truncated: false };
         const out: KanbanRepoChanges = { taskId: task.id, ...at.info, ...whole, workingTree: at.worktree && at.dir ? await workingTree(at.dir) : null };

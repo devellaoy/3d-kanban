@@ -297,7 +297,7 @@ export function issueDescription(issue: { title: string; body?: string; url?: st
 
 // --- The worker window's tabs (E) -----------------------------------------------------------------
 
-/** The worker window's tabs: its terminal, its kanban task (a task worker only), and its changes. */
+/** The worker window's tabs: its terminal and its kanban task (a task worker only). */
 export type WorkerTab = 'terminal' | 'task';
 
 /** The class of the worker window's 🗂️ Task pane (worker3d.ts). */
@@ -314,7 +314,7 @@ export function inTaskPane(target: EventTarget | null): boolean {
 
 /**
  * The tabs a worker's window has: none (upstream's window as it is) for a worker without a task.
- * Its changes are upstream's own 🌿 Changes button in the window's header (and the task's Changes).
+ * Its changes are the 🌿 Changes button in the window's header, which opens the task's Changes window.
  */
 export function workerTabs(w: Pick<WorkerInfo, 'kanban'>): WorkerTab[] {
   return kanbanOf(w) ? ['terminal', 'task'] : [];
@@ -330,11 +330,12 @@ export function tabLabel(tab: WorkerTab, w: Pick<WorkerInfo, 'kanban'>): string 
 export class TabMemory {
   private tabs = new Map<string, WorkerTab>();
 
-  /** The tab to open on: the one asked for when it has it, else the last one, else the terminal. */
+  /** The tab to open on: the one asked for when it has it, else the last one, else the task's (else the terminal). */
   opening(workerId: string, tabs: readonly WorkerTab[], asked?: WorkerTab): WorkerTab {
     if (asked && tabs.includes(asked)) return asked;
     const last = this.tabs.get(workerId);
-    return last && tabs.includes(last) ? last : 'terminal';
+    if (last && tabs.includes(last)) return last;
+    return tabs.includes('task') ? 'task' : 'terminal';
   }
 
   chose(workerId: string, tab: WorkerTab) {

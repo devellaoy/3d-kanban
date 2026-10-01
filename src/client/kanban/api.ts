@@ -171,3 +171,16 @@ export function kanbanApi(net: Net): KanbanApi {
   if (!api) apis.set(net, (api = new KanbanApi(net)));
   return api;
 }
+
+/** A JSON answer from the office's HTTP API (a task's changes, its reports), or its `{error}` as a thrown Error. */
+export async function getJson<T>(url: string): Promise<T> {
+  const res = await fetch(url, { cache: 'no-store', credentials: 'same-origin' });
+  let body: unknown;
+  try {
+    body = await res.json();
+  } catch {
+    body = undefined;
+  }
+  if (!res.ok) throw new Error((body as { error?: string } | undefined)?.error ?? `HTTP ${res.status}`);
+  return body as T;
+}

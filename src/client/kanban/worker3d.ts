@@ -1,8 +1,10 @@
 // The worker window's tabs (E at a task worker's desk, or its card on the 2D view): 🖥️ Terminal (upstream's
 // terminal, as it is), 🗂️ Task #14 (the shared task view, embedded: conversation with its composer and
-// history, plan, runs, changes, PRs); the worker's changes stay upstream's own 🌿 Changes button. The
+// history, plan, runs, PRs); its changes are the header's 🌿 Changes button, which opens the task's
+// Changes window (kanban/changesview, every repository and per commit), not a tab here. The
 // task view is mounted the first time its tab opens and destroyed with the window; the tab chosen is
-// remembered per worker for the session. A worker without a task gets no tabs: upstream's window.
+// remembered per worker for the session (the Task tab until another is picked). A worker without a
+// task gets no tabs: upstream's window.
 //
 // Keys: the terminal only reads the keys typed into its own textarea, and the office's keys are off
 // while any window is open, so the task's composer is safe from both; its keydowns are stopped at the
@@ -48,6 +50,9 @@ export function mountWorkerTabs(net: Net, w: WorkerInfo, el: HTMLElement, panes:
   const tabs = workerTabs(w);
   if (!tabs.length) return null;
   css();
+  // The header's 🌿 Changes opens the task's Changes window: loaded now, so it opens at once (no
+  // moment without a window, when the office would take the mouse back).
+  void import('./changesview');
   const taskId = w.kanban!.taskId;
   const pane = h(`div.${TASK_PANE_CLASS}.hidden`, { role: 'tabpanel', 'aria-label': `Task #${taskId}` });
   // The composer's keys stay in it (Esc still closes the window: it's caught on the way down).
@@ -83,7 +88,8 @@ export function mountWorkerTabs(net: Net, w: WorkerInfo, el: HTMLElement, panes:
         if (destroyed || view) return;
         // "Open its terminal" (an agent asking there) is this window's other tab.
         const openTerminal = (id: string) => (id === w.id ? show('terminal') : toast('That is the task’s other worker: open its terminal at its desk', 'info'));
-        view = m.mountTaskView(pane, { net, taskId, embedded: true, openTerminal });
+        // No Changes tab: the window's header has 🌿 Changes, which opens the task's Changes window.
+        view = m.mountTaskView(pane, { net, taskId, embedded: true, changesTab: false, openTerminal });
         if (current === 'task') pane.querySelector<HTMLElement>('.kb-tab.on')?.focus({ preventScroll: true });
       });
     }

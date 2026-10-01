@@ -15,13 +15,13 @@ import type { RepoSource } from '../workers.js';
 import { MAX_REPOS } from '../workers.js';
 import { normalizeRepo, sameRepo } from '../../shared/floors.js';
 import type { KanbanProjectInfo, KanbanSettings, ProjectRepo } from '../../shared/kanban/types.js';
-import { PROJECT_ID_RE, REPO_ID_RE, type ProjectRepoInput } from '../../shared/kanban/protocol.js';
+import { REPO_ID_RE, type ProjectRepoInput } from '../../shared/kanban/protocol.js';
+import { repoFloorId } from '../../shared/kanban/repofloor.js';
 import { BRANCH_RE } from './repos-file.js';
 
 export { loadRepos } from './repos-file.js';
 
-/** Between a floor id and a repository id in a synthetic RepoSource.floor. */
-export const REPO_FLOOR_SEP = '~';
+export { REPO_FLOOR_SEP, parseRepoFloorId, repoFloorId } from '../../shared/kanban/repofloor.js';
 
 function isGit(dir: string): boolean {
   return existsSync(path.join(dir, '.git'));
@@ -103,20 +103,6 @@ export function validateProjectRepos(def: FloorDef, input: ProjectRepoInput[]): 
     });
   }
   return [out.find((r) => r.primary)!, ...out.filter((r) => !r.primary)];
-}
-
-/** The RepoSource.floor a project's other repository goes by in upstream's workspace code. */
-export function repoFloorId(floorId: string, repoId: string): string {
-  return `${floorId}${REPO_FLOOR_SEP}${repoId}`;
-}
-
-/** The floor and repository of a synthetic RepoSource.floor (undefined for a real floor id). */
-export function parseRepoFloorId(id: string): { floor: string; repo: string } | undefined {
-  const at = id.indexOf(REPO_FLOOR_SEP);
-  if (at <= 0) return undefined;
-  const floor = id.slice(0, at);
-  const repo = id.slice(at + 1);
-  return PROJECT_ID_RE.test(floor) && REPO_ID_RE.test(repo) ? { floor, repo } : undefined;
 }
 
 /**

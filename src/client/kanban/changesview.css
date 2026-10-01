@@ -1,0 +1,49 @@
+/* The task's Changes view (changesview.ts): upstream's Changes window (style.css: .desk-changes,
+   .changes-tabs, .changes-body, .changes-files, .changes-diff, .diff-lines…), plus what it adds: the
+   repository tabs and mode switch in one row, the commit list over the files, and the embedded frame
+   (the task view's Changes tab), which has no .modal footer to inherit. Every rule is under .kb-cv, so
+   the file loads on any page with the view without touching upstream's own window. */
+
+.kb-cv .kb-cv-bar { align-items: center; }
+.kb-cv .kb-cv-repos { display: flex; flex-wrap: wrap; gap: 6px; min-width: 0; }
+.kb-cv .kb-cv-modes { display: inline-flex; margin-left: auto; border: 3px solid var(--ink); border-radius: 12px; overflow: hidden; background: #fff; }
+.kb-cv .kb-cv-modes button { padding: 3px 10px; font: 800 13px var(--font); color: var(--ink); background: #fff; border: 0; border-left: 2px solid var(--ink); cursor: pointer; white-space: nowrap; }
+.kb-cv .kb-cv-modes button:first-child { border-left: 0; }
+.kb-cv .kb-cv-modes button[aria-pressed=true] { background: var(--accent); color: #fff; }
+.kb-cv .kb-cv-refresh { width: 32px; padding: 3px 0; justify-content: center; }
+
+/* Per commit: the branch's commits over the picked one's files. */
+.kb-cv .kb-cv-commits { flex: none; max-height: 45%; min-height: min(100px, 45%); display: flex; flex-direction: column; border-bottom: 3px solid var(--ink); }
+.kb-cv .kb-cv-commits ol { list-style: none; margin: 0; padding: 6px; overflow: auto; display: flex; flex-direction: column; gap: 2px; }
+.kb-cv .kb-cv-commits li { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 0 8px; align-items: baseline; padding: 5px 8px; border-radius: 10px; cursor: pointer; font-size: 13px; font-weight: 700; border: 2px solid transparent; }
+.kb-cv .kb-cv-commits li:hover { background: rgba(255,255,255,.7); }
+.kb-cv .kb-cv-commits li.on { background: #fff; border-color: var(--ink); box-shadow: 0 2px 0 var(--ink); }
+.kb-cv .kb-cv-commits code { font: 800 11px ui-monospace, Menlo, monospace; color: var(--muted); }
+.kb-cv .kb-cv-commits .subj { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.kb-cv .kb-cv-commits small { grid-column: 2; font-size: 11px; font-weight: 600; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.kb-cv footer code, .kb-cv .kb-cv-foot code { font: 800 11px ui-monospace, Menlo, monospace; }
+
+/* Embedded: fills its container; the footer is upstream's .modal footer, by hand. */
+.kb-changes-view { flex: 1; min-height: 0; min-width: 0; display: flex; flex-direction: column; background: var(--paper); color: var(--ink); container-type: inline-size; }
+.kb-changes-view .changes-tabs { padding: 8px 10px; }
+.kb-changes-view .kb-cv-foot { display: flex; flex-wrap: wrap; gap: 8px; justify-content: flex-end; align-items: center; padding: 8px 12px; border-top: 3px solid var(--ink); background: var(--paper-2); }
+.kb-changes-view .kb-cv-foot .btn { padding: 4px 10px; font-size: 13px; }
+.kb-cv .kb-cv-foot .grow { flex: 1; display: flex; align-items: center; gap: 6px; flex-wrap: wrap; min-width: 0; font-size: 12px; color: var(--muted); font-weight: 700; }
+.kb-cv .kb-cv-foot .grow > * + *::before, .kb-cv footer .grow > * + *::before { content: '·'; margin-right: 6px; color: var(--muted); }
+.kb-cv .kb-cv-foot .grow > .spinner + *::before, .kb-cv footer .grow > .spinner + *::before { content: none; }
+.kb-cv .kb-cv-foot .grow:empty { display: none; }
+
+/* A narrow frame (the kanban page's side panel): the files over the diff, as upstream does on a phone. */
+@container (max-width: 640px) {
+  .kb-changes-view .changes-body { flex-direction: column; }
+  .kb-changes-view .changes-files { width: auto; max-height: 42%; border-right: 0; border-bottom: 3px solid var(--ink); }
+  /* Per commit, the commits and their files share the panel: give them more of it, half each. */
+  .kb-changes-view .changes-files:has(.kb-cv-commits) { max-height: 60%; }
+  .kb-changes-view .kb-cv-commits { max-height: 50%; }
+  .kb-changes-view .img-preview { flex-direction: column; }
+  .kb-changes-view .kb-cv-modes { margin-left: 0; }
+}
+@media (max-width: 700px) {
+  .kb-cv .kb-cv-modes { margin-left: 0; max-width: 100%; overflow-x: auto; }
+  .kb-cv .kb-cv-commits { max-height: 35%; }
+}
