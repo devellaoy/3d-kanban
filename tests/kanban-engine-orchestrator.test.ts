@@ -354,7 +354,7 @@ test('a Codex usage limit resumes at the reset time its account reports, plus a 
   assert.equal(asked, 1);
 });
 
-test('a Codex usage limit that resets beyond autoResume\'s wait gives up and names the reset time', async (t) => {
+test('a used-up Codex week (reset days away, beyond autoResume\'s wait) gives up at once and names the reset time', async (t) => {
   const clock = Date.now();
   const fx = await engineFixture({ engine: { sweepMs: 10_000, now: () => clock } });
   t.after(() => fx.close());
@@ -366,6 +366,20 @@ test('a Codex usage limit that resets beyond autoResume\'s wait gives up and nam
   const gaveUp = await fx.waitTask(task.id, (x) => x.waitingReason === 'interrupted' || (x.status === 'waiting' && x.retryAt === undefined && !!x.waitingText), 'the give-up');
   assert.equal(gaveUp.retryAt, undefined);
   assert.ok(gaveUp.waitingText?.includes(new Date(resetAt).toLocaleString('en-GB')), gaveUp.waitingText);
+});
+
+test('a Codex run that only lost its connection never asks the account for a reset time', async (t) => {
+  const clock = Date.now();
+  const fx = await engineFixture({ engine: { sweepMs: 10_000, now: () => clock } });
+  t.after(() => fx.close());
+  let asked = 0;
+  fx.ctx.codexResetAt = async () => (asked++, clock + 60_000);
+  fx.setRules([{ when: 'Implement kanban task', reply: 'stream disconnected before completion: fetch failed' }]);
+  const task = fx.newTask({ tool: 'codex', usePlan: false, useReview: false });
+  await fx.engine.start(task.id, ADA);
+  const limited = await fx.waitTask(task.id, (x) => x.waitingReason === 'usage_limit', 'the interruption');
+  assert.equal(asked, 0);
+  assert.equal(limited.retryAt, clock + 5 * 60_000);
 });
 
 test('a Codex usage limit with no reset time known (or a failing lookup) backs off; a Claude one never asks Codex', async (t) => {

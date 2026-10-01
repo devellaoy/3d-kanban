@@ -1614,9 +1614,10 @@ export class Orchestrator {
     const since = this.limitSince.get(task.id) ?? now;
     this.limitSince.set(task.id, since);
     const said = result.apiError ?? result.text;
+    const resetP = limitReset(this.ctx, live, said, now); // started first: its worker's Codex home is read before the run is finished
     this.finishRun(live.runId, task.project, { status: 'failed', error: clip(`Interrupted: ${said}`, 2000), ...(sessionId ? { sessionId } : {}) });
-    const reset = await limitReset(this.ctx, live, said, now);
-    const at = reset !== undefined ? reset + 60_000 : now + backoffMs(attempts);
+    const reset = await resetP;
+    const at = reset !== undefined ? reset + 60_000 : this.opts.now() + backoffMs(attempts);
     if (!auto.enabled || attempts > auto.maxAttempts || at - since > auto.maxWaitHours * 3_600_000) {
       this.limitSince.delete(task.id);
       await this.apply(task.id, { type: 'gaveUp', text: clip(`A usage limit or a lost connection stopped it${auto.enabled ? ` (${attempts - 1} tries)` : ''}: Retry once it has reset${reset !== undefined ? ` (${new Date(reset).toLocaleString('en-GB')})` : ''}. ${said}`, 500) });

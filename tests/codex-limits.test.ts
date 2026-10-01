@@ -90,9 +90,14 @@ test('pickReset: the latest reset among the windows at 100%', () => {
   assert.equal(pickReset(ready([{ label: '5-hour', pct: 40, resetsAt: 5000 }, { label: 'Weekly', pct: 100, resetsAt: 90_000 }])), 90_000);
 });
 
-test('pickReset: none at 100% (even when reached), no reset time, or not ready: unknown', () => {
-  assert.equal(pickReset(ready([{ label: '5-hour', pct: 99, resetsAt: 5000 }, { label: 'Weekly', pct: 40, resetsAt: 9000 }], true)), undefined);
+test('pickReset: reached while no window is at 100% yet (the percentages lag): the fullest window\'s reset', () => {
+  assert.equal(pickReset(ready([{ label: '5-hour', pct: 99, resetsAt: 5000 }, { label: 'Weekly', pct: 40, resetsAt: 9000 }], true)), 5000);
+});
+
+test('pickReset: none at 100%, no reset time, or not ready: unknown', () => {
+  assert.equal(pickReset(ready([{ label: '5-hour', pct: 99, resetsAt: 5000 }, { label: 'Weekly', pct: 40, resetsAt: 9000 }])), undefined, 'not reached');
   assert.equal(pickReset(ready([{ label: '5-hour', pct: 100 }])), undefined);
+  assert.equal(pickReset(ready([{ label: '5-hour', pct: 99 }, { label: 'Weekly', pct: 40 }], true)), undefined, 'reached, but no reset time at all');
   assert.equal(pickReset({ ...ready([{ label: '5-hour', pct: 100, resetsAt: 5000 }]), status: 'error' }), undefined);
 });
 
@@ -196,9 +201,28 @@ test('signed out: the next automatic read is 30 minutes away, a click still read
 });
 
 test('an auth error from the app-server is signedOut too', async (t) => {
-  const r = rig(t, { answers: [{ error: 'Please log in again' }] });
+  const r = rig(t, { answers: [{ error: 'You are not logged in' }] });
   await r.reader.refresh();
   assert.equal(r.reader.state.status, 'signedOut');
+});
+
+test('a network failure that mentions auth is an error keeping the last windows, not signedOut', async (t) => {
+  const r = rig(t, { answers: [good, { error: 'failed to refresh auth token: network unreachable' }] });
+  await r.reader.refresh();
+  await r.advance(21_000);
+  await r.reader.refresh();
+  assert.equal(r.reader.state.status, 'error');
+  assert.equal(r.reader.state.windows.length, 1);
+});
+
+test('a codex that was removed (ENOENT): status missing, and the path is forgotten', async (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  let forgot = 0;
+  const reader = new CodexLimitsReader({ codexPath: () => '/gone/codex', env: {}, onChange: () => {}, onMissing: () => forgot++, ask: async () => ({ error: 'spawn /gone/codex ENOENT' }) });
+  t.after(() => reader.close());
+  await reader.refresh();
+  assert.equal(reader.state.status, 'missing');
+  assert.equal(forgot, 1);
 });
 
 test('three failures in a row: a 10-minute pause; a failed read keeps the last good windows', async (t) => {
@@ -295,6 +319,24 @@ test('fresh: a read that was under way finishing during the wait is not the fres
   assert.equal(gates.length, 2); // ...and the one that counts hangs
   await slow.advance(5000);
   assert.equal(await p, undefined);
+});
+
+test('fresh: once the wait has run out, no further read is started', async (t) => {
+  const slow = rig(t);
+  const gates: (() => void)[] = [];
+  const r = new CodexLimitsReader({ codexPath: () => '/bin/codex', env: {}, onChange: () => {}, ask: () => new Promise<Answer>((res) => gates.push(() => res(good))), now: slow.clock });
+  t.after(() => r.close());
+  void r.refresh();
+  await flush();
+  await slow.advance(1000);
+  const p = r.fresh(5000);
+  await flush();
+  await slow.advance(5000);
+  assert.equal(await p, undefined);
+  gates[0](); // the old read ends after the wait did
+  await flush();
+  await flush();
+  assert.equal(gates.length, 1, 'no new read was started for a caller that has gone');
 });
 
 test('close ends a running read', async (t) => {
@@ -398,25 +440,20 @@ test('registry: a home spelled two ways is one reader; each watcher hears only i
   symlinkSync(real, path.join(root, 'link'));
   const asked: string[] = [];
   const o = office();
+  const homes: Record<string, string> = {};
   const reg = codexLimitsOf(o.ctx, {
     codexPath: () => '/bin/codex',
+    homeOf: (c) => homes[c.id],
     ask: async (_c, env) => {
       asked.push(env.CODEX_HOME);
       return { result: { rateLimits: { planType: path.basename(env.CODEX_HOME), primary: win(10, 300) } }, auth: 'chatgpt' };
     },
   });
-  t.after(() => {
-    closeCodexLimits(o.ctx);
-    if (was === undefined) delete process.env.CODEX_HOME;
-    else process.env.CODEX_HOME = was;
-  });
-  const was = process.env.CODEX_HOME;
+  t.after(() => closeCodexLimits(o.ctx));
   const [a, b, c, d] = [o.join('a'), o.join('b'), o.join('c'), o.join('d', true)];
-  process.env.CODEX_HOME = path.join(root, 'link');
+  Object.assign(homes, { a: path.join(root, 'link'), b: real, c: other, d: other });
   reg.watch(a);
-  process.env.CODEX_HOME = real;
   reg.watch(b);
-  process.env.CODEX_HOME = other;
   reg.watch(c);
   reg.watch(d);
   await until(() => o.sent.filter((s) => s.msg.state?.status === 'ready').length >= 3);

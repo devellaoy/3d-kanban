@@ -3,7 +3,7 @@
 // this never opens or forwards its credential files, and only the normalised numbers leave here.
 // Reader and normaliser adapted from upstream AgentSystemLabs/agent-office#232 (unmerged), reworked:
 // it reads only while someone watches, per CODEX_HOME, and labels windows by their length.
-import { spawn } from 'node:child_process';
+import { spawn, type ChildProcess } from 'node:child_process';
 import os from 'node:os';
 import type { CodexLimits } from '../../shared/codex-limits/protocol.js';
 import type { PlanWindow } from '../../shared/protocol.js';
@@ -39,8 +39,12 @@ export interface ReaderOptions {
   onChange: (state: CodexLimits) => void;
   ask?: Ask;
   now?: () => number;
+  /** `codex` couldn't be started (it was removed since it was found). */
+  onMissing?: () => void;
 }
 
+/** An error that says Codex isn't signed in (not just any mention of auth: a refresh that failed on the network is no sign-out). */
+const SIGNED_OUT_ERROR = /not (?:signed|logged) in|unauthori[sz]ed|\b401\b/i;
 const PLAN_AUTH = new Set(['chatgpt', 'chatgptAuthTokens']);
 
 /** "5-hour", "Weekly", else the window's length as "6h" / "2d" / "45m". */
@@ -83,12 +87,28 @@ export function codexPlanLimits(answer: unknown, auth: string | null | undefined
 /**
  * When the limit that stopped Codex starts over (ms since epoch): the latest reset among the
  * windows at 100% (Codex stays blocked until every exhausted window has reset). It doesn't say which
- * window it reached, so with none at 100% it's unknown.
+ * window it reached: with none at 100% but the limit reported as reached (the percentages lag), the
+ * fullest window's reset; otherwise it's unknown.
  */
 export function pickReset(state: CodexLimits): number | undefined {
   if (state.status !== 'ready') return undefined;
-  const resets = state.windows.filter((w) => w.pct >= 100 && w.resetsAt !== undefined).map((w) => w.resetsAt!);
-  return resets.length ? Math.max(...resets) : undefined;
+  const withReset = state.windows.filter((w) => w.resetsAt !== undefined);
+  const full = withReset.filter((w) => w.pct >= 100);
+  if (full.length) return Math.max(...full.map((w) => w.resetsAt!));
+  // Codex says the limit is reached but the percentages lag: the fullest window is the one.
+  if (!state.reached || !withReset.length) return undefined;
+  return withReset.reduce((a, w) => (w.pct > a.pct ? w : a)).resetsAt;
+}
+
+/** Kills the app-server and anything it started: its whole process group, or on Windows its tree. */
+function killTree(child: ChildProcess) {
+  if (child.pid === undefined) return;
+  if (process.platform === 'win32') return void spawn('taskkill', ['/pid', String(child.pid), '/T', '/F'], { stdio: 'ignore' }).on('error', () => {});
+  try {
+    process.kill(-child.pid, 'SIGKILL');
+  } catch {
+    child.kill('SIGKILL');
+  }
 }
 
 /** Starts `codex app-server`, asks for the rate limits and stops it again. Never rejects. */
@@ -104,6 +124,7 @@ export function askAppServer(codex: string, env: Record<string, string>, signal?
       env,
       shell: process.platform === 'win32' && /\.(?:cmd|bat)$/i.test(codex),
       stdio: ['pipe', 'pipe', 'ignore'],
+      detached: process.platform !== 'win32', // its own process group, so the fallback kill reaches whatever it started
     });
     const finish = (answer: Answer) => {
       if (settled) return;
@@ -113,7 +134,7 @@ export function askAppServer(codex: string, env: Record<string, string>, signal?
       resolve(answer);
       // The app-server exits when its stdin closes; the kill is only for one that doesn't.
       child.stdin.end();
-      const kill = setTimeout(() => child.kill('SIGKILL'), 2000);
+      const kill = setTimeout(() => killTree(child), 2000);
       kill.unref();
       child.once('close', () => clearTimeout(kill));
     };
@@ -221,8 +242,9 @@ export class CodexLimitsReader {
     if (this.closed) return undefined;
     const asked = this.now();
     this.touched = asked;
+    let over = false; // the wait ran out: no further read is started
     const done = async () => {
-      while (!this.closed) {
+      while (!this.closed && !over) {
         if (!this.running) return void (await this.read());
         const started = this.startedAt;
         await this.running;
@@ -231,7 +253,7 @@ export class CodexLimitsReader {
     };
     let timer: NodeJS.Timeout | undefined;
     const gaveUp = new Promise<void>((res) => {
-      timer = setTimeout(res, waitMs);
+      timer = setTimeout(() => ((over = true), res()), waitMs);
       timer.unref();
     });
     const ok = await Promise.race([done().then(() => true), gaveUp.then(() => false)]);
@@ -289,7 +311,13 @@ export class CodexLimitsReader {
     this.touched = this.lastRead;
     if (this.closed) return;
     const next = answer.error ? undefined : codexPlanLimits(answer.result, answer.auth, this.lastRead);
-    if (next?.status === 'signedOut' || (answer.error && /auth|sign.?in|log.?in|unauthori/i.test(answer.error))) {
+    if (answer.error && /ENOENT/.test(answer.error)) {
+      // `codex` was removed after it was found: forget where it was, and look for it again later.
+      this.opts.onMissing?.();
+      this.wait = BACKOFF_MS;
+      return this.set({ status: 'missing', windows: [], at: 0, checkedAt: this.lastRead });
+    }
+    if (next?.status === 'signedOut' || (answer.error && SIGNED_OUT_ERROR.test(answer.error))) {
       this.fails = 0;
       this.wait = NO_PLAN_MS;
       return this.set({ status: 'signedOut', windows: [], at: 0, checkedAt: this.lastRead });

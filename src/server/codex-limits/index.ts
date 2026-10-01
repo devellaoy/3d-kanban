@@ -28,7 +28,9 @@ export function normaliseHome(home: string): string {
   }
 }
 
-const officeHome = () => normaliseHome(codexHome(process.cwd(), childEnv()));
+let office: string | undefined;
+/** The office's own Codex home (its environment doesn't change while it runs). */
+const officeHome = () => (office ??= normaliseHome(codexHome(process.cwd(), childEnv())));
 
 /** The Codex home a browser's numbers are those of: today the office's own, as Codex workers get it. */
 export function codexHomeOf(_ctx: Ctx, _client: Client): string {
@@ -39,8 +41,13 @@ export function codexHomeOf(_ctx: Ctx, _client: Client): string {
 export interface CodexLimitsDeps {
   ask?: Ask;
   codexPath?: () => string | null;
+  /** Which home a client watches. */
+  homeOf?: (c: Client) => string;
 }
 
+// Several homes and a per-client `watching` map, though every client has the office's home today: the kanban's
+// resetAt names the home of the worker that hit a limit, and codexHomeOf will scope per account or floor with
+// upstream #199 (that is also why a reader nobody uses for IDLE_MS is dropped).
 export class CodexLimitsRegistry {
   private readers = new Map<string, CodexLimitsReader>();
   /** Which home each watching browser (client id) has in view. */
@@ -73,6 +80,7 @@ export class CodexLimitsRegistry {
         ...(this.deps.ask ? { ask: this.deps.ask } : {}),
         env: { ...childEnv(), CODEX_HOME: home },
         onChange: (state) => this.changed(home, state),
+        onMissing: () => (this.command = { path: null, at: Date.now() }),
       });
       this.readers.set(home, r);
     }
@@ -91,7 +99,7 @@ export class CodexLimitsRegistry {
   /** `c` has the limits in view: it's sent what is known at once, and told of every change. */
   watch(c: Client) {
     if (c.out) return;
-    const home = codexHomeOf(this.ctx, c);
+    const home = this.deps.homeOf ? normaliseHome(this.deps.homeOf(c)) : codexHomeOf(this.ctx, c);
     if (this.watching.get(c.id) !== home) this.unwatchId(c.id);
     this.watching.set(c.id, home);
     const reader = this.readerFor(home);
