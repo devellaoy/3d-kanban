@@ -64,6 +64,40 @@ export interface ProjectPage {
   title?: string;
 }
 
+/**
+ * One item of a board's answer (an Issue, a PullRequest or a DraftIssue, with its Status and Iteration)
+ * as an issue; undefined for an archived one or anything else. `boardUrl` is where a draft, which has
+ * no page of its own, points.
+ */
+export function projectItem(n: any, config: Pick<ProjectConfig, 'id' | 'owner' | 'number'>, boardUrl: string): ProjectItem | undefined {
+  if (!n || n.isArchived) return undefined;
+  const c = n.content ?? {};
+  const kind = c.__typename;
+  if (kind !== 'Issue' && kind !== 'PullRequest' && kind !== 'DraftIssue') return undefined;
+  if (typeof c.title !== 'string') return undefined;
+  const repo: string | undefined = c.repository?.nameWithOwner;
+  const key = kind !== 'DraftIssue' && repo && Number.isSafeInteger(c.number) ? ghIssueKey(repo, c.number) : `ghp:${config.owner}/${config.number}#${n.id}`;
+  const assignees = (c.assignees?.nodes ?? []).map((a: any) => String(a?.login ?? '')).filter(Boolean);
+  const status: string | undefined = n.status?.name ?? undefined;
+  return {
+    source: 'github-project',
+    ...(config.id ? { sourceId: config.id } : {}),
+    key,
+    title: c.title,
+    url: typeof c.url === 'string' ? c.url : boardUrl,
+    body: String(c.body ?? '').slice(0, ISSUE_BODY_MAX),
+    ...(assignees.length ? { assignee: assignees.join(', ') } : {}),
+    labels: (c.labels?.nodes ?? []).map((l: any) => String(l?.name ?? '')).filter(Boolean),
+    ...(status ? { status } : {}),
+    ...(n.iteration?.title ? { iteration: String(n.iteration.title) } : {}),
+    project: `${config.owner}/${config.number}`,
+    ...(repo ? { repo } : {}),
+    updatedAt: String(c.updatedAt ?? n.updatedAt ?? ''),
+    // Closed issues and merged PRs stay on many boards; they're no work to start.
+    ...(c.state && c.state !== 'OPEN' ? { closed: true } : {}),
+  };
+}
+
 /** One page of the query's answer, as issues (unfiltered). Throws on GraphQL errors. */
 export function parseProjectPage(out: string, config: Pick<ProjectConfig, 'id' | 'owner' | 'number'>): ProjectPage {
   let raw: any;
@@ -79,32 +113,8 @@ export function parseProjectPage(out: string, config: Pick<ProjectConfig, 'id' |
   if (!project) throw new Error(`${config.owner} has no project number ${config.number} (or gh can't see it)`);
   const items: ProjectItem[] = [];
   for (const n of project.items?.nodes ?? []) {
-    if (!n || n.isArchived) continue;
-    const c = n.content ?? {};
-    const kind = c.__typename;
-    if (kind !== 'Issue' && kind !== 'PullRequest' && kind !== 'DraftIssue') continue;
-    if (typeof c.title !== 'string') continue;
-    const repo: string | undefined = c.repository?.nameWithOwner;
-    const key = kind !== 'DraftIssue' && repo && Number.isSafeInteger(c.number) ? ghIssueKey(repo, c.number) : `ghp:${config.owner}/${config.number}#${n.id}`;
-    const assignees = (c.assignees?.nodes ?? []).map((a: any) => String(a?.login ?? '')).filter(Boolean);
-    const status: string | undefined = n.status?.name ?? undefined;
-    items.push({
-      source: 'github-project',
-      ...(config.id ? { sourceId: config.id } : {}),
-      key,
-      title: c.title,
-      url: typeof c.url === 'string' ? c.url : String(project.url ?? `https://github.com/${config.owner}`),
-      body: String(c.body ?? '').slice(0, ISSUE_BODY_MAX),
-      ...(assignees.length ? { assignee: assignees.join(', ') } : {}),
-      labels: (c.labels?.nodes ?? []).map((l: any) => String(l?.name ?? '')).filter(Boolean),
-      ...(status ? { status } : {}),
-      ...(n.iteration?.title ? { iteration: String(n.iteration.title) } : {}),
-      project: `${config.owner}/${config.number}`,
-      ...(repo ? { repo } : {}),
-      updatedAt: String(c.updatedAt ?? n.updatedAt ?? ''),
-      // Closed issues and merged PRs stay on many boards; they're no work to start.
-      ...(c.state && c.state !== 'OPEN' ? { closed: true } : {}),
-    });
+    const item = projectItem(n, config, String(project.url ?? `https://github.com/${config.owner}`));
+    if (item) items.push(item);
   }
   const info = project.items?.pageInfo;
   return { viewer: raw?.data?.viewer?.login, items, next: info?.hasNextPage ? info.endCursor : undefined, title: project.title };

@@ -14,6 +14,7 @@ import { jiraSource } from './jira.js';
 import type { IssueSource, IssueSourceIo } from './source.js';
 import { refreshWall, setWallProvider, toGhIssue, wallChanged } from './wall.js';
 import { issueActionHandlers, type IssuePatch } from './actions.js';
+import { createBrowse } from './browse/index.js';
 import type { GhIssue, GhState } from '../../../../shared/protocol.js';
 
 export const ISSUE_SOURCES: Record<IssueSourceConfig['kind'], IssueSource> = {
@@ -35,6 +36,9 @@ const OVERLAY_SETTLE_MS = 10_000;
 const OVERLAY_TTL_MS = 2 * 60_000;
 /** An issue acted on stays open to actions this long after, even when the list has lost it (a closed one: Reopen). */
 const ACTED_TTL_MS = 30 * 60_000;
+/** An issue browsed stays open to actions this long (a bounded set, the oldest let go first). */
+const BROWSED_TTL_MS = 12 * 60 * 60_000;
+const BROWSED_MAX = 300;
 /** How much of a body goes out in a list (the task made from it gets it all). */
 const LIST_BODY = 4000;
 
@@ -74,6 +78,8 @@ export function createIssues(ctx: KanbanContext, opts: IssuesOptions = {}) {
   const overlay = new Map<string, Map<string, { fields: IssuePatch; at: number }>>();
   /** Issues acted on lately, as they were: for more actions on them only (never the list or the board). */
   const acted = new Map<string, Map<string, { issue: NormalizedIssue; at: number }>>();
+  /** Issues opened in the browse window (shared/kanban/browse.ts) that the list may not have: oldest first, at most BROWSED_MAX per project. */
+  const browsed = new Map<string, Map<string, { issue: NormalizedIssue; at: number }>>();
   let timer: NodeJS.Timeout | undefined;
   /** Per project, the fetch that follows a change by long enough to have seen it (see patch). */
   const settling = new Map<string, NodeJS.Timeout>();
@@ -83,12 +89,7 @@ export function createIssues(ctx: KanbanContext, opts: IssuesOptions = {}) {
   /** The issue with the change made to it since it was fetched, if any (a change older than its time to live is not shown). */
   const withChange = (project: string, i: NormalizedIssue): NormalizedIssue => {
     const o = overlay.get(project)?.get(i.key);
-    if (!o || now() - o.at >= OVERLAY_TTL_MS) return i;
-    const next = { ...i };
-    if (o.fields.status !== undefined) next.status = o.fields.status;
-    if (o.fields.assignee === null) delete next.assignee;
-    else if (o.fields.assignee !== undefined) next.assignee = o.fields.assignee;
-    return next;
+    return !o || now() - o.at >= OVERLAY_TTL_MS ? i : applyPatch(i, o.fields);
   };
 
   /** The project's issues with the changes made since they were fetched. */
@@ -100,6 +101,17 @@ export function createIssues(ctx: KanbanContext, opts: IssuesOptions = {}) {
     if (over) for (const [key, o] of over) if (now() - o.at >= OVERLAY_TTL_MS) over.delete(key);
     const kept = acted.get(project);
     if (kept) for (const [key, a] of kept) if (now() - a.at >= ACTED_TTL_MS) kept.delete(key);
+    const seen = browsed.get(project);
+    if (seen) for (const [key, a] of seen) if (now() - a.at >= BROWSED_TTL_MS) seen.delete(key);
+  };
+
+  /** Keeps a browsed issue (the newest last, so the oldest is the one let go of). */
+  const browse = (project: string, issue: NormalizedIssue) => {
+    const seen = browsed.get(project) ?? new Map();
+    browsed.set(project, seen);
+    seen.delete(issue.key);
+    seen.set(issue.key, { issue, at: now() });
+    while (seen.size > BROWSED_MAX) seen.delete(seen.keys().next().value as string);
   };
 
   /** A fetch that began at `startedAt` is over: the changes it was started late enough to have seen are in it now. */
@@ -125,6 +137,8 @@ export function createIssues(ctx: KanbanContext, opts: IssuesOptions = {}) {
     const repos = ctx.repos(project).filter((r) => r.kind === 'git' && r.remote).map((r) => r.remote!);
     return { gh: runGh, fetch: doFetch, cwd: ctx.floor(project)?.dir ?? def?.dir ?? ctx.dataDir, jira: ctx.secrets.jira(), projectRepos: repos };
   };
+
+  const browsing = createBrowse(ctx, { io, browsed: browse });
 
   /** Asks every source of the project again (one refresh at a time per project). */
   const refresh = (project: string): Promise<IssuesState> => {
@@ -200,6 +214,7 @@ export function createIssues(ctx: KanbanContext, opts: IssuesOptions = {}) {
     cache.delete(project);
     overlay.delete(project);
     acted.delete(project);
+    browsed.delete(project);
     walls.delete(project);
     if (!hasSources(project)) return;
     const had = running.get(project);
@@ -218,6 +233,8 @@ export function createIssues(ctx: KanbanContext, opts: IssuesOptions = {}) {
     const over = overlay.get(project) ?? new Map();
     overlay.set(project, over);
     over.set(key, { fields: { ...over.get(key)?.fields, ...fields }, at: now() });
+    // An issue only acted on or browsed is not on the list: its own copy takes the change.
+    for (const kept of [acted.get(project)?.get(key), browsed.get(project)?.get(key)]) if (kept) kept.issue = applyPatch(kept.issue, fields);
     ctx.broadcast(message(project), project);
     wallChanged(project);
     refreshWall(project);
@@ -232,15 +249,26 @@ export function createIssues(ctx: KanbanContext, opts: IssuesOptions = {}) {
     settling.set(project, t);
   };
 
+  /** An issue of the list (with its pending change), else one acted on or browsed lately. */
+  const find = (project: string, key: string): NormalizedIssue | undefined => {
+    const listed = state(project).items.find((x) => x.key === key);
+    if (listed) return withChange(project, listed);
+    const before = acted.get(project)?.get(key);
+    if (before && now() - before.at < ACTED_TTL_MS) return before.issue;
+    const seen = browsed.get(project)?.get(key);
+    return seen && now() - seen.at < BROWSED_TTL_MS ? seen.issue : undefined;
+  };
+
   const plugin: KanbanPlugin = {
     name: 'issues',
     ws: {
+      ...browsing.ws,
       ...issueActionHandlers(ctx, {
-        find: (project, key) => {
-          const listed = state(project).items.find((x) => x.key === key);
-          if (listed) return withChange(project, listed);
-          const before = acted.get(project)?.get(key);
-          return before && now() - before.at < ACTED_TTL_MS ? before.issue : undefined;
+        find,
+        load: async (project, key) => {
+          const issue = await browsing.load(project, key);
+          if (issue) browse(project, issue);
+          return issue;
         },
         patch,
         io,
@@ -274,7 +302,7 @@ export function createIssues(ctx: KanbanContext, opts: IssuesOptions = {}) {
           wallChanged(m.project);
           return ok(c, m.rid, { taskId: existing.id, existed: true, ...(typeof err === 'string' && err ? { startError: err } : { started: true }) });
         }
-        let issue = state(m.project).items.find((i) => i.key === m.issueKey);
+        let issue = find(m.project, m.issueKey) ?? (await browsing.load(m.project, m.issueKey));
         if (!issue) issue = (await refresh(m.project)).items.find((i) => i.key === m.issueKey);
         if (!issue) return fail(c, m.rid, `${m.issueKey} isn't among the project's issues (any more)`);
         const made = await createIntegrationTask(ctx, { project: m.project, title: issue.title, description: issueDescription(issue), ticket: issue.key, ticketUrl: issue.url }, c, m.start, m.deskId ? { deskId: m.deskId } : undefined);
@@ -308,6 +336,15 @@ export function createIssues(ctx: KanbanContext, opts: IssuesOptions = {}) {
     },
   };
   return { plugin, refresh, state, message, wall, watch };
+}
+
+/** The issue with a change made through an action applied (`assignee: null` clears it). */
+function applyPatch(i: NormalizedIssue, fields: IssuePatch): NormalizedIssue {
+  const next = { ...i };
+  if (fields.status !== undefined) next.status = fields.status;
+  if (fields.assignee === null) delete next.assignee;
+  else if (fields.assignee !== undefined) next.assignee = fields.assignee;
+  return next;
 }
 
 /** A task's description from its issue: the issue's text, then where it came from. */
