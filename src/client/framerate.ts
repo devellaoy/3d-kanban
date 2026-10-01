@@ -48,4 +48,9 @@ export class SlowFrames {
     this.said = slow;
     return slow;
   }
+
+  /** Frames weren't all drawn at full rate (or the like): forgets the span so far. */
+  reset() {
+    this.start = null;
+  }
 }

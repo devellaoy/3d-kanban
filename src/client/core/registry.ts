@@ -364,6 +364,11 @@ export class View<G = unknown> {
     return false;
   }
 
+  /** Whether any filter was on in the last drawn frame (it changes nothing). */
+  filtering(): boolean {
+    return this.on.length > 0;
+  }
+
   /** The filters that are on this frame (kept, so drawing one allocates nothing). */
   private readonly on: FrameFilter[] = [];
 

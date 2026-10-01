@@ -51,6 +51,7 @@ import type { installPointer } from '../input/pointer';
 import type { installArrival } from './arrival';
 import type { installHintBar } from './hintbar';
 import type { installMaps } from './maps';
+import type { FramePacer } from './pace';
 import type { installPlace } from './place';
 import type { Stage } from './scene';
 import type { installTravel } from './travel';
@@ -92,6 +93,8 @@ export interface Parts {
   hintbar: Made<typeof installHintBar>;
   focus: Made<typeof installFocus>;
   pointer: Made<typeof installPointer>;
+  /** How often frames are drawn (core/pace.ts). */
+  pace: FramePacer;
 
   // ---- Features ------------------------------------------------------------------------------------
   boards: Made<typeof installBoards>;
