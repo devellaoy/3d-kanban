@@ -64,7 +64,7 @@ function worktreeOf(ctx: KanbanContext, task: KanbanTask, repo: ProjectRepo): { 
 
 /** Works out where `repo`'s change is and what it's measured against. */
 export async function locate(ctx: KanbanContext, task: KanbanTask, repo: ProjectRepo, kick?: (dir: string) => void): Promise<Located> {
-  const base: KanbanRepoChangesInfo = { id: repo.id, name: repo.name, source: 'checkout' };
+  const base: KanbanRepoChangesInfo = { id: repo.id, name: repo.name, ...(repo.primary ? { primary: true } : {}), source: 'checkout' };
   if (repo.kind !== 'git') return { info: { ...base, error: 'A folder repository has no git history to show' }, worktree: false };
   const wt = worktreeOf(ctx, task, repo);
   if (wt) {
@@ -119,7 +119,7 @@ export function createChangesPlugin(ctx: KanbanContext, opts: ChangesOptions = {
     const repos = taskRepos(ctx, task);
     const repoParam = url.searchParams.get('repo');
     if (m[2] === 'changes' && repoParam === null) {
-      const list: KanbanChangesList = { taskId: task.id, repos: await Promise.all(repos.map(async (r) => (await locate(ctx, task, r, kick)).info)) };
+      const list: KanbanChangesList = { taskId: task.id, project: task.project, repos: await Promise.all(repos.map(async (r) => (await locate(ctx, task, r, kick)).info)) };
       return sendJson(res, 200, list), true;
     }
     if (!repoParam || !(REPO_ID_RE.test(repoParam) || PROJECT_ID_RE.test(repoParam))) return sendJson(res, 400, { error: 'repo must be one of the task’s repository ids' }), true;

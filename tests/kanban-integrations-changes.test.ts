@@ -61,6 +61,8 @@ test('changes from the branch in the project checkout (no workspace)', async () 
   const task = ctx.repo.createTask({ project: 'proj', title: 'x', tool: 'claude', usePlan: false, planApproval: 'auto', useReview: false, createdBy: 'T', branch: 'feature' });
   const list = await get<KanbanChangesList>(plugin, `/api/kanban/tasks/${task.id}/changes`);
   assert.equal(list.status, 200);
+  assert.equal(list.body.project, 'proj');
+  assert.equal(list.body.repos[0].primary, true);
   assert.equal(list.body.repos[0].source, 'checkout');
   assert.equal(list.body.repos[0].branch, 'feature');
   assert.equal(list.body.repos[0].base, 'main');
