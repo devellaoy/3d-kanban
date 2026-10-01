@@ -302,6 +302,12 @@ class View implements TaskView {
     if (task && !this.embedded) {
       const w = task.workerId ? store.workers.get(task.workerId) : undefined;
       links.push(h('a.btn.small', { href: showIn3dLink(task.project, task.workerId, w?.deskId), title: 'The 3D office, at this task’s worker (or on its floor)' }, '📍 Show in 3D'));
+      // The 3D worker window has its own 🧩 VSCode in its header (kanban/vscode), so only here.
+      if (kstore.me.admin) {
+        const code = h('button.btn.small', { type: 'button', title: 'Open this task’s folder in VS Code on the office’s computer: its worktree, or all its repositories’ worktrees in one window' }, '🧩 VSCode') as HTMLButtonElement;
+        code.addEventListener('click', () => void this.req({ t: 'kanban.task.vscode', id: task.id }, code, 'Opening VS Code…'));
+        links.push(code);
+      }
     }
     if (task && this.embedded) {
       links.push(h('a.btn.small', { href: `/kanban?project=${encodeURIComponent(task.project)}&task=${id}${this.current !== 'overview' ? `&tab=${this.current}` : ''}`, target: '_blank', rel: 'noopener' }, '🗂️ Open in the kanban'));

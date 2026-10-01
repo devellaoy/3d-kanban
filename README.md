@@ -105,6 +105,10 @@ curl -fsSL https://raw.githubusercontent.com/devellaoy/3d-kanban/main/deploy/pro
 - **A kanban page** at `/kanban` (**J** or **🗂️ Kanban** in the office, a link on `/lite`). A
   task's view (conversation, plan, runs, the change and its commits read from git, an
   investigation's reports, PRs) is one shared piece, on the kanban and in the office's windows.
+- **🧩 VSCode**: the task view's head on the kanban and every worker's terminal window (3D office and
+  `/lite`) open the task's or worker's folder in VS Code on the office's machine: its worktree, or all
+  its repositories' worktrees in one window. Admins only. VS Code must be installed there: on macOS in
+  `/Applications` is enough, elsewhere `code` must be on the PATH ([docs/kanban.md](docs/kanban.md#the-detail-panel)).
 - **One world, two views**: a task's workers are ordinary workers at desks. Sending one home (**X**,
   leave-on-merge, the queue, a meeting) is an event on its task, and can mark it done; a task moved to
   Done sends its idle workers home, and stops a run whose agent is still asking in its terminal (see [docs/kanban.md](docs/kanban.md#sending-a-tasks-worker-home)).

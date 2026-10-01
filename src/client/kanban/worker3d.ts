@@ -15,6 +15,7 @@ import type { WorkerInfo } from '../../shared/protocol';
 import type { Net } from '../net';
 import { h, toast } from '../ui/dom';
 import { TabMemory, TASK_PANE_CLASS, tabLabel, workerTabs, type WorkerTab } from './office';
+import { mountVsCodeButton } from './vscode';
 
 const memory = new TabMemory();
 
@@ -50,6 +51,8 @@ export interface WorkerTabs {
  * after `anchor` (the terminal's own area); null for a worker without a task, whose window stays upstream's.
  */
 export function mountWorkerTabs(net: Net, w: WorkerInfo, el: HTMLElement, anchor: HTMLElement, opts: WorkerTabsOptions): WorkerTabs | null {
+  // Every worker's window, with tabs or without, gets 🧩 VSCode in its header (admins only).
+  mountVsCodeButton(net, w, el, opts.focusTerminal);
   const tabs = workerTabs(w);
   if (!tabs.length) return null;
   css();
