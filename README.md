@@ -135,6 +135,7 @@ curl -fsSL https://raw.githubusercontent.com/devellaoy/3d-kanban/main/deploy/pro
   tap uses what you tapped); your character faces where the camera looks; the wheel zooms
   ([controls](docs/controls.md)). Upstream's *Mouse drag /
   wheel* row below is out of date.
+- **Mouse sensitivity**: ⚙️ Settings → 🧍 You, 25–200% of the usual look speed, kept in your browser.
 - **An installable app (PWA)**: install the office from the browser; it opens on the kanban, with
   shortcuts to the 3D office and the 2D view, shows *The office is offline. Reconnecting…* while it can't
   reach the office, and offers **Reload** when a new version is out. HTTPS is needed except on
