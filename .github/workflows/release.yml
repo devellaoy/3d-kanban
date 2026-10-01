@@ -5,9 +5,8 @@ name: Release
 # number of commits on main (v0.1.68, v0.1.69, ...); bump package.json for a new minor.
 # 3d-kanban: releases of devellaoy/3d-kanban (this repository), with the asset 3d-kanban.tgz, which
 # install.sh and install.ps1 download.
-#
-# Pull requests get the same build, tests and a real install of the packed release through
-# install.sh, but publish nothing.
+# 3d-kanban: pull requests don't run this workflow; it runs only when a change is merged to main
+# (or by hand).
 
 on:
   push:
@@ -19,17 +18,6 @@ on:
       - 'package-lock.json'
       - 'tsconfig*.json'
       - 'vite.config.ts'
-      - '.github/workflows/release.yml'
-  pull_request:
-    paths:
-      - 'src/**'
-      - 'bin/**'
-      - 'tests/**'
-      - 'package.json'
-      - 'package-lock.json'
-      - 'tsconfig*.json'
-      - 'vite.config.ts'
-      - 'install.sh'
       - '.github/workflows/release.yml'
   workflow_dispatch:
 
