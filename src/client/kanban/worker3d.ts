@@ -2,7 +2,8 @@
 // terminal, as it is), 🗂️ Task #14 (the shared task view, embedded: conversation with its composer and
 // history, plan, runs, changes, PRs); the worker's changes stay upstream's own 🌿 Changes button. The
 // task view is mounted the first time its tab opens and destroyed with the window; the tab chosen is
-// remembered per worker for the session. A worker without a task gets no tabs: upstream's window.
+// remembered per worker for the session (the Task tab until another is picked). A worker without a
+// task gets no tabs: upstream's window.
 //
 // Keys: the terminal only reads the keys typed into its own textarea, and the office's keys are off
 // while any window is open, so the task's composer is safe from both; its keydowns are stopped at the
