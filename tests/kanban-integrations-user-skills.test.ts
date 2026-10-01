@@ -1,13 +1,15 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, utimesSync, writeFileSync } from 'node:fs';
+import { createHash } from 'node:crypto';
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, symlinkSync, utimesSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { MARKER, SKILL_NAME_RE, discoverSkills, parseFrontmatter, skillHash } from '../src/server/kanban/integrations/skills/registry.js';
+import { MARKER, SKILL_NAME_RE, USER_SKILL_EXCLUDES, discoverSkills, parseFrontmatter, skillHash } from '../src/server/kanban/integrations/skills/registry.js';
 import { AIKANBAN_MARKER, USER_MARKER, syncUserSkills } from '../src/server/kanban/integrations/userskills/sync.js';
 import { createUserSkillsPlugin, syncUserSkillsNow } from '../src/server/kanban/integrations/userskills/index.js';
+import { createSkills } from '../src/server/kanban/integrations/skills/index.js';
 import { makeCtx } from './kanban-integrations-ctx.js';
 
 const REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -42,7 +44,7 @@ test('installs claude and codex skills with a marker, leaving node_modules and .
   assert.ok(existsSync(path.join(s.codexHome, 'skills', 'beta', 'SKILL.md')));
   const marker = JSON.parse(readFileSync(path.join(a, USER_MARKER), 'utf8'));
   assert.equal(marker.source, '3d-kanban');
-  assert.equal(marker.hash, skillHash(path.join(s.source, 'claude', 'alpha'), { skipDeps: true }));
+  assert.equal(marker.hash, skillHash(path.join(s.source, 'claude', 'alpha'), { exclude: USER_SKILL_EXCLUDES }));
 });
 
 test('a second run changes nothing', () => {
@@ -116,6 +118,7 @@ test('a failed first install leaves no folder behind, and the next run installs 
   const skills = path.join(s.claudeHome, 'skills');
   assert.ok(!existsSync(path.join(skills, 'alpha')), 'no unmarked folder');
   assert.deepEqual(existsSync(skills) ? readdirSync(skills) : [], [], 'no temp folder either');
+  assert.ok(!existsSync(path.join(s.claudeHome, '.office-user-skills-tmp')), 'and the tmp root is gone');
   chmodSync(locked, 0o644);
   assert.equal(s.run().find((r) => r.name === 'alpha (claude)')?.status, 'installed');
 });
@@ -130,6 +133,46 @@ test('a copy with our current marker and also .aikanban-sync is brought back and
   assert.equal(readFileSync(path.join(dest, 'scripts', 'run.js'), 'utf8'), '// one\n');
   assert.ok(!existsSync(path.join(dest, AIKANBAN_MARKER)));
   assert.equal(s.run().find((r) => r.name === 'alpha (claude)')?.status, 'current');
+});
+
+test('an update swaps the copy in whole: files removed from the source disappear, node_modules stays, nothing is left in skills/', () => {
+  const s = setup();
+  s.run();
+  const dest = path.join(s.claudeHome, 'skills', 'alpha');
+  writeFileSync(path.join(s.source, 'claude', 'alpha', 'old.txt'), 'x');
+  s.run();
+  assert.ok(existsSync(path.join(dest, 'old.txt')));
+  mkdirSync(path.join(dest, 'node_modules'), { recursive: true });
+  writeFileSync(path.join(dest, 'node_modules', 'keep.js'), 'x');
+  rmSync(path.join(s.source, 'claude', 'alpha', 'old.txt'));
+  assert.equal(s.run().find((r) => r.name === 'alpha (claude)')?.status, 'updated');
+  assert.ok(!existsSync(path.join(dest, 'old.txt')));
+  assert.ok(existsSync(path.join(dest, 'node_modules', 'keep.js')));
+  assert.deepEqual(readdirSync(path.join(s.claudeHome, 'skills')), ['alpha']);
+  assert.ok(!existsSync(path.join(s.claudeHome, '.office-user-skills-tmp')));
+});
+
+test('a symlinked target is never written through', { skip: process.platform === 'win32' }, () => {
+  const s = setup();
+  const real = skill(path.join(s.tmp, 'elsewhere'), 'alpha', 'mine');
+  mkdirSync(path.join(s.claudeHome, 'skills'), { recursive: true });
+  symlinkSync(real, path.join(s.claudeHome, 'skills', 'alpha'));
+  writeFileSync(path.join(real, USER_MARKER), JSON.stringify({ hash: 'old' }));
+  assert.equal(s.run().find((r) => r.name === 'alpha (claude)')?.status, 'user-owned');
+  assert.match(readFileSync(path.join(real, 'SKILL.md'), 'utf8'), /# mine/);
+});
+
+test("a dead process's leftovers in the tmp root are cleaned, a living one's stay, a lost skill comes back", () => {
+  const s = setup();
+  s.run();
+  const tmpRoot = path.join(s.claudeHome, '.office-user-skills-tmp');
+  mkdirSync(path.join(tmpRoot, 'x-2147483646'), { recursive: true });
+  mkdirSync(path.join(tmpRoot, `y-${process.ppid}`), { recursive: true });
+  mkdirSync(path.join(tmpRoot, 'lost-2147483646.old'), { recursive: true });
+  writeFileSync(path.join(tmpRoot, 'lost-2147483646.old', 'SKILL.md'), 'back');
+  s.run();
+  assert.deepEqual(readdirSync(tmpRoot).sort(), [`y-${process.ppid}`]);
+  assert.equal(readFileSync(path.join(s.claudeHome, 'skills', 'lost', 'SKILL.md'), 'utf8'), 'back');
 });
 
 test('one failing skill does not stop the rest', () => {
@@ -151,60 +194,89 @@ test('the registry lists a synced Codex skill as the user\'s own', () => {
   assert.ok(!existsSync(path.join(s.codexHome, 'skills', 'beta', MARKER)));
 });
 
-test('skillHash with skipDeps ignores node_modules and the sync markers; the default hash does not', () => {
+test('skillHash with the exclusion set ignores node_modules and the sync markers; the default hash does not', () => {
   const s = setup();
   const dir = path.join(s.source, 'claude', 'alpha');
   const plain = skillHash(dir);
-  const lean = skillHash(dir, { skipDeps: true });
+  const lean = skillHash(dir, { exclude: USER_SKILL_EXCLUDES });
   mkdirSync(path.join(dir, 'node_modules'), { recursive: true });
   writeFileSync(path.join(dir, 'node_modules', 'x.js'), 'x');
   writeFileSync(path.join(dir, USER_MARKER), '{}');
   writeFileSync(path.join(dir, AIKANBAN_MARKER), 'abc');
-  assert.equal(skillHash(dir, { skipDeps: true }), lean);
+  assert.equal(skillHash(dir, { exclude: USER_SKILL_EXCLUDES }), lean);
   assert.notEqual(skillHash(dir), plain);
 });
 
-test('the plugin: off blocks, a worktree source blocks unless on', () => {
+const tick = () => new Promise((r) => setImmediate(r));
+const withMode = async (mode: string | undefined, fn: () => unknown | Promise<unknown>) => {
   const keep = process.env.AGENT_OFFICE_USER_SKILLS;
-  const ctx = makeCtx();
+  if (mode === undefined) delete process.env.AGENT_OFFICE_USER_SKILLS;
+  else process.env.AGENT_OFFICE_USER_SKILLS = mode;
   try {
-    const s = setup();
-    const wt = path.join(s.tmp, '.agent-office', 'worktrees', 'bolt-1', 'user-skills');
-    skill(path.join(wt, 'claude'), 'alpha');
-    const start = (source: string) => {
-      const home = path.join(tmpDir(), 'claude');
-      createUserSkillsPlugin(ctx, { homes: () => ({ source, claudeHome: home, codexHome: path.join(home, '..', 'codex') }) }).start!();
-      return existsSync(path.join(home, 'skills', 'alpha', 'SKILL.md'));
-    };
-    process.env.AGENT_OFFICE_USER_SKILLS = 'off';
-    assert.equal(start(path.join(s.source)), false, 'off');
-    delete process.env.AGENT_OFFICE_USER_SKILLS;
-    assert.equal(start(wt), false, 'worktree');
-    assert.equal(start(s.source), true, 'a normal checkout');
-    process.env.AGENT_OFFICE_USER_SKILLS = 'on';
-    assert.equal(start(wt), true, 'on overrides the worktree guard');
-    process.env.AGENT_OFFICE_USER_SKILLS = 'off';
-    assert.equal(start(wt), false, 'off beats on');
+    return await fn();
   } finally {
     if (keep === undefined) delete process.env.AGENT_OFFICE_USER_SKILLS;
     else process.env.AGENT_OFFICE_USER_SKILLS = keep;
   }
+};
+
+test('the plugin: off blocks, a linked git worktree blocks unless on, a main checkout and a plain install go', async () => {
+  const ctx = makeCtx();
+  const s = setup();
+  const mk = (name: string, git: 'dir' | 'file' | 'none') => {
+    const root = path.join(s.tmp, name);
+    const source = path.join(root, 'user-skills');
+    skill(path.join(source, 'claude'), 'alpha');
+    if (git === 'dir') mkdirSync(path.join(root, '.git'));
+    if (git === 'file') writeFileSync(path.join(root, '.git'), 'gitdir: /elsewhere/.git/worktrees/x\n');
+    return source;
+  };
+  const wt = mk('wt', 'file');
+  const main = mk('main', 'dir');
+  const plain = mk('plain', 'none');
+  const start = async (source: string) => {
+    const home = path.join(tmpDir(), 'claude');
+    const p = createUserSkillsPlugin(ctx, { homes: () => ({ source, claudeHome: home, codexHome: path.join(home, '..', 'codex') }) });
+    p.start!();
+    await tick();
+    p.stop!();
+    return existsSync(path.join(home, 'skills', 'alpha', 'SKILL.md'));
+  };
+  await withMode('off', async () => assert.equal(await start(main), false, 'off'));
+  await withMode(undefined, async () => {
+    assert.equal(await start(wt), false, 'linked worktree');
+    assert.equal(await start(main), true, 'main checkout');
+    assert.equal(await start(plain), true, 'no git at all');
+  });
+  await withMode('on', async () => assert.equal(await start(wt), true, 'on overrides the worktree guard'));
+  await withMode('off', async () => assert.equal(await start(wt), false, 'off beats on'));
 });
 
-test('the admin sync respects off', () => {
-  const keep = process.env.AGENT_OFFICE_USER_SKILLS;
-  try {
-    const s = setup();
-    const homes = { source: s.source, claudeHome: s.claudeHome, codexHome: s.codexHome };
-    process.env.AGENT_OFFICE_USER_SKILLS = 'off';
+test('the admin sync runs the user-skills sync through the skills hook, under the same guards', async () => {
+  const ctx = makeCtx();
+  const s = setup();
+  const roots = { claudeHome: s.claudeHome, codexHome: s.codexHome, accountHomes: [], repoDirs: [] };
+  const plugin = createUserSkillsPlugin(ctx, { homes: () => ({ source: s.source, claudeHome: s.claudeHome, codexHome: s.codexHome }) });
+  const skills = createSkills(ctx, { roots: () => roots });
+  await withMode(undefined, async () => {
+    plugin.start!();
+    await tick();
+    rmSync(path.join(s.claudeHome, 'skills', 'alpha'), { recursive: true });
+    assert.ok(skills.sync().some((r) => r.name === 'alpha (claude)' && r.status === 'installed'));
+    plugin.stop!();
+    rmSync(path.join(s.claudeHome, 'skills', 'alpha'), { recursive: true });
+    assert.ok(!skills.sync().some((r) => r.name === 'alpha (claude)'), 'unregistered on stop');
+  });
+});
+
+test('the admin sync respects off', async () => {
+  const s = setup();
+  const homes = { source: s.source, claudeHome: s.claudeHome, codexHome: s.codexHome };
+  await withMode('off', () => {
     assert.deepEqual(syncUserSkillsNow(homes), []);
     assert.ok(!existsSync(s.claudeHome));
-    delete process.env.AGENT_OFFICE_USER_SKILLS;
-    assert.equal(syncUserSkillsNow(homes).length, 2);
-  } finally {
-    if (keep === undefined) delete process.env.AGENT_OFFICE_USER_SKILLS;
-    else process.env.AGENT_OFFICE_USER_SKILLS = keep;
-  }
+  });
+  await withMode(undefined, () => assert.equal(syncUserSkillsNow(homes).length, 2));
 });
 
 test("the repository's user-skills/ holds the agreed skills, well named, without installed dependencies", () => {
@@ -225,4 +297,19 @@ test("the repository's user-skills/ holds the agreed skills, well named, without
     return; // not a git checkout
   }
   assert.ok(!/(^|\/)node_modules\//m.test(tracked), 'no node_modules is committed');
+});
+
+test('the two kanban-ui-screenshots copies differ only in SKILL.md and agents/', () => {
+  const walk = (root: string, rel = ''): string[] =>
+    readdirSync(path.join(root, rel), { withFileTypes: true }).flatMap((e) => {
+      const r = rel ? `${rel}/${e.name}` : e.name;
+      if (e.name === 'node_modules') return [];
+      return e.isDirectory() ? walk(root, r) : [r];
+    });
+  const list = (tool: string) => walk(path.join(REPO, 'user-skills', tool, 'kanban-ui-screenshots')).filter((f) => f !== 'SKILL.md' && !f.startsWith('agents/'));
+  const sum = (tool: string, f: string) => createHash('sha256').update(readFileSync(path.join(REPO, 'user-skills', tool, 'kanban-ui-screenshots', f))).digest('hex');
+  const claude = list('claude').sort();
+  assert.deepEqual(list('codex').sort(), claude);
+  assert.ok(claude.length > 0);
+  for (const f of claude) assert.equal(sum('codex', f), sum('claude', f), `${f} is the same in both`);
 });

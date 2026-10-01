@@ -14,7 +14,9 @@
     "bin",
     "dist",
     "skills",
-    "user-skills"
+    "user-skills",
+    "!user-skills/**/tests/**",
+    "!user-skills/**/*.test.mjs"
   ],
   "scripts": {
     "test": "node --import tsx --import=#tests/css --import=#tests/homes --test tests/*.test.ts",
