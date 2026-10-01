@@ -38,7 +38,9 @@ export interface Stage {
 export function makeRenderer(canvas: HTMLCanvasElement): THREE.WebGLRenderer | null {
   try {
     // Alpha, so the Office TV's YouTube player shows through the hole its screen leaves (youtube/screen.ts).
-    return new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance', alpha: true });
+    // The default GPU, not 'high-performance': on a laptop with two, that would keep the power-hungry one
+    // awake for as long as the tab is open (docs/performance.md).
+    return new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'default', alpha: true });
   } catch (err) {
     console.error(err);
     return null;
