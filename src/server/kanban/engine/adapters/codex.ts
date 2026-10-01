@@ -4,6 +4,7 @@
 // error...), `response_item` lines what the model saw and said.
 
 import type { KanbanEffort, RunPhase } from '../../../../shared/kanban/types.js';
+import { codexBypassesHookTrust } from './codex-hook-trust.js';
 import { isObj, readJsonLines, type LaunchOptions, type TaskAgentAdapter, type TurnResult } from './types.js';
 
 /** Codex's reasoning efforts: it has minimal…xhigh, so max is xhigh. */
@@ -71,6 +72,8 @@ export const codexAdapter: TaskAgentAdapter = {
   tool: 'codex',
   launchArgs(phase: RunPhase, opts: LaunchOptions): string[] {
     const args: string[] = [];
+    // The office's hook command names the floor's own path and Codex keeps one trusted hash per event, so switching floors asks again.
+    if (codexBypassesHookTrust()) args.push('--dangerously-bypass-hook-trust');
     if (phase === 'plan' || phase === 'review') args.push('-s', 'read-only', '-a', 'never');
     // Reading pull requests takes gh, and gh the network, which Codex's read-only sandbox has none of:
     // the workspace sandbox with the network on, in the reviewer's own throwaway worktree (the review

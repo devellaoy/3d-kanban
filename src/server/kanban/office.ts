@@ -3,11 +3,13 @@
 import type { Client } from '../office/client.js';
 import type { Ctx } from '../office/context.js';
 import { str } from '../office/input.js';
+import { probeCodexHookTrust } from './engine/adapters/codex-hook-trust.js';
 import { installKanban, type Kanban } from './index.js';
 import type { KanbanCaller, KanbanClient } from './registry.js';
 
 /** The kanban, on the building's floors, the office's prompts and the hook server (ctx.kanban). */
 export function openKanban(ctx: Ctx, hookPort: number): Kanban {
+  void probeCodexHookTrust(); // fire and forget: workers started before it answers just run without the flag
   return installKanban({
     dataDir: ctx.cfg.dataDir,
     floors: () => ctx.building.list(),

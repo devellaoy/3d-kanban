@@ -7,6 +7,7 @@ import { validateWorkerModel } from '../src/server/agents.js';
 import { claudeAdapter, claudeAlias, readClaudeTurn, teammateTags } from '../src/server/kanban/engine/adapters/claude.js';
 import { MODEL_RE } from '../src/shared/kanban/protocol.js';
 import { codexAdapter, readCodexTurn } from '../src/server/kanban/engine/adapters/codex.js';
+import { helpMentionsHookTrust, setCodexHookTrust } from '../src/server/kanban/engine/adapters/codex-hook-trust.js';
 
 function scratch(t: { after(fn: () => void): void }) {
   const dir = mkdtempSync(path.join(tmpdir(), 'kanban-adapters-'));
@@ -59,7 +60,9 @@ test('claude model ids: a full id passes upstream as its alias and runs as itsel
   assert.deepEqual(args.slice(-2), ['--model', 'claude-opus-5-5[1m]']);
 });
 
-test('codex launch flags per phase, the workspace-write setting, models and efforts', () => {
+test('codex launch flags per phase, the workspace-write setting, models and efforts', (t) => {
+  setCodexHookTrust(false);
+  t.after(() => setCodexHookTrust(undefined));
   const base = { permission: 'bypass' as const, sandbox: true };
   assert.deepEqual(codexAdapter.launchArgs('plan', base), ['-s', 'read-only', '-a', 'never']);
   assert.deepEqual(codexAdapter.launchArgs('review', base), ['-s', 'read-only', '-a', 'never']);
@@ -72,6 +75,28 @@ test('codex launch flags per phase, the workspace-write setting, models and effo
   assert.deepEqual(codexAdapter.launchArgs('fix', { ...base, model: 'gpt-5.5', effort: 'max', extra: ['-c', 'x=1'] }), ['--dangerously-bypass-approvals-and-sandbox', '-m', 'gpt-5.5', '-c', 'model_reasoning_effort="xhigh"', '-c', 'x=1']);
   assert.equal(codexAdapter.spawnModel('gpt-5.5'), undefined);
   assert.equal(codexAdapter.spawnEffort('high'), undefined);
+});
+
+test('codex gets --dangerously-bypass-hook-trust first in every phase when the installed codex knows it', (t) => {
+  t.after(() => setCodexHookTrust(undefined));
+  const base = { permission: 'bypass' as const, sandbox: true };
+  const cases: Array<[Parameters<typeof codexAdapter.launchArgs>[0], Parameters<typeof codexAdapter.launchArgs>[1]]> = [
+    ...(['plan', 'review', 'pr-review', 'implement', 'fix', 'resume', 'pr', 'pr-fix'] as const).map((p): [typeof p, typeof base] => [p, base]),
+    ['implement', { ...base, investigate: true, addDirs: ['/reports/task-3'] }],
+    ['implement', { ...base, permission: 'workspace-write', addDirs: ['/uploads'] }],
+  ];
+  for (const [phase, opts] of cases) {
+    setCodexHookTrust(false);
+    const without = codexAdapter.launchArgs(phase, opts);
+    setCodexHookTrust(true);
+    assert.deepEqual(codexAdapter.launchArgs(phase, opts), ['--dangerously-bypass-hook-trust', ...without], phase);
+  }
+});
+
+test('helpMentionsHookTrust finds the flag in codex --help', () => {
+  assert.equal(helpMentionsHookTrust('Options:\n      --dangerously-bypass-hook-trust\n          Run enabled hooks without persisted trust\n'), true);
+  assert.equal(helpMentionsHookTrust('Options:\n  -s, --sandbox <MODE>\n  --dangerously-bypass-approvals-and-sandbox\n'), false);
+  assert.equal(helpMentionsHookTrust(''), false);
 });
 
 test('claude transcript: the text after the last real prompt, skipping tool results, meta lines and subagents', (t) => {
