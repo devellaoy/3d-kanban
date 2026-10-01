@@ -660,6 +660,12 @@ export class KanbanRepository {
     return (this.db.prepare('SELECT DISTINCT task_id FROM pr_links WHERE lower(repo) = lower(?) AND number = ?').all(repo, number) as Row[]).map((r) => r.task_id as number);
   }
 
+  /** Every link, in any project, to a pull request with this number or this URL (the caller narrows it to the repository: a link may have none). */
+  prLinksMatching(number: number, url: string): (KanbanPrLink & { taskId: number; project: string })[] {
+    const rows = this.db.prepare('SELECT l.*, t.project FROM pr_links l JOIN tasks t ON t.id = l.task_id WHERE l.number = ? OR l.url = ?').all(number, url) as Row[];
+    return rows.map((r) => ({ taskId: r.task_id as number, project: r.project as string, ...prLink(r) }));
+  }
+
   /** Every pull request linked to a task of `project`, with its task's id (to bring their states up to date). */
   prLinksOfProject(project: string): (KanbanPrLink & { taskId: number })[] {
     const rows = this.db.prepare('SELECT l.* FROM pr_links l JOIN tasks t ON t.id = l.task_id WHERE t.project = ? ORDER BY l.task_id, l.repo_id, l.number').all(project) as Row[];

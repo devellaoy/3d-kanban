@@ -28,7 +28,6 @@ import { Composer, isFolderProject, reportDir, reposText, skillPhase, taskRepos,
 import { next, type Effect, type LastRun, type MachineEvent, type MachineState, type PromptKind } from './machine.js';
 import { backoffMs, looksInterrupted, planOutcome, prLines, resetTime, reviewFindings, reviewVerdict, stripPlanMarkers } from './markers.js';
 import { branchExists, currentBranch, hasChanges, missingFolders } from './workspace.js';
-import { prOwners } from '../integrations/pulls/bundle.js';
 
 export interface EngineOptions {
   /** How often due retries, queued tasks and newly opened floors are looked at (60 s). */
@@ -1434,9 +1433,9 @@ export class Orchestrator {
   }
 
   /**
-   * The pull requests a PR turn reported, kept on the task by repository. `PR:` lines are linked as
-   * they are; a PR only mentioned by URL (loose) is linked when it is one of the task's repositories',
-   * no other task has it and the board lists it from the task's branch.
+   * The pull requests a PR turn reported with a `PR:` line, kept on the task by repository. A PR only
+   * mentioned by URL (loose) isn't linked here: the board sync links it by the task's branch, with
+   * its fork and ownership checks, right after refreshPrBoards.
    */
   private recordPrs(task: KanbanTask, text: string) {
     const def = this.ctx.project(task.project);
@@ -1444,32 +1443,14 @@ export class Orchestrator {
     const branches = this.ctx.repo.repoBranches(task.id);
     let changed = false;
     for (const pr of prLines(text)) {
-      if (pr.number === undefined) continue;
+      if (pr.number === undefined || pr.loose) continue;
       const repo = repos.find((r) => r.remote && pr.repo && r.remote.toLowerCase() === pr.repo.toLowerCase());
       const repoId = repo?.id ?? task.project;
       const branch = branches[repoId] ?? task.branch;
-      if (pr.loose && (!repo?.remote || !pr.repo || !sameRepo(repo.remote, pr.repo) || this.othersHave(task, pr.repo, pr.number, pr.url) || !this.boardHas(task, repo.remote, pr.number, branch))) continue;
       this.ctx.repo.upsertPrLink(task.id, { repoId, ...(pr.repo ? { repo: pr.repo } : {}), number: pr.number, url: pr.url, state: 'OPEN', ...(branch ? { branch } : {}) });
       changed = true;
     }
     if (changed) this.pushTask(this.ctx.repo.getTask(task.id));
-  }
-
-  /** Whether another task has the PR: by repository (or a link's repoId) and number, or by URL. */
-  private othersHave(task: KanbanTask, repo: string, number: number, url: string): boolean {
-    const remoteOf = (repoId: string) => this.ctx.repos(task.project).find((r) => r.id === repoId)?.remote;
-    const ids = [...prOwners(this.ctx.repo.prLinksOfProject(task.project), remoteOf, repo, number, url), ...this.ctx.repo.tasksOfPr(repo, number)];
-    return ids.some((id) => id !== task.id);
-  }
-
-  /** Whether the floor's PR board lists that PR with the task's branch as its head (how a loose URL is confirmed as the task's). */
-  private boardHas(task: KanbanTask, remote: string, number: number, branch: string | undefined): boolean {
-    try {
-      const items = this.ctx.floor(task.project)?.githubFor(remote)?.pulls.items;
-      return !!branch && !!items?.some((p) => p.number === number && p.headRefName === branch);
-    } catch {
-      return false;
-    }
   }
 
   /** After a PR turn the floor's PR board lists the new PR at once (its sync then links it by branch, whatever the answer said). */

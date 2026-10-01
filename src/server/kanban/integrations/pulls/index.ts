@@ -164,13 +164,30 @@ export function createPullsParts(ctx: KanbanContext, opts: PullsOptions = {}) {
     }
   };
 
+  /** Whether a PR's head is in another repository (a fork), by gh; a PR's head repository never changes, so it is asked once (an error isn't remembered). */
+  const crossRepo = new Map<string, boolean>();
+  const isFork = async (repo: string, number: number): Promise<boolean | undefined> => {
+    const key = `${repo.toLowerCase()}#${number}`;
+    const known = crossRepo.get(key);
+    if (known !== undefined) return known;
+    try {
+      const v = (JSON.parse(await runGh(['pr', 'view', String(number), '-R', repo, '--json', 'isCrossRepository'], ctx.dataDir)) as { isCrossRepository?: unknown }).isCrossRepository;
+      if (typeof v !== 'boolean') return undefined;
+      crossRepo.set(key, v);
+      return v;
+    } catch {
+      return undefined;
+    }
+  };
+
   /**
    * A floor's PR board has fresh lists: its tasks' linked PRs take the states GitHub has for them
-   * now (a PR is matched by repository and number, else by URL), and the PRs from a task's branch
-   * that nobody has linked yet (active tasks' branches only) are linked to it (branchPrs: whatever phase opened them, however the
-   * agent worded its answer). The browsers hear about the cards that changed. Returns those tasks' ids.
+   * now (a PR is matched by repository and number, else by URL), and the PRs from an active task's
+   * branch that no task of any project has linked yet are linked to it (branchPrs: whatever phase
+   * opened them, however the agent worded its answer), once gh says the head isn't a fork's. The
+   * browsers hear about the cards that changed. Returns those tasks' ids.
    */
-  const syncPrStates = (project: string, pulls: (Pick<GhPull, 'number' | 'url' | 'state' | 'isDraft' | 'repo'> & { headRefName?: string })[]): number[] => {
+  const syncPrStates = async (project: string, pulls: (Pick<GhPull, 'number' | 'url' | 'state' | 'isDraft' | 'repo'> & { headRefName?: string })[]): Promise<number[]> => {
     if (!pulls.length) return [];
     const links = ctx.repo.prLinksOfProject(project);
     const repos = ctx.repos(project);
@@ -184,9 +201,11 @@ export function createPullsParts(ctx: KanbanContext, opts: PullsOptions = {}) {
       if (ctx.repo.setPrLinkState(l.taskId, l.repoId, l.number, prState(p))) changed.add(l.taskId);
     }
     const tasks = ctx.repo.listTasks(project).filter((t) => t.status !== 'done').map((t) => ({ id: t.id, branch: t.branch, status: t.status, branches: ctx.repo.repoBranches(t.id) }));
-    // Some task's already: a link names its repository, or only its repoId, or its URL (prOwners).
-    const linked = (repo: string, number: number, url: string) => prOwners(links, remoteOf, repo, number, url).length > 0 || ctx.repo.tasksOfPr(repo, number).length > 0;
+    // Some task's already, in any project: a link names its repository, or only its repoId, or its URL (prOwners).
+    const projectRemote = (proj: string, repoId: string) => ctx.repos(proj).find((r) => r.id === repoId)?.remote;
+    const linked = (repo: string, number: number, url: string) => prOwners(ctx.repo.prLinksMatching(number, url), projectRemote, repo, number, url).length > 0;
     for (const b of branchPrs(tasks, pulls, repos.filter((r) => r.kind === 'git'), home, linked)) {
+      if ((await isFork(b.repo, b.pull.number)) !== false || linked(b.repo, b.pull.number, b.pull.url)) continue;
       ctx.repo.upsertPrLink(b.taskId, { repoId: b.repoId, repo: b.repo, number: b.pull.number, url: b.pull.url, state: prState(b.pull), branch: b.branch });
       changed.add(b.taskId);
     }
@@ -194,7 +213,7 @@ export function createPullsParts(ctx: KanbanContext, opts: PullsOptions = {}) {
     return [...changed];
   };
 
-  const onBoard = (floor: PulledFloor) => void syncPrStates(floor.id, floor.pullsState().items);
+  const onBoard = (floor: PulledFloor) => void syncPrStates(floor.id, floor.pullsState().items).catch((err) => console.error("agent-office: syncing a floor's linked pull requests failed:", err));
 
   const api: KanbanPullsApi = {
     async bundle(project, by, o) {

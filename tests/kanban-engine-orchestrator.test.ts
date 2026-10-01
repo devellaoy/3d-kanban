@@ -226,7 +226,7 @@ test('a usage limit waits with retryAt, and the sweep carries on by itself', asy
   assert.ok(fx.invocations().some((i) => i.prompt && /was cut short/.test(i.prompt)), 'typed into the live session');
 });
 
-test('a pr turn links the PR its answer names, in whatever words, when it is the task’s repository’s', async (t) => {
+test('a pr turn links only its PR: lines; a URL in other words is left to the board, which it asks to refresh', async (t) => {
   const fx = await engineFixture();
   t.after(() => fx.close());
   fx.setRules([
@@ -238,38 +238,16 @@ test('a pr turn links the PR its answer names, in whatever words, when it is the
   const task = fx.newTask();
   assert.equal(await fx.engine.start(task.id, ADA), undefined);
   await fx.waitTask(task.id, (x) => x.status === 'review' && x.runState === 'idle', 'the review column', 30_000);
-  // Without a board listing #7 the loose URL is no link (the board refresh would link it by branch); with it on the task's branch it is.
-  const floor = fx.ctx.floor('proj') as unknown as { githubFor?: unknown };
-  const board: { number: number; headRefName: string }[] = [];
-  floor.githubFor = () => ({ pulls: { items: board }, refresh: async () => {} });
+  // A stand-in for the floor's board of the task's repository: what it is asked for is recorded.
+  const asked: string[] = [];
+  (fx.ctx.floor('proj') as unknown as { githubFor: unknown }).githubFor = (remote: string) => ({ refresh: async () => void asked.push(remote) });
   assert.equal(await fx.engine.pr(task.id, ADA, 'create'), undefined);
   await fx.waitTask(task.id, (x) => x.runState === 'idle' && x.flags.prRequested === true, 'the pr turn');
-  assert.deepEqual(fx.task(task.id).prs, [], 'the board does not confirm #7');
-  board.push({ number: 7, headRefName: fx.task(task.id).branch! });
+  assert.deepEqual(fx.task(task.id).prs, [], 'a loose URL is no link from the turn itself');
+  assert.deepEqual(asked, ['acme/proj'], 'but the board is asked to look now');
+
+  fx.setRules([{ when: 'Open the pull requests for', reply: 'Opened it.\nPR: https://github.com/acme/proj/pull/7' }]);
   assert.equal(await fx.engine.pr(task.id, ADA, 'create'), undefined);
   const withPr = await fx.waitTask(task.id, (x) => x.runState === 'idle' && x.prs.length > 0, 'the pull request');
-  assert.deepEqual(withPr.prs.map((p) => [p.repoId, p.repo, p.number]), [['proj', 'acme/proj', 7]], 'another repository’s URL is no link of this task’s');
-});
-
-test('a pr turn does not take a PR another task has, even one linked without its repository', async (t) => {
-  const fx = await engineFixture();
-  t.after(() => fx.close());
-  fx.setRules([
-    { when: 'You are planning kanban task', reply: 'Read it.\n\nPLAN READY', exitPlan: '1. Do it' },
-    { when: 'Implement kanban task', reply: 'Done.', commit: 'Do it' },
-    { when: 'This is review round 1 of', reply: 'Good.\nREVIEW: APPROVED' },
-    { when: 'Open the pull requests for', reply: 'Updated [the PR](https://github.com/acme/proj/pull/7).' },
-  ]);
-  const other = fx.newTask();
-  // The other task's link has only its repoId, which tasksOfPr doesn't find.
-  fx.repo.upsertPrLink(other.id, { repoId: 'proj', number: 7, url: 'https://github.com/acme/proj/pull/7', state: 'OPEN' });
-  const task = fx.newTask();
-  assert.equal(await fx.engine.start(task.id, ADA), undefined);
-  await fx.waitTask(task.id, (x) => x.status === 'review' && x.runState === 'idle', 'the review column', 30_000);
-  const floor = fx.ctx.floor('proj') as unknown as { githubFor?: unknown };
-  floor.githubFor = () => ({ pulls: { items: [{ number: 7, headRefName: fx.task(task.id).branch! }] }, refresh: async () => {} });
-  assert.equal(await fx.engine.pr(task.id, ADA, 'create'), undefined);
-  await fx.waitTask(task.id, (x) => x.runState === 'idle' && x.flags.prRequested === true, 'the pr turn');
-  assert.deepEqual(fx.task(task.id).prs, [], 'still the other task’s alone');
-  assert.deepEqual(fx.task(other.id).prs.map((p) => p.number), [7]);
+  assert.deepEqual(withPr.prs.map((p) => [p.repoId, p.repo, p.number]), [['proj', 'acme/proj', 7]]);
 });
