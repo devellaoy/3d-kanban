@@ -485,13 +485,14 @@ export function openPull(first: GhPull, net: Net, actions: BoardActions) {
     const g = ++generation;
     detailError = '';
     diffError = '';
-    owner.load(renderFrame);
     renderConv();
     getJson<GhPullDetail>(ghUrl(`/api/gh/pull?number=${it.number}`, repo))
       .then((d) => {
         if (g !== generation) return;
         detail = d;
         comment.setViewer(d.viewer);
+        // Who owns it is asked once, on open, and again when its state changes (a merged PR is nobody's to fix).
+        if (d.state !== it.state) owner.load(renderFrame);
         it = { ...it, state: d.state, isDraft: d.isDraft, reviewDecision: d.reviewDecision };
         // Line comments go into the diff, so draw it again with them.
         if (files) setupFiles();
@@ -528,6 +529,7 @@ export function openPull(first: GhPull, net: Net, actions: BoardActions) {
   close.addEventListener('click', () => modal.close());
   renderFrame();
   setupFiles();
+  owner.load(renderFrame);
   loadAll();
   setTimeout(() => el.focus({ preventScroll: true }), 30);
 }
