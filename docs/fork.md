@@ -73,6 +73,7 @@ including `ws/`, `http/`, `workers.ts` (`KanbanWorkers`, which `WorkerManager` e
 
 | File | Where | What | Why |
 |---|---|---|---|
+| `src/server/setup.ts` | `interactive()` | `isatty(0)` / `isatty(1)` instead of opening `process.stdin` / `process.stdout` | The Windows backend can block while opening concurrently's piped stdin; `npm run dev` keeps the same command on every platform |
 | `src/server/tasks.ts` | `generate()` | Treat a rejected launch as a failed optional naming attempt | Optional task naming falls back instead of raising an unhandled rejection when Windows cannot spawn a batch shim |
 | `src/server/github.ts` | `MergeWatch.ring(n, repo?)`, `look()` and the new `pullKey()` | Merges are keyed by `repo#n` instead of `n` | A project's repositories can have PRs with the same number; the gong must ring once per PR |
 | `src/server/github.ts` | `GitHub` constructor: `nameWithOwner?`, `pullsOnly` params | Optional owner/name and a pulls-only switch | A project's other repository gets a `GitHub` of its own that fetches only PRs |
