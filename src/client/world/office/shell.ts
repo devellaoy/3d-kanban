@@ -263,6 +263,7 @@ export function exitPlug(looks: Looks): { group: THREE.Group; collider: Collider
   const wall = new THREE.Mesh(box(WALL_T, o.y1 - o.y0, o.width), mats);
   wall.position.set(at.x, (o.y0 + o.y1) / 2, at.z);
   wall.receiveShadow = true;
+  wall.userData.wall = true;
   group.add(wall);
   group.add(mesh(box(WALL_T + 0.04, 0.25, o.width), looks.trim, at.x, 0.125, at.z, false));
   group.visible = false;
@@ -294,6 +295,8 @@ export function wallRun(into: THREE.Group, cols: Collider[], axis: 'x' | 'z', at
     m.position.set(axis === 'x' ? u : at, (y0 + y1) / 2, axis === 'x' ? at : u);
     m.castShadow = y1 <= SHADE_HEIGHT;
     m.receiveShadow = true;
+    // An outside wall too (see buildWalls): indoors it takes no shadows.
+    m.userData.wall = true;
     into.add(m);
   };
   let u = u0;
