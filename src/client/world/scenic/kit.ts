@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { paved } from '../../../shared/garage';
 import { STREET_Y } from '../../../shared/layout';
 import { mulberry32 } from '../../../shared/rng';
 import { LOOP, LOOP_LENGTH, STREET_Z, type Place } from '../../../shared/scenic';
@@ -125,6 +126,13 @@ export function nearest(x: number, z: number): { off: number; place: Place; d: n
   return { off: Math.sqrt(bestSq), place: best.place, d: best.d };
 }
 
+/** Whether paved ground (the streets east and west of town included, which the loop's own points don't cover) is within `r` of (x, z). */
+export function pavedNear(x: number, z: number, r: number): boolean {
+  if (paved(x, z)) return true;
+  for (let a = 0; a < 8; a++) if (paved(x + Math.cos((a * Math.PI) / 4) * r, z + Math.sin((a * Math.PI) / 4) * r)) return true;
+  return false;
+}
+
 /** The loop and the street between its ends, as one closed outline. */
 const RING = [...LOOP.map((p) => ({ x: p.x, z: p.z })), { x: 0, z: STREET_Z }];
 export function insideLoop(x: number, z: number): boolean {
@@ -196,6 +204,10 @@ export interface ScenicKit {
   taken: { x: number; z: number; r: number }[];
   /** Whether nothing's taken within `r` of (x, z). */
   free(x: number, z: number, r: number): boolean;
+  /** Takes the spot `r` round (x, z) for something planted or put out on open ground (and lists it in `placed`). */
+  place(x: number, z: number, r: number): void;
+  /** What `place` took: the tests check none of it is on the pavement. */
+  placed: { x: number; z: number; r: number }[];
 }
 
 /**
@@ -226,6 +238,11 @@ export function makeKit(group: THREE.Group, colliders: Collider[], night: NightP
   const light = new THREE.Group();
   const trunk = (x: number, z: number, r: number, h: number) => colliders.push({ minX: x - r, maxX: x + r, minZ: z - r, maxZ: z + r, bottom: G, top: G + h });
   const taken: { x: number; z: number; r: number }[] = [];
-  const free = (x: number, z: number, r: number) => taken.every((t) => Math.hypot(t.x - x, t.z - z) > t.r + r);
-  return { kit: { root, labels, rand, parts, silo, mill, light, colliders, night, cullable, around, trunk, taken, free }, seen };
+  const free = (x: number, z: number, r: number) => !pavedNear(x, z, r + 0.5) && taken.every((t) => Math.hypot(t.x - x, t.z - z) > t.r + r);
+  const placed: { x: number; z: number; r: number }[] = [];
+  const place = (x: number, z: number, r: number) => {
+    taken.push({ x, z, r });
+    placed.push({ x, z, r });
+  };
+  return { kit: { root, labels, rand, parts, silo, mill, light, colliders, night, cullable, around, trunk, taken, free, place, placed }, seen };
 }

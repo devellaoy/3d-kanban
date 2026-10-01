@@ -35,6 +35,8 @@ export interface Scenic {
    * at `far`, and the street `street` down): the rest isn't drawn.
    */
   cull(eye: THREE.Vector3, street: number, far: number): void;
+  /** Everything planted or placed on open ground (x, z, radius), which the tests check stays off the pavement. */
+  placed: readonly { x: number; z: number; r: number }[];
 }
 
 /** Builds the scenic loop into `group` (the office's `ground` group), its colliders into `colliders`, its lights into `night`. */
@@ -82,6 +84,7 @@ export function buildScenic(group: THREE.Group, colliders: Collider[], night: Ni
 
   return {
     group: root,
+    placed: kit.placed,
     cull(eye: THREE.Vector3, street: number, far: number) {
       const up = eye.y - street;
       for (const t of seen) {
