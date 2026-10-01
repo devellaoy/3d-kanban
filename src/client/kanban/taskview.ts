@@ -734,7 +734,7 @@ class View implements TaskView {
       const approve = h('button.btn.primary', { type: 'button' }, '✅ Approve the plan') as HTMLButtonElement;
       const changes = h('button.btn', { type: 'button' }, '✍️ Request changes') as HTMLButtonElement;
       approve.addEventListener('click', () => void this.req({ t: 'kanban.plan.approve', id: task.id, planId: latest.id }, approve, 'Plan approved'));
-      changes.addEventListener('click', async () => {
+      const go = async () => {
         const text = ta.value.trim();
         const ids = attach.ids();
         if (!text && !ids.length) return ta.focus();
@@ -744,7 +744,9 @@ class View implements TaskView {
           attach.clear();
           this.drafts().delete('planChanges');
         }
-      });
+      };
+      changes.addEventListener('click', () => void go());
+      this.fileBoxes.get('planChanges')!.go = () => void go();
       wrap.replaceChildren(ta, h('div.kb-row', {}, attach.el, h('span.grow'), changes, approve));
       out.push(h('section.kb-plan-act', {}, h('h4', {}, `Plan v${latest.version} waits for you`), wrap));
     }
