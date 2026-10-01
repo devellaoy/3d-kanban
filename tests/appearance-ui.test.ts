@@ -3,6 +3,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { register } from 'node:module';
+import { readFileSync } from 'node:fs';
 
 register(`data:text/javascript,${encodeURIComponent("export async function load(url, ctx, next) { return url.endsWith('.css') ? { format: 'module', source: '', shortCircuit: true } : next(url, ctx); }")}`);
 
@@ -70,7 +71,7 @@ test('the Theme row follows a change made in another tab, and clicking the old o
   const { storage, win, root } = fakePage();
   const { APPEARANCE_KEY, applyAppearance } = await import('../src/client/themes/index.ts');
   const { appearanceRow } = await import('../src/client/ui/appearance.ts');
-  const [seg] = appearanceRow() as unknown as [FakeEl, FakeEl];
+  const { row: [seg] } = appearanceRow() as unknown as { row: [FakeEl, FakeEl] };
   seg.isConnected = true;
   assert.equal(seg.children.length, 3);
   assert.deepEqual(checked(seg), ['🧡 Office']);
@@ -94,18 +95,35 @@ test('the Theme row follows a change made in another tab, and clicking the old o
   assert.equal(changes, 0);
 });
 
-test('a Theme row that has left the page stops listening', async () => {
+test('closing Settings takes the Theme row off the window, with no theme change in between', async () => {
+  const { count } = fakePage();
+  const { appearanceRow } = await import('../src/client/ui/appearance.ts');
+  const { off } = appearanceRow();
+  assert.equal(count('appearancechange'), 1);
+  off();
+  assert.equal(count('appearancechange'), 0, 'the row took its listener off the window');
+  for (let i = 0; i < 3; i++) appearanceRow().off();
+  assert.equal(count('appearancechange'), 0, 'open and close three times');
+});
+
+test('a Theme row that was closed no longer repaints', async () => {
   const { count } = fakePage();
   const { applyAppearance } = await import('../src/client/themes/index.ts');
   const { appearanceRow } = await import('../src/client/ui/appearance.ts');
-  const [seg] = appearanceRow() as unknown as [FakeEl, FakeEl];
-  seg.isConnected = true;
-  assert.equal(count('appearancechange'), 1);
+  const { row, off } = appearanceRow();
+  const seg = row[0] as unknown as FakeEl;
   applyAppearance('glossy');
   assert.deepEqual(checked(seg), ['✨ Glossy']);
-  seg.isConnected = false;
-  applyAppearance('dark'); // notices it is gone and unhooks
-  assert.equal(count('appearancechange'), 0, 'the row took its listener off the window');
-  applyAppearance('default');
+  off();
+  applyAppearance('dark');
   assert.deepEqual(checked(seg), ['✨ Glossy']);
+  assert.equal(count('appearancechange'), 0);
+});
+
+// openSettings needs the whole window and the office's store, so what is checked is the wiring: its
+// onClose calls the row's off(), which the tests above show takes the listener away.
+test('⚙️ Settings hands the Theme row\'s off() to its onClose', () => {
+  const src = readFileSync(new URL('../src/client/ui/settings.ts', import.meta.url), 'utf8');
+  const onClose = src.slice(src.indexOf('onClose: () => {'));
+  assert.match(onClose.slice(0, onClose.indexOf('\n    },')), /appearance\.off\b/);
 });

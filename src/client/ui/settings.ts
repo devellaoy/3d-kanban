@@ -498,13 +498,13 @@ export function openSettings(net: Net, settings: Settings, onChange: (s: Setting
   const signOut = h('button.btn', { type: 'button' }, '🚪 Sign out');
   signOut.addEventListener('click', onSignOut);
   const character = h('button.btn', { type: 'button' }, account ? '🧍 Change your look' : '🧍 Change your look & name');
-  const kanban = kanbanSettingsSlots(net);
+  const kanban = kanbanSettingsSlots(net), appearance = appearanceRow(); // its listener goes when the window closes
   const panes: Record<SettingsPane, Node[]> = {
     you: [
       setting('Your character', null, character),
       setting('Camera view', 'you', seg, note),
       setting('Mouse sensitivity', 'you', ...mouseSensitivityRow(() => settings, (s) => onChange((settings = s)))), // ⚙️ Settings' mouse sensitivity (ui/sensitivity.ts)
-      setting('Theme', 'you', ...appearanceRow()), // the pages' look (ui/appearance.ts)
+      setting('Theme', 'you', ...appearance.row), // the pages' look (ui/appearance.ts)
       setting('Signed in', null, h('div.volume', {}, signOut), h('p.setting-note', {}, account ? `As ${account.name}, with your own account (${account.role}).` : 'With the shared office password.')),
     ],
     sound: [
@@ -590,11 +590,7 @@ export function openSettings(net: Net, settings: Settings, onChange: (s: Setting
   const modal = openModal(el, {
     doing: '⚙️ in settings',
     onClose: () => {
-      offNotify();
-      offDog();
-      offTheme();
-      offMap();
-      offLeave();
+      [offNotify, offDog, offTheme, appearance.off, offMap, offLeave].forEach((off) => off());
       offLimit.forEach((off) => off());
       offDir.forEach((off) => off());
       offPrompts.forEach((off) => off());
