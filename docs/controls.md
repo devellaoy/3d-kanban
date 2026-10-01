@@ -68,7 +68,7 @@ come before the office's own, so B, R, X, P, Q and so on mean what's listed here
 | At a desk's blue mat | E | Put things on the desk (plant, mug, photo, lamp, duck) |
 | At a desk lamp | E | Lamp on or off |
 | At a light switch | E | That area's lights off or on, for you |
-| At the lounge plant (north-east corner) | E | How the merge plant is doing |
+| At the lounge plant (east wall, between the Services board and the TV) | E | How the merge plant is doing |
 | At a chair or sofa you placed | E | Sit; E again, walking off or jumping gets you up |
 | At the campfire | E | Stoke it |
 | At the lookout's binoculars | E | Zoom in; E or Esc puts them down |

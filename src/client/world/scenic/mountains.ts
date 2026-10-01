@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { mulberry32 } from '../../../shared/rng';
+import { discBoxes } from '../../../shared/footprint';
 import { FOOTHILLS, MOUNTAINS, TUNNEL } from '../../../shared/scenic';
 import { mergeByColor, mesh, toon } from '../toon';
 import { G, type ScenicKit } from './kit';
@@ -66,12 +67,12 @@ export function buildMountains(kit: ScenicKit) {
     const tris = { grass: [] as number[], rock: [] as number[], dark: [] as number[], snow: [] as number[] };
     MOUNTAINS.forEach(([x, z, r, h], k) => {
       mountain(tris, x, z, r, h, 100 + k);
-      colliders.push({ minX: x - r * 0.55, maxX: x + r * 0.55, minZ: z - r * 0.55, maxZ: z + r * 0.55, bottom: G - 1, top: G + 1000 });
+      for (const b of discBoxes(x, z, r * 0.97, Math.max(3, r / 12))) colliders.push({ ...b, bottom: G - 1, top: G + 1000 });
       taken.push({ x, z, r: r * 0.9 });
     });
     FOOTHILLS.forEach(([x, z, r, h], k) => {
       mountain(tris, x, z, r, h, 200 + k, true);
-      colliders.push({ minX: x - r * 0.45, maxX: x + r * 0.45, minZ: z - r * 0.45, maxZ: z + r * 0.45, bottom: G - 1, top: G + 1000 });
+      for (const b of discBoxes(x, z, r * 0.95, 3)) colliders.push({ ...b, bottom: G - 1, top: G + 1000 });
       taken.push({ x, z, r: r * 0.8 });
     });
     // The spur the tunnel goes through, and the shoulders of rock either side of each end of it.

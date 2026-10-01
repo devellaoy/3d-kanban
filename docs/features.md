@@ -85,7 +85,7 @@ nothing goes over the network, and what they remember lives in your browser's `l
   it on and off. Kept per desk and floor.
 - **Light switches** (W5). There are two wall switches: one on the east wall for the lounge, and one on the
   west wall by the exit door for the desks. **E** fades that area's lamps out and in, for you alone.
-- **The merge plant** (W6). A potted plant in the lounge's north-east corner, under the Services board, grows a stage with every
+- **The merge plant** (W6). A potted plant against the lounge's east wall, between the Services board and the TV (clear of the back office's opening whether it is built or not), grows a stage with every
   merged pull request while you're in the office. It reaches its next stage at 1, 2, 4, 7, 11 and 16
   merges. It droops after a week without a merge. **E** says how it's doing.
 - **Seasons** (W4). The trees along the scenic loop, and the grass, follow the calendar in the sky's

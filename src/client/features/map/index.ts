@@ -10,7 +10,7 @@ import './map.css';
 import type { Ctx } from '../../core/context';
 import { $, h, toast } from '../../ui/dom';
 import { neighbourBoxes } from '../../world/outside';
-import { ELEVATOR_NOTE, ELEVATOR_NOTES, WORLD, markers, minimapAngle, onMap, project, rotateForHeading, walkingHeading, type Marker } from './geometry';
+import { ELEVATOR_NOTE, ELEVATOR_NOTES, WORLD, clampToMap, markers, minimapAngle, offTheMap, onMap, project, rotateForHeading, walkingHeading, type Marker } from './geometry';
 import { paintMarker, paintTerrain, paintYou } from './paint';
 
 /** The picture's size (pixels): the world is 660 x 545 m. */
@@ -66,24 +66,28 @@ export function installMap(ctx: Ctx) {
   const mini = h('canvas.map-mini.hidden', { width: MINI * MINI_DPR, height: MINI * MINI_DPR, 'aria-label': 'Map' });
   $('hud').append(panel, mini);
 
-  /** Where you are on the map and which way you face, or null (up on the roof, off the map). */
-  function pose(): { x: number; z: number; heading: number } | null {
+  /**
+   * Where you are on the map and which way you face, or null (up on the roof). Past the map's edge (the
+   * world reaches further than it is drawn) `off` says which way, and the big map's arrow sits at the edge.
+   */
+  function pose(): { x: number; z: number; heading: number; off: string } | null {
     if (!ctx.inOffice() || ctx.upTop()) return null;
     const pl = ctx.player;
-    if (!onMap(pl.pos.x, pl.pos.z)) return null;
+    const off = onMap(pl.pos.x, pl.pos.z) ? '' : offTheMap(pl.pos.x, pl.pos.z);
     // In a car the car's nose is the way you face; on foot, the way the camera looks.
-    return { x: pl.pos.x, z: pl.pos.z, heading: ctx.activities.running('driver') ? pl.facing : walkingHeading(pl.camYaw) };
+    return { x: pl.pos.x, z: pl.pos.z, heading: ctx.activities.running('driver') ? pl.facing : walkingHeading(pl.camYaw), off };
   }
 
   let youKey = '';
   function drawYou(at: ReturnType<typeof pose>, force = false) {
-    const k = at ? `${Math.round(p.x(at.x))},${Math.round(p.y(at.z))},${at.heading.toFixed(2)}` : 'none';
+    const edge = at && clampToMap(at.x, at.z);
+    const k = at && edge ? `${Math.round(p.x(edge.x))},${Math.round(p.y(edge.z))},${at.heading.toFixed(2)},${at.off}` : 'none';
     if (k === youKey && !force) return;
     youKey = k;
     const g = you.getContext('2d')!;
     g.clearRect(0, 0, W, H);
-    if (at) paintYou(g, p.x(at.x), p.y(at.z), at.heading, 13);
-    const text = !ctx.inOffice() ? 'No map here' : ctx.upTop() ? '🍸 You are up on the roof: the elevator is how you get back down' : at ? '' : 'You are off the map';
+    if (at && edge) paintYou(g, p.x(edge.x), p.y(edge.z), at.heading, 13);
+    const text = !ctx.inOffice() ? 'No map here' : ctx.upTop() ? '🍸 You are up on the roof: the elevator is how you get back down' : at?.off ? `You are off the map, ${at.off}: the arrow is at its edge` : '';
     if (status.textContent !== text) status.textContent = text;
     status.classList.toggle('hidden', !text);
   }
@@ -122,7 +126,10 @@ export function installMap(ctx: Ctx) {
 
   function setShown(on: boolean) {
     if (on && !ctx.inOffice()) return void toast('🗺️ No map here: it is of the office and its scenic loop', 'warn');
+    const was = shown;
     shown = on;
+    // Hidden by ✕ or Esc with the cursor free: straight back into mouse-look, as when a window closes.
+    if (was && !on && ctx.inOffice() && !ctx.player.locked && ctx.player.canLock) ctx.player.lock(true);
     if (on) {
       ground.getContext('2d')!.drawImage(layers().labelled, 0, 0);
       drawYou(pose(), true);
@@ -133,7 +140,7 @@ export function installMap(ctx: Ctx) {
   }
 
   ctx.keys.bind({ code: 'Backquote', preventDefault: true, repeat: false, run: () => setShown(!shown) });
-  // Esc hides it (the key doesn't reach us while the mouse is captured: the browser takes that one). The mouse-look stays as it was.
+  // Esc hides it (the key doesn't reach us while the mouse is captured: the browser takes that one). With the cursor free, hiding it goes back to mouse-look (see setShown).
   ctx.keys.add('guard', (e) => {
     if (!shown || e.code !== 'Escape') return false;
     setShown(false);

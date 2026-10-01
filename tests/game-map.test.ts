@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { CAMP, FARM, LAKE, LIGHTHOUSE, LOOP, MOUNTAINS, PIER, VIEWPOINT, shoreX } from '../src/shared/scenic';
-import { ELEVATOR_NOTES, WORLD, markers, minimapAngle, onMap, pierLine, project, rotateForHeading, shoreLine, visibleMountains, walkingHeading } from '../src/client/features/map/geometry';
+import { ELEVATOR_NOTES, WORLD, clampToMap, markers, offTheMap, minimapAngle, onMap, pierLine, project, rotateForHeading, shoreLine, visibleMountains, walkingHeading } from '../src/client/features/map/geometry';
 import { SPOTS } from '../src/client/features/fishing/spots';
 
 test('the projection fits the area, north is up and east is right', () => {
@@ -68,4 +68,12 @@ test('the little map turns your heading to the top of the screen', () => {
   // Heading south (+z) on the map needs it turned right way up: not at all.
   const south = rotateForHeading(0, 1, 0);
   assert.ok(Math.abs(south.y + 1) < 1e-9);
+});
+
+test('past the map edge the arrow is held at the edge and says which way', () => {
+  assert.equal(offTheMap(0, 0), '');
+  assert.equal(offTheMap(WORLD.maxX + 50, 0), 'to the east');
+  assert.equal(offTheMap(-900, 900), 'to the south-west');
+  assert.deepEqual(clampToMap(WORLD.maxX + 50, 10), { x: WORLD.maxX, z: 10 });
+  assert.deepEqual(clampToMap(5, 5), { x: 5, z: 5 });
 });

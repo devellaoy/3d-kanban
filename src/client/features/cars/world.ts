@@ -336,11 +336,12 @@ export class Fleet {
     const own = this.cars[except]?.colliders;
     const out: Box[] = [];
     for (const c of this.all) {
+      // Far from the car first (nearly every tree on the loop is), the cheapest test there is.
+      if (near && (c.minX > near.x + near.r || c.maxX < near.x - near.r || c.minZ > near.z + near.r || c.maxZ < near.z - near.r)) continue;
       // Not the ground itself (the lawn, the lots), nor anything overhead.
       if (own?.includes(c) || (c.bottom ?? 0) > this.street + 1 || c.top < this.street + 0.3) continue;
       // Nor the invisible fence keeping people out of the open sea: a car wades into it (see shared/terrain.ts).
       if (c.fence && c.minX <= SEA_FENCE) continue;
-      if (near && (c.minX > near.x + near.r || c.maxX < near.x - near.r || c.minZ > near.z + near.r || c.maxZ < near.z - near.r)) continue;
       out.push(c);
     }
     return out;

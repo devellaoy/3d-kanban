@@ -1,22 +1,22 @@
 /* The dash while you drive (speedo.ts) */
-.speedo { position: fixed; right: 18px; bottom: 18px; z-index: 29; width: 210px; pointer-events: none; color: #fff; text-align: center; font-weight: 900; text-shadow: 0 2px 0 rgba(0, 0, 0, .55); }
+.speedo { position: fixed; right: 18px; bottom: 18px; z-index: 29; width: 210px; pointer-events: none; color: var(--text-on-color); text-align: center; font-weight: 900; text-shadow: 0 2px 0 color-mix(in srgb, var(--code-bg) 80%, transparent); }
 .speedo[hidden] { display: none; }
-.sp-gauge { display: block; width: 100%; filter: drop-shadow(0 3px 0 rgba(0, 0, 0, .35)); }
-.sp-track { fill: none; stroke: rgba(21, 22, 31, .72); stroke-width: 15; stroke-linecap: round; }
-.sp-fill { fill: none; stroke: #ffd60a; stroke-width: 9; stroke-linecap: round; transition: stroke .15s; }
-.speedo.over .sp-fill { stroke: #ff9f1c; }
-.speedo.boost .sp-fill { stroke: #ff4d2e; }
-.sp-tick { stroke: rgba(255, 255, 255, .45); stroke-width: 1.5; }
-.sp-label { fill: rgba(255, 255, 255, .6); font-size: 8px; font-weight: 800; text-anchor: middle; }
+.sp-gauge { display: block; width: 100%; filter: drop-shadow(0 3px 0 color-mix(in srgb, var(--code-bg) 50%, transparent)); }
+.sp-track { fill: none; stroke: color-mix(in srgb, var(--code-bg) 72%, transparent); stroke-width: 15; stroke-linecap: round; }
+.sp-fill { fill: none; stroke: var(--warn); stroke-width: 9; stroke-linecap: round; transition: stroke .15s; }
+.speedo.over .sp-fill { stroke: var(--warn-hot); }
+.speedo.boost .sp-fill { stroke: var(--bad); }
+.sp-tick { stroke: color-mix(in srgb, var(--text-on-color) 45%, transparent); stroke-width: 1.5; }
+.sp-label { fill: color-mix(in srgb, var(--text-on-color) 60%, transparent); font-size: 8px; font-weight: 800; text-anchor: middle; }
 .sp-read { position: absolute; left: 0; right: 0; top: 52px; }
 .sp-num { font-size: 46px; line-height: 1; font-variant-numeric: tabular-nums; }
-.sp-unit { font-size: 12px; letter-spacing: .08em; color: rgba(255, 255, 255, .75); }
-.sp-gear { display: inline-block; margin-top: 4px; min-width: 26px; padding: 1px 8px; border-radius: 8px; background: rgba(21, 22, 31, .72); font-size: 15px; }
-.sp-flag { position: absolute; left: 6px; top: 6px; padding: 2px 8px; border-radius: 8px; background: #ff9f1c; color: #15161f; font-size: 11px; text-shadow: none; opacity: 0; transition: opacity .1s; }
+.sp-unit { font-size: 12px; letter-spacing: .08em; color: color-mix(in srgb, var(--text-on-color) 75%, transparent); }
+.sp-gear { display: inline-block; margin-top: 4px; min-width: 26px; padding: 1px 8px; border-radius: 8px; background: color-mix(in srgb, var(--code-bg) 72%, transparent); font-size: var(--fs-lg); }
+.sp-flag { position: absolute; left: 6px; top: 6px; padding: 2px 8px; border-radius: 8px; background: var(--warn-hot); color: var(--code-bg); font-size: 11px; text-shadow: none; opacity: 0; transition: opacity .1s; }
 .sp-flag.on { opacity: 1; }
-.speedo.rough .sp-unit::after { content: ' · grass'; color: #9ad66d; }
+.speedo.rough .sp-unit::after { content: ' · grass'; color: var(--good); }
 .sp-nitro { margin: -6px 18px 0; display: flex; align-items: center; gap: 8px; font-size: 10px; letter-spacing: .1em; }
-.sp-nitro-bar { flex: 1; height: 10px; border-radius: 6px; background: rgba(21, 22, 31, .72); overflow: hidden; border: 2px solid rgba(21, 22, 31, .72); }
-.sp-nitro-fill { height: 100%; width: 100%; background: #4cc9f0; border-radius: 4px; transition: width .08s linear; }
-.speedo.boost .sp-nitro-fill { background: #ff7b00; box-shadow: 0 0 8px #ff7b00; }
+.sp-nitro-bar { flex: 1; height: 10px; border-radius: 6px; background: color-mix(in srgb, var(--code-bg) 72%, transparent); overflow: hidden; border: var(--bw-sm) solid color-mix(in srgb, var(--code-bg) 72%, transparent); }
+.sp-nitro-fill { height: 100%; width: 100%; background: var(--info); border-radius: 4px; transition: width .08s linear; }
+.speedo.boost .sp-nitro-fill { background: var(--warn-hot); box-shadow: 0 0 8px var(--warn-hot); }
 @media (max-width: 560px) { .speedo { width: 150px; right: 8px; bottom: 8px; } .sp-num { font-size: 32px; } .sp-read { top: 38px; } }

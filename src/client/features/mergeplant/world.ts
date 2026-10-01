@@ -7,8 +7,8 @@ import { MAX_STAGE } from './model';
 // The merge plant: a potted plant in the lounge that grows a stage for every merge (see model.ts) and
 // goes limp when a week passes without one. Seven stages, from a sprout to a flowering bush.
 
-/** In the lounge's north-east corner, off the walkway: clear of the couch, the TV, the Services board (above it), the gong and the beanbag seats. */
-export const MERGE_PLANT = { x: 17.2, z: -12.2 } as const;
+/** Against the lounge's east wall between the Services board and the TV: clear of the couch and poufs, the gong, the Room to grow sign and the back office's opening (13.4 to 18 on the north wall), built out or not. */
+export const MERGE_PLANT = { x: 17.2, z: -4.3 } as const;
 
 export interface MergePlant {
   /** Sets the stage (0 to MAX_STAGE) and how limp it is (0 perky to 1 drooping). `snap` skips the growing. */

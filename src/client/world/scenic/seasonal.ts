@@ -36,9 +36,13 @@ const watchers: ((season: Season) => void)[] = [];
 let shown: Season | null = null;
 
 /** Calls `fn` with the season now (once it's known) and every time it changes: for what comes and goes with it, like wildflowers. */
-export function onSeason(fn: (season: Season) => void) {
+export function onSeason(fn: (season: Season) => void): () => void {
   watchers.push(fn);
   if (shown) fn(shown);
+  return () => {
+    const i = watchers.indexOf(fn);
+    if (i >= 0) watchers.splice(i, 1);
+  };
 }
 
 /** How many materials there are, so a season applied before more were built can be applied again. */

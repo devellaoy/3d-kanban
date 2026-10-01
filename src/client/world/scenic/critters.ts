@@ -90,7 +90,7 @@ export function buildCritters(kit: ScenicKit): Critters {
   const up = new THREE.Vector3(0, 1, 0);
   const right = new THREE.Vector3(1, 0, 0);
   const at = new THREE.Vector3();
-  const one = new THREE.Vector3(1, 1, 1);
+  const forward = new THREE.Vector3(0, 0, 1);
 
   /** A herd or flock strolling about in tiny circles with their heads down, every now and then. */
   const graze = (geo: THREE.BufferGeometry, beasts: Beast[], scale: number, radius: number) => {
@@ -105,6 +105,7 @@ export function buildCritters(kit: ScenicKit): Critters {
     around(im, cx, cz, spread, 3, 170);
     const sc = new THREE.Vector3(scale, scale, scale);
     tickers.push((t) => {
+      if (!im.visible) return; // out of sight (see Scenic.cull): not moved
       beasts.forEach((b, i) => {
         // Round and round a little circle, slowly, and a nod now and then (heads down to the grass).
         const w = (i % 2 ? 0.09 : -0.07) * t + b.phase;
@@ -168,13 +169,14 @@ export function buildCritters(kit: ScenicKit): Critters {
     const sc = new THREE.Vector3();
     const phase = Array.from({ length: n }, () => rand() * 6.28);
     tickers.push((t) => {
+      if (!im.visible) return;
       for (let i = 0; i < n; i++) {
         const w = t * (0.16 + (i % 3) * 0.012) + phase[i];
         const r = ring * (0.75 + 0.25 * Math.sin(phase[i] * 3));
         at.set(cx + Math.cos(w) * r, G + height + Math.sin(t * 0.5 + phase[i] * 2) * 2.5, cz + Math.sin(w) * r);
         // Banking into the turn, and the wings beating (the V flattening and flipping).
         q.setFromAxisAngle(up, Math.atan2(-Math.sin(w), Math.cos(w)));
-        qp.setFromAxisAngle(new THREE.Vector3(0, 0, 1), -0.25);
+        qp.setFromAxisAngle(forward, -0.25);
         const flap = Math.sin(t * 5 + phase[i] * 4);
         im.setMatrixAt(i, m4.compose(at, q.multiply(qp), sc.set(1.5, 1.5 * (0.15 + flap * 0.85), 1.5)));
       }
@@ -206,6 +208,7 @@ export function buildCritters(kit: ScenicKit): Critters {
     const seed = Array.from({ length: n }, () => [rand() * 6.28, 0.25 + rand() * 0.3, 4 + rand() * 5] as const);
     const sc = new THREE.Vector3();
     tickers.push((t) => {
+      if (!im.visible) return;
       for (let i = 0; i < n; i++) {
         const [p, speed, r] = seed[i];
         const a = t * speed + p;
@@ -259,6 +262,7 @@ export function buildCritters(kit: ScenicKit): Critters {
   }
   tickers.push((t) => {
     for (const b of boats) {
+      if (!b.g.visible) continue;
       const a = t * 0.07 + b.phase;
       b.g.position.set(b.cx + Math.cos(a) * b.rx, G - 0.16 + Math.sin(t * 1.4 + b.phase) * 0.06, b.cz + Math.sin(a) * b.rz);
       b.g.rotation.set(Math.sin(t * 1.1 + b.phase) * 0.04, Math.atan2(-Math.sin(a) * b.rx, Math.cos(a) * b.rz), Math.sin(t * 0.9 + b.phase) * 0.05, 'YXZ');

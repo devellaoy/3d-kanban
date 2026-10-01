@@ -3,15 +3,15 @@
 .fj-body h3 { margin: 14px 0 6px; font-size: 14px; font-weight: 900; }
 .fj-top { margin: 0; font-weight: 800; color: var(--muted); }
 .fj-grid { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px; }
-.fj-card { border: 3px solid var(--ink); border-radius: 12px; padding: 6px 8px; background: #fff; text-align: center; }
+.fj-card { border: var(--bw) solid var(--ink); border-radius: var(--radius-sm); padding: 6px 8px; background: var(--field); text-align: center; }
 .fj-card.unknown { opacity: .55; background: var(--paper-2); }
-.fj-card.r2 { background: #e8f7e4; }
-.fj-card.r3 { background: #e3ecff; }
-.fj-card.r4 { background: #fff1c2; }
+.fj-card.r2 { background: var(--good-soft); }
+.fj-card.r3 { background: var(--info-soft); }
+.fj-card.r4 { background: var(--warn-soft); }
 .fj-icon { font-size: 26px; line-height: 1.2; }
 .fj-name { font-weight: 900; font-size: 13px; }
 .fj-sub { font-size: 11px; font-weight: 700; color: var(--muted); font-variant-numeric: tabular-nums; }
 .fj-recent { list-style: none; margin: 0; padding: 0; display: grid; gap: 3px; font-weight: 700; font-size: 13px; }
 .fj-when, .fj-empty { color: var(--muted); font-weight: 600; }
 /* The strike bar while the bobber is under: it drains over the time you have. */
-.fishing-meter .throw-fill.strike { background: linear-gradient(90deg, #ffd166, #ef476f); }
+.fishing-meter .throw-fill.strike { background: linear-gradient(90deg, var(--warn), var(--bad)); }

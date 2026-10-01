@@ -127,3 +127,15 @@ export function pierLine(): { x0: number; x1: number; z: number; width: number }
 export function onMap(x: number, z: number, b: Bounds = WORLD): boolean {
   return x >= b.minX && x <= b.maxX && z >= b.minZ && z <= b.maxZ;
 }
+
+/** The map position nearest (x, z): itself if it is on the map, else the point of its edge. */
+export function clampToMap(x: number, z: number, b: Bounds = WORLD): { x: number; z: number } {
+  return { x: Math.min(b.maxX, Math.max(b.minX, x)), z: Math.min(b.maxZ, Math.max(b.minZ, z)) };
+}
+
+/** Which way past the map (x, z) is, like to the south-west, or '' if it is on it. */
+export function offTheMap(x: number, z: number, b: Bounds = WORLD): string {
+  const ns = z < b.minZ ? 'north' : z > b.maxZ ? 'south' : '';
+  const ew = x < b.minX ? 'west' : x > b.maxX ? 'east' : '';
+  return ns || ew ? `to the ${[ns, ew].filter(Boolean).join('-')}` : '';
+}

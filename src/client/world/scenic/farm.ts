@@ -60,12 +60,11 @@ export function buildFarm(kit: ScenicKit): { sails: THREE.Group } {
     fence(P.maxX, P.maxZ, P.minX, P.maxZ);
     fence(P.minX, P.maxZ, P.minX, P.minZ + 5);
     taken.push({ x: (P.minX + P.maxX) / 2, z: (P.minZ + P.maxZ) / 2, r: 22 });
-    // Cows, grazing: critters.ts draws them and moves them a little.
+    // Cows, grazing: critters.ts draws them and strolls them round their spot, so they are not solid.
     for (let k = 0; k < 6; k++) {
       const x = P.minX + 5 + rand() * (P.maxX - P.minX - 10);
       const z = P.minZ + 4 + rand() * (P.maxZ - P.minZ - 8);
       kit.herd.push({ x, z, rot: rand() * Math.PI * 2 });
-      colliders.push({ minX: x - 1, maxX: x + 1, minZ: z - 1, maxZ: z + 1, bottom: G, top: G + 1.6 });
     }
     // The barn: red, a gable roof, white trim and a big X-braced door facing the road.
     const barn = new THREE.Group();

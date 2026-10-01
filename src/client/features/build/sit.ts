@@ -51,7 +51,11 @@ export function makeBuildSeats(ctx: Ctx) {
     if (hit) ({ x, z } = hit.point);
     const place = nearestPlace(s.piece, x, z, ctx.player.pos.y);
     if (!place) return;
-    if (ctx.player.seat) ctx.player.stand();
+    // Up from an office seat first, and the office told (or it'd keep you in that seat for everyone else).
+    if (ctx.player.seat) {
+      ctx.player.stand();
+      ctx.player.onStand?.();
+    }
     ctx.player.sit(place);
     ctx.me.sit(place.hips);
   }

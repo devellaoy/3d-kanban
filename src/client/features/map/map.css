@@ -3,13 +3,13 @@
 .map-panel.hidden, .map-mini.hidden, .map-status.hidden { display: none; }
 .map-head { display: flex; align-items: center; gap: 10px; padding-right: 36px; position: relative; }
 .map-sub { color: var(--muted); font-weight: 700; font-size: 12px; }
-.map-x { position: absolute; top: -2px; right: -2px; width: 30px; height: 30px; border: 3px solid var(--ink); border-radius: 50%; background: #fff; font-weight: 900; cursor: pointer; line-height: 1; pointer-events: auto; }
-.map-stage { position: relative; min-height: 0; aspect-ratio: 1000 / 826; max-height: calc(92vh - 120px); margin: 0 auto; border: 3px solid var(--ink); border-radius: 10px; overflow: hidden; }
+.map-x { position: absolute; top: -2px; right: -2px; width: 30px; height: 30px; border: var(--bw) solid var(--ink); border-radius: 50%; background: var(--field); color: var(--text); font-weight: 900; cursor: pointer; line-height: 1; pointer-events: auto; }
+.map-stage { position: relative; min-height: 0; aspect-ratio: 1000 / 826; max-height: calc(92vh - 120px); margin: 0 auto; border: var(--bw) solid var(--ink); border-radius: var(--radius-sm); overflow: hidden; }
 .map-stage canvas { display: block; width: 100%; height: 100%; }
 .map-stage .map-you { position: absolute; inset: 0; pointer-events: none; }
 .map-status { font-weight: 800; font-size: 13px; color: var(--muted); text-align: center; }
 .map-legend { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 2px 14px; font-size: 12px; font-weight: 700; }
 .map-ico { margin-right: 4px; }
 .map-lift { color: var(--muted); }
-.map-mini { position: fixed; right: 14px; bottom: 110px; width: 190px; height: 190px; z-index: 5; pointer-events: none; border-radius: 50%; box-shadow: 0 3px 0 rgba(0, 0, 0, .25); }
-@media (max-width: 700px) { .map-sub { display: none; } .map-mini { width: 130px; height: 130px; bottom: 150px; } }
+.map-mini { position: fixed; right: 14px; bottom: 210px; width: 190px; height: 190px; z-index: 5; pointer-events: none; border-radius: 50%; box-shadow: var(--shadow-sm); }
+@media (max-width: 700px) { .map-sub { display: none; } .map-mini { width: 130px; height: 130px; bottom: 175px; } }

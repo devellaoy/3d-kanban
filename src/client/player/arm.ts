@@ -51,8 +51,13 @@ export function armFraction(
   const len = Math.hypot(dx, dy, dz);
   if (len < 1e-6) return 1;
   let best = 1;
+  // Broad phase: only what overlaps the arm's own bounding box can be hit, whatever the number of colliders.
+  const loX = Math.min(from.x, to.x) - radius;
+  const hiX = Math.max(from.x, to.x) + radius;
+  const loZ = Math.min(from.z, to.z) - radius;
+  const hiZ = Math.max(from.z, to.z) + radius;
   for (const c of colliders) {
-    if (c.fence || c.top < feet + clearance) continue;
+    if (c.minX > hiX || c.maxX < loX || c.minZ > hiZ || c.maxZ < loZ || c.fence || c.top < feet + clearance) continue;
     const x0 = c.minX - radius;
     const x1 = c.maxX + radius;
     const y0 = (c.bottom ?? 0) - radius;

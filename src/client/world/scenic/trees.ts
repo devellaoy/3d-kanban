@@ -21,7 +21,7 @@ export function plantTrees(kit: ScenicKit) {
       const s = 0.85 + rand() * 0.7;
       if (rand() < 0.82) pine(parts.forest, px, pz, s, PINES[Math.floor(rand() * PINES.length)], rand() * 6);
       else leafy(parts.forest, px, pz, s * 0.9, rand() < 0.35 ? AUTUMN[Math.floor(rand() * AUTUMN.length)] : LEAVES[Math.floor(rand() * LEAVES.length)], rand() * 6);
-      if (n.off < 35) trunk(px, pz, 0.26 * s, 2.2 * s);
+      trunk(px, pz, 0.26 * s, 2.2 * s);
       place(px, pz, 1.2);
     }
   }
@@ -34,7 +34,7 @@ export function plantTrees(kit: ScenicKit) {
       if ((n.place !== 'mountains' && n.place !== 'tunnel') || n.off > 80 || rand() > 0.38 || !ok(px, pz, 1.6)) continue;
       const s = 0.9 + rand() * 0.8;
       pine(parts.mountains, px, pz, s, PINES[Math.floor(rand() * PINES.length)], rand() * 6);
-      if (n.off < 30) trunk(px, pz, 0.26 * s, 2.2 * s);
+      trunk(px, pz, 0.26 * s, 2.2 * s);
       place(px, pz, 1.5);
     }
   }
