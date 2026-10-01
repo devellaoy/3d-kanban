@@ -234,9 +234,9 @@ export class CodexLimitsReader {
       timer = setTimeout(res, waitMs);
       timer.unref();
     });
-    await Promise.race([done(), gaveUp]);
+    const ok = await Promise.race([done().then(() => true), gaveUp.then(() => false)]);
     clearTimeout(timer);
-    return this.limits.checkedAt >= asked ? this.limits : undefined;
+    return ok && !this.closed ? this.limits : undefined;
   }
 
   close() {

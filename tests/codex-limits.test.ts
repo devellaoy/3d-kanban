@@ -273,6 +273,30 @@ test('fresh: reads at once whatever the cache and the 20-second gap; a read alre
   assert.equal(await q, undefined);
 });
 
+test('fresh: a read that was under way finishing during the wait is not the fresh one; the next hanging past waitMs gives undefined', async (t) => {
+  const slow = rig(t);
+  const gates: (() => void)[] = [];
+  const r = new CodexLimitsReader({
+    codexPath: () => '/bin/codex',
+    env: {},
+    onChange: () => {},
+    ask: (_c, _e, signal) => new Promise<Answer>((res) => (gates.push(() => res(good)), signal?.addEventListener('abort', () => res({ error: 'stopped' })))),
+    now: slow.clock,
+  });
+  t.after(() => r.close());
+  void r.refresh();
+  await flush();
+  await slow.advance(1000);
+  const p = r.fresh(5000);
+  await flush();
+  gates[0](); // the old read finishes during the wait...
+  await flush();
+  await flush();
+  assert.equal(gates.length, 2); // ...and the one that counts hangs
+  await slow.advance(5000);
+  assert.equal(await p, undefined);
+});
+
 test('close ends a running read', async (t) => {
   t.mock.timers.enable({ apis: ['setTimeout'] });
   let signal: AbortSignal | undefined;

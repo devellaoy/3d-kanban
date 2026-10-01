@@ -1619,7 +1619,7 @@ export class Orchestrator {
     const at = reset !== undefined ? reset + 60_000 : now + backoffMs(attempts);
     if (!auto.enabled || attempts > auto.maxAttempts || at - since > auto.maxWaitHours * 3_600_000) {
       this.limitSince.delete(task.id);
-      await this.apply(task.id, { type: 'gaveUp', text: clip(`A usage limit or a lost connection stopped it${auto.enabled ? ` (${attempts - 1} tries)` : ''}: Retry once it has reset. ${said}`, 500) });
+      await this.apply(task.id, { type: 'gaveUp', text: clip(`A usage limit or a lost connection stopped it${auto.enabled ? ` (${attempts - 1} tries)` : ''}: Retry once it has reset${reset !== undefined ? ` (${new Date(reset).toLocaleString('en-GB')})` : ''}. ${said}`, 500) });
     } else {
       this.note(task, `A usage limit or a lost connection interrupted it. It carries on by itself at ${new Date(at).toLocaleString('en-GB')}.`);
       await this.apply(task.id, { type: 'limited', retryAt: at, attempts, text: clip(said, 300) });
