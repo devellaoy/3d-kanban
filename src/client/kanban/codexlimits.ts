@@ -3,7 +3,8 @@
 import type { Net } from '../net';
 import { store } from '../state';
 import { h } from '../ui/dom';
-import { level, fmtReset } from '../ui/limits';
+import type { CodexLimits } from '../../shared/codex-limits/protocol';
+import { level, fmtReset, STALE_MS } from '../ui/limits';
 import './codexlimits.css';
 import { wantCodexLimits } from '../codex-limits/watch';
 
@@ -12,17 +13,28 @@ let sweep = 0;
 let hold: Net | null = null;
 let listening = false;
 
-function text(): { text: string; tone: string } {
-  const s = store.codexLimits;
+const hhmm = (at: number) => new Date(at).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
+
+/** What the chip says for a state: the text, its tone class and the full sentence for its tooltip. */
+export function codexChipText(s: CodexLimits, now = Date.now()): { text: string; tone: string; title: string } {
   if (s.windows.length && s.status !== 'signedOut' && s.status !== 'missing') {
-    const now = Date.now();
     const parts = s.windows.map((w) => `${w.label === '5-hour' ? '5h' : w.label === 'Weekly' ? 'week' : w.label} ${Math.round(w.pct)}%`);
+    const tone = level(Math.max(...s.windows.map((w) => w.pct)));
+    const failed = s.status === 'error';
+    if (failed || now - s.at > STALE_MS) {
+      const when = hhmm(s.at);
+      return {
+        text: `${parts.join(' · ')} · as of ${when}${failed ? ' (couldn’t refresh)' : ''}`,
+        tone: `old ${tone}`.trim(),
+        title: failed ? `Couldn’t read the Codex limits just now; these are from ${when}` : `The Codex limits were last read at ${when}`,
+      };
+    }
     const next = s.windows.filter((w) => w.resetsAt).sort((a, b) => b.pct - a.pct)[0];
     if (next?.resetsAt) parts.push(`resets ${fmtReset(next.resetsAt, now)}`);
-    return { text: parts.join(' · '), tone: level(Math.max(...s.windows.map((w) => w.pct))) };
+    return { text: parts.join(' · '), tone, title: 'The office’s Codex sign-in' };
   }
   const note = { signedOut: 'Codex not signed in', missing: 'Codex not installed', error: 'Codex limits unavailable' }[s.status as string];
-  return { text: note ?? 'checking…', tone: '' };
+  return { text: note ?? 'checking…', tone: '', title: 'The office’s Codex sign-in' };
 }
 
 /**
@@ -46,7 +58,8 @@ export function codexLimitsChip(net: Net): HTMLElement {
   const chip = {
     el,
     paint() {
-      const t = text();
+      const t = codexChipText(store.codexLimits);
+      el.title = t.title;
       el.textContent = t.text;
       el.className = `kb-codex-limits ${t.tone}`;
     },

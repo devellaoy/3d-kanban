@@ -4,3 +4,4 @@
 .kb-codex-limits.over { background: var(--bad-soft); color: var(--text); }
 .kb-codex-note { margin-top: 6px; grid-column: 1 / -1; }
 .kb-codex-note .kb-codex-limits { margin-left: 0; }
+.kb-codex-limits.old { border-style: dashed; background: transparent; color: var(--muted); }
