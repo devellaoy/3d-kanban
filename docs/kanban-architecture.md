@@ -55,7 +55,7 @@ document disagree, fix one of them in the same change.
 - `in_progress`: the engine is running a phase (`task.phase`, `task.runState`).
 - `waiting`: needs the user (plan questions, manual plan approval, agent asked in the terminal,
   stopped, failed, usage-limit wait shown as `retryAt`).
-- `review`: automation finished; the user reviews, comments (resumes work), asks for a PR, or moves to done.
+- `review`: automation finished; the user reviews, comments (resumes work), asks for a PR, or moves to done. Each arrival stores the workspace's fingerprint (`tasks.handoff_fingerprint`: HEAD, tracked changes and untracked files' contents per repository); a `resume` turn is reviewed again only when it differs (`resumed` with `since: 'handoff'`), otherwise the task returns to Review with a note. A task that never reached Review has none and is judged against the base branch; a `start` clears it.
 - `done`: accepted by the user: a manual move, a task worker sent home with `done: true`, or leave-on-merge
   sending one home once every linked PR has merged (see §4, *Departures*). `archived`: old done tasks (not on the board).
 - Moving a task to `done` or `archived` (a move, a departure, the auto-archive) sends its task workers at rest

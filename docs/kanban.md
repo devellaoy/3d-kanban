@@ -102,7 +102,9 @@ task is made and started at once, at that desk or, from the queue, at the next f
    so a review round never needs a free desk. Only when the task has no desk yet (its implementer never
    sat down) does the reviewer take the next free seat.
 4. **Review column**: read the result. **🔍 Run a review round** runs one more round by hand (it ends
-   in Review). **🔀 Create PRs** / **🛠️ Fix PRs** start the PR phase (see below). **🗜️ Compact**
+   in Review). A comment or answer doesn't start a review round when the agent changed nothing since the
+   task came to Review (the task goes back to Review with a note); the button still runs one by hand.
+   **🔀 Create PRs** / **🛠️ Fix PRs** start the PR phase (see below). **🗜️ Compact**
    compacts the agent's session. **🏠 Release worktree** sends the task's workers home and keeps the
    worktree for later. Move it to **Done** when you accept it.
 
