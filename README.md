@@ -191,7 +191,7 @@ curl -fsSL https://raw.githubusercontent.com/devellaoy/3d-kanban/main/install.sh
 
 ## What it is
 
-- **A floor per project.** Ride the elevator, pick one of your GitHub repos, and the office clones it and opens a floor for it. Every worker, board and queue on that floor works in that checkout.
+- **A floor per project.** Ride the elevator, pick one of your GitHub repos, and the office clones it and opens a floor for it. Every worker, board and queue on that floor works in that checkout. A folder you already have works too, git or not: an admin types its path into the elevator and the office uses it as it is, with no clone (see [features](docs/features.md)).
 - **Workers at desks.** Walk up to an empty desk, press **E**, and pick Claude Code, Codex, OpenCode, Grok, Muse or DeepSeek Harness. The agent's live terminal shows on its laptop, and anyone can open it and type. Pin a web page (a linked chat, docs) open in a tab beside it.
 - **You can see who needs you.** A worker that needs input or has finished jumps up and down and dings. Press **N** to go straight to the one that has waited longest.
 - **From your phone, too.** `/lite` is the office in 2D: every worker and what it's waiting on, its terminal with the keys a phone keyboard lacks, and the boards. The 3D office offers it on a phone or a slow computer.
@@ -231,9 +231,9 @@ The first time it starts, it walks you through setting up, right in the terminal
 
 1. **Where to clone your projects.** It suggests a code folder you already have (`~/Workspace`, `~/code`…), else `~/agent-office`. Each project goes in `<folder>/<owner>/<repo>`.
 2. **GitHub.** If the GitHub CLI isn't signed in, it offers to run `gh auth login` for you.
-3. **Your first project.** Pick one of your repos by number, or type `owner/name`, and the office clones it as the first floor.
+3. **Your first project.** Pick one of your repos by number, or type `owner/name`, and the office clones it as the first floor. (To use a folder you already have instead, start with `kanban3d <folder>`, or add it from the elevator once the office is open.)
 
-Press Enter to skip a step: the elevator in the office asks for your first project too. Then the office opens in your browser, **already signed in**, with a link that works once. The terminal also prints the office password, for signing in from another browser (it's saved in `~/agent-office/.agent-office/config.json`).
+Press Enter to skip a step: the elevator in the office asks for your first project too, and an admin can type the path of a folder there (starting with `/` or `~`) and press **📁 Add folder**. Then the office opens in your browser, **already signed in**, with a link that works once. The terminal also prints the office password, for signing in from another browser (it's saved in `~/agent-office/.agent-office/config.json`).
 
 Walk to an empty desk, press **E** and hire a worker.
 

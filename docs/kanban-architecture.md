@@ -29,7 +29,7 @@ document disagree, fix one of them in the same change.
 
 ## 2. Concepts
 
-- **Project = floor.** A floor (`FloorDef` in `floors.json`) is a project; its name (`FloorDef.name`) can be changed (`kanban.project.rename`, admin), its id never. `FloorDef.repos?: ProjectRepo[]`
+- **Project = floor.** A floor (`FloorDef` in `floors.json`) is a project, a clone of a GitHub repository or a plain folder that was already there (`Building.addDir`: no clone, git optional, admin only; created by `floor.add {dir}` from the elevator and from the kanban settings; a floor decides once whether it is a git floor, by a `.git` in its own folder, and a plain folder runs no git or `gh`); its name (`FloorDef.name`) can be changed (`kanban.project.rename`, admin), its id never. `FloorDef.repos?: ProjectRepo[]`
   lists its repositories. The floor's own `dir`/`repo` is always the **primary** repository
   (the floor's `.agent-office/` data stays there, as upstream). A floor without `repos` is a
   one-repository project exactly as upstream has it. The primary's `remote` is `FloorDef.repo` when the

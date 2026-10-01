@@ -192,7 +192,7 @@ questions / is ready for review in <project>".
 The kanban's settings are part of the office's ⚙️ Settings (from the ☰ menu in the 3D office, or ⚙️ in
 the kanban's top bar, which opens the same window): **🗂️ Kanban** holds the office-wide ones (*New
 tasks*, *Reviews*, *Resume*, *Archive*, the secrets and the skills the office found), **📁 Projects**
-those of the project picked at its top, in the tabs **⚙️ Project**, **📌 Issue sources**, **🧩 Skills**
+those of the project picked at its top (and **＋ New project**, see [Projects and repositories](#projects-and-repositories)), in the tabs **⚙️ Project**, **📌 Issue sources**, **🧩 Skills**
 and **📝 Prompts**. Admins change them; everyone else sees them read-only. Changes apply to
 tasks from their next phase. The review setting that applies to a task is the office's, the project's
 over it, and the task's own over both.
@@ -297,6 +297,24 @@ The office's own links (its buttons, and links in descriptions, comments and iss
 
 A project is a floor of the building. The floor's own checkout is the **primary** repository; a floor
 without more repositories is a one-repository project, as in upstream agent-office.
+
+An admin can create a project: ⚙️ Settings → **📁 Projects** → **＋ New project**, then either a **local
+folder** (its full path on the office's machine, `~` works) or a **GitHub repository** to clone. A folder
+is used as it is: nothing is cloned, and it needn't be a git repository. The office keeps its data in
+`<folder>/.agent-office`. Paths that are refused: a relative one, one that doesn't exist or isn't a
+folder, `/` and your home folder, a folder that is or holds the office's data folder (`.agent-office`, so
+the office's home too), the workspace folder or a folder that contains it, and a folder that already is a
+floor or is inside or contains one (the same folder under another name or case counts). A folder with git gets its `origin`'s GitHub
+repository for its issues and PRs; one without has no worktrees, branches or PRs, and the issue and PR
+boards say it isn't a git repository (the kanban's own tasks work, see *Limits*). The 3D office's elevator
+does the same: type the path (starting with `/` or `~`) into its search box and press **📁 Add folder**.
+
+Only admins add a folder, since it gives the project's agents that folder on the office's machine. An
+admin is an account with the admin role or, while the office has no accounts, anyone signed in with the
+shared office password. An office started in a subfolder of a git repository (`agent-office <dir>`)
+keeps running git there as before, while the kanban treats that project as a folder project (no
+worktrees); a folder added later that has no `.git` of its own never runs git, and doesn't borrow the
+repository around it.
 
 An admin can rename a project: ⚙️ Settings → **📁 Projects** → **⚙️ Project** → **Project name** →
 **Rename** (1-100 characters, not another project's name, in any case). The name shows in the elevator,
@@ -588,7 +606,7 @@ task's workspace folder there holds a worktree of each of its repositories).
   once it starts.
 - A task can't run while its project's floor is closed, and needs a free desk and room under the
   office's worker limit.
-- Folder projects (no git) have no worktrees, change checks or PRs; a folder repository in a git
+- Folder projects (no git, see [Projects and repositories](#projects-and-repositories)) have no worktrees, change checks or PRs; a folder repository in a git
   project has no worktree of its own.
 - A 🤝 review panel of several PRs posts its review on a PR of the project's primary repository.
 - GitHub Projects need `gh`'s `read:project` scope; Jira takes one site's token per office.
