@@ -35,9 +35,23 @@ export class Voice {
   muted = false;
   localLevel = 0;
 
-  constructor(private net: Net) {
-    // Often enough for mouths to keep up with syllables.
-    setInterval(() => this.sampleLevels(), 40);
+  /** Samples the voice levels, running only while there's a mic or a connection to sample. */
+  private sampler: ReturnType<typeof setInterval> | null = null;
+
+  constructor(private net: Net) {}
+
+  /** Starts or stops sampling to match whether there's anything to sample. */
+  private syncSampler() {
+    if (this.mic || this.conns.size) {
+      // Often enough for mouths to keep up with syllables.
+      this.sampler ??= setInterval(() => this.sampleLevels(), 40);
+      return;
+    }
+    if (this.sampler === null) return;
+    clearInterval(this.sampler);
+    this.sampler = null;
+    this.localLevel = 0;
+    for (const c of this.conns.values()) c.level = 0;
   }
 
   get inVoice() {
@@ -89,6 +103,7 @@ export class Voice {
     } catch (err) {
       return `Microphone unavailable: ${(err as Error).message}`;
     }
+    this.syncSampler();
     this.muted = muted;
     this.talking = false;
     this.mic.getAudioTracks().forEach((t) => (t.enabled = !muted));
@@ -121,6 +136,7 @@ export class Voice {
     this.mic = null;
     this.localAnalyser = null;
     this.localLevel = 0;
+    this.syncSampler();
     this.talking = false;
     this.changed();
   }
@@ -245,6 +261,7 @@ export class Voice {
     audio.autoplay = true;
     const c: Conn = { pc, polite: store.you < id, makingOffer: false, ignoreOffer: false, audio, level: 0 };
     this.conns.set(id, c);
+    this.syncSampler();
 
     pc.onnegotiationneeded = async () => {
       try {
@@ -301,6 +318,7 @@ export class Voice {
     c.pc.close();
     c.audio.srcObject = null;
     this.conns.delete(id);
+    this.syncSampler();
     this.listeners.forEach((fn) => fn());
   }
 

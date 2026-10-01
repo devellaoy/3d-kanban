@@ -85,13 +85,59 @@ export function installPointer(ctx: Ctx, core: CoreState, parts: PointerParts) {
 
   /** What the ray through `ndc` lands on first, whether it is within reach (plus `slack` meters), and where it hit. */
   function aimedAt(ndc: THREE.Vector2, slack = 0): { it: Interactable; near: boolean; hit: THREE.Intersection } | null {
+    // The aim tick asks every frame: with the camera, you and what can be hit unchanged, the last answer stands for 100 ms.
+    const cached = ndc === CROSSHAIR && slack === 0;
+    const nowMs = performance.now();
+    const pickables = pickablesNow();
+    eye.set(player.pos.x, player.pos.y + EYE_HEIGHT, player.pos.z);
+    const m = camera.matrixWorld.elements;
+    if (cached && lastAim.valid && nowMs - lastAim.at < 100 && sameAs(m, lastAim.matrix) && eye.equals(lastAim.eye) && sameAs(pickables, lastAim.pickables)) return lastAim.result;
+    const result = aimRaycast(ndc, slack, pickables);
+    if (cached) {
+      lastAim.valid = true;
+      lastAim.result = result;
+      lastAim.at = nowMs;
+      lastAim.eye.copy(eye);
+      copyInto(m, lastAim.matrix);
+      copyInto(pickables, lastAim.pickables);
+    }
+    return result;
+  }
+
+  /** What the last aim at the crosshair found, and what it was found from (see aimedAt). */
+  const lastAim = { valid: false, result: null as ReturnType<typeof aimedAt>, at: 0, eye: new THREE.Vector3(), matrix: new Array<number>(16).fill(0), pickables: [] as THREE.Object3D[] };
+  const pickScratch: THREE.Object3D[] = [];
+
+  /** What a ray can hit here, in an array kept from call to call. */
+  function pickablesNow(): THREE.Object3D[] {
+    const roof = parts.rooftop.roof();
+    pickScratch.length = 0;
+    if (core.upTop && roof) copyInto(roof.pickables, pickScratch);
+    else if (inOffice()) {
+      pickScratch.push(office.group);
+      for (const o of ctx.usables.pickables()) pickScratch.push(o);
+    }
+    else copyInto(ctx.world().pickables, pickScratch);
+    return pickScratch;
+  }
+
+  function sameAs(a: ArrayLike<unknown>, b: ArrayLike<unknown>): boolean {
+    if (a.length !== b.length) return false;
+    for (let i = 0; i < a.length; i++) if (a[i] !== b[i]) return false;
+    return true;
+  }
+
+  function copyInto<T>(from: ArrayLike<T>, to: T[]) {
+    to.length = from.length;
+    for (let i = 0; i < from.length; i++) to[i] = from[i];
+  }
+
+  function aimRaycast(ndc: THREE.Vector2, slack: number, pickables: THREE.Object3D[]): { it: Interactable; near: boolean; hit: THREE.Intersection } | null {
     raycaster.setFromCamera(ndc, camera);
     eye.set(player.pos.x, player.pos.y + EYE_HEIGHT, player.pos.z);
     // From the camera behind you in third person, nothing between it and you counts (you included).
     raycaster.near = player.view === 'third' ? alongRay(raycaster.ray.origin, raycaster.ray.direction, eye) : 0;
     // (Workers standing in line in the castle carry their spot's interactable: see Court.)
-    const roof = parts.rooftop.roof();
-    const pickables = core.upTop && roof ? roof.pickables : inOffice() ? [office.group, ...ctx.usables.pickables()] : ctx.world().pickables; // for eyeSees too
     for (const hit of raycaster.intersectObjects(pickables, true)) {
       let it: Interactable | undefined;
       let shown = true;
