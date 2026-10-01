@@ -151,7 +151,7 @@ allowed: `todo → in_progress` (= start), `waiting|review → done`, `done → 
   as does a teammate's message to another, read from the sender's own transcript at its own time (the idle
   notification's `[to Y]` summary counts only when the sender's transcript can't be read: that notification
   can reach the lead minutes late, naming a message already answered); an idle notification, shutdown or
-  termination rests it (only for names that are teammates: spawned, or with a transcript; a teammate's
+  termination rests it (dated by its own timestamp, as it can reach the lead late) (only for names that are teammates: spawned, or with a transcript; a teammate's
   `[to main]` to the lead wakes nobody), each when newer than the teammate's last line. A teammate's message to the lead is
   no prompt of the office's: it doesn't open a new window (`start`) and counts as a prompt to answer
   (`resuming`), so the background agents launched before it still count.

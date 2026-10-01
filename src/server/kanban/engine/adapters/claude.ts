@@ -84,11 +84,11 @@ const OPEN_TAG = /<teammate-message((?:\s+[\w-]+="[^"]*")*)\s*>/g;
 
 /**
  * The `<teammate-message>` tags of a line's text: who sent each, and for a JSON body (an idle notification
- * and the like) its `type` and `summary`. The body is the text between the tags, parsed whole: it can hold
+ * and the like) its `type`, `summary` and own `timestamp` (`at`, ms). The body is the text between the tags, parsed whole: it can hold
  * `}` and `>` (a result's code), which a pattern for the JSON would cut short.
  */
-export function teammateTags(text: string): { from: string; type?: string; summary?: string }[] {
-  const out: { from: string; type?: string; summary?: string }[] = [];
+export function teammateTags(text: string): { from: string; type?: string; summary?: string; at?: number }[] {
+  const out: { from: string; type?: string; summary?: string; at?: number }[] = [];
   const close = '</teammate-message>';
   let at = 0;
   for (;;) {
@@ -103,17 +103,19 @@ export function teammateTags(text: string): { from: string; type?: string; summa
     let from = teammateName(/\bteammate_id="([^"]*)"/.exec(m[1])?.[1]);
     let type: string | undefined;
     let summary: string | undefined;
+    let when: number | undefined;
     try {
       const body = JSON.parse(text.slice(bodyAt, end).trim()) as unknown;
       if (isObj(body)) {
         if (typeof body.type === 'string') type = body.type;
         if (typeof body.summary === 'string') summary = body.summary;
+        if (typeof body.timestamp === 'string') when = Date.parse(body.timestamp) || undefined;
         from = teammateName(body.from) ?? from;
       }
     } catch {
       // a report in words, not JSON
     }
-    if (from) out.push({ from, ...(type ? { type } : {}), ...(summary ? { summary } : {}) });
+    if (from) out.push({ from, ...(type ? { type } : {}), ...(summary ? { summary } : {}), ...(when ? { at: when } : {}) });
   }
   return out;
 }
@@ -167,7 +169,8 @@ export function messagesSent(lines: Record<string, unknown>[], start: number): T
  * The teammate events in the lead's log from `start` on: a spawn (`teammate_spawned`, or its "Spawned
  * successfully" text) or a message the lead sent to one (`messagesSent`) wakes it (only a teammate: one
  * spawned, or with a transcript, never the lead a teammate reports to); an idle notification (or shutdown,
- * termination) lets its sender rest. Its `[to Y]` summary names the sender's latest peer DM, which can be
+ * termination) lets its sender rest, dated by the notification's own timestamp (it can reach the lead
+ * minutes late: a stale idle must not override a later wake). Its `[to Y]` summary names the sender's latest peer DM, which can be
  * long answered (the notification can reach the lead minutes late), so that wake is only a fallback, marked
  * `relayedBy` its sender: a teammate's own transcript is the truth for its peer DMs (`teammatesBusy`), and
  * the summary counts only for a sender whose transcript can't be read.
@@ -177,12 +180,14 @@ export function teammateEvents(lines: Record<string, unknown>[], start: number):
   if (start < 0) return events;
   const tools = new Map<unknown, { name: unknown; input: Record<string, unknown> }>();
   for (const line of lines.slice(start + 1)) {
-    const at = atOf(line);
+    const lineAt = atOf(line);
     const msg = isObj(line.message) ? line.message : undefined;
     const content = Array.isArray(msg?.content) ? msg.content.filter(isObj) : [];
     if (line.type === 'assistant') for (const b of content) if (b.type === 'tool_use') tools.set(b.id, { name: b.name, input: isObj(b.input) ? b.input : {} });
     if (isTeammateMessage(line)) {
       for (const t of teammateTags(messageText(line))) {
+        // The body's own time, when it went idle: the notification can reach the lead minutes after.
+        const at = t.at ?? lineAt;
         if (t.type === 'idle_notification' || t.type === 'shutdown_approved' || t.type === 'teammate_terminated') events.push({ name: t.from, busy: false, at });
         const to = t.type === 'idle_notification' ? /^\[to ([^\]\s]+)\]/.exec(t.summary ?? '')?.[1] : undefined;
         if (to) events.push({ name: teammateName(to) ?? to, busy: true, at, relayedBy: t.from });
@@ -193,14 +198,14 @@ export function teammateEvents(lines: Record<string, unknown>[], start: number):
     const res = isObj(line.toolUseResult) ? line.toolUseResult : undefined;
     if (res?.status === 'teammate_spawned') {
       const name = teammateName(res.name ?? res.teammate_id);
-      if (name) events.push({ name, busy: true, at, spawn: true });
+      if (name) events.push({ name, busy: true, at: lineAt, spawn: true });
       continue;
     }
     if (res) continue;
     for (const b of content) {
       if (b.type !== 'tool_result') continue;
       const call = tools.get(b.tool_use_id);
-      if (call?.name === 'Agent' && typeof call.input.name === 'string' && toolResultText(b).startsWith('Spawned successfully')) events.push({ name: call.input.name, busy: true, at, spawn: true });
+      if (call?.name === 'Agent' && typeof call.input.name === 'string' && toolResultText(b).startsWith('Spawned successfully')) events.push({ name: call.input.name, busy: true, at: lineAt, spawn: true });
     }
   }
   return [...events, ...messagesSent(lines, start)];

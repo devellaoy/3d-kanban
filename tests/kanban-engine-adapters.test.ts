@@ -193,7 +193,7 @@ test('claude transcript: teammates (agent teams) still working, from their own t
     cUser([{ type: 'tool_result', tool_use_id: id, content: [text('{"success":true}')] }], { toolUseResult: { success: true, message: `Message sent to ${to}'s inbox`, routing: { sender: 'team-lead', target: `@${to}` } } }),
   ];
   const tag = (id: string, body: string, attrs = '') => `<teammate-message teammate_id="${id}" color="blue"${attrs}>\n${body}\n</teammate-message>`;
-  const idle = (from: string, extra: object = {}) => JSON.stringify({ type: 'idle_notification', from, timestamp: at(0), idleReason: 'available', ...extra });
+  const idle = (from: string, extra: object = {}) => JSON.stringify({ type: 'idle_notification', from, idleReason: 'available', ...extra });
   const mail = (...tags: string[]) => cUser(`Another Claude session sent a message:\n${tags.join('\n')}`);
   const msgFrom = (id: string, ...blocks: object[]) => ({ type: 'assistant', message: { id: `t-${id}`, role: 'assistant', content: blocks } });
   const wait = cAssistant([text('Waiting for the teammates.')], {}, 'mw');
@@ -260,6 +260,13 @@ test('claude transcript: teammates (agent teams) still working, from their own t
   const late = [...withTs([cUser('Implement task #7'), ...spawn('a', 's1'), ...spawn('b', 's2'), wait], 1), ...withTs([mail(tag('a', idle('a', { summary: '[to b] take over' }))), cAssistant([text('Waiting on b.')], {}, 'm9')], 40)];
   const answered = { a: sender('b', 10), b: withTs([cUser(tag('a', 'take over')), msgFrom('1', { type: 'thinking', thinking: '' }), msgFrom('2', text('Done.'))], 13) };
   assert.equal(readClaudeTurn(lead(late, answered))?.background, undefined);
+
+  // A teammate's own idle notification can reach the lead late too: b went idle at 15, was woken by a's DM at 20 and runs a long Bash
+  // call (its transcript ends in a tool call at 25); the stale idle, logged by the lead at 40, dated by its own timestamp, doesn't rest it.
+  const stale = [...withTs([cUser('Implement task #7'), ...spawn('a', 's1'), ...spawn('b', 's2'), wait], 1), ...withTs([mail(tag('b', idle('b', { timestamp: at(15) }))), cAssistant([text('b is idle.')], {}, 'm9')], 40)];
+  const woken = { a: sender('b', 18), b: withTs([cUser(tag('a', 'again')), msgFrom('1', { type: 'tool_use', id: 'x', name: 'Bash', input: {} })], 24) };
+  assert.equal(readClaudeTurn(lead(stale, woken))?.background, 1);
+  assert.deepEqual(teammateTags(messageTextOf(mail(tag('b', idle('b', { timestamp: at(15) }))))), [{ from: 'b', type: 'idle_notification', at: Date.parse(at(15)) }]);
 
   // A teammate closing with a message to the lead ("[to main]": a name that is no teammate's) wakes nobody, with or without a transcript.
   const report = withTs([cUser('Implement task #7'), ...spawn('a', 's1'), wait, mail(tag('a', idle('a', { summary: '[to main] done' }))), cAssistant([text('Done.')], {}, 'm9')], 1);
