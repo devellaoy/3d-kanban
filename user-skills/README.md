@@ -28,12 +28,16 @@ Settings -> Kanban -> Skills runs it too).
   source has changed, even if you edited it by hand; nothing is written when it is current.
 - A copy ai-kanban made (`.aikanban-sync`) is adopted the same way. If ai-kanban runs on the same machine
   too, whichever app started last wins; 3d-kanban takes the skills back on its next start.
-- A skill of the same name without either marker is yours: it is left alone and a warning is logged.
-- `node_modules` is never copied, and a `node_modules` already in the target survives an update. Files
-  deleted from the source stay in the target.
-- `AGENT_OFFICE_USER_SKILLS=off` turns the sync off (the admin's 🔄 Sync too). An agent's worktree
-  (`.agent-office/worktrees/`) skips the start-up sync, so a branch doesn't overwrite your skills, unless
-  `AGENT_OFFICE_USER_SKILLS=on`; 🔄 Sync isn't held back by the worktree rule.
+- A skill of the same name without either marker is yours: it is left alone and a warning is logged. A
+  symbolic link is never written through either.
+- Copies are built in `<home>/.office-user-skills-tmp/` and swapped in whole, so a failed update leaves the old
+  copy. `node_modules` is never copied, and a `node_modules` already in the target survives an update. Files
+  deleted from the source disappear from the target.
+- `AGENT_OFFICE_USER_SKILLS=off` turns the sync off (start-up and the admin's 🔄 Sync). A source in a linked
+  git worktree (an agent's checkout) is skipped by both, so a branch doesn't overwrite your skills, unless
+  `AGENT_OFFICE_USER_SKILLS=on`. A main checkout and an install without git sync.
+- `kanban-ui-screenshots` is kept in both `claude/` and `codex/`; apart from `SKILL.md` and `agents/` the
+  files must be identical (a test checks it).
 
 `kanban-ui-screenshots` needs `npm install` in its folder (`<home>/skills/kanban-ui-screenshots`) the first
 time you use it.

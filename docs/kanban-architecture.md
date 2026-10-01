@@ -470,12 +470,17 @@ worker's PATH), MCP tools `get_task`, `search_tasks` (listed only when the worke
 task workers; Claude task workers get them in `--allowedTools`). A plan phase gets the tasks its text refers to
 written to `kanban/refs/task-<id>/referenced-tasks.md` (it can't call anything).
 
-User skills (integrations/userskills/): a plugin with only a `start()`. It syncs the repository's `user-skills/claude/*`
-and `user-skills/codex/*` into the machine's `<claude home>/skills/` and `<codex home>/skills/` (the same homes
-`defaultRoots` finds), marking its copies with `.office-user-skill.json` (the source hash, `skillHash(dir, { skipDeps })`):
-a marked or ai-kanban (`.aikanban-sync`) copy is overwritten when the source changed, an unmarked one is left alone.
-`AGENT_OFFICE_USER_SKILLS=off` disables it; a source under `.agent-office/worktrees/` is skipped unless it is `on`.
-The skills integration's 🔄 Sync (`skills.sync`) runs the same sync without the worktree guard (`off` still stops it). See docs/kanban.md.
+User skills (integrations/userskills/): a plugin that syncs the repository's `user-skills/claude/*` and
+`user-skills/codex/*` into the machine's `<claude home>/skills/` and `<codex home>/skills/` (the same homes
+`defaultRoots` finds), marking its copies with `.office-user-skill.json` (the source hash, `skillHash(dir, { exclude: USER_SKILL_EXCLUDES })`):
+a marked or ai-kanban (`.aikanban-sync`) copy is overwritten (hand edits too) when the source changed, an unmarked
+one or a symlink is left alone. Copies are built in `<home>/.office-user-skills-tmp/<folder>-<pid>` (outside the scanned
+`skills/`) and renamed in, the old one set aside and removed, the target's `node_modules` moved over; stale temp
+entries of dead pids are removed at the start of a sync. Files removed from the source disappear. `start()` defers the
+sync with `setImmediate`. `AGENT_OFFICE_USER_SKILLS=off` disables it; a source whose repository root has `.git` as a file (a
+linked worktree) is skipped unless it is `on` (a main checkout or no git at all syncs). The same function guards the
+admin's 🔄 Sync: the plugin registers itself with `onSkillsSync` (skills/index.ts) in `start()` and unregisters in `stop()`,
+so the dependency runs userskills -> skills only. See docs/kanban.md.
 
 Compatibility for existing ai-kanban skills/scripts (integrations/compat/v1.ts): task workers get env
 `AIKANBAN_API_BASE` (the hook server URL) and `AIKANBAN_TASK_ID`.
