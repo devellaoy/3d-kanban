@@ -45,10 +45,10 @@ export interface WorkerTabs {
 }
 
 /**
- * Puts the tabs into a worker's terminal window `el`, next to the terminal's `panes`
- * (the terminal and the keypad; the task pane is placed after them); null for a worker without a task, whose window stays upstream's.
+ * Puts the tabs into a worker's terminal window `el`: the strip under its header, the task pane right
+ * after `anchor` (the terminal's own area); null for a worker without a task, whose window stays upstream's.
  */
-export function mountWorkerTabs(net: Net, w: WorkerInfo, el: HTMLElement, panes: (HTMLElement | null)[], opts: WorkerTabsOptions): WorkerTabs | null {
+export function mountWorkerTabs(net: Net, w: WorkerInfo, el: HTMLElement, anchor: HTMLElement, opts: WorkerTabsOptions): WorkerTabs | null {
   const tabs = workerTabs(w);
   if (!tabs.length) return null;
   css();
@@ -65,7 +65,7 @@ export function mountWorkerTabs(net: Net, w: WorkerInfo, el: HTMLElement, panes:
     strip.append(b);
   }
   el.querySelector(':scope > header')!.after(strip);
-  (panes.find(Boolean) ?? strip).after(pane);
+  anchor.after(pane);
 
   let view: { destroy(): void } | null = null;
   let destroyed = false;

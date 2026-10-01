@@ -424,7 +424,7 @@ export function openTerminal(net: Net, workerId: string, onChanges?: () => void,
     el.classList.remove('dropping');
   };
   modal.backdrop.addEventListener('dragenter', (e) => {
-    if (!hasFiles(e) || inTaskPane(e.target) || termHidden()) return; // 3d-kanban: not over the task pane, nor with the terminal hidden
+    if (!hasFiles(e) || termHidden()) return; // 3d-kanban: not with the terminal hidden (a web page tab or the task tab)
     e.preventDefault();
     dragDepth++;
     el.classList.add('dropping');
@@ -493,7 +493,7 @@ export function openTerminal(net: Net, workerId: string, onChanges?: () => void,
   });
 
   // 3d-kanban: the tabs, once the terminal is open (xterm measures its cells as it opens).
-  const kanbanTabs: WorkerTabs | null = mountWorkerTabs(net, info, el, [host, keypad], { tab: opts.tab, focusTerminal: () => term.focus() });
+  const kanbanTabs: WorkerTabs | null = mountWorkerTabs(net, info, el, host, { tab: opts.tab, focusTerminal: () => void (termHidden() || term.focus()) });
   ro.observe(host);
   refresh();
   net.send({ t: 'worker.attach', workerId });
