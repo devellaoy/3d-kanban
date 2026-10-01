@@ -2,7 +2,7 @@ import './settings.css';
 import type { Net } from '../net';
 import { store, type Settings, type ViewMode } from '../state';
 import { askNotifyPermission, notifyPermission, type DesktopNotifier } from '../notify';
-import type { ThemePick, WebhookKind } from '../../shared/protocol';
+import type { SkyState, ThemePick, WebhookKind } from '../../shared/protocol';
 import { THEME_PICKS } from '../../shared/theme';
 import { mapChoices } from '../../shared/maps';
 import { DOG_NAME_MAX, cleanDogName } from '../../shared/dog';
@@ -14,6 +14,7 @@ import { KANBAN_PANES, kanbanSettingsSlots, type KanbanSettingsPane } from '../k
 import { mouseSensitivityRow } from './sensitivity';
 import { appearanceRow } from './appearance';
 import { setting } from './settingrow';
+import { outsideSetting } from './settings-sky';
 
 const VIEWS: [ViewMode, string, string][] = [
   ['first', '👀 First person', 'See through your own eyes. Click the office to look around with the mouse and click things to use them. Esc frees the mouse.'],
@@ -39,8 +40,8 @@ const PANES: { id: SettingsPane; icon: string; label: string; blurb: string }[] 
 /** Where ⚙️ Settings was last, so it opens there again. */
 let lastPane: SettingsPane = 'you';
 
-/** `outside` describes the sky over the office (see describeSky), once the server has said. `first` opens on that category instead of the last one. */
-export function openSettings(net: Net, settings: Settings, onChange: (s: Settings) => void, onCharacter: () => void, previewSound: () => void, notifier: DesktopNotifier, onSignOut: () => void, outside?: { now: string; live: boolean }, first?: SettingsPane) {
+/** `outside` describes the sky over the office (`describe`, see describeSky), once the server has said. `first` opens on that category instead of the last one. */
+export function openSettings(net: Net, settings: Settings, onChange: (s: Settings) => void, onCharacter: () => void, previewSound: () => void, notifier: DesktopNotifier, onSignOut: () => void, outside?: { live: boolean; describe: (s: SkyState) => string }, first?: SettingsPane) {
   const seg = h('div.seg', { role: 'radiogroup', 'aria-label': 'Camera view' });
   const note = h('p.setting-note');
   const paint = () => {
@@ -494,6 +495,8 @@ export function openSettings(net: Net, settings: Settings, onChange: (s: Setting
     if (e.key === 'Enter') renameDog();
   });
 
+  // What the sky's doing, and which clock it keeps (see settings-sky.ts).
+  const sky = outside && outsideSetting(net, outside, (body) => setting('Outside', 'office', ...body));
   const account = store.me.account;
   const signOut = h('button.btn', { type: 'button' }, '🚪 Sign out');
   signOut.addEventListener('click', onSignOut);
@@ -520,16 +523,7 @@ export function openSettings(net: Net, settings: Settings, onChange: (s: Setting
     building: [
       setting('Map', 'office', mapRow, mapNote, mapBad),
       setting('Holiday theme', 'office', themeRow, themeNote),
-      ...(outside
-        ? [
-            setting(
-              'Outside',
-              'office',
-              h('p.outside-now', {}, outside.now),
-              h('p.setting-note', {}, outside.live ? 'Everyone sees the same sky: a whole day and night every hour, and the live weather where it is.' : 'Everyone sees the same sky: a whole day and night every hour, and weather that comes and goes. Start the office with --city to use a real city’s forecast.'),
-            ),
-          ]
-        : []),
+      ...(sky ? [sky.section] : []),
       dogSection,
       setting('Workspace folder', 'office', dirRow, dirActions, dirNote),
     ],
@@ -591,6 +585,7 @@ export function openSettings(net: Net, settings: Settings, onChange: (s: Setting
     doing: '⚙️ in settings',
     onClose: () => {
       [offNotify, offDog, offTheme, appearance.off, offMap, offLeave].forEach((off) => off());
+      sky?.off();
       offLimit.forEach((off) => off());
       offDir.forEach((off) => off());
       offPrompts.forEach((off) => off());

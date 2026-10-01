@@ -34,7 +34,7 @@ const CEILINGS: Readonly<Record<string, number>> = {
   'src/client/features/golf/world.ts': 635,
   'src/client/features/bargames/world.ts': 617,
   'src/client/world/city.ts': 613,
-  'src/client/ui/settings.ts': 606,
+  'src/client/ui/settings.ts': 601,
   'src/client/world/character/worker.ts': 605,
   'src/client/world/costumes.ts': 603,
   // The kanban's files, held to the budget since it became part of the project (#327) rather than kept

@@ -14,6 +14,32 @@ Back to the [README](../README.md).
 - The `upstream` remote exists in this clone (`https://github.com/AgentSystemLabs/agent-office.git`); nothing
   requires it elsewhere, and a copy without it can add it with `git remote add upstream <url> && git fetch upstream`.
 
+### Ported, not merged
+
+- Upstream PR #219 (`ab07411`; open upstream as of 2026-10-01: indoor lamplight shadows and a real-time sky
+  clock) is taken as one squash commit of its three commits (`git diff 1bc3028 ab07411 | git apply -3`). It touches
+  `docs/configuration.md`, `docs/features.md`, `docs/how-it-works.md`, `src/client/features/lamplight/index.ts`
+  (new), `src/client/main.ts`, `src/client/ui/settings-sky.ts` (new), `src/client/ui/settings.ts`,
+  `src/client/world/office/shell.ts`, `src/client/world/sky.ts`, `src/server/config.ts`,
+  `src/server/office/services.ts`, `src/server/sky.ts`, `src/server/ws/handlers/settings.ts`,
+  `src/shared/protocol/settings.ts`, `src/shared/sun.ts`, `tests/size.test.ts` and `tests/sky-clock.test.ts` (new).
+- The fork's deviation: `settings-sky.ts` gets `describe` (the sky's wording) from its caller instead of importing
+  `describeSky`, because that would pull three.js into the kanban page, which shares `ui/settings.ts`.
+  `features/hud/index.ts` passes it (and no `now` line beside it, which upstream's `outside` has), and `tests/client-structure.test.ts` guards the kanban page's imports.
+  The hud's `describe` words the sky on the office's clock (`store.officeNow()`), like the line Settings opens
+  with; upstream repaints it on the browser's own clock, so keep the fork's when syncing.
+- Two fixes on top of upstream's code, to keep when syncing: `sky.clock` (`server/ws/handlers/settings.ts`) ignores a
+  message whose `real` isn't a boolean, where upstream read anything but `true` as *a day every hour* and saved
+  it (`tests/server-dispatch.test.ts`); and `features/lamplight` lets go at once when the building leaves the
+  office's map, where upstream eased out over the castle's own light for its first seconds (`tests/lamplight.test.ts`).
+- After PR #55's review, also to keep: `wallRun`'s pieces and `exitPlug`'s wall are marked `userData.wall` too (the
+  back office's walls and the plugs), `features/lamplight` collects the walls again when the back office is
+  rebuilt (`player.wing`) and settles its easing so a still frame changes nothing, and `server/sky.ts` has a
+  `withClock` helper and writes `sky-place.json` only when the place changed.
+- When #219 merges upstream, syncing it means resolving the same hunks once more (the SHAs differ). Upstream #220
+  (the `settings.ts` ceiling in `size.test.ts`) and #221 (party dimming against the lamp boost in `lamplight`) are
+  likely to conflict later.
+
 ## Name and releases
 
 3d-kanban is its own product, published at https://github.com/devellaoy/3d-kanban, so that it never

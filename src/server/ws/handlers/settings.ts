@@ -80,6 +80,12 @@ export const settingsHandlers = {
             : `📅 ${who} set the decorations to follow the calendar${now ? ` (it's ${now === 'halloween' ? 'Halloween 🎃' : 'Christmas 🎄'} season)` : ''}`,
     );
   },
+  'sky.clock'(ctx, c, msg) {
+    // Only a real boolean picks a clock: anything else (missing, "yes") leaves the building's clock as it is.
+    if (typeof msg.real !== 'boolean' || msg.real === !!ctx.sky.state.realTime) return;
+    ctx.sky.setClock(msg.real);
+    ctx.toastAll(msg.real ? `🕰️ ${c.peer.name} put the sky on the real time of day` : `⏩ ${c.peer.name} set the sky to a whole day every hour`);
+  },
   'map.set'(ctx, c, msg) {
     const who = c.peer.name;
     // Someone opened the list, or picked a map: either way the folder of maps of your own is read again first.
