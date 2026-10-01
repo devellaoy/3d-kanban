@@ -4,13 +4,14 @@
 // The office does the writes and sends the fresh list out again; update() only repaints from that.
 
 import './issueactions.css';
-import { h, timeAgo, toast } from '../ui/dom';
+import { h, timeAgo } from '../ui/dom';
 import type { KanbanServerMsg } from '../../shared/kanban/protocol.js';
-import type { IssueCommentItem, IssuePerson, IssueTransition } from '../../shared/kanban/issueops.js';
+import type { IssueCommentItem, IssuePerson } from '../../shared/kanban/issueops.js';
 import type { KanbanApi } from './api';
 import { renderMarkdown } from './md';
 import { onSendKey, sendHint } from './sendkey';
 import { run, textArea, textInput } from './ui';
+import { groupTransitions, isGithubKey, jiraSite, pinnedMe, setPinnedMe, transitionLabel } from './issueactionsmodel';
 
 type Transitions = Extract<KanbanServerMsg, { t: 'kanban.issueTransitions' }>;
 type Comments = Extract<KanbanServerMsg, { t: 'kanban.issueComments' }>;
@@ -30,55 +31,6 @@ export interface IssueActionsOpts {
   sections?: readonly IssueSection[];
   /** Where a #123 in a comment goes. */
   openTask?: (id: number) => void;
-}
-
-/** Whether the key is a GitHub one (`gh:owner/repo#5`, `ghp:owner/1#item`); anything else is Jira's. */
-export const isGithubKey = (key: string) => /^ghp?:/.test(key);
-
-/** The Jira site an issue is on, from its link (the pinned "me" is per site). */
-export function jiraSite(url: string | undefined): string {
-  try {
-    return url ? new URL(url).host : '';
-  } catch {
-    return '';
-  }
-}
-
-const PIN_KEY = (site: string) => `kb-jira-me:${site}`;
-
-/** The person pinned as "me" on a Jira site, if any. */
-export function pinnedMe(site: string): IssuePerson | undefined {
-  try {
-    const v = JSON.parse(localStorage.getItem(PIN_KEY(site)) ?? 'null') as IssuePerson | null;
-    return v && typeof v.id === 'string' && typeof v.name === 'string' ? v : undefined;
-  } catch {
-    return undefined;
-  }
-}
-
-function setPinnedMe(site: string, who: IssuePerson | undefined) {
-  try {
-    if (who) localStorage.setItem(PIN_KEY(site), JSON.stringify({ id: who.id, name: who.name }));
-    else localStorage.removeItem(PIN_KEY(site));
-  } catch {
-    toast('This browser can’t remember who you are (storage is off)', 'warn');
-  }
-}
-
-/** A transition's line in the list: its name, where it leads when that isn't the same, and what it needs. */
-export function transitionLabel(t: IssueTransition): string {
-  const to = t.to && t.to !== t.name ? ` → ${t.to}` : '';
-  return `${t.name}${to}${t.needs?.length ? ` (needs ${t.needs.join(', ')})` : ''}${t.current ? ' ✓' : ''}`;
-}
-
-/** The transitions by group, in the order the groups first come. */
-export function groupTransitions(ts: readonly IssueTransition[]): [string, IssueTransition[]][] {
-  const groups = new Map<string, IssueTransition[]>();
-  for (const t of ts) {
-    const g = t.group ?? '';
-    groups.set(g, [...(groups.get(g) ?? []), t]);
-  }
-  return [...groups];
 }
 
 export function issueActions(api: KanbanApi, project: string, first: ActionIssue, opts: IssueActionsOpts = {}): { el: HTMLElement; update(issue: ActionIssue): void } {
