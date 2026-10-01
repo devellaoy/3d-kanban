@@ -41,7 +41,7 @@ test('replaces cumulative snapshots, ignores replays, and waits for complete app
   assert.deepEqual(reader.read(file, 'thread-1', home), codexTokenUsage(totals(140, 40)));
 });
 
-test('rejects foreign session metadata, outside paths and symlink escapes', t => {
+test('rejects foreign session metadata, outside paths and symlink escapes', async t => {
   const { home, file } = fixture(t);
   const reader = new CodexUsageReader();
   writeFileSync(file, header('foreign-thread') + event() + '\n');
@@ -50,9 +50,25 @@ test('rejects foreign session metadata, outside paths and symlink escapes', t =>
   const outside = path.join(home, 'rollout-other-thread-1.jsonl');
   writeFileSync(outside, header() + event() + '\n');
   assert.equal(reader.read(outside, 'thread-1', home), undefined);
-  const link = path.join(home, 'sessions', 'rollout-link-thread-1.jsonl');
-  symlinkSync(outside, link);
-  assert.equal(reader.read(link, 'thread-1', home), undefined);
+  // Directory junctions also exercise escaped real paths without Windows symlink privileges.
+  const external = path.join(home, 'external');
+  mkdirSync(external);
+  writeFileSync(path.join(external, 'rollout-link-thread-1.jsonl'), header() + event() + '\n');
+  const junction = path.join(home, 'sessions', 'linked');
+  symlinkSync(external, junction, 'junction');
+  assert.equal(reader.read(path.join(junction, 'rollout-link-thread-1.jsonl'), 'thread-1', home), undefined);
+
+  await t.test('file symlink escapes', st => {
+    const link = path.join(home, 'sessions', 'rollout-link-thread-1.jsonl');
+    try {
+      symlinkSync(outside, link);
+    } catch (err) {
+      if (process.platform !== 'win32' || (err as NodeJS.ErrnoException).code !== 'EPERM') throw err;
+      st.skip('File symlinks require Windows Developer Mode or symlink privileges');
+      return;
+    }
+    assert.equal(reader.read(link, 'thread-1', home), undefined);
+  });
 });
 
 test('bounded tail recovers cumulative usage after large non-metric records', t => {

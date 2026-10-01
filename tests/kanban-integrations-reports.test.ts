@@ -37,7 +37,12 @@ function setup() {
   writeFileSync(path.join(dir, 'sub', 'notes.txt'), 'plain');
   writeFileSync(path.join(dir, '.hidden'), 'no');
   writeFileSync(path.join(ctx.filesDir, 'secret.txt'), 'outside');
-  symlinkSync(path.join(ctx.filesDir, 'secret.txt'), path.join(dir, 'link.md'));
+  if (process.platform === 'win32') {
+    // A junction needs no symlink privilege and still checks that links aren't traversed.
+    symlinkSync(ctx.filesDir, path.join(dir, 'link.md'), 'junction');
+  } else {
+    symlinkSync(path.join(ctx.filesDir, 'secret.txt'), path.join(dir, 'link.md'));
+  }
   return { ctx, task, dir, plugin: createReportsPlugin(ctx) };
 }
 
