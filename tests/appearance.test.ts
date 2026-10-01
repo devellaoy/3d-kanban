@@ -108,9 +108,7 @@ test('no sheet uses --ink for text or for a heavy line', () => {
 // What's left is in the 3D office rather than its windows (the telescope, the fade between floors, a
 // shared screen's black, the arcade) or content (the coffee meter, the avatars' colours).
 const ALLOWED: Readonly<Record<string, number>> = {
-  'src/client/features/bookshelf/ui.css': 1,
   'src/client/features/hanging/ui.css': 3,
-  'src/client/styles/base.css': 1,
   'src/client/styles/hud.css': 22,
   'src/client/ui/boards.css': 2,
   'src/client/ui/changes.css': 2,
@@ -118,7 +116,6 @@ const ALLOWED: Readonly<Record<string, number>> = {
   'src/client/ui/elevator.css': 1,
   'src/client/ui/floormenu.css': 1,
   'src/client/ui/floorplan.css': 1,
-  'src/client/ui/termtabs.css': 1,
   'src/client/youtube/youtube.css': 4,
 };
 

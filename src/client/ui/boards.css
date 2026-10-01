@@ -50,6 +50,6 @@
 .detail a { color: var(--link); font-weight: var(--fw-bold); }
 
 /* A card's chip for the task queue: waiting, running or done. */
-.qchip { padding: 1px 6px; border-radius: var(--radius-pill); border: 1.5px solid var(--ink); background: var(--info-soft); color: var(--text); font-size: 10px; font-weight: var(--fw-heavy); }
+.qchip { padding: 1px 6px; border-radius: var(--radius-pill); border: 1.5px solid var(--ink); background: var(--info-soft); color: var(--text); font-size: var(--fs-3xs); font-weight: var(--fw-heavy); }
 .qchip.running { background: var(--good-soft); }
 .qchip.done { background: var(--paper-2); }

@@ -44,7 +44,7 @@ button { font-family: inherit; }
 .pill.lost { background: var(--warn-hot); }
 .empty { color: var(--muted); font-size: var(--fs-sm); font-weight: var(--fw-medium); }
 @keyframes pulse { 50% { transform: scale(1.08); } }
-.key { display: inline-block; min-width: 26px; padding: 1px 7px; margin-right: 5px; border-radius: 7px; background: var(--paper); color: var(--text); text-align: center; font-weight: var(--fw-heavy); box-shadow: 0 2px 0 #999; }
+.key { display: inline-block; min-width: 26px; padding: 1px 7px; margin-right: 5px; border-radius: 7px; background: var(--paper); color: var(--text); text-align: center; font-weight: var(--fw-heavy); box-shadow: var(--shadow-key); }
 
 #toasts { position: absolute; top: 72px; left: 50%; transform: translateX(-50%); display: flex; flex-direction: column; gap: 8px; align-items: center; pointer-events: none !important; }
 .toast { background: var(--paper); border: var(--bw) solid var(--ink); border-radius: var(--radius-sm); padding: 8px 14px; font-weight: var(--fw-bold); font-size: var(--fs-md); box-shadow: var(--shadow); animation: toast-in .25s ease-out; }

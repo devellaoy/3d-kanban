@@ -11,7 +11,7 @@
 .modal.term.uploading:not(.dropping) .term-host::after { content: '📎 Putting it in the terminal…'; }
 /* Who's in the terminal: a face per person, and a pencil on whoever's typing. */
 .viewers { display: flex; align-items: center; gap: 4px; }
-.avatar { position: relative; width: 26px; height: 26px; border-radius: 50%; border: var(--bw-sm) solid var(--ink); display: grid; place-items: center; flex: none; font-size: 10px; font-weight: var(--fw-heavy); letter-spacing: -.02em; color: var(--text); cursor: default; }
+.avatar { position: relative; width: 26px; height: 26px; border-radius: 50%; border: var(--bw-sm) solid var(--ink); display: grid; place-items: center; flex: none; font-size: var(--fs-avatar); font-weight: var(--fw-heavy); letter-spacing: -.02em; color: var(--text); cursor: default; }
 .avatar.typing { margin-right: 4px; animation: typing-bob .9s ease-in-out infinite; }
 .avatar.typing::after { content: '✎'; position: absolute; right: -9px; bottom: -7px; width: 11px; height: 11px; border-radius: 50%; background: var(--paper); border: var(--bw-sm) solid var(--ink); font-size: 7px; line-height: 11px; text-align: center; }
 @keyframes typing-bob { 50% { transform: translateY(-3px); } }

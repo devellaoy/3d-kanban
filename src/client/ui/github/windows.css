@@ -75,7 +75,7 @@ article.gh-card > header { display: flex; align-items: center; gap: 8px; padding
 .gh-merge-result { display: flex; align-items: center; gap: 8px; padding: 9px 12px; border: var(--bw-sm) solid var(--ink); border-radius: 10px; font-weight: var(--fw-bold); background: var(--info-soft); }
 .gh-merge-result.error { display: block; background: var(--bad-soft); white-space: pre-wrap; overflow-wrap: anywhere; font-weight: var(--fw-semibold); font-size: var(--fs-sm); }
 /* A label chip (labelChip): on a board's cards, in the windows and in the label picker. */
-.label { padding: 1px 6px; border-radius: var(--radius-pill); border: 1.5px solid var(--ink); color: var(--text); font-size: 10px; font-weight: var(--fw-bold); }
+.label { padding: 1px 6px; border-radius: var(--radius-pill); border: 1.5px solid var(--ink); color: var(--text); font-size: var(--fs-3xs); font-weight: var(--fw-bold); }
 /* The label picker (openLabels) */
 /* The ✏️ button next to the labels: styles/base.css, after the button rules it restyles. */
 .gh-labeler .body { min-height: 0; }

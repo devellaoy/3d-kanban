@@ -10,7 +10,7 @@
 .elevator .floor-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; align-items: stretch; }
 .elevator .floor-off { padding: 0 12px; font-size: var(--fs-xl); }
 .elevator .floor-off:hover { background: var(--accent-soft); }
-.elevator .floor-no { width: 34px; height: 34px; border-radius: 50%; border: var(--bw) solid var(--ink); display: grid; place-items: center; font-weight: var(--fw-heavy); font-size: var(--fs-lg); color: var(--text-on-strong); text-shadow: 0 1px 0 rgba(0, 0, 0, .35); }
+.elevator .floor-no { width: 34px; height: 34px; border-radius: 50%; border: var(--bw) solid var(--ink); display: grid; place-items: center; font-weight: var(--fw-heavy); font-size: var(--fs-lg); color: var(--text-on-color); text-shadow: 0 1px 0 rgba(0, 0, 0, .35); }
 .elevator .floor-text { display: flex; flex-direction: column; min-width: 0; }
 .elevator .floor-name { font-weight: var(--fw-heavy); font-size: var(--fs-lg); display: flex; gap: 8px; align-items: baseline; }
 .elevator .here-tag { font-size: var(--fs-2xs); font-weight: var(--fw-bold); color: var(--muted); }

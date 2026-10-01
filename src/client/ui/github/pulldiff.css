@@ -26,7 +26,7 @@
 .pd-tick:hover { background: var(--good-soft); }
 .pd-tick.reviewed { background: var(--good); }
 .pd-tick.stale { background: var(--warn); color: var(--text); }
-.pd-st { width: 18px; height: 18px; flex: none; border: var(--bw-sm) solid var(--ink); border-radius: 5px; background: var(--field); font: var(--fw-heavy) 10px/14px var(--font-mono); text-align: center; }
+.pd-st { width: 18px; height: 18px; flex: none; border: var(--bw-sm) solid var(--ink); border-radius: 5px; background: var(--field); font: var(--fw-heavy) var(--fs-3xs)/14px var(--font-mono); text-align: center; }
 .pd-st.M { background: var(--warn); }
 .pd-st.A { background: var(--good); color: var(--text-on-strong); }
 .pd-st.D { background: var(--bad); color: var(--text-on-strong); }

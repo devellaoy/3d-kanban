@@ -5,7 +5,7 @@
 .term-tab.on { background: var(--field); border-color: var(--ink); box-shadow: var(--shadow-sm); }
 .term-tab-label { padding: 6px 10px; font: inherit; font-size: var(--fs-sm); font-weight: var(--fw-bold); color: var(--text); background: none; border: none; cursor: pointer; white-space: nowrap; }
 .term-tab-close { width: 22px; height: 22px; margin-right: 3px; padding: 0; border: none; background: none; border-radius: 50%; font-size: var(--fs-lg); line-height: 1; color: var(--muted); cursor: pointer; }
-.term-tab-close:hover { background: rgba(0, 0, 0, .08); color: var(--text); }
+.term-tab-close:hover { background: var(--field-hover); color: var(--text); }
 .term-tab-add { flex: none; padding: 6px 10px; font: inherit; font-size: var(--fs-sm); font-weight: var(--fw-bold); color: var(--text); background: none; border: var(--bw-sm) dashed var(--ink); border-radius: 10px; cursor: pointer; white-space: nowrap; }
 .term-tab-out { flex: none; font-size: var(--fs-sm); font-weight: var(--fw-bold); color: var(--text); white-space: nowrap; }
 .term-tab-form { display: flex; gap: 6px; flex-wrap: wrap; flex-basis: 100%; padding-top: 6px; }

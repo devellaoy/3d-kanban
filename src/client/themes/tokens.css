@@ -26,6 +26,7 @@
   --accent-ink: #ffffff;    /* the same, kept for older rules */
   --strong: #2b2d42;        /* a dark fill: count badges, the selected tab */
   --text-on-strong: #fff;   /* text on a --strong, --good or --bad fill */
+  --text-on-color: #fff;    /* text on a content colour that isn't the theme's (a floor's trim): stays white */
   --link: #1d6fd6;          /* links and the info-blue text */
   --link-strong: #1d4f91;   /* inline code on an --info-soft chip */
 
@@ -47,6 +48,7 @@
   --shadow-pressed: 0 1px 0 var(--ink);   /* a button while pressed */
   --press: 2px;                       /* how far a pressed button moves down (translateY) */
   --shadow-side: -4px 0 0 rgba(43, 45, 66, .12);   /* the detail panel's edge */
+  --shadow-key: 0 2px 0 #999;     /* a key cap's (.key) bottom edge */
 
   /* ---- Shape ---- */
   --radius: 16px;           /* panels, columns */
@@ -131,6 +133,7 @@
   --scope-floor: #d7f7ec;
   --scope-office: #ffe6d9;
   --hint-cost: #a5ecfb;     /* the cost in the HUD's hint, on the --strong bubble */
+  --hint-title: var(--warn);   /* the name of what you're facing in the HUD's hint, on the --strong bubble */
   --track: #f1e4d3;         /* the empty part of a meter */
 
   /* ---- Code and terminals ---- */
@@ -164,6 +167,9 @@
   --fs-xl: 16px;
   --fs-2xl: 18px;
   --fs-3xl: 20px;
+  --fs-3xs: 10px;           /* a GitHub label, a queue chip, a diff file's status letter */
+  --fs-2xs-plus: 11.5px;    /* a key in Markdown, a prompt variable's note, a doc's path */
+  --fs-avatar: 10px;        /* the initials in a chat avatar */
 
   /* ---- Glass ---- */
   --glass-blur: none;       /* backdrop-filter of windows and HUD panels (a glass theme blurs here) */

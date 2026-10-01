@@ -113,7 +113,7 @@
   display: flex; gap: 14px; align-items: center; flex-wrap: wrap; justify-content: center; max-width: min(720px, calc(100vw - 380px));
   pointer-events: none !important;
 }
-.hint .title { color: var(--warn); }
+.hint .title { color: var(--hint-title); }
 .hint .cost { color: var(--hint-cost); font-weight: var(--fw-semibold); }
 /* Winding up a shot with the basketball: the marker runs up and down; let go in the green. */
 .shot-meter {

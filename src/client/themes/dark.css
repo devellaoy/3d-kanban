@@ -23,6 +23,7 @@
   --accent-ink: #0d0d0d;
   --strong: #ececec;
   --text-on-strong: #0d0d0d;
+  --text-on-color: #fff;
   --link: #7ab7ff;
   --link-strong: #a8d1ff;
 
@@ -42,6 +43,7 @@
   --shadow-pressed: none;
   --press: 0px;
   --shadow-side: -8px 0 24px rgba(0, 0, 0, .3);
+  --shadow-key: 0 1px 0 rgba(0, 0, 0, .5);
 
   /* ---- Shape ---- */
   --radius: 16px;
@@ -128,6 +130,7 @@
   --scope-floor: #1d3b2f;
   --scope-office: #45311e;
   --hint-cost: #0b6e8a;     /* the HUD hint's bubble is light here (--strong), so the cost is dark */
+  --hint-title: #8a5a00;   /* 5.0:1 on the light --strong bubble */
   --track: #3a3a3a;
 
   /* ---- Code and terminals ---- */
@@ -161,6 +164,9 @@
   --fs-xl: 16px;
   --fs-2xl: 18px;
   --fs-3xl: 20px;
+  --fs-3xs: 12px;
+  --fs-2xs-plus: 12px;
+  --fs-avatar: 11px;
 
   /* ---- Glass ---- */
   --glass-blur: none;

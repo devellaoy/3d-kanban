@@ -30,7 +30,7 @@
 .md details { border: var(--bw-sm) solid var(--rule-md-2); border-radius: 10px; padding: 6px 12px; }
 .md details[open] > summary { margin-bottom: 6px; }
 .md summary { cursor: pointer; font-weight: var(--fw-bold); }
-.md kbd { font: 11.5px var(--font-mono); border: 1.5px solid var(--ink); border-bottom-width: 3px; border-radius: 6px; padding: 0 5px; background: var(--field); }
+.md kbd { font: var(--fs-2xs-plus) var(--font-mono); border: 1.5px solid var(--ink); border-bottom-width: 3px; border-radius: 6px; padding: 0 5px; background: var(--field); }
 .md .none { color: var(--muted); font-style: italic; }
 .md a.mention, .md a.ref { font-weight: var(--fw-bold); }
 .md blockquote.alert { color: var(--text); border-radius: 0 10px 10px 0; padding: 8px 14px; }

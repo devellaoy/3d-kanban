@@ -24,6 +24,7 @@
   --accent-ink: #ffffff;
   --strong: #1d1d1f;
   --text-on-strong: #ffffff;
+  --text-on-color: #fff;
   --link: #0066cc;
   --link-strong: #004c99;
 
@@ -43,6 +44,7 @@
   --shadow-pressed: 0 0 1px rgba(0, 0, 0, .12);
   --press: 0px;
   --shadow-side: -1px 0 0 rgba(0, 0, 0, .04), -12px 0 32px rgba(0, 0, 0, .06);
+  --shadow-key: 0 1px 1px rgba(0, 0, 0, .18);
 
   /* ---- Shape ---- */
   --radius: 16px;
@@ -129,6 +131,7 @@
   --scope-floor: #e3f6e8;
   --scope-office: #ffefd9;
   --hint-cost: #a5ecfb;
+  --hint-title: #ffcc00;   /* 11:1 on the dark --strong bubble */
   --track: #e5e5ea;
 
   /* ---- Code and terminals ---- */
@@ -162,6 +165,9 @@
   --fs-xl: 16px;
   --fs-2xl: 18px;
   --fs-3xl: 20px;
+  --fs-3xs: 12px;
+  --fs-2xs-plus: 12px;
+  --fs-avatar: 11px;
 
   /* ---- Glass ---- */
   --glass-blur: saturate(180%) blur(20px);
@@ -200,6 +206,8 @@
   border-color: rgba(0, 0, 0, .06);
 }
 :root[data-theme="glossy"] .btn.primary:hover { background-color: var(--accent-hover); }
+/* A picked segment (the Theme row, the camera view) is the accent, as Apple's; green stays for done. */
+:root[data-theme="glossy"] .btn.on { background-color: var(--accent); color: var(--text-on-accent); }
 :root[data-theme="glossy"] .dock-btn { background-color: var(--paper); }
 :root[data-theme="glossy"] .dock-btn:hover { background-color: rgba(255, 255, 255, .9); }
 /* A button held down (a shown panel, the open menu): the accent's wash, as the base's paper-2 is too faint here. */

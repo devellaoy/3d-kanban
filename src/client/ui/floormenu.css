@@ -9,7 +9,7 @@
 .floor-item:disabled { cursor: default; }
 .floor-item.here { background: var(--paper-2); box-shadow: none; transform: translateY(var(--press)); }
 .floor-item.add { background: var(--paper); border-style: dashed; box-shadow: none; }
-.floor-item .floor-no { width: 30px; height: 30px; border-radius: 50%; border: var(--bw) solid var(--ink); display: grid; place-items: center; font-weight: var(--fw-heavy); font-size: var(--fs-md); color: var(--text-on-strong); text-shadow: 0 1px 0 rgba(0, 0, 0, .35); }
+.floor-item .floor-no { width: 30px; height: 30px; border-radius: 50%; border: var(--bw) solid var(--ink); display: grid; place-items: center; font-weight: var(--fw-heavy); font-size: var(--fs-md); color: var(--text-on-color); text-shadow: 0 1px 0 rgba(0, 0, 0, .35); }
 .floor-item.add .floor-no { background: var(--field); text-shadow: none; }
 .floor-item .floor-text { display: flex; flex-direction: column; min-width: 0; }
 .floor-item .floor-name { font-weight: var(--fw-heavy); font-size: var(--fs-lg); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
