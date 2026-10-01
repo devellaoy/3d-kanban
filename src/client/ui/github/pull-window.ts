@@ -6,6 +6,7 @@ import { h, openModal, type Modal } from '../dom';
 import { officePrompt } from '../prompts';
 // 3d-kanban: the PR review picker, and which of the project's repositories a PR is in (kanban/ghrepo.ts).
 import { openReviewPicker } from '../../kanban/prpicker';
+import { prOwner } from '../../kanban/prowner';
 import { ghLabel, ghUrl, sameItem } from '../../kanban/ghrepo';
 import { getJson, getText } from './api';
 import { openClose } from './close';
@@ -28,6 +29,7 @@ export function openPull(first: GhPull, net: Net, actions: BoardActions) {
   const repo = first.repo;
   const label = ghLabel(it.number, repo);
   const reviewed = new Reviewed(it.url);
+  const owner = prOwner(net, () => it); // 3d-kanban: the task that owns it
   let detail: GhPullDetail | null = null;
   let detailError = '';
   let files: DiffFile[] | null = null;
@@ -128,6 +130,7 @@ export function openPull(first: GhPull, net: Net, actions: BoardActions) {
         : isOpen
           ? h('button.btn', { type: 'button', title: 'A worker addresses the review comments, gets the checks green, then merges', onclick: handToWorker }, '🤖 Fix comments & merge')
           : null,
+      isOpen ? owner.button() : null, // 3d-kanban: 🛠️ Fix via task #N
       isOpen ? h('button.btn', { type: 'button', title: 'Close this pull request without merging it', onclick: () => openClose('pull', it, net, loadAll) }, '🚫 Close PR…') : null,
       isOpen ? merge : null,
       ),
@@ -482,6 +485,7 @@ export function openPull(first: GhPull, net: Net, actions: BoardActions) {
     const g = ++generation;
     detailError = '';
     diffError = '';
+    owner.load(renderFrame); // 3d-kanban
     renderConv();
     getJson<GhPullDetail>(ghUrl(`/api/gh/pull?number=${it.number}`, repo)) // 3d-kanban: repo
       .then((d) => {

@@ -312,17 +312,17 @@ In every repository above whose working branch has commits the base branch doesn
   },
   'kanban.pr.fix': {
     group: 'kanban',
-    label: 'Fix pull request comments',
-    used: "Sent when the user asks the task's agent to address its pull requests' open review threads.",
+    label: 'Fix pull requests',
+    used: "Sent when the user asks the task's agent to address its open pull requests' review threads and failing checks.",
     vars: { taskId: TASK_VARS.taskId, prs: "The task's open pull requests, one per line (repository and URL)", repos: TASK_VARS.repos, language: TASK_VARS.language },
     needs: ['prs'],
-    text: `Address the open review comments on the pull requests of task #{{taskId}}:
+    text: `Address the open review comments and the failing checks on the pull requests of task #{{taskId}}:
 {{prs}}
 
 The workspace:
 {{repos}}
 
-Read each pull request's unresolved review threads and comments (gh pr view <url> --comments, and gh api repos/<owner>/<repo>/pulls/<number>/comments for the ones on lines of code). Fix what the reviewers are right about, verify the result, commit and push to the same branch. Reply on each thread with what you did, or why you didn't change it. Handle only the open review comments: nothing else, and don't merge.
+Read each pull request's unresolved review threads and comments (gh pr view <url> --comments, and gh api repos/<owner>/<repo>/pulls/<number>/comments for the ones on lines of code). Fix what the reviewers are right about, verify the result, commit and push to the same branch. Reply on each thread with what you did, or why you didn't change it. Then look at each pull request's checks (gh pr checks <url>): for a failing one, read the failing run's log (gh run view <run-id> --log-failed), fix the cause, and push. Handle only the open review comments and the failing checks: nothing else, and don't merge.
 
 {{language}}`,
   },

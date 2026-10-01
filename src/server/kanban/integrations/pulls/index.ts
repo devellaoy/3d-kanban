@@ -6,7 +6,8 @@
 // the floor is closed.
 
 import type { KanbanCaller, KanbanContext, KanbanPlugin, KanbanPullsApi } from '../../registry.js';
-import type { KanbanEffort, KanbanPrBundleItem, KanbanPrBundleKey, KanbanPrReviewRequest, PrRef, ProjectRepo } from '../../../../shared/kanban/types.js';
+import type { KanbanEffort, KanbanTask, KanbanPrBundleItem, KanbanPrBundleKey, KanbanPrReviewRequest, PrRef, ProjectRepo } from '../../../../shared/kanban/types.js';
+import { canFixPrs } from '../../../../shared/kanban/prs.js';
 import { PR_REVIEW_MAX } from '../../../../shared/kanban/types.js';
 import type { AgentEffort, GhPull, MeetingRequest } from '../../../../shared/protocol.js';
 import { sameRepo } from '../../../../shared/floors.js';
@@ -280,6 +281,13 @@ export function createPullsParts(ctx: KanbanContext, opts: PullsOptions = {}) {
         const key: KanbanPrBundleKey = 'taskId' in m ? { taskId: m.taskId } : 'branch' in m ? { branch: m.branch } : { ticket: m.ticket };
         const got = await bundleItems(m.project, key as BundleBy, m.includeClosed === true);
         c.send({ t: 'kanban.pr.bundle', ...(m.rid ? { rid: m.rid } : {}), project: m.project, key, prs: typeof got === 'string' ? [] : got, ...(typeof got === 'string' ? { error: got } : {}) });
+      },
+      // Which task owns a PR (the newest not archived), for the PR window's "Fix via task #N".
+      'kanban.pr.owner': (c, m) => {
+        const tasks = ctx.repo.tasksOfPr(m.repo, m.number).map((id) => ctx.repo.getTask(id)).filter((t): t is KanbanTask => !!t && t.project === m.project && t.status !== 'archived');
+        const t = tasks.sort((a, b) => b.id - a.id)[0];
+        const check = t ? canFixPrs(t) : undefined;
+        c.send({ t: 'kanban.pr.owner', ...(m.rid ? { rid: m.rid } : {}), taskId: t?.id ?? null, ...(t ? { title: t.title } : {}), fixable: check?.ok === true, ...(check && !check.ok ? { reason: check.reason } : {}) });
       },
       'kanban.pr.review': async (c, m) => {
         const req: KanbanPrReviewRequest = { project: m.project, prs: m.prs, ...(m.taskId !== undefined ? { taskId: m.taskId } : {}), ...(m.tool ? { tool: m.tool } : {}), ...(m.model ? { model: m.model } : {}), ...(m.effort ? { effort: m.effort } : {}) };

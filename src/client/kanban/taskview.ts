@@ -19,6 +19,7 @@ import type { Net } from '../net';
 import type { KanbanServerMsg } from '../../shared/kanban/protocol.js';
 import { KANBAN_TOOLS, type CommentKind, type KanbanAttachment, type KanbanComment, type KanbanEffort, type KanbanEvent, type KanbanPlan, type KanbanProjectInfo, type KanbanReportFile, type KanbanRole, type KanbanRun, type KanbanSettings, type KanbanTask, type KanbanTaskCard, type KanbanTool, type PlanStatus, type ReviewVerdict, type RunStatus, type TaskStatus, type TaskType } from '../../shared/kanban/types.js';
 import { isRunning } from '../../shared/kanban/moves.js';
+import { canFixPrs, openPrs } from '../../shared/kanban/prs.js';
 import { getJson, kanbanApi, type KanbanApi, type KanbanOk } from './api';
 import { attachmentUrl, formatSize, isImage } from './attach';
 import { attachBox, type AttachBox } from './attachbox';
@@ -489,10 +490,10 @@ class View implements TaskView {
     if (task.status === 'review' && !running) {
       if (task.type === 'implement') reviewRound();
       if (task.type === 'implement') {
-        if (task.prs.some((p) => p.state === 'OPEN' || p.state === 'DRAFT')) add('🛠️ Fix PRs', '', (b) => void this.req({ t: 'kanban.task.pr', id, mode: 'fix' }, b, 'An agent is on the pull requests'), 'The agent addresses the review comments and failing checks on the task’s PRs');
         add(`🔀 ${task.prs.length ? 'Push & update PRs' : 'Create PRs'}`, '.primary', (b) => void this.req({ t: 'kanban.task.pr', id, mode: 'create' }, b, 'An agent is on the pull requests'), 'The agent pushes and opens (or updates) a pull request in every repository with commits');
       }
     }
+    this.fixPrs(task, bar);
     if (task.status !== 'in_progress' && this.o.moveMenu) add('↔️ Move…', '', () => this.o.moveMenu?.(id), 'Move to another column (M)');
     if (!running) add('🗑️ Delete', '.danger', (b) => confirmBox(`Delete #${id}?`, `The task, its conversation, plans and runs are deleted for good. ${hasWorker ? 'Its workers go home. ' : ''}${task.workspace ? `Its worktree (${task.workspace.worktree.path}), its branches` : 'Its branches'} and pull requests stay.`, 'Delete', () => void this.req({ t: 'kanban.task.delete', id }, b)));
     return bar;
@@ -821,6 +822,15 @@ class View implements TaskView {
 
   // --- Pull requests ----------------------------------------------------------------------------
 
+  /** 🛠️ Fix PRs, in the action bar and the PRs tab: only where there are open PRs to fix, greyed out (with why) while the task is busy. */
+  private fixPrs(task: KanbanTask, bar: HTMLElement) {
+    if (task.type === 'investigate' || !openPrs(task).length || !['waiting', 'review', 'done'].includes(task.status)) return;
+    const can = canFixPrs(task);
+    const b = h('button.btn', { type: 'button', disabled: !can.ok, title: can.ok ? 'The agent addresses the review comments and failing checks on the task’s open PRs; it doesn’t merge' : can.reason, 'data-focus': 'act-fix-prs' }, '🛠️ Fix PRs') as HTMLButtonElement;
+    b.addEventListener('click', () => void this.req({ t: 'kanban.task.pr', id: task.id, mode: 'fix' }, b, 'An agent is on the pull requests'));
+    bar.append(b);
+  }
+
   private prs(task: KanbanTask): HTMLElement[] {
     const project = this.projectOf(task.project);
     const out: HTMLElement[] = [];
@@ -830,12 +840,8 @@ class View implements TaskView {
       const create = h('button.btn.primary', { type: 'button', title: 'The agent pushes and opens (or updates) a pull request in every repository with commits' }, `🔀 ${task.prs.length ? 'Push & update PRs' : 'Create PRs'}`) as HTMLButtonElement;
       create.addEventListener('click', () => void this.req({ t: 'kanban.task.pr', id: task.id, mode: 'create' }, create, 'An agent is on the pull requests'));
       bar.append(create);
-      if (task.prs.length) {
-        const fix = h('button.btn', { type: 'button', title: 'The agent addresses the review comments and failing checks on the task’s PRs' }, '🛠️ Fix PRs') as HTMLButtonElement;
-        fix.addEventListener('click', () => void this.req({ t: 'kanban.task.pr', id: task.id, mode: 'fix' }, fix, 'An agent is on the pull requests'));
-        bar.append(fix);
-      }
     }
+    this.fixPrs(task, bar);
     const reviewable = task.prs.filter((p) => p.repo && (p.state === 'OPEN' || p.state === 'DRAFT'));
     if (reviewable.length) {
       const rev = h('button.btn', { type: 'button', title: 'One reviewer takes every pull request of the task at once' }, `🔍 Review these ${reviewable.length} PRs together`) as HTMLButtonElement;

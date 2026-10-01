@@ -83,6 +83,7 @@ test('good messages come through rebuilt, without anything the validator did not
   assert.deepEqual(good({ t: 'kanban.secrets.set', jira: { site: 'https://acme.atlassian.net/', email: ' a@b.fi ', token: ' t ' } }), { t: 'kanban.secrets.set', jira: { site: 'acme.atlassian.net', email: 'a@b.fi', token: 't' } });
   assert.deepEqual(good({ t: 'kanban.pr.review', project: 'web', prs: [{ repo: 'acme/web', number: 1 }, { repo: 'ACME/web', number: 1 }, { repo: 'acme/api', number: 2 }] }), { t: 'kanban.pr.review', project: 'web', prs: [{ repo: 'acme/web', number: 1 }, { repo: 'acme/api', number: 2 }] });
   assert.deepEqual(good({ t: 'kanban.pr.bundle', project: 'web', branch: 'gh-1/x' }), { t: 'kanban.pr.bundle', project: 'web', branch: 'gh-1/x' });
+  assert.deepEqual(good({ t: 'kanban.pr.owner', project: 'web', repo: 'acme/web', number: 7 }), { t: 'kanban.pr.owner', project: 'web', repo: 'acme/web', number: 7 });
   assert.deepEqual(good({ t: 'kanban.project.repos.set', project: 'web', repos: [{ id: 'web', name: 'Web', dir: '/w', primary: true, kind: 'git', remote: 'acme/web' }] }), {
     t: 'kanban.project.repos.set',
     project: 'web',
@@ -99,7 +100,7 @@ test('good messages come through rebuilt, without anything the validator did not
     refused({ t: 'kanban.task.start', id: 2, deskId }, /deskId must be a desk/);
     refused({ t: 'kanban.task.create', task: { project: 'web', title: 'x' }, deskId }, /deskId must be a desk/);
   }
-  assert.equal(KANBAN_CLIENT_TYPES.size, 34);
+  assert.equal(KANBAN_CLIENT_TYPES.size, 35);
 });
 
 test("the primary repository's id is its floor's, up to 40 characters, and repoIds take it", () => {
@@ -149,6 +150,8 @@ test('bad messages are refused with a reason, and their rid is still found for t
   refused({ t: 'kanban.pr.review', project: 'web', prs: [] }, /at least one/);
   refused({ t: 'kanban.pr.review', project: 'web', prs: [{ repo: 'nope', number: 1 }] }, /owner\/name/);
   refused({ t: 'kanban.pr.bundle', project: 'web', branch: 'a', ticket: 'b' }, /exactly one/);
+  refused({ t: 'kanban.pr.owner', project: 'web', repo: 'web', number: 7 }, /owner\/name/);
+  refused({ t: 'kanban.pr.owner', project: 'web', repo: 'acme/web', number: 0 }, /needs its number/);
   refused({ t: 'kanban.project.repos.set', project: 'web', repos: [{ id: 'Bad Id', name: 'x', dir: '/x' }] }, /needs an id/);
   refused({ t: 'kanban.project.rename', project: 'web' }, /name/i);
   refused({ t: 'kanban.project.rename', project: 'web', name: '   ' }, /name/i);

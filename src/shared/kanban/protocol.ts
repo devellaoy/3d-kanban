@@ -207,7 +207,9 @@ export type KanbanClientMsg =
    */
   | Req<{ t: 'kanban.pr.review'; project: string; prs: PrRef[]; taskId?: number; tool?: KanbanTool; model?: string; effort?: KanbanEffort; panel?: boolean }>
   /** The pull requests that belong together (open and draft ones; merged and closed too with includeClosed); answered with kanban.pr.bundle. */
-  | Req<{ t: 'kanban.pr.bundle'; project: string; includeClosed?: boolean } & KanbanPrBundleKey>;
+  | Req<{ t: 'kanban.pr.bundle'; project: string; includeClosed?: boolean } & KanbanPrBundleKey>
+  /** The task that owns a pull request, and whether its agent can fix it now: kanban.pr.owner. */
+  | Req<{ t: 'kanban.pr.owner'; project: string; repo: string; number: number }>;
 
 export type KanbanClientType = KanbanClientMsg['t'];
 
@@ -249,6 +251,7 @@ export type KanbanServerMsg =
   | { t: 'kanban.issues'; rid?: string; project: string; items: NormalizedIssue[]; error?: string; fetchedAt: number; loading: boolean }
   | { t: 'kanban.skills'; rid?: string; skills: SkillInfo[]; error?: string }
   | { t: 'kanban.pr.bundle'; rid?: string; project: string; key: KanbanPrBundleKey; prs: KanbanPrBundleItem[]; error?: string }
+  | { t: 'kanban.pr.owner'; rid?: string; taskId: number | null; title?: string; fixable: boolean; reason?: string }
   | { t: 'kanban.ok'; rid?: string; taskId?: number; commentId?: number; workerId?: string; existed?: boolean; startError?: string; started?: true }
   | { t: 'kanban.error'; rid?: string; message: string };
 
@@ -437,15 +440,16 @@ function taskPatch(v: unknown): KanbanTaskPatch {
   if (!Object.keys(out).length) bad('Nothing to change');
   return out;
 }
+function prRef(x: unknown): PrRef {
+  if (!isObj(x)) bad('prs must be pull requests: {repo, number}');
+  const p = x as Obj;
+  if (typeof p.repo !== 'string' || !GH_REPO_RE.test(p.repo)) bad('A pull request needs its repository as owner/name');
+  if (!Number.isSafeInteger(p.number) || (p.number as number) <= 0) bad('A pull request needs its number');
+  return { repo: p.repo as string, number: p.number as number };
+}
 function prRefs(v: unknown): PrRef[] {
   const seen = new Set<string>();
-  const prs = list(v, 'prs', PR_REVIEW_MAX, (x) => {
-    if (!isObj(x)) bad('prs must be pull requests: {repo, number}');
-    const p = x as Obj;
-    if (typeof p.repo !== 'string' || !GH_REPO_RE.test(p.repo)) bad('A pull request needs its repository as owner/name');
-    if (!Number.isSafeInteger(p.number) || (p.number as number) <= 0) bad('A pull request needs its number');
-    return { repo: p.repo as string, number: p.number as number };
-  }).filter((p) => {
+  const prs = list(v, 'prs', PR_REVIEW_MAX, prRef).filter((p) => {
     const key = `${p.repo.toLowerCase()}#${p.number}`;
     if (seen.has(key)) return false;
     seen.add(key);
@@ -522,6 +526,7 @@ export const KANBAN_CLIENT_TYPE_LIST: Readonly<Record<KanbanClientType, true>> =
   'kanban.secrets.set': true,
   'kanban.pr.review': true,
   'kanban.pr.bundle': true,
+  'kanban.pr.owner': true,
   'kanban.project.repo.clone': true,
 };
 
@@ -684,6 +689,7 @@ function parse(raw: unknown): KanbanClientMsg {
     }
     case 'kanban.pr.bundle':
       return m({ t: 'kanban.pr.bundle', project: project(r.project), ...bundleKey(r), ...(bool(r.includeClosed, 'includeClosed') ? { includeClosed: true } : {}) });
+    case 'kanban.pr.owner': return m({ t: 'kanban.pr.owner', project: project(r.project), ...prRef(r) });
   }
   return bad(`Unknown kanban message ${t.slice(0, 60)}`);
 }

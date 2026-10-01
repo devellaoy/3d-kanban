@@ -28,6 +28,7 @@ import { claudeAdapter } from './adapters/claude.js';
 import { codexAdapter } from './adapters/codex.js';
 import type { TaskAgentAdapter, TurnResult } from './adapters/types.js';
 import { Composer, isFolderProject, reportDir, reposText, skillPhase, taskRepos, workerReposText, type ComposeExtra } from './compose.js';
+import { canFixPrs } from '../../../shared/kanban/prs.js';
 import { next, type Effect, type LastRun, type MachineEvent, type MachineState, type PromptKind } from './machine.js';
 import { backoffMs, looksInterrupted, planOutcome, prLines, resetTime, reviewFindings, reviewVerdict, stripPlanMarkers } from './markers.js';
 import { branchExists, currentBranch, hasChanges, missingFolders } from './workspace.js';
@@ -1816,7 +1817,10 @@ export class Orchestrator {
       if (this.folder(task.project)) return Promise.resolve('A folder project has no git repositories to open pull requests in');
       // A task whose worktree went still has its branch: a fresh worktree checks it out (see launch).
       if (!task.workspace && !task.branch) return Promise.resolve('It has no work to open pull requests for yet');
-      if (mode === 'fix' && !task.prs.some((p) => p.state === 'OPEN' || p.state === 'DRAFT')) return Promise.resolve('The task has no open pull requests to fix');
+      if (mode === 'fix') {
+        const fix = canFixPrs(task);
+        if (!fix.ok) return Promise.resolve(fix.reason);
+      }
       return this.apply(taskId, { type: 'pr', mode }, { who });
     });
   }

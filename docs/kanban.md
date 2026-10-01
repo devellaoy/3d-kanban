@@ -273,7 +273,7 @@ or on its floor when it has no worker. Its tabs:
   then, never waited for), read-only, with ↻ to read again. Per commit and Uncommitted are always read
   that way, again whenever the live checkout changes (a new commit, an amend, an edit). A diff over
   2 MB is cut. The 3D worker window's 🗂️ Task tab has no Changes tab: its header's 🌿 Changes is it.
-- **PRs**: the task's pull requests with their state, **Create/Push & update PRs**, **Fix PRs**, and
+- **PRs**: the task's pull requests with their state, **Create/Push & update PRs**, **Fix PRs** (with open PRs), and
   **🔍 Review these N PRs together**.
 
 The panel is the **shared task view** (`src/client/kanban/taskview.ts`), which the 3D office uses too
@@ -377,7 +377,12 @@ reads its own. A kanban task made from a card keeps the description as its own, 
   listing the others. It reports each as a `PR: <url>` line, which the office links to the task; the
   task goes to Review. Linked PRs keep their state (open, draft, merged, closed) from the floor's PR
   board.
-- **Fix PRs** (a task with an open PR): the agent addresses the review comments and failing checks.
+- **Fix PRs** (any task that is not an investigation, in Waiting, Review or Done, with an open or draft PR; in the action bar and the PRs tab alike): the implementer addresses the unresolved review comments and
+  the failing checks (it reads the failing run's log) on all the task's open PRs, pushes, and doesn't merge. The button is greyed out, with the reason as its tooltip, while the task is running. One rule
+  (`canFixPrs`, `src/shared/kanban/prs.ts`) serves the buttons and the engine.
+- **Fix via task #N** (PR window, opened from the PR board, the lite view or the palette): when a task owns the PR (the newest one not archived, if several), the window's footer
+  has this button next to upstream's *Fix comments & merge*. It does the same as the task's own 🛠️ Fix PRs, on all of that task's open PRs, and is greyed out with the reason when the task can't be sent now.
+  No button when no task owns the PR.
 - **Reviewing several PRs together**: 🔍 **Review** or 🤝 **Review panel…** in a PR window first asks
   which PRs go with it. PRs on the same branch in the project's other repositories, or of the same task,
   come ticked; any other open PR of the project can be added (at most 20). **Just this PR** keeps
