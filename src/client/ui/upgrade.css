@@ -1,5 +1,5 @@
 /* Upgrading the office */
-.conn.upgrading { background: var(--warn); color: var(--text); }
+.conn.upgrading { background: var(--warn); color: var(--text-on-warn); }
 .upgrade .version { display: block; font-weight: var(--fw-semibold); }
 .upgrade .version small { color: var(--muted); font-weight: var(--fw-medium); }
 .upgrade code, .restart code { font: var(--fs-xs) var(--font-mono); background: var(--paper-2); border-radius: 5px; padding: 1px 5px; }

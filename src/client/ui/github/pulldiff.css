@@ -25,12 +25,12 @@
 .pd-tick { width: 18px; height: 18px; flex: none; padding: 0; display: grid; place-items: center; border: var(--bw-sm) solid var(--ink); border-radius: 50%; background: var(--field); color: var(--text-on-strong); font: var(--fw-heavy) var(--fs-2xs)/1 var(--font); cursor: pointer; }
 .pd-tick:hover { background: var(--good-soft); }
 .pd-tick.reviewed { background: var(--good); }
-.pd-tick.stale { background: var(--warn); color: var(--text); }
+.pd-tick.stale { background: var(--warn); color: var(--text-on-warn); }
 .pd-st { width: 18px; height: 18px; flex: none; border: var(--bw-sm) solid var(--ink); border-radius: 5px; background: var(--field); font: var(--fw-heavy) var(--fs-3xs)/14px var(--font-mono); text-align: center; }
-.pd-st.M { background: var(--warn); }
+.pd-st.M { background: var(--warn); color: var(--text-on-warn); }
 .pd-st.A { background: var(--good); color: var(--text-on-strong); }
 .pd-st.D { background: var(--bad); color: var(--text-on-strong); }
-.pd-st.R { background: var(--info); }
+.pd-st.R { background: var(--info); color: var(--text-on-info); }
 .pd-keys { font-size: var(--fs-2xs); font-weight: var(--fw-semibold); color: var(--muted); }
 .pd-keys .key { min-width: 18px; padding: 0 5px; margin-right: 3px; background: var(--field); border: 1.5px solid var(--ink); box-shadow: none; font-size: var(--fs-2xs); }
 .pd-main { flex: 1; min-width: 0; overflow: auto; position: relative; padding: 0 12px 16px; background: var(--pd-bg); outline: none; }
@@ -44,7 +44,7 @@
 .pd-fold::before { content: '▾'; }
 .pd-file.closed .pd-fold::before { content: '▸'; }
 .pd-fpath { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: var(--fw-semibold) 12.5px var(--font-mono); }
-.pd-stale { font-size: var(--fs-2xs); background: var(--warn); border: var(--bw-sm) solid var(--ink); border-radius: var(--radius-pill); padding: 0 8px; white-space: nowrap; }
+.pd-stale { font-size: var(--fs-2xs); background: var(--warn); color: var(--text-on-warn); border: var(--bw-sm) solid var(--ink); border-radius: var(--radius-pill); padding: 0 8px; white-space: nowrap; }
 .modal label.pd-viewed { display: flex; align-items: center; gap: 6px; margin: 0; padding: 2px 9px; font-size: 12.5px; font-weight: var(--fw-bold); background: var(--field); border: var(--bw-sm) solid var(--ink); border-radius: 8px; cursor: pointer; user-select: none; white-space: nowrap; }
 .pd-file.reviewed label.pd-viewed { background: var(--good); color: var(--text-on-strong); }
 .pd-viewed input { margin: 0; accent-color: var(--diff-add-ink); }

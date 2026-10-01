@@ -11,4 +11,4 @@
 .search-hit code { font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace; font-size: 12.5px; white-space: pre-wrap; overflow-wrap: anywhere; }
 .search-meta { display: flex; gap: 8px; align-items: baseline; font-size: var(--fs-xs); font-weight: var(--fw-semibold); color: var(--muted); }
 .search-text { overflow-wrap: anywhere; }
-.search-hit mark { background: var(--warn); color: var(--text); border-radius: 3px; padding: 0 1px; }
+.search-hit mark { background: var(--warn); color: var(--text-on-warn); border-radius: 3px; padding: 0 1px; }

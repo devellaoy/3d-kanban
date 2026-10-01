@@ -37,11 +37,11 @@ button { font-family: inherit; }
 .dot { width: 12px; height: 12px; border-radius: 50%; border: var(--bw-sm) solid var(--ink); flex: none; }
 .pill { font-size: var(--fs-2xs); font-weight: var(--fw-heavy); padding: 2px 7px; border-radius: var(--radius-pill); border: var(--bw-sm) solid var(--ink); white-space: nowrap; }
 .pill.starting, .pill.idle { background: var(--info-soft); }
-.pill.working { background: var(--warn); }
+.pill.working { background: var(--warn); color: var(--text-on-warn); }
 .pill.needs_input { background: var(--bad); color: var(--text-on-strong); animation: pulse 1s infinite; }
 .pill.done { background: var(--good); color: var(--text-on-strong); }
 .pill.exited, .pill.offline { background: var(--note-slate); }
-.pill.lost { background: var(--warn-hot); }
+.pill.lost { background: var(--warn-hot); color: var(--text-on-warn); }
 .empty { color: var(--muted); font-size: var(--fs-sm); font-weight: var(--fw-medium); }
 @keyframes pulse { 50% { transform: scale(1.08); } }
 .key { display: inline-block; min-width: 26px; padding: 1px 7px; margin-right: 5px; border-radius: 7px; background: var(--paper); color: var(--text); text-align: center; font-weight: var(--fw-heavy); box-shadow: var(--shadow-key); }

@@ -25,6 +25,8 @@
   --strong: #1d1d1f;
   --text-on-strong: #ffffff;
   --text-on-color: #fff;
+  --text-on-warn: #1d1d1f;   /* 11.1:1 on --warn, 8.2:1 on --warn-hot */
+  --text-on-info: #1d1d1f;   /* 8.9:1 on --info */
   --link: #0066cc;
   --link-strong: #004c99;
 
@@ -53,10 +55,11 @@
   --radius-pill: 999px;
 
   /* ---- Accent and status ---- */
-  /* Apple's system colours, the accessible variants where white text sits on them. */
-  --accent: #0071e3;
-  --accent-hover: #0077ed;
-  --good: #248a3d;
+  /* Apple's system colours, the accessible variants where white text sits on them: white text stays
+     at least 4.5:1 at the light top of a glossy button (the accent 4.6:1, hovered 5.0:1; --bad 5.0:1). */
+  --accent: #0066cc;
+  --accent-hover: #0060c0;   /* darker, not lighter, so the hovered button keeps its contrast */
+  --good: #1e7e34;           /* 5.1:1 under white text */
   --warn: #ffcc00;
   --bad: #d70015;
   --info: #5ac8fa;
@@ -68,7 +71,7 @@
   --warn-ink: #946200;
   --warn-hot: #ff9f0a;
   --accent-soft: #e8f1fc;
-  --accent-text: #0071e3;
+  --accent-text: #0066cc;
   --bad-hover: #ffd5d8;
   --alert-hover: #ffdadd;
   --good-hover: #d3f0db;
@@ -202,7 +205,8 @@
 }
 :root[data-theme="glossy"] .btn:active { box-shadow: var(--shadow-pressed), inset 0 1px 2px rgba(0, 0, 0, .08); }
 :root[data-theme="glossy"] :is(.btn.primary, .btn.on, .btn.danger) {
-  background-image: linear-gradient(180deg, rgba(255, 255, 255, .22), rgba(255, 255, 255, 0));
+  /* A fainter highlight on a coloured button: white text must stay 4.5:1 at its lightest point. */
+  background-image: linear-gradient(180deg, rgba(255, 255, 255, .1), rgba(255, 255, 255, 0));
   border-color: rgba(0, 0, 0, .06);
 }
 :root[data-theme="glossy"] .btn.primary:hover { background-color: var(--accent-hover); }
@@ -244,7 +248,14 @@
 }
 :root[data-theme="glossy"] .card button {
   border-radius: var(--radius-pill); border-color: transparent;
-  background-image: linear-gradient(180deg, rgba(255, 255, 255, .22), rgba(255, 255, 255, 0));
+  background-image: linear-gradient(180deg, rgba(255, 255, 255, .1), rgba(255, 255, 255, 0));
   box-shadow: var(--shadow-sm), inset 0 1px 0 rgba(255, 255, 255, .35);
 }
 :root[data-theme="glossy"] .card button:active { transform: none; }
+
+/* Small controls (a card's ⋯, an attachment's ✕, a HUD panel's ✕, a terminal tab's ✕, a diff's tick and
+   fold, the ☰ menu's pin, a window's ✕) keep their drawn size but get a 36px touch target around it. */
+:root[data-theme="glossy"] :is(.kb-move, .kb-x, .term-tab-close, .panel-x, .pd-tick, .pd-fold, .menu-pin, .close:not(.corner)) { position: relative; }
+:root[data-theme="glossy"] :is(.kb-move, .kb-x, .term-tab-close, .panel-x, .pd-tick, .pd-fold, .menu-pin, .close)::after {
+  content: ''; position: absolute; left: 50%; top: 50%; width: max(100%, 36px); height: max(100%, 36px); translate: -50% -50%;
+}

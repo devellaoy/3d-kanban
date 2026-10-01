@@ -26,7 +26,10 @@
   --accent-ink: #ffffff;    /* the same, kept for older rules */
   --strong: #2b2d42;        /* a dark fill: count badges, the selected tab */
   --text-on-strong: #fff;   /* text on a --strong, --good or --bad fill */
-  --text-on-color: #fff;    /* text on a content colour that isn't the theme's (a floor's trim): stays white */
+  --text-on-color: #fff;    /* text on a colour that isn't the theme's (a floor's trim, an avatar, the TV's
+                               caption) or on the always-dark --code-bg: stays white */
+  --text-on-warn: #2b2d42;  /* text on a --warn or --warn-hot fill: a working or lost pill, a search hit */
+  --text-on-info: #2b2d42;  /* text on an --info fill: a renamed file's letter */
   --link: #1d6fd6;          /* links and the info-blue text */
   --link-strong: #1d4f91;   /* inline code on an --info-soft chip */
 

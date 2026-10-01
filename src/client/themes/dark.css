@@ -24,6 +24,8 @@
   --strong: #ececec;
   --text-on-strong: #0d0d0d;
   --text-on-color: #fff;
+  --text-on-warn: #0d0d0d;   /* 11.9:1 on --warn, 9.1:1 on --warn-hot */
+  --text-on-info: #0d0d0d;   /* 7.6:1 on --info */
   --link: #7ab7ff;
   --link-strong: #a8d1ff;
 
@@ -213,3 +215,10 @@
 :root[data-theme="dark"] .card { border-radius: var(--radius-lg); box-shadow: var(--shadow-lg); }
 :root[data-theme="dark"] .card button { border-radius: var(--radius-pill); }
 :root[data-theme="dark"] .card button:active { transform: none; }
+
+/* Small controls (a card's ⋯, an attachment's ✕, a HUD panel's ✕, a terminal tab's ✕, a diff's tick and
+   fold, the ☰ menu's pin, a window's ✕) keep their drawn size but get a 36px touch target around it. */
+:root[data-theme="dark"] :is(.kb-move, .kb-x, .term-tab-close, .panel-x, .pd-tick, .pd-fold, .menu-pin, .close:not(.corner)) { position: relative; }
+:root[data-theme="dark"] :is(.kb-move, .kb-x, .term-tab-close, .panel-x, .pd-tick, .pd-fold, .menu-pin, .close)::after {
+  content: ''; position: absolute; left: 50%; top: 50%; width: max(100%, 36px); height: max(100%, 36px); translate: -50% -50%;
+}

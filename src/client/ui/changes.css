@@ -15,10 +15,10 @@
 .changes-files li.on { background: var(--field); border-color: var(--ink); box-shadow: var(--shadow-xs); }
 .changes-files li.empty { cursor: default; justify-content: center; }
 .st { width: 20px; height: 20px; border-radius: 6px; border: var(--bw-sm) solid var(--ink); font: var(--fw-heavy) var(--fs-2xs)/16px var(--font-mono); text-align: center; flex: none; background: var(--field); }
-.st.M { background: var(--warn); }
+.st.M { background: var(--warn); color: var(--text-on-warn); }
 .st.A { background: var(--good); color: var(--text-on-strong); }
 .st.D { background: var(--bad); color: var(--text-on-strong); }
-.st.R, .st.T { background: var(--info); }
+.st.R, .st.T { background: var(--info); color: var(--text-on-info); }
 .changes-files .path { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .changes-files .dir { color: var(--muted); font-weight: var(--fw-medium); }
 .pm { font: var(--fw-bold) var(--fs-2xs) var(--font-mono); white-space: nowrap; }

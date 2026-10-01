@@ -8,8 +8,8 @@
 .meeting-pattern { text-align: left; font: inherit; color: var(--text); background: var(--field); border: var(--bw) solid var(--ink); border-radius: var(--radius-sm); padding: 8px 10px; cursor: pointer; display: flex; flex-direction: column; gap: 3px; }
 .meeting-pattern b { font-size: var(--fs-md); }
 .meeting-pattern small { font-size: var(--fs-xs); color: var(--muted); font-weight: var(--fw-semibold); line-height: 1.3; }
-.meeting-pattern.on { background: var(--warn); box-shadow: var(--shadow-sm); }
-.meeting-pattern.on small { color: var(--text); }
+.meeting-pattern.on { background: var(--warn); color: var(--text-on-warn); box-shadow: var(--shadow-sm); }
+.meeting-pattern.on small { color: var(--text-on-warn); }
 .meeting-field { display: flex; flex-direction: column; gap: 4px; }
 /* The fields' labels: styles/base.css, after the frame's label rule. */
 .meeting-field input[type=number] { width: 150px; font: inherit; font-size: var(--fs-lg); border: var(--bw) solid var(--ink); border-radius: var(--radius-sm); padding: 8px 10px; background: var(--field); }

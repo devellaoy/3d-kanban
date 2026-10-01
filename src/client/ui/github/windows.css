@@ -25,7 +25,7 @@
 .modal.gh-window footer a.grow { font-size: var(--fs-md); color: var(--link); font-weight: var(--fw-bold); text-decoration: none; }
 /* Many actions on a narrow window: they wrap onto a second row rather than run off the edge. */
 .modal.gh-window footer { flex-wrap: wrap; row-gap: 8px; }
-.gh-avatar { width: 24px; height: 24px; flex: none; border-radius: 50%; border: var(--bw-sm) solid var(--ink); color: var(--text-on-strong); font-size: var(--fs-xs); font-weight: var(--fw-heavy); display: inline-grid; place-items: center; }
+.gh-avatar { width: 24px; height: 24px; flex: none; border-radius: 50%; border: var(--bw-sm) solid var(--ink); color: var(--text-on-color); font-size: var(--fs-xs); font-weight: var(--fw-heavy); display: inline-grid; place-items: center; }
 .gh-card { background: var(--field); border: var(--bw-sm) solid var(--ink); border-radius: 14px; box-shadow: var(--shadow-sm); overflow: clip; }
 /* article.gh-card outranks the frame's .modal header, whatever order the sheets load in. */
 article.gh-card > header { display: flex; align-items: center; gap: 8px; padding: 7px 12px; background: var(--paper-2); border-bottom: var(--bw-sm) solid color-mix(in srgb, var(--text) 15%, transparent); font-size: var(--fs-sm); font-weight: var(--fw-semibold); color: var(--muted); }

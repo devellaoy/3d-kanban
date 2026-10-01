@@ -17,7 +17,7 @@
 .bs-item.open .bs-title::before { content: '📖 '; }
 .bs-title { font-weight: var(--fw-bold); font-size: var(--fs-md); line-height: 1.3; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .bs-path { font: var(--fs-2xs-plus)/1.4 ui-monospace, 'SF Mono', Menlo, Consolas, monospace; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.bs-item mark { background: var(--warn); color: var(--text); border-radius: 3px; padding: 0 1px; }
+.bs-item mark { background: var(--warn); color: var(--text-on-warn); border-radius: 3px; padding: 0 1px; }
 .bs-none { padding: 10px; font-size: var(--fs-sm); font-weight: var(--fw-semibold); color: var(--muted); }
 .bs-reader { display: flex; flex-direction: column; min-width: 0; min-height: 0; background: var(--reader-bg); }
 .bs-bar { display: flex; align-items: center; gap: 12px; padding: 8px 16px; border-bottom: var(--bw-sm) solid color-mix(in srgb, var(--text) 12%, transparent); min-height: 44px; }

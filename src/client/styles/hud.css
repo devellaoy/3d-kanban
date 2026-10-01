@@ -251,4 +251,4 @@ body.telescope-active #hud { visibility: hidden; }
 .arcade > .close.corner { top: 0; right: auto; left: calc(100% + 10px); }
 /* The arcade cabinet in the lounge (features/cabinet/ui.ts) plays on the keyboard, and says so over the game when a worker of yours needs input. */
 .arcade.cabinet canvas { cursor: default; }
-.cabinet-call { position: absolute; bottom: calc(100% + 10px); left: 50%; translate: -50% 0; display: flex; align-items: center; gap: 10px; white-space: nowrap; padding: 6px 6px 6px 14px; background: var(--warn); border: var(--bw) solid var(--ink); border-radius: 14px; box-shadow: var(--shadow); font-weight: var(--fw-heavy); font-size: var(--fs-lg); animation: pop .18s ease-out; }
+.cabinet-call { position: absolute; bottom: calc(100% + 10px); left: 50%; translate: -50% 0; display: flex; align-items: center; gap: 10px; white-space: nowrap; padding: 6px 6px 6px 14px; background: var(--warn); color: var(--text-on-warn); border: var(--bw) solid var(--ink); border-radius: 14px; box-shadow: var(--shadow); font-weight: var(--fw-heavy); font-size: var(--fs-lg); animation: pop .18s ease-out; }

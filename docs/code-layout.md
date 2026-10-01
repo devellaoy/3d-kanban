@@ -60,7 +60,7 @@ They're in `core/registry.ts`, and each is a field of `ctx`. Every registration 
 2. Its `@import` in `themes/index.css`.
 3. Its row in `APPEARANCES` in `themes/index.ts` (label, icon, `colorScheme`, `themeColor`).
 
-`tests/appearance.test.ts` checks the file, the import and that every token is defined. Prefer a token to an override, never use `!important`, and remember `--ink` is the *line* colour (borders, outlines), not the text colour: text uses `--text` and its siblings. The same test keeps raw colours (hex, `rgb()`) out of the sheets, so a new rule uses a token.
+`tests/appearance.test.ts` checks the file, the import and that every token is defined, and `tests/themes-contrast.test.ts` that each theme's text and fill pairs (text on panels, text on the status colours, a button's label) reach WCAG AA contrast. Prefer a token to an override, never use `!important`, and remember `--ink` is the *line* colour (borders, outlines), not the text colour: text uses `--text` and its siblings. The same test keeps raw colours (hex, `rgb()`) out of the sheets, so a new rule uses a token.
 
 ## Server
 

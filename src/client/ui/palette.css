@@ -10,5 +10,5 @@
 .palette-title { font-weight: var(--fw-bold); font-size: var(--fs-md); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .palette-detail { font-size: var(--fs-xs); font-weight: var(--fw-semibold); color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .palette-kind { font-size: var(--fs-2xs); font-weight: var(--fw-bold); color: var(--muted); text-transform: uppercase; letter-spacing: .04em; flex: none; }
-.palette-row mark { background: var(--warn); color: var(--text); border-radius: 3px; padding: 0 1px; }
+.palette-row mark { background: var(--warn); color: var(--text-on-warn); border-radius: 3px; padding: 0 1px; }
 .palette-empty { margin: 4px 20px 14px; font-size: var(--fs-sm); font-weight: var(--fw-semibold); color: var(--muted); }
