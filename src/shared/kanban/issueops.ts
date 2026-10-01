@@ -66,8 +66,8 @@ export type IssueOpsClientMsg =
 
 export type IssueOpsServerMsg =
   | { t: 'kanban.issues'; rid?: string; project: string; items: NormalizedIssue[]; error?: string; fetchedAt: number; loading: boolean }
-  /** `cannot`: why the choices can't be listed (and so changed) for this issue. */
-  | { t: 'kanban.issueTransitions'; rid?: string; project: string; issueKey: string; current?: string; transitions: IssueTransition[]; cannot?: string }
+  /** `cannot`: why the choices can't be listed (and so changed) for this issue. `note`: a problem that left some choices out (the project board couldn't be read). */
+  | { t: 'kanban.issueTransitions'; rid?: string; project: string; issueKey: string; current?: string; transitions: IssueTransition[]; cannot?: string; note?: string }
   /** `cannot`: why there are no comments to show or add (a draft has none). */
   | { t: 'kanban.issueComments'; rid?: string; project: string; issueKey: string; items: IssueCommentItem[]; cannot?: string }
   /** `cannot`: why this issue can't be assigned from the office. */

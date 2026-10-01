@@ -12,7 +12,8 @@ import { githubRepoSource } from './github-repo.js';
 import { githubProjectSource } from './github-project.js';
 import { jiraSource } from './jira.js';
 import type { IssueSource, IssueSourceIo } from './source.js';
-import { setWallProvider, toGhIssue, wallChanged } from './wall.js';
+import { refreshWall, setWallProvider, toGhIssue, wallChanged } from './wall.js';
+import { issueActionHandlers, type IssuePatch } from './actions.js';
 import type { GhIssue, GhState } from '../../../../shared/protocol.js';
 
 export const ISSUE_SOURCES: Record<IssueSourceConfig['kind'], IssueSource> = {
@@ -28,6 +29,10 @@ export const IDLE_REFRESH_MS = 10 * 60_000;
 /** Someone "looks at" a project's issues for this long after asking for them. */
 const WATCH_MS = 5 * 60_000;
 const TICK_MS = 30_000;
+/** A fetch that started this long after a change was written has seen it (Jira's search lags a little behind its writes). */
+const OVERLAY_SETTLE_MS = 10_000;
+/** A change shown before a fetch has it is dropped after this long, whatever the fetches say. */
+const OVERLAY_TTL_MS = 2 * 60_000;
 /** How much of a body goes out in a list (the task made from it gets it all). */
 const LIST_BODY = 4000;
 
@@ -63,15 +68,41 @@ export function createIssues(ctx: KanbanContext, opts: IssuesOptions = {}) {
   const generation = new Map<string, number>();
   /** The 3D board as last built per project (wall.ts), until its cards may have changed. */
   const walls = new Map<string, GhState<GhIssue>>();
+  /** Changes made through the actions (status, assignee), shown over the fetched issues until a fetch started after them has them. */
+  const overlay = new Map<string, Map<string, { fields: IssuePatch; at: number }>>();
   let timer: NodeJS.Timeout | undefined;
 
   const state = (project: string): IssuesState => cache.get(project) ?? { items: [], fetchedAt: 0, loading: false };
+
+  /** The project's issues with the changes made since they were fetched. */
+  const current = (project: string): NormalizedIssue[] => {
+    const over = overlay.get(project);
+    const items = state(project).items;
+    if (!over?.size) return items;
+    for (const [key, o] of over) if (now() - o.at >= OVERLAY_TTL_MS) over.delete(key);
+    return items.map((i) => {
+      const f = over.get(i.key)?.fields;
+      if (!f) return i;
+      const next = { ...i };
+      if (f.status !== undefined) next.status = f.status;
+      if (f.assignee === null) delete next.assignee;
+      else if (f.assignee !== undefined) next.assignee = f.assignee;
+      return next;
+    });
+  };
+
+  /** A fetch that began at `startedAt` is over: the changes it was started late enough to have seen are in it now. */
+  const settle = (project: string, startedAt: number) => {
+    const over = overlay.get(project);
+    if (!over) return;
+    for (const [key, o] of over) if (startedAt >= o.at + OVERLAY_SETTLE_MS) over.delete(key);
+  };
 
   /** The list as it goes out: the tasks already made from each, and bodies cut to size. */
   const message = (project: string, rid?: string): Extract<KanbanServerMsg, { t: 'kanban.issues' }> => {
     const s = state(project);
     const tasks = ctx.repo.ticketTaskIds(project);
-    const items = s.items.map((i) => {
+    const items = current(project).map((i) => {
       const taskId = tasks.get(i.key);
       return { ...i, body: i.body.slice(0, LIST_BODY), ...(taskId !== undefined ? { taskId } : {}) };
     });
@@ -90,6 +121,7 @@ export function createIssues(ctx: KanbanContext, opts: IssuesOptions = {}) {
     if (had) return had;
     const sources = ctx.settings.project(project).issueSources;
     const gen = generation.get(project) ?? 0;
+    const startedAt = now();
     cache.set(project, { ...state(project), loading: true });
     ctx.broadcast(message(project), project);
     const p = (async () => {
@@ -110,6 +142,8 @@ export function createIssues(ctx: KanbanContext, opts: IssuesOptions = {}) {
       // The sources changed while it ran: these are the old ones' issues.
       if ((generation.get(project) ?? 0) !== gen) return state(project);
       cache.set(project, next);
+      // Only a fetch that every source answered shows the issues as they are.
+      if (!errors.length) settle(project, startedAt);
       return next;
     })().finally(() => {
       running.delete(project);
@@ -137,7 +171,7 @@ export function createIssues(ctx: KanbanContext, opts: IssuesOptions = {}) {
     // The project's GitHub repositories: their issues open in the office's own issue window.
     const repos = ctx.repos(project).flatMap((r) => (r.remote ? [r.remote] : []));
     const tasks = ctx.repo.ticketTaskIds(project);
-    const items = s.items.map((i) => toGhIssue(i, tasks.get(i.key), repos));
+    const items = current(project).map((i) => toGhIssue(i, tasks.get(i.key), repos));
     const board = { items, fetchedAt: s.fetchedAt, loading: s.loading || (!s.fetchedAt && !s.error), ...(s.error ? { error: s.error } : {}) };
     walls.set(project, board);
     return board;
@@ -147,6 +181,7 @@ export function createIssues(ctx: KanbanContext, opts: IssuesOptions = {}) {
   const sourcesChanged = (project: string) => {
     generation.set(project, (generation.get(project) ?? 0) + 1);
     cache.delete(project);
+    overlay.delete(project);
     walls.delete(project);
     if (!hasSources(project)) return;
     const had = running.get(project);
@@ -159,9 +194,20 @@ export function createIssues(ctx: KanbanContext, opts: IssuesOptions = {}) {
     if (due(project)) void refresh(project).catch(() => {});
   };
 
+  /** A change made through an issue action: shown at once on the kanban and the 3D board, then fetched again. */
+  const patch = (project: string, key: string, fields: IssuePatch) => {
+    const over = overlay.get(project) ?? new Map();
+    overlay.set(project, over);
+    over.set(key, { fields: { ...over.get(key)?.fields, ...fields }, at: now() });
+    ctx.broadcast(message(project), project);
+    wallChanged(project);
+    refreshWall(project);
+  };
+
   const plugin: KanbanPlugin = {
     name: 'issues',
     ws: {
+      ...issueActionHandlers(ctx, { find: (project, key) => current(project).find((i) => i.key === key), patch, io }),
       'kanban.issues.list': (c, m) => {
         if (!ctx.project(m.project)) return fail(c, m.rid, `There's no project ${m.project}`);
         asked.set(m.project, now());
