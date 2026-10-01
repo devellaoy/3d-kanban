@@ -169,6 +169,8 @@ export function issueActions(api: KanbanApi, project: string, first: ActionIssue
     const picker = h('div.kb-ia-picker', { hidden: true }, search, hint, results);
     let gen = 0;
     let timer: ReturnType<typeof setTimeout> | undefined;
+    let found: { items: IssuePerson[]; query: string } | null = null;
+    const paintPeople = () => found && results.replaceChildren(...(found.items.length ? found.items.map(person) : [h('li.kb-ia-quiet', {}, found.query ? 'Nobody matches' : 'Type a name')]));
     const paintWho = () => {
       who.textContent = issue.assignee ? `👤 ${issue.assignee}` : 'Unassigned';
       const me = site ? pinnedMe(site) : undefined;
@@ -187,8 +189,10 @@ export function issueActions(api: KanbanApi, project: string, first: ActionIssue
       const pin = h('button.btn.small.kb-ia-pin', { type: 'button', 'aria-pressed': String(pinned), title: pinned ? `You are pinned as ${p.name} on ${site}: click to unpin` : `This is me (on ${site}): makes 🙋 Assign to me work` }, pinned ? '📌 Me' : '📌 This is me');
       pin.addEventListener('click', () => {
         setPinnedMe(site, pinned ? undefined : p);
+        hint.textContent = pinned ? '' : `📌 This browser knows you as ${p.name} on ${site}: 🙋 Assign to me works now.`;
+        hint.hidden = pinned;
         paintWho();
-        void find();
+        paintPeople();
       });
       return h('li', {}, pick, pin);
     };
@@ -201,7 +205,8 @@ export function issueActions(api: KanbanApi, project: string, first: ActionIssue
         .then((a) => {
           if (g !== gen) return;
           if (a.cannot) return results.replaceChildren(h('li.kb-ia-quiet', {}, a.cannot));
-          results.replaceChildren(...(a.items.length ? a.items.map(person) : [h('li.kb-ia-quiet', {}, query ? 'Nobody matches' : 'Type a name')]));
+          found = { items: a.items, query };
+          paintPeople();
         })
         .catch((err: Error) => g === gen && results.replaceChildren(h('li', {}, errorLine(err.message, () => void find()))));
     };
