@@ -67,7 +67,7 @@ export function branchPrs(
   pulls: (Pick<GhPull, 'number' | 'url' | 'state' | 'isDraft'> & { repo?: string; headRefName?: string })[],
   repos: Pick<ProjectRepo, 'id' | 'remote' | 'primary'>[],
   home: string | undefined,
-  linked: (repo: string, number: number) => boolean,
+  linked: (repo: string, number: number, url: string) => boolean,
 ): BranchPr[] {
   const repoOf = (p: { repo?: string }) => {
     const repo = p.repo ?? home;
@@ -91,7 +91,7 @@ export function branchPrs(
     if (INTEGRATION_BRANCHES.has(p.headRefName.toLowerCase())) continue;
     const ids = owners.get(`${r.id}\n${p.headRefName}`);
     const key = `${r.id}#${p.number}`;
-    if (ids?.size !== 1 || seen.has(key) || linked(r.remote, p.number)) continue;
+    if (ids?.size !== 1 || seen.has(key) || linked(r.remote, p.number, p.url)) continue;
     seen.add(key);
     out.push({ taskId: [...ids][0], repoId: r.id, repo: r.remote, branch: p.headRefName, pull: p });
   }

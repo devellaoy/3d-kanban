@@ -276,6 +276,25 @@ test('branch linking: stacked PRs each link to their own task', () => {
   assert.deepEqual(ctx.repo.listPrLinks(b.id).map((l) => l.number), [2]);
 });
 
+test('branch linking: a PR linked without its repository is still that task’s', () => {
+  const { ctx } = project();
+  const mk = (title: string, branch: string) => {
+    const t = ctx.repo.createTask({ project: 'web', title, tool: 'claude', usePlan: true, planApproval: 'auto', useReview: true, createdBy: 't' });
+    ctx.repo.updateTask(t.id, { branch });
+    return t;
+  };
+  const a = mk('A', 'office/a');
+  const b = mk('B', 'office/b');
+  // A's links have no repository: #7 resolves through its repoId, #8's repoId is no repository of the project any more.
+  ctx.repo.upsertPrLink(a.id, { repoId: 'web', number: 7, url: 'https://github.com/o/web/pull/7', state: 'OPEN' });
+  ctx.repo.upsertPrLink(a.id, { repoId: 'gone', number: 8, url: 'https://github.com/o/web/pull/8', state: 'OPEN' });
+  const pull = (n: number, head: string, url = `https://github.com/o/web/pull/${n}`) => ({ number: n, title: `PR ${n}`, url, state: 'OPEN', isDraft: false, headRefName: head, baseRefName: 'main', repo: 'o/web' }) as GhPull;
+  // #7 matched by repoId and number, #8 by its URL alone.
+  createPullsParts(ctx).syncPrStates('web', [pull(7, 'office/b'), pull(8, 'office/b')]);
+  assert.deepEqual(ctx.repo.listPrLinks(b.id), [], 'not linked to B as well');
+  assert.deepEqual(ctx.repo.listPrLinks(a.id).map((l) => l.number).sort(), [7, 8]);
+});
+
 test('branchPrs: by repository and branch, the primary repository falls back to the task’s own branch', () => {
   const repos = [{ id: 'web', remote: 'o/web', primary: true }, { id: 'api', remote: 'o/api', primary: false }];
   const p = (number: number, headRefName: string | undefined, repo?: string, state = 'OPEN') => ({ number, url: `u${number}`, state, isDraft: false, headRefName, ...(repo ? { repo } : {}) });
