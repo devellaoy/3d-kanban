@@ -1,10 +1,18 @@
-/* The Codex limits panel: a dial and a label per window (the rest is the Claude panel's .limits). */
+/* The Codex limits panel: a dial and a label per window (the rest is the Claude panel's .limits).
+   The dial is the Claude panel's meter bent into a ring: the same track, outline and fill colours. */
 .codex-limits .cx-win { display: flex; align-items: center; gap: 8px; }
-.codex-limits .dial { --size: 40px; flex: none; width: var(--size); height: var(--size); border-radius: 50%; display: grid; place-items: center; background: conic-gradient(var(--accent) calc(var(--pct) * 1%), var(--paper-2) 0); position: relative; }
-.codex-limits .dial::before { content: ''; position: absolute; inset: 5px; border-radius: 50%; background: var(--paper); }
+.codex-limits .dial { --size: 48px; --ring: 6px; --fill: var(--good); flex: none; width: var(--size); height: var(--size); border-radius: 50%; display: grid; place-items: center; border: var(--bw-sm) solid var(--ink); position: relative; }
+/* The ring is cut out with a mask rather than covered by a disc, so a see-through panel (Glossy) stays see-through; a mask reads only the alpha of the (opaque) text colour. */
+.codex-limits .dial::before, .codex-limits .dial::after { content: ''; position: absolute; border-radius: 50%; }
+.codex-limits .dial::before { inset: 0; background: conic-gradient(var(--fill) calc(var(--pct) * 1%), var(--field) 0); mask: radial-gradient(closest-side, transparent calc(100% - var(--ring)), currentColor calc(100% - var(--ring) + .5px)); }
+.codex-limits .dial::after { inset: var(--ring); box-shadow: 0 0 0 var(--bw-sm) var(--ink); }
 .codex-limits .dial b { position: relative; font-size: var(--fs-2xs); font-weight: var(--fw-heavy); font-variant-numeric: tabular-nums; }
-.codex-limits .dial.near { background: conic-gradient(var(--warn) calc(var(--pct) * 1%), var(--paper-2) 0); }
-.codex-limits .dial.over { background: conic-gradient(var(--bad) calc(var(--pct) * 1%), var(--paper-2) 0); }
-.codex-limits .cx-text { display: flex; flex-direction: column; min-width: 0; }
+.codex-limits .dial small { font-size: .8em; }
+.codex-limits .dial.near { --fill: var(--warn); }
+.codex-limits .dial.over { --fill: var(--bad); }
+.codex-limits .dial.over b { color: var(--bad); }
+.codex-limits .cx-text { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
 .codex-limits .cx-text .reset { margin-left: 0; }
 .codex-limits .cx-whose { font-size: var(--fs-2xs); }
+/* Its notes ("isn't signed in…") are sentences: they wrap rather than run out of the panel. */
+.codex-limits .row.muted { white-space: normal; }

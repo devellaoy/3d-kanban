@@ -11,7 +11,7 @@ const hhmm = (at: number) => new Date(at).toLocaleTimeString(undefined, { hour: 
 
 /** A dial: a ring filled to the share used. */
 function dial(pct: number): HTMLElement {
-  return h('div.dial', { class: level(pct), style: `--pct:${Math.min(100, Math.max(0, pct))}` }, h('b', {}, `${Math.round(pct)}%`));
+  return h('div.dial', { class: level(pct), style: `--pct:${Math.min(100, Math.max(0, pct))}` }, h('b', {}, `${Math.round(pct)}`, h('small', {}, '%')));
 }
 
 function windowRow(w: PlanWindow, now: number): HTMLElement {

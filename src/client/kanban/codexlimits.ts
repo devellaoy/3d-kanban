@@ -16,7 +16,7 @@ function text(): { text: string; tone: string } {
   const s = store.codexLimits;
   if (s.windows.length && s.status !== 'signedOut' && s.status !== 'missing') {
     const now = Date.now();
-    const parts = s.windows.map((w) => `${/5/.test(w.label) ? '5h' : w.label.toLowerCase()} ${Math.round(w.pct)}%`);
+    const parts = s.windows.map((w) => `${w.label === '5-hour' ? '5h' : w.label === 'Weekly' ? 'week' : w.label} ${Math.round(w.pct)}%`);
     const next = s.windows.filter((w) => w.resetsAt).sort((a, b) => b.pct - a.pct)[0];
     if (next?.resetsAt) parts.push(`resets ${fmtReset(next.resetsAt, now)}`);
     return { text: parts.join(' · '), tone: level(Math.max(...s.windows.map((w) => w.pct))) };
