@@ -245,7 +245,15 @@ new tool starts a fresh session with the task's handoff.
 
 Click a card (or Enter on it). The panel's tab is kept in the page's link (`&tab=`). Its head has
 **📍 Show in 3D**: the 3D office at the task's worker's desk (`/?floor=<project>&worker=<id>&desk=<id>`),
-or on its floor when it has no worker. Its tabs:
+or on its floor when it has no worker, and, for admins, **🧩 VSCode**: the task's folder opened in VS
+Code on the office's machine. A task with one repository opens its worktree; one with several opens all
+its repositories' worktrees in one window, through a generated `.code-workspace` file (kept in
+`<data>/kanban/workspaces/`); before the task has run (no worktree yet) it opens the project's
+checkout(s). Every worker's terminal window (the 3D office's **E**, and `/lite`) has the same **🧩 VSCode**
+in its header, for kanban workers and ordinary ones alike: an ordinary worker opens its worktree (or its
+workspace of several repositories), or the floor's checkout when it has none. On a narrow screen the
+button is just 🧩. VS Code must be installed on the office's machine: on macOS in `/Applications` is
+enough, elsewhere the `code` command must be on the PATH. Its tabs:
 
 - **Overview**: what it waits for (with the answer box), the actions, summary, description,
   acceptance criteria, **📑 Reports** (an investigation's report files: shown in place, Markdown
@@ -279,7 +287,8 @@ or on its floor when it has no worker. Its tabs:
 
 The panel is the **shared task view** (`src/client/kanban/taskview.ts`), which the 3D office uses too
 (a window of its own, or a tab of the worker window). There it has no Terminal tab (the worker
-window has the terminal, whose tab also has upstream's **+ Web page** tabs; while focus is inside a web page, Esc doesn't close the window, the ✕ does), no Edit or Move, and a **🗂️ Open in the kanban** link instead of Show in 3D.
+window has the terminal, whose tab also has upstream's **+ Web page** tabs; while focus is inside a web page, Esc doesn't close the window, the ✕ does), no Edit or Move, and a **🗂️ Open in the kanban** link instead of Show in 3D (and no 🧩 VSCode: the worker
+window's header has it).
 
 ## Projects and repositories
 
