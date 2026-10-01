@@ -3,7 +3,7 @@ import type { GhIssue, GhLabel, GhPull } from '../../../shared/protocol';
 import type { Net } from '../../net';
 import { h, openModal } from '../dom';
 import { repoUrlOf } from '../markdown';
-import { ghKey, ghLabel, ghRepoField, ghUrl } from '../../kanban/ghrepo'; // 3d-kanban
+import { ghKey, ghLabel, ghRepoField, ghUrl } from './ghrepo'; // 3d-kanban
 import { getJson, labelWaiters } from './api';
 import { errorBox, spinnerRow } from './pieces';
 

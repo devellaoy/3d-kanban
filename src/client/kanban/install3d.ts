@@ -12,7 +12,7 @@ import { store } from '../state';
 import { rememberFloor } from '../state/persist';
 import { toast } from '../ui/dom';
 import { kanbanUrl, parseOfficeLink, withoutOfficeLink, type OfficeLink } from './office';
-import { tickRetryCountdown } from './views3d';
+import { tickRetryCountdown } from '../features/workers/views';
 
 /** The 📍 Show in 3D link this page was opened with, read before anything else moves the address. */
 const opened = parseOfficeLink(location.search);

@@ -4,10 +4,10 @@ import type { Net } from '../../net';
 import { store, workerForPull } from '../../state';
 import { h, openModal, type Modal } from '../dom';
 import { officePrompt } from '../prompts';
-// 3d-kanban: the PR review picker, and which of the project's repositories a PR is in (kanban/ghrepo.ts).
+// 3d-kanban: the PR review picker, and which of the project's repositories a PR is in (github/ghrepo.ts).
 import { openReviewPicker } from '../../kanban/prpicker';
 import { prOwner } from '../../kanban/prowner';
-import { ghLabel, ghUrl, sameItem } from '../../kanban/ghrepo';
+import { ghLabel, ghUrl, sameItem } from './ghrepo';
 import { getJson, getText } from './api';
 import { openClose } from './close';
 import { commentBox } from './comment-box';

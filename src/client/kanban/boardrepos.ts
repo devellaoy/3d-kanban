@@ -1,13 +1,13 @@
 // A project's issues and PR boards can hold items from several repositories (a multi-repo project):
-// a chip naming each card's repository and a filter by it, for upstream's ui/boards.ts. An item's
+// a chip naming each card's repository and a filter by it, for ui/boards.ts. An item's
 // repository is its `repo` when the office sends one, else read off its GitHub URL.
 
 import { h } from '../ui/dom';
 import { sameRepo } from '../../shared/floors';
-import { repoOfItem } from './ghrepo';
+import { repoOfItem } from '../ui/github/ghrepo';
 import { officeCss } from './officecss';
 
-// It lives with the other repository helpers (ghrepo.ts), which the office's state.ts imports too.
+// It lives with the other repository helpers (ui/github/ghrepo.ts), which the office's state.ts imports too.
 export { repoOfItem };
 
 /** The repositories a board's items come from, sorted. */

@@ -1,7 +1,7 @@
 // ⚙️ Settings' mouse sensitivity (the You pane): how far the mouse turns your head, 25–200%, taking
-// effect as you drag. Kept here so upstream's settings.ts only gains the one line that shows it.
+// effect as you drag. Its own file to keep settings.ts short.
 import type { Settings } from '../state';
-import { h } from '../ui/dom';
+import { h } from './dom';
 
 /** The slider's row and its note, for `setting('Mouse sensitivity', 'you', ...)`; `set` takes the new settings. */
 export function mouseSensitivityRow(get: () => Settings, set: (s: Settings) => void): [HTMLElement, HTMLElement] {

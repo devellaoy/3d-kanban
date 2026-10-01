@@ -1,7 +1,7 @@
 import type { ServerMsg } from '../../../shared/protocol';
 import { store } from '../../state';
-// 3d-kanban: which of the project's repositories a PR or issue is in (kanban/ghrepo.ts).
-import { ghWaiter, namedRepo } from '../../kanban/ghrepo';
+// 3d-kanban: which of the project's repositories a PR or issue is in (github/ghrepo.ts).
+import { ghWaiter, namedRepo } from './ghrepo';
 
 // Talking to the office about GitHub: the reads (over HTTP, for the floor you're on), and the
 // answers to what the dialogs asked for over the socket (merged, commented, closed, labeled).

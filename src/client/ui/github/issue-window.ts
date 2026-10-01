@@ -5,8 +5,8 @@ import { store } from '../../state';
 import { h, openModal, timeAgo } from '../dom';
 import { issueMeeting } from '../meeting';
 import { providerPicker } from '../provider';
-// 3d-kanban: which of the project's repositories an issue is in (kanban/ghrepo.ts), and the queue's task for a card from the issue sources.
-import { ghLabel, ghUrl, sameItem } from '../../kanban/ghrepo';
+// 3d-kanban: which of the project's repositories an issue is in (github/ghrepo.ts), and the queue's task for a card from the issue sources.
+import { ghLabel, ghUrl, sameItem } from './ghrepo';
 import { taskForCard } from '../../kanban/issuecards';
 import { getJson } from './api';
 import { openClose } from './close';

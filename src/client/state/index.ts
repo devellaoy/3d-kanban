@@ -5,7 +5,7 @@ import type { WorkerInfo } from '../../shared/protocol';
 import { SLICES } from './slices';
 import { Store, workerForPull as workerForPullIn } from './store';
 // 3d-kanban: a PR's worker by its repository too, on a project with several.
-import { namedRepo, workerForRepoPull } from '../kanban/ghrepo';
+import { namedRepo, workerForRepoPull } from '../ui/github/ghrepo';
 
 export { AVATAR_COLORS, HUD_DEFAULTS, lastFloor, lastSpot, loadProfile, loadSettings, rememberFloor, rememberSpot, saveProfile, saveSettings } from './persist';
 export type { HudPanel, Profile, Settings, Spot, ViewMode } from './persist';

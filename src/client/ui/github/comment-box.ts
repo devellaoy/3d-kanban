@@ -3,7 +3,7 @@ import type { Net } from '../../net';
 import { h } from '../dom';
 import { markdown } from '../markdown';
 import { commentWaiters } from './api';
-import { ghKey, ghRepoField } from '../../kanban/ghrepo'; // 3d-kanban
+import { ghKey, ghRepoField } from './ghrepo'; // 3d-kanban
 import { DRAFT_KEY, pref, savePref } from './prefs';
 
 // ---- Comment box --------------------------------------------------------------------------------

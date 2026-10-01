@@ -2,7 +2,7 @@ import type { GhCheck, GhMergeMethod, GhPull, GhPullDetail } from '../../../shar
 import type { Net } from '../../net';
 import { h, openModal } from '../dom';
 import { mergeWaiters } from './api';
-import { ghKey, ghLabel, ghRepoField } from '../../kanban/ghrepo'; // 3d-kanban
+import { ghKey, ghLabel, ghRepoField } from './ghrepo'; // 3d-kanban
 import { MERGE_KEY, mergePref, savePref } from './prefs';
 
 // ---- Whether a PR can merge ---------------------------------------------------------------------

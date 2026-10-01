@@ -3,8 +3,8 @@ import { FLOOR, SLAB, STREET_Y, WING, inWing, wingMinZ } from '../../shared/layo
 import type { ViewMode } from '../state';
 import type { Collider } from '../world/types';
 import { ceilingAt, groundAt } from './collide';
-import { THIRD_TARGET, orbitOffset, shoulderOffset } from '../kanban/shoulder'; // 3d-kanban
-import type { OrbitEase } from '../kanban/camera3d'; // 3d-kanban
+import { THIRD_TARGET, orbitOffset, shoulderOffset } from './shoulder'; // 3d-kanban
+import type { OrbitEase } from './camera3d'; // 3d-kanban
 
 // The camera: your eyes in first person, or following you round in third without going through the
 // walls, and the view trembling after too much coffee or rolling after too much to drink.

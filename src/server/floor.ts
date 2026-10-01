@@ -29,7 +29,7 @@ import type { Capacity } from './machine.js';
 import { officePrompt, type PromptSource } from './prompts.js';
 // 3d-kanban: the PR board covers every repository of the project (see pullsState).
 import { parseRepoFloorId, projectRepos, uniqueRepos } from './kanban/projects.js';
-import { checkoutRepo } from './kanban/ghrepo.js';
+import { checkoutRepo } from './ghrepo.js';
 // 3d-kanban: the kanban hears when the PR board has fresh lists (its tasks' linked PRs' states).
 import { floorPulled } from './kanban/integrations/pulls/board.js';
 // 3d-kanban: the issues board shows the project's issue sources when it has any (see issuesState).

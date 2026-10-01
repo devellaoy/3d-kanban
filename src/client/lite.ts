@@ -19,7 +19,7 @@ import { openBoard } from './ui/boards';
 import type { BoardActions } from './ui/github/prompts';
 import { openPull, routePullMessage } from './ui/pull';
 // 3d-kanban: a worker's PR by its repository too, on a project with several.
-import { findItem, ownPullRepo } from './kanban/ghrepo';
+import { findItem, ownPullRepo } from './ui/github/ghrepo';
 // 3d-kanban: task workers on the 2D view.
 import { kanbanChip, promptKind } from './kanban/office';
 import { askWorker, hireOption, promptTaskWorker } from './kanban/office3d';

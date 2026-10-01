@@ -28,8 +28,7 @@ import { modelBadge, providerLabel } from '../../ui/provider';
 import { renderUsage } from '../../ui/usage';
 import { Worker } from '../../world/character';
 // 3d-kanban: task workers in the office (docs/kanban-coupling.md).
-import { kanbanCard, kanbanStarter } from '../../kanban/office';
-import { forgetTaskWorker, tagTaskWorker } from '../../kanban/views3d';
+import { kanbanCard, kanbanStarter, workerLabel } from '../../kanban/office';
 import { seatView } from '../../kanban/watch3d';
 import { Jail } from './jail';
 import { Laptop } from './laptop';
@@ -41,6 +40,34 @@ declare module '../../world/types' {
   interface InteractKinds {
     expand: true;
   }
+}
+
+/** The name tag each task worker shows ("Ada · #14"), to redraw it only when it changes. */
+const names = new Map<string, string>();
+
+/** Redraws `model`'s name tag when `w`'s label changed: a task worker's says which task. */
+export function tagTaskWorker(model: Worker, w: WorkerInfo) {
+  if ((w.kanban || names.has(w.id)) && names.get(w.id) !== workerLabel(w)) {
+    model.setName(workerLabel(w));
+    if (w.kanban) names.set(w.id, workerLabel(w));
+    else names.delete(w.id);
+  }
+}
+
+/** A worker's gone: forget its name tag. */
+export function forgetTaskWorker(id: string) {
+  names.delete(id);
+}
+
+/** A task's ⏳ retry countdown on its worker's card ticks down between worker updates. */
+export function tickRetryCountdown(views: ReadonlyMap<string, { model: Worker }>, meetingCard: (w: WorkerInfo) => WorkerTask | undefined) {
+  return setInterval(() => {
+    const now = Date.now();
+    for (const w of store.workers.values()) {
+      if (!w.kanban?.retryAt || meetingCard(w)) continue;
+      views.get(w.id)?.model.setTask(kanbanCard(w, now));
+    }
+  }, 1000);
 }
 
 export interface WorkerView {

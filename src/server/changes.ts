@@ -3,7 +3,7 @@ import { readFile, realpath, stat } from 'node:fs/promises';
 import path from 'node:path';
 import type { ImageResult } from './decor.js';
 import { changedImageType, type ChangedFile, type ChangeStatus, type ChangesState } from '../shared/protocol.js';
-import { checkoutRepo, repoFlag } from './kanban/ghrepo.js';
+import { checkoutRepo, repoFlag } from './ghrepo.js';
 
 // What a worker changed, for the Changes window at its desk: the files it touched and their diff,
 // against the branch the office was opened on. While anyone has the window open, the office polls

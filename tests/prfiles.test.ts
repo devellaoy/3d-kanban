@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { DIFF_TOO_LARGE, diffFromFiles, pullDiffOrFiles, resetPrFilesCache, type GhPrFile } from '../src/server/kanban/prfiles.js';
+import { DIFF_TOO_LARGE, diffFromFiles, pullDiffOrFiles, resetPrFilesCache, type GhPrFile } from '../src/server/prfiles.js';
 
 // pulldiff.ts pulls in the markdown renderer, which wants a DOM-ish `window` when it loads (just enough for
 // DOMPurify to set up); parseDiff itself needs no DOM.

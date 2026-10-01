@@ -11,7 +11,7 @@ import { agentFields, choiceLabel, officeChoice } from './provider';
 import { openPromptEditor, rewrittenPrompts } from './prompts';
 // 3d-kanban: the kanban's settings are categories of this window, loaded when one is first shown.
 import { KANBAN_PANES, kanbanSettingsSlots, type KanbanSettingsPane } from '../kanban/settingsslot';
-import { mouseSensitivityRow } from '../kanban/sensitivity'; // 3d-kanban
+import { mouseSensitivityRow } from './sensitivity'; // 3d-kanban
 
 const VIEWS: [ViewMode, string, string][] = [
   ['first', '👀 First person', 'See through your own eyes. Click the office to look around with the mouse and click things to use them. Esc frees the mouse.'],
@@ -513,7 +513,7 @@ export function openSettings(net: Net, settings: Settings, onChange: (s: Setting
     you: [
       setting('Your character', null, character),
       setting('Camera view', 'you', seg, note),
-      setting('Mouse sensitivity', 'you', ...mouseSensitivityRow(() => settings, (s) => onChange((settings = s)))), // 3d-kanban: ⚙️ Settings' mouse sensitivity (kanban/sensitivity.ts)
+      setting('Mouse sensitivity', 'you', ...mouseSensitivityRow(() => settings, (s) => onChange((settings = s)))), // 3d-kanban: ⚙️ Settings' mouse sensitivity (ui/sensitivity.ts)
       setting('Signed in', null, h('div.volume', {}, signOut), h('p.setting-note', {}, account ? `As ${account.name}, with your own account (${account.role}).` : 'With the shared office password.')),
     ],
     sound: [

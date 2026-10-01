@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import type { ViewMode } from '../state';
-import { THIRD_PITCH_MAX, THIRD_PITCH_MIN, tapNdc } from '../kanban/shoulder'; // 3d-kanban
-import { OrbitEase } from '../kanban/camera3d'; // 3d-kanban
+import { THIRD_PITCH_MAX, THIRD_PITCH_MIN, tapNdc } from './shoulder'; // 3d-kanban
+import { OrbitEase } from './camera3d'; // 3d-kanban
 
 // Your hands on the controls: the keys you hold, and the mouse, which looks around. In first person a
 // click on the scene captures the mouse (pointer lock); where it won't lock, or in third person, you
@@ -25,7 +25,7 @@ export abstract class PlayerInput {
   camYaw = Math.PI * 0.15;
   camPitch = 0.42;
   camDist = 7.5;
-  /** 3d-kanban: what the third-person camera shows of camYaw/camPitch/camDist, easing out jumps (see kanban/camera3d.ts). */
+  /** 3d-kanban: what the third-person camera shows of camYaw/camPitch/camDist, easing out jumps (see camera3d.ts). */
   readonly ease = new OrbitEase();
   /** First-person look up (+) / down (-). */
   lookPitch = -0.08;

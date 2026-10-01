@@ -29,7 +29,7 @@ import { openRepoPulls, workerRepos } from '../../ui/repos';
 import { openTerminal } from '../../ui/terminal';
 import { hiringPaused, usageLabel, usageTitle } from '../../ui/usage';
 // 3d-kanban: a worker's PR by its repository too, task workers in the office, and issue cards from the issue sources.
-import { findItem, ownPullRepo } from '../../kanban/ghrepo';
+import { findItem, ownPullRepo } from '../../ui/github/ghrepo';
 import { canRetry, kanbanCard, kanbanOf, promptKind, waitText, workerLabel } from '../../kanban/office';
 import { askWorker, cardToTaskWorker, hireOption, promptTaskWorker, retryTask } from '../../kanban/office3d';
 import { cardTask } from '../../kanban/issuecards';

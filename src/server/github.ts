@@ -1,8 +1,8 @@
 import { execFile } from 'node:child_process';
 import type { GhCheck, GhCloseReason, GhComment, GhIssue, GhIssueDetail, GhLabel, GhMergeMethod, GhPull, GhPullDetail, GhRepoInfo, GhReviewComment, GhState } from '../shared/protocol.js';
 import type { GhAs } from './signins.js';
-import { checkoutRepo, repoApi, repoFlag } from './kanban/ghrepo.js';
-import { pullDiffOrFiles } from './kanban/prfiles.js';
+import { checkoutRepo, repoApi, repoFlag } from './ghrepo.js';
+import { pullDiffOrFiles } from './prfiles.js';
 
 const REFRESH_MS = 90_000;
 /** How long the repo's list of labels is kept before the label picker asks GitHub again. */
@@ -127,7 +127,7 @@ export class GitHub {
     private pullsOnly = false,
   ) {}
 
-  /** 3d-kanban: the repository its gh calls name: the given one, else the checkout's origin, never gh's pick among the remotes (see kanban/ghrepo.ts). */
+  /** 3d-kanban: the repository its gh calls name: the given one, else the checkout's origin, never gh's pick among the remotes (see ghrepo.ts). */
   private get target(): string | undefined {
     return this.nameWithOwner ?? checkoutRepo(this.dir);
   }
@@ -215,7 +215,7 @@ export class GitHub {
 
   /** The PR's unified diff, as `git diff` prints it. */
   pullDiff(n: number): Promise<string> {
-    // 3d-kanban: a PR over GitHub's 300-file diff limit is built from the files API instead (kanban/prfiles.ts).
+    // 3d-kanban: a PR over GitHub's 300-file diff limit is built from the files API instead (prfiles.ts).
     return pullDiffOrFiles(gh, this.target, n, this.dir, () => gh(['pr', 'diff', String(n), ...repoFlag(this.target), '--color', 'never'], this.dir, 60_000));
   }
 

@@ -2,7 +2,7 @@ import type { GhCloseReason, GhIssue, GhPull } from '../../../shared/protocol';
 import type { Net } from '../../net';
 import { store, workerForPull } from '../../state';
 import { h, openModal } from '../dom';
-import { ghKey, ghLabel, ghRepoField } from '../../kanban/ghrepo'; // 3d-kanban
+import { ghKey, ghLabel, ghRepoField } from './ghrepo'; // 3d-kanban
 import { closeWaiters } from './api';
 
 // ---- Close dialog -------------------------------------------------------------------------------

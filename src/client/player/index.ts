@@ -19,8 +19,8 @@ const GRAVITY = 18;
 // What the rest of the client takes from here, wherever it lives now: the eye height (camera.ts), the
 // ground under someone (collide.ts) and isTyping (pointer.ts).
 export { EYE_HEIGHT, groundAt, isTyping };
-// 3d-kanban: third person looks around like first person (see kanban/shoulder.ts).
-export { SHOULDER, THIRD_PITCH_MAX, THIRD_PITCH_MIN, alongRay, eyeSees, orbitOffset, shoulderOffset, tapNdc, withinReach } from '../kanban/shoulder';
+// 3d-kanban: third person looks around like first person (see shoulder.ts).
+export { SHOULDER, THIRD_PITCH_MAX, THIRD_PITCH_MIN, alongRay, eyeSees, orbitOffset, shoulderOffset, tapNdc, withinReach } from './shoulder';
 /** Keys that get you up off a seat: walking away, or jumping up. */
 const GET_UP = ['KeyW', 'KeyA', 'KeyS', 'KeyD', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Space'];
 

@@ -6,7 +6,7 @@
 
 import { execFileSync } from 'node:child_process';
 import path from 'node:path';
-import { normalizeRepo } from '../../shared/floors.js';
+import { normalizeRepo } from '../shared/floors.js';
 
 /** How long a found remote is trusted before git is asked again (it is read on hot paths: every gh call, every state broadcast). */
 const FOUND_MS = 10 * 60_000;
