@@ -219,7 +219,7 @@ allowed: `todo → in_progress` (= start), `waiting|review → done`, `done → 
     the end) or in a `>` quote. Plan markers ignore quotes and *closed* code blocks, but an unclosed fence
     hides nothing after it. PR lines ignore only quotes (an agent may list its PRs in a code block).
 - Plan approval: `auto` (ready → implement) or `manual` (ready → `waiting` until the user approves).
-- Review: `rounds` (1–10), `reReviewLastFix` (default true). A reviewer is a separate worker (its own tool,
+- Review: `rounds` (1–10), `reReviewLastFix` (default false). A reviewer is a separate worker (its own tool,
   model, effort) sharing the task's worktree (spawned with `reuse`), sent home with cleanup `keep`.
   Round k: review → APPROVED → `review` column; CHANGES_REQUESTED → fix (task worker) → next round.
   After the last round's fix: re-review if `reReviewLastFix`, else straight to `review`.

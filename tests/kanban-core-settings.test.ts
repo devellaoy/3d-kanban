@@ -6,6 +6,7 @@ import path from 'node:path';
 import {
   KanbanSecrets,
   KanbanSettingsStore,
+  DEFAULT_REVIEW,
   defaultKanbanSettings,
   hashApiKey,
   sanitizeIssueSource,
@@ -173,4 +174,11 @@ test('secrets are kept in a file only the office can read, and never handed out'
   // A key saved before hashing still works.
   writeFileSync(secrets.file, JSON.stringify({ apiKey: 'plain-key-from-before' }));
   assert.equal(new KanbanSecrets(dir).checkApiKey('plain-key-from-before'), true);
+});
+
+test('the last fix is not re-reviewed by default: the rounds set are all the reviews a task gets', () => {
+  assert.equal(DEFAULT_REVIEW.reReviewLastFix, false);
+  assert.equal(sanitizeReview({}).reReviewLastFix, false);
+  assert.equal(defaultKanbanSettings().review.reReviewLastFix, false);
+  assert.equal(sanitizeReview({ reReviewLastFix: true }).reReviewLastFix, true, 'a saved choice still wins');
 });
