@@ -11,6 +11,7 @@ import { openTerminal, openTerminalFor, routeTerminalMessage } from '../ui/termi
 import { openChanges, openChangesFor, routeChangesMessage } from '../ui/changes';
 import { routeWorktreeMessage } from '../ui/prompt';
 import { routePullMessage } from '../ui/pull';
+import { routeFloorAdded } from '../ui/flooradd';
 import { openSettings } from '../ui/settings';
 import { DesktopNotifier } from '../notify';
 import type { KanbanServerMsg } from '../../shared/kanban/protocol.js';
@@ -367,6 +368,7 @@ net.onMessage((msg) => {
   routeChangesMessage(msg);
   routePullMessage(msg);
   routeWorktreeMessage(msg);
+  routeFloorAdded(msg);
   switch (msg.t) {
     case 'welcome': {
       // Back from a restart on another version: this page's code is stale, so load the new one.

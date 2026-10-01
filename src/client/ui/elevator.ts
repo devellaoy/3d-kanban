@@ -1,14 +1,16 @@
 import './elevator.css';
-import type { FloorInfo, RepoChoice, ServerMsg } from '../../shared/protocol';
+import type { FloorInfo, RepoChoice } from '../../shared/protocol';
 import { floorPalette, normalizeRepo, sameRepo } from '../../shared/floors';
 import { ROOF, ROOF_NAME } from '../../shared/rooftop';
 import type { Net } from '../net';
 import { store } from '../state';
 import { h, openModal, timeAgo, type Modal } from './dom';
+import { folderNote, folderPath, folderProblem, requestFloor } from './flooradd';
 import { confirmDialog } from './prompt';
 
 // The elevator's panel: a button for every floor (every project), and "add a project", which clones
-// one of the repositories the office's gh login can see and makes it a new floor. The first time
+// one of the repositories the office's gh login can see and makes it a new floor, or (admins) makes a
+// folder on the office's machine a floor as it is. The first time
 // the office runs there are no floors, and this is where you start. Admins can take a floor off the
 // building here too; its checkout stays on disk. Under the floors, it goes down to the garage.
 
@@ -31,13 +33,6 @@ const SHOWN = 60;
 /** Ask gh for the repositories again after this long. */
 const REPOS_STALE_MS = 5 * 60_000;
 
-const addedWaiters = new Set<(msg: Extract<ServerMsg, { t: 'floor.added' }>) => void>();
-
-/** Main feeds server messages through here, so a panel waiting on its clone hears back. */
-export function routeElevatorMessage(msg: ServerMsg) {
-  if (msg.t === 'floor.added') for (const fn of addedWaiters) fn(msg);
-}
-
 let current: Modal | null = null;
 
 export function elevatorPanelOpen(): boolean {
@@ -52,7 +47,10 @@ export function openElevator(opts: ElevatorOptions): void {
   const { net } = opts;
   let filter = '';
   let selected: string | null = null;
-  let adding: string | null = null;
+  /** The repository being cloned, or the folder being added, while the office works on it. */
+  let adding: { repo: string } | { dir: string } | null = null;
+  /** The panel is still open (an answer after it closed has nowhere to go). */
+  let panelOpen = true;
   let error = '';
   let showAdd = setup || !store.floors.length;
   /** The search box and list are in place (rebuilding them would lose the focus mid-typing). */
@@ -60,7 +58,7 @@ export function openElevator(opts: ElevatorOptions): void {
 
   const floorsEl = h('div.floors');
   const addEl = h('div.add');
-  const input = h('input', { type: 'text', placeholder: 'Search your repositories, or type owner/name', 'aria-label': 'Repository', autocomplete: 'off', spellcheck: 'false' }) as HTMLInputElement;
+  const input = h('input', { type: 'text', placeholder: 'Search your repositories, type owner/name, or a folder path', 'aria-label': 'Repository', autocomplete: 'off', spellcheck: 'false' }) as HTMLInputElement;
   const listEl = h('div.repo-list', { role: 'listbox', 'aria-label': 'Repositories' });
   const statusEl = h('div');
   const addBtn = h('button.btn.primary', { type: 'button' }, '🛗 Add floor');
@@ -98,8 +96,10 @@ export function openElevator(opts: ElevatorOptions): void {
     net.send({ t: 'floor.repos' });
   };
 
-  /** What "Add floor" would add: the row picked, else what's typed if it's owner/name. */
-  const choice = (): string | undefined => selected ?? normalizeRepo(filter);
+  /** A folder's path typed instead of a repository: the list is that folder then. */
+  const typedDir = (): string | undefined => folderPath(filter);
+  /** What "Add floor" would add: the row picked, else what's typed if it's owner/name (never while a path is typed). */
+  const choice = (): string | undefined => (typedDir() ? undefined : (selected ?? normalizeRepo(filter)));
 
   const floorButton = (f: FloorInfo, i: number) => {
     // Down in the garage, your floor is somewhere to go back up to.
@@ -226,6 +226,20 @@ export function openElevator(opts: ElevatorOptions): void {
     return row;
   };
 
+  /** The one row while a path is typed: the folder, made a floor as it is. */
+  const folderRow = (dir: string) => {
+    const problem = folderProblem(dir, store.me.admin);
+    const row = h(
+      'div.repo',
+      { role: 'option', class: problem ? 'folder off' : 'folder sel', 'aria-selected': String(!problem), 'aria-disabled': String(!!problem), title: problem ?? dir },
+      h('span.nm', {}, `📁 ${dir}`),
+      h('span.desc', {}, problem ?? 'Use this folder as it is — nothing is cloned'),
+    );
+    row.addEventListener('click', () => addDir(dir));
+    row.addEventListener('dblclick', () => addDir(dir));
+    return row;
+  };
+
   const renderAdd = () => {
     if (!showAdd) {
       const open = h('button.btn', { type: 'button' }, '➕ Add a project');
@@ -241,6 +255,8 @@ export function openElevator(opts: ElevatorOptions): void {
     }
     addBtn.classList.remove('hidden');
     const r = store.repos;
+    const dir = typedDir();
+    if (dir !== undefined) return renderDir(dir);
     const q = filter.trim().toLowerCase();
     const typed = normalizeRepo(filter);
     const matches = r.list.filter((x) => !q || x.name.toLowerCase().includes(q) || (x.description ?? '').toLowerCase().includes(q));
@@ -255,15 +271,36 @@ export function openElevator(opts: ElevatorOptions): void {
     const dest = pick ? `${store.projectsDir.dir}/${pick}` : `${store.projectsDir.dir}/<owner>/<repo>`;
     const change = store.me.admin ? h('button.btn.dir-change', { type: 'button', title: 'Clone new projects into another folder on the office’s machine' }, '📁 Change folder') : null;
     change?.addEventListener('click', () => editDir(true));
+    const cloning = adding && 'repo' in adding ? adding.repo : null;
     statusEl.replaceChildren(
-      adding
-        ? h('p.note.busy', {}, `⏳ Cloning ${adding} into ${store.projectsDir.dir}/${adding}… A big repository can take a minute.`)
+      cloning
+        ? h('p.note.busy', {}, `⏳ Cloning ${cloning} into ${store.projectsDir.dir}/${cloning}… A big repository can take a minute.`)
         : h('p.note', {}, `Cloned into ${dest} with this machine's gh login. Everything on the new floor works in that checkout.`, change),
       ...[r.error, error].filter(Boolean).map((e) => h('p.err', {}, e)),
     );
     addBtn.disabled = !!adding || !pick || store.floors.some((f) => sameRepo(f.repo, pick));
     addBtn.textContent = adding ? '⏳ Cloning…' : pick ? `🛗 Add ${pick}` : '🛗 Add floor';
     input.disabled = !!adding;
+    build();
+  };
+
+  /** The add section while a folder's path is typed: its one row, what it does, and 📁 Add folder. */
+  const renderDir = (dir: string) => {
+    const busy = !!adding && 'dir' in adding;
+    // When it can't be added from here, the row says why (and the note about what it would do is moot).
+    const problem = folderProblem(dir, store.me.admin);
+    listEl.replaceChildren(folderRow(dir));
+    statusEl.replaceChildren(
+      busy ? h('p.note.busy', {}, `⏳ Adding ${dir}…`) : problem ? '' : h('p.note', {}, folderNote(dir)),
+      ...[error].filter(Boolean).map((e) => h('p.err', {}, e)),
+    );
+    addBtn.disabled = !!adding || !!problem;
+    addBtn.textContent = busy ? '⏳ Adding…' : '📁 Add folder';
+    input.disabled = !!adding;
+    build();
+  };
+
+  const build = () => {
     if (!built) {
       built = true;
       addEl.replaceChildren(
@@ -276,26 +313,28 @@ export function openElevator(opts: ElevatorOptions): void {
     }
   };
 
-  const add = (repo: string) => {
+  /** Asks for the floor; the panel closes and rides there once it's up, or says why it couldn't be. */
+  const request = (what: { repo: string } | { dir: string }) => {
     if (adding) return;
-    adding = repo;
+    adding = what;
     error = '';
     renderAdd();
-    net.send({ t: 'floor.add', repo });
+    void requestFloor(net, what).then((res) => {
+      adding = null;
+      if (!panelOpen) return;
+      if ('error' in res) {
+        error = res.error;
+        renderAdd();
+        return;
+      }
+      modal.close();
+      opts.ride(res.floor);
+    });
   };
-
-  const onAdded = (msg: Extract<ServerMsg, { t: 'floor.added' }>) => {
-    if (!adding || msg.repo !== adding) return;
-    adding = null;
-    if (msg.error || !msg.floor) {
-      error = msg.error ?? 'The floor could not be added';
-      renderAdd();
-      return;
-    }
-    modal.close();
-    opts.ride(msg.floor);
+  const add = (repo: string) => request({ repo });
+  const addDir = (dir: string) => {
+    if (!folderProblem(dir, store.me.admin)) request({ dir });
   };
-  addedWaiters.add(onAdded);
 
   input.addEventListener('input', () => {
     filter = input.value;
@@ -306,12 +345,16 @@ export function openElevator(opts: ElevatorOptions): void {
   input.addEventListener('keydown', (e) => {
     if (e.key !== 'Enter' || e.isComposing) return;
     e.preventDefault();
+    const dir = typedDir();
+    if (dir !== undefined) return addDir(dir);
     const q = filter.trim().toLowerCase();
     const matches = store.repos.list.filter((x) => !store.floors.some((f) => sameRepo(f.repo, x.name)) && (x.name.toLowerCase().includes(q) || (x.description ?? '').toLowerCase().includes(q)));
     const pick = choice() ?? (q && matches.length === 1 ? matches[0].name : undefined);
     if (pick) add(pick);
   });
   addBtn.addEventListener('click', () => {
+    const dir = typedDir();
+    if (dir !== undefined) return addDir(dir);
     const pick = choice();
     if (pick) add(pick);
   });
@@ -327,7 +370,7 @@ export function openElevator(opts: ElevatorOptions): void {
         {},
         store.floors.length
           ? 'Every project is a floor of this building. Pick a floor to ride to, or add another project.'
-          : "Every project is a floor of this building, and it doesn't have any yet. Pick one of your repositories: the office clones it and it becomes the first floor.",
+          : "Every project is a floor of this building, and it doesn't have any yet. Pick one of your repositories: the office clones it and it becomes the first floor. Or type the full path of a folder on this machine to make it a floor as it is.",
       )
     : null;
   const el = h(
@@ -344,7 +387,7 @@ export function openElevator(opts: ElevatorOptions): void {
     backdropCloses: !setup,
     onClose: () => {
       current = null;
-      addedWaiters.delete(onAdded);
+      panelOpen = false;
       for (const off of unsubs) off();
     },
   });

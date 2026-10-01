@@ -31,6 +31,7 @@ import { KANBAN_DEFAULTS, projectDefaults, REVIEW_DEFAULTS } from './defaults';
 import { repoIdFrom } from './model';
 import { kstore } from './store';
 import { loadSkills, skillsOverview, skillsPane } from './skills';
+import { newProjectButton } from './newproject';
 import type { KanbanSettingsPane } from './settingsslot';
 import { Cleanups, settingsRedraw } from './settingsflow';
 import { APPROVAL_NAMES, effortName, SOURCE_KIND_NAMES, toolName } from './labels';
@@ -136,7 +137,7 @@ export function kanbanSettingsPanes(net: Net): { panes: Record<KanbanSettingsPan
     tab = x;
     paintProject();
   }, 'Project settings');
-  projectsEl.append(projectPick, strip.el, note, body);
+  projectsEl.append(h('div.kb-row.kb-projects-head', {}, projectPick, newProjectButton(net, (id) => ((project = id), paintProject()))), strip.el, note, body);
   /** The project picker alone: a project added or renamed shows without redrawing what you're typing. */
   const paintPicker = () => {
     const sel = select(kstore.projects.map((p) => [p.id, p.name] as const), project, { 'aria-label': 'Project' });
@@ -155,7 +156,7 @@ export function kanbanSettingsPanes(net: Net): { panes: Record<KanbanSettingsPan
     note.textContent = kstore.me.admin ? 'For the project picked here only. Changes apply to its tasks from their next phase.' : 'Only admins can change these. This is how they’re set now.';
     const s = kstore.settings;
     if (!s || !ready) return body.replaceChildren(h('p.kb-muted', {}, 'Loading…'));
-    if (!kstore.projectOf(project)) return body.replaceChildren(h('p.kb-muted', {}, 'No projects yet: add a floor in the 3D office first.'));
+    if (!kstore.projectOf(project)) return body.replaceChildren(h('p.kb-muted', {}, 'No projects yet: ＋ New project, or add a floor in the 3D office.'));
     const panes: Record<ProjectTab, () => HTMLElement> = {
       project: () => projectPane(api, project, s, projectCleanups),
       sources: () => sourcesPane(api, project, s),
@@ -175,10 +176,7 @@ export function kanbanSettingsPanes(net: Net): { panes: Record<KanbanSettingsPan
   let admin = kstore.me.admin;
   const offs: (() => void)[] = [
     // Someone else saved meanwhile: the pane shows what's saved now (what you typed and didn't save goes).
-    kstore.on('projects', () => {
-      if (!kstore.projectOf(project)) paintProject();
-      else paintPicker();
-    }),
+    kstore.on('projects', () => (kstore.projectOf(project) ? paintPicker() : paintProject())),
     kstore.on('settings', () => {
       if (redraw() === 'all') {
         ready = true;

@@ -13,7 +13,7 @@ import { lastFloor, lastSpot, store, type Spot } from '../state';
 import { routeAccountsMessage } from '../ui/accounts';
 import { openChangesFor, routeChangesMessage } from '../ui/changes';
 import { $, toast } from '../ui/dom';
-import { routeElevatorMessage } from '../ui/elevator';
+import { routeFloorAdded } from '../ui/flooradd';
 import { providerLabel } from '../ui/provider';
 import { routePullMessage } from '../ui/pull';
 import { needsSigningIn, openSignIns } from '../ui/signins';
@@ -68,7 +68,7 @@ export function installArrival(ctx: Ctx, core: CoreState, parts: ArrivalParts) {
   ctx.messages.onAny(routeTeamMessage);
   ctx.messages.onAny(routeAccountsMessage);
   ctx.messages.onAny(routePullMessage);
-  ctx.messages.onAny(routeElevatorMessage);
+  ctx.messages.onAny(routeFloorAdded);
   ctx.messages.onAny((msg) => routeWhiteboardMessage(msg, net));
   ctx.messages.on('welcome', (msg) => {
     const { travel, maps } = parts;
