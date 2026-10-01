@@ -1,5 +1,9 @@
 export {}; // a module, so its names don't clash with the other pages' scripts
 
+import { initAppearance } from './themes';
+
+initAppearance();
+
 const form = document.getElementById('form') as HTMLFormElement;
 const nameRow = document.getElementById('name-row') as HTMLLabelElement;
 const nameInput = document.getElementById('name') as HTMLInputElement;

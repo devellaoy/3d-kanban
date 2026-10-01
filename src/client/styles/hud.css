@@ -12,113 +12,113 @@
 .project { padding: 8px 14px; min-width: 0; max-width: 40vw; cursor: pointer; }
 .project-name { display: flex; align-items: center; }
 .project-name #project-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
-.project:hover { background: var(--paper-2); }
-.project-name { font-weight: 900; font-size: 18px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.project-meta { font-size: 12px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.project:hover { background: var(--field-hover); }
+.project-name { font-weight: var(--fw-heavy); font-size: var(--fs-2xl); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.project-meta { font-size: var(--fs-xs); color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 /* The dock: what you pinned, what needs you now, the workers, and the ☰ menu (ui/menu.ts). */
 .dock { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; justify-content: flex-end; flex-shrink: 0; max-width: 100%; }
 .dock-btn { height: 44px; padding: 0 12px; font-size: 17px; gap: 6px; }
-.dock-btn .lbl { font-size: 14px; }
-.dock-btn .n { font-size: 14px; font-variant-numeric: tabular-nums; }
+.dock-btn .lbl { font-size: var(--fs-md); }
+.dock-btn .n { font-size: var(--fs-md); font-variant-numeric: tabular-nums; }
 .dock-btn .svc-count { margin-left: 0; }
 .dock-btn.dim, .menu-item.dim { opacity: .5; }
 /* A panel that's showing: its button stays pressed in. */
-.dock-panel[aria-pressed=true] { background: var(--paper-2); transform: translateY(2px); box-shadow: 0 1px 0 var(--ink); }
+.dock-panel[aria-pressed=true] { background: var(--paper-2); transform: translateY(var(--press)); box-shadow: var(--shadow-pressed); }
 .dock-menu { width: 44px; padding: 0; justify-content: center; }
 .dock-menu[aria-expanded=true] { background: var(--paper-2); }
 .burger { display: flex; flex-direction: column; gap: 3px; }
-.burger i { display: block; width: 18px; height: 3px; border-radius: 2px; background: var(--ink); }
+.burger i { display: block; width: 18px; height: 3px; border-radius: 2px; background: var(--strong); }
 
 /* Panels you turned off from the ☰ menu. The chat still shows while you type in it. */
 .hud-off { display: none !important; }
 .chat.hud-off.peek { display: flex !important; }
 .project-meta.hud-off.lobby { display: block !important; }
-.panel-x { flex: none; margin-left: auto; width: 22px; height: 22px; padding: 0; border: 0; border-radius: 7px; background: none; color: var(--muted); font: 900 12px/1 var(--font); cursor: pointer; opacity: 0; transition: opacity .12s; align-self: center; }
+.panel-x { flex: none; margin-left: auto; width: 22px; height: 22px; padding: 0; border: 0; border-radius: 7px; background: none; color: var(--muted); font: var(--fw-heavy) var(--fs-xs)/1 var(--font); cursor: pointer; opacity: 0; transition: opacity .12s; align-self: center; }
 .side h3 :is(.cost, .plan) ~ .panel-x { margin-left: 2px; }
 .side section:hover .panel-x, .panel-x:focus-visible { opacity: 1; }
-.panel-x:hover { background: var(--paper-2); color: var(--ink); }
+.panel-x:hover { background: var(--field-hover); color: var(--text); }
 @media (hover: none) { .panel-x { opacity: .6; } }
 
 .side { position: absolute; top: 72px; right: 12px; width: 250px; display: flex; flex-direction: column; gap: 12px; max-height: calc(100vh - 90px); pointer-events: none; }
 .side > * { pointer-events: auto; }
-.side h3 { margin: 0 0 6px; font-size: 14px; font-weight: 900; text-transform: uppercase; letter-spacing: .04em; display: flex; align-items: baseline; gap: 5px; }
-.side .count { color: var(--muted); font-weight: 700; }
+.side h3 { margin: 0 0 6px; font-size: var(--fs-md); font-weight: var(--fw-heavy); text-transform: uppercase; letter-spacing: .04em; display: flex; align-items: baseline; gap: 5px; }
+.side .count { color: var(--muted); font-weight: var(--fw-semibold); }
 .side section { padding: 10px 12px; overflow: auto; }
 .side ul { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
-.people li, .workers li { display: flex; align-items: center; gap: 8px; font-size: 14px; font-weight: 700; padding: 3px 4px; border-radius: 8px; }
+.people li, .workers li { display: flex; align-items: center; gap: 8px; font-size: var(--fs-md); font-weight: var(--fw-semibold); padding: 3px 4px; border-radius: 8px; }
 .workers li { cursor: pointer; }
-.workers li:hover { background: var(--paper-2); }
-.people .you { color: var(--muted); font-weight: 600; }
-.people .mic { margin-left: auto; font-size: 12px; }
+.workers li:hover { background: var(--field-hover); }
+.people .you { color: var(--muted); font-weight: var(--fw-medium); }
+.people .mic { margin-left: auto; font-size: var(--fs-xs); }
 .people li.walk { cursor: pointer; }
-.people li.walk:hover { background: var(--paper-2); }
+.people li.walk:hover { background: var(--field-hover); }
 .people .name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.people .sub { display: block; font-size: 11px; font-weight: 600; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.people .sub { display: block; font-size: var(--fs-2xs); font-weight: var(--fw-medium); color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .people .speaking { color: var(--good); }
 .workers .name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.workers .sub { display: block; font-size: 11px; font-weight: 600; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.workers h3 .cost { margin-left: auto; font-size: 12px; text-transform: none; letter-spacing: 0; }
-.workers .cost { font-size: 11px; font-weight: 800; color: var(--muted); white-space: nowrap; font-variant-numeric: tabular-nums; }
+.workers .sub { display: block; font-size: var(--fs-2xs); font-weight: var(--fw-medium); color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.workers h3 .cost { margin-left: auto; font-size: var(--fs-xs); text-transform: none; letter-spacing: 0; }
+.workers .cost { font-size: var(--fs-2xs); font-weight: var(--fw-bold); color: var(--muted); white-space: nowrap; font-variant-numeric: tabular-nums; }
 .workers .name .cost { display: block; white-space: normal; overflow-wrap: anywhere; }
 /* Spend: today, the budget and all time. Its panel only shows once there's something to say. */
 .side .spend { flex: none; }
 .spend:has(> .usage.hidden) { display: none; }
-.usage { font-size: 12px; font-weight: 700; display: flex; flex-direction: column; gap: 5px; }
+.usage { font-size: var(--fs-xs); font-weight: var(--fw-semibold); display: flex; flex-direction: column; gap: 5px; }
 .usage .row { display: flex; align-items: baseline; gap: 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .usage .row.muted { display: block; white-space: normal; overflow: visible; overflow-wrap: anywhere; }
-.usage .row b { font-weight: 900; font-variant-numeric: tabular-nums; }
-.usage .muted { color: var(--muted); font-weight: 600; }
+.usage .row b { font-weight: var(--fw-heavy); font-variant-numeric: tabular-nums; }
+.usage .muted { color: var(--muted); font-weight: var(--fw-medium); }
 .usage.over .row b { color: var(--bad); }
-.budget, .meter { height: 10px; border: 2px solid var(--ink); border-radius: 999px; background: #fff; overflow: hidden; }
+.budget, .meter { height: 10px; border: var(--bw-sm) solid var(--ink); border-radius: var(--radius-pill); background: var(--field); overflow: hidden; }
 .budget .fill, .meter .fill { height: 100%; background: var(--good); transition: width .3s; }
 .budget.near .fill, .meter.near .fill { background: var(--warn); }
 .budget.over .fill, .meter.over .fill { background: var(--bad); }
 /* Claude plan limits: the 5-hour session and the week */
-.side .limits { flex: none; cursor: pointer; font-size: 12px; font-weight: 700; display: flex; flex-direction: column; gap: 4px; }
+.side .limits { flex: none; cursor: pointer; font-size: var(--fs-xs); font-weight: var(--fw-semibold); display: flex; flex-direction: column; gap: 4px; }
 .limits h3 { margin-bottom: 2px; }
-.limits .plan { margin-left: auto; font-size: 12px; text-transform: none; letter-spacing: 0; color: var(--muted); font-weight: 800; }
+.limits .plan { margin-left: auto; font-size: var(--fs-xs); text-transform: none; letter-spacing: 0; color: var(--muted); font-weight: var(--fw-bold); }
 .limits .row { display: flex; align-items: baseline; gap: 5px; white-space: nowrap; }
 .limits .what { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
-.limits .row b { font-weight: 900; font-variant-numeric: tabular-nums; }
+.limits .row b { font-weight: var(--fw-heavy); font-variant-numeric: tabular-nums; }
 .limits .row b.over { color: var(--bad); }
-.limits .reset { margin-left: auto; font-size: 11px; font-weight: 600; color: var(--muted); font-variant-numeric: tabular-nums; }
+.limits .reset { margin-left: auto; font-size: var(--fs-2xs); font-weight: var(--fw-medium); color: var(--muted); font-variant-numeric: tabular-nums; }
 .limits .meter + .row { margin-top: 3px; }
-.limits .muted { color: var(--muted); font-weight: 600; }
+.limits .muted { color: var(--muted); font-weight: var(--fw-medium); }
 
 /* Workers waiting on you: a count in the Workers panel (click or N to go to them) and arrows at the edge of the screen. */
-#waiting { display: flex; align-items: center; gap: 6px; width: 100%; margin: 0 0 8px; padding: 5px 8px; border: 2px solid var(--ink); border-radius: 10px; background: #ffe3ea; color: var(--ink); font: inherit; font-size: 13px; font-weight: 900; text-align: left; cursor: pointer; }
-#waiting:hover { background: #ffd0dc; }
-#waiting.all-done { background: #d8f5e3; }
-#waiting.all-done:hover { background: #c3efd5; }
-#waiting .key { margin: 0 0 0 auto; background: var(--ink); color: var(--paper); box-shadow: none; }
+#waiting { display: flex; align-items: center; gap: 6px; width: 100%; margin: 0 0 8px; padding: 5px 8px; border: var(--bw-sm) solid var(--ink); border-radius: 10px; background: var(--bad-tint); color: var(--text); font: inherit; font-size: var(--fs-sm); font-weight: var(--fw-heavy); text-align: left; cursor: pointer; }
+#waiting:hover { background: var(--alert-hover); }
+#waiting.all-done { background: var(--good-soft); }
+#waiting.all-done:hover { background: var(--good-hover); }
+#waiting .key { margin: 0 0 0 auto; background: var(--strong); color: var(--paper); box-shadow: none; }
 
 /* The chat: lines float up and fade after a while; hover it or press T to read back. */
 .chat { position: absolute; left: 12px; bottom: 12px; width: 330px; max-width: calc(100vw - 24px); display: flex; flex-direction: column; align-items: flex-start; gap: 6px; }
 #hud > .chat { pointer-events: none; }
-#chat-log { list-style: none; margin: 0; padding: 0 0 3px; max-height: 190px; width: 100%; overflow: auto; font-size: 13px; display: flex; flex-direction: column; align-items: flex-start; gap: 4px; scrollbar-width: none; }
+#chat-log { list-style: none; margin: 0; padding: 0 0 3px; max-height: 190px; width: 100%; overflow: auto; font-size: var(--fs-sm); display: flex; flex-direction: column; align-items: flex-start; gap: 4px; scrollbar-width: none; }
 #chat-log:empty { display: none; }
-#chat-log li { max-width: 100%; padding: 3px 9px; background: rgba(255, 250, 243, .94); border: 2px solid var(--ink); border-radius: 10px; box-shadow: 0 2px 0 var(--ink); overflow-wrap: anywhere; animation: chat-out .6s ease-in forwards; }
+#chat-log li { max-width: 100%; padding: 3px 9px; background: color-mix(in srgb, var(--paper) 94%, transparent); border: var(--bw-sm) solid var(--ink); border-radius: 10px; box-shadow: var(--shadow-xs); overflow-wrap: anywhere; animation: chat-out .6s ease-in forwards; }
 @keyframes chat-out { to { opacity: 0; visibility: hidden; } }
 .chat:is(:hover, :focus-within) #chat-log { pointer-events: auto; scrollbar-width: thin; }
 .chat:is(:hover, :focus-within) #chat-log li { animation: none; }
-#chat-log b { font-weight: 900; }
+#chat-log b { font-weight: var(--fw-heavy); }
 #chat-log .sys { color: var(--muted); font-style: italic; }
-#chat-input { pointer-events: auto; width: 180px; border: 2px solid var(--ink); border-radius: 10px; padding: 7px 10px; font: inherit; font-size: 14px; background: rgba(255, 255, 255, .92); box-shadow: 0 2px 0 var(--ink); outline: none; transition: width .15s; }
-#chat-input:focus { width: 100%; border-color: var(--accent); background: #fff; }
+#chat-input { pointer-events: auto; width: 180px; border: var(--bw-sm) solid var(--ink); border-radius: 10px; padding: 7px 10px; font: inherit; font-size: var(--fs-md); background: color-mix(in srgb, var(--field) 92%, transparent); box-shadow: var(--shadow-xs); outline: none; transition: width .15s; }
+#chat-input:focus { width: 100%; border-color: var(--accent); background: var(--field); }
 
 .hint {
   position: absolute; left: 50%; bottom: 28px; transform: translateX(-50%);
-  background: var(--ink); color: var(--paper); border: 3px solid var(--paper); border-radius: 14px;
-  padding: 10px 16px; font-weight: 800; font-size: 15px; box-shadow: 0 4px 0 rgba(0,0,0,.35);
+  background: var(--strong); color: var(--paper); border: var(--bw) solid var(--paper); border-radius: 14px;
+  padding: 10px 16px; font-weight: var(--fw-bold); font-size: var(--fs-lg); box-shadow: 0 4px 0 rgba(0,0,0,.35);
   display: flex; gap: 14px; align-items: center; flex-wrap: wrap; justify-content: center; max-width: min(720px, calc(100vw - 380px));
   pointer-events: none !important;
 }
-.hint .title { color: #ffd166; }
-.hint .cost { color: #a5ecfb; font-weight: 700; }
+.hint .title { color: var(--hint-title); }
+.hint .cost { color: var(--hint-cost); font-weight: var(--fw-semibold); }
 /* Winding up a shot with the basketball: the marker runs up and down; let go in the green. */
 .shot-meter {
   position: absolute; left: 50%; bottom: 92px; width: 240px; height: 18px; transform: translateX(-50%);
-  background: var(--ink); border: 3px solid var(--paper); border-radius: 10px; box-shadow: 0 4px 0 rgba(0,0,0,.35);
+  background: var(--strong); border: var(--bw) solid var(--paper); border-radius: 10px; box-shadow: 0 4px 0 rgba(0,0,0,.35);
   overflow: hidden; pointer-events: none !important;
 }
 .shot-meter .sweet {
@@ -128,18 +128,18 @@
 .shot-meter.aimed .sweet { display: block; }
 .shot-meter .mark {
   position: absolute; top: 0; bottom: 0; left: 0; width: calc(var(--at) * 100%);
-  background: linear-gradient(90deg, rgba(255,209,102,.25), rgba(255,138,91,.75)); border-right: 4px solid var(--paper);
+  background: linear-gradient(90deg, color-mix(in srgb, var(--warn) 25%, transparent), color-mix(in srgb, var(--accent) 75%, transparent)); border-right: 4px solid var(--paper);
 }
 
 .crosshair {
   position: absolute; left: 50%; top: 50%; width: 10px; height: 10px; margin: -5px 0 0 -5px;
-  border-radius: 50%; background: var(--paper); border: 2px solid var(--ink); opacity: .85;
+  border-radius: 50%; background: var(--paper); border: var(--bw-sm) solid var(--ink); opacity: .85;
   transition: transform .1s, background .1s; pointer-events: none !important;
 }
 .crosshair.on { transform: scale(1.6); background: var(--accent); opacity: 1; }
 .crosshair .look-hint {
   display: none; position: absolute; top: 18px; left: 50%; transform: translateX(-50%); white-space: nowrap;
-  background: var(--ink); color: var(--paper); border-radius: 10px; padding: 4px 10px; font-size: 13px; font-weight: 800;
+  background: var(--strong); color: var(--paper); border-radius: 10px; padding: 4px 10px; font-size: var(--fs-sm); font-weight: var(--fw-bold);
 }
 .crosshair.free .look-hint { display: block; }
 .crosshair.on .look-hint { transform: translateX(-50%) scale(.625); transform-origin: top center; }
@@ -177,25 +177,25 @@ body.telescope-active #hud { visibility: hidden; }
 
 #shares { position: absolute; left: 12px; top: 72px; display: flex; flex-direction: column; gap: 8px; }
 /* Coffee: how much of the buzz is left, under the project name (screen shares move down under it). */
-.caffeine { position: absolute; left: 12px; top: 72px; display: flex; align-items: center; gap: 8px; padding: 5px 10px; font-size: 13px; font-weight: 900; pointer-events: none !important; }
-.caffeine .bar { width: 96px; height: 12px; border: 2px solid var(--ink); border-radius: 999px; background: #f1e4d3; overflow: hidden; }
+.caffeine { position: absolute; left: 12px; top: 72px; display: flex; align-items: center; gap: 8px; padding: 5px 10px; font-size: var(--fs-sm); font-weight: var(--fw-heavy); pointer-events: none !important; }
+.caffeine .bar { width: 96px; height: 12px; border: var(--bw-sm) solid var(--ink); border-radius: var(--radius-pill); background: var(--track); overflow: hidden; }
 .caffeine .bar span { display: block; width: 0; height: 100%; background: #9c6644; transition: width 1s linear; }
 .caffeine .left { min-width: 24px; font-variant-numeric: tabular-nums; }
 .caffeine.jittery { animation: jitters .1s steps(2) infinite; }
-.golf { position: absolute; left: 50%; top: 14px; transform: translateX(-50%); width: min(300px, calc(100vw - 32px)); padding: 8px 12px 9px; display: grid; gap: 6px; font-size: 13px; font-weight: 900; text-align: center; pointer-events: none !important; }
-.golf-meter { position: relative; height: 16px; border: 3px solid var(--ink); border-radius: 999px; background: linear-gradient(90deg, #caffbf, #ffd166 70%, #ef476f); overflow: hidden; }
+.golf { position: absolute; left: 50%; top: 14px; transform: translateX(-50%); width: min(300px, calc(100vw - 32px)); padding: 8px 12px 9px; display: grid; gap: 6px; font-size: var(--fs-sm); font-weight: var(--fw-heavy); text-align: center; pointer-events: none !important; }
+.golf-meter { position: relative; height: 16px; border: var(--bw) solid var(--ink); border-radius: var(--radius-pill); background: linear-gradient(90deg, var(--note-green), var(--warn) 70%, var(--bad)); overflow: hidden; }
 /* Covers the part of the meter's colors that isn't filled, from the right. */
-.golf-rest { position: absolute; inset: 0 0 0 auto; width: 100%; background: #f1e4d3; }
-.golf-last { position: absolute; top: -2px; bottom: -2px; width: 3px; margin-left: -1px; background: var(--ink); }
-.golf-info { font-weight: 800; font-variant-numeric: tabular-nums; }
+.golf-rest { position: absolute; inset: 0 0 0 auto; width: 100%; background: var(--track); }
+.golf-last { position: absolute; top: -2px; bottom: -2px; width: 3px; margin-left: -1px; background: var(--strong); }
+.golf-info { font-weight: var(--fw-bold); font-variant-numeric: tabular-nums; }
 #hud:has(.golf:not(.hidden)) #toasts { translate: 0 48px; }
 /* At the rooftop bar's dart board or axe lane (see features/bargames/controller.ts): the meter with its green, and the round so far. */
-.throw { position: absolute; left: 50%; top: 14px; transform: translateX(-50%); width: min(320px, calc(100vw - 32px)); padding: 8px 12px 9px; display: grid; gap: 6px; font-size: 13px; font-weight: 900; text-align: center; pointer-events: none !important; }
-.throw-meter { position: relative; height: 16px; border: 3px solid var(--ink); border-radius: 999px; background: #f1e4d3; overflow: hidden; }
+.throw { position: absolute; left: 50%; top: 14px; transform: translateX(-50%); width: min(320px, calc(100vw - 32px)); padding: 8px 12px 9px; display: grid; gap: 6px; font-size: var(--fs-sm); font-weight: var(--fw-heavy); text-align: center; pointer-events: none !important; }
+.throw-meter { position: relative; height: 16px; border: var(--bw) solid var(--ink); border-radius: var(--radius-pill); background: var(--track); overflow: hidden; }
 .throw-sweet { position: absolute; top: 0; bottom: 0; background: var(--good); }
-.throw-fill { position: absolute; inset: 0 auto 0 0; background: linear-gradient(90deg, rgba(255,209,102,.3), rgba(255,138,91,.75)); border-right: 3px solid var(--ink); }
-.throw-last { position: absolute; top: -2px; bottom: -2px; width: 3px; margin-left: -1px; background: var(--ink); opacity: .45; }
-.throw-info { font-weight: 800; font-variant-numeric: tabular-nums; }
+.throw-fill { position: absolute; inset: 0 auto 0 0; background: linear-gradient(90deg, color-mix(in srgb, var(--warn) 30%, transparent), color-mix(in srgb, var(--accent) 75%, transparent)); border-right: var(--bw) solid var(--ink); }
+.throw-last { position: absolute; top: -2px; bottom: -2px; width: 3px; margin-left: -1px; background: var(--strong); opacity: .45; }
+.throw-info { font-weight: var(--fw-bold); font-variant-numeric: tabular-nums; }
 #hud:has(.throw:not(.hidden)) #toasts { translate: 0 48px; }
 .caffeine.jittery .bar span { background: var(--bad); }
 @keyframes jitters { 50% { transform: translate(1px, -1px) rotate(-1.5deg); } }
@@ -203,9 +203,9 @@ body.telescope-active #hud { visibility: hidden; }
 .caffeine:not(.hidden) ~ #shares { top: 120px; }
 /* The floor details make the name taller: what's under it moves down. */
 #hud:has(#project-meta:not(.hud-off)) :is(.caffeine, #shares) { translate: 0 16px; }
-.share-thumb { width: 220px; border: 3px solid var(--ink); border-radius: 12px; overflow: hidden; background: #000; box-shadow: var(--shadow); cursor: pointer; position: relative; }
+.share-thumb { width: 220px; border: var(--bw) solid var(--ink); border-radius: var(--radius-sm); overflow: hidden; background: #000; box-shadow: var(--shadow); cursor: pointer; position: relative; }
 .share-thumb video { width: 100%; display: block; aspect-ratio: 16/9; object-fit: contain; background: #111; }
-.share-thumb .who { position: absolute; left: 6px; bottom: 6px; background: var(--paper); border: 2px solid var(--ink); border-radius: 8px; padding: 1px 6px; font-size: 12px; font-weight: 800; }
+.share-thumb .who { position: absolute; left: 6px; bottom: 6px; background: var(--paper); border: var(--bw-sm) solid var(--ink); border-radius: 8px; padding: 1px 6px; font-size: var(--fs-xs); font-weight: var(--fw-bold); }
 
 /* Screen share viewer */
 .modal.viewer { width: min(1400px, 100%); background: #111; }
@@ -220,9 +220,9 @@ body.telescope-active #hud { visibility: hidden; }
 }
 
 /* A teammate with their own account, in the people panel. */
-.acct { font-size: 11px; color: var(--good); font-weight: 900; }
+.acct { font-size: var(--fs-2xs); color: var(--good); font-weight: var(--fw-heavy); }
 /* A count on a dock button or a ☰ menu item, and by the floor's name the floors waiting on you. */
-.svc-count { margin-left: 6px; background: var(--accent); color: #fff; border-radius: 999px; padding: 0 7px; font-size: 12px; }
+.svc-count { margin-left: 6px; background: var(--accent); color: var(--text-on-accent); border-radius: var(--radius-pill); padding: 0 7px; font-size: var(--fs-xs); }
 
 /* Sliding down a fire pole: streaks of speed round the edge of the screen. */
 #whoosh { position: fixed; inset: 0; pointer-events: none; z-index: 5; opacity: 0; background: repeating-conic-gradient(from 0deg at 50% 50%, rgba(255, 255, 255, .55) 0deg 1.2deg, transparent 1.2deg 9deg); -webkit-mask: radial-gradient(circle at 50% 50%, transparent 38%, #000 78%); mask: radial-gradient(circle at 50% 50%, transparent 38%, #000 78%); }
@@ -231,7 +231,7 @@ body.telescope-active #hud { visibility: hidden; }
 /* The lights going down on the way to another floor, and where each person is in the people panel. */
 #fade { position: fixed; inset: 0; background: #1b1d2e; opacity: 0; pointer-events: none; transition: opacity .3s ease; z-index: 40; }
 #fade.on { opacity: 1; }
-.people .where { font-size: 11px; font-weight: 800; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.people .where { font-size: var(--fs-2xs); font-weight: var(--fw-bold); color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
 /* The games over the 3D office: features/arcade/ui.ts and features/cabinet/ui.ts. They're here rather
    than beside their modules from when the tests, which load features/cabinet/ui.ts (and with it
@@ -245,10 +245,10 @@ body.telescope-active #hud { visibility: hidden; }
 .arcade { position: relative; animation: fade .25s .3s both; }
 .arcade-screen { width: 100%; height: 100%; overflow: hidden; background: #0b1320; }
 .arcade canvas { display: block; width: 100%; height: 100%; cursor: pointer; touch-action: none; }
-.arcade-bar { position: absolute; top: calc(100% + 10px); left: 50%; translate: -50% 0; display: flex; align-items: center; gap: 12px; white-space: nowrap; padding: 6px 6px 6px 14px; background: var(--paper); border: 3px solid var(--ink); border-radius: 14px; box-shadow: 0 4px 0 var(--ink); font-weight: 800; font-size: 14px; }
-.arcade-bar .tip { color: var(--muted); font-size: 12px; }
+.arcade-bar { position: absolute; top: calc(100% + 10px); left: 50%; translate: -50% 0; display: flex; align-items: center; gap: 12px; white-space: nowrap; padding: 6px 6px 6px 14px; background: var(--paper); border: var(--bw) solid var(--ink); border-radius: 14px; box-shadow: var(--shadow); font-weight: var(--fw-bold); font-size: var(--fs-md); }
+.arcade-bar .tip { color: var(--muted); font-size: var(--fs-xs); }
 /* Its ✕ hangs off the screen's top right corner rather than over the game. */
 .arcade > .close.corner { top: 0; right: auto; left: calc(100% + 10px); }
 /* The arcade cabinet in the lounge (features/cabinet/ui.ts) plays on the keyboard, and says so over the game when a worker of yours needs input. */
 .arcade.cabinet canvas { cursor: default; }
-.cabinet-call { position: absolute; bottom: calc(100% + 10px); left: 50%; translate: -50% 0; display: flex; align-items: center; gap: 10px; white-space: nowrap; padding: 6px 6px 6px 14px; background: var(--warn); border: 3px solid var(--ink); border-radius: 14px; box-shadow: 0 4px 0 var(--ink); font-weight: 900; font-size: 15px; animation: pop .18s ease-out; }
+.cabinet-call { position: absolute; bottom: calc(100% + 10px); left: 50%; translate: -50% 0; display: flex; align-items: center; gap: 10px; white-space: nowrap; padding: 6px 6px 6px 14px; background: var(--warn); color: var(--text-on-warn); border: var(--bw) solid var(--ink); border-radius: 14px; box-shadow: var(--shadow); font-weight: var(--fw-heavy); font-size: var(--fs-lg); animation: pop .18s ease-out; }

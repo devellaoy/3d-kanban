@@ -140,6 +140,7 @@ curl -fsSL https://raw.githubusercontent.com/devellaoy/3d-kanban/main/deploy/pro
   ([controls](docs/controls.md)). Upstream's *Mouse drag /
   wheel* row below is out of date.
 - **Mouse sensitivity**: ⚙️ Settings → 🧍 You, 25–200% of the usual look speed, kept in your browser.
+- **Themes**: ⚙️ Settings → 🧍 You → Theme: **Office** (the default), **Dark** or **Glossy**, kept per browser. They restyle the windows, the HUD, the kanban and the 2D view, not the 3D office ([features](docs/features.md)).
 - **YouTube on the Office TV**: press **E** at the lounge TV (or paste a YouTube / YouTube Music link
   into the jukebox) and the whole floor sees and hears the same video or song at the same point, in
   YouTube's own player on the TV; sit on the couch or press **E** again to watch it big. A screen share

@@ -1,0 +1,233 @@
+/* The "Dark" appearance: dark grey surfaces, hairline borders, soft shadows and calm type, in the
+   manner of ChatGPT's dark mode. The tokens first (every one in tokens.css, see the comments there for
+   what each one is for), then the few component rules tokens can't say. */
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+
+  /* ---- Surfaces ---- */
+  --bg: #212121;
+  --bg-login: #171717;
+  --paper: #2f2f2f;
+  --paper-2: #171717;
+  --field: #303030;
+  --field-hover: #3a3a3a;
+  --field-off: #262626;
+  --overlay: rgba(0, 0, 0, .6);
+  --scrim: rgba(255, 255, 255, .06);
+
+  /* ---- Text ---- */
+  --text: #ececec;
+  --muted: #b4b4b4;
+  --text-on-accent: #0d0d0d;
+  --accent-ink: #0d0d0d;
+  --strong: #ececec;
+  --text-on-strong: #0d0d0d;
+  --text-on-color: #fff;
+  --text-on-warn: #0d0d0d;   /* 11.9:1 on --warn, 9.1:1 on --warn-hot */
+  --text-on-info: #0d0d0d;   /* 7.6:1 on --info */
+  --link: #7ab7ff;
+  --link-strong: #a8d1ff;
+
+  /* ---- Lines ---- */
+  --ink: rgba(255, 255, 255, .1);
+  --bw: 1px;
+  --bw-sm: 1px;
+  --focus-ring: 2px solid #8ab4f8;
+  --rule-soft: rgba(255, 255, 255, .08);
+  --rule-code: rgba(255, 255, 255, .12);
+
+  /* ---- Shadows ---- */
+  --shadow: 0 1px 2px rgba(0, 0, 0, .3), 0 4px 12px rgba(0, 0, 0, .2);
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, .3);
+  --shadow-xs: 0 1px 1px rgba(0, 0, 0, .25);
+  --shadow-lg: 0 2px 6px rgba(0, 0, 0, .3), 0 16px 48px rgba(0, 0, 0, .45);
+  --shadow-pressed: none;
+  --press: 0px;
+  --shadow-side: -8px 0 24px rgba(0, 0, 0, .3);
+  --shadow-key: 0 1px 0 rgba(0, 0, 0, .5);
+
+  /* ---- Shape ---- */
+  --radius: 16px;
+  --radius-sm: 12px;
+  --radius-lg: 16px;
+  --radius-pill: 999px;
+  --hit-min: 36px;
+
+  /* ---- Accent and status ---- */
+  /* The primary button is white with dark text, as ChatGPT's; green is the "on" and "done" colour. */
+  --accent: #ececec;
+  --accent-hover: #d4d4d4;
+  --good: #19c37d;
+  --warn: #f5c451;
+  --bad: #f87171;
+  --info: #60a5fa;
+  --good-soft: #1d3b2f;
+  --warn-soft: #3d3420;
+  --bad-soft: #472a30;
+  --info-soft: #1f3346;
+  --good-ink: #4ade80;
+  --warn-ink: #f5c451;
+  --warn-hot: #f59e0b;
+  --accent-soft: rgba(255, 255, 255, .08);
+  --accent-text: #19c37d;
+  --bad-hover: #573239;
+  --alert-hover: #4f2c33;
+  --good-hover: #234536;
+  --bad-wash: #2e2224;
+  --warn-wash: #2e2a1f;
+  --good-wash: #1f2b25;
+  --info-wash: #1f2833;
+  --run-bg: #1f2b25;
+  --ok-bg: #1f2b25;
+  --drop-ok: #1e2f27;
+  --drop-ok-over: #24402f;
+  --bad-ink: #ff8fa3;
+  --danger-ink: #ff8a80;
+  --diff-add: #1d3b2f;
+  --diff-del: #44262c;
+  --diff-add-ink: #4ade80;
+  --diff-del-ink: #ff8a80;
+  --diff-add-gutter: #183026;
+  --diff-del-gutter: #3a2025;
+  --pd-bg: #1a1a1a;
+  --pd-add: #1b3326;
+  --pd-add-gutter: #17301f;
+  --pd-del: #3a2025;
+  --pd-del-gutter: #331b20;
+  --pd-hunk: #1f2a3a;
+  --pd-hunk-gutter: #1b2533;
+  --pd-hunk-ink: #8ab4f8;
+  --pd-flash: #4a3f1a;
+  --gutter-bg: #262626;
+  --gutter-ink: #8e8e8e;
+  --gutter-ink-2: #8e8e8e;
+
+  /* ---- Kanban notes and chips ---- */
+  /* Muted dark tints of the paper notes, straight. */
+  --note-yellow: #39362a;
+  --note-blue: #273342;
+  --note-pink: #3f2c33;
+  --note-green: #283a2c;
+  --note-grey: #2c3230;
+  --note-slate: #333333;
+  --note-peach: #3d3328;
+  --note-card-blue: #2b333d;
+  --bad-tint: #3b2a2f;
+  --note-card-green: #2b352d;
+  --note-card-grey: #2d3130;
+  --note-card-slate: #2e2e2e;
+  --note-tilt: 0;
+  --tint-blue: #243049;
+  --tint-purple: #31264a;
+  --tint-cyan: #1f3a3d;
+  --tint-magenta: #3d2642;
+  --tint-orange: #45311e;
+  --tint-violet: #33284d;
+  --tint-grey: #383838;
+  --tint-wash: #2a2a2a;
+  --purple: #c084fc;
+  --teal: #4fc3dc;
+  --amber: #f5b942;
+  --scope-you: #1f3346;
+  --scope-floor: #1d3b2f;
+  --scope-office: #45311e;
+  --hint-cost: #0b6e8a;     /* the HUD hint's bubble is light here (--strong), so the cost is dark */
+  --hint-title: #8a5a00;   /* 5.0:1 on the light --strong bubble */
+  --track: #3a3a3a;
+
+  /* ---- Code and terminals ---- */
+  --code-bg: #0d0d0d;
+  --code-text: #ececec;
+  --code-text-2: #e6e6f0;
+  --code-inline: #383838;
+  --callout-note: #1f2833;
+  --callout-tip: #1f2b25;
+  --callout-warn: #2e2a1f;
+  --callout-caution: #2e2224;
+  --reader-bg: #262626;
+  --status-bg: #2a2a2a;
+  --field-quiet: #262626;
+  --rule-md: rgba(255, 255, 255, .14);
+  --rule-md-2: rgba(255, 255, 255, .08);
+  --rule-quote: rgba(255, 255, 255, .22);
+
+  /* ---- Type ---- */
+  --font: ui-sans-serif, -apple-system, system-ui, 'Segoe UI', Inter, Roboto, 'Helvetica Neue', Arial, sans-serif;
+  --font-mono: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+  --fw-medium: 400;
+  --fw-semibold: 500;
+  --fw-bold: 600;
+  --fw-heavy: 600;
+  --fs-2xs: 12px;
+  --fs-xs: 12px;
+  --fs-sm: 13px;
+  --fs-md: 14px;
+  --fs-lg: 15px;
+  --fs-xl: 16px;
+  --fs-2xl: 18px;
+  --fs-3xl: 20px;
+  --fs-3xs: 12px;
+  --fs-2xs-plus: 12px;
+  --fs-avatar: 11px;
+
+  /* ---- Glass ---- */
+  --glass-blur: none;
+}
+
+/* ---- Components: only what the tokens can't say ---- */
+
+/* Scrollbars and the selection. */
+:root[data-theme="dark"] { scrollbar-color: #4a4a4a transparent; }
+:root[data-theme="dark"] ::selection { background: rgba(138, 180, 248, .35); }
+:root[data-theme="dark"] body { line-height: 1.45; }
+
+/* Pill buttons; the primary one lightens on hover rather than turning the field colour. */
+:root[data-theme="dark"] .btn { border-radius: var(--radius-pill); }
+:root[data-theme="dark"] .btn.primary:hover { background: var(--accent-hover); }
+:root[data-theme="dark"] .btn.on:hover { background: color-mix(in srgb, var(--good) 88%, white); }
+
+/* The ☰ menu draws its own hard ink shadow. */
+:root[data-theme="dark"] .hud-menu { border-radius: var(--radius-lg); box-shadow: var(--shadow-lg); }
+
+/* The menu's switches: a light knob, or it vanishes into the dark track. */
+:root[data-theme="dark"] .switch { background: #424242; }
+:root[data-theme="dark"] .switch::after { background: var(--muted); border-color: transparent; }
+:root[data-theme="dark"] .menu-toggle[aria-checked=true] .switch::after { background: #fff; }
+
+/* A dark page under the kanban and the 2D view, the panels a step lighter, like ChatGPT's chat area. */
+:root[data-theme="dark"] body.kanban,
+:root[data-theme="dark"] body.lite { background: var(--bg); }
+:root[data-theme="dark"] .kb-col { background: #1b1b1b; }
+:root[data-theme="dark"] .kb-col-head { border-radius: calc(var(--radius) - var(--bw)) calc(var(--radius) - var(--bw)) 0 0; }
+
+/* The bars' controls: at least 36px tall. */
+:root[data-theme="dark"] .kb-bar .btn.small,
+:root[data-theme="dark"] .kb-filters select { height: 36px; }
+
+/* Room for the small controls' 36px touch targets (--hit-min, styles/base.css): each one gets the free
+   space around it that its invisible hit area grows into, so the target is 36px and lands on nothing else. */
+:root[data-theme="dark"] .kb-card-top { margin-bottom: 8px; }
+:root[data-theme="dark"] .kb-attachments { gap: 8px; }
+:root[data-theme="dark"] .kb-attachment { min-height: 36px; gap: 8px; padding: 0 6px 0 12px; }
+:root[data-theme="dark"] .kb-attachment.busy { padding-right: 12px; }
+:root[data-theme="dark"] .pd-files li { min-height: 36px; gap: 10px; padding-left: calc(8px + var(--depth, 0) * 14px); }
+:root[data-theme="dark"] .pd-fh { padding-block: 8px; }
+:root[data-theme="dark"] .term-tab-label { padding-block: 8px; }
+:root[data-theme="dark"] .term-tab-label:not(:last-child) { padding-right: 0; }
+:root[data-theme="dark"] .term-tab-close { margin: 0 6px 0 8px; }
+:root[data-theme="dark"] .menu-row { gap: 4px; }
+:root[data-theme="dark"] .menu-item { min-height: 36px; }
+:root[data-theme="dark"] .side h3 { margin-bottom: 8px; }
+
+/* Sticky notes: a subtle pin, no hard edge. */
+:root[data-theme="dark"] .kb-card { border-radius: var(--radius-sm); }
+:root[data-theme="dark"] .kb-card::before { width: 8px; height: 8px; margin-left: -4px; top: -4px; opacity: .7; border: 0; }
+
+/* The 2D view's floor picker draws its chevron in the light theme's text colour. */
+:root[data-theme="dark"] .lite-floor select { background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 8'%3E%3Cpath d='M1 1l5 5 5-5' fill='none' stroke='%23ececec' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E"); }
+
+/* The sign-in card: a soft shadow instead of the hard ink one, and no press jump. */
+:root[data-theme="dark"] .card { border-radius: var(--radius-lg); box-shadow: var(--shadow-lg); }
+:root[data-theme="dark"] .card button { border-radius: var(--radius-pill); }
+:root[data-theme="dark"] .card button:active { transform: none; }

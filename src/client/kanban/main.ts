@@ -25,6 +25,9 @@ import { boardStats, deepLink, EMPTY_FILTER, filterActive, parseDeepLink, STATE_
 import { kstore } from './store';
 import { toolName } from './labels';
 import { run, select, textInput } from './ui';
+import { initAppearance } from '../themes';
+
+initAppearance();
 
 const link = parseDeepLink(location.search);
 const FILTER_KEY = 'kanban.filter';

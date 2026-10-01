@@ -17,6 +17,7 @@ import type { ClientMsg, ServerMsg } from '../../../shared/protocol';
 import { WB_MAX_ELEMENT_BYTES, byIndex, newer, type WbElement, type WbPointer } from '../../../shared/whiteboard';
 import { store } from '../../state';
 import { toast } from '../../ui/dom';
+import { appearanceOf, parseAppearance } from '../../themes';
 
 /** How often your changes, and your mouse, go out while you draw. */
 const SEND_MS = 50;
@@ -261,7 +262,8 @@ export function mountWhiteboard(host: HTMLElement, send: (msg: ClientMsg) => voi
 
   const initial = asExcalidraw([...store.whiteboard.values()].sort(byIndex));
   const root = createRoot(host);
-  root.render(
+  // Drawn again when the appearance changes, so the canvas follows it (the theme is the page's, not the menu's).
+  const draw = () => root.render(
     e(
       Excalidraw,
       {
@@ -281,7 +283,7 @@ export function mountWhiteboard(host: HTMLElement, send: (msg: ClientMsg) => voi
         },
         isCollaborating: true,
         name,
-        theme: 'light',
+        theme: appearanceOf(parseAppearance(document.documentElement.dataset.theme)).colorScheme,
         langCode: 'en',
         autoFocus: true,
         aiEnabled: false,
@@ -296,8 +298,6 @@ export function mountWhiteboard(host: HTMLElement, send: (msg: ClientMsg) => voi
         e(MainMenu.DefaultItems.SearchMenu),
         e(MainMenu.DefaultItems.Help),
         e(MainMenu.DefaultItems.ClearCanvas),
-        e(MainMenu.Separator),
-        e(MainMenu.DefaultItems.ToggleTheme),
       ),
       e(
         WelcomeScreen,
@@ -309,6 +309,8 @@ export function mountWhiteboard(host: HTMLElement, send: (msg: ClientMsg) => voi
       ),
     ),
   );
+  draw();
+  window.addEventListener('appearancechange', draw);
 
   return {
     idle() {
@@ -361,6 +363,7 @@ export function mountWhiteboard(host: HTMLElement, send: (msg: ClientMsg) => voi
     unmount() {
       flush();
       cancelAnimationFrame(collabFrame);
+      window.removeEventListener('appearancechange', draw);
       api = null;
       root.unmount();
     },

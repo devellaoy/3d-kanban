@@ -1,6 +1,6 @@
 /* Services board */
-.svc-port { font: 800 14px ui-monospace, Menlo, monospace; }
-.svc-empty { text-align: center; padding: 18px 8px; border: 3px dashed var(--muted); border-radius: 14px; }
-.svc-empty p { margin: 0; font-weight: 800; }
+.svc-port { font: var(--fw-bold) var(--fs-md) var(--font-mono); }
+.svc-empty { text-align: center; padding: 18px 8px; border: var(--bw) dashed var(--muted); border-radius: 14px; }
+.svc-empty p { margin: 0; font-weight: var(--fw-bold); }
 .services .team-status { margin-top: 12px; }
 .modal header .os-tabs { margin-right: 4px; }

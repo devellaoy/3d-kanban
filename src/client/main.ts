@@ -63,6 +63,10 @@ import { installWorkerActions } from './features/workers/actions';
 import { installWorkerViews } from './features/workers/views';
 import { installKanban3d } from './kanban/install3d';
 import { installYoutubeTv } from './youtube/install';
+import { initAppearance } from './themes';
+
+// The chosen appearance (⚙️ Settings → Theme), on the page and followed across tabs.
+initAppearance();
 
 // The loading screen stays up until there's an office to see (see boot and whoami at the end).
 const loading = loadingScreen(onModelsProgress);

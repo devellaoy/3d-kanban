@@ -1,9 +1,9 @@
 /* Accounts: who can sign in, and as what. */
-.accounts .dot { background: #dee2e6; }
+.accounts .dot { background: var(--note-slate); }
 .accounts .dot.on { background: var(--good); }
-.accounts .you { color: var(--muted); font-weight: 600; }
-.accounts .invite-row select { font: inherit; font-weight: 800; border: 3px solid var(--ink); border-radius: 12px; padding: 0 8px; background: #fff; color: var(--ink); }
+.accounts .you { color: var(--muted); font-weight: var(--fw-medium); }
+.accounts .invite-row select { font: inherit; font-weight: var(--fw-bold); border: var(--bw) solid var(--ink); border-radius: var(--radius-sm); padding: 0 8px; background: var(--field); color: var(--text); }
 .accounts .cmd { margin-top: 10px; }
-.accounts .team-head .btn { padding: 3px 10px; font-size: 13px; }
-.role { font-size: 11px; font-weight: 900; padding: 1px 7px; border-radius: 999px; border: 2px solid var(--ink); background: #e0f2fe; }
-.role.admin { background: var(--warn); }
+.accounts .team-head .btn { padding: 3px 10px; font-size: var(--fs-sm); }
+.role { font-size: var(--fs-2xs); font-weight: var(--fw-heavy); padding: 1px 7px; border-radius: var(--radius-pill); border: var(--bw-sm) solid var(--ink); background: var(--info-soft); }
+.role.admin { background: var(--warn); color: var(--text-on-warn); }

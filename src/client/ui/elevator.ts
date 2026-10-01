@@ -154,7 +154,7 @@ export function openElevator(opts: ElevatorOptions): void {
     const btn = h(
       'button.floor-btn',
       { type: 'button', class: here ? 'here' : '', disabled: here, title: here ? "You're up on the roof" : `Ride up to the ${ROOF_NAME.toLowerCase()}` },
-      h('span.floor-no', { style: 'background:#2b2d42' }, '🍸'),
+      h('span.floor-no', { style: 'background:var(--strong)' }, '🍸'),
       h('span.floor-text', {}, h('span.floor-name', {}, ROOF_NAME, here ? h('span.here-tag', {}, 'you are here') : null), h('span.floor-sub', {}, 'The roof: a DJ playing drum and bass, a bar, and the city all around')),
       h('span.floor-stats', {}, people ? h('span', { title: 'People up there' }, `🧑 ${people}`) : ''),
     );
@@ -174,7 +174,7 @@ export function openElevator(opts: ElevatorOptions): void {
     const btn = h(
       'button.floor-btn',
       { type: 'button', class: here ? 'here' : '', disabled: here, title: here ? "You're down at the street" : 'Ride down to the garage' },
-      h('span.floor-no', { style: 'background:#2b2d42' }, '🏎️'),
+      h('span.floor-no', { style: 'background:var(--strong)' }, '🏎️'),
       h('span.floor-text', {}, h('span.floor-name', {}, 'Garage', here ? h('span.here-tag', {}, 'you are here') : null), h('span.floor-sub', {}, under)),
       h('span.floor-stats', {}),
     );
