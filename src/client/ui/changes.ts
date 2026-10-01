@@ -121,7 +121,11 @@ export function openChanges(net: Net, workerId: string, onTerminal?: () => void,
   if (!info) return;
   // 3d-kanban: a kanban task's worker gets its task's Changes window instead: every repository, per commit too.
   const task = kanbanOf(info);
-  if (task) return void (current?.modal.close(), import('../kanban/changesview').then((m) => m.openTaskChanges(net, { taskId: task.taskId, workerId, floor: repo, onTerminal })));
+  if (task) return void import('../kanban/changesview').then((m) => {
+    const old = current;
+    m.openTaskChanges(net, { taskId: task.taskId, workerId, floor: repo, onTerminal });
+    old?.modal.close(); // after: never a moment without a window, which would take the mouse back
+  });
   const previous = current;
 
   let state: ChangesState | null = null;

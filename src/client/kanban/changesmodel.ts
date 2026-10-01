@@ -95,41 +95,31 @@ export function stepRow(rows: readonly { path: string }[], selected: string | nu
 }
 
 /**
- * Whether a mode reads the office's HTTP answers even while the worker is followed live: Per commit,
- * and Uncommitted, which is the worktree against HEAD (the live window measures from the branch's
- * base, so a committed file edited again would show both, and one put back as the base had it none).
+ * What a mode reads over HTTP for its repository. Live, All changes is upstream's list; what's
+ * uncommitted comes from a count (git status, against HEAD: the live list is measured from the base,
+ * so a committed file put back as the base had it isn't in it), and the worktree's diff only when
+ * ✏️ Uncommitted is open. Per commit always reads the commits. Not live, All changes and Uncommitted
+ * read the whole change, which carries the worktree's work and so its count.
  */
-export function readsHttp(mode: ChangesMode, live: boolean): boolean {
-  return mode !== 'all' || !live;
+export function httpNeeds(mode: ChangesMode, live: boolean): { whole: boolean; commits: boolean; count: boolean } {
+  return { whole: mode === 'uncommitted' || (mode === 'all' && !live), commits: mode === 'commits', count: live };
+}
+
+/** Whether a new live state moved the branch (a commit, an amend, a rebase: its HEAD, else its count and subject, changed). */
+export function branchMoved(prev: Pick<ChangesState, 'head' | 'ahead' | 'subject'> | null, next: Pick<ChangesState, 'head' | 'ahead' | 'subject'>): boolean {
+  return !!prev && (prev.head !== next.head || prev.ahead !== next.ahead || prev.subject !== next.subject);
 }
 
 /**
- * What a new live state makes stale of what was read over HTTP for its repository: the commits when
- * the branch moved (a commit, an amend, a rebase: its HEAD, else its count and subject, changed), and
- * the whole change and the worktree's work whenever the checkout changed at all.
+ * How many files are uncommitted while the worker is followed live: the office's count against HEAD
+ * when it reads the same checkout (the task's worktree, which the live one is) and is up to date with
+ * the live state; else the live list's own flags (a worker in the shared project folder, which the
+ * office doesn't read as the task's worktree; or right after a commit or discard, until it's counted
+ * again). Undefined while neither is known.
  */
-export function liveStale(prev: Pick<ChangesState, 'head' | 'ahead' | 'subject'> | null, next: Pick<ChangesState, 'head' | 'ahead' | 'subject'>): { commits: boolean; whole: boolean } {
-  if (!prev) return { commits: false, whole: false };
-  const moved = prev.head !== next.head || prev.ahead !== next.ahead || prev.subject !== next.subject;
-  return { commits: moved, whole: true };
-}
-
-/**
- * What a mode needs read over HTTP for its repository. Per commit needs the commits; everything else,
- * and Per commit too while the worker is followed live, needs the whole change, whose worktree part
- * (against HEAD) says what is uncommitted: the live list can't (see readsHttp).
- */
-export function httpNeeds(mode: ChangesMode, live: boolean): { whole: boolean; commits: boolean } {
-  return { whole: mode !== 'commits' || live, commits: mode === 'commits' };
-}
-
-/**
- * How many files are uncommitted: the worktree against HEAD when it has been read (null: no
- * worktree), else, for a moment, the live list's own flags; undefined while neither is known.
- */
-export function uncommittedOf(againstHead: number | null | undefined, live: Pick<ChangesState, 'files' | 'error'> | null | undefined): number | null | undefined {
-  if (againstHead !== undefined) return againstHead;
-  return live && !live.error ? live.files.filter((f) => f.uncommitted).length : undefined;
+export function uncommittedNow(o: { live: Pick<ChangesState, 'files' | 'error' | 'dir'> | null; sameCheckout: boolean; againstHead: number | null | undefined; fresh: boolean }): number | null | undefined {
+  if (o.sameCheckout && o.fresh && o.againstHead !== undefined) return o.againstHead;
+  return o.live && !o.live.error ? o.live.files.filter((f) => f.uncommitted).length : undefined;
 }
 
 /**
@@ -152,6 +142,11 @@ export class LatestReads {
     if (this.latest.get(key) !== token) return false;
     this.latest.delete(key);
     return true;
+  }
+
+  /** Whether a read of `key` is on its way. */
+  pending(key: string): boolean {
+    return this.latest.has(key);
   }
 
   forget(key: string) {

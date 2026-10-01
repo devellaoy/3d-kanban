@@ -12,7 +12,7 @@ import { createChangesPlugin } from '../src/server/kanban/integrations/changes/i
 import { Changes } from '../src/server/changes.js';
 import type { ChangesState } from '../src/shared/protocol.js';
 import { HASH_RE, parseNameStatus, parseNumstat } from '../src/server/kanban/integrations/changes/git.js';
-import type { KanbanChangesList, KanbanCommitChanges, KanbanCommitList, KanbanRepoChanges } from '../src/shared/kanban/types.js';
+import type { KanbanChangesList, KanbanCommitChanges, KanbanCommitList, KanbanRepoChanges, KanbanUncommitted } from '../src/shared/kanban/types.js';
 import { def, makeCtx, WHO } from './kanban-integrations-ctx.js';
 
 const git = (cwd: string, ...args: string[]) => execFileSync('git', args, { cwd, encoding: 'utf8', env: { ...process.env, GIT_AUTHOR_NAME: 'T', GIT_AUTHOR_EMAIL: 't@x', GIT_COMMITTER_NAME: 'T', GIT_COMMITTER_EMAIL: 't@x' } }).trim();
@@ -154,6 +154,18 @@ test('a worktree’s uncommitted work is measured against HEAD, not the base', a
   wtd = (await get<KanbanRepoChanges>(plugin, url)).body.workingTree!;
   assert.deepEqual(wtd.files.map((f) => [f.path, f.status, f.additions, f.deletions]), [['a.txt', 'modified', 0, 1]]);
   assert.match(wtd.diff, /^-two$/m);
+  // The cheap count the live view goes by says the same, from git status alone.
+  writeFileSync(path.join(wt, 'new.txt'), 'fresh\n');
+  const count = await get<KanbanUncommitted>(plugin, `/api/kanban/tasks/${task.id}/uncommitted?repo=proj`);
+  assert.deepEqual(count.body, { taskId: task.id, repo: 'proj', uncommitted: 2 });
+});
+
+test('the uncommitted count is null without a worktree', async () => {
+  const { ctx, plugin } = setup();
+  const task = ctx.repo.createTask({ project: 'proj', title: 'x', tool: 'claude', usePlan: false, planApproval: 'auto', useReview: false, createdBy: 'T', branch: 'feature' });
+  const count = await get<KanbanUncommitted>(plugin, `/api/kanban/tasks/${task.id}/uncommitted?repo=proj`);
+  assert.equal(count.status, 200);
+  assert.equal(count.body.uncommitted, null);
 });
 
 test('a commit hash is validated and must be one of the task’s own commits', async () => {

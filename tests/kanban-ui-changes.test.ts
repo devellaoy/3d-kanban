@@ -4,7 +4,7 @@
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { LatestReads, changesModes, floorOfRepo, httpNeeds, liveFloor, liveRow, liveStale, prOfRepo, readsHttp, uncommittedOf, repoOfFloor, sortRepos, stepRow, taskRow } from '../src/client/kanban/changesmodel.js';
+import { LatestReads, branchMoved, changesModes, floorOfRepo, httpNeeds, liveFloor, liveRow, prOfRepo, uncommittedNow, repoOfFloor, sortRepos, stepRow, taskRow } from '../src/client/kanban/changesmodel.js';
 import { parseRepoFloorId, repoFloorId } from '../src/shared/kanban/repofloor.js';
 import { repoFloorId as serverRepoFloorId } from '../src/server/kanban/projects.js';
 import type { ChangedFile, WorkerRepo } from '../src/shared/protocol.js';
@@ -89,47 +89,51 @@ test('j/k move through the files and stop at the ends', () => {
   assert.equal(stepRow([], 'a', 1), null);
 });
 
-test('Per commit and Uncommitted read the office’s answers even while the worker is followed live', () => {
-  // Uncommitted is the worktree against HEAD; the live data is measured from the branch's base.
-  assert.equal(readsHttp('all', true), false);
-  assert.equal(readsHttp('uncommitted', true), true);
-  assert.equal(readsHttp('commits', true), true);
-  assert.equal(readsHttp('all', false), true);
+test('what each mode reads over HTTP, live or not', () => {
+  // Live All changes is upstream's list plus a cheap count against HEAD; the worktree's diff only with Uncommitted open.
+  assert.deepEqual(httpNeeds('all', true), { whole: false, commits: false, count: true });
+  assert.deepEqual(httpNeeds('uncommitted', true), { whole: true, commits: false, count: true });
+  assert.deepEqual(httpNeeds('commits', true), { whole: false, commits: true, count: true });
+  // Not live, the whole change carries the worktree's work and so its count; Per commit, the commits' own.
+  assert.deepEqual(httpNeeds('all', false), { whole: true, commits: false, count: false });
+  assert.deepEqual(httpNeeds('commits', false), { whole: false, commits: true, count: false });
 });
 
 test('a live state that moved the branch makes the commits stale, an amend included', () => {
   const s = (head: string, ahead = 2, subject = 'fix') => ({ head, ahead, subject });
-  assert.deepEqual(liveStale(null, s('a')), { commits: false, whole: false });
-  // An edit in the worktree: the worktree's work is read again, the commits stay.
-  assert.deepEqual(liveStale(s('a'), s('a')), { commits: false, whole: true });
+  assert.equal(branchMoved(null, s('a')), false);
+  assert.equal(branchMoved(s('a'), s('a')), false);
   // `git commit --amend --no-edit`: same count, same subject, a new HEAD.
-  assert.deepEqual(liveStale(s('a'), s('b')), { commits: true, whole: true });
-  assert.deepEqual(liveStale(s('a'), s('a', 3)), { commits: true, whole: true });
-  assert.deepEqual(liveStale(s('a'), s('a', 2, 'other')), { commits: true, whole: true });
+  assert.equal(branchMoved(s('a'), s('b')), true);
+  assert.equal(branchMoved(s('a'), s('a', 3)), true);
+  assert.equal(branchMoved(s('a'), s('a', 2, 'other')), true);
 });
 
-test('opened on All changes while live, the view still reads the worktree against HEAD for Uncommitted', () => {
-  // A committed file put back as the base had it: the live list (from the base) has nothing...
-  const liveState = { files: [] as ChangedFile[] };
-  // ...but the worktree differs from HEAD: the button, the counts and commit/discard go by that.
-  assert.deepEqual(httpNeeds('all', true), { whole: true, commits: false });
-  assert.deepEqual(httpNeeds('commits', true), { whole: true, commits: true });
-  assert.deepEqual(httpNeeds('commits', false), { whole: false, commits: true });
-  assert.equal(uncommittedOf(1, liveState), 1);
-  assert.deepEqual(changesModes(uncommittedOf(1, liveState)!, 'all'), ['all', 'commits', 'uncommitted']);
-  // Until it's read, the live flags stand in; no worktree is null.
-  assert.equal(uncommittedOf(undefined, { files: [live({ uncommitted: true }), live({ path: 'b' })] }), 1);
-  assert.equal(uncommittedOf(undefined, { files: [], error: 'x' }), undefined);
-  assert.equal(uncommittedOf(null, liveState), null);
+test('live, the uncommitted count is the office’s against HEAD only for the same, fresh checkout', () => {
+  const liveState = (files: ChangedFile[], dir = '.agent-office/worktrees/t1') => ({ files, dir });
+  // Opened on All changes: a committed file put back as the base had it is in no live list, but differs from HEAD.
+  const empty = liveState([]);
+  assert.equal(uncommittedNow({ live: empty, sameCheckout: true, againstHead: 1, fresh: true }), 1);
+  assert.deepEqual(changesModes(uncommittedNow({ live: empty, sameCheckout: true, againstHead: 1, fresh: true })!, 'all'), ['all', 'commits', 'uncommitted']);
+  // A worker in the shared project folder: the office has no worktree (null), so the live flags count.
+  const shared = liveState([live({ uncommitted: true }), live({ path: 'b' })], '');
+  assert.equal(uncommittedNow({ live: shared, sameCheckout: false, againstHead: null, fresh: true }), 1);
+  // Right after a commit or discard, until it's counted again: the live flags, not the old count.
+  assert.equal(uncommittedNow({ live: empty, sameCheckout: true, againstHead: 3, fresh: false }), 0);
+  // Not read yet: the live flags stand in; nothing known: undefined.
+  assert.equal(uncommittedNow({ live: shared, sameCheckout: true, againstHead: undefined, fresh: true }), 1);
+  assert.equal(uncommittedNow({ live: null, sameCheckout: false, againstHead: undefined, fresh: true }), undefined);
 });
 
 test('an older HTTP answer never overwrites a newer one, nor one forgotten since', () => {
   const r = new LatestReads();
   const before = r.start('whole:api');
   const after = r.start('whole:api');
+  assert.equal(r.pending('whole:api'), true);
   // Answers in the reverse order: the newer one is taken, the old one arriving last is dropped.
   assert.equal(r.take('whole:api', after), true);
   assert.equal(r.take('whole:api', before), false);
+  assert.equal(r.pending('whole:api'), false);
   // The source changed while a read was on its way.
   const pending = r.start('commits:api');
   r.forget('commits:api');

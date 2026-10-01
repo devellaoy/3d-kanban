@@ -629,6 +629,13 @@ export interface KanbanCommitList extends KanbanRepoChangesInfo {
   uncommitted: number | null;
 }
 
+/** GET /api/kanban/tasks/<id>/uncommitted?repo=<id>: how many files the worktree has uncommitted against HEAD (null without one). */
+export interface KanbanUncommitted {
+  taskId: number;
+  repo: string;
+  uncommitted: number | null;
+}
+
 /** GET /api/kanban/tasks/<id>/commit?repo=<id>&hash=<sha>. */
 export interface KanbanCommitChanges extends KanbanDiff {
   taskId: number;

@@ -12,14 +12,14 @@
 
 import './changesview.css';
 import { changedImageType, type ChangesState, type ServerMsg } from '../../shared/protocol';
-import type { KanbanChangesList, KanbanCommitChanges, KanbanCommitList, KanbanDiff, KanbanRepoChanges, KanbanRepoChangesInfo } from '../../shared/kanban/types.js';
+import type { KanbanChangesList, KanbanCommitChanges, KanbanCommitList, KanbanDiff, KanbanRepoChanges, KanbanRepoChangesInfo, KanbanUncommitted } from '../../shared/kanban/types.js';
 import type { Net } from '../net';
 import { store } from '../state';
 import { h, openModal, type Modal } from '../ui/dom';
 import { confirmDialog, openPrompt } from '../ui/prompt';
 import { onChangesMessage, pathLabel, plusMinus, renderDiff, renderPreview } from '../ui/changes';
 import { getJson } from './api';
-import { LatestReads, changesModes, httpNeeds, liveFloor, liveRow, liveStale, prOfRepo, readsHttp, repoOfFloor, sortRepos, stepRow, taskRow, uncommittedOf, type ChangeRow, type ChangesMode } from './changesmodel';
+import { LatestReads, branchMoved, changesModes, httpNeeds, liveFloor, liveRow, prOfRepo, repoOfFloor, sortRepos, stepRow, taskRow, uncommittedNow, type ChangeRow, type ChangesMode } from './changesmodel';
 import { holdChangesWatch } from './changeswatch';
 import { fmtAgo, fmtTime } from './labels';
 import { splitDiff } from './model';
@@ -33,7 +33,7 @@ type Listing =
   | { kind: 'loading' }
   | { kind: 'error'; text: string }
   | { kind: 'note'; text: string }
-  | { kind: 'rows'; rows: ChangeRow[]; more: number; live: boolean; parts?: Map<string, string>; truncated?: boolean; empty: string[] };
+  | { kind: 'rows'; rows: ChangeRow[]; more: number; live: boolean; parts?: Map<string, string>; last?: string; truncated?: boolean; empty: string[] };
 
 export interface ChangesViewOptions {
   net: Net;
@@ -48,11 +48,14 @@ export interface ChangesViewOptions {
   prs?: () => readonly { repoId: string; number: number }[] | undefined;
 }
 
-/** A diff's files' parts, cut once per answer. */
-const partsCache = new WeakMap<KanbanDiff, Map<string, string>>();
-function partsOf(d: KanbanDiff): Map<string, string> {
+/** A diff's files' parts, cut once per answer, and the last file's path (where a cut diff stops). */
+const partsCache = new WeakMap<KanbanDiff, { parts: Map<string, string>; last?: string }>();
+function partsOf(d: KanbanDiff): { parts: Map<string, string>; last?: string } {
   let m = partsCache.get(d);
-  if (!m) partsCache.set(d, (m = new Map(splitDiff(d.diff).map((p) => [p.path, p.text]))));
+  if (!m) {
+    const split = splitDiff(d.diff);
+    partsCache.set(d, (m = { parts: new Map(split.map((p) => [p.path, p.text])), last: split[split.length - 1]?.path }));
+  }
   return m;
 }
 
@@ -81,10 +84,16 @@ class ChangesView {
   private live: { workerId: string; floor: string | undefined; state: ChangesState | null; release: () => void } | null = null;
   private whole = new Map<string, KanbanRepoChanges | string>();
   private commits = new Map<string, KanbanCommitList | string>();
+  /** Live: how many files the worktree has uncommitted against HEAD (git status only). */
+  private counts = new Map<string, KanbanUncommitted | string>();
+  /** A burst of live updates is one round of HTTP reads, a moment later. */
+  private debounce: ReturnType<typeof setTimeout> | undefined;
+  /** The commit list last drawn, and the commit picked then: unchanged, it isn't drawn again. */
+  private commitsDrawn: { list: unknown; picked?: string } | null = null;
   private commit: { key: string; data: KanbanCommitChanges | string } | null = null;
   /** What was read over HTTP that the live checkout has moved past: kept on screen until it's read again. */
   private stale = new Set<string>();
-  /** The latest HTTP read of each `whole:<repo>` / `commits:<repo>`: an answer to an older one (or one forgotten since) is dropped. */
+  /** The latest HTTP read of each `whole:<repo>` / `commits:<repo>` / `count:<repo>`: an answer to an older one (or one forgotten since) is dropped. */
   private reads = new LatestReads();
   private picked = new Map<string, string>();
   private selected: string | null = null;
@@ -132,6 +141,7 @@ class ChangesView {
     if (this.destroyed) return;
     this.destroyed = true;
     this.seq++;
+    clearTimeout(this.debounce);
     this.live?.release();
     this.live = null;
     for (const off of this.offs) off();
@@ -184,6 +194,7 @@ class ChangesView {
     const seq = ++this.seq;
     this.whole.clear();
     this.commits.clear();
+    this.counts.clear();
     this.reads.clear();
     this.stale.clear();
     this.commit = null;
@@ -237,8 +248,10 @@ class ChangesView {
     const repo = this.repoId;
     if (this.destroyed || !repo || this.info()?.error) return;
     const q = `repo=${encodeURIComponent(repo)}`;
-    const load = async <T>(map: Map<string, T | string>, url: string) => {
-      const key = `${map === this.whole ? 'whole' : 'commits'}:${repo}`;
+    const load = async <T>(name: 'whole' | 'commits' | 'count', map: Map<string, T | string>, url: string) => {
+      const key = `${name}:${repo}`;
+      // One on its way already: its answer comes, and a stale mark left meanwhile reads again after it.
+      if (this.reads.pending(key)) return;
       if (map.has(repo) && !this.stale.delete(key)) return;
       const token = this.reads.start(key);
       let got: T | string;
@@ -251,12 +264,12 @@ class ChangesView {
       map.set(repo, got);
       this.gen++;
       if (repo === this.repoId) this.paint();
+      if (this.stale.has(key)) this.later();
     };
     const needs = httpNeeds(this.mode, !!this.live);
-    // The worktree against HEAD, for what's uncommitted (the button, the counts, commit and discard).
-    if (needs.whole && this.mode === 'commits') void load(this.whole, `${this.base()}/changes?${q}`);
+    if (needs.count && this.sameCheckout()) void load('count', this.counts, `${this.base()}/uncommitted?${q}`);
     if (needs.commits) {
-      await load(this.commits, `${this.base()}/commits?${q}`);
+      await load('commits', this.commits, `${this.base()}/commits?${q}`);
       const list = this.commits.get(repo);
       if (repo !== this.repoId || typeof list !== 'object') return;
       // The newest commit, until another is picked (and again when the picked one is gone, say after a rebase).
@@ -264,15 +277,27 @@ class ChangesView {
       if ((!had || !list.commits.some((c) => c.hash === had)) && list.commits.length) this.picked.set(repo, list.commits[0].hash);
       const hash = this.picked.get(repo);
       if (hash && this.commit?.key !== `${repo}:${hash}`) void this.pickCommit(hash);
-    } else if (needs.whole) await load(this.whole, `${this.base()}/changes?${q}`);
+    } else if (needs.whole) await load('whole', this.whole, `${this.base()}/changes?${q}`);
+  }
+
+  /** The HTTP reads a burst of live updates made stale, once it's over. */
+  private later() {
+    clearTimeout(this.debounce);
+    this.debounce = setTimeout(() => void this.fetchShown(), 400);
+  }
+
+  /** Whether the office reads the checkout the live data comes from: the task's worktree (a worker in the shared project folder has none). */
+  private sameCheckout(): boolean {
+    return this.info()?.source === 'worktree' && !!this.live?.state?.dir;
   }
 
   /** Drops what was read over HTTP for a repository, and the commit picked from it. */
   private forget(repo: string) {
     this.whole.delete(repo);
     this.commits.delete(repo);
+    this.counts.delete(repo);
     if (this.commit?.key.startsWith(`${repo}:`)) this.commit = null;
-    for (const key of [`whole:${repo}`, `commits:${repo}`]) {
+    for (const key of [`whole:${repo}`, `commits:${repo}`, `count:${repo}`]) {
       this.stale.delete(key);
       this.reads.forget(key);
     }
@@ -299,12 +324,24 @@ class ChangesView {
 
   /** Uncommitted files in the repository on screen: null without a worktree, undefined while not known yet. */
   private uncommittedCount(): number | null | undefined {
-    const whole = this.whole.get(this.repoId);
+    const repo = this.repoId;
+    if (this.live) {
+      const c = this.counts.get(repo);
+      const againstHead = typeof c === 'object' && !('error' in c) ? c.uncommitted : undefined;
+      const key = `count:${repo}`;
+      return uncommittedNow({ live: this.live.state, sameCheckout: this.sameCheckout(), againstHead, fresh: !this.stale.has(key) && !this.reads.pending(key) });
+    }
+    const whole = this.whole.get(repo);
     if (typeof whole === 'object' && !whole.error) return whole.workingTree ? whole.workingTree.files.length : null;
-    if (this.live) return uncommittedOf(undefined, this.live.state);
-    const commits = this.commits.get(this.repoId);
+    const commits = this.commits.get(repo);
     if (typeof commits === 'object') return commits.uncommitted;
     return undefined;
+  }
+
+  /** The modes on offer now, and the uncommitted count they go by. */
+  private modesNow(): { modes: ChangesMode[]; count: number | null | undefined } {
+    const count = this.uncommittedCount();
+    return { modes: changesModes(count === undefined ? (this.mode === 'uncommitted' ? 0 : null) : count, this.mode), count };
   }
 
   private where(): string {
@@ -331,9 +368,16 @@ class ChangesView {
       const c = this.commit;
       if (!c || c.key !== `${this.repoId}:${hash}` || c.data === '') return { kind: 'loading' };
       if (typeof c.data === 'string') return { kind: 'error', text: c.data };
-      return { kind: 'rows', rows: c.data.files.map((f) => taskRow(f)), more: 0, live: false, parts: partsOf(c.data), truncated: c.data.truncated, empty: ['This commit changes no files.'] };
+      return { kind: 'rows', rows: c.data.files.map((f) => taskRow(f)), more: 0, live: false, ...partsOf(c.data), truncated: c.data.truncated, empty: ['This commit changes no files.'] };
     }
-    if (this.live && !readsHttp(this.mode, true)) {
+    // A worker in the shared project folder: the office has no worktree to read, so Uncommitted is the live list's.
+    if (this.live && this.mode === 'uncommitted' && !this.sameCheckout()) {
+      const s = this.live.state;
+      if (!s) return { kind: 'loading' };
+      if (s.error) return { kind: 'error', text: `Couldn't read ${this.where()}: ${s.error}` };
+      return { kind: 'rows', rows: s.files.filter((f) => f.uncommitted).map(liveRow), more: 0, live: true, empty: [`Nothing uncommitted in ${this.where()}.`] };
+    }
+    if (this.live && this.mode === 'all') {
       const s = this.live.state;
       if (!s) return { kind: 'loading' };
       if (s.error) return { kind: 'error', text: `Couldn't read ${this.where()}: ${s.error}` };
@@ -353,10 +397,10 @@ class ChangesView {
     if (this.mode === 'uncommitted') {
       const wt = whole.workingTree;
       if (!wt) return { kind: 'note', text: 'The task has no worktree now, so nothing is uncommitted.' };
-      return { kind: 'rows', rows: wt.files.map((f) => taskRow(f, true)), more: 0, live: false, parts: partsOf(wt), truncated: wt.truncated, empty: ['Nothing uncommitted in the task’s worktree.'] };
+      return { kind: 'rows', rows: wt.files.map((f) => taskRow(f, true)), more: 0, live: false, ...partsOf(wt), truncated: wt.truncated, empty: ['Nothing uncommitted in the task’s worktree.'] };
     }
     const vs = whole.branch && whole.base ? `Nothing on ${whole.branch} that ${whole.base} lacks yet.` : 'No changes against the base.';
-    return { kind: 'rows', rows: whole.files.map((f) => taskRow(f)), more: 0, live: false, parts: partsOf(whole), truncated: whole.truncated, empty: [vs] };
+    return { kind: 'rows', rows: whole.files.map((f) => taskRow(f)), more: 0, live: false, ...partsOf(whole), truncated: whole.truncated, empty: [vs] };
   }
 
   // --- Actions ----------------------------------------------------------------------------------
@@ -406,10 +450,14 @@ class ChangesView {
   private discardAll() {
     const s = this.live?.state;
     const n = this.uncommittedCount() ?? 0;
+    // The shared project folder: everyone's edits are in it, not just this worker's. Said first, and on the button.
+    const shared = !s?.dir;
     confirmDialog(
-      `Discard all uncommitted changes at ${this.name()}'s desk?`,
-      `This puts ${n} file${n === 1 ? '' : 's'} in ${this.where()} back to the last commit and deletes new files. Commits stay.${s?.dir ? '' : " That folder is shared: anyone's uncommitted edits there go too."}`,
-      'Discard everything',
+      shared ? `⚠️ Discard everyone's uncommitted changes in the shared project folder?` : `Discard all uncommitted changes at ${this.name()}'s desk?`,
+      shared
+        ? `${this.name()} works in the project folder itself, so this throws away every uncommitted edit there, anyone's, not just its own: ${n} file${n === 1 ? '' : 's'} back to the last commit, and new files deleted. Commits stay.`
+        : `This puts ${n} file${n === 1 ? '' : 's'} in ${this.where()} back to the last commit and deletes new files. Commits stay.`,
+      shared ? "Discard everyone's changes" : 'Discard everything',
       () => this.send({ t: 'changes.discard' }),
     );
   }
@@ -440,13 +488,16 @@ class ChangesView {
     const live = this.live;
     if (this.destroyed || !live) return;
     if (msg.t === 'changes' && msg.state.workerId === live.workerId && msg.state.repo === live.floor) {
-      const stale = liveStale(live.state, msg.state);
+      const moved = branchMoved(live.state, msg.state);
       live.state = msg.state;
-      // The checkout moved: what was read over HTTP for this repository is old now. It stays on screen
-      // until the fresh answer is in (the commit picked, too, is checked against the new list).
-      if (stale.whole && this.whole.has(this.repoId)) this.stale.add(`whole:${this.repoId}`);
-      if (stale.commits && this.commits.has(this.repoId)) this.stale.add(`commits:${this.repoId}`);
-      if (stale.whole || stale.commits) void this.fetchShown();
+      // The checkout changed: what was read over HTTP for this repository is old now. It stays on screen
+      // until the fresh answer is in (the commit picked, too, is checked against the new list); the
+      // count goes by the live flags meanwhile. The commits only when the branch moved.
+      const repo = this.repoId;
+      if (moved && this.commits.has(repo)) this.stale.add(`commits:${repo}`);
+      if (this.whole.has(repo)) this.stale.add(`whole:${repo}`);
+      if (this.counts.has(repo)) this.stale.add(`count:${repo}`);
+      this.later();
       this.paint();
     } else if (msg.t === 'changes.diff' && msg.workerId === live.workerId && msg.repo === live.floor && msg.path === this.selected && this.diffKey.startsWith('live:')) {
       this.loading = false;
@@ -466,8 +517,7 @@ class ChangesView {
 
   paint() {
     if (this.destroyed) return;
-    const n = this.uncommittedCount();
-    const modes = changesModes(n === undefined ? (this.mode === 'uncommitted' ? 0 : null) : n, this.mode);
+    const { modes, count: n } = this.modesNow();
     if (!modes.includes(this.mode)) {
       this.mode = 'all';
       void this.fetchShown();
@@ -484,10 +534,7 @@ class ChangesView {
   }
 
   private paintBar(modes?: ChangesMode[], count?: number | null) {
-    if (!modes) {
-      count = this.uncommittedCount();
-      modes = changesModes(count === undefined ? (this.mode === 'uncommitted' ? 0 : null) : count, this.mode);
-    }
+    if (!modes) ({ modes, count } = this.modesNow());
     const repos = this.changes?.repos ?? [];
     const project = this.changes?.project ?? '';
     const prs = this.o.prs?.() ?? kstore.tasks.get(this.o.taskId)?.prs;
@@ -532,8 +579,13 @@ class ChangesView {
     const list = this.mode === 'commits' ? this.commits.get(this.repoId) : undefined;
     const show = typeof list === 'object' && !list.error && list.commits.length > 0;
     this.commitsBox.classList.toggle('hidden', !show);
-    if (!show) return this.commitList.replaceChildren();
+    if (!show) {
+      this.commitsDrawn = null;
+      return this.commitList.replaceChildren();
+    }
     const picked = this.picked.get(this.repoId);
+    if (this.commitsDrawn?.list === list && this.commitsDrawn.picked === picked) return;
+    this.commitsDrawn = { list, picked };
     this.commitsHead.textContent = `${list.commits.length} commit${list.commits.length > 1 ? 's' : ''}`;
     this.commitList.replaceChildren(
       ...list.commits.map((c) => {
@@ -587,7 +639,7 @@ class ChangesView {
     if (l.kind === 'rows' && l.live && f.uncommitted && !this.live?.state?.busy) {
       const discardOne = h('button.btn', { type: 'button', title: 'Throw away the uncommitted changes to this file' }, '↩︎ Discard');
       discardOne.addEventListener('click', () =>
-        confirmDialog(`Discard the changes to ${f.path.split('/').pop()}?`, `This puts ${f.path} back to the last commit in ${this.where()}. ${f.word === 'new file' ? 'The file is deleted.' : 'Committed changes stay.'}`, 'Discard', () =>
+        confirmDialog(`Discard the changes to ${f.path.split('/').pop()}?`, `This puts ${f.path} back to the last commit in ${this.where()}. ${f.word === 'new file' ? 'The file is deleted.' : 'Committed changes stay.'}${this.live?.state?.dir ? '' : ' ⚠️ That is the shared project folder: anyone’s uncommitted edits to this file go too.'}`, 'Discard', () =>
           this.send({ t: 'changes.discard', path: f.path }),
         ),
       );
@@ -620,7 +672,7 @@ class ChangesView {
     this.diffKey = key;
     const parts = l.parts;
     const text = parts?.get(row.path);
-    const last = parts ? [...parts.keys()].pop() === row.path : false;
+    const last = l.last === row.path;
     if (text) this.diffBody.replaceChildren(renderDiff(text, !!l.truncated && last));
     else this.diffBody.replaceChildren(h('div.changes-empty', {}, h('p', {}, l.truncated ? '✂️ The diff is over 2 MB: this file is past where it stops.' : row.binary ? 'A binary file: no diff to show.' : 'No diff to show for this file.')));
   }
