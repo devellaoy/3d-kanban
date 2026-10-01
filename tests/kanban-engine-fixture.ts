@@ -390,6 +390,7 @@ export async function engineFixture(opts: { engine?: EngineOptions; repos?: Floo
     floor: (id) => (id === def.id ? floor : undefined),
     repos: () => projectRepos(def),
     setRepos: () => 'not in tests',
+    setName: () => 'not in tests',
     officePrompts: () => ({}),
     hookUrl,
     broadcast: (msg) => void broadcasts.push(msg),

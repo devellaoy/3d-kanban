@@ -1,6 +1,7 @@
 import { execFile } from 'node:child_process';
 import type { GhCheck, GhCloseReason, GhComment, GhIssue, GhIssueDetail, GhLabel, GhMergeMethod, GhPull, GhPullDetail, GhRepoInfo, GhReviewComment, GhState } from '../shared/protocol.js';
 import type { GhAs } from './signins.js';
+import { checkoutRepo, repoApi, repoFlag } from './kanban/ghrepo.js';
 
 const REFRESH_MS = 90_000;
 /** How long the repo's list of labels is kept before the label picker asks GitHub again. */
@@ -125,6 +126,11 @@ export class GitHub {
     private pullsOnly = false,
   ) {}
 
+  /** 3d-kanban: the repository its gh calls name: the given one, else the checkout's origin, never gh's pick among the remotes (see kanban/ghrepo.ts). */
+  private get target(): string | undefined {
+    return this.nameWithOwner ?? checkoutRepo(this.dir);
+  }
+
   start() {
     void this.refresh();
     this.timer = setInterval(() => void this.refresh(), REFRESH_MS);
@@ -140,7 +146,7 @@ export class GitHub {
 
   /** The repository's full name and how it lets PRs merge. Asked once (again after a failure). */
   repoInfo(): Promise<GhRepoInfo> {
-    this.repo ??= gh(['repo', 'view', '--json', 'nameWithOwner,squashMergeAllowed,mergeCommitAllowed,rebaseMergeAllowed'], this.dir).then((out) => {
+    this.repo ??= gh(['repo', 'view', ...(this.target ? [this.target] : []), '--json', 'nameWithOwner,squashMergeAllowed,mergeCommitAllowed,rebaseMergeAllowed'], this.dir).then((out) => {
       const r = JSON.parse(out);
       const methods = (['squash', 'merge', 'rebase'] as const).filter((m) => r[{ squash: 'squashMergeAllowed', merge: 'mergeCommitAllowed', rebase: 'rebaseMergeAllowed' }[m]]);
       return { nameWithOwner: String(r.nameWithOwner), methods: methods.length ? methods : ['squash', 'merge', 'rebase'] };
@@ -164,8 +170,8 @@ export class GitHub {
     const fields = 'number,body,state,isDraft,reviewDecision,headRefName,baseRefName,mergeable,mergeStateStatus,commits,comments,reviews,statusCheckRollup';
     const jq = '.[] | {id, in_reply_to_id, path, line, side, body, user: .user.login, created_at, html_url}';
     const [view, lines, repo, viewer] = await Promise.all([
-      gh(['pr', 'view', String(n), '--json', fields], this.dir),
-      gh(['api', `repos/{owner}/{repo}/pulls/${n}/comments?per_page=100`, '--paginate', '--jq', jq], this.dir),
+      gh(['pr', 'view', String(n), ...repoFlag(this.target), '--json', fields], this.dir),
+      gh(['api', repoApi(this.target, `pulls/${n}/comments?per_page=100`), '--paginate', '--jq', jq], this.dir),
       this.repoInfo(),
       me ?? this.viewer(),
     ]);
@@ -208,11 +214,11 @@ export class GitHub {
 
   /** The PR's unified diff, as `git diff` prints it. */
   pullDiff(n: number): Promise<string> {
-    return gh(['pr', 'diff', String(n), '--color', 'never'], this.dir, 60_000);
+    return gh(['pr', 'diff', String(n), ...repoFlag(this.target), '--color', 'never'], this.dir, 60_000);
   }
 
   async issueDetail(n: number, me?: string): Promise<GhIssueDetail> {
-    const [view, viewer] = await Promise.all([gh(['issue', 'view', String(n), '--json', 'number,state,body,comments'], this.dir), me ?? this.viewer()]);
+    const [view, viewer] = await Promise.all([gh(['issue', 'view', String(n), ...repoFlag(this.target), '--json', 'number,state,body,comments'], this.dir), me ?? this.viewer()]);
     const i = JSON.parse(view);
     return { number: i.number, state: i.state, body: String(i.body ?? ''), comments: commentsOf(i.comments), viewer };
   }
@@ -226,7 +232,7 @@ export class GitHub {
     try {
       // -f sends the body as a plain string: no @file reading, no {owner} filling in.
       const jq = '{id: .node_id, author: {login: .user.login}, body, createdAt: .created_at, url: .html_url}';
-      const out = await gh(['api', '--method', 'POST', `repos/{owner}/{repo}/issues/${n}/comments`, '-f', `body=${body}`, '--jq', jq], this.dir, undefined, as?.env);
+      const out = await gh(['api', '--method', 'POST', repoApi(this.target, `issues/${n}/comments`), '-f', `body=${body}`, '--jq', jq], this.dir, undefined, as?.env);
       [comment] = commentsOf([JSON.parse(out)]);
     } catch (err) {
       return { error: (err as Error).message };
@@ -241,8 +247,8 @@ export class GitHub {
    * read from a file. Resolves to the review's URL.
    */
   async review(n: number, file: string, as?: GhAs): Promise<string> {
-    // -F reads @file's contents as the value; {owner}/{repo} are filled in from the checkout's remote.
-    const url = (await gh(['api', '--method', 'POST', `repos/{owner}/{repo}/pulls/${n}/reviews`, '-F', `body=@${file}`, '-f', 'event=COMMENT', '--jq', '.html_url'], this.dir, 60_000, as?.env)).trim();
+    // -F reads @file's contents as the value.
+    const url = (await gh(['api', '--method', 'POST', repoApi(this.target, `pulls/${n}/reviews`), '-F', `body=@${file}`, '-f', 'event=COMMENT', '--jq', '.html_url'], this.dir, 60_000, as?.env)).trim();
     void this.refreshPulls();
     return url;
   }
@@ -289,7 +295,7 @@ export class GitHub {
   /** Every label the repository has, for the label picker. Asked again after a minute (or a failure). */
   repoLabels(): Promise<GhLabel[]> {
     if (!this.labelList || Date.now() - this.labelList.at > LABELS_MS) {
-      const list = gh(['api', 'repos/{owner}/{repo}/labels?per_page=100', '--paginate', '--jq', '.[] | {name, color, description}'], this.dir).then((out) =>
+      const list = gh(['api', repoApi(this.target, 'labels?per_page=100'), '--paginate', '--jq', '.[] | {name, color, description}'], this.dir).then((out) =>
         out
           .split('\n')
           .filter((l) => l.trim())
@@ -307,7 +313,7 @@ export class GitHub {
    * else the office. Returns the labels it has now, or why they didn't change.
    */
   async setLabels(kind: 'issue' | 'pull', n: number, add: string[], remove: string[], as?: GhAs): Promise<{ labels?: GhLabel[]; error?: string }> {
-    const path = `repos/{owner}/{repo}/issues/${n}/labels`;
+    const path = repoApi(this.target, `issues/${n}/labels`);
     const jq = '[.[] | {name, color}]';
     let now: GhLabel[] | undefined;
     try {
@@ -362,7 +368,7 @@ export class GitHub {
   /** Assigns the issue to `as` (else the office's own gh), which moves it to In progress on the board. */
   async claim(issue: number, as?: GhAs): Promise<string | undefined> {
     try {
-      await gh(['issue', 'edit', String(issue), '--add-assignee', '@me'], this.dir, undefined, as?.env);
+      await gh(['issue', 'edit', String(issue), ...repoFlag(this.target), '--add-assignee', '@me'], this.dir, undefined, as?.env);
     } catch (err) {
       return (err as Error).message;
     }
@@ -379,8 +385,8 @@ export class GitHub {
       // Open and closed separately, so old open issues are never crowded out by recent closed ones.
       const fields = 'number,title,state,url,author,labels,assignees,createdAt,updatedAt,body,comments';
       const [open, closed] = await Promise.all([
-        gh(['issue', 'list', '--state', 'open', '--limit', '300', '--json', fields], this.dir),
-        gh(['issue', 'list', '--state', 'closed', '--limit', '40', '--json', fields], this.dir),
+        gh(['issue', 'list', ...repoFlag(this.target), '--state', 'open', '--limit', '300', '--json', fields], this.dir),
+        gh(['issue', 'list', ...repoFlag(this.target), '--state', 'closed', '--limit', '40', '--json', fields], this.dir),
       ]);
       const fetched: GhIssue[] = [...JSON.parse(open), ...JSON.parse(closed)].map((i: any) => ({
         number: i.number,
@@ -412,9 +418,9 @@ export class GitHub {
     try {
       const fields = 'number,title,state,isDraft,url,author,labels,reviewDecision,headRefName,headRefOid,baseRefName,createdAt,updatedAt,additions,deletions,statusCheckRollup,body,closingIssuesReferences';
       const [open, merged, closed] = await Promise.all([
-        gh(['pr', 'list', '--state', 'open', '--limit', '150', '--json', fields], this.dir),
-        gh(['pr', 'list', '--state', 'merged', '--limit', '30', '--json', fields], this.dir),
-        gh(['pr', 'list', '--state', 'closed', '--limit', '40', '--json', fields], this.dir),
+        gh(['pr', 'list', ...repoFlag(this.target), '--state', 'open', '--limit', '150', '--json', fields], this.dir),
+        gh(['pr', 'list', ...repoFlag(this.target), '--state', 'merged', '--limit', '30', '--json', fields], this.dir),
+        gh(['pr', 'list', ...repoFlag(this.target), '--state', 'closed', '--limit', '40', '--json', fields], this.dir),
       ]);
       // `--state closed` includes merged PRs; keep only the ones closed without merging.
       const seen = new Set<number>();

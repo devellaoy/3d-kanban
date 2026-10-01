@@ -593,6 +593,8 @@ export interface KanbanRepoChangesInfo {
   /** ProjectRepo.id. */
   id: string;
   name: string;
+  /** The project's own checkout (its id is the project's): upstream's Changes window calls it no `repo`. */
+  primary?: boolean;
   source: 'worktree' | 'checkout';
   /** What the change is measured against (origin/main, main, or the commit the worktree was cut from). */
   base?: string;
@@ -606,6 +608,9 @@ export interface KanbanRepoChangesInfo {
 /** GET /api/kanban/tasks/<id>/changes (no repo): the task's repositories. */
 export interface KanbanChangesList {
   taskId: number;
+  /** The task's project (= its floor): the primary repository's id, and the start of the others' floor ids. */
+  project: string;
+  /** The primary one first. */
   repos: KanbanRepoChangesInfo[];
 }
 
@@ -621,6 +626,13 @@ export interface KanbanCommitList extends KanbanRepoChangesInfo {
   taskId: number;
   commits: KanbanCommit[];
   /** How many files the worktree has uncommitted (the "Uncommitted" pseudo entry); null without a workspace. */
+  uncommitted: number | null;
+}
+
+/** GET /api/kanban/tasks/<id>/uncommitted?repo=<id>: how many files the worktree has uncommitted against HEAD (null without one). */
+export interface KanbanUncommitted {
+  taskId: number;
+  repo: string;
   uncommitted: number | null;
 }
 

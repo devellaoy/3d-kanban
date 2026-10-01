@@ -29,7 +29,8 @@ whatever happens to the task shows on the worker. This page is the contract betw
 | **P** / issue card drop / Ask onto the implementer | Only while the task is in progress, waiting or in review: the fork's dialogs (P's "💬 Message task #N", Ask → that worker, the task's own issue card dropped on its desk) send `asComment: true`, and it becomes a task comment (the engine follows the turn and reviews it; the card's issue is still claimed). "Type straight into the terminal instead", the terminal's own say box and every other caller send upstream's plain prompt, typed in. For a task in To do, done or archived the client offers upstream's plain prompt, and the server refuses an `asComment` prompt with a clear message (nothing is stored). A reviewer refuses `asComment` prompts only. |
 | **R** on a task worker whose task waits | `engine.retry`. |
 | **O** | The task's PR phase (unchanged). |
-| **E** | The worker window has tabs **🖥️ Terminal** / **🗂️ Task #N**: the task tab is the same task view as the kanban page (description, conversation with composer and history, plan, runs and verdicts, changes, PRs, actions). The worker's own changes stay upstream's 🌿 Changes button in the window's header. Files dropped on the task pane go to its composer's attachments, never into the terminal. |
+| **C** / 🌿 Changes | Upstream's `openChanges()` hands a task worker over to the task's Changes window (`kanban/changesview.ts`, `openTaskChanges`): every repository of the task as a tab, All changes / Per commit / Uncommitted; upstream's live data (`changes.watch`, commit, discard, PR) while the worker is on the page's floor and the repository is in its workspace, else the office's `GET /api/kanban/tasks/<id>/changes|commits|commit` (read-only); Per commit and Uncommitted (the worktree against HEAD) always read over HTTP, again when the live state changes (`ChangesState.head` notices an amend). If the worker goes while it's open, it carries on from HTTP. Ordinary workers keep upstream's window. |
+| **E** | The worker window has tabs **🖥️ Terminal** / **🗂️ Task #N** (opening on the Task tab): the task tab is the same task view as the kanban page (description, conversation with composer and history, plan, runs and verdicts, PRs, actions) without its Changes tab; the window's 🌿 Changes button opens the task's Changes window (above). Files dropped on the task pane go to its composer's attachments, never into the terminal. |
 | Hire at a desk with "🗂️ Run as a kanban task" | `kanban.task.create {…, start: true, deskId}`: the task starts at that desk. The toggle starts off in every new dialog. |
 | 📋 Task queue with "🗂️ Run as a kanban task" | `kanban.task.create {…, start: true}` without `deskId`: the engine seats it at the next free desk or queues it (tasks at once, desks, the worker limit). The queue's *workers at once* doesn't count it, and upstream's queue never holds it. The toggle starts off each time the board opens. |
 | J | Facing a task worker's desk: `/kanban?project=<floor>&task=<id>`; elsewhere: the board. |
@@ -86,7 +87,10 @@ instead; the task waits (failed) with upstream's reason, naming whose sign-in is
 detail used by both the kanban page's side panel and the 3D worker window's 🗂️ Task tab. It fetches
 with `kanban.task.get`, follows `kanban.*` deltas for that task (it subscribes to the task's project
 itself and unsubscribes on unmount) and returns `{ destroy() }`. Embedded, it hides what the worker
-window already has (its own terminal) and keeps everything else. An agent asking a question in its terminal gets
+window already has (its own terminal) and keeps everything else; the worker window also passes
+`changesTab: false`, since its header's 🌿 Changes opens the same Changes view (`kanban/changesview.ts`)
+that the task view's Changes tab mounts (`mountChangesView`; destroyed when another tab opens, so its
+live watch ends with it). An agent asking a question in its terminal gets
 the **Answer the agent** box in both (typed into its terminal, the same run carrying on; a permission
 prompt only says to answer it in the terminal); its **⌨️ Open
 its terminal** is the window's 🖥️ Terminal tab in 3D (the task's other worker: a toast says to open it

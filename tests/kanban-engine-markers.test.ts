@@ -45,6 +45,24 @@ test('PR lines: every URL once, GitHub ones with their repository and number', (
   ]);
 });
 
+test('PR lines: other wordings of the line; a URL elsewhere in the text, and quotes, are not reported', () => {
+  const at = (n: number, repo = 'o/r') => ({ url: `https://github.com/${repo}/pull/${n}`, repo, number: n });
+  assert.deepEqual(prLines('PR: [#12](https://github.com/o/r/pull/12)'), [at(12)]);
+  assert.deepEqual(prLines('- PR: https://github.com/o/r/pull/13'), [at(13)]);
+  assert.deepEqual(prLines('* **PR:** https://github.com/o/r/pull/14'), [at(14)]);
+  assert.deepEqual(prLines('**PR:** https://github.com/o/r/pull/15'), [at(15)]);
+  assert.deepEqual(prLines('Pull request: https://github.com/o/r/pull/16'), [at(16)]);
+  assert.deepEqual(prLines('PR created: https://github.com/o/r/pull/17 (draft)'), [at(17)]);
+  assert.deepEqual(prLines('pr opened: https://github.com/o/r/pull/18/files#diff-1?x=1'), [at(18)]);
+  assert.deepEqual(prLines('1. PR: <https://github.com/o/r/pull/19>.'), [at(19)]);
+  assert.deepEqual(prLines('PR: https://gitlab.com/x/-/merge_requests/3 (draft)'), [{ url: 'https://gitlab.com/x/-/merge_requests/3' }]);
+  assert.deepEqual(prLines('I opened https://github.com/o/r/pull/20/files, see it.'), []);
+  assert.deepEqual(prLines('Done: [the PR](https://github.com/o/r/pull/21).'), []);
+  assert.deepEqual(prLines('> PR: https://github.com/o/r/pull/22\n> see https://github.com/o/r/pull/23'), [], 'quotes are not reports');
+  assert.deepEqual(prLines('See PR: https://nope in a sentence'), []);
+  assert.deepEqual(prLines('It is https://github.com/o/r/pull/24 here\nPR: https://github.com/o/r/pull/24\nPR: HTTPS://GitHub.com/O/R/pull/24\nPR: http://github.com/o/r/pull/24'), [at(24)], 'once, whatever the case or scheme');
+});
+
 test('usage limits and lost connections, and when they reset', () => {
   assert.equal(looksInterrupted("You've hit your limit · resets 3pm (Europe/Helsinki)"), true);
   assert.equal(looksInterrupted('Claude AI usage limit reached|1767225600'), true);

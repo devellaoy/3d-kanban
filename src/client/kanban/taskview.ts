@@ -2,7 +2,8 @@
 // show it (docs/kanban-coupling.md, "The shared task view"). Tabs: Overview (what it waits for, the
 // actions, description, reports and details), Conversation (write at the top, newest first), Plan
 // (its versions), Runs (every phase it ran), Terminal (the kanban page only: the 3D worker window has
-// its own), Changes (read by the office from the task's worktrees or branch) and PRs.
+// its own), Changes (the task's Changes view, changesview.ts; not in the worker window, whose header
+// has 🌿 Changes for it) and PRs.
 //
 // It fetches the task with kanban.task.get on the connection's kanban bus (api.ts) and follows the
 // kanban.task / kanban.comment / kanban.run / kanban.plan deltas for it. On the kanban page those come
@@ -15,11 +16,10 @@ import './taskview.css';
 import { h, openModal, toast, type Modal } from '../ui/dom';
 import { store } from '../state';
 import type { Net } from '../net';
-import { openChanges as openLiveChanges } from '../ui/changes';
 import type { KanbanServerMsg } from '../../shared/kanban/protocol.js';
 import { KANBAN_TOOLS, type CommentKind, type KanbanAttachment, type KanbanComment, type KanbanEffort, type KanbanEvent, type KanbanPlan, type KanbanProjectInfo, type KanbanReportFile, type KanbanRole, type KanbanRun, type KanbanSettings, type KanbanTask, type KanbanTaskCard, type KanbanTool, type PlanStatus, type ReviewVerdict, type RunStatus, type TaskStatus, type TaskType } from '../../shared/kanban/types.js';
 import { isRunning } from '../../shared/kanban/moves.js';
-import { kanbanApi, type KanbanApi, type KanbanOk } from './api';
+import { getJson, kanbanApi, type KanbanApi, type KanbanOk } from './api';
 import { attachmentUrl, formatSize, isImage } from './attach';
 import { attachBox, type AttachBox } from './attachbox';
 import { TOOL_ICON, ticketChip, tickCountdowns } from './card';
@@ -28,7 +28,7 @@ import { renderMarkdown } from './md';
 import { REVIEW_DEFAULTS } from './defaults';
 import { cardRepoNames, countdown, needsAttention, phaseBadge, prTone, showIn3dLink, tabFor, visibleTabs, type TaskTab } from './model';
 import { kstore } from './store';
-import { ChangesPane, getJson } from './taskchanges';
+import { mountChangesView, type ChangesViewHandle } from './changesview';
 import { APPROVAL_NAMES, columnName, COUNTDOWN_UNITS, effortName, fmtAgo, fmtDuration, fmtTime, phaseName, PR_STATE_NAMES, toolName, waitingName } from './labels';
 import { confirmBox, run, select, tabStrip, textArea } from './ui';
 
@@ -51,6 +51,8 @@ export interface TaskViewOptions {
    * has the worker's terminal) and nothing that only the board page can do (edit, move).
    */
   embedded?: boolean;
+  /** The Changes tab (default true); the 3D worker window has none, its header's 🌿 Changes opens the same view. */
+  changesTab?: boolean;
   /** Called by the view's own ✕ (shown only when this is given), and when the task is deleted. */
   onClose?: () => void;
   // The kanban page's hooks; without them the view does without what they open.
@@ -63,8 +65,6 @@ export interface TaskViewOptions {
   edit?(task: KanbanTask): void;
   moveMenu?(id: number): void;
   openTerminal?(workerId: string, project: string): void;
-  /** Upstream's live Changes window for a task worker. Default: opened here when the worker is on this page's floor. */
-  openChanges?(workerId: string, project: string, repo?: string): void;
 }
 
 export interface TaskViewHandle {
@@ -107,6 +107,7 @@ class View implements TaskView {
   readonly taskId: number;
   private api: KanbanApi;
   private embedded: boolean;
+  private changesTab: boolean;
   private root: HTMLElement;
   private body = h('div.kb-detail-body', { role: 'tabpanel' });
   private headId = `kb-tv-h-${++headSeq}`;
@@ -125,7 +126,8 @@ class View implements TaskView {
   private offs: (() => void)[] = [];
   private unwatch: (() => void) | null = null;
   private destroyed = false;
-  private changes: ChangesPane;
+  /** The Changes tab's view: mounted the first time the tab opens, taken down when another tab does. */
+  private changes: { host: HTMLElement; view: ChangesViewHandle } | null = null;
   private reports: { list: KanbanReportFile[]; shown: Map<string, HTMLElement> } | null = null;
   private reportsFor = '';
   private agentOpen = false;
@@ -136,17 +138,17 @@ class View implements TaskView {
   ) {
     this.taskId = o.taskId;
     this.embedded = !!o.embedded;
+    this.changesTab = o.changesTab ?? true;
     this.api = kanbanApi(o.net);
-    this.current = tabFor(o.tab, this.embedded);
+    this.current = tabFor(o.tab, this.embedded, this.changesTab);
     this.root = h('div.kb-tv', { class: this.embedded ? 'embedded' : '' });
     this.card = kstore.tasks.get(o.taskId);
     this.projects = kstore.projects;
     this.settings = kstore.settings;
-    this.changes = new ChangesPane({ taskId: o.taskId, live: () => this.liveChanges() });
     container.append(this.root);
     this.offs.push(
       this.api.on((msg) => this.onMsg(msg)),
-      // A worker's name and state (Terminal, Changes) come from the floor's workers.
+      // A worker's name and state (Terminal) come from the floor's workers.
       store.on('workers', () => this.workersChanged()),
     );
     if (this.embedded) {
@@ -168,11 +170,12 @@ class View implements TaskView {
     clearTimeout(this.refetch);
     for (const off of this.offs) off();
     this.unwatch?.();
+    this.dropChanges();
     this.root.remove();
   }
 
   setTab(tab: TaskTab) {
-    const to = tabFor(tab, this.embedded);
+    const to = tabFor(tab, this.embedded, this.changesTab);
     if (to === this.current) return;
     this.current = to;
     this.strip?.set(to);
@@ -326,7 +329,7 @@ class View implements TaskView {
     const d = this.d;
     const counts: Partial<Record<TaskTab, number>> = d ? { conversation: card?.commentCount ?? d.comments.length, plan: d.plans.length, runs: d.runs.length, prs: d.task.prs.length } : {};
     this.strip = tabStrip(
-      visibleTabs(this.embedded).map((tab) => ({ id: tab, label: h('span', {}, TAB_NAMES[tab], counts[tab] ? h('span.kb-tab-n', {}, String(counts[tab])) : null) })),
+      visibleTabs(this.embedded, this.changesTab).map((tab) => ({ id: tab, label: h('span', {}, TAB_NAMES[tab], counts[tab] ? h('span.kb-tab-n', {}, String(counts[tab])) : null) })),
       this.current,
       (tab) => {
         this.current = tab;
@@ -391,9 +394,9 @@ class View implements TaskView {
     return b;
   }
 
-  /** The floor's workers changed: only the tabs that show them are redrawn. */
+  /** The floor's workers changed: only the tab that shows them is redrawn (the Changes view follows them itself). */
   private workersChanged() {
-    if (this.destroyed || (this.current !== 'terminal' && this.current !== 'changes')) return;
+    if (this.destroyed || this.current !== 'terminal') return;
     const restore = this.focusMark();
     this.paintBody();
     restore();
@@ -409,18 +412,21 @@ class View implements TaskView {
       this.body.replaceChildren(this.error ? h('div.kb-error', {}, `⚠️ ${this.error} `, h('button.btn.small', { type: 'button', onclick: () => void this.load() }, 'Try again')) : h('p.kb-muted', {}, 'Loading…'));
       return;
     }
+    // The Changes view draws itself: a redraw only tells it who the worker is now.
+    if (this.current === 'changes' && this.changes && this.body.childElementCount === 1 && this.body.firstElementChild === this.changes.host) {
+      this.changes.view.setWorker(d.task.workerId);
+      return;
+    }
     const content: Record<TaskTab, () => HTMLElement[]> = {
       overview: () => this.overview(d),
       conversation: () => this.conversation(d),
       plan: () => this.plans(d),
       runs: () => this.runs(d),
       terminal: () => this.terminal(d.task),
-      changes: () => {
-        this.changes.shown();
-        return [this.changes.el];
-      },
+      changes: () => [this.changesPane(d.task)],
       prs: () => this.prs(d.task),
     };
+    if (this.current !== 'changes') this.dropChanges();
     this.body.replaceChildren(...content[this.current]());
     if (keep) this.body.scrollTop = scroll;
   }
@@ -803,33 +809,20 @@ class View implements TaskView {
     ];
   }
 
-  /**
-   * The row of buttons to upstream's live Changes window, one per repository of the workspace, while
-   * the task has a worker the page can reach: the kanban page's hook (which rides to the worker's
-   * floor), or, elsewhere, the worker being on the floor this page is on.
-   */
-  private liveChanges(): HTMLElement | null {
-    const task = this.task;
-    const workerId = task?.workerId;
-    if (!task || !workerId) return null;
-    const open = this.o.openChanges
-      ? (repo?: string) => this.o.openChanges?.(workerId, task.project, repo)
-      : store.workers.has(workerId)
-        ? (repo?: string) => openLiveChanges(this.o.net, workerId, undefined, repo)
-        : null;
-    if (!open) return null;
-    const project = this.projectOf(task.project);
-    const primary = project?.repos.find((r) => r.primary)?.name ?? project?.name ?? task.project;
-    const repos: { label: string; repo?: string }[] = [{ label: primary }];
-    // The project's other repositories in the workspace: upstream's Changes window has a tab for each.
-    const others = store.workers.get(workerId)?.repos ?? task.workspace?.repos ?? [];
-    for (const r of others) repos.push({ label: r.name, repo: r.floor });
-    return h(
-      'div.kb-row',
-      { title: 'Upstream’s window on the worker’s checkout, as at its desk' },
-      h('small.kb-muted', {}, '🔴 Open the live Changes window:'),
-      h('div.kb-repo-buttons', {}, ...repos.map((r) => h('button.btn.small', { type: 'button', onclick: () => open(r.repo) }, `🌿 ${r.label}`))),
-    );
+  /** The task's Changes view, kept across redraws (and following a new worker), so its place and live watch stay. */
+  private changesPane(task: KanbanTask): HTMLElement {
+    if (!this.changes) {
+      const host = h('div.kb-tv-changes');
+      const view = mountChangesView(host, { net: this.o.net, taskId: this.taskId, workerId: task.workerId, prs: () => this.task?.prs });
+      this.changes = { host, view };
+    } else this.changes.view.setWorker(task.workerId);
+    return this.changes.host;
+  }
+
+  /** Takes the Changes view down (another tab, or the view closing): its live watch ends with it. */
+  private dropChanges() {
+    this.changes?.view.destroy();
+    this.changes = null;
   }
 
   // --- Pull requests ----------------------------------------------------------------------------

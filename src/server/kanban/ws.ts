@@ -386,6 +386,14 @@ export function createCorePlugin(ctx: KanbanContext, subs: KanbanSubscriptions):
       ctx.broadcast({ t: 'kanban.projects', projects: projectInfos(ctx) }, null);
       ok(c, m.rid);
     },
+    'kanban.project.rename': (c, m) => {
+      if (!adminOnly(c, m.rid)) return;
+      if (!ctx.project(m.project)) return fail(c, m.rid, `There's no project ${m.project}`);
+      const err = ctx.setName(m.project, m.name);
+      if (typeof err === 'string' && err) return fail(c, m.rid, err);
+      ctx.broadcast({ t: 'kanban.projects', projects: projectInfos(ctx) }, null);
+      ok(c, m.rid);
+    },
     'kanban.project.prompt.set': (c, m) => {
       if (!adminOnly(c, m.rid)) return;
       if (!ctx.project(m.project)) return fail(c, m.rid, `There's no project ${m.project}`);

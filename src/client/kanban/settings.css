@@ -41,6 +41,10 @@
 .kb-set .kb-check.missing { color: #c9184a; }
 .kb-set .kb-subfields { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; align-items: start; padding: 10px; border: 2px dashed var(--ink); border-radius: 12px; background: var(--paper); }
 .kb-set .kb-subfields .kb-check { grid-column: 1 / -1; }
+/* ⚙️ Project's name: the box grows, its Rename button sits level with it */
+.kb-set .kb-rename { align-items: flex-end; }
+.kb-set .kb-rename > .kb-field { flex: 1 1 16em; }
+.kb-set .kb-rename + .kb-hint { margin-top: -6px; }
 .kb-set .kb-save { position: sticky; bottom: -24px; padding: 8px 0 2px; background: linear-gradient(transparent, var(--paper) 30%); }
 
 /* Repositories and issue sources */

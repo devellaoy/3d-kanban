@@ -46,6 +46,8 @@ export interface KanbanOffice {
   floor(id: string): Floor | undefined;
   /** Saves a floor's repositories, already checked (Building.setRepos). */
   saveRepos(id: string, repos: ProjectRepo[] | undefined): FloorDef | string;
+  /** Renames a floor (Building.setName) and tells the office's clients. */
+  saveName?(id: string, name: string): FloorDef | string;
   /** The office-wide custom prompt texts (OfficePrompts.state().custom). */
   officePrompts(): Partial<Record<string, { text: string }>>;
   /** The loopback hook server's base URL. */
@@ -163,6 +165,19 @@ export function installKanban(opts: KanbanInstallOptions): Kanban {
       const plain = checked.length === 1 && JSON.stringify(checked[0]) === JSON.stringify(primaryRepo(def));
       const saved = opts.saveRepos(id, plain ? undefined : checked);
       return typeof saved === 'string' ? saved : undefined;
+    },
+    setName: (id: string, name: string) => {
+      if (!project(id)) return 'No such project';
+      if (!opts.saveName) return "This office can't rename projects";
+      const was = project(id)!.name;
+      const r = opts.saveName(id, name);
+      if (typeof r === 'string') return r;
+      // A saved list's primary still called after the project takes the new name too (one without a list follows the floor anyway).
+      const primary = r.repos?.find((x) => x.primary);
+      if (r.repos && primary?.name === was && !r.repos.some((x) => !x.primary && x.name.toLowerCase() === r.name.toLowerCase())) {
+        opts.saveRepos(id, r.repos.map((x) => (x.primary ? { ...x, name: r.name } : x)));
+      }
+      return undefined;
     },
     officePrompts: () => opts.officePrompts(),
     hookUrl: opts.hookUrl,

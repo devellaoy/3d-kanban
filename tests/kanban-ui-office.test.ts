@@ -179,18 +179,20 @@ test('an issue as a task: ticket, description and a card that is the task’s ow
 
 test('the worker window’s tabs: only a task worker has them, and each worker keeps its own', () => {
   assert.deepEqual(workerTabs({ kanban: undefined }), []);
-  // No 📝 Changes tab: upstream's own 🌿 Changes button is in the window's header.
+  // No 📝 Changes tab: the 🌿 Changes button in the window's header opens the task's Changes window.
   assert.deepEqual(workerTabs(k()), ['terminal', 'task']);
   assert.equal(tabLabel('task', k()), '🗂️ Task #14');
   assert.equal(tabLabel('terminal', k()), '🖥️ Terminal');
   const m = new TabMemory();
   const tabs = workerTabs(k());
-  assert.equal(m.opening('w1', tabs), 'terminal');
-  m.chose('w1', 'task');
+  // A task worker's window opens on its task, until you pick another tab.
   assert.equal(m.opening('w1', tabs), 'task');
-  assert.equal(m.opening('w2', tabs), 'terminal');
-  assert.equal(m.opening('w1', tabs, 'terminal'), 'terminal');
-  assert.equal(m.opening('w2', tabs, 'task'), 'task');
+  m.chose('w1', 'terminal');
+  assert.equal(m.opening('w1', tabs), 'terminal');
+  assert.equal(m.opening('w2', tabs), 'task');
+  assert.equal(m.opening('w3', ['terminal']), 'terminal');
+  assert.equal(m.opening('w1', tabs, 'task'), 'task');
+  assert.equal(m.opening('w2', tabs, 'terminal'), 'terminal');
 });
 
 test('a prompt to a task worker, R, and who started it', () => {
