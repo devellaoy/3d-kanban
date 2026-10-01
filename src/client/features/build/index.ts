@@ -13,6 +13,7 @@ import { store } from '../../state';
 import { modalOpen, toast } from '../../ui/dom';
 import { PIECES, check, colliderOf, footprint, snap, turn, type Piece, type PieceKind, type Surroundings, type Verdict } from './model';
 import { buildGhost, buildPiece, heightOf, tintGhost } from './pieces';
+import { makeBuildSeats } from './sit';
 import { loadPieces, newId, savePieces } from './store';
 import { openCatalogue } from './ui';
 import type { Collider } from '../../world/types';
@@ -39,6 +40,8 @@ export function installBuild(ctx: Ctx) {
   root.name = 'build-pieces';
   ctx.office.group.add(root);
   const live = new Map<string, Live>();
+  /** Sitting on the chairs and sofas (see sit.ts). */
+  const sit = makeBuildSeats(ctx);
   /** The floor whose pieces are up. */
   let floor: string | null = null;
 
@@ -71,11 +74,13 @@ export function installBuild(ctx: Ctx) {
     const collider = colliderOf(piece);
     if (collider) ctx.office.colliders.push(collider);
     live.set(piece.id, { piece, group, collider });
+    sit.add(piece, group);
   }
 
   function take(id: string) {
     const l = live.get(id);
     if (!l) return;
+    sit.remove(id);
     live.delete(id);
     root.remove(l.group);
     l.group.traverse((o) => (o as THREE.Mesh).geometry?.dispose());
@@ -90,6 +95,7 @@ export function installBuild(ctx: Ctx) {
     const want = buildable() ? store.floor : null;
     if (want === floor) return;
     if (active) exit();
+    sit.standUp();
     for (const id of [...live.keys()]) take(id);
     floor = want;
     if (want) for (const p of loadPieces(want)) place(p);
@@ -102,6 +108,8 @@ export function installBuild(ctx: Ctx) {
     if (active) return;
     if (!buildable()) return toast('Build mode is for the office floors: take the elevator to one first', 'warn');
     sync();
+    // Moving and removing is for the standing: up off the sofa first.
+    sit.standUp();
     ctx.activities.stopAll('start', ['build']);
     active = true;
     ctx.hint.invalidate();

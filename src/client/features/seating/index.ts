@@ -104,10 +104,10 @@ export function installSeating(ctx: Ctx, deps: SeatingDeps) {
   }
   ctx.player.onStand = gotUp;
 
-  /** What you're sitting on, so it's what E is about unless you're looking at something else. */
+  /** What you're sitting on (an office seat, or a chair or sofa from build mode), so it's what E is about unless you're looking at something else. */
   function mySeat(): Interactable | null {
     const id = ctx.player.seat?.seatId;
-    return (id && deps.usable()[0].find((it) => it.kind === 'seat' && it.seatId === id)) || null;
+    return (id && deps.usable().flat().find((it) => it.seatId === id)) || null;
   }
 
   ctx.interactions.define('seat', {
