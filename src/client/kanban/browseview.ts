@@ -10,7 +10,7 @@ import type { KanbanServerMsg } from '../../shared/kanban/protocol.js';
 import type { BrowseFilters, BrowseGroup, BrowseIssue, BrowseScope } from '../../shared/kanban/browse.js';
 import { groupByEpic, groupProjectItems, issueProgress, mergeIssues, progress, type EpicNode, type ItemNode } from '../../shared/kanban/browsetree.js';
 import type { KanbanApi } from './api';
-import { hasMoreKids, isContext, parentTaskId, syncChildren, viewsFor } from './browsesync';
+import { MAX_EMPTY_PAGES, afterPage, hasMoreKids, isContext, issueSignature, parentTaskId, syncChildren, viewsFor } from './browsesync';
 
 /** What a row of an issue that doesn't match the filters says. */
 const CONTEXT_HINT = 'Doesn’t match the filters: shown as the parent of a match';
@@ -106,27 +106,36 @@ export function browseTree(o: BrowseTreeOpts): {
    * Pages of something into `list`, with "Loading…", "Load more" and an error with "Try again" in
    * `tail` (after the list, so a regrouped list keeps it last).
    */
-  const paged = <A extends { next?: string }>(tail: HTMLElement, fetch: (cursor?: string) => Promise<A>, take: (a: A) => void, what = 'more') => {
+  const paged = <A extends { next?: string }>(tail: HTMLElement, fetch: (cursor?: string) => Promise<A>, take: (a: A) => 'rows' | 'none' | 'wait' | void, what = 'more') => {
     let cursor: string | undefined;
     let busy = false;
     let complete = false;
+    /** Pages in a row that had nothing to show but a `next`: fetched on, up to MAX_EMPTY_PAGES. */
+    let empties = 0;
     const load = () => {
       if (busy || !o.live()) return;
       busy = true;
       tail.replaceChildren(h('div.kb-br-quiet', {}, 'Loading…'));
       fetch(cursor)
         .then((a) => {
+          busy = false;
           if (!o.live()) return;
           cursor = a.next;
           complete = !a.next;
-          take(a);
+          empties = take(a) === 'wait' ? empties + 1 : 0;
           if (!a.next) return tail.replaceChildren();
+          if (empties > 0 && empties < MAX_EMPTY_PAGES) return load();
           const more = h('button.btn.small.kb-br-more', { type: 'button' }, `Load ${what}`);
-          more.addEventListener('click', load);
+          more.addEventListener('click', () => {
+            empties = 0;
+            load();
+          });
           tail.replaceChildren(more);
         })
-        .catch((err: Error) => o.live() && tail.replaceChildren(errorLine(err.message || 'That didn’t load', load)))
-        .finally(() => (busy = false));
+        .catch((err: Error) => {
+          busy = false;
+          if (o.live()) tail.replaceChildren(errorLine(err.message || 'That didn’t load', load));
+        });
     };
     return { load, complete: () => complete };
   };
@@ -238,6 +247,8 @@ export function browseTree(o: BrowseTreeOpts): {
     let issue = first;
     let nested = firstNested;
     let fetched: BrowseIssue[] = [];
+    let kidsOf: ItemNode[] | null = null;
+    let signature = issueSignature(first, firstNested);
     const row = h('div.kb-br-row.issue');
     let pager: ReturnType<typeof paged<Page>> | null = null;
     const what = jira ? 'sub-tasks' : 'sub-issues';
@@ -255,6 +266,7 @@ export function browseTree(o: BrowseTreeOpts): {
           }),
         (a) => {
           fetched = mergeIssues(fetched, a.items);
+          kidsOf = null;
           o.seen(a.items);
           paint();
           paintKids();
@@ -276,13 +288,15 @@ export function browseTree(o: BrowseTreeOpts): {
       if (byUser) fetchKids();
       else offerMore();
     });
+    /** The sub-tasks to show, worked out once per change of `nested` / `fetched`. */
     const kids = (): ItemNode[] => {
+      if (kidsOf) return kidsOf;
       const all = mergeIssues(
         nested.map((c) => c.issue),
         fetched,
       );
       const deeper = new Map(nested.map((c) => [c.issue.key, c.children]));
-      return all.map((i) => ({ issue: i, children: deeper.get(i.key) ?? [], ...progress([]) }));
+      return (kidsOf = all.map((i) => ({ issue: i, children: deeper.get(i.key) ?? [], ...progress([]) })));
     };
     const paintKids = () => {
       const list = kids().filter((k) => k.issue.key !== issue.key);
@@ -346,7 +360,12 @@ export function browseTree(o: BrowseTreeOpts): {
       li: n.li,
       update(next, nextNested) {
         issue = next;
+        const sig = issueSignature(next, nextNested);
+        // Nothing the row or its nested sub-tasks show has changed: leave the DOM (and the focus in it) alone.
+        if (sig === signature) return;
+        signature = sig;
         nested = nextNested;
+        kidsOf = null;
         paint();
         showNested();
       },
@@ -368,7 +387,9 @@ export function browseTree(o: BrowseTreeOpts): {
         items = mergeIssues(items, a.items);
         o.seen(a.items);
         const roots = groupProjectItems(items);
-        if (!roots.length) n.list.replaceChildren(empty('No issues here match the filters'));
+        const state = afterPage(roots.length, !!a.next);
+        // Never "no matches" while there is more to load: the next page may hold them.
+        if (state !== 'rows') n.list.replaceChildren(...(state === 'none' ? [empty('No issues here match the filters')] : []));
         else {
           const lis = viewsFor(
             views,
@@ -383,6 +404,7 @@ export function browseTree(o: BrowseTreeOpts): {
           roots.map((r) => r.issue).filter((i) => !isContext(i)),
           !a.next,
         );
+        return state;
       },
       'more issues',
     );
@@ -506,7 +528,11 @@ export function browseTree(o: BrowseTreeOpts): {
           items = mergeIssues(items, a.items);
           o.seen(a.items);
           const nodes = groupByEpic(items);
-          if (!nodes.length) return n.list.replaceChildren(empty('No issues here match the filters'));
+          const state = afterPage(nodes.length, !!a.next);
+          if (state !== 'rows') {
+            n.list.replaceChildren(...(state === 'none' ? [empty('No issues here match the filters')] : []));
+            return state;
+          }
           // Reconciled like the issues: an epic node keeps its view (open, loaded), one that is gone
           // (a "No epic" whose sub-task found its story's epic) is taken out.
           const lis: HTMLElement[] = [];
@@ -517,6 +543,7 @@ export function browseTree(o: BrowseTreeOpts): {
             lis.push(v.li);
           }
           syncChildren(n.list, lis);
+          return 'rows';
         },
         'more issues',
       ).load();
@@ -540,7 +567,9 @@ export function browseTree(o: BrowseTreeOpts): {
       (a) => {
         for (const g of a.groups) n.list.append(groupView(g));
         any ||= a.groups.length > 0;
-        if (!any && !a.next) n.list.replaceChildren(empty(released ? 'None' : 'Nothing matches the filters'));
+        const state = afterPage(any ? 1 : 0, !!a.next);
+        if (state === 'none') n.list.replaceChildren(empty(released ? 'None' : 'Nothing matches the filters'));
+        return state;
       },
       released ? 'more' : 'more groups',
     ).load();

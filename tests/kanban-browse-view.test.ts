@@ -1,12 +1,13 @@
 // The browse tree's reconciliation (client/kanban/browsesync.ts), driven without a DOM: a fake list
 // that, like the DOM, moves a node out of its old list when it is inserted into another one. The
-// views are wired the way browsetree.ts wires them: one key → view map per list, roots synced into
+// views are wired the way browseview.ts wires them: one key → view map per list, roots synced into
 // the list, an issue's nested children synced into its own list.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { hasMoreKids, isContext, parentTaskId, syncChildren, viewsFor, type ChildList } from '../src/client/kanban/browsesync.js';
+import { afterPage, hasMoreKids, isContext, issueSignature, parentTaskId, syncChildren, viewsFor, type ChildList } from '../src/client/kanban/browsesync.js';
 import { groupByEpic, groupProjectItems, mergeIssues, type ItemNode } from '../src/shared/kanban/browsetree.js';
-import type { BrowseIssue } from '../src/shared/kanban/browse.js';
+import type { BrowseIssue, BrowseScope } from '../src/shared/kanban/browse.js';
+import { DEFAULTS, catOf, catsFor, dropUnresolvedMe, type Saved } from '../src/client/kanban/browsefilters.js';
 
 class FakeNode {
   parent: FakeList | null = null;
@@ -40,7 +41,7 @@ interface View {
 }
 
 let made = 0;
-/** One list of issues as browsetree.ts builds it: the pages merged, regrouped, reconciled. */
+/** One list of issues as browseview.ts builds it: the pages merged, regrouped, reconciled. */
 function tree() {
   const root = new FakeList();
   const views = new Map<string, View>();
@@ -177,4 +178,47 @@ test('a Jira "No epic" node goes when its sub-task finds its story (the version 
   assert.ok(isContext(nodes[0].items[0]));
   assert.ok(hasMoreKids(nodes[0].items[0], 1), 'one of two sub-tasks nested: the rest are fetched on open');
   assert.ok(!hasMoreKids(nodes[0].items[0], 2));
+});
+
+test('issueSignature: equal for an unchanged row, different for anything it shows, and for nested changes', () => {
+  const a = gh(1, { status: 'Open', assignee: 'x', labels: ['a', 'b'], childCount: 2, childDone: 1 });
+  const nested = (i: BrowseIssue): ItemNode[] => [{ issue: i, children: [], done: 0, total: 0 } as unknown as ItemNode];
+  assert.equal(issueSignature(a), issueSignature({ ...a }));
+  for (const change of [{ title: 'new' }, { status: 'Closed' }, { statusCategory: 'done' as const }, { assignee: 'y' }, { taskId: 3 }, { childCount: 3 }, { childDone: 2 }, { context: true as const }, { labels: ['a'] }])
+    assert.notEqual(issueSignature(a), issueSignature({ ...a, ...change }), JSON.stringify(change));
+  assert.equal(issueSignature(a, nested(gh(2))), issueSignature({ ...a }, nested(gh(2))));
+  assert.notEqual(issueSignature(a, nested(gh(2))), issueSignature(a, nested(gh(2, { status: 'Done' }))), 'a nested child changing repaints');
+  assert.notEqual(issueSignature(a), issueSignature(a, nested(gh(2))));
+});
+
+test('afterPage: "no matches" only when nothing shows and nothing more is to load', () => {
+  assert.equal(afterPage(0, true), 'wait');
+  assert.equal(afterPage(0, false), 'none');
+  assert.equal(afterPage(2, true), 'rows');
+  assert.equal(afterPage(2, false), 'rows');
+});
+
+const gscope = { id: 'g', kind: 'github-project', label: 'G' } as BrowseScope;
+const jscope = { id: 'j', kind: 'jira', label: 'J', site: 's' } as BrowseScope;
+
+test('a GitHub board offers only Not done, Done and Any; a remembered To do falls back to Not done', () => {
+  assert.deepEqual(
+    catsFor(gscope).map(([v]) => v),
+    ['open', 'done', 'all'],
+  );
+  assert.equal(catsFor(jscope).length, 5);
+  assert.equal(catOf('new', gscope), 'open');
+  assert.equal(catOf('indeterminate', gscope), 'open');
+  assert.equal(catOf('done', gscope), 'done');
+  assert.equal(catOf('new', jscope), 'new');
+});
+
+test('"Me" that can not be resolved goes back to Anyone with a notice', () => {
+  const s: Saved = { ...DEFAULTS, who: 'me' };
+  const notice = dropUnresolvedMe(s, gscope, undefined);
+  assert.equal(s.who, '');
+  assert.match(notice ?? '', /Me/);
+  const ok: Saved = { ...DEFAULTS, who: 'me' };
+  assert.equal(dropUnresolvedMe(ok, gscope, { id: 'u', name: 'u' }), undefined);
+  assert.equal(ok.who, 'me');
 });

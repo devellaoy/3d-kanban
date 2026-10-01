@@ -43,6 +43,12 @@ export const CATS: [BrowseStatusFilter, string][] = [
   ['done', 'Done'],
   ['all', 'Any status'],
 ];
+/** GitHub has no "To do" / "In progress" state: its issues are open or closed, so a GitHub board offers only these. */
+const GITHUB_CATS: BrowseStatusFilter[] = ['open', 'done', 'all'];
+/** The status categories a scope offers. */
+export const catsFor = (scope: BrowseScope): [BrowseStatusFilter, string][] => (scope.kind === 'github-project' ? CATS.filter(([v]) => GITHUB_CATS.includes(v)) : CATS);
+/** A remembered status category the scope doesn't offer (a "To do" kept on a GitHub board) falls back to Not done. */
+export const catOf = (cat: BrowseStatusFilter, scope: BrowseScope): BrowseStatusFilter => (catsFor(scope).some(([v]) => v === cat) ? cat : 'open');
 export const PIN_FIRST = 'Pin yourself first: 📌 This is me in an issue’s Assignee';
 export const SEARCH_MS = 300;
 
@@ -76,6 +82,19 @@ export function meOf(scope: BrowseScope, github: string | undefined): { id: stri
   if (scope.kind === 'github-project') return github ? { id: github, name: github } : undefined;
   const me: IssuePerson | undefined = scope.site ? pinnedMe(scope.site) : undefined;
   return me ? { id: me.id, name: me.name } : undefined;
+}
+
+/** Why "Me" can't be resolved on a scope. */
+export const meWhy = (scope: BrowseScope): string => (scope.kind === 'jira' ? PIN_FIRST : 'Your own GitHub sign-in isn’t known to the office');
+
+/**
+ * "Me" is set but can't be resolved (the pin was cleared, the GitHub login is unknown): the filters
+ * go back to Anyone, so the tree and the select agree. Returns the notice to show, or undefined.
+ */
+export function dropUnresolvedMe(s: Saved, scope: BrowseScope, me: { id: string; name: string } | undefined): string | undefined {
+  if (s.who !== 'me' || me) return undefined;
+  s.who = '';
+  return `“Me” isn’t available: ${meWhy(scope)}`;
 }
 
 /** The filters the office is sent, from what is set. */

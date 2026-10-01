@@ -1,4 +1,4 @@
-/* 🔎 Browse issues (browse.ts, browsetree.ts): on the kanban page and in the 3D office and /lite, so it
+/* 🔎 Browse issues (browse.ts, browseview.ts): on the kanban page and in the 3D office and /lite, so it
    brings all its own styles (the 3D office doesn't load kanban.css). Tokens only. */
 .modal.kb-browse-window { width: min(980px, 100%); height: min(820px, calc(100vh - 32px)); font-size: var(--fs-md); }
 .modal.kb-browse-window > .body { display: flex; flex-direction: column; gap: 8px; flex: 1; min-height: 0; padding: 12px 16px; overflow: hidden; }

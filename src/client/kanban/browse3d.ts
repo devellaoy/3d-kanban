@@ -20,16 +20,28 @@ function projectRepos(): string[] {
   return [...(store.pulls.repos ?? []), ...(primary ? [primary] : [])];
 }
 
+type Scopes = Extract<KanbanServerMsg, { t: 'kanban.browseScopes' }>;
+/** How long the office's answer about a floor's browsable sources is reused when the board is opened again. */
+const SCOPES_MS = 60_000;
+const scopesSeen = new Map<string, { at: number; usable: boolean }>();
+
 /** The 🔎 button for the issues board header, or null on a floor with no project. */
 export function browseButton(net: Net, actions: BoardActions): HTMLElement | null {
   const project = store.floor;
   if (!project) return null;
   const api = kanbanApi(net);
   const button = h('button.btn.hidden', { type: 'button', title: 'Browse every issue of the project’s Jira or GitHub board, with filters' }, '🔎 Browse') as HTMLButtonElement;
-  api.request<Extract<KanbanServerMsg, { t: 'kanban.browseScopes' }>>({ t: 'kanban.browse.scopes', project }).then(
-    (m) => button.classList.toggle('hidden', !m.scopes.some((s) => !s.disabled)),
-    () => {},
-  );
+  const seen = scopesSeen.get(project);
+  if (seen && Date.now() - seen.at < SCOPES_MS) button.classList.toggle('hidden', !seen.usable);
+  else
+    api.request<Scopes>({ t: 'kanban.browse.scopes', project }).then(
+      (m) => {
+        const usable = m.scopes.some((s) => !s.disabled);
+        scopesSeen.set(project, { at: Date.now(), usable });
+        button.classList.toggle('hidden', !usable);
+      },
+      () => {},
+    );
   const open = (issue: BrowseIssue, scope: BrowseScope) => {
     const load = () => api.request<Extract<KanbanServerMsg, { t: 'kanban.browseIssue' }>>({ t: 'kanban.browse.issue', project, scope: scope.id, issueKey: issue.key }).then((m) => m.issue);
     const card = (i: BrowseIssue) => toGhIssue(i, i.taskId, projectRepos());

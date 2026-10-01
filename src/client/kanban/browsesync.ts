@@ -1,4 +1,4 @@
-// The DOM-free part of keeping the browse tree (browsetree.ts) in step as pages come in. Each issue
+// The DOM-free part of keeping the browse tree (browseview.ts) in step as pages come in. Each issue
 // has one row view, kept by key, which is moved (never made again) when a regroup puts the issue
 // somewhere else, so its open state, its loaded sub-tasks and its counts go with it and no issue is
 // ever shown twice. Written against a tiny list interface so the tests can drive it without a DOM.
@@ -61,3 +61,23 @@ export const parentTaskId = (i: BrowseIssue): number | undefined => i.parent?.ta
  * when it says it has more than are nested already.
  */
 export const hasMoreKids = (i: BrowseIssue, nested: number): boolean => !!i.childCount && nested < i.childCount;
+
+/**
+ * A cheap signature of what an issue's row shows, and of the sub-tasks nested under it (all the way
+ * down, as their rows are only updated through it). Equal signatures: nothing to repaint.
+ */
+export function issueSignature(i: BrowseIssue, nested: readonly ItemNode[] = []): string {
+  const own = [i.key, i.title, i.status, i.statusCategory, i.assignee, i.taskId, i.childCount, i.childDone, i.context, i.issueType, i.labels.join(',')].join('\u0001');
+  return nested.length ? `${own}\u0002${nested.map((n) => `(${issueSignature(n.issue, n.children)})`).join('')}` : own;
+}
+
+/** How many pages in a row may come back with nothing to show (all `next`) before "Load more" is offered. */
+export const MAX_EMPTY_PAGES = 3;
+
+/**
+ * What a list shows after a page: its rows, the "nothing matches" line (only when there is nothing
+ * and nothing more to load), or nothing yet because the next page may still hold matches.
+ */
+export function afterPage(shown: number, hasNext: boolean): 'rows' | 'none' | 'wait' {
+  return shown > 0 ? 'rows' : hasNext ? 'wait' : 'none';
+}

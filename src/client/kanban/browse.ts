@@ -1,6 +1,6 @@
 // 🔎 Browse issues: all of a project's Jira issues or GitHub Project items (docs/kanban-architecture.md
 // §6), not just what its issue sources list. One source (scope) at a time, with a search, filters and
-// a tree (browsetree.ts) that loads as it is opened. The filters are remembered per project and source
+// a tree (browseview.ts) that loads as it is opened. The filters are remembered per project and source
 // in this browser. Picking an issue hands it to `open` (the kanban page opens its issue window, the 3D
 // office its card); an issue already made into a task has ↗ #id, which hands the id to `openTask`.
 
@@ -9,8 +9,8 @@ import { h } from '../ui/dom';
 import type { KanbanServerMsg } from '../../shared/kanban/protocol.js';
 import type { BrowseIssue, BrowseOptions, BrowseScope } from '../../shared/kanban/browse.js';
 import type { KanbanApi } from './api';
-import { browseTree } from './browsetree';
-import { CATS, DEFAULTS, PIN_FIRST, SEARCH_MS, keep, meOf, recall, recallScope, savedKey, scopeKey, toFilters, type Saved } from './browsefilters';
+import { browseTree } from './browseview';
+import { DEFAULTS, SEARCH_MS, catOf, catsFor, dropUnresolvedMe, keep, meOf, meWhy, recall, recallScope, savedKey, scopeKey, toFilters, type Saved } from './browsefilters';
 import { kstore } from './store';
 import { dialog, showDialog, textArea, textInput } from './ui';
 
@@ -85,9 +85,10 @@ export function openBrowse(api: KanbanApi, projectId: string, opts: BrowseOpts):
   const labelList = h('datalist', {
     id: `kb-br-labels-${Math.random().toString(36).slice(2, 8)}`,
   });
+  const notices = h('div.kb-br-notices');
   const treeBox = h('div.kb-br-treebox', { 'aria-live': 'polite' }, h('p.kb-br-quiet', {}, 'Loading the sources…'));
   const bar = h('div.kb-br-bar', {}, scopeBox, search, jqlBtn, reset);
-  const body = h('div.body', {}, bar, filters, jqlRow, peopleBox, treeBox, labelList);
+  const body = h('div.body', {}, bar, filters, jqlRow, peopleBox, notices, treeBox, labelList);
   const d = dialog('kb-browse-window', `🔎 Browse issues · ${projectName}`, body);
   showDialog(d, {
     onClose: () => {
@@ -106,11 +107,18 @@ export function openBrowse(api: KanbanApi, projectId: string, opts: BrowseOpts):
     if (!scope || !options) return;
     const g = ++gen;
     const sc = scope;
+    const me = meOf(sc, github);
+    const notice = dropUnresolvedMe(s, sc, me);
+    if (notice) {
+      persist();
+      paintFilters();
+    }
+    notices.replaceChildren(...(notice ? [h('p.kb-br-quiet', { role: 'status' }, notice)] : []));
     tree = browseTree({
       api,
       project: projectId,
       scope: sc,
-      filters: toFilters(s, sc, meOf(sc, github)),
+      filters: toFilters(s, sc, me),
       live: () => g === gen && !closed,
       open: (issue) => opts.open(issue, sc),
       openTask: opts.openTask,
@@ -155,13 +163,13 @@ export function openBrowse(api: KanbanApi, projectId: string, opts: BrowseOpts):
   };
   const assigneeSelect = () => {
     const me = scope ? meOf(scope, github) : undefined;
-    const meWhy = me ? undefined : scope?.kind === 'jira' ? PIN_FIRST : 'Your own GitHub sign-in isn’t known to the office';
+    const why = me || !scope ? undefined : meWhy(scope);
     const list = [
       { v: '', label: 'Anyone' },
       {
         v: 'me',
         label: me ? `Me (${me.name})` : 'Me: pin yourself first',
-        disabled: meWhy,
+        disabled: why,
       },
       { v: 'none', label: 'Unassigned' },
       { v: 'any', label: 'Assigned' },
@@ -169,7 +177,7 @@ export function openBrowse(api: KanbanApi, projectId: string, opts: BrowseOpts):
       { v: 'someone', label: 'Someone…' },
     ];
     const el = pick('Assignee', list, s.who);
-    if (meWhy) el.title = `Assignee · Me: ${meWhy}`;
+    if (why) el.title = `Assignee · Me: ${why}`;
     el.addEventListener('change', () => {
       if (el.value === 'someone') return showPeople(true);
       showPeople(false);
@@ -212,7 +220,7 @@ export function openBrowse(api: KanbanApi, projectId: string, opts: BrowseOpts):
       ...[
         select(
           'Status category',
-          CATS.map(([v, label]) => ({ v, label })),
+          catsFor(scope).map(([v, label]) => ({ v, label })),
           'cat',
         ),
         shown(statuses, s.status) ? select('Status', [any('Any status'), ...statuses.map((n) => ({ v: n, label: n }))], 'status') : null,
@@ -360,6 +368,7 @@ export function openBrowse(api: KanbanApi, projectId: string, opts: BrowseOpts):
       ...DEFAULTS,
       ...recall<Partial<Saved>>(savedKey(projectId, next.id)),
     };
+    s.cat = catOf(s.cat, next);
     search.value = s.q;
     showPeople(false);
     tree?.destroy();
