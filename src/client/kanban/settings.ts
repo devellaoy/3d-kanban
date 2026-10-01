@@ -291,15 +291,16 @@ export function projectPane(api: Pick<KanbanApi, 'request'>, projectId: string, 
   const paintRename = () => {
     if (kstore.me.admin) rename.disabled = unchanged();
   };
-  // The primary repository is called after the project until it's named otherwise: its box follows a
-  // rename, so saving the repositories afterwards doesn't keep the old name.
-  let shownName = info.name;
+  // A rename can rename the primary repository too (the office decides): an untouched box takes the
+  // name the office now has for it, so saving the repositories afterwards keeps that, not the old one.
+  const primaryOf = () => kstore.projectOf(projectId)?.repos.find((r) => r.primary)?.name;
+  let shownPrimary = primaryOf();
   const renamed = () => {
-    const now = kstore.projectOf(projectId)?.name;
-    if (now && now !== shownName) {
+    const now = primaryOf();
+    if (now && now !== shownPrimary) {
       const primary = rows.find((r) => r.repo.primary);
-      if (primary && primary.nameBox.value.trim() === shownName) primary.nameBox.value = now;
-      shownName = now;
+      if (primary && primary.nameBox.value.trim() === shownPrimary) primary.nameBox.value = now;
+      shownPrimary = now;
     }
     paintRename();
   };

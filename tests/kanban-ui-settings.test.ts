@@ -116,7 +116,9 @@ class FakeEl {
   }
 }
 
-async function projectPaneFixture(admin: boolean) {
+type FixtureRepo = { id: string; name: string; dir: string; primary: boolean; kind: 'git' };
+
+async function projectPaneFixture(admin: boolean, repos: FixtureRepo[] = [{ id: 'shop', name: 'Shop', dir: '/code/shop', primary: true, kind: 'git' }]) {
   const g = globalThis as Record<string, unknown>;
   const toasts = new FakeEl('div');
   g.Node ??= FakeEl;
@@ -124,7 +126,7 @@ async function projectPaneFixture(admin: boolean) {
   const { projectPane } = await import('../src/client/kanban/settings.js');
   const { kstore } = await import('../src/client/kanban/store.js');
   const { KANBAN_DEFAULTS, projectDefaults } = await import('../src/client/kanban/defaults.js');
-  const info = { id: 'shop', name: 'Shop', dir: '/code/shop', repos: [{ id: 'shop', name: 'Shop', dir: '/code/shop', primary: true, kind: 'git' as const }], open: true, settings: projectDefaults() };
+  const info = { id: 'shop', name: 'Shop', dir: '/code/shop', repos, open: true, settings: projectDefaults() };
   kstore.projects = [info] as never;
   kstore.me = { admin, name: 'me' };
   const settings = { ...KANBAN_DEFAULTS, projects: {} } as never;
@@ -160,9 +162,9 @@ test('⚙️ Project names the project, with a Rename of its own that sends the 
   assert.deepEqual(sent, [{ t: 'kanban.project.rename', project: 'shop', name: 'Shop & Co' }]);
   await new Promise((r) => setTimeout(r, 0));
   // The office tells everyone the new name: the box now holds what's saved.
-  kstore.apply({ t: 'kanban.projects', projects: [{ ...info, name: 'Shop & Co' }] } as never);
+  kstore.apply({ t: 'kanban.projects', projects: [{ ...info, name: 'Shop & Co', repos: [{ ...info.repos[0], name: 'Shop & Co' }] }] } as never);
   assert.equal(rename.disabled, true, 'renamed: unchanged against the live name');
-  // The primary repository, called after the project, follows it, so saving the repositories keeps the new name.
+  // The office renamed the primary repository with it: the untouched box follows, so saving the repositories keeps it.
   const primaryName = all.find((el) => el.tagName === 'input' && el.getAttribute('aria-label') === 'Name')!;
   assert.equal(primaryName.value, 'Shop & Co');
   type('Shop');
@@ -175,5 +177,23 @@ test('someone who isn’t an admin can’t rename, even when the projects change
   assert.equal(rename.disabled, true);
   kstore.apply({ t: 'kanban.projects', projects: [{ ...info, name: 'Elsewhere' }] } as never);
   assert.equal(rename.disabled, true);
+  cleanups.run();
+});
+
+test('a rename the office keeps off the primary repository leaves its box alone, and edits in it stay', async () => {
+  const repos: FixtureRepo[] = [
+    { id: 'shop', name: 'Shop', dir: '/code/shop', primary: true, kind: 'git' },
+    { id: 'api', name: 'API', dir: '/code/api', primary: false, kind: 'git' },
+  ];
+  const { all, cleanups, kstore, info } = await projectPaneFixture(true, repos);
+  const names = all.filter((el) => el.tagName === 'input' && el.getAttribute('aria-label') === 'Name');
+  assert.deepEqual(names.map((el) => el.value), ['Shop', 'API']);
+  // Renamed to API: the office keeps the primary's Shop, since API is taken.
+  kstore.apply({ t: 'kanban.projects', projects: [{ ...info, name: 'API' }] } as never);
+  assert.deepEqual(names.map((el) => el.value), ['Shop', 'API'], 'no two repositories called API');
+  // Renamed again, and this time the office renames the primary: a box someone typed in keeps what they typed.
+  names[0].value = 'Front';
+  kstore.apply({ t: 'kanban.projects', projects: [{ ...info, name: 'Store', repos: [{ ...repos[0], name: 'Store' }, repos[1]] }] } as never);
+  assert.equal(names[0].value, 'Front');
   cleanups.run();
 });
