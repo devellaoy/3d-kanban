@@ -523,6 +523,7 @@ Every change to the app that lands on `main` is published as a GitHub release of
 - [Dokploy reference](docs/dokploy.md): what `deploy/dokploy.sh` sets up on your Dokploy, and what the volume keeps
 - [Your own server](docs/self-hosting.md): the one-line setup for any Ubuntu or Debian server, or by hand behind Caddy or nginx
 - [Azure reference](docs/azure.md): picking a VM size, pausing, and everything `deploy/azure.sh` does
+- [Performance and battery](docs/performance.md): how often the office is drawn, and what it costs
 - [How it works](docs/how-it-works.md): the architecture, and security notes
 - [Code layout](docs/code-layout.md): where the code lives, adding a feature or an agent provider, and the size guard
 
