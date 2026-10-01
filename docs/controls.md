@@ -5,7 +5,7 @@ Back to the [README](../README.md).
 | Key | Action |
 | --- | --- |
 | W A S D / arrows | Walk (hold Shift to run); on the ladder, W and S climb; in a car, W is the gas, S brakes and reverses, A and D steer |
-| Space | Jump (you can land on desks, couches and the cars in the garage); in a car, brake |
+| Space | Jump (you can land on desks, couches and the cars in the garage); in a car, brake (on the test branch: the handbrake, to drift) |
 | Mouse | Look around, the same in first and third person: click the office to capture the mouse, Esc frees it. The dot in the middle of the screen (the crosshair) is what you aim at, and closing a window puts you straight back to looking around. In third person your character turns to face where the camera looks, standing still too. The third-person camera turns with the mouse with no lag, and zooming (wheel) glides. *In 3d-kanban*, ⚙️ Settings → **🧍 You** → **Mouse sensitivity** (25–200%, 100% the usual speed, kept in your browser) sets how far the mouse turns you, captured or dragging |
 | Click | Use what the crosshair is on, like E (with the basketball, hold to shoot). In third person it has to be in reach of your character's eyes and in their sight, not just the camera's (no using a desk past the end of a wall beside you). With the mouse free (a touch screen), a tap in third person uses what you tapped instead, with the same reach and sight |
 | Wheel | Third person: zoom the camera in or out |
@@ -25,7 +25,7 @@ Back to the [README](../README.md).
 | H | These controls; in a car, honk the horn |
 | T / Enter | Chat |
 | Enter, in a prompt box | A new line. **Shift + Enter** or **⌘ + Enter** (Ctrl + Enter) sends; on a phone, tap the send button |
-| G / 1–6 | Emote: hold G for the wheel (point and let go) or press 1–6 to wave, give a thumbs up, clap, dance, point or facepalm; everyone on your floor sees it |
+| G / 1–6 | Emote: hold G for the wheel (point and let go) or press 1–6 to wave, give a thumbs up, clap, dance, point or facepalm; the wheel also has *six seven* (test branch); everyone on your floor sees it |
 | / | Search the chat and every terminal on your floor |
 | Ctrl + K (⌘K on a Mac) | Command palette: find a worker, issue, PR, service, board, teammate or action; Enter opens it, Shift+Enter walks you there first |
 | V | Join voice; in voice, hold to talk (you're muted when you let go) |
@@ -63,10 +63,13 @@ come before the office's own, so B, R, X, P, Q and so on mean what's listed here
 | Where | Key | Action |
 | --- | --- | --- |
 | Anywhere | 7 / 8 / 9 / 0 | Reaction: 👏 🎉 ❤️ 😂 floats up from you; repeats stack into one badge (👏 ×5) |
+| In the office's world | § (the key left of 1) | The map on or off (also ☰ → 🗺️ Map); Esc or its ✕ hides it too |
+| In a car | Shift / Space / S | Nitro (while the meter lasts) / handbrake, to drift / brake, then reverse |
 | At a desk's blue mat | E | Put things on the desk (plant, mug, photo, lamp, duck) |
 | At a desk lamp | E | Lamp on or off |
 | At a light switch | E | That area's lights off or on, for you |
-| At the lounge plant | E | How the merge plant is doing |
+| At the lounge plant (north-east corner) | E | How the merge plant is doing |
+| At a chair or sofa you placed | E | Sit; E again, walking off or jumping gets you up |
 | At the campfire | E | Stoke it |
 | At the lookout's binoculars | E | Zoom in; E or Esc puts them down |
 | At a roof planter | E | Sow, water or pick |

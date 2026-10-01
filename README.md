@@ -155,7 +155,9 @@ curl -fsSL https://raw.githubusercontent.com/devellaoy/3d-kanban/main/deploy/pro
 - **Office games** *(test branch `test/office-game-features`, single player)*: things on your desk, light
   switches, a lounge plant that grows from merges, seasons in the landscape, a campsite and a hill lookout,
   a roof garden, fishing, racing with start lights and a ghost car, quick emoji reactions (**7**–**0**),
-  a game room with billiards in the garage, and a build mode for furnishing a floor (**U**). They are kept
+  a game room with billiards in the garage, a build mode for furnishing a floor (**U**) with furniture you
+  can sit on, a map (**§**), faster cars that drive anywhere on land (nitro, drift), a livelier scenic
+  world, a *six seven* emote, and a third-person camera that stays out of walls. They are kept
   in your browser only, so nobody else sees them yet ([features](docs/features.md#office-games-test-branch),
   [controls](docs/controls.md#office-games-test-branch)).
 

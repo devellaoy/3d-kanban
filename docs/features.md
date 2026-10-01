@@ -85,7 +85,7 @@ nothing goes over the network, and what they remember lives in your browser's `l
   it on and off. Kept per desk and floor.
 - **Light switches** (W5). There are two wall switches: one on the east wall for the lounge, and one on the
   west wall by the exit door for the desks. **E** fades that area's lamps out and in, for you alone.
-- **The merge plant** (W6). A potted plant in the lounge's north-west corner grows a stage with every
+- **The merge plant** (W6). A potted plant in the lounge's north-east corner, under the Services board, grows a stage with every
   merged pull request while you're in the office. It reaches its next stage at 1, 2, 4, 7, 11 and 16
   merges. It droops after a week without a merge. **E** says how it's doing.
 - **Seasons** (W4). The trees along the scenic loop, and the grass, follow the calendar in the sky's
@@ -130,3 +130,45 @@ nothing goes over the network, and what they remember lives in your browser's `l
   - Aim at a piece you placed: **E** picks it up to move it, and **X** removes it.
   - Pieces are solid to you and are kept per floor. Workers and click-to-walk don't know about them
     yet, so they walk through.
+- **A map** (round 2). **§** (the key left of 1) or ☰ → **🗺️ Map** shows a top-down map of the town and
+  the scenic loop: the roads, the lake, the sea, the farm and the mountains. It marks the places, with a
+  legend:
+  - the garage and the game room
+  - the race start line
+  - the fishing spots
+  - the campsite and the lookout
+  - the roof bar and roof garden (by the elevator)
+
+  You're the red arrow. The map stays up while you walk or drive, and **§**, its ✕ or Esc hides it.
+  While you drive, a small round map in the corner turns with the car.
+- **Cars that go anywhere.** Cars drive anywhere on land, not just on the road. Only things you can see
+  stop them: trees, buildings, fences, the mountains.
+  - Grass slows you down a little.
+  - The sea, the lake and the edge of the world are soft: you wade, slow down and get pushed back out.
+  - Top speed is about 170 km/h. **Shift** is nitro, with a meter that refills.
+  - **Space** is the handbrake, for drifting; **S** brakes.
+  - The car leaves tyre smoke, skid marks and dust, and leans into corners.
+  - The view widens with speed, and a dash shows speed, gear, nitro and drifting.
+  - In third person the camera doesn't swing back behind the car by itself: where you turned it stays put.
+  - Racing laps must stay near the road. Records and ghosts from before the faster cars are not kept.
+- **A livelier world.** Along the scenic loop and in town:
+  - wildflowers in meadows and on the verges (not in winter), bushes, hedges and rocks
+  - signposts to the campsite, the lake dock, the lookout and the race start
+  - picnic tables, plus flower boxes and benches along the street
+  - fences, sunflowers and a scarecrow at the farm
+  - cows and sheep, birds circling, butterflies, and boats on the lake
+
+  All of it is decoration you can walk and drive through. No tree or prop stands on the road or
+  pavement any more.
+- **Room for cars.** The street has seven lamp posts at the curbs instead of fourteen. The garage has
+  five columns, none of them in the aisle, the exits or the game-room doorway.
+- **Six seven.** The emote wheel (**G**) has the "six seven" meme: both palms up, bobbing in turn, with
+  6️⃣7️⃣ over your head. Everyone on your floor sees it. It has no number key, because **7**–**0** are
+  reactions.
+- **Sit on your furniture.** Outside build mode, aim at a chair or sofa you placed and press **E** to sit;
+  a sofa has two seats. Get up with **E**, by walking off or by jumping. Only you see yourself sitting.
+- **The camera stays out of walls.** In third person the camera stops short of walls, the glass meeting
+  room, floors and ceilings, and eases back out when the way is clear.
+- **No plants on the floor.** The office's own potted plants that stood on the floor are gone, so at
+  Christmas there are no little plant-trees either. Desk and shelf plants and the outdoors are as they
+  were.
