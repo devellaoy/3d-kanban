@@ -7,6 +7,8 @@ import type { Net } from '../net';
 import { store } from '../state';
 import { h, openModal, toast } from '../ui/dom';
 import { folderNote, folderPath, folderProblem, requestFloor } from '../ui/flooradd';
+import type { KanbanServerMsg } from '../../shared/kanban/protocol.js';
+import { kanbanApi, type KanbanApi } from './api';
 import { kstore } from './store';
 
 type Kind = 'dir' | 'repo';
@@ -27,8 +29,13 @@ export function newProjectButton(net: Net, onCreated: (id: string) => void): HTM
   return btn;
 }
 
-/** Calls `fn` with the project once kstore lists it (the list follows the floors a moment later). */
-function whenListed(id: string, fn: (id: string) => void) {
+/**
+ * Calls `fn` with the new project once kstore lists it. The list follows the floors a moment later,
+ * but only to a connection that follows some project: Settings in a building that had no floors
+ * follows none, so this also asks for the kanban's meta itself (a page that applies it already has,
+ * by the time the answer gets here; the kanban page doesn't, so it's applied here then).
+ */
+export function whenListed(api: Pick<KanbanApi, 'request'>, id: string, fn: (id: string) => void) {
   if (kstore.projectOf(id)) return fn(id);
   const done = () => (off(), clearTimeout(timer));
   const off = kstore.on('projects', () => {
@@ -37,6 +44,13 @@ function whenListed(id: string, fn: (id: string) => void) {
     fn(id);
   });
   const timer = setTimeout(done, PICK_WAIT_MS);
+  api.request<Extract<KanbanServerMsg, { t: 'kanban.meta' }>>({ t: 'kanban.meta.get' }).then(
+    (meta) => {
+      if (!kstore.projectOf(id) && meta.projects.some((p) => p.id === id)) kstore.applyMeta(meta);
+    },
+    // No answer: the list may still catch up on its own until the wait runs out.
+    () => {},
+  );
 }
 
 function openNewProject(net: Net, onCreated: (id: string) => void) {
@@ -123,7 +137,7 @@ function openNewProject(net: Net, onCreated: (id: string) => void) {
         return;
       }
       modal.close();
-      whenListed(res.floor, onCreated);
+      whenListed(kanbanApi(net), res.floor, onCreated);
     });
   };
 
