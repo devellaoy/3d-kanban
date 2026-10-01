@@ -984,7 +984,7 @@ export class Sky {
         this.flakeState[f] = x;
         this.flakeState[f + 1] = y;
         this.flakeState[f + 2] = z;
-        a.set([x, this.sheltered(x, z) ? -1000 : y, z], i * 3);
+        a[i * 3] = x; a[i * 3 + 1] = this.sheltered(x, z) ? -1000 : y; a[i * 3 + 2] = z;
       }
       pos.needsUpdate = true;
       this.flakes.geometry.setDrawRange(0, snowN);

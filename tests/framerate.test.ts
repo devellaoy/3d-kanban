@@ -50,3 +50,14 @@ test('a few hitches in otherwise smooth frames are fine', () => {
   }
   assert.equal(slow, false);
 });
+
+test('slow frames interrupted by reset never make a whole span', () => {
+  const s = new SlowFrames();
+  let slow = false;
+  // Slow frames in bursts of 5 seconds, each forgotten before ten seconds are up.
+  for (let at = 0; at < 60_000; at += 100) {
+    if (at % 5_000 === 0) s.reset();
+    slow = s.frame(at, 100) || slow;
+  }
+  assert.equal(slow, false);
+});

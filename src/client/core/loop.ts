@@ -9,6 +9,7 @@ import { EYE_HEIGHT } from '../player';
 import { renderCaffeine } from '../features/coffee/meter';
 import type { Ctx } from './context';
 import type { CoreState } from './ctx';
+import type { FramePacer } from './pace';
 import type { Parts } from './parts';
 import type { Frame } from './registry';
 import { FOV } from './scene';
@@ -19,7 +20,7 @@ export interface LoopDeps {
 }
 
 /** Registers the office's own ticks: install it before anything else registers one. */
-export function installLoop(ctx: Ctx, core: CoreState, parts: Pick<Parts, 'stage' | 'coffee' | 'peers' | 'views' | 'worlds' | 'place'>, deps: LoopDeps) {
+export function installLoop(ctx: Ctx, core: CoreState, parts: Pick<Parts, 'stage' | 'coffee' | 'peers' | 'views' | 'worlds' | 'place' | 'pace'>, deps: LoopDeps) {
   // Registered before anything else's, so within a phase they come first.
   ctx.ticks.add('pre', watchFrameRate);
   ctx.ticks.add('pre', feelTheCoffee);
@@ -44,7 +45,9 @@ export function installLoop(ctx: Ctx, core: CoreState, parts: Pick<Parts, 'stage
 
   /** Frames coming too slowly for the 3D to be any fun: the 2D view is offered. */
   function watchFrameRate({ now, delta }: Frame) {
-    if (slowFrames.frame(now, delta * 1000)) deps.offer2d('slow');
+    // Only frames drawn at full rate say anything about how slow this computer is.
+    if (!parts.pace.full) slowFrames.reset();
+    else if (slowFrames.frame(now, delta * 1000)) deps.offer2d('slow');
   }
 
   /** Coffee, and the view's shake easing off. */
@@ -88,6 +91,8 @@ export function installLoop(ctx: Ctx, core: CoreState, parts: Pick<Parts, 'stage
     if (Math.abs(camera.fov - fov) > 0.05) {
       camera.fov += (fov - camera.fov) * Math.min(1, dt * 8);
       camera.updateProjectionMatrix();
+      // Keep drawing every frame until it has settled.
+      parts.pace.hold(300);
     }
     ctx.view.update();
   }
@@ -189,9 +194,11 @@ export function installLoop(ctx: Ctx, core: CoreState, parts: Pick<Parts, 'stage
  * The frame loop: each frame, every phase's ticks, in order (see TICK_PHASES, and installLoop). Its
  * clock starts now; hand what it returns to requestAnimationFrame to start it.
  */
-export function frameLoop(ctx: Ctx, loading: { drew(): void }): (ts?: number) => void {
+export function frameLoop(ctx: Ctx, loading: { drew(): void }, pacer: FramePacer): (ts?: number) => void {
   const timer = new THREE.Timer();
   function frame(ts?: number) {
+    // Not every screen refresh is drawn (see core/pace.ts); the timer measures real time, so what's skipped isn't lost.
+    if (!pacer.due(ts ?? performance.now())) return void requestAnimationFrame(frame);
     timer.update(ts);
     const delta = timer.getDelta();
     ctx.ticks.run({ delta, dt: Math.min(delta, 0.1), t: timer.getElapsed(), now: performance.now() });

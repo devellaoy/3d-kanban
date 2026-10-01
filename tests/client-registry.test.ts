@@ -283,6 +283,18 @@ test('view filters wrap the frame, the first outermost, and only those that are 
   assert.deepEqual(log, ['outer begin', 'drunk begin', 'draw', 'outer end 7']);
 });
 
+test('filtering says whether a filter was on in the last drawn frame', () => {
+  const view = new View();
+  let on = true;
+  view.add({ filter: { begin: () => on, end: () => {} } });
+  assert.equal(view.filtering(), false);
+  view.draw({ delta: 0, dt: 0, t: 0, now: 0 }, () => {});
+  assert.equal(view.filtering(), true);
+  on = false;
+  view.draw({ delta: 0, dt: 0, t: 0, now: 0 }, () => {});
+  assert.equal(view.filtering(), false);
+});
+
 test('an effect taken out stops having a say', () => {
   const view = new View();
   const off = view.add({ fov: (f) => f * 2, covers: () => true });
