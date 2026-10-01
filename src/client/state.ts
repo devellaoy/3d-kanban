@@ -390,6 +390,11 @@ class Store {
         break;
       case 'floors':
         this.floors = msg.floors;
+        // 3d-kanban: a floor renamed (from the kanban's settings) renames the top bar of whoever is on it.
+        {
+          const here = this.project && this.floors.find((f) => f.id === this.floor);
+          if (here && this.project && this.project.name !== here.name) this.project = { ...this.project, name: here.name };
+        }
         this.emit('floors');
         break;
       case 'projectsDir':
