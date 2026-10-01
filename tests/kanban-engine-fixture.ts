@@ -4,7 +4,8 @@
 
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import { rm } from 'node:fs/promises';
 import http from 'node:http';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
@@ -322,7 +323,12 @@ export async function engineFixture(opts: { engine?: EngineOptions; repos?: Floo
   makeRepo(dir);
   const bin = path.join(root, 'bin');
   mkdirSync(bin, { recursive: true });
-  for (const name of ['claude', 'codex']) writeFileSync(path.join(bin, name), FAKE_AGENT, { mode: 0o755 });
+  for (const name of ['claude', 'codex']) {
+    writeFileSync(path.join(bin, name), FAKE_AGENT, { mode: 0o755 });
+    if (process.platform === 'win32') {
+      writeFileSync(path.join(bin, name + '.cmd'), '@echo off\r\n"' + process.execPath + '" "%~dp0' + name + '" %*\r\n');
+    }
+  }
   const transcripts = path.join(root, 'transcripts');
   mkdirSync(transcripts, { recursive: true });
   const log = path.join(root, 'invocations.jsonl');
@@ -450,7 +456,8 @@ export async function engineFixture(opts: { engine?: EngineOptions; repos?: Floo
       workers.shutdown();
       await new Promise<void>((resolve) => hooks.close(() => resolve()));
       restore();
-      rmSync(root, { recursive: true, force: true });
+      // Windows may retain the PTY working directory until the host finishes stopping.
+      await rm(root, { recursive: true, force: true, maxRetries: 20, retryDelay: 50 });
     },
   };
   return fx;

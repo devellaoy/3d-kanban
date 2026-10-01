@@ -64,6 +64,7 @@ New files are not seams (they can't conflict): `src/{server,shared,client}/kanba
 
 | File | Where | What | Why |
 |---|---|---|---|
+| `src/server/tasks.ts` | `generate()` | Treat a rejected launch as a failed optional naming attempt | Optional task naming falls back instead of raising an unhandled rejection when Windows cannot spawn a batch shim |
 | `src/server/github.ts` | `MergeWatch.ring(n, repo?)`, `look()` and the new `pullKey()` | Merges are keyed by `repo#n` instead of `n` | A project's repositories can have PRs with the same number; the gong must ring once per PR |
 | `src/server/github.ts` | `GitHub` constructor: `nameWithOwner?`, `pullsOnly` params | Optional owner/name and a pulls-only switch | A project's other repository gets a `GitHub` of its own that fetches only PRs |
 | `src/server/github.ts` | `refreshIssues()` / `refreshPulls()` item mapping *(unmarked)*, `refresh()` *(unmarked)* | `...(this.nameWithOwner ? { repo } : {})` on every issue and PR; `refresh()` skips issues when `pullsOnly` | Each card knows its repository (`GhIssue.repo` / `GhPull.repo`) |
@@ -224,6 +225,16 @@ New files are not seams (they can't conflict): `src/{server,shared,client}/kanba
 | `src/client/ui/prompt.ts` | `sendHomeDialog()` `choices` | "`kanban3d prune` tidies up later" | The command is `kanban3d` |
 | `src/client/ui/accounts.ts` | shared-password note (off) | "run `kanban3d accounts password on`" | Same |
 | `src/client/world/sky.ts` | `INDOOR_FOG`, `ROOM_*`, `WALL_TOP`, `hazeAt()`, `wingRoom()`, `roomAt()`, `indoorAt()`, `ROOM_VARYING`, `ROOM_PARS` with `skyInsideOf()` (split out of `PARS`), `SPRITE_WORLD`, `HAZE_PARS`' `skyInRoom()`, `HAZE`, `onBeforeCompile`, `Sky.setWing()` | Anything inside the office keeps a tenth of the outdoor fog, when you're inside too; upstream PR #207 (closed unmerged, issue #122 still open), plus the fork's own camera check, sprites' haze and the TypeScript mirrors the tests use | The weather's fog doesn't come into the office |
+
+### Test portability
+
+- `tests/dsh.test.ts` (unmarked seam): Windows native fake launcher, JSON-escaped patch paths,
+  and fixture-owned child cleanup before directory removal.
+- `tests/codex-usage.test.ts` (unmarked seam): junction escape coverage and an explicit skip
+  limited to the file-symlink subtest when Windows denies creating it.
+- `tests/kanban-*.test.ts` / `tests/kanban-engine-fixture.ts`: Windows fake-agent batch launchers,
+  junction coverage and POSIX-only permission-bit assertions.
+- `docs/testing.md` and the README development link document these platform checks.
 
 ### Build, packaging, deploy, docs
 
