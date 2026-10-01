@@ -397,12 +397,15 @@ export function openTerminal(net: Net, workerId: string, onChanges?: () => void,
   // Files dropped in, or a screenshot pasted, go up to the office's machine and the terminal types
   // where they are, as a terminal does with a file dragged into it: Claude Code attaches a picture.
   let uploading = 0;
+  const termHidden = () => host.getClientRects().length === 0; // 3d-kanban: a web page tab or the task tab is showing
   const insertFiles = async (files: File[]) => {
     if (!files.length) return;
     el.classList.toggle('uploading', ++uploading > 0);
     try {
       const paths = await Promise.all(files.map((f) => uploadDrop(workerId, f)));
       if (current?.modal !== modal) return;
+      // 3d-kanban: the tab changed while it uploaded: nothing is typed into a terminal you can't see.
+      if (termHidden()) return void toast('The terminal’s tab was left while the file uploaded, so it wasn’t typed in: drop it again there', 'warn');
       sayTyping();
       sendSize(true);
       term.paste(droppedPaths(paths));
@@ -420,7 +423,6 @@ export function openTerminal(net: Net, workerId: string, onChanges?: () => void,
     dragDepth = 0;
     el.classList.remove('dropping');
   };
-  const termHidden = () => host.getClientRects().length === 0; // 3d-kanban: a web page tab or the task tab is showing
   modal.backdrop.addEventListener('dragenter', (e) => {
     if (!hasFiles(e) || inTaskPane(e.target) || termHidden()) return; // 3d-kanban: not over the task pane, nor with the terminal hidden
     e.preventDefault();
