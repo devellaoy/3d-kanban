@@ -1,5 +1,6 @@
 import { readFileSync, writeFileSync } from 'node:fs';
 import type { SkyState, Weather } from '../shared/protocol.js';
+import { SEASONS, seasonOfMonth } from '../shared/season.js';
 import { guessPlace } from '../shared/sun.js';
 
 // The sky over the office: where it is (which sets when the sun rises and sets) and the weather.
@@ -61,7 +62,7 @@ interface Place {
 
 /** The next spell of made-up weather: likelier to stay as it is, snow only in winter, storms in summer. */
 export function wander(prev: Weather | null, month: number, south: boolean): { weather: Weather; intensity: number } {
-  const season = Math.floor((((south ? month + 6 : month) % 12) + 1) / 3) % 4; // 0 winter, 1 spring, 2 summer, 3 autumn
+  const season = SEASONS.indexOf(seasonOfMonth(month, south)); // 0 winter, 1 spring, 2 summer, 3 autumn
   const odds: Record<Weather, number>[] = [
     { clear: 30, cloudy: 25, rain: 10, storm: 0, snow: 25, fog: 10 },
     { clear: 40, cloudy: 25, rain: 20, storm: 5, snow: 0, fog: 10 },

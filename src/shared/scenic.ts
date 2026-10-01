@@ -322,3 +322,9 @@ export const PIER = { z: 236, length: 44, width: 4 } as const;
 
 /** Checkpoints round the loop, for timing a lap: a car has to pass each of them (see LapTimer). */
 export const CHECKPOINTS = [0.15, 0.4, 0.65, 0.9].map((k) => k * LOOP_LENGTH);
+
+/** The campsite on the lake's west shore, in the meadow inside the loop: the campfire's middle (the tents and logs are round it). */
+export const CAMP = { x: 12, z: 302 } as const;
+
+/** The hill lookout at the foot of the foothill south of the lake, off the tunnel road: the middle of its deck, which faces north over the lake. */
+export const VIEWPOINT = { x: 30, z: 389, width: 7, depth: 5 } as const;

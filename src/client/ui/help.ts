@@ -21,6 +21,7 @@ export const HELP_ROWS: readonly (readonly [string, string])[] = [
   ['🏎️', "The Lambos and Ferraris in the garage: E at one gets you behind the wheel, or beside whoever's driving it. W is the gas, S brakes and reverses, A and D steer, Space brakes, H honks and E gets you out. Everyone on your floor sees you drive by"],
   ['🍸', 'The elevator goes up to the rooftop bar: a DJ playing drum and bass under the lights, and the city all around. Press E at the bar for a drink (it goes to your head for a bit) and at the DJ booth for the air horn'],
   ['🎯', 'Up on the roof, in the corner past the DJ: a dart board and an axe-throwing lane. E at either steps up to the line. The mouse (or the arrow keys) aims, and your hand wanders more after a few drinks. Hold Space (or the mouse button) and let go in the green: three darts a visit, five axes a round, chalked up for everyone up there. E steps back'],
+  ['🎱', 'The game room off the garage (take the elevator down, the door is in the west end): E at the billiards table. The mouse aims (Shift for fine aim), hold Space and let go to shoot, R racks again, P switches between practice and two players taking turns, E or Esc leaves'],
   ['Wheel', 'Zoom the camera in or out in third person'], // no more drag to orbit
   ['P', 'Prompt: give a task to a new or existing worker at the desk you face'],
   ['C', 'Changes: what the worker at the desk you face changed — files and diff, commit, discard, open a PR'],
@@ -52,4 +53,14 @@ export const HELP_ROWS: readonly (readonly [string, string])[] = [
   ['Esc', 'Close any window and get back to looking around'],
   ['Ctrl + [', 'Send Esc to a terminal instead, to close a menu like Claude’s /skills or interrupt Claude. ⎋ Esc in the terminal’s header does the same'],
   ['⚙️', 'Settings (in the ☰ menu): switch between first and third person'],
+  ['👏', 'Reactions: press 7 👏, 8 🎉, 9 ❤️ or 0 😂 and it floats up from you (in front of the view in first person). Press it again quickly and they stack into one badge with a count (👏 ×5)'],
+  ['🏁', 'Racing: in a car, stop at the chequered line on the street and press Z for five red lights. Move before they go out and it is a jump start (+5 s). Then three timed laps of the scenic loop; your best lap is replayed as a translucent ghost car (Y turns it on or off), and U shows your race records'],
+  ['🎣', 'Fishing: walk to the end of the lake dock (under the mountains) or the beach pier on the scenic loop and press E at the sign. Hold E and let go to cast (the fuller the meter, the further and the rarer the fish), wait for the bobber to go under, then press E to strike. Q reels in, I opens the fishing journal with your catches and personal bests'],
+  ['🧸', 'Desk stuff: aim at the blue mat at a desk’s front left and press E to put a plant, mug, photo frame, desk lamp or rubber duck on that desk (aim at the lamp and E switches it). Only you see them, kept per floor in this browser'],
+  ['💡', 'Light switches on the east wall (lounge) and the west wall by the exit door (desks): E turns that area’s lamps off and on, for you alone'],
+  ['🌱', 'The plant in the lounge’s north-west corner grows a stage with every merged pull request and droops after a week without one. E checks on it'],
+  ['🍂', 'The trees along the scenic loop and the grass follow the seasons: blossom in spring, green in summer, autumn colours, bare branches and snow on the ground in winter (the season of the calendar; add ?season=winter to the address to try another)'],
+  ['🏕️', 'Out on the scenic loop: a campsite on the lake’s west shore with tents, logs to sit round and a campfire (E stokes it; it lights up the night), and a hill lookout south of the lake where E at the binoculars zooms in on the view (E or Esc puts them down)'],
+  ['🌻', 'Four planters on the roof, by the bar: E at an empty one sows it, E again every twenty minutes or so waters it until it blooms, and E picks it. The garden grows while you are away, and is kept in this browser'],
+  ['🛠️', 'Build mode: U starts furnishing the floor you are on (U again, or Esc, to stop). B opens the catalogue: chairs, tables, a sofa, plants, a bookshelf, a rug, a lamp and a whiteboard stand. A ghost follows where you aim (red where it can not go); click places it, R turns it. Aim at a piece you placed: E picks it up to move it, X removes it. Kept in this browser, per floor; workers walk through it'],
 ];

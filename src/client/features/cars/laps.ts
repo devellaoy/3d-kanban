@@ -10,7 +10,12 @@ export class LapTimer {
   /** Your fastest lap so far (seconds), if you've done one. */
   best: number | null;
   /** The last lap you finished: how long it took, whether it was your best, and when (the timer's clock). */
-  done: { time: number; best: boolean; at: number } | null = null;
+  done: { time: number; best: boolean; at: number; flying: number } | null = null;
+  /** When the car last crossed the line (null before it has), and how many times it has: a ghost's lap starts there. */
+  crossed: number | null = null;
+  crossings = 0;
+  /** A race began the lap standing at the line (see begin): crossing it the first time doesn't restart the clock. */
+  private armed = false;
   /** When the lap you're on started, if you've crossed the line. */
   private start: number | null = null;
   private passed = new Set<number>();
@@ -30,12 +35,20 @@ export class LapTimer {
     // Over the line, on the street, one way or the other (not jumped across it).
     const street = z > ROAD.minZ - 1 && z < ROAD.maxZ + 1;
     if (!street || was.x < 0 === x < 0 || Math.abs(x - was.x) > 10) return null;
+    const flying = this.crossed === null ? null : now - this.crossed;
+    this.crossed = now;
+    this.crossings++;
+    if (this.armed && this.passed.size === 0) {
+      this.armed = false;
+      return null;
+    }
+    this.armed = false;
     let lap: number | null = null;
     if (this.start !== null && this.passed.size === CHECKPOINTS.length) {
       lap = now - this.start;
       const best = this.best === null || lap < this.best;
       if (best) this.best = lap;
-      this.done = { time: lap, best, at: now };
+      this.done = { time: lap, best, at: now, flying: flying ?? lap };
     }
     this.start = now;
     this.passed.clear();
@@ -47,11 +60,21 @@ export class LapTimer {
     return this.start !== null && this.passed.size > 0 ? now - this.start : null;
   }
 
+  /** A race starts now, standing at the line: the first lap runs from here, through the first crossing, all the way round. */
+  begin(now: number) {
+    this.start = now;
+    this.passed.clear();
+    this.armed = true;
+    this.crossed = null;
+  }
+
   /** Out of the car: the lap you were on doesn't count. */
   reset() {
     this.start = null;
     this.passed.clear();
     this.last = null;
+    this.crossed = null;
+    this.armed = false;
   }
 }
 

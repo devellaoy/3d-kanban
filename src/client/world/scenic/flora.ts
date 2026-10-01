@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { mesh, toon } from '../toon';
 import { G } from './kit';
+import { seasonal } from './seasonal';
 
 // What grows along the loop (and the rocks): pines, leafy trees, palms and boulders, each standing on
 // the street's level.
@@ -9,12 +10,23 @@ export const PINES = ['#2d6a4f', '#40916c', '#1b4332', '#52796f'];
 export const LEAVES = ['#5fb760', '#3f8f45', '#6fcf6a', '#74a57f'];
 export const AUTUMN = ['#f4a259', '#e76f51', '#e9c46a'];
 
+/**
+ * The leaf material for a tree of `color` from PINES, LEAVES or AUTUMN: one shared by every tree of the
+ * same kind and tone (the lighter or the darker half of the palette), which the seasons recolour (see seasonal.ts).
+ */
+function foliage(color: string) {
+  if (AUTUMN.includes(color)) return seasonal('autumn', 0, AUTUMN[0]);
+  const [kind, palette] = PINES.includes(color) ? (['pine', PINES] as const) : (['leaf', LEAVES] as const);
+  const shade = (palette.indexOf(color) % 2) as 0 | 1;
+  return seasonal(kind, shade, palette[shade]);
+}
+
 /** A pine, feet at (x, z) on the street's level: three cones on a stubby trunk. */
 export function pine(into: THREE.Group, x: number, z: number, s: number, color: string, turn: number) {
   const g = new THREE.Group();
   // No ends on the trunk or the cones: nobody sees under a pine.
   g.add(mesh(new THREE.CylinderGeometry(0.18, 0.26, 1.6, 6, 1, true), toon('#6f4e37'), 0, 0.8, 0));
-  const leaf = toon(color);
+  const leaf = foliage(color);
   g.add(mesh(new THREE.ConeGeometry(1.9, 3.2, 7, 1, true), leaf, 0, 2.7, 0));
   g.add(mesh(new THREE.ConeGeometry(1.45, 2.6, 7, 1, true), leaf, 0, 4.1, 0));
   g.add(mesh(new THREE.ConeGeometry(0.95, 2.1, 7, 1, true), leaf, 0, 5.4, 0));
@@ -28,7 +40,14 @@ export function pine(into: THREE.Group, x: number, z: number, s: number, color: 
 export function leafy(into: THREE.Group, x: number, z: number, s: number, color: string, turn: number) {
   const g = new THREE.Group();
   g.add(mesh(new THREE.CylinderGeometry(0.2, 0.28, 2.1, 6, 1, true), toon('#8a5a3b'), 0, 1.05, 0));
-  const leaf = toon(color);
+  // A few boughs inside the leaves, which are all that's left of it in winter.
+  const bough = toon('#7a5236');
+  for (const [x, z, lean] of [[0.5, 0.1, -0.4], [-0.5, 0.3, 0.45], [0.2, -0.5, 0.2]]) {
+    const b = mesh(new THREE.CylinderGeometry(0.05, 0.1, 1.9, 5, 1, true), bough, x, 3.0, z, false);
+    b.rotation.set(lean, 0, -lean);
+    g.add(b);
+  }
+  const leaf = foliage(color);
   g.add(mesh(new THREE.IcosahedronGeometry(1.7, 1), leaf, 0, 3.2, 0));
   g.add(mesh(new THREE.IcosahedronGeometry(1.15, 1), leaf, 0.8, 3.9, 0.35));
   g.position.set(x, G, z);

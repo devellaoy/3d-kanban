@@ -152,6 +152,12 @@ curl -fsSL https://raw.githubusercontent.com/devellaoy/3d-kanban/main/deploy/pro
   shortcuts to the 3D office and the 2D view, shows *The office is offline. Reconnecting…* while it can't
   reach the office, and offers **Reload** when a new version is out. HTTPS is needed except on
   localhost ([configuration](docs/configuration.md#pwa)).
+- **Office games** *(test branch `test/office-game-features`, single player)*: things on your desk, light
+  switches, a lounge plant that grows from merges, seasons in the landscape, a campsite and a hill lookout,
+  a roof garden, fishing, racing with start lights and a ghost car, quick emoji reactions (**7**–**0**),
+  a game room with billiards in the garage, and a build mode for furnishing a floor (**U**). They are kept
+  in your browser only, so nobody else sees them yet ([features](docs/features.md#office-games-test-branch),
+  [controls](docs/controls.md#office-games-test-branch)).
 
 The rest is the office's own guide, from upstream agent-office; its install and run commands point at
 this repository (`devellaoy/3d-kanban`, its releases and the `kanban3d` command).

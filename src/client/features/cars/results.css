@@ -1,0 +1,24 @@
+/* The race records window (results.ts) */
+.modal.race-results { width: min(640px, 100%); }
+.race-results header .rr-ghost { padding: 4px 10px; font-size: 14px; }
+.rr-stats { display: flex; gap: 12px; margin-bottom: 14px; }
+.rr-stat { flex: 1; text-align: center; padding: 10px 6px; border: 3px solid var(--ink); border-radius: 14px; background: var(--paper-2); }
+.rr-v { font-size: 22px; font-weight: 900; font-variant-numeric: tabular-nums; }
+.rr-l { font-size: 12px; font-weight: 800; color: var(--muted); }
+.rr-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.rr-table th { text-align: left; color: var(--muted); font-weight: 800; padding: 4px 8px; }
+.rr-table td { padding: 6px 8px; border-top: 2px solid rgba(43, 45, 66, .12); font-weight: 700; }
+.rr-table td.num { font-weight: 900; font-variant-numeric: tabular-nums; }
+.rr-table td.laps { font-variant-numeric: tabular-nums; color: var(--muted); }
+.rr-table tr.best td { background: rgba(255, 214, 10, .25); }
+.rr-none { padding: 20px 8px; text-align: center; font-weight: 700; color: var(--muted); }
+/* The five start lights on screen (racing.ts) */
+.race-lights { position: fixed; top: 74px; left: 50%; transform: translateX(-50%); z-index: 30; pointer-events: none; text-align: center; }
+.race-lights[hidden] { display: none; }
+.rl-row { display: inline-flex; gap: 10px; padding: 10px 16px; background: #15161f; border: 3px solid var(--ink); border-radius: 18px; }
+.rl-dot { width: 28px; height: 28px; border-radius: 50%; background: #3b0b10; border: 2px solid #000; transition: background .05s; }
+.rl-dot.on { background: #ff2a2a; box-shadow: 0 0 14px 4px rgba(255, 40, 40, .7); }
+.race-lights.go .rl-row { background: #0b3b17; }
+.rl-say { margin-top: 8px; font-weight: 900; font-size: 20px; color: #fff; text-shadow: 0 2px 0 #000, 0 0 6px #000; }
+.race-lights.go .rl-say { color: #5dff85; font-size: 32px; }
+@media (max-width: 560px) { .rr-table td.laps, .rr-table th:nth-child(4) { display: none; } }

@@ -3,10 +3,16 @@ import type { WallRect } from '../../../shared/decor';
 import type { FloorPalette } from '../../../shared/floors';
 import { street } from '../outside';
 import { cars } from '../../features/cars/world';
+import { billiardsTable } from '../../features/billiards/world';
+import { gameroom } from '../../features/gameroom/world';
 import { scenic } from '../scenic';
 import { toon, toonUnique } from '../toon';
 import { elevator, garageLift } from '../elevator';
 import { gong } from '../../features/gong/world';
+import { deskStuff } from '../../features/deskstuff/world';
+import { lightSwitches } from '../../features/lights/world';
+import { mergePlant } from '../../features/mergeplant/world';
+import { camp } from '../../features/camp/world';
 import { jukebox } from '../../features/jukebox/world';
 import { bookshelf } from '../../features/bookshelf/world';
 import { cabinet } from '../../features/cabinet/world';
@@ -45,7 +51,7 @@ function floorPlan() {
     walls,
     balcony,
     tee,
-    ...downstairs(cars, street, green, scenic),
+    ...downstairs(cars, street, green, scenic, gameroom, billiardsTable),
     plug,
     tower,
     desks,
@@ -72,6 +78,10 @@ function floorPlan() {
     hoop,
     whiteboard,
     clearOfStairs,
+    deskStuff,
+    lightSwitches,
+    mergePlant,
+    camp,
   ] as const;
 }
 

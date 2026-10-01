@@ -1,0 +1,11 @@
+/* The billiards panel (see ui.ts): along the top of the screen while you're at the table. */
+.billiards { position: absolute; left: 50%; top: 14px; transform: translateX(-50%); width: min(360px, calc(100vw - 32px)); padding: 8px 12px 10px; display: grid; gap: 6px; font-size: 13px; font-weight: 900; text-align: center; pointer-events: none; }
+.billiards-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.billiards-title { flex: 1; }
+.billiards-x { pointer-events: auto; cursor: pointer; border: 3px solid var(--ink); border-radius: 999px; background: #fff; font: inherit; line-height: 1; width: 26px; height: 26px; padding: 0; }
+.billiards-meter { position: relative; height: 16px; border: 3px solid var(--ink); border-radius: 999px; background: linear-gradient(90deg, #caffbf, #ffd166 70%, #ef476f); overflow: hidden; }
+.billiards-rest { position: absolute; inset: 0 0 0 auto; width: 100%; background: #f1e4d3; }
+.billiards-info { font-weight: 800; font-variant-numeric: tabular-nums; }
+.billiards-balls { display: flex; flex-wrap: wrap; justify-content: center; gap: 3px; min-height: 18px; }
+.billiards-chip { display: inline-grid; place-items: center; width: 18px; height: 18px; border: 2px solid var(--ink); border-radius: 50%; font-size: 10px; line-height: 1; color: #fff; }
+#hud:has(.billiards:not(.hidden)) #toasts { translate: 0 70px; }

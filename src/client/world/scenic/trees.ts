@@ -1,4 +1,4 @@
-import { FARM, LAKE, LOOP_PAVED, MOUNTAINS, shoreX } from '../../../shared/scenic';
+import { CAMP, FARM, LAKE, VIEWPOINT, LOOP_PAVED, MOUNTAINS, shoreX } from '../../../shared/scenic';
 import { neighbourBoxes } from '../outside';
 import { AUTUMN, LEAVES, PINES, boulder, leafy, palm, pine } from './flora';
 import { G, beside, inBox, indexAt, insideLoop, nearest, stretch, type ScenicKit } from './kit';
@@ -6,6 +6,8 @@ import { G, beside, inBox, indexAt, insideLoop, nearest, stretch, type ScenicKit
 /** Trees all round the loop, by what's near them, and boulders by the road through the mountains. They go in last, round everything else. */
 export function plantTrees(kit: ScenicKit) {
   const { rand, parts, colliders, trunk, taken, free } = kit;
+  // The campsite and the lookout (features/camp) keep the trees off.
+  taken.push({ x: CAMP.x, z: CAMP.z, r: 13 }, { x: VIEWPOINT.x, z: VIEWPOINT.z, r: 8 });
   const neighbours = neighbourBoxes();
   const town = (x: number, z: number) => (Math.abs(x) < 64 && z > -64 && z < 40) || (x > -24 && x < 14 && z > 30 && z < 72) || neighbours.some((b) => inBox(b, x, z, 5));
   const ok = (x: number, z: number, r: number) => free(x, z, r) && !town(x, z) && x > shoreX(z) + 26 && !MOUNTAINS.some(([mx, mz, mr]) => Math.hypot(mx - x, mz - z) < mr * 0.95);

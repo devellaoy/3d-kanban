@@ -1,0 +1,9 @@
+/* The desk-stuff picker (ui.ts): five things to tick on or off, and the lamp's switch under them */
+.modal.deskstuff { width: min(460px, 100%); }
+.ds-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 10px; }
+.ds-item { display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 12px 8px; font: inherit; font-weight: 800; font-size: 14px; color: var(--ink); background: #fff; border: 3px solid var(--ink); border-radius: 14px; cursor: pointer; }
+.ds-item:hover { background: var(--paper-2); }
+.ds-item.on { background: var(--accent); color: #fff; box-shadow: 0 3px 0 var(--ink); }
+.ds-icon { font-size: 30px; line-height: 1; }
+.ds-lamp { margin-top: 14px; width: 100%; }
+.ds-lamp[hidden] { display: none; }

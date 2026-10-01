@@ -71,3 +71,62 @@ Everything in the office, room by room. Back to the [README](../README.md).
 - **YouTube on the Office TV** *(3d-kanban)*. Press **E** at the lounge TV with nothing on it: its window takes a YouTube or YouTube Music link (`youtube.com/watch?v=`, `youtu.be/`, `/shorts/`, `/live/`, `music.youtube.com`, a `t=` or `start=` to start part-way in, a playlist with `list=`, or a video in one with `index=`; a video in an automatic mix, as YouTube Music's links carry, plays on its own), or shares your screen instead. Everyone on the floor sees it on the TV and hears it at the same point: the office keeps when it started on its own clock, so someone who comes in late, or reconnects, jumps straight to where everyone else is, and anyone who drifts more than a second out of step is put right. It plays in YouTube's own player (the office never pulls its sound or picture out), lined up with the TV's screen and hidden by whoever walks in front of it. Sit on the couch, or press **E** at the TV, for its window: the video big, what it is and who put it on (YouTube's title, or its video id), **↗ YouTube**, **⏹️ Stop**, and the box to change it. Its volume is your jukebox volume under **⚙️** → Sound, louder the closer you are to the TV, as with the jukebox; putting it on turns the jukebox off. The browser only lets it be heard after a click or a key on the page: until then it plays muted, and the TV and the hint bar say *click to hear*. A video whose owner doesn't allow it outside YouTube (YouTube's errors 101 and 150), or that's private or gone, says so on the TV and comes off (a playlist goes on to its next video). **What the TV shows, first to last:** a shared screen (YouTube pauses for it and picks up in step when the share ends), then YouTube, then the idle card. The 2D view (`/lite`) doesn't play it. The video goes on in `.agent-office/youtube-tv.json`, so it survives a restart.
 - **An account for everyone.** Open **🔑 Accounts** from the **☰** menu and make an invite link. Whoever opens it picks a password and gets an account in their own name. That name is the one on their character, in chat and on every terminal they type into (**⌨️** in the terminal header shows who typed last), and nobody else can take it. Admins see everyone's accounts there, can make someone an admin, and can revoke an account, which signs that person out at once. The shared office password keeps working alongside the accounts until an admin switches it off. Sessions are signed cookies, and login attempts are rate limited.
 - **Your own Claude and GitHub.** With an account, the workers you hire run on your own Claude plan, and the office acts on GitHub as you: comments, merges, labels, claimed issues, commits, pushes and pull requests show up under your name, with your git name and GitHub noreply email. The first time you come in, **🔐 Your sign-ins** opens (it's in the **☰** menu too). **Sign in with Claude** gives you Claude's sign-in page and takes back the code it shows; **Sign in with GitHub** shows a one-time code for github.com/login/device. Or paste a token from `claude setup-token` (or an API key), or a GitHub token. A 🐚 shell you open at a desk runs as you, so `claude auth login` and `gh auth login` typed there sign you in too. Hiring a Claude worker, queueing a task, calling a meeting or asking a board agent needs your own Claude sign-in first; without one, the window opens and says why. A worker keeps running as whoever hired it: a queued task as whoever queued it, a meeting's workers as whoever called it. Admins can pick the office machine's own sign-ins instead. Everyone's sign-ins are kept apart, so any number of people can be signed in to different accounts at once. Revoking an account signs it out and deletes its sign-ins. On the office password, with no account, everything runs on the machine's own `claude` and `gh` as before.
+
+## Office games (test branch)
+
+*On the `test/office-game-features` branch only, from the ideas in
+[ideas/office-game-features.md](ideas/office-game-features.md).* These are single player for now:
+nothing goes over the network, and what they remember lives in your browser's `localStorage` (keys
+`office.game.*`), so other people don't see your desk things, plants or records. Keys are in
+[Controls](controls.md#office-games-test-branch).
+
+- **Your own desk** (W1). Every desk has a small blue mat at its front left. Aim at it and press **E** to
+  put a plant, a mug, a photo frame, a desk lamp or a rubber duck on that desk. **E** at the lamp switches
+  it on and off. Kept per desk and floor.
+- **Light switches** (W5). There are two wall switches: one on the east wall for the lounge, and one on the
+  west wall by the exit door for the desks. **E** fades that area's lamps out and in, for you alone.
+- **The merge plant** (W6). A potted plant in the lounge's north-west corner grows a stage with every
+  merged pull request while you're in the office. It reaches its next stage at 1, 2, 4, 7, 11 and 16
+  merges. It droops after a week without a merge. **E** says how it's doing.
+- **Seasons** (W4). The trees along the scenic loop, and the grass, follow the calendar in the sky's
+  hemisphere:
+  - spring: blossom and fresh green
+  - summer: green
+  - autumn: red and orange leaves
+  - winter: bare boughs, snowy pines and snow on the ground
+
+  The server's weather uses the same season (`src/shared/season.ts`). `?season=autumn` in the address
+  tries another one.
+- **A campsite and a hill lookout** (W8). The campsite is on the lake's west shore, with tents, logs and a
+  campfire that lights up the night. **E** at the fire stokes it. The lookout deck is south of the lake;
+  **E** at its binoculars zooms in on the view, and **E**, **Esc** or walking off puts them down.
+- **A roof garden** (W7). Four planters stand on the roof by the bar. **E** at an empty one sows it. **E**
+  again waters it, and a watering counts at most once every twenty minutes. A plant goes from seed to
+  bloom over eight waterings and droops after six hours dry. **E** at a bloom picks it.
+- **Fishing** (M5). Walk to the end of the lake dock or the beach pier and press **E** at the sign:
+  - Hold **E** and let go to cast. A fuller meter casts further, and further out the fish are rarer.
+  - Wait for the bobber to go under, then press **E** to strike. A quick strike lands a bigger fish; one
+    too early or too late loses it.
+  - There are twelve kinds of fish across the lake and the sea, plus junk such as a boot.
+  - **I** opens the fishing journal: catches and personal bests. **Q** reels in or packs up.
+- **Racing and a ghost car** (M6). In a car, stop at the chequered line on the street and press **Z**.
+  - Five red lights come on and go out. Moving before they're out is a jump start, which adds 5 s.
+  - Then three timed laps of the scenic loop.
+  - Your best lap is replayed as a translucent ghost car (**Y** turns it on or off).
+  - **U** in the car opens the race records: best lap, best race and the last ten results.
+- **Reactions** (S2). **7** 👏, **8** 🎉, **9** ❤️ and **0** 😂 float an emoji up from you: in front of the
+  view in first person, above your head in third. Pressing the same one again quickly stacks them into
+  one badge with a count (👏 ×5). They're separate from the emotes (G, 1–6), which everyone on the floor
+  sees. Reactions are only on your screen for now.
+- **The game room and billiards** (W3, M3). Take the elevator down to the garage. The game room is
+  through the door in its west end, with a sofa, neon signs and a billiards table. **E** at the table
+  plays billiards. Practice keeps a shot count and your best clear. Two players take turns: you keep the
+  table while you pot. Scratch and you get the cue ball in hand. The balls are a small hand-written
+  simulation, with no physics library.
+- **Build mode** (W2). **U** on an office floor starts furnishing it, and **B** opens the catalogue: a
+  chair, a small table, a sofa, a potted plant, a bookshelf, a rug, a floor lamp and a whiteboard stand.
+  - A ghost of the piece follows your aim on a half-metre grid. It's red where the piece can't go.
+  - **R** turns it, and a click places it.
+  - Aim at a piece you placed: **E** picks it up to move it, and **X** removes it.
+  - Pieces are solid to you and are kept per floor. Workers and click-to-walk don't know about them
+    yet, so they walk through.

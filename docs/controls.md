@@ -54,6 +54,36 @@ You can also click a nearby desk to interact with it, or click a worker in the W
 
 On a phone, use the 2D view at `/lite` instead: a terminal there has a row of keys under it (**1** **2** **3**, the arrows, Enter, Tab, Esc, Ctrl+C) and a box to send a prompt. See [Features](features.md).
 
+## Office games (test branch)
+
+Only on the `test/office-game-features` branch ([what they are](features.md#office-games-test-branch)).
+While you're doing one of these (driving, fishing, at the billiards table, in build mode), its keys
+come before the office's own, so B, R, X, P, Q and so on mean what's listed here.
+
+| Where | Key | Action |
+| --- | --- | --- |
+| Anywhere | 7 / 8 / 9 / 0 | Reaction: 👏 🎉 ❤️ 😂 floats up from you; repeats stack into one badge (👏 ×5) |
+| At a desk's blue mat | E | Put things on the desk (plant, mug, photo, lamp, duck) |
+| At a desk lamp | E | Lamp on or off |
+| At a light switch | E | That area's lights off or on, for you |
+| At the lounge plant | E | How the merge plant is doing |
+| At the campfire | E | Stoke it |
+| At the lookout's binoculars | E | Zoom in; E or Esc puts them down |
+| At a roof planter | E | Sow, water or pick |
+| At a fishing sign | E | Start fishing; hold E and let go to cast, E when the bobber goes under to strike |
+| Fishing | Q / I | Reel in or pack up / the fishing journal |
+| In a car, at the street's chequered line | Z | Start a race (five lights); Z again calls it off |
+| In a car | Y / U | Ghost car on or off / race records |
+| At the billiards table | E | Play; E or Esc leaves |
+| Billiards | Mouse / Shift | Aim / fine aim |
+| Billiards | Space or left button | Hold for power, let go to shoot |
+| Billiards | R / P | Rack again / practice or two players |
+| Billiards, cue ball in hand | W A S D / Space | Move the cue ball / put it down |
+| On an office floor | U | Build mode on or off |
+| Build mode | B / R / Click | The catalogue / turn the piece / place it |
+| Build mode, aiming at a piece | E / X (Delete) | Pick it up to move it / remove it |
+| Build mode | Esc | Let go of the piece, then leave build mode |
+
 ## In the kanban view
 
 The kanban view (`/kanban`, **🗂️ Kanban** in the ☰ menu or on the 2D view) has keys of its own:

@@ -18,6 +18,7 @@ import { birdsong, deskPhones, Fridge, nightCrickets, startRoomTone, startWind }
 import { ding } from './alerts';
 import { arcade } from '../features/cabinet/sound';
 import { ball, type BallSound } from '../features/basketball/sound';
+import { billiards, type BilliardsSound } from '../features/billiards/sound';
 import { Dj, hiccup, pour } from '../features/bar/sound';
 import { carDoor, crash, honk, Motors, type Engine } from '../features/cars/sound';
 import { bonk, hatch, poleLanding, rung, slide, twirl } from '../features/climbing/sound';
@@ -33,6 +34,7 @@ import { pageTurn, paper, step, stepAt } from './steps';
 import { toss, type TossSound } from '../features/bargames/sound';
 import { fidgeting, Typing } from './typing';
 import { Rain, thunder } from './weather';
+import { fishing, type FishingSound } from '../features/fishing/sound';
 
 export class OfficeSound {
   private readonly a: AudioCore = new AudioCore({ start: (ctx) => this.start(ctx), touched: () => this.music.touched() });
@@ -208,6 +210,10 @@ export class OfficeSound {
     ball(this.a, kind, at, speed);
   }
 
+  billiards(kind: BilliardsSound, at: Pos, speed = 2) {
+    billiards(this.a, kind, at, speed);
+  }
+
   arcade(kind: 'land' | 'clear' | 'over', lines = 1) {
     arcade(this.a, kind, lines);
   }
@@ -290,5 +296,11 @@ export class OfficeSound {
   /** 1 on each beat of the tune, falling to 0 before the next, for the jukebox's lights. */
   beat(): number {
     return this.music.beat();
+  }
+
+  // ---- Fishing (features/fishing) -----------------------------------------------------------------
+
+  fishing(kind: FishingSound, at: Pos) {
+    fishing(this.a, kind, at);
   }
 }

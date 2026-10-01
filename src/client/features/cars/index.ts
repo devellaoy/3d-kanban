@@ -10,6 +10,7 @@ import { aside, hintTitle, key, onE } from '../../core/hint';
 import { Driver } from './controller';
 import { DESK_KEYS } from '../../interaction';
 import { LapTimer, lapTime } from './laps';
+import { raceTrack } from './racing';
 import { store } from '../../state';
 import { clip, h, toast } from '../../ui/dom';
 
@@ -124,6 +125,7 @@ export function installCars(ctx: Ctx, deps: CarsDeps) {
     },
     // In a car, E gets you out and H honks (W A S D and Space drive, see Driver); nothing else is in reach.
     key: (e) => {
+      if (racing.key(e)) return true;
       if (e.code !== 'KeyE' && e.code !== 'KeyH' && e.code !== 'KeyF' && !(e.code in DESK_KEYS)) return false;
       if (e.repeat) return true;
       if (e.code === 'KeyE') getOut();
@@ -157,6 +159,8 @@ export function installCars(ctx: Ctx, deps: CarsDeps) {
       }
     })(),
   );
+  /** Races from the line, and the ghost of your best lap (see racing.ts). */
+  const racing = raceTrack(ctx, { driver, laps });
   function lapDone(time: number) {
     const done = laps.done;
     if (done?.best) {
@@ -182,7 +186,11 @@ export function installCars(ctx: Ctx, deps: CarsDeps) {
     if (driver.driving && driver.pose) {
       const lap = laps.update(driver.pose.x, driver.pose.z, now / 1000);
       if (lap !== null) lapDone(lap);
-    } else laps.reset();
+      racing.tick(now / 1000, lap);
+    } else {
+      laps.reset();
+      racing.stop();
+    }
     // A car coming at you where you stand: out of its way, with a thump if it was going.
     const player = ctx.player;
     if (ctx.inOffice() && !driver.active && !ctx.upTop() && !ctx.trip()) {
@@ -277,10 +285,10 @@ export function installCars(ctx: Ctx, deps: CarsDeps) {
       const now = performance.now() / 1000;
       const done = laps.done && now - laps.done.at < 6 ? laps.done : null;
       const running = laps.running(now);
-      const lap = done ? ` · 🏁 ${lapTime(done.time)}${done.best ? ' best!' : ''}` : running !== null ? ` · ⏱ ${lapTime(running)}` : '';
+      const lap = (done ? ` · 🏁 ${lapTime(done.time)}${done.best ? ' best!' : ''}` : running !== null ? ` · ⏱ ${lapTime(running)}` : '') + racing.status(now);
       hint = {
         k: `drive|${kmh}|${other}|${where}|${lap}`,
-        parts: [h('span.title', {}, `🏎️ ${CARS[i].name}`), aside(`${kmh} km/h${where}${lap}${other ? ` · with ${clip(other, 20)}` : ''}`), key('W A S D', 'Drive'), key('Space', 'Brake'), key('H', 'Honk'), key('E', 'Get out')],
+        parts: [h('span.title', {}, `🏎️ ${CARS[i].name}`), aside(`${kmh} km/h${where}${lap}${other ? ` · with ${clip(other, 20)}` : ''}`), key('W A S D', 'Drive'), key('Space', 'Brake'), key('H', 'Honk'), ...racing.keys(), key('E', 'Get out')],
       };
     } else {
       const at = name(c?.driver);

@@ -136,7 +136,7 @@ test('a lap is timed from the line in front of the office all the way round, pas
   laps.update(-50, z, 70);
   laps.update(-1, z, 74.9);
   assert.equal(laps.update(0.5, z, 75), 72);
-  assert.deepEqual(laps.done, { time: 72, best: true, at: 75 });
+  assert.deepEqual(laps.done, { time: 72, best: true, at: 75, flying: 72 });
   // A slower one isn't the best; a jump across the line (a reload, a teleport) isn't a crossing.
   for (const d of CHECKPOINTS) laps.update(LOOP.find((q) => q.d >= d)!.x, LOOP.find((q) => q.d >= d)!.z, 100);
   laps.update(-2, z, 150);

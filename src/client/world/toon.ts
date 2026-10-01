@@ -303,7 +303,7 @@ export function mergeByColor(root: THREE.Object3D): THREE.Group {
     if (!m.isMesh) return;
     const rel = new THREE.Matrix4().multiplyMatrices(inv, m.matrixWorld);
     const mat = m.material as THREE.Material;
-    const plain = mat instanceof THREE.MeshToonMaterial && !mat.map && !mat.transparent && !mat.vertexColors && mat.emissive.getHex() === 0 && mat.side === THREE.FrontSide;
+    const plain = mat instanceof THREE.MeshToonMaterial && !mat.userData.live && !mat.map && !mat.transparent && !mat.vertexColors && mat.emissive.getHex() === 0 && mat.side === THREE.FrontSide;
     if (!plain) {
       const copy = new THREE.Mesh(m.geometry, mat);
       copy.applyMatrix4(rel);
