@@ -147,8 +147,10 @@ allowed: `todo → in_progress` (= start), `waiting|review → done`, `done → 
   transcript is read from its last 512 KB, and not at all when its file's mtime is older than `since`; of
   several transcripts of one name (a respawn) the one written last speaks; one that can't be read counts as
   working (an error is no rest). The lead's log only covers the lag
-  of theirs: a spawn, a `SendMessage` to one (`routing.target`, else the call's `to`; `*` is everyone) or
-  a `[to Y]` summary in another's idle notification wakes it, an idle notification, shutdown or
+  of theirs: a spawn, a `SendMessage` to one (`routing.target`, else the call's `to`; `*` is everyone) wakes it,
+  as does a teammate's message to another, read from the sender's own transcript at its own time (the idle
+  notification's `[to Y]` summary counts only when the sender's transcript can't be read: that notification
+  can reach the lead minutes late, naming a message already answered); an idle notification, shutdown or
   termination rests it (only for names that are teammates: spawned, or with a transcript; a teammate's
   `[to main]` to the lead wakes nobody), each when newer than the teammate's last line. A teammate's message to the lead is
   no prompt of the office's: it doesn't open a new window (`start`) and counts as a prompt to answer

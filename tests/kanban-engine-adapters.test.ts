@@ -241,9 +241,25 @@ test('claude transcript: teammates (agent teams) still working, from their own t
   const older = withTs([cUser('Fix'), cAssistant([{ type: 'tool_use', id: 'q1', name: 'SendMessage', input: { to: 'a', message: 'm' } }], {}, 'mq'), cUser([{ type: 'tool_result', tool_use_id: 'q1', content: 'sent' }]), wait], 1);
   assert.equal(readClaudeTurn(lead(older, { a: own([msgFrom('2', text('Done.'))], 0) }))?.background, 1);
 
-  // A teammate sending another a message goes idle with a "[to Y]" summary: Y is woken, whatever its transcript says yet.
+  // A teammate sending another a message goes idle with a "[to Y]" summary. The sender's own transcript is the truth for the send:
+  // its SendMessage newer than Y's last line wakes Y (the summary of the notification, a few lines on, adds nothing).
   const relay = withTs([cUser('Implement task #7'), ...spawn('a', 's1'), ...spawn('b', 's2'), wait, mail(tag('a', idle('a', { summary: '[to b] take over' }))), cAssistant([text('Waiting on b.')], {}, 'm9')], 1);
-  assert.equal(readClaudeTurn(lead(relay, { a: own([msgFrom('2', text('Done.'))], 2), b: own([msgFrom('3', text('Done.'))], 2) }))?.background, 1);
+  const dm = (from: string, to: string, id: string) => [
+    cAssistant([{ type: 'tool_use', id, name: 'SendMessage', input: { to, message: 'hi' } }], {}, `m-${id}`),
+    cUser([{ type: 'tool_result', tool_use_id: id, content: [text('{"success":true}')] }], { toolUseResult: { success: true, routing: { sender: from, target: `@${to}` } } }),
+  ];
+  const sender = (to: string, s: number) => withTs([cUser(tag('team-lead', 'Do it.')), msgFrom('1', { type: 'thinking', thinking: '' }), ...dm('a', to, 'd1'), msgFrom('2', text('Sent.'))], s);
+  assert.equal(readClaudeTurn(lead(relay, { a: sender('b', 10), b: own([msgFrom('3', text('Done.'))], 3) }))?.background, 1);
+  // ... a sender with no transcript (only its spawn): the summary wakes Y.
+  assert.equal(readClaudeTurn(lead(relay, { b: own([msgFrom('3', text('Done.'))], 3) }))?.background, 1);
+  // A send to the lead (team-lead, main) wakes nobody.
+  assert.equal(readClaudeTurn(lead(relay, { a: sender('team-lead', 10), b: own([msgFrom('3', text('Done.'))], 3) }))?.background, undefined);
+
+  // #336: the idle notification of a sender can reach the lead minutes late, its "[to b]" summary naming a message b answered long ago.
+  // a sent at 12 and b answered by 15; the notification came at 40: b is at rest.
+  const late = [...withTs([cUser('Implement task #7'), ...spawn('a', 's1'), ...spawn('b', 's2'), wait], 1), ...withTs([mail(tag('a', idle('a', { summary: '[to b] take over' }))), cAssistant([text('Waiting on b.')], {}, 'm9')], 40)];
+  const answered = { a: sender('b', 10), b: withTs([cUser(tag('a', 'take over')), msgFrom('1', { type: 'thinking', thinking: '' }), msgFrom('2', text('Done.'))], 13) };
+  assert.equal(readClaudeTurn(lead(late, answered))?.background, undefined);
 
   // A teammate closing with a message to the lead ("[to main]": a name that is no teammate's) wakes nobody, with or without a transcript.
   const report = withTs([cUser('Implement task #7'), ...spawn('a', 's1'), wait, mail(tag('a', idle('a', { summary: '[to main] done' }))), cAssistant([text('Done.')], {}, 'm9')], 1);
