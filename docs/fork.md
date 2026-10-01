@@ -127,9 +127,10 @@ including `ws/`, `http/`, `workers.ts` (`KanbanWorkers`, which `WorkerManager` e
 | `src/server/hooks/office-workers.ts` | `PullsView` and the send-home call | `pullsOf: (id) => floor.pullsOf(id)`; `floor.sendHome(w.id, cleanup, { by, reason })` (`merged` is leave-on-merge's) | Finds `<floor>~<repo>` repositories; the departure intent |
 | `src/server/http/routes/index.ts` | import; `kanbanRoutes.pwa`, `kanbanRoutes.pwaIcons`, `kanbanRoutes.page` before the sign-in check, `kanbanRoutes.api` after it | The route table of `kanban/http/routes.ts`: the PWA's `/manifest.webmanifest` (`application/manifest+json`), `/sw.js` (`Service-Worker-Allowed: /`), `/offline.html` and `/icons/*`, all `no-cache` and without a session ([configuration](configuration.md#pwa)); `/kanban`, `/kanban.html` (signed out → `/login?next=/kanban`); `/api/kanban/*` to `kanban.handleHttp` (non-GET must be same-origin) | The PWA, the kanban page and its uploads/attachments |
 | `src/server/http/routes/pages.ts` | the `/assets/` route | Serves only files under `assets/` | An encoded `../` reached the signed-in pages' shells without a session |
+| `src/server/http/static.ts` | `MIME` | `export` (one word, marked at the end of the line) | The PWA's files (kanban/http/routes.ts) are typed from the same table as upstream's |
 | `src/server/http/routes/github.ts` | the `/api/gh/*` detail routes | `?repo=` picks `floor.githubFor(repo)`, 404 when it isn't the project's | PR/issue windows for another repository |
 | `src/server/ws/dispatch.ts` | import; `dispatch()`'s early return | A string type that isn't a key of the map goes to `kanbanUnknown` (kanban/ws/handlers.ts), which passes a `kanban.*` one to `handleWs` | A page newer or older than the office (the PWA can keep an old one) gets the kanban's "not available" error, not silence |
-| `src/server/ws/handlers/index.ts` | import; `...kanbanHandlers` in `handlers`; `kanbanHooks` first in `features` | Every `kanban.*` type has an entry (`kanban/ws/handlers.ts`, from a `Record<KanbanClientMsg['t'], true>`, so a type missing there fails the typecheck) that calls `ctx.kanban.handleWs`; `kanbanHooks.closed` calls `kanban.clientGone(id)` | No deltas to a closed socket; the kanban's messages ride the office's socket |
+| `src/server/ws/handlers/index.ts` | import; `...kanbanHandlers` in `handlers`; `kanbanHooks` first in `features` | Every `kanban.*` type has an entry (`kanban/ws/handlers.ts`, from the keys of `KANBAN_CLIENT_TYPE_LIST` in `shared/kanban/protocol.ts`, the one list of them, which the parser checks too; a type missing there fails the typecheck) that calls `ctx.kanban.handleWs`; `kanbanHooks.closed` calls `kanban.clientGone(id)` | No deltas to a closed socket; the kanban's messages ride the office's socket |
 | `src/server/ws/handlers/github.ts` | `issuesView`, `pullsView`; `gh.refresh`; `gh.merge`, `gh.comment`, `gh.close`, `gh.labels` | `floor.issuesState()` / `floor.pullsState()` (the project's issue sources, every repository of the project); `refreshWall(floor.id, 0)` after upstream's refresh (🔄 on the issues board fetches the issue sources too); `repo` picks `floor.githubFor(repo)`, merge passes it to `floor.merged`, the replies echo the request's `repo`; `gh.close` drops the queue's issue only when it's the primary repository's, and refreshes the sources' board a moment later | Every repository on the PR board; the PR window matches a reply to the right repository's PR; the queue holds the primary repository's issues; the 3D issues board from the kanban's issue sources |
 | `src/server/ws/handlers/workers.ts` | `worker.spawn`, `worker.resume`, `worker.kill`, `worker.prompt`, `worker.pr` | `issueKey` only through `floor.cardKey()`; `worker.resume`: `kanban.workerResume(info, caller)` first (R on a waiting task is Retry); `worker.kill`: the intent `{ by, reason, done? }` (`msg.kanban.done`) to `floor.sendHome`; `worker.prompt`: `kanban.workerPrompt(info, text, caller, msg.asComment === true)` first, upstream's typing-in (and issue claim) when it hands back `undefined`; `worker.pr`: `prViaKanban()` (kanban/ws/pr.ts) first, upstream's `openPr` only on `PR_FALLBACK` | "O" has an agent write the PR; X can move the task to Done; P / Ask / an issue card on a task worker is a task comment only when the fork's dialogs send `asComment`, everything else types in as upstream |
 | `src/server/ws/handlers/presence.ts`, `queue.ts` | `carry`; `queue.add` | `issueKey` through `floor.cardKey()` (a card on that floor's board, checked before `queue.add` stores it) | Issue-source cards in hands and on the queue |
@@ -269,9 +270,9 @@ including `ws/`, `http/`, `workers.ts` (`KanbanWorkers`, which `WorkerManager` e
    - Every place upstream sets a worker's status or removes one still goes through `emitted(...)` /
      `observe(...)` (and `observeHook` in the adapters' hook handlers), so observers hear it.
    - `handlers` in `ws/handlers/index.ts` still spreads `...kanbanHandlers` and `features` still has
-     `kanbanHooks`. `HandlerMap` stays exhaustive: the kanban types listed in the `Record` in
-     `src/server/kanban/ws/handlers.ts` must match `KanbanClientMsg`, and every upstream type needs its own
-     handler.
+     `kanbanHooks`. `HandlerMap` stays exhaustive: the kanban's entries come from `KANBAN_CLIENT_TYPE_LIST`
+     (`src/shared/kanban/protocol.ts`, typed `Record<KanbanClientType, true>`), and every upstream type needs
+     its own handler.
    - `ClientMsg` / `ServerMsg` in `src/shared/protocol.ts` still end with the kanban unions; `DEFS` still
      spreads `KANBAN_PROMPT_DEFS`; the `src/server/workers.ts` barrel still re-exports `SpawnExtra`,
      `WorkerObservation` and `WorkerObserver`.
@@ -291,7 +292,8 @@ including `ws/`, `http/`, `workers.ts` (`KanbanWorkers`, which `WorkerManager` e
    - `src/client/main.ts` still has the `installKanban3d` line (`Parts.kanban3d` in `core/parts.ts`), after
      `installArrival` (whose `travel.arrive` clears the trip before 📍 Show in 3D's listener runs) and before
      `net.connect`; moving it either way silently breaks the link.
-   - `tests/size.test.ts` still excludes the kanban folders and keeps `FORK_CEILINGS`.
+   - `tests/size.test.ts` still excludes the kanban folders and keeps `FORK_CEILINGS`, each the file's exact
+     length (the "only gets shorter" test asks for it to be lowered, or dropped once upstream's limit holds it).
    - `src/client/world/sky.ts`: if upstream fixes its issue #122 (fog indoors) its own way, take upstream's
      version and drop the fork's (upstream PR #207) along with `tests/sky.test.ts`.
    - `src/client/ui/termtabs.{ts,css}` are upstream #212's files verbatim: upstream's version wins.

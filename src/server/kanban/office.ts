@@ -34,6 +34,7 @@ export function openKanban(ctx: Ctx, hookPort: number): Kanban {
 
 /** Who a connection is, to the kanban. */
 export const kanbanCaller = (ctx: Ctx, c: Client): KanbanCaller => ({ clientId: c.id, accountId: c.accountId, name: c.peer.name, admin: ctx.meOf(c.accountId).admin });
+// `clientId` again: KanbanCaller's is optional (a caller over HTTP has none), a KanbanClient's isn't.
 export const kanbanClient = (ctx: Ctx, c: Client): KanbanClient => ({ ...kanbanCaller(ctx, c), clientId: c.id, send: (m) => ctx.sendTo(c, m) });
 
 /** Which of the project's repositories (owner/name) a PR window's message or request is about; none: the floor's own. */

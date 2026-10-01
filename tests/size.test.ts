@@ -87,5 +87,11 @@ test('the list of files over the budget only gets shorter', () => {
     if (!files.has(file)) stale.push(`${file} is gone: take it off CEILINGS in tests/size.test.ts (its pieces are held to the ${BUDGET}-line budget).`);
     else if (linesOf(file) <= BUDGET) stale.push(`${file} is down to ${linesOf(file)} lines, within the ${BUDGET}-line budget: take it off CEILINGS in tests/size.test.ts.`);
   }
+  // 3d-kanban: a fork ceiling is the file's length exactly, so it tightens as the file shrinks, and goes once upstream's ceiling holds it.
+  for (const [file, ceiling] of Object.entries(FORK_CEILINGS)) {
+    if (!files.has(file)) stale.push(`${file} is gone: take it off FORK_CEILINGS in tests/size.test.ts.`);
+    else if (linesOf(file) <= (CEILINGS[file] ?? BUDGET)) stale.push(`${file} is down to ${linesOf(file)} lines, within upstream's limit: take it off FORK_CEILINGS in tests/size.test.ts.`);
+    else if (linesOf(file) < ceiling) stale.push(`${file} is down to ${linesOf(file)} lines: lower its FORK_CEILINGS entry in tests/size.test.ts to that.`);
+  }
   assert.equal(stale.length, 0, `\n${stale.join('\n')}`);
 });

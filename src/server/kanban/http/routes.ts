@@ -3,26 +3,16 @@
 import type http from 'node:http';
 import { createReadStream } from 'node:fs';
 import path from 'node:path';
-import { publicFile, serveFile } from '../../http/static.js';
+import { MIME, publicFile, serveFile } from '../../http/static.js';
 import { sameOrigin, send } from '../../http/util.js';
 import type { Route } from '../../http/router.js';
 import type { KanbanCaller } from '../registry.js';
 
-const PWA_TYPES: Record<string, string> = {
-  '.html': 'text/html; charset=utf-8',
-  '.js': 'text/javascript; charset=utf-8',
-  '.css': 'text/css; charset=utf-8',
-  '.svg': 'image/svg+xml',
-  '.png': 'image/png',
-  '.jpg': 'image/jpeg',
-  '.ico': 'image/x-icon',
-  '.json': 'application/json',
-};
-
+/** Like serveFile, but always revalidated (`no-cache`), with the manifest's and service worker's own types. */
 function servePwa(publicDir: string, res: http.ServerResponse, p: string) {
   const file = publicFile(publicDir, p);
   if (!file) return void res.writeHead(404, { 'content-type': 'text/plain' }).end('Not found');
-  const type = p === '/manifest.webmanifest' ? 'application/manifest+json' : p === '/sw.js' ? 'application/javascript; charset=utf-8' : (PWA_TYPES[path.extname(file)] ?? 'application/octet-stream');
+  const type = p === '/manifest.webmanifest' ? 'application/manifest+json' : p === '/sw.js' ? 'application/javascript; charset=utf-8' : (MIME[path.extname(file)] ?? 'application/octet-stream');
   res.writeHead(200, {
     'content-type': type,
     'cache-control': 'no-cache',
