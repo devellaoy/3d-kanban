@@ -13,11 +13,11 @@ import { h, openModal, toast } from '../ui/dom';
 import { markdown } from '../ui/markdown';
 import { issueMeeting, type MeetingPreset } from '../ui/meeting';
 import { providerPicker } from '../ui/provider';
-import { openIssue } from '../ui/github/issue-window';
+import { openIssue, type IssueWindowExtras } from '../ui/github/issue-window';
 import { labelChip } from '../ui/github/labels';
 import { kanbanApi, type KanbanOk } from './api';
-import { issueActions, type ActionIssue, type IssueSection } from './issueactions';
-import { actionsTarget } from './issueactionsmodel';
+import { issueActions, type ActionIssue } from './issueactions';
+import { actionsTarget, keyedComment } from './issueactionsmodel';
 import { issueTask } from './hireform';
 import { SOURCE_KIND_NAMES } from './labels';
 import { sameWindowAppLinks } from './md';
@@ -223,20 +223,26 @@ const actionIssue = (it: GhIssue): ActionIssue => ({ key: it.key ?? '', url: saf
 const openTaskIn3d = (net: Net) => (id: number) => void import('./taskview').then((m) => m.openTaskWindow(net, id));
 
 /**
- * The status and assignee actions for a keyed card in upstream's window (it has comments and close of
- * its own). It follows the board until its window is gone.
+ * What upstream's window gets for a keyed card: its status and assignee actions (it has comments and
+ * close of its own; a change made here fetches the issue again, so a reopen shows), and its comments
+ * posted by the card's key, so they are signed and land on its task as the kanban's are. Nothing for a
+ * card without a key: upstream's own issue keeps its window as it was.
  */
-function keyedActions(net: Net, card: GhIssue, sections: readonly IssueSection[]): ((it: GhIssue) => Node) | undefined {
+function keyedExtras(net: Net, card: GhIssue): IssueWindowExtras {
   const to = actionsTarget(card, store.floor);
-  if (!to) return undefined;
-  return (first) => {
-    const panel = issueActions(kanbanApi(net), to.project, actionIssue(first), { sections, openTask: openTaskIn3d(net) });
-    const off = store.on('issues', () => {
-      if (!panel.el.isConnected) return off();
-      const fresh = issueOfCard(first);
-      if (fresh) panel.update(actionIssue(fresh));
-    });
-    return panel.el;
+  if (!to) return {};
+  const api = kanbanApi(net);
+  return {
+    extra: (first, reload) => {
+      const panel = issueActions(api, to.project, actionIssue(first), { sections: ['status', 'assignee'], openTask: openTaskIn3d(net), onChanged: reload });
+      const off = store.on('issues', () => {
+        if (!panel.el.isConnected) return off();
+        const fresh = issueOfCard(first);
+        if (fresh) panel.update(actionIssue(fresh));
+      });
+      return panel.el;
+    },
+    postComment: async (text) => void (await api.request(keyedComment(card, to.project, text)!)),
   };
 }
 
@@ -250,7 +256,7 @@ export function openCard(it: GhIssue, net: Net, actions: BoardActions) {
   // Queued with its key, whichever window it opens in.
   const keyed: BoardActions = { ...actions, queue: (_prompt, _title, _issue, provider, model, effort) => queueCard(net, it, provider, model, effort) };
   // The floor's own issue from the sources: upstream's window and prompts.
-  const extra = keyedActions(net, it, ['status', 'assignee']);
+  const extra = keyedExtras(net, it);
   if (isOwnIssue(it)) return openIssue(it, net, keyed, extra);
   if (it.number > 0) {
     const label = (title: string) => title.replace(`#${it.number}`, issueCardLabel(it));

@@ -17,8 +17,13 @@ import { issueContext, issuePrompt, type BoardActions } from './prompts';
 
 // ---- The issue window -----------------------------------------------------------------------------
 
-/** `extra`: more for the top of the conversation (the kanban's status and assignee actions on a card from the issue sources). */
-export function openIssue(first: GhIssue, net: Net, actions: BoardActions, extra?: (it: GhIssue) => Node) {
+/** For a card from the issue sources (kanban/issuecards.ts): its status and assignee actions on top of the conversation (`reload` fetches the issue again after one), and its comments posted by its key. */
+export interface IssueWindowExtras {
+  extra?: (it: GhIssue, reload: () => void) => Node;
+  postComment?: (body: string) => Promise<void>;
+}
+
+export function openIssue(first: GhIssue, net: Net, actions: BoardActions, extras: IssueWindowExtras = {}) {
   let it = first;
   const itemUrl = it.url;
   // Which of the project's repositories it's in (none: the floor's own, as upstream).
@@ -34,8 +39,8 @@ export function openIssue(first: GhIssue, net: Net, actions: BoardActions, extra
     if (!detail) return load();
     detail.comments.push(c);
     render();
-  }, repo);
-  conv.append(h('div.gh-col', {}, extra?.(first) ?? null, thread, comment.el));
+  }, repo, extras.postComment && { post: extras.postComment, sent: () => load() });
+  conv.append(h('div.gh-col', {}, extras.extra?.(first, () => load()) ?? null, thread, comment.el));
   // The footer stays put and renderFrame only shows, hides and relabels, so a board refresh never
   // pulls focus out of the provider picker.
   const closeIssue = h('button.btn', { type: 'button', title: 'Close this issue on GitHub', onclick: () => openClose('issue', it, net, load) }, '✔️ Close issue…');

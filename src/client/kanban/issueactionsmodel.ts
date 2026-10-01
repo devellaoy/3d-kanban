@@ -12,6 +12,12 @@ export function actionsTarget(card: { key?: string }, project: string | null | u
   return card.key && project ? { project, key: card.key } : undefined;
 }
 
+/** A comment on a card, by its key (signed, and put on its task, by the office); undefined: upstream's gh.comment, for a card without a key. */
+export function keyedComment(card: { key?: string }, project: string | null | undefined, text: string) {
+  const to = actionsTarget(card, project);
+  return to ? { t: 'kanban.issue.comment' as const, project: to.project, issueKey: to.key, text } : undefined;
+}
+
 /** The Jira site an issue is on, from its link (the pinned "me" is per site). */
 export function jiraSite(url: string | undefined): string {
   try {

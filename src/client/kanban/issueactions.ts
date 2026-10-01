@@ -31,6 +31,8 @@ export interface IssueActionsOpts {
   sections?: readonly IssueSection[];
   /** Where a #123 in a comment goes. */
   openTask?: (id: number) => void;
+  /** After a change made from here went through (the window around it may want to fetch the issue again). */
+  onChanged?: (what: 'status' | 'assignee' | 'comment') => void;
 }
 
 export function issueActions(api: KanbanApi, project: string, first: ActionIssue, opts: IssueActionsOpts = {}): { el: HTMLElement; update(issue: ActionIssue): void } {
@@ -80,9 +82,9 @@ export function issueActions(api: KanbanApi, project: string, first: ActionIssue
         const sel = h('select.kb-ia-select', { 'aria-label': `Move ${issue.key} to` }) as HTMLSelectElement;
         sel.append(h('option', { value: '' }, 'Move to…'));
         for (const [group, items] of groupTransitions(ts)) {
-          const opts = items.map((t) => h('option', { value: t.id, disabled: !!t.needs?.length || !!t.current }, transitionLabel(t)));
-          if (group) sel.append(h('optgroup', { label: group }, ...opts));
-          else sel.append(...opts);
+          const choices = items.map((t) => h('option', { value: t.id, disabled: !!t.needs?.length || !!t.current }, transitionLabel(t)));
+          if (group) sel.append(h('optgroup', { label: group }, ...choices));
+          else sel.append(...choices);
         }
         sel.addEventListener('change', async () => {
           const t = ts.find((x) => x.id === sel.value);
@@ -90,8 +92,9 @@ export function issueActions(api: KanbanApi, project: string, first: ActionIssue
           sel.disabled = true;
           const ok = await run(() => api.request({ t: 'kanban.issue.transition', ...base, transitionId: t.id }), null, `${issue.key} → ${t.to || t.name}`);
           sel.disabled = false;
-          if (ok) load();
-          else sel.value = '';
+          if (!ok) return void (sel.value = '');
+          load();
+          opts.onChanged?.('status');
         });
         parts.push(sel);
         const needs = ts.filter((t) => t.needs?.length);
@@ -131,7 +134,9 @@ export function issueActions(api: KanbanApi, project: string, first: ActionIssue
     };
     const assign = (to: { me: true } | { id: string } | null, button: HTMLButtonElement | null, label: string) =>
       run(() => api.request({ t: 'kanban.issue.assign', ...base, to }), button, label).then((ok) => {
-        if (ok) showPicker(false);
+        if (!ok) return;
+        showPicker(false);
+        opts.onChanged?.('assignee');
       });
     const person = (p: IssuePerson) => {
       const pick = h('button.kb-ia-person', { type: 'button', title: `Assign ${issue.key} to ${p.name}` }, h('b', {}, p.name), p.login && p.login !== p.name ? h('small', {}, p.login) : null) as HTMLButtonElement;
@@ -223,6 +228,7 @@ export function issueActions(api: KanbanApi, project: string, first: ActionIssue
       ta.disabled = false;
       if (!ok) return ta.focus();
       ta.value = '';
+      opts.onChanged?.('comment');
       load();
     };
     onSendKey(ta, () => void post());
