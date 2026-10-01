@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
-import { mkdirSync, mkdtempSync, rmSync, symlinkSync, unlinkSync, writeFileSync } from 'node:fs';
+import { chmodSync, mkdirSync, mkdtempSync, rmSync, symlinkSync, unlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import type { TaskWorkspace } from '../src/shared/kanban/types.js';
@@ -84,4 +84,44 @@ test('untracked symlinks and nested repositories are fingerprinted, and a link t
   assert.ok(withNested && withNested !== retargeted, 'a nested repository');
   git(nested, 'commit', '-q', '--allow-empty', '-m', 'inner two');
   assert.notEqual(await f.print(), withNested);
+});
+
+test('edits inside an untracked nested repository change the fingerprint', async (t) => {
+  const f = fixture();
+  t.after(f.done);
+  const nested = path.join(f.dir, 'nested');
+  mkdirSync(nested);
+  git(nested, 'init', '-q', '-b', 'main');
+  writeFileSync(path.join(nested, 'n.txt'), 'one\n');
+  git(nested, 'add', '.');
+  git(nested, 'commit', '-q', '-m', 'inner');
+  const clean = await f.print();
+  assert.ok(clean);
+  writeFileSync(path.join(nested, 'n.txt'), 'two\n');
+  const edited = await f.print();
+  assert.ok(edited && edited !== clean, 'an uncommitted edit of a tracked file');
+  writeFileSync(path.join(nested, 'extra.txt'), 'x\n');
+  const added = await f.print();
+  assert.ok(added && added !== edited, 'an untracked file');
+});
+
+test('an unreadable untracked file leaves the fingerprint undefined', { skip: process.platform === 'win32' || process.getuid?.() === 0 }, async (t) => {
+  const f = fixture();
+  t.after(f.done);
+  const file = path.join(f.dir, 'secret.txt');
+  writeFileSync(file, 'x\n');
+  chmodSync(file, 0);
+  try {
+    assert.equal(await f.print(), undefined);
+  } finally {
+    chmodSync(file, 0o644);
+  }
+});
+
+test('a fingerprint that takes too long is undefined', async (t) => {
+  const f = fixture();
+  t.after(f.done);
+  writeFileSync(path.join(f.dir, 'big.bin'), Buffer.alloc(32 * 1024 * 1024, 1));
+  assert.equal(await workspaceFingerprint(f.floor, f.ws, 1), undefined);
+  assert.ok(await f.print());
 });

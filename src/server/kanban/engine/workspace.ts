@@ -49,68 +49,69 @@ function repoFolders(floorDir: string, ws: TaskWorkspace): { dir: string; base: 
 /** The folders of a workspace, primary first. */
 const folders = (floorDir: string, ws: TaskWorkspace): string[] => repoFolders(floorDir, ws).map((d) => d.dir);
 
-/** Runs git with `input` on stdin and hands back its raw stdout (a diff can be big). Throws on a failure or a timeout. */
-function gitOut(cwd: string, args: string[], input?: string): Promise<Buffer> {
+/** Runs git and hands back its raw stdout (a diff can be big). Throws on a failure, and kills git when `signal` aborts. */
+function gitOut(cwd: string, args: string[], signal: AbortSignal): Promise<Buffer> {
   return new Promise((resolve, reject) => {
-    const child = spawn('git', args, { cwd, stdio: ['pipe', 'pipe', 'ignore'] });
+    const child = spawn('git', args, { cwd, stdio: ['ignore', 'pipe', 'ignore'], signal });
     const chunks: Buffer[] = [];
-    const timer = setTimeout(() => child.kill(), 15_000);
     child.stdout.on('data', (c: Buffer) => chunks.push(c));
-    child.on('error', (err) => (clearTimeout(timer), reject(err)));
-    child.on('close', (code) => {
-      clearTimeout(timer);
-      if (code === 0) resolve(Buffer.concat(chunks));
-      else reject(new Error(`git ${args[0]} exited with ${code}`));
-    });
-    child.stdin.on('error', () => undefined);
-    child.stdin.end(input ?? '');
+    child.on('error', reject);
+    child.on('close', (code) => (code === 0 ? resolve(Buffer.concat(chunks)) : reject(new Error(`git ${args[0]} exited with ${code}`))));
   });
 }
 
 const sha256 = (b: Buffer | string): string => createHash('sha256').update(b).digest('hex');
 
-/** One folder's part of the fingerprint. Throws when git can't say. */
-async function folderPrint(dir: string): Promise<string> {
-  const head = (await gitOut(dir, ['rev-parse', 'HEAD'])).toString().trim();
-  const diff = sha256(await gitOut(dir, ['diff', 'HEAD', '--binary', '--no-ext-diff', '--no-textconv']));
-  const files = (await gitOut(dir, ['ls-files', '-o', '--exclude-standard', '-z'])).toString().split('\0').filter(Boolean);
+/** One folder's part of the fingerprint, nested repositories included. Throws when git or the disk can't say. */
+async function folderPrint(dir: string, signal: AbortSignal): Promise<string> {
+  const head = (await gitOut(dir, ['rev-parse', 'HEAD'], signal)).toString().trim();
+  const diff = sha256(await gitOut(dir, ['diff', 'HEAD', '--binary', '--no-ext-diff', '--no-textconv'], signal));
+  const files = (await gitOut(dir, ['ls-files', '-o', '--exclude-standard', '-z'], signal)).toString().split('\0').filter(Boolean);
   const prints: string[] = [];
-  for (const f of files) prints.push(`${f}\0${await untrackedPrint(dir, f)}`);
+  for (const f of files) prints.push(`${f}\0${await untrackedPrint(dir, f, signal)}`);
   return [dir, head, diff, prints.join('\n')].join('\0');
 }
 
-/** What an untracked entry holds: a link's target, a nested repository's HEAD, or a file's mode and contents. Nothing is written anywhere. */
-async function untrackedPrint(dir: string, rel: string): Promise<string> {
+/**
+ * What an untracked entry holds: a link's target, a nested repository's own fingerprint, or a file's
+ * mode and contents. Nothing is written anywhere. Only an entry that vanished meanwhile is 'gone'; any
+ * other trouble (or a FIFO, socket or device, which could block) throws.
+ */
+async function untrackedPrint(dir: string, rel: string, signal: AbortSignal): Promise<string> {
   const full = path.join(dir, rel);
   let st;
   try {
     st = await lstat(full);
-  } catch {
-    return 'gone';
+  } catch (err) {
+    if ((err as { code?: unknown }).code === 'ENOENT') return 'gone';
+    throw err;
   }
-  try {
-    if (st.isSymbolicLink()) return `l:${await readlink(full)}`;
-    if (st.isDirectory()) return `d:${await gitOut(full, ['rev-parse', 'HEAD']).then((b) => b.toString().trim(), () => '')}`;
-    const hash = createHash('sha256');
-    for await (const chunk of createReadStream(full)) hash.update(chunk as Buffer);
-    return `f:${st.mode & 0o111 ? 'x' : '-'}${hash.digest('hex')}`;
-  } catch {
-    return 'gone';
-  }
+  if (st.isSymbolicLink()) return `l:${await readlink(full)}`;
+  if (st.isDirectory()) return `d:${await folderPrint(full, signal)}`;
+  if (!st.isFile()) throw new Error(`${full} is not a file`);
+  const hash = createHash('sha256');
+  for await (const chunk of createReadStream(full, { signal })) hash.update(chunk as Buffer);
+  return `f:${st.mode & 0o111 ? 'x' : '-'}${hash.digest('hex')}`;
 }
 
 /**
  * What the workspace holds now, per repository: HEAD, the tracked changes and the untracked files'
- * contents (ignored ones not). Undefined when git can't say: the caller then counts it as changed.
+ * contents (ignored ones not). Undefined when git can't say, or it takes longer than `timeoutMs` in
+ * all: the caller then counts it as changed.
  */
-export async function workspaceFingerprint(floorDir: string, ws: TaskWorkspace | undefined): Promise<string | undefined> {
+export async function workspaceFingerprint(floorDir: string, ws: TaskWorkspace | undefined, timeoutMs = 15_000): Promise<string | undefined> {
   if (!ws) return undefined;
+  const ctl = new AbortController();
+  const timer = setTimeout(() => ctl.abort(), timeoutMs);
+  timer.unref();
   try {
     const parts: string[] = [];
-    for (const d of repoFolders(floorDir, ws)) parts.push(await folderPrint(d.dir));
+    for (const d of repoFolders(floorDir, ws)) parts.push(await folderPrint(d.dir, ctl.signal));
     return sha256(parts.join('\0\0'));
   } catch {
     return undefined;
+  } finally {
+    clearTimeout(timer);
   }
 }
 
