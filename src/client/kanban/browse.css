@@ -63,6 +63,8 @@ button.kb-br-title:focus-visible { outline: var(--focus-ring); outline-offset: 2
 .kb-br-row.group.released .kb-br-gtitle, .kb-br-row.group.none .kb-br-gtitle { color: var(--muted); }
 .kb-br-row.epic .kb-br-title { font-weight: var(--fw-heavy); }
 .kb-br-row.done .kb-br-title { color: var(--muted); }
+/* An issue that doesn't match the filters, shown only as the parent of a match (BrowseIssue.context). */
+.kb-br-row.context .kb-br-title { color: var(--muted); font-style: italic; font-weight: var(--fw-semibold); }
 .kb-br-meta { display: inline-flex; align-items: center; flex-wrap: wrap; gap: 4px; margin-left: auto; }
 .kb-br-count:not(:empty) { min-width: 22px; padding: 0 7px; font-size: var(--fs-2xs); font-weight: var(--fw-heavy); line-height: 18px; text-align: center; color: var(--text-on-strong); background: var(--strong); border-radius: var(--radius-pill); }
 .kb-br-prog, .kb-br-date { font-size: var(--fs-2xs); font-weight: var(--fw-bold); color: var(--muted); white-space: nowrap; }
@@ -73,6 +75,7 @@ button.kb-br-title:focus-visible { outline: var(--focus-ring); outline-offset: 2
 .kb-browse-window .kb-chip { display: inline-flex; align-items: center; max-width: 180px; padding: 0 7px; font-size: var(--fs-2xs); font-weight: var(--fw-bold); line-height: 17px; color: var(--text); background: var(--field); border: var(--bw-sm) solid var(--ink); border-radius: var(--radius-pill); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .kb-browse-window .kb-chip.type { background: var(--tint-cyan); }
 .kb-browse-window .kb-chip.who { background: var(--tint-wash); color: var(--muted); }
+.kb-browse-window .kb-chip.context { background: var(--paper-2); color: var(--muted); border-style: dashed; }
 .kb-browse-window .kb-chip.cat-new, .kb-browse-window .kb-chip.cat-none { background: var(--status-bg); }
 .kb-browse-window .kb-chip.cat-indeterminate { background: var(--info-soft); }
 .kb-browse-window .kb-chip.cat-done { background: var(--good-soft); }

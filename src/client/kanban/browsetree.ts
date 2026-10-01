@@ -10,6 +10,10 @@ import type { KanbanServerMsg } from '../../shared/kanban/protocol.js';
 import type { BrowseFilters, BrowseGroup, BrowseIssue, BrowseScope } from '../../shared/kanban/browse.js';
 import { groupByEpic, groupProjectItems, issueProgress, mergeIssues, progress, type EpicNode, type ItemNode } from '../../shared/kanban/browsetree.js';
 import type { KanbanApi } from './api';
+import { hasMoreKids, isContext, parentTaskId, syncChildren, viewsFor } from './browsesync';
+
+/** What a row of an issue that doesn't match the filters says. */
+const CONTEXT_HINT = 'Doesn’t match the filters: shown as the parent of a match';
 
 type Groups = Extract<KanbanServerMsg, { t: 'kanban.browseGroups' }>;
 type Page = Extract<KanbanServerMsg, { t: 'kanban.browsePage' }>;
@@ -127,51 +131,76 @@ export function browseTree(o: BrowseTreeOpts): {
     return { load, complete: () => complete };
   };
 
-  /** A node of the tree: its row, and under it a list that is filled the first time it opens. */
-  const node = (row: HTMLElement, canOpen: boolean, label: string, firstOpen: () => void) => {
+  /**
+   * A node of the tree: its row, and under it a list that is filled the first time it opens. `byUser`
+   * says whether the user opened it (a node opened for them, to show what a search nested, is not).
+   * `canOpen` can turn on later, when sub-tasks come to an issue that had none.
+   */
+  const node = (row: HTMLElement, canOpen: boolean, label: string, firstOpen: (byUser: boolean) => void) => {
     const list = h('ul.kb-br-list');
     const tail = h('div.kb-br-tail');
     const sub = h('div.kb-br-sub', { hidden: true }, list, tail);
     const li = h('li.kb-br-node', {}, row, sub);
-    const tog = canOpen
-      ? (h(
-          'button.kb-br-tog',
-          {
-            type: 'button',
-            'aria-expanded': 'false',
-            'aria-label': `Open ${label}`,
-            title: 'Open (→) / close (←)',
-          },
-          '▸',
-        ) as HTMLButtonElement)
-      : h('span.kb-br-tog.leaf', { 'aria-hidden': 'true' }, '•');
-    row.prepend(tog);
     let opened = false;
-    const set = (on: boolean) => {
-      if (!(tog instanceof HTMLButtonElement)) return;
+    /** The user opened or closed it themselves (it is then never opened for them). */
+    let touched = false;
+    const makeTog = (): HTMLElement => {
+      if (!canOpen) return h('span.kb-br-tog.leaf', { 'aria-hidden': 'true' }, '•');
+      const b = h('button.kb-br-tog', { type: 'button', 'aria-expanded': 'false', 'aria-label': `Open ${label}`, title: 'Open (→) / close (←)' }, '▸');
+      b.addEventListener('click', () => {
+        touched = true;
+        set(!!sub.hidden);
+      });
+      return b;
+    };
+    let tog = makeTog();
+    row.prepend(tog);
+    const set = (on: boolean, byUser = true) => {
+      if (!canOpen) return;
       sub.hidden = !on;
       tog.setAttribute('aria-expanded', String(on));
       tog.setAttribute('aria-label', `${on ? 'Close' : 'Open'} ${label}`);
       tog.textContent = on ? '▾' : '▸';
       if (on && !opened) {
         opened = true;
-        firstOpen();
+        firstOpen(byUser);
       }
     };
-    tog.addEventListener('click', () => set(!!sub.hidden));
     row.addEventListener('keydown', (e) => {
       if (e.target instanceof HTMLInputElement || e.altKey || e.ctrlKey || e.metaKey) return;
-      if (e.key === 'ArrowRight' && sub.hidden && canOpen) set(true);
-      else if (e.key === 'ArrowLeft' && !sub.hidden) set(false);
-      else if (e.key === 'ArrowLeft') {
+      if (e.key === 'ArrowRight' && sub.hidden && canOpen) {
+        touched = true;
+        set(true);
+      } else if (e.key === 'ArrowLeft' && !sub.hidden) {
+        touched = true;
+        set(false);
+      } else if (e.key === 'ArrowLeft') {
         // Already closed: up to the node it is in.
         e.preventDefault();
         return li.parentElement?.closest('li.kb-br-node')?.querySelector<HTMLElement>(':scope > .kb-br-row .kb-br-tog')?.focus();
       } else return;
       e.preventDefault();
-      if (tog instanceof HTMLButtonElement) tog.focus();
+      tog.focus();
     });
-    return { li, list, tail, set, isOpen: () => !sub.hidden };
+    return {
+      li,
+      list,
+      tail,
+      set,
+      isOpen: () => !sub.hidden,
+      /** Opens it for the user (not by them), unless they have opened or closed it themselves. */
+      reveal() {
+        if (!touched && sub.hidden) set(true, false);
+      },
+      /** Lets it open, once it has something to show. */
+      openable() {
+        if (canOpen) return;
+        canOpen = true;
+        const next = makeTog();
+        tog.replaceWith(next);
+        tog = next;
+      },
+    };
   };
 
   const statusChip = (status?: string, cat?: string) => (status ? h(`span.kb-chip.status.cat-${cat ?? 'none'}`, { title: `Status: ${status}` }, status) : null);
@@ -192,35 +221,60 @@ export function browseTree(o: BrowseTreeOpts): {
     li: HTMLElement;
     update(issue: BrowseIssue, nested: ItemNode[]): void;
   }
-  const issueView = (first: BrowseIssue, firstNested: ItemNode[] = []): IssueView => {
+  /** The `↗ #id` button to a task made from an issue. */
+  const taskLink = (task: number | undefined, from: string) => {
+    if (!task) return null;
+    const b = h('button.btn.small.kb-br-task', { type: 'button', title: `Open task #${task}, made from ${from}` }, `↗ #${task}`);
+    b.addEventListener('click', () => o.openTask(task));
+    return b;
+  };
+  /**
+   * An issue's row, and its sub-tasks / sub-issues under it: the ones the page nested (`nested`, open
+   * from the start, as a search found them) and, when the user opens it and it has more, the ones
+   * fetched. `views` is the one key → view map of the whole list it is in, shared by every level, so
+   * an issue that moves (a child whose parent came on a later page) keeps its view and shows once.
+   */
+  const issueView = (views: Map<string, IssueView>, first: BrowseIssue, firstNested: ItemNode[] = []): IssueView => {
     let issue = first;
     let nested = firstNested;
     let fetched: BrowseIssue[] = [];
     const row = h('div.kb-br-row.issue');
-    const views = new Map<string, IssueView>();
     let pager: ReturnType<typeof paged<Page>> | null = null;
-    const n = node(row, !!(issue.childCount || nested.length), issue.key, () => {
+    const what = jira ? 'sub-tasks' : 'sub-issues';
+    /** Fetches the sub-tasks, once, when the issue has more than are nested. */
+    const fetchKids = () => {
+      if (pager || !hasMoreKids(issue, nested.length)) return;
+      pager = paged(
+        n.tail,
+        (cursor) =>
+          ask<Page>({
+            t: 'kanban.browse.children',
+            issueKey: issue.key,
+            ...(issue.nodeId ? { nodeId: issue.nodeId } : {}),
+            ...(cursor ? { cursor } : {}),
+          }),
+        (a) => {
+          fetched = mergeIssues(fetched, a.items);
+          o.seen(a.items);
+          paint();
+          paintKids();
+        },
+        `more ${what}`,
+      );
+      pager.load();
+    };
+    /** Opened for the user: what was nested shows, and a button fetches the rest. */
+    const offerMore = () => {
+      if (pager) return;
+      if (!hasMoreKids(issue, nested.length)) return n.tail.replaceChildren();
+      const more = h('button.btn.small.kb-br-more', { type: 'button' }, `Load all ${issue.childCount} ${what}`);
+      more.addEventListener('click', fetchKids);
+      n.tail.replaceChildren(more);
+    };
+    const n = node(row, !!(issue.childCount || nested.length), issue.key, (byUser) => {
       paintKids();
-      if (issue.childCount && nested.length < issue.childCount) {
-        pager = paged(
-          n.tail,
-          (cursor) =>
-            ask<Page>({
-              t: 'kanban.browse.children',
-              issueKey: issue.key,
-              ...(issue.nodeId ? { nodeId: issue.nodeId } : {}),
-              ...(cursor ? { cursor } : {}),
-            }),
-          (a) => {
-            fetched = mergeIssues(fetched, a.items);
-            o.seen(a.items);
-            paint();
-            paintKids();
-          },
-          jira ? 'more sub-tasks' : 'more sub-issues',
-        );
-        pager.load();
-      }
+      if (byUser) fetchKids();
+      else offerMore();
     });
     const kids = (): ItemNode[] => {
       const all = mergeIssues(
@@ -228,37 +282,26 @@ export function browseTree(o: BrowseTreeOpts): {
         fetched,
       );
       const deeper = new Map(nested.map((c) => [c.issue.key, c.children]));
-      return all.map((i) => ({
-        issue: i,
-        children: deeper.get(i.key) ?? [],
-        ...progress([]),
-      }));
+      return all.map((i) => ({ issue: i, children: deeper.get(i.key) ?? [], ...progress([]) }));
     };
     const paintKids = () => {
-      const list = kids();
-      for (const k of list) {
-        let v = views.get(k.issue.key);
-        if (!v) views.set(k.issue.key, (v = issueView(k.issue, k.children)));
-        else v.update(k.issue, k.children);
-        n.list.append(v.li);
-      }
-      if (!list.length && (pager?.complete() ?? !issue.childCount)) n.list.replaceChildren(empty(jira ? 'No sub-tasks' : 'No sub-issues'));
+      const list = kids().filter((k) => k.issue.key !== issue.key);
+      const lis = viewsFor(
+        views,
+        list,
+        (k) => issueView(views, k.issue, k.children),
+        (v, k) => v.update(k.issue, k.children),
+      )
+        .map((v) => v.li)
+        // Never an issue above this one (a loop in the data): the DOM can't put it under itself.
+        .filter((li) => !li.contains(n.li));
+      if (!lis.length && (pager?.complete() ?? !issue.childCount)) n.list.replaceChildren(empty(`No ${what}`));
+      else syncChildren(n.list, lis);
     };
     const paint = () => {
       const loaded = kids().map((k) => k.issue);
       const p = issueProgress(issue, loaded.length ? loaded : undefined);
-      const task = issue.taskId;
-      const goTask = task
-        ? (h(
-            'button.btn.small.kb-br-task',
-            {
-              type: 'button',
-              title: `Open task #${task}, made from ${issue.key}`,
-            },
-            `↗ #${task}`,
-          ) as HTMLButtonElement)
-        : null;
-      goTask?.addEventListener('click', () => o.openTask(task!));
+      const context = isContext(issue);
       const kept = row.firstChild;
       row.replaceChildren(
         ...(kept ? [kept] : []),
@@ -275,29 +318,47 @@ export function browseTree(o: BrowseTreeOpts): {
         h(
           'span.kb-br-meta',
           {},
+          context ? h('span.kb-chip.context', { title: CONTEXT_HINT }, 'context') : null,
           issue.issueType ? h('span.kb-chip.type', {}, issue.issueType) : null,
           statusChip(issue.status, issue.statusCategory),
           issue.assignee ? h('span.kb-chip.who', { title: `Assigned to ${issue.assignee}` }, `👤 ${issue.assignee}`) : null,
           p ? doneChip(p.done, p.total, false) : null,
-          goTask,
+          taskLink(issue.taskId, issue.key),
         ),
       );
       row.classList.toggle('done', issue.statusCategory === 'done');
+      row.classList.toggle('context', context);
+      if (context) row.title = CONTEXT_HINT;
+      else row.removeAttribute('title');
     };
     paint();
+    /** Shows what the page nested: opens it (unless the user closed it) or, open already, repaints. */
+    const showNested = () => {
+      if (!nested.length && !issue.childCount) return;
+      n.openable();
+      if (n.isOpen()) {
+        paintKids();
+        offerMore();
+      } else if (nested.length) n.reveal();
+    };
+    showNested();
     return {
       li: n.li,
       update(next, nextNested) {
         issue = next;
         nested = nextNested;
         paint();
-        if (n.isOpen()) paintKids();
+        showNested();
       },
     };
   };
 
-  /** A flat list of issues, page by page: an epic's own list, or a GitHub group (sub-issues already loaded nest). */
-  const issueList = (n: ReturnType<typeof node>, fetch: (cursor?: string) => Promise<Page>, done?: (all: BrowseIssue[], complete: boolean) => void) => {
+  /**
+   * A flat list of issues, page by page: an epic's own list, a Jira "No epic", or a GitHub group. An
+   * issue whose parent is in the list nests under it (GitHub sub-issues, and Jira sub-tasks a search
+   * found under their story); every regroup reconciles the rows with the new grouping (syncChildren).
+   */
+  const issueList = (n: ReturnType<typeof node>, fetch: (cursor?: string) => Promise<Page>, done?: (top: BrowseIssue[], complete: boolean) => void) => {
     let items: BrowseIssue[] = [];
     const views = new Map<string, IssueView>();
     const pager = paged(
@@ -306,22 +367,22 @@ export function browseTree(o: BrowseTreeOpts): {
       (a) => {
         items = mergeIssues(items, a.items);
         o.seen(a.items);
-        const roots = jira
-          ? items.map((i): ItemNode => ({
-              issue: i,
-              children: [],
-              done: 0,
-              total: 0,
-            }))
-          : groupProjectItems(items);
-        if (!roots.length) return n.list.replaceChildren(empty('No issues here match the filters'));
-        for (const r of roots) {
-          let v = views.get(r.issue.key);
-          if (!v) views.set(r.issue.key, (v = issueView(r.issue, r.children)));
-          else v.update(r.issue, r.children);
-          n.list.append(v.li);
+        const roots = groupProjectItems(items);
+        if (!roots.length) n.list.replaceChildren(empty('No issues here match the filters'));
+        else {
+          const lis = viewsFor(
+            views,
+            roots,
+            (r) => issueView(views, r.issue, r.children),
+            (v, r) => v.update(r.issue, r.children),
+          ).map((v) => v.li);
+          syncChildren(n.list, lis);
         }
-        done?.(items, !a.next);
+        // The top-level issues that match, as groupByEpic counts them.
+        done?.(
+          roots.map((r) => r.issue).filter((i) => !isContext(i)),
+          !a.next,
+        );
       },
       'more issues',
     );
@@ -350,8 +411,8 @@ export function browseTree(o: BrowseTreeOpts): {
             ...where,
             ...(cursor ? { cursor } : {}),
           }),
-        (all, complete) => {
-          if (complete) own = progress(all);
+        (top, complete) => {
+          if (complete) own = progress(top);
           paint();
         },
       ),
@@ -368,6 +429,9 @@ export function browseTree(o: BrowseTreeOpts): {
         issueType: 'Epic',
         hierarchy: 1,
       };
+    /** The task made from the epic: its own record's, or what its issues' `parent` said. */
+    const epicTask = (): number | undefined =>
+      epic.issue?.taskId ?? epic.items.map(parentTaskId).find((id) => id !== undefined);
     const paint = () => {
       const p = own ?? epic;
       const kept = row.firstChild;
@@ -385,7 +449,7 @@ export function browseTree(o: BrowseTreeOpts): {
               `🧭 ${epic.title}`,
             )
           : h('span.kb-br-title.plain', {}, epic.title),
-        h('span.kb-br-meta', {}, statusChip(epic.status, epic.statusCategory), doneChip(p.done, p.total, !own), count),
+        h('span.kb-br-meta', {}, statusChip(epic.status, epic.statusCategory), doneChip(p.done, p.total, !own), count, epic.key ? taskLink(epicTask(), epic.key) : null),
       );
       row.classList.toggle('done', epic.statusCategory === 'done');
     };
@@ -443,12 +507,16 @@ export function browseTree(o: BrowseTreeOpts): {
           o.seen(a.items);
           const nodes = groupByEpic(items);
           if (!nodes.length) return n.list.replaceChildren(empty('No issues here match the filters'));
+          // Reconciled like the issues: an epic node keeps its view (open, loaded), one that is gone
+          // (a "No epic" whose sub-task found its story's epic) is taken out.
+          const lis: HTMLElement[] = [];
           for (const e of nodes) {
             let v = epics.get(e.id);
             if (!v) epics.set(e.id, (v = epicView(g.id, e)));
             else v.update(e);
-            n.list.append(v.li);
+            lis.push(v.li);
           }
+          syncChildren(n.list, lis);
         },
         'more issues',
       ).load();
