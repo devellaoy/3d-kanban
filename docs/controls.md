@@ -24,7 +24,7 @@ Back to the [README](../README.md).
 | Q | Put back the issue card you're carrying, or drop the basketball |
 | H | These controls; in a car, honk the horn |
 | T / Enter | Chat |
-| Enter, in a prompt box | A new line. **Shift + Enter** or **⌘ + Enter** (Ctrl + Enter) sends |
+| Enter, in a prompt box | A new line. **Shift + Enter** or **⌘ + Enter** (Ctrl + Enter) sends; on a phone, tap the send button |
 | G / 1–6 | Emote: hold G for the wheel (point and let go) or press 1–6 to wave, give a thumbs up, clap, dance, point or facepalm; everyone on your floor sees it |
 | / | Search the chat and every terminal on your floor |
 | Ctrl + K (⌘K on a Mac) | Command palette: find a worker, issue, PR, service, board, teammate or action; Enter opens it, Shift+Enter walks you there first |
