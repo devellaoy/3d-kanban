@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { createPullsParts } from '../src/server/kanban/integrations/pulls/index.js';
 import { floorPulled } from '../src/server/kanban/integrations/pulls/board.js';
@@ -468,6 +468,20 @@ test('a phase that finds its own worker busy (a teammate still hooks it) waits f
   const done = await fx.waitTask(task.id, (x) => x.status === 'review' && x.runState === 'idle', 'the review column', 30_000);
   assert.equal(done.reviewRound, 2);
   assert.deepEqual(fx.repo.listRuns(task.id).map((r) => `${r.phase}${r.round ? `:${r.round}` : ''}/${r.status}`), ['implement/succeeded', 'review:1/succeeded', 'fix:1/succeeded', 'review:2/succeeded']);
+});
+
+test('a phase waits for teammates that woke on their own (the worker still done) before it types its prompt', async (t) => {
+  const fx = await engineFixture();
+  t.after(() => fx.close());
+  // The review takes longer than the teammate needs to wake, so the fix finds it at work again.
+  fx.setRules(teamFix.map((r) => (r.teammates ? { ...r, lateTeamMs: undefined, teamAgainMs: 4000 } : r.when.startsWith('This is review round 1') ? { ...r, delayMs: 800 } : r)));
+  const task = fx.newTask({ usePlan: false });
+  await fx.engine.start(task.id, ADA);
+  const done = await fx.waitTask(task.id, (x) => x.status === 'review' && x.runState === 'idle' && x.reviewRound === 2, 'the review column', 40_000);
+  assert.equal(done.reviewRound, 2);
+  const rested = Number(readFileSync(path.join(fx.root, 'team-rested'), 'utf8'));
+  const fix = fx.invocations().find((i) => /asks for changes/.test(i.prompt ?? ''));
+  assert.ok(fix?.at && fix.at >= rested, `the fix prompt (${fix?.at}) came after the teammate rested (${rested})`);
 });
 
 test('a phase whose own worker never rests fails with the busy error after busyWaitMs', async (t) => {

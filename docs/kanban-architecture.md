@@ -135,7 +135,12 @@ allowed: `todo → in_progress` (= start), `waiting|review → done`, `done → 
   in_process_teammate`): one is working when its transcript ends in a message or tool result it hasn't
   answered, a message that isn't text alone, or nothing said yet. They live as long as the Claude process,
   so only a teammate whose last line is newer than `since` counts: the process's start, from the worker's
-  `SessionStart` hook (`startup` or `resume`; else the run's start). The lead's log only covers the lag
+  `SessionStart` hook (`startup` or `resume`; dropped when the worker exits or goes). Known limit: after an
+  office restart that start is unknown until the next `SessionStart`, so the run's start stands in for it
+  (a teammate that last wrote between the process's start and the run's is then counted dead). A
+  transcript is read from its last 512 KB, and not at all when its file's mtime is older than `since`; of
+  several transcripts of one name (a respawn) the one written last speaks; one that can't be read counts as
+  working (an error is no rest). The lead's log only covers the lag
   of theirs: a spawn, a `SendMessage` to one (`routing.target`, else the call's `to`; `*` is everyone) or
   a `[to Y]` summary in another's idle notification wakes it, an idle notification, shutdown or
   termination rests it (only for names that are teammates: spawned, or with a transcript; a teammate's
@@ -144,10 +149,15 @@ allowed: `todo → in_progress` (= start), `waiting|review → done`, `done → 
   (`resuming`), so the background agents launched before it still count.
 - A hook whose payload has an `agent_id` comes from a subagent or teammate, which run in the lead's process
   and so reach its worker (upstream may set the worker `working` for them). The engine ignores those for
-  its bookkeeping: the plan exit, the Stop text, the end of a hold, a heard question and a compact's
-  `SessionStart` are the lead's alone.
+  its bookkeeping: the plan exit, the Stop text, the end of a hold and a compact's `SessionStart` are the
+  lead's alone. Only their ask hooks (`PermissionRequest`, a `permission_prompt` notification, a question
+  tool's `PreToolUse`, a `PostToolUse(Failure)`) reach `heardAsk`: a teammate's own question or permission
+  prompt is what the worker's `needs_input` waits on, but its `Stop`, prompt, `SessionStart` and other
+  tools never clear the lead's.
 - A phase that finds its own task's worker busy (a teammate's hook kept it `working` after the run ended:
-  a fix after a review, say) waits for the worker to rest, at most `busyWaitMs` (10 min), then starts as
+  a fix after a review, say), or its teammates still at work by their transcripts (they may wake the lead
+  again seconds after it rests: the worker stays `done` meanwhile), waits for the worker and its teammates to rest
+  (teammates polled every second), at most `busyWaitMs` (10 min), then starts as
   usual; only after that wait does the run fail with "is busy: wait for its turn to end". ⏹️ Stop during the
   wait cancels it (it would otherwise queue behind the task's chain): the run ends as stopped, nothing typed.
 - The clients show a task's worker as working for as long as its run is running (upstream's `done` of a

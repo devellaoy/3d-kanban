@@ -63,6 +63,11 @@ export interface Rule {
   /** With `teammates`: after the final Stop a teammate still hooks the lead's worker (it works again), and this long after, the lead's turn on its message stops. */
   lateTeamMs?: number;
   /**
+   * With `teammates`: 400 ms after the final Stop the teammate wakes on its own (its transcript ends mid-tool, no hook of the
+   * lead's, the worker stays `done`), and this long later rests again and writes `team-rested` (ms) beside the invocations log.
+   */
+  teamAgainMs?: number;
+  /**
    * Claude only: post Stop (with the reply as its last_assistant_message) before the final reply is
    * in the log, and log it this long after (-1: never), as Claude Code sometimes does (#310). The
    * turn ends there: it doesn't combine with `ask` or `exitPlan`. With `background` it is the resumed
@@ -91,6 +96,8 @@ export interface Invocation {
   cwd: string;
   prompt?: string;
   interrupted?: boolean;
+  /** When it was recorded (ms). */
+  at?: number;
 }
 
 const FAKE_AGENT = String.raw`#!/usr/bin/env node
@@ -100,7 +107,7 @@ const http = require('node:http');
 const cp = require('node:child_process');
 const kind = path.basename(process.argv[1]);
 const args = process.argv.slice(2);
-const record = (extra) => fs.appendFileSync(process.env.FAKE_AGENT_LOG, JSON.stringify({ kind, args, cwd: process.cwd(), ...extra }) + '\n');
+const record = (extra) => fs.appendFileSync(process.env.FAKE_AGENT_LOG, JSON.stringify({ kind, args, cwd: process.cwd(), at: Date.now(), ...extra }) + '\n');
 if (args.includes('--output-format')) {
   process.stdout.write(JSON.stringify({ structured_output: { name: 'Fake task', summary: 'A fake task' } }));
   process.exit(0);
@@ -204,6 +211,16 @@ async function turn(prompt, answered) {
       lead({ type: 'user', message: { role: 'user', content: 'Another Claude session sent a message:\n<teammate-message teammate_id="helper" color="blue" summary="Done">\nAll done.\n</teammate-message>\n<teammate-message teammate_id="helper" color="blue">\n' + idle + '\n</teammate-message>' } });
       lead({ type: 'assistant', message: { id: msgId, role: 'assistant', content: [{ type: 'text', text: rule.reply }] } });
       await post('Stop', { last_assistant_message: rule.reply });
+      if (rule.teamAgainMs) {
+        setTimeout(() => {
+          own({ type: 'user', message: { role: 'user', content: '<teammate-message teammate_id="team-lead" summary="Again">\nOne more.\n</teammate-message>' } });
+          own({ type: 'assistant', message: { id: 'tm-own-3', role: 'assistant', content: [{ type: 'tool_use', id: 'tm-own-u', name: 'Bash', input: { command: 'more' } }] } });
+          setTimeout(() => {
+            own({ type: 'assistant', message: { id: 'tm-own-4', role: 'assistant', content: [{ type: 'text', text: 'Done again.' }] } });
+            fs.writeFileSync(path.join(path.dirname(process.env.FAKE_AGENT_LOG), 'team-rested'), String(Date.now()));
+          }, rule.teamAgainMs);
+        }, 400);
+      }
       if (rule.lateTeamMs) {
         await post('PreToolUse', { tool_name: 'Bash', tool_input: { command: 'again' }, agent_id: 'helper@session-1' });
         await new Promise((r) => setTimeout(r, rule.lateTeamMs));
