@@ -50,6 +50,18 @@ They're in `core/registry.ts`, and each is a field of `ctx`. Every registration 
 
 `style.css` is the 3D office's sheet. It pulls in `styles/base.css` (the colors, the reset, panels, buttons and the window frame, which the 2D view's `lite.css` loads too), `styles/hud.css` and `styles/loading.css`. Every other sheet sits next to its module and comes in with it. A module's sheet loads in no fixed order against `base.css`, so a module rule that overrides a base rule of the same specificity has to be more specific, or live at the end of `base.css` with the others there.
 
+### Themes
+
+`src/client/themes/` is how the pages get their looks (the registry is `themes/index.ts`). In the code a look is an *appearance*, because *theme* already means the holiday decorations. `themes/tokens.css` is the contract: every colour, border, radius, shadow and font the sheets use is a custom property in its first `:root` block, with the default look's values. `styles/base.css` imports `themes/index.css`, which imports the tokens and then each theme.
+
+**Adding a theme:**
+
+1. `themes/<id>.css`: the `:root[data-theme="<id>"]` block with a value for every token, first, and after it a short section of component overrides for what tokens can't say.
+2. Its `@import` in `themes/index.css`.
+3. Its row in `APPEARANCES` in `themes/index.ts` (label, icon, `colorScheme`, `themeColor`).
+
+`tests/appearance.test.ts` checks the file, the import and that every token is defined. Prefer a token to an override, never use `!important`, and remember `--ink` is the *line* colour (borders, outlines), not the text colour: text uses `--text` and its siblings. The same test keeps raw colours (hex, `rgb()`) out of the sheets, so a new rule uses a token.
+
 ## Server
 
 - **`server.ts`** is the composition root: `startServer` builds the office's context a stage at a time, starts the hook server, opens the floors, and hands the context to the HTTP handler and the WebSocket.
