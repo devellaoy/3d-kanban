@@ -104,7 +104,8 @@ test('the settings file is saved privately, reloaded, and changed a part at a ti
   assert.equal(store.get().review.tool, 'claude', 'the rest of the review setting stays');
   assert.equal(store.get().defaults.model, 'opus');
   assert.deepEqual(heard, [4]);
-  assert.equal(mode(store.file), 0o600);
+  // Windows does not represent POSIX owner-only permission bits.
+  if (process.platform !== 'win32') assert.equal(mode(store.file), 0o600);
   // A copy: changing what get() gave changes nothing.
   store.get().review.rounds = 9;
   assert.equal(store.get().review.rounds, 4);
@@ -150,7 +151,7 @@ test('secrets are kept in a file only the office can read, and never handed out'
   assert.deepEqual(status, { jira: { configured: true, site: 'acme.atlassian.net' }, apiKey: { configured: true } });
   assert.ok(!JSON.stringify(status).includes('SECRET'));
   assert.ok(!JSON.stringify(status).includes('ada@acme.fi'));
-  assert.equal(mode(secrets.file), 0o600);
+  if (process.platform !== 'win32') assert.equal(mode(secrets.file), 0o600);
   // The /api/v1 key is kept hashed.
   const file = readFileSync(secrets.file, 'utf8');
   assert.ok(!file.includes('k'.repeat(20)));

@@ -84,7 +84,8 @@ test('an upload is kept privately, attached to its task when it says one, and se
   assert.ok(!('stored' in attachment));
   const [file] = readdirSync(uploads);
   assert.equal(file, `${attachment.id}-kuva_a_.png`);
-  assert.equal(statSync(path.join(uploads, file)).mode & 0o777, 0o600);
+  // Windows does not represent POSIX owner-only permission bits.
+  if (process.platform !== 'win32') assert.equal(statSync(path.join(uploads, file)).mode & 0o777, 0o600);
   assert.deepEqual(readFileSync(path.join(uploads, file)), png);
   assert.equal(kanban.ctx.attachmentFile(attachment.id), path.join(uploads, file));
 
@@ -182,8 +183,8 @@ test('grant folders: copies of a task\'s files, private, a missing source skippe
   assert.deepEqual(got, [`${'2'.repeat(32)}-b.txt`, `${'1'.repeat(32)}-a.txt`].map((f) => path.join(grantDir(dir, 5), f)), 'in order, the gone one skipped');
   assert.equal(path.dirname(got[0]), path.join(dir, 'grants', 'task-5'));
   assert.equal(readFileSync(got[1], 'utf8'), 'one');
-  assert.equal(statSync(grantDir(dir, 5)).mode & 0o777, 0o700);
-  assert.equal(statSync(path.join(dir, 'grants')).mode & 0o777, 0o700);
+  if (process.platform !== 'win32') assert.equal(statSync(grantDir(dir, 5)).mode & 0o777, 0o700);
+  if (process.platform !== 'win32') assert.equal(statSync(path.join(dir, 'grants')).mode & 0o777, 0o700);
   assert.deepEqual(grantFiles(dir, 5, rows), got, 'again is the same');
   assert.deepEqual(grantFiles(dir, 6, []), [], 'an empty folder is still made');
   assert.ok(existsSync(grantDir(dir, 6)));
