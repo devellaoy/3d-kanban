@@ -25,7 +25,7 @@ export function floorHelpers(ctx: Ctx): FloorHelpers {
   const floorsChanged = () => {
     floorsTimer ??= setTimeout(() => {
       floorsTimer = undefined;
-      ctx.kanban?.projectsChanged(); // 3d-kanban: its project list follows the floors (it sends only when it changed)
+      ctx.kanban?.projectsChanged(); // its project list follows the floors (it sends only when it changed)
       const list = floorInfos();
       const json = JSON.stringify(list);
       if (json === floorsSent) return;

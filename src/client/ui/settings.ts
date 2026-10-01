@@ -9,9 +9,9 @@ import { DOG_NAME_MAX, cleanDogName } from '../../shared/dog';
 import { h, openModal, timeAgo } from './dom';
 import { agentFields, choiceLabel, officeChoice } from './provider';
 import { openPromptEditor, rewrittenPrompts } from './prompts';
-// 3d-kanban: the kanban's settings are categories of this window, loaded when one is first shown.
+// The kanban's settings are categories of this window, loaded when one is first shown.
 import { KANBAN_PANES, kanbanSettingsSlots, type KanbanSettingsPane } from '../kanban/settingsslot';
-import { mouseSensitivityRow } from '../kanban/sensitivity'; // 3d-kanban
+import { mouseSensitivityRow } from './sensitivity';
 
 const VIEWS: [ViewMode, string, string][] = [
   ['first', '👀 First person', 'See through your own eyes. Click the office to look around with the mouse and click things to use them. Esc frees the mouse.'],
@@ -23,7 +23,7 @@ const THEME_LABEL: Record<ThemePick, string> = { auto: '📅 By the calendar', h
 const WEBHOOK_NAME: Record<WebhookKind, string> = { slack: 'Slack', discord: 'Discord', other: 'a webhook' };
 
 /** The categories down the side of ⚙️ Settings. */
-export type SettingsPane = 'you' | 'sound' | 'notify' | 'building' | 'workers' | KanbanSettingsPane; // 3d-kanban: | KanbanSettingsPane
+export type SettingsPane = 'you' | 'sound' | 'notify' | 'building' | 'workers' | KanbanSettingsPane; // | KanbanSettingsPane
 
 const PANES: { id: SettingsPane; icon: string; label: string; blurb: string }[] = [
   { id: 'you', icon: '🧍', label: 'You', blurb: 'How you look, how you see the office, and how you’re signed in.' },
@@ -31,7 +31,7 @@ const PANES: { id: SettingsPane; icon: string; label: string; blurb: string }[] 
   { id: 'notify', icon: '🔔', label: 'Notifications', blurb: 'Hear about a worker that needs someone, or finished, while you’re somewhere else.' },
   { id: 'building', icon: '🏢', label: 'Building', blurb: 'The map, the decorations, the sky, the dog, and where new floors are cloned.' },
   { id: 'workers', icon: '🤖', label: 'Workers', blurb: 'What workers start on, how many run at once, when they go home and what the office tells them.' },
-  ...KANBAN_PANES, // 3d-kanban: 🗂️ Kanban, 📁 Projects
+  ...KANBAN_PANES, // 🗂️ Kanban, 📁 Projects
 ];
 
 /** Who a setting is for, shown by its name: some are yours alone, some the whole office's. */
@@ -508,12 +508,12 @@ export function openSettings(net: Net, settings: Settings, onChange: (s: Setting
   const signOut = h('button.btn', { type: 'button' }, '🚪 Sign out');
   signOut.addEventListener('click', onSignOut);
   const character = h('button.btn', { type: 'button' }, account ? '🧍 Change your look' : '🧍 Change your look & name');
-  const kanban = kanbanSettingsSlots(net); // 3d-kanban
+  const kanban = kanbanSettingsSlots(net);
   const panes: Record<SettingsPane, Node[]> = {
     you: [
       setting('Your character', null, character),
       setting('Camera view', 'you', seg, note),
-      setting('Mouse sensitivity', 'you', ...mouseSensitivityRow(() => settings, (s) => onChange((settings = s)))), // 3d-kanban: ⚙️ Settings' mouse sensitivity (kanban/sensitivity.ts)
+      setting('Mouse sensitivity', 'you', ...mouseSensitivityRow(() => settings, (s) => onChange((settings = s)))), // ⚙️ Settings' mouse sensitivity (ui/sensitivity.ts)
       setting('Signed in', null, h('div.volume', {}, signOut), h('p.setting-note', {}, account ? `As ${account.name}, with your own account (${account.role}).` : 'With the shared office password.')),
     ],
     sound: [
@@ -548,7 +548,7 @@ export function openSettings(net: Net, settings: Settings, onChange: (s: Setting
       setting('Workers whose pull request merged', 'office', leaveRow, leaveNote),
       setting('Prompts', 'office', promptsOpen, promptsNote),
     ],
-    // 3d-kanban: the kanban's settings.
+    // The kanban's settings.
     kanban: [kanban.panes.kanban],
     projects: [kanban.panes.projects],
   };
@@ -565,7 +565,7 @@ export function openSettings(net: Net, settings: Settings, onChange: (s: Setting
   }
   const show = (id: SettingsPane) => {
     lastPane = id;
-    kanban.shown(id); // 3d-kanban
+    kanban.shown(id);
     for (const [t, tab] of tabs) {
       tab.classList.toggle('on', t === id);
       tab.setAttribute('aria-selected', String(t === id));
@@ -607,7 +607,7 @@ export function openSettings(net: Net, settings: Settings, onChange: (s: Setting
       offLimit.forEach((off) => off());
       offDir.forEach((off) => off());
       offPrompts.forEach((off) => off());
-      kanban.close(); // 3d-kanban
+      kanban.close();
     },
   });
   show(first ?? lastPane);

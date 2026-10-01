@@ -6,7 +6,8 @@
 // the floor is closed.
 
 import type { KanbanCaller, KanbanContext, KanbanPlugin, KanbanPullsApi } from '../../registry.js';
-import type { KanbanEffort, KanbanPrBundleItem, KanbanPrBundleKey, KanbanPrReviewRequest, PrRef, ProjectRepo } from '../../../../shared/kanban/types.js';
+import type { KanbanEffort, KanbanTask, KanbanPrBundleItem, KanbanPrBundleKey, KanbanPrReviewRequest, PrRef, ProjectRepo } from '../../../../shared/kanban/types.js';
+import { canFixPrs } from '../../../../shared/kanban/prs.js';
 import { PR_REVIEW_MAX } from '../../../../shared/kanban/types.js';
 import type { AgentEffort, GhPull, MeetingRequest } from '../../../../shared/protocol.js';
 import { sameRepo } from '../../../../shared/floors.js';
@@ -15,6 +16,7 @@ import { gh } from '../../../github.js';
 import { floorPullsListeners, type PulledFloor } from './board.js';
 import type { GhRunner } from '../issues/source.js';
 import { fail, ok } from '../util.js';
+import { forkTest, polledPulls } from './prfix.js';
 import { branchPrs, findBundle, prOwners, prState, type BundleBy, type RepoPulls } from './bundle.js';
 
 const FIELDS = 'number,title,url,state,isDraft,headRefName';
@@ -228,7 +230,7 @@ export function createPullsParts(ctx: KanbanContext, opts: PullsOptions = {}) {
    * sync). Each such link is an event on the task. The browsers hear about the cards that changed.
    * Returns those tasks' ids.
    */
-  const syncPrStates = async (project: string, pulls: (Pick<GhPull, 'number' | 'url' | 'state' | 'isDraft' | 'repo'> & { headRefName?: string; createdAt?: string })[]): Promise<number[]> => {
+  const syncPrStates = async (project: string, pulls: (Pick<GhPull, 'number' | 'url' | 'state' | 'isDraft' | 'repo'> & { headRefName?: string; createdAt?: string; isCrossRepository?: boolean })[]): Promise<number[]> => {
     if (!pulls.length) return [];
     const links = ctx.repo.prLinksOfProject(project);
     const reposMemo = new Map<string, ProjectRepo[]>();
@@ -280,6 +282,15 @@ export function createPullsParts(ctx: KanbanContext, opts: PullsOptions = {}) {
         const key: KanbanPrBundleKey = 'taskId' in m ? { taskId: m.taskId } : 'branch' in m ? { branch: m.branch } : { ticket: m.ticket };
         const got = await bundleItems(m.project, key as BundleBy, m.includeClosed === true);
         c.send({ t: 'kanban.pr.bundle', ...(m.rid ? { rid: m.rid } : {}), project: m.project, key, prs: typeof got === 'string' ? [] : got, ...(typeof got === 'string' ? { error: got } : {}) });
+      },
+      // Which task owns a PR (the newest not archived), for the PR window's "Fix via task #N".
+      'kanban.pr.owner': (c, m) => {
+        const pr = { repo: m.repo, number: m.number, url: `https://github.com/${m.repo}/pull/${m.number}` };
+        const owners = prOwners(ctx.repo.prLinksMatching(pr.number, pr.url), (proj, repoId) => ctx.repos(proj).find((r) => r.id === repoId)?.remote, pr);
+        const tasks = owners.map((id) => ctx.repo.getTask(id)).filter((t): t is KanbanTask => !!t && t.project === m.project && t.status !== 'archived');
+        const t = tasks.sort((a, b) => b.id - a.id)[0];
+        const check = t ? canFixPrs(t, forkTest(polledPulls(ctx.floor(t.project)), ctx.repos(t.project))) : undefined;
+        c.send({ t: 'kanban.pr.owner', ...(m.rid ? { rid: m.rid } : {}), taskId: t?.id ?? null, ...(t ? { title: t.title } : {}), fixable: check?.ok === true, ...(check && !check.ok ? { reason: check.reason } : {}) });
       },
       'kanban.pr.review': async (c, m) => {
         const req: KanbanPrReviewRequest = { project: m.project, prs: m.prs, ...(m.taskId !== undefined ? { taskId: m.taskId } : {}), ...(m.tool ? { tool: m.tool } : {}), ...(m.model ? { model: m.model } : {}), ...(m.effort ? { effort: m.effort } : {}) };

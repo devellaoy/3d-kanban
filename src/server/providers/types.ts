@@ -31,7 +31,7 @@ export interface LaunchInput<S, P> {
   station?: StationKind;
   /** What prepare set up on this floor. */
   setup: P;
-  /** 3d-kanban: flags a task's phase launches with, for Claude and Codex: ahead of the resume and the prompt (see SpawnExtra.launchArgs). */
+  /** Flags a task's phase launches with, for Claude and Codex: ahead of the resume and the prompt (see SpawnExtra.launchArgs). */
   extraArgs?: string[];
 }
 

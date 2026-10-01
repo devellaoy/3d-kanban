@@ -21,6 +21,7 @@ import { KanbanSecrets, KanbanSettingsStore } from '../src/server/kanban/setting
 import { Ledger } from '../src/server/usage.js';
 import { WorkerManager, type RunAs } from '../src/server/workers.js';
 import type { Capacity } from '../src/server/machine.js';
+import type { GhPull } from '../src/shared/protocol.js';
 import type { KanbanServerMsg } from '../src/shared/kanban/protocol.js';
 import type { DepartureIntent, KanbanTask } from '../src/shared/kanban/types.js';
 
@@ -341,6 +342,8 @@ export interface EngineFixture {
    * `waitTask` would miss it on a slow machine.
    */
   sawTask(id: number, pred: (t: KanbanTask) => boolean, what: string, timeout?: number, since?: number): Promise<TaskSnapshot>;
+  /** The floor's polled pull requests (what Floor.pullsState lists); a test pushes the ones it needs. */
+  pulls: GhPull[];
   close(): Promise<void>;
 }
 
@@ -423,7 +426,8 @@ export async function engineFixture(opts: { engine?: EngineOptions; repos?: Floo
   const toasts: string[] = [];
   workers = new WorkerManager(dir, data, path.join(bin, 'claude'), [], { url: hookUrl, token: '' }, { update() {}, remove() {}, data() {}, screen() {}, toast: (t) => void toasts.push(t) }, new Ledger(data, { pauseHiring: false }, () => {}, () => {}), opts.capacity, undefined, opts.runAs);
   const def: FloorDef = { id: 'proj', name: 'Proj', dir, repo: 'acme/proj', palette: 0, addedBy: 'test', addedAt: 0, ...(opts.repos ? { repos: opts.repos } : {}) };
-  const floor = { id: 'proj', dir, workers, project: { name: 'Proj', dir, branch: 'main' }, sendHome: (id: string, cleanup?: 'keep' | 'worktree' | 'all', intent?: DepartureIntent) => workers.kill(id, cleanup, undefined, undefined, intent) } as unknown as Floor;
+  const pulls: GhPull[] = [];
+  const floor = { id: 'proj', dir, workers, pullsState: () => ({ items: pulls, fetchedAt: 0, loading: false }), project: { name: 'Proj', dir, branch: 'main' }, sendHome: (id: string, cleanup?: 'keep' | 'worktree' | 'all', intent?: DepartureIntent) => workers.kill(id, cleanup, undefined, undefined, intent) } as unknown as Floor;
   const repo = new KanbanRepository(openKanbanDb(':memory:'));
   // Every update is kept, so a test can check a state the task only passed through (sawTask).
   const history = new Map<number, TaskSnapshot[]>();
@@ -470,6 +474,7 @@ export async function engineFixture(opts: { engine?: EngineOptions; repos?: Floo
   engine.begin();
 
   const fx: EngineFixture = {
+    pulls,
     root,
     dir,
     def,

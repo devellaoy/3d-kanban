@@ -1,5 +1,5 @@
 // What the 3D office's own worker actions become on a task worker (docs/kanban-coupling.md, "3D
-// actions → task events"): a prompt the fork's dialogs send `asComment` (P's "💬 Message task", an
+// actions → task events"): a prompt the kanban's dialogs send `asComment` (P's "💬 Message task", an
 // issue card dropped on its desk, Ask → an existing task worker) is a comment on its task, which the
 // engine follows and reviews; R on one whose task waits is the task's Retry. server.ts asks these
 // first and does upstream's own thing only when they hand it back (undefined).

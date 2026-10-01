@@ -1,4 +1,4 @@
-// 3d-kanban: a YouTube video's title from YouTube's oEmbed (no API key), for the TV and the hint bar.
+// A YouTube video's title from YouTube's oEmbed (no API key), for the TV and the hint bar.
 
 const TIMEOUT_MS = 4000;
 

@@ -7,6 +7,7 @@
 // column. A comment resumes the work; a resume turn is reviewed again when the task has review on.
 
 import type { KanbanRole, PlanApproval, RunPhase, RunState, TaskStatus, TaskType, WaitingReason } from '../../../shared/kanban/types.js';
+import { prStatusOk } from '../../../shared/kanban/prs.js';
 import { KANBAN_PROMPT_DEFS } from '../../../shared/kanban/prompt-defs.js';
 
 /** The part of a task the machine decides about. */
@@ -42,7 +43,7 @@ export interface MachineConfig {
  * Which prompt a run is sent with. The orchestrator fills it in; `continue` is the short "carry on"
  * for a session that was cut off (it falls back to the phase's own prompt when there is no session).
  */
-export type PromptKind = 'plan' | 'replan' | 'implement' | 'investigate' | 'review' | 'rereview' | 'fix' | 'resume' | 'continue' | 'pr.create' | 'pr.fix' | 'compact' | 'pr.review';
+export type PromptKind = 'plan' | 'replan' | 'implement' | 'investigate' | 'review' | 'rereview' | 'fix' | 'resume' | 'continue' | 'pr.create' | 'pr.fix' | 'pr.review';
 
 export type Effect =
   /**
@@ -85,8 +86,6 @@ export type MachineEvent =
   | { type: 'resumed'; changes: boolean; pending?: boolean }
   /** A pr or pr-fix turn ended. */
   | { type: 'prDone'; pending?: boolean }
-  /** A compact turn ended. */
-  | { type: 'compacted'; pending?: boolean }
   /** A review of several pull requests together (KanbanEngineApi.reviewPrs). */
   | { type: 'prReview' }
   /** That review's turn ended. */
@@ -117,8 +116,7 @@ export type MachineEvent =
   | { type: 'comment'; text: string; busy: boolean }
   /** One review round by hand. */
   | { type: 'review' }
-  | { type: 'pr'; mode: 'create' | 'fix' }
-  | { type: 'compact' };
+  | { type: 'pr'; mode: 'create' | 'fix' };
 
 /**
  * The run Retry and Continue carry on. `fresh`: it never started (stopped while queued), so it goes
@@ -234,12 +232,11 @@ export function next(s: MachineState, e: MachineEvent, t: MachineTask, cfg: Mach
       return firstRun(s, t);
 
     case 'noRoom':
-      // It keeps its column and phase (a compact stays where it is), so the card still says what's to come.
+      // It keeps its column and phase, so the card still says what's to come.
       return ok({ ...s, runState: 'queued' }, { type: 'note', text: e.text });
 
     case 'dequeue':
       if (s.runState !== 'queued') return no('It is not queued');
-      if (e.run.phase === 'compact') return ok({ ...s, runState: 'starting', phase: 'compact' }, e.run);
       return ok(running(s, e.run.phase), e.run);
 
     case 'planned': {
@@ -284,13 +281,9 @@ export function next(s: MachineState, e: MachineEvent, t: MachineTask, cfg: Mach
     }
 
     case 'prDone':
-    case 'compacted':
-      if (!automated && e.type === 'prDone') return ok({ ...s, runState: 'idle' });
+      if (!automated) return ok({ ...s, runState: 'idle' });
       if (e.pending) return deliverPending(s, false);
-      if (e.type === 'prDone') return toReview(s);
-      // Compacting doesn't move the task: it stays in the column it was compacted in, and one waiting
-      // keeps why (plan questions, a failure...), so Continue and Retry still do what they did before.
-      return ok({ ...s, runState: 'idle', retryAttempts: 0 });
+      return toReview(s);
 
     case 'prReview':
       if (busy(s)) return no('Stop it first: it is running');
@@ -383,14 +376,8 @@ export function next(s: MachineState, e: MachineEvent, t: MachineTask, cfg: Mach
 
     case 'pr':
       if (busy(s)) return no('Stop it first: it is running');
-      if (t.type === 'investigate') return no('An investigation has no changes to open pull requests for');
-      if (s.status !== 'review' && s.status !== 'waiting' && s.status !== 'done') return no('Pull requests are opened from Waiting, Review or Done');
+      if (t.type === 'investigate' && e.mode === 'create') return no('An investigation has no changes to open pull requests for');
+      if (!prStatusOk(s.status)) return no(`Pull requests are ${e.mode === 'create' ? 'opened' : 'fixed'} from Waiting, Review or Done`);
       return ok(running(s, e.mode === 'create' ? 'pr' : 'pr-fix'), { type: 'run', phase: e.mode === 'create' ? 'pr' : 'pr-fix', role: 'implementer', prompt: e.mode === 'create' ? 'pr.create' : 'pr.fix' });
-
-    case 'compact':
-      if (busy(s)) return no('Stop it first: it is running');
-      if (s.status !== 'review' && s.status !== 'waiting') return no('Only a task in Waiting or Review can be compacted');
-      // Stays in its column: only the run shows.
-      return ok({ ...s, runState: 'starting', phase: 'compact' }, { type: 'run', phase: 'compact', role: 'implementer', prompt: 'compact' });
   }
 }

@@ -39,12 +39,6 @@ export function projectInfos(ctx: KanbanContext): KanbanProjectInfo[] {
   return ctx.projects().map((def) => projectInfo(def, settings, !!ctx.floor(def.id)));
 }
 
-/** Whether a worker of the task is still hired (at a desk on its project's floor). */
-export function hasLiveWorker(ctx: KanbanContext, t: Pick<KanbanTask, 'project' | 'workerId' | 'reviewerWorkerId'>): boolean {
-  const workers = ctx.floor(t.project)?.workers;
-  return [t.workerId, t.reviewerWorkerId].some((id) => !!id && !!workers?.get(id));
-}
-
 /** Why `repoIds` aren't all the project's repositories, if they aren't. */
 export function checkRepoIds(ctx: KanbanContext, project: string, repoIds: string[] | null | undefined): string | undefined {
   if (!repoIds) return undefined;
@@ -264,7 +258,7 @@ export function createCorePlugin(ctx: KanbanContext, subs: KanbanSubscriptions):
     'kanban.task.move': async (c, m) => {
       const task = taskOf(c, m.rid, m.id);
       if (!task) return;
-      const check = checkMove({ status: task.status, runState: task.runState, hasWorker: hasLiveWorker(ctx, task) }, m.to);
+      const check = checkMove({ status: task.status, runState: task.runState }, m.to);
       if (!check.ok) return fail(c, m.rid, check.reason);
       if (check.action === 'start') {
         const err = await ctx.engine.start(task.id, c);
@@ -274,6 +268,11 @@ export function createCorePlugin(ctx: KanbanContext, subs: KanbanSubscriptions):
       const now = Date.now();
       const up: TaskUpdate = { status: m.to };
       if (check.action === 'reset') {
+        // Sending somebody's workers home, or ending the run they are asking in, is the creator's call (or an admin's), as a delete is.
+        if ((task.workerId || task.reviewerWorkerId) && !c.admin && task.createdBy !== c.name) return fail(c, m.rid, 'Only whoever made it, or an admin, can move a task with workers back to To do');
+        // Its workers at rest go home first (worktree kept): the reset forgets which worktree was theirs.
+        const err = await ctx.engine.sendWorkersHome(task.id, c, 'reset');
+        if (typeof err === 'string' && err) return fail(c, m.rid, err);
         // Starting over: the automation's state goes, what the task is stays. So does its branch, as
         // information: the next start seats a fresh worktree and tells the agent to check that branch
         // out, rather than reusing a worktree that may be gone by then (merged and pruned, say).
@@ -308,12 +307,14 @@ export function createCorePlugin(ctx: KanbanContext, subs: KanbanSubscriptions):
       if (m.to === 'done' || m.to === 'archived') await ctx.engine.releaseIdle?.(task.id, c).catch((err: Error) => console.error(`agent-office: the kanban couldn't send task #${task.id}'s workers home: ${err.message}`));
     },
 
-    'kanban.task.delete': (c, m) => {
+    'kanban.task.delete': async (c, m) => {
       const task = taskOf(c, m.rid, m.id);
       if (!task) return;
       if (!c.admin && task.createdBy !== c.name) return fail(c, m.rid, 'Only whoever made it, or an admin, can delete a task');
       if (isRunning(task)) return fail(c, m.rid, 'Stop it first: it is running');
-      if (hasLiveWorker(ctx, task)) return fail(c, m.rid, 'Send its workers home first (Release)');
+      // Its workers at rest go home first, worktree and branches kept.
+      const err = await ctx.engine.sendWorkersHome(task.id, c, 'delete');
+      if (typeof err === 'string' && err) return fail(c, m.rid, err);
       const files = ctx.repo.listAttachments(task.id);
       ctx.repo.deleteTask(task.id);
       removeAttachmentFiles(ctx.filesDir, files);
@@ -383,8 +384,6 @@ export function createCorePlugin(ctx: KanbanContext, subs: KanbanSubscriptions):
     }),
     'kanban.plan.requestChanges': viaEngine<'kanban.plan.requestChanges'>((m, who) => ctx.engine.requestPlanChanges(m.id, who, m.text, m.attachmentIds)),
     'kanban.task.pr': viaEngine<'kanban.task.pr'>((m, who) => ctx.engine.pr(m.id, who, m.mode)),
-    'kanban.task.compact': viaEngine<'kanban.task.compact'>((m, who) => ctx.engine.compact(m.id, who)),
-    'kanban.task.release': viaEngine<'kanban.task.release'>((m, who) => ctx.engine.release(m.id, who)),
 
     'kanban.settings.get': (c, m) => c.send({ t: 'kanban.settings', ...(m.rid ? { rid: m.rid } : {}), settings: ctx.settings.get(), secrets: ctx.secrets.status() }),
     // What ⚙️ Settings needs without a board: no cards are built.

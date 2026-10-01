@@ -1,4 +1,4 @@
-// The kanban inside the office's context (docs/fork.md, "Server"): installing it once the floors are
+// The kanban inside the office's context: installing it once the floors are
 // open, who a connection is to it, and the small lookups the office's handlers share when they touch it.
 import type { Client } from '../office/client.js';
 import type { Ctx } from '../office/context.js';

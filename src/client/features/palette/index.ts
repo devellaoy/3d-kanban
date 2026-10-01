@@ -16,7 +16,7 @@ import { openBoard } from '../../ui/boards';
 import { STATUS_LABEL, toast } from '../../ui/dom';
 import { paletteOpen, togglePalette, type PaletteEntry } from '../../ui/palette';
 import { openPull } from '../../ui/pull';
-import { issueCardLabel, openCard } from '../../kanban/issuecards'; // 3d-kanban: cards from the issue sources
+import { issueCardLabel, openCard } from '../../kanban/issuecards'; // cards from the issue sources
 import { openServices, serviceUrl } from '../../ui/services';
 import { openTeam } from '../../ui/team';
 import { IS_MAC } from '../../ui/termkeys';
@@ -123,7 +123,7 @@ export function installPalette(ctx: Ctx, parts: PaletteParts) {
         at('issues', 'the Issues board', {
           icon: '📌',
           kind: 'Issue',
-          title: `${issueCardLabel(issue)} ${issue.title}`, // 3d-kanban: a card from the issue sources has its key
+          title: `${issueCardLabel(issue)} ${issue.title}`, // a card from the issue sources has its key
           detail: [issue.status ?? issue.state.toLowerCase(), ...issue.labels.map((l) => l.name), issue.author].filter(Boolean).join(' · '),
           open: () => openCard(issue, net, actions.boardActions()),
         }),

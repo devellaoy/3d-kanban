@@ -20,7 +20,7 @@ export async function officeWorkers(ctx: Ctx, req: http.IncomingMessage, res: ht
   const me = floor?.workers.authenticate(workerId, token);
   if (!floor || !me) return send(res, 401, { error: 'Send your own AGENT_OFFICE_WORKER_ID as ?worker= and AGENT_OFFICE_HOOK_TOKEN as the bearer token' });
   const who = me.name;
-  const view: PullsView = { pulls: floor.github.pulls.items, tasks: floor.queue.state().tasks, pullsOf: (id) => floor.pullsOf(id) }; // 3d-kanban: also finds a project's other repositories (`<floor>~<repo>`, see Floor.pullsOf)
+  const view: PullsView = { pulls: floor.github.pulls.items, tasks: floor.queue.state().tasks, pullsOf: (id) => floor.pullsOf(id) }; // also finds a project's other repositories (`<floor>~<repo>`, see Floor.pullsOf)
   const row = (id: string) => {
     const w = floor.workers.get(id);
     return w && workerRow(w, view, me.id);
@@ -78,7 +78,7 @@ export async function officeWorkers(ctx: Ctx, req: http.IncomingMessage, res: ht
         continue;
       }
       ctx.toastFloor(floor, why ? `🏠 ${who} sent ${w.name} home: ${why}` : `${who} sent ${w.name} home`);
-      const { note, error } = await floor.sendHome(w.id, ask.cleanup, { by: who, reason: why ? 'merged' : 'sent-home' }); // 3d-kanban: who sent it and why (see WorkerManager.kill); `merged` is leave-on-merge's
+      const { note, error } = await floor.sendHome(w.id, ask.cleanup, { by: who, reason: why ? 'merged' : 'sent-home' }); // who sent it and why (see WorkerManager.kill); `merged` is leave-on-merge's
       if (note) ctx.toastFloor(floor, note);
       if (error) ctx.toastFloor(floor, error, 'warn');
       results.push({ worker: w.name, id: w.id, went: true, ...(note ? { note } : {}), ...(error ? { error } : {}) });

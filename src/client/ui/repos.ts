@@ -3,8 +3,8 @@ import type { WorkerInfo } from '../../shared/protocol';
 import { isBusy } from '../../shared/status';
 import { store } from '../state';
 import { h, openModal } from './dom';
-// 3d-kanban: a project's other repositories' PRs are on this floor's board.
-import { findItem } from '../kanban/ghrepo';
+// A project's other repositories' PRs are on this floor's board.
+import { findItem } from './github/ghrepo';
 
 // A worker across repositories (see WorkerInfo.repos): one task in worktrees of several floors'
 // projects, all on the same branch, with a pull request in each repository it commits to.
@@ -46,7 +46,7 @@ export function openRepoPulls(workerId: string, actions: RepoPullsActions) {
       ...repos.map((r) => {
         const floor = r.floor ? store.floors.find((f) => f.id === r.floor)?.name : store.currentFloor()?.name;
         const pr = r.pr;
-        // 3d-kanban: another floor's PR opens on GitHub (`away`, below), but one of this project's other repositories' is on this floor's board.
+        // Another floor's PR opens on GitHub (`away`, below), but one of this project's other repositories' is on this floor's board.
         const repo = r.floor ? w.repos?.find((x) => x.floor === r.floor)?.repo : undefined;
         const away = !!r.floor && !(pr && repo && findItem(store.pulls.items, pr.number, repo));
         return h(

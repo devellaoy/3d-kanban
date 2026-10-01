@@ -24,7 +24,7 @@ export interface MeetingWorkers {
   prompt(id: string, text: string, by?: string): string | undefined;
   /** Keys into its terminal: Esc, to stop what it's doing. */
   write(id: string, data: string, by: string): void;
-  kill(id: string, intent?: import('../shared/kanban/types.js').DepartureIntent): Promise<{ note?: string; error?: string }>; // 3d-kanban: `intent`: why it goes (see WorkerManager.kill)
+  kill(id: string, intent?: import('../shared/kanban/types.js').DepartureIntent): Promise<{ note?: string; error?: string }>; // `intent`: why it goes (see WorkerManager.kill)
 }
 
 /** Git for the meeting's own worktree: made when it starts, tidied away once everyone has gone home. */
@@ -205,7 +205,7 @@ export class MeetingRoom {
       const text = `${this.brief(m, i)}\n\n${part ? this.ask(m, part) : this.say('meeting.wait')}`;
       const w = this.workers.seat(m.seats[i].deskId, `${by} (meeting)`, text, provider, model, effort, { id, worktree }, owner);
       if (typeof w === 'string') {
-        for (const s of m.seats) if (s.workerId) void this.workers.kill(s.workerId, { by: 'The meeting', reason: 'meeting' }); // 3d-kanban: see WorkerManager.kill
+        for (const s of m.seats) if (s.workerId) void this.workers.kill(s.workerId, { by: 'The meeting', reason: 'meeting' }); // see WorkerManager.kill
         if (worktree && this.trees) void this.trees.remove(worktree, 'all');
         return w;
       }
@@ -458,7 +458,7 @@ export class MeetingRoom {
     if (m.cleared) return;
     m.cleared = true;
     const here = new Set(this.workers.list().map((w) => w.id));
-    await Promise.all(m.seats.filter((s) => s.workerId && here.has(s.workerId)).map((s) => this.workers.kill(s.workerId!, { by: 'The meeting', reason: 'meeting' }))); // 3d-kanban: see WorkerManager.kill
+    await Promise.all(m.seats.filter((s) => s.workerId && here.has(s.workerId)).map((s) => this.workers.kill(s.workerId!, { by: 'The meeting', reason: 'meeting' }))); // see WorkerManager.kill
     const wt = m.worktree;
     if (!wt || !this.trees) return this.persist();
     // Kept with the floor's state already (keepNotes): the notes, and a review panel's review, which

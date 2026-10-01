@@ -25,7 +25,7 @@ import type { Ctx } from './context';
 import type { CoreState } from './ctx';
 import { builtFloors, pastTheWing } from './floors';
 import type { Parts } from './parts';
-import { issueCardLabel } from '../kanban/issuecards'; // 3d-kanban
+import { issueCardLabel } from '../kanban/issuecards';
 
 export type ArrivalParts = Pick<Parts, 'worlds' | 'place' | 'travel' | 'maps' | 'views' | 'cards' | 'hoops' | 'bar' | 'golf' | 'bargames' | 'cars' | 'focus'>;
 
@@ -106,7 +106,7 @@ export function installArrival(ctx: Ctx, core: CoreState, parts: ArrivalParts) {
     if (voice.inVoice || voice.sharing) net.send({ t: 'voice', voice: voice.inVoice, muted: voice.muted, sharing: voice.sharing });
     if (player.seat) net.send({ t: 'sit', seat: player.seat.key });
     const carrying = core.carrying;
-    if (carrying) net.send({ t: 'carry', issue: carrying.issue, title: carrying.title, ...(carrying.key ? { issueKey: carrying.key } : {}) }); // 3d-kanban: issueKey
+    if (carrying) net.send({ t: 'carry', issue: carrying.issue, title: carrying.title, ...(carrying.key ? { issueKey: carrying.key } : {}) });
     const shownDrink = parts.bar.shownDrink();
     if (shownDrink) net.send({ t: 'act', drink: shownDrink });
     if (parts.golf.golf.active) net.send({ t: 'act', golf: true });
@@ -136,7 +136,7 @@ export function installArrival(ctx: Ctx, core: CoreState, parts: ArrivalParts) {
     // The card belongs to the board downstairs (or up): the office already put it back there.
     const carrying = core.carrying;
     if (carrying) {
-      toast(`📌 ${issueCardLabel(carrying)} stayed behind on the other floor's board`); // 3d-kanban: its label
+      toast(`📌 ${issueCardLabel(carrying)} stayed behind on the other floor's board`);
       parts.cards.setCarrying(null);
     }
     // So does the ball: it's back under that floor's hoop.

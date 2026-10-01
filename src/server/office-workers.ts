@@ -153,7 +153,7 @@ export function readHireRequest(body: unknown, providers: AgentProvider[]): Hire
   if (b.worktree !== undefined && typeof b.worktree !== 'boolean') return 'worktree is true or false';
   // Board kiosks and the meeting table seat their own: see station.prompt and meetings.ts.
   const seat = typeof b.desk === 'string' ? DESK_BY_ID.get(b.desk) : undefined;
-  if (b.desk !== undefined && (!seat || seat.station || seat.room || seat.watch)) return "desk is a desk or bean bag's id, like desk-3"; // 3d-kanban: not a reviewer's spot behind one
+  if (b.desk !== undefined && (!seat || seat.station || seat.room || seat.watch)) return "desk is a desk or bean bag's id, like desk-3"; // not a reviewer's spot behind one
   if (b.issue !== undefined && !(Number.isSafeInteger(b.issue) && (b.issue as number) > 0)) return 'issue is an issue number';
   return {
     prompt,
@@ -175,7 +175,7 @@ const MCP_ENV = ['AGENT_OFFICE_HOOK_URL', 'AGENT_OFFICE_WORKER_ID', 'AGENT_OFFIC
 /** Its tools that only look, which Claude Code workers may call without asking. */
 export const MCP_READ_ONLY = [`mcp__${MCP_NAME}__list_workers`];
 /**
- * 3d-kanban: its tools that read other kanban tasks (bin/office-workers.js lists them to a worker
+ * Its tools that read other kanban tasks (bin/office-workers.js lists them to a worker
  * with AIKANBAN_API_BASE set). They only look too; kanban task workers are launched allowing them
  * (see integrations/refs), since MCP_READ_ONLY's list is upstream's.
  */

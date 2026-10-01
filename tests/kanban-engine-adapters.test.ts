@@ -18,7 +18,7 @@ function scratch(t: { after(fn: () => void): void }) {
   };
 }
 
-// Synthetic transcripts in the shapes docs/fork.md's M0 notes describe (no real session content).
+// Synthetic transcripts in the shapes docs/fork.md's M0 spike results describe (no real session content).
 const cUser = (content: unknown, extra: object = {}) => ({ type: 'user', message: { role: 'user', content }, ...extra });
 const cAssistant = (content: unknown[], extra: object = {}, id?: string) => ({ type: 'assistant', message: { ...(id ? { id } : {}), role: 'assistant', content }, ...extra });
 const text = (t: string) => ({ type: 'text', text: t });
@@ -27,7 +27,7 @@ const messageTextOf = (l: { message: { content: unknown } }) => String(l.message
 test('claude launch flags per phase, with the review sandbox, extra dirs, models and plugin extras', () => {
   const base = { permission: 'bypass' as const, sandbox: false };
   assert.deepEqual(claudeAdapter.launchArgs('plan', { ...base, addDirs: ['/refs', '/refs'] }), ['--permission-mode', 'plan', '--add-dir', '/refs']);
-  for (const phase of ['implement', 'fix', 'resume', 'pr', 'pr-fix', 'compact'] as const) assert.deepEqual(claudeAdapter.launchArgs(phase, base), ['--permission-mode', 'bypassPermissions'], phase);
+  for (const phase of ['implement', 'fix', 'resume', 'pr', 'pr-fix'] as const) assert.deepEqual(claudeAdapter.launchArgs(phase, base), ['--permission-mode', 'bypassPermissions'], phase);
   assert.deepEqual(claudeAdapter.launchArgs('review', base), ['--permission-mode', 'bypassPermissions', '--disallowedTools', 'Edit', 'Write', 'NotebookEdit']);
   assert.deepEqual(claudeAdapter.launchArgs('review', { ...base, sandbox: true }), ['--permission-mode', 'bypassPermissions', '--disallowedTools', 'Edit', 'Write', 'NotebookEdit', 'WebFetch', 'WebSearch']);
   // A pull-request review has the review's flags (Bash keeps the network, for gh).

@@ -12,7 +12,7 @@ import { run } from './process.js';
 import type { OpenedPr, Worker, WorkerContext } from './types.js';
 import { truncate } from './util.js';
 import { originRepo } from './worktree.js';
-import { checkoutRepo, repoFlag } from '../kanban/ghrepo.js'; // 3d-kanban: gh acts on the checkout's origin
+import { checkoutRepo, repoFlag } from '../ghrepo.js'; // gh acts on the checkout's origin
 
 const PR_TITLE_MAX = 72;
 const PR_TASK_MAX = 2500;

@@ -61,8 +61,8 @@ import { installWalking } from './features/walking';
 import { installWhiteboard } from './features/whiteboard';
 import { installWorkerActions } from './features/workers/actions';
 import { installWorkerViews } from './features/workers/views';
-import { installKanban3d } from './kanban/install3d'; // 3d-kanban
-import { installYoutubeTv } from './youtube/install'; // 3d-kanban
+import { installKanban3d } from './kanban/install3d';
+import { installYoutubeTv } from './youtube/install';
 
 // The loading screen stays up until there's an office to see (see boot and whoami at the end).
 const loading = loadingScreen(onModelsProgress);
@@ -99,7 +99,7 @@ installWhiteboard(ctx);
 // Onto whatever you're walking on: the office's floor and furniture, or the roof's.
 parts.confetti = new Confetti((x, z, y) => groundAt(ctx.player.colliders, x, z, y, false));
 ctx.scene.add(parts.confetti.mesh);
-parts.tv = installTv(ctx, { shares: () => parts.talk.currentShares(), watch: () => parts.talk.watchShare(), youtube: () => parts.youtube /* 3d-kanban */ });
+parts.tv = installTv(ctx, { shares: () => parts.talk.currentShares(), watch: () => parts.talk.watchShare(), youtube: () => parts.youtube });
 parts.arcade = installArcade(ctx);
 parts.rooftop = installRooftop(ctx, { ambient: parts.stage.ambient, hemi: parts.stage.hemi });
 
@@ -115,7 +115,7 @@ parts.place = installPlace(ctx, core, parts);
 // Everyone arrives by elevator (the welcome says exactly where).
 parts.place.placeInCar();
 parts.player.view = parts.settings.view;
-parts.player.setMouseSensitivity(parts.settings.mouseSensitivity); // 3d-kanban: ⚙️ Settings' mouse sensitivity
+parts.player.setMouseSensitivity(parts.settings.mouseSensitivity); // ⚙️ Settings' mouse sensitivity
 parts.hands = new Hands(store.profile.color, parts.me.skinColor);
 parts.you = installYou(ctx);
 parts.reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
@@ -165,7 +165,7 @@ parts.cards = installCarrying(ctx, {
   officeIsFull: parts.actions.officeIsFull,
   showMeeting: parts.meeting.showMeeting,
 });
-parts.seating = installSeating(ctx, { shares: () => parts.talk.currentShares(), watchShare: () => parts.talk.watchShare(), arcade: parts.arcade, showBar: parts.bar.showBar, usable: () => parts.pointer.usable(), youtube: () => parts.youtube /* 3d-kanban */ });
+parts.seating = installSeating(ctx, { shares: () => parts.talk.currentShares(), watchShare: () => parts.talk.watchShare(), arcade: parts.arcade, showBar: parts.bar.showBar, usable: () => parts.pointer.usable(), youtube: () => parts.youtube });
 installGong(ctx, { burstOver: parts.views.burstOver, workerViews: parts.views.workerViews, court: () => parts.worlds.court(), idleAgents: () => parts.worlds.idleAgents() });
 
 parts.hintbar = installHintBar(ctx, core, parts);
@@ -176,8 +176,8 @@ parts.pointer = installPointer(ctx, core, parts);
 installChat(ctx);
 parts.talk = installVoice(ctx, { tv: parts.tv });
 parts.hud = installHud(ctx, core, parts);
-parts.kanban3d = installKanban3d(ctx, core, parts); // 3d-kanban: J, the kanban's menu entry and its 📍 Show in 3D link
-parts.youtube = installYoutubeTv(ctx, parts); // 3d-kanban: YouTube on the Office TV
+parts.kanban3d = installKanban3d(ctx, core, parts); // J, the kanban's menu entry and its 📍 Show in 3D link
+parts.youtube = installYoutubeTv(ctx, parts); // YouTube on the Office TV
 
 // ---- Main loop ---------------------------------------------------------------------------------------
 fitWindow(ctx);

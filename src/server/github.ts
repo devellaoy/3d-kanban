@@ -1,8 +1,8 @@
 import { execFile } from 'node:child_process';
 import type { GhCheck, GhCloseReason, GhComment, GhIssue, GhIssueDetail, GhLabel, GhMergeMethod, GhPull, GhPullDetail, GhRepoInfo, GhReviewComment, GhState } from '../shared/protocol.js';
 import type { GhAs } from './signins.js';
-import { checkoutRepo, repoApi, repoFlag } from './kanban/ghrepo.js';
-import { pullDiffOrFiles } from './kanban/prfiles.js';
+import { checkoutRepo, repoApi, repoFlag } from './ghrepo.js';
+import { pullDiffOrFiles } from './prfiles.js';
 
 const REFRESH_MS = 90_000;
 /** How long the repo's list of labels is kept before the label picker asks GitHub again. */
@@ -82,7 +82,7 @@ export class MergeWatch {
   /** Rang for already (merged from the PR window), so the next look doesn't ring them again. */
   private rang = new Set<string>();
 
-  /** The gong rings for `n` (3d-kanban: in `repo`, when it isn't the floor's own): false if it already has. */
+  /** The gong rings for `n` (in `repo`, when it isn't the floor's own): false if it already has. */
   ring(n: number, repo?: string): boolean {
     const key = pullKey(n, repo);
     if (this.rang.has(key)) return false;
@@ -102,7 +102,7 @@ export class MergeWatch {
   }
 }
 
-/** 3d-kanban: a pull request by repository and number, so a project's repositories' PR numbers never collide. */
+/** A pull request by repository and number, so a project's repositories' PR numbers never collide. */
 function pullKey(n: number, repo?: string): string {
   return `${repo?.toLowerCase() ?? ''}#${n}`;
 }
@@ -121,13 +121,13 @@ export class GitHub {
     private dir: string,
     private onIssues: (s: GhState<GhIssue>) => void,
     private onPulls: (s: GhState<GhPull>) => void,
-    /** 3d-kanban: owner/name its issues and PRs are marked with: one of a project's other repositories (see Floor.pullsState). */
+    /** owner/name its issues and PRs are marked with: one of a project's other repositories (see Floor.pullsState). */
     readonly nameWithOwner?: string,
-    /** 3d-kanban: only its pull requests are fetched (a project's other repository has no issues board of its own). */
+    /** Only its pull requests are fetched (a project's other repository has no issues board of its own). */
     private pullsOnly = false,
   ) {}
 
-  /** 3d-kanban: the repository its gh calls name: the given one, else the checkout's origin, never gh's pick among the remotes (see kanban/ghrepo.ts). */
+  /** The repository its gh calls name: the given one, else the checkout's origin, never gh's pick among the remotes (see ghrepo.ts). */
   private get target(): string | undefined {
     return this.nameWithOwner ?? checkoutRepo(this.dir);
   }
@@ -215,7 +215,7 @@ export class GitHub {
 
   /** The PR's unified diff, as `git diff` prints it. */
   pullDiff(n: number): Promise<string> {
-    // 3d-kanban: a PR over GitHub's 300-file diff limit is built from the files API instead (kanban/prfiles.ts).
+    // A PR over GitHub's 300-file diff limit is built from the files API instead (prfiles.ts).
     return pullDiffOrFiles(gh, this.target, n, this.dir, () => gh(['pr', 'diff', String(n), ...repoFlag(this.target), '--color', 'never'], this.dir, 60_000));
   }
 
@@ -418,7 +418,7 @@ export class GitHub {
     this.onPulls(this.pulls);
     const asked = Date.now();
     try {
-      const fields = 'number,title,state,isDraft,url,author,labels,reviewDecision,headRefName,headRefOid,baseRefName,createdAt,updatedAt,additions,deletions,statusCheckRollup,body,closingIssuesReferences';
+      const fields = 'number,title,state,isDraft,url,author,labels,reviewDecision,headRefName,headRefOid,isCrossRepository,baseRefName,createdAt,updatedAt,additions,deletions,statusCheckRollup,body,closingIssuesReferences';
       const [open, merged, closed] = await Promise.all([
         gh(['pr', 'list', ...repoFlag(this.target), '--state', 'open', '--limit', '150', '--json', fields], this.dir),
         gh(['pr', 'list', ...repoFlag(this.target), '--state', 'merged', '--limit', '30', '--json', fields], this.dir),
@@ -438,6 +438,7 @@ export class GitHub {
         reviewDecision: p.reviewDecision ?? '',
         headRefName: p.headRefName,
         headRefOid: typeof p.headRefOid === 'string' ? p.headRefOid : undefined,
+        isCrossRepository: typeof p.isCrossRepository === 'boolean' ? p.isCrossRepository : undefined,
         baseRefName: p.baseRefName,
         createdAt: p.createdAt,
         updatedAt: p.updatedAt,

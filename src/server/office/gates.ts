@@ -11,7 +11,7 @@ export function gates(ctx: Ctx): Gates {
    * A worker took on GitHub issue `n` (an issue card dropped on its desk): assign it on GitHub, which
    * moves it to In progress on the board, and take it off the queue so nobody else is seated for it.
    */
-  const takeIssue = (c: Client, floor: Floor, n: number | undefined, key?: string) => { // 3d-kanban: or an issue-source card by its key
+  const takeIssue = (c: Client, floor: Floor, n: number | undefined, key?: string) => { // or an issue-source card by its key
     floor.queue.dropIssue(n, key);
     const name = n !== undefined ? `#${n}` : key;
     const as = c.accountId ? ctx.signins.ghAs(c.accountId) : undefined;

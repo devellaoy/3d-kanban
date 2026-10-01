@@ -1,4 +1,4 @@
-// What the kanban adds to how workers start (docs/fork.md, "Server"): the Claude settings file its
+// What the kanban adds to how workers start: the Claude settings file its
 // workers run on, and the saved shape of a task worker in workers.json.
 import { readFileSync, writeFileSync } from 'node:fs';
 import type { WorkerInfo } from '../../shared/protocol.js';

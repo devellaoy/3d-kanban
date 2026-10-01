@@ -46,7 +46,7 @@ const DEFAULT_BOARD_LABEL: Record<BoardKey, string> = { issues: 'Issues', queue:
 const MAP_DESKS: DeskDef[] = [...DESKS, ...WING_DESKS];
 
 function officePlan(): MapPlan {
-  const byId = new Map([...MAP_DESKS, ...BEANBAGS, ...STATIONS, ...MEETING_SEATS, ...watchSpots([...MAP_DESKS, ...BEANBAGS])].map((d) => [d.id, d])); // 3d-kanban: watchSpots
+  const byId = new Map([...MAP_DESKS, ...BEANBAGS, ...STATIONS, ...MEETING_SEATS, ...watchSpots([...MAP_DESKS, ...BEANBAGS])].map((d) => [d.id, d]));
   const boards = {} as Record<BoardKey, BoardDef>;
   for (const k of BOARD_KEYS) boards[k] = { ...BOARDS[k] };
   return {
@@ -350,7 +350,7 @@ export function planMap(input: unknown): MapPlan {
   const sendHome = planSendHome(c.sendHome, bounds, free, dungeon);
   const outfit = c.agents?.outfit === 'peasant' ? 'peasant' : 'none';
   const ageMinutes = c.agents?.ageMinutes === undefined ? 0 : num(c.agents.ageMinutes, 'agents.ageMinutes', 0, 100000);
-  const byId = new Map([...desks, ...overflow, ...stations, ...meeting, ...watchSpots([...desks, ...overflow])].map((d) => [d.id, d])); // 3d-kanban: watchSpots
+  const byId = new Map([...desks, ...overflow, ...stations, ...meeting, ...watchSpots([...desks, ...overflow])].map((d) => [d.id, d]));
   for (const d of byId.values()) inside(d.x, d.z, d.label);
   return {
     id,

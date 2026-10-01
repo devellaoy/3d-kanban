@@ -39,9 +39,9 @@ function fakeEngine(calls: string[], answers: Partial<Record<string, string>> = 
       approvePlan: async (id) => say('approvePlan', id),
       requestPlanChanges: async (id, _who, text, files) => void calls.push(`requestPlanChanges #${id} ${text}${files ? ` [${files}]` : ''}`),
       pr: async (id, _who, mode) => void calls.push(`pr #${id} ${mode}`),
-      compact: async (id) => say('compact', id),
-      async release(id) {
-        say('release', id);
+      async sendWorkersHome(id, _who, why) {
+        const err = say(`home ${why}`, id);
+        if (err) return err;
         ctx.repo.updateTask(id, { workerId: null, reviewerWorkerId: null });
       },
       async commented(id, commentId, who) {
@@ -227,12 +227,12 @@ test('moves are the server’s to allow: start, reset, done, archive and back', 
   assert.ok(calls.includes('start #1'));
   errorOf(await ada.ask({ t: 'kanban.task.move', id: 1, to: 'review' }), /stop it first/);
   await ada.ask({ t: 'kanban.task.stop', id: 1 });
-  // Its worker is still at the desk: no starting over until it's sent home.
+  // Its worker is still at the desk, at rest: starting over sends it home first.
   live.add('w1');
-  errorOf(await ada.ask({ t: 'kanban.task.move', id: 1, to: 'todo' }), /Release/);
-  live.delete('w1');
   kanban.ctx.repo.updateTask(1, { sessionId: 'sess', reviewRound: 2 });
   okOf(await ada.ask({ t: 'kanban.task.move', id: 1, to: 'todo' }));
+  assert.ok(calls.includes('home reset #1'), 'its workers went home before the reset');
+  live.delete('w1');
   let task = kanban.ctx.repo.getTask(1)!;
   assert.equal(task.status, 'todo');
   assert.equal(task.sessionId, undefined);
@@ -257,8 +257,19 @@ test('moves are the server’s to allow: start, reset, done, archive and back', 
   assert.deepEqual(kanban.ctx.repo.listEvents(1).filter((e) => e.kind === 'moved').map((e) => (e.data as { to: string }).to), ['todo', 'done', 'archived', 'done']);
 });
 
-test('deleting: not while running, not with a worker, only by its maker or an admin', async (t) => {
-  const { client, kanban, live, dataDir } = office(t);
+test('a reset or a delete the engine refuses (a run is live) leaves the task as it is', async (t) => {
+  const { client, kanban } = office(t, { answers: { 'home reset': 'Stop it first: it is running', 'home delete': 'Stop it first: it is running' } });
+  const ada = client('Ada', true);
+  await ada.ask({ t: 'kanban.task.create', task: { project: 'web', title: 'x' } });
+  kanban.ctx.repo.updateTask(1, { status: 'review' });
+  errorOf(await ada.ask({ t: 'kanban.task.move', id: 1, to: 'todo' }), /Stop it first/);
+  assert.equal(kanban.ctx.repo.getTask(1)!.status, 'review');
+  errorOf(await ada.ask({ t: 'kanban.task.delete', id: 1 }), /Stop it first/);
+  assert.ok(kanban.ctx.repo.getTask(1));
+});
+
+test('deleting: not while running, workers at rest go home first, only by its maker or an admin', async (t) => {
+  const { client, kanban, live, dataDir, calls } = office(t);
   const ada = client('Ada', false);
   const bob = client('Bob', false);
   const boss = client('Boss', true);
@@ -269,8 +280,6 @@ test('deleting: not while running, not with a worker, only by its maker or an ad
   errorOf(await ada.ask({ t: 'kanban.task.delete', id: 1 }), /Stop it first/);
   kanban.ctx.repo.updateTask(1, { runState: 'idle', workerId: 'w2' });
   live.add('w2');
-  errorOf(await ada.ask({ t: 'kanban.task.delete', id: 1 }), /Release/);
-  live.delete('w2');
   // Its files go with it.
   const uploads = path.join(dataDir, 'kanban', 'uploads');
   mkdirSync(uploads, { recursive: true });
@@ -279,6 +288,8 @@ test('deleting: not while running, not with a worker, only by its maker or an ad
   kanban.ctx.repo.addAttachment({ id, taskId: 1, name: 'a.txt', mime: 'text/plain', size: 1, stored: `${id}-a.txt`, createdBy: 'Ada', createdAt: 1 });
   assert.equal(kanban.ctx.attachmentFile(id), path.join(uploads, `${id}-a.txt`));
   okOf(await boss.ask({ t: 'kanban.task.delete', id: 1 }));
+  assert.ok(calls.includes('home delete #1'), 'its worker at rest went home first');
+  live.delete('w2');
   assert.equal(kanban.ctx.repo.getTask(1), undefined);
   assert.equal(existsSync(path.join(uploads, `${id}-a.txt`)), false);
   assert.deepEqual(boss.deltas().at(-1), { t: 'kanban.task.removed', id: 1, project: 'web' });
@@ -317,20 +328,18 @@ test('a comment is stored with its files, pushed to the board, then handed to th
 });
 
 test('the process is the engine’s: its answers come back as ok or error', async (t) => {
-  const { client, kanban, calls } = office(t, { answers: { retry: 'Nothing to retry', compact: '' } });
+  const { client, kanban, calls } = office(t, { answers: { retry: 'Nothing to retry' } });
   const ada = client('Ada', false);
   await ada.ask({ t: 'kanban.task.create', task: { project: 'web', title: 'x' } });
   okOf(await ada.ask({ t: 'kanban.task.continue', id: 1, answer: 'Use Postgres' }));
   okOf(await ada.ask({ t: 'kanban.task.review', id: 1 }));
-  okOf(await ada.ask({ t: 'kanban.task.compact', id: 1 }));
   okOf(await ada.ask({ t: 'kanban.task.pr', id: 1, mode: 'create' }));
   okOf(await ada.ask({ t: 'kanban.plan.requestChanges', id: 1, text: 'Smaller steps' }));
-  okOf(await ada.ask({ t: 'kanban.task.release', id: 1 }));
   okOf(await ada.ask({ t: 'kanban.task.continue', id: 1, answer: 'See file', attachmentIds: ['c'.repeat(32)] }));
   okOf(await ada.ask({ t: 'kanban.plan.requestChanges', id: 1, text: 'As drawn', attachmentIds: ['d'.repeat(32)] }));
   errorOf(await ada.ask({ t: 'kanban.task.retry', id: 1 }), /Nothing to retry/);
   errorOf(await ada.ask({ t: 'kanban.task.stop', id: 2 }), /no task #2/);
-  assert.deepEqual(calls.slice(1), ['continue #1 Use Postgres', 'review #1', 'compact #1', 'pr #1 create', 'requestPlanChanges #1 Smaller steps', 'release #1', `continue #1 See file [${'c'.repeat(32)}]`, `requestPlanChanges #1 As drawn [${'d'.repeat(32)}]`, 'retry #1']);
+  assert.deepEqual(calls.slice(1), ['continue #1 Use Postgres', 'review #1', 'pr #1 create', 'requestPlanChanges #1 Smaller steps', `continue #1 See file [${'c'.repeat(32)}]`, `requestPlanChanges #1 As drawn [${'d'.repeat(32)}]`, 'retry #1']);
 
   // Approving a plan by id: only the latest version can be.
   const p1 = kanban.ctx.repo.addPlan(1, 'v1');
@@ -539,4 +548,20 @@ test('the projects list is pushed when the floors change, and only then', async 
   building.remove('web');
   kanban.projectsChanged();
   assert.equal(ada.deltas('kanban.projects').at(-1), last);
+});
+
+test('a reset that would send workers home is its maker\'s or an admin\'s, like a delete; one with no workers is anybody\'s', async (t) => {
+  const { client, kanban, calls } = office(t);
+  const ada = client('Ada', false);
+  const bob = client('Bob', false);
+  const boss = client('Boss', true);
+  await ada.ask({ t: 'kanban.task.create', task: { project: 'web', title: 'x' } });
+  kanban.ctx.repo.updateTask(1, { status: 'review', workerId: 'w1' });
+  errorOf(await bob.ask({ t: 'kanban.task.move', id: 1, to: 'todo' }), /Only whoever made it, or an admin/);
+  assert.equal(kanban.ctx.repo.getTask(1)!.status, 'review');
+  assert.ok(!calls.includes('home reset #1'), 'nobody was sent home');
+  okOf(await boss.ask({ t: 'kanban.task.move', id: 1, to: 'todo' }));
+  assert.ok(calls.includes('home reset #1'));
+  kanban.ctx.repo.updateTask(1, { status: 'review', workerId: null });
+  okOf(await bob.ask({ t: 'kanban.task.move', id: 1, to: 'todo' }));
 });

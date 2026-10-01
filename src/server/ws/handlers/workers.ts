@@ -4,8 +4,8 @@ import { MAX_REPOS, type RepoSource } from '../../workers.js';
 import { OPEN_CODE_MODEL_MAX } from '../../../shared/providers.js';
 import { isAgentEffort, isAgentProvider, type WorkerClientMsg } from '../../../shared/protocol.js';
 import { issueNumber, num, str } from '../../office/input.js';
-import { kanbanCaller } from '../../kanban/office.js'; // 3d-kanban
-import { prViaKanban } from '../../kanban/ws/pr.js'; // 3d-kanban
+import { kanbanCaller } from '../../kanban/office.js';
+import { prViaKanban } from '../../kanban/ws/pr.js';
 import { here, workerOf } from './common.js';
 import type { FeatureHooks, HandlerMap, ViewPieces } from './types.js';
 
@@ -40,7 +40,7 @@ export const workerHandlers = {
     const hire = () => {
       const r = floor.workers.spawn(str(msg.deskId, 32), who, str(msg.prompt, 20000) || undefined, msg.worktree === true, kind, msg.provider, model, effort, undefined, c.accountId, repos, msg.via === 'herald' ? 'herald' : undefined);
       const issue = kind === 'agent' ? issueNumber(msg.issue) : undefined;
-      const key = kind === 'agent' ? floor.cardKey(msg.issueKey) : undefined; // 3d-kanban: only a card on the floor's board
+      const key = kind === 'agent' ? floor.cardKey(msg.issueKey) : undefined; // only a card on the floor's board
       const across = repos.length ? ` across ${[floor.def.name, ...repos.map((x) => x.name)].join(' + ')}` : '';
       if (typeof r === 'string') ctx.warn(c, r);
       else ctx.toastFloor(floor, kind === 'shell' ? `${who} opened a shell at a desk` : `${who} hired ${r.name}${issue ? ` for issue #${issue}` : key ? ` for ${key}` : r.prompt ? ' with a task' : ''}${across}`);
@@ -52,7 +52,7 @@ export const workerHandlers = {
   },
   'worker.resume'(ctx, c, msg) {
     const w = workerOf(ctx, msg.workerId);
-    // 3d-kanban: R on a task worker whose task waits is the task's Retry (see docs/kanban-coupling.md).
+    // R on a task worker whose task waits is the task's Retry (see docs/kanban-coupling.md).
     const retried = w && ctx.kanban?.workerResume(w.info, kanbanCaller(ctx, c));
     if (retried) return void retried.then((err) => ctx.warn(c, err || undefined));
     ctx.warn(c, w ? w.floor.workers.resume(w.wid) : 'No such worker');
@@ -63,7 +63,7 @@ export const workerHandlers = {
     if (!w) return;
     const { floor, info } = w;
     // The worker leaves right away; its worktree is dealt with after that, and the outcome follows.
-    // 3d-kanban: who sent it, and whether its kanban task is done with it (see WorkerManager.kill).
+    // Who sent it, and whether its kanban task is done with it (see WorkerManager.kill).
     const done = floor.sendHome(info.id, CLEANUPS.has(String(msg.cleanup)) ? msg.cleanup : undefined, { by: who, reason: 'sent-home', ...(msg.kanban?.done === true ? { done: true } : {}) });
     ctx.toastFloor(floor, `${who} sent ${info.name} home`);
     void done.then(({ note, error }) => {
@@ -123,7 +123,7 @@ export const workerHandlers = {
   'worker.prompt'(ctx, c, msg) {
     const who = c.peer.name;
     const w = workerOf(ctx, msg.workerId);
-    // 3d-kanban: `asComment` (the fork's dialogs: P's Message task, a card on a task worker's desk, Ask) to a task worker is a task comment; else typed in as below.
+    // `asComment` (the kanban's dialogs: P's Message task, a card on a task worker's desk, Ask) to a task worker is a task comment; else typed in as below.
     const commented = w && ctx.kanban?.workerPrompt(w.info, str(msg.prompt, 20000), kanbanCaller(ctx, c), msg.asComment === true);
     if (commented) {
       const issue = issueNumber(msg.issue);
@@ -138,7 +138,7 @@ export const workerHandlers = {
     const err = w ? w.floor.workers.prompt(w.wid, str(msg.prompt, 20000), who) : 'No such worker';
     ctx.warn(c, err);
     const issue = w?.info.kind === 'agent' ? issueNumber(msg.issue) : undefined;
-    const key = w?.info.kind === 'agent' ? w.floor.cardKey(msg.issueKey) : undefined; // 3d-kanban: only a card on the floor's board
+    const key = w?.info.kind === 'agent' ? w.floor.cardKey(msg.issueKey) : undefined; // only a card on the floor's board
     if (w && !err && (issue || key)) {
       ctx.toastFloor(w.floor, `${who} handed issue ${issue ? `#${issue}` : key} to ${w.info.name}`);
       ctx.takeIssue(c, w.floor, issue, key);
@@ -158,7 +158,7 @@ export const workerHandlers = {
     });
   },
   'worker.pr'(ctx, c, msg) {
-    if (prViaKanban(ctx, c, msg)) return; // 3d-kanban: the engine has an agent open them; upstream's draft PR only when it hands the message back
+    if (prViaKanban(ctx, c, msg)) return; // the engine has an agent open them; upstream's draft PR only when it hands the message back
     const who = c.peer.name;
     const w = workerOf(ctx, msg.workerId);
     if (!w) return;

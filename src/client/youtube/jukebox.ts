@@ -1,4 +1,4 @@
-// 3d-kanban: the jukebox's side of YouTube on the Office TV (two seams in features/jukebox/ui.ts): a
+// The jukebox's side of YouTube on the Office TV (two seams in features/jukebox/ui.ts): a
 // YouTube link pasted into its stream box goes on the TV, and its window says what's on there.
 import { isYoutubeUrl, youtubeTitle } from '../../shared/youtube/link';
 import type { Net } from '../net';

@@ -1,4 +1,4 @@
-// 3d-kanban (#328): one send key for every multi-line prompt box. Enter adds a line; Shift/⌘/Ctrl + Enter sends.
+// One send key for every multi-line prompt box. Enter adds a line; Shift/⌘/Ctrl + Enter sends.
 
 /** True for a keydown that sends: Enter with Shift, ⌘ or Ctrl held (never Alt, never mid-IME-composition). */
 export function isSendKey(e: Pick<KeyboardEvent, 'key' | 'isComposing' | 'shiftKey' | 'metaKey' | 'ctrlKey' | 'altKey'>): boolean {

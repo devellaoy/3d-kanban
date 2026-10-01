@@ -10,7 +10,7 @@
 # Build it from the repository root: docker build -f deploy/container/Dockerfile .
 FROM node:22-bookworm-slim AS build
 WORKDIR /opt/agent-office
-# 3d-kanban: better-sqlite3 (the kanban's database) is a native module. Its install script fetches a
+# better-sqlite3 (the kanban's database) is a native module. Its install script fetches a
 # prebuilt binary, or compiles one with these when there is none for this platform.
 RUN apt-get update \
   && apt-get install -y --no-install-recommends python3 make g++ \

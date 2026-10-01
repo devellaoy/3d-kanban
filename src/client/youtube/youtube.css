@@ -1,4 +1,4 @@
-/* 3d-kanban: YouTube on the Office TV (youtube/screen.ts, youtube/window.ts). */
+/* YouTube on the Office TV (youtube/screen.ts, youtube/window.ts). */
 
 /* CSS3DRenderer's layer, just behind the canvas in #app: the player shows through the TV's hole. */
 .ytv-layer { position: absolute; inset: 0; pointer-events: none; }

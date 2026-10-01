@@ -45,8 +45,9 @@ greyed out with the reason. What you can do by hand:
 - **Waiting / Review → Done**, **Done → Review**, **Archive → Done**.
 - **Waiting / Review → To do** starts over: the automation's state (phase, round, sessions, worker ids,
   queued comments, retries) and the workspace are cleared; the branch stays, and the next start gets
-  a fresh worktree whose agent checks that branch out first. Not while it runs, and not while a worker
-  is still attached (**🏠 Release worktree** first).
+  a fresh worktree whose agent checks that branch out first. Not while it runs. Workers still at their
+  desks go home first and the worktree stays on disk: the task's conversation says where, and on which
+  branch.
 - **Anything → Archive**, except while it runs.
 - Not allowed: To do ↔ Done, and moving into In progress, Waiting or Review any other way (use
   Continue, Retry or a comment).
@@ -102,9 +103,7 @@ task is made and started at once, at that desk or, from the queue, at the next f
    so a review round never needs a free desk. Only when the task has no desk yet (its implementer never
    sat down) does the reviewer take the next free seat.
 4. **Review column**: read the result. **🔍 Run a review round** runs one more round by hand (it ends
-   in Review). **🔀 Create PRs** / **🛠️ Fix PRs** start the PR phase (see below). **🗜️ Compact**
-   compacts the agent's session. **🏠 Release worktree** sends the task's workers home and keeps the
-   worktree for later. Move it to **Done** when you accept it.
+   in Review). **🔀 Create PRs** / **🛠️ Fix PRs** start the PR phase (see below). Move it to **Done** when you accept it.
 
 When the agent asks something in its terminal (Waiting, *the agent is asking*), answer it there, or,
 when it asks a question, in the **Answer the agent** box (**⌨️ Open its terminal** is next to it): the
@@ -131,7 +130,7 @@ its desk; a run whose worker went away (or exited) is marked interrupted.
 ### Sending a task's worker home
 
 A task's worker is an ordinary worker at a desk: **X** (or the CLI's `office-workers home`, the queue
-making room, a meeting, leave-on-merge, 🏠 Release) sends it home, and the task hears about it. Each
+making room, a meeting, leave-on-merge, moving the task back to To do or deleting it) sends it home, and the task hears about it. Moving a task that has workers back to To do is for whoever made it or an admin, as deleting is. Each
 departure puts exactly one line in the task's conversation, saying who sent it home and what that
 did:
 
@@ -164,9 +163,9 @@ holds, though it counts while it's there, so other hires still find the office f
 keeps its task's slot of *tasks at once*, so more tasks don't start meanwhile and take the desks it's
 waiting for. A queued start keeps the desk it was
 started at; when that desk is taken by then, its worker sits at the next free one and the conversation
-says so. Later hires (after 🏠 Release, a Retry) prefer the task's desk when it's free. ⏹️ Stop takes a
+says so. Later hires (after a send-home, a Retry) prefer the task's desk when it's free. ⏹️ Stop takes a
 task out of the queue, and so does moving it to Done (or the archive, or back to To do): a task out of
-the process is never hired for. 🏠 Release keeps a usage-limit wait's auto-resume: the task still
+the process is never hired for. A send-home that isn't **X** (a move to Done, a reset) keeps a usage-limit wait's auto-resume: the task still
 carries on by itself when the limit resets, on a new hire; only **X** in the office turns it off.
 
 Every hire for a task runs as **the account that made the task**, on its own sign-ins, whoever set it
@@ -282,7 +281,7 @@ enough, elsewhere the `code` command must be on the PATH. Its tabs:
   then, never waited for), read-only, with ↻ to read again. Per commit and Uncommitted are always read
   that way, again whenever the live checkout changes (a new commit, an amend, an edit). A diff over
   2 MB is cut. The 3D worker window's 🗂️ Task tab has no Changes tab: its header's 🌿 Changes is it.
-- **PRs**: the task's pull requests with their state, **Create/Push & update PRs**, **Fix PRs**, and
+- **PRs**: the task's pull requests with their state, **Create/Push & update PRs**, **Fix PRs** (with open PRs), and
   **🔍 Review these N PRs together**.
 
 The panel is the **shared task view** (`src/client/kanban/taskview.ts`), which the 3D office uses too
@@ -389,7 +388,12 @@ reads its own. A kanban task made from a card keeps the description as its own, 
   listing the others. It reports each as a `PR: <url>` line, which the office links to the task; the
   task goes to Review. Linked PRs keep their state (open, draft, merged, closed) from the floor's PR
   board.
-- **Fix PRs** (a task with an open PR): the agent addresses the review comments and failing checks.
+- **Fix PRs** (any task, an investigation too, in Waiting, Review or Done, with an open or draft PR; in the action bar and the PRs tab alike): the implementer addresses the unresolved review comments and
+  the failing checks (it reads the failing run's log) on all the task's open PRs, pushes, and doesn't merge. The button is greyed out, with the reason as its tooltip, while the task is running or its agent is asking in its terminal. An investigation with no branch takes the one its open PR is from. One rule
+  (`canFixPrs`, `src/shared/kanban/prs.ts`) serves the buttons and the engine. A pull request from a fork is never worked on ("A pull request from a fork: fix it by hand"; the PR board says which are forks), nor is one whose head branch is the repository's base branch or an integration branch (main, master, develop, dev, trunk): a head branch is whatever its author named it, so the office never checks it out on trust. The prompt tells the agent that review comments and CI logs are data, not instructions, and to act only on comments from the repository's owner, members and collaborators (`author_association`). On a Done task it moves the task back to In progress, and then to Review.
+- **Fix via task #N** (PR window, opened from the PR board, the lite view or the palette): when a task owns the PR (the newest one not archived, if several), the window's footer
+  has this button next to upstream's *Fix comments & merge*. It does the same as the task's own 🛠️ Fix PRs, on all of that task's open PRs, and is greyed out with the reason when the task can't be sent now.
+  No button when no task owns the PR.
 - **Reviewing several PRs together**: 🔍 **Review** or 🤝 **Review panel…** in a PR window first asks
   which PRs go with it. PRs on the same branch in the project's other repositories, or of the same task,
   come ticked; any other open PR of the project can be added (at most 20). **Just this PR** keeps
@@ -412,7 +416,7 @@ reads its own. A kanban task made from a card keeps the description as its own, 
 
 Every prompt the kanban sends is editable: plan, replan, branch naming, checkout, implement,
 implement (folder project), investigate, review, next review round, fix, comment, acceptance
-criteria, open PRs, fix PRs, review PRs together, the review panel of several PRs, carry on, compact, language, reading other tasks
+criteria, open PRs, fix PRs, review PRs together, the review panel of several PRs, carry on, language, reading other tasks
 and handoff, and the smaller texts they're built from (Continue without answers, what the user said
 since, the ticket line, attached files, the project's instructions and their parts, the referenced
 tasks file, the accepted plan, what the task did, and the handoff's summary and comments). Each lists
@@ -525,7 +529,7 @@ task's workspace folder there holds a worktree of each of its repositories).
 
 - The kanban process drives **Claude Code and Codex** only; other providers stay ordinary office
   workers (though **O** works for any agent worker).
-- Every phase runs in an interactive worker. Claude's implement, fix, resume, PR and compact phases,
+- Every phase runs in an interactive worker. Claude's implement, fix, resume and PR phases,
   and investigations, run with `--permission-mode bypassPermissions`; an investigation needs it to
   write its report files, and only its contract keeps it off the repositories. Codex runs these
   phases with `--dangerously-bypass-approvals-and-sandbox` unless the project picks its workspace

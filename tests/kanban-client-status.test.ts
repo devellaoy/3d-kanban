@@ -1,4 +1,4 @@
-// 3d-kanban: a kanban worker whose run is still going shows as working, not done (src/client/kanban/status.ts).
+// A kanban worker whose run is still going shows as working, not done (src/client/kanban/status.ts).
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { shownWorker } from '../src/client/kanban/status.js';

@@ -1,4 +1,4 @@
-// 3d-kanban: the Office TV's YouTube messages, riding the office's socket (see ClientMsg/ServerMsg in
+// The Office TV's YouTube messages, riding the office's socket (see ClientMsg/ServerMsg in
 // shared/protocol.ts and docs/fork.md).
 import type { YoutubeTvState } from './link.js';
 

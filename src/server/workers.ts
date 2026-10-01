@@ -2,7 +2,7 @@
 // here before the split still is.
 export { MAX_REPOS, WorkerManager } from './workers/manager.js';
 export { CARRY_ON_PROMPT } from './workers/tasks.js';
-export type { HookEnv, OpenedPr, RepoSource, RunAs, SpawnExtra, WorkerEvents, WorkerObservation, WorkerObserver } from './workers/types.js'; // 3d-kanban: SpawnExtra, WorkerObservation, WorkerObserver
+export type { HookEnv, OpenedPr, RepoSource, RunAs, SpawnExtra, WorkerEvents, WorkerObservation, WorkerObserver } from './workers/types.js'; // SpawnExtra, WorkerObservation, WorkerObserver
 export { clockWork, workedMs } from './workers/clock.js';
 export { childEnv } from './workers/env.js';
 export { defaultShell, resolveCommand } from './workers/process.js';

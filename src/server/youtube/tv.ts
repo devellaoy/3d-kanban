@@ -1,4 +1,4 @@
-// 3d-kanban: what's on one floor's Office TV from YouTube, saved in .agent-office/youtube-tv.json.
+// What's on one floor's Office TV from YouTube, saved in .agent-office/youtube-tv.json.
 import { randomUUID } from 'node:crypto';
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';

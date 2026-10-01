@@ -1,4 +1,4 @@
-// 3d-kanban: YouTube on the Office TV, on every floor. Joins upstream's handler map and floor view
+// YouTube on the Office TV, on every floor. Joins upstream's handler map and floor view
 // with one line each (ws/handlers/index.ts), and the jukebox's handlers with two (see docs/fork.md).
 import path from 'node:path';
 import type { Floor } from '../floor.js';
@@ -48,7 +48,7 @@ function play(ctx: Ctx, floor: Floor, url: unknown, who: string): string | undef
 }
 
 /**
- * 3d-kanban seam in `jukebox.play`: a YouTube link pasted into the jukebox goes on the TV instead
+ * Called in `jukebox.play`: a YouTube link pasted into the jukebox goes on the TV instead
  * (the jukebox can't play YouTube). Says whether it took the message.
  */
 export function youtubeFromJukebox(ctx: Ctx, c: Client, floor: Floor, url: unknown): boolean {
@@ -58,7 +58,7 @@ export function youtubeFromJukebox(ctx: Ctx, c: Client, floor: Floor, url: unkno
   return true;
 }
 
-/** 3d-kanban seam after the jukebox comes on: the TV's YouTube makes way for it, so two songs never play at once. */
+/** Called after the jukebox comes on: the TV's YouTube makes way for it, so two songs never play at once. */
 export function youtubeMakesWay(ctx: Ctx, floor: Floor) {
   if (!floor.jukebox.state().on || !youtubeTvOf(floor).stop()) return;
   changed(ctx, floor);

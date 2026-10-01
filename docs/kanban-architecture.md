@@ -12,14 +12,16 @@ document disagree, fix one of them in the same change.
 ## 1. Ground rules
 
 - Upstream: `AgentSystemLabs/agent-office` at `665aeec571bc03f76cbd16de8d628dd169a48874`
-  (downloaded as a tarball, not a git clone). See [fork.md](fork.md) for the seams and the sync policy.
-- Fork code lives only in:
+  (downloaded as a tarball, not a git clone). See [fork.md](fork.md) for the origin and the sync policy.
+- The kanban is part of the project. Its own code lives in:
   - `src/shared/kanban/` — types, WS protocol, move rules, prompt defaults (browser + server).
   - `src/server/kanban/` — database, settings, projects, engine, issues, refs, skills, HTTP/WS glue.
   - `src/client/kanban/` + `src/client/kanban.html` — the kanban page.
   - `src/{shared,server,client}/youtube/` — YouTube on the Office TV (see fork.md).
   - `bin/office-tasks.js`, `scripts/migrate-ai-kanban/`, `skills/`, `tests/kanban-*.test.ts`, `docs/kanban*.md`.
-- Upstream files get only small, listed seams (see fork.md). Never reformat or reorder upstream code.
+  General code (the shoulder camera, the GitHub repo picker, PR file lists and so on) lives where it
+  belongs, outside these folders, and any file may be changed where that is the clean solution.
+  The registries and the size guard ([Code layout](code-layout.md)) apply to the kanban like to the rest.
 - Style: upstream's — TypeScript strict, ES modules with `.js` import suffixes, `node:test` tests,
   comments explain *why*, no new UI framework (client uses `h()` / `openModal` from `ui/dom.ts`).
 - Server code never trusts the browser: validate every WS message field (types, lengths, enums).
@@ -41,8 +43,9 @@ document disagree, fix one of them in the same change.
 - **Task** (`KanbanTask`): a unit of work on one project, touching the project's repositories
   (all of them by default, or a chosen subset `repoIds`). Ids are integers (`#123`), global across projects.
 - **Run**: one phase execution of a task (`plan`, `implement`, `review`, `fix`, `resume`, `pr`, `pr-fix`,
-  `compact`, `pr-review`) with its tool, model, session, worker, outcome and verdict. `pr-review` is a
-  review of one or more pull requests together by a reviewer in a worktree of its own (see §4).
+  `pr-review`) with its tool, model, session, worker, outcome and verdict. `pr-review` is a
+  review of one or more pull requests together by a reviewer in a worktree of its own (see §4). Old runs
+  may also say `compact`: the office used to compact a session on request, nothing starts one any more.
 - **Task worker**: an ordinary upstream worker (PTY, live terminal at a desk on the project's floor)
   hired by the engine for a task. `WorkerInfo.kanban = { taskId, role: 'implementer' | 'reviewer', … }`, with the
   task's card as it is now (see §4, *Worker summary*).
@@ -152,7 +155,7 @@ allowed: `todo → in_progress` (= start), `waiting|review → done`, `done → 
   (`resuming`), so the background agents launched before it still count.
 - A hook whose payload has an `agent_id` comes from a subagent or teammate, which run in the lead's process
   and so reach its worker (upstream may set the worker `working` for them). The engine ignores those for
-  its bookkeeping: the plan exit, the Stop text, the end of a hold and a compact's `SessionStart` are the
+  its bookkeeping: the plan exit, the Stop text, the end of a hold are the
   lead's alone. Only their ask hooks (`PermissionRequest`, a `permission_prompt` notification, a question
   tool's `PreToolUse`, a `PostToolUse(Failure)`) reach `heardAsk`: a teammate's own question or permission
   prompt is what the worker's `needs_input` waits on, but its `Stop`, prompt, `SessionStart` and other
@@ -207,7 +210,7 @@ allowed: `todo → in_progress` (= start), `waiting|review → done`, `done → 
     lacking one resolved through its repoId, number or URL); a fork's PR with the same branch name (`gh pr view
     --json isCrossRepository` must say false). The gh answers are cached (a PR's head repository never changes),
     a failed question isn't repeated for 5 minutes and links nothing meanwhile. Each such link is a `pr.linked`
-    event (`{ repo, number, by: 'branch' }`). A `pr`/`pr-fix` turn's end asks the floor's boards for the task's git
+    event (`{ repo, number, by: 'branch' }`); the board's `GhPull.isCrossRepository` skips a fork's PR before gh is asked. A `pr`/`pr-fix` turn's end asks the floor's boards for the task's git
     repositories to refresh at once, so the link shows up quickly.
   - review: read from the final answer's last 3 non-empty lines only: the **last** of them matching
     `^\s*REVIEW:\s*(APPROVED|CHANGES_REQUESTED)\s*$` as a line of its own (emphasis allowed) decides; none →
@@ -268,7 +271,7 @@ allowed: `todo → in_progress` (= start), `waiting|review → done`, `done → 
   (a Stop that timed out is `stopped`). Every other one writes exactly one status comment and applies:
   implementer with a live run → run `stopped`, task `waiting` (`stopped`, Retry), or `done` with `done`;
   implementer without one → `done` with `done`, else it keeps its column (`in_progress` with nothing running →
-  `waiting`/`interrupted`; `retryAt` cleared only for `sent-home`, so a release keeps a usage-limit auto-resume); reviewer with a live run → the round is dropped (`reviewAbandoned`):
+  `waiting`/`interrupted`; `retryAt` cleared only for `sent-home`, so any other send-home keeps a usage-limit auto-resume); reviewer with a live run → the round is dropped (`reviewAbandoned`):
   pending comments are delivered, else → `review`. With `reason: 'merged'`, `done` means every `pr_links` row is
   `MERGED`. A task made done this way stops its other run and releases its other workers at rest.
 - **Worktree guard** (`WorkerManager.addKeepGuard`): cleanup is forced to `keep` while another worker of the
@@ -283,8 +286,8 @@ allowed: `todo → in_progress` (= start), `waiting|review → done`, `done → 
 - **A desk**: `engine.start(id, who, {deskId})` (from `kanban.task.start` / `kanban.task.create` `deskId`) hires the
   first worker at that desk; a desk that's taken, not built (`deskBuilt`), a kiosk or a meeting chair is refused
   and the task stays in `todo`. A queued start takes any free desk when its slot comes.
-- Compacting keeps the task's column and, in `waiting`, its `waitingReason`; Retry and Continue go on with the
-  last run before the compact.
+- A compact (queued or running) left by an older office is dropped at start-up: the task goes `idle` in the
+  column it was in, and the run is closed `interrupted`. Retry and Continue skip such runs.
 - Usage limit / network interruption in the final text → `retryAt` + `retryAttempts`, swept every 60 s.
 - On start-up, runs left `running` whose worker is gone become `interrupted` (task `waiting`, retry offered);
   a run whose worker is still at its desk is followed again.
@@ -308,7 +311,7 @@ allowed: `todo → in_progress` (= start), `waiting|review → done`, `done → 
   whose cycle ends. Work a person resumes (a comment, Retry or Continue on a task whose implementer is at
   its desk) doesn't take a slot; only when people set more such tasks going at once than the floor has
   seats can every seat be an implementer waiting on its own reviewer, and then a person frees a desk
-  (⏹️ Stop one of those tasks, then 🏠 Release it).
+  (⏹️ Stop one of those tasks, then send its worker home with **X**).
 - A new hire runs as `via.owner ?? caller.accountId ?? tasks.created_by_account` (drains, sweeps and Retry
   pass the creator's account). Upstream's sign-in rule applies (`ctx.runAs`): an owner not signed in to
   Claude gets `waiting` (`failed`) with `runAs.why`, never the office's sign-in. A hire that cuts a worktree
@@ -367,18 +370,20 @@ answers `kanban.ok {rid, ...}` or `kanban.error {rid, message}`. Deltas are push
     task is in `todo`; `tool, model, effort, review` whenever no run is live (`isRunning` false): the next
     phase hires the new tool, whose fresh session gets the handoff. `repoIds` only before the first start. The
     description is locked from the first start (sending the unchanged text is fine). No edits while archived.
-  - `task.move`: `checkMove` (moves.ts), where `hasWorker` means one of the task's workers is still at a desk.
+  - `task.move`: `checkMove` (moves.ts), which only looks at the column and the run state. Workers at rest don't stop a move: the engine sends them
+    home first (`engine.sendWorkersHome(id, who, 'reset')`, cleanup `keep` (`all` for a PR review's reviewer in a worktree of its own), reason `released`; a run live only
+    because the agent asks in its terminal is finished as `stopped`). A reset of a task with workers is for its creator or an admin (as `task.delete`).
     `start` runs `engine.start`. `reset` clears the automation state (phase, run state, waiting, round,
     sessions, worker ids, pending messages, retries, `finishedAt`, `doneAt`) **and the workspace**; it keeps
-    `task.branch` and `startedAt`. The next start seats a fresh worktree whose agent is told to check that
+    `task.branch` and `startedAt`, and says in a status comment where the worktree stayed and on which branch. The next start seats a fresh worktree whose agent is told to check that
     branch out (`kanban.checkout`), rather than reusing a worktree that may be gone by then.
     `done` sets `doneAt`; `archived` sets `archivedAt`.
-  - `task.delete`: only by its creator or an admin. It is refused while running or while a worker is attached.
-    Its attachment files are deleted too.
+  - `task.delete`: only by its creator or an admin. It is refused while running; workers at rest go home first
+    (`engine.sendWorkersHome(id, who, 'delete')`), their worktree and branches stay. Its attachment files are deleted too.
   - `comment.add`: stored, attachments linked, `kanban.comment` pushed and `kanban.ok {commentId}` sent;
     then `engine.commented`.
   - `plan.approve {planId}`: only the latest plan version can be approved.
-  - Start, stop, continue, retry, review, plan approve and request-changes, pr, compact and release go to
+  - Start, stop, continue, retry, review, plan approve and request-changes and pr go to
     `ctx.engine`. A returned string becomes `kanban.error`. `task.continue` and `plan.requestChanges` take
     `attachmentIds?` like `comment.add`. The files are resolved first without linking; the message
     (its text plus the files' grant paths, as one `answer` / `text`, so a replan sees which files are new)
@@ -393,6 +398,11 @@ answers `kanban.ok {rid, ...}` or `kanban.error {rid, message}`. Deltas are push
   - `pr.bundle {project, taskId | branch | ticket, includeClosed?}` (integrations/pulls): the PRs that belong
     together across the project's repositories, open and draft ones only unless `includeClosed`; answered with
     `kanban.pr.bundle` (an `error` in it rather than `kanban.error` when the lists couldn't be read).
+  - `pr.owner {project, repo, number}` (integrations/pulls): which task owns a PR, for the PR window's
+    "Fix via task #N". Answered with `kanban.pr.owner {taskId: number | null, title?, fixable, reason?}`:
+    the project's tasks linked to the PR (by repository, repoId or URL: `prOwners`), the newest not archived (none: `taskId` null);
+    `fixable` is `canFixPrs` (shared/kanban/prs.ts: not running, not asking in its terminal, in Waiting, Review or
+    Done, with an open or draft PR that isn't a fork's: the server passes the floor's polled PRs, `isCrossRepository`) and `reason` says why not. The action itself is `pr {id, mode: 'fix'}`.
   - `pr.review {project, prs, taskId?, tool?, model?, effort?, panel?}`: checked by integrations/pulls (the
     project exists, every PR is in one of its GitHub repositories and exists, each once, at most 20, `taskId`
     is the project's), then run by the engine (`engine.reviewPrs`, §4) and answered with
@@ -495,3 +505,16 @@ the floors are open and keeps the result as `ctx.kanban`; `kanbanHandlers` (WS, 
 contract) typed into its session, or resumed with it when it's asleep. Only a shell worker answers `'fallback'`
 (`PR_FALLBACK`), and only then does upstream's own `openPr` (a draft PR without an agent) run. PR states of the
 tasks' linked PRs follow the floor's PR board (`floorPulled` → integrations/pulls `syncPrStates`): their states, and PRs from an active task's branch that no task has yet (and that aren't a fork's) get linked to it.
+
+## Next merges
+
+Follow-ups not done in #327:
+
+1. The board into the same app shell as the 3D office and lite (`kanban.html`, `kanban/main.ts`, `officecss.ts`).
+2. The `KanbanWorkers` base class of `WorkerManager` becomes composition.
+3. The two Changes windows become one.
+4. The three `git()` helpers, and the two PR-tracking paths (kanban `pr_links`/`pulls` vs GitHub/MergeWatch), become one.
+5. The `kanban/registry.ts` and `coupling.ts` indirection layers go.
+6. Storage: the task↔worker link lives both in `kanban.sqlite` (`tasks.worker_id` …) and in each project's
+   `.agent-office/workers.json` (`WorkerInfo.kanban`), reconciled in `orchestrator.reconcile()`. One owner of the
+   link, or the workers in the same SQLite.

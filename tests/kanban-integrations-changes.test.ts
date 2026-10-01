@@ -208,7 +208,7 @@ test('git -z output parsing: renames and binary files', () => {
   assert.deepEqual(nums.get('b.bin'), { additions: 0, deletions: 0, binary: true });
 });
 
-test('the live Changes state names its HEAD, so an amend is noticed (3d-kanban seam)', async () => {
+test('the live Changes state names its HEAD, so an amend is noticed', async () => {
   const { dir } = setup();
   git(dir, 'checkout', '-q', 'feature');
   const states: ChangesState[] = [];

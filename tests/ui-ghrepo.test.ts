@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { findItem, ghKey, ghLabel, ghRepoField, ghUrl, ghWaiter, namedRepo, ownPullRepo, repoOfItem, sameItem, workerForRepoPull } from '../src/client/kanban/ghrepo.js';
+import { findItem, ghKey, ghLabel, ghRepoField, ghUrl, ghWaiter, namedRepo, ownPullRepo, repoOfItem, sameItem, workerForRepoPull } from '../src/client/ui/github/ghrepo.js';
 import { repoOfItem as boardRepoOfItem } from '../src/client/kanban/boardrepos.js';
 import type { WorkerInfo } from '../src/shared/protocol.js';
 

@@ -4,7 +4,7 @@ import net from 'node:net';
 import os from 'node:os';
 import path from 'node:path';
 import { createInterface } from 'node:readline/promises';
-import { isatty } from 'node:tty'; // 3d-kanban
+import { isatty } from 'node:tty';
 import { normalizeRepo, sameRepo } from '../shared/floors.js';
 import type { RepoChoice } from '../shared/protocol.js';
 import { Building, tildify } from './building.js';
@@ -22,7 +22,7 @@ const SHOWN = 12;
 /** Folders people keep their code in, in the home folder: the first one that's there is the suggestion. */
 const CODE_FOLDERS = ['Workspace', 'workspace', 'Developer', 'code', 'Code', 'projects', 'Projects', 'repos', 'src', 'dev', 'git', 'GitHub', 'github'];
 
-// 3d-kanban: the command is `kanban3d`.
+// The command is `kanban3d`.
 const SETUP_HELP = `kanban3d setup — pick where projects are cloned and which ones are floors
 
 Usage:
@@ -45,7 +45,7 @@ Options:
 
 /** Someone's at a terminal to answer questions. */
 export function interactive(): boolean {
-  // 3d-kanban: isatty() checks the fds without opening process.stdin, which can block under tsx watch + concurrently on Windows.
+  // isatty() checks the fds without opening process.stdin, which can block under tsx watch + concurrently on Windows.
   return isatty(0) && isatty(1) && !process.env.CI;
 }
 

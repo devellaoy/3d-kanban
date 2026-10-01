@@ -1,7 +1,7 @@
 // The issue and pull request windows: a PR or issue in full, its diff, and the repo's labels.
 import { send } from '../util.js';
 import type { Route } from '../router.js';
-import { ghRepoOf, notInProject } from '../../kanban/office.js'; // 3d-kanban
+import { ghRepoOf, notInProject } from '../../kanban/office.js';
 import { floorParam } from './files.js';
 
 export const githubRoutes = {
@@ -16,7 +16,7 @@ export const githubRoutes = {
       // The repo's labels (for the label picker) are the one thing not about a single issue or PR.
       if (p !== '/api/gh/labels' && (!Number.isSafeInteger(n) || n <= 0)) return send(res, 400, { error: 'Bad number' });
       if (!floor) return send(res, 404, { error: 'No such floor' });
-      // 3d-kanban: ?repo= for a PR in another of the project's repositories.
+      // ?repo= for a PR in another of the project's repositories.
       const ghRepo = ghRepoOf(url.searchParams.get('repo'));
       const github = floor.githubFor(ghRepo);
       if (!github) return send(res, 404, { error: notInProject(ghRepo) });

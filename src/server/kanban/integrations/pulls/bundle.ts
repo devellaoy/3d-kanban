@@ -6,6 +6,7 @@
 import type { GhPull } from '../../../../shared/protocol.js';
 import { sameRepo } from '../../../../shared/floors.js';
 import type { KanbanPrBundleItem, KanbanPrLink, KanbanTask, ProjectRepo } from '../../../../shared/kanban/types.js';
+import { INTEGRATION_BRANCHES } from '../../../../shared/kanban/prs.js';
 
 /** A project repository's pull requests, as the board (or gh) listed them. */
 export interface RepoPulls {
@@ -75,9 +76,6 @@ export interface BranchPr {
   pull: Pick<GhPull, 'number' | 'url' | 'state' | 'isDraft'>;
 }
 
-/** Branches that are nobody's work: a PR from one is a release or a fork's, not a task's. */
-const INTEGRATION_BRANCHES = new Set(['main', 'master', 'develop', 'dev', 'trunk']);
-
 /**
  * The open or draft PRs whose head branch is an active task's in that repository, created no
  * earlier than the task (a PR with no readable createdAt isn't), of the `project` being synced.
@@ -85,19 +83,20 @@ const INTEGRATION_BRANCHES = new Set(['main', 'master', 'develop', 'dev', 'trunk
  * some pull has a head that isn't an integration branch. A branch is owned per repository
  * (`reposOf` says each project's) and the primary repository's falls back to the task's `branch`;
  * a (repository, branch) with several owners, in any project, is nobody's. Merged and closed PRs
- * and integration branches (main, master, develop, dev, trunk) are skipped; a task's branch another
+ * and integration branches (main, master, develop, dev, trunk) are skipped, and so are PRs the board
+ * says come from a fork (their branch name is nobody's to claim); a task's branch another
  * PR is stacked on stays its. `home` is the primary remote, the repository of a board item that
  * names none; `linked` says a PR is some task's already.
  */
 export function branchPrs(
   project: string,
   tasks: () => BranchTask[],
-  pulls: (Pick<GhPull, 'number' | 'url' | 'state' | 'isDraft'> & { repo?: string; headRefName?: string; createdAt?: string })[],
+  pulls: (Pick<GhPull, 'number' | 'url' | 'state' | 'isDraft'> & { repo?: string; headRefName?: string; createdAt?: string; isCrossRepository?: boolean })[],
   reposOf: (project: string) => Pick<ProjectRepo, 'id' | 'kind' | 'remote' | 'primary'>[],
   home: string | undefined,
   linked: (pr: { repo: string; number: number; url: string }) => boolean,
 ): BranchPr[] {
-  const heads = pulls.filter((p) => p.headRefName && !INTEGRATION_BRANCHES.has(p.headRefName.toLowerCase()) && (prState(p) === 'OPEN' || prState(p) === 'DRAFT'));
+  const heads = pulls.filter((p) => p.headRefName && !p.isCrossRepository && !INTEGRATION_BRANCHES.has(p.headRefName.toLowerCase()) && (prState(p) === 'OPEN' || prState(p) === 'DRAFT'));
   if (!heads.length) return [];
   const owners = new Map<string, { task: BranchTask; repoId: string; remote: string }[]>();
   for (const t of tasks()) {
