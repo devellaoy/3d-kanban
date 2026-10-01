@@ -15,7 +15,7 @@ import { gh } from '../../../github.js';
 import { floorPullsListeners, type PulledFloor } from './board.js';
 import type { GhRunner } from '../issues/source.js';
 import { fail, ok } from '../util.js';
-import { branchPrs, findBundle, prState, type BundleBy, type RepoPulls } from './bundle.js';
+import { branchPrs, findBundle, prOwners, prState, type BundleBy, type RepoPulls } from './bundle.js';
 
 const FIELDS = 'number,title,url,state,isDraft,headRefName';
 
@@ -184,9 +184,8 @@ export function createPullsParts(ctx: KanbanContext, opts: PullsOptions = {}) {
       if (ctx.repo.setPrLinkState(l.taskId, l.repoId, l.number, prState(p))) changed.add(l.taskId);
     }
     const tasks = ctx.repo.listTasks(project).filter((t) => t.status !== 'done').map((t) => ({ id: t.id, branch: t.branch, status: t.status, branches: ctx.repo.repoBranches(t.id) }));
-    // Some task's already: a link names its repository, or only its repoId (resolved as above), or its URL.
-    const linked = (repo: string, number: number, url: string) =>
-      links.some((l) => (l.number === number && sameRepo(l.repo ?? remoteOf(l.repoId) ?? '', repo)) || (!!l.url && l.url === url)) || ctx.repo.tasksOfPr(repo, number).length > 0;
+    // Some task's already: a link names its repository, or only its repoId, or its URL (prOwners).
+    const linked = (repo: string, number: number, url: string) => prOwners(links, remoteOf, repo, number, url).length > 0 || ctx.repo.tasksOfPr(repo, number).length > 0;
     for (const b of branchPrs(tasks, pulls, repos.filter((r) => r.kind === 'git'), home, linked)) {
       ctx.repo.upsertPrLink(b.taskId, { repoId: b.repoId, repo: b.repo, number: b.pull.number, url: b.pull.url, state: prState(b.pull), branch: b.branch });
       changed.add(b.taskId);

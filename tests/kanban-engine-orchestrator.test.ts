@@ -250,3 +250,26 @@ test('a pr turn links the PR its answer names, in whatever words, when it is the
   const withPr = await fx.waitTask(task.id, (x) => x.runState === 'idle' && x.prs.length > 0, 'the pull request');
   assert.deepEqual(withPr.prs.map((p) => [p.repoId, p.repo, p.number]), [['proj', 'acme/proj', 7]], 'another repository’s URL is no link of this task’s');
 });
+
+test('a pr turn does not take a PR another task has, even one linked without its repository', async (t) => {
+  const fx = await engineFixture();
+  t.after(() => fx.close());
+  fx.setRules([
+    { when: 'You are planning kanban task', reply: 'Read it.\n\nPLAN READY', exitPlan: '1. Do it' },
+    { when: 'Implement kanban task', reply: 'Done.', commit: 'Do it' },
+    { when: 'This is review round 1 of', reply: 'Good.\nREVIEW: APPROVED' },
+    { when: 'Open the pull requests for', reply: 'Updated [the PR](https://github.com/acme/proj/pull/7).' },
+  ]);
+  const other = fx.newTask();
+  // The other task's link has only its repoId, which tasksOfPr doesn't find.
+  fx.repo.upsertPrLink(other.id, { repoId: 'proj', number: 7, url: 'https://github.com/acme/proj/pull/7', state: 'OPEN' });
+  const task = fx.newTask();
+  assert.equal(await fx.engine.start(task.id, ADA), undefined);
+  await fx.waitTask(task.id, (x) => x.status === 'review' && x.runState === 'idle', 'the review column', 30_000);
+  const floor = fx.ctx.floor('proj') as unknown as { githubFor?: unknown };
+  floor.githubFor = () => ({ pulls: { items: [{ number: 7, headRefName: fx.task(task.id).branch! }] }, refresh: async () => {} });
+  assert.equal(await fx.engine.pr(task.id, ADA, 'create'), undefined);
+  await fx.waitTask(task.id, (x) => x.runState === 'idle' && x.flags.prRequested === true, 'the pr turn');
+  assert.deepEqual(fx.task(task.id).prs, [], 'still the other task’s alone');
+  assert.deepEqual(fx.task(other.id).prs.map((p) => p.number), [7]);
+});

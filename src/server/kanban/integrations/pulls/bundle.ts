@@ -41,6 +41,19 @@ export function mentionsTicket(text: string, token: string): boolean {
   return new RegExp(`(^|[^A-Za-z0-9])${esc}(?![0-9])`, 'i').test(text);
 }
 
+/**
+ * The tasks a PR is linked to among `links`: by repository (a link without one, through its repoId:
+ * `remoteOf`) and number, or by URL. Unlike KanbanRepository.tasksOfPr it finds links made without a repository.
+ */
+export function prOwners(links: (Pick<KanbanPrLink, 'repoId' | 'repo' | 'number' | 'url'> & { taskId: number })[], remoteOf: (repoId: string) => string | undefined, repo: string, number: number, url: string): number[] {
+  const ids = new Set<number>();
+  for (const l of links) {
+    const r = l.repo ?? remoteOf(l.repoId);
+    if ((l.number === number && !!r && sameRepo(r, repo)) || (!!l.url && l.url === url)) ids.add(l.taskId);
+  }
+  return [...ids];
+}
+
 /** A PR the board lists that belongs to a task by its branch. */
 export interface BranchPr {
   taskId: number;
