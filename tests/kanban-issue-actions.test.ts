@@ -235,7 +235,7 @@ test('a board without a Status field offers nothing; a draft is found by its ite
 
 test('moving a board item runs the mutation with the ids of a fresh read; a stale choice is refused', async () => {
   const { gh, calls } = ghStub((args) => (args.some((a) => a.startsWith('query=mutation')) ? '{"data":{}}' : issueItems(board())));
-  assert.equal(await projectTransition(act({ gh, env: ENV }), { repo: 'o/r', number: 5 }, [PROJECT_SOURCE], 'p:PVT_1:PVTI_1:PVTSSF_1:a4'), 'Shipped');
+  assert.deepEqual(await projectTransition(act({ gh, env: ENV }), { repo: 'o/r', number: 5 }, [PROJECT_SOURCE], 'p:PVT_1:PVTI_1:PVTSSF_1:a4'), { to: 'Shipped', owner: 'o', number: 1 });
   const mutation = calls.at(-1)!;
   assert.deepEqual(mutation.args.filter((a) => /^(project|item|field|option)=/.test(a)), ['project=PVT_1', 'item=PVTI_1', 'field=PVTSSF_1', 'option=a4']);
   assert.match(mutation.args.find((a) => a.startsWith('query='))!, /updateProjectV2ItemFieldValue/);
@@ -515,4 +515,44 @@ test('a settling fetch follows a write by long enough to clear its change', asyn
   assert.equal(listed(), before + 1, 'one fetch, started 12 s after the write');
   assert.equal(shown(), 'Doing', 'the fetch cleared the change');
   issues.plugin.stop?.();
+});
+
+test('closing an issue takes its queued work off the queue: by key, and by number only in the primary repository', async () => {
+  for (const [primary, expected] of [['o/r', [5, 'gh:o/r#5']], ['o/app', [undefined, 'gh:o/r#5']]] as const) {
+    const { ctx, issues, ws } = setup({ ghAs: () => undefined });
+    const dropped: unknown[][] = [];
+    ctx.floors.set('app', { def: { repo: primary }, queue: { dropIssue: (...a: unknown[]) => (dropped.push(a), true) } } as never);
+    await issues.refresh('app');
+    await ws['kanban.issue.transition']!(client(true, 'acc1'), { t: 'kanban.issue.transition', project: 'app', issueKey: 'gh:o/r#5', transitionId: 'gh:close' });
+    assert.deepEqual(dropped, [expected], primary);
+    assert.equal(ctx.toasts.at(-1)!.text, '🔀 Tester moved gh:o/r#5 → Closed and took it off the queue');
+    // Reopening leaves the queue alone.
+    await ws['kanban.issue.transition']!(client(true, 'acc1'), { t: 'kanban.issue.transition', project: 'app', issueKey: 'gh:o/r#5', transitionId: 'gh:reopen' });
+    assert.equal(dropped.length, 1);
+  }
+});
+
+test('a move on one board does not change the status another board’s copy shows', async () => {
+  const A = { ...PROJECT_SOURCE, id: 'a', number: 1 };
+  const B = { ...PROJECT_SOURCE, id: 'b', number: 2 };
+  const bBoard = board({ number: 2, projectId: 'PVT_2', itemId: 'PVTI_B', status: 'Inbox' });
+  const ctx = makeCtx([def('app', '/tmp/app', { repo: 'o/r' })], { ghAs: () => undefined });
+  ctx.settings.setProject('app', { issueSources: [A, B] });
+  const { gh } = ghStub((args) => {
+    const query = args.find((a) => a.startsWith('query=')) ?? '';
+    if (query.includes('updateProjectV2ItemFieldValue')) return '{"data":{}}';
+    if (query.includes('projectItems')) return issueItems(board(), bBoard);
+    return projectPage('Doing');
+  });
+  const issues = createIssues(ctx, { gh, fetch: fetchStub(() => ({ body: {} })).fetch });
+  await issues.refresh('app');
+  const shown = () => issues.message('app').items.find((i) => i.key === 'gh:o/r#5')!;
+  assert.equal(shown().sourceId, 'a', 'board A’s copy is the one kept');
+  const c = client(true, 'acc1');
+  const ws = issues.plugin.ws!;
+  await ws['kanban.issue.transition']!(c, { t: 'kanban.issue.transition', project: 'app', issueKey: 'gh:o/r#5', transitionId: 'p:PVT_2:PVTI_B:PVTSSF_1:a4' });
+  assert.equal(last(c, 'kanban.ok').t, 'kanban.ok');
+  assert.equal(shown().status, 'Doing', 'B was moved, A’s copy keeps A’s status');
+  await ws['kanban.issue.transition']!(c, { t: 'kanban.issue.transition', project: 'app', issueKey: 'gh:o/r#5', transitionId: 'p:PVT_1:PVTI_1:PVTSSF_1:a4' });
+  assert.equal(shown().status, 'Shipped');
 });

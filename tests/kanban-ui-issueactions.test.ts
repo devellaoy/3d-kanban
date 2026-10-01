@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { actionsTarget, groupTransitions, isGithubKey, jiraSite, pinnedMe, transitionLabel } from '../src/client/kanban/issueactionsmodel.js';
+import { actionsTarget, keyedComment, groupTransitions, isGithubKey, jiraSite, pinnedMe, transitionLabel } from '../src/client/kanban/issueactionsmodel.js';
 
 test('only a card with a key on a floor with a project gets the issue actions', () => {
   assert.equal(actionsTarget({}, 'demo'), undefined, 'upstream’s key-less issue keeps its own window as it was');
@@ -32,4 +32,10 @@ test('transitions are grouped in order and say where they lead and what they nee
   assert.equal(transitionLabel(ts[0]), 'Start → In Progress');
   assert.equal(transitionLabel(ts[1]), 'Done (needs Resolution)');
   assert.equal(transitionLabel(ts[3]), 'Todo ✓');
+});
+
+test('a keyed card’s comment goes by kanban.issue.comment; a key-less one keeps upstream’s gh.comment', () => {
+  assert.deepEqual(keyedComment({ key: 'gh:o/r#5' }, 'app', 'Looks fine'), { t: 'kanban.issue.comment', project: 'app', issueKey: 'gh:o/r#5', text: 'Looks fine' });
+  assert.equal(keyedComment({}, 'app', 'Looks fine'), undefined);
+  assert.equal(keyedComment({ key: 'gh:o/r#5' }, null, 'Looks fine'), undefined);
 });

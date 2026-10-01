@@ -117,8 +117,8 @@ export function boardTransitions(boards: BoardItem[]): IssueTransition[] {
     .flatMap((b) => b.options.map((o): IssueTransition => ({ id: projectTransitionId(b, o.id), name: o.name, to: o.name, group: b.title, ...(b.current === o.name ? { current: true } : {}) })));
 }
 
-/** Moves the item to the option a transition id names, after asking the boards again that it still can. Resolves to the status's name. */
-export async function projectTransition(io: IssueActIo, target: ProjectTarget, sources: ProjectConfig[], transitionId: string): Promise<string> {
+/** Moves the item to the option a transition id names, after asking the boards again that it still can. Resolves to the status's name and the board it was moved on. */
+export async function projectTransition(io: IssueActIo, target: ProjectTarget, sources: ProjectConfig[], transitionId: string): Promise<{ to: string; owner: string; number: number }> {
   const [tag, projectId, itemId, fieldId, optionId] = transitionId.split(':');
   const gone = () => new Error('That status isn’t one of the board’s any more: reload its statuses');
   if (tag !== 'p' || !projectId || !itemId || !fieldId || !optionId) throw gone();
@@ -134,5 +134,5 @@ export async function projectTransition(io: IssueActIo, target: ProjectTarget, s
     if (SCOPE_RE.test((err as Error)?.message ?? '')) throw new Error(PROJECT_WRITE_SCOPE_ERROR);
     throw err;
   }
-  return option.name;
+  return { to: option.name, owner: board.owner, number: board.number };
 }

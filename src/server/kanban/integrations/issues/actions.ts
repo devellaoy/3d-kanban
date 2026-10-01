@@ -14,7 +14,7 @@ import type { IssueSourceConfig, NormalizedIssue } from '../../../../shared/kanb
 import { parseGhKey } from '../../../../shared/kanban/issuecard.js';
 import type { KanbanClient, KanbanContext, KanbanPlugin } from '../../registry.js';
 import { fail, ok } from '../util.js';
-import { ghAssign, ghComment, ghComments, ghPeople, ghStateTransition, ghStateTransitions } from './github-ops.js';
+import { GH_REOPEN, ghAssign, ghComment, ghComments, ghPeople, ghStateTransition, ghStateTransitions } from './github-ops.js';
 import { jiraAssign, jiraComment, jiraComments, jiraPeople, jiraTransition, jiraTransitions } from './jira-ops.js';
 import { boardTransitions, projectTransition, resolveBoards, type ProjectTarget } from './project-ops.js';
 import type { IssueActIo, IssueSourceIo } from './source.js';
@@ -132,18 +132,27 @@ export function issueActionHandlers(ctx: KanbanContext, deps: ActionDeps): NonNu
     'kanban.issue.transition': scoped<Msg<'kanban.issue.transition'>>(async (c, m, { issue, target, io, boards }) => {
       let to: string;
       let status: string | undefined;
+      let dropped = false;
       if (target.kind === 'jira') status = to = await jiraTransition(io, target.site, m.issueKey, m.transitionId);
       else if (m.transitionId.startsWith('gh:')) {
         if (target.kind !== 'gh') throw new Error('A draft can’t be closed: move it on its board, or convert it to an issue');
         to = await ghStateTransition(io, target.repo, target.number, m.transitionId, target.isPr);
+        if (m.transitionId !== GH_REOPEN) {
+          // Nobody should be seated for an issue that's closed (as upstream's gh.close). The queue's numbers are the floor's primary repository's.
+          const floor = ctx.floor(m.project);
+          const primary = !!floor?.def.repo && floor.def.repo.toLowerCase() === target.repo.toLowerCase();
+          dropped = !!floor?.queue.dropIssue(primary ? target.number : undefined, m.issueKey);
+        }
         // A repository's list shows its issues' state; a board's Status is not changed by closing.
         if (issue.source === 'github-repo') status = to.startsWith('Closed') ? 'CLOSED' : 'OPEN';
       } else {
-        to = await projectTransition(io, projectTarget(target), boards, m.transitionId);
-        // A board's Status is the status of a board's own copy; a repository's copy has the issue's open / closed state.
-        if (issue.source === 'github-project') status = to;
+        const moved = await projectTransition(io, projectTarget(target), boards, m.transitionId);
+        to = moved.to;
+        // A board's Status is the status of the copy that board listed; a repository's copy has the issue's open / closed state, another board's copy its own Status.
+        const listedBy = boards.find((b) => b.id === issue.sourceId);
+        if (issue.source === 'github-project' && listedBy && listedBy.owner.toLowerCase() === moved.owner.toLowerCase() && listedBy.number === moved.number) status = to;
       }
-      wrote(c, m, '🔀', `${c.name} moved ${m.issueKey} → ${to}`, status ? { status } : {});
+      wrote(c, m, '🔀', `${c.name} moved ${m.issueKey} → ${to}${dropped ? ' and took it off the queue' : ''}`, status ? { status } : {});
     }),
 
     'kanban.issue.comments': scoped<Msg<'kanban.issue.comments'>>(async (c, m, { target, io }) => {
