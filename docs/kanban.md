@@ -77,7 +77,8 @@ Put such a task on hold instead of leaving it in Waiting or Review, where it cou
 - **Resuming**: **▶️ Resume** in the task view, or move the card to In progress. A dialog takes an optional message for
   the agent. The task carries on in the same session and worktree, with the same worker name when it is free; a worktree
   removed meanwhile (for instance by `agent-office prune`) is recreated on the task's branch. Comments written while the
-  task was on hold are kept and handed to the agent then.
+  task was on hold are kept and handed to the agent then. A task put on hold while its plan waited for approval or
+  answers goes back to Waiting with that plan instead: approve it or answer its questions to carry on.
 - **Otherwise**: a held task doesn't count toward *tasks at once*, is never archived by itself, and leave-on-merge
   doesn't touch it. Fixing or reviewing its PRs through the task asks you to resume it first.
 
