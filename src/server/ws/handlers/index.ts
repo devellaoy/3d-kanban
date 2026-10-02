@@ -82,4 +82,5 @@ export const views: ViewPieces = {
   meeting: meetingView,
   cabinet: cabinetView,
   youtube: youtubeView, // YouTube on the Office TV
+  kanbanLounge: (ctx, floor) => (floor ? (ctx.kanban?.lounge(floor.id) ?? []) : []), // the kanban's tasks on hold, as figures in the lounge
 };

@@ -199,6 +199,12 @@ ALTER TABLE tasks ADD COLUMN queued_run TEXT;`),
     // so a comment's work that changes nothing since is not reviewed again.
     up: (db) => db.exec('ALTER TABLE tasks ADD COLUMN handoff_fingerprint TEXT;'),
   },
+  {
+    version: 4,
+    name: 'task hold',
+    // hold: why and since when a task is on hold, and the look of its implementer (JSON, see TaskHold).
+    up: (db) => db.exec('ALTER TABLE tasks ADD COLUMN hold TEXT;'),
+  },
 ];
 
 /** The schema version this build expects. */

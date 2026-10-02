@@ -35,6 +35,7 @@ column) and **⚙️** Settings (the office's own window, as in the 3D office). 
 | **In progress** | The engine is running a phase (plan, implement, review, fix…), or the task is queued for a slot. |
 | **Waiting** | Needs you: the plan has questions, the plan waits for approval, the agent asks in its terminal, it was stopped, a phase failed or was interrupted, or a usage limit (it retries by itself, with a countdown; for Codex, at the account's own reset time when it knows it). |
 | **Review** | The automation is finished. Read the result, comment, run another review round, open PRs, or move it to Done. |
+| **On hold** | Put aside from Waiting or Review until something it depends on is there (see [On hold](#on-hold)). Its worker is at home; nothing runs. |
 | **Done** | Accepted by you: you move it here, send its implementer home with *the task is done*, or leave-on-merge sends it home once every PR of the task has merged. |
 | **Archive** | Done tasks after the archive days, and tasks archived by hand; off the board (**🗄️ Archive** shows them). |
 
@@ -48,14 +49,42 @@ greyed out with the reason. What you can do by hand:
   a fresh worktree whose agent checks that branch out first. Not while it runs. Workers still at their
   desks go home first and the worktree stays on disk: the task's conversation says where, and on which
   branch.
+- **Waiting / Review → On hold** (not while it runs), asking why and until when; **On hold → In progress**
+  resumes it (its creator or an admin, as for putting it on hold); **On hold → Review / Done / To do** work as from Waiting or Review (To do starts over).
 - **Anything → Archive**, except while it runs.
-- Not allowed: To do ↔ Done, and moving into In progress, Waiting or Review any other way (use
+- Not allowed: To do ↔ Done, and moving into In progress (from To do or On hold only), Waiting or Review any other way (use
   Continue, Retry or a comment).
 
 Done tasks go to the archive by themselves after the *archive after* days in the settings.
 Moving a task to Done or to the archive (by hand or by itself) sends its workers that are at rest
 home, worktree kept. An agent still asking in its terminal (the task waits with *the agent is asking*)
 goes home too: its run is stopped, with a line saying so, and nothing of the task stays running.
+
+## On hold
+
+Some tasks can't go on yet: the API keys aren't there, another team has to answer, a release is two weeks off.
+Put such a task on hold instead of leaving it in Waiting or Review, where it counts as something that needs you.
+
+- **How**: drag the card of a Waiting or Review task (one that isn't running; the creator or an admin) to **On hold**,
+  use its **⋯** menu (or **M**), or press **⏸️ Put on hold** in the task view. A small dialog asks *what is it
+  waiting for?* and *hold until* (both optional; the date is only shown, the task is never resumed by itself). They
+  show on the card and in the task view with who put it on hold and since when.
+- **The worker**: it goes home, its worktree and session kept on the task. In the 3D office a figure of it sits in the TV
+  lounge: four seat themselves (the two beanbags and the ends of the couch; the middle of the couch stays free for
+  watching TV), up to eight more stand behind the couch, and a *+N more on hold* sign counts the rest. A seat someone
+  sits on is left to them: the figure takes the next free seat (or stands), and moves back once they get up. A seat a
+  figure sits on can't be sat on meanwhile (*… got there first*). The figures show
+  on every project floor that uses the office map; a floor on a map of its own (the castle, a custom map) shows none.
+  Aiming at a figure shows "⏸️ #id title — reason · until d.m." and **E** opens the task window.
+- **Resuming**: **▶️ Resume** in the task view, or move the card to In progress (the creator or an admin, as the hold was: it starts an agent on the creator's sign-in). A dialog takes an optional message for
+  the agent. The task carries on in the same session and worktree, with the same worker name when it is free; a worktree
+  removed meanwhile (for instance by `agent-office prune`) is recreated on the task's branch. Comments written while the
+  task was on hold are kept and handed to the agent then. A task put on hold while its plan waited for approval or
+  answers goes back to Waiting with that plan instead: approve it or answer its questions to carry on.
+  If Claude no longer has the session (a long hold), a fresh agent takes over in the same worktree with the task's handoff and
+  the messages; a session that exists is never dropped.
+- **Otherwise**: a held task doesn't count toward *tasks at once*, is never archived by itself, and leave-on-merge
+  doesn't touch it. Fixing or reviewing its PRs through the task asks you to resume it first.
 
 ## Creating a task
 
@@ -118,14 +147,18 @@ with **⌨️ Open its terminal** and no answer box: nothing is typed for you, s
 prompt's highlighted option. A comment then is kept and goes to the agent once that turn is over.
 There is no Continue without an answer then: its run is still going.
 
-A task stays In progress while the agent's background helper agents still work, until the agent has
+A task stays In progress while the agent's background helper agents or commands (a test run, say) still work, until the agent has
 answered after them (at most 3 hours, then it goes on with what the agent said). ⏹️ Stop during that wait
-sends the worker home, worktree kept, which stops its helper agents too.
+restarts the worker on its session at its desk, which ends its helper agents too.
 The worker shows as working in the 3D office and in /lite until the run ends, also while its background
 agents or teammates still work, instead of flickering between done and working.
 
-**⏹️ Stop** interrupts a running turn (Esc into its terminal; the worker goes home, worktree kept, if
-it doesn't stop in a few seconds). A failed or interrupted phase waits with **🔁 Retry** (run it again)
+**⏹️ Stop** interrupts a running turn (Esc into its terminal) and the worker stays at its desk; that is
+normally all it takes. Only when Esc isn't confirmed in a few seconds (the agent doesn't rest and its log
+shows no interrupt), or when the agent waits on background agents, is it restarted on its session at its
+desk, which ends its helpers, and the conversation says so. ▶️ Continue or a message then carries on in the same
+terminal. A stopped worker keeps its desk (and counts towards the worker limit); **X** sends it home.
+A worker that can't be restarted (no session yet) stays at its desk, with its agent ended if it was still working (R resumes it), and the conversation says so. A failed or interrupted phase waits with **🔁 Retry** (run it again)
 and **▶️ Continue**. After an office restart a run is picked up again when its worker is still at
 its desk; a run whose worker went away (or exited) is marked interrupted.
 
@@ -228,8 +261,8 @@ back to work:
   next rest. Comments that came in during a review are worked on when the review cycle ends, and that
   work is reviewed again when the task has review on.
 
-On To do, Done and archived tasks a comment is just kept. Comments take attachments too,
-and so do the answer box and the plan's **Request changes** (**Shift + Enter** or **Ctrl/⌘ + Enter** sends); files alone are enough. An agent can read only its own task's files (copies in `kanban/grants/task-<id>/`). After upgrading, a live agent session started before this change is relaunched once at its next turn (its launch arguments change); until then a file sent into it may need a permission prompt.
+On To do, **On hold**, Done and archived tasks a comment is just kept; on a held task it is handed to the agent when the task is resumed. Comments take attachments too,
+and so do the answer box and the plan's **Request changes** (**Ctrl/⌘ + Enter** sends); files alone are enough. An agent can read only its own task's files (copies in `kanban/grants/task-<id>/`). After upgrading, a live agent session started before this change is relaunched once at its next turn (its launch arguments change); until then a file sent into it may need a permission prompt.
 
 In the 3D office, what you tell a task's **implementer** while the task is in progress, waiting or in
 review is a comment too: **P** ("💬 Message task #N"), the task's issue card dropped on its desk, and
@@ -433,7 +466,7 @@ its own comments and close) gets its **status** and **assignee** there.
   (completed)**, **Close (not planned)** or **Reopen** (which of them is read from GitHub: it is closed or open now). A pull request only has the board's Status.
   A project draft: its board's Status.
 - **Comments.** The newest 50, oldest first, and a box to add one (Enter makes a new line,
-  Shift/⌘/Ctrl+Enter sends). A comment written under an identity everyone shares ends with
+  Ctrl/⌘ + Enter sends). A comment written under an identity everyone shares ends with
   `— <your name> via Agent Office`. A draft has no comments.
 - **Assignee.** **Assign to me**, **Someone else…** (a search of who can be assigned) or **Unassign**.
   On GitHub it makes the person the only assignee, and **Assign to me** needs your own GitHub sign-in

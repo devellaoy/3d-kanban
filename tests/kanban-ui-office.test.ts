@@ -73,7 +73,7 @@ test('who waits on you: a task waiting on a person, or an unseen review; not one
 
 test('sending home: Done is ticked in review, not while it runs, and absent when there is nothing to move', () => {
   assert.equal(doneDefault('review'), true);
-  for (const s of ['todo', 'in_progress', 'waiting'] as const) assert.equal(doneDefault(s), false);
+  for (const s of ['todo', 'in_progress', 'waiting', 'on_hold'] as const) assert.equal(doneDefault(s), false);
   assert.equal(doneDefault('done'), null);
   assert.equal(doneDefault('archived'), null);
   assert.equal(doneDefault(undefined), null);

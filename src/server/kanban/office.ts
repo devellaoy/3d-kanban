@@ -34,6 +34,11 @@ export function openKanban(ctx: Ctx, hookPort: number): Kanban {
     officePrompts: () => ctx.prompts.state().custom,
     hookUrl: `http://127.0.0.1:${hookPort}`,
     toast: (id, text, level) => ctx.toastFloor(ctx.floors.get(id), text, level),
+    // The lounge figures (tasks on hold) go to the people on the floor.
+    toFloor: (id, msg) => {
+      const floor = ctx.floors.get(id);
+      if (floor) ctx.toFloor(floor, msg);
+    },
     // Task hires wait (queued) for the worker limit, keep to upstream's sign-in rule, and a task waiting on a person is announced.
     capacity: () => ctx.machine.full(),
     runAs: ctx.signins,

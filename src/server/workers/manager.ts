@@ -249,7 +249,7 @@ export class WorkerManager extends KanbanWorkers {
     if (full) return full;
     const used = new Set([...this.workers.values()].map((w) => w.info.name.replace(/ 🐚$/, '')));
     const agent = seat.station && STATION_AGENT[seat.station];
-    const name = agent ? agent.name : (NAMES.find((n) => !used.has(n)) ?? `Worker ${this.workers.size + 1}`);
+    const name = agent ? agent.name : (extra?.name && !used.has(extra.name) ? extra.name : (NAMES.find((n) => !used.has(n)) ?? `Worker ${this.workers.size + 1}`));
     const id = extra?.id ?? randomBytes(6).toString('hex');
     let wt: WorkerInfo['worktree'] = meeting?.worktree ?? extra?.reuse?.worktree;
     let others: WorkerRepo[] | undefined = extra?.reuse?.repos;
@@ -274,7 +274,7 @@ export class WorkerManager extends KanbanWorkers {
       effort: takesEffort(selectedProvider) ? effort : undefined,
       deskId,
       name: kind === 'shell' ? `${name} 🐚` : name,
-      color: kind === 'shell' ? '#8d99ae' : agent ? agent.color : COLORS[Math.floor(Math.random() * COLORS.length)],
+      color: kind === 'shell' ? '#8d99ae' : agent ? agent.color : (extra?.color ?? COLORS[Math.floor(Math.random() * COLORS.length)]),
       status: 'starting',
       acked: true,
       createdBy: by,
@@ -810,7 +810,7 @@ export class WorkerManager extends KanbanWorkers {
       if (adapter?.usage?.scanOnExit && !this.closing) this.scheduleScan(w);
       // Resuming a conversation Claude no longer has ("No conversation found") exits before Claude
       // ever starts. Start a fresh one rather than leave the worker asleep.
-      if (adapter?.freshIfResumeFails && resumeSessionId && info.status === 'starting' && !this.closing) {
+      if (adapter?.freshIfResumeFails && resumeSessionId && info.status === 'starting' && !this.closing && !this.followed.has(info.id)) { // not for a run the engine follows: it starts the task's worker afresh, with the handoff, when the session is really gone
         this.events.toast(`${info.name}'s last conversation couldn't be resumed — starting a fresh one`, 'warn');
         this.launch(w, undefined, undefined);
         return;
@@ -904,7 +904,7 @@ export class WorkerManager extends KanbanWorkers {
     else if (!busy && (s === 'working' || (s === 'needs_input' && !w.bootBlocked))) this.setStatus(w, 'done');
   }
 
-  private setStatus(w: Worker, status: WorkerStatus) {
+  protected setStatus(w: Worker, status: WorkerStatus) {
     if (w.info.status === status) return;
     if (w.info.status === 'needs_input') w.leftNeedsInputAt = Date.now();
     clockWork(w.info, status);

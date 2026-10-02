@@ -382,6 +382,26 @@ The pull request named below (#{{posted}} of {{postedRepo}}) is only where the c
 
 {{language}}`,
   },
+  'kanban.unhold': {
+    group: 'kanban',
+    label: 'Carry on after a hold',
+    used: "Typed into a task's resumed agent session when the task is taken off hold (moved from On hold back to In progress): the worker was sent home when it was put on hold, and is hired again. The office appends the phase's contract again.",
+    vars: {
+      taskId: TASK_VARS.taskId,
+      heldAt: 'When the task was put on hold (a date)',
+      holdNote: 'The reason it was put on hold, as ", because: …"; empty when none was given',
+      comments: 'The messages left on the task while it was on hold, or "none"',
+      language: TASK_VARS.language,
+    },
+    text: `Task #{{taskId}} has been on hold since {{heldAt}}{{holdNote}}. It is back in progress now, and you carry on with it.
+
+Messages left on the task while it was on hold:
+{{comments}}
+
+Check the worktree as it is now before you do anything (git status, git log): the branch may have fallen behind its base after this long, and other work may have landed meanwhile. Find out whether what the task was waiting for is available now, and carry on where you left off. If it is still blocked, say so clearly and stop.
+
+{{language}}`,
+  },
   'kanban.language': {
     group: 'kanban',
     label: 'Language',

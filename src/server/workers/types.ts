@@ -50,9 +50,14 @@ export interface SpawnExtra {
   launchArgs?: string[];
   reuse?: { worktree: WorkerInfo['worktree']; repos?: WorkerRepo[] };
   resumeSessionId?: string;
+  /** The look a re-hired worker prefers (a task taken off hold): its old name when no one else has it, and its colour. */
+  name?: string;
+  color?: string;
   kanban?: WorkerInfo['kanban'];
   env?: Record<string, string>;
   settingsFile?: 'kanban';
+  /** When the office last restarted its agent process on its session (KanbanWorkers.relaunch): what that process's log counts from, kept across office restarts. */
+  restartedAt?: number;
   /** The branch to cut each fresh worktree from, by its checkout's folder (path.resolve'd); a checkout not named here starts from the branch it is on. */
   bases?: Record<string, string>;
   /**
@@ -156,7 +161,7 @@ export interface Worker {
   /** Its lost worktree is being put back (see rebuild): the folder coming back mustn't wake it before that's done. */
   rebuilding?: boolean;
   /** How the kanban engine launches it (see SpawnExtra); `reused`: it sits in someone else's worktree. */
-  extra?: { launchArgs?: string[]; env?: Record<string, string>; settingsFile?: 'kanban'; reused?: boolean };
+  extra?: { launchArgs?: string[]; env?: Record<string, string>; settingsFile?: 'kanban'; reused?: boolean; restartedAt?: number };
   /** What it was sent home with (see WorkerManager.kill), for the observers. */
   departure?: DepartureIntent;
 }

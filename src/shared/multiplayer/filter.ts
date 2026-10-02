@@ -146,6 +146,8 @@ export const SERVER_MSG_OUT = {
   'kanban.browseCount': 'drop',
   'kanban.browsePage': 'drop',
   'kanban.browseIssue': 'drop',
+  // The tasks on hold as figures in the lounge (floor-scoped), less those the visitor can't see.
+  'kanban.lounge': 'rewrite',
 } as const satisfies Record<ServerMsg['t'], ServerMsgOut>;
 
 type Msg<T extends ServerMsg['t']> = Extract<ServerMsg, { t: T }>;
@@ -181,13 +183,14 @@ const cardOk = (t: KanbanTaskCard, scope: VisitorScope) => scope.projects.has(t.
 /** A worker without the owner's folders. */
 const workerFor = (w: WorkerInfo): WorkerInfo => (w.repos ? { ...w, repos: w.repos.map((r) => ({ ...r, dir: '' })) } : w);
 
-/** The arrival floor's view with the owner's folders, commands and ports taken out, and only the workers the visitor may see. */
-function viewFor<V extends FloorView>(v: V, scope: VisitorScope): V {
+/** The arrival floor's view with the owner's folders, commands and ports taken out, and only the workers and lounge figures (by task) the visitor may see. */
+function viewFor<V extends FloorView>(v: V, scope: VisitorScope, taskIn: (taskId: number) => boolean): V {
   return {
     ...v,
     project: projectFor(v.project),
     services: { items: [], port: 0 },
     workers: v.workers.filter((w) => workerOk(w, scope)).map(workerFor),
+    ...(v.kanbanLounge ? { kanbanLounge: v.kanbanLounge.filter((f) => taskIn(f.taskId)) } : {}),
   };
 }
 
@@ -234,7 +237,7 @@ export function filterForVisitor(msg: ServerMsg, scope: VisitorScope, ctx: Filte
     // owner's settings, usage, folders and invites, which the client still expects to find.
     case 'welcome': {
       if (!floorOk(msg.floor)) return undefined; // the host must send the visitor to a floor in scope first
-      const view = viewFor(msg, scope);
+      const view = viewFor(msg, scope, taskIn);
       const out: Msg<'welcome'> = {
         ...view,
         peers: msg.peers.map((p) => peerFor(p, scope)),
@@ -253,7 +256,7 @@ export function filterForVisitor(msg: ServerMsg, scope: VisitorScope, ctx: Filte
       return out;
     }
     case 'floor.enter':
-      return placeOk(msg.floor) ? { ...viewFor(msg, scope), peers: msg.peers.map((p) => peerFor(p, scope)) } : undefined;
+      return placeOk(msg.floor) ? { ...viewFor(msg, scope, taskIn), peers: msg.peers.map((p) => peerFor(p, scope)) } : undefined;
     // Worker-scoped frames reach their viewers directly, so a viewer who attached while the floor was in
     // scope must stop getting them once it is not; an unknown worker or no lookup is a drop.
     case 'term.snapshot':
@@ -314,6 +317,8 @@ export function filterForVisitor(msg: ServerMsg, scope: VisitorScope, ctx: Filte
         : undefined;
     case 'kanban.comments':
       return taskIn(msg.taskId) ? msg : undefined;
+    case 'kanban.lounge':
+      return floorOk(msg.floor) ? { ...msg, figures: msg.figures.filter((f) => taskIn(f.taskId)) } : undefined;
     default:
       return undefined; // a 'rewrite' type without a case above: never let it through unchecked
   }

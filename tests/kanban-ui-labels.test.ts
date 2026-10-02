@@ -22,3 +22,10 @@ test('durations and times ago read in English', () => {
   const now = Date.UTC(2026, 8, 30, 12);
   assert.equal(timeAgo(now - 5 * 60_000, now), '5m ago');
 });
+
+test('On hold is a column between Review and Done', async () => {
+  const { BOARD_COLUMNS } = await import('../src/shared/kanban/types.js');
+  assert.equal(columnName('on_hold'), 'On hold');
+  assert.deepEqual(BOARD_COLUMNS.slice(2, 5), ['waiting', 'review', 'on_hold']);
+  assert.equal(BOARD_COLUMNS[5], 'done');
+});

@@ -44,7 +44,7 @@ export interface MachineConfig {
  * Which prompt a run is sent with. The orchestrator fills it in; `continue` is the short "carry on"
  * for a session that was cut off (it falls back to the phase's own prompt when there is no session).
  */
-export type PromptKind = 'plan' | 'replan' | 'implement' | 'investigate' | 'review' | 'rereview' | 'fix' | 'resume' | 'continue' | 'pr.create' | 'pr.fix' | 'pr.review';
+export type PromptKind = 'plan' | 'replan' | 'implement' | 'investigate' | 'review' | 'rereview' | 'fix' | 'resume' | 'continue' | 'unhold' | 'pr.create' | 'pr.fix' | 'pr.review';
 
 export type Effect =
   /**
@@ -113,6 +113,8 @@ export type MachineEvent =
   | { type: 'continue'; answer?: string; last?: LastRun }
   | { type: 'approvePlan' }
   | { type: 'requestPlanChanges'; text: string }
+  /** Take it off hold: a worker is hired again and carries on (the 'unhold' prompt). `text`: the user's note, stored as a comment first. */
+  | { type: 'unhold'; text?: string; back?: { reason: WaitingReason; text?: string; phase?: RunPhase } }
   /** A user's comment. `busy`: the worker is in the middle of a turn (or asking in its terminal). */
   | { type: 'comment'; text: string; busy: boolean }
   /** One review round by hand. */
@@ -221,11 +223,48 @@ function resumeWith(s: MachineState, text: string, pending = false): { state: Ma
   return ok(running(s, 'resume'), { type: 'run', phase: 'resume', role: 'implementer', prompt: 'resume', text, ...(pending ? { pending } : {}) });
 }
 
+/** What each event does to a task on hold: the unhold resumes it, a comment is only stored, a turn's end changes nothing, the rest are refused. */
+function onHold(s: MachineState, e: MachineEvent): Transition {
+  switch (e.type) {
+    case 'unhold':
+      if (busy(s)) return no('Stop it first: it is running');
+      // Held while waiting for the user's say on a plan: it waits for it again, nothing runs.
+      if (e.back) return ok(waiting(s, e.back.reason, e.back.text, { phase: e.back.phase, retryAttempts: 0 }), { type: 'note', text: `▶️ Back from hold: ${e.back.reason === 'plan_approval' ? 'approve the plan' : "answer the plan's questions"} to carry on` });
+      return ok(running(s, 'resume', { retryAttempts: 0 }), { type: 'run', phase: 'resume', role: 'implementer', prompt: 'unhold' });
+    case 'comment':
+      return ok(s);
+    case 'prReview':
+    case 'pr':
+      return no('It is on hold: resume it first');
+    case 'start':
+      return no('Only a task in To do can be started');
+    case 'dequeue':
+      return no('It is not queued');
+    case 'stop':
+      return no('It is not running');
+    case 'retry':
+      return no('Only a stopped, failed or interrupted task can be retried');
+    case 'continue':
+      return no('Only a waiting task can be continued');
+    case 'approvePlan':
+      return no('There is no plan waiting for approval');
+    case 'requestPlanChanges':
+      return no('There is no plan waiting for changes');
+    case 'review':
+      return no('Only a task in Waiting or Review can be reviewed by hand');
+    default:
+      // noRoom, asking, working, a turn's end, stopped, failed, limited, interrupted ...: nothing runs for it, so these are late news.
+      return ok({ ...s, runState: 'idle' });
+  }
+}
+
 export function next(s: MachineState, e: MachineEvent, t: MachineTask, cfg: MachineConfig): Transition {
   const rounds = Math.min(10, Math.max(1, Math.round(cfg.rounds)));
   // A turn's end only moves a task the automation still has: one dragged to Done (or back to To do)
   // meanwhile keeps its column.
   const automated = s.status === 'in_progress' || s.status === 'waiting';
+  // A task on hold is parked: only unhold moves it, and a comment is just stored.
+  if (s.status === 'on_hold') return onHold(s, e);
   switch (e.type) {
     case 'start':
       if (s.status !== 'todo' && !(s.status === 'in_progress' && s.runState === 'queued') && !(s.status === 'waiting' && !s.phase)) return no('Only a task in To do can be started');
@@ -363,6 +402,9 @@ export function next(s: MachineState, e: MachineEvent, t: MachineTask, cfg: Mach
       if (s.status !== 'waiting' || busy(s) || !PLAN_WAITING.includes(s.waitingReason)) return no('There is no plan waiting for changes');
       if (!e.text.trim()) return no('Say what to change');
       return resumeWith(s, e.text.trim());
+
+    case 'unhold':
+      return no('Only a task on hold can be resumed');
 
     case 'comment':
       if (s.status === 'todo' || s.status === 'done' || s.status === 'archived') return ok(s);

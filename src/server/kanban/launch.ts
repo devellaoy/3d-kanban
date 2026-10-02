@@ -26,5 +26,5 @@ export function validExtra(e: unknown): Worker['extra'] {
   const v = e as Record<string, unknown>;
   const args = Array.isArray(v.launchArgs) && v.launchArgs.every((a) => typeof a === 'string') ? (v.launchArgs as string[]) : undefined;
   const env = v.env && typeof v.env === 'object' && Object.values(v.env).every((x) => typeof x === 'string') ? (v.env as Record<string, string>) : undefined;
-  return { launchArgs: args, env, settingsFile: v.settingsFile === 'kanban' ? 'kanban' : undefined, reused: v.reused === true };
+  return { launchArgs: args, env, settingsFile: v.settingsFile === 'kanban' ? 'kanban' : undefined, reused: v.reused === true, restartedAt: Number.isFinite(v.restartedAt) ? (v.restartedAt as number) : undefined };
 }

@@ -99,6 +99,10 @@ test('after a repository leaves the project, a new visitor sees neither the work
     assert.deepEqual(snap.tasks.map((t) => t.id), [2]);
     assert.equal(f({ t: 'kanban.comments', taskId: 1, comments: [], more: false }), undefined);
     assert.ok(f({ t: 'kanban.comments', taskId: 2, comments: [], more: false }));
+    // The lounge's figures (tasks on hold): only those of tasks the visitor may see.
+    const fig = (taskId: number) => ({ taskId, title: `#${taskId}`, name: 'w', color: '#fff', at: 0 });
+    const lounge = f({ t: 'kanban.lounge', floor: 'p', figures: [fig(1), fig(2)] }) as Extract<ServerMsg, { t: 'kanban.lounge' }>;
+    assert.deepEqual(lounge.figures.map((x) => x.taskId), [2]);
     assert.equal(f({ t: 'kanban.run', project: 'p', run: { taskId: 1 } }), undefined);
     const bundle = f({ t: 'kanban.pr.bundle', project: 'p', key: { taskId: 1 }, prs: [{ repoId: 'private' }, { repoId: 'p' }] }) as Extract<ServerMsg, { t: 'kanban.pr.bundle' }>;
     assert.deepEqual(bundle.prs.map((p) => p.repoId), ['p']);

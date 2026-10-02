@@ -35,6 +35,7 @@ import { whiteboard } from './whiteboard';
 import { youtube } from '../../youtube/slice';
 import { codexLimits } from '../../codex-limits/slice';
 import { multiplayer } from './multiplayer';
+import { kanbanLounge } from '../../kanban/loungeslice';
 
 export const SLICES: readonly Slice[] = [
   presence,
@@ -67,4 +68,5 @@ export const SLICES: readonly Slice[] = [
   youtube, // YouTube on the Office TV
   codexLimits, // the Codex limits panel and the kanban's readout
   multiplayer, // the link to the multiplayer relay
+  kanbanLounge, // the kanban's tasks on hold, as figures in the lounge
 ];
