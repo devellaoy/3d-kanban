@@ -503,3 +503,26 @@ test('a comment typed while the unhold run waits for a desk is delivered once, i
   assert.equal(promptsOf(fx).filter((p) => p.includes('Also rename it.')).length, 2, 'the launch argument and the turn, no other prompt');
   assert.equal(fx.repo.listRuns(r.id).filter((x) => x.phase === 'resume').length, 1, 'no second resume run for it');
 });
+
+test('more than fifty held comments, then a new one while the unhold run waits for a desk: every message reaches the prompt once and none stays pending', async (t) => {
+  let full: string | undefined;
+  const fx = await engineFixture({ capacity: { full: () => full, room: () => (full ? 0 : 5) }, engine: { sweepMs: 100 } });
+  t.after(() => fx.close());
+  fx.setRules([IMPLEMENT]);
+  const r = await inReview(fx);
+  assert.equal(await fx.engine.hold!(r.id, ADA, {}), undefined);
+  await fx.waitTask(r.id, (x) => !x.workerId, 'the worker gone');
+  for (let i = 0; i < 60; i++) fx.repo.addComment({ taskId: r.id, authorKind: 'user', authorName: 'Bob', text: `held-${i}.` });
+  full = 'The office is at its limit';
+  assert.equal(await fx.engine.unhold!(r.id, ADA), undefined);
+  await fx.waitTask(r.id, (x) => x.runState === 'queued', 'queued');
+  const c = fx.repo.addComment({ taskId: r.id, authorKind: 'user', authorName: 'Bob', text: 'late-one.' }).comment;
+  await fx.engine.commented(r.id, c.id, ADA);
+  assert.equal(fx.task(r.id).pendingMessages.length, 61, 'nothing was dropped');
+  fx.setRules([UNHOLD, { when: 'commented on task', reply: 'Renamed.', commit: 'Rename' }]);
+  full = undefined;
+  await fx.waitTask(r.id, (x) => x.status === 'review' && x.runState === 'idle' && !!x.workerId && x.pendingMessages.length === 0, 'back in review', 30_000);
+  const prompts = promptsOf(fx);
+  for (const text of [...Array.from({ length: 60 }, (_, i) => `held-${i}.`), 'late-one.']) assert.equal(new Set(prompts.filter((p) => p.includes(text))).size, 1, text);
+  assert.equal(fx.repo.listComments(r.id).comments.some((x) => x.pending), false);
+});

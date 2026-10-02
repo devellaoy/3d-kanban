@@ -693,7 +693,10 @@ export class Orchestrator {
       case 'queueComment': {
         const c = via.commentId !== undefined ? this.ctx.repo.getComment(via.commentId) : undefined;
         if (!c || task.pendingMessages.some((p) => p.commentId === c.id)) return undefined;
-        const pending = [...task.pendingMessages, { commentId: c.id, text: c.text, by: c.authorName, at: c.createdAt }].slice(-PENDING_MAX);
+        const all = [...task.pendingMessages, { commentId: c.id, text: c.text, by: c.authorName, at: c.createdAt }];
+        // Messages carried from a hold (queueHeld) are never dropped: nothing may go undelivered while its comment stays pending.
+        const newest = new Set(all.filter((m) => !m.held).slice(-PENDING_MAX));
+        const pending = all.filter((m) => m.held || newest.has(m));
         this.ctx.repo.setCommentPending(c.id, true);
         const updated = this.ctx.repo.getComment(c.id);
         if (updated) this.ctx.broadcast({ t: 'kanban.comment', comment: updated, project: task.project }, task.project);
@@ -718,7 +721,7 @@ export class Orchestrator {
     const comments = this.ctx.repo.userCommentsSince(task.id, since).filter((c) => !task.pendingMessages.some((p) => p.commentId === c.id));
     if (!comments.length) return;
     const files = this.ctx.repo.listAttachments(task.id);
-    const queued = comments.map((c) => ({ commentId: c.id, text: [c.text, this.compose.filesText(task.project, task.id, files.filter((a) => a.commentId === c.id))].filter(Boolean).join('\n\n'), by: c.authorName, at: c.createdAt }));
+    const queued = comments.map((c) => ({ commentId: c.id, text: [c.text, this.compose.filesText(task.project, task.id, files.filter((a) => a.commentId === c.id))].filter(Boolean).join('\n\n'), by: c.authorName, at: c.createdAt, held: true as const }));
     for (const c of comments) {
       this.ctx.repo.setCommentPending(c.id, true);
       const now = this.ctx.repo.getComment(c.id);

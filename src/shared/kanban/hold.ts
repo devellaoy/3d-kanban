@@ -37,6 +37,10 @@ declare module './types.js' {
   interface KanbanTaskCard {
     hold?: TaskHold;
   }
+  /** A message kept from a hold (the comments said meanwhile): exempt from the cap on queued comments, as nothing of it may be dropped. */
+  interface PendingMessage {
+    held?: true;
+  }
   /** What an agent reading the task (office-tasks, the references) is told of its hold. */
   interface TaskRefBundle {
     hold?: { at: number; note?: string; until?: number };
