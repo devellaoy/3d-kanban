@@ -1,7 +1,7 @@
 // The third-person camera is part of your body: the spring arm stops short of walls.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { ARM_MIN, ARM_RADIUS, armFraction, easeArm } from '../src/client/player/arm.js';
+import { ARM_RADIUS, armFraction, easeArm } from '../src/client/player/arm.js';
 import type { Collider } from '../src/client/world/types.js';
 
 const head = { x: 0, y: 1.3, z: 0 };
@@ -27,13 +27,12 @@ test('the glass room (a wall) and the ceiling above count; low furniture and fen
   assert.equal(armFraction(head, far, [{ ...wall, top: 1.5 }], 1), 1, 'standing on a stage, its edge is below you');
 });
 
-test('a collider the head is inside of is ignored, and the camera never comes closer than the minimum', () => {
+test('a collider the head is inside of is ignored, and a wall close to the head pulls the camera in to short of it, not through it', () => {
   const cam = { x: 0, y: 1.3, z: 6 };
   assert.equal(armFraction(head, cam, [{ minX: -1, maxX: 1, minZ: -1, maxZ: 1, top: 99 }], 0), 1);
   const touching: Collider = { ...wall, minZ: 0.4, maxZ: 0.6 };
   const f = armFraction(head, cam, [touching], 0);
-  assert.ok(Math.abs(f * 6 - ARM_MIN) < 1e-9);
-});
+  assert.ok(Math.abs(f * 6 - (0.4 - ARM_RADIUS)) < 1e-9, `the camera stops at ${f * 6} m, short of the wall at 0.4`);});
 
 test('the nearest of several walls wins; a wall to the side does not block', () => {
   const cam = { x: 0, y: 1.3, z: 8 };

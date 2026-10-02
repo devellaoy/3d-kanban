@@ -215,6 +215,50 @@ export interface ScenicKit {
 }
 
 /**
+ * `free(x, z, r)` over the growing list `taken` (parts push to it directly): nothing in it within its
+ * own radius plus `r` of (x, z), and nothing for `onPavement` either. The same answer as looking at every
+ * entry (Math.hypot(t.x - x, t.z - z) > t.r + r for all of them), but the small ones are found by the
+ * grid cell their centre is in, and only the few big ones (the farm, the camp, a mountain) are always
+ * looked at. Entries are indexed as they show up, so it works for whatever has been pushed so far.
+ */
+export function takenIndex(taken: readonly { x: number; z: number; r: number }[], onPavement: (x: number, z: number, r: number) => boolean): (x: number, z: number, r: number) => boolean {
+  const CELL = 8;
+  /** Entries with a radius up to this go in the grid. */
+  const SMALL = 8;
+  const cells = new Map<number, { x: number; z: number; r: number }[]>();
+  const big: { x: number; z: number; r: number }[] = [];
+  const key = (cx: number, cz: number) => cx * 65536 + cz;
+  let indexed = 0;
+  return (x, z, r) => {
+    for (; indexed < taken.length; indexed++) {
+      const t = taken[indexed];
+      if (!(t.r <= SMALL) || !Number.isFinite(t.x) || !Number.isFinite(t.z)) {
+        big.push(t);
+        continue;
+      }
+      const k = key(Math.floor(t.x / CELL), Math.floor(t.z / CELL));
+      const list = cells.get(k);
+      if (list) list.push(t);
+      else cells.set(k, [t]);
+    }
+    for (const t of big) if (!(Math.hypot(t.x - x, t.z - z) > t.r + r)) return false;
+    // A small one can only be in the way if its centre is within SMALL + r of (x, z).
+    const reach = SMALL + r;
+    const x0 = Math.floor((x - reach) / CELL);
+    const x1 = Math.floor((x + reach) / CELL);
+    const z0 = Math.floor((z - reach) / CELL);
+    const z1 = Math.floor((z + reach) / CELL);
+    for (let cx = x0; cx <= x1; cx++) {
+      for (let cz = z0; cz <= z1; cz++) {
+        const list = cells.get(key(cx, cz));
+        if (list) for (const t of list) if (!(Math.hypot(t.x - x, t.z - z) > t.r + r)) return false;
+      }
+    }
+    return !onPavement(x, z, r);
+  };
+}
+
+/**
  * The scenic loop's kit, its root in `group` (the office's `ground` group), with what's to be culled
  * in `seen`.
  */
@@ -242,7 +286,7 @@ export function makeKit(group: THREE.Group, colliders: Collider[], night: NightP
   const light = new THREE.Group();
   const trunk = (x: number, z: number, r: number, h: number) => colliders.push({ minX: x - r, maxX: x + r, minZ: z - r, maxZ: z + r, bottom: G, top: G + h });
   const taken: { x: number; z: number; r: number }[] = [];
-  const free = (x: number, z: number, r: number) => !pavedNear(x, z, r + 0.5) && taken.every((t) => Math.hypot(t.x - x, t.z - z) > t.r + r);
+  const free = takenIndex(taken, (x, z, r) => pavedNear(x, z, r + 0.5));
   const placed: { x: number; z: number; r: number }[] = [];
   const place = (x: number, z: number, r: number) => {
     taken.push({ x, z, r });

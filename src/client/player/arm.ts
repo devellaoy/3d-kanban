@@ -6,8 +6,6 @@ import type { Collider } from '../world/types';
 
 /** How far from a wall the camera stops, so its near plane doesn't clip into it. */
 export const ARM_RADIUS = 0.22;
-/** The camera never comes closer to your head than this. */
-export const ARM_MIN = 0.45;
 /** Only what stands this far above your feet blocks the arm: curbs, stairs, tables and sofas don't. */
 export const ARM_CLEARANCE = 1.0;
 /** Closer to your head than this, your body is hidden so the camera never shows its inside (see core/loop.ts). */
@@ -33,7 +31,9 @@ function clip(o: number, d: number, lo: number, hi: number): boolean {
 
 /**
  * How far along `from` -> `to` (0..1) the camera can go before it meets a collider, kept `radius` short
- * of it and at least `min` meters from `from`. Colliders whose top is within `clearance` of `feet`, fences,
+ * of it, however close to `from` that puts it: the collision clearance wins over any minimum distance,
+ * since a camera inside a wall is worse than one right at your head (which hides your body, see
+ * HIDE_BODY_WITHIN). Colliders whose top is within `clearance` of `feet`, fences,
  * and ones `from` is already inside don't count. 1 when nothing is in the way.
  */
 export function armFraction(
@@ -42,7 +42,6 @@ export function armFraction(
   colliders: readonly Collider[],
   feet: number,
   radius = ARM_RADIUS,
-  min = ARM_MIN,
   clearance = ARM_CLEARANCE,
 ): number {
   const dx = to.x - from.x;
@@ -70,7 +69,7 @@ export function armFraction(
     span.out = best;
     if (clip(from.x, dx, x0, x1) && clip(from.y, dy, y0, y1) && clip(from.z, dz, z0, z1) && span.in < best) best = span.in;
   }
-  return Math.min(1, Math.max(best, min / len));
+  return Math.min(1, Math.max(0, best));
 }
 
 /**
