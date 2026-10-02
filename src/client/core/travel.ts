@@ -39,7 +39,7 @@ export function installTravel(ctx: Ctx, core: CoreState, parts: TravelParts) {
   let applied = { floor: '', index: -1 };
   let restackWaiting = false;
   /** The building is as tall as there are floors, with the street as far down as this one is up. */
-  function syncStack() {
+  function syncStack(force = false) {
     const floors = builtFloors();
     const index = floors.findIndex((f) => f.id === store.floor);
     const count = index < 0 ? 1 : floors.length;
@@ -47,7 +47,7 @@ export function installTravel(ctx: Ctx, core: CoreState, parts: TravelParts) {
     // Someone else moved your floor in the stack (reordered, or one added below) while you're out on the
     // street, the balcony, in a car or at a game: the ground would move under your feet. Keep what's
     // applied until you're back inside with nothing going on (see below); a floor change applies at once.
-    if (store.floor === applied.floor && index !== applied.index && index >= 0 && applied.index >= 0 && inOffice() && !core.trip && !settled()) {
+    if (store.floor === applied.floor && index !== applied.index && index >= 0 && applied.index >= 0 && inOffice() && !core.trip && !settled() && !force) {
       restackWaiting = true;
       return;
     }
@@ -61,7 +61,7 @@ export function installTravel(ctx: Ctx, core: CoreState, parts: TravelParts) {
     office.stack.set({ index: Math.max(0, index) });
     office.setLevel(Math.max(0, index), count, wings);
   }
-  store.on('floors', syncStack);
+  store.on('floors', () => syncStack());
   /** Indoors on your floor and nothing going on: the ground can change without you feeling it. */
   const settled = () => indoors() && !ctx.activities.busy();
   ctx.ticks.add('world', () => {
@@ -152,6 +152,8 @@ export function installTravel(ctx: Ctx, core: CoreState, parts: TravelParts) {
     const garage = to === GARAGE;
     const floorId = garage ? (core.upTop || !store.floor ? builtFloors()[0]?.id : store.floor) : to;
     if (core.trip || !floorId || (floorId === store.floor && garage === downstairs())) return;
+    // The ride's from/to index (see place.ts) reads the new stack: take it in before, so it matches what you stand in.
+    syncStack(true);
     closeAllModals();
     stopForTrip();
     const inside = inElevator(player.pos.x, player.pos.z);
@@ -224,6 +226,7 @@ export function installTravel(ctx: Ctx, core: CoreState, parts: TravelParts) {
       if (!keepWalking) parts.walking.stopWalkingTo();
       return ride(floorId, keepWalking);
     }
+    syncStack(true); // as in ride(): the held reorder applies before the trip reads the stack
     closeAllModals();
     stopForTrip();
     backToThrone = onThrone();
