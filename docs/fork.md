@@ -70,6 +70,7 @@ The Codex limits reader (`src/server/codex-limits/`) is adapted from the still-u
 ## Sync policy
 
 Upstream is no longer kept mergeable through a seam list: the fork edits upstream's files freely (#327).
+The ladder and the fire poles are removed (#360); drop upstream changes to them when syncing.
 Taking upstream changes is ordinary merge or cherry-pick work, only when the user decides:
 
 1. On a separate branch: `git fetch upstream`, then `git cherry-pick <commit>` for one upstream commit or

@@ -146,8 +146,9 @@ curl -fsSL https://raw.githubusercontent.com/devellaoy/3d-kanban/main/deploy/pro
 - **Themes**: ⚙️ Settings → 🧍 You → Theme: **Office** (the default), **Dark** or **Glossy**, kept per browser. They restyle the windows, the HUD, the kanban and the 2D view, not the 3D office ([features](docs/features.md)).
 - **YouTube on the Office TV**: press **E** at the lounge TV (or paste a YouTube / YouTube Music link
   into the jukebox) and the whole floor sees and hears the same video or song at the same point, in
-  YouTube's own player on the TV; sit on the couch or press **E** again to watch it big. A screen share
-  still has the TV first ([features](docs/features.md#youtube-on-the-office-tv)).
+  YouTube's own player on the TV; sit on the couch or press **E** again to watch it big. Its window has
+  shared controls (pause, seek, previous / next, speed), the TV's own queue (kept across restarts) and
+  a floor-wide **Same volume across the floor** setting. A screen share still has the TV first ([features](docs/features.md#youtube-on-the-office-tv)).
 - **An installable app (PWA)**: install the office from the browser; it opens on the kanban, with
   shortcuts to the 3D office and the 2D view, shows *The office is offline. Reconnecting…* while it can't
   reach the office, and offers **Reload** when a new version is out. HTTPS is needed except on
@@ -213,7 +214,7 @@ curl -fsSL https://raw.githubusercontent.com/devellaoy/3d-kanban/main/install.sh
 - **From your phone, too.** `/lite` is the office in 2D: every worker and what it's waiting on, its terminal with the keys a phone keyboard lacks, and the boards. The 3D office offers it on a phone or a slow computer.
 - **GitHub on the walls.** Issues and pull requests hang on cork boards. Hand an issue to a worker, queue tasks, give a worker its own git worktree and open its PR with one key (if one gets deleted behind the office's back, the worker waits at its desk until you rebuild it). One task can span several projects: the worker gets a worktree of each, and a PR in each that links the others.
 - **Agents that manage agents.** Every worker can list, hire, message and send home the others, through an `agent-office` MCP server (Claude Code, Codex, OpenCode) or the `office-workers` command. Ask one to "send everyone whose PR merged home" and it does, deleting their worktrees and branches unless they hold unpushed work.
-- **Together.** Voice, chat, screen sharing on the lounge TV and a shared whiteboard.
+- **Together.** Voice, chat (what you say pops up as a speech bubble over your head), screen sharing on the lounge TV and a shared whiteboard.
 
 - **Other maps.** Turn the whole building into a castle: sit on a throne of iron blades while your workers line up before you when they're done, send new ones off through the Hand of the King, and watch their beards grow long and grey as they toil. Send one home and the Kingsguard runs up from the dungeon, marches it down the stairs and throws it in a cell, where it starves, dies and rots down to a skeleton. Or make a map of your own, with its own way of seeing workers off in JSON ([docs/maps.md](docs/maps.md)).
 
@@ -509,7 +510,7 @@ deploy/dokploy.sh ssh 'node /opt/agent-office/bin/agent-office.js accounts invit
 | Enter, in a prompt box | A new line (Shift + Enter too); Ctrl/⌘ + Enter sends (on a phone, tap the send button) |
 | V | Join voice; then hold V to talk |
 | M | Mute / unmute in voice |
-| Tab | The ☰ menu: every window |
+| Tab | The ☰ menu, and the floor list where there's room: every window, every project |
 | Esc | Close any window |
 | Ctrl + [ | Send Esc to a terminal, to close a menu like Claude's `/skills` or interrupt Claude (or **⎋ Esc** in its header) |
 

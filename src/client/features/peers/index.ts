@@ -1,6 +1,6 @@
 /**
  * Everyone else on your floor, as you see them: where they are and what they're up to, walking,
- * sitting, climbing, driving and smoking, what they said (a bubble over their head), and how loud
+ * sitting, driving and smoking, what they said (a bubble over their head), and how loud
  * they are to you.
  */
 import * as THREE from 'three';
@@ -9,18 +9,15 @@ import { seatOn } from '../../../shared/maps';
 import type { PeerInfo } from '../../../shared/protocol';
 import { DRINK_BY_ID } from '../../../shared/rooftop';
 import { CARS, seatHips } from '../../../shared/garage';
-import { gripOf, type Grip } from '../climbing/controller';
 import type { Ctx } from '../../core/context';
 import type { CoreState } from '../../core/ctx';
 import { noOutline } from '../../core/outline';
 import type { Parts } from '../../core/parts';
 import { groundAt } from '../../player';
 import { store } from '../../state';
-import { clip } from '../../ui/dom';
 import { renderPeople, updateSpeaking } from '../../ui/people';
 import { whereabouts } from '../../ui/whereabouts';
 import { Person } from '../../world/character';
-import { disposeSprite, textSprite } from '../../world/toon';
 
 export interface RemotePeer {
   person: Person;
@@ -29,17 +26,14 @@ export interface RemotePeer {
   moving: boolean;
   label: string;
   look: PeerInfo['look'];
-  bubble?: { sprite: THREE.Sprite; until: number };
   /** Seconds walked since their last footstep. */
   stepT: number;
-  /** On the ladder or a pole, going by where they are. */
-  grip: Grip | null;
 }
 
 /** Registers what follows the people in the office (store 'peers' and 'cars'), their ticks, and chat and peer.act. */
 export function installPeers(ctx: Ctx, core: CoreState, parts: Pick<Parts, 'puff' | 'worlds' | 'cars' | 'walking' | 'talk' | 'hud'>) {
-  const { scene, voice, sound, player, office } = ctx;
-  const { plan, inOffice } = parts.worlds;
+  const { scene, voice, sound, player } = ctx;
+  const { plan } = parts.worlds;
   const remotes = new Map<string, RemotePeer>();
   const editProfile = () => parts.hud.editProfile();
   const walkTo = (id: string) => parts.walking.walkTo(id);
@@ -56,7 +50,7 @@ export function installPeers(ctx: Ctx, core: CoreState, parts: Pick<Parts, 'puff
         person.root.position.set(peer.x, peer.y, peer.z);
         scene.add(person.root);
         noOutline(person.root);
-        r = { person, target: new THREE.Vector3(peer.x, peer.y, peer.z), rotY: peer.rotY, moving: false, label: '', look: { ...peer.look }, stepT: 0, grip: null };
+        r = { person, target: new THREE.Vector3(peer.x, peer.y, peer.z), rotY: peer.rotY, moving: false, label: '', look: { ...peer.look }, stepT: 0 };
         remotes.set(id, r);
       }
       const label = `${peer.name}|${peer.voice ? (peer.muted ? 'm' : 'v') : '-'}|${peer.color}`;
@@ -84,6 +78,7 @@ export function installPeers(ctx: Ctx, core: CoreState, parts: Pick<Parts, 'puff
     for (const [id, r] of remotes) {
       const peer = store.peers.get(id);
       if (!peer || !store.onMyFloor(peer) || peer.lite) {
+        r.person.hush(); // frees a speech bubble still up
         scene.remove(r.person.root);
         remotes.delete(id);
       }
@@ -117,13 +112,8 @@ export function installPeers(ctx: Ctx, core: CoreState, parts: Pick<Parts, 'puff
       // On their feet if they're standing on something: the floor, a desk, a stair, the loft.
       const ground = groundAt(player.colliders, p.x, p.z, p.y);
       const airborne = !sat && p.y > ground + 0.05;
-      // Or holding on to the ladder or a pole; off a pole onto the mat, the firehouse bell rings.
-      const holding = sat || core.upTop || !inOffice() ? null : gripOf(p, office.stack.poles(), ground);
-      if (r.grip === 'pole' && !holding && Math.abs(p.y) < 0.2) sound.poleLanding(6, { x: pos.x, y: 0.5, z: pos.z });
-      r.grip = holding;
-      r.person.setGrip(holding);
       const walking = !sat && p.moving && !airborne;
-      r.person.update(dt, t, walking || (holding === 'ladder' && p.moving), airborne && !holding && Math.abs(pos.y - r.target.y) > 0.01);
+      r.person.update(dt, t, walking, airborne && Math.abs(pos.y - r.target.y) > 0.01);
       // Their walk cycle takes a step every π/11 seconds.
       r.stepT = walking ? r.stepT + dt : 0.2;
       if (r.stepT >= Math.PI / 11) {
@@ -131,12 +121,6 @@ export function installPeers(ctx: Ctx, core: CoreState, parts: Pick<Parts, 'puff
         sound.stepAt(pos.x, pos.z);
       }
       r.person.setVoiceLevel(p.voice && !p.muted ? voice.levelOf(id) : 0);
-      r.person.emojiLift = r.bubble ? 0.45 : 0;
-      if (r.bubble && now > r.bubble.until) {
-        r.person.root.remove(r.bubble.sprite);
-        disposeSprite(r.bubble.sprite);
-        r.bubble = undefined;
-      }
       const d = Math.hypot(pos.x - player.pos.x, pos.z - player.pos.z);
       voice.setVolume(id, d < 4 ? 1 : Math.max(0.2, 1 - (d - 4) / 16));
     }
@@ -156,7 +140,9 @@ export function installPeers(ctx: Ctx, core: CoreState, parts: Pick<Parts, 'puff
       for (const p of store.peers.values()) if (p.id !== store.you && !store.onMyFloor(p)) voice.setVolume(p.id, 0);
     }
   });
-  ctx.messages.on('chat', (msg) => sayBubble(msg.from, msg.text));
+  ctx.messages.on('chat', (msg) => {
+    if (msg.from !== store.you) remotes.get(msg.from)?.person.say(msg.text, undefined, store.peers.get(msg.from)?.color ?? msg.color);
+  });
   ctx.messages.on('peer.act', (msg) => {
     const r = remotes.get(msg.id);
     if (msg.drink !== undefined) {
@@ -198,20 +184,6 @@ export function installPeers(ctx: Ctx, core: CoreState, parts: Pick<Parts, 'puff
     if (p) p.smoking = msg.smoke;
     r?.person.setSmoking(msg.smoke);
   });
-
-  function sayBubble(from: string, text: string) {
-    if (from === store.you) return;
-    const r = remotes.get(from);
-    if (!r) return;
-    if (r.bubble) {
-      r.person.root.remove(r.bubble.sprite);
-      disposeSprite(r.bubble.sprite);
-    }
-    const sprite = textSprite(`💬 ${clip(text, 60)}`, { bg: '#ffffff', size: 34 });
-    sprite.position.y = r.person.bubbleY;
-    r.person.root.add(sprite);
-    r.bubble = { sprite, until: performance.now() + 6000 };
-  }
 
   return {
     /** Everyone else on your floor, as you see them, by peer id. */

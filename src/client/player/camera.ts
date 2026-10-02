@@ -69,7 +69,7 @@ export function aimCamera(camera: THREE.PerspectiveCamera, p: Followed, bob: num
   // And under the loft, its roof or the garage ceiling.
   const m = 0.4;
   const R = p.room;
-  // On the ladder or a pole you can be down in a shaft under the floor, but you're still indoors.
+  // Held by a rig (at the tee or a table, not in a car), you're indoors anywhere over the room.
   const rigged = !!p.rig && !p.riding;
   const under = p.pos.x > R.minX && p.pos.x < R.maxX && p.pos.z > R.minZ && p.pos.z < R.maxZ;
   // In the office's back office, between its walls, and out through where the north wall was into the room.

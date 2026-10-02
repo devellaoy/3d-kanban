@@ -58,7 +58,7 @@ export function installCars(ctx: Ctx, deps: CarsDeps) {
   function getIn(i: number) {
     const c = store.cars[i];
     const def = CARS[i];
-    if (ctx.trip() || ctx.activities.running('climber') || driver.active || !c || !def) return;
+    if (ctx.trip() || driver.active || !c || !def) return;
     if (ctx.carrying()) return toast('🗂️ Your hands are full: put the card back first (Q)', 'warn');
     if (ctx.holdingBall()) return toast('🏀 Put the ball down first (Q)', 'warn');
     const seat: CarSeat | null = !c.driver ? 'driver' : !c.passenger ? 'passenger' : null;

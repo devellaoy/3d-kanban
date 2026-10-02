@@ -89,8 +89,8 @@ export function installGolf(ctx: Ctx, deps: GolfDeps) {
     bothHands: true,
   });
   ctx.ticks.add('play', ({ dt }) => {
-    // Pulled away from the tee (sat down, off up the ladder, into the elevator): the club goes back.
-    if (golf.active && (ctx.trip() || ctx.activities.running('hanger') || ctx.activities.running('climber') || ctx.player.seat || ctx.upTop())) golf.stop();
+    // Pulled away from the tee (sat down, into the elevator): the club goes back.
+    if (golf.active && (ctx.trip() || ctx.activities.running('hanger') || ctx.player.seat || ctx.upTop())) golf.stop();
     golf.update(dt);
   });
   // The balls in the air (none up on the roof, where the darts are), and the next one on the tee.
@@ -133,7 +133,7 @@ export function installGolf(ctx: Ctx, deps: GolfDeps) {
 
   /** E at the tee: take a club out and step up to the ball. */
   function teeOff() {
-    if (golf.active || ctx.trip() || ctx.activities.running('climber')) return;
+    if (golf.active || ctx.trip()) return;
     const other = teeTaken();
     if (other) return toast(`🏌️ ${other} is on the tee — wait your turn`, 'warn');
     const carrying = ctx.carrying();

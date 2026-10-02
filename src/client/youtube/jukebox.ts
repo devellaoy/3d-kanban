@@ -4,7 +4,7 @@ import { isYoutubeUrl, youtubeTitle } from '../../shared/youtube/link';
 import type { Net } from '../net';
 import { store } from '../state';
 import { h, toast } from '../ui/dom';
-import { sendToTv } from './window';
+import { sendToTv } from './queue';
 
 /** A YouTube link in the jukebox's stream box: off to the TV instead (the jukebox can't play YouTube). Says whether it was one. */
 export function youtubeToTv(net: Net, input: HTMLInputElement): boolean {

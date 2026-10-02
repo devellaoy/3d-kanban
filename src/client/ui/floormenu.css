@@ -1,6 +1,6 @@
 /* ---- The floor list under the project in the corner ------------------------------------------ */
 .project.open { background: var(--paper-2); }
-.floor-menu { position: fixed; z-index: 30; width: min(380px, calc(100vw - 24px)); max-height: calc(100vh - 110px); overflow: auto; padding: 8px; display: grid; gap: 6px; animation: floor-menu-in .12s ease-out; }
+.floor-menu { position: fixed; z-index: 30; max-height: calc(100vh - 110px); overflow: auto; padding: 8px; display: grid; gap: 6px; animation: floor-menu-in .12s ease-out; }
 @keyframes floor-menu-in { from { opacity: 0; transform: translateY(-6px); } }
 .floor-menu-head { font-size: var(--fs-xs); font-weight: var(--fw-heavy); color: var(--muted); text-transform: uppercase; letter-spacing: .06em; padding: 2px 6px 0; }
 .floor-item { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 10px; align-items: center; width: 100%; text-align: left; padding: 7px 10px; font: inherit; color: var(--text); background: var(--field); border: var(--bw) solid var(--ink); border-radius: var(--radius-sm); box-shadow: var(--shadow-sm); cursor: pointer; transition: transform .05s; }

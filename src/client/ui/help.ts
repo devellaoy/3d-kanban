@@ -49,7 +49,7 @@ export const HELP_ROWS: readonly (readonly [string, string])[] = [
   [IS_MAC ? '⌘K' : 'Ctrl+K', 'Command palette: type a few letters to find a worker, issue, PR, service, board, teammate or action. Enter opens it, Shift+Enter walks you over to it first'],
   ['V', 'Join voice. In voice, hold V to talk (push to talk): you’re muted once you let go. Leave voice from the ☰ menu'],
   ['M', 'Mute or unmute your mic in voice. ⚙️ Settings can have you join muted, for push to talk'],
-  ['Tab', 'The ☰ menu, top right: every window, and what shows on screen. Pin what you use most to the top bar'],
+  ['Tab', 'The ☰ menu, top right, and, where there is room, the floor list, top left: every window, and every project to switch to. Pin what you use most to the top bar'],
   ['🌐', 'Multiplayer: connect the office to a server in ⚙️ Settings → Multiplayer, share a floor, and visit other players’ offices from ☰ → Players. A visit is read-only: you can walk, chat and play, not change anything'],
   ['Esc', 'Close any window and get back to looking around'],
   ['Ctrl + [', 'Send Esc to a terminal instead, to close a menu like Claude’s /skills or interrupt Claude. ⎋ Esc in the terminal’s header does the same'],

@@ -1,49 +1,32 @@
 // YouTube on the Office TV, on every floor. Joins upstream's handler map and floor view
-// with one line each (ws/handlers/index.ts), and the jukebox's handlers with two (see docs/fork.md).
-import path from 'node:path';
+// with one line each (ws/handlers/index.ts: `youtubeHandlers`, `youtubeView` and `youtubeListView`), and the
+// jukebox's handlers with two (see docs/fork.md). The controls are in controls.ts, the queue's in queue-handlers.ts.
 import type { Floor } from '../floor.js';
 import type { Client } from '../office/client.js';
 import type { Ctx } from '../office/context.js';
 import { here } from '../ws/handlers/common.js';
-import type { HandlerMap, ViewPieces } from '../ws/handlers/types.js';
+import type { HandlerMap } from '../ws/handlers/types.js';
 import type { YoutubeClientMsg } from '../../shared/youtube/protocol.js';
-import { isYoutubeUrl, youtubeTitle, type YoutubeTvState } from '../../shared/youtube/link.js';
-import { YoutubeTv } from './tv.js';
-import { youtubeTitles } from './titles.js';
+import { isYoutubeUrl, youtubeTitle } from '../../shared/youtube/link.js';
+import { changed, lookUpTitle, startNow, titleQueued, youtubeListView, youtubeTvOf, youtubeView } from './floor-tv.js';
+import { controlHandlers } from './controls.js';
+import { queueHandlers } from './queue-handlers.js';
 
-const tvs = new WeakMap<Floor, YoutubeTv>();
+export { youtubeListView, youtubeView };
 
-/** The floor's TV, made the first time it's asked for (kept beside the floor's other things in .agent-office). */
-export function youtubeTvOf(floor: Floor): YoutubeTv {
-  let tv = tvs.get(floor);
-  if (!tv) tvs.set(floor, (tv = new YoutubeTv(path.join(floor.dir, '.agent-office'))));
-  return tv;
-}
-
-export const youtubeView: ViewPieces['youtube'] = (_ctx, floor) => (floor ? youtubeTvOf(floor).state() : null);
-
-const changed = (ctx: Ctx, floor: Floor) => ctx.toFloor(floor, { t: 'tv.youtube', state: youtubeTvOf(floor).state() });
-
-/** Asks YouTube for the title of what just went on, and tells the floor once it's known; then `done` with the title, or what it shows without one. */
-function lookUpTitle(ctx: Ctx, floor: Floor, s: YoutubeTvState, done?: (title: string) => void) {
-  void youtubeTitles.fetch(s.url).then((title) => {
-    const tv = youtubeTvOf(floor);
-    if (title && tv.titled(s.id, title)) changed(ctx, floor);
-    done?.(title ?? youtubeTitle(s));
-  });
-}
-
-/** Puts `url` on the floor's TV for `who`: the jukebox goes quiet, so two songs never play at once. */
-function play(ctx: Ctx, floor: Floor, url: unknown, who: string): string | undefined {
-  const r = youtubeTvOf(floor).play(url, who);
+/** Puts `url` on the floor's TV for `who` (now, or into the queue with `queue`). Gives what went wrong, if anything. */
+function play(ctx: Ctx, floor: Floor, url: unknown, who: string, queue?: 'end' | 'next'): string | undefined {
+  const r = youtubeTvOf(floor).play(url, who, queue);
   if ('error' in r) return r.error;
-  const quiet = floor.jukebox.stop(who);
-  if (quiet) ctx.toFloor(floor, { t: 'jukebox', state: floor.jukebox.state() });
-  changed(ctx, floor);
-  lookUpTitle(ctx, floor, r.state, (title) => {
-    // Only if it's still on: nobody changed it while YouTube was asked.
-    if (youtubeTvOf(floor).state()?.id === r.state.id) ctx.toastFloor(floor, `📺 ${who} put “${title}” on the TV${quiet ? ' (the jukebox is off meanwhile)' : ''}`);
-  });
+  if (!r.queued) {
+    startNow(ctx, floor, who, (title, quiet) => `📺 ${who} put “${title}” on the TV${quiet ? ' (the jukebox is off meanwhile)' : ''}`);
+    return undefined;
+  }
+  // Added to a queue on a dark TV: the queue's first goes on (which tells the floor), not what was just added.
+  if (r.started) startNow(ctx, floor, who);
+  else changed(ctx, floor, true);
+  ctx.toastFloor(floor, `📺 ${who} added “${youtubeTitle(r.queued)}” to the TV queue`);
+  titleQueued(ctx, floor, [r.queued]);
   return undefined;
 }
 
@@ -58,7 +41,7 @@ export function youtubeFromJukebox(ctx: Ctx, c: Client, floor: Floor, url: unkno
   return true;
 }
 
-/** Called after the jukebox comes on: the TV's YouTube makes way for it, so two songs never play at once. */
+/** Called after the jukebox comes on: the TV's YouTube makes way for it (the queue stays), so two songs never play at once. */
 export function youtubeMakesWay(ctx: Ctx, floor: Floor) {
   if (!floor.jukebox.state().on || !youtubeTvOf(floor).stop()) return;
   changed(ctx, floor);
@@ -69,7 +52,7 @@ export const youtubeHandlers = {
   'tv.youtube.play'(ctx, c, msg) {
     const floor = here(ctx, c);
     if (!floor) return;
-    const error = play(ctx, floor, msg.url, c.peer.name);
+    const error = play(ctx, floor, msg.url, c.peer.name, msg.queue === 'end' || msg.queue === 'next' ? msg.queue : undefined);
     if (error) ctx.warn(c, error);
   },
   'tv.youtube.stop'(ctx, c) {
@@ -86,13 +69,18 @@ export const youtubeHandlers = {
     const tv = youtubeTvOf(floor);
     const was = tv.state();
     const blocked = typeof msg.blocked === 'number' ? msg.blocked : undefined;
-    const r = tv.ended(msg.id, msg.next === true);
+    const r = tv.ended(msg.id, msg.next === true, blocked !== undefined);
     if (!r || !was) return;
-    changed(ctx, floor);
-    const next = r === 'next' ? ': on to the next one' : '';
+    const next = r === 'stopped' ? '' : ': on to the next one';
     // 100 is a video that's private or gone; the others, one whose owner keeps it on youtube.com.
+    if (r === 'queue') startNow(ctx, floor, c.peer.name);
+    else {
+      changed(ctx, floor, true);
+      if (r === 'next') lookUpTitle(ctx, floor, tv.state()!);
+    }
     if (blocked === 100) ctx.toastFloor(floor, `🚫 “${youtubeTitle(was)}” is private, or was taken down${next}`, 'warn');
     else if (blocked !== undefined) ctx.toastFloor(floor, `🚫 YouTube won't let “${youtubeTitle(was)}” play outside youtube.com${next}`, 'warn');
-    if (r === 'next') lookUpTitle(ctx, floor, tv.state()!);
   },
+  ...controlHandlers,
+  ...queueHandlers,
 } satisfies HandlerMap<YoutubeClientMsg>;

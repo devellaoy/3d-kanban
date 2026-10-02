@@ -268,7 +268,7 @@ test('welcomes a browser and dispatches what it sends', async () => {
   assert.equal(ada?.color, '#ff8a5b');
   assert.equal(ada?.floor, floor.id);
   // 3d-kanban: `youtube`, the Office TV's YouTube (docs/fork.md), and `kanbanLounge`, the tasks on hold.
-  assert.deepEqual(Object.keys(welcome).slice(-18), ['project', 'workers', 'issues', 'pulls', 'queue', 'decor', 'plan', 'services', 'dog', 'ball', 'cars', 'jail', 'jukebox', 'whiteboard', 'meeting', 'cabinet', 'youtube', 'kanbanLounge']);
+  assert.deepEqual(Object.keys(welcome).slice(-19), ['project', 'workers', 'issues', 'pulls', 'queue', 'decor', 'plan', 'services', 'dog', 'ball', 'cars', 'jail', 'jukebox', 'whiteboard', 'meeting', 'cabinet', 'youtube', 'youtubeList', 'kanbanLounge']);
 
   a.send({ t: 'ping', at: 42 });
   const pong = await a.take('pong');

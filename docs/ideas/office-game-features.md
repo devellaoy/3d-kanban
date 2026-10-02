@@ -57,8 +57,8 @@ olemassa olevaa.
   Miinaharava pomon näytöllä ([`ui/minesweeper.ts`](../../src/client/ui/minesweeper.ts)).
 - Kahvi ([`caffeine.ts`](../../src/client/caffeine.ts)), drinkit ([`booze.ts`](../../src/client/booze.ts),
   [`world/drunk.ts`](../../src/client/world/drunk.ts)), tupakkatauko
-  ([`world/smoke.ts`](../../src/client/world/smoke.ts)), tikkaat ja paloautotangot
-  ([`climb.ts`](../../src/client/climb.ts)), merge-gongi ja konfetti.
+  ([`world/smoke.ts`](../../src/client/world/smoke.ts)), merge-gongi ja konfetti. (Tikkaat ja paloautotangot
+  poistettiin, #360.)
 - Ennätykset (golf, tikat, kirves, kierrokset) ovat vain selaimen `localStorage`ssa; vain
   BLOCKFALL-ennätykset ovat palvelimella. Saavutuksia tai badgeja ei ole.
 

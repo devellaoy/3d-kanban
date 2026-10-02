@@ -86,7 +86,7 @@ export interface KeyPress {
 
 /**
  * The stages a key press goes through before the bindings, in order: guards (nothing gets a key while
- * a window's open, say), then whatever you're in the middle of (the ladder, the tee, a car…), then the
+ * a window's open, say), then whatever you're in the middle of (the tee, a car…), then the
  * emotes. A handler returns true when it took the key, which ends it there.
  */
 export type KeyStage = 'guard' | 'activity' | 'emote';
@@ -160,7 +160,7 @@ export class Keys<E extends KeyPress = KeyPress> {
  * - steer: where you're headed on your own (walking over to someone)
  * - vehicles: what you might be riding moves first (the cars)
  * - move: you move
- * - moved: what where you've got to does to you (a lap timed, a car shoving you, a pole's hole)
+ * - moved: what where you've got to does to you (a lap timed, a car shoving you)
  * - play: games and what they hold you in (the arcade, the tee, the dart board)
  * - me: your character, your hands and the camera, what you hear, and telling the office where you are
  * - others: everyone and everything else that moves (people, cars' engines, workers, the dog, the ball)
@@ -206,7 +206,7 @@ export class Ticks {
 // ---- Activities -----------------------------------------------------------------------------------
 
 /**
- * Something you can be in the middle of that takes over the controls (hanging a picture, the ladder,
+ * Something you can be in the middle of that takes over the controls (hanging a picture,
  * the golf tee…). `Why` names what's making you stop (see Activities.stopAll), `E` is a key press and
  * `El` is where the hint bar draws.
  */
@@ -313,14 +313,12 @@ export interface FrameFilter {
 }
 
 /**
- * What something you can do makes of you and your view while it's going on: holding on to the ladder,
- * the view narrowing at the dart board or widening down a pole, the telescope or a game having the
- * screen to itself, the drunk vision. The office's own ticks (moving you, the building, drawing the
- * frame) ask each effect, in the order they were added. `G` is what you can hold on to.
+ * What something you can do makes of you and your view while it's going on: the view narrowing
+ * at the dart board, the telescope or a game having the screen to itself, the drunk vision. The
+ * office's own ticks (moving you, the building, drawing the frame) ask each effect, in the order
+ * they were added.
  */
-export interface ViewEffect<G = unknown> {
-  /** What you're holding on to (the ladder, a pole), or null. */
-  grip?(): G | null;
+export interface ViewEffect {
   /** The field of view (degrees) as this has it, given what it is so far. */
   fov?(fov: number): number;
   /** Runs each frame once the view's field of view is set. */
@@ -332,20 +330,11 @@ export interface ViewEffect<G = unknown> {
 }
 
 /** How what you're doing changes you and your view each frame (see ViewEffect). */
-export class View<G = unknown> {
-  private readonly effects = new List<ViewEffect<G>>();
+export class View {
+  private readonly effects = new List<ViewEffect>();
 
-  add(e: ViewEffect<G>): Off {
+  add(e: ViewEffect): Off {
     return this.effects.add(e);
-  }
-
-  /** What you're holding on to: the first effect's that has you holding on to something, else null. */
-  grip(): G | null {
-    for (const e of this.effects.items) {
-      const g = e.grip?.() ?? null;
-      if (g !== null) return g;
-    }
-    return null;
   }
 
   /** The field of view, from `fov` through every effect's, in order. */

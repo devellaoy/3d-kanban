@@ -129,7 +129,7 @@ const secrets = { jira: { configured: true, site: 'acme.atlassian.net' }, apiKey
 const view = (floor: string) => ({
   floor, project: { name: 'shared-repo', dir: '/home/owner/shared-repo', agentCmd: 'claude --dangerously', defaultProvider: 'claude', agentProviders: ['claude'] }, workers: [], issues: { items: [] }, pulls: { items: [] },
   queue: { tasks: [], maxWorkers: 1 }, decor: [], plan: { wing: 0, labels: {} }, services: { items: [{ port: 3000, host: 'localhost', pid: 1, command: 'vite', workerId: 'w1' }], port: 4600 },
-  dog: null, jukebox: {}, cabinet: {}, whiteboard: {}, meeting: {}, ball: {}, cars: [], jail: { prisoners: [], bones: 0 }, youtube: null,
+  dog: null, jukebox: {}, cabinet: {}, whiteboard: {}, meeting: {}, ball: {}, cars: [], jail: { prisoners: [], bones: 0 }, youtube: null, youtubeList: { queue: [], back: false, sameVolume: false },
 });
 
 const fixtures: ServerMsg[] = [
