@@ -96,12 +96,13 @@ export function buildCritters(kit: ScenicKit): Critters {
   const graze = (geo: THREE.BufferGeometry, beasts: Beast[], scale: number, radius: number) => {
     const im = new THREE.InstancedMesh(geo, animalMat(), beasts.length);
     im.castShadow = true;
-    im.frustumCulled = false;
+    // The bounding sphere is set by hand (the instances move in matrices only), so the herd frustum-culls, its shadow too.
     im.userData.life = true;
     root.add(im);
     const cx = beasts.reduce((s, b) => s + b.x, 0) / beasts.length;
     const cz = beasts.reduce((s, b) => s + b.z, 0) / beasts.length;
     const spread = Math.max(...beasts.map((b) => Math.hypot(b.x - cx, b.z - cz))) + radius + 4;
+    im.boundingSphere = new THREE.Sphere(new THREE.Vector3(cx, G + 1, cz), spread + 2);
     around(im, cx, cz, spread, 3, 170);
     const sc = new THREE.Vector3(scale, scale, scale);
     tickers.push((t) => {
@@ -185,7 +186,11 @@ export function buildCritters(kit: ScenicKit): Critters {
   }
 
   // Butterflies over the meadows (not in winter), in colours of their own.
-  const flies = new Array<THREE.InstancedMesh>();
+  // They sit in a group of their own: Scenic.cull sets each swarm's own `visible` by distance every frame,
+  // so the winter hiding is on the parent, which the cull never touches.
+  const flies = new THREE.Group();
+  flies.name = 'butterflies';
+  root.add(flies);
   const wings = wingsGeometry(0.2, 0.14, 0.05);
   const fly = new THREE.MeshToonMaterial({ gradientMap: (toon('#fff') as THREE.MeshToonMaterial).gradientMap, side: THREE.DoubleSide });
   fly.userData.outlineParameters = { visible: false };
@@ -202,13 +207,12 @@ export function buildCritters(kit: ScenicKit): Critters {
     im.frustumCulled = false;
     im.userData.life = true;
     for (let i = 0; i < n; i++) im.setColorAt(i, new THREE.Color(colors[Math.floor(rand() * colors.length)]));
-    root.add(im);
-    flies.push(im);
+    flies.add(im);
     around(im, cx, cz, 14, 3, 110);
     const seed = Array.from({ length: n }, () => [rand() * 6.28, 0.25 + rand() * 0.3, 4 + rand() * 5] as const);
     const sc = new THREE.Vector3();
     tickers.push((t) => {
-      if (!im.visible) return;
+      if (!im.visible || !flies.visible) return;
       for (let i = 0; i < n; i++) {
         const [p, speed, r] = seed[i];
         const a = t * speed + p;
@@ -219,7 +223,7 @@ export function buildCritters(kit: ScenicKit): Critters {
       im.instanceMatrix.needsUpdate = true;
     });
   }
-  onSeason((season) => flies.forEach((f) => (f.visible = season !== 'winter')));
+  onSeason((season) => (flies.visible = season !== 'winter'));
 
   // Boats on the lake: two rowing boats and a little sailboat, drifting slowly about.
   const boats: { g: THREE.Object3D; cx: number; cz: number; rx: number; rz: number; phase: number }[] = [];

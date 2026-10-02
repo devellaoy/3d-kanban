@@ -10,7 +10,7 @@ import type { Ctx } from '../../core/context';
 import { aside, hintTitle, key, onE } from '../../core/hint';
 import type { Interactable } from '../../world/types';
 import type { Piece } from './model';
-import { canSit, nearestPlace } from './seats';
+import { canSit, placeToSit } from './seats';
 
 // The kinds of thing you can use that this defines (see InteractKinds in world/types.ts).
 declare module '../../world/types' {
@@ -49,7 +49,7 @@ export function makeBuildSeats(ctx: Ctx) {
     ray.setFromCamera(middle, ctx.camera);
     const hit = ray.intersectObject(s.group, true)[0];
     if (hit) ({ x, z } = hit.point);
-    const place = nearestPlace(s.piece, x, z, ctx.player.pos.y);
+    const place = placeToSit(s.piece, x, z);
     if (!place) return;
     // Up from an office seat first, and the office told (or it'd keep you in that seat for everyone else).
     if (ctx.player.seat) {

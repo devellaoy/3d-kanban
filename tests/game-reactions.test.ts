@@ -63,3 +63,20 @@ test('the four reactions sit on the keys after the emotes (7, 8, 9, 0)', () => {
     ['Digit7', 'Digit8', 'Digit9', 'Digit0'],
   );
 });
+
+test('Shift+7 (a "/" on a Finnish or German keyboard) still reaches the search; 7 itself reacts', async () => {
+  const { Keys } = await import('../src/client/core/registry.js');
+  const { readFileSync } = await import('node:fs');
+  // The feature binds each reaction by the character (key), never by the code, which would own the key outright.
+  const src = readFileSync(new URL('../src/client/features/reactions/index.ts', import.meta.url), 'utf8');
+  assert.ok(/key: r\.key/.test(src) && !/code: r\.code/.test(src));
+  const keys = new Keys();
+  const got: string[] = [];
+  for (const r of REACTIONS) keys.bind({ key: r.key, repeat: false, run: () => void got.push(r.emoji) });
+  keys.bind({ key: '/', run: () => void got.push('search') });
+  const press = (code: string, key: string) => keys.handle({ code, key, repeat: false, preventDefault() {} });
+  press('Digit7', '/');
+  press('Digit7', '7');
+  press('Digit0', '0');
+  assert.deepEqual(got, ['search', '👏', '😂']);
+});

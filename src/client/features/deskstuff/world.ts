@@ -48,7 +48,7 @@ export const deskStuff: Fixture<'deskStuff'> = (site) => {
   // sits on the lamp that was switched on last).
   const light = new THREE.PointLight('#ffd08a', 0, 5, 2);
   light.castShadow = false;
-  light.visible = true;
+  light.visible = false; // an invisible light isn't counted by three: it's on only while a lamp is lit (or fading)
   site.group.add(light);
   let lightOn: Spot | null = null;
   let lightLevel = 0;
@@ -125,7 +125,9 @@ export const deskStuff: Fixture<'deskStuff'> = (site) => {
         }
       }
       lightLevel += ((lightOn ? 0.35 : 0) - lightLevel) * k;
+      if (!lightOn && lightLevel < 0.005) lightLevel = 0;
       light.intensity = lightLevel;
+      light.visible = lightLevel > 0 || !!lightOn;
     },
   };
 };

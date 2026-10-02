@@ -46,13 +46,15 @@ test('merge plant: stages come at their merge counts', () => {
   assert.equal(mergesToNext({ ...newPlant(0), merges: 10_000 }), null);
 });
 
-test('merge plant: a merge counts once per pull request and resets the droop', () => {
+test('merge plant: every gong counts (the server rings once per repo and number) and resets the droop', () => {
   const t0 = 1_000_000;
   let p = newPlant(t0);
   p = recordMerge(p, t0 + 1, 12);
-  assert.equal(recordMerge(p, t0 + 2, 12), p, 'same PR twice counts once');
+  // The server rings the gong once per repo+number (floor.ts), and the message has no repo: PR #12 of two repos is two merges.
+  p = recordMerge(p, t0 + 2, 12);
+  assert.equal(p.merges, 2, 'the same number again is another repo, another merge');
   p = recordMerge(p, t0 + 3, 13);
-  assert.equal(p.merges, 2);
+  assert.equal(p.merges, 3);
   assert.equal(p.lastMergeAt, t0 + 3);
 });
 

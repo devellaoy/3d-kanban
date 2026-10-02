@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { GHOST_DT, GhostRecorder, decodePath, encodePath, ghostDone, poseAt, type GhostPath } from '../src/client/features/cars/ghost.js';
 import { Race, HOLD, JUMP_PENALTY, LIGHTS, atLine } from '../src/client/features/cars/race.js';
-import { addResult, bestTotal, parseResults, KEEP, type RaceResult } from '../src/client/features/cars/records.js';
+import { addResult, bestTotal, bestsOf, parseBests, parseResults, KEEP, type Bests, type RaceResult } from '../src/client/features/cars/records.js';
 import { LapTimer } from '../src/client/features/cars/laps.js';
 import { ROAD } from '../src/shared/layout.js';
 
@@ -125,6 +125,38 @@ test('records: newest first, capped, with records spotted', () => {
   assert.equal(out.list[0].total, 290);
   for (let i = 0; i < 20; i++) out = addResult(out.list, mk(400 + i));
   assert.equal(out.list.length, KEEP);
+});
+
+test('the best race outlives the capped history: a slower race is not a record after ten slower ones', () => {
+  const mk = (total: number): RaceResult => ({ at: 0, laps: [total / 3, total / 3, total / 3], penalty: 0, total });
+  let list: RaceResult[] = [];
+  let bests: Bests = { total: null, lap: null };
+  let out = addResult(list, mk(250), bests);
+  assert.ok(out.record);
+  list = out.list;
+  bests = out.next;
+  for (let i = 0; i < KEEP + 5; i++) {
+    out = addResult(list, mk(400 + i), bests);
+    assert.ok(!out.record && !out.bestLap, 'slower than the best, even when the best has left the list');
+    list = out.list;
+    bests = out.next;
+  }
+  assert.ok(!list.some((r) => r.total === 250), 'the 250 race has left the history');
+  assert.equal(bests.total, 250);
+  assert.ok(Math.abs((bests.lap ?? 0) - 250 / 3) < 1e-9);
+  assert.ok(addResult(list, mk(240), bests).record);
+});
+
+test('bests are worked out from saved results when none were kept, and rubbish is ignored', () => {
+  const list: RaceResult[] = [
+    { at: 1, laps: [90, 80], penalty: 0, total: 170 },
+    { at: 2, laps: [70, 95], penalty: 0, total: 165 },
+  ];
+  assert.deepEqual(bestsOf(list, parseBests(null)), { total: 165, lap: 70 });
+  assert.deepEqual(bestsOf(list, { total: 100, lap: 75 }), { total: 100, lap: 70 });
+  assert.deepEqual(parseBests('{"total":123.5,"lap":40}'), { total: 123.5, lap: 40 });
+  assert.deepEqual(parseBests('nope'), { total: null, lap: null });
+  assert.deepEqual(parseBests('{"total":-1,"lap":"x"}'), { total: null, lap: null });
 });
 
 test('parseResults keeps only well-formed results', () => {

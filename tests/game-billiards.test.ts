@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { Billiards } from '../src/client/features/billiards/game';
+import { Billiards, endsCharge } from '../src/client/features/billiards/game';
 import { parseRecord } from '../src/client/features/billiards/storage';
 import { HALF_L, HALF_W, HEAD_SPOT, POCKETS, R, STEP, aimLine, newBall, rack, settled, step, strike, type Ball, type SimEvent } from '../src/client/features/billiards/sim';
 
@@ -157,6 +157,27 @@ test('clearing the table racks a new one and reports the shot count', () => {
     assert.equal(g.clearedIn, 7);
     assert.equal(g.balls.length, 16);
   }
+});
+
+test('a cleared table starts the next rack from nothing: shots and score reset, the count kept in clearedIn', () => {
+  const g = new Billiards();
+  g.balls = [newBall(0, 1.0, 0.3), newBall(1, 1.3, 0.55)];
+  g.shots = 6;
+  g.shoot(Math.atan2(0.25, 0.3), 0.5);
+  for (let i = 0; i < 20000 && g.phase === 'rolling'; i++) g.update(STEP);
+  assert.ok(g.last?.cleared, 'the shot clears the table');
+  assert.equal(g.clearedIn, 7);
+  assert.equal(g.balls.length, 16);
+  assert.equal(g.shots, 0);
+  assert.deepEqual(g.score, [0, 0]);
+});
+
+test('a charge ends only by the input that began it', () => {
+  assert.equal(endsCharge('space', 'space', false), true);
+  assert.equal(endsCharge('mouse', 'space', false), false);
+  assert.equal(endsCharge('space', 'mouse', false), false);
+  assert.equal(endsCharge('mouse', 'mouse', false), true);
+  assert.equal(endsCharge('space', 'mouse', true), true, 'losing focus always ends it');
 });
 
 test('reset racks everything again', () => {

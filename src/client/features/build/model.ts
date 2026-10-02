@@ -28,6 +28,9 @@ export interface PieceDef {
   solid: boolean;
 }
 
+/** The height the pieces stand at: the floor of the office room (every floor reuses it), whatever your feet are doing. */
+export const PIECE_FLOOR = 0;
+
 export const PIECES: Record<PieceKind, PieceDef> = {
   chair: { kind: 'chair', icon: '🪑', label: 'Chair', w: 0.6, d: 0.6, h: 0.95, solid: true },
   table: { kind: 'table', icon: '🟫', label: 'Small table', w: 1.2, d: 0.8, h: 0.75, solid: true },

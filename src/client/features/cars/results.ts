@@ -1,13 +1,15 @@
 import './results.css';
 import { h, openModal } from '../../ui/dom';
 import { lapTime } from './laps';
-import { bestLapOf, bestTotal, type RaceResult } from './records';
+import type { Bests, RaceResult } from './records';
 
 // The race records window: your best lap, your best race and the last few races, and the ghost's switch.
 // ✕ or Esc closes it (the modal's own), which puts you straight back into mouse-look.
 
 export interface ResultsDeps {
   results: readonly RaceResult[];
+  /** The all-time best race and lap, which outlast the capped list of results. */
+  bests: Bests;
   /** Your fastest lap of the loop (any lap, race or not), and the ghost's. */
   bestLap: number | null;
   ghostTime: number | null;
@@ -30,8 +32,8 @@ export function openResults(deps: ResultsDeps) {
     paint();
   });
 
-  const race = bestTotal(deps.results);
-  const lap = bestLapOf(deps.results);
+  const race = deps.bests.total;
+  const lap = deps.bests.lap;
   const stat = (label: string, value: string) => h('div.rr-stat', {}, h('div.rr-v', {}, value), h('div.rr-l', {}, label));
   const rows = deps.results.map((r, i) =>
     h(

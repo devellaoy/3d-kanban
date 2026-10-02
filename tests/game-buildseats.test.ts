@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { canSit, nearestPlace, placesOf, seatOf } from '../src/client/features/build/seats.js';
-import { PIECE_KINDS, type Piece } from '../src/client/features/build/model.js';
+import { canSit, nearestPlace, placeToSit, placesOf, seatOf } from '../src/client/features/build/seats.js';
+import { PIECE_FLOOR, PIECE_KINDS, type Piece } from '../src/client/features/build/model.js';
 
 const piece = (kind: Piece['kind'], x: number, z: number, r = 0): Piece => ({ id: 'p1', kind, x, z, r });
 const near = (a: number, b: number) => assert.ok(Math.abs(a - b) < 1e-9, `${a} vs ${b}`);
@@ -49,6 +49,14 @@ test('the places are on the piece and at seat height', () => {
     assert.equal(spot.seatId, 'build:p1');
   }
   assert.deepEqual(placesOf(p).map((s) => s.key), ['build:p1:0', 'build:p1:1']);
+});
+
+test('pressing E to sit seats you on the piece, at the floor it stands on (never at your feet height)', () => {
+  const p = piece('chair', 3, 3);
+  const place = placeToSit(p, 3, 3)!;
+  assert.equal(place.y, PIECE_FLOOR);
+  assert.equal(place.y, placesOf(p, PIECE_FLOOR)[0].y);
+  assert.equal(PIECE_FLOOR, 0);
 });
 
 test('the nearest place is the one closest to where you aim', () => {

@@ -4,7 +4,7 @@
  * kind of place the seating feature does. No three.js and no browser here (tests/game-buildseats.test.ts).
  */
 import { seatPlace, type SeatDef, type SeatPlace } from '../../../shared/layout';
-import { PIECES, type Piece, type PieceKind } from './model';
+import { PIECES, PIECE_FLOOR, type Piece, type PieceKind } from './model';
 
 /** How you sit on a kind of piece, as at a SeatDef (sideways places, hips height, depth and getting-up distance), turned to the piece's front. */
 const SEATABLE: Partial<Record<PieceKind, Pick<SeatDef, 'places' | 'hips' | 'depth' | 'out'>>> = {
@@ -28,6 +28,9 @@ export function placesOf(p: Piece, y = 0): SeatPlace[] {
   const seat = seatOf(p, y);
   return seat ? seat.places.map((_, i) => seatPlace(seat, i)) : [];
 }
+
+/** Where you sit on a piece when you press E aiming at (x, z): on the piece's own floor, never at your feet's height (mid-jump, say, or up on a desk). */
+export const placeToSit = (p: Piece, x: number, z: number): SeatPlace | null => nearestPlace(p, x, z, PIECE_FLOOR);
 
 /** The place on a piece nearest the ground point (x, z), or null for a piece you can't sit on. */
 export function nearestPlace(p: Piece, x: number, z: number, y = 0): SeatPlace | null {

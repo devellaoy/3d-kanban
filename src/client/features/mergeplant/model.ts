@@ -21,7 +21,7 @@ export interface PlantState {
   lastMergeAt: number | null;
   /** When it was planted: the droop clock before the first merge. */
   plantedAt: number;
-  /** The last pull request counted, so one that's announced twice counts once. */
+  /** The last pull request number counted (kept for the record; the server does the deduping). */
   lastPr: number | null;
 }
 
@@ -42,7 +42,7 @@ export function mergesToNext(s: PlantState): number | null {
 
 /** The plant after a pull request (number `pr`, if it's known) merged at `now`. */
 export function recordMerge(s: PlantState, now: number, pr?: number): PlantState {
-  if (pr !== undefined && pr === s.lastPr) return s;
+  // No dedupe on the number: the gong rings once per repository and number already (server floor.ts), and PR #12 of two repositories are two merges.
   return { ...s, merges: s.merges + 1, lastMergeAt: now, lastPr: pr ?? null };
 }
 

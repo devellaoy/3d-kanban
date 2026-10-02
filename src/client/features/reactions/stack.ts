@@ -3,11 +3,11 @@
 // without a browser and could be fed by other people's reactions later.
 
 /** The quick reactions, in the order of their keys (7, 8, 9, 0). */
-export const REACTIONS: readonly { emoji: string; code: string; label: string }[] = [
-  { emoji: '👏', code: 'Digit7', label: 'Applause' },
-  { emoji: '🎉', code: 'Digit8', label: 'Party' },
-  { emoji: '❤️', code: 'Digit9', label: 'Love' },
-  { emoji: '😂', code: 'Digit0', label: 'Laugh' },
+export const REACTIONS: readonly { emoji: string; code: string; key: string; label: string }[] = [
+  { emoji: '👏', code: 'Digit7', key: '7', label: 'Applause' },
+  { emoji: '🎉', code: 'Digit8', key: '8', label: 'Party' },
+  { emoji: '❤️', code: 'Digit9', key: '9', label: 'Love' },
+  { emoji: '😂', code: 'Digit0', key: '0', label: 'Laugh' },
 ];
 
 /** The same reaction within this long (ms) of the last one joins the badge that's up. */

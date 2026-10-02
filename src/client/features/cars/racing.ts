@@ -8,8 +8,8 @@ import { GhostCar } from './ghostcar';
 import { GhostRecorder, ghostDone, poseAt, type GhostPath } from './ghost';
 import { lapTime, type LapTimer } from './laps';
 import { Race, atLine, LIGHTS, JUMP_PENALTY, JUMP_SPEED, type RaceEvent } from './race';
-import { addResult } from './records';
-import { loadGhost, loadGhostOn, loadResults, saveGhost, saveGhostOn, saveResults } from './racestore';
+import { addResult, type Bests } from './records';
+import { loadGhost, loadBests, loadGhostOn, loadResults, saveBests, saveGhost, saveGhostOn, saveResults } from './racestore';
 import { openResults } from './results';
 import { startLights } from './startlights';
 
@@ -33,6 +33,7 @@ export function raceTrack(ctx: Ctx, deps: RacingDeps) {
 
   const race = new Race();
   let results = loadResults();
+  let bests: Bests = loadBests();
   let ghost: GhostPath | null = loadGhost();
   let ghostOn = loadGhostOn();
   /** The ghost that's racing you on this lap (the best one as the lap began), and which car it's drawn as. */
@@ -84,9 +85,11 @@ export function raceTrack(ctx: Ctx, deps: RacingDeps) {
       } else if (e.t === 'lap') {
         toast(`🏁 Race lap ${e.n}/${race.total}: ${lapTime(e.time)}${e.best ? ' (fastest lap yet!)' : ''}`, 'info');
       } else if (e.t === 'finish') {
-        const r = addResult(results, e.result);
+        const r = addResult(results, e.result, bests);
         results = r.list;
         saveResults(results);
+        bests = r.next;
+        saveBests(bests);
         ctx.sound.golf('cheer');
         const pen = e.result.penalty ? ` (incl. +${e.result.penalty}s jump start)` : '';
         toast(`🏆 Race done in ${lapTime(e.result.total)}${pen}${r.record ? ' — a new record!' : ''}`, 'info');
@@ -180,6 +183,7 @@ export function raceTrack(ctx: Ctx, deps: RacingDeps) {
   function records() {
     openResults({
       results,
+      bests,
       bestLap: laps.best,
       ghostTime: ghost?.time ?? null,
       ghostOn,

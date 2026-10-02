@@ -25,6 +25,14 @@ const MAX_STEPS = 240;
 /** The cue ball in hand can go anywhere behind this line (the head string), as in a break. */
 export const KITCHEN = HEAD_SPOT.x;
 
+/** What can draw the cue back: Space or the left mouse button. */
+export type ChargeInput = 'space' | 'mouse';
+
+/** Whether releasing `released` ends a charge begun by `by`: only its own input does (or losing focus, `abort`). */
+export function endsCharge(by: ChargeInput, released: ChargeInput, abort: boolean): boolean {
+  return abort || by === released;
+}
+
 export class Billiards {
   balls: Ball[] = rack();
   phase: Phase = 'aim';
@@ -124,6 +132,9 @@ export class Billiards {
     const fresh = rack();
     this.balls = fresh;
     this.potted = [];
+    // clearedIn has the count of the rack that was cleared; the new rack's shots and score start from nothing.
+    this.shots = 0;
+    this.score = [0, 0];
     this.phase = 'aim';
   }
 

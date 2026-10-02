@@ -52,19 +52,22 @@ export function installReactions(ctx: Ctx) {
     stack.add(emoji, performance.now());
   }
 
-  ctx.keys.bind({
-    code: REACTIONS.map((r) => r.code),
-    repeat: false,
-    run: (e) => {
-      if (e.ctrlKey || e.metaKey || e.altKey) return false;
-      const r = REACTIONS.find((x) => x.code === e.code);
-      if (!r) return false;
-      react(r.emoji);
-    },
-  });
+  // By the character typed, not the key's code: a code binding owns the key outright, so Shift+7 (= '/' on
+  // a Finnish or German keyboard) would send a 👏 and the '/' search would never open.
+  for (const r of REACTIONS) {
+    ctx.keys.bind({
+      key: r.key,
+      repeat: false,
+      run: (e) => {
+        if (e.ctrlKey || e.metaKey || e.altKey) return false;
+        react(r.emoji);
+      },
+    });
+  }
 
   ctx.ticks.add('hud', ({ now }) => {
     const list = stack.active(now);
+    if (!list.length && !shown.size) return;
     const live = new Set(list.map((b) => b.id));
     for (const id of [...shown.keys()]) if (!live.has(id)) drop(id);
     if (!list.length) return;

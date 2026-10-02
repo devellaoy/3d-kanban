@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { isTyping, type PlayerController } from '../../player';
 import { modalOpen } from '../../ui/dom';
 import { TABLE_AT } from '../gameroom/layout';
-import { Billiards, type Mode } from './game';
+import { Billiards, endsCharge, type ChargeInput, type Mode } from './game';
 import { R, aimLine, type SimEvent } from './sim';
 import { BilliardsPanel } from './ui';
 import { ballMesh, cueStick, toRoom, type TableView } from './world';
@@ -70,6 +70,8 @@ export class BilliardsPlay {
   private lastYaw = 0;
   private chargeAt = 0;
   private charging = false;
+  /** Which input began the charge: only its release shoots. */
+  private chargeBy: ChargeInput = 'space';
   private power = 0;
   /** When the cue was released (s since): it flies forward for a moment, then goes away while the balls run. */
   private strikeT = -1;
@@ -98,9 +100,9 @@ export class BilliardsPlay {
     this.ghost = new THREE.Mesh(new THREE.RingGeometry(R * 0.85, R, 24).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({ color: '#ffffff', transparent: true, opacity: 0.85 }));
     window.addEventListener('keydown', (e) => this.key(e, true));
     window.addEventListener('keyup', (e) => this.key(e, false));
-    window.addEventListener('mousedown', (e) => e.button === 0 && this.player.locked && this.hold(true));
-    window.addEventListener('mouseup', (e) => e.button === 0 && this.hold(false));
-    window.addEventListener('blur', () => this.hold(false, true));
+    window.addEventListener('mousedown', (e) => e.button === 0 && this.player.locked && this.hold(true, 'mouse'));
+    window.addEventListener('mouseup', (e) => e.button === 0 && this.hold(false, 'mouse'));
+    window.addEventListener('blur', () => this.hold(false, 'space', true));
   }
 
   get running(): boolean {
@@ -142,6 +144,8 @@ export class BilliardsPlay {
     this.charging = false;
     // Whatever was still running comes to rest (the camera is gone, so nobody would see it).
     for (let i = 0; i < 600 && this.game.phase === 'rolling'; i++) this.game.update(0.1);
+    // A ball still sinking is just gone: nobody is watching, and sync() hides the potted ones.
+    this.falling.clear();
     this.cue.visible = false;
     this.guide.visible = false;
     this.ghost.visible = false;
@@ -193,22 +197,23 @@ export class BilliardsPlay {
   private key(e: KeyboardEvent, down: boolean): void {
     if (!this.active || e.code !== 'Space') return;
     if (down && (e.repeat || isTyping(e) || modalOpen() || e.metaKey || e.ctrlKey || e.altKey)) return;
-    this.hold(down);
+    this.hold(down, 'space');
   }
 
   /** The shot button (Space or the mouse) goes down or up. */
-  private hold(down: boolean, abort = false): void {
+  private hold(down: boolean, input: ChargeInput, abort = false): void {
     if (!this.active) return;
     if (down) {
       if (this.game.phase === 'inhand') {
         if (this.game.placeCue()) this.hooks.sound('clack', this.at(this.game.cue.x, this.game.cue.y), 0.5);
       } else if (this.game.phase === 'aim' && !this.charging) {
         this.charging = true;
+        this.chargeBy = input;
         this.chargeAt = performance.now();
       }
       return;
     }
-    if (!this.charging) return;
+    if (!this.charging || !endsCharge(this.chargeBy, input, abort)) return;
     this.charging = false;
     const power = this.power;
     if (abort || power < MIN_POWER) return;

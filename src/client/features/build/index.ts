@@ -11,7 +11,7 @@ import type { Ctx } from '../../core/context';
 import { aside, hintTitle, key } from '../../core/hint';
 import { store } from '../../state';
 import { modalOpen, toast } from '../../ui/dom';
-import { PIECES, check, colliderOf, footprint, snap, turn, type Piece, type PieceKind, type Surroundings, type Verdict } from './model';
+import { PIECES, PIECE_FLOOR, check, colliderOf, footprint, snap, turn, type Piece, type PieceKind, type Surroundings, type Verdict } from './model';
 import { buildGhost, buildPiece, heightOf, tintGhost } from './pieces';
 import { makeBuildSeats } from './sit';
 import { loadPieces, newId, savePieces } from './store';
@@ -59,6 +59,12 @@ export function installBuild(ctx: Ctx) {
   outline.visible = false;
   ctx.scene.add(outline);
 
+  /** The colliders the pieces put in the office's list (so the check can leave them out), and a count that changes when the pieces do. */
+  const pieceColliders = new Set<Collider>();
+  let standing = 0;
+  let verdictKey = '';
+  let verdictOf: Verdict = { ok: true };
+
   const buildable = () => !!store.floor && !store.floor.startsWith('@') && ctx.inOffice() && !ctx.upTop();
   const pieces = () => [...live.values()].map((l) => l.piece);
   const save = () => floor && savePieces(floor, pieces());
@@ -67,12 +73,16 @@ export function installBuild(ctx: Ctx) {
 
   function place(piece: Piece) {
     const group = buildPiece(piece.kind);
-    group.position.set(piece.x, 0, piece.z);
+    group.position.set(piece.x, PIECE_FLOOR, piece.z);
     group.rotation.y = (piece.r * Math.PI) / 2;
     group.userData.buildId = piece.id;
     root.add(group);
     const collider = colliderOf(piece);
-    if (collider) ctx.office.colliders.push(collider);
+    if (collider) {
+      ctx.office.colliders.push(collider);
+      pieceColliders.add(collider);
+    }
+    standing++;
     live.set(piece.id, { piece, group, collider });
     sit.add(piece, group);
   }
@@ -84,7 +94,9 @@ export function installBuild(ctx: Ctx) {
     live.delete(id);
     root.remove(l.group);
     l.group.traverse((o) => (o as THREE.Mesh).geometry?.dispose());
+    standing++;
     if (l.collider) {
+      pieceColliders.delete(l.collider);
       const i = ctx.office.colliders.indexOf(l.collider);
       if (i >= 0) ctx.office.colliders.splice(i, 1);
     }
@@ -154,8 +166,20 @@ export function installBuild(ctx: Ctx) {
     });
   }
 
-  /** Esc: lets go of what you hold, and then leaves build mode. */
+  /** What the hint bar shows depends on exactly this (see the hint below); it is redrawn only when it changes. */
+  let lastHint = '';
+  function hintKey(): string {
+    const verdict = spot?.verdict;
+    return `build|${selected ?? '-'}|${holding ? 'h' : ''}|${aimed ? aimed.piece.kind : '-'}|${verdict ? (verdict.ok ? 'ok' : verdict.why) : '-'}|${rot}`;
+  }
+
+  /** When the last Esc stepped back: the one press can reach us as the mouse being freed and as a keydown. */
+  let backAt = -Infinity;
+  /** Esc: lets go of what you hold, and then leaves build mode. One press is one step. */
   function back() {
+    const now = performance.now();
+    if (now - backAt < 250) return;
+    backAt = now;
     if (selected) drop();
     else exit();
   }
@@ -191,8 +215,14 @@ export function installBuild(ctx: Ctx) {
     spot = null;
     if (selected && ray.ray.intersectPlane(plane, hitPoint) && hitPoint.distanceTo(ray.ray.origin) <= REACH) {
       const piece: Piece = { id: holding?.id ?? 'ghost', kind: selected, x: snap(hitPoint.x), z: snap(hitPoint.z), r: rot };
-      const around: Surroundings = { colliders: ctx.office.colliders.filter((c) => ![...live.values()].some((l) => l.collider === c)), pieces: pieces(), you: ctx.player.pos };
-      spot = { piece, verdict: check(piece, around) };
+      // The verdict only changes with the snapped spot, the turn, the piece, the pieces standing, or you moving (0.1 m): not every frame.
+      const key = `${piece.id}|${piece.kind}|${piece.x}|${piece.z}|${piece.r}|${standing}|${Math.round(ctx.player.pos.x * 10)}|${Math.round(ctx.player.pos.z * 10)}`;
+      if (verdictKey !== key) {
+        verdictKey = key;
+        const around: Surroundings = { colliders: ctx.office.colliders.filter((c) => !pieceColliders.has(c)), pieces: pieces(), you: ctx.player.pos };
+        verdictOf = check(piece, around);
+      }
+      spot = { piece, verdict: verdictOf };
     }
     if (!selected || !spot) {
       if (ghost) ghost.group.visible = false;
@@ -218,7 +248,11 @@ export function installBuild(ctx: Ctx) {
       return;
     }
     aim();
-    ctx.hint.invalidate();
+    const hk = hintKey();
+    if (hk !== lastHint) {
+      lastHint = hk;
+      ctx.hint.invalidate();
+    }
   });
 
   // ---- Using it ---------------------------------------------------------------------------------
@@ -286,8 +320,7 @@ export function installBuild(ctx: Ctx) {
       return false;
     },
     hint: (el) => {
-      const verdict = spot?.verdict;
-      ctx.hint.draw(el, `build|${selected ?? '-'}|${holding ? 'h' : ''}|${aimed ? aimed.piece.kind : '-'}|${verdict ? (verdict.ok ? 'ok' : verdict.why) : '-'}|${rot}`, () => {
+      ctx.hint.draw(el, hintKey(), () => {
         if (selected) {
           const def = PIECES[selected];
           const title = !spot ? `🛠️ Aim at the floor (${def.label})` : !spot.verdict.ok ? `🚫 ${WHY[spot.verdict.why]}` : `🛠️ ${holding ? 'Moving' : 'Placing'} ${def.label.toLowerCase()}`;

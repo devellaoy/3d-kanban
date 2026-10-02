@@ -13,7 +13,7 @@ import { neighbourBoxes } from '../../world/outside';
 import { ELEVATOR_NOTE, ELEVATOR_NOTES, WORLD, clampToMap, markers, minimapAngle, offTheMap, onMap, project, rotateForHeading, walkingHeading, type Marker } from './geometry';
 import { paintMarker, paintTerrain, paintYou } from './paint';
 
-/** The picture's size (pixels): the world is 660 x 545 m. */
+/** The picture's size (pixels): the map shows 660 x 505 m (WORLD in geometry.ts); the terrain reaches further, and past the edge the arrow sits at the rim. */
 const W = 1000;
 const H = 826;
 /** The little map: its size on screen (css pixels), how many pixels it draws per css pixel, and how many meters its radius shows. */
@@ -92,7 +92,24 @@ export function installMap(ctx: Ctx) {
     status.classList.toggle('hidden', !text);
   }
 
+  /** Each place's round chip, painted once (emoji text is the slow part) and then only copied. */
+  const CHIP = 36;
+  let chips: HTMLCanvasElement[] | null = null;
+  function chipsOf(): HTMLCanvasElement[] {
+    return (chips ??= places.map((m) => {
+      const c = document.createElement('canvas');
+      c.width = c.height = CHIP;
+      paintMarker(c.getContext('2d')!, { scale: 1, x: () => CHIP / 2, y: () => CHIP / 2 }, { ...m, x: 0, z: 0 }, false, 22);
+      return c;
+    }));
+  }
+
+  let miniKey = '';
   function drawMini(at: NonNullable<ReturnType<typeof pose>>) {
+    // Nothing moved by more than a pixel or so since the last drawing: it would look the same.
+    const key = `${Math.round(at.x * 4)},${Math.round(at.z * 4)},${at.heading.toFixed(2)}`;
+    if (key === miniKey) return;
+    miniKey = key;
     const g = mini.getContext('2d')!;
     const size = MINI * MINI_DPR;
     // Meters to pixels here, against the terrain picture's own.
@@ -110,11 +127,12 @@ export function installMap(ctx: Ctx) {
     g.drawImage(layers().terrain, -p.x(at.x), -p.y(at.z));
     g.restore();
     // The places, upright, where the turned map puts them.
-    for (const m of places) {
+    const sprites = chipsOf();
+    places.forEach((m, i) => {
       const d = rotateForHeading((p.x(m.x) - p.x(at.x)) * zoom, (p.y(m.z) - p.y(at.z)) * zoom, at.heading);
-      if (Math.hypot(d.x, d.y) > size / 2 - 14) continue;
-      paintMarker(g, { scale: 1, x: () => size / 2 + d.x, y: () => size / 2 + d.y }, { ...m, x: 0, z: 0 }, false, 22);
-    }
+      if (Math.hypot(d.x, d.y) > size / 2 - 14) return;
+      g.drawImage(sprites[i], size / 2 + d.x - CHIP / 2, size / 2 + d.y - CHIP / 2);
+    });
     // You, always in the middle, nose up.
     paintYou(g, size / 2, size / 2, Math.PI, 15);
     g.beginPath();
@@ -144,7 +162,8 @@ export function installMap(ctx: Ctx) {
   ctx.keys.add('guard', (e) => {
     if (!shown || e.code !== 'Escape') return false;
     setShown(false);
-    return false;
+    // Esc closed the map: that's all it does this time.
+    return true;
   });
 
   ctx.ticks.add('hud', () => {
@@ -158,6 +177,7 @@ export function installMap(ctx: Ctx) {
     const wantMini = driving && !!at;
     if (mini.classList.contains('hidden') === wantMini) mini.classList.toggle('hidden', !wantMini);
     if (wantMini && at) drawMini(at);
+    else miniKey = '';
   });
 
   return { toggle: () => setShown(!shown), visible: () => shown };

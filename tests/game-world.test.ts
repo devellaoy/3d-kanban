@@ -65,6 +65,26 @@ test('wildflowers, grazing animals and butterflies stay off the pavement too', (
   assert.deepEqual(bad.slice(0, 10), []);
 });
 
+test('butterflies stay hidden in winter through the per-frame cull, and are back in summer', async () => {
+  const { applySeason } = await import('../src/client/world/scenic/seasonal.js');
+  const { scenic, group } = build();
+  const swarms: THREE.InstancedMesh[] = [];
+  group.traverse((o) => {
+    const im = o as THREE.InstancedMesh;
+    if (im.isInstancedMesh && im.instanceColor) swarms.push(im);
+  });
+  assert.ok(swarms.length >= 5, 'the butterfly swarms were found');
+  // Drawn only if it and every parent are visible.
+  const drawn = (o: THREE.Object3D | null): boolean => (o ? o.visible && drawn(o.parent) : true);
+  const eye = new THREE.Vector3(120, 4, 215);
+  applySeason('winter');
+  scenic.cull(eye, 0, 400);
+  assert.deepEqual(swarms.filter(drawn).length, 0, 'none drawn in winter, even right beside the meadow');
+  applySeason('summer');
+  scenic.cull(eye, 0, 400);
+  assert.ok(swarms.filter(drawn).length >= 1, 'the swarm by the eye is drawn in summer');
+});
+
 test('the decorations are not solid: nothing small and low (a flower box, a bench, a bush) is a collider', () => {
   const { colliders } = build();
   const low = (colliders as unknown as { minX: number; maxX: number; minZ: number; maxZ: number; top: number; bottom: number }[]).filter((c) => c.maxX - c.minX < 3 && c.maxZ - c.minZ < 3 && c.top - c.bottom < 0.6);

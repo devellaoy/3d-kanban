@@ -135,7 +135,11 @@ export const lightSwitches: Fixture<'lightSwitches'> = (site) => {
     (pool.material as THREE.MeshBasicMaterial).opacity = 0.55 * (1 - lit);
     pool.visible = lit < 0.995;
     nubs[id].rotation.x = lit > 0.5 ? -0.35 : 0.35;
-    if (id === 'lounge') light.intensity = 5 * lit;
+    if (id === 'lounge') {
+      light.intensity = 5 * lit;
+      // An invisible light isn't counted by three, so the lit fragments don't pay for it while the lounge is dark.
+      light.visible = lit > 0.001;
+    }
   };
   AREAS.forEach(show);
 
