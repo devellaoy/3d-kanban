@@ -1,0 +1,11 @@
+/* The 🌐 Multiplayer category of ⚙️ Settings (settings.ts). */
+.mp-set { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+.mp-set .mp-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.mp-set .mp-row, .mp-set .mp-device, .mp-set .setting > .btn { margin-top: 8px; }
+.mp-set .mp-row input { flex: 1 1 200px; min-width: 0; }
+.mp-set .mp-floor { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin: 8px 0 0; padding: 4px 0; font-weight: var(--fw-bold); }
+.mp-set .mp-floor input { accent-color: var(--accent); }
+.mp-set .mp-floor .setting-note { margin: 0; }
+.mp-set .mp-device { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.mp-set .mp-device p { margin: 0; }
+.mp-set .mp-code { padding: 4px 10px; font-size: var(--fs-lg); font-weight: var(--fw-bold); letter-spacing: 2px; background: var(--field); border: var(--bw-sm) solid var(--ink); border-radius: var(--radius-sm); }

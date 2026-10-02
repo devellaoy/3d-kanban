@@ -8,6 +8,7 @@ import { ROOF, isDrink } from '../../../shared/rooftop.js';
 import { isBarGame } from '../../../shared/bargames.js';
 import { throttle } from '../../office/client.js';
 import { COLOR_RE, issueNumber, num, str } from '../../office/input.js';
+import { isLoungeSeat } from '../../../shared/kanban/lounge.js';
 import type { HandlerMap } from './types.js';
 
 export const presenceHandlers = {
@@ -74,6 +75,16 @@ export const presenceHandlers = {
       ctx.sendTo(c, { t: 'sit.refused', seat: key, by: there.peer.name });
       return;
     }
+    // A task on hold's figure sits there (the kanban's lounge, on the office's own map): placed around
+    // everyone else's seats, as every browser on the floor places it. Only the lounge's few seats are ever a figure's.
+    if (seat && isLoungeSeat(seat) && c.peer.floor && c.peer.floor !== ROOF && ctx.maps.plan().style === 'office') {
+      const others = new Set([...ctx.clients.values()].flatMap((o) => (o !== c && o.peer.floor === c.peer.floor && o.peer.seat ? [o.peer.seat] : [])));
+      const figure = ctx.kanban?.loungeSeat(c.peer.floor, seat, others);
+      if (figure) {
+        ctx.sendTo(c, { t: 'sit.refused', seat: key, by: `${figure.name} (task #${figure.taskId}, on hold)` });
+        return;
+      }
+    }
     if (seat) c.peer.seat = seat;
     else delete c.peer.seat;
     ctx.broadcast({ t: 'peer.update', peer: c.peer }, c.id);
@@ -90,7 +101,8 @@ export const presenceHandlers = {
   },
   profile(ctx, c, msg) {
     const name = str(msg.name, 24).trim();
-    if (name && !c.accountId) c.peer.name = name;
+    // A visitor is always @login.
+    if (name && !c.accountId && !c.visitor) c.peer.name = name;
     if (COLOR_RE.test(msg.color)) c.peer.color = msg.color;
     c.peer.look = sanitizeLook(msg.look, c.peer.look);
     ctx.broadcast({ t: 'peer.update', peer: c.peer });
@@ -103,6 +115,9 @@ export const presenceHandlers = {
   },
   rtc(ctx, c, msg) {
     const target = ctx.clients.get(str(msg.to, 32));
+    // A visitor talks to people on floors they may see, up on the roof (open to them) and to other
+    // visitors, not to the rest of the owner's office (the lobby, the floors that are not shared).
+    if (target && c.visitor && !target.visitor && target.peer.floor !== ROOF && !c.visitor.floors.has(target.peer.floor ?? '')) return;
     if (target) ctx.sendTo(target, { t: 'rtc', from: c.id, data: msg.data });
   },
   chat(ctx, c, msg) {

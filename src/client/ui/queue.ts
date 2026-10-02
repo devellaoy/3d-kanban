@@ -3,6 +3,7 @@ import type { AgentProvider, QueueTask, Usage } from '../../shared/protocol';
 import type { Net } from '../net';
 import { store } from '../state';
 import { h, openModal, timeAgo, STATUS_LABEL } from './dom';
+import { safeUrl } from './url';
 import { confirmDialog } from './prompt';
 import { providerPicker, providerLabel, providerUsageState, providerWaitingLabel, resolvedProvider, modelBadge } from './provider';
 import { officeFull } from '../../shared/machine';
@@ -20,7 +21,7 @@ function taskTitle(t: QueueTask): HTMLElement {
   if (t.issue === undefined) return h('div.queue-title', { title: t.prompt }, t.title);
   const issue = store.issues.items.find((i) => i.number === t.issue);
   const text = t.title.startsWith(`#${t.issue}`) ? t.title : `#${t.issue} ${t.title}`;
-  return h('div.queue-title', { title: t.prompt }, issue ? h('a', { href: issue.url, target: '_blank', rel: 'noopener' }, text) : text);
+  return h('div.queue-title', { title: t.prompt }, issue && safeUrl(issue.url) ? h('a', { href: issue.url, target: '_blank', rel: 'noopener' }, text) : text);
 }
 
 function outcome(t: QueueTask): string {

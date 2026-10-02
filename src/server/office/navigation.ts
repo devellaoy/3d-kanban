@@ -15,17 +15,21 @@ export function navigation(ctx: Ctx): Navigation {
    */
   const goToFloor = (c: Client, floor: Floor, at?: Spot) => {
     if (c.peer.floor === floor.id) return;
+    if (c.visitor && !c.visitor.floors.has(floor.id)) return void c.ws.close(4000, 'The floor you were on left the building');
     const left = leave(c, at);
     Object.assign(c.peer, { floor: floor.id });
     ctx.sendTo(c, { t: 'floor.enter', peers: [...ctx.clients.values()].map((o) => o.peer), ...floorView(ctx, floor) });
     screensOf(ctx, c, floor);
     arrived(c, left);
-    floor.arrived();
-    floor.workers.wakeAll();
+    // A visitor's arrival must not make the owner's office refresh GitHub or wake agents.
+    if (!c.visitor) {
+      floor.arrived();
+      floor.workers.wakeAll();
+    }
     ctx.floorsChanged();
   };
 
-  /** Up to the rooftop bar, by elevator. */
+  /** Up to the rooftop bar, by elevator (a visitor too: the roof carries nothing of the owner's projects, see roofView and filterForVisitor). */
   const goToRoof = (c: Client) => {
     if (c.peer.floor === ROOF) return;
     const left = leave(c);
@@ -37,6 +41,8 @@ export function navigation(ctx: Ctx): Navigation {
 
   /** Out to the lobby, where the elevator has nowhere to go: the building's last floor was taken off. */
   const toLobby = (c: Client) => {
+    // The lobby has no floor in a visitor's scope: their visit is over.
+    if (c.visitor) return void c.ws.close(4000, 'The floor you were on left the building');
     const left = leave(c);
     delete c.peer.floor;
     ctx.sendTo(c, { t: 'floor.enter', peers: [...ctx.clients.values()].map((o) => o.peer), ...floorView(ctx, undefined) });

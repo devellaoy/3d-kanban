@@ -24,13 +24,13 @@ Back to the [README](../README.md).
 | Q | Put back the issue card you're carrying, or drop the basketball |
 | H | These controls; in a car, honk the horn |
 | T / Enter | Chat |
-| Enter, in a prompt box | A new line. **Shift + Enter** or **⌘ + Enter** (Ctrl + Enter) sends; on a phone, tap the send button |
+| Enter, in a prompt box | A new line (**Shift + Enter** too). **Ctrl/⌘ + Enter** sends; on a phone, tap the send button |
 | G / 1–6 | Emote: hold G for the wheel (point and let go) or press 1–6 to wave, give a thumbs up, clap, dance, point or facepalm; the wheel also has *six seven* (test branch); everyone on your floor sees it |
 | / | Search the chat and every terminal on your floor |
 | Ctrl + K (⌘K on a Mac) | Command palette: find a worker, issue, PR, service, board, teammate or action; Enter opens it, Shift+Enter walks you there first |
 | V | Join voice; in voice, hold to talk (you're muted when you let go) |
 | M | Mute / unmute in voice |
-| Tab | The ☰ menu: every window, and what shows on screen |
+| Tab | The ☰ menu: every window, and what shows on screen. *In 3d-kanban*, **🌐 Players** (under *Together*, once a multiplayer relay is saved) shows your own status with a **Go offline** / **Go online** button and lists who is online with a **Visit** button each (nobody while you are offline); while you visit someone, a bar at the top says **👀 Visiting @login · read-only** with **🏠 Back to my office**, and keys that would change their office just say so ([Features](features.md#multiplayer-visit-each-others-offices)) |
 | Esc | Close any window (a terminal too) and get back to looking around |
 | Ctrl + [ | Send Esc to a terminal instead, to close a menu like Claude's `/skills` or interrupt Claude. **⎋ Esc** in the terminal's header does the same |
 
@@ -98,7 +98,7 @@ The kanban view (`/kanban`, **🗂️ Kanban** in the ☰ menu or on the 2D view
 | Tab / Shift + Tab | Move between cards and buttons; Enter (or Space) on a card opens its detail |
 | M | On a card: move it to another column (the same as its **⋯** button, and what dragging it does). Columns it can't go to are greyed out with the reason |
 | ← / → | Between the detail's tabs; on the detail's left edge, make the panel wider or narrower |
-| Shift + Enter or Ctrl + Enter (⌘ + Enter on a Mac) | Send a comment or an answer; save the new-task dialog |
+| Ctrl/⌘ + Enter | Send a comment or an answer; save the new-task dialog |
 | Esc | Close the window on top, then the task's detail |
 
 ## In a terminal
@@ -113,4 +113,4 @@ The prompt edits the way it does in your own terminal (iTerm2's *Natural Text Ed
 | ⌘ + ⌦ | Delete to the end of the line (Mac) |
 | ⌘ + ← / → | Jump to the start / end of the line (Mac) |
 
-Inside a terminal, Shift + Enter is the agent's own new line; the prompt boxes outside the terminal (hire, ask, queue, comments) send with it.
+Shift + Enter adds a new line in the prompt boxes too (hire, ask, queue, comments); they send with Ctrl/⌘ + Enter. In a terminal it is the agent's own new line.

@@ -1,5 +1,5 @@
 import { execFile } from 'node:child_process';
-import { open, readdir, readFile, stat } from 'node:fs/promises';
+import { open, readdir, readFile, realpath, stat } from 'node:fs/promises';
 import path from 'node:path';
 import { insideCheckout } from './changes.js';
 import { SAFE_GIT } from './floor-git.js';
@@ -161,6 +161,26 @@ export class Docs {
     const list = { files, more };
     this.last = { at: Date.now(), list };
     return list;
+  }
+
+  /**
+   * Whether a file is one the bookshelf itself would show: a listed doc, or a picture git knows
+   * (tracked, or new and not ignored; without git, not under a hidden or build folder). read() and
+   * picture() serve anything inside the checkout (the owner's own bookshelf only asks for what it
+   * was shown), so a visitor, who may ask for any path, is held to this: no CLAUDE.local.md, no
+   * ignored notes, no `.agent-office/` worktrees.
+   */
+  async shown(file: string): Promise<boolean> {
+    const rel = path.posix.normalize(file.split(path.sep).join('/'));
+    if (rel !== file || rel.startsWith('../') || rel.startsWith('/') || rel === '.') return false;
+    // A tracked link to an ignored file is the ignored file: the name must be where it really is.
+    const abs = await insideCheckout(this.dir, rel);
+    if (!abs || path.relative(await realpath(this.dir), abs).split(path.sep).join('/') !== rel) return false;
+    if (isDocPath(rel)) return (await this.list()).files.some((f) => f.path === rel);
+    if (!this.git) return !rel.split('/').some((s, i, a) => s.startsWith('.') || (i < a.length - 1 && SKIP_DIRS.has(s)));
+    return new Promise((resolve) => {
+      execFile('git', [...SAFE_GIT, 'ls-files', '-z', '--cached', '--others', '--exclude-standard', '--', `:(literal)${rel}`], { cwd: this.dir, encoding: 'utf8', timeout: 20_000, env: { ...process.env, GIT_OPTIONAL_LOCKS: '0' } }, (err, stdout) => resolve(!err && stdout.split('\0').includes(rel)));
+    });
   }
 
   /** One doc's Markdown. Only Markdown, and only inside the project (not through a link out of it). */

@@ -19,6 +19,8 @@ export interface FeatureHooks {
    * theirs there. What it returns runs once they've arrived, after everyone has seen them go.
    */
   leaving?(ctx: Ctx, c: Client, was: Floor | undefined): (() => void) | void;
+  /** `c` just got the welcome (after it was sent): what they should hear about once, as they arrive. */
+  welcomed?(ctx: Ctx, c: Client): void;
   /** `c` left the office (their socket closed): first this, for each feature... */
   closed?(ctx: Ctx, c: Client): void;
   /** ...then this, on every floor, for each feature. */

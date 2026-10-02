@@ -64,6 +64,15 @@ export interface KanbanEngineApi {
    * `released`). (Optional only so stand-ins in tests needn't have it.)
    */
   releaseIdle?(taskId: number, who: KanbanCaller): Promise<void>;
+  /**
+   * A task in Waiting or Review is put on hold: its workers go home (reason `hold`, worktree kept), nothing
+   * runs for it. `who` must be its creator or an admin. Resolves to why not. (Optional only so stand-ins in tests needn't have it.)
+   */
+  hold?(taskId: number, who: KanbanCaller, opts?: { note?: string; until?: number }): Promise<string | void>;
+  /** A held task goes on to Review or Done: the messages left meanwhile are kept for its next run. */
+  releaseHeld?(taskId: number): Promise<string | void>;
+  /** A task on hold is taken off it: its implementer is hired again and carries on, with `note` as the user's message. */
+  unhold?(taskId: number, who: KanbanCaller, note?: string): Promise<string | void>;
   /** A user comment was stored: resume the task's work with it when its state allows. */
   commented(taskId: number, commentId: number, who: KanbanCaller): Promise<void>;
   /**
@@ -86,6 +95,8 @@ export interface KanbanEngineApi {
 /** The part of upstream's RunAs (workers.ts) the engine asks before it hires as an account. */
 export interface KanbanRunAs {
   claudeReady(owner: string): boolean;
+  /** Puts an account's own sign-ins in `env` (CLAUDE_CONFIG_DIR among them), as a worker of theirs starts with them. */
+  apply?(owner: string, env: Record<string, string>, dirs?: string[]): unknown;
   why(which: 'claude'): string;
 }
 

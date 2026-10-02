@@ -78,6 +78,7 @@ import { installFishing } from './features/fishing';
 import { installDeskStuff } from './features/deskstuff';
 import { installLights } from './features/lights';
 import { installMergePlant } from './features/mergeplant';
+import { installMultiplayer } from './multiplayer';
 import { initAppearance } from './themes';
 
 // The chosen appearance (⚙️ Settings → Theme), on the page and followed across tabs.
@@ -212,6 +213,7 @@ installCamp(ctx); // the campsite and the hill lookout
 installGarden(ctx, { roof: parts.rooftop.roof }); // the roof garden
 installBuild(ctx); // U: build mode, furnish the floor
 parts.map = installMap(ctx); // `: the map of the scenic loop, and a small map while you drive
+installMultiplayer(ctx); // the banner while visiting another office
 
 // ---- Main loop ---------------------------------------------------------------------------------------
 fitWindow(ctx);

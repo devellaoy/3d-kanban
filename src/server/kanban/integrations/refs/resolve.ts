@@ -8,6 +8,7 @@ import type { KanbanContext } from '../../registry.js';
 import type { KanbanTask, TaskRefBundle } from '../../../../shared/kanban/types.js';
 import { projectRepos } from '../../projects.js';
 import { clip } from '../util.js';
+import { holdLine } from '../../../../shared/kanban/hold.js';
 
 /** How big the parts of a bundle get, so one task never floods an agent's context. */
 export const REF_LIMITS = {
@@ -128,6 +129,7 @@ export function taskBundle(ctx: KanbanContext, t: KanbanTask): TaskRefBundle {
       return { id: r.id, name: r.name, ...(branch ? { branch } : {}), ...(r.remote ? { remote: r.remote } : {}) };
     }),
     status: t.status,
+    ...(t.hold ? { hold: { at: t.hold.at, ...(t.hold.note ? { note: t.hold.note } : {}), ...(t.hold.until !== undefined ? { until: t.hold.until } : {}) } } : {}),
     ...(t.phase ? { phase: t.phase } : {}),
     ...(t.summary ? { summary: clip(t.summary, REF_LIMITS.summary) } : {}),
     ...(plan ? { acceptedPlan: clip(plan.text, REF_LIMITS.plan) } : {}),
@@ -214,7 +216,8 @@ export function referencedTasksMarkdown(bundles: TaskRefBundle[]): string {
       `## Task #${b.id}: ${b.title}`,
       '',
       `- Project: ${b.project.name} (${b.project.id})`,
-      `- Status: ${b.status}${b.phase ? `, phase ${b.phase}` : ''}`,
+      `- Status: ${b.status === 'on_hold' ? 'On hold' : b.status}${b.phase ? `, phase ${b.phase}` : ''}`,
+      ...(b.hold ? [`- ${holdLine({ ...b.hold, by: '', from: 'waiting' }, Date.now())}`] : []),
       ...(b.ticket ? [`- Ticket: ${b.ticket}${b.ticketUrl ? ` ${b.ticketUrl}` : ''}`] : []),
       ...b.repos.map((r) => `- Repository ${r.name}${r.remote ? ` (${r.remote})` : ''}${r.branch ? `: branch ${r.branch}` : ''}`),
       ...b.prs.map((p) => `- Pull request ${p.repo ? `${p.repo}#` : '#'}${p.number} (${p.state}): ${p.url}`),

@@ -35,6 +35,8 @@ import { parseKanbanClientMsg, ridOf, type KanbanClientType, type KanbanServerMs
 import type { ProjectRepo } from '../../shared/kanban/types.js';
 import type { WorkerInfo } from '../../shared/protocol.js';
 import type { KanbanRunAs } from './registry.js';
+import { LoungeSender, loungeFigures } from './lounge.js';
+import { loungeFigureOn, type LoungeFigure } from '../../shared/kanban/lounge.js';
 import { promptTaskWorker, resumeTaskWorker } from './coupling.js';
 
 /** What the office hands the kanban. */
@@ -54,6 +56,8 @@ export interface KanbanOffice {
   /** The loopback hook server's base URL. */
   hookUrl: string;
   toast(floorId: string, text: string, level?: 'info' | 'warn' | 'error'): void;
+  /** A message to everyone on a floor (the lounge figures). */
+  toFloor?(floorId: string, msg: KanbanServerMsg): void;
   /** Why the office can't take another worker now (upstream's Capacity.full: its worker limit), if it can't. */
   capacity?(): string | undefined;
   /** Upstream's sign-in rule (signins as RunAs): task hires run on their owner's own Claude sign-in. */
@@ -88,6 +92,10 @@ export interface Kanban {
   handleHook(req: IncomingMessage, res: ServerResponse, url: URL, who: KanbanHookCaller): Promise<boolean>;
   /** Loopback routes whose auth the plugin decides (/api/tasks/reference, /api/v1/). */
   handleLoopback(req: IncomingMessage, res: ServerResponse, url: URL): Promise<boolean>;
+  /** The lounge figures of a floor: its tasks on hold (FloorView.kanbanLounge). */
+  lounge(floorId: string): LoungeFigure[];
+  /** The figure that sits on the seat place `seat` ("couch:0") on a floor, placed around the seats `occupied` by people there (shared/kanban/lounge.ts). */
+  loungeSeat(floorId: string, seat: string, occupied: ReadonlySet<string>): LoungeFigure | undefined;
   /** A browser went away: it hears nothing more. */
   clientGone(clientId: string): void;
   /** Floors (or their repositories) may have changed: subscribers hear the projects when they did. */
@@ -130,6 +138,9 @@ export function installKanban(opts: KanbanInstallOptions): Kanban {
   const subscribers = new Map<string, Subscriber>();
   /** The project of each task a card went out for, to say where a deleted one was. */
   const taskProjects = new Map<number, string>();
+  const lounge = new LoungeSender(repo, opts.toFloor);
+  /** The tasks on hold and their projects, so a change that has nothing to do with the lounge costs it nothing (seeded from the database). */
+  const held = new Map(repo.tasksWhere({ status: ['on_hold'] }).map((t) => [t.id, t.project]));
 
   const broadcast = (msg: KanbanServerMsg, project: string | null) => {
     // An archived card leaves the board of anyone not looking at the archive.
@@ -205,12 +216,22 @@ export function installKanban(opts: KanbanInstallOptions): Kanban {
       if (card) {
         taskProjects.set(taskId, card.project);
         broadcast({ t: 'kanban.task', task: card }, card.project);
+        // Only a task that is or was on hold can change a floor's figures.
+        if (card.status === 'on_hold' || held.has(taskId)) {
+          if (card.status === 'on_hold') held.set(taskId, card.project);
+          else held.delete(taskId);
+          lounge.changed(card.project);
+        }
         // Its workers in the 3D office show the card too (WorkerInfo.kanban).
         return (ctx.engine as Partial<KanbanEngine> | undefined)?.cardChanged?.(taskId);
       }
       const was = taskProjects.get(taskId);
       taskProjects.delete(taskId);
       broadcast({ t: 'kanban.task.removed', id: taskId, project: was ?? '' }, was ?? null);
+      // A deleted task on hold takes its figure with it (its project is known from when it was seen held, even since a restart).
+      const figure = held.get(taskId);
+      held.delete(taskId);
+      if (figure) lounge.changed(figure);
     },
     attachmentFile: (id: string) => {
       const a = repo.getAttachment(id);
@@ -308,6 +329,8 @@ export function installKanban(opts: KanbanInstallOptions): Kanban {
     handleHttp: (req, res, url, who) => route(httpRoutes, url.pathname, [req, res, url, who]),
     handleHook: (req, res, url, who) => route(hookRoutes, url.pathname, [req, res, url, who]),
     handleLoopback: (req, res, url) => route(loopbackRoutes, url.pathname, [req, res, url]),
+    lounge: (floorId) => loungeFigures(repo, floorId),
+    loungeSeat: (floorId, seat, occupied) => loungeFigureOn(loungeFigures(repo, floorId), occupied, seat),
     clientGone(clientId) {
       subscribers.delete(clientId);
     },

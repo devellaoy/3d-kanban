@@ -32,9 +32,11 @@ import { REVIEW_DEFAULTS } from './defaults';
 import { cardRepoNames, countdown, needsAttention, phaseBadge, prTone, showIn3dLink, tabFor, visibleTabs, type TaskTab } from './model';
 import { kstore } from './store';
 import { onSendKey, sendHint } from './sendkey';
+import { holdActions, holdBox } from './holdview';
 import { mountChangesView, type ChangesViewHandle } from './changesview';
 import { APPROVAL_NAMES, columnName, COUNTDOWN_UNITS, effortName, fmtDuration, fmtTime, phaseName, PR_STATE_NAMES, toolName, waitingName } from './labels';
 import { run, select, tabStrip, textArea } from './ui';
+import { apiUrl } from '../multiplayer/visit';
 
 const COMMENTS_PAGE = 30;
 const TAB_NAMES: Record<TaskTab, string> = { overview: 'Overview', conversation: 'Conversation', plan: 'Plan', runs: 'Runs', terminal: 'Terminal', changes: 'Changes', prs: 'PRs' };
@@ -496,6 +498,7 @@ class View implements TaskView {
         add(`🔀 ${task.prs.length ? 'Push & update PRs' : 'Create PRs'}`, '.primary', (b) => void this.req({ t: 'kanban.task.pr', id, mode: 'create' }, b, 'An agent is on the pull requests'), 'The agent pushes and opens (or updates) a pull request in every repository with commits');
       }
     }
+    holdActions(task, add, (to, extras, b) => void this.req({ t: 'kanban.task.move', id, to, ...extras }, b));
     this.fixPrs(task, bar);
     if (task.status !== 'in_progress' && this.o.moveMenu) add('↔️ Move…', '', () => this.o.moveMenu?.(id), 'Move to another column (M)');
     if (!running) add('🗑️ Delete', '.danger', (b) => confirmDialog(`Delete #${id}?`, `The task, its conversation, plans and runs are deleted for good. ${hasWorker ? 'Its workers go home. ' : ''}${task.workspace ? `Its worktree (${task.workspace.worktree.path}), its branches` : 'Its branches'}${task.branch ? ` (${task.branch})` : ''} and pull requests stay.`, 'Delete', () => void this.req({ t: 'kanban.task.delete', id }, b)));
@@ -576,10 +579,9 @@ class View implements TaskView {
 
   private async loadReports() {
     try {
-      const r = await getJson<{ reports: KanbanReportFile[] }>(`/api/kanban/tasks/${this.taskId}/reports`);
+      const r = await getJson<{ reports: KanbanReportFile[] }>(apiUrl(`/api/kanban/tasks/${this.taskId}/reports`));
       if (this.destroyed) return;
-      const shown = this.reports?.shown ?? new Map<string, HTMLElement>();
-      this.reports = { list: r.reports, shown };
+      this.reports = { list: r.reports, shown: this.reports?.shown ?? new Map<string, HTMLElement>() };
     } catch {
       // Nothing to list (or an office without the plugin): the section stays away.
       if (!this.destroyed) this.reports = null;
@@ -591,7 +593,7 @@ class View implements TaskView {
   private reportsSection(): HTMLElement | null {
     const r = this.reports;
     if (!r?.list.length) return null;
-    const url = (name: string) => `/api/kanban/tasks/${this.taskId}/reports/${encodeURIComponent(name)}`;
+    const url = (name: string) => apiUrl(`/api/kanban/tasks/${this.taskId}/reports/${encodeURIComponent(name)}`);
     const items = r.list.map((f) => {
       const shownEl = r.shown.get(f.name);
       const toggle = h('button.btn.small', { type: 'button', 'aria-expanded': String(!!shownEl) }, shownEl ? 'Hide' : 'Show') as HTMLButtonElement;
@@ -654,7 +656,7 @@ class View implements TaskView {
     const none = () => h('span.hidden');
     return [
       this.actionButtons(task),
-      this.waitingBox(task) ?? none(),
+      this.waitingBox(task) ?? holdBox(task) ?? none(),
       task.summary ? h('section.kb-summary', {}, h('h4', {}, 'Summary'), renderMarkdown(task.summary, open, '')) : none(),
       h('section.kb-desc', {}, h('h4', {}, 'Description', task.flags.descriptionLocked ? h('small.kb-muted', { title: 'The task has started: add to it with a comment instead' }, ' 🔒 locked') : null), renderMarkdown(task.description, open)),
       task.goal ? h('section.kb-goal', {}, h('h4', {}, '🎯 Acceptance criteria'), renderMarkdown(task.goal, open, '')) : none(),
@@ -669,7 +671,7 @@ class View implements TaskView {
   private makeComposer(task: KanbanTask) {
     const ta = textArea('', { rows: 3, placeholder: 'Write a comment, answer, or tell the agent what to do next… (paste or drop files)', 'aria-label': 'Comment', 'data-focus': 'comment' });
     const send = h('button.btn.primary', { type: 'button' }, 'Send') as HTMLButtonElement;
-    const hint = h('small.kb-muted', {}, `${sendHint()} · ${task.status === 'todo' || task.status === 'done' ? 'a comment is kept with the task' : 'a comment puts the agent back to work'}`);
+    const hint = h('small.kb-muted', {}, `${sendHint()} · ${task.status === 'todo' || task.status === 'done' ? 'a comment is kept with the task' : task.status === 'on_hold' ? 'a comment is kept and given to the agent when it resumes' : 'a comment puts the agent back to work'}`);
     const wrap = h('div.kb-composer');
     const attach = attachBox({ target: ta, dropZone: wrap, taskId: () => this.taskId, insertLinks: false });
     const go = async () => {

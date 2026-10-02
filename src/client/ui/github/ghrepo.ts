@@ -5,6 +5,7 @@
 
 import { sameRepo } from '../../../shared/floors';
 import type { WorkerInfo } from '../../../shared/protocol';
+import { apiUrl } from '../../multiplayer/visit';
 
 /** owner/name of an issue or PR: its `repo`, or from its URL (https://github.com/owner/name/pull/12). */
 export function repoOfItem(it: { url: string; repo?: string }): string {
@@ -15,7 +16,8 @@ export function repoOfItem(it: { url: string; repo?: string }): string {
 
 /** `url` with `repo=owner%2Fname` for one of the project's repositories (the server's ?repo=); unchanged without one. */
 export function ghUrl(url: string, repo?: string): string {
-  return repo ? `${url}${url.includes('?') ? '&' : '?'}repo=${encodeURIComponent(repo)}` : url;
+  const u = repo ? `${url}${url.includes('?') ? '&' : '?'}repo=${encodeURIComponent(repo)}` : url;
+  return apiUrl(u); // through the visited office's server while visiting
 }
 
 /** `{ repo }` to spread into a gh.* WS message for one of the project's repositories; nothing without one. */

@@ -96,7 +96,7 @@ curl -fsSL https://raw.githubusercontent.com/devellaoy/3d-kanban/main/deploy/pro
 ## What the fork adds
 
 - **A task process**: plan (with questions, auto or manual approval) → implement → 1–10 review rounds ⇄
-  fix → the Review column → Done. Comments put the agent back to work (a comment whose work changes nothing since the task came to
+  fix → the Review column → Done (a task that has to wait for something outside goes **On hold**, its worker resting in the 3D lounge: [docs/kanban.md](docs/kanban.md#on-hold)). Comments put the agent back to work (a comment whose work changes nothing since the task came to
   Review doesn't start a review round), and answer it when it asks in its terminal; usage limits are retried by themselves (a Codex one at the reset time its account reports). A task that finds no free desk or the office's
   worker limit full is queued and starts when there's room, as the account that made it (a task counts
   once against the limit: its reviewer never waits for its own implementer's place, and it takes no desk
@@ -160,6 +160,12 @@ curl -fsSL https://raw.githubusercontent.com/devellaoy/3d-kanban/main/deploy/pro
   world, a *six seven* emote, and a third-person camera that stays out of walls. They are kept
   in your browser only, so nobody else sees them yet ([features](docs/features.md#office-games-test-branch),
   [controls](docs/controls.md#office-games-test-branch)).
+- **Multiplayer: visit each other's offices**: every office stays on its own machine. Offices connect to a
+  small relay (`kanban3d relay`), see who is online in **☰ → 🌐 Players** and walk into each other's
+  offices read-only (chat, voice, the whiteboard and the games work; nothing else can be changed).
+  Sharing is per floor and off by default, and a visitor only gets the floors whose GitHub repositories
+  they can read themselves, checked by the owner's office ([features](docs/features.md#multiplayer-visit-each-others-offices),
+  [running a relay](docs/self-hosting.md#run-a-multiplayer-relay)).
 
 The rest is the office's own guide, from upstream agent-office; its install and run commands point at
 this repository (`devellaoy/3d-kanban`, its releases and the `kanban3d` command).
@@ -431,6 +437,8 @@ It installs Node 22, git, the GitHub CLI, Claude Code and the office as a system
 
 For HTTPS on your own domain, point a DNS record at the server and add `bash -s -- --domain office.example.com`: it sets up Caddy, which gets the certificate by itself. To put it on your Tailscale network instead, add `bash -s -- --tailscale`. The details, and setting it up by hand behind Caddy or nginx, are in [docs/self-hosting.md](docs/self-hosting.md).
 
+To let offices visit each other, run a relay on a server with `kanban3d relay` ([how](docs/self-hosting.md#run-a-multiplayer-relay), [flags](docs/configuration.md#multiplayer-relay)).
+
 ## Add users
 
 Everyone gets their own account, so their name is on their character, in chat and on every terminal they type into.
@@ -497,7 +505,7 @@ deploy/dokploy.sh ssh 'node /opt/agent-office/bin/agent-office.js accounts invit
 | X | Send a worker home |
 | L | Hang a sign over a desk ("Operations", "Code cleanup") |
 | T / Enter | Chat |
-| Enter, in a prompt box | A new line; Shift + Enter or ⌘/Ctrl + Enter sends (on a phone, tap the send button) |
+| Enter, in a prompt box | A new line (Shift + Enter too); Ctrl/⌘ + Enter sends (on a phone, tap the send button) |
 | V | Join voice; then hold V to talk |
 | M | Mute / unmute in voice |
 | Tab | The ☰ menu: every window |

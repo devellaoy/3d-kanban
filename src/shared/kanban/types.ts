@@ -7,10 +7,10 @@ import type { WorkerInfo, WorkerRepo } from '../protocol.js';
 // --- Columns, phases and runs ---------------------------------------------------------------------
 
 /** A task's column. Fixed: there are no custom columns. `archived` isn't on the board. */
-export type TaskStatus = 'todo' | 'in_progress' | 'waiting' | 'review' | 'done' | 'archived';
-export const TASK_STATUSES: readonly TaskStatus[] = ['todo', 'in_progress', 'waiting', 'review', 'done', 'archived'];
+export type TaskStatus = 'todo' | 'in_progress' | 'waiting' | 'review' | 'on_hold' | 'done' | 'archived';
+export const TASK_STATUSES: readonly TaskStatus[] = ['todo', 'in_progress', 'waiting', 'review', 'on_hold', 'done', 'archived'];
 /** The board's columns, left to right. */
-export const BOARD_COLUMNS: readonly TaskStatus[] = ['todo', 'in_progress', 'waiting', 'review', 'done'];
+export const BOARD_COLUMNS: readonly TaskStatus[] = ['todo', 'in_progress', 'waiting', 'review', 'on_hold', 'done'];
 export function isTaskStatus(v: unknown): v is TaskStatus {
   return typeof v === 'string' && (TASK_STATUSES as readonly string[]).includes(v);
 }
@@ -676,8 +676,8 @@ export interface KanbanWorkerSummary {
 }
 
 /** Why a worker leaves its desk: which of the office's paths sent it home. */
-export type DepartureReason = 'sent-home' | 'queue' | 'meeting' | 'merged' | 'released' | 'engine';
-export const DEPARTURE_REASONS: readonly DepartureReason[] = ['sent-home', 'queue', 'meeting', 'merged', 'released', 'engine'];
+export type DepartureReason = 'sent-home' | 'queue' | 'meeting' | 'merged' | 'released' | 'hold' | 'engine';
+export const DEPARTURE_REASONS: readonly DepartureReason[] = ['sent-home', 'queue', 'meeting', 'merged', 'released', 'hold', 'engine'];
 
 /**
  * What a worker is sent home with (Floor.sendHome, WorkerManager.kill): kept on the worker before it

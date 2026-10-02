@@ -140,7 +140,7 @@ export const workerHandlers = {
   'worker.attach'(ctx, c, msg) {
     const who = c.peer.name;
     const w = workerOf(ctx, msg.workerId);
-    const snap = w?.floor.workers.attach(w.wid, c.id, who);
+    const snap = w?.floor.workers.attach(w.wid, c.id, who, !c.visitor); // a visitor looking does not clear the owner's waiting mark
     if (w && snap) {
       c.attached.add(w.wid);
       ctx.sendTo(c, { t: 'term.snapshot', workerId: w.wid, ...snap });

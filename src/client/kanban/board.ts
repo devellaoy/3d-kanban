@@ -11,12 +11,13 @@ import { columnName } from './labels';
 import { kstore } from './store';
 import { dialog, showDialog } from './ui';
 
-const COLUMN_ICON: Record<TaskStatus, string> = { todo: '📥', in_progress: '🚧', waiting: '🙋', review: '👀', done: '✅', archived: '🗄️' };
+const COLUMN_ICON: Record<TaskStatus, string> = { todo: '📥', in_progress: '🚧', waiting: '🙋', review: '👀', on_hold: '⏸️', done: '✅', archived: '🗄️' };
 const EMPTY_TEXT: Record<TaskStatus, string> = {
   todo: 'Nothing to do. ＋ New task adds one.',
   in_progress: 'Nothing running',
   waiting: 'Nobody is waiting on you',
   review: 'Nothing to review',
+  on_hold: 'Nothing on hold',
   done: 'Nothing done yet',
   archived: 'The archive is empty',
 };

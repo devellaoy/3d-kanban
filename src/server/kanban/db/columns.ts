@@ -45,8 +45,9 @@ export const TASK_COLUMNS: Record<string, string> = {
   createdByAccount: 'created_by_account',
   queuedRun: 'queued_run',
   handoffFingerprint: 'handoff_fingerprint',
+  hold: 'hold',
 };
-const JSON_FIELDS = new Set(['overrides', 'workspace', 'pendingMessages', 'flags', 'tags', 'queuedRun']);
+const JSON_FIELDS = new Set(['overrides', 'workspace', 'pendingMessages', 'flags', 'tags', 'queuedRun', 'hold']);
 const BOOL_FIELDS = new Set(['usePlan', 'useReview']);
 
 export function json<T>(v: unknown, fallback: T): T {
@@ -60,7 +61,7 @@ export function json<T>(v: unknown, fallback: T): T {
 }
 export const opt = <T>(v: unknown): T | undefined => (v === null || v === undefined ? undefined : (v as T));
 export const toDb = (field: string, v: unknown): unknown => {
-  if (v === undefined || v === null) return JSON_FIELDS.has(field) && field !== 'workspace' && field !== 'queuedRun' ? (field === 'tags' || field === 'pendingMessages' ? '[]' : '{}') : null;
+  if (v === undefined || v === null) return JSON_FIELDS.has(field) && field !== 'workspace' && field !== 'queuedRun' && field !== 'hold' ? (field === 'tags' || field === 'pendingMessages' ? '[]' : '{}') : null;
   if (JSON_FIELDS.has(field)) return JSON.stringify(v);
   if (BOOL_FIELDS.has(field)) return v ? 1 : 0;
   return v;

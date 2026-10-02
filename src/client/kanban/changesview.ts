@@ -24,6 +24,7 @@ import { holdChangesWatch } from './changeswatch';
 import { fmtTime } from './labels';
 import { splitDiff } from './model';
 import { kstore } from './store';
+import { apiUrl } from '../multiplayer/visit';
 
 const MODE_NAMES: Record<ChangesMode, string> = { all: 'All changes', commits: 'Per commit', uncommitted: '✏️ Uncommitted' };
 const SOURCE_NAME: Record<KanbanRepoChangesInfo['source'], string> = { worktree: 'from the task’s worktree', checkout: 'from the project’s checkout' };
@@ -185,9 +186,7 @@ class ChangesView {
     return this.changes?.repos.find((r) => r.id === this.repoId);
   }
 
-  private base(): string {
-    return `/api/kanban/tasks/${this.o.taskId}`;
-  }
+  private base = (): string => apiUrl(`/api/kanban/tasks/${this.o.taskId}`);
 
   /** Reads the task's repositories again, and whatever is on screen (the first time, and with ↻). */
   private async refresh() {

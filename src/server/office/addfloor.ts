@@ -8,7 +8,7 @@ import type { Ctx } from './context.js';
 export function addFolder(ctx: Ctx, c: Client, dir: string, rid?: string) {
   const who = c.peer.name;
   const fail = (error: string) => ctx.sendTo(c, { t: 'floor.added', dir, rid, error });
-  if (!ctx.meOf(c.accountId).admin) return fail('Only admins can add a folder as a project');
+  if (!ctx.meOfClient(c).admin) return fail('Only admins can add a folder as a project');
   const def = ctx.building.addDir(dir.slice(0, 2048), who);
   if (typeof def === 'string') return fail(def);
   ctx.floorsChanged();

@@ -80,6 +80,7 @@ Usage:
   kanban3d setup [--projects <dir>] [--project <owner/repo>]...
   kanban3d prune [dir] [--dry-run] [--force]
   kanban3d accounts [list|invite|revoke|role|password] ...
+  kanban3d relay --password <pw> [--port <n>] [--github-client-id <id>] ...
 
 Runs the office. Every project is a floor of the building: ride the elevator,
 pick one of the repositories your \`gh\` login can see, and the office clones it
@@ -103,6 +104,8 @@ Commands:
                           changes or unpushed commits is kept unless --force is given.
   accounts                Invite, list and revoke people's own accounts, and switch
                           the shared password off or on (see accounts --help)
+  relay                   Run the multiplayer relay offices connect to and visit each
+                          other through (see relay --help)
 
 Options:
       --home <dir>        Where the office keeps its data when no [dir] is given

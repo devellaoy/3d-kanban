@@ -9,6 +9,7 @@ import { githubRoutes } from './github.js';
 import { pageRoutes } from './pages.js';
 import { searchRoutes } from './search.js';
 import { kanbanRoutes } from '../../kanban/http/routes.js';
+import { mpRoutes } from '../../multiplayer/routes.js';
 
 export const routes: readonly Route[] = [
   // Anyone.
@@ -31,6 +32,7 @@ export const routes: readonly Route[] = [
   // Signed in.
   authRoutes.whoami,
   kanbanRoutes.api,
+  mpRoutes.visit, // a visit's GETs, answered by the other office
   agentRoutes.openCodeModels,
   agentRoutes.grokModels,
   fileRoutes.image,

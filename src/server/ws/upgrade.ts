@@ -5,6 +5,7 @@ import { WebSocketServer } from 'ws';
 import { relayUpgrade, tunneledPort } from '../relay.js';
 import { sameOrigin } from '../http/util.js';
 import type { Ctx } from '../office/context.js';
+import { mpVisitUpgrade } from '../multiplayer/guest.js';
 import { onConnection } from './connection.js';
 
 function refuseUpgrade(socket: Duplex) {
@@ -35,7 +36,9 @@ export function acceptWebSockets(ctx: Ctx, server: http.Server | https.Server) {
       return;
     }
     const session = url.pathname === '/ws' && sameOrigin(req, cfg) ? auth.fromRequest(req) : undefined;
-    if (!session) return refuseUpgrade(socket);
+    // A visitor's tunneled request (multiplayer) is no browser: it never opens the office's socket.
+    if (!session || session.visitor) return refuseUpgrade(socket);
+    if (url.searchParams.has('visit')) return mpVisitUpgrade(ctx, wss, req, socket, head, url, session);
     wss.handleUpgrade(req, socket, head, (ws) => onConnection(ctx, ws, url, session));
   });
 }

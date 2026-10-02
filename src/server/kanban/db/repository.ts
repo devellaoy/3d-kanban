@@ -247,9 +247,13 @@ export class KanbanRepository {
   }
 
   /** Tasks in any of these states (the engine's sweeps: running ones, due retries...). */
-  tasksWhere(filter: { status?: KanbanTask['status'][]; runState?: KanbanTask['runState'][]; retryDue?: number }): KanbanTask[] {
+  tasksWhere(filter: { status?: KanbanTask['status'][]; runState?: KanbanTask['runState'][]; retryDue?: number; project?: string }): KanbanTask[] {
     const where: string[] = [];
     const args: unknown[] = [];
+    if (filter.project !== undefined) {
+      where.push('project = ?');
+      args.push(filter.project);
+    }
     if (filter.status?.length) {
       where.push(`status IN (${filter.status.map(() => '?').join(', ')})`);
       args.push(...filter.status);
@@ -385,6 +389,11 @@ export class KanbanRepository {
   /** A queued comment was delivered to the agent (or no longer is queued). */
   setCommentPending(id: number, pending: boolean) {
     this.db.prepare('UPDATE comments SET pending = ? WHERE id = ?').run(pending ? 1 : 0, id);
+  }
+
+  /** Every user comment on a task made at or after `since` (ms), oldest first. */
+  userCommentsSince(taskId: number, since: number): KanbanComment[] {
+    return (this.db.prepare(`SELECT * FROM comments WHERE task_id = ? AND author_kind = 'user' AND created_at >= ? ORDER BY id`).all(taskId, since) as Row[]).map((r) => this.comment(r));
   }
 
   /** A page of a task's comments, oldest first: the newest `limit`, or the `limit` before comment `before`. */
@@ -700,6 +709,7 @@ export class KanbanRepository {
       createdByAccount: opt(r.created_by_account),
       queuedRun: json<KanbanTask['queuedRun']>(r.queued_run, undefined),
       handoffFingerprint: opt(r.handoff_fingerprint),
+      hold: json<KanbanTask['hold']>(r.hold, undefined),
       askingKind: r.waiting_reason === 'agent_asking' ? this.askingKinds.get(id) : undefined,
     };
     for (const k of Object.keys(t) as (keyof KanbanTask)[]) if (t[k] === undefined) delete t[k];
@@ -825,6 +835,7 @@ export function toCard(t: KanbanTask, commentCount: number, review?: CardReview)
     waitingReason: t.waitingReason,
     waitingText: t.waitingText,
     askingKind: t.askingKind,
+    hold: t.hold,
     retryAt: t.retryAt,
     prs: t.prs.map((p) => clean({ repoId: p.repoId, repo: p.repo, number: p.number, url: p.url, state: p.state })),
     tags: t.tags,

@@ -265,11 +265,25 @@ export function createCorePlugin(ctx: KanbanContext, subs: KanbanSubscriptions):
         ctx.taskChanged(task.id);
         return typeof err === 'string' && err ? fail(c, m.rid, err) : ok(c, m.rid, { taskId: task.id });
       }
+      if (check.action === 'hold' || check.action === 'unhold') {
+        // The engine parks the task (its workers go home) or hires its implementer again; it says why not.
+        const run = check.action === 'hold' ? ctx.engine.hold?.(task.id, c, { note: m.note, until: m.until }) : ctx.engine.unhold?.(task.id, c, m.note);
+        const err = run ? await run : "This office can't put tasks on hold";
+        if (!(typeof err === 'string' && err)) ctx.repo.appendEvent(task.id, 'moved', { by: c.name, from: task.status, to: m.to, ...(m.note ? { note: m.note } : {}) });
+        ctx.taskChanged(task.id);
+        return typeof err === 'string' && err ? fail(c, m.rid, err) : ok(c, m.rid, { taskId: task.id });
+      }
       const now = Date.now();
       const up: TaskUpdate = { status: m.to };
+      // Out of the hold, however it goes on: the hold's reason and date are no more.
+      if (task.status === 'on_hold') {
+        // On to Review, the messages left meanwhile wait for the next run; to Done or the archive nothing runs again (they stay plain comments), a reset starts over.
+        if (m.to === 'review') await ctx.engine.releaseHeld?.(task.id);
+        up.hold = null;
+      }
       if (check.action === 'reset') {
         // Sending somebody's workers home, or ending the run they are asking in, is the creator's call (or an admin's), as a delete is.
-        if ((task.workerId || task.reviewerWorkerId) && !c.admin && task.createdBy !== c.name) return fail(c, m.rid, 'Only whoever made it, or an admin, can move a task with workers back to To do');
+        if ((task.workerId || task.reviewerWorkerId || task.status === 'on_hold') && !c.admin && task.createdBy !== c.name) return fail(c, m.rid, 'Only whoever made it, or an admin, can move a task with workers (or one on hold, which keeps its session and worktree) back to To do');
         // Its workers at rest go home first (worktree kept): the reset forgets which worktree was theirs.
         const err = await ctx.engine.sendWorkersHome(task.id, c, 'reset');
         if (typeof err === 'string' && err) return fail(c, m.rid, err);

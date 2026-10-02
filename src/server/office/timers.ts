@@ -8,7 +8,7 @@ export function startTimers(ctx: Ctx): () => void {
     for (const c of clients.values()) {
       if (!c.stale.size || c.ws.bufferedAmount > SLOW_CLIENT_BYTES / 8) continue;
       for (const wid of c.stale) {
-        const snap = c.attached.has(wid) ? ctx.workerFloor(wid)?.workers.attach(wid, c.id, c.peer.name) : undefined;
+        const snap = c.attached.has(wid) ? ctx.workerFloor(wid)?.workers.attach(wid, c.id, c.peer.name, !c.visitor) : undefined;
         if (snap) ctx.sendTo(c, { t: 'term.snapshot', workerId: wid, ...snap });
       }
       c.stale.clear();
@@ -24,7 +24,8 @@ export function startTimers(ctx: Ctx): () => void {
         c.ws.terminate();
         continue;
       }
-      if (!c.out && (!ctx.stillIn(c) || c.admin !== ctx.meOf(c.accountId).admin)) accountsMoved = true;
+      // A visitor only needs the liveness ping (their RemoteSocket answers it); they have no account to re-check.
+      if (!c.out && !c.visitor && (!ctx.stillIn(c) || c.admin !== ctx.meOf(c).admin)) accountsMoved = true;
       c.isAlive = false;
       c.ws.ping();
     }

@@ -31,8 +31,8 @@ function presentedKey(req: IncomingMessage): string | undefined {
 // --- ai-kanban's vocabulary -----------------------------------------------------------------------
 
 /** Our columns in ai-kanban's words. */
-const LEGACY_STATUS: Record<TaskStatus, string> = { todo: 'todo', in_progress: 'in_progress', waiting: 'waiting', review: 'reviewable', done: 'done', archived: 'history' };
-const STATUS_TITLE: Record<TaskStatus, string> = { todo: 'To do', in_progress: 'In progress', waiting: 'Waiting', review: 'Review', done: 'Done', archived: 'Archive' };
+const LEGACY_STATUS: Record<TaskStatus, string> = { todo: 'todo', in_progress: 'in_progress', waiting: 'waiting', review: 'reviewable', on_hold: 'waiting', done: 'done', archived: 'history' };
+const STATUS_TITLE: Record<TaskStatus, string> = { todo: 'To do', in_progress: 'In progress', waiting: 'Waiting', review: 'Review', on_hold: 'On hold', done: 'Done', archived: 'Archive' };
 /** A status as ai-kanban's callers may give it. */
 function ourStatus(s: string): TaskStatus | undefined {
   const t = s.trim().toLowerCase();
@@ -150,7 +150,7 @@ function publicTask(ctx: KanbanContext, t: KanbanTask, withDescription = false) 
     ticketId: t.ticket ?? null,
     status: LEGACY_STATUS[t.status],
     statusTitle: STATUS_TITLE[t.status],
-    active: t.status !== 'done' && t.status !== 'archived',
+    active: t.status !== 'done' && t.status !== 'archived' && t.status !== 'on_hold',
     runStatus: runStatus(t),
     running: t.runState !== 'idle',
     taskType: t.type,
@@ -206,7 +206,7 @@ export async function handleV1(ctx: KanbanContext, req: IncomingMessage, res: Se
     const limit = Math.max(1, Math.min(200, Number(str('limit')) || 50));
     const offset = Math.max(0, Number(str('offset')) || 0);
     const all = ctx.repo.listTasks(projectId || null, { includeArchived: true }).filter((t) => {
-      if (status ? t.status !== status : scope === 'active' && (t.status === 'done' || t.status === 'archived')) return false;
+      if (status ? t.status !== status && !(status === 'waiting' && t.status === 'on_hold') : scope === 'active' && (t.status === 'done' || t.status === 'archived' || t.status === 'on_hold')) return false;
       if (ticket && (t.ticket ?? '').toLowerCase() !== ticket) return false;
       if (text && !t.title.toLowerCase().includes(text) && !(t.ticket ?? '').toLowerCase().includes(text)) return false;
       return true;

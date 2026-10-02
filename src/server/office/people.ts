@@ -1,6 +1,6 @@
 import type { Accounts } from '../accounts.js';
 import type { Me } from '../../shared/protocol.js';
-import type { Ctx, People } from './context.js';
+import type { Ctx, People, Who } from './context.js';
 import type { Client } from './client.js';
 
 /** WebSocket close code for a session that stopped counting: the account was revoked, or the shared password switched off. */
@@ -8,11 +8,18 @@ const SIGNED_OUT = 4001;
 
 /** Who the people in the office are signed in as, and telling them when that changes. */
 export function people(ctx: Ctx): People {
-  /** Who a connection is: its account's current name and role, or an admin guest on the shared password. */
-  const meOf = (accountId: string | undefined): Me => {
-    const a = ctx.accounts.get(accountId);
-    return a ? { account: { name: a.name, role: a.role }, admin: a.role === 'admin' } : { admin: !accountId };
+  /**
+   * Who a connection is: its account's current name and role, or an admin guest on the shared
+   * password. It takes the whole of who is asking (a client or a session), never just an account id,
+   * because "no account" means an admin guest here and a visitor from another office has none: a
+   * visitor is never an admin.
+   */
+  const meOf = (who: Who): Me => {
+    if (who.visitor) return { admin: false, visitor: true };
+    const a = ctx.accounts.get(who.accountId);
+    return a ? { account: { name: a.name, role: a.role }, admin: a.role === 'admin' } : { admin: !who.accountId };
   };
+  const meOfClient = (c: Client): Me => meOf(c);
   /** Still signed in: the account wasn't revoked, and the shared password wasn't switched off. */
   const stillIn = (c: Client) => (c.accountId ? !!ctx.accounts.get(c.accountId) : ctx.accounts.sharedPassword);
   const signOut = (c: Client) => {
@@ -24,12 +31,13 @@ export function people(ctx: Ctx): People {
   const accountsChanged = () => {
     let state: ReturnType<Accounts['state']> | undefined;
     for (const c of ctx.clients.values()) {
-      if (c.out) continue;
+      // A visitor is the other office's guest: not one of our accounts, so there is nothing to sign out or tell.
+      if (c.out || c.visitor) continue;
       if (!stillIn(c)) {
         signOut(c);
         continue;
       }
-      const me = meOf(c.accountId);
+      const me = meOf(c);
       if (me.admin !== c.admin) {
         c.admin = me.admin;
         ctx.sendTo(c, { t: 'me', me });
@@ -37,5 +45,5 @@ export function people(ctx: Ctx): People {
       if (me.admin) ctx.sendTo(c, { t: 'accounts', state: (state ??= ctx.accounts.state(onlineAccounts())) });
     }
   };
-  return { meOf, stillIn, signOut, onlineAccounts, accountsChanged };
+  return { meOf, meOfClient, stillIn, signOut, onlineAccounts, accountsChanged };
 }

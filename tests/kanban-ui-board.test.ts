@@ -246,3 +246,29 @@ test('two repository picks that come to the same repositories are no change', ()
   assert.equal(sameRepoPick(['web'], null, project), false);
   assert.equal(sameRepoPick(['web'], ['web', 'api'], project), false);
 });
+
+test('On hold: the longest-held card first, and the column takes the cards of its status', () => {
+  const held = (id: number, at: number) => card(id, { status: 'on_hold', updatedAt: 9000 - id, hold: { at, by: 'Ada', from: 'review' } });
+  const cards = [held(1, 300), held(2, 100), held(3, 200), card(4, { status: 'review' })];
+  assert.deepEqual(sortCards(cards.slice(0, 3), 'on_hold').map((c) => c.id), [2, 3, 1]);
+  const cols = columnsOf(cards, f(), [project], 'web');
+  assert.deepEqual(cols.on_hold.map((c) => c.id), [2, 3, 1]);
+  assert.equal(cols.review.length, 1);
+});
+
+test('dropZones: a waiting or review card may go on hold, an on hold card back to work', () => {
+  for (const status of ['waiting', 'review'] as const) {
+    const z = dropZones({ status, runState: 'idle' }).find((x) => x.to === 'on_hold');
+    assert.deepEqual([z?.ok, z?.action], [true, 'hold']);
+    assert.equal(dropZones({ status, runState: 'running' }).find((x) => x.to === 'on_hold')?.ok, false);
+  }
+  const held = dropZones({ status: 'on_hold', runState: 'idle' });
+  assert.equal(held.some((x) => x.to === 'on_hold'), false);
+  assert.equal(held.find((x) => x.to === 'in_progress')?.action, 'unhold');
+  assert.deepEqual(dropTargets({ status: 'on_hold', runState: 'idle' }).sort(), ['archived', 'done', 'in_progress', 'review', 'todo']);
+});
+
+test('boardStats counts a held task in the total only', () => {
+  const s = boardStats([card(1, { status: 'on_hold' })], null);
+  assert.deepEqual([s.total, s.running, s.attention, s.review, s.done], [1, 0, 0, 0, 0]);
+});

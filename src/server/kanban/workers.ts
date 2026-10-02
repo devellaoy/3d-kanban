@@ -5,6 +5,7 @@
 import type { AgentEffort, WorkerInfo, WorkerStatus } from '../../shared/protocol.js';
 import type { DepartureIntent } from '../../shared/kanban/types.js';
 import { codexHookTrustArgs } from './codex-trust.js';
+import type { Pty } from '../ptys.js';
 import { validateWorkerEffort, validateWorkerModel } from '../agents.js';
 import type { WorktreeCleanup } from '../worktrees.js';
 import type { SpawnExtra, Worker, WorkerHandle, WorkerObservation, WorkerObserver } from '../workers/types.js';
@@ -20,10 +21,38 @@ interface CodexLog {
   home?: string;
 }
 
+/** Kills a process and waits for it to exit: SIGTERM, then after 5 s SIGKILL and a few more seconds; resolves to what went wrong if it is still there. */
+async function endProcess(proc: Pty, name: string): Promise<string | undefined> {
+  let exited = false;
+  proc.onExit(() => (exited = true));
+  const within = async (ms: number) => {
+    for (const end = Date.now() + ms; !exited && Date.now() < end; ) await new Promise((r) => setTimeout(r, 25));
+    return exited;
+  };
+  for (const [signal, ms] of [[undefined, 5000], ['SIGKILL', 3000]] as const) {
+    try {
+      proc.kill(signal);
+    } catch {
+      // already gone
+    }
+    if (await within(ms)) return undefined;
+  }
+  return `${name}'s old process didn't exit`;
+}
+
 export abstract class KanbanWorkers {
   protected abstract readonly workers: Map<string, Worker>;
   protected abstract emitUpdate(w: Worker): void;
+  protected abstract setStatus(w: Worker, status: WorkerStatus): void;
   abstract resume(id: string, prompt?: string): string | undefined;
+
+  /** Workers whose current run the engine follows: an agent that exits on a failed resume is the engine's to deal with, not upstream's silent fresh start (see follows). */
+  protected readonly followed = new Set<string>();
+  /** The engine follows (or stops following) a worker's run. Not kept across restarts: the engine follows again what it re-attaches. */
+  follows(id: string, on: boolean) {
+    if (on) this.followed.add(id);
+    else this.followed.delete(id);
+  }
 
   /** Who hears about status changes and hooks (see addObserver). */
   private observers = new Set<WorkerObserver>();
@@ -58,23 +87,29 @@ export abstract class KanbanWorkers {
     const proc = w.pty;
     // Gone before it exits, so the exit handler knows it was the office and stays quiet.
     w.pty = undefined;
-    if (proc) {
-      const gone = new Promise<void>((resolve) => {
-        proc.onExit(() => resolve());
-        setTimeout(resolve, 5000).unref();
-      });
-      try {
-        proc.kill();
-      } catch {
-        // already gone
-      }
-      // The old process lets go of the session before the new one picks it up.
-      await gone;
+    // The old process lets go of the session before the new one picks it up; one that won't leave is not resumed over (two agents on a session).
+    const stuck = proc && (await endProcess(proc, w.info.name));
+    if (stuck) {
+      if (!w.pty && this.workers.get(id) === w) w.pty = proc;
+      return stuck;
     }
     if (this.workers.get(id) !== w) return 'No such worker';
     if (w.pty) return 'Worker is already running';
     w.interrupted = false;
+    (w.extra ??= {}).restartedAt = Date.now();
     return this.resume(id, opts.prompt);
+  }
+
+  /** Ends a worker's agent process in place (the exit handler then marks it `exited` at its desk: R resumes it); resolves to what went wrong, if anything. */
+  async halt(id: string): Promise<string | undefined> {
+    const w = this.workers.get(id);
+    return w?.pty ? endProcess(w.pty, w.info.name) : undefined;
+  }
+
+  /** A worker whose turn is over without a Stop hook (Esc'd): at rest, as it was `working` a moment ago. */
+  rested(id: string) {
+    const w = this.workers.get(id);
+    if (w?.info.status === 'working') this.setStatus(w, 'done');
   }
 
   /** Hears every worker's status changes and hooks (see WorkerObservation); returns how to stop. */
@@ -98,6 +133,11 @@ export abstract class KanbanWorkers {
     if (!w?.info.kanban || JSON.stringify(w.info.kanban) === JSON.stringify(summary)) return;
     w.info.kanban = summary;
     this.emitUpdate(w);
+  }
+
+  /** When the office last restarted this worker's agent process (see SpawnExtra.restartedAt). */
+  restartedAt(id: string): number | undefined {
+    return this.workers.get(id)?.extra?.restartedAt;
   }
 
   /** The phase flags a worker launches with now (see SpawnExtra.launchArgs), so the engine knows when a phase needs a relaunch. */
