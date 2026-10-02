@@ -87,11 +87,9 @@ export function openFloorMenu(anchor: HTMLElement, opts: FloorMenuOptions): () =
     return btn;
   };
 
-  /** A render held back while a floor is dragged (see makeSortable), done after the drop. */
-  let dirty = false;
-  const render = () => {
-    if (sortable.dragging()) return void (dirty = true);
-    dirty = false;
+  const sortable = makeSortable(el, { enabled: canReorder, onMove: (m) => sendMove(opts.net, m) });
+  // A render that comes while a floor is pressed or dragged waits for the drop (see makeSortable).
+  const render = sortable.held(() => {
     const floors = store.floors;
     const here = floors.findIndex((f) => f.id === store.floor);
     const add = h('button.floor-item.add', { type: 'button', role: 'menuitem', title: 'The elevator: add another project as a floor' }, h('span.floor-no', {}, '🛗'), h('span.floor-text', {}, h('span.floor-name', {}, 'Elevator'), h('span.floor-sub', {}, 'Add a project…')));
@@ -116,8 +114,7 @@ export function openFloorMenu(anchor: HTMLElement, opts: FloorMenuOptions): () =
       opts.roof?.();
     });
     keepFocus(el, () => el.replaceChildren(h('div.floor-menu-head', {}, `🏢 ${floors.length} floor${floors.length === 1 ? '' : 's'}`), ...(floors.length && opts.roof ? [roof] : []), ...groups, add));
-  };
-  const sortable = makeSortable(el, { enabled: canReorder, onMove: (m) => sendMove(opts.net, m), onDragEnd: () => dirty && render() });
+  });
 
   const place = () => {
     const r = anchor.getBoundingClientRect();

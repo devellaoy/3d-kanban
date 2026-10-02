@@ -94,8 +94,13 @@ export interface SortableOptions {
   onMove(move: FloorMove): void;
   /** Whether you may reorder right now (see canReorder). */
   enabled(): boolean;
-  /** A press or a drag ended, moved or not (a render held back for it can happen now). */
-  onDragEnd?(): void;
+}
+
+export interface Sortable {
+  /** A row is pressed or being dragged. */
+  dragging(): boolean;
+  /** `paint` as the list's render: while a row is pressed or dragged it's held back, and done once after. */
+  held(paint: () => void): () => void;
 }
 
 /**
@@ -105,15 +110,25 @@ export interface SortableOptions {
  * started on. The drop line is placed inside `container`, which is positioned (relative, or fixed
  * like the floor menu).
  *
- * The lists render again whenever the counts change. They hold that back from the press to the drop
- * (dragging() says so): a finger's touch events stay with the element it went down on, and once that
- * is gone nothing reaches the list to stop it scrolling. And a press and a drag hold the floor's id
- * (or the group's key), never its element, so what's measured is always what's on the page.
+ * The lists render again whenever the counts change. Their render goes through held(), which holds
+ * it back from the press to the drop: a finger's touch events stay with the element it went down on,
+ * and once that is gone nothing reaches the list to stop it scrolling. So the rows stay put while they
+ * are dragged, and they're measured once, when the drag starts.
  */
-export function makeSortable(container: HTMLElement, opts: SortableOptions): { dragging(): boolean } {
+export function makeSortable(container: HTMLElement, opts: SortableOptions): Sortable {
   container.classList.add('floor-sortable');
   let press: { x: number; y: number; id: number; key: string; group: boolean; touch: boolean; hold?: ReturnType<typeof setTimeout> } | null = null;
-  let drag: { key: string; group: boolean; pointer: number; line: HTMLElement; move: FloorMove | null } | null = null;
+  /** `slots`: where it can land, top-first, as offsets in the list's content (so its scrolling doesn't matter); `at`: the one it's over. */
+  let drag: { key: string; group: boolean; pointer: number; line: HTMLElement; slots: { key: string; top: number; bottom: number }[]; gap: number; at: number | undefined; move: FloorMove | null } | null = null;
+  /** The render held back while a row was pressed or dragged. */
+  let paint: (() => void) | null = null;
+  let owed = false;
+  /** Pressed and dragged no more: the render held back happens now. */
+  const settle = () => {
+    if (press || drag || !owed) return;
+    owed = false;
+    paint?.();
+  };
 
   /** The row (or group) with that id (or key) as the list is now. */
   const find = (key: string, group: boolean) => container.querySelector<HTMLElement>(group ? `.floor-group[data-group="${CSS.escape(key)}"]` : `[data-floor="${CSS.escape(key)}"]`);
@@ -124,28 +139,22 @@ export function makeSortable(container: HTMLElement, opts: SortableOptions): { d
       : [...(el.closest('.floor-group')?.querySelectorAll<HTMLElement>('[data-floor]:not([data-fixed])') ?? [])].filter((r) => r !== el);
   const keyOf = (el: HTMLElement, group: boolean) => (group ? el.dataset.group! : el.dataset.floor!);
 
+  /** A screen y as an offset in the list's content: the slots measured then stay right however it, or the page around it, scrolls. */
+  const contentY = (y: number) => y - container.getBoundingClientRect().top - container.clientTop + container.scrollTop;
+
   const track = (y: number) => {
     if (!drag) return;
-    const el = find(drag.key, drag.group);
-    if (!el) return end(false);
-    el.classList.add('dragging');
-    const list = slots(el, drag.group);
+    const { slots: list, gap } = drag;
     // Top-first, it lands before the first one whose middle is under the pointer: just above that one, bottom-up.
-    const k = list.findIndex((s) => {
-      const r = s.getBoundingClientRect();
-      return y < r.top + r.height / 2;
-    });
+    const c = contentY(y);
+    const k = list.findIndex((s) => c < (s.top + s.bottom) / 2);
+    if (k === drag.at) return;
+    drag.at = k;
     const under = k < 0 ? null : list[k];
     const ref = under ?? list[list.length - 1];
-    const box = container.getBoundingClientRect();
-    if (ref) {
-      const r = ref.getBoundingClientRect();
-      const gap = parseFloat(getComputedStyle(ref.parentElement ?? container).rowGap) || 0;
-      const edge = under ? r.top - gap / 2 : r.bottom + gap / 2;
-      drag.line.style.top = `${edge - box.top - container.clientTop + container.scrollTop}px`;
-    }
+    if (ref) drag.line.style.top = `${under ? ref.top - gap / 2 : ref.bottom + gap / 2}px`;
     drag.line.hidden = !ref;
-    const above = under ? keyOf(under, drag.group) : null;
+    const above = under ? under.key : null;
     const move = drag.group ? { group: drag.key, above } : { floor: drag.key, above };
     drag.move = applyMove(store.floors, move) ? move : null;
     drag.line.classList.toggle('same', !drag.move);
@@ -156,10 +165,20 @@ export function makeSortable(container: HTMLElement, opts: SortableOptions): { d
     if (!press) return;
     const { key, group } = press;
     drop(false);
-    if (!find(key, group)) return opts.onDragEnd?.();
+    const el = find(key, group);
+    if (!el) return settle();
+    // Measured once: the list doesn't render again until the drop.
+    const box = container.getBoundingClientRect();
+    const offset = container.scrollTop - box.top - container.clientTop;
+    const measured = slots(el, group).map((s) => {
+      const r = s.getBoundingClientRect();
+      return { key: keyOf(s, group), top: r.top + offset, bottom: r.bottom + offset };
+    });
+    const gap = parseFloat(getComputedStyle(el.parentElement ?? container).rowGap) || 0;
     const line = h('div.drop-line', { 'aria-hidden': 'true' });
     container.append(line);
-    drag = { key, group, pointer: pointerId, line, move: null };
+    drag = { key, group, pointer: pointerId, line, slots: measured, gap, at: undefined, move: null };
+    el.classList.add('dragging');
     container.classList.add('sorting');
     try {
       container.setPointerCapture(pointerId);
@@ -169,14 +188,14 @@ export function makeSortable(container: HTMLElement, opts: SortableOptions): { d
     track(y);
   };
 
-  /** Lets go of a press that never became a drag; `settle` renders what was held back (after the click it makes). */
-  const drop = (settle = true) => {
+  /** Lets go of a press that never became a drag; `later`: then renders what was held back, after the click it makes. */
+  const drop = (later = true) => {
     if (!press) return;
     clearTimeout(press.hold);
     press = null;
     window.removeEventListener('pointerup', release, true);
     window.removeEventListener('pointercancel', release, true);
-    if (settle) setTimeout(() => !press && !drag && opts.onDragEnd?.(), 0);
+    if (later) setTimeout(settle, 0);
   };
   /** The button let go anywhere, even outside the list. */
   const release = () => {
@@ -201,7 +220,7 @@ export function makeSortable(container: HTMLElement, opts: SortableOptions): { d
       opts.onMove(was.move);
       announce(`Moved ${label(was.key, was.group)}`);
     }
-    opts.onDragEnd?.();
+    settle();
   };
 
   container.addEventListener('pointerdown', (e) => {
@@ -259,7 +278,17 @@ export function makeSortable(container: HTMLElement, opts: SortableOptions): { d
     announce(`Moved ${what} ${dir}`);
   });
 
-  return { dragging: () => !!drag || !!press };
+  return {
+    dragging: () => !!drag || !!press,
+    held(fn) {
+      paint = fn;
+      return () => {
+        if (press || drag) return void (owed = true);
+        owed = false;
+        fn();
+      };
+    },
+  };
 }
 
 /** What a dragged row or group is called, for the announcement. */

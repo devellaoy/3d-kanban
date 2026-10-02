@@ -189,11 +189,9 @@ export function openElevator(opts: ElevatorOptions): void {
     return btn;
   };
 
-  /** A render that came (the counts change every few hundred ms) while a floor was being dragged: it happens after the drop. */
-  let dirty = false;
-  const renderFloors = () => {
-    if (sortable.dragging()) return void (dirty = true);
-    dirty = false;
+  const sortable = makeSortable(floorsEl, { enabled: canReorder, onMove: (m) => sendMove(net, m) });
+  // The counts change every few hundred ms; a render that comes while a floor is pressed or dragged waits for the drop.
+  const renderFloors = sortable.held(() => {
     const floors = store.floors;
     const built = floors.some((f) => !f.cloning);
     // Top floor first, the way an elevator's buttons stack, in their owners' groups, with the roof over
@@ -205,8 +203,7 @@ export function openElevator(opts: ElevatorOptions): void {
         ...(built ? [garageButton()] : []),
       ),
     );
-  };
-  const sortable = makeSortable(floorsEl, { enabled: canReorder, onMove: (m) => sendMove(net, m), onDragEnd: () => dirty && renderFloors() });
+  });
 
   const repoRow = (r: RepoChoice) => {
     const floor = store.floors.find((f) => sameRepo(f.repo, r.name));

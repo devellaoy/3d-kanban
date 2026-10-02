@@ -40,6 +40,8 @@ export function promptScope(net: Net, changed: () => void): PromptScope {
 
   const projectText = (id: PromptId) => (project && isKanbanPromptId(id) ? settings?.projects[project]?.prompts[id] : undefined);
 
+  const floorIds = () => store.floors.filter((f) => !f.cloning).map((f) => f.id);
+  const optionIds = () => [...sel.options].slice(1).map((o) => o.value);
   const paintOptions = () => {
     const floors = store.floors.filter((f) => !f.cloning);
     sel.replaceChildren(h('option', { value: '' }, '🏢 The whole office'), ...floors.map((f) => h('option', { value: f.id }, f.name)));
@@ -55,7 +57,7 @@ export function promptScope(net: Net, changed: () => void): PromptScope {
       const kanban = isKanbanPromptId(id);
       el.classList.toggle('hidden', !kanban);
       if (!kanban) return;
-      if ([...sel.options].slice(1).map((o) => o.value).join('\n') !== store.floors.filter((f) => !f.cloning).map((f) => f.id).join('\n')) paintOptions();
+      if (optionIds().join('\n') !== floorIds().join('\n')) paintOptions();
       sel.disabled = busy || !settings;
       sel.title = busy ? 'Save or undo your changes first' : '';
       const src = kanbanPromptSource(id, { office: store.prompts.custom as Partial<Record<string, { text: string }>>, project: project ? (settings?.projects[project]?.prompts ?? {}) : {} });
