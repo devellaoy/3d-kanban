@@ -1,5 +1,6 @@
 import type { WebSocket } from 'ws';
 import { EMOTE_EVERY, EmoteBucket } from '../../shared/emotes.js';
+import type { VisitorScope } from '../../shared/multiplayer/allow.js';
 import type { PeerInfo } from '../../shared/protocol.js';
 
 /** A viewer with more than this waiting to go out skips terminal output, and gets a fresh snapshot once it catches up. */
@@ -14,6 +15,8 @@ export interface Client {
   accountId?: string;
   /** Whether this person was last told they're an admin (see `me`). */
   admin: boolean;
+  /** Someone visiting from another office (multiplayer): read-only, never an admin, and their socket is a RemoteSocket. */
+  visitor?: VisitorScope;
   /** Signed out while connected; whatever it still sends is dropped until the socket closes. */
   out?: boolean;
   attached: Set<string>;

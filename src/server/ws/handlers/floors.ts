@@ -48,7 +48,7 @@ export const floorHandlers = {
   'floor.remove'(ctx, c, msg) {
     const who = c.peer.name;
     // Everyone's workers on it stop: admins do it.
-    if (!ctx.meOf(c.accountId).admin) return ctx.warn(c, 'Only admins can take a floor off the building');
+    if (!ctx.meOfClient(c).admin) return ctx.warn(c, 'Only admins can take a floor off the building');
     const id = str(msg.floor, 64);
     const r = ctx.building.remove(id, who);
     if (typeof r === 'string') return ctx.warn(c, r);
@@ -60,7 +60,7 @@ export const floorHandlers = {
   'floor.projectsDir'(ctx, c, msg) {
     const who = c.peer.name;
     // It's a folder on the office's machine that `gh` writes into: admins pick it.
-    const err = ctx.meOf(c.accountId).admin ? ctx.building.setProjectsDir(str(msg.dir, 1024), who) : 'Only admins can move the workspace folder';
+    const err = ctx.meOfClient(c).admin ? ctx.building.setProjectsDir(str(msg.dir, 1024), who) : 'Only admins can move the workspace folder';
     ctx.warn(c, err);
     if (err) return;
     const state = ctx.building.projectsDirState();

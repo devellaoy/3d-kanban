@@ -1,6 +1,7 @@
 import { randomBytes } from 'node:crypto';
 import type { WebSocket } from 'ws';
 import type { Session } from '../auth.js';
+import type { VisitorScope } from '../../shared/multiplayer/allow.js';
 import type { ClientMsg } from '../../shared/protocol.js';
 import { elevatorSpot } from '../../shared/layout.js';
 import { lookFromSeed, sanitizeLook } from '../../shared/avatar.js';
@@ -15,29 +16,32 @@ import { mapNews } from './handlers/settings.js';
 
 /**
  * Someone came in: where they arrive and who they are, the welcome with everything they see, and
- * then whatever they send, until they leave.
+ * then whatever they send, until they leave. A `visit` is a visitor from another office
+ * (multiplayer): their socket is a RemoteSocket, they come in on a floor of their scope and are
+ * `@login`, with no account and none of the arrival side effects an owner's people have.
  */
-export function onConnection(ctx: Ctx, ws: WebSocket, url: URL, session: Session) {
+export function onConnection(ctx: Ctx, ws: WebSocket, url: URL, session: Session, visit?: VisitorScope) {
   const { cfg, accounts, clients, chat, building, floors, maps, team, upgrader, ledger, webhook, machine, sky, themes, prompts, leaveOnMerge, signins } = ctx;
   const { sendTo, broadcast, floorInfos, floorsChanged, arrivalFloor, meOf, accountsChanged, limitsOf } = ctx;
   const id = randomBytes(5).toString('hex');
   // Back on the floor they were on before a reload, a restart or closing the tab, else the first floor.
-  const wanted = url.searchParams.get('floor');
+  // A visitor only ever lands on a floor of their scope, and never on the roof.
+  const asked = url.searchParams.get('floor');
+  const wanted = visit ? (asked && visit.floors.has(asked) ? asked : ([...visit.floors][0] ?? null)) : asked;
   // Their floor's gone since (taken off the building, or its checkout deleted): up to the roof instead.
   const gone = !!wanted && wanted !== ROOF && !floors.has(wanted);
   // Up on the roof, as long as there's a building under it.
-  const onRoof = (wanted === ROOF || gone) && floors.size > 0;
+  const onRoof = !visit && (wanted === ROOF || gone) && floors.size > 0;
   const floor = onRoof ? undefined : arrivalFloor(wanted);
   // Back where they were standing on it too; anywhere else, they arrive by elevator.
   const back = !gone && wanted !== null && (onRoof || floor?.id === wanted);
   const spot = (back && spotFrom(url.searchParams)) || { ...elevatorSpot(), y: 0, rotY: 0 };
   const account = session.account;
   // An account's name is its own; on the shared password people pick one.
-  const name = account?.name ?? (str(url.searchParams.get('name'), 24).trim() || `Guest ${id.slice(0, 3)}`);
+  const name = visit ? `@${visit.login}` : (account?.name ?? (str(url.searchParams.get('name'), 24).trim() || `Guest ${id.slice(0, 3)}`));
   const colorParam = url.searchParams.get('color') ?? '';
   const intParam = (k: string) => (url.searchParams.get(k) ? Number(url.searchParams.get(k)) : undefined);
-  const me = meOf(account?.id);
-  const client = newClient(id, ws, { accountId: account?.id, admin: me.admin }, {
+  const client = newClient(id, ws, { accountId: account?.id, admin: meOf({ accountId: account?.id, visitor: visit }).admin }, {
     id,
     name,
     color: COLOR_RE.test(colorParam) ? colorParam : '#4f86f7',
@@ -55,6 +59,8 @@ export function onConnection(ctx: Ctx, ws: WebSocket, url: URL, session: Session
     ...(url.searchParams.get('lite') === '1' ? { lite: true } : {}),
     ...(onRoof ? { floor: ROOF } : floor ? { floor: floor.id } : {}),
   });
+  if (visit) client.visitor = visit;
+  const me = ctx.meOfClient(client);
   // Maps of your own may have been added or edited since: everyone already in hears first.
   const mapWas = maps.pick();
   if (maps.reload()) mapNews(ctx, mapWas);
@@ -85,16 +91,18 @@ export function onConnection(ctx: Ctx, ws: WebSocket, url: URL, session: Session
     leaveOnMerge: leaveOnMerge.state(),
     ...(onRoof ? roofView(ctx) : floorView(ctx, floor)),
   });
+  for (const f of features) f.welcomed?.(ctx, client);
   screensOf(ctx, client, floor);
   broadcast({ t: 'peer.join', peer: client.peer }, id);
   if (account) accountsChanged(); // now online
   floorsChanged();
-  if (floor) {
+  // A visitor's arrival must not make the owner's office do anything (refresh GitHub, wake agents, read plan limits).
+  if (floor && !visit) {
     floor.arrived();
     // Anyone whose process ended since (exited, or failed to resume) gets up as you walk in.
     floor.workers.wakeAll();
   }
-  limitsOf(client).refresh();
+  if (!visit) limitsOf(client).refresh();
   if (account) {
     sendTo(client, { t: 'signins', state: signins.state(account.id) });
     void signins.look(account.id);

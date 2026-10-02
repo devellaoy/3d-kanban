@@ -1,3 +1,4 @@
+// The service tunnels' relay (proxies a worker's dev-server ports); not the multiplayer relay in multiplayer/relay/ (see docs/code-layout.md).
 import http from 'node:http';
 import net from 'node:net';
 import type { Duplex } from 'node:stream';

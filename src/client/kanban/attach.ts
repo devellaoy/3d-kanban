@@ -4,13 +4,14 @@
 // the upload itself needs fetch.
 
 import type { KanbanAttachment } from '../../shared/kanban/types.js';
+import { apiUrl } from '../multiplayer/visit';
 
 /** The most a single upload may be (the office's UPLOAD_MAX_BYTES). */
 export const UPLOAD_MAX_BYTES = 20 * 1024 * 1024;
 
 /** Where the office serves an attachment back. */
 export function attachmentUrl(id: string): string {
-  return `/api/kanban/attachments/${encodeURIComponent(id)}`;
+  return apiUrl(`/api/kanban/attachments/${encodeURIComponent(id)}`);
 }
 
 /** Pictures the office shows inline (not SVG, which could carry script). */

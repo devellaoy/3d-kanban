@@ -96,3 +96,18 @@ test('links in a doc resolve to paths in the project, and nowhere else', () => {
   assert.ok(isDocPath('a/b.MD') && isDocPath('x.markdown'));
   assert.ok(!isDocPath('a.mdx') && !isDocPath('../a.md') && !isDocPath('a/./b.md') && !isDocPath('md'));
 });
+
+test('shown() holds a visitor to the listed docs and to pictures git counts, not ignored notes', async (t) => {
+  const { dir, docs } = fixture(t, true);
+  writeFileSync(path.join(dir, 'CLAUDE.local.md'), 'x');
+  execFileSync('git', ['add', '-N', 'pic.png'], { cwd: dir, stdio: 'ignore' });
+  writeFileSync(path.join(dir, 'ignored', 'p.png'), 'x');
+  assert.equal(await docs.shown('README.md'), true);
+  assert.equal(await docs.shown('NOTES.md'), true);
+  assert.equal(await docs.shown('pic.png'), true);
+  assert.equal(await docs.shown('.agent-office/meetings/notes.md'), false);
+  assert.equal(await docs.shown('ignored/secret.md'), false);
+  assert.equal(await docs.shown('ignored/p.png'), false);
+  assert.equal(await docs.shown('docs/../README.md'), false);
+  assert.equal(await docs.shown('../outside.md'), false);
+});

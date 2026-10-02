@@ -101,7 +101,8 @@ export const presenceHandlers = {
   },
   profile(ctx, c, msg) {
     const name = str(msg.name, 24).trim();
-    if (name && !c.accountId) c.peer.name = name;
+    // A visitor is always @login.
+    if (name && !c.accountId && !c.visitor) c.peer.name = name;
     if (COLOR_RE.test(msg.color)) c.peer.color = msg.color;
     c.peer.look = sanitizeLook(msg.look, c.peer.look);
     ctx.broadcast({ t: 'peer.update', peer: c.peer });
@@ -114,6 +115,9 @@ export const presenceHandlers = {
   },
   rtc(ctx, c, msg) {
     const target = ctx.clients.get(str(msg.to, 32));
+    // A visitor talks to people on floors they may see, up on the roof (open to them) and to other
+    // visitors, not to the rest of the owner's office (the lobby, the floors that are not shared).
+    if (target && c.visitor && !target.visitor && target.peer.floor !== ROOF && !c.visitor.floors.has(target.peer.floor ?? '')) return;
     if (target) ctx.sendTo(target, { t: 'rtc', from: c.id, data: msg.data });
   },
   chat(ctx, c, msg) {

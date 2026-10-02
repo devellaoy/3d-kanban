@@ -99,3 +99,42 @@ WantedBy=multi-user.target
 If you don't have a domain, `--self-signed` serves HTTPS directly. Browsers will warn once per person.
 
 **Voice across strict NATs.** Peers connect directly using public STUN. If some teammates can't hear each other (common on corporate networks), run a TURN server such as coturn and pass `--turn turn:user:pass@turn.example.com:3478`.
+
+## Run a multiplayer relay
+
+Offices that want to visit each other connect to a relay: a small separate program, `kanban3d relay`, that you run on one server both can reach. It's not an office and doesn't need `gh`, Claude or a checkout; it keeps nothing on disk. Flags and the GitHub OAuth App it needs are in [Configuration](configuration.md#multiplayer-relay).
+
+Behind Caddy, which proxies WebSockets and gets the certificate for you:
+
+```
+# /etc/caddy/Caddyfile
+relay.example.com {
+    reverse_proxy 127.0.0.1:4700
+}
+```
+
+and a systemd unit:
+
+```ini
+# /etc/systemd/system/kanban3d-relay.service
+[Unit]
+Description=3d-kanban multiplayer relay
+After=network.target
+
+[Service]
+User=dev
+# generate with: openssl rand -base64 24
+Environment=AGENT_OFFICE_RELAY_PASSWORD=<a long random password>
+Environment=AGENT_OFFICE_RELAY_GITHUB_CLIENT_ID=<the OAuth App's client id>
+ExecStart=/usr/bin/env kanban3d relay --host 127.0.0.1 --trust-proxy
+Restart=on-failure
+
+[Install]
+WantedBy=multi-user.target
+```
+
+`--trust-proxy` is for exactly this setup: the relay limits password attempts per client address, and behind a proxy it needs `X-Forwarded-For` to tell clients apart. Don't use it when the relay is reachable directly. Without a proxy, give the relay `--tls-cert` and `--tls-key` (and `--host 0.0.0.0`) to serve `wss://` itself. Browsers only let an HTTPS office use an `https://` relay, so use TLS on any relay that isn't on localhost.
+
+Each person then puts `https://relay.example.com` and the password into ⚙️ Settings → **🌐 Multiplayer** in their own office. Everyone who has the password can see who is online, and a visit only shows what its owner shared with that person's GitHub login. The relay carries the content of visits in progress, so run it yourself.
+
+**Voice across offices.** A visitor's voice goes straight between browsers, using the ICE servers the owner's office hands out. If the owner started the office with `--turn` (see above), visitors get those TURN servers too, so a visit through strict NATs needs the owner's TURN server to be reachable by the visitor.

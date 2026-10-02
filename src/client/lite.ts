@@ -12,6 +12,7 @@ import { ROOF } from '../shared/rooftop';
 import { DESK_BY_ID, nextFreeSeat } from '../shared/layout';
 import { isAsleep } from '../shared/status';
 import type { AgentEffort, AgentProvider, FloorInfo, WorkerInfo } from '../shared/protocol';
+import { openSafe } from './ui/url';
 import { $, clip, closeAllModals, doingNow, h, onDoingChange, onModalChange, openModal, readingNow, STATUS_LABEL, timeAgo, toast } from './ui/dom';
 import { openTerminal, openTerminalFor, routeTerminalMessage } from './ui/terminal';
 import { openChanges, openChangesFor, routeChangesMessage } from './ui/changes';
@@ -332,7 +333,7 @@ function showMeeting(preset?: MeetingPreset) {
         // In the floor's own repository, not another of the project's with the same number.
         const it = w.pr && findItem(store.pulls.items, w.pr.number, ownPullRepo(w.pr, store.currentFloor()?.repo));
         if (it) openPull(it, net, boardActions());
-        else if (w.pr) window.open(w.pr.url, '_blank', 'noopener');
+        else if (w.pr) openSafe(w.pr.url);
         else net.send({ t: 'worker.pr', workerId: id });
       },
     },

@@ -152,6 +152,12 @@ curl -fsSL https://raw.githubusercontent.com/devellaoy/3d-kanban/main/deploy/pro
   shortcuts to the 3D office and the 2D view, shows *The office is offline. Reconnecting…* while it can't
   reach the office, and offers **Reload** when a new version is out. HTTPS is needed except on
   localhost ([configuration](docs/configuration.md#pwa)).
+- **Multiplayer: visit each other's offices**: every office stays on its own machine. Offices connect to a
+  small relay (`kanban3d relay`), see who is online in **☰ → 🌐 Players** and walk into each other's
+  offices read-only (chat, voice, the whiteboard and the games work; nothing else can be changed).
+  Sharing is per floor and off by default, and a visitor only gets the floors whose GitHub repositories
+  they can read themselves, checked by the owner's office ([features](docs/features.md#multiplayer-visit-each-others-offices),
+  [running a relay](docs/self-hosting.md#run-a-multiplayer-relay)).
 
 The rest is the office's own guide, from upstream agent-office; its install and run commands point at
 this repository (`devellaoy/3d-kanban`, its releases and the `kanban3d` command).
@@ -422,6 +428,8 @@ curl -fsSL https://raw.githubusercontent.com/devellaoy/3d-kanban/main/deploy/pro
 It installs Node 22, git, the GitHub CLI, Claude Code and the office as a systemd service. Run as root, it creates an `agentoffice` user to run the office, so workers never run as root. The office listens on `127.0.0.1:4600` only, and the script ends by printing the SSH tunnel command and a link that shows the office password once. Run the same line again to update.
 
 For HTTPS on your own domain, point a DNS record at the server and add `bash -s -- --domain office.example.com`: it sets up Caddy, which gets the certificate by itself. To put it on your Tailscale network instead, add `bash -s -- --tailscale`. The details, and setting it up by hand behind Caddy or nginx, are in [docs/self-hosting.md](docs/self-hosting.md).
+
+To let offices visit each other, run a relay on a server with `kanban3d relay` ([how](docs/self-hosting.md#run-a-multiplayer-relay), [flags](docs/configuration.md#multiplayer-relay)).
 
 ## Add users
 

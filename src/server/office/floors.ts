@@ -5,6 +5,7 @@ import { Floor, type FloorContext } from '../floor.js';
 import { ROOF } from '../../shared/rooftop.js';
 import type { FloorInfo, ServerMsg } from '../../shared/protocol.js';
 import type { Ctx, FloorHelpers, FloorsOpen } from './context.js';
+import { mpOf } from '../multiplayer/registry.js';
 import { SLOW_CLIENT_BYTES, type Client } from './client.js';
 
 /** Finding floors, the elevator's list of them, and taking one off the building. */
@@ -26,6 +27,7 @@ export function floorHelpers(ctx: Ctx): FloorHelpers {
     floorsTimer ??= setTimeout(() => {
       floorsTimer = undefined;
       ctx.kanban?.projectsChanged(); // its project list follows the floors (it sends only when it changed)
+      mpOf(ctx)?.floorsChanged(); // a visitor loses a floor whose repositories changed
       const list = floorInfos();
       const json = JSON.stringify(list);
       if (json === floorsSent) return;
@@ -42,6 +44,7 @@ export function floorHelpers(ctx: Ctx): FloorHelpers {
    */
   const closeFloor = (floor: Floor, who: string) => {
     const name = floor.def.name;
+    mpOf(ctx)?.floorsChanged(); // a visitor loses it before the list without it goes out
     const next = [...ctx.floors.values()].find((f) => f !== floor);
     // The list without it first, so nobody arrives somewhere (the lobby's panel) that still shows it.
     const list = floorInfos().filter((f) => f.id !== floor.id);
