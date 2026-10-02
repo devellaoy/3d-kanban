@@ -16,11 +16,9 @@ import { noOutline } from '../../core/outline';
 import type { Parts } from '../../core/parts';
 import { groundAt } from '../../player';
 import { store } from '../../state';
-import { clip } from '../../ui/dom';
 import { renderPeople, updateSpeaking } from '../../ui/people';
 import { whereabouts } from '../../ui/whereabouts';
 import { Person } from '../../world/character';
-import { disposeSprite, textSprite } from '../../world/toon';
 
 export interface RemotePeer {
   person: Person;
@@ -29,7 +27,6 @@ export interface RemotePeer {
   moving: boolean;
   label: string;
   look: PeerInfo['look'];
-  bubble?: { sprite: THREE.Sprite; until: number };
   /** Seconds walked since their last footstep. */
   stepT: number;
   /** On the ladder or a pole, going by where they are. */
@@ -84,6 +81,7 @@ export function installPeers(ctx: Ctx, core: CoreState, parts: Pick<Parts, 'puff
     for (const [id, r] of remotes) {
       const peer = store.peers.get(id);
       if (!peer || !store.onMyFloor(peer) || peer.lite) {
+        r.person.hush(); // frees a speech bubble still up
         scene.remove(r.person.root);
         remotes.delete(id);
       }
@@ -131,12 +129,6 @@ export function installPeers(ctx: Ctx, core: CoreState, parts: Pick<Parts, 'puff
         sound.stepAt(pos.x, pos.z);
       }
       r.person.setVoiceLevel(p.voice && !p.muted ? voice.levelOf(id) : 0);
-      r.person.emojiLift = r.bubble ? 0.45 : 0;
-      if (r.bubble && now > r.bubble.until) {
-        r.person.root.remove(r.bubble.sprite);
-        disposeSprite(r.bubble.sprite);
-        r.bubble = undefined;
-      }
       const d = Math.hypot(pos.x - player.pos.x, pos.z - player.pos.z);
       voice.setVolume(id, d < 4 ? 1 : Math.max(0.2, 1 - (d - 4) / 16));
     }
@@ -156,7 +148,9 @@ export function installPeers(ctx: Ctx, core: CoreState, parts: Pick<Parts, 'puff
       for (const p of store.peers.values()) if (p.id !== store.you && !store.onMyFloor(p)) voice.setVolume(p.id, 0);
     }
   });
-  ctx.messages.on('chat', (msg) => sayBubble(msg.from, msg.text));
+  ctx.messages.on('chat', (msg) => {
+    if (msg.from !== store.you) remotes.get(msg.from)?.person.say(msg.text, undefined, store.peers.get(msg.from)?.color ?? msg.color);
+  });
   ctx.messages.on('peer.act', (msg) => {
     const r = remotes.get(msg.id);
     if (msg.drink !== undefined) {
@@ -198,20 +192,6 @@ export function installPeers(ctx: Ctx, core: CoreState, parts: Pick<Parts, 'puff
     if (p) p.smoking = msg.smoke;
     r?.person.setSmoking(msg.smoke);
   });
-
-  function sayBubble(from: string, text: string) {
-    if (from === store.you) return;
-    const r = remotes.get(from);
-    if (!r) return;
-    if (r.bubble) {
-      r.person.root.remove(r.bubble.sprite);
-      disposeSprite(r.bubble.sprite);
-    }
-    const sprite = textSprite(`💬 ${clip(text, 60)}`, { bg: '#ffffff', size: 34 });
-    sprite.position.y = r.person.bubbleY;
-    r.person.root.add(sprite);
-    r.bubble = { sprite, until: performance.now() + 6000 };
-  }
 
   return {
     /** Everyone else on your floor, as you see them, by peer id. */
