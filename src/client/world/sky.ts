@@ -3,7 +3,7 @@ import { FLOOR, SLAB, STREET_Y, WALL_HEIGHT, WALL_T, WING, wingMinZ } from '../.
 import type { SkyState, Theme, Weather } from '../../shared/protocol';
 import { guessPlace, skyNow, sunPosition } from '../../shared/sun';
 import type { NightParts } from './outside';
-import { ROOM_LIGHT, ROOM_LIGHT_PARS, SUN_SPLIT, lightRoom, roomLevel, roomUniforms, setPanes } from './roomlight';
+import { ROOM_LIGHT, ROOM_LIGHT_PARS, SUN_SPLIT, lightRoom, roomLevel, roomLightBefore, roomUniforms, setPanes } from './roomlight';
 
 /*
  * Day, night and the weather outside the windows. The server says where the office is and what the
@@ -209,7 +209,6 @@ material.diffuseColor = mix( material.diffuseColor, vec3( 0.93, 0.96, 1.0 ), sky
 /** The lamps' light, added to what the sun and the sky give. */
 const LIGHT = /* glsl */ `
 if ( skyOn > 0.0 ) {
-  float skyRoom = skyInside * skyInsideOf( vSkyWorld, ${WALL_TOP.toFixed(3)} );
   ${ROOM_LIGHT}
   vec3 skyLight = ( 1.0 - skyIndoor ) * ( skyGar * skyGarage + skyLampsAt( vSkyWorld, skyN ) );
   reflectedLight.indirectDiffuse += skyLight * BRDF_Lambert( material.diffuseColor );
@@ -309,7 +308,7 @@ THREE.Material.prototype.onBeforeCompile = function (shader) {
   if (!lit) return;
   Object.assign(shader.uniforms, uniforms, roomUniforms);
   shader.fragmentShader = shader.fragmentShader
-    .replace('#include <lights_fragment_begin>', `${SURFACE}\n${SUN_SPLIT}`)
+    .replace('#include <lights_fragment_begin>', `${SURFACE}\n${roomLightBefore(WALL_TOP)}\n${SUN_SPLIT}`)
     .replace('#include <lights_fragment_end>', `#include <lights_fragment_end>\n${LIGHT}`);
 };
 
@@ -821,7 +820,7 @@ export class Sky {
     const lightAz = moonlit ? az + Math.PI : az;
     this.dir.set(Math.cos(lightEl) * Math.sin(lightAz), Math.sin(lightEl), -Math.cos(lightEl) * Math.cos(lightAz));
     sun.position.copy(sun.target.position).addScaledVector(this.dir, 45);
-    sun.intensity = Math.max(0.02, moonlit ? moonI : sunI); // never quite out: indoors it's the lamps' light (see lightRoom)
+    sun.intensity = moonlit ? moonI : sunI;
     if (moonlit) sun.color.copy(C.moon).lerp(SPOOKY.moonLight, sp);
     else sun.color.copy(C.sunLow).lerp(C.sunHigh, smooth(0, 25, elD)).lerp(SPOOKY.sun, sp);
     this.level = clamp01((hemiI + ambI + 0.6 * (sunI + moonI)) / FULL_DAY);
@@ -829,7 +828,7 @@ export class Sky {
     // Lamps come on as it gets dark: the office's and the garage's, and the ones outside.
     const need = 1 - this.level;
     this.lampsOn = smooth(0.45, 0.62, need);
-    lightRoom(this.night.roomLamps, sun);
+    lightRoom(this.night.roomLamps, this.lampsOn);
     uniforms.skyGarage.value.copy(C.garage).multiplyScalar(need * 2);
     const lamps = Math.min(this.night.lamps.length, MAX_LAMPS);
     uniforms.skyLampCount.value = this.lampsOn > 0.005 && !this.roof && !this.indoors ? lamps : 0;

@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { WALL_HEIGHT } from '../../../shared/layout';
 import { mesh, roundedBox, toon } from '../toon';
 import { palette, piece } from '../models';
 import type { RoomLamp } from '../roomlight';
@@ -135,9 +136,15 @@ export function pendant(cord = 0.48): THREE.Group {
   return lamp;
 }
 
-/** The light from a pendant hung at (x, y, z), over the room round it (see world/roomlight.ts). */
-export function pendantLight(x: number, y: number, z: number, reach = 11): RoomLamp {
-  return { x, y: y - 0.15, z, reach, color: '#ffe2b8', power: 3.2, level: 1 };
+/** The warm white of the office's lamps. */
+export const LAMP_COLOR = new THREE.Color('#ffe2b8');
+
+/**
+ * The light from a pendant hung at (x, y, z), over the room round it, on the storey from `floor` up
+ * to `top` (see world/roomlight.ts).
+ */
+export function pendantLight(x: number, y: number, z: number, reach = 11, floor = 0, top = WALL_HEIGHT): RoomLamp {
+  return { x, y: y - 0.15, z, reach, color: LAMP_COLOR, power: 3.2, level: 1, floor, top };
 }
 
 /** A framed board on a wall; the face gets a canvas texture (cork, chalk or whiteboard). */

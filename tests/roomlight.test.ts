@@ -1,15 +1,15 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import * as THREE from 'three';
-import { MAX_PANES, SUN_SPLIT, daylightAt, lampCover, lightRoom, paneOf, panes, roomLevel, roomUniforms, type RoomLamp } from '../src/client/world/roomlight.js';
-import { BALCONY_DOOR, FLOOR, WINDOWS, WING } from '../src/shared/layout.js';
+import { DAY_LAMPS, MAX_PANES, SUN_SPLIT, daylightAt, lampCover, lightRoom, paneOf, panes, roomLampHour, roomLevel, roomUniforms, type RoomLamp } from '../src/client/world/roomlight.js';
+import { BALCONY_DOOR, FLOOR, LOFT, MEETING_ROOM, WALL_HEIGHT, WINDOWS, WING } from '../src/shared/layout.js';
 
 // The light indoors (#81, client/world/roomlight.ts): the room's own lamps and the daylight through its
 // windows, in the numbers the shader mirrors.
 
 const UP = { x: 0, y: 1, z: 0 };
 /** A pendant over the first desk cluster, as the room hangs it (world/office/props.ts pendantLight). */
-const lamp = (level = 1): RoomLamp => ({ x: -10.5, y: 3.9, z: -4, reach: 11, color: '#ffe2b8', power: 3.2, level });
+const lamp = (level = 1): RoomLamp => ({ x: -10.5, y: 3.9, z: -4, reach: 11, color: new THREE.Color('#ffe2b8'), power: 3.2, level, floor: 0, top: WALL_HEIGHT });
 /** The floor in the north-east corner, by the elevator: no window and no lamp near it. */
 const CORNER = { x: FLOOR.maxX - 1, y: 0, z: FLOOR.minZ + 1 };
 
@@ -59,23 +59,39 @@ test('the glass is the windows, the balcony doors and the back office’s window
   assert.ok(door.at.z > FLOOR.maxZ);
 });
 
-test('indoors the sun’s light is made the lamps’, however bright or dim the sky has lit it', () => {
-  const sun = new THREE.DirectionalLight('#a9bcff', 0.4);
-  lightRoom([], sun);
-  const night = roomUniforms.skyLampSun.value.clone();
-  sun.color.set('#fff1d6');
-  sun.intensity = 2.2;
-  lightRoom([], sun);
-  const day = roomUniforms.skyLampSun.value.clone();
-  // The same light from overhead either way: sun × multiplier.
-  const lit = (c: THREE.Color, k: THREE.Color, i: number) => [c.r * k.r * i, c.g * k.g * i, c.b * k.b * i];
-  const a = lit(new THREE.Color('#a9bcff'), night, 0.4);
-  const b = lit(new THREE.Color('#fff1d6'), day, 2.2);
-  a.forEach((v, i) => assert.ok(Math.abs(v - b[i]) < 1e-6, `${v} vs ${b[i]}`));
+test('the lamps come up as it gets dark: less of their light at noon than at night', () => {
+  const under = { x: -10.5, y: 0, z: -4 };
+  lightRoom([lamp()], 0);
+  const noon = lampCover(under, [lamp()]);
+  assert.equal(roomLampHour(), DAY_LAMPS);
+  assert.equal(roomUniforms.skyRoomLampColors.value[0].w, DAY_LAMPS);
+  lightRoom([lamp()], 1);
+  const night = lampCover(under, [lamp()]);
+  assert.ok(noon < night, `${noon.toFixed(2)} < ${night.toFixed(2)}`);
+  assert.equal(roomUniforms.skyRoomLampColors.value[0].w, 1);
 });
 
-test('the sun’s share of the light is kept apart in three.js’s lights chunk', () => {
-  assert.ok(SUN_SPLIT.includes('vec3 skyD0 = reflectedLight.directDiffuse;'));
-  assert.ok(SUN_SPLIT.indexOf('skyD0') < SUN_SPLIT.indexOf('NUM_DIR_LIGHTS > 0 ) && defined( RE_Direct )'));
-  assert.ok(SUN_SPLIT.indexOf('vec3 skySunD') > SUN_SPLIT.indexOf('directionalLights[ i ]'));
+test('only the lamps that are on go into the shader', () => {
+  lightRoom([lamp(0), lamp(), lamp(0)], 1);
+  assert.equal(roomUniforms.skyRoomLampCount.value, 1);
+});
+
+test('a lamp lights its own storey: the meeting room’s lights don’t shine up through the boss office’s floor', () => {
+  lightRoom([], 1);
+  const H = MEETING_ROOM.height;
+  const x = (MEETING_ROOM.minX + MEETING_ROOM.maxX) / 2;
+  const z = (MEETING_ROOM.minZ + MEETING_ROOM.maxZ) / 2;
+  const meeting: RoomLamp = { x, y: H - 0.1, z, reach: 5, color: new THREE.Color('#ffe2b8'), power: 1.2, level: 1, floor: 0, top: H };
+  assert.ok(lampCover({ x, y: 0.8, z }, [meeting]) > 0.3, 'the table under them');
+  assert.equal(lampCover({ x, y: LOFT.y, z }, [meeting]), 0, 'the boss office’s floor over them');
+});
+
+test('indoors the sun’s light is made the lamps’, in the sun’s shadows, wherever the sun is', () => {
+  // three's line that darkens the sun in its shadows keeps the shadow apart (skyShade) instead…
+  assert.ok(!SUN_SPLIT.includes('directLight.color *= ( directLight.visible && receiveShadow ) ? getShadow( directionalShadowMap'));
+  assert.ok(SUN_SPLIT.includes('skyShade = ( directLight.visible && receiveShadow ) ? getShadow( directionalShadowMap[ i ]'));
+  // …and inside the room the light is the lamps' in those shadows, before it lights anything.
+  const dir = SUN_SPLIT.slice(SUN_SPLIT.indexOf('NUM_DIR_LIGHTS > 0 ) && defined( RE_Direct )'));
+  const mix = dir.indexOf('directLight.color = mix( directLight.color, skyLampSun * skyCover * skyShade * skyLampIn, skyRoom );');
+  assert.ok(mix > dir.indexOf('directLight.color *= skyShade;') && mix < dir.indexOf('RE_Direct( directLight'));
 });

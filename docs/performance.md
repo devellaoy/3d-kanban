@@ -79,13 +79,13 @@ Done:
 
 1. **Pacing.** Big gain, low risk.
 2. **Timers and per-frame allocations.** Small gain, no risk.
+3. **The light indoors (#81) without extra lights.** `world/roomlight.ts` lights the room in the lit materials' shader: two short loops (the lamps that are on, at most 12, and at most 12 panes of glass), run only for fragments inside the office's walls, and no extra three.js lights. The lounge's real point light went with it, so indoors there's one light fewer than before. Measured on Windows (headless Chrome, ANGLE on Intel integrated graphics, Direct3D 11), 1280×800, device pixel ratio 1: 40 renders of the scene in a row, each waited out with a one-pixel read, median ms per render, three rounds alternating between `main` and the change. At the desks by day 6.2 → 6.1, at the desks by night 6.5 → 6.1, at the north wall by night 7.3 → 7.0. The difference is within the noise between rounds (±1 ms).
 
 Not done:
 
 - **The default GPU instead of `powerPreference: 'high-performance'`.** On a laptop with two GPUs, `'high-performance'` keeps the discrete one awake while the tab is open, so asking for the default one could save a lot of battery there (Apple Silicon has one GPU, so nothing would change). It stays as it is until it's measured on real hardware: walking must still run at the screen's full rate on the integrated GPU, and Apple Silicon must not get slower. Nothing measured here (software GL) can show either.
 
 - **A lower pixel ratio while moving.** It lowers the quality.
-- **The light indoors** (`world/roomlight.ts`) is no extra three.js lights: two short loops in the lit materials' shader (up to 12 lamps, up to 12 panes of glass), run only for fragments inside the office's walls. The lounge's real point light went with it, so indoors there's one light fewer than before.
 - **Refreshing shadows less often than drawing.** Shadows would lag behind moving people. If shadows are ever refreshed only on change, the sky's sun movement must count as a change (with the real-time sky the sun moves slowly), and so must `features/lamplight` while it eases the light in or out, or flips the walls' `receiveShadow`; once it has settled, indoors or out, a frame changes nothing there.
 - **`matrixAutoUpdate = false` on static objects.** `updateMatrixWorld` is at most 0.5 ms, and there is a risk of freezing doors, the elevator or the jukebox.
 - **Merging or instancing static meshes to cut draw calls.** This is the next real gain, because draw calls dominate. It is a bigger and riskier change, worth a task of its own.

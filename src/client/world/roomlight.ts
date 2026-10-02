@@ -9,52 +9,64 @@ import { wingWindows } from './tower';
  * lit material inside the room's walls (see sky.ts) puts them out again and lights itself from here:
  *
  * - the sky's even light (the hemisphere and the ambient light) gets in only near the windows, by how
- *   much of the glass a spot sees and how squarely (daylightAt);
- * - the sun's direct light, which indoors comes from overhead (features/lamplight), is the lamps': as
- *   bright and as warm as they are, and only as far as they reach (lampCover), so the shadows under
- *   the desks and the people come from the lamps;
- * - each lamp also throws a soft pool of light round it, falling off with distance (lampsAt);
+ *   much of the glass a spot sees and how squarely (daylightAt). The sun's own beam doesn't: a patch
+ *   of sunlight would need the sun's real direction, which indoors is the lamps' (see below);
+ * - the shadow-casting light, which indoors comes from overhead (features/lamplight), is the lamps'
+ *   light: their color and strength, only as far as they reach (lampCover), whatever the sun is doing
+ *   outside, so the shadows under the desks and the people come from the lamps;
+ * - each lamp also throws a soft pool of light round it, falling off with distance (lampsAt), on its
+ *   own storey only (RoomLamp.floor and .top), so the meeting room's lights don't shine up through
+ *   the boss office's floor;
  * - and a little light everywhere (BASE), so no corner is ever pitch black.
  *
  * The lamps are the fixtures themselves (RoomLamp, which the room, the loft, the meeting room and the
- * back office push to NightParts.roomLamps); the wall switches dim theirs (features/lights). It is a
- * few uniforms and two short loops, run only for fragments indoors: no extra three.js lights.
+ * back office push to NightParts.roomLamps); the wall switches dim theirs (features/lights), and they
+ * come up as it gets dark (lightRoom's `lampsOn`, the sky's), from DAY_LAMPS by day. It is a few
+ * uniforms and two short loops, run only for fragments indoors: no extra three.js lights.
  */
 
 /** As many lamps and panes of glass as the shader takes. */
 export const MAX_ROOM_LAMPS = 12;
 export const MAX_PANES = 12;
 
-/** A lamp in the room: where its light comes from, how far it reaches, its color and strength, and how far it's switched on (0–1). */
+/**
+ * A lamp in the room: where its light comes from, how far it reaches, its color and strength, how far
+ * it's switched on (0–1), and the storey it lights, from `floor` up to `top`.
+ */
 export interface RoomLamp {
   x: number;
   y: number;
   z: number;
   reach: number;
-  color: string;
+  color: THREE.Color;
   power: number;
   level: number;
+  floor: number;
+  top: number;
 }
 
-/** The light from overhead indoors (the sun's, swung up there by features/lamplight), under a lamp: its color × strength. */
+/** How bright the lamps are by day, against 1 once it's dark (the sky's lampsOn): on, but outshone by the windows. */
+export const DAY_LAMPS = 0.6;
+/** The light from overhead indoors, under a lamp that's fully on: its color × strength. */
 const LAMP_SUN = new THREE.Color('#ffe2b8').multiplyScalar(0.85);
 /** How much light a corner no lamp or window reaches still gets. */
 const BASE = new THREE.Color('#c9cde0').multiplyScalar(0.3);
 /** How strongly the daylight carries in from the glass: more than a pane's own share, the walls and the floor pass it on. */
 const PANE_GAIN = 3.5;
+/** How far over its floor (and under its top) a lamp's storey reaches. */
+const SPAN_GIVE = 0.05;
 
 export const roomUniforms = {
+  /** Each lamp that's on: where it is and its reach (.w); its color × strength × how far it's on, and that (.w); its storey. */
   skyRoomLamps: { value: Array.from({ length: MAX_ROOM_LAMPS }, () => new THREE.Vector4()) },
-  skyRoomLampColors: { value: Array.from({ length: MAX_ROOM_LAMPS }, () => new THREE.Color()) },
-  /** How far each is switched on, 0–1 (RoomLamp.level), for how far its light from overhead reaches. */
-  skyRoomLampLevels: { value: Array.from({ length: MAX_ROOM_LAMPS }, () => 0) },
+  skyRoomLampColors: { value: Array.from({ length: MAX_ROOM_LAMPS }, () => new THREE.Vector4()) },
+  skyRoomLampSpans: { value: Array.from({ length: MAX_ROOM_LAMPS }, () => new THREE.Vector2()) },
   skyRoomLampCount: { value: 0 },
   /** Each pane's middle and its area (in .w), and how far it goes either way: a thin box in the wall. */
   skyPanes: { value: Array.from({ length: MAX_PANES }, () => new THREE.Vector4()) },
   skyPaneHalf: { value: Array.from({ length: MAX_PANES }, () => new THREE.Vector3()) },
   skyPaneCount: { value: 0 },
-  /** What the sun's light is multiplied by indoors under a lamp, so it's the lamps' light (see setLampSun). */
-  skyLampSun: { value: new THREE.Color() },
+  skyLampSun: { value: LAMP_SUN.clone() },
   skyRoomBase: { value: BASE.clone() },
 };
 
@@ -86,6 +98,8 @@ export function panes(wing: number): Pane[] {
 
 /** The floor's glass as it is now (see setPanes). */
 let shown: Pane[] = [];
+/** How far up the lamps are for the hour (DAY_LAMPS by day to 1 at night), as lightRoom last set it. */
+let hour = 1;
 
 /** Puts the floor's glass in the shader: `wing` rows of back office (see Sky.setWing). */
 export function setPanes(wing: number) {
@@ -98,67 +112,74 @@ export function setPanes(wing: number) {
 }
 setPanes(0);
 
-/** The room's lamps as they are this frame, and the sun as the sky has lit it (see setLampSun), in the shader. */
-export function lightRoom(lamps: readonly RoomLamp[], sun: THREE.DirectionalLight) {
-  setLampSun(sun);
-  const n = Math.min(lamps.length, MAX_ROOM_LAMPS);
-  for (let i = 0; i < n; i++) {
+/** How far up a room's lamps are at the hour where the sky has its own lamps `lampsOn` (0 by day, 1 at night). */
+export const lampHour = (lampsOn: number) => DAY_LAMPS + (1 - DAY_LAMPS) * lampsOn;
+/** How far up the room's lamps are for the hour, as the sky last said (see lightRoom), for the bulbs to match. */
+export const roomLampHour = () => hour;
+
+/** The room's lamps as they are this frame, with the sky's own lamps `lampsOn` (0–1), in the shader. Only the lamps that are on go in. */
+export function lightRoom(lamps: readonly RoomLamp[], lampsOn: number) {
+  hour = lampHour(lampsOn);
+  let n = 0;
+  for (let i = 0; i < lamps.length && n < MAX_ROOM_LAMPS; i++) {
     const l = lamps[i];
-    roomUniforms.skyRoomLamps.value[i].set(l.x, l.y, l.z, l.reach);
-    roomUniforms.skyRoomLampColors.value[i].set(l.color).multiplyScalar(l.power * l.level);
-    roomUniforms.skyRoomLampLevels.value[i] = l.level;
+    const on = l.level * hour;
+    if (on <= 0) continue;
+    roomUniforms.skyRoomLamps.value[n].set(l.x, l.y, l.z, l.reach);
+    const k = l.power * on;
+    roomUniforms.skyRoomLampColors.value[n].set(l.color.r * k, l.color.g * k, l.color.b * k, on);
+    roomUniforms.skyRoomLampSpans.value[n].set(l.floor - SPAN_GIVE, l.top + SPAN_GIVE);
+    n++;
   }
   roomUniforms.skyRoomLampCount.value = n;
 }
 
-/**
- * The sun as the sky has lit it this frame: indoors its light is made the lamps' (LAMP_SUN) by
- * multiplying it by this, per channel, wherever it comes from and however bright it is outside.
- */
-function setLampSun(sun: THREE.DirectionalLight) {
-  const c = sun.color;
-  const k = Math.max(sun.intensity, 1e-3);
-  roomUniforms.skyLampSun.value.setRGB(LAMP_SUN.r / Math.max(c.r * k, 1e-3), LAMP_SUN.g / Math.max(c.g * k, 1e-3), LAMP_SUN.b / Math.max(c.b * k, 1e-3));
-}
-
 type Point = { x: number; y: number; z: number };
 
-/** How near `p` is to a lamp that's on, 0–1 (lampCover in ROOM_LIGHT_PARS, in numbers). */
+/** How near `p` is to a lamp that's on, 0–1, at the hour lightRoom last set (lampCover in ROOM_LIGHT_PARS, in numbers). */
 export function lampCover(p: Point, lamps: readonly RoomLamp[]): number {
   let sum = 0;
-  for (const l of lamps.slice(0, MAX_ROOM_LAMPS)) sum += l.level * Math.max(0, 1 - Math.hypot(l.x - p.x, l.y - p.y, l.z - p.z) / l.reach);
+  for (let i = 0, n = Math.min(lamps.length, MAX_ROOM_LAMPS); i < n; i++) {
+    const l = lamps[i];
+    if (p.y < l.floor - SPAN_GIVE || p.y > l.top + SPAN_GIVE) continue;
+    const dx = l.x - p.x;
+    const dy = l.y - p.y;
+    const dz = l.z - p.z;
+    sum += l.level * hour * Math.max(0, 1 - Math.sqrt(dx * dx + dy * dy + dz * dz) / l.reach);
+  }
   return Math.min(1, sum);
 }
 
 /** How much daylight gets to `p` facing `n`, 0–1 (daylightAt in ROOM_LIGHT_PARS, in numbers): near the glass, and facing it. */
 export function daylightAt(p: Point, n: Point, list: readonly Pane[]): number {
   let sum = 0;
-  for (const w of list) {
-    const d = {
-      x: THREE.MathUtils.clamp(p.x, w.at.x - w.half.x, w.at.x + w.half.x) - p.x,
-      y: THREE.MathUtils.clamp(p.y, w.at.y - w.half.y, w.at.y + w.half.y) - p.y,
-      z: THREE.MathUtils.clamp(p.z, w.at.z - w.half.z, w.at.z + w.half.z) - p.z,
-    };
-    const r2 = d.x * d.x + d.y * d.y + d.z * d.z;
+  for (let i = 0; i < list.length; i++) {
+    const { at, half, area } = list[i];
+    const dx = THREE.MathUtils.clamp(p.x, at.x - half.x, at.x + half.x) - p.x;
+    const dy = THREE.MathUtils.clamp(p.y, at.y - half.y, at.y + half.y) - p.y;
+    const dz = THREE.MathUtils.clamp(p.z, at.z - half.z, at.z + half.z) - p.z;
+    const r2 = dx * dx + dy * dy + dz * dz;
     if (r2 < 1e-4) return 1;
     const r = Math.sqrt(r2);
-    const through = 0.25 + (0.75 * Math.abs(w.half.x < w.half.z ? d.x : d.z)) / r;
-    const facing = 0.35 + 0.65 * Math.max(0, (n.x * d.x + n.y * d.y + n.z * d.z) / r);
-    sum += (w.area * through * facing) / (w.area + r2);
+    const through = 0.25 + (0.75 * Math.abs(half.x < half.z ? dx : dz)) / r;
+    const facing = 0.35 + 0.65 * Math.max(0, (n.x * dx + n.y * dy + n.z * dz) / r);
+    sum += (area * through * facing) / (area + r2);
   }
   return Math.min(1, sum * PANE_GAIN);
 }
 
+const UP = { x: 0, y: 1, z: 0 };
+
 /** How lit `p` is indoors, 0–1, with the sky outside giving `outside` (1 a clear day): for your hands (Sky.lightAt). */
 export function roomLevel(p: Point, lamps: readonly RoomLamp[], outside: number, list: readonly Pane[] = shown): number {
-  return Math.min(1, 0.15 + lampCover(p, lamps) + daylightAt(p, { x: 0, y: 1, z: 0 }, list) * outside);
+  return Math.min(1, 0.15 + lampCover(p, lamps) + daylightAt(p, UP, list) * outside);
 }
 
 /** For every lit material: the lamps' and the windows' light (see the top of this file). Mirrored by lampCover and daylightAt. */
 export const ROOM_LIGHT_PARS = /* glsl */ `
 uniform vec4 skyRoomLamps[ ${MAX_ROOM_LAMPS} ];
-uniform vec3 skyRoomLampColors[ ${MAX_ROOM_LAMPS} ];
-uniform float skyRoomLampLevels[ ${MAX_ROOM_LAMPS} ];
+uniform vec4 skyRoomLampColors[ ${MAX_ROOM_LAMPS} ];
+uniform vec2 skyRoomLampSpans[ ${MAX_ROOM_LAMPS} ];
 uniform int skyRoomLampCount;
 uniform vec4 skyPanes[ ${MAX_PANES} ];
 uniform vec3 skyPaneHalf[ ${MAX_PANES} ];
@@ -172,11 +193,12 @@ vec3 skyRoomLampsAt( vec3 p, vec3 n, out float cover ) {
   cover = 0.0;
   for ( int i = 0; i < ${MAX_ROOM_LAMPS}; i ++ ) {
     if ( i >= skyRoomLampCount ) break;
+    if ( p.y < skyRoomLampSpans[ i ].x || p.y > skyRoomLampSpans[ i ].y ) continue;
     vec3 d = skyRoomLamps[ i ].xyz - p;
     float r = length( d );
     float k = 1.0 - clamp( r / skyRoomLamps[ i ].w, 0.0, 1.0 );
-    cover += k * skyRoomLampLevels[ i ];
-    sum += skyRoomLampColors[ i ] * k * k * ( 0.3 + 0.7 * max( dot( n, d / max( r, 0.001 ) ), 0.0 ) );
+    cover += k * skyRoomLampColors[ i ].w;
+    sum += skyRoomLampColors[ i ].rgb * k * k * ( 0.3 + 0.7 * max( dot( n, d / max( r, 0.001 ) ), 0.0 ) );
   }
   cover = min( cover, 1.0 );
   return sum;
@@ -202,32 +224,57 @@ float skyDaylightAt( vec3 p, vec3 n ) {
 `;
 
 /**
- * three.js's lights_fragment_begin, keeping apart what the sun (the one directional light) gives
- * (skySunD, skySunS) from the rest, so that indoors it can be made the lamps' (ROOM_LIGHT).
+ * Before the lights (after sky.ts's SURFACE, which gives skyN): how much of the room a fragment is in,
+ * up to `top`, the lamps' and the windows' light there, and whether you're in the room to see the
+ * lamps' light from overhead (from outside, that light would come the street's sun's way).
  */
-const DIR = '#if ( NUM_DIR_LIGHTS > 0 ) && defined( RE_Direct )';
-const AFTER_DIR = '#if ( NUM_RECT_AREA_LIGHTS > 0 ) && defined( RE_Direct_RectArea )';
-const BEGIN = THREE.ShaderChunk.lights_fragment_begin;
-if (!BEGIN.includes(DIR) || !BEGIN.includes(AFTER_DIR)) throw new Error('roomlight: three.js lights_fragment_begin has changed');
-export const SUN_SPLIT = BEGIN.replace(DIR, `vec3 skyD0 = reflectedLight.directDiffuse;\nvec3 skyS0 = reflectedLight.directSpecular;\n${DIR}`).replace(
-  AFTER_DIR,
-  `vec3 skySunD = reflectedLight.directDiffuse - skyD0;\nvec3 skySunS = reflectedLight.directSpecular - skyS0;\n${AFTER_DIR}`,
-);
+export const roomLightBefore = (top: number) => /* glsl */ `
+float skyRoom = skyOn * skyInside * skyInsideOf( vSkyWorld, ${top.toFixed(3)} );
+float skyCover = 0.0;
+vec3 skyLamp = vec3( 0.0 );
+float skyDay = 1.0;
+if ( skyRoom > 0.0 ) {
+  skyLamp = skyRoomLampsAt( vSkyWorld, skyN, skyCover );
+  skyDay = skyDaylightAt( vSkyWorld, skyN );
+}
+float skyLampIn = skyInsideOf( cameraPosition, ${top.toFixed(3)} );
+float skyShade = 1.0;
+`;
 
 /**
- * After the lights (lights_fragment_end): inside the room (skyRoom, 0–1) the sky's light only where
- * the windows let it in, the sun's light the lamps', as far as they reach, and the lamps' pools and
- * the base on top. Needs skyN (sky.ts's SURFACE) and skyRoom.
+ * three.js's lights_fragment_begin with the sun's light (the one directional light) made the lamps'
+ * inside the room: their color and strength (skyLampSun × skyCover) in its shadows (skyShade), not the
+ * sun's, so it's the same at noon and at midnight and never needs the sun to be up.
+ */
+const BEGIN = THREE.ShaderChunk.lights_fragment_begin;
+const DIR = '#if ( NUM_DIR_LIGHTS > 0 ) && defined( RE_Direct )';
+const AFTER_DIR = '#if ( NUM_RECT_AREA_LIGHTS > 0 ) && defined( RE_Direct_RectArea )';
+const SHADOW = 'directLight.color *= ( directLight.visible && receiveShadow ) ? getShadow( directionalShadowMap[ i ]';
+const SHADOW_END = ': 1.0;';
+const CALL = 'RE_Direct( directLight';
+const SHADOW_IF = '#if defined( USE_SHADOWMAP ) && ( UNROLLED_LOOP_INDEX < NUM_DIR_LIGHT_SHADOWS )';
+
+function sunSplit(): string {
+  const a = BEGIN.indexOf(DIR);
+  const b = BEGIN.indexOf(AFTER_DIR);
+  let dir = BEGIN.slice(a, b);
+  const s = dir.indexOf(SHADOW);
+  const e = s < 0 ? -1 : dir.indexOf(SHADOW_END, s);
+  if (a < 0 || b < a || e < 0 || !dir.includes(CALL) || !dir.includes(SHADOW_IF)) throw new Error('roomlight: three.js lights_fragment_begin has changed');
+  dir = `${dir.slice(0, s)}skyShade = ${dir.slice(s + 'directLight.color *= '.length, e + SHADOW_END.length)}\n\t\tdirectLight.color *= skyShade;${dir.slice(e + SHADOW_END.length)}`;
+  dir = dir.replace(SHADOW_IF, `skyShade = 1.0;\n\t\t${SHADOW_IF}`);
+  dir = dir.replace(CALL, `directLight.color = mix( directLight.color, skyLampSun * skyCover * skyShade * skyLampIn, skyRoom );\n\t\t${CALL}`);
+  return BEGIN.slice(0, a) + dir + BEGIN.slice(b);
+}
+export const SUN_SPLIT = sunSplit();
+
+/**
+ * After the lights (lights_fragment_end): inside the room the sky's light only where the windows let
+ * it in, and the lamps' pools and the base on top.
  */
 export const ROOM_LIGHT = /* glsl */ `
 if ( skyRoom > 0.0 ) {
-  float skyCover;
-  vec3 skyLamp = skyRoomLampsAt( vSkyWorld, skyN, skyCover );
-  float skyDay = skyDaylightAt( vSkyWorld, skyN );
   reflectedLight.indirectDiffuse *= 1.0 - skyRoom * ( 1.0 - skyDay );
-  vec3 skyToLamp = skyRoom * ( skyLampSun * skyCover - 1.0 );
-  reflectedLight.directDiffuse += skyToLamp * skySunD;
-  reflectedLight.directSpecular += skyToLamp * skySunS;
   reflectedLight.indirectDiffuse += skyRoom * ( skyLamp + skyRoomBase ) * BRDF_Lambert( material.diffuseColor );
 }
 `;

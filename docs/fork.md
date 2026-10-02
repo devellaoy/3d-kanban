@@ -38,9 +38,10 @@ Back to the [README](../README.md).
   `withClock` helper and writes `sky-place.json` only when the place changed.
 - The light indoors (#81) replaces upstream's office lamplight: `sky.ts` loses the uniform `skyOffice` fill, and inside
   the room the sky's light comes in only through the windows and the sun's is made the lamps' (`world/roomlight.ts`,
-  new). `features/lamplight` no longer brightens or tints the sun indoors (it still swings it overhead and lightens its
+  new, which uses three.js's `lights_fragment_begin` with the directional light's shadow kept apart: re-check it when
+  three.js is upgraded, `tests/roomlight.test.ts` fails if the chunk changed). `features/lamplight` no longer brightens or tints the sun indoors (it still swings it overhead and lightens its
   shadows), `core/loop.ts` keeps the sky's shading on only while the office's own scene draws, `features/lights` dims
-  the lamps' light instead of laying a dark pool on the floor and lighting the lounge with a point light, and the room's,
+  the lamps' light (and their bulbs with the hour) instead of laying a dark pool on the floor and lighting the lounge with a point light, and the room's,
   the loft's, the meeting room's and the back office's lamps push a `RoomLamp` to `NightParts.roomLamps`
   (`world/outside.ts`, `world/office/{room,props,loft,meeting-room,wing}.ts`). Syncing upstream's sky or lamplight
   means keeping these.

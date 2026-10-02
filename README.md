@@ -144,6 +144,10 @@ curl -fsSL https://raw.githubusercontent.com/devellaoy/3d-kanban/main/deploy/pro
   wheel* row below is out of date.
 - **Mouse sensitivity**: ⚙️ Settings → 🧍 You, 25–200% of the usual look speed, kept in your browser.
 - **Themes**: ⚙️ Settings → 🧍 You → Theme: **Office** (the default), **Dark** or **Glossy**, kept per browser. They restyle the windows, the HUD, the kanban and the 2D view, not the 3D office ([features](docs/features.md)).
+- **Light indoors from the lamps and the windows**: inside the office the room is lit only by its own lamps
+  (each one lights the area round it, the wall switches turn them off and on, and they come up as it gets
+  dark) and by the daylight or moonlight through the windows and the balcony's glass doors, with a little
+  light everywhere so nothing is pitch black. Outdoors and the castle are lit as before ([features](docs/features.md)).
 - **YouTube on the Office TV**: press **E** at the lounge TV (or paste a YouTube / YouTube Music link
   into the jukebox) and the whole floor sees and hears the same video or song at the same point, in
   YouTube's own player on the TV; sit on the couch or press **E** again to watch it big. Its window has

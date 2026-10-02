@@ -2,12 +2,13 @@ import * as THREE from 'three';
 import { mesh, roundedBox, toon } from '../../world/toon';
 import type { Interactable } from '../../world/types';
 import type { Fixture } from '../../world/office/fixture';
-import type { RoomLamp } from '../../world/roomlight';
+import { roomLampHour, type RoomLamp } from '../../world/roomlight';
 import { AREAS, easeLevel, type AreaId, type LightsState } from './model';
 
 // Light switches on the walls. Each area has its ceiling lamps: their bulbs (found among the pendants
 // the room hangs: each gets a bulb material of its own to dim) and the light they throw on the room
-// (their RoomLamps in NightParts, see world/roomlight.ts), which the switch dims with the bulbs.
+// (their RoomLamps in NightParts, see world/roomlight.ts), which the switch dims with the bulbs. By
+// day both are turned down, as the sky has the room's lamps (roomLampHour).
 
 /** The pendants the room hangs (room.ts), by (x, z) at LAMP_Y. */
 const LAMP_Y = 4.05;
@@ -94,10 +95,12 @@ export const lightSwitches: Fixture<'lightSwitches'> = (site) => {
     site.wall(plate.wall, plate.z, 1.3, 0.4, 0.5);
   }
 
+  /** How far up the room's lamps are for the hour (roomLampHour) when the bulbs were last shown: they glow less by day, as their light does. */
+  let hour = roomLampHour();
   const show = (id: AreaId) => {
     const lit = levels[id];
     for (const m of bulbs[id]) {
-      m.emissiveIntensity = 0.05 + 0.95 * lit;
+      m.emissiveIntensity = 0.05 + 0.95 * lit * hour;
       m.color.set('#fff7d6').lerp(new THREE.Color('#7d7a70'), 1 - lit);
     }
     for (const l of lights[id]) l.level = lit;
@@ -120,6 +123,11 @@ export const lightSwitches: Fixture<'lightSwitches'> = (site) => {
   return {
     handle: { lightSwitches: handle },
     update(_t, dt) {
+      const now = roomLampHour();
+      if (Math.abs(now - hour) > 0.005) {
+        hour = now;
+        AREAS.forEach(show);
+      }
       for (const id of AREAS) {
         const next = easeLevel(levels[id], want[id], dt);
         if (next === levels[id]) continue;
