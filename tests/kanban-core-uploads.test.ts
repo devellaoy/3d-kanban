@@ -192,3 +192,12 @@ test('grant folders: copies of a task\'s files, private, a missing source skippe
   assert.ok(!existsSync(grantDir(dir, 5)));
   assert.ok(existsSync(path.join(uploads, `${'1'.repeat(32)}-a.txt`)), 'the upload itself stays');
 });
+
+test('a hire with files while the kanban is closing is refused, not hired without them', async (t) => {
+  const { kanban } = await office(t);
+  assert.equal(kanban.hireFiles(undefined, 'Ada'), undefined);
+  assert.equal(kanban.hireFiles(['e'.repeat(32)], 'Ada'), 'An attached file is gone: attach it again');
+  kanban.shutdown();
+  assert.equal(kanban.hireFiles([], 'Ada'), undefined);
+  assert.equal(kanban.hireFiles(['e'.repeat(32)], 'Ada'), 'The kanban is closing: attach the files again');
+});

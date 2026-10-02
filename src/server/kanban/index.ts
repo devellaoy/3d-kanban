@@ -7,7 +7,6 @@
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import path from 'node:path';
 import type { FloorDef } from '../building.js';
-import type { AgentProvider } from '../../shared/providers.js';
 import type { Floor } from '../floor.js';
 import type {
   KanbanCaller,
@@ -95,8 +94,8 @@ export interface Kanban {
   workerPrompt(info: WorkerInfo, text: string, who: KanbanCaller, asComment?: boolean): Promise<string | void> | undefined;
   /** R on a worker: the task's Retry for a task worker whose task waits (see coupling.ts); undefined: upstream resumes it. */
   workerResume(info: WorkerInfo, who: KanbanCaller): Promise<string | void> | undefined;
-  /** Files attached to a direct hire (see hirefiles.ts): copied for the worker, with the prompt's file list and launch flags; a string: why not; undefined: none. */
-  hireFiles(ids: unknown, who: string | undefined, dropsDir: string, workerId: string, provider?: AgentProvider): { text: string; launchArgs?: string[] } | string | undefined;
+  /** Files attached to a direct hire (see hirefiles.ts): the caller's own loose uploads to copy for the worker; a string: why not; undefined: none. */
+  hireFiles(ids: unknown, who: string): { path: string; name: string; type: string }[] | string | undefined;
   shutdown(): void;
 }
 
@@ -319,7 +318,7 @@ export function installKanban(opts: KanbanInstallOptions): Kanban {
     },
     workerPrompt: (info, text, who, asComment) => (closed ? undefined : promptTaskWorker(ctx, info, text, who, asComment)),
     workerResume: (info, who) => (closed ? undefined : resumeTaskWorker(ctx, info, who)),
-    hireFiles: (ids, who, dropsDir, workerId, provider) => (closed ? undefined : hireFiles(repo, filesDir, ids, who, dropsDir, workerId, provider)),
+    hireFiles: (ids, who) => (closed ? (Array.isArray(ids) && ids.length ? 'The kanban is closing: attach the files again' : undefined) : hireFiles(repo, filesDir, ids, who)),
     shutdown() {
       if (closed) return;
       closed = true;

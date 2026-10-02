@@ -5,7 +5,8 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { Ledger } from '../src/server/usage.js';
 import { WorkerManager } from '../src/server/workers.js';
-import type { Worker } from '../src/server/workers/types.js';
+import type { SpawnExtra, Worker } from '../src/server/workers/types.js';
+import type { AgentProvider } from '../src/shared/providers.js';
 import type { WorkerInfo } from '../src/shared/protocol.js';
 
 const TAIL = 'Files attached to this prompt (read them as needed):\n- notes.txt: /repo/.agent-office/drops/ab12/notes.txt';
@@ -32,7 +33,13 @@ function setup(t: { after(fn: () => void): void }) {
     const hook = (prompt: string) => workers.handleHook(info.id, w.hookToken, 'UserPromptSubmit', { prompt });
     return { w, info, hook };
   };
-  return { hire };
+  let desk = 1;
+  const spawn = (extra: SpawnExtra, provider: AgentProvider) => {
+    const info = workers.spawn(`desk-${++desk}`, 'test', 'hi', false, 'agent', provider, undefined, undefined, undefined, undefined, [], undefined, extra) as WorkerInfo;
+    assert.equal(typeof info, 'object');
+    return internal.workers.get(info.id)!;
+  };
+  return { hire, workers, spawn };
 }
 
 test('a hire with text and files: the first prompt hook shows and names the text only', (t) => {
@@ -66,10 +73,46 @@ test('a files-only hire: the first prompt hook leaves the activity and the promp
   assert.deepEqual(w.prompts, ['look at the notes']);
 });
 
-test('a prompt that does not end with the launch tail is left whole and the tail is kept', (t) => {
+test('the hire\'s own prompt noted at spawn does not use up the tail', (t) => {
+  const { hire } = setup(t);
+  const { w } = hire('first');
+  assert.equal(w.launchTail, TAIL);
+});
+
+test('a report with other whitespace (CRLF, wrapped lines) still loses the tail', (t) => {
+  const { hire } = setup(t);
+  const { w, info, hook } = hire('fix the login page');
+  assert.equal(hook(`fix the login page\r\n\r\n${TAIL.replace(/\n/g, '\r\n')}\r\n`), true);
+  assert.equal(info.activity, 'fix the login page');
+  assert.ok(w.prompts.every((p) => !p.includes('/drops/')));
+  assert.equal(w.launchTail, undefined);
+});
+
+test('a report cut short inside the tail loses the rest of it', (t) => {
+  const { hire } = setup(t);
+  const { w, info, hook } = hire('fix the login page');
+  hook(`fix the login page\n\n${TAIL.slice(0, 70)}`);
+  assert.equal(info.activity, 'fix the login page');
+  assert.ok(w.prompts.every((p) => !p.includes('Files attached')));
+  assert.equal(w.launchTail, undefined);
+});
+
+test('the first report is the only one looked at, whether or not it matched', (t) => {
   const { hire } = setup(t);
   const { w, info, hook } = hire('first');
   hook('something typed meanwhile');
   assert.equal(info.activity, 'something typed meanwhile');
-  assert.equal(w.launchTail, TAIL);
+  assert.equal(w.launchTail, undefined);
+  // So a later prompt that happens to end the same way is left as it is.
+  hook(`later\n\n${TAIL}`);
+  assert.ok(w.prompts.at(-1)?.includes('/drops/'));
+});
+
+test('a read folder is added to a Claude hire\'s launch flags and kept for its resume', (t) => {
+  const { workers, spawn } = setup(t);
+  const claude = spawn({ readDir: '/repo/.agent-office/drops/ab12' }, 'claude');
+  assert.deepEqual(claude.extra?.launchArgs, ['--add-dir', '/repo/.agent-office/drops/ab12']);
+  assert.equal('readDir' in (claude.extra ?? {}), false);
+  assert.equal(workers.launchArgsOf(claude.info.id)?.at(-1), '/repo/.agent-office/drops/ab12');
+  assert.equal(spawn({ readDir: '/x' }, 'opencode').extra?.launchArgs, undefined);
 });

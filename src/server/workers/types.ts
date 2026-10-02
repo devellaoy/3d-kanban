@@ -61,10 +61,12 @@ export interface SpawnExtra {
    * once it's here, so other hires see it).
    */
   countsWith?: string;
-  /** A hire whose files were set up before it existed (a direct hire's attachments, in drops/<id>/): the worker gets this id. */
+  /** A hire whose files were set up before it existed (a direct hire's attachments, in drops/<id>/): the worker gets this id (the caller sees that it is free). */
   id?: string;
   /** Launch-only text after the first prompt (a direct hire's attached files); not kept in info.prompt. */
   promptTail?: string;
+  /** A folder the agent may read, given to Claude and Codex as `--add-dir` (kept in launchArgs, so a resume has it too). */
+  readDir?: string;
 }
 
 /**

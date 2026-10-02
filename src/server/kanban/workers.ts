@@ -130,6 +130,7 @@ export abstract class KanbanWorkers {
     w.owner = owner;
     w.extra = kanbanExtra(extra);
     w.launchTail = extra?.promptTail;
+    if (extra?.readDir && w.extra && (w.info.provider === 'claude' || w.info.provider === 'codex')) w.extra.launchArgs = [...(w.extra.launchArgs ?? []), '--add-dir', extra.readDir];
     if (extra?.resumeSessionId) w.info.sessionId = extra.resumeSessionId;
     if (extra?.kanban) w.info.kanban = { taskId: extra.kanban.taskId, role: extra.kanban.role };
   }
@@ -162,7 +163,7 @@ function codexLog(w: Worker): CodexLog | undefined {
   return w.info.provider === 'codex' ? (w.state as CodexLog) : undefined;
 }
 
-/** How a hire is launched, kept on its worker (Worker.extra): a kanban hire's flags and settings, a direct hire's attached-files folder; undefined for any other hire. Its `id` and `promptTail` are for the first launch only and aren't kept. */
+/** How a hire is launched, kept on its worker (Worker.extra): a kanban hire's flags and settings, undefined for any other hire. Its `id`, `promptTail` and `readDir` are for the first launch only: only `launchArgs` is kept (a direct hire's `readDir` is added to it, see hired()). */
 function kanbanExtra(extra: SpawnExtra | undefined): Worker['extra'] {
   return extra && { launchArgs: extra.launchArgs && [...extra.launchArgs], env: extra.env && { ...extra.env }, settingsFile: extra.settingsFile, reused: !!extra.reuse };
 }
