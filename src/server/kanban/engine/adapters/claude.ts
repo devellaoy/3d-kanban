@@ -331,9 +331,15 @@ function notificationText(line: Record<string, unknown>): string {
  * resume (SendMessage), not a notification. Counted from `start`, the office's last prompt (so an
  * earlier run's agents don't count; -1, the log's tail cut before it: none). Bash's run_in_background
  * isn't one, and a launch known only by its text counts just from an Agent or Task call's result.
+ * A launch logged before `since` (the process's start) died with that process (a restart ends the helpers): not counted.
  */
-export function backgroundLeft(lines: Record<string, unknown>[], start: number): number {
+export function backgroundLeft(lines: Record<string, unknown>[], start: number, since?: number): number {
   if (start < 0) return 0;
+  // A launch logged before the process started died with it.
+  const alive = (line: Record<string, unknown>) => {
+    const at = atOf(line);
+    return since === undefined || !(at > 0 && at < since);
+  };
   const agents = new Map<string, boolean>();
   const tools = new Map<unknown, unknown>();
   for (const line of lines.slice(start + 1)) {
@@ -344,14 +350,14 @@ export function backgroundLeft(lines: Record<string, unknown>[], start: number):
     const res = isObj(line.toolUseResult) ? line.toolUseResult : undefined;
     if (res?.isAsync === true && res.status === 'async_launched') {
       const id = res.agentId ?? res.taskId;
-      if (typeof id === 'string') agents.set(id, true);
-    } else if (typeof res?.resumedAgentId === 'string') agents.set(res.resumedAgentId, true);
+      if (typeof id === 'string') agents.set(id, alive(line));
+    } else if (typeof res?.resumedAgentId === 'string') agents.set(res.resumedAgentId, alive(line));
     else if (!res && line.type === 'user') {
       for (const b of content) {
         if (b.type !== 'tool_result' || (tools.get(b.tool_use_id) !== 'Agent' && tools.get(b.tool_use_id) !== 'Task')) continue;
         const text = toolResultText(b);
         const id = text.startsWith('Async agent launched successfully') ? /^agentId:\s*([\w-]+)/m.exec(text)?.[1] : undefined;
-        if (id) agents.set(id, true);
+        if (id) agents.set(id, alive(line));
       }
     }
     for (const m of notificationText(line).matchAll(/<task-id>([^<]*)<\/task-id>/g)) agents.set(m[1].trim(), false);
@@ -429,10 +435,19 @@ export function readClaudeTurn(file: string, opts?: { since?: number }): TurnRes
     }
   }
   // Background agents and teammates alike: the turn's Stop isn't the run's end while any still works.
-  const left = backgroundLeft(lines, start) + teammatesBusy(file, opts?.since ?? 0, teammateEvents(lines, start));
+  const left = backgroundLeft(lines, start, opts?.since) + teammatesBusy(file, opts?.since ?? 0, teammateEvents(lines, start));
   // The last prompt is a notification or a teammate's message nothing has answered yet: Claude is about to take its turn.
   const resuming = from >= 0 && !answered && isAgentNotice(lines[from]);
   return { text: texts.join('\n\n'), ...(plan !== undefined ? { plan } : {}), ...(exitPlan ? { exitPlan } : {}), complete: answered && !toolPending && (texts.length > 0 || exitPlan), ...(apiError ? { apiError } : {}), ...(running.size ? { toolRunning: true } : {}), ...(left ? { background: left } : {}), ...(resuming ? { resuming } : {}) };
+}
+
+/** Claude logs an Esc on a turn as a user line "[Request interrupted by user…]" (it fires no Stop hook): whether one was logged at or after `since` (ms). */
+export function claudeInterruptedSince(file: string, since: number): boolean {
+  const said = (l: Record<string, unknown>) => {
+    const c = isObj(l.message) ? l.message.content : undefined;
+    return (typeof c === 'string' ? [c] : Array.isArray(c) ? c.filter(isObj).map((b) => b.text) : []).some((t) => typeof t === 'string' && t.startsWith('[Request interrupted by user'));
+  };
+  return !!readJsonLines(file)?.some((l) => l.type === 'user' && atOf(l) >= since && said(l));
 }
 
 export const claudeAdapter: TaskAgentAdapter = {
@@ -453,6 +468,7 @@ export const claudeAdapter: TaskAgentAdapter = {
     return args;
   },
   readTurnResult: readClaudeTurn,
+  interruptedSince: claudeInterruptedSince,
   spawnModel: claudeAlias,
   spawnEffort: (effort?: KanbanEffort) => (effort === 'minimal' ? 'low' : effort),
 };

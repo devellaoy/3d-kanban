@@ -88,6 +88,15 @@ export interface Rule {
    * and the turn goes on by the rule matching the last answer.
    */
   ask?: boolean | 'question';
+  /**
+   * Claude only, with `delayMs`: the turn works that long and an Esc doesn't end it as far as the office can tell: no Stop is
+   * posted and the worker stays `working`, as real Claude Code does (it fires no Stop hook on Esc). The turn stops quietly.
+   */
+  escSilent?: boolean;
+  /** With `escSilent`: the Esc is logged in the transcript as Claude logs it ("[Request interrupted by user]"), the only sign of it. */
+  escLogs?: boolean;
+  /** With `escSilent`: the Stop hook does come, this many ms after the Esc (a late confirmation). */
+  escStopMs?: number;
   questions?: number;
   answerDelayMs?: number;
 }
@@ -136,11 +145,19 @@ const nap = (ms) => new Promise((resolve) => {
 });
 let questions = 0;
 let answerDelay = 0;
+let silent = false;
+let escLogs = false;
+let escStopMs;
 async function turn(prompt, answered) {
   record({ prompt });
   if (!answered) await post('UserPromptSubmit', { prompt });
   const rule = rules().find((r) => new RegExp(r.when).test(prompt)) || { reply: 'OK' };
-  if (rule.delayMs) await new Promise((r) => setTimeout(r, rule.delayMs));
+  silent = !!rule.escSilent;
+  escLogs = !!rule.escLogs;
+  escStopMs = rule.escStopMs;
+  if (silent && rule.delayMs) {
+    if (await nap(rule.delayMs)) return;
+  } else if (rule.delayMs) await new Promise((r) => setTimeout(r, rule.delayMs));
   if (rule.exit) process.exit(3);
   if (rule.git) cp.execFileSync('git', rule.git, { cwd: process.cwd(), stdio: 'ignore' });
   if (rule.commit) cp.execFileSync('git', ['-c', 'user.name=Fake', '-c', 'user.email=fake@example.com', 'commit', '--allow-empty', '-q', '-m', rule.commit], { cwd: process.cwd() });
@@ -161,7 +178,7 @@ async function turn(prompt, answered) {
       const agent = 'agent-' + msgId;
       append({ type: 'assistant', message: { id: msgId + '-bg', role: 'assistant', content: [{ type: 'tool_use', id: 'bg-1', name: 'Agent', input: { run_in_background: true } }] } });
       const launched = () => {
-        append({ type: 'user', message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: 'bg-1', content: [{ type: 'text', text: 'Async agent launched successfully.\nagentId: ' + agent + ' (internal ID)' }] }] }, toolUseResult: { isAsync: true, status: 'async_launched', agentId: agent } });
+        append({ type: 'user', timestamp: new Date().toISOString(), message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: 'bg-1', content: [{ type: 'text', text: 'Async agent launched successfully.\nagentId: ' + agent + ' (internal ID)' }] }] }, toolUseResult: { isAsync: true, status: 'async_launched', agentId: agent } });
         append({ type: 'assistant', message: { id: msgId + '-wait', role: 'assistant', content: [{ type: 'text', text: rule.background }] } });
       };
       if (rule.launchLateMs) {
@@ -295,7 +312,9 @@ process.stdin.on('data', (chunk) => {
     buf = '';
     record({ interrupted: true });
     if (wake) wake();
-    chain = chain.then(() => post('Stop', {}));
+    if (silent && escLogs) append({ type: 'user', timestamp: new Date().toISOString(), message: { role: 'user', content: [{ type: 'text', text: '[Request interrupted by user]' }] } });
+    if (!silent) chain = chain.then(() => post('Stop', {}));
+    else if (escStopMs !== undefined) setTimeout(() => post('Stop', {}), escStopMs);
   }
 });
 process.stdin.resume();
@@ -327,6 +346,8 @@ export interface EngineFixture {
   settings: KanbanSettingsStore;
   ctx: KanbanContext;
   engine: KanbanEngine;
+  /** An office restart of the engine: the old one is disposed and a new one begins over the same context, repository and workers (what it kept in memory is gone). */
+  restartEngine(): KanbanEngine;
   broadcasts: KanbanServerMsg[];
   setRules(rules: Rule[]): void;
   invocations(): Invocation[];
@@ -469,9 +490,13 @@ export async function engineFixture(opts: { engine?: EngineOptions; repos?: Floo
     refs: { referencedTasksFile: () => undefined },
     workerExtras: () => ({ args: [], env: { FAKE_EXTRA: '1' } }),
   };
-  const engine = createEngine(ctx, { readPauseMs: 50, stopGraceMs: 1500, ...opts.engine });
-  ctx.engine = engine;
-  engine.begin();
+  const makeEngine = () => {
+    const e = createEngine(ctx, { readPauseMs: 50, stopGraceMs: 1500, ...opts.engine });
+    ctx.engine = e;
+    e.begin();
+    return e;
+  };
+  const engine = makeEngine();
 
   const fx: EngineFixture = {
     pulls,
@@ -483,6 +508,10 @@ export async function engineFixture(opts: { engine?: EngineOptions; repos?: Floo
     settings,
     ctx,
     engine,
+    restartEngine() {
+      fx.engine.dispose();
+      return (fx.engine = makeEngine());
+    },
     broadcasts,
     setRules: (rules) => writeFileSync(rulesFile, JSON.stringify(rules)),
     invocations: () => (existsSync(log) ? readFileSync(log, 'utf8').split('\n').filter(Boolean).map((l) => JSON.parse(l) as Invocation) : []),
@@ -512,7 +541,7 @@ export async function engineFixture(opts: { engine?: EngineOptions; repos?: Floo
       return hit;
     },
     async close() {
-      engine.dispose();
+      fx.engine.dispose();
       for (const w of workers.list()) await workers.kill(w.id, 'all');
       workers.shutdown();
       await new Promise<void>((resolve) => hooks.close(() => resolve()));

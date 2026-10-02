@@ -120,12 +120,16 @@ There is no Continue without an answer then: its run is still going.
 
 A task stays In progress while the agent's background helper agents still work, until the agent has
 answered after them (at most 3 hours, then it goes on with what the agent said). ⏹️ Stop during that wait
-sends the worker home, worktree kept, which stops its helper agents too.
+restarts the worker on its session at its desk, which ends its helper agents too.
 The worker shows as working in the 3D office and in /lite until the run ends, also while its background
 agents or teammates still work, instead of flickering between done and working.
 
-**⏹️ Stop** interrupts a running turn (Esc into its terminal; the worker goes home, worktree kept, if
-it doesn't stop in a few seconds). A failed or interrupted phase waits with **🔁 Retry** (run it again)
+**⏹️ Stop** interrupts a running turn (Esc into its terminal) and the worker stays at its desk; that is
+normally all it takes. Only when Esc isn't confirmed in a few seconds (the agent doesn't rest and its log
+shows no interrupt), or when the agent waits on background agents, is it restarted on its session at its
+desk, which ends its helpers, and the conversation says so. ▶️ Continue or a message then carries on in the same
+terminal. A stopped worker keeps its desk (and counts towards the worker limit); **X** sends it home.
+A worker that can't be restarted (no session yet) stays at its desk, with its agent ended if it was still working (R resumes it), and the conversation says so. A failed or interrupted phase waits with **🔁 Retry** (run it again)
 and **▶️ Continue**. After an office restart a run is picked up again when its worker is still at
 its desk; a run whose worker went away (or exited) is marked interrupted.
 

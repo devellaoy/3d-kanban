@@ -4,7 +4,7 @@ import { mkdirSync, mkdtempSync, rmSync, utimesSync, writeFileSync } from 'node:
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { validateWorkerModel } from '../src/server/agents.js';
-import { claudeAdapter, claudeAlias, readClaudeTurn, teammateTags } from '../src/server/kanban/engine/adapters/claude.js';
+import { claudeAdapter, claudeAlias, claudeInterruptedSince, readClaudeTurn, teammateTags } from '../src/server/kanban/engine/adapters/claude.js';
 import { MODEL_RE } from '../src/shared/kanban/protocol.js';
 import { codexAdapter, readCodexTurn } from '../src/server/kanban/engine/adapters/codex.js';
 
@@ -389,4 +389,15 @@ test('codex rollout: the last task_complete of the last turn, else the last assi
   assert.deepEqual(readCodexTurn(fallback), { text: 'The answer', complete: true });
   const error = write('error.jsonl', [meta, ...user('Go'), { type: 'event_msg', payload: { type: 'error', message: 'stream disconnected before completion' } }, done(null)]);
   assert.deepEqual(readCodexTurn(error), { text: 'stream disconnected before completion', complete: true, apiError: 'stream disconnected before completion' });
+});
+
+test('claudeInterruptedSince: an Esc Claude logged as an interrupt line at or after the stop, not an earlier one or a quoted one', (t) => {
+  const write = scratch(t);
+  const at = Date.parse('2026-01-01T10:00:10Z');
+  const interrupt = (ts: string) => cUser([text('[Request interrupted by user]')], { timestamp: ts });
+  const file = write('s.jsonl', [cUser('go'), interrupt('2026-01-01T10:00:00Z'), cUser([{ type: 'tool_result', tool_use_id: 't', content: '[Request interrupted by user]' }], { timestamp: '2026-01-01T10:00:20Z' })]);
+  assert.equal(claudeInterruptedSince(file, at), false);
+  assert.equal(claudeInterruptedSince(write('t.jsonl', [cUser('go'), interrupt('2026-01-01T10:00:11Z')]), at), true);
+  assert.equal(claudeInterruptedSince(write('u.jsonl', [cUser('go'), cUser('[Request interrupted by user for tool use]', { timestamp: '2026-01-01T10:00:11Z' })]), at), true);
+  assert.equal(claudeInterruptedSince(path.join(path.dirname(file), 'missing.jsonl'), at), false);
 });

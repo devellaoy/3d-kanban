@@ -33,6 +33,7 @@ import { fixTargetsOf, forkTest, polledPulls } from '../integrations/pulls/prfix
 import { next, queuedOf, runOf, stateOf, type Effect, type LastRun, type MachineEvent, type PromptKind, type RunEffect } from './machine.js';
 import { backoffMs, looksInterrupted, planOutcome, prLines, reviewFindings, reviewVerdict, stripPlanMarkers } from './markers.js';
 import { limitReset } from './limitreset.js';
+import { endStop, type StopRun } from './stopping.js';
 import { branchExists, checkoutLines, currentBranch, homeCleanup, hasChanges, missingFolders } from './workspace.js';
 import { Handoffs } from './handoff.js';
 
@@ -847,7 +848,7 @@ export class Orchestrator {
     // Its own worker still busy, or its teammates still at work (they wake the lead again after a turn's end): the phase starts when all rest.
     const teamWork = (id: string) => {
       const prior = this.live.get(id);
-      return tool === 'claude' && this.teammatesWork(floor, id, prior ? this.sinceOf(prior) : this.procSince.get(id));
+      return tool === 'claude' && this.teammatesWork(floor, id, prior ? this.sinceOf(prior) : Math.max(this.procSince.get(id) ?? 0, floor.workers.restartedAt(id) ?? 0) || undefined);
     };
     if (info && info.kind === 'agent' && info.kanban?.taskId === task.id && (info.status === 'working' || info.status === 'starting' || teamWork(info.id))) {
       const waited = await this.untilRests(floor, info.id, task.id, () => teamWork(info!.id));
@@ -1630,7 +1631,7 @@ export class Orchestrator {
 
   // --- Stopping -----------------------------------------------------------------------------------
 
-  /** Esc into the running turn's terminal; sent home (worktree kept) if it hasn't stopped in a few seconds. */
+  /** Esc into the running turn's terminal; restarted on its session at its desk (never sent home) if it hasn't stopped in a few seconds. */
   private interrupt(task: KanbanTask, who?: KanbanCaller) {
     const live = this.liveOf(task.id);
     if (!live) {
@@ -1640,27 +1641,25 @@ export class Orchestrator {
     }
     const floor = this.ctx.floor(live.floorId);
     live.stopping = { ...(who ? { by: who.name } : {}) };
-    // At rest while its background agents work: nothing to interrupt, so it goes home (worktree kept), which ends the session
-    // and its helper agents; its removal (see removed) finishes the stop. A turn that has resumed gets Esc as usual.
+    // At rest while its background agents work: nothing to interrupt, so it is restarted on its session at its desk (never sent
+    // home), which ends its helper agents. A turn that has resumed gets Esc as usual.
+    const at = Date.now();
+    const run: StopRun = { workerId: live.workerId, floor: () => this.ctx.floor(live.floorId), serial: (fn) => this.serial(live.taskId, fn), stop: () => this.stoppedRun(live), note: (text) => this.note(task, text, live.runId), interrupted: (file) => !!this.adapters[live.tool].interruptedSince?.(file, at) };
     const status = floor?.workers.get(live.workerId)?.status;
-    if (live.background && floor && (status === 'done' || status === 'idle')) return void floor.sendHome(live.workerId, homeCleanup(task, floor.workers.get(live.workerId)), ENGINE);
+    if (live.background && floor && (status === 'done' || status === 'idle')) return void endStop(run, 'background');
     floor?.workers.write(live.workerId, ESC, who?.name ?? 'Kanban');
-    live.stopping.timer = setTimeout(() => {
-      if (this.live.get(live.workerId) !== live || live.ended) return;
-      const f = this.ctx.floor(live.floorId);
-      if (!f) return void this.serial(live.taskId, () => this.stoppedRun(live));
-      // Its removal (see removed) finishes the stop.
-      void f.sendHome(live.workerId, homeCleanup(this.ctx.repo.getTask(live.taskId), f.workers.get(live.workerId)), ENGINE);
-    }, this.opts.stopGraceMs);
+    live.stopping.timer = setTimeout(() => this.live.get(live.workerId) === live && !live.ended && void endStop(run, 'timeout'), this.opts.stopGraceMs);
     live.stopping.timer.unref?.();
   }
 
-  private async stoppedRun(live: Live) {
-    if (live.ended || this.live.get(live.workerId) !== live) return;
+  /** Ends the run as stopped; false when it had ended already. */
+  private async stoppedRun(live: Live): Promise<boolean> {
+    if (live.ended || this.live.get(live.workerId) !== live) return false;
     live.ended = true;
     this.forget(live);
     await this.finishStopped(live);
     void this.drain(live.floorId);
+    return true;
   }
 
   private async finishStopped(live: Live) {
