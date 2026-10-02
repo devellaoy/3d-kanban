@@ -6,7 +6,7 @@ import { mesh, roundedBox, textPlane, toon, toonUnique } from '../toon';
 import type { Collider, Interactable } from '../types';
 import type { Fixture } from './fixture';
 import { PALETTE } from './materials';
-import { coffeeTable, loungeCouch, pendant, pouf, wallBoard } from './props';
+import { coffeeTable, loungeCouch, pendant, pendantLight, pouf, wallBoard } from './props';
 import { seatable } from './seats';
 
 // The room itself, past its walls and its seats: the rugs, what the sky lights and darkens, the boards
@@ -44,6 +44,7 @@ export const nightLights: Fixture<'night'> = () => ({
       bulbs: [],
       halos: [],
       lamps: [],
+      roomLamps: [],
       windows: [],
       street: STREET_Y,
       clouds: toonUnique('#ffffff'),
@@ -169,6 +170,7 @@ export const lamps: Fixture = (site) => {
     lamp.position.set(x, lampY, z);
     site.group.add(lamp);
     night.halos.push({ at: new THREE.Vector3(x, lampY - 0.12, z), size: 1.3, color: '#ffe08a' });
+    night.roomLamps.push(pendantLight(x, lampY, z));
   }
   return {};
 };

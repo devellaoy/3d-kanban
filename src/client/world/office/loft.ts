@@ -1,17 +1,18 @@
 import * as THREE from 'three';
 import { LOFT, STAIRS, WALL_T } from '../../../shared/layout';
 import { mesh, roundedBox, textPlane, toon } from '../toon';
+import type { NightParts } from '../outside';
 import type { Collider, Interactable } from '../types';
 import type { Fixture } from './fixture';
 import { PALETTE, box, floorTexture, glassPane, type Looks } from './materials';
-import { pendant } from './props';
+import { pendant, pendantLight } from './props';
 import { chair, seatable } from './seats';
 
 /**
  * The upstairs office: a loft on posts in the south-east corner, with glass on the two sides that
  * face the desks, reached by stairs along the south wall.
  */
-export function buildLoft(group: THREE.Group, colliders: Collider[], interactables: Interactable[], looks: Looks): THREE.Mesh {
+export function buildLoft(group: THREE.Group, colliders: Collider[], interactables: Interactable[], looks: Looks, night: NightParts): THREE.Mesh {
   const { minX, maxX, minZ, maxZ, y: floorY, height } = LOFT;
   const w = maxX - minX;
   const d = maxZ - minZ;
@@ -181,6 +182,7 @@ export function buildLoft(group: THREE.Group, colliders: Collider[], interactabl
   const lamp = pendant();
   lamp.position.set(deskX, roofY - 0.4, cz);
   group.add(lamp);
+  night.roomLamps.push(pendantLight(deskX, roofY - 0.4, cz, 6));
 
   // Signs: one on the back wall inside, one over the glass for everyone downstairs.
   const inside = textPlane('👑 Boss Office', { bg: '#fffaf3', size: 64 });
@@ -204,4 +206,4 @@ declare module '../types' {
 }
 
 /** The loft up the stairs, over the meeting room: the boss's office. */
-export const loft: Fixture<'bossScreen'> = (site) => ({ handle: { bossScreen: buildLoft(site.group, site.colliders, site.interactables, site.looks) } });
+export const loft: Fixture<'bossScreen'> = (site) => ({ handle: { bossScreen: buildLoft(site.group, site.colliders, site.interactables, site.looks, site.get('night')) } });

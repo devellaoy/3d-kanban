@@ -6,9 +6,10 @@ import type { Parts } from '../../core/parts';
  * Indoors the light that casts shadows comes from the lamps overhead, not the street's sun: the office is
  * lit as if it had no roof, so the sun's shadows fell across the walls from nowhere anyone could see.
  * INDOOR_LIGHT is where that light comes from (nearly straight down, a little off so walls aren't
- * side-on to it), how dark its shadows are, and how bright and warm it is once the lamps are on.
+ * side-on to it) and how dark its shadows are. How bright and warm it is indoors, and how far it
+ * reaches, is the lamps' (world/roomlight.ts): the sun's own brightness outside is left alone.
  */
-const INDOOR_LIGHT = { dir: new THREE.Vector3(0.22, 1, 0.14).normalize(), shadow: 0.7, lamp: 0.7, color: new THREE.Color('#ffe2b8') };
+const INDOOR_LIGHT = { dir: new THREE.Vector3(0.22, 1, 0.14).normalize(), shadow: 0.7 };
 
 /** Indoors in the office, after the sky's had its say (core/loop.ts's env tick): the shadows come from overhead and the walls take none. */
 export function installLamplight(ctx: Ctx, parts: Pick<Parts, 'stage' | 'place'>) {
@@ -38,7 +39,6 @@ export function installLamplight(ctx: Ctx, parts: Pick<Parts, 'stage' | 'place'>
 
   ctx.ticks.add('env', ({ dt }) => {
     const { sun } = parts.stage;
-    const { sky } = ctx;
     // A map of its own (the castle) lights itself (see World.mood): the office's lamplight goes at once, not
     // eased out over its first seconds, and leaves its light alone from then on. The roof's out under the sky.
     const office = ctx.inOffice();
@@ -57,11 +57,6 @@ export function installLamplight(ctx: Ctx, parts: Pick<Parts, 'stage' | 'place'>
     }
     from.copy(sun.position).sub(sun.target.position).normalize();
     sun.position.copy(sun.target.position).addScaledVector(from.lerp(INDOOR_LIGHT.dir, indoorness).normalize(), 45);
-    const lamp = INDOOR_LIGHT.lamp * sky.lampsOn;
-    if (lamp > sun.intensity) {
-      sun.color.lerp(INDOOR_LIGHT.color, indoorness * Math.min(1, (lamp - sun.intensity) / lamp));
-      sun.intensity += (lamp - sun.intensity) * indoorness;
-    }
     sun.shadow.intensity = 1 + (INDOOR_LIGHT.shadow - 1) * indoorness;
   });
 }

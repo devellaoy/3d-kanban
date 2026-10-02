@@ -3,6 +3,7 @@ import { FLOOR, SLAB, STREET_Y, WALL_HEIGHT, WALL_T, WING, wingMinZ } from '../.
 import type { SkyState, Theme, Weather } from '../../shared/protocol';
 import { guessPlace, skyNow, sunPosition } from '../../shared/sun';
 import type { NightParts } from './outside';
+import { ROOM_LIGHT, ROOM_LIGHT_PARS, SUN_SPLIT, lightRoom, roomLevel, roomUniforms, setPanes } from './roomlight';
 
 /*
  * Day, night and the weather outside the windows. The server says where the office is and what the
@@ -10,11 +11,11 @@ import type { NightParts } from './outside';
  * night go by every hour (see skyTime), this works out where the sun is, and every frame it sets
  * the sky's color, the fog, the sun (or the moon), the lamps that come on at night, and the rain or snow.
  *
- * The office has no roof, and the sun and the sky light everything, inside and out, so at night the
- * room would go as dark as the street. A few lines added to every lit material (below) give light
- * back where there are lamps: the office and the garage fill with lamplight, and each street lamp,
- * the balcony's string lights and the lamp over the exit throw a pool of light around them. The
- * same lines darken the ground outside when it's wet and lay snow on whatever faces up out there.
+ * The office has no roof, and the sun and the sky light everything, inside and out. A few lines added
+ * to every lit material (below) put that right: inside the office's walls the room is lit by its own
+ * lamps and the daylight through its windows (world/roomlight.ts), the garage fills with lamplight,
+ * and each street lamp, the balcony's string lights and the lamp over the exit throw a pool of light
+ * around them. The same lines darken the ground outside when it's wet and lay snow on whatever faces up out there.
  */
 
 const MAX_LAMPS = 24;
@@ -110,8 +111,7 @@ export const uniforms = {
   skyOn: { value: 1 },
   /** Off up on the roof, where the office and the garage (which are under your feet there) aren't lit. */
   skyInside: { value: 1 },
-  /** Lamplight filling the office, and the garage: color × strength, in the units of three.js lights. */
-  skyOffice: { value: new THREE.Color(0, 0, 0) },
+  /** Lamplight filling the garage: color × strength, in the units of three.js lights. */
   skyGarage: { value: new THREE.Color(0, 0, 0) },
   skyLampCount: { value: 0 },
   /** Each lamp's position and reach, and its color × strength. */
@@ -166,7 +166,6 @@ float skyInOffice( vec3 p ) { return skyInsideOf( p, ${SHAFT_TOP.toFixed(1)} ); 
 `;
 
 const PARS = /* glsl */ `
-uniform vec3 skyOffice;
 uniform vec3 skyGarage;
 uniform int skyLampCount;
 uniform vec4 skyLamps[${MAX_LAMPS}];
@@ -210,7 +209,9 @@ material.diffuseColor = mix( material.diffuseColor, vec3( 0.93, 0.96, 1.0 ), sky
 /** The lamps' light, added to what the sun and the sky give. */
 const LIGHT = /* glsl */ `
 if ( skyOn > 0.0 ) {
-  vec3 skyLight = skyIndoor * skyOffice * ( 0.65 + 0.35 * skyN.y ) + ( 1.0 - skyIndoor ) * ( skyGar * skyGarage + skyLampsAt( vSkyWorld, skyN ) );
+  float skyRoom = skyInside * skyInsideOf( vSkyWorld, ${WALL_TOP.toFixed(3)} );
+  ${ROOM_LIGHT}
+  vec3 skyLight = ( 1.0 - skyIndoor ) * ( skyGar * skyGarage + skyLampsAt( vSkyWorld, skyN ) );
   reflectedLight.indirectDiffuse += skyLight * BRDF_Lambert( material.diffuseColor );
 }
 `;
@@ -299,16 +300,16 @@ THREE.Material.prototype.onBeforeCompile = function (shader) {
   const sprite = !shader.vertexShader.includes('#include <project_vertex>');
   shader.vertexShader = shader.vertexShader.replace('#include <common>', `#include <common>\n${ROOM_VARYING}`);
   if (!sprite) shader.vertexShader = shader.vertexShader.replace('#include <project_vertex>', `#include <project_vertex>\n${WORLD}`);
-  shader.fragmentShader = shader.fragmentShader.replace('#include <common>', `#include <common>\n${lit ? `${ROOM_PARS}\n${PARS}` : ROOM_PARS}`);
+  shader.fragmentShader = shader.fragmentShader.replace('#include <common>', `#include <common>\n${lit ? `${ROOM_PARS}\n${PARS}\n${ROOM_LIGHT_PARS}` : ROOM_PARS}`);
   if (foggy) {
     shader.uniforms.skyStreet = uniforms.skyStreet;
     shader.vertexShader = shader.vertexShader.replace('#include <fog_pars_vertex>', `#include <fog_pars_vertex>\n${HAZE_PARS_VERTEX}`).replace('#include <fog_vertex>', `#include <fog_vertex>\n${HAZE_VERTEX}${sprite ? SPRITE_WORLD : ''}`);
     shader.fragmentShader = shader.fragmentShader.replace('#include <fog_pars_fragment>', `#include <fog_pars_fragment>\n${HAZE_PARS}`).replace('#include <fog_fragment>', HAZE);
   }
   if (!lit) return;
-  Object.assign(shader.uniforms, uniforms);
+  Object.assign(shader.uniforms, uniforms, roomUniforms);
   shader.fragmentShader = shader.fragmentShader
-    .replace('#include <lights_fragment_begin>', `${SURFACE}\n#include <lights_fragment_begin>`)
+    .replace('#include <lights_fragment_begin>', `${SURFACE}\n${SUN_SPLIT}`)
     .replace('#include <lights_fragment_end>', `#include <lights_fragment_end>\n${LIGHT}`);
 };
 
@@ -356,8 +357,6 @@ const C = {
   hemiGroundNight: new THREE.Color('#1d1b29'),
   ambientNight: new THREE.Color('#8797cc'),
   white: new THREE.Color('#ffffff'),
-  office: new THREE.Color('#fff2de'),
-  officeNight: new THREE.Color('#ffd49c'),
   garage: new THREE.Color('#f6f2e4'),
   cloudGrey: new THREE.Color('#a3abb6'),
 };
@@ -714,6 +713,7 @@ export class Sky {
     const room = wingRoom(level); // the same box roomAt is tested with
     if (room) uniforms.skyWing.value.set(room.minX, room.maxX, room.minZ, room.maxZ);
     else uniforms.skyWing.value.set(1, 0, 1, 0);
+    setPanes(level);
   }
 
   /** Under a roof, out of the rain: the building, unless you're up on top of it. */
@@ -730,7 +730,7 @@ export class Sky {
   lightAt(p: THREE.Vector3): number {
     if (this.indoors) return 1;
     const inside = !this.roof && ((p.x > FLOOR.minX && p.x < FLOOR.maxX && p.z > FLOOR.minZ && p.z < FLOOR.maxZ) || (sheltered(p.x, p.z) && (p.y < 0 || p.z < FLOOR.minZ)));
-    if (inside) return 1;
+    if (inside) return p.y < 0 ? 1 : roomLevel(p, this.night.roomLamps, this.level);
     let lamp = 0;
     if (!this.roof) {
       const drop = STREET_Y - this.street;
@@ -821,7 +821,7 @@ export class Sky {
     const lightAz = moonlit ? az + Math.PI : az;
     this.dir.set(Math.cos(lightEl) * Math.sin(lightAz), Math.sin(lightEl), -Math.cos(lightEl) * Math.cos(lightAz));
     sun.position.copy(sun.target.position).addScaledVector(this.dir, 45);
-    sun.intensity = moonlit ? moonI : sunI;
+    sun.intensity = Math.max(0.02, moonlit ? moonI : sunI); // never quite out: indoors it's the lamps' light (see lightRoom)
     if (moonlit) sun.color.copy(C.moon).lerp(SPOOKY.moonLight, sp);
     else sun.color.copy(C.sunLow).lerp(C.sunHigh, smooth(0, 25, elD)).lerp(SPOOKY.sun, sp);
     this.level = clamp01((hemiI + ambI + 0.6 * (sunI + moonI)) / FULL_DAY);
@@ -829,7 +829,7 @@ export class Sky {
     // Lamps come on as it gets dark: the office's and the garage's, and the ones outside.
     const need = 1 - this.level;
     this.lampsOn = smooth(0.45, 0.62, need);
-    uniforms.skyOffice.value.copy(C.office).lerp(C.officeNight, 1 - day).multiplyScalar(need * 3.2);
+    lightRoom(this.night.roomLamps, sun);
     uniforms.skyGarage.value.copy(C.garage).multiplyScalar(need * 2);
     const lamps = Math.min(this.night.lamps.length, MAX_LAMPS);
     uniforms.skyLampCount.value = this.lampsOn > 0.005 && !this.roof && !this.indoors ? lamps : 0;

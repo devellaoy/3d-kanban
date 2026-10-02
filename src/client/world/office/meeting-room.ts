@@ -166,6 +166,7 @@ export function buildMeetingRoom(group: THREE.Group, colliders: Collider[], inte
   for (const dx of [-0.95, 0.95]) {
     group.add(mesh(new THREE.CylinderGeometry(0.34, 0.34, 0.04, 20), toon('#fff7d6', { emissive: '#ffe08a' }), top.x + dx, H - 0.02, top.z, false));
     night.halos.push({ at: new THREE.Vector3(top.x + dx, H - 0.08, top.z), size: 0.9, color: '#ffe08a' });
+    night.roomLamps.push({ x: top.x + dx, y: H - 0.1, z: top.z, reach: 5, color: '#ffe2b8', power: 1.2, level: 1 });
   }
   return { board: face, sign };
 }

@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { mesh, roundedBox, toon } from '../toon';
 import { palette, piece } from '../models';
+import type { RoomLamp } from '../roomlight';
 import { PALETTE } from './materials';
 
 // The office's furnishings: the potted plants, the desks' knick-knacks and the lounge's furniture (all
@@ -132,6 +133,11 @@ export function pendant(cord = 0.48): THREE.Group {
   lamp.add(mesh(new THREE.SphereGeometry(0.16, 10, 8), toon('#fff7d6', { emissive: '#ffe08a' }), 0, -0.15, 0, false));
   lamp.scale.setScalar(0.8);
   return lamp;
+}
+
+/** The light from a pendant hung at (x, y, z), over the room round it (see world/roomlight.ts). */
+export function pendantLight(x: number, y: number, z: number, reach = 11): RoomLamp {
+  return { x, y: y - 0.15, z, reach, color: '#ffe2b8', power: 3.2, level: 1 };
 }
 
 /** A framed board on a wall; the face gets a canvas texture (cork, chalk or whiteboard). */

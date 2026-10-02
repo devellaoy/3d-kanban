@@ -6,7 +6,7 @@ import { wingWindows } from '../tower';
 import type { Collider, DeskView, Interactable } from '../types';
 import type { Fixture } from './fixture';
 import { PALETTE, box, type Looks } from './materials';
-import { pendant } from './props';
+import { pendant, pendantLight } from './props';
 import { buildDesk } from './seats';
 import { wallRun, wetPane, windowIn } from './shell';
 
@@ -84,6 +84,9 @@ export function buildWing(group: THREE.Group, colliders: Collider[], interactabl
     lamp.position.set(midX, 4.05, z);
     extras.add(lamp);
     extras.visible = false;
+    // Lit once the row is built (setLevel).
+    const light = { ...pendantLight(midX, 4.05, z), level: 0 };
+    night.roomLamps.push(light);
     group.add(extras);
     const seats = WING_DESKS.filter((d) => d.wing === row).map((def) => {
       const view = buildDesk(def, DESKS.length + WING_DESKS.indexOf(def), trimMat);
@@ -99,7 +102,7 @@ export function buildWing(group: THREE.Group, colliders: Collider[], interactabl
       view.group.userData.interact = it;
       return { view, collider, it };
     });
-    return { extras, seats };
+    return { extras, seats, light };
   });
 
   // The sign: on the wall at the back, high enough to read from across the room over the desks.
@@ -149,9 +152,10 @@ export function buildWing(group: THREE.Group, colliders: Collider[], interactabl
 
       plug.visible = level === 0;
       if (level === 0) mine.push(...plugCols);
-      rows.forEach(({ extras, seats }, i) => {
+      rows.forEach(({ extras, seats, light }, i) => {
         const on = i < level;
         extras.visible = on;
+        light.level = on ? 1 : 0;
         for (const s of seats) {
           s.view.group.visible = on;
           s.it.off = !on;

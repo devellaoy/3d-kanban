@@ -174,6 +174,9 @@ export function installLoop(ctx: Ctx, core: CoreState, parts: Pick<Parts, 'stage
     const { player, hands, sky, camera, renderer } = ctx;
     const { effect, scene } = parts.stage;
     const firstPerson = player.view === 'first';
+    // The sky's lines (the room's lamps, the wet and the snow) are the office's alone: off outside this, so
+    // another renderer's scene (the character preview) isn't lit as if it stood in the room.
+    sky.shading(true);
     effect.render(scene, camera);
     // Not while something has the screen to itself (the telescope, the boss's monitor or the arcade up close), where they'd cover it.
     if (firstPerson && !ctx.view.covered() && !ctx.activities.any('hidesHands')) {
@@ -183,8 +186,8 @@ export function installLoop(ctx: Ctx, core: CoreState, parts: Pick<Parts, 'stage
       hands.setLight(sky.lightAt(camera.position));
       sky.shading(false);
       effect.render(hands.scene, hands.camera);
-      sky.shading(true);
     }
+    sky.shading(false);
   }
 }
 
