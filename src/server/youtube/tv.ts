@@ -6,9 +6,12 @@ import path from 'node:path';
 import { RATES, isVideoId, parseYoutubeLink, tvPosition, youtubeUrl, type YoutubeLink, type YoutubeTvState } from '../../shared/youtube/link.js';
 import { QUEUE_MAX, UNPACK_MAX, type YoutubeQueueItem, type YoutubeTvList } from '../../shared/youtube/queue.js';
 import * as q from './queue.js';
-import { parseSaved, type Play, type Saved } from './saved.js';
+import { finite, parseSaved, type Play, type Saved } from './saved.js';
 
-const clip = (n: unknown): n is number => typeof n === 'number' && Number.isFinite(n);
+/** The longest a video or a seek can be taken to be, in seconds: what a browser says of a length, and where a seek stops while the length isn't known. */
+const MAX_SECONDS = 1e6;
+/** A change is written to the file this long after the first of them, so a burst (a seek bar drag) is one write. */
+const SAVE_DELAY_MS = 250;
 
 /**
  * The YouTube video (or playlist) on one floor's TV. Like the jukebox it only says where it is
@@ -22,6 +25,7 @@ export class YoutubeTv {
   private history: YoutubeQueueItem[] = [];
   private sameVolume = false;
   private readonly file: string;
+  private saving: NodeJS.Timeout | undefined;
 
   constructor(
     dataDir: string,
@@ -43,18 +47,22 @@ export class YoutubeTv {
 
   /**
    * Puts `url` on (checked here, whatever the browser checked), from its `t=` if it has one: now, with what was on going
-   * to the history, or with `queue` into the queue (it starts at once if nothing is on, then `queued` is absent).
+   * to the history, or with `queue` into the queue. With nothing on, an empty queue starts it at once (then `queued` is
+   * absent); a queue with something in it is only added to and the TV goes on to the queue's first (`started`), so a
+   * queued video never jumps the line.
    */
-  play(url: unknown, by: string, queue?: 'end' | 'next'): { state: YoutubeTvState; queued?: YoutubeQueueItem } | { error: string } {
+  play(url: unknown, by: string, queue?: 'end' | 'next'): { state: YoutubeTvState; queued?: YoutubeQueueItem; started?: true } | { error: string } {
     const l = parseYoutubeLink(url);
     if ('error' in l) return l;
     const item = this.item(l, by);
-    if (queue && this.s) {
+    if (queue && (this.s || this.queue.length > 0)) {
       const next = q.add(this.queue, item, queue);
       if (!next) return { error: 'The TV queue is full' };
       this.queue = next;
       this.save();
-      return { state: this.state()!, queued: item };
+      if (this.s) return { state: this.state()!, queued: item };
+      this.nextOrOff();
+      return { state: this.state()!, queued: item, started: true };
     }
     this.begin(item, true);
     return { state: this.state()! };
@@ -63,6 +71,7 @@ export class YoutubeTv {
   /** Takes what's on off, the queue stays. Says whether anything was on. */
   stop(): boolean {
     if (!this.s) return false;
+    this.history = q.remember(this.history, this.item(this.s, this.s.by, this.s));
     this.s = null;
     this.save();
     return true;
@@ -79,9 +88,9 @@ export class YoutubeTv {
   /** Jumps to `to` seconds, or by `by` from where it is; kept within the video (its length, once known). */
   seek(id: unknown, to: unknown, by: unknown): boolean {
     if (!this.s || id !== this.s.id) return false;
-    const target = clip(to) ? to : clip(by) ? tvPosition(this.s, this.now()) + by : undefined;
+    const target = finite(to) ? to : finite(by) ? tvPosition(this.s, this.now()) + by : undefined;
     if (target === undefined) return false;
-    const max = this.s.duration ?? Infinity;
+    const max = this.s.duration ?? MAX_SECONDS;
     this.set({ ...this.s, position: Math.max(0, Math.min(max, target)), at: this.now() });
     return true;
   }
@@ -122,8 +131,8 @@ export class YoutubeTv {
   /**
    * The play `id` is over: a playlist with `next` goes on to its next video, else the queue's first item plays,
    * else it comes off. Only the first browser to say so counts (the rest name an older play). A paused play
-   * keeps its id, so an end that was on its way when it was paused is dropped (a browser says it again once it
-   * plays on); a video YouTube won't play here (`blocked`) comes off paused or not.
+   * keeps its id, so an end that was on its way when it was paused is dropped; every browser says it again when the
+   * play's timing next changes (it plays on, or is moved: client/youtube/follow.ts `timingChanged`). A video YouTube won't play here (`blocked`) comes off paused or not.
    */
   ended(id: unknown, next: boolean, blocked = false): 'next' | 'queue' | 'stopped' | null {
     if (!this.s || id !== this.s.id || (this.s.paused && !blocked)) return null;
@@ -137,12 +146,12 @@ export class YoutubeTv {
     return 'stopped';
   }
 
-  /** What a browser knows of it: the length of the video, the playlist's. Each is taken once. Says whether anything was new. */
+  /** What a browser knows of it: the length of the video, the playlist's. A larger one replaces a smaller (a length learnt too early), never the other way round. Says whether anything changed. */
   info(id: unknown, duration: unknown, listLength: unknown): boolean {
     const s = this.s;
     if (!s || id !== s.id) return false;
-    const d = s.duration === undefined && clip(duration) && duration > 0 && duration < 1e6 ? duration : undefined;
-    const n = s.listLength === undefined && s.list && typeof listLength === 'number' && Number.isInteger(listLength) && listLength > 0 && listLength <= 5000 ? listLength : undefined;
+    const d = finite(duration) && duration > 0 && duration < MAX_SECONDS && duration > (s.duration ?? 0) ? duration : undefined;
+    const n = s.list && typeof listLength === 'number' && Number.isInteger(listLength) && listLength > 0 && listLength <= 5000 && listLength > (s.listLength ?? 0) ? listLength : undefined;
     if (d === undefined && n === undefined) return false;
     this.set({ ...s, ...(d !== undefined ? { duration: d } : {}), ...(n !== undefined ? { listLength: n } : {}) });
     return true;
@@ -166,10 +175,15 @@ export class YoutubeTv {
 
   /** The title for a queued item (by its `qid`), if it's still queued. */
   titledQueued(qid: string, title: string): boolean {
-    if (!title || !this.queue.some((i) => i.qid === qid)) return false;
+    if (!title || !this.queued(qid)) return false;
     this.queue = this.queue.map((i) => (i.qid === qid ? { ...i, title: title.slice(0, 200) } : i));
     this.save();
     return true;
+  }
+
+  /** Whether the item (by its `qid`) is still queued. */
+  queued(qid: string): boolean {
+    return this.queue.some((i) => i.qid === qid);
   }
 
   /** Moves a queued item to place `to`. */
@@ -198,7 +212,7 @@ export class YoutubeTv {
   }
 
   /**
-   * The playing playlist's videos become queue items. `videoIds` are the playlist's videos in order (at most UNPACK_MAX),
+   * The playing playlist's videos become queue items. `videoIds` are the playlist's videos in order from the playing one on (at most UNPACK_MAX),
    * `at` is where the player is in them, `current` the video it plays there and `index` its place in the whole
    * playlist; they must agree with each other and with the video the office has (`index`), so the office never guesses the position. What's on stays on as `current` alone (same play, so the position carries on and the
    * browsers drop the playlist without moving it), and the ones after `at` go to the queue's front.
@@ -239,7 +253,7 @@ export class YoutubeTv {
     this.set({ ...link, id: this.newId(), position: item.start, at: this.now(), rate: 1, paused: false });
   }
 
-  /** The queue's first item plays; false (and the TV goes dark) when there is none. */
+  /** The queue's first item plays; false (and the TV goes dark, what was on going to the history) when there is none. */
   private nextOrOff(): boolean {
     const [first, ...rest] = this.queue;
     if (!first) {
@@ -284,10 +298,20 @@ export class YoutubeTv {
     }
   }
 
+  /** Marks the file out of date; it is written soon (see `flush`), so a burst of changes is one write. */
   private save() {
+    this.saving ??= setTimeout(() => this.flush(), SAVE_DELAY_MS);
+    this.saving.unref();
+  }
+
+  /** Writes what's changed to the file now (tests, and whatever needs it on disk at once). */
+  flush() {
+    if (!this.saving) return;
+    clearTimeout(this.saving);
+    this.saving = undefined;
     const saved: Saved = { version: 2, now: this.s, queue: this.queue, history: this.history, sameVolume: this.sameVolume };
     try {
-      writeFileSync(this.file, JSON.stringify(saved, null, 2), { mode: 0o600 });
+      writeFileSync(this.file, JSON.stringify(saved), { mode: 0o600 });
     } catch {
       // disk issues shouldn't take the office down
     }

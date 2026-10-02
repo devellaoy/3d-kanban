@@ -11,8 +11,6 @@ import { sendToTv, tvQueue } from './queue';
 import type { TvScreen } from './screen';
 import { youtubeAt, type YoutubeOnTv } from './slice';
 
-export { sendToTv };
-
 export interface TvWindowDeps {
   net: Net;
   screen: TvScreen;
@@ -55,6 +53,7 @@ export function openTvWindow(deps: TvWindowDeps) {
 
   let link: HTMLAnchorElement | null = null;
   let drawn = '';
+  let drawnList: unknown;
   const render = () => {
     const y = store.youtube;
     const list = store.youtubeList;
@@ -62,7 +61,6 @@ export function openTvWindow(deps: TvWindowDeps) {
     const error = deps.screen.errorText();
     const k = JSON.stringify([
       y && [y.id, y.title, y.index, y.paused, y.rate, y.pausedBy, y.duration, y.listLength, y.list],
-      list,
       who,
       error,
       deps.screen.needsClick(),
@@ -70,8 +68,10 @@ export function openTvWindow(deps: TvWindowDeps) {
       !!deps.screen.playlistAt(),
       deps.screen.rateNote(),
     ]);
-    if (k === drawn) return;
+    // The queue is a new object whenever it changes (store.on('youtubeList') renders then), so it needs no place in the key.
+    if (k === drawn && list === drawnList) return;
     drawn = k;
+    drawnList = list;
     const showSlot = !!y && !who;
     slot.hidden = !showSlot;
     deps.screen.watchIn(showSlot ? slot : null);

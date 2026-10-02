@@ -19,11 +19,28 @@ export function endedByClock(y: OnTv, duration: number, want: number, p: PlayerA
   return duration > 0 && !y.list && p.rate === y.rate && onOfficeVideo(y, p) && want >= duration - 0.5;
 }
 
+/** The timing a browser has followed of a play: what a change of must be followed at once. */
+export type Timing = { id: string; position: number; at: number; rate: number; paused: boolean };
+
+/**
+ * Whether the play `y` has timing the browser hasn't followed yet: a new play, or the same one paused, resumed, moved or
+ * sped up. It also means an end told earlier may have been dropped by the office (while it was paused, or before the
+ * move), so it is told again if it's still over.
+ */
+export function timingChanged(f: Timing | null, y: Timing): boolean {
+  return !f || f.id !== y.id || f.position !== y.position || f.at !== y.at || f.rate !== y.rate || f.paused !== y.paused;
+}
+
+/** Whether a playlist whose length is known (`length`) has no video at `index`: ⏭️ went past its end, so it's over. */
+export function pastPlaylistEnd(index: number, length: number | undefined): boolean {
+  return !!length && index >= length;
+}
+
 /**
  * Whether the player's own ENDED, seen in a sync, says the office's video is over: once the guard against the last
  * play's late events (`settled`) has passed and the player is on the office's video. An ENDED that came while the
  * guard held (a start at the very end) is only found this way, whatever the speeds.
  */
-export function endedByPlayer(y: Pick<OnTv, 'list' | 'index' | 'videoId'>, ended: boolean, settled: boolean, p: PlayerAt): boolean {
-  return ended && settled && onOfficeVideo(y, p);
+export function endedByPlayer(y: Pick<OnTv, 'list' | 'index' | 'videoId'>, settled: boolean, p: PlayerAt): boolean {
+  return settled && onOfficeVideo(y, p);
 }

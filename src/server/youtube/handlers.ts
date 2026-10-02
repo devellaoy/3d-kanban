@@ -12,7 +12,7 @@ import { changed, lookUpTitle, startNow, titleQueued, youtubeListView, youtubeTv
 import { controlHandlers } from './controls.js';
 import { queueHandlers } from './queue-handlers.js';
 
-export { youtubeListView, youtubeTvOf, youtubeView };
+export { youtubeListView, youtubeView };
 
 /** Puts `url` on the floor's TV for `who` (now, or into the queue with `queue`). Gives what went wrong, if anything. */
 function play(ctx: Ctx, floor: Floor, url: unknown, who: string, queue?: 'end' | 'next'): string | undefined {
@@ -22,7 +22,9 @@ function play(ctx: Ctx, floor: Floor, url: unknown, who: string, queue?: 'end' |
     startNow(ctx, floor, who, (title, quiet) => `📺 ${who} put “${title}” on the TV${quiet ? ' (the jukebox is off meanwhile)' : ''}`);
     return undefined;
   }
-  changed(ctx, floor, true);
+  // Added to a queue on a dark TV: the queue's first goes on (which tells the floor), not what was just added.
+  if (r.started) startNow(ctx, floor, who);
+  else changed(ctx, floor, true);
   ctx.toastFloor(floor, `📺 ${who} added “${youtubeTitle(r.queued)}” to the TV queue`);
   titleQueued(ctx, floor, [r.queued]);
   return undefined;

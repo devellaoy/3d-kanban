@@ -6,7 +6,7 @@ import type { Ctx } from '../office/context.js';
 import type { ViewPieces } from '../ws/handlers/types.js';
 import { youtubeTitle, type YoutubeTvState } from '../../shared/youtube/link.js';
 import { YoutubeTv } from './tv.js';
-import { youtubeTitles } from './titles.js';
+import { lookUpYoutubeTitle } from './titles.js';
 
 const tvs = new WeakMap<Floor, YoutubeTv>();
 
@@ -28,7 +28,7 @@ export const changed = (ctx: Ctx, floor: Floor, withList = false) => {
 
 /** Asks YouTube for the title of `s` (what just went on), and tells the floor once it's known; then `done` with the title, or what it shows without one. */
 export function lookUpTitle(ctx: Ctx, floor: Floor, s: YoutubeTvState, done?: (title: string) => void) {
-  void youtubeTitles.fetch(s.url).then((title) => {
+  void lookUpYoutubeTitle(s.url).then((title) => {
     if (title && youtubeTvOf(floor).titled(s.id, title)) changed(ctx, floor);
     done?.(title ?? youtubeTitle(s));
   });
@@ -68,7 +68,9 @@ export function titleQueued(ctx: Ctx, floor: Floor, items: { qid: string; url: s
   };
   const worker = async () => {
     for (let i = todo.shift(); i; i = todo.shift()) {
-      const title = await youtubeTitles.fetch(i.url);
+      // Taken off the queue (or played) while it waited its turn: nothing to look up.
+      if (!youtubeTvOf(floor).queued(i.qid)) continue;
+      const title = await lookUpYoutubeTitle(i.url);
       if (title && youtubeTvOf(floor).titledQueued(i.qid, title)) tell();
     }
   };

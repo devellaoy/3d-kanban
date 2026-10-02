@@ -12,8 +12,8 @@ import WebSocket from 'ws';
 import { loadConfig } from '../src/server/config.js';
 import { startServer } from '../src/server/server.js';
 import { YoutubeTv } from '../src/server/youtube/tv.js';
-import { youtubeTvOf } from '../src/server/youtube/handlers.js';
-import { youtubeTitles } from '../src/server/youtube/titles.js';
+import { youtubeTvOf } from '../src/server/youtube/floor-tv.js';
+import { clearYoutubeTitles, youtubeTitles } from '../src/server/youtube/titles.js';
 import { RATES, isYoutubeUrl, parseStart, parseYoutubeLink, tvPosition, youtubeTitle, youtubeUrl } from '../src/shared/youtube/link.js';
 import type { ServerMsg } from '../src/shared/protocol.js';
 
@@ -109,6 +109,7 @@ test("a floor's TV keeps what's on and since when, checks every link, and keeps 
     assert.equal(tv.titled('play-0', 'Wrong play'), false, 'a title for another play is dropped');
     assert.equal(tv.titled(r.state.id, 'Never Gonna Give You Up'), true);
 
+    tv.flush();
     const again = new YoutubeTv(dir, () => now);
     assert.deepEqual(again.state(), { ...tv.state(), elapsed: 5000 }, 'the office picks it up where it was after a restart');
     assert.equal(JSON.parse(readFileSync(path.join(dir, 'youtube-tv.json'), 'utf8')).now.videoId, ID);
@@ -119,6 +120,7 @@ test("a floor's TV keeps what's on and since when, checks every link, and keeps 
     assert.equal(tv.ended(r.state.id, false), 'stopped');
     assert.equal(tv.ended(r.state.id, false), null);
     assert.equal(tv.state(), null);
+    tv.flush();
     assert.equal(new YoutubeTv(dir).state(), null);
     assert.equal(tv.stop(), false);
   } finally {
@@ -141,6 +143,7 @@ test("a playlist goes on to its next video when a browser says there is one, and
     const s = tv.state()!;
     assert.deepEqual([s.list, s.index, s.start, s.at, s.position, s.videoId, s.title, s.by], ['PLabc123', 1, 0, 9000, 0, undefined, undefined, 'Bo']);
     assert.equal(s.url, 'https://www.youtube.com/playlist?list=PLabc123&index=2');
+    tv.flush();
     assert.deepEqual(new YoutubeTv(dir, () => now).state(), tv.state(), 'kept across a restart at its place in the list');
     assert.equal(tv.ended(id1, true), null, 'the same end, said again by a slower browser');
     assert.equal(tv.ended(s.id, false), 'stopped');
@@ -162,6 +165,7 @@ test('two plays in the same millisecond are two plays: a late title or end for t
     assert.equal(tv.ended(first.state.id, false), null);
     assert.equal(tv.state()?.videoId, 'aqz-KE-bpKQ');
     assert.equal(tv.state()?.title, undefined);
+    tv.flush();
     assert.equal(new YoutubeTv(dir).state()?.id, second.state.id, 'the id is kept across a restart');
   } finally {
     rmSync(dir, { recursive: true, force: true });
@@ -251,6 +255,7 @@ class Browser {
 }
 
 before(async () => {
+  clearYoutubeTitles();
   youtubeTitles.fetch = async (url) => (url.includes(ID) ? 'Never Gonna Give You Up' : undefined);
   tmp = mkdtempSync(path.join(tmpdir(), 'kanban-youtube-tv-'));
   const home = path.join(tmp, 'home');
@@ -357,7 +362,7 @@ test('the controls reach everyone on the floor: pause, seek, speed, the queue an
   const a = await Browser.open('Ada');
   const b = await Browser.open('Bo');
   const welcome = await a.take('welcome');
-  assert.deepEqual(welcome.youtubeList, { queue: [], back: false, sameVolume: false });
+  assert.deepEqual(welcome.youtubeList, { queue: [], back: true, sameVolume: false }, 'what earlier tests took off the TV is its history');
   await b.take('welcome');
   const tv = youtubeTvOf(office.floors()[0]);
   tv.stop();

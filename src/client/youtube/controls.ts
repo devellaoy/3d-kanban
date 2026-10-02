@@ -39,7 +39,7 @@ export function tvControls(deps: { net: Net; screen: TvScreen }): TvControls {
   const btn = (label: string, title: string, onclick: () => void, cls = '') =>
     h('button.btn', { type: 'button', class: cls, title, 'aria-label': title, onclick }, label);
 
-  const back = btn('⏮️', 'Previous: back a video, or to the start', control((id) => ({ t: 'tv.youtube.skip', id, dir: -1 })));
+  const back = btn('⏮️', 'Previous video, or back to the start', control((id) => ({ t: 'tv.youtube.skip', id, dir: -1 })));
   const back30 = btn('⏪30', 'Back 30 seconds', control((id) => ({ t: 'tv.youtube.seek', id, by: -30 })));
   const back10 = btn('⏪10', 'Back 10 seconds', control((id) => ({ t: 'tv.youtube.seek', id, by: -10 })));
   const toggle = btn('⏸️', 'Pause', control((id) => ({ t: 'tv.youtube.pause', id, paused: !store.youtube?.paused })), 'primary ytv-play');
@@ -103,12 +103,14 @@ export function tvControls(deps: { net: Net; screen: TvScreen }): TvControls {
       const y = store.youtube;
       el.hidden = !y;
       if (!y) return;
+      back.title = (y.list && (y.index ?? 0) > 0) || store.youtubeList.back ? 'Previous video' : 'Back to the start';
+      back.setAttribute('aria-label', back.title);
       toggle.textContent = y.paused ? '▶️' : '⏸️';
       toggle.title = y.paused ? 'Play' : 'Pause';
       toggle.setAttribute('aria-label', toggle.title);
       toggle.setAttribute('aria-pressed', String(y.paused));
       // A rate the select doesn't have (an older office) still shows.
-      if (speed.value !== String(y.rate)) speed.append(h('option', { value: String(y.rate) }, rateLabel(y.rate)));
+      if (![...speed.options].some((o) => o.value === String(y.rate))) speed.append(h('option', { value: String(y.rate) }, rateLabel(y.rate)));
       speed.value = String(y.rate);
       const why = [y.paused ? `⏸ paused${y.pausedBy ? ` by ${y.pausedBy}` : ''}` : '', deps.screen.rateNote()].filter(Boolean).join(' · ');
       note.textContent = why;

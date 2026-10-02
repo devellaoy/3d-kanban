@@ -15,7 +15,7 @@ import { visiting } from '../multiplayer/visit';
 import { store, type Settings } from '../state';
 import { h, toast } from '../ui/dom';
 import { BLOCKED, YT_STATE, loadYoutubeApi, youtubeError, type YtPlayer } from './api';
-import { endedByClock, endedByPlayer, onOfficeVideo } from './follow';
+import { endedByClock, endedByPlayer, onOfficeVideo, pastPlaylistEnd, timingChanged } from './follow';
 import { youtubeAt, type YoutubeOnTv } from './slice';
 
 /** The player's own size in CSS pixels: 16:9 like the TV, and well over the 200×200 YouTube asks for. */
@@ -172,9 +172,9 @@ export class TvScreen {
   }
 
   /**
-   * What unpacking the loaded playlist needs: its video ids in order (at most UNPACK_MAX, a window around the
-   * video the player is on when there are more), where the player is in them (`at`) and the video it plays there
-   * (`current`) and its place in the whole playlist (`index`). Null when there's no playlist, the player hasn't it yet, or it isn't on a video of it yet.
+   * What unpacking the loaded playlist needs: its video ids in order from the video the player is on (at most
+   * UNPACK_MAX), where the player is in them (`at`, always 0) and the video it plays there (`current`) and its
+   * place in the whole playlist (`index`). Null when there's no playlist, the player hasn't it yet, or it isn't on a video of it yet.
    */
   playlistAt(): { videoIds: string[]; at: number; current: string; index: number } | null {
     const y = store.youtube;
@@ -183,8 +183,7 @@ export class TvScreen {
     const index = this.player.getPlaylistIndex();
     const current = this.player.getVideoData?.().video_id;
     if (!ids || !current || !Number.isInteger(index) || ids[index] !== current) return null;
-    const from = Math.max(0, Math.min(index - UNPACK_MAX / 2, ids.length - UNPACK_MAX));
-    return { videoIds: ids.slice(from, from + UNPACK_MAX), at: index - from, current, index };
+    return { videoIds: ids.slice(index, index + UNPACK_MAX), at: 0, current, index };
   }
 
   /** Why the speed the office asked for isn't what you see, when it isn't. */
@@ -325,8 +324,11 @@ export class TvScreen {
       // The same play, only changed (paused, moved, sped up) or told more (its title, its length): only a change of
       // timing is followed at once, anything else is left to sync (a seek on every broadcast would jump the video).
       this.loaded.list = y.list;
-      const f = this.followed;
-      if (!f || f.id !== y.id || f.position !== y.position || f.at !== y.at || f.rate !== y.rate || f.paused !== y.paused) this.follow(y, at, 0.5);
+      if (timingChanged(this.followed, y)) {
+        // An end said while it was paused was dropped by the office, and nobody says it twice: say it again if it's over.
+        this.told.delete(y.id);
+        this.follow(y, at, 0.5);
+      }
       this.keep(y);
       this.applyVolume(true);
       return;
@@ -384,6 +386,8 @@ export class TvScreen {
     if (data?.isLive || (y.videoId && data?.video_id && data.video_id !== y.videoId)) return;
     this.setRate(y);
     this.report(y, data?.isLive);
+    // A playlist whose length turned out shorter than the office's place in it (⏭️ went past its end): nothing is left to play.
+    if (y.list && !this.told.has(y.id) && pastPlaylistEnd(y.index ?? 0, p.getPlaylist()?.length) && this.current(y, 1000)) return this.over(y);
     const tol = DRIFT * Math.max(1, y.rate);
     if (y.paused) {
       // Held still where it was paused: never played, whatever the browser thinks of its sound.
@@ -398,7 +402,7 @@ export class TvScreen {
     if (endedByClock(y, duration, want, { ...at, rate: p.getPlaybackRate() }) && !this.told.has(y.id)) return this.over(y);
     if (state === YT_STATE.ended) {
       // An ENDED that stateChanged held back as too soon after loading is still the end, at any speed.
-      if (endedByPlayer(y, true, this.current(y, 1000), at) && !this.told.has(y.id)) this.over(y);
+      if (endedByPlayer(y, this.current(y, 1000), at) && !this.told.has(y.id)) this.over(y);
       return;
     }
     if (state !== YT_STATE.playing && state !== YT_STATE.buffering) {
@@ -422,8 +426,11 @@ export class TvScreen {
   /** Tells the office how long the video (and its playlist) is, once each per play: the first browser to know says. */
   private report(y: YoutubeOnTv, live?: boolean) {
     const p = this.player;
-    if (!p || live || visiting() || !this.current(y, 1500)) return;
+    if (!p || live || visiting()) return;
     if (this.info.id !== y.id) this.info = { id: y.id, duration: false, list: false };
+    // Nothing left to say: the player isn't asked anything.
+    if ((this.info.duration || y.duration !== undefined) && (!y.list || this.info.list || y.listLength !== undefined)) return;
+    if (!this.current(y, 1500)) return;
     // What the player knows is about the office's video only when it is on it (it may still be on the last one).
     const here = onOfficeVideo(y, { index: p.getPlaylistIndex(), videoId: p.getVideoData?.().video_id });
     const duration = here ? p.getDuration() : 0;

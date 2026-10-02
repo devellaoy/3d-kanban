@@ -6,6 +6,7 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { YoutubeTv } from '../src/server/youtube/tv.js';
+import { clearYoutubeTitles, lookUpYoutubeTitle, youtubeTitles } from '../src/server/youtube/titles.js';
 import { QUEUE_MAX } from '../src/shared/youtube/queue.js';
 import { RATES, tvPosition } from '../src/shared/youtube/link.js';
 
@@ -17,8 +18,13 @@ function setup() {
   const dir = mkdtempSync(path.join(tmpdir(), 'youtube-tv-ctl-'));
   const clock = { now: 1_000_000 };
   let n = 0;
-  const open = () => new YoutubeTv(dir, () => clock.now, () => `id-${++n}`);
-  return { dir, clock, tv: open(), open, done: () => rmSync(dir, { recursive: true, force: true }) };
+  let last: YoutubeTv | undefined;
+  /** A TV on the folder; what the last one changed is written first (writes wait a moment). */
+  const open = () => {
+    last?.flush();
+    return (last = new YoutubeTv(dir, () => clock.now, () => `id-${++n}`));
+  };
+  return { dir, clock, tv: open(), open, flush: () => last?.flush(), done: () => rmSync(dir, { recursive: true, force: true }) };
 }
 
 function on(tv: YoutubeTv, url: string, by = 'Ada') {
@@ -242,7 +248,7 @@ test('unpack: the rest of the playlist goes to the front of the queue, what play
     for (const bad of [
       tv.unpack(l.id, ['short'], 0, 'short', 1),
       tv.unpack('stale', ids, 1, 'bbbbbbbbbbb', 1),
-      tv.unpack(l.id, Array.from({ length: 201 }, () => 'aaaaaaaaaaa'), 0, 'aaaaaaaaaaa', 1),
+      tv.unpack(l.id, Array.from({ length: 102 }, () => 'aaaaaaaaaaa'), 0, 'aaaaaaaaaaa', 1),
       tv.unpack(l.id, ids, 4, 'bbbbbbbbbbb', 1),
       tv.unpack(l.id, ids, -1, 'bbbbbbbbbbb', 1),
       tv.unpack(l.id, ids, 1.5, 'bbbbbbbbbbb', 1),
@@ -366,6 +372,7 @@ test('a restart keeps the paused play, the queue, the history and the volume set
     assert.deepEqual(again.list().sameVolume, true);
     assert.equal(again.list().back, true);
     assert.equal(again.state()!.paused, true);
+    tv.flush();
     assert.equal(JSON.parse(readFileSync(path.join(dir, 'youtube-tv.json'), 'utf8')).version, 2);
   } finally {
     done();
@@ -412,5 +419,145 @@ test("an end said while it's paused is dropped (a late one from before the pause
     assert.equal(tv.state(), null);
   } finally {
     done();
+  }
+});
+
+test('a seek with no length known stops at a sane maximum', () => {
+  const { tv, done } = setup();
+  try {
+    const s = on(tv, V(1));
+    assert.equal(tv.seek(s.id, 1e12, undefined), true);
+    assert.equal(tv.state()!.position, 1e6);
+    assert.equal(tv.seek(s.id, undefined, 1e12), true);
+    assert.equal(tv.state()!.position, 1e6);
+  } finally {
+    done();
+  }
+});
+
+test('info: a larger length replaces a smaller one, a smaller never replaces a larger', () => {
+  const { tv, done } = setup();
+  try {
+    const l = on(tv, 'https://www.youtube.com/watch?v=aaaaaaaaaaa&list=PLabc123&index=1');
+    assert.equal(tv.info(l.id, 100, 5), true);
+    assert.equal(tv.info(l.id, 150, 8), true, 'a larger one replaces');
+    assert.deepEqual([tv.state()!.duration, tv.state()!.listLength], [150, 8]);
+    assert.equal(tv.info(l.id, 90, 3), false, 'a smaller one does not');
+    assert.equal(tv.info(l.id, 150, 8), false, 'the same is nothing new');
+    assert.equal(tv.info(l.id, 1e6, 6000), false, 'out of range');
+    assert.deepEqual([tv.state()!.duration, tv.state()!.listLength], [150, 8]);
+  } finally {
+    done();
+  }
+});
+
+test('adding to the queue of a dark TV with a queue starts the queue first, not the new video; with an empty queue it plays at once', () => {
+  const { tv, done } = setup();
+  try {
+    tv.play(V(1), 'Ada', 'end');
+    tv.play(V(2), 'Ada', 'end');
+    tv.stop();
+    assert.equal(tv.state(), null);
+    assert.deepEqual(tv.list().queue.map((i) => i.videoId), [vid(2)]);
+    const r = tv.play(V(3), 'Bo', 'end');
+    assert.ok('state' in r && r.queued && r.started);
+    assert.equal(tv.state()!.videoId, vid(2), 'the queue was first in line');
+    assert.deepEqual(tv.list().queue.map((i) => i.videoId), [vid(3)]);
+    tv.stop();
+    tv.clear();
+    const e = tv.play(V(4), 'Bo', 'end');
+    assert.ok('state' in e && !e.queued && !e.started);
+    assert.equal(tv.state()!.videoId, vid(4));
+  } finally {
+    done();
+  }
+});
+
+test('⏮️ means the last one played: a stop and a skip or end with an empty queue remember it too, once', () => {
+  const { tv, done } = setup();
+  try {
+    on(tv, V(1));
+    assert.equal(tv.stop(), true);
+    assert.equal(tv.list().back, true, 'stopped');
+    const b = on(tv, V(2));
+    assert.equal(tv.skip(b.id, 1), 'stopped');
+    assert.equal(tv.state(), null);
+    const c = on(tv, V(3));
+    assert.equal(tv.ended(c.id, false), 'stopped');
+    // The three went to the history once each, in order: back from a fourth plays the third, then the second, then the first.
+    const d = on(tv, V(4));
+    assert.equal(tv.skip(d.id, -1), 'history');
+    assert.equal(tv.state()!.videoId, vid(3));
+    assert.equal(tv.skip(tv.state()!.id, -1), 'history');
+    assert.equal(tv.state()!.videoId, vid(2), 'the history goes on: the second one, then the first');
+    assert.equal(tv.skip(tv.state()!.id, -1), 'history');
+    assert.equal(tv.state()!.videoId, vid(1));
+    assert.equal(tv.skip(tv.state()!.id, -1), 'restart', 'nothing before the first');
+  } finally {
+    done();
+  }
+});
+
+test('unpack takes the playing video and up to a full queue after it, the first being where the player is', () => {
+  const { tv, done } = setup();
+  try {
+    const l = on(tv, 'https://www.youtube.com/watch?v=aaaaaaaaaaa&list=PLabc123&index=3');
+    const ids = Array.from({ length: 101 }, (_, i) => vid(i));
+    assert.ok('error' in tv.unpack(l.id, [...ids, vid(101)], 0, vid(0), 2), 'one more than the playing and a full queue');
+    const added = tv.unpack(l.id, ids, 0, vid(0), 2);
+    assert.ok(Array.isArray(added));
+    assert.equal(added.length, 100);
+    assert.equal(tv.state()!.videoId, vid(0));
+  } finally {
+    done();
+  }
+});
+
+test('changes are written once a moment later, and flush writes at once', async () => {
+  const { tv, dir, done } = setup();
+  try {
+    const file = path.join(dir, 'youtube-tv.json');
+    const s = on(tv, V(1));
+    tv.pause(s.id, true, 'Bo');
+    tv.setSameVolume(true);
+    assert.throws(() => readFileSync(file), 'nothing written yet');
+    await new Promise((r) => setTimeout(r, 400));
+    const text = readFileSync(file, 'utf8');
+    assert.equal(text.includes('\n'), false, 'compact');
+    const saved = JSON.parse(text);
+    assert.deepEqual([saved.now.paused, saved.sameVolume], [true, true], 'the burst is one write with everything');
+    tv.stop();
+    tv.flush();
+    assert.equal(JSON.parse(readFileSync(file, 'utf8')).now, null);
+  } finally {
+    done();
+  }
+});
+
+test('titles are remembered by url (through the swappable fetch), a failure is asked again, and the cache is bounded', async () => {
+  const real = youtubeTitles.fetch;
+  const asked: string[] = [];
+  let fail = true;
+  youtubeTitles.fetch = async (url) => {
+    asked.push(url);
+    return fail && url === 'u-fail' ? undefined : `Title of ${url}`;
+  };
+  clearYoutubeTitles();
+  try {
+    assert.equal(await lookUpYoutubeTitle('u1'), 'Title of u1');
+    assert.equal(await lookUpYoutubeTitle('u1'), 'Title of u1');
+    assert.deepEqual(asked, ['u1'], 'the second is from memory');
+    assert.equal(await lookUpYoutubeTitle('u-fail'), undefined);
+    fail = false;
+    assert.equal(await lookUpYoutubeTitle('u-fail'), 'Title of u-fail', 'a failure is not remembered');
+    for (let i = 0; i < 520; i++) await lookUpYoutubeTitle(`bulk-${i}`);
+    asked.length = 0;
+    await lookUpYoutubeTitle('u1');
+    assert.deepEqual(asked, ['u1'], 'the oldest were let go');
+    await lookUpYoutubeTitle('bulk-519');
+    assert.deepEqual(asked, ['u1'], 'the newest are kept');
+  } finally {
+    youtubeTitles.fetch = real;
+    clearYoutubeTitles();
   }
 });

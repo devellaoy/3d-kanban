@@ -4,8 +4,8 @@ import type { YoutubeLink } from './link.js';
 /** The longest the queue gets; adding to a full one is turned away. */
 export const QUEUE_MAX = 100;
 
-/** The most videos a playlist is unpacked from (a longer one is sent as a window around where it is). */
-export const UNPACK_MAX = 200;
+/** The most videos sent to unpack a playlist: the one playing and a full queue's worth after it (a longer playlist is cut there). */
+export const UNPACK_MAX = QUEUE_MAX + 1;
 
 /** A video or playlist waiting its turn on the TV. */
 export interface YoutubeQueueItem extends YoutubeLink {

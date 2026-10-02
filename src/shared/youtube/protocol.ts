@@ -35,8 +35,8 @@ export type YoutubeClientMsg =
   | { t: 'tv.youtube.queue.clear' }
   /**
    * Turn the playing YouTube playlist into queue items: `videoIds` is the playlist in order as the player
-   * reports it (getPlaylist()), at most 200 11-character ids (a window around `at` when it has more), `at`
-   * is where the player is in them (getPlaylistIndex(), counted in `videoIds`) and `current` the video it
+   * reports it (getPlaylist()), from the video it plays on, at most QUEUE_MAX + 1 11-character ids, `at`
+   * is where the player is in them (0 from the client; counted in `videoIds`) and `current` the video it
    * plays there (getVideoData().video_id) and `index` its place in the whole playlist (getPlaylistIndex()), so the office doesn't have to guess which one it is. The play
    * keeps going as `current` on its own (same `id`, `list` and `index` dropped), and the videos after `at`
    * go to the front of the queue in order. Refused (with a warning) when `videoIds[at] !== current` or `index` is not the video the office has.
