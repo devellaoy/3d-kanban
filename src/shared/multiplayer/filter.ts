@@ -35,7 +35,7 @@ export const SERVER_MSG_OUT = {
   'peer.update': 'rewrite',
   'peer.move': 'rewrite',
   'peer.leave': 'pass',
-  'peer.act': 'pass',
+  'peer.act': 'rewrite',
   'peer.emote': 'pass',
   rtc: 'pass',
   chat: 'pass',
@@ -150,7 +150,11 @@ type Msg<T extends ServerMsg['t']> = Extract<ServerMsg, { t: T }>;
 /** A person on a floor outside the scope is still a name on the list, but where they are and what they do is not shown. */
 function peerFor(p: PeerInfo, scope: VisitorScope): PeerInfo {
   if (!p.floor || scope.floors.has(p.floor)) return p;
-  return { ...p, floor: undefined, doing: undefined, carrying: undefined, seat: undefined, reading: undefined };
+  // Someone on a floor the visitor can't see: nothing of where they stand or what they're up to.
+  return {
+    ...p, floor: undefined, doing: undefined, carrying: undefined, seat: undefined, reading: undefined,
+    x: 0, y: 0, z: 0, smoking: undefined, golfing: undefined, throwing: undefined, drink: undefined,
+  };
 }
 
 const floorFor = (f: FloorInfo): FloorInfo => ({ ...f, dir: '' });
@@ -229,6 +233,11 @@ export function filterForVisitor(msg: ServerMsg, scope: VisitorScope, ctx: Filte
       return floorOk(ctx.floorOfWorker?.(msg.state.workerId)) && (!msg.state.repo || floorOk(msg.state.repo.split('~')[0])) ? msg : undefined;
     case 'floors':
       return { t: 'floors', floors: msg.floors.filter((f) => floorOk(f.id)).map(floorFor) };
+    case 'peer.act': {
+      // Broadcast to the whole building, so only when the one acting is on a floor in scope.
+      const floor = ctx.floorOfPeer?.(msg.id);
+      return floor && floorOk(floor) ? msg : undefined;
+    }
     case 'peer.join':
     case 'peer.update':
       return { ...msg, peer: peerFor(msg.peer, scope) };

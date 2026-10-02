@@ -163,3 +163,14 @@ test('what a visitor never gets', () => {
   assert.equal(meta.me.admin, false);
   assert.ok(Object.values(SERVER_MSG_OUT).includes('drop'));
 });
+
+test('what people on hidden floors are up to stays hidden', () => {
+  const floorOfPeer = (id: string) => (id === 'o1' ? 'secretfloor' : 'sharedfloor');
+  const act = (id: string) => filterForVisitor({ t: 'peer.act', id, smoke: true } as ServerMsg, scope, { floorOfPeer });
+  assert.equal(act('o1'), undefined, 'the acting one is on a floor out of scope');
+  assert.ok(act('o2'), 'on a floor in scope');
+  assert.equal(filterForVisitor({ t: 'peer.act', id: 'o2', golf: true } as ServerMsg, scope), undefined, 'no lookup, no frame');
+  const peer = { id: 'o1', name: 'Owner', floor: 'secretfloor', x: 3, y: 0, z: 7, smoking: true, golfing: true } as unknown as PeerInfo;
+  const out = filterForVisitor({ t: 'peer.update', peer } as ServerMsg, scope) as Extract<ServerMsg, { t: 'peer.update' }>;
+  assert.deepEqual([out.peer.x, out.peer.z, out.peer.smoking, out.peer.golfing], [0, 0, undefined, undefined]);
+});
