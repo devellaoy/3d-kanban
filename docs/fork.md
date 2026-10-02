@@ -110,6 +110,18 @@ Taking upstream changes is ordinary merge or cherry-pick work, only when the use
   `queued_command` attachment inside another turn) naming the `<task-id>`. A notification counts as a real prompt for the
   final answer, but not as the office's prompt that opens the window agents are counted in. A Claude CLI
   restart between phases stops the previous phase's background agents, which the window handles.
+- Claude's background commands and monitors (verified against real transcripts): a Bash `run_in_background`
+  call's result has `toolUseResult.backgroundTaskId` (also `backgroundCwdHint`), its text starts
+  `Command running in background with ID: <id>`; a command that ran past its timeout has the same
+  `backgroundTaskId` plus `timedOutAfterMs`, its text `Command did not complete within its 120s timeout and
+  was moved to the background (ID: <id>)`. A `Monitor` call (`input.command/description/persistent/timeout_ms`)
+  has `toolUseResult: { taskId, timeoutMs, persistent }`; each event arrives as a `<task-notification>` with
+  `<task-id>`, `<summary>Monitor event: …</summary>` and `<event>` and no `<status>`, the last one with a
+  `<status>`. `TaskStop` (`input.task_id`) has `toolUseResult: { message, task_id, task_type, command }`;
+  `TaskOutput` (`input.task_id/block/timeout`) has `{ retrieval_status, task: { task_id, task_type, status, … } }`.
+  Notification `<status>` values seen: `completed`, `failed`, `killed`, `stopped`. They arrive like an agent's
+  (a user line with `origin.kind: 'task-notification'`, or a `queued_command` attachment with `commandMode:
+  'task-notification'`). Not seen in any transcript, so not read: a `KillShell` or `BashOutput` call.
 - Claude's agent teams (teammates; they run in the lead's process): an `Agent` call with `input.name` gets a
   `toolUseResult` of `status: 'teammate_spawned'` (`name`, `teammate_id: 'name@session-…'`, `team_name`;
   its text starts `Spawned successfully`). A `SendMessage` result has `routing.target` (`@name`; the call's

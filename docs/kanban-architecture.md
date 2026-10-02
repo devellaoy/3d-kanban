@@ -121,9 +121,10 @@ allowed: `todo → in_progress` (= start), `waiting|review → done`, `done → 
 - Turn end = the worker goes `done` (Stop hook) or `needs_input`. `needs_input` in the plan phase with
   `ExitPlanMode` pending = the plan is finished. `needs_input` otherwise → task `waiting`
   ("the agent is asking in its terminal"), its run still live.
-- A Claude Stop isn't the turn's end while the run's background agents still work: Claude Code's own skills
-  run implementers and reviewers that way, end the turn with "I'll wait for it" and resume by themselves
-  with a new turn and Stop when the agent is done. The engine reads the log first and decides on that one
+- A Claude Stop isn't the turn's end while the run's background agents or commands still work: Claude Code's
+  own skills run implementers and reviewers that way, and an implementer starts its full test suite in the
+  background, ends the turn with "I'll wait for it" and resumes by itself with a new turn and Stop when
+  the agent or command is done. The engine reads the log first and decides on that one
   result (`TurnResult.background`, so a lagging log doesn't end the run on the interim text; `resuming`,
   once: a Stop that raced the notification, which Claude is about to answer). The task stays in progress, and
   the next Stop is heard from the hook (the worker's status stays `done`, so upstream emits nothing). A
@@ -132,8 +133,11 @@ allowed: `todo → in_progress` (= start), `waiting|review → done`, `done → 
   `backgroundWaitMs` (3 h) without a Stop: a note says so and the run goes on with what its log says.
   ⏹️ Stop while held sends the worker home (worktree kept, Retry carries on in the session), which
   stops its helper agents; once the turn has resumed it is Esc as usual, and a Stop hook heard while a
-  stop is under way finishes it. Only background *agents* and teammates are counted: Bash `run_in_background`
-  tasks also resume Claude but aren't, so such a run can still end early. Known limit: someone typing a
+  stop is under way finishes it. Counted are background agents, Bash `run_in_background` commands (also one the
+  120 s timeout moved to the background) and non-persistent Monitors, plus teammates. A persistent Monitor
+  never finishes, so it isn't counted, and a Monitor's per-event notifications (an `<event>`, no
+  `<status>`) don't end it. A command or server the agent forgets running holds the task In progress for at
+  most `backgroundWaitMs` (3 h), hence the `STOP_PROCESSES` rule. Codex has no background tracking. Known limit: someone typing a
   prompt into a held worker's terminal starts a new window, so the background agents still working stop
   being counted and the run can end on that prompt's reply (teammates are read whatever the window).
 - **Agent-team teammates** (Claude Code's `Agent` call with a `name`) are counted in `TurnResult.background`

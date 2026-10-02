@@ -147,17 +147,72 @@ test('claude transcript: background agents the run set off and that still work',
   assert.deepEqual(readClaudeTurn(write('bg-human.jsonl', [...head, typed])), { text: '', complete: false });
   // An agent from an earlier prompt's turn isn't this run's.
   assert.equal(readClaudeTurn(write('bg-earlier.jsonl', [...head, cUser('Review task #7'), cAssistant([text('Fine.')], {}, 'm9')]))?.background, undefined);
-  // A launch logged as text only (no toolUseResult) counts; a background shell command doesn't.
+  // A launch logged as text only (no toolUseResult) counts.
   const textOnly = cUser([{ type: 'tool_result', tool_use_id: 'a1', content: 'Async agent launched successfully.\nagentId: ag2 (internal ID)' }]);
   const agentCall = cAssistant([{ type: 'tool_use', id: 'a1', name: 'Agent', input: {} }], {}, 'm1');
   assert.equal(readClaudeTurn(write('bg-text.jsonl', [cUser('Go'), agentCall, textOnly, cAssistant([text('Waiting.')])]))?.background, 1);
   // The same words in another tool's result (a file it read) are no launch.
   const readCall = cAssistant([{ type: 'tool_use', id: 'a1', name: 'Read', input: {} }], {}, 'm1');
   assert.equal(readClaudeTurn(write('bg-forged.jsonl', [cUser('Go'), readCall, textOnly, cAssistant([text('Read it.')])]))?.background, undefined);
-  const shell = cUser([{ type: 'tool_result', tool_use_id: 'b1', content: 'Command running in background' }], { toolUseResult: { backgroundTaskId: 'bash1' } });
-  assert.equal(readClaudeTurn(write('bg-shell.jsonl', [cUser('Go'), shell, cAssistant([text('Started it.')])]))?.background, undefined);
+  // A Bash run_in_background command is counted too (see the next test).
   // Its prompt cut off by the log's tail: nothing to count.
   assert.equal(readClaudeTurn(write('bg-cut.jsonl', [launch('ag3'), cAssistant([text('Waiting.')])]))?.background, undefined);
+});
+
+test('claude transcript: background commands (Bash run_in_background, Monitor) the run set off and that still work', (t) => {
+  const write = scratch(t);
+  const call = (id: string, name: string, input: object = {}, mid = 'm-' + id) => cAssistant([{ type: 'tool_use', id, name, input }], {}, mid);
+  const result = (id: string, content: string, toolUseResult?: object) => cUser([{ type: 'tool_result', tool_use_id: id, content }], toolUseResult ? { toolUseResult } : {});
+  const bashRes = { stdout: '', stderr: '', interrupted: false, isImage: false, noOutputExpected: false };
+  const launch = (id: string) => [call('b1', 'Bash', { command: 'npm test', run_in_background: true }), result('b1', `Command running in background with ID: ${id}. Output is being written to: /tmp/${id}.output`, { ...bashRes, backgroundTaskId: id })];
+  const wait = cAssistant([text('Waiting for the full suite.')], {}, 'mw');
+  const noteBody = (id: string, inner: string) => `<task-notification>\n<task-id>${id}</task-id>\n${inner}\n</task-notification>`;
+  const done = (id: string) => noteBody(id, `<status>completed</status>\n<summary>Background command "suite" completed (exit code 0)</summary>`);
+  const asUser = (body: string) => cUser(body, { origin: { kind: 'task-notification' } });
+  const asQueued = (body: string) => ({ type: 'attachment', attachment: { type: 'queued_command', commandMode: 'task-notification', prompt: body } });
+  const bg = (...lines: object[]) => readClaudeTurn(write('c.jsonl', [cUser('Implement task #7'), ...lines]))?.background;
+
+  assert.equal(bg(...launch('bash1'), wait), 1);
+  // Its completion, as a user line (its own turn) or an attachment inside another turn.
+  assert.equal(bg(...launch('bash1'), wait, asUser(done('bash1')), cAssistant([text('It passed.')], {}, 'm2')), undefined);
+  assert.equal(bg(...launch('bash1'), wait, asQueued(done('bash1')), cAssistant([text('It passed.')], {}, 'm2')), undefined);
+  // A failed or killed one is over too; one that reports a status of another kind is not.
+  assert.equal(bg(...launch('bash1'), wait, asUser(noteBody('bash1', '<status>failed</status>')), cAssistant([text('x')], {}, 'm2')), undefined);
+  assert.equal(bg(...launch('bash1'), wait, asUser(noteBody('bash1', '<status>killed</status>')), cAssistant([text('x')], {}, 'm2')), undefined);
+  assert.equal(bg(...launch('bash1'), wait, asUser(noteBody('bash1', '<status>running</status>')), cAssistant([text('x')], {}, 'm2')), 1);
+  // Two commands, one done.
+  assert.equal(bg(...launch('bash1'), call('b2', 'Bash', {}), result('b2', 'x', { ...bashRes, backgroundTaskId: 'bash2' }), wait, asUser(done('bash1')), cAssistant([text('One left.')], {}, 'm2')), 1);
+  // A command the timeout moved to the background.
+  const moved = [call('b1', 'Bash', { command: 'npm test' }), result('b1', 'Command did not complete within its 120s timeout and was moved to the background (ID: bash3). Output is being written to: /tmp/bash3.output', { ...bashRes, backgroundTaskId: 'bash3', timedOutAfterMs: 120000 })];
+  assert.equal(bg(...moved, wait), 1);
+  // Known by its text only (no toolUseResult): a Bash result counts, a file read quoting the words doesn't.
+  assert.equal(bg(call('b1', 'Bash'), result('b1', 'Command running in background with ID: bash4. Output is being written to: /tmp/bash4.output'), wait), 1);
+  assert.equal(bg(call('b1', 'Read'), result('b1', 'Command running in background with ID: bash4.'), wait), undefined);
+  // A Monitor counts unless it is persistent (it never finishes).
+  const monitor = (persistent: boolean) => [call('mo1', 'Monitor', { command: 'tail -f x', description: 'x', persistent, timeout_ms: 600000 }), result('mo1', 'Monitor started (task mon1, timeout 600000ms). You will be notified on each event.', { taskId: 'mon1', timeoutMs: 600000, persistent })];
+  assert.equal(bg(...monitor(false), wait), 1);
+  assert.equal(bg(...monitor(true), wait), undefined);
+  // A monitor's events (an <event>, no status) don't end it; its final notification does.
+  const event = asUser(noteBody('mon1', '<summary>Monitor event: "ready"</summary>\n<event>line</event>'));
+  assert.equal(bg(...monitor(false), wait, event, cAssistant([text('Saw it.')], {}, 'm2')), 1);
+  assert.equal(bg(...monitor(false), wait, asQueued(noteBody('mon1', '<summary>Monitor event: "ready"</summary>\n<event>line</event>')), cAssistant([text('Saw it.')], {}, 'm2')), 1);
+  const final = asUser(noteBody('mon1', '<status>completed</status>\n<summary>Monitor "x" timed out</summary>'));
+  assert.equal(bg(...monitor(false), wait, event, final, cAssistant([text('Over.')], {}, 'm2')), undefined);
+  // TaskStop (its result names the task) and a TaskOutput that finds the task finished end it; a running one doesn't.
+  const stop = [call('s1', 'TaskStop', { task_id: 'bash1' }), result('s1', 'Successfully stopped task: bash1 (npm test)', { message: 'Successfully stopped task: bash1 (npm test)', task_id: 'bash1', task_type: 'local_bash', command: 'npm test' })];
+  assert.equal(bg(...launch('bash1'), ...stop, cAssistant([text('Stopped it.')], {}, 'm2')), undefined);
+  const output = (status: string) => [call('o1', 'TaskOutput', { task_id: 'bash1', block: false, timeout: 1000 }), result('o1', 'x', { retrieval_status: 'success', task: { task_id: 'bash1', task_type: 'local_bash', status, description: 'npm test', output: '' } })];
+  assert.equal(bg(...launch('bash1'), ...output('completed'), cAssistant([text('Read it.')], {}, 'm2')), undefined);
+  assert.equal(bg(...launch('bash1'), ...output('running'), cAssistant([text('Still going.')], {}, 'm2')), 1);
+  // An agent's notification without a <status> (the older shape) still ends it.
+  const agent = [call('a1', 'Agent'), cUser([{ type: 'tool_result', tool_use_id: 'a1', content: 'Async agent launched successfully.' }], { toolUseResult: { isAsync: true, status: 'async_launched', agentId: 'ag1' } })];
+  assert.equal(bg(...agent, wait), 1);
+  assert.equal(bg(...agent, wait, asUser('<task-notification>\n<task-id>ag1</task-id>\n</task-notification>'), cAssistant([text('ok')], {}, 'm2')), undefined);
+  // A command's notification is no prompt of the office's: the turn is read from its own prompt, and unanswered it is "resuming".
+  assert.deepEqual(readClaudeTurn(write('n.jsonl', [cUser('Implement task #7'), ...launch('bash1'), wait, asUser(done('bash1'))])), { text: '', complete: false, resuming: true });
+  assert.deepEqual(readClaudeTurn(write('n2.jsonl', [cUser('Implement task #7'), ...launch('bash1'), wait, asUser(done('bash1')), cAssistant([text('It passed.')], {}, 'm2')])), { text: 'It passed.', complete: true });
+  // A command from an earlier prompt's turn isn't this run's.
+  assert.equal(bg(...launch('bash1'), wait, cUser('Review task #7'), cAssistant([text('Fine.')], {}, 'm9')), undefined);
 });
 
 test('claude transcript: teammates (agent teams) still working, from their own transcripts and the lead\'s log', (t) => {

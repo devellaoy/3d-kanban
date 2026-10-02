@@ -326,15 +326,31 @@ function notificationText(line: Record<string, unknown>): string {
   return line.type === 'attachment' && att?.commandMode === 'task-notification' && typeof att.prompt === 'string' ? att.prompt : '';
 }
 
+/** The `<status>` values a finished background task's notification carries (seen in Claude Code's transcripts). */
+const TERMINAL_STATUS = new Set(['completed', 'failed', 'killed', 'stopped']);
+
 /**
- * How many background agents the run has working: each one's last event in the log is its launch or a
- * resume (SendMessage), not a notification. Counted from `start`, the office's last prompt (so an
- * earlier run's agents don't count; -1, the log's tail cut before it: none). Bash's run_in_background
- * isn't one, and a launch known only by its text counts just from an Agent or Task call's result.
+ * Whether one `<task-notification>` block ends its task: it has a terminal `<status>`, or no status at
+ * all (the older shape). A Monitor's per-event notification has an `<event>` and no status: the monitor
+ * goes on, so it doesn't end it.
+ */
+const endsTask = (block: string): boolean => {
+  const status = /<status>\s*([^<]*?)\s*<\/status>/.exec(block)?.[1];
+  return status !== undefined ? TERMINAL_STATUS.has(status) : !/<event>/.test(block);
+};
+
+/**
+ * How many background tasks the run has working: each one's last event in the log is its launch (an
+ * agent, a Bash `run_in_background` command or one moved to the background by its timeout, a
+ * non-persistent Monitor) or a resume (SendMessage), not its end. A task ends by a notification with a
+ * terminal status, a TaskStop, or a TaskOutput that finds it finished. A persistent Monitor never ends,
+ * so it isn't counted. Counted from `start`, the office's last prompt (so an earlier run's tasks don't
+ * count; -1, the log's tail cut before it: none). A launch known only by its text counts just from an
+ * Agent, Task or Bash call's result.
  */
 export function backgroundLeft(lines: Record<string, unknown>[], start: number): number {
   if (start < 0) return 0;
-  const agents = new Map<string, boolean>();
+  const tasks = new Map<string, boolean>();
   const tools = new Map<unknown, unknown>();
   for (const line of lines.slice(start + 1)) {
     if (line.isSidechain === true) continue;
@@ -344,19 +360,32 @@ export function backgroundLeft(lines: Record<string, unknown>[], start: number):
     const res = isObj(line.toolUseResult) ? line.toolUseResult : undefined;
     if (res?.isAsync === true && res.status === 'async_launched') {
       const id = res.agentId ?? res.taskId;
-      if (typeof id === 'string') agents.set(id, true);
-    } else if (typeof res?.resumedAgentId === 'string') agents.set(res.resumedAgentId, true);
+      if (typeof id === 'string') tasks.set(id, true);
+    } else if (typeof res?.resumedAgentId === 'string') tasks.set(res.resumedAgentId, true);
+    else if (typeof res?.backgroundTaskId === 'string') tasks.set(res.backgroundTaskId, true);
+    else if (typeof res?.taskId === 'string' && typeof res.timeoutMs === 'number') {
+      if (res.persistent !== true) tasks.set(res.taskId, true);
+    } else if (typeof res?.task_id === 'string' && typeof res.task_type === 'string') tasks.set(res.task_id, false);
+    else if (isObj(res?.task) && typeof res.task.task_id === 'string' && TERMINAL_STATUS.has(String(res.task.status))) tasks.set(res.task.task_id, false);
     else if (!res && line.type === 'user') {
       for (const b of content) {
-        if (b.type !== 'tool_result' || (tools.get(b.tool_use_id) !== 'Agent' && tools.get(b.tool_use_id) !== 'Task')) continue;
-        const text = toolResultText(b);
-        const id = text.startsWith('Async agent launched successfully') ? /^agentId:\s*([\w-]+)/m.exec(text)?.[1] : undefined;
-        if (id) agents.set(id, true);
+        if (b.type !== 'tool_result') continue;
+        const tool = tools.get(b.tool_use_id);
+        const text = tool === 'Agent' || tool === 'Task' || tool === 'Bash' ? toolResultText(b) : '';
+        const id = text.startsWith('Async agent launched successfully')
+          ? /^agentId:\s*([\w-]+)/m.exec(text)?.[1]
+          : /^Command running in background with ID: (\w+)/.exec(text)?.[1] ?? /was moved to the background \(ID: (\w+)\)/.exec(text)?.[1];
+        if (id) tasks.set(id, true);
       }
     }
-    for (const m of notificationText(line).matchAll(/<task-id>([^<]*)<\/task-id>/g)) agents.set(m[1].trim(), false);
+    const note = notificationText(line);
+    const blocks = [...note.matchAll(/<task-notification>([\s\S]*?)<\/task-notification>/g)].map((m) => m[1]);
+    for (const block of blocks.length ? blocks : note ? [note] : []) {
+      if (!endsTask(block)) continue;
+      for (const m of block.matchAll(/<task-id>([^<]*)<\/task-id>/g)) tasks.set(m[1].trim(), false);
+    }
   }
-  return [...agents.values()].filter(Boolean).length;
+  return [...tasks.values()].filter(Boolean).length;
 }
 
 /**
@@ -369,7 +398,7 @@ export function backgroundLeft(lines: Record<string, unknown>[], start: number):
 export function readClaudeTurn(file: string, opts?: { since?: number }): TurnResult | undefined {
   const lines = readJsonLines(file);
   if (!lines) return undefined;
-  // The last real prompt, and the office's own (the last that isn't a notification) the agents are counted from.
+  // The last real prompt, and the office's own (the last that isn't a notification) the background tasks are counted from.
   let from = -1;
   let start = -1;
   for (let i = lines.length - 1; i >= 0; i--) {
@@ -428,7 +457,7 @@ export function readClaudeTurn(file: string, opts?: { since?: number }): TurnRes
       if (planToolId && content.some((b) => b.type === 'tool_result' && b.tool_use_id === planToolId)) exitPlan = false;
     }
   }
-  // Background agents and teammates alike: the turn's Stop isn't the run's end while any still works.
+  // Background agents, commands and teammates alike: the turn's Stop isn't the run's end while any still works.
   const left = backgroundLeft(lines, start) + teammatesBusy(file, opts?.since ?? 0, teammateEvents(lines, start));
   // The last prompt is a notification or a teammate's message nothing has answered yet: Claude is about to take its turn.
   const resuming = from >= 0 && !answered && isAgentNotice(lines[from]);

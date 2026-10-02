@@ -118,7 +118,7 @@ with **⌨️ Open its terminal** and no answer box: nothing is typed for you, s
 prompt's highlighted option. A comment then is kept and goes to the agent once that turn is over.
 There is no Continue without an answer then: its run is still going.
 
-A task stays In progress while the agent's background helper agents still work, until the agent has
+A task stays In progress while the agent's background helper agents or commands (a test run, say) still work, until the agent has
 answered after them (at most 3 hours, then it goes on with what the agent said). ⏹️ Stop during that wait
 sends the worker home, worktree kept, which stops its helper agents too.
 The worker shows as working in the 3D office and in /lite until the run ends, also while its background
