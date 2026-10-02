@@ -80,18 +80,21 @@ export function installArrival(ctx: Ctx, core: CoreState, parts: ArrivalParts) {
       // Where the office put you: back in the spot you left (if there's still room there), or in the elevator car.
       travel.setPlace();
       travel.syncStack();
+      // Saved by an older page down a fire pole's hole or the ladder's shaft, just under the floor (both
+      // gone now): up onto the floor over it, not inside the slab.
+      const at = inOffice() && mine.y < 0 && mine.y > -SLAB - 1 ? { ...mine, y: 0 } : mine;
       // Back to where you were, if that was on this map (and not in the elevator: that's arriving).
       const saved = lastSpot();
       const sameMap = !!saved && (saved.map ?? OFFICE_PLAN.id) === plan().id;
       // A hall of its own has nothing outside it to come back to (and its walls may have moved since).
       const b = plan().bounds;
-      const inRoom = inOffice() || (mine.x > b.minX + 0.3 && mine.x < b.maxX - 0.3 && mine.z > b.minZ + 0.3 && mine.z < b.maxZ - 0.3);
-      if (sameMap && inRoom && !(inOffice() && (inElevator(mine.x, mine.z) || pastTheWing(mine, parts.worlds.officeWing()))) && player.fits(mine.x, mine.z, mine.y)) {
-        placeAt(mine);
+      const inRoom = inOffice() || (at.x > b.minX + 0.3 && at.x < b.maxX - 0.3 && at.z > b.minZ + 0.3 && at.z < b.maxZ - 0.3);
+      if (sameMap && inRoom && !(inOffice() && (inElevator(at.x, at.z) || pastTheWing(at, parts.worlds.officeWing()))) && player.fits(at.x, at.z, at.y)) {
+        placeAt(at);
         travel.arrive('back');
       } else {
         // The car you were in (or nearest): the garage's, if you were down there.
-        placeInCar(mine, !core.upTop && mine.y < -SLAB - 1);
+        placeInCar(at, !core.upTop && at.y < -SLAB - 1);
         travel.arrive();
       }
       floorWentWhileAway(wasOn);

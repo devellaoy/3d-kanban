@@ -83,7 +83,7 @@ export function installBarGames(ctx: Ctx, deps: BarGamesDeps) {
 
   ctx.ticks.add('play', ({ dt }) => {
     // Pulled away from the line (sat down, into the elevator): the dart or axe goes back.
-    if (thrower.active && (ctx.trip() || ctx.activities.running('hanger') || ctx.activities.running('climber') || ctx.player.seat || !ctx.upTop())) thrower.stop();
+    if (thrower.active && (ctx.trip() || ctx.activities.running('hanger') || ctx.player.seat || !ctx.upTop())) thrower.stop();
     thrower.drunk = ctx.player.effects.sway;
     thrower.update(dt);
   });
@@ -96,7 +96,7 @@ export function installBarGames(ctx: Ctx, deps: BarGamesDeps) {
 
   /** E at the dart board or the axe lane: step up to the line with a dart (or an axe) in hand. */
   function stepUp(game: BarGame) {
-    if (thrower.active || ctx.trip() || ctx.activities.running('climber')) return;
+    if (thrower.active || ctx.trip()) return;
     const other = lineTaken(game);
     if (other) return toast(`${game === 'darts' ? '🎯' : '🪓'} ${other} is throwing — wait your turn`, 'warn');
     if (ctx.player.seat) deps.standUp();

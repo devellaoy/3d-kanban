@@ -155,22 +155,22 @@ function activity(id: string, log: string[], opts: { on?: boolean; stopsFor?: Wh
 
 test('activities keep their declared order whatever order they were added in', () => {
   const log: string[] = [];
-  const acts = new Activities<Why, string>(['hanger', 'climber', 'golf']);
+  const acts = new Activities<Why, string>(['hanger', 'fisher', 'golf']);
   const golf = activity('golf', log, { on: true, key: 'KeyE', camera: true });
   const extra = activity('extra', log, { on: true });
   const hanger = activity('hanger', log, { on: true, key: 'Escape' });
   acts.add(golf);
   acts.add(extra);
   acts.add(hanger);
-  acts.add(activity('climber', log));
+  acts.add(activity('fisher', log));
   assert.deepEqual(
     acts.all().map((a) => a.id),
-    ['hanger', 'climber', 'golf', 'extra'],
+    ['hanger', 'fisher', 'golf', 'extra'],
   );
   assert.equal(acts.current()?.id, 'hanger');
   assert.equal(acts.busy(), true);
   assert.equal(acts.running('golf'), true);
-  assert.equal(acts.running('climber'), false);
+  assert.equal(acts.running('fisher'), false);
   assert.equal(acts.any('takesCamera'), true);
   assert.equal(acts.any('hidesHands'), false);
   // Keys go to what's going on, in order, until one takes it.
@@ -181,12 +181,12 @@ test('activities keep their declared order whatever order they were added in', (
 
 test('stopAll stops what is going on in order, but what is excepted or does not stop for that', () => {
   const log: string[] = [];
-  const acts = new Activities<Why>(['hanger', 'climber', 'driver', 'golf']);
+  const acts = new Activities<Why>(['hanger', 'fisher', 'driver', 'golf']);
   const hanger = activity('hanger', log, { on: true, stopsFor: ['trip'] });
-  const climber = activity('climber', log);
+  const fisher = activity('fisher', log);
   const driver = activity('driver', log, { on: true });
   const golf = activity('golf', log, { on: true });
-  for (const a of [golf, driver, climber, hanger]) acts.add(a);
+  for (const a of [golf, driver, fisher, hanger]) acts.add(a);
   acts.stopAll('walk');
   assert.deepEqual(log, ['driver stops for walk', 'golf stops for walk']);
   assert.equal(hanger.on, true);
@@ -244,19 +244,13 @@ test('an activity taken out is gone from the order', () => {
   );
 });
 
-test('view effects: the first grip that holds on, the field of view through each in order, updates, cover', () => {
-  const view = new View<'ladder' | 'pole'>();
+test('view effects: the field of view through each in order, updates, cover', () => {
+  const view = new View();
   const log: string[] = [];
-  let grip: 'ladder' | 'pole' | null = null;
   let narrow = false;
   let covered = false;
   view.add({ fov: (f) => (narrow ? 24 : f), covers: () => covered, update: () => log.push('first') });
-  view.add({ grip: () => grip, fov: (f) => f + 0.5 * 16, update: () => log.push('second') });
-  view.add({ grip: () => 'pole' });
-  // The first effect holding on to something says what you hold.
-  assert.equal(view.grip(), 'pole');
-  grip = 'ladder';
-  assert.equal(view.grip(), 'ladder');
+  view.add({ fov: (f) => f + 0.5 * 16, update: () => log.push('second') });
   // Through each effect in the order they were added: the second widens what the first narrowed.
   assert.equal(view.fov(55), 55 + 8);
   narrow = true;

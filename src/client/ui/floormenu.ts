@@ -18,6 +18,10 @@ export interface FloorMenuOptions {
   elevator(): void;
   /** Up to the rooftop bar, by elevator; null on a map with no roof to go up to. */
   roof: (() => void) | null;
+  /** Where the list goes: the page by default; the ☰ menu's backdrop when Tab opens them together. */
+  parent?: HTMLElement;
+  /** Told when the list closes by itself (a pick: floor, roof or elevator; Esc; a click outside), not when its closer or closeFloorMenu closes it. */
+  onClose?(): void;
 }
 
 let current: { el: HTMLElement; close(): void } | null = null;
@@ -30,9 +34,25 @@ export function closeFloorMenu() {
   current?.close();
 }
 
+/** The list's width, on a screen wide enough. */
+export const FLOOR_MENU_WIDTH = 380;
+const MARGIN = 12;
+const GAP = 8;
+
+/** Whether a list placed under `anchor` would end, with a gap, left of `right`. */
+export function floorMenuFits(anchor: HTMLElement, right: number): boolean {
+  return anchor.getBoundingClientRect().left + Math.min(FLOOR_MENU_WIDTH, window.innerWidth - 2 * MARGIN) + GAP <= right;
+}
+
 /** Opens the floor list under `anchor`, or closes it if it's open. */
 export function toggleFloorMenu(anchor: HTMLElement, opts: FloorMenuOptions): void {
   if (current) return current.close();
+  openFloorMenu(anchor, opts);
+}
+
+/** Opens the floor list under `anchor` (closing one that's open first) and returns how to close just this one. */
+export function openFloorMenu(anchor: HTMLElement, opts: FloorMenuOptions): () => void {
+  closeFloorMenu();
   const el = h('div.floor-menu.panel', { role: 'menu', 'aria-label': 'Floors' });
 
   const item = (f: FloorInfo, i: number, here: number) => {
@@ -57,7 +77,7 @@ export function toggleFloorMenu(anchor: HTMLElement, opts: FloorMenuOptions): vo
     );
     btn.addEventListener('click', () => {
       if (isHere || f.cloning) return;
-      close();
+      closeSelf();
       opts.go(f.id);
     });
     return btn;
@@ -68,7 +88,7 @@ export function toggleFloorMenu(anchor: HTMLElement, opts: FloorMenuOptions): vo
     const here = floors.findIndex((f) => f.id === store.floor);
     const add = h('button.floor-item.add', { type: 'button', role: 'menuitem', title: 'The elevator: add another project as a floor' }, h('span.floor-no', {}, '🛗'), h('span.floor-text', {}, h('span.floor-name', {}, 'Elevator'), h('span.floor-sub', {}, 'Add a project…')));
     add.addEventListener('click', () => {
-      close();
+      closeSelf();
       opts.elevator();
     });
     // Top floor first, the way a building's directory reads, and the roof over them.
@@ -84,7 +104,7 @@ export function toggleFloorMenu(anchor: HTMLElement, opts: FloorMenuOptions): vo
     );
     roof.addEventListener('click', () => {
       if (onRoof) return;
-      close();
+      closeSelf();
       opts.roof?.();
     });
     el.replaceChildren(h('div.floor-menu-head', {}, `🏢 ${floors.length} floor${floors.length === 1 ? '' : 's'}`), ...(floors.length && opts.roof ? [roof] : []), ...items, add);
@@ -92,16 +112,17 @@ export function toggleFloorMenu(anchor: HTMLElement, opts: FloorMenuOptions): vo
 
   const place = () => {
     const r = anchor.getBoundingClientRect();
+    el.style.width = `${Math.min(FLOOR_MENU_WIDTH, window.innerWidth - 2 * MARGIN)}px`;
     el.style.left = `${r.left}px`;
-    el.style.top = `${r.bottom + 8}px`;
+    el.style.top = `${r.bottom + GAP}px`;
   };
 
   const onDown = (e: PointerEvent) => {
     const t = e.target as Node;
-    if (!el.contains(t) && !anchor.contains(t)) close();
+    if (!el.contains(t) && !anchor.contains(t)) closeSelf();
   };
   const onKey = (e: KeyboardEvent) => {
-    if (e.key === 'Escape') close();
+    if (e.key === 'Escape') closeSelf();
   };
   const offs = [store.on('floors', render), store.on('floor', render)];
   const close = () => {
@@ -114,12 +135,20 @@ export function toggleFloorMenu(anchor: HTMLElement, opts: FloorMenuOptions): vo
     window.removeEventListener('resize', place);
     for (const off of offs) off();
   };
+  const closeSelf = () => {
+    if (current?.el !== el) return;
+    close();
+    opts.onClose?.();
+  };
   render();
-  document.body.append(el);
+  // With a parent, the ☰ menu owns the list's lifetime. It goes inside that menu's backdrop (fixed, full
+  // screen, z-index 50), which would otherwise cover the list on the page and swallow its clicks.
+  (opts.parent ?? document.body).append(el);
   place();
   anchor.classList.add('open');
-  window.addEventListener('pointerdown', onDown, true);
+  if (!opts.parent) window.addEventListener('pointerdown', onDown, true);
   window.addEventListener('keydown', onKey, true);
   window.addEventListener('resize', place);
   current = { el, close };
+  return close;
 }

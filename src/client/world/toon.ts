@@ -127,6 +127,8 @@ export interface CardOpts {
   border?: string;
   /** Widest a line of text may get, in textSprite `size` pixels. */
   maxWidth?: number;
+  /** How many lines the title may take (default 2). */
+  titleLines?: number;
 }
 
 /** Cards are drawn at twice the pixels of other labels so their smaller text stays crisp up close. */
@@ -153,7 +155,7 @@ export function cardSprite(o: CardOpts): THREE.Sprite {
 
   const ctx = document.createElement('canvas').getContext('2d')!;
   ctx.font = titleFont;
-  const title = wrap(ctx, o.title, maxW, 2);
+  const title = wrap(ctx, o.title, maxW, o.titleLines ?? 2);
   const titleW = Math.max(...title.map((l) => ctx.measureText(l).width));
   ctx.font = bodyFont;
   const body = o.body ? wrap(ctx, o.body, maxW, 3) : [];

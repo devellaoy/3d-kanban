@@ -16,7 +16,7 @@ test('E remains handled by representative nearby interactions', () => {
   assert.equal(interactionAvailable(interaction('desk', { deskId: 'desk-1' }), 'E', state()), true);
   assert.equal(interactionAvailable(interaction('elevator'), 'E', state()), true);
   assert.equal(interactionAvailable(interaction('dog'), 'E', state()), true);
-  assert.equal(interactionAvailable(interaction('ladder'), 'E', state()), true);
+  assert.equal(interactionAvailable(interaction('jukebox'), 'E', state()), true);
 });
 
 test('desk-specific keys are handled only when their action is available', () => {

@@ -127,7 +127,7 @@ export type FloorClientMsg =
   /**
    * Go to another floor; the server answers with `floor.enter`. By elevator you arrive in the car;
    * `at` is where you arrive instead: the same spot on the other floor (switching floors from the
-   * floor list), or the ladder or fire pole you came by.
+   * floor list).
    */
   | { t: 'floor.go'; floor: string; at?: { x: number; y: number; z: number; rotY: number } }
   /** The repositories that could become a floor; answered with `floor.repos`. */

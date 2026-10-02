@@ -6,7 +6,6 @@
 import type * as THREE from 'three';
 import type { MapPlan } from '../../shared/maps';
 import type { CarriedIssue, GhIssue, ServerMsg } from '../../shared/protocol';
-import type { Grip } from '../features/climbing/controller';
 import type { DeskKey } from '../interaction';
 import type { Net } from '../net';
 import type { PlayerController } from '../player';
@@ -34,7 +33,7 @@ export interface Hint {
  * Why whatever you're in the middle of is being stopped (see Activities.stopAll); each activity decides
  * which of these stop it.
  *
- * - start: you're starting something else at a thing you used (the tee, the dart board, the ladder, a pole, a car)
+ * - start: you're starting something else at a thing you used (the tee, the dart board, a car)
  * - taken: the office put you on another floor (yours was taken off the building)
  * - trip: you're off to another floor (the elevator, the floor list)
  * - map: the building changed maps
@@ -45,8 +44,8 @@ export interface Hint {
  */
 export type StopWhy = 'start' | 'taken' | 'trip' | 'map' | 'walk' | 'errand' | 'desk';
 
-/** How you're going to another floor: by elevator, straight there from the floor list, or by the ladder or a pole. */
-export type TripKind = 'elevator' | 'switch' | Grip;
+/** How you're going to another floor: by elevator, or straight there from the floor list. */
+export type TripKind = 'elevator' | 'switch';
 
 /**
  * A trip under way: the lights are down (and by elevator the doors are shut) until the next floor
@@ -130,7 +129,7 @@ export interface Ctx {
   readonly activities: Activities<StopWhy, KeyboardEvent, HTMLElement>;
   readonly interactions: Interactions<OfficeInteraction>;
   /** What what you're doing makes of you and your view each frame (see ViewEffect). */
-  readonly view: View<Grip>;
+  readonly view: View;
   /**
    * What else there is to use on the office's own map, and to aim at: the pictures on the walls, the
    * dog, the ball (see usable and aimedAt in input/pointer.ts).
