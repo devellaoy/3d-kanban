@@ -33,6 +33,8 @@ import type {
 } from './types.js';
 import { KANBAN_EFFORTS, KANBAN_TOOLS, PR_REVIEW_MAX, TASK_STATUSES, TASK_TYPES } from './types.js';
 import { Bad, KANBAN_LIMITS, MODEL_RE, PROJECT_ID_RE, bad, bool, deskId, id, isObj, list, model, nullableText, oneOf, optInt, optOneOf, optText, project, text, workerId, type Obj, type Req } from './validate.js';
+import { moveExtras } from './hold.js';
+import type { LoungeServerMsg } from './lounge.js';
 import { ISSUE_OPS_CLIENT_TYPE_LIST, parseIssueOpsMsg, type IssueOpsClientMsg, type IssueOpsServerMsg } from './issueops.js';
 
 // --- Limits ---------------------------------------------------------------------------------------
@@ -121,8 +123,8 @@ export type KanbanClientMsg =
    */
   | Req<{ t: 'kanban.task.create'; task: KanbanTaskInput; start?: boolean; deskId?: string }>
   | Req<{ t: 'kanban.task.update'; id: number; patch: KanbanTaskPatch }>
-  /** A drag between columns (see moves.ts). */
-  | Req<{ t: 'kanban.task.move'; id: number; to: TaskStatus }>
+  /** A drag between columns (see moves.ts). `note`/`until`: the reason and date of a hold, or a message for the agent on a resume (see hold.ts). */
+  | Req<{ t: 'kanban.task.move'; id: number; to: TaskStatus; note?: string; until?: number }>
   /** `deskId`: hire its worker at that desk (a desk or bean bag, not a board agent's kiosk or a meeting chair); refused when it's taken or not built. */
   | Req<{ t: 'kanban.task.start'; id: number; deskId?: string }>
   | Req<{ t: 'kanban.task.stop'; id: number }>
@@ -218,6 +220,7 @@ export type KanbanServerMsg =
   | { t: 'kanban.pr.owner'; rid?: string; taskId: number | null; title?: string; fixable: boolean; reason?: string }
   | { t: 'kanban.ok'; rid?: string; taskId?: number; commentId?: number; workerId?: string; existed?: boolean; startError?: string; started?: true }
   | IssueOpsServerMsg
+  | LoungeServerMsg
   | { t: 'kanban.error'; rid?: string; message: string };
 
 export type KanbanServerType = KanbanServerMsg['t'];
@@ -494,8 +497,10 @@ function parse(raw: unknown): KanbanClientMsg {
     }
     case 'kanban.task.update':
       return m({ t: 'kanban.task.update', id: id(r.id), patch: taskPatch(r.patch) });
-    case 'kanban.task.move':
-      return m({ t: 'kanban.task.move', id: id(r.id), to: oneOf(r.to, 'to', TASK_STATUSES) });
+    case 'kanban.task.move': {
+      const to = oneOf(r.to, 'to', TASK_STATUSES);
+      return m({ t: 'kanban.task.move', id: id(r.id), to, ...moveExtras(r, to) });
+    }
     case 'kanban.task.start': {
       const desk = deskId(r.deskId);
       return m({ t: 'kanban.task.start', id: id(r.id), ...(desk ? { deskId: desk } : {}) });

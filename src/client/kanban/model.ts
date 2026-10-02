@@ -120,7 +120,7 @@ export function sortCards(cards: KanbanTaskCard[], column: TaskStatus): KanbanTa
 /** The board's cards per column (and the archive's), filtered and in order. */
 export function columnsOf(cards: Iterable<KanbanTaskCard>, f: BoardFilter, projects: KanbanProjectInfo[], project: string | null): Record<TaskStatus, KanbanTaskCard[]> {
   const byId = new Map(projects.map((p) => [p.id, p]));
-  const out: Record<TaskStatus, KanbanTaskCard[]> = { todo: [], in_progress: [], waiting: [], review: [], done: [], archived: [] };
+  const out: Record<TaskStatus, KanbanTaskCard[]> = { todo: [], in_progress: [], waiting: [], review: [], on_hold: [], done: [], archived: [] };
   for (const c of cards) {
     if (project && c.project !== project) continue;
     if (!matchesFilter(c, f, byId.get(c.project))) continue;

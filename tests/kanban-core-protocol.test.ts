@@ -15,8 +15,9 @@ test('the manual moves are the documented ones', () => {
   const allowed: Record<TaskStatus, TaskStatus[]> = {
     todo: ['in_progress', 'archived'],
     in_progress: [],
-    waiting: ['todo', 'done', 'archived'],
-    review: ['todo', 'done', 'archived'],
+    waiting: ['todo', 'on_hold', 'done', 'archived'],
+    review: ['todo', 'on_hold', 'done', 'archived'],
+    on_hold: ['todo', 'in_progress', 'review', 'done', 'archived'],
     done: ['review', 'archived'],
     archived: ['done'],
   };
@@ -33,6 +34,19 @@ test('the manual moves are the documented ones', () => {
   assert.match(no(checkMove(at('waiting', { runState: 'queued' }), 'todo')), /Stop it first/);
   assert.match(no(checkMove(at('waiting', { runState: 'running' }), 'archived')), /Stop it first/);
   assert.match(no(checkMove(at('in_progress'), 'done')), /stop it first/);
+  assert.deepEqual(checkMove(at('waiting'), 'on_hold'), { ok: true, action: 'hold' });
+  assert.deepEqual(checkMove(at('review'), 'on_hold'), { ok: true, action: 'hold' });
+  assert.deepEqual(checkMove(at('on_hold'), 'in_progress'), { ok: true, action: 'unhold' });
+  assert.deepEqual(checkMove(at('on_hold'), 'review'), { ok: true, action: 'status' });
+  assert.deepEqual(checkMove(at('on_hold'), 'done'), { ok: true, action: 'status' });
+  assert.deepEqual(checkMove(at('on_hold'), 'todo'), { ok: true, action: 'reset' });
+  assert.deepEqual(checkMove(at('on_hold'), 'archived'), { ok: true, action: 'status' });
+  assert.match(no(checkMove(at('on_hold'), 'waiting')), /Only the automation/);
+  assert.match(no(checkMove(at('in_progress'), 'on_hold')), /stop it first/);
+  assert.match(no(checkMove(at('waiting', { runState: 'running' }), 'on_hold')), /Stop it first/);
+  assert.match(no(checkMove(at('review', { runState: 'queued' }), 'on_hold')), /Stop it first/);
+  for (const from of ['todo', 'done', 'archived'] as const) assert.match(no(checkMove(at(from), 'on_hold')), /Only a started task/);
+  assert.match(no(checkMove(at('on_hold'), 'on_hold')), /already in On hold/);
   assert.match(no(checkMove(at('review'), 'waiting')), /Only the automation/);
   assert.match(no(checkMove(at('waiting'), 'review')), /Only the automation/);
   assert.match(no(checkMove(at('waiting'), 'in_progress')), /Continue, Retry/);

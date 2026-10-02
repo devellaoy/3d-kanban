@@ -22,6 +22,7 @@ export const STATUS_TEXT: Record<TaskStatus, string> = {
   in_progress: 'in progress',
   waiting: 'waiting',
   review: 'in review',
+  on_hold: 'on hold',
   done: 'done',
   archived: 'archived',
 };

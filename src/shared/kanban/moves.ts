@@ -1,7 +1,7 @@
 // Which columns a task can be dragged to by hand (docs/kanban-architecture.md §3). Pure: the board
 // uses it to show where a card can go, and the server enforces the same rules.
 
-import type { RunState, TaskStatus } from './types.js';
+import { TASK_STATUSES, type RunState, type TaskStatus } from './types.js';
 
 /** What the rules look at: where the task is, and whether the engine is busy with it. */
 export interface MoveSubject {
@@ -11,9 +11,11 @@ export interface MoveSubject {
 
 /**
  * What a move does. `start`: todo → in_progress starts the task (the engine's start). `reset`: back
- * to todo, the automation's state cleared, to start over. `status`: only the column changes.
+ * to todo, the automation's state cleared, to start over. `status`: only the column changes. `hold`:
+ * waiting or review → on_hold sends the task's workers home and parks it (see hold.ts). `unhold`:
+ * on_hold → in_progress hires a worker again and carries on where it left off.
  */
-export type MoveAction = 'start' | 'reset' | 'status';
+export type MoveAction = 'start' | 'reset' | 'status' | 'hold' | 'unhold';
 
 export type MoveCheck = { ok: true; action: MoveAction } | { ok: false; reason: string };
 
@@ -22,6 +24,7 @@ const COLUMN: Record<TaskStatus, string> = {
   in_progress: 'In progress',
   waiting: 'Waiting',
   review: 'Review',
+  on_hold: 'On hold',
   done: 'Done',
   archived: 'Archive',
 };
@@ -47,6 +50,16 @@ export function checkMove(task: MoveSubject, to: TaskStatus): MoveCheck {
     // Workers at rest still hired for it go home as it resets (ws.ts), worktree kept.
     return { ok: true, action: 'reset' };
   }
+  if (to === 'on_hold') {
+    if (from === 'in_progress') return no('It is running: stop it first');
+    if (from === 'waiting' || from === 'review') return isRunning(task) ? no('Stop it first: it is running') : { ok: true, action: 'hold' };
+    return no("Only a started task that isn't running can be put on hold");
+  }
+  if (from === 'on_hold') {
+    if (to === 'in_progress') return { ok: true, action: 'unhold' };
+    if (to === 'review' || to === 'done') return { ok: true, action: 'status' };
+    if (to === 'todo') return { ok: true, action: 'reset' };
+  }
   if (from === 'in_progress') return no('It is running: stop it first');
   if (to === 'in_progress') return no('Use Continue, Retry or a comment to put it back to work');
   if (to === 'waiting') return no('Only the automation moves a task to Waiting');
@@ -56,8 +69,7 @@ export function checkMove(task: MoveSubject, to: TaskStatus): MoveCheck {
 
 /** Every column `task` can be dragged to. */
 export function moveTargets(task: MoveSubject): TaskStatus[] {
-  const all: TaskStatus[] = ['todo', 'in_progress', 'waiting', 'review', 'done', 'archived'];
-  return all.filter((to) => checkMove(task, to).ok);
+  return TASK_STATUSES.filter((to) => checkMove(task, to).ok);
 }
 
 /** A column's name for people. */

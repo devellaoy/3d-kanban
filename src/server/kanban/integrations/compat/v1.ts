@@ -31,8 +31,8 @@ function presentedKey(req: IncomingMessage): string | undefined {
 // --- ai-kanban's vocabulary -----------------------------------------------------------------------
 
 /** Our columns in ai-kanban's words. */
-const LEGACY_STATUS: Record<TaskStatus, string> = { todo: 'todo', in_progress: 'in_progress', waiting: 'waiting', review: 'reviewable', done: 'done', archived: 'history' };
-const STATUS_TITLE: Record<TaskStatus, string> = { todo: 'To do', in_progress: 'In progress', waiting: 'Waiting', review: 'Review', done: 'Done', archived: 'Archive' };
+const LEGACY_STATUS: Record<TaskStatus, string> = { todo: 'todo', in_progress: 'in_progress', waiting: 'waiting', review: 'reviewable', on_hold: 'waiting', done: 'done', archived: 'history' };
+const STATUS_TITLE: Record<TaskStatus, string> = { todo: 'To do', in_progress: 'In progress', waiting: 'Waiting', review: 'Review', on_hold: 'On hold', done: 'Done', archived: 'Archive' };
 /** A status as ai-kanban's callers may give it. */
 function ourStatus(s: string): TaskStatus | undefined {
   const t = s.trim().toLowerCase();
