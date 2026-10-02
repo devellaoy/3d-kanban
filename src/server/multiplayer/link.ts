@@ -5,6 +5,8 @@
 import WebSocket from 'ws';
 import {
   MP_CLOSE,
+  MP_FRAME_MAX,
+  MP_TOO_LARGE,
   MP_HIGH_WATER,
   MP_MAX_PAYLOAD,
   MP_PATH,
@@ -15,6 +17,7 @@ import {
   type OfficeToRelay,
   type RelayToOffice,
 } from '../../shared/multiplayer/wire.js';
+import { Reassembler, splitFrame } from './chunks.js';
 import type { MpConfigStore } from './config.js';
 
 export type LinkStatus = 'off' | 'connecting' | 'online' | 'error';
@@ -68,6 +71,7 @@ export class Link {
   /** Connecting cannot go on until the person signs in to GitHub (no token, or the relay refused it). */
   needsIdentity = false;
   private ws?: WebSocket;
+  private pieces = new Reassembler();
   private timer?: NodeJS.Timeout;
   private watchdog?: NodeJS.Timeout;
   private lastHeard = 0;
@@ -109,6 +113,7 @@ export class Link {
     this.watchdog = undefined;
     const ws = this.ws;
     this.ws = undefined;
+    this.pieces.clear();
     if (ws) {
       ws.removeAllListeners('close');
       ws.on('error', () => {});
@@ -150,6 +155,7 @@ export class Link {
     ws.on('close', (code, reason) => {
       if (this.ws !== ws) return;
       this.ws = undefined;
+      this.pieces.clear();
       clearInterval(this.watchdog);
       this.players = [];
       this.o.onDown();
@@ -178,6 +184,16 @@ export class Link {
       case 'players':
         this.players = msg.players;
         return this.o.onChange();
+      case 'visit.frame': {
+        if (!msg.part) return this.o.onMessage(msg);
+        const got = this.pieces.push(msg.sid, msg.data, msg.part);
+        if (!got) return;
+        if ('error' in got) return this.abort(msg.sid, got.error);
+        return this.o.onMessage({ t: 'visit.frame', sid: msg.sid, data: got.data });
+      }
+      case 'visit.close':
+        this.pieces.drop(msg.sid);
+        return this.o.onMessage(msg);
       default:
         return this.o.onMessage(msg);
     }
@@ -205,8 +221,28 @@ export class Link {
     const ws = this.ws;
     if (!ws || ws.readyState !== WebSocket.OPEN) return false;
     if (droppable && ws.bufferedAmount > MP_HIGH_WATER) return false;
+    if (msg.t === 'visit.frame' && !msg.part && msg.data.length > MP_FRAME_MAX) {
+      // Too big for one frame: it goes in pieces (which must all arrive, so none is droppable).
+      const pieces = splitFrame(msg.data);
+      if (!pieces) {
+        this.abort(msg.sid, MP_TOO_LARGE);
+        return false;
+      }
+      for (const piece of pieces) ws.send(JSON.stringify({ t: 'visit.frame', sid: msg.sid, ...piece }));
+      return true;
+    }
     ws.send(JSON.stringify(msg));
     return true;
+  }
+
+  /**
+   * A message this office cannot relay (or receive): the visit ends with a reason on both sides, not
+   * with a message that silently never arrives. Our own side is told after the current call returns.
+   */
+  private abort(sid: string, reason: string) {
+    this.pieces.drop(sid);
+    this.send({ t: 'visit.close', sid, reason });
+    queueMicrotask(() => this.o.onMessage({ t: 'visit.close', sid, reason }));
   }
 
   /** Where this office's owner is now (see Multiplayer.updatePresence); kept for the next connection too. */

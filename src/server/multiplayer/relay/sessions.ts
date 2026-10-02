@@ -99,7 +99,7 @@ export class Sessions {
       this.end(p.s, 'Connection too slow', { visitor: true, owner: true });
       return false;
     }
-    return p.other.send({ t: 'visit.frame', sid: msg.sid, data: msg.data });
+    return p.other.send({ t: 'visit.frame', sid: msg.sid, data: msg.data, ...(msg.part ? { part: msg.part } : {}) });
   }
 
   http(from: Peer, msg: Msg<'visit.http'>) {

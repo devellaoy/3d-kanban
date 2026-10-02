@@ -15,6 +15,19 @@ export const MP_PATH = '/mp';
 
 /** One `visit.frame`'s `data` (a browser frame, as the text it was), in characters. */
 export const MP_FRAME_MAX = 2 * 1024 * 1024;
+/**
+ * The biggest browser message (text) an office relays: bigger ones travel as several `visit.frame`
+ * pieces (see `part`) of at most MP_FRAME_MAX and are put back together by the receiving office.
+ * It must stay above the largest legitimate message, a floor's whiteboard (16 MB, WB_MAX_BYTES)
+ * inside a welcome or floor.enter, plus its envelope.
+ */
+export const MP_MESSAGE_MAX = 24 * 1024 * 1024;
+/** How many pieces a message can come in. */
+export const MP_PARTS_MAX = Math.ceil(MP_MESSAGE_MAX / MP_FRAME_MAX);
+/** How many half-received messages an office holds at once, across all its visits (each can weigh up to MP_MESSAGE_MAX). */
+export const MP_PARTIALS_MAX = 4;
+/** The reason a visit ends with when a message is over MP_MESSAGE_MAX (or arrives in pieces that do not add up). */
+export const MP_TOO_LARGE = 'A message was too large to relay';
 /** What a `visit.httpres` body may weigh decoded; it travels base64 (MP_BODY_B64_MAX characters). */
 export const MP_BODY_MAX = 8 * 1024 * 1024;
 export const MP_BODY_B64_MAX = Math.ceil(MP_BODY_MAX / 3) * 4;
@@ -52,6 +65,13 @@ export const RID_RE = /^[A-Za-z0-9_-]{1,64}$/;
 export const FLOOR_KEY_RE = /^[A-Za-z0-9_-]{8,64}$/;
 
 export const MP_LIMITS = { password: 256, token: 512, version: 64, reason: 300, name: 100, path: 2000, type: 200, floors: 64, players: 500 } as const;
+
+/** Which piece of a split message a `visit.frame` is: message `id`, piece `i` of `n` (0-based, in order). */
+export interface MpFramePart {
+  id: string;
+  i: number;
+  n: number;
+}
 
 /** Where a player is: in their own office, or visiting another's. */
 export type MpWhere = 'home' | { visiting: string };
@@ -104,8 +124,11 @@ export type OfficeToRelay =
   | { t: 'visit.accept'; sid: string }
   /** Either party ends the session (or the owner refuses it), with a reason to show. */
   | { t: 'visit.close'; sid: string; reason: string }
-  /** A browser frame, as text, to the other party. Only a `drop` one (a cursor, a position) is skipped when the receiver is backed up. */
-  | { t: 'visit.frame'; sid: string; data: string; drop?: true }
+  /**
+   * A browser frame, as text, to the other party. Only a `drop` one (a cursor, a position) is skipped
+   * when the receiver is backed up. A frame over MP_FRAME_MAX is split into `part`s, which are never `drop`.
+   */
+  | { t: 'visit.frame'; sid: string; data: string; drop?: true; part?: MpFramePart }
   /** Visitor → owner: a read-only GET the visitor's browser wants (see the owner's allowlist). */
   | { t: 'visit.http'; sid: string; rid: string; path: string }
   /** Owner → visitor: the answer. `body` is base64. */
@@ -125,7 +148,7 @@ export type RelayToOffice =
   | { t: 'visit.open'; sid: string; from: string; version: string; protocol: number; profile: MpVisitProfile }
   | { t: 'visit.accept'; sid: string }
   | { t: 'visit.close'; sid: string; reason: string }
-  | { t: 'visit.frame'; sid: string; data: string; drop?: true }
+  | { t: 'visit.frame'; sid: string; data: string; drop?: true; part?: MpFramePart }
   | { t: 'visit.http'; sid: string; rid: string; path: string }
   | { t: 'visit.httpres'; sid: string; rid: string; status: number; type: string; body: string }
   | { t: 'probe'; rid: string; from: string }
@@ -227,7 +250,15 @@ function parseCommon(r: Obj, side: 'office' | 'relay'): OfficeToRelay | RelayToO
     }
     case 'visit.frame': {
       const data = str(r.data, MP_FRAME_MAX);
-      return sid && data !== undefined ? { t: 'visit.frame', sid, data, ...(r.drop === true ? { drop: true as const } : {}) } : undefined;
+      if (!sid || data === undefined) return undefined;
+      if (r.part === undefined) return { t: 'visit.frame', sid, data, ...(r.drop === true ? { drop: true as const } : {}) };
+      // A piece must arrive for the rest to mean anything, so it is never droppable.
+      const part = isObj(r.part) ? r.part : undefined;
+      const id = part && matching(part.id, RID_RE);
+      const n = part && int(part.n, 2, MP_PARTS_MAX);
+      const i = part && n !== undefined ? int(part.i, 0, n - 1) : undefined;
+      if (!id || n === undefined || i === undefined || r.drop === true) return undefined;
+      return { t: 'visit.frame', sid, data, part: { id, i, n } };
     }
     case 'visit.http': {
       const path = str(r.path, MP_LIMITS.path, 1);
