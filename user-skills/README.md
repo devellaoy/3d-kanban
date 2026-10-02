@@ -16,6 +16,8 @@ Now: `claude/kanban-dev`, `claude/kanban-dev-sonnet`, `claude/kanban-ui-screensh
 
 Add a folder with a `SKILL.md` (frontmatter `name` equal to the folder name, and a `description`) under
 `claude/` or `codex/`, plus any scripts or references it needs. Do not commit `node_modules`.
+Right under the `# title`, add a `## Contents` list naming every heading with a few words on what it
+covers, so an agent that reads only the start of the file still knows what the rest holds.
 `tests/kanban-integrations-user-skills.test.ts` lists the skills this folder is expected to hold; update it
 when you add or remove one.
 

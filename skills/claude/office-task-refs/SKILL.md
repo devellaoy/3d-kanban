@@ -5,6 +5,14 @@ description: Read another kanban task of this office when the task you are worki
 
 # Reading other kanban tasks
 
+## Contents
+
+- **How to fetch one** — MCP `get_task`, `office-tasks` CLI or HTTP
+- **Planning in read-only mode** — read `referenced-tasks.md`, never invent
+- **Is it a task, or a GitHub issue or PR?** — kanban vs. `gh`
+- **What you get** — status, type, accepted plan, runs, branches, reports
+- **Leave something the next task can read** — where reports and plans go
+
 You work in a 3d-kanban office. Tasks often build on each other: "do it the way #14 planned",
 "like we did in tehtävä 17", "the rest of UYT-1415". When the task, its plan or a comment points
 at another task, fetch that task and read it before you rely on anything about it.

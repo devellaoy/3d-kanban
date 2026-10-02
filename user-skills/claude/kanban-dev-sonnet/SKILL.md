@@ -5,6 +5,22 @@ description: Enforces that non-trivial implementation work is planned and execut
 
 # kanban-dev-sonnet
 
+## Contents
+
+- **1. Sizing** — when the team is needed and when not
+- **2. Team design** — roles from the task, one DA, no nested teams
+- **3. Model selection** — DA and UI on the main model, implementers on Sonnet
+- **4. The devil's advocate** — the mandatory pre-mortem output format
+- **5. Process** — checkpoints, round limit, decision log
+  - **Checkpoint A** — plan review, only when a plan was requested
+  - **Checkpoint B** — result review before declaring done
+  - **Decision log** — one line per DA item
+  - **Light mode** — short DA for small tasks
+- **6. The main session delegates the substance** — what it may still edit itself
+- **7. Plan mode** — the required Team section
+- **8. Seeing the UI** — one browser owner, 5-minute server timeout
+- **9. Quick decision summary** — all rules in brief
+
 Meaningful implementation work is never carried by a single, unchallenged line of reasoning. It is carried by an **agent team** designed for the task, in which exactly one member is a **devil's advocate (DA)** whose job is to break the result before it is declared done — and, when the user has asked for a plan, to break the plan before it is executed. The DA is a mechanism, not a ceremony: it has a required output format, it runs at fixed checkpoints, its findings are logged with a decision, and it has a round limit so it cannot stall the work.
 
 **The user decides whether a plan is made.** This skill never forces a planning step. A plan — and the DA's review of it — happens only when the user asks for a plan or the session is in plan mode. Otherwise the work goes straight to implementation, and the DA reviews the result.
