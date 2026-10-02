@@ -21,6 +21,7 @@ import { Board } from './board';
 import { tickCountdowns } from './card';
 import { openCreate } from './create';
 import { DetailPanel, isDetailTab } from './detail';
+import { moveWithDialog } from './holddialog';
 import { openIssues } from './issues';
 import { boardStats, deepLink, EMPTY_FILTER, filterActive, parseDeepLink, STATE_FILTERS, TICKET_FILTERS, type BoardFilter, type StateFilter, type TicketFilter } from './model';
 import { kstore } from './store';
@@ -126,8 +127,11 @@ function openTask(id: number, tab?: string) {
 }
 
 async function move(id: number, to: TaskStatus) {
-  const ok = await run(() => api.request<KanbanOk>({ t: 'kanban.task.move', id, to }));
-  if (ok?.startError) toast(ok.startError, 'warn');
+  // To On hold and from On hold to In progress a small dialog comes first (holddialog.ts); cancelling it moves nothing.
+  moveWithDialog(id, kstore.tasks.get(id), to, async (extras) => {
+    const ok = await run(() => api.request<KanbanOk>({ t: 'kanban.task.move', id, to, ...extras }));
+    if (ok?.startError) toast(ok.startError, 'warn');
+  });
 }
 
 function toggleArchive() {

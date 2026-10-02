@@ -87,6 +87,7 @@ export function waitText(k: WorkerKanban, now: number): string {
   if (k.retryAt && k.retryAt > 0) return `⏳ retries in ${countdown(k.retryAt, now)}`;
   if (k.status === 'waiting' && k.waitingReason) return WAITING_TEXT[k.waitingReason] ?? k.waitingReason;
   if (k.status === 'review') return '👀 ready for your review';
+  if (k.status === 'on_hold') return '⏸️ on hold';
   return '';
 }
 
@@ -135,12 +136,12 @@ export function taskWaiting(w: Pick<WorkerInfo, 'kanban' | 'status' | 'acked'>):
 
 /**
  * Whether "Move task #14 to Done" starts ticked when its worker goes home: in review (the automation
- * is finished), yes; still going (to do, in progress, waiting), no. null: there's nothing to move
+ * is finished), yes; still going (to do, in progress, waiting, on hold), no. null: there's nothing to move
  * (done or archived already, or the office doesn't say).
  */
 export function doneDefault(status: TaskStatus | undefined): boolean | null {
   if (status === 'review') return true;
-  if (status === 'todo' || status === 'in_progress' || status === 'waiting') return false;
+  if (status === 'todo' || status === 'in_progress' || status === 'waiting' || status === 'on_hold') return false;
   return null;
 }
 

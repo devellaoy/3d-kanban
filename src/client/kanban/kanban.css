@@ -36,6 +36,7 @@ body.kb-detail-open .kb-board { margin-right: var(--kb-detail-w, 560px); }
 .kb-col.in_progress .kb-col-head { background: var(--note-blue); }
 .kb-col.waiting .kb-col-head { background: var(--note-pink); }
 .kb-col.review .kb-col-head { background: var(--note-green); }
+.kb-col.on_hold .kb-col-head { background: var(--note-peach); }
 .kb-col.done .kb-col-head { background: var(--note-grey); }
 .kb-col.archived .kb-col-head { background: var(--note-slate); }
 .kb-count { font-size: var(--fs-xs); padding: 1px 8px; border-radius: var(--radius-pill); background: var(--strong); color: var(--text-on-strong); font-variant-numeric: tabular-nums; letter-spacing: 0; }
@@ -63,6 +64,7 @@ body.kb-detail-open .kb-board { margin-right: var(--kb-detail-w, 560px); }
 .kb-card.in_progress { background: var(--note-card-blue); }
 .kb-card.waiting { background: var(--bad-tint); }
 .kb-card.review { background: var(--note-card-green); }
+.kb-card.on_hold { background: var(--note-peach); }
 .kb-card.done { background: var(--note-card-grey); }
 .kb-card.archived { background: var(--note-card-slate); }
 .kb-card.attention { box-shadow: var(--shadow), inset 6px 0 0 var(--bad); }
@@ -98,6 +100,8 @@ a.kb-chip:hover { background: var(--field-hover); }
 .kb-pr.closed { background: var(--bad-soft); }
 .kb-wait { margin-top: 6px; font-size: var(--fs-xs); font-weight: var(--fw-bold); color: var(--muted); overflow-wrap: anywhere; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
 .kb-wait.attention { color: var(--bad-ink); }
+.kb-hold { margin-top: 6px; font-size: var(--fs-xs); font-weight: var(--fw-bold); color: var(--muted); overflow-wrap: anywhere; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+.kb-hold.passed { color: var(--warn-ink); }
 .kb-retry { margin-top: 4px; font-size: var(--fs-xs); font-weight: var(--fw-heavy); color: var(--warn-ink); font-variant-numeric: tabular-nums; }
 .kb-foot { display: flex; gap: 10px; margin-top: 6px; font-size: var(--fs-xs); color: var(--muted); }
 .kb-pending { color: var(--warn-ink); }

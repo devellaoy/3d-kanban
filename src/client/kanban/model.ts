@@ -106,7 +106,8 @@ export function filterActive(f: BoardFilter): boolean {
 
 /**
  * A column's cards in order. To do: oldest first, as they'd be started. Waiting: the ones that need
- * someone before the ones only waiting to retry, longest-waiting first. Everywhere else: latest change first.
+ * someone before the ones only waiting to retry, longest-waiting first. On hold: the longest on hold first.
+ * Everywhere else: latest change first.
  */
 export function sortCards(cards: KanbanTaskCard[], column: TaskStatus): KanbanTaskCard[] {
   const out = [...cards];
@@ -114,6 +115,7 @@ export function sortCards(cards: KanbanTaskCard[], column: TaskStatus): KanbanTa
   if (column === 'waiting') {
     return out.sort((a, b) => Number(needsAttention(b)) - Number(needsAttention(a)) || a.updatedAt - b.updatedAt || a.id - b.id);
   }
+  if (column === 'on_hold') return out.sort((a, b) => (a.hold?.at ?? a.updatedAt) - (b.hold?.at ?? b.updatedAt) || a.id - b.id);
   return out.sort((a, b) => b.updatedAt - a.updatedAt || b.id - a.id);
 }
 

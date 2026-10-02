@@ -43,6 +43,7 @@
 .kb-tv .kb-status.in_progress { background: var(--note-blue); }
 .kb-tv .kb-status.waiting { background: var(--note-pink); }
 .kb-tv .kb-status.review { background: var(--note-green); }
+.kb-tv .kb-status.on_hold { background: var(--note-peach); }
 .kb-tv .kb-status.done { background: var(--note-grey); }
 .kb-tv .kb-wait-pill { font-size: var(--fs-xs); font-weight: var(--fw-bold); color: var(--muted); }
 .kb-tv .kb-wait-pill.attention { color: var(--bad-ink); }
@@ -167,3 +168,10 @@
 @media (prefers-reduced-motion: reduce) {
   .kb-tv .kb-pulse, .kb-tv .kb-run.running::before { animation: none; }
 }
+
+.kb-tv .kb-onhold { margin: 0 0 12px; padding: 10px 12px; background: var(--note-peach); border: var(--bw-sm) solid var(--ink); border-radius: var(--radius-sm); }
+.kb-tv .kb-onhold h4 { margin: 0 0 4px; }
+.kb-tv .kb-onhold p { margin: 0; overflow-wrap: anywhere; }
+.kb-tv .kb-onhold.passed .kb-until { color: var(--warn-ink); font-weight: var(--fw-heavy); }
+.kb-hold-dialog textarea { width: 100%; box-sizing: border-box; }
+.kb-hold-dialog .kb-hold-since { margin: 0 0 12px; font-weight: var(--fw-bold); overflow-wrap: anywhere; }
