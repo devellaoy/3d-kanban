@@ -68,7 +68,7 @@ export function openMusicTab(deps: MusicTabDeps): MusicTab {
   );
   const seg = h('div.seg.phm-seg', { role: 'group', 'aria-label': 'Who hears it' }, ...segBtns);
   const targetNote = h('p.setting-note.phm-note');
-  const who = h('select.phm-who', { 'aria-label': 'Play it to' }) as HTMLSelectElement;
+  const who = h('select.phm-who', { 'aria-label': 'Play it to', onchange: () => paintForm() }) as HTMLSelectElement;
   const url = h('input', { type: 'text', placeholder: 'YouTube link or playlist', 'aria-label': 'YouTube link to play', spellcheck: 'false', autocomplete: 'off' }) as HTMLInputElement;
   const playBtn = h('button.btn.primary', { type: 'button', onclick: () => send() }, '▶ Play');
   const queueBtn = h('button.btn', { type: 'button', onclick: () => send('end') }, '＋ Queue');
@@ -84,6 +84,7 @@ export function openMusicTab(deps: MusicTabDeps): MusicTab {
   }
 
   function send(queue?: 'end') {
+    if (target === 'someone' && !who.value) return who.focus(); // Enter in the link box, with no one picked
     let ok: boolean;
     if (target === 'tv') ok = sendToTv(deps.net, url.value, queue);
     else ok = music.play(url.value, target === 'someone' ? who.value || undefined : undefined, queue);
@@ -107,15 +108,14 @@ export function openMusicTab(deps: MusicTabDeps): MusicTab {
     if (k !== whoKey) {
       whoKey = k;
       const was = who.value;
+      // Never silently the first person: the choice stays only while they are still here, else back to the placeholder.
       who.replaceChildren(
-        ...(people.length
-          ? people.map((p) => h('option', { value: p.id }, `${p.name} · ${p.floor === store.floor ? 'here' : floorName(p.floor)}`))
-          : [h('option', { value: '' }, 'Nobody else is in the office')]),
+        h('option', { value: '' }, people.length ? 'Pick someone…' : 'Nobody else is in the office'),
+        ...people.map((p) => h('option', { value: p.id }, `${p.name} · ${p.floor === store.floor ? 'here' : floorName(p.floor)}`)),
       );
-      if (people.some((p) => p.id === was)) who.value = was;
+      who.value = people.some((p) => p.id === was) ? was : '';
     }
-    const nobody = target === 'someone' && !people.length;
-    playBtn.disabled = queueBtn.disabled = nobody;
+    playBtn.disabled = queueBtn.disabled = target === 'someone' && !who.value;
     playBtn.title = target === 'tv' ? 'Put it on the TV now' : target === 'someone' ? 'Play it to the two of you now (what you listen to stops)' : 'Play it for you now';
     queueBtn.title = target === 'tv' ? 'Add it to the end of the TV’s queue' : target === 'someone' ? 'Add it to the queue of the music you share with them (starts it if you have none)' : 'Add it to the end of your own music’s queue (starts it if nothing’s on)';
     targetNote.textContent =
@@ -230,12 +230,17 @@ export function openMusicTab(deps: MusicTabDeps): MusicTab {
     store.on('floors', paintForm),
     player.listen(() => render()),
   ];
-  // The seek bars and times move on their own; YouTube's error and the length come in without a message.
+  // The seek bars and times move on their own; the length comes in without a message (YouTube's error and the
+  // click it wants come through player.listen).
+  let hadDuration = !!player.duration();
   const ticker = window.setInterval(() => {
-    ctl.tick();
+    if (!mine.hidden) ctl.tick();
     if (!tv.hidden) tvCtl.tick();
+    if (!!player.duration() !== hadDuration) {
+      hadDuration = !!player.duration();
+      render();
+    }
   }, 250);
-  const timer = window.setInterval(() => render(), 1000);
 
   paintForm();
   render(true);
@@ -250,7 +255,6 @@ export function openMusicTab(deps: MusicTabDeps): MusicTab {
       player.mount(null);
       offs.forEach((off) => off());
       clearInterval(ticker);
-      clearInterval(timer);
     },
   };
 }

@@ -6,6 +6,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { PhoneMusic } from '../src/server/phone/music.js';
 import { phoneHandlers, phoneHooks } from '../src/server/phone/handlers.js';
+import { musicLimits } from '../src/server/phone/music-handlers.js';
 import { YoutubeTv } from '../src/server/youtube/tv.js';
 import { clearYoutubeTitles, youtubeTitles } from '../src/server/youtube/titles.js';
 import { filterForVisitor, visitorMay, type VisitorScope } from '../src/shared/multiplayer/allow.js';
@@ -279,4 +280,64 @@ test('multiplayer: a visitor may not use the phone music and is never sent it', 
   assert.equal(visitorMay({ t: 'phone.music.play', url: A }, scope), false);
   assert.equal(visitorMay({ t: 'phone.music.leave' }, scope), false);
   assert.equal(filterForVisitor({ t: 'phone.music', music: null }, scope), undefined);
+});
+
+test('handlers: queueing into a two-person session works from either side', () => {
+  const saved = youtubeTitles.fetch;
+  youtubeTitles.fetch = async () => undefined;
+  clearYoutubeTitles();
+  try {
+    const o = office();
+    const a = o.person('a');
+    const b = o.person('b');
+    phoneHandlers['phone.music.play'](o.ctx, a, { t: 'phone.music.play', url: A, to: 'b' });
+    const session = o.musicTo('a').at(-1)!.session;
+    phoneHandlers['phone.music.play'](o.ctx, a, { t: 'phone.music.play', url: B, to: 'b', queue: 'end' });
+    phoneHandlers['phone.music.play'](o.ctx, b, { t: 'phone.music.play', url: B, to: 'a', queue: 'end' });
+    assert.equal(o.sent.filter((s) => s.msg.t === 'toast').length, 0);
+    for (const id of ['a', 'b']) {
+      const now = o.musicTo(id).at(-1)!;
+      assert.equal(now.session, session);
+      assert.equal(now.list.queue.length, 2);
+    }
+  } finally {
+    youtubeTitles.fetch = saved;
+  }
+});
+
+test('handlers: plays are limited per person and overall, and closing forgets them', () => {
+  const saved = youtubeTitles.fetch;
+  const savedNow = musicLimits.now;
+  youtubeTitles.fetch = async () => undefined;
+  clearYoutubeTitles();
+  let t = 1_000_000;
+  musicLimits.now = () => t;
+  try {
+    const o = office();
+    const a = o.person('a');
+    o.person('b');
+    o.person('c');
+    const play = (to?: string, queue?: 'end') => phoneHandlers['phone.music.play'](o.ctx, a, { t: 'phone.music.play', url: A, ...(to ? { to } : {}), ...(queue ? { queue } : {}) });
+    const warns = () => o.sent.filter((s) => s.msg.t === 'toast' && s.msg.level === 'warn').map((s) => (s.msg as { text: string }).text);
+    play('b');
+    play('b');
+    assert.deepEqual(warns(), ['Wait a moment before playing to B again']);
+    play('c'); // someone else is fine
+    t += 5000;
+    play('b'); // five seconds on
+    assert.equal(warns().length, 1);
+    // Overall: ten plays inside 30 s (three went already), queue adds included; the rest wait for the window to pass.
+    const slow = () => warns().filter((w) => /Slow down/.test(w)).length;
+    for (let i = 0; i < 7; i++) play('b', 'end');
+    assert.equal(slow(), 0);
+    play('b', 'end');
+    assert.equal(slow(), 1);
+    t += 30_000;
+    play('b', 'end');
+    assert.equal(slow(), 1);
+    phoneHooks.closed!(o.ctx, a);
+  } finally {
+    youtubeTitles.fetch = saved;
+    musicLimits.now = savedNow;
+  }
 });

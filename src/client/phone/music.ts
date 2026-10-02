@@ -64,7 +64,11 @@ export function installPhoneMusic(ctx: Ctx, parts: PhoneMusicParts): PhoneMusic 
       state: () => player.state(),
       list: () => store.phoneMusic?.list ?? { queue: [], back: false, sameVolume: false },
       send: control,
-      add: (raw, queue) => play(raw, undefined, queue),
+      // The panel adds to the session you are in: with one other listener, that is the one asked for.
+      add: (raw, queue) => {
+        const others = (store.phoneMusic?.listeners ?? []).filter((l) => l.id !== store.you);
+        return play(raw, others.length === 1 ? others[0].id : undefined, queue);
+      },
       unpack: null,
       canUnpack: () => false,
       addLabel: 'Add a YouTube link to your music',
