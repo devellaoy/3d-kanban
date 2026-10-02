@@ -1,6 +1,6 @@
 // The only HTTP a visitor's office may ask of the owner's: read-only GETs for what the windows of a
 // shared floor show (a PR or issue, a task's changes, an attachment, a whiteboard picture, a wall
-// picture). The router enforces this for every visitor request (ahead of the routes), and the
+// picture, a changed picture, the bookshelf). The router enforces this for every visitor request (ahead of the routes), and the
 // tunnel (httpgate.ts) checks the path again before it even makes the request.
 const ALLOWED = [
   /^\/api\/gh\/(pull|issue|labels|pull\/diff)$/,
@@ -9,6 +9,8 @@ const ALLOWED = [
   /^\/api\/kanban\/attachments\/[A-Za-z0-9_-]{1,64}$/,
   /^\/api\/whiteboard\/file$/,
   /^\/api\/image$/,
+  /^\/api\/changes\/file$/,
+  /^\/api\/docs(\/file|\/picture)?$/,
 ];
 
 /** Whether a visitor may make this request (`pathname` decoded). */

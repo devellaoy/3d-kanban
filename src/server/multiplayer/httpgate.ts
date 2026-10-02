@@ -9,6 +9,7 @@ import { MP_BODY_MAX, MP_LIMITS, type RelayToOffice } from '../../shared/multipl
 import type { VisitorScope } from '../../shared/multiplayer/allow.js';
 import { MP_HEADER } from '../auth.js';
 import type { Ctx } from '../office/context.js';
+import { workerFloors } from './gate.js';
 import { visitorPath } from './paths.js';
 import type { Multiplayer } from './index.js';
 
@@ -19,6 +20,14 @@ export function forbidden(ctx: Ctx, scope: VisitorScope, u: URL): number | undef
   const p = u.pathname;
   const q = u.searchParams;
   const projectOk = (id: string | undefined) => !!id && scope.projects.has(id);
+  // The Changes window's pictures: the worker must be one the visitor may see at all (its home floor and
+  // every repository floor it also works in), and the route itself restricts the file to that worker's.
+  if (p === '/api/changes/file') {
+    const floors = workerFloors(ctx, q.get('worker') ?? '');
+    return scope.floors.has(q.get('floor') ?? '') && !!floors && floors.every((id) => scope.floors.has(id)) ? undefined : 403;
+  }
+  // The bookshelf names its floor every time (the route would otherwise not know which project is meant).
+  if (p === '/api/docs' || p === '/api/docs/file' || p === '/api/docs/picture') return scope.floors.has(q.get('floor') ?? '') ? undefined : 403;
   if (p.startsWith('/api/gh/') || p === '/api/whiteboard/file') return scope.floors.has(q.get('floor') ?? '') ? undefined : 403;
   const task = /^\/api\/kanban\/tasks\/(\d+)\//.exec(p);
   if (task) return projectOk(ctx.kanban?.ctx.repo.getTask(Number(task[1]))?.project) ? undefined : 403;
@@ -43,12 +52,12 @@ interface Answer {
 
 const text = (status: number, message: string): Answer => ({ status, type: 'application/json', body: Buffer.from(JSON.stringify({ error: message })) });
 
-function loopback(ctx: Ctx, sid: string, pathAndQuery: string): Promise<Answer> {
+function loopback(ctx: Ctx, sid: string, pathAndQuery: string, signal: AbortSignal): Promise<Answer> {
   const { cfg } = ctx;
   const host = cfg.host === '0.0.0.0' || cfg.host === '::' ? '127.0.0.1' : cfg.host;
   return new Promise((resolve) => {
     const req = (cfg.tls ? https : http).request(
-      { host, port: cfg.port, path: pathAndQuery, method: 'GET', headers: { [MP_HEADER]: ctx.auth.visitorSecret, 'x-agent-office-mp-sid': sid }, timeout: TIMEOUT_MS, rejectUnauthorized: false } as https.RequestOptions,
+      { host, port: cfg.port, path: pathAndQuery, method: 'GET', headers: { [MP_HEADER]: ctx.auth.visitorSecret, 'x-agent-office-mp-sid': sid }, timeout: TIMEOUT_MS, signal, rejectUnauthorized: false } as https.RequestOptions,
       (res) => {
         const chunks: Buffer[] = [];
         let size = 0;
@@ -89,6 +98,20 @@ export async function answerHttp(mp: Multiplayer, msg: Extract<RelayToOffice, { 
   if (u.origin !== 'http://visit' || !visitorPath('GET', decoded)) return respond(text(403, 'Forbidden'));
   const refused = forbidden(mp.ctx, hosted.scope, u);
   if (refused) return respond(text(refused, 'Forbidden'));
-  // What was checked is what is asked: the normalized path, not the text the visitor sent.
-  respond(await loopback(mp.ctx, sid, u.pathname + u.search));
+  // The visit ending (or the owner unsharing) must not leave a request running for someone who is gone.
+  const abort = new AbortController();
+  const onClose = () => abort.abort();
+  hosted.sock.once('close', onClose);
+  let answer: Answer;
+  try {
+    // What was checked is what is asked: the normalized path, not the text the visitor sent.
+    answer = await loopback(mp.ctx, sid, u.pathname + u.search, abort.signal);
+  } finally {
+    hosted.sock.off('close', onClose);
+  }
+  // The share may have been taken back while the owner's server was answering (scopes are changed in
+  // place), so the same checks run again against what the visitor may see now, before any byte goes out.
+  if (mp.host.sessions.get(sid) !== hosted) return;
+  const now = forbidden(mp.ctx, hosted.scope, u);
+  respond(now ? text(now, 'Forbidden') : answer);
 }

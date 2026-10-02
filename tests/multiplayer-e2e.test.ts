@@ -314,7 +314,11 @@ test('HTTP through the owner: the allowed reads work, everything else is refused
     '/api/whiteboard/file?floor=locked&id=pic1', // shared, but vera cannot read its repository
     '/api/gh/pull?number=1&floor=vault',
     '/api/gh/pull?number=1',
-    '/api/docs?floor=pub', // not on the list
+    '/api/docs?floor=vault', // the bookshelf of a floor that is not shared
+    '/api/docs?floor=locked',
+    '/api/docs',
+    '/api/docs/file?floor=vault&path=README.md',
+    '/api/docs/picture?floor=vault&path=a.png',
     '/api/search?q=a&floor=pub',
     '/api/changes/file?floor=pub',
     '/api/kanban/tasks/1/changes', // no such task: nothing to show
@@ -323,6 +327,14 @@ test('HTTP through the owner: the allowed reads work, everything else is refused
     '/api/whoami',
     '/api/kanban/upload',
   ]) assert.equal((await via(p)).status, 403, p);
+  // The bookshelf of the shared floor reads through the owner (its own README, not the visitor's office).
+  const shelf = await via('/api/docs?floor=pub');
+  assert.equal(shelf.status, 200);
+  assert.ok(((await shelf.json()) as { files: { path: string }[] }).files.some((f) => f.path === 'README.md'));
+  const doc = await via('/api/docs/file?floor=pub&path=README.md');
+  assert.equal(doc.status, 200);
+  assert.match(((await doc.json()) as { text: string }).text, /^# pub/);
+  assert.equal((await via('/api/docs/file?floor=pub&path=../../etc/passwd')).status, 415, 'the route still keeps to Markdown in the project');
   assert.equal((await fetch(`${guest.base}/api/mp/visit/owner/api/whiteboard/file?floor=pub&id=pic1`)).status, 401, 'signed in only');
   const nobody = await fetch(`${guest.base}/api/mp/visit/nobody/api/whiteboard/file?floor=pub`, { headers: { cookie: guest.cookie } });
   assert.equal(nobody.status, 404, 'a visit that is not open');
