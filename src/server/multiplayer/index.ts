@@ -152,7 +152,21 @@ export class Multiplayer {
       (c.visitor.floors as Set<string>).delete(floorId);
       (c.visitor.projects as Set<string>).delete(floorId);
       if (c.peer.floor === floorId || !c.visitor.floors.size) c.ws.close(4000, 'That floor is no longer shared');
+      else this.detachOutOfScope(c);
     }
+  }
+
+  /** Lets go of every terminal and diff a visitor watches on floors that are no longer theirs (the filter stops the frames too). */
+  private detachOutOfScope(c: Client) {
+    const scope = c.visitor;
+    if (!scope) return;
+    for (const wid of [...c.attached]) {
+      const floor = this.ctx.workerFloor(wid);
+      if (floor && scope.floors.has(floor.id)) continue;
+      floor?.workers.detach(wid, c.id);
+      c.attached.delete(wid);
+    }
+    for (const floor of this.ctx.floors.values()) if (!scope.floors.has(floor.id)) floor.changes.unwatchAll(c.id);
   }
 
   // --- Messages from the relay -----------------------------------------------------------------------

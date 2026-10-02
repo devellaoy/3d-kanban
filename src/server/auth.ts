@@ -127,7 +127,7 @@ export class Auth {
       // Only ever our own loopback request carrying the secret; a bad one is no session, whatever cookie comes with it.
       const a = createHmac('sha256', this.key).update(String(mp)).digest();
       const b = createHmac('sha256', this.key).update(this.visitorSecret).digest();
-      return timingSafeEqual(a, b) && isLoopback(req.socket.remoteAddress) ? { visitor: true } : undefined;
+      return timingSafeEqual(a, b) && (isLoopback(req.socket.remoteAddress) || req.socket.remoteAddress === req.socket.localAddress) ? { visitor: true } : undefined;
     }
     return this.verify(parseCookies(req.headers.cookie)[cookieName(req)]);
   }

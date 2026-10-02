@@ -67,7 +67,7 @@ export class Host {
         closed: (reason) => void mp.link.send({ t: 'visit.close', sid, reason: reason.slice(0, 250) }),
       },
       scope,
-      { floorOfPeer: (id) => ctx.clients.get(id)?.peer.floor, projectOfTask: (id) => ctx.kanban?.ctx.repo.getTask(id)?.project },
+      { floorOfPeer: (id) => ctx.clients.get(id)?.peer.floor, floorOfWorker: (id) => ctx.workerFloor(id)?.id, projectOfTask: (id) => ctx.kanban?.ctx.repo.getTask(id)?.project },
     );
     this.sessions.set(sid, { sock, scope });
     sock.once('close', () => this.sessions.delete(sid));

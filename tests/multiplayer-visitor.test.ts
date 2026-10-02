@@ -115,3 +115,55 @@ test('what the office sends a visitor is filtered, and a closed visitor hears no
   ctx.sendTo(visitor, { t: 'chat', msg: { id: 2, from: 'Ada', text: 'hi', at: 1 } } as unknown as ServerMsg);
   assert.equal(sent.length, 2);
 });
+
+test('terminal and diff frames reach a visitor only while their worker is on a floor in scope', () => {
+  const { sent, ctx } = office();
+  const floors: Record<string, string> = { w1: 'web', w2: 'vault' };
+  const sock = (lookup: boolean) => {
+    const out: ServerMsg[] = [];
+    const s = new RemoteSocket({ frame: (d) => (out.push(JSON.parse(d)), true), up: () => true, bufferedAmount: () => 0, closed: () => {} }, scope, lookup ? { floorOfWorker: (id) => floors[id] } : {});
+    return { s, out };
+  };
+  const frames = (id: string): ServerMsg[] => [
+    { t: 'term.data', workerId: id, data: 'x' },
+    { t: 'term.snapshot', workerId: id, data: 'x', cols: 1, rows: 1 },
+    { t: 'screen', workerId: id, cols: 1, rows: 1, lines: {}, full: true, cursor: [0, 0] },
+    { t: 'changes.diff', workerId: id, path: 'a', diff: '', truncated: false },
+    { t: 'changes', state: { workerId: id } as never },
+  ];
+  const { s, out } = sock(true);
+  for (const id of ['w1', 'w2', 'nobody']) for (const m of frames(id)) s.send(JSON.stringify(m));
+  assert.deepEqual(out.map((m) => m.t), ['term.data', 'term.snapshot', 'screen', 'changes.diff', 'changes'], 'only w1 (floor web) came through');
+  const none = sock(false);
+  for (const m of frames('w1')) none.s.send(JSON.stringify(m));
+  assert.deepEqual(none.out, [], 'no lookup: deny by default');
+  void sent;
+  void ctx;
+});
+
+test('a visitor keeps their @login name, and may only call people they can see', () => {
+  const { ctx, visitor } = office();
+  const heard: Record<string, ServerMsg[]> = {};
+  const person = (id: string, floor: string, v?: VisitorScope) => {
+    const c = newClient(id, { readyState: 1, bufferedAmount: 0, send: (d: string) => (heard[id] ??= []).push(JSON.parse(d)) } as never, { accountId: undefined, admin: false }, { ...peer(id), floor });
+    if (v) c.visitor = v;
+    ctx.clients.set(id, c);
+  };
+  person('near', 'web');
+  person('far', 'vault');
+  person('other', 'web', { login: 'sam', floors: new Set(['web']), projects: new Set(['web']) });
+  person('away', 'vault', { login: 'amy', floors: new Set(['vault']), projects: new Set(['vault']) });
+  for (const to of ['near', 'far', 'other', 'away']) dispatch(ctx, visitor, { t: 'rtc', to, data: {} } as ClientMsg);
+  assert.deepEqual(Object.keys(heard).sort(), ['away', 'near', 'other'], 'not the owner\'s people on floors outside the scope; other visitors yes');
+
+  dispatch(ctx, visitor, { t: 'profile', name: 'Boss', color: '#00ff00', look: { skin: 1, hair: 1, style: 1 } } as ClientMsg);
+  assert.equal(visitor.peer.name, '@vera');
+  assert.equal(visitor.peer.color, '#00ff00', 'colours and look are still theirs');
+});
+
+test('what shows of an owner on another floor leaves out the seat and the reading', async () => {
+  const { filterForVisitor } = await import('../src/shared/multiplayer/allow.js');
+  const out = filterForVisitor({ t: 'peer.update', peer: { ...peer('o'), floor: 'vault', seat: 'couch:1', reading: true, doing: 'x' } } as ServerMsg, scope);
+  assert.ok(out && out.t === 'peer.update');
+  assert.deepEqual([out.peer.floor, out.peer.seat, out.peer.reading, out.peer.doing], [undefined, undefined, undefined, undefined]);
+});

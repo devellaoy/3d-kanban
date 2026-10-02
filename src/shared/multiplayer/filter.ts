@@ -17,6 +17,8 @@ export interface FilterCtx {
   floorOfPeer?(peerId: string): string | undefined;
   /** The project a kanban task belongs to (kanban.comments names only the task). */
   projectOfTask?(taskId: number): string | undefined;
+  /** The floor a worker is on; terminal and diff frames go to viewers directly, so each is checked against its worker's floor. */
+  floorOfWorker?(workerId: string): string | undefined;
 }
 
 /**
@@ -53,12 +55,12 @@ export const SERVER_MSG_OUT = {
   plan: 'pass',
   'worker.update': 'pass',
   'worker.remove': 'pass',
-  screen: 'pass',
-  'term.snapshot': 'pass',
-  'term.data': 'pass',
-  'term.typing': 'pass',
-  changes: 'pass',
-  'changes.diff': 'pass',
+  screen: 'rewrite',
+  'term.snapshot': 'rewrite',
+  'term.data': 'rewrite',
+  'term.typing': 'rewrite',
+  changes: 'rewrite',
+  'changes.diff': 'rewrite',
   'gh.issues': 'pass',
   'gh.pulls': 'pass',
   queue: 'pass',
@@ -148,7 +150,7 @@ type Msg<T extends ServerMsg['t']> = Extract<ServerMsg, { t: T }>;
 /** A person on a floor outside the scope is still a name on the list, but where they are and what they do is not shown. */
 function peerFor(p: PeerInfo, scope: VisitorScope): PeerInfo {
   if (!p.floor || scope.floors.has(p.floor)) return p;
-  return { ...p, floor: undefined, doing: undefined, carrying: undefined };
+  return { ...p, floor: undefined, doing: undefined, carrying: undefined, seat: undefined, reading: undefined };
 }
 
 const floorFor = (f: FloorInfo): FloorInfo => ({ ...f, dir: '' });
@@ -215,6 +217,16 @@ export function filterForVisitor(msg: ServerMsg, scope: VisitorScope, ctx: Filte
     }
     case 'floor.enter':
       return floorOk(msg.floor) ? { ...viewFor(msg), peers: msg.peers.map((p) => peerFor(p, scope)) } : undefined;
+    // Worker-scoped frames reach their viewers directly, so a viewer who attached while the floor was in
+    // scope must stop getting them once it is not; an unknown worker or no lookup is a drop.
+    case 'term.snapshot':
+    case 'term.data':
+    case 'term.typing':
+    case 'screen':
+    case 'changes.diff':
+      return floorOk(ctx.floorOfWorker?.(msg.workerId)) ? msg : undefined;
+    case 'changes':
+      return floorOk(ctx.floorOfWorker?.(msg.state.workerId)) && (!msg.state.repo || floorOk(msg.state.repo.split('~')[0])) ? msg : undefined;
     case 'floors':
       return { t: 'floors', floors: msg.floors.filter((f) => floorOk(f.id)).map(floorFor) };
     case 'peer.join':
