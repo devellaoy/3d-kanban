@@ -4,6 +4,7 @@
  */
 import { seatPlace, type SeatDef, type SeatPlace } from '../../../shared/layout';
 import type { Ctx } from '../../core/context';
+import type { Off } from '../../core/registry';
 import { aside, hintTitle, key, onE } from '../../core/hint';
 import { store } from '../../state';
 import type { Arcade } from '../arcade/ui';
@@ -33,11 +34,21 @@ export interface SeatingDeps {
   youtube?(): ReturnType<typeof installYoutubeTv>;
 }
 
+/** What other parts keep for themselves (the kanban's lounge figures), as places' keys ("couch:0"). */
+const reservations = new Set<() => Iterable<string>>();
+
+/** Keeps the places `fn` names from players while it names them; the Off gives them back. */
+export function reserveSeatPlaces(fn: () => Iterable<string>): Off {
+  reservations.add(fn);
+  return () => void reservations.delete(fn);
+}
+
 export function installSeating(ctx: Ctx, deps: SeatingDeps) {
   /** The free place on a seat nearest you, or null when everyone else on your floor has taken them all. */
   function freePlace(seat: SeatDef): SeatPlace | null {
     const taken = new Set<string>();
     for (const p of store.peers.values()) if (p.seat && p.id !== store.you && store.onMyFloor(p)) taken.add(p.seat);
+    for (const fn of reservations) for (const key of fn()) taken.add(key);
     let best: SeatPlace | null = null;
     let bestD = Infinity;
     const player = ctx.player;
