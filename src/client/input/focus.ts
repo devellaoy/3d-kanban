@@ -10,7 +10,7 @@ import { isTyping } from '../player';
 import { $, doingNow, modalOpen, onDoingChange, onModalChange, readingNow } from '../ui/dom';
 
 /** Listens for windows opening and closing, what they say you're doing, the mouse and keys (captured) and pointer lock. */
-export function installFocus(ctx: Ctx, core: CoreState, parts: Pick<Parts, 'telescope' | 'walking'>) {
+export function installFocus(ctx: Ctx, core: CoreState, parts: Pick<Parts, 'telescope' | 'walking' | 'travel'>) {
   const { player, me, hands, canvas, net } = ctx;
   /** A mouse you point with (not a finger on a touch screen). */
   const finePointer = window.matchMedia('(pointer: fine)').matches;
@@ -85,8 +85,12 @@ export function installFocus(ctx: Ctx, core: CoreState, parts: Pick<Parts, 'tele
     // (which it doesn't count as a click or key), and any time after a click, like one on ✕. When it
     // won't (nothing of yours opened the window, or a stricter browser), the next key you press does.
     // Closed with a click (Send home, ✕), the view waits for the hand that clicked to come to rest.
-    player.lock(pressedMouse);
-    relookOnKey = true;
+    // On the way to another floor (a pick in the ☰ menu or the floor list closed it): the trip has the
+    // controls, and a lock now would only be let go again, so it's held for the arrival.
+    parts.travel.relook.takeBack(!!core.trip, () => {
+      player.lock(pressedMouse);
+      relookOnKey = true;
+    });
   }
   document.addEventListener('pointerlockchange', () => {
     if (player.locked) relookOnKey = false;
