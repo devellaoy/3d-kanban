@@ -512,6 +512,7 @@ deploy/dokploy.sh ssh 'node /opt/agent-office/bin/agent-office.js accounts invit
 | Tab | The ☰ menu, and the floor list where there's room: every window, every project |
 | Esc | Close any window |
 | Ctrl + [ | Send Esc to a terminal, to close a menu like Claude's `/skills` or interrupt Claude (or **⎋ Esc** in its header) |
+| Ctrl + C / Ctrl + V, in a terminal | Copy the selection / paste on Windows and Linux (⌘C / ⌘V on a Mac); Ctrl + C with nothing selected interrupts |
 
 The full list is in [docs/controls.md](docs/controls.md).
 
