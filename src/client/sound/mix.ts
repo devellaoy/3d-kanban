@@ -2,7 +2,7 @@
 // No imports, so the settings (and the kanban page that shares them) can read it without the audio.
 
 /** Each kind of sound, in the order Settings lists them (see AudioCore.mix for what goes where). */
-export const MIXES = ['background', 'rain', 'thumps', 'steps', 'typing', 'effects'] as const;
+export const MIXES = ['background', 'rain', 'thumps', 'steps', 'typing', 'effects', 'alerts'] as const;
 export type Mix = (typeof MIXES)[number];
 
 /** One kind's level, 0–1, and its mute, which keeps the level. */

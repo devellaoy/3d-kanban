@@ -6,8 +6,8 @@
  * and up on the roof, the wind, the city far below and the DJ's drum and bass (../dnb.ts).
  *
  * Everything goes through one master gain that Settings turns down or mutes, each kind of sound
- * through a volume of its own on the way (the background, the rain, thumps, footsteps, typing and the
- * other effects; see mix.ts). Voice chat doesn't, and the jukebox has a volume of its own.
+ * through a volume of its own on the way (the background, the rain, thumps, footsteps, typing, the
+ * other effects and the alerts; see mix.ts). Voice chat doesn't, and the jukebox has a volume of its own.
  *
  * OfficeSound is all the rest of the office sees. What every sound shares (the context, the buses,
  * where your ears are, what runs every frame) is AudioCore in core.ts; each sound is a recipe in a

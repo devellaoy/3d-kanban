@@ -37,18 +37,18 @@ export interface AudioHooks {
 export class AudioCore {
   ctx: AudioContext | null = null;
   private master!: GainNode;
-  /** The room itself, which every kind in `mix` goes out through; it goes quiet while the tab is hidden. */
+  /** The room itself, which every kind in `mix` but `alerts` goes out through; it goes quiet while the tab is hidden. */
   private room!: GainNode;
   /**
-   * Each kind of sound's own volume from ⚙️ Settings (see mix.ts), between its sounds and the room:
+   * Each kind of sound's own volume from ⚙️ Settings (see mix.ts), between its sounds and the master:
    * `background` the room's air, the fridge, the wind and the city (through `indoors` and `outside`),
    * `rain` the rain and thunder, `thumps` landing a jump and other thuds, `steps` footsteps, `typing`
-   * the workers at their desks and the paper in your hands, and `effects` everything else (play's
-   * default), the alerts too.
+   * the workers at their desks and the paper in your hands, `effects` everything else (play's
+   * default), and `alerts` (see alerts).
    */
   readonly mix = {} as Record<Mix, GainNode>;
   private mixLevels: MixLevels = mixDefaults();
-  /** Worker dings, which you still want to hear from another tab; at the `effects` level. */
+  /** Worker dings and the gong's news, which you still want to hear from another tab: `mix.alerts`, past the room. */
   alerts!: GainNode;
   /** The office's own hum (the room and the fridge), left behind going up on the roof… */
   indoors!: GainNode;
@@ -138,12 +138,12 @@ export class AudioCore {
     this.room = ctx.createGain();
     this.room.connect(this.master);
     for (const k of MIXES) {
+      // At its saved level from the start, so a muted kind isn't heard for a moment while it eases down.
       this.mix[k] = ctx.createGain();
-      this.mix[k].connect(this.room);
+      this.mix[k].gain.value = mixGain(this.mixLevels[k]);
+      this.mix[k].connect(k === 'alerts' ? this.master : this.room);
     }
-    this.alerts = ctx.createGain();
-    this.alerts.connect(this.master);
-    this.applyMix();
+    this.alerts = this.mix.alerts;
     this.indoors = ctx.createGain();
     this.indoors.connect(this.mix.background);
     this.outside = ctx.createGain();
@@ -165,7 +165,6 @@ export class AudioCore {
     if (!this.ctx) return;
     const now = this.ctx.currentTime;
     for (const k of MIXES) this.mix[k].gain.setTargetAtTime(mixGain(this.mixLevels[k]), now, 0.04);
-    this.alerts.gain.setTargetAtTime(mixGain(this.mixLevels.effects), now, 0.04);
   }
 
   applyVisibility() {
