@@ -381,7 +381,7 @@ for (const reason of ['plan_approval', 'plan_questions'] as const) {
     await fx.waitTask(task.id, (x) => (asks ? x.waitingReason === 'plan_approval' : x.status === 'review') && x.runState === 'idle' && x.pendingMessages.length === 0, 'the run after the approval or answer', 30_000);
     const run = promptsOf(fx).find((p) => (asks ? /The user replied about the plan/ : /^Implement kanban task/).test(p))!;
     assert.ok(run, 'the run was prompted');
-    assert.match(run, /Messages left on the task while it was on hold:/);
+    assert.match(run, /Messages left on the task that you have not seen yet:/);
     assert.ok(run.includes('Keys arrived on Monday.') && run.includes('Carry on with the new keys.'), run);
     assert.equal(fx.repo.getComment(said.id)?.pending, false);
   });
@@ -454,4 +454,52 @@ test('the unhold prompt quotes every comment left while on hold, past fifty', as
   await fx.waitTask(r.id, (x) => x.status === 'review' && x.runState === 'idle' && !!x.workerId, 'back in review', 30_000);
   const prompt = promptsOf(fx).find((p) => /has been on hold since/.test(p))!;
   for (let i = 0; i < 60; i++) assert.ok(prompt.includes(`held-${i}.`), `held-${i}`);
+});
+
+// --- Messages carried by id until an agent has them ---------------------------------------------------------------
+
+test('a failed unhold keeps what was said: the Retry delivers it, once', async (t) => {
+  const state = { ok: true };
+  const fx = await engineFixture({ runAs: { claudeReady: () => state.ok, why: () => 'Ada is not signed in to Claude', apply: (_o: unknown, env: unknown) => env } as never });
+  t.after(() => fx.close());
+  fx.setRules([IMPLEMENT]);
+  const r = await inReview(fx, { createdByAccount: 'acc1' });
+  assert.equal(await fx.engine.hold!(r.id, ADA, {}), undefined);
+  await fx.waitTask(r.id, (x) => !x.workerId, 'the worker gone');
+  fx.repo.addComment({ taskId: r.id, authorKind: 'user', authorName: 'Bob', text: 'Use the staging keys.' });
+  state.ok = false;
+  await fx.engine.unhold!(r.id, ADA, 'Go on, please.');
+  const failed = await fx.waitTask(r.id, (x) => x.status === 'waiting' && x.waitingReason === 'failed', 'failed');
+  assert.equal(failed.pendingMessages.length, 2, 'kept: no agent has them');
+  state.ok = true;
+  fx.setRules([{ when: 'Your last turn on task', reply: 'Carried on.', commit: 'After the hold' }]);
+  assert.equal(await fx.engine.retry(r.id, ADA), undefined);
+  await fx.waitTask(r.id, (x) => x.status === 'review' && x.runState === 'idle' && !!x.workerId && x.pendingMessages.length === 0, 'back in review', 30_000);
+  // A launch is logged twice by the fake agent (its argument, then the turn's prompt): one distinct prompt is one delivery.
+  const said = new Set(promptsOf(fx).filter((p) => p.includes('Use the staging keys.') && p.includes('Go on, please.')));
+  assert.equal(said.size, 1, 'delivered once');
+  assert.equal(promptsOf(fx).filter((p) => p.includes('Use the staging keys.')).length, 2, 'and in no other prompt');
+  assert.equal(fx.repo.listComments(r.id).comments.some((c) => c.pending), false);
+});
+
+test('a comment typed while the unhold run waits for a desk is delivered once, in the unhold prompt', async (t) => {
+  let full: string | undefined;
+  const fx = await engineFixture({ capacity: { full: () => full, room: () => (full ? 0 : 5) }, engine: { sweepMs: 100 } });
+  t.after(() => fx.close());
+  fx.setRules([IMPLEMENT]);
+  const r = await inReview(fx);
+  assert.equal(await fx.engine.hold!(r.id, ADA, {}), undefined);
+  await fx.waitTask(r.id, (x) => !x.workerId, 'the worker gone');
+  full = 'The office is at its limit';
+  assert.equal(await fx.engine.unhold!(r.id, ADA, 'Back to it.'), undefined);
+  await fx.waitTask(r.id, (x) => x.runState === 'queued', 'queued');
+  const c = fx.repo.addComment({ taskId: r.id, authorKind: 'user', authorName: 'Bob', text: 'Also rename it.' }).comment;
+  await fx.engine.commented(r.id, c.id, ADA);
+  fx.setRules([UNHOLD, { when: 'commented on task', reply: 'Renamed.', commit: 'Rename' }]);
+  full = undefined;
+  await fx.waitTask(r.id, (x) => x.status === 'review' && x.runState === 'idle' && !!x.workerId && x.pendingMessages.length === 0, 'back in review', 30_000);
+  await new Promise((res) => setTimeout(res, 300));
+  assert.equal(new Set(promptsOf(fx).filter((p) => p.includes('Also rename it.'))).size, 1);
+  assert.equal(promptsOf(fx).filter((p) => p.includes('Also rename it.')).length, 2, 'the launch argument and the turn, no other prompt');
+  assert.equal(fx.repo.listRuns(r.id).filter((x) => x.phase === 'resume').length, 1, 'no second resume run for it');
 });

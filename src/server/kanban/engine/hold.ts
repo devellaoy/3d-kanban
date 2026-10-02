@@ -96,7 +96,8 @@ export class Holds {
     // Its message to the agent is the user's comment first: the prompt quotes the comments left since the hold.
     if (text) this.d.addComment(task.project, { taskId: task.id, authorKind: 'user', authorName: who.name, kind: 'message', text });
     if (task.hold?.deskId && task.hold.deskId !== task.deskId) this.d.update(task.id, { deskId: task.hold.deskId });
-    if (task.hold?.reason) this.d.queueHeld(task, task.hold.at);
+    // What was said meanwhile (the note included) is kept by id on the task until an agent has it: the prompt of whatever run comes next carries it.
+    if (task.hold) this.d.queueHeld(task, task.hold.at);
     const back = task.hold?.reason ? { reason: task.hold.reason, ...(task.hold.text ? { text: task.hold.text } : {}), ...(task.hold.phase ? { phase: task.hold.phase } : {}) } : undefined;
     return this.d.apply(task.id, { type: 'unhold', ...(text ? { text } : {}), ...(back ? { back } : {}) }, { who });
   }

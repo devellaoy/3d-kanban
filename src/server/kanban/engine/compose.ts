@@ -110,7 +110,7 @@ export interface ComposeExtra {
   rounds?: number;
   /** A comment, an answer, requested plan changes. */
   text?: string;
-  /** Messages left while the task was on hold, for the run a plan's approval or answer starts (with their files). */
+  /** The task's pending messages, by whom and with their files, for the run that delivers them (the unhold prompt, a plan's approval or answer, a Retry). */
   held?: string;
   author?: string;
   /** The reviewer's findings (fix), the implementer's reply (rereview). */
@@ -218,7 +218,8 @@ export class Composer {
     const p = task.project;
     const seal = (body: string) => {
       const c = this.contract(task, x.phase);
-      const text = x.held ? `${body.trimEnd()}\n\nMessages left on the task while it was on hold:\n${x.held}` : body;
+      // The unhold prompt carries them in its own text.
+      const text = x.held && kind !== 'unhold' ? `${body.trimEnd()}\n\nMessages left on the task that you have not seen yet:\n${x.held}` : body;
       return c ? withContract(text, c) : text.trim();
     };
     switch (kind) {
@@ -242,14 +243,13 @@ export class Composer {
         return seal(this.text('kanban.continue', p, { taskId: task.id, language: v.language }));
       case 'unhold': {
         const hold = task.hold;
-        const said = hold ? this.ctx.repo.userCommentsSince(task.id, hold.at) : [];
         const note = hold?.note?.trim();
         return seal(
           this.text('kanban.unhold', p, {
             taskId: task.id,
             heldAt: hold ? new Date(hold.at).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' }) : 'some time ago',
             holdNote: note ? `, because: ${note}` : '',
-            comments: said.length ? said.map((c) => [`- ${c.authorName}: ${c.text}`, this.filesText(task.project, task.id, this.ctx.repo.listAttachments(task.id).filter((a) => a.commentId === c.id))].filter(Boolean).join('\n')).join('\n') : 'none',
+            comments: x.held || 'none',
             language: v.language,
           }),
         );

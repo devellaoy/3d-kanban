@@ -817,12 +817,19 @@ export class Orchestrator {
       const p = this.takePending(task);
       if (p) ({ text, author } = p);
     }
-    // Messages kept through a hold go with the run a plan's approval or answer starts (they are not a turn's end's to deliver).
-    let held: string | undefined;
-    if (!eff.pending && role === 'implementer' && (eff.prompt === 'implement' || eff.prompt === 'replan') && task.pendingMessages.length) held = this.pendingText(task)?.text;
-    // They are taken off the task once an agent has them, not when the run waits for a desk (it is queued without them).
+    // Messages kept on the task by id (what was said during a hold, comments typed while the run waited for a desk) go with the
+    // run that resumes the work (not a turn's end's to deliver). They leave the task once an agent has the prompt, not before.
+    const carried = !eff.pending && role === 'implementer' && ['implement', 'replan', 'continue', 'unhold'].includes(eff.prompt) ? (this.ctx.repo.getTask(task.id) ?? task).pendingMessages : [];
+    const held = carried.length ? carried.map((m) => `- ${m.by}: ${m.text}`).join('\n') : undefined;
     const heldTaken = () => {
-      if (held !== undefined) this.takePending(this.ctx.repo.getTask(task.id) ?? task);
+      if (!carried.length) return;
+      const ids = new Set(carried.map((m) => m.commentId));
+      for (const id of ids) {
+        this.ctx.repo.setCommentPending(id, false);
+        const c = this.ctx.repo.getComment(id);
+        if (c) this.ctx.broadcast({ t: 'kanban.comment', comment: c, project: task.project }, task.project);
+      }
+      this.update(task.id, { pendingMessages: (this.ctx.repo.getTask(task.id)?.pendingMessages ?? []).filter((m) => !ids.has(m.commentId)) });
     };
     const refsFile = eff.phase === 'plan' ? this.ctx.refs.referencedTasksFile(task.id, [task.title, task.description, text ?? ''].join('\n')) : undefined;
     const x: ComposeExtra = {
