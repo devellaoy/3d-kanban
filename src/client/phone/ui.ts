@@ -12,6 +12,7 @@ import { byUrgency, waitingInOrder, waitingLabel } from '../nextup';
 import { store } from '../state';
 import { h, openModal, toast, type Modal } from '../ui/dom';
 import { workerCard } from '../shared/workercard';
+import { refocusIndex } from './refocus';
 import type { PhoneWatch } from './watch';
 
 export interface PhoneDeps {
@@ -68,7 +69,7 @@ export function openPhone(deps: PhoneDeps, onClosed: () => void): OpenPhone {
     const p = floorPalette(f.palette);
     const btn = h(
       'button.phone-floor',
-      { type: 'button', class: here ? 'here' : '', 'aria-label': `${f.name}: ${plural(f.workers, 'worker')}, ${f.waiting} waiting${here ? ", you're here" : ''}`, onclick: () => go({ kind: 'processes', floor: f.id }) },
+      { type: 'button', class: here ? 'here' : '', 'data-key': `floor:${f.id}`, 'aria-label': `${f.name}: ${plural(f.workers, 'worker')}, ${f.waiting} waiting${here ? ", you're here" : ''}`, onclick: () => go({ kind: 'processes', floor: f.id }) },
       h('span.phone-floor-no', { style: `background:${p.trim}` }, String(no)),
       h(
         'span.phone-floor-text',
@@ -101,6 +102,14 @@ export function openPhone(deps: PhoneDeps, onClosed: () => void): OpenPhone {
     return pf?.floor === floor ? { workers: pf.workers.values(), project: pf.project } : null;
   }
 
+  /** A worker's card, its button known by the worker (see refocus.ts). */
+  function card(w: WorkerInfo, project: ProjectInfo | null): HTMLElement {
+    const li = workerCard(w, { onOpen: deps.openWorker, onPrompt: deps.promptWorker, project });
+    const btn = li.querySelector<HTMLElement>('.lite-card');
+    if (btn) btn.dataset.key = `worker:${w.id}`;
+    return li;
+  }
+
   function renderProcesses(floor: string) {
     const f = phoneFloors().find((x) => x.id === floor);
     title.textContent = f?.name ?? 'Floor';
@@ -116,7 +125,7 @@ export function openPhone(deps: PhoneDeps, onClosed: () => void): OpenPhone {
     sub.textContent = [floor === store.floor ? "📍 You're here" : '', plural(list.length, 'worker'), label].filter(Boolean).join(' · ');
     body.replaceChildren(
       list.length
-        ? h('ul.phone-list.phone-workers', {}, ...list.map((w) => workerCard(w, { onOpen: deps.openWorker, onPrompt: deps.promptWorker, project: got.project })))
+        ? h('ul.phone-list.phone-workers', {}, ...list.map((w) => card(w, got.project)))
         : h('p.phone-empty', {}, 'Nobody is working on this floor. ✨'),
     );
   }
@@ -125,11 +134,14 @@ export function openPhone(deps: PhoneDeps, onClosed: () => void): OpenPhone {
   function render() {
     // Re-rendering keeps your place in the list and which row has the focus.
     const scroll = body.scrollTop;
-    const focused = body.contains(document.activeElement) ? [...focusables()].indexOf(document.activeElement as HTMLElement) : -1;
+    const active = body.contains(document.activeElement) ? (document.activeElement as HTMLElement) : null;
+    const at = active ? [...focusables()].indexOf(active) : -1;
     if (view.kind === 'floors') renderFloors();
     else renderProcesses(view.floor);
     body.scrollTop = scroll;
-    if (focused >= 0) focusables()[Math.min(focused, focusables().length - 1)]?.focus({ preventScroll: true });
+    if (!active) return;
+    const rows = [...focusables()];
+    rows[refocusIndex(active.dataset.key, at, rows.map((r) => r.dataset.key ?? ''))]?.focus({ preventScroll: true });
   }
 
   // Events come in bursts (and a busy floor's every few seconds), and a rebuild under a finger loses the tap:

@@ -4,7 +4,7 @@
  * at a desk; and what the hint bar says at a desk or a board agent's kiosk. Also what the boards'
  * buttons do with a worker.
  */
-import { STATION_AGENT, deskSeat, type DeskDef } from '../../../shared/layout';
+import { DESK_BY_ID, STATION_AGENT, deskSeat, type DeskDef } from '../../../shared/layout';
 import { canLabel } from '../../../shared/floorplan';
 import { officeFull, pressureNote } from '../../../shared/machine';
 import type { AgentEffort, AgentProvider, GhIssue, WorkerInfo } from '../../../shared/protocol';
@@ -18,6 +18,7 @@ import { STATION_INFO } from '../../core/stations';
 import { askNotifyPermission, notifyPermission } from '../../notify';
 import { repoChoices } from '../../shared/hiring';
 import { store } from '../../state';
+import { findWorker, projectOf } from '../../state/workers';
 import { openAsk } from '../../ui/ask';
 import { STATUS_LABEL, clip, closeAllModals, h, toast } from '../../ui/dom';
 import { openSafe } from '../../ui/url';
@@ -178,10 +179,12 @@ export function installWorkerActions(ctx: Ctx, core: CoreState, parts: WorkerAct
 
   ctx.messages.on('worker.worktree', routeWorktreeMessage);
   function killWorker(id: string) {
-    const w = store.workers.get(id);
+    // Also another floor's worker, reached through the phone: its desk is named by the shared layout, not your floor's plan.
+    const w = findWorker(id);
     if (!w) return;
-    const where = plan().byId.get(w.deskId)?.label ?? 'the desk';
-    const session = w.kind === 'shell' ? 'shared shell' : `${providerLabel(w.provider, store.project)} session`;
+    const desk = store.workers.has(id) ? plan().byId.get(w.deskId) : DESK_BY_ID.get(w.deskId);
+    const where = desk?.label ?? 'the desk';
+    const session = w.kind === 'shell' ? 'shared shell' : `${providerLabel(w.provider, projectOf(id))} session`;
     // A task worker's dialog has its task in it (Move to Done), and says so to the engine.
     if (sendTaskWorkerHome(net, w, where)) return;
     if (w.meeting) {
@@ -204,7 +207,7 @@ export function installWorkerActions(ctx: Ctx, core: CoreState, parts: WorkerAct
       });
       return;
     }
-    const body = plan().byId.get(w.deskId)?.station
+    const body = desk?.station
       ? `This stops its ${session} for everyone, and it forgets what it was asked. The next prompt at the ${where} starts a fresh one.`
       : `This stops the ${session} at ${where} for everyone and frees the desk.`;
     confirmDialog(`Send ${w.name} home?`, body, 'Send home', () => net.send({ t: 'worker.kill', workerId: id }));
