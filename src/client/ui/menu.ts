@@ -60,7 +60,8 @@ export function onPanelChange(fn: (id: HudPanel, on: boolean) => void) {
 export interface Hud {
   /** Redraws the top bar for a change the store doesn't announce (voice, hanging a picture). */
   refresh(): void;
-  toggleMenu(): void;
+  /** Opens the ☰ menu, or closes it; `alongside` opens something with it (Tab: the floors) and returns how to close it. */
+  toggleMenu(alongside?: (backdrop: HTMLElement, close: () => void) => () => void): void;
 }
 
 /**
@@ -148,12 +149,12 @@ export function mountHud(actions: HudAction[], settings: Settings, save: () => v
     else if (!menuBtn.isConnected) dock.append(menuBtn);
   }
 
-  function toggleMenu() {
+  function toggleMenu(alongside?: (backdrop: HTMLElement, close: () => void) => () => void) {
     if (menu) menu.close();
-    else openMenu();
+    else openMenu(alongside);
   }
 
-  function openMenu() {
+  function openMenu(alongside?: (backdrop: HTMLElement, close: () => void) => () => void) {
     const row = (a: HudAction) => {
       const blocked = a.blocked?.();
       const item = h(
@@ -210,10 +211,11 @@ export function mountHud(actions: HudAction[], settings: Settings, save: () => v
       { role: 'menu', 'aria-label': 'Menu' },
       h('div.menu-col', {}, ...section('Open', rows('Open')), ...section('Together', rows('Together'))),
       h('div.menu-col', {}, ...section('Show on screen', PANELS.map(toggle)), ...section('Office', rows('Office'))),
-      h('p.menu-foot', {}, 'Pin what you use most to keep it on the top bar. ', h('kbd', {}, 'Tab'), ' opens and closes this menu.'),
+      h('p.menu-foot', {}, 'Pin what you use most to keep it on the top bar. ', h('kbd', {}, 'Tab'), ' opens and closes this menu and the floor list.'),
     );
     // On the window, so the keys work wherever focus is while the menu is up.
     const onKey = (e: KeyboardEvent) => menuKey(el, e);
+    let closeAlongside: (() => void) | undefined;
     menu = openModal(el, {
       // A dropdown under ☰, which closes it again, like a click anywhere else.
       closeButton: false,
@@ -221,6 +223,7 @@ export function mountHud(actions: HudAction[], settings: Settings, save: () => v
         menu = null;
         menuBtn.setAttribute('aria-expanded', 'false');
         window.removeEventListener('keydown', onKey, true);
+        closeAlongside?.();
       },
     });
     window.addEventListener('keydown', onKey, true);
@@ -232,9 +235,11 @@ export function mountHud(actions: HudAction[], settings: Settings, save: () => v
     el.style.right = `${Math.max(8, window.innerWidth - r.right)}px`;
     el.style.maxHeight = `${window.innerHeight - r.bottom - 20}px`;
     el.querySelector<HTMLElement>('.menu-item')?.focus();
+    // Last, so it can see where the menu ended up.
+    closeAlongside = alongside?.(menu.backdrop, () => menu?.close());
   }
 
-  /** Arrows walk the menu, → reaches a row's pin, and Tab closes it like Esc. */
+  /** Arrows walk the menu, → reaches a row's pin, and Tab closes it (and the floor list with it) like Esc. */
   function menuKey(el: HTMLElement, e: KeyboardEvent) {
     const items = [...el.querySelectorAll<HTMLElement>('.menu-item')];
     const at = document.activeElement as HTMLElement | null;

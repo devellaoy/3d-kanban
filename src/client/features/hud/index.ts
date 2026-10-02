@@ -1,7 +1,7 @@
 /**
  * The HUD: a few buttons on the top bar, everything else in the ☰ menu (Tab), with H for the controls
- * and F to hang a picture; the project in the corner (click it for the floors); Settings, and your
- * character.
+ * and F to hang a picture; the project in the corner (click it for the floors, or Tab opens them with
+ * the menu); Settings, and your character.
  */
 import { ROOF } from '../../../shared/rooftop';
 import type { Ctx } from '../../core/context';
@@ -14,7 +14,7 @@ import { openAccounts } from '../../ui/accounts';
 import { openBoard } from '../../ui/boards';
 import { openCharacter } from '../../ui/character';
 import { $ } from '../../ui/dom';
-import { toggleFloorMenu } from '../../ui/floormenu';
+import { closeFloorMenu, toggleFloorMenu, type FloorMenuOptions } from '../../ui/floormenu';
 import { openHelp } from '../../ui/hud';
 import { mountHud } from '../../ui/menu';
 import { openServices } from '../../ui/services';
@@ -41,8 +41,14 @@ export function installHud(ctx: Ctx, core: CoreState, parts: HudParts) {
   // The project in the corner is the floor you're on; click it for the list of floors to go to.
   $('project').addEventListener('click', () => {
     if (!store.floor) return travel.showElevator();
-    toggleFloorMenu($('project'), { go: travel.switchFloor, indoors: () => (!inOffice() && !core.upTop) || parts.place.indoors(), elevator: travel.showElevator, roof: inOffice() ? () => travel.ride(ROOF) : null });
+    toggleFloorMenu($('project'), floorOpts());
   });
+  const floorOpts = (): FloorMenuOptions => ({ go: travel.switchFloor, indoors: () => (!inOffice() && !core.upTop) || parts.place.indoors(), elevator: travel.showElevator, roof: inOffice() ? () => travel.ride(ROOF) : null });
+  // Tab's list: the menu closes with it, so the trip it starts takes the mouse back on arrival.
+  const tabFloorOpts = (): FloorMenuOptions => {
+    const o = floorOpts();
+    return { ...o, go: (id) => travel.relooking(() => o.go(id)), roof: o.roof && (() => travel.relooking(o.roof!)) };
+  };
 
   // ---- The HUD: a few buttons on the top bar, everything else in the ☰ menu ----------------------------
   const waitingNow = () => waitingInOrder(store.workers.values());
@@ -132,7 +138,21 @@ export function installHud(ctx: Ctx, core: CoreState, parts: HudParts) {
     code: 'Tab',
     preventDefault: true,
     run: () => {
-      hud.toggleMenu();
+      hud.toggleMenu(
+        store.floor
+          ? (backdrop, closeMenu) => {
+              closeFloorMenu();
+              // Closing the list closes the menu, except while we look for room: on a narrow screen they overlap.
+              let together = false;
+              toggleFloorMenu($('project'), { ...tabFloorOpts(), parent: backdrop, onClose: () => together && closeMenu() });
+              const list = backdrop.querySelector('.floor-menu')?.getBoundingClientRect();
+              const menu = backdrop.querySelector('.hud-menu')?.getBoundingClientRect();
+              if (list && menu && list.left < menu.right && list.right > menu.left && list.top < menu.bottom && list.bottom > menu.top) closeFloorMenu();
+              together = true;
+              return closeFloorMenu;
+            }
+          : undefined,
+      );
     },
   });
   ctx.keys.bind({

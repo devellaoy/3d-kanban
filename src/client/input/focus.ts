@@ -80,7 +80,9 @@ export function installFocus(ctx: Ctx, core: CoreState, parts: Pick<Parts, 'tele
   function backToGame() {
     if (modalOpen()) return;
     if (!isTyping()) canvas.focus({ preventScroll: true });
-    if (!player.canLock || player.hasMouse) return;
+    // Not on the way to another floor: the trip has the controls, and a lock now would only be let go
+    // again. The trip takes the mouse back on arrival if it was meant to (see controlsBack in core/travel.ts).
+    if (!player.canLock || player.hasMouse || core.trip) return;
     // The browser lets a page re-capture the mouse it let go of itself (see yieldMouse), even on Esc
     // (which it doesn't count as a click or key), and any time after a click, like one on ✕. When it
     // won't (nothing of yours opened the window, or a stricter browser), the next key you press does.

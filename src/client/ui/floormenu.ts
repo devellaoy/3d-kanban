@@ -18,6 +18,10 @@ export interface FloorMenuOptions {
   elevator(): void;
   /** Up to the rooftop bar, by elevator; null on a map with no roof to go up to. */
   roof: (() => void) | null;
+  /** Where the list goes: the page by default; the ☰ menu's backdrop when Tab opens them together. */
+  parent?: HTMLElement;
+  /** Told when the list closes, by whatever closed it (a floor picked, Esc, the ☰ menu closing). */
+  onClose?(): void;
 }
 
 let current: { el: HTMLElement; close(): void } | null = null;
@@ -113,12 +117,15 @@ export function toggleFloorMenu(anchor: HTMLElement, opts: FloorMenuOptions): vo
     window.removeEventListener('keydown', onKey, true);
     window.removeEventListener('resize', place);
     for (const off of offs) off();
+    opts.onClose?.();
   };
   render();
-  document.body.append(el);
+  // With a parent, the ☰ menu owns the list's lifetime. It goes inside that menu's backdrop (fixed, full
+  // screen, z-index 50), which would otherwise cover the list on the page and swallow its clicks.
+  (opts.parent ?? document.body).append(el);
   place();
   anchor.classList.add('open');
-  window.addEventListener('pointerdown', onDown, true);
+  if (!opts.parent) window.addEventListener('pointerdown', onDown, true);
   window.addEventListener('keydown', onKey, true);
   window.addEventListener('resize', place);
   current = { el, close };
