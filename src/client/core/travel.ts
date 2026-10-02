@@ -100,23 +100,17 @@ export function installTravel(ctx: Ctx, core: CoreState, parts: TravelParts) {
     placeOnArrival: false,
     /** Down off the roof, on a map with no roof to be up on (it changed while you were up there). */
     offRoof: false,
-    /** Tab's floor list sent you: take the mouse back when you're there (the trip takes the controls, and the lock with them). */
+    /** A window closed on the way (the ☰ menu or the floor list you picked from): take the mouse back when you're there. */
     relook: false,
   };
 
-  /** You're there (or the trip failed): the controls are yours again unless a window is up, and the mouse too if Tab's floor list sent you. */
+  /** You're there (or the trip failed): the controls are yours again unless a window is up, and the mouse too if a window closed on the way. */
   function controlsBack() {
     player.enabled = !modalOpen();
     if (pending.relook && player.enabled) parts.focus.backToGame();
     pending.relook = false;
   }
 
-  /** Runs a trip (`go`) for Tab's floor list: you get the mouse back on arrival, and nothing is left waiting if no trip started. */
-  function relooking(go: () => void) {
-    pending.relook = true;
-    go();
-    if (!core.trip) pending.relook = false;
-  }
 
   /** The elevator where you are: the office's, its stop down in the garage, or the one up on the roof. None on a map of its own. */
   function lift() {
@@ -356,5 +350,5 @@ export function installTravel(ctx: Ctx, core: CoreState, parts: TravelParts) {
     doorsOpen();
   }
 
-  return { syncStack, takenAway, showElevator, lift, ride, switchFloor, travel, leaveRoofFor, setPlace, arrive, pending, relooking };
+  return { syncStack, takenAway, showElevator, lift, ride, switchFloor, travel, leaveRoofFor, setPlace, arrive, pending };
 }

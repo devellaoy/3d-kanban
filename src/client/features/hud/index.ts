@@ -44,11 +44,6 @@ export function installHud(ctx: Ctx, core: CoreState, parts: HudParts) {
     toggleFloorMenu($('project'), floorOpts());
   });
   const floorOpts = (): FloorMenuOptions => ({ go: travel.switchFloor, indoors: () => (!inOffice() && !core.upTop) || parts.place.indoors(), elevator: travel.showElevator, roof: inOffice() ? () => travel.ride(ROOF) : null });
-  // Tab's list: the menu closes with it, so the trip it starts takes the mouse back on arrival.
-  const tabFloorOpts = (): FloorMenuOptions => {
-    const o = floorOpts();
-    return { ...o, go: (id) => travel.relooking(() => o.go(id)), roof: o.roof && (() => travel.relooking(o.roof!)) };
-  };
 
   // ---- The HUD: a few buttons on the top bar, everything else in the ☰ menu ----------------------------
   const waitingNow = () => waitingInOrder(store.workers.values());
@@ -144,7 +139,7 @@ export function installHud(ctx: Ctx, core: CoreState, parts: HudParts) {
               closeFloorMenu();
               // Closing the list closes the menu, except while we look for room: on a narrow screen they overlap.
               let together = false;
-              toggleFloorMenu($('project'), { ...tabFloorOpts(), parent: backdrop, onClose: () => together && closeMenu() });
+              toggleFloorMenu($('project'), { ...floorOpts(), parent: backdrop, onClose: () => together && closeMenu() });
               const list = backdrop.querySelector('.floor-menu')?.getBoundingClientRect();
               const menu = backdrop.querySelector('.hud-menu')?.getBoundingClientRect();
               if (list && menu && list.left < menu.right && list.right > menu.left && list.top < menu.bottom && list.bottom > menu.top) closeFloorMenu();
