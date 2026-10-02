@@ -44,6 +44,9 @@ import { installDog } from './features/dog';
 import { installEmotes } from './features/emotes';
 import { installGolf } from './features/golf';
 import { installGong } from './features/gong';
+import { installCamp } from './features/camp';
+import { installGarden } from './features/garden';
+import { installSeasons } from './features/seasons';
 import { installGallery, installHanging } from './features/hanging';
 import { installHerald } from './features/herald';
 import { installHud } from './features/hud';
@@ -63,9 +66,18 @@ import { installWalking } from './features/walking';
 import { installWhiteboard } from './features/whiteboard';
 import { installWorkerActions } from './features/workers/actions';
 import { installWorkerViews } from './features/workers/views';
+import { installBuild } from './features/build';
+import { installMap } from './features/map';
 import { installKanban3d } from './kanban/install3d';
 import { installYoutubeTv } from './youtube/install';
 import { installCodexLimits } from './codex-limits/install';
+import { installReactions } from './features/reactions';
+import { installBilliards } from './features/billiards';
+import { installGameroom } from './features/gameroom';
+import { installFishing } from './features/fishing';
+import { installDeskStuff } from './features/deskstuff';
+import { installLights } from './features/lights';
+import { installMergePlant } from './features/mergeplant';
 import { installMultiplayer } from './multiplayer';
 import { initAppearance } from './themes';
 
@@ -189,6 +201,18 @@ parts.hud = installHud(ctx, core, parts);
 parts.kanban3d = installKanban3d(ctx, core, parts); // J, the kanban's menu entry and its 📍 Show in 3D link
 parts.youtube = installYoutubeTv(ctx, parts); // YouTube on the Office TV
 installCodexLimits(ctx); // the Codex limits panel
+installReactions(ctx); // 7–0: quick emoji reactions
+installGameroom(ctx);
+installBilliards(ctx, { standUp, stopWalking, stopSmoking: () => parts.smoking.stop() });
+installFishing(ctx); // fishing off the lake dock and the beach pier
+installDeskStuff(ctx); // desk things, E at the mat on a desk
+installLights(ctx); // wall light switches
+installMergePlant(ctx); // the lounge plant that grows from merges
+installSeasons(ctx); // the landscape's seasons
+installCamp(ctx); // the campsite and the hill lookout
+installGarden(ctx, { roof: parts.rooftop.roof }); // the roof garden
+installBuild(ctx); // U: build mode, furnish the floor
+parts.map = installMap(ctx); // `: the map of the scenic loop, and a small map while you drive
 installMultiplayer(ctx); // the banner while visiting another office
 
 // ---- Main loop ---------------------------------------------------------------------------------------

@@ -292,28 +292,6 @@ export const SPAWN = { x: 8, z: 7 } as const;
 /** The gong: on the north wall just past the elevator from the PR board, facing into the room. It rings when a PR merges. */
 export const GONG = { x: 11.8, z: FLOOR.minZ + 0.75, width: 1.9, height: 2.45 } as const;
 
-/** Potted plants around the room: where each stands, and how big it is. */
-export const PLANTS: readonly (readonly [x: number, z: number, scale: number])[] = [
-  [-17.2, -12.2, 1.4],
-  [17.2, -12.2, 1.5],
-  [17.2, 12.2, 1.3],
-  [-17.2, 8.5, 1.2],
-  [14.2, -12.2, 1.1],
-  [-6, 0, 1],
-  [3.5, 0, 0.9],
-  [8.5, 5, 1.1],
-];
-
-/** A plant by the north wall east of the gong, in the way into the back office: put away once it's built. */
-export function plantByWing([x, z]: readonly [number, number, number]): boolean {
-  return x > WING.minX && z < FLOOR.minZ + 1.5;
-}
-
-/** The plants standing on a floor built out `level` rows (see WING). */
-export function plantsAt(level: number): readonly (readonly [x: number, z: number, scale: number])[] {
-  return level > 0 ? PLANTS.filter((p) => !plantByWing(p)) : PLANTS;
-}
-
 /**
  * The whiteboard on wheels everyone draws on together, out on the open floor between the desks and
  * the lounge, facing into the room (+z). `width` and `height` are its writing surface, whose bottom

@@ -1,0 +1,11 @@
+/* The billiards panel (see ui.ts): along the top of the screen while you're at the table. */
+.billiards { position: absolute; left: 50%; top: 14px; transform: translateX(-50%); width: min(360px, calc(100vw - 32px)); padding: 8px 12px 10px; display: grid; gap: 6px; font-size: 13px; font-weight: 900; text-align: center; pointer-events: none; }
+.billiards-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.billiards-title { flex: 1; }
+.billiards-x { pointer-events: auto; cursor: pointer; border: var(--bw) solid var(--ink); border-radius: var(--radius-pill); background: var(--field); color: var(--text); font: inherit; line-height: 1; width: 26px; height: 26px; padding: 0; }
+.billiards-meter { position: relative; height: 16px; border: var(--bw) solid var(--ink); border-radius: var(--radius-pill); background: linear-gradient(90deg, var(--good-soft), var(--warn) 70%, var(--bad)); overflow: hidden; }
+.billiards-rest { position: absolute; inset: 0 0 0 auto; width: 100%; background: var(--track); }
+.billiards-info { font-weight: 800; font-variant-numeric: tabular-nums; }
+.billiards-balls { display: flex; flex-wrap: wrap; justify-content: center; gap: 3px; min-height: 18px; }
+.billiards-chip { display: inline-grid; place-items: center; width: 18px; height: 18px; border: var(--bw-sm) solid var(--ink); border-radius: 50%; font-size: var(--fs-3xs); line-height: 1; color: var(--text-on-color); }
+#hud:has(.billiards:not(.hidden)) #toasts { translate: 0 70px; }

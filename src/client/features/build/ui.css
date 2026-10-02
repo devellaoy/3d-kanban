@@ -1,0 +1,9 @@
+/* Build mode's catalogue (ui.ts): a card for each piece of furniture */
+.modal.build { width: min(640px, 100%); }
+.bd-help { margin: 0 0 12px; font-size: 13px; font-weight: 700; color: var(--muted); }
+.bd-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); gap: 10px; }
+.bd-card { display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 12px 8px; text-align: center; }
+.bd-card.sel { border-color: var(--accent); }
+.bd-icon { font-size: 34px; line-height: 1.1; }
+.bd-name { font-weight: 900; font-size: 14px; }
+.bd-size { font-size: 11.5px; font-weight: 700; color: var(--muted); }

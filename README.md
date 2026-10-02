@@ -152,6 +152,15 @@ curl -fsSL https://raw.githubusercontent.com/devellaoy/3d-kanban/main/deploy/pro
   shortcuts to the 3D office and the 2D view, shows *The office is offline. Reconnecting…* while it can't
   reach the office, and offers **Reload** when a new version is out. HTTPS is needed except on
   localhost ([configuration](docs/configuration.md#pwa)).
+- **Office games** *(test branch `test/office-game-features`, single player)*: things on your desk, light
+  switches, a lounge plant that grows from merges, seasons in the landscape, a campsite and a hill lookout,
+  a roof garden, fishing, racing with start lights and a ghost car, quick emoji reactions (**7**–**0**),
+  a game room with billiards in the garage, a build mode for furnishing a floor (**U**) with furniture you
+  can sit on, a map (**§**), faster cars that drive anywhere on land (nitro, drift) and two off-road 4x4s on
+  loose springs for the speed humps and the rough ground, a livelier scenic
+  world, a *six seven* emote, and a third-person camera that stays out of walls. They are kept
+  in your browser only, so nobody else sees them yet ([features](docs/features.md#office-games-test-branch),
+  [controls](docs/controls.md#office-games-test-branch)).
 - **Multiplayer: visit each other's offices**: every office stays on its own machine. Offices connect to a
   small relay (`kanban3d relay`), see who is online in **☰ → 🌐 Players** and walk into each other's
   offices read-only (chat, voice, the whiteboard and the games work; nothing else can be changed).
@@ -208,7 +217,7 @@ curl -fsSL https://raw.githubusercontent.com/devellaoy/3d-kanban/main/install.sh
 
 - **Other maps.** Turn the whole building into a castle: sit on a throne of iron blades while your workers line up before you when they're done, send new ones off through the Hand of the King, and watch their beards grow long and grey as they toil. Send one home and the Kingsguard runs up from the dungeon, marches it down the stairs and throws it in a cell, where it starves, dies and rots down to a skeleton. Or make a map of your own, with its own way of seeing workers off in JSON ([docs/maps.md](docs/maps.md)).
 
-There's a lot more (a rooftop bar, an office dog, an arcade, supercars in the garage to drive round a scenic loop past a farm, pines, mountains and a beach): see [docs/features.md](docs/features.md).
+There's a lot more (a rooftop bar, an office dog, an arcade, supercars and 4x4s in the garage to drive round a scenic loop past a farm, pines, mountains and a beach): see [docs/features.md](docs/features.md).
 
 ## Requirements
 

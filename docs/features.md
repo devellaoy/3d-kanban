@@ -9,8 +9,8 @@ Everything in the office, room by room. Back to the [README](../README.md).
 - **Coffee.** Press **E** at the coffee machine in the kitchen for a mug and a minute of quicker walking and higher jumps. A little meter under the project name shows how much buzz is left. Drink a third cup before the last one wears off and you get the jitters for a few seconds.
 - **Boss office.** Stairs along the back wall climb to a glass-walled office on the loft in the corner. From up there you can look down over every desk and watch your workers go.
 - **Ladder and fire poles.** The floors are stacked like a real building, with a ceiling over each. A ladder up the west wall goes through trapdoors in the ceiling and the floor: press **E** to grab it, **W** / **S** to climb, and **E** (or **Space**) to get off. Climb past the ceiling and you come up through the floor of the floor above. To go down in a hurry, walk into the hole round the fire pole (or press **E** at it). You slide down it spinning and come out of the ceiling below. The pole runs the whole way down the building, so a slide takes you one floor down and swings you off beside its hole there, ready to go again. On the bottom floor you land on a mat and a firehouse bell rings, and pressing **E** at the pole there gives you a twirl.
-- **Upstairs, over the garage.** The office is the second floor. Its windows are real glass, so you can look out over the street, the trees and the neighbours. Walk out the EXIT door in the west wall and down the stairs to the street. Underneath is an open garage full of Lambos and Ferraris, which you can jump up onto or drive (see below). The elevator goes down there too (**Garage**, under floor 1 on its panel), stopping at the garage's back wall, and back up from there to your floor or any other.
-- **Drive the supercars.** Walk up to one of the Lambos or Ferraris in the garage (or the one parked out front) and press **E** to get behind the wheel. **W** is the gas, **S** brakes and then reverses, **A** and **D** steer, **Space** brakes and **H** honks. Take it out of the garage, round the lots and along the street either way, and on out of town round the scenic loop (see below). Columns, lamp posts, trees and the other cars stop you, and anyone standing in your way gets knocked aside. Everyone on your floor sees the car go by with you in it (the roof comes off, so they can see who's driving), and hears its engine and horn. Press **E** at a car someone else is driving to ride along beside them. **E** gets you out, and the car stays parked wherever you leave it until the office restarts, when every car goes back to its spot. Like the people you see, the cars are your floor's own: the garage under another floor has its cars where people on that floor left them.
+- **Upstairs, over the garage.** The office is the second floor. Its windows are real glass, so you can look out over the street, the trees and the neighbours. Walk out the EXIT door in the west wall and down the stairs to the street. Underneath is an open garage full of Lambos, Ferraris and two 4x4s, which you can jump up onto or drive (see below). The elevator goes down there too (**Garage**, under floor 1 on its panel), stopping at the garage's back wall, and back up from there to your floor or any other.
+- **Drive the supercars.** Walk up to one of the Lambos or Ferraris in the garage (or the Blue Lambo and the two 4x4s parked out front) and press **E** to get behind the wheel. **W** is the gas, **S** brakes and then reverses, **A** and **D** steer, **Space** brakes and **H** honks. Take it out of the garage, round the lots and along the street either way, and on out of town round the scenic loop (see below). Columns, lamp posts, trees and the other cars stop you, and anyone standing in your way gets knocked aside. Everyone on your floor sees the car go by with you in it (the roof comes off, so they can see who's driving), and hears its engine and horn. Press **E** at a car someone else is driving to ride along beside them. **E** gets you out, and the car stays parked wherever you leave it until the office restarts, when every car goes back to its spot. Like the people you see, the cars are your floor's own: the garage under another floor has its cars where people on that floor left them.
 - **The scenic loop.** Both ends of the street run on out of town into a country road, 1.4 km round with the street, that comes back in at the other end. Heading east, it passes Meadowbrook Farm (a red barn, a silo, a windmill, fields of wheat with hay bales and cows in their pasture), turns south into the pines of Whispering Pines and over a creek on a wooden bridge, then west along Summit Pass under a range of snowy mountains, past a lake with a dock, and through the Granite Tunnel under a spur of them. Round the headland it runs north up the coast past Sunset Beach, with palms, umbrellas, a lifeguard tower, a snack shack, a pier out into the sea and sailboats offshore, and past the lighthouse on its rocky point, whose beam sweeps round at night, back into town. Drive it either way. A sign at the start of each stretch says where you are, and so does the bar at the bottom of the screen while you drive. The road's edges keep you on it: run wide on a bend and you slide along the edge rather than off it. Out there the haze thins so you can see the mountains and the sea, and the sun's shadows go with you. Anyone can walk out there too. A chequered line across the street in front of the office times laps: cross it, go all the way round (either way) and cross it again, and the bar shows your lap and your best, which is kept in your browser. The upper floors look out over more of it than the bottom one.
 - **A tower that grows with your projects.** Every floor is a storey of the same building, so from outside it's as tall as you have projects: add enough of them and it's a skyscraper, a balcony off every floor, windows lit here and there at night and a cornice round the top. Up on a higher floor the street is that many storeys further down. Only the bottom floor has the EXIT door and the stairs down; the floors above it have wall there, so take the elevator down to the garage to leave.
 - **Day and night, and weather.** Outside the windows a whole day goes by every hour: midnight on the hour, sunrise around a quarter past, noon at half past and sunset around a quarter to, and at night the street lamps, the balcony's string lights and the windows across the street come on while the office lights warm up. The weather comes and goes by itself (sun, clouds, rain, thunderstorms, fog, and snow in winter), with raindrops on the glass, wet streets and snow settling outside. Start the office with `--city Berlin` and the sky follows that city's live forecast instead, with its days as long or as short as they are there this time of year. Under **⚙️** → *Building* → *Outside*, anyone can switch the sky to the real time of day instead (*Real time (24 h)*), so it's night in the office when it's night there, and back to *A day every hour*. It's the same for everyone and stays picked across restarts; until someone picks, `--real-time-sky` (or `AGENT_OFFICE_SKY_CLOCK=real`) says which. Indoors the sun lights the room, but shadows fall from the lamps overhead, not from the street's sun. Everyone sees the same sky, and **⚙️** shows what it's doing. Fog is kept out of doors: on a foggy day the street and the hills are lost in it, but the room you're standing in — desks, workers, the far wall — stays as clear as ever.
@@ -72,6 +72,119 @@ Everything in the office, room by room. Back to the [README](../README.md).
 - **An account for everyone.** Open **🔑 Accounts** from the **☰** menu and make an invite link. Whoever opens it picks a password and gets an account in their own name. That name is the one on their character, in chat and on every terminal they type into (**⌨️** in the terminal header shows who typed last), and nobody else can take it. Admins see everyone's accounts there, can make someone an admin, and can revoke an account, which signs that person out at once. The shared office password keeps working alongside the accounts until an admin switches it off. Sessions are signed cookies, and login attempts are rate limited.
 - **Your own Claude and GitHub.** With an account, the workers you hire run on your own Claude plan, and the office acts on GitHub as you: comments, merges, labels, claimed issues, commits, pushes and pull requests show up under your name, with your git name and GitHub noreply email. The first time you come in, **🔐 Your sign-ins** opens (it's in the **☰** menu too). **Sign in with Claude** gives you Claude's sign-in page and takes back the code it shows; **Sign in with GitHub** shows a one-time code for github.com/login/device. Or paste a token from `claude setup-token` (or an API key), or a GitHub token. A 🐚 shell you open at a desk runs as you, so `claude auth login` and `gh auth login` typed there sign you in too. Hiring a Claude worker, queueing a task, calling a meeting or asking a board agent needs your own Claude sign-in first; without one, the window opens and says why. A worker keeps running as whoever hired it: a queued task as whoever queued it, a meeting's workers as whoever called it. Admins can pick the office machine's own sign-ins instead. Everyone's sign-ins are kept apart, so any number of people can be signed in to different accounts at once. Revoking an account signs it out and deletes its sign-ins. On the office password, with no account, everything runs on the machine's own `claude` and `gh` as before.
 
+## Office games (test branch)
+
+*On the `test/office-game-features` branch only, from the ideas in
+[ideas/office-game-features.md](ideas/office-game-features.md).* These are single player for now:
+nothing goes over the network, and what they remember lives in your browser's `localStorage` (keys
+`office.game.*`), so other people don't see your desk things, plants or records. Keys are in
+[Controls](controls.md#office-games-test-branch).
+
+- **Your own desk** (W1). Every desk has a small blue mat at its front left. Aim at it and press **E** to
+  put a plant, a mug, a photo frame, a desk lamp or a rubber duck on that desk. **E** at the lamp switches
+  it on and off. Kept per desk and floor.
+- **Light switches** (W5). There are two wall switches: one on the east wall for the lounge, and one on the
+  west wall by the exit door for the desks. **E** fades that area's lamps out and in, for you alone.
+- **The merge plant** (W6). A potted plant against the lounge's east wall, between the Services board and the TV (clear of the back office's opening whether it is built or not), grows a stage with every
+  merged pull request while you're in the office. It reaches its next stage at 1, 2, 4, 7, 11 and 16
+  merges. It droops after a week without a merge. **E** says how it's doing.
+- **Seasons** (W4). The trees along the scenic loop, and the grass, follow the calendar in the sky's
+  hemisphere:
+  - spring: blossom and fresh green
+  - summer: green
+  - autumn: red and orange leaves
+  - winter: bare boughs, snowy pines and snow on the ground
+
+  The server's weather uses the same season (`src/shared/season.ts`). `?season=autumn` in the address
+  tries another one.
+- **A campsite and a hill lookout** (W8). The campsite is on the lake's west shore, with tents, logs and a
+  campfire that lights up the night. **E** at the fire stokes it. The lookout deck is south of the lake;
+  **E** at its binoculars zooms in on the view, and **E**, **Esc** or walking off puts them down.
+- **A roof garden** (W7). Four planters stand on the roof by the bar. **E** at an empty one sows it. **E**
+  again waters it, and a watering counts at most once every twenty minutes. A plant goes from seed to
+  bloom over eight waterings and droops after six hours dry. **E** at a bloom picks it.
+- **Fishing** (M5). Walk to the end of the lake dock or the beach pier and press **E** at the sign:
+  - Hold **E** and let go to cast. A fuller meter casts further, and further out the fish are rarer.
+  - Wait for the bobber to go under, then press **E** to strike. A quick strike lands a bigger fish; one
+    too early or too late loses it.
+  - There are twelve kinds of fish across the lake and the sea, plus junk such as a boot.
+  - **I** opens the fishing journal: catches and personal bests. **Q** reels in or packs up.
+- **Racing and a ghost car** (M6). In a car, stop at the chequered line on the street and press **Z**.
+  - Five red lights come on and go out. Moving before they're out is a jump start, which adds 5 s.
+  - Then three timed laps of the scenic loop.
+  - Your best lap is replayed as a translucent ghost car (**Y** turns it on or off).
+  - **U** in the car opens the race records: best lap, best race and the last ten results.
+- **Reactions** (S2). **7** 👏, **8** 🎉, **9** ❤️ and **0** 😂 float an emoji up from you: in front of the
+  view in first person, above your head in third. Pressing the same one again quickly stacks them into
+  one badge with a count (👏 ×5). They're separate from the emotes (G, 1–6), which everyone on the floor
+  sees. Reactions are only on your screen for now.
+- **The game room and billiards** (W3, M3). Take the elevator down to the garage. The game room is
+  through the door in its west end, with a sofa, neon signs and a billiards table. **E** at the table
+  plays billiards. Practice keeps a shot count and your best clear. Two players take turns: you keep the
+  table while you pot. Scratch and you get the cue ball in hand. The balls are a small hand-written
+  simulation, with no physics library.
+- **Build mode** (W2). **U** on an office floor starts furnishing it, and **B** opens the catalogue: a
+  chair, a small table, a sofa, a potted plant, a bookshelf, a rug, a floor lamp and a whiteboard stand.
+  - A ghost of the piece follows your aim on a half-metre grid. It's red where the piece can't go.
+  - **R** turns it, and a click places it.
+  - Aim at a piece you placed: **E** picks it up to move it, and **X** removes it.
+  - Pieces are solid to you and are kept per floor. Workers and click-to-walk don't know about them
+    yet, so they walk through.
+- **A map** (round 2). **§** (the key left of 1) or ☰ → **🗺️ Map** shows a top-down map of the town and
+  the scenic loop: the roads, the lake, the sea, the farm and the mountains. It marks the places, with a
+  legend:
+  - the garage and the game room
+  - the race start line
+  - the fishing spots
+  - the campsite and the lookout
+  - the roof bar and roof garden (by the elevator)
+
+  You're the red arrow. The map stays up while you walk or drive, and **§**, its ✕ or Esc hides it.
+  While you drive, a small round map in the corner turns with the car.
+- **Cars that go anywhere.** Cars drive anywhere on land, not just on the road. Only things you can see
+  stop them: trees, buildings, fences, the mountains.
+  - Grass slows you down a little.
+  - The sea, the lake and the edge of the world are soft: you wade, slow down and get pushed back out.
+  - Top speed is about 170 km/h. **Shift** is nitro, with a meter that refills.
+  - **Space** is the handbrake, for drifting; **S** brakes.
+  - The car leaves tyre smoke (small puffs that stay behind it), skid marks and dust, and leans into corners.
+  - **Two 4x4s.** The *Green Ranger* and the *Sand Ranger* are parked out front. They stand tall on
+    knobbly tyres, top out around 110 km/h (140 on nitro), turn the wheel slowly and corner softer than the
+    supercars, but grass hardly slows them and their tyres hold on it. Their dial, gearbox, engine note and
+    horn (a deep one) are their own, and the rider sits higher.
+  - **Loose suspension.** Every car rides on springs: the body rolls, pitches and rises over bumps, and the
+    4x4s' are looser, with the wheels moving against the body.
+  - **Speed humps and rough ground.** Two yellow-and-black humps either side of town on the street, a
+    washboard farm lane, moguls in the meadow inside the loop and mounds round the campsite. The ground
+    there is really higher, so you walk up it too, and the rocks, bushes, flowers, fence posts and benches
+    on it stand on it. A supercar bounces over it; the 4x4 is built for it.
+  - The supercars have a new look: fender pods over the wheels, a glass cabin and small details.
+  - The view widens with speed, and a dash shows speed, gear, nitro and drifting.
+  - In third person the camera doesn't swing back behind the car by itself: where you turned it stays put.
+  - Racing laps must stay near the road. Records and ghosts from before the faster cars are not kept.
+  - Supercars and 4x4s race apart: best lap, race records and the ghost car are kept for each class (what
+    you had before the 4x4s counts as the supercars').
+- **A livelier world.** Along the scenic loop and in town:
+  - wildflowers in meadows and on the verges (not in winter), bushes, hedges and rocks
+  - signposts to the campsite, the lake dock, the lookout and the race start
+  - picnic tables, plus flower boxes and benches along the street
+  - fences, sunflowers and a scarecrow at the farm
+  - cows and sheep, birds circling, butterflies, and boats on the lake
+
+  All of it is decoration you can walk and drive through. No tree or prop stands on the road or
+  pavement any more.
+- **Room for cars.** The street has seven lamp posts at the curbs instead of fourteen. The garage has
+  five columns, none of them in the aisle, the exits or the game-room doorway.
+- **Six seven.** The emote wheel (**G**) has the "six seven" meme: both palms up, bobbing in turn, with
+  6️⃣7️⃣ over your head. Everyone on your floor sees it. It has no number key, because **7**–**0** are
+  reactions.
+- **Sit on your furniture.** Outside build mode, aim at a chair or sofa you placed and press **E** to sit;
+  a sofa has two seats. Get up with **E**, by walking off or by jumping. Only you see yourself sitting.
+- **The camera stays out of walls.** In third person the camera stops short of walls, the glass meeting
+  room, floors and ceilings, and eases back out when the way is clear.
+- **No plants on the floor.** The office's own potted plants that stood on the floor are gone, so at
+  Christmas there are no little plant-trees either. Desk and shelf plants and the outdoors are as they
+  were.
 - **Multiplayer: visit each other's offices** *(3d-kanban)*. Offices connect to a **relay** (see [Run a multiplayer relay](self-hosting.md#run-a-multiplayer-relay)) and can walk into each other's offices. Everything stays on the owner's machine; the relay only passes messages between the two offices.
   - **Connect.** An admin opens ⚙️ Settings → **🌐 Multiplayer**, types the relay's address (`https://relay.example.com`) and its password, and presses **🔌 Connect**. Other players know the office by a GitHub login, so first press **🔑 Verify GitHub account**: it shows a code and a GitHub address, you type the code there, and the office keeps a token with no permissions that only proves who you are (**🔁 Verify again** to change it). **🗑 Forget GitHub account** deletes that token from the office and hangs up. The token has no permissions and only proves who you are, but it is not tied to one relay: someone who runs a relay could keep the tokens it sees and use one to pose as you on another relay that shares the same password. To revoke it on GitHub as well: github.com → Settings → Applications → Authorized OAuth Apps → the relay's app → Revoke. The status under the buttons says **⚪ Not connected**, **🟡 Connecting…**, **🟢 Online** or **🔴 Error** with the reason; **⚪ Go offline** hangs up without forgetting the address, password, GitHub sign-in or shared floors (the status then says **⚪ Offline**, any visits end, and you keep working in your own office); **🟢 Go online** connects again with the saved settings. The status survives restarts: an online office reconnects by itself after a restart or a dropped connection, an offline one stays offline until you go online. The same toggle sits at the top of **☰ → 🌐 Players**, which is offered as soon as a server is saved and shows an Online/Offline chip.
   - **Share floors.** The same pane lists the floors, each with a box. Sharing is off by default, and a floor that has never been shared is never mentioned to the relay. Only a floor whose every repository is on GitHub can be shared (a floor made from a plain folder, or with one repository that isn't on GitHub, says why next to its greyed-out box). Unticking the box sends the visitors on that floor home.
