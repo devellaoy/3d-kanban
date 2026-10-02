@@ -19,8 +19,8 @@ export function figureOf(t: KanbanTask): LoungeFigure | undefined {
 /** The figures of one floor (its project's tasks on hold), oldest hold first. */
 export function loungeFigures(repo: Pick<KanbanRepository, 'tasksWhere'>, floorId: string): LoungeFigure[] {
   const out: LoungeFigure[] = [];
-  for (const t of repo.tasksWhere({ status: ['on_hold'] })) {
-    const f = t.project === floorId ? figureOf(t) : undefined;
+  for (const t of repo.tasksWhere({ status: ['on_hold'], project: floorId })) {
+    const f = t.project === floorId ? figureOf(t) : undefined; // the query filters by project; a stand-in repository may not
     if (f) out.push(f);
   }
   return sortFigures(out);

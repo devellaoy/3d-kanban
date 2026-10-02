@@ -277,8 +277,8 @@ export function createCorePlugin(ctx: KanbanContext, subs: KanbanSubscriptions):
       const up: TaskUpdate = { status: m.to };
       // Out of the hold, however it goes on: the hold's reason and date are no more.
       if (task.status === 'on_hold') {
-        // On to Review or Done (or a reset, which starts over): the messages left meanwhile wait for the next run, unless it all starts over.
-        if (check.action !== 'reset') await ctx.engine.releaseHeld?.(task.id);
+        // On to Review, the messages left meanwhile wait for the next run; to Done or the archive nothing runs again (they stay plain comments), a reset starts over.
+        if (m.to === 'review') await ctx.engine.releaseHeld?.(task.id);
         up.hold = null;
       }
       if (check.action === 'reset') {

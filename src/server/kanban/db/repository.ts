@@ -247,9 +247,13 @@ export class KanbanRepository {
   }
 
   /** Tasks in any of these states (the engine's sweeps: running ones, due retries...). */
-  tasksWhere(filter: { status?: KanbanTask['status'][]; runState?: KanbanTask['runState'][]; retryDue?: number }): KanbanTask[] {
+  tasksWhere(filter: { status?: KanbanTask['status'][]; runState?: KanbanTask['runState'][]; retryDue?: number; project?: string }): KanbanTask[] {
     const where: string[] = [];
     const args: unknown[] = [];
+    if (filter.project !== undefined) {
+      where.push('project = ?');
+      args.push(filter.project);
+    }
     if (filter.status?.length) {
       where.push(`status IN (${filter.status.map(() => '?').join(', ')})`);
       args.push(...filter.status);

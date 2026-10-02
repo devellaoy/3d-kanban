@@ -76,6 +76,7 @@ function office(t: Ctx, opts: { answers?: Partial<Record<string, string>>; plugi
   const live = new Set<string>();
   const calls: string[] = [];
   const toasts: string[] = [];
+  const floorMsgs: KanbanServerMsg[] = [];
   const kanban = installKanban({
     dataDir,
     floors: () => building.list(),
@@ -85,6 +86,7 @@ function office(t: Ctx, opts: { answers?: Partial<Record<string, string>>; plugi
     officePrompts: () => ({}),
     hookUrl: 'http://127.0.0.1:9',
     toast: (_floor, text) => void toasts.push(text),
+    toFloor: (_floor, msg) => void floorMsgs.push(structuredClone(msg)),
     createEngine: fakeEngine(calls, opts.answers),
     plugins: opts.plugins ?? [],
   });
@@ -110,7 +112,7 @@ function office(t: Ctx, opts: { answers?: Partial<Record<string, string>>; plugi
     const deltas = (t?: KanbanServerMsg['t']) => got.filter((m) => !('rid' in m && m.rid) && (!t || m.t === t));
     return { c, got, ask, deltas };
   };
-  return { kanban, building, dataDir, api, live, calls, toasts, client, root };
+  return { kanban, building, dataDir, api, live, calls, toasts, floorMsgs, client, root };
 }
 
 const okOf = (m: KanbanServerMsg) => {
@@ -582,27 +584,35 @@ test('a reset of a task on hold (it keeps its session and worktree) is its maker
   assert.equal(kanban.ctx.repo.getTask(1)!.hold, undefined);
 });
 
-test('deleting a held task refreshes its floor\'s lounge even when no card went out for it since the start', async (t) => {
-  const { client, kanban } = office(t);
+test('the lounge: only a task that is or was on hold costs it a look; a held task deleted takes its figure with it, even after a restart', async (t) => {
+  const { client, kanban, floorMsgs } = office(t);
   const ada = client('Ada', false);
   await ada.ask({ t: 'kanban.task.create', task: { project: 'web', title: 'x' } });
+  await ada.ask({ t: 'kanban.task.create', task: { project: 'web', title: 'y' } });
+  let n = 0;
+  const real = kanban.ctx.repo.tasksWhere.bind(kanban.ctx.repo);
+  kanban.ctx.repo.tasksWhere = (f) => (n++, real(f));
+  kanban.ctx.taskChanged(2); // a task that was never on hold
+  assert.equal(n, 0, 'no query for it');
   kanban.ctx.repo.updateTask(1, { status: 'on_hold', hold: { at: 1, by: 'Ada', from: 'review' } });
-  assert.equal(kanban.lounge('web').length, 1);
+  kanban.ctx.taskChanged(1);
+  assert.equal(n, 1);
+  assert.deepEqual(floorMsgs.map((m) => m.t === 'kanban.lounge' && m.figures.length), [1]);
   kanban.ctx.repo.deleteTask(1);
   kanban.ctx.taskChanged(1);
-  assert.equal(kanban.lounge('web').length, 0);
+  assert.deepEqual(floorMsgs.map((m) => m.t === 'kanban.lounge' && m.figures.length), [1, 0], 'its figure is gone');
+  assert.equal(n, 2);
 });
 
-test('a held task moved on to Review keeps its held messages first (the hold is still there when the engine looks), a reset does not', async (t) => {
+test('moving a held task on: to Review keeps what was said meanwhile for its next run, to Done or the archive does not', async (t) => {
   const { client, kanban, calls } = office(t);
   const ada = client('Ada', false);
   await ada.ask({ t: 'kanban.task.create', task: { project: 'web', title: 'x' } });
-  kanban.ctx.repo.updateTask(1, { status: 'on_hold', hold: { at: 1, by: 'Ada', from: 'review' } });
-  okOf(await ada.ask({ t: 'kanban.task.move', id: 1, to: 'review' }));
-  assert.ok(calls.includes('released #1 with its hold'), calls.join(' | '));
-  assert.equal(kanban.ctx.repo.getTask(1)!.hold, undefined);
-  kanban.ctx.repo.updateTask(1, { status: 'on_hold', hold: { at: 1, by: 'Ada', from: 'review' } });
-  calls.length = 0;
-  okOf(await ada.ask({ t: 'kanban.task.move', id: 1, to: 'todo' }));
-  assert.ok(!calls.some((c) => c.startsWith('released')));
+  for (const to of ['done', 'archived'] as const) {
+    kanban.ctx.repo.updateTask(1, { status: 'on_hold', hold: { at: 1, by: 'Ada', from: 'review' } });
+    calls.length = 0;
+    okOf(await ada.ask({ t: 'kanban.task.move', id: 1, to }));
+    assert.ok(!calls.some((c) => c.startsWith('released')), to);
+    kanban.ctx.repo.updateTask(1, { status: to === 'done' ? 'review' : 'done' });
+  }
 });

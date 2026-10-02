@@ -5,7 +5,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import http from 'node:http';
 import type { AddressInfo } from 'node:net';
-import { existsSync, realpathSync } from 'node:fs';
+import { existsSync, mkdirSync, realpathSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import Database from 'better-sqlite3';
 import { MIGRATIONS, migrate } from '../src/server/kanban/db/migrations.js';
@@ -317,25 +317,6 @@ test('held from plan approval: unhold gives the approval back, hires nobody, and
   await fx.waitTask(task.id, (x) => x.status === 'review' && x.runState === 'idle', 'implemented after approval', 30_000);
 });
 
-test('a queued unhold that is stopped leaves no hold behind', async (t) => {
-  let full: string | undefined;
-  const fx = await engineFixture({ capacity: { full: () => full, room: () => (full ? 0 : 5) } });
-  t.after(() => fx.close());
-  fx.setRules([IMPLEMENT]);
-  const r = await inReview(fx);
-  assert.equal(await fx.engine.hold!(r.id, ADA, { note: 'n' }), undefined);
-  await fx.waitTask(r.id, (x) => !x.workerId, 'the worker gone');
-  full = 'The office is at its limit';
-  assert.equal(await fx.engine.unhold!(r.id, ADA), undefined);
-  const q = fx.task(r.id);
-  assert.equal(q.runState, 'queued');
-  assert.equal(q.hold?.note, 'n', 'a queued unhold keeps what its prompt needs');
-  assert.equal(await fx.engine.stop(r.id, ADA), undefined);
-  const s = fx.task(r.id);
-  assert.equal(s.status, 'waiting');
-  assert.equal(s.hold, undefined);
-});
-
 test('v1: ?status=waiting also lists tasks on hold, as their legacy status says', async (t) => {
   const ctx = makeCtx([def('app', '/tmp/app-hold2', { name: 'App', repo: 'o/app' })]);
   const mk = (title: string) => ctx.repo.createTask({ project: 'app', title, tool: 'claude', usePlan: false, planApproval: 'auto', useReview: false, createdBy: 'u' });
@@ -529,6 +510,13 @@ test('more than fifty held comments, then a new one while the unhold run waits f
 
 // --- A session that is gone; held messages on the way to Review ---------------------------------------------------------
 
+/** Claude's folder of transcripts, as a worker of the fixture's office sees it (its projects folder exists, so a missing transcript is known to be missing). */
+const claudeProjects = (...file: string[]) => {
+  const dir = path.join(process.env.CLAUDE_CONFIG_DIR!, 'projects', 'proj');
+  mkdirSync(dir, { recursive: true });
+  for (const f of file) writeFileSync(path.join(dir, f), '{}\n');
+};
+
 test('a stored session that no longer exists: the unhold starts afresh with the handoff, the unhold prompt and every held message, and nothing is acknowledged before the agent has them', async (t) => {
   const fx = await engineFixture();
   t.after(() => fx.close());
@@ -536,6 +524,7 @@ test('a stored session that no longer exists: the unhold starts afresh with the 
   const r = await inReview(fx);
   assert.equal(await fx.engine.hold!(r.id, ADA, { note: 'waiting for the keys' }), undefined);
   await fx.waitTask(r.id, (x) => !x.workerId, 'the worker gone');
+  claudeProjects();
   fx.repo.updateTask(r.id, { sessionId: 'stale-gone' });
   fx.repo.addComment({ taskId: r.id, authorKind: 'user', authorName: 'Bob', text: 'Keys arrived on Monday.' });
   fx.setRules([UNHOLD]);
@@ -559,7 +548,7 @@ test('a stored session that no longer exists: the unhold starts afresh with the 
   assert.ok(snaps[emptyAt - 1].at >= launches[0].at!, 'still pending after the stale launch');
   const runs = fx.repo.listRuns(r.id);
   assert.deepEqual(runs.slice(-2).map((x) => x.status), ['interrupted', 'succeeded']);
-  assert.ok(fx.repo.listComments(r.id).comments.some((c) => /session couldn't be resumed/.test(c.text)));
+  assert.ok(fx.repo.listComments(r.id).comments.some((c) => /session \(stale-gone\) couldn't be resumed/.test(c.text)), 'the note says which session was dropped');
   assert.equal(fx.repo.listComments(r.id).comments.some((c) => c.pending), false);
 });
 
@@ -583,4 +572,92 @@ test('held then moved on to Review: the messages left meanwhile reach the next r
   const run = promptsOf(fx).find((p) => p.includes('Rename it as well.'))!;
   assert.ok(run.includes('Use the staging keys.'), run);
   assert.equal(fx.repo.getComment(said.id)?.pending, false);
+});
+
+test('an agent that exits early on a session that does exist keeps it: the run is interrupted and Retry carries on', async (t) => {
+  const fx = await engineFixture();
+  t.after(() => fx.close());
+  fx.setRules([IMPLEMENT]);
+  const r = await inReview(fx);
+  assert.equal(await fx.engine.hold!(r.id, ADA, {}), undefined);
+  await fx.waitTask(r.id, (x) => !x.workerId, 'the worker gone');
+  claudeProjects('stale-present.jsonl'); // the transcript is there: whatever stopped the agent, the session is not gone
+  fx.repo.updateTask(r.id, { sessionId: 'stale-present' });
+  assert.equal(await fx.engine.unhold!(r.id, ADA, 'Go on.'), undefined);
+  const w = await fx.waitTask(r.id, (x) => x.status === 'waiting' && x.waitingReason === 'interrupted', 'interrupted', 30_000);
+  assert.equal(w.sessionId, 'stale-present', 'the session is kept');
+  assert.equal(w.pendingMessages.length, 1, 'and what was said waits for the Retry');
+  assert.ok(!fx.repo.listComments(r.id).comments.some((c) => /couldn't be resumed/.test(c.text)));
+});
+
+test('the engine follows a worker only while its run goes (upstream\'s fresh start on a lost session stays on for the rest)', async (t) => {
+  const fx = await engineFixture();
+  t.after(() => fx.close());
+  fx.setRules([IMPLEMENT]);
+  const task = fx.newTask({ usePlan: false, useReview: false });
+  const followed = () => (fx.workers as unknown as { followed: Set<string> }).followed;
+  assert.equal(await fx.engine.start(task.id, ADA), undefined);
+  const running = await fx.waitTask(task.id, (x) => !!x.workerId, 'hired');
+  assert.ok(followed().has(running.workerId!), 'followed while its run goes');
+  const done = await fx.waitTask(task.id, (x) => x.status === 'review' && x.runState === 'idle', 'review', 30_000);
+  assert.ok(!followed().has(done.workerId!), 'not once the run is over');
+});
+
+test('Stop on a queued unhold: the task is back on hold with its hold intact, and what was said is plain comments again', async (t) => {
+  let full: string | undefined;
+  const fx = await engineFixture({ capacity: { full: () => full, room: () => (full ? 0 : 5) }, engine: { sweepMs: 100 } });
+  t.after(() => fx.close());
+  fx.setRules([IMPLEMENT]);
+  const r = await inReview(fx);
+  assert.equal(await fx.engine.hold!(r.id, ADA, { note: 'keys' }), undefined);
+  const held = await fx.waitTask(r.id, (x) => !x.workerId, 'the worker gone');
+  const said = fx.repo.addComment({ taskId: r.id, authorKind: 'user', authorName: 'Bob', text: 'Use the staging keys.' }).comment;
+  full = 'The office is at its limit';
+  assert.equal(await fx.engine.unhold!(r.id, ADA, 'Go on.'), undefined);
+  await fx.waitTask(r.id, (x) => x.runState === 'queued', 'queued');
+  assert.equal(await fx.engine.stop(r.id, ADA), undefined);
+  const back = fx.task(r.id);
+  assert.equal(back.status, 'on_hold');
+  assert.equal(back.runState, 'idle');
+  assert.deepEqual(back.hold, held.hold);
+  assert.equal(back.pendingMessages.length, 0);
+  assert.equal(fx.repo.getComment(said.id)?.pending, false);
+  assert.equal(back.queuedRun, undefined);
+  // Resumed later, what was said still goes with it.
+  full = undefined;
+  fx.setRules([UNHOLD]);
+  assert.equal(await fx.engine.unhold!(r.id, ADA), undefined);
+  await fx.waitTask(r.id, (x) => x.status === 'review' && x.runState === 'idle' && !!x.workerId, 'back in review', 30_000);
+  assert.ok(promptsOf(fx).some((p) => p.includes('Use the staging keys.') && p.includes('Go on.')));
+});
+
+test('resuming a held task is its maker\'s or an admin\'s, as putting it on hold is', async (t) => {
+  const fx = await engineFixture();
+  t.after(() => fx.close());
+  fx.setRules([IMPLEMENT]);
+  const r = await inReview(fx);
+  assert.equal(await fx.engine.hold!(r.id, ADA, {}), undefined);
+  await fx.waitTask(r.id, (x) => !x.workerId, 'the worker gone');
+  assert.match(String(await fx.engine.unhold!(r.id, BOB, 'now')), /Only whoever made it, or an admin, can resume/);
+  assert.equal(fx.task(r.id).status, 'on_hold');
+  assert.equal(fx.task(r.id).pendingMessages.length, 0);
+  fx.setRules([UNHOLD]);
+  assert.equal(await fx.engine.unhold!(r.id, { name: 'Ada', admin: false }, undefined), undefined, 'its maker, not an admin');
+  await fx.waitTask(r.id, (x) => x.status === 'review' && x.runState === 'idle' && !!x.workerId, 'back in review', 30_000);
+});
+
+test('an in-place relaunch on a resumed session acknowledges the held messages once the agent is heard from, and delivers them once', async (t) => {
+  const fx = await engineFixture();
+  t.after(() => fx.close());
+  fx.setRules([{ when: 'You are planning kanban task', reply: 'PLAN READY', exitPlan: '1. Do it' }, IMPLEMENT]);
+  const task = fx.newTask({ usePlan: true, useReview: false, planApproval: 'manual' });
+  assert.equal(await fx.engine.start(task.id, ADA), undefined);
+  await fx.waitTask(task.id, (x) => x.status === 'waiting' && x.waitingReason === 'plan_approval' && x.runState === 'idle', 'plan approval', 30_000);
+  const c = fx.repo.addComment({ taskId: task.id, authorKind: 'user', authorName: 'Bob', text: 'Mind the staging keys.' }).comment;
+  fx.repo.setCommentPending(c.id, true);
+  fx.repo.updateTask(task.id, { pendingMessages: [{ commentId: c.id, text: c.text, by: 'Bob', at: c.createdAt, held: true }] });
+  assert.equal(await fx.engine.approvePlan(task.id, ADA), undefined);
+  await fx.waitTask(task.id, (x) => x.status === 'review' && x.runState === 'idle' && x.pendingMessages.length === 0, 'implemented', 30_000);
+  assert.equal(new Set(promptsOf(fx).filter((p) => p.includes('Mind the staging keys.'))).size, 1);
+  assert.equal(fx.repo.getComment(c.id)?.pending, false);
 });

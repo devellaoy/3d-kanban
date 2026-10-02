@@ -72,7 +72,7 @@ export class Holds {
       from: task.status === 'review' ? 'review' : 'waiting',
       ...(opts.note ? { note: opts.note } : {}),
       ...(opts.until !== undefined ? { until: opts.until } : {}),
-      ...(task.status === 'waiting' && (task.waitingReason === 'plan_approval' || task.waitingReason === 'plan_questions') ? { reason: task.waitingReason, ...(task.waitingText ? { text: task.waitingText } : {}), ...(task.phase ? { phase: task.phase } : {}) } : {}),
+      ...(planWait ? { reason: task.waitingReason, ...(task.waitingText ? { text: task.waitingText } : {}), ...(task.phase ? { phase: task.phase } : {}) } : {}),
       ...(seated ? { worker: { name: seated.name, color: seated.color } } : {}),
       ...(deskId ? { deskId } : {}),
     };
@@ -89,6 +89,17 @@ export class Holds {
     this.d.note(task, parts.join(' '));
     void this.d.drain(task.project);
     return undefined;
+  }
+
+  /** Stop on a queued unhold (it waited for a desk): the task is back on hold, its hold intact, and what was said meanwhile plain comments again. */
+  cancelUnhold(task: KanbanTask, who: KanbanCaller) {
+    for (const m of task.pendingMessages) {
+      this.ctx.repo.setCommentPending(m.commentId, false);
+      const c = this.ctx.repo.getComment(m.commentId);
+      if (c) this.ctx.broadcast({ t: 'kanban.comment', comment: c, project: task.project }, task.project);
+    }
+    this.d.update(task.id, { status: 'on_hold', runState: 'idle', queuedRun: null, pendingMessages: [], waitingReason: null, waitingText: null });
+    this.d.note(task, `${who.name} stopped the resume before it started: the task is back on hold.`);
   }
 
   /** The user's comments since `since` are kept as pending messages (files included), by comment id, for the next run that resumes the work. They are exempt from the cap on queued comments. */
@@ -127,13 +138,13 @@ export class Holds {
   }
 
   /** A run whose stored session could not be resumed (its agent exited before it was heard from) starts again in a fresh one, once: the new run has no session to lose. */
-  async freshSession(live: { runId: number; floorId: string; workerId: string; role: string; eff?: RunEffect; via?: unknown }, task: KanbanTask) {
+  async freshSession(live: { runId: number; floorId: string; workerId: string; role: string; eff?: RunEffect; via?: unknown }, task: KanbanTask, session: string) {
     const floor = this.ctx.floor(live.floorId);
     this.d.finishRun(live.runId, live.floorId, { status: 'interrupted', error: "Its session couldn't be resumed" });
     if (floor?.workers.get(live.workerId)) await floor.sendHome(live.workerId, 'keep', { by: 'Kanban', reason: 'engine' });
     const reviewer = live.role !== 'implementer';
     this.d.update(task.id, reviewer ? { reviewerWorkerId: null, reviewerSessionId: null } : { workerId: null, sessionId: null });
-    this.d.note(task, `${reviewer ? "The reviewer's" : 'Its'} session couldn't be resumed (it is gone), so a fresh one takes over from the task's worktree and what is known of it.`);
+    this.d.note(task, `${reviewer ? "The reviewer's" : 'Its'} session (${session}) couldn't be resumed (it is gone: Claude has no transcript of it), so a fresh one takes over from the task's worktree and what is known of it.`);
     const err = await this.d.effect(task.id, live.eff!, live.via ?? {});
     if (err) this.d.note(task, `Couldn't start it again: ${err}`);
   }
@@ -141,6 +152,8 @@ export class Holds {
   /** Takes a task off hold: the implementer is hired again (same worktree and session) and carries on. */
   async unhold(task: KanbanTask, who: KanbanCaller, note?: string): Promise<string | undefined> {
     if (task.status !== 'on_hold') return 'Only a task on hold can be resumed';
+    // Resuming hires a worker on the creator's sign-in for a task they (or an admin) parked: theirs to say, as the hold was.
+    if (!who.admin && task.createdBy !== who.name) return 'Only whoever made it, or an admin, can resume a task on hold';
     const text = note?.trim();
     // Its message to the agent is the user's comment first: the prompt quotes the comments left since the hold.
     if (text) this.d.addComment(task.project, { taskId: task.id, authorKind: 'user', authorName: who.name, kind: 'message', text });

@@ -95,6 +95,8 @@ export interface KanbanEngineApi {
 /** The part of upstream's RunAs (workers.ts) the engine asks before it hires as an account. */
 export interface KanbanRunAs {
   claudeReady(owner: string): boolean;
+  /** Puts an account's own sign-ins in `env` (CLAUDE_CONFIG_DIR among them), as a worker of theirs starts with them. */
+  apply?(owner: string, env: Record<string, string>, dirs?: string[]): unknown;
   why(which: 'claude'): string;
 }
 

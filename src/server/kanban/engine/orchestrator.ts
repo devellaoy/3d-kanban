@@ -38,6 +38,7 @@ import { branchExists, checkoutLines, currentBranch, homeCleanup, hasChanges, mi
 import { Handoffs } from './handoff.js';
 import { Departures } from './departures.js';
 import { Holds } from './hold.js';
+import { sessionLogged } from './sessions.js';
 
 export interface EngineOptions {
   /** How often due retries, queued tasks and newly opened floors are looked at (60 s). */
@@ -80,6 +81,8 @@ interface Live {
   /** Its agent was started on a stored session (--resume) and has not been heard from yet: if it exits now, the session is gone (see exited). */
   resumed?: boolean;
   started?: boolean;
+  /** False while an old process of the worker is still being ended for a relaunch: its events are not the new agent's. */
+  armed?: boolean;
   /** What its run was asked to do (the text as it went), to start it again in a fresh session; and what is to be acknowledged once the agent has the prompt. */
   eff?: RunEffect;
   via?: Via;
@@ -896,6 +899,7 @@ export class Orchestrator {
     const follow = (workerId: string): Live => {
       const live: Live = { taskId: task.id, runId: run.id, phase: eff.phase, ...(eff.round !== undefined ? { round: eff.round } : {}), role, tool, workerId, floorId: task.project, exitPlan: false, ended: false, eff: { ...eff, pending: undefined, ...(text !== undefined ? { text } : {}) }, via };
       this.live.set(workerId, live);
+      floor.workers.follows(workerId, true);
       return live;
     };
     const fail = (err: string) => {
@@ -928,18 +932,20 @@ export class Orchestrator {
       const spawnModel = adapter.spawnModel(model);
       const spawnEffort = adapter.spawnEffort(effort);
       const same = sameArgs(floor.workers.launchArgsOf(info.id), launchArgs) && info.model === spawnModel && info.effort === spawnEffort;
-      if (same && (info.status === 'done' || info.status === 'idle')) err = floor.workers.prompt(info.id, prompt, via.who?.name);
+      const typed = same && (info.status === 'done' || info.status === 'idle');
+      // Relaunched on its session: its agent is heard from (and has the prompt) later, and events of the old process meanwhile are not its own. Set before any await.
+      if (!typed && info.sessionId) Object.assign(live, { resumed: true, armed: false, ack: heldTaken });
+      if (typed) err = floor.workers.prompt(info.id, prompt, via.who?.name);
       else if (info.sessionId) err = await floor.workers.relaunch(info.id, { launchArgs, prompt, env: extras.env, model: spawnModel, effort: spawnEffort });
       else err = 'no session';
+      live.armed = true;
       if (!err) {
         this.ctx.repo.updateRun(run.id, { workerId: info.id, sessionId: info.sessionId });
         this.update(task.id, { runState: 'running' });
-        // Typed into a running agent: it has the prompt. Relaunched on its session: once it is heard from.
-        if (same && (info.status === 'done' || info.status === 'idle')) heldTaken();
-        else if (info.sessionId) Object.assign(live, { resumed: true, ack: heldTaken });
+        if (typed) heldTaken(); // typed into a running agent: it has the prompt
         return undefined;
       }
-      this.live.delete(info.id);
+      this.forget(live);
       // It can't carry on in place (no session yet, say): a new hire in the same worktree takes over.
       await floor.sendHome(info.id, 'keep', ENGINE);
       this.update(task.id, role === 'implementer' ? { workerId: null } : { reviewerWorkerId: null });
@@ -1144,7 +1150,7 @@ export class Orchestrator {
     }
     const live = this.live.get(o.workerId);
     if (!live || live.ended || live.floorId !== floorId) return;
-    if (!live.started && ((o.event === 'hook' && !agentHook(o.payload)) || (o.status && o.status !== 'starting' && o.status !== 'exited'))) {
+    if (live.armed !== false && !live.started && ((o.event === 'hook' && !agentHook(o.payload)) || (o.status && o.status !== 'starting' && o.status !== 'exited'))) {
       live.started = true;
       live.ack?.();
       live.ack = undefined;
@@ -1252,7 +1258,8 @@ export class Orchestrator {
     const lost = !!this.ctx.floor(live.floorId)?.workers.get(live.workerId)?.lost;
     // Its agent exited before it was heard from, resuming a stored session: the session is gone (a month on hold, a cleaned-up home). The run
     // starts once more in a fresh session, with the handoff; its messages are still the task's (nothing was acknowledged).
-    if (live.resumed && !live.started && !lost && live.eff && task) return this.holds.freshSession(live, task);
+    const session = live.role === 'implementer' ? task?.sessionId : task?.reviewerSessionId;
+    if (live.resumed && !live.started && !lost && live.eff && task && session && sessionLogged(this.ctx, task, live.tool, session, this.ctx.floor(live.floorId)?.workers.transcripts(live.workerId)?.claude) === false) return this.holds.freshSession(live, task, session);
     const why = lost ? "Its worktree is gone, so its agent couldn't start" : 'The agent exited before its turn was done';
     this.finishRun(live.runId, live.floorId, { status: 'interrupted', error: why });
     if (task) await this.apply(task.id, { type: 'interrupted', text: `${why}: Retry to carry on${lost ? ` in a fresh worktree${task.branch ? ` on branch ${task.branch}` : ''}` : ''}` });
@@ -1327,6 +1334,7 @@ export class Orchestrator {
 
   private forget(live: Live) {
     if (this.live.get(live.workerId) === live) this.live.delete(live.workerId);
+    this.ctx.floor(live.floorId)?.workers.follows(live.workerId, false);
     if (live.asks) this.ctx.repo.setAskingKind(live.taskId, undefined);
     clearTimeout(live.holdTimer);
     clearTimeout(live.stopping?.timer);
@@ -1695,6 +1703,7 @@ export class Orchestrator {
     // A task asking in its terminal is idle but its run still goes: the machine stops that too.
     return this.op(taskId, async (task) => {
       const queued = task.runState === 'queued' ? task.queuedRun : undefined;
+      if (queued?.prompt === 'unhold' && task.hold) return void this.holds.cancelUnhold(task, who);
       const err = await this.apply(taskId, { type: 'stop' }, { who });
       if (!err && queued) this.queuedStopped(task, queued, `Stopped by ${who.name} before it started`);
       return err;

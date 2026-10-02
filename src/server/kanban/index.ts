@@ -139,6 +139,8 @@ export function installKanban(opts: KanbanInstallOptions): Kanban {
   /** The project of each task a card went out for, to say where a deleted one was. */
   const taskProjects = new Map<number, string>();
   const lounge = new LoungeSender(repo, opts.toFloor);
+  /** The tasks on hold and their projects, so a change that has nothing to do with the lounge costs it nothing (seeded from the database). */
+  const held = new Map(repo.tasksWhere({ status: ['on_hold'] }).map((t) => [t.id, t.project]));
 
   const broadcast = (msg: KanbanServerMsg, project: string | null) => {
     // An archived card leaves the board of anyone not looking at the archive.
@@ -214,15 +216,22 @@ export function installKanban(opts: KanbanInstallOptions): Kanban {
       if (card) {
         taskProjects.set(taskId, card.project);
         broadcast({ t: 'kanban.task', task: card }, card.project);
-        lounge.changed(card.project);
+        // Only a task that is or was on hold can change a floor's figures.
+        if (card.status === 'on_hold' || held.has(taskId)) {
+          if (card.status === 'on_hold') held.set(taskId, card.project);
+          else held.delete(taskId);
+          lounge.changed(card.project);
+        }
         // Its workers in the 3D office show the card too (WorkerInfo.kanban).
         return (ctx.engine as Partial<KanbanEngine> | undefined)?.cardChanged?.(taskId);
       }
       const was = taskProjects.get(taskId);
       taskProjects.delete(taskId);
       broadcast({ t: 'kanban.task.removed', id: taskId, project: was ?? '' }, was ?? null);
-      // Its project is known only when a card went out for it since the start: else every floor looks again (the signatures keep that cheap).
-      for (const id of was ? [was] : opts.floors().map((d) => d.id)) lounge.changed(id);
+      // A deleted task on hold takes its figure with it (its project is known from when it was seen held, even since a restart).
+      const figure = held.get(taskId);
+      held.delete(taskId);
+      if (figure) lounge.changed(figure);
     },
     attachmentFile: (id: string) => {
       const a = repo.getAttachment(id);

@@ -50,7 +50,7 @@ greyed out with the reason. What you can do by hand:
   desks go home first and the worktree stays on disk: the task's conversation says where, and on which
   branch.
 - **Waiting / Review → On hold** (not while it runs), asking why and until when; **On hold → In progress**
-  resumes it; **On hold → Review / Done / To do** work as from Waiting or Review (To do starts over).
+  resumes it (its creator or an admin, as for putting it on hold); **On hold → Review / Done / To do** work as from Waiting or Review (To do starts over).
 - **Anything → Archive**, except while it runs.
 - Not allowed: To do ↔ Done, and moving into In progress (from To do or On hold only), Waiting or Review any other way (use
   Continue, Retry or a comment).
@@ -76,11 +76,13 @@ Put such a task on hold instead of leaving it in Waiting or Review, where it cou
   figure sits on can't be sat on meanwhile (*… got there first*). The figures show
   on every project floor that uses the office map; a floor on a map of its own (the castle, a custom map) shows none.
   Aiming at a figure shows "⏸️ #id title — reason · until d.m." and **E** opens the task window.
-- **Resuming**: **▶️ Resume** in the task view, or move the card to In progress. A dialog takes an optional message for
+- **Resuming**: **▶️ Resume** in the task view, or move the card to In progress (the creator or an admin, as the hold was: it starts an agent on the creator's sign-in). A dialog takes an optional message for
   the agent. The task carries on in the same session and worktree, with the same worker name when it is free; a worktree
   removed meanwhile (for instance by `agent-office prune`) is recreated on the task's branch. Comments written while the
   task was on hold are kept and handed to the agent then. A task put on hold while its plan waited for approval or
   answers goes back to Waiting with that plan instead: approve it or answer its questions to carry on.
+  If Claude no longer has the session (a long hold), a fresh agent takes over in the same worktree with the task's handoff and
+  the messages; a session that exists is never dropped.
 - **Otherwise**: a held task doesn't count toward *tasks at once*, is never archived by itself, and leave-on-merge
   doesn't touch it. Fixing or reviewing its PRs through the task asks you to resume it first.
 
