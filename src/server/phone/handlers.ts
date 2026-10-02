@@ -7,6 +7,7 @@ import type { Client } from '../office/client.js';
 import type { Ctx } from '../office/context.js';
 import { str } from '../office/input.js';
 import type { FeatureHooks, HandlerMap } from '../ws/handlers/types.js';
+import { musicHandlers, musicHooks } from './music-handlers.js';
 import type { PhoneClientMsg } from '../../shared/phone/protocol.js';
 
 /** Who follows which floor (a person follows one at a time), per office. */
@@ -52,6 +53,7 @@ function start(ctx: Ctx, c: Client, floor: Floor) {
 }
 
 export const phoneHandlers = {
+  ...musicHandlers,
   'phone.watch'(ctx, c, msg) {
     const id = msg.floor === null ? '' : str(msg.floor, 64);
     const floor = id ? ctx.floors.get(id) : undefined;
@@ -61,5 +63,8 @@ export const phoneHandlers = {
 } satisfies HandlerMap<PhoneClientMsg>;
 
 export const phoneHooks: FeatureHooks = {
-  closed: (ctx, c) => stop(ctx, c),
+  closed: (ctx, c) => {
+    stop(ctx, c);
+    musicHooks.closed!(ctx, c);
+  },
 };

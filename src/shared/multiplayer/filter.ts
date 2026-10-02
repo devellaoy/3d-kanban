@@ -87,6 +87,7 @@ export const SERVER_MSG_OUT = {
   'phone.floor': 'rewrite',
   'phone.worker': 'rewrite',
   'phone.workerRemove': 'rewrite',
+  'phone.music': 'drop',
   // The building: the same for everyone.
   sky: 'pass',
   theme: 'pass',

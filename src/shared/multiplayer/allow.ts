@@ -189,6 +189,10 @@ export const CLIENT_MSG_CLASS = {
 
   // --- The phone: following the workers of a floor in scope (stopping is always fine) ---
   'phone.watch': 'scoped',
+  // Music is between the people of one office: a visitor neither plays nor controls it.
+  'phone.music.play': 'deny',
+  'phone.music.control': 'deny',
+  'phone.music.leave': 'deny',
 
   // --- The kanban: reading the board of a shared project is scoped; everything else is the owner's ---
   'kanban.subscribe': 'scoped',
