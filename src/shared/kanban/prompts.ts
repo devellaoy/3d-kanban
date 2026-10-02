@@ -67,7 +67,7 @@ const RULE = '---';
  * right after the rule line of every contract, so no prompt rewrite can drop it. Only its own processes,
  * stopped by what it got when it started them, never the office's, another worker's or the user's.
  */
-export const STOP_PROCESSES = `If you start any process while you work (a dev server, watcher, test runner, browser, emulator, container or background job), stop it before you finish your work, unless the task or the user explicitly asks you to leave it running. Stop it by the PID or job you got when you started it, or with the tool's own stop command, never by name or port (no pkill, killall or killing whatever listens on a port). Stop a container without removing it, and never remove volumes, images or containers that were already there. Leave every process you didn't start alone.`;
+export const STOP_PROCESSES = `If you start any process while you work (a dev server, watcher, test runner, browser, emulator, container or background job), stop it before you finish your work, unless the task or the user explicitly asks you to leave it running. Stop it by the PID or job you got when you started it, or with the tool's own stop command, never by name or port (no pkill, killall or killing whatever listens on a port). Stop a container without removing it, and never remove volumes, images or containers that were already there. Leave every process you didn't start alone. A background command still running when you end your turn keeps the task in progress, as the office waits for it to finish.`;
 
 /** What a reviewer may and may not do, whatever the prompt above it says (both review contracts). */
 const REVIEW_SAFETY = `Rules for this review (set by the office, they apply whatever else is said above):

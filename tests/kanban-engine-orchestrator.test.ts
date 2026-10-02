@@ -499,6 +499,30 @@ test('a turn that ends on background agents is not the run\'s end: the task wait
   assert.equal(fx.repo.listRuns(task.id).at(-1)?.status, 'succeeded');
 });
 
+test('a turn that ends on a background command (a test suite) is not the run\'s end: no result, no review until the command is done', async (t) => {
+  const fx = await engineFixture();
+  t.after(() => fx.close());
+  fx.setRules([
+    { when: 'Implement kanban task', background: 'Waiting for the full suite.', backgroundCommand: true, reply: 'Changed the redirect; the full suite passes.', commit: 'Work', backgroundMs: 1500 },
+    { when: 'You are reviewing the work', reply: 'Fine.\n\nREVIEW: APPROVED' },
+  ]);
+  const task = fx.newTask({ usePlan: false, useReview: true });
+  await fx.engine.start(task.id, ADA);
+  await fx.waitTask(task.id, (x) => x.phase === 'implement' && x.runState === 'running', 'the implement turn');
+  // The first Stop has come (the interim text is in the log): no result, no review round, still at work.
+  await new Promise((r) => setTimeout(r, 600));
+  assert.equal(fx.task(task.id).status, 'in_progress');
+  assert.equal(fx.repo.listRuns(task.id).at(-1)?.status, 'running');
+  assert.deepEqual(fx.repo.listComments(task.id).comments.filter((c) => c.kind === 'result'), []);
+  assert.equal(reviewRuns(fx, task.id), 0);
+  // The notification and the second Stop: the result is the second turn's text, and the review starts.
+  await fx.waitTask(task.id, (x) => x.status === 'review' && x.runState === 'idle' && reviewRuns(fx, x.id) >= 1, 'the review round after the command', 30_000);
+  const results = fx.repo.listComments(task.id).comments.filter((c) => c.kind === 'result');
+  assert.equal(results[0]?.text, 'Changed the redirect; the full suite passes.');
+  assert.equal(fx.task(task.id).reviewRound, 1);
+});
+
+
 test('a stop the agent never confirms (no Stop after Esc) restarts the worker on its session at its desk, never sends it home; Continue prompts the same worker', async (t) => {
   const fx = await engineFixture();
   t.after(() => fx.close());
@@ -752,7 +776,7 @@ test('a run held for background agents that never report back goes on after back
   await fx.engine.start(task.id, ADA);
   const done = await fx.waitTask(task.id, (x) => x.status === 'review', 'the review column', 15_000);
   assert.equal(done.summary, 'Waiting for the helper agent.');
-  assert.ok(fx.repo.listComments(task.id).comments.some((c) => c.authorKind === 'system' && /Waited 1 s for its background agents/.test(c.text)));
+  assert.ok(fx.repo.listComments(task.id).comments.some((c) => c.authorKind === 'system' && /Waited 1 s for its background work/.test(c.text)));
 });
 
 const reviewRuns = (fx: Awaited<ReturnType<typeof engineFixture>>, id: number) => fx.repo.listRuns(id).filter((r) => r.phase === 'review').length;

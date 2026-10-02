@@ -49,6 +49,8 @@ export interface Rule {
    */
   background?: string;
   backgroundMs?: number;
+  /** With `background`: the helper is a Bash `run_in_background` command (a test run), not an agent; it ends with a "Background command completed" notification. */
+  backgroundCommand?: boolean;
   /** With `background`: the resumed turn runs a tool this long (PreToolUse, no result yet) before it replies. */
   resumeToolMs?: number;
   /** With `background`: the first Stop comes with the log ending at the Agent call; its result and the interim text are logged this long after. */
@@ -175,10 +177,11 @@ async function turn(prompt, answered) {
       append({ type: 'user', message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: 'read-1', content: '# test' }] } });
     }
     if (rule.background !== undefined) {
-      const agent = 'agent-' + msgId;
-      append({ type: 'assistant', message: { id: msgId + '-bg', role: 'assistant', content: [{ type: 'tool_use', id: 'bg-1', name: 'Agent', input: { run_in_background: true } }] } });
+      const agent = (rule.backgroundCommand ? 'bash-' : 'agent-') + msgId;
+      append({ type: 'assistant', message: { id: msgId + '-bg', role: 'assistant', content: [{ type: 'tool_use', id: 'bg-1', name: rule.backgroundCommand ? 'Bash' : 'Agent', input: { run_in_background: true } }] } });
       const launched = () => {
-        append({ type: 'user', timestamp: new Date().toISOString(), message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: 'bg-1', content: [{ type: 'text', text: 'Async agent launched successfully.\nagentId: ' + agent + ' (internal ID)' }] }] }, toolUseResult: { isAsync: true, status: 'async_launched', agentId: agent } });
+        if (rule.backgroundCommand) append({ type: 'user', timestamp: new Date().toISOString(), message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: 'bg-1', content: 'Command running in background with ID: ' + agent + '. Output is being written to: /tmp/' + agent + '.output' }] }, toolUseResult: { stdout: '', stderr: '', interrupted: false, isImage: false, noOutputExpected: false, backgroundTaskId: agent } });
+        else append({ type: 'user', timestamp: new Date().toISOString(), message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: 'bg-1', content: [{ type: 'text', text: 'Async agent launched successfully.\nagentId: ' + agent + ' (internal ID)' }] }] }, toolUseResult: { isAsync: true, status: 'async_launched', agentId: agent } });
         append({ type: 'assistant', message: { id: msgId + '-wait', role: 'assistant', content: [{ type: 'text', text: rule.background }] } });
       };
       if (rule.launchLateMs) {
@@ -190,7 +193,7 @@ async function turn(prompt, answered) {
         await post('Stop', { last_assistant_message: rule.background });
       }
       await new Promise((r) => setTimeout(r, rule.backgroundMs ?? 300));
-      append({ type: 'user', origin: { kind: 'task-notification', producer: 'session-task' }, message: { role: 'user', content: '<task-notification>\n<task-id>' + agent + '</task-id>\n<status>completed</status>\n</task-notification>' } });
+      append({ type: 'user', origin: { kind: 'task-notification', producer: 'session-task' }, message: { role: 'user', content: '<task-notification>\n<task-id>' + agent + '</task-id>\n<status>completed</status>\n<summary>' + (rule.backgroundCommand ? 'Background command "suite" completed (exit code 0)' : 'Agent "helper" completed') + '</summary>\n</task-notification>' } });
       if (rule.resumeToolMs) {
         append({ type: 'assistant', message: { id: msgId + '-tool', role: 'assistant', content: [{ type: 'tool_use', id: 'bg-2', name: 'Bash', input: { command: 'sleep' } }] } });
         await post('PreToolUse', { tool_name: 'Bash', tool_input: { command: 'sleep' } });
