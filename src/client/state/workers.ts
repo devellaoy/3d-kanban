@@ -6,12 +6,15 @@ export function findWorker(id: string): WorkerInfo | undefined {
   return store.workers.get(id) ?? store.phoneFloor?.workers.get(id);
 }
 
+/** Whether a worker is on the floor the phone follows (and not on yours). */
+const onPhoneFloor = (id: string) => !store.workers.has(id) && !!store.phoneFloor?.workers.has(id);
+
 /** The project of the floor a worker is on, for its provider's name: yours when it's on your floor. */
 export function projectOf(id: string): ProjectInfo | null {
-  return store.workers.has(id) || !store.phoneFloor?.workers.has(id) ? store.project : store.phoneFloor.project;
+  return onPhoneFloor(id) ? store.phoneFloor!.project : store.project;
 }
 
 /** The id of the floor a worker sits on: yours, or the one the phone follows. */
 export function floorOfWorker(id: string): string | null {
-  return store.workers.has(id) || !store.phoneFloor?.workers.has(id) ? store.floor : store.phoneFloor.floor;
+  return onPhoneFloor(id) ? store.phoneFloor!.floor : store.floor;
 }

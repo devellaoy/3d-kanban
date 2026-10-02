@@ -7,7 +7,7 @@ import type { PhoneMusicControl } from '../../shared/phone/music';
 import { visiting } from '../multiplayer/visit';
 import type { Net } from '../net';
 import { store, type Settings } from '../state';
-import { h, inTopModal } from '../ui/dom';
+import { h, inTopModal, onModalChange } from '../ui/dom';
 import type { TvControlsSource } from '../youtube/controls';
 import { SyncedPlayer } from '../youtube/player';
 import type { YoutubeOnTv } from '../youtube/slice';
@@ -25,11 +25,19 @@ export class PhonePlayer {
   private readonly sp: SyncedPlayer;
   private slot: HTMLElement | null = null;
   private placed = '';
+  private frames = 0;
+  private watch: ResizeObserver | null = null;
   private readonly listeners = new Set<() => void>();
 
   constructor(private readonly deps: PhonePlayerDeps) {
     this.el.append(this.host);
     document.body.append(this.el);
+    // The box only needs lining up again when something may have moved: these say so, and frame() checks now and then anyway.
+    const again = () => this.place();
+    window.addEventListener('resize', again);
+    window.addEventListener('scroll', again, { capture: true, passive: true }); // the phone's body scrolls
+    onModalChange(again);
+    if (typeof ResizeObserver !== 'undefined') this.watch = new ResizeObserver(again);
     this.sp = new SyncedPlayer({
       host: this.host,
       size: { width: '100%', height: '100%' },
@@ -66,7 +74,9 @@ export class PhonePlayer {
 
   /** Lays the video over `slot` (a box the phone's screen keeps 16:9), or parks it again with null. */
   mount(slot: HTMLElement | null) {
+    this.watch?.disconnect();
     this.slot = slot;
+    if (slot) this.watch?.observe(slot);
     this.place();
   }
 
@@ -75,9 +85,9 @@ export class PhonePlayer {
     this.sp.changed();
   }
 
-  /** Each frame: follows the slot, and keeps the player in step. */
+  /** Each frame: keeps the player in step; the slot is followed on events, and checked every 10th frame in case one was missed. */
   frame(now: number) {
-    this.place();
+    if (++this.frames % 10 === 0) this.place();
     this.sp.tick(now);
   }
 

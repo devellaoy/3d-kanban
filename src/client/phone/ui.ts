@@ -116,10 +116,7 @@ export function openPhone(deps: PhoneDeps, onClosed: () => void, start: PhoneTab
 
   /** A worker's card, its button known by the worker (see refocus.ts). */
   function card(w: WorkerInfo, project: ProjectInfo | null): HTMLElement {
-    const li = workerCard(w, { onOpen: deps.openWorker, onPrompt: deps.promptWorker, project });
-    const btn = li.querySelector<HTMLElement>('.lite-card');
-    if (btn) btn.dataset.key = `worker:${w.id}`;
-    return li;
+    return workerCard(w, { onOpen: deps.openWorker, onPrompt: deps.promptWorker, project, key: `worker:${w.id}` });
   }
 
   function renderProcesses(floor: string) {

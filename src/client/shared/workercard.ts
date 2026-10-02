@@ -17,6 +17,8 @@ export interface WorkerCardOpts {
   onPrompt?(id: string): void;
   /** The project the worker's floor has, for its provider's name (default: your floor's). */
   project?: ProjectInfo | null;
+  /** Sets the card button's `data-key`, for keeping its focus across a redraw (see refocus.ts). */
+  key?: string;
 }
 
 /** The card of one worker, a list item. */
@@ -49,7 +51,7 @@ export function workerCard(w: WorkerInfo, opts: WorkerCardOpts): HTMLElement {
     { class: `${w.status}${waiting ? ' waiting' : ''}` },
     h(
       'button.lite-card',
-      { type: 'button', onclick: () => opts.onOpen(w.id), 'aria-label': `${w.name}, ${STATUS_LABEL[w.status] ?? w.status}: open its terminal` },
+      { type: 'button', ...(opts.key ? { 'data-key': opts.key } : {}), onclick: () => opts.onOpen(w.id), 'aria-label': `${w.name}, ${STATUS_LABEL[w.status] ?? w.status}: open its terminal` },
       h('span.dot', { style: `background:${w.color}` }),
       h(
         'span.lite-info',

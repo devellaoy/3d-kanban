@@ -279,6 +279,7 @@ export function filterForVisitor(msg: ServerMsg, scope: VisitorScope, ctx: Filte
     case 'phone.worker':
       return floorOk(msg.floor) && workerOk(msg.worker, scope) ? { ...msg, worker: workerFor(msg.worker) } : undefined;
     case 'phone.workerRemove':
+      // Intentionally no workerOk: it carries only an id, as worker.remove passes.
       return floorOk(msg.floor) ? msg : undefined;
     case 'floors':
       return { t: 'floors', floors: msg.floors.filter((f) => floorOk(f.id)).map(floorFor) };
