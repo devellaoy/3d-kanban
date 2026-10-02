@@ -12,6 +12,7 @@ import { UNDEAD_SKIN, santaHat, warlockHat } from '../costumes';
 import { disposeSprite, mesh, textSprite, toon, toonUnique } from '../toon';
 import { EXHALE_AT, REACH_TIME, SMOKE_CYCLE, dragCurve, reachCurve } from './curves';
 import { cigarette, coffeeMug, drinkGlass, putDownGlass, undress } from './props';
+import { SpeechBubble } from './speech';
 import { styleHair } from './person-hair';
 import { clubSwing, strike, swingStep, type Golf } from './person-golf';
 import { propPosition, throwStep, type Oche } from './person-throw';
@@ -116,7 +117,7 @@ export class Person {
   /** A hand on someone's shoulder, marching them along (see holdOn). */
   private gripping = false;
   /** Something they're saying (see say), and for how many more seconds. */
-  private speech: { sprite: THREE.Sprite; left: number } | null = null;
+  private speech: SpeechBubble | null = null;
 
   constructor(
     private name: string,
@@ -300,6 +301,7 @@ export class Person {
     const lift = this.doing ? DOING_LIFT : 0;
     if (this.label) this.label.position.y = 2.0 + lift;
     this.mic.position.y = 2.25 + lift;
+    if (this.speech) this.speech.sprite.position.y = this.bubbleY;
   }
 
   /** How loud this person is talking right now (0 when silent); drives the mic badge and the mouth. */
@@ -331,19 +333,20 @@ export class Person {
     this.gripping = on;
   }
 
-  /** Says something in a bubble over their head for `seconds` (the one before goes). */
-  say(text: string, seconds = 3.5) {
+  /** Says something in a speech bubble over their head (the one before goes); `seconds` defaults to what the text takes to read. */
+  say(text: string, seconds?: number, border?: string) {
     this.hush();
-    this.speech = { sprite: textSprite(text, { bg: '#fffaf3', size: 34 }), left: seconds };
-    this.speech.sprite.position.y = this.bubbleY;
+    this.speech = new SpeechBubble(text, { seconds, border });
     this.root.add(this.speech.sprite);
+    this.placeLabels();
+    this.emojiLift = this.speech.height + 0.1; // an emote's emoji floats above the bubble
   }
 
-  private hush() {
+  hush() {
     if (!this.speech) return;
-    this.root.remove(this.speech.sprite);
-    disposeSprite(this.speech.sprite);
+    this.speech.dispose();
     this.speech = null;
+    this.emojiLift = 0;
   }
 
   /** A mug of coffee in the left hand, or not. */
@@ -653,10 +656,7 @@ export class Person {
       this.armL.rotation.x = THREE.MathUtils.lerp(this.armL.rotation.x, -1.15, Math.min(1, dt * 10));
       this.armL.rotation.z = THREE.MathUtils.lerp(this.armL.rotation.z, 0.3, Math.min(1, dt * 10));
     }
-    if (this.speech) {
-      this.speech.left -= dt;
-      if (this.speech.left <= 0) this.hush();
-    }
+    if (this.speech && !this.speech.tick(dt)) this.hush();
     // Lean into the reach a little.
     this.body.rotation.x = reach * 0.12;
     this.body.rotation.z = 0;
