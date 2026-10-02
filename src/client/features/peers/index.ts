@@ -1,6 +1,6 @@
 /**
  * Everyone else on your floor, as you see them: where they are and what they're up to, walking,
- * sitting, climbing, driving and smoking, what they said (a bubble over their head), and how loud
+ * sitting, driving and smoking, what they said (a bubble over their head), and how loud
  * they are to you.
  */
 import * as THREE from 'three';
@@ -9,7 +9,6 @@ import { seatOn } from '../../../shared/maps';
 import type { PeerInfo } from '../../../shared/protocol';
 import { DRINK_BY_ID } from '../../../shared/rooftop';
 import { CARS, seatHips } from '../../../shared/garage';
-import { gripOf, type Grip } from '../climbing/controller';
 import type { Ctx } from '../../core/context';
 import type { CoreState } from '../../core/ctx';
 import { noOutline } from '../../core/outline';
@@ -29,14 +28,12 @@ export interface RemotePeer {
   look: PeerInfo['look'];
   /** Seconds walked since their last footstep. */
   stepT: number;
-  /** On the ladder or a pole, going by where they are. */
-  grip: Grip | null;
 }
 
 /** Registers what follows the people in the office (store 'peers' and 'cars'), their ticks, and chat and peer.act. */
 export function installPeers(ctx: Ctx, core: CoreState, parts: Pick<Parts, 'puff' | 'worlds' | 'cars' | 'walking' | 'talk' | 'hud'>) {
-  const { scene, voice, sound, player, office } = ctx;
-  const { plan, inOffice } = parts.worlds;
+  const { scene, voice, sound, player } = ctx;
+  const { plan } = parts.worlds;
   const remotes = new Map<string, RemotePeer>();
   const editProfile = () => parts.hud.editProfile();
   const walkTo = (id: string) => parts.walking.walkTo(id);
@@ -53,7 +50,7 @@ export function installPeers(ctx: Ctx, core: CoreState, parts: Pick<Parts, 'puff
         person.root.position.set(peer.x, peer.y, peer.z);
         scene.add(person.root);
         noOutline(person.root);
-        r = { person, target: new THREE.Vector3(peer.x, peer.y, peer.z), rotY: peer.rotY, moving: false, label: '', look: { ...peer.look }, stepT: 0, grip: null };
+        r = { person, target: new THREE.Vector3(peer.x, peer.y, peer.z), rotY: peer.rotY, moving: false, label: '', look: { ...peer.look }, stepT: 0 };
         remotes.set(id, r);
       }
       const label = `${peer.name}|${peer.voice ? (peer.muted ? 'm' : 'v') : '-'}|${peer.color}`;
@@ -115,13 +112,8 @@ export function installPeers(ctx: Ctx, core: CoreState, parts: Pick<Parts, 'puff
       // On their feet if they're standing on something: the floor, a desk, a stair, the loft.
       const ground = groundAt(player.colliders, p.x, p.z, p.y);
       const airborne = !sat && p.y > ground + 0.05;
-      // Or holding on to the ladder or a pole; off a pole onto the mat, the firehouse bell rings.
-      const holding = sat || core.upTop || !inOffice() ? null : gripOf(p, office.stack.poles(), ground);
-      if (r.grip === 'pole' && !holding && Math.abs(p.y) < 0.2) sound.poleLanding(6, { x: pos.x, y: 0.5, z: pos.z });
-      r.grip = holding;
-      r.person.setGrip(holding);
       const walking = !sat && p.moving && !airborne;
-      r.person.update(dt, t, walking || (holding === 'ladder' && p.moving), airborne && !holding && Math.abs(pos.y - r.target.y) > 0.01);
+      r.person.update(dt, t, walking, airborne && Math.abs(pos.y - r.target.y) > 0.01);
       // Their walk cycle takes a step every π/11 seconds.
       r.stepT = walking ? r.stepT + dt : 0.2;
       if (r.stepT >= Math.PI / 11) {

@@ -314,7 +314,7 @@ test('standing still in third person, you turn (smoothly) to where the camera lo
   assert.ok(!player.moving);
 });
 
-test("third person: what has hold of you (golf, the throwing line, the ladder) and a seat keep their own facing", (t) => {
+test("third person: what has hold of you (golf, the throwing line) and a seat keep their own facing", (t) => {
   const { player, keys, frames } = controller(t);
   player.pos.set(0, 0, 0);
   player.setView('third');

@@ -22,7 +22,6 @@ import { billiards, type BilliardsSound } from '../features/billiards/sound';
 import { Dj, hiccup, pour } from '../features/bar/sound';
 import type { CarKind } from '../../shared/garage';
 import { carDoor, crash, honk, Motors, type Engine } from '../features/cars/sound';
-import { bonk, hatch, poleLanding, rung, slide, twirl } from '../features/climbing/sound';
 import { coffee } from '../features/coffee/sound';
 import { AudioCore, type Hall, type Listener } from './core';
 import { bark, yip } from '../features/dog/sound';
@@ -163,15 +162,7 @@ export class OfficeSound {
     stepAt(this.a, x, z, y);
   }
 
-  // ---- The ladder, the fire poles and the dungeon (features/climbing, features/workers) ------------
-
-  rung(soft = false) {
-    rung(this.a, soft);
-  }
-
-  hatch(at: Pos, open: boolean) {
-    hatch(this.a, at, open);
-  }
+  // ---- The dungeon (features/workers) --------------------------------------------------------------
 
   cellDoor(at: Pos, open: boolean) {
     cellDoor(this.a, at, open);
@@ -179,22 +170,6 @@ export class OfficeSound {
 
   thud(at: Pos) {
     thud(this.a, at);
-  }
-
-  bonk() {
-    bonk(this.a);
-  }
-
-  slide(seconds = 1.6) {
-    slide(this.a, seconds);
-  }
-
-  twirl() {
-    twirl(this.a);
-  }
-
-  poleLanding(speed: number, at?: Pos) {
-    poleLanding(this.a, speed, at);
   }
 
   // ---- Games (features/golf, bargames, basketball and cabinet) -------------------------------------
