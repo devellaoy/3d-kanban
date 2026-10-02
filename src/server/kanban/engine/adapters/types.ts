@@ -63,6 +63,8 @@ export interface TaskAgentAdapter {
    * process. Codex ignores it.
    */
   readTurnResult(transcriptPath: string, opts?: { since?: number }): TurnResult | undefined;
+  /** Whether the log shows the turn interrupted (an Esc) at or after `since` (ms); only Claude logs that. */
+  interruptedSince?(transcriptPath: string, since: number): boolean;
   /** What upstream's spawn may carry as the worker's model (it validates it); the rest goes in launchArgs. */
   spawnModel(model?: string): string | undefined;
   spawnEffort(effort?: KanbanEffort): 'low' | 'medium' | 'high' | 'xhigh' | 'max' | undefined;

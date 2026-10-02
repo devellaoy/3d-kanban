@@ -131,7 +131,9 @@ allowed: `todo → in_progress` (= start), `waiting|review → done`, `done → 
   hook's `last_assistant_message` as the fallback. ExitPlanMode isn't held back. A hold ends after
   `backgroundWaitMs` (3 h) without a Stop: a note says so and the run goes on with what its log says.
   ⏹️ Stop while held ends the run as stopped and restarts the worker on its session at its desk
-  (`workers.relaunch`, no prompt; Continue carries on there), which ends its helper agents; once the turn has resumed it is Esc as usual, and a Stop hook heard while a
+  (`workers.relaunch`, no prompt; Continue carries on there), which ends its helper agents (only in-process
+  background agents are assumed to end with a restart: Bash `run_in_background` children and teammates in
+  other processes may outlive it, which only affects how long Continue waits); once the turn has resumed it is Esc as usual, and a Stop hook heard while a
   stop is under way finishes it. Only background *agents* and teammates are counted: Bash `run_in_background`
   tasks also resume Claude but aren't, so such a run can still end early. Known limit: someone typing a
   prompt into a held worker's terminal starts a new window, so the background agents still working stop
@@ -277,7 +279,7 @@ allowed: `todo → in_progress` (= start), `waiting|review → done`, `done → 
   `Floor.sendHome` / `WorkerManager.kill` (WS `worker.kill {kanban: {done}}`, HTTP/CLI home, the queue's recycle,
   meetings, leave-on-merge, the engine). It is kept on the worker and arrives with the `removed` observation, so
   the engine's `removed()` needs no second event. `engine` departures only finish what the engine was doing
-  (a Stop never causes one: a Stop that timed out ends the run as `stopped` first and relaunches the worker, see `engine/stopping.ts`; a worker that can't be relaunched, no session yet, stays as it is and the comment says so). Every other one writes exactly one status comment and applies:
+  (a Stop never causes one: Esc is tried first; one that isn't confirmed in `stopGraceMs` (no rest, no Stop hook, no interrupt line in Claude's transcript, which finishes the stop with the worker resting) ends the run as `stopped` and relaunches the worker, see `engine/stopping.ts`, unless the stop had finished by then; a worker that can't be relaunched (no session yet, a process that won't exit) stays at its desk, with its agent process ended in place if it was working, and the comment says so). Every other one writes exactly one status comment and applies:
   implementer with a live run → run `stopped`, task `waiting` (`stopped`, Retry), or `done` with `done`;
   implementer without one → `done` with `done`, else it keeps its column (`in_progress` with nothing running →
   `waiting`/`interrupted`; `retryAt` cleared only for `sent-home`, so any other send-home keeps a usage-limit auto-resume); reviewer with a live run → the round is dropped (`reviewAbandoned`):

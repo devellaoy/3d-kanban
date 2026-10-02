@@ -44,7 +44,8 @@ export interface Pty {
   readonly pid: number;
   write(data: string): void;
   resize(cols: number, rows: number): void;
-  kill(): void;
+  /** `signal` (a name like SIGKILL) for a process that ignores the default one. */
+  kill(signal?: string): void;
   onData(cb: (data: string) => void): void;
   onExit(cb: (e: PtyExit) => void): void;
 }
@@ -67,7 +68,7 @@ export type ToHost =
   | { t: 'attach'; id: string }
   | { t: 'write'; id: string; data: string }
   | { t: 'resize'; id: string; cols: number; rows: number }
-  | { t: 'kill'; id: string }
+  | { t: 'kill'; id: string; signal?: string }
   | { t: 'stop' };
 
 export type FromHost =
@@ -123,8 +124,8 @@ class RemotePty implements Pty {
     this.send({ t: 'resize', id: this.id, cols, rows });
   }
 
-  kill() {
-    this.send({ t: 'kill', id: this.id });
+  kill(signal?: string) {
+    this.send({ t: 'kill', id: this.id, signal });
   }
 
   onData(cb: (data: string) => void) {

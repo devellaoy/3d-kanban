@@ -93,6 +93,10 @@ export interface Rule {
    * posted and the worker stays `working`, as real Claude Code does (it fires no Stop hook on Esc). The turn stops quietly.
    */
   escSilent?: boolean;
+  /** With `escSilent`: the Esc is logged in the transcript as Claude logs it ("[Request interrupted by user]"), the only sign of it. */
+  escLogs?: boolean;
+  /** With `escSilent`: the Stop hook does come, this many ms after the Esc (a late confirmation). */
+  escStopMs?: number;
   questions?: number;
   answerDelayMs?: number;
 }
@@ -142,11 +146,15 @@ const nap = (ms) => new Promise((resolve) => {
 let questions = 0;
 let answerDelay = 0;
 let silent = false;
+let escLogs = false;
+let escStopMs;
 async function turn(prompt, answered) {
   record({ prompt });
   if (!answered) await post('UserPromptSubmit', { prompt });
   const rule = rules().find((r) => new RegExp(r.when).test(prompt)) || { reply: 'OK' };
   silent = !!rule.escSilent;
+  escLogs = !!rule.escLogs;
+  escStopMs = rule.escStopMs;
   if (silent && rule.delayMs) {
     if (await nap(rule.delayMs)) return;
   } else if (rule.delayMs) await new Promise((r) => setTimeout(r, rule.delayMs));
@@ -304,7 +312,9 @@ process.stdin.on('data', (chunk) => {
     buf = '';
     record({ interrupted: true });
     if (wake) wake();
+    if (silent && escLogs) append({ type: 'user', timestamp: new Date().toISOString(), message: { role: 'user', content: [{ type: 'text', text: '[Request interrupted by user]' }] } });
     if (!silent) chain = chain.then(() => post('Stop', {}));
+    else if (escStopMs !== undefined) setTimeout(() => post('Stop', {}), escStopMs);
   }
 });
 process.stdin.resume();

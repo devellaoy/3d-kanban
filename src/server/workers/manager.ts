@@ -904,7 +904,7 @@ export class WorkerManager extends KanbanWorkers {
     else if (!busy && (s === 'working' || (s === 'needs_input' && !w.bootBlocked))) this.setStatus(w, 'done');
   }
 
-  private setStatus(w: Worker, status: WorkerStatus) {
+  protected setStatus(w: Worker, status: WorkerStatus) {
     if (w.info.status === status) return;
     if (w.info.status === 'needs_input') w.leftNeedsInputAt = Date.now();
     clockWork(w.info, status);
