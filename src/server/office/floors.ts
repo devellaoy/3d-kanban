@@ -28,14 +28,18 @@ export function floorHelpers(ctx: Ctx): FloorHelpers {
   // The elevator's counts change with every worker update; tell everyone at most a few times a second.
   let floorsSent = '';
   let floorsTimer: NodeJS.Timeout | undefined;
-  const floorsChanged = () => {
+  let floorsResend = false;
+  const floorsChanged = (resend = false) => {
+    if (resend) floorsResend = true;
     floorsTimer ??= setTimeout(() => {
       floorsTimer = undefined;
       ctx.kanban?.projectsChanged(); // its project list follows the floors (it sends only when it changed)
       mpOf(ctx)?.floorsChanged(); // a visitor loses a floor whose repositories changed
       const list = floorInfos();
       const json = JSON.stringify(list);
-      if (json === floorsSent) return;
+      const force = floorsResend;
+      floorsResend = false;
+      if (json === floorsSent && !force) return;
       floorsSent = json;
       ctx.broadcast({ t: 'floors', floors: list });
     }, 250);
@@ -69,7 +73,11 @@ export function floorHelpers(ctx: Ctx): FloorHelpers {
     ctx.pumpQueues();
   };
 
-  return { floorOf, workerFloor, floorInfos, floorsChanged, cancelFloorsChanged: () => clearTimeout(floorsTimer), arrivalFloor, closeFloor };
+  return { floorOf, workerFloor, floorInfos, floorsChanged, cancelFloorsChanged: () => {
+      clearTimeout(floorsTimer);
+      floorsTimer = undefined;
+      floorsResend = false;
+    }, arrivalFloor, closeFloor };
 }
 
 /**

@@ -69,10 +69,10 @@ export const floorHandlers = {
     const err = key !== undefined ? ctx.building.moveGroup(key, above) : ctx.building.moveFloor(id, above);
     if (err) {
       ctx.warn(c, err);
-      ctx.floorsChanged(); // the sender's guess at the new order goes back to the real one
+      ctx.floorsChanged(true); // the sender's guess at the new order goes back to the real one, even if it's the last list sent
       return;
     }
-    ctx.floorsChanged();
+    ctx.floorsChanged(true); // other admins may have guessed at orders of their own that the final one doesn't equal the last sent
     const list = ctx.building.list();
     // A step that changed nothing (a stale one, or the same drop twice) is nothing to tell anyone.
     if (list.every((d, i) => d.id === before[i])) return;
