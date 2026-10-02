@@ -12,6 +12,7 @@
 
 import * as THREE from 'three';
 import { lookFromSeed } from '../../shared/avatar';
+import { isEmote } from '../../shared/emotes';
 import { DESKS } from '../../shared/layout';
 import { buildCabinet } from '../features/cabinet/world';
 import { supercar } from '../features/cars/world';
@@ -79,10 +80,14 @@ const SHOW: Record<string, () => Shown> = {
     return { object };
   },
   chat: () => {
-    // Someone saying a chat line in their speech bubble (say=<text> for another line), name tag under it.
+    // Someone saying a chat line in their speech bubble (say=<text> for another line), name tag under it;
+    // doing=<text> puts a line under the name tag, emote=<id> has them emote over the bubble.
     const p = new Person('Ada', '#ef476f', lookFromSeed('ada'));
     p.setLabel('Ada', false);
+    if (q.has('doing')) p.setDoing(q.get('doing')!);
     p.say(q.get('say') ?? 'Hey, the build on main is green again, can someone have a look at the PR before lunch?', 60, '#ef476f');
+    const emote = q.get('emote');
+    if (isEmote(emote)) p.emote(emote);
     return { object: p.root, update: (dt, t) => p.update(dt, t, false, false) };
   },
   lambo: () => ({ object: supercar('lambo', '#ffd166').root }),
