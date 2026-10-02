@@ -33,6 +33,7 @@ import { fixTargetsOf, forkTest, polledPulls } from '../integrations/pulls/prfix
 import { next, queuedOf, runOf, stateOf, type Effect, type LastRun, type MachineEvent, type PromptKind, type RunEffect } from './machine.js';
 import { backoffMs, looksInterrupted, planOutcome, prLines, reviewFindings, reviewVerdict, stripPlanMarkers } from './markers.js';
 import { limitReset } from './limitreset.js';
+import { STOP_TIMED_OUT, STOP_WHILE_BACKGROUND, stopAndRestart } from './stopping.js';
 import { branchExists, checkoutLines, currentBranch, homeCleanup, hasChanges, missingFolders } from './workspace.js';
 import { Handoffs } from './handoff.js';
 
@@ -1630,7 +1631,7 @@ export class Orchestrator {
 
   // --- Stopping -----------------------------------------------------------------------------------
 
-  /** Esc into the running turn's terminal; sent home (worktree kept) if it hasn't stopped in a few seconds. */
+  /** Esc into the running turn's terminal; restarted on its session at its desk (never sent home) if it hasn't stopped in a few seconds. */
   private interrupt(task: KanbanTask, who?: KanbanCaller) {
     const live = this.liveOf(task.id);
     if (!live) {
@@ -1640,17 +1641,17 @@ export class Orchestrator {
     }
     const floor = this.ctx.floor(live.floorId);
     live.stopping = { ...(who ? { by: who.name } : {}) };
-    // At rest while its background agents work: nothing to interrupt, so it goes home (worktree kept), which ends the session
-    // and its helper agents; its removal (see removed) finishes the stop. A turn that has resumed gets Esc as usual.
+    // At rest while its background agents work: nothing to interrupt, so it is restarted on its session at its desk (never sent
+    // home), which ends its helper agents. A turn that has resumed gets Esc as usual.
+    const say = (text: string) => this.note(task, text, live.runId);
     const status = floor?.workers.get(live.workerId)?.status;
-    if (live.background && floor && (status === 'done' || status === 'idle')) return void floor.sendHome(live.workerId, homeCleanup(task, floor.workers.get(live.workerId)), ENGINE);
+    if (live.background && floor && (status === 'done' || status === 'idle')) return void this.serial(live.taskId, () => stopAndRestart(floor, live.workerId, () => this.stoppedRun(live), say, STOP_WHILE_BACKGROUND));
     floor?.workers.write(live.workerId, ESC, who?.name ?? 'Kanban');
     live.stopping.timer = setTimeout(() => {
       if (this.live.get(live.workerId) !== live || live.ended) return;
       const f = this.ctx.floor(live.floorId);
       if (!f) return void this.serial(live.taskId, () => this.stoppedRun(live));
-      // Its removal (see removed) finishes the stop.
-      void f.sendHome(live.workerId, homeCleanup(this.ctx.repo.getTask(live.taskId), f.workers.get(live.workerId)), ENGINE);
+      void this.serial(live.taskId, () => stopAndRestart(f, live.workerId, () => this.stoppedRun(live), say, STOP_TIMED_OUT));
     }, this.opts.stopGraceMs);
     live.stopping.timer.unref?.();
   }

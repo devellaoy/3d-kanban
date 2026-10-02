@@ -88,6 +88,11 @@ export interface Rule {
    * and the turn goes on by the rule matching the last answer.
    */
   ask?: boolean | 'question';
+  /**
+   * Claude only, with `delayMs`: the turn works that long and an Esc doesn't end it as far as the office can tell: no Stop is
+   * posted and the worker stays `working`, as real Claude Code does (it fires no Stop hook on Esc). The turn stops quietly.
+   */
+  escSilent?: boolean;
   questions?: number;
   answerDelayMs?: number;
 }
@@ -136,11 +141,15 @@ const nap = (ms) => new Promise((resolve) => {
 });
 let questions = 0;
 let answerDelay = 0;
+let silent = false;
 async function turn(prompt, answered) {
   record({ prompt });
   if (!answered) await post('UserPromptSubmit', { prompt });
   const rule = rules().find((r) => new RegExp(r.when).test(prompt)) || { reply: 'OK' };
-  if (rule.delayMs) await new Promise((r) => setTimeout(r, rule.delayMs));
+  silent = !!rule.escSilent;
+  if (silent && rule.delayMs) {
+    if (await nap(rule.delayMs)) return;
+  } else if (rule.delayMs) await new Promise((r) => setTimeout(r, rule.delayMs));
   if (rule.exit) process.exit(3);
   if (rule.git) cp.execFileSync('git', rule.git, { cwd: process.cwd(), stdio: 'ignore' });
   if (rule.commit) cp.execFileSync('git', ['-c', 'user.name=Fake', '-c', 'user.email=fake@example.com', 'commit', '--allow-empty', '-q', '-m', rule.commit], { cwd: process.cwd() });
@@ -161,7 +170,7 @@ async function turn(prompt, answered) {
       const agent = 'agent-' + msgId;
       append({ type: 'assistant', message: { id: msgId + '-bg', role: 'assistant', content: [{ type: 'tool_use', id: 'bg-1', name: 'Agent', input: { run_in_background: true } }] } });
       const launched = () => {
-        append({ type: 'user', message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: 'bg-1', content: [{ type: 'text', text: 'Async agent launched successfully.\nagentId: ' + agent + ' (internal ID)' }] }] }, toolUseResult: { isAsync: true, status: 'async_launched', agentId: agent } });
+        append({ type: 'user', timestamp: new Date().toISOString(), message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: 'bg-1', content: [{ type: 'text', text: 'Async agent launched successfully.\nagentId: ' + agent + ' (internal ID)' }] }] }, toolUseResult: { isAsync: true, status: 'async_launched', agentId: agent } });
         append({ type: 'assistant', message: { id: msgId + '-wait', role: 'assistant', content: [{ type: 'text', text: rule.background }] } });
       };
       if (rule.launchLateMs) {
@@ -295,7 +304,7 @@ process.stdin.on('data', (chunk) => {
     buf = '';
     record({ interrupted: true });
     if (wake) wake();
-    chain = chain.then(() => post('Stop', {}));
+    if (!silent) chain = chain.then(() => post('Stop', {}));
   }
 });
 process.stdin.resume();

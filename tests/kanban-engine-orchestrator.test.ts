@@ -480,7 +480,40 @@ test('a turn that ends on background agents is not the run\'s end: the task wait
   assert.equal(fx.repo.listRuns(task.id).at(-1)?.status, 'succeeded');
 });
 
-test('stop while the turn waits on background agents sends the worker home (stopping its helpers), the worktree stays', async (t) => {
+test('a stop the agent never confirms (no Stop after Esc) restarts the worker on its session at its desk, never sends it home; Continue prompts the same worker', async (t) => {
+  const fx = await engineFixture();
+  t.after(() => fx.close());
+  fx.setRules([
+    { when: 'Implement kanban task', reply: 'Done.', delayMs: 30_000, escSilent: true },
+    { when: 'Carry on please', reply: 'Carried on.' },
+  ]);
+  const task = fx.newTask({ usePlan: false, useReview: false });
+  await fx.engine.start(task.id, ADA);
+  const running = await fx.waitTask(task.id, (x) => x.phase === 'implement' && x.runState === 'running', 'the implement turn');
+  const workerId = running.workerId!;
+  await new Promise((r) => setTimeout(r, 500));
+  const launches = () => fx.invocations().filter((i) => i.kind === 'claude' && !i.prompt && !i.interrupted && !i.args.includes('--output-format'));
+  const before = launches().length;
+  assert.equal(await fx.engine.stop(task.id, ADA), undefined);
+  const stopped = await fx.waitTask(task.id, (x) => x.status === 'waiting' && x.waitingReason === 'stopped', 'the stop', 10_000);
+  assert.equal(fx.invocations().some((i) => i.interrupted), true, 'Esc was typed');
+  assert.equal(fx.repo.listRuns(task.id).at(-1)?.status, 'stopped');
+  assert.ok(fx.workers.get(workerId), 'the same worker is still at its desk');
+  assert.equal(stopped.workerId, workerId);
+  assert.ok(stopped.workspace, 'the worktree stays with the task');
+  await new Promise((r) => setTimeout(r, 800));
+  const after = launches();
+  assert.equal(after.length, before + 1, 'the worker was relaunched');
+  assert.ok(after.at(-1)!.args.includes('--resume'), 'on its session');
+  assert.ok(fx.workers.get(workerId), 'still there after the restart');
+  assert.ok(fx.repo.listComments(task.id).comments.some((c) => c.kind === 'status' && /restarted on its session at its desk/.test(c.text)), 'the note');
+  assert.equal(await fx.engine.continue(task.id, ADA, 'Carry on please'), undefined);
+  const done = await fx.waitTask(task.id, (x) => x.status === 'review' || x.status === 'done' || x.runState === 'idle', 'the carried-on turn', 8000);
+  assert.equal(done.workerId, workerId, 'the same worker took it');
+  assert.ok(fx.invocations().some((i) => /Carry on please/.test(i.prompt ?? '')));
+});
+
+test('stop while the turn waits on background agents restarts the worker at its desk (ending its helpers), the worktree stays', async (t) => {
   const fx = await engineFixture();
   t.after(() => fx.close());
   fx.setRules([{ when: 'Implement kanban task', background: 'Waiting for the helper agent.', reply: 'Done.', backgroundMs: 20_000 }]);
@@ -493,9 +526,18 @@ test('stop while the turn waits on background agents sends the worker home (stop
   const stopped = await fx.waitTask(task.id, (x) => x.status === 'waiting' && x.waitingReason === 'stopped', 'the stop', 5000);
   assert.equal(stopped.waitingText, 'Stopped by Ada');
   assert.equal(fx.repo.listRuns(task.id).at(-1)?.status, 'stopped');
-  assert.ok(running.workerId && !fx.workers.get(running.workerId), 'the worker went home');
-  assert.ok(stopped.workspace, 'the worktree stays with the task');
+  assert.ok(running.workerId && fx.workers.get(running.workerId), 'the worker is still at its desk');
+  assert.equal(stopped.workerId, running.workerId);
+  assert.ok(stopped.workspace && existsSync(path.join(fx.dir, stopped.workspace.worktree.path)), 'the worktree stays with the task');
   assert.equal(fx.invocations().some((i) => i.interrupted), false, 'no Esc was typed');
+  assert.ok(fx.repo.listComments(task.id).comments.some((c) => c.kind === 'status' && /background agents worked: restarted on its session at its desk/.test(c.text)), 'the note');
+  fx.setRules([{ when: 'Carry on please', reply: 'Carried on.' }]);
+  const t0 = Date.now();
+  assert.equal(await fx.engine.continue(task.id, ADA, 'Carry on please'), undefined);
+  await fx.waitTask(task.id, (x) => x.status !== 'waiting' && x.runState === 'idle' || x.status === 'review' || x.status === 'done', 'the carried-on turn', 8000);
+  assert.ok(fx.invocations().some((i) => /Carry on please/.test(i.prompt ?? '')), 'the same worker was prompted');
+  assert.ok(Date.now() - t0 < 8000, 'promptly, not after the old background wait');
+  assert.equal(fx.task(task.id).workerId, running.workerId);
 });
 
 test('stop during the resumed turn, after the agent reported back, interrupts the terminal as usual', async (t) => {
