@@ -25,12 +25,14 @@ test('normalizing makes each group one run and keeps the rest of the order', () 
   assert.deepEqual(ids(normalizeOrder(building)), ids(building));
 });
 
-test('a new floor goes to the top of its owner group; a new owner at the top or the bottom', () => {
+test('a new floor goes to the top of its owner group, or the bottom of it with that group at the bottom of the building', () => {
   assert.deepEqual(ids(insertFloor(building, f('n', 'acme/n'), 'groupTop')), ['a', 'b', 'n', 'c', 'd', 'e']);
-  assert.deepEqual(ids(insertFloor(building, f('n', 'acme/n'), 'bottom')), ['a', 'b', 'n', 'c', 'd', 'e']);
+  assert.deepEqual(ids(insertFloor(building, f('n', 'acme/n'), 'bottom')), ['n', 'a', 'b', 'c', 'd', 'e']);
+  assert.deepEqual(ids(insertFloor(building, f('n', 'beta/n'), 'bottom')), ['n', 'c', 'd', 'a', 'b', 'e']);
   assert.deepEqual(ids(insertFloor(building, f('n', 'new/n'), 'groupTop')), ['a', 'b', 'c', 'd', 'e', 'n']);
   assert.deepEqual(ids(insertFloor(building, f('n', 'new/n'), 'bottom')), ['n', 'a', 'b', 'c', 'd', 'e']);
-  assert.deepEqual(ids(insertFloor(building, f('n'), 'bottom')), ['a', 'b', 'c', 'd', 'e', 'n']);
+  assert.deepEqual(ids(insertFloor(building, f('n'), 'bottom')), ['n', 'e', 'a', 'b', 'c', 'd']);
+  assert.equal(groupFloors(insertFloor(building, f('n', 'new/n'), 'bottom'))[0].label, 'new');
 });
 
 test('a floor moves within its group, to just above a neighbour or to the bottom', () => {

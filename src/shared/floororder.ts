@@ -31,10 +31,16 @@ export function groupFloors<T extends Orderable>(list: T[]): FloorGroup<T>[] {
   for (const f of list) {
     const key = floorGroupKey(f);
     let g = groups.get(key);
-    if (!g) groups.set(key, (g = { key, label: key ? f.repo!.slice(0, f.repo!.indexOf('/')) : LOCAL_GROUP, floors: [] }));
+    if (!g) groups.set(key, (g = newGroup(f)));
     g.floors.push(f);
   }
   return [...groups.values()];
+}
+
+/** An empty group for the owner of `f`, labelled as groupFloors does. */
+function newGroup<T extends Orderable>(f: T): FloorGroup<T> {
+  const key = floorGroupKey(f);
+  return { key, label: key ? f.repo!.slice(0, f.repo!.indexOf('/')) : LOCAL_GROUP, floors: [] };
 }
 
 /** groupFloors(list).flatMap(g => g.floors): makes every group one run, keeping the rest of the order. */
@@ -42,16 +48,23 @@ export function normalizeOrder<T extends Orderable>(list: T[]): T[] {
   return groupFloors(list).flatMap((g) => g.floors);
 }
 
-/** A new floor: at the top of its owner's group; a new owner's group goes at the top of the building ('groupTop') or the bottom ('bottom'). Result is normalized. */
+/**
+ * A new floor, result normalized. 'groupTop': at the top of its owner's group, a new owner's group at
+ * the top of the building. 'bottom': at the bottom of its owner's group, and that group (new or
+ * existing) moves to the bottom of the building.
+ */
 export function insertFloor<T extends Orderable>(list: T[], item: T, where: 'groupTop' | 'bottom'): T[] {
   const groups = groupFloors(list);
   const key = floorGroupKey(item);
-  const own = groups.find((g) => g.key === key);
-  if (own) own.floors.push(item);
-  else {
-    const g: FloorGroup<T> = { key, label: '', floors: [item] };
-    if (where === 'groupTop') groups.push(g);
-    else groups.unshift(g);
+  const found = groups.find((g) => g.key === key);
+  const group = found ?? newGroup(item);
+  if (where === 'groupTop') {
+    group.floors.push(item);
+    if (!found) groups.push(group);
+  } else {
+    group.floors.unshift(item);
+    if (found) groups.splice(groups.indexOf(found), 1);
+    groups.unshift(group);
   }
   return groups.flatMap((g) => g.floors);
 }

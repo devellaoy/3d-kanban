@@ -63,23 +63,19 @@ export const floorHandlers = {
     // The order is the whole office's, so admins set it.
     if (!ctx.meOfClient(c).admin) return ctx.warn(c, 'Only admins can reorder the floors');
     const above = msg.above === null ? null : str(msg.above, 64);
-    const before = ctx.building.list().map((d) => d.id);
     const key = typeof msg.group === 'string' ? str(msg.group, 64) : undefined;
-    const id = str(msg.floor, 64);
-    const err = key !== undefined ? ctx.building.moveGroup(key, above) : ctx.building.moveFloor(id, above);
-    if (err) {
-      ctx.warn(c, err);
-      ctx.floorsChanged(true); // the sender's guess at the new order goes back to the real one, even if it's the last list sent
-      return;
-    }
-    ctx.floorsChanged(true); // other admins may have guessed at orders of their own that the final one doesn't equal the last sent
+    const id = key === undefined ? str(msg.floor, 64) : '';
+    const r = key !== undefined ? ctx.building.moveGroup(key, above) : ctx.building.moveFloor(id, above);
+    // Whatever happened, everyone gets the real order again: the sender's guess goes back to it, and so do other admins' guesses of their own that the final order doesn't equal the last one sent.
+    ctx.floorsChanged(true);
+    if ('err' in r) return ctx.warn(c, r.err);
+    // A stale step (something another admin just changed) or one that changed nothing (the same drop twice) is nothing to tell anyone.
+    if ('stale' in r || !r.changed) return;
     const list = ctx.building.list();
-    // A step that changed nothing (a stale one, or the same drop twice) is nothing to tell anyone.
-    if (list.every((d, i) => d.id === before[i])) return;
     const text =
       key !== undefined
         ? `🛗 ${who} reordered the floors: the ${groupFloors(list).find((g) => g.key === key)?.label ?? key} floors moved`
-        : `🛗 ${who} moved ${list.find((d) => d.id === id)?.name} ${list.findIndex((d) => d.id === id) > before.indexOf(id) ? 'up' : 'down'} the building`;
+        : `🛗 ${who} moved ${list.find((d) => d.id === id)?.name} ${r.up ? 'up' : 'down'} the building`;
     console.log(`  ${text.slice(3)}`);
     for (const o of ctx.clients.values()) if (o !== c) ctx.sendTo(o, { t: 'toast', text, level: 'info' });
   },

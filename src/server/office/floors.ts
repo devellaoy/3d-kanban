@@ -19,7 +19,8 @@ export function floorHelpers(ctx: Ctx): FloorHelpers {
   /** The opened floors, bottom-up as the building has them (see Building.list). */
   const orderedFloors = (): Floor[] => {
     const list = ctx.building.list().flatMap((d) => ctx.floors.get(d.id) ?? []);
-    return [...list, ...[...ctx.floors.values()].filter((f) => !list.includes(f))];
+    const listed = new Set(list);
+    return [...list, ...[...ctx.floors.values()].filter((f) => !listed.has(f))];
   };
   const floorInfos = (): FloorInfo[] => [
     ...orderedFloors().map((f) => ({ ...f.info(), ...(ctx.building.isLocal(f.id) ? { local: true } : {}) })),
@@ -44,8 +45,20 @@ export function floorHelpers(ctx: Ctx): FloorHelpers {
       ctx.broadcast({ t: 'floors', floors: list });
     }, 250);
   };
+  const firstOpen = (): Floor | undefined => {
+    for (const d of ctx.building.list()) {
+      const f = ctx.floors.get(d.id);
+      if (f) return f;
+    }
+    return orderedFloors()[0];
+  };
+  const cancelFloorsChanged = () => {
+    clearTimeout(floorsTimer);
+    floorsTimer = undefined;
+    floorsResend = false;
+  };
   /** Where someone arriving goes: the floor they asked for, else the first one there is. */
-  const arrivalFloor = (wanted: string | null): Floor | undefined => (wanted && ctx.floors.get(wanted)) || orderedFloors()[0];
+  const arrivalFloor = (wanted: string | null): Floor | undefined => (wanted && ctx.floors.get(wanted)) || firstOpen();
 
   /**
    * Takes `floor` off the building (already out of floors.json): everyone on it rides the elevator to
@@ -73,11 +86,7 @@ export function floorHelpers(ctx: Ctx): FloorHelpers {
     ctx.pumpQueues();
   };
 
-  return { floorOf, workerFloor, floorInfos, floorsChanged, cancelFloorsChanged: () => {
-      clearTimeout(floorsTimer);
-      floorsTimer = undefined;
-      floorsResend = false;
-    }, arrivalFloor, closeFloor };
+  return { floorOf, workerFloor, floorInfos, floorsChanged, cancelFloorsChanged, arrivalFloor, closeFloor };
 }
 
 /**

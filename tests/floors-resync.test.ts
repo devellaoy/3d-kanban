@@ -18,11 +18,11 @@ function office() {
       pending: () => order.map(def),
       isLocal: () => false,
       moveFloor(id: string, above: string | null) {
-        if (!order.includes(id)) return 'No such floor';
+        if (!order.includes(id)) return { err: 'No such floor' };
         const rest = order.filter((x) => x !== id);
         const at = above === null ? rest.length : rest.indexOf(above);
         order = [...rest.slice(0, at), id, ...rest.slice(at)];
-        return undefined;
+        return { changed: true };
       },
     },
     broadcast: (m: { t: string; floors?: { id: string }[] }) => void (m.t === 'floors' && sent.push(m.floors!.map((f) => f.id))),

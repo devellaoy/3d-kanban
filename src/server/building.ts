@@ -45,6 +45,9 @@ const REPOS_TTL_MS = 5 * 60_000;
 const MAX_REPOS = 1000;
 const CLONE_TIMEOUT_MS = 30 * 60_000;
 
+/** What moving a floor or a group did: refused (`err`), aimed at something that is gone (`stale`), or done (`changed`: false when it was already there; `up`: a floor moved up the building). */
+export type MoveResult = { err: string } | { stale: true } | { changed: boolean; up?: boolean };
+
 /**
  * The floors of the building, saved in <office>/.agent-office/floors.json: which projects there are,
  * where their checkouts live, and how each floor is painted. New floors are cloned with the office
@@ -150,28 +153,37 @@ export class Building {
     return def;
   }
 
-  /** Moves a floor just above floor `above` of its owner's group, or to the bottom of it (null). Returns why it can't. */
-  moveFloor(id: string, above: string | null): string | undefined {
-    if (!this.defs.some((d) => d.id === id)) return 'No such floor';
+  /**
+   * Moves a floor just above floor `above` of its owner's group, or to the bottom of it (null).
+   * `stale`: `above` isn't a floor (any more), so there is nothing to do; `err` says why it can't.
+   */
+  moveFloor(id: string, above: string | null): MoveResult {
+    if (!this.defs.some((d) => d.id === id)) return { err: 'No such floor' };
+    if (above === id) return { changed: false };
+    if (above !== null && !this.defs.some((d) => d.id === above)) return { stale: true };
     const moved = moveFloorAbove(this.defs, id, above);
-    if (!moved) return "A floor stays in its owner's group";
-    return this.reorder(moved);
+    if (!moved) return { err: "A floor stays in its owner's group" };
+    const from = this.defs.findIndex((d) => d.id === id);
+    const changed = this.reorder(moved);
+    return changed ? { changed, up: this.defs.findIndex((d) => d.id === id) > from } : { changed };
   }
 
-  /** Moves a floor group (see floorGroupKey) just above group `above`, or to the bottom of the building (null). Returns why it can't. */
-  moveGroup(key: string, above: string | null): string | undefined {
+  /** Moves a floor group (see floorGroupKey) just above group `above`, or to the bottom of the building (null). */
+  moveGroup(key: string, above: string | null): MoveResult {
     const keys = new Set(this.defs.map(floorGroupKey));
-    if (!keys.has(key) || (above !== null && !keys.has(above))) return 'No such group of floors';
+    if (!keys.has(key) || (above !== null && !keys.has(above))) return { stale: true };
     const moved = moveGroupAbove(this.defs, key, above);
-    return moved ? this.reorder(moved) : 'A group cannot move above itself';
+    return moved ? { changed: this.reorder(moved) } : { err: 'A group cannot move above itself' };
   }
 
-  private reorder(defs: FloorDef[]): undefined {
-    if (defs.some((d, i) => d !== this.defs[i])) {
+  /** Whether the order changed (and was saved). */
+  private reorder(defs: FloorDef[]): boolean {
+    const changed = defs.some((d, i) => d !== this.defs[i]);
+    if (changed) {
       this.defs = defs;
       this.save();
     }
-    return undefined;
+    return changed;
   }
 
   /** The office keeps its own data in this floor's checkout. */
