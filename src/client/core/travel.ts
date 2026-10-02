@@ -34,6 +34,9 @@ export function installTravel(ctx: Ctx, core: CoreState, parts: TravelParts) {
   const { placeInCar, downstairs, indoors, standingAt, unstick, sitOnThrone, onThrone } = parts.place;
 
   let wingsShown = '';
+  /** The floor and its place in the stack as last applied, and whether the stack moved under you since (see syncStack). */
+  let applied = { floor: '', index: -1 };
+  let restackWaiting = false;
   /**
    * The ladder and the poles go where there are floors to go to from this one, and the building is as
    * tall as there are floors, with the street as far down as this one is up.
@@ -46,6 +49,15 @@ export function installTravel(ctx: Ctx, core: CoreState, parts: TravelParts) {
     const down = index > 0 ? floors[index - 1]?.name : undefined;
     const count = index < 0 ? 1 : floors.length;
     const wings = floorWings(floors);
+    // Someone else moved your floor in the stack (reordered, or one added below) while you're out on the
+    // street, the balcony, in a car or at a game: the ground would move under your feet. Keep what's
+    // applied until you're back inside with nothing going on (see below); a floor change applies at once.
+    if (store.floor === applied.floor && index !== applied.index && index >= 0 && applied.index >= 0 && inOffice() && !core.trip && !settled()) {
+      restackWaiting = true;
+      return;
+    }
+    restackWaiting = false;
+    applied = { floor: store.floor ?? '', index };
     // A map of its own is a hall on the ground: nothing under its floor to fall to, but its dungeon's.
     player.street = inOffice() ? streetBelow(index) : streetOf(ctx.world());
     const s = office.stack.state;
@@ -56,6 +68,11 @@ export function installTravel(ctx: Ctx, core: CoreState, parts: TravelParts) {
     office.setLevel(Math.max(0, index), count, wings);
   }
   store.on('floors', syncStack);
+  /** Indoors on your floor and nothing going on: the ground can change without you feeling it. */
+  const settled = () => indoors() && !ctx.activities.busy();
+  ctx.ticks.add('world', () => {
+    if (restackWaiting && !core.trip && settled()) syncStack();
+  });
 
   /** Not a trip of yours: the office put you on another floor (yours went), in its elevator car. Whatever you were doing stops. */
   function takenAway() {
