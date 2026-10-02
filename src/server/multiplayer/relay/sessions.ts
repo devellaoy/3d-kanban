@@ -88,18 +88,24 @@ export class Sessions {
     this.end(p.s, msg.reason, p.isOwner ? { visitor: true } : { owner: true });
   }
 
-  /** Frames only between the two parties of an accepted session. Returns whether it went (a backed-up receiver drops it). */
-  frame(from: Peer, msg: Msg<'visit.frame'>): boolean {
+  /**
+   * Frames only between the two parties of an accepted session. Returns whether it went (a backed-up
+   * receiver drops it). `raw` is the text the sender's frame arrived as: the relay changes nothing
+   * in a validated envelope (parseOfficeMsg only drops what it does not know), so that text goes on
+   * as it is instead of being stringified again (the data in it is a whole message, up to 2 MB).
+   */
+  frame(from: Peer, msg: Msg<'visit.frame'>, raw?: string): boolean {
     const p = this.party(from, msg.sid);
     if (!p?.s.open || !p.other) return false;
-    if (msg.drop) return p.other.send({ t: 'visit.frame', sid: msg.sid, data: msg.data, drop: true }, true);
-    // A frame that must arrive is never skipped, so a receiver this far behind would only grow the
-    // buffer: the visit ends (the visitor goes home and can visit again for a full resync).
-    if (p.other.ws.bufferedAmount > MP_HARD_CAP) {
+    if (msg.drop) return p.other.send({ t: 'visit.frame', sid: msg.sid, data: msg.data, drop: true }, true, raw);
+    // A frame that must arrive is never skipped, so a visit this far behind would only grow the
+    // buffer: that visit ends (the visitor goes home and can visit again for a full resync). Only
+    // this visit's own backlog counts; the other visits on the same link are not its business.
+    if (p.other.queuedFor(msg.sid) > MP_HARD_CAP) {
       this.end(p.s, 'Connection too slow', { visitor: true, owner: true });
       return false;
     }
-    return p.other.send({ t: 'visit.frame', sid: msg.sid, data: msg.data, ...(msg.part ? { part: msg.part } : {}) });
+    return p.other.send({ t: 'visit.frame', sid: msg.sid, data: msg.data, ...(msg.part ? { part: msg.part } : {}) }, false, raw);
   }
 
   http(from: Peer, msg: Msg<'visit.http'>) {

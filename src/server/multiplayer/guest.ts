@@ -1,7 +1,8 @@
 // The visitor's own office: while its admin visits someone, their browser's /ws?visit=<login>
-// socket is a pipe to the owner's office through the relay. Frames go both ways untouched (the
-// owner's office does the judging: its gate for what comes in, its filter for what goes out), and
-// the same pipe carries the owner's answers to the read-only GETs the windows ask for. When the
+// socket is a pipe to the owner's office through the relay. Frames from the browser go on untouched
+// (the owner's office judges them with its gate); frames from the owner reach the browser only if
+// they are of a type a visitor may get (guest-filter.ts). The same pipe carries the owner's answers
+// to the read-only GETs the windows ask for. When the
 // visit ends, for whatever reason, the browser gets `mp.ended` and the socket closes with 4000.
 import { randomBytes } from 'node:crypto';
 import type http from 'node:http';
@@ -13,6 +14,7 @@ import { LOGIN_RE, MP_BODY_MAX, MP_FRAME_MAX, MP_HARD_CAP, MP_HIGH_WATER, MP_PRO
 import type { Session } from '../auth.js';
 import type { Ctx } from '../office/context.js';
 import { COLOR_RE, str } from '../office/input.js';
+import { frameForBrowser } from './guest-filter.js';
 import { mpOf } from './registry.js';
 import type { Multiplayer } from './index.js';
 
@@ -88,15 +90,18 @@ export class Guest {
       for (const text of p.queue.splice(0)) this.forward(p, text);
     } else if (msg.t === 'visit.frame') {
       if (p.ws.readyState !== p.ws.OPEN) return true;
+      // The owner's office is not trusted with this browser: see guest-filter.ts.
+      const data = frameForBrowser(msg.data);
+      if (data === undefined) return true;
       // Only a frame the sender marked droppable is skipped for a slow browser; one that must arrive
       // to a browser this far behind would only grow the buffer, so the visit ends instead (the
       // browser goes back to its own office, and the owner's office is told).
       if (msg.drop) {
-        if (p.ws.bufferedAmount < MP_HIGH_WATER) p.ws.send(msg.data);
+        if (p.ws.bufferedAmount < MP_HIGH_WATER) p.ws.send(data);
       } else if (p.ws.bufferedAmount > MP_HARD_CAP) {
         this.mp.link.send({ t: 'visit.close', sid: p.sid, reason: 'Connection too slow' });
         this.end(p, 'Connection too slow');
-      } else p.ws.send(msg.data);
+      } else p.ws.send(data);
     } else this.end(p, msg.reason || 'The visit ended');
     return true;
   }
@@ -177,7 +182,7 @@ function profileOf(url: URL, session: Session): MpVisitProfile {
 export function mpVisitUpgrade(ctx: Ctx, wss: WebSocketServer, req: http.IncomingMessage, socket: Duplex, head: Buffer, url: URL, session: Session) {
   const mp = mpOf(ctx);
   const login = url.searchParams.get('visit') ?? '';
-  if (!mp?.link.online || !LOGIN_RE.test(login) || !ctx.meOf(session.account?.id).admin) {
+  if (!mp?.link.online || !LOGIN_RE.test(login) || !ctx.meOf({ accountId: session.account?.id, visitor: session.visitor }).admin) {
     socket.write('HTTP/1.1 403 Forbidden\r\nConnection: close\r\n\r\n');
     socket.destroy();
     return;

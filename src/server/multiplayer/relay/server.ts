@@ -100,7 +100,8 @@ export function startRelay(opts: RelayOptions): Promise<RunningRelay> {
     pending = setTimeout(() => {
       pending = undefined;
       const msg = { t: 'players' as const, players: directory.list() };
-      for (const p of directory.all()) p.send(msg, true);
+      // Must arrive: it is small, and never resent, so a skipped one would leave the list stale until the next change.
+      for (const p of directory.all()) p.send(msg);
     }, 20);
   };
 
@@ -142,7 +143,7 @@ export function startRelay(opts: RelayOptions): Promise<RunningRelay> {
     return peer;
   }
 
-  function route(peer: Peer, msg: OfficeToRelay) {
+  function route(peer: Peer, msg: OfficeToRelay, raw: string) {
     switch (msg.t) {
       case 'presence':
         if (JSON.stringify([peer.where, peer.floorKey]) === JSON.stringify([msg.where, msg.floorKey])) return;
@@ -156,7 +157,7 @@ export function startRelay(opts: RelayOptions): Promise<RunningRelay> {
       case 'visit.close':
         return sessions.close(peer, msg);
       case 'visit.frame':
-        return void sessions.frame(peer, msg);
+        return void sessions.frame(peer, msg, raw);
       case 'visit.http':
         return sessions.http(peer, msg);
       case 'visit.httpres':
@@ -172,13 +173,14 @@ export function startRelay(opts: RelayOptions): Promise<RunningRelay> {
 
   async function onMessage(conn: Conn, data: RawData, isBinary: boolean) {
     if (isBinary) return void conn.ws.close(MP_CLOSE.protocol, 'Text frames only');
-    let raw: unknown;
+    const text = data.toString();
+    let parsed: unknown;
     try {
-      raw = JSON.parse(data.toString());
+      parsed = JSON.parse(text);
     } catch {
-      raw = undefined;
+      parsed = undefined;
     }
-    const msg = parseOfficeMsg(raw);
+    const msg = parseOfficeMsg(parsed);
     if (!conn.peer) {
       if (conn.ws.readyState !== conn.ws.OPEN) return;
       if (msg?.t !== 'hello') return void conn.ws.close(MP_CLOSE.protocol, 'Say hello first');
@@ -187,7 +189,7 @@ export function startRelay(opts: RelayOptions): Promise<RunningRelay> {
     }
     // An invalid message (including a frame or body over its limit) is dropped; the link carries on.
     if (!msg) return void log(`${conn.peer.login}: dropped an invalid message`);
-    if (!conn.peer.dead) route(conn.peer, msg);
+    if (!conn.peer.dead) route(conn.peer, msg, text);
   }
 
   wss.on('connection', (ws, req) => {

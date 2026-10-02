@@ -72,6 +72,7 @@ export class Link {
   needsIdentity = false;
   private ws?: WebSocket;
   private pieces = new Reassembler();
+  private queued = new Map<string, number>();
   private timer?: NodeJS.Timeout;
   private watchdog?: NodeJS.Timeout;
   private lastHeard = 0;
@@ -86,8 +87,18 @@ export class Link {
     return this.status === 'online' && this.ws?.readyState === WebSocket.OPEN;
   }
 
+  /** Bytes queued on the whole connection (all visits and the control traffic together). */
   get bufferedAmount(): number {
     return this.ws?.bufferedAmount ?? 0;
+  }
+
+  /**
+   * Characters of `visit.frame` text queued for one visit and not yet written out. One link carries
+   * every visitor we host and every visit we make, so congestion is judged per visit: one
+   * visitor's big welcome must not make the others skip frames or end their visits.
+   */
+  queuedFor(sid: string): number {
+    return this.queued.get(sid) ?? 0;
   }
 
   /** Starts (or restarts) connecting, if there is an address and a password. */
@@ -220,7 +231,7 @@ export class Link {
   send(msg: OfficeToRelay, droppable = false): boolean {
     const ws = this.ws;
     if (!ws || ws.readyState !== WebSocket.OPEN) return false;
-    if (droppable && ws.bufferedAmount > MP_HIGH_WATER) return false;
+    if (droppable && (msg.t === 'visit.frame' ? this.queuedFor(msg.sid) : ws.bufferedAmount) > MP_HIGH_WATER) return false;
     if (msg.t === 'visit.frame' && !msg.part && msg.data.length > MP_FRAME_MAX) {
       // Too big for one frame: it goes in pieces (which must all arrive, so none is droppable).
       const pieces = splitFrame(msg.data);
@@ -228,11 +239,22 @@ export class Link {
         this.abort(msg.sid, MP_TOO_LARGE);
         return false;
       }
-      for (const piece of pieces) ws.send(JSON.stringify({ t: 'visit.frame', sid: msg.sid, ...piece }));
+      for (const piece of pieces) this.write(ws, msg.sid, JSON.stringify({ t: 'visit.frame', sid: msg.sid, ...piece }));
       return true;
     }
-    ws.send(JSON.stringify(msg));
+    this.write(ws, msg.t === 'visit.frame' ? msg.sid : undefined, JSON.stringify(msg));
     return true;
+  }
+
+  /** ws.send, counting a visit's bytes until the socket has taken them. */
+  private write(ws: WebSocket, sid: string | undefined, text: string) {
+    if (sid === undefined) return ws.send(text);
+    this.queued.set(sid, this.queuedFor(sid) + text.length);
+    ws.send(text, () => {
+      const left = this.queuedFor(sid) - text.length;
+      if (left > 0) this.queued.set(sid, left);
+      else this.queued.delete(sid);
+    });
   }
 
   /**

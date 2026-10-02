@@ -9,7 +9,7 @@ const SERVER_DROPPABLE: ReadonlySet<string> = new Set(['peer.move', 'peer.act', 
 const CLIENT_DROPPABLE: ReadonlySet<string> = new Set(['move', 'wb.pointer', 'car.drive', 'cabinet.frame']);
 
 /** The `t` at the front of a frame's JSON (every message is built with `t` first); undefined when it is not there. */
-function typeOf(text: string): string | undefined {
+export function typeOf(text: string): string | undefined {
   return /^\{"t":"([\w.]+)"/.exec(text)?.[1];
 }
 

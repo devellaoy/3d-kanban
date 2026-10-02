@@ -35,8 +35,13 @@ export const MP_BODY_B64_MAX = Math.ceil(MP_BODY_MAX / 3) * 4;
 export const MP_MAX_PAYLOAD = MP_BODY_B64_MAX + 64 * 1024;
 /** A receiver whose socket has this much queued gets no more frames (they are droppable, like cursors). */
 export const MP_HIGH_WATER = 4 * 1024 * 1024;
-/** A receiver this far behind cannot be sent the frames that must arrive: the relay ends the visit instead of buffering without bound. */
-export const MP_HARD_CAP = 16 * 1024 * 1024;
+/**
+ * A visit this far behind cannot be sent the frames that must arrive: it ends instead of buffering
+ * without bound. Counted per visit and checked before a message is queued, and the cap must clear
+ * the largest message (MP_MESSAGE_MAX) with room to spare, or one legitimate whiteboard welcome
+ * would end the visit that asked for it.
+ */
+export const MP_HARD_CAP = MP_MESSAGE_MAX + 8 * 1024 * 1024;
 
 /** WebSocket close codes the relay uses (4xxx is the application range). */
 export const MP_CLOSE = {

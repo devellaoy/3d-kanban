@@ -18,11 +18,34 @@ export class Peer {
     this.key = loginKey(login);
   }
 
-  /** Sends a message; a `droppable` one (a frame, the player list) is skipped while this receiver is backed up. Returns whether it went. */
-  send(msg: RelayToOffice, droppable = false): boolean {
+  /** Characters of visit.frame text queued per visit sid, until the socket has taken them. */
+  private queued = new Map<string, number>();
+
+  /** What is queued for one visit: congestion is judged per visit, since one link carries all of an office's visits. */
+  queuedFor(sid: string): number {
+    return this.queued.get(sid) ?? 0;
+  }
+
+  /**
+   * Sends a message; a `droppable` one is skipped while this receiver is backed up (for a
+   * visit.frame: while that visit is). Returns whether it went. `text` is the message already
+   * serialized, when the caller has the exact text to pass on.
+   */
+  send(msg: RelayToOffice, droppable = false, text?: string): boolean {
     if (this.dead || this.ws.readyState !== this.ws.OPEN) return false;
-    if (droppable && this.ws.bufferedAmount > MP_HIGH_WATER) return false;
-    this.ws.send(JSON.stringify(msg));
+    const sid = msg.t === 'visit.frame' ? msg.sid : undefined;
+    if (droppable && (sid === undefined ? this.ws.bufferedAmount : this.queuedFor(sid)) > MP_HIGH_WATER) return false;
+    const out = text ?? JSON.stringify(msg);
+    if (sid === undefined) {
+      this.ws.send(out);
+      return true;
+    }
+    this.queued.set(sid, this.queuedFor(sid) + out.length);
+    this.ws.send(out, () => {
+      const left = this.queuedFor(sid) - out.length;
+      if (left > 0) this.queued.set(sid, left);
+      else this.queued.delete(sid);
+    });
     return true;
   }
 }
