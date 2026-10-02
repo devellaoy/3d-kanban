@@ -1,4 +1,4 @@
-// 3d-kanban (#328): one send key in every prompt box.
+// 3d-kanban (#328): one send key in every prompt box (#355: Shift+Enter is a new line).
 import test, { type TestContext } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -17,26 +17,27 @@ function globals(t: TestContext, values: Record<string, unknown>) {
   }
 }
 
-test('plain Enter adds a line; Shift, ⌘ or Ctrl + Enter sends', () => {
+test('Enter and Shift+Enter add a line; ⌘ or Ctrl + Enter sends', () => {
   assert.equal(isSendKey(key()), false);
-  assert.equal(isSendKey(key({ shiftKey: true })), true);
+  assert.equal(isSendKey(key({ shiftKey: true })), false);
   assert.equal(isSendKey(key({ metaKey: true })), true);
   assert.equal(isSendKey(key({ ctrlKey: true })), true);
+  assert.equal(isSendKey(key({ shiftKey: true, ctrlKey: true })), true);
 });
 
 test('IME composition, Alt and other keys never send', () => {
-  assert.equal(isSendKey(key({ shiftKey: true, isComposing: true })), false);
-  assert.equal(isSendKey(key({ shiftKey: true, altKey: true })), false);
-  assert.equal(isSendKey(key({ key: 'a', shiftKey: true })), false);
+  assert.equal(isSendKey(key({ ctrlKey: true, isComposing: true })), false);
+  assert.equal(isSendKey(key({ ctrlKey: true, altKey: true })), false);
+  assert.equal(isSendKey(key({ key: 'a', ctrlKey: true })), false);
 });
 
 test('the hint names ⌘ on a Mac and Ctrl elsewhere', (t) => {
   globals(t, { navigator: { platform: 'MacIntel', userAgent: '' } });
   assert.equal(isMac(), true);
-  assert.equal(sendHint(), '⇧/⌘+Enter sends · Enter for a new line');
+  assert.equal(sendHint(), '⌘+Enter sends · Enter for a new line');
   globals(t, { navigator: { platform: 'Win32', userAgent: '' } });
   assert.equal(isMac(), false);
-  assert.equal(sendHint(), 'Shift/Ctrl+Enter sends · Enter for a new line');
+  assert.equal(sendHint(), 'Ctrl+Enter sends · Enter for a new line');
   globals(t, { navigator: { userAgentData: { platform: 'macOS' }, platform: 'Win32' } });
   assert.equal(isMac(), true);
 });
@@ -44,11 +45,11 @@ test('the hint names ⌘ on a Mac and Ctrl elsewhere', (t) => {
 test('without a navigator it is not a Mac', (t) => {
   globals(t, { navigator: undefined });
   assert.equal(isMac(), false);
-  assert.match(sendHint(), /^Shift\/Ctrl/);
+  assert.match(sendHint(), /^Ctrl\+Enter/);
 });
 
 test('every prompt box uses the shared send key', () => {
-  const files = ['ui/prompt.ts', 'ui/ask.ts', 'ui/queue.ts', 'ui/meeting.ts', 'ui/github/comment-box.ts', 'kanban/create.ts', 'kanban/taskview.ts'];
+  const files = ['ui/prompt.ts', 'ui/ask.ts', 'ui/queue.ts', 'ui/meeting.ts', 'ui/github/comment-box.ts', 'kanban/create.ts', 'kanban/taskview.ts', 'kanban/issueactions.ts'];
   for (const f of files) {
     const src = readFileSync(new URL(`../src/client/${f}`, import.meta.url), 'utf8');
     assert.match(src, /from '[./]*(?:kanban\/)?sendkey'/, `${f} imports sendkey`);

@@ -179,7 +179,7 @@ function onMessage(msg: ToHost) {
       if (s.exitCode !== undefined) drop(s);
       else {
         try {
-          s.proc.kill();
+          s.proc.kill(msg.signal);
         } catch {
           // already gone
         }
