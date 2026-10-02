@@ -331,9 +331,11 @@ function notificationText(line: Record<string, unknown>): string {
  * resume (SendMessage), not a notification. Counted from `start`, the office's last prompt (so an
  * earlier run's agents don't count; -1, the log's tail cut before it: none). Bash's run_in_background
  * isn't one, and a launch known only by its text counts just from an Agent or Task call's result.
+ * A launch logged before `since` (the process's start) died with that process (a restart ends the helpers): not counted.
  */
-export function backgroundLeft(lines: Record<string, unknown>[], start: number): number {
+export function backgroundLeft(lines: Record<string, unknown>[], start: number, since?: number): number {
   if (start < 0) return 0;
+  const set = (agents: Map<string, boolean>, id: string, line: Record<string, unknown>) => agents.set(id, !(since !== undefined && atOf(line) > 0 && atOf(line) < since));
   const agents = new Map<string, boolean>();
   const tools = new Map<unknown, unknown>();
   for (const line of lines.slice(start + 1)) {
@@ -344,14 +346,14 @@ export function backgroundLeft(lines: Record<string, unknown>[], start: number):
     const res = isObj(line.toolUseResult) ? line.toolUseResult : undefined;
     if (res?.isAsync === true && res.status === 'async_launched') {
       const id = res.agentId ?? res.taskId;
-      if (typeof id === 'string') agents.set(id, true);
-    } else if (typeof res?.resumedAgentId === 'string') agents.set(res.resumedAgentId, true);
+      if (typeof id === 'string') set(agents, id, line);
+    } else if (typeof res?.resumedAgentId === 'string') set(agents, res.resumedAgentId, line);
     else if (!res && line.type === 'user') {
       for (const b of content) {
         if (b.type !== 'tool_result' || (tools.get(b.tool_use_id) !== 'Agent' && tools.get(b.tool_use_id) !== 'Task')) continue;
         const text = toolResultText(b);
         const id = text.startsWith('Async agent launched successfully') ? /^agentId:\s*([\w-]+)/m.exec(text)?.[1] : undefined;
-        if (id) agents.set(id, true);
+        if (id) set(agents, id, line);
       }
     }
     for (const m of notificationText(line).matchAll(/<task-id>([^<]*)<\/task-id>/g)) agents.set(m[1].trim(), false);
@@ -429,7 +431,7 @@ export function readClaudeTurn(file: string, opts?: { since?: number }): TurnRes
     }
   }
   // Background agents and teammates alike: the turn's Stop isn't the run's end while any still works.
-  const left = backgroundLeft(lines, start) + teammatesBusy(file, opts?.since ?? 0, teammateEvents(lines, start));
+  const left = backgroundLeft(lines, start, opts?.since) + teammatesBusy(file, opts?.since ?? 0, teammateEvents(lines, start));
   // The last prompt is a notification or a teammate's message nothing has answered yet: Claude is about to take its turn.
   const resuming = from >= 0 && !answered && isAgentNotice(lines[from]);
   return { text: texts.join('\n\n'), ...(plan !== undefined ? { plan } : {}), ...(exitPlan ? { exitPlan } : {}), complete: answered && !toolPending && (texts.length > 0 || exitPlan), ...(apiError ? { apiError } : {}), ...(running.size ? { toolRunning: true } : {}), ...(left ? { background: left } : {}), ...(resuming ? { resuming } : {}) };
