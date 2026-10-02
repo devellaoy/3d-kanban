@@ -28,6 +28,8 @@ export function installYoutubeTv(ctx: Ctx, parts: YoutubeParts) {
     greeted = y?.id ?? '';
     ctx.hint.invalidate();
   });
+  // The queue's settings: "same volume" changes how loud the TV is from where you stand.
+  store.on('youtubeList', () => screen.applyVolume(true));
   ctx.ticks.add('render', ({ now }) => screen.frame(now));
   (window as unknown as { __youtubeTv: TvScreen }).__youtubeTv = screen;
 
@@ -63,9 +65,11 @@ export function installYoutubeTv(ctx: Ctx, parts: YoutubeParts) {
       if (!y) return { k: 'yt|off', parts: [hintTitle('📺 Office TV'), key('E', 'Put on YouTube or share your screen')] };
       const error = screen.errorText();
       const quiet = screen.needsClick();
+      const state = y.paused ? '⏸ paused' : '▶';
+      const rate = y.rate !== 1 ? ` · ${y.rate}×` : '';
       return {
-        k: `yt|${y.id}|${y.title}|${y.index}|${error}|${quiet}`,
-        parts: [hintTitle('📺 Office TV'), aside(`▶ ${clip(youtubeTitle(y), 40)} · ${y.by}`), error ? aside(error) : '', quiet ? aside('🔇 click to hear') : '', key('E', 'Watch it big')],
+        k: `yt|${y.id}|${y.title}|${y.index}|${y.paused}|${y.rate}|${error}|${quiet}`,
+        parts: [hintTitle('📺 Office TV'), aside(`${state} ${clip(youtubeTitle(y), 40)} · ${y.by}${rate}`), error ? aside(error) : '', quiet ? aside('🔇 click to hear') : '', key('E', 'Watch it big')],
       };
     },
   };

@@ -4,7 +4,7 @@ import type { ClientMsg } from '../../../shared/protocol.js';
 import { codexLimitsHandlers, codexLimitsHooks } from '../../codex-limits/handlers.js';
 import { mpHandlers, mpHooks } from '../../multiplayer/handlers.js';
 import { kanbanHandlers, kanbanHooks } from '../../kanban/ws/handlers.js';
-import { youtubeHandlers, youtubeView } from '../../youtube/handlers.js';
+import { youtubeHandlers, youtubeListView, youtubeView } from '../../youtube/handlers.js';
 import { accountsHandlers } from './accounts.js';
 import { ballHandlers, ballHooks, ballView } from './ball.js';
 import { cabinetHandlers, cabinetHooks, cabinetView } from './cabinet.js';
@@ -82,5 +82,6 @@ export const views: ViewPieces = {
   meeting: meetingView,
   cabinet: cabinetView,
   youtube: youtubeView, // YouTube on the Office TV
+  youtubeList: youtubeListView, // its queue and settings
   kanbanLounge: (ctx, floor) => (floor ? (ctx.kanban?.lounge(floor.id) ?? []) : []), // the kanban's tasks on hold, as figures in the lounge
 };

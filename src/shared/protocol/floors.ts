@@ -10,6 +10,7 @@ import type { JukeboxState } from '../jukebox.js';
 import type { WhiteboardView } from '../whiteboard.js';
 import type { LoungeFigure } from '../kanban/lounge.js';
 import type { YoutubeTvState } from '../youtube/link.js';
+import type { YoutubeTvList } from '../youtube/queue.js';
 import type { AgentProvider } from './agents.js';
 import type { GhIssue, GhPull, GhState } from './github.js';
 import type { MeetingState } from './meetings.js';
@@ -116,6 +117,8 @@ export interface FloorView {
   jail: JailState;
   /** The YouTube video on the lounge TV, if any (see shared/youtube). */
   youtube: YoutubeTvState | null;
+  /** The TV's queue and settings (see shared/youtube/queue.ts). */
+  youtubeList: YoutubeTvList;
   /** The kanban's tasks on hold, as figures in the lounge (see shared/kanban/lounge.ts); a floor without the kanban has none. */
   kanbanLounge?: LoungeFigure[];
 }

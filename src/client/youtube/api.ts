@@ -18,6 +18,8 @@ export interface YtPlayer {
   setVolume(volume: number): void;
   setPlaybackRate(rate: number): void;
   getPlaybackRate(): number;
+  /** The speeds this video can play at (live streams and some videos only have 1). */
+  getAvailablePlaybackRates(): number[];
   getPlayerState(): number;
   getCurrentTime(): number;
   getDuration(): number;
