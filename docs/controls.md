@@ -112,7 +112,7 @@ The prompt edits the way it does in your own terminal (iTerm2's *Natural Text Ed
 | ⌘ + ⌫ | Delete to the start of the line (Mac) |
 | ⌘ + ⌦ | Delete to the end of the line (Mac) |
 | ⌘ + ← / → | Jump to the start / end of the line (Mac) |
-| Ctrl + C | Copy the selected text; with nothing selected, interrupt as always (Windows / Linux; ⌘C on a Mac) |
-| Ctrl + V | Paste (Windows / Linux; ⌘V on a Mac). Ctrl + Shift + C / V copy and paste too |
+| Ctrl + C | Copy the selected text, and let go of the selection so the next Ctrl + C interrupts; with nothing selected, interrupt as always (Windows / Linux; ⌘C on a Mac). Ctrl + Shift + C does the same |
+| Ctrl + V | Paste (Windows / Linux; ⌘V on a Mac). Ctrl + Shift + V does the same |
 
 Shift + Enter adds a new line in the prompt boxes too (hire, ask, queue, comments); they send with Ctrl/⌘ + Enter. In a terminal it is the agent's own new line.
