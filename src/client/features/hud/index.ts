@@ -44,7 +44,7 @@ export function installHud(ctx: Ctx, core: CoreState, parts: HudParts) {
     if (!store.floor) return travel.showElevator();
     toggleFloorMenu($('project'), floorOpts());
   });
-  const floorOpts = (): FloorMenuOptions => ({ go: travel.switchFloor, indoors: () => (!inOffice() && !core.upTop) || parts.place.indoors(), elevator: travel.showElevator, roof: inOffice() ? () => travel.ride(ROOF) : null });
+  const floorOpts = (): FloorMenuOptions => ({ net, go: travel.switchFloor, indoors: () => (!inOffice() && !core.upTop) || parts.place.indoors(), elevator: travel.showElevator, roof: inOffice() ? () => travel.ride(ROOF) : null });
 
   // ---- The HUD: a few buttons on the top bar, everything else in the ☰ menu ----------------------------
   const waitingNow = () => waitingInOrder(store.workers.values());

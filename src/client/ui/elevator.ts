@@ -6,13 +6,15 @@ import type { Net } from '../net';
 import { store } from '../state';
 import { h, openModal, timeAgo, type Modal } from './dom';
 import { folderNote, folderPath, folderProblem, requestFloor } from './flooradd';
+import { canReorder, floorGroups, keepFocus, makeSortable, sendMove } from './floorgroups';
 import { confirmDialog } from './prompt';
 
 // The elevator's panel: a button for every floor (every project), and "add a project", which clones
 // one of the repositories the office's gh login can see and makes it a new floor, or (admins) makes a
 // folder on the office's machine a floor as it is. The first time
 // the office runs there are no floors, and this is where you start. Admins can take a floor off the
-// building here too; its checkout stays on disk. Under the floors, it goes down to the garage.
+// building here too; its checkout stays on disk, and reorder the floors (floorgroups.ts). Under the
+// floors, it goes down to the garage.
 
 /**
  * The garage under the building, where the elevator goes too. It isn't a floor: it's down under the
@@ -116,7 +118,8 @@ export function openElevator(opts: ElevatorOptions): void {
     }
     const btn = h(
       'button.floor-btn',
-      { type: 'button', class: here ? 'here' : '', disabled: f.cloning || here, title: here ? "You're on this floor" : f.cloning ? 'Still being cloned' : `Ride ${mine ? 'back up ' : ''}to ${f.name}` },
+      // Your own floor stays a button you can press and drag (a disabled one gets no pointer events): its click does nothing.
+      { type: 'button', class: here ? 'here' : '', disabled: f.cloning, 'aria-disabled': here ? 'true' : undefined, title: here ? "You're on this floor" : f.cloning ? 'Still being cloned' : `Ride ${mine ? 'back up ' : ''}to ${f.name}` },
       h('span.floor-no', { style: `background:${p.trim}` }, String(i + 1)),
       h('span.floor-text', {}, h('span.floor-name', {}, f.name, here ? h('span.here-tag', {}, 'you are here') : mine ? h('span.here-tag', {}, 'your floor') : null), h('span.floor-sub', {}, f.repo ?? f.dir)),
       h('span.floor-stats', {}, ...stats.flatMap((s, j) => (j ? [' ', s] : [s]))),
@@ -186,16 +189,21 @@ export function openElevator(opts: ElevatorOptions): void {
     return btn;
   };
 
-  const renderFloors = () => {
+  const sortable = makeSortable(floorsEl, { enabled: canReorder, onMove: (m) => sendMove(net, m) });
+  // The counts change every few hundred ms; a render that comes while a floor is pressed or dragged waits for the drop.
+  const renderFloors = sortable.held(() => {
     const floors = store.floors;
     const built = floors.some((f) => !f.cloning);
-    // Top floor first, the way an elevator's buttons stack, with the roof over them, floor 1 and then the garage at the bottom.
-    floorsEl.replaceChildren(
-      ...(built ? [roofButton()] : []),
-      ...(floors.length ? floors.map(floorRow).reverse() : [h('p.empty', {}, 'No floors yet.')]),
-      ...(built ? [garageButton()] : []),
+    // Top floor first, the way an elevator's buttons stack, in their owners' groups, with the roof over
+    // them, floor 1 and then the garage at the bottom.
+    keepFocus(floorsEl, () =>
+      floorsEl.replaceChildren(
+        ...(built ? [roofButton()] : []),
+        ...(floors.length ? floorGroups(floors, floorRow, { reorder: canReorder() }) : [h('p.empty', {}, 'No floors yet.')]),
+        ...(built ? [garageButton()] : []),
+      ),
     );
-  };
+  });
 
   const repoRow = (r: RepoChoice) => {
     const floor = store.floors.find((f) => sameRepo(f.repo, r.name));

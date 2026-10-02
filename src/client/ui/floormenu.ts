@@ -2,14 +2,18 @@ import './floormenu.css';
 import { floorPalette } from '../../shared/floors';
 import { ROOF, ROOF_NAME } from '../../shared/rooftop';
 import type { FloorInfo } from '../../shared/protocol';
+import type { Net } from '../net';
 import { store } from '../state';
 import { h } from './dom';
+import { canReorder, floorGroups, keepFocus, makeSortable, sendMove } from './floorgroups';
 
 // The floor list that drops down from the project in the corner: every floor of the building, top
 // floor first. Picking one takes you straight there, to the same spot in the office you're standing
 // in now (from outside it, into that floor's elevator). Adding a project is still the elevator's job.
+// The floors are in their owners' groups, and admins can reorder them here too (floorgroups.ts).
 
 export interface FloorMenuOptions {
+  net: Net;
   /** Go to that floor, staying where you are in the office (from outside it, by elevator). */
   go(floorId: string): void;
   /** Whether you're inside the office, where going to a floor keeps you on the same spot. */
@@ -70,7 +74,7 @@ export function openFloorMenu(anchor: HTMLElement, opts: FloorMenuOptions): () =
     }
     const btn = h(
       'button.floor-item',
-      { type: 'button', role: 'menuitem', class: isHere ? 'here' : '', disabled: isHere || f.cloning, title: isHere ? "You're on this floor" : f.cloning ? 'Still being cloned' : opts.indoors() ? `Go to ${f.name}, right where you're standing` : `Go to ${f.name}, in its elevator` },
+      { type: 'button', role: 'menuitem', class: isHere ? 'here' : '', disabled: f.cloning, 'aria-disabled': isHere ? 'true' : undefined, title: isHere ? "You're on this floor" : f.cloning ? 'Still being cloned' : opts.indoors() ? `Go to ${f.name}, right where you're standing` : `Go to ${f.name}, in its elevator` },
       h('span.floor-no', { style: `background:${p.trim}` }, String(i + 1)),
       h('span.floor-text', {}, h('span.floor-name', {}, f.name), h('span.floor-sub', {}, where || (f.repo ?? f.dir))),
       h('span.floor-stats', {}, ...stats),
@@ -83,7 +87,9 @@ export function openFloorMenu(anchor: HTMLElement, opts: FloorMenuOptions): () =
     return btn;
   };
 
-  const render = () => {
+  const sortable = makeSortable(el, { enabled: canReorder, onMove: (m) => sendMove(opts.net, m) });
+  // A render that comes while a floor is pressed or dragged waits for the drop (see makeSortable).
+  const render = sortable.held(() => {
     const floors = store.floors;
     const here = floors.findIndex((f) => f.id === store.floor);
     const add = h('button.floor-item.add', { type: 'button', role: 'menuitem', title: 'The elevator: add another project as a floor' }, h('span.floor-no', {}, '🛗'), h('span.floor-text', {}, h('span.floor-name', {}, 'Elevator'), h('span.floor-sub', {}, 'Add a project…')));
@@ -91,8 +97,8 @@ export function openFloorMenu(anchor: HTMLElement, opts: FloorMenuOptions): () =
       closeSelf();
       opts.elevator();
     });
-    // Top floor first, the way a building's directory reads, and the roof over them.
-    const items = floors.map((f, i) => item(f, i, here)).reverse();
+    // Top floor first in their owners' groups, the way a building's directory reads, and the roof over them.
+    const groups = floorGroups(floors, (f, i) => item(f, i, here), { reorder: canReorder() });
     const onRoof = store.floor === ROOF;
     const people = [...store.peers.values()].filter((p) => p.floor === ROOF).length;
     const roof = h(
@@ -107,8 +113,8 @@ export function openFloorMenu(anchor: HTMLElement, opts: FloorMenuOptions): () =
       closeSelf();
       opts.roof?.();
     });
-    el.replaceChildren(h('div.floor-menu-head', {}, `🏢 ${floors.length} floor${floors.length === 1 ? '' : 's'}`), ...(floors.length && opts.roof ? [roof] : []), ...items, add);
-  };
+    keepFocus(el, () => el.replaceChildren(h('div.floor-menu-head', {}, `🏢 ${floors.length} floor${floors.length === 1 ? '' : 's'}`), ...(floors.length && opts.roof ? [roof] : []), ...groups, add));
+  });
 
   const place = () => {
     const r = anchor.getBoundingClientRect();

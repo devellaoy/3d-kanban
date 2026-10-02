@@ -141,6 +141,13 @@ export type FloorClientMsg =
   | { t: 'floor.add'; repo?: string; dir?: string; rid?: string }
   /** Take a floor off the building (admins only). Its checkout stays on disk; everyone on it rides to another floor. */
   | { t: 'floor.remove'; floor: string }
+  /**
+   * Move a floor or a whole group of floors (admins only); exactly one of `floor` and `group` is set.
+   * `floor` is a floor id, `group` a group key (see shared/floororder.ts: the owner, lower-cased, or ''
+   * for the floors with no GitHub repository). `above` is the neighbour it goes just above; null is
+   * the bottom of its group (a floor) or of the building (a group).
+   */
+  | { t: 'floor.move'; floor?: string; group?: string; above: string | null }
   /** Where new floors are cloned from now on (admins only); '' goes back to the default. */
   | { t: 'floor.projectsDir'; dir: string };
 

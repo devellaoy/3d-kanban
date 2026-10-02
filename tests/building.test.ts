@@ -327,3 +327,84 @@ test('a started-in checkout that moved back in is off again when its floor could
   // A restart keeps it off, as before.
   assert.equal(new Building(dataDir, f.projects).ensureLocal(proj, 'the office'), undefined);
 });
+
+// --- the order of the floors ------------------------------------------------------------------
+
+/** Floors of two owners, bottom-up: acme's api and web, then beta's site. */
+function ordered(t: { after(fn: () => void): void }) {
+  const o = office(t);
+  const site: FloorDef = { id: 'site', name: 'site', repo: 'beta/site', dir: path.join(o.root, 'beta', 'site'), palette: 3, addedBy: 'Sam', addedAt: 1 };
+  mkdirSync(site.dir, { recursive: true });
+  writeFileSync(path.join(o.dataDir, 'floors.json'), JSON.stringify([o.defs[0], o.defs[1], site]));
+  return { ...o, site };
+}
+
+test('moving a floor is saved and survives a restart', (t) => {
+  const { root, dataDir } = ordered(t);
+  const building = new Building(dataDir, root);
+  assert.deepEqual(building.moveFloor('api', 'web'), { changed: true, up: true });
+  assert.deepEqual(saved(dataDir), ['web', 'api', 'site']);
+  assert.deepEqual(building.moveFloor('api', null), { changed: true, up: false });
+  assert.deepEqual(new Building(dataDir, root).list().map((d) => d.id), ['api', 'web', 'site']);
+});
+
+test('a floor stays in its owner group, and unknown floors are turned away', (t) => {
+  const { root, dataDir } = ordered(t);
+  const building = new Building(dataDir, root);
+  assert.deepEqual(building.moveFloor('api', 'site'), { err: "A floor stays in its owner's group" });
+  assert.deepEqual(building.moveFloor('nope', null), { err: 'No such floor' });
+  assert.deepEqual(building.moveFloor('api', 'nope'), { stale: true });
+  assert.deepEqual(building.moveFloor('api', 'api'), { changed: false });
+  assert.deepEqual(saved(dataDir), ['api', 'web', 'site']);
+});
+
+test('the order only needs the floors, not their checkouts', (t) => {
+  const { root, dataDir, defs } = ordered(t);
+  rmSync(defs[0].dir, { recursive: true });
+  const building = new Building(dataDir, root);
+  assert.deepEqual(building.moveFloor('web', 'api'), { changed: false });
+  assert.deepEqual(building.list().map((d) => d.id), ['api', 'web', 'site']);
+});
+
+test('a group moves above another, and the floors inside keep their order', (t) => {
+  const { root, dataDir } = ordered(t);
+  const building = new Building(dataDir, root);
+  assert.deepEqual(building.moveGroup('acme', 'beta'), { changed: true });
+  assert.deepEqual(saved(dataDir), ['site', 'api', 'web']);
+  assert.deepEqual(building.moveGroup('nope', null), { stale: true });
+  assert.deepEqual(building.moveGroup('beta', 'beta'), { err: 'A group cannot move above itself' });
+  assert.deepEqual(saved(dataDir), ['site', 'api', 'web']);
+  assert.deepEqual(building.moveGroup('acme', null), { changed: true });
+  assert.deepEqual(saved(dataDir), ['api', 'web', 'site']);
+});
+
+test('loading puts the floors of one owner together and saves that', (t) => {
+  const { root, dataDir, defs, site } = ordered(t);
+  writeFileSync(path.join(dataDir, 'floors.json'), JSON.stringify([defs[0], site, defs[1]]));
+  assert.deepEqual(new Building(dataDir, root).list().map((d) => d.id), ['api', 'web', 'site']);
+  assert.deepEqual(saved(dataDir), ['api', 'web', 'site']);
+});
+
+test('the checkout the office started in goes to the bottom of its own group, and that group to the bottom of the building, a folder with no repository joins the Local group at the top', (t) => {
+  const { root, dataDir, site } = ordered(t);
+  const building = new Building(dataDir, root);
+  const own = path.join(root, 'own');
+  mkdirSync(own);
+  assert.equal(building.ensureLocal(own, 'the office')?.id, 'own');
+  assert.deepEqual(saved(dataDir), ['own', 'api', 'web', site.id]);
+  const other = path.join(root, 'other');
+  mkdirSync(other);
+  const added = building.addDir(other, 'Sam') as FloorDef;
+  assert.deepEqual(saved(dataDir), ['own', added.id, 'api', 'web', site.id]);
+});
+
+test('the office checkout of an owner that already has floors lands at the bottom of that group, which sinks to the bottom', (t) => {
+  const { root, dataDir, site } = ordered(t);
+  const building = new Building(dataDir, root);
+  const own = path.join(root, 'own');
+  mkdirSync(own);
+  execFileSync('git', ['init', '-q', own]);
+  execFileSync('git', ['-C', own, 'remote', 'add', 'origin', 'https://github.com/beta/own.git']);
+  assert.equal(building.ensureLocal(own, 'the office')?.id, 'own');
+  assert.deepEqual(saved(dataDir), ['own', site.id, 'api', 'web']);
+});

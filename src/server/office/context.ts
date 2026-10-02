@@ -113,8 +113,12 @@ export interface FloorHelpers {
   /** The floor a worker sits on. Worker ids are unique across the building. */
   workerFloor(workerId: string): Floor | undefined;
   floorInfos(): FloorInfo[];
-  /** The elevator's counts change with every worker update; tell everyone at most a few times a second. */
-  floorsChanged(): void;
+  /**
+   * The elevator's counts change with every worker update; tell everyone at most a few times a second,
+   * and only when the list differs from the last one sent. `resend` sends it even if it doesn't: for when
+   * browsers may hold a guess of their own (an optimistic reorder) that the last list sent doesn't cure.
+   */
+  floorsChanged(resend?: boolean): void;
   /** Drops a `floorsChanged` still waiting to go out (the office is closing). */
   cancelFloorsChanged(): void;
   /** Where someone arriving goes: the floor they asked for, else the first one there is. */

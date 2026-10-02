@@ -3,6 +3,7 @@ import { accessSync, constants, existsSync, mkdirSync, readFileSync, readdirSync
 import os from 'node:os';
 import path from 'node:path';
 import { FLOOR_PALETTES, MAX_FLOORS, normalizeRepo, sameRepo } from '../shared/floors.js';
+import { floorGroupKey, insertFloor, moveFloorAbove, moveGroupAbove, normalizeOrder } from '../shared/floororder.js';
 import type { ProjectsDirState, RepoChoice } from '../shared/protocol.js';
 import { gh } from './github.js';
 import type { ProjectRepo } from '../shared/kanban/types.js';
@@ -43,6 +44,9 @@ const SECRET_DIRS = ['.ssh', '.aws', '.gnupg', '.config'];
 const REPOS_TTL_MS = 5 * 60_000;
 const MAX_REPOS = 1000;
 const CLONE_TIMEOUT_MS = 30 * 60_000;
+
+/** What moving a floor or a group did: refused (`err`), aimed at something that is gone (`stale`), or done (`changed`: false when it was already there; `up`: a floor moved up the building). */
+export type MoveResult = { err: string } | { stale: true } | { changed: boolean; up?: boolean };
 
 /**
  * The floors of the building, saved in <office>/.agent-office/floors.json: which projects there are,
@@ -143,10 +147,43 @@ export class Building {
     if (this.localOff && realOf(this.localOff.dir) === real) return undefined;
     // Named after its folder, as the office always called it.
     const def = this.newDef(path.basename(abs), this.local.repo, abs, by);
-    this.defs.unshift(def);
+    this.defs = insertFloor(this.defs, def, 'bottom');
     this.localId = def.id;
     this.save();
     return def;
+  }
+
+  /**
+   * Moves a floor just above floor `above` of its owner's group, or to the bottom of it (null).
+   * `stale`: `above` isn't a floor (any more), so there is nothing to do; `err` says why it can't.
+   */
+  moveFloor(id: string, above: string | null): MoveResult {
+    if (!this.defs.some((d) => d.id === id)) return { err: 'No such floor' };
+    if (above === id) return { changed: false };
+    if (above !== null && !this.defs.some((d) => d.id === above)) return { stale: true };
+    const moved = moveFloorAbove(this.defs, id, above);
+    if (!moved) return { err: "A floor stays in its owner's group" };
+    const from = this.defs.findIndex((d) => d.id === id);
+    const changed = this.reorder(moved);
+    return changed ? { changed, up: this.defs.findIndex((d) => d.id === id) > from } : { changed };
+  }
+
+  /** Moves a floor group (see floorGroupKey) just above group `above`, or to the bottom of the building (null). */
+  moveGroup(key: string, above: string | null): MoveResult {
+    const keys = new Set(this.defs.map(floorGroupKey));
+    if (!keys.has(key) || (above !== null && !keys.has(above))) return { stale: true };
+    const moved = moveGroupAbove(this.defs, key, above);
+    return moved ? { changed: this.reorder(moved) } : { err: 'A group cannot move above itself' };
+  }
+
+  /** Whether the order changed (and was saved). */
+  private reorder(defs: FloorDef[]): boolean {
+    const changed = defs.some((d, i) => d !== this.defs[i]);
+    if (changed) {
+      this.defs = defs;
+      this.save();
+    }
+    return changed;
   }
 
   /** The office keeps its own data in this floor's checkout. */
@@ -188,7 +225,7 @@ export class Building {
     if (this.localOff && home && sameRepo(home.repo, wanted) && existsSync(home.dir)) {
       const def = this.newDef(path.basename(home.dir), home.repo, home.dir, by);
       started(def);
-      this.defs.push(def);
+      this.defs = insertFloor(this.defs, def, 'groupTop');
       this.localId = def.id;
       this.setLocalOff(undefined);
       this.save();
@@ -217,7 +254,7 @@ export class Building {
     } finally {
       this.cloning.delete(key);
     }
-    this.defs.push(def);
+    this.defs = insertFloor(this.defs, def, 'groupTop');
     this.save();
     return def;
   }
@@ -278,7 +315,7 @@ export class Building {
       this.localId = def.id;
       this.setLocalOff(undefined);
     }
-    this.defs.push(def);
+    this.defs = insertFloor(this.defs, def, 'groupTop');
     this.save();
     return def;
   }
@@ -362,6 +399,11 @@ export class Building {
         const repos = loadRepos(s.repos, s.id, s.dir);
         if (repos) this.defs[this.defs.length - 1].repos = repos;
       }
+      // Floors of one owner sit together; a hand-edited or older file that doesn't is put right.
+      const ordered = normalizeOrder(this.defs);
+      const moved = ordered.some((d, i) => d !== this.defs[i]);
+      this.defs = ordered;
+      if (moved) this.save();
     } catch (err) {
       console.error(`agent-office: ${this.file} couldn't be read, so the building starts empty: ${(err as Error).message}`);
     }
