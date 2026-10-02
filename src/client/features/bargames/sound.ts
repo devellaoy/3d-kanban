@@ -17,7 +17,7 @@ export function toss(a: AudioCore, kind: TossSound, at: Pos) {
   if (!ctx) return;
   a.count(`toss-${kind}`);
   const out = a.panner(at, 2, 1.1);
-  out.connect(a.ambience);
+  out.connect(a.mix.effects);
   const t0 = ctx.currentTime + 0.005;
   const air = (from: number, to: number, len: number, level: number, pulses = 0) => {
     const n = a.noise(a.buf.white);

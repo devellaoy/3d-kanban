@@ -65,7 +65,7 @@ export function pour(a: AudioCore, at: Pos) {
   if (!ctx) return;
   a.count('pour');
   const out = a.panner(at, 1.2, 1);
-  out.connect(a.ambience);
+  out.connect(a.mix.effects);
   const t0 = ctx.currentTime + 0.05;
   // Ice cubes knocking in.
   for (let i = 0; i < 3; i++) a.clink(out, t0 + i * rand(0.07, 0.12), rand(2200, 3200), 0.05);
@@ -110,7 +110,7 @@ export function hiccup(a: AudioCore) {
     [0.05, 0.08],
     [0.11, 0],
   ]);
-  o.connect(biquad(ctx, 'bandpass', 1100, 2.5)).connect(g).connect(a.ambience);
+  o.connect(biquad(ctx, 'bandpass', 1100, 2.5)).connect(g).connect(a.mix.effects);
   o.start(t0);
   o.stop(t0 + 0.14);
   // The catch in the throat, just before it.
@@ -120,7 +120,7 @@ export function hiccup(a: AudioCore) {
     [0.004, 0.08],
     [0.02, 0],
   ]);
-  n.connect(biquad(ctx, 'bandpass', 1800, 1)).connect(ng).connect(a.ambience);
+  n.connect(biquad(ctx, 'bandpass', 1800, 1)).connect(ng).connect(a.mix.effects);
   n.start(t0 - 0.015);
   n.stop(t0 + 0.02);
 }

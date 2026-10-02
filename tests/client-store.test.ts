@@ -215,10 +215,15 @@ test('what the browser remembers keeps its keys and shapes', () => {
   assert.deepEqual(state.lastSpot(), { floor: 'f1', name: 'F', x: 1, y: 2, z: 3, facing: 4 });
   assert.ok(storage.has('agent-office.spot'));
   const settings = state.loadSettings();
-  assert.deepEqual(settings, { view: 'first', volume: 0.7, muted: false, music: 0.5, musicMuted: false, pageTurns: true, pushToTalk: false, notify: true, mouseSensitivity: 1, hud: state.HUD_DEFAULTS, pins: [] });
+  const mix = { volume: 1, muted: false };
+  const mixes = { background: mix, rain: mix, thumps: mix, steps: mix, typing: mix, effects: mix };
+  assert.deepEqual(settings, { view: 'first', volume: 0.7, muted: false, mix: mixes, music: 0.5, musicMuted: false, pageTurns: true, pushToTalk: false, notify: true, mouseSensitivity: 1, hud: state.HUD_DEFAULTS, pins: [] });
   state.saveSettings({ ...settings, volume: 2, view: 'third' });
   assert.equal(state.loadSettings().volume, 1);
   assert.equal(state.loadSettings().view, 'third');
+  // Each kind of sound's volume comes back clamped, a broken one at its default.
+  state.saveSettings({ ...settings, mix: { ...mixes, rain: { volume: 0.3, muted: true }, thumps: { volume: -1, muted: false }, steps: { volume: Number.NaN, muted: 'no' } } as never });
+  assert.deepEqual(state.loadSettings().mix, { ...mixes, rain: { volume: 0.3, muted: true }, thumps: { volume: 0, muted: false } });
   store.apply(welcome());
   assert.equal(state.lastFloor(), 'f1');
 });

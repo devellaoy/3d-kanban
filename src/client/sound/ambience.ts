@@ -80,7 +80,7 @@ function birds(a: AudioCore, now: number) {
   a.count('birds');
   const out = a.panner(pick(a.windows()), 2, 1.2);
   // Heard through the glass.
-  out.connect(biquad(ctx, 'lowpass', 5000, 0.7)).connect(a.ambience);
+  out.connect(biquad(ctx, 'lowpass', 5000, 0.7)).connect(a.mix.effects);
   const base = rand(2400, 4200);
   const shape = Math.random();
   let t = now + 0.05;
@@ -108,7 +108,7 @@ function crickets(a: AudioCore, now: number) {
   const ctx = a.ctx!;
   a.count('crickets');
   const out = a.panner(pick(a.windows()), 2, 1.2);
-  out.connect(biquad(ctx, 'lowpass', 6000, 0.7)).connect(a.ambience);
+  out.connect(biquad(ctx, 'lowpass', 6000, 0.7)).connect(a.mix.effects);
   const freq = rand(4200, 5200);
   let t = now + 0.05;
   for (let c = randInt(4, 9); c > 0; c--) {
@@ -136,7 +136,7 @@ function phone(a: AudioCore, now: number) {
   const desk = pick(far.length ? far : DESKS);
   a.count('phone');
   const out = a.panner({ x: desk.x, y: 0.9, z: desk.z }, 1.5, 1.2);
-  out.connect(biquad(ctx, 'lowpass', 3000, 0.7)).connect(a.ambience);
+  out.connect(biquad(ctx, 'lowpass', 3000, 0.7)).connect(a.mix.effects);
   const rings = randInt(2, 3);
   for (let r = 0; r < rings; r++) {
     const t = now + 0.05 + r * 2.4;

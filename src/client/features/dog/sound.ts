@@ -9,7 +9,7 @@ export function bark(a: AudioCore, x: number, z: number, times: number) {
   if (!ctx) return;
   a.count('bark');
   const out = a.panner({ x, y: 0.5, z }, 2, 1);
-  out.connect(a.ambience);
+  out.connect(a.mix.effects);
   let t = ctx.currentTime + 0.03;
   const pitch = rand(0.95, 1.05);
   for (let i = 0; i < times; i++) {
@@ -24,7 +24,7 @@ export function yip(a: AudioCore, x: number, z: number) {
   if (!ctx) return;
   a.count('yip');
   const out = a.panner({ x, y: 0.5, z }, 1.5, 1);
-  out.connect(a.ambience);
+  out.connect(a.mix.effects);
   woof(a, out, ctx.currentTime + 0.02, 620, 0.09, 0.3);
 }
 

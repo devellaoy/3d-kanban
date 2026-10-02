@@ -45,7 +45,7 @@ export class Typing {
       if (!t.on) continue;
       if (!t.panner) {
         t.panner = this.a.panner({ x: t.x, y: 0.9, z: t.z }, 1.2, 1.3);
-        t.panner.connect(this.a.ambience);
+        t.panner.connect(this.a.mix.typing);
       }
       // Just started, or fell behind while the tab was hidden: begin again shortly.
       if (t.next < now - 0.25) {
@@ -96,13 +96,13 @@ export class Typing {
     if (!desks.length) return;
     const d = pick(desks);
     if (Math.random() < 0.6) {
-      this.a.play(this.a.buf.rustle, { at: { x: d.x, y: 0.8, z: d.z }, gain: 0.35, rate: rand(0.85, 1.15), ref: 1.2, rolloff: 1.3 });
+      this.a.play(this.a.buf.rustle, { at: { x: d.x, y: 0.8, z: d.z }, gain: 0.35, rate: rand(0.85, 1.15), ref: 1.2, rolloff: 1.3, dest: this.a.mix.typing });
       this.a.count('rustle');
       return;
     }
     const ctx = this.a.ctx!;
     const out = this.a.panner({ x: d.x, y: 0.5, z: d.z }, 1.2, 1.3);
-    out.connect(this.a.ambience);
+    out.connect(this.a.mix.typing);
     const len = rand(0.25, 0.45);
     const o = ctx.createOscillator();
     o.type = 'sawtooth';

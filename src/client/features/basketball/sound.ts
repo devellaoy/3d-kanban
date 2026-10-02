@@ -16,7 +16,7 @@ export function ball(a: AudioCore, kind: BallSound, at: Pos, speed: number) {
   a.count(`ball-${kind}`);
   const loud = Math.min(1, speed / 7);
   const out = a.panner(at, 2, 1.1);
-  out.connect(a.ambience);
+  out.connect(a.mix.effects);
   const t0 = ctx.currentTime + 0.005;
   if (kind === 'bounce') {
     // The pong of the air inside, over a slap on the floor.

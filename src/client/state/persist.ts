@@ -3,6 +3,7 @@
 
 import { randomLook, sanitizeLook, type Look } from '../../shared/avatar';
 import { visiting } from '../multiplayer/visit';
+import { cleanMix, mixDefaults, type MixLevels } from '../sound/mix';
 
 export interface Profile {
   name: string;
@@ -47,6 +48,8 @@ export interface Settings {
   /** Office sounds, 0–1. */
   volume: number;
   muted: boolean;
+  /** Each kind of office sound's own volume under `volume` (see sound/mix.ts). */
+  mix: MixLevels;
   /** The lounge jukebox, 0–1, apart from the office sounds. */
   music: number;
   musicMuted: boolean;
@@ -129,12 +132,13 @@ export function rememberSpot(s: Spot) {
 }
 
 export function loadSettings(): Settings {
-  const s: Settings = { view: 'first', volume: 0.7, muted: false, music: 0.5, musicMuted: false, pageTurns: true, pushToTalk: false, notify: true, mouseSensitivity: 1, hud: { ...HUD_DEFAULTS }, pins: [] };
+  const s: Settings = { view: 'first', volume: 0.7, muted: false, mix: mixDefaults(), music: 0.5, musicMuted: false, pageTurns: true, pushToTalk: false, notify: true, mouseSensitivity: 1, hud: { ...HUD_DEFAULTS }, pins: [] };
   try {
     const saved = JSON.parse(localStorage.getItem(SETTINGS_KEY) ?? 'null');
     if (saved?.view === 'first' || saved?.view === 'third') s.view = saved.view;
     if (typeof saved?.volume === 'number' && Number.isFinite(saved.volume)) s.volume = Math.max(0, Math.min(1, saved.volume));
     if (typeof saved?.muted === 'boolean') s.muted = saved.muted;
+    s.mix = cleanMix(saved?.mix);
     if (typeof saved?.music === 'number' && Number.isFinite(saved.music)) s.music = Math.max(0, Math.min(1, saved.music));
     if (typeof saved?.musicMuted === 'boolean') s.musicMuted = saved.musicMuted;
     if (typeof saved?.pageTurns === 'boolean') s.pageTurns = saved.pageTurns;

@@ -9,7 +9,7 @@ function hinge(a: AudioCore, at: { x: number; y: number; z: number }) {
   if (!ctx) return;
   a.count('hingeCreak');
   const out = a.panner(at, 2, 1.1);
-  out.connect(a.ambience);
+  out.connect(a.mix.effects);
   const t0 = ctx.currentTime + 0.01;
   const o = ctx.createOscillator();
   o.type = 'sawtooth';
@@ -44,7 +44,7 @@ export function cellDoor(a: AudioCore, at: { x: number; y: number; z: number }, 
   if (open) return hinge(a, at);
   a.count('cellDoor');
   const out = a.panner(at, 3, 1);
-  out.connect(a.ambience);
+  out.connect(a.mix.effects);
   const t0 = ctx.currentTime + 0.005;
   a.play(pick(a.buf.steps), { gain: 0.9, rate: 0.45, dest: out });
   a.blip(out, t0, 95, 0.6, 0.25, 0.22);
@@ -66,7 +66,7 @@ export function thud(a: AudioCore, at: { x: number; y: number; z: number }) {
   if (!ctx) return;
   a.count('thud');
   const out = a.panner(at, 2, 1.1);
-  out.connect(a.ambience);
+  out.connect(a.mix.thumps);
   a.play(pick(a.buf.steps), { gain: 0.7, rate: 0.5, dest: out });
   a.blip(out, ctx.currentTime + 0.005, 120, 0.5, 0.16, 0.14);
 }

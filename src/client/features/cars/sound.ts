@@ -90,7 +90,7 @@ export class Motors {
     this.a.count('engine');
     const now = ctx.currentTime;
     const pan = this.a.panner(at, 3, 1);
-    pan.connect(this.a.ambience);
+    pan.connect(this.a.mix.effects);
     const gain = ctx.createGain();
     gain.gain.setValueAtTime(0, now);
     gain.gain.linearRampToValueAtTime(0.11, now + 0.12);
@@ -130,7 +130,7 @@ export function honk(a: AudioCore, at: Pos, kind: CarKind) {
   a.count('honk');
   const deep = kind === 'offroad';
   const out = a.panner(at, 4, 0.9);
-  out.connect(a.ambience);
+  out.connect(a.mix.effects);
   const t0 = ctx.currentTime + 0.005;
   const g = ctx.createGain();
   envelope(g.gain, t0, deep ? [[0.03, 0.11], [0.6, 0.1], [0.7, 0]] : [[0.02, 0.09], [0.42, 0.08], [0.5, 0]]);
@@ -152,7 +152,7 @@ export function carDoor(a: AudioCore, at: Pos) {
   if (!ctx) return;
   a.count('car-door');
   const out = a.panner(at, 2, 1.1);
-  out.connect(a.ambience);
+  out.connect(a.mix.effects);
   a.play(pick(a.buf.steps), { gain: 0.6, rate: 0.55, dest: out });
   a.blip(out, ctx.currentTime + 0.005, 120, 0.6, 0.09, 0.12);
 }
@@ -164,7 +164,7 @@ export function crash(a: AudioCore, at: Pos, speed: number) {
   a.count('crash');
   const loud = Math.min(1, speed / 12);
   const out = a.panner(at, 3, 1);
-  out.connect(a.ambience);
+  out.connect(a.mix.thumps);
   const t0 = ctx.currentTime + 0.005;
   a.play(pick(a.buf.steps), { gain: 0.4 + 0.8 * loud, rate: 0.4, dest: out });
   a.blip(out, t0, 90, 0.5, 0.3, 0.1 + 0.25 * loud);

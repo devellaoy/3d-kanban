@@ -34,7 +34,7 @@ export function fishing(a: AudioCore, kind: FishingSound, at: Pos) {
   if (!ctx) return;
   a.count(`fishing-${kind}`);
   const out = a.panner(at, 2, 1.0);
-  out.connect(a.ambience);
+  out.connect(a.mix.effects);
   const t0 = ctx.currentTime + 0.005;
   if (kind === 'wind') {
     // The rod creaking back.

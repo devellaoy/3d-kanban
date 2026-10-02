@@ -43,6 +43,7 @@ export function makeSmoke(ctx: Ctx): { smoke: Smoke; puff: Puff } {
 export function makeSound(settings: Settings): OfficeSound {
   const sound = new OfficeSound();
   sound.setVolume(settings.volume, settings.muted);
+  sound.setMix(settings.mix);
   sound.setMusicVolume(settings.music, settings.musicMuted);
   sound.onMusicError = (text) => toast(text, 'warn');
   return sound;
