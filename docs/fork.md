@@ -36,6 +36,15 @@ Back to the [README](../README.md).
   back office's walls and the plugs), `features/lamplight` collects the walls again when the back office is
   rebuilt (`player.wing`) and settles its easing so a still frame changes nothing, and `server/sky.ts` has a
   `withClock` helper and writes `sky-place.json` only when the place changed.
+- The light indoors (#81) replaces upstream's office lamplight: `sky.ts` loses the uniform `skyOffice` fill, and inside
+  the room the sky's light comes in only through the windows and the sun's is made the lamps' (`world/roomlight.ts`,
+  new, which uses three.js's `lights_fragment_begin` with the directional light's shadow kept apart: re-check it when
+  three.js is upgraded, `tests/roomlight.test.ts` fails if the chunk changed). `features/lamplight` no longer brightens or tints the sun indoors (it still swings it overhead and lightens its
+  shadows), `core/loop.ts` keeps the sky's shading on only while the office's own scene draws, `features/lights` dims
+  the lamps' light (and their bulbs with the hour) instead of laying a dark pool on the floor and lighting the lounge with a point light, and the room's,
+  the loft's, the meeting room's and the back office's lamps push a `RoomLamp` to `NightParts.roomLamps`
+  (`world/outside.ts`, `world/office/{room,props,loft,meeting-room,wing}.ts`). Syncing upstream's sky or lamplight
+  means keeping these.
 - When #219 merges upstream, syncing it means resolving the same hunks once more (the SHAs differ). Upstream #220
   (the `settings.ts` ceiling in `size.test.ts`) and #221 (party dimming against the lamp boost in `lamplight`) are
   likely to conflict later.

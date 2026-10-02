@@ -14,7 +14,7 @@ function rig() {
   const group = new THREE.Group().add(wall);
   const at = { office: true, indoors: true, upTop: false };
   const player = { wing: 0 };
-  const ctx = { ticks, player, sky: { lampsOn: 1 }, office: { group }, inOffice: () => at.office, upTop: () => at.upTop };
+  const ctx = { ticks, player, office: { group }, inOffice: () => at.office, upTop: () => at.upTop };
   installLamplight(ctx as never, { stage: { sun }, place: { indoors: () => at.indoors } } as never);
   let t = 0;
   /** A night sky's dim, low sun from the side, then the frame's ticks. */
@@ -28,10 +28,12 @@ function rig() {
   return { sun, wall, group, player, at, frame };
 }
 
-test('indoors at night the lamps light the room from overhead, and the walls take no shadows', () => {
+test('indoors at night the shadows come from the lamps overhead, and the walls take no shadows', () => {
   const { sun, wall, frame } = rig();
   for (let i = 0; i < 120; i++) frame();
-  assert.ok(sun.intensity > 0.6, `lamp-bright, got ${sun.intensity}`);
+  // How bright and warm it is indoors is the shader's (world/roomlight.ts): the sun is left as the sky lit it.
+  assert.equal(sun.intensity, 0.16);
+  assert.equal(sun.color.getHexString(), new THREE.Color('#8899ff').getHexString());
   assert.ok(sun.position.y > Math.abs(sun.position.x) * 3, 'from nearly overhead');
   assert.ok(sun.shadow.intensity < 0.75);
   assert.equal(wall.receiveShadow, false);
@@ -52,7 +54,7 @@ test('a map of its own lights itself from the first frame after the switch: the 
   // Back in the office it eases in again from outdoors.
   at.office = true;
   frame();
-  assert.ok(sun.intensity < 0.6, `eased in, not snapped: ${sun.intensity}`);
+  assert.ok(sun.position.y < Math.abs(sun.position.x) * 3, `eased in, not snapped: ${sun.position.toArray()}`);
 });
 
 for (const [where, leave] of [

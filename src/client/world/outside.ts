@@ -3,6 +3,7 @@ import { ELEVATOR, ELEVATOR_FRONT, FLOOR, ROAD, SLAB, STREET_Y, WALL_T } from '.
 import { LOT, SIDE_LOT } from '../../shared/garage';
 import { GARAGE_COLUMNS, STREET_LAMPS } from '../../shared/pillars';
 import { STREET_END, shoreX } from '../../shared/scenic';
+import type { RoomLamp } from './roomlight';
 import type { Collider } from './types';
 import type { Fixture, StreetSite } from './office/fixture';
 import { canvasTexture } from './texture';
@@ -34,6 +35,8 @@ export interface NightParts {
   /** Where each bulb's soft halo goes at night, and its color; `ground` as for a Lamp. */
   halos: { at: THREE.Vector3; size: number; color: string; ground?: boolean }[];
   lamps: Lamp[];
+  /** The lamps in the office itself, which light the room (see world/roomlight.ts). */
+  roomLamps: RoomLamp[];
   /** How far below the floor you're on the street is (see streetBelow): what the `ground` lamps drop with. */
   street: number;
   /** The neighbours' walls, whose windows light up at night. */

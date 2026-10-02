@@ -11,7 +11,7 @@ const noop: unknown = new Proxy(() => noop, { get: (_t, k) => (k === 'then' ? un
 const { buildScenic } = await import('../src/client/world/scenic/index.js');
 
 function build() {
-  const night = { bulbs: [], halos: [], lamps: [], street: 0, windows: [], glows: [], clouds: null, wetGlass: null } as never;
+  const night = { bulbs: [], halos: [], lamps: [], roomLamps: [], street: 0, windows: [], glows: [], clouds: null, wetGlass: null } as never;
   const colliders: { minX: number; maxX: number; minZ: number; maxZ: number }[] = [];
   const group = new THREE.Group();
   return { scenic: buildScenic(group, colliders as never, night), colliders, group };

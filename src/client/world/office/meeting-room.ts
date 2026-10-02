@@ -5,7 +5,7 @@ import { mesh, roundedBox, textPlane, toon } from '../toon';
 import type { Collider, DeskView, Interactable } from '../types';
 import type { Fixture } from './fixture';
 import { PALETTE, box, glassPane } from './materials';
-import { wallBoard } from './props';
+import { LAMP_COLOR, wallBoard } from './props';
 import { chair } from './seats';
 import type { Door } from './shell';
 
@@ -166,6 +166,8 @@ export function buildMeetingRoom(group: THREE.Group, colliders: Collider[], inte
   for (const dx of [-0.95, 0.95]) {
     group.add(mesh(new THREE.CylinderGeometry(0.34, 0.34, 0.04, 20), toon('#fff7d6', { emissive: '#ffe08a' }), top.x + dx, H - 0.02, top.z, false));
     night.halos.push({ at: new THREE.Vector3(top.x + dx, H - 0.08, top.z), size: 0.9, color: '#ffe08a' });
+    // Under the boss office's floor: they light the meeting room, not the floor over them.
+    night.roomLamps.push({ x: top.x + dx, y: H - 0.1, z: top.z, reach: 5, color: LAMP_COLOR, power: 1.2, level: 1, floor: 0, top: H });
   }
   return { board: face, sign };
 }
