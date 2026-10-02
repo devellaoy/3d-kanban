@@ -9,7 +9,8 @@ import path from 'node:path';
 import type { WebSocket } from 'ws';
 import type { FloorDef } from '../src/server/building.js';
 import { openKanban } from '../src/server/kanban/office.js';
-import { Access, setAccessCheckerForTests } from '../src/server/multiplayer/access.js';
+import { Access, repoPrint, setAccessCheckerForTests } from '../src/server/multiplayer/access.js';
+import { Guest, VISIT_ENDED } from '../src/server/multiplayer/guest.js';
 import { Multiplayer } from '../src/server/multiplayer/index.js';
 import { RemoteSocket } from '../src/server/multiplayer/remote-socket.js';
 import { Directory, Peer } from '../src/server/multiplayer/relay/directory.js';
@@ -17,6 +18,7 @@ import { Sessions } from '../src/server/multiplayer/relay/sessions.js';
 import { setMp } from '../src/server/multiplayer/registry.js';
 import { newClient, type Client } from '../src/server/office/client.js';
 import type { Ctx } from '../src/server/office/context.js';
+import { presenceHandlers } from '../src/server/ws/handlers/presence.js';
 import { messaging } from '../src/server/office/messaging.js';
 import { navigation } from '../src/server/office/navigation.js';
 import { visitorMay, filterForVisitor, type VisitorScope } from '../src/shared/multiplayer/allow.js';
@@ -29,7 +31,8 @@ afterEach(() => setAccessCheckerForTests(undefined));
 
 // --- A: the floor goes before the new repositories are broadcast ------------------------------------
 
-test('saving a project\'s repositories takes the floor from a visitor before the call returns', () => {
+/** An office with floors a and b shared with a visitor on a; `extra` is a git folder to add to b as another repository. */
+function repoScene() {
   const root = mkdtempSync(path.join(tmpdir(), 'agent-office-mp-review-'));
   const defs: FloorDef[] = ['a', 'b'].map((id) => {
     const dir = path.join(root, id);
@@ -38,11 +41,13 @@ test('saving a project\'s repositories takes the floor from a visitor before the
   });
   const extra = path.join(root, 'extra');
   mkdirSync(path.join(extra, '.git'), { recursive: true });
+  const sent: string[] = [];
   const ctx = {
     upgrader: { version: 't' },
     cfg: { dataDir: root },
     building: { list: () => defs, setRepos: (id: string, repos: FloorDef['repos']) => Object.assign(defs.find((d) => d.id === id)!, { repos }) },
-    floors: new Map(),
+    // The floors are running (admitted() only offers those), and quiet when a visitor lets go of them.
+    floors: new Map(defs.map((d) => [d.id, { id: d.id, changes: { unwatchAll() {} }, workers: { detach() {} } }])),
     clients: new Map<string, Client>(),
     floorsChanged() {},
     workerFloor: () => undefined,
@@ -54,12 +59,22 @@ test('saving a project\'s repositories takes the floor from a visitor before the
   setMp(ctx, mp);
   setAccessCheckerForTests(() => new Promise(() => {})); // GitHub never answers: only the synchronous part counts
   const scope: VisitorScope = { login: 'vera', floors: new Set(['a', 'b']), projects: new Set(['a', 'b']) };
-  const sock = new RemoteSocket({ frame: () => true, up: () => true, bufferedAmount: () => 0, closed: () => {} }, scope, {});
+  const sock = new RemoteSocket({ frame: (d) => (sent.push(d), true), up: () => true, bufferedAmount: () => 0, closed: () => {} }, scope, {});
   const c = newClient('v1', sock.asWebSocket(), { accountId: undefined, admin: false }, { id: 'v1', name: 'v1', floor: 'a' } as unknown as PeerInfo);
   c.visitor = scope;
   ctx.clients.set(c.id, c);
-  mp.host.sessions.set('s1', { sock, scope, prints: new Map([['a', 'acme/a'], ['b', 'acme/b']]), denied: new Map() });
+  mp.host.sessions.set('s1', { sock, scope, prints: new Map(defs.map((d) => [d.id, repoPrint(d)])), denied: new Map() });
   const kanban = openKanban(ctx, 9);
+  const done = () => {
+    kanban.shutdown();
+    mp.close();
+    rmSync(root, { recursive: true, force: true });
+  };
+  return { defs, extra, scope, mp, kanban, sent, sock, done };
+}
+
+test('saving a project\'s repositories takes the floor from a visitor before the call returns', () => {
+  const { defs, extra, scope, kanban, done } = repoScene();
   try {
     const err = kanban.ctx.setRepos('b', [
       { id: 'b', name: 'b', kind: 'git', dir: defs[1].dir, remote: 'acme/b', primary: true },
@@ -72,9 +87,30 @@ test('saving a project\'s repositories takes the floor from a visitor before the
     const shown = filterForVisitor({ t: 'kanban.projects', projects: [{ id: 'b', repos: [] }] } as unknown as ServerMsg, scope);
     assert.deepEqual((shown as { projects: unknown[] }).projects, [], 'the new repository list is not shown to them');
   } finally {
-    kanban.shutdown();
-    mp.close();
-    rmSync(root, { recursive: true, force: true });
+    done();
+  }
+});
+
+test('a folder without a GitHub remote makes the project unshareable: the visitor loses it, never regains it, and never sees its name', async () => {
+  const { defs, extra, scope, mp, kanban, sent, sock, done } = repoScene();
+  try {
+    // GitHub says yes to everything, so only the shareability of the project can keep the floor away.
+    setAccessCheckerForTests(async () => true);
+    const err = kanban.ctx.setRepos('b', [
+      { id: 'b', name: 'b', kind: 'git', dir: defs[1].dir, remote: 'acme/b', primary: true },
+      { id: 'secret-folder', name: 'Secret folder', kind: 'folder', dir: extra, primary: false },
+    ]);
+    assert.equal(err, undefined);
+    assert.deepEqual([...scope.floors], ['a'], 'taken before anything is broadcast');
+    assert.deepEqual([...scope.projects], ['a']);
+    // The regain started by that change has been answered by now: an unshareable project is not given back.
+    await new Promise((r) => setTimeout(r, 20));
+    assert.deepEqual([...scope.floors], ['a'], 'not given back');
+    assert.ok(mp.host.sessions.get('s1')!.prints.has('a') && !mp.host.sessions.get('s1')!.prints.has('b'));
+    sock.send(JSON.stringify({ t: 'kanban.projects', projects: [{ id: 'b', repos: [{ id: 'secret-folder', name: 'Secret folder' }] }] }));
+    assert.ok(!sent.some((d) => d.includes('Secret folder')), 'the new folder\'s name never reaches the visitor');
+  } finally {
+    done();
   }
 });
 
@@ -187,4 +223,84 @@ test('the elevator takes a visitor up to the roof and back to a floor of theirs'
   assert.equal((heard.find((m) => m.t === 'floor.enter') as { floor: string }).floor, ROOF);
   nav.goToFloor(c, floors.get('a') as never);
   assert.equal(c.peer.floor, 'a');
+});
+
+// --- Voice signalling on the roof -------------------------------------------------------------------
+
+test('voice signalling between a visitor and people on the roof goes both ways, but not to the lobby or an unshared floor', () => {
+  const heard: Record<string, ServerMsg[]> = {};
+  const mk = (id: string, floor: string | undefined, visitor?: VisitorScope) => {
+    const ws = { readyState: 1, bufferedAmount: 0, send: (d: string) => void (heard[id] ??= []).push(JSON.parse(d)) };
+    const c = newClient(id, ws as unknown as WebSocket, { accountId: undefined, admin: false }, { id, name: id, floor } as unknown as PeerInfo);
+    if (visitor) c.visitor = visitor;
+    return c;
+  };
+  const scope: VisitorScope = { login: 'vera', floors: new Set(['a']), projects: new Set(['a']) };
+  const clients = new Map<string, Client>();
+  const ctx = { clients, sendTo: (c: Client, m: ServerMsg) => c.ws.send(JSON.stringify(m)) } as unknown as Ctx;
+  const people = [mk('visitor', ROOF, scope), mk('owner-roof', ROOF), mk('on-a', 'a'), mk('on-secret', 'secret'), mk('lobby', undefined)];
+  for (const c of people) clients.set(c.id, c);
+  const rtc = (from: string, to: string) => presenceHandlers.rtc(ctx, clients.get(from)!, { t: 'rtc', to, data: { x: 1 } } as never);
+  rtc('visitor', 'owner-roof');
+  rtc('owner-roof', 'visitor');
+  rtc('visitor', 'on-a');
+  rtc('visitor', 'on-secret');
+  rtc('visitor', 'lobby');
+  assert.equal(heard['owner-roof']?.length, 1, 'visitor to someone on the roof');
+  assert.equal(heard['visitor']?.length, 1, 'roof owner to the visitor');
+  assert.equal(heard['on-a']?.length, 1, 'a shared floor still works');
+  assert.equal(heard['on-secret'], undefined);
+  assert.equal(heard['lobby'], undefined);
+  // And the frame going out to the visitor passes the outbound filter.
+  assert.ok(filterForVisitor({ t: 'rtc', from: 'owner-roof', data: {} } as unknown as ServerMsg, scope, { floorOfPeer: () => ROOF }));
+});
+
+// --- Congestion at the hops the office controls -----------------------------------------------------
+
+test('the visitor\'s browser too far behind for an essential frame ends the visit and tells the relay', () => {
+  const sent: { t: string; reason?: string }[] = [];
+  const mp = { link: { send: (m: { t: string }) => (sent.push(m), true) }, version: 't', updatePresence() {} };
+  const guest = new Guest(mp as never);
+  const out: string[] = [];
+  const closes: [number, string][] = [];
+  const ws = { OPEN: 1, readyState: 1, bufferedAmount: 0, on() {}, send: (d: string) => void out.push(d), close: (code: number, why: string) => void closes.push([code, why]) };
+  guest.pipe(ws as never, 'alice', { name: 'Bob', color: '#fff', skin: 1, hair: 1, style: 1 });
+  const sid = [...guest.pipes.keys()][0];
+  guest.message({ t: 'visit.accept', sid });
+  ws.bufferedAmount = MP_HARD_CAP + 1;
+  guest.message({ t: 'visit.frame', sid, data: '{"t":"peer.move"}', drop: true });
+  assert.deepEqual(out, [], 'a droppable frame is skipped');
+  assert.equal(guest.pipes.size, 1);
+  guest.message({ t: 'visit.frame', sid, data: '{"t":"chat"}' });
+  assert.equal(guest.pipes.size, 0);
+  assert.deepEqual(out.map((d) => JSON.parse(d)), [{ t: 'mp.ended', reason: 'Connection too slow' }]);
+  assert.deepEqual(closes, [[VISIT_ENDED, 'Visit ended']]);
+  assert.deepEqual(sent.filter((m) => m.t === 'visit.close'), [{ t: 'visit.close', sid, reason: 'Connection too slow' }]);
+  // Below the cap an essential frame goes through, however backed up.
+  const ws2 = { ...ws, bufferedAmount: MP_HARD_CAP, send: (d: string) => void out.push(d) };
+  guest.pipe(ws2 as never, 'alice', { name: 'Bob', color: '#fff', skin: 1, hair: 1, style: 1 });
+  const sid2 = [...guest.pipes.keys()][0];
+  guest.message({ t: 'visit.accept', sid: sid2 });
+  out.length = 0;
+  guest.message({ t: 'visit.frame', sid: sid2, data: '{"t":"chat"}' });
+  assert.deepEqual(out, ['{"t":"chat"}']);
+});
+
+test('the owner\'s link too far behind for an essential frame ends that visit, and droppable ones are skipped before that', () => {
+  const frames: [string, boolean | undefined][] = [];
+  const closed: string[] = [];
+  const link = { buffered: 0 };
+  const scope: VisitorScope = { login: 'vera', floors: new Set(['a']), projects: new Set(['a']) };
+  const sock = new RemoteSocket({ frame: (d, drop) => (frames.push([JSON.parse(d).t, drop]), true), up: () => true, bufferedAmount: () => link.buffered, closed: (r) => void closed.push(r) }, scope, {});
+  let left = 0;
+  sock.once('close', () => left++);
+  link.buffered = MP_HARD_CAP + 1;
+  sock.send(JSON.stringify({ t: 'wb.pointer', id: 'p', x: 1, y: 2 }));
+  assert.deepEqual(frames, [['wb.pointer', true]], 'droppable frames are the link\'s to skip (Link.send), not ended over');
+  assert.equal(left, 0);
+  sock.send(JSON.stringify({ t: 'chat', id: 'p', text: 'hi' }));
+  assert.deepEqual(frames, [['wb.pointer', true]], 'the essential frame is not queued');
+  assert.deepEqual(closed, ['Connection too slow']);
+  assert.equal(left, 1, 'the visitor\'s Client leaves through the normal close');
+  assert.equal(sock.readyState, 3);
 });

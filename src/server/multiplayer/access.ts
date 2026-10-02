@@ -29,19 +29,31 @@ export function floorRepos(def: FloorDef): { repos: string[]; missing?: string }
   const repos: string[] = [];
   let missing: string | undefined;
   for (const r of projectRepos(def)) {
-    // The floor's own checkout may have a GitHub origin the floor never saved (floor.ts reads it the same way).
-    const remote = normalizeRepo(r.remote) ?? (r.primary && r.kind === 'git' ? checkoutRepo(r.dir) : undefined);
-    if (remote && REPO_RE.test(remote)) repos.push(remote);
+    const remote = repoRemote(r);
+    if (remote) repos.push(remote);
     else missing ??= r.name;
   }
   return { repos, missing };
 }
 
+/** The GitHub repository (owner/name) of one repository of a project, if it has a usable one. */
+function repoRemote(r: ReturnType<typeof projectRepos>[number]): string | undefined {
+  // The floor's own checkout may have a GitHub origin the floor never saved (floor.ts reads it the same way).
+  const remote = normalizeRepo(r.remote) ?? (r.primary && r.kind === 'git' ? checkoutRepo(r.dir) : undefined);
+  return remote && REPO_RE.test(remote) ? remote : undefined;
+}
+
 /**
- * What a floor's access check was made of: its GitHub repositories. A visit holds on to the one it was
- * admitted with, and the floor is taken from the visitor as soon as the project is made of other ones.
+ * What a floor's access check and look were made of: every repository of the project (id, name, kind
+ * and GitHub remote or none). A visit holds on to the one it was admitted with, and the floor is taken
+ * from the visitor as soon as the project changes: a folder without a GitHub remote adds no repository
+ * to check, yet makes the project unshareable and puts a new name on the board.
  */
-export const repoPrint = (def: FloorDef): string => floorRepos(def).repos.map((r) => r.toLowerCase()).sort().join(',');
+export const repoPrint = (def: FloorDef): string =>
+  projectRepos(def)
+    .map((r) => [r.id, r.name, r.kind, repoRemote(r)?.toLowerCase() ?? '-'].join('|'))
+    .sort()
+    .join(',');
 
 export class Access {
   private cache = new Map<string, { ok: boolean; until: number }>();

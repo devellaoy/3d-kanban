@@ -9,7 +9,7 @@ import type { Duplex } from 'node:stream';
 import type { WebSocket, WebSocketServer } from 'ws';
 import { lookFromSeed, sanitizeLook } from '../../shared/avatar.js';
 import { clientFrameDroppable } from '../../shared/multiplayer/droppable.js';
-import { LOGIN_RE, MP_BODY_MAX, MP_FRAME_MAX, MP_HIGH_WATER, MP_PROTOCOL, loginKey, type MpVisitProfile, type RelayToOffice } from '../../shared/multiplayer/wire.js';
+import { LOGIN_RE, MP_BODY_MAX, MP_FRAME_MAX, MP_HARD_CAP, MP_HIGH_WATER, MP_PROTOCOL, loginKey, type MpVisitProfile, type RelayToOffice } from '../../shared/multiplayer/wire.js';
 import type { Session } from '../auth.js';
 import type { Ctx } from '../office/context.js';
 import { COLOR_RE, str } from '../office/input.js';
@@ -87,8 +87,16 @@ export class Guest {
       p.open = true;
       for (const text of p.queue.splice(0)) this.forward(p, text);
     } else if (msg.t === 'visit.frame') {
-      // Only a frame the sender marked droppable is skipped for a slow browser.
-      if (p.ws.readyState === p.ws.OPEN && (!msg.drop || p.ws.bufferedAmount < MP_HIGH_WATER)) p.ws.send(msg.data);
+      if (p.ws.readyState !== p.ws.OPEN) return true;
+      // Only a frame the sender marked droppable is skipped for a slow browser; one that must arrive
+      // to a browser this far behind would only grow the buffer, so the visit ends instead (the
+      // browser goes back to its own office, and the owner's office is told).
+      if (msg.drop) {
+        if (p.ws.bufferedAmount < MP_HIGH_WATER) p.ws.send(msg.data);
+      } else if (p.ws.bufferedAmount > MP_HARD_CAP) {
+        this.mp.link.send({ t: 'visit.close', sid: p.sid, reason: 'Connection too slow' });
+        this.end(p, 'Connection too slow');
+      } else p.ws.send(msg.data);
     } else this.end(p, msg.reason || 'The visit ended');
     return true;
   }

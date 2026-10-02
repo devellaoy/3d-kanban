@@ -120,7 +120,8 @@ export class Host {
     for (const [sid, h] of [...this.sessions]) {
       const changed = (id: string, print: string) => {
         const def = defs.get(id);
-        return !def || !shared.includes(id) || repoPrint(def) !== print;
+        // An unshareable project (a repository without GitHub remote) is taken away and not given back, whatever its print.
+        return !def || !shared.includes(id) || !mp.access.shareable(def).shareable || repoPrint(def) !== print;
       };
       const stale = [...h.prints].filter(([id, print]) => changed(id, print)).map(([id]) => id);
       // A floor taken away earlier gets another chance when its repositories change again.

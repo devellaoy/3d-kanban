@@ -8,6 +8,7 @@ import type { WebSocket } from 'ws';
 import { filterForVisitor, type VisitorScope } from '../../shared/multiplayer/allow.js';
 import type { FilterCtx } from '../../shared/multiplayer/filter.js';
 import { serverFrameDroppable } from '../../shared/multiplayer/droppable.js';
+import { MP_HARD_CAP } from '../../shared/multiplayer/wire.js';
 import type { ServerMsg } from '../../shared/protocol.js';
 
 /** ws's readyState numbers. */
@@ -53,7 +54,11 @@ export class RemoteSocket extends EventEmitter {
     if (!out) return;
     // Unchanged frames keep their text; rewritten ones are sent as rewritten.
     const text = out === msg ? data : JSON.stringify(out);
-    this.link.frame(text, serverFrameDroppable(text));
+    const drop = serverFrameDroppable(text);
+    // A frame that must arrive is never skipped, so a link this far behind would only grow our
+    // memory: the visit ends (the visitor's Client leaves as for any close, and can visit again for a full resync).
+    if (!drop && this.link.bufferedAmount() > MP_HARD_CAP) return this.end('Connection too slow', true);
+    this.link.frame(text, drop);
   }
 
   /** The heartbeat's ping: the relay link has its own, so this answers for the visitor while the link is up. */

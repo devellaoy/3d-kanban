@@ -104,8 +104,9 @@ export const presenceHandlers = {
   },
   rtc(ctx, c, msg) {
     const target = ctx.clients.get(str(msg.to, 32));
-    // A visitor talks to people on floors they may see and to other visitors, not to the rest of the owner's office.
-    if (target && c.visitor && !target.visitor && !c.visitor.floors.has(target.peer.floor ?? '')) return;
+    // A visitor talks to people on floors they may see, up on the roof (open to them) and to other
+    // visitors, not to the rest of the owner's office (the lobby, the floors that are not shared).
+    if (target && c.visitor && !target.visitor && target.peer.floor !== ROOF && !c.visitor.floors.has(target.peer.floor ?? '')) return;
     if (target) ctx.sendTo(target, { t: 'rtc', from: c.id, data: msg.data });
   },
   chat(ctx, c, msg) {
