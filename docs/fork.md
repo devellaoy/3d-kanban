@@ -119,6 +119,10 @@ Taking upstream changes is ordinary merge or cherry-pick work, only when the use
   `<task-id>`, `<summary>Monitor event: …</summary>` and `<event>` and no `<status>`, the last one with a
   `<status>`. `TaskStop` (`input.task_id`) has `toolUseResult: { message, task_id, task_type, command }`;
   `TaskOutput` (`input.task_id/block/timeout`) has `{ retrieval_status, task: { task_id, task_type, status, … } }`.
+  Notifications are read from their headers only (the first `<task-id>`, `<status>`, `<event>`; the `<result>`, `<output>`,
+  `<summary>` and `<event>` bodies are free text and cut out first). A Bash launch known only by its text needs
+  `run_in_background` on the call (the timeout's `Command did not complete within…` text needs nothing), and every launch
+  logged before the process's start is dead. Only a `local_agent` TaskOutput was seen; a Bash task's is assumed alike.
   Notification `<status>` values seen: `completed`, `failed`, `killed`, `stopped`. They arrive like an agent's
   (a user line with `origin.kind: 'task-notification'`, or a `queued_command` attachment with `commandMode:
   'task-notification'`). Not seen in any transcript, so not read: a `KillShell` or `BashOutput` call.

@@ -329,16 +329,29 @@ function notificationText(line: Record<string, unknown>): string {
 /** The `<status>` values a finished background task's notification carries (seen in Claude Code's transcripts). */
 const TERMINAL_STATUS = new Set(['completed', 'failed', 'killed', 'stopped']);
 
+/** The free-text bodies of a notification: an agent's result, a command's or monitor's output, the summary. Never read for structure. */
+const FREE_TEXT = /<(result|output|summary)>[\s\S]*?<\/\1>/g;
+const EVENT_BODY = /<event>[\s\S]*?<\/event>/g;
+
 /**
- * Whether one `<task-notification>` block ends its task: it has a terminal `<status>`, or no status at
- * all (the older shape). A Monitor's per-event notification has an `<event>`: the monitor goes on, so it
- * never ends it, whatever the event's own output says.
+ * The tasks a notification text ends, read from its headers only: the first `<task-id>`, `<status>` and
+ * `<event>` of each `<task-notification>` block. The free-text bodies (result, output, summary, and an
+ * event's content) are cut out first, so an agent's answer or a command's output quoting a tag (a
+ * `<status>killed</status>`, another task's id, an `<event>`) steers nothing. A block ends its task when it
+ * has a terminal `<status>` or none at all (the older shape); a Monitor's per-event notification has an
+ * `<event>`: the monitor goes on, so it never ends it.
  */
-const endsTask = (block: string): boolean => {
-  if (/<event>/.test(block)) return false;
-  const status = /<status>\s*([^<]*?)\s*<\/status>/.exec(block)?.[1];
-  return status === undefined || TERMINAL_STATUS.has(status);
-};
+function endedTasks(note: string): string[] {
+  const headers = note.replace(FREE_TEXT, '').replace(EVENT_BODY, '<event></event>');
+  const blocks = [...headers.matchAll(/<task-notification>([\s\S]*?)<\/task-notification>/g)].map((m) => m[1]);
+  const ended: string[] = [];
+  for (const block of blocks.length ? blocks : [headers]) {
+    const id = /<task-id>([^<]*)<\/task-id>/.exec(block)?.[1].trim();
+    const status = /<status>\s*([^<]*?)\s*<\/status>/.exec(block)?.[1];
+    if (id && !block.includes('<event>') && (status === undefined || TERMINAL_STATUS.has(status))) ended.push(id);
+  }
+  return ended;
+}
 
 /**
  * How many background tasks the run has working: each one's last event in the log is its launch (an
@@ -346,45 +359,53 @@ const endsTask = (block: string): boolean => {
  * non-persistent Monitor) or a resume (SendMessage), not its end. A task ends by a notification with a
  * terminal status, a TaskStop, or a TaskOutput that finds it finished. A persistent Monitor never ends,
  * so it isn't counted. Counted from `start`, the office's last prompt (so an earlier run's tasks don't
- * count; -1, the log's tail cut before it: none). A launch known only by its text counts just from an
- * Agent, Task or Bash call's result.
+ * count; -1, the log's tail cut before it: none). A launch logged before `since` (the process's start)
+ * died with that process (a restart ends the helpers): not counted. A launch known only by its text counts
+ * just from an Agent, Task or Bash call's result (a Bash one only with `run_in_background`, or the words of its timeout).
  */
-export function backgroundLeft(lines: Record<string, unknown>[], start: number): number {
+export function backgroundLeft(lines: Record<string, unknown>[], start: number, since?: number): number {
   if (start < 0) return 0;
   const tasks = new Map<string, boolean>();
-  const tools = new Map<unknown, unknown>();
+  // Every launch goes through here, so none can skip the restart check: a launch logged before the process started died with it.
+  const launch = (id: unknown, line: Record<string, unknown>) => {
+    const at = atOf(line);
+    if (typeof id === 'string') tasks.set(id, since === undefined || !(at > 0 && at < since));
+  };
+  const end = (id: unknown) => typeof id === 'string' && tasks.set(id, false);
+  const tools = new Map<unknown, { name: unknown; input: Record<string, unknown> }>();
   for (const line of lines.slice(start + 1)) {
     if (line.isSidechain === true) continue;
     const msg = isObj(line.message) ? line.message : undefined;
     const content = Array.isArray(msg?.content) ? msg.content.filter(isObj) : [];
-    if (line.type === 'assistant') for (const b of content) if (b.type === 'tool_use') tools.set(b.id, b.name);
+    if (line.type === 'assistant') for (const b of content) if (b.type === 'tool_use') tools.set(b.id, { name: b.name, input: isObj(b.input) ? b.input : {} });
     const res = isObj(line.toolUseResult) ? line.toolUseResult : undefined;
-    if (res?.isAsync === true && res.status === 'async_launched') {
-      const id = res.agentId ?? res.taskId;
-      if (typeof id === 'string') tasks.set(id, true);
-    } else if (typeof res?.resumedAgentId === 'string') tasks.set(res.resumedAgentId, true);
-    else if (typeof res?.backgroundTaskId === 'string') tasks.set(res.backgroundTaskId, true);
+    if (res?.isAsync === true && res.status === 'async_launched') launch(res.agentId ?? res.taskId, line); // Agent / Task
+    else if (typeof res?.resumedAgentId === 'string') launch(res.resumedAgentId, line); // SendMessage
+    else if (typeof res?.backgroundTaskId === 'string') launch(res.backgroundTaskId, line); // Bash, also one its timeout moved to the background
     else if (typeof res?.taskId === 'string' && typeof res.timeoutMs === 'number') {
-      if (res.persistent !== true) tasks.set(res.taskId, true);
-    } else if (typeof res?.task_id === 'string' && typeof res.task_type === 'string') tasks.set(res.task_id, false);
-    else if (isObj(res?.task) && typeof res.task.task_id === 'string' && TERMINAL_STATUS.has(String(res.task.status))) tasks.set(res.task.task_id, false);
-    else if (!res && line.type === 'user') {
+      if (res.persistent !== true) launch(res.taskId, line); // Monitor; a persistent one never finishes
+    } else if (typeof res?.task_id === 'string' && typeof res.task_type === 'string') end(res.task_id); // TaskStop
+    else if (isObj(res?.task) && TERMINAL_STATUS.has(String(res.task.status))) {
+      // TaskOutput that finds the task finished. Only the `local_agent` shape was seen in transcripts: a Bash task's is assumed to be the same.
+      end(res.task.task_id);
+    } else if (!res && line.type === 'user') {
+      // Logged without a toolUseResult: the launch is read from the result text of the tools that make one.
       for (const b of content) {
         if (b.type !== 'tool_result') continue;
         const tool = tools.get(b.tool_use_id);
-        const text = tool === 'Agent' || tool === 'Task' || tool === 'Bash' ? toolResultText(b) : '';
-        const id = text.startsWith('Async agent launched successfully')
-          ? /^agentId:\s*([\w-]+)/m.exec(text)?.[1]
-          : /^Command running in background with ID: (\w+)/.exec(text)?.[1] ?? /was moved to the background \(ID: (\w+)\)/.exec(text)?.[1];
-        if (id) tasks.set(id, true);
+        const text = toolResultText(b).slice(0, 500);
+        if (tool?.name === 'Agent' || tool?.name === 'Task') {
+          if (text.startsWith('Async agent launched successfully')) launch(/^agentId:\s*([\w-]+)/m.exec(text)?.[1], line);
+        } else if (tool?.name === 'Bash') {
+          // Anchored: a command's own output quoting the words is no launch. Without run_in_background only the timeout's words count.
+          const timedOut = /^Command did not complete within[^\n]*?was moved to the background \(ID: (\w+)\)/.exec(text)?.[1];
+          launch(timedOut ?? (tool.input.run_in_background === true ? /^Command running in background with ID: (\w+)/.exec(text)?.[1] : undefined), line);
+        }
       }
     }
     const note = notificationText(line);
-    const blocks = [...note.matchAll(/<task-notification>([\s\S]*?)<\/task-notification>/g)].map((m) => m[1]);
-    for (const block of blocks.length ? blocks : note ? [note] : []) {
-      if (!endsTask(block)) continue;
-      for (const m of block.matchAll(/<task-id>([^<]*)<\/task-id>/g)) tasks.set(m[1].trim(), false);
-    }
+    if (!note) continue;
+    for (const id of endedTasks(note)) end(id);
   }
   return [...tasks.values()].filter(Boolean).length;
 }
@@ -459,10 +480,19 @@ export function readClaudeTurn(file: string, opts?: { since?: number }): TurnRes
     }
   }
   // Background agents, commands and teammates alike: the turn's Stop isn't the run's end while any still works.
-  const left = backgroundLeft(lines, start) + teammatesBusy(file, opts?.since ?? 0, teammateEvents(lines, start));
+  const left = backgroundLeft(lines, start, opts?.since) + teammatesBusy(file, opts?.since ?? 0, teammateEvents(lines, start));
   // The last prompt is a notification or a teammate's message nothing has answered yet: Claude is about to take its turn.
   const resuming = from >= 0 && !answered && isAgentNotice(lines[from]);
   return { text: texts.join('\n\n'), ...(plan !== undefined ? { plan } : {}), ...(exitPlan ? { exitPlan } : {}), complete: answered && !toolPending && (texts.length > 0 || exitPlan), ...(apiError ? { apiError } : {}), ...(running.size ? { toolRunning: true } : {}), ...(left ? { background: left } : {}), ...(resuming ? { resuming } : {}) };
+}
+
+/** Claude logs an Esc on a turn as a user line "[Request interrupted by user…]" (it fires no Stop hook): whether one was logged at or after `since` (ms). */
+export function claudeInterruptedSince(file: string, since: number): boolean {
+  const said = (l: Record<string, unknown>) => {
+    const c = isObj(l.message) ? l.message.content : undefined;
+    return (typeof c === 'string' ? [c] : Array.isArray(c) ? c.filter(isObj).map((b) => b.text) : []).some((t) => typeof t === 'string' && t.startsWith('[Request interrupted by user'));
+  };
+  return !!readJsonLines(file)?.some((l) => l.type === 'user' && atOf(l) >= since && said(l));
 }
 
 export const claudeAdapter: TaskAgentAdapter = {
@@ -483,6 +513,7 @@ export const claudeAdapter: TaskAgentAdapter = {
     return args;
   },
   readTurnResult: readClaudeTurn,
+  interruptedSince: claudeInterruptedSince,
   spawnModel: claudeAlias,
   spawnEffort: (effort?: KanbanEffort) => (effort === 'minimal' ? 'low' : effort),
 };
