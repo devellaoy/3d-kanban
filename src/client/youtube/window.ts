@@ -67,7 +67,7 @@ export function openTvWindow(deps: TvWindowDeps) {
       error,
       deps.screen.needsClick(),
       !!deps.screen.duration(),
-      !!deps.screen.playlistIds()?.length,
+      !!deps.screen.playlistAt(),
       deps.screen.rateNote(),
     ]);
     if (k === drawn) return;

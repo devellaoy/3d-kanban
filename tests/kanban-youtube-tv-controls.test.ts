@@ -236,17 +236,91 @@ test('unpack: the rest of the playlist goes to the front of the queue, what play
   try {
     const l = on(tv, 'https://www.youtube.com/watch?v=aaaaaaaaaaa&list=PLabc123&index=2');
     tv.play(V(9), 'Bo', 'end');
+    tv.info(l.id, 240, 4);
     clock.now += 5000;
     const ids = ['aaaaaaaaaaa', 'bbbbbbbbbbb', 'ccccccccccc', 'ddddddddddd'];
-    assert.equal(tv.unpack(l.id, ['short']), null);
-    assert.equal(tv.unpack('stale', ids), null);
-    assert.equal(tv.unpack(l.id, Array.from({ length: 201 }, () => 'aaaaaaaaaaa')), null);
-    const added = tv.unpack(l.id, ids)!;
+    for (const bad of [
+      tv.unpack(l.id, ['short'], 0, 'short'),
+      tv.unpack('stale', ids, 1, 'bbbbbbbbbbb'),
+      tv.unpack(l.id, Array.from({ length: 201 }, () => 'aaaaaaaaaaa'), 0, 'aaaaaaaaaaa'),
+      tv.unpack(l.id, ids, 4, 'bbbbbbbbbbb'),
+      tv.unpack(l.id, ids, -1, 'bbbbbbbbbbb'),
+      tv.unpack(l.id, ids, 1.5, 'bbbbbbbbbbb'),
+    ]) assert.ok('error' in bad && bad.error);
+    assert.ok('error' in tv.unpack(l.id, ids, 1, 'ccccccccccc'), 'the player is not where it says');
+    assert.equal(tv.state()!.list, 'PLabc123', 'a refusal changes nothing');
+    const added = tv.unpack(l.id, ids, 1, 'bbbbbbbbbbb');
+    assert.ok(Array.isArray(added));
     assert.deepEqual(added.map((i) => i.videoId), ['ccccccccccc', 'ddddddddddd']);
     const s = tv.state()!;
-    assert.deepEqual([s.id, s.videoId, s.list, s.index, s.position, s.at], [l.id, 'bbbbbbbbbbb', undefined, undefined, 0, l.at]);
+    assert.deepEqual([s.id, s.videoId, s.list, s.index, s.listLength, s.duration, s.position, s.at], [l.id, 'bbbbbbbbbbb', undefined, undefined, undefined, 240, 0, l.at]);
     assert.deepEqual(tv.list().queue.map((i) => i.videoId), ['ccccccccccc', 'ddddddddddd', vid(9)]);
-    assert.equal(tv.unpack(l.id, ids), null, 'a single video has no list to unpack');
+    assert.ok('error' in tv.unpack(l.id, ids, 1, 'bbbbbbbbbbb'), 'a single video has no list to unpack');
+  } finally {
+    done();
+  }
+});
+
+test('unpack: it is where the player is that counts, not where the office thinks it is', () => {
+  const { tv, done } = setup();
+  try {
+    // The office has it at index 0, the player has already gone on to the third video.
+    const l = on(tv, 'https://www.youtube.com/watch?v=aaaaaaaaaaa&list=PLabc123&index=1');
+    const added = tv.unpack(l.id, ['aaaaaaaaaaa', 'bbbbbbbbbbb', 'ccccccccccc', 'ddddddddddd'], 2, 'ccccccccccc');
+    assert.ok(Array.isArray(added));
+    assert.deepEqual(added.map((i) => i.videoId), ['ddddddddddd']);
+    assert.equal(tv.state()!.videoId, 'ccccccccccc');
+  } finally {
+    done();
+  }
+});
+
+test('unpack: a full queue keeps what is in front, as many as fit', () => {
+  const { tv, done } = setup();
+  try {
+    const l = on(tv, 'https://www.youtube.com/watch?v=aaaaaaaaaaa&list=PLabc123&index=1');
+    for (let i = 0; i < QUEUE_MAX - 1; i++) tv.play(V(i), 'Bo', 'end');
+    const ids = ['aaaaaaaaaaa', 'bbbbbbbbbbb', 'ccccccccccc'];
+    const added = tv.unpack(l.id, ids, 0, 'aaaaaaaaaaa');
+    assert.ok(Array.isArray(added));
+    assert.deepEqual(added.map((i) => i.videoId), ['bbbbbbbbbbb', 'ccccccccccc']);
+    assert.equal(tv.list().queue.length, QUEUE_MAX);
+  } finally {
+    done();
+  }
+});
+
+test('skip back with a full queue: what was on is left out, no queued video is lost', () => {
+  const { tv, done } = setup();
+  try {
+    on(tv, V(1));
+    on(tv, V(2));
+    for (let i = 10; i < 10 + QUEUE_MAX; i++) tv.play(V(i), 'Bo', 'end');
+    assert.equal(tv.list().queue.length, QUEUE_MAX);
+    const before = tv.list().queue.map((i) => i.qid);
+    assert.equal(tv.skip(tv.state()!.id, -1), 'history');
+    assert.equal(tv.state()!.videoId, vid(1));
+    assert.deepEqual(tv.list().queue.map((i) => i.qid), before);
+  } finally {
+    done();
+  }
+});
+
+test('ended with next never goes past the end of a playlist whose length is known', () => {
+  const { tv, done } = setup();
+  try {
+    const l = on(tv, 'https://www.youtube.com/watch?v=aaaaaaaaaaa&list=PLabc123&index=3');
+    tv.play(V(9), 'Bo', 'end');
+    tv.info(l.id, undefined, 3);
+    assert.equal(tv.ended(l.id, true), 'queue', 'index 3 of 3 is past the end');
+    assert.equal(tv.state()!.videoId, vid(9));
+    const m = on(tv, 'https://www.youtube.com/watch?v=aaaaaaaaaaa&list=PLabc123&index=2');
+    tv.info(m.id, undefined, 3);
+    assert.equal(tv.ended(m.id, true), 'next');
+    assert.equal(tv.state()!.index, 2);
+    const u = on(tv, 'https://www.youtube.com/watch?v=aaaaaaaaaaa&list=PLabc123&index=2');
+    assert.equal(tv.ended(u.id, true), 'next', 'length unknown: tried');
+    assert.equal(tv.state()!.index, 2);
   } finally {
     done();
   }

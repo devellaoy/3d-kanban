@@ -34,8 +34,8 @@ export const queueHandlers = {
   'tv.youtube.unpack'(ctx, c, msg) {
     const floor = ctx.floorOf(c);
     if (!floor) return;
-    const added = youtubeTvOf(floor).unpack(msg.id, msg.videoIds);
-    if (!added) return;
+    const added = youtubeTvOf(floor).unpack(msg.id, msg.videoIds, msg.at, msg.current);
+    if ('error' in added) return ctx.warn(c, added.error);
     changed(ctx, floor, true);
     ctx.toastFloor(floor, `📺 ${c.peer.name} unpacked the playlist into the TV queue (${added.length} video${added.length === 1 ? '' : 's'})`);
     titleQueued(ctx, floor, added);

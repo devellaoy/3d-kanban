@@ -9,6 +9,7 @@ import * as THREE from 'three';
 import { CSS3DObject, CSS3DRenderer } from 'three/examples/jsm/renderers/CSS3DRenderer.js';
 import { TV } from '../../shared/layout';
 import { youtubeTitle } from '../../shared/youtube/link';
+import { UNPACK_MAX } from '../../shared/youtube/queue';
 import type { Ctx } from '../core/context';
 import { visiting } from '../multiplayer/visit';
 import { store, type Settings } from '../state';
@@ -57,6 +58,8 @@ export class TvScreen {
   private making = false;
   /** The play the player has loaded (its `id`), its playlist, and when it was loaded (performance.now()). */
   private loaded: { id: string; list?: string; at: number } | null = null;
+  /** The timing this browser last followed (position, at, rate, paused) of the play that's on: only a change in it is followed at once. */
+  private followed: { id: string; position: number; at: number; rate: number; paused: boolean } | null = null;
   /** The plays already said to be over, so it's said once. */
   private told = new Set<string>();
   /** What the office has been told of the play that's on (its length, its playlist's length), once each. */
@@ -167,12 +170,20 @@ export class TvScreen {
     return d > 0 ? d : y?.duration;
   }
 
-  /** The loaded playlist's video ids in order (what unpacking it needs), or null when there's none or the player hasn't it yet. */
-  playlistIds(): string[] | null {
+  /**
+   * What unpacking the loaded playlist needs: its video ids in order (at most UNPACK_MAX, a window around the
+   * video the player is on when there are more), where the player is in them (`at`) and the video it plays there
+   * (`current`). Null when there's no playlist, the player hasn't it yet, or it isn't on a video of it yet.
+   */
+  playlistAt(): { videoIds: string[]; at: number; current: string } | null {
     const y = store.youtube;
     if (!y || !this.ready || !this.player || this.loaded?.id !== y.id) return null;
     const ids = this.player.getPlaylist();
-    return ids && ids.length > 0 ? ids : null;
+    const index = this.player.getPlaylistIndex();
+    const current = this.player.getVideoData?.().video_id;
+    if (!ids || !current || !Number.isInteger(index) || ids[index] !== current) return null;
+    const from = Math.max(0, Math.min(index - UNPACK_MAX / 2, ids.length - UNPACK_MAX));
+    return { videoIds: ids.slice(from, from + UNPACK_MAX), at: index - from, current };
   }
 
   /** Why the speed the office asked for isn't what you see, when it isn't. */
@@ -298,10 +309,24 @@ export class TvScreen {
     const p = this.player!;
     const at = youtubeAt(y);
     if (this.loaded?.id === y.id) {
-      // The same play, only changed (paused, moved, sped up), or its playlist unpacked into the queue (then it
-      // has lost its `list` and got a `videoId`, and it's the video already playing): nothing reloads.
+      // Its playlist unpacked into the queue (it has lost its `list` and got a `videoId`): the playlist would go on
+      // to its next video by itself, so the video already playing is loaded on its own, from where it is. Whatever
+      // the old load still says (ended, an error) is held back by `loaded.at` (see `current`).
+      if (this.loaded.list && !y.list && y.videoId) {
+        this.loaded = { id: y.id, at: performance.now() };
+        p.loadVideoById({ videoId: y.videoId, startSeconds: at });
+        this.stuckSince = 0;
+        this.keep(y);
+        if (this.shown !== 'yes' || y.paused) p.pauseVideo();
+        this.applyVolume(true);
+        return;
+      }
+      // The same play, only changed (paused, moved, sped up) or told more (its title, its length): only a change of
+      // timing is followed at once, anything else is left to sync (a seek on every broadcast would jump the video).
       this.loaded.list = y.list;
-      this.follow(y, at, 0.5);
+      const f = this.followed;
+      if (!f || f.id !== y.id || f.position !== y.position || f.at !== y.at || f.rate !== y.rate || f.paused !== y.paused) this.follow(y, at, 0.5);
+      this.keep(y);
       this.applyVolume(true);
       return;
     }
@@ -314,9 +339,15 @@ export class TvScreen {
       else p.loadPlaylist({ list: y.list, listType: 'playlist', index: y.index ?? 0, startSeconds: at });
     } else if (y.videoId) p.loadVideoById({ videoId: y.videoId, startSeconds: at });
     this.stuckSince = 0;
+    this.keep(y);
     // Loading plays; it's held when it's paused or not shown.
     if (this.shown !== 'yes' || y.paused) p.pauseVideo();
     this.applyVolume(true);
+  }
+
+  /** Notes the timing of `y` as the one this browser has followed. */
+  private keep(y: YoutubeOnTv) {
+    this.followed = { id: y.id, position: y.position, at: y.at, rate: y.rate, paused: y.paused };
   }
 
   /** Puts the speed right, then pauses or plays, and moves to `at` if it's off by more than `tol` seconds (at 1×). */

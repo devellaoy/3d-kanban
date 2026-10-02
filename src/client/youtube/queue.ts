@@ -49,8 +49,8 @@ export function tvQueue(deps: { net: Net; screen: TvScreen }): TvQueue {
   });
   unpack.addEventListener('click', () => {
     const y = store.youtube;
-    const ids = deps.screen.playlistIds();
-    if (y?.list && ids?.length) net.send({ t: 'tv.youtube.unpack', id: y.id, videoIds: ids.slice(0, 200) });
+    const here = deps.screen.playlistAt();
+    if (y?.list && here) net.send({ t: 'tv.youtube.unpack', id: y.id, ...here });
   });
 
   const add = h(
@@ -98,7 +98,7 @@ export function tvQueue(deps: { net: Net; screen: TvScreen }): TvQueue {
       const { queue } = store.youtubeList;
       count.textContent = queue.length ? String(queue.length) : '';
       clear.hidden = !queue.length;
-      unpack.hidden = !(y?.list && deps.screen.playlistIds()?.length);
+      unpack.hidden = !(y?.list && deps.screen.playlistAt());
       list.replaceChildren(
         ...(queue.length
           ? queue.map((q, i) => row(q, i, queue.length))

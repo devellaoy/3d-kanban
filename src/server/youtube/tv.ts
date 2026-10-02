@@ -4,12 +4,10 @@ import { randomUUID } from 'node:crypto';
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { RATES, isVideoId, parseYoutubeLink, tvPosition, youtubeUrl, type YoutubeLink, type YoutubeTvState } from '../../shared/youtube/link.js';
-import type { YoutubeQueueItem, YoutubeTvList } from '../../shared/youtube/queue.js';
+import { UNPACK_MAX, type YoutubeQueueItem, type YoutubeTvList } from '../../shared/youtube/queue.js';
 import * as q from './queue.js';
 import { parseSaved, type Play, type Saved } from './saved.js';
 
-/** The most videos a playlist is unpacked from. */
-export const UNPACK_MAX = 200;
 const clip = (n: unknown): n is number => typeof n === 'number' && Number.isFinite(n);
 
 /**
@@ -96,7 +94,8 @@ export class YoutubeTv {
 
   /**
    * ⏭️ (1) or ⏮️ (-1). Forward: the YouTube playlist's next video (unless it's on its last), else the queue's next, else off.
-   * Back: the playlist's previous video, else the last one played (what's on goes to the queue's front), else the start.
+   * Back: the playlist's previous video, else the last one played (what's on goes to the queue's front, or is left out
+   * when the queue is full: a queued video is never pushed off), else the start.
    * Null when `id` isn't what's on.
    */
   skip(id: unknown, dir: unknown): 'list' | 'queue' | 'history' | 'restart' | 'stopped' | null {
@@ -114,7 +113,8 @@ export class YoutubeTv {
       return 'restart';
     }
     this.history = this.history.slice(0, -1);
-    this.queue = q.addFront(this.queue, [this.item(s, s.by, s)]);
+    // What was on goes to the queue's front, unless the queue is full: it is then the one left out, never a queued item.
+    this.queue = q.add(this.queue, this.item(s, s.by, s), 'next') ?? this.queue;
     this.begin(last, false);
     return 'history';
   }
@@ -125,8 +125,10 @@ export class YoutubeTv {
    */
   ended(id: unknown, next: boolean): 'next' | 'queue' | 'stopped' | null {
     if (!this.s || id !== this.s.id) return null;
-    if (next && this.s.list) {
-      this.inList((this.s.index ?? 0) + 1);
+    const index = this.s.index ?? 0;
+    // Past the playlist's known end there's no next video: it's over like any other.
+    if (next && this.s.list && (this.s.listLength === undefined || index + 1 < this.s.listLength)) {
+      this.inList(index + 1);
       return 'next';
     }
     if (this.nextOrOff()) return 'queue';
@@ -194,18 +196,21 @@ export class YoutubeTv {
   }
 
   /**
-   * The playing playlist's videos (`videoIds`: all of them, in order) become queue items. What's on stays on, as the
-   * playlist's current video alone (same play, nothing to reload); the ones after it go to the queue's front.
-   * Gives the items added, or null when `id` isn't a playlist that's on or the ids don't fit it.
+   * The playing playlist's videos become queue items. `videoIds` are the playlist's videos in order (at most UNPACK_MAX),
+   * `at` is where the player is in them and `current` the video it plays there; they must agree, so the office never
+   * guesses the position. What's on stays on as `current` alone (same play, so the position carries on and the
+   * browsers drop the playlist without moving it), and the ones after `at` go to the queue's front.
+   * Gives the items added, or why not.
    */
-  unpack(id: unknown, videoIds: unknown): YoutubeQueueItem[] | null {
+  unpack(id: unknown, videoIds: unknown, at: unknown, current: unknown): YoutubeQueueItem[] | { error: string } {
     const s = this.s;
-    if (!s || id !== s.id || !s.list || !Array.isArray(videoIds) || videoIds.length > UNPACK_MAX || !videoIds.every(isVideoId)) return null;
-    const here = videoIds[s.index ?? 0];
-    if (!here) return null;
-    const added = videoIds.slice((s.index ?? 0) + 1).map((videoId) => this.item({ videoId, start: 0 }, s.by));
-    const { list: _l, index: _i, listLength: _n, title: _t, duration: _d, ...rest } = s;
-    this.s = { ...rest, videoId: here, url: youtubeUrl({ videoId: here, start: s.start }) };
+    if (!s || id !== s.id) return { error: 'That is not what is on the TV any more' };
+    if (!s.list) return { error: 'Only a YouTube playlist can be unpacked into the queue' };
+    if (!Array.isArray(videoIds) || videoIds.length === 0 || videoIds.length > UNPACK_MAX || !videoIds.every(isVideoId)) return { error: 'The playlist could not be read, so it was not unpacked' };
+    if (typeof at !== 'number' || !Number.isInteger(at) || at < 0 || at >= videoIds.length || videoIds[at] !== current) return { error: 'The TV moved to another video while unpacking, so the playlist was not unpacked' };
+    const added = videoIds.slice(at + 1).map((videoId) => this.item({ videoId, start: 0 }, s.by));
+    const { list: _l, index: _i, listLength: _n, title: _t, ...rest } = s;
+    this.s = { ...rest, videoId: videoIds[at], url: youtubeUrl({ videoId: videoIds[at], start: s.start }) };
     this.queue = q.addFront(this.queue, added);
     this.save();
     return added.filter((a) => this.queue.includes(a));
