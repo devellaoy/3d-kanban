@@ -72,14 +72,14 @@ export function installBilliards(ctx: Ctx, deps: BilliardsDeps) {
     bothHands: true,
   });
   ctx.ticks.add('play', ({ dt }) => {
-    // Pulled away from the table (sat down, off up the ladder, into the elevator, a different floor): the cue goes back.
-    if (play.running && (ctx.trip() || ctx.activities.running('hanger') || ctx.activities.running('climber') || ctx.player.seat || ctx.upTop())) play.leave();
+    // Pulled away from the table (sat down, into the elevator, a different floor): the cue goes back.
+    if (play.running && (ctx.trip() || ctx.activities.running('hanger') || ctx.player.seat || ctx.upTop())) play.leave();
     play.update(dt);
   });
 
   /** E at the table: step up to the cue ball. */
   function startPlaying() {
-    if (play.running || ctx.trip() || ctx.activities.running('climber')) return;
+    if (play.running || ctx.trip()) return;
     const view = findTable(ctx.office.group);
     if (!view) return;
     const carrying = ctx.carrying();

@@ -45,8 +45,6 @@ export interface Interactable {
   deskId?: string;
   decorId?: string;
   seatId?: string;
-  /** Which of POLES, for a fire pole. */
-  pole?: number;
   /** Which of CARS (shared/garage.ts), for a car. */
   car?: number;
   /** Put away for now (a bean bag nobody needs yet): can't be used. */

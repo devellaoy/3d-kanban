@@ -224,8 +224,6 @@ body.telescope-active #hud { visibility: hidden; }
 /* A count on a dock button or a ☰ menu item, and by the floor's name the floors waiting on you. */
 .svc-count { margin-left: 6px; background: var(--accent); color: var(--text-on-accent); border-radius: var(--radius-pill); padding: 0 7px; font-size: var(--fs-xs); }
 
-/* Sliding down a fire pole: streaks of speed round the edge of the screen. */
-#whoosh { position: fixed; inset: 0; pointer-events: none; z-index: 5; opacity: 0; background: repeating-conic-gradient(from 0deg at 50% 50%, rgba(255, 255, 255, .55) 0deg 1.2deg, transparent 1.2deg 9deg); -webkit-mask: radial-gradient(circle at 50% 50%, transparent 38%, #000 78%); mask: radial-gradient(circle at 50% 50%, transparent 38%, #000 78%); }
 #fade.quick { transition-duration: .16s; }
 
 /* The lights going down on the way to another floor, and where each person is in the people panel. */

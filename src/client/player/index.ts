@@ -63,11 +63,11 @@ export class PlayerController extends PlayerInput {
   /** A walk along a path ended: at its end, by a key of yours, or up against something. */
   onPathEnd: ((why: 'arrived' | 'cancelled' | 'stuck') => void) | null = null;
   /**
-   * Something that has hold of you instead of your legs (the ladder, a fire pole): it moves you each
+   * Something that has hold of you instead of your legs (a golf swing, a billiards shot): it moves you each
    * frame, with no walking, falling or bumping into things, and the camera follows.
    */
   rig: ((dt: number) => void) | null = null;
-  /** The rig is a car (see features/cars/controller.ts): out on the street or in the garage, not up a shaft indoors. */
+  /** The rig is a car (see features/cars/controller.ts): out on the street or in the garage, not standing at something indoors. */
   riding = false;
   /** The car's own boxes while you're in it: the third-person camera's arm passes through them (see arm.ts). */
   armSkip: readonly Collider[] = [];

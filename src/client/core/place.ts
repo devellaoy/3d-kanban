@@ -2,16 +2,23 @@
  * Where you are, and putting you somewhere: in the elevator car, on your feet at a spot, where a map
  * has you come in, up on its throne; and where you're standing, to come back to.
  */
-import { ELEVATOR, ELEVATOR_CAR, FLOOR, POLE, SLAB, STOREY, WALL_HEIGHT, inElevator, inWing } from '../../shared/layout';
+import { ELEVATOR, ELEVATOR_CAR, FLOOR, SLAB, STOREY, WALL_HEIGHT, inElevator, inWing } from '../../shared/layout';
 import { ROOF, ROOF_NAME } from '../../shared/rooftop';
-import type { Arrival } from '../features/climbing/controller';
 import { rememberSpot, store, type Spot } from '../state';
 import type { Ctx } from './context';
 import type { CoreState } from './ctx';
 import { builtFloors } from './floors';
 import type { Parts } from './parts';
 
-export function installPlace(ctx: Ctx, core: CoreState, parts: Pick<Parts, 'worlds' | 'seating' | 'climbing' | 'cars'>) {
+/** Where you arrive on the other floor: the same spot in the office, on the other side of the ceiling. */
+export interface Arrival {
+  x: number;
+  y: number;
+  z: number;
+  rotY: number;
+}
+
+export function installPlace(ctx: Ctx, core: CoreState, parts: Pick<Parts, 'worlds' | 'seating' | 'cars'>) {
   const { player, me, net } = ctx;
   const { inOffice, plan } = parts.worlds;
 
@@ -49,9 +56,9 @@ export function installPlace(ctx: Ctx, core: CoreState, parts: Pick<Parts, 'worl
     player.lookPitch = -0.08;
   }
 
-  /** Where you're standing, to come back to (see lastSpot): nowhere while you're between floors, or climbing between them. */
+  /** Where you're standing, to come back to (see lastSpot): nowhere while you're between floors. */
   function spotHere(): Spot | null {
-    if (!store.floor || core.trip || parts.climbing.climber.active) return null;
+    if (!store.floor || core.trip) return null;
     // Sitting, it's where you'd get up to; in a car, where you'd get out.
     const { driver } = parts.cars;
     const at = (driver.active ? driver.wayOut() : player.standingSpot()) ?? player.pos;
@@ -75,17 +82,6 @@ export function installPlace(ctx: Ctx, core: CoreState, parts: Pick<Parts, 'worl
     const there = floors.findIndex((f) => f.id === to);
     const below = inOffice() && player.pos.y < -SLAB - 0.05 && from >= 0 && there >= 0;
     return { x: player.pos.x, y: below ? player.pos.y + (from - there) * STOREY : player.pos.y, z: player.pos.z, rotY: player.facing };
-  }
-
-  /** Arrived in a spot that's a pole's hole on this floor: step out of it, the way in. */
-  function unstick() {
-    const { office } = ctx;
-    if (!inOffice() || !office.stack.polesGoDown()) return;
-    const p = player.pos;
-    const spot = office.stack.poles().find((s) => Math.max(Math.abs(p.x - s.x), Math.abs(p.z - s.z)) <= POLE.rail + 0.35);
-    if (!spot) return;
-    const out = POLE.rail + 0.7;
-    p.set(spot.x + Math.sin(spot.open) * out, Math.max(0, p.y), spot.z + Math.cos(spot.open) * out);
   }
 
   /** Where you come in on a map of its own: on the throne if nobody's on it, else on your feet where the map says. */
@@ -113,5 +109,5 @@ export function installPlace(ctx: Ctx, core: CoreState, parts: Pick<Parts, 'worl
     return !!id && player.seat?.seatId === id;
   }
 
-  return { placeInCar, downstairs, indoors, placeAt, spotHere, saveSpot, standingAt, unstick, placeAtSpawn, sitOnThrone, onThrone };
+  return { placeInCar, downstairs, indoors, placeAt, spotHere, saveSpot, standingAt, placeAtSpawn, sitOnThrone, onThrone };
 }
