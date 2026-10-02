@@ -74,6 +74,7 @@ export abstract class KanbanWorkers {
     if (this.workers.get(id) !== w) return 'No such worker';
     if (w.pty) return 'Worker is already running';
     w.interrupted = false;
+    (w.extra ??= {}).restartedAt = Date.now();
     return this.resume(id, opts.prompt);
   }
 
@@ -98,6 +99,11 @@ export abstract class KanbanWorkers {
     if (!w?.info.kanban || JSON.stringify(w.info.kanban) === JSON.stringify(summary)) return;
     w.info.kanban = summary;
     this.emitUpdate(w);
+  }
+
+  /** When the office last restarted this worker's agent process (see SpawnExtra.restartedAt). */
+  restartedAt(id: string): number | undefined {
+    return this.workers.get(id)?.extra?.restartedAt;
   }
 
   /** The phase flags a worker launches with now (see SpawnExtra.launchArgs), so the engine knows when a phase needs a relaunch. */

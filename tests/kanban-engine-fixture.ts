@@ -336,6 +336,8 @@ export interface EngineFixture {
   settings: KanbanSettingsStore;
   ctx: KanbanContext;
   engine: KanbanEngine;
+  /** An office restart of the engine: the old one is disposed and a new one begins over the same context, repository and workers (what it kept in memory is gone). */
+  restartEngine(): KanbanEngine;
   broadcasts: KanbanServerMsg[];
   setRules(rules: Rule[]): void;
   invocations(): Invocation[];
@@ -478,9 +480,13 @@ export async function engineFixture(opts: { engine?: EngineOptions; repos?: Floo
     refs: { referencedTasksFile: () => undefined },
     workerExtras: () => ({ args: [], env: { FAKE_EXTRA: '1' } }),
   };
-  const engine = createEngine(ctx, { readPauseMs: 50, stopGraceMs: 1500, ...opts.engine });
-  ctx.engine = engine;
-  engine.begin();
+  const makeEngine = () => {
+    const e = createEngine(ctx, { readPauseMs: 50, stopGraceMs: 1500, ...opts.engine });
+    ctx.engine = e;
+    e.begin();
+    return e;
+  };
+  const engine = makeEngine();
 
   const fx: EngineFixture = {
     pulls,
@@ -492,6 +498,10 @@ export async function engineFixture(opts: { engine?: EngineOptions; repos?: Floo
     settings,
     ctx,
     engine,
+    restartEngine() {
+      fx.engine.dispose();
+      return (fx.engine = makeEngine());
+    },
     broadcasts,
     setRules: (rules) => writeFileSync(rulesFile, JSON.stringify(rules)),
     invocations: () => (existsSync(log) ? readFileSync(log, 'utf8').split('\n').filter(Boolean).map((l) => JSON.parse(l) as Invocation) : []),
@@ -521,7 +531,7 @@ export async function engineFixture(opts: { engine?: EngineOptions; repos?: Floo
       return hit;
     },
     async close() {
-      engine.dispose();
+      fx.engine.dispose();
       for (const w of workers.list()) await workers.kill(w.id, 'all');
       workers.shutdown();
       await new Promise<void>((resolve) => hooks.close(() => resolve()));

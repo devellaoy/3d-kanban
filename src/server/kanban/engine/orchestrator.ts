@@ -848,7 +848,7 @@ export class Orchestrator {
     // Its own worker still busy, or its teammates still at work (they wake the lead again after a turn's end): the phase starts when all rest.
     const teamWork = (id: string) => {
       const prior = this.live.get(id);
-      return tool === 'claude' && this.teammatesWork(floor, id, prior ? this.sinceOf(prior) : this.procSince.get(id));
+      return tool === 'claude' && this.teammatesWork(floor, id, prior ? this.sinceOf(prior) : this.procSince.get(id) ?? floor.workers.restartedAt(id));
     };
     if (info && info.kind === 'agent' && info.kanban?.taskId === task.id && (info.status === 'working' || info.status === 'starting' || teamWork(info.id))) {
       const waited = await this.untilRests(floor, info.id, task.id, () => teamWork(info!.id));
