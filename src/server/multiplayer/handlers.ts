@@ -92,6 +92,12 @@ export const mpHandlers = {
 
 /** Someone left the office: no more state for them, and the owner's whereabouts may have changed. */
 export const mpHooks: FeatureHooks = {
+  // An admin browser learns whether the office is online, and what it shares, without opening the panel
+  // (an office that never set multiplayer up has nothing to tell).
+  welcomed(ctx, c) {
+    const mp = mpOf(ctx);
+    if (mp && c.admin && !c.visitor && mp.cfg.get().url) mp.sendState(c);
+  },
   closed(ctx, c) {
     const mp = mpOf(ctx);
     mp?.watchers.delete(c);

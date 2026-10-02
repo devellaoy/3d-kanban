@@ -212,8 +212,10 @@ export function startRelay(opts: RelayOptions): Promise<RunningRelay> {
       const peer = conn.peer;
       if (!peer) return;
       peer.dead = true;
-      sessions.dropPeer(peer);
+      // A connection a newer one replaced had its visits ended when it was replaced (see hello); sessions
+      // are keyed by login, so ending them again now would end the newer connection's.
       if (directory.remove(peer)) {
+        sessions.dropPeer(peer);
         log(`${peer.login} left (${directory.size} online)`);
         broadcastPlayers();
       }

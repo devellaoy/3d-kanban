@@ -228,8 +228,8 @@ export function classOf(type: unknown): ClientMsgClass {
 
 /** What the owner's office can look up for the checks that need more than the message. */
 export interface ScopeLookup {
-  /** The floor (= project) a worker is on; undefined if there is no such worker. */
-  floorOfWorker?(workerId: string): string | undefined;
+  /** Every floor a worker touches: its own, then the floors of the repositories it also works in (WorkerInfo.repos); undefined if there is no such worker. */
+  workerFloors?(workerId: string): string[] | undefined;
   /** The project a kanban task belongs to; undefined if there is no such task. */
   projectOfTask?(taskId: number): string | undefined;
 }
@@ -265,8 +265,9 @@ export function visitorMayScoped(msg: ClientMsg, scope: VisitorScope, lookup: Sc
     case 'changes.watch':
     case 'changes.unwatch':
     case 'changes.diff': {
-      const floor = isStr(m.workerId) ? lookup.floorOfWorker?.(m.workerId) : undefined;
-      if (!floorOk(floor)) return false;
+      // A worker across repositories shows other floors' code too, so every floor it works in must be in scope.
+      const floors = isStr(m.workerId) ? lookup.workerFloors?.(m.workerId) : undefined;
+      if (!floors?.length || !floors.every(floorOk)) return false;
       return m.repo === undefined || floorOk(repoFloor(m.repo));
     }
     // null (all projects) and a missing project are refused: the owner's other projects are not theirs to see.

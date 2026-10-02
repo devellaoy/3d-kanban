@@ -8,7 +8,7 @@ export function startTimers(ctx: Ctx): () => void {
     for (const c of clients.values()) {
       if (!c.stale.size || c.ws.bufferedAmount > SLOW_CLIENT_BYTES / 8) continue;
       for (const wid of c.stale) {
-        const snap = c.attached.has(wid) ? ctx.workerFloor(wid)?.workers.attach(wid, c.id, c.peer.name) : undefined;
+        const snap = c.attached.has(wid) ? ctx.workerFloor(wid)?.workers.attach(wid, c.id, c.peer.name, !c.visitor) : undefined;
         if (snap) ctx.sendTo(c, { t: 'term.snapshot', workerId: wid, ...snap });
       }
       c.stale.clear();

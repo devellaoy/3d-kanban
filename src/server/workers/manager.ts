@@ -415,12 +415,12 @@ export class WorkerManager extends KanbanWorkers {
     return this.worktrees.rebuild(id);
   }
 
-  attach(id: string, clientId: string, name: string): { data: string; cols: number; rows: number } | undefined {
+  attach(id: string, clientId: string, name: string, ack = true): { data: string; cols: number; rows: number } | undefined {
     const w = this.workers.get(id);
     if (!w) return undefined;
     w.viewers.set(clientId, name);
     let changed = this.syncViewers(w);
-    if (!w.info.acked && w.info.status !== 'needs_input') {
+    if (ack && !w.info.acked && w.info.status !== 'needs_input') {
       w.info.acked = true;
       changed = true;
     }

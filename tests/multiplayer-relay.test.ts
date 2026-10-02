@@ -153,6 +153,33 @@ test('the same login replaces the old connection (4409), whatever its case', asy
   await nap(50);
 });
 
+test("a replaced connection closing late does not end the newer connection's visits", async () => {
+  const owner = await join('tok-alice');
+  const visitor = await join('tok-bob');
+  visitor.send({ t: 'visit.open', sid: 'sid-replaced-1', to: 'alice', version: '0.1.0', protocol: 1, profile });
+  await owner.next('visit.open', (m) => m.sid === 'sid-replaced-1');
+  // The owner's office reconnects; its old link is replaced, and with it that visit ends. The old
+  // socket is held from answering the relay's close, so its close event comes late, after the new visit.
+  owner.ws.pause();
+  const newer = await join('tok-alice2');
+  await visitor.next('visit.close', (m) => m.sid === 'sid-replaced-1');
+  // A visit with the newer connection...
+  visitor.send({ t: 'visit.open', sid: 'sid-replaced-2', to: 'alice', version: '0.1.0', protocol: 1, profile });
+  await newer.next('visit.open', (m) => m.sid === 'sid-replaced-2');
+  newer.send({ t: 'visit.accept', sid: 'sid-replaced-2' });
+  await visitor.next('visit.accept', (m) => m.sid === 'sid-replaced-2');
+  // ...survives the old socket finishing its close (the late close event of the replaced one).
+  owner.ws.terminate();
+  await nap(200);
+  await owner.closedWith();
+  visitor.send({ t: 'visit.frame', sid: 'sid-replaced-2', data: '{"t":"move"}' });
+  assert.equal((await newer.next('visit.frame', (m) => m.sid === 'sid-replaced-2')).data, '{"t":"move"}');
+  assert.ok(!visitor.inbox.some((m) => m.t === 'visit.close' && m.sid === 'sid-replaced-2'), 'the visitor was not told the visit ended');
+  newer.ws.close();
+  visitor.ws.close();
+  await nap(50);
+});
+
 test('visits: from is set by the relay, frames go between the parties only', async () => {
   const owner = await join('tok-alice');
   const visitor = await join('tok-bob');

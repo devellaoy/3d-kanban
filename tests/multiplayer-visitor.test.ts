@@ -121,7 +121,7 @@ test('terminal and diff frames reach a visitor only while their worker is on a f
   const floors: Record<string, string> = { w1: 'web', w2: 'vault' };
   const sock = (lookup: boolean) => {
     const out: ServerMsg[] = [];
-    const s = new RemoteSocket({ frame: (d) => (out.push(JSON.parse(d)), true), up: () => true, bufferedAmount: () => 0, closed: () => {} }, scope, lookup ? { floorOfWorker: (id) => floors[id] } : {});
+    const s = new RemoteSocket({ frame: (d) => (out.push(JSON.parse(d)), true), up: () => true, bufferedAmount: () => 0, closed: () => {} }, scope, lookup ? { workerFloors: (id) => (floors[id] ? [floors[id]] : undefined) } : {});
     return { s, out };
   };
   const frames = (id: string): ServerMsg[] => [

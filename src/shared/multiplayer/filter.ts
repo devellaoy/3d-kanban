@@ -8,7 +8,7 @@
 // Broadcasts to everyone (welcome, floors, peer.*, kanban.*) are the ones to rewrite or drop here.
 
 import type { KanbanProjectInfo, KanbanSettings } from '../kanban/types.js';
-import type { FloorInfo, FloorView, PeerInfo, ProjectInfo, ServerMsg } from '../protocol.js';
+import type { FloorInfo, FloorView, PeerInfo, ProjectInfo, ServerMsg, WorkerInfo } from '../protocol.js';
 import type { VisitorScope } from './allow.js';
 
 /** What the owner's office can look up while filtering. */
@@ -17,8 +17,8 @@ export interface FilterCtx {
   floorOfPeer?(peerId: string): string | undefined;
   /** The project a kanban task belongs to (kanban.comments names only the task). */
   projectOfTask?(taskId: number): string | undefined;
-  /** The floor a worker is on; terminal and diff frames go to viewers directly, so each is checked against its worker's floor. */
-  floorOfWorker?(workerId: string): string | undefined;
+  /** The floors a worker works in (its own, then its WorkerInfo.repos'); terminal and diff frames go to viewers directly, so each is checked against all of them. */
+  workerFloors?(workerId: string): string[] | undefined;
 }
 
 /**
@@ -53,7 +53,7 @@ export const SERVER_MSG_OUT = {
   'floor.enter': 'rewrite',
   floors: 'rewrite',
   plan: 'pass',
-  'worker.update': 'pass',
+  'worker.update': 'rewrite',
   'worker.remove': 'pass',
   screen: 'rewrite',
   'term.snapshot': 'rewrite',
@@ -161,9 +161,25 @@ const floorFor = (f: FloorInfo): FloorInfo => ({ ...f, dir: '' });
 
 const projectFor = (p: ProjectInfo | null): ProjectInfo | null => (p ? { ...p, dir: '', agentCmd: '' } : null);
 
-/** The arrival floor's view with the owner's folders, commands and ports taken out. */
-function viewFor<V extends FloorView>(v: V): V {
-  return { ...v, project: projectFor(v.project), services: { items: [], port: 0 } };
+/**
+ * Whether a worker may be shown: it works on a floor in scope and in repositories of floors in scope
+ * (WorkerInfo.repos names other floors' projects, which may be ones the owner did not share).
+ */
+function workerOk(w: WorkerInfo, scope: VisitorScope): boolean {
+  return (w.repos ?? []).every((r) => scope.floors.has(r.floor.split('~')[0]));
+}
+
+/** A worker without the owner's folders. */
+const workerFor = (w: WorkerInfo): WorkerInfo => (w.repos ? { ...w, repos: w.repos.map((r) => ({ ...r, dir: '' })) } : w);
+
+/** The arrival floor's view with the owner's folders, commands and ports taken out, and only the workers the visitor may see. */
+function viewFor<V extends FloorView>(v: V, scope: VisitorScope): V {
+  return {
+    ...v,
+    project: projectFor(v.project),
+    services: { items: [], port: 0 },
+    workers: v.workers.filter((w) => workerOk(w, scope)).map(workerFor),
+  };
 }
 
 function kanbanProjectFor(p: KanbanProjectInfo): KanbanProjectInfo {
@@ -196,12 +212,16 @@ export function filterForVisitor(msg: ServerMsg, scope: VisitorScope, ctx: Filte
   if (how === 'pass') return msg;
   const floorOk = (id: string | null | undefined) => !!id && scope.floors.has(id);
   const projectOk = (id: string | null | undefined) => !!id && scope.projects.has(id);
+  const workerIn = (id: string) => {
+    const floors = ctx.workerFloors?.(id);
+    return !!floors?.length && floors.every(floorOk);
+  };
   switch (msg.t) {
     // Kept: what the visitor needs to stand in the arrival floor. Replaced by neutral values: the
     // owner's settings, usage, folders and invites, which the client still expects to find.
     case 'welcome': {
       if (!floorOk(msg.floor)) return undefined; // the host must send the visitor to a floor in scope first
-      const view = viewFor(msg);
+      const view = viewFor(msg, scope);
       const out: Msg<'welcome'> = {
         ...view,
         peers: msg.peers.map((p) => peerFor(p, scope)),
@@ -220,7 +240,7 @@ export function filterForVisitor(msg: ServerMsg, scope: VisitorScope, ctx: Filte
       return out;
     }
     case 'floor.enter':
-      return floorOk(msg.floor) ? { ...viewFor(msg), peers: msg.peers.map((p) => peerFor(p, scope)) } : undefined;
+      return floorOk(msg.floor) ? { ...viewFor(msg, scope), peers: msg.peers.map((p) => peerFor(p, scope)) } : undefined;
     // Worker-scoped frames reach their viewers directly, so a viewer who attached while the floor was in
     // scope must stop getting them once it is not; an unknown worker or no lookup is a drop.
     case 'term.snapshot':
@@ -228,9 +248,11 @@ export function filterForVisitor(msg: ServerMsg, scope: VisitorScope, ctx: Filte
     case 'term.typing':
     case 'screen':
     case 'changes.diff':
-      return floorOk(ctx.floorOfWorker?.(msg.workerId)) ? msg : undefined;
+      return workerIn(msg.workerId) ? msg : undefined;
     case 'changes':
-      return floorOk(ctx.floorOfWorker?.(msg.state.workerId)) && (!msg.state.repo || floorOk(msg.state.repo.split('~')[0])) ? msg : undefined;
+      return workerIn(msg.state.workerId) && (!msg.state.repo || floorOk(msg.state.repo.split('~')[0])) ? msg : undefined;
+    case 'worker.update':
+      return workerOk(msg.worker, scope) ? { ...msg, worker: workerFor(msg.worker) } : undefined;
     case 'floors':
       return { t: 'floors', floors: msg.floors.filter((f) => floorOk(f.id)).map(floorFor) };
     case 'peer.act': {

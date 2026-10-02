@@ -91,6 +91,7 @@ export function onConnection(ctx: Ctx, ws: WebSocket, url: URL, session: Session
     leaveOnMerge: leaveOnMerge.state(),
     ...(onRoof ? roofView(ctx) : floorView(ctx, floor)),
   });
+  for (const f of features) f.welcomed?.(ctx, client);
   screensOf(ctx, client, floor);
   broadcast({ t: 'peer.join', peer: client.peer }, id);
   if (account) accountsChanged(); // now online

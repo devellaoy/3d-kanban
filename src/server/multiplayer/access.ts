@@ -37,6 +37,12 @@ export function floorRepos(def: FloorDef): { repos: string[]; missing?: string }
   return { repos, missing };
 }
 
+/**
+ * What a floor's access check was made of: its GitHub repositories. A visit holds on to the one it was
+ * admitted with, and the floor is taken from the visitor as soon as the project is made of other ones.
+ */
+export const repoPrint = (def: FloorDef): string => floorRepos(def).repos.map((r) => r.toLowerCase()).sort().join(',');
+
 export class Access {
   private cache = new Map<string, { ok: boolean; until: number }>();
 

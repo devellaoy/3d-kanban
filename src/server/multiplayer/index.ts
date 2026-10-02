@@ -4,10 +4,12 @@
 import { randomBytes } from 'node:crypto';
 import type { MpFloorShare, MpPlayer, MpState } from '../../shared/multiplayer/protocol.js';
 import { MP_LIMITS, loginKey, type MpProbeFloor, type MpWhere, type RelayToOffice } from '../../shared/multiplayer/wire.js';
+import type { VisitorScope } from '../../shared/multiplayer/allow.js';
 import type { Client } from '../office/client.js';
 import type { Ctx } from '../office/context.js';
-import { Access, ghAccess } from './access.js';
+import { Access, ghAccess, repoPrint } from './access.js';
 import { MpConfigStore } from './config.js';
+import { workerFloors } from './gate.js';
 import { Guest } from './guest.js';
 import { Host } from './host.js';
 import { answerHttp } from './httpgate.js';
@@ -97,11 +99,14 @@ export class Multiplayer {
     return id ? this.ctx.building.list().find((d) => d.id === id)?.name : undefined;
   }
 
-  /** Tells every admin browser that is watching. */
+  /** Tells every admin browser: the watchers and the other admins. */
   pushState() {
-    if (!this.watchers.size) return;
+    // The panel's watchers, and every other admin browser, which shows the status without watching.
+    const to = new Set<Client>(this.watchers);
+    for (const c of this.ctx.clients.values()) if (c.admin && !c.visitor && !c.out) to.add(c);
+    if (!to.size) return;
     const state = this.state();
-    for (const c of this.watchers) if (c.ws.readyState === 1) this.ctx.sendTo(c, { t: 'mp.state', state });
+    for (const c of to) if (c.ws.readyState === 1) this.ctx.sendTo(c, { t: 'mp.state', state });
   }
 
   sendState(c: Client) {
@@ -148,9 +153,9 @@ export class Multiplayer {
   }
 
   /** A floor stopped being shared: its visitors lose it, and those standing on it are sent home. */
-  unshared(floorId: string) {
+  unshared(floorId: string, only?: VisitorScope) {
     for (const c of this.ctx.clients.values()) {
-      if (!c.visitor?.floors.has(floorId)) continue;
+      if (!c.visitor?.floors.has(floorId) || (only && c.visitor !== only)) continue;
       (c.visitor.floors as Set<string>).delete(floorId);
       (c.visitor.projects as Set<string>).delete(floorId);
       if (c.peer.floor === floorId || !c.visitor.floors.size) c.ws.close(4000, 'That floor is no longer shared');
@@ -164,7 +169,7 @@ export class Multiplayer {
     if (!scope) return;
     for (const wid of [...c.attached]) {
       const floor = this.ctx.workerFloor(wid);
-      if (floor && scope.floors.has(floor.id)) continue;
+      if (floor && workerFloors(this.ctx, wid)?.every((id) => scope.floors.has(id))) continue;
       floor?.workers.detach(wid, c.id);
       c.attached.delete(wid);
     }
@@ -201,10 +206,35 @@ export class Multiplayer {
     for (const rid of [...this.probes.keys()]) this.finishProbe(rid, []);
   }
 
+  /**
+   * The shared floors `login` can enter right now, each with the repositories (repoPrint) it was
+   * checked against. GitHub takes a while to answer, so the answer is held to the config as it is
+   * when it comes back: a floor unshared meanwhile, or given other repositories, is not in it.
+   */
+  async admitted(login: string): Promise<Map<string, string>> {
+    const defs = () => this.ctx.building.list().filter((d) => this.ctx.floors.has(d.id));
+    const asked = new Map(defs().map((d) => [d.id, repoPrint(d)]));
+    const ids = await this.access.allowedFloors(defs(), this.cfg.get().sharedFloors, login);
+    const shared = this.cfg.get().sharedFloors;
+    const out = new Map<string, string>();
+    for (const d of defs()) {
+      const print = repoPrint(d);
+      if (ids.includes(d.id) && shared.includes(d.id) && this.access.shareable(d).shareable && asked.get(d.id) === print) out.set(d.id, print);
+    }
+    return out;
+  }
+
+  /** The floors or projects changed (the elevator's list, a project's repositories): see Host.recheck. */
+  floorsChanged() {
+    this.host.recheck();
+  }
+
   /** The floors of this office `login` could enter, named, for their player list. */
   private async answerProbe(rid: string, login: string) {
-    const defs = this.ctx.building.list().filter((d) => this.ctx.floors.has(d.id));
-    const ids = await this.access.allowedFloors(defs, this.cfg.get().sharedFloors, login);
+    const allowed = await this.admitted(login);
+    if (!this.link.online) return;
+    const defs = this.ctx.building.list();
+    const ids = [...allowed.keys()];
     const floors = ids.slice(0, MP_LIMITS.floors).map((id) => ({ key: this.cfg.floorKey(id), name: (defs.find((d) => d.id === id)?.name ?? id).slice(0, MP_LIMITS.name) || id }));
     this.link.send({ t: 'probe.res', rid, floors });
   }

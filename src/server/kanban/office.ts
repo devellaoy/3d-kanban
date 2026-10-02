@@ -13,7 +13,12 @@ export function openKanban(ctx: Ctx, hookPort: number): Kanban {
     dataDir: ctx.cfg.dataDir,
     floors: () => ctx.building.list(),
     floor: (id) => ctx.floors.get(id),
-    saveRepos: (id, repos) => ctx.building.setRepos(id, repos),
+    // Saved, then the elevator and whoever checks a visitor's access against the project's repositories hear it.
+    saveRepos: (id, repos) => {
+      const r = ctx.building.setRepos(id, repos);
+      ctx.floorsChanged();
+      return r;
+    },
     // A project renamed from the kanban's settings: saved, its floor's top bar info too, then the elevator and the kanban hear it.
     saveName: (id, name) => {
       const r = ctx.building.setName(id, name);

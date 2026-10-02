@@ -5,6 +5,7 @@ import { Floor, type FloorContext } from '../floor.js';
 import { ROOF } from '../../shared/rooftop.js';
 import type { FloorInfo, ServerMsg } from '../../shared/protocol.js';
 import type { Ctx, FloorHelpers, FloorsOpen } from './context.js';
+import { mpOf } from '../multiplayer/registry.js';
 import { SLOW_CLIENT_BYTES, type Client } from './client.js';
 
 /** Finding floors, the elevator's list of them, and taking one off the building. */
@@ -26,6 +27,7 @@ export function floorHelpers(ctx: Ctx): FloorHelpers {
     floorsTimer ??= setTimeout(() => {
       floorsTimer = undefined;
       ctx.kanban?.projectsChanged(); // its project list follows the floors (it sends only when it changed)
+      mpOf(ctx)?.floorsChanged(); // a visitor loses a floor whose repositories changed
       const list = floorInfos();
       const json = JSON.stringify(list);
       if (json === floorsSent) return;

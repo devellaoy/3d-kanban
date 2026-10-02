@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { CLIENT_MSG_CLASS, classOf, filterForVisitor, visitorMay, SERVER_MSG_OUT, type VisitorScope } from '../src/shared/multiplayer/allow.js';
 import { KANBAN_CLIENT_TYPE_LIST } from '../src/shared/kanban/protocol.js';
-import type { ClientMsg, FloorInfo, PeerInfo, ServerMsg } from '../src/shared/protocol.js';
+import type { ClientMsg, FloorInfo, PeerInfo, ServerMsg, WorkerInfo } from '../src/shared/protocol.js';
 import type { KanbanProjectInfo, KanbanSettings } from '../src/shared/kanban/types.js';
 
 const SECRET_ID = 'secretfloor1';
@@ -10,7 +10,7 @@ const SECRET_NAME = 'Hidden Repo';
 const SECRET_DIR = '/home/owner/hidden-repo';
 const scope: VisitorScope = { login: 'vera', floors: new Set(['sharedfloor']), projects: new Set(['sharedfloor']) };
 const lookup = {
-  floorOfWorker: (id: string) => ({ w1: 'sharedfloor', w2: SECRET_ID })[id],
+  workerFloors: (id: string) => ({ w1: ['sharedfloor'], w2: [SECRET_ID], w3: ['sharedfloor', SECRET_ID] } as Record<string, string[]>)[id],
   projectOfTask: (id: number) => ({ 1: 'sharedfloor', 2: SECRET_ID })[id],
 };
 const may = (msg: object) => visitorMay(msg as { t: string }, scope, lookup);
@@ -72,6 +72,37 @@ test('terminals and diffs: only workers of a floor in scope', () => {
   assert.equal(may({ t: 'changes.diff', workerId: 'w1', path: 'a.ts', repo: `${SECRET_ID}~web` }), false);
   assert.equal(may({ t: 'changes.watch', workerId: 'w1', repo: 'sharedfloor~web' }), true);
   assert.equal(may({ t: 'term.input', workerId: 'w1', data: 'rm -rf' }), false);
+});
+
+// A worker across repositories (WorkerInfo.repos) also holds another floor's code, so one on a shared floor
+// that works in an unshared floor's project is as hidden as that floor.
+const across = (floors: string[]) =>
+  ({ id: 'w3', deskId: 'd', name: 'Ada', repos: floors.map((floor) => ({ floor, name: 'api', repo: 'acme/api', dir: '/home/owner/api', path: 'x', branch: 'b', base: 'c' })) }) as unknown as WorkerInfo;
+
+test('a worker that also works in an unshared floor is hidden: its terminal, diffs and card', () => {
+  for (const t of ['worker.attach', 'worker.detach', 'changes.watch', 'changes.unwatch']) assert.equal(may({ t, workerId: 'w3' }), false, t);
+  assert.equal(may({ t: 'changes.diff', workerId: 'w3', path: 'a.ts' }), false);
+  const ctx = { workerFloors: lookup.workerFloors };
+  for (const m of [
+    { t: 'term.data', workerId: 'w3', data: 'x' },
+    { t: 'term.snapshot', workerId: 'w3', data: 'x', cols: 1, rows: 1 },
+    { t: 'screen', workerId: 'w3', cols: 1, rows: 1, lines: {}, full: true, cursor: [0, 0] },
+    { t: 'changes.diff', workerId: 'w3', path: 'a', diff: '', truncated: false },
+    { t: 'changes', state: { workerId: 'w3' } },
+  ] as unknown as ServerMsg[]) {
+    assert.equal(filterForVisitor(m, scope, ctx), undefined, m.t);
+    assert.ok(filterForVisitor({ ...m, workerId: 'w1', ...(m.t === 'changes' ? { state: { workerId: 'w1' } } : {}) } as ServerMsg, scope, ctx), `${m.t} of a plain worker still passes`);
+  }
+  // The card: dropped from updates and from the floor's list, with the owner's folder gone from the ones kept.
+  assert.equal(filterForVisitor({ t: 'worker.update', worker: across([SECRET_ID]) }, scope), undefined);
+  assert.equal(filterForVisitor({ t: 'worker.update', worker: across(['sharedfloor', `${SECRET_ID}~api`]) }, scope), undefined, 'a repository of the secret floor');
+  const kept = filterForVisitor({ t: 'worker.update', worker: across(['sharedfloor']) }, scope) as Extract<ServerMsg, { t: 'worker.update' }>;
+  assert.equal(kept.worker.repos?.[0].dir, '');
+  assert.ok(!JSON.stringify(kept).includes('/home/owner'));
+  const entered = filterForVisitor({ t: 'floor.enter', peers: [], ...view('sharedfloor'), workers: [across([SECRET_ID]), { ...across([]), id: 'w4' }, { ...across(['sharedfloor']), id: 'w5' }] } as unknown as ServerMsg, scope) as Extract<ServerMsg, { t: 'floor.enter' }>;
+  assert.deepEqual(entered.workers.map((w) => w.id), ['w4', 'w5']);
+  assert.ok(!JSON.stringify(entered).includes('/home/owner/api'));
+  assert.ok(filterForVisitor({ t: 'worker.remove', workerId: 'w3' }, scope), 'a removal names only an id');
 });
 
 // --- Outbound: nothing about the secret floor leaves ------------------------------------------------
