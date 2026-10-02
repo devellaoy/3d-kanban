@@ -70,7 +70,7 @@ export class Host {
     const scope: VisitorScope = { login: msg.from, floors: new Set(allowed), projects: new Set(allowed) };
     const sock = new RemoteSocket(
       {
-        frame: (data) => mp.link.send({ t: 'visit.frame', sid, data }, true),
+        frame: (data, drop) => mp.link.send({ t: 'visit.frame', sid, data, ...(drop ? { drop: true as const } : {}) }, !!drop),
         up: () => mp.link.online,
         bufferedAmount: () => mp.link.bufferedAmount,
         closed: (reason) => void mp.link.send({ t: 'visit.close', sid, reason: reason.slice(0, 250) }),

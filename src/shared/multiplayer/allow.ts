@@ -9,6 +9,7 @@
 // and the visitor has GitHub access to (their `VisitorScope`).
 
 import type { ClientMsg } from '../protocol.js';
+import { ROOF } from '../rooftop.js';
 
 export { filterForVisitor, SERVER_MSG_OUT, type FilterCtx } from './filter.js';
 
@@ -257,9 +258,10 @@ export function visitorMayScoped(msg: ClientMsg, scope: VisitorScope, lookup: Sc
   const floorOk = (id: unknown) => isStr(id) && scope.floors.has(id);
   const projectOk = (id: unknown) => isStr(id) && scope.projects.has(id);
   switch (msg.t) {
-    // Only to a floor in scope; the roof, the lobby and every other floor are refused.
+    // Only to a floor in scope, or up to the roof (the games are there and it carries nothing of the
+    // owner's projects); the lobby and every other floor are refused.
     case 'floor.go':
-      return floorOk(m.floor);
+      return floorOk(m.floor) || m.floor === ROOF;
     case 'worker.attach':
     case 'worker.detach':
     case 'changes.watch':

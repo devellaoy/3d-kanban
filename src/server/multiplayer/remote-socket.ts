@@ -7,6 +7,7 @@ import { EventEmitter } from 'node:events';
 import type { WebSocket } from 'ws';
 import { filterForVisitor, type VisitorScope } from '../../shared/multiplayer/allow.js';
 import type { FilterCtx } from '../../shared/multiplayer/filter.js';
+import { serverFrameDroppable } from '../../shared/multiplayer/droppable.js';
 import type { ServerMsg } from '../../shared/protocol.js';
 
 /** ws's readyState numbers. */
@@ -14,8 +15,8 @@ const OPEN = 1;
 const CLOSED = 3;
 
 export interface RemoteSocketLink {
-  /** Sends one visit.frame (text) to the visitor's office; false when the link is down or backed up. */
-  frame(data: string): boolean;
+  /** Sends one visit.frame (text) to the visitor's office; a `drop` one is skipped (false) when the link is backed up. */
+  frame(data: string, drop?: boolean): boolean;
   /** Whether the link to the relay is up (a synthetic pong needs one). */
   up(): boolean;
   /** How much the link has queued, so droppable frames (cursors, terminal output) are skipped when it is a lot. */
@@ -51,7 +52,8 @@ export class RemoteSocket extends EventEmitter {
     const out = filterForVisitor(msg, this.scope, this.lookups);
     if (!out) return;
     // Unchanged frames keep their text; rewritten ones are sent as rewritten.
-    this.link.frame(out === msg ? data : JSON.stringify(out));
+    const text = out === msg ? data : JSON.stringify(out);
+    this.link.frame(text, serverFrameDroppable(text));
   }
 
   /** The heartbeat's ping: the relay link has its own, so this answers for the visitor while the link is up. */

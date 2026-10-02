@@ -8,6 +8,7 @@ import type http from 'node:http';
 import type { Duplex } from 'node:stream';
 import type { WebSocket, WebSocketServer } from 'ws';
 import { lookFromSeed, sanitizeLook } from '../../shared/avatar.js';
+import { clientFrameDroppable } from '../../shared/multiplayer/droppable.js';
 import { LOGIN_RE, MP_BODY_MAX, MP_FRAME_MAX, MP_HIGH_WATER, MP_PROTOCOL, loginKey, type MpVisitProfile, type RelayToOffice } from '../../shared/multiplayer/wire.js';
 import type { Session } from '../auth.js';
 import type { Ctx } from '../office/context.js';
@@ -65,7 +66,7 @@ export class Guest {
         if (p.queue.length < QUEUE_MAX) p.queue.push(text);
         return;
       }
-      link.send({ t: 'visit.frame', sid, data: text }, true);
+      this.forward(p, text);
     });
     ws.on('error', () => {});
     ws.on('close', () => {
@@ -84,11 +85,18 @@ export class Guest {
     if (!p) return false;
     if (msg.t === 'visit.accept') {
       p.open = true;
-      for (const text of p.queue.splice(0)) this.mp.link.send({ t: 'visit.frame', sid: p.sid, data: text }, true);
+      for (const text of p.queue.splice(0)) this.forward(p, text);
     } else if (msg.t === 'visit.frame') {
-      if (p.ws.readyState === p.ws.OPEN && p.ws.bufferedAmount < MP_HIGH_WATER) p.ws.send(msg.data);
+      // Only a frame the sender marked droppable is skipped for a slow browser.
+      if (p.ws.readyState === p.ws.OPEN && (!msg.drop || p.ws.bufferedAmount < MP_HIGH_WATER)) p.ws.send(msg.data);
     } else this.end(p, msg.reason || 'The visit ended');
     return true;
+  }
+
+  /** A frame from the browser on to the owner; only the ephemeral streams (moves, cursors) are skipped when the link is backed up. */
+  private forward(p: Pipe, text: string) {
+    const drop = clientFrameDroppable(text);
+    this.mp.link.send({ t: 'visit.frame', sid: p.sid, data: text, ...(drop ? { drop: true as const } : {}) }, drop);
   }
 
   /** Tells the browser why, and hangs up. */

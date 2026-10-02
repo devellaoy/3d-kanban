@@ -44,6 +44,7 @@ export function floorHelpers(ctx: Ctx): FloorHelpers {
    */
   const closeFloor = (floor: Floor, who: string) => {
     const name = floor.def.name;
+    mpOf(ctx)?.floorsChanged(); // a visitor loses it before the list without it goes out
     const next = [...ctx.floors.values()].find((f) => f !== floor);
     // The list without it first, so nobody arrives somewhere (the lobby's panel) that still shows it.
     const list = floorInfos().filter((f) => f.id !== floor.id);

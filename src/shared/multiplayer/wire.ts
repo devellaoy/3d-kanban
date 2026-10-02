@@ -22,6 +22,8 @@ export const MP_BODY_B64_MAX = Math.ceil(MP_BODY_MAX / 3) * 4;
 export const MP_MAX_PAYLOAD = MP_BODY_B64_MAX + 64 * 1024;
 /** A receiver whose socket has this much queued gets no more frames (they are droppable, like cursors). */
 export const MP_HIGH_WATER = 4 * 1024 * 1024;
+/** A receiver this far behind cannot be sent the frames that must arrive: the relay ends the visit instead of buffering without bound. */
+export const MP_HARD_CAP = 16 * 1024 * 1024;
 
 /** WebSocket close codes the relay uses (4xxx is the application range). */
 export const MP_CLOSE = {
@@ -102,8 +104,8 @@ export type OfficeToRelay =
   | { t: 'visit.accept'; sid: string }
   /** Either party ends the session (or the owner refuses it), with a reason to show. */
   | { t: 'visit.close'; sid: string; reason: string }
-  /** A browser frame, as text, to the other party. Droppable. */
-  | { t: 'visit.frame'; sid: string; data: string }
+  /** A browser frame, as text, to the other party. Only a `drop` one (a cursor, a position) is skipped when the receiver is backed up. */
+  | { t: 'visit.frame'; sid: string; data: string; drop?: true }
   /** Visitor → owner: a read-only GET the visitor's browser wants (see the owner's allowlist). */
   | { t: 'visit.http'; sid: string; rid: string; path: string }
   /** Owner → visitor: the answer. `body` is base64. */
@@ -123,7 +125,7 @@ export type RelayToOffice =
   | { t: 'visit.open'; sid: string; from: string; version: string; protocol: number; profile: MpVisitProfile }
   | { t: 'visit.accept'; sid: string }
   | { t: 'visit.close'; sid: string; reason: string }
-  | { t: 'visit.frame'; sid: string; data: string }
+  | { t: 'visit.frame'; sid: string; data: string; drop?: true }
   | { t: 'visit.http'; sid: string; rid: string; path: string }
   | { t: 'visit.httpres'; sid: string; rid: string; status: number; type: string; body: string }
   | { t: 'probe'; rid: string; from: string }
@@ -225,7 +227,7 @@ function parseCommon(r: Obj, side: 'office' | 'relay'): OfficeToRelay | RelayToO
     }
     case 'visit.frame': {
       const data = str(r.data, MP_FRAME_MAX);
-      return sid && data !== undefined ? { t: 'visit.frame', sid, data } : undefined;
+      return sid && data !== undefined ? { t: 'visit.frame', sid, data, ...(r.drop === true ? { drop: true as const } : {}) } : undefined;
     }
     case 'visit.http': {
       const path = str(r.path, MP_LIMITS.path, 1);

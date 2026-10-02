@@ -4,6 +4,7 @@ import { codexLimitsOf } from '../codex-limits/index.js';
 import type { Client } from '../office/client.js';
 import type { Ctx } from '../office/context.js';
 import { str } from '../office/input.js';
+import { mpOf } from '../multiplayer/registry.js';
 import { installKanban, type Kanban } from './index.js';
 import type { KanbanCaller, KanbanClient } from './registry.js';
 
@@ -13,9 +14,11 @@ export function openKanban(ctx: Ctx, hookPort: number): Kanban {
     dataDir: ctx.cfg.dataDir,
     floors: () => ctx.building.list(),
     floor: (id) => ctx.floors.get(id),
-    // Saved, then the elevator and whoever checks a visitor's access against the project's repositories hear it.
+    // Saved, then a visitor loses the floor at once (before the caller broadcasts the new list, which would
+    // show them the new repositories under the old scope), then the elevator hears it.
     saveRepos: (id, repos) => {
       const r = ctx.building.setRepos(id, repos);
+      if (typeof r !== 'string') mpOf(ctx)?.floorsChanged();
       ctx.floorsChanged();
       return r;
     },

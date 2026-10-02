@@ -29,10 +29,9 @@ export function navigation(ctx: Ctx): Navigation {
     ctx.floorsChanged();
   };
 
-  /** Up to the rooftop bar, by elevator. */
+  /** Up to the rooftop bar, by elevator (a visitor too: the roof carries nothing of the owner's projects, see roofView and filterForVisitor). */
   const goToRoof = (c: Client) => {
     if (c.peer.floor === ROOF) return;
-    if (c.visitor) return void c.ws.close(4000, 'The roof is not part of what is shared');
     const left = leave(c);
     c.peer.floor = ROOF;
     ctx.sendTo(c, { t: 'floor.enter', peers: [...ctx.clients.values()].map((o) => o.peer), ...roofView(ctx) });

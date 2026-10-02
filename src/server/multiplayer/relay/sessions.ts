@@ -1,7 +1,7 @@
 // Visits and probes: who may talk to whom through the relay. Everything routes by the
 // authenticated login of the sender (`from` is set here, never read from a message), a session's
 // frames only go between its two parties, and a session dies with either link.
-import type { OfficeToRelay, RelayToOffice } from '../../../shared/multiplayer/wire.js';
+import { MP_HARD_CAP, type OfficeToRelay, type RelayToOffice } from '../../../shared/multiplayer/wire.js';
 import type { Directory, Peer } from './directory.js';
 
 const PENDING_OPEN_MS = 30_000;
@@ -92,7 +92,14 @@ export class Sessions {
   frame(from: Peer, msg: Msg<'visit.frame'>): boolean {
     const p = this.party(from, msg.sid);
     if (!p?.s.open || !p.other) return false;
-    return p.other.send({ t: 'visit.frame', sid: msg.sid, data: msg.data }, true);
+    if (msg.drop) return p.other.send({ t: 'visit.frame', sid: msg.sid, data: msg.data, drop: true }, true);
+    // A frame that must arrive is never skipped, so a receiver this far behind would only grow the
+    // buffer: the visit ends (the visitor goes home and can visit again for a full resync).
+    if (p.other.ws.bufferedAmount > MP_HARD_CAP) {
+      this.end(p.s, 'Connection too slow', { visitor: true, owner: true });
+      return false;
+    }
+    return p.other.send({ t: 'visit.frame', sid: msg.sid, data: msg.data });
   }
 
   http(from: Peer, msg: Msg<'visit.http'>) {

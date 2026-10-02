@@ -9,6 +9,7 @@
 
 import type { KanbanProjectInfo, KanbanSettings } from '../kanban/types.js';
 import type { FloorInfo, FloorView, PeerInfo, ProjectInfo, ServerMsg, WorkerInfo } from '../protocol.js';
+import { ROOF } from '../rooftop.js';
 import type { VisitorScope } from './allow.js';
 
 /** What the owner's office can look up while filtering. */
@@ -149,7 +150,7 @@ type Msg<T extends ServerMsg['t']> = Extract<ServerMsg, { t: T }>;
 
 /** A person on a floor outside the scope is still a name on the list, but where they are and what they do is not shown. */
 function peerFor(p: PeerInfo, scope: VisitorScope): PeerInfo {
-  if (!p.floor || scope.floors.has(p.floor)) return p;
+  if (!p.floor || p.floor === ROOF || scope.floors.has(p.floor)) return p;
   // Someone on a floor the visitor can't see: nothing of where they stand or what they're up to.
   return {
     ...p, floor: undefined, doing: undefined, carrying: undefined, seat: undefined, reading: undefined,
@@ -211,6 +212,8 @@ export function filterForVisitor(msg: ServerMsg, scope: VisitorScope, ctx: Filte
   if (how === 'drop') return undefined;
   if (how === 'pass') return msg;
   const floorOk = (id: string | null | undefined) => !!id && scope.floors.has(id);
+  // Where a visitor can stand: their floors, and the roof (it has nothing of the owner's projects).
+  const placeOk = (id: string | null | undefined) => id === ROOF || floorOk(id);
   const projectOk = (id: string | null | undefined) => !!id && scope.projects.has(id);
   const workerIn = (id: string) => {
     const floors = ctx.workerFloors?.(id);
@@ -240,7 +243,7 @@ export function filterForVisitor(msg: ServerMsg, scope: VisitorScope, ctx: Filte
       return out;
     }
     case 'floor.enter':
-      return floorOk(msg.floor) ? { ...viewFor(msg, scope), peers: msg.peers.map((p) => peerFor(p, scope)) } : undefined;
+      return placeOk(msg.floor) ? { ...viewFor(msg, scope), peers: msg.peers.map((p) => peerFor(p, scope)) } : undefined;
     // Worker-scoped frames reach their viewers directly, so a viewer who attached while the floor was in
     // scope must stop getting them once it is not; an unknown worker or no lookup is a drop.
     case 'term.snapshot':
@@ -258,7 +261,7 @@ export function filterForVisitor(msg: ServerMsg, scope: VisitorScope, ctx: Filte
     case 'peer.act': {
       // Broadcast to the whole building, so only when the one acting is on a floor in scope.
       const floor = ctx.floorOfPeer?.(msg.id);
-      return floor && floorOk(floor) ? msg : undefined;
+      return floor && placeOk(floor) ? msg : undefined;
     }
     case 'peer.join':
     case 'peer.update':
@@ -266,7 +269,7 @@ export function filterForVisitor(msg: ServerMsg, scope: VisitorScope, ctx: Filte
     case 'peer.move': {
       // The office sends moves to a floor's neighbours only; with a lookup this also checks it.
       const floor = ctx.floorOfPeer?.(msg.id);
-      return ctx.floorOfPeer && !floorOk(floor) ? undefined : msg;
+      return ctx.floorOfPeer && !placeOk(floor) ? undefined : msg;
     }
 
     // --- The kanban ---
