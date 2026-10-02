@@ -2,6 +2,7 @@
 // and until when, both optional) and resuming it (a message for the agent, optional), and the one flow
 // the board and the task view share: which move needs which dialog, and what the move then carries.
 
+import './holddialog.css';
 import { h } from '../ui/dom';
 import { HOLD_NOTE_MAX, holdLine } from '../../shared/kanban/hold.js';
 import type { KanbanTaskCard, TaskStatus } from '../../shared/kanban/types.js';

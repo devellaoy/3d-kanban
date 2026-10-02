@@ -1,0 +1,4 @@
+.kb-hold-dialog textarea, .kb-hold-dialog input[type=date] { width: 100%; box-sizing: border-box; font: inherit; font-size: var(--fs-lg); color: var(--text); border: var(--bw) solid var(--ink); border-radius: var(--radius-sm); padding: 10px 12px; background: var(--field); outline: none; }
+.kb-hold-dialog textarea { resize: vertical; }
+.kb-hold-dialog textarea:focus, .kb-hold-dialog input[type=date]:focus { border-color: var(--accent); }
+.kb-hold-dialog .kb-hold-since { margin: 0 0 12px; font-weight: var(--fw-bold); overflow-wrap: anywhere; }

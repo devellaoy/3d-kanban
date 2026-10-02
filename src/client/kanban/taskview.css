@@ -173,5 +173,3 @@
 .kb-tv .kb-onhold h4 { margin: 0 0 4px; }
 .kb-tv .kb-onhold p { margin: 0; overflow-wrap: anywhere; }
 .kb-tv .kb-onhold.passed .kb-until { color: var(--warn-ink); font-weight: var(--fw-heavy); }
-.kb-hold-dialog textarea { width: 100%; box-sizing: border-box; }
-.kb-hold-dialog .kb-hold-since { margin: 0 0 12px; font-weight: var(--fw-bold); overflow-wrap: anywhere; }
