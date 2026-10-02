@@ -11,11 +11,13 @@
 // Once it has drawn, window.__ready holds each prop's size, triangles, draw calls and material names.
 
 import * as THREE from 'three';
+import { lookFromSeed } from '../../shared/avatar';
 import { DESKS } from '../../shared/layout';
 import { buildCabinet } from '../features/cabinet/world';
 import { supercar } from '../features/cars/world';
 import { buildGong } from '../features/gong/world';
 import { buildJukebox } from '../features/jukebox/world';
+import { Person } from '../world/character';
 import { buildKitchen } from '../world/kitchen';
 import { preloadModels } from '../world/models';
 import { DESK_BOOKS, FLOOR_PLANTS, buildDesk, coffeeTable, deskBooks, deskMug, loungeCouch, plant, pouf } from '../world/office';
@@ -75,6 +77,13 @@ const SHOW: Record<string, () => Shown> = {
     const at = [0, 3.5, 5.3, 6.6];
     [loungeCouch(), coffeeTable(), pouf('#06d6a0'), pouf('#ffd166')].forEach((o, i) => object.add(o.translateX(at[i])));
     return { object };
+  },
+  chat: () => {
+    // Someone saying a chat line in their speech bubble (say=<text> for another line), name tag under it.
+    const p = new Person('Ada', '#ef476f', lookFromSeed('ada'));
+    p.setLabel('Ada', false);
+    p.say(q.get('say') ?? 'Hey, the build on main is green again, can someone have a look at the PR before lunch?', 60, '#ef476f');
+    return { object: p.root, update: (dt, t) => p.update(dt, t, false, false) };
   },
   lambo: () => ({ object: supercar('lambo', '#ffd166').root }),
   ferrari: () => ({ object: supercar('ferrari', '#ef476f').root }),
