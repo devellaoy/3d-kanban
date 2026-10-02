@@ -12,6 +12,8 @@ export interface Emoting {
   t: number;
   pop: THREE.Sprite;
   size: THREE.Vector2;
+  /** Where the emoji floats before it rises (see poseEmote): over the head, or over a speech bubble. */
+  base?: number;
 }
 
 /**
@@ -19,7 +21,7 @@ export interface Emoting {
  * `k` of the way. The dance's bounce and steps only happen with both feet on the floor (`still`).
  * False once it's over, with nothing posed, for the Person to put it away.
  */
-export function poseEmote(rig: PersonRig, e: Emoting, dt: number, still: number, bubbleTop = 0): boolean {
+export function poseEmote(rig: PersonRig, e: Emoting, dt: number, still: number, bubbleTop?: number): boolean {
   e.t += dt;
   const { seconds, id } = e.emote;
   if (e.t >= seconds) return false;
@@ -87,8 +89,10 @@ export function poseEmote(rig: PersonRig, e: Emoting, dt: number, still: number,
   // rises a little, wobbles, and fades at the end.
   const pop = popCurve(u / 0.3);
   e.pop.scale.set(e.size.x * pop, e.size.y * pop, 1);
-  const base = bubbleTop ? Math.max(2.42, bubbleTop + EMOJI_GAP + e.size.y / 2) : 2.42;
-  e.pop.position.y = base + Math.min(u, 1.5) * 0.12;
+  // A bubble coming up mid-emote lifts it at once (never over the bubble); one going lets it ease back down.
+  const base = bubbleTop === undefined ? 2.42 : Math.max(2.42, bubbleTop + EMOJI_GAP + e.size.y / 2);
+  e.base = e.base === undefined || base > e.base ? base : THREE.MathUtils.lerp(e.base, base, Math.min(1, dt * 8));
+  e.pop.position.y = e.base + Math.min(u, 1.5) * 0.12;
   e.pop.material.rotation = Math.sin(u * 7) * 0.12;
   e.pop.material.opacity = THREE.MathUtils.clamp((seconds - u) / 0.4, 0, 1);
   return true;

@@ -437,7 +437,7 @@ export class Person {
 
   /** Poses the emote over whatever the arms were doing (see poseEmote), and puts it away once it's over. */
   private emoteStep(dt: number, still: number) {
-    if (!poseEmote(this.rig, this.emoting!, dt, still, this.speech ? this.bubbleY + this.speech.height : 0)) this.endEmote();
+    if (!poseEmote(this.rig, this.emoting!, dt, still, this.speech ? this.bubbleY + this.speech.height : undefined)) this.endEmote();
   }
 
   get smoking(): boolean {
