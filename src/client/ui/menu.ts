@@ -247,6 +247,8 @@ export function mountHud(actions: HudAction[], settings: Settings, save: () => v
   function menuKey(el: HTMLElement, e: KeyboardEvent) {
     const items = [...el.querySelectorAll<HTMLElement>('.menu-item')];
     const at = document.activeElement as HTMLElement | null;
+    // Alt + arrows in the floor list beside it move a floor (see ui/floorgroups.ts), not the menu's focus.
+    if (e.altKey && at?.closest('.floor-menu')) return;
     const onPin = !!at?.classList.contains('menu-pin');
     const i = items.indexOf((onPin ? at!.previousElementSibling : at) as HTMLElement);
     let next: Element | null | undefined;
