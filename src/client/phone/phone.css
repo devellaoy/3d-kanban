@@ -1,0 +1,71 @@
+/* The phone in your hand (phone/ui.ts): a portrait handset held up in the lower right of the screen, the
+   office still there around it. The bezel is always dark (--code-bg), the screen follows the appearance. */
+.backdrop:has(> .modal.phone) { place-items: end end; padding: 20px 28px; background: color-mix(in srgb, var(--overlay) 45%, transparent); }
+
+.modal.phone {
+  position: relative;
+  width: 360px; height: 720px; max-width: 100%; max-height: 90vh;
+  background: var(--paper);
+  border: 11px solid var(--code-bg);
+  border-radius: 48px;
+  box-shadow: 0 0 0 var(--bw) var(--ink), var(--shadow-lg);
+  animation: phone-up .22s ease-out;
+}
+@keyframes phone-up { from { transform: translateY(40px) rotate(2deg); opacity: .4; } }
+
+/* The status strip: the clock, the notch, signal and battery. */
+.phone-status { flex: none; position: relative; display: flex; align-items: center; justify-content: space-between; height: 30px; padding: 0 22px; background: var(--paper-2); font-size: var(--fs-xs); font-weight: var(--fw-heavy); }
+.phone-notch { position: absolute; left: 50%; top: 0; width: 96px; height: 20px; transform: translateX(-50%); background: var(--code-bg); border-radius: 0 0 14px 14px; }
+.phone-signal { font-size: var(--fs-2xs); letter-spacing: 2px; }
+
+.modal.phone header { padding: 8px 12px 10px; gap: 6px; }
+.modal.phone header h2 { font-size: var(--fs-xl); }
+.phone-back[hidden] { display: none; }
+.phone-back { width: 34px; height: 34px; padding: 0; justify-content: center; font-size: var(--fs-2xl); line-height: 1; }
+.phone-sub { flex: none; padding: 7px 16px; font-size: var(--fs-xs); font-weight: var(--fw-bold); color: var(--muted); border-bottom: var(--bw-sm) solid var(--rule-soft); }
+.phone-sub:empty { display: none; }
+
+.phone-body { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: 12px; }
+.phone-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 10px; }
+.phone-empty { margin: 40px 12px; text-align: center; font-weight: var(--fw-bold); color: var(--muted); }
+.phone-loading { display: flex; align-items: center; justify-content: center; gap: 10px; margin: 48px 0; font-weight: var(--fw-bold); color: var(--muted); }
+
+/* A floor: a big row to tap. */
+.phone-floor { width: 100%; display: flex; align-items: center; gap: 12px; min-height: var(--hit-min); padding: 12px 10px 12px 12px; border: var(--bw) solid var(--ink); border-radius: var(--radius); background: var(--field); color: inherit; font: inherit; text-align: left; cursor: pointer; box-shadow: var(--shadow-sm); }
+.phone-floor:hover { background: var(--field-hover); }
+.phone-floor:active { background: var(--paper-2); box-shadow: var(--shadow-xs); }
+.phone-floor:focus-visible { outline: var(--focus-ring); outline-offset: 2px; }
+.phone-floor.here { background: var(--accent-soft); }
+.phone-floor-no { flex: none; display: grid; place-items: center; width: 34px; height: 34px; border-radius: var(--radius-sm); border: var(--bw-sm) solid var(--ink); color: var(--text-on-color); font-weight: var(--fw-heavy); font-size: var(--fs-md); }
+.phone-floor-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+.phone-floor-name { font-size: var(--fs-lg); font-weight: var(--fw-heavy); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.phone-floor-sub { font-size: var(--fs-xs); font-weight: var(--fw-semibold); color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.phone-floor.here .phone-floor-sub { color: var(--accent-text); font-weight: var(--fw-heavy); }
+.phone-floor-stats { display: flex; gap: 8px; margin-top: 2px; font-size: var(--fs-sm); font-weight: var(--fw-bold); }
+.phone-wait { color: var(--muted); }
+.phone-wait.on { padding: 0 8px; border-radius: var(--radius-pill); border: var(--bw-sm) solid var(--ink); background: var(--bad); color: var(--text-on-strong); }
+.phone-chevron { flex: none; font-size: var(--fs-2xl); font-weight: var(--fw-heavy); color: var(--muted); }
+
+/* The workers' cards (shared/workercard.css), made for the 2D view's full width: a bit tighter here. */
+.phone .lite-card { gap: 8px; padding: 10px 8px 10px 12px; }
+.phone .lite-name { font-size: var(--fs-lg); }
+.phone .lite-task { font-size: var(--fs-sm); }
+.phone .lite-now { -webkit-line-clamp: 2; }
+.phone .lite-say { width: 38px; height: 38px; margin-right: 8px; font-size: var(--fs-xl); }
+
+/* The apps along the bottom, and the home bar under them. */
+.phone-tabs { flex: none; display: flex; justify-content: center; gap: 4px; padding: 6px 12px 18px; border-top: var(--bw) solid var(--ink); background: var(--paper-2); position: relative; }
+.phone-tabs::after { content: ''; position: absolute; left: 50%; bottom: 6px; width: 110px; height: 4px; transform: translateX(-50%); border-radius: var(--radius-pill); background: var(--muted); }
+.phone-tab { flex: 1; max-width: 96px; display: flex; flex-direction: column; align-items: center; gap: 1px; padding: 4px 6px; border: 0; border-radius: var(--radius-sm); background: none; color: var(--muted); font: inherit; font-size: var(--fs-2xs); font-weight: var(--fw-bold); cursor: pointer; }
+.phone-tab-icon { font-size: var(--fs-xl); }
+.phone-tab.on { color: var(--text); background: var(--accent-soft); }
+.phone-tab:focus-visible { outline: var(--focus-ring); }
+
+/* A small screen: the phone fills it, centred. */
+@media (max-width: 560px), (max-height: 560px) {
+  .backdrop:has(> .modal.phone) { place-items: center; padding: 8px; }
+  .modal.phone { width: min(400px, 100%); height: 100%; max-height: 100%; border-width: 7px; border-radius: 34px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .modal.phone { animation: none; }
+}

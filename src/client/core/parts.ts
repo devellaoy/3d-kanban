@@ -46,6 +46,7 @@ import type { installWorkerActions } from '../features/workers/actions';
 import type { installWorkerViews } from '../features/workers/views';
 import type { installKanban3d } from '../kanban/install3d';
 import type { installYoutubeTv } from '../youtube/install';
+import type { installPhone } from '../phone/install';
 import type { installFocus } from '../input/focus';
 import type { installPointer } from '../input/pointer';
 import type { installArrival } from './arrival';
@@ -132,4 +133,6 @@ export interface Parts {
   youtube: Made<typeof installYoutubeTv>;
   /** The map of the scenic loop (features/map). */
   map: Made<typeof installMap>;
+  /** The phone in your hand: every floor's workers (phone/install.ts). */
+  phone: Made<typeof installPhone>;
 }

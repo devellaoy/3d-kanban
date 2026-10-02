@@ -20,6 +20,7 @@ Back to the [README](../README.md).
 | O | Have an agent open the pull request for a worker on its own branch (it pushes and writes it up; a kanban task's worker runs the task's PR step), or see the one it has (a worker across several projects gets one in each) |
 | J | The kanban view (`/kanban`), on the project of the floor you're on; facing a kanban task's worker, that task's conversation. Its **🏢 3D** button brings you back to the same floor |
 | N | Go to the worker that has waited longest on someone; again for the next one |
+| Y | *In 3d-kanban*, the 📲 phone (also **📲 Phone** in the ☰ menu): every floor, then a floor's processes, then a worker's window, without walking there. On the phone, ↑ ↓ move down the list, Enter opens, ← or Backspace goes back, and Y, Esc or ✕ puts it away. In a car Y is the car's own key (the ghost car), so open the phone from ☰ there |
 | F | Hang a picture from the web on a wall (scroll to size it, click to hang it) |
 | Q | Put back the issue card you're carrying, or drop the basketball |
 | H | These controls; in a car, honk the horn |
