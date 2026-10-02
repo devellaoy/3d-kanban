@@ -74,6 +74,8 @@ export const floorHandlers = {
     }
     ctx.floorsChanged();
     const list = ctx.building.list();
+    // A step that changed nothing (a stale one, or the same drop twice) is nothing to tell anyone.
+    if (list.every((d, i) => d.id === before[i])) return;
     const text =
       key !== undefined
         ? `🛗 ${who} reordered the floors: the ${groupFloors(list).find((g) => g.key === key)?.label ?? key} floors moved`

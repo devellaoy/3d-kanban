@@ -190,6 +190,8 @@ export function makeSortable(container: HTMLElement, opts: SortableOptions): { d
     if ((!head && !row) || row?.hasAttribute('data-fixed')) return;
     e.preventDefault();
     e.stopPropagation();
+    // One step a press: holding the key down would send a move, and everyone a toast, per repeat.
+    if (e.repeat) return;
     const dir = e.key === 'ArrowUp' ? 'up' : 'down';
     const built = store.floors.filter((f) => !f.cloning);
     const group = !!head;
