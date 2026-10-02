@@ -1,11 +1,11 @@
 /* ---- The elevator: floors, one per project ---------------------------------------------------- */
 .modal.elevator { width: min(640px, 100%); }
 .elevator .intro { margin: 0 0 12px; font-weight: var(--fw-semibold); }
-.elevator .floors { display: grid; gap: 8px; }
+.elevator .floors { position: relative; display: grid; gap: 8px; }
 .elevator .floor-btn { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 12px; align-items: center; width: 100%; text-align: left; padding: 9px 12px; font: inherit; color: var(--text); background: var(--field); border: var(--bw) solid var(--ink); border-radius: 14px; box-shadow: var(--shadow-sm); cursor: pointer; transition: transform .05s; }
-.elevator .floor-btn:hover:not(:disabled) { background: var(--field-hover); }
-.elevator .floor-btn:active:not(:disabled) { transform: translateY(var(--press)); box-shadow: var(--shadow-pressed); }
-.elevator .floor-btn:disabled { cursor: default; }
+.elevator .floor-btn:hover:not(:disabled, [aria-disabled=true]) { background: var(--field-hover); }
+.elevator .floor-btn:active:not(:disabled, [aria-disabled=true]) { transform: translateY(var(--press)); box-shadow: var(--shadow-pressed); }
+.elevator .floor-btn:disabled, .elevator .floor-btn[aria-disabled=true] { cursor: default; }
 .elevator .floor-btn.here { background: var(--paper-2); box-shadow: none; transform: translateY(var(--press)); }
 .elevator .floor-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; align-items: stretch; }
 .elevator .floor-off { padding: 0 12px; font-size: var(--fs-xl); }
