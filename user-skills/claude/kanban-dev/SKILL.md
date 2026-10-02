@@ -4,6 +4,19 @@ description: Enforces that non-trivial implementation work is carried out by an 
 ---
  
 # kanban-dev
+
+## Contents
+
+- **Core principle — design the team for the task** — smallest team, always one devil's advocate
+- **Rule 1 — When you are in plan mode** — plan with a team, add the team line
+  - **1a. Make the plan itself with an agent team** — DA challenges the plan
+  - **1b. Commit the execution to an agent team too** — the canonical closing line
+- **Rule 2 — When you are NOT in plan mode** — team for medium-or-larger tasks
+  - **Sizing a task** — medium vs. trivial
+  - **Running the agent team** — separate subagents or simulated hats
+  - **What the devil's advocate does** — assumptions, failure modes, alternatives
+- **Quick decision summary** — the rules in three lines
+- **Seeing the UI** — use `kanban-ui-screenshots`
  
 This skill makes sure that meaningful implementation work is never done by a single, unchallenged line of reasoning. Instead it is carried out by an **agent team** in which one member is always a **devil's advocate** — someone whose explicit job is to argue against the plan, surface hidden assumptions, and stress-test the approach before and during execution. The goal is fewer blind spots and more robust results.
  

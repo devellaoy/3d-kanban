@@ -13,6 +13,16 @@ description: >-
 
 # kanban-ui-screenshots
 
+## Contents
+
+- **Test behavior, not just pictures** — assertions, `references/ui-testing.md`
+- **Never build your own browser driver** — use `scripts/screenshot.mjs`
+- **1. Start the dev server in the background** — on `KANBAN_PORT_BASE`
+- **2. Wait until the server responds** — poll before capturing
+- **3. Capture** — command, output contract, common options, mobile, measure
+- **4. Look at the image** — open it with Read
+- **5. Clean up** — stop the server, test data, privacy
+
 Verify a web UI by actually rendering it: start the dev server, drive a real browser, capture
 images, and read measurements. Use it whenever seeing the real UI would make the work more
 certain — UI changes, layout and responsive problems, visual regressions. Skip it for pure
