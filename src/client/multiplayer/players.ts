@@ -53,9 +53,6 @@ export function openPlayers(net: Net) {
   paint();
   openModal(el, {
     doing: '🌐 looking at the players',
-    onClose: () => {
-      off();
-      if (!owner) net.send({ t: 'mp.unwatch' });
-    },
+    onClose: off,
   });
 }
