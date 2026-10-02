@@ -35,6 +35,7 @@ column) and **⚙️** Settings (the office's own window, as in the 3D office). 
 | **In progress** | The engine is running a phase (plan, implement, review, fix…), or the task is queued for a slot. |
 | **Waiting** | Needs you: the plan has questions, the plan waits for approval, the agent asks in its terminal, it was stopped, a phase failed or was interrupted, or a usage limit (it retries by itself, with a countdown; for Codex, at the account's own reset time when it knows it). |
 | **Review** | The automation is finished. Read the result, comment, run another review round, open PRs, or move it to Done. |
+| **On hold** | Put aside from Waiting or Review until something it depends on is there (see [On hold](#on-hold)). Its worker is at home; nothing runs. |
 | **Done** | Accepted by you: you move it here, send its implementer home with *the task is done*, or leave-on-merge sends it home once every PR of the task has merged. |
 | **Archive** | Done tasks after the archive days, and tasks archived by hand; off the board (**🗄️ Archive** shows them). |
 
@@ -48,14 +49,36 @@ greyed out with the reason. What you can do by hand:
   a fresh worktree whose agent checks that branch out first. Not while it runs. Workers still at their
   desks go home first and the worktree stays on disk: the task's conversation says where, and on which
   branch.
+- **Waiting / Review → On hold** (not while it runs), asking why and until when; **On hold → In progress**
+  resumes it; **On hold → Review / Done / To do** work as from Waiting or Review (To do starts over).
 - **Anything → Archive**, except while it runs.
-- Not allowed: To do ↔ Done, and moving into In progress, Waiting or Review any other way (use
+- Not allowed: To do ↔ Done, and moving into In progress (from To do or On hold only), Waiting or Review any other way (use
   Continue, Retry or a comment).
 
 Done tasks go to the archive by themselves after the *archive after* days in the settings.
 Moving a task to Done or to the archive (by hand or by itself) sends its workers that are at rest
 home, worktree kept. An agent still asking in its terminal (the task waits with *the agent is asking*)
 goes home too: its run is stopped, with a line saying so, and nothing of the task stays running.
+
+## On hold
+
+Some tasks can't go on yet: the API keys aren't there, another team has to answer, a release is two weeks off.
+Put such a task on hold instead of leaving it in Waiting or Review, where it counts as something that needs you.
+
+- **How**: drag the card of a Waiting or Review task (one that isn't running; the creator or an admin) to **On hold**,
+  use its **⋯** menu (or **M**), or press **⏸️ Put on hold** in the task view. A small dialog asks *what is it
+  waiting for?* and *hold until* (both optional; the date is only shown, the task is never resumed by itself). They
+  show on the card and in the task view with who put it on hold and since when.
+- **The worker**: it goes home, its worktree and session kept on the task. In the 3D office a figure of it sits in the TV
+  lounge: four seat themselves (the two beanbags and the ends of the couch; the middle of the couch stays free for
+  watching TV), up to eight more stand behind the couch, and a *+N more on hold* sign counts the rest. The lounge is
+  only on the office map (not on a project's floor).
+- **Resuming**: **▶️ Resume** in the task view, or move the card to In progress. A dialog takes an optional message for
+  the agent. The task carries on in the same session and worktree, with the same worker name when it is free; a worktree
+  removed meanwhile (for instance by `agent-office prune`) is recreated on the task's branch. Comments written while the
+  task was on hold are kept and handed to the agent then.
+- **Otherwise**: a held task doesn't count toward *tasks at once*, is never archived by itself, and leave-on-merge
+  doesn't touch it. Fixing or reviewing its PRs through the task asks you to resume it first.
 
 ## Creating a task
 
@@ -228,7 +251,7 @@ back to work:
   next rest. Comments that came in during a review are worked on when the review cycle ends, and that
   work is reviewed again when the task has review on.
 
-On To do, Done and archived tasks a comment is just kept. Comments take attachments too,
+On To do, **On hold**, Done and archived tasks a comment is just kept; on a held task it is handed to the agent when the task is resumed. Comments take attachments too,
 and so do the answer box and the plan's **Request changes** (**Shift + Enter** or **Ctrl/⌘ + Enter** sends); files alone are enough. An agent can read only its own task's files (copies in `kanban/grants/task-<id>/`). After upgrading, a live agent session started before this change is relaunched once at its next turn (its launch arguments change); until then a file sent into it may need a permission prompt.
 
 In the 3D office, what you tell a task's **implementer** while the task is in progress, waiting or in
