@@ -154,8 +154,10 @@ nothing goes over the network, and what they remember lives in your browser's `l
     knobbly tyres, top out around 110 km/h (140 on nitro), turn the wheel slowly and corner softer than the
     supercars, but grass hardly slows them and their tyres hold on it. Their dial, gearbox, engine note and
     horn (a deep one) are their own, and the rider sits higher.
-  - **Loose suspension.** Every car rides on springs: the body rolls, pitches and rises over bumps, and the
-    4x4s' are looser, with the wheels moving against the body.
+  - **Suspension.** Every car rides on springs: the body rolls, pitches and rises over bumps, and the
+    4x4s' are a little softer than the supercars', with longer travel, the wheels moving against the body, but well damped, so
+    the body settles quickly instead of rocking on. The 4x4s' glass is clear, so you can see out through
+    the windshield from the seat.
   - **Speed humps and rough ground.** Two yellow-and-black humps either side of town on the street, a
     washboard farm lane, moguls in the meadow inside the loop and mounds round the campsite. The ground
     there is really higher, so you walk up it too, and the rocks, bushes, flowers, fence posts and benches

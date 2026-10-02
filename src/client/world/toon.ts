@@ -16,8 +16,9 @@ function gradientMap(): THREE.DataTexture {
 
 const cache = new Map<string, THREE.MeshToonMaterial>();
 
-export function toon(color: THREE.ColorRepresentation, opts: { emissive?: THREE.ColorRepresentation; transparent?: boolean; opacity?: number } = {}): THREE.MeshToonMaterial {
-  const key = `${new THREE.Color(color).getHexString()}|${opts.emissive ?? ''}|${opts.opacity ?? 1}`;
+/** `depthWrite: false` for see-through things that others should show through (glass): nothing behind them goes missing whichever is drawn first. */
+export function toon(color: THREE.ColorRepresentation, opts: { emissive?: THREE.ColorRepresentation; transparent?: boolean; opacity?: number; depthWrite?: boolean } = {}): THREE.MeshToonMaterial {
+  const key = `${new THREE.Color(color).getHexString()}|${opts.emissive ?? ''}|${opts.opacity ?? 1}|${opts.depthWrite ?? true}`;
   const hit = cache.get(key);
   if (hit) return hit;
   const m = new THREE.MeshToonMaterial({ color, gradientMap: gradientMap() });
@@ -26,6 +27,7 @@ export function toon(color: THREE.ColorRepresentation, opts: { emissive?: THREE.
     m.transparent = true;
     m.opacity = opts.opacity ?? 1;
   }
+  if (opts.depthWrite === false) m.depthWrite = false;
   cache.set(key, m);
   return m;
 }

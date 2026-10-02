@@ -50,17 +50,16 @@ test('a bump excites an oscillation in the body that dies away', () => {
   }
 });
 
-test('the 4x4 wallows: it overshoots and keeps rocking longer and further than a supercar', () => {
-  const loose = pulse(new Suspension(suspensionOf('offroad')), 0.1, 0.12, 8);
+test('the 4x4 rides a little softer than a supercar, but settles about as quickly and does not keep rocking', () => {
+  const firm = pulse(new Suspension(suspensionOf('offroad')), 0.1, 0.12, 8);
   const stiff = pulse(new Suspension(suspensionOf('lambo')), 0.1, 0.12, 8);
-  assert.ok(crossings(loose) >= 3, `the 4x4 swings back and forth ${crossings(loose)} times`);
-  assert.ok(crossings(loose) > crossings(stiff), 'more than the stiff one');
-  assert.ok(settled(loose, 0.004) > settled(stiff, 0.004) * 2, `still rocking at ${settled(loose, 0.004).toFixed(1)} s against ${settled(stiff, 0.004).toFixed(1)} s`);
-  // After a mound (a bump 0.3 s long) the soft one swings further past rest, and keeps swinging.
-  const mound = (kind: 'offroad' | 'lambo') => pulse(new Suspension(suspensionOf(kind)), 0.2, 0.3, 6);
-  const after = (xs: number[]) => xs.slice(Math.ceil(0.3 / FRAME));
-  assert.ok(peak(after(mound('offroad'))) > peak(after(mound('lambo'))) * 1.5, `${peak(after(mound('offroad'))).toFixed(3)} against ${peak(after(mound('lambo'))).toFixed(3)} m of swing once it is over`);
-  assert.ok(peak(mound('offroad')) > 0.08, 'and the body travels a good way up');
+  assert.ok(crossings(firm) <= 3, `the 4x4 swings back and forth only ${crossings(firm)} times`);
+  assert.ok(settled(firm, 0.004) < 1, `it is still within 4 mm of rest after ${settled(firm, 0.004).toFixed(2)} s`);
+  assert.ok(settled(firm, 0.004) < settled(stiff, 0.004) * 3, `about as soon as the stiff one (${settled(stiff, 0.004).toFixed(2)} s)`);
+  // After a mound (a bump 0.3 s long) it is soon back at rest too.
+  const mound = pulse(new Suspension(suspensionOf('offroad')), 0.2, 0.3, 6);
+  assert.ok(settled(mound, 0.004) < 1.5, `back at rest ${settled(mound, 0.004).toFixed(2)} s after the mound`);
+  assert.ok(peak(mound) > peak(pulse(new Suspension(suspensionOf('lambo')), 0.2, 0.3, 6)), 'and its longer travel lets the body rise further than a supercar');
 });
 
 test('a bump under the front wheels alone lifts the nose, and rocks the body back and forth in pitch', () => {
@@ -72,10 +71,10 @@ test('a bump under the front wheels alone lifts the nose, and rocks the body bac
     pitch.push(s.pitch);
   }
   assert.ok(Math.min(...pitch) < -0.02, 'nose up as the front rises');
-  assert.ok(Math.max(...pitch) > 0.01, 'and the rebound pitches it the other way');
+  assert.ok(Math.max(...pitch) > 0.005, 'and the rebound pitches it the other way');
 });
 
-test('cornering roll grows with lateral acceleration, leaning out of the turn, far more on the 4x4', () => {
+test('cornering roll grows with lateral acceleration, leaning out of the turn, a little more on the 4x4', () => {
   const lean = (kind: 'offroad' | 'lambo', aLat: number) => {
     const s = new Suspension(suspensionOf(kind));
     for (let t = 0; t < 4; t += FRAME) s.step(FRAME, [0, 0, 0, 0], 0, aLat);
@@ -86,8 +85,9 @@ test('cornering roll grows with lateral acceleration, leaning out of the turn, f
     assert.ok(a > 0 && b > a && c > b, `${kind} leans more the harder it turns (${a.toFixed(3)}, ${b.toFixed(3)}, ${c.toFixed(3)})`);
     assert.ok(lean(kind, -10) < 0, `and the other way in a right turn`);
   }
-  assert.ok(lean('offroad', 12) > lean('lambo', 12) * 3, 'the 4x4 leans several times as far');
-  assert.ok(lean('offroad', 12) < 0.25, 'but not onto its side');
+  assert.ok(lean('offroad', 12) > lean('lambo', 12) * 1.2, 'the 4x4 leans further');
+  assert.ok(lean('offroad', 12) < lean('lambo', 12) * 2, 'but not much further');
+  assert.ok(lean('offroad', 18) < suspensionOf('offroad').maxRoll, 'nor onto its stops in a hard turn');
 });
 
 test('under the throttle the tail squats, on the brakes the nose dives', () => {
@@ -96,8 +96,9 @@ test('under the throttle the tail squats, on the brakes the nose dives', () => {
     for (let t = 0; t < 4; t += FRAME) s.step(FRAME, [0, 0, 0, 0], aLong, 0);
     return s.pitch;
   };
-  assert.ok(settle(8) < -0.02, 'nose up on the gas');
-  assert.ok(settle(-25) > 0.04, 'nose down on the brakes');
+  assert.ok(settle(8) < -0.01, 'nose up on the gas');
+  assert.ok(settle(-25) > 0.03, 'nose down on the brakes');
+  assert.ok(settle(-25) < suspensionOf('offroad').maxPitch, 'but short of its stops even braking hard');
   assert.ok(settle(-25) > settle(-10), 'more the harder');
 });
 

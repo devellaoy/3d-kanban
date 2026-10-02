@@ -8,13 +8,16 @@
 //   dist=<m>           how far back the camera is (default: far enough to fit it)
 //   t=<seconds>        steps the prop's update (if it has one) at 60 fps up to t, then draws one frame
 //   floor=0            no floor, only its grid, to see what goes under it
+//   seat=driver        with one car shown, look ahead from where its driver's eyes are instead
 // Once it has drawn, window.__ready holds each prop's size, triangles, draw calls and material names.
 
 import * as THREE from 'three';
 import { lookFromSeed } from '../../shared/avatar';
 import { isEmote } from '../../shared/emotes';
+import { SEATS, type CarSeat } from '../../shared/garage';
 import { DESKS } from '../../shared/layout';
 import { buildCabinet } from '../features/cabinet/world';
+import { offroad } from '../features/cars/offroad';
 import { supercar } from '../features/cars/world';
 import { buildGong } from '../features/gong/world';
 import { buildJukebox } from '../features/jukebox/world';
@@ -92,6 +95,14 @@ const SHOW: Record<string, () => Shown> = {
   },
   lambo: () => ({ object: supercar('lambo', '#ffd166').root }),
   ferrari: () => ({ object: supercar('ferrari', '#ef476f').root }),
+  offroad: () => ({ object: offroad('#2a9d8f').root }),
+  // The 4x4 as it is with someone in it: the roof off, the seats and the windshield in.
+  'offroad-in': () => {
+    const m = offroad('#2a9d8f');
+    m.top.visible = false;
+    m.open.visible = true;
+    return { object: m.root };
+  },
 };
 
 const q = new URLSearchParams(location.search);
@@ -124,6 +135,18 @@ const extent = all.getSize(new THREE.Vector3());
 
 /** Round the props from `view`, far enough back to fit them all across and up. */
 function aim() {
+  const seat = q.get('seat') as CarSeat | null;
+  if (seat && Object.hasOwn(SEATS, seat) && shown.length === 1) {
+    // About where a seated driver's eyes are (see player/camera.ts), looking ahead over the hood.
+    const s = SEATS[seat];
+    const car = shown[0].object;
+    car.updateMatrixWorld(true);
+    camera.fov = 55;
+    camera.position.copy(car.localToWorld(new THREE.Vector3(s.x, 1.45, s.z)));
+    camera.lookAt(car.localToWorld(new THREE.Vector3(s.x, 1.2, s.z + 10)));
+    camera.updateProjectionMatrix();
+    return;
+  }
   const view = Number(q.get('view') ?? (only ? 0.6 : 0.15));
   const tan = Math.tan(THREE.MathUtils.degToRad(camera.fov / 2));
   const fit = Math.max(extent.y / 2 / tan, extent.x / 2 / (tan * camera.aspect)) * 1.25 + extent.z / 2;

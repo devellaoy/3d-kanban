@@ -34,7 +34,7 @@ export class GhostCar {
         const c = src.clone() as THREE.MeshToonMaterial;
         c.color?.lerp(TINT, 0.7);
         c.transparent = true;
-        c.opacity = 0.38;
+        c.opacity = Math.min(src.opacity, 0.38);
         c.depthWrite = false;
         this.mats.push(c);
         return c;
