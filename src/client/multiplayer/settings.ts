@@ -11,8 +11,8 @@ const STATUS: Record<string, string> = { off: '⚪ Not connected', connecting: '
 
 export function multiplayerPane(net: Net): { el: HTMLElement; close(): void } {
   const el = h('div.mp-set');
-  const url = h('input', { type: 'url', placeholder: 'https://relay.example.com', autocomplete: 'off', spellcheck: 'false' }) as HTMLInputElement;
-  const pass = h('input', { type: 'password', autocomplete: 'new-password' }) as HTMLInputElement;
+  const url = h('input', { type: 'text', inputmode: 'url', placeholder: 'https://relay.example.com', 'aria-label': 'Multiplayer server address', autocomplete: 'off', spellcheck: 'false' }) as HTMLInputElement;
+  const pass = h('input', { type: 'password', 'aria-label': 'Multiplayer server password', autocomplete: 'new-password' }) as HTMLInputElement;
   let urlTouched = false;
   url.addEventListener('input', () => (urlTouched = true));
 
@@ -47,7 +47,7 @@ export function multiplayerPane(net: Net): { el: HTMLElement; close(): void } {
     const disconnect = h('button.btn', { type: 'button', onclick: () => net.send({ t: 'mp.disconnect' }) }, 'Disconnect');
     (disconnect as HTMLButtonElement).disabled = mp.status === 'off';
     el.replaceChildren(
-      setting('Server', 'office', h('div.mp-row', {}, url, pass), h('div.mp-row', {}, connect, disconnect), h('p.setting-note', {}, STATUS[mp.status] ?? mp.status, mp.error ? ` — ${mp.error}` : '')),
+      setting('Server', 'office', h('div.mp-row', {}, url, pass), h('div.mp-row', {}, connect, disconnect), h('p.setting-note', { class: mp.status === 'error' ? 'bad' : '' }, STATUS[mp.status] ?? mp.status, mp.error ? ` — ${mp.error}` : '')),
       setting('Your GitHub account', 'office', ...sign),
       setting('Floors other players may visit', 'office', ...(mp.floors.length ? mp.floors.map(floorRow) : [h('p.setting-note', {}, 'No floors yet.')]), h('p.setting-note', {}, 'Visitors only see a shared floor if they also have access to its GitHub repositories, and can’t change anything.')),
     );

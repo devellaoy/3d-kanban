@@ -1,10 +1,20 @@
 /* The player list (players.ts) and the banner shown while visiting (index.ts). */
-.mp-players-modal { min-width: min(420px, 92vw); }
-.mp-players { display: flex; flex-direction: column; gap: 8px; padding: 4px 0; }
-.mp-player { display: flex; align-items: center; gap: 10px; padding: 6px 8px; background: var(--field); border: var(--bw-sm) solid var(--ink); border-radius: var(--radius-sm); }
-.mp-player .mp-who { display: flex; flex-direction: column; flex: 1; min-width: 0; }
+.mp-players-modal { width: min(480px, 100%); }
+.mp-players { display: flex; flex-direction: column; gap: 8px; }
+.mp-players > p { margin: 0; }
+.mp-players > .btn { align-self: flex-start; }
+.mp-players .mp-visiting { font-weight: var(--fw-semibold); line-height: 1.4; }
+.mp-player { display: flex; align-items: center; gap: 10px; padding: 10px 12px; background: var(--field); border: var(--bw-sm) solid color-mix(in srgb, var(--text) 18%, transparent); border-radius: var(--radius-sm); }
+.mp-player .dot { background: var(--note-slate); }
+.mp-player .dot.on { background: var(--good); }
+.mp-player .mp-who { display: flex; flex-direction: column; gap: 2px; flex: 1; min-width: 0; }
+.mp-player .mp-who > * { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .mp-player .mp-login { font-weight: var(--fw-medium); color: var(--muted); }
 .mp-player small { color: var(--muted); font-weight: var(--fw-semibold); }
+.mp-player .btn { flex: none; padding: 3px 10px; font-size: var(--fs-sm); }
 
 .mp-visit-banner { position: fixed; top: 8px; left: 50%; transform: translateX(-50%); z-index: 30; display: flex; align-items: center; gap: 10px; max-width: calc(100vw - 32px); padding: 4px 6px 4px 14px; font-weight: var(--fw-bold); font-size: var(--fs-sm); background: var(--field); border: var(--bw) solid var(--ink); border-radius: var(--radius-pill); box-shadow: var(--shadow-xs); }
-.mp-visit-banner .btn { padding: 4px 10px; font-size: var(--fs-sm); }
+.mp-visit-banner > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mp-visit-banner .btn { flex: none; padding: 4px 10px; font-size: var(--fs-sm); white-space: nowrap; }
+/* Too narrow to sit between the floor's name and the dock: under the top bar instead, so ☰ stays reachable. */
+@media (max-width: 1000px) { .mp-visit-banner { top: 64px; } }

@@ -21,18 +21,18 @@ function where(p: MpPlayer): string {
 }
 
 export function openPlayers(net: Net) {
-  const list = h('div.mp-players');
+  const list = h('div.body.mp-players');
   const home = () => h('button.btn', { type: 'button', onclick: goHome }, '🏠 Back to my office');
   const owner = visiting();
   const probed = new Set<string>();
 
   function row(p: MpPlayer) {
     const visit = p.me ? null : h('button.btn.small', { type: 'button', disabled: !p.online, onclick: () => goVisit(p.login) }, 'Visit');
-    return h('div.mp-player', {}, h('span.mp-dot', { 'aria-hidden': 'true' }, p.online ? '🟢' : '⚪'), h('span.mp-who', {}, h('b', {}, p.name ? `${p.name} ` : '', h('span.mp-login', {}, `@${p.login}`)), h('small', {}, p.me ? 'you · ' : '', where(p))), p.me ? home() : visit);
+    return h('div.mp-player', {}, h('span.dot', { class: p.online ? 'on' : '', title: p.online ? 'Online' : 'Offline' }), h('span.mp-who', {}, h('b', {}, p.name ? `${p.name} ` : '', h('span.mp-login', {}, `@${p.login}`)), h('small', {}, p.me ? 'you · ' : '', where(p))), p.me ? home() : visit);
   }
 
   function paint() {
-    if (owner) return list.replaceChildren(h('p', {}, `👀 You are visiting @${owner}’s office.`), home());
+    if (owner) return list.replaceChildren(h('p.mp-visiting', {}, `👀 You are visiting @${owner}’s office. It is read-only: you can look around, but not change anything.`), home());
     const players = store.mp.players;
     list.replaceChildren(...(players.length ? players.map(row) : [h('p.setting-note', {}, 'Nobody else is here yet.')]));
     // Ask each online player which floors they show us, once per open.
