@@ -7,10 +7,15 @@ import { terrainOk } from './terrain.js';
 // the arcade physics a driver's own page runs. Everyone else on the floor sees the car where its
 // driver says it is.
 
-export type CarKind = 'lambo' | 'ferrari';
+export type CarKind = 'lambo' | 'ferrari' | 'offroad';
 
 /** A car's footprint (nose to tail along its length), and how high its body and its roof come up. */
 export const CAR = { length: 4.6, width: 2, body: 0.82, roof: 1.12 } as const;
+
+/** How high a kind of car's body and roof come up (what you stand on): the supercars' are CAR's, the 4x4 stands taller. */
+export function carHeight(kind: CarKind): { body: number; roof: number } {
+  return kind === 'offroad' ? { body: 1.25, roof: 1.85 } : CAR;
+}
 
 /** The building's footprint, walls included: the garage is under it. */
 const B = { minX: FLOOR.minX - WALL_T, maxX: FLOOR.maxX + WALL_T, minZ: FLOOR.minZ - WALL_T, maxZ: FLOOR.maxZ + WALL_T } as const;
@@ -64,6 +69,9 @@ export const CARS: readonly CarDef[] = [
   { kind: 'ferrari', color: '#e5383b', name: 'Scarlet Ferrari', x: 14.4, z: FRONT, rotY: 0 },
   // Left out front, for everyone upstairs to look at.
   { kind: 'lambo', color: '#00b4d8', name: 'Blue Lambo', x: 9, z: 18.2, rotY: Math.PI / 2 },
+  // The two 4x4s, out front on the other side (new cars go on the end: a car is known by its place in this list).
+  { kind: 'offroad', color: '#2f8f4e', name: 'Green Ranger', x: -6, z: 18.2, rotY: -Math.PI / 2 },
+  { kind: 'offroad', color: '#d9a441', name: 'Sand Ranger', x: -18.5, z: 18.2, rotY: -Math.PI / 2 },
 ];
 
 export type CarSeat = 'driver' | 'passenger';
@@ -146,13 +154,50 @@ export const DRIVE = {
   nitroRelight: 0.15,
   /** Slowing down (m/s², with the air's drag on top) when over top speed on the gas without the nitro: back to top in a fraction of a second. */
   overTop: 24,
+  /** On grass: how much of the push is lost, and how much of the grip (each, at full roughness). */
+  roughPush: 0.2,
+  roughGrip: 0.35,
 } as const;
+
+/** A kind of car's handling: DRIVE's numbers, or its own. */
+export type Handling = { readonly [K in keyof typeof DRIVE]: number };
+
+/**
+ * The 4x4: slower than the supercars, slow to turn the wheel and softer in the corners, but on grass it
+ * hardly slows down and its tyres hold nearly as well as on the road.
+ */
+const OFFROAD: Handling = {
+  ...DRIVE,
+  top: 30,
+  boostTop: 40,
+  reverse: 9,
+  accel: 12,
+  boostAccel: 10,
+  reverseAccel: 6,
+  brake: 24,
+  handbrake: 11,
+  coast: 3,
+  drag: 0.0042,
+  rough: 1.8,
+  wheelbase: 2.9,
+  steer: 0.55,
+  steerRate: 2.4,
+  grip: 26,
+  overTop: 18,
+  roughPush: 0.03,
+  roughGrip: 0.06,
+};
+
+/** How `kind` of car drives. */
+export function driveOf(kind: CarKind): Handling {
+  return kind === 'offroad' ? OFFROAD : DRIVE;
+}
 
 const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v));
 
 /** How far the front wheels can turn at `speed`. */
-export function steerLimit(speed: number): number {
-  return DRIVE.steer / (1 + (Math.abs(speed) / 12) ** 1.6);
+export function steerLimit(speed: number, kind: CarKind = 'lambo'): number {
+  return driveOf(kind).steer / (1 + (Math.abs(speed) / 12) ** 1.6);
 }
 
 /** The gearbox, for the engine's note and the dash: six gears, each good for this many m/s; the nitro takes it past the sixth. */
@@ -175,41 +220,42 @@ export function boosting(p: Pick<CarPose, 'speed' | 'nitro' | 'fire'>, pedals: P
  * take the slip out as fast as they hold (DRIVE.grip), so a hard turn at speed, or the handbrake, has
  * the car slide.
  */
-export function drive(p: CarPose, pedals: Pedals, dt: number, rough = 0): CarPose {
+export function drive(p: CarPose, pedals: Pedals, dt: number, rough = 0, kind: CarKind = 'lambo'): CarPose {
+  const D = driveOf(kind);
   const hand = pedals.brake;
   const gas = clamp(pedals.gas, -1, 1);
   const on = boosting(p, pedals);
-  const nitro = clamp((p.nitro ?? 1) + (on ? -DRIVE.nitroUse : DRIVE.nitroFill) * dt, 0, 1);
-  const cap = on ? DRIVE.boostTop : DRIVE.top;
-  const want = clamp(pedals.turn, -1, 1) * steerLimit(Math.hypot(p.speed, p.slip ?? 0));
-  const steer = p.steer + clamp(want - p.steer, -DRIVE.steerRate * dt, DRIVE.steerRate * dt);
+  const nitro = clamp((p.nitro ?? 1) + (on ? -D.nitroUse : D.nitroFill) * dt, 0, 1);
+  const cap = on ? D.boostTop : D.top;
+  const want = clamp(pedals.turn, -1, 1) * steerLimit(Math.hypot(p.speed, p.slip ?? 0), kind);
+  const steer = p.steer + clamp(want - p.steer, -D.steerRate * dt, D.steerRate * dt);
 
   let v = p.speed;
   const toward = (target: number, rate: number) => (v += clamp(target - v, -rate * dt, rate * dt));
-  const drag = DRIVE.drag * v * v;
+  const drag = D.drag * v * v;
   if (gas > 0) {
-    if (v < 0) toward(0, DRIVE.brake);
-    else if (v > DRIVE.top && !on) v = Math.max(DRIVE.top, v - (DRIVE.overTop + drag) * dt);
+    if (v < 0) toward(0, D.brake);
+    else if (v > D.top && !on) v = Math.max(D.top, v - (D.overTop + drag) * dt);
     else {
-      const push = (on ? DRIVE.accel + DRIVE.boostAccel : DRIVE.accel) * (1 - 0.85 * (v / cap) ** 2) * (1 - 0.2 * rough);
-      v = Math.max(0, Math.min(cap, v + (push - rough * DRIVE.rough) * gas * dt));
+      const push = (on ? D.accel + D.boostAccel : D.accel) * (1 - 0.85 * (v / cap) ** 2) * (1 - D.roughPush * rough);
+      v = Math.max(0, Math.min(cap, v + (push - rough * D.rough) * gas * dt));
     }
   } else if (gas < 0) {
-    if (v > 0) toward(0, DRIVE.brake);
-    else v = Math.max(-DRIVE.reverse, v + (DRIVE.reverseAccel * gas + rough * DRIVE.rough * 0.3) * dt);
-  } else toward(0, DRIVE.coast + drag + rough * DRIVE.rough);
-  if (hand) toward(0, DRIVE.handbrake);
+    if (v > 0) toward(0, D.brake);
+    else v = Math.max(-D.reverse, v + (D.reverseAccel * gas + rough * D.rough * 0.3) * dt);
+  } else toward(0, D.coast + drag + rough * D.rough);
+  if (hand) toward(0, D.handbrake);
 
   // The bicycle model turns the car; the rear lets go on the handbrake, so it swings round more.
   const swing = hand ? 1 + 0.3 * clamp((Math.abs(v) - 5) / 10, 0, 1) : 1;
-  const yaw = ((v * Math.tan(steer)) / DRIVE.wheelbase) * swing;
+  const yaw = ((v * Math.tan(steer)) / D.wheelbase) * swing;
   const d = yaw * dt;
   // The way it's going stays put in the world while the car turns under it: that's the slip.
   const slip = p.slip ?? 0;
   const long = v * Math.cos(d) + slip * Math.sin(d);
   let lat = -v * Math.sin(d) + slip * Math.cos(d);
   // The tyres take it out, as fast as they can hold.
-  const held = DRIVE.grip * (hand ? 0.25 : 1) * (1 - 0.35 * rough);
+  const held = D.grip * (hand ? 0.25 : 1) * (1 - D.roughGrip * rough);
   lat -= clamp(lat * (1 - Math.exp(-(hand ? 1.2 : 6) * dt)), -held * dt, held * dt);
   const mid = p.rotY + d / 2;
   return {

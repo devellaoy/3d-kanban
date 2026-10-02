@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { bumpHeight } from '../../shared/bumps';
 import { FLOOR, STREET_Y, WALL_T, type SeatPlace } from '../../shared/layout';
 import type { ViewMode } from '../state';
 import type { Collider } from '../world/types';
@@ -211,7 +212,8 @@ export class PlayerController extends PlayerInput {
     }
 
     // Never below the street: past the edge of the grass there's nothing else to stand on.
-    const ground = Math.max(groundAt(this.colliders, this.pos.x, this.pos.z, this.pos.y), this.street);
+    // (Over the meadow's moguls and the speed humps, the street rises a little: see shared/bumps.ts.)
+    const ground = Math.max(groundAt(this.colliders, this.pos.x, this.pos.z, this.pos.y), this.street + bumpHeight(this.pos.x, this.pos.z));
     const jump = this.enabled && k.has('Space') && this.grounded;
     if (jump) {
       this.vy = JUMP_V * this.effects.jump;

@@ -1,6 +1,7 @@
 import * as THREE from 'three';
-import { DRIVE, carPoint, roughAt } from '../../../shared/garage';
+import { carPoint, driveOf, roughAt } from '../../../shared/garage';
 import { STREET_Y } from '../../../shared/layout';
+import { Ride } from './ride';
 import type { CarView } from './world';
 
 // What driving looks like beyond the car itself: tyre smoke and skid marks when it slides or brakes
@@ -8,7 +9,6 @@ import type { CarView } from './world';
 // brakes. All of it is worked out from how each car is seen to move (the same for yours and for
 // everyone else's), so nothing here is sent anywhere.
 
-const wrap = (a: number) => Math.atan2(Math.sin(a), Math.cos(a));
 const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v));
 
 /** A material that's one flat color and fades by a per-instance `aFade` (0 to 1), for smoke, dust and skid marks. */
@@ -168,8 +168,8 @@ interface Track {
   z: number;
   rotY: number;
   long: number;
-  roll: number;
-  pitch: number;
+  /** The body on its springs (see ride.ts): leaning into corners, pitching on the gas and brakes, riding the bumps. */
+  ride: Ride;
   longAcc: number;
   skid: ({ x: number; z: number } | null)[];
   smoke: number;
@@ -178,10 +178,6 @@ interface Track {
   /** Whether it looks to be on the nitro: over top speed and not slowing down (with some slack either way, so it doesn't flicker). */
   burn: boolean;
 }
-
-/** Roll and pitch of the body, as far as it leans (radians). */
-const MAX_ROLL = 0.07;
-const MAX_PITCH = 0.05;
 
 /** Tyre smoke, skid marks, dust, nitro flames and the body's lean for a fleet's cars (see CarView). */
 export class DriveEffects {
@@ -207,7 +203,7 @@ export class DriveEffects {
     const sin = Math.sin(p.rotY);
     const cos = Math.cos(p.rotY);
     if (!t || Math.hypot(p.x - t.x, p.z - t.z) > 4 + 90 * dt) {
-      t = { x: p.x, z: p.z, rotY: p.rotY, long: 0, roll: 0, pitch: 0, longAcc: 0, skid: [null, null], smoke: 0, dust: 0, fire: 0, burn: false };
+      t = { x: p.x, z: p.z, rotY: p.rotY, long: 0, ride: new Ride(v, v.def.kind), longAcc: 0, skid: [null, null], smoke: 0, dust: 0, fire: 0, burn: false };
       this.tracks.set(v.index, t);
     }
     // How it's moving, from where it's been seen: along its nose, across it, and how fast it's turning.
@@ -216,7 +212,6 @@ export class DriveEffects {
     const long = vx * sin + vz * cos;
     const lat = vx * cos - vz * sin;
     const speed = Math.hypot(vx, vz);
-    const yawRate = wrap(p.rotY - t.rotY) / dt;
     const longAcc = t.longAcc + ((long - t.long) / dt - t.longAcc) * Math.min(1, dt * 10);
     t.x = p.x;
     t.z = p.z;
@@ -224,11 +219,9 @@ export class DriveEffects {
     t.long = long;
     t.longAcc = longAcc;
 
-    // Leaning into the corner (outward) and pitching on the brakes and the gas.
-    const k = Math.min(1, dt * 7);
-    t.roll += (clamp(long * yawRate * 0.0021, -MAX_ROLL, MAX_ROLL) - t.roll) * k;
-    t.pitch += (clamp(-longAcc * 0.0016, -MAX_PITCH, MAX_PITCH) - t.pitch) * k;
-    v.tilt.rotation.set(t.pitch, 0, t.roll);
+    // The body on its springs: leaning out of the corner, pitching on the gas and the brakes, riding the bumps.
+    v.ride = t.ride;
+    t.ride.follow(p, dt);
 
     const sliding = speed > 8 ? clamp((Math.abs(lat) - 3.2) / 7, 0, 1) : 0;
     const braking = speed > 14 && longAcc < -22 ? 0.7 : 0;
@@ -265,7 +258,8 @@ export class DriveEffects {
     // The nitro: yours when it's on; someone else's when they're over what a car does on the gas alone and
     // still not slowing (it lights at top + 1.5 m/s holding or gaining speed, and goes out once they ease
     // off or fall back to top speed), so a car still coasting down from the nitro stops showing flames.
-    t.burn = t.burn ? p.speed > DRIVE.top + 0.5 && longAcc > -6 : p.speed > DRIVE.top + 1.5 && longAcc > -2;
+    const top = driveOf(v.def.kind).top;
+    t.burn = t.burn ? p.speed > top + 0.5 && longAcc > -6 : p.speed > top + 1.5 && longAcc > -2;
     if (nitro ?? t.burn) {
       t.fire += dt * 120;
       while (t.fire >= 1) {

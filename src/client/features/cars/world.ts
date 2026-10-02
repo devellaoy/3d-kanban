@@ -1,9 +1,10 @@
 import * as THREE from 'three';
-import { CAR, CARS, SEATS, carPoint, type Box, type CarDef, type CarKind, type CarPose, type CarSeat, type CarState } from '../../../shared/garage';
+import { CAR, CARS, SEATS, carHeight, carPoint, type Box, type CarDef, type CarKind, type CarPose, type CarSeat, type CarState } from '../../../shared/garage';
 import { FLOOR, SLAB, STREET_Y, WALL_T, streetBelow } from '../../../shared/layout';
 import type { Collider, Interactable } from '../../world/types';
 import type { Fixture, StreetSite } from '../../world/office/fixture';
 import { mergeByMaterial, mesh, toon } from '../../world/toon';
+import { offroad } from './offroad';
 
 const WIDTH = 1.9;
 const WHEEL_R = 0.36;
@@ -96,6 +97,13 @@ export interface CarModel {
   open: THREE.Object3D;
   /** The front wheels, which turn to steer. */
   wheels: THREE.Object3D[];
+  /** The other wheels, if they hang from the body on their own too (the 4x4's: they move against the body on the suspension, see ride.ts). */
+  rear?: THREE.Object3D[];
+}
+
+/** A `kind` of car's model, in `color`. */
+export function carModel(kind: CarKind, color: string): CarModel {
+  return kind === 'offroad' ? offroad(color) : supercar(kind, color);
 }
 
 /**
@@ -198,6 +206,8 @@ export interface CarView extends CarModel {
   /** What you bump into and stand on: along its body (turned, it takes a few boxes), and its roof. */
   colliders: Collider[];
   interactable: Interactable;
+  /** How it's riding on its springs (set by DriveEffects): the seats rise and tilt with the body. */
+  ride?: { lift(lx: number, lz: number): number };
 }
 
 /** Whether the whole car is in under the building (the office's floor over it), rather than out on the lot or the street. */
@@ -232,7 +242,7 @@ export class Fleet {
     interactables: Interactable[],
   ) {
     this.cars = CARS.map((def, index) => {
-      const model = supercar(def.kind, def.color);
+      const model = carModel(def.kind, def.color);
       const interactable: Interactable = { kind: 'car', x: def.x, z: def.z, y: this.street, radius: 3.2, car: index };
       model.root.userData.interact = interactable;
       this.group.add(model.root);
@@ -323,7 +333,7 @@ export class Fleet {
     if (!v) return undefined;
     const s = SEATS[seat];
     const at = carPoint(v.pose, s.x, s.z);
-    return { x: at.x, y: this.street, z: at.z, rotY: v.pose.rotY };
+    return { x: at.x, y: this.street + (v.ride?.lift(s.x, s.z) ?? 0), z: at.z, rotY: v.pose.rotY };
   }
 
   /**
@@ -389,19 +399,20 @@ export class Fleet {
     const s = Math.abs(Math.sin(p.rotY));
     const c = Math.abs(Math.cos(p.rotY));
     const hx = CAR.width / 2 - 0.08;
+    const height = carHeight(v.def.kind);
     const len = (CAR.length - 0.16) / SLICES;
     // Along the body a slice at a time, each slice's box round it as turned.
     for (let i = 0; i < SLICES; i++) {
       const mid = carPoint(p, 0, -CAR.length / 2 + 0.08 + len * (i + 0.5));
       const ex = c * hx + (s * len) / 2;
       const ez = s * hx + (c * len) / 2;
-      Object.assign(v.colliders[i], { minX: mid.x - ex, maxX: mid.x + ex, minZ: mid.z - ez, maxZ: mid.z + ez, bottom: this.street, top: this.street + CAR.body });
+      Object.assign(v.colliders[i], { minX: mid.x - ex, maxX: mid.x + ex, minZ: mid.z - ez, maxZ: mid.z + ez, bottom: this.street, top: this.street + height.body });
     }
     // The roof, over the cabin; with it off, only the body's there to stand on.
     const roof = carPoint(p, 0, -0.6);
     const rx = c * 0.6 + s * 0.7;
     const rz = s * 0.6 + c * 0.7;
-    Object.assign(v.colliders[SLICES], { minX: roof.x - rx, maxX: roof.x + rx, minZ: roof.z - rz, maxZ: roof.z + rz, bottom: this.street, top: this.street + (v.occupied ? CAR.body : CAR.roof) });
+    Object.assign(v.colliders[SLICES], { minX: roof.x - rx, maxX: roof.x + rx, minZ: roof.z - rz, maxZ: roof.z + rz, bottom: this.street, top: this.street + (v.occupied ? height.body : height.roof) });
     Object.assign(v.interactable, { x: p.x, z: p.z, y: this.street });
   }
 }

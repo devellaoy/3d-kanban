@@ -3,7 +3,7 @@
  * horn, laps of the scenic loop, and a car shoving you out of its way. Placing you anywhere gets you
  * out first: see the driver's activity, and placeAt in core/place.ts.
  */
-import { CARS, DRIVE, SEAT_HIPS, roughAt, type CarSeat } from '../../../shared/garage';
+import { CARS, SEAT_HIPS, driveOf, roughAt, type CarKind, type CarSeat } from '../../../shared/garage';
 import { PLACES, placeAt as loopPlace } from '../../../shared/scenic';
 import type { Ctx, Hint } from '../../core/context';
 import { aside, hintTitle, key, onE } from '../../core/hint';
@@ -22,6 +22,9 @@ declare module '../../world/types' {
     car: true;
   }
 }
+
+/** The icon in a car's name in the hint bar. */
+const icon = (kind: CarKind) => (kind === 'offroad' ? '🚙' : '🏎️');
 
 export interface CarsDeps {
   /** Up off whatever you're sitting on (see features/seating). */
@@ -79,9 +82,9 @@ export function installCars(ctx: Ctx, deps: CarsDeps) {
       const name = (id?: string) => (id ? clip(store.peers.get(id)?.name ?? 'Someone', 20) : '');
       const [at, beside] = [name(c.driver), name(c.passenger)];
       const k = `${it.car}|${at}|${beside}`;
-      if (!at) return { k, parts: [hintTitle(`🏎️ ${def.name}`), aside(beside ? `${beside} is waiting in it` : 'keys in the ignition'), key('E', 'Drive it')] };
-      if (!beside) return { k, parts: [hintTitle(`🏎️ ${def.name}`), aside(`${at} is driving`), key('E', 'Hop in')] };
-      return { k, parts: [hintTitle(`🏎️ ${def.name}`), aside(`${at} and ${beside} · full`)] };
+      if (!at) return { k, parts: [hintTitle(`${icon(def.kind)} ${def.name}`), aside(beside ? `${beside} is waiting in it` : 'keys in the ignition'), key('E', 'Drive it')] };
+      if (!beside) return { k, parts: [hintTitle(`${icon(def.kind)} ${def.name}`), aside(`${at} is driving`), key('E', 'Hop in')] };
+      return { k, parts: [hintTitle(`${icon(def.kind)} ${def.name}`), aside(`${at} and ${beside} · full`)] };
     },
     use: onE((it) => {
       if (it.car !== undefined) getIn(it.car);
@@ -192,7 +195,7 @@ export function installCars(ctx: Ctx, deps: CarsDeps) {
     fx.update(dt, office.cars.cars, driver.driving ? { car: driver.car!, nitro: driver.nitroOn } : null);
     const pose = driver.driving ? driver.pose : null;
     const v = pose ? Math.hypot(pose.speed, pose.slip ?? 0) : 0;
-    const fast = Math.min(1, v / DRIVE.top) ** 1.4;
+    const fast = pose ? Math.min(1, v / driveOf(CARS[driver.car!].kind).top) ** 1.4 : 0;
     feel.fov += ((pose ? 17 * fast + (driver.nitroOn ? 9 : 0) : 0) - feel.fov) * Math.min(1, dt * 3);
     if (pose && v > 12) ctx.shake(0.012 + 0.035 * fast + (driver.nitroOn ? 0.035 : 0) + (roughAt(pose.x, pose.z) ? 0.02 * fast : 0));
     dash.show(!!pose);
@@ -310,11 +313,11 @@ export function installCars(ctx: Ctx, deps: CarsDeps) {
       const lap = (done ? ` · 🏁 ${lapTime(done.time)}${done.best ? ' best!' : ''}` : running !== null ? ` · ⏱ ${lapTime(running)}` : '') + racing.status(now);
       hint = {
         k: `drive|${other}|${where}|${lap}`,
-        parts: [h('span.title', {}, `🏎️ ${CARS[i].name}`), aside(`${where}${lap}${other ? ` · with ${clip(other, 20)}` : ''}`.replace(/^ · /, '')), key('W A S D', 'Drive'), key('Shift', 'Nitro'), key('Space', 'Handbrake'), key('H', 'Honk'), ...racing.keys(), key('E', 'Get out')],
+        parts: [h('span.title', {}, `${icon(CARS[i].kind)} ${CARS[i].name}`), aside(`${where}${lap}${other ? ` · with ${clip(other, 20)}` : ''}`.replace(/^ · /, '')), key('W A S D', 'Drive'), key('Shift', 'Nitro'), key('Space', 'Handbrake'), key('H', 'Honk'), ...racing.keys(), key('E', 'Get out')],
       };
     } else {
       const at = name(c?.driver);
-      hint = { k: `ride|${at}|${where}`, parts: [h('span.title', {}, `🏎️ ${CARS[i].name}`), aside(`${at ? `${clip(at, 24)} is driving` : 'nobody at the wheel'}${where}`), key('H', 'Honk'), key('E', 'Get out')] };
+      hint = { k: `ride|${at}|${where}`, parts: [h('span.title', {}, `${icon(CARS[i].kind)} ${CARS[i].name}`), aside(`${at ? `${clip(at, 24)} is driving` : 'nobody at the wheel'}${where}`), key('H', 'Honk'), key('E', 'Get out')] };
     }
     ctx.hint.draw(el, `car|${hint.k}`, () => hint.parts);
   }

@@ -1,4 +1,4 @@
-import { CAR, SEATS, boosting, carFits, carPoint, drive, inBounds, roughAt, type Box, type CarPose, type CarSeat, type Pedals } from '../../../shared/garage';
+import { CAR, CARS, SEATS, boosting, carFits, carPoint, drive, inBounds, roughAt, type Box, type CarPose, type CarSeat, type Pedals } from '../../../shared/garage';
 import { hazardAt } from '../../../shared/terrain';
 import type { PlayerController } from '../../player';
 import type { Fleet } from './world';
@@ -200,9 +200,10 @@ export class Driver {
     const h = dt / n;
     // Already in something (someone parked on top of you): drive out of it any way you like.
     const stuck = !carFits(from, solids);
+    const kind = CARS[this.car!].kind;
     let pose = from;
     for (let i = 0; i < n; i++) {
-      const next = wade(drive(pose, pedals, h, roughAt(pose.x, pose.z)), h);
+      const next = wade(drive(pose, pedals, h, roughAt(pose.x, pose.z), kind), h);
       if (stuck ? inBounds(next) : carFits(next, solids)) {
         pose = next;
         continue;

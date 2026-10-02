@@ -6,6 +6,7 @@ import type { NightParts } from '../outside';
 import { hazeReach } from '../sky';
 import { mergeByColor } from '../toon';
 import { buildBlooms } from './blooms';
+import { buildBumps } from './bumps';
 import { buildCoast } from './coast';
 import { buildCritters } from './critters';
 import { buildFarm } from './farm';
@@ -60,6 +61,7 @@ export function buildScenic(group: THREE.Group, colliders: Collider[], night: Ni
   buildProps(kit, flowers);
   flowers.finish(kit);
   const critters = buildCritters(kit);
+  buildBumps(kit);
 
   // Merged by material a square of the map at a time, so what's lost in the haze needn't be drawn.
   const TILE = 120;
