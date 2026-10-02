@@ -229,7 +229,7 @@ back to work:
   work is reviewed again when the task has review on.
 
 On To do, Done and archived tasks a comment is just kept. Comments take attachments too,
-and so do the answer box and the plan's **Request changes** (**Shift + Enter** or **Ctrl/⌘ + Enter** sends); files alone are enough. An agent can read only its own task's files (copies in `kanban/grants/task-<id>/`). After upgrading, a live agent session started before this change is relaunched once at its next turn (its launch arguments change); until then a file sent into it may need a permission prompt.
+and so do the answer box and the plan's **Request changes** (**Ctrl/⌘ + Enter** sends); files alone are enough. An agent can read only its own task's files (copies in `kanban/grants/task-<id>/`). After upgrading, a live agent session started before this change is relaunched once at its next turn (its launch arguments change); until then a file sent into it may need a permission prompt.
 
 In the 3D office, what you tell a task's **implementer** while the task is in progress, waiting or in
 review is a comment too: **P** ("💬 Message task #N"), the task's issue card dropped on its desk, and
@@ -433,7 +433,7 @@ its own comments and close) gets its **status** and **assignee** there.
   (completed)**, **Close (not planned)** or **Reopen** (which of them is read from GitHub: it is closed or open now). A pull request only has the board's Status.
   A project draft: its board's Status.
 - **Comments.** The newest 50, oldest first, and a box to add one (Enter makes a new line,
-  Shift/⌘/Ctrl+Enter sends). A comment written under an identity everyone shares ends with
+  ⌘/Ctrl+Enter sends). A comment written under an identity everyone shares ends with
   `— <your name> via Agent Office`. A draft has no comments.
 - **Assignee.** **Assign to me**, **Someone else…** (a search of who can be assigned) or **Unassign**.
   On GitHub it makes the person the only assignee, and **Assign to me** needs your own GitHub sign-in
