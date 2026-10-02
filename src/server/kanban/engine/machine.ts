@@ -114,7 +114,7 @@ export type MachineEvent =
   | { type: 'approvePlan' }
   | { type: 'requestPlanChanges'; text: string }
   /** Take it off hold: a worker is hired again and carries on (the 'unhold' prompt). `text`: the user's note, stored as a comment first. */
-  | { type: 'unhold'; text?: string }
+  | { type: 'unhold'; text?: string; back?: { reason: WaitingReason; text?: string; phase?: RunPhase } }
   /** A user's comment. `busy`: the worker is in the middle of a turn (or asking in its terminal). */
   | { type: 'comment'; text: string; busy: boolean }
   /** One review round by hand. */
@@ -228,6 +228,8 @@ function onHold(s: MachineState, e: MachineEvent): Transition {
   switch (e.type) {
     case 'unhold':
       if (busy(s)) return no('Stop it first: it is running');
+      // Held while waiting for the user's say on a plan: it waits for it again, nothing runs.
+      if (e.back) return ok(waiting(s, e.back.reason, e.back.text, { phase: e.back.phase, retryAttempts: 0 }), { type: 'note', text: `▶️ Back from hold: ${e.back.reason === 'plan_approval' ? 'approve the plan' : "answer the plan's questions"} to carry on` });
       return ok(running(s, 'resume', { retryAttempts: 0 }), { type: 'run', phase: 'resume', role: 'implementer', prompt: 'unhold' });
     case 'comment':
       return ok(s);

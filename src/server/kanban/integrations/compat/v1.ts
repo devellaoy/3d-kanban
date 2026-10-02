@@ -206,7 +206,7 @@ export async function handleV1(ctx: KanbanContext, req: IncomingMessage, res: Se
     const limit = Math.max(1, Math.min(200, Number(str('limit')) || 50));
     const offset = Math.max(0, Number(str('offset')) || 0);
     const all = ctx.repo.listTasks(projectId || null, { includeArchived: true }).filter((t) => {
-      if (status ? t.status !== status : scope === 'active' && (t.status === 'done' || t.status === 'archived' || t.status === 'on_hold')) return false;
+      if (status ? t.status !== status && !(status === 'waiting' && t.status === 'on_hold') : scope === 'active' && (t.status === 'done' || t.status === 'archived' || t.status === 'on_hold')) return false;
       if (ticket && (t.ticket ?? '').toLowerCase() !== ticket) return false;
       if (text && !t.title.toLowerCase().includes(text) && !(t.ticket ?? '').toLowerCase().includes(text)) return false;
       return true;

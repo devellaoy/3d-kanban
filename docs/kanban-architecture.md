@@ -62,7 +62,7 @@ document disagree, fix one of them in the same change.
 - `on_hold`: put aside from Waiting or Review until something it depends on is there (`src/shared/kanban/hold.ts`).
   `hold {at, by, from, note?, until?, worker?: {name, color}, deskId?}` (`tasks.hold`, on the card too) says why and
   since when. **Putting it on hold** (`task.move` to `on_hold`, `checkMove` action `hold`; only from `waiting`/`review`
-  with nothing running; for its creator or an admin; `engine.hold`, `engine/hold.ts`): a run live only because the agent
+  with nothing running; for its creator or an admin, as is a reset of a held task to To do (it drops the session and worktree); `engine.hold`, `engine/hold.ts`): a run live only because the agent
   asks in its terminal is finished as `stopped`; `hold` is recorded (with the implementer's name, colour and desk) and the
   status set to `on_hold`, `runState` `idle`, `queuedRun`, `retryAt`, `retryAttempts` and the waiting reason cleared;
   then the task's workers at rest go home with cleanup `keep` (`all` for a PR review's reviewer in a worktree of its own),
@@ -70,6 +70,9 @@ document disagree, fix one of them in the same change.
   says who held it, why, until when, where the worktree stays and how to resume. It holds no `maxConcurrent` slot
   (`busyCount` counts `in_progress` only), a comment on it is only stored (nothing starts), the auto-archive only touches `done`, and
   leave-on-merge has no worker to send home. 3D clients get a view-only lounge figure for it (§6).
+  A task held while it waited for a plan's approval or answers (`plan_approval`, `plan_questions`) records that
+  (`hold.reason`, `text`, `phase`; its worker at the plan's exit prompt may go home too) and is not worked on when resumed: it goes back to
+  `waiting` with them and a status line, and approving or answering hires the worker as usual.
   **Resuming** (`task.move` to `in_progress`, action `unhold`, `engine.unhold`; anyone signed in; an optional `note` becomes the
   user's comment first): the machine's `unhold` event runs the implementer again (phase `resume`, prompt `unhold`) through
   `launch()`: same worktree and `resumeSessionId`, preferring the worker's old name (when no one else has it) and colour
@@ -588,7 +591,7 @@ Compatibility for existing ai-kanban skills/scripts (integrations/compat/v1.ts):
 
 - `GET /api/tasks/reference?ref=`: ai-kanban's response shape, read-only, no key, never a terminal tail.
 - A task on hold shows as "On hold" with its note and date (the reference bundle's `hold`, `office-tasks` and the plan phase's
-  `referenced-tasks.md`); in `/api/v1` it is `waiting` (legacy status) with `statusTitle` "On hold", and it is not `active` nor in `scope=active`.
+  `referenced-tasks.md`); in `/api/v1` it is `waiting` (legacy status, so `?status=waiting` lists it too) with `statusTitle` "On hold", and it is not `active` nor in `scope=active`.
 - Minimal `/api/v1`: `GET projects`, `GET tasks`, `GET tasks/:id`, `POST tasks` (idempotent on `ticketId`),
   `POST tasks/:id/start`.
 - Both: the socket's peer must be loopback; `loopbackRefusal` (integrations/util.ts) refuses a `Host` that

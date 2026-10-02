@@ -2,7 +2,7 @@
 // depends on is there. Its workers go home (worktree and session kept on the task), the desk frees
 // up, and the 3D office shows it as a figure in the lounge (see lounge.ts) until it is resumed.
 
-import type { TaskStatus } from './types.js';
+import type { RunPhase, TaskStatus, WaitingReason } from './types.js';
 import { bad, text, type Obj } from './validate.js';
 
 /** Why and since when a task is on hold; kept on the task while it is, cleared when it is resumed. */
@@ -19,6 +19,10 @@ export interface TaskHold {
   until?: number;
   /** The implementer's look, so the lounge figure and the worker hired on resume keep its name and colour. */
   worker?: { name: string; color: string };
+  /** Held while waiting for a plan's approval or answers: why it waited, its text and phase. Resuming puts it back to Waiting with them (nothing is hired). */
+  reason?: WaitingReason;
+  text?: string;
+  phase?: RunPhase;
   /** The desk it sat at, to hire its worker there again when it is free. */
   deskId?: string;
 }

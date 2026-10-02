@@ -565,3 +565,27 @@ test('a reset that would send workers home is its maker\'s or an admin\'s, like 
   kanban.ctx.repo.updateTask(1, { status: 'review', workerId: null });
   okOf(await bob.ask({ t: 'kanban.task.move', id: 1, to: 'todo' }));
 });
+
+test('a reset of a task on hold (it keeps its session and worktree) is its maker\'s or an admin\'s', async (t) => {
+  const { client, kanban, calls } = office(t);
+  const ada = client('Ada', false);
+  const bob = client('Bob', false);
+  await ada.ask({ t: 'kanban.task.create', task: { project: 'web', title: 'x' } });
+  kanban.ctx.repo.updateTask(1, { status: 'on_hold', sessionId: 's1', hold: { at: 1, by: 'Ada', from: 'review' } });
+  errorOf(await bob.ask({ t: 'kanban.task.move', id: 1, to: 'todo' }), /Only whoever made it, or an admin/);
+  assert.equal(kanban.ctx.repo.getTask(1)!.sessionId, 's1');
+  assert.ok(!calls.includes('home reset #1'));
+  okOf(await ada.ask({ t: 'kanban.task.move', id: 1, to: 'todo' }));
+  assert.equal(kanban.ctx.repo.getTask(1)!.hold, undefined);
+});
+
+test('deleting a held task refreshes its floor\'s lounge even when no card went out for it since the start', async (t) => {
+  const { client, kanban } = office(t);
+  const ada = client('Ada', false);
+  await ada.ask({ t: 'kanban.task.create', task: { project: 'web', title: 'x' } });
+  kanban.ctx.repo.updateTask(1, { status: 'on_hold', hold: { at: 1, by: 'Ada', from: 'review' } });
+  assert.equal(kanban.lounge('web').length, 1);
+  kanban.ctx.repo.deleteTask(1);
+  kanban.ctx.taskChanged(1);
+  assert.equal(kanban.lounge('web').length, 0);
+});

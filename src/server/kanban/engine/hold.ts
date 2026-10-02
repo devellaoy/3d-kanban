@@ -49,7 +49,10 @@ export class Holds {
     const floor = this.ctx.floor(task.project);
     const live = this.d.liveOf(task.id);
     const mine = floor?.workers.list().filter((w) => w.kanban?.taskId === task.id || w.id === task.workerId || w.id === task.reviewerWorkerId) ?? [];
-    const busy = mine.find((w) => isBusy(w.status) && w.id !== live?.workerId);
+    // A plan waiting for the user's say leaves its worker at the plan's exit prompt (needs_input): it may go home, the session carries on after.
+    const planWait = task.status === 'waiting' && (task.waitingReason === 'plan_approval' || task.waitingReason === 'plan_questions');
+    const atPlan = planWait ? mine.find((w) => w.id === task.workerId && w.status === 'needs_input' && w.id !== live?.workerId) : undefined;
+    const busy = mine.find((w) => isBusy(w.status) && w.id !== live?.workerId && w.id !== atPlan?.id);
     if (busy) return `${busy.name} is still working: stop it or send it home first`;
     // An agent that only asks in its terminal is idle but its run goes on: it ends as stopped, as it does when the task is moved to Done.
     if (live) {
@@ -65,12 +68,13 @@ export class Holds {
       from: task.status === 'review' ? 'review' : 'waiting',
       ...(opts.note ? { note: opts.note } : {}),
       ...(opts.until !== undefined ? { until: opts.until } : {}),
+      ...(task.status === 'waiting' && (task.waitingReason === 'plan_approval' || task.waitingReason === 'plan_questions') ? { reason: task.waitingReason, ...(task.waitingText ? { text: task.waitingText } : {}), ...(task.phase ? { phase: task.phase } : {}) } : {}),
       ...(seated ? { worker: { name: seated.name, color: seated.color } } : {}),
       ...(deskId ? { deskId } : {}),
     };
     // Recorded before the workers go: their departure is the hold's, whatever the task looked like then.
     this.d.update(task.id, { hold, status: 'on_hold', runState: 'idle', queuedRun: null, retryAt: null, retryAttempts: 0, waitingReason: null, waitingText: null });
-    await this.d.sendHome(task.id, who.name, live?.workerId);
+    await this.d.sendHome(task.id, who.name, live?.workerId ?? atPlan?.id);
     const wt = task.workspace?.worktree;
     const parts = [`⏸️ Put on hold by ${who.name}`];
     if (opts.note) parts[0] += `: ${opts.note}`;
@@ -90,6 +94,7 @@ export class Holds {
     // Its message to the agent is the user's comment first: the prompt quotes the comments left since the hold.
     if (text) this.d.addComment(task.project, { taskId: task.id, authorKind: 'user', authorName: who.name, kind: 'message', text });
     if (task.hold?.deskId && task.hold.deskId !== task.deskId) this.d.update(task.id, { deskId: task.hold.deskId });
-    return this.d.apply(task.id, { type: 'unhold', ...(text ? { text } : {}) }, { who });
+    const back = task.hold?.reason ? { reason: task.hold.reason, ...(task.hold.text ? { text: task.hold.text } : {}), ...(task.hold.phase ? { phase: task.hold.phase } : {}) } : undefined;
+    return this.d.apply(task.id, { type: 'unhold', ...(text ? { text } : {}), ...(back ? { back } : {}) }, { who });
   }
 }

@@ -279,3 +279,75 @@ test('/api/v1: a task on hold is not active and not in the active scope', async 
   assert.equal(h.statusTitle, 'On hold');
   assert.deepEqual((await get('/api/v1/tasks?status=on_hold')).tasks.map((x: { title: string }) => x.title), ['Held']);
 });
+
+// --- Review fixes -------------------------------------------------------------------------------------------
+
+test('machine: unhold with a plan to answer puts the task back to Waiting and runs nothing', () => {
+  const tr = next(HELD, { type: 'unhold', back: { reason: 'plan_approval', text: 'Ready', phase: 'plan' } }, TASK, CFG);
+  assert.ok(!('error' in tr));
+  assert.equal(tr.state.status, 'waiting');
+  assert.equal(tr.state.waitingReason, 'plan_approval');
+  assert.equal(tr.state.phase, 'plan');
+  assert.equal(tr.state.runState, 'idle');
+  assert.deepEqual(tr.effects.map((x) => x.type), ['note']);
+});
+
+test('held from plan approval: unhold gives the approval back, hires nobody, and approving carries on as usual', async (t) => {
+  const fx = await engineFixture();
+  t.after(() => fx.close());
+  fx.settings.setProject('proj', { planApproval: 'manual' });
+  fx.setRules([{ when: 'You are planning kanban task', reply: 'PLAN READY', exitPlan: '1. Do it' }, IMPLEMENT]);
+  const task = fx.newTask({ usePlan: true, useReview: false, planApproval: 'manual' });
+  assert.equal(await fx.engine.start(task.id, ADA), undefined);
+  const w = await fx.waitTask(task.id, (x) => x.status === 'waiting' && x.waitingReason === 'plan_approval' && x.runState === 'idle', 'plan approval', 30_000);
+  assert.equal(await fx.engine.hold!(task.id, ADA, { note: 'later' }), undefined);
+  const h = await fx.waitTask(task.id, (x) => x.status === 'on_hold' && !x.workerId, 'held');
+  assert.equal(h.hold?.reason, 'plan_approval');
+  const hired = fx.workers.list().length;
+  assert.equal(await fx.engine.unhold!(task.id, ADA, 'ok, later'), undefined);
+  const back = fx.task(task.id);
+  assert.equal(back.status, 'waiting');
+  assert.equal(back.waitingReason, 'plan_approval');
+  assert.equal(back.waitingText, w.waitingText);
+  assert.equal(back.hold, undefined);
+  assert.equal(fx.workers.list().length, hired, 'no worker was hired');
+  assert.ok(fx.repo.listComments(task.id).comments.some((c) => c.text.startsWith('▶️ Back from hold: approve the plan')));
+  assert.equal(await fx.engine.approvePlan(task.id, ADA), undefined);
+  await fx.waitTask(task.id, (x) => x.status === 'review' && x.runState === 'idle', 'implemented after approval', 30_000);
+});
+
+test('a queued unhold that is stopped leaves no hold behind', async (t) => {
+  let full: string | undefined;
+  const fx = await engineFixture({ capacity: { full: () => full, room: () => (full ? 0 : 5) } });
+  t.after(() => fx.close());
+  fx.setRules([IMPLEMENT]);
+  const r = await inReview(fx);
+  assert.equal(await fx.engine.hold!(r.id, ADA, { note: 'n' }), undefined);
+  await fx.waitTask(r.id, (x) => !x.workerId, 'the worker gone');
+  full = 'The office is at its limit';
+  assert.equal(await fx.engine.unhold!(r.id, ADA), undefined);
+  const q = fx.task(r.id);
+  assert.equal(q.runState, 'queued');
+  assert.equal(q.hold?.note, 'n', 'a queued unhold keeps what its prompt needs');
+  assert.equal(await fx.engine.stop(r.id, ADA), undefined);
+  const s = fx.task(r.id);
+  assert.equal(s.status, 'waiting');
+  assert.equal(s.hold, undefined);
+});
+
+test('v1: ?status=waiting also lists tasks on hold, as their legacy status says', async (t) => {
+  const ctx = makeCtx([def('app', '/tmp/app-hold2', { name: 'App', repo: 'o/app' })]);
+  const mk = (title: string) => ctx.repo.createTask({ project: 'app', title, tool: 'claude', usePlan: false, planApproval: 'auto', useReview: false, createdBy: 'u' });
+  ctx.repo.updateTask(mk('Held').id, { status: 'on_hold', hold: { at: 1, by: 'u', from: 'review' } });
+  ctx.repo.updateTask(mk('Waits').id, { status: 'waiting' });
+  const plugin = createRefsPlugin(ctx);
+  const server = http.createServer(async (req, res) => {
+    const url = new URL(req.url ?? '/', 'http://127.0.0.1');
+    for (const [prefix, h] of Object.entries({ ...plugin.loopback })) if (url.pathname.startsWith(prefix) && (await h(req, res, url))) return;
+    res.writeHead(404).end('{}');
+  });
+  await new Promise<void>((r) => server.listen(0, '127.0.0.1', r));
+  t.after(() => server.close());
+  const body = (await (await fetch(`http://127.0.0.1:${(server.address() as AddressInfo).port}/api/v1/tasks?status=waiting`)).json()) as { tasks: { title: string }[] };
+  assert.deepEqual(body.tasks.map((x) => x.title).sort(), ['Held', 'Waits']);
+});

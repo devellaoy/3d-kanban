@@ -219,7 +219,8 @@ export function installKanban(opts: KanbanInstallOptions): Kanban {
       const was = taskProjects.get(taskId);
       taskProjects.delete(taskId);
       broadcast({ t: 'kanban.task.removed', id: taskId, project: was ?? '' }, was ?? null);
-      if (was) lounge.changed(was);
+      // Its project is known only when a card went out for it since the start: else every floor looks again (the signatures keep that cheap).
+      for (const id of was ? [was] : opts.floors().map((d) => d.id)) lounge.changed(id);
     },
     attachmentFile: (id: string) => {
       const a = repo.getAttachment(id);

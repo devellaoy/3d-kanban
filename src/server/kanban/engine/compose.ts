@@ -246,7 +246,7 @@ export class Composer {
             taskId: task.id,
             heldAt: hold ? new Date(hold.at).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' }) : 'some time ago',
             holdNote: note ? `, because: ${note}` : '',
-            comments: said.length ? said.map((c) => `- ${c.authorName}: ${c.text}`).join('\n') : 'none',
+            comments: said.length ? said.map((c) => [`- ${c.authorName}: ${c.text}`, this.filesText(task.project, task.id, this.ctx.repo.listAttachments(task.id).filter((a) => a.commentId === c.id))].filter(Boolean).join('\n')).join('\n') : 'none',
             language: v.language,
           }),
         );
