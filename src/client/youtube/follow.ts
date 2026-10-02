@@ -18,3 +18,12 @@ export function onOfficeVideo(y: Pick<OnTv, 'list' | 'index' | 'videoId'>, p: Pl
 export function endedByClock(y: OnTv, duration: number, want: number, p: PlayerAt & { rate: number }): boolean {
   return duration > 0 && !y.list && p.rate === y.rate && onOfficeVideo(y, p) && want >= duration - 0.5;
 }
+
+/**
+ * Whether the player's own ENDED, seen in a sync, says the office's video is over: once the guard against the last
+ * play's late events (`settled`) has passed and the player is on the office's video. An ENDED that came while the
+ * guard held (a start at the very end) is only found this way, whatever the speeds.
+ */
+export function endedByPlayer(y: Pick<OnTv, 'list' | 'index' | 'videoId'>, ended: boolean, settled: boolean, p: PlayerAt): boolean {
+  return ended && settled && onOfficeVideo(y, p);
+}

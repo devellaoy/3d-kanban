@@ -15,7 +15,7 @@ import { visiting } from '../multiplayer/visit';
 import { store, type Settings } from '../state';
 import { h, toast } from '../ui/dom';
 import { BLOCKED, YT_STATE, loadYoutubeApi, youtubeError, type YtPlayer } from './api';
-import { endedByClock, onOfficeVideo } from './follow';
+import { endedByClock, endedByPlayer, onOfficeVideo } from './follow';
 import { youtubeAt, type YoutubeOnTv } from './slice';
 
 /** The player's own size in CSS pixels: 16:9 like the TV, and well over the 200×200 YouTube asks for. */
@@ -394,8 +394,13 @@ export class TvScreen {
     }
     const duration = p.getDuration();
     // The office's timeline only says it's over for a player that keeps to it; otherwise the player's own ENDED does.
-    if (endedByClock(y, duration, want, { rate: p.getPlaybackRate(), index: p.getPlaylistIndex(), videoId: data?.video_id }) && !this.told.has(y.id)) return this.over(y);
-    if (state === YT_STATE.ended) return;
+    const at = { index: p.getPlaylistIndex(), videoId: data?.video_id };
+    if (endedByClock(y, duration, want, { ...at, rate: p.getPlaybackRate() }) && !this.told.has(y.id)) return this.over(y);
+    if (state === YT_STATE.ended) {
+      // An ENDED that stateChanged held back as too soon after loading is still the end, at any speed.
+      if (endedByPlayer(y, true, this.current(y, 1000), at) && !this.told.has(y.id)) this.over(y);
+      return;
+    }
     if (state !== YT_STATE.playing && state !== YT_STATE.buffering) {
       p.playVideo();
       // Held back for its sound (the browser's autoplay rule): it plays muted until the next click or key.
