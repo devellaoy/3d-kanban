@@ -16,7 +16,7 @@ export const mpRoutes = {
     prefix: PREFIX,
     auth: 'session',
     async handle(ctx, { res, url, path: p, session }) {
-      if (session.visitor || !ctx.meOf(session.account?.id).admin) return send(res, 403, { error: 'Forbidden' });
+      if (!ctx.meOf({ accountId: session.account?.id, visitor: session.visitor }).admin) return send(res, 403, { error: 'Forbidden' });
       const rest = p.slice(PREFIX.length);
       const slash = rest.indexOf('/');
       const login = slash < 0 ? rest : rest.slice(0, slash);

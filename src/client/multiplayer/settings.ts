@@ -60,6 +60,8 @@ export function multiplayerPane(net: Net): { el: HTMLElement; close(): void } {
       device
         ? h('div.mp-device', {}, h('p', {}, 'Open ', h('a', { href: device.url, target: '_blank', rel: 'noopener noreferrer' }, device.url), ' and type this code:'), h('code.mp-code', {}, device.code), h('button.btn', { type: 'button', onclick: () => net.send({ t: 'mp.identity.cancel' }) }, 'Cancel'))
         : h('button.btn', { type: 'button', onclick: () => net.send({ t: 'mp.identity.start' }) }, mp.login ? '🔁 Verify again' : '🔑 Verify GitHub account'),
+      // The token only proves who you are, but whoever holds it can say so on any relay with the same password.
+      ...(mp.login ? [h('button.btn', { type: 'button', onclick: () => net.send({ t: 'mp.identity.forget' }) }, '🗑 Forget GitHub account'), h('p.setting-note', {}, 'Deletes the stored token and disconnects. To revoke it on GitHub too: Settings → Applications → Authorized OAuth Apps → the server’s app → Revoke.')] : []),
     );
     floors.replaceChildren(...(mp.floors.length ? mp.floors.map(floorRow) : [h('p.setting-note', {}, 'No floors yet.')]));
   }

@@ -18,6 +18,7 @@ import type { Ctx } from '../src/server/office/context.js';
 import { workerHandlers } from '../src/server/ws/handlers/workers.js';
 import { WorkerManager } from '../src/server/workers.js';
 import type { VisitorScope } from '../src/shared/multiplayer/allow.js';
+import { MutableScope } from '../src/shared/multiplayer/scope.js';
 import { MP_PROTOCOL, type OfficeToRelay } from '../src/shared/multiplayer/wire.js';
 import type { PeerInfo, ServerMsg } from '../src/shared/protocol.js';
 
@@ -48,6 +49,8 @@ function office() {
     workerFloor: () => undefined,
     sendTo: (c: Client, m: ServerMsg) => void toBrowsers.push([c, m]),
     floorInfos: () => [],
+    goToFloor: (c: Client, f: { id: string }) => void (c.peer.floor = f.id),
+    goToRoof: (c: Client) => void (c.peer.floor = 'roof'),
   } as unknown as Ctx;
   const mp = new Multiplayer(ctx, { access: new Access(async () => '') });
   mp.cfg.update({ sharedFloors: ['a', 'b'] });
@@ -120,7 +123,8 @@ test('a visitor who withdrew while GitHub was being asked is not admitted, and t
 
 /** A visitor in the office, admitted to both floors, standing on `on`. */
 function visitorAt(o: ReturnType<typeof office>, on: string) {
-  const scope: VisitorScope = { login: 'vera', floors: new Set(['a', 'b']), projects: new Set(['a', 'b']) };
+  const scope = new MutableScope('vera');
+  for (const d of o.defs) scope.grant(d.id, new Set([d.id]));
   const s = sock(scope);
   const client = newClient('v1', s.asWebSocket(), { accountId: undefined, admin: false }, peer('v1', on));
   client.visitor = scope;
@@ -159,16 +163,101 @@ test('a repository added to a shared project takes the floor from a visitor at o
   o.close();
 });
 
-test('a visitor standing on the floor that gained a repository is sent home', () => {
+test('a visitor standing on the floor that gained a repository is moved to another floor of theirs, not sent home', async () => {
   const o = office();
-  const { s } = visitorAt(o, 'b');
-  let reason = '';
-  s.on('close', (_code, r: Buffer) => (reason = r.toString()));
+  const { s, client, scope } = visitorAt(o, 'b');
   held();
   addRepo(o.defs[1], 'acme/extra');
   o.mp.floorsChanged();
+  assert.equal(s.readyState, 1);
+  assert.equal(client.peer.floor, 'a');
+  assert.deepEqual([...scope.floors], ['a']);
+  o.close();
+});
+
+test('with no other floor the visitor waits on the roof, gets the floor back, and is sent home only when GitHub says no', async () => {
+  const o = office();
+  const { s, client, scope } = visitorAt(o, 'b');
+  scope.revoke('a');
+  o.mp.host.sessions.get('s1')!.prints.delete('a');
+  const release = held((repo) => repo !== 'acme/extra');
+  const reasons: string[] = [];
+  s.on('close', (_code, r: Buffer) => reasons.push(r.toString()));
+  addRepo(o.defs[1], 'acme/extra');
+  o.mp.floorsChanged();
+  assert.equal(s.readyState, 1, 'not closed while GitHub is asked');
+  assert.equal(client.peer.floor, 'roof');
+  release();
+  await later();
+  await later();
+  assert.equal(s.readyState, 3, 'GitHub said no and nothing is left');
+  assert.match(reasons[0], /can no longer read/);
+  o.close();
+});
+
+test('a floor that is really unshared ends the visit of someone with nowhere else to go, with that reason', () => {
+  const o = office();
+  const { s, scope } = visitorAt(o, 'b');
+  scope.revoke('a');
+  o.mp.host.sessions.get('s1')!.prints.delete('a');
+  let reason = '';
+  s.on('close', (_code, r: Buffer) => (reason = r.toString()));
+  o.mp.cfg.update({ sharedFloors: ['a'] });
+  o.mp.host.unshare('b');
   assert.equal(s.readyState, 3);
   assert.match(reason, /no longer shared/);
+  o.close();
+});
+
+test('a visitor who lost GitHub access loses the floor on the periodic check', async () => {
+  const o = office();
+  const { scope, client } = visitorAt(o, 'b');
+  setAccessCheckerForTests(async (_l, repo) => repo !== 'acme/b');
+  await (o.mp.host as unknown as { reverifyAll(): Promise<void> }).reverifyAll();
+  assert.deepEqual([...scope.floors], ['a']);
+  assert.equal(client.peer.floor, 'a');
+  setAccessCheckerForTests(async () => true);
+  await (o.mp.host as unknown as { reverifyAll(): Promise<void> }).reverifyAll();
+  assert.deepEqual([...scope.floors].sort(), ['a', 'b'], 'and gets it back when they can read it again');
+  o.close();
+});
+
+test('a floor shared during a visit is offered to the visitor', async () => {
+  const o = office();
+  const { scope } = visitorAt(o, 'a');
+  scope.revoke('b');
+  o.mp.host.sessions.get('s1')!.prints.delete('b');
+  setAccessCheckerForTests(async () => true);
+  o.mp.host.offer('b');
+  await later();
+  await later();
+  assert.deepEqual([...scope.floors].sort(), ['a', 'b']);
+  o.close();
+});
+
+test('shareable is read once per floorsChanged, not on every state or presence call', () => {
+  const o = office();
+  let calls = 0;
+  const real = o.mp.access.shareable.bind(o.mp.access);
+  o.mp.access.shareable = (d) => (calls++, real(d));
+  o.mp.floorsChanged();
+  const after = calls;
+  o.mp.state();
+  o.mp.state();
+  o.mp.updatePresence();
+  assert.equal(calls, after);
+  o.close();
+});
+
+test('forgetting the GitHub account deletes the token and hangs up', () => {
+  const o = office();
+  o.mp.cfg.update({ identityToken: 'tok', login: 'owner', enabled: true });
+  let hung = false;
+  (o.mp.link as unknown as { disconnect(): void }).disconnect = () => (hung = true);
+  o.mp.forgetIdentity();
+  assert.equal(o.mp.cfg.get().identityToken, '');
+  assert.equal(o.mp.cfg.get().login, undefined);
+  assert.ok(hung);
   o.close();
 });
 

@@ -41,7 +41,7 @@ export function onConnection(ctx: Ctx, ws: WebSocket, url: URL, session: Session
   const name = visit ? `@${visit.login}` : (account?.name ?? (str(url.searchParams.get('name'), 24).trim() || `Guest ${id.slice(0, 3)}`));
   const colorParam = url.searchParams.get('color') ?? '';
   const intParam = (k: string) => (url.searchParams.get(k) ? Number(url.searchParams.get(k)) : undefined);
-  const client = newClient(id, ws, { accountId: account?.id, admin: !visit && meOf(account?.id).admin }, {
+  const client = newClient(id, ws, { accountId: account?.id, admin: meOf({ accountId: account?.id, visitor: visit }).admin }, {
     id,
     name,
     color: COLOR_RE.test(colorParam) ? colorParam : '#4f86f7',

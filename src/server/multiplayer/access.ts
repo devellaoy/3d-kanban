@@ -16,6 +16,8 @@ export type CanRead = (login: string, repo: string) => Promise<boolean>;
 
 const READS = new Set(['admin', 'maintain', 'write', 'triage', 'read']);
 const YES_MS = 10 * 60_000;
+/** How often a visit's GitHub access is asked again: just after the yes-cache lets a new answer in. */
+export const RECHECK_MS = YES_MS + 5_000;
 const NO_MS = 60_000;
 const REPO_RE = /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/;
 

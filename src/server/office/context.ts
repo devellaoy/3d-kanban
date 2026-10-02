@@ -126,11 +126,17 @@ export interface FloorHelpers {
   closeFloor(floor: Floor, who: string): void;
 }
 
+/** What meOf needs to know about who is asking: a Client and a Session both are one. */
+export interface Who {
+  accountId?: string | undefined;
+  visitor?: unknown;
+}
+
 /** Who's signed in (office/people.ts). */
 export interface People {
-  /** Who a connection is: its account's current name and role, or an admin guest on the shared password. */
-  meOf(accountId: string | undefined): Me;
-  /** Who a connection is: meOf, except a visitor from another office, who is never an admin. */
+  /** Who someone is: their account's current name and role, or an admin guest on the shared password; a visitor from another office is never an admin. */
+  meOf(who: Who): Me;
+  /** meOf for a connection. */
   meOfClient(c: Client): Me;
   /** Still signed in: the account wasn't revoked, and the shared password wasn't switched off. */
   stillIn(c: Client): boolean;

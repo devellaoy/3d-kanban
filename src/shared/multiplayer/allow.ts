@@ -169,6 +169,7 @@ export const CLIENT_MSG_CLASS = {
   'mp.online': 'deny',
   'mp.identity.start': 'deny',
   'mp.identity.cancel': 'deny',
+  'mp.identity.forget': 'deny',
   'mp.share': 'deny',
   'mp.watch': 'deny',
   'mp.unwatch': 'deny',

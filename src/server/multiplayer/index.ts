@@ -4,13 +4,11 @@
 import { randomBytes } from 'node:crypto';
 import type { MpFloorShare, MpPlayer, MpState } from '../../shared/multiplayer/protocol.js';
 import { MP_LIMITS, loginKey, type MpProbeFloor, type MpWhere, type RelayToOffice } from '../../shared/multiplayer/wire.js';
-import type { VisitorScope } from '../../shared/multiplayer/allow.js';
 import type { Client } from '../office/client.js';
 import type { Ctx } from '../office/context.js';
+import type { FloorDef } from '../building.js';
 import { Access, ghAccess, repoPrint } from './access.js';
 import { MpConfigStore } from './config.js';
-import { repoOk } from '../../shared/multiplayer/repos.js';
-import { workerFloors } from './gate.js';
 import { Guest } from './guest.js';
 import { Host } from './host.js';
 import { answerHttp } from './httpgate.js';
@@ -22,7 +20,6 @@ export { mpOf };
 
 const PROBE_TIMEOUT_MS = 12_000;
 const PROBE_FRESH_MS = 60_000;
-const PRESENCE_EVERY_MS = 2000;
 
 export class Multiplayer {
   readonly cfg: MpConfigStore;
@@ -38,7 +35,8 @@ export class Multiplayer {
   private identityError?: string;
   private probes = new Map<string, { resolve(f: MpProbeFloor[]): void; timer: NodeJS.Timeout }>();
   private probed = new Map<string, { at: number; floors: MpProbeFloor[] }>();
-  private presenceTimer: NodeJS.Timeout;
+  /** Whether each floor can be shared at all, as of the last floorsChanged: reading a checkout's remote runs git, which state() and the presence must not do on every call. */
+  private shareables = new Map<string, { shareable: boolean; why?: string }>();
 
   constructor(
     readonly ctx: Ctx,
@@ -60,8 +58,6 @@ export class Multiplayer {
       onMessage: (msg) => this.route(msg),
       onDown: () => this.down(),
     });
-    this.presenceTimer = setInterval(() => this.updatePresence(), PRESENCE_EVERY_MS);
-    this.presenceTimer.unref();
   }
 
   // --- State for the browsers ------------------------------------------------------------------------
@@ -75,7 +71,7 @@ export class Multiplayer {
       return { login: p.login, ...(p.name ? { name: p.name } : {}), online: true, where: p.where, ...(floor ? { floor } : {}), ...(me ? { me: true } : {}) };
     });
     const floors: MpFloorShare[] = this.ctx.building.list().map((d) => {
-      const s = this.access.shareable(d);
+      const s = this.shareable(d);
       return { id: d.id, name: d.name, shared: cfg.sharedFloors.includes(d.id), shareable: s.shareable, ...(s.why ? { why: s.why } : {}) };
     });
     const device = this.identity.device;
@@ -86,7 +82,7 @@ export class Multiplayer {
       configured: !!cfg.url,
       offline: !!cfg.url && !cfg.enabled,
       passwordSet: !!cfg.password,
-      ...(this.link.login ? { login: this.link.login } : {}),
+      ...(this.link.login && cfg.identityToken ? { login: this.link.login } : {}),
       ...(this.link.needsIdentity || !cfg.identityToken ? { needsIdentity: true } : {}),
       ...(device ? { device } : {}),
       ...(error ? { error } : {}),
@@ -148,33 +144,16 @@ export class Multiplayer {
       const owner = [...this.ctx.clients.values()].find((c) => c.admin && !c.visitor && !c.out);
       const id = owner?.peer.floor;
       const def = id ? this.ctx.building.list().find((d) => d.id === id) : undefined;
-      if (def && this.cfg.get().sharedFloors.includes(def.id) && this.access.shareable(def).shareable) floorKey = this.cfg.floorKey(def.id);
+      if (def && this.cfg.get().sharedFloors.includes(def.id) && this.shareable(def).shareable) floorKey = this.cfg.floorKey(def.id);
     }
     this.link.setPresence(where, floorKey);
   }
 
-  /** A floor stopped being shared: its visitors lose it, and those standing on it are sent home. */
-  unshared(floorId: string, only?: VisitorScope) {
-    for (const c of this.ctx.clients.values()) {
-      if (!c.visitor?.floors.has(floorId) || (only && c.visitor !== only)) continue;
-      (c.visitor.floors as Set<string>).delete(floorId);
-      (c.visitor.projects as Set<string>).delete(floorId);
-      if (c.peer.floor === floorId || !c.visitor.floors.size) c.ws.close(4000, 'That floor is no longer shared');
-      else this.detachOutOfScope(c);
-    }
-  }
-
-  /** Lets go of every terminal and diff a visitor watches on floors that are no longer theirs (the filter stops the frames too). */
-  private detachOutOfScope(c: Client) {
-    const scope = c.visitor;
-    if (!scope) return;
-    for (const wid of [...c.attached]) {
-      const floor = this.ctx.workerFloor(wid);
-      if (floor && workerFloors(this.ctx, wid)?.every((id) => repoOk(scope, id))) continue;
-      floor?.workers.detach(wid, c.id);
-      c.attached.delete(wid);
-    }
-    for (const floor of this.ctx.floors.values()) if (!scope.floors.has(floor.id)) floor.changes.unwatchAll(c.id);
+  /** Whether floor `def` can be shared (see Access.shareable), from the cache unless `fresh`; floorsChanged refreshes the cache. */
+  shareable(def: FloorDef, fresh = false): { shareable: boolean; why?: string } {
+    let s = fresh ? undefined : this.shareables.get(def.id);
+    if (!s) this.shareables.set(def.id, (s = this.access.shareable(def)));
+    return s;
   }
 
   // --- Messages from the relay -----------------------------------------------------------------------
@@ -220,14 +199,33 @@ export class Multiplayer {
     const out = new Map<string, string>();
     for (const d of defs()) {
       const print = repoPrint(d);
-      if (ids.includes(d.id) && shared.includes(d.id) && this.access.shareable(d).shareable && asked.get(d.id) === print) out.set(d.id, print);
+      if (ids.includes(d.id) && shared.includes(d.id) && this.shareable(d).shareable && asked.get(d.id) === print) out.set(d.id, print);
     }
     return out;
   }
 
-  /** The floors or projects changed (the elevator's list, a project's repositories): see Host.recheck. */
+  /**
+   * The floors or projects changed (the elevator's list, a project's repositories, someone moving
+   * between floors): see Host.recheck. Also where the owner's presence follows, so nothing polls.
+   */
   floorsChanged() {
+    const live = new Set<string>();
+    for (const d of this.ctx.building.list()) {
+      live.add(d.id);
+      this.shareables.set(d.id, this.access.shareable(d));
+    }
+    for (const id of this.shareables.keys()) if (!live.has(id)) this.shareables.delete(id);
     this.host.recheck();
+    this.updatePresence();
+  }
+
+  /** Forgets the GitHub account: the stored token goes, and the office hangs up (a token proves identity to any relay with the same password, so it should not outlive the wish). */
+  forgetIdentity() {
+    this.identity.cancel();
+    this.cfg.update({ identityToken: '', login: undefined, enabled: false });
+    this.link.disconnect();
+    this.identityError = undefined;
+    this.pushState();
   }
 
   /** The floors of this office `login` could enter, named, for their player list. */
@@ -277,7 +275,7 @@ export class Multiplayer {
   }
 
   close() {
-    clearInterval(this.presenceTimer);
+    this.host.stop();
     this.identity.cancel();
     this.link.disconnect();
     this.host.endAll('The office closed', false);

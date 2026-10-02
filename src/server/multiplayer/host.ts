@@ -5,10 +5,14 @@
 // office sends them passes the outbound filter (remote-socket.ts).
 import { MP_PROTOCOL, type RelayToOffice } from '../../shared/multiplayer/wire.js';
 import type { VisitorScope } from '../../shared/multiplayer/allow.js';
+import { MutableScope } from '../../shared/multiplayer/scope.js';
+import { repoOk } from '../../shared/multiplayer/repos.js';
+import { ROOF } from '../../shared/rooftop.js';
+import type { Client } from '../office/client.js';
 import type { Ctx } from '../office/context.js';
 import { onConnection } from '../ws/connection.js';
 import { RemoteSocket } from './remote-socket.js';
-import { repoIdsOf, repoPrint } from './access.js';
+import { RECHECK_MS, repoIdsOf, repoPrint } from './access.js';
 import { taskRepos, workerFloors } from './gate.js';
 import type { Multiplayer } from './index.js';
 
@@ -16,7 +20,7 @@ type Msg<T extends RelayToOffice['t']> = Extract<RelayToOffice, { t: T }>;
 
 interface Hosted {
   sock: RemoteSocket;
-  scope: VisitorScope;
+  scope: MutableScope;
   /** Floor id → the repositories (repoPrint) the visitor was verified against; a floor whose project changed is taken away until it is verified again. */
   prints: Map<string, string>;
   /** Floors taken away, with the repositories they had when GitHub last said no (or has not answered yet): asked again when the project changes once more. */
@@ -28,10 +32,22 @@ export class Host {
   /** Visits being checked against GitHub, so a repeated visit.open for the same id is ignored; `ended` when the visitor withdrew or the link dropped meanwhile. */
   private pending = new Map<string, { ended: boolean }>();
 
+  /** Answers from GitHub being waited for, per visit: a visit with no floor left is ended only when none is pending. */
+  private checking = new Map<Hosted, number>();
+  private timer: NodeJS.Timeout;
+
   constructor(
     private mp: Multiplayer,
     private ctx: Ctx,
-  ) {}
+  ) {
+    // GitHub access can be withdrawn mid-visit (a collaborator removed): ask again as often as the yes-cache lets a new answer in.
+    this.timer = setInterval(() => void this.reverifyAll(), RECHECK_MS);
+    this.timer.unref();
+  }
+
+  stop() {
+    clearInterval(this.timer);
+  }
 
   /** Visitors in the office now (for their count and for ending visits of a floor that stopped being shared). */
   visitors(): { sid: string; scope: VisitorScope; sock: RemoteSocket }[] {
@@ -66,14 +82,16 @@ export class Host {
   private admit(msg: Msg<'visit.open'>, verified: Map<string, string>) {
     const { ctx, mp } = this;
     const { sid, profile } = msg;
-    const allowed = [...verified.keys()];
-    const scope: VisitorScope = { login: msg.from, floors: new Set(allowed), projects: new Set(allowed), repos: new Map() };
-    for (const id of allowed) this.verifyRepos(scope, id, verified.get(id)!);
+    const scope = new MutableScope(msg.from);
+    // A floor whose project changed since GitHub was asked is not granted (it comes with the next recheck).
+    for (const [id, print] of [...verified]) if (!this.grantFloor(scope, id, print)) verified.delete(id);
+    const allowed = [...scope.floors];
+    if (!allowed.length) return void mp.link.send({ t: 'visit.close', sid, reason: "You don't have access to any shared floor" });
     const sock = new RemoteSocket(
       {
         frame: (data, drop) => mp.link.send({ t: 'visit.frame', sid, data, ...(drop ? { drop: true as const } : {}) }, !!drop),
         up: () => mp.link.online,
-        bufferedAmount: () => mp.link.bufferedAmount,
+        bufferedAmount: () => mp.link.queuedFor(sid),
         closed: (reason) => void mp.link.send({ t: 'visit.close', sid, reason: reason.slice(0, 250) }),
       },
       scope,
@@ -109,9 +127,11 @@ export class Host {
   }
 
   /**
-   * The floors or projects of the office changed: a visitor loses every floor whose repositories are
-   * not the ones they were verified against (or that is no longer shared) at once, and gets it back
-   * only if GitHub says they can read every repository it has now.
+   * The floors or projects of the office changed. A floor that stopped being shared is taken away for
+   * good. A floor whose repositories are not the ones the visitor was verified against is hidden
+   * (out of scope, its terminals and diffs let go, the visitor moved off it) while GitHub is asked
+   * again, and given back if they can read every repository it has now. Re-checking never closes the
+   * visit by itself: only an answer of "no" with no floor left does.
    */
   recheck() {
     const { ctx, mp } = this;
@@ -119,58 +139,163 @@ export class Host {
     const defs = new Map(ctx.building.list().map((d) => [d.id, d]));
     const shared = mp.cfg.get().sharedFloors;
     for (const [sid, h] of [...this.sessions]) {
+      const gone = [...new Set([...h.prints.keys(), ...h.denied.keys()])].filter((id) => !defs.has(id) || !shared.includes(id));
+      if (gone.length) this.drop(h, gone);
+      if (h.sock.readyState !== 1) continue;
       const changed = (id: string, print: string) => {
-        const def = defs.get(id);
-        // An unshareable project (a repository without GitHub remote) is taken away and not given back, whatever its print.
-        return !def || !shared.includes(id) || !mp.access.shareable(def).shareable || repoPrint(def) !== print;
+        const def = defs.get(id)!;
+        // An unshareable project (a repository without GitHub remote) is hidden and not given back, whatever its print.
+        return !mp.shareable(def).shareable || repoPrint(def) !== print;
       };
       const stale = [...h.prints].filter(([id, print]) => changed(id, print)).map(([id]) => id);
       // A floor taken away earlier gets another chance when its repositories change again.
-      const retry = [...h.denied].filter(([id, print]) => defs.has(id) && changed(id, print)).map(([id]) => id);
+      const retry = [...h.denied].filter(([id, print]) => changed(id, print)).map(([id]) => id);
       if (!stale.length && !retry.length) continue;
       for (const id of stale) {
         h.prints.delete(id);
-        (h.scope.repos as Map<string, Set<string>> | undefined)?.delete(id);
-        mp.unshared(id, h.scope);
+        h.scope.revoke(id);
       }
-      const tried = [...stale, ...retry].filter((id) => defs.has(id));
+      const tried = [...stale, ...retry];
       for (const id of tried) h.denied.set(id, repoPrint(defs.get(id)!));
+      if (stale.length) this.relocate(h);
       this.tell(h);
       void this.regain(sid, h, tried);
     }
   }
 
-  /** Verifies the visitor again for floors they lost and gives back those they can still read (the visit may be over by then). */
+  /** The owner stopped sharing a floor: every visitor loses it at once. */
+  unshare(floorId: string) {
+    for (const h of [...this.sessions.values()]) if (h.prints.has(floorId) || h.denied.has(floorId) || h.scope.floors.has(floorId)) this.drop(h, [floorId]);
+  }
+
+  /** A floor was shared during visits: offers it to every visitor who can read it. */
+  offer(floorId: string) {
+    for (const [sid, h] of [...this.sessions]) void this.regain(sid, h, [floorId]);
+  }
+
+  /** Takes floors away for good (unshared, or no longer in the building); the visit ends when nothing is left to look at. */
+  private drop(h: Hosted, ids: string[]) {
+    for (const id of ids) {
+      h.prints.delete(id);
+      h.denied.delete(id);
+      h.scope.revoke(id);
+    }
+    if (h.sock.readyState !== 1) return;
+    this.relocate(h);
+    this.tell(h);
+    if (!h.scope.floors.size && !this.checking.get(h)) this.end(h, 'That floor is no longer shared');
+  }
+
+  /** Verifies the visitor again for floors they lost (or were offered) and gives back those they can still read (the visit may be over by then). */
   private async regain(sid: string, h: Hosted, lost: string[]) {
-    const now = await this.mp.admitted(h.scope.login).catch(() => new Map<string, string>());
-    if (this.sessions.get(sid) !== h || h.sock.readyState !== 1) return;
-    for (const id of lost) {
+    const { now, last } = await this.ask(h);
+    if (!now || this.sessions.get(sid) !== h || h.sock.readyState !== 1) return;
+    this.give(h, now, lost);
+    this.tell(h);
+    if (h.scope.floors.size || !last) return;
+    // GitHub said no and nothing is left. A project that is unshareable for now (a repository whose
+    // remote could not be read this moment) is waited out instead: the visitor stays on the roof.
+    const defs = this.ctx.building.list();
+    const shared = this.mp.cfg.get().sharedFloors;
+    const hard = lost.every((id) => {
+      const def = defs.find((d) => d.id === id);
+      return def && shared.includes(id) && this.mp.shareable(def).shareable;
+    });
+    if (hard) this.end(h, 'You can no longer read the GitHub repositories of that floor');
+  }
+
+  /** Every visit's GitHub access, again: floors the visitor lost are taken away, and any they gained (or were never offered) are given. */
+  private async reverifyAll() {
+    for (const [sid, h] of [...this.sessions]) {
+      const { now, last } = await this.ask(h);
+      if (!now || this.sessions.get(sid) !== h || h.sock.readyState !== 1) continue;
+      const defs = this.ctx.building.list();
+      // Only floors whose answer is about the repositories they have now: a project changed meanwhile is recheck's.
+      const lost = [...h.prints].filter(([id, print]) => !now.has(id) && defs.some((d) => d.id === id && repoPrint(d) === print)).map(([id]) => id);
+      for (const id of lost) {
+        h.prints.delete(id);
+        h.scope.revoke(id);
+        h.denied.set(id, repoPrint(defs.find((d) => d.id === id)!));
+      }
+      if (lost.length) this.relocate(h);
+      this.give(h, now, [...now.keys()]);
+      this.tell(h);
+      if (!h.scope.floors.size && last) this.end(h, 'You no longer have access to any shared floor');
+    }
+  }
+
+  /** What GitHub says `h`'s visitor can enter now (undefined when it could not be asked); `last` when no other question about them is open. */
+  private async ask(h: Hosted): Promise<{ now?: Map<string, string>; last: boolean }> {
+    this.checking.set(h, (this.checking.get(h) ?? 0) + 1);
+    const now = await this.mp.admitted(h.scope.login).catch(() => undefined);
+    const left = (this.checking.get(h) ?? 1) - 1;
+    if (left) this.checking.set(h, left);
+    else this.checking.delete(h);
+    return { now, last: !left };
+  }
+
+  /** Gives back the floors among `ids` that GitHub's answer `now` allows and whose project is still the one asked about. */
+  private give(h: Hosted, now: Map<string, string>, ids: string[]) {
+    for (const id of ids) {
       const print = now.get(id);
       if (print === undefined || h.prints.has(id)) continue;
-      if (!this.verifyRepos(h.scope, id, print)) continue;
+      if (!this.grantFloor(h.scope, id, print)) continue;
       h.prints.set(id, print);
       h.denied.delete(id);
-      (h.scope.floors as Set<string>).add(id);
-      (h.scope.projects as Set<string>).add(id);
     }
-    this.tell(h);
   }
 
   /**
-   * Records the repositories of floor `id` the visitor was verified against (`print` is what GitHub
-   * was asked about); false when the project is no longer the one that was checked. Workers and tasks
-   * that hold a repository taken out of the project since are then not the visitor's to see.
+   * Grants floor `id` with the repositories of its project (`print` is what GitHub was asked about);
+   * false when the project is no longer the one that was checked. Workers and tasks that hold a
+   * repository taken out of the project since are then not the visitor's to see.
    */
-  private verifyRepos(scope: VisitorScope, id: string, print: string): boolean {
+  private grantFloor(scope: MutableScope, id: string, print: string): boolean {
     const def = this.ctx.building.list().find((d) => d.id === id);
     if (!def || repoPrint(def) !== print) return false;
-    (scope.repos as Map<string, Set<string>> | undefined)?.set(id, repoIdsOf(def));
+    scope.grant(id, repoIdsOf(def));
     return true;
+  }
+
+  private clientOf(h: Hosted): Client | undefined {
+    return [...this.ctx.clients.values()].find((x) => x.visitor === h.scope);
+  }
+
+  private end(h: Hosted, reason: string) {
+    const c = this.clientOf(h);
+    if (c) c.ws.close(4000, reason);
+    else h.sock.end(reason, true);
+  }
+
+  /** The visitor stands on a floor that is no longer theirs: another floor of theirs, else the roof (which carries nothing of any project). */
+  private relocate(h: Hosted) {
+    const c = this.clientOf(h);
+    if (!c) return;
+    const here = c.peer.floor;
+    if (here !== ROOF && !(here && h.scope.floors.has(here))) {
+      const next = [...h.scope.floors].map((id) => this.ctx.floors.get(id)).find((f) => f);
+      if (next) this.ctx.goToFloor(c, next);
+      else this.ctx.goToRoof(c);
+    }
+    this.detachOutOfScope(c);
+  }
+
+  /** Lets go of every terminal and diff a visitor watches on floors that are no longer theirs (the filter stops the frames too). */
+  private detachOutOfScope(c: Client) {
+    const scope = c.visitor;
+    if (!scope) return;
+    for (const wid of [...c.attached]) {
+      const floor = this.ctx.workerFloor(wid);
+      if (floor && workerFloors(this.ctx, wid)?.every((id) => repoOk(scope, id))) continue;
+      floor?.workers.detach(wid, c.id);
+      c.attached.delete(wid);
+    }
+    for (const floor of this.ctx.floors.values()) if (!scope.floors.has(floor.id)) floor.changes.unwatchAll(c.id);
   }
 
   /** Their floor list, as it is in their scope now. */
   private tell(h: Hosted) {
-    const c = [...this.ctx.clients.values()].find((x) => x.visitor === h.scope);
+    const c = this.clientOf(h);
     if (c) this.ctx.sendTo(c, { t: 'floors', floors: this.ctx.floorInfos() });
   }
 }

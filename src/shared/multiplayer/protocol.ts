@@ -54,6 +54,8 @@ export type MpClientMsg =
   /** Sign in to GitHub (device flow) so the relay knows who this office is. */
   | { t: 'mp.identity.start' }
   | { t: 'mp.identity.cancel' }
+  /** Forget the GitHub account: deletes the stored token and disconnects. Admins only. */
+  | { t: 'mp.identity.forget' }
   /** Share a floor (or stop sharing it) with the relay's players. Off by default. */
   | { t: 'mp.share'; floor: string; on: boolean }
   /** This browser has the player list open (`mp.watch`) or closed: the office only probes while someone watches. */

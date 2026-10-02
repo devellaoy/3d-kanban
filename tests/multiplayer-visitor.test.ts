@@ -55,7 +55,7 @@ test('a visitor survives the heartbeat: not an admin, not told about accounts, n
   assert.deepEqual(sent.filter((m) => m.t === 'accounts' || m.t === 'me'), []);
   assert.deepEqual(ctx.meOfClient(visitor), { admin: false, visitor: true });
   // The same guest without the visitor mark is an admin on the shared password: why they need a kind of their own.
-  assert.equal(ctx.meOf(undefined).admin, true);
+  assert.equal(ctx.meOf({ accountId: undefined }).admin, true);
 });
 
 test('the heartbeat still ends a visitor whose link is down', async () => {

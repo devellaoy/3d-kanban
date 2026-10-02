@@ -25,7 +25,7 @@ export function startTimers(ctx: Ctx): () => void {
         continue;
       }
       // A visitor only needs the liveness ping (their RemoteSocket answers it); they have no account to re-check.
-      if (!c.out && !c.visitor && (!ctx.stillIn(c) || c.admin !== ctx.meOf(c.accountId).admin)) accountsMoved = true;
+      if (!c.out && !c.visitor && (!ctx.stillIn(c) || c.admin !== ctx.meOf(c).admin)) accountsMoved = true;
       c.isAlive = false;
       c.ws.ping();
     }

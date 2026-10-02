@@ -55,6 +55,9 @@ export const mpHandlers = {
   'mp.identity.cancel'(ctx, c) {
     admin(ctx, c)?.identity.cancel();
   },
+  'mp.identity.forget'(ctx, c) {
+    admin(ctx, c)?.forgetIdentity();
+  },
   'mp.share'(ctx, c, msg) {
     const mp = admin(ctx, c);
     if (!mp) return;
@@ -62,12 +65,14 @@ export const mpHandlers = {
     if (!def || typeof msg.on !== 'boolean') return ctx.warn(c, 'No such floor');
     const shared = mp.cfg.get().sharedFloors;
     if (msg.on) {
-      const s = mp.access.shareable(def);
+      const s = mp.shareable(def, true);
       if (!s.shareable) return ctx.warn(c, `${def.name} cannot be shared: ${s.why}`);
       if (!shared.includes(def.id)) mp.cfg.update({ sharedFloors: [...shared, def.id] });
+      // Visitors already in the office are offered it as well, if GitHub lets them read it.
+      mp.host.offer(def.id);
     } else {
       mp.cfg.update({ sharedFloors: shared.filter((id) => id !== def.id) });
-      mp.unshared(def.id);
+      mp.host.unshare(def.id);
     }
     mp.updatePresence();
     mp.pushState();
@@ -97,6 +102,7 @@ export const mpHooks: FeatureHooks = {
   welcomed(ctx, c) {
     const mp = mpOf(ctx);
     if (mp && c.admin && !c.visitor && mp.cfg.get().url) mp.sendState(c);
+    if (c.admin && !c.visitor) mp?.updatePresence();
   },
   closed(ctx, c) {
     const mp = mpOf(ctx);

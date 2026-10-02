@@ -77,7 +77,7 @@ The relay listens on `/mp` (`ws://host:4700/mp`, or `wss://` with TLS) and keeps
 
 **The GitHub OAuth App.** The relay uses it so offices can prove their GitHub login. In GitHub, go to Settings → Developer settings → OAuth Apps → **New OAuth App**, give it any name, any homepage and any callback URL (the device flow never uses it), tick **Enable Device Flow** and save. Only the **Client ID** is needed, passed as `--github-client-id`: no client secret, and offices ask GitHub for no permissions. Without a client id the relay starts but offices can't verify themselves through it.
 
-**`multiplayer.json`** is in the office's data folder (`.agent-office`, see above). It holds whether to connect, the relay's address and password, the office's GitHub identity token and login, the ids of the shared floors and a random key for each (what the relay shows instead of the floor's name). It is written for its owner only (mode 600) and is never sent to a browser: the settings pane only learns that a password is saved.
+**`multiplayer.json`** is in the office's data folder (`.agent-office`, see above). It holds whether to connect, the relay's address and password, the office's GitHub identity token and login (a token with no scopes: it only proves who you are, yet whoever holds it can say so on any relay with the same password, so **🗑 Forget GitHub account** in the settings pane deletes it, and GitHub → Settings → Applications → Authorized OAuth Apps → the relay's app → Revoke ends it for good), the ids of the shared floors and a random key for each (what the relay shows instead of the floor's name). It is written for its owner only (mode 600) and is never sent to a browser: the settings pane only learns that a password is saved.
 
 ## PWA
 

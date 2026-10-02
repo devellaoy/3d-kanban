@@ -12,6 +12,7 @@ import { openKanban } from '../src/server/kanban/office.js';
 import { Access, repoPrint, setAccessCheckerForTests } from '../src/server/multiplayer/access.js';
 import { Guest, VISIT_ENDED } from '../src/server/multiplayer/guest.js';
 import { Multiplayer } from '../src/server/multiplayer/index.js';
+import { MutableScope } from '../src/shared/multiplayer/scope.js';
 import { RemoteSocket } from '../src/server/multiplayer/remote-socket.js';
 import { Directory, Peer } from '../src/server/multiplayer/relay/directory.js';
 import { Sessions } from '../src/server/multiplayer/relay/sessions.js';
@@ -58,7 +59,8 @@ function repoScene() {
   mp.cfg.update({ sharedFloors: ['a', 'b'] });
   setMp(ctx, mp);
   setAccessCheckerForTests(() => new Promise(() => {})); // GitHub never answers: only the synchronous part counts
-  const scope: VisitorScope = { login: 'vera', floors: new Set(['a', 'b']), projects: new Set(['a', 'b']) };
+  const scope = new MutableScope('vera');
+  for (const d of defs) scope.grant(d.id, new Set([d.id]));
   const sock = new RemoteSocket({ frame: (d) => (sent.push(d), true), up: () => true, bufferedAmount: () => 0, closed: () => {} }, scope, {});
   const c = newClient('v1', sock.asWebSocket(), { accountId: undefined, admin: false }, { id: 'v1', name: 'v1', floor: 'a' } as unknown as PeerInfo);
   c.visitor = scope;
@@ -145,8 +147,11 @@ test('the owner side marks only ephemeral frames as droppable', () => {
 /** A relay peer whose socket has `buffered` bytes queued; `send` is the real one's (droppable ones skip a backed-up receiver). */
 function relayPeer(login: string) {
   const sent: RelayToOffice[] = [];
-  const ws = { OPEN: 1, readyState: 1, bufferedAmount: 0, send: (d: string) => void sent.push(JSON.parse(d)) };
-  return { peer: new Peer(login, undefined, ws as unknown as WebSocket), ws, sent };
+  // Like a real socket's, `send` keeps the bytes queued until its callback runs (`drain`).
+  const callbacks: (() => void)[] = [];
+  const ws = { OPEN: 1, readyState: 1, bufferedAmount: 0, send: (d: string, cb?: () => void) => (sent.push(JSON.parse(d)), cb && callbacks.push(cb)) };
+  const drain = () => callbacks.splice(0).forEach((cb) => cb());
+  return { drain, peer: new Peer(login, undefined, ws as unknown as WebSocket), ws, sent };
 }
 
 function relayVisit() {
@@ -165,7 +170,8 @@ function relayVisit() {
 
 test('a backed-up receiver loses only the droppable frames', () => {
   const { owner, visitor, frame } = relayVisit();
-  visitor.ws.bufferedAmount = MP_HIGH_WATER + 1;
+  visitor.peer.send({ t: 'visit.frame', sid: 'sid-12345678', data: 'x'.repeat(MP_HIGH_WATER + 1) });
+  visitor.sent.length = 0;
   assert.equal(frame(owner.peer, '{"t":"peer.move"}', true), false, 'a position is skipped');
   assert.equal(frame(owner.peer, '{"t":"welcome"}'), true, 'a welcome is not');
   assert.equal(frame(owner.peer, '{"t":"chat"}'), true);
@@ -174,7 +180,8 @@ test('a backed-up receiver loses only the droppable frames', () => {
 
 test('a receiver too far behind for essential frames ends the visit for both', () => {
   const { sessions, owner, visitor, frame } = relayVisit();
-  visitor.ws.bufferedAmount = MP_HARD_CAP + 1;
+  visitor.peer.send({ t: 'visit.frame', sid: 'sid-12345678', data: 'x'.repeat(MP_HARD_CAP + 1) });
+  visitor.sent.length = 0;
   assert.equal(frame(owner.peer, '{"t":"chat"}'), false);
   assert.equal(sessions.count, 0);
   for (const p of [owner, visitor]) assert.deepEqual(p.sent.filter((m) => m.t === 'visit.close').map((m) => (m as { reason: string }).reason), ['Connection too slow']);

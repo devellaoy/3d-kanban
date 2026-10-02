@@ -13,6 +13,7 @@ import { visitorMay, filterForVisitor, type VisitorScope } from '../src/shared/m
 import type { ServerMsg, WorkerInfo } from '../src/shared/protocol.js';
 import { repoPrint, setAccessCheckerForTests } from '../src/server/multiplayer/access.js';
 import { taskRepos, workerFloors } from '../src/server/multiplayer/gate.js';
+import { MutableScope } from '../src/shared/multiplayer/scope.js';
 import { Host } from '../src/server/multiplayer/host.js';
 import { forbidden } from '../src/server/multiplayer/httpgate.js';
 import type { Ctx } from '../src/server/office/context.js';
@@ -51,9 +52,10 @@ function scene() {
 
 /** A visitor admitted by the host to the project as it is now. */
 function admitNow(ctx: Ctx, def: FloorDef): VisitorScope {
-  const scope: VisitorScope = { login: 'vera', floors: new Set(['p']), projects: new Set(['p']), repos: new Map() };
+  const scope = new MutableScope('vera');
   const host = new Host({} as never, ctx);
-  assert.ok((host as unknown as { verifyRepos(s: VisitorScope, id: string, print: string): boolean }).verifyRepos(scope, 'p', repoPrint(def)));
+  assert.ok((host as unknown as { grantFloor(s: MutableScope, id: string, print: string): boolean }).grantFloor(scope, 'p', repoPrint(def)));
+  host.stop();
   return scope;
 }
 
@@ -90,7 +92,8 @@ test('after a repository leaves the project, a new visitor sees neither the work
     assert.equal(f({ t: 'kanban.task.detail', task: tasks.get(1) }), undefined);
     assert.ok(f({ t: 'kanban.task.detail', task: tasks.get(2) }));
     const card = (t: KanbanTask) => ({ ...t, prs: [] }) as unknown as KanbanTaskCard;
-    assert.equal(f({ t: 'kanban.task', task: card(tasks.get(1)!) }), undefined);
+    // Out of scope now, but possibly on their board before: the card is removed, not left behind.
+    assert.deepEqual(f({ t: 'kanban.task', task: card(tasks.get(1)!) }), { t: 'kanban.task.removed', id: 1, project: tasks.get(1)!.project });
     assert.ok(f({ t: 'kanban.task', task: card(tasks.get(2)!) }));
     const snap = f({ t: 'kanban.snapshot', project: 'p', tasks: [card(tasks.get(1)!), card(tasks.get(2)!)], projects: [], settings: { projects: {} }, secrets: {}, me: {} }) as Extract<ServerMsg, { t: 'kanban.snapshot' }>;
     assert.deepEqual(snap.tasks.map((t) => t.id), [2]);
