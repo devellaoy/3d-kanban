@@ -4,6 +4,7 @@ import type { ClientMsg } from '../../../shared/protocol.js';
 import { codexLimitsHandlers, codexLimitsHooks } from '../../codex-limits/handlers.js';
 import { mpHandlers, mpHooks } from '../../multiplayer/handlers.js';
 import { kanbanHandlers, kanbanHooks } from '../../kanban/ws/handlers.js';
+import { phoneHandlers, phoneHooks } from '../../phone/handlers.js';
 import { youtubeHandlers, youtubeListView, youtubeView } from '../../youtube/handlers.js';
 import { accountsHandlers } from './accounts.js';
 import { ballHandlers, ballHooks, ballView } from './ball.js';
@@ -55,13 +56,14 @@ export const handlers: HandlerMap<ClientMsg> = {
   ...youtubeHandlers, // YouTube on the Office TV
   ...codexLimitsHandlers, // the Codex sign-in's allowance
   ...mpHandlers, // multiplayer: the link to the relay
+  ...phoneHandlers, // the phone: other floors' workers
 };
 
 /**
  * The features that keep something per person on a floor, in the order they let go of it when
  * someone leaves the floor or the office (see FeatureHooks): the order the office has always done it in.
  */
-export const features: readonly FeatureHooks[] = [kanbanHooks, workerHooks, changesHooks, whiteboardHooks, ballHooks, carHooks, cabinetHooks, codexLimitsHooks, mpHooks];
+export const features: readonly FeatureHooks[] = [kanbanHooks, workerHooks, changesHooks, whiteboardHooks, ballHooks, carHooks, cabinetHooks, codexLimitsHooks, mpHooks, phoneHooks];
 
 /** What someone arriving on a floor is sent (see office/views.ts): a piece from each feature, in the order it has always gone out. */
 export const views: ViewPieces = {

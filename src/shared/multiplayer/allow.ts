@@ -187,6 +187,9 @@ export const CLIENT_MSG_CLASS = {
   'mp.unwatch': 'deny',
   'mp.probe': 'deny',
 
+  // --- The phone: following the workers of a floor in scope (stopping is always fine) ---
+  'phone.watch': 'scoped',
+
   // --- The kanban: reading the board of a shared project is scoped; everything else is the owner's ---
   'kanban.subscribe': 'scoped',
   'kanban.unsubscribe': 'scoped',
@@ -282,6 +285,9 @@ export function visitorMayScoped(msg: ClientMsg, scope: VisitorScope, lookup: Sc
     // owner's projects); the lobby and every other floor are refused.
     case 'floor.go':
       return floorOk(m.floor) || m.floor === ROOF;
+    // null stops watching; a floor must be one in scope (workerOk in the filter then drops what spans other floors).
+    case 'phone.watch':
+      return m.floor === null || floorOk(m.floor);
     case 'worker.attach':
     case 'worker.detach':
     case 'changes.watch':

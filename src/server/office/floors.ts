@@ -86,7 +86,7 @@ export function floorHelpers(ctx: Ctx): FloorHelpers {
     ctx.pumpQueues();
   };
 
-  return { floorOf, workerFloor, floorInfos, floorsChanged, cancelFloorsChanged, arrivalFloor, closeFloor };
+  return { floorOf, workerFloor, floorInfos, floorsChanged, workerListeners: [], cancelFloorsChanged, arrivalFloor, closeFloor };
 }
 
 /**
@@ -129,6 +129,7 @@ export async function openFloors(ctx: Ctx, hookPort: number): Promise<FloorsOpen
       } else ctx.webhook.onWorker(w);
       ctx.machine.workersChanged();
       ctx.floorsChanged();
+      for (const fn of ctx.workerListeners) fn(floor, w);
     },
     people: (floor) => {
       let n = 0;
