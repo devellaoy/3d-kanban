@@ -1,0 +1,14 @@
+/* The attachments widget (attachbox.ts): 📎, the uploaded files as chips with a ✕, and the drop zone's
+   highlight. It is used on the kanban page (new task, a task's comments) and in the 3D office (the task
+   window, the desk hire dialog), and the 3D page doesn't load kanban.css, so it brings its own styles.
+   The ✕'s touch target is base.css's (.kb-x::after); the themes widen the chips (themes/*.css). */
+.kb-attach { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+/* kanban.css's .btn.small, which the 3D page has no copy of. */
+.kb-attach > .btn.small { padding: 4px 9px; font-size: var(--fs-sm); border-radius: 10px; box-shadow: var(--shadow-xs); }
+.kb-attachments { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 6px; }
+.kb-attachment { display: inline-flex; align-items: center; gap: 6px; padding: 2px 4px 2px 8px; border: var(--bw-sm) solid var(--ink); border-radius: var(--radius-pill); background: var(--field); font-size: var(--fs-xs); font-weight: var(--fw-bold); }
+.kb-attachment a { color: var(--text); text-decoration: none; max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.kb-attachment.busy { border-style: dashed; padding-right: 8px; }
+.kb-x { width: 20px; height: 20px; padding: 0; border: 0; border-radius: 50%; background: var(--paper-2); font: var(--fw-heavy) var(--fs-2xs)/1 var(--font); cursor: pointer; }
+/* Files dragged over the drop zone (the text box's wrapper, or the hire dialog's body). */
+.kb-dropping { outline: 3px dashed var(--accent); outline-offset: 2px; }

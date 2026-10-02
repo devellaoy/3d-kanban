@@ -73,9 +73,9 @@ function openCodeHook(h: WorkerHandle<OpenCodeState>, _event: string, payload: u
   if (payload.type === 'error') state.error = true;
   else if (payload.status === 'working' || payload.prompt) state.error = false;
   if (payload.prompt) {
-    info.activity = truncate(payload.prompt, 80);
+    const shown = h.notePrompt(payload.prompt);
+    if (shown.trim()) info.activity = truncate(shown, 80);
     info.action = undefined;
-    h.notePrompt(payload.prompt);
   } else if (payload.tool) {
     info.activity = truncate(payload.tool, 80);
     info.action = toolAction(payload.tool);

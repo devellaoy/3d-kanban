@@ -23,7 +23,7 @@ import { midTurn } from './lifecycle.js';
 import { restoreWorkers, saveWorkers } from './persist.js';
 import { WorkerPrs } from './pr.js';
 import { WIN, binScript, defaultShell, resolveCommand, shellRun, shq, writeOfficeCommands } from './process.js';
-import { CARRY_ON_PROMPT, WorkerTasks } from './tasks.js';
+import { CARRY_ON_PROMPT, WorkerTasks, firstPrompt } from './tasks.js';
 import { flushScreens, fullScreens, newTerm, offlineBanner, screenText, type HeadlessTerminal } from './terminal.js';
 import type { HookEnv, OpenedPr, RepoSource, RunAs, SpawnExtra, Worker, WorkerContext, WorkerEvents, WorkerHandle } from './types.js';
 import { clamp, safeEq, truncate } from './util.js';
@@ -67,7 +67,7 @@ export class WorkerManager extends KanbanWorkers {
   private host: PtyHost;
   /** Each worker's terminal on disk, so a restart doesn't wipe it (see history.ts). */
   private scrollback: ScrollbackStore;
-  private drops: DropStore;
+  readonly drops: DropStore;
   private saveTimer: NodeJS.Timeout;
   /** How many rows the floor's back office is built out: its desks past that aren't there to hire at (see WING). */
   wing: () => number = () => 0;
@@ -250,7 +250,7 @@ export class WorkerManager extends KanbanWorkers {
     const used = new Set([...this.workers.values()].map((w) => w.info.name.replace(/ 🐚$/, '')));
     const agent = seat.station && STATION_AGENT[seat.station];
     const name = agent ? agent.name : (NAMES.find((n) => !used.has(n)) ?? `Worker ${this.workers.size + 1}`);
-    const id = randomBytes(6).toString('hex');
+    const id = extra?.id ?? randomBytes(6).toString('hex');
     let wt: WorkerInfo['worktree'] = meeting?.worktree ?? extra?.reuse?.worktree;
     let others: WorkerRepo[] | undefined = extra?.reuse?.repos;
     if (worktree && !extra?.reuse) {
@@ -293,9 +293,9 @@ export class WorkerManager extends KanbanWorkers {
     const w = newWorker(info, newTracker());
     this.hired(w, owner, extra); // its owner, and how the kanban launches it
     this.workers.set(id, w);
-    if (info.prompt) this.tasks.notePrompt(w, info.prompt);
+    if (info.prompt) this.tasks.notePrompt(w, info.prompt, true);
     // A board agent is told what it's there for ahead of its first request (which is what shows).
-    this.launch(w, seat.station && info.prompt ? `${stationBrief(seat.station, this.prompts)}\n\n${info.prompt}` : info.prompt, extra?.resumeSessionId);
+    this.launch(w, firstPrompt(seat.station && info.prompt ? stationBrief(seat.station, this.prompts) : undefined, info.prompt, extra?.promptTail), extra?.resumeSessionId);
     this.persist();
     return info;
   }

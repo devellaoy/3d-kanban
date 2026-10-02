@@ -3,10 +3,11 @@
  * an empty desk, a worker, the queue, the meeting room or the herald hands it over; Q puts it back.
  * Which card you hold is the office's (ctx.carrying), since so much else looks at it.
  */
-import type { AgentEffort, AgentProvider, CarriedIssue, GhIssue, WorkerInfo } from '../../../shared/protocol';
+import type { CarriedIssue, GhIssue, WorkerInfo } from '../../../shared/protocol';
 import { isAsleep } from '../../../shared/status';
 import type { Ctx, Hint } from '../../core/context';
 import { aside, key } from '../../core/hint';
+import type { HireOptions } from '../workers/actions';
 import { store } from '../../state';
 import { closeAllModals, h, toast } from '../../ui/dom';
 import { type MeetingPreset } from '../../ui/meeting';
@@ -31,7 +32,7 @@ export interface CarryingDeps {
   /** Drops the ball, if it's in your hands (see features/basketball). */
   dropBall(): void;
   /** Hires a worker at `deskId` (see hire in features/workers/actions.ts). */
-  hire(deskId: string, prompt?: string, worktree?: boolean, provider?: AgentProvider, model?: string, effort?: AgentEffort, issue?: number | { issue?: number; issueKey?: string }, repos?: string[], via?: 'herald'): void; // or a card's fields
+  hire(deskId: string, prompt?: string, options?: HireOptions): void;
   /** The seat the herald sends a new worker to (see heraldSeat in features/workers/views.ts). */
   heraldSeat(): string | undefined;
   /** Seats you've just sent a worker out to from the herald, so a second goes elsewhere. */
@@ -122,7 +123,7 @@ export function installCarrying(ctx: Ctx, deps: CarryingDeps) {
       else if (!deps.officeIsFull()) {
         const { provider, model, effort } = officeChoice(store.project);
         deps.heraldHires.set(deskId, { floor: store.floor, at: performance.now() });
-        deps.hire(deskId, prompt, !!store.project?.branch && worktreePref(), provider, model, effort, ids, undefined, 'herald');
+        deps.hire(deskId, prompt, { worktree: !!store.project?.branch && worktreePref(), provider, model, effort, issue: ids, via: 'herald' });
         putDown();
       }
       return true;
@@ -138,7 +139,7 @@ export function installCarrying(ctx: Ctx, deps: CarryingDeps) {
       putDown();
     } else if (!deps.officeIsFull()) {
       const { provider, model, effort } = officeChoice(store.project);
-      deps.hire(it.deskId, prompt, !!store.project?.branch && worktreePref(), provider, model, effort, ids);
+      deps.hire(it.deskId, prompt, { worktree: !!store.project?.branch && worktreePref(), provider, model, effort, issue: ids });
       putDown();
     }
     return true;

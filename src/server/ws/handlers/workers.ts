@@ -1,12 +1,16 @@
 // Workers at their desks and the board agents at their kiosks: hiring them, their terminals, their
 // worktrees and pull requests.
+import { randomBytes } from 'node:crypto';
+import { WebSocket } from 'ws';
 import { MAX_REPOS, type RepoSource } from '../../workers.js';
 import { OPEN_CODE_MODEL_MAX } from '../../../shared/providers.js';
 import { isAgentEffort, isAgentProvider, type WorkerClientMsg } from '../../../shared/protocol.js';
 import { issueNumber, num, str } from '../../office/input.js';
 import { kanbanCaller } from '../../kanban/office.js';
 import { prViaKanban } from '../../kanban/ws/pr.js';
+import { attachedFilesText } from '../../drops.js';
 import { here, workerOf } from './common.js';
+import type { SpawnExtra } from '../../workers/types.js';
 import type { FeatureHooks, HandlerMap, ViewPieces } from './types.js';
 
 const CLEANUPS = new Set(['keep', 'worktree', 'all']);
@@ -40,13 +44,39 @@ export const workerHandlers = {
     }
     // A shell is theirs too: `claude auth login` or `gh auth login` typed there signs them in.
     const hire = () => {
-      const r = floor.workers.spawn(str(msg.deskId, 32), who, str(msg.prompt, 20000) || undefined, msg.worktree === true, kind, msg.provider, model, effort, undefined, c.accountId, repos, msg.via === 'herald' ? 'herald' : undefined);
       const issue = kind === 'agent' ? issueNumber(msg.issue) : undefined;
       const key = kind === 'agent' ? floor.cardKey(msg.issueKey) : undefined; // only a card on the floor's board
-      const across = repos.length ? ` across ${[floor.def.name, ...repos.map((x) => x.name)].join(' + ')}` : '';
-      if (typeof r === 'string') ctx.warn(c, r);
-      else ctx.toastFloor(floor, kind === 'shell' ? `${who} opened a shell at a desk` : `${who} hired ${r.name}${issue ? ` for issue #${issue}` : key ? ` for ${key}` : r.prompt ? ' with a task' : ''}${across}`);
-      if (typeof r !== 'string' && (issue || key)) ctx.takeIssue(c, floor, issue, key);
+      const spawn = (extra?: SpawnExtra) => {
+        const r = floor.workers.spawn(str(msg.deskId, 32), who, str(msg.prompt, 20000) || undefined, msg.worktree === true, kind, msg.provider, model, effort, undefined, c.accountId, repos, msg.via === 'herald' ? 'herald' : undefined, extra);
+        if (typeof r === 'string' && extra?.id) floor.workers.drops.remove(extra.id); // the hire didn't happen: its files go
+        const across = repos.length ? ` across ${[floor.def.name, ...repos.map((x) => x.name)].join(' + ')}` : '';
+        if (typeof r === 'string') ctx.warn(c, r);
+        else ctx.toastFloor(floor, kind === 'shell' ? `${who} opened a shell at a desk` : `${who} hired ${r.name}${issue ? ` for issue #${issue}` : key ? ` for ${key}` : r.prompt ? ' with a task' : ''}${across}`);
+        if (typeof r !== 'string' && (issue || key)) ctx.takeIssue(c, floor, issue, key);
+      };
+      // Files attached to a direct hire go to its drops folder before it exists, and into its first prompt (see kanban/hirefiles.ts).
+      if (kind !== 'agent' || !Array.isArray(msg.attachmentIds) || !msg.attachmentIds.length) return spawn();
+      if (!ctx.kanban) return ctx.warn(c, 'Attachments need the kanban');
+      // Uploads as the upload route names them: the account's name, 'Guest' without accounts.
+      const files = ctx.kanban.hireFiles(msg.attachmentIds, c.accountId ? who : 'Guest');
+      if (typeof files === 'string') return ctx.warn(c, files);
+      if (!files) return spawn();
+      const id = randomBytes(6).toString('hex');
+      const tryAgain = () => ctx.warn(c, 'The office could not hire with these files: try again');
+      void floor.workers.drops
+        .copyIn(id, files)
+        .then((copied) => {
+          if (!copied) return ctx.warn(c, 'The office could not copy the attached files: attach them again');
+          // Back from the copy: the person or the floor may be gone, and the id must still be free (this check and
+          // the spawn after it run in one go, so it stays free).
+          const gone = c.out || c.ws.readyState !== WebSocket.OPEN || ctx.floors.get(floor.id) !== floor;
+          if (gone || floor.workers.get(id)) {
+            floor.workers.drops.remove(id);
+            return gone ? undefined : tryAgain();
+          }
+          spawn({ id, promptTail: attachedFilesText(copied.saved), readDir: copied.dir });
+        })
+        .catch(tryAgain);
     };
     // Every project it gets a worktree of starts from what's on GitHub.
     const fresh = [floor, ...repos.map((x) => ctx.floors.get(x.floor)!)];

@@ -113,8 +113,8 @@ export function reduceLifecycle(h: WorkerHandle, report: LifecycleReport, o: Lif
       tools?.clear();
       info.action = undefined;
       if (report.prompt) {
-        info.activity = truncate(report.prompt, 80);
-        h.notePrompt(report.prompt);
+        const shown = h.notePrompt(report.prompt);
+        if (shown.trim()) info.activity = truncate(shown, 80);
       }
       h.setStatus('working');
       break;

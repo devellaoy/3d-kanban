@@ -37,19 +37,22 @@ export class WorkerTasks {
     });
   }
 
-  /** A new message for the worker: show it right away, and have its task (re)named. */
-  notePrompt(w: Worker, prompt: string) {
-    if (w.info.kind !== 'agent') return;
-    const clean = prompt.replace(/\s+/g, ' ').trim();
+  /** A new message for the worker: show it right away, and have its task (re)named. Gives back what is worth showing of it: the message without its launch tail (see withoutLaunchTail; `launching`: the hire's own first prompt, which has none). */
+  notePrompt(w: Worker, prompt: string, launching = false): string {
+    // The prompt it is launched with (the hire's own text) comes without the tail and isn't a report of it coming back.
+    const text = launching ? prompt : withoutLaunchTail(w, prompt);
+    if (w.info.kind !== 'agent') return text;
+    const clean = text.replace(/\s+/g, ' ').trim();
     // Bare slash commands (/model, /compact), repeats and the office's own carry-on aren't new work.
-    if (!clean || /^\/\S+$/.test(clean) || w.prompts.at(-1) === clean || clean === CARRY_ON_PROMPT) return;
+    if (!clean || /^\/\S+$/.test(clean) || w.prompts.at(-1) === clean || clean === CARRY_ON_PROMPT) return text;
     w.prompts = [...w.prompts, clean].slice(-TASK_PROMPTS);
     const hadTask = !!w.info.task;
     if (!hadTask) w.info.task = fallbackTask(clean);
-    if (!providerAdapter(w.info.provider)?.namesTasks) return;
+    if (!providerAdapter(w.info.provider)?.namesTasks) return text;
     // "yes", "go ahead", "2": a reply within the same task, not worth a new name.
-    if (hadTask && clean.length < 16) return;
+    if (hadTask && clean.length < 16) return text;
     this.name(w);
+    return text;
   }
 
   noteTool(w: Worker, tool: string) {
@@ -84,4 +87,30 @@ export class WorkerTasks {
     const previous = w.info.task && w.prompts.length > 1 ? w.info.task : undefined;
     this.namer.request(w.info.id, { prompts: w.prompts, tools: w.tools, previous, epoch: w.taskEpoch });
   }
+}
+
+/**
+ * The first prompt a hire's provider reports back is its whole launch prompt, ending with the block of
+ * attached files (Worker.launchTail). Takes that block off, so it never reaches the activity line or the
+ * task's naming; any other prompt comes back as it was. Only the first report is looked at, matching or not.
+ * Whitespace is compared collapsed (a terminal may hand the prompt back with other line ends), and a report
+ * cut short somewhere in the block loses the rest of it from the block's first line on.
+ */
+export function withoutLaunchTail(w: Worker, prompt: string): string {
+  const tail = w.launchTail;
+  if (!tail) return prompt;
+  w.launchTail = undefined;
+  const squash = (s: string) => s.replace(/\s+/g, ' ').trim();
+  const text = squash(prompt);
+  const block = squash(tail);
+  if (text.endsWith(block)) return text.slice(0, text.length - block.length).trim();
+  const header = squash(tail.split('\n')[0]);
+  const at = header ? text.lastIndexOf(header) : -1;
+  return at >= 0 ? text.slice(0, at).trim() : prompt;
+}
+
+/** The first launch's prompt: the station's brief and the prompt (the brief only when there is a prompt), then the launch tail (the attached files' block), each when there is one. */
+export function firstPrompt(brief: string | undefined, prompt: string | undefined, tail: string | undefined): string | undefined {
+  const request = brief && prompt ? `${brief}\n\n${prompt}` : prompt;
+  return [request, tail].filter(Boolean).join('\n\n') || undefined;
 }
