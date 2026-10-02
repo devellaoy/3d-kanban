@@ -192,6 +192,21 @@ export const MEETING_SEATS: DeskDef[] = (
 /** The board on the meeting room's back (south) wall that shows the meeting's output file as it's written. */
 export const MEETING_BOARD = { x: MEETING_TABLE.x, y: 1.95, z: FLOOR.maxZ - 0.08, width: 3.6, height: 1.2 } as const;
 
+/** A room a meeting can be held in: its chairs, in the order a meeting fills them, head of the table first. */
+export interface MeetingRoomDef {
+  /** Stable: saved with the meetings held there. */
+  id: string;
+  label: string;
+  seats: DeskDef[];
+}
+// TODO(#90, UI): placeholder seats; the second room's real place, table and chairs replace these.
+const REVIEW_SEATS: DeskDef[] = MEETING_SEATS.map((d, i) => ({ ...d, id: `review-${i + 1}`, x: d.x - 20, label: i === 0 ? 'Head of the review table' : `Review chair ${i + 1}` }));
+/** The office's meeting rooms, the first free one first: a meeting goes to the first free one (see server/meetings). */
+export const MEETING_ROOMS: MeetingRoomDef[] = [
+  { id: 'meeting', label: '🤝 Meeting room', seats: MEETING_SEATS },
+  { id: 'review', label: '🔍 Review room', seats: REVIEW_SEATS },
+];
+
 /**
  * The spot behind each seat (a desk or a bean bag) where a kanban task's reviewer stands, over
  * its implementer's shoulder, instead of taking a seat of its own. Each has its seat's place and turn
@@ -211,7 +226,7 @@ export const WATCH_SPOTS: DeskDef[] = watchSpots(SEATS);
  * Any place a worker can be by id: the seats (the back office's included), the board agents' kiosks and the meeting room's chairs.
  * And the spots behind the seats (WATCH_SPOTS, `watch` set), so iterating it isn't only seats.
  */
-export const DESK_BY_ID = new Map([...SEATS, ...STATIONS, ...MEETING_SEATS, ...WATCH_SPOTS].map((d) => [d.id, d]));
+export const DESK_BY_ID = new Map([...SEATS, ...STATIONS, ...MEETING_ROOMS.flatMap((r) => r.seats), ...WATCH_SPOTS].map((d) => [d.id, d]));
 
 /**
  * The seat a new worker takes when nobody picks one: the first free desk (in the back office too, as
