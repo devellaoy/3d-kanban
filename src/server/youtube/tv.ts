@@ -24,16 +24,17 @@ export class YoutubeTv {
   private queue: YoutubeQueueItem[] = [];
   private history: YoutubeQueueItem[] = [];
   private sameVolume = false;
-  private readonly file: string;
+  private readonly file: string | null;
   private saving: NodeJS.Timeout | undefined;
 
   constructor(
-    dataDir: string,
+    /** Where the file goes; null keeps it in memory only (a phone's music session). */
+    dataDir: string | null,
     private readonly now: () => number = Date.now,
     /** A new play's (or queue entry's) id (see YoutubeTvState.id). */
     private readonly newId: () => string = randomUUID,
   ) {
-    this.file = path.join(dataDir, 'youtube-tv.json');
+    this.file = dataDir === null ? null : path.join(dataDir, 'youtube-tv.json');
     this.load();
   }
 
@@ -285,7 +286,7 @@ export class YoutubeTv {
   }
 
   private load() {
-    if (!existsSync(this.file)) return;
+    if (!this.file || !existsSync(this.file)) return;
     try {
       const saved = parseSaved(JSON.parse(readFileSync(this.file, 'utf8')), this.newId);
       if (!saved) return;
@@ -300,13 +301,14 @@ export class YoutubeTv {
 
   /** Marks the file out of date; it is written soon (see `flush`), so a burst of changes is one write. */
   private save() {
+    if (!this.file) return;
     this.saving ??= setTimeout(() => this.flush(), SAVE_DELAY_MS);
     this.saving.unref();
   }
 
   /** Writes what's changed to the file now (tests, and whatever needs it on disk at once). */
   flush() {
-    if (!this.saving) return;
+    if (!this.file || !this.saving) return;
     clearTimeout(this.saving);
     this.saving = undefined;
     const saved: Saved = { version: 2, now: this.s, queue: this.queue, history: this.history, sameVolume: this.sameVolume };

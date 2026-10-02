@@ -83,6 +83,11 @@ export const SERVER_MSG_OUT = {
   'wb.people': 'pass',
   'wb.pointer': 'pass',
   'tv.youtube': 'pass',
+  // The phone: another floor's workers, only for floors in scope.
+  'phone.floor': 'rewrite',
+  'phone.worker': 'rewrite',
+  'phone.workerRemove': 'rewrite',
+  'phone.music': 'drop',
   // The building: the same for everyone.
   sky: 'pass',
   theme: 'pass',
@@ -269,6 +274,13 @@ export function filterForVisitor(msg: ServerMsg, scope: VisitorScope, ctx: Filte
       return workerIn(msg.state.workerId) && (!msg.state.repo || repoOk(scope, msg.state.repo)) ? msg : undefined;
     case 'worker.update':
       return workerOk(msg.worker, scope) ? { ...msg, worker: workerFor(msg.worker) } : undefined;
+    case 'phone.floor':
+      return floorOk(msg.floor) ? { ...msg, workers: msg.workers.filter((w) => workerOk(w, scope)).map(workerFor), project: projectFor(msg.project) } : undefined;
+    case 'phone.worker':
+      return floorOk(msg.floor) && workerOk(msg.worker, scope) ? { ...msg, worker: workerFor(msg.worker) } : undefined;
+    case 'phone.workerRemove':
+      // Intentionally no workerOk: it carries only an id, as worker.remove passes.
+      return floorOk(msg.floor) ? msg : undefined;
     case 'floors':
       return { t: 'floors', floors: msg.floors.filter((f) => floorOk(f.id)).map(floorFor) };
     case 'peer.act': {

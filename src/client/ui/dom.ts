@@ -52,6 +52,12 @@ export function modalOpen(): boolean {
   return stack.length > 0;
 }
 
+/** Whether `el` is inside the topmost open window. */
+export function inTopModal(el: Element): boolean {
+  const top = stack[stack.length - 1];
+  return !!top && top.backdrop.contains(el);
+}
+
 /** What the open windows say you're doing: the topmost one that says anything (a merge dialog over a PR is still "reading PR #12"). */
 export function doingNow(): string | undefined {
   for (let i = stack.length - 1; i >= 0; i--) if (stack[i].doing) return stack[i].doing;

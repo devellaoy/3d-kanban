@@ -9,6 +9,36 @@ import { h } from '../ui/dom';
 import type { TvScreen } from './screen';
 import { youtubeAt, type YoutubeOnTv } from './slice';
 
+/** The controls the bar sends: each names the play it means. */
+export type TvControl = Extract<YoutubeClientMsg, { t: 'tv.youtube.pause' | 'tv.youtube.seek' | 'tv.youtube.rate' | 'tv.youtube.skip' }>;
+
+/** What the bar controls: the Office TV (`tvSource`) or another session with the same model (the phone's music). */
+export interface TvControlsSource {
+  /** What's playing, or null. */
+  state(): YoutubeOnTv | null;
+  /** Whether ⏮️ goes back to a previous video (the queue's history) rather than to the start. */
+  back(): boolean;
+  /** Asks for a control. */
+  send(c: TvControl): void;
+  /** The player's own length for what plays, if it knows. */
+  duration(): number | undefined;
+  /** Why the speed isn't what's asked, when it isn't. */
+  rateNote(): string | undefined;
+  /** Who the speed is for (the speed's tooltip), default the floor. */
+  speedFor?: string;
+}
+
+/** The Office TV as a source: the floor's play, its queue's history, the TV player, its controls to the office. */
+export function tvSource(deps: { net: Net; screen: TvScreen }): TvControlsSource {
+  return {
+    state: () => store.youtube,
+    back: () => store.youtubeList.back,
+    send: (c) => deps.net.send(c),
+    duration: () => deps.screen.duration(),
+    rateNote: () => deps.screen.rateNote(),
+  };
+}
+
 /** `75` as `1:15`, `3725` as `1:02:05`. */
 export function clockTime(sec: number): string {
   const s = Math.max(0, Math.floor(sec));
@@ -29,11 +59,11 @@ export interface TvControls {
   tick(): void;
 }
 
-export function tvControls(deps: { net: Net; screen: TvScreen }): TvControls {
-  const send = (m: YoutubeClientMsg) => deps.net.send(m);
+export function tvControls(deps: TvControlsSource): TvControls {
+  const send = (m: TvControl) => deps.send(m);
   /** Sends a control for what's on now, naming its play. */
-  const control = (make: (id: string) => YoutubeClientMsg) => () => {
-    const y = store.youtube;
+  const control = (make: (id: string) => TvControl) => () => {
+    const y = deps.state();
     if (y) send(make(y.id));
   };
   const btn = (label: string, title: string, onclick: () => void, cls = '') =>
@@ -42,7 +72,7 @@ export function tvControls(deps: { net: Net; screen: TvScreen }): TvControls {
   const back = btn('⏮️', 'Previous video, or back to the start', control((id) => ({ t: 'tv.youtube.skip', id, dir: -1 })));
   const back30 = btn('⏪30', 'Back 30 seconds', control((id) => ({ t: 'tv.youtube.seek', id, by: -30 })));
   const back10 = btn('⏪10', 'Back 10 seconds', control((id) => ({ t: 'tv.youtube.seek', id, by: -10 })));
-  const toggle = btn('⏸️', 'Pause', control((id) => ({ t: 'tv.youtube.pause', id, paused: !store.youtube?.paused })), 'primary ytv-play');
+  const toggle = btn('⏸️', 'Pause', control((id) => ({ t: 'tv.youtube.pause', id, paused: !deps.state()?.paused })), 'primary ytv-play');
   const fwd10 = btn('⏩10', 'Forward 10 seconds', control((id) => ({ t: 'tv.youtube.seek', id, by: 10 })));
   const fwd30 = btn('⏩30', 'Forward 30 seconds', control((id) => ({ t: 'tv.youtube.seek', id, by: 30 })));
   const next = btn('⏭️', 'Next: the playlist’s next video, or the next in the queue', control((id) => ({ t: 'tv.youtube.skip', id, dir: 1 })));
@@ -51,7 +81,7 @@ export function tvControls(deps: { net: Net; screen: TvScreen }): TvControls {
   const time = h('span.ytv-time', { 'aria-live': 'off' }, '0:00');
   const speed = h(
     'select.ytv-rate',
-    { 'aria-label': 'Speed', title: 'Speed, for everyone on this floor' },
+    { 'aria-label': 'Speed', title: `Speed, for ${deps.speedFor ?? 'everyone on this floor'}` },
     ...RATES.map((r) => h('option', { value: String(r) }, rateLabel(r))),
   ) as HTMLSelectElement;
   const note = h('div.ytv-ctl-note.setting-note');
@@ -64,7 +94,7 @@ export function tvControls(deps: { net: Net; screen: TvScreen }): TvControls {
   });
   seek.addEventListener('change', () => {
     dragging = false;
-    const y = store.youtube;
+    const y = deps.state();
     if (y) send({ t: 'tv.youtube.seek', id: y.id, to: Number(seek.value) });
   });
   // Let go where it started: no 'change' comes, so stop previewing (after a 'change' that does come).
@@ -72,7 +102,7 @@ export function tvControls(deps: { net: Net; screen: TvScreen }): TvControls {
   seek.addEventListener('pointerup', letGo);
   seek.addEventListener('blur', letGo);
   speed.addEventListener('change', () => {
-    const y = store.youtube;
+    const y = deps.state();
     if (y) send({ t: 'tv.youtube.rate', id: y.id, rate: Number(speed.value) });
   });
 
@@ -86,12 +116,12 @@ export function tvControls(deps: { net: Net; screen: TvScreen }): TvControls {
 
   /** How long what's on is: the player's own word first (it knows the playlist's current video), else the office's. Undefined for live or not yet known. */
   const length = (y: YoutubeOnTv): number | undefined => {
-    const d = deps.screen.duration() || y.duration;
+    const d = deps.duration() || y.duration;
     return d && d > 0 ? d : undefined;
   };
 
   function paintTime(at: number) {
-    const y = store.youtube;
+    const y = deps.state();
     const d = y ? length(y) : undefined;
     time.textContent = d ? `${clockTime(at)} / ${clockTime(d)}` : clockTime(at);
     if (d) seek.style.setProperty('--fill', `${Math.min(100, (at / d) * 100)}%`);
@@ -100,10 +130,10 @@ export function tvControls(deps: { net: Net; screen: TvScreen }): TvControls {
   return {
     el,
     render() {
-      const y = store.youtube;
+      const y = deps.state();
       el.hidden = !y;
       if (!y) return;
-      back.title = (y.list && (y.index ?? 0) > 0) || store.youtubeList.back ? 'Previous video' : 'Back to the start';
+      back.title = (y.list && (y.index ?? 0) > 0) || deps.back() ? 'Previous video' : 'Back to the start';
       back.setAttribute('aria-label', back.title);
       toggle.textContent = y.paused ? '▶️' : '⏸️';
       toggle.title = y.paused ? 'Play' : 'Pause';
@@ -112,13 +142,13 @@ export function tvControls(deps: { net: Net; screen: TvScreen }): TvControls {
       // A rate the select doesn't have (an older office) still shows.
       if (![...speed.options].some((o) => o.value === String(y.rate))) speed.append(h('option', { value: String(y.rate) }, rateLabel(y.rate)));
       speed.value = String(y.rate);
-      const why = [y.paused ? `⏸ paused${y.pausedBy ? ` by ${y.pausedBy}` : ''}` : '', deps.screen.rateNote()].filter(Boolean).join(' · ');
+      const why = [y.paused ? `⏸ paused${y.pausedBy ? ` by ${y.pausedBy}` : ''}` : '', deps.rateNote()].filter(Boolean).join(' · ');
       note.textContent = why;
       note.hidden = !why;
       this.tick();
     },
     tick() {
-      const y = store.youtube;
+      const y = deps.state();
       if (!y) return;
       const d = length(y);
       seek.hidden = !d;

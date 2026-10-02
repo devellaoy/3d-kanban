@@ -36,6 +36,8 @@ import { youtube } from '../../youtube/slice';
 import { codexLimits } from '../../codex-limits/slice';
 import { multiplayer } from './multiplayer';
 import { kanbanLounge } from '../../kanban/loungeslice';
+import { phone } from '../../phone/slice';
+import { phoneMusic } from '../../phone/music-slice';
 
 export const SLICES: readonly Slice[] = [
   presence,
@@ -69,4 +71,6 @@ export const SLICES: readonly Slice[] = [
   codexLimits, // the Codex limits panel and the kanban's readout
   multiplayer, // the link to the multiplayer relay
   kanbanLounge, // the kanban's tasks on hold, as figures in the lounge
+  phone, // the workers of another floor, for the phone
+  phoneMusic, // the phone's music session
 ];

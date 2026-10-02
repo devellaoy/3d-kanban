@@ -25,7 +25,7 @@ import type { OfficePrompts } from '../prompts.js';
 import type { LeaveOnMerge } from '../leave-on-merge.js';
 import type { ChatLog } from '../history.js';
 import type { Arcade, HighScores } from '../cabinet.js';
-import type { FloorInfo, Me, ServerMsg, ServiceInfo, ServicesState, SignInKind } from '../../shared/protocol.js';
+import type { FloorInfo, Me, ServerMsg, ServiceInfo, ServicesState, SignInKind, WorkerInfo } from '../../shared/protocol.js';
 import type { Client } from './client.js';
 import type { Spot } from './input.js';
 import type { Kanban } from '../kanban/index.js';
@@ -119,6 +119,12 @@ export interface FloorHelpers {
    * browsers may hold a guess of their own (an optimistic reorder) that the last list sent doesn't cure.
    */
   floorsChanged(resend?: boolean): void;
+  /**
+   * Hears every worker change in the building (hired, title, status, activity; a string is a worker
+   * that went home), unthrottled, unlike floorsChanged. Features push a listener here once
+   * (see phone/handlers.ts) so the office needn't import them.
+   */
+  workerListeners: ((floor: Floor, w: WorkerInfo | string) => void)[];
   /** Drops a `floorsChanged` still waiting to go out (the office is closing). */
   cancelFloorsChanged(): void;
   /** Where someone arriving goes: the floor they asked for, else the first one there is. */

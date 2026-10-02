@@ -70,6 +70,7 @@ import { installMap } from './features/map';
 import { installKanban3d } from './kanban/install3d';
 import { installYoutubeTv } from './youtube/install';
 import { installCodexLimits } from './codex-limits/install';
+import { installPhone } from './phone/install';
 import { installReactions } from './features/reactions';
 import { installBilliards } from './features/billiards';
 import { installGameroom } from './features/gameroom';
@@ -212,6 +213,7 @@ installGarden(ctx, { roof: parts.rooftop.roof }); // the roof garden
 installBuild(ctx); // U: build mode, furnish the floor
 parts.map = installMap(ctx); // `: the map of the scenic loop, and a small map while you drive
 installMultiplayer(ctx); // the banner while visiting another office
+parts.phone = installPhone(ctx, parts); // Y: the phone, every floor's workers in your hand
 
 // ---- Main loop ---------------------------------------------------------------------------------------
 fitWindow(ctx);

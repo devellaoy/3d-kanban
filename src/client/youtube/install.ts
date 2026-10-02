@@ -10,6 +10,7 @@ import { aside, hintTitle, key } from '../core/hint';
 import type { Parts } from '../core/parts';
 import { store } from '../state';
 import { clip, toast } from '../ui/dom';
+import { tvSource } from './controls';
 import { TvScreen } from './screen';
 import { openTvWindow } from './window';
 
@@ -44,6 +45,8 @@ export function installYoutubeTv(ctx: Ctx, parts: YoutubeParts) {
   }
 
   return {
+    /** The floor's TV for a transport bar elsewhere (the phone's 🎵 Music, with 📺 Floor TV). */
+    controlsSource: () => tvSource({ net: ctx.net, screen }),
     /** YouTube is what the TV shows (on, and nobody's sharing a screen). */
     showing: () => !!store.youtube && shares().length === 0,
     /** The TV window, unless a shared screen has the TV. Says whether it opened. */

@@ -11,6 +11,7 @@ import type { Parts } from '../../core/parts';
 import { NextUp, waitingInOrder, waitingLabel } from '../../nextup';
 import { waitingOnSomeone } from '../../notify';
 import { store } from '../../state';
+import { findWorker } from '../../state/workers';
 import { openChanges } from '../../ui/changes';
 import { Compass, type Bearing } from '../../ui/compass';
 import { $, closeAllModals, h, modalOpen, toast } from '../../ui/dom';
@@ -102,12 +103,13 @@ export function installWaiting(ctx: Ctx, core: CoreState, parts: Pick<Parts, 'wo
 
   /** Opening a sleeping worker's terminal wakes it, so there's nothing to press first. */
   function openWorkerTerminal(id: string, find?: TerminalFind, tab?: WorkerTab) {
-    const w = store.workers.get(id);
+    const w = findWorker(id); // another floor's too, through the phone
     if (!w) return;
     const { actions } = parts;
     if (w.lost) return actions.fixLostWorktree(w);
     if (isAsleep(w.status)) actions.resumeWorker(w);
-    openTerminal(net, id, () => openWorkerChanges(id), find, { tab });
+    // The Changes window is your floor's only.
+    openTerminal(net, id, store.workers.has(id) ? () => openWorkerChanges(id) : undefined, find, { tab });
   }
 
   /** 🔎 the chat and every terminal; a terminal line opens that terminal right at it. */
