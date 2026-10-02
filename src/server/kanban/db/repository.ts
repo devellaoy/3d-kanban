@@ -387,6 +387,11 @@ export class KanbanRepository {
     this.db.prepare('UPDATE comments SET pending = ? WHERE id = ?').run(pending ? 1 : 0, id);
   }
 
+  /** Every user comment on a task made at or after `since` (ms), oldest first. */
+  userCommentsSince(taskId: number, since: number): KanbanComment[] {
+    return (this.db.prepare(`SELECT * FROM comments WHERE task_id = ? AND author_kind = 'user' AND created_at >= ? ORDER BY id`).all(taskId, since) as Row[]).map((r) => this.comment(r));
+  }
+
   /** A page of a task's comments, oldest first: the newest `limit`, or the `limit` before comment `before`. */
   listComments(taskId: number, opts: { before?: number; limit?: number } = {}): { comments: KanbanComment[]; more: boolean } {
     const limit = Math.max(1, Math.min(opts.limit ?? COMMENTS_PAGE, 500));

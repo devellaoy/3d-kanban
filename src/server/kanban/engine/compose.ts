@@ -110,6 +110,8 @@ export interface ComposeExtra {
   rounds?: number;
   /** A comment, an answer, requested plan changes. */
   text?: string;
+  /** Messages left while the task was on hold, for the run a plan's approval or answer starts (with their files). */
+  held?: string;
   author?: string;
   /** The reviewer's findings (fix), the implementer's reply (rereview). */
   findings?: string;
@@ -214,8 +216,9 @@ export class Composer {
   build(kind: PromptKind, def: FloorDef, task: KanbanTask, tool: KanbanTool, floorDir: string, x: ComposeExtra): string {
     const v = this.taskVars(def, task, tool, floorDir, x);
     const p = task.project;
-    const seal = (text: string) => {
+    const seal = (body: string) => {
       const c = this.contract(task, x.phase);
+      const text = x.held ? `${body.trimEnd()}\n\nMessages left on the task while it was on hold:\n${x.held}` : body;
       return c ? withContract(text, c) : text.trim();
     };
     switch (kind) {
@@ -239,7 +242,7 @@ export class Composer {
         return seal(this.text('kanban.continue', p, { taskId: task.id, language: v.language }));
       case 'unhold': {
         const hold = task.hold;
-        const said = hold ? this.ctx.repo.listComments(task.id, { limit: 50 }).comments.filter((c) => c.authorKind === 'user' && c.createdAt >= hold.at) : [];
+        const said = hold ? this.ctx.repo.userCommentsSince(task.id, hold.at) : [];
         const note = hold?.note?.trim();
         return seal(
           this.text('kanban.unhold', p, {

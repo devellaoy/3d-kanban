@@ -35,6 +35,13 @@ export class LoungeSender {
     private toFloor: ((floorId: string, msg: KanbanServerMsg) => void) | undefined,
   ) {}
 
+  /** The floor's figures as a browser arriving gets them: what its people have now, so the next change is compared with it (after a restart nothing was sent yet). */
+  view(floorId: string): LoungeFigure[] {
+    const figures = loungeFigures(this.repo, floorId);
+    this.sent.set(floorId, JSON.stringify(figures));
+    return figures;
+  }
+
   /** A task of `floorId` was added, changed or removed. */
   changed(floorId: string) {
     const figures = loungeFigures(this.repo, floorId);

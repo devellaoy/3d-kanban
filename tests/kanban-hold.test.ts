@@ -351,3 +351,66 @@ test('v1: ?status=waiting also lists tasks on hold, as their legacy status says'
   const body = (await (await fetch(`http://127.0.0.1:${(server.address() as AddressInfo).port}/api/v1/tasks?status=waiting`)).json()) as { tasks: { title: string }[] };
   assert.deepEqual(body.tasks.map((x) => x.title).sort(), ['Held', 'Waits']);
 });
+
+// --- Held messages, the lounge after a restart, many comments ---------------------------------------------------
+
+const promptsOf = (fx: EngineFixture) => fx.invocations().map((i) => i.prompt ?? i.args[i.args.length - 1] ?? '');
+
+for (const reason of ['plan_approval', 'plan_questions'] as const) {
+  test(`held in ${reason}: the messages left meanwhile and the resume note reach the run the approval or answer starts`, async (t) => {
+    const fx = await engineFixture();
+    t.after(() => fx.close());
+    const asks = reason === 'plan_questions';
+    fx.setRules([asks ? { when: 'You are planning kanban task', reply: 'QUESTIONS:\n1. Which look?' } : { when: 'You are planning kanban task', reply: 'PLAN READY', exitPlan: '1. Do it' }, { when: 'The user replied about the plan', reply: 'Plan.\n\nPLAN READY', exitPlan: 'The plan' }, IMPLEMENT]);
+    const task = fx.newTask({ usePlan: true, useReview: false, planApproval: 'manual' });
+    assert.equal(await fx.engine.start(task.id, ADA), undefined);
+    await fx.waitTask(task.id, (x) => x.status === 'waiting' && x.waitingReason === reason && x.runState === 'idle', reason, 30_000);
+    assert.equal(await fx.engine.hold!(task.id, ADA, {}), undefined);
+    await fx.waitTask(task.id, (x) => x.status === 'on_hold' && !x.workerId, 'held');
+    const said = fx.repo.addComment({ taskId: task.id, authorKind: 'user', authorName: 'Bob', text: 'Keys arrived on Monday.' }).comment;
+    await fx.engine.commented(task.id, said.id, BOB);
+    assert.equal(fx.task(task.id).status, 'on_hold', 'only stored');
+    assert.equal(await fx.engine.unhold!(task.id, ADA, 'Carry on with the new keys.'), undefined);
+    const back = fx.task(task.id);
+    assert.equal(back.waitingReason, reason);
+    assert.equal(back.pendingMessages.length, 2, 'kept for the next run');
+    assert.equal(fx.repo.getComment(said.id)?.pending, true);
+    if (asks) assert.equal(await fx.engine.continue(task.id, ADA, 'Like this'), undefined);
+    else assert.equal(await fx.engine.approvePlan(task.id, ADA), undefined);
+    await fx.waitTask(task.id, (x) => (asks ? x.waitingReason === 'plan_approval' : x.status === 'review') && x.runState === 'idle' && x.pendingMessages.length === 0, 'the run after the approval or answer', 30_000);
+    const run = promptsOf(fx).find((p) => (asks ? /The user replied about the plan/ : /^Implement kanban task/).test(p))!;
+    assert.ok(run, 'the run was prompted');
+    assert.match(run, /Messages left on the task while it was on hold:/);
+    assert.ok(run.includes('Keys arrived on Monday.') && run.includes('Carry on with the new keys.'), run);
+    assert.equal(fx.repo.getComment(said.id)?.pending, false);
+  });
+}
+
+test('the lounge after a restart: a view served first, then the last figure leaves: the floor is told it is empty', () => {
+  const db = new Database(':memory:');
+  migrate(db);
+  const repo = new KanbanRepository(db);
+  const t = repo.createTask({ project: 'web', title: 'A', tool: 'claude', usePlan: false, planApproval: 'auto', useReview: false, createdBy: 'Ada' });
+  repo.updateTask(t.id, { status: 'on_hold', hold: { at: 1, by: 'Ada', from: 'review' } });
+  const sent: KanbanServerMsg[] = [];
+  const lounge = new LoungeSender(repo, (_f, msg) => void sent.push(msg));
+  assert.equal(lounge.view('web').length, 1, 'what the arriving browser is shown');
+  repo.updateTask(t.id, { status: 'review', hold: null });
+  lounge.changed('web');
+  assert.deepEqual(sent, [{ t: 'kanban.lounge', floor: 'web', figures: [] }]);
+});
+
+test('the unhold prompt quotes every comment left while on hold, past fifty', async (t) => {
+  const fx = await engineFixture();
+  t.after(() => fx.close());
+  fx.setRules([IMPLEMENT]);
+  const r = await inReview(fx);
+  assert.equal(await fx.engine.hold!(r.id, ADA, {}), undefined);
+  await fx.waitTask(r.id, (x) => !x.workerId, 'the worker gone');
+  for (let i = 0; i < 60; i++) fx.repo.addComment({ taskId: r.id, authorKind: 'user', authorName: 'Bob', text: `held-${i}.` });
+  fx.setRules([UNHOLD]);
+  assert.equal(await fx.engine.unhold!(r.id, ADA), undefined);
+  await fx.waitTask(r.id, (x) => x.status === 'review' && x.runState === 'idle' && !!x.workerId, 'back in review', 30_000);
+  const prompt = promptsOf(fx).find((p) => /has been on hold since/.test(p))!;
+  for (let i = 0; i < 60; i++) assert.ok(prompt.includes(`held-${i}.`), `held-${i}`);
+});

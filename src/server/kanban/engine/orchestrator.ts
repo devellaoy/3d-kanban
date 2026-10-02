@@ -211,6 +211,7 @@ export class Orchestrator {
       apply: (id, e, via) => this.apply(id, e, via),
       sendHome: (taskId, by, also) => this.sendIdleHome(taskId, by, also, 'hold'),
       drain: (floorId) => this.drain(floorId),
+      queueHeld: (task, since) => this.queueHeld(task, since),
     }, () => this.opts.now());
     this.opts = {
       sweepMs: options.sweepMs ?? 60_000,
@@ -712,6 +713,20 @@ export class Orchestrator {
 
   // --- Starting runs ------------------------------------------------------------------------------
 
+  /** The user's comments since a hold are kept as pending messages (files included), for the run the plan's approval or answer starts (launch). */
+  private queueHeld(task: KanbanTask, since: number) {
+    const comments = this.ctx.repo.userCommentsSince(task.id, since).filter((c) => !task.pendingMessages.some((p) => p.commentId === c.id));
+    if (!comments.length) return;
+    const files = this.ctx.repo.listAttachments(task.id);
+    const queued = comments.map((c) => ({ commentId: c.id, text: [c.text, this.compose.filesText(task.project, task.id, files.filter((a) => a.commentId === c.id))].filter(Boolean).join('\n\n'), by: c.authorName, at: c.createdAt }));
+    for (const c of comments) {
+      this.ctx.repo.setCommentPending(c.id, true);
+      const now = this.ctx.repo.getComment(c.id);
+      if (now) this.ctx.broadcast({ t: 'kanban.comment', comment: now, project: task.project }, task.project);
+    }
+    this.update(task.id, { pendingMessages: [...task.pendingMessages, ...queued] });
+  }
+
   /** The pending comments, taken off the task to be typed in now: one message, and who wrote it. */
   private takePending(task: KanbanTask): { text: string; author: string } | undefined {
     if (!task.pendingMessages.length) return undefined;
@@ -794,6 +809,9 @@ export class Orchestrator {
       const p = this.takePending(task);
       if (p) ({ text, author } = p);
     }
+    // Messages kept through a hold go with the run a plan's approval or answer starts (they are not a turn's end's to deliver).
+    let held: string | undefined;
+    if (!eff.pending && role === 'implementer' && (eff.prompt === 'implement' || eff.prompt === 'replan') && task.pendingMessages.length) held = this.takePending(task)?.text;
     const refsFile = eff.phase === 'plan' ? this.ctx.refs.referencedTasksFile(task.id, [task.title, task.description, text ?? ''].join('\n')) : undefined;
     const x: ComposeExtra = {
       phase: eff.phase,
@@ -805,6 +823,7 @@ export class Orchestrator {
       fixSummary: eff.prompt === 'rereview' ? this.latestSummary(task.id, 'fix') : undefined,
       refsFile,
       fixPrs,
+      held,
     };
     const fresh = { ...(this.ctx.repo.getTask(task.id) ?? task), ...(via.hold ? { hold: via.hold } : {}) };
     const build = (kind: PromptKind) => this.compose.build(kind, def, fresh, tool, floor.dir, x);

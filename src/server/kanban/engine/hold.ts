@@ -25,6 +25,8 @@ export interface Holding {
   /** The task's workers at rest (and `also`) go home with the reason 'hold'. */
   sendHome(taskId: number, by: string, also?: string): Promise<number>;
   drain(floorId: string): Promise<unknown>;
+  /** The user's comments made since `since` wait, with their files, for the next run of the task (a plan's approval or answer). */
+  queueHeld(task: KanbanTask, since: number): void;
 }
 
 /** "15.11.2026", as a person writes the day in Finland. */
@@ -94,6 +96,7 @@ export class Holds {
     // Its message to the agent is the user's comment first: the prompt quotes the comments left since the hold.
     if (text) this.d.addComment(task.project, { taskId: task.id, authorKind: 'user', authorName: who.name, kind: 'message', text });
     if (task.hold?.deskId && task.hold.deskId !== task.deskId) this.d.update(task.id, { deskId: task.hold.deskId });
+    if (task.hold?.reason) this.d.queueHeld(task, task.hold.at);
     const back = task.hold?.reason ? { reason: task.hold.reason, ...(task.hold.text ? { text: task.hold.text } : {}), ...(task.hold.phase ? { phase: task.hold.phase } : {}) } : undefined;
     return this.d.apply(task.id, { type: 'unhold', ...(text ? { text } : {}), ...(back ? { back } : {}) }, { who });
   }
