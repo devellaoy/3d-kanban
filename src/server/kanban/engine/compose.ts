@@ -237,6 +237,20 @@ export class Composer {
         return seal(this.text('kanban.resume', p, { taskId: task.id, author: x.author ?? 'The user', message: x.text ?? '', attachments: v.attachments, language: v.language }));
       case 'continue':
         return seal(this.text('kanban.continue', p, { taskId: task.id, language: v.language }));
+      case 'unhold': {
+        const hold = task.hold;
+        const said = hold ? this.ctx.repo.listComments(task.id, { limit: 50 }).comments.filter((c) => c.authorKind === 'user' && c.createdAt >= hold.at) : [];
+        const note = hold?.note?.trim();
+        return seal(
+          this.text('kanban.unhold', p, {
+            taskId: task.id,
+            heldAt: hold ? new Date(hold.at).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' }) : 'some time ago',
+            holdNote: note ? `, because: ${note}` : '',
+            comments: said.length ? said.map((c) => `- ${c.authorName}: ${c.text}`).join('\n') : 'none',
+            language: v.language,
+          }),
+        );
+      }
       case 'pr.create':
         return seal(
           this.text('kanban.pr.create', p, {

@@ -91,6 +91,7 @@ export function createPullsParts(ctx: KanbanContext, opts: PullsOptions = {}) {
     if (req.taskId !== undefined) {
       const t = ctx.repo.getTask(req.taskId);
       if (!t || t.project !== req.project) return `There's no task #${req.taskId} in this project`;
+      if (t.status === 'on_hold') return `Task #${t.id} is on hold: resume it first`;
     }
     const repos = githubRepos(ctx, req.project);
     const out: ReviewPr[] = [];

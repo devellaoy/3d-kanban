@@ -8,6 +8,7 @@ import type { CarState } from '../garage.js';
 import type { BallState } from '../hoop.js';
 import type { JukeboxState } from '../jukebox.js';
 import type { WhiteboardView } from '../whiteboard.js';
+import type { LoungeFigure } from '../kanban/lounge.js';
 import type { YoutubeTvState } from '../youtube/link.js';
 import type { AgentProvider } from './agents.js';
 import type { GhIssue, GhPull, GhState } from './github.js';
@@ -115,6 +116,8 @@ export interface FloorView {
   jail: JailState;
   /** The YouTube video on the lounge TV, if any (see shared/youtube). */
   youtube: YoutubeTvState | null;
+  /** The kanban's tasks on hold, as figures in the lounge (see shared/kanban/lounge.ts); a floor without the kanban has none. */
+  kanbanLounge?: LoungeFigure[];
 }
 
 export type FloorClientMsg =

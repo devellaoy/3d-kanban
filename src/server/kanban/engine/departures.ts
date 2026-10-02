@@ -8,6 +8,7 @@ import type { DepartureIntent, KanbanRole, KanbanTask, RunPhase } from '../../..
 import type { TaskUpdate } from '../db/repository.js';
 import type { KanbanContext } from '../registry.js';
 import type { MachineEvent } from './machine.js';
+import { columnName } from '../../../shared/kanban/moves.js';
 
 /** What a departure needs to know about a run the engine follows (the orchestrator's Live). */
 export interface DepartingRun {
@@ -88,6 +89,8 @@ export class Departures<L extends DepartingRun> {
         return `${intent.by} sent ${name} home`;
       case 'merged':
         return `${intent.by} sent ${name} home as its pull requests merged`;
+      case 'hold':
+        return `${name} went to sit in the lounge: the task is on hold`;
       default:
         return `${intent.by} sent ${name} home`;
     }
@@ -107,6 +110,8 @@ export class Departures<L extends DepartingRun> {
    */
   private async departed(task: KanbanTask, info: WorkerInfo, own: L | undefined, intent: DepartureIntent) {
     const role = info.kanban?.role ?? own?.role ?? 'implementer';
+    // On hold: the worker only goes home; the task keeps its column and nothing is finished or interrupted by it.
+    if (intent.reason === 'hold') return void this.d.note(task, `${this.departureLine(intent, info.name)}.`);
     const open = task.status !== 'done' && task.status !== 'archived' && task.status !== 'todo';
     const merged = intent.reason === 'merged';
     const done = open && (merged ? this.allMerged(task) : intent.done === true);
@@ -137,7 +142,7 @@ export class Departures<L extends DepartingRun> {
       line += ": it doesn't carry on by itself after the usage limit any more, Retry when it should";
       then = async () => this.d.update(task.id, { retryAt: null });
     }
-    if (merged && open && !done) line += `, but not every pull request of the task has merged, so it stays in ${task.status === 'in_progress' ? 'In progress' : task.status === 'waiting' ? 'Waiting' : 'Review'}`;
+    if (merged && open && !done) line += `, but not every pull request of the task has merged, so it stays in ${columnName(task.status)}`;
     this.d.note(task, `${line}.`.replace(/\.\.$/, '.'));
     await then?.();
   }

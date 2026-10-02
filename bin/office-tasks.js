@@ -120,13 +120,14 @@ const when = (ms) => (typeof ms === 'number' ? new Date(ms).toISOString().slice(
 
 /** A candidate, in a line. */
 function candidateLine(t) {
-  return `#${t.id}  ${t.title}${t.ticket ?? t.ticketId ? ` [${t.ticket ?? t.ticketId}]` : ''} · ${t.status}${t.project ? ` · ${t.project}` : t.repository ? ` · ${t.repository}` : ''}`;
+  return `#${t.id}  ${t.title}${t.ticket ?? t.ticketId ? ` [${t.ticket ?? t.ticketId}]` : ''} · ${t.status === 'on_hold' ? 'On hold' : t.status}${t.project ? ` · ${t.project}` : t.repository ? ` · ${t.repository}` : ''}`;
 }
 
 /** A task bundle (the office's /office/tasks/reference match), as text for an agent to read. */
 export function formatTask(b) {
   const out = [`# Task #${b.id}: ${b.title}`, ''];
-  out.push(`Project: ${b.project?.name ?? b.repository ?? '?'} · status ${b.status}${b.phase ? ` · phase ${b.phase}` : ''}`);
+  out.push(`Project: ${b.project?.name ?? b.repository ?? '?'} · status ${b.status === 'on_hold' ? 'On hold' : b.status}${b.phase ? ` · phase ${b.phase}` : ''}`);
+  if (b.hold) out.push(`On hold since ${when(b.hold.at)}${b.hold.note ? `: ${b.hold.note}` : ''}${b.hold.until ? ` · until ${new Date(b.hold.until).toISOString().slice(0, 10)}` : ''}`);
   if (b.ticket) out.push(`Ticket: ${b.ticket}${b.ticketUrl ? ` ${b.ticketUrl}` : ''}`);
   for (const r of b.repos ?? []) out.push(`Repository ${r.name}${r.remote ? ` (${r.remote})` : ''}${r.branch ? `: branch ${r.branch}` : ''}`);
   if (b.branchName) out.push(`Branch: ${b.branchName}`);

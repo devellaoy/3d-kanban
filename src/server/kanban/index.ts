@@ -35,6 +35,8 @@ import { parseKanbanClientMsg, ridOf, type KanbanClientType, type KanbanServerMs
 import type { ProjectRepo } from '../../shared/kanban/types.js';
 import type { WorkerInfo } from '../../shared/protocol.js';
 import type { KanbanRunAs } from './registry.js';
+import { LoungeSender, loungeFigures } from './lounge.js';
+import type { LoungeFigure } from '../../shared/kanban/lounge.js';
 import { promptTaskWorker, resumeTaskWorker } from './coupling.js';
 
 /** What the office hands the kanban. */
@@ -54,6 +56,8 @@ export interface KanbanOffice {
   /** The loopback hook server's base URL. */
   hookUrl: string;
   toast(floorId: string, text: string, level?: 'info' | 'warn' | 'error'): void;
+  /** A message to everyone on a floor (the lounge figures). */
+  toFloor?(floorId: string, msg: KanbanServerMsg): void;
   /** Why the office can't take another worker now (upstream's Capacity.full: its worker limit), if it can't. */
   capacity?(): string | undefined;
   /** Upstream's sign-in rule (signins as RunAs): task hires run on their owner's own Claude sign-in. */
@@ -88,6 +92,8 @@ export interface Kanban {
   handleHook(req: IncomingMessage, res: ServerResponse, url: URL, who: KanbanHookCaller): Promise<boolean>;
   /** Loopback routes whose auth the plugin decides (/api/tasks/reference, /api/v1/). */
   handleLoopback(req: IncomingMessage, res: ServerResponse, url: URL): Promise<boolean>;
+  /** The lounge figures of a floor: its tasks on hold (FloorView.kanbanLounge). */
+  lounge(floorId: string): LoungeFigure[];
   /** A browser went away: it hears nothing more. */
   clientGone(clientId: string): void;
   /** Floors (or their repositories) may have changed: subscribers hear the projects when they did. */
@@ -130,6 +136,7 @@ export function installKanban(opts: KanbanInstallOptions): Kanban {
   const subscribers = new Map<string, Subscriber>();
   /** The project of each task a card went out for, to say where a deleted one was. */
   const taskProjects = new Map<number, string>();
+  const lounge = new LoungeSender(repo, opts.toFloor);
 
   const broadcast = (msg: KanbanServerMsg, project: string | null) => {
     // An archived card leaves the board of anyone not looking at the archive.
@@ -205,12 +212,14 @@ export function installKanban(opts: KanbanInstallOptions): Kanban {
       if (card) {
         taskProjects.set(taskId, card.project);
         broadcast({ t: 'kanban.task', task: card }, card.project);
+        lounge.changed(card.project);
         // Its workers in the 3D office show the card too (WorkerInfo.kanban).
         return (ctx.engine as Partial<KanbanEngine> | undefined)?.cardChanged?.(taskId);
       }
       const was = taskProjects.get(taskId);
       taskProjects.delete(taskId);
       broadcast({ t: 'kanban.task.removed', id: taskId, project: was ?? '' }, was ?? null);
+      if (was) lounge.changed(was);
     },
     attachmentFile: (id: string) => {
       const a = repo.getAttachment(id);
@@ -308,6 +317,7 @@ export function installKanban(opts: KanbanInstallOptions): Kanban {
     handleHttp: (req, res, url, who) => route(httpRoutes, url.pathname, [req, res, url, who]),
     handleHook: (req, res, url, who) => route(hookRoutes, url.pathname, [req, res, url, who]),
     handleLoopback: (req, res, url) => route(loopbackRoutes, url.pathname, [req, res, url]),
+    lounge: (floorId) => loungeFigures(repo, floorId),
     clientGone(clientId) {
       subscribers.delete(clientId);
     },

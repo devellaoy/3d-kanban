@@ -700,6 +700,7 @@ export class KanbanRepository {
       createdByAccount: opt(r.created_by_account),
       queuedRun: json<KanbanTask['queuedRun']>(r.queued_run, undefined),
       handoffFingerprint: opt(r.handoff_fingerprint),
+      hold: json<KanbanTask['hold']>(r.hold, undefined),
       askingKind: r.waiting_reason === 'agent_asking' ? this.askingKinds.get(id) : undefined,
     };
     for (const k of Object.keys(t) as (keyof KanbanTask)[]) if (t[k] === undefined) delete t[k];
@@ -825,6 +826,7 @@ export function toCard(t: KanbanTask, commentCount: number, review?: CardReview)
     waitingReason: t.waitingReason,
     waitingText: t.waitingText,
     askingKind: t.askingKind,
+    hold: t.hold,
     retryAt: t.retryAt,
     prs: t.prs.map((p) => clean({ repoId: p.repoId, repo: p.repo, number: p.number, url: p.url, state: p.state })),
     tags: t.tags,

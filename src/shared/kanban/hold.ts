@@ -33,6 +33,10 @@ declare module './types.js' {
   interface KanbanTaskCard {
     hold?: TaskHold;
   }
+  /** What an agent reading the task (office-tasks, the references) is told of its hold. */
+  interface TaskRefBundle {
+    hold?: { at: number; note?: string; until?: number };
+  }
 }
 
 /** The longest reason a hold (or a message sent along with a resume) may give. */

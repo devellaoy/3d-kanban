@@ -64,6 +64,13 @@ export interface KanbanEngineApi {
    * `released`). (Optional only so stand-ins in tests needn't have it.)
    */
   releaseIdle?(taskId: number, who: KanbanCaller): Promise<void>;
+  /**
+   * A task in Waiting or Review is put on hold: its workers go home (reason `hold`, worktree kept), nothing
+   * runs for it. `who` must be its creator or an admin. Resolves to why not. (Optional only so stand-ins in tests needn't have it.)
+   */
+  hold?(taskId: number, who: KanbanCaller, opts?: { note?: string; until?: number }): Promise<string | void>;
+  /** A task on hold is taken off it: its implementer is hired again and carries on, with `note` as the user's message. */
+  unhold?(taskId: number, who: KanbanCaller, note?: string): Promise<string | void>;
   /** A user comment was stored: resume the task's work with it when its state allows. */
   commented(taskId: number, commentId: number, who: KanbanCaller): Promise<void>;
   /**
