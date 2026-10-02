@@ -5,16 +5,22 @@ import type { Ctx } from '../core/context';
 import type { Parts } from '../core/parts';
 import { promptTaskWorker } from '../kanban/office3d';
 import { isTyping } from '../player';
+import { saveSettings } from '../state';
 import { findWorker } from '../state/workers';
 import { openPrompt } from '../ui/prompt';
-import { openPhone, type OpenPhone } from './ui';
+import { openPhone, type OpenPhone, type PhoneTab } from './ui';
+import { installPhoneMusic } from './music';
+import { installMusicChip } from './music-chip';
+import type { MusicTabDeps } from './music-ui';
 import { phoneWatch } from './watch';
 
-export type PhoneParts = Pick<Parts, 'waiting'>;
+export type PhoneParts = Pick<Parts, 'waiting' | 'settings' | 'youtube'>;
 
 export function installPhone(ctx: Ctx, parts: PhoneParts) {
   const { net } = ctx;
   const watch = phoneWatch(net);
+  /** The phone's music: its player, and starting, controlling and leaving a session (for the Music tab). */
+  const music = installPhoneMusic(ctx, parts);
   let phone: OpenPhone | null = null;
 
   const openWorker = (id: string) => parts.waiting.openWorkerTerminal(id);
@@ -33,12 +39,34 @@ export function installPhone(ctx: Ctx, parts: PhoneParts) {
     });
   }
 
-  function open() {
+  const musicTab: MusicTabDeps = {
+    net,
+    music,
+    settings: () => parts.settings,
+    setVolume(level) {
+      const s = parts.settings;
+      s.music = Math.max(0, Math.min(1, level));
+      saveSettings(s);
+      ctx.sound.setMusicVolume(s.music, s.musicMuted);
+    },
+    tvControls: () => parts.youtube.controlsSource(),
+    openTv() {
+      close();
+      parts.youtube.watch();
+    },
+  };
+
+  function open(tab?: PhoneTab) {
     if (phone) return;
-    phone = openPhone({ watch, openWorker, promptWorker }, () => (phone = null));
+    phone = openPhone({ watch, openWorker, promptWorker, music: musicTab }, () => {
+      phone = null;
+      chip.render();
+    }, tab);
+    chip.render();
   }
   const close = () => phone?.modal.close();
   const isOpen = () => !!phone;
+  const chip = installMusicChip({ music, phoneOpen: isOpen, openMusic: () => open('music') });
 
   ctx.keys.bind({ code: 'KeyY', repeat: false, run: () => open() });
 
@@ -64,5 +92,5 @@ export function installPhone(ctx: Ctx, parts: PhoneParts) {
     true,
   );
 
-  return { open, close, toggle: () => (phone ? close() : open()), isOpen };
+  return { open, close, toggle: () => (phone ? close() : open()), isOpen, music };
 }

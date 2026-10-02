@@ -3,7 +3,7 @@
 // view), and a tap on one opens its window over the phone, which is still there when that closes. Another
 // floor's workers come over phone.watch (phone/watch.ts), so nobody has to walk there.
 //
-// One tab, Floors, for now; the tab bar at the bottom is where the next one goes (TABS).
+// The tab bar at the bottom has its apps (TABS): 🏢 Floors, and 🎵 Music (phone/music-ui.ts).
 import './phone.css';
 import { floorPalette } from '../../shared/floors';
 import type { FloorInfo, ProjectInfo, WorkerInfo } from '../../shared/protocol';
@@ -12,6 +12,7 @@ import { byUrgency, waitingInOrder, waitingLabel } from '../nextup';
 import { store } from '../state';
 import { h, openModal, toast, type Modal } from '../ui/dom';
 import { workerCard } from '../shared/workercard';
+import { openMusicTab, type MusicTab, type MusicTabDeps } from './music-ui';
 import { refocusIndex } from './refocus';
 import type { PhoneWatch } from './watch';
 
@@ -21,12 +22,22 @@ export interface PhoneDeps {
   openWorker(id: string): void;
   /** ✍️ on a worker's card. */
   promptWorker(id: string): void;
+  /** What the 🎵 Music tab needs. */
+  music: MusicTabDeps;
 }
 
 /** The phone's apps, along its bottom edge. A new one (music…) is a row here and a view of its own. */
-const TABS = [{ id: 'floors', icon: '🏢', label: 'Floors' }] as const;
+const TABS = [
+  { id: 'floors', icon: '🏢', label: 'Floors' },
+  { id: 'music', icon: '🎵', label: 'Music' },
+] as const;
 
-type View = { kind: 'floors' } | { kind: 'processes'; floor: string };
+export type PhoneTab = (typeof TABS)[number]['id'];
+
+type View = { kind: 'floors' } | { kind: 'processes'; floor: string } | { kind: 'music' };
+
+/** The tab a view belongs to. */
+const tabOf = (v: View): PhoneTab => (v.kind === 'music' ? 'music' : 'floors');
 
 export interface OpenPhone {
   modal: Modal;
@@ -46,8 +57,10 @@ const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? o
 /** "14:05", the phone's clock. */
 const clock = () => new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 
-export function openPhone(deps: PhoneDeps, onClosed: () => void): OpenPhone {
+export function openPhone(deps: PhoneDeps, onClosed: () => void, start: PhoneTab = 'floors'): OpenPhone {
   let view: View = { kind: 'floors' };
+  /** The Music tab while it's shown: it keeps the video on the screen, so it's made on the way in and closed on the way out. */
+  let musicTab: MusicTab | null = null;
 
   const time = h('span.phone-time', {}, clock());
   const status = h('div.phone-status', { 'aria-hidden': 'true' }, time, h('span.phone-notch'), h('span.phone-signal', {}, '📶 🔋'));
@@ -56,11 +69,10 @@ export function openPhone(deps: PhoneDeps, onClosed: () => void): OpenPhone {
   const header = h('header', {}, backBtn, title);
   const sub = h('div.phone-sub');
   const body = h('div.phone-body');
-  const tabs = h(
-    'nav.phone-tabs',
-    { 'aria-label': 'Phone apps' },
-    ...TABS.map((t) => h('button.phone-tab', { type: 'button', class: 'on', 'aria-current': 'page', onclick: () => go({ kind: 'floors' }) }, h('span.phone-tab-icon', {}, t.icon), h('span', {}, t.label))),
+  const tabBtns = TABS.map((t) =>
+    h('button.phone-tab', { type: 'button', 'data-tab': t.id, onclick: () => go(t.id === 'music' ? { kind: 'music' } : { kind: 'floors' }) }, h('span.phone-tab-icon', {}, t.icon), h('span', {}, t.label)),
   );
+  const tabs = h('nav.phone-tabs', { 'aria-label': 'Phone apps' }, ...tabBtns);
   const el = h('div.modal.phone', { role: 'dialog', 'aria-label': 'Phone' }, status, header, sub, body, tabs);
 
   // ---- The floors ---------------------------------------------------------------------------------
@@ -130,12 +142,22 @@ export function openPhone(deps: PhoneDeps, onClosed: () => void): OpenPhone {
     );
   }
 
+  // ---- Music ----------------------------------------------------------------------------------------
+  function renderMusic() {
+    title.textContent = 'Music';
+    backBtn.hidden = true;
+    sub.textContent = '';
+    musicTab ??= openMusicTab(deps.music);
+    if (body.firstChild !== musicTab.el) body.replaceChildren(musicTab.el);
+  }
+
   // ---- What's on the screen -----------------------------------------------------------------------
   function render() {
     // Re-rendering keeps your place in the list and which row has the focus.
     const scroll = body.scrollTop;
     const active = body.contains(document.activeElement) ? (document.activeElement as HTMLElement) : null;
     const at = active ? [...focusables()].indexOf(active) : -1;
+    if (view.kind === 'music') return renderMusic();
     if (view.kind === 'floors') renderFloors();
     else renderProcesses(view.floor);
     body.scrollTop = scroll;
@@ -176,6 +198,16 @@ export function openPhone(deps: PhoneDeps, onClosed: () => void): OpenPhone {
 
   function go(next: View) {
     view = next;
+    if (view.kind !== 'music') {
+      musicTab?.close();
+      musicTab = null;
+    }
+    for (const b of tabBtns) {
+      const on = b.dataset.tab === tabOf(view);
+      b.classList.toggle('on', on);
+      if (on) b.setAttribute('aria-current', 'page');
+      else b.removeAttribute('aria-current');
+    }
     deps.watch.list(view.kind === 'processes' ? view.floor : null);
     body.scrollTop = 0;
     render();
@@ -213,10 +245,12 @@ export function openPhone(deps: PhoneDeps, onClosed: () => void): OpenPhone {
       document.removeEventListener('pointerup', lift);
       document.removeEventListener('pointercancel', lift);
       deps.watch.list(null);
+      musicTab?.close();
+      musicTab = null;
       onClosed();
     },
   });
-  go({ kind: 'floors' });
+  go(start === 'music' ? { kind: 'music' } : { kind: 'floors' });
 
   return {
     modal,
@@ -229,7 +263,7 @@ export function openPhone(deps: PhoneDeps, onClosed: () => void): OpenPhone {
       next.scrollIntoView({ block: 'nearest' });
     },
     back() {
-      if (view.kind === 'floors') return false;
+      if (view.kind !== 'processes') return false;
       go({ kind: 'floors' });
       return true;
     },

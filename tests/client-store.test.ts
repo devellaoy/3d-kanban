@@ -225,7 +225,7 @@ test('what the browser remembers keeps its keys and shapes', () => {
 
 test("the store's keys are its state, as window.__office shows them", () => {
   // As the office had them before its store was split into slices: methods and the slices aren't among them.
-  assert.deepEqual(Object.keys(store).sort(), ['accounts', 'ball', 'cabinet', 'cabinetFrame', 'cars', 'carsAt', 'chat', 'clock', 'codexLimits', 'decor', 'dog', 'dogStart', 'drawing', 'floor', 'floorPlan', 'floors', 'ice', 'invites', 'issues', 'jail', 'jukebox', 'leaveOnMerge', 'limits', 'machine', 'map', 'me', 'meeting', 'mp', 'mpEnded', 'mpFloors', 'notify', 'peers', 'profile', 'project', 'projectsDir', 'prompts', 'pulls', 'queue', 'repos', 'screens', 'services', 'signins', 'sky', 'subs', 'team', 'theme', 'upgrade', 'usage', 'whiteboard', 'workers', 'you', 'youtube' /* 3d-kanban */, 'youtubeList' /* 3d-kanban */, 'kanbanLounge' /* 3d-kanban */, 'phoneFloor' /* 3d-kanban */].sort());
+  assert.deepEqual(Object.keys(store).sort(), ['accounts', 'ball', 'cabinet', 'cabinetFrame', 'cars', 'carsAt', 'chat', 'clock', 'codexLimits', 'decor', 'dog', 'dogStart', 'drawing', 'floor', 'floorPlan', 'floors', 'ice', 'invites', 'issues', 'jail', 'jukebox', 'leaveOnMerge', 'limits', 'machine', 'map', 'me', 'meeting', 'mp', 'mpEnded', 'mpFloors', 'notify', 'peers', 'profile', 'project', 'projectsDir', 'prompts', 'pulls', 'queue', 'repos', 'screens', 'services', 'signins', 'sky', 'subs', 'team', 'theme', 'upgrade', 'usage', 'whiteboard', 'workers', 'you', 'youtube' /* 3d-kanban */, 'youtubeList' /* 3d-kanban */, 'kanbanLounge' /* 3d-kanban */, 'phoneFloor' /* 3d-kanban */, 'phoneMusic' /* 3d-kanban */].sort());
 });
 
 test('a new store starts every field where it always has', async () => {
@@ -256,6 +256,7 @@ test('a new store starts every field where it always has', async () => {
       mp: { status: 'off', url: '', configured: false, offline: false, passwordSet: false, players: [], floors: [] }, mpFloors: {}, mpEnded: null, // 3d-kanban: multiplayer (slices/multiplayer.ts)
       kanbanLounge: [], // 3d-kanban: the tasks on hold in the lounge (kanban/loungeslice.ts)
       phoneFloor: null, // 3d-kanban: another floor's workers, for the phone (phone/slice.ts)
+      phoneMusic: null, // 3d-kanban: the phone's music session (phone/music-slice.ts)
     },
   );
 });
@@ -267,7 +268,7 @@ test('every slice in state/slices is registered, once', async () => {
   const dir = path.join(import.meta.dirname, '../src/client/state/slices');
   const slices = [...Object.values(core)];
   // 3d-kanban: the fork's slice, outside state/slices (docs/fork.md).
-  slices.push((await import('../src/client/youtube/slice.js')).youtube, (await import('../src/client/codex-limits/slice.js')).codexLimits, (await import('../src/client/kanban/loungeslice.js')).kanbanLounge, (await import('../src/client/phone/slice.js')).phone);
+  slices.push((await import('../src/client/youtube/slice.js')).youtube, (await import('../src/client/codex-limits/slice.js')).codexLimits, (await import('../src/client/kanban/loungeslice.js')).kanbanLounge, (await import('../src/client/phone/slice.js')).phone, (await import('../src/client/phone/music-slice.js')).phoneMusic);
   for (const f of readdirSync(dir).filter((f) => f.endsWith('.ts') && f !== 'index.ts')) {
     const exported = Object.values(await import(pathToFileURL(path.join(dir, f)).href));
     assert.ok(exported.length, `${f} exports its slice`);
@@ -314,4 +315,42 @@ test('phone: another floor\'s workers are held apart and found by findWorker', a
   store.apply(msg({ t: 'phone.workerRemove', floor: 'f2', workerId: 'f2-w1' }));
   assert.equal(findWorker('f2-w1'), undefined);
   store.phoneFloor = null;
+});
+
+test("phone music: the session's play is timed on this page's clock, and re-timed when the clock is compared again", () => {
+  const sess = (state: unknown) => msg({ t: 'phone.music', music: { session: 's1', by: 'Ann', listeners: [{ id: 'p1', name: 'Ann' }], state, list: { queue: [], back: false, sameVolume: false } } } as never);
+  const play = { id: 'a', videoId: 'aaaaaaaaaaa', title: 'T', by: 'Ann', position: 5, at: 1000, elapsed: 2000, paused: false, rate: 1 };
+  store.phoneMusic = null;
+  const topics: string[] = [];
+  const off = store.on('phoneMusic', () => topics.push('phoneMusic'));
+  store.clock = undefined;
+  const before = performance.now();
+  store.apply(sess(play));
+  assert.equal(store.phoneMusic?.session, 's1');
+  assert.ok(store.phoneMusic?.on && Math.abs(store.phoneMusic.on.since - (before - 2000)) < 50, 'no clock yet: from `elapsed`');
+  assert.equal(store.phoneMusic?.on?.position, 5);
+  const was = store.phoneMusic!.on!.since;
+  store.apply(msg({ t: 'pong', at: performance.now(), now: 5_000_000 } as never));
+  assert.ok(store.clock, 'the pong gave the clock');
+  assert.equal(store.phoneMusic!.on!.since, 1000 - store.clock!.offset, 'timed from the office clock once known');
+  assert.notEqual(store.phoneMusic!.on!.since, was);
+  assert.ok(topics.length >= 2, 'the topic fires on the message and on a big re-timing');
+  store.apply(sess(null));
+  assert.equal(store.phoneMusic?.on, null, 'between plays: a session with nothing on');
+  store.apply(msg({ t: 'phone.music', music: null } as never));
+  assert.equal(store.phoneMusic, null);
+  store.clock = undefined;
+  off();
+});
+
+test('phone music: a new connection (welcome) has no session, so the topic fires and the player and ducking let go', () => {
+  store.phoneMusic = null;
+  store.apply(msg({ t: 'phone.music', music: { session: 's1', by: 'Ann', listeners: [{ id: 'p1', name: 'Ann' }], state: null, list: { queue: [], back: false, sameVolume: false } } } as never));
+  assert.ok(store.phoneMusic);
+  const topics: string[] = [];
+  const off = store.on('phoneMusic', () => topics.push('phoneMusic'));
+  store.apply(welcome());
+  assert.equal(store.phoneMusic, null);
+  assert.ok(topics.includes('phoneMusic'));
+  off();
 });

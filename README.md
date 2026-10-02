@@ -151,7 +151,9 @@ curl -fsSL https://raw.githubusercontent.com/devellaoy/3d-kanban/main/deploy/pro
   a floor-wide **Same volume across the floor** setting. A screen share still has the TV first ([features](docs/features.md#youtube-on-the-office-tv)).
 - **📲 Phone**: **Y** (or ☰ → 📲 Phone) brings up a phone with every floor on it, how many work there
   and how many wait on you; tap a floor for its processes, the waiting ones first, and one of them for
-  its window, on any floor without walking there ([features](docs/features.md)).
+  its window, on any floor without walking there. Its **🎵 Music** plays a YouTube link or playlist for
+  you alone (no distance, your own volume), on your floor's TV, or to someone on any floor, both of you
+  in step, with the TV's controls and queue ([features](docs/features.md)).
 - **An installable app (PWA)**: install the office from the browser; it opens on the kanban, with
   shortcuts to the 3D office and the 2D view, shows *The office is offline. Reconnecting…* while it can't
   reach the office, and offers **Reload** when a new version is out. HTTPS is needed except on

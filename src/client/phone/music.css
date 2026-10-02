@@ -1,0 +1,54 @@
+/* The phone's music player: YouTube's iframe in a 16:9 box that is never display:none (YouTube stops a player
+   that can't be seen). Parked far off-screen at 400×225 while the phone isn't showing it, and laid over the
+   phone's video slot (placed by player.ts) while it is: over the phone's backdrop (.backdrop is z-index 50). */
+.phone-music-box { position: fixed; left: -10000px; top: 0; width: 400px; height: 225px; background: black; overflow: hidden; pointer-events: none; z-index: 51; }
+.phone-music-box iframe { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; pointer-events: none; }
+
+/* The 🎵 Music tab (phone/music-ui.ts). */
+.phm { display: flex; flex-direction: column; gap: 14px; }
+.phm [hidden] { display: none; }
+.phm-form { display: flex; flex-direction: column; gap: 8px; }
+.seg.phm-seg { flex-wrap: nowrap; gap: 4px; padding: 3px; border: var(--bw-sm) solid var(--ink); border-radius: var(--radius); background: var(--paper-2); }
+.phm-seg .btn.phm-target { flex: 1 1 0; min-width: 0; justify-content: center; padding: 6px 2px; font-size: var(--fs-xs); white-space: nowrap; border-color: transparent; box-shadow: none; background: none; }
+.phm-seg .btn.phm-target.sel { background: var(--paper); border-color: var(--ink); box-shadow: var(--shadow-xs); }
+.phm-seg .btn.phm-target:disabled { opacity: .45; cursor: default; }
+.setting-note.phm-note { margin: 0; }
+.phm-who { width: 100%; padding: 8px 10px; border: var(--bw) solid var(--ink); border-radius: var(--radius-sm); background: var(--field); color: var(--text); font: inherit; font-size: var(--fs-md); font-weight: var(--fw-bold); }
+.modal.phone .phm-addrow input[type=text] { font-size: var(--fs-md); padding: 8px 10px; }
+.phm-btns { display: flex; gap: 8px; }
+.phm-btns .btn { flex: 1; justify-content: center; }
+
+.phm-now, .phm-tv { display: flex; flex-direction: column; gap: 8px; padding-top: 12px; border-top: var(--bw-sm) solid var(--rule-soft); }
+.phm-head { margin: 0; font-size: var(--fs-md); font-weight: var(--fw-heavy); }
+/* The player is laid over this (player.ts): keep it 16:9. */
+.phm-slot { width: 100%; aspect-ratio: 16 / 9; border-radius: var(--radius-sm); background: var(--code-bg); }
+.phm-line { display: flex; align-items: center; gap: 8px; }
+.phm-line .svc-main { flex: 1; min-width: 0; }
+.phm-line .svc-meta { white-space: normal; }
+.phm .ytv-controls { margin: 0; }
+.phm .ytv-transport { flex-wrap: nowrap; gap: 3px; }
+.phm .ytv-transport .btn, .phm .ytv-transport .ytv-play { flex: 1 1 0; min-width: 0; padding: 6px 0; font-size: var(--fs-2xs); white-space: nowrap; }
+.phm-volrow .ytv-time { min-width: 44px; text-align: right; }
+.phm-stop { align-self: flex-start; }
+.phm .ytv-next { margin-top: 4px; }
+.phm .ytv-add { display: none; }
+.phm .ytv-queue { max-height: 200px; }
+.phm .ytv-queue li { flex-wrap: wrap; gap: 6px; }
+.phm .ytv-queue .svc-main { flex-basis: calc(100% - 32px); }
+.phm .ytv-acts { margin-left: 28px; }
+.phm .btn.small { padding: 3px 8px; font-size: var(--fs-xs); border-width: var(--bw-sm); border-radius: 9px; }
+.phm .btn.small[hidden] { display: none; }
+.phone-empty.phm-idle { margin: 16px 12px; }
+
+/* The chip in the HUD while your phone plays and is put away (phone/music-chip.ts). */
+.phm-chip { position: absolute; right: 12px; bottom: 12px; display: flex; align-items: center; gap: 6px; max-width: min(340px, calc(100vw - 24px)); padding: 5px 6px 5px 4px; }
+.phm-chip[hidden] { display: none; }
+.phm-chip-open { flex: 1; min-width: 0; display: flex; align-items: center; gap: 6px; padding: 4px 6px; border: 0; border-radius: var(--radius-sm); background: none; color: var(--text); font: inherit; font-size: var(--fs-sm); font-weight: var(--fw-heavy); cursor: pointer; text-align: left; }
+.phm-chip-open:hover { background: var(--field-hover); }
+.phm-chip-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.phm-chip-btn { flex: none; width: 34px; height: 34px; padding: 0; justify-content: center; }
+/* The workers' panel down the right side ends above it. */
+#hud:has(.phm-chip:not([hidden])) .side { max-height: calc(100vh - 140px); }
+@media (max-width: 800px) {
+  .phm-chip { bottom: 58px; }
+}
