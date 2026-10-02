@@ -113,7 +113,7 @@ export interface SortableOptions {
 export function makeSortable(container: HTMLElement, opts: SortableOptions): { dragging(): boolean } {
   container.classList.add('floor-sortable');
   let press: { x: number; y: number; id: number; key: string; group: boolean; touch: boolean; hold?: ReturnType<typeof setTimeout> } | null = null;
-  let drag: { key: string; group: boolean; line: HTMLElement; move: FloorMove | null } | null = null;
+  let drag: { key: string; group: boolean; pointer: number; line: HTMLElement; move: FloorMove | null } | null = null;
 
   /** The row (or group) with that id (or key) as the list is now. */
   const find = (key: string, group: boolean) => container.querySelector<HTMLElement>(group ? `.floor-group[data-group="${CSS.escape(key)}"]` : `[data-floor="${CSS.escape(key)}"]`);
@@ -159,7 +159,7 @@ export function makeSortable(container: HTMLElement, opts: SortableOptions): { d
     if (!find(key, group)) return opts.onDragEnd?.();
     const line = h('div.drop-line', { 'aria-hidden': 'true' });
     container.append(line);
-    drag = { key, group, line, move: null };
+    drag = { key, group, pointer: pointerId, line, move: null };
     container.classList.add('sorting');
     try {
       container.setPointerCapture(pointerId);
@@ -229,9 +229,11 @@ export function makeSortable(container: HTMLElement, opts: SortableOptions): { d
     if (!(e.buttons & 1)) return drop();
     if (far >= DRAG_PX) begin(e.pointerId, e.clientY);
   });
-  container.addEventListener('pointerup', () => drag && end(true));
-  container.addEventListener('pointercancel', () => end(false));
-  container.addEventListener('lostpointercapture', () => end(false));
+  container.addEventListener('pointerup', (e) => drag?.pointer === e.pointerId && end(true));
+  container.addEventListener('pointercancel', (e) => drag?.pointer === e.pointerId && end(false));
+  // Only the list losing the drag's own pointer ends it: taking the capture over from the row the finger
+  // went down on (its implicit capture) fires a lostpointercapture at that row, which bubbles up here.
+  container.addEventListener('lostpointercapture', (e) => e.target === container && drag?.pointer === e.pointerId && end(false));
   // While a finger carries a row the list doesn't scroll under it, and a long press opens no menu.
   container.addEventListener('touchmove', (e) => drag && e.cancelable && e.preventDefault(), { passive: false });
   container.addEventListener('contextmenu', (e) => (press?.touch || drag) && e.preventDefault());
