@@ -1,6 +1,6 @@
 import { execFile } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
-import { closeSync, cpSync, existsSync, mkdirSync, openSync, readFileSync, readSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { closeSync, existsSync, mkdirSync, openSync, readFileSync, readSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { promisify } from 'node:util';
 import { MEETING_SEATS } from '../shared/layout.js';
@@ -10,6 +10,7 @@ import { validateWorkerEffort, validateWorkerModel } from './agents.js';
 import { providerMeta, takesEffort, takesModel } from '../shared/providers.js';
 import { gitError, type WorktreeRef, type WorktreeState } from './worktrees.js';
 import { PROMPTS, fillPrompt, type PromptId, type PromptVars } from '../shared/prompts.js';
+import { copyTree } from './kanban/copytree.js';
 
 const execFileP = promisify(execFile);
 
@@ -678,11 +679,10 @@ export class MeetingRoom {
   /** Copies the meeting's notes and output next to the floor's other state, where they outlive its worktree. */
   private keepNotes(m: Meeting) {
     try {
-      const to = path.join(this.dataDir, 'meetings', m.id);
-      const from = path.join(this.cwd(m), m.notes);
-      if (path.resolve(from) !== path.resolve(to) && existsSync(from)) cpSync(from, to, { recursive: true });
+      const to = path.join(this.dataDir, 'meetings', m.id), from = path.join(this.cwd(m), m.notes);
+      if (path.resolve(from) !== path.resolve(to) && existsSync(from)) copyTree(from, to);
       const out = path.join(this.cwd(m), m.output);
-      if (existsSync(out)) cpSync(out, path.join(to, `output-${path.basename(m.output)}`));
+      if (existsSync(out)) copyTree(out, path.join(to, `output-${path.basename(m.output)}`));
     } catch {
       // the notes are a courtesy; the meeting is over either way
     }
