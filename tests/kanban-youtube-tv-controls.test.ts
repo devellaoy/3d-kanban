@@ -1,0 +1,296 @@
+// 3d-kanban: the Office TV's playback controls and queue (server/youtube/tv.ts, queue.ts, saved.ts):
+// pause, seek, speed, skip, the queue and history, and what survives a restart.
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import path from 'node:path';
+import { YoutubeTv } from '../src/server/youtube/tv.js';
+import { QUEUE_MAX } from '../src/shared/youtube/queue.js';
+import { RATES, tvPosition } from '../src/shared/youtube/link.js';
+
+const V = (n: number) => `https://www.youtube.com/watch?v=video${String(n).padStart(6, '0')}`;
+const vid = (n: number) => `video${String(n).padStart(6, '0')}`;
+
+/** A TV on a clock the test moves, in a folder of its own. */
+function setup() {
+  const dir = mkdtempSync(path.join(tmpdir(), 'youtube-tv-ctl-'));
+  const clock = { now: 1_000_000 };
+  let n = 0;
+  const open = () => new YoutubeTv(dir, () => clock.now, () => `id-${++n}`);
+  return { dir, clock, tv: open(), open, done: () => rmSync(dir, { recursive: true, force: true }) };
+}
+
+function on(tv: YoutubeTv, url: string, by = 'Ada') {
+  const r = tv.play(url, by);
+  assert.ok('state' in r);
+  return r.state;
+}
+
+test('tvPosition is pure: held when paused, carried on at its speed otherwise, never below 0', () => {
+  const s = { position: 10, at: 1000, rate: 2, paused: false };
+  assert.equal(tvPosition(s, 1000), 10);
+  assert.equal(tvPosition(s, 4000), 16);
+  assert.equal(tvPosition({ ...s, rate: 0.5 }, 5000), 12);
+  assert.equal(tvPosition({ ...s, paused: true }, 99_000), 10);
+  assert.equal(tvPosition(s, 0), 8);
+  assert.equal(tvPosition({ ...s, position: 1 }, -10_000), 0);
+});
+
+test('pause freezes where it is, elapsed does not move it, and resume goes on from there', () => {
+  const { tv, clock, done } = setup();
+  try {
+    const s = on(tv, V(1));
+    clock.now += 7000;
+    assert.equal(tv.pause(s.id, true, 'Bo'), true);
+    let p = tv.state()!;
+    assert.deepEqual([p.paused, p.position, p.at, p.pausedBy], [true, 7, clock.now, 'Bo']);
+    assert.equal(tv.pause(s.id, true, 'Cy'), false, 'already paused');
+    clock.now += 60_000;
+    p = tv.state()!;
+    assert.equal(p.elapsed, 60_000);
+    assert.equal(tvPosition(p, clock.now), 7, 'still where it was');
+    assert.equal(tv.pause(s.id, false, 'Bo'), true);
+    p = tv.state()!;
+    assert.deepEqual([p.paused, p.position, p.pausedBy], [false, 7, undefined]);
+    clock.now += 3000;
+    assert.equal(tvPosition(tv.state()!, clock.now), 10);
+  } finally {
+    done();
+  }
+});
+
+test('seek to or by, kept within the start and (once known) the length', () => {
+  const { tv, clock, done } = setup();
+  try {
+    const s = on(tv, V(1));
+    clock.now += 10_000;
+    assert.equal(tv.seek(s.id, 100, undefined), true);
+    assert.deepEqual([tv.state()!.position, tv.state()!.at], [100, clock.now]);
+    clock.now += 5000;
+    assert.equal(tv.seek(s.id, undefined, -30), true);
+    assert.equal(tv.state()!.position, 75, 'by is from where it is now: 105 - 30');
+    assert.equal(tv.seek(s.id, -5, undefined), true);
+    assert.equal(tv.state()!.position, 0);
+    assert.equal(tv.seek(s.id, 'x', undefined), false);
+    assert.equal(tv.seek(s.id, undefined, undefined), false);
+    assert.equal(tv.info(s.id, 200, undefined), true);
+    tv.seek(s.id, 999, undefined);
+    assert.equal(tv.state()!.position, 200);
+    tv.pause(s.id, true, 'Bo');
+    tv.seek(s.id, undefined, -50);
+    assert.deepEqual([tv.state()!.position, tv.state()!.paused], [150, true], 'a seek while paused stays paused');
+  } finally {
+    done();
+  }
+});
+
+test('a speed change freezes first, only the known speeds are taken', () => {
+  const { tv, clock, done } = setup();
+  try {
+    const s = on(tv, V(1));
+    clock.now += 4000;
+    assert.equal(tv.rate(s.id, 2), true);
+    assert.deepEqual([tv.state()!.position, tv.state()!.at, tv.state()!.rate], [4, clock.now, 2]);
+    clock.now += 4000;
+    assert.equal(tvPosition(tv.state()!, clock.now), 12);
+    for (const bad of [3, 0, 1.1, '1', null, NaN]) assert.equal(tv.rate(s.id, bad), false, String(bad));
+    assert.equal(tv.rate(s.id, 2), false, 'no change');
+    for (const r of RATES) assert.equal(tv.rate(s.id, r) || r === 2, true);
+  } finally {
+    done();
+  }
+});
+
+test("a control for an older play is ignored, and a play's info is taken once", () => {
+  const { tv, done } = setup();
+  try {
+    const first = on(tv, V(1));
+    const second = on(tv, V(2));
+    assert.equal(tv.pause(first.id, true, 'Bo'), false);
+    assert.equal(tv.seek(first.id, 5, undefined), false);
+    assert.equal(tv.rate(first.id, 2), false);
+    assert.equal(tv.skip(first.id, 1), null);
+    assert.equal(tv.info(first.id, 100, undefined), false);
+    assert.equal(tv.jump('nope'), false);
+    assert.equal(tv.state()!.paused, false);
+    assert.equal(tv.info(second.id, 100, 7), true);
+    assert.equal(tv.info(second.id, 5, 9), false, 'the first to say counts');
+    assert.equal(tv.state()!.duration, 100);
+    assert.equal(tv.state()!.listLength, undefined, 'a video has no list');
+  } finally {
+    done();
+  }
+});
+
+test('the queue: add to the end or the front, an empty TV starts at once, move, remove, jump, clear, and a cap', () => {
+  const { tv, done } = setup();
+  try {
+    const started = tv.play(V(1), 'Ada', 'end');
+    assert.ok('state' in started && !started.queued, 'nothing on: it plays');
+    const q = (url: string, where: 'end' | 'next') => {
+      const r = tv.play(url, 'Bo', where);
+      assert.ok('queued' in r && r.queued);
+      return r.queued;
+    };
+    const b = q(V(2), 'end');
+    const c = q(V(3), 'end');
+    const d = q(V(4), 'next');
+    const ids = () => tv.list().queue.map((i) => i.videoId);
+    assert.deepEqual(ids(), [vid(4), vid(2), vid(3)]);
+    assert.equal(tv.state()!.videoId, vid(1), 'queuing leaves what is on alone');
+    assert.equal(tv.move(c.qid, 0), true);
+    assert.deepEqual(ids(), [vid(3), vid(4), vid(2)]);
+    assert.equal(tv.move(c.qid, 99), true);
+    assert.deepEqual(ids(), [vid(4), vid(2), vid(3)]);
+    assert.equal(tv.move('nope', 0), false);
+    assert.equal(tv.remove(b.qid)?.videoId, vid(2));
+    assert.equal(tv.remove(b.qid), undefined);
+    assert.equal(tv.jump(c.qid), true);
+    assert.equal(tv.state()!.videoId, vid(3));
+    assert.equal(tv.state()!.position, 0);
+    assert.deepEqual(ids(), [vid(4)]);
+    assert.equal(tv.list().back, true, 'what was on went to the history');
+    assert.equal(tv.clear(), true);
+    assert.equal(tv.clear(), false);
+    assert.equal(d.qid.length > 0, true);
+    for (let i = 0; i < QUEUE_MAX; i++) assert.ok('queued' in tv.play(V(100 + i), 'Bo', 'end'));
+    assert.deepEqual(tv.play(V(999), 'Bo', 'end'), { error: 'The TV queue is full' });
+    assert.equal(tv.list().queue.length, QUEUE_MAX);
+    assert.deepEqual(tv.play('https://vimeo.com/1', 'Bo', 'end'), { error: "That isn't a YouTube link" });
+  } finally {
+    done();
+  }
+});
+
+test("when what's on ends the queue's first plays, else the TV goes dark; the played go to the history", () => {
+  const { tv, clock, done } = setup();
+  try {
+    const first = on(tv, V(1));
+    tv.play(V(2), 'Bo', 'end');
+    tv.play(V(3), 'Cy', 'end');
+    clock.now += 500;
+    assert.equal(tv.ended(first.id, false), 'queue');
+    let s = tv.state()!;
+    assert.deepEqual([s.videoId, s.by, s.position, s.at, s.paused, s.rate], [vid(2), 'Bo', 0, clock.now, false, 1]);
+    assert.notEqual(s.id, first.id);
+    assert.equal(tv.ended(first.id, false), null, 'said again by a slower browser');
+    assert.deepEqual(tv.list().queue.map((i) => i.videoId), [vid(3)]);
+    assert.equal(tv.ended(s.id, false), 'queue');
+    s = tv.state()!;
+    assert.equal(tv.ended(s.id, false), 'stopped');
+    assert.equal(tv.state(), null);
+    assert.equal(tv.list().back, true);
+  } finally {
+    done();
+  }
+});
+
+test('skip forward: through a YouTube playlist (up to its length), then the queue, then off', () => {
+  const { tv, done } = setup();
+  try {
+    const l = on(tv, 'https://www.youtube.com/playlist?list=PLabc123');
+    tv.info(l.id, undefined, 2);
+    tv.play(V(5), 'Bo', 'end');
+    assert.equal(tv.skip(l.id, 1), 'list');
+    const second = tv.state()!;
+    assert.deepEqual([second.index, second.position, second.listLength, second.videoId], [1, 0, 2, undefined]);
+    tv.info(second.id, undefined, 2);
+    assert.equal(tv.skip(second.id, 1), 'queue', 'on the last video of the list');
+    assert.equal(tv.state()!.videoId, vid(5));
+    assert.equal(tv.skip(tv.state()!.id, 1), 'stopped');
+    assert.equal(tv.state(), null);
+    // Without knowing the length it tries the next video of the list.
+    const u = on(tv, 'https://www.youtube.com/playlist?list=PLabc123');
+    assert.equal(tv.skip(u.id, 1), 'list');
+  } finally {
+    done();
+  }
+});
+
+test('skip back: through a playlist, then to the last played (what was on is queued first), else to the start', () => {
+  const { tv, clock, done } = setup();
+  try {
+    const l = on(tv, 'https://www.youtube.com/watch?v=aaaaaaaaaaa&list=PLabc123&index=2');
+    assert.equal(tv.skip(l.id, -1), 'list');
+    assert.equal(tv.state()!.index, 0);
+    const a = tv.state()!;
+    clock.now += 9000;
+    assert.equal(tv.skip(a.id, -1), 'restart', 'nothing came before');
+    assert.deepEqual([tv.state()!.id, tv.state()!.position, tv.state()!.at], [a.id, 0, clock.now]);
+    const one = on(tv, V(1));
+    const two = on(tv, V(2));
+    assert.notEqual(one.id, two.id);
+    assert.equal(tv.skip(two.id, -1), 'history');
+    assert.equal(tv.state()!.videoId, vid(1));
+    assert.deepEqual(tv.list().queue.map((i) => i.videoId), [vid(2)], 'what was on waits at the front');
+    assert.equal(tv.skip(tv.state()!.id, 1), 'queue');
+    assert.equal(tv.state()!.videoId, vid(2));
+  } finally {
+    done();
+  }
+});
+
+test('unpack: the rest of the playlist goes to the front of the queue, what plays carries on as its own video', () => {
+  const { tv, clock, done } = setup();
+  try {
+    const l = on(tv, 'https://www.youtube.com/watch?v=aaaaaaaaaaa&list=PLabc123&index=2');
+    tv.play(V(9), 'Bo', 'end');
+    clock.now += 5000;
+    const ids = ['aaaaaaaaaaa', 'bbbbbbbbbbb', 'ccccccccccc', 'ddddddddddd'];
+    assert.equal(tv.unpack(l.id, ['short']), null);
+    assert.equal(tv.unpack('stale', ids), null);
+    assert.equal(tv.unpack(l.id, Array.from({ length: 201 }, () => 'aaaaaaaaaaa')), null);
+    const added = tv.unpack(l.id, ids)!;
+    assert.deepEqual(added.map((i) => i.videoId), ['ccccccccccc', 'ddddddddddd']);
+    const s = tv.state()!;
+    assert.deepEqual([s.id, s.videoId, s.list, s.index, s.position, s.at], [l.id, 'bbbbbbbbbbb', undefined, undefined, 0, l.at]);
+    assert.deepEqual(tv.list().queue.map((i) => i.videoId), ['ccccccccccc', 'ddddddddddd', vid(9)]);
+    assert.equal(tv.unpack(l.id, ids), null, 'a single video has no list to unpack');
+  } finally {
+    done();
+  }
+});
+
+test('a restart keeps the paused play, the queue, the history and the volume setting', () => {
+  const { tv, clock, open, dir, done } = setup();
+  try {
+    const one = on(tv, V(1));
+    tv.play(V(2), 'Bo', 'end');
+    const two = on(tv, V(3), 'Cy');
+    tv.play(V(4), 'Bo', 'end');
+    assert.ok(one.id);
+    clock.now += 2000;
+    tv.rate(two.id, 1.5);
+    tv.pause(two.id, true, 'Di');
+    tv.setSameVolume(true);
+    assert.equal(tv.setSameVolume(true), false);
+    tv.info(two.id, 300, undefined);
+    const again = open();
+    assert.deepEqual(again.state(), tv.state());
+    assert.deepEqual(again.list(), tv.list());
+    assert.deepEqual(again.list().sameVolume, true);
+    assert.equal(again.list().back, true);
+    assert.equal(again.state()!.paused, true);
+    assert.equal(JSON.parse(readFileSync(path.join(dir, 'youtube-tv.json'), 'utf8')).version, 2);
+  } finally {
+    done();
+  }
+});
+
+test('a youtube-tv.json from before the controls (url + startedAt) still loads', () => {
+  const { dir, clock, open, done } = setup();
+  try {
+    writeFileSync(path.join(dir, 'youtube-tv.json'), JSON.stringify({ videoId: 'dQw4w9WgXcQ', start: 30, url: 'https://www.youtube.com/watch?v=dQw4w9WgXcQ&t=30s', id: 'old', by: 'Ada', startedAt: 990_000, title: 'Old one' }));
+    const s = open().state()!;
+    assert.deepEqual([s.id, s.position, s.at, s.rate, s.paused, s.title, s.by, s.elapsed], ['old', 30, 990_000, 1, false, 'Old one', 'Ada', clock.now - 990_000]);
+    assert.deepEqual(open().list(), { queue: [], back: false, sameVolume: false });
+    writeFileSync(path.join(dir, 'youtube-tv.json'), JSON.stringify({ version: 2, now: { url: 'https://vimeo.com/1', at: 1 }, queue: [{ url: 'nope' }, { url: V(1), qid: 'q1', by: 'Bo' }], history: 'x', sameVolume: 'yes' }));
+    const bad = open();
+    assert.equal(bad.state(), null);
+    assert.deepEqual(bad.list().queue.map((i) => i.qid), ['q1']);
+    assert.equal(bad.list().sameVolume, false);
+  } finally {
+    done();
+  }
+});

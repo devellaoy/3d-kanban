@@ -14,24 +14,48 @@ export interface YoutubeLink {
   start: number;
 }
 
-/** What's on the TV: a YouTube video or playlist, who put it on and since when. */
+/** The speeds the TV plays at (YouTube's own steps); anything else is turned away. */
+export const RATES = [0.5, 0.75, 1, 1.25, 1.5, 1.75, 2] as const;
+
+/** What's on the TV: a YouTube video or playlist, who put it on, and where it is in it, how fast, and whether it's paused. */
 export interface YoutubeTvState extends YoutubeLink {
   /** The link as it was put on, made canonical, for "Open on YouTube". */
   url: string;
-  /** Which play this is: a token of its own, never reused (two plays can start in the same millisecond). */
+  /** Which play this is: a token of its own, never reused (two plays can start in the same millisecond). Every control names it, so a late one for an older play is ignored. */
   id: string;
   /** Who put it on. */
   by: string;
-  /** When it was at `start`, on the office's clock (see the 'pong' message), so everyone sees the same frame. */
-  startedAt: number;
-  /** How long ago `startedAt` was when this was sent, in ms, for until the clocks are compared. */
+  /** Seconds into the video (or into the playlist's current video) it was at `at`. The link's own `start` is only where it was put on from. */
+  position: number;
+  /** The office's clock (see the 'pong' message) when it was at `position`, so everyone sees the same frame. Every pause, seek and speed change moves it. */
+  at: number;
+  /** How fast it plays, one of RATES. */
+  rate: number;
+  /** Whether it's held still at `position` (then `at` doesn't matter). */
+  paused: boolean;
+  /** Who paused it, while it's paused. */
+  pausedBy?: string;
+  /** How long ago `at` was when this was sent, in ms, for until the clocks are compared. */
   elapsed: number;
+  /** How long the video is, in seconds, once a browser has said (so a seek can't go past the end). */
+  duration?: number;
+  /** How many videos the playlist has, once a browser has said (so ⏭️ knows when it's on the last). */
+  listLength?: number;
   /** The video's (or playlist's) title from YouTube's oEmbed, once the office has it. */
   title?: string;
 }
 
+/** Where the TV is at `nowMs` (office clock), in seconds: held still when paused, else carried on from `at` at its speed. Never below 0. */
+export function tvPosition(s: Pick<YoutubeTvState, 'position' | 'at' | 'rate' | 'paused'>, nowMs: number): number {
+  if (s.paused) return Math.max(0, s.position);
+  return Math.max(0, s.position + (s.rate * (nowMs - s.at)) / 1000);
+}
+
 const HOSTS = new Set(['youtube.com', 'www.youtube.com', 'm.youtube.com', 'music.youtube.com', 'youtu.be', 'www.youtu.be', 'youtube-nocookie.com', 'www.youtube-nocookie.com']);
 const VIDEO_ID = /^[A-Za-z0-9_-]{11}$/;
+
+/** Whether `raw` is a YouTube video id (11 characters of letters, digits, `-` and `_`). */
+export const isVideoId = (raw: unknown): raw is string => typeof raw === 'string' && VIDEO_ID.test(raw);
 const LIST_ID = /^[A-Za-z0-9_-]{2,64}$/;
 /** The longest start offset taken, in seconds (a day). */
 const MAX_START = 86_400;
