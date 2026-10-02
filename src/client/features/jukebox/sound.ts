@@ -2,6 +2,7 @@ import { JUKEBOX } from '../../../shared/layout';
 import { STREAM } from '../../../shared/jukebox';
 import type { AudioCore } from '../../sound/core';
 import { biquad, rms } from '../../sound/dsp';
+import { ducking } from '../../sound/ducking';
 import { TunePlayer } from '../../sound/music';
 
 // ---- The jukebox ------------------------------------------------------------------------------
@@ -39,7 +40,10 @@ export class Jukebox {
   constructor(
     private readonly a: AudioCore,
     private readonly onError: (text: string) => void,
-  ) {}
+  ) {
+    // Your phone's music has the sound to itself (sound/ducking.ts).
+    ducking.listen(() => this.applyMusicVolume());
+  }
 
   /** Once there's audio: the jukebox's part of the graph. */
   connect(ctx: AudioContext) {
@@ -104,7 +108,7 @@ export class Jukebox {
   }
 
   private musicGain(): number {
-    return this.musicMuted ? 0 : this.musicVolume * this.musicVolume;
+    return this.musicMuted || ducking.on ? 0 : this.musicVolume * this.musicVolume;
   }
 
   /** Starts what the jukebox plays now, once there's audio; `changed` puts it on again from the top. */

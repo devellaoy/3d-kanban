@@ -21,8 +21,12 @@ declare module '../state/store' {
 }
 
 /** When it was at `start` on this page's clock: from the office's clock once it's known, else from `elapsed`. */
+export function onThisClock(s: Store, y: YoutubeTvState | null | undefined): YoutubeOnTv | null {
+  return y ? { ...y, since: s.clock ? y.at - s.clock.offset : performance.now() - y.elapsed } : null;
+}
+
 function setYoutube(s: Store, y: YoutubeTvState | null | undefined) {
-  s.youtube = y ? { ...y, since: s.clock ? y.at - s.clock.offset : performance.now() - y.elapsed } : null;
+  s.youtube = onThisClock(s, y);
 }
 
 /** Seconds into the video it should be now, by the office's clock. */

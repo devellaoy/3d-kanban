@@ -6,8 +6,8 @@ import { visiting } from '../multiplayer/visit';
 import type { Net } from '../net';
 import { store } from '../state';
 import { h, openModal } from '../ui/dom';
-import { tvControls } from './controls';
-import { sendToTv, tvQueue } from './queue';
+import { tvControls, tvSource } from './controls';
+import { sendToTv, tvQueue, tvQueueSource } from './queue';
 import type { TvScreen } from './screen';
 import { youtubeAt, type YoutubeOnTv } from './slice';
 
@@ -30,8 +30,8 @@ export function openTvWindow(deps: TvWindowDeps) {
   const close = h('button.btn.close', { type: 'button', 'aria-label': 'Close', title: 'Close (Esc)' }, '✕');
   const slot = h('div.ytv-slot');
   const now = h('div.ytv-now');
-  const controls = tvControls(deps);
-  const queue = tvQueue(deps);
+  const controls = tvControls(tvSource(deps));
+  const queue = tvQueue(tvQueueSource(deps));
   const same = h('input', { type: 'checkbox', id: 'ytv-same' }) as HTMLInputElement;
   same.addEventListener('change', () => deps.net.send({ t: 'tv.youtube.settings', sameVolume: same.checked }));
   const setting = h(
