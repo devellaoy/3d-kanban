@@ -128,7 +128,7 @@ agents or teammates still work, instead of flickering between done and working.
 doesn't stop in a few seconds, or waits on background agents, it is restarted on its session at its desk,
 which ends its helpers, and the conversation says so. ▶️ Continue or a message then carries on in the same
 terminal. A stopped worker keeps its desk (and counts towards the worker limit); **X** sends it home.
-Only a worker that can't be restarted (no session yet) and is still at work is sent home, worktree kept. A failed or interrupted phase waits with **🔁 Retry** (run it again)
+A worker that can't be restarted (no session yet) stays as it is, and the conversation says so. A failed or interrupted phase waits with **🔁 Retry** (run it again)
 and **▶️ Continue**. After an office restart a run is picked up again when its worker is still at
 its desk; a run whose worker went away (or exited) is marked interrupted.
 

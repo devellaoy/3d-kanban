@@ -277,7 +277,7 @@ allowed: `todo → in_progress` (= start), `waiting|review → done`, `done → 
   `Floor.sendHome` / `WorkerManager.kill` (WS `worker.kill {kanban: {done}}`, HTTP/CLI home, the queue's recycle,
   meetings, leave-on-merge, the engine). It is kept on the worker and arrives with the `removed` observation, so
   the engine's `removed()` needs no second event. `engine` departures only finish what the engine was doing
-  (a Stop never causes one: a Stop that timed out ends the run as `stopped` first and relaunches the worker, see `engine/stopping.ts`; only a worker that can't be relaunched and is still `working` is sent home (worktree kept) as before). Every other one writes exactly one status comment and applies:
+  (a Stop never causes one: a Stop that timed out ends the run as `stopped` first and relaunches the worker, see `engine/stopping.ts`; a worker that can't be relaunched, no session yet, stays as it is and the comment says so). Every other one writes exactly one status comment and applies:
   implementer with a live run → run `stopped`, task `waiting` (`stopped`, Retry), or `done` with `done`;
   implementer without one → `done` with `done`, else it keeps its column (`in_progress` with nothing running →
   `waiting`/`interrupted`; `retryAt` cleared only for `sent-home`, so any other send-home keeps a usage-limit auto-resume); reviewer with a live run → the round is dropped (`reviewAbandoned`):
