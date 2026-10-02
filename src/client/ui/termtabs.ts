@@ -3,6 +3,7 @@
 // anyone else, and they're kept per worker until the page reloads.
 import './termtabs.css';
 import { clip, h, toast } from './dom';
+import { safeUrl } from './url';
 
 /** A web page pinned open beside a worker's terminal. */
 interface WebTab {
@@ -72,7 +73,7 @@ export function termTabs(workerId: string, opts: TermTabsOptions): { bar: HTMLEl
     );
     const page = tabs.find((t) => t.id === active);
     openOut.classList.toggle('hidden', !page);
-    if (page) openOut.href = page.url;
+    if (page) { const href = safeUrl(page.url); if (href) openOut.href = href; else openOut.removeAttribute('href'); }
   };
   const show = (id: string) => {
     active = id;

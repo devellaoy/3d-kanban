@@ -47,6 +47,17 @@ export function forbidden(ctx: Ctx, scope: VisitorScope, u: URL): number | undef
   return 403;
 }
 
+/**
+ * The bookshelf's file and picture routes serve anything Markdown or image inside the checkout, so a
+ * visitor gets only what the shelf shows (Docs.shown): never an ignored note or a worktree's copy.
+ */
+async function bookshelfOk(ctx: Ctx, u: URL): Promise<boolean> {
+  if (u.pathname !== '/api/docs/file' && u.pathname !== '/api/docs/picture') return true;
+  const file = u.searchParams.get('path');
+  const floor = ctx.floors.get(u.searchParams.get('floor') ?? '');
+  return !!file && !!floor && (await floor.docs.shown(file));
+}
+
 interface Answer {
   status: number;
   type: string;
@@ -101,6 +112,7 @@ export async function answerHttp(mp: Multiplayer, msg: Extract<RelayToOffice, { 
   if (u.origin !== 'http://visit' || !visitorPath('GET', decoded)) return respond(text(403, 'Forbidden'));
   const refused = forbidden(mp.ctx, hosted.scope, u);
   if (refused) return respond(text(refused, 'Forbidden'));
+  if (!(await bookshelfOk(mp.ctx, u))) return respond(text(404, 'That file is not on the bookshelf'));
   // The visit ending (or the owner unsharing) must not leave a request running for someone who is gone.
   const abort = new AbortController();
   const onClose = () => abort.abort();
@@ -115,6 +127,6 @@ export async function answerHttp(mp: Multiplayer, msg: Extract<RelayToOffice, { 
   // The share may have been taken back while the owner's server was answering (scopes are changed in
   // place), so the same checks run again against what the visitor may see now, before any byte goes out.
   if (mp.host.sessions.get(sid) !== hosted) return;
-  const now = forbidden(mp.ctx, hosted.scope, u);
+  const now = forbidden(mp.ctx, hosted.scope, u) ?? ((await bookshelfOk(mp.ctx, u)) ? undefined : 404);
   respond(now ? text(now, 'Forbidden') : answer);
 }

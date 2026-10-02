@@ -3,6 +3,7 @@ import { isDocPath, resolveDocLink, type DocFile, type DocList, type DocText } f
 import { apiUrl } from '../../multiplayer/visit';
 import { clip, h, openModal, setDoing, timeAgo, toast } from '../../ui/dom';
 import { markdownFile } from '../../ui/markdown';
+import { safeUrl } from '../../ui/url';
 
 // The bookshelf: every Markdown file in the floor's project, to read without leaving the office.
 // The filter box over the list picks docs out as you type (the letters in order, not necessarily
@@ -151,7 +152,8 @@ async function getJson<T>(url: string): Promise<T> {
 }
 
 export function openBookshelf(deps: ShelfDeps) {
-  const { floor, repoUrl } = deps;
+  const { floor } = deps;
+  const repoUrl = safeUrl(deps.repoUrl);
   const q = (params: Record<string, string>) => new URLSearchParams({ floor, ...params }).toString();
 
   const filter = h('input', { type: 'text', placeholder: 'Filter the docs…', 'aria-label': 'Filter the docs', spellcheck: 'false', autocomplete: 'off' }) as HTMLInputElement;

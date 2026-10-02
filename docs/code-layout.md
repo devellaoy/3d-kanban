@@ -12,6 +12,8 @@ The kanban's code lives in `src/client/kanban/`, `src/server/kanban/` and `src/s
 
 ## Multiplayer
 
+Not to be confused: `src/server/relay.ts` is the service tunnels' relay (it proxies a worker's dev-server ports), while "the relay" of multiplayer is the separate server in `src/server/multiplayer/relay/` that offices connect out to.
+
 Multiplayer lives in `src/{client,server,shared}/multiplayer/`, with the relay in `src/server/multiplayer/relay/` (run by `kanban3d relay`). `shared/multiplayer/` holds the wire protocol and the two deny-by-default tables for what a visitor may send (`allow.ts`) and see (`filter.ts`); each is `satisfies Record<…['t'], …>`, so a new message type is a compile error until someone decides what a visitor gets. It joins the registries and the existing seams: `mpHandlers` and `mpHooks` in `src/server/ws/handlers/index.ts` (the `mp.*` messages), the dispatch gate in `src/server/ws/dispatch.ts` (`visitorAllows` in `multiplayer/gate.ts`: a visitor's message passes the allow table first), a `RemoteSocket` (`remote-socket.ts`) that stands in for the browser's socket so a visitor is an ordinary client behind the outbound filter, the pipe for the visitor's own browser socket in the upgrade path (`ws/connection.ts`, `guest.ts`), `mpRoutes` in `src/server/http/routes/index.ts` (read-only GETs through the owner's office, checked against `paths.ts`), `openMultiplayer` and `closeMultiplayer` in `src/server/server.ts`, the `multiplayer` slice (`src/client/state/slices/`), the 🌐 Multiplayer category in `ui/settings-panes.ts` (`settingsslot.ts`, loaded when first shown) and the `playersAction` entry in the HUD (`features/hud/index.ts`). `installMultiplayer` in `src/client/main.ts` adds only the visit banner.
 
 ## Client

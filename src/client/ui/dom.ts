@@ -1,3 +1,5 @@
+import { safeHref } from './url';
+
 type Attrs = Record<string, string | number | boolean | EventListener | undefined | null>;
 type Child = Node | string | number | null | undefined | false;
 
@@ -11,6 +13,8 @@ export function h<K extends keyof HTMLElementTagNameMap>(tag: K | `${K}.${string
     if (k.startsWith('on') && typeof v === 'function') el.addEventListener(k.slice(2), v as EventListener);
     else if (k === 'class') el.className = `${el.className} ${v}`.trim();
     else if (k === 'style') el.setAttribute('style', String(v));
+    // Every link in the app goes through here, so this is the one place a hostile address is stopped.
+    else if (k === 'href' && !safeHref(String(v))) continue;
     else if (v === true) el.setAttribute(k, '');
     else el.setAttribute(k, String(v));
   }

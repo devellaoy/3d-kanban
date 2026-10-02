@@ -291,10 +291,12 @@ export function filterForVisitor(msg: ServerMsg, scope: VisitorScope, ctx: Filte
       return { ...msg, projects: msg.projects.filter((p) => projectOk(p.id)).map(kanbanProjectFor), settings: kanbanSettingsFor(msg.settings, scope), secrets: NO_SECRETS, me: { admin: false, name: scope.login } };
     case 'kanban.projects':
       return { t: 'kanban.projects', projects: msg.projects.filter((p) => projectOk(p.id)).map(kanbanProjectFor) };
-    // A task that touches a repository outside the scope is dropped whole (its stored workspace and
-    // repository ids would show it); the board of the project simply does not have it.
+    // A task that touches a repository outside the scope is never sent whole (its stored workspace and
+    // repository ids would show it). One that gains such a repository was on their board a moment ago,
+    // so the board is told it is gone (just its id) rather than left showing the old card.
     case 'kanban.task':
-      return cardOk(msg.task, scope) ? msg : undefined;
+      if (cardOk(msg.task, scope)) return msg;
+      return projectOk(msg.task.project) ? { t: 'kanban.task.removed', id: msg.task.id, project: msg.task.project } : undefined;
     case 'kanban.task.detail':
       return projectOk(msg.task.project) && taskOk(scope, msg.task) ? msg : undefined;
     case 'kanban.task.removed':

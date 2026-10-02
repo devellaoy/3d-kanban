@@ -334,7 +334,9 @@ test('HTTP through the owner: the allowed reads work, everything else is refused
   const doc = await via('/api/docs/file?floor=pub&path=README.md');
   assert.equal(doc.status, 200);
   assert.match(((await doc.json()) as { text: string }).text, /^# pub/);
-  assert.equal((await via('/api/docs/file?floor=pub&path=../../etc/passwd')).status, 415, 'the route still keeps to Markdown in the project');
+  // Only what the shelf lists: not outside the project, not a note git ignores (.agent-office/, CLAUDE.local.md).
+  for (const p of ['../../etc/passwd', '.agent-office/x.md', 'CLAUDE.local.md']) assert.equal((await via(`/api/docs/file?floor=pub&path=${encodeURIComponent(p)}`)).status, 404, p);
+  assert.equal((await via('/api/docs/picture?floor=pub&path=.agent-office/x.png')).status, 404);
   assert.equal((await fetch(`${guest.base}/api/mp/visit/owner/api/whiteboard/file?floor=pub&id=pic1`)).status, 401, 'signed in only');
   const nobody = await fetch(`${guest.base}/api/mp/visit/nobody/api/whiteboard/file?floor=pub`, { headers: { cookie: guest.cookie } });
   assert.equal(nobody.status, 404, 'a visit that is not open');

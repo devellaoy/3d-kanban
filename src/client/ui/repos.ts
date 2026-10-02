@@ -3,6 +3,7 @@ import type { WorkerInfo } from '../../shared/protocol';
 import { isBusy } from '../../shared/status';
 import { store } from '../state';
 import { h, openModal } from './dom';
+import { openSafe } from './url';
 // A project's other repositories' PRs are on this floor's board.
 import { findItem } from './github/ghrepo';
 
@@ -54,7 +55,7 @@ export function openRepoPulls(workerId: string, actions: RepoPullsActions) {
           {},
           h('span.name', {}, `📁 ${r.name}`, h('small', {}, floor ? `${floor} floor${r.floor ? '' : ' · this one'}` : 'no longer in the building')),
           pr
-            ? h('button.btn', { type: 'button', title: away ? 'Open it on GitHub' : 'Open it', onclick: () => (away ? window.open(pr.url, '_blank', 'noopener') : (modal.close(), actions.openPull(pr.number, pr.url))) }, `🔀 #${pr.number}${away ? ' ↗' : ''}`)
+            ? h('button.btn', { type: 'button', title: away ? 'Open it on GitHub' : 'Open it', onclick: () => (away ? openSafe(pr.url) : (modal.close(), actions.openPull(pr.number, pr.url))) }, `🔀 #${pr.number}${away ? ' ↗' : ''}`)
             : h('span.none', {}, 'No PR yet'),
           h('button.btn', { type: 'button', title: `What ${w.name} changed in ${r.name}`, onclick: () => (modal.close(), actions.changes(r.floor)) }, '🌿 Changes'),
         );
