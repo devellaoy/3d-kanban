@@ -26,7 +26,7 @@ const CEILINGS: Readonly<Record<string, number>> = {
   'src/client/world/sky.ts': 1076,
   'src/server/meetings.ts': 768,
   'src/client/features/workers/sendhome.ts': 718,
-  'src/client/world/holiday.ts': 702,
+  'src/client/world/holiday.ts': 663,
   'src/client/features/dog/world.ts': 702,
   'src/client/world/character/person.ts': 699,
   'src/server/signins.ts': 660,
@@ -34,7 +34,6 @@ const CEILINGS: Readonly<Record<string, number>> = {
   'src/client/features/golf/world.ts': 635,
   'src/client/features/bargames/world.ts': 617,
   'src/client/world/city.ts': 613,
-  'src/client/ui/settings.ts': 601,
   'src/client/world/character/worker.ts': 605,
   'src/client/world/costumes.ts': 603,
   // The kanban's files, held to the budget since it became part of the project (#327) rather than kept
@@ -42,7 +41,7 @@ const CEILINGS: Readonly<Record<string, number>> = {
   'src/server/kanban/engine/orchestrator.ts': 2036,
   'src/client/kanban/taskview.ts': 959,
   'src/server/kanban/db/repository.ts': 901,
-  'src/client/kanban/changesview.ts': 831,
+  'src/client/kanban/changesview.ts': 830,
   'src/shared/kanban/types.ts': 692,
   'src/client/kanban/settings.ts': 663,
 };

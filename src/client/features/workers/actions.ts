@@ -20,6 +20,7 @@ import { repoChoices } from '../../shared/hiring';
 import { store } from '../../state';
 import { openAsk } from '../../ui/ask';
 import { STATUS_LABEL, clip, closeAllModals, h, toast } from '../../ui/dom';
+import { openSafe } from '../../ui/url';
 import { openDeskLabel } from '../../ui/floorplan';
 import type { MeetingPreset } from '../../ui/meeting';
 import { confirmDialog, lostWorktreeDialog, openPrompt, routeWorktreeMessage, sendHomeDialog } from '../../ui/prompt';
@@ -281,7 +282,7 @@ export function installWorkerActions(ctx: Ctx, core: CoreState, parts: WorkerAct
       // In the floor's own repository, not another of the project's with the same number.
       const it = findItem(store.pulls.items, w.pr.number, ownPullRepo(w.pr, store.currentFloor()?.repo));
       if (it) openPull(it, net, boardActions());
-      else window.open(w.pr.url, '_blank', 'noopener');
+      else openSafe(w.pr.url);
       return;
     }
     if (!w.worktree) return toast(`${w.name} works in the main checkout — only workers with their own worktree can open a PR`, 'warn');
@@ -314,7 +315,7 @@ export function installWorkerActions(ctx: Ctx, core: CoreState, parts: WorkerAct
         // In the floor's own repository, not another of the project's with the same number.
         const it = findItem(store.pulls.items, number, ownPullRepo({ url }, store.currentFloor()?.repo));
         if (it) openPull(it, net, boardActions());
-        else window.open(url, '_blank', 'noopener');
+        else openSafe(url);
       },
       openMissing: open,
       changes: (repo) => openWorkerChanges(w.id, repo),

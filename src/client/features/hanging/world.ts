@@ -3,6 +3,7 @@ import { FRAMES, FRAME_BORDER, WALLS, frameRect, wallPose, wallTop, type Decorat
 import { FLOOR, LOFT } from '../../../shared/layout';
 import type { Interactable } from '../../world/types';
 import { toon } from '../../world/toon';
+import { apiUrl } from '../../multiplayer/visit';
 
 // ---- Pictures -------------------------------------------------------------------------------------
 
@@ -22,7 +23,7 @@ const holds = new Map<string, number>();
 
 /** The office fetches images for us, so a picture shows up whatever its host allows. */
 export function imageUrl(url: string): string {
-  return `/api/image?url=${encodeURIComponent(url)}`;
+  return apiUrl(`/api/image?url=${encodeURIComponent(url)}`);
 }
 
 async function fetchPicture(url: string): Promise<Picture> {

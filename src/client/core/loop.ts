@@ -6,6 +6,8 @@
 import * as THREE from 'three';
 import { SlowFrames } from '../framerate';
 import { EYE_HEIGHT } from '../player';
+import { HIDE_BODY_WITHIN } from '../player/arm';
+import { THIRD_TARGET } from '../player/shoulder';
 import { renderCaffeine } from '../features/coffee/meter';
 import type { Ctx } from './context';
 import type { CoreState } from './ctx';
@@ -82,7 +84,7 @@ export function installLoop(ctx: Ctx, core: CoreState, parts: Pick<Parts, 'stage
     // In first person you are the camera; in third, hide yourself when it's zoomed in right behind your head.
     // At the tee the camera's behind the ball, and you're the one holding the club.
     // So is the camera over your shoulder at the dart board or the axe lane.
-    me.root.visible = ctx.activities.any('takesCamera') || (!firstPerson && camera.position.distanceTo(headPos.set(player.pos.x, player.pos.y + 1.3, player.pos.z)) > 1.5);
+    me.root.visible = ctx.activities.any('takesCamera') || (!firstPerson && camera.position.distanceTo(headPos.set(player.pos.x, player.pos.y + player.stepOffset + THIRD_TARGET, player.pos.z)) > HIDE_BODY_WITHIN);
     // In a car, your hands are on the wheel, out of sight.
     if (firstPerson && !ctx.activities.any('hidesHands')) hands.update(dt, t, { yaw: player.camYaw, pitch: player.lookPitch, walkPhase: player.walkPhase, walking: player.moving && player.grounded, airborne: !player.grounded, jitter: player.effects.jitter, grip });
     // What you're doing widens the view (down a pole) or narrows it (at the oche or the line), and once

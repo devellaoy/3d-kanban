@@ -3,6 +3,7 @@ import type { Ctx } from '../office/context.js';
 import type { Client } from '../office/client.js';
 import { handlers } from './handlers/index.js';
 import { kanbanUnknown } from '../kanban/ws/handlers.js';
+import { visitorAllows } from '../multiplayer/gate.js';
 
 type AnyHandler = (ctx: Ctx, c: Client, msg: ClientMsg) => void;
 
@@ -12,6 +13,7 @@ type AnyHandler = (ctx: Ctx, c: Client, msg: ClientMsg) => void;
  * type nobody handles, and so does one whose type only turns into a key (`['ping']`).
  */
 export function dispatch(ctx: Ctx, c: Client, msg: ClientMsg): void {
+  if (c.visitor && !visitorAllows(ctx, c, msg)) return ctx.warn(c, 'Read-only visit'); // first, so no handler (not even an unknown kanban.* type) sees what a visitor may not send
   if (typeof msg.t !== 'string' || !Object.hasOwn(handlers, msg.t)) return kanbanUnknown(ctx, c, msg); // an unknown kanban.* type still gets the kanban's answer
   (handlers[msg.t] as AnyHandler)(ctx, c, msg);
 }

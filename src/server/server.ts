@@ -18,6 +18,7 @@ import { routes } from './http/routes/index.js';
 import { startHookServer } from './hooks/server.js';
 import { acceptWebSockets } from './ws/upgrade.js';
 import { openKanban } from './kanban/office.js';
+import { closeMultiplayer, openMultiplayer } from './multiplayer/index.js';
 
 /** What a test can set about how the office starts: the client bundle it serves, instead of the built one. */
 export interface StartOptions {
@@ -37,6 +38,7 @@ export async function startServer(cfg: Config, opts: StartOptions = {}) {
   Object.assign(ctx, await openFloors(ctx, hookPort));
   ctx.kanban = openKanban(ctx, hookPort); // the kanban task process, on the open floors
   Object.assign(ctx, createLateServices(ctx));
+  openMultiplayer(ctx); // the link to the relay, if it was on
 
   // --- HTTP ------------------------------------------------------------------------------------
   const handler = requestHandler(ctx, routes);
@@ -57,6 +59,7 @@ export async function startServer(cfg: Config, opts: StartOptions = {}) {
   /** With `keep` (a restart), workers' terminals keep running for the next office to pick up. */
   const shutdown = (keep = false) => {
     stopTimers();
+    closeMultiplayer(ctx); // before the floors' timer is cancelled: ending visits makes the visitors leave the office
     ctx.cancelFloorsChanged();
     ctx.arcade.flush();
     ctx.upgrader.stop();

@@ -71,6 +71,14 @@ export function poseEmote(rig: PersonRig, e: Emoting, dt: number, still: number,
       rig.head.rotation.x += 0.3 * k;
       rig.head.rotation.y = Math.sin(u * 5) * 0.15 * k;
       break;
+    case 'sixseven': {
+      // Both palms up in front, weighing two things: one hand rises as the other drops, about 3 times a second.
+      const s = Math.sin(u * 19);
+      pose(rig.armL, -1.2 - s * 0.45, 0.22);
+      pose(rig.armR, -1.2 + s * 0.45, -0.22);
+      rig.head.rotation.z = s * 0.05 * k;
+      break;
+    }
   }
   // The emoji pops in over their head, rises a little, wobbles, and fades at the end.
   const pop = popCurve(u / 0.3);

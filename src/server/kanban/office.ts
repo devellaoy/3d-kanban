@@ -4,6 +4,7 @@ import { codexLimitsOf } from '../codex-limits/index.js';
 import type { Client } from '../office/client.js';
 import type { Ctx } from '../office/context.js';
 import { str } from '../office/input.js';
+import { mpOf } from '../multiplayer/registry.js';
 import { installKanban, type Kanban } from './index.js';
 import type { KanbanCaller, KanbanClient } from './registry.js';
 
@@ -13,7 +14,14 @@ export function openKanban(ctx: Ctx, hookPort: number): Kanban {
     dataDir: ctx.cfg.dataDir,
     floors: () => ctx.building.list(),
     floor: (id) => ctx.floors.get(id),
-    saveRepos: (id, repos) => ctx.building.setRepos(id, repos),
+    // Saved, then a visitor loses the floor at once (before the caller broadcasts the new list, which would
+    // show them the new repositories under the old scope), then the elevator hears it.
+    saveRepos: (id, repos) => {
+      const r = ctx.building.setRepos(id, repos);
+      if (typeof r !== 'string') mpOf(ctx)?.floorsChanged();
+      ctx.floorsChanged();
+      return r;
+    },
     // A project renamed from the kanban's settings: saved, its floor's top bar info too, then the elevator and the kanban hear it.
     saveName: (id, name) => {
       const r = ctx.building.setName(id, name);
@@ -43,7 +51,7 @@ export function openKanban(ctx: Ctx, hookPort: number): Kanban {
 }
 
 /** Who a connection is, to the kanban. */
-export const kanbanCaller = (ctx: Ctx, c: Client): KanbanCaller => ({ clientId: c.id, accountId: c.accountId, name: c.peer.name, admin: ctx.meOf(c.accountId).admin });
+export const kanbanCaller = (ctx: Ctx, c: Client): KanbanCaller => ({ clientId: c.id, accountId: c.accountId, name: c.peer.name, admin: ctx.meOfClient(c).admin });
 // `clientId` again: KanbanCaller's is optional (a caller over HTTP has none), a KanbanClient's isn't.
 export const kanbanClient = (ctx: Ctx, c: Client): KanbanClient => ({ ...kanbanCaller(ctx, c), clientId: c.id, send: (m) => ctx.sendTo(c, m), warn: (text) => ctx.sendTo(c, { t: 'toast', text, level: 'warn' }) });
 

@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { ELEVATOR, ELEVATOR_FRONT, FLOOR, ROAD, SLAB, STREET_Y, WALL_T } from '../../shared/layout';
 import { LOT, SIDE_LOT } from '../../shared/garage';
+import { GARAGE_COLUMNS, STREET_LAMPS } from '../../shared/pillars';
 import { STREET_END, shoreX } from '../../shared/scenic';
 import type { Collider } from './types';
 import type { Fixture, StreetSite } from './office/fixture';
@@ -165,11 +166,8 @@ export function buildGarage(group: THREE.Group, colliders: Collider[]) {
   group.add(sign);
 
   // Columns holding up the office, along the open sides and down the middle.
-  const cols: [number, number][] = [];
-  for (const x of [B.maxX - 0.25, -9.6, 0, 9.6]) cols.push([x, B.maxZ - 0.25], [x, 0]);
-  cols.push([B.maxX - 0.25, -6.5], [B.maxX - 0.25, 6.5], [B.maxX - 0.25, B.minZ + 0.25]);
   const colMat = toon('#e6e8ee');
-  for (const [x, z] of cols) {
+  for (const [x, z] of GARAGE_COLUMNS) {
     parts.add(mesh(box(0.5, wallH, 0.5), colMat, x, G + wallH / 2, z));
     parts.add(mesh(box(0.52, 0.5, 0.52), yellow, x, G + 0.25, z, false));
     colliders.push({ minX: x - 0.25, maxX: x + 0.25, minZ: z - 0.25, maxZ: z + 0.25, bottom: G, top: ceiling });
@@ -370,8 +368,7 @@ export function buildStreet(group: THREE.Group, colliders: Collider[], night: Ni
   // Street lamps down both sidewalks, their arms out over the road.
   const lamps = new THREE.Group();
   const glass = bulb(night, '#fff3d6');
-  for (const x of [-40, -28, -16, -4, 8, 16, 28, 40]) streetLamp(lamps, night, glass, colliders, x, 22.2, 1);
-  for (const x of [-34, -22, -4, 8, 26, 36]) streetLamp(lamps, night, glass, colliders, x, 31.8, -1);
+  for (const l of STREET_LAMPS) streetLamp(lamps, night, glass, colliders, l.x, l.z, l.toward);
   group.add(mergeByMaterial(lamps));
 
   // The neighbours: across the street, and further out behind and beside the office.

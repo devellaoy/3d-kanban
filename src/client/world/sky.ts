@@ -105,7 +105,7 @@ export function indoorAt(eye: Point, p: Point, wing: WingBox = null): number {
 /** The building, walls included: the office upstairs and the garage under it. */
 const B = { minX: FLOOR.minX - WALL_T, maxX: FLOOR.maxX + WALL_T, minZ: FLOOR.minZ - WALL_T, maxZ: FLOOR.maxZ + WALL_T } as const;
 
-const uniforms = {
+export const uniforms = {
   /** Off while drawing your hands in first person, which live in a scene of their own. */
   skyOn: { value: 1 },
   /** Off up on the roof, where the office and the garage (which are under your feet there) aren't lit. */

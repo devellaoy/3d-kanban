@@ -5,7 +5,6 @@ import { mergeByMaterial, mesh, roundedBox, textPlane, toon } from '../toon';
 import type { Collider, Interactable } from '../types';
 import type { Fixture } from './fixture';
 import { PALETTE, box, floorTexture, glassPane } from './materials';
-import { floorPlant, plant } from './props';
 import { seatable } from './seats';
 
 // Outside the office's walls: the smoking balcony off the south wall, the posts under the bottom
@@ -30,7 +29,7 @@ function stringLights(a: THREE.Vector3, b: THREE.Vector3, sag: number, bulbs: [s
 
 /**
  * The smoking balcony off the south wall, over the garage entrance: a deck with a glass railing on
- * its three open sides, string lights, a bench under the window, a bistro table, plants and the
+ * its three open sides, string lights, a bench under the window, a bistro table and the
  * ashtray, where you take a smoke break.
  */
 export function buildBalcony(group: THREE.Group, colliders: Collider[], interactables: Interactable[], night: NightParts) {
@@ -91,7 +90,7 @@ export function buildBalcony(group: THREE.Group, colliders: Collider[], interact
   // At night they light the deck, the table and whoever's out there.
   for (const x of [cx - 3.2, cx + 3.2]) night.lamps.push({ x, y: 2.4, z: cz, reach: 5.5, color: '#ffc9a6', power: 2.4 });
 
-  // A bench under the window, a bistro table with two stools, and plants.
+  // A bench under the window and a bistro table with two stools.
   const bench = new THREE.Group();
   bench.add(mesh(roundedBox(2, 0.08, 0.46, 0.05), wood, 0, 0.45, 0));
   bench.add(mesh(box(2, 0.32, 0.06), wood, 0, 0.78, -0.2));
@@ -122,18 +121,6 @@ export function buildBalcony(group: THREE.Group, colliders: Collider[], interact
     colliders.push({ minX: x - 0.2, maxX: x + 0.2, minZ: tz - 0.2, maxZ: tz + 0.2, top: 0.49 });
     seatable(stool, sx < 0 ? 'stool-1' : 'stool-2', 0.9, interactables);
   }
-  for (const [i, [px, pz, sc]] of [
-    [maxX - 0.55, minZ + 0.5, 1.1],
-    [minX + 0.55, maxZ - 0.55, 0.9],
-  ].entries()) {
-    // Starting past the monstera, which spreads too wide for a spot this near the rail.
-    const p = plant(floorPlant(i + 1), sc);
-    p.position.set(px, 0, pz);
-    parts.add(p);
-    const r = 0.3 * sc;
-    colliders.push({ minX: px - r, maxX: px + r, minZ: pz - r, maxZ: pz + r, top: 0.5 * sc });
-  }
-
   group.add(mergeByMaterial(parts));
 
   // The ashtray: a standing bin with a sand-filled bowl and a couple of butts in it.

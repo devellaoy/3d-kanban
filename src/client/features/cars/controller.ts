@@ -1,5 +1,5 @@
-import { CAR, SEATS, carFits, carPoint, drive, onPavement, type Box, type CarPose, type CarSeat, type Pedals } from '../../../shared/garage';
-import { LOOP_PAVED, nearLoop } from '../../../shared/scenic';
+import { CAR, CARS, SEATS, boosting, carFits, carPoint, drive, inBounds, roughAt, type Box, type CarPose, type CarSeat, type Pedals } from '../../../shared/garage';
+import { hazardAt } from '../../../shared/terrain';
 import type { PlayerController } from '../../player';
 import type { Fleet } from './world';
 
@@ -15,7 +15,7 @@ export interface DriveHooks {
 }
 
 /** How often the office hears where your car is, at most (seconds). */
-const SEND_EVERY = 0.066;
+const SEND_EVERY = 0.05;
 /** How soon after one crunch another can sound (seconds). */
 const BUMP_EVERY = 0.35;
 /** The longest step a car takes in one go (m), so it never jumps a lamp post between two frames. */
@@ -23,12 +23,29 @@ const STEP = 0.25;
 
 const wrap = (a: number) => Math.atan2(Math.sin(a), Math.cos(a));
 
+/**
+ * The sea, the lake and the edge of the world (see shared/terrain.ts) aren't walls: the further in a
+ * car is, the heavier it goes, and it's pushed back out. `h` seconds of that, on top of the driving.
+ */
+export function wade(p: CarPose, h: number): CarPose {
+  const zone = hazardAt(p.x, p.z);
+  if (!zone) return p;
+  const f = Math.min(1.3, zone.depth);
+  const water = zone.kind === 'water';
+  const keep = Math.exp(-((water ? 1.5 : 0.8) + (water ? 14 : 6) * f * f) * h);
+  const push = (water ? 8 : 12) * f * h;
+  return { ...p, x: p.x + zone.nx * push, z: p.z + zone.nz * push, speed: p.speed * keep, slip: (p.slip ?? 0) * keep };
+}
+
 export class Driver {
   /** The car you're in (its place in CARS), and your seat; null on your feet. */
   car: number | null = null;
   seat: CarSeat | null = null;
   /** How hard you're on the gas (-1 in reverse), for the engine. */
   gas = 0;
+  /** The pedals as of this frame, for the speedometer and the effects: the nitro's on, the handbrake's up. */
+  nitroOn = false;
+  handbrake = false;
   /** Seconds behind the wheel (or beside it), for how often things happen. */
   private clock = 0;
   private sent = { at: -Infinity, x: 0, z: 0, rotY: 0, speed: 0, steer: 0 };
@@ -79,9 +96,10 @@ export class Driver {
       p.camPitch = Math.min(p.camPitch, 0.32);
       p.camYaw = v.pose.rotY + Math.PI;
     }
+    p.armSkip = v.colliders;
     p.rig = (dt) => this.step(dt);
     p.riding = true;
-    this.sit(0);
+    this.sit();
   }
 
   /**
@@ -138,6 +156,7 @@ export class Driver {
     const p = this.player;
     p.rig = null;
     p.riding = false;
+    p.armSkip = [];
     if (this.camWas) {
       p.camDist = this.camWas.dist;
       p.camPitch = this.camWas.pitch;
@@ -158,36 +177,42 @@ export class Driver {
         gas: (p.holding('KeyW', 'ArrowUp') ? 1 : 0) - (p.holding('KeyS', 'ArrowDown') ? 1 : 0),
         turn: (p.holding('KeyA', 'ArrowLeft') ? 1 : 0) - (p.holding('KeyD', 'ArrowRight') ? 1 : 0),
         brake: p.holding('Space'),
+        boost: p.holding('ShiftLeft', 'ShiftRight'),
       };
       this.gas = pedals.gas;
       const from = this.fleet.cars[car].pose;
-      const pose = this.move(from, pedals, dt, this.fleet.solids(car, { x: from.x, z: from.z, r: CAR.length + Math.abs(from.speed) * dt + 1 }));
+      this.nitroOn = boosting(from, pedals);
+      this.handbrake = pedals.brake;
+      const reach = Math.hypot(from.speed, from.slip ?? 0) * dt;
+      const pose = this.move(from, pedals, dt, this.fleet.solids(car, { x: from.x, z: from.z, r: CAR.length + reach + 1 }));
       this.fleet.place(car, pose);
       this.send(car, pose);
     }
-    this.sit(dt);
+    this.sit();
   }
 
   /**
-   * The car `dt` on from `from`: in short steps, stopping at whatever's in the way. At an angle to
-   * it, the car slides along it (along the scenic loop's edge, the way the road curves); head on,
-   * it bounces back off.
+   * The car `dt` on from `from`: in short steps, stopping at whatever's in the way (trees, fences,
+   * buildings, other cars: the ground itself is all drivable, see drivable in shared/garage.ts). At an
+   * angle to it, the car slides along it; head on, it bounces back off. The sea, the lake and the
+   * edge of the world aren't walls but soft zones: see wade.
    */
   private move(from: CarPose, pedals: Pedals, dt: number, solids: Box[]): CarPose {
-    const n = Math.max(1, Math.ceil((Math.abs(from.speed) * dt) / STEP));
+    const n = Math.max(1, Math.ceil((Math.hypot(from.speed, from.slip ?? 0) * dt) / STEP));
     const h = dt / n;
     // Already in something (someone parked on top of you): drive out of it any way you like.
     const stuck = !carFits(from, solids);
+    const kind = CARS[this.car!].kind;
     let pose = from;
     for (let i = 0; i < n; i++) {
-      const next = drive(pose, pedals, h);
-      if (stuck ? onPavement(next) : carFits(next, solids)) {
+      const next = wade(drive(pose, pedals, h, roughAt(pose.x, pose.z), kind), h);
+      if (stuck ? inBounds(next) : carFits(next, solids)) {
         pose = next;
         continue;
       }
       // Sliding keeps only the part of the move along what's in the way (the town's things are all
-      // square to the street; the loop's edge goes the way the road does), and only that much of the
-      // speed; the car swings round to run along it. `off` is the way off what it's run into.
+      // square to the street), and only that much of the speed; the car swings round to run along
+      // it. `off` is the way off what it's run into.
       const dx = next.x - pose.x;
       const dz = next.z - pose.z;
       const want = Math.hypot(dx, dz) || 1;
@@ -195,21 +220,10 @@ export class Driver {
         { to: { ...next, z: pose.z }, keep: Math.abs(dx) / want, heading: Math.sign(dx) * (Math.PI / 2), off: { x: 0, z: -Math.sign(dz) } },
         { to: { ...next, x: pose.x }, keep: Math.abs(dz) / want, heading: dz > 0 ? 0 : Math.PI, off: { x: -Math.sign(dx), z: 0 } },
       ].filter((q) => q.keep > 0.25 && carFits(q.to, solids));
-      const road = nearLoop(pose.x, pose.z);
-      if (road && road.off < LOOP_PAVED + 2) {
-        // Along the road here, and in off its edge toward the middle: round the outside of a bend,
-        // going straight on along it runs a little off, so it's nudged back in as it goes.
-        const run = dx * road.tx + dz * road.tz;
-        const inward = road.off > 1e-6 ? { x: (road.x - pose.x) / road.off, z: (road.z - pose.z) / road.off } : { x: 0, z: 0 };
-        const base = { ...next, x: pose.x + road.tx * run, z: pose.z + road.tz * run };
-        const to = [0, 0.04, 0.12, 0.25].map((d) => ({ ...base, x: base.x + inward.x * d, z: base.z + inward.z * d })).find((q) => carFits(q, solids));
-        const keep = Math.abs(run) / want;
-        if (to && keep > 0.25) slides.push({ to, keep, heading: Math.atan2(road.tx * Math.sign(run), road.tz * Math.sign(run)), off: inward });
-      }
       const along = slides.sort((a, b) => b.keep - a.keep)[0];
       if (along) {
-        this.bumped(pose, Math.abs(next.speed) * (1 - along.keep));
-        const slid = { ...along.to, speed: next.speed * along.keep };
+        this.bumped(pose, Math.hypot(next.speed, next.slip ?? 0) * (1 - along.keep));
+        const slid = { ...along.to, speed: next.speed * along.keep, slip: (next.slip ?? 0) * along.keep };
         // Backing along it, it's the tail that leads.
         const heading = along.heading + (next.speed < 0 ? Math.PI : 0);
         const rotY = wrap(slid.rotY + wrap(heading - slid.rotY) * 0.3);
@@ -219,8 +233,8 @@ export class Driver {
         pose = turned ?? slid;
         continue;
       }
-      this.bumped(pose, Math.abs(pose.speed));
-      pose = { ...pose, steer: next.steer, speed: -pose.speed * 0.3 };
+      this.bumped(pose, Math.hypot(pose.speed, pose.slip ?? 0));
+      pose = { ...pose, steer: next.steer, speed: -pose.speed * 0.3, slip: 0, nitro: next.nitro, fire: next.fire };
       break;
     }
     return pose;
@@ -244,9 +258,9 @@ export class Driver {
 
   /**
    * You in your seat, wherever the car's got to. In first person you look round from it, turning as
-   * it turns; in third, the camera swings round behind it as it goes.
+   * it turns; in third, the camera turns round with it (see below).
    */
-  private sit(dt: number) {
+  private sit() {
     const p = this.player;
     const at = this.fleet.seatAt(this.car!, this.seat!)!;
     p.pos.set(at.x, at.y, at.z);
@@ -254,11 +268,8 @@ export class Driver {
     p.moving = false;
     const turned = wrap(at.rotY - this.yaw);
     this.yaw = at.rotY;
-    if (p.view === 'first') p.camYaw += turned;
-    else {
-      const speed = Math.abs(this.fleet.cars[this.car!].pose.speed);
-      const k = Math.min(1, dt * 2.5 * Math.min(1, speed / 4));
-      p.camYaw += wrap(at.rotY + Math.PI - p.camYaw) * k;
-    }
+    // Either view turns with the car, the way you set it: the third-person camera doesn't swing back
+    // behind the car by itself (it did before); it stays where it is from the car until you move the mouse.
+    p.camYaw += turned;
   }
 }

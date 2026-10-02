@@ -2,6 +2,7 @@ import type http from 'node:http';
 import type { Session } from '../auth.js';
 import { RELAY_LOGIN, relayRequest, signInPage, stoppedPage, tunneledPort } from '../relay.js';
 import type { Ctx } from '../office/context.js';
+import { visitorPath } from '../multiplayer/paths.js';
 import { login, loginOptions } from './routes/auth.js';
 import { send } from './util.js';
 
@@ -72,6 +73,8 @@ export function requestHandler(ctx: Ctx, routes: readonly Route[]) {
         res.writeHead(302, { location: p === '/lite' ? '/login?next=/lite' : '/login' }).end();
         return;
       }
+      // A visitor's request (multiplayer) gets the read-only paths and nothing else, whatever route would answer it.
+      if (session.visitor && !visitorPath(req.method, p)) return send(res, 403, { error: 'Forbidden' });
       for (const route of signedIn) if (route.auth === 'session' && matches(route, req.method, p)) return await route.handle(ctx, { ...r, session });
     } catch (err) {
       console.error(err);

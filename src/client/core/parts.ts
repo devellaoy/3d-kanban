@@ -18,6 +18,7 @@ import type { Smoke } from '../world/smoke';
 import type { installArcade } from '../features/arcade';
 import type { installBar } from '../features/bar';
 import type { installBarGames } from '../features/bargames';
+import type { installMap } from '../features/map';
 import type { installBasketball } from '../features/basketball';
 import type { installBoards } from '../features/boards';
 import type { installBookshelf } from '../features/bookshelf';
@@ -131,4 +132,6 @@ export interface Parts {
   kanban3d: Made<typeof installKanban3d>;
   /** YouTube on the Office TV. */
   youtube: Made<typeof installYoutubeTv>;
+  /** The map of the scenic loop (features/map). */
+  map: Made<typeof installMap>;
 }

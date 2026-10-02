@@ -5,10 +5,14 @@ import type { Fixture, StreetSite } from '../office/fixture';
 import type { NightParts } from '../outside';
 import { hazeReach } from '../sky';
 import { mergeByColor } from '../toon';
+import { buildBlooms } from './blooms';
+import { buildBumps, liftOnBumps } from './bumps';
 import { buildCoast } from './coast';
+import { buildCritters } from './critters';
 import { buildFarm } from './farm';
-import { G, makeKit } from './kit';
+import { G, makeKit, type ScenicKit } from './kit';
 import { buildMountains } from './mountains';
+import { buildProps } from './props';
 import { buildRoad, buildSigns } from './road';
 import { plantTrees } from './trees';
 import { buildTunnel } from './tunnel';
@@ -35,12 +39,12 @@ export interface Scenic {
    * at `far`, and the street `street` down): the rest isn't drawn.
    */
   cull(eye: THREE.Vector3, street: number, far: number): void;
+  /** Everything planted or placed on open ground (x, z, radius), which the tests check stays off the pavement. */
+  placed: readonly { x: number; z: number; r: number }[];
 }
 
-/** Builds the scenic loop into `group` (the office's `ground` group), its colliders into `colliders`, its lights into `night`. */
-export function buildScenic(group: THREE.Group, colliders: Collider[], night: NightParts): Scenic {
-  const { kit, seen } = makeKit(group, colliders, night);
-  const { root, labels, parts, silo, mill, light, cullable, around } = kit;
+/** Lays out every stretch of the loop into the kit (see ScenicKit), and returns what moves. */
+export function layOut(kit: ScenicKit) {
   // A part at a time, each taking its numbers from kit.rand in turn: in this order, or the trees move.
   const road = buildRoad(kit);
   buildSigns(kit);
@@ -50,6 +54,22 @@ export function buildScenic(group: THREE.Group, colliders: Collider[], night: Ni
   buildTunnel(kit, road);
   const { boats, beam } = buildCoast(kit);
   plantTrees(kit);
+  // What's added after the trees has random numbers of its own, so the trees stay where they were.
+  const flowers = buildBlooms(kit);
+  buildProps(kit, flowers);
+  flowers.finish(kit);
+  const critters = buildCritters(kit);
+  // Whatever stands on rough ground or a speed hump is lifted onto it; then the bumps themselves are laid.
+  liftOnBumps(kit.parts);
+  buildBumps(kit);
+  return { sails, waters, surf, boats, beam, critters };
+}
+
+/** Builds the scenic loop into `group` (the office's `ground` group), its colliders into `colliders`, its lights into `night`. */
+export function buildScenic(group: THREE.Group, colliders: Collider[], night: NightParts): Scenic {
+  const { kit, seen } = makeKit(group, colliders, night);
+  const { root, labels, parts, silo, mill, light, cullable, around } = kit;
+  const { sails, waters, surf, boats, beam, critters } = layOut(kit);
 
   // Merged by material a square of the map at a time, so what's lost in the haze needn't be drawn.
   const TILE = 120;
@@ -82,10 +102,11 @@ export function buildScenic(group: THREE.Group, colliders: Collider[], night: Ni
 
   return {
     group: root,
+    placed: kit.placed,
     cull(eye: THREE.Vector3, street: number, far: number) {
       const up = eye.y - street;
       for (const t of seen) {
-        const reach = hazeReach(Math.max(up, t.above), far) + 10;
+        const reach = Math.min(hazeReach(Math.max(up, t.above), far) + 10, t.reach);
         const dx = Math.max(t.minX - eye.x, 0, eye.x - t.maxX);
         const dz = Math.max(t.minZ - eye.z, 0, eye.z - t.maxZ);
         t.obj.visible = dx * dx + dz * dz < reach * reach;
@@ -94,6 +115,7 @@ export function buildScenic(group: THREE.Group, colliders: Collider[], night: Ni
     update(t: number) {
       sails.rotation.z = -t * 0.7;
       beam.rotation.y = t * 0.8;
+      critters.update(t);
       for (const b of boats) {
         b.g.position.y = G - 0.3 + Math.sin(t * 1.3 + b.phase) * 0.12;
         b.g.rotation.z = Math.sin(t * 0.9 + b.phase) * 0.06;

@@ -13,7 +13,12 @@ const MAX_LINKS = 8;
 /** A signed-in browser: with its own account, or (no account) with the shared office password. */
 export interface Session {
   account?: Account;
+  /** The office's own loopback request on behalf of a multiplayer visitor (see MP_HEADER): read-only GETs only, enforced in the router. */
+  visitor?: true;
 }
+
+/** The header a visitor's tunneled request carries: the process's secret, from our own loopback only (multiplayer/httpgate.ts). */
+export const MP_HEADER = 'x-agent-office-mp';
 
 export class Auth {
   private attempts = new Map<string, { count: number; resetAt: number }>();
@@ -23,6 +28,8 @@ export class Auth {
   private key: Buffer;
   /** Signs account sessions, which outlive a change of the shared password. */
   private accountKey: Buffer;
+  /** Proves a request is the office's own, made for a visitor; random per process and never leaves it. */
+  readonly visitorSecret = randomBytes(24).toString('base64url');
 
   constructor(
     private verifier: Buffer,
@@ -115,6 +122,13 @@ export class Auth {
   }
 
   fromRequest(req: IncomingMessage): Session | undefined {
+    const mp = req.headers[MP_HEADER];
+    if (mp !== undefined) {
+      // Only ever our own loopback request carrying the secret; a bad one is no session, whatever cookie comes with it.
+      const a = createHmac('sha256', this.key).update(String(mp)).digest();
+      const b = createHmac('sha256', this.key).update(this.visitorSecret).digest();
+      return timingSafeEqual(a, b) && (isLoopback(req.socket.remoteAddress) || req.socket.remoteAddress === req.socket.localAddress) ? { visitor: true } : undefined;
+    }
     return this.verify(parseCookies(req.headers.cookie)[cookieName(req)]);
   }
 
@@ -178,3 +192,5 @@ export function parseCookies(header: string | undefined): Record<string, string>
   }
   return out;
 }
+
+const isLoopback = (addr: string | undefined) => addr === '127.0.0.1' || addr === '::1' || addr === '::ffff:127.0.0.1';

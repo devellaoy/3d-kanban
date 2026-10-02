@@ -545,6 +545,17 @@ export class Hands {
         r.position.z += 0.2 * k;
         r.rotation.x += 0.9 * k;
         break;
+      case 'sixseven': {
+        // Both palms up in front of you, bobbing against each other.
+        const s = Math.sin(u * 19);
+        r.position.x -= 0.1 * k;
+        l.position.x += 0.1 * k;
+        r.position.y += (0.1 + s * 0.07) * k;
+        l.position.y += (0.1 - s * 0.07) * k;
+        r.rotation.x += 0.5 * k;
+        l.rotation.x += 0.5 * k;
+        break;
+      }
     }
   }
 }

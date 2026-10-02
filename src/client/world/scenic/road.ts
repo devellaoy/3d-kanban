@@ -92,7 +92,7 @@ export function buildRoad(kit: ScenicKit): Road {
 }
 
 /** A wooden sign on two posts, `text` on its face, facing `rotY` (its face toward +z turned by that). */
-function signpost(into: THREE.Group, labels: THREE.Group, x: number, z: number, rotY: number, text: string, width = 5) {
+export function signpost(into: THREE.Group, labels: THREE.Group, x: number, z: number, rotY: number, text: string, width = 5) {
   const g = new THREE.Group();
   const wood = toon('#7f5539');
   for (const sx of [-1, 1]) g.add(mesh(box(0.16, 3, 0.16), wood, sx * (width / 2 - 0.4), 1.5, 0));

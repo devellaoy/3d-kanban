@@ -12,7 +12,7 @@ import type { Parts } from './parts';
 import { Activities, Hooks, Interactions, Keys, Messages, Ticks, Usables, View } from './registry';
 
 /** What you can be in the middle of, in the order it gets keys, has the hint bar and stops in (see Activities). */
-const ACTIVITY_ORDER = ['hanger', 'climber', 'golf', 'thrower', 'driver'];
+const ACTIVITY_ORDER = ['hanger', 'climber', 'golf', 'thrower', 'driver', 'billiards', 'fisher'];
 
 /** The office's own state: what the ctx hands out about where you are and what you hold, and what its own parts keep between frames. */
 export interface CoreState {

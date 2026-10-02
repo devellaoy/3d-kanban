@@ -8,7 +8,7 @@ import { sameLook } from '../../../shared/avatar';
 import { seatOn } from '../../../shared/maps';
 import type { PeerInfo } from '../../../shared/protocol';
 import { DRINK_BY_ID } from '../../../shared/rooftop';
-import { SEAT_HIPS } from '../../../shared/garage';
+import { CARS, seatHips } from '../../../shared/garage';
 import { gripOf, type Grip } from '../climbing/controller';
 import type { Ctx } from '../../core/context';
 import type { CoreState } from '../../core/ctx';
@@ -77,7 +77,8 @@ export function installPeers(ctx: Ctx, core: CoreState, parts: Pick<Parts, 'puff
       r.person.holdDrink(peer.drink ? (DRINK_BY_ID.get(peer.drink) ?? null) : null);
       r.person.carry(peer.carrying);
       r.person.read(!!peer.reading);
-      r.person.sit(store.carOf(id) ? SEAT_HIPS : peer.seat ? (seatOn(plan(), peer.seat)?.hips ?? null) : null);
+      const inCar = store.carOf(id);
+      r.person.sit(inCar ? seatHips(CARS[inCar.car].kind) : peer.seat ? (seatOn(plan(), peer.seat)?.hips ?? null) : null);
       r.person.setDoing(whereabouts(peer, store.carOf(id), plan()));
     }
     for (const [id, r] of remotes) {

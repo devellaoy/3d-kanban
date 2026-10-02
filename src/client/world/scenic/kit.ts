@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { paved } from '../../../shared/garage';
 import { STREET_Y } from '../../../shared/layout';
 import { mulberry32 } from '../../../shared/rng';
 import { LOOP, LOOP_LENGTH, STREET_Z, type Place } from '../../../shared/scenic';
@@ -125,6 +126,13 @@ export function nearest(x: number, z: number): { off: number; place: Place; d: n
   return { off: Math.sqrt(bestSq), place: best.place, d: best.d };
 }
 
+/** Whether paved ground (the streets east and west of town included, which the loop's own points don't cover) is within `r` of (x, z). */
+export function pavedNear(x: number, z: number, r: number): boolean {
+  if (paved(x, z)) return true;
+  for (let a = 0; a < 8; a++) if (paved(x + Math.cos((a * Math.PI) / 4) * r, z + Math.sin((a * Math.PI) / 4) * r)) return true;
+  return false;
+}
+
 /** The loop and the street between its ends, as one closed outline. */
 const RING = [...LOOP.map((p) => ({ x: p.x, z: p.z })), { x: 0, z: STREET_Z }];
 export function insideLoop(x: number, z: number): boolean {
@@ -165,6 +173,8 @@ export interface Seen {
   maxZ: number;
   /** How high it stands over the street: the taller, the further off it shows over the haze. */
   above: number;
+  /** The furthest off it is worth drawing, for what is small (butterflies): the haze lets it go further. */
+  reach: number;
 }
 
 /** What each part of the loop builds into (see makeKit), in place of what used to be one long builder's locals. */
@@ -187,15 +197,65 @@ export interface ScenicKit {
   colliders: Collider[];
   night: NightParts;
   /** Draws `obj` only when it's near enough to see: its footprint, and how high it stands (see Seen). */
-  cullable(obj: THREE.Object3D, minX: number, maxX: number, minZ: number, maxZ: number, above?: number): void;
+  cullable(obj: THREE.Object3D, minX: number, maxX: number, minZ: number, maxZ: number, above?: number, reach?: number): void;
   /** The same, for something `r` round (x, z). */
-  around(obj: THREE.Object3D, x: number, z: number, r: number, above?: number): void;
+  around(obj: THREE.Object3D, x: number, z: number, r: number, above?: number, reach?: number): void;
   /** Something round and `h` tall at (x, z) that you can't walk through: a trunk, a hay bale. */
   trunk(x: number, z: number, r: number, h: number): void;
   /** Where trees shouldn't go: taken by something else, or the road. */
   taken: { x: number; z: number; r: number }[];
   /** Whether nothing's taken within `r` of (x, z). */
   free(x: number, z: number, r: number): boolean;
+  /** Takes the spot `r` round (x, z) for something planted or put out on open ground (and lists it in `placed`). */
+  place(x: number, z: number, r: number): void;
+  /** What `place` took: the tests check none of it is on the pavement. */
+  placed: { x: number; z: number; r: number }[];
+  /** Where the cows stand in the pasture (x, z, which way they face): critters.ts draws and moves them. */
+  herd: { x: number; z: number; rot: number }[];
+}
+
+/**
+ * `free(x, z, r)` over the growing list `taken` (parts push to it directly): nothing in it within its
+ * own radius plus `r` of (x, z), and nothing for `onPavement` either. The same answer as looking at every
+ * entry (Math.hypot(t.x - x, t.z - z) > t.r + r for all of them), but the small ones are found by the
+ * grid cell their centre is in, and only the few big ones (the farm, the camp, a mountain) are always
+ * looked at. Entries are indexed as they show up, so it works for whatever has been pushed so far.
+ */
+export function takenIndex(taken: readonly { x: number; z: number; r: number }[], onPavement: (x: number, z: number, r: number) => boolean): (x: number, z: number, r: number) => boolean {
+  const CELL = 8;
+  /** Entries with a radius up to this go in the grid. */
+  const SMALL = 8;
+  const cells = new Map<number, { x: number; z: number; r: number }[]>();
+  const big: { x: number; z: number; r: number }[] = [];
+  const key = (cx: number, cz: number) => cx * 65536 + cz;
+  let indexed = 0;
+  return (x, z, r) => {
+    for (; indexed < taken.length; indexed++) {
+      const t = taken[indexed];
+      if (!(t.r <= SMALL) || !Number.isFinite(t.x) || !Number.isFinite(t.z)) {
+        big.push(t);
+        continue;
+      }
+      const k = key(Math.floor(t.x / CELL), Math.floor(t.z / CELL));
+      const list = cells.get(k);
+      if (list) list.push(t);
+      else cells.set(k, [t]);
+    }
+    for (const t of big) if (!(Math.hypot(t.x - x, t.z - z) > t.r + r)) return false;
+    // A small one can only be in the way if its centre is within SMALL + r of (x, z).
+    const reach = SMALL + r;
+    const x0 = Math.floor((x - reach) / CELL);
+    const x1 = Math.floor((x + reach) / CELL);
+    const z0 = Math.floor((z - reach) / CELL);
+    const z1 = Math.floor((z + reach) / CELL);
+    for (let cx = x0; cx <= x1; cx++) {
+      for (let cz = z0; cz <= z1; cz++) {
+        const list = cells.get(key(cx, cz));
+        if (list) for (const t of list) if (!(Math.hypot(t.x - x, t.z - z) > t.r + r)) return false;
+      }
+    }
+    return !onPavement(x, z, r);
+  };
 }
 
 /**
@@ -219,13 +279,18 @@ export function makeKit(group: THREE.Group, colliders: Collider[], night: NightP
     coast: new THREE.Group(),
   };
   const seen: Seen[] = [];
-  const cullable = (obj: THREE.Object3D, minX: number, maxX: number, minZ: number, maxZ: number, above = 10) => seen.push({ obj, minX, maxX, minZ, maxZ, above });
-  const around = (obj: THREE.Object3D, x: number, z: number, r: number, above = 10) => cullable(obj, x - r, x + r, z - r, z + r, above);
+  const cullable = (obj: THREE.Object3D, minX: number, maxX: number, minZ: number, maxZ: number, above = 10, reach = Infinity) => seen.push({ obj, minX, maxX, minZ, maxZ, above, reach });
+  const around = (obj: THREE.Object3D, x: number, z: number, r: number, above = 10, reach = Infinity) => cullable(obj, x - r, x + r, z - r, z + r, above, reach);
   const silo = new THREE.Group();
   const mill = new THREE.Group();
   const light = new THREE.Group();
   const trunk = (x: number, z: number, r: number, h: number) => colliders.push({ minX: x - r, maxX: x + r, minZ: z - r, maxZ: z + r, bottom: G, top: G + h });
   const taken: { x: number; z: number; r: number }[] = [];
-  const free = (x: number, z: number, r: number) => taken.every((t) => Math.hypot(t.x - x, t.z - z) > t.r + r);
-  return { kit: { root, labels, rand, parts, silo, mill, light, colliders, night, cullable, around, trunk, taken, free }, seen };
+  const free = takenIndex(taken, (x, z, r) => pavedNear(x, z, r + 0.5));
+  const placed: { x: number; z: number; r: number }[] = [];
+  const place = (x: number, z: number, r: number) => {
+    taken.push({ x, z, r });
+    placed.push({ x, z, r });
+  };
+  return { kit: { root, labels, rand, parts, silo, mill, light, colliders, night, cullable, around, trunk, taken, free, place, placed, herd: [] }, seen };
 }

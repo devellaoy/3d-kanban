@@ -5,7 +5,7 @@ Back to the [README](../README.md).
 | Key | Action |
 | --- | --- |
 | W A S D / arrows | Walk (hold Shift to run); on the ladder, W and S climb; in a car, W is the gas, S brakes and reverses, A and D steer |
-| Space | Jump (you can land on desks, couches and the cars in the garage); in a car, brake |
+| Space | Jump (you can land on desks, couches and the cars in the garage); in a car, brake (on the test branch: the handbrake, to drift) |
 | Mouse | Look around, the same in first and third person: click the office to capture the mouse, Esc frees it. The dot in the middle of the screen (the crosshair) is what you aim at, and closing a window puts you straight back to looking around. In third person your character turns to face where the camera looks, standing still too. The third-person camera turns with the mouse with no lag, and zooming (wheel) glides. *In 3d-kanban*, ⚙️ Settings → **🧍 You** → **Mouse sensitivity** (25–200%, 100% the usual speed, kept in your browser) sets how far the mouse turns you, captured or dragging |
 | Click | Use what the crosshair is on, like E (with the basketball, hold to shoot). In third person it has to be in reach of your character's eyes and in their sight, not just the camera's (no using a desk past the end of a wall beside you). With the mouse free (a touch screen), a tap in third person uses what you tapped instead, with the same reach and sight |
 | Wheel | Third person: zoom the camera in or out |
@@ -25,12 +25,12 @@ Back to the [README](../README.md).
 | H | These controls; in a car, honk the horn |
 | T / Enter | Chat |
 | Enter, in a prompt box | A new line (**Shift + Enter** too). **Ctrl/⌘ + Enter** sends; on a phone, tap the send button |
-| G / 1–6 | Emote: hold G for the wheel (point and let go) or press 1–6 to wave, give a thumbs up, clap, dance, point or facepalm; everyone on your floor sees it |
+| G / 1–6 | Emote: hold G for the wheel (point and let go) or press 1–6 to wave, give a thumbs up, clap, dance, point or facepalm; the wheel also has *six seven* (test branch); everyone on your floor sees it |
 | / | Search the chat and every terminal on your floor |
 | Ctrl + K (⌘K on a Mac) | Command palette: find a worker, issue, PR, service, board, teammate or action; Enter opens it, Shift+Enter walks you there first |
 | V | Join voice; in voice, hold to talk (you're muted when you let go) |
 | M | Mute / unmute in voice |
-| Tab | The ☰ menu (every window, and what shows on screen) and, where there's room (and a floor to go to), the floor list under the project: pick a floor to go there |
+| Tab | The ☰ menu (every window, and what shows on screen) and, where there's room (and a floor to go to), the floor list under the project: pick a floor to go there. *In 3d-kanban*, **🌐 Players** (under *Together*, once a multiplayer relay is saved) shows your own status with a **Go offline** / **Go online** button and lists who is online with a **Visit** button each (nobody while you are offline); while you visit someone, a bar at the top says **👀 Visiting @login · read-only** with **🏠 Back to my office**, and keys that would change their office just say so ([Features](features.md#multiplayer-visit-each-others-offices)) |
 | Esc | Close any window (a terminal too) and get back to looking around |
 | Ctrl + [ | Send Esc to a terminal instead, to close a menu like Claude's `/skills` or interrupt Claude. **⎋ Esc** in the terminal's header does the same |
 
@@ -53,6 +53,39 @@ Hiring at an empty desk (E or P), or a new worker from **✍️ Ask a worker**, 
 You can also click a nearby desk to interact with it, or click a worker in the Workers panel (**🤖 Workers**, top right) to open its terminal.
 
 On a phone, use the 2D view at `/lite` instead: a terminal there has a row of keys under it (**1** **2** **3**, the arrows, Enter, Tab, Esc, Ctrl+C) and a box to send a prompt. See [Features](features.md).
+
+## Office games (test branch)
+
+Only on the `test/office-game-features` branch ([what they are](features.md#office-games-test-branch)).
+While you're doing one of these (driving, fishing, at the billiards table, in build mode), its keys
+come before the office's own, so B, R, X, P, Q and so on mean what's listed here.
+
+| Where | Key | Action |
+| --- | --- | --- |
+| Anywhere | 7 / 8 / 9 / 0 | Reaction: 👏 🎉 ❤️ 😂 floats up from you; repeats stack into one badge (👏 ×5). They follow the character the key types, so Shift+7 (`/` on a Finnish or German keyboard) still opens search, and on an AZERTY keyboard the reactions need Shift |
+| In the office's world | § (the key left of 1) | The map on or off (also ☰ → 🗺️ Map); Esc or its ✕ hides it too |
+| In a car | Shift / Space / S | Nitro (while the meter lasts) / handbrake, to drift / brake, then reverse |
+| At a desk's blue mat | E | Put things on the desk (plant, mug, photo, lamp, duck) |
+| At a desk lamp | E | Lamp on or off |
+| At a light switch | E | That area's lights off or on, for you |
+| At the lounge plant (east wall, between the Services board and the TV) | E | How the merge plant is doing |
+| At a chair or sofa you placed | E | Sit; E again, walking off or jumping gets you up |
+| At the campfire | E | Stoke it |
+| At the lookout's binoculars | E | Zoom in; E or Esc puts them down |
+| At a roof planter | E | Sow, water or pick |
+| At a fishing sign | E | Start fishing; hold E and let go to cast, E when the bobber goes under to strike |
+| Fishing | Q / I | Reel in or pack up / the fishing journal |
+| In a car, at the street's chequered line | Z | Start a race (five lights); Z again calls it off |
+| In a car | Y / U | Ghost car on or off / race records (of the class of car you are in: supercars or 4x4s) |
+| At the billiards table | E | Play; E or Esc leaves |
+| Billiards | Mouse / Shift | Aim / fine aim |
+| Billiards | Space or left button | Hold for power, let go to shoot |
+| Billiards | R / P | Rack again / practice or two players |
+| Billiards, cue ball in hand | W A S D / Space | Move the cue ball / put it down |
+| On an office floor | U | Build mode on or off |
+| Build mode | B / R / Click | The catalogue / turn the piece / place it |
+| Build mode, aiming at a piece | E / X (Delete) | Pick it up to move it / remove it |
+| Build mode | Esc | Let go of the piece, then leave build mode |
 
 ## In the kanban view
 

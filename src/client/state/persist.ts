@@ -2,6 +2,7 @@
 // you were last on and the spot you were standing in. Every read and write shrugs off blocked storage.
 
 import { randomLook, sanitizeLook, type Look } from '../../shared/avatar';
+import { visiting } from '../multiplayer/visit';
 
 export interface Profile {
   name: string;
@@ -68,6 +69,7 @@ const FLOOR_KEY = 'agent-office.floor';
 
 /** The floor you were last on, to come back to it after a reload. */
 export function lastFloor(): string | null {
+  if (visiting()) return null; // that floor id is ours, not the visited office's
   try {
     return localStorage.getItem(FLOOR_KEY);
   } catch {
@@ -77,6 +79,7 @@ export function lastFloor(): string | null {
 
 // exported, so a link onto a floor (the kanban's 📍 Show in 3D) comes in on it.
 export function rememberFloor(id: string | null) {
+  if (visiting()) return; // keep our own office's floor
   try {
     if (id) localStorage.setItem(FLOOR_KEY, id);
   } catch {
@@ -103,6 +106,7 @@ export interface Spot {
 
 /** The spot you were last in, if this browser has one. */
 export function lastSpot(): Spot | null {
+  if (visiting()) return null;
   try {
     const s = JSON.parse(localStorage.getItem(SPOT_KEY) ?? 'null');
     const finite = (v: unknown) => typeof v === 'number' && Number.isFinite(v);
@@ -116,6 +120,7 @@ export function lastSpot(): Spot | null {
 }
 
 export function rememberSpot(s: Spot) {
+  if (visiting()) return;
   try {
     localStorage.setItem(SPOT_KEY, JSON.stringify(s));
   } catch {

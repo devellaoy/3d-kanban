@@ -1,7 +1,9 @@
 import * as THREE from 'three';
+import { bumpHeight } from '../../shared/bumps';
 import { FLOOR, SLAB, STREET_Y, WING, inWing, wingMinZ } from '../../shared/layout';
 import type { ViewMode } from '../state';
 import type { Collider } from '../world/types';
+import { armFraction, easeArm } from './arm';
 import { ceilingAt, groundAt } from './collide';
 import { THIRD_TARGET, orbitOffset, shoulderOffset } from './shoulder';
 import type { OrbitEase } from './camera3d';
@@ -37,6 +39,8 @@ export interface Followed {
   rig: ((dt: number) => void) | null;
   riding: boolean;
   colliders: Collider[];
+  /** Colliders the camera's arm passes through: the car you're in (taller than the supercars, the 4x4's body would block it). */
+  armSkip: readonly Collider[];
   street: number;
   /** The third-person camera's easing state. */
   ease: OrbitEase;
@@ -83,7 +87,9 @@ export function aimCamera(camera: THREE.PerspectiveCamera, p: Followed, bob: num
     cam.x = THREE.MathUtils.clamp(cam.x, R.minX + m, R.maxX - m);
     cam.z = THREE.MathUtils.clamp(cam.z, R.minZ + m, R.maxZ - m);
   }
-  const floorY = rigged ? 0 : Math.max(groundAt(p.colliders, p.pos.x, p.pos.z, p.pos.y), p.street);
+  // (The meadow's moguls and the speed humps lift the ground under you, and under the camera: see shared/bumps.ts.)
+  const bump = Math.max(bumpHeight(p.pos.x, p.pos.z), bumpHeight(cam.x, cam.z));
+  const floorY = rigged ? 0 : Math.max(groundAt(p.colliders, p.pos.x, p.pos.z, p.pos.y), p.street + bump);
   const roof = ceilingAt(p.colliders, cam.x, cam.z, floorY) - 0.3;
   cam.y = THREE.MathUtils.clamp(cam.y, floorY + 0.6, Math.max(floorY + 0.6, Math.min(floorY + 3.5, roof)));
   // Down on the street, stay under the garage ceiling so its edge never cuts across the view; in the
@@ -110,8 +116,17 @@ export function aimCamera(camera: THREE.PerspectiveCamera, p: Followed, bob: num
     else cam.z = R.maxZ + e;
   }
   p.ease.place(camera, ideal, cam, snap, moved, dt); // on the orbit, moved by the walls (was: lerp 0.25)
+  // The camera is part of your body: the arm from your head to it stops short of anything solid in between.
+  const head = armHead.set(p.pos.x, p.pos.y + p.stepOffset + lift + THIRD_TARGET, p.pos.z);
+  const arm = (p.ease.arm = easeArm(p.ease.arm, armFraction(head, camera.position, p.colliders, p.pos.y, undefined, undefined, p.armSkip), dt, snap));
+  if (arm < 1) {
+    camera.position.sub(head).multiplyScalar(arm).add(head);
+    p.ease.lastShown.copy(camera.position);
+  }
   camera.lookAt(target);
 }
+
+const armHead = new THREE.Vector3();
 
 /** The jitters: the view trembles a little, on top of wherever you're looking. Drunk, it rolls and sways. `t` is the jitters' clock. */
 export function shakeCamera(camera: THREE.PerspectiveCamera, t: number, drunk: number, jitter: number) {

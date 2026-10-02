@@ -1,10 +1,9 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
-import { BALCONY, DESKS, DESK_SIZE, EXIT_STAIRS, FLOOR, PLANTS, STREET_Y, WALL_HEIGHT, WINDOWS } from '../../shared/layout';
+import { BALCONY, DESKS, DESK_SIZE, EXIT_STAIRS, FLOOR, STREET_Y, WALL_HEIGHT, WINDOWS } from '../../shared/layout';
 import type { Theme } from '../../shared/protocol';
 import { mulberry32 } from '../../shared/rng';
 import { batWingGeometry, glowTexture } from './costumes';
-import { plantLeaves } from './office';
 import type { Collider, Office } from './types';
 import { SPOOKY_MOON } from './sky';
 import { mergeByMaterial, mesh, textPlane, toon, toonUnique } from './toon';
@@ -13,8 +12,7 @@ import { mergeByMaterial, mesh, textPlane, toon, toonUnique } from './toon';
  * The building dressed up for a holiday (the costumes are in world/costumes.ts). Halloween puts
  * jack-o'-lanterns everywhere, on the desks, the sills, the counter, the balcony rail and all down
  * the street, with gravestones on the lawn, cobwebs in the corners and bats circling the building
- * and crossing the moon. Christmas turns the potted plants into little decorated trees with presents
- * under them, puts a present on every desk, a big lit tree out front and snowmen in the snow (the
+ * and crossing the moon. Christmas puts a present on every desk, a big lit tree out front and snowmen in the snow (the
  * sky makes it snow, see Sky.setTheme). Everything's built once and shown for its holiday. What's
  * down on the street goes further down the higher your floor is, as the street does (Office.setLevel).
  */
@@ -49,11 +47,6 @@ function pumpkinSpots(): Spot[] {
     if (o.y0 > 2) continue;
     if (o.wall === 'south') spots.push([o.u - 0.85, o.y0, FLOOR.maxZ - 0.08, 0.1, FACE.north]);
     if (o.wall === 'west') spots.push([FLOOR.minX + 0.08, o.y0, o.u + 0.85, 0.1, FACE.east]);
-  }
-  // Beside every potted plant, toward the middle of the room.
-  for (const [x, z, s] of PLANTS) {
-    const d = Math.hypot(x, z) || 1;
-    spots.push([x - (x / d) * 0.55 * s, 0, z - (z / d) * 0.55 * s, 0.2 * s, Math.atan2(-x, -z)]);
   }
   // Under the TV, beside the elevator, out on the balcony and on the landing outside the exit.
   spots.push([17.55, 0, -2.4, 0.22, FACE.west], [17.6, 0, 2.3, 0.17, FACE.west], [10.35, 0, FLOOR.minZ + 0.4, 0.22, FACE.south]);
@@ -484,8 +477,6 @@ export class Holiday {
   private street: Record<Theme, THREE.Group> = { halloween: new THREE.Group(), christmas: new THREE.Group() };
   private drop = 0;
   private base = new Map<Collider, { top: number; bottom: number }>();
-  /** The plants' leaves, and the tree each becomes at Christmas. */
-  private plants: { leaves: THREE.Object3D[]; tree: THREE.Object3D }[] = [];
   private readonly camPos = new THREE.Vector3();
 
   constructor(private office: Office) {
@@ -574,32 +565,6 @@ export class Holiday {
       m.userData.outlineParameters = { visible: false };
       return m;
     });
-    // The potted plants become little trees standing in their pots, with presents round them: the
-    // leaves are hidden and the tree shown instead.
-    office.plants.forEach((p, i) => {
-      const leaves = plantLeaves(p);
-      const tree = new THREE.Group();
-      const t = christmasTree(1.25, this.lights);
-      t.position.y = 0.45;
-      tree.add(t);
-      const gifts = new THREE.Group();
-      for (const [x, z, w, rot] of [
-        [0.45, 0.2, 0.26, 0.3],
-        [-0.3, 0.42, 0.2, -0.5],
-        [0.12, -0.46, 0.22, 0.9],
-      ]) {
-        const [paper, ribbon] = PAPERS[(i + Math.round(w * 10)) % PAPERS.length];
-        const g = present(w, paper, ribbon);
-        g.position.set(x, 0, z);
-        g.rotation.y = rot;
-        gifts.add(g);
-      }
-      tree.add(gifts);
-      const merged = mergeByMaterial(tree);
-      merged.visible = false;
-      p.add(merged);
-      this.plants.push({ leaves, tree: merged });
-    });
     // A present on every desk.
     const deskGifts = new THREE.Group();
     DESK_SPOTS.forEach(([x, y, z, , rotY], i) => {
@@ -653,10 +618,6 @@ export class Holiday {
     if (theme) colliders.push(...this.colliders[theme]);
     this.halloween.visible = theme === 'halloween';
     this.christmas.visible = theme === 'christmas';
-    for (const p of this.plants) {
-      p.tree.visible = theme === 'christmas';
-      for (const l of p.leaves) l.visible = theme !== 'christmas';
-    }
   }
 
   /** `lampsOn` is how far the lamps are on (see Sky), 0 by day and 1 at night: the candles and the tree lights glow brighter. */

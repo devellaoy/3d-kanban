@@ -1,11 +1,13 @@
-import { FARM, LAKE, LOOP_PAVED, MOUNTAINS, shoreX } from '../../../shared/scenic';
+import { CAMP, FARM, LAKE, VIEWPOINT, LOOP_PAVED, MOUNTAINS, shoreX } from '../../../shared/scenic';
 import { neighbourBoxes } from '../outside';
 import { AUTUMN, LEAVES, PINES, boulder, leafy, palm, pine } from './flora';
 import { G, beside, inBox, indexAt, insideLoop, nearest, stretch, type ScenicKit } from './kit';
 
 /** Trees all round the loop, by what's near them, and boulders by the road through the mountains. They go in last, round everything else. */
 export function plantTrees(kit: ScenicKit) {
-  const { rand, parts, colliders, trunk, taken, free } = kit;
+  const { rand, parts, colliders, trunk, taken, free, place } = kit;
+  // The campsite and the lookout (features/camp) keep the trees off.
+  taken.push({ x: CAMP.x, z: CAMP.z, r: 13 }, { x: VIEWPOINT.x, z: VIEWPOINT.z, r: 8 });
   const neighbours = neighbourBoxes();
   const town = (x: number, z: number) => (Math.abs(x) < 64 && z > -64 && z < 40) || (x > -24 && x < 14 && z > 30 && z < 72) || neighbours.some((b) => inBox(b, x, z, 5));
   const ok = (x: number, z: number, r: number) => free(x, z, r) && !town(x, z) && x > shoreX(z) + 26 && !MOUNTAINS.some(([mx, mz, mr]) => Math.hypot(mx - x, mz - z) < mr * 0.95);
@@ -19,8 +21,8 @@ export function plantTrees(kit: ScenicKit) {
       const s = 0.85 + rand() * 0.7;
       if (rand() < 0.82) pine(parts.forest, px, pz, s, PINES[Math.floor(rand() * PINES.length)], rand() * 6);
       else leafy(parts.forest, px, pz, s * 0.9, rand() < 0.35 ? AUTUMN[Math.floor(rand() * AUTUMN.length)] : LEAVES[Math.floor(rand() * LEAVES.length)], rand() * 6);
-      if (n.off < 35) trunk(px, pz, 0.26 * s, 2.2 * s);
-      taken.push({ x: px, z: pz, r: 1.2 });
+      trunk(px, pz, 0.26 * s, 2.2 * s);
+      place(px, pz, 1.2);
     }
   }
   // Pines scattered up to the mountains and round the lake.
@@ -32,8 +34,8 @@ export function plantTrees(kit: ScenicKit) {
       if ((n.place !== 'mountains' && n.place !== 'tunnel') || n.off > 80 || rand() > 0.38 || !ok(px, pz, 1.6)) continue;
       const s = 0.9 + rand() * 0.8;
       pine(parts.mountains, px, pz, s, PINES[Math.floor(rand() * PINES.length)], rand() * 6);
-      if (n.off < 30) trunk(px, pz, 0.26 * s, 2.2 * s);
-      taken.push({ x: px, z: pz, r: 1.5 });
+      trunk(px, pz, 0.26 * s, 2.2 * s);
+      place(px, pz, 1.5);
     }
   }
   // Palms along the coast road, and on the sand.
@@ -47,7 +49,7 @@ export function plantTrees(kit: ScenicKit) {
         const sc = 0.9 + rand() * 0.45;
         palm(parts.beach, at.x, at.z, sc, rand() * 6);
         trunk(at.x, at.z, 0.2 * sc, 6 * sc);
-        taken.push({ x: at.x, z: at.z, r: 2 });
+        place(at.x, at.z, 2);
       }
     }
   }
@@ -64,7 +66,7 @@ export function plantTrees(kit: ScenicKit) {
       const into = n.place === 'beach' || n.place === 'coast' ? parts.coast : n.place === 'farm' ? parts.farm : parts.meadow;
       leafy(into, px, pz, s, rand() < 0.12 ? AUTUMN[Math.floor(rand() * AUTUMN.length)] : LEAVES[Math.floor(rand() * LEAVES.length)], rand() * 6);
       trunk(px, pz, 0.28 * s, 2.1 * s);
-      taken.push({ x: px, z: pz, r: 3 });
+      place(px, pz, 3);
     }
   }
   // Boulders by the road through the mountains.
@@ -75,7 +77,7 @@ export function plantTrees(kit: ScenicKit) {
       const r = 0.8 + rand() * 1.6;
       boulder(parts.mountains, at.x, at.z, r, rand() * 6);
       colliders.push({ minX: at.x - r * 0.7, maxX: at.x + r * 0.7, minZ: at.z - r * 0.7, maxZ: at.z + r * 0.7, bottom: G, top: G + r * 0.9 });
-      taken.push({ x: at.x, z: at.z, r: r + 1 });
+      place(at.x, at.z, r + 1);
     }
   }
 }

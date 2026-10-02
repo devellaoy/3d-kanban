@@ -4,7 +4,7 @@ import { mesh, roundedBox, textPlane, toon } from '../toon';
 import type { Collider, Interactable } from '../types';
 import type { Fixture } from './fixture';
 import { PALETTE, box, floorTexture, glassPane, type Looks } from './materials';
-import { floorPlant, pendant, plant } from './props';
+import { pendant } from './props';
 import { chair, seatable } from './seats';
 
 /**
@@ -177,18 +177,6 @@ export function buildLoft(group: THREE.Group, colliders: Collider[], interactabl
   scope.userData.interact = telescope;
   interactables.push(telescope);
   colliders.push({ minX: minX + 0.65, maxX: minX + 1.15, minZ: minZ + 0.65, maxZ: minZ + 1.15, bottom: floorY, top: floorY + 1.3 });
-
-  for (const [i, [px, pz, s]] of [
-    [maxX - 0.6, minZ + 0.6, 1],
-    [maxX - 0.6, maxZ - 0.6, 1.2],
-  ].entries()) {
-    // Starting past the monstera, which spreads too wide for a corner this tight.
-    const p = plant(floorPlant(i + 1), s);
-    p.position.set(px, floorY, pz);
-    group.add(p);
-    const r = 0.3 * s;
-    colliders.push({ minX: px - r, maxX: px + r, minZ: pz - r, maxZ: pz + r, bottom: floorY, top: floorY + 0.5 * s });
-  }
 
   const lamp = pendant();
   lamp.position.set(deskX, roofY - 0.4, cz);
