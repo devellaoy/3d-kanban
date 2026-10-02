@@ -234,7 +234,8 @@ test('lounge figures: a floor\'s held tasks, oldest first; the floor is told whe
   const sent: { floor: string; msg: KanbanServerMsg }[] = [];
   const lounge = new LoungeSender(repo, (floor, msg) => void sent.push({ floor, msg }));
   lounge.changed('web');
-  assert.equal(sent.length, 0, 'nothing held, nothing to say');
+  assert.equal(sent.length, 1, 'the first look at a floor says what is there, even nothing');
+  sent.length = 0;
   repo.updateTask(b.id, { status: 'on_hold', hold: { at: 20, by: 'Ada', from: 'waiting', note: 'keys', until: 99, worker: { name: 'Fia', color: '#abc' } } });
   repo.updateTask(a.id, { status: 'on_hold', hold: { at: 10, by: 'Ada', from: 'review' } });
   repo.updateTask(c.id, { status: 'on_hold', hold: { at: 1, by: 'Ada', from: 'review' } });
@@ -386,7 +387,7 @@ for (const reason of ['plan_approval', 'plan_questions'] as const) {
   });
 }
 
-test('the lounge after a restart: a view served first, then the last figure leaves: the floor is told it is empty', () => {
+test('the lounge after a restart: the last figure leaves before anything was sent: the floor is told it is empty', () => {
   const db = new Database(':memory:');
   migrate(db);
   const repo = new KanbanRepository(db);
@@ -394,11 +395,51 @@ test('the lounge after a restart: a view served first, then the last figure leav
   repo.updateTask(t.id, { status: 'on_hold', hold: { at: 1, by: 'Ada', from: 'review' } });
   const sent: KanbanServerMsg[] = [];
   const lounge = new LoungeSender(repo, (_f, msg) => void sent.push(msg));
-  assert.equal(lounge.view('web').length, 1, 'what the arriving browser is shown');
   repo.updateTask(t.id, { status: 'review', hold: null });
   lounge.changed('web');
   assert.deepEqual(sent, [{ t: 'kanban.lounge', floor: 'web', figures: [] }]);
 });
+
+test('a browser arriving in the middle of a hold move does not hide the update from the rest of the floor', () => {
+  const db = new Database(':memory:');
+  migrate(db);
+  const repo = new KanbanRepository(db);
+  const t = repo.createTask({ project: 'web', title: 'A', tool: 'claude', usePlan: false, planApproval: 'auto', useReview: false, createdBy: 'Ada' });
+  const sent: KanbanServerMsg[] = [];
+  const lounge = new LoungeSender(repo, (_f, msg) => void sent.push(msg));
+  lounge.changed('web'); // the floor was told: nobody is held
+  sent.length = 0;
+  repo.updateTask(t.id, { status: 'on_hold', hold: { at: 1, by: 'Ada', from: 'review' } }); // the hold is saved ...
+  assert.equal(loungeFigures(repo, 'web').length, 1); // ... a browser arrives and is shown it ...
+  lounge.changed('web'); // ... and then the change is pushed
+  assert.equal(sent.length, 1);
+});
+
+for (const reason of ['plan_approval', 'plan_questions'] as const) {
+  test(`held messages stay on the task while the approval's or answer's run waits for room, and reach its prompt once it launches (${reason})`, async (t) => {
+    let full: string | undefined;
+    const fx = await engineFixture({ capacity: { full: () => full, room: () => (full ? 0 : 5) }, engine: { sweepMs: 100 } });
+    t.after(() => fx.close());
+    const asks = reason === 'plan_questions';
+    fx.setRules([asks ? { when: 'You are planning kanban task', reply: 'QUESTIONS:\n1. Which look?' } : { when: 'You are planning kanban task', reply: 'PLAN READY', exitPlan: '1. Do it' }, { when: 'The user replied about the plan', reply: 'Plan.\n\nPLAN READY', exitPlan: 'The plan' }, IMPLEMENT]);
+    const task = fx.newTask({ usePlan: true, useReview: false, planApproval: 'manual' });
+    assert.equal(await fx.engine.start(task.id, ADA), undefined);
+    await fx.waitTask(task.id, (x) => x.status === 'waiting' && x.waitingReason === reason && x.runState === 'idle', reason, 30_000);
+    assert.equal(await fx.engine.hold!(task.id, ADA, {}), undefined);
+    await fx.waitTask(task.id, (x) => x.status === 'on_hold' && !x.workerId, 'held');
+    fx.repo.addComment({ taskId: task.id, authorKind: 'user', authorName: 'Bob', text: 'Keys arrived on Monday.' });
+    assert.equal(await fx.engine.unhold!(task.id, ADA), undefined);
+    full = 'The office is at its limit';
+    if (asks) assert.equal(await fx.engine.continue(task.id, ADA, 'Like this'), undefined);
+    else assert.equal(await fx.engine.approvePlan(task.id, ADA), undefined);
+    const q = await fx.waitTask(task.id, (x) => x.runState === 'queued', 'queued for room');
+    assert.equal(q.pendingMessages.length, 1, 'still the task\'s: no agent has them');
+    full = undefined;
+    await fx.waitTask(task.id, (x) => (asks ? x.waitingReason === 'plan_approval' : x.status === 'review') && x.runState === 'idle' && x.pendingMessages.length === 0, 'the queued run launched', 30_000);
+    const run = promptsOf(fx).find((p) => (asks ? /The user replied about the plan/ : /^Implement kanban task/).test(p))!;
+    assert.ok(run.includes('Keys arrived on Monday.'), run);
+  });
+}
 
 test('the unhold prompt quotes every comment left while on hold, past fifty', async (t) => {
   const fx = await engineFixture();

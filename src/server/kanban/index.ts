@@ -35,7 +35,7 @@ import { parseKanbanClientMsg, ridOf, type KanbanClientType, type KanbanServerMs
 import type { ProjectRepo } from '../../shared/kanban/types.js';
 import type { WorkerInfo } from '../../shared/protocol.js';
 import type { KanbanRunAs } from './registry.js';
-import { LoungeSender } from './lounge.js';
+import { LoungeSender, loungeFigures } from './lounge.js';
 import type { LoungeFigure } from '../../shared/kanban/lounge.js';
 import { promptTaskWorker, resumeTaskWorker } from './coupling.js';
 
@@ -318,7 +318,7 @@ export function installKanban(opts: KanbanInstallOptions): Kanban {
     handleHttp: (req, res, url, who) => route(httpRoutes, url.pathname, [req, res, url, who]),
     handleHook: (req, res, url, who) => route(hookRoutes, url.pathname, [req, res, url, who]),
     handleLoopback: (req, res, url) => route(loopbackRoutes, url.pathname, [req, res, url]),
-    lounge: (floorId) => lounge.view(floorId),
+    lounge: (floorId) => loungeFigures(repo, floorId),
     clientGone(clientId) {
       subscribers.delete(clientId);
     },

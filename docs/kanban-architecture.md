@@ -72,7 +72,7 @@ document disagree, fix one of them in the same change.
   leave-on-merge has no worker to send home. 3D clients get a view-only lounge figure for it (§6).
   A task held while it waited for a plan's approval or answers (`plan_approval`, `plan_questions`) records that
   (`hold.reason`, `text`, `phase`; its worker at the plan's exit prompt may go home too) and is not worked on when resumed: it goes back to
-  `waiting` with them and a status line, and approving or answering hires the worker as usual. The user's comments made since the hold (the resume note included, files too) are kept as `pendingMessages` and go, under "Messages left on the task while it was on hold", with the run that approval or answer starts (`ComposeExtra.held`).
+  `waiting` with them and a status line, and approving or answering hires the worker as usual. The user's comments made since the hold (the resume note included, files too) are kept as `pendingMessages` and go, under "Messages left on the task while it was on hold", with the run that approval or answer starts (`ComposeExtra.held`); they leave the task only once an agent has them, so a run queued for a desk or the worker limit still has them on dequeue.
   **Resuming** (`task.move` to `in_progress`, action `unhold`, `engine.unhold`; anyone signed in; an optional `note` becomes the
   user's comment first): the machine's `unhold` event runs the implementer again (phase `resume`, prompt `unhold`) through
   `launch()`: same worktree and `resumeSessionId`, preferring the worker's old name (when no one else has it) and colour
@@ -401,7 +401,7 @@ answers `kanban.ok {rid, ...}` or `kanban.error {rid, message}`. Deltas are push
   everyone on that floor whenever the floor's set of figures changes (sent from `ctx.taskChanged`, which a hold, resume, delete or any
   edit of a held task goes through; compared by a signature per floor, so nothing is sent for an unrelated change). A floor's figures are
   its project's `on_hold` tasks as `{taskId, title, name, color, note?, until?, at}` (name and colour from `hold.worker`, else "Worker" and a neutral grey), oldest hold first (`sortFigures`).
-  Whoever arrives gets them in `FloorView.kanbanLounge` (serving it also records what the floor has been shown, so a restart doesn't hide the last figure's removal) (the `views` registry), so the same list reaches the
+  Whoever arrives gets them in `FloorView.kanbanLounge` (serving it doesn't touch the broadcast cache, which holds what was last sent to the floor; a floor nothing was sent to since the start always gets its first message, even an empty list, so a restart doesn't hide the last figure's removal) (the `views` registry), so the same list reaches the
   welcome and a floor change.
 - Deltas: `kanban.task` (a card changed or appeared), `kanban.task.removed` (deleted; also sent in place of
   an archived card to subscribers without `includeArchived`), `kanban.comment`, `kanban.run`, `kanban.plan`

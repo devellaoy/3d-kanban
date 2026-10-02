@@ -729,7 +729,8 @@ export class Orchestrator {
 
   /** The pending comments, taken off the task to be typed in now: one message, and who wrote it. */
   private takePending(task: KanbanTask): { text: string; author: string } | undefined {
-    if (!task.pendingMessages.length) return undefined;
+    const p = this.pendingText(task);
+    if (!p) return undefined;
     const msgs = task.pendingMessages;
     for (const m of msgs) {
       this.ctx.repo.setCommentPending(m.commentId, false);
@@ -737,6 +738,13 @@ export class Orchestrator {
       if (c) this.ctx.broadcast({ t: 'kanban.comment', comment: c, project: task.project }, task.project);
     }
     this.update(task.id, { pendingMessages: [] });
+    return p;
+  }
+
+  /** The pending comments as one message, and who wrote it; they stay on the task (see takePending). */
+  private pendingText(task: KanbanTask): { text: string; author: string } | undefined {
+    const msgs = task.pendingMessages;
+    if (!msgs.length) return undefined;
     const authors = [...new Set(msgs.map((m) => m.by))];
     const text = msgs.length === 1 ? msgs[0].text : msgs.map((m) => `${m.by}:\n${m.text}`).join('\n\n');
     return { text, author: authors.join(', ') };
@@ -811,7 +819,11 @@ export class Orchestrator {
     }
     // Messages kept through a hold go with the run a plan's approval or answer starts (they are not a turn's end's to deliver).
     let held: string | undefined;
-    if (!eff.pending && role === 'implementer' && (eff.prompt === 'implement' || eff.prompt === 'replan') && task.pendingMessages.length) held = this.takePending(task)?.text;
+    if (!eff.pending && role === 'implementer' && (eff.prompt === 'implement' || eff.prompt === 'replan') && task.pendingMessages.length) held = this.pendingText(task)?.text;
+    // They are taken off the task once an agent has them, not when the run waits for a desk (it is queued without them).
+    const heldTaken = () => {
+      if (held !== undefined) this.takePending(this.ctx.repo.getTask(task.id) ?? task);
+    };
     const refsFile = eff.phase === 'plan' ? this.ctx.refs.referencedTasksFile(task.id, [task.title, task.description, text ?? ''].join('\n')) : undefined;
     const x: ComposeExtra = {
       phase: eff.phase,
@@ -926,6 +938,7 @@ export class Orchestrator {
       if (!err) {
         this.ctx.repo.updateRun(run.id, { workerId: info.id, sessionId: info.sessionId });
         this.update(task.id, { runState: 'running' });
+        heldTaken();
         return undefined;
       }
       this.live.delete(info.id);
@@ -984,6 +997,7 @@ export class Orchestrator {
     }
     patch.runState = 'running';
     this.update(task.id, patch);
+    heldTaken();
     this.exitedAtHire(live);
     return undefined;
   }
