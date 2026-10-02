@@ -129,7 +129,8 @@ curl -fsSL https://raw.githubusercontent.com/devellaoy/3d-kanban/main/deploy/pro
 - **Editable prompts**, office-wide or per project, with the process's contract blocks kept fixed (they also
   tell every kanban run and review panel to stop the processes it started, such as a dev server, when it
   finishes, unless it was asked to leave them running).
-- **Skills** per project, phase and agent (Claude via `--plugin-dir`, Codex synced into its home).
+- **Skills** per project, phase and agent (Claude via `--plugin-dir`, Codex synced into its home). The repository's `user-skills/` (kanban-dev and others) are synced into your own
+  `~/.claude` and `~/.codex` on start, see [docs/kanban.md](docs/kanban.md#skills-synced-to-your-own-home).
 - **Task references for agents**: `office-tasks get 14`, the MCP tools `get_task` / `search_tasks`, and
   ai-kanban's `/api/tasks/reference` and `/api/v1` on the loopback hook server (its port is in
   `<data>/hook-port`; `--hook-port <n>` pins it for scripts outside the office, see

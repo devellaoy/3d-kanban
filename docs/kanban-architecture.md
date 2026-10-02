@@ -18,7 +18,7 @@ document disagree, fix one of them in the same change.
   - `src/server/kanban/` — database, settings, projects, engine, issues, refs, skills, HTTP/WS glue.
   - `src/client/kanban/` + `src/client/kanban.html` — the kanban page.
   - `src/{shared,server,client}/youtube/` — YouTube on the Office TV (see fork.md).
-  - `bin/office-tasks.js`, `scripts/migrate-ai-kanban/`, `skills/`, `tests/kanban-*.test.ts`, `docs/kanban*.md`.
+  - `bin/office-tasks.js`, `scripts/migrate-ai-kanban/`, `skills/`, `user-skills/`, `tests/kanban-*.test.ts`, `docs/kanban*.md`.
   General code (the shoulder camera, the GitHub repo picker, PR file lists and so on) lives where it
   belongs, outside these folders, and any file may be changed where that is the clean solution.
   The registries and the size guard ([Code layout](code-layout.md)) apply to the kanban like to the rest.
@@ -530,6 +530,18 @@ On the loopback hook server (worker bearer token, like `/office/workers`):
 worker's PATH), MCP tools `get_task`, `search_tasks` (listed only when the worker has `AIKANBAN_API_BASE`, i.e.
 task workers; Claude task workers get them in `--allowedTools`). A plan phase gets the tasks its text refers to
 written to `kanban/refs/task-<id>/referenced-tasks.md` (it can't call anything).
+
+User skills (integrations/userskills/): a plugin that syncs the repository's `user-skills/claude/*` and
+`user-skills/codex/*` into the machine's `<claude home>/skills/` and `<codex home>/skills/` (the same homes
+`defaultRoots` finds), marking its copies with `.office-user-skill.json` (the source hash, `skillHash(dir, { exclude: USER_SKILL_EXCLUDES })`):
+a marked or ai-kanban (`.aikanban-sync`) copy is overwritten (hand edits too) when the source changed, an unmarked
+one or a symlink is left alone. Copies are built in `<home>/.office-user-skills-tmp/<folder>-<pid>` (outside the scanned
+`skills/`) and renamed in, the old one set aside and removed, the target's `node_modules` moved over; stale temp
+entries of dead pids are removed at the start of a sync. Files removed from the source disappear. `start()` defers the
+sync with `setImmediate`. `AGENT_OFFICE_USER_SKILLS=off` disables it; a source whose repository root has `.git` as a file (a
+linked worktree) is skipped unless it is `on` (a main checkout or no git at all syncs). The same function guards the
+admin's 🔄 Sync: the plugin registers itself with `onSkillsSync` (skills/index.ts) in `start()` and unregisters in `stop()`,
+so the dependency runs userskills -> skills only. See docs/kanban.md.
 
 Compatibility for existing ai-kanban skills/scripts (integrations/compat/v1.ts): task workers get env
 `AIKANBAN_API_BASE` (the hook server URL) and `AIKANBAN_TASK_ID`.

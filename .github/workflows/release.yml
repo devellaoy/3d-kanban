@@ -14,6 +14,8 @@ on:
     paths:
       - 'src/**'
       - 'bin/**'
+      - 'skills/**'
+      - 'user-skills/**'
       - 'package.json'
       - 'package-lock.json'
       - 'tsconfig*.json'

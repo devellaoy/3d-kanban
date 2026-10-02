@@ -36,8 +36,15 @@ export function parseFrontmatter(text: string): { name?: string; description?: s
   return { ...(out.name ? { name: out.name } : {}), ...(out.description ? { description: out.description } : {}) };
 }
 
-/** Every file of a skill's folder, relative, sorted (its marker left out), a few levels deep. */
-export function skillFiles(dir: string): string[] {
+/** The file in a user-skills copy that says 3d-kanban's sync put it there, and what it was. */
+export const USER_MARKER = '.office-user-skill.json';
+/** ai-kanban's sync marker; a copy carrying it is adopted. */
+export const AIKANBAN_MARKER = '.aikanban-sync';
+/** What a user skill's hash and its copy leave out, at any depth: installed dependencies and the sync markers. */
+export const USER_SKILL_EXCLUDES: ReadonlySet<string> = new Set(['node_modules', '.DS_Store', USER_MARKER, AIKANBAN_MARKER]);
+
+/** Every file of a skill's folder, relative, sorted (its marker left out), a few levels deep. `exclude` leaves out more names at any depth. */
+export function skillFiles(dir: string, opts: { exclude?: ReadonlySet<string> } = {}): string[] {
   const out: string[] = [];
   const walk = (d: string, rel: string, depth: number) => {
     let names: string[];
@@ -48,6 +55,7 @@ export function skillFiles(dir: string): string[] {
     }
     for (const n of names) {
       if (n === MARKER || n === '.DS_Store') continue;
+      if (opts.exclude?.has(n)) continue;
       const p = path.join(d, n);
       const r = rel ? `${rel}/${n}` : n;
       try {
@@ -64,9 +72,9 @@ export function skillFiles(dir: string): string[] {
 }
 
 /** A hash of what a skill's folder holds (names and contents), to tell copies apart. */
-export function skillHash(dir: string): string {
+export function skillHash(dir: string, opts?: { exclude?: ReadonlySet<string> }): string {
   const h = createHash('sha256');
-  for (const f of skillFiles(dir)) {
+  for (const f of skillFiles(dir, opts)) {
     h.update(f).update('\0');
     try {
       h.update(readFileSync(path.join(dir, f)));

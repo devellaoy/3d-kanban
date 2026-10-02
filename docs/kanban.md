@@ -566,6 +566,31 @@ per agent (Claude, Codex). The phase prompt names them.
 - **office-task-refs** (bundled) is given to every task worker, Claude and Codex, whatever is picked:
   it tells the agent how to read another task it's pointed at.
 
+### Skills synced to your own home
+
+The repository's `user-skills/` folder (`claude/*`, `codex/*`) holds skills for the people developing with it:
+`kanban-dev`, `kanban-dev-sonnet` and `kanban-ui-screenshots` for Claude, `kanban-dev` and `kanban-ui-screenshots`
+for Codex (see `user-skills/README.md`). When the server starts they are copied into `<claude home>/skills/<skill>`
+(`$CLAUDE_CONFIG_DIR`, else `~/.claude`) and `<codex home>/skills/<skill>` (`$CODEX_HOME`, else `~/.codex`),
+the way ai-kanban does. **🔄 Sync** (admins) runs it too.
+
+- A copy gets a `.office-user-skill.json` marker. A marked copy is overwritten when the source changed, hand
+  edits included; an unchanged one isn't touched. ai-kanban's own copies (`.aikanban-sync`) are adopted the
+  same way (the marker is replaced).
+- A skill of the same name with neither marker is yours and stays untouched (a warning is logged and 🔄 Sync reports it);
+  so does one that is a symbolic link, which is never written through.
+- Copies are built outside the folder Claude and Codex scan, in `<home>/.office-user-skills-tmp/`, and swapped
+  in whole: a failed install or update leaves the old copy (or nothing) behind, and what a dead process
+  left in the temp folder is cleaned on the next sync. `node_modules` isn't copied and the target's own
+  survives an update. Files deleted from the source disappear from the target.
+- `AGENT_OFFICE_USER_SKILLS=off` turns the sync off, at start-up and in 🔄 Sync. Where the skills come from
+  a linked git worktree (an agent's checkout, where `.git` is a file) both are skipped unless
+  `AGENT_OFFICE_USER_SKILLS=on`, so a branch's skills don't overwrite the main checkout's. A main checkout
+  and an install without git (a release) sync.
+
+If ai-kanban runs on the same machine it writes its own copies of the same skills over these: whichever app
+started last wins, and 3d-kanban takes them back (a copy carrying `.aikanban-sync` counts as changed) on its next start. Signed-in accounts' own Claude homes (`<data>/homes/<id>/claude`) don't get these skills.
+
 ## Agents reading other tasks
 
 A task often builds on another ("like #14 planned", "tehtävä 17", "the rest of UYT-1415"). Agents
