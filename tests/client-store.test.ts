@@ -225,7 +225,7 @@ test('what the browser remembers keeps its keys and shapes', () => {
 
 test("the store's keys are its state, as window.__office shows them", () => {
   // As the office had them before its store was split into slices: methods and the slices aren't among them.
-  assert.deepEqual(Object.keys(store).sort(), ['accounts', 'ball', 'cabinet', 'cabinetFrame', 'cars', 'carsAt', 'chat', 'clock', 'codexLimits', 'decor', 'dog', 'dogStart', 'drawing', 'floor', 'floorPlan', 'floors', 'ice', 'invites', 'issues', 'jail', 'jukebox', 'leaveOnMerge', 'limits', 'machine', 'map', 'me', 'meeting', 'mp', 'mpEnded', 'mpFloors', 'notify', 'peers', 'profile', 'project', 'projectsDir', 'prompts', 'pulls', 'queue', 'repos', 'screens', 'services', 'signins', 'sky', 'subs', 'team', 'theme', 'upgrade', 'usage', 'whiteboard', 'workers', 'you', 'youtube' /* 3d-kanban */, 'youtubeList' /* 3d-kanban */, 'kanbanLounge' /* 3d-kanban */].sort());
+  assert.deepEqual(Object.keys(store).sort(), ['accounts', 'ball', 'cabinet', 'cabinetFrame', 'cars', 'carsAt', 'chat', 'clock', 'codexLimits', 'decor', 'dog', 'dogStart', 'drawing', 'floor', 'floorPlan', 'floors', 'ice', 'invites', 'issues', 'jail', 'jukebox', 'leaveOnMerge', 'limits', 'machine', 'map', 'me', 'meeting', 'mp', 'mpEnded', 'mpFloors', 'notify', 'peers', 'profile', 'project', 'projectsDir', 'prompts', 'pulls', 'queue', 'repos', 'screens', 'services', 'signins', 'sky', 'subs', 'team', 'theme', 'upgrade', 'usage', 'whiteboard', 'workers', 'you', 'youtube' /* 3d-kanban */, 'youtubeList' /* 3d-kanban */, 'kanbanLounge' /* 3d-kanban */, 'phoneFloor' /* 3d-kanban */].sort());
 });
 
 test('a new store starts every field where it always has', async () => {
@@ -255,6 +255,7 @@ test('a new store starts every field where it always has', async () => {
       youtubeList: { queue: [], back: false, sameVolume: false }, // 3d-kanban: its queue and settings
       mp: { status: 'off', url: '', configured: false, offline: false, passwordSet: false, players: [], floors: [] }, mpFloors: {}, mpEnded: null, // 3d-kanban: multiplayer (slices/multiplayer.ts)
       kanbanLounge: [], // 3d-kanban: the tasks on hold in the lounge (kanban/loungeslice.ts)
+      phoneFloor: null, // 3d-kanban: another floor's workers, for the phone (phone/slice.ts)
     },
   );
 });
@@ -266,7 +267,7 @@ test('every slice in state/slices is registered, once', async () => {
   const dir = path.join(import.meta.dirname, '../src/client/state/slices');
   const slices = [...Object.values(core)];
   // 3d-kanban: the fork's slice, outside state/slices (docs/fork.md).
-  slices.push((await import('../src/client/youtube/slice.js')).youtube, (await import('../src/client/codex-limits/slice.js')).codexLimits, (await import('../src/client/kanban/loungeslice.js')).kanbanLounge);
+  slices.push((await import('../src/client/youtube/slice.js')).youtube, (await import('../src/client/codex-limits/slice.js')).codexLimits, (await import('../src/client/kanban/loungeslice.js')).kanbanLounge, (await import('../src/client/phone/slice.js')).phone);
   for (const f of readdirSync(dir).filter((f) => f.endsWith('.ts') && f !== 'index.ts')) {
     const exported = Object.values(await import(pathToFileURL(path.join(dir, f)).href));
     assert.ok(exported.length, `${f} exports its slice`);
@@ -295,4 +296,22 @@ test("a slice's topics fire in its place in the list; a floor's after the messag
   assert.deepEqual(fired, ['c']);
   assert.equal((s as unknown as { hello(): string }).hello(), 'hi');
   assert.ok(!Object.keys(s).includes('hello'));
+});
+
+test('phone: another floor\'s workers are held apart and found by findWorker', async () => {
+  const { findWorker, projectOf } = await import('../src/client/state/workers.js');
+  store.apply(welcome());
+  const proj = { name: 'other', dir: '/p/other', agentCmd: 'claude', defaultProvider: 'claude', agentProviders: ['claude'] };
+  store.apply(msg({ t: 'phone.floor', floor: 'f2', workers: [worker('f2-w1', 'desk-1')], project: proj }));
+  assert.equal(findWorker('f2-w1')?.id, 'f2-w1');
+  assert.equal(projectOf('f2-w1')?.name, 'other');
+  assert.equal(projectOf('f1-w1')?.name, 'f1');
+  assert.equal(store.workers.has('f2-w1'), false);
+  store.apply(msg({ t: 'phone.worker', floor: 'f2', worker: worker('f2-w2', 'desk-2') }));
+  assert.ok(findWorker('f2-w2'));
+  store.apply(msg({ t: 'phone.worker', floor: 'f3', worker: worker('f3-w', 'desk-2') }));
+  assert.equal(findWorker('f3-w'), undefined);
+  store.apply(msg({ t: 'phone.workerRemove', floor: 'f2', workerId: 'f2-w1' }));
+  assert.equal(findWorker('f2-w1'), undefined);
+  store.phoneFloor = null;
 });

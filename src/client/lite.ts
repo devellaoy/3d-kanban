@@ -13,7 +13,7 @@ import { DESK_BY_ID, nextFreeSeat } from '../shared/layout';
 import { isAsleep } from '../shared/status';
 import type { AgentEffort, AgentProvider, FloorInfo, WorkerInfo } from '../shared/protocol';
 import { openSafe } from './ui/url';
-import { $, clip, closeAllModals, doingNow, h, onDoingChange, onModalChange, openModal, readingNow, STATUS_LABEL, timeAgo, toast } from './ui/dom';
+import { $, closeAllModals, doingNow, h, onDoingChange, onModalChange, openModal, readingNow, toast } from './ui/dom';
 import { openTerminal, openTerminalFor, routeTerminalMessage } from './ui/terminal';
 import { openChanges, openChangesFor, routeChangesMessage } from './ui/changes';
 import { lostWorktreeDialog, openPrompt, routeWorktreeMessage, sendHomeDialog } from './ui/prompt';
@@ -23,7 +23,7 @@ import { openPull, routePullMessage } from './ui/pull';
 // A worker's PR by its repository too, on a project with several.
 import { findItem, ownPullRepo } from './ui/github/ghrepo';
 // Task workers on the 2D view.
-import { kanbanChip, promptKind } from './kanban/office';
+import { promptKind } from './kanban/office';
 import { askWorker, hireOption, promptTaskWorker } from './kanban/office3d';
 import { cardTask } from './kanban/issuecards'; // a card from the issue sources too
 import { sendTaskWorkerHome } from './kanban/sendhome';
@@ -31,10 +31,10 @@ import { openQueue } from './ui/queue';
 import { openAsk } from './ui/ask';
 import { openMeeting, type MeetingPreset } from './ui/meeting';
 import { openSignIns } from './ui/signins';
-import { modelBadge, providerLabel } from './ui/provider';
 import { byUrgency, waitingInOrder, waitingLabel } from './nextup';
 import { askNotifyPermission, DesktopNotifier, notifyPermission, waitingOnSomeone } from './notify';
 import { repoChoices } from './shared/hiring';
+import { workerCard } from './shared/workercard';
 // The tab title counts the workers waiting on someone, on every floor, as the 3D office's does.
 import { renderTitle } from './shared/title';
 
@@ -143,56 +143,10 @@ const lastStatus = new Map<string, string>();
 function renderWorkers() {
   const list = byUrgency(store.workers.values());
   const ul = $('workers');
-  ul.replaceChildren(...list.map(workerCard));
+  ul.replaceChildren(...list.map((w) => workerCard(w, { onOpen: openWorker, onPrompt: promptWorker })));
   if (!list.length) ul.append(h('li.lite-empty', {}, store.project ? 'Nobody is working on this floor. ✨ New task hires someone.' : 'No workers here.'));
   $('waiting-now').textContent = waitingLabel(waitingInOrder(list));
   renderTitle();
-}
-
-function workerCard(w: WorkerInfo): HTMLElement {
-  const desk = DESK_BY_ID.get(w.deskId);
-  const waiting = waitingOnSomeone(w);
-  const asleep = isAsleep(w.status);
-  const badge = w.kind === 'agent' ? modelBadge(w.provider, w.model, w.effort) : undefined;
-  const task = w.task?.name ?? w.title ?? (w.prompt ? clip(w.prompt, 90) : undefined);
-  // What it's asking, doing or did, in a line.
-  const now = w.lost
-    ? '🌿 Its worktree was deleted outside agent-office: open it to fix it'
-    : w.status === 'needs_input'
-      ? `🙋 ${w.activity ?? 'Waiting on an answer'}`
-      : asleep
-        ? '💤 Asleep: open it to wake it up'
-        : w.status === 'done'
-          ? w.task?.summary && `✅ ${w.task.summary}`
-          : (w.task?.summary ?? w.activity);
-  const sub = [
-    w.kanban && kanbanChip(w, Date.now()),
-    w.kind === 'agent' ? `⚙️ ${providerLabel(w.provider, store.project)}${badge ? ` · ${badge}` : ''}` : '🐚 shell',
-    desk && (desk.station ? `📌 ${desk.label}` : desk.label),
-    w.worktree && `🌿 ${w.worktree.branch}`,
-    w.pr && `🔀 PR #${w.pr.number}`,
-    w.lastInput && `⌨️ ${w.lastInput.by} ${timeAgo(w.lastInput.at)}`,
-  ].filter(Boolean);
-  return h(
-    'li.lite-worker',
-    { class: `${w.status}${waiting ? ' waiting' : ''}` },
-    h(
-      'button.lite-card',
-      { type: 'button', onclick: () => openWorker(w.id), 'aria-label': `${w.name}, ${STATUS_LABEL[w.status] ?? w.status}: open its terminal` },
-      h('span.dot', { style: `background:${w.color}` }),
-      h(
-        'span.lite-info',
-        {},
-        h('span.lite-name', {}, w.name),
-        task ? h('span.lite-task', {}, task) : null,
-        now ? h('span.lite-now', {}, now) : null,
-        h('span.lite-sub', {}, sub.join(' · ')),
-      ),
-      h('span.lite-state', {}, h('span.pill', { class: w.status }, STATUS_LABEL[w.status] ?? w.status), waiting && w.waitingSince ? h('small', {}, timeAgo(w.waitingSince)) : null),
-    ),
-    // One that's asking something is answered in its terminal, where the question is.
-    asleep || w.lost || w.status === 'needs_input' ? null : h('button.btn.lite-say', { type: 'button', title: `Send ${w.name} a prompt`, 'aria-label': `Send ${w.name} a prompt`, onclick: () => promptWorker(w.id) }, '✍️'),
-  );
 }
 
 /** A worker needs input or is done: a notification while you're elsewhere, and a buzz. */

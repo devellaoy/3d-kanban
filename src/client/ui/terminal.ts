@@ -4,6 +4,7 @@ import { FitAddon } from '@xterm/addon-fit';
 import { WebLinksAddon } from '@xterm/addon-web-links';
 import type { Net } from '../net';
 import { store } from '../state';
+import { findWorker, floorOfWorker, projectOf } from '../state/workers';
 import { TERM_THEME } from './termtheme';
 import { h, openModal, STATUS_LABEL, timeAgo, toast, type Modal } from './dom';
 import { usageLabel, usageTitle } from './usage';
@@ -59,7 +60,7 @@ function initials(name: string): string {
 async function uploadDrop(workerId: string, f: File): Promise<string> {
   const name = f.name || 'That file';
   if (f.size > DROP_MAX_BYTES) throw new Error(`${name} is too big to drop into a terminal (${DROP_MAX_BYTES / 1024 / 1024} MB at most)`);
-  const q = new URLSearchParams({ floor: store.floor ?? '', worker: workerId, name: f.name });
+  const q = new URLSearchParams({ floor: floorOfWorker(workerId) ?? '', worker: workerId, name: f.name });
   const res = await fetch(`/api/term/drop?${q}`, { method: 'POST', headers: { 'content-type': f.type || 'application/octet-stream' }, body: f });
   const r = (await res.json().catch(() => ({}))) as { path?: string; error?: string };
   if (!res.ok || !r.path) throw new Error(r.error ?? `${name} could not be dropped into the terminal`);
@@ -108,11 +109,11 @@ export function openTerminal(net: Net, workerId: string, onChanges?: () => void,
     return;
   }
   current?.modal.close();
-  const info = store.workers.get(workerId);
+  const info = findWorker(workerId);
   if (!info) return;
 
   const dot = h('span.dot', { style: `background:${info.color}` });
-  const title = h('h2', {}, info.kind === 'agent' ? `${providerLabel(info.provider, store.project)} · ${info.name}` : info.name);
+  const title = h('h2', {}, info.kind === 'agent' ? `${providerLabel(info.provider, projectOf(workerId))} · ${info.name}` : info.name);
   const pill = h('span.pill', {}, '');
   const cost = h('span.cost', {});
   const viewers = h('div.viewers', {});
@@ -165,8 +166,8 @@ export function openTerminal(net: Net, workerId: string, onChanges?: () => void,
    */
   const sendSize = (typing = false) => {
     if (!ready) return;
-    if (!typing && (store.workers.get(workerId)?.viewers.length ?? 0) > 1) {
-      const w = store.workers.get(workerId);
+    if (!typing && (findWorker(workerId)?.viewers.length ?? 0) > 1) {
+      const w = findWorker(workerId);
       if (w && (w.cols !== term.cols || w.rows !== term.rows)) term.resize(w.cols, w.rows);
       return;
     }
@@ -176,7 +177,7 @@ export function openTerminal(net: Net, workerId: string, onChanges?: () => void,
       return;
     }
     const key = `${term.cols}x${term.rows}`;
-    const w = store.workers.get(workerId);
+    const w = findWorker(workerId);
     if (w && (w.cols !== term.cols || w.rows !== term.rows) && key !== lastSentSize) {
       lastSentSize = key;
       net.send({ t: 'term.resize', workerId, cols: term.cols, rows: term.rows });
@@ -225,7 +226,7 @@ export function openTerminal(net: Net, workerId: string, onChanges?: () => void,
   };
   // Typing stops showing a couple of seconds after the last keystroke.
   const typingTimer = setInterval(() => {
-    const w = store.workers.get(workerId);
+    const w = findWorker(workerId);
     if (w && typing.size) renderPresence(w);
   }, 500);
   /** Tells the others here you're typing, about once a second while you are. */
@@ -238,21 +239,21 @@ export function openTerminal(net: Net, workerId: string, onChanges?: () => void,
   };
 
   const refresh = () => {
-    const w = store.workers.get(workerId);
+    const w = findWorker(workerId);
     if (!w) {
       modal.close();
       return;
     }
-    title.textContent = [w.kind === 'agent' ? providerLabel(w.provider, store.project) : null, w.name, w.title, w.worktree && `🌿 ${w.worktree.branch}`, w.repos?.length && `🗂️ ${[w.worktree?.path.split(/[\\/]/).pop(), ...w.repos.map((r) => r.name)].join(' + ')}`].filter(Boolean).join(' · ');
+    title.textContent = [w.kind === 'agent' ? providerLabel(w.provider, projectOf(workerId)) : null, w.name, w.title, w.worktree && `🌿 ${w.worktree.branch}`, w.repos?.length && `🗂️ ${[w.worktree?.path.split(/[\\/]/).pop(), ...w.repos.map((r) => r.name)].join(' + ')}`].filter(Boolean).join(' · ');
     pill.className = `pill ${w.status}`;
     pill.textContent = STATUS_LABEL[w.status] ?? w.status;
-    const workerProvider = w.kind === 'agent' ? resolvedProvider(w.provider, store.project) : undefined;
-    const usageState = w.kind === 'agent' ? providerUsageState(w.provider, store.project, w.usage) : undefined;
-    const waiting = usageState === 'waiting' ? providerWaitingLabel(workerProvider, store.project) : '';
+    const workerProvider = w.kind === 'agent' ? resolvedProvider(w.provider, projectOf(workerId)) : undefined;
+    const usageState = w.kind === 'agent' ? providerUsageState(w.provider, projectOf(workerId), w.usage) : undefined;
+    const waiting = usageState === 'waiting' ? providerWaitingLabel(workerProvider, projectOf(workerId)) : '';
     cost.textContent = w.kind !== 'agent' ? '' : usageState === 'tracked' && w.usage ? usageLabel(w.usage, workerProvider) : waiting ? waiting : usageState === 'untracked' ? 'usage untracked' : '';
     cost.title = w.kind === 'agent' && w.usage ? usageTitle(w.usage, workerProvider) : w.kind === 'agent' ? providerUsageNote(workerProvider!) : '';
     renderPresence(w);
-    const openCode = w.kind === 'agent' && resolvedProvider(w.provider, store.project) === 'opencode';
+    const openCode = w.kind === 'agent' && resolvedProvider(w.provider, projectOf(workerId)) === 'opencode';
     modelsBtn.classList.toggle('hidden', !openCode);
     modelsBtn.toggleAttribute('disabled', !openCode || !ready || isAsleep(w.status));
     escBtn.toggleAttribute('disabled', !ready || isAsleep(w.status));
@@ -299,7 +300,7 @@ export function openTerminal(net: Net, workerId: string, onChanges?: () => void,
     if (msg.t === 'term.data' && msg.workerId === workerId) term.write(msg.data);
     else if (msg.t === 'term.typing' && msg.workerId === workerId) {
       typing.set(msg.id, Date.now() + TYPING_SHOWS_MS);
-      const w = store.workers.get(workerId);
+      const w = findWorker(workerId);
       if (w) renderPresence(w);
     } else if (msg.t === 'term.snapshot' && msg.workerId === workerId) {
       term.reset();
@@ -316,9 +317,10 @@ export function openTerminal(net: Net, workerId: string, onChanges?: () => void,
   };
   listeners.add(onMsg);
   const unsub = store.on('workers', refresh);
+  const unsubPhone = store.on('phoneWorkers', refresh); // another floor's worker, through the phone
   // A viewer's name or color can change while they're here.
   const unsubPeers = store.on('peers', () => {
-    const w = store.workers.get(workerId);
+    const w = findWorker(workerId);
     if (w) renderPresence(w);
   });
   const ro = new ResizeObserver(() => sendSize());
@@ -328,9 +330,10 @@ export function openTerminal(net: Net, workerId: string, onChanges?: () => void,
     doing: `💻 in ${info.name}'s terminal`,
     onClose: (byEsc) => {
       // Leaving with Esc while the program wanted one (you were in /skills, say): say how to send it one.
-      if (byEsc && ready && screenMentionsEsc(term)) toast(`Esc left the terminal. To send ${store.workers.get(workerId)?.name ?? info.name} an Esc (to close a menu), use ⎋ Esc at the top or Ctrl+[`);
+      if (byEsc && ready && screenMentionsEsc(term)) toast(`Esc left the terminal. To send ${findWorker(workerId)?.name ?? info.name} an Esc (to close a menu), use ⎋ Esc at the top or Ctrl+[`);
       listeners.delete(onMsg);
       unsub();
+      unsubPhone();
       unsubPeers();
       clearInterval(typingTimer);
       ro.disconnect();

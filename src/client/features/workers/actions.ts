@@ -254,14 +254,16 @@ export function installWorkerActions(ctx: Ctx, core: CoreState, parts: WorkerAct
    */
   function fixLostWorktree(w: WorkerInfo) {
     if (!w.lost || !w.worktree) return;
-    const others = [...store.workers.values()].filter((o) => o.lost && o.id !== w.id);
+    // Another floor's worker (through the phone): the rest of your floor's isn't its, and the Changes window is your floor's only.
+    const here = store.workers.has(w.id);
+    const others = here ? [...store.workers.values()].filter((o) => o.lost && o.id !== w.id) : [];
     lostWorktreeDialog({
       name: w.name,
       worktree: w.worktree,
       lost: w.lost,
       workspace: w.repos?.length ? w.worktree.path.replace(/[\\/][^\\/]*$/, '') : undefined,
       others: others.map((o) => o.name),
-      openTerminal: isAsleep(w.status) ? undefined : () => openTerminal(net, w.id, () => openWorkerChanges(w.id)),
+      openTerminal: isAsleep(w.status) ? undefined : () => openTerminal(net, w.id, here ? () => openWorkerChanges(w.id) : undefined),
       rebuild: (all) => {
         toast(all ? `Rebuilding ${others.length + 1} worktrees…` : `Rebuilding ${w.name}'s worktree…`);
         net.send({ t: 'worker.rebuild', workerId: w.id, all });

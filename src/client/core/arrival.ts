@@ -10,6 +10,7 @@ import { SLAB, inElevator } from '../../shared/layout';
 import { ROOF, ROOF_NAME } from '../../shared/rooftop';
 import { renderTitle } from '../shared/title';
 import { lastFloor, lastSpot, store, type Spot } from '../state';
+import { findWorker } from '../state/workers';
 import { routeAccountsMessage } from '../ui/accounts';
 import { openChangesFor, routeChangesMessage } from '../ui/changes';
 import { $, toast } from '../ui/dom';
@@ -121,7 +122,7 @@ export function installArrival(ctx: Ctx, core: CoreState, parts: ArrivalParts) {
     // After a reconnect the server has forgotten which terminal we had open, and what we're doing.
     parts.focus.sendDoing(true);
     const openId = openTerminalFor();
-    if (openId && store.workers.has(openId)) net.send({ t: 'worker.attach', workerId: openId });
+    if (openId && findWorker(openId)) net.send({ t: 'worker.attach', workerId: openId });
     const watching = openChangesFor();
     if (watching && store.workers.has(watching.workerId)) net.send({ t: 'changes.watch', ...watching });
     renderProject();
