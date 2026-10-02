@@ -10,6 +10,7 @@
 
 import type { ClientMsg } from '../protocol.js';
 import { ROOF } from '../rooftop.js';
+import { repoOk } from './repos.js';
 
 export { filterForVisitor, SERVER_MSG_OUT, type FilterCtx } from './filter.js';
 
@@ -21,6 +22,12 @@ export interface VisitorScope {
   floors: ReadonlySet<string>;
   /** Kanban project ids the visitor may read (a project's id is its floor's id). */
   projects: ReadonlySet<string>;
+  /**
+   * Floor id → the repositories of its project the visitor was verified against (the floor id for the
+   * project's own checkout, `<floor>~<repo>` for the others; see repos.ts). Set by the host; a scope
+   * without it is checked by floor only.
+   */
+  repos?: ReadonlyMap<string, ReadonlySet<string>>;
 }
 
 /**
@@ -229,16 +236,16 @@ export function classOf(type: unknown): ClientMsgClass {
 
 /** What the owner's office can look up for the checks that need more than the message. */
 export interface ScopeLookup {
-  /** Every floor a worker touches: its own, then the floors of the repositories it also works in (WorkerInfo.repos); undefined if there is no such worker. */
+  /** Every repository a worker touches: its own floor, then the repository ids it also works in (WorkerInfo.repos[].floor, a floor id or `<floor>~<repo>`); undefined if there is no such worker. */
   workerFloors?(workerId: string): string[] | undefined;
+  /** The repositories a task names (see taskRepoIds); undefined if there is no such task. */
+  taskRepos?(taskId: number): string[] | undefined;
   /** The project a kanban task belongs to; undefined if there is no such task. */
   projectOfTask?(taskId: number): string | undefined;
 }
 
 const isStr = (v: unknown): v is string => typeof v === 'string' && v.length > 0;
 
-/** A repository of a worker's changes: a floor id, or `<floorId>~<repoId>` (see REPO_ID_RE in the kanban protocol). */
-const repoFloor = (repo: unknown): string | undefined => (isStr(repo) ? repo.split('~')[0] : undefined);
 
 /**
  * Whether a visitor may send this message, whatever its class: 'allow' passes, 'deny' (and anything
@@ -268,9 +275,9 @@ export function visitorMayScoped(msg: ClientMsg, scope: VisitorScope, lookup: Sc
     case 'changes.unwatch':
     case 'changes.diff': {
       // A worker across repositories shows other floors' code too, so every floor it works in must be in scope.
-      const floors = isStr(m.workerId) ? lookup.workerFloors?.(m.workerId) : undefined;
-      if (!floors?.length || !floors.every(floorOk)) return false;
-      return m.repo === undefined || floorOk(repoFloor(m.repo));
+      const repos = isStr(m.workerId) ? lookup.workerFloors?.(m.workerId) : undefined;
+      if (!repos?.length || !repos.every((id) => repoOk(scope, id))) return false;
+      return m.repo === undefined || repoOk(scope, m.repo);
     }
     // null (all projects) and a missing project are refused: the owner's other projects are not theirs to see.
     case 'kanban.subscribe':
@@ -279,7 +286,7 @@ export function visitorMayScoped(msg: ClientMsg, scope: VisitorScope, lookup: Sc
       return projectOk(m.project);
     case 'kanban.task.get':
     case 'kanban.comments.page':
-      return typeof m.id === 'number' && projectOk(lookup.projectOfTask?.(m.id));
+      return typeof m.id === 'number' && projectOk(lookup.projectOfTask?.(m.id)) && (lookup.taskRepos?.(m.id) ?? []).every((id) => repoOk(scope, id));
     // No project to name: the answer is filtered to the scope on the way out.
     case 'kanban.unsubscribe':
     case 'kanban.meta.get':

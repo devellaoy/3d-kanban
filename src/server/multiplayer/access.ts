@@ -7,6 +7,7 @@ import { normalizeRepo } from '../../shared/floors.js';
 import type { FloorDef } from '../building.js';
 import { checkoutRepo } from '../ghrepo.js';
 import { gh } from '../github.js';
+import { repoFloorId } from '../../shared/kanban/repofloor.js';
 import { projectRepos } from '../kanban/projects.js';
 
 /** Runs `gh <args>` as the office and returns its output; rejects when gh fails (403, 404, offline). */
@@ -54,6 +55,14 @@ export const repoPrint = (def: FloorDef): string =>
     .map((r) => [r.id, r.name, r.kind, repoRemote(r)?.toLowerCase() ?? '-'].join('|'))
     .sort()
     .join(',');
+
+/**
+ * The ids a worker or task names the repositories of a project by: the floor's id for its own
+ * checkout, `<floor>~<repo>` for the others (see shared/multiplayer/repos.ts). The visitor is
+ * verified against exactly these, and only workers and tasks whose repositories are all among them
+ * stay visible to them.
+ */
+export const repoIdsOf = (def: FloorDef): Set<string> => new Set(projectRepos(def).map((r) => (r.primary ? def.id : repoFloorId(def.id, r.id))));
 
 export class Access {
   private cache = new Map<string, { ok: boolean; until: number }>();

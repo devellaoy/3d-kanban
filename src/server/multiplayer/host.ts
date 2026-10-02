@@ -8,8 +8,8 @@ import type { VisitorScope } from '../../shared/multiplayer/allow.js';
 import type { Ctx } from '../office/context.js';
 import { onConnection } from '../ws/connection.js';
 import { RemoteSocket } from './remote-socket.js';
-import { repoPrint } from './access.js';
-import { workerFloors } from './gate.js';
+import { repoIdsOf, repoPrint } from './access.js';
+import { taskRepos, workerFloors } from './gate.js';
 import type { Multiplayer } from './index.js';
 
 type Msg<T extends RelayToOffice['t']> = Extract<RelayToOffice, { t: T }>;
@@ -67,7 +67,8 @@ export class Host {
     const { ctx, mp } = this;
     const { sid, profile } = msg;
     const allowed = [...verified.keys()];
-    const scope: VisitorScope = { login: msg.from, floors: new Set(allowed), projects: new Set(allowed) };
+    const scope: VisitorScope = { login: msg.from, floors: new Set(allowed), projects: new Set(allowed), repos: new Map() };
+    for (const id of allowed) this.verifyRepos(scope, id, verified.get(id)!);
     const sock = new RemoteSocket(
       {
         frame: (data, drop) => mp.link.send({ t: 'visit.frame', sid, data, ...(drop ? { drop: true as const } : {}) }, !!drop),
@@ -76,7 +77,7 @@ export class Host {
         closed: (reason) => void mp.link.send({ t: 'visit.close', sid, reason: reason.slice(0, 250) }),
       },
       scope,
-      { floorOfPeer: (id) => ctx.clients.get(id)?.peer.floor, workerFloors: (id) => workerFloors(ctx, id), projectOfTask: (id) => ctx.kanban?.ctx.repo.getTask(id)?.project },
+      { floorOfPeer: (id) => ctx.clients.get(id)?.peer.floor, workerFloors: (id) => workerFloors(ctx, id), projectOfTask: (id) => ctx.kanban?.ctx.repo.getTask(id)?.project, taskRepos: (id) => taskRepos(ctx, id) },
     );
     this.sessions.set(sid, { sock, scope, prints: new Map(verified), denied: new Map() });
     sock.once('close', () => this.sessions.delete(sid));
@@ -129,6 +130,7 @@ export class Host {
       if (!stale.length && !retry.length) continue;
       for (const id of stale) {
         h.prints.delete(id);
+        (h.scope.repos as Map<string, Set<string>> | undefined)?.delete(id);
         mp.unshared(id, h.scope);
       }
       const tried = [...stale, ...retry].filter((id) => defs.has(id));
@@ -145,12 +147,25 @@ export class Host {
     for (const id of lost) {
       const print = now.get(id);
       if (print === undefined || h.prints.has(id)) continue;
+      if (!this.verifyRepos(h.scope, id, print)) continue;
       h.prints.set(id, print);
       h.denied.delete(id);
       (h.scope.floors as Set<string>).add(id);
       (h.scope.projects as Set<string>).add(id);
     }
     this.tell(h);
+  }
+
+  /**
+   * Records the repositories of floor `id` the visitor was verified against (`print` is what GitHub
+   * was asked about); false when the project is no longer the one that was checked. Workers and tasks
+   * that hold a repository taken out of the project since are then not the visitor's to see.
+   */
+  private verifyRepos(scope: VisitorScope, id: string, print: string): boolean {
+    const def = this.ctx.building.list().find((d) => d.id === id);
+    if (!def || repoPrint(def) !== print) return false;
+    (scope.repos as Map<string, Set<string>> | undefined)?.set(id, repoIdsOf(def));
+    return true;
   }
 
   /** Their floor list, as it is in their scope now. */

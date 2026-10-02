@@ -9,6 +9,7 @@ import type { Client } from '../office/client.js';
 import type { Ctx } from '../office/context.js';
 import { Access, ghAccess, repoPrint } from './access.js';
 import { MpConfigStore } from './config.js';
+import { repoOk } from '../../shared/multiplayer/repos.js';
 import { workerFloors } from './gate.js';
 import { Guest } from './guest.js';
 import { Host } from './host.js';
@@ -169,7 +170,7 @@ export class Multiplayer {
     if (!scope) return;
     for (const wid of [...c.attached]) {
       const floor = this.ctx.workerFloor(wid);
-      if (floor && workerFloors(this.ctx, wid)?.every((id) => scope.floors.has(id))) continue;
+      if (floor && workerFloors(this.ctx, wid)?.every((id) => repoOk(scope, id))) continue;
       floor?.workers.detach(wid, c.id);
       c.attached.delete(wid);
     }

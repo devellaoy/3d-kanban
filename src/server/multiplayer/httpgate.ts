@@ -9,6 +9,7 @@ import { MP_BODY_MAX, MP_LIMITS, type RelayToOffice } from '../../shared/multipl
 import type { VisitorScope } from '../../shared/multiplayer/allow.js';
 import { MP_HEADER } from '../auth.js';
 import type { Ctx } from '../office/context.js';
+import { repoOk, taskOk } from '../../shared/multiplayer/repos.js';
 import { workerFloors } from './gate.js';
 import { visitorPath } from './paths.js';
 import type { Multiplayer } from './index.js';
@@ -24,17 +25,19 @@ export function forbidden(ctx: Ctx, scope: VisitorScope, u: URL): number | undef
   // every repository floor it also works in), and the route itself restricts the file to that worker's.
   if (p === '/api/changes/file') {
     const floors = workerFloors(ctx, q.get('worker') ?? '');
-    return scope.floors.has(q.get('floor') ?? '') && !!floors && floors.every((id) => scope.floors.has(id)) ? undefined : 403;
+    return scope.floors.has(q.get('floor') ?? '') && !!floors && floors.every((id) => repoOk(scope, id)) ? undefined : 403;
   }
   // The bookshelf names its floor every time (the route would otherwise not know which project is meant).
   if (p === '/api/docs' || p === '/api/docs/file' || p === '/api/docs/picture') return scope.floors.has(q.get('floor') ?? '') ? undefined : 403;
   if (p.startsWith('/api/gh/') || p === '/api/whiteboard/file') return scope.floors.has(q.get('floor') ?? '') ? undefined : 403;
   const task = /^\/api\/kanban\/tasks\/(\d+)\//.exec(p);
-  if (task) return projectOk(ctx.kanban?.ctx.repo.getTask(Number(task[1]))?.project) ? undefined : 403;
+  // A task that touches a repository outside the scope is not theirs (its changes are that code).
+  const taskAllowed = (t: ReturnType<NonNullable<Ctx['kanban']>['ctx']['repo']['getTask']>) => !!t && projectOk(t.project) && taskOk(scope, t);
+  if (task) return taskAllowed(ctx.kanban?.ctx.repo.getTask(Number(task[1]))) ? undefined : 403;
   const att = /^\/api\/kanban\/attachments\/([^/]+)$/.exec(p);
   if (att) {
     const taskId = ctx.kanban?.ctx.repo.getAttachment(att[1])?.taskId;
-    return taskId !== undefined && projectOk(ctx.kanban?.ctx.repo.getTask(taskId)?.project) ? undefined : 403;
+    return taskId !== undefined && taskAllowed(ctx.kanban?.ctx.repo.getTask(taskId)) ? undefined : 403;
   }
   // The office fetches any address for a wall picture, so only the pictures hung on a floor in scope.
   if (p === '/api/image') {

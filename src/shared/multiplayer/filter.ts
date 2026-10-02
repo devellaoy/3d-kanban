@@ -7,10 +7,12 @@
 // in their scope (they cannot stand anywhere else), so floor-scoped updates pass as they are.
 // Broadcasts to everyone (welcome, floors, peer.*, kanban.*) are the ones to rewrite or drop here.
 
-import type { KanbanProjectInfo, KanbanSettings } from '../kanban/types.js';
+import type { KanbanProjectInfo, KanbanSettings, KanbanTaskCard } from '../kanban/types.js';
 import type { FloorInfo, FloorView, PeerInfo, ProjectInfo, ServerMsg, WorkerInfo } from '../protocol.js';
+import { repoFloorId } from '../kanban/repofloor.js';
 import { ROOF } from '../rooftop.js';
 import type { VisitorScope } from './allow.js';
+import { repoOk, taskOk } from './repos.js';
 
 /** What the owner's office can look up while filtering. */
 export interface FilterCtx {
@@ -18,8 +20,10 @@ export interface FilterCtx {
   floorOfPeer?(peerId: string): string | undefined;
   /** The project a kanban task belongs to (kanban.comments names only the task). */
   projectOfTask?(taskId: number): string | undefined;
-  /** The floors a worker works in (its own, then its WorkerInfo.repos'); terminal and diff frames go to viewers directly, so each is checked against all of them. */
+  /** The repositories a worker works in (its own floor, then its WorkerInfo.repos' ids); terminal and diff frames go to viewers directly, so each is checked against all of them. */
   workerFloors?(workerId: string): string[] | undefined;
+  /** The repositories a task names (see taskRepoIds); a frame about a task that touches one outside the scope is dropped. */
+  taskRepos?(taskId: number): string[] | undefined;
 }
 
 /**
@@ -163,12 +167,16 @@ const floorFor = (f: FloorInfo): FloorInfo => ({ ...f, dir: '' });
 const projectFor = (p: ProjectInfo | null): ProjectInfo | null => (p ? { ...p, dir: '', agentCmd: '' } : null);
 
 /**
- * Whether a worker may be shown: it works on a floor in scope and in repositories of floors in scope
- * (WorkerInfo.repos names other floors' projects, which may be ones the owner did not share).
+ * Whether a worker may be shown: every repository it works in (WorkerInfo.repos) is one in scope, i.e.
+ * on a floor they have and still one of that project's repositories they were verified against (a
+ * repository taken out of the project later stays in the workspace of an old worker).
  */
 function workerOk(w: WorkerInfo, scope: VisitorScope): boolean {
-  return (w.repos ?? []).every((r) => scope.floors.has(r.floor.split('~')[0]));
+  return (w.repos ?? []).every((r) => repoOk(scope, r.floor));
 }
+
+/** Whether a task card is one to show: in a project in scope and touching only repositories in scope. */
+const cardOk = (t: KanbanTaskCard, scope: VisitorScope) => scope.projects.has(t.project) && taskOk(scope, t);
 
 /** A worker without the owner's folders. */
 const workerFor = (w: WorkerInfo): WorkerInfo => (w.repos ? { ...w, repos: w.repos.map((r) => ({ ...r, dir: '' })) } : w);
@@ -217,8 +225,10 @@ export function filterForVisitor(msg: ServerMsg, scope: VisitorScope, ctx: Filte
   const projectOk = (id: string | null | undefined) => !!id && scope.projects.has(id);
   const workerIn = (id: string) => {
     const floors = ctx.workerFloors?.(id);
-    return !!floors?.length && floors.every(floorOk);
+    return !!floors?.length && floors.every((r) => repoOk(scope, r));
   };
+  // A frame about a task by id (comments, runs, plans): its project, and the repositories it names.
+  const taskIn = (taskId: number) => projectOk(ctx.projectOfTask?.(taskId)) && (ctx.taskRepos?.(taskId) ?? []).every((r) => repoOk(scope, r));
   switch (msg.t) {
     // Kept: what the visitor needs to stand in the arrival floor. Replaced by neutral values: the
     // owner's settings, usage, folders and invites, which the client still expects to find.
@@ -253,7 +263,7 @@ export function filterForVisitor(msg: ServerMsg, scope: VisitorScope, ctx: Filte
     case 'changes.diff':
       return workerIn(msg.workerId) ? msg : undefined;
     case 'changes':
-      return workerIn(msg.state.workerId) && (!msg.state.repo || floorOk(msg.state.repo.split('~')[0])) ? msg : undefined;
+      return workerIn(msg.state.workerId) && (!msg.state.repo || repoOk(scope, msg.state.repo)) ? msg : undefined;
     case 'worker.update':
       return workerOk(msg.worker, scope) ? { ...msg, worker: workerFor(msg.worker) } : undefined;
     case 'floors':
@@ -275,24 +285,33 @@ export function filterForVisitor(msg: ServerMsg, scope: VisitorScope, ctx: Filte
     // --- The kanban ---
     case 'kanban.snapshot':
       return projectOk(msg.project)
-        ? { ...msg, tasks: msg.tasks.filter((t) => projectOk(t.project)), projects: msg.projects.filter((p) => projectOk(p.id)).map(kanbanProjectFor), settings: kanbanSettingsFor(msg.settings, scope), secrets: NO_SECRETS, me: { admin: false, name: scope.login } }
+        ? { ...msg, tasks: msg.tasks.filter((t) => cardOk(t, scope)), projects: msg.projects.filter((p) => projectOk(p.id)).map(kanbanProjectFor), settings: kanbanSettingsFor(msg.settings, scope), secrets: NO_SECRETS, me: { admin: false, name: scope.login } }
         : undefined;
     case 'kanban.meta':
       return { ...msg, projects: msg.projects.filter((p) => projectOk(p.id)).map(kanbanProjectFor), settings: kanbanSettingsFor(msg.settings, scope), secrets: NO_SECRETS, me: { admin: false, name: scope.login } };
     case 'kanban.projects':
       return { t: 'kanban.projects', projects: msg.projects.filter((p) => projectOk(p.id)).map(kanbanProjectFor) };
+    // A task that touches a repository outside the scope is dropped whole (its stored workspace and
+    // repository ids would show it); the board of the project simply does not have it.
     case 'kanban.task':
-      return projectOk(msg.task.project) ? msg : undefined;
+      return cardOk(msg.task, scope) ? msg : undefined;
     case 'kanban.task.detail':
-      return projectOk(msg.task.project) ? msg : undefined;
+      return projectOk(msg.task.project) && taskOk(scope, msg.task) ? msg : undefined;
     case 'kanban.task.removed':
-    case 'kanban.comment':
-    case 'kanban.run':
-    case 'kanban.plan':
-    case 'kanban.pr.bundle':
       return projectOk(msg.project) ? msg : undefined;
+    case 'kanban.comment':
+      return projectOk(msg.project) && taskIn(msg.comment.taskId) ? msg : undefined;
+    case 'kanban.run':
+      return projectOk(msg.project) && taskIn(msg.run.taskId) ? msg : undefined;
+    case 'kanban.plan':
+      return projectOk(msg.project) && taskIn(msg.plan.taskId) ? msg : undefined;
+    case 'kanban.pr.bundle':
+      // Pull requests of a repository outside the scope are left out of the bundle.
+      return projectOk(msg.project)
+        ? { ...msg, prs: msg.prs.filter((p) => !p.repoId || repoOk(scope, p.repoId === msg.project ? p.repoId : repoFloorId(msg.project, p.repoId))) }
+        : undefined;
     case 'kanban.comments':
-      return projectOk(ctx.projectOfTask?.(msg.taskId)) ? msg : undefined;
+      return taskIn(msg.taskId) ? msg : undefined;
     default:
       return undefined; // a 'rewrite' type without a case above: never let it through unchecked
   }
