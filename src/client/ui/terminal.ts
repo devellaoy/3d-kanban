@@ -12,7 +12,7 @@ import { isAsleep } from '../../shared/status';
 import { findLine } from '../../shared/search';
 import { DROP_MAX_BYTES, droppedPaths } from '../../shared/drops';
 import { providerLabel, providerUsageNote, providerUsageState, providerWaitingLabel, resolvedProvider } from './provider';
-import { naturalKey } from './termkeys';
+import { clipboardKey, naturalKey } from './termkeys';
 import { termTabs } from './termtabs';
 // A task worker's window has tabs: the terminal and its kanban task; files dropped on the task pane aren't the terminal's.
 import { mountWorkerTabs, type WorkerTabs } from '../kanban/worker3d';
@@ -374,6 +374,16 @@ export function openTerminal(net: Net, workerId: string, onChanges?: () => void,
         sendEsc();
         return false;
       }
+    }
+    // Ctrl+C / Ctrl+V copy and paste off a Mac (termkeys.ts). A paste is left to the browser, whose
+    // paste event xterm (and the screenshot upload below) takes; a copy goes through the copy event
+    // xterm fills with the selection, which needs no secure context as the clipboard API does.
+    const clip = e.type === 'keydown' ? clipboardKey(e, term.hasSelection()) : undefined;
+    if (clip === 'paste') return false;
+    if (clip === 'copy') {
+      e.preventDefault();
+      if (term.hasSelection()) document.execCommand('copy');
+      return false;
     }
     // ⌘⌫, Ctrl+⌫, Shift+Enter and friends edit the prompt the way your own terminal does (termkeys.ts).
     const natural = e.type === 'keydown' && !e.isComposing ? naturalKey(e) : undefined;

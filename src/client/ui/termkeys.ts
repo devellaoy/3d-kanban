@@ -34,3 +34,18 @@ export function naturalKey(e: TermKey, mac = IS_MAC): string | undefined {
   }
   return undefined;
 }
+
+/**
+ * Copy and paste the way Windows Terminal and VS Code's terminal do them off a Mac, where xterm.js
+ * would send Ctrl+C as an interrupt and Ctrl+V as a literal ^V: Ctrl+C copies while text is
+ * selected (and still interrupts while none is), Ctrl+V pastes, and Ctrl+Shift+C / Ctrl+Shift+V
+ * always do. On a Mac ⌘C / ⌘V already do and Ctrl+C stays an interrupt, so nothing changes there.
+ * Matched by the key's place too, for layouts where C and V type other letters (с and м in Russian).
+ */
+export function clipboardKey(e: TermKey & Pick<KeyboardEvent, 'code'>, hasSelection: boolean, mac = IS_MAC): 'copy' | 'paste' | undefined {
+  if (mac || !e.ctrlKey || e.altKey || e.metaKey) return undefined;
+  const at = (letter: string, code: string) => e.key.toLowerCase() === letter || (e.code === code && !/^[ -~]$/.test(e.key));
+  if (at('c', 'KeyC')) return e.shiftKey || hasSelection ? 'copy' : undefined;
+  if (at('v', 'KeyV')) return 'paste';
+  return undefined;
+}

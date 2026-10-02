@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { naturalKey, type TermKey } from '../src/client/ui/termkeys.js';
+import { clipboardKey, naturalKey, type TermKey } from '../src/client/ui/termkeys.js';
 
 const key = (k: string, mods: Partial<Omit<TermKey, 'key'>> = {}): TermKey => ({ key: k, ctrlKey: false, altKey: false, shiftKey: false, metaKey: false, ...mods });
 
@@ -39,4 +39,28 @@ test('ordinary keys are left to xterm', () => {
     assert.equal(naturalKey(key(k, { metaKey: true }), true), undefined);
     assert.equal(naturalKey(key(k, { ctrlKey: true }), false), undefined);
   }
+});
+
+const ck = (k: string, mods: Partial<Omit<TermKey, 'key'>> = {}, code = `Key${k.toUpperCase()}`) => ({ ...key(k, mods), code });
+
+test('Ctrl+C copies a selection and otherwise interrupts, off a Mac', () => {
+  assert.equal(clipboardKey(ck('c', { ctrlKey: true }), true, false), 'copy');
+  assert.equal(clipboardKey(ck('c', { ctrlKey: true }), false, false), undefined, 'no selection: ^C still interrupts');
+  assert.equal(clipboardKey(ck('C', { ctrlKey: true, shiftKey: true }), false, false), 'copy');
+  assert.equal(clipboardKey(ck('c'), true, false), undefined, 'a plain c types');
+  assert.equal(clipboardKey(ck('c', { ctrlKey: true, altKey: true }), true, false), undefined, 'AltGr is Ctrl+Alt');
+});
+
+test('Ctrl+V and Ctrl+Shift+V paste off a Mac, also on a layout with other letters', () => {
+  assert.equal(clipboardKey(ck('v', { ctrlKey: true }), false, false), 'paste');
+  assert.equal(clipboardKey(ck('V', { ctrlKey: true, shiftKey: true }), false, false), 'paste');
+  assert.equal(clipboardKey(ck('м', { ctrlKey: true }, 'KeyV'), false, false), 'paste', 'Russian layout');
+  assert.equal(clipboardKey(ck('с', { ctrlKey: true }, 'KeyC'), true, false), 'copy');
+  assert.equal(clipboardKey(ck('v', { ctrlKey: true }, 'KeyB'), false, false), 'paste', 'by the letter on Dvorak-like layouts');
+});
+
+test('nothing changes on a Mac: ⌘C / ⌘V are the browser\'s, Ctrl+C interrupts', () => {
+  assert.equal(clipboardKey(ck('c', { ctrlKey: true }), true, true), undefined);
+  assert.equal(clipboardKey(ck('v', { ctrlKey: true }), false, true), undefined);
+  assert.equal(clipboardKey(ck('c', { metaKey: true }), true, true), undefined);
 });
