@@ -12,9 +12,9 @@ export function add(q: Items, item: YoutubeQueueItem, where: 'end' | 'next'): Yo
   return where === 'next' ? [item, ...q] : [...q, item];
 }
 
-/** As many of `items` as fit in front of the queue, in order. */
+/** As many of `items` as fit in front of the queue, in order; what is queued already is never dropped. */
 export function addFront(q: Items, items: Items): YoutubeQueueItem[] {
-  return [...items, ...q].slice(0, QUEUE_MAX);
+  return [...items.slice(0, Math.max(0, QUEUE_MAX - q.length)), ...q];
 }
 
 /** `qid` moved to place `to` (clamped to the queue); null if it isn't queued. */

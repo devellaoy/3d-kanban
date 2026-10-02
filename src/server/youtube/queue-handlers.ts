@@ -34,10 +34,12 @@ export const queueHandlers = {
   'tv.youtube.unpack'(ctx, c, msg) {
     const floor = ctx.floorOf(c);
     if (!floor) return;
-    const added = youtubeTvOf(floor).unpack(msg.id, msg.videoIds, msg.at, msg.current);
+    const added = youtubeTvOf(floor).unpack(msg.id, msg.videoIds, msg.at, msg.current, msg.index);
     if ('error' in added) return ctx.warn(c, added.error);
     changed(ctx, floor, true);
     ctx.toastFloor(floor, `📺 ${c.peer.name} unpacked the playlist into the TV queue (${added.length} video${added.length === 1 ? '' : 's'})`);
+    const left = msg.videoIds.length - msg.at - 1 - added.length;
+    if (left > 0) ctx.warn(c, `The TV queue is full: ${left} video${left === 1 ? '' : 's'} of the playlist ${left === 1 ? 'was' : 'were'} left out`);
     titleQueued(ctx, floor, added);
     lookUpTitle(ctx, floor, youtubeTvOf(floor).state()!); // it was the playlist's title until now
   },

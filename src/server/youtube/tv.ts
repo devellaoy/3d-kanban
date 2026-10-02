@@ -4,7 +4,7 @@ import { randomUUID } from 'node:crypto';
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { RATES, isVideoId, parseYoutubeLink, tvPosition, youtubeUrl, type YoutubeLink, type YoutubeTvState } from '../../shared/youtube/link.js';
-import { UNPACK_MAX, type YoutubeQueueItem, type YoutubeTvList } from '../../shared/youtube/queue.js';
+import { QUEUE_MAX, UNPACK_MAX, type YoutubeQueueItem, type YoutubeTvList } from '../../shared/youtube/queue.js';
 import * as q from './queue.js';
 import { parseSaved, type Play, type Saved } from './saved.js';
 
@@ -197,17 +197,20 @@ export class YoutubeTv {
 
   /**
    * The playing playlist's videos become queue items. `videoIds` are the playlist's videos in order (at most UNPACK_MAX),
-   * `at` is where the player is in them and `current` the video it plays there; they must agree, so the office never
-   * guesses the position. What's on stays on as `current` alone (same play, so the position carries on and the
+   * `at` is where the player is in them, `current` the video it plays there and `index` its place in the whole
+   * playlist; they must agree with each other and with the video the office has (`index`), so the office never guesses the position. What's on stays on as `current` alone (same play, so the position carries on and the
    * browsers drop the playlist without moving it), and the ones after `at` go to the queue's front.
    * Gives the items added, or why not.
    */
-  unpack(id: unknown, videoIds: unknown, at: unknown, current: unknown): YoutubeQueueItem[] | { error: string } {
+  unpack(id: unknown, videoIds: unknown, at: unknown, current: unknown, index: unknown): YoutubeQueueItem[] | { error: string } {
     const s = this.s;
     if (!s || id !== s.id) return { error: 'That is not what is on the TV any more' };
     if (!s.list) return { error: 'Only a YouTube playlist can be unpacked into the queue' };
     if (!Array.isArray(videoIds) || videoIds.length === 0 || videoIds.length > UNPACK_MAX || !videoIds.every(isVideoId)) return { error: 'The playlist could not be read, so it was not unpacked' };
     if (typeof at !== 'number' || !Number.isInteger(at) || at < 0 || at >= videoIds.length || videoIds[at] !== current) return { error: 'The TV moved to another video while unpacking, so the playlist was not unpacked' };
+    // The play's timing is the office's video's: a player that has gone on to another one is not unpacked from.
+    if (index !== (s.index ?? 0)) return { error: 'The TV moved to another video while unpacking, so the playlist was not unpacked' };
+    if (at < videoIds.length - 1 && this.queue.length >= QUEUE_MAX) return { error: 'The TV queue is full, so the playlist was not unpacked' };
     const added = videoIds.slice(at + 1).map((videoId) => this.item({ videoId, start: 0 }, s.by));
     const { list: _l, index: _i, listLength: _n, title: _t, ...rest } = s;
     this.s = { ...rest, videoId: videoIds[at], url: youtubeUrl({ videoId: videoIds[at], start: s.start }) };

@@ -15,6 +15,7 @@ import { visiting } from '../multiplayer/visit';
 import { store, type Settings } from '../state';
 import { h, toast } from '../ui/dom';
 import { BLOCKED, YT_STATE, loadYoutubeApi, youtubeError, type YtPlayer } from './api';
+import { endedByClock, onOfficeVideo } from './follow';
 import { youtubeAt, type YoutubeOnTv } from './slice';
 
 /** The player's own size in CSS pixels: 16:9 like the TV, and well over the 200×200 YouTube asks for. */
@@ -173,9 +174,9 @@ export class TvScreen {
   /**
    * What unpacking the loaded playlist needs: its video ids in order (at most UNPACK_MAX, a window around the
    * video the player is on when there are more), where the player is in them (`at`) and the video it plays there
-   * (`current`). Null when there's no playlist, the player hasn't it yet, or it isn't on a video of it yet.
+   * (`current`) and its place in the whole playlist (`index`). Null when there's no playlist, the player hasn't it yet, or it isn't on a video of it yet.
    */
-  playlistAt(): { videoIds: string[]; at: number; current: string } | null {
+  playlistAt(): { videoIds: string[]; at: number; current: string; index: number } | null {
     const y = store.youtube;
     if (!y || !this.ready || !this.player || this.loaded?.id !== y.id) return null;
     const ids = this.player.getPlaylist();
@@ -183,7 +184,7 @@ export class TvScreen {
     const current = this.player.getVideoData?.().video_id;
     if (!ids || !current || !Number.isInteger(index) || ids[index] !== current) return null;
     const from = Math.max(0, Math.min(index - UNPACK_MAX / 2, ids.length - UNPACK_MAX));
-    return { videoIds: ids.slice(from, from + UNPACK_MAX), at: index - from, current };
+    return { videoIds: ids.slice(from, from + UNPACK_MAX), at: index - from, current, index };
   }
 
   /** Why the speed the office asked for isn't what you see, when it isn't. */
@@ -392,7 +393,8 @@ export class TvScreen {
       return;
     }
     const duration = p.getDuration();
-    if (duration > 0 && !y.list && want >= duration - 0.5 && !this.told.has(y.id)) return this.over(y);
+    // The office's timeline only says it's over for a player that keeps to it; otherwise the player's own ENDED does.
+    if (endedByClock(y, duration, want, { rate: p.getPlaybackRate(), index: p.getPlaylistIndex(), videoId: data?.video_id }) && !this.told.has(y.id)) return this.over(y);
     if (state === YT_STATE.ended) return;
     if (state !== YT_STATE.playing && state !== YT_STATE.buffering) {
       p.playVideo();
@@ -417,8 +419,10 @@ export class TvScreen {
     const p = this.player;
     if (!p || live || visiting() || !this.current(y, 1500)) return;
     if (this.info.id !== y.id) this.info = { id: y.id, duration: false, list: false };
-    const duration = p.getDuration();
-    const length = y.list && p.getPlaylistIndex() === y.index ? (p.getPlaylist()?.length ?? 0) : 0;
+    // What the player knows is about the office's video only when it is on it (it may still be on the last one).
+    const here = onOfficeVideo(y, { index: p.getPlaylistIndex(), videoId: p.getVideoData?.().video_id });
+    const duration = here ? p.getDuration() : 0;
+    const length = y.list && here ? (p.getPlaylist()?.length ?? 0) : 0;
     const say = !this.info.duration && y.duration === undefined && duration > 0;
     const sayList = !this.info.list && y.listLength === undefined && length > 0;
     if (!say && !sayList) return;

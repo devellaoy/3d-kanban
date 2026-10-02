@@ -37,11 +37,11 @@ export type YoutubeClientMsg =
    * Turn the playing YouTube playlist into queue items: `videoIds` is the playlist in order as the player
    * reports it (getPlaylist()), at most 200 11-character ids (a window around `at` when it has more), `at`
    * is where the player is in them (getPlaylistIndex(), counted in `videoIds`) and `current` the video it
-   * plays there (getVideoData().video_id), so the office doesn't have to guess which one it is. The play
+   * plays there (getVideoData().video_id) and `index` its place in the whole playlist (getPlaylistIndex()), so the office doesn't have to guess which one it is. The play
    * keeps going as `current` on its own (same `id`, `list` and `index` dropped), and the videos after `at`
-   * go to the front of the queue in order. Refused (with a warning) when `videoIds[at] !== current`.
+   * go to the front of the queue in order. Refused (with a warning) when `videoIds[at] !== current` or `index` is not the video the office has.
    */
-  | { t: 'tv.youtube.unpack'; id: string; videoIds: string[]; at: number; current: string }
+  | { t: 'tv.youtube.unpack'; id: string; videoIds: string[]; at: number; current: string; index: number }
   /** What a browser's player knows: the video's length and the playlist's. Each is taken once per play (the first to say). */
   | { t: 'tv.youtube.info'; id: string; duration?: number; listLength?: number }
   /** Everyone on the floor hears the TV equally loud (or by distance, as usual). */
