@@ -28,6 +28,27 @@ const SMOKE = new THREE.Color('#f2f2f8');
 const DUST = [new THREE.Color('#c8c08e'), new THREE.Color('#aab37c')] as const;
 const FLAME = [new THREE.Color('#ffe066'), new THREE.Color('#ff7b00')] as const;
 
+/**
+ * How a puff of tyre smoke or dust moves in the world while the car (moving `vx`, `vz`) drives on: it keeps a
+ * small share of the car's velocity, never more than a tenth of its speed along the way the car travels
+ * (so it is left behind, never carried ahead of it), a little random sideways spread (`a`, `b` in -1..1),
+ * and it rises.
+ */
+export function puffVelocity(vx: number, vz: number, share: number, spread: number, a: number, b: number, rise: number): { vx: number; vy: number; vz: number } {
+  let ux = vx * share + a * spread;
+  let uz = vz * share + b * spread;
+  const speed = Math.hypot(vx, vz);
+  if (speed > 1e-6) {
+    const along = (ux * vx + uz * vz) / speed;
+    const over = along - speed * 0.1;
+    if (over > 0) {
+      ux -= (over * vx) / speed;
+      uz -= (over * vz) / speed;
+    }
+  }
+  return { vx: ux, vy: rise, vz: uz };
+}
+
 /** Puffs of smoke, dust and flame: little spheres that grow, drift and fade. */
 export class Puffs {
   readonly mesh: THREE.InstancedMesh;
@@ -38,7 +59,7 @@ export class Puffs {
   private dummy = new THREE.Object3D();
 
   constructor(private max: number) {
-    const geo = new THREE.IcosahedronGeometry(1, 0);
+    const geo = new THREE.IcosahedronGeometry(1, 1);
     this.fade = new Float32Array(max);
     geo.setAttribute('aFade', new THREE.InstancedBufferAttribute(this.fade, 1));
     this.mesh = new THREE.InstancedMesh(geo, fading('#ffffff'), max);
@@ -239,20 +260,22 @@ export class DriveEffects {
       } else t.skid[w] = null;
     }
     if (grip > 0) {
-      t.smoke += dt * (30 + 70 * grip);
+      t.smoke += dt * (14 + 36 * grip);
       while (t.smoke >= 1) {
         t.smoke--;
         const at = carPoint(p, (Math.random() < 0.5 ? -1 : 1) * 0.8 + (Math.random() - 0.5) * 0.4, -1.35 + (Math.random() - 0.5) * 0.4);
-        this.puffs.spawn(at.x, STREET_Y + 0.25, at.z, vx * 0.25 + (Math.random() - 0.5) * 1.2, 0.8 + Math.random() * 0.7, vz * 0.25 + (Math.random() - 0.5) * 1.2, 0.7 + Math.random() * 0.5, 0.3, 1.1 + 0.6 * grip, 0.32 * grip + 0.08, SMOKE);
+        const u = puffVelocity(vx, vz, 0.05, 0.6, Math.random() * 2 - 1, Math.random() * 2 - 1, 0.5 + Math.random() * 0.5);
+        this.puffs.spawn(at.x, STREET_Y + 0.2, at.z, u.vx, u.vy, u.vz, 0.45 + Math.random() * 0.35, 0.14, 0.5 + 0.3 * grip, 0.3 * grip + 0.08, SMOKE);
       }
     }
     // Dust off the pavement.
     if (speed > 6 && roughAt(p.x, p.z) > 0) {
-      t.dust += dt * Math.min(90, speed * 1.8);
+      t.dust += dt * Math.min(40, speed * 0.9);
       while (t.dust >= 1) {
         t.dust--;
         const at = carPoint(p, (Math.random() - 0.5) * 1.8, -1.2 + (Math.random() - 0.5) * 1.2);
-        this.puffs.spawn(at.x, STREET_Y + 0.2, at.z, vx * 0.2 + (Math.random() - 0.5) * 2, 0.7 + Math.random(), vz * 0.2 + (Math.random() - 0.5) * 2, 0.6 + Math.random() * 0.5, 0.3, 1.5, 0.4, DUST[Math.random() < 0.5 ? 0 : 1]);
+        const u = puffVelocity(vx, vz, 0.05, 1, Math.random() * 2 - 1, Math.random() * 2 - 1, 0.5 + Math.random() * 0.6);
+        this.puffs.spawn(at.x, STREET_Y + 0.15, at.z, u.vx, u.vy, u.vz, 0.4 + Math.random() * 0.4, 0.16, 0.7, 0.35, DUST[Math.random() < 0.5 ? 0 : 1]);
       }
     }
     // The nitro: yours when it's on; someone else's when they're over what a car does on the gas alone and
@@ -261,13 +284,13 @@ export class DriveEffects {
     const top = driveOf(v.def.kind).top;
     t.burn = t.burn ? p.speed > top + 0.5 && longAcc > -6 : p.speed > top + 1.5 && longAcc > -2;
     if (nitro ?? t.burn) {
-      t.fire += dt * 120;
+      t.fire += dt * 90;
       while (t.fire >= 1) {
         t.fire--;
         const side = Math.random() < 0.5 ? -1 : 1;
         const at = carPoint(p, side * 0.45, -2.3);
         const back = 4 + Math.random() * 4;
-        this.puffs.spawn(at.x, STREET_Y + 0.5 + Math.random() * 0.06, at.z, vx * 0.92 - sin * back, 0.2, vz * 0.92 - cos * back, 0.12 + Math.random() * 0.1, 0.34, 0.06, 0.95, FLAME[Math.random() < 0.45 ? 0 : 1]);
+        this.puffs.spawn(at.x, STREET_Y + 0.5 + Math.random() * 0.06, at.z, vx * 0.92 - sin * back, 0.2, vz * 0.92 - cos * back, 0.12 + Math.random() * 0.1, 0.22, 0.04, 0.95, FLAME[Math.random() < 0.45 ? 0 : 1]);
       }
     }
   }
