@@ -16,8 +16,13 @@ export function floorHelpers(ctx: Ctx): FloorHelpers {
     for (const f of ctx.floors.values()) if (f.workers.get(workerId)) return f;
     return undefined;
   };
+  /** The opened floors, bottom-up as the building has them (see Building.list). */
+  const orderedFloors = (): Floor[] => {
+    const list = ctx.building.list().flatMap((d) => ctx.floors.get(d.id) ?? []);
+    return [...list, ...[...ctx.floors.values()].filter((f) => !list.includes(f))];
+  };
   const floorInfos = (): FloorInfo[] => [
-    ...[...ctx.floors.values()].map((f) => ({ ...f.info(), ...(ctx.building.isLocal(f.id) ? { local: true } : {}) })),
+    ...orderedFloors().map((f) => ({ ...f.info(), ...(ctx.building.isLocal(f.id) ? { local: true } : {}) })),
     ...ctx.building.pending().map((d) => ({ id: d.id, name: d.name, repo: d.repo, dir: d.dir, palette: d.palette, addedBy: d.addedBy, addedAt: d.addedAt, cloning: true, workers: 0, busy: 0, waiting: 0, people: 0, wing: 0 })),
   ];
   // The elevator's counts change with every worker update; tell everyone at most a few times a second.
@@ -36,7 +41,7 @@ export function floorHelpers(ctx: Ctx): FloorHelpers {
     }, 250);
   };
   /** Where someone arriving goes: the floor they asked for, else the first one there is. */
-  const arrivalFloor = (wanted: string | null): Floor | undefined => (wanted && ctx.floors.get(wanted)) || ctx.floors.values().next().value;
+  const arrivalFloor = (wanted: string | null): Floor | undefined => (wanted && ctx.floors.get(wanted)) || orderedFloors()[0];
 
   /**
    * Takes `floor` off the building (already out of floors.json): everyone on it rides the elevator to
@@ -45,7 +50,7 @@ export function floorHelpers(ctx: Ctx): FloorHelpers {
   const closeFloor = (floor: Floor, who: string) => {
     const name = floor.def.name;
     mpOf(ctx)?.floorsChanged(); // a visitor loses it before the list without it goes out
-    const next = [...ctx.floors.values()].find((f) => f !== floor);
+    const next = orderedFloors().find((f) => f !== floor);
     // The list without it first, so nobody arrives somewhere (the lobby's panel) that still shows it.
     const list = floorInfos().filter((f) => f.id !== floor.id);
     floorsSent = JSON.stringify(list);

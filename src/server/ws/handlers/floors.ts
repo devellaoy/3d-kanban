@@ -1,6 +1,7 @@
 // The building's floors: riding the elevator between them and up to the roof, and adding and taking
 // off floors.
 import type { FloorClientMsg } from '../../../shared/protocol.js';
+import { groupFloors } from '../../../shared/floororder.js';
 import { ROOF } from '../../../shared/rooftop.js';
 import { arrivalSpot, str } from '../../office/input.js';
 import { addFolder } from '../../office/addfloor.js';
@@ -56,6 +57,29 @@ export const floorHandlers = {
     const floor = ctx.floors.get(id);
     if (floor) ctx.closeFloor(floor, who);
     else ctx.floorsChanged();
+  },
+  'floor.move'(ctx, c, msg) {
+    const who = c.peer.name;
+    // The order is the whole office's, so admins set it.
+    if (!ctx.meOfClient(c).admin) return ctx.warn(c, 'Only admins can reorder the floors');
+    const above = msg.above === null ? null : str(msg.above, 64);
+    const before = ctx.building.list().map((d) => d.id);
+    const key = typeof msg.group === 'string' ? str(msg.group, 64) : undefined;
+    const id = str(msg.floor, 64);
+    const err = key !== undefined ? ctx.building.moveGroup(key, above) : ctx.building.moveFloor(id, above);
+    if (err) {
+      ctx.warn(c, err);
+      ctx.floorsChanged(); // the sender's guess at the new order goes back to the real one
+      return;
+    }
+    ctx.floorsChanged();
+    const list = ctx.building.list();
+    const text =
+      key !== undefined
+        ? `🛗 ${who} reordered the floors: the ${groupFloors(list).find((g) => g.key === key)?.label ?? key} floors moved`
+        : `🛗 ${who} moved ${list.find((d) => d.id === id)?.name} ${list.findIndex((d) => d.id === id) > before.indexOf(id) ? 'up' : 'down'} the building`;
+    console.log(`  ${text.slice(3)}`);
+    for (const o of ctx.clients.values()) if (o !== c) ctx.sendTo(o, { t: 'toast', text, level: 'info' });
   },
   'floor.projectsDir'(ctx, c, msg) {
     const who = c.peer.name;

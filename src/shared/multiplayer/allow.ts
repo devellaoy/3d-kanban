@@ -88,6 +88,7 @@ export const CLIENT_MSG_CLASS = {
   'floor.repos': 'deny',
   'floor.add': 'deny',
   'floor.remove': 'deny',
+  'floor.move': 'deny',
   'floor.projectsDir': 'deny',
   'desk.label': 'deny',
   'floor.expand': 'deny',

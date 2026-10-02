@@ -3,6 +3,7 @@ import { accessSync, constants, existsSync, mkdirSync, readFileSync, readdirSync
 import os from 'node:os';
 import path from 'node:path';
 import { FLOOR_PALETTES, MAX_FLOORS, normalizeRepo, sameRepo } from '../shared/floors.js';
+import { floorGroupKey, insertFloor, moveFloorAbove, moveGroupAbove, normalizeOrder } from '../shared/floororder.js';
 import type { ProjectsDirState, RepoChoice } from '../shared/protocol.js';
 import { gh } from './github.js';
 import type { ProjectRepo } from '../shared/kanban/types.js';
@@ -143,10 +144,34 @@ export class Building {
     if (this.localOff && realOf(this.localOff.dir) === real) return undefined;
     // Named after its folder, as the office always called it.
     const def = this.newDef(path.basename(abs), this.local.repo, abs, by);
-    this.defs.unshift(def);
+    this.defs = insertFloor(this.defs, def, 'bottom');
     this.localId = def.id;
     this.save();
     return def;
+  }
+
+  /** Moves a floor just above floor `above` of its owner's group, or to the bottom of it (null). Returns why it can't. */
+  moveFloor(id: string, above: string | null): string | undefined {
+    if (!this.defs.some((d) => d.id === id)) return 'No such floor';
+    const moved = moveFloorAbove(this.defs, id, above);
+    if (!moved) return "A floor stays in its owner's group";
+    return this.reorder(moved);
+  }
+
+  /** Moves a floor group (see floorGroupKey) just above group `above`, or to the bottom of the building (null). Returns why it can't. */
+  moveGroup(key: string, above: string | null): string | undefined {
+    const keys = new Set(this.defs.map(floorGroupKey));
+    if (!keys.has(key) || (above !== null && !keys.has(above))) return 'No such group of floors';
+    const moved = moveGroupAbove(this.defs, key, above);
+    return moved ? this.reorder(moved) : 'A group cannot move above itself';
+  }
+
+  private reorder(defs: FloorDef[]): undefined {
+    if (defs.some((d, i) => d !== this.defs[i])) {
+      this.defs = defs;
+      this.save();
+    }
+    return undefined;
   }
 
   /** The office keeps its own data in this floor's checkout. */
@@ -188,7 +213,7 @@ export class Building {
     if (this.localOff && home && sameRepo(home.repo, wanted) && existsSync(home.dir)) {
       const def = this.newDef(path.basename(home.dir), home.repo, home.dir, by);
       started(def);
-      this.defs.push(def);
+      this.defs = insertFloor(this.defs, def, 'groupTop');
       this.localId = def.id;
       this.setLocalOff(undefined);
       this.save();
@@ -217,7 +242,7 @@ export class Building {
     } finally {
       this.cloning.delete(key);
     }
-    this.defs.push(def);
+    this.defs = insertFloor(this.defs, def, 'groupTop');
     this.save();
     return def;
   }
@@ -278,7 +303,7 @@ export class Building {
       this.localId = def.id;
       this.setLocalOff(undefined);
     }
-    this.defs.push(def);
+    this.defs = insertFloor(this.defs, def, 'groupTop');
     this.save();
     return def;
   }
@@ -362,6 +387,11 @@ export class Building {
         const repos = loadRepos(s.repos, s.id, s.dir);
         if (repos) this.defs[this.defs.length - 1].repos = repos;
       }
+      // Floors of one owner sit together; a hand-edited or older file that doesn't is put right.
+      const ordered = normalizeOrder(this.defs);
+      const moved = ordered.some((d, i) => d !== this.defs[i]);
+      this.defs = ordered;
+      if (moved) this.save();
     } catch (err) {
       console.error(`agent-office: ${this.file} couldn't be read, so the building starts empty: ${(err as Error).message}`);
     }
