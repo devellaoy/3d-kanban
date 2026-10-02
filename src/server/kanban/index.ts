@@ -36,7 +36,7 @@ import type { ProjectRepo } from '../../shared/kanban/types.js';
 import type { WorkerInfo } from '../../shared/protocol.js';
 import type { KanbanRunAs } from './registry.js';
 import { LoungeSender, loungeFigures } from './lounge.js';
-import type { LoungeFigure } from '../../shared/kanban/lounge.js';
+import { loungeFigureOn, type LoungeFigure } from '../../shared/kanban/lounge.js';
 import { promptTaskWorker, resumeTaskWorker } from './coupling.js';
 
 /** What the office hands the kanban. */
@@ -94,6 +94,8 @@ export interface Kanban {
   handleLoopback(req: IncomingMessage, res: ServerResponse, url: URL): Promise<boolean>;
   /** The lounge figures of a floor: its tasks on hold (FloorView.kanbanLounge). */
   lounge(floorId: string): LoungeFigure[];
+  /** The figure that sits on the seat place `seat` ("couch:0") on a floor, placed around the seats `occupied` by people there (shared/kanban/lounge.ts). */
+  loungeSeat(floorId: string, seat: string, occupied: ReadonlySet<string>): LoungeFigure | undefined;
   /** A browser went away: it hears nothing more. */
   clientGone(clientId: string): void;
   /** Floors (or their repositories) may have changed: subscribers hear the projects when they did. */
@@ -319,6 +321,7 @@ export function installKanban(opts: KanbanInstallOptions): Kanban {
     handleHook: (req, res, url, who) => route(hookRoutes, url.pathname, [req, res, url, who]),
     handleLoopback: (req, res, url) => route(loopbackRoutes, url.pathname, [req, res, url]),
     lounge: (floorId) => loungeFigures(repo, floorId),
+    loungeSeat: (floorId, seat, occupied) => loungeFigureOn(loungeFigures(repo, floorId), occupied, seat),
     clientGone(clientId) {
       subscribers.delete(clientId);
     },

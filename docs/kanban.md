@@ -71,7 +71,9 @@ Put such a task on hold instead of leaving it in Waiting or Review, where it cou
   show on the card and in the task view with who put it on hold and since when.
 - **The worker**: it goes home, its worktree and session kept on the task. In the 3D office a figure of it sits in the TV
   lounge: four seat themselves (the two beanbags and the ends of the couch; the middle of the couch stays free for
-  watching TV), up to eight more stand behind the couch, and a *+N more on hold* sign counts the rest. The figures show
+  watching TV), up to eight more stand behind the couch, and a *+N more on hold* sign counts the rest. A seat someone
+  sits on is left to them: the figure takes the next free seat (or stands), and moves back once they get up. A seat a
+  figure sits on can't be sat on meanwhile (*… got there first*). The figures show
   on every project floor that uses the office map; a floor on a map of its own (the castle, a custom map) shows none.
   Aiming at a figure shows "⏸️ #id title — reason · until d.m." and **E** opens the task window.
 - **Resuming**: **▶️ Resume** in the task view, or move the card to In progress. A dialog takes an optional message for

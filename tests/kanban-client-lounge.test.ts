@@ -6,7 +6,7 @@ import { diffLounge, layoutLounge, loungeHint, overflowText } from '../src/clien
 import type { LoungeFigure } from '../src/shared/kanban/lounge.js';
 
 const fig = (taskId: number, over: Partial<LoungeFigure> = {}): LoungeFigure => ({ taskId, title: `Task ${taskId}`, name: 'Ada', color: '#ff0000', at: taskId * 10, ...over });
-const shownOf = (figures: LoungeFigure[]) => new Map(layoutLounge(figures).placed.map((p) => [p.figure.taskId, p.key]));
+const shownOf = (figures: LoungeFigure[]) => new Map(layoutLounge(figures).placed.map((p) => [p.figure.taskId, p]));
 
 test('the oldest hold takes the first place: the beanbags, then the couch ends, then standing', () => {
   const { placed, overflow } = layoutLounge([fig(3, { at: 5 }), fig(1, { at: 50 }), fig(2, { at: 5 })]);
@@ -23,9 +23,9 @@ test('the oldest hold takes the first place: the beanbags, then the couch ends, 
   assert.ok(!many.placed.some((p) => p.place.kind === 'seat' && p.place.seatId === 'couch' && p.place.place === 1), 'the couch middle stays free');
 });
 
-test('nothing changes: nothing is dropped or made', () => {
+test('nothing changes: nothing is dropped, made or moved', () => {
   const figures = [fig(1), fig(2)];
-  assert.deepEqual(diffLounge(shownOf(figures), layoutLounge(figures).placed), { drop: [], make: [] });
+  assert.deepEqual(diffLounge(shownOf(figures), layoutLounge(figures).placed), { drop: [], make: [], move: [] });
 });
 
 test('one comes and one goes: only those', () => {
@@ -38,14 +38,15 @@ test('one comes and one goes: only those', () => {
   );
 });
 
-test('a changed note or a moved place makes the figure again', () => {
+test('a changed note makes the figure again; a new place only moves it', () => {
   const was = shownOf([fig(1), fig(2)]);
   assert.deepEqual(diffLounge(was, layoutLounge([fig(1), fig(2, { note: 'keys' })]).placed).drop, [2]);
   // 1 goes: 2 moves up to the first beanbag.
-  const { drop, make } = diffLounge(was, layoutLounge([fig(2)]).placed);
-  assert.deepEqual(drop.sort(), [1, 2]);
+  const { drop, make, move } = diffLounge(was, layoutLounge([fig(2)]).placed);
+  assert.deepEqual(drop, [1]);
+  assert.deepEqual(make, []);
   assert.deepEqual(
-    make.map((p) => p.figure.taskId),
+    move.map((p) => p.figure.taskId),
     [2],
   );
 });

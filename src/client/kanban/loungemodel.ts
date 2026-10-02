@@ -1,41 +1,47 @@
 // The pure side of the lounge figures in the 3D office (lounge3d.ts): which figure goes where, which of
-// the shown ones stay, go or come, and what the hint and the overflow sign say. No three.js here.
+// the shown ones stay, go, come or move, and what the hint and the overflow sign say. No three.js here.
 
-import { loungePlaces, sortFigures, type LoungeFigure, type LoungePlace } from '../../shared/kanban/lounge';
+import { loungePlaces, placeKey, sortFigures, type LoungeFigure, type LoungePlace } from '../../shared/kanban/lounge';
 
-/** A figure in its place, and the key that changes whenever it would look or stand any differently. */
+/** A figure in its place: `look` changes whenever it would look any different, `spot` whenever it moves. */
 export interface PlacedFigure {
   figure: LoungeFigure;
   place: LoungePlace;
-  key: string;
+  look: string;
+  spot: string;
 }
 
-function placeKey(p: LoungePlace): string {
-  return p.kind === 'seat' ? `${p.seatId}:${p.place}` : `${p.x.toFixed(3)},${p.z.toFixed(3)}`;
+function spotKey(p: LoungePlace): string {
+  return p.kind === 'seat' ? placeKey(p) : `${p.x.toFixed(3)},${p.z.toFixed(3)}`;
 }
 
-/** Each figure that finds a place (oldest hold first), and how many find none. */
-export function layoutLounge(figures: readonly LoungeFigure[]): { placed: PlacedFigure[]; overflow: number } {
+/** Each figure that finds a place (oldest hold first), around the seats people sit on (`occupied`), and how many find none. */
+export function layoutLounge(figures: readonly LoungeFigure[], occupied: ReadonlySet<string> = new Set()): { placed: PlacedFigure[]; overflow: number } {
   const sorted = sortFigures(figures);
-  const { placed, overflow } = loungePlaces(sorted.length);
+  const { placed, overflow } = loungePlaces(sorted.length, occupied);
   return {
     placed: placed.map((place, i) => {
       const f = sorted[i];
-      return { figure: f, place, key: [placeKey(place), f.name, f.color, f.title, f.note ?? '', f.until ?? ''].join('|') };
+      return { figure: f, place, look: [f.name, f.color, f.title, f.note ?? '', f.until ?? ''].join('|'), spot: spotKey(place) };
     }),
     overflow,
   };
 }
 
 /**
- * From the figures shown now (task id → key) to `next`: the ids to take away (gone, or changed in look
- * or place) and the figures to make. One whose key is the same stays as it is.
+ * From the figures shown now (task id → look and spot) to `next`: the ids to take away (gone, or
+ * looking different), the figures to make, and the ones that only move to another place (someone sat
+ * down on their seat, or got up). One whose look and spot are the same stays as it is.
  */
-export function diffLounge(shown: ReadonlyMap<number, string>, next: readonly PlacedFigure[]): { drop: number[]; make: PlacedFigure[] } {
+export function diffLounge(shown: ReadonlyMap<number, { look: string; spot: string }>, next: readonly PlacedFigure[]): { drop: number[]; make: PlacedFigure[]; move: PlacedFigure[] } {
   const want = new Map(next.map((p) => [p.figure.taskId, p]));
-  const drop = [...shown].filter(([id, key]) => want.get(id)?.key !== key).map(([id]) => id);
-  const make = next.filter((p) => shown.get(p.figure.taskId) !== p.key);
-  return { drop, make };
+  const drop = [...shown].filter(([id, s]) => want.get(id)?.look !== s.look).map(([id]) => id);
+  const make = next.filter((p) => shown.get(p.figure.taskId)?.look !== p.look);
+  const move = next.filter((p) => {
+    const s = shown.get(p.figure.taskId);
+    return s?.look === p.look && s.spot !== p.spot;
+  });
+  return { drop, make, move };
 }
 
 /** "15.11.", the day as it's written in Finland, in the viewer's time zone. */

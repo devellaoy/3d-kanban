@@ -402,7 +402,13 @@ answers `kanban.ok {rid, ...}` or `kanban.error {rid, message}`. Deltas are push
   edit of a held task goes through; compared by a signature per floor, so nothing is sent for an unrelated change). A floor's figures are
   its project's `on_hold` tasks as `{taskId, title, name, color, note?, until?, at}` (name and colour from `hold.worker`, else "Worker" and a neutral grey), oldest hold first (`sortFigures`).
   Whoever arrives gets them in `FloorView.kanbanLounge` (serving it doesn't touch the broadcast cache, which holds what was last sent to the floor; a floor nothing was sent to since the start always gets its first message, even an empty list, so a restart doesn't hide the last figure's removal) (the `views` registry), so the same list reaches the
-  welcome and a floor change.
+  welcome and a floor change. Where each figure goes is computed, never sent: `loungePlaces(count, occupied)` fills the free
+  lounge seats in order (the seats people on the floor sit on are skipped; `couch:1` is never a figure's), then the standing
+  places, so every browser places them the same from the figures and the peers' seats; when someone sits down or gets up,
+  only the figures whose place changed move. The `sit` handler (`ws/handlers/presence.ts`) refuses a place a figure holds on
+  the office map (`Kanban.loungeSeat`, the same function over the floor's held tasks and everyone else's seats) with
+  `sit.refused`, as for a seat someone has; the browser keeps the same places from its own choice (`reserveSeatPlaces` in
+  `features/seating`).
 - Deltas: `kanban.task` (a card changed or appeared), `kanban.task.removed` (deleted; also sent in place of
   an archived card to subscribers without `includeArchived`), `kanban.comment`, `kanban.run`, `kanban.plan`
   (project-scoped), and `kanban.settings` and `kanban.projects` (to every subscriber). The projects list is also

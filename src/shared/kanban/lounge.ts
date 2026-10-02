@@ -1,7 +1,8 @@
 // The lounge figures: tasks on hold (hold.ts) shown in the 3D office as view-only figures by the TV,
 // not real workers. Pure (no three.js, no node): the server sends the figures, and the browser asks
-// here where each one sits or stands. The couch's middle place is never taken, so a player can always
-// sit down and watch the TV.
+// here where each one sits or stands (the server too, to keep players off a figure's seat). The
+// couch's middle place is never taken, so a player can always sit down and watch the TV; a seat a
+// person sits on is never taken either.
 
 export interface LoungeFigure {
   taskId: number;
@@ -19,7 +20,7 @@ export interface LoungeFigure {
 /** The floor's figures: sent whenever they change, and to everyone who subscribes. */
 export type LoungeServerMsg = { t: 'kanban.lounge'; floor: string; figures: LoungeFigure[] };
 
-/** How many figures sit (beanbags, then the couch's two outer places). */
+/** How many figures sit while nobody else does (beanbags, then the couch's two outer places). */
 export const LOUNGE_SEATED = 4;
 /** How many stand in the arc behind the couch; the rest are not shown. */
 export const LOUNGE_STANDING = 8;
@@ -49,17 +50,33 @@ function standing(i: number): LoungePlace {
   return { kind: 'stand', x: 9.4 - 0.4 * (Math.abs(z) / 2.8) ** 2, z, rotY: Math.PI / 2 };
 }
 
-/** Where each of `count` figures (oldest first) takes its place, and how many found none. */
-export function loungePlaces(count: number): { placed: LoungePlace[]; overflow: number } {
+/** The key a peer's `seat` carries for a seat place ("couch:0"). */
+export const placeKey = (p: { seatId: string; place: number }) => `${p.seatId}:${p.place}`;
+
+/**
+ * Where each of `count` figures (oldest first) takes its place, and how many found none. `occupied`
+ * is the seat keys people on the floor sit on: those seats are skipped, so a figure never sits on
+ * someone and takes the next free seat (or a standing place) instead. Pure, so every browser and the
+ * server get the same answer from the same figures and seats; once the person gets up, the seat is
+ * free again and the figures move back to where they'd be without them.
+ */
+export function loungePlaces(count: number, occupied: ReadonlySet<string> = new Set()): { placed: LoungePlace[]; overflow: number } {
   const n = Math.max(0, Math.floor(count));
+  const seats = SEATS.filter((s) => !occupied.has(placeKey(s)));
   const placed: LoungePlace[] = [];
-  for (let i = 0; i < Math.min(n, LOUNGE_SEATED + LOUNGE_STANDING); i++) {
-    placed.push(i < LOUNGE_SEATED ? { kind: 'seat', ...SEATS[i] } : standing(i - LOUNGE_SEATED));
+  for (let i = 0; i < Math.min(n, seats.length + LOUNGE_STANDING); i++) {
+    placed.push(i < seats.length ? { kind: 'seat', ...seats[i] } : standing(i - seats.length));
   }
   return { placed, overflow: n - placed.length };
 }
 
-/** The seats `count` figures take, as the keys a peer's `seat` carries ("couch:0"): what a player can't sit on meanwhile. */
-export function loungeReservedPlaces(count: number): string[] {
-  return loungePlaces(count).placed.flatMap((p) => (p.kind === 'seat' ? [`${p.seatId}:${p.place}`] : []));
+/** The seats `count` figures take, given the seats people sit on, as the keys a peer's `seat` carries ("couch:0"): what a player can't sit on meanwhile. */
+export function loungeReservedPlaces(count: number, occupied: ReadonlySet<string> = new Set()): string[] {
+  return loungePlaces(count, occupied).placed.flatMap((p) => (p.kind === 'seat' ? [placeKey(p)] : []));
+}
+
+/** The figure (of `sorted`, oldest first) that sits on the seat place `key`, given the seats people sit on; undefined when none does. */
+export function loungeFigureOn<T>(sorted: readonly T[], occupied: ReadonlySet<string>, key: string): T | undefined {
+  const i = loungePlaces(sorted.length, occupied).placed.findIndex((p) => p.kind === 'seat' && placeKey(p) === key);
+  return i < 0 ? undefined : sorted[i];
 }

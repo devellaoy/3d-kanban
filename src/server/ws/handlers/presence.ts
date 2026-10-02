@@ -74,6 +74,16 @@ export const presenceHandlers = {
       ctx.sendTo(c, { t: 'sit.refused', seat: key, by: there.peer.name });
       return;
     }
+    // A task on hold's figure sits there (the kanban's lounge, on the office's own map): placed around
+    // everyone else's seats, as every browser on the floor places it.
+    if (seat && c.peer.floor && c.peer.floor !== ROOF && ctx.maps.plan().style === 'office') {
+      const others = new Set([...ctx.clients.values()].flatMap((o) => (o !== c && o.peer.floor === c.peer.floor && o.peer.seat ? [o.peer.seat] : [])));
+      const figure = ctx.kanban?.loungeSeat(c.peer.floor, seat, others);
+      if (figure) {
+        ctx.sendTo(c, { t: 'sit.refused', seat: key, by: `${figure.name} (task #${figure.taskId}, on hold)` });
+        return;
+      }
+    }
     if (seat) c.peer.seat = seat;
     else delete c.peer.seat;
     ctx.broadcast({ t: 'peer.update', peer: c.peer }, c.id);
