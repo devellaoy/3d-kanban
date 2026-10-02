@@ -489,7 +489,7 @@ deploy/dokploy.sh ssh 'node /opt/agent-office/bin/agent-office.js accounts invit
 | X | Send a worker home |
 | L | Hang a sign over a desk ("Operations", "Code cleanup") |
 | T / Enter | Chat |
-| Enter, in a prompt box | A new line (Shift + Enter too); ⌘ + Enter (Ctrl + Enter) sends (on a phone, tap the send button) |
+| Enter, in a prompt box | A new line (Shift + Enter too); Ctrl/⌘ + Enter sends (on a phone, tap the send button) |
 | V | Join voice; then hold V to talk |
 | M | Mute / unmute in voice |
 | Tab | The ☰ menu: every window |

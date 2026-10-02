@@ -433,7 +433,7 @@ its own comments and close) gets its **status** and **assignee** there.
   (completed)**, **Close (not planned)** or **Reopen** (which of them is read from GitHub: it is closed or open now). A pull request only has the board's Status.
   A project draft: its board's Status.
 - **Comments.** The newest 50, oldest first, and a box to add one (Enter makes a new line,
-  ⌘/Ctrl+Enter sends). A comment written under an identity everyone shares ends with
+  Ctrl/⌘ + Enter sends). A comment written under an identity everyone shares ends with
   `— <your name> via Agent Office`. A draft has no comments.
 - **Assignee.** **Assign to me**, **Someone else…** (a search of who can be assigned) or **Unassign**.
   On GitHub it makes the person the only assignee, and **Assign to me** needs your own GitHub sign-in
