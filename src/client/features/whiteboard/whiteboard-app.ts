@@ -18,6 +18,7 @@ import { WB_MAX_ELEMENT_BYTES, byIndex, newer, type WbElement, type WbPointer } 
 import { store } from '../../state';
 import { toast } from '../../ui/dom';
 import { appearanceOf, parseAppearance } from '../../themes';
+import { apiUrl } from '../../multiplayer/visit';
 
 /** How often your changes, and your mouse, go out while you draw. */
 const SEND_MS = 50;
@@ -52,7 +53,7 @@ async function loadFiles(els: readonly ExcalidrawElement[]): Promise<BinaryFileD
   await Promise.all(
     [...want].map(async (id) => {
       try {
-        const res = await fetch(fileUrl(id));
+        const res = await fetch(apiUrl(fileUrl(id))); // GET only: uploads stay on our own office
         if (!res.ok) throw new Error(String(res.status));
         const f = (await res.json()) as BinaryFileData;
         files.set(id, f);

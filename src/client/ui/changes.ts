@@ -5,6 +5,7 @@ import { store } from '../state';
 import { h, openModal, type Modal } from './dom';
 import { confirmDialog, openPrompt } from './prompt';
 import { kanbanOf } from '../kanban/office';
+import { apiUrl } from '../multiplayer/visit';
 
 // The Changes window at a desk: the files a worker changed and their diff against the branch the
 // office was opened on, refreshed while the worker works, with commit / discard / open-a-PR.
@@ -90,7 +91,7 @@ export function renderDiff(text: string, truncated: boolean): HTMLElement {
 /** Where one side of a changed picture loads from. The file's signature makes a new URL whenever it changes. */
 function imageUrl(workerId: string, repo: string | undefined, f: ChangedFile, side: 'old' | 'new'): string {
   const q = new URLSearchParams({ floor: store.floor ?? '', worker: workerId, path: f.path, side, v: f.sig, ...(repo ? { repo } : {}) });
-  return `/api/changes/file?${q}`;
+  return apiUrl(`/api/changes/file?${q}`);
 }
 
 /** A changed picture, before and after; new and deleted files only have the one side. */

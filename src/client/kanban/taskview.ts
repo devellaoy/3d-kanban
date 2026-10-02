@@ -35,6 +35,7 @@ import { onSendKey, sendHint } from './sendkey';
 import { mountChangesView, type ChangesViewHandle } from './changesview';
 import { APPROVAL_NAMES, columnName, COUNTDOWN_UNITS, effortName, fmtDuration, fmtTime, phaseName, PR_STATE_NAMES, toolName, waitingName } from './labels';
 import { run, select, tabStrip, textArea } from './ui';
+import { apiUrl } from '../multiplayer/visit';
 
 const COMMENTS_PAGE = 30;
 const TAB_NAMES: Record<TaskTab, string> = { overview: 'Overview', conversation: 'Conversation', plan: 'Plan', runs: 'Runs', terminal: 'Terminal', changes: 'Changes', prs: 'PRs' };
@@ -576,7 +577,7 @@ class View implements TaskView {
 
   private async loadReports() {
     try {
-      const r = await getJson<{ reports: KanbanReportFile[] }>(`/api/kanban/tasks/${this.taskId}/reports`);
+      const r = await getJson<{ reports: KanbanReportFile[] }>(apiUrl(`/api/kanban/tasks/${this.taskId}/reports`));
       if (this.destroyed) return;
       const shown = this.reports?.shown ?? new Map<string, HTMLElement>();
       this.reports = { list: r.reports, shown };
@@ -591,7 +592,7 @@ class View implements TaskView {
   private reportsSection(): HTMLElement | null {
     const r = this.reports;
     if (!r?.list.length) return null;
-    const url = (name: string) => `/api/kanban/tasks/${this.taskId}/reports/${encodeURIComponent(name)}`;
+    const url = (name: string) => apiUrl(`/api/kanban/tasks/${this.taskId}/reports/${encodeURIComponent(name)}`);
     const items = r.list.map((f) => {
       const shownEl = r.shown.get(f.name);
       const toggle = h('button.btn.small', { type: 'button', 'aria-expanded': String(!!shownEl) }, shownEl ? 'Hide' : 'Show') as HTMLButtonElement;

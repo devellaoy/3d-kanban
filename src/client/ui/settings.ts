@@ -10,7 +10,10 @@ import { h, openModal, timeAgo } from './dom';
 import { agentFields, choiceLabel, officeChoice } from './provider';
 import { openPromptEditor, rewrittenPrompts } from './prompts';
 // The kanban's settings are categories of this window, loaded when one is first shown.
-import { KANBAN_PANES, kanbanSettingsSlots, type KanbanSettingsPane } from '../kanban/settingsslot';
+import { kanbanSettingsSlots } from '../kanban/settingsslot';
+import { multiplayerSettingsSlot } from '../multiplayer/settingsslot';
+import { PANES, type SettingsPane } from './settings-panes';
+export type { SettingsPane };
 import { mouseSensitivityRow } from './sensitivity';
 import { appearanceRow } from './appearance';
 import { setting } from './settingrow';
@@ -24,18 +27,6 @@ const VIEWS: [ViewMode, string, string][] = [
 const THEME_LABEL: Record<ThemePick, string> = { auto: '📅 By the calendar', halloween: '🎃 Halloween', christmas: '🎄 Christmas', off: 'Off' };
 
 const WEBHOOK_NAME: Record<WebhookKind, string> = { slack: 'Slack', discord: 'Discord', other: 'a webhook' };
-
-/** The categories down the side of ⚙️ Settings. */
-export type SettingsPane = 'you' | 'sound' | 'notify' | 'building' | 'workers' | KanbanSettingsPane; // | KanbanSettingsPane
-
-const PANES: { id: SettingsPane; icon: string; label: string; blurb: string }[] = [
-  { id: 'you', icon: '🧍', label: 'You', blurb: 'How you look, how you see the office, and how you’re signed in.' },
-  { id: 'sound', icon: '🔊', label: 'Sound & voice', blurb: 'How loud the office is for you, and how voice chat works.' },
-  { id: 'notify', icon: '🔔', label: 'Notifications', blurb: 'Hear about a worker that needs someone, or finished, while you’re somewhere else.' },
-  { id: 'building', icon: '🏢', label: 'Building', blurb: 'The map, the decorations, the sky, the dog, and where new floors are cloned.' },
-  { id: 'workers', icon: '🤖', label: 'Workers', blurb: 'What workers start on, how many run at once, when they go home and what the office tells them.' },
-  ...KANBAN_PANES, // 🗂️ Kanban, 📁 Projects
-];
 
 /** Where ⚙️ Settings was last, so it opens there again. */
 let lastPane: SettingsPane = 'you';
@@ -501,7 +492,7 @@ export function openSettings(net: Net, settings: Settings, onChange: (s: Setting
   const signOut = h('button.btn', { type: 'button' }, '🚪 Sign out');
   signOut.addEventListener('click', onSignOut);
   const character = h('button.btn', { type: 'button' }, account ? '🧍 Change your look' : '🧍 Change your look & name');
-  const kanban = kanbanSettingsSlots(net), appearance = appearanceRow(); // its listener goes when the window closes
+  const kanban = kanbanSettingsSlots(net), multiplayer = multiplayerSettingsSlot(net), appearance = appearanceRow(); // its listener goes when the window closes
   const panes: Record<SettingsPane, Node[]> = {
     you: [
       setting('Your character', null, character),
@@ -536,6 +527,7 @@ export function openSettings(net: Net, settings: Settings, onChange: (s: Setting
     // The kanban's settings.
     kanban: [kanban.panes.kanban],
     projects: [kanban.panes.projects],
+    multiplayer: [multiplayer.pane],
   };
 
   // The categories down the side, the one picked on the right.
@@ -551,6 +543,7 @@ export function openSettings(net: Net, settings: Settings, onChange: (s: Setting
   const show = (id: SettingsPane) => {
     lastPane = id;
     kanban.shown(id);
+    multiplayer.shown(id);
     for (const [t, tab] of tabs) {
       tab.classList.toggle('on', t === id);
       tab.setAttribute('aria-selected', String(t === id));
@@ -590,6 +583,7 @@ export function openSettings(net: Net, settings: Settings, onChange: (s: Setting
       offDir.forEach((off) => off());
       offPrompts.forEach((off) => off());
       kanban.close();
+      multiplayer.close();
     },
   });
   show(first ?? lastPane);

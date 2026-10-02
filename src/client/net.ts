@@ -1,5 +1,6 @@
 import type { ClientMsg, ServerMsg } from '../shared/protocol';
 import { lastFloor, store, type Profile, type Spot } from './state';
+import { endVisit, heldBack, visiting, visitOver } from './multiplayer/visit';
 
 type Handler = (msg: ServerMsg) => void;
 
@@ -44,6 +45,8 @@ export class Net {
     const floor = store.floor ?? lastFloor();
     if (floor) q.set('floor', floor);
     if (this.lite) q.set('lite', '1');
+    const visit = visiting();
+    if (visit) q.set('visit', visit); // the owner's office answers this socket, not ours
     const at = this.where();
     if (floor && at?.floor === floor) {
       for (const k of ['x', 'y', 'z'] as const) q.set(k, at[k].toFixed(2));
@@ -63,13 +66,17 @@ export class Net {
       } catch {
         return;
       }
+      if (msg.t === 'mp.ended') endVisit(msg.reason);
       for (const h of this.handlers) h(msg);
     };
-    ws.onclose = async () => {
+    ws.onclose = async (ev) => {
       if (this.ws !== ws) return;
       this.up = false;
       this.statusHandlers.forEach((h) => h(false));
       if (this.closedByUs) return;
+      // The owner's office closes a visit with 4000: no reconnecting, home instead.
+      if (ev.code === 4000) endVisit();
+      if (visitOver()) return;
       // Session expired? Go back to the door.
       try {
         const res = await fetch('/api/whoami', { cache: 'no-store' });
@@ -90,6 +97,7 @@ export class Net {
   }
 
   send(msg: ClientMsg) {
+    if (heldBack(msg.t)) return;
     if (this.ws && this.ws.readyState === WebSocket.OPEN) this.ws.send(JSON.stringify(msg));
   }
 }
