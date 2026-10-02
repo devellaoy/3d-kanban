@@ -526,3 +526,61 @@ test('more than fifty held comments, then a new one while the unhold run waits f
   for (const text of [...Array.from({ length: 60 }, (_, i) => `held-${i}.`), 'late-one.']) assert.equal(new Set(prompts.filter((p) => p.includes(text))).size, 1, text);
   assert.equal(fx.repo.listComments(r.id).comments.some((x) => x.pending), false);
 });
+
+// --- A session that is gone; held messages on the way to Review ---------------------------------------------------------
+
+test('a stored session that no longer exists: the unhold starts afresh with the handoff, the unhold prompt and every held message, and nothing is acknowledged before the agent has them', async (t) => {
+  const fx = await engineFixture();
+  t.after(() => fx.close());
+  fx.setRules([IMPLEMENT]);
+  const r = await inReview(fx);
+  assert.equal(await fx.engine.hold!(r.id, ADA, { note: 'waiting for the keys' }), undefined);
+  await fx.waitTask(r.id, (x) => !x.workerId, 'the worker gone');
+  fx.repo.updateTask(r.id, { sessionId: 'stale-gone' });
+  fx.repo.addComment({ taskId: r.id, authorKind: 'user', authorName: 'Bob', text: 'Keys arrived on Monday.' });
+  fx.setRules([UNHOLD]);
+  const mark = fx.invocations().length;
+  const histMark = fx.history(r.id).length;
+  assert.equal(await fx.engine.unhold!(r.id, ADA, 'Carry on, please.'), undefined);
+  const back = await fx.waitTask(r.id, (x) => x.status === 'review' && x.runState === 'idle' && !!x.workerId && x.pendingMessages.length === 0, 'back in review', 30_000);
+  const launches = fx.invocations().slice(mark).filter((i) => !i.prompt && i.kind === 'claude');
+  assert.equal(launches.length, 2, 'the stale resume, then the fresh start');
+  assert.equal(launches[0].args[launches[0].args.indexOf('--resume') + 1], 'stale-gone');
+  assert.ok(!launches[1].args.includes('--resume'));
+  const prompt = launches[1].args[launches[1].args.length - 1];
+  assert.match(prompt, /^You are taking over kanban task #\d+/);
+  assert.match(prompt, /has been on hold since .+, because: waiting for the keys/);
+  assert.ok(prompt.includes('Keys arrived on Monday.') && prompt.includes('Carry on, please.'), prompt);
+  assert.notEqual(back.sessionId, 'stale-gone');
+  // Nothing was acknowledged by the hire whose resume failed: the messages were still the task's after the stale agent had been launched, and went with the fresh hire.
+  const snaps = fx.history(r.id).slice(histMark);
+  const emptyAt = snaps.findIndex((s) => s.task.pendingMessages.length === 0);
+  assert.ok(emptyAt > 0 && snaps[emptyAt - 1].task.pendingMessages.length === 2, 'both messages (the comment and the note) until the fresh hire');
+  assert.ok(snaps[emptyAt - 1].at >= launches[0].at!, 'still pending after the stale launch');
+  const runs = fx.repo.listRuns(r.id);
+  assert.deepEqual(runs.slice(-2).map((x) => x.status), ['interrupted', 'succeeded']);
+  assert.ok(fx.repo.listComments(r.id).comments.some((c) => /session couldn't be resumed/.test(c.text)));
+  assert.equal(fx.repo.listComments(r.id).comments.some((c) => c.pending), false);
+});
+
+test('held then moved on to Review: the messages left meanwhile reach the next run (a comment)', async (t) => {
+  const fx = await engineFixture();
+  t.after(() => fx.close());
+  fx.setRules([IMPLEMENT]);
+  const r = await inReview(fx);
+  assert.equal(await fx.engine.hold!(r.id, ADA, {}), undefined);
+  await fx.waitTask(r.id, (x) => !x.workerId, 'the worker gone');
+  const said = fx.repo.addComment({ taskId: r.id, authorKind: 'user', authorName: 'Bob', text: 'Use the staging keys.' }).comment;
+  // What ws.ts does for a move on to Review.
+  await fx.engine.releaseHeld!(r.id);
+  fx.repo.updateTask(r.id, { status: 'review', hold: null });
+  assert.equal(fx.task(r.id).pendingMessages.length, 1);
+  assert.equal(fx.repo.getComment(said.id)?.pending, true);
+  const c = fx.repo.addComment({ taskId: r.id, authorKind: 'user', authorName: 'Ada', text: 'Rename it as well.' }).comment;
+  fx.setRules([{ when: 'commented on task', reply: 'Done.', commit: 'Rename' }]);
+  await fx.engine.commented(r.id, c.id, ADA);
+  await fx.waitTask(r.id, (x) => x.status === 'review' && x.runState === 'idle' && !!x.workerId && x.pendingMessages.length === 0, 'resumed', 30_000);
+  const run = promptsOf(fx).find((p) => p.includes('Rename it as well.'))!;
+  assert.ok(run.includes('Use the staging keys.'), run);
+  assert.equal(fx.repo.getComment(said.id)?.pending, false);
+});

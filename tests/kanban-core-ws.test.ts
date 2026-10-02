@@ -44,6 +44,9 @@ function fakeEngine(calls: string[], answers: Partial<Record<string, string>> = 
         if (err) return err;
         ctx.repo.updateTask(id, { workerId: null, reviewerWorkerId: null });
       },
+      async releaseHeld(id) {
+        calls.push(`released #${id} ${ctx.repo.getTask(id)?.hold ? 'with its hold' : 'without a hold'}`);
+      },
       async commented(id, commentId, who) {
         calls.push(`commented #${id} ${commentId} by ${who.name}`);
       },
@@ -588,4 +591,18 @@ test('deleting a held task refreshes its floor\'s lounge even when no card went 
   kanban.ctx.repo.deleteTask(1);
   kanban.ctx.taskChanged(1);
   assert.equal(kanban.lounge('web').length, 0);
+});
+
+test('a held task moved on to Review keeps its held messages first (the hold is still there when the engine looks), a reset does not', async (t) => {
+  const { client, kanban, calls } = office(t);
+  const ada = client('Ada', false);
+  await ada.ask({ t: 'kanban.task.create', task: { project: 'web', title: 'x' } });
+  kanban.ctx.repo.updateTask(1, { status: 'on_hold', hold: { at: 1, by: 'Ada', from: 'review' } });
+  okOf(await ada.ask({ t: 'kanban.task.move', id: 1, to: 'review' }));
+  assert.ok(calls.includes('released #1 with its hold'), calls.join(' | '));
+  assert.equal(kanban.ctx.repo.getTask(1)!.hold, undefined);
+  kanban.ctx.repo.updateTask(1, { status: 'on_hold', hold: { at: 1, by: 'Ada', from: 'review' } });
+  calls.length = 0;
+  okOf(await ada.ask({ t: 'kanban.task.move', id: 1, to: 'todo' }));
+  assert.ok(!calls.some((c) => c.startsWith('released')));
 });

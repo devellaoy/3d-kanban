@@ -276,7 +276,11 @@ export function createCorePlugin(ctx: KanbanContext, subs: KanbanSubscriptions):
       const now = Date.now();
       const up: TaskUpdate = { status: m.to };
       // Out of the hold, however it goes on: the hold's reason and date are no more.
-      if (task.status === 'on_hold') up.hold = null;
+      if (task.status === 'on_hold') {
+        // On to Review or Done (or a reset, which starts over): the messages left meanwhile wait for the next run, unless it all starts over.
+        if (check.action !== 'reset') await ctx.engine.releaseHeld?.(task.id);
+        up.hold = null;
+      }
       if (check.action === 'reset') {
         // Sending somebody's workers home, or ending the run they are asking in, is the creator's call (or an admin's), as a delete is.
         if ((task.workerId || task.reviewerWorkerId || task.status === 'on_hold') && !c.admin && task.createdBy !== c.name) return fail(c, m.rid, 'Only whoever made it, or an admin, can move a task with workers (or one on hold, which keeps its session and worktree) back to To do');

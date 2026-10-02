@@ -31,6 +31,7 @@ export function createEngine(ctx: KanbanContext, options: EngineOptions = {}): K
     releaseIdle: (id, who) => o.releaseIdle(id, who),
     hold: (id, who, opts) => o.hold(id, who, opts),
     unhold: (id, who, note) => o.unhold(id, who, note),
+    releaseHeld: (id) => o.releaseHeld(id),
     commented: (id, commentId, who) => o.commented(id, commentId, who),
     prForWorker: (floorId, workerId, who) => o.prForWorker(floorId, workerId, who),
     reviewPrs: (req, who) => o.reviewPrs(req, who),

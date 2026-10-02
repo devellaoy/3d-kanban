@@ -76,6 +76,13 @@ interface Live {
   stopText?: string;
   /** Its turn has ended and is being dealt with. */
   ended: boolean;
+  /** Its agent was started on a stored session (--resume) and has not been heard from yet: if it exits now, the session is gone (see exited). */
+  resumed?: boolean;
+  started?: boolean;
+  /** What its run was asked to do (the text as it went), to start it again in a fresh session; and what is to be acknowledged once the agent has the prompt. */
+  eff?: RunEffect;
+  via?: Via;
+  ack?: () => void;
   /** Its turn stopped while background agents or teammates it set off still work: the run goes on until a Stop with none left. */
   background?: boolean;
   /** It has been held for background agents or teammates at least once: a later Stop on an unanswered notification is the resumed turn's own. */
@@ -211,7 +218,9 @@ export class Orchestrator {
       apply: (id, e, via) => this.apply(id, e, via),
       sendHome: (taskId, by, also) => this.sendIdleHome(taskId, by, also, 'hold'),
       drain: (floorId) => this.drain(floorId),
-      queueHeld: (task, since) => this.queueHeld(task, since),
+      filesText: (project, taskId, files) => this.compose.filesText(project, taskId, files),
+      finishRun: (id, project, patch) => this.finishRun(id, project, patch),
+      effect: (id, eff, via) => this.effect(id, eff, via as Via),
     }, () => this.opts.now());
     this.opts = {
       sweepMs: options.sweepMs ?? 60_000,
@@ -716,20 +725,6 @@ export class Orchestrator {
 
   // --- Starting runs ------------------------------------------------------------------------------
 
-  /** The user's comments since a hold are kept as pending messages (files included), for the run the plan's approval or answer starts (launch). */
-  private queueHeld(task: KanbanTask, since: number) {
-    const comments = this.ctx.repo.userCommentsSince(task.id, since).filter((c) => !task.pendingMessages.some((p) => p.commentId === c.id));
-    if (!comments.length) return;
-    const files = this.ctx.repo.listAttachments(task.id);
-    const queued = comments.map((c) => ({ commentId: c.id, text: [c.text, this.compose.filesText(task.project, task.id, files.filter((a) => a.commentId === c.id))].filter(Boolean).join('\n\n'), by: c.authorName, at: c.createdAt, held: true as const }));
-    for (const c of comments) {
-      this.ctx.repo.setCommentPending(c.id, true);
-      const now = this.ctx.repo.getComment(c.id);
-      if (now) this.ctx.broadcast({ t: 'kanban.comment', comment: now, project: task.project }, task.project);
-    }
-    this.update(task.id, { pendingMessages: [...task.pendingMessages, ...queued] });
-  }
-
   /** The pending comments, taken off the task to be typed in now: one message, and who wrote it. */
   private takePending(task: KanbanTask): { text: string; author: string } | undefined {
     const p = this.pendingText(task);
@@ -820,20 +815,10 @@ export class Orchestrator {
       const p = this.takePending(task);
       if (p) ({ text, author } = p);
     }
-    // Messages kept on the task by id (what was said during a hold, comments typed while the run waited for a desk) go with the
-    // run that resumes the work (not a turn's end's to deliver). They leave the task once an agent has the prompt, not before.
-    const carried = !eff.pending && role === 'implementer' && ['implement', 'replan', 'continue', 'unhold'].includes(eff.prompt) ? (this.ctx.repo.getTask(task.id) ?? task).pendingMessages : [];
-    const held = carried.length ? carried.map((m) => `- ${m.by}: ${m.text}`).join('\n') : undefined;
-    const heldTaken = () => {
-      if (!carried.length) return;
-      const ids = new Set(carried.map((m) => m.commentId));
-      for (const id of ids) {
-        this.ctx.repo.setCommentPending(id, false);
-        const c = this.ctx.repo.getComment(id);
-        if (c) this.ctx.broadcast({ t: 'kanban.comment', comment: c, project: task.project }, task.project);
-      }
-      this.update(task.id, { pendingMessages: (this.ctx.repo.getTask(task.id)?.pendingMessages ?? []).filter((m) => !ids.has(m.commentId)) });
-    };
+    // Messages kept on the task by id (what was said during a hold, comments typed while the run waited for a desk) go with the run that resumes the work.
+    const carried = !eff.pending && role === 'implementer' ? this.holds.carried(task, eff.prompt) : undefined;
+    const held = carried?.text;
+    const heldTaken = () => carried?.ack();
     const refsFile = eff.phase === 'plan' ? this.ctx.refs.referencedTasksFile(task.id, [task.title, task.description, text ?? ''].join('\n')) : undefined;
     const x: ComposeExtra = {
       phase: eff.phase,
@@ -908,7 +893,7 @@ export class Orchestrator {
     const run = this.ctx.repo.createRun({ taskId: task.id, phase: eff.phase, ...(eff.round !== undefined ? { round: eff.round } : {}), role, tool, model, effort });
     this.ctx.broadcast({ t: 'kanban.run', run, project: task.project }, task.project);
     const follow = (workerId: string): Live => {
-      const live: Live = { taskId: task.id, runId: run.id, phase: eff.phase, ...(eff.round !== undefined ? { round: eff.round } : {}), role, tool, workerId, floorId: task.project, exitPlan: false, ended: false };
+      const live: Live = { taskId: task.id, runId: run.id, phase: eff.phase, ...(eff.round !== undefined ? { round: eff.round } : {}), role, tool, workerId, floorId: task.project, exitPlan: false, ended: false, eff: { ...eff, pending: undefined, ...(text !== undefined ? { text } : {}) }, via };
       this.live.set(workerId, live);
       return live;
     };
@@ -948,7 +933,9 @@ export class Orchestrator {
       if (!err) {
         this.ctx.repo.updateRun(run.id, { workerId: info.id, sessionId: info.sessionId });
         this.update(task.id, { runState: 'running' });
-        heldTaken();
+        // Typed into a running agent: it has the prompt. Relaunched on its session: once it is heard from.
+        if (same && (info.status === 'done' || info.status === 'idle')) heldTaken();
+        else if (info.sessionId) Object.assign(live, { resumed: true, ack: heldTaken });
         return undefined;
       }
       this.live.delete(info.id);
@@ -1007,7 +994,9 @@ export class Orchestrator {
     }
     patch.runState = 'running';
     this.update(task.id, patch);
-    heldTaken();
+    // A fresh session has the prompt on its command line; a resumed one is heard from before it is known to have it (the session may be gone).
+    if (session) Object.assign(live, { resumed: true, ack: heldTaken });
+    else heldTaken();
     this.exitedAtHire(live);
     return undefined;
   }
@@ -1154,6 +1143,11 @@ export class Orchestrator {
     }
     const live = this.live.get(o.workerId);
     if (!live || live.ended || live.floorId !== floorId) return;
+    if (!live.started && ((o.event === 'hook' && !agentHook(o.payload)) || (o.status && o.status !== 'starting' && o.status !== 'exited'))) {
+      live.started = true;
+      live.ack?.();
+      live.ack = undefined;
+    }
     if (o.event === 'hook') {
       // A subagent's or teammate's hook (it runs in the lead's process, so it reaches the lead's worker): none of the lead's turn,
       // but its question or permission prompt is still what the worker's needs_input waits on.
@@ -1255,6 +1249,9 @@ export class Orchestrator {
     this.forget(live);
     const task = this.ctx.repo.getTask(live.taskId);
     const lost = !!this.ctx.floor(live.floorId)?.workers.get(live.workerId)?.lost;
+    // Its agent exited before it was heard from, resuming a stored session: the session is gone (a month on hold, a cleaned-up home). The run
+    // starts once more in a fresh session, with the handoff; its messages are still the task's (nothing was acknowledged).
+    if (live.resumed && !live.started && !lost && live.eff && task) return this.holds.freshSession(live, task);
     const why = lost ? "Its worktree is gone, so its agent couldn't start" : 'The agent exited before its turn was done';
     this.finishRun(live.runId, live.floorId, { status: 'interrupted', error: why });
     if (task) await this.apply(task.id, { type: 'interrupted', text: `${why}: Retry to carry on${lost ? ` in a fresh worktree${task.branch ? ` on branch ${task.branch}` : ''}` : ''}` });
@@ -1854,6 +1851,13 @@ export class Orchestrator {
   /** A task in Waiting or Review is parked: its workers go home, the worktree and session stay (hold.ts). */
   hold(taskId: number, who: KanbanCaller, opts: { note?: string; until?: number } = {}): Promise<string | void> {
     return this.op(taskId, (task) => this.holds.hold(task, who, opts));
+  }
+
+  /** A held task goes on to Review or Done: what was said while it was held waits for its next run (hold.ts). */
+  releaseHeld(taskId: number): Promise<string | void> {
+    return this.op(taskId, async (task) => {
+      if (task.status === 'on_hold' && task.hold) this.holds.queueHeld(task, task.hold.at);
+    });
   }
 
   /** A task on hold is taken off it: its implementer is hired again and carries on (hold.ts). */

@@ -117,6 +117,8 @@ if (args.includes('--output-format')) {
 record({});
 const at = kind === 'claude' ? args.indexOf('--resume') : args.indexOf('resume');
 const session = at >= 0 ? args[at + 1] : kind + '-' + process.pid + '-' + Date.now();
+// A conversation Claude no longer has (a session id starting with stale-): it exits before it starts, as the real one does.
+if (kind === 'claude' && at >= 0 && /^stale-/.test(session)) { process.stderr.write('No conversation found with session ID: ' + session + '\n'); process.exit(1); }
 const transcript = path.join(process.env.FAKE_TRANSCRIPTS, session + '.jsonl');
 const append = (o) => fs.appendFileSync(transcript, JSON.stringify(o) + '\n');
 const post = (event, payload) => new Promise((resolve) => {

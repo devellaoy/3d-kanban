@@ -810,7 +810,7 @@ export class WorkerManager extends KanbanWorkers {
       if (adapter?.usage?.scanOnExit && !this.closing) this.scheduleScan(w);
       // Resuming a conversation Claude no longer has ("No conversation found") exits before Claude
       // ever starts. Start a fresh one rather than leave the worker asleep.
-      if (adapter?.freshIfResumeFails && resumeSessionId && info.status === 'starting' && !this.closing) {
+      if (adapter?.freshIfResumeFails && resumeSessionId && info.status === 'starting' && !this.closing && !info.kanban) { // a task's worker exits: the engine starts it afresh, with the task's handoff
         this.events.toast(`${info.name}'s last conversation couldn't be resumed — starting a fresh one`, 'warn');
         this.launch(w, undefined, undefined);
         return;

@@ -10,7 +10,7 @@ import type { TaskHold } from '../../../shared/kanban/hold.js';
 import { checkMove } from '../../../shared/kanban/moves.js';
 import { isBusy } from '../../../shared/status.js';
 import type { NewComment, TaskUpdate } from '../db/repository.js';
-import type { MachineEvent } from './machine.js';
+import type { MachineEvent, RunEffect } from './machine.js';
 
 /** What holding borrows from the orchestrator. */
 export interface Holding {
@@ -25,8 +25,10 @@ export interface Holding {
   /** The task's workers at rest (and `also`) go home with the reason 'hold'. */
   sendHome(taskId: number, by: string, also?: string): Promise<number>;
   drain(floorId: string): Promise<unknown>;
-  /** The user's comments made since `since` wait, with their files, for the next run of the task (a plan's approval or answer). */
-  queueHeld(task: KanbanTask, since: number): void;
+  filesText(project: string, taskId: number, files: { name: string; stored: string }[]): string;
+  finishRun(runId: number, floorId: string, patch: Parameters<KanbanContext['repo']['finishRun']>[1]): unknown;
+  /** Carries out a run effect (a launch, with what a failed or queued one does). */
+  effect(taskId: number, eff: RunEffect, via: unknown): Promise<string | undefined>;
 }
 
 /** "15.11.2026", as a person writes the day in Finland. */
@@ -89,6 +91,53 @@ export class Holds {
     return undefined;
   }
 
+  /** The user's comments since `since` are kept as pending messages (files included), by comment id, for the next run that resumes the work. They are exempt from the cap on queued comments. */
+  queueHeld(task: KanbanTask, since: number) {
+    const comments = this.ctx.repo.userCommentsSince(task.id, since).filter((c) => !task.pendingMessages.some((p) => p.commentId === c.id));
+    if (!comments.length) return;
+    const files = this.ctx.repo.listAttachments(task.id);
+    const queued = comments.map((c) => ({ commentId: c.id, text: [c.text, this.d.filesText(task.project, task.id, files.filter((a) => a.commentId === c.id))].filter(Boolean).join('\n\n'), by: c.authorName, at: c.createdAt, held: true as const }));
+    for (const c of comments) {
+      this.ctx.repo.setCommentPending(c.id, true);
+      const now = this.ctx.repo.getComment(c.id);
+      if (now) this.ctx.broadcast({ t: 'kanban.comment', comment: now, project: task.project }, task.project);
+    }
+    this.d.update(task.id, { pendingMessages: [...task.pendingMessages, ...queued] });
+  }
+
+  /**
+   * The messages a run that resumes the work carries (`text`, for its prompt), and `ack` for when an agent has the prompt: they leave
+   * the task by id then, their comments stop being pending. Not before: a launch that fails or waits for room keeps them.
+   */
+  carried(task: KanbanTask, prompt: string): { text?: string; ack: () => void } {
+    const msgs = ['implement', 'replan', 'continue', 'unhold', 'resume'].includes(prompt) ? (this.ctx.repo.getTask(task.id) ?? task).pendingMessages : [];
+    const ids = new Set(msgs.map((m) => m.commentId));
+    return {
+      ...(msgs.length ? { text: msgs.map((m) => `- ${m.by}: ${m.text}`).join('\n') } : {}),
+      ack: () => {
+        if (!ids.size) return;
+        for (const id of ids) {
+          this.ctx.repo.setCommentPending(id, false);
+          const c = this.ctx.repo.getComment(id);
+          if (c) this.ctx.broadcast({ t: 'kanban.comment', comment: c, project: task.project }, task.project);
+        }
+        this.d.update(task.id, { pendingMessages: (this.ctx.repo.getTask(task.id)?.pendingMessages ?? []).filter((m) => !ids.has(m.commentId)) });
+      },
+    };
+  }
+
+  /** A run whose stored session could not be resumed (its agent exited before it was heard from) starts again in a fresh one, once: the new run has no session to lose. */
+  async freshSession(live: { runId: number; floorId: string; workerId: string; role: string; eff?: RunEffect; via?: unknown }, task: KanbanTask) {
+    const floor = this.ctx.floor(live.floorId);
+    this.d.finishRun(live.runId, live.floorId, { status: 'interrupted', error: "Its session couldn't be resumed" });
+    if (floor?.workers.get(live.workerId)) await floor.sendHome(live.workerId, 'keep', { by: 'Kanban', reason: 'engine' });
+    const reviewer = live.role !== 'implementer';
+    this.d.update(task.id, reviewer ? { reviewerWorkerId: null, reviewerSessionId: null } : { workerId: null, sessionId: null });
+    this.d.note(task, `${reviewer ? "The reviewer's" : 'Its'} session couldn't be resumed (it is gone), so a fresh one takes over from the task's worktree and what is known of it.`);
+    const err = await this.d.effect(task.id, live.eff!, live.via ?? {});
+    if (err) this.d.note(task, `Couldn't start it again: ${err}`);
+  }
+
   /** Takes a task off hold: the implementer is hired again (same worktree and session) and carries on. */
   async unhold(task: KanbanTask, who: KanbanCaller, note?: string): Promise<string | undefined> {
     if (task.status !== 'on_hold') return 'Only a task on hold can be resumed';
@@ -97,7 +146,7 @@ export class Holds {
     if (text) this.d.addComment(task.project, { taskId: task.id, authorKind: 'user', authorName: who.name, kind: 'message', text });
     if (task.hold?.deskId && task.hold.deskId !== task.deskId) this.d.update(task.id, { deskId: task.hold.deskId });
     // What was said meanwhile (the note included) is kept by id on the task until an agent has it: the prompt of whatever run comes next carries it.
-    if (task.hold) this.d.queueHeld(task, task.hold.at);
+    if (task.hold) this.queueHeld(task, task.hold.at);
     const back = task.hold?.reason ? { reason: task.hold.reason, ...(task.hold.text ? { text: task.hold.text } : {}), ...(task.hold.phase ? { phase: task.hold.phase } : {}) } : undefined;
     return this.d.apply(task.id, { type: 'unhold', ...(text ? { text } : {}), ...(back ? { back } : {}) }, { who });
   }
