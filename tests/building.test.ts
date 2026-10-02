@@ -1,10 +1,13 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import os, { tmpdir } from 'node:os';
 import path from 'node:path';
 import { Building, type FloorDef } from '../src/server/building.js';
+import { MAX_FLOORS } from '../src/shared/floors.js';
+import { isGitFloor } from '../src/server/floor-git.js';
+import { projectInfo } from '../src/server/floor.js';
 
 function office(t: { after(fn: () => void): void }) {
   const root = mkdtempSync(path.join(tmpdir(), 'agent-office-building-'));
@@ -82,4 +85,245 @@ test('the floor the office was started in comes off too, stays off after a resta
   const third = new Building(dataDir, root);
   assert.equal(third.ensureLocal(defs[0].dir, 'the office')?.id, 'api');
   assert.deepEqual(third.list().map((d) => d.id), ['web', 'docs', 'api']);
+});
+
+// --- addDir: a folder as it is becomes a floor -------------------------------------------
+
+/** A building whose data, projects folder and work folders are all apart, so a folder to add can sit beside them. */
+function folders(t: { after(fn: () => void): void }) {
+  const base = realpathSync(mkdtempSync(path.join(tmpdir(), 'agent-office-adddir-')));
+  t.after(() => rmSync(base, { recursive: true, force: true }));
+  const home = path.join(base, 'office');
+  const dataDir = path.join(home, '.agent-office');
+  const projects = path.join(base, 'projects');
+  mkdirSync(dataDir, { recursive: true });
+  mkdirSync(projects);
+  const dir = (name: string) => {
+    const d = path.join(base, 'work', name);
+    mkdirSync(d, { recursive: true });
+    return d;
+  };
+  const git = (d: string, origin?: string) => {
+    execFileSync('git', ['init', '-q', d]);
+    if (origin) execFileSync('git', ['-C', d, 'remote', 'add', 'origin', origin]);
+  };
+  return { base, home, dataDir, projects, dir, git, building: () => new Building(dataDir, projects) };
+}
+
+test('a plain folder becomes a floor named after it, with no repository, and survives a restart', (t) => {
+  const f = folders(t);
+  const notes = f.dir('Notes Pad');
+  const building = f.building();
+  const def = building.addDir(`  ${notes}  `, 'Sam') as FloorDef;
+  assert.equal(typeof def, 'object');
+  assert.equal(def.name, 'Notes Pad');
+  assert.equal(def.id, 'notes-pad');
+  assert.equal(def.repo, undefined);
+  assert.equal(def.dir, notes);
+  assert.equal(def.addedBy, 'Sam');
+  assert.deepEqual(saved(f.dataDir), ['notes-pad']);
+  assert.deepEqual(f.building().list().map((d) => [d.dir, d.repo]), [[notes, undefined]]);
+  assert.ok(!existsSync(path.join(notes, '.agent-office')), 'nothing is written into it until its floor opens');
+});
+
+test("a checkout's GitHub origin is picked up, and a repository that already has a floor is refused", (t) => {
+  const f = folders(t);
+  const x = f.dir('x');
+  f.git(x, 'https://github.com/acme/x.git');
+  const building = f.building();
+  assert.equal((building.addDir(x, 'Sam') as FloorDef).repo, 'acme/x');
+  // A second checkout of the same repository.
+  const copy = f.dir('x-copy');
+  f.git(copy, 'git@github.com:Acme/X.git');
+  assert.match(String(building.addDir(copy, 'Sam')), /acme\/x already has a floor \(x\)/);
+  // An origin that isn't GitHub is no repository.
+  const gl = f.dir('gl');
+  f.git(gl, 'https://gitlab.com/acme/gl.git');
+  assert.equal((building.addDir(gl, 'Sam') as FloorDef).repo, undefined);
+});
+
+test('the same folder typed in another case is the same floor', (t) => {
+  const f = folders(t);
+  const notes = f.dir('Notes');
+  const building = f.building();
+  assert.equal(typeof building.addDir(notes, 'Sam'), 'object');
+  const lower = path.join(path.dirname(notes), 'notes');
+  // Only a case-insensitive disk (macOS, Windows) has the lower-cased name too.
+  if (!existsSync(lower)) return;
+  assert.match(String(building.addDir(lower, 'Sam')), /already the Notes floor/);
+  assert.match(String(building.addDir(`${notes.toUpperCase()}/`, 'Sam')), /already the Notes floor/);
+  assert.equal(building.list().length, 1);
+});
+
+test('a folder nested inside a git repository, without a .git of its own, has no repository', (t) => {
+  const f = folders(t);
+  const outer = f.dir('outer');
+  f.git(outer, 'https://github.com/acme/outer.git');
+  const inner = path.join(outer, 'packages', 'inner');
+  mkdirSync(inner, { recursive: true });
+  const def = f.building().addDir(inner, 'Sam') as FloorDef;
+  assert.equal(typeof def, 'object');
+  assert.equal(def.repo, undefined);
+});
+
+test('paths that cannot be a project are each refused with a reason, and nothing is saved', (t) => {
+  const f = folders(t);
+  const building = f.building();
+  const api = building.addDir(f.dir('api'), 'Sam') as FloorDef;
+  const file = path.join(f.base, 'work', 'a-file');
+  writeFileSync(file, 'x');
+  const link = path.join(f.base, 'work', 'api-link');
+  symlinkSync(api.dir, link);
+  const inside = path.join(api.dir, 'src');
+  mkdirSync(inside);
+  const bad = (p: string, re: RegExp) => assert.match(String(building.addDir(p, 'Sam')), re, p);
+
+  bad('', /Type the folder's full path/);
+  bad('   ', /Type the folder's full path/);
+  bad('/' + 'a'.repeat(1100), /too long/);
+  bad('work/notes', /full path/);
+  bad('./notes', /full path/);
+  bad(path.join(f.base, 'missing'), /doesn't exist/);
+  bad(file, /isn't a folder/);
+  bad(api.dir, /already the api floor/);
+  bad(link, /already the api floor/);
+  bad(inside, /inside api's checkout/);
+  bad(path.join(f.base, 'work'), /contains api's checkout/);
+  bad('/', /Pick a project's own folder/);
+  bad(os.homedir(), /Pick a project's own folder/);
+  bad(f.dataDir, /office's own folder/);
+  bad(f.home, /office's own folder/);
+  bad(f.base, /office's own folder|contains/);
+  bad(f.projects, /clones projects/);
+  bad(path.dirname(f.projects), /office's own folder|clones projects|contains/);
+  assert.deepEqual(saved(f.dataDir), ['api']);
+});
+
+test('~ is the home folder', (t) => {
+  const f = folders(t);
+  const was = process.env.HOME;
+  // A stand-in home, so nothing touches the real one.
+  process.env.HOME = f.base;
+  t.after(() => {
+    if (was === undefined) delete process.env.HOME;
+    else process.env.HOME = was;
+  });
+  const building = f.building();
+  const def = building.addDir('~/work/tilde', 'Sam');
+  assert.equal(typeof def, 'string', 'the folder is missing');
+  assert.match(String(def), /~\/work\/tilde doesn't exist/);
+  f.dir('tilde');
+  assert.equal((building.addDir('~/work/tilde', 'Sam') as FloorDef).dir, path.join(f.base, 'work', 'tilde'));
+  assert.match(String(building.addDir('~', 'Sam')), /Pick a project's own folder/);
+});
+
+test('a full building takes no more folders', (t) => {
+  const f = folders(t);
+  const building = f.building();
+  for (let i = 0; i < MAX_FLOORS; i++) assert.equal(typeof building.addDir(f.dir(`f${i}`), 'Sam'), 'object');
+  assert.match(String(building.addDir(f.dir('one-more'), 'Sam')), /building is full/);
+});
+
+test('a folder the office cannot write in is refused and not saved', { skip: process.getuid?.() === 0 }, (t) => {
+  const f = folders(t);
+  const ro = f.dir('ro');
+  chmodSync(ro, 0o555);
+  t.after(() => {
+    try {
+      chmodSync(ro, 0o755);
+    } catch {
+      // already cleaned up
+    }
+  });
+  assert.match(String(f.building().addDir(ro, 'Sam')), /can't write in/);
+  assert.ok(!existsSync(path.join(f.dataDir, 'floors.json')));
+});
+
+test('the started-in checkout taken off the building moves back in with addDir, and local-floor.json goes', (t) => {
+  const f = folders(t);
+  // Started in a project: its data folder is inside it.
+  const proj = f.dir('proj');
+  const dataDir = path.join(proj, '.agent-office');
+  mkdirSync(dataDir);
+  const building = new Building(dataDir, f.projects);
+  assert.ok(building.ensureLocal(proj, 'the office'));
+  building.remove('proj', 'Sam');
+  assert.ok(existsSync(path.join(dataDir, 'local-floor.json')));
+  const again = new Building(dataDir, f.projects);
+  assert.equal(again.ensureLocal(proj, 'the office'), undefined);
+  const back = again.addDir(proj, 'Sam') as FloorDef;
+  assert.equal(typeof back, 'object');
+  assert.ok(again.isLocal(back.id));
+  assert.ok(!existsSync(path.join(dataDir, 'local-floor.json')));
+  assert.equal(new Building(dataDir, f.projects).ensureLocal(proj, 'the office')?.id, back.id);
+});
+
+test('forget drops a floor without remembering it as taken off', (t) => {
+  const f = folders(t);
+  const building = f.building();
+  const def = building.addDir(f.dir('gone'), 'Sam') as FloorDef;
+  building.forget(def.id);
+  assert.deepEqual(building.list(), []);
+  assert.deepEqual(saved(f.dataDir), []);
+  assert.ok(!existsSync(path.join(f.dataDir, 'local-floor.json')));
+  assert.equal(typeof building.addDir(def.dir, 'Sam'), 'object');
+});
+
+test("a folder nested in a repository doesn't take that repository's branch or origin", (t) => {
+  const f = folders(t);
+  const outer = f.dir('outer');
+  f.git(outer, 'https://github.com/acme/outer.git');
+  const inner = path.join(outer, 'sub');
+  mkdirSync(inner);
+  assert.equal(isGitFloor(inner, false), false);
+  assert.equal(isGitFloor(inner, true), true, 'the checkout the office was started in keeps what git says');
+  assert.equal(isGitFloor(outer, false), true);
+  const plain = projectInfo(inner, 'sub', 'claude', [], false);
+  assert.equal(plain.branch, undefined);
+  assert.equal(plain.remote, undefined);
+  const real = projectInfo(outer, 'outer', 'claude', [], true);
+  assert.equal(real.remote, 'https://github.com/acme/outer.git');
+  // Upstream's way (started in a subfolder) still sees the repository.
+  assert.equal(projectInfo(inner, 'sub', 'claude', []).remote, 'https://github.com/acme/outer.git');
+});
+
+test("the account's private folders and the office's data folder's insides are refused", (t) => {
+  const f = folders(t);
+  const was = process.env.HOME;
+  // A stand-in home with the usual secret folders in it.
+  process.env.HOME = f.base;
+  t.after(() => {
+    if (was === undefined) delete process.env.HOME;
+    else process.env.HOME = was;
+  });
+  for (const n of ['.ssh', '.aws', '.gnupg', '.config/app', '.hidden']) mkdirSync(path.join(f.base, n), { recursive: true });
+  mkdirSync(path.join(f.base, '.ssh', 'keys'));
+  mkdirSync(path.join(f.dataDir, 'sub'));
+  const building = f.building();
+  const bad = (p: string, re: RegExp) => assert.match(String(building.addDir(p, 'Sam')), re, p);
+  for (const p of ['.ssh', '.ssh/keys', '.aws', '.gnupg', '.config', '.config/app', '.hidden']) bad(path.join(f.base, p), /private folder/);
+  bad('~/.hidden', /private folder/);
+  bad(path.join(f.dataDir, 'sub'), /office's own folder/);
+  // A hidden folder deeper down, or a visible one, is a project like any other.
+  mkdirSync(path.join(f.base, 'work', '.dotproject'), { recursive: true });
+  assert.equal(typeof building.addDir(path.join(f.base, 'work', '.dotproject'), 'Sam'), 'object');
+});
+
+test('a started-in checkout that moved back in is off again when its floor could not be opened', (t) => {
+  const f = folders(t);
+  const proj = f.dir('proj');
+  const dataDir = path.join(proj, '.agent-office');
+  mkdirSync(dataDir);
+  const first = new Building(dataDir, f.projects);
+  first.ensureLocal(proj, 'the office');
+  first.remove('proj', 'Sam');
+  const building = new Building(dataDir, f.projects);
+  assert.equal(building.ensureLocal(proj, 'the office'), undefined);
+  const def = building.addDir(proj, 'Sam') as FloorDef;
+  assert.ok(!existsSync(path.join(dataDir, 'local-floor.json')));
+  building.forget(def.id);
+  assert.ok(existsSync(path.join(dataDir, 'local-floor.json')), 'taken off again');
+  assert.ok(!building.isLocal(def.id));
+  // A restart keeps it off, as before.
+  assert.equal(new Building(dataDir, f.projects).ensureLocal(proj, 'the office'), undefined);
 });

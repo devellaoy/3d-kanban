@@ -28,6 +28,12 @@
 .elevator .repo.sel { background: var(--accent-soft); }
 .elevator .repo .nm { font-weight: var(--fw-bold); white-space: nowrap; }
 .elevator .repo .desc { flex: 1; min-width: 0; font-size: var(--fs-xs); color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* A folder's path typed instead: its one row, which says why when it can't be added from here. */
+.elevator .repo.folder .nm { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.elevator .repo.folder .desc { flex: none; max-width: 55%; }
+.elevator .repo.off { cursor: default; }
+.elevator .repo.off:hover { background: none; }
+.elevator .repo.off .desc { flex: 1; max-width: none; white-space: normal; font-weight: var(--fw-bold); color: var(--bad); }
 .elevator .repo .when { font-size: var(--fs-2xs); color: var(--muted); white-space: nowrap; }
 .elevator .note { margin: 8px 0 0; font-size: var(--fs-xs); font-weight: var(--fw-semibold); color: var(--muted); overflow-wrap: anywhere; }
 .elevator .note.busy { color: var(--text); }

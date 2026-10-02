@@ -1,6 +1,7 @@
 /* The kanban's categories of ⚙️ Settings (settings.ts): in upstream's settings window, on the 3D page
    (upstream's style.css, no kanban.css) and the kanban page alike. Every rule is scoped under .kb-set,
-   the categories' root, so this file restyles nothing of upstream's. It relies on upstream's variables
+   the categories' root (＋ New project's window under .kb-new-project-modal), so this file restyles
+   nothing of upstream's. It relies on upstream's variables
    (--ink, --paper…), .btn, .hidden and its `.modal` text boxes and labels. */
 
 .kb-set { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
@@ -17,6 +18,8 @@
 .kb-set .kb-settings-project { display: flex; align-items: center; gap: 8px; margin: 0; }
 .kb-set .kb-settings-project.hidden, .kb-set .kb-tabs.hidden { display: none; }
 .kb-set .kb-settings-project select { max-width: 320px; }
+.kb-set .kb-projects-head { justify-content: space-between; }
+.kb-set .kb-new-project { margin-left: auto; }
 .kb-set .kb-tabs { padding: 0; background: none; display: flex; flex-wrap: wrap; gap: 2px; overflow-x: auto; border-bottom: var(--bw) solid var(--ink); scrollbar-width: none; }
 .kb-set .kb-tab { flex: none; display: inline-flex; align-items: center; gap: 5px; padding: 7px 9px; font: var(--fw-bold) var(--fs-sm) var(--font); color: var(--text); background: transparent; border: var(--bw) solid transparent; border-bottom: 0; border-radius: var(--radius-sm) 12px 0 0; cursor: pointer; margin-bottom: -3px; }
 .kb-set .kb-tab:hover { background: var(--scrim); }
@@ -83,6 +86,21 @@
 .kb-set .kb-skill-pick[open] { padding: 6px; border: var(--bw-sm) solid var(--ink); border-radius: 10px; background: var(--field); display: flex; flex-direction: column; gap: 4px; }
 .kb-set .kb-secret { font-weight: var(--fw-heavy); }
 .kb-set .kb-secret.on { color: var(--good-ink); }
+
+/* ＋ New project (newproject.ts): its own window, stacked over Settings, so its rules are scoped under it rather than .kb-set. */
+.modal.kb-new-project-modal { width: min(560px, 100%); }
+.kb-new-project-modal .body { display: flex; flex-direction: column; gap: 10px; }
+.kb-new-project-modal .kb-np-kinds { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.kb-new-project-modal .kb-np-kind { padding: 9px 12px; font: var(--fw-bold) var(--fs-md) var(--font); color: var(--text); background: var(--field); border: var(--bw) solid var(--ink); border-radius: var(--radius-sm); cursor: pointer; }
+.kb-new-project-modal .kb-np-kind:hover:not(:disabled) { background: var(--field-hover); }
+.kb-new-project-modal .kb-np-kind[aria-pressed=true] { border-color: var(--accent); background: var(--accent-soft); }
+.kb-new-project-modal .kb-np-kind:disabled { cursor: default; }
+.kb-new-project-modal input[type=text] { width: 100%; height: 44px; font: var(--fw-semibold) var(--fs-md) var(--font); color: var(--text); border: var(--bw) solid var(--ink); border-radius: var(--radius-sm); padding: 0 10px; background: var(--field); outline: none; }
+.kb-new-project-modal input[type=text]:focus { border-color: var(--accent); }
+.kb-new-project-modal input[type=text]:disabled { background: var(--field-off); color: var(--muted); }
+.kb-new-project-modal .kb-np-note { margin: 0; font-size: var(--fs-xs); font-weight: var(--fw-semibold); color: var(--muted); overflow-wrap: anywhere; }
+.kb-new-project-modal .kb-np-note.busy { color: var(--text); }
+.kb-new-project-modal .kb-np-err { margin: 0; font-size: var(--fs-sm); font-weight: var(--fw-bold); color: var(--bad); overflow-wrap: anywhere; }
 
 @media (max-width: 700px) {
   .kb-set .kb-two, .kb-set .kb-three { grid-template-columns: minmax(0, 1fr); }

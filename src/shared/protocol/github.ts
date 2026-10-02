@@ -68,6 +68,8 @@ export interface GhState<T> {
   loading: boolean;
   /** The PR board's repositories (owner/name) on a project with several, PRs or not (see Floor.pullsState). */
   repos?: string[];
+  /** The project isn't a git repository: nothing on GitHub to show or refresh (`error` says so). */
+  notGit?: true;
 }
 
 export type GhMergeMethod = 'squash' | 'merge' | 'rebase';

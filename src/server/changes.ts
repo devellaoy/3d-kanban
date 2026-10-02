@@ -4,6 +4,7 @@ import path from 'node:path';
 import type { ImageResult } from './decor.js';
 import { changedImageType, type ChangedFile, type ChangeStatus, type ChangesState } from '../shared/protocol.js';
 import { checkoutRepo, repoFlag } from './ghrepo.js';
+import { NOT_GIT, NO_DRIVERS, NO_FSMONITOR, SAFE_GIT } from './floor-git.js';
 
 // What a worker changed, for the Changes window at its desk: the files it touched and their diff,
 // against the branch the office was opened on. While anyone has the window open, the office polls
@@ -33,6 +34,8 @@ export interface ChangesTarget {
    * that repository's open pull requests are, and how to refresh its boards.
    */
   baseBranch?: string | null;
+  /** The folder isn't a git repository (see isGitFloor): there's nothing to diff, and git never runs there. */
+  noGit?: boolean;
   openPull?(branch: string): { number: number; url: string } | undefined;
   refreshGitHub?(): void;
 }
@@ -69,7 +72,7 @@ interface Result {
 /** With `env`, it runs as someone signed in to their own GitHub (see signins.ts) instead of the office. */
 function run(cmd: string, args: string[], cwd: string, timeout = 30_000, env?: Record<string, string>): Promise<Result> {
   return new Promise((resolve, reject) => {
-    execFile(cmd, args, { cwd, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024, timeout, env: { ...(env ?? process.env), GIT_OPTIONAL_LOCKS: '0' } }, (err, stdout, stderr) => {
+    execFile(cmd, safe(cmd, args), { cwd, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024, timeout, env: { ...(env ?? process.env), GIT_OPTIONAL_LOCKS: '0' } }, (err, stdout, stderr) => {
       if (!err) return resolve({ out: stdout, err: stderr, code: 0 });
       const e = err as NodeJS.ErrnoException & { code?: number | string; killed?: boolean };
       if (typeof e.code === 'number') return resolve({ out: stdout, err: stderr, code: e.code });
@@ -80,10 +83,16 @@ function run(cmd: string, args: string[], cwd: string, timeout = 30_000, env?: R
   });
 }
 
+/** git with SAFE_GIT in front; a commit or push is somebody's own action, so it keeps the repository's hooks. */
+function safe(cmd: string, args: string[]): string[] {
+  if (cmd !== 'git') return args;
+  return args[0] === 'commit' || args[0] === 'push' ? [...NO_FSMONITOR, ...args] : [...SAFE_GIT, ...args];
+}
+
 /** Like run(), for output that isn't text: a file's bytes at some commit. A failing command throws. */
 function runBytes(cmd: string, args: string[], cwd: string, maxBytes: number, timeout = 30_000): Promise<Buffer> {
   return new Promise((resolve, reject) => {
-    execFile(cmd, args, { cwd, encoding: 'buffer', maxBuffer: maxBytes, timeout, env: { ...process.env, GIT_OPTIONAL_LOCKS: '0' } }, (err, stdout, stderr) => {
+    execFile(cmd, safe(cmd, args), { cwd, encoding: 'buffer', maxBuffer: maxBytes, timeout, env: { ...process.env, GIT_OPTIONAL_LOCKS: '0' } }, (err, stdout, stderr) => {
       if (!err) return resolve(stdout);
       const e = err as NodeJS.ErrnoException & { code?: number | string; killed?: boolean };
       if (typeof e.code === 'number') return reject(new GitError(reason({ out: '', err: stderr.toString('utf8'), code: e.code }, `${cmd} ${args[0]} failed`)));
@@ -222,12 +231,12 @@ export class Changes {
       let out: string;
       if (file.status === '?') {
         // Exit code 1 just means the file isn't empty.
-        const r = await run('git', ['diff', '--no-index', '--', '/dev/null', file.path], t.cwd);
+        const r = await run('git', ['diff', ...NO_DRIVERS, '--no-index', '--', '/dev/null', file.path], t.cwd);
         if (r.code > 1) throw new GitError(reason(r, 'git diff failed'));
         out = r.out;
       } else {
         const base = await this.baseCommit(t);
-        const r = await run('git', ['diff', '-M', base.commit, '--', ...(file.from ? [file.from] : []), file.path], t.cwd);
+        const r = await run('git', ['diff', ...NO_DRIVERS, '-M', base.commit, '--', ...(file.from ? [file.from] : []), file.path], t.cwd);
         if (r.code !== 0) throw new GitError(reason(r, 'git diff failed'));
         out = r.out;
       }
@@ -370,6 +379,7 @@ export class Changes {
   private async action(workerId: string, repo: string | undefined, label: string, fn: (t: ChangesTarget, w: Watch) => Promise<string | undefined>): Promise<string | undefined> {
     const t = this.target(workerId, repo);
     if (!t) return 'No such worker';
+    if (t.noGit) return NOT_GIT;
     const key = watchKey(workerId, repo);
     const w = this.entry(workerId, repo);
     if (w.busy) return `Hold on — still ${w.busy.toLowerCase().replace(/…$/, '')}`;
@@ -446,11 +456,13 @@ export class Changes {
   }
 
   private async compute({ workerId, repo }: { workerId: string; repo?: string }, t: ChangesTarget): Promise<ChangesState> {
+    // Never git here: the folder may sit inside some other repository that a diff would be taken from.
+    if (t.noGit) return errorState({ workerId, repo }, t.cwd, NOT_GIT);
     try {
       const base = await this.baseCommit(t);
       const [numstat, names, status] = await Promise.all([
-        git(['diff', '--numstat', '-M', '-z', base.commit], t.cwd),
-        git(['diff', '--name-status', '-M', '-z', base.commit], t.cwd),
+        git(['diff', ...NO_DRIVERS, '--numstat', '-M', '-z', base.commit], t.cwd),
+        git(['diff', ...NO_DRIVERS, '--name-status', '-M', '-z', base.commit], t.cwd),
         git(['status', '--porcelain=v1', '-z', '-uall'], t.cwd),
       ]);
       const files = new Map<string, ChangedFile>();

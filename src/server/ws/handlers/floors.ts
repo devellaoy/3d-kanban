@@ -3,6 +3,7 @@
 import type { FloorClientMsg } from '../../../shared/protocol.js';
 import { ROOF } from '../../../shared/rooftop.js';
 import { arrivalSpot, str } from '../../office/input.js';
+import { addFolder } from '../../office/addfloor.js';
 import type { HandlerMap, ViewPieces } from './types.js';
 
 export const projectView: ViewPieces['project'] = (_ctx, floor) => floor?.project ?? null;
@@ -26,6 +27,8 @@ export const floorHandlers = {
   },
   'floor.add'(ctx, c, msg) {
     const who = c.peer.name;
+    const rid = typeof msg.rid === 'string' ? msg.rid.slice(0, 64) : undefined;
+    if (typeof msg.dir === 'string') return addFolder(ctx, c, msg.dir, rid);
     const repo = str(msg.repo, 200);
     void ctx.building
       .add(repo, who, (def) => {
@@ -34,12 +37,12 @@ export const floorHandlers = {
       })
       .then((r) => {
         ctx.floorsChanged();
-        if (typeof r === 'string') return ctx.sendTo(c, { t: 'floor.added', repo, error: r });
+        if (typeof r === 'string') return ctx.sendTo(c, { t: 'floor.added', repo, rid, error: r });
         const floor = ctx.openFloor(r);
-        if (!floor) return ctx.sendTo(c, { t: 'floor.added', repo, error: `Cloned ${r.repo}, but couldn't open its floor — see the office's log` });
+        if (!floor) return ctx.sendTo(c, { t: 'floor.added', repo, rid, error: `Cloned ${r.repo}, but couldn't open its floor — see the office's log` });
         console.log(`  ${who} added a floor for ${r.repo} (${r.dir})`);
         ctx.toastAll(`🛗 New floor: ${r.name}, added by ${who}`);
-        ctx.sendTo(c, { t: 'floor.added', repo, floor: floor.id });
+        ctx.sendTo(c, { t: 'floor.added', repo, rid, floor: floor.id });
       });
   },
   'floor.remove'(ctx, c, msg) {

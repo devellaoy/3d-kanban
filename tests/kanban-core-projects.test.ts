@@ -167,3 +167,11 @@ test('Building.setName renames a floor, keeping its id and repositories, and flo
   assert.equal(building.setName('nope', 'Shop'), 'No such floor');
   assert.equal(building.list()[0].name, 'x'.repeat(100));
 });
+
+test('a floor whose folder has no .git is a folder project, not a git one', (t) => {
+  const { checkout } = office(t);
+  const [only] = projectRepos(def('notes', checkout('notes', false), { repo: undefined }));
+  assert.equal(only.kind, 'folder');
+  assert.equal(only.remote, undefined);
+  assert.equal(projectRepos(def('web', checkout('web')))[0].kind, 'git');
+});

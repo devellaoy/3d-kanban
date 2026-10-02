@@ -2,6 +2,7 @@ import { execFile } from 'node:child_process';
 import { open, readdir, readFile, stat } from 'node:fs/promises';
 import path from 'node:path';
 import { insideCheckout } from './changes.js';
+import { SAFE_GIT } from './floor-git.js';
 import type { ImageResult } from './decor.js';
 import { changedImageType } from '../shared/protocol.js';
 import { isDocPath, type DocFile, type DocList, type DocText } from '../shared/docs.js';
@@ -29,7 +30,7 @@ type Failure = { status: number; error: string };
 function gitDocs(dir: string): Promise<string[] | undefined> {
   const args = ['ls-files', '-z', '--cached', '--others', '--exclude-standard', '--', ':(icase)*.md', ':(icase)*.markdown'];
   return new Promise((resolve) => {
-    execFile('git', args, { cwd: dir, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024, timeout: 20_000, env: { ...process.env, GIT_OPTIONAL_LOCKS: '0' } }, (err, stdout) => {
+    execFile('git', [...SAFE_GIT, ...args], { cwd: dir, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024, timeout: 20_000, env: { ...process.env, GIT_OPTIONAL_LOCKS: '0' } }, (err, stdout) => {
       if (err) return resolve(undefined);
       resolve([...new Set(stdout.split('\0').filter(Boolean))]);
     });
@@ -115,7 +116,11 @@ export class Docs {
   /** Titles by path, kept while the file's size and time stay the same. */
   private titles = new Map<string, { sig: string; title?: string }>();
 
-  constructor(private dir: string) {}
+  constructor(
+    private dir: string,
+    /** Whether the folder is a git floor: only then does git list its files (see isGitFloor). */
+    private git = true,
+  ) {}
 
   /** Every Markdown file in the project, by path. */
   list(): Promise<DocList> {
@@ -125,7 +130,7 @@ export class Docs {
   }
 
   private async scan(): Promise<DocList> {
-    const found = ((await gitDocs(this.dir)) ?? (await walkDocs(this.dir))).filter(isDocPath).map((p) => p.split(path.sep).join('/'));
+    const found = ((this.git ? await gitDocs(this.dir) : undefined) ?? (await walkDocs(this.dir))).filter(isDocPath).map((p) => p.split(path.sep).join('/'));
     found.sort((a, b) => a.localeCompare(b));
     const more = found.length > MAX_DOCS;
     const files: DocFile[] = [];

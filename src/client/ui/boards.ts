@@ -257,9 +257,17 @@ export function openBoard(kind: 'issues' | 'pulls', net: Net, actions: BoardActi
     render();
   };
 
+  const board = () => (kind === 'issues' ? store.issues : store.pulls);
+  // A folder project has nothing on GitHub to load (GhState.notGit): nothing to refresh or say when it was.
+  const notGit = (st: ReturnType<typeof board>) => !!st.notGit;
+  const stamp = () => {
+    const st = board();
+    status.textContent = notGit(st) ? '' : st.loading ? 'Refreshing…' : st.fetchedAt ? `Updated ${timeAgo(st.fetchedAt)}` : '';
+  };
+
   const render = () => {
-    const st = kind === 'issues' ? store.issues : store.pulls;
-    status.textContent = st.loading ? 'Refreshing…' : st.fetchedAt ? `Updated ${timeAgo(st.fetchedAt)}` : '';
+    const st = board();
+    stamp();
     // Every refresh rebuilds the columns, so note how far each was scrolled and put it back afterwards,
     // and keep focus (and the caret, in a filter box) on the header, label toggle or box it was on.
     const scrolled = [...body.querySelectorAll('.column > ul')].map((ul) => ul.scrollTop);
@@ -268,6 +276,8 @@ export function openBoard(kind: 'issues' | 'pulls', net: Net, actions: BoardActi
     const focused = active && body.contains(active) ? active.getAttribute('data-focus') : null;
     const caret = active instanceof HTMLInputElement ? ([active.selectionStart, active.selectionEnd] as const) : null;
     body.replaceChildren();
+    refresh.classList.toggle('hidden', notGit(st));
+    if (notGit(st)) return void body.append(h('div.board-error', {}, st.error ?? "This project isn't a git repository, so there are no issues or pull requests to show."));
     if (st.error && !st.items.length) {
       body.append(h('div.board-error', {}, `Couldn't load from GitHub: ${st.error}`, h('br'), h('small', {}, 'The server runs `gh` in the project directory — make sure it is installed and authenticated (gh auth login).')));
       return;
@@ -329,10 +339,7 @@ export function openBoard(kind: 'issues' | 'pulls', net: Net, actions: BoardActi
   const unsubs = [store.on(kind, render), store.on('queue', render)];
   // Which desk a PR came from can change (a worker sent home, a PR opened from a desk).
   if (kind === 'pulls') unsubs.push(store.on('workers', render));
-  const timer = setInterval(() => {
-    const st = kind === 'issues' ? store.issues : store.pulls;
-    status.textContent = st.loading ? 'Refreshing…' : st.fetchedAt ? `Updated ${timeAgo(st.fetchedAt)}` : '';
-  }, 15000);
+  const timer = setInterval(stamp, 15000);
   const modal = openModal(el, {
     doing: kind === 'issues' ? '📋 at the issues board' : '🔀 at the PR board',
     onClose: () => {
