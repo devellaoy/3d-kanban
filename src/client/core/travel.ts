@@ -14,6 +14,7 @@ import type { CoreState } from './ctx';
 import { builtFloors, floorWings } from './floors';
 import { aside, hintTitle, key, onE } from './hint';
 import type { Parts } from './parts';
+import { relookOnArrival } from './relook';
 import { FAR } from './scene';
 import { streetOf } from './worlds';
 
@@ -100,17 +101,17 @@ export function installTravel(ctx: Ctx, core: CoreState, parts: TravelParts) {
     placeOnArrival: false,
     /** Down off the roof, on a map with no roof to be up on (it changed while you were up there). */
     offRoof: false,
-    /** A window closed on the way (the ☰ menu or the floor list you picked from): take the mouse back when you're there. */
-    relook: false,
   };
+  /** A window closed on the way (the ☰ menu or the floor list you picked from): the mouse comes back when you're there. */
+  const relook = relookOnArrival();
 
   /** You're there (or the trip failed): the controls are yours again unless a window is up, and the mouse too if a window closed on the way. */
   function controlsBack() {
     player.enabled = !modalOpen();
-    if (pending.relook && player.enabled) parts.focus.backToGame();
-    pending.relook = false;
+    // No fresh gesture here: if the browser refuses the lock (after tripFailed's 10 s, say), backToGame
+    // has set relookOnKey, so the next key takes the mouse.
+    relook.arrived(player.enabled, parts.focus.backToGame);
   }
-
 
   /** The elevator where you are: the office's, its stop down in the garage, or the one up on the roof. None on a map of its own. */
   function lift() {
@@ -325,7 +326,7 @@ export function installTravel(ctx: Ctx, core: CoreState, parts: TravelParts) {
       lift()?.setOpen(false);
       fade(false);
       player.enabled = !modalOpen();
-      pending.relook = false;
+      relook.drop();
       showElevator();
       return;
     }
@@ -350,5 +351,5 @@ export function installTravel(ctx: Ctx, core: CoreState, parts: TravelParts) {
     doorsOpen();
   }
 
-  return { syncStack, takenAway, showElevator, lift, ride, switchFloor, travel, leaveRoofFor, setPlace, arrive, pending };
+  return { syncStack, takenAway, showElevator, lift, ride, switchFloor, travel, leaveRoofFor, setPlace, arrive, pending, relook };
 }

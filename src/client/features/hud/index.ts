@@ -14,7 +14,7 @@ import { openAccounts } from '../../ui/accounts';
 import { openBoard } from '../../ui/boards';
 import { openCharacter } from '../../ui/character';
 import { $ } from '../../ui/dom';
-import { closeFloorMenu, toggleFloorMenu, type FloorMenuOptions } from '../../ui/floormenu';
+import { floorMenuFits, openFloorMenu, toggleFloorMenu, type FloorMenuOptions } from '../../ui/floormenu';
 import { openHelp } from '../../ui/hud';
 import { mountHud } from '../../ui/menu';
 import { openServices } from '../../ui/services';
@@ -136,15 +136,12 @@ export function installHud(ctx: Ctx, core: CoreState, parts: HudParts) {
       hud.toggleMenu(
         store.floor
           ? (backdrop, closeMenu) => {
-              closeFloorMenu();
-              // Closing the list closes the menu, except while we look for room: on a narrow screen they overlap.
-              let together = false;
-              toggleFloorMenu($('project'), { ...floorOpts(), parent: backdrop, onClose: () => together && closeMenu() });
-              const list = backdrop.querySelector('.floor-menu')?.getBoundingClientRect();
-              const menu = backdrop.querySelector('.hud-menu')?.getBoundingClientRect();
-              if (list && menu && list.left < menu.right && list.right > menu.left && list.top < menu.bottom && list.bottom > menu.top) closeFloorMenu();
-              together = true;
-              return closeFloorMenu;
+              // On a screen too narrow for both, Tab opens only the menu. That's decided now: a later resize
+              // that makes them overlap is accepted (the menu closes on the next Tab or Esc anyway).
+              const menuEl = backdrop.querySelector('.hud-menu');
+              if (!menuEl || !floorMenuFits($('project'), menuEl.getBoundingClientRect().left)) return () => {};
+              // The list closing by itself (a pick, a click outside) closes the menu; the menu closes the list.
+              return openFloorMenu($('project'), { ...floorOpts(), parent: backdrop, onClose: closeMenu });
             }
           : undefined,
       );
