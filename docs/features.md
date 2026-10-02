@@ -153,7 +153,7 @@ nothing goes over the network, and what they remember lives in your browser's `l
     supercars, but grass hardly slows them and their tyres hold on it. Their dial, gearbox, engine note and
     horn (a deep one) are their own, and the rider sits higher.
   - **Suspension.** Every car rides on springs: the body rolls, pitches and rises over bumps, and the
-    4x4s' are a little softer with longer travel, the wheels moving against the body, but well damped, so
+    4x4s' are a little softer than the supercars', with longer travel, the wheels moving against the body, but well damped, so
     the body settles quickly instead of rocking on. The 4x4s' glass is clear, so you can see out through
     the windshield from the seat.
   - **Speed humps and rough ground.** Two yellow-and-black humps either side of town on the street, a

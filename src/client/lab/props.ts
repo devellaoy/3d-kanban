@@ -136,7 +136,7 @@ const extent = all.getSize(new THREE.Vector3());
 /** Round the props from `view`, far enough back to fit them all across and up. */
 function aim() {
   const seat = q.get('seat') as CarSeat | null;
-  if (seat && SEATS[seat] && shown.length === 1) {
+  if (seat && Object.hasOwn(SEATS, seat) && shown.length === 1) {
     // About where a seated driver's eyes are (see player/camera.ts), looking ahead over the hood.
     const s = SEATS[seat];
     const car = shown[0].object;

@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { CAR, SEATS } from '../../../shared/garage';
+import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { mergeByMaterial, mesh, toon } from '../../world/toon';
 import type { CarModel } from './world';
 
@@ -39,6 +40,29 @@ function wheel(x: number, z: number): THREE.Object3D {
   return merged;
 }
 
+/** A `w` by `h` pane facing +z, seen from both sides: a plane and the same plane turned round, so nothing is drawn twice over. */
+function twoSided(w: number, h: number): THREE.BufferGeometry {
+  return mergeGeometries([new THREE.PlaneGeometry(w, h), new THREE.PlaneGeometry(w, h).rotateY(Math.PI)])!;
+}
+
+/** The four upright sides of a `w` by `h` by `d` box, centred, with no top or bottom: glass all round a cabin, its corners meeting edge to edge. */
+function sleeve(w: number, h: number, d: number): THREE.BufferGeometry {
+  return mergeGeometries([
+    twoSided(d, h).rotateY(Math.PI / 2).translate(w / 2, 0, 0),
+    twoSided(d, h).rotateY(Math.PI / 2).translate(-w / 2, 0, 0),
+    twoSided(w, h).translate(0, 0, d / 2),
+    twoSided(w, h).translate(0, 0, -d / 2),
+  ])!;
+}
+
+/** Turns a pane facing +z to face the way it's laid on: out to the left (+x), the right (-x), ahead (+z) or up (+y). */
+const FACE = {
+  x: (geo: THREE.BufferGeometry) => geo.rotateY(Math.PI / 2),
+  '-x': (geo: THREE.BufferGeometry) => geo.rotateY(-Math.PI / 2),
+  z: (geo: THREE.BufferGeometry) => geo,
+  y: (geo: THREE.BufferGeometry) => geo.rotateX(-Math.PI / 2),
+};
+
 /** A 4x4 in `color`, on its springs' resting height. */
 export function offroad(color: string): CarModel {
   const g = new THREE.Group();
@@ -55,15 +79,11 @@ export function offroad(color: string): CarModel {
   const L = CAR.length / 2;
   const box = (w: number, h: number, d: number, mat: THREE.Material, x: number, y: number, z: number) => mesh(new THREE.BoxGeometry(w, h, d), mat, x, y, z);
   // Glass casts no shadow, or the cabin under it would sit in the dark.
-  const pane = (w: number, h: number, d: number, mat: THREE.Material, x: number, y: number, z: number) => mesh(new THREE.BoxGeometry(w, h, d), mat, x, y, z, false);
-  /** Two slanting streaks of shine on a pane, laid on its face `out` (x, y or z) and leaning about it. */
-  const streaks = (to: THREE.Object3D, x: number, y: number, z: number, out: 'x' | 'y' | 'z') => {
+  const pane = (geo: THREE.BufferGeometry, x: number, y: number, z: number) => mesh(geo, glass, x, y, z, false);
+  /** Two slanting streaks of shine on a pane, a hair off its outer face, which looks `face`. */
+  const streaks = (to: THREE.Object3D, x: number, y: number, z: number, face: keyof typeof FACE) => {
     for (const [off, width] of [[0, 0.07], [0.16, 0.035]]) {
-      const s = pane(out === 'x' ? 0.004 : width, out === 'y' ? 0.004 : 0.5, out === 'z' ? 0.004 : out === 'x' ? width : 0.5, shine, x, y, z);
-      if (out === 'x') s.position.z += off;
-      else s.position.x += off;
-      s.rotation[out] = 0.6;
-      to.add(s);
+      to.add(mesh(FACE[face](new THREE.PlaneGeometry(width, 0.5).rotateZ(0.6).translate(off, 0, 0)), shine, x, y, z, false));
     }
   };
   const tube = (r: number, len: number, mat: THREE.Material, x: number, y: number, z: number, axis: 'x' | 'y' | 'z') => {
@@ -118,13 +138,10 @@ export function offroad(color: string): CarModel {
   // The cabin: glass between pillars, a painted roof, and a rack with a light bar on top.
   const closed = new THREE.Group();
   const W = HALF * 2 - 0.1;
-  for (const sx of [-1, 1]) {
-    closed.add(pane(0.03, 0.64, 2.5, glass, sx * (W / 2 - 0.015), 1.38, -0.55));
-    streaks(closed, sx * (W / 2 + 0.002), 1.38, -0.3, 'x');
-  }
-  closed.add(pane(W, 0.64, 0.03, glass, 0, 1.38, -1.785));
-  closed.add(pane(W, 0.64, 0.03, glass, 0, 1.38, 0.685));
-  streaks(closed, -0.3, 1.38, 0.702, 'z');
+  closed.add(pane(sleeve(W, 0.64, 2.5), 0, 1.38, -0.55));
+  streaks(closed, W / 2 + 0.003, 1.38, -0.3, 'x');
+  streaks(closed, -W / 2 - 0.003, 1.38, -0.3, '-x');
+  streaks(closed, -0.3, 1.38, 0.703, 'z');
   for (const sx of [-1, 1]) {
     for (const z of [-1.8, 0.7]) closed.add(box(0.1, 0.68, 0.1, paint, sx * (HALF - 0.04), 1.39, z));
   }
@@ -135,15 +152,26 @@ export function offroad(color: string): CarModel {
   closed.add(box(1.3, 0.1, 0.16, trim, 0, 1.97, 0.38));
   for (const x of [-0.45, -0.15, 0.15, 0.45]) closed.add(tube(0.06, 0.08, lamp, x, 1.97, 0.48, 'z'));
 
-  // Roof off: the windshield, a roll bar over the seats, the seats and the wheel.
+  // The seats and the wheel, in whether the roof is on or off: through the glass, a parked 4x4 isn't empty.
+  for (const s of Object.values(SEATS)) {
+    const back = box(0.5, 0.62, 0.1, trim, s.x, 0.95, s.z - 0.34);
+    back.rotation.x = -0.12;
+    g.add(back);
+    g.add(box(0.5, 0.12, 0.5, trim, s.x, 0.56, s.z));
+  }
+  const hoop = mesh(new THREE.TorusGeometry(0.17, 0.03, 6, 18), trim, SEATS.driver.x, 1.02, SEATS.driver.z + 0.5);
+  hoop.rotation.x = -0.5;
+  g.add(hoop);
+
+  // Roof off: the windshield and a roll bar over the seats (it would stand up through the roof).
   const open = new THREE.Group();
   const shield = new THREE.Group();
   shield.position.set(0, 1.4, 0.6);
   shield.rotation.x = 0.55;
-  shield.add(pane(W, 0.03, 0.82, glass, 0, 0, 0));
+  shield.add(pane(FACE.y(twoSided(W, 0.82)), 0, 0, 0));
   // The frame along its top, and the shine on its face (on the passenger's side, clear of the driver's view).
   shield.add(box(W, 0.035, 0.035, trim, 0, 0, -0.41));
-  streaks(shield, -0.3, 0.017, 0, 'y');
+  streaks(shield, -0.3, 0.003, 0, 'y');
   open.add(shield);
   for (const sx of [-1, 1]) {
     const post = box(0.07, 0.07, 0.9, trim, sx * (HALF - 0.04), 1.4, 0.6);
@@ -152,15 +180,6 @@ export function offroad(color: string): CarModel {
   }
   open.add(mesh(new THREE.TorusGeometry(HALF - 0.02, 0.045, 6, 16, Math.PI), trim, 0, 1.0, -1.25));
   open.add(tube(0.04, 1.8, trim, 0, 1.8, -0.45, 'z'));
-  for (const s of Object.values(SEATS)) {
-    const back = box(0.5, 0.62, 0.1, trim, s.x, 0.95, s.z - 0.34);
-    back.rotation.x = -0.12;
-    open.add(back);
-    open.add(box(0.5, 0.12, 0.5, trim, s.x, 0.56, s.z));
-  }
-  const hoop = mesh(new THREE.TorusGeometry(0.17, 0.03, 6, 18), trim, SEATS.driver.x, 1.02, SEATS.driver.z + 0.5);
-  hoop.rotation.x = -0.5;
-  open.add(hoop);
 
   const wheels: THREE.Object3D[] = [wheel(TRACK, AXLE), wheel(-TRACK, AXLE)];
   const rear: THREE.Object3D[] = [wheel(TRACK, -AXLE), wheel(-TRACK, -AXLE)];

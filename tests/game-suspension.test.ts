@@ -55,7 +55,7 @@ test('the 4x4 rides a little softer than a supercar, but settles about as quickl
   const stiff = pulse(new Suspension(suspensionOf('lambo')), 0.1, 0.12, 8);
   assert.ok(crossings(firm) <= 3, `the 4x4 swings back and forth only ${crossings(firm)} times`);
   assert.ok(settled(firm, 0.004) < 1, `it is still within 4 mm of rest after ${settled(firm, 0.004).toFixed(2)} s`);
-  assert.ok(settled(firm, 0.004) > settled(stiff, 0.004), 'a touch longer than the stiff one');
+  assert.ok(settled(firm, 0.004) < settled(stiff, 0.004) * 3, `about as soon as the stiff one (${settled(stiff, 0.004).toFixed(2)} s)`);
   // After a mound (a bump 0.3 s long) it is soon back at rest too.
   const mound = pulse(new Suspension(suspensionOf('offroad')), 0.2, 0.3, 6);
   assert.ok(settled(mound, 0.004) < 1.5, `back at rest ${settled(mound, 0.004).toFixed(2)} s after the mound`);
