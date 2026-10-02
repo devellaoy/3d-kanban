@@ -15,9 +15,72 @@
 
 .modal.ytv-window { width: min(1100px, calc(100vw - 32px)); }
 /* The player is lined up over this, from the layer above the backdrop. */
-.ytv-slot { width: min(100%, calc((100vh - 360px) * 16 / 9)); min-width: min(100%, 356px); aspect-ratio: 16 / 9; border-radius: 10px; background: #000; margin: 0 auto 14px; }
+.ytv-slot { width: min(100%, calc((100vh - 470px) * 16 / 9)); min-width: min(100%, 356px); aspect-ratio: 16 / 9; border-radius: 10px; background: #000; margin: 0 auto 14px; }
 .ytv-slot[hidden] { display: none; }
 .ytv-now { display: flex; align-items: center; gap: 12px; }
 .ytv-now .svc-main { flex: 1; min-width: 0; }
 .ytv-now a.btn { text-decoration: none; }
 .ytv-jb-note { margin-top: 6px; }
+
+/* The transport bar under the player (youtube/controls.ts). */
+.ytv-controls { display: flex; flex-direction: column; gap: 8px; margin: 0 auto 14px; max-width: 100%; }
+.ytv-controls[hidden] { display: none; }
+.ytv-transport { display: flex; flex-wrap: wrap; justify-content: center; gap: 6px; }
+.ytv-transport .btn { justify-content: center; text-align: center; min-width: var(--hit-min); padding: 6px 10px; font-size: var(--fs-sm); font-variant-numeric: tabular-nums; }
+.ytv-transport .ytv-play { min-width: 64px; }
+.ytv-seekrow { display: flex; align-items: center; gap: 10px; }
+.ytv-time { flex: none; font-size: var(--fs-sm); font-weight: var(--fw-bold); color: var(--muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.ytv-controls.live .ytv-time { flex: 1; }
+.ytv-rate { flex: none; padding: 5px 8px; border: var(--bw-sm) solid var(--ink); border-radius: 9px; background: var(--field); color: var(--text); font: inherit; font-size: var(--fs-sm); font-weight: var(--fw-bold); }
+.ytv-ctl-note { margin: 0; text-align: center; }
+.ytv-ctl-note[hidden] { display: none; }
+/* The seek bar, drawn like the volume slider (ui/settings.css): --fill is how far it's got. */
+.ytv-seek { flex: 1; min-width: 0; height: 28px; margin: 0; background: transparent; cursor: pointer; -webkit-appearance: none; appearance: none; --fill: 0%; }
+.ytv-seek[hidden] { display: none; }
+.ytv-seek:focus { outline: none; }
+.ytv-seek::-webkit-slider-runnable-track { height: 12px; border: var(--bw) solid var(--ink); border-radius: var(--radius-pill); background: linear-gradient(to right, var(--accent) var(--fill), var(--field) var(--fill)); }
+.ytv-seek::-moz-range-track { height: 8px; border: var(--bw) solid var(--ink); border-radius: var(--radius-pill); background: var(--field); }
+.ytv-seek::-moz-range-progress { height: 8px; border-radius: var(--radius-pill); background: var(--accent); }
+.ytv-seek::-webkit-slider-thumb { -webkit-appearance: none; width: 22px; height: 22px; margin-top: -7px; border-radius: 50%; border: var(--bw) solid var(--ink); background: var(--paper); box-shadow: var(--shadow-xs); }
+.ytv-seek::-moz-range-thumb { width: 16px; height: 16px; border-radius: 50%; border: var(--bw) solid var(--ink); background: var(--paper); box-shadow: var(--shadow-xs); }
+.ytv-seek:focus-visible::-webkit-slider-thumb { border-color: var(--accent); }
+
+/* Up next (youtube/queue.ts). */
+.ytv-next { margin-top: 16px; }
+.ytv-nexthead { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+.ytv-nexthead h3 { margin: 0; font-size: var(--fs-lg); font-weight: var(--fw-heavy); }
+.ytv-nexthead .grow { flex: 1; }
+.ytv-count:empty { display: none; }
+.ytv-count { padding: 0 8px; border-radius: var(--radius-pill); background: var(--accent-soft); color: var(--accent-text); font-size: var(--fs-xs); font-weight: var(--fw-heavy); }
+.ytv-window .btn.small { padding: 3px 8px; font-size: var(--fs-xs); border-width: var(--bw-sm); border-radius: 9px; }
+.ytv-window .btn[hidden] { display: none; }
+.ytv-queue { max-height: 260px; overflow-y: auto; padding: 2px; }
+.ytv-queue li { cursor: default; padding: 8px 10px; gap: 10px; }
+.ytv-queue li:hover { background: var(--field); }
+.ytv-queue li.ytv-empty { box-shadow: none; border-style: dashed; }
+.ytv-pos { flex: none; width: 22px; text-align: center; font-weight: var(--fw-heavy); color: var(--muted); font-variant-numeric: tabular-nums; }
+.ytv-acts { flex: none; display: flex; gap: 4px; }
+.ytv-acts .btn:disabled { opacity: .4; cursor: default; }
+.ytv-add { margin-top: 14px; }
+.ytv-addbtns { display: flex; gap: 8px; flex: none; }
+
+/* The floor's setting. */
+.ytv-setting { margin-top: 16px; }
+.modal label.ytv-same { display: flex; gap: 8px; align-items: center; margin: 0; cursor: pointer; }
+
+@media (max-width: 560px) {
+  .ytv-now { flex-wrap: wrap; }
+  .ytv-now .svc-main { flex-basis: calc(100% - 50px); }
+  .ytv-now .btn { flex: 1; }
+  .ytv-transport { flex-wrap: nowrap; gap: 4px; }
+  .ytv-transport .btn, .ytv-transport .ytv-play { flex: 1 1 0; min-width: 0; padding: 6px 0; font-size: var(--fs-xs); white-space: nowrap; }
+  .ytv-addrow { flex-wrap: wrap; }
+  .ytv-addrow input[type=text] { flex-basis: 100%; }
+  .ytv-addbtns { flex: 1; }
+  .ytv-addbtns .btn { flex: 1; }
+  /* The window's body scrolls already: no list scrolling inside it on a phone. */
+  .ytv-queue { max-height: none; overflow: visible; }
+  .ytv-queue li { flex-wrap: wrap; }
+  .ytv-queue .svc-main { flex-basis: calc(100% - 32px); }
+  .ytv-acts { margin-left: 32px; }
+}

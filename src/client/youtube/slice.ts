@@ -1,6 +1,7 @@
 // The store's slice for YouTube on the Office TV, last in SLICES (state/slices/index.ts), so
 // the office's clock from 'pong' (the jukebox's slice) is up to date when it's read here.
 import type { YoutubeTvState } from '../../shared/youtube/link';
+import type { YoutubeTvList } from '../../shared/youtube/queue';
 import type { Slice, Store } from '../state/store';
 
 /** What's on the TV, and when it was at its `position` on performance.now()'s clock. */
@@ -10,9 +11,12 @@ declare module '../state/store' {
   interface Store {
     /** The YouTube video on your floor's TV, if any; `since` is when it was at `position`, on performance.now()'s clock. */
     youtube: YoutubeOnTv | null;
+    /** The TV's queue and settings (sameVolume), sent along only when they change. */
+    youtubeList: YoutubeTvList;
   }
   interface Topics {
     youtube: true;
+    youtubeList: true;
   }
 }
 
@@ -29,11 +33,14 @@ export function youtubeAt(y: YoutubeOnTv, now = performance.now()): number {
 export const youtube: Slice = {
   init(s) {
     s.youtube = null;
+    s.youtubeList = { queue: [], back: false, sameVolume: false };
   },
   on: {
     'tv.youtube'(s, m) {
       setYoutube(s, m.state);
-      return ['youtube'];
+      if (!m.list) return ['youtube'];
+      s.youtubeList = m.list;
+      return ['youtube', 'youtubeList'];
     },
     pong(s) {
       if (!s.youtube) return;
@@ -44,6 +51,7 @@ export const youtube: Slice = {
   },
   enter(s, v) {
     setYoutube(s, v.youtube);
-    return ['youtube'];
+    s.youtubeList = v.youtubeList ?? { queue: [], back: false, sameVolume: false };
+    return ['youtube', 'youtubeList'];
   },
 };

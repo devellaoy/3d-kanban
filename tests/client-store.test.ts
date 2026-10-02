@@ -225,7 +225,7 @@ test('what the browser remembers keeps its keys and shapes', () => {
 
 test("the store's keys are its state, as window.__office shows them", () => {
   // As the office had them before its store was split into slices: methods and the slices aren't among them.
-  assert.deepEqual(Object.keys(store).sort(), ['accounts', 'ball', 'cabinet', 'cabinetFrame', 'cars', 'carsAt', 'chat', 'clock', 'codexLimits', 'decor', 'dog', 'dogStart', 'drawing', 'floor', 'floorPlan', 'floors', 'ice', 'invites', 'issues', 'jail', 'jukebox', 'leaveOnMerge', 'limits', 'machine', 'map', 'me', 'meeting', 'mp', 'mpEnded', 'mpFloors', 'notify', 'peers', 'profile', 'project', 'projectsDir', 'prompts', 'pulls', 'queue', 'repos', 'screens', 'services', 'signins', 'sky', 'subs', 'team', 'theme', 'upgrade', 'usage', 'whiteboard', 'workers', 'you', 'youtube' /* 3d-kanban */, 'kanbanLounge' /* 3d-kanban */].sort());
+  assert.deepEqual(Object.keys(store).sort(), ['accounts', 'ball', 'cabinet', 'cabinetFrame', 'cars', 'carsAt', 'chat', 'clock', 'codexLimits', 'decor', 'dog', 'dogStart', 'drawing', 'floor', 'floorPlan', 'floors', 'ice', 'invites', 'issues', 'jail', 'jukebox', 'leaveOnMerge', 'limits', 'machine', 'map', 'me', 'meeting', 'mp', 'mpEnded', 'mpFloors', 'notify', 'peers', 'profile', 'project', 'projectsDir', 'prompts', 'pulls', 'queue', 'repos', 'screens', 'services', 'signins', 'sky', 'subs', 'team', 'theme', 'upgrade', 'usage', 'whiteboard', 'workers', 'you', 'youtube' /* 3d-kanban */, 'youtubeList' /* 3d-kanban */, 'kanbanLounge' /* 3d-kanban */].sort());
 });
 
 test('a new store starts every field where it always has', async () => {
@@ -252,6 +252,7 @@ test('a new store starts every field where it always has', async () => {
       team: null, accounts: null, signins: null,
       codexLimits: { status: 'off', windows: [], at: 0, checkedAt: 0 }, // 3d-kanban: the Codex limits (codex-limits/slice.ts)
       youtube: null, // 3d-kanban: the Office TV's YouTube (youtube/slice.ts)
+      youtubeList: { queue: [], back: false, sameVolume: false }, // 3d-kanban: its queue and settings
       mp: { status: 'off', url: '', configured: false, offline: false, passwordSet: false, players: [], floors: [] }, mpFloors: {}, mpEnded: null, // 3d-kanban: multiplayer (slices/multiplayer.ts)
       kanbanLounge: [], // 3d-kanban: the tasks on hold in the lounge (kanban/loungeslice.ts)
     },

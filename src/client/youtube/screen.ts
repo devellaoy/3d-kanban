@@ -10,6 +10,7 @@ import { CSS3DObject, CSS3DRenderer } from 'three/examples/jsm/renderers/CSS3DRe
 import { TV } from '../../shared/layout';
 import { youtubeTitle } from '../../shared/youtube/link';
 import type { Ctx } from '../core/context';
+import { visiting } from '../multiplayer/visit';
 import { store, type Settings } from '../state';
 import { h, toast } from '../ui/dom';
 import { BLOCKED, YT_STATE, loadYoutubeApi, youtubeError, type YtPlayer } from './api';
@@ -58,6 +59,8 @@ export class TvScreen {
   private loaded: { id: string; list?: string; at: number } | null = null;
   /** The plays already said to be over, so it's said once. */
   private told = new Set<string>();
+  /** What the office has been told of the play that's on (its length, its playlist's length), once each. */
+  private info = { id: '', duration: false, list: false };
   /** YouTube's error for the play that's on, if it gave one. */
   private error: { id: string; text: string } | null = null;
   /** The page has had a click or a key, so the browser lets the TV be heard. */
@@ -104,7 +107,8 @@ export class TvScreen {
       this.blockedAutoplay = false;
       this.applyVolume(true);
       this.paint();
-      if (this.shown === 'yes' && this.ready && this.player?.getPlayerState() !== YT_STATE.playing) this.player?.playVideo();
+      // A paused TV stays paused: the click is only for the sound.
+      if (this.shown === 'yes' && this.ready && !store.youtube?.paused && this.player?.getPlayerState() !== YT_STATE.playing) this.player?.playVideo();
       ctx.hint.invalidate();
     };
     window.addEventListener('pointerdown', unlock, true);
@@ -147,6 +151,46 @@ export class TvScreen {
     }
     if (!this.player) return void this.make();
     if (this.ready) this.load(y);
+  }
+
+  /** Where the video is now, in seconds: the player's own once it has this play, else where the office has it. */
+  currentTime(): number | undefined {
+    const y = store.youtube;
+    if (!y) return undefined;
+    return this.ready && this.player && this.loaded?.id === y.id ? this.player.getCurrentTime() : youtubeAt(y);
+  }
+
+  /** How long the video is, if the player or the office knows. */
+  duration(): number | undefined {
+    const y = store.youtube;
+    const d = this.ready && this.player && this.loaded?.id === y?.id ? this.player.getDuration() : 0;
+    return d > 0 ? d : y?.duration;
+  }
+
+  /** The loaded playlist's video ids in order (what unpacking it needs), or null when there's none or the player hasn't it yet. */
+  playlistIds(): string[] | null {
+    const y = store.youtube;
+    if (!y || !this.ready || !this.player || this.loaded?.id !== y.id) return null;
+    const ids = this.player.getPlaylist();
+    return ids && ids.length > 0 ? ids : null;
+  }
+
+  /** Why the speed the office asked for isn't what you see, when it isn't. */
+  rateNote(): string | undefined {
+    const y = store.youtube;
+    if (!y || y.rate === 1 || !this.ready || !this.player || this.loaded?.id !== y.id || this.rateOk(y)) return undefined;
+    return 'This video only plays at 1×';
+  }
+
+  /** Whether this video can play at the speed the office has (an empty list: not known yet, so try). */
+  private rateOk(y: YoutubeOnTv): boolean {
+    const rates = this.player?.getAvailablePlaybackRates?.() ?? [];
+    return rates.length === 0 || rates.includes(y.rate);
+  }
+
+  /** Never to the office while visiting someone else's: a visitor only watches. */
+  private tell(m: Parameters<Ctx['net']['send']>[0]) {
+    if (!visiting()) this.ctx.net.send(m);
   }
 
   /** Each frame: where the player is, whether it's shown, how loud it is, and that it's in step. */
@@ -253,28 +297,48 @@ export class TvScreen {
   private load(y: YoutubeOnTv) {
     const p = this.player!;
     const at = youtubeAt(y);
-    const same = this.loaded?.id === y.id;
-    if (y.list) {
-      // The playlist went on by itself (YouTube plays the next one): only the clock is put right.
-      if (this.loaded?.list === y.list && p.getPlaylistIndex() === y.index) this.seek(at);
-      else p.loadPlaylist({ list: y.list, listType: 'playlist', index: y.index ?? 0, startSeconds: at });
-    } else if (!same && y.videoId) p.loadVideoById({ videoId: y.videoId, startSeconds: at });
-    else this.seek(at);
+    if (this.loaded?.id === y.id) {
+      // The same play, only changed (paused, moved, sped up), or its playlist unpacked into the queue (then it
+      // has lost its `list` and got a `videoId`, and it's the video already playing): nothing reloads.
+      this.loaded.list = y.list;
+      this.follow(y, at, 0.5);
+      this.applyVolume(true);
+      return;
+    }
+    const inList = !!y.list && this.loaded?.list === y.list && !!p.getPlaylist();
     this.loaded = { id: y.id, list: y.list, at: performance.now() };
+    if (y.list) {
+      if (inList && p.getPlaylistIndex() === y.index) this.follow(y, at);
+      // A skip within the playlist: a play of its own, with the same list.
+      else if (inList) p.playVideoAt(y.index ?? 0);
+      else p.loadPlaylist({ list: y.list, listType: 'playlist', index: y.index ?? 0, startSeconds: at });
+    } else if (y.videoId) p.loadVideoById({ videoId: y.videoId, startSeconds: at });
     this.stuckSince = 0;
-    if (this.shown !== 'yes') p.pauseVideo();
+    // Loading plays; it's held when it's paused or not shown.
+    if (this.shown !== 'yes' || y.paused) p.pauseVideo();
     this.applyVolume(true);
   }
 
-  private seek(at: number) {
-    this.player?.seekTo(at, true);
-    if (this.shown === 'yes') this.player?.playVideo();
+  /** Puts the speed right, then pauses or plays, and moves to `at` if it's off by more than `tol` seconds (at 1×). */
+  private follow(y: YoutubeOnTv, at: number, tol = DRIFT) {
+    const p = this.player;
+    if (!p) return;
+    this.setRate(y);
+    if (Math.abs(p.getCurrentTime() - at) > tol * Math.max(1, y.rate)) p.seekTo(at, true);
+    const state = p.getPlayerState();
+    if (this.shown !== 'yes' || y.paused) p.pauseVideo();
+    else if (state !== YT_STATE.playing && state !== YT_STATE.buffering) p.playVideo();
+  }
+
+  private setRate(y: YoutubeOnTv) {
+    const p = this.player;
+    if (p && p.getPlaybackRate() !== y.rate && this.rateOk(y)) p.setPlaybackRate(y.rate);
   }
 
   /** Back on after the share ended, or you came back to the office: where everyone else is now. */
   private resume(y: YoutubeOnTv) {
     if (this.loaded?.id !== y.id) return this.load(y);
-    this.seek(youtubeAt(y));
+    this.follow(y, youtubeAt(y));
   }
 
   /** In step with everyone else: out by more than DRIFT, it jumps; stopped when it shouldn't be, it plays. */
@@ -286,6 +350,16 @@ export class TvScreen {
     const data = p.getVideoData?.();
     // Live streams have no fixed point to be at; nor has the last video, while the next one loads.
     if (data?.isLive || (y.videoId && data?.video_id && data.video_id !== y.videoId)) return;
+    this.setRate(y);
+    this.report(y, data?.isLive);
+    const tol = DRIFT * Math.max(1, y.rate);
+    if (y.paused) {
+      // Held still where it was paused: never played, whatever the browser thinks of its sound.
+      this.stuckSince = 0;
+      if (state !== YT_STATE.unstarted && Math.abs(p.getCurrentTime() - want) > tol) p.seekTo(want, true);
+      if (state !== YT_STATE.paused && state !== YT_STATE.cued) p.pauseVideo();
+      return;
+    }
     const duration = p.getDuration();
     if (duration > 0 && !y.list && want >= duration - 0.5 && !this.told.has(y.id)) return this.over(y);
     if (state === YT_STATE.ended) return;
@@ -303,7 +377,23 @@ export class TvScreen {
     }
     this.stuckSince = 0;
     if (state !== YT_STATE.playing || duration <= 0) return;
-    if (Math.abs(p.getCurrentTime() - want) > DRIFT) p.seekTo(want, true);
+    // Only at the speed the office has: a video that can't play at it would be jumped back again and again.
+    if (p.getPlaybackRate() === y.rate && Math.abs(p.getCurrentTime() - want) > tol) p.seekTo(want, true);
+  }
+
+  /** Tells the office how long the video (and its playlist) is, once each per play: the first browser to know says. */
+  private report(y: YoutubeOnTv, live?: boolean) {
+    const p = this.player;
+    if (!p || live || visiting() || !this.current(y, 1500)) return;
+    if (this.info.id !== y.id) this.info = { id: y.id, duration: false, list: false };
+    const duration = p.getDuration();
+    const length = y.list && p.getPlaylistIndex() === y.index ? (p.getPlaylist()?.length ?? 0) : 0;
+    const say = !this.info.duration && y.duration === undefined && duration > 0;
+    const sayList = !this.info.list && y.listLength === undefined && length > 0;
+    if (!say && !sayList) return;
+    if (say) this.info.duration = true;
+    if (sayList) this.info.list = true;
+    this.tell({ t: 'tv.youtube.info', id: y.id, ...(say ? { duration } : {}), ...(sayList ? { listLength: length } : {}) });
   }
 
   /**
@@ -336,7 +426,7 @@ export class TvScreen {
     const p = this.player;
     const list = p?.getPlaylist();
     const more = next ?? (!!y.list && !!list && (y.index ?? 0) + 1 < list.length);
-    this.ctx.net.send({ t: 'tv.youtube.ended', id: y.id, ...(more ? { next: true } : {}) });
+    this.tell({ t: 'tv.youtube.ended', id: y.id, ...(more ? { next: true } : {}) });
   }
 
   private failed(code: number) {
@@ -349,18 +439,19 @@ export class TvScreen {
       this.told.add(y.id);
       const list = this.player?.getPlaylist();
       const more = !!y.list && !!list && (y.index ?? 0) + 1 < list.length;
-      this.ctx.net.send({ t: 'tv.youtube.ended', id: y.id, blocked: code, ...(more ? { next: true } : {}) });
+      this.tell({ t: 'tv.youtube.ended', id: y.id, blocked: code, ...(more ? { next: true } : {}) });
     }
   }
 
   /** As loud as the jukebox would be from where you stand (or right up close, in the TV window), at your own music volume. */
-  private applyVolume(force = false) {
+  applyVolume(force = false) {
     const p = this.player;
     if (!p || !this.ready) return;
     const s = this.deps.settings();
     const base = s.musicMuted ? 0 : s.music * s.music;
     const pos = this.ctx.player.pos;
-    const d = this.slot ? REF : Math.max(REF, Math.hypot(pos.x - TV.x, pos.y + 1.6 - TV.y, pos.z - TV.z));
+    // "Same volume" (the TV's setting) is the same as standing at the reference distance for everyone.
+    const d = this.slot || store.youtubeList.sameVolume ? REF : Math.max(REF, Math.hypot(pos.x - TV.x, pos.y + 1.6 - TV.y, pos.z - TV.z));
     const volume = this.unlocked && !this.blockedAutoplay && this.shown === 'yes' ? Math.round(100 * Math.min(1, base * (REF / (REF + ROLLOFF * (d - REF))))) : 0;
     if (volume === this.volume && !force) return;
     this.volume = volume;
