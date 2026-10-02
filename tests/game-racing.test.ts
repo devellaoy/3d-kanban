@@ -162,7 +162,7 @@ test('bests are worked out from saved results when none were kept, and rubbish i
 test('parseResults keeps only well-formed results', () => {
   const good = { at: 1, laps: [10, 11], penalty: 0, total: 21 };
   const text = JSON.stringify([good, { at: 1 }, null, { ...good, laps: [] }, { ...good, total: 'x' }]);
-  assert.deepEqual(parseResults(text), [good]);
+  assert.deepEqual(parseResults(text), [{ ...good, cls: 'supercar' }], 'saved before the 4x4s: a supercar race');
   assert.deepEqual(parseResults('not json'), []);
   assert.deepEqual(parseResults('{"a":1}'), []);
   assert.deepEqual(parseResults(null), []);

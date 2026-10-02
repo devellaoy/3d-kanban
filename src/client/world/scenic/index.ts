@@ -6,11 +6,11 @@ import type { NightParts } from '../outside';
 import { hazeReach } from '../sky';
 import { mergeByColor } from '../toon';
 import { buildBlooms } from './blooms';
-import { buildBumps } from './bumps';
+import { buildBumps, liftOnBumps } from './bumps';
 import { buildCoast } from './coast';
 import { buildCritters } from './critters';
 import { buildFarm } from './farm';
-import { G, makeKit } from './kit';
+import { G, makeKit, type ScenicKit } from './kit';
 import { buildMountains } from './mountains';
 import { buildProps } from './props';
 import { buildRoad, buildSigns } from './road';
@@ -43,10 +43,8 @@ export interface Scenic {
   placed: readonly { x: number; z: number; r: number }[];
 }
 
-/** Builds the scenic loop into `group` (the office's `ground` group), its colliders into `colliders`, its lights into `night`. */
-export function buildScenic(group: THREE.Group, colliders: Collider[], night: NightParts): Scenic {
-  const { kit, seen } = makeKit(group, colliders, night);
-  const { root, labels, parts, silo, mill, light, cullable, around } = kit;
+/** Lays out every stretch of the loop into the kit (see ScenicKit), and returns what moves. */
+export function layOut(kit: ScenicKit) {
   // A part at a time, each taking its numbers from kit.rand in turn: in this order, or the trees move.
   const road = buildRoad(kit);
   buildSigns(kit);
@@ -61,7 +59,17 @@ export function buildScenic(group: THREE.Group, colliders: Collider[], night: Ni
   buildProps(kit, flowers);
   flowers.finish(kit);
   const critters = buildCritters(kit);
+  // Whatever stands on rough ground or a speed hump is lifted onto it; then the bumps themselves are laid.
+  liftOnBumps(kit.parts);
   buildBumps(kit);
+  return { sails, waters, surf, boats, beam, critters };
+}
+
+/** Builds the scenic loop into `group` (the office's `ground` group), its colliders into `colliders`, its lights into `night`. */
+export function buildScenic(group: THREE.Group, colliders: Collider[], night: NightParts): Scenic {
+  const { kit, seen } = makeKit(group, colliders, night);
+  const { root, labels, parts, silo, mill, light, cullable, around } = kit;
+  const { sails, waters, surf, boats, beam, critters } = layOut(kit);
 
   // Merged by material a square of the map at a time, so what's lost in the haze needn't be drawn.
   const TILE = 120;

@@ -132,6 +132,8 @@ export class Suspension {
    * along its nose (m/s², + forward) and `aLat` across it (+ toward its left: what a left turn gives).
    */
   step(dt: number, ground: ArrayLike<number>, aLong: number, aLat: number) {
+    // A NaN anywhere would stay in the springs for good (and the car unseen): start over from rest instead.
+    if (!Number.isFinite(dt + aLong + aLat) || !Number.isFinite(ground[0] + ground[1] + ground[2] + ground[3])) return this.reset();
     dt = Math.min(dt, LONGEST);
     if (!(dt > 0)) return;
     if (!this.started) {
@@ -187,6 +189,7 @@ export class Suspension {
         if (this.vRoll * this.roll > 0) this.vRoll *= -0.2;
       }
     }
+    if (!Number.isFinite(this.heave + this.pitch + this.roll + this.vHeave + this.vPitch + this.vRoll)) return this.reset();
     for (let i = 0; i < 4; i++) {
       this.before[i] = ground[i];
       this.ground[i] = ground[i];

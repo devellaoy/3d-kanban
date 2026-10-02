@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { bumpHeight } from '../../../shared/bumps';
 import { mulberry32 } from '../../../shared/rng';
 import { FOOTHILLS, LAKE, LOOP, LOOP_PAVED, MOUNTAINS, TUNNEL, shoreX } from '../../../shared/scenic';
 import { neighbourBoxes } from '../outside';

@@ -8,6 +8,8 @@ import type { Bests, RaceResult } from './records';
 
 export interface ResultsDeps {
   results: readonly RaceResult[];
+  /** Which cars these are the records of ("supercars", "4x4s"): the classes race and keep their records apart. */
+  label: string;
   /** The all-time best race and lap, which outlast the capped list of results. */
   bests: Bests;
   /** Your fastest lap of the loop (any lap, race or not), and the ghost's. */
@@ -49,7 +51,7 @@ export function openResults(deps: ResultsDeps) {
   const el = h(
     'div.modal.race-results',
     { role: 'dialog', 'aria-label': 'Race records' },
-    h('header', {}, h('h2', {}, '🏁 Race records'), ghostBtn),
+    h('header', {}, h('h2', {}, `🏁 Race records: ${deps.label}`), ghostBtn),
     h(
       'div.body',
       {},

@@ -63,6 +63,8 @@ export class Ride {
 
   /** The car's now at `p`, `dt` seconds after it was last seen: work out how it's moving, then ride the ground it's on. */
   follow(p: { x: number; z: number; rotY: number }, dt: number) {
+    // A pose or a step with a NaN in it (a car that was never placed): nothing to ride on, so rest, and forget it.
+    if (!Number.isFinite(p.x + p.z + p.rotY + dt)) return this.reset();
     const last = this.seen;
     const sin = Math.sin(p.rotY);
     const cos = Math.cos(p.rotY);
@@ -77,7 +79,8 @@ export class Ride {
     const at = this.susp.at;
     for (let i = 0; i < 4; i++) {
       const w = carPoint(p, at[i].x, at[i].z);
-      this.ground[i] = bumpHeight(w.x, w.z);
+      const g = bumpHeight(w.x, w.z);
+      this.ground[i] = Number.isFinite(g) ? g : 0;
     }
     this.susp.step(dt, this.ground, this.aLong, this.aLat);
     this.apply();
@@ -85,9 +88,14 @@ export class Ride {
 
   private apply() {
     const s = this.susp;
+    // Never a NaN in the model's transforms: it would leave the car invisible until the next reset().
+    if (!Number.isFinite(s.pitch + s.roll + s.heave)) s.reset();
     this.model.tilt.rotation.set(s.pitch, 0, s.roll);
     this.model.tilt.position.y = this.baseY + s.heave;
-    for (const h of this.hubs) h.obj.position.y = h.y + s.push(h.corner);
+    for (const h of this.hubs) {
+      const push = s.push(h.corner);
+      h.obj.position.y = h.y + (Number.isFinite(push) ? push : 0);
+    }
   }
 }
 

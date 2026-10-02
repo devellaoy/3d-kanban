@@ -1,4 +1,4 @@
-import { CARS } from '../../../shared/garage';
+import { CARS, carClass, type CarClass } from '../../../shared/garage';
 import { ROAD, STREET_Y } from '../../../shared/layout';
 import type { Ctx } from '../../core/context';
 import { key } from '../../core/hint';
@@ -8,7 +8,7 @@ import { GhostCar } from './ghostcar';
 import { GhostRecorder, ghostDone, poseAt, type GhostPath } from './ghost';
 import { lapTime, type LapTimer } from './laps';
 import { Race, atLine, LIGHTS, JUMP_PENALTY, JUMP_SPEED, type RaceEvent } from './race';
-import { addResult, type Bests } from './records';
+import { addResult, resultsOf, withClass, type ClassBests } from './records';
 import { loadGhost, loadBests, loadGhostOn, loadResults, saveBests, saveGhost, saveGhostOn, saveResults } from './racestore';
 import { openResults } from './results';
 import { startLights } from './startlights';
@@ -33,8 +33,9 @@ export function raceTrack(ctx: Ctx, deps: RacingDeps) {
 
   const race = new Race();
   let results = loadResults();
-  let bests: Bests = loadBests();
-  let ghost: GhostPath | null = loadGhost();
+  let bests: ClassBests = loadBests();
+  /** The ghost of your best lap, for each class of car: a 4x4's lap is never replayed as a supercar's, or the other way round. */
+  const ghosts: Record<CarClass, GhostPath | null> = { supercar: loadGhost('supercar'), offroad: loadGhost('offroad') };
   let ghostOn = loadGhostOn();
   /** The ghost that's racing you on this lap (the best one as the lap began), and which car it's drawn as. */
   let playing: GhostPath | null = null;
@@ -85,10 +86,11 @@ export function raceTrack(ctx: Ctx, deps: RacingDeps) {
       } else if (e.t === 'lap') {
         toast(`🏁 Race lap ${e.n}/${race.total}: ${lapTime(e.time)}${e.best ? ' (fastest lap yet!)' : ''}`, 'info');
       } else if (e.t === 'finish') {
-        const r = addResult(results, e.result, bests);
-        results = r.list;
+        const cls = klass();
+        const r = addResult(resultsOf(results, cls), { ...e.result, cls }, bests[cls]);
+        results = withClass(results, cls, r.list);
         saveResults(results);
-        bests = r.next;
+        bests = { ...bests, [cls]: r.next };
         saveBests(bests);
         ctx.sound.golf('cheer');
         const pen = e.result.penalty ? ` (incl. +${e.result.penalty}s jump start)` : '';
@@ -104,10 +106,16 @@ export function raceTrack(ctx: Ctx, deps: RacingDeps) {
   /** A lap of the loop is done (from the line to the line, every checkpoint): the ghost keeps it if it's the best. */
   function lapRecorded(now: number, pose: { x: number; z: number; rotY: number }) {
     const path = recorder.finish(now, pose);
-    if (path && (!ghost || path.time < ghost.time)) {
-      ghost = path;
-      saveGhost(path);
+    const cls = klass();
+    const best = ghosts[cls];
+    if (path && (!best || path.time < best.time)) {
+      ghosts[cls] = path;
+      saveGhost(cls, path);
     }
+  }
+
+  function klass(): CarClass {
+    return carClass(kind());
   }
 
   function kind() {
@@ -142,7 +150,7 @@ export function raceTrack(ctx: Ctx, deps: RacingDeps) {
       seen = laps.crossings;
       if (lap !== null) lapRecorded(now, pose);
       recorder.begin(now);
-      playing = ghost;
+      playing = ghosts[klass()];
     }
     recorder.sample(now, pose);
     if (race.phase === 'countdown') react(race.update(now, pose), now);
@@ -177,15 +185,18 @@ export function raceTrack(ctx: Ctx, deps: RacingDeps) {
   function toggleGhost() {
     ghostOn = !ghostOn;
     saveGhostOn(ghostOn);
-    toast(ghostOn ? (ghost ? `👻 Ghost on: your best lap, ${lapTime(ghost.time)}` : '👻 Ghost on: drive a lap to leave one') : '👻 Ghost off', 'info');
+    const mine = ghosts[klass()];
+    toast(ghostOn ? (mine ? `👻 Ghost on: your best lap, ${lapTime(mine.time)}` : '👻 Ghost on: drive a lap to leave one') : '👻 Ghost off', 'info');
   }
 
   function records() {
+    const cls = klass();
     openResults({
-      results,
-      bests,
+      results: resultsOf(results, cls),
+      bests: bests[cls],
+      label: cls === 'offroad' ? '4x4s' : 'supercars',
       bestLap: laps.best,
-      ghostTime: ghost?.time ?? null,
+      ghostTime: ghosts[cls]?.time ?? null,
       ghostOn,
       onGhost: (on) => {
         ghostOn = on;

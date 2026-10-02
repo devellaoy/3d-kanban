@@ -69,6 +69,8 @@ export class PlayerController extends PlayerInput {
   rig: ((dt: number) => void) | null = null;
   /** The rig is a car (see features/cars/controller.ts): out on the street or in the garage, not up a shaft indoors. */
   riding = false;
+  /** The car's own boxes while you're in it: the third-person camera's arm passes through them (see arm.ts). */
+  armSkip: readonly Collider[] = [];
 
   constructor(
     private camera: THREE.PerspectiveCamera,

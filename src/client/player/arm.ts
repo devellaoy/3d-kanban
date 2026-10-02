@@ -33,7 +33,7 @@ function clip(o: number, d: number, lo: number, hi: number): boolean {
  * How far along `from` -> `to` (0..1) the camera can go before it meets a collider, kept `radius` short
  * of it, however close to `from` that puts it: the collision clearance wins over any minimum distance,
  * since a camera inside a wall is worse than one right at your head (which hides your body, see
- * HIDE_BODY_WITHIN). Colliders whose top is within `clearance` of `feet`, fences,
+ * HIDE_BODY_WITHIN). Colliders whose top is within `clearance` of `feet`, fences, the ones in `skip` (the car you're in),
  * and ones `from` is already inside don't count. 1 when nothing is in the way.
  */
 export function armFraction(
@@ -43,6 +43,7 @@ export function armFraction(
   feet: number,
   radius = ARM_RADIUS,
   clearance = ARM_CLEARANCE,
+  skip: readonly Collider[] = [],
 ): number {
   const dx = to.x - from.x;
   const dy = to.y - from.y;
@@ -56,7 +57,7 @@ export function armFraction(
   const loZ = Math.min(from.z, to.z) - radius;
   const hiZ = Math.max(from.z, to.z) + radius;
   for (const c of colliders) {
-    if (c.minX > hiX || c.maxX < loX || c.minZ > hiZ || c.maxZ < loZ || c.fence || c.top < feet + clearance) continue;
+    if (c.minX > hiX || c.maxX < loX || c.minZ > hiZ || c.maxZ < loZ || c.fence || c.top < feet + clearance || skip.includes(c)) continue;
     const x0 = c.minX - radius;
     const x1 = c.maxX + radius;
     const y0 = (c.bottom ?? 0) - radius;

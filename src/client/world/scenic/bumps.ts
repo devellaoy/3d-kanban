@@ -92,6 +92,24 @@ function speedHump(into: THREE.Group, h: Hump) {
   lay(into, geos, h.x, h.z);
 }
 
+/**
+ * Raises everything standing on the bumps (rocks, bushes, fence posts, benches, signposts, picnic tables, trees)
+ * by the ground's height at its spot, so a mound never pokes through it. They were laid out on flat
+ * ground; the groups in `parts` are still unmerged, each child placed at its own spot. Returns how many it lifted.
+ */
+export function liftOnBumps(parts: Record<string, THREE.Group>): number {
+  let lifted = 0;
+  for (const part of Object.values(parts)) {
+    for (const child of part.children) {
+      const h = bumpHeight(child.position.x, child.position.z);
+      if (h <= 0) continue;
+      child.position.y += h;
+      lifted++;
+    }
+  }
+  return lifted;
+}
+
 /** Lays the bumps over the scenery (see shared/bumps.ts), into the meadow's group, which the scenery merges. */
 export function buildBumps(kit: ScenicKit) {
   const into = kit.parts.meadow;

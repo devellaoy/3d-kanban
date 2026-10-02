@@ -3,7 +3,7 @@ import { CAR, CARS, SEATS, carHeight, carPoint, type Box, type CarDef, type CarK
 import { FLOOR, SLAB, STREET_Y, WALL_T, streetBelow } from '../../../shared/layout';
 import type { Collider, Interactable } from '../../world/types';
 import type { Fixture, StreetSite } from '../../world/office/fixture';
-import { offroad } from './offroad';
+import { carOf } from './models';
 import { supercar } from './supercar';
 
 export { supercar };
@@ -26,9 +26,9 @@ export interface CarModel {
   rear?: THREE.Object3D[];
 }
 
-/** A `kind` of car's model, in `color`. */
+/** A `kind` of car's model, in `color` (its geometry is shared with the other cars of the kind: see models.ts). */
 export function carModel(kind: CarKind, color: string): CarModel {
-  return kind === 'offroad' ? offroad(color) : supercar(kind, color);
+  return carOf(kind, color);
 }
 
 /** One of the floor's cars, as it's drawn here. */

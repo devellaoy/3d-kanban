@@ -3,7 +3,7 @@
  * horn, laps of the scenic loop, and a car shoving you out of its way. Placing you anywhere gets you
  * out first: see the driver's activity, and placeAt in core/place.ts.
  */
-import { CARS, SEAT_HIPS, driveOf, roughAt, type CarKind, type CarSeat } from '../../../shared/garage';
+import { CARS, carClass, driveOf, seatHips, roughAt, type CarClass, type CarKind, type CarSeat } from '../../../shared/garage';
 import { PLACES, placeAt as loopPlace } from '../../../shared/scenic';
 import type { Ctx, Hint } from '../../core/context';
 import { aside, hintTitle, key, onE } from '../../core/hint';
@@ -13,6 +13,7 @@ import { Speedo } from './speedo';
 import { DESK_KEYS } from '../../interaction';
 import { LapTimer, lapTime } from './laps';
 import { raceTrack } from './racing';
+import { loadLapBest, saveLapBest } from './racestore';
 import { store } from '../../state';
 import { clip, h, toast } from '../../ui/dom';
 
@@ -66,7 +67,7 @@ export function installCars(ctx: Ctx, deps: CarsDeps) {
     ctx.activities.stopAll('start');
     deps.stopWalking();
     driver.enter(i, seat);
-    ctx.me.sit(SEAT_HIPS);
+    ctx.me.sit(seatHips(def.kind));
     carPending++;
     ctx.net.send({ t: 'car.enter', car: i, seat });
     ctx.sound.carDoor(carAt(i));
@@ -148,33 +149,19 @@ export function installCars(ctx: Ctx, deps: CarsDeps) {
     const now = performance.now();
     if (i === null || now - honkedAt < 300) return;
     honkedAt = now;
-    ctx.sound.honk(carAt(i), CARS[i].kind === 'lambo');
+    ctx.sound.honk(carAt(i), CARS[i].kind);
     ctx.net.send({ t: 'car.honk' });
   }
 
-  /** Laps of the scenic loop you've driven (see LapTimer), and your fastest, kept in this browser. */
-  const LAP_KEY = 'agent-office.bestLap2';
-  const laps = new LapTimer(
-    (() => {
-      try {
-        const best = Number(localStorage.getItem(LAP_KEY));
-        return best > 0 ? best : null;
-      } catch {
-        return null;
-      }
-    })(),
-  );
+  /** Laps of the scenic loop you've driven (see LapTimer), and your fastest in each class of car, kept in this browser (see racestore.ts). */
+  const laps = new LapTimer(null);
+  /** The class of car `laps.best` is for: it switches to the other class's best when you get into a car of that class. */
+  let lapClass: CarClass | null = null;
   /** Races from the line, and the ghost of your best lap (see racing.ts). */
   const racing = raceTrack(ctx, { driver, laps });
   function lapDone(time: number) {
     const done = laps.done;
-    if (done?.best) {
-      try {
-        localStorage.setItem(LAP_KEY, String(time));
-      } catch {
-        // private window: it's only for this visit then
-      }
-    }
+    if (done?.best && lapClass) saveLapBest(lapClass, time);
     if (done?.best) ctx.sound.golf('cheer');
     else ctx.sound.arcade('clear');
     toast(done?.best ? `🏁 Lap of the scenic loop: ${lapTime(time)}, your best yet!` : `🏁 Lap of the scenic loop: ${lapTime(time)} (best ${lapTime(laps.best ?? time)})`, 'info');
@@ -199,14 +186,20 @@ export function installCars(ctx: Ctx, deps: CarsDeps) {
     feel.fov += ((pose ? 17 * fast + (driver.nitroOn ? 9 : 0) : 0) - feel.fov) * Math.min(1, dt * 3);
     if (pose && v > 12) ctx.shake(0.012 + 0.035 * fast + (driver.nitroOn ? 0.035 : 0) + (roughAt(pose.x, pose.z) ? 0.02 * fast : 0));
     dash.show(!!pose);
-    if (pose) dash.update({ speed: pose.speed, slip: pose.slip ?? 0, nitro: pose.nitro ?? 1, boost: driver.nitroOn, rough: roughAt(pose.x, pose.z) > 0 });
+    if (pose) dash.update({ kind: CARS[driver.car!].kind, speed: pose.speed, slip: pose.slip ?? 0, nitro: pose.nitro ?? 1, boost: driver.nitroOn, rough: roughAt(pose.x, pose.z) > 0 });
   });
   /** When a car last shoved you out of its way. */
   let shovedAt = 0;
   ctx.ticks.add('moved', ({ now }) => {
     // Timing a lap of the scenic loop, behind the wheel.
     if (driver.driving && driver.pose) {
-      const lap = laps.update(driver.pose.x, driver.pose.z, now / 1000);
+      // The 4x4s and the supercars each have their own best lap.
+      const cls = carClass(CARS[driver.car!].kind);
+      if (cls !== lapClass) {
+        lapClass = cls;
+        laps.best = loadLapBest(cls);
+      }
+      const lap =laps.update(driver.pose.x, driver.pose.z, now / 1000);
       if (lap !== null) lapDone(lap);
       if (laps.thrownOut !== null) {
         laps.thrownOut = null;
@@ -236,7 +229,7 @@ export function installCars(ctx: Ctx, deps: CarsDeps) {
         const mine = driver.car === i && driver.driving;
         if (!c.driver && !mine) continue;
         const pose = office.cars.cars[i]?.pose ?? c;
-        engines.push({ car: i, at: { x: pose.x, y: ctx.player.street + 0.5, z: pose.z }, speed: Math.hypot(pose.speed, pose.slip ?? 0), gas: mine ? driver.gas : Math.min(1, Math.abs(pose.speed) / 10), boost: mine ? driver.nitroOn : fx.burning(i) });
+        engines.push({ car: i, kind: CARS[i].kind, at: { x: pose.x, y: ctx.player.street + 0.5, z: pose.z }, speed: Math.hypot(pose.speed, pose.slip ?? 0), gas: mine ? driver.gas : Math.min(1, Math.abs(pose.speed) / 10), boost: mine ? driver.nitroOn : fx.burning(i) });
       }
     }
     ctx.sound.setEngines(engines);
@@ -264,7 +257,7 @@ export function installCars(ctx: Ctx, deps: CarsDeps) {
 
   ctx.messages.on('cars', (msg) => carNews(!!msg.answer));
   ctx.messages.on('car.honk', (msg) => {
-    if (msg.car >= 0 && msg.car < CARS.length) ctx.sound.honk(carAt(msg.car), CARS[msg.car].kind === 'lambo');
+    if (msg.car >= 0 && msg.car < CARS.length) ctx.sound.honk(carAt(msg.car), CARS[msg.car].kind);
   });
   // A floor's cars where they are before anything asks if there's room to stand beside one (see welcome):
   // right after the store has them, before any other message handler.

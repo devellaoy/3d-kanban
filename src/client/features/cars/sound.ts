@@ -1,4 +1,4 @@
-import { DRIVE, GEARS, GEAR_SPAN } from '../../../shared/garage';
+import { GEARS, driveOf, gearSpan, type CarKind } from '../../../shared/garage';
 import type { AudioCore } from '../../sound/core';
 import { biquad, envelope, pick, place, rand } from '../../sound/dsp';
 import type { Pos } from '../../sound/places';
@@ -21,6 +21,8 @@ interface Motor {
 
 /** A car somebody's driving: where it is, how fast it's going and how hard it's pushed. */
 export interface Engine {
+  /** Which kind of car: the 4x4's gearbox spans, pitch and loudness differ from the supercars'. */
+  kind: CarKind;
   car: number;
   at: Pos;
   speed: number;
@@ -59,15 +61,17 @@ export class Motors {
       const push = Math.abs(e.gas);
       // Up through the gears: the revs climb in each one and drop back as it shifts up, with the
       // engine lifting for an instant as it does; the nitro takes it on past the top gear.
-      const gear = Math.min(GEARS, 1 + Math.floor(v / GEAR_SPAN)) - 1;
+      const span = gearSpan(e.kind);
+      const pitch = e.kind === 'offroad' ? 0.78 : 1;
+      const gear = Math.min(GEARS, 1 + Math.floor(v / span)) - 1;
       if (gear > m.gear) m.shiftUntil = now + 0.13;
       m.gear = gear;
       const shifting = now < m.shiftUntil;
-      const f = 42 + gear * 6 + Math.min(1.5, (v - gear * GEAR_SPAN) / GEAR_SPAN) * 50 + push * 6 + (e.boost ? 8 : 0);
+      const f = (42 + gear * 6 + Math.min(1.5, (v - gear * span) / span) * 50 + push * 6 + (e.boost ? 8 : 0)) * pitch;
       m.saw.frequency.setTargetAtTime(shifting ? f * 0.82 : f, now, shifting ? 0.02 : 0.06);
       m.sub.frequency.setTargetAtTime((shifting ? f * 0.82 : f) / 2, now, shifting ? 0.02 : 0.06);
       m.tone.frequency.setTargetAtTime(240 + f * 5 + push * 450 + (e.boost ? 900 : 0), now, 0.08);
-      const loud = 0.035 + 0.04 * push + 0.03 * Math.min(1, v / DRIVE.top) + (e.boost ? 0.025 : 0);
+      const loud = 0.035 + 0.04 * push + 0.03 * Math.min(1, v / driveOf(e.kind).top) + (e.boost ? 0.025 : 0);
       m.gain.gain.setTargetAtTime(shifting ? loud * 0.45 : loud, now, shifting ? 0.015 : 0.1);
     }
     for (const [car, m] of this.motors) {
@@ -116,29 +120,29 @@ export class Motors {
 
 }
 
-/** A car's horn: two notes a third apart, a Lambo's higher than a Ferrari's. */
-export function honk(a: AudioCore, at: Pos, high: boolean) {
+/** The horns' notes: two a third apart, a Lambo's higher than a Ferrari's, and the 4x4's a deep truck horn an octave under. */
+const HORNS: Record<CarKind, number[]> = { lambo: [440, 554], ferrari: [392, 494], offroad: [196, 247] };
+
+/** A car's horn (the 4x4's is longer, rounder and louder in the low end). */
+export function honk(a: AudioCore, at: Pos, kind: CarKind) {
   const ctx = a.ctx;
   if (!ctx) return;
   a.count('honk');
+  const deep = kind === 'offroad';
   const out = a.panner(at, 4, 0.9);
   out.connect(a.ambience);
   const t0 = ctx.currentTime + 0.005;
   const g = ctx.createGain();
-  envelope(g.gain, t0, [
-    [0.02, 0.09],
-    [0.42, 0.08],
-    [0.5, 0],
-  ]);
-  const tone = biquad(ctx, 'lowpass', 2200, 0.7);
+  envelope(g.gain, t0, deep ? [[0.03, 0.11], [0.6, 0.1], [0.7, 0]] : [[0.02, 0.09], [0.42, 0.08], [0.5, 0]]);
+  const tone = biquad(ctx, 'lowpass', deep ? 1100 : 2200, 0.7);
   tone.connect(g).connect(out);
-  for (const f of high ? [440, 554] : [392, 494]) {
+  for (const f of HORNS[kind]) {
     const o = ctx.createOscillator();
-    o.type = 'square';
+    o.type = deep ? 'sawtooth' : 'square';
     o.frequency.value = f;
     o.connect(tone);
     o.start(t0);
-    o.stop(t0 + 0.55);
+    o.stop(t0 + (deep ? 0.75 : 0.55));
   }
 }
 

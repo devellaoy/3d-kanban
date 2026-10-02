@@ -84,6 +84,19 @@ export type CarSeat = 'driver' | 'passenger';
 export const SEATS: Record<CarSeat, { x: number; z: number }> = { driver: { x: 0.42, z: -0.5 }, passenger: { x: -0.42, z: -0.5 } };
 export const SEAT_HIPS = 0.45;
 
+/** How high the hips of someone seated in a `kind` of car are off the ground: the 4x4's seats are higher (their cushions at 0.62, see features/cars/offroad.ts). */
+export function seatHips(kind: CarKind): number {
+  return kind === 'offroad' ? 0.62 : SEAT_HIPS;
+}
+
+/** The two kinds of car that handle, and so race, apart: bests, records and the ghost are kept for each. */
+export type CarClass = 'supercar' | 'offroad';
+
+/** The class a `kind` of car races in. */
+export function carClass(kind: CarKind): CarClass {
+  return kind === 'offroad' ? 'offroad' : 'supercar';
+}
+
 /**
  * A car where it is and how it's going: `speed` in m/s along its nose (negative in reverse), `steer` the front wheels' angle (+ is left).
  * Its driver's own page also keeps `slip` (m/s it's sliding sideways, + to the left), `nitro` (the boost meter, 0 to 1) and `fire`
@@ -204,9 +217,14 @@ export function steerLimit(speed: number, kind: CarKind = 'lambo'): number {
 export const GEAR_SPAN = 9;
 export const GEARS = 6;
 
-/** The gear (1 to 6) a car's in at `speed` m/s. */
-export function gearOf(speed: number): number {
-  return Math.min(GEARS, 1 + Math.floor(Math.abs(speed) / GEAR_SPAN));
+/** Each gear's span (m/s) in a `kind` of car: the six gears fill its speed range, so the 4x4's are shorter. */
+export function gearSpan(kind: CarKind): number {
+  return (GEAR_SPAN * driveOf(kind).top) / DRIVE.top;
+}
+
+/** The gear (1 to 6) a `kind` of car's in at `speed` m/s. */
+export function gearOf(speed: number, kind: CarKind = 'lambo'): number {
+  return Math.min(GEARS, 1 + Math.floor(Math.abs(speed) / gearSpan(kind)));
 }
 
 /** Whether the pedals have the nitro on, given the meter. */

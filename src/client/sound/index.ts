@@ -20,6 +20,7 @@ import { arcade } from '../features/cabinet/sound';
 import { ball, type BallSound } from '../features/basketball/sound';
 import { billiards, type BilliardsSound } from '../features/billiards/sound';
 import { Dj, hiccup, pour } from '../features/bar/sound';
+import type { CarKind } from '../../shared/garage';
 import { carDoor, crash, honk, Motors, type Engine } from '../features/cars/sound';
 import { bonk, hatch, poleLanding, rung, slide, twirl } from '../features/climbing/sound';
 import { coffee } from '../features/coffee/sound';
@@ -224,8 +225,8 @@ export class OfficeSound {
     this.motors.setEngines(running);
   }
 
-  honk(at: Pos, high: boolean) {
-    honk(this.a, at, high);
+  honk(at: Pos, kind: CarKind) {
+    honk(this.a, at, kind);
   }
 
   carDoor(at: Pos) {

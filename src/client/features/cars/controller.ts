@@ -96,6 +96,7 @@ export class Driver {
       p.camPitch = Math.min(p.camPitch, 0.32);
       p.camYaw = v.pose.rotY + Math.PI;
     }
+    p.armSkip = v.colliders;
     p.rig = (dt) => this.step(dt);
     p.riding = true;
     this.sit();
@@ -155,6 +156,7 @@ export class Driver {
     const p = this.player;
     p.rig = null;
     p.riding = false;
+    p.armSkip = [];
     if (this.camWas) {
       p.camDist = this.camWas.dist;
       p.camPitch = this.camWas.pitch;

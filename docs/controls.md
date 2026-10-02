@@ -76,7 +76,7 @@ come before the office's own, so B, R, X, P, Q and so on mean what's listed here
 | At a fishing sign | E | Start fishing; hold E and let go to cast, E when the bobber goes under to strike |
 | Fishing | Q / I | Reel in or pack up / the fishing journal |
 | In a car, at the street's chequered line | Z | Start a race (five lights); Z again calls it off |
-| In a car | Y / U | Ghost car on or off / race records |
+| In a car | Y / U | Ghost car on or off / race records (of the class of car you are in: supercars or 4x4s) |
 | At the billiards table | E | Play; E or Esc leaves |
 | Billiards | Mouse / Shift | Aim / fine aim |
 | Billiards | Space or left button | Hold for power, let go to shoot |

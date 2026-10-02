@@ -1,5 +1,5 @@
 import './speedo.css';
-import { DRIVE, gearOf } from '../../../shared/garage';
+import { driveOf, gearOf, type CarKind } from '../../../shared/garage';
 import { h } from '../../ui/dom';
 
 // The dash while you drive: a gauge that sweeps round to the speed (in km/h), the gear, the nitro
@@ -7,7 +7,7 @@ import { h } from '../../ui/dom';
 
 const NS = 'http://www.w3.org/2000/svg';
 /** The gauge sweeps 240 degrees, from the lower left round to the lower right, to this many km/h. */
-const FULL = Math.round(DRIVE.boostTop * 3.6 + 10);
+const fullOf = (kind: CarKind) => Math.round(driveOf(kind).boostTop * 3.6 + 10);
 const R = 78;
 const START = 150;
 const SWEEP = 240;
@@ -36,6 +36,8 @@ export interface Dash {
   boost: boolean;
   /** Off the pavement. */
   rough: boolean;
+  /** The kind of car: its dial, its top speed and its gearbox. */
+  kind: CarKind;
 }
 
 export class Speedo {
@@ -47,23 +49,39 @@ export class Speedo {
   private flag: HTMLElement;
   private shown = '';
   private len: number;
+  /** The ticks and numbers round the gauge, for the kind of car's top speed. */
+  private scale: SVGGElement;
+  private kind: CarKind | null = null;
+  private full = fullOf('lambo');
+
+  /** The gauge for a `kind` of car: its scale runs to that car's nitro top speed, and "over" lights above its top speed. */
+  private setKind(kind: CarKind) {
+    if (this.kind === kind) return;
+    this.kind = kind;
+    this.full = fullOf(kind);
+    this.scale.replaceChildren();
+    // A tick and a number every 50 km/h.
+    for (let k = 0; k <= this.full; k += 50) {
+      const deg = START + (k / this.full) * SWEEP;
+      const [x0, y0] = point(deg, R + 7);
+      const [x1, y1] = point(deg, R - 8);
+      this.scale.append(svg('line', { x1: String(x0), y1: String(y0), x2: String(x1), y2: String(y1), class: 'sp-tick' }));
+      const [tx, ty] = point(deg, R - 20);
+      const label = svg('text', { x: tx.toFixed(1), y: (ty + 3).toFixed(1), class: 'sp-label' });
+      label.textContent = String(k);
+      this.scale.append(label);
+    }
+    this.shown = '';
+  }
 
   constructor() {
     const g = svg('svg', { viewBox: '0 0 200 170', class: 'sp-gauge' });
     g.append(svg('path', { d: arc(START, START + SWEEP), class: 'sp-track' }));
     this.fill = svg('path', { d: arc(START, START + SWEEP), class: 'sp-fill' });
     g.append(this.fill);
-    // A tick and a number every 50 km/h.
-    for (let k = 0; k <= FULL; k += 50) {
-      const deg = START + (k / FULL) * SWEEP;
-      const [x0, y0] = point(deg, R + 7);
-      const [x1, y1] = point(deg, R - 8);
-      g.append(svg('line', { x1: String(x0), y1: String(y0), x2: String(x1), y2: String(y1), class: 'sp-tick' }));
-      const [tx, ty] = point(deg, R - 20);
-      const label = svg('text', { x: tx.toFixed(1), y: (ty + 3).toFixed(1), class: 'sp-label' });
-      label.textContent = String(k);
-      g.append(label);
-    }
+    this.scale = svg('g', {});
+    g.append(this.scale);
+    this.setKind('lambo');
     this.len = this.fill.getTotalLength?.() || 330;
     this.num = h('div.sp-num', {}, '0');
     this.gear = h('div.sp-gear', {}, 'N');
@@ -80,15 +98,16 @@ export class Speedo {
   }
 
   update(d: Dash) {
+    this.setKind(d.kind);
     const mps = Math.hypot(d.speed, d.slip);
     const kmh = Math.round(mps * 3.6);
-    const gear = d.speed < -0.5 ? 'R' : mps < 0.8 ? 'N' : String(gearOf(mps));
+    const gear = d.speed < -0.5 ? 'R' : mps < 0.8 ? 'N' : String(gearOf(mps, d.kind));
     const nitro = Math.round(d.nitro * 50);
     const drift = Math.abs(d.slip) > 3.2 && mps > 8;
     const key = `${kmh}|${gear}|${nitro}|${d.boost}|${drift}|${d.rough}`;
     if (key === this.shown) return;
     this.shown = key;
-    const f = Math.min(1, (kmh * 1) / FULL);
+    const f = Math.min(1, kmh / this.full);
     this.fill.style.strokeDasharray = String(this.len);
     this.fill.style.strokeDashoffset = String(this.len * (1 - f));
     this.num.textContent = String(kmh);
@@ -97,6 +116,6 @@ export class Speedo {
     this.flag.classList.toggle('on', drift);
     this.el.classList.toggle('boost', d.boost);
     this.el.classList.toggle('rough', d.rough);
-    this.el.classList.toggle('over', kmh > DRIVE.top * 3.6);
+    this.el.classList.toggle('over', kmh > driveOf(d.kind).top * 3.6);
   }
 }
