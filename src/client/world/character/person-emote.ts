@@ -3,6 +3,9 @@ import type { Emote } from '../../../shared/emotes';
 import { emoteEnvelope, popCurve } from './curves';
 import type { PersonRig } from './rig';
 
+/** Room between the top of a speech bubble and the bottom of an emote's emoji (the bubble pops in a little past full size). */
+const EMOJI_GAP = 0.1;
+
 /** An emote under way (see the Person's `emoting`). */
 export interface Emoting {
   emote: Emote;
@@ -16,7 +19,7 @@ export interface Emoting {
  * `k` of the way. The dance's bounce and steps only happen with both feet on the floor (`still`).
  * False once it's over, with nothing posed, for the Person to put it away.
  */
-export function poseEmote(rig: PersonRig, e: Emoting, dt: number, still: number, emojiLift: number): boolean {
+export function poseEmote(rig: PersonRig, e: Emoting, dt: number, still: number, bubbleTop = 0): boolean {
   e.t += dt;
   const { seconds, id } = e.emote;
   if (e.t >= seconds) return false;
@@ -80,10 +83,12 @@ export function poseEmote(rig: PersonRig, e: Emoting, dt: number, still: number,
       break;
     }
   }
-  // The emoji pops in over their head, rises a little, wobbles, and fades at the end.
+  // The emoji pops in over their head (over the top of a speech bubble, `bubbleTop`, when there is one),
+  // rises a little, wobbles, and fades at the end.
   const pop = popCurve(u / 0.3);
   e.pop.scale.set(e.size.x * pop, e.size.y * pop, 1);
-  e.pop.position.y = 2.42 + emojiLift + Math.min(u, 1.5) * 0.12;
+  const base = bubbleTop ? Math.max(2.42, bubbleTop + EMOJI_GAP + e.size.y / 2) : 2.42;
+  e.pop.position.y = base + Math.min(u, 1.5) * 0.12;
   e.pop.material.rotation = Math.sin(u * 7) * 0.12;
   e.pop.material.opacity = THREE.MathUtils.clamp((seconds - u) / 0.4, 0, 1);
   return true;

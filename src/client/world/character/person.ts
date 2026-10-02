@@ -89,8 +89,6 @@ export class Person {
   /** A thumb up and a pointing finger on the right hand, out only for those emotes. */
   private thumb: THREE.Mesh;
   private finger: THREE.Mesh;
-  /** How much higher (meters) an emote's emoji pops up, to clear a chat bubble over their head. */
-  emojiLift = 0;
   /** Hips this high above the feet while sitting (on the seat), or null on their feet. */
   private hips: number | null = null;
   /** The last seat's, so getting up eases back down from it. */
@@ -339,14 +337,13 @@ export class Person {
     this.speech = new SpeechBubble(text, { seconds, border });
     this.root.add(this.speech.sprite);
     this.placeLabels();
-    this.emojiLift = this.speech.height + 0.1; // an emote's emoji floats above the bubble
   }
 
+  /** Takes the speech bubble away now (someone leaving the floor, say). */
   hush() {
     if (!this.speech) return;
     this.speech.dispose();
     this.speech = null;
-    this.emojiLift = 0;
   }
 
   /** A mug of coffee in the left hand, or not. */
@@ -440,7 +437,7 @@ export class Person {
 
   /** Poses the emote over whatever the arms were doing (see poseEmote), and puts it away once it's over. */
   private emoteStep(dt: number, still: number) {
-    if (!poseEmote(this.rig, this.emoting!, dt, still, this.emojiLift)) this.endEmote();
+    if (!poseEmote(this.rig, this.emoting!, dt, still, this.speech ? this.bubbleY + this.speech.height : 0)) this.endEmote();
   }
 
   get smoking(): boolean {
