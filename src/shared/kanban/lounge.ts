@@ -53,6 +53,11 @@ function standing(i: number): LoungePlace {
 /** The key a peer's `seat` carries for a seat place ("couch:0"). */
 export const placeKey = (p: { seatId: string; place: number }) => `${p.seatId}:${p.place}`;
 
+const SEAT_KEYS: ReadonlySet<string> = new Set(SEATS.map(placeKey));
+
+/** Whether `key` ("couch:0") is one of the seat places a figure can take: anything else is never a figure's. */
+export const isLoungeSeat = (key: string) => SEAT_KEYS.has(key);
+
 /**
  * Where each of `count` figures (oldest first) takes its place, and how many found none. `occupied`
  * is the seat keys people on the floor sit on: those seats are skipped, so a figure never sits on

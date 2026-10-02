@@ -62,14 +62,16 @@ export function installLounge3d(ctx: Ctx, deps: { openTask(taskId: number): void
   const shown = new Map<number, Shown>();
   const byIt = new Map<Interactable, Shown>();
   let sign: { sprite: THREE.Sprite; text: string } | null = null;
-  /** The seat places people on your floor sit on, you included, as the figures were last placed around them. */
+  /** Where you sat (a seat place's key, or '') when the figures were last placed around everyone. */
   let sat = '';
+
+  /** The seat place you sit on in the office (not up on the roof), or ''. */
+  const mySeat = () => (ctx.upTop() ? '' : (ctx.player.seat?.key ?? ''));
 
   /** Who sits where on your floor, you included (the figures go round everyone). */
   function occupied(): Set<string> {
     const taken = seatsTaken();
-    const mine = ctx.upTop() ? undefined : ctx.player.seat?.key;
-    if (mine) taken.add(mine);
+    if (sat) taken.add(sat);
     return taken;
   }
 
@@ -131,10 +133,9 @@ export function installLounge3d(ctx: Ctx, deps: { openTask(taskId: number): void
   /** Brings what's shown in line with the store and the seats taken: only what changed is taken away, made or moved. */
   function sync() {
     const office = ctx.inOffice();
-    const taken = occupied();
-    sat = [...taken].sort().join(',');
-    const { placed, overflow } = layoutLounge(office ? store.kanbanLounge : [], taken);
-    const { drop: gone, make: fresh, move } = diffLounge(new Map([...shown].map(([id, s]) => [id, s])), placed);
+    sat = mySeat();
+    const { placed, overflow } = layoutLounge(office ? store.kanbanLounge : [], occupied());
+    const { drop: gone, make: fresh, move } = diffLounge(shown, placed);
     for (const id of gone) drop(id);
     for (const p of fresh) make(p);
     for (const p of move) {
@@ -146,6 +147,10 @@ export function installLounge3d(ctx: Ctx, deps: { openTask(taskId: number): void
     ctx.hint.invalidate();
   }
   store.on('kanbanLounge', sync);
+  // Someone else sat down or got up (peer.update): the figures go round them.
+  store.on('peers', () => {
+    if (store.kanbanLounge.length) sync();
+  });
   // Another map: the office's figures go with it (and come back with it).
   store.on('map', sync);
   store.on('theme', () => {
@@ -154,8 +159,8 @@ export function installLounge3d(ctx: Ctx, deps: { openTask(taskId: number): void
 
   ctx.ticks.add('others', ({ dt, t }) => {
     if (!store.kanbanLounge.length || !ctx.inOffice()) return;
-    // Someone sat down or got up (you too): the figures go round them.
-    if ([...occupied()].sort().join(',') !== sat) sync();
+    // You sat down or got up (the office doesn't send you your own seat back): the figures go round you.
+    if (mySeat() !== sat) sync();
     if (!shown.size || ctx.upTop()) return;
     for (const s of shown.values()) s.model.update(dt, t);
     if (sign) sign.sprite.position.y = SIGN.y + Math.sin(t * 1.5) * 0.03;

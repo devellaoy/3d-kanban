@@ -3,13 +3,13 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { diffLounge, layoutLounge, loungeHint, overflowText } from '../src/client/kanban/loungemodel.js';
-import type { LoungeFigure } from '../src/shared/kanban/lounge.js';
+import { sortFigures, type LoungeFigure } from '../src/shared/kanban/lounge.js';
 
 const fig = (taskId: number, over: Partial<LoungeFigure> = {}): LoungeFigure => ({ taskId, title: `Task ${taskId}`, name: 'Ada', color: '#ff0000', at: taskId * 10, ...over });
 const shownOf = (figures: LoungeFigure[]) => new Map(layoutLounge(figures).placed.map((p) => [p.figure.taskId, p]));
 
-test('the oldest hold takes the first place: the beanbags, then the couch ends, then standing', () => {
-  const { placed, overflow } = layoutLounge([fig(3, { at: 5 }), fig(1, { at: 50 }), fig(2, { at: 5 })]);
+test('the figures take the places in the order they come (oldest hold first, as the server sorts them): the beanbags, then the couch ends, then standing', () => {
+  const { placed, overflow } = layoutLounge(sortFigures([fig(3, { at: 5 }), fig(1, { at: 50 }), fig(2, { at: 5 })]));
   assert.deepEqual(
     placed.map((p) => p.figure.taskId),
     [2, 3, 1],

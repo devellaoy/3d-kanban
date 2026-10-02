@@ -3,7 +3,7 @@
 // refuses a place a figure holds (ws/handlers/presence.ts with Kanban.loungeSeat).
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { loungeFigureOn, loungePlaces, loungeReservedPlaces, type LoungeFigure } from '../src/shared/kanban/lounge.js';
+import { isLoungeSeat, loungeFigureOn, loungePlaces, loungeReservedPlaces, type LoungeFigure } from '../src/shared/kanban/lounge.js';
 import { loungeFigures } from '../src/server/kanban/lounge.js';
 import { presenceHandlers } from '../src/server/ws/handlers/presence.js';
 import { OFFICE_PLAN, planOf } from '../src/shared/maps/index.js';
@@ -42,6 +42,11 @@ test('a player seated on beanbag 1, then a hold: the figure appears elsewhere, a
   assert.deepEqual(diffLounge(shown, layoutLounge([fig(1)], new Set([...seated, 'couch:2'])).placed), { drop: [], make: [], move: [] });
 });
 
+test('isLoungeSeat: the beanbags and the couch ends, nothing else', () => {
+  for (const k of ['lounge-beanbag-1:0', 'lounge-beanbag-2:0', 'couch:0', 'couch:2']) assert.ok(isLoungeSeat(k), k);
+  for (const k of ['couch:1', 'bench:0', 'boss-chair:0', 'lounge-beanbag-1:1', '']) assert.ok(!isLoungeSeat(k), k);
+});
+
 test('loungeFigureOn names the figure on a seat place, around the seats taken', () => {
   const sorted = [fig(1), fig(2)];
   assert.equal(loungeFigureOn(sorted, new Set(), 'lounge-beanbag-1:0')?.taskId, 1);
@@ -58,10 +63,16 @@ function office(opts: { plan?: typeof OFFICE_PLAN; held: { id: number; project: 
   };
   const clients = new Map<string, { peer: Record<string, unknown> }>();
   const sent: { to: unknown; msg: any }[] = [];
+  const asked: string[] = [];
   const ctx = {
     maps: { plan: () => opts.plan ?? OFFICE_PLAN },
     clients,
-    kanban: { loungeSeat: (floorId: string, seat: string, occupied: ReadonlySet<string>) => loungeFigureOn(loungeFigures(repo as never, floorId), occupied, seat) },
+    kanban: {
+      loungeSeat: (floorId: string, seat: string, occupied: ReadonlySet<string>) => {
+        asked.push(seat);
+        return loungeFigureOn(loungeFigures(repo as never, floorId), occupied, seat);
+      },
+    },
     sendTo: (to: unknown, msg: unknown) => sent.push({ to, msg }),
     broadcast: () => {},
   };
@@ -71,7 +82,7 @@ function office(opts: { plan?: typeof OFFICE_PLAN; held: { id: number; project: 
     return c;
   };
   const sit = (c: { peer: Record<string, unknown> }, seat?: string) => presenceHandlers.sit(ctx as never, c as never, { t: 'sit', seat } as never);
-  return { sent, person, sit };
+  return { sent, person, sit, asked };
 }
 
 test('sit: a place a figure holds is refused like a taken seat; the couch middle and free places are not', () => {
@@ -88,6 +99,10 @@ test('sit: a place a figure holds is refused like a taken seat; the couch middle
   assert.equal(ann.peer.seat, 'couch:1', 'the couch middle is never a figure’s');
   o.sit(ann, 'couch:0');
   assert.equal(ann.peer.seat, 'couch:0', 'two figures: the couch ends are free');
+  // Any other seat (the bench, the boss's chair, the couch middle) never asks the kanban.
+  o.sit(ann, 'bench:0');
+  assert.equal(ann.peer.seat, 'bench:0');
+  assert.deepEqual(o.asked, ['lounge-beanbag-1:0', 'lounge-beanbag-2:0', 'couch:0']);
 });
 
 test('sit: figures go round the people already seated, the sitter excluded; another floor and the castle are not checked', () => {

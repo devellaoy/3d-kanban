@@ -1,7 +1,7 @@
 // The pure side of the lounge figures in the 3D office (lounge3d.ts): which figure goes where, which of
 // the shown ones stay, go, come or move, and what the hint and the overflow sign say. No three.js here.
 
-import { loungePlaces, placeKey, sortFigures, type LoungeFigure, type LoungePlace } from '../../shared/kanban/lounge';
+import { loungePlaces, placeKey, type LoungeFigure, type LoungePlace } from '../../shared/kanban/lounge';
 
 /** A figure in its place: `look` changes whenever it would look any different, `spot` whenever it moves. */
 export interface PlacedFigure {
@@ -15,13 +15,15 @@ function spotKey(p: LoungePlace): string {
   return p.kind === 'seat' ? placeKey(p) : `${p.x.toFixed(3)},${p.z.toFixed(3)}`;
 }
 
-/** Each figure that finds a place (oldest hold first), around the seats people sit on (`occupied`), and how many find none. */
+/**
+ * Each figure that finds a place, around the seats people sit on (`occupied`), and how many find none.
+ * `figures` come oldest hold first, as the server sends them (sortFigures), which is the order the places fill in.
+ */
 export function layoutLounge(figures: readonly LoungeFigure[], occupied: ReadonlySet<string> = new Set()): { placed: PlacedFigure[]; overflow: number } {
-  const sorted = sortFigures(figures);
-  const { placed, overflow } = loungePlaces(sorted.length, occupied);
+  const { placed, overflow } = loungePlaces(figures.length, occupied);
   return {
     placed: placed.map((place, i) => {
-      const f = sorted[i];
+      const f = figures[i];
       return { figure: f, place, look: [f.name, f.color, f.title, f.note ?? '', f.until ?? ''].join('|'), spot: spotKey(place) };
     }),
     overflow,
