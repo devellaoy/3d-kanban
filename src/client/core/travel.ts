@@ -14,6 +14,7 @@ import type { CoreState } from './ctx';
 import { builtFloors, floorWings } from './floors';
 import { aside, hintTitle, key, onE } from './hint';
 import type { Parts } from './parts';
+import { relookOnArrival } from './relook';
 import { FAR } from './scene';
 import { streetOf } from './worlds';
 
@@ -24,7 +25,7 @@ declare module '../world/types' {
   }
 }
 
-export type TravelParts = Pick<Parts, 'stage' | 'worlds' | 'place' | 'walking' | 'seating' | 'climbing' | 'cars' | 'rooftop' | 'telescope' | 'bar' | 'bargames' | 'hanging' | 'golf' | 'maps' | 'arrival'>;
+export type TravelParts = Pick<Parts, 'stage' | 'worlds' | 'place' | 'walking' | 'seating' | 'climbing' | 'cars' | 'rooftop' | 'telescope' | 'bar' | 'bargames' | 'hanging' | 'golf' | 'maps' | 'arrival' | 'focus'>;
 
 /** Registers what follows the building's floors (store 'floors'). */
 export function installTravel(ctx: Ctx, core: CoreState, parts: TravelParts) {
@@ -101,6 +102,16 @@ export function installTravel(ctx: Ctx, core: CoreState, parts: TravelParts) {
     /** Down off the roof, on a map with no roof to be up on (it changed while you were up there). */
     offRoof: false,
   };
+  /** A window closed on the way (the ☰ menu or the floor list you picked from): the mouse comes back when you're there. */
+  const relook = relookOnArrival();
+
+  /** You're there (or the trip failed): the controls are yours again unless a window is up, and the mouse too if a window closed on the way. */
+  function controlsBack() {
+    player.enabled = !modalOpen();
+    // No fresh gesture here: if the browser refuses the lock (after tripFailed's 10 s, say), backToGame
+    // has set relookOnKey, so the next key takes the mouse.
+    relook.arrived(player.enabled, parts.focus.backToGame);
+  }
 
   /** The elevator where you are: the office's, its stop down in the garage, or the one up on the roof. None on a map of its own. */
   function lift() {
@@ -183,7 +194,7 @@ export function installTravel(ctx: Ctx, core: CoreState, parts: TravelParts) {
     setTimeout(() => {
       lift()?.setOpen(true);
       sound.ding('done');
-      player.enabled = !modalOpen();
+      controlsBack();
     }, 450);
   }
 
@@ -232,7 +243,7 @@ export function installTravel(ctx: Ctx, core: CoreState, parts: TravelParts) {
     fade(false);
     if (t.how === 'elevator') lift()?.setOpen(!!store.floor);
     if (t.how === 'ladder' || t.how === 'pole') parts.climbing.climber.abort();
-    player.enabled = !modalOpen();
+    controlsBack();
     // The map changed on the way: back where it has you come in (or down off a roof it doesn't have).
     if (pending.placeOnArrival && !core.upTop) {
       pending.placeOnArrival = false;
@@ -315,6 +326,7 @@ export function installTravel(ctx: Ctx, core: CoreState, parts: TravelParts) {
       lift()?.setOpen(false);
       fade(false);
       player.enabled = !modalOpen();
+      relook.drop();
       showElevator();
       return;
     }
@@ -322,14 +334,14 @@ export function installTravel(ctx: Ctx, core: CoreState, parts: TravelParts) {
     if (how === 'back') {
       // The doors stand open, the way the last one out left them.
       lift()?.setOpen(true);
-      player.enabled = !modalOpen();
+      controlsBack();
       if (!core.upTop) unstick();
       // Back on the throne you were on when you left (if nobody's taken it since).
       if (lastSpot()?.throne) sitOnThrone();
       return;
     }
     if (how !== 'elevator') {
-      player.enabled = !modalOpen();
+      controlsBack();
       if (how === 'switch') unstick();
       else parts.climbing.climber.arrived();
       if (how === 'switch' && backToThrone) sitOnThrone();
@@ -339,5 +351,5 @@ export function installTravel(ctx: Ctx, core: CoreState, parts: TravelParts) {
     doorsOpen();
   }
 
-  return { syncStack, takenAway, showElevator, lift, ride, switchFloor, travel, leaveRoofFor, setPlace, arrive, pending };
+  return { syncStack, takenAway, showElevator, lift, ride, switchFloor, travel, leaveRoofFor, setPlace, arrive, pending, relook };
 }
