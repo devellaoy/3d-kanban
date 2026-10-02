@@ -231,7 +231,7 @@ export class Driver {
         continue;
       }
       this.bumped(pose, Math.hypot(pose.speed, pose.slip ?? 0));
-      pose = { ...pose, steer: next.steer, speed: -pose.speed * 0.3, slip: 0, nitro: next.nitro };
+      pose = { ...pose, steer: next.steer, speed: -pose.speed * 0.3, slip: 0, nitro: next.nitro, fire: next.fire };
       break;
     }
     return pose;

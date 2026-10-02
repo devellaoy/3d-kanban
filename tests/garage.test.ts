@@ -75,14 +75,40 @@ test('the nitro: Shift takes it past top speed while the meter lasts, and the me
   assert.ok(p.speed > DRIVE.top + 6 && p.speed <= DRIVE.boostTop, `past top speed (${p.speed.toFixed(1)} m/s)`);
   assert.ok((p.nitro ?? 1) < 0.5, 'and the meter drains');
   p = run(p, go, 5);
-  assert.equal(p.nitro, 0, 'empty');
+  assert.ok((p.nitro ?? 1) < 0.3, 'empty (or nearly: it refills while not firing)');
+  p = { ...p, nitro: 0, fire: false };
   assert.ok(boosting({ speed: 30, nitro: 0.5 }, go) && !boosting(p, go), 'no boost on an empty meter');
-  // Held down with an empty meter it stays empty; let go and it fills.
-  assert.equal(run(p, go, 2).nitro, 0);
+  // Held down with an empty meter it fills too (no flames until there is some to burn), not stuck at nothing.
+  const held = run(p, go, 0.5);
+  assert.ok((held.nitro ?? 0) > 0.03, `Shift held on an empty meter refills it (${held.nitro?.toFixed(2)})`);
+  assert.ok(!boosting(run(p, go, 0.2), go) || run(p, go, 0.2).fire, 'and it does not sputter on with the first drop');
   const rest = run(p, { ...GAS, boost: false }, 5);
   assert.ok((rest.nitro ?? 0) > 0.5, 'filling');
   assert.ok(rest.speed <= DRIVE.top + 1e-9, 'back down to top speed once the nitro is out');
   assert.ok(run(still(), { ...GAS, boost: true }, 1).nitro! < 1, 'it also helps off the line');
+});
+
+test('letting go of the nitro drops it back to top speed within a second, and the meter refills whenever it is not firing', () => {
+  const go: Pedals = { gas: 1, turn: 0, brake: false, boost: true };
+  let p = run(run(still(), GAS, 12), go, 3);
+  assert.ok(p.speed > DRIVE.top + 10, 'flat out on the nitro');
+  let t = 0;
+  while (p.speed > DRIVE.top + 1e-6 && t < 3) {
+    p = drive(p, GAS, 1 / 60);
+    t += 1 / 60;
+  }
+  assert.ok(t < 0.8, `back down to top speed in ${t.toFixed(2)} s`);
+  // A pulsing meter: while empty and held, the flames come on in bursts, and never above an empty meter.
+  let q: CarPose = { ...run(still(), GAS, 12), nitro: 0 };
+  let fired = 0;
+  let max = 0;
+  for (let i = 0; i < 600; i++) {
+    q = drive(q, go, 1 / 60);
+    if (q.fire) fired++;
+    max = Math.max(max, q.nitro ?? 0);
+  }
+  assert.ok(max > DRIVE.nitroRelight, 'the meter climbed to the relight mark');
+  assert.ok(fired > 0 && fired < 400, `bursts, not a flicker or a steady burn (${fired} of 600 steps)`);
 });
 
 test('grass slows a car down, and a hard turn at speed slides it where the pavement would hold it', () => {
@@ -187,6 +213,10 @@ test('the garage: one driver and one passenger a car, and only the driver moves 
   assert.deepEqual({ ...g.state()[1], driver: undefined, passenger: undefined }, { ...pose, driver: undefined, passenger: undefined });
   assert.ok(g.drive('ann', 1, { ...pose, x: -60 }), 'out onto the grass is fine');
   assert.ok(!g.drive('ann', 1, { ...pose, x: -400 }), 'not out to sea');
+  // The whole car counts, as on the driver's page: centre on the grass but its nose in the garage wall is out.
+  const nose = { ...pose, x: 0, z: FLOOR.minZ - WALL_T / 2 + CAR.length / 2, rotY: Math.PI };
+  assert.ok(drivable(nose.x, nose.z), 'the middle alone is fine');
+  assert.ok(!inBounds(nose) && !g.drive('ann', 1, nose), 'but the car is not');
   assert.ok(!g.drive('ann', 1, { ...pose, z: 5000 }), 'nor off the edge of the world');
   assert.ok(!g.drive('ann', 1, { ...pose, speed: Number.NaN }), 'nor any nonsense');
   assert.equal(g.drive('ann', 1, { ...pose, x: 0, speed: 999 })?.speed, DRIVE.boostTop, 'no faster than a car goes');

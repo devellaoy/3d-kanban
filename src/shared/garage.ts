@@ -78,8 +78,8 @@ export const SEAT_HIPS = 0.45;
 
 /**
  * A car where it is and how it's going: `speed` in m/s along its nose (negative in reverse), `steer` the front wheels' angle (+ is left).
- * Its driver's own page also keeps `slip` (m/s it's sliding sideways, + to the left) and `nitro` (the boost meter, 0 to 1); neither
- * is sent on: the office and everyone else see where the car is and which way it points.
+ * Its driver's own page also keeps `slip` (m/s it's sliding sideways, + to the left), `nitro` (the boost meter, 0 to 1) and `fire`
+ * (the nitro is burning); none of them is sent on: the office and everyone else see where the car is and which way it points.
  */
 export interface CarPose {
   x: number;
@@ -89,6 +89,8 @@ export interface CarPose {
   steer: number;
   slip?: number;
   nitro?: number;
+  /** Whether the nitro was burning on the last step (kept so an empty meter refilling doesn't flicker it on and off). */
+  fire?: boolean;
 }
 
 /** A car as the office has it: where it is, and who's in it (PeerInfo ids). */
@@ -140,6 +142,10 @@ export const DRIVE = {
   /** The nitro meter: how fast it empties while it's on, and fills while it's off (per second). */
   nitroUse: 0.33,
   nitroFill: 0.14,
+  /** The meter has to be this full to light the nitro again once it ran dry, so an empty one refilling doesn't sputter. */
+  nitroRelight: 0.15,
+  /** Slowing down (m/s², with the air's drag on top) when over top speed on the gas without the nitro: back to top in a fraction of a second. */
+  overTop: 24,
 } as const;
 
 const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v));
@@ -159,8 +165,8 @@ export function gearOf(speed: number): number {
 }
 
 /** Whether the pedals have the nitro on, given the meter. */
-export function boosting(p: Pick<CarPose, 'speed' | 'nitro'>, pedals: Pedals): boolean {
-  return !!pedals.boost && pedals.gas > 0 && p.speed > -0.5 && (p.nitro ?? 1) > 0;
+export function boosting(p: Pick<CarPose, 'speed' | 'nitro' | 'fire'>, pedals: Pedals): boolean {
+  return !!pedals.boost && pedals.gas > 0 && p.speed > -0.5 && (p.nitro ?? 1) > (p.fire ? 0 : DRIVE.nitroRelight);
 }
 
 /**
@@ -173,7 +179,7 @@ export function drive(p: CarPose, pedals: Pedals, dt: number, rough = 0): CarPos
   const hand = pedals.brake;
   const gas = clamp(pedals.gas, -1, 1);
   const on = boosting(p, pedals);
-  const nitro = clamp((p.nitro ?? 1) + (on ? -DRIVE.nitroUse : pedals.boost ? 0 : DRIVE.nitroFill) * dt, 0, 1);
+  const nitro = clamp((p.nitro ?? 1) + (on ? -DRIVE.nitroUse : DRIVE.nitroFill) * dt, 0, 1);
   const cap = on ? DRIVE.boostTop : DRIVE.top;
   const want = clamp(pedals.turn, -1, 1) * steerLimit(Math.hypot(p.speed, p.slip ?? 0));
   const steer = p.steer + clamp(want - p.steer, -DRIVE.steerRate * dt, DRIVE.steerRate * dt);
@@ -183,7 +189,7 @@ export function drive(p: CarPose, pedals: Pedals, dt: number, rough = 0): CarPos
   const drag = DRIVE.drag * v * v;
   if (gas > 0) {
     if (v < 0) toward(0, DRIVE.brake);
-    else if (v > DRIVE.top && !on) v = Math.max(DRIVE.top, v - (4 + drag) * dt);
+    else if (v > DRIVE.top && !on) v = Math.max(DRIVE.top, v - (DRIVE.overTop + drag) * dt);
     else {
       const push = (on ? DRIVE.accel + DRIVE.boostAccel : DRIVE.accel) * (1 - 0.85 * (v / cap) ** 2) * (1 - 0.2 * rough);
       v = Math.max(0, Math.min(cap, v + (push - rough * DRIVE.rough) * gas * dt));
@@ -214,6 +220,7 @@ export function drive(p: CarPose, pedals: Pedals, dt: number, rough = 0): CarPos
     steer,
     slip: lat,
     nitro,
+    fire: on && nitro > 0,
   };
 }
 

@@ -23,6 +23,11 @@ function fading(color: THREE.ColorRepresentation): THREE.MeshBasicMaterial {
   return m;
 }
 
+// Puff colors, parsed once.
+const SMOKE = new THREE.Color('#f2f2f8');
+const DUST = [new THREE.Color('#c8c08e'), new THREE.Color('#aab37c')] as const;
+const FLAME = [new THREE.Color('#ffe066'), new THREE.Color('#ff7b00')] as const;
+
 /** Puffs of smoke, dust and flame: little spheres that grow, drift and fade. */
 export class Puffs {
   readonly mesh: THREE.InstancedMesh;
@@ -31,7 +36,6 @@ export class Puffs {
   private next = 0;
   private active = 0;
   private dummy = new THREE.Object3D();
-  private tint = new THREE.Color();
 
   constructor(private max: number) {
     const geo = new THREE.IcosahedronGeometry(1, 0);
@@ -46,11 +50,22 @@ export class Puffs {
   }
 
   /** One puff: from (x, y, z) moving (vx, vy, vz) for `life` seconds, growing from size s0 to s1, at most `a` solid, in `color`. */
-  spawn(x: number, y: number, z: number, vx: number, vy: number, vz: number, life: number, s0: number, s1: number, a: number, color: THREE.ColorRepresentation) {
+  spawn(x: number, y: number, z: number, vx: number, vy: number, vz: number, life: number, s0: number, s1: number, a: number, color: THREE.Color) {
     const i = this.next;
     this.next = (this.next + 1) % this.max;
-    Object.assign(this.live[i], { x, y, z, vx, vy, vz, age: 0, life, s0, s1, a });
-    this.mesh.setColorAt(i, this.tint.set(color));
+    const p = this.live[i];
+    p.x = x;
+    p.y = y;
+    p.z = z;
+    p.vx = vx;
+    p.vy = vy;
+    p.vz = vz;
+    p.age = 0;
+    p.life = life;
+    p.s0 = s0;
+    p.s1 = s1;
+    p.a = a;
+    this.mesh.setColorAt(i, color);
     this.mesh.instanceColor!.needsUpdate = true;
     this.active = this.max;
   }
@@ -160,6 +175,8 @@ interface Track {
   smoke: number;
   dust: number;
   fire: number;
+  /** Whether it looks to be on the nitro: over top speed and not slowing down (with some slack either way, so it doesn't flicker). */
+  burn: boolean;
 }
 
 /** Roll and pitch of the body, as far as it leans (radians). */
@@ -172,7 +189,6 @@ export class DriveEffects {
   private puffs = new Puffs(260);
   private skids = new Skids(700);
   private tracks = new Map<number, Track>();
-  private spare = new THREE.Color();
 
   constructor() {
     this.group.add(this.skids.mesh, this.puffs.mesh);
@@ -191,7 +207,7 @@ export class DriveEffects {
     const sin = Math.sin(p.rotY);
     const cos = Math.cos(p.rotY);
     if (!t || Math.hypot(p.x - t.x, p.z - t.z) > 4 + 90 * dt) {
-      t = { x: p.x, z: p.z, rotY: p.rotY, long: 0, roll: 0, pitch: 0, longAcc: 0, skid: [null, null], smoke: 0, dust: 0, fire: 0 };
+      t = { x: p.x, z: p.z, rotY: p.rotY, long: 0, roll: 0, pitch: 0, longAcc: 0, skid: [null, null], smoke: 0, dust: 0, fire: 0, burn: false };
       this.tracks.set(v.index, t);
     }
     // How it's moving, from where it's been seen: along its nose, across it, and how fast it's turning.
@@ -234,7 +250,7 @@ export class DriveEffects {
       while (t.smoke >= 1) {
         t.smoke--;
         const at = carPoint(p, (Math.random() < 0.5 ? -1 : 1) * 0.8 + (Math.random() - 0.5) * 0.4, -1.35 + (Math.random() - 0.5) * 0.4);
-        this.puffs.spawn(at.x, STREET_Y + 0.25, at.z, vx * 0.25 + (Math.random() - 0.5) * 1.2, 0.8 + Math.random() * 0.7, vz * 0.25 + (Math.random() - 0.5) * 1.2, 0.7 + Math.random() * 0.5, 0.3, 1.1 + 0.6 * grip, 0.32 * grip + 0.08, '#f2f2f8');
+        this.puffs.spawn(at.x, STREET_Y + 0.25, at.z, vx * 0.25 + (Math.random() - 0.5) * 1.2, 0.8 + Math.random() * 0.7, vz * 0.25 + (Math.random() - 0.5) * 1.2, 0.7 + Math.random() * 0.5, 0.3, 1.1 + 0.6 * grip, 0.32 * grip + 0.08, SMOKE);
       }
     }
     // Dust off the pavement.
@@ -243,20 +259,28 @@ export class DriveEffects {
       while (t.dust >= 1) {
         t.dust--;
         const at = carPoint(p, (Math.random() - 0.5) * 1.8, -1.2 + (Math.random() - 0.5) * 1.2);
-        this.puffs.spawn(at.x, STREET_Y + 0.2, at.z, vx * 0.2 + (Math.random() - 0.5) * 2, 0.7 + Math.random(), vz * 0.2 + (Math.random() - 0.5) * 2, 0.6 + Math.random() * 0.5, 0.3, 1.5, 0.4, this.spare.set(Math.random() < 0.5 ? '#c8c08e' : '#aab37c'));
+        this.puffs.spawn(at.x, STREET_Y + 0.2, at.z, vx * 0.2 + (Math.random() - 0.5) * 2, 0.7 + Math.random(), vz * 0.2 + (Math.random() - 0.5) * 2, 0.6 + Math.random() * 0.5, 0.3, 1.5, 0.4, DUST[Math.random() < 0.5 ? 0 : 1]);
       }
     }
-    // The nitro: yours when it's on, someone else's when they're going faster than a car can on the gas alone.
-    if (nitro ?? p.speed > DRIVE.top + 1.5) {
+    // The nitro: yours when it's on; someone else's when they're over what a car does on the gas alone and
+    // still not slowing (it lights at top + 1.5 m/s holding or gaining speed, and goes out once they ease
+    // off or fall back to top speed), so a car still coasting down from the nitro stops showing flames.
+    t.burn = t.burn ? p.speed > DRIVE.top + 0.5 && longAcc > -6 : p.speed > DRIVE.top + 1.5 && longAcc > -2;
+    if (nitro ?? t.burn) {
       t.fire += dt * 120;
       while (t.fire >= 1) {
         t.fire--;
         const side = Math.random() < 0.5 ? -1 : 1;
         const at = carPoint(p, side * 0.45, -2.3);
         const back = 4 + Math.random() * 4;
-        this.puffs.spawn(at.x, STREET_Y + 0.5 + Math.random() * 0.06, at.z, vx * 0.92 - sin * back, 0.2, vz * 0.92 - cos * back, 0.12 + Math.random() * 0.1, 0.34, 0.06, 0.95, Math.random() < 0.45 ? '#ffe066' : '#ff7b00');
+        this.puffs.spawn(at.x, STREET_Y + 0.5 + Math.random() * 0.06, at.z, vx * 0.92 - sin * back, 0.2, vz * 0.92 - cos * back, 0.12 + Math.random() * 0.1, 0.34, 0.06, 0.95, FLAME[Math.random() < 0.45 ? 0 : 1]);
       }
     }
+  }
+
+  /** Whether car `i` looks to be on the nitro (yours: whatever you had last frame is passed to update). */
+  burning(i: number): boolean {
+    return this.tracks.get(i)?.burn ?? false;
   }
 
   /** The car isn't being watched any more (a different floor): forget how it was moving. */

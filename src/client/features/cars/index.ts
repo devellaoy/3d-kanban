@@ -233,7 +233,7 @@ export function installCars(ctx: Ctx, deps: CarsDeps) {
         const mine = driver.car === i && driver.driving;
         if (!c.driver && !mine) continue;
         const pose = office.cars.cars[i]?.pose ?? c;
-        engines.push({ car: i, at: { x: pose.x, y: ctx.player.street + 0.5, z: pose.z }, speed: Math.hypot(pose.speed, pose.slip ?? 0), gas: mine ? driver.gas : Math.min(1, Math.abs(pose.speed) / 10), boost: mine ? driver.nitroOn : pose.speed > DRIVE.top + 1.5 });
+        engines.push({ car: i, at: { x: pose.x, y: ctx.player.street + 0.5, z: pose.z }, speed: Math.hypot(pose.speed, pose.slip ?? 0), gas: mine ? driver.gas : Math.min(1, Math.abs(pose.speed) / 10), boost: mine ? driver.nitroOn : fx.burning(i) });
       }
     }
     ctx.sound.setEngines(engines);

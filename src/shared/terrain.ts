@@ -31,31 +31,71 @@ function onPier(x: number, z: number): boolean {
 
 /** The soft zone (x, z) is in, the deepest of them; null on dry land inside the edge. */
 export function hazardAt(x: number, z: number): Hazard | null {
-  const found: Hazard[] = [];
-  const add = (depth: number, nx: number, nz: number, kind: Hazard['kind']) => {
-    if (depth > 0) found.push({ depth, nx, nz, kind });
-  };
+  // Allocation-free (it is asked several times per car step): the deepest zone so far lives in locals.
+  // Of equal depths the first wins, in the order sea, lake, west, east... as it always did.
+  let depth = 0;
+  let nx = 0;
+  let nz = 0;
+  let kind: Hazard['kind'] = 'water';
   // The sea, west of the beach: x below the shore, which the foam line draws.
-  if (!onPier(x, z)) add((shoreX(z) + 0.5 - x) / WADE, 1, 0, 'water');
+  if (!onPier(x, z)) {
+    const d = (shoreX(z) + 0.5 - x) / WADE;
+    if (d > depth) {
+      depth = d;
+      nx = 1;
+    }
+  }
   // The lake: an ellipse; its way out is its outward normal.
   const ex = (x - LAKE.x) / LAKE.rx;
   const ez = (z - LAKE.z) / LAKE.rz;
   const e = Math.hypot(ex, ez);
   if (e < 1.04) {
-    const gx = ex / LAKE.rx;
-    const gz = ez / LAKE.rz;
-    const g = Math.hypot(gx, gz) || 1;
-    add(((1.04 - e) * Math.min(LAKE.rx, LAKE.rz) * 0.9) / WADE, gx / g, gz / g, 'water');
+    const d = ((1.04 - e) * Math.min(LAKE.rx, LAKE.rz) * 0.9) / WADE;
+    if (d > depth) {
+      const gx = ex / LAKE.rx;
+      const gz = ez / LAKE.rz;
+      const g = Math.hypot(gx, gz) || 1;
+      depth = d;
+      nx = gx / g;
+      nz = gz / g;
+      kind = 'water';
+    }
   }
   // The edge of the world: the last EDGE meters.
-  add((x - (WORLD.maxX - EDGE)) / EDGE, -1, 0, 'edge');
-  add((WORLD.minX + EDGE - x) / EDGE, 1, 0, 'edge');
-  add((z - (WORLD.maxZ - EDGE)) / EDGE, 0, -1, 'edge');
-  add((WORLD.minZ + EDGE - z) / EDGE, 0, 1, 'edge');
-  return found.sort((a, b) => b.depth - a.depth)[0] ?? null;
+  let d = (x - (WORLD.maxX - EDGE)) / EDGE;
+  if (d > depth) {
+    depth = d;
+    nx = -1;
+    nz = 0;
+    kind = 'edge';
+  }
+  d = (WORLD.minX + EDGE - x) / EDGE;
+  if (d > depth) {
+    depth = d;
+    nx = 1;
+    nz = 0;
+    kind = 'edge';
+  }
+  d = (z - (WORLD.maxZ - EDGE)) / EDGE;
+  if (d > depth) {
+    depth = d;
+    nx = 0;
+    nz = -1;
+    kind = 'edge';
+  }
+  d = (WORLD.minZ + EDGE - z) / EDGE;
+  if (d > depth) {
+    depth = d;
+    nx = 0;
+    nz = 1;
+    kind = 'edge';
+  }
+  return depth > 0 ? { depth, nx, nz, kind } : null;
 }
 
 /** Whether a car's point can be at (x, z) as far as the sea, the lake and the edge of the world go. */
 export function terrainOk(x: number, z: number): boolean {
+  // Far past the edge of the world: no need to look at the water.
+  if (x > WORLD.maxX - EDGE + EDGE * LIMIT || x < WORLD.minX + EDGE - EDGE * LIMIT || z > WORLD.maxZ - EDGE + EDGE * LIMIT || z < WORLD.minZ + EDGE - EDGE * LIMIT) return false;
   return (hazardAt(x, z)?.depth ?? 0) < LIMIT;
 }

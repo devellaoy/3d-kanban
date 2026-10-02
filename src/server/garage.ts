@@ -1,4 +1,4 @@
-import { DRIVE, drivable, parked, type CarPose, type CarSeat, type CarState } from '../shared/garage.js';
+import { DRIVE, inBounds, parked, type CarPose, type CarSeat, type CarState } from '../shared/garage.js';
 
 /** How often one person can honk, at most (ms). */
 const HONK_EVERY = 250;
@@ -50,13 +50,13 @@ export class Garage {
 
   /**
    * The driver of car `car` says where it's got to: where the office has it now, to pass on. Nothing
-   * from anyone else, or from somewhere a car can't be (the sea, the garage's walls).
+   * from anyone else, or from somewhere a car can't be (the sea, the garage's walls): the whole car, as the driver's page checks it, not only its middle.
    */
   drive(id: string, car: number, pose: CarPose): CarPose | undefined {
     const c = this.cars[car];
     if (!c || c.driver !== id) return undefined;
     const { x, z, rotY, speed, steer } = pose;
-    if (![x, z, rotY, speed, steer].every(Number.isFinite) || !drivable(x, z)) return undefined;
+    if (![x, z, rotY, speed, steer].every(Number.isFinite) || !inBounds({ x, z, rotY })) return undefined;
     Object.assign(c, {
       x,
       z,
