@@ -13,6 +13,8 @@ export function people(ctx: Ctx): People {
     const a = ctx.accounts.get(accountId);
     return a ? { account: { name: a.name, role: a.role }, admin: a.role === 'admin' } : { admin: !accountId };
   };
+  /** Like meOf, for a connection: a visitor is never an admin (they have no account here to look up). */
+  const meOfClient = (c: Client): Me => (c.visitor ? { ...meOf(c.accountId), admin: false, visitor: true } : meOf(c.accountId));
   /** Still signed in: the account wasn't revoked, and the shared password wasn't switched off. */
   const stillIn = (c: Client) => (c.accountId ? !!ctx.accounts.get(c.accountId) : ctx.accounts.sharedPassword);
   const signOut = (c: Client) => {
@@ -24,7 +26,8 @@ export function people(ctx: Ctx): People {
   const accountsChanged = () => {
     let state: ReturnType<Accounts['state']> | undefined;
     for (const c of ctx.clients.values()) {
-      if (c.out) continue;
+      // A visitor is the other office's guest: not one of our accounts, so there is nothing to sign out or tell.
+      if (c.out || c.visitor) continue;
       if (!stillIn(c)) {
         signOut(c);
         continue;
@@ -37,5 +40,5 @@ export function people(ctx: Ctx): People {
       if (me.admin) ctx.sendTo(c, { t: 'accounts', state: (state ??= ctx.accounts.state(onlineAccounts())) });
     }
   };
-  return { meOf, stillIn, signOut, onlineAccounts, accountsChanged };
+  return { meOf, meOfClient, stillIn, signOut, onlineAccounts, accountsChanged };
 }

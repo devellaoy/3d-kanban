@@ -54,7 +54,7 @@ export const kanbanRoutes = {
     async handle(ctx, { req, res, url, session }) {
       if (!ctx.kanban) return send(res, 503, { error: 'The kanban is starting' });
       if (req.method !== 'GET' && req.method !== 'HEAD' && !sameOrigin(req, ctx.cfg)) return send(res, 403, { error: 'Forbidden' });
-      const who: KanbanCaller = { accountId: session.account?.id, name: session.account?.name ?? 'Guest', admin: ctx.meOf(session.account?.id).admin };
+      const who: KanbanCaller = { accountId: session.account?.id, name: session.account?.name ?? 'Guest', admin: !session.visitor && ctx.meOf(session.account?.id).admin };
       if (await ctx.kanban.handleHttp(req, res, url, who)) return;
       return send(res, 404, { error: 'Not found' });
     },

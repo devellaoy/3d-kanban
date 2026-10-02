@@ -130,6 +130,8 @@ export interface FloorHelpers {
 export interface People {
   /** Who a connection is: its account's current name and role, or an admin guest on the shared password. */
   meOf(accountId: string | undefined): Me;
+  /** Who a connection is: meOf, except a visitor from another office, who is never an admin. */
+  meOfClient(c: Client): Me;
   /** Still signed in: the account wasn't revoked, and the shared password wasn't switched off. */
   stillIn(c: Client): boolean;
   signOut(c: Client): void;

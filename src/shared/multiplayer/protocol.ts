@@ -31,6 +31,8 @@ export interface MpState {
   /** The relay's URL as saved (never the password). */
   url: string;
   passwordSet: boolean;
+  /** Connecting waits for a GitHub sign-in (there is no token yet, or the relay refused it): offer the device flow. */
+  needsIdentity?: boolean;
   /** The GitHub login this office is known as on the relay. */
   login?: string;
   /** A GitHub device-flow sign-in under way: type `code` at `url` before `expiresAt` (ms since epoch). */
