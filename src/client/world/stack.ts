@@ -64,16 +64,15 @@ function tileTexture(): THREE.CanvasTexture {
 }
 
 export interface StackState {
-  /** Which floor of the building you're on (0 is the bottom one), and how many there are. */
+  /** Which floor of the building you're on (0 is the bottom one). */
   index: number;
-  count: number;
 }
 
 export interface Stack {
   group: THREE.Group;
   /** The ceiling's tiles, for the back office's ceiling to match (its uvs are meters, like a ShapeGeometry's). */
   ceiling: THREE.Material;
-  /** The floor you're on. */
+  /** Records the floor you're on; it changes nothing you see (every floor looks the same from inside). */
   set(s: StackState): void;
   state: StackState;
 }
@@ -95,8 +94,7 @@ export function buildStack(colliders: Collider[], planks: THREE.Material): Stack
   // Lit from below by the room's lamps, not left in the shade the sun would give it.
   tiles.emissive = new THREE.Color('#6a655d');
   tiles.emissiveMap = tiles.map;
-  const ceilingMat = tiles;
-  const state: StackState = { index: 0, count: 1 };
+  const state: StackState = { index: 0 };
 
   // The floor: planks.
   const floor = new THREE.Mesh(surface(rectOutline(FLOOR), -1, FLOOR), planks);
@@ -114,14 +112,14 @@ export function buildStack(colliders: Collider[], planks: THREE.Material): Stack
   colliders.push({ ...B, bottom: -SLAB, top: 0 });
 
   // The ceiling: tiles, WALL_HEIGHT up.
-  const ceiling = mesh(surface(rectOutline(FLOOR), 1), ceilingMat, 0, WALL_HEIGHT, 0, false);
+  const ceiling = mesh(surface(rectOutline(FLOOR), 1), tiles, 0, WALL_HEIGHT, 0, false);
   ceiling.receiveShadow = false;
   group.add(ceiling);
   colliders.push({ ...FLOOR, bottom: WALL_HEIGHT, top: WALL_HEIGHT + SLAB });
 
   return {
     group,
-    ceiling: ceilingMat,
+    ceiling: tiles,
     set: (s) => {
       Object.assign(state, s);
     },
@@ -139,6 +137,5 @@ declare module './types' {
 /** The office floor's floor and ceiling. */
 export const stack: Fixture<'stack'> = (site) => {
   const built = buildStack(site.colliders, site.planks);
-  built.set({ index: 0, count: 1 });
   return { group: built.group, handle: { stack: built } };
 };

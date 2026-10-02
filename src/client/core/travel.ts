@@ -33,7 +33,8 @@ export function installTravel(ctx: Ctx, core: CoreState, parts: TravelParts) {
   const { inOffice, plan } = parts.worlds;
   const { placeInCar, downstairs, indoors, standingAt, sitOnThrone, onThrone } = parts.place;
 
-  let wingsShown = '';
+  /** The floor, the building's height and its wings the office was last set to (see office.setLevel). */
+  let levelShown = '';
   /** The building is as tall as there are floors, with the street as far down as this one is up. */
   function syncStack() {
     const floors = builtFloors();
@@ -42,11 +43,10 @@ export function installTravel(ctx: Ctx, core: CoreState, parts: TravelParts) {
     const wings = floorWings(floors);
     // A map of its own is a hall on the ground: nothing under its floor to fall to, but its dungeon's.
     player.street = inOffice() ? streetBelow(index) : streetOf(ctx.world());
-    const s = office.stack.state;
-    const same = s.index === Math.max(0, index) && s.count === count;
-    if (same && wings.join() === wingsShown) return;
-    wingsShown = wings.join();
-    if (!same) office.stack.set({ index: Math.max(0, index), count });
+    const level = `${Math.max(0, index)}/${count}/${wings.join()}`;
+    if (level === levelShown) return;
+    levelShown = level;
+    office.stack.set({ index: Math.max(0, index) });
     office.setLevel(Math.max(0, index), count, wings);
   }
   store.on('floors', syncStack);

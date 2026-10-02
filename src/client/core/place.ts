@@ -10,7 +10,7 @@ import type { CoreState } from './ctx';
 import { builtFloors } from './floors';
 import type { Parts } from './parts';
 
-/** Where you arrive on the other floor: the same spot in the office, on the other side of the ceiling. */
+/** Where you arrive on another floor from the floor list: the same spot in the office, there. */
 export interface Arrival {
   x: number;
   y: number;
