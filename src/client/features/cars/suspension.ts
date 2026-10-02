@@ -4,7 +4,7 @@ import type { CarKind } from '../../../shared/garage';
 // each of the four wheels, holding up a body that can heave (rise and fall), pitch (nose up and down)
 // and roll (lean). The wheels follow the ground; the body follows the wheels through the springs, and
 // is pushed on by how the car is accelerating, braking and cornering. A stiff set-up barely moves
-// (the supercars); a loose one wallows, overshoots and keeps rocking after a bump (the 4x4).
+// (the supercars); the 4x4's is a little softer, with more travel, and settles about as quickly.
 // features/cars/ride.ts hangs this on a car's model.
 
 /** Where the wheels are, in the car's frame: the axles (z, + toward the nose) and half the track (x, + to the left). */
@@ -48,24 +48,24 @@ const STIFF: SuspensionSpec = {
   maxHeave: 0.08,
 };
 
-/** The 4x4: long travel, soft springs, little damping, and the weight up high. */
-const LOOSE: SuspensionSpec = {
+/** The 4x4: longer travel and a little softer than the supercars, the weight up higher, but well damped: it settles after a bump, not rocks on. */
+const FIRM: SuspensionSpec = {
   stance: { front: 1.4, rear: -1.4, half: 0.88 },
-  freq: 1.25,
-  damping: 0.16,
+  freq: 2,
+  damping: 0.5,
   pitchRadius: 1.2,
   rollRadius: 0.7,
-  pitchArm: 0.8,
-  rollArm: 0.5,
-  travel: 0.36,
-  maxPitch: 0.15,
-  maxRoll: 0.22,
-  maxHeave: 0.3,
+  pitchArm: 0.6,
+  rollArm: 0.36,
+  travel: 0.2,
+  maxPitch: 0.09,
+  maxRoll: 0.12,
+  maxHeave: 0.15,
 };
 
 /** How each kind of car rides. */
 export function suspensionOf(kind: CarKind): SuspensionSpec {
-  return kind === 'offroad' ? LOOSE : STIFF;
+  return kind === 'offroad' ? FIRM : STIFF;
 }
 
 /** The step the springs are worked out in (s): short enough for the stiffest. */

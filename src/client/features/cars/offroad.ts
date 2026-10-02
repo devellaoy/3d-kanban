@@ -44,12 +44,28 @@ export function offroad(color: string): CarModel {
   const g = new THREE.Group();
   const paint = toon(color);
   const trim = toon('#2a2c38');
-  const glass = toon('#2c4254');
+  // Lightly tinted and see-through, so you can see out of it from the seat and into the cabin from
+  // outside; it writes no depth, so whatever's behind it (the dash, another car) is never lost to it
+  // and its faces show whichever order they're drawn in. Streaks of shine on it say it's glass.
+  const glass = toon('#bfe6ff', { opacity: 0.2, depthWrite: false });
+  const shine = toon('#ffffff', { opacity: 0.45, depthWrite: false });
   const chrome = toon('#b9bfcc');
   const lamp = toon('#fff6c9', { emissive: '#b8a960' });
   const tail = toon('#ff2d3f', { emissive: '#a3001a' });
   const L = CAR.length / 2;
   const box = (w: number, h: number, d: number, mat: THREE.Material, x: number, y: number, z: number) => mesh(new THREE.BoxGeometry(w, h, d), mat, x, y, z);
+  // Glass casts no shadow, or the cabin under it would sit in the dark.
+  const pane = (w: number, h: number, d: number, mat: THREE.Material, x: number, y: number, z: number) => mesh(new THREE.BoxGeometry(w, h, d), mat, x, y, z, false);
+  /** Two slanting streaks of shine on a pane, laid on its face `out` (x, y or z) and leaning about it. */
+  const streaks = (to: THREE.Object3D, x: number, y: number, z: number, out: 'x' | 'y' | 'z') => {
+    for (const [off, width] of [[0, 0.07], [0.16, 0.035]]) {
+      const s = pane(out === 'x' ? 0.004 : width, out === 'y' ? 0.004 : 0.5, out === 'z' ? 0.004 : out === 'x' ? width : 0.5, shine, x, y, z);
+      if (out === 'x') s.position.z += off;
+      else s.position.x += off;
+      s.rotation[out] = 0.6;
+      to.add(s);
+    }
+  };
   const tube = (r: number, len: number, mat: THREE.Material, x: number, y: number, z: number, axis: 'x' | 'y' | 'z') => {
     const geo = new THREE.CylinderGeometry(r, r, len, 8);
     if (axis === 'x') geo.rotateZ(Math.PI / 2);
@@ -101,7 +117,14 @@ export function offroad(color: string): CarModel {
 
   // The cabin: glass between pillars, a painted roof, and a rack with a light bar on top.
   const closed = new THREE.Group();
-  closed.add(box(HALF * 2 - 0.1, 0.64, 2.5, glass, 0, 1.38, -0.55));
+  const W = HALF * 2 - 0.1;
+  for (const sx of [-1, 1]) {
+    closed.add(pane(0.03, 0.64, 2.5, glass, sx * (W / 2 - 0.015), 1.38, -0.55));
+    streaks(closed, sx * (W / 2 + 0.002), 1.38, -0.3, 'x');
+  }
+  closed.add(pane(W, 0.64, 0.03, glass, 0, 1.38, -1.785));
+  closed.add(pane(W, 0.64, 0.03, glass, 0, 1.38, 0.685));
+  streaks(closed, -0.3, 1.38, 0.702, 'z');
   for (const sx of [-1, 1]) {
     for (const z of [-1.8, 0.7]) closed.add(box(0.1, 0.68, 0.1, paint, sx * (HALF - 0.04), 1.39, z));
   }
@@ -114,9 +137,14 @@ export function offroad(color: string): CarModel {
 
   // Roof off: the windshield, a roll bar over the seats, the seats and the wheel.
   const open = new THREE.Group();
-  const pane = box(HALF * 2 - 0.1, 0.04, 0.82, glass, 0, 1.4, 0.6);
-  pane.rotation.x = 0.55;
-  open.add(pane);
+  const shield = new THREE.Group();
+  shield.position.set(0, 1.4, 0.6);
+  shield.rotation.x = 0.55;
+  shield.add(pane(W, 0.03, 0.82, glass, 0, 0, 0));
+  // The frame along its top, and the shine on its face (on the passenger's side, clear of the driver's view).
+  shield.add(box(W, 0.035, 0.035, trim, 0, 0, -0.41));
+  streaks(shield, -0.3, 0.017, 0, 'y');
+  open.add(shield);
   for (const sx of [-1, 1]) {
     const post = box(0.07, 0.07, 0.9, trim, sx * (HALF - 0.04), 1.4, 0.6);
     post.rotation.x = 0.55;
