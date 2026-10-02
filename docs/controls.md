@@ -33,6 +33,7 @@ Back to the [README](../README.md).
 | Tab | The ☰ menu: every window, and what shows on screen. *In 3d-kanban*, **🌐 Players** (under *Together*, once a multiplayer relay is saved) shows your own status with a **Go offline** / **Go online** button and lists who is online with a **Visit** button each (nobody while you are offline); while you visit someone, a bar at the top says **👀 Visiting @login · read-only** with **🏠 Back to my office**, and keys that would change their office just say so ([Features](features.md#multiplayer-visit-each-others-offices)) |
 | Esc | Close any window (a terminal too) and get back to looking around |
 | Ctrl + [ | Send Esc to a terminal instead, to close a menu like Claude's `/skills` or interrupt Claude. **⎋ Esc** in the terminal's header does the same |
+| Alt + ↑ / ↓ | *In 3d-kanban*, in the elevator panel or the floor list under the project name (admins): move the focused floor up or down within its owner's group, or the focused group heading past the next group. Dragging a floor or a heading does the same; a plain click still rides to the floor |
 
 ### At a kanban task's worker
 

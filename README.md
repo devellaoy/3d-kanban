@@ -207,7 +207,7 @@ curl -fsSL https://raw.githubusercontent.com/devellaoy/3d-kanban/main/install.sh
 
 ## What it is
 
-- **A floor per project.** Ride the elevator, pick one of your GitHub repos, and the office clones it and opens a floor for it. Every worker, board and queue on that floor works in that checkout. A folder you already have works too, git or not: an admin types its path into the elevator and the office uses it as it is, with no clone (see [features](docs/features.md)).
+- **A floor per project.** Ride the elevator, pick one of your GitHub repos, and the office clones it and opens a floor for it. Every worker, board and queue on that floor works in that checkout. A folder you already have works too, git or not: an admin types its path into the elevator and the office uses it as it is, with no clone. The floors are grouped by GitHub owner, and admins can drag them (or press Alt+↑/↓) into the building's order (see [features](docs/features.md)).
 - **Workers at desks.** Walk up to an empty desk, press **E**, and pick Claude Code, Codex, OpenCode, Grok, Muse or DeepSeek Harness. The agent's live terminal shows on its laptop, and anyone can open it and type. Pin a web page (a linked chat, docs) open in a tab beside it.
 - **You can see who needs you.** A worker that needs input or has finished jumps up and down and dings. Press **N** to go straight to the one that has waited longest.
 - **From your phone, too.** `/lite` is the office in 2D: every worker and what it's waiting on, its terminal with the keys a phone keyboard lacks, and the boards. The 3D office offers it on a phone or a slow computer.
