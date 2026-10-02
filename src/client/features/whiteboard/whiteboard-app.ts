@@ -19,6 +19,7 @@ import { store } from '../../state';
 import { toast } from '../../ui/dom';
 import { appearanceOf, parseAppearance } from '../../themes';
 import { apiUrl } from '../../multiplayer/visit';
+import { NO_PICTURES_HINT, canAddPictures, uploadUnlessVisiting } from './pictures';
 
 /** How often your changes, and your mouse, go out while you draw. */
 const SEND_MS = 50;
@@ -70,6 +71,8 @@ async function loadFiles(els: readonly ExcalidrawElement[]): Promise<BinaryFileD
 
 /** Puts a picture on the office's board; resolves to whether it's there now. */
 function upload(f: BinaryFileData): Promise<boolean> {
+  // Defense in depth: the tool, paste and drop are blocked while visiting, but this would POST to our own office.
+  if (!canAddPictures()) return uploadUnlessVisiting(() => Promise.resolve(false), (text) => toast(text, 'warn'));
   let p = uploads.get(f.id);
   if (p) return p;
   p = fetch(fileUrl(), { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ id: f.id, mimeType: f.mimeType, dataURL: f.dataURL, created: f.created }) })
@@ -289,7 +292,20 @@ export function mountWhiteboard(host: HTMLElement, send: (msg: ClientMsg) => voi
         autoFocus: true,
         aiEnabled: false,
         // Opening a file would replace the drawing for you alone; everything else in the menu works for everyone.
-        UIOptions: { canvasActions: { loadScene: false, saveToActiveFile: false, changeViewBackgroundColor: false } },
+        // Visitors cannot add pictures (they would be uploaded to their own office): no image tool, and pasted or dropped files are refused.
+        UIOptions: { canvasActions: { loadScene: false, saveToActiveFile: false, changeViewBackgroundColor: false }, tools: { image: canAddPictures() } },
+        onPaste: (data: { files?: unknown }) => {
+          if (canAddPictures() || !data.files || !Object.keys(data.files).length) return true;
+          toast(NO_PICTURES_HINT, 'warn');
+          return false;
+        },
+        // Every inserted picture (pasted, dropped, picked) gets its id here first; throwing refuses it. Left to Excalidraw's own hash otherwise.
+        generateIdForFile: canAddPictures()
+          ? undefined
+          : () => {
+              toast(NO_PICTURES_HINT, 'warn');
+              throw new Error(NO_PICTURES_HINT);
+            },
       },
       e(
         MainMenu,
