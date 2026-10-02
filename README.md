@@ -492,7 +492,7 @@ deploy/dokploy.sh ssh 'node /opt/agent-office/bin/agent-office.js accounts invit
 | Enter, in a prompt box | A new line (Shift + Enter too); Ctrl/⌘ + Enter sends (on a phone, tap the send button) |
 | V | Join voice; then hold V to talk |
 | M | Mute / unmute in voice |
-| Tab | The ☰ menu: every window |
+| Tab | The ☰ menu and the floor list: every window, every project |
 | Esc | Close any window |
 | Ctrl + [ | Send Esc to a terminal, to close a menu like Claude's `/skills` or interrupt Claude (or **⎋ Esc** in its header) |
 
