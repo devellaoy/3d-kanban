@@ -62,7 +62,7 @@ come before the office's own, so B, R, X, P, Q and so on mean what's listed here
 
 | Where | Key | Action |
 | --- | --- | --- |
-| Anywhere | 7 / 8 / 9 / 0 | Reaction: 👏 🎉 ❤️ 😂 floats up from you; repeats stack into one badge (👏 ×5) |
+| Anywhere | 7 / 8 / 9 / 0 | Reaction: 👏 🎉 ❤️ 😂 floats up from you; repeats stack into one badge (👏 ×5). They follow the character the key types, so Shift+7 (`/` on a Finnish or German keyboard) still opens search, and on an AZERTY keyboard the reactions need Shift |
 | In the office's world | § (the key left of 1) | The map on or off (also ☰ → 🗺️ Map); Esc or its ✕ hides it too |
 | In a car | Shift / Space / S | Nitro (while the meter lasts) / handbrake, to drift / brake, then reverse |
 | At a desk's blue mat | E | Put things on the desk (plant, mug, photo, lamp, duck) |
