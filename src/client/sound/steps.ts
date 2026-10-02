@@ -6,15 +6,16 @@ import { biquad, envelope, pick, rand } from './dsp';
 /** One of your own footsteps, or the thump of landing a jump. */
 export function step(a: AudioCore, kind: 'walk' | 'land' = 'walk') {
   if (!a.ctx) return;
-  if (kind === 'land') a.play(pick(a.buf.steps), { gain: 0.5, rate: 0.75 });
-  else a.play(pick(a.buf.steps), { gain: rand(0.16, 0.21), rate: rand(0.9, 1.1) });
+  // A landing is a step's thump, lower and only a little louder: it used to drown out everything else.
+  if (kind === 'land') a.play(pick(a.buf.steps), { gain: 0.2, rate: 0.75, dest: a.mix.thumps });
+  else a.play(pick(a.buf.steps), { gain: rand(0.16, 0.21), rate: rand(0.9, 1.1), dest: a.mix.steps });
   a.count(kind === 'land' ? 'land' : 'step');
 }
 
 /** An issue card in your hands: taken off the board, or put down on a desk. */
 export function paper(a: AudioCore) {
   if (!a.ctx) return;
-  a.play(a.buf.rustle, { gain: 0.5, rate: rand(1.1, 1.3) });
+  a.play(a.buf.rustle, { gain: 0.5, rate: rand(1.1, 1.3), dest: a.mix.typing });
   a.count('paper');
 }
 
@@ -40,15 +41,15 @@ export function pageTurn(a: AudioCore) {
     [len * 0.6, 0.13],
     [len, 0],
   ]);
-  swish.connect(band).connect(biquad(ctx, 'lowpass', 4500, 0.7)).connect(g).connect(a.ambience);
+  swish.connect(band).connect(biquad(ctx, 'lowpass', 4500, 0.7)).connect(g).connect(a.mix.typing);
   swish.start(t0, rand(0, 4.5));
   swish.stop(t0 + len + 0.02);
-  a.play(pick(a.buf.steps), { gain: 0.08, rate: rand(2.4, 2.8), when: t0 + len * 0.85 });
+  a.play(pick(a.buf.steps), { gain: 0.08, rate: rand(2.4, 2.8), when: t0 + len * 0.85, dest: a.mix.typing });
 }
 
 /** Someone else's footstep, on the office floor unless `y` says where else. */
 export function stepAt(a: AudioCore, x: number, z: number, y = 0) {
   if (!a.ctx) return;
-  a.play(pick(a.buf.steps), { at: { x, y: y + 0.1, z }, gain: rand(0.3, 0.38), rate: rand(0.9, 1.1), ref: 1.5, rolloff: 1.4 });
+  a.play(pick(a.buf.steps), { at: { x, y: y + 0.1, z }, gain: rand(0.3, 0.38), rate: rand(0.9, 1.1), ref: 1.5, rolloff: 1.4, dest: a.mix.steps });
   a.count('peerStep');
 }

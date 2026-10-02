@@ -15,6 +15,7 @@ import { multiplayerSettingsSlot } from '../multiplayer/settingsslot';
 import { PANES, type SettingsPane } from './settings-panes';
 export type { SettingsPane };
 import { mouseSensitivityRow } from './sensitivity';
+import { masterRow, mixRows, musicRow } from './settings-mix';
 import { appearanceRow } from './appearance';
 import { setting } from './settingrow';
 import { outsideSetting } from './settings-sky';
@@ -60,38 +61,8 @@ export function openSettings(net: Net, settings: Settings, onChange: (s: Setting
   };
   paint();
 
-  /** A volume slider with its mute button. Dragging it turns the sound back on; letting go plays `preview`. */
-  const volumeRow = (label: string, level: 'volume' | 'music', muted: 'muted' | 'musicMuted', preview?: () => void) => {
-    const slider = h('input', { type: 'range', min: 0, max: 100, step: 1, 'aria-label': label });
-    const pct = h('span.vol-pct');
-    const mute = h('button.btn', { type: 'button' });
-    const row = h('div.volume', {}, mute, slider, pct);
-    const paint = () => {
-      const v = Math.round(settings[level] * 100);
-      slider.value = String(v);
-      slider.style.setProperty('--fill', `${v}%`);
-      pct.textContent = settings[muted] ? 'Muted' : `${v}%`;
-      mute.textContent = settings[muted] ? '🔊 Unmute' : '🔇 Mute';
-      mute.setAttribute('aria-pressed', String(settings[muted]));
-      mute.classList.toggle('danger', settings[muted]);
-      row.classList.toggle('muted', settings[muted]);
-    };
-    paint();
-    slider.addEventListener('input', () => {
-      settings = { ...settings, [level]: Number(slider.value) / 100, [muted]: false };
-      onChange(settings);
-      paint();
-    });
-    if (preview) slider.addEventListener('change', preview);
-    mute.addEventListener('click', () => {
-      settings = { ...settings, [muted]: !settings[muted] };
-      onChange(settings);
-      paint();
-      if (!settings[muted]) preview?.();
-    });
-    return row;
-  };
-  const soundRow = volumeRow('Office sounds volume', 'volume', 'muted', previewSound);
+  const change = (s: Settings) => onChange((settings = s));
+  const soundRow = masterRow(() => settings, change, previewSound);
 
   // Voice chat: an open mic, or muted until you hold V.
   const talkRow = h('div.seg', { role: 'radiogroup', 'aria-label': 'Voice chat' });
@@ -123,7 +94,6 @@ export function openSettings(net: Net, settings: Settings, onChange: (s: Setting
     );
   };
   paintTalk();
-  const musicRow = volumeRow('Jukebox volume', 'music', 'musicMuted');
 
   // The swish of the book's pages at the bookshelf, on or off.
   const pagesRow = h('div.seg', { role: 'radiogroup', 'aria-label': 'Page turns at the bookshelf' });
@@ -502,9 +472,10 @@ export function openSettings(net: Net, settings: Settings, onChange: (s: Setting
       setting('Signed in', null, h('div.volume', {}, signOut), h('p.setting-note', {}, account ? `As ${account.name}, with your own account (${account.role}).` : 'With the shared office password.')),
     ],
     sound: [
-      setting('Office sounds', 'you', soundRow, h('p.setting-note', {}, 'Workers typing, footsteps, the coffee machine, birds and rain outside, the dog, and the ding when a worker is done. Voice chat isn’t affected.')),
+      setting('Office sounds', 'you', soundRow, h('p.setting-note', {}, 'Everything the office sounds like, from the room’s air to the ding when a worker is done. Voice chat and the jukebox aren’t affected.')),
+      setting('Each kind of sound', 'you', ...mixRows(() => settings, change)), // per-kind volumes (ui/settings-mix.ts)
       setting('Page turns at the bookshelf', 'you', pagesRow, h('p.setting-note', {}, 'A soft swish each time the book in your hands turns a page, as you open a doc or scroll through one. The 🔈 at the top of the bookshelf turns it off too.')),
-      setting('Jukebox', 'you', musicRow, h('p.setting-note', {}, 'The jukebox in the lounge. Everyone on the floor hears the same song, louder the closer they are to it; this is how loud it is for you alone.')),
+      setting('Jukebox', 'you', musicRow(() => settings, change), h('p.setting-note', {}, 'The jukebox in the lounge. Everyone on the floor hears the same song, louder the closer they are to it; this is how loud it is for you alone.')),
       setting('Voice chat', 'you', talkRow, h('p.setting-note', {}, 'Either way, V joins voice, holding V talks and you’re muted once you let go, and M mutes or unmutes. With push to talk you join muted. Leave voice from the ☰ menu.')),
     ],
     notify: [

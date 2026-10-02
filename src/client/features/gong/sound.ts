@@ -35,7 +35,7 @@ export function gong(a: AudioCore, why: GongWhy) {
   // like the dings), so it carries further.
   const at = a.hall ? (a.hall.gong ?? { x: a.listener.x, y: a.listener.y + 2, z: a.listener.z }) : GONG_AT;
   const out = why === 'hit' ? a.panner(at, 4, 0.6) : a.panner(at, 8, 0.45);
-  out.connect(why === 'hit' ? a.ambience : a.alerts);
+  out.connect(why === 'hit' ? a.mix.effects : a.alerts);
   const t0 = ctx.currentTime + 0.03;
   if (why === 'queue') [0.7, 0.85, 1.1].forEach((strength, i) => strike(a, out, t0 + i * 0.85, strength));
   else strike(a, out, t0, why === 'merged' ? 1 : rand(0.6, 0.8));
@@ -46,7 +46,7 @@ function strike(a: AudioCore, out: AudioNode, t0: number, strength: number) {
   const ctx = a.ctx!;
   const f0 = 118 * rand(0.98, 1.02);
   const ring = ctx.createGain();
-  ring.gain.value = 0.3 * strength;
+  ring.gain.value = 0.2 * strength;
   ring.connect(out);
   const long = 0.6 + 0.4 * strength;
   for (const [ratio, amp, decay] of GONG_PARTIALS) {
@@ -71,7 +71,7 @@ function strike(a: AudioCore, out: AudioNode, t0: number, strength: number) {
   const thump = a.noise(a.buf.white);
   const thumpG = ctx.createGain();
   thumpG.gain.setValueAtTime(0.0001, t0);
-  thumpG.gain.exponentialRampToValueAtTime(0.45 * strength, t0 + 0.005);
+  thumpG.gain.exponentialRampToValueAtTime(0.3 * strength, t0 + 0.005);
   thumpG.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.12);
   thump.connect(biquad(ctx, 'lowpass', 420, 0.8)).connect(thumpG).connect(out);
   thump.start(t0);

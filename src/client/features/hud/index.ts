@@ -179,6 +179,7 @@ export function installHud(ctx: Ctx, core: CoreState, parts: HudParts) {
         player.setView(settings.view);
         player.setMouseSensitivity(settings.mouseSensitivity); // ⚙️ Settings' mouse sensitivity
         sound.setVolume(settings.volume, settings.muted);
+        sound.setMix(settings.mix);
         sound.setMusicVolume(settings.music, settings.musicMuted);
       },
       editProfile,

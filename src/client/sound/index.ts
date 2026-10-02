@@ -5,8 +5,9 @@
  * barking, and the dings when a worker needs you. And the lounge jukebox, whose tunes are in music.ts,
  * and up on the roof, the wind, the city far below and the DJ's drum and bass (../dnb.ts).
  *
- * Everything goes through one master gain that Settings turns down or mutes. Voice chat doesn't, and
- * the jukebox has a volume of its own.
+ * Everything goes through one master gain that Settings turns down or mutes, each kind of sound
+ * through a volume of its own on the way (the background, the rain, thumps, footsteps, typing, the
+ * other effects and the alerts; see mix.ts). Voice chat doesn't, and the jukebox has a volume of its own.
  *
  * OfficeSound is all the rest of the office sees. What every sound shares (the context, the buses,
  * where your ears are, what runs every frame) is AudioCore in core.ts; each sound is a recipe in a
@@ -24,6 +25,7 @@ import type { CarKind } from '../../shared/garage';
 import { carDoor, crash, honk, Motors, type Engine } from '../features/cars/sound';
 import { coffee } from '../features/coffee/sound';
 import { AudioCore, type Hall, type Listener } from './core';
+import type { MixLevels } from './mix';
 import { bark, yip } from '../features/dog/sound';
 import { cellDoor, thud } from '../features/workers/sound';
 import { golf, type GolfSound } from '../features/golf/sound';
@@ -90,6 +92,11 @@ export class OfficeSound {
   /** Volume is 0–1; muted silences everything without losing the level. */
   setVolume(volume: number, muted: boolean) {
     this.a.setVolume(volume, muted);
+  }
+
+  /** Each kind of sound's own volume (see mix.ts), under the master. */
+  setMix(levels: MixLevels) {
+    this.a.setMix(levels);
   }
 
   /** The weather outside (see world/sky.ts), every frame. */

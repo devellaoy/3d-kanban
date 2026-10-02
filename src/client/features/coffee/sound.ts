@@ -12,7 +12,7 @@ export function coffee(a: AudioCore) {
   // In a hall of its own it's ale drawn from a cask, where you're standing: no grinder, just the pour.
   const cask = !!a.hall;
   const out = a.panner(cask ? { x: a.listener.x, y: a.listener.y + 0.2, z: a.listener.z } : COFFEE_MACHINE, 1.2, 1);
-  out.connect(a.ambience);
+  out.connect(a.mix.effects);
   const t0 = ctx.currentTime + 0.05;
   // The grinder first (not at a cask), then the pour.
   const grinder: AudioScheduledSourceNode[] = [];

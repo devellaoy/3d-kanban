@@ -17,7 +17,7 @@ export function ding(a: AudioCore, kind: 'done' | 'needs_input') {
     o.frequency.value = f;
     const t0 = ctx.currentTime + i * 0.12;
     g.gain.setValueAtTime(0.0001, t0);
-    g.gain.exponentialRampToValueAtTime(0.3, t0 + 0.02);
+    g.gain.exponentialRampToValueAtTime(0.2, t0 + 0.02);
     g.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.25);
     o.connect(g).connect(a.alerts);
     o.start(t0);

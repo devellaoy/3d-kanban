@@ -17,7 +17,7 @@ export function billiards(a: AudioCore, kind: BilliardsSound, at: Pos, speed = 2
   a.count(`billiards-${kind}`);
   const loud = Math.min(1, speed / 4);
   const out = a.panner(at, 2, 1.2);
-  out.connect(a.ambience);
+  out.connect(a.mix.effects);
   const t0 = ctx.currentTime + 0.005;
   if (kind === 'clack' || kind === 'cue') {
     const g = kind === 'cue' ? 0.3 + 0.3 * loud : 0.1 + 0.35 * loud;

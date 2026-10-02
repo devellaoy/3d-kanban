@@ -17,7 +17,7 @@ export function golf(a: AudioCore, kind: GolfSound, at?: Pos, speed = 5) {
   if (!ctx) return;
   a.count(`golf-${kind}`);
   const out = at ? a.panner(at, 3, 1) : ctx.createGain();
-  out.connect(a.ambience);
+  out.connect(a.mix.effects);
   const t0 = ctx.currentTime + 0.005;
   const hard = Math.min(1, speed / 15);
   switch (kind) {

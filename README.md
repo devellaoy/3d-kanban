@@ -143,6 +143,7 @@ curl -fsSL https://raw.githubusercontent.com/devellaoy/3d-kanban/main/deploy/pro
   ([controls](docs/controls.md)). Upstream's *Mouse drag /
   wheel* row below is out of date.
 - **Mouse sensitivity**: ⚙️ Settings → 🧍 You, 25–200% of the usual look speed, kept in your browser.
+- **A volume for each kind of sound**: ⚙️ Settings → 🔊 Sound & voice → *Each kind of sound*: background noise, rain, jumps & thumps, footsteps, typing & paper, other effects, and dings & alerts, each 0–100% with its own mute, under the office sounds volume and kept in your browser. Rain indoors and the jump landing are quieter than upstream's ([features](docs/features.md)).
 - **Themes**: ⚙️ Settings → 🧍 You → Theme: **Office** (the default), **Dark** or **Glossy**, kept per browser. They restyle the windows, the HUD, the kanban and the 2D view, not the 3D office ([features](docs/features.md)).
 - **Light indoors from the lamps and the windows**: inside the office the room is lit only by its own lamps
   (each one lights the area round it, the wall switches turn them off and on, and they come up as it gets

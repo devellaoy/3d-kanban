@@ -1,6 +1,7 @@
 import { FLOOR, inWing } from '../../shared/layout';
 import { makeBuffers, type Buffers } from './buffers';
 import { place, rms } from './dsp';
+import { MIXES, mixDefaults, mixGain, type Mix, type MixLevels } from './mix';
 import { WINDOWS, type Pos } from './places';
 
 /** Where you hear from: your head, facing where the camera looks. */
@@ -36,9 +37,18 @@ export interface AudioHooks {
 export class AudioCore {
   ctx: AudioContext | null = null;
   private master!: GainNode;
-  /** The room itself; it goes quiet while the tab is hidden. */
-  ambience!: GainNode;
-  /** Worker dings, which you still want to hear from another tab. */
+  /** The room itself, which every kind in `mix` but `alerts` goes out through; it goes quiet while the tab is hidden. */
+  private room!: GainNode;
+  /**
+   * Each kind of sound's own volume from ⚙️ Settings (see mix.ts), between its sounds and the master:
+   * `background` the room's air, the fridge, the wind and the city (through `indoors` and `outside`),
+   * `rain` the rain and thunder, `thumps` landing a jump and other thuds, `steps` footsteps, `typing`
+   * the workers at their desks and the paper in your hands, `effects` everything else (play's
+   * default), and `alerts` (see alerts).
+   */
+  readonly mix = {} as Record<Mix, GainNode>;
+  private mixLevels: MixLevels = mixDefaults();
+  /** Worker dings and the gong's news, which you still want to hear from another tab: `mix.alerts`, past the room. */
   alerts!: GainNode;
   /** The office's own hum (the room and the fridge), left behind going up on the roof… */
   indoors!: GainNode;
@@ -74,6 +84,12 @@ export class AudioCore {
     this.volume = Math.max(0, Math.min(1, volume));
     this.muted = muted;
     this.applyVolume();
+  }
+
+  /** Each kind of sound's own level (see mix), under the master. */
+  setMix(levels: MixLevels) {
+    this.mixLevels = levels;
+    this.applyMix();
   }
 
   /** The weather outside (see world/sky.ts), every frame. */
@@ -119,15 +135,20 @@ export class AudioCore {
     this.master.gain.value = 0;
     this.master.connect(comp).connect(ctx.destination);
     comp.connect(this.analyser);
-    this.ambience = ctx.createGain();
-    this.ambience.connect(this.master);
-    this.alerts = ctx.createGain();
-    this.alerts.connect(this.master);
+    this.room = ctx.createGain();
+    this.room.connect(this.master);
+    for (const k of MIXES) {
+      // At its saved level from the start, so a muted kind isn't heard for a moment while it eases down.
+      this.mix[k] = ctx.createGain();
+      this.mix[k].gain.value = mixGain(this.mixLevels[k]);
+      this.mix[k].connect(k === 'alerts' ? this.master : this.room);
+    }
+    this.alerts = this.mix.alerts;
     this.indoors = ctx.createGain();
-    this.indoors.connect(this.ambience);
+    this.indoors.connect(this.mix.background);
     this.outside = ctx.createGain();
     this.outside.gain.value = 0;
-    this.outside.connect(this.ambience);
+    this.outside.connect(this.mix.background);
     // The rest of the sound graph, and what plays all the time.
     this.hooks.start(ctx);
     void ctx.resume();
@@ -140,10 +161,16 @@ export class AudioCore {
     this.master.gain.setTargetAtTime(g, this.ctx.currentTime, 0.04);
   }
 
+  private applyMix() {
+    if (!this.ctx) return;
+    const now = this.ctx.currentTime;
+    for (const k of MIXES) this.mix[k].gain.setTargetAtTime(mixGain(this.mixLevels[k]), now, 0.04);
+  }
+
   applyVisibility() {
     if (!this.ctx) return;
     if (!document.hidden && this.ctx.state === 'suspended') void this.ctx.resume();
-    this.ambience.gain.setTargetAtTime(document.hidden ? 0 : 1, this.ctx.currentTime, 0.15);
+    this.room.gain.setTargetAtTime(document.hidden ? 0 : 1, this.ctx.currentTime, 0.15);
   }
 
   count(what: string) {
@@ -240,7 +267,7 @@ export class AudioCore {
     src.connect(g);
     let out: AudioNode = g;
     if (o.at) out = g.connect(this.panner(o.at, o.ref, o.rolloff));
-    out.connect(o.dest ?? this.ambience);
+    out.connect(o.dest ?? this.mix.effects);
     src.start(o.when ?? ctx.currentTime);
   }
 
