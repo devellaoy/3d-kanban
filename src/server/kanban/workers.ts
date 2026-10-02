@@ -46,6 +46,14 @@ export abstract class KanbanWorkers {
   protected abstract setStatus(w: Worker, status: WorkerStatus): void;
   abstract resume(id: string, prompt?: string): string | undefined;
 
+  /** Workers whose current run the engine follows: an agent that exits on a failed resume is the engine's to deal with, not upstream's silent fresh start (see follows). */
+  protected readonly followed = new Set<string>();
+  /** The engine follows (or stops following) a worker's run. Not kept across restarts: the engine follows again what it re-attaches. */
+  follows(id: string, on: boolean) {
+    if (on) this.followed.add(id);
+    else this.followed.delete(id);
+  }
+
   /** Who hears about status changes and hooks (see addObserver). */
   private observers = new Set<WorkerObserver>();
   /** Who may keep a worker's worktree as it goes home (see addKeepGuard). */

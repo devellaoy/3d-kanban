@@ -96,7 +96,7 @@ curl -fsSL https://raw.githubusercontent.com/devellaoy/3d-kanban/main/deploy/pro
 ## What the fork adds
 
 - **A task process**: plan (with questions, auto or manual approval) → implement → 1–10 review rounds ⇄
-  fix → the Review column → Done. Comments put the agent back to work (a comment whose work changes nothing since the task came to
+  fix → the Review column → Done (a task that has to wait for something outside goes **On hold**, its worker resting in the 3D lounge: [docs/kanban.md](docs/kanban.md#on-hold)). Comments put the agent back to work (a comment whose work changes nothing since the task came to
   Review doesn't start a review round), and answer it when it asks in its terminal; usage limits are retried by themselves (a Codex one at the reset time its account reports). A task that finds no free desk or the office's
   worker limit full is queued and starts when there's room, as the account that made it (a task counts
   once against the limit: its reviewer never waits for its own implementer's place, and it takes no desk

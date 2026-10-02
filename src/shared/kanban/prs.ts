@@ -36,6 +36,7 @@ export function canFixPrs<P extends Pick<KanbanPrLink, 'state'>>(task: PrSubject
   const no = (reason: string): FixCheck => ({ ok: false, reason });
   if (isRunning(task)) return no('Stop it first: it is running');
   if (task.status === 'waiting' && task.waitingReason === 'agent_asking') return no('The agent is asking in its terminal: answer it first');
+  if (task.status === 'on_hold') return no('It is on hold: resume it first');
   if (!prStatusOk(task.status)) return no('Pull requests are fixed from Waiting, Review or Done');
   const open = openPrs(task);
   if (!open.length) return no('The task has no open pull requests to fix');

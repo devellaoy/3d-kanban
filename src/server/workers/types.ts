@@ -50,6 +50,9 @@ export interface SpawnExtra {
   launchArgs?: string[];
   reuse?: { worktree: WorkerInfo['worktree']; repos?: WorkerRepo[] };
   resumeSessionId?: string;
+  /** The look a re-hired worker prefers (a task taken off hold): its old name when no one else has it, and its colour. */
+  name?: string;
+  color?: string;
   kanban?: WorkerInfo['kanban'];
   env?: Record<string, string>;
   settingsFile?: 'kanban';

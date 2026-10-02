@@ -10,7 +10,7 @@ import { canRetry } from './engine/machine.js';
 
 const OPEN = new Set(['in_progress', 'waiting', 'review']);
 /** Where a task the automation isn't on sits, for the refusal. */
-const OUT: Record<string, string> = { todo: 'To do', done: 'Done', archived: 'the archive' };
+const OUT: Record<string, string> = { todo: 'To do', on_hold: 'On hold', done: 'Done', archived: 'the archive' };
 
 /**
  * A prompt to `info` on `who`'s behalf. Without `asComment` it's upstream's, typed straight in (the

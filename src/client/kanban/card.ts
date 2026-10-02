@@ -5,6 +5,7 @@
 import { h } from '../ui/dom';
 import type { KanbanProjectInfo, KanbanTaskCard } from '../../shared/kanban/types.js';
 import { isRunning } from '../../shared/kanban/moves.js';
+import { holdLine } from '../../shared/kanban/hold.js';
 import { cardRepoNames, countdown, needsAttention, phaseBadge, prTone, showsRepoChips } from './model';
 import { COUNTDOWN_UNITS, phaseName, PR_STATE_NAMES, toolName, waitingName } from './labels';
 
@@ -57,6 +58,7 @@ export function taskCard(c: KanbanTaskCard, project: KanbanProjectInfo | undefin
     c.status === 'waiting' && c.waitingReason
       ? h('div.kb-wait', { class: needsAttention(c) ? 'attention' : '' }, `${c.waitingReason === 'usage_limit' ? '⏳' : '🙋'} ${waitingName(c.waitingReason)}${c.waitingText ? `: ${c.waitingText}` : ''}`)
       : null;
+  const holdText = c.status === 'on_hold' && c.hold ? h('div.kb-hold', { class: c.hold.until !== undefined && c.hold.until < now ? 'passed' : '', title: `On hold since ${new Date(c.hold.at).toLocaleString()}, by ${c.hold.by}` }, holdLine(c.hold, now)) : null;
   const retry = c.retryAt ? h('div.kb-retry', { 'data-retry-at': String(c.retryAt) }, `🔁 retries in ${countdown(c.retryAt, now, COUNTDOWN_UNITS)}`) : null;
 
   const moveBtn = h('button.kb-move', { type: 'button', 'aria-label': `Move #${c.id}`, title: 'Move to another column (M)' }, '⋯');
@@ -89,6 +91,7 @@ export function taskCard(c: KanbanTaskCard, project: KanbanProjectInfo | undefin
     chips.length ? h('div.kb-chips', { id: `kbc-${c.id}-meta` }, ...chips) : h('span.hidden', { id: `kbc-${c.id}-meta` }),
     prs,
     waitLine,
+    holdText,
     retry,
     c.commentCount || c.pendingCount
       ? h('div.kb-foot', {}, c.commentCount ? h('span', { title: 'Comments' }, `💬 ${c.commentCount}`) : null, c.pendingCount ? h('span.kb-pending', { title: 'Written while the agent was busy: it gets it at its next pause' }, `✉️ ${c.pendingCount} waiting`) : null)
