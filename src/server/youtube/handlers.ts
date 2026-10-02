@@ -67,7 +67,7 @@ export const youtubeHandlers = {
     const tv = youtubeTvOf(floor);
     const was = tv.state();
     const blocked = typeof msg.blocked === 'number' ? msg.blocked : undefined;
-    const r = tv.ended(msg.id, msg.next === true);
+    const r = tv.ended(msg.id, msg.next === true, blocked !== undefined);
     if (!r || !was) return;
     const next = r === 'stopped' ? '' : ': on to the next one';
     // 100 is a video that's private or gone; the others, one whose owner keeps it on youtube.com.

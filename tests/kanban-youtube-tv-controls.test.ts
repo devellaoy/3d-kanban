@@ -388,3 +388,29 @@ test('a youtube-tv.json from before the controls (url + startedAt) still loads',
     done();
   }
 });
+
+test("an end said while it's paused is dropped (a late one from before the pause), a blocked video still comes off", () => {
+  const { tv, clock, done } = setup();
+  try {
+    const first = on(tv, V(1));
+    tv.play(V(2), 'Bo', 'end');
+    clock.now += 1000;
+    assert.ok(tv.pause(first.id, true, 'Ada'));
+    // The end a browser sent just before the pause reaches the office after it: what's on stays on, paused.
+    assert.equal(tv.ended(first.id, false), null);
+    assert.equal(tv.ended(first.id, true), null);
+    let s = tv.state()!;
+    assert.deepEqual([s.id, s.paused, s.videoId], [first.id, true, vid(1)]);
+    assert.deepEqual(tv.list().queue.map((i) => i.videoId), [vid(2)], 'the queue is left alone');
+    // Played on, the end counts again.
+    assert.ok(tv.pause(first.id, false, 'Ada'));
+    assert.equal(tv.ended(first.id, false), 'queue');
+    s = tv.state()!;
+    assert.ok(tv.pause(s.id, true, 'Ada'));
+    // YouTube won't play it here: off it goes even paused.
+    assert.equal(tv.ended(s.id, false, true), 'stopped');
+    assert.equal(tv.state(), null);
+  } finally {
+    done();
+  }
+});

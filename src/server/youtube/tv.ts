@@ -121,10 +121,12 @@ export class YoutubeTv {
 
   /**
    * The play `id` is over: a playlist with `next` goes on to its next video, else the queue's first item plays,
-   * else it comes off. Only the first browser to say so counts (the rest name an older play).
+   * else it comes off. Only the first browser to say so counts (the rest name an older play). A paused play
+   * keeps its id, so an end that was on its way when it was paused is dropped (a browser says it again once it
+   * plays on); a video YouTube won't play here (`blocked`) comes off paused or not.
    */
-  ended(id: unknown, next: boolean): 'next' | 'queue' | 'stopped' | null {
-    if (!this.s || id !== this.s.id) return null;
+  ended(id: unknown, next: boolean, blocked = false): 'next' | 'queue' | 'stopped' | null {
+    if (!this.s || id !== this.s.id || (this.s.paused && !blocked)) return null;
     const index = this.s.index ?? 0;
     // Past the playlist's known end there's no next video: it's over like any other.
     if (next && this.s.list && (this.s.listLength === undefined || index + 1 < this.s.listLength)) {

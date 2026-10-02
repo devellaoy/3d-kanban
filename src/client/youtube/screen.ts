@@ -461,7 +461,8 @@ export class TvScreen {
 
   /** What's on has played to its end: the office takes it off, or goes on to a playlist's next video. */
   private over(y: YoutubeOnTv, next?: boolean) {
-    if (this.told.has(y.id)) return;
+    // Paused, it isn't over yet: nothing's said (nor marked said), so it's said once it plays on to its end.
+    if (this.told.has(y.id) || y.paused) return;
     this.told.add(y.id);
     const p = this.player;
     const list = p?.getPlaylist();
