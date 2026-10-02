@@ -117,7 +117,7 @@ export function openMusicTab(deps: MusicTabDeps): MusicTab {
     const nobody = target === 'someone' && !people.length;
     playBtn.disabled = queueBtn.disabled = nobody;
     playBtn.title = target === 'tv' ? 'Put it on the TV now' : target === 'someone' ? 'Play it to the two of you now (what you listen to stops)' : 'Play it for you now';
-    queueBtn.title = target === 'tv' ? 'Add it to the end of the TV’s queue' : 'Add it to the end of your music’s queue (starts it if nothing’s on)';
+    queueBtn.title = target === 'tv' ? 'Add it to the end of the TV’s queue' : target === 'someone' ? 'Add it to the queue of the music you share with them (starts it if you have none)' : 'Add it to the end of your own music’s queue (starts it if nothing’s on)';
     targetNote.textContent =
       target === 'tv'
         ? `📺 The TV on ${floor?.name ?? 'this floor'}: everyone here hears it`

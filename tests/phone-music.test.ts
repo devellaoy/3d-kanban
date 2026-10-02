@@ -75,6 +75,39 @@ test('queue adds to your own session, and starts one if you have none', () => {
   assert.deepEqual(q.change, { sessions: [r.session], gone: [] });
 });
 
+test('queue goes only into the session for the chosen listeners', () => {
+  const { m } = music();
+  m.play(ann, A, bob);
+  const shared = m.sessionOf('ann')!;
+  // Ann listens with Bob, picks Cy and queues: not into Ann and Bob's music, and Cy gets nothing.
+  const forCy = m.play(ann, B, cy, 'end');
+  assert.ok('error' in forCy && /not Cy/.test(forCy.error));
+  assert.equal(m.stateOf(shared)!.list.queue.length, 0);
+  assert.equal(m.sessionOf('cy'), undefined);
+  // Me → Queue while listening with Bob: refused too, Bob hears nothing new.
+  const forMe = m.play(ann, B, undefined, 'end');
+  assert.ok('error' in forMe && /shared with Bob/.test(forMe.error));
+  assert.equal(m.stateOf(shared)!.list.queue.length, 0);
+  // Queueing for Bob, whom Ann listens with, goes in.
+  const forBob = m.play(ann, B, bob, 'end');
+  assert.ok(!('error' in forBob) && forBob.session === shared);
+  assert.equal(m.stateOf(shared)!.list.queue.length, 1);
+  // Cy alone with her own music: Me → Queue goes into it.
+  m.play(cy, A);
+  const mine = m.sessionOf('cy')!;
+  const cyQueue = m.play(cy, B, cy, 'end');
+  assert.ok(!('error' in cyQueue) && cyQueue.session === mine);
+  // ...but not for Ann, who isn't in it.
+  const cyForAnn = m.play(cy, B, ann, 'end');
+  assert.ok('error' in cyForAnn && /just yours.*you and Ann/.test(cyForAnn.error));
+  assert.equal(m.sessionOf('cy'), mine);
+  // Someone for whom there is no session yet, with no music of your own: it starts one for the two of you.
+  const { m: m2 } = music();
+  const fresh = m2.play(ann, A, cy, 'end');
+  assert.ok(!('error' in fresh));
+  assert.deepEqual(m2.stateOf(m2.sessionOf('cy')!)!.listeners.map((l) => l.id), ['ann', 'cy']);
+});
+
 test('pause and seek reach both listeners', () => {
   const { m, tick } = music();
   m.play(ann, A, bob);

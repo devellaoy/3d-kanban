@@ -49,12 +49,21 @@ export class PhoneMusic {
 
   /**
    * `from` puts `url` on. Without `queue` a new session starts with `from` (and `to`, if someone else), each leaving the one
-   * they were in. With `queue` it goes into from's session's queue (a session of their own starts if they have none).
+   * they were in. With `queue` it goes into from's session's queue, but only when that session is the one for the
+   * listeners asked for (`from` alone, or `from` and `to`): a song queued for yourself never plays to whoever you're
+   * listening with, nor one meant for Cy to the two of you. Without a session it starts one for them, as a play does.
    */
   play(from: PhoneListener, url: unknown, to?: PhoneListener, queue?: 'end' | 'next'): MusicPlay {
     const mine = this.of.get(from.id);
     if (queue && mine) {
       const s = this.sessions.get(mine)!;
+      const others = s.listeners.filter((l) => l.id !== from.id);
+      const wanted = to && to.id !== from.id ? to : undefined;
+      if (wanted ? others.length !== 1 || others[0].id !== wanted.id : others.length > 0) {
+        const now = others.map((l) => l.name).join(' and ');
+        if (!wanted) return { error: `Your music is shared with ${now}: ▶ Play starts some just for you` };
+        return { error: `${now ? `You're listening with ${now}, not ${wanted.name}` : 'Your music is just yours'}: ▶ Play starts music for you and ${wanted.name}` };
+      }
       const r = s.tv.play(url, from.name, queue);
       if ('error' in r) return r;
       return { change: { sessions: [s.id], gone: [] }, session: s.id, state: r.state, ...(r.queued ? { queued: r.queued } : {}), ...(r.started ? { started: true as const } : {}) };
