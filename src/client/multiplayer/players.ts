@@ -8,9 +8,9 @@ import { store } from '../state';
 import { h, openModal } from '../ui/dom';
 import { goHome, goVisit, visiting } from './visit';
 
-/** The ☰ menu's entry for it: offered while connected, or while visiting. */
+/** The ☰ menu's entry for it: offered once a server is saved (to go online from it), or while visiting. */
 export function playersAction(net: Net): HudAction {
-  return { id: 'players', icon: '🌐', label: 'Players', section: 'Together', shown: () => store.mp.status === 'online' || !!visiting(), title: () => 'Who is on the multiplayer server, and visit their offices', run: () => openPlayers(net) };
+  return { id: 'players', icon: '🌐', label: 'Players', section: 'Together', shown: () => store.mp.configured || !!visiting(), status: () => store.mp.configured && !visiting(), chip: () => (store.mp.offline ? '⚪ Offline' : store.mp.status === 'online' ? '🟢 Online' : store.mp.status === 'error' ? '🔴 Error' : '🟡 Connecting…'), title: () => 'Who is on the multiplayer server, and visit their offices', run: () => openPlayers(net) };
 }
 
 function where(p: MpPlayer): string {
@@ -33,8 +33,12 @@ export function openPlayers(net: Net) {
 
   function paint() {
     if (owner) return list.replaceChildren(h('p.mp-visiting', {}, `👀 You are visiting @${owner}’s office. It is read-only: you can look around, but not change anything.`), home());
-    const players = store.mp.players;
-    list.replaceChildren(...(players.length ? players.map(row) : [h('p.setting-note', {}, 'Nobody else is here yet.')]));
+    const mp = store.mp;
+    const players = mp.offline ? [] : mp.players;
+    const toggle = h('button.btn.small', { type: 'button', onclick: () => net.send({ t: 'mp.online', on: mp.offline }) }, mp.offline ? '🟢 Go online' : '⚪ Go offline');
+    const mine = h('div.mp-player', {}, h('span.dot', { class: mp.offline ? '' : mp.status === 'online' ? 'on' : '' }), h('span.mp-who', {}, h('b', {}, 'You are ', mp.offline ? 'offline' : mp.status === 'online' ? 'online' : 'connecting…'), h('small', {}, mp.offline ? 'Not connected to the server; your own office works as usual.' : 'Go offline to leave the server without losing its settings.')), toggle);
+    const empty = mp.offline ? 'You are offline, so no players are shown.' : 'Nobody else is here yet.';
+    list.replaceChildren(mine, ...(players.length ? players.map(row) : [h('p.setting-note', {}, empty)]));
     // Ask each online player which floors they show us, once per open.
     for (const p of players) {
       if (p.me || !p.online || probed.has(p.login)) continue;

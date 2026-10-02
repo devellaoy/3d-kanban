@@ -5,7 +5,7 @@
 import { after, before, test } from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
-import { chmodSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import net from 'node:net';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
@@ -369,6 +369,32 @@ test('stopping the share of a floor sends its visitors home with a reason', asyn
   visitor = await Browser.open(guest, visitUrl);
   const welcome = await visitor.take('welcome');
   assert.deepEqual(welcome.floors.map((f) => f.id), ['pub']);
+});
+
+test('going offline keeps the settings, ends visits and leaves the relay; going online comes back', async () => {
+  const saved = () => JSON.parse(readFileSync(path.join(tmp, 'owner', 'home', '.agent-office', 'multiplayer.json'), 'utf8'));
+  const before = saved();
+  ownerBrowser.send({ t: 'mp.online', on: false });
+  const off = await ownerBrowser.take('mp.state', (m) => m.state.offline);
+  assert.equal(off.state.status, 'off');
+  assert.equal(off.state.configured, true);
+  assert.deepEqual(off.state.players, []);
+  assert.match((await visitor.take('mp.ended')).reason, /offline|lost/);
+  assert.equal(await visitor.closedWith(), 4000);
+  const after = saved();
+  assert.equal(after.enabled, false);
+  for (const k of ['url', 'password', 'identityToken', 'sharedFloors', 'floorKeys']) assert.deepEqual(after[k], before[k], k);
+  await guestAdmin.take('mp.state', (m) => !m.state.players.some((p) => p.login === 'owner') && m.state.players.some((p) => p.login === 'vera'), 15_000);
+  // Back online with the saved settings, nothing retyped. (Older online states may still be queued: drop them.)
+  ownerBrowser.inbox.length = 0;
+  guestAdmin.inbox.length = 0;
+  ownerBrowser.send({ t: 'mp.online', on: true });
+  const on = await ownerBrowser.take('mp.state', (m) => m.state.status === 'online' && !m.state.offline, 15_000);
+  assert.equal(on.state.configured, true);
+  assert.equal(saved().enabled, true);
+  await guestAdmin.take('mp.state', (m) => m.state.players.some((p) => p.login === 'owner'), 15_000);
+  visitor = await Browser.open(guest, visitUrl);
+  assert.deepEqual((await visitor.take('welcome')).floors.map((f) => f.id), ['pub']);
 });
 
 test('nothing unshared ever crossed the relay or reached the visitor', () => {

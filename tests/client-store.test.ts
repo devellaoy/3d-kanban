@@ -249,7 +249,7 @@ test('a new store starts every field where it always has', async () => {
       team: null, accounts: null, signins: null,
       codexLimits: { status: 'off', windows: [], at: 0, checkedAt: 0 }, // 3d-kanban: the Codex limits (codex-limits/slice.ts)
       youtube: null, // 3d-kanban: the Office TV's YouTube (youtube/slice.ts)
-      mp: { status: 'off', url: '', passwordSet: false, players: [], floors: [] }, mpFloors: {}, mpEnded: null, // 3d-kanban: multiplayer (slices/multiplayer.ts)
+      mp: { status: 'off', url: '', configured: false, offline: false, passwordSet: false, players: [], floors: [] }, mpFloors: {}, mpEnded: null, // 3d-kanban: multiplayer (slices/multiplayer.ts)
     },
   );
 });

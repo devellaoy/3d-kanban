@@ -33,11 +33,19 @@ export const mpHandlers = {
     mp.link.connect();
     mp.sendState(c);
   },
-  'mp.disconnect'(ctx, c) {
+  'mp.online'(ctx, c, msg) {
     const mp = admin(ctx, c);
     if (!mp) return;
-    mp.cfg.update({ enabled: false });
-    mp.link.disconnect();
+    if (typeof msg.on !== 'boolean') return ctx.warn(c, 'Online or offline?');
+    // Offline only hangs up (ending visits both ways): url, password, token and shared floors stay.
+    if (!msg.on) {
+      mp.cfg.update({ enabled: false });
+      mp.link.disconnect();
+    } else {
+      if (!mp.cfg.get().url) return ctx.warn(c, 'Connect to a multiplayer server first');
+      mp.cfg.update({ enabled: true });
+      mp.link.connect();
+    }
     mp.sendState(c);
   },
   'mp.identity.start'(ctx, c) {

@@ -44,10 +44,11 @@ export function multiplayerPane(net: Net): { el: HTMLElement; close(): void } {
         : start,
     ];
     const connect = h('button.btn.primary', { type: 'button', onclick: () => net.send({ t: 'mp.connect', url: url.value.trim(), ...(pass.value ? { password: pass.value } : {}) }) }, connected ? '🔄 Reconnect' : '🔌 Connect');
-    const disconnect = h('button.btn', { type: 'button', onclick: () => net.send({ t: 'mp.disconnect' }) }, 'Disconnect');
-    (disconnect as HTMLButtonElement).disabled = mp.status === 'off';
+    const toggle = h('button.btn', { type: 'button', onclick: () => net.send({ t: 'mp.online', on: mp.offline }) }, mp.offline ? '🟢 Go online' : '⚪ Go offline') as HTMLButtonElement;
+    toggle.disabled = !mp.configured;
+    const statusText = mp.offline ? '⚪ Offline' : (STATUS[mp.status] ?? mp.status);
     el.replaceChildren(
-      setting('Server', 'office', h('div.mp-row', {}, url, pass), h('div.mp-row', {}, connect, disconnect), h('p.setting-note', { class: mp.status === 'error' ? 'bad' : '' }, STATUS[mp.status] ?? mp.status, mp.error ? ` — ${mp.error}` : '')),
+      setting('Server', 'office', h('div.mp-row', {}, url, pass), h('div.mp-row', {}, connect, toggle), h('p.setting-note', { class: mp.status === 'error' && !mp.offline ? 'bad' : '' }, statusText, mp.error && !mp.offline ? ` — ${mp.error}` : ''), h('p.setting-note', {}, 'Offline keeps the server settings; you just aren’t connected, and can still work in your own office.')),
       setting('Your GitHub account', 'office', ...sign),
       setting('Floors other players may visit', 'office', ...(mp.floors.length ? mp.floors.map(floorRow) : [h('p.setting-note', {}, 'No floors yet.')]), h('p.setting-note', {}, 'Visitors only see a shared floor if they also have access to its GitHub repositories, and can’t change anything.')),
     );

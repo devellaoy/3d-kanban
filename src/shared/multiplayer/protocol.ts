@@ -30,6 +30,10 @@ export interface MpState {
   status: 'off' | 'connecting' | 'online' | 'error';
   /** The relay's URL as saved (never the password). */
   url: string;
+  /** A relay address is saved. Going online still needs a password and a GitHub sign-in; the status and `error` say when one is missing. */
+  configured: boolean;
+  /** The player chose to be offline: the settings stay saved, the office just isn't connected (and does not reconnect). */
+  offline: boolean;
   passwordSet: boolean;
   /** Connecting waits for a GitHub sign-in (there is no token yet, or the relay refused it): offer the device flow. */
   needsIdentity?: boolean;
@@ -45,7 +49,8 @@ export interface MpState {
 export type MpClientMsg =
   /** Connect to a relay; the password is saved when given and kept when left out. Admins only. */
   | { t: 'mp.connect'; url: string; password?: string }
-  | { t: 'mp.disconnect' }
+  /** Go online with the saved settings, or offline (keeping them) and work in the own office alone. Admins only. */
+  | { t: 'mp.online'; on: boolean }
   /** Sign in to GitHub (device flow) so the relay knows who this office is. */
   | { t: 'mp.identity.start' }
   | { t: 'mp.identity.cancel' }

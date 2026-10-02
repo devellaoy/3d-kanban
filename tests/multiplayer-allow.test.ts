@@ -27,7 +27,7 @@ test('every classified type is a real client message type (no stale keys)', () =
 });
 
 test('mutating messages are denied; unknown ones too', () => {
-  for (const t of ['worker.spawn', 'queue.add', 'gh.comment', 'kanban.task.create', 'term.input', 'mp.connect', 'carry', 'decor.add', 'jukebox.play', 'kanban.settings.set', 'tv.youtube.play', 'dog.name']) {
+  for (const t of ['worker.spawn', 'queue.add', 'gh.comment', 'kanban.task.create', 'term.input', 'mp.connect', 'mp.online', 'carry', 'decor.add', 'jukebox.play', 'kanban.settings.set', 'tv.youtube.play', 'dog.name']) {
     assert.equal(classOf(t), 'deny', t);
     assert.equal(may({ t }), false, t);
   }

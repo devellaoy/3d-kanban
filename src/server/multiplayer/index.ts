@@ -80,6 +80,8 @@ export class Multiplayer {
     return {
       status: this.link.status,
       url: cfg.url,
+      configured: !!cfg.url,
+      offline: !!cfg.url && !cfg.enabled,
       passwordSet: !!cfg.password,
       ...(this.link.login ? { login: this.link.login } : {}),
       ...(this.link.needsIdentity || !cfg.identityToken ? { needsIdentity: true } : {}),

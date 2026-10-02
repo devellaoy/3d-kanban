@@ -158,7 +158,7 @@ export const CLIENT_MSG_CLASS = {
   'tv.youtube.stop': 'deny',
   'tv.youtube.ended': 'deny',
   'mp.connect': 'deny',
-  'mp.disconnect': 'deny',
+  'mp.online': 'deny',
   'mp.identity.start': 'deny',
   'mp.identity.cancel': 'deny',
   'mp.share': 'deny',

@@ -17,7 +17,7 @@ declare module '../store' {
 
 export const multiplayer: Slice = {
   init(s) {
-    s.mp = { status: 'off', url: '', passwordSet: false, players: [], floors: [] };
+    s.mp = { status: 'off', url: '', configured: false, offline: false, passwordSet: false, players: [], floors: [] };
     s.mpFloors = {};
     s.mpEnded = null;
   },
