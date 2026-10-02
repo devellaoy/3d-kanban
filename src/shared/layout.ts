@@ -174,7 +174,7 @@ export const STAIRS = { fromX: 3, toX: LOFT.minX, minZ: 11.2, maxZ: FLOOR.maxZ, 
  * north wall, facing the lounge.
  */
 export const MEETING_ROOM = { minX: LOFT.minX + 0.15, maxX: FLOOR.maxX, minZ: LOFT.minZ + 0.15, maxZ: FLOOR.maxZ, height: LOFT.y - 0.25, door: { x0: 10, x1: 11.4 } } as const;
-export const MEETING_TABLE = { x: 13.7, z: 10.55, width: 3.6, depth: 1.2, height: 0.76 } as const;
+export const MEETING_TABLE = { x: 14.5, z: 10.55, width: 3.6, depth: 1.2, height: 0.76 } as const;
 /**
  * The chairs round the meeting table, in the order a meeting fills them: the head of the table at its
  * west end (whoever leads or writes the meeting up), then two down each side. (x, z) is where the
@@ -189,8 +189,12 @@ export const MEETING_SEATS: DeskDef[] = (
     [MEETING_TABLE.x + 1.1, MEETING_TABLE.z + MEETING_TABLE.depth / 2 - 0.35, 0],
   ] as const
 ).map(([x, z, rotY], i) => ({ id: `meeting-${i + 1}`, x, z, rotY, label: i === 0 ? 'Head of the table' : `Meeting chair ${i + 1}`, room: true }));
-/** The board on the meeting room's back (south) wall that shows the meeting's output file as it's written. */
-export const MEETING_BOARD = { x: MEETING_TABLE.x, y: 1.95, z: FLOOR.maxZ - 0.08, width: 3.6, height: 1.2 } as const;
+/**
+ * The board on the meeting room's back (south) wall that shows the meeting's output file as it's written.
+ * It is in line with the door (x 10.7), so standing in the doorway you see it head-on; the table, and
+ * with it the head of the table's chair and the card over whoever sits there, is east of that line.
+ */
+export const MEETING_BOARD = { x: (MEETING_ROOM.door.x0 + MEETING_ROOM.door.x1) / 2, y: 1.95, z: FLOOR.maxZ - 0.08, width: 3, height: 1 } as const;
 
 /** A room a meeting can be held in: its chairs, in the order a meeting fills them, head of the table first. */
 export interface MeetingRoomDef {
@@ -199,12 +203,48 @@ export interface MeetingRoomDef {
   label: string;
   seats: DeskDef[];
 }
-// TODO(#90, UI): placeholder seats; the second room's real place, table and chairs replace these.
-const REVIEW_SEATS: DeskDef[] = MEETING_SEATS.map((d, i) => ({ ...d, id: `review-${i + 1}`, x: d.x - 20, label: i === 0 ? 'Head of the review table' : `Review chair ${i + 1}` }));
+/** A meeting room's glass shell: its door is in the north (minZ) wall, and its board is on the south one. */
+export interface MeetingRoomBox {
+  minX: number;
+  maxX: number;
+  minZ: number;
+  maxZ: number;
+  height: number;
+  door: { x0: number; x1: number };
+  /** Stands on the open floor: glass on all four sides (the south one solid, for the board) and roofed. Otherwise the east and south are the building's walls. */
+  free?: boolean;
+}
+/** A meeting room on the office floor: where it is, its table and its board (see MEETING_ROOMS). */
+export interface MeetingRoomPlan extends MeetingRoomDef {
+  room: MeetingRoomBox;
+  table: { x: number; z: number; width: number; depth: number; height: number };
+  board: { x: number; y: number; z: number; width: number; height: number };
+}
+
+/**
+ * The review room: a small glass room standing on the open floor between the desks and the lounge,
+ * for review panels and any meeting while the first room is taken. Its door (north) and board
+ * (south wall) are on one line, and the table runs along it with the chairs down both sides, so no
+ * one sits between the door and the board.
+ */
+export const REVIEW_ROOM = { minX: 2, maxX: 7.4, minZ: 2.9, maxZ: 7.9, height: 2.75, door: { x0: 4, x1: 5.4 }, free: true } as const;
+export const REVIEW_TABLE = { x: 4.7, z: 5.4, width: 1.6, depth: 2.4, height: 0.76 } as const;
+export const REVIEW_BOARD = { x: REVIEW_TABLE.x, y: 1.95, z: REVIEW_ROOM.maxZ - 0.14, width: 2.4, height: 0.8 } as const;
+/** Five chairs, three down the west side and two down the east; the head of the table is the middle one on the west. */
+export const REVIEW_SEATS: DeskDef[] = (
+  [
+    [REVIEW_TABLE.x - 0.45, REVIEW_TABLE.z, -Math.PI / 2],
+    [REVIEW_TABLE.x + 0.45, REVIEW_TABLE.z - 0.45, Math.PI / 2],
+    [REVIEW_TABLE.x + 0.45, REVIEW_TABLE.z + 0.45, Math.PI / 2],
+    [REVIEW_TABLE.x - 0.45, REVIEW_TABLE.z - 0.9, -Math.PI / 2],
+    [REVIEW_TABLE.x - 0.45, REVIEW_TABLE.z + 0.9, -Math.PI / 2],
+  ] as const
+).map(([x, z, rotY], i) => ({ id: `review-${i + 1}`, x, z, rotY, label: i === 0 ? 'Head of the review table' : `Review chair ${i + 1}`, room: true }));
+
 /** The office's meeting rooms, the first free one first: a meeting goes to the first free one (see server/meetings). */
-export const MEETING_ROOMS: MeetingRoomDef[] = [
-  { id: 'meeting', label: '🤝 Meeting room', seats: MEETING_SEATS },
-  { id: 'review', label: '🔍 Review room', seats: REVIEW_SEATS },
+export const MEETING_ROOMS: MeetingRoomPlan[] = [
+  { id: 'meeting', label: '🤝 Meeting room', seats: MEETING_SEATS, room: MEETING_ROOM, table: MEETING_TABLE, board: MEETING_BOARD },
+  { id: 'review', label: '🔍 Review room', seats: REVIEW_SEATS, room: REVIEW_ROOM, table: REVIEW_TABLE, board: REVIEW_BOARD },
 ];
 
 /**

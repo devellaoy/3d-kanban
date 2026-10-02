@@ -7,7 +7,7 @@ import type { DungeonView } from './dungeon';
 import type { Person } from './character';
 import type { Area } from './confetti';
 import type { Gong } from '../features/gong/world';
-import type { Collider, DeskView, Interactable, Office } from './types';
+import type { Collider, DeskView, Interactable, MeetingScreen, Office } from './types';
 import type { SkyLights } from './sky';
 
 /*
@@ -39,9 +39,8 @@ export interface World {
   /** Every seat by id: the desks, the overflow seats, the board agents' places and the meeting chairs. */
   desks: Map<string, DeskView>;
   boardMeshes: Record<BoardKey, THREE.Mesh>;
-  /** The meeting's output as it's written, and how the meeting's going, where the map shows them. */
-  meetingBoard?: THREE.Mesh;
-  meetingSign?: THREE.Mesh;
+  /** Each meeting room's output as it's written, and how its meeting's going, where the map shows them. */
+  meetingScreens?: MeetingScreen[];
   /** The gong a merged pull request rings, if the map has one. */
   gong?: Gong;
   nav: NavGrid;
@@ -99,8 +98,7 @@ export function officeWorld(office: Office, upstairs: () => boolean, wing: () =>
     pickables: [office.group],
     desks: office.desks,
     boardMeshes: office.boardMeshes,
-    meetingBoard: office.meetingBoard,
-    meetingSign: office.meetingSign,
+    meetingScreens: office.meetingScreens,
     gong: office.gong,
     get nav() {
       return officeNav(wing());

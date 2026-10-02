@@ -151,8 +151,7 @@ export function buildCastle(plan: MapPlan): World {
     pickables: [group],
     desks: kit.desks,
     boardMeshes,
-    meetingBoard: council.board,
-    meetingSign: council.sign,
+    meetingScreens: council.board && council.sign ? [{ room: plan.meetingRooms[0].id, board: council.board, sign: council.sign }] : [],
     gong: kit.gong,
     nav,
     ways: {

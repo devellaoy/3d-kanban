@@ -3,6 +3,7 @@
  * and F to hang a picture; the project in the corner (click it for the floors, or Tab opens them with
  * the menu); Settings, and your character.
  */
+import { anyMeetingRunning } from '../../../shared/meetings';
 import { ROOF } from '../../../shared/rooftop';
 import type { Ctx } from '../../core/context';
 import type { CoreState } from '../../core/ctx';
@@ -62,10 +63,13 @@ export function installHud(ctx: Ctx, core: CoreState, parts: HudParts) {
       {
         id: 'meeting',
         icon: '🤝',
-        label: 'Meeting room',
+        label: 'Meeting rooms',
         section: 'Open',
-        status: () => store.meeting.current?.status === 'running',
-        chip: () => 'In a meeting',
+        status: () => anyMeetingRunning(store.meeting),
+        chip: () => {
+          const on = store.meeting.rooms.filter((r) => r.current?.status === 'running').length;
+          return on > 1 ? `${on} meetings` : 'In a meeting';
+        },
         title: () => 'Call a meeting: workers work through a question or a task together',
         run: () => parts.meeting.showMeeting(),
       },

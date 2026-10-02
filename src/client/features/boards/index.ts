@@ -1,6 +1,6 @@
 /**
  * The boards on the walls: the issues board (less the cards someone's carrying around), the PR board,
- * the services board, the task queue, the machine monitor and the meeting room's two. What E does at
+ * the services board, the task queue, the machine monitor and each meeting room's two. What E does at
  * each is defined with it.
  */
 import type * as THREE from 'three';
@@ -133,19 +133,26 @@ export function installBoards(ctx: Ctx, deps: BoardsDeps) {
   // The machine monitor on the west wall.
   const machineTex = new MachineTexture();
   mountBoard(office.machineScreen, machineTex.texture, () => machineTex.render(store.machine), ['machine']);
-  // The meeting room: its output as it's written on the back wall, and how it's going on the door.
-  const meetingBoardTex = new MeetingBoardTexture();
-  mountBoard(office.meetingBoard, meetingBoardTex.texture, () => meetingBoardTex.render(store.meeting), ['meeting']);
-  const meetingSignTex = new MeetingSignTexture();
-  mountBoard(office.meetingSign, meetingSignTex.texture, () => meetingSignTex.render(store.meeting), ['meeting']);
+  // The meeting rooms: each one's output as it's written on its back wall, and how it's going on its door.
+  const meetingTex = new Map<string, { board: MeetingBoardTexture; sign: MeetingSignTexture }>();
+  for (const { room, board, sign } of office.meetingScreens) {
+    const tex = { board: new MeetingBoardTexture(), sign: new MeetingSignTexture() };
+    meetingTex.set(room, tex);
+    mountBoard(board, tex.board.texture, () => tex.board.render(store.meeting, room), ['meeting']);
+    mountBoard(sign, tex.sign.texture, () => tex.sign.render(store.meeting, room), ['meeting']);
+  }
   /** Puts every board's texture up on `w`'s boards. */
   function dressBoards(w: World) {
     showOn(w.boardMeshes.issues, issuesTex.texture);
     showOn(w.boardMeshes.pulls, pullsTex.texture);
     showOn(w.boardMeshes.services, servicesTex.texture);
     showOn(w.boardMeshes.queue, queueTex.texture);
-    if (w.meetingBoard) showOn(w.meetingBoard, meetingBoardTex.texture);
-    if (w.meetingSign) showOn(w.meetingSign, meetingSignTex.texture);
+    for (const { room, board, sign } of w.meetingScreens ?? []) {
+      const tex = meetingTex.get(room);
+      if (!tex) continue;
+      showOn(board, tex.board.texture);
+      showOn(sign, tex.sign.texture);
+    }
   }
 
   return { issuesTex, renderPullsBoard, renderServicesBoard, renderQueueBoard, dressBoards, cardMoved };

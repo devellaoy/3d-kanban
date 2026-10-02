@@ -1,7 +1,7 @@
 // The meeting room's patterns: how 2–5 workers at the table work on one question or task together.
 // The server runs them (server/meetings.ts); the client offers them when a meeting is called.
 
-import { fmtCost, fmtTokens, type Meeting, type MeetingPattern, type MeetingRecord } from './protocol.js';
+import { fmtCost, fmtTokens, type Meeting, type MeetingPattern, type MeetingRecord, type MeetingState } from './protocol.js';
 
 export interface PatternDef {
   icon: string;
@@ -153,5 +153,33 @@ export function meetingSummary(m: Meeting): string {
 }
 
 export function meetingRecord(m: Meeting): MeetingRecord {
-  return { id: m.id, pattern: m.pattern, title: m.title, status: m.status, summary: meetingSummary(m), calledBy: m.calledBy, finishedAt: m.finishedAt ?? Date.now(), branch: m.worktree?.branch, output: m.output };
+  return { id: m.id, room: m.room, pattern: m.pattern, title: m.title, status: m.status, summary: meetingSummary(m), calledBy: m.calledBy, finishedAt: m.finishedAt ?? Date.now(), branch: m.worktree?.branch, output: m.output };
+}
+
+/** The first meeting room's id: where meetings saved before there were several are. */
+export const FIRST_MEETING_ROOM = 'meeting';
+
+/** A state with no meeting on: an empty room for each of `rooms`. */
+export function emptyMeetings(rooms: readonly { id: string; label: string }[] = [{ id: FIRST_MEETING_ROOM, label: '🤝 Meeting room' }]): MeetingState {
+  return { rooms: rooms.map((r) => ({ id: r.id, label: r.label, current: null })), past: [] };
+}
+
+/** What's on in a room (null when it's empty or there's no such room). */
+export function meetingAt(state: Pick<MeetingState, 'rooms'>, roomId: string): Meeting | null {
+  return state.rooms.find((r) => r.id === roomId)?.current ?? null;
+}
+
+/** The room a chair belongs to, if it's any room's. */
+export function roomOfSeat(rooms: readonly { id: string; seats: readonly { id: string }[] }[], deskId: string): string | undefined {
+  return rooms.find((r) => r.seats.some((s) => s.id === deskId))?.id;
+}
+
+/** Every room's meeting, the one on or the last held, in room order. */
+export function meetingsOf(state: Pick<MeetingState, 'rooms'>): Meeting[] {
+  return state.rooms.flatMap((r) => (r.current ? [r.current] : []));
+}
+
+/** Whether a meeting is running in any room. */
+export function anyMeetingRunning(state: Pick<MeetingState, 'rooms'>): boolean {
+  return state.rooms.some((r) => r.current?.status === 'running');
 }

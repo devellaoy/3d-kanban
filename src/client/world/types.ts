@@ -42,6 +42,8 @@ export interface Interactable {
   /** The floor it's on, when that's not the office floor (the loft's). */
   y?: number;
   radius: number;
+  /** Which meeting room (MEETING_ROOMS), for a meeting's table, board or door sign. */
+  room?: string;
   deskId?: string;
   decorId?: string;
   seatId?: string;
@@ -51,6 +53,13 @@ export interface Interactable {
   off?: boolean;
   /** What the hint calls it, where a map's own looks differ from the office's (the castle's ale for the coffee machine). */
   label?: string;
+}
+
+/** A meeting room's board and the sign by its door, where the map shows them (see MEETING_ROOMS). */
+export interface MeetingScreen {
+  room: string;
+  board: THREE.Mesh;
+  sign: THREE.Mesh;
 }
 
 /** A desk, a bean bag, a board agent's kiosk or a chair at the meeting table: somewhere a worker sits (or stands). */
