@@ -146,8 +146,9 @@ curl -fsSL https://raw.githubusercontent.com/devellaoy/3d-kanban/main/deploy/pro
 - **Themes**: ⚙️ Settings → 🧍 You → Theme: **Office** (the default), **Dark** or **Glossy**, kept per browser. They restyle the windows, the HUD, the kanban and the 2D view, not the 3D office ([features](docs/features.md)).
 - **YouTube on the Office TV**: press **E** at the lounge TV (or paste a YouTube / YouTube Music link
   into the jukebox) and the whole floor sees and hears the same video or song at the same point, in
-  YouTube's own player on the TV; sit on the couch or press **E** again to watch it big. A screen share
-  still has the TV first ([features](docs/features.md#youtube-on-the-office-tv)).
+  YouTube's own player on the TV; sit on the couch or press **E** again to watch it big. Its window has
+  shared controls (pause, seek, previous / next, speed), the TV's own queue (kept across restarts) and
+  a floor-wide **Same volume across the floor** setting. A screen share still has the TV first ([features](docs/features.md#youtube-on-the-office-tv)).
 - **An installable app (PWA)**: install the office from the browser; it opens on the kanban, with
   shortcuts to the 3D office and the 2D view, shows *The office is offline. Reconnecting…* while it can't
   reach the office, and offers **Reload** when a new version is out. HTTPS is needed except on
