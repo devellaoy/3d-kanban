@@ -196,6 +196,8 @@ test('claude transcript: background commands (Bash run_in_background, Monitor) t
   const event = asUser(noteBody('mon1', '<summary>Monitor event: "ready"</summary>\n<event>line</event>'));
   assert.equal(bg(...monitor(false), wait, event, cAssistant([text('Saw it.')], {}, 'm2')), 1);
   assert.equal(bg(...monitor(false), wait, asQueued(noteBody('mon1', '<summary>Monitor event: "ready"</summary>\n<event>line</event>')), cAssistant([text('Saw it.')], {}, 'm2')), 1);
+  // An event whose own output reads like a status is still an event.
+  assert.equal(bg(...monitor(false), wait, asUser(noteBody('mon1', '<summary>Monitor event: "x"</summary>\n<event><status>completed</status></event>')), cAssistant([text('Saw it.')], {}, 'm2')), 1);
   const final = asUser(noteBody('mon1', '<status>completed</status>\n<summary>Monitor "x" timed out</summary>'));
   assert.equal(bg(...monitor(false), wait, event, final, cAssistant([text('Over.')], {}, 'm2')), undefined);
   // TaskStop (its result names the task) and a TaskOutput that finds the task finished end it; a running one doesn't.

@@ -230,7 +230,8 @@ allowed: `todo → in_progress` (= start), `waiting|review → done`, `done → 
   is stopped before it finishes its work, unless the task or the user explicitly asks for it to be left running.
   It is stopped by its PID or job or the tool's own stop command, never by name or port (no pkill or killall), a
   container is stopped but not removed, and nothing the agent didn't start is touched (the office's own processes,
-  another worker's or the user's). It sits in the fixed block so no rewrite of a prompt can drop it.
+  another worker's or the user's). It also tells the agent that a background command still running when its turn
+  ends keeps the task in progress (the hold above). It sits in the fixed block so no rewrite of a prompt can drop it.
 - Plan approval: `auto` (ready → implement) or `manual` (ready → `waiting` until the user approves).
 - Review: `rounds` (1–10), `reReviewLastFix` (default false). A reviewer is a separate worker (its own tool,
   model, effort) sharing the task's worktree (spawned with `reuse`), sent home with cleanup `keep`.

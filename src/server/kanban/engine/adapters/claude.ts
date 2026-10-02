@@ -331,12 +331,13 @@ const TERMINAL_STATUS = new Set(['completed', 'failed', 'killed', 'stopped']);
 
 /**
  * Whether one `<task-notification>` block ends its task: it has a terminal `<status>`, or no status at
- * all (the older shape). A Monitor's per-event notification has an `<event>` and no status: the monitor
- * goes on, so it doesn't end it.
+ * all (the older shape). A Monitor's per-event notification has an `<event>`: the monitor goes on, so it
+ * never ends it, whatever the event's own output says.
  */
 const endsTask = (block: string): boolean => {
+  if (/<event>/.test(block)) return false;
   const status = /<status>\s*([^<]*?)\s*<\/status>/.exec(block)?.[1];
-  return status !== undefined ? TERMINAL_STATUS.has(status) : !/<event>/.test(block);
+  return status === undefined || TERMINAL_STATUS.has(status);
 };
 
 /**
