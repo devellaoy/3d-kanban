@@ -14,6 +14,10 @@ if (argv[0] === 'accounts') {
   const { accountsCommand } = await import('./accounts.js');
   process.exit(accountsCommand(argv.slice(1)));
 }
+if (argv[0] === 'relay') {
+  const { runRelay } = await import('./multiplayer/relay/cli.js');
+  process.exit(await runRelay(argv.slice(1)));
+}
 if (argv[0] === 'setup') {
   const { setupCommand } = await import('./setup.js');
   process.exit(await setupCommand(argv.slice(1)));

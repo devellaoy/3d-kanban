@@ -2,6 +2,7 @@
 // floor. A new feature adds its handler file and a line here.
 import type { ClientMsg } from '../../../shared/protocol.js';
 import { codexLimitsHandlers, codexLimitsHooks } from '../../codex-limits/handlers.js';
+import { mpHandlers } from '../../multiplayer/handlers.js';
 import { kanbanHandlers, kanbanHooks } from '../../kanban/ws/handlers.js';
 import { youtubeHandlers, youtubeView } from '../../youtube/handlers.js';
 import { accountsHandlers } from './accounts.js';
@@ -53,6 +54,7 @@ export const handlers: HandlerMap<ClientMsg> = {
   ...kanbanHandlers,
   ...youtubeHandlers, // YouTube on the Office TV
   ...codexLimitsHandlers, // the Codex sign-in's allowance
+  ...mpHandlers, // multiplayer: the link to the relay
 };
 
 /**

@@ -19,6 +19,7 @@ import type { WorkerClientMsg, WorkerServerMsg } from './protocol/workers.js';
 import type { KanbanClientMsg, KanbanServerMsg } from './kanban/protocol.js';
 import type { YoutubeClientMsg, YoutubeServerMsg } from './youtube/protocol.js';
 import type { CodexLimitsClientMsg, CodexLimitsServerMsg } from './codex-limits/protocol.js';
+import type { MpClientMsg, MpServerMsg } from './multiplayer/protocol.js';
 
 export * from './protocol/accounts.js';
 export * from './protocol/agents.js';
@@ -33,6 +34,7 @@ export * from './protocol/settings.js';
 export * from './protocol/toys.js';
 export * from './protocol/usage.js';
 export * from './protocol/workers.js';
+export * from './multiplayer/protocol.js';
 
 export type ClientMsg =
   | PresenceClientMsg
@@ -58,7 +60,8 @@ export type ClientMsg =
   | DogClientMsg
   | KanbanClientMsg // the kanban's messages ride the office's socket
   | YoutubeClientMsg // YouTube on the Office TV
-  | CodexLimitsClientMsg; // the Codex sign-in's allowance
+  | CodexLimitsClientMsg // the Codex sign-in's allowance
+  | MpClientMsg; // multiplayer: the link to the relay
 
 export type ServerMsg =
   | PresenceServerMsg
@@ -75,4 +78,5 @@ export type ServerMsg =
   | ToysServerMsg
   | KanbanServerMsg
   | YoutubeServerMsg // YouTube on the Office TV
-  | CodexLimitsServerMsg; // the Codex sign-in's allowance
+  | CodexLimitsServerMsg // the Codex sign-in's allowance
+  | MpServerMsg; // multiplayer: the link to the relay

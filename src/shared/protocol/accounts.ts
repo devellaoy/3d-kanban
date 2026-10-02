@@ -8,6 +8,8 @@ export interface Me {
   account?: { name: string; role: AccountRole };
   /** May invite, list and revoke accounts. */
   admin: boolean;
+  /** Visiting another player's office (multiplayer): read-only, and never an admin. */
+  visitor?: boolean;
 }
 
 /** What someone signs in to for their own workers: Claude Code, and the GitHub CLI. */
