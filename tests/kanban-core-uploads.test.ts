@@ -30,6 +30,7 @@ async function office(t: Ctx) {
     floor: () => undefined,
     saveRepos: () => 'no',
     officePrompts: () => ({}),
+    languages: () => ({}),
     hookUrl: 'http://127.0.0.1:9',
     toast: () => {},
     createEngine: idleEngine,

@@ -33,6 +33,7 @@ import { createEngine, type KanbanEngine } from './engine/index.js';
 import { createPulls, createRefs, integrationPlugins } from './integrations/index.js';
 import { parseKanbanClientMsg, ridOf, type KanbanClientType, type KanbanServerMsg } from '../../shared/kanban/protocol.js';
 import type { ProjectRepo } from '../../shared/kanban/types.js';
+import type { LanguageSettings } from '../../shared/language.js';
 import type { WorkerInfo } from '../../shared/protocol.js';
 import type { KanbanRunAs } from './registry.js';
 import { LoungeSender, loungeFigures } from './lounge.js';
@@ -53,6 +54,8 @@ export interface KanbanOffice {
   saveName?(id: string, name: string): FloorDef | string;
   /** The office-wide custom prompt texts (OfficePrompts.state().custom). */
   officePrompts(): Partial<Record<string, { text: string }>>;
+  /** The office's languages (OfficePrompts.languages). */
+  languages(): LanguageSettings;
   /** The loopback hook server's base URL. */
   hookUrl: string;
   toast(floorId: string, text: string, level?: 'info' | 'warn' | 'error'): void;
@@ -198,6 +201,7 @@ export function installKanban(opts: KanbanInstallOptions): Kanban {
       return undefined;
     },
     officePrompts: () => opts.officePrompts(),
+    languages: () => opts.languages(),
     hookUrl: opts.hookUrl,
     broadcast,
     toast: (floorId: string, text: string, level?: 'info' | 'warn' | 'error') => opts.toast(floorId, text, level),

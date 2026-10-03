@@ -8,6 +8,7 @@ import type { Floor } from '../floor.js';
 import type { KanbanRepository } from './db/repository.js';
 import type { KanbanSecrets, KanbanSettingsStore } from './settings.js';
 import type { KanbanClientMsg, KanbanClientType, KanbanServerMsg } from '../../shared/kanban/protocol.js';
+import type { LanguageSettings } from '../../shared/language.js';
 import type { KanbanPrReviewRequest, KanbanTaskCard, PrRef, ProjectRepo } from '../../shared/kanban/types.js';
 
 /** Who sent a WS message or an HTTP request from a browser. */
@@ -154,6 +155,8 @@ export interface KanbanContext {
   setName(id: string, name: string): string | void;
   /** The office-wide custom prompt texts (upstream prompts.json), for prompt layering. */
   officePrompts(): Partial<Record<string, { text: string }>>;
+  /** The office's languages (⚙️ Settings), for the language rule of every prompt (see Composer.language). */
+  languages(): LanguageSettings;
   /** The loopback hook server's base URL (what AIKANBAN_API_BASE is set to). */
   hookUrl: string;
   /** To every browser subscribed to `project` (or to all projects, when project is null). */

@@ -497,6 +497,7 @@ export async function engineFixture(opts: { engine?: EngineOptions; repos?: Floo
     setRepos: () => 'not in tests',
     setName: () => 'not in tests',
     officePrompts: () => ({}),
+    languages: () => ({}),
     hookUrl,
     broadcast: (msg) => void broadcasts.push(msg),
     toast: (_f, text) => void toasts.push(text),

@@ -2024,7 +2024,7 @@ export class Orchestrator {
         repos: workerReposText(info, floor.dir, def?.name ?? floor.project.name, floor.project.branch),
         summary: info.task?.summary ? `What you worked on:\n${info.task.summary}` : '',
         skills: picked.length ? `Skills picked for this step (use them where they fit): ${picked.map((n) => (tool === 'claude' ? `/${n}` : n)).join(', ')}.` : '',
-        language: this.compose.text('kanban.language', floorId),
+        language: this.compose.language(floorId),
       }),
       'pr',
     );

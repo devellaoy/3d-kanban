@@ -306,7 +306,7 @@ The workspace:
 
 {{skills}}
 
-In every repository above whose working branch has commits the base branch doesn't: commit anything still uncommitted that belongs to the work, push the branch, and open a pull request against the base branch, or, when the branch already has an open one, update its title and description instead of opening another. Give each a clear title (with the ticket id when there is one: {{ticketId}}) and a description of what changed and why, how it was tested, and anything reviewers should look at. When there is more than one pull request, list all of them in each one's description so they're reviewed and merged together. Write the titles and descriptions in the same language as the task. Skip repositories with nothing to push, and don't merge anything.
+In every repository above whose working branch has commits the base branch doesn't: commit anything still uncommitted that belongs to the work, push the branch, and open a pull request against the base branch, or, when the branch already has an open one, update its title and description instead of opening another. Give each a clear title (with the ticket id when there is one: {{ticketId}}) and a description of what changed and why, how it was tested, and anything reviewers should look at. When there is more than one pull request, list all of them in each one's description so they're reviewed and merged together. Skip repositories with nothing to push, and don't merge anything.
 
 {{language}}`,
   },
@@ -405,7 +405,7 @@ Check the worktree as it is now before you do anything (git status, git log): th
   'kanban.language': {
     group: 'kanban',
     label: 'Language',
-    used: 'Added at the end of every kanban prompt.',
+    used: 'Added at the end of every kanban prompt, when no language is set in ⚙️ Settings (see Languages).',
     vars: {},
     optional: true,
     text: "Write your replies, plans, summaries and pull request texts in the language the task is written in (Finnish for a task in Finnish, for example), unless the project's instructions say otherwise. Code, identifiers and commit messages follow the project's own conventions.",

@@ -84,6 +84,7 @@ function office(t: Ctx, opts: { answers?: Partial<Record<string, string>>; plugi
     saveRepos: (id, repos) => building.setRepos(id, repos),
     saveName: (id, name) => building.setName(id, name),
     officePrompts: () => ({}),
+    languages: () => ({}),
     hookUrl: 'http://127.0.0.1:9',
     toast: (_floor, text) => void toasts.push(text),
     toFloor: (_floor, msg) => void floorMsgs.push(structuredClone(msg)),

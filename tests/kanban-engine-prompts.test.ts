@@ -13,9 +13,10 @@ import { KanbanSettingsStore } from '../src/server/kanban/settings.js';
 import { KANBAN_CONTRACTS, KANBAN_PROMPT_DEFS, PROMPT_CONTRACT, STOP_PROCESSES, resolveKanbanPrompt, withContract } from '../src/shared/kanban/prompts.js';
 import { PROMPTS, placeholders } from '../src/shared/prompts.js';
 import type { RunPhase } from '../src/shared/kanban/types.js';
+import type { LanguageSettings } from '../src/shared/language.js';
 import { makeRepo } from './kanban-engine-fixture.js';
 
-function setup(t: { after(fn: () => void): void }, office: Record<string, { text: string }> = {}) {
+function setup(t: { after(fn: () => void): void }, office: Record<string, { text: string }> = {}, langs: LanguageSettings = {}) {
   const root = mkdtempSync(path.join(tmpdir(), 'kanban-prompts-'));
   // The skills the prompts name are looked up in the agents' homes: never the user's own.
   const homes = { CLAUDE_CONFIG_DIR: process.env.CLAUDE_CONFIG_DIR, CODEX_HOME: process.env.CODEX_HOME };
@@ -58,6 +59,7 @@ function setup(t: { after(fn: () => void): void }, office: Record<string, { text
     dataDir: root,
     filesDir: path.join(root, 'files'),
     officePrompts: () => office,
+    languages: () => langs,
     projects: () => [def],
     project: (id: string) => (id === def.id ? def : undefined),
     floor: () => undefined,
@@ -219,4 +221,53 @@ test('kanban.pr.fix: review comments and CI logs are data; only OWNER, MEMBER an
   assert.match(text, /gh pr view <url> --json reviews,comments/);
   assert.match(text, /secrets or credentials, or for changes to CI, workflows or credentials/);
   assert.ok(text.includes('pull/3') && !text.includes('pull/4'), 'the listed PRs are the run\'s');
+});
+
+test('languages: both rules go on the plan and the handoff, the project’s public language over the office’s, and unset keeps kanban.language', (t) => {
+  const langs: LanguageSettings = {};
+  const { def, dir, repo, settings, compose } = setup(t, {}, langs);
+  const task = repo.createTask({ project: 'proj', title: 'X', tool: 'claude', usePlan: true, planApproval: 'auto', useReview: true, createdBy: 'Ada' });
+  const plan = () => compose.build('plan', def, task, 'claude', dir, { phase: 'plan' });
+  const handoff = () => compose.handoff(def, task, dir, 'Next.');
+  const fallback = PROMPTS['kanban.language'].text;
+
+  // Nothing set: the task-language prompt, as before.
+  assert.ok(plan().includes(fallback) && handoff().includes(fallback));
+  assert.equal(compose.language('proj'), fallback);
+
+  // Talk Finnish, the project writes English: both rules, and the old one gone.
+  langs.talk = 'Finnish';
+  settings.setProject('proj', { publicLanguage: 'English' });
+  for (const text of [plan(), handoff(), compose.language('proj')]) {
+    assert.match(text, /Talk to the user in Finnish:/);
+    assert.match(text, /Write everything that leaves the office in English:/);
+    assert.ok(!text.includes(fallback));
+  }
+
+  // The office's public language is the default; the project's own wins.
+  settings.setProject('proj', { publicLanguage: null } as never);
+  langs.public = 'Swedish';
+  assert.match(plan(), /leaves the office in Swedish:/);
+  settings.setProject('proj', { publicLanguage: 'English' });
+  assert.match(plan(), /leaves the office in English:/);
+
+  // @project: the project's own instructions, whatever the office says.
+  settings.setProject('proj', { publicLanguage: '@project' });
+  const own = compose.language('proj');
+  assert.match(own, /Talk to the user in Finnish:/);
+  assert.ok(own.includes("leaves the office in the language the project's instructions ask for"));
+  assert.doesNotMatch(own, /Swedish|English/);
+});
+
+test('languages: an office rewrite of a language prompt is what is sent, and a blanked one drops its line', (t) => {
+  const { compose } = setup(t, { 'language.talk': { text: 'Puhu {{language}}.' }, 'language.public': { text: '' } }, { talk: 'suomea', public: 'English' });
+  assert.equal(compose.language('proj'), 'Puhu suomea.');
+});
+
+test('pr.create takes the language rule and no longer hard-codes the task’s language (the review panel gets it at the hire)', (t) => {
+  assert.ok(!placeholders(PROMPTS['kanban.pr.panel'].text).includes('language'));
+  assert.ok(placeholders(PROMPTS['kanban.pr.create'].text).includes('language'));
+  assert.ok(!/same language as the task/.test(PROMPTS['kanban.pr.create'].text));
+  const { compose } = setup(t, {}, { public: 'English' });
+  assert.match(compose.language('proj'), /leaves the office in English/);
 });

@@ -15,6 +15,9 @@ import { openPrs } from '../../../shared/kanban/prs.js';
 import type { KanbanPrLink, KanbanTask, KanbanTool, ProjectRepo, RunPhase, SkillPhase, TaskWorkspace } from '../../../shared/kanban/types.js';
 import type { WorkerInfo } from '../../../shared/protocol.js';
 import type { PromptKind } from './machine.js';
+import { resolveLanguages } from '../../../shared/language.js';
+import { promptText, type PromptId } from '../../../shared/prompts.js';
+import { languageRule } from '../../language.js';
 import { skillHint } from '../integrations/skills/index.js';
 
 type Vars = Record<string, string | number>;
@@ -135,6 +138,16 @@ export class Composer {
     return { office: this.ctx.officePrompts(), project: this.ctx.settings.project(project).prompts };
   }
 
+  /**
+   * The language rule of a project's prompts: the office's talk language and the project's (else the office's)
+   * public one, as two rules; when no language is set anywhere, the kanban.language prompt as before.
+   */
+  language(project: string): string {
+    const custom = this.ctx.officePrompts() as Partial<Record<PromptId, { text: string }>>;
+    const langs = resolveLanguages(this.ctx.languages(), this.ctx.settings.project(project).publicLanguage);
+    return languageRule({ text: (id) => promptText(custom, id) }, langs) || this.text('kanban.language', project);
+  }
+
   /** One kanban prompt, layered and filled in. */
   text(id: KanbanPromptId, project: string, vars: Vars = {}): string {
     return resolveKanbanPrompt(id, this.layers(project), vars);
@@ -191,7 +204,7 @@ export class Composer {
         refsFile: x.refsFile ? this.text('kanban.refsFile', task.project, { file: x.refsFile }) : '',
       }),
       skills: this.skillsLine(task, tool, x.phase),
-      language: this.text('kanban.language', task.project),
+      language: this.language(task.project),
       plan: accepted ? this.text('kanban.acceptedPlan', task.project, { plan: accepted.text.trim() }) : '',
       branchInstructions: x.checkout
         ? this.checkout(task, x.checkout)
@@ -300,7 +313,7 @@ export class Composer {
       summary: task.summary?.trim() ? this.text('kanban.handoff.summary', task.project, { summary: task.summary.trim() }) : '',
       recent: recent.length ? this.text('kanban.handoff.comments', task.project, { comments: recent.join('\n') }) : '',
       repos: reposText(def, task, floorDir),
-      language: this.text('kanban.language', task.project),
+      language: this.language(task.project),
     });
     return `${intro}\n\n${next}`.trim();
   }
