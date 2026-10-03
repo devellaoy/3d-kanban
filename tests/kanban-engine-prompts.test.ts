@@ -259,6 +259,19 @@ test('languages: both rules go on the plan and the handoff, the project’s publ
   assert.doesNotMatch(own, /Swedish|English/);
 });
 
+test('branch name: with a public language the agent writes the slug in it; unset or @project keeps the title’s slug', (t) => {
+  const { def, dir, repo, settings, compose } = setup(t, {}, { talk: 'Finnish', public: 'English' });
+  const task = repo.createTask({ project: 'proj', title: 'Korjaa kirjautuminen', tool: 'claude', usePlan: false, planApproval: 'auto', useReview: false, createdBy: 'Ada' });
+  const impl = () => compose.build('implement', def, task, 'claude', dir, { phase: 'implement' });
+  assert.ok(!impl().includes('korjaa-kirjautuminen'));
+  assert.match(impl(), /in English/);
+  settings.setProject('proj', { publicLanguage: '@project' });
+  assert.ok(impl().includes(`kanban/${task.id}-korjaa-kirjautuminen`));
+  const none = setup(t, {}, {});
+  const t2 = none.repo.createTask({ project: 'proj', title: 'Korjaa kirjautuminen', tool: 'claude', usePlan: false, planApproval: 'auto', useReview: false, createdBy: 'Ada' });
+  assert.ok(none.compose.build('implement', none.def, t2, 'claude', none.dir, { phase: 'implement' }).includes(`kanban/${t2.id}-korjaa-kirjautuminen`));
+});
+
 test('languages: an office rewrite of a language prompt is what is sent, and a blanked one drops its line', (t) => {
   const { compose } = setup(t, { 'language.talk': { text: 'Puhu {{language}}.' }, 'language.public': { text: '' } }, { talk: 'suomea', public: 'English' });
   assert.equal(compose.language('proj'), 'Puhu suomea.');

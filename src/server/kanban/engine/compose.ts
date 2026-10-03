@@ -138,13 +138,23 @@ export class Composer {
     return { office: this.ctx.officePrompts(), project: this.ctx.settings.project(project).prompts };
   }
 
+  /** The languages a project's agents go by (the project's public language over the office's). */
+  languages(project: string) {
+    return resolveLanguages(this.ctx.languages(), this.ctx.settings.project(project).publicLanguage);
+  }
+
+  /** The public language a project writes in, if one is set. */
+  publicLanguage(project: string): string | undefined {
+    return this.languages(project).public;
+  }
+
   /**
    * The language rule of a project's prompts: the office's talk language and the project's (else the office's)
    * public one, as two rules; when no language is set anywhere, the kanban.language prompt as before.
    */
   language(project: string): string {
     const custom = this.ctx.officePrompts() as Partial<Record<PromptId, { text: string }>>;
-    const langs = resolveLanguages(this.ctx.languages(), this.ctx.settings.project(project).publicLanguage);
+    const langs = this.languages(project);
     return languageRule({ text: (id) => promptText(custom, id) }, langs) || this.text('kanban.language', project);
   }
 
@@ -185,6 +195,12 @@ export class Composer {
     return lines.length ? this.text('kanban.attachments', project, { files: lines.join('\n') }) : '';
   }
 
+  /** The branch name's slug: of the title, or with a public language set an instruction to write one in it. */
+  private slug(task: KanbanTask): string {
+    const pub = this.publicLanguage(task.project);
+    return pub ? `<a short slug of the task's title in ${pub}, like fix-login-redirect>` : slugify(task.title);
+  }
+
   /** Every placeholder the task prompts share. */
   taskVars(def: FloorDef, task: KanbanTask, tool: KanbanTool, floorDir: string, x: ComposeExtra): Vars {
     const accepted = this.ctx.repo.acceptedPlan(task.id);
@@ -208,7 +224,7 @@ export class Composer {
       plan: accepted ? this.text('kanban.acceptedPlan', task.project, { plan: accepted.text.trim() }) : '',
       branchInstructions: x.checkout
         ? this.checkout(task, x.checkout)
-        : this.ctx.settings.project(task.project).branchInstructions.trim() || this.text('kanban.branch', task.project, { taskId: task.id, slug: slugify(task.title), ticketId: task.ticket ? slugify(task.ticket.replace(/^ghp?:/, ''), 30) : String(task.id) }),
+        : this.ctx.settings.project(task.project).branchInstructions.trim() || this.text('kanban.branch', task.project, { taskId: task.id, slug: this.slug(task), ticketId: task.ticket ? slugify(task.ticket.replace(/^ghp?:/, ''), 30) : String(task.id) }),
       ticketId,
       reportDir: task.type === 'investigate' ? reportDir(this.ctx, task.id) : '',
       round: x.round ?? '',

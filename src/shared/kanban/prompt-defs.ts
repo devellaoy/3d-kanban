@@ -76,7 +76,7 @@ Take this into account and write the whole plan again, complete, so it can be re
     group: 'kanban',
     label: 'Branch naming (default)',
     used: "How the working branch is named when the project's settings give no branch instructions. Goes into the implement prompt's branch step.",
-    vars: { taskId: TASK_VARS.taskId, slug: 'A short slug of the title (fix-login-redirect)', ticketId: "The ticket id (UYT-1415), or the task number when there's no ticket" },
+    vars: { taskId: TASK_VARS.taskId, slug: 'A short slug of the title (fix-login-redirect); with a public language set, an instruction to write one in that language', ticketId: "The ticket id (UYT-1415), or the task number when there's no ticket" },
     text: 'Name it kanban/{{ticketId}}-{{slug}}, the same name in every repository.',
   },
   'kanban.checkout': {
