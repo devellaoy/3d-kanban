@@ -5,10 +5,11 @@
 // in <home>/.office-user-skills-tmp, and swapped in whole; the target's own node_modules survives, files
 // removed from the source disappear.
 
-import { cpSync, existsSync, lstatSync, mkdirSync, readFileSync, readdirSync, renameSync, rmSync, rmdirSync, writeFileSync } from 'node:fs';
+import { existsSync, lstatSync, mkdirSync, readFileSync, readdirSync, renameSync, rmSync, rmdirSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { KanbanTool } from '../../../../shared/kanban/types.js';
+import { copyTree } from '../../copytree.js';
 import type { SyncResult } from '../skills/delivery.js';
 import { AIKANBAN_MARKER, USER_MARKER, USER_SKILL_EXCLUDES, skillHash, skillsIn } from '../skills/registry.js';
 
@@ -148,8 +149,8 @@ function install(src: string, dest: string, tmpRoot: string, hash: string, repla
 
 function copy(from: string, to: string, hash: string) {
   mkdirSync(to, { recursive: true });
-  // Filtered by basename: cpSync drops a whole subtree when its folder is refused.
-  cpSync(from, to, { recursive: true, force: true, filter: (s) => !USER_SKILL_EXCLUDES.has(path.basename(s)) });
+  // Filtered by basename: copyTree drops a whole subtree when its folder is refused.
+  copyTree(from, to, (s) => !USER_SKILL_EXCLUDES.has(path.basename(s)));
   writeFileSync(path.join(to, USER_MARKER), `${JSON.stringify({ source: '3d-kanban', hash, at: new Date().toISOString() }, null, 2)}\n`);
 }
 
