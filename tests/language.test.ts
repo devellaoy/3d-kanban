@@ -80,6 +80,9 @@ test('the office’s languages are kept, checked and read back, a bad one droppe
   assert.match(book.setLanguage({ public: '12' }, 'Ada') ?? '', /isn't a language name/);
   assert.match(book.setLanguage({ talk: 12, public: 12 } as never, 'Ada') ?? '', /isn't a language name/);
   assert.match(book.setLanguage({ talk: 'x'.repeat(60) }, 'Ada') ?? '', /isn't a language name/);
+  assert.match(book.setLanguage([] as never, 'Ada') ?? '', /isn't a language name/);
+  assert.match(book.setLanguage('Finnish' as never, 'Ada') ?? '', /isn't a language name/);
+  assert.equal(told.length, 1);
   assert.deepEqual(book.languages(), { talk: 'Finnish', public: 'English' });
   // One kept, and empty goes back.
   assert.equal(book.setLanguage({ talk: 'Swedish', public: '' }, 'Ada'), undefined);

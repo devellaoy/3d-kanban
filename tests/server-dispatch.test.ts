@@ -429,6 +429,11 @@ test('settings, accounts, sign-ins and the boards answer as before', async () =>
   await warned("That isn't a language name");
   a.send({ t: 'prompts.language', language: { talk: 'Finnish', public: 'x'.repeat(60) } });
   await warned("That isn't a language name");
+  a.send({ t: 'prompts.language', language: [] } as never);
+  await warned("That isn't a language name");
+  a.send({ t: 'prompts.language', language: 'Finnish' } as never);
+  await warned("That isn't a language name");
+  assert.ok(!a.inbox.some((m) => m.t === 'toast' && m.text.startsWith('🌐')), 'a bad language was announced');
   assert.ok(!a.inbox.some((m) => m.t === 'prompts'), 'a bad language changed the languages');
   a.send({ t: 'prompts.language', language: null });
   assert.equal(await told('🌐'), '🌐 Eve put the office’s languages back to the task’s language');

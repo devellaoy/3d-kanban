@@ -139,9 +139,9 @@ export const settingsHandlers = {
     const who = c.peer.name;
     if (!ctx.meOfClient(c).admin) return ctx.warn(c, 'Only admins can set the office’s languages');
     const l = msg.language;
-    if (l !== null && (!l || typeof l !== 'object')) return;
     const ok = (v: unknown) => v === undefined || typeof v === 'string';
-    if (l && !(ok(l.talk) && ok(l.public))) return ctx.warn(c, "That isn't a language name");
+    // Null or { talk?, public? } of strings; anything else (an array, a number) changes nothing.
+    if (l !== null && (!l || typeof l !== 'object' || Array.isArray(l) || !ok(l.talk) || !ok(l.public))) return ctx.warn(c, "That isn't a language name");
     const err = ctx.prompts.setLanguage(l, who);
     if (err) return ctx.warn(c, err);
     const { talk, public: pub } = ctx.prompts.languages();
