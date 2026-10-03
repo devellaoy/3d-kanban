@@ -47,7 +47,7 @@ export function installPalette(ctx: Ctx, parts: PaletteParts) {
   function nearestFreeDesk(): DeskDef | undefined {
     let best: DeskDef | undefined;
     let bestD = Infinity;
-    for (const d of [...DESKS, ...WING_DESKS]) {
+    for (const d of [...DESKS, ...WING_DESKS].map((s) => store.plan().byId.get(s.id) ?? s)) {
       if (store.workerAtDesk(d.id) || !office.desks.has(d.id) || !seatBuilt(d.id)) continue;
       const dist = Math.hypot(d.x - player.pos.x, d.z - player.pos.z);
       if (dist < bestD) {
@@ -69,7 +69,7 @@ export function installPalette(ctx: Ctx, parts: PaletteParts) {
     const { waiting, actions, meeting, hanging } = parts;
     const out: PaletteEntry[] = [];
     for (const w of store.workers.values()) {
-      const desk = DESK_BY_ID.get(w.deskId);
+      const desk = store.plan().byId.get(w.deskId) ?? DESK_BY_ID.get(w.deskId);
       const spot = desk && deskSpot(desk);
       const open = () => waiting.openWorkerTerminal(w.id);
       out.push({

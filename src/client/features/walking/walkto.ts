@@ -3,7 +3,8 @@
 // where they are.
 
 import { BALCONY, BALCONY_DOOR, FLOOR, LOFT, STAIRS, WALL_T, inRooms, inWing } from '../../../shared/layout';
-import { route } from '../../../shared/nav';
+import type { Layout } from '../../../shared/arrange';
+import { layoutOf, route } from '../../../shared/nav';
 
 export interface Spot {
   x: number;
@@ -47,7 +48,8 @@ function zoneOf(p: Spot, wing: number, rooms: number): Zone {
  * The corners of a walk from `from` to `to`, `to` included when it's somewhere you can stand, on a
  * floor built out `wing` rows into the back office.
  */
-export function wayTo(from: Spot, to: Spot, wing = 0, rooms = 0): { x: number; z: number }[] {
+export function wayTo(from: Spot, to: Spot, layout: number | Layout = 0, roomsBuilt = 0): { x: number; z: number }[] {
+  const { wing, rooms } = layoutOf(layout, roomsBuilt);
   const a = zoneOf(from, wing, rooms);
   const b = zoneOf(to, wing, rooms);
   // Across the same room upstairs or on the balcony, or somewhere the office has no map of: straight there.
@@ -59,7 +61,7 @@ export function wayTo(from: Spot, to: Spot, wing = 0, rooms = 0): { x: number; z
   const start = out[out.length - 1] ?? from;
   const end = into[0] ?? to;
   // Across the office floor; route stops at the nearest place to stand if they're in a chair or on the couch.
-  const across = route([start.x, start.z], [end.x, end.z], wing, rooms)
+  const across = route([start.x, start.z], [end.x, end.z], layoutOf(layout, roomsBuilt))
     .slice(1)
     .map(([x, z]) => ({ x, z }));
   return [...out, ...across, ...into.slice(1), ...(b === 'floor' ? [] : [{ x: to.x, z: to.z }])];

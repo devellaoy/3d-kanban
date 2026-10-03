@@ -76,6 +76,8 @@ Units are meters. The hall runs from `x = -width/2` (west) to `width/2` (east) a
 
 ### When a map breaks
 
+The office's loose furniture (desks, bean bags, the couch, poufs and the whiteboard, which build mode moves per floor) belongs to the office map only: on the castle or a map of your own the seats are the map's own and the furniture messages are refused (see [Code layout](code-layout.md#loose-furniture)).
+
 A map that won't load (bad JSON, something outside the hall, too few seats, a prop reaching over the walls…) is listed in Settings in red, with the reason, and can't be picked. If it's the one the building is on, the building goes back to the office, for everyone, with a note saying why, and comes back to your map by itself once the file loads again. The folder is read again when someone opens Settings or joins. To put the building back to the office by hand, pick 🏢 Office in Settings, or delete `.agent-office/map.json`.
 
 ### What a map has

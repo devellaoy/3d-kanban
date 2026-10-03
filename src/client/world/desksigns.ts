@@ -16,11 +16,12 @@ export const SIGN = { width: 1.9, height: 0.62, depth: 0.04, y: 3.35, cords: 1.3
 
 const PX = 1024;
 
-/** Each desk's partner, back to back with it across the pair. */
-const PARTNER = new Map<string, string>();
-for (const d of [...DESKS, ...WING_DESKS]) {
-  const p = [...DESKS, ...WING_DESKS].find((e) => e !== d && Math.abs(e.x - d.x) < 0.01 && Math.abs(Math.abs(e.z - d.z) - DESK_SIZE.depth) < 0.01 && Math.abs(Math.cos(e.rotY) + Math.cos(d.rotY)) < 0.01);
-  if (p) PARTNER.set(d.id, p.id);
+/** The desks a sign can hang over. */
+const SIGNED = [...DESKS, ...WING_DESKS];
+
+/** Each desk's partner as `desks` have them (the floor's own arrangement, see shared/arrange.ts): back to back with it across the pair. */
+function partnerOf(d: DeskDef, desks: ReadonlyMap<string, DeskDef>): DeskDef | undefined {
+  return SIGNED.map((e) => desks.get(e.id)!).find((e) => e !== d && e.rotY !== undefined && Math.abs(e.x - d.x) < 0.01 && Math.abs(Math.abs(e.z - d.z) - DESK_SIZE.depth) < 0.01 && Math.abs(Math.cos(e.rotY) + Math.cos(d.rotY)) < 0.01 && Math.abs(Math.sin(e.rotY) + Math.sin(d.rotY)) < 0.01);
 }
 const FONT = (size: number) => `800 ${size}px Nunito, ui-rounded, system-ui, sans-serif`;
 
@@ -83,8 +84,8 @@ interface Hung {
 
 export interface DeskSigns {
   group: THREE.Group;
-  /** Hangs a sign for each of `labels`, over the desks `built` says are there (the back office's may not be yet). */
-  set(labels: Record<string, DeskLabel>, built: (desk: DeskDef) => boolean): void;
+  /** Hangs a sign for each of `labels`, over the desks `built` says are there (the back office's may not be yet, a removed one isn't), where `desks` (by id) have them. */
+  set(labels: Record<string, DeskLabel>, built: (desk: DeskDef) => boolean, desks?: ReadonlyMap<string, DeskDef>): void;
   /** The sign over a desk, if it has one. */
   get(deskId: string): THREE.Object3D | undefined;
 }
@@ -127,10 +128,10 @@ export function buildDeskSigns(): DeskSigns {
       root.add(rear);
     }
     group.add(root);
-    return { root, key: keyOf(label, back), canvas, tex, label };
+    return { root, key: keyOf(label, back, desk), canvas, tex, label };
   };
 
-  const keyOf = (label: DeskLabel, back: boolean) => `${label.text}|${label.color}|${back}`;
+  const keyOf = (label: DeskLabel, back: boolean, d: DeskDef) => `${label.text}|${label.color}|${back}|${d.x},${d.z},${d.rotY}`;
   const drop = (h: Hung) => {
     h.root.removeFromParent();
     h.root.traverse((o) => {
@@ -142,9 +143,9 @@ export function buildDeskSigns(): DeskSigns {
     h.tex.dispose();
   };
   /** Whether the sign over `id` says it on its back too: its partner across the pair has no sign of its own there. */
-  const twoSided = (id: string, labels: Record<string, DeskLabel>, built: (desk: DeskDef) => boolean) => {
-    const other = PARTNER.get(id);
-    const desk = other ? DESK_BY_ID.get(other) : undefined;
+  const twoSided = (id: string, labels: Record<string, DeskLabel>, built: (desk: DeskDef) => boolean, desks: ReadonlyMap<string, DeskDef>) => {
+    const me = desks.get(id);
+    const desk = me && partnerOf(me, desks);
     return !!desk && built(desk) && !labels[desk.id];
   };
 
@@ -159,18 +160,18 @@ export function buildDeskSigns(): DeskSigns {
   return {
     group,
     get: (deskId) => hung.get(deskId)?.root,
-    set(labels, built) {
+    set(labels, built, desks = DESK_BY_ID) {
       for (const [id, h] of hung) {
         const l = labels[id];
-        if (l && keyOf(l, twoSided(id, labels, built)) === h.key) continue;
+        if (l && desks.get(id) && keyOf(l, twoSided(id, labels, built, desks), desks.get(id)!) === h.key) continue;
         drop(h);
         hung.delete(id);
       }
       for (const [id, label] of Object.entries(labels)) {
-        const desk = DESK_BY_ID.get(id);
+        const desk = desks.get(id);
         if (!desk) continue;
         let h = hung.get(id);
-        if (!h) hung.set(id, (h = make(desk, label, twoSided(id, labels, built))));
+        if (!h) hung.set(id, (h = make(desk, label, twoSided(id, labels, built, desks))));
         h.root.visible = built(desk);
       }
     },

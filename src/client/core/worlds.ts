@@ -9,6 +9,7 @@ import { groundAt } from '../player';
 import { store } from '../state';
 import { Court } from '../world/court';
 import { BUILDERS } from '../world/styles';
+import type { Layout } from '../../shared/arrange';
 import { officeWorld, type World } from '../world/world';
 import type { Ctx } from './context';
 import { noOutline } from './outline';
@@ -27,7 +28,7 @@ export const streetOf = (w: World) => w.dungeon?.plan.floor ?? 0;
 /** The office's own map and the maps of their own, and which one the building's on. Needs ctx.office (and ctx.scene) made. */
 export function createWorlds(ctx: Ctx) {
   const { office, scene } = ctx;
-  const theOffice = officeWorld(office, () => office.stack.state.index > 0, () => officeWing(), () => officeRooms());
+  const theOffice = officeWorld(office, () => office.stack.state.index > 0, () => officeLayout());
   let world: World = theOffice;
   /** Whether the building's on the office's own map, with everything that has (the elevator, the balcony, the lounge…). */
   const inOffice = () => world === theOffice;
@@ -79,6 +80,11 @@ export function createWorlds(ctx: Ctx) {
     return inOffice() && store.floor !== ROOF ? store.floorPlan.rooms : 0;
   }
 
+  /** The office floor as you're on it: its back office, its meeting rooms and where its loose furniture stands (see shared/arrange.ts). */
+  function officeLayout(): Layout {
+    return { wing: officeWing(), rooms: officeRooms(), furniture: inOffice() && store.floor !== ROOF ? store.floorPlan.furniture : undefined };
+  }
+
   /** The top of whatever's underfoot at (x, z) for feet at `y`, in the world you're in: its floor, a step, the street. */
   const groundHere = (x: number, z: number, y: number) => Math.max(groundAt(world.colliders, x, z, y), ctx.player.street);
 
@@ -92,6 +98,7 @@ export function createWorlds(ctx: Ctx) {
     plan,
     officeWing,
     officeRooms,
+    officeLayout,
     groundHere,
     worldFor,
     /** The building's on `next`'s map now (see applyMap in core/maps.ts, which takes the old one down). */

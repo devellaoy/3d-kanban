@@ -23,7 +23,7 @@ export function whereabouts(p: PeerInfo, car?: { car: number; seat: CarSeat }, p
   if (p.throwing) return p.throwing === 'darts' ? '🎯 playing darts' : '🪓 throwing axes';
   const office = plan.style === 'office' || p.floor === ROOF;
   const place = p.seat ? (office ? seatAt(p.seat) : seatOn(plan, p.seat)) : undefined;
-  const seat = place && (office ? SEATING_BY_ID : plan.seatingById).get(place.seatId);
+  const seat = place && (plan.seatingById.get(place.seatId) ?? (office ? SEATING_BY_ID.get(place.seatId) : undefined));
   if (seat) {
     // "🛋️ Couch" -> "🛋️ on the couch".
     const [icon, ...name] = seat.label.split(' ');

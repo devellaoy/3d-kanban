@@ -1,6 +1,8 @@
-// A floor's own layout on top of the office everyone shares: the signs hung over its desks, and how
-// far its back office is built out (see WING in layout.ts). Saved by server/floorplan.ts.
+// A floor's own layout on top of the office everyone shares: the signs hung over its desks, how far
+// its back office is built out (see WING in layout.ts), and where its loose furniture stands (see
+// arrange.ts). Saved by server/floorplan.ts.
 
+import { cleanFurniture, type Furniture } from './arrange.js';
 import { DESKS, ROOMS_WING, WING, WING_DESKS, roomsLevel, wingLevel } from './layout.js';
 
 /** A sign hanging from the ceiling over a desk, naming what it's for ("Operations", "Code cleanup"). */
@@ -19,9 +21,11 @@ export interface FloorPlan {
   rooms: number;
   /** Signs by desk id. */
   labels: Record<string, DeskLabel>;
+  /** The desks, bean bags, couch, poufs and whiteboard the floor has moved, turned or taken out (see shared/arrange.ts). Not listed: where it comes. */
+  furniture: Furniture;
 }
 
-export const EMPTY_PLAN: FloorPlan = { wing: 0, rooms: 0, labels: {} };
+export const EMPTY_PLAN: FloorPlan = { wing: 0, rooms: 0, labels: {}, furniture: {} };
 
 /** The longest a sign's text may be, in characters. */
 export const MAX_LABEL = 32;
@@ -77,7 +81,7 @@ export function cleanPlan(raw: unknown): FloorPlan {
       labels[id] = { text, color: signColor(s.color), by: typeof s.by === 'string' ? s.by : '?', at: typeof s.at === 'number' ? s.at : 0 };
     }
   }
-  return { wing: wingLevel(r.wing), rooms: roomsLevel(r.rooms), labels };
+  return { wing: wingLevel(r.wing), rooms: roomsLevel(r.rooms), labels, furniture: cleanFurniture(r.furniture) };
 }
 
 /** The desks a row of the back office brings: `row` from 1. */

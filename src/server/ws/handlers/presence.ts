@@ -1,6 +1,7 @@
 // People in the office: walking about, reaching for things, sitting, carrying issue cards, emotes,
 // their name and look, what they have open, voice and screen sharing, and chat.
 import type { ChatLine, PresenceClientMsg } from '../../../shared/protocol.js';
+import { removedPlaces } from '../../../shared/arrange.js';
 import { seatHereOn } from '../../../shared/maps/index.js';
 import { sanitizeLook } from '../../../shared/avatar.js';
 import { isEmote } from '../../../shared/emotes.js';
@@ -65,7 +66,7 @@ export const presenceHandlers = {
     // Everyone sees them sit down (or get up), and anyone who comes in later finds them sitting.
     // Only on a seat where they are: the roof's up on the roof, the office's on a floor.
     const key = str(msg.seat, 40);
-    const seat = seatHereOn(ctx.maps.plan(), key, c.peer.floor === ROOF) ? key : undefined;
+    const seat = seatHereOn(ctx.maps.plan(), key, c.peer.floor === ROOF) && !removedPlaces(ctx.floorOf(c)?.plan.furniture).includes(key) ? key : undefined; // not on a couch the floor has taken out
     if (seat === c.peer.seat) return;
     // Somebody on the floor got there first (two people arriving at an empty throne at once).
     // (Not yourself, on a connection that hasn't timed out yet after a reconnect.)
@@ -79,6 +80,7 @@ export const presenceHandlers = {
     // everyone else's seats, as every browser on the floor places it. Only the lounge's few seats are ever a figure's.
     if (seat && isLoungeSeat(seat) && c.peer.floor && c.peer.floor !== ROOF && ctx.maps.plan().style === 'office') {
       const others = new Set([...ctx.clients.values()].flatMap((o) => (o !== c && o.peer.floor === c.peer.floor && o.peer.seat ? [o.peer.seat] : [])));
+      for (const k of removedPlaces(ctx.floorOf(c)?.plan.furniture)) others.add(k); // what the floor has taken out has no places
       const figure = ctx.kanban?.loungeSeat(c.peer.floor, seat, others);
       if (figure) {
         ctx.sendTo(c, { t: 'sit.refused', seat: key, by: `${figure.name} (task #${figure.taskId}, on hold)` });

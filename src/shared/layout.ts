@@ -209,20 +209,22 @@ export const DESK_BY_ID = new Map([...SEATS, ...STATIONS, ...MEETING_ROOMS.flatM
 
 /**
  * The seat a new worker takes when nobody picks one: the first free desk (in the back office too, as
- * far as the floor is built out: `wing` rows), else the first free bean bag.
+ * far as the floor is built out: `wing` rows), else the first free bean bag. Not one the floor has
+ * taken out (`removed`, see shared/arrange.ts).
  */
-export function nextFreeSeat(taken: (id: string) => boolean, wing = 0): DeskDef | undefined {
-  return SEATS.find((d) => !taken(d.id) && deskBuilt(d, wing));
+export function nextFreeSeat(taken: (id: string) => boolean, wing = 0, removed?: ReadonlySet<string>): DeskDef | undefined {
+  return SEATS.find((d) => !taken(d.id) && deskBuilt(d, wing) && !removed?.has(d.id));
 }
 
 /**
  * The bean bags that are out: every one in use, and while every desk is taken (the back office's
  * too, built out `wing` rows), the next free one too, so there's always somewhere to hire the next worker.
+ * (The desks and bean bags the floor has taken out, `removed`, aren't there to take.)
  */
-export function beanbagsOut(taken: (id: string) => boolean, wing = 0): Set<string> {
+export function beanbagsOut(taken: (id: string) => boolean, wing = 0, removed?: ReadonlySet<string>): Set<string> {
   const out = new Set(BEANBAGS.filter((b) => taken(b.id)).map((b) => b.id));
-  if (builtDesks(wing).every((d) => taken(d.id))) {
-    const spare = BEANBAGS.find((b) => !taken(b.id));
+  if (builtDesks(wing).every((d) => removed?.has(d.id) || taken(d.id))) {
+    const spare = BEANBAGS.find((b) => !taken(b.id) && !removed?.has(b.id));
     if (spare) out.add(spare.id);
   }
   return out;
@@ -235,10 +237,10 @@ export function beanbagsOut(taken: (id: string) => boolean, wing = 0): Set<strin
  * workers come and go, so swapping one floor's workers for another's never leaves a place showing
  * free under someone (two floors can each have a Queue agent at the same kiosk).
  */
-export function vacantSeats(workers: Iterable<{ deskId: string }>, packing: (id: string) => boolean = () => false): Set<string> {
+export function vacantSeats(workers: Iterable<{ deskId: string }>, packing: (id: string) => boolean = () => false, removed?: ReadonlySet<string>): Set<string> {
   const taken = new Set<string>();
   for (const w of workers) taken.add(w.deskId);
-  return new Set([...DESK_BY_ID.keys()].filter((id) => !taken.has(id) && !packing(id)));
+  return new Set([...DESK_BY_ID.keys()].filter((id) => !taken.has(id) && !packing(id) && !removed?.has(id) && !removed?.has(DESK_BY_ID.get(id)?.watch ?? '')));
 }
 
 /** Where the worker (and the interacting player) stands relative to the desk. */

@@ -491,6 +491,39 @@ test('settings, accounts, sign-ins and the boards answer as before', async () =>
   await a.close();
 });
 
+test('the floor\'s furniture is moved, taken out, put back and reset for everyone on it, on the office\'s map only', async () => {
+  const a = await Browser.open('?name=Gus');
+  await a.take('welcome');
+  const warned = async (re: RegExp) => assert.match((await a.take('toast', (m) => m.level === 'warn')).text, re);
+  const told = async (start: string) => (await a.take('toast', (m) => m.level === 'info' && m.text.startsWith(start))).text;
+  a.send({ t: 'furniture.move', id: 'desk-1', x: -11.6, z: 0.5, r: 0 });
+  const moved = await a.take('plan', (m) => !!m.plan.furniture['desk-1']);
+  assert.deepEqual(moved.plan.furniture['desk-1'], { x: -11.6, z: 0.5, r: 0 });
+  assert.match(await told('🪑'), /^🪑 Gus moved Desk 1$/);
+  // Refused: onto another desk, and something that isn't furniture.
+  a.send({ t: 'furniture.move', id: 'desk-2', x: -11.6, z: 0.5, r: 0 });
+  await warned(/^Desk 1 is already there$/);
+  a.send({ t: 'furniture.move', id: 'elevator', x: 0, z: 0, r: 0 });
+  await warned(/nothing like that/);
+  a.send({ t: 'furniture.remove', id: 'couch' });
+  assert.deepEqual((await a.take('plan', (m) => 'removed' in (m.plan.furniture.couch ?? {}))).plan.furniture.couch, { removed: true });
+  assert.match(await told('🗑️'), /took the couch out/);
+  a.send({ t: 'furniture.reset', id: 'desk-1' });
+  assert.equal((await a.take('plan', (m) => !m.plan.furniture['desk-1'])).plan.furniture['desk-1'], undefined);
+  a.send({ t: 'furniture.reset' });
+  assert.deepEqual((await a.take('plan', (m) => !Object.keys(m.plan.furniture).length)).plan.furniture, {});
+  a.send({ t: 'furniture.reset' });
+  await warned(/where it comes already/);
+  // The castle has none of it.
+  a.send({ t: 'map.set', map: 'castle' });
+  await a.take('map', (m) => m.state.pick === 'castle');
+  a.send({ t: 'furniture.move', id: 'desk-1', x: -11.6, z: 0.5, r: 0 });
+  await warned(/only be moved in the office/);
+  a.send({ t: 'map.set', map: 'office' });
+  await a.take('map', (m) => m.state.pick === 'office');
+  await a.close();
+});
+
 test('changing the building\'s map sends each floor its meeting rooms again', async () => {
   const a = await Browser.open('?name=Fay');
   await a.take('welcome');

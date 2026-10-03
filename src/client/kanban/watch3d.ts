@@ -45,6 +45,8 @@ function watchView(seat: DeskView, def: DeskView['def']): DeskView {
   group.position.copy(seat.group.position);
   group.quaternion.copy(seat.group.quaternion);
   group.scale.copy(seat.group.scale);
+  // It goes where the seat is when the floor moves it (see Office.update).
+  group.userData.follows = seat.group;
   (seat.group.parent ?? seat.group).add(group);
   const chair = seat.seatAnchor.position;
   const x = chair.x + SIDE;

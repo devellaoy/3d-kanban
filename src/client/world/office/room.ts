@@ -1,9 +1,11 @@
 import * as THREE from 'three';
+import { worldRect } from '../../../shared/arrange';
 import { BOARDS, LOFT, MACHINE_MONITOR, SEATING_BY_ID, STAIRS, STREET_Y, TV, WALL_HEIGHT } from '../../../shared/layout';
 import { wallFacing } from '../../../shared/decor';
 import type { NightParts } from '../outside';
 import { mesh, roundedBox, textPlane, toon, toonUnique } from '../toon';
 import type { Collider, Interactable } from '../types';
+import { fitTo, standIn } from './arrange';
 import type { Fixture } from './fixture';
 import { PALETTE } from './materials';
 import { coffeeTable, loungeCouch, pendant, pendantLight, pouf, wallBoard } from './props';
@@ -133,8 +135,24 @@ export const lounge: Fixture = (site) => {
   couch.rotation.y = Math.PI / 2;
   site.group.add(couch);
   // Its top on the seat cushions, so someone standing on the couch stands on them.
-  site.colliders.push({ minX: 10, maxX: 11, minZ: -2.2, maxZ: 2.2, top: 0.47 });
-  seatable(couch, 'couch', 2.6, site.interactables);
+  const couchBox: Collider = { minX: 10, maxX: 11, minZ: -2.2, maxZ: 2.2, top: 0.47 };
+  site.colliders.push(couchBox);
+  const couchIt = seatable(couch, 'couch', 2.6, site.interactables);
+  // Build mode moves it, turns it, and takes it out (see shared/arrange.ts).
+  site.movables.set('couch', {
+    group: couch,
+    colliders: [couchBox],
+    place(pose, held = false) {
+      couch.visible = !!pose;
+      couchIt.off = !pose || held;
+      standIn(site.colliders, [couchBox], !!pose && !held);
+      if (!pose) return;
+      couch.position.set(pose.x, 0, pose.z);
+      couch.rotation.y = pose.rotY;
+      [couchIt.x, couchIt.z] = [pose.x, pose.z];
+      fitTo(couchBox, worldRect(pose, [-2.2, 2.2, -0.5, 0.5]));
+    },
+  });
 
   const table = coffeeTable();
   table.position.set(13, 0, 0);
@@ -156,8 +174,23 @@ export const lounge: Fixture = (site) => {
     seat.rotation.y = SEATING_BY_ID.get(id)!.rotY;
     site.group.add(seat);
     // Its top on the pouf's, the button in the middle of it.
-    site.colliders.push({ minX: x - 0.5, maxX: x + 0.5, minZ: z - 0.5, maxZ: z + 0.5, top: 0.42 });
-    seatable(seat, id, 1.4, site.interactables);
+    const box: Collider = { minX: x - 0.5, maxX: x + 0.5, minZ: z - 0.5, maxZ: z + 0.5, top: 0.42 };
+    site.colliders.push(box);
+    const it = seatable(seat, id, 1.4, site.interactables);
+    site.movables.set(id, {
+      group: seat,
+      colliders: [box],
+      place(pose, held = false) {
+        seat.visible = !!pose;
+        it.off = !pose || held;
+        standIn(site.colliders, [box], !!pose && !held);
+        if (!pose) return;
+        seat.position.set(pose.x, 0, pose.z);
+        seat.rotation.y = pose.rotY;
+        [it.x, it.z] = [pose.x, pose.z];
+        fitTo(box, [pose.x - 0.5, pose.x + 0.5, pose.z - 0.5, pose.z + 0.5]);
+      },
+    });
   }
   return {};
 };

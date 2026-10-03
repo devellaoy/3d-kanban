@@ -35,6 +35,11 @@ let open: OpenBoard | null = null;
 /** Redraws the board in the office; it waits while the window is open in front of it. */
 let redrawBoard = () => {};
 
+/** Closes the whiteboard's window, if it's open (the board was taken out of the floor). */
+export function closeWhiteboard() {
+  open?.modal.close();
+}
+
 /** Opens the floor's whiteboard, to draw on with everyone else who has it open. */
 export function openWhiteboard(net: Net) {
   if (open) return;

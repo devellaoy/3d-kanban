@@ -84,6 +84,7 @@ export interface FloorContext {
   locksUp(): boolean;
   /** The building's map's meeting rooms. */
   meetingRooms(): MeetingRoomDef[];
+  officeMap?(): boolean; // whether the building is on the office's own map, the only one with loose furniture (see shared/arrange.ts); unsaid: it is
   /** Whether this floor is the checkout the office was started in. */
   isLocal(id: string): boolean;
 }
@@ -189,7 +190,7 @@ export class Floor {
     this.project = projectInfo(def.dir, def.name, ctx.agentCmd, ctx.agentArgs, this.git);
     this.docs = new Docs(def.dir, this.git);
     // Before the workers and the dog: the back office's desks are only there once it's built.
-    this.plan = new FloorPlanStore(dataDir);
+    this.plan = new FloorPlanStore(dataDir, () => ctx.officeMap?.() !== false);
     this.jail = new Jail(dataDir);
 
     // Before the workers, so it hears about the ones who wake up needing input.
@@ -198,7 +199,7 @@ export class Floor {
       people: () => ctx.peers(this),
       send: (dog) => ctx.emit(this, { t: 'dog', dog }),
       wing: () => this.plan.wing,
-      rooms: () => this.plan.rooms,
+      rooms: () => this.plan.rooms, layout: () => this.plan.layout(),
     });
 
     this.workers = new WorkerManager(
@@ -239,7 +240,7 @@ export class Floor {
       ctx.runAs,
       ctx.dshProfile,
     );
-    this.workers.wing = () => this.plan.wing;
+    this.workers.wing = () => this.plan.wing; this.workers.removed = () => this.plan.seatsOut();
 
     this.github = new GitHub(
       def.dir,

@@ -94,7 +94,7 @@ export type WorkerViewsParts = Pick<Parts, 'stage' | 'worlds' | 'travel' | 'roof
 export function installWorkerViews(ctx: Ctx, core: CoreState, parts: WorkerViewsParts) {
   const { scene, sound, player, camera, office, sky, confetti, hands, me, net } = ctx;
   const { holiday } = parts.stage;
-  const { plan, groundHere, officeWing, officeRooms, inOffice } = parts.worlds;
+  const { plan, groundHere, officeWing, officeRooms, officeLayout, inOffice } = parts.worlds;
 
   const workerViews = new Map<string, WorkerView>();
   /** Workers a `worker.remove` is taking out of the store right now. They walk out of the building; a worker that's gone because you changed floors just vanishes. */
@@ -312,9 +312,9 @@ export function installWorkerViews(ctx: Ctx, core: CoreState, parts: WorkerViews
   function arrangeSeats() {
     const world = ctx.world();
     // Someone sent home still counts until they get up, so a bean bag stays out under them.
-    const free = vacantSeats(store.workers.values(), (id) => departures.seated(id) || sendoffs.seated(id));
+    const free = vacantSeats(store.workers.values(), (id) => departures.seated(id) || sendoffs.seated(id), plan().removed);
     for (const [id, desk] of world.desks) desk.vacancy.visible = free.has(id) && seatBuilt(id);
-    const appeared = world.setBeanbags(beanbagsOut((id) => !free.has(id), store.floorPlan.wing));
+    const appeared = world.setBeanbags(beanbagsOut((id) => !free.has(id), store.floorPlan.wing, plan().removed));
     // One came out right where you're standing (on the office floor, not down in the garage): you end up on top of it.
     const p = player.pos;
     for (const c of appeared) if (p.y > -0.1 && p.y < c.top && p.x > c.minX - 0.3 && p.x < c.maxX + 0.3 && p.z > c.minZ - 0.3 && p.z < c.maxZ + 0.3) p.y = c.top;
@@ -375,7 +375,9 @@ export function installWorkerViews(ctx: Ctx, core: CoreState, parts: WorkerViews
     if (room !== undefined) p.set(FLOOR.minX + 1.4, 0, room);
     office.setWing(level);
     office.setRooms(rooms);
-    office.signs.set(fp.labels, (d) => deskBuilt(d, level));
+    // The furniture where the floor has put it (a desk with a sign over it takes the sign along, one taken out loses it).
+    office.arrange.apply(officeLayout().furniture ?? {});
+    office.signs.set(fp.labels, (d) => deskBuilt(d, level) && !plan().removed?.has(d.id), plan().byId);
     player.wing = sound.wing = level;
     player.rooms = sound.rooms = rooms;
     sky.setWing(level, rooms);

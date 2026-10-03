@@ -9,7 +9,8 @@
 // Nothing is left behind when the list empties, the floor changes or the map does.
 
 import * as THREE from 'three';
-import { SEATING_BY_ID, seatPlace } from '../../shared/layout';
+import { removedPlaces } from '../../shared/arrange';
+import { seatPlace } from '../../shared/layout';
 import { loungeReservedPlaces, type LoungeFigure, type LoungePlace } from '../../shared/kanban/lounge';
 import type { Ctx } from '../core/context';
 import { aside, hintTitle, key, onE } from '../core/hint';
@@ -34,7 +35,7 @@ const HIPS = 0.1;
 /** Standing, as a reviewer stands behind a chair (watch3d.ts). */
 const STANDING_SCALE = 1.1;
 const FEET = -0.07;
-/** Where the overflow sign floats: over the couch. */
+/** Where the overflow sign floats: over the couch (where it stands now: see signAt). */
 const SIGN = new THREE.Vector3(10.5, 2.35, 0);
 
 interface Shown {
@@ -49,7 +50,7 @@ interface Shown {
 /** Where a figure's root goes on the office floor, the way it faces, and how big it is. */
 function spotOf(place: LoungePlace): { x: number; y: number; z: number; rotY: number; scale: number } | null {
   if (place.kind === 'stand') return { x: place.x, y: FEET * STANDING_SCALE, z: place.z, rotY: place.rotY, scale: STANDING_SCALE };
-  const seat = SEATING_BY_ID.get(place.seatId);
+  const seat = store.plan().seatingById.get(place.seatId);
   if (!seat) return null;
   const p = seatPlace(seat, place.place);
   return { x: p.x, y: p.y + p.hips - HIPS, z: p.z, rotY: p.rotY, scale: SEATED_SCALE };
@@ -72,6 +73,8 @@ export function installLounge3d(ctx: Ctx, deps: { openTask(taskId: number): void
   function occupied(): Set<string> {
     const taken = seatsTaken();
     if (sat) taken.add(sat);
+    // A couch or pouf the floor has taken out has no places.
+    for (const k of removedPlaces(store.floorPlan.furniture)) taken.add(k);
     return taken;
   }
 
@@ -125,9 +128,16 @@ export function installLounge3d(ctx: Ctx, deps: { openTask(taskId: number): void
     }
     if (!text) return;
     const sprite = textSprite(text, { bg: '#e9ecef', size: 30 });
-    sprite.position.copy(SIGN);
     group.add(sprite);
     sign = { sprite, text };
+    signAt();
+  }
+
+  /** The sign floats over the couch, wherever the floor has put it. */
+  function signAt() {
+    const couch = store.plan().seatingById.get('couch');
+    if (sign) sign.sprite.position.set(couch?.x ?? SIGN.x, SIGN.y, couch?.z ?? SIGN.z);
+    if (sign) sign.sprite.visible = !!couch;
   }
 
   /** Brings what's shown in line with the store and the seats taken: only what changed is taken away, made or moved. */
@@ -143,10 +153,13 @@ export function installLounge3d(ctx: Ctx, deps: { openTask(taskId: number): void
       if (put(s.anchor, s.it, p.place)) s.spot = p.spot;
     }
     setSign(office ? overflow : 0);
+    signAt();
     if (office && group.parent !== ctx.office.group) ctx.office.group.add(group);
     ctx.hint.invalidate();
   }
   store.on('kanbanLounge', sync);
+  // The couch or a pouf was moved or taken out: the figures go with it.
+  store.on('floorPlan', sync);
   // Someone else sat down or got up (peer.update): the figures go round them.
   store.on('peers', () => {
     if (store.kanbanLounge.length) sync();
@@ -168,7 +181,7 @@ export function installLounge3d(ctx: Ctx, deps: { openTask(taskId: number): void
 
   // The seats the figures sit on aren't free for players: placed around everyone else, as the server
   // places them when it checks a sit (you're getting up from wherever you are).
-  reserveSeatPlaces(() => (ctx.inOffice() ? loungeReservedPlaces(store.kanbanLounge.length, seatsTaken()) : []));
+  reserveSeatPlaces(() => (ctx.inOffice() ? loungeReservedPlaces(store.kanbanLounge.length, new Set([...seatsTaken(), ...removedPlaces(store.floorPlan.furniture)])) : []));
   ctx.usables.add({ usable: () => [...byIt.keys()] });
 
   ctx.interactions.define('hold', {

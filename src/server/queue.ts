@@ -18,6 +18,8 @@ export interface QueueWorkers {
   deskOccupied(deskId: string): boolean;
   /** How many rows the floor's back office is built out, for its desks (see WING). */
   wing?(): number;
+  /** The desks and bean bags the floor has taken out (see shared/arrange.ts). */
+  removed?(): ReadonlySet<string>;
   spawn(deskId: string, by: string, prompt: string, worktree: boolean, kind: 'agent', provider: AgentProvider, model?: string, effort?: AgentEffort, meeting?: undefined, owner?: string): WorkerInfo | string;
   /** Resolves with a line about what became of the worker's worktree. `intent`: why it goes (see WorkerManager.kill). */
   kill(id: string, cleanup?: undefined, landed?: undefined, landedRepos?: undefined, intent?: DepartureIntent): Promise<{ note?: string; error?: string }>;
@@ -286,7 +288,7 @@ export class TaskQueue {
 
   /** A free desk (in the back office too, as far as it's built), else a free bean bag. */
   private freeDesk(): string | undefined {
-    return nextFreeSeat((id) => this.workers.deskOccupied(id), this.workers.wing?.() ?? 0)?.id;
+    return nextFreeSeat((id) => this.workers.deskOccupied(id), this.workers.wing?.() ?? 0, this.workers.removed?.())?.id;
   }
 
   /**
