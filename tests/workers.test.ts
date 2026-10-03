@@ -628,7 +628,7 @@ test('Codex workers preserve native approvals, follow authenticated root hooks, 
   assert.ok(first.args.includes('--no-alt-screen'));
   // The office's MCP server, with the office's variables passed on to it, which Codex doesn't do unasked.
   assert.ok(first.args.some((a) => a.startsWith('mcp_servers.agent-office.args=') && a.includes('office-workers.js')));
-  assert.ok(first.args.includes('mcp_servers.agent-office.env_vars=["AGENT_OFFICE_HOOK_URL","AGENT_OFFICE_WORKER_ID","AGENT_OFFICE_HOOK_TOKEN"]'));
+  assert.ok(first.args.includes('mcp_servers.agent-office.env_vars=["AGENT_OFFICE_HOOK_URL","AGENT_OFFICE_WORKER_ID","AGENT_OFFICE_HOOK_TOKEN","AGENT_OFFICE_TASKS"]'));
   assert.deepEqual(first.args.slice(-2), ['--', '- fix the login']);
   assert.equal(first.args.some(a => /bypass|--yolo|--claude-only|--settings/.test(a)), false);
   assert.equal(first.args.filter(a => a.startsWith('hooks.')).length, 7);
@@ -1068,7 +1068,7 @@ test("every Claude worker gets the office's MCP server, and office-workers on it
   assert.deepEqual(server.args.slice(1), ['mcp']);
   assert.ok(server.args[0].endsWith(path.join('bin', 'office-workers.js')));
   // Looking is allowed without asking; hiring and sending home aren't.
-  assert.deepEqual(JSON.parse(readFileSync(path.join(f.data, 'claude-hooks.json'), 'utf8')).permissions, { allow: ['mcp__agent-office__list_workers'] });
+  assert.deepEqual(JSON.parse(readFileSync(path.join(f.data, 'claude-hooks.json'), 'utf8')).permissions, { allow: ['mcp__agent-office__list_workers', 'mcp__agent-office__get_task', 'mcp__agent-office__search_tasks'] });
 
   const desk = workers.spawn('desk-2', 'Ada', 'Fix login');
   assert.equal(typeof desk, 'object');

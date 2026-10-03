@@ -244,6 +244,6 @@ test("Codex is told to pass the office's variables on to the MCP server", () => 
   assert.deepEqual(args.filter((_, i) => i % 2 === 1), [
     `mcp_servers.agent-office.command=${JSON.stringify(process.execPath)}`,
     'mcp_servers.agent-office.args=["/opt/app/bin/office-workers.js","mcp"]',
-    'mcp_servers.agent-office.env_vars=["AGENT_OFFICE_HOOK_URL","AGENT_OFFICE_WORKER_ID","AGENT_OFFICE_HOOK_TOKEN"]',
+    'mcp_servers.agent-office.env_vars=["AGENT_OFFICE_HOOK_URL","AGENT_OFFICE_WORKER_ID","AGENT_OFFICE_HOOK_TOKEN","AGENT_OFFICE_TASKS"]',
   ]);
 });

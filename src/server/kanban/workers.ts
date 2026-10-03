@@ -219,3 +219,8 @@ export function kanbanExtraArgs(w: Worker, adapter: { id: string }, setup: unkno
   const hook = (setup as { hook?: unknown } | undefined)?.hook;
   return adapter.id === 'codex' && w.info.kanban && typeof hook === 'string' ? [...codexHookTrustArgs(hook), ...(w.extra?.launchArgs ?? [])] : w.extra?.launchArgs;
 }
+
+/** What an agent worker's environment gets from the kanban: AGENT_OFFICE_TASKS shows it the task tools (bin/office-tasks.js, the MCP server), as the kanban is always on here. */
+export function kanbanWorkerEnv(info: Pick<WorkerInfo, 'kind'>): Record<string, string> {
+  return info.kind === 'shell' ? {} : { AGENT_OFFICE_TASKS: '1' };
+}
