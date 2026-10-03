@@ -57,6 +57,8 @@ export interface Rule {
   launchLateMs?: number;
   /** With `background`: 200 ms after the first Stop someone types this into the worker's terminal (a logged prompt, a short reply, a Stop of its own) while the helper still works. */
   typedPrompt?: string;
+  /** With `background`: the helper reports back only once this file exists (instead of after `backgroundMs`), so a test holds it as long as it looks. */
+  releaseFile?: string;
   /**
    * Claude only: spawn a teammate (agent teams) and end the turn on this interim text (Stop), as the
    * lead does when it "waits for the report"; the teammate's own transcript ends mid-tool and its own
@@ -204,7 +206,8 @@ async function turn(prompt, answered) {
         append({ type: 'assistant', message: { id: msgId + '-typed', role: 'assistant', content: [{ type: 'text', text: 'Answered what you typed.' }] } });
         await post('Stop', { last_assistant_message: 'Answered what you typed.' });
       }
-      await new Promise((r) => setTimeout(r, Math.max(0, (rule.backgroundMs ?? 300) - waited)));
+      if (rule.releaseFile) while (!fs.existsSync(rule.releaseFile)) await new Promise((r) => setTimeout(r, 50));
+      else await new Promise((r) => setTimeout(r, Math.max(0, (rule.backgroundMs ?? 300) - waited)));
       append({ type: 'user', origin: { kind: 'task-notification', producer: 'session-task' }, message: { role: 'user', content: '<task-notification>\n<task-id>' + agent + '</task-id>\n<status>completed</status>\n<summary>' + (rule.backgroundCommand ? 'Background command "suite" completed (exit code 0)' : 'Agent "helper" completed') + '</summary>\n</task-notification>' } });
       if (rule.resumeToolMs) {
         append({ type: 'assistant', message: { id: msgId + '-tool', role: 'assistant', content: [{ type: 'tool_use', id: 'bg-2', name: 'Bash', input: { command: 'sleep' } }] } });
