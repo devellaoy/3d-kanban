@@ -140,7 +140,9 @@ export const settingsHandlers = {
     if (!ctx.meOfClient(c).admin) return ctx.warn(c, 'Only admins can set the office’s languages');
     const l = msg.language;
     if (l !== null && (!l || typeof l !== 'object')) return;
-    const err = ctx.prompts.setLanguage(l && { talk: str(l.talk, 41), public: str(l.public, 41) }, who);
+    const ok = (v: unknown) => v === undefined || typeof v === 'string';
+    if (l && !(ok(l.talk) && ok(l.public))) return ctx.warn(c, "That isn't a language name");
+    const err = ctx.prompts.setLanguage(l, who);
     if (err) return ctx.warn(c, err);
     const { talk, public: pub } = ctx.prompts.languages();
     ctx.toastAll(talk || pub ? `🌐 ${who} set the office’s languages${talk ? `: talking in ${talk}` : ''}${pub ? `${talk ? ',' : ':'} writing in ${pub}` : ''}` : `🌐 ${who} put the office’s languages back to the task’s language`);

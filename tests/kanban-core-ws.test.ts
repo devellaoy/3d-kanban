@@ -392,6 +392,14 @@ test('settings, projects, prompts and secrets are for admins; everyone may read 
   okOf(await boss.ask({ t: 'kanban.project.settings.set', project: 'web', settings: { maxConcurrent: 5, planApproval: 'manual' } }));
   assert.equal(kanban.ctx.settings.project('web').maxConcurrent, 5);
   assert.equal(kanban.ctx.settings.planApproval('web'), 'manual');
+  okOf(await boss.ask({ t: 'kanban.project.settings.set', project: 'web', settings: { publicLanguage: 'English' } }));
+  for (const bad of [12, 'not a language!!']) {
+    errorOf(await boss.ask({ t: 'kanban.project.settings.set', project: 'web', settings: { maxConcurrent: 9, publicLanguage: bad } } as never), /isn't a language name/);
+    assert.equal(kanban.ctx.settings.project('web').publicLanguage, 'English');
+    assert.equal(kanban.ctx.settings.project('web').maxConcurrent, 5, 'nothing saved');
+  }
+  okOf(await boss.ask({ t: 'kanban.project.settings.set', project: 'web', settings: { publicLanguage: null } } as never));
+  assert.equal(kanban.ctx.settings.project('web').publicLanguage, undefined);
 
   errorOf(await boss.ask({ t: 'kanban.project.prompt.set', project: 'web', id: 'kanban.nothing', text: 'x' }), /isn't a kanban prompt/);
   okOf(await boss.ask({ t: 'kanban.project.prompt.set', project: 'web', id: 'kanban.plan', text: 'Plan it our way' }));

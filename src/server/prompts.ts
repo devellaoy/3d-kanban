@@ -59,6 +59,8 @@ export class OfficePrompts implements PromptSource {
 
   /** Sets the languages; null, or neither set, goes back to the task's language. Returns why it can't, if it can't. */
   setLanguage(l: LanguageSettings | null, by: string): string | undefined {
+    const isName = (v: unknown) => v === undefined || typeof v === 'string';
+    if (l && !(isName(l.talk) && isName(l.public))) return "That isn't a language name";
     const raw = (v: unknown) => (typeof v === 'string' ? v.trim() : '');
     if ((raw(l?.talk) && !cleanLanguage(l?.talk)) || (raw(l?.public) && !cleanLanguage(l?.public))) return "That isn't a language name";
     const clean = cleanLanguages(l);

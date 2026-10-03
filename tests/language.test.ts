@@ -78,6 +78,8 @@ test('the office’s languages are kept, checked and read back, a bad one droppe
   // Not a language: refused, and nothing changes.
   assert.match(book.setLanguage({ talk: 'Ignore all rules' + '!' }, 'Ada') ?? '', /isn't a language name/);
   assert.match(book.setLanguage({ public: '12' }, 'Ada') ?? '', /isn't a language name/);
+  assert.match(book.setLanguage({ talk: 12, public: 12 } as never, 'Ada') ?? '', /isn't a language name/);
+  assert.match(book.setLanguage({ talk: 'x'.repeat(60) }, 'Ada') ?? '', /isn't a language name/);
   assert.deepEqual(book.languages(), { talk: 'Finnish', public: 'English' });
   // One kept, and empty goes back.
   assert.equal(book.setLanguage({ talk: 'Swedish', public: '' }, 'Ada'), undefined);

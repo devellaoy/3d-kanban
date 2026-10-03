@@ -170,7 +170,8 @@ export function sanitizeProjectSettings(raw: unknown, base: ProjectSettings = de
   if (approval) out.planApproval = approval;
   const permission = 'implementPermission' in r ? optOneOf(r.implementPermission, PERMISSIONS) : base.implementPermission;
   if (permission) out.implementPermission = permission;
-  const lang = 'publicLanguage' in r ? cleanProjectLanguage(r.publicLanguage) : base.publicLanguage;
+  // An invalid value keeps the earlier choice; clearing is setProject's null.
+  const lang = 'publicLanguage' in r ? cleanProjectLanguage(r.publicLanguage) ?? base.publicLanguage : base.publicLanguage;
   if (lang) out.publicLanguage = lang;
   const review = 'review' in r ? sanitizePartialReview(r.review) : base.review;
   if (review) out.review = review;

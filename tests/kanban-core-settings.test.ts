@@ -134,7 +134,9 @@ test('the settings file is saved privately, reloaded, and changed a part at a ti
   assert.equal(store.project('web').publicLanguage, '@project');
   assert.equal(new KanbanSettingsStore(dir).project('web').publicLanguage, '@project', 'survives a reload');
   store.setProject('web', { publicLanguage: 'rm -rf /; Finnish' });
-  assert.equal(store.project('web').publicLanguage, undefined, 'not a language: dropped');
+  assert.equal(store.project('web').publicLanguage, '@project', 'not a language: the earlier choice stays');
+  store.setProject('web', { publicLanguage: 12 } as never);
+  assert.equal(store.project('web').publicLanguage, '@project');
   store.setProject('web', { publicLanguage: 'Swedish' });
   store.setProject('web', { publicLanguage: null } as never);
   assert.equal(store.project('web').publicLanguage, undefined, 'null clears it');
