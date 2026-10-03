@@ -118,3 +118,12 @@ test('a .meeting.json with fields of the wrong type is listed with those fields 
   assert.equal(m.tokens, 7);
   for (const k of ['prompt', 'seats', 'cost', 'commit'] as const) assert.equal(m[k], undefined, k);
 });
+
+test('a linked archive root is not read: the list is empty, files and file are 404', async (t) => {
+  const f = fixture(); t.after(f.close);
+  const linked = path.join(f.tmp, 'linked');
+  symlinkSync(f.root, linked);
+  assert.deepEqual((await listMeetings(linked, [], [])).meetings, []);
+  assert.deepEqual(await listMeetingFiles(linked, 'aaaaaaaa'), { status: 404, error: 'No such meeting' });
+  assert.deepEqual(await readMeetingFile(linked, 'aaaaaaaa', 'plan.md'), { status: 404, error: 'No such meeting' });
+});

@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { MeetingRooms } from '../src/server/meeting-rooms.js';
@@ -603,4 +603,49 @@ test('restoring meetings.json: a full record in past goes into the state slim, a
   const past = again.state().past;
   assert.deepEqual(past.map((r) => r.title), ['Full', 'Odd']);
   for (const r of past) assert.ok(!('prompt' in r) && !('seats' in r));
+});
+
+test('archiving never writes through a link: a .meeting.json link is replaced by a real file, a linked meetings folder is left alone', async (t) => {
+  const f = fixture(); t.after(() => f.close());
+  const outside = path.join(f.dir, 'outside.txt');
+  writeFileSync(outside, 'mine');
+  assert.equal(f.start({ title: 'First' }), undefined);
+  const id = f.cur()!.id;
+  assert.equal(f.room.stop('Ada'), undefined);
+  const folder = path.join(f.dataDir, 'meetings', id);
+  mkdirSync(folder, { recursive: true });
+  rmSync(path.join(folder, '.meeting.json'), { force: true });
+  symlinkSync(outside, path.join(folder, '.meeting.json'));
+  assert.equal(f.room.clear('Ada'), undefined);
+  assert.equal(readFileSync(outside, 'utf8'), 'mine');
+  assert.ok(lstatSync(path.join(folder, '.meeting.json')).isFile());
+  assert.equal(JSON.parse(readFileSync(path.join(folder, '.meeting.json'), 'utf8')).id, id);
+
+  // A meetings folder that is a link to elsewhere is not written through either.
+  const elsewhere = path.join(f.dir, 'elsewhere');
+  mkdirSync(elsewhere);
+  rmSync(path.join(f.dataDir, 'meetings'), { recursive: true, force: true });
+  symlinkSync(elsewhere, path.join(f.dataDir, 'meetings'));
+  assert.equal(f.start({ title: 'Second' }), undefined);
+  const id2 = f.cur()!.id;
+  assert.equal(f.room.stop('Ada'), undefined);
+  assert.equal(f.room.clear('Ada'), undefined);
+  assert.ok(!existsSync(path.join(elsewhere, id2, '.meeting.json')));
+  assert.equal(f.room.state().past[0].id, id2, 'it is still on the earlier ones');
+});
+
+test('a review link that arrives after the room was cleared still reaches the saved record and the earlier-meetings line', async (t) => {
+  const f = fixture(); t.after(() => f.close());
+  assert.equal(f.start({ pattern: 'review', prompt: 'Review it', pr: 42 }), undefined);
+  const id = f.cur()!.id;
+  for (const i of [0, 1, 2]) f.take(i, '- a.ts:1 — something');
+  f.take(0, 'Looks fine. **[Security]** a.ts:1 — something');
+  assert.equal(f.cur()!.status, 'done');
+  assert.equal(f.room.clear('Ada'), undefined); // before the review's post settles
+  const file = path.join(f.dataDir, 'meetings', id, '.meeting.json');
+  assert.equal(JSON.parse(readFileSync(file, 'utf8')).reviewUrl, undefined);
+  await new Promise((r) => setImmediate(r));
+  assert.equal(JSON.parse(readFileSync(file, 'utf8')).reviewUrl, 'https://github.com/o/r/pull/42#pullrequestreview-1');
+  assert.equal(f.room.state().past[0].id, id);
+  assert.equal(f.room.state().past.length, 1);
 });

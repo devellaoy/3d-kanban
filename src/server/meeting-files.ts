@@ -23,6 +23,9 @@ export interface Refusal {
 const NO_FOLDER: Refusal = { status: 404, error: 'No such meeting' };
 const NO_FILE: Refusal = { status: 404, error: 'No such file' };
 
+/** Whether the archive's root is a real folder, not a link to somewhere else. */
+const realRoot = (root: string): Promise<boolean> => lstat(root).then((st) => st.isDirectory() && !st.isSymbolicLink(), () => false);
+
 /** The record a meeting left in its folder, or undefined when there is none or it isn't one (then the others are used). */
 async function folderRecord(root: string, id: string): Promise<MeetingRecord | undefined> {
   try {
@@ -47,7 +50,7 @@ export async function listMeetings(root: string, past: MeetingRecord[], finished
   for (const r of finished) found.set(r.id, r);
   let names: string[] = [];
   try {
-    names = await readdir(root);
+    if (await realRoot(root)) names = await readdir(root);
   } catch {
     // no meetings yet
   }
@@ -74,6 +77,7 @@ export async function listMeetings(root: string, past: MeetingRecord[], finished
 async function folder(root: string, id: string): Promise<string | Refusal> {
   if (!isMeetingId(id)) return NO_FOLDER;
   try {
+    if (!(await realRoot(root))) return NO_FOLDER;
     if (!(await lstat(path.join(root, id))).isDirectory()) return NO_FOLDER;
     const real = await realpath(path.join(root, id));
     return path.dirname(real) === (await realpath(root)) ? real : NO_FOLDER;

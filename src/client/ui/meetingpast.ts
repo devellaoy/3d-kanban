@@ -5,6 +5,7 @@ import { apiUrl } from '../multiplayer/visit';
 import { store } from '../state';
 import { h, timeAgo, toast } from './dom';
 import { markdownFile } from './markdown';
+import { copy } from './team';
 
 // The meeting window's earlier meetings: the floor's archive (GET /api/meetings), a meeting's details and
 // its notes folder, and one note read at a time. What's in the notes was written by agents, so it only
@@ -36,8 +37,9 @@ function fileProblem(status: number, error: string): string {
 
 const isMd = (name: string) => /\.(md|markdown)$/i.test(name);
 const fmtSize = (n: number) => (n < 1024 ? `${n} B` : n < 1024 * 1024 ? `${(n / 1024).toFixed(1)} kB` : `${(n / 1024 / 1024).toFixed(1)} MB`);
-/** What the list depends on: the newest earlier meeting, the finished ones still on a table, and the floor. It's refetched when this changes. */
-const listKey = () => [store.floor ?? '', store.meeting.past[0]?.id ?? '', ...store.meeting.rooms.flatMap((r) => (r.current && r.current.status !== 'running' ? [r.current.id] : []))].join('|');
+/** What the list depends on: the newest earlier meeting (and its summary), the finished ones still on a table (and their commit and review), and the floor. It's refetched when this changes. */
+const listKey = () =>
+  [store.floor ?? '', store.meeting.past[0]?.id ?? '', store.meeting.past[0]?.summary ?? '', ...store.meeting.rooms.flatMap((r) => (r.current && r.current.status !== 'running' ? [`${r.current.id}:${r.current.commit ?? ''}:${r.current.review?.url ?? ''}`] : []))].join('|');
 const roomLabel = (id?: string) => (id ? (store.meeting.rooms.find((r) => r.id === id)?.label ?? id) : '');
 
 /**
@@ -123,7 +125,10 @@ export function meetingPast(back: () => void): { body: HTMLElement; foot: Node[]
       meetings = got.data.meetings;
       more = got.data.more;
       // The picked meeting's line comes from the new list, and stays picked while it's still on it.
-      if (picked) picked = meetings.find((m) => m.id === picked!.id) ?? picked;
+      if (picked) {
+        picked = meetings.find((m) => m.id === picked!.id) ?? picked;
+        renderDetail(); // a late commit or review link shows; the notes and the open file stay as they are
+      }
     } else if (!meetings) listError = got.error;
     else toast(`Couldn’t refresh the earlier meetings: ${got.error}`, 'warn');
     renderList();
@@ -192,7 +197,7 @@ export function meetingPast(back: () => void): { body: HTMLElement; foot: Node[]
     const md = isMd(f.name);
     if (md) head.append(h('button.btn.small', { type: 'button', 'aria-pressed': String(raw), onclick: () => ((raw = !raw), renderPreview()) }, raw ? '👁️ Rendered' : '🔤 Raw'));
     head.append(
-      h('button.btn.small', { type: 'button', title: 'Copy the file’s text', onclick: () => copy(f.text) }, '📋 Copy'),
+      h('button.btn.small', { type: 'button', title: 'Copy the file’s text', onclick: () => copyText(f.text) }, '📋 Copy'),
       h('button.btn.small', { type: 'button', title: 'Save the file', onclick: () => download(f) }, '⬇️ Download'),
     );
     preview.replaceChildren(head, md && !raw ? markdownFile(f.text) : h('pre.mp-raw', {}, f.text));
@@ -236,11 +241,7 @@ export function meetingPast(back: () => void): { body: HTMLElement; foot: Node[]
     renderPreview();
   };
 
-  const copy = (text: string) =>
-    navigator.clipboard.writeText(text).then(
-      () => toast('📋 Copied'),
-      () => toast('Couldn’t copy: the browser said no', 'warn'),
-    );
+  const copyText = (text: string) => void copy(text).then((ok) => (ok ? toast('📋 Copied') : toast('Couldn’t copy: the browser said no', 'warn')));
 
   const download = (f: MeetingFileText) => {
     const url = URL.createObjectURL(new Blob([f.text], { type: isMd(f.name) ? 'text/markdown;charset=utf-8' : 'text/plain;charset=utf-8' }));

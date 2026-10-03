@@ -1,5 +1,6 @@
 // The floor's meeting rooms: each its own meeting, chairs and state (see meetings.ts), with a new meeting going to the first free one.
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { randomBytes } from 'node:crypto';
+import { closeSync, existsSync, lstatSync, mkdirSync, openSync, readFileSync, renameSync, unlinkSync, writeFileSync, writeSync } from 'node:fs';
 import path from 'node:path';
 import { MEETING_ROOMS, type MeetingRoomDef } from '../shared/layout.js';
 import { FIRST_MEETING_ROOM, cleanRecord, isMeetingId, isMeetingPattern, meetingRecord, slimRecord } from '../shared/meetings.js';
@@ -7,6 +8,11 @@ import type { Meeting, MeetingRecord, MeetingRequest, MeetingState, WorkerInfo }
 import { MeetingRoom, type MeetingEvents, type MeetingTrees, type MeetingWorkers } from './meetings.js';
 
 const PAST_MAX = 20;
+/** How long after a meeting is archived its late commit or review link still goes into its record. */
+const SETTLE_MS = 10 * 60 * 1000;
+
+/** Whether a finished meeting still waits for its commit or its posted review. */
+const pending = (m: Meeting) => m.status === 'done' && ((m.pattern === 'review' && m.pr !== undefined && !m.review) || (m.pattern !== 'review' && !!m.worktree && !m.commit));
 
 /** What is saved: the meeting in each room by its id, and the earlier ones. (Older files had just `current`, which was the first room's.) */
 interface Saved {
@@ -29,6 +35,8 @@ const usable = (m: unknown): m is Meeting => {
 export class MeetingRooms {
   private engines = new Map<string, MeetingRoom>();
   private past: MeetingRecord[] = [];
+  /** Archived meetings that may still get a commit or review link, with when they were archived and the record last written. */
+  private late = new Map<string, { m: Meeting; at: number; json: string }>();
   private statePath: string;
 
   constructor(
@@ -66,7 +74,7 @@ export class MeetingRooms {
   release(id: string) {
     const e = this.engines.get(id);
     const m = e?.peek();
-    if (m && m.status !== 'running') this.keep(meetingRecord(m)); // a finished meeting goes on the earlier ones
+    if (m && m.status !== 'running') this.keep(meetingRecord(m), m); // a finished meeting goes on the earlier ones
     e?.shutdown(); // its timer goes with it
     this.engines.delete(id);
     this.persist();
@@ -177,12 +185,13 @@ export class MeetingRooms {
       e = new MeetingRoom(this.dir, this.dataDir, this.workers, this.trees, {
         ...this.events,
         changed: () => {
+          this.settleLate();
           this.persist();
           this.events.update(this.state());
         },
         save: () => this.persist(),
         outputBusy: (room, output) => this.outputBusy(room, output),
-        archive: (record) => this.keep(record),
+        archive: (record, m) => this.keep(record, m),
       }, def);
       this.engines.set(def.id, e);
     } else e.def = def;
@@ -196,15 +205,64 @@ export class MeetingRooms {
   }
 
   /** Puts a finished meeting on the earlier ones (a line each) and its full record in its own notes folder, where the archive reads it. */
-  private keep(record: MeetingRecord) {
+  private keep(record: MeetingRecord, m?: Meeting) {
     this.past = [slimRecord(record), ...this.past.filter((r) => r.id !== record.id)].slice(0, PAST_MAX);
+    this.late.delete(record.id);
     if (!isMeetingId(record.id)) return;
+    const json = JSON.stringify(record, null, 2);
+    this.writeRecord(record.id, json);
+    if (m && pending(m)) this.late.set(record.id, { m, at: Date.now(), json });
+  }
+
+  /** A meeting archived before its commit or review link came in: its record and line get them when they do (for a while). */
+  private settleLate() {
+    for (const [id, l] of this.late) {
+      if (Date.now() - l.at > SETTLE_MS) {
+        this.late.delete(id);
+        continue;
+      }
+      const record = meetingRecord(l.m);
+      const json = JSON.stringify(record, null, 2);
+      if (json !== l.json) {
+        l.json = json;
+        this.writeRecord(id, json);
+        this.past = this.past.map((r) => (r.id === id ? slimRecord(record) : r));
+      }
+      if (!pending(l.m)) this.late.delete(id);
+    }
+  }
+
+  /** `p` as a real folder (made when missing), never a link: a link there could lead the write out of the archive. */
+  private realDir(p: string) {
+    let st;
     try {
-      const dir = path.join(this.archiveDir(), record.id);
-      mkdirSync(dir, { recursive: true });
-      writeFileSync(path.join(dir, '.meeting.json'), JSON.stringify(record, null, 2), { mode: 0o600 });
+      st = lstatSync(p);
     } catch {
-      // disk issues shouldn't take the office down
+      mkdirSync(p, { recursive: true });
+      st = lstatSync(p);
+    }
+    if (!st.isDirectory() || st.isSymbolicLink()) throw new Error(`${p} is not a folder`);
+  }
+
+  /** Writes a meeting's `.meeting.json` without following a link: to a new file of its own, renamed over the old one (a link there is replaced, not written through). */
+  private writeRecord(id: string, json: string) {
+    let tmp: string | undefined;
+    try {
+      this.realDir(this.archiveDir());
+      const dir = path.join(this.archiveDir(), id);
+      this.realDir(dir);
+      tmp = path.join(dir, `.meeting.${randomBytes(6).toString('hex')}.tmp`);
+      const fd = openSync(tmp, 'wx', 0o600);
+      try {
+        writeSync(fd, json);
+      } finally {
+        closeSync(fd);
+      }
+      renameSync(tmp, path.join(dir, '.meeting.json'));
+      tmp = undefined;
+    } catch {
+      // disk issues, or a link where a folder should be, shouldn't take the office down
+      if (tmp) try { unlinkSync(tmp); } catch { /* already gone */ }
     }
   }
 
