@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { FLOOR, WING, WING_DESKS, wingMinZ } from '../src/shared/layout.js';
+import { FLOOR, WING, WING_DESKS, roomsOfAnnex, wingMinZ, wingOfAnnex } from '../src/shared/layout.js';
 import type { FloorInfo } from '../src/shared/protocol.js';
 import { builtFloors, floorWings, pastTheWing, seatBuilt } from '../src/client/core/floors.js';
 import { store } from '../src/client/state/index.js';
@@ -18,7 +18,7 @@ test('the built floors leave out the ones still being cloned', () => {
 test("each floor's back office goes as far as its own, the one you're on as its plan has it", () => {
   const floors = [floor('a', { wing: 2 }), floor('b'), floor('c', { wing: 1 })];
   store.floor = 'b';
-  store.floorPlan = { wing: 1, labels: {} };
+  store.floorPlan = { wing: 1, rooms: 0, labels: {} };
   assert.deepEqual(floorWings(floors), [2, 1, 1]);
   store.floor = null;
   assert.deepEqual(floorWings(floors), [2, 0, 1]);
@@ -27,13 +27,13 @@ test("each floor's back office goes as far as its own, the one you're on as its 
 test("a back office desk is there to sit at once the floor's built out that far; any other seat always is", () => {
   const first = WING_DESKS.find((d) => d.wing === 1)!;
   const second = WING_DESKS.find((d) => d.wing === 2)!;
-  store.floorPlan = { wing: 0, labels: {} };
+  store.floorPlan = { wing: 0, rooms: 0, labels: {} };
   assert.equal(seatBuilt(first.id), false);
   assert.equal(seatBuilt('no-such-desk'), true);
-  store.floorPlan = { wing: 1, labels: {} };
+  store.floorPlan = { wing: 1, rooms: 0, labels: {} };
   assert.equal(seatBuilt(first.id), true);
   assert.equal(seatBuilt(second.id), false);
-  store.floorPlan = { wing: WING.rows, labels: {} };
+  store.floorPlan = { wing: WING.rows, rooms: 0, labels: {} };
   assert.equal(seatBuilt(second.id), true);
 });
 
@@ -47,4 +47,14 @@ test("past the wing: standing where the back office would be, further back than 
   assert.equal(pastTheWing({ x, y: -3, z: deep }, 0), false);
   assert.equal(pastTheWing({ x, y: 5, z: deep }, 0), false);
   assert.equal(pastTheWing({ x: WING.minX - 1, y: 0, z: deep }, 0), false);
+});
+
+test("a floor's meeting wing travels with its back office in the one number the tower, the city and the roof get", () => {
+  const floors = [floor('a', { wing: 2, rooms: 3 }), floor('b', { rooms: 1 }), floor('c')];
+  store.floor = 'b';
+  store.floorPlan = { wing: 1, rooms: 2, labels: {} };
+  const annex = floorWings(floors);
+  assert.deepEqual(annex.map((a) => [wingOfAnnex(a), roomsOfAnnex(a)]), [[2, 3], [1, 2], [0, 0]]);
+  store.floor = null;
+  assert.deepEqual(floorWings(floors).map((a) => [wingOfAnnex(a), roomsOfAnnex(a)]), [[2, 3], [0, 1], [0, 0]]);
 });

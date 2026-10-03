@@ -89,7 +89,7 @@ function ceilingOver(x: number, z: number): number {
  * The office as a world. `upstairs` says whether this floor is above the bottom one (no exit door:
  * workers leave by the balcony), and `wing` how many rows its back office is built out (see WING).
  */
-export function officeWorld(office: Office, upstairs: () => boolean, wing: () => number): World {
+export function officeWorld(office: Office, upstairs: () => boolean, wing: () => number, rooms: () => number): World {
   return {
     plan: OFFICE_PLAN,
     group: office.group,
@@ -101,11 +101,11 @@ export function officeWorld(office: Office, upstairs: () => boolean, wing: () =>
     meetingScreens: office.meetingScreens,
     gong: office.gong,
     get nav() {
-      return officeNav(wing());
+      return officeNav(wing(), rooms());
     },
     ways: {
-      home: (seat) => (upstairs() ? { way: wayToBalcony(seat, wing()), chute: true } : { way: wayHome(seat, wing()), chute: false }),
-      in: (seat) => wayIn(seat, wing()),
+      home: (seat) => (upstairs() ? { way: wayToBalcony(seat, wing(), rooms()), chute: true } : { way: wayHome(seat, wing(), rooms()), chute: false }),
+      in: (seat) => wayIn(seat, wing(), rooms()),
     },
     rain: [
       { area: FLOOR, top: ceilingOver },

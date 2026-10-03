@@ -1,7 +1,7 @@
 // A floor's own layout on top of the office everyone shares: the signs hung over its desks, and how
 // far its back office is built out (see WING in layout.ts). Saved by server/floorplan.ts.
 
-import { DESKS, WING, WING_DESKS, wingLevel } from './layout.js';
+import { DESKS, ROOMS_WING, WING, WING_DESKS, roomsLevel, wingLevel } from './layout.js';
 
 /** A sign hanging from the ceiling over a desk, naming what it's for ("Operations", "Code cleanup"). */
 export interface DeskLabel {
@@ -15,11 +15,13 @@ export interface DeskLabel {
 export interface FloorPlan {
   /** How many rows the back office is built out (0 is just the room), up to WING.rows. */
   wing: number;
+  /** How many meeting rooms the meeting wing is built out (0 is none), up to ROOMS_WING.rooms: room 1 of it is `review`, then `room-3` and `room-4`. */
+  rooms: number;
   /** Signs by desk id. */
   labels: Record<string, DeskLabel>;
 }
 
-export const EMPTY_PLAN: FloorPlan = { wing: 0, labels: {} };
+export const EMPTY_PLAN: FloorPlan = { wing: 0, rooms: 0, labels: {} };
 
 /** The longest a sign's text may be, in characters. */
 export const MAX_LABEL = 32;
@@ -75,12 +77,17 @@ export function cleanPlan(raw: unknown): FloorPlan {
       labels[id] = { text, color: signColor(s.color), by: typeof s.by === 'string' ? s.by : '?', at: typeof s.at === 'number' ? s.at : 0 };
     }
   }
-  return { wing: wingLevel(r.wing), labels };
+  return { wing: wingLevel(r.wing), rooms: roomsLevel(r.rooms), labels };
 }
 
 /** The desks a row of the back office brings: `row` from 1. */
 export function rowDesks(row: number) {
   return WING_DESKS.filter((d) => d.wing === row);
+}
+
+/** How many more meeting rooms the meeting wing can take. */
+export function roomsToGrow(plan: FloorPlan): number {
+  return ROOMS_WING.rooms - plan.rooms;
 }
 
 /** How many more rows the back office can take. */

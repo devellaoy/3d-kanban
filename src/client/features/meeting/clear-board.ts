@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { MEETING_ROOMS, deskSeat } from '../../../shared/layout';
+import { MEETING_ROOMS, deskSeat, roomFrame } from '../../../shared/layout';
 import { meetingsOf } from '../../../shared/meetings';
 import type { Ctx } from '../../core/context';
 import { store } from '../../state';
@@ -20,9 +20,12 @@ export function keepBoardsClear(ctx: Ctx) {
   // What doesn't change per chair: where the room's door is, and how far from its middle the view of the board reaches at the chair's depth.
   const chairs = MEETING_ROOMS.flatMap((r) =>
     r.seats.map((def) => {
-      const axis = (r.room.door.x0 + r.room.door.x1) / 2;
-      const dz = Math.max(0, deskSeat(def, 0.85).z - r.room.minZ);
-      return { def, axis, view: ((r.board.width / 2) * dz) / (r.board.z - r.room.minZ) };
+      // In the room's own frame: u along its door wall, v in from the door (a wing room faces east, so its u is world z).
+      const f = roomFrame(r.room);
+      const seat = deskSeat(def, 0.85);
+      const axis = (r.room.door.u0 + r.room.door.u1) / 2;
+      const dv = Math.max(0, f.toLocal(seat.x, seat.z)[1]);
+      return { def, f, axis, along: (r.room.facing === 'east' ? 'z' : 'x') as 'x' | 'z', view: ((r.board.width / 2) * dv) / f.toLocal(r.board.x, r.board.z)[1] };
     }),
   );
   /** The workers' roots whose sprites are moved: the chair each is at, and where its sprites were last put. */
@@ -45,23 +48,24 @@ export function keepBoardsClear(ctx: Ctx) {
         put(root, 0, 0);
         shifted.delete(root);
       }
-    for (const { def, axis, view } of chairs) {
+    for (const { def, f, axis, along, view } of chairs) {
       const desk: DeskView | undefined = world.desks.get(def.id);
       if (!desk || desk.def !== def || !desk.seatAnchor.children.length) continue;
       for (const root of desk.seatAnchor.children) {
         root.getWorldPosition(at);
         root.getWorldScale(scale);
-        const side = Math.sign(at.x - axis) || 1;
+        const u = f.toLocal(at.x, at.z)[0];
+        const side = Math.sign(u - axis) || 1;
         let moved = 0;
         for (const s of root.children) {
           if (!(s instanceof THREE.Sprite)) continue;
           // Its inner edge, from the axis, against the view; it moves out by the shortfall.
-          const inner = Math.abs(at.x - axis) - (s.scale.x * scale.x) / 2;
+          const inner = Math.abs(u - axis) - (s.scale.x * scale.x) / 2;
           moved = Math.max(moved, view + MARGIN - inner);
         }
         const was = shifted.get(root);
         if (moved <= 0 && !was) continue;
-        at.x += side * Math.max(0, moved);
+        at[along] += side * Math.max(0, moved);
         const local = root.worldToLocal(at);
         // Only when it has moved: a worker sitting still keeps its sprites where they are.
         if (was && Math.abs(was.x - local.x) < 1e-4 && Math.abs(was.z - local.z) < 1e-4) continue;

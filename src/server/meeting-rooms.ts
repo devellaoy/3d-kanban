@@ -2,7 +2,7 @@
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { MEETING_ROOMS, type MeetingRoomDef } from '../shared/layout.js';
-import { FIRST_MEETING_ROOM, isMeetingPattern } from '../shared/meetings.js';
+import { FIRST_MEETING_ROOM, isMeetingPattern, meetingRecord } from '../shared/meetings.js';
 import type { Meeting, MeetingRecord, MeetingRequest, MeetingState, WorkerInfo } from '../shared/protocol.js';
 import { MeetingRoom, type MeetingEvents, type MeetingTrees, type MeetingWorkers } from './meetings.js';
 
@@ -52,6 +52,32 @@ export class MeetingRooms {
     return { rooms: [...defs, ...rest].map((d) => ({ id: d.id, label: d.label, current: this.engines.get(d.id)?.meeting() ?? null })), past: this.past.slice() };
   }
 
+  /** Why a room can't be walled up (a meeting is running in it, or someone is still at its table), or undefined when it can. */
+  busy(id: string): string | undefined {
+    const e = this.engines.get(id);
+    if (!e) return undefined;
+    const label = e.def.label;
+    if (e.peek()?.status === 'running') return `A meeting is on in the ${label}: stop it, and send its workers home, first`;
+    if (e.seated()) return `Someone is still at the ${label}'s table: send them home first`;
+    return undefined;
+  }
+
+  /** Forgets a room that has been walled up: a finished meeting nobody sits at goes (busy() has said it may). */
+  release(id: string) {
+    const e = this.engines.get(id);
+    const m = e?.peek();
+    if (m && m.status !== 'running') this.past = [meetingRecord(m), ...this.past.filter((r) => r.id !== m.id)].slice(0, PAST_MAX); // a finished meeting goes on the earlier ones
+    e?.shutdown(); // its timer goes with it
+    this.engines.delete(id);
+    this.persist();
+    this.events.update(this.state());
+  }
+
+  /** The map's rooms changed (the meeting wing was built out or walled up): everyone is told which there are. */
+  refresh() {
+    this.events.update(this.state());
+  }
+
   /** Whether a meeting is running in any room. */
   running(): boolean {
     return [...this.engines.values()].some((e) => e.peek()?.status === 'running');
@@ -83,7 +109,9 @@ export class MeetingRooms {
     if (pick) return pick.start(req, by, owner);
     const on = all.some((e) => e.peek()?.status === 'running');
     const list = all.map((e) => `${e.def.label}: ${e.peek()?.status === 'running' ? `“${e.peek()!.title}”` : 'someone is still sitting at the table'}`);
-    return `Every meeting room is busy: ${list.join(', ')}; ${on ? 'stop one of those meetings first' : 'send those workers home first'}`;
+    // The office's own rooms (not another map's one table) can be built out: say so.
+    const more = defs.every((d) => (MEETING_ROOMS as MeetingRoomDef[]).includes(d)) && defs.length < MEETING_ROOMS.length ? ' — or knock through the west wall for another room' : '';
+    return `Every meeting room is busy: ${list.join(', ')}; ${on ? 'stop one of those meetings first' : 'send those workers home first'}${more}`;
   }
 
   /** Stops the meeting that's running in a room (the one that is, without `room`). Its workers stay at the table. */

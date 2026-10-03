@@ -51,6 +51,8 @@ export class PlayerController extends PlayerInput {
   room: Room = { ...FLOOR, wall: WALL_T, enclosed: false };
   /** How many rows the floor's back office is built out (see WING): the camera keeps inside it too. */
   wing = 0;
+  /** How many meeting rooms its meeting wing is built out (see ROOMS_WING): the camera keeps inside them too. */
+  rooms = 0;
   private jitterT = 0;
   /** Where you're sitting, or null on your feet. You stay put there until you walk off or jump up. */
   seat: SeatPlace | null = null;

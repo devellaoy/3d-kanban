@@ -1,4 +1,4 @@
-import { FLOOR, inWing } from '../../shared/layout';
+import { FLOOR, inRooms, inWing } from '../../shared/layout';
 import { makeBuffers, type Buffers } from './buffers';
 import { place, rms } from './dsp';
 import { MIXES, mixDefaults, mixGain, type Mix, type MixLevels } from './mix';
@@ -59,6 +59,8 @@ export class AudioCore {
   hall: Hall | null = null;
   /** How many rows the floor's back office is built out: in there you're indoors too. */
   wing = 0;
+  /** And how many meeting rooms its meeting wing is built out. */
+  rooms = 0;
   private analyser!: AnalyserNode;
   buf!: Buffers;
   private volume = 0.7;
@@ -216,7 +218,7 @@ export class AudioCore {
       return x > b.minX && x < b.maxX && z > b.minZ && z < b.maxZ ? 'office' : 'out';
     }
     const under = (m: number) => x > FLOOR.minX - m && x < FLOOR.maxX + m && z > FLOOR.minZ - m && z < FLOOR.maxZ + m;
-    if ((under(0) || inWing(x, z, this.wing)) && y > -0.5) return 'office';
+    if ((under(0) || inWing(x, z, this.wing) || inRooms(x, z, this.rooms)) && y > -0.5) return 'office';
     return under(0.3) ? 'garage' : 'out';
   }
 

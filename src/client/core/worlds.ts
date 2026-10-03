@@ -27,7 +27,7 @@ export const streetOf = (w: World) => w.dungeon?.plan.floor ?? 0;
 /** The office's own map and the maps of their own, and which one the building's on. Needs ctx.office (and ctx.scene) made. */
 export function createWorlds(ctx: Ctx) {
   const { office, scene } = ctx;
-  const theOffice = officeWorld(office, () => office.stack.state.index > 0, () => officeWing());
+  const theOffice = officeWorld(office, () => office.stack.state.index > 0, () => officeWing(), () => officeRooms());
   let world: World = theOffice;
   /** Whether the building's on the office's own map, with everything that has (the elevator, the balcony, the lounge…). */
   const inOffice = () => world === theOffice;
@@ -74,6 +74,11 @@ export function createWorlds(ctx: Ctx) {
     return inOffice() && store.floor !== ROOF ? store.floorPlan.wing : 0;
   }
 
+  /** How many meeting rooms the meeting wing is built out where you are (like officeWing). */
+  function officeRooms(): number {
+    return inOffice() && store.floor !== ROOF ? store.floorPlan.rooms : 0;
+  }
+
   /** The top of whatever's underfoot at (x, z) for feet at `y`, in the world you're in: its floor, a step, the street. */
   const groundHere = (x: number, z: number, y: number) => Math.max(groundAt(world.colliders, x, z, y), ctx.player.street);
 
@@ -86,6 +91,7 @@ export function createWorlds(ctx: Ctx) {
     inOffice,
     plan,
     officeWing,
+    officeRooms,
     groundHere,
     worldFor,
     /** The building's on `next`'s map now (see applyMap in core/maps.ts, which takes the old one down). */

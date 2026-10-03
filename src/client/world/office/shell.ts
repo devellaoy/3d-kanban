@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { BALCONY_DOOR, EXIT_DOOR, FLOOR, WALL_HEIGHT, WALL_T, WINDOWS, WING, type Opening, type Side } from '../../../shared/layout';
+import { BALCONY_DOOR, EXIT_DOOR, FLOOR, WALL_HEIGHT, WALL_T, WINDOWS, WING, WING_ROOMS, type Opening, type Side } from '../../../shared/layout';
 import type { NightParts } from '../outside';
 import { mergeByMaterial, mesh, textPlane, toon } from '../toon';
 import type { Collider } from '../types';
@@ -193,7 +193,8 @@ export function buildWalls(group: THREE.Group, colliders: Collider[], openings: 
     // The north wall stops at the back office, whose own bit of wall (buildWing's plug) comes down for it.
     { side: 'north', at: FLOOR.minZ - T / 2, spans: [[FLOOR.minX - T, WING.minX, WALL_HEIGHT]] },
     { side: 'south', at: FLOOR.maxZ + T / 2, spans: [[FLOOR.minX - T, FLOOR.maxX + T, WALL_HEIGHT]] },
-    { side: 'west', at: FLOOR.minX - T / 2, spans: [[FLOOR.minZ, FLOOR.maxZ, WALL_HEIGHT]] },
+    // The west wall stops at the meeting wing's rooms, whose own stretches of wall (buildWing's plugs, see roomswing.ts) come down for them.
+    { side: 'west', at: FLOOR.minX - T / 2, spans: [FLOOR.minZ, ...WING_ROOMS.flatMap((s) => [s.z0, s.z1]), FLOOR.maxZ].reduce<[number, number, number][]>((a, z, i, all) => (i % 2 ? a : [...a, [z, all[i + 1], WALL_HEIGHT]]), []) },
     { side: 'east', at: FLOOR.maxX + T / 2, spans: [[FLOOR.minZ, FLOOR.maxZ, WALL_HEIGHT]] },
   ];
   for (const w of walls) {
@@ -316,10 +317,12 @@ export function wallRun(into: THREE.Group, cols: Collider[], axis: 'x' | 'z', at
 /** Outside walls, with real windows you see out of and a door out, and the glass doors out to the balcony. */
 export const walls: Fixture = (site) => {
   const night = site.get('night');
-  const openings = [...WINDOWS, EXIT_DOOR, BALCONY_DOOR];
+  // (The meeting rooms' windows are in their plugs, see roomswing.ts.)
+  const fixed = WINDOWS.filter((o) => o.room === undefined);
+  const openings = [...fixed, EXIT_DOOR, BALCONY_DOOR];
   buildWalls(site.group, site.colliders, openings, site.looks);
   const glazing = new THREE.Group();
-  for (const o of WINDOWS) {
+  for (const o of fixed) {
     glazing.add(windowIn(o));
     site.wall(o.wall, o.u, (o.y0 + o.y1) / 2 - 0.03, o.width + 0.2, o.y1 - o.y0 + 0.12);
     site.group.add(wetPane(o, night.wetGlass));

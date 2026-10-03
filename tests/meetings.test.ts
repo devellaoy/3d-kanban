@@ -325,7 +325,7 @@ test('a meeting says what the office’s rewritten prompts say, and seats the de
 // --- Several rooms ----------------------------------------------------------
 
 test('a second meeting goes to the second room while the first runs, and the two progress on their own', (t) => {
-  const f = fixture({ rooms: MEETING_ROOMS }); t.after(() => f.close());
+  const f = fixture({ rooms: TWO_ROOMS }); t.after(() => f.close());
   assert.equal(f.start({ title: 'First', rounds: 2, output: 'a.md' }), undefined);
   assert.equal(f.start({ title: 'Second', rounds: 2, output: 'b.md' }), undefined);
   const [a, b] = [f.cur(0)!, f.cur(1)!];
@@ -351,7 +351,7 @@ test('a second meeting goes to the second room while the first runs, and the two
 });
 
 test('every room busy is a clear error naming the meetings; an explicit room is asked for by id', (t) => {
-  const f = fixture({ rooms: MEETING_ROOMS }); t.after(() => f.close());
+  const f = fixture({ rooms: TWO_ROOMS }); t.after(() => f.close());
   assert.equal(f.start({ title: 'One' }), undefined);
   assert.equal(f.start({ title: 'Two' }), undefined);
   const err = f.start({ title: 'Three' }) ?? '';
@@ -359,13 +359,17 @@ test('every room busy is a clear error naming the meetings; an explicit room is 
   assert.match(err, /“One”/);
   assert.match(err, /“Two”/);
   assert.match(err, /stop one of those meetings first/);
+  assert.match(err, /knock through the west wall for another room/, 'two of the office’s four rooms are built, so it says so');
   assert.equal(f.workers.length, 6);
   assert.match(f.start({ room: 'review' }) ?? '', /busy with “Two”/);
   assert.match(f.start({ room: 'nope' }) ?? '', /no meeting room/);
 });
 
+// Two rooms are enough to fill; the office has four (see the test at the end).
+const TWO_ROOMS = MEETING_ROOMS.slice(0, 2);
+
 test('stopping and clearing act on the room named, and a meeting in an empty room is preferred to clearing one', async (t) => {
-  const f = fixture({ rooms: MEETING_ROOMS }); t.after(() => f.close());
+  const f = fixture({ rooms: TWO_ROOMS }); t.after(() => f.close());
   assert.equal(f.start({ title: 'One' }), undefined);
   assert.equal(f.start({ title: 'Two' }), undefined);
   assert.match(f.room.stop('Ada') ?? '', /Several/);
@@ -390,7 +394,7 @@ test('stopping and clearing act on the room named, and a meeting in an empty roo
 });
 
 test('a meeting saved by the one-room office loads into the first room', (t) => {
-  const f = fixture({ rooms: MEETING_ROOMS }); t.after(() => f.close());
+  const f = fixture({ rooms: TWO_ROOMS }); t.after(() => f.close());
   assert.equal(f.start({ title: 'Old' }), undefined);
   const { room: _, ...old } = f.cur(0)!;
   f.room.shutdown();
@@ -416,7 +420,7 @@ test('a one-room map keeps one room', (t) => {
 });
 
 test('a pull request is reviewed by one panel at a time; two panels on different PRs run at once and post to their own PRs', async (t) => {
-  const f = fixture({ rooms: MEETING_ROOMS }); t.after(() => f.close());
+  const f = fixture({ rooms: TWO_ROOMS }); t.after(() => f.close());
   assert.equal(f.start({ pattern: 'review', prompt: 'Review it', pr: 42 }), undefined);
   assert.match(f.start({ pattern: 'review', prompt: 'Again', pr: 42 }) ?? '', /PR #42 is already being reviewed in the 🤝 Meeting room/);
   assert.match(f.start({ pattern: 'review', prompt: 'Again', pr: 42, room: 'review' }) ?? '', /already being reviewed/);
@@ -437,27 +441,27 @@ test('a pull request is reviewed by one panel at a time; two panels on different
   assert.ok(f.reviews.find((r) => r.pr === 42)!.file.endsWith('pr-42.md'));
   assert.ok(f.reviews.find((r) => r.pr === 43)!.file.endsWith('pr-43.md'));
   // With two rooms holding meetings, stop / clear without a room name them.
-  assert.match(f.room.clear('Ada') ?? '', /Several rooms have meetings, so say which room: 🤝 Meeting room \(meeting\), 🔍 Review room \(review\)/);
+  assert.match(f.room.clear('Ada') ?? '', /Several rooms have meetings, so say which room: 🤝 Meeting room \(meeting\), 🤝 Meeting room 2 \(review\)/);
 });
 
 test('a meeting in a room the map lacks keeps its table: no room of the new map is free until it is cleared', (t) => {
-  const f = fixture({ rooms: MEETING_ROOMS }); t.after(() => f.close());
+  const f = fixture({ rooms: TWO_ROOMS }); t.after(() => f.close());
   assert.equal(f.start({ room: 'review', pattern: 'review', prompt: 'Review it', pr: 7 }), undefined);
   // The office switches to the one-room map: the review room's workers sit at its one table.
   f.useRooms([MEETING_ROOMS[0]]);
-  assert.match(f.start({}) ?? '', /The 🔍 Review room still has .* from another map at this one's table: stop that meeting and clear that room first/);
+  assert.match(f.start({}) ?? '', /The 🤝 Meeting room 2 still has .* from another map at this one's table: stop that meeting and clear that room first/);
   assert.match(f.start({ room: 'meeting' }) ?? '', /clear that room first/);
   // It still shows, so it can be stopped and cleared; then the room is free.
   assert.deepEqual(f.room.state().rooms.map((r) => r.id), ['meeting', 'review']);
   assert.equal(f.room.stop('Ada', 'review'), undefined);
-  assert.match(f.start({}) ?? '', /^The 🔍 Review room still has .*: clear that room first/);
+  assert.match(f.start({}) ?? '', /^The 🤝 Meeting room 2 still has .*: clear that room first/);
   assert.equal(f.room.clear('Ada', 'review'), undefined);
   assert.equal(f.start({}), undefined);
   assert.deepEqual(f.room.state().rooms.map((r) => r.id), ['meeting']);
 });
 
 test('a finished meeting in a room the map lacks, once its workers are gone, does not block new meetings', async (t) => {
-  const f = fixture({ rooms: MEETING_ROOMS }); t.after(() => f.close());
+  const f = fixture({ rooms: TWO_ROOMS }); t.after(() => f.close());
   assert.equal(f.start({ room: 'review', title: 'Old' }), undefined);
   f.useRooms([MEETING_ROOMS[0]]);
   assert.equal(f.room.stop('Ada', 'review'), undefined);
@@ -469,7 +473,7 @@ test('a finished meeting in a room the map lacks, once its workers are gone, doe
 });
 
 test('without a git worktree, two meetings may not write the same output file', (t) => {
-  const f = fixture({ rooms: MEETING_ROOMS }); t.after(() => f.close());
+  const f = fixture({ rooms: TWO_ROOMS }); t.after(() => f.close());
   assert.equal(f.start({ title: 'First', output: 'same.md' }), undefined);
   assert.match(f.start({ title: 'Second', output: 'same.md' }) ?? '', /already writing same\.md/);
   assert.equal(f.cur(1), null);
@@ -477,7 +481,7 @@ test('without a git worktree, two meetings may not write the same output file', 
 });
 
 test('stopping or clearing without a room names the one meeting that can be, not a running one when asked to clear', (t) => {
-  const f = fixture({ rooms: MEETING_ROOMS }); t.after(() => f.close());
+  const f = fixture({ rooms: TWO_ROOMS }); t.after(() => f.close());
   assert.equal(f.start({ title: 'One' }), undefined);
   assert.equal(f.start({ title: 'Two' }), undefined);
   assert.equal(f.room.stop('Ada', 'review'), undefined);
@@ -488,7 +492,45 @@ test('stopping or clearing without a room names the one meeting that can be, not
 });
 
 test('the state of the rooms makes no engines: a room nobody used has no timer', (t) => {
-  const f = fixture({ rooms: MEETING_ROOMS }); t.after(() => f.close());
+  const f = fixture({ rooms: TWO_ROOMS }); t.after(() => f.close());
   assert.equal(f.room.state().rooms.length, 2);
   assert.equal((f.room as unknown as { engines: Map<string, unknown> }).engines.size, 0);
+});
+
+test('the office has four rooms: meetings fill them in order, and a fifth is refused', (t) => {
+  const f = fixture({ rooms: MEETING_ROOMS }); t.after(() => f.close());
+  for (const title of ['A', 'B', 'C', 'D']) assert.equal(f.start({ title }), undefined);
+  assert.deepEqual([0, 1, 2, 3].map((i) => f.cur(i)!.room), ['meeting', 'review', 'room-3', 'room-4']);
+  assert.deepEqual(f.cur(3)!.seats.map((s) => s.deskId), MEETING_ROOMS[3].seats.slice(0, 3).map((d) => d.id));
+  assert.match(f.start({ title: 'E' }) ?? '', /^Every meeting room is busy: /);
+});
+
+test('a meeting saved in the room that was the review room (id review, chairs review-N) is still there', (t) => {
+  const f = fixture({ rooms: MEETING_ROOMS }); t.after(() => f.close());
+  assert.equal(f.start({ title: 'One' }), undefined);
+  assert.equal(f.start({ title: 'Two' }), undefined);
+  f.room.shutdown();
+  const saved = JSON.parse(readFileSync(path.join(f.dataDir, 'meetings.json'), 'utf8'));
+  assert.deepEqual(Object.keys(saved.rooms), ['meeting', 'review', 'room-3', 'room-4']);
+  const again = new MeetingRooms(f.dir, f.dataDir, f.manager, undefined, { update() {}, toast() {}, hiringPaused: () => undefined, postReview: async () => '' }, () => f.rooms);
+  t.after(() => again.shutdown());
+  const s = again.state();
+  assert.deepEqual(s.rooms.map((r) => [r.id, r.current?.title ?? null]), [['meeting', 'One'], ['review', 'Two'], ['room-3', null], ['room-4', null]]);
+  assert.deepEqual(s.rooms[1].current!.seats.map((x) => x.deskId), ['review-1', 'review-2', 'review-3']);
+});
+
+test('a room can be walled up only once nothing is on in it and nobody sits at its table; then it is forgotten', async (t) => {
+  const f = fixture({ rooms: MEETING_ROOMS }); t.after(() => f.close());
+  assert.equal(f.room.busy('review'), undefined, 'a room nobody used is free to go');
+  assert.equal(f.start({ room: 'review', title: 'Wing' }), undefined);
+  assert.match(f.room.busy('review') ?? '', /A meeting is on in the 🤝 Meeting room 2/);
+  assert.equal(f.room.stop('Ada', 'review'), undefined);
+  assert.match(f.room.busy('review') ?? '', /Someone is still at the 🤝 Meeting room 2's table/);
+  assert.equal(f.room.clear('Ada', 'review'), undefined);
+  for (const w of [...f.workers]) await f.kill(w.id);
+  assert.equal(f.room.busy('review'), undefined);
+  f.useRooms(MEETING_ROOMS.filter((r) => (r.level ?? 0) < 1));
+  f.room.release('review');
+  assert.deepEqual(f.room.state().rooms.map((r) => r.id), ['meeting']);
+  assert.equal(f.room.state().past[0]?.title, 'Wing', 'the finished meeting went on the earlier ones');
 });

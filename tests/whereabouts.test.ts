@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { whereabouts } from '../src/client/ui/whereabouts.js';
-import { DANCE_FLOOR, ROOF_TABLES } from '../src/shared/layout.js';
+import { DANCE_FLOOR, ROOF_BAR, ROOF_TABLES } from '../src/shared/layout.js';
 import type { PeerInfo } from '../src/shared/protocol.js';
 import { ROOF } from '../src/shared/rooftop.js';
 
@@ -17,9 +17,9 @@ test("the roof's corner over the meeting room is a tall table, not the meeting r
 
 test('up on the roof, the dance floor and the bar have their own words, and the rest none', () => {
   assert.equal(whereabouts(peer((DANCE_FLOOR.minX + DANCE_FLOOR.maxX) / 2, (DANCE_FLOOR.minZ + DANCE_FLOOR.maxZ) / 2, ROOF)), '🪩 on the dance floor');
-  assert.equal(whereabouts(peer(11.5, 0, ROOF)), '🍸 at the bar');
+  assert.equal(whereabouts(peer(ROOF_BAR.x - 1.5, 0, ROOF)), '🍸 at the bar');
   assert.equal(whereabouts(peer(0, 3, ROOF)), undefined);
-  assert.equal(whereabouts({ ...peer(12, 0, ROOF), seat: 'roof-stool-3:0' }), '🪑 on the bar stool');
+  assert.equal(whereabouts({ ...peer(ROOF_BAR.x - 1, 0, ROOF), seat: 'roof-stool-3:0' }), '🪑 on the bar stool');
 });
 
 test('someone on the 2D view is on the 2D view, unless they have something open', () => {

@@ -79,7 +79,7 @@ They're in `core/registry.ts`, and each is a field of `ctx`. Every registration 
 - **`workers/`** is the worker manager (`WorkerManager` in `workers/manager.ts`) and its pieces: worktrees, pull requests, tasks, terminals, ACP workers, and saving to `workers.json`. `src/server/workers.ts` re-exports it for the modules that imported it from there.
 - **`providers/`** holds one adapter per agent CLI (see [Adding an agent provider](#adding-an-agent-provider)).
 
-The rest of `src/server/` is a module per service or per thing a floor keeps (`dog.ts`, `jukebox.ts`, `queue.ts`, `meetings.ts` for one meeting room, `meeting-rooms.ts` for a floor's rooms), made by the office or by each `Floor` (`floor.ts`).
+The rest of `src/server/` is a module per service or per thing a floor keeps (`dog.ts`, `jukebox.ts`, `queue.ts`, `meetings.ts` for one meeting room, `meeting-rooms.ts` for a floor's rooms; where the office's four rooms stand, and each one's own frame, is `shared/meetingrooms.ts`), made by the office or by each `Floor` (`floor.ts`).
 
 ## Shared
 

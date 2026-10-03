@@ -3,6 +3,8 @@ import { MEETING_PATTERNS, MEETING_PATTERN_IDS, TOKENS_PER_SEAT, meetingAt, meet
 import { fmtTokens, type Meeting, type MeetingPattern, type MeetingState, type MeetingTurn } from '../../shared/protocol';
 import type { Net } from '../net';
 import { store } from '../state';
+import { ROOMS_WING } from '../../shared/layout';
+import { OFFICE_PLAN } from '../../shared/maps';
 import { h, openModal, timeAgo, toast, STATUS_LABEL, type Modal } from './dom';
 import { confirmDialog } from './prompt';
 import { providerPicker } from './provider';
@@ -169,7 +171,7 @@ const roomBusy = (state: MeetingState, room: string | undefined) => (room ? meet
 /** What the form says about the room it calls the meeting in: why it can't, or what starting does to a finished meeting; empty when there's nothing to say. */
 function busyText(state: MeetingState, room: string | undefined): string {
   const m = room ? meetingAt(state, room) : null;
-  if (roomBusy(state, room)) return m ? `The room is busy with “${m.title}” until it ends or someone stops it.` : `Every meeting room is busy (${state.rooms.map((r) => `“${r.current?.title}”`).join(', ')}) until one ends or someone stops it.`;
+  if (roomBusy(state, room)) return m ? `The room is busy with “${m.title}” until it ends or someone stops it.` : `Every meeting room is busy (${state.rooms.map((r) => `“${r.current?.title}”`).join(', ')}) until one ends or someone stops it${store.map.pick === OFFICE_PLAN.id && store.floorPlan.rooms < ROOMS_WING.rooms ? ', or knock through the west wall for another room' : ''}.`;
   // Without a room, a new meeting takes the first free one; only when none is free does it replace the first room's finished meeting.
   const replaced = m ?? (!room && state.rooms.every((r) => r.current) ? state.rooms[0]?.current : null);
   return replaced ? 'Starting this sends a finished meeting’s workers home.' : '';

@@ -23,6 +23,12 @@ declare module '../types' {
   }
 }
 
+/** The pods' rugs: two tones taking turns, like a checkerboard, each with a lighter inset, so the pods read as one set. */
+const POD_RUGS = [
+  ['#bde0fe', '#e3f2ff'],
+  ['#ffd6a5', '#ffeacf'],
+] as const;
+
 /** Rugs under each desk cluster. */
 export const rugs: Fixture = (site) => {
   [
@@ -31,8 +37,9 @@ export const rugs: Fixture = (site) => {
     [-10.5, 4],
     [-1.5, 4],
   ].forEach(([x, z], i) => {
-    const rug = mesh(roundedBox(6.2, 0.02, 4.6, 0.6), toon(PALETTE.rugs[i]), x, 0.011, z, false);
-    site.group.add(rug);
+    const [base, inset] = POD_RUGS[(i + Math.floor(i / 2)) % 2];
+    site.group.add(mesh(roundedBox(6.2, 0.02, 4.6, 0.6), toon(base), x, 0.011, z, false));
+    site.group.add(mesh(roundedBox(5.7, 0.02, 4.1, 0.5), toon(inset), x, 0.013, z, false));
   });
   return {};
 };
@@ -102,7 +109,7 @@ export const tv: Fixture<'tvScreen'> = (site) => {
   return { handle: { tvScreen } };
 };
 
-/** The machine monitor between the west windows, facing the desks. */
+/** The machine monitor on the south wall over the kitchen counter, facing the desks. */
 export const machineMonitor: Fixture<'machineScreen'> = (site) => {
   const monitor = new THREE.Group();
   const bezel = mesh(roundedBox(MACHINE_MONITOR.width + 0.16, 0.1, MACHINE_MONITOR.height + 0.16, 0.06), toon(PALETTE.ink), 0, 0, 0);
@@ -111,10 +118,10 @@ export const machineMonitor: Fixture<'machineScreen'> = (site) => {
   const machineScreen = new THREE.Mesh(new THREE.PlaneGeometry(MACHINE_MONITOR.width, MACHINE_MONITOR.height), new THREE.MeshBasicMaterial({ color: '#ffffff' }));
   machineScreen.position.z = 0.06;
   monitor.add(machineScreen);
-  monitor.position.set(MACHINE_MONITOR.x + 0.07, MACHINE_MONITOR.y, MACHINE_MONITOR.z);
-  monitor.rotation.y = Math.PI / 2;
+  monitor.position.set(MACHINE_MONITOR.x, MACHINE_MONITOR.y, MACHINE_MONITOR.z - 0.07);
+  monitor.rotation.y = Math.PI;
   site.group.add(monitor);
-  site.wall('west', MACHINE_MONITOR.z, MACHINE_MONITOR.y, MACHINE_MONITOR.width + 0.2, MACHINE_MONITOR.height + 0.2);
+  site.wall('south', MACHINE_MONITOR.x, MACHINE_MONITOR.y, MACHINE_MONITOR.width + 0.2, MACHINE_MONITOR.height + 0.2);
   return { handle: { machineScreen } };
 };
 

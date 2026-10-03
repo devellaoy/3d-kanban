@@ -497,7 +497,7 @@ test('changing the building\'s map sends each floor its meeting rooms again', as
   a.send({ t: 'map.set', map: 'castle' });
   assert.equal((await a.take('meeting', (m) => m.state.rooms.length === 1)).state.rooms.length, 1);
   a.send({ t: 'map.set', map: 'office' });
-  assert.equal((await a.take('meeting', (m) => m.state.rooms.length === 2)).state.rooms.length, 2);
+  assert.equal((await a.take('meeting', (m) => m.state.rooms.length === 1)).state.rooms.length, 1);
   await a.close();
 });
 

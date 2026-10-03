@@ -25,11 +25,13 @@ export function installLamplight(ctx: Ctx, parts: Pick<Parts, 'stage' | 'place'>
   let wallsShaded = true;
   const from = new THREE.Vector3();
 
+  /** Which walls are built: they change with the back office and the meeting wing. */
+  const builtWalls = () => ctx.player.wing + 4 * ctx.player.rooms;
   const shadeWalls = (shaded: boolean) => {
     wallsShaded = shaded;
-    if (wallsAt !== ctx.player.wing) {
+    if (wallsAt !== builtWalls()) {
       const walls: THREE.Object3D[] = (officeWalls = []);
-      wallsAt = ctx.player.wing;
+      wallsAt = builtWalls();
       ctx.office.group.traverse((o) => {
         if (o.userData.wall) walls.push(o);
       });
@@ -50,7 +52,7 @@ export function installLamplight(ctx: Ctx, parts: Pick<Parts, 'stage' | 'place'>
       if (Math.abs(target - indoorness) < 1e-3) indoorness = target;
     }
     // Indoors, walls built out since (the back office) are shaded too.
-    if (wallsShaded !== indoorness < 0.5 || (!wallsShaded && wallsAt !== ctx.player.wing)) shadeWalls(indoorness < 0.5);
+    if (wallsShaded !== indoorness < 0.5 || (!wallsShaded && wallsAt !== builtWalls())) shadeWalls(indoorness < 0.5);
     if (indoorness === 0) {
       sun.shadow.intensity = 1;
       return;
