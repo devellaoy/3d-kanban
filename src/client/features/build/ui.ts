@@ -4,7 +4,7 @@ import { store } from '../../state';
 import { h, openModal, type Modal } from '../../ui/dom';
 import { PIECE_KINDS, PIECES, type PieceKind } from './model';
 
-const ICONS: Record<string, string> = { desk: '🖥️', beanbag: '🫘', couch: '🛋️', pouf: '🫘', whiteboard: '📝' };
+const ICONS: Record<string, string> = { desk: '🖥️', beanbag: '🫘', couch: '🛋️', pouf: '🫘', whiteboard: '📝', rug: '🟦' };
 
 /**
  * The catalogue: every piece of furniture as a card. Picking one closes it and hands you the piece to
@@ -40,7 +40,7 @@ export function openCatalogue(opts: { current: PieceKind | null; onPick(kind: Pi
     'section.bd-office',
     {},
     h('h3', {}, '🏢 The office’s own furniture'),
-    h('p.bd-help', {}, 'The desks, bean bags, couch, poufs and whiteboard are the floor’s, not yours alone: whatever you move or take out, everyone on this floor sees, and it stays. Aim at one and press E to move it (R turns it, click puts it down), X to take it out, H to put it back where it comes.'),
+    h('p.bd-help', {}, 'The desks, bean bags, couch, poufs, whiteboard and rugs are the floor’s, not yours alone: whatever you move or take out, everyone on this floor sees, and it stays. Aim at one and press E to move it (R turns it, click puts it down), X to take it out, H to put it back where it comes.'),
     ...(backCards.length ? [h('div.bd-grid', {}, ...backCards)] : [h('p.bd-none', {}, 'Nothing has been taken out of this floor.')]),
     h('button.btn.bd-reset', { type: 'button', disabled: moved === 0, title: moved ? 'Put everything back where the office comes' : 'It is all where it comes already', onclick: () => confirmReset(moved, () => (modal.close(), opts.reset())) }, `↺ Reset the floor’s layout${moved ? ` (${moved} changed)` : ''}`),
   );
@@ -60,7 +60,7 @@ export function openCatalogue(opts: { current: PieceKind | null; onPick(kind: Pi
   return modal;
 }
 
-/** Asks before every desk, bean bag, the couch, poufs and whiteboard go back where the office comes (for everyone on the floor). */
+/** Asks before every desk, bean bag, the couch, poufs, whiteboard and rugs go back where the office comes (for everyone on the floor). */
 function confirmReset(moved: number, reset: () => void): Modal {
   const yes = h('button.btn.primary', { type: 'button', onclick: () => (modal.close(), reset()) }, `↺ Put it all back (${moved})`);
   const no = h('button.btn', { type: 'button', onclick: () => modal.close() }, 'Cancel');
@@ -68,7 +68,7 @@ function confirmReset(moved: number, reset: () => void): Modal {
     'div.modal.build-confirm',
     {},
     h('header', {}, h('h2', {}, '↺ Reset the floor’s layout?')),
-    h('div.body', {}, h('p', {}, `${moved} piece${moved === 1 ? ' is' : 's are'} not where the office comes. Resetting puts every desk, bean bag, the couch, the poufs and the whiteboard back, and brings back the ones taken out. This is for everyone on the floor.`), h('div.bd-actions', {}, yes, no)),
+    h('div.body', {}, h('p', {}, `${moved} piece${moved === 1 ? ' is' : 's are'} not where the office comes. Resetting puts every desk, bean bag, the couch, the poufs, the whiteboard and the rugs back, and brings back the ones taken out. This is for everyone on the floor.`), h('div.bd-actions', {}, yes, no)),
   );
   const modal = openModal(el, { doing: '🛠️ furnishing the office' });
   return modal;

@@ -1,11 +1,11 @@
 import * as THREE from 'three';
-import { worldRect } from '../../../shared/arrange';
+import { ROOM_RUGS, worldRect } from '../../../shared/arrange';
 import { BOARDS, LOFT, MACHINE_MONITOR, SEATING_BY_ID, STAIRS, STREET_Y, TV, WALL_HEIGHT } from '../../../shared/layout';
 import { wallFacing } from '../../../shared/decor';
 import type { NightParts } from '../outside';
 import { mesh, roundedBox, textPlane, toon, toonUnique } from '../toon';
 import type { Collider, Interactable } from '../types';
-import { fitTo, standIn } from './arrange';
+import { fitTo, movableRug, standIn } from './arrange';
 import type { Fixture } from './fixture';
 import { PALETTE } from './materials';
 import { coffeeTable, loungeCouch, pendant, pendantLight, pouf, wallBoard } from './props';
@@ -33,15 +33,15 @@ const POD_RUGS = [
 
 /** Rugs under each desk cluster. */
 export const rugs: Fixture = (site) => {
-  [
-    [-10.5, -4],
-    [-1.5, -4],
-    [-10.5, 4],
-    [-1.5, 4],
-  ].forEach(([x, z], i) => {
+  ROOM_RUGS.slice(0, 4).forEach(([x, z, w, d], i) => {
     const [base, inset] = POD_RUGS[(i + Math.floor(i / 2)) % 2];
-    site.group.add(mesh(roundedBox(6.2, 0.02, 4.6, 0.6), toon(base), x, 0.011, z, false));
-    site.group.add(mesh(roundedBox(5.7, 0.02, 4.1, 0.5), toon(inset), x, 0.013, z, false));
+    // Each in a group of its own, so build mode can move it (see shared/arrange.ts).
+    const rug = new THREE.Group();
+    rug.position.set(x, 0, z);
+    rug.add(mesh(roundedBox(w, 0.02, d, 0.6), toon(base), 0, 0.011, 0, false));
+    rug.add(mesh(roundedBox(w - 0.5, 0.02, d - 0.5, 0.5), toon(inset), 0, 0.013, 0, false));
+    site.group.add(rug);
+    movableRug(site, `rug-${i + 1}`, rug);
   });
   return {};
 };
@@ -158,8 +158,11 @@ export const lounge: Fixture = (site) => {
   table.position.set(13, 0, 0);
   site.group.add(table);
   site.colliders.push({ minX: 12.2, maxX: 13.8, minZ: -0.8, maxZ: 0.8, top: 0.46 });
-  const rug = mesh(roundedBox(7, 0.02, 7, 1.2), toon('#ffc6ff'), 13.4, 0.011, 0, false);
+  const rug = new THREE.Group();
+  rug.position.set(13.4, 0, 0);
+  rug.add(mesh(roundedBox(7, 0.02, 7, 1.2), toon('#ffc6ff'), 0, 0.011, 0, false));
   site.group.add(rug);
+  movableRug(site, 'rug-lounge', rug);
 
   // A pouf either side of the lounge (the seats still called beanbags), turned to the TV like whoever sits on it.
   for (const [i, [color, x, z]] of (

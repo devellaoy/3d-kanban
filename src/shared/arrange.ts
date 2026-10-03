@@ -27,7 +27,7 @@ export interface Layout {
   furniture?: Furniture;
 }
 
-export type MovableKind = 'desk' | 'beanbag' | 'couch' | 'pouf' | 'whiteboard';
+export type MovableKind = 'desk' | 'beanbag' | 'couch' | 'pouf' | 'whiteboard' | 'rug';
 
 export interface Movable {
   id: string;
@@ -37,6 +37,8 @@ export interface Movable {
   home: { x: number; z: number; rotY: number };
   /** Whether it can be turned a quarter turn at a time (a pouf turns to face the TV by itself). */
   turns: boolean;
+  /** A rug's size, in its own frame (u across, v along): it lies flat, so it's in nobody's way and anything may stand on it. */
+  extent?: Local;
 }
 
 /** A piece of furniture standing somewhere: its middle and the way it faces (see DeskDef.rotY), `r` quarter turns from home. */
@@ -49,7 +51,16 @@ export interface Pose {
 
 const QUARTER = Math.PI / 2;
 /** What can be rearranged. */
-const MOVED_ID = /^(desk-\d+|beanbag-\d+|couch|lounge-beanbag-\d+|whiteboard)$/;
+const MOVED_ID = /^(desk-\d+|beanbag-\d+|couch|lounge-beanbag-\d+|whiteboard|rug-[0-9]+|rug-lounge)$/;
+
+/** Where each rug of the main room lies as the office comes, and how big it is: x, z, width, depth. The pods', then the lounge's. */
+export const ROOM_RUGS: readonly (readonly [number, number, number, number])[] = [
+  [-10.5, -4, 6.2, 4.6],
+  [-1.5, -4, 6.2, 4.6],
+  [-10.5, 4, 6.2, 4.6],
+  [-1.5, 4, 6.2, 4.6],
+  [13.4, 0, 7, 7],
+];
 
 const SEAT = (id: string) => SEATING.find((s) => s.id === id)!;
 const POUF_IDS = SEATING.filter((s) => /^lounge-beanbag-/.test(s.id)).map((s) => s.id);
@@ -60,6 +71,8 @@ export const MOVABLES: Movable[] = [
   { id: 'couch', kind: 'couch', label: 'Couch', home: { x: SEAT('couch').x, z: SEAT('couch').z, rotY: SEAT('couch').rotY }, turns: true },
   ...POUF_IDS.map((id, i): Movable => ({ id, kind: 'pouf', label: `Lounge pouf ${i + 1}`, home: { x: SEAT(id).x, z: SEAT(id).z, rotY: SEAT(id).rotY }, turns: false })),
   { id: 'whiteboard', kind: 'whiteboard', label: 'Whiteboard', home: { x: WHITEBOARD.x, z: WHITEBOARD.z, rotY: 0 }, turns: true },
+  // The rugs under the four pods (see world/office/room.ts), and the lounge's under the couch.
+  ...ROOM_RUGS.map(([x, z, w, d], i): Movable => ({ id: i < 4 ? `rug-${i + 1}` : 'rug-lounge', kind: 'rug', label: i < 4 ? `Rug ${i + 1}` : 'Lounge rug', home: { x, z, rotY: 0 }, turns: true, extent: [-w / 2, w / 2, -d / 2, d / 2] })),
 ];
 export const MOVABLE_BY_ID = new Map(MOVABLES.map((m) => [m.id, m]));
 
@@ -81,6 +94,7 @@ const SHAPES: Record<MovableKind, Shape> = {
   beanbag: { body: { rects: [[BEANBAG_BOX.minX, BEANBAG_BOX.maxX, BEANBAG_BOX.minZ, BEANBAG_BOX.maxZ]], circles: [] }, keep: [[BEANBAG_BOX.minX, BEANBAG_BOX.maxX, BEANBAG_BOX.minZ, BEANBAG_BOX.maxZ]] },
   couch: { body: { rects: [[-2.2, 2.2, -0.5, 0.5]], circles: [] }, keep: [[-2.2, 2.2, -0.5, 1]] },
   pouf: { body: { rects: [], circles: [[0, 0, 0.5]] }, keep: [[-0.55, 0.55, -0.55, 0.55]] },
+  rug: { body: { rects: [], circles: [] }, keep: [] },
   whiteboard: { body: { rects: [[-WHITEBOARD.width / 2 - 0.2, WHITEBOARD.width / 2 + 0.2, -0.48, 0.48]], circles: [] }, keep: [[-WHITEBOARD.width / 2 - 0.2, WHITEBOARD.width / 2 + 0.2, -0.48, 0.48]] },
 };
 
@@ -127,6 +141,11 @@ export function poseAt(m: Movable, spot: Spot): Pose {
 export function bodyOf(m: Movable, pose: Pose): { rects: Rect[]; circles: Circle[] } {
   const s = SHAPES[m.kind].body;
   return { rects: s.rects.map((r) => worldRect(pose, r)), circles: s.circles.map(([u, v, r]) => [...toWorld(pose, u, v), r] as Circle) };
+}
+
+/** The ground a rug covers at `pose`, in the world. */
+export function rugRect(m: Movable, pose: Pose): Rect | null {
+  return m.extent ? worldRect(pose, m.extent) : null;
 }
 
 /** What a piece at `pose` takes up, with room to use it, in the world. */

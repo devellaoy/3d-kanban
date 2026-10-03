@@ -25,8 +25,8 @@ const why = (v: unknown) => (v as { why: string }).why;
 test('every piece of furniture, where the office comes, is allowed to be there, and nothing is walled in', () => {
   for (const m of MOVABLES) assert.deepEqual(checkPlace({}, m.id, { x: m.home.x, z: m.home.z, r: 0 }, { walking: false }), { ok: true }, m.id);
   assert.deepEqual(boxedIn({}), []);
-  // Every desk, bean bag, the couch, the two poufs and the whiteboard.
-  assert.equal(MOVABLES.length, DESKS.length + BEANBAGS.length + 4);
+  // Every desk, bean bag, the couch, the two poufs, the whiteboard and the five rugs.
+  assert.equal(MOVABLES.length, DESKS.length + BEANBAGS.length + 4 + 5);
 });
 
 test('a floor with nothing moved has the office plan itself, and the castle never has any', () => {
@@ -197,5 +197,23 @@ test('walling the back office up is refused when it would leave no desk standing
     assert.equal(plan.state().wing, 1);
     plan.arrange('desk-1', { x: DESKS[0].x, z: DESKS[0].z, r: 0 });
     assert.equal(typeof plan.shrink(() => false), 'object');
+  });
+});
+
+test('a rug lies flat: it may be under a desk and on other rugs, but keeps the doors, elevator and stairs bare', () => {
+  assert.deepEqual(checkPlace({}, 'rug-1', { x: -6, z: 0, r: 1 }), { ok: true });
+  assert.deepEqual(checkPlace({}, 'rug-2', { x: -10.5, z: -4, r: 0 }), { ok: true }); // on rug 1 and its desks
+  assert.equal(why(checkPlace({}, 'rug-1', { x: 8.5, z: -9, r: 0 })), 'blocked'); // the elevator
+  assert.equal(why(checkPlace({}, 'rug-1', { x: 7.5, z: 10.5, r: 0 })), 'blocked'); // the stairs
+  assert.equal(why(checkPlace({}, 'rug-3', { x: -17, z: 0, r: 0 })), 'outside');
+  // Not in anyone's way: no obstacle, and a desk may be put on one.
+  assert.equal(movableObstacles({ 'desk-1': { removed: true } }).rects.length, movableObstacles({}).rects.length - 1);
+  assert.deepEqual(checkPlace({ 'rug-1': { x: -6, z: 0, r: 0 } }, 'desk-1', { x: -6, z: 0, r: 0 }), { ok: true });
+  // They can be taken out, and are put back like the rest.
+  withDir((dir) => {
+    const plan = new FloorPlanStore(dir);
+    assert.deepEqual(plan.remove('rug-lounge', () => false), { id: 'rug-lounge', label: 'Lounge rug' });
+    assert.deepEqual([...plan.removed], []);
+    assert.deepEqual(plan.reset(), { labels: ['Lounge rug'] });
   });
 });

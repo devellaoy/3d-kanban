@@ -1,7 +1,7 @@
 import type * as THREE from 'three';
 import { MOVABLE_BY_ID, furnitureKey, poseOf, type Furniture, type Pose } from '../../../shared/arrange';
 import type { Collider } from '../types';
-import type { Fixture } from './fixture';
+import type { Fixture, Site } from './fixture';
 
 // The loose furniture of the office floor (the desks, bean bags, couch, poufs and whiteboard, see
 // shared/arrange.ts) put where a floor has arranged it. The fixtures that build each register it with
@@ -34,6 +34,20 @@ export interface Arranger {
   reveal(on: boolean): void;
   /** Every collider the furniture puts in the office, so a check of where something could go can leave them out. */
   colliders(): Set<Collider>;
+}
+
+/** A rug of the room (see ROOM_RUGS): `group` lies at its home, and build mode moves it, turns it or takes it out. It's flat: no collider, nothing to use. */
+export function movableRug(site: Site, id: string, group: THREE.Group) {
+  site.movables.set(id, {
+    group,
+    colliders: [],
+    place(pose) {
+      group.visible = !!pose;
+      if (!pose) return;
+      group.position.set(pose.x, 0, pose.z);
+      group.rotation.y = pose.rotY;
+    },
+  });
 }
 
 /** Puts `colliders` in the floor's list (or takes them out), whichever isn't so yet. */

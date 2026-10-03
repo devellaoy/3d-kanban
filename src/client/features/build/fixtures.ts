@@ -106,6 +106,8 @@ export function makeFixtureBuild(ctx: Ctx) {
     const m = movable(id);
     const quick = checkPlace(furniture(), id, spot, { walking: false });
     if (!quick.ok) return (verdict = { ok: false, why: whyNot(quick, nameOf(m)) });
+    // A rug lies flat under everything: nothing else to mind.
+    if (m.kind === 'rug') return (verdict = { ok: true });
     const pose = poseAt(m, spot);
     const rects = keepOf(m, pose);
     const mine = arrange().colliders();

@@ -3,7 +3,7 @@
 // asks this before it saves a move (server/floorplan.ts); a browser asks it while you carry a piece
 // round (client/features/build/fixtures.ts), so the green and the red are the server's own answer.
 
-import { MOVABLES, MOVABLE_BY_ID, atHome, bodyOf, keepOf, nameOf, poseAt, poseOf, sentence, type Furniture, type Movable, type Pose, type Spot } from './arrange.js';
+import { MOVABLES, MOVABLE_BY_ID, atHome, bodyOf, keepOf, nameOf, poseAt, poseOf, rugRect, sentence, type Furniture, type Movable, type Pose, type Spot } from './arrange.js';
 import { BALCONY_DOOR, ELEVATOR, ELEVATOR_FRONT, EXIT_DOOR, FLOOR, ROOMS_WING, STAIRS, STATIONS, WING, WING_DESKS, WING_ROOMS } from './layout.js';
 import { deskPoint, fixedObstacles, officeNav, type Circle, type Obstacles, type Pt, type Rect } from './nav.js';
 import type { DeskDef } from './layout.js';
@@ -51,6 +51,14 @@ function onTheFloor(m: Movable, pose: Pose): Verdict {
   for (const r of [...keep, ...body.rects]) if (o.rects.some((x) => overlaps(r, x)) || o.circles.some((c) => hitsCircle(r, c))) return { ok: false, why: 'blocked' };
   for (const c of body.circles) if (o.rects.some((x) => hitsCircle(x, [c[0], c[1], c[2]])) || o.circles.some((x) => Math.hypot(x[0] - c[0], x[1] - c[1]) < x[2] + c[2] - EPS)) return { ok: false, why: 'blocked' };
   return { ok: true };
+}
+
+/** A rug lies flat under everything: it only has to be on the floor and leave the doors, the elevator and the stairs bare (walking and the other furniture never mind it). */
+function rugOnTheFloor(m: Movable, pose: Pose): Verdict {
+  const r = rugRect(m, pose)!;
+  if (r[0] < FLOOR.minX || r[1] > FLOOR.maxX || r[2] < FLOOR.minZ || r[3] > FLOOR.maxZ) return { ok: false, why: 'outside' };
+  const bare: Rect[] = [...APRONS, [ELEVATOR.x - ELEVATOR.width / 2, ELEVATOR.x + ELEVATOR.width / 2, FLOOR.minZ, ELEVATOR_FRONT], [STAIRS.fromX, STAIRS.toX, STAIRS.minZ - 0.1, STAIRS.maxZ]];
+  return bare.some((x) => overlaps(r, x)) ? { ok: false, why: 'blocked' } : { ok: true };
 }
 
 /** A desk's or bean bag's spot as a seat the walking code understands. */
@@ -109,6 +117,7 @@ export function checkPlace(furniture: Furniture, id: string, to: Spot, opts: { w
   if (!m) return { ok: false, why: 'unknown' };
   if (![to.x, to.z, to.r].every(Number.isFinite) || !Number.isInteger(to.r) || to.r < 0 || to.r > 3 || (!m.turns && to.r !== 0)) return { ok: false, why: 'turn' };
   const pose = poseAt(m, to);
+  if (m.kind === 'rug') return rugOnTheFloor(m, pose);
   const here = onTheFloor(m, pose);
   if (!here.ok) return here;
   // The other pieces, as they stand.

@@ -136,7 +136,7 @@ nothing goes over the network, and what they remember lives in your browser's `l
   - Pieces are solid to you and are kept per floor. Workers and click-to-walk don't know about them
     yet, so they walk through. They are yours: kept in this browser, not shared.
   - **The office's own furniture is the floor's.** The agents' desks, the bean bags, the couch in front
-    of the TV, the two lounge poufs and the whiteboard can be moved, turned and taken out the same way,
+    of the TV, the two lounge poufs, the whiteboard and the room's five rugs (the four pods' and the lounge's) can be moved, turned and taken out the same way,
     but for everyone on the floor: the office keeps it with the floor's plan (`floorplan.json`, per
     floor, on the office map only: the castle has none of it), so it stays across restarts. Aim at one
     and the hint says what it is: **E** picks it up (the real thing follows where you aim, green where
@@ -157,6 +157,7 @@ nothing goes over the network, and what they remember lives in your browser's `l
     TV screen-sharing only while it faces the TV, give or take. Visitors in a multiplayer visit can't change it.
   - **B** also lists, under *The office's own furniture*, what's been taken out, to place again, and
     **↺ Reset the floor's layout** (after a confirmation) puts all of it back for everyone.
+  - Rugs lie flat: no collider, no obstacle for walking, and they may lie under desks and on each other. Aim at bare rug to pick it up (a desk or couch on it is aimed at first); only the doors, the elevator and the stairs have to stay bare. Taken-out rugs are listed under **B** like the rest (the back office's rugs stay with their rows).
   - The holiday decorations on the desks (pumpkins, presents) hang on their desk, so they go where it goes.
 - **A map** (round 2). **§** (the key left of 1) or ☰ → **🗺️ Map** shows a top-down map of the town and
   the scenic loop: the roads, the lake, the sea, the farm and the mountains. It marks the places, with a
