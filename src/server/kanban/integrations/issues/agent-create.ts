@@ -47,10 +47,13 @@ function text(body: Record<string, unknown>, field: string, max: number): string
 
 const isError = (v: unknown): v is { error: string } => typeof v === 'object' && v !== null && 'error' in v;
 
-/** The project's GitHub repositories (owner/name): its checkouts' remotes and its GitHub repository sources', each once. */
+/**
+ * The project's GitHub repositories (owner/name), each once: its GitHub repository sources' first, as
+ * their issues' keys spell them, then its checkouts' remotes (the keys of a source that names none).
+ */
 function githubRepos(ctx: KanbanContext, project: string): string[] {
   const named = ctx.settings.project(project).issueSources.flatMap((s) => (s.kind === 'github-repo' ? s.repos : []));
-  const all = [...ctx.repos(project).flatMap((r) => (r.kind === 'git' && r.remote ? [r.remote] : [])), ...named].filter((r) => GH_REPO_RE.test(r));
+  const all = [...named, ...ctx.repos(project).flatMap((r) => (r.kind === 'git' && r.remote ? [r.remote] : []))].filter((r) => GH_REPO_RE.test(r));
   return all.filter((r, i) => all.findIndex((x) => same(x, r)) === i);
 }
 
@@ -64,7 +67,12 @@ function issueKey(ctx: KanbanContext, project: string, v: unknown): string | { e
     const repos = githubRepos(ctx, project);
     return repos.length === 1 ? `gh:${repos[0]}#${n}` : { error: `${raw} could be an issue of ${repos.length ? repos.join(' or ') : 'any repository'}: give owner/repo#${n}` };
   }
-  if (/^[A-Za-z0-9_.-]{1,100}\/[A-Za-z0-9_.-]{1,100}#\d{1,12}$/.test(raw)) return `gh:${raw}`;
+  const gh = /^(?:gh:)?([A-Za-z0-9_.-]{1,100}\/[A-Za-z0-9_.-]{1,100})#(\d{1,12})$/.exec(raw);
+  if (gh) {
+    // GitHub doesn't mind the case, the task's ticket does: O/APP#12 is the issue o/app#12 already has its task for.
+    const repo = githubRepos(ctx, project).find((r) => same(r, gh[1])) ?? gh[1];
+    return `gh:${repo}#${Number(gh[2])}`;
+  }
   if (/^(gh|ghp):\S+$/.test(raw) || JIRA_KEY_RE.test(raw)) return raw;
   return { error: `${raw.slice(0, 80)} isn't an issue: give a number, owner/repo#n or a Jira key` };
 }
