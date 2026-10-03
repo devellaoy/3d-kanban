@@ -127,6 +127,11 @@ curl -fsSL https://raw.githubusercontent.com/devellaoy/3d-kanban/main/deploy/pro
 - **Multi-PR reviews**: 🔍 Review and 🤝 Review panel pick the PRs that belong together across the
   repositories and review them as one change. The office has one meeting room, and the **🚧 Room for a meeting room** sign on the west wall builds up to
   three more (the same way the back office grows), so panels and other meetings can run at the same time; a new one takes the first free room.
+- **Languages**: ⚙️ Settings → 🤖 Workers sets the **conversation language** every agent talks to you in and
+  the **public language** issues, pull requests, commits and other texts that leave the office are written in;
+  a project can pick its own public language in ⚙️ Project. Kanban runs, plain workers, queue tasks,
+  `hire_worker` and the board agents all get the two rules; unset, agents go by the task's language and the
+  project's instructions as before ([agents](docs/agents.md#languages)).
 - **Editable prompts**, office-wide or per project, with the process's contract blocks kept fixed (they also
   tell every kanban run and review panel to stop the processes it started, such as a dev server, when it
   finishes, unless it was asked to leave them running).
