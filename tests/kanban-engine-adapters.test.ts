@@ -269,6 +269,49 @@ test('claude transcript: background commands (Bash run_in_background, Monitor) t
   assert.equal(readClaudeTurn(write('h8.jsonl', timed([...typedMidRun, cUser('Anything else?'), cAssistant([text('No.')], {}, 'mn')])), { runStart })?.background, 1);
 });
 
+test('claude transcript: a prompt typed into the terminal after the office\'s is not the run\'s answer', (t) => {
+  const write = scratch(t);
+  const T0 = Date.UTC(2026, 9, 1, 8, 0, 0);
+  const at = (n: number) => new Date(T0 + n * 1000).toISOString();
+  const timed = (lines: object[], from = 1) => lines.map((l, i) => ({ ...l, timestamp: at(from + i) }));
+  const read = (lines: object[], opts: { runStart?: number; promptAt?: number } = { runStart: T0 }) => readClaudeTurn(write('t.jsonl', lines), opts);
+  const launch = [cAssistant([{ type: 'tool_use', id: 'a1', name: 'Agent', input: {} }], {}, 'ml'), cUser([{ type: 'tool_result', tool_use_id: 'a1', content: [{ type: 'text', text: 'Async agent launched successfully.\nagentId: ag1 (internal ID)' }] }], { toolUseResult: { isAsync: true, status: 'async_launched', agentId: 'ag1' } })];
+  const interimText = cAssistant([text('Waiting for the helper.')], {}, 'mi');
+  const note = { type: 'attachment', attachment: { type: 'queued_command', commandMode: 'task-notification', prompt: '<task-notification>\n<task-id>ag1</task-id>\n<status>completed</status>\n<summary>Agent "helper" completed</summary>\n</task-notification>' } };
+  const notice = cUser('<task-notification>\n<task-id>ag1</task-id>\n<status>completed</status>\n</task-notification>', { origin: { kind: 'task-notification' } });
+
+  // The helper ends inside the typed turn (its notification is an attachment there): the office's last text is the interim one.
+  const a = read(timed([cUser('Implement task #7'), ...launch, interimText, cUser('How is it going?'), note, cAssistant([text('Fine, all done.')], {}, 'mt')]));
+  assert.deepEqual(a, { text: 'Waiting for the helper.', complete: true, typed: true, interim: true });
+  // Typed while the agent wrote its final message: the office's segment has the answer (answered or not, the typed turn doesn't count).
+  const final = [cUser('Implement task #7'), cAssistant([text('All done.')], {}, 'mf')];
+  assert.deepEqual(read(timed([...final, cUser('And the docs?')])), { text: 'All done.', complete: true, typed: true });
+  assert.deepEqual(read(timed([...final, cUser('And the docs?'), cAssistant([text('Fine.')], {}, 'mc')])), { text: 'All done.', complete: true, typed: true });
+  // Without runStart or promptAt the last prompt is the turn, as before.
+  assert.deepEqual(readClaudeTurn(write('b.jsonl', timed([...final, cUser('And the docs?'), cAssistant([text('Fine.')], {}, 'mc')]))), { text: 'Fine.', complete: true });
+  assert.deepEqual(readClaudeTurn(write('c.jsonl', [...final, cUser('And the docs?'), cAssistant([text('Fine.')], {}, 'mc')]), { runStart: T0 }), { text: 'Fine.', complete: true });
+
+  // A person's prompt before the office's: promptAt finds the office's.
+  const before = timed([cUser('Chat with me'), cAssistant([text('chat')], {}, 'mc'), cUser('Review task #7'), cAssistant([text('REVIEW: APPROVED')], {}, 'mr')]);
+  assert.deepEqual(read(before, { runStart: T0, promptAt: T0 + 3000 }), { text: 'REVIEW: APPROVED', complete: true });
+  // A typed prompt before a notification turn: the answer is the notification turn's.
+  assert.deepEqual(read(timed([cUser('Implement task #7'), ...launch, interimText, cUser('How is it going?'), cAssistant([text('Fine.')], {}, 'mc'), notice, cAssistant([text('The helper agreed.')], {}, 'mn')])), { text: 'The helper agreed.', complete: true });
+
+  // The office's restate prompt (promptAt): its turn is the answer, a typed prompt after that is skipped again, with no interim (nothing is out).
+  const restated = [cUser('Implement task #7'), ...launch, interimText, cUser('How is it going?'), note, cAssistant([text('Fine.')], {}, 'mt'), cUser('Someone typed into your terminal'), cAssistant([text('Changed the redirect.')], {}, 'mx')];
+  const restateAt = T0 + (restated.length - 1) * 1000;
+  assert.deepEqual(read(timed(restated), { runStart: T0, promptAt: restateAt }), { text: 'Changed the redirect.', complete: true });
+  assert.deepEqual(read(timed([...restated, cUser('Thanks'), cAssistant([text('Welcome.')], {}, 'mw')]), { runStart: T0, promptAt: restateAt }), { text: 'Changed the redirect.', complete: true, typed: true });
+  // promptAt not in the log: the run's first prompt.
+  assert.deepEqual(read(timed(final), { runStart: T0, promptAt: T0 + 99_000 }), { text: 'All done.', complete: true });
+
+  // An ExitPlanMode in a typed turn still counts, and a tool running at the log's end is reported.
+  const plan = cAssistant([{ type: 'tool_use', id: 'p1', name: 'ExitPlanMode', input: { plan: 'The plan' } }], {}, 'mp');
+  assert.deepEqual(read(timed([...final, cUser('Plan it again'), plan])), { text: 'All done.', plan: 'The plan', exitPlan: true, complete: true, typed: true });
+  const tool = cAssistant([{ type: 'tool_use', id: 'x1', name: 'Bash', input: {} }], {}, 'mx');
+  assert.deepEqual(read(timed([...final, cUser('Run it'), cAssistant([text('Running.')], {}, 'my'), tool])), { text: 'All done.', complete: true, toolRunning: true, typed: true });
+});
+
 test('claude transcript: teammates (agent teams) still working, from their own transcripts and the lead\'s log', (t) => {
   const dir = mkdtempSync(path.join(tmpdir(), 'kanban-team-'));
   t.after(() => rmSync(dir, { recursive: true, force: true }));

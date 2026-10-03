@@ -420,13 +420,16 @@ function runPrompt(lines: Record<string, unknown>[], runStart: number): number {
 }
 
 /**
- * The turn after the last real prompt. Its `text` is the final answer only: the text blocks of the
+ * The office's turn: the one after its last prompt (`promptAt` / `runStart` find the prompt, else the last real one). Its `text` is the final answer only: the text blocks of the
  * turn's last assistant message (Claude logs one message's blocks as lines sharing its message id),
  * never what it said on the way, so a verdict or marker it quoted earlier doesn't count.
  * A last message that calls a tool (ExitPlanMode aside) isn't a final answer: the Stop hook can come
  * before Claude has logged the reply after that tool's result, so the turn isn't complete yet.
+ * A prompt typed into the terminal after the office's looks the same in the log: the first real prompt after the last
+ * office one (the office's own, or an agent's notification) is `typed`, and the answer is only what came before it. Its
+ * turn is skipped (but for a plan, and `toolRunning`, which follow the log's end).
  */
-export function readClaudeTurn(file: string, opts?: { since?: number; runStart?: number }): TurnResult | undefined {
+export function readClaudeTurn(file: string, opts?: { since?: number; runStart?: number; promptAt?: number }): TurnResult | undefined {
   const lines = readJsonLines(file);
   if (!lines) return undefined;
   // The last real prompt, and the office's own the background tasks are counted from: the run's first (a prompt typed into
@@ -443,6 +446,20 @@ export function readClaudeTurn(file: string, opts?: { since?: number; runStart?:
       break;
     }
   }
+  // The office's prompt (the last it gave the run, else the run's first; not found: the window's start): the turn read starts at the
+  // last of its own or an agent's notification after it. Any other real prompt after it is typed. Without one, the last prompt is it.
+  const ref = opts?.promptAt ?? opts?.runStart;
+  let own = ref !== undefined ? runPrompt(lines, ref) : -1;
+  if (own < 0 && opts?.promptAt !== undefined) own = start;
+  let cut = -1;
+  if (own >= 0) {
+    for (let i = lines.length - 1; i >= own; i--) {
+      if (!isRealPrompt(lines[i]) || (i !== own && !isAgentNotice(lines[i]))) continue;
+      from = i;
+      break;
+    }
+    cut = lines.findIndex((l, i) => i > from && isRealPrompt(l));
+  }
   let texts: string[] = [];
   let message: unknown;
   let plan: string | undefined;
@@ -453,23 +470,29 @@ export function readClaudeTurn(file: string, opts?: { since?: number; runStart?:
   let toolPending = false;
   // The last message's tool calls still without a result in the log.
   let running = new Set<unknown>();
-  for (const line of lines.slice(from + 1)) {
+  for (let i = from + 1; i < lines.length; i++) {
+    const line = lines[i];
     if (line.isSidechain === true) continue;
+    // From the typed prompt on, the answer is frozen; the plan and the running tools still follow the log.
+    const frozen = cut >= 0 && i >= cut;
     const msg = isObj(line.message) ? line.message : undefined;
     const content = Array.isArray(msg?.content) ? msg.content.filter(isObj) : [];
     if (line.type === 'assistant') {
-      answered = true;
+      if (!frozen) answered = true;
       // A new message: what an earlier one said is no longer the final answer.
       const id = msg?.id;
       if (id === undefined || id !== message) {
-        texts = [];
-        apiError = undefined;
-        toolPending = false;
+        if (!frozen) {
+          texts = [];
+          apiError = undefined;
+          toolPending = false;
+        }
         running = new Set();
       }
       message = id;
       for (const b of content) {
         if (b.type === 'text' && typeof b.text === 'string' && b.text.trim()) {
+          if (frozen) continue;
           texts.push(b.text.trim());
           if (line.isApiErrorMessage === true) apiError = b.text.trim();
         } else if (b.type === 'tool_use') {
@@ -480,7 +503,7 @@ export function readClaudeTurn(file: string, opts?: { since?: number; runStart?:
             planToolId = typeof b.id === 'string' ? b.id : undefined;
           } else {
             exitPlan = false;
-            toolPending = true;
+            if (!frozen) toolPending = true;
             running.add(b.id);
           }
         }
@@ -495,7 +518,10 @@ export function readClaudeTurn(file: string, opts?: { since?: number; runStart?:
   const left = backgroundLeft(lines, start, opts?.since) + teammatesBusy(file, opts?.since ?? 0, teammateEvents(lines, start));
   // The last prompt is a notification or a teammate's message nothing has answered yet: Claude is about to take its turn.
   const resuming = from >= 0 && !answered && isAgentNotice(lines[from]);
-  return { text: texts.join('\n\n'), ...(plan !== undefined ? { plan } : {}), ...(exitPlan ? { exitPlan } : {}), complete: answered && !toolPending && (texts.length > 0 || exitPlan), ...(apiError ? { apiError } : {}), ...(running.size ? { toolRunning: true } : {}), ...(left ? { background: left } : {}), ...(resuming ? { resuming } : {}) };
+  // Typed over the office's turns: those ended with background work still out (an agent, a command, a teammate spawned), so their text is an interim one.
+  const office = cut >= 0 ? lines.slice(0, cut) : [];
+  const interim = cut >= 0 && (backgroundLeft(office, start, opts?.since) > 0 || teammateEvents(office, start).some((e) => e.spawn));
+  return { text: texts.join('\n\n'), ...(plan !== undefined ? { plan } : {}), ...(exitPlan ? { exitPlan } : {}), complete: answered && !toolPending && (texts.length > 0 || exitPlan), ...(apiError ? { apiError } : {}), ...(running.size ? { toolRunning: true } : {}), ...(left ? { background: left } : {}), ...(resuming ? { resuming } : {}), ...(cut >= 0 ? { typed: true as const } : {}), ...(interim ? { interim: true as const } : {}) };
 }
 
 /** Claude logs an Esc on a turn as a user line "[Request interrupted by user…]" (it fires no Stop hook): whether one was logged at or after `since` (ms). */

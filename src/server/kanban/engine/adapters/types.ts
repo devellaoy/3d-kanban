@@ -51,6 +51,13 @@ export interface TurnResult {
    * take that turn, whose own Stop is still to come. Absent otherwise.
    */
   resuming?: boolean;
+  /**
+   * Claude: a prompt typed into the terminal (any real prompt that isn't a notification, after the office's) came after the
+   * turn read; its turn is not the run's answer, so `text` is the office's turns' last message only. Absent otherwise.
+   */
+  typed?: true;
+  /** With `typed`: the office's turns ended with background work still out (or a teammate spawned), so their text is an interim one, not the answer. */
+  interim?: true;
 }
 
 export interface TaskAgentAdapter {
@@ -62,9 +69,10 @@ export interface TaskAgentAdapter {
    * the agent's process started (ms): Claude's teammates that last wrote before it died with an earlier
    * process. `runStart`: when the kanban run began (ms); background work is counted from the first office prompt
    * logged at or after it, so a prompt typed into the worker's terminal meanwhile doesn't move the window.
-   * Codex ignores both.
+   * `promptAt`: when the office last gave this run a prompt (ms; the launch, or a restate): the answer is read from
+   * that prompt's turns, and a later prompt that isn't a notification is `typed`. Codex ignores all three.
    */
-  readTurnResult(transcriptPath: string, opts?: { since?: number; runStart?: number }): TurnResult | undefined;
+  readTurnResult(transcriptPath: string, opts?: { since?: number; runStart?: number; promptAt?: number }): TurnResult | undefined;
   /** Whether the log shows the turn interrupted (an Esc) at or after `since` (ms); only Claude logs that. */
   interruptedSince?(transcriptPath: string, since: number): boolean;
   /** What upstream's spawn may carry as the worker's model (it validates it); the rest goes in launchArgs. */
