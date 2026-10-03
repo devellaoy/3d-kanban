@@ -103,7 +103,7 @@ export function buildCouncil(kit: Kit, plan: MapPlan): { board?: THREE.Mesh; sig
   const meeting: Interactable = { kind: 'meeting', x: cp.x, z: cp.z, radius: 2.2 };
   t.userData.interact = meeting;
   kit.interactables.push(meeting);
-  for (const def of plan.meeting) kit.desks.set(def.id, councilChair(kit, def));
+  for (const def of plan.meetingRooms[0].seats) kit.desks.set(def.id, councilChair(kit, def));
   // An easel behind the table, away from its head, with the meeting's board and how it's going.
   const easel = new THREE.Group();
   easel.position.set(cp.x - Math.sin(cp.rotY) * COUNCIL.easel, 0, cp.z - Math.cos(cp.rotY) * COUNCIL.easel);

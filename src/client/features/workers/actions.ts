@@ -7,6 +7,7 @@
 import { DESK_BY_ID, STATION_AGENT, deskSeat, type DeskDef } from '../../../shared/layout';
 import { canLabel } from '../../../shared/floorplan';
 import { officeFull, pressureNote } from '../../../shared/machine';
+import { meetingsOf, roomOfSeat } from '../../../shared/meetings';
 import type { AgentEffort, AgentProvider, GhIssue, WorkerInfo } from '../../../shared/protocol';
 import { isAsleep, isBusy } from '../../../shared/status';
 import type { Ctx, Hint } from '../../core/context';
@@ -189,8 +190,8 @@ export function installWorkerActions(ctx: Ctx, core: CoreState, parts: WorkerAct
     if (sendTaskWorkerHome(net, w, where)) return;
     if (w.meeting) {
       // The meeting's worktree is the whole table's: it's tidied away once they've all gone.
-      const m = store.meeting.current;
-      const on = m?.id === w.meeting && m.status === 'running';
+      const m = meetingsOf(store.meeting).find((x) => x.id === w.meeting);
+      const on = m?.status === 'running';
       confirmDialog(`Send ${w.name} home?`, on ? `${w.name} is in the meeting on “${m.title}”, which stops without it.` : `${w.name} leaves the meeting room.`, 'Send home', () => net.send({ t: 'worker.kill', workerId: id }));
       return;
     }
@@ -502,7 +503,7 @@ export function installWorkerActions(ctx: Ctx, core: CoreState, parts: WorkerAct
       if (key === 'L') return openDeskLabel(net, it.deskId);
       const w = store.workerAtDesk(it.deskId);
       // Nobody is hired at the meeting table: a meeting seats its own workers there.
-      if (!w && plan().byId.get(it.deskId)?.room) return key === 'E' ? parts.meeting.showMeeting() : undefined;
+      if (!w && plan().byId.get(it.deskId)?.room) return key === 'E' ? parts.meeting.showMeeting(undefined, roomOfSeat(plan().meetingRooms, it.deskId)) : undefined;
       if (key === 'B' && !w) return openShell(it.deskId);
       // P with an issue card at an empty desk makes it a kanban task there.
       if (key === 'P' && ctx.carrying() && !w) return parts.cards.cardTaskAt(it.deskId, ctx.carrying()!);

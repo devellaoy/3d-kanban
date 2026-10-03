@@ -1,11 +1,12 @@
 // The meeting room: calling a meeting, stopping it, and clearing the table.
 import { isAgentEffort, isAgentProvider, type MeetingClientMsg, type MeetingRequest } from '../../../shared/protocol.js';
+import { emptyMeetings } from '../../../shared/meetings.js';
 import { OPEN_CODE_MODEL_MAX } from '../../../shared/providers.js';
 import { str } from '../../office/input.js';
 import { here } from './common.js';
 import type { HandlerMap, ViewPieces } from './types.js';
 
-export const meetingView: ViewPieces['meeting'] = (_ctx, floor) => floor?.meetings.state() ?? { current: null, past: [] };
+export const meetingView: ViewPieces['meeting'] = (_ctx, floor) => floor?.meetings.state() ?? emptyMeetings();
 
 export const meetingHandlers = {
   'meeting.start'(ctx, c, msg) {
@@ -18,6 +19,7 @@ export const meetingHandlers = {
     }
     const count = (v: unknown) => (Number.isInteger(v) && (v as number) > 0 ? (v as number) : undefined);
     const request: MeetingRequest = {
+      room: str(msg.room, 40) || undefined,
       pattern: msg.pattern,
       prompt: str(msg.prompt, 20000),
       title: str(msg.title, 200) || undefined,
@@ -34,14 +36,14 @@ export const meetingHandlers = {
     };
     ctx.withSignIn(c, ctx.claudeFor(request.provider ?? floor.workers.officeDefault.provider), () => ctx.withFreshBase(c, floor, () => ctx.warn(c, floor.meetings.start(request, who, c.accountId))));
   },
-  'meeting.stop'(ctx, c) {
+  'meeting.stop'(ctx, c, msg) {
     const who = c.peer.name;
     const floor = here(ctx, c);
-    if (floor) ctx.warn(c, floor.meetings.stop(who));
+    if (floor) ctx.warn(c, floor.meetings.stop(who, str(msg.room, 40) || undefined));
   },
-  'meeting.clear'(ctx, c) {
+  'meeting.clear'(ctx, c, msg) {
     const who = c.peer.name;
     const floor = here(ctx, c);
-    if (floor) ctx.warn(c, floor.meetings.clear(who));
+    if (floor) ctx.warn(c, floor.meetings.clear(who, str(msg.room, 40) || undefined));
   },
 } satisfies HandlerMap<MeetingClientMsg>;

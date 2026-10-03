@@ -1,6 +1,6 @@
 import './meeting.css';
-import { MEETING_PATTERNS, MEETING_PATTERN_IDS, TOKENS_PER_SEAT, meetingSpend, meetingStage, outputProblem, slugify } from '../../shared/meetings';
-import { fmtTokens, type Meeting, type MeetingPattern, type MeetingTurn } from '../../shared/protocol';
+import { MEETING_PATTERNS, MEETING_PATTERN_IDS, TOKENS_PER_SEAT, meetingAt, meetingSpend, meetingStage, outputProblem, slugify } from '../../shared/meetings';
+import { fmtTokens, type Meeting, type MeetingPattern, type MeetingState, type MeetingTurn } from '../../shared/protocol';
 import type { Net } from '../net';
 import { store } from '../state';
 import { h, openModal, timeAgo, toast, STATUS_LABEL, type Modal } from './dom';
@@ -33,30 +33,68 @@ export function issueMeeting(n: number, title: string): MeetingPreset {
 const PART_LABEL: Record<MeetingTurn['state'], string> = { waiting: '⏳ up next', sent: '📨 handed over', working: '💬 on it', done: '✅ written' };
 
 /**
- * The meeting room's window. With a meeting at the table it shows how it's going (and stops it, or
+ * The meeting rooms' window. With a meeting at a table it shows how it's going (and stops it, or
  * clears the table once it's over); otherwise, or with a preset from an issue or a PR, it's the form
- * that calls one.
+ * that calls one. A tab for each room (when there are several) switches between them. `room` is the
+ * one to open (the one a chair is in), or to hold the meeting in; `preset` is only for a meeting
+ * called from an issue or a PR, and goes to the first free room without a `room`.
  */
-export function openMeeting(net: Net, actions: MeetingActions, preset?: MeetingPreset) {
+export function openMeeting(net: Net, actions: MeetingActions, preset?: MeetingPreset, room?: string) {
   const close = h('button.btn.close', { 'aria-label': 'Close' }, '✕');
   const title = h('h2', {}, '🤝 Meeting room');
+  const tabs = h('div.meeting-tabs', { role: 'tablist', 'aria-label': 'Meeting rooms' });
   const body = h('div.body.meeting');
   const foot = h('footer');
-  const el = h('div.modal.meeting-window', { role: 'dialog', 'aria-label': 'Meeting room' }, h('header', {}, title, close), body, foot);
-  let view: 'status' | 'form' = preset || !store.meeting.current ? 'form' : 'status';
+  const el = h('div.modal.meeting-window', { role: 'dialog', 'aria-label': 'Meeting room' }, h('header', {}, title, close), tabs, body, foot);
+  const rooms = () => store.meeting.rooms;
+  // The room shown, and where a new meeting goes: the one asked for or last opened; else (unless a meeting is being called) the one
+  // with a meeting running or just held; else none, and a new meeting takes the first free room.
+  let shown: string | undefined = room ?? (preset ? undefined : (rooms().find((r) => r.current?.status === 'running') ?? rooms().find((r) => r.current))?.id);
+  let view: 'status' | 'form' = preset || !(shown && meetingAt(store.meeting, shown)) ? 'form' : 'status';
   let form: ReturnType<typeof meetingForm> | null = null;
+  const pick = (id: string) => {
+    shown = id;
+    view = meetingAt(store.meeting, id) ? 'status' : 'form';
+    form = null;
+    render();
+  };
+  const renderTabs = () => {
+    tabs.hidden = rooms().length < 2;
+    const ids = rooms().map((r) => r.id);
+    // Only the shown room's tab is in the tab order; the arrows, Home and End move between the others (they're rebuilt on a pick, so the new one takes the focus).
+    const onKey = (e: KeyboardEvent, id: string) => {
+      const i = ids.indexOf(id);
+      const to = e.key === 'ArrowRight' ? ids[(i + 1) % ids.length] : e.key === 'ArrowLeft' ? ids[(i - 1 + ids.length) % ids.length] : e.key === 'Home' ? ids[0] : e.key === 'End' ? ids[ids.length - 1] : null;
+      if (!to) return;
+      e.preventDefault();
+      pick(to);
+      (tabs.querySelector('[aria-selected="true"]') as HTMLElement | null)?.focus();
+    };
+    tabs.replaceChildren(
+      ...rooms().map((r) => {
+        const on = r.current?.status === 'running';
+        const sel = r.id === shown;
+        const stop = sel || (!ids.includes(shown ?? '') && r.id === ids[0]);
+        return h('button.btn.small.meeting-tab', { type: 'button', role: 'tab', 'aria-selected': String(sel), tabindex: stop ? 0 : -1, class: sel ? 'on' : '', onclick: () => pick(r.id), onkeydown: (e: Event) => onKey(e as KeyboardEvent, r.id) }, r.label, on ? ' · in a meeting' : r.current ? ' · done' : ' · free');
+      }),
+    );
+  };
   const render = () => {
-    if (view === 'status' && store.meeting.current) {
+    // A room the map no longer has (a map switch) is dropped: the form would send a room that's gone.
+    if (shown && !rooms().some((r) => r.id === shown)) shown = undefined;
+    renderTabs();
+    const here = shown ? meetingAt(store.meeting, shown) : null;
+    if (view === 'status' && here) {
       form = null;
-      title.textContent = '🤝 Meeting room';
-      renderStatus(store.meeting.current, body, foot, net, actions, () => {
+      title.textContent = rooms().find((r) => r.id === shown)?.label ?? '🤝 Meeting room';
+      renderStatus(here, body, foot, net, actions, () => {
         view = 'form';
         render();
       });
       return;
     }
     if (!form) {
-      form = meetingForm(net, preset, () => modal.close(), () => {
+      form = meetingForm(net, preset, () => shown, () => modal.close(), () => {
         view = 'status';
         render();
       });
@@ -76,7 +114,7 @@ function renderStatus(m: Meeting, body: HTMLElement, foot: HTMLElement, net: Net
   const p = MEETING_PATTERNS[m.pattern];
   const running = m.status === 'running';
   const pill = h('span.pill', { class: running ? 'working' : m.status === 'done' ? 'done' : 'needs_input' }, running ? 'in a meeting' : m.status);
-  const f = Math.min(1, m.tokens / Math.max(1, m.budget));
+  const f = m.budget > 0 ? Math.min(1, m.tokens / m.budget) : 0;
   const seats = h(
     'ul.meeting-seats',
     {},
@@ -103,7 +141,7 @@ function renderStatus(m: Meeting, body: HTMLElement, foot: HTMLElement, net: Net
     ...present(
     h('div.meeting-head', {}, pill, h('b', {}, `${p.icon} ${p.label}`), h('span.meeting-title', { title: m.prompt }, m.title)),
     h('p.meeting-line', {}, running ? `${meetingStage(m)} · called by ${m.calledBy} ${timeAgo(new Date(m.startedAt).toISOString())}` : m.status === 'done' ? `✅ Wrote ${m.output} in ${m.round} round${m.round === 1 ? '' : 's'}` : `⛔ Stopped in round ${m.round}: ${m.reason ?? 'stopped'}`),
-    h('div.meeting-budget', { title: `${m.tokens.toLocaleString()} of ${m.budget.toLocaleString()} tokens` }, h('div.meeting-bar', {}, h('i', { style: `width:${(f * 100).toFixed(1)}%;background:${f > 0.9 ? 'var(--bad)' : f > 0.7 ? 'var(--warn)' : 'var(--good)'}` })), h('span', {}, `${meetingSpend(m)} of ${fmtTokens(m.budget)} tokens`)),
+    h('div.meeting-budget', { title: m.budget > 0 ? `${m.tokens.toLocaleString()} of ${m.budget.toLocaleString()} tokens` : `${m.tokens.toLocaleString()} tokens, no limit` }, m.budget > 0 ? h('div.meeting-bar', {}, h('i', { style: `width:${(f * 100).toFixed(1)}%;background:${f > 0.9 ? 'var(--bad)' : f > 0.7 ? 'var(--warn)' : 'var(--good)'}` })) : null, h('span', {}, m.budget > 0 ? `${meetingSpend(m)} of ${fmtTokens(m.budget)} tokens` : `${meetingSpend(m)} · no limit`)),
     seats,
     h('div.meeting-out', {}, h('div.meeting-out-head', {}, h('b', {}, '📄 '), h('code', {}, m.output), where, review), h('pre.meeting-preview', {}, m.preview?.trim() ? m.preview : running ? 'Nothing written yet.' : 'Nothing was written.')),
     store.meeting.past.length
@@ -115,9 +153,9 @@ function renderStatus(m: Meeting, body: HTMLElement, foot: HTMLElement, net: Net
   foot.replaceChildren(
     ...present(
     h('span.grow', {}, running ? 'The workers stay at the table after it ends, so you can read their terminals.' : 'Clearing the room sends the workers home. A committed output stays on its branch.'),
-    running ? h('button.btn', { type: 'button', onclick: () => confirmDialog('Stop the meeting?', `The workers stop where they are and stay at the table. ${m.output} is only there if it was written.`, 'Stop it', () => net.send({ t: 'meeting.stop' })) }, '⛔ Stop meeting') : null,
+    running ? h('button.btn', { type: 'button', onclick: () => confirmDialog('Stop the meeting?', `The workers stop where they are and stay at the table. ${m.output} is only there if it was written.`, 'Stop it', () => net.send({ t: 'meeting.stop', room: m.room })) }, '⛔ Stop meeting') : null,
     !running && m.commit && head?.worktree ? h('button.btn', { type: 'button', title: `Push ${m.worktree?.branch} and open a pull request`, onclick: () => actions.openPr(head.id) }, head.pr ? `🔀 PR #${head.pr.number}` : '🔀 Open PR') : null,
-    !running ? h('button.btn', { type: 'button', onclick: () => net.send({ t: 'meeting.clear' }) }, '🧹 Clear the room') : null,
+    !running ? h('button.btn', { type: 'button', onclick: () => net.send({ t: 'meeting.clear', room: m.room }) }, '🧹 Clear the room') : null,
     !running ? h('button.btn.primary', { type: 'button', onclick: callAnother }, '🤝 Call a meeting…') : null,
     ),
   );
@@ -125,8 +163,20 @@ function renderStatus(m: Meeting, body: HTMLElement, foot: HTMLElement, net: Net
 
 const present = (...xs: (Node | null)[]): Node[] => xs.filter((x): x is Node => x !== null);
 
+/** No room to call a meeting in: the one asked for is running a meeting, or (without one) every room is. */
+const roomBusy = (state: MeetingState, room: string | undefined) => (room ? meetingAt(state, room)?.status === 'running' : state.rooms.every((r) => r.current?.status === 'running'));
+
+/** What the form says about the room it calls the meeting in: why it can't, or what starting does to a finished meeting; empty when there's nothing to say. */
+function busyText(state: MeetingState, room: string | undefined): string {
+  const m = room ? meetingAt(state, room) : null;
+  if (roomBusy(state, room)) return m ? `The room is busy with “${m.title}” until it ends or someone stops it.` : `Every meeting room is busy (${state.rooms.map((r) => `“${r.current?.title}”`).join(', ')}) until one ends or someone stops it.`;
+  // Without a room, a new meeting takes the first free one; only when none is free does it replace the first room's finished meeting.
+  const replaced = m ?? (!room && state.rooms.every((r) => r.current) ? state.rooms[0]?.current : null);
+  return replaced ? 'Starting this sends a finished meeting’s workers home.' : '';
+}
+
 /** The form that calls a meeting: the pattern, what it's about, who sits down, the output, the bounds. */
-function meetingForm(net: Net, preset: MeetingPreset | undefined, done: () => void, back: () => void) {
+function meetingForm(net: Net, preset: MeetingPreset | undefined, room: () => string | undefined, done: () => void, back: () => void) {
   let pattern: MeetingPattern = preset?.pattern ?? 'debate';
   let roles: string[] = [];
   let outputTouched = false;
@@ -149,11 +199,14 @@ function meetingForm(net: Net, preset: MeetingPreset | undefined, done: () => vo
   const roundsIn = h('input', { type: 'number', 'aria-label': 'Rounds' }) as HTMLInputElement;
   const roundsNote = h('small.muted');
   const budgetIn = h('input', { type: 'number', min: 50, step: 250, 'aria-label': 'Token budget in thousands' }) as HTMLInputElement;
+  const budgetNote = h('small.muted');
   const provider = providerPicker(store.project, 'meeting-provider', 'Workers');
   const busy = h('p.meeting-busy');
   const submit = h('button.btn.primary', { type: 'submit' }, '🤝 Start the meeting');
-  const cancel = h('button.btn', { type: 'button', onclick: store.meeting.current ? back : done }, store.meeting.current ? '← Back' : 'Cancel');
+  const held = !!(room() && meetingAt(store.meeting, room()!));
+  const cancel = h('button.btn', { type: 'button', onclick: held ? back : done }, held ? '← Back' : 'Cancel');
 
+  const blocked = () => roomBusy(store.meeting, room());
   const def = () => MEETING_PATTERNS[pattern];
   const slug = () => slugify(titleIn.value.trim() || about.value.trim().split('\n')[0] || 'meeting', 32);
   const pr = () => Number(prSel.value) || undefined;
@@ -164,7 +217,8 @@ function meetingForm(net: Net, preset: MeetingPreset | undefined, done: () => vo
     outputNote.classList.toggle('bad', !!problem);
   };
   const syncBudget = () => {
-    if (!budgetTouched) budgetIn.value = String((roles.length * TOKENS_PER_SEAT) / 1000);
+    budgetIn.placeholder = def().unlimited ? 'No limit' : '';
+    if (!budgetTouched) budgetIn.value = def().unlimited ? '' : String((roles.length * TOKENS_PER_SEAT) / 1000);
   };
   const renderRoles = () => {
     const d = def();
@@ -191,6 +245,7 @@ function meetingForm(net: Net, preset: MeetingPreset | undefined, done: () => vo
     roundsIn.value = String(d.rounds.default);
     roundsIn.disabled = d.rounds.min === d.rounds.max;
     roundsNote.textContent = d.roundsNote;
+    budgetNote.textContent = d.unlimited ? 'For everyone at the table together. Leave it empty for no limit; over a limit, the meeting stops.' : 'For everyone at the table together. Over it, the meeting stops.';
     prRow.classList.toggle('hidden', d.needs !== 'pr');
     partsRow.classList.toggle('hidden', d.needs !== 'parts');
     renderRoles();
@@ -227,14 +282,14 @@ function meetingForm(net: Net, preset: MeetingPreset | undefined, done: () => vo
     partsRow,
     h('div.meeting-field', {}, h('label', {}, 'Output file'), outputIn, outputNote),
     h('div.meeting-field', {}, h('label.meeting-count', {}, 'Workers at the table', minus, count, plus), roleList),
-    h('div.meeting-bounds', {}, h('div.meeting-field', {}, h('label', {}, 'Round limit'), roundsIn, roundsNote), h('div.meeting-field', {}, h('label', {}, 'Token budget (thousands)'), budgetIn, h('small.muted', {}, 'For everyone at the table together. Over it, the meeting stops.'))),
+    h('div.meeting-bounds', {}, h('div.meeting-field', {}, h('label', {}, 'Round limit'), roundsIn, roundsNote), h('div.meeting-field', {}, h('label', {}, 'Token budget (thousands)'), budgetIn, budgetNote)),
     provider.element,
     busy,
   ) as HTMLFormElement;
   bodyEl.noValidate = true;
 
   const send = () => {
-    if (store.meeting.current?.status === 'running') return;
+    if (blocked()) return;
     const prompt = about.value.trim();
     if (!prompt) return about.focus();
     if (def().needs === 'pr' && !pr()) return prSel.focus();
@@ -248,6 +303,7 @@ function meetingForm(net: Net, preset: MeetingPreset | undefined, done: () => vo
     if (!provider.valid()) return;
     net.send({
       t: 'meeting.start',
+      room: room(),
       pattern,
       prompt,
       title: titleIn.value.trim() || undefined,
@@ -288,10 +344,8 @@ function meetingForm(net: Net, preset: MeetingPreset | undefined, done: () => vo
       prSel.value = want;
       syncOutput();
     }
-    const m = store.meeting.current;
-    const taken = m?.status === 'running';
-    busy.textContent = taken ? `The room is busy with “${m.title}” until it ends or someone stops it.` : m ? `Starting this sends the last meeting’s workers home.` : '';
-    submit.toggleAttribute('disabled', taken);
+    busy.textContent = busyText(store.meeting, room());
+    submit.toggleAttribute('disabled', blocked());
   };
   pickPattern(pattern);
   if (preset?.pr) prSel.value = String(preset.pr);

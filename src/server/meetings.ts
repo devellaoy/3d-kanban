@@ -1,10 +1,10 @@
 import { execFile } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
-import { closeSync, existsSync, mkdirSync, openSync, readFileSync, readSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { closeSync, existsSync, mkdirSync, openSync, readSync, rmSync, statSync } from 'node:fs';
 import path from 'node:path';
 import { promisify } from 'node:util';
-import { MEETING_SEATS } from '../shared/layout.js';
-import { MAX_MEETING_BUDGET, MEETING_NOTES_DIR, MEETING_PATTERNS, TOKENS_PER_SEAT, isMeetingPattern, meetingRecord, outputProblem, slugify } from '../shared/meetings.js';
+import type { MeetingRoomDef } from '../shared/layout.js';
+import { MEETING_NOTES_DIR, MEETING_PATTERNS, budgetText, isMeetingPattern, meetingBudget, meetingRecord, outputProblem, slugify } from '../shared/meetings.js';
 import { fmtTokens, isAgentEffort, isAgentProvider, tokensOf, type AgentChoice, type AgentEffort, type AgentProvider, type Meeting, type MeetingRecord, type MeetingRequest, type MeetingState, type MeetingTurn, type WorkerInfo, type WorkerStatus } from '../shared/protocol.js';
 import { validateWorkerEffort, validateWorkerModel } from './agents.js';
 import { providerMeta, takesEffort, takesModel } from '../shared/providers.js';
@@ -47,12 +47,23 @@ export interface MeetingEvents {
   prompt?(id: PromptId): string;
 }
 
+/** What a room needs from the meeting rooms that hold it (server/meeting-rooms.ts): the floor's events, minus the whole state, plus the list and the file they keep. */
+export type RoomEvents = Omit<MeetingEvents, 'update'> & {
+  /** This room's meeting changed: save it and tell everyone. */
+  changed(): void;
+  /** This room's meeting changed in a way nobody needs telling: just save it. */
+  save(): void;
+  /** A meeting is over for good: onto the list of earlier ones. */
+  archive(record: MeetingRecord): void;
+  /** Why `output` is taken by another room's running meeting (they'd write one file in the project's folder), if so. */
+  outputBusy(room: string, output: string): string | undefined;
+};
+
 const PUMP_MS = 3000;
 /** A part handed to a worker that sits ready this long without starting on it is handed over again, once. */
 const START_GRACE_MS = 60_000;
 /** How much of the output file the board in the room shows. */
 const PREVIEW_CHARS = 6000;
-const PAST_MAX = 20;
 const PROMPT_MAX = 20_000;
 const ROLE_MAX = 40;
 const PARTS_MAX = 100;
@@ -74,7 +85,7 @@ interface Part {
 }
 
 /**
- * The meeting room. A meeting seats 2–5 agents round the table, each with a role, and runs them
+ * One meeting room. A meeting seats 2–5 agents round the table, each with a role, and runs them
  * through the rounds of its pattern (shared/meetings.ts): in each step every worker with a part gets
  * it as a prompt, and the step is over when each of them has ended its turn with its part written to
  * the file it names. Checking the files, not the talk, is what moves a meeting on. It ends when the
@@ -87,8 +98,6 @@ interface Part {
  */
 export class MeetingRoom {
   private current: Meeting | null = null;
-  private past: MeetingRecord[] = [];
-  private statePath: string;
   private timer: NodeJS.Timeout;
   private pumping = false;
   private again = false;
@@ -105,21 +114,30 @@ export class MeetingRoom {
     private workers: MeetingWorkers,
     /** Git worktrees, in a project that's a git repository. */
     private trees: MeetingTrees | undefined,
-    private events: MeetingEvents,
+    private events: RoomEvents,
+    /** The room: its chairs are where a meeting sits (changed when the building's map is). */
+    public def: MeetingRoomDef,
   ) {
-    this.statePath = path.join(dataDir, 'meetings.json');
-    this.restore();
     this.timer = setInterval(() => this.tick(), PUMP_MS);
   }
 
-  state(): MeetingState {
-    return { current: this.current && { ...this.current, seats: this.current.seats.map((s) => ({ ...s })), turns: this.current.turns.map((t) => ({ ...t })) }, past: this.past.slice() };
+  /** What's on in the room (a copy), or null when it's empty. */
+  meeting(): Meeting | null {
+    return this.current && { ...this.current, seats: this.current.seats.map((s) => ({ ...s })), turns: this.current.turns.map((t) => ({ ...t })) };
   }
 
-  /** Calls a meeting. Returns why it couldn't, or undefined once everyone is sitting down. */
-  /** `owner` is the account calling it: the workers run on its sign-ins, and a review panel's review is posted as it. */
+  /** What's on in the room, not copied (for checks: don't change it), or null when it's empty. */
+  peek(): Readonly<Meeting> | null { return this.current; }
+
+  /** A meeting that was on when the office last stopped carries on where it was: the workers at the table outlive a restart. */
+  adopt(m: Meeting) { this.current = m; }
+
+  /** Whether someone (a meeting's worker or any other) sits at one of the room's chairs. */
+  seated(): boolean { return this.def.seats.some((d) => this.workers.list().some((w) => w.deskId === d.id)); }
+
+  /** Calls a meeting. Returns why it couldn't, or undefined once everyone is sitting down. `owner` is the account calling it: the workers run on its sign-ins, and a review panel's review is posted as it. */
   start(req: MeetingRequest, by: string, owner?: string): string | undefined {
-    if (this.current?.status === 'running') return `The meeting room is busy with “${this.current.title}”: stop that meeting first`;
+    if (this.current?.status === 'running') return `The ${this.def.label} is busy with “${this.current.title}”: stop that meeting first`;
     if (!isMeetingPattern(req.pattern)) return 'Unknown meeting pattern';
     const pattern = MEETING_PATTERNS[req.pattern];
     const paused = this.events.hiringPaused();
@@ -137,7 +155,7 @@ export class MeetingRoom {
 
     const given = Array.isArray(req.roles) ? req.roles.map((r) => String(r ?? '').replace(/\s+/g, ' ').trim().slice(0, ROLE_MAX)) : [];
     const count = given.length || pattern.seats.default;
-    if (count < pattern.seats.min || count > Math.min(pattern.seats.max, MEETING_SEATS.length)) {
+    if (count < pattern.seats.min || count > Math.min(pattern.seats.max, this.def.seats.length)) {
       return pattern.seats.min === pattern.seats.max ? `A ${pattern.label} meeting seats ${pattern.seats.min} workers` : `A ${pattern.label} meeting seats ${pattern.seats.min} to ${pattern.seats.max} workers`;
     }
     const roles = numbered(Array.from({ length: count }, (_, i) => given[i] || pattern.roles[i] || `Worker ${i + 1}`));
@@ -148,18 +166,19 @@ export class MeetingRoom {
     if (pattern.needs === 'parts' && parts.length < count - 1) return `List at least ${count - 1} part${count === 2 ? '' : 's'} for the mappers, one per line (or seat fewer workers)`;
     const issue = Number.isInteger(req.issue) && (req.issue as number) > 0 ? (req.issue as number) : undefined;
     const rounds = clamp(Math.floor(Number(req.rounds) || pattern.rounds.default), pattern.rounds.min, pattern.rounds.max);
-    const budget = clamp(Math.floor(Number(req.budget) || count * TOKENS_PER_SEAT), 50_000, MAX_MEETING_BUDGET);
+    const budget = meetingBudget(pattern, count, req.budget);
     const title = (String(req.title ?? '').replace(/\s+/g, ' ').trim() || (pr !== undefined && req.pattern === 'review' ? `Review of PR #${pr}` : firstLine(prompt))).slice(0, 100);
     const id = randomBytes(4).toString('hex');
+    const room = this.def.id;
     const slug = slugify(title, 32);
     const output = String(req.output ?? '').trim() || pattern.output(slug, pr);
-    const outputBad = outputProblem(output);
+    const outputBad = outputProblem(output) ?? this.events.outputBusy(room, output);
     if (outputBad) return outputBad;
 
     // The last meeting's workers make room: they go home, and their worktree is tidied away after them.
     const last = this.current;
     if (last) void this.dismiss(last);
-    const busy = MEETING_SEATS.slice(0, count).find((d) => this.workers.list().some((w) => w.deskId === d.id));
+    const busy = this.def.seats.slice(0, count).find((d) => this.workers.list().some((w) => w.deskId === d.id));
     if (busy) return 'Someone is still sitting at the meeting table';
 
     let worktree: Meeting['worktree'];
@@ -172,11 +191,12 @@ export class MeetingRoom {
     }
     const m: Meeting = {
       id,
+      room,
       pattern: req.pattern,
       title,
       prompt,
       output,
-      seats: roles.map((role, i) => ({ role, deskId: MEETING_SEATS[i].id })),
+      seats: roles.map((role, i) => ({ role, deskId: this.def.seats[i].id })),
       parts: pattern.needs === 'parts' ? parts : undefined,
       pr,
       issue,
@@ -218,7 +238,7 @@ export class MeetingRoom {
     if (last) this.archive(last);
     this.current = m;
     this.changed();
-    this.events.toast(`🤝 ${by} called a ${pattern.label} meeting: “${title}” (${count} workers, ${rounds} round${rounds === 1 ? '' : 's'} at most, ${fmtTokens(budget)} tokens)`, 'info');
+    this.events.toast(`🤝 ${by} called a ${pattern.label} meeting: “${title}” (${count} workers, ${rounds} round${rounds === 1 ? '' : 's'} at most, ${budgetText(budget)})`, 'info');
     return undefined;
   }
 
@@ -233,9 +253,9 @@ export class MeetingRoom {
   /** Sends the last meeting's workers home and clears the table. */
   clear(by: string): string | undefined {
     const m = this.current;
-    if (!m) return 'Nobody is in the meeting room';
+    if (!m) return `Nobody is in the ${this.def.label}`;
     if (m.status === 'running') return 'The meeting is still on: stop it first';
-    this.events.toast(`🤝 ${by} cleared the meeting room`, 'info');
+    this.events.toast(`🤝 ${by} cleared ${this.def.place}`, 'info');
     void this.dismiss(m);
     this.archive(m);
     this.current = null;
@@ -272,7 +292,7 @@ export class MeetingRoom {
   shutdown() {
     this.closing = true;
     clearInterval(this.timer);
-    this.persist();
+    this.events.save();
   }
 
   // ---------------------------------------------------------------------------
@@ -299,7 +319,7 @@ export class MeetingRoom {
       if (!w) return this.halt(m, `the ${s.role} (${s.workerName ?? 'its worker'}) was sent home`);
       if (w.status === 'exited') return this.halt(m, `the ${s.role}'s agent (${w.name}) exited`);
     }
-    if (m.tokens > m.budget) return this.halt(m, `over budget: ${fmtTokens(m.tokens)} of ${fmtTokens(m.budget)} tokens`);
+    if (m.budget > 0 && m.tokens > m.budget) return this.halt(m, `over budget: ${fmtTokens(m.tokens)} of ${fmtTokens(m.budget)} tokens`);
     let changed = false;
     for (const t of m.turns) {
       changed = this.advance(m, t, byId.get(m.seats[t.seat].workerId!)!) || changed;
@@ -461,7 +481,7 @@ export class MeetingRoom {
     const here = new Set(this.workers.list().map((w) => w.id));
     await Promise.all(m.seats.filter((s) => s.workerId && here.has(s.workerId)).map((s) => this.workers.kill(s.workerId!, { by: 'The meeting', reason: 'meeting' }))); // see WorkerManager.kill
     const wt = m.worktree;
-    if (!wt || !this.trees) return this.persist();
+    if (!wt || !this.trees) return this.events.save();
     // Kept with the floor's state already (keepNotes): the notes, and a review panel's review, which
     // is on the pull request now, go, so they don't count as work left behind.
     const cwd = this.cwd(m);
@@ -477,12 +497,12 @@ export class MeetingRoom {
       const err = await this.trees.remove(wt, state.ahead ? 'worktree' : 'all');
       if (err) this.events.toast(`Couldn't tidy away the meeting's worktree: ${err}`, 'warn');
     }
-    this.persist();
+    this.events.save();
   }
 
   /** Puts a finished meeting on the list of earlier ones. */
   private archive(m: Meeting) {
-    this.past = [meetingRecord(m), ...this.past.filter((r) => r.id !== m.id)].slice(0, PAST_MAX);
+    this.events.archive(meetingRecord(m));
   }
 
   /** Adds up what the workers at the table have used. Returns whether it changed. */
@@ -544,7 +564,7 @@ export class MeetingRoom {
       output: m.output,
       outputPath: path.join(this.cwd(m), m.output),
       rounds: `${m.rounds} round${m.rounds === 1 ? '' : 's'}`,
-      budget: fmtTokens(m.budget),
+      budget: budgetText(m.budget),
       where: where + inside,
     });
   }
@@ -690,30 +710,9 @@ export class MeetingRoom {
 
   private changed() {
     this.dirty = false;
-    this.persist();
-    this.events.update(this.state());
+    this.events.changed();
   }
 
-  private persist() {
-    try {
-      writeFileSync(this.statePath, JSON.stringify({ current: this.current, past: this.past }, null, 2), { mode: 0o600 });
-    } catch {
-      // disk issues shouldn't take the office down
-    }
-  }
-
-  private restore() {
-    if (!existsSync(this.statePath)) return;
-    try {
-      const saved = JSON.parse(readFileSync(this.statePath, 'utf8')) as Partial<MeetingState>;
-      if (Array.isArray(saved.past)) this.past = saved.past.filter((r) => r && typeof r.id === 'string' && typeof r.summary === 'string').slice(0, PAST_MAX);
-      const m = saved.current;
-      // The workers at the table outlive a restart of the office, so a meeting carries on where it was.
-      if (m && typeof m.id === 'string' && isMeetingPattern(m.pattern) && Array.isArray(m.seats) && Array.isArray(m.turns)) this.current = m;
-    } catch {
-      // corrupt state file: an empty room
-    }
-  }
 }
 
 /**

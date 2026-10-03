@@ -7,7 +7,7 @@
 import * as THREE from 'three';
 import { FLOOR, WING, beanbagsOut, deskBuilt, vacantSeats, wingMinZ, wingRowZ } from '../../../shared/layout';
 import { OFFICE_PLAN } from '../../../shared/maps';
-import { MEETING_PATTERNS } from '../../../shared/meetings';
+import { MEETING_PATTERNS, meetingsOf } from '../../../shared/meetings';
 import type { WorkerInfo, WorkerTask } from '../../../shared/protocol';
 import { workerPr } from '../../../shared/status';
 import type { Ctx } from '../../core/context';
@@ -292,8 +292,8 @@ export function installWorkerViews(ctx: Ctx, core: CoreState, parts: WorkerViews
    * (working on its part) or is listening while the others work on theirs.
    */
   function meetingCard(w: WorkerInfo): WorkerTask | undefined {
-    const m = store.meeting.current;
-    if (!w.meeting || !m || m.id !== w.meeting) return undefined;
+    const m = w.meeting ? meetingsOf(store.meeting).find((x) => x.id === w.meeting) : undefined;
+    if (!m) return undefined;
     const i = m.seats.findIndex((s) => s.workerId === w.id);
     if (i < 0) return undefined;
     const role = m.seats[i].role;

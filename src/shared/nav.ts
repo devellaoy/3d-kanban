@@ -4,7 +4,7 @@
 // An office floor built out into the back office (see WING) has more of it to get round: the office's
 // helpers take how many rows it's built out (`wing`), and each level gets a grid of its own.
 
-import { BALCONY, BALCONY_DOOR, BEANBAGS, BOOKSHELF, CABINET, DESK_SIZE, ELEVATOR, ELEVATOR_FRONT, EXIT_DOOR, EXIT_STAIRS, FLOOR, GONG, JUKEBOX, KIOSK, LOFT, MEETING_ROOM, MEETING_SEATS, MEETING_TABLE, PARACHUTE, ROAD, STAIRS, STATIONS, WHITEBOARD, WING, builtDesks, wingLevel, wingMinZ, type DeskDef } from './layout.js';
+import { BALCONY, BALCONY_DOOR, BEANBAGS, BOOKSHELF, CABINET, DESK_SIZE, ELEVATOR, ELEVATOR_FRONT, EXIT_DOOR, EXIT_STAIRS, FLOOR, GONG, JUKEBOX, KIOSK, LOFT, MEETING_ROOMS, PARACHUTE, ROAD, STAIRS, STATIONS, WHITEBOARD, WING, builtDesks, wingLevel, wingMinZ, type DeskDef } from './layout.js';
 
 
 export type Pt = [number, number];
@@ -86,19 +86,25 @@ function obstacles(wing: number): Obstacles {
     const zs = corners.map(([, z]) => z);
     rects.push([Math.min(...xs), Math.max(...xs), Math.min(...zs), Math.max(...zs)]);
   }
-  // The meeting room under the loft: its glass walls, with the doorway in the north one, and the
-  // table with its chairs, as world/office/meeting-room.ts puts them.
-  const room = MEETING_ROOM;
+  // The meeting rooms: their glass walls, with the doorway in the north one, and the tables with
+  // their chairs, as world/office/meeting-room.ts puts them. The first sits under the loft (its east
+  // and south sides are the building's walls); the review room stands on the open floor.
   const G = 0.06;
-  rects.push([room.minX - G, room.minX + G, room.minZ - G, room.maxZ]);
-  rects.push([room.minX - G, room.door.x0, room.minZ - G, room.minZ + G]);
-  rects.push([room.door.x1, room.maxX, room.minZ - G, room.minZ + G]);
-  const t = MEETING_TABLE;
-  rects.push([t.x - t.width / 2, t.x + t.width / 2, t.z - t.depth / 2, t.z + t.depth / 2]);
-  // Chairs tucked in at the table, a little smaller than a desk's, so there's a way round behind them.
-  for (const d of MEETING_SEATS) {
-    const [cx, cz] = deskPoint(d, 0, 0.85);
-    circles.push([cx, cz, 0.3]);
+  for (const { room, table: t, seats } of MEETING_ROOMS) {
+    const south = room.free ? room.maxZ + G : room.maxZ;
+    rects.push([room.minX - G, room.minX + G, room.minZ - G, south]);
+    rects.push([room.minX - G, room.door.x0, room.minZ - G, room.minZ + G]);
+    rects.push([room.door.x1, room.maxX + (room.free ? G : 0), room.minZ - G, room.minZ + G]);
+    if (room.free) {
+      rects.push([room.maxX - G, room.maxX + G, room.minZ - G, south]);
+      rects.push([room.minX - G, room.maxX + G, room.maxZ - G, south]);
+    }
+    rects.push([t.x - t.width / 2, t.x + t.width / 2, t.z - t.depth / 2, t.z + t.depth / 2]);
+    // Chairs tucked in at the table, a little smaller than a desk's, so there's a way round behind them.
+    for (const d of seats) {
+      const [cx, cz] = deskPoint(d, 0, 0.85);
+      circles.push([cx, cz, 0.3]);
+    }
   }
   return { rects, circles };
 }

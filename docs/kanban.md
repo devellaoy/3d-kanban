@@ -549,9 +549,9 @@ reads its own. A kanban task made from a card keeps the description as its own, 
     PRs of different tasks, or of no task (one of the *other open PRs*, say), get a new **investigate**
     task *PR review: owner/repo#1, …* (with the ticket they share, if any, and a line naming the tasks
     involved), which goes to Review with the reviewer's findings and verdict. Retry reviews them again.
-  - 🤝 with several PRs: the floor's meeting room reviews them as one change set; the brief (the
+  - 🤝 with several PRs: one of the floor's meeting rooms (the first free one; if all are busy the panel says so and doesn't start) reviews them as one change set; the brief (the
     *Review panel of several pull requests* prompt) lists every PR. The combined review is posted on
-    one of them, which must be in the project's primary repository.
+    one of them, which must be in the project's primary repository. A review panel has no token limit (the panel doesn't set a budget).
 
 ## Prompts
 

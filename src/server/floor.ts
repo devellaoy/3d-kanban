@@ -3,7 +3,7 @@ import { mkdirSync } from 'node:fs';
 import path from 'node:path';
 import type { ChangesState, FloorInfo, GhIssue, GhPull, GhState, PeerInfo, ProjectInfo, ServerMsg, WorkerInfo } from '../shared/protocol.js';
 import { isBusy } from '../shared/status.js';
-import { DESK_BY_ID } from '../shared/layout.js';
+import { DESK_BY_ID, type MeetingRoomDef } from '../shared/layout.js';
 import type { FloorDef } from './building.js';
 import { excludeFromGit } from './config.js';
 import { agentProviders, configuredProvider } from './agents.js';
@@ -21,7 +21,7 @@ import { Jail } from './jail.js';
 import { Garage } from './garage.js';
 import { Jukebox } from './jukebox.js';
 import { Whiteboard } from './whiteboard.js';
-import { MeetingRoom } from './meetings.js';
+import { MeetingRooms } from './meeting-rooms.js';
 import { Worktrees, type WorktreeCleanup } from './worktrees.js';
 import { landedWork, landedWorkers, type Landed } from './leave-on-merge.js';
 import type { Ledger } from './usage.js';
@@ -82,6 +82,8 @@ export interface FloorContext {
   lent(floor: Floor): boolean;
   /** Whether the building's map locks up workers sent home (see MapPlan.sendHome), instead of letting them go. */
   locksUp(): boolean;
+  /** The building's map's meeting rooms. */
+  meetingRooms(): MeetingRoomDef[];
   /** Whether this floor is the checkout the office was started in. */
   isLocal(id: string): boolean;
 }
@@ -144,8 +146,8 @@ export class Floor {
   readonly jukebox: Jukebox;
   /** The whiteboard everyone on the floor draws on together. */
   readonly whiteboard: Whiteboard;
-  /** The meeting room, where workers work through a question together (see meetings.ts). */
-  readonly meetings: MeetingRoom;
+  /** The meeting rooms, where workers work through a question together (see meeting-rooms.ts). */
+  readonly meetings: MeetingRooms;
   /** The bookshelf: the project's Markdown files (see docs.ts). */
   readonly docs: Docs;
   /** Settles once the workers whose terminals outlived the last office are picked back up, and the rest woken. */
@@ -274,7 +276,7 @@ export class Floor {
 
     // Meetings seat their own workers round the meeting room's table and run them round by round.
     const workers = this.workers;
-    this.meetings = new MeetingRoom(
+    this.meetings = new MeetingRooms(
       def.dir,
       dataDir,
       {
@@ -300,6 +302,7 @@ export class Floor {
         },
         prompt: (id) => ctx.prompts.text(id),
       },
+      () => ctx.meetingRooms(),
     );
 
     // What each worker changed, for the Changes window at its desk (see changes.ts).
@@ -550,7 +553,7 @@ export class Floor {
   }
 
   private active(): boolean {
-    return this.ctx.people(this) > 0 || this.ctx.lent(this) || this.workers.list().some((w) => isBusy(w.status)) || this.queue.state().tasks.some((t) => t.status !== 'done') || this.meetings.state().current?.status === 'running';
+    return this.ctx.people(this) > 0 || this.ctx.lent(this) || this.workers.list().some((w) => isBusy(w.status)) || this.queue.state().tasks.some((t) => t.status !== 'done') || this.meetings.running();
   }
 
   info(): FloorInfo {

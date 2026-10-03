@@ -1,6 +1,6 @@
 /**
  * The boards on the walls: the issues board (less the cards someone's carrying around), the PR board,
- * the services board, the task queue, the machine monitor and the meeting room's two. What E does at
+ * the services board, the task queue, the machine monitor and each meeting room's two. What E does at
  * each is defined with it.
  */
 import type * as THREE from 'three';
@@ -16,7 +16,7 @@ import { openCard } from '../../kanban/issuecards'; // a card from the issue sou
 import { openServices } from '../../ui/services';
 import { BoardTexture, QueueBoardTexture, ServicesBoardTexture } from './world';
 import { MachineTexture } from './machine';
-import { MeetingBoardTexture, MeetingSignTexture } from './meeting';
+import { MeetingBoardTexture, MeetingSignTexture, meetingKey } from './meeting';
 import type { World } from '../../world/world';
 
 // The kinds of thing you can use that this defines (see InteractKinds in world/types.ts).
@@ -133,19 +133,35 @@ export function installBoards(ctx: Ctx, deps: BoardsDeps) {
   // The machine monitor on the west wall.
   const machineTex = new MachineTexture();
   mountBoard(office.machineScreen, machineTex.texture, () => machineTex.render(store.machine), ['machine']);
-  // The meeting room: its output as it's written on the back wall, and how it's going on the door.
-  const meetingBoardTex = new MeetingBoardTexture();
-  mountBoard(office.meetingBoard, meetingBoardTex.texture, () => meetingBoardTex.render(store.meeting), ['meeting']);
-  const meetingSignTex = new MeetingSignTexture();
-  mountBoard(office.meetingSign, meetingSignTex.texture, () => meetingSignTex.render(store.meeting), ['meeting']);
+  // The meeting rooms: each one's output as it's written on its back wall, and how it's going on its door.
+  const meetingTex = new Map<string, { board: MeetingBoardTexture; sign: MeetingSignTexture }>();
+  for (const { room, board, sign } of office.meetingScreens) {
+    const tex = { board: new MeetingBoardTexture(), sign: new MeetingSignTexture() };
+    meetingTex.set(room, tex);
+    // A message comes for a change in any room: only a room whose own meeting changed is painted again.
+    let painted: string | undefined;
+    const paint = () => {
+      const k = meetingKey(store.meeting, room);
+      if (k === painted) return;
+      painted = k;
+      tex.board.render(store.meeting, room);
+      tex.sign.render(store.meeting, room);
+    };
+    mountBoard(board, tex.board.texture, paint, ['meeting']);
+    if (sign) showOn(sign, tex.sign.texture);
+  }
   /** Puts every board's texture up on `w`'s boards. */
   function dressBoards(w: World) {
     showOn(w.boardMeshes.issues, issuesTex.texture);
     showOn(w.boardMeshes.pulls, pullsTex.texture);
     showOn(w.boardMeshes.services, servicesTex.texture);
     showOn(w.boardMeshes.queue, queueTex.texture);
-    if (w.meetingBoard) showOn(w.meetingBoard, meetingBoardTex.texture);
-    if (w.meetingSign) showOn(w.meetingSign, meetingSignTex.texture);
+    for (const { room, board, sign } of w.meetingScreens ?? []) {
+      const tex = meetingTex.get(room);
+      if (!tex) continue;
+      showOn(board, tex.board.texture);
+      showOn(sign, tex.sign.texture);
+    }
   }
 
   return { issuesTex, renderPullsBoard, renderServicesBoard, renderQueueBoard, dressBoards, cardMoved };

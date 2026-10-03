@@ -491,6 +491,16 @@ test('settings, accounts, sign-ins and the boards answer as before', async () =>
   await a.close();
 });
 
+test('changing the building\'s map sends each floor its meeting rooms again', async () => {
+  const a = await Browser.open('?name=Fay');
+  await a.take('welcome');
+  a.send({ t: 'map.set', map: 'castle' });
+  assert.equal((await a.take('meeting', (m) => m.state.rooms.length === 1)).state.rooms.length, 1);
+  a.send({ t: 'map.set', map: 'office' });
+  assert.equal((await a.take('meeting', (m) => m.state.rooms.length === 2)).state.rooms.length, 2);
+  await a.close();
+});
+
 test('the hook server answers only workers, with their own token', async () => {
   const hook = (p: string, init: RequestInit = {}) => fetch(hooks + p, init);
   assert.equal((await hook('/hooks/claude?worker=nobody', { method: 'POST', body: '{}' })).status, 401);

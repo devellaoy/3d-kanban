@@ -45,6 +45,7 @@ Back to the [README](../README.md).
   the loft's, the meeting room's and the back office's lamps push a `RoomLamp` to `NightParts.roomLamps`
   (`world/outside.ts`, `world/office/{room,props,loft,meeting-room,wing}.ts`). Syncing upstream's sky or lamplight
   means keeping these.
+- Several meeting rooms per floor (#90): upstream's `server/meetings.ts` `MeetingRoom` is now one room's engine (it takes its `MeetingRoomDef`, no longer holds the state file or the list of earlier meetings), and the new `server/meeting-rooms.ts` `MeetingRooms` owns one per room and is what `Floor.meetings` is. The seams in upstream's files: `MeetingState` is `{ rooms, past }` (was `{ current, past }`) and `Meeting.room`, `MeetingRequest.room`, `meeting.stop` / `meeting.clear` `room` in `shared/protocol/meetings.ts`; `MeetingRoomDef` / `MEETING_ROOMS` in `shared/layout.ts` and `MapPlan.meetingRooms` in `shared/maps/`; `floor.ts` (`meetings`, `ctx.meetingRooms`), `office/floors.ts`, `ws/handlers/meetings.ts`, the top bar chip in `features/hud`, `ui/meeting.ts` (a tab per room) and the places that read the one `current` meeting (`features/workers/{actions,views}.ts`, `state/slices/meeting.ts`). Syncing upstream's meeting room means keeping these.
 - When #219 merges upstream, syncing it means resolving the same hunks once more (the SHAs differ). Upstream #220
   (the `settings.ts` ceiling in `size.test.ts`) and #221 (party dimming against the lamp boost in `lamplight`) are
   likely to conflict later.

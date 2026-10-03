@@ -9,7 +9,7 @@ export type MeetingPattern = 'debate' | 'lead' | 'mapreduce' | 'redblue' | 'revi
 export interface MeetingSeat {
   /** Its part in the meeting, e.g. "Skeptic", "Red team" or "Security". */
   role: string;
-  /** Its chair (see MEETING_SEATS in layout). */
+  /** Its chair (see MEETING_ROOMS in layout). */
   deskId: string;
   workerId?: string;
   workerName?: string;
@@ -41,6 +41,8 @@ export type MeetingStatus = 'running' | 'done' | 'stopped';
  */
 export interface Meeting {
   id: string;
+  /** The meeting room it's held in (see MEETING_ROOMS in layout). */
+  room: string;
   pattern: MeetingPattern;
   title: string;
   /** The question or task, as whoever called the meeting put it. */
@@ -67,7 +69,7 @@ export interface Meeting {
   lastRound?: number;
   /** The current step's parts. */
   turns: MeetingTurn[];
-  /** Tokens every worker in the meeting may use between them, and how many they have. */
+  /** Tokens every worker in the meeting may use between them (0: no limit, a review panel's default), and how many they have. */
   budget: number;
   tokens: number;
   /** USD, where the providers report it. */
@@ -99,6 +101,8 @@ export interface Meeting {
 /** A meeting that's over, in a line. */
 export interface MeetingRecord {
   id: string;
+  /** The room it was held in; missing in records saved before there were several. */
+  room?: string;
   pattern: MeetingPattern;
   title: string;
   status: MeetingStatus;
@@ -110,15 +114,25 @@ export interface MeetingRecord {
   output: string;
 }
 
-export interface MeetingState {
+/** One meeting room on the floor and what's on in it. */
+export interface MeetingRoomState {
+  id: string;
+  label: string;
   /** The meeting in the room: the one running, or the last one until the room is cleared or the next is called. */
   current: Meeting | null;
+}
+
+export interface MeetingState {
+  /** Every meeting room on the floor's map, in MEETING_ROOMS order. */
+  rooms: MeetingRoomState[];
   /** Earlier meetings on the floor, newest first. */
   past: MeetingRecord[];
 }
 
 /** What calling a meeting asks for (see shared/meetings.ts for each pattern's defaults and limits). */
 export interface MeetingRequest {
+  /** The room to hold it in; the first free one without. */
+  room?: string;
   pattern: MeetingPattern;
   prompt: string;
   title?: string;
@@ -139,10 +153,10 @@ export interface MeetingRequest {
 export type MeetingClientMsg =
   /** Call a meeting: workers sit down round the meeting room's table and work through it in rounds. */
   | ({ t: 'meeting.start' } & MeetingRequest)
-  /** Stop the meeting that's running; its workers stay at the table. */
-  | { t: 'meeting.stop' }
-  /** Send the last meeting's workers home and clear the table. */
-  | { t: 'meeting.clear' };
+  /** Stop the meeting that's running in a room; its workers stay at the table. */
+  | { t: 'meeting.stop'; room?: string }
+  /** Send a room's last meeting's workers home and clear the table. */
+  | { t: 'meeting.clear'; room?: string };
 
 export type MeetingServerMsg =
   | { t: 'meeting'; state: MeetingState };

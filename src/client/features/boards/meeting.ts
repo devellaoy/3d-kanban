@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { MEETING_PATTERNS, meetingStage, meetingSummary } from '../../../shared/meetings';
+import { MEETING_PATTERNS, meetingStage, meetingSummary, roomAt } from '../../../shared/meetings';
 import { fmtCost, fmtTokens, type Meeting, type MeetingState } from '../../../shared/protocol';
 
 const FONT = 'Nunito, ui-rounded, system-ui, sans-serif';
@@ -43,7 +43,17 @@ export function speaking(m: Meeting): string[] {
 }
 
 /**
- * The board on the meeting room's back wall: the meeting's output file as it's being written, like a
+ * What a room's board and sign show, in a cheap string: the same key means the same picture, so a
+ * message about another room (or a change they don't draw) needn't repaint them.
+ */
+export function meetingKey(state: MeetingState, roomId: string): string {
+  const { label, current: m } = roomAt(state, roomId);
+  if (!m) return label;
+  return [label, m.id, m.status, m.round, m.turns.length, m.turns.map((t) => t.state).join(), m.preview?.length ?? 0, m.output, m.tokens, m.budget, m.cost, m.costKnown, m.reason, m.commit, m.review?.url, m.review?.error].join('|');
+}
+
+/**
+ * The board on a meeting room's back wall, facing its door: the meeting's output file as it's being written, like a
  * shared screen, with what's being worked on across the top.
  */
 export class MeetingBoardTexture {
@@ -58,19 +68,20 @@ export class MeetingBoardTexture {
     this.texture = c.texture;
   }
 
-  render(state: MeetingState) {
+  /** Paints the meeting held in room `roomId` (see MEETING_ROOMS). */
+  render(state: MeetingState, roomId: string) {
     const { g } = this;
     const W = this.canvas.width;
     const H = this.canvas.height;
     g.fillStyle = '#fbfdff';
     g.fillRect(0, 0, W, H);
-    const m = state.current;
+    const { label: name, current: m } = roomAt(state, roomId);
     g.textBaseline = 'alphabetic';
     if (!m) {
       g.fillStyle = INK;
       g.textAlign = 'center';
       g.font = `900 64px ${FONT}`;
-      g.fillText('🤝 The meeting room is free', W / 2, H / 2 - 10);
+      g.fillText(`${name} is free`, W / 2, H / 2 - 10);
       g.font = `700 36px ${FONT}`;
       g.fillStyle = '#5c5f73';
       g.fillText('Press E at the table to call a meeting: whatever it writes shows up here.', W / 2, H / 2 + 50);
@@ -126,7 +137,7 @@ export class MeetingBoardTexture {
 }
 
 /**
- * The panel on the glass beside the meeting room's door, like a room-booking screen: what's on, the
+ * The panel on the glass beside a meeting room's door, like a room-booking screen: what's on, the
  * round, who has the floor and the tokens against the budget; once it's over, its one-line summary.
  */
 export class MeetingSignTexture {
@@ -141,11 +152,12 @@ export class MeetingSignTexture {
     this.texture = c.texture;
   }
 
-  render(state: MeetingState) {
+  /** Paints the meeting held in room `roomId` (see MEETING_ROOMS). */
+  render(state: MeetingState, roomId: string) {
     const { g } = this;
     const W = this.canvas.width;
     const H = this.canvas.height;
-    const m = state.current;
+    const { label: name, current: m } = roomAt(state, roomId);
     const pad = 28;
     const lines = (text: string, font: string, color: string, y: number, max: number, lh: number) => {
       g.font = font;
@@ -167,7 +179,7 @@ export class MeetingSignTexture {
     g.font = `900 38px ${FONT}`;
     g.fillText(label, pad, 53);
     if (!m) {
-      let y = lines('🤝 Meeting room', `900 50px ${FONT}`, '#fffaf3', 160, 2, 58);
+      let y = lines(name, `900 50px ${FONT}`, '#fffaf3', 160, 2, 58);
       lines('Press E at the table to call a meeting: a debate, lead & team, map-reduce, red / blue or a review panel.', `700 32px ${FONT}`, '#e9ecef', y + 30, 8, 42);
       this.texture.needsUpdate = true;
       return;
@@ -181,7 +193,7 @@ export class MeetingSignTexture {
       const who = speaking(m);
       if (who.length) lines(`💬 ${who.join(', ')}`, `700 30px ${FONT}`, '#bde0fe', y + 8, 3, 38);
       // The budget, as a bar that fills up, and what's been spent.
-      const f = Math.min(1, m.tokens / Math.max(1, m.budget));
+      const f = m.budget > 0 ? Math.min(1, m.tokens / m.budget) : 0;
       const barY = H - 118;
       g.fillStyle = 'rgba(255,255,255,.18)';
       g.fillRect(pad, barY, W - 2 * pad, 20);
@@ -189,7 +201,7 @@ export class MeetingSignTexture {
       g.fillRect(pad, barY, (W - 2 * pad) * f, 20);
       g.fillStyle = '#fffaf3';
       g.font = `800 30px ${FONT}`;
-      g.fillText(`${fmtTokens(m.tokens)} of ${fmtTokens(m.budget)} tokens`, pad, H - 58);
+      g.fillText(m.budget > 0 ? `${fmtTokens(m.tokens)} of ${fmtTokens(m.budget)} tokens` : `${fmtTokens(m.tokens)} tokens · no limit`, pad, H - 58);
       g.font = `700 28px ${FONT}`;
       g.fillStyle = '#e9ecef';
       if (m.cost > 0) g.fillText(`${fmtCost(m.cost)}${m.costKnown ? '' : '+'} so far`, pad, H - 22);
