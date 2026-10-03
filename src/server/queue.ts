@@ -224,8 +224,8 @@ export class TaskQueue {
       const first = t.pr?.number !== pr.number;
       t.pr = pr;
       changed = true;
-      // The floor checks the description itself: `closes` has numbers only, from any repository.
-      if (first && (t.issue !== undefined || t.issueKey)) this.events.prLinked?.({ ...t }, { number: pr.number, url: pr.url });
+      // Only a PR off the task's own branch is its for sure: one matched by `closes` (numbers only, from any repository) may be another issue's.
+      if (first && match.headRefName === t.branch && (t.issue !== undefined || t.issueKey)) this.events.prLinked?.({ ...t }, { number: pr.number, url: pr.url });
     }
     if (changed) this.changed();
   }

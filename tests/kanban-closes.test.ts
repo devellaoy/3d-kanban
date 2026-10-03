@@ -169,6 +169,19 @@ test('the queue reports a linked pull request even when GitHub lists the same is
   q.shutdown();
 });
 
+test('the queue never has the closing line added to a pull request matched by an issue number only', () => {
+  const dir = mkdtempSync(path.join(tmpdir(), 'queue-closes-'));
+  const worker = { id: 'worker-0', deskId: 'd', status: 'working', name: 'T' } as never;
+  const workers = { defaultProvider: 'claude', list: () => [worker], deskOccupied: () => false, spawn: () => worker, kill: async () => ({}) } as unknown as QueueWorkers;
+  const linked: QueueTask[] = [];
+  const q = new TaskQueue(dir, workers, false, { update() {}, toast() {}, claimIssue: async () => undefined, refreshGitHub() {}, hiringPaused: () => undefined, emptied() {}, prLinked: (t) => void linked.push(t) });
+  (q as unknown as { tasks: QueueTask[] }).tasks.push({ id: 'a', title: 't', prompt: 'p', addedBy: 'x', addedAt: Date.now(), status: 'running', issue: 7, issueKey: 'gh:acme/api#7', workerId: 'worker-0', branch: 'task-branch' });
+  // Another branch's PR that closes acme/web#7: GitHub's `closes` says only 7.
+  q.onPulls([{ number: 11, title: 'x', state: 'OPEN', isDraft: false, url: 'https://github.com/acme/api/pull/11', author: '', labels: [], reviewDecision: '', headRefName: 'unrelated-branch', baseRefName: 'main', createdAt: new Date().toISOString(), updatedAt: '', additions: 0, deletions: 0, checks: 'none', body: 'Closes acme/web#7', closes: [7] } as GhPull]);
+  assert.equal(linked.length, 0, 'a PR off another branch is never edited');
+  q.shutdown();
+});
+
 test('claimCard on a project draft moves its Status and assigns nobody', async () => {
   const started: string[][] = [];
   setWallProvider({ started: async (p: string, k: string) => (started.push([p, k]), undefined), refresh() {} } as never);
