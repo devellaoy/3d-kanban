@@ -62,6 +62,8 @@ export interface FloorInfo {
   people: number;
   /** How many rows its back office is built out (see WING), for the building's outside. */
   wing: number;
+  /** How many meeting rooms its meeting wing is built out (see ROOMS_WING), for the building's outside. */
+  rooms: number;
 }
 
 /** Where the elevator's "add a project" clones to: <dir>/<owner>/<repo> on the office's machine. */
@@ -155,8 +157,8 @@ export type PlanClientMsg =
   /** Hang a sign over a desk on your floor (a SIGN_COLORS color), or take it down with no text. */
   | { t: 'desk.label'; deskId: string; text: string; color?: string }
   /** Knock the back office out another row, with two more desks; or wall its last row back up. */
-  | { t: 'floor.expand' }
-  | { t: 'floor.shrink' };
+  | { t: 'floor.expand'; part?: 'meeting' }
+  | { t: 'floor.shrink'; part?: 'meeting' };
 
 export type FloorServerMsg =
   /** You arrived on another floor: everything on it, replacing the last one's, and where everyone is now. */

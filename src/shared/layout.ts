@@ -2,6 +2,8 @@
 // Units are meters; +y is up. The office floor spans FLOOR.minX..maxX / minZ..maxZ at y = 0,
 // upstairs over a garage whose floor is level with the street (STREET_Y).
 
+import { buildMeetingRooms, inWingRooms, wingRoomSpans, type MeetingRoomPlan } from './meetingrooms.js';
+
 export const FLOOR = { minX: -18, maxX: 18, minZ: -13, maxZ: 13 } as const;
 /** How high the ceiling is: a meter over the loft's roof (LOFT.y + LOFT.height), all the way across the room. */
 export const WALL_HEIGHT = 6.8;
@@ -21,6 +23,8 @@ export interface DeskDef {
   room?: boolean;
   /** A desk in the back office (see WING): there once the floor is built out this many rows. */
   wing?: number;
+  /** How far out from the laptop a worker steps to walk off (nav's wayFrom): a chair with a narrow way beside it needs more. */
+  walkOut?: number;
   /** The spot behind this seat's chair where a task's reviewer stands watching (see WATCH_SPOTS). */
   watch?: string;
 }
@@ -114,19 +118,22 @@ export function builtDesks(level: number): DeskDef[] {
  * Overflow seats: once every desk is taken, bean bags come out around the room, one at a time in
  * this order. Each faces a window or a wall, with open floor behind it to walk up to.
  */
+/** Between the meeting wing's rooms along the west wall (where the wall stays when they're built): the west bean bags stand there, clear of the doors. */
+const PIERS = wingRoomSpans(FLOOR).slice(1).map((s, i) => (wingRoomSpans(FLOOR)[i].z1 + s.z0) / 2);
+
 export const BEANBAGS: DeskDef[] = (
   [
     // Out in the north-east corner past the gong, and between the PR board and the elevator, clear of
     // the gong's front and the elevator doors.
     [15, -9.8, 0],
     [5.4, -9.8, 0],
-    [-16.1, -9, Math.PI / 2],
-    [-16.1, -3, Math.PI / 2],
+    [FLOOR.minX + 1.9, PIERS[0], Math.PI / 2],
+    [FLOOR.minX + 1.9, PIERS[1], Math.PI / 2],
     [-8.8, 10.2, Math.PI],
     [0.8, 10.2, Math.PI],
     [12.2, -5.6, -Math.PI / 2],
     [12.2, 5.6, -Math.PI / 2],
-    [-16.1, 3, Math.PI / 2],
+    [FLOOR.minX + 2.4, 4.9, Math.PI / 2],
     // Clear of the board agents' kiosks, and of the floor in front of them.
     [-13.2, -9.8, 0],
     [-12.6, 9.2, Math.PI / 2],
@@ -167,88 +174,17 @@ export const LOFT = { minX: 9, maxX: FLOOR.maxX, minZ: 8, maxZ: FLOOR.maxZ, y: 3
 /** Its stairs climb east along the south wall and arrive at the loft's west door. */
 export const STAIRS = { fromX: 3, toX: LOFT.minX, minZ: 11.2, maxZ: FLOOR.maxZ, steps: 15 } as const;
 
-/**
- * The meeting room: glass walls round the space under the boss office, from the loft's posts to the
- * outside walls, with a long table in the middle. Workers called to a meeting sit round it (see
- * MEETING_SEATS and server/meetings.ts). The glass stops under the loft's floor; the door is in the
- * north wall, facing the lounge.
- */
-export const MEETING_ROOM = { minX: LOFT.minX + 0.15, maxX: FLOOR.maxX, minZ: LOFT.minZ + 0.15, maxZ: FLOOR.maxZ, height: LOFT.y - 0.25, door: { x0: 10, x1: 11.4 } } as const;
-export const MEETING_TABLE = { x: 14.5, z: 10.55, width: 3.6, depth: 1.2, height: 0.76 } as const;
-/**
- * The chairs round the meeting table, in the order a meeting fills them: the head of the table at its
- * west end (whoever leads or writes the meeting up), then two down each side. (x, z) is where the
- * laptop sits on the table; the chair is out from it the way a desk's is (deskSeat).
- */
-export const MEETING_SEATS: DeskDef[] = (
-  [
-    [MEETING_TABLE.x - MEETING_TABLE.width / 2 + 0.35, MEETING_TABLE.z, -Math.PI / 2],
-    [MEETING_TABLE.x - 0.6, MEETING_TABLE.z - MEETING_TABLE.depth / 2 + 0.35, Math.PI],
-    [MEETING_TABLE.x - 0.6, MEETING_TABLE.z + MEETING_TABLE.depth / 2 - 0.35, 0],
-    [MEETING_TABLE.x + 1.1, MEETING_TABLE.z - MEETING_TABLE.depth / 2 + 0.35, Math.PI],
-    [MEETING_TABLE.x + 1.1, MEETING_TABLE.z + MEETING_TABLE.depth / 2 - 0.35, 0],
-  ] as const
-).map(([x, z, rotY], i) => ({ id: `meeting-${i + 1}`, x, z, rotY, label: i === 0 ? 'Head of the table' : `Meeting chair ${i + 1}`, room: true }));
-/**
- * The board on the meeting room's back (south) wall that shows the meeting's output file as it's written.
- * It is in line with the door (x 10.7), so standing in the doorway you see it head-on; the table, and
- * with it the head of the table's chair and the card over whoever sits there, is east of that line.
- */
-export const MEETING_BOARD = { x: (MEETING_ROOM.door.x0 + MEETING_ROOM.door.x1) / 2, y: 1.95, z: FLOOR.maxZ - 0.08, width: 3, height: 1 } as const;
-
-/** A room a meeting can be held in: its chairs, in the order a meeting fills them, head of the table first. */
-export interface MeetingRoomDef {
-  /** Stable: saved with the meetings held there. */
-  id: string;
-  /** What the room is called, with its icon: "🔍 Review room". */
-  label: string;
-  icon: string; // the label's icon alone: "🔍 in the review room"
-  place: string; // where someone is in it: "the review room"
-  seats: DeskDef[];
-}
-/** A meeting room's glass shell: its door is in the north (minZ) wall, and its board is on the south one. */
-export interface MeetingRoomBox {
-  minX: number;
-  maxX: number;
-  minZ: number;
-  maxZ: number;
-  height: number;
-  door: { x0: number; x1: number };
-  /** Stands on the open floor: glass on all four sides (the south one solid, for the board) and roofed. Otherwise the east and south are the building's walls. */
-  free?: boolean;
-}
-/** A meeting room on the office floor: where it is, its table and its board (see MEETING_ROOMS). */
-export interface MeetingRoomPlan extends MeetingRoomDef {
-  room: MeetingRoomBox;
-  table: { x: number; z: number; width: number; depth: number; height: number };
-  board: { x: number; y: number; z: number; width: number; height: number };
-}
-
-/**
- * The review room: a small glass room standing on the open floor between the desks and the lounge,
- * for review panels and any meeting while the first room is taken. Its door (north) and board
- * (south wall) are on one line, and the table runs along it with the chairs down both sides, so no
- * one sits between the door and the board.
- */
-export const REVIEW_ROOM = { minX: 2, maxX: 7.4, minZ: 2.9, maxZ: 7.9, height: 2.75, door: { x0: 4, x1: 5.4 }, free: true } as const;
-export const REVIEW_TABLE = { x: 4.7, z: 5.4, width: 1.6, depth: 2.4, height: 0.76 } as const;
-export const REVIEW_BOARD = { x: REVIEW_TABLE.x, y: 1.95, z: REVIEW_ROOM.maxZ - 0.14, width: 2.4, height: 0.8 } as const;
-/** Five chairs, three down the west side and two down the east; the head of the table is the middle one on the west. */
-export const REVIEW_SEATS: DeskDef[] = (
-  [
-    [REVIEW_TABLE.x - 0.45, REVIEW_TABLE.z, -Math.PI / 2],
-    [REVIEW_TABLE.x + 0.45, REVIEW_TABLE.z - 0.45, Math.PI / 2],
-    [REVIEW_TABLE.x + 0.45, REVIEW_TABLE.z + 0.45, Math.PI / 2],
-    [REVIEW_TABLE.x - 0.45, REVIEW_TABLE.z - 0.9, -Math.PI / 2],
-    [REVIEW_TABLE.x - 0.45, REVIEW_TABLE.z + 0.9, -Math.PI / 2],
-  ] as const
-).map(([x, z, rotY], i) => ({ id: `review-${i + 1}`, x, z, rotY, label: i === 0 ? 'Head of the review table' : `Review chair ${i + 1}`, room: true }));
-
-/** The office's meeting rooms, the first free one first: a meeting goes to the first free one (see server/meetings). */
-export const MEETING_ROOMS: MeetingRoomPlan[] = [
-  { id: 'meeting', label: '🤝 Meeting room', icon: '🤝', place: 'the meeting room', seats: MEETING_SEATS, room: MEETING_ROOM, table: MEETING_TABLE, board: MEETING_BOARD },
-  { id: 'review', label: '🔍 Review room', icon: '🔍', place: 'the review room', seats: REVIEW_SEATS, room: REVIEW_ROOM, table: REVIEW_TABLE, board: REVIEW_BOARD },
-];
+/** The office's meeting rooms, the first free one first (see shared/meetingrooms.ts and server/meeting-rooms.ts). */
+export const MEETING_ROOMS: MeetingRoomPlan[] = buildMeetingRooms(FLOOR, LOFT);
+/** The first room, under the loft. */
+export const MEETING_ROOM = MEETING_ROOMS[0].room;
+export const MEETING_SEATS: DeskDef[] = MEETING_ROOMS[0].seats;
+export type { MeetingRoomBox, MeetingRoomDef, MeetingRoomPlan } from './meetingrooms.js';
+export { ROOMS_WING, annexOf, builtMeetingRooms, roomFrame, roomsLevel, roomsOfAnnex, wingOfAnnex } from './meetingrooms.js';
+/** Whether (x, z) is in one of the meeting wing's rooms, with `rooms` of them built. */
+export const inRooms = (x: number, z: number, rooms: number) => inWingRooms(FLOOR, x, z, rooms);
+/** Where the meeting wing's rooms are along the west wall (see ROOMS_WING). */
+export const WING_ROOMS = wingRoomSpans(FLOOR);
 
 /**
  * The spot behind each seat (a desk or a bean bag) where a kanban task's reviewer stands, over
@@ -331,7 +267,7 @@ export const TV = { x: FLOOR.maxX - 0.1, y: 2.2, z: 0, width: 6.4, height: 3.6 }
  * The monitor on the west wall, between the first two windows from the north and facing
  * the desks: how busy the office's machine is, and how many workers it runs of the most it takes.
  */
-export const MACHINE_MONITOR = { x: FLOOR.minX, y: 2.2, z: -6, width: 2.3, height: 1.3 } as const;
+export const MACHINE_MONITOR = { x: -14.5, y: 2.4, z: FLOOR.maxZ, width: 2.3, height: 1.3 } as const;
 /** The lounge jukebox, against the east wall south of the TV, facing into the room. `y` is its speaker. */
 export const JUKEBOX = { x: FLOOR.maxX - 0.42, y: 0.75, z: 5.4, width: 1.3, depth: 0.72, height: 1.85 } as const;
 /** The arcade cabinet, against the east wall between the jukebox and the loft, facing into the room. `width` runs along the wall. */
@@ -388,15 +324,22 @@ export interface Opening {
   width: number;
   y0: number;
   y1: number;
+  /** A window of the meeting wing's room (WING_ROOMS index): in the wall until that room is built, then it's the room's. */
+  room?: number;
 }
 
-/** Windows you can see out of, and the loft's two, which sit higher up. */
+/** Windows you can see out of, and the loft's two, which sit higher up. The west ones are the meeting rooms' (see openWindows). */
 export const WINDOWS: Opening[] = [
-  ...[-14, -9, 1].map((u) => ({ wall: 'south' as const, u, width: 3, y0: 1.1, y1: 3.3 })),
-  ...[-9, -3, 3].map((u) => ({ wall: 'west' as const, u, width: 3, y0: 1.1, y1: 3.3 })),
+  ...[-9, 1].map((u) => ({ wall: 'south' as const, u, width: 3, y0: 1.1, y1: 3.3 })),
+  ...wingRoomSpans(FLOOR).map((s, room) => ({ wall: 'west' as const, u: s.c, width: 3, y0: 1.1, y1: 3.3, room })),
   { wall: 'south', u: LOFT.minX + 2, width: 2.8, y0: LOFT.y + 0.9, y1: LOFT.y + 2.5 },
   { wall: 'east', u: (LOFT.minZ + LOFT.maxZ) / 2, width: 2.8, y0: LOFT.y + 0.9, y1: LOFT.y + 2.5 },
 ];
+
+/** The windows there are in a floor built out `rooms` meeting rooms: a room takes its window with it. */
+export function openWindows(rooms: number): Opening[] {
+  return WINDOWS.filter((o) => o.room === undefined || o.room >= rooms);
+}
 
 /**
  * The way out of the bottom floor: a door in the west wall onto a landing, with stairs down to the

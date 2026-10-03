@@ -32,6 +32,8 @@ import { downstairs } from './ground';
 import { wing } from './wing';
 import { beanbags, desks, kiosks } from './seats';
 import { meetingRoom } from './meeting-room';
+import { roomsWing } from './roomswing';
+import { ledLights } from './led';
 import { loft } from './loft';
 import type { Fixture, Gives, Site } from './fixture';
 
@@ -71,6 +73,7 @@ function floorPlan() {
     signs,
     loft,
     meetingRoom,
+    roomsWing,
     elevator,
     garageLift,
     gong,
@@ -80,6 +83,8 @@ function floorPlan() {
     deskStuff,
     lightSwitches,
     mergePlant,
+    // The LED lighting round the room.
+    ledLights,
     camp,
   ] as const;
 }

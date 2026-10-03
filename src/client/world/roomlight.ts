@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { BALCONY_DOOR, FLOOR, WALL_T, WINDOWS, type Opening } from '../../shared/layout';
+import { BALCONY_DOOR, FLOOR, WALL_T, openWindows, type Opening } from '../../shared/layout';
 import { wingWindows } from './tower';
 
 /*
@@ -26,7 +26,7 @@ import { wingWindows } from './tower';
  */
 
 /** As many lamps and panes of glass as the shader takes. */
-export const MAX_ROOM_LAMPS = 12;
+export const MAX_ROOM_LAMPS = 24;
 export const MAX_PANES = 12;
 
 /**
@@ -92,8 +92,8 @@ export function paneOf(o: Opening): Pane {
 }
 
 /** The office's glass on a floor built out `wing` rows: its windows, the balcony's glass doors and the back office's windows. */
-export function panes(wing: number): Pane[] {
-  return [...WINDOWS, BALCONY_DOOR, ...wingWindows(wing)].map(paneOf).slice(0, MAX_PANES);
+export function panes(wing: number, rooms = 0): Pane[] {
+  return [...openWindows(rooms), BALCONY_DOOR, ...wingWindows(wing)].map(paneOf).slice(0, MAX_PANES);
 }
 
 /** The floor's glass as it is now (see setPanes). */
@@ -101,9 +101,9 @@ let shown: Pane[] = [];
 /** How far up the lamps are for the hour (DAY_LAMPS by day to 1 at night), as lightRoom last set it. */
 let hour = 1;
 
-/** Puts the floor's glass in the shader: `wing` rows of back office (see Sky.setWing). */
-export function setPanes(wing: number) {
-  const list = (shown = panes(wing));
+/** Puts the floor's glass in the shader: `wing` rows of back office and `rooms` meeting rooms (see Sky.setWing). */
+export function setPanes(wing: number, rooms = 0) {
+  const list = (shown = panes(wing, rooms));
   list.forEach((p, i) => {
     roomUniforms.skyPanes.value[i].set(p.at.x, p.at.y, p.at.z, p.area);
     roomUniforms.skyPaneHalf.value[i].copy(p.half);
@@ -139,8 +139,11 @@ type Point = { x: number; y: number; z: number };
 /** How near `p` is to a lamp that's on, 0–1, at the hour lightRoom last set (lampCover in ROOM_LIGHT_PARS, in numbers). */
 export function lampCover(p: Point, lamps: readonly RoomLamp[]): number {
   let sum = 0;
-  for (let i = 0, n = Math.min(lamps.length, MAX_ROOM_LAMPS); i < n; i++) {
+  // Only the lamps that are there count (a room not built has its lamps at level 0), up to what the shader takes, as lightRoom does.
+  for (let i = 0, n = 0; i < lamps.length && n < MAX_ROOM_LAMPS; i++) {
     const l = lamps[i];
+    if (l.level * hour <= 0) continue;
+    n++;
     if (p.y < l.floor - SPAN_GIVE || p.y > l.top + SPAN_GIVE) continue;
     const dx = l.x - p.x;
     const dy = l.y - p.y;

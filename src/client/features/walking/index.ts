@@ -18,7 +18,7 @@ const NEAR_ENOUGH = 1.6;
 /** Registers the walk's own tick ('steer'), and takes the player's path ends. */
 export function installWalking(ctx: Ctx, core: CoreState, parts: Pick<Parts, 'worlds' | 'travel' | 'cars' | 'seating'>) {
   const { player } = ctx;
-  const { plan, inOffice, officeWing } = parts.worlds;
+  const { plan, inOffice, officeWing, officeRooms } = parts.worlds;
   /** Who you're on your way to (clicked in the sidebar), and when to look again at where they've got to. */
   let walkingTo: { id: string; replanAt: number } | null = null;
 
@@ -78,7 +78,7 @@ export function installWalking(ctx: Ctx, core: CoreState, parts: Pick<Parts, 'wo
     if (now < walkingTo.replanAt) return;
     walkingTo.replanAt = now + 800;
     // Round the office's rooms and up its stairs; on a map of its own, round what's in the way on its floor.
-    player.walkPath(inOffice() ? wayTo(player.pos, at, officeWing()) : ctx.world().nav.route([player.pos.x, player.pos.z], [at.x, at.z]).slice(1).map(([x, z]) => ({ x, z })));
+    player.walkPath(inOffice() ? wayTo(player.pos, at, officeWing(), officeRooms()) : ctx.world().nav.route([player.pos.x, player.pos.z], [at.x, at.z]).slice(1).map(([x, z]) => ({ x, z })));
   }
 
   ctx.ticks.add('steer', ({ now }) => walkTick(now));
@@ -117,7 +117,7 @@ export function installWalking(ctx: Ctx, core: CoreState, parts: Pick<Parts, 'wo
     toast(`🚶 Walking over to ${what}`);
     const to = { x: at.x, y: at.y ?? 0, z: at.z };
     // As walkTick does: round the office's rooms (and its back office), or round what's in the way on a map of its own.
-    player.walkPath(inOffice() ? wayTo(player.pos, to, officeWing()) : ctx.world().nav.route([player.pos.x, player.pos.z], [to.x, to.z]).slice(1).map(([x, z]) => ({ x, z })));
+    player.walkPath(inOffice() ? wayTo(player.pos, to, officeWing(), officeRooms()) : ctx.world().nav.route([player.pos.x, player.pos.z], [to.x, to.z]).slice(1).map(([x, z]) => ({ x, z })));
   }
 
   function errandEnd(why: 'arrived' | 'cancelled' | 'stuck') {

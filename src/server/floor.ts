@@ -3,7 +3,7 @@ import { mkdirSync } from 'node:fs';
 import path from 'node:path';
 import type { ChangesState, FloorInfo, GhIssue, GhPull, GhState, PeerInfo, ProjectInfo, ServerMsg, WorkerInfo } from '../shared/protocol.js';
 import { isBusy } from '../shared/status.js';
-import { DESK_BY_ID, type MeetingRoomDef } from '../shared/layout.js';
+import { DESK_BY_ID, MEETING_ROOMS, builtMeetingRooms, type MeetingRoomDef } from '../shared/layout.js';
 import type { FloorDef } from './building.js';
 import { excludeFromGit } from './config.js';
 import { agentProviders, configuredProvider } from './agents.js';
@@ -198,6 +198,7 @@ export class Floor {
       people: () => ctx.peers(this),
       send: (dog) => ctx.emit(this, { t: 'dog', dog }),
       wing: () => this.plan.wing,
+      rooms: () => this.plan.rooms,
     });
 
     this.workers = new WorkerManager(
@@ -302,7 +303,11 @@ export class Floor {
         },
         prompt: (id) => ctx.prompts.text(id),
       },
-      () => ctx.meetingRooms(),
+      // The office's wing rooms are only there once the floor's built out that far; another map's are all there.
+      () => {
+        const all = ctx.meetingRooms();
+        return all === MEETING_ROOMS ? builtMeetingRooms(all, this.plan.rooms) : all;
+      },
     );
 
     // What each worker changed, for the Changes window at its desk (see changes.ts).
@@ -572,6 +577,7 @@ export class Floor {
       waiting: ws.filter((w) => w.kind === 'agent' && (w.status === 'needs_input' || (w.status === 'done' && !w.acked))).length,
       people: this.ctx.people(this),
       wing: this.plan.wing,
+      rooms: this.plan.rooms,
     };
   }
 

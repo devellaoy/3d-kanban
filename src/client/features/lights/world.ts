@@ -63,7 +63,7 @@ export const lightSwitches: Fixture<'lightSwitches'> = (site) => {
     want[id] = true;
     bulbs[id] = [];
     lights[id] = [];
-    // The pendants over this area: the sphere in each (child 2) gets a bulb of its own.
+    // The lamps over this area: the glowing diffuser in each (child 2) gets a bulb of its own.
     for (const [x, z] of def.lamps) {
       const pendant = site.group.children.find((o) => o.type === 'Group' && Math.abs(o.position.x - x) < 0.01 && Math.abs(o.position.z - z) < 0.01 && Math.abs(o.position.y - LAMP_Y) < 0.01);
       const bulb = pendant?.children[2] as THREE.Mesh | undefined;

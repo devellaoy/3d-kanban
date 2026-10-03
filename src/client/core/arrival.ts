@@ -24,7 +24,7 @@ import { restarting, showRestarting, showUpgraded } from '../ui/upgrade';
 import { routeWhiteboardMessage } from '../features/whiteboard/ui';
 import type { Ctx } from './context';
 import type { CoreState } from './ctx';
-import { builtFloors, pastTheWing } from './floors';
+import { builtFloors, pastTheRooms, pastTheWing } from './floors';
 import type { Parts } from './parts';
 import { issueCardLabel } from '../kanban/issuecards';
 
@@ -90,7 +90,7 @@ export function installArrival(ctx: Ctx, core: CoreState, parts: ArrivalParts) {
       // A hall of its own has nothing outside it to come back to (and its walls may have moved since).
       const b = plan().bounds;
       const inRoom = inOffice() || (at.x > b.minX + 0.3 && at.x < b.maxX - 0.3 && at.z > b.minZ + 0.3 && at.z < b.maxZ - 0.3);
-      if (sameMap && inRoom && !(inOffice() && (inElevator(at.x, at.z) || pastTheWing(at, parts.worlds.officeWing()))) && player.fits(at.x, at.z, at.y)) {
+      if (sameMap && inRoom && !(inOffice() && (inElevator(at.x, at.z) || pastTheWing(at, parts.worlds.officeWing()) || pastTheRooms(at, parts.worlds.officeRooms()) !== undefined)) && player.fits(at.x, at.z, at.y)) {
         placeAt(at);
         travel.arrive('back');
       } else {

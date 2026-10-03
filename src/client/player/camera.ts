@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { bumpHeight } from '../../shared/bumps';
-import { FLOOR, SLAB, STREET_Y, WING, inWing, wingMinZ } from '../../shared/layout';
+import { FLOOR, ROOMS_WING, SLAB, STREET_Y, WING, WING_ROOMS, inRooms, inWing, wingMinZ } from '../../shared/layout';
 import type { ViewMode } from '../state';
 import type { Collider } from '../world/types';
 import { armFraction, easeArm } from './arm';
@@ -36,6 +36,7 @@ export interface Followed {
   stepOffset: number;
   room: Room;
   wing: number;
+  rooms: number;
   rig: ((dt: number) => void) | null;
   riding: boolean;
   colliders: Collider[];
@@ -74,7 +75,9 @@ export function aimCamera(camera: THREE.PerspectiveCamera, p: Followed, bob: num
   const under = p.pos.x > R.minX && p.pos.x < R.maxX && p.pos.z > R.minZ && p.pos.z < R.maxZ;
   // In the office's back office, between its walls, and out through where the north wall was into the room.
   const back = !R.enclosed && p.pos.y > -SLAB - 0.5 && inWing(p.pos.x, p.pos.z, p.wing);
-  const indoors = ((rigged || p.pos.y > -SLAB - 0.5) && under) || back;
+  // In one of the meeting wing's rooms, out through the west wall: the camera keeps in that room (and the office beside it).
+  const annex = !R.enclosed && p.pos.y > -SLAB - 0.5 && inRooms(p.pos.x, p.pos.z, p.rooms) ? WING_ROOMS.find((s) => p.pos.z > s.z0 && p.pos.z < s.z1) : undefined;
+  const indoors = ((rigged || p.pos.y > -SLAB - 0.5) && under) || back || !!annex;
   // Down in a room under the floor (the castle's dungeon): the camera keeps inside that.
   const V = R.vault;
   if (V && p.pos.y < V.top - 0.5 && p.pos.x > V.minX && p.pos.x < V.maxX && p.pos.z > V.minZ && p.pos.z < V.maxZ) {
@@ -83,6 +86,9 @@ export function aimCamera(camera: THREE.PerspectiveCamera, p: Followed, bob: num
   } else if (back) {
     cam.x = THREE.MathUtils.clamp(cam.x, WING.minX + m, WING.maxX - m);
     cam.z = THREE.MathUtils.clamp(cam.z, wingMinZ(p.wing) + m, FLOOR.maxZ - m);
+  } else if (annex) {
+    cam.x = THREE.MathUtils.clamp(cam.x, FLOOR.minX - ROOMS_WING.depth + m, R.maxX - m);
+    cam.z = THREE.MathUtils.clamp(cam.z, cam.x < FLOOR.minX ? annex.z0 + m : R.minZ + m, cam.x < FLOOR.minX ? annex.z1 - m : R.maxZ - m);
   } else if (indoors) {
     cam.x = THREE.MathUtils.clamp(cam.x, R.minX + m, R.maxX - m);
     cam.z = THREE.MathUtils.clamp(cam.z, R.minZ + m, R.maxZ - m);

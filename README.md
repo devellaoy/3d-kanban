@@ -125,8 +125,8 @@ curl -fsSL https://raw.githubusercontent.com/devellaoy/3d-kanban/main/deploy/pro
 - **Agent-written pull requests**: **O** at a desk and the task's PR phase have the agent push and open
   (or fix) the PRs in every repository.
 - **Multi-PR reviews**: 🔍 Review and 🤝 Review panel pick the PRs that belong together across the
-  repositories and review them as one change. The office has several meeting rooms, so panels and other
-  meetings run at the same time; a new one takes the first free room.
+  repositories and review them as one change. The office has one meeting room, and the **🚧 Room for a meeting room** sign on the west wall builds up to
+  three more (the same way the back office grows), so panels and other meetings can run at the same time; a new one takes the first free room.
 - **Editable prompts**, office-wide or per project, with the process's contract blocks kept fixed (they also
   tell every kanban run and review panel to stop the processes it started, such as a dev server, when it
   finishes, unless it was asked to leave them running).

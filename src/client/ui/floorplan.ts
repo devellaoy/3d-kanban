@@ -1,6 +1,6 @@
 import './floorplan.css';
 import { LABEL_IDEAS, MAX_LABEL, SIGN_COLORS, cleanLabel, rowDesks, signColor, signInk } from '../../shared/floorplan';
-import { DESK_BY_ID, WING } from '../../shared/layout';
+import { DESK_BY_ID, MEETING_ROOMS, ROOMS_WING, WING } from '../../shared/layout';
 import type { Net } from '../net';
 import { store } from '../state';
 import { h, openModal } from './dom';
@@ -148,6 +148,52 @@ export function openExpand(net: Net) {
   });
   shrink.addEventListener('click', () => {
     net.send({ t: 'floor.shrink' });
+    modal.close();
+  });
+  close.addEventListener('click', () => modal.close());
+  render();
+}
+
+/** E at the sign on the west wall: build the meeting wing out another room, or wall its last room up. */
+export function openExpandRooms(net: Net) {
+  const close = h('button.btn.close', { type: 'button', 'aria-label': 'Close' }, '✕');
+  const status = h('div.expand-status');
+  const expand = h('button.btn.primary', { type: 'button' }) as HTMLButtonElement;
+  const shrink = h('button.btn', { type: 'button' }, '🧱 Wall up the last room') as HTMLButtonElement;
+  const el = h(
+    'div.modal.expand',
+    { role: 'dialog', 'aria-label': 'Meeting wing' },
+    h('header', {}, h('h2', {}, '🔨 Meeting wing'), close),
+    h('div.body', {}, status),
+    h('footer', {}, shrink, expand),
+  );
+  const room = (level: number) => MEETING_ROOMS.filter((r) => (r.level ?? 0) > 0)[level - 1];
+  const render = () => {
+    const level = store.floorPlan.rooms;
+    const full = level >= ROOMS_WING.rooms;
+    const last = level > 0 ? room(level) : undefined;
+    const meeting = last ? store.meeting.rooms.find((r) => r.id === last.id)?.current : undefined;
+    const busy = !!last && (meeting?.status === 'running' || last.seats.some((d) => store.workerAtDesk(d.id)));
+    status.replaceChildren(
+      h('p', {}, level === 0 ? 'The office has room for meeting rooms through the west wall, between the corner and the exit door.' : `The meeting wing is built out ${level} of ${ROOMS_WING.rooms} rooms.`),
+      h('div.expand-rows', {}, ...Array.from({ length: ROOMS_WING.rooms }, (_, i) => h('span', { class: i < level ? 'on' : '', title: room(i + 1).label }, i < level ? '🤝' : '·'))),
+      full ? h('p.setting-note', {}, "It can't go out any further.") : h('p.setting-note', {}, `Knocking through brings ${room(level + 1).label}, with its own door, table, chairs and board.`),
+      busy ? h('p.setting-note.bad', {}, `A meeting is on in the ${last!.label}, or someone is at its table: stop it and send them home before walling it up.`) : '',
+      h('p.setting-note', {}, 'It changes the floor for everyone on it, and stays built across restarts.'),
+    );
+    expand.disabled = full;
+    expand.textContent = full ? 'Built all the way out' : level === 0 ? '🔨 Knock through (+1 meeting room)' : '🔨 Another meeting room';
+    shrink.disabled = level === 0 || busy;
+    shrink.style.display = level === 0 ? 'none' : '';
+  };
+  const off = [store.on('floorPlan', render), store.on('workers', render), store.on('meeting', render)];
+  const modal = openModal(el, { doing: '🔨 at the meeting wing', onClose: () => off.forEach((f) => f()) });
+  expand.addEventListener('click', () => {
+    net.send({ t: 'floor.expand', part: 'meeting' });
+    modal.close();
+  });
+  shrink.addEventListener('click', () => {
+    net.send({ t: 'floor.shrink', part: 'meeting' });
     modal.close();
   });
   close.addEventListener('click', () => modal.close());

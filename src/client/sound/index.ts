@@ -119,6 +119,14 @@ export class OfficeSound {
   }
 
   /** How many rows the floor's back office is built out: in there you're indoors too. */
+  get rooms(): number {
+    return this.a.rooms;
+  }
+
+  set rooms(level: number) {
+    this.a.rooms = level;
+  }
+
   get wing(): number {
     return this.a.wing;
   }

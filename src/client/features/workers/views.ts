@@ -5,14 +5,14 @@
  * the building dressed up for a holiday, and what the workers have spent.
  */
 import * as THREE from 'three';
-import { FLOOR, WING, beanbagsOut, deskBuilt, vacantSeats, wingMinZ, wingRowZ } from '../../../shared/layout';
+import { FLOOR, ROOMS_WING, WING, WING_ROOMS, beanbagsOut, deskBuilt, vacantSeats, wingMinZ, wingRowZ } from '../../../shared/layout';
 import { OFFICE_PLAN } from '../../../shared/maps';
 import { MEETING_PATTERNS, meetingsOf } from '../../../shared/meetings';
 import type { WorkerInfo, WorkerTask } from '../../../shared/protocol';
 import { workerPr } from '../../../shared/status';
 import type { Ctx } from '../../core/context';
 import type { CoreState } from '../../core/ctx';
-import { pastTheWing, seatBuilt } from '../../core/floors';
+import { pastTheRooms, pastTheWing, seatBuilt } from '../../core/floors';
 import { aside, hintTitle, key, onE } from '../../core/hint';
 import { noOutline } from '../../core/outline';
 import type { Parts } from '../../core/parts';
@@ -21,7 +21,7 @@ import { waitingOnSomeone } from '../../notify';
 import { renderTitle } from '../../shared/title';
 import { store } from '../../state';
 import { $ } from '../../ui/dom';
-import { openExpand } from '../../ui/floorplan';
+import { openExpand, openExpandRooms } from '../../ui/floorplan';
 import { renderWorkers } from '../../ui/workers-panel';
 import { renderLimits } from '../../ui/limits';
 import { modelBadge, providerLabel } from '../../ui/provider';
@@ -39,6 +39,7 @@ import { Sendoffs } from './sendhome';
 declare module '../../world/types' {
   interface InteractKinds {
     expand: true;
+    expandrooms: true;
   }
 }
 
@@ -93,7 +94,7 @@ export type WorkerViewsParts = Pick<Parts, 'stage' | 'worlds' | 'travel' | 'roof
 export function installWorkerViews(ctx: Ctx, core: CoreState, parts: WorkerViewsParts) {
   const { scene, sound, player, camera, office, sky, confetti, hands, me, net } = ctx;
   const { holiday } = parts.stage;
-  const { plan, groundHere, officeWing, inOffice } = parts.worlds;
+  const { plan, groundHere, officeWing, officeRooms, inOffice } = parts.worlds;
 
   const workerViews = new Map<string, WorkerView>();
   /** Workers a `worker.remove` is taking out of the store right now. They walk out of the building; a worker that's gone because you changed floors just vanishes. */
@@ -351,7 +352,7 @@ export function installWorkerViews(ctx: Ctx, core: CoreState, parts: WorkerViews
   });
 
   /** The floor plan last shown, to tell someone knocking through from arriving on a floor already built out (or back on the office's map). */
-  let shownPlan: { floor: string | null; map: string; wing: number } = { floor: null, map: OFFICE_PLAN.id, wing: 0 };
+  let shownPlan: { floor: string | null; map: string; wing: number; rooms: number } = { floor: null, map: OFFICE_PLAN.id, wing: 0, rooms: 0 };
   /**
    * The floor's back office, as far as it's built out, and the signs over its desks. Everything that
    * finds its way round the floor learns how far it goes; a row knocked through goes up in a puff of
@@ -360,23 +361,34 @@ export function installWorkerViews(ctx: Ctx, core: CoreState, parts: WorkerViews
   function syncPlan() {
     const fp = store.floorPlan;
     const level = officeWing();
+    const rooms = officeRooms();
     const was = shownPlan;
-    shownPlan = { floor: store.floor, map: plan().id, wing: level };
+    shownPlan = { floor: store.floor, map: plan().id, wing: level, rooms };
     const p = player.pos;
     if (inOffice() && pastTheWing(p, level)) {
       // Out to the side aisle of what's left, or back into the room.
       const side = p.x < (WING.minX + WING.maxX) / 2 ? WING.minX + 0.6 : WING.maxX - 0.6;
       p.set(level ? side : p.x, 0, level ? wingMinZ(level) + 0.6 : FLOOR.minZ + 1.6);
     }
+    // Standing where a meeting room was, with it walled up round you: back in through its door, onto the office floor.
+    const room = inOffice() ? pastTheRooms(p, rooms) : undefined;
+    if (room !== undefined) p.set(FLOOR.minX + 1.4, 0, room);
     office.setWing(level);
+    office.setRooms(rooms);
     office.signs.set(fp.labels, (d) => deskBuilt(d, level));
     player.wing = sound.wing = level;
-    sky.setWing(level);
+    player.rooms = sound.rooms = rooms;
+    sky.setWing(level, rooms);
     parts.travel.syncStack();
     parts.rooftop.syncRoof();
     arrangeSeats();
     if (was.floor === store.floor && was.map === shownPlan.map && level > was.wing) {
       const at = { x: (WING.minX + WING.maxX) / 2, y: 1.2, z: wingRowZ(level) };
+      confetti.burst(at.x, 2.4, at.z, 140, 0.8);
+      sound.toss('thunk', at);
+    }
+    if (was.floor === store.floor && was.map === shownPlan.map && rooms > was.rooms) {
+      const at = { x: FLOOR.minX - ROOMS_WING.depth / 2, y: 1.2, z: WING_ROOMS[rooms - 1].c };
       confetti.burst(at.x, 2.4, at.z, 140, 0.8);
       sound.toss('thunk', at);
     }
@@ -390,6 +402,15 @@ export function installWorkerViews(ctx: Ctx, core: CoreState, parts: WorkerViews
       return { k: String(level), parts: [hintTitle(level ? '🚧 Room to grow' : '🚧 Room to grow through the wall'), aside(level ? `${level} of ${WING.rows} rows built` : 'the office can get bigger here'), key('E', level ? 'Another row: 2 more desks' : 'Knock through: 2 more desks')] };
     },
     use: onE(() => openExpand(net)),
+  });
+  ctx.interactions.define('expandrooms', {
+    reach: 8,
+    hint: () => {
+      const level = store.floorPlan.rooms;
+      if (level >= ROOMS_WING.rooms) return { k: 'full', parts: [hintTitle('🤝 Meeting wing'), aside('all four meeting rooms are built'), key('E', 'Wall a room up')] };
+      return { k: String(level), parts: [hintTitle(level ? '🚧 Room for another meeting room' : '🚧 Room for a meeting room through the wall'), aside(level ? `${level} of ${ROOMS_WING.rooms} rooms built out` : 'the office can get meeting rooms here'), key('E', level ? 'Another meeting room' : 'Knock through: a meeting room')] };
+    },
+    use: onE(() => openExpandRooms(net)),
   });
   // A worker at the meeting table shows its role and round over its head (see meetingCard).
   store.on('meeting', syncWorkers);

@@ -30,19 +30,37 @@ export const planHandlers = {
     if (r.label && r.label.text !== r.old?.text) ctx.toastFloor(floor, `🪧 ${who} hung a sign over ${desk}: “${r.label.text}”`);
     else if (!r.label) ctx.toastFloor(floor, `🪧 ${who} took the “${r.old!.text}” sign down from ${desk}`);
   },
-  'floor.expand'(ctx, c) {
+  'floor.expand'(ctx, c, msg) {
     const who = c.peer.name;
     const floor = here(ctx, c);
     if (!floor) return;
+    if (msg.part !== undefined && msg.part !== 'meeting') return ctx.warn(c, 'There is nothing like that to build');
+    if (msg.part === 'meeting') {
+      const built = floor.plan.expandRooms();
+      if (typeof built === 'string') return ctx.warn(c, built);
+      planChanged(ctx, floor);
+      floor.meetings.refresh();
+      ctx.toastFloor(floor, `🔨 ${who} knocked through the west wall: another meeting room is ready`);
+      return;
+    }
     const r = floor.plan.expand();
     if (typeof r === 'string') return ctx.warn(c, r);
     planChanged(ctx, floor);
     ctx.toastFloor(floor, `🔨 ${who} knocked out the back wall: ${r.map((id) => DESK_BY_ID.get(id)?.label).join(' and ')} are ready for workers`);
   },
-  'floor.shrink'(ctx, c) {
+  'floor.shrink'(ctx, c, msg) {
     const who = c.peer.name;
     const floor = here(ctx, c);
     if (!floor) return;
+    if (msg.part !== undefined && msg.part !== 'meeting') return ctx.warn(c, 'There is nothing like that to wall up');
+    if (msg.part === 'meeting') {
+      const gone = floor.plan.shrinkRooms((id) => floor.meetings.busy(id));
+      if (typeof gone === 'string') return ctx.warn(c, gone);
+      floor.meetings.release(gone.id);
+      planChanged(ctx, floor);
+      ctx.toastFloor(floor, `🧱 ${who} walled the ${gone.label} back up`);
+      return;
+    }
     const r = floor.plan.shrink((id) => floor.workers.deskOccupied(id) || floor.workers.deskOccupied(watchSpotOf(id))); // a reviewer standing behind it too
     if (typeof r === 'string') return ctx.warn(c, r);
     planChanged(ctx, floor);
