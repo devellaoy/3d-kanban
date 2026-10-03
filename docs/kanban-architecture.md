@@ -120,8 +120,14 @@ allowed: `todo → in_progress` (= start), `waiting|review → done`, `done → 
   - `readTurnResult(worker)` — the **final answer** of the last turn (`TurnResult.text`), which is all that
     markers, verdicts, comments and summaries are read from; what the agent said on the way isn't part of it:
     - claude: transcript JSONL (`WorkerInfo` tracker transcript path from hooks): the `text` blocks of the
-      last assistant message after the last real user message (Claude logs one message's blocks as lines
-      sharing `message.id`); and, if the last assistant `tool_use` is `ExitPlanMode`, its `input.plan`.
+      last assistant message of the office's segment (Claude logs one message's blocks as lines
+      sharing `message.id`): the office's prompt (found by the run's `promptAt`, the time the office gave it: the launch, an
+      answer typed to a question, a restate; else the run's start) and the notification and teammate-message turns after it.
+      Any later real prompt that isn't a notification is "typed" (a person, `tell_worker`, `office-workers`, another agent): its
+      turn is skipped and `TurnResult.typed` is set; `interim` says (with `typed`) that the office's turns ended with background
+      work still out (or a teammate spawned), so their text is only the interim "waiting" one. An ExitPlanMode in a typed turn still counts as the
+      plan, and `toolRunning` follows the log's last message whichever turn it is in. Without a start or timestamps the last real
+      prompt is the turn, as before. And, if the last assistant `tool_use` is `ExitPlanMode`, its `input.plan`.
       `TurnResult.background` counts the run's background agents still working (an async launch or a
       `SendMessage` resume in the log with no task-notification after it, since the run's first office prompt:
       the first real prompt at or after the run's start, so a prompt typed into the worker's terminal
@@ -129,7 +135,7 @@ allowed: `todo → in_progress` (= start), `waiting|review → done`, `done → 
       it, else the last office prompt, is used);
       `resuming` says the last prompt is a notification (or a teammate's message) no assistant line has
       answered yet. `background` counts agent-team teammates working too (below). `readTurnResult(file,
-      { since, runStart })` takes the start of the agent's Claude process and the run's start; Codex ignores both.
+      { since, runStart, promptAt })` takes the start of the agent's Claude process, the run's start and when the office last prompted it; Codex ignores all three.
       A last message that calls any other tool is not a final answer (`complete: false`): the Stop hook
       can come before Claude has logged the reply after that tool's result, so the engine reads the log
       again (`readTries` × `readPauseMs`, about 3 s, so a turn that really ends at a tool call, an
@@ -173,9 +179,14 @@ allowed: `todo → in_progress` (= start), `waiting|review → done`, `done → 
   an answer or a command's output quoting a tag steers nothing. A launch known only by its text (no tool
   result data) counts from an Agent, Task or Bash result, a Bash one only for a call with `run_in_background` or
   the timeout's own words at the start of the text. A command or server the agent forgets running holds the task In progress for at
-  most `backgroundWaitMs` (3 h), hence the `STOP_PROCESSES` rule. Codex has no background tracking. Known limit: someone typing a
-  prompt into a held worker's terminal starts a new window, so the background agents still working stop
-  being counted and the run can end on that prompt's reply (teammates are read whatever the window).
+  most `backgroundWaitMs` (3 h), hence the `STOP_PROCESSES` rule. Codex has no background tracking. A prompt someone types into a held worker's terminal
+  doesn't hide the background work (it is counted from the run's own prompt). If the work ends in that typed turn (its
+  notification comes inside it) and the turn's Stop shows none left, the real answer was never given: the engine
+  (`engine/turnhold.ts`, `TurnHolds.restate`) types `kanban.restate` (§7) with the phase's contract, asking the agent to give its final answer
+  again, and reads it from that prompt's turn (`Live.promptAt`). At most twice per run; over that, or when the prompt can't be
+  typed, a note ("Someone typed into its terminal while it worked: went on with its last answer to the office's prompt.") is
+  written and the run ends on the office segment's last text. When the typed prompt came after the agent's real answer (no
+  background work out) that answer stands and nothing is asked.
 - **Agent-team teammates** (Claude Code's `Agent` call with a `name`) are counted in `TurnResult.background`
   too, from their own transcripts beside the lead's (`<log>/subagents/agent-*.jsonl`, `taskKind:
   in_process_teammate`): one is working when its transcript ends in a message or tool result it hasn't
@@ -591,6 +602,7 @@ upstream's `DEFS`, so the upstream prompt editor shows it. Layering: default →
 blocks (markers, safety rules) are appended by the engine and shown read-only in the editor.
 
 `kanban.unhold` ("Carry on after a hold": `taskId`, `heldAt`, `holdNote`, `comments`, `language`) is the prompt a task taken off hold resumes with (§3, §4).
+`kanban.restate` ("Restate the final answer": `taskId`, `language`) is what a held run is asked when a prompt typed into its terminal took the turn its background work ended in (§4).
 
 ## 8. Agent-facing endpoints
 
