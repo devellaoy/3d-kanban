@@ -907,10 +907,10 @@ export class Orchestrator {
       return err;
     };
 
-    // Its own worker still busy, or its teammates still at work (they wake the lead again after a turn's end): the phase starts when all rest.
+    // Its own worker still busy, or its teammates still at work (they wake the lead again after a turn's end): the phase starts when all rest. Teammates are counted from the start of the task's last run on that worker (its live is usually forgotten by now), so a prompt typed since doesn't hide them.
     const teamWork = (id: string) => {
       const prior = this.live.get(id);
-      return tool === 'claude' && this.teammatesWork(floor, id, prior ? this.turnOpts(prior) : { since: Math.max(this.procSince.get(id) ?? 0, floor.workers.restartedAt(id) ?? 0) || undefined });
+      return tool === 'claude' && this.teammatesWork(floor, id, prior ? this.turnOpts(prior) : { since: Math.max(this.procSince.get(id) ?? 0, floor.workers.restartedAt(id) ?? 0) || undefined, runStart: this.ctx.repo.listRuns(task.id).filter((r) => r.id !== run.id && r.workerId === id).at(-1)?.startedAt });
     };
     if (info && info.kind === 'agent' && info.kanban?.taskId === task.id && (info.status === 'working' || info.status === 'starting' || teamWork(info.id))) {
       const waited = await this.untilRests(floor, info.id, task.id, () => teamWork(info!.id));

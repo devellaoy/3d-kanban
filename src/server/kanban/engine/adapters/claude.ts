@@ -385,7 +385,7 @@ export function backgroundLeft(lines: Record<string, unknown>[], start: number, 
     else if (typeof res?.taskId === 'string' && typeof res.timeoutMs === 'number') {
       if (res.persistent !== true) launch(res.taskId, line); // Monitor; a persistent one never finishes
     } else if (typeof res?.task_id === 'string' && typeof res.task_type === 'string') end(res.task_id); // TaskStop
-    else if (typeof res?.shell_id === 'string' && typeof res.message === 'string') end(res.shell_id); // KillShell, an older CLI's TaskStop
+    else if (typeof res?.shell_id === 'string' && typeof res.message === 'string') end(res.shell_id); // KillShell, an older CLI's TaskStop: its shape is assumed, none was seen in transcripts
     else if (isObj(res?.task) && TERMINAL_STATUS.has(String(res.task.status))) {
       // TaskOutput that finds the task finished. Only the `local_agent` shape was seen in transcripts: a Bash task's is assumed to be the same.
       end(res.task.task_id);
@@ -411,7 +411,10 @@ export function backgroundLeft(lines: Record<string, unknown>[], start: number, 
   return [...tasks.values()].filter(Boolean).length;
 }
 
-/** The index of the run's first office prompt: the first real prompt, not a notification, logged at or after `runStart` (ms); -1 when none (or no timestamps). */
+/**
+ * The index of the run's first office prompt: the first real prompt, not a notification, logged at or after `runStart` (ms);
+ * when the tail was cut after it, the first of the run's prompts still in it (never later than the last office prompt); -1 when none (or no timestamps).
+ */
 function runPrompt(lines: Record<string, unknown>[], runStart: number): number {
   return lines.findIndex((l) => isRealPrompt(l) && !isAgentNotice(l) && atOf(l) >= runStart);
 }
@@ -427,20 +430,18 @@ export function readClaudeTurn(file: string, opts?: { since?: number; runStart?:
   const lines = readJsonLines(file);
   if (!lines) return undefined;
   // The last real prompt, and the office's own the background tasks are counted from: the run's first (a prompt typed into
-  // the terminal meanwhile doesn't move it), else the last that isn't a notification.
+  // the terminal meanwhile doesn't move it; the first of the run's still in the tail when its own was cut), else the last that
+  // isn't a notification.
   let from = -1;
-  let start = -1;
+  let start = opts?.runStart !== undefined ? runPrompt(lines, opts.runStart) : -1;
+  const found = start >= 0;
   for (let i = lines.length - 1; i >= 0; i--) {
     if (!isRealPrompt(lines[i])) continue;
     if (from < 0) from = i;
-    if (!isAgentNotice(lines[i])) {
-      start = i;
+    if (found || !isAgentNotice(lines[i])) {
+      if (!found) start = i;
       break;
     }
-  }
-  if (opts?.runStart !== undefined) {
-    const first = runPrompt(lines, opts.runStart);
-    if (first >= 0) start = first;
   }
   let texts: string[] = [];
   let message: unknown;
