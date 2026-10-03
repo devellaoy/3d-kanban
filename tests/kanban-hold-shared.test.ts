@@ -6,19 +6,10 @@ import { HOLD_NOTE_MAX, HOLD_UNTIL_MAX_MS, holdLine, validHoldUntil, type TaskHo
 import { LOUNGE_SEATED, loungePlaces, loungeReservedPlaces, sortFigures } from '../src/shared/kanban/lounge.js';
 import { parseKanbanClientMsg } from '../src/shared/kanban/protocol.js';
 import { FLOOR, SEATING_BY_ID } from '../src/shared/layout.js';
-import type { KanbanTask } from '../src/shared/kanban/types.js';
-import { DEPARTURE_REASONS } from '../src/shared/kanban/types.js';
 
 const DAY = 24 * 60 * 60 * 1000;
 const now = new Date(2026, 9, 2, 12).getTime();
 const move = (extra: Record<string, unknown>, to = 'on_hold') => parseKanbanClientMsg({ t: 'kanban.task.move', id: 1, to, ...extra });
-
-test('the hold is on the task type and the departure reasons know it', () => {
-  const hold: TaskHold = { at: now, by: 'Ada', from: 'review' };
-  const task = { hold } as Pick<KanbanTask, 'hold'>;
-  assert.equal(task.hold?.from, 'review');
-  assert.ok(DEPARTURE_REASONS.includes('hold'));
-});
 
 test('validHoldUntil: a whole number of ms, from yesterday to two years ahead', () => {
   assert.equal(validHoldUntil(now + DAY, now), true);

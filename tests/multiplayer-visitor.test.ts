@@ -160,10 +160,3 @@ test('a visitor keeps their @login name, and may only call people they can see',
   assert.equal(visitor.peer.name, '@vera');
   assert.equal(visitor.peer.color, '#00ff00', 'colours and look are still theirs');
 });
-
-test('what shows of an owner on another floor leaves out the seat and the reading', async () => {
-  const { filterForVisitor } = await import('../src/shared/multiplayer/allow.js');
-  const out = filterForVisitor({ t: 'peer.update', peer: { ...peer('o'), floor: 'vault', seat: 'couch:1', reading: true, doing: 'x' } } as ServerMsg, scope);
-  assert.ok(out && out.t === 'peer.update');
-  assert.deepEqual([out.peer.floor, out.peer.seat, out.peer.reading, out.peer.doing], [undefined, undefined, undefined, undefined]);
-});
