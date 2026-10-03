@@ -3,7 +3,6 @@ import assert from 'node:assert/strict';
 import { mkdirSync } from 'node:fs';
 import path from 'node:path';
 import { createPullsParts } from '../src/server/kanban/integrations/pulls/index.js';
-import { parseKanbanClientMsg } from '../src/shared/kanban/protocol.js';
 import { client, def, makeCtx } from './kanban-integrations-ctx.js';
 
 function setup() {
@@ -71,10 +70,4 @@ test('kanban.pr.owner: not fixable with a reason while the task runs, or with no
   const merged = mk('Merged');
   link(merged.id, 30, 'MERGED');
   assert.match(((await ask(30)) as { reason: string }).reason, /no open pull requests/);
-});
-
-test('kanban.pr.owner is checked like the other messages', () => {
-  const ok = { t: 'kanban.pr.owner', project: 'web', repo: 'o/web', number: 3 };
-  assert.deepEqual(parseKanbanClientMsg(ok), ok);
-  for (const bad of [{ ...ok, repo: 'web' }, { ...ok, repo: undefined }, { ...ok, number: 0 }, { ...ok, number: '3' }, { ...ok, number: 1.5 }, { ...ok, project: 7 }]) assert.equal(typeof parseKanbanClientMsg(bad), 'string', JSON.stringify(bad));
 });

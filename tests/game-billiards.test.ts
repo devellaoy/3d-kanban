@@ -120,15 +120,13 @@ test('a shot takes a turn: practice keeps the same player, two players swap on a
   h.shoot(Math.PI / 2, 0.05);
   for (let i = 0; i < 5000 && h.phase === 'rolling'; i++) h.update(STEP);
   assert.equal(h.turn, 1, 'a miss hands the table over');
-  const p = POCKETS[3];
-  h.balls = [newBall(0, 1.0, 0.3), newBall(1, 1.3, 0.55)];
+  // A third ball far off, so the pot doesn't clear the table (which racks a new one).
+  h.balls = [newBall(0, 1.0, 0.3), newBall(1, 1.3, 0.55), newBall(2, -1.0, -0.5)];
   h.shoot(Math.atan2(0.25, 0.3), 0.5);
   for (let i = 0; i < 20000 && h.phase === 'rolling'; i++) h.update(STEP);
-  void p;
-  if (h.potted.length) {
-    assert.equal(h.turn, 1);
-    assert.equal(h.score[1], h.potted.length);
-  }
+  assert.deepEqual(h.potted, [1]);
+  assert.equal(h.turn, 1, 'a pot keeps the table');
+  assert.equal(h.score[1], 1);
 });
 
 test('a scratch puts the cue ball in hand behind the head string', () => {
@@ -145,18 +143,6 @@ test('a scratch puts the cue ball in hand behind the head string', () => {
   assert.equal(g.nudgeCue(2, 0) && g.cue.x > HEAD_SPOT.x + 1e-9, false, 'it stays behind the head string');
   assert.ok(g.placeCue());
   assert.equal(g.phase, 'aim');
-});
-
-test('clearing the table racks a new one and reports the shot count', () => {
-  const g = new Billiards();
-  g.balls = [newBall(0, 1.0, 0.3), newBall(1, 1.3, 0.55)];
-  g.shots = 6;
-  g.shoot(Math.atan2(0.25, 0.3), 0.5);
-  for (let i = 0; i < 20000 && g.phase === 'rolling'; i++) g.update(STEP);
-  if (g.last?.cleared) {
-    assert.equal(g.clearedIn, 7);
-    assert.equal(g.balls.length, 16);
-  }
 });
 
 test('a cleared table starts the next rack from nothing: shots and score reset, the count kept in clearedIn', () => {

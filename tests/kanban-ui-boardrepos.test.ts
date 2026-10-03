@@ -17,8 +17,7 @@ test('an empty load keeps the choice and lists its tab', () => {
   assert.equal(shown('acme/api', [], configured), 'acme/api');
 });
 
-test('a failed load (no cards, or only other repositories) keeps the choice', () => {
-  assert.equal(shown('acme/api', [], configured), 'acme/api');
+test('a load with only other repositories keeps the choice', () => {
   assert.equal(shown('acme/api', [card('acme/web')], configured), 'acme/api');
 });
 
