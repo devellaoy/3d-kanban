@@ -93,11 +93,9 @@ interface Live {
   /** It has been held for background work at least once: a later Stop on an unanswered notification is the resumed turn's own. */
   held?: boolean;
   holdTimer?: NodeJS.Timeout;
-  /** When the office last gave the run its prompt (the launch, or a restate): the answer is read from that prompt's turns. */
+  /** When the office last prompted the run (kept on the run, see prompted), how often it was asked to restate its answer, and whether that prompt is still to be heard (see TurnHolds). */
   promptAt?: number;
-  /** How many times it was asked to restate its answer after a prompt typed into its terminal (see TurnHolds), and whether that prompt is still to be heard. */
-  restates?: number;
-  restating?: boolean;
+  restates?: number; restating?: boolean;
   stopping?: { by?: string; timer?: NodeJS.Timeout };
 }
 
@@ -234,6 +232,7 @@ export class Orchestrator {
       floor: (id) => this.ctx.floor(id),
       note: (task, text, runId) => this.note(task, text, runId),
       turnEnded: (live, planExit, force) => this.turnEnded(live, planExit, force),
+      prompted: (live) => this.prompted(live),
       restateText: (task, phase) => this.compose.restate(task, phase),
       waitMs: () => this.opts.backgroundWaitMs,
     });
@@ -332,7 +331,7 @@ export class Orchestrator {
         continue;
       }
       attached.add(task.id);
-      const live: Live = { taskId: task.id, runId: run.id, phase: run.phase, ...(run.round !== undefined ? { round: run.round } : {}), role: run.role, tool: run.tool, workerId: info.id, floorId: task.project, exitPlan: false, ended: false };
+      const live: Live = { taskId: task.id, runId: run.id, phase: run.phase, ...(run.round !== undefined ? { round: run.round } : {}), role: run.role, tool: run.tool, workerId: info.id, floorId: task.project, exitPlan: false, ended: false, promptAt: run.promptedAt };
       this.live.set(info.id, live);
       if (info.status === 'done') void this.serial(task.id, () => this.turnEnded(live));
       else if (info.status === 'needs_input') void this.serial(task.id, () => this.needsInput(live, info));
@@ -908,8 +907,9 @@ export class Orchestrator {
     const run = this.ctx.repo.createRun({ taskId: task.id, phase: eff.phase, ...(eff.round !== undefined ? { round: eff.round } : {}), role, tool, model, effort });
     this.ctx.broadcast({ t: 'kanban.run', run, project: task.project }, task.project);
     const follow = (workerId: string): Live => {
-      const live: Live = { taskId: task.id, runId: run.id, phase: eff.phase, ...(eff.round !== undefined ? { round: eff.round } : {}), role, tool, workerId, floorId: task.project, exitPlan: false, ended: false, promptAt: Date.now(), eff: { ...eff, pending: undefined, ...(text !== undefined ? { text } : {}) }, via };
+      const live: Live = { taskId: task.id, runId: run.id, phase: eff.phase, ...(eff.round !== undefined ? { round: eff.round } : {}), role, tool, workerId, floorId: task.project, exitPlan: false, ended: false, eff: { ...eff, pending: undefined, ...(text !== undefined ? { text } : {}) }, via };
       this.live.set(workerId, live);
+      this.prompted(live);
       floor.workers.follows(workerId, true);
       return live;
     };
@@ -1128,8 +1128,9 @@ export class Orchestrator {
       settingsFile: 'kanban',
     });
     if (typeof hired === 'string') return /taken out of the floor/.test(hired) ? (this.finishRun(run.id, task.project, { status: 'interrupted', error: hired }), { queued: this.noRoom(floor, undefined, countsWith) ?? "Queued: its desk was taken out of the floor. It starts by itself when a desk frees." }) : fail(hired);
-    const live: Live = { taskId: task.id, runId: run.id, phase: 'pr-review', role: 'reviewer', tool, workerId: hired.id, floorId: task.project, exitPlan: false, ended: false, promptAt: Date.now() };
+    const live: Live = { taskId: task.id, runId: run.id, phase: 'pr-review', role: 'reviewer', tool, workerId: hired.id, floorId: task.project, exitPlan: false, ended: false };
     this.live.set(hired.id, live);
+    this.prompted(live);
     this.ctx.repo.updateRun(run.id, { workerId: hired.id });
     this.update(task.id, { reviewerWorkerId: hired.id, runState: 'running' });
     this.exitedAtHire(live);
@@ -1403,6 +1404,11 @@ export class Orchestrator {
     }
   }
 
+  /** The office prompts the run now (its launch or a restate): its answer is read from that prompt's turns; the time is kept on the run for a restart. */
+  private prompted(live: Live) {
+    this.ctx.repo.updateRun(live.runId, { promptedAt: (live.promptAt = Date.now()) });
+  }
+
   /** readTurnResult's options: `since` is when the worker's Claude process started (its SessionStart, else, after an office restart, the run's start); `runStart` is when the run began; `promptAt` is when the office last prompted it. */
   private turnOpts(live: Live): { since?: number; runStart?: number; promptAt?: number } {
     const run = this.ctx.repo.getRun(live.runId);
@@ -1454,8 +1460,8 @@ export class Orchestrator {
     if (live.ended || this.live.get(live.workerId) !== live) return;
     // Agents at work, or Stop #1 raced their notification (Claude answers it and stops again); once held, a Stop on an unanswered one is that turn's own.
     if (watch && (result?.background || (result?.resuming && !live.held))) return this.turnHolds.hold(live);
-    // A prompt typed into the terminal took the turn the work ended in: its answer isn't the run's, so the agent is asked for it again.
-    if (watch && result?.typed && result.interim && !result.background && !result.resuming && this.turnHolds.restate(live)) return;
+    // A prompt typed into the terminal took the turn the work ended in (or came before the office's answer reached the log): its answer isn't the run's, so the agent is asked for it again.
+    if (watch && result?.typed && (result.interim || !result.complete) && !result.background && !result.resuming && this.turnHolds.restate(live)) return;
     live.background = false;
     live.ended = true;
     this.forget(live);

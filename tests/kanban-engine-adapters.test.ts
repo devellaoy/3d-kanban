@@ -307,6 +307,10 @@ test('claude transcript: a prompt typed into the terminal after the office\'s is
   // promptAt not in the log: the run's first prompt.
   assert.deepEqual(read(timed(final), { runStart: T0, promptAt: T0 + 99_000 }), { text: 'All done.', complete: true });
 
+  // The office's answer wasn't logged yet when the typed prompt came: its segment is incomplete, and typed says so (no interim: nothing is out).
+  const unfinished = [cUser('Review task #7'), cAssistant([text('Reading the diff.'), { type: 'tool_use', id: 'r1', name: 'Read', input: {} }], {}, 'mu'), cUser([{ type: 'tool_result', tool_use_id: 'r1', content: 'x' }]), cUser('How is it going?'), cAssistant([text('Fine.')], {}, 'mc')];
+  assert.deepEqual(read(timed(unfinished)), { text: 'Reading the diff.', complete: false, typed: true });
+
   // An ExitPlanMode in a typed turn still counts, and a tool running at the log's end is reported.
   const plan = cAssistant([{ type: 'tool_use', id: 'p1', name: 'ExitPlanMode', input: { plan: 'The plan' } }], {}, 'mp');
   assert.deepEqual(read(timed([...final, cUser('Plan it again'), plan])), { text: 'All done.', plan: 'The plan', exitPlan: true, complete: true, typed: true });

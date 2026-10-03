@@ -125,7 +125,7 @@ allowed: `todo → in_progress` (= start), `waiting|review → done`, `done → 
       Any later real prompt that isn't a notification is "typed" (a person, `tell_worker`, `office-workers`, another agent): its
       turn is skipped and `TurnResult.typed` is set; `interim` says (with `typed`) that the office's turns ended with background
       work still out (or a teammate spawned), so their text is only the interim "waiting" one. An ExitPlanMode in a typed turn still counts as the
-      plan, and `toolRunning` follows the log's last message whichever turn it is in. Without a `promptAt` (an office restart loses it and the restate count, the teammate gate has none, and Codex ignores it) or timestamps the last real
+      plan, and `toolRunning` follows the log's last message whichever turn it is in. Without a `promptAt` (the teammate gate has none, and Codex ignores it) or timestamps the last real
       prompt is the turn, as before, and nothing is typed. And, if the last assistant `tool_use` is `ExitPlanMode`, its `input.plan`.
       `TurnResult.background` counts the run's background agents still working (an async launch or a
       `SendMessage` resume in the log with no task-notification after it, since the run's first office prompt:
@@ -182,10 +182,10 @@ allowed: `todo → in_progress` (= start), `waiting|review → done`, `done → 
   doesn't hide the background work (it is counted from the run's own prompt). If the work ends in that typed turn (its
   notification comes inside it) and the turn's Stop shows none left, the real answer was never given: the engine
   (`engine/turnhold.ts`, `TurnHolds.restate`) types `kanban.restate` (§7) with the phase's contract, asking the agent to give its final answer
-  again, and reads it from that prompt's turn (`Live.promptAt`; an office restart loses it and the count, and the run's answer is then the last prompt's turn as before). At most twice per run; over that, or when the prompt can't be
+  again, and reads it from that prompt's turn (`Live.promptAt`, kept on the run as `runs.prompted_at` so an office restart restores it; the restate count `Live.restates` is not kept, so a restart resets it). At most twice per run; over that, or when the prompt can't be
   typed, a note ("Someone typed into its terminal while it worked: went on with its last answer to the office's prompt.") is
   written and the run ends on the office segment's last text. When the typed prompt came after the agent's real answer (no
-  background work out) that answer stands and nothing is asked.
+  background work out) that answer stands and nothing is asked. The same restate covers an office Stop that came before its answer reached the log when a typed prompt follows (the office's segment is then incomplete): if the typed turn is still running, the engine waits for its Stop (a hold, no restate used up) and then asks.
 - **Agent-team teammates** (Claude Code's `Agent` call with a `name`) are counted in `TurnResult.background`
   too, from their own transcripts beside the lead's (`<log>/subagents/agent-*.jsonl`, `taskKind:
   in_process_teammate`): one is working when its transcript ends in a message or tool result it hasn't
@@ -402,6 +402,7 @@ allowed: `todo → in_progress` (= start), `waiting|review → done`, `done → 
 - `<officeData>/.agent-office/kanban-settings.json` (`schemaVersion`), `kanban-secrets.json` (chmod 600).
 - `<officeData>/.agent-office/kanban/uploads/`, `kanban/grants/task-<id>/`, `kanban/reports/task-<id>/`, `kanban/refs/task-<id>/`,
   `kanban/skills/plugin-<hash>/` (generated Claude skill plugins), `kanban/legacy/` (migrated stream logs).
+- Migration 5 adds `runs.prompted_at` (ms: when the office last gave the run its prompt, see §4's restate); a build that knows only 4 refuses the database.
 - Migration 4 adds `tasks.hold` (JSON, see `TaskHold`; parsed defensively like the other JSON columns). It raises
   `user_version` to 4, so a build that knows only 3 refuses the database: back up `kanban.sqlite` before trying
   a build with a hold and rolling back.
@@ -601,7 +602,7 @@ upstream's `DEFS`, so the upstream prompt editor shows it. Layering: default →
 blocks (markers, safety rules) are appended by the engine and shown read-only in the editor.
 
 `kanban.unhold` ("Carry on after a hold": `taskId`, `heldAt`, `holdNote`, `comments`, `language`) is the prompt a task taken off hold resumes with (§3, §4).
-`kanban.restate` ("Restate the final answer": `taskId`, `language`) is what a held run is asked when a prompt typed into its terminal took the turn its background work ended in (§4).
+`kanban.restate` ("Restate the final answer": `taskId`, `language`) is what a run is asked when a prompt typed into its terminal took the turn its background work ended in, or came before the office's answer reached the log (§4).
 
 ## 8. Agent-facing endpoints
 

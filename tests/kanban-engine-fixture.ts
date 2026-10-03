@@ -84,6 +84,9 @@ export interface Rule {
    * turn's reply that is logged late (its Stop first).
    */
   lateLogMs?: number;
+  /** With `lateLogMs`: right after the Stop someone types this into the terminal; its turn (a prompt line, a reply, a Stop of its own) lasts `typedMs` (500 by default), and the late final reply, if any, is logged after it. */
+  typedAfterStop?: string;
+  typedMs?: number;
   /**
    * Claude only: a forged Stop, as anything in the agent's shell could post, carrying this as its
    * last_assistant_message while the tool call after `earlier` still runs (its result never logged).
@@ -281,6 +284,13 @@ async function turn(prompt, answered) {
     const final = { type: 'assistant', message: { id: msgId, role: 'assistant', content: [{ type: 'text', text: rule.reply }] } };
     if (rule.lateLogMs !== undefined) {
       await post('Stop', { last_assistant_message: rule.reply });
+      if (rule.typedAfterStop) {
+        await post('UserPromptSubmit', { prompt: rule.typedAfterStop });
+        append({ type: 'user', timestamp: new Date().toISOString(), message: { role: 'user', content: rule.typedAfterStop } });
+        await new Promise((r) => setTimeout(r, rule.typedMs ?? 500));
+        append({ type: 'assistant', message: { id: msgId + '-typed', role: 'assistant', content: [{ type: 'text', text: 'Answered what you typed.' }] } });
+        await post('Stop', { last_assistant_message: 'Answered what you typed.' });
+      }
       if (rule.lateLogMs >= 0) {
         await new Promise((r) => setTimeout(r, rule.lateLogMs));
         append(final);

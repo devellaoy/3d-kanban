@@ -2,6 +2,7 @@
 // work it set off, and asked to restate its final answer when a prompt typed into its terminal took the turn the work ended in. Split
 // out of the orchestrator like Holds; the engine's own state reaches it through the small `TurnHoldDeps` interface.
 
+import { isBusy } from '../../../shared/status.js';
 import type { Floor } from '../../floor.js';
 import type { KanbanTask, RunPhase } from '../../../shared/kanban/types.js';
 
@@ -48,6 +49,8 @@ export interface TurnHoldDeps<L extends HeldRun> {
   /** The run's turn ended; `force` is the hold's timeout. */
   turnEnded(live: L, planExit: boolean, force: boolean): Promise<void>;
   /** The restate prompt for the task's phase (kanban.restate with the phase's contract). */
+  /** The office gives the run a prompt now: `promptAt` is set and kept (see Orchestrator.prompted). */
+  prompted(live: L): void;
   restateText(task: KanbanTask, phase: RunPhase): string;
   /** How long a hold waits for the run's next Stop (ms). */
   waitMs(): number;
@@ -66,7 +69,7 @@ export class TurnHolds<L extends HeldRun> {
   }
 
   /**
-   * A prompt typed into the terminal took the turn the run's background work ended in, so the office's last text is only the interim one: the
+   * A prompt typed into the terminal took the turn the run's background work ended in, or came before the office's answer reached the log, so the office's last text is only the interim or an unfinished one: the
    * agent is asked to give its final answer again, and the run goes on (true). Not when it was asked twice already or the prompt can't be typed:
    * the run ends on the office's own last text (false), with a note.
    */
@@ -74,9 +77,14 @@ export class TurnHolds<L extends HeldRun> {
     const task = this.deps.task(live.taskId);
     const workers = this.deps.floor(live.floorId)?.workers;
     const prompt = task && workers && (live.restates ?? 0) < MAX_RESTATES ? typeable(this.deps.restateText(task, live.phase)) : undefined;
+    // The typed turn is still running (the office's own Stop came first): wait for its Stop, which asks again; no restate is used up.
+    if (prompt && workers && isBusy(workers.get(live.workerId)?.status ?? 'idle')) {
+      this.hold(live);
+      return true;
+    }
     if (prompt && workers) {
       // Set before the prompt goes in: its turn is the one the answer is read from, and a Stop on the typed turn's tail isn't it.
-      live.promptAt = Date.now();
+      this.deps.prompted(live);
       live.restates = (live.restates ?? 0) + 1;
       live.stopText = undefined;
       live.held = false;

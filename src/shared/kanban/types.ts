@@ -266,6 +266,7 @@ export interface KanbanRun {
   summary?: string;
   error?: string;
   startedAt: number;
+  promptedAt?: number; // when the office last gave the run its prompt (ms): its answer is read from that prompt's turns
   finishedAt?: number;
 }
 
@@ -682,8 +683,7 @@ export const DEPARTURE_REASONS: readonly DepartureReason[] = ['sent-home', 'queu
 /**
  * What a worker is sent home with (Floor.sendHome, WorkerManager.kill): kept on the worker before it
  * goes, and read by the engine when a task worker leaves (the rules in docs/kanban-coupling.md).
- * `by` is who sent it (a person's name, or the part of the office that did); `done` asks for its task
- * to be done.
+ * `by` is who sent it (a person's name, or the part of the office that did); `done` asks for its task to be done.
  */
 export interface DepartureIntent {
   by: string;
