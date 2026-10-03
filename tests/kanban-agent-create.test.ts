@@ -10,6 +10,11 @@ import type { IssueSourceIo } from '../src/server/kanban/integrations/issues/sou
 import type { KanbanHookCaller } from '../src/server/kanban/registry.js';
 import { hookCaller } from '../src/server/kanban/http/hooks.js';
 import type { WorkerInfo } from '../src/shared/protocol.js';
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import path from 'node:path';
+import { restoreWorkers, saveWorkers } from '../src/server/workers/persist.js';
+import type { Worker } from '../src/server/workers/types.js';
 import type { IssueSourceConfig } from '../src/shared/kanban/types.js';
 import { def, makeCtx } from './kanban-integrations-ctx.js';
 
@@ -96,6 +101,36 @@ test('only a person’s hire names its hirer: a queue worker or an agent’s hir
   await call({ title: 'person', description: 'd' }, hookCaller(info({ byPerson: true }), 'app'));
   assert.equal(ctx.repo.getTask(4)!.createdBy, 'Bob');
   assert.deepEqual(hookCaller(info({ kanban: { taskId: 9 } as WorkerInfo['kanban'], deskId: 'station-queue' }), 'app', 'acc1', 'Panu'), { workerId: 'w1', floorId: 'app', taskId: 9, name: 'Ada', kind: 'agent', station: true, accountId: 'acc1', accountName: 'Panu' });
+});
+
+test('a person’s hire is still theirs after a restart: its tasks keep their creator', async () => {
+  const dir = mkdtempSync(path.join(tmpdir(), 'agent-create-restart-'));
+  try {
+    const file = path.join(dir, 'workers.json');
+    const info = (id: string, deskId: string, over: Partial<WorkerInfo>) => ({ id, kind: 'agent', provider: 'claude', deskId, name: 'Ada', color: '#fff', status: 'idle', createdBy: 'Bob', createdAt: 1, ...over }) as WorkerInfo;
+    const workers = [info('w1', 'desk-1', { byPerson: true }), info('w2', 'desk-2', { createdBy: 'Bob (queue)' })].map((i) => ({ info: i, tracker: {} }) as unknown as Worker);
+    saveWorkers(file, workers, true);
+    const restored = new Map<string, Worker>();
+    restoreWorkers(file, restored, 'claude', () => false);
+    assert.equal(restored.get('w1')?.info.byPerson, true);
+    assert.equal('byPerson' in restored.get('w2')!.info, false);
+
+    const { ctx, call } = setup();
+    await call({ title: 'after a restart', description: 'd' }, hookCaller(restored.get('w1')!.info, 'app'));
+    await call({ title: 'queue', description: 'd' }, hookCaller(restored.get('w2')!.info, 'app'));
+    assert.deepEqual([1, 2].map((id) => ctx.repo.getTask(id)!.createdBy), ['Bob', 'Ada']);
+
+    // Only true is taken back: anything else in the file isn't a person's hire.
+    const raw = (byPerson: unknown) => [{ id: 'w3', kind: 'agent', provider: 'claude', deskId: 'desk-3', name: 'Ada', createdBy: 'Bob', byPerson }];
+    for (const v of ['true', 1, {}]) {
+      writeFileSync(file, JSON.stringify(raw(v)));
+      const again = new Map<string, Worker>();
+      restoreWorkers(file, again, 'claude', () => false);
+      assert.equal(again.get('w3')?.info.byPerson, undefined, JSON.stringify(v));
+    }
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
 });
 
 test('an issue key is the project’s spelling of its repository, so another case finds the same task', async () => {
