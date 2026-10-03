@@ -23,6 +23,7 @@ import { KANBAN_EFFORTS, KANBAN_TOOLS, SKILL_PHASES } from '../../shared/kanban/
 import { GH_REPO_RE, MODEL_RE, PROJECT_ID_RE, type KanbanSettingsPatch } from '../../shared/kanban/protocol.js';
 import { isKanbanPromptId } from '../../shared/kanban/prompts.js';
 import { PROMPT_MAX } from '../../shared/prompts.js';
+import { cleanProjectLanguage } from '../../shared/language.js';
 
 export const SETTINGS_SCHEMA_VERSION = 1;
 export const INSTRUCTIONS_MAX = 20_000;
@@ -169,6 +170,8 @@ export function sanitizeProjectSettings(raw: unknown, base: ProjectSettings = de
   if (approval) out.planApproval = approval;
   const permission = 'implementPermission' in r ? optOneOf(r.implementPermission, PERMISSIONS) : base.implementPermission;
   if (permission) out.implementPermission = permission;
+  const lang = 'publicLanguage' in r ? cleanProjectLanguage(r.publicLanguage) : base.publicLanguage;
+  if (lang) out.publicLanguage = lang;
   const review = 'review' in r ? sanitizePartialReview(r.review) : base.review;
   if (review) out.review = review;
   return out;
@@ -277,6 +280,7 @@ export class KanbanSettingsStore {
     for (const k of cleared) delete p[k];
     this.settings.projects[id] = sanitizeProjectSettings(p, this.settings.projects[id] ?? defaultProjectSettings());
     if (cleared.has('review')) delete this.settings.projects[id].review;
+    if (cleared.has('publicLanguage')) delete this.settings.projects[id].publicLanguage;
     if (cleared.has('planApproval')) delete this.settings.projects[id].planApproval;
     if (cleared.has('implementPermission')) delete this.settings.projects[id].implementPermission;
     this.changed();

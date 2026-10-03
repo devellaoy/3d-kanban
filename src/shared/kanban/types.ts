@@ -422,8 +422,8 @@ export interface ProjectSettings {
   branchInstructions: string;
   generalInstructions: string;
   testingInstructions: string;
-  /** Tasks of this project running at once. */
-  maxConcurrent: number;
+  maxConcurrent: number; // tasks of this project running at once
+  publicLanguage?: string; // what its issues, pull requests and commits are written in; FOLLOW_PROJECT (@project): by its own instructions; unset: the office's
   planApproval?: PlanApproval;
   implementPermission?: ImplementPermission;
   review?: Partial<ReviewSettings>;

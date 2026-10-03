@@ -163,6 +163,7 @@ export const CLIENT_MSG_CLASS = {
   'leaveOnMerge.set': 'deny',
   'prompts.set': 'deny',
   'prompts.agent': 'deny',
+  'prompts.language': 'deny',
   'limits.refresh': 'deny',
   'codex-limits.watch': 'deny',
   'codex-limits.refresh': 'deny',

@@ -418,6 +418,13 @@ test('settings, accounts, sign-ins and the boards answer as before', async () =>
   a.send({ t: 'prompts.set', id: 'nope', text: 'x' });
   a.send({ t: 'prompts.agent', choice: null });
   assert.equal(await told('🤖'), '🤖 Eve put the office’s default worker back to claude');
+  a.send({ t: 'prompts.language', language: { talk: 'Finnish', public: '12' } });
+  await warned("That isn't a language name");
+  a.send({ t: 'prompts.language', language: { talk: 'Finnish', public: 'English' } });
+  assert.deepEqual((await a.take('prompts', (m) => !!m.state.language)).state.language?.talk, 'Finnish');
+  assert.equal(await told('🌐'), '🌐 Eve set the office’s languages: talking in Finnish, writing in English');
+  a.send({ t: 'prompts.language', language: null });
+  assert.equal(await told('🌐'), '🌐 Eve put the office’s languages back to the task’s language');
   a.send({ t: 'notify.webhook', url: 'not a url' });
   assert.match((await a.take('toast', (m) => m.level === 'warn')).text, /./);
   a.send({ t: 'upgrade.check' });

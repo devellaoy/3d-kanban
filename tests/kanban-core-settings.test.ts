@@ -124,6 +124,21 @@ test('the settings file is saved privately, reloaded, and changed a part at a ti
   assert.equal(store.effectiveReview('api').rounds, 4);
   store.setProject('web', { planApproval: null } as never);
   assert.equal(store.planApproval('web'), 'auto');
+  // A project's public language: cleaned, kept across other changes, @project kept, null clears.
+  assert.equal(store.project('web').publicLanguage, undefined);
+  store.setProject('web', { publicLanguage: '  English ' });
+  assert.equal(store.project('web').publicLanguage, 'English');
+  store.setProject('web', { maxConcurrent: 4 });
+  assert.equal(store.project('web').publicLanguage, 'English', 'left alone by other changes');
+  store.setProject('web', { publicLanguage: '@project' });
+  assert.equal(store.project('web').publicLanguage, '@project');
+  assert.equal(new KanbanSettingsStore(dir).project('web').publicLanguage, '@project', 'survives a reload');
+  store.setProject('web', { publicLanguage: 'rm -rf /; Finnish' });
+  assert.equal(store.project('web').publicLanguage, undefined, 'not a language: dropped');
+  store.setProject('web', { publicLanguage: 'Swedish' });
+  store.setProject('web', { publicLanguage: null } as never);
+  assert.equal(store.project('web').publicLanguage, undefined, 'null clears it');
+  store.setProject('web', { maxConcurrent: 3 });
   assert.equal(store.project('web').maxConcurrent, 3, 'what was not given stays');
   assert.throws(() => store.setProject('Bad Id', {}), /Not a project id/);
 
