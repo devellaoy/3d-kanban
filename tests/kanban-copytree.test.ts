@@ -1,7 +1,7 @@
 // copyTree stands in for fs.cpSync, whose native copy kills the process on a non-ASCII path on Windows (#69).
 import test, { type TestContext } from 'node:test';
 import assert from 'node:assert/strict';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { copyTree } from '../src/server/kanban/copytree.js';
@@ -49,4 +49,22 @@ test('skips what the filter refuses, folders whole', (t) => {
   assert.ok(existsSync(path.join(to, 'SKILL.md')));
   assert.ok(!existsSync(path.join(to, '.marker.json')));
   assert.ok(!existsSync(path.join(to, 'node_modules')));
+});
+
+test('never writes through a link at the destination, as cpSync does not', (t) => {
+  const dir = tmp(t);
+  const outside = path.join(dir, 'ulkona');
+  mkdirSync(outside);
+  const from = path.join(dir, 'lähde');
+  mkdirSync(from);
+  writeFileSync(path.join(from, 'a.md'), 'a');
+  // A junction needs no rights on Windows; elsewhere it is a plain folder link.
+  const to = path.join(dir, 'kohde');
+  symlinkSync(outside, to, 'junction');
+  assert.throws(() => copyTree(from, to), /over the link/);
+  assert.deepEqual(readdirSync(outside), []);
+  copyTree(path.join(from, 'a.md'), to);
+  assert.equal(readFileSync(to, 'utf8'), 'a');
+  assert.ok(!lstatSync(to).isSymbolicLink());
+  assert.deepEqual(readdirSync(outside), []);
 });
