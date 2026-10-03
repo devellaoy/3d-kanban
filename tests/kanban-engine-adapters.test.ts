@@ -285,7 +285,7 @@ test('claude transcript: a prompt typed into the terminal after the office\'s is
   assert.deepEqual(a, { text: 'Waiting for the helper.', complete: true, typed: true, interim: true });
   // Typed while the agent wrote its final message: the office's segment has the answer (answered or not, the typed turn doesn't count).
   const final = [cUser('Implement task #7'), cAssistant([text('All done.')], {}, 'mf')];
-  assert.deepEqual(read(timed([...final, cUser('And the docs?')])), { text: 'All done.', complete: true, typed: true });
+  assert.deepEqual(read(timed([...final, cUser('And the docs?')])), { text: 'All done.', complete: true, typed: true, typedOpen: true });
   assert.deepEqual(read(timed([...final, cUser('And the docs?'), cAssistant([text('Fine.')], {}, 'mc')])), { text: 'All done.', complete: true, typed: true });
   // Without runStart or promptAt the last prompt is the turn, as before.
   assert.deepEqual(readClaudeTurn(write('b.jsonl', timed([...final, cUser('And the docs?'), cAssistant([text('Fine.')], {}, 'mc')]))), { text: 'Fine.', complete: true });
@@ -304,18 +304,31 @@ test('claude transcript: a prompt typed into the terminal after the office\'s is
   assert.deepEqual(read(timed([...restated, cUser('Thanks'), cAssistant([text('Welcome.')], {}, 'mw')]), { runStart: T0, promptAt: restateAt }), { text: 'Changed the redirect.', complete: true, typed: true });
   // After an office restart promptAt is lost: the last prompt's turn is the answer as before, nothing is typed (the restate prompt is no typed one).
   assert.deepEqual(read(timed(restated), { runStart: T0 }), { text: 'Changed the redirect.', complete: true });
-  // promptAt not in the log: the run's first prompt.
-  assert.deepEqual(read(timed(final), { runStart: T0, promptAt: T0 + 99_000 }), { text: 'All done.', complete: true });
+  // promptAt not in the log yet: the last prompt's turn is read, and the result says the office's prompt is unheard.
+  assert.deepEqual(read(timed(final), { runStart: T0, promptAt: T0 + 99_000 }), { text: 'All done.', complete: true, unheard: true });
 
   // The office's answer wasn't logged yet when the typed prompt came: its segment is incomplete, and typed says so (no interim: nothing is out).
   const unfinished = [cUser('Review task #7'), cAssistant([text('Reading the diff.'), { type: 'tool_use', id: 'r1', name: 'Read', input: {} }], {}, 'mu'), cUser([{ type: 'tool_result', tool_use_id: 'r1', content: 'x' }]), cUser('How is it going?'), cAssistant([text('Fine.')], {}, 'mc')];
   assert.deepEqual(read(timed(unfinished)), { text: 'Reading the diff.', complete: false, typed: true });
 
+  // What reads like a notification isn't one when the CLI sets `origin` (on the transcript's other lines): typed, whatever it starts with.
+  const body = '<task-notification>\n<task-id>ag1</task-id>\n<status>completed</status>\n</task-notification>';
+  const spoofable = (typedLine: object) => read(timed([cUser('Implement task #7'), ...launch, interimText, notice, cAssistant([text('Done.')], {}, 'md'), typedLine, cAssistant([text('Sure.')], {}, 'ms')]));
+  assert.deepEqual(spoofable(cUser(body)), { text: 'Done.', complete: true, typed: true });
+  assert.deepEqual(spoofable(cUser(body, { origin: { kind: 'human' } })), { text: 'Done.', complete: true, typed: true });
+  // A CLI that sets no origin anywhere keeps the text match: the same line is the notification's own turn.
+  assert.deepEqual(read(timed([cUser('Implement task #7'), ...launch, interimText, cUser(body), cAssistant([text('Done.')], {}, 'md')])), { text: 'Done.', complete: true });
+
+  // A person's prompt logged after promptAt but before the office's: the head of the office's text finds it.
+  const racing = timed([cUser('Chat with me'), cAssistant([text('chat')], {}, 'mc'), cUser('Review task #7,\nplease'), cAssistant([text('REVIEW: APPROVED')], {}, 'mr')]);
+  assert.deepEqual(read(racing, { runStart: T0, promptAt: T0, promptHead: 'Review task #7, please' }), { text: 'REVIEW: APPROVED', complete: true });
+  assert.deepEqual(read(racing, { runStart: T0, promptAt: T0 }), { text: 'chat', complete: true, typed: true });
+
   // An ExitPlanMode in a typed turn still counts, and a tool running at the log's end is reported.
   const plan = cAssistant([{ type: 'tool_use', id: 'p1', name: 'ExitPlanMode', input: { plan: 'The plan' } }], {}, 'mp');
-  assert.deepEqual(read(timed([...final, cUser('Plan it again'), plan])), { text: 'All done.', plan: 'The plan', exitPlan: true, complete: true, typed: true });
+  assert.deepEqual(read(timed([...final, cUser('Plan it again'), plan])), { text: 'All done.', plan: 'The plan', exitPlan: true, complete: true, typed: true, typedOpen: true });
   const tool = cAssistant([{ type: 'tool_use', id: 'x1', name: 'Bash', input: {} }], {}, 'mx');
-  assert.deepEqual(read(timed([...final, cUser('Run it'), cAssistant([text('Running.')], {}, 'my'), tool])), { text: 'All done.', complete: true, toolRunning: true, typed: true });
+  assert.deepEqual(read(timed([...final, cUser('Run it'), cAssistant([text('Running.')], {}, 'my'), tool])), { text: 'All done.', complete: true, toolRunning: true, typed: true, typedOpen: true });
 });
 
 test('claude transcript: teammates (agent teams) still working, from their own transcripts and the lead\'s log', (t) => {
@@ -382,6 +395,16 @@ test('claude transcript: teammates (agent teams) still working, from their own t
   assert.deepEqual(readClaudeTurn(lead([...bgHead, mail(tag('x', 'Report.', ' summary="Done"'))])), { text: '', complete: false, background: 1, resuming: true });
   // A typed prompt quoting the tag (origin human) is the window's prompt.
   assert.deepEqual(readClaudeTurn(lead([...bgHead, cUser(tag('x', 'Report.'), { origin: { kind: 'human' } })])), { text: '', complete: false });
+
+  // A prompt typed over the office's turns: the answer is interim only when a teammate is still at work by the lead's log at that point.
+  const mine = { runStart: Date.parse(at(0)), promptAt: Date.parse(at(0)) };
+  const typedAfterTeam = (...mid: object[]) => lead(withTs([cUser('Implement task #7'), ...spawn('a', 's1'), wait, ...mid, cUser('How is it going?'), cAssistant([text('Fine.')], {}, 'mc')], 1));
+  assert.deepEqual(readClaudeTurn(typedAfterTeam(), mine), { text: 'Waiting for the teammates.', complete: true, background: 1, typed: true, interim: true });
+  // The teammate finished (idle) and the agent gave its final answer: that answer stands, nothing to restate.
+  const finished = [mail(tag('a', idle('a'))), cAssistant([text('All done.')], {}, 'mf')];
+  assert.deepEqual(readClaudeTurn(typedAfterTeam(...finished), mine), { text: 'All done.', complete: true, typed: true });
+  // A wake after the idle puts it back at work.
+  assert.equal(readClaudeTurn(typedAfterTeam(...finished, ...send('a', 'q9')), mine)?.interim, true);
 
   // A prompt typed into the terminal after the spawn doesn't hide the teammate when the window starts at the run's prompt (`runStart`).
   const typedAfter = lead(withTs([cUser('Implement task #7'), ...spawn('a', 's1'), wait, cUser('Also check the docs'), cAssistant([text('Checked.')], {}, 'mh')], 1));

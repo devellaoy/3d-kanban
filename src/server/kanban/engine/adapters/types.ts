@@ -58,6 +58,10 @@ export interface TurnResult {
   typed?: true;
   /** With `typed`: the office's turns ended with background work still out (or a teammate spawned), so their text is an interim one, not the answer. */
   interim?: true;
+  /** With `typed`: the typed turn hasn't ended in the log (no reply of text alone after the log's last prompt yet, or a tool runs). */
+  typedOpen?: true;
+  /** Claude: the office's last prompt (`promptAt`) isn't in the log yet, so the turn read isn't the one the office asked for. */
+  unheard?: true;
 }
 
 export interface TaskAgentAdapter {
@@ -70,9 +74,10 @@ export interface TaskAgentAdapter {
    * process. `runStart`: when the kanban run began (ms); background work is counted from the first office prompt
    * logged at or after it, so a prompt typed into the worker's terminal meanwhile doesn't move the window.
    * `promptAt`: when the office last gave this run a prompt (ms; the launch, or a restate): the answer is read from
-   * that prompt's turns, and a later prompt that isn't a notification is `typed`. Codex ignores all three.
+   * that prompt's turns, and a later prompt that isn't a notification is `typed`; `promptHead`: the start of the text the office typed
+   * then, to find that prompt among a person's typed ones. Codex ignores all four.
    */
-  readTurnResult(transcriptPath: string, opts?: { since?: number; runStart?: number; promptAt?: number }): TurnResult | undefined;
+  readTurnResult(transcriptPath: string, opts?: { since?: number; runStart?: number; promptAt?: number; promptHead?: string }): TurnResult | undefined;
   /** Whether the log shows the turn interrupted (an Esc) at or after `since` (ms); only Claude logs that. */
   interruptedSince?(transcriptPath: string, since: number): boolean;
   /** What upstream's spawn may carry as the worker's model (it validates it); the rest goes in launchArgs. */
