@@ -135,6 +135,35 @@ test('a debate runs its rounds and ends when the chair writes the decision', (t)
   assert.ok(existsSync(path.join(f.dir, '.agent-office', 'meetings', m.id)));
 });
 
+test('a review panel has no token limit unless one is asked for; the other patterns keep their default', (t) => {
+  const f = fixture(); t.after(() => f.close());
+  assert.equal(f.start({ pattern: 'review', pr: 5 }), undefined);
+  assert.equal(f.cur()!.budget, 0);
+  const w = f.workers[0];
+  w.status = 'working';
+  w.usage = { input: 40_000_000, output: 20_000_000, cacheRead: 0, cacheWrite: 0, cost: 90, calls: 3 };
+  f.room.onWorker(w);
+  assert.equal(f.cur()!.status, 'running');
+  assert.equal(f.cur()!.tokens, 60_000_000);
+});
+
+test('a review panel given a budget still stops over it', (t) => {
+  const f = fixture(); t.after(() => f.close());
+  assert.equal(f.start({ pattern: 'review', pr: 5, budget: 100_000 }), undefined);
+  assert.equal(f.cur()!.budget, 100_000);
+  const w = f.workers[0];
+  w.status = 'working';
+  w.usage = { input: 90_000, output: 20_000, cacheRead: 0, cacheWrite: 0, cost: 0.5, calls: 3 };
+  f.room.onWorker(w);
+  assert.equal(f.cur()!.status, 'stopped');
+});
+
+test('a debate without a budget gets a million tokens a seat', (t) => {
+  const f = fixture(); t.after(() => f.close());
+  assert.equal(f.start({}), undefined);
+  assert.equal(f.cur()!.budget, 3_000_000);
+});
+
 test('the meeting stops once it runs over its token budget, and says so', (t) => {
   const f = fixture(); t.after(() => f.close());
   assert.equal(f.start({ budget: 100_000 }), undefined);

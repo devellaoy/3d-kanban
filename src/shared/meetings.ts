@@ -20,6 +20,8 @@ export interface PatternDef {
   output(slug: string, pr?: number): string;
   /** Needs a pull request (the review panel) or a list of parts (map-reduce). */
   needs?: 'pr' | 'parts';
+  /** No token limit unless the caller sets one (the review panel): the budget is then 0. */
+  unlimited?: boolean;
 }
 
 export const MEETING_PATTERNS: Record<MeetingPattern, PatternDef> = {
@@ -74,6 +76,7 @@ export const MEETING_PATTERNS: Record<MeetingPattern, PatternDef> = {
     roundsNote: 'Reviews, then the combined review.',
     output: (_slug, pr) => `reviews/pr-${pr ?? 'n'}.md`,
     needs: 'pr',
+    unlimited: true,
   },
 };
 
@@ -88,6 +91,19 @@ export function isMeetingPattern(v: unknown): v is MeetingPattern {
 export const TOKENS_PER_SEAT = 1_000_000;
 /** The most a meeting may be given, however many workers sit down. */
 export const MAX_MEETING_BUDGET = 50_000_000;
+
+/**
+ * A meeting's token budget: what was asked for (clamped), else a million a seat, else 0 (no limit) for a
+ * pattern that has none by default (the review panel).
+ */
+export function meetingBudget(pattern: PatternDef, seats: number, asked: unknown): number {
+  const n = Math.floor(Number(asked));
+  if (!(n > 0) && pattern.unlimited) return 0;
+  return Math.min(MAX_MEETING_BUDGET, Math.max(50_000, n > 0 ? n : seats * TOKENS_PER_SEAT));
+}
+
+/** The budget in words for a line or a sign: "1.2M tokens" or "no token limit". */
+export const budgetText = (budget: number): string => (budget > 0 ? `${fmtTokens(budget)} tokens` : 'no token limit');
 
 /**
  * The round notes' folder at the top of a meeting's worktree. It's left out of the meeting's commit and

@@ -119,7 +119,7 @@ function renderStatus(m: Meeting, body: HTMLElement, foot: HTMLElement, net: Net
   const p = MEETING_PATTERNS[m.pattern];
   const running = m.status === 'running';
   const pill = h('span.pill', { class: running ? 'working' : m.status === 'done' ? 'done' : 'needs_input' }, running ? 'in a meeting' : m.status);
-  const f = Math.min(1, m.tokens / Math.max(1, m.budget));
+  const f = m.budget > 0 ? Math.min(1, m.tokens / m.budget) : 0;
   const seats = h(
     'ul.meeting-seats',
     {},
@@ -146,7 +146,7 @@ function renderStatus(m: Meeting, body: HTMLElement, foot: HTMLElement, net: Net
     ...present(
     h('div.meeting-head', {}, pill, h('b', {}, `${p.icon} ${p.label}`), h('span.meeting-title', { title: m.prompt }, m.title)),
     h('p.meeting-line', {}, running ? `${meetingStage(m)} · called by ${m.calledBy} ${timeAgo(new Date(m.startedAt).toISOString())}` : m.status === 'done' ? `✅ Wrote ${m.output} in ${m.round} round${m.round === 1 ? '' : 's'}` : `⛔ Stopped in round ${m.round}: ${m.reason ?? 'stopped'}`),
-    h('div.meeting-budget', { title: `${m.tokens.toLocaleString()} of ${m.budget.toLocaleString()} tokens` }, h('div.meeting-bar', {}, h('i', { style: `width:${(f * 100).toFixed(1)}%;background:${f > 0.9 ? 'var(--bad)' : f > 0.7 ? 'var(--warn)' : 'var(--good)'}` })), h('span', {}, `${meetingSpend(m)} of ${fmtTokens(m.budget)} tokens`)),
+    h('div.meeting-budget', { title: m.budget > 0 ? `${m.tokens.toLocaleString()} of ${m.budget.toLocaleString()} tokens` : `${m.tokens.toLocaleString()} tokens, no limit` }, m.budget > 0 ? h('div.meeting-bar', {}, h('i', { style: `width:${(f * 100).toFixed(1)}%;background:${f > 0.9 ? 'var(--bad)' : f > 0.7 ? 'var(--warn)' : 'var(--good)'}` })) : null, h('span', {}, m.budget > 0 ? `${meetingSpend(m)} of ${fmtTokens(m.budget)} tokens` : `${meetingSpend(m)} · no limit`)),
     seats,
     h('div.meeting-out', {}, h('div.meeting-out-head', {}, h('b', {}, '📄 '), h('code', {}, m.output), where, review), h('pre.meeting-preview', {}, m.preview?.trim() ? m.preview : running ? 'Nothing written yet.' : 'Nothing was written.')),
     store.meeting.past.length
@@ -192,6 +192,7 @@ function meetingForm(net: Net, preset: MeetingPreset | undefined, room: () => st
   const roundsIn = h('input', { type: 'number', 'aria-label': 'Rounds' }) as HTMLInputElement;
   const roundsNote = h('small.muted');
   const budgetIn = h('input', { type: 'number', min: 50, step: 250, 'aria-label': 'Token budget in thousands' }) as HTMLInputElement;
+  const budgetNote = h('small.muted');
   const provider = providerPicker(store.project, 'meeting-provider', 'Workers');
   const busy = h('p.meeting-busy');
   const submit = h('button.btn.primary', { type: 'submit' }, '🤝 Start the meeting');
@@ -213,7 +214,8 @@ function meetingForm(net: Net, preset: MeetingPreset | undefined, room: () => st
     outputNote.classList.toggle('bad', !!problem);
   };
   const syncBudget = () => {
-    if (!budgetTouched) budgetIn.value = String((roles.length * TOKENS_PER_SEAT) / 1000);
+    budgetIn.placeholder = def().unlimited ? 'No limit' : '';
+    if (!budgetTouched) budgetIn.value = def().unlimited ? '' : String((roles.length * TOKENS_PER_SEAT) / 1000);
   };
   const renderRoles = () => {
     const d = def();
@@ -240,6 +242,7 @@ function meetingForm(net: Net, preset: MeetingPreset | undefined, room: () => st
     roundsIn.value = String(d.rounds.default);
     roundsIn.disabled = d.rounds.min === d.rounds.max;
     roundsNote.textContent = d.roundsNote;
+    budgetNote.textContent = d.unlimited ? 'For everyone at the table together. Leave it empty for no limit; over a limit, the meeting stops.' : 'For everyone at the table together. Over it, the meeting stops.';
     prRow.classList.toggle('hidden', d.needs !== 'pr');
     partsRow.classList.toggle('hidden', d.needs !== 'parts');
     renderRoles();
@@ -276,7 +279,7 @@ function meetingForm(net: Net, preset: MeetingPreset | undefined, room: () => st
     partsRow,
     h('div.meeting-field', {}, h('label', {}, 'Output file'), outputIn, outputNote),
     h('div.meeting-field', {}, h('label.meeting-count', {}, 'Workers at the table', minus, count, plus), roleList),
-    h('div.meeting-bounds', {}, h('div.meeting-field', {}, h('label', {}, 'Round limit'), roundsIn, roundsNote), h('div.meeting-field', {}, h('label', {}, 'Token budget (thousands)'), budgetIn, h('small.muted', {}, 'For everyone at the table together. Over it, the meeting stops.'))),
+    h('div.meeting-bounds', {}, h('div.meeting-field', {}, h('label', {}, 'Round limit'), roundsIn, roundsNote), h('div.meeting-field', {}, h('label', {}, 'Token budget (thousands)'), budgetIn, budgetNote)),
     provider.element,
     busy,
   ) as HTMLFormElement;

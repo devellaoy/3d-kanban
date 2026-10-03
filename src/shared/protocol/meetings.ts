@@ -69,7 +69,7 @@ export interface Meeting {
   lastRound?: number;
   /** The current step's parts. */
   turns: MeetingTurn[];
-  /** Tokens every worker in the meeting may use between them, and how many they have. */
+  /** Tokens every worker in the meeting may use between them (0: no limit, a review panel's default), and how many they have. */
   budget: number;
   tokens: number;
   /** USD, where the providers report it. */
