@@ -610,6 +610,34 @@ test('a prompt typed after the office\'s Stop but before its answer reached the 
   assert.equal(fx.repo.listComments(task.id).comments.find((c) => c.kind === 'review')?.text, 'No findings.\n\nREVIEW: APPROVED');
 });
 
+test('a held run whose helper\'s report turn has no answer in the log yet, with a prompt typed right after it, restates the answer', async (t) => {
+  const fx = await engineFixture();
+  t.after(() => fx.close());
+  fx.setRules([
+    { when: 'Implement kanban task', background: 'Waiting for the helper agent.', reply: 'unused', lateLogMs: -1, typedAfterStop: 'How is it going?', typedMs: 1500, commit: 'Work' },
+    { when: 'Someone typed into your terminal', reply: 'Changed the redirect; tests pass.' },
+    { when: 'You are reviewing the work', reply: 'Fine.\n\nREVIEW: APPROVED' },
+  ]);
+  const task = fx.newTask({ usePlan: false, useReview: true });
+  await fx.engine.start(task.id, ADA);
+  await fx.waitTask(task.id, (x) => x.status === 'review' && x.runState === 'idle' && reviewRuns(fx, x.id) >= 1, 'the review round after the restated answer', 40_000);
+  assert.ok(fx.invocations().some((i) => i.prompt && /Someone typed into your terminal/.test(i.prompt)));
+  assert.equal(fx.repo.listComments(task.id).comments.find((c) => c.kind === 'result')?.text, 'Changed the redirect; tests pass.');
+});
+
+test('a plan asked for in a prompt typed after a tool-only planning turn is stored as the plan', async (t) => {
+  const fx = await engineFixture();
+  t.after(() => fx.close());
+  fx.setRules([{ when: 'You are planning kanban task', earlier: ' ', reply: 'unused', lateLogMs: -1, typedAfterStop: 'Make a plan', typedMs: 800, typedExitPlan: '1. Change the redirect\n2. Test it' }]);
+  const task = fx.newTask({ planApproval: 'manual' });
+  await fx.engine.start(task.id, ADA);
+  await fx.waitTask(task.id, (x) => x.status === 'waiting' && x.waitingReason === 'plan_approval', 'the plan approval', 30_000);
+  const plans = fx.repo.listPlans(task.id);
+  assert.equal(plans.length, 1);
+  assert.equal(plans[0].text, '1. Change the redirect\n2. Test it');
+  assert.equal(fx.repo.listRuns(task.id)[0].status, 'succeeded');
+});
+
 test('a stop the agent never confirms (no Stop after Esc) restarts the worker on its session at its desk, never sends it home; Continue prompts the same worker', async (t) => {
   const fx = await engineFixture();
   t.after(() => fx.close());

@@ -243,6 +243,8 @@ export function readClaudeTurn(file: string, opts?: { since?: number; runStart?:
     }
   }
   // From the typed prompt on the answer is frozen: only the plan, and the log's last message's running tools, still follow the log.
+  // A plan asked for in a typed turn is the structured answer: complete without the office's text.
+  let typedPlan = false;
   // `after` is what the log has since its last prompt.
   const after: Record<string, unknown>[] = [];
   for (const line of cut >= 0 ? lines.slice(cut) : []) {
@@ -256,8 +258,10 @@ export function readClaudeTurn(file: string, opts?: { since?: number; runStart?:
       message = msg?.id;
       for (const b of content) {
         if (b.type !== 'tool_use') continue;
-        if (b.name === 'ExitPlanMode') planned(b);
-        else {
+        if (b.name === 'ExitPlanMode') {
+          planned(b);
+          typedPlan = true;
+        } else {
           exitPlan = false;
           running.add(b.id);
         }
@@ -270,12 +274,13 @@ export function readClaudeTurn(file: string, opts?: { since?: number; runStart?:
   // Background agents, commands and teammates alike: the turn's Stop isn't the run's end while any still works.
   const left = backgroundLeft(lines, start, opts?.since) + teammatesBusy(file, opts?.since ?? 0, teammateEvents(lines, start));
   // The last prompt is a notification or a teammate's message nothing has answered yet: Claude is about to take its turn.
-  const resuming = from >= 0 && !answered && notice(lines[from]);
+  // A typed prompt after it means nothing is about to answer it any more (its turn is over, the answer just isn't in the log).
+  const resuming = from >= 0 && cut < 0 && !answered && notice(lines[from]);
   // Typed over the office's turns: those ended with background work still out (an agent, a command, a teammate at work), so their text is an interim one.
   const interim = cut >= 0 && (backgroundLeft(lines, start, opts?.since, cut) > 0 || teammatesAtWork(teammateEvents(lines, start, cut), opts?.since));
   // The typed turn isn't over in the log: the log's last prompt has no reply of text alone yet (or a tool runs).
   const open = cut >= 0 && transcriptBusy(after);
-  return { text: texts.join('\n\n'), ...(plan !== undefined ? { plan } : {}), ...(exitPlan ? { exitPlan } : {}), complete: answered && !toolPending && (texts.length > 0 || exitPlan), ...(apiError ? { apiError } : {}), ...(running.size ? { toolRunning: true } : {}), ...(left ? { background: left } : {}), ...(resuming ? { resuming } : {}), ...(cut >= 0 ? { typed: true as const } : {}), ...(interim ? { interim: true as const } : {}), ...(open ? { typedOpen: true as const } : {}), ...(unheard ? { unheard: true as const } : {}) };
+  return { text: texts.join('\n\n'), ...(plan !== undefined ? { plan } : {}), ...(exitPlan ? { exitPlan } : {}), complete: (answered && !toolPending && (texts.length > 0 || exitPlan)) || (exitPlan && typedPlan), ...(apiError ? { apiError } : {}), ...(running.size ? { toolRunning: true } : {}), ...(left ? { background: left } : {}), ...(resuming ? { resuming } : {}), ...(cut >= 0 ? { typed: true as const } : {}), ...(interim ? { interim: true as const } : {}), ...(open ? { typedOpen: true as const } : {}), ...(unheard ? { unheard: true as const } : {}) };
 }
 
 /** Claude logs an Esc on a turn as a user line "[Request interrupted by user…]" (it fires no Stop hook): whether one was logged at or after `since` (ms). */

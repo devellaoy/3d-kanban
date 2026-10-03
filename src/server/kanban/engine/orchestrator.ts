@@ -1443,7 +1443,7 @@ export class Orchestrator {
     if (watch && (result?.background || result?.unheard || (result?.resuming && !live.held))) return this.turnHolds.hold(live);
     // A prompt typed into the terminal took the turn the work ended in (or came before the office's answer reached the log): its answer isn't the run's, so the agent is asked for it again.
     const retell = result?.typed && (result.interim || !result.complete);
-    if (watch && retell && !result?.resuming && this.turnHolds.restate(live, result?.typedOpen)) return;
+    if (watch && retell && this.turnHolds.restate(live, result?.typedOpen)) return;
     live.background = false;
     live.ended = true;
     this.forget(live);

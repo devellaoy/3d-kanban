@@ -324,6 +324,13 @@ test('claude transcript: a prompt typed into the terminal after the office\'s is
   assert.deepEqual(read(racing, { runStart: T0, promptAt: T0, promptHead: 'Review task #7, please' }), { text: 'REVIEW: APPROVED', complete: true });
   assert.deepEqual(read(racing, { runStart: T0, promptAt: T0 }), { text: 'chat', complete: true, typed: true });
 
+  // A helper's notification (its own prompt) nothing has answered in the log, and a typed prompt after it: that turn is over, not resuming.
+  assert.deepEqual(read(timed([cUser('Implement task #7'), ...launch, interimText, notice, cUser('How is it going?'), cAssistant([text('Fine.')], {}, 'mc')])), { text: '', complete: false, typed: true });
+  // A plan asked for in a typed turn is the structured answer, even when the office's turn has no text.
+  const toolOnly = [cUser('Plan task #7'), cAssistant([{ type: 'tool_use', id: 'r1', name: 'Read', input: {} }], {}, 'mu'), cUser([{ type: 'tool_result', tool_use_id: 'r1', content: 'x' }])];
+  const planTyped = cAssistant([{ type: 'tool_use', id: 'p1', name: 'ExitPlanMode', input: { plan: 'The plan' } }], {}, 'mp');
+  assert.deepEqual(read(timed([...toolOnly, cUser('Plan it again'), planTyped])), { text: '', plan: 'The plan', exitPlan: true, complete: true, typed: true, typedOpen: true });
+
   // An ExitPlanMode in a typed turn still counts, and a tool running at the log's end is reported.
   const plan = cAssistant([{ type: 'tool_use', id: 'p1', name: 'ExitPlanMode', input: { plan: 'The plan' } }], {}, 'mp');
   assert.deepEqual(read(timed([...final, cUser('Plan it again'), plan])), { text: 'All done.', plan: 'The plan', exitPlan: true, complete: true, typed: true, typedOpen: true });
