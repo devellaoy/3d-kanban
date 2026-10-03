@@ -59,6 +59,12 @@ const QUEUE_API = `The task queue gives each task a fresh worker in its own git 
   EOF
 - Take a waiting task off: office-queue remove <id>`;
 
+/** Where the kanban comes in: its tasks are not queue tasks, and an issue can go on the board. */
+const KANBAN_NOTE: Partial<Record<StationKind, string>> = {
+  issues: 'If your tools list create_task (or office-tasks create is on your PATH), an issue can also be put on the kanban board as a task that runs through the kanban process: create_task with issue set to its number (office-tasks create --issue <number>). Do that only when asked for a kanban task.',
+  queue: 'Queue tasks go on with office-queue add. Kanban tasks are different: make one with create_task (or office-tasks create) only when someone asks for a kanban task.',
+};
+
 /** What a board agent is told ahead of the first request typed to it. */
 function stationDefault(kind: StationKind): string {
   const queue = kind === 'queue';
@@ -67,6 +73,7 @@ function stationDefault(kind: StationKind): string {
     JOB[kind],
     `You're in the project's main checkout, which other people and workers use too: don't switch branches, commit, or leave edits in it. Work that needs code changed goes on the task queue, ${queue ? 'always' : 'unless the person asks you for something else'}.`,
     QUEUE_API,
+    ...(KANBAN_NOTE[kind] ? [KANBAN_NOTE[kind]] : []),
     `${queue ? "When you've queued it, say in a few lines what you queued: each task's id and title." : "When you've done what was asked, say in a few lines what you did, with links."} Then wait: the next request may come from someone else.`,
     `The request:`,
   ].join('\n\n');
