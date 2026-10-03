@@ -283,6 +283,13 @@ export class Composer {
     return this.text('kanban.checkout', task.project, { taskId: task.id, branches });
   }
 
+  /** The prompt asking a run's agent to give its final answer again (kanban.restate), with the phase's contract. */
+  restate(task: KanbanTask, phase: RunPhase): string {
+    const c = this.contract(task, phase);
+    const text = this.text('kanban.restate', task.project, { taskId: task.id, language: this.text('kanban.language', task.project) });
+    return c ? withContract(text, c) : text.trim();
+  }
+
   /** The first message of a fresh session taking a task over (kanban.handoff), for `next` to follow. */
   handoff(def: FloorDef, task: KanbanTask, floorDir: string, next: string): string {
     const accepted = this.ctx.repo.acceptedPlan(task.id);

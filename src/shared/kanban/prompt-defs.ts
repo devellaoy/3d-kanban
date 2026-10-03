@@ -382,6 +382,15 @@ The pull request named below (#{{posted}} of {{postedRepo}}) is only where the c
 
 {{language}}`,
   },
+  'kanban.restate': {
+    group: 'kanban',
+    label: 'Restate the final answer',
+    used: "Typed into a task's agent session when someone typed into its terminal while the run waited for its background work, and the work ended in that turn. The office appends the phase's contract again.",
+    vars: { taskId: TASK_VARS.taskId, language: TASK_VARS.language },
+    text: `Someone typed into your terminal while you were working on kanban task #{{taskId}}, so your last reply answered them, not the task. Give your final answer for the task once more as your last message, in full and as the task's prompt asked for it. Don't redo work that is already done.
+
+{{language}}`,
+  },
   'kanban.unhold': {
     group: 'kanban',
     label: 'Carry on after a hold',

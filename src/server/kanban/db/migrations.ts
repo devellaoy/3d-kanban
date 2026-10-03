@@ -205,6 +205,12 @@ ALTER TABLE tasks ADD COLUMN queued_run TEXT;`),
     // hold: why and since when a task is on hold, and the look of its implementer (JSON, see TaskHold).
     up: (db) => db.exec('ALTER TABLE tasks ADD COLUMN hold TEXT;'),
   },
+  {
+    version: 5,
+    name: 'run prompted at',
+    // prompted_at: when the office last gave the run its prompt (ms), so a restart still tells a prompt typed into the terminal from the office's own.
+    up: (db) => db.exec('ALTER TABLE runs ADD COLUMN prompted_at INTEGER;'),
+  },
 ];
 
 /** The schema version this build expects. */

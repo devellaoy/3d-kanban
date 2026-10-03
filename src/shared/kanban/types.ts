@@ -262,10 +262,10 @@ export interface KanbanRun {
   workerId?: string;
   status: RunStatus;
   verdict?: ReviewVerdict;
-  /** The turn's final text, or a summary of it. */
-  summary?: string;
+  summary?: string; // the turn's final text, or a summary of it
   error?: string;
   startedAt: number;
+  promptedAt?: number; // when the office last gave the run its prompt (ms): its answer is read from that prompt's turns
   finishedAt?: number;
 }
 
