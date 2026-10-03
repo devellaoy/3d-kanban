@@ -55,6 +55,8 @@ export interface Rule {
   resumeToolMs?: number;
   /** With `background`: the first Stop comes with the log ending at the Agent call; its result and the interim text are logged this long after. */
   launchLateMs?: number;
+  /** With `background`: 200 ms after the first Stop someone types this into the worker's terminal (a logged prompt, a short reply, a Stop of its own) while the helper still works. */
+  typedPrompt?: string;
   /**
    * Claude only: spawn a teammate (agent teams) and end the turn on this interim text (Stop), as the
    * lead does when it "waits for the report"; the teammate's own transcript ends mid-tool and its own
@@ -168,7 +170,7 @@ async function turn(prompt, answered) {
   if (kind === 'claude') {
     // One API message's blocks are logged as lines sharing its id, as Claude Code does.
     const msgId = 'msg-' + process.pid + '-' + Date.now();
-    append({ type: 'user', message: { role: 'user', content: prompt } });
+    append({ type: 'user', timestamp: new Date().toISOString(), message: { role: 'user', content: prompt } });
     if (rule.earlier) {
       append({ type: 'assistant', message: { id: msgId + '-a', role: 'assistant', content: [{ type: 'text', text: rule.earlier }] } });
       append({ type: 'assistant', message: { id: msgId + '-a', role: 'assistant', content: [{ type: 'tool_use', id: 'read-1', name: 'Read', input: { file_path: 'README.md' } }] } });
@@ -194,7 +196,15 @@ async function turn(prompt, answered) {
         launched();
         await post('Stop', { last_assistant_message: rule.background });
       }
-      await new Promise((r) => setTimeout(r, rule.backgroundMs ?? 300));
+      let waited = 0;
+      if (rule.typedPrompt) {
+        await new Promise((r) => setTimeout(r, 200));
+        waited = 200;
+        append({ type: 'user', timestamp: new Date().toISOString(), message: { role: 'user', content: rule.typedPrompt } });
+        append({ type: 'assistant', message: { id: msgId + '-typed', role: 'assistant', content: [{ type: 'text', text: 'Answered what you typed.' }] } });
+        await post('Stop', { last_assistant_message: 'Answered what you typed.' });
+      }
+      await new Promise((r) => setTimeout(r, Math.max(0, (rule.backgroundMs ?? 300) - waited)));
       append({ type: 'user', origin: { kind: 'task-notification', producer: 'session-task' }, message: { role: 'user', content: '<task-notification>\n<task-id>' + agent + '</task-id>\n<status>completed</status>\n<summary>' + (rule.backgroundCommand ? 'Background command "suite" completed (exit code 0)' : 'Agent "helper" completed') + '</summary>\n</task-notification>' } });
       if (rule.resumeToolMs) {
         append({ type: 'assistant', message: { id: msgId + '-tool', role: 'assistant', content: [{ type: 'tool_use', id: 'bg-2', name: 'Bash', input: { command: 'sleep' } }] } });

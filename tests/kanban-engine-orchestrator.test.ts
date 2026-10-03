@@ -522,6 +522,27 @@ test('a turn that ends on a background command (a test suite) is not the run\'s 
   assert.equal(fx.task(task.id).reviewRound, 1);
 });
 
+test('a prompt typed into the terminal while a background agent works does not hide it: its Stop is not the run\'s end, review waits for the agent', async (t) => {
+  const fx = await engineFixture();
+  t.after(() => fx.close());
+  fx.setRules([
+    { when: 'Implement kanban task', background: 'Waiting for the helper agent.', typedPrompt: 'How is it going?', reply: 'Changed the redirect; tests pass.', commit: 'Work', backgroundMs: 2500 },
+    { when: 'You are reviewing the work', reply: 'Fine.\n\nREVIEW: APPROVED' },
+  ]);
+  const task = fx.newTask({ usePlan: false, useReview: true });
+  await fx.engine.start(task.id, ADA);
+  await fx.waitTask(task.id, (x) => x.phase === 'implement' && x.runState === 'running', 'the implement turn');
+  // The typed prompt's own Stop has come (the helper still works): the run goes on, no result, no review.
+  await new Promise((r) => setTimeout(r, 1500));
+  assert.equal(fx.task(task.id).status, 'in_progress');
+  assert.equal(fx.repo.listRuns(task.id).at(-1)?.status, 'running');
+  assert.deepEqual(fx.repo.listComments(task.id).comments.filter((c) => c.kind === 'result'), []);
+  assert.equal(reviewRuns(fx, task.id), 0);
+  // The helper is done and the final Stop comes: the result is that turn's text, and the review starts.
+  await fx.waitTask(task.id, (x) => x.status === 'review' && x.runState === 'idle' && reviewRuns(fx, x.id) >= 1, 'the review round after the helper', 30_000);
+  const results = fx.repo.listComments(task.id).comments.filter((c) => c.kind === 'result');
+  assert.equal(results[0]?.text, 'Changed the redirect; tests pass.');
+});
 
 test('a stop the agent never confirms (no Stop after Esc) restarts the worker on its session at its desk, never sends it home; Continue prompts the same worker', async (t) => {
   const fx = await engineFixture();
