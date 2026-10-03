@@ -1,6 +1,7 @@
 import { randomBytes } from 'node:crypto';
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
+import { isBusy } from '../shared/status.js';
 import { isAgentProvider, type AgentChoice, type AgentEffort, type AgentProvider, type GhPull, type QueueState, type QueueTask, type WorkerInfo, type WorkerStatus } from '../shared/protocol.js';
 import { DESK_BY_ID, SEATS, nextFreeSeat } from '../shared/layout.js';
 import { validateWorkerEffort, validateWorkerModel } from './agents.js';
@@ -8,6 +9,9 @@ import { savedEffort, savedModel, takesEffort, takesModel } from '../shared/prov
 import { PROMPTS } from '../shared/prompts.js';
 // What a worker is sent home with (see QueueWorkers.kill).
 import type { DepartureIntent } from '../shared/kanban/types.js';
+
+/** How many times a task's PR is asked about its closing line while gh fails (see TaskQueue.checkClosing). */
+const CLOSING_TRIES = 3;
 
 /** What the queue needs from the worker manager. Narrow on purpose, so a smoke test can fake it. */
 export interface QueueWorkers {
@@ -40,8 +44,8 @@ export interface QueueEvents {
   room?(): number;
   /** The last task on the queue just finished, done: nothing is left queued or running. */
   emptied(): void;
-  /** A task's pull request was linked (first time, or a new one) and doesn't close the task's issue as far as the board can tell: have it say so. */
-  prLinked?(task: QueueTask, pr: { number: number; url: string }): void;
+  /** A task's pull request (off its own branch) is to say it closes the task's issue; its worker is at rest. Resolves to false when it couldn't be told, to ask again. */
+  prLinked?(task: QueueTask, pr: { number: number; url: string }): Promise<boolean> | void;
   /** What's added after a task that runs in its own worktree ('queue.worktree' in shared/prompts.ts); empty for nothing. */
   worktreeNote?(): string;
 }
@@ -69,6 +73,8 @@ export class TaskQueue {
   /** Set on shutdown: the workers' exit events must not seat anyone into a dying office. */
   private stopped = false;
   private lastStatus = new Map<string, WorkerStatus>();
+  /** Each task's closing-line check of its PR: done until its worker works again, tries while gh fails. */
+  private closing = new Map<string, { pr: number; done: boolean; tries: number; asking?: boolean }>();
 
   constructor(
     dataDir: string,
@@ -219,15 +225,42 @@ export class TaskQueue {
         .filter((p) => (t.branch && p.headRefName === t.branch) || (t.issue !== undefined && p.closes.includes(t.issue) && Date.parse(p.createdAt) >= since))
         .sort((a, b) => Number(b.headRefName === t.branch) - Number(a.headRefName === t.branch) || b.createdAt.localeCompare(a.createdAt))[0];
       if (!match) continue;
+      // Only a PR off the task's own branch is its for sure: one matched by `closes` (numbers only, from any repository) may be another issue's.
+      if (match.headRefName === t.branch && (t.issue !== undefined || t.issueKey)) this.checkClosing(t, match);
       const pr = { number: match.number, url: match.url, state: match.isDraft ? 'DRAFT' : match.state, title: match.title };
       if (t.pr && t.pr.number === pr.number && t.pr.state === pr.state && t.pr.title === pr.title) continue;
-      const first = t.pr?.number !== pr.number;
       t.pr = pr;
       changed = true;
-      // Only a PR off the task's own branch is its for sure: one matched by `closes` (numbers only, from any repository) may be another issue's.
-      if (first && match.headRefName === t.branch && (t.issue !== undefined || t.issueKey)) this.events.prLinked?.({ ...t }, { number: pr.number, url: pr.url });
     }
     if (changed) this.changed();
+  }
+
+  /**
+   * Has the floor check that the task's open PR closes its issue, once its worker is at rest (it may
+   * still be writing the description), again after it has worked on, and up to CLOSING_TRIES times
+   * while gh fails.
+   */
+  private checkClosing(t: QueueTask, pull: GhPull) {
+    if (!this.events.prLinked || pull.state !== 'OPEN') return;
+    let c = this.closing.get(t.id);
+    if (!c || c.pr !== pull.number) this.closing.set(t.id, (c = { pr: pull.number, done: false, tries: 0 }));
+    const worker = t.workerId ? this.workers.list().find((w) => w.id === t.workerId) : undefined;
+    if (worker && isBusy(worker.status)) {
+      c.done = false;
+      c.tries = 0;
+      return;
+    }
+    if (c.done || c.asking || c.tries >= CLOSING_TRIES) return;
+    c.tries++;
+    c.asking = true;
+    const state = c;
+    void Promise.resolve(this.events.prLinked({ ...t }, { number: pull.number, url: pull.url }))
+      .then((ok) => {
+        if (ok !== false) state.done = true;
+        else if (state.tries >= CLOSING_TRIES) this.events.toast(`📋 Couldn't check that PR #${pull.number} closes ${label(t)}`, 'warn');
+      })
+      .catch(() => undefined)
+      .finally(() => (state.asking = false));
   }
 
   /** Finishes tasks whose worker stopped, then seats queued tasks while there's room. */

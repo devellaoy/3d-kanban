@@ -175,7 +175,7 @@ export interface Gates {
    * A worker took on GitHub issue `n` (an issue card dropped on its desk): assign it on GitHub, which
    * moves it to In progress on the board, and take it off the queue so nobody else is seated for it.
    */
-  takeIssue(c: Client, floor: Floor, n: number | undefined, key?: string): void; // or an issue-source card by its key
+  takeIssue(c: Client, floor: Floor, n: number | undefined, key?: string, workerId?: string): void; // or an issue-source card by its key
   /**
    * Runs `go` once `c` has a sign-in of their own to `which` (only accounts need one: on the shared
    * password it's the office's own). Without one it looks again, since they may have just signed

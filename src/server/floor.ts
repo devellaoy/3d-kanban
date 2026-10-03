@@ -365,6 +365,12 @@ export class Floor {
    * upstream does, another repository's by its key, and moves it to In progress on the project's boards.
    * A card that isn't a GitHub issue (Jira, a draft) is left be. Resolves to why not, or nothing.
    */
+  /** A card's issue as a key: its own, else the floor's repository's issue `n` (`gh:owner/repo#n`). */
+  cardRef(issue: number | undefined, key: string | undefined): string | undefined {
+    const repo = this.def.repo ?? (this.git ? checkoutRepo(this.dir) : undefined);
+    return key ?? (issue && repo ? ghIssueKey(repo, issue) : undefined);
+  }
+
   async claimCard(issue: number | undefined, key: string | undefined, as?: GhAs): Promise<string | undefined> {
     // A project's draft has no assignee, only a Status.
     if (key?.startsWith('ghp:')) {

@@ -120,6 +120,8 @@ export async function officeWorkers(ctx: Ctx, req: http.IncomingMessage, res: ht
   if (ask.issue) {
     const n = ask.issue;
     floor.queue.dropIssue(n);
+    const info = floor.workers.get(r.id);
+    if (info) info.issueKey = floor.cardRef(n, undefined);
     const as = owner ? ctx.signins.ghAs(owner) : undefined;
     if (typeof as === 'string') ctx.toastFloor(floor, `Couldn't assign issue #${n} on GitHub: ${as}`, 'warn');
     else void floor.github.claim(n, as).then((e) => e && ctx.toastFloor(floor, `Couldn't assign issue #${n} on GitHub: ${e}`, 'warn'));

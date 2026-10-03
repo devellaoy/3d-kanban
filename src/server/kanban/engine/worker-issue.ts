@@ -12,6 +12,8 @@ import { ghIssueKey } from '../integrations/issues/github-repo.js';
 /** The worker's issue as a ticket key (`gh:owner/repo#12`, or a Jira key), if it has one. */
 export function workerIssueKey(ctx: Pick<KanbanContext, 'repo'>, floor: Floor, info: WorkerInfo): string | undefined {
   if (info.kanban) return ctx.repo.getTask(info.kanban.taskId)?.ticket;
+  // A card handed to it later is newer than its queue task or its first prompt.
+  if (info.issueKey) return info.issueKey;
   const repo = floor.def.repo ?? checkoutRepo(floor.dir);
   const queued = floor.queue.issueOf(info.id);
   if (queued.issueKey) return queued.issueKey;

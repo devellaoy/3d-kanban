@@ -101,6 +101,8 @@ export interface WorkerInfo {
   via?: 'herald';
   /** Hired by the kanban engine for a task, as its implementer or reviewer, with the task's card as it is now (see src/server/kanban). */
   kanban?: KanbanWorkerSummary;
+  /** The issue last handed to it at its desk (a card dropped on it, or hired for), as a key (`gh:owner/repo#12`): what O's pull request closes. */
+  issueKey?: string;
 }
 
 /** Where the branch of a worker whose worktree was deleted still is (see WorkerInfo.lost). */

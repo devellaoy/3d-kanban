@@ -28,7 +28,7 @@ export interface EnsureClosing {
 export interface Ensured {
   edited: boolean;
   warning?: string;
-  /** gh couldn't even show the pull request: asking again later may work. */
+  /** gh couldn't show or edit the pull request: asking again later may work. */
   retry?: boolean;
 }
 
@@ -73,7 +73,7 @@ export async function ensureClosingRef(o: EnsureClosing): Promise<Ensured> {
     const def = o.defaultBranch ?? (prRepo ? (await run(['repo', 'view', prRepo, '--json', 'defaultBranchRef', '--jq', '.defaultBranchRef.name'], o.cwd, 30_000, o.env).catch(() => '')).trim() : '');
     return base && def && base !== def ? { edited, warning: `PR targets \`${base}\`, not the default branch: GitHub closes ${o.ref.replace(/^gh:/, '')} only when it reaches the default branch` } : { edited };
   } catch (err) {
-    return { edited: false, warning: `Couldn't add "${closingRef(o.ref, prRepo)}" to ${o.prUrl}: ${(err as Error).message}` };
+    return { edited: false, retry: true, warning: `Couldn't add "${closingRef(o.ref, prRepo)}" to ${o.prUrl}: ${(err as Error).message}` };
   } finally {
     if (tmp) await rm(tmp, { recursive: true, force: true }).catch(() => undefined);
   }
