@@ -596,9 +596,20 @@ blocks (markers, safety rules) are appended by the engine and shown read-only in
 
 On the loopback hook server (worker bearer token, like `/office/workers`):
 `GET /office/tasks/reference?ref=[&tail=1]`, `GET /office/tasks/search?q=`, CLI `office-tasks` (on every
-worker's PATH), MCP tools `get_task`, `search_tasks` (listed only when the worker has `AIKANBAN_API_BASE`, i.e.
-task workers; Claude task workers get them in `--allowedTools`). A plan phase gets the tasks its text refers to
+worker's PATH), MCP tools `get_task`, `search_tasks` (listed when the worker has `AGENT_OFFICE_TASKS` (every agent
+worker gets it) or `AIKANBAN_API_BASE`; Claude task workers get them in `--allowedTools`). A plan phase gets the tasks its text refers to
 written to `kanban/refs/task-<id>/referenced-tasks.md` (it can't call anything).
+
+`POST /office/tasks/create?worker=` (JSON body `{title?, description?, project?, repos?, issue?, ticket?, ticketUrl?,
+provider?, model?, effort?, type?, start?, desk?}`; the same bearer token) creates a task: CLI `office-tasks create`,
+MCP tool `create_task` (listed with `AGENT_OFFICE_TASKS`; never pre-approved, so a desk or board Claude agent asks, while a task's
+worker runs without prompts). The route is owned by
+the issues plugin (integrations/issues/agent-create.ts) and the creation itself is shared with the board's
+`kanban.task.create` and the issues board (src/server/kanban/create.ts). The task lands in To do; `start` seats a worker
+(or queues), except for a task's own worker, which can't start tasks (the answer's `note`; the parent task gets a `subtask.created` event and a comment).
+The creator is the requesting agent's account, else the parent task's creator, else the desk worker's hirer, else the
+agent's name; the agent is in the `created` event (`via`) and the toast. An `issue` is claimed like one made from the
+issues board, after the answer has gone (as the board does), so a slow GitHub can't time the agent out. See docs/kanban.md "Agents creating tasks".
 
 User skills (integrations/userskills/): a plugin that syncs the repository's `user-skills/claude/*` and
 `user-skills/codex/*` into the machine's `<claude home>/skills/` and `<codex home>/skills/` (the same homes

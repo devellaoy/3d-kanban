@@ -633,8 +633,8 @@ read the real task instead of guessing:
   part of a title; `--tail` adds the end of its worker's terminal, `--json` the raw answer) and
   `office-tasks search <words>`. It calls the hook server's `/office/tasks/reference` and
   `/office/tasks/search` with the worker's own `AGENT_OFFICE_WORKER_ID` and `AGENT_OFFICE_HOOK_TOKEN`.
-- **MCP tools** `get_task` and `search_tasks` on the office's `agent-office` MCP server, listed to task
-  workers (Claude workers are allowed them without asking).
+- **MCP tools** `get_task` and `search_tasks` on the office's `agent-office` MCP server, listed to every
+  agent worker (Claude workers are allowed them without asking).
 - A task's plan phase, which can't run anything, gets the tasks its text refers to written into
   `<data>/kanban/refs/task-<id>/referenced-tasks.md` beforehand.
 - What an agent gets: description, accepted plan, summary, runs and review verdicts, the latest
@@ -666,6 +666,45 @@ the last start's port when it's free. To pin it, start the office with `--hook-p
 `AGENT_OFFICE_HOOK_PORT=<n>`): then `AIKANBAN_API_BASE=http://127.0.0.1:<n>` can be set once in the
 script's environment. When the pinned port is taken, the office says so and listens elsewhere, and the
 file has the port it got.
+
+## Agents creating tasks
+
+An agent can put work on the board itself, as a task that runs through the kanban process (plan,
+implementation runs, review, the board's columns), not as a plain one-off worker:
+
+- **`office-tasks create`** (on every worker's PATH) and the MCP tool **`create_task`** call the hook
+  server's `POST /office/tasks/create` with the worker's own `AGENT_OFFICE_WORKER_ID` and
+  `AGENT_OFFICE_HOOK_TOKEN`. The task's description comes on stdin or with `--prompt`:
+
+  ```
+  office-tasks create --title "Fix the login redirect" --project app --repo api --repo web <<'EOF'
+  …a description that is complete on its own: what to change and where, how to check it…
+  EOF
+  ```
+
+  It prints the new task's number on stdout and a status line on stderr (`--json` prints the raw answer).
+  The office answers as soon as the task is made; assigning a linked issue on GitHub follows after.
+- **Parameters**: `title` and `description` (both needed unless `issue` is given), `project` (id or
+  name), `repos` (`--repo`, repeatable; names or ids), `issue` (a GitHub issue: `12` or `owner/repo#12`,
+  or a Jira key), `ticket` / `ticketUrl`, `provider` (`claude` or `codex`), `model`, `effort` (`low` to
+  `max`), `type` (`implement` or `investigate`), `start` and `desk`. Making the same issue again returns
+  the task that exists (`existed`).
+- **It lands in To do** unless `start` is set, which seats a worker for it or queues it when the
+  office is full (the answer says which; a start that failed says why).
+- **Who the creator is**: the account the agent runs for; else, for a task's own worker, the parent
+  task's creator; else the hirer of the desk worker; else the agent's name. The agent is recorded in
+  the task's `created` event and in the toast everyone on the floor sees.
+- **Issues**: `issue` links the GitHub issue (or Jira ticket) the way a task made from the issues board
+  is linked. It is assigned to the account the agent works for, which needs that account's own GitHub
+  sign-in. A bare number only works when the project has exactly one GitHub repository.
+- **A task's own worker can't start tasks**: its new tasks stay in To do (the answer says why), and the
+  parent task gets a comment naming each task it made. Task workers run without permission prompts, so
+  this, not a prompt, is what keeps one task from starting many.
+- **Visibility**: every agent worker gets `AGENT_OFFICE_TASKS=1`, so the MCP server lists `get_task`,
+  `search_tasks` and `create_task`. Claude workers may call `get_task` / `search_tasks` without asking;
+  `create_task` is never pre-approved, so a desk or board agent asks first (a task's own worker runs
+  without prompts, see above). The server's instructions, and `hire_worker`'s description, tell agents to
+  use `create_task` for kanban work and `hire_worker` only for a plain one-off worker.
 
 ## Where the data is
 
