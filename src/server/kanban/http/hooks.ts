@@ -3,6 +3,24 @@ import type http from 'node:http';
 import type { Ctx } from '../../office/context.js';
 import { send } from '../../http/util.js';
 import { DESK_BY_ID } from '../../../shared/layout.js';
+import type { WorkerInfo } from '../../../shared/protocol.js';
+import type { KanbanHookCaller } from '../registry.js';
+
+/** Who a hook request comes from, as the kanban's routes see it: the worker, the account it runs as and, for a person's hire only, that person. */
+export function hookCaller(me: WorkerInfo, floorId: string, accountId?: string, accountName?: string): KanbanHookCaller {
+  return {
+    workerId: me.id,
+    floorId,
+    ...(me.kanban ? { taskId: me.kanban.taskId } : {}),
+    name: me.name,
+    kind: me.kind,
+    ...(DESK_BY_ID.get(me.deskId)?.station ? { station: true } : {}),
+    ...(accountId ? { accountId } : {}),
+    ...(accountName ? { accountName } : {}),
+    // Only a person's hire names a person: the queue's, an agent's and the kanban's name something else.
+    ...(me.byPerson && me.createdBy ? { hiredBy: me.createdBy } : {}),
+  };
+}
 
 /** /office/tasks*, the kanban's routes for workers: the asking worker's own hook token says who (and which task) it is. */
 export async function officeTasks(ctx: Ctx, req: http.IncomingMessage, res: http.ServerResponse, url: URL) {
@@ -15,18 +33,7 @@ export async function officeTasks(ctx: Ctx, req: http.IncomingMessage, res: http
   if (!floor || !me) return send(res, 401, { error: 'Send your own AGENT_OFFICE_WORKER_ID as ?worker= and AGENT_OFFICE_HOOK_TOKEN as the bearer token' });
   try {
     const accountId = floor.workers.ownerOf(me.id);
-    const accountName = accountId ? ctx.accounts.get(accountId)?.name : undefined;
-    const who = {
-      workerId: me.id,
-      floorId: floor.id,
-      ...(me.kanban ? { taskId: me.kanban.taskId } : {}),
-      name: me.name,
-      kind: me.kind,
-      ...(DESK_BY_ID.get(me.deskId)?.station ? { station: true } : {}),
-      ...(accountId ? { accountId } : {}),
-      ...(accountName ? { accountName } : {}),
-      ...(me.createdBy ? { hiredBy: me.createdBy } : {}),
-    };
+    const who = hookCaller(me, floor.id, accountId, accountId ? ctx.accounts.get(accountId)?.name : undefined);
     if (!(await kanban.handleHook(req, res, url, who))) send(res, 404, { error: 'Not found' });
   } catch (err) {
     console.error(err);

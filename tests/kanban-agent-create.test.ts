@@ -8,6 +8,8 @@ import { readCreateRequest } from '../src/server/kanban/integrations/issues/agen
 import { createRefsPlugin } from '../src/server/kanban/integrations/refs/index.js';
 import type { IssueSourceIo } from '../src/server/kanban/integrations/issues/source.js';
 import type { KanbanHookCaller } from '../src/server/kanban/registry.js';
+import { hookCaller } from '../src/server/kanban/http/hooks.js';
+import type { WorkerInfo } from '../src/shared/protocol.js';
 import type { IssueSourceConfig } from '../src/shared/kanban/types.js';
 import { def, makeCtx } from './kanban-integrations-ctx.js';
 
@@ -79,6 +81,37 @@ test('without an account the creator is the hirer of a desk worker, else the age
   await call({ title: 'd', description: 'd' }, worker({ taskId: parent.id, hiredBy: 'Ada (kanban #1)' }));
   assert.deepEqual([1, 2, 3, 5].map((id) => ctx.repo.getTask(id)!.createdBy), ['Boss', 'Ada', 'Ada', 'Maija']);
   assert.equal(ctx.repo.getTask(2)!.createdByAccount, undefined);
+});
+
+test('only a person’s hire names its hirer: a queue worker or an agent’s hire without an account creates as the agent', async () => {
+  const { ctx, call } = setup();
+  const info = (over: Partial<WorkerInfo>) => ({ id: 'w1', name: 'Ada', kind: 'agent', deskId: 'desk-1', createdBy: 'Bob', ...over }) as WorkerInfo;
+  assert.equal(hookCaller(info({ byPerson: true }), 'app').hiredBy, 'Bob');
+  for (const [i, hire] of [info({ createdBy: 'Bob (queue)' }), info({ createdBy: 'Mochi' }), info({ createdBy: 'Bob' })].entries()) {
+    const who = hookCaller(hire, 'app');
+    assert.equal(who.hiredBy, undefined);
+    await call({ title: `t${i}`, description: 'd' }, who);
+  }
+  assert.deepEqual([1, 2, 3].map((id) => ctx.repo.getTask(id)!.createdBy), ['Ada', 'Ada', 'Ada']);
+  await call({ title: 'person', description: 'd' }, hookCaller(info({ byPerson: true }), 'app'));
+  assert.equal(ctx.repo.getTask(4)!.createdBy, 'Bob');
+  assert.deepEqual(hookCaller(info({ kanban: { taskId: 9 } as WorkerInfo['kanban'], deskId: 'station-queue' }), 'app', 'acc1', 'Panu'), { workerId: 'w1', floorId: 'app', taskId: 9, name: 'Ada', kind: 'agent', station: true, accountId: 'acc1', accountName: 'Panu' });
+});
+
+test('an issue key is the project’s spelling of its repository, so another case finds the same task', async () => {
+  const { ctx, call } = setup();
+  const first = await call({ issue: 'o/app#12' });
+  assert.equal(first.body.existed, false);
+  for (const issue of ['O/APP#12', 'gh:O/App#12', 'O/app#012']) {
+    const again = await call({ issue });
+    assert.equal(again.status, 200, JSON.stringify(again.body));
+    assert.equal(again.body.existed, true, issue);
+    assert.equal(again.body.task.id, 1);
+  }
+  assert.equal(ctx.repo.getTask(2), undefined);
+  assert.equal(ctx.repo.getTask(1)!.ticket, 'gh:o/app#12');
+  // A repository the project doesn't know keeps the agent's spelling (and isn't found among its issues).
+  assert.equal((readCreateRequest({ issue: 'Else/Where#3' }, ctx, 'app') as { issue: string }).issue, 'gh:Else/Where#3');
 });
 
 test('start from a desk worker starts the task and says if it is queued', async () => {

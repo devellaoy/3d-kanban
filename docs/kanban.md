@@ -692,11 +692,13 @@ implementation runs, review, the board's columns), not as a plain one-off worker
 - **It lands in To do** unless `start` is set, which seats a worker for it or queues it when the
   office is full (the answer says which; a start that failed says why).
 - **Who the creator is**: the account the agent runs for; else, for a task's own worker, the parent
-  task's creator; else the hirer of the desk worker; else the agent's name. The agent is recorded in
+  task's creator; else the person who hired the worker at its desk (`WorkerInfo.byPerson`; never a queue,
+  kanban or agent hire, whose `createdBy` isn't a person); else the agent's name. The agent is recorded in
   the task's `created` event and in the toast everyone on the floor sees.
 - **Issues**: `issue` links the GitHub issue (or Jira ticket) the way a task made from the issues board
   is linked. It is assigned to the account the agent works for, which needs that account's own GitHub
-  sign-in. A bare number only works when the project has exactly one GitHub repository.
+  sign-in. A bare number only works when the project has exactly one GitHub repository; `owner/repo`
+  is matched to the project's own spelling of the repository, so `O/APP#12` finds the task `o/app#12` has.
 - **A task's own worker can't start tasks**: its new tasks stay in To do (the answer says why), and the
   parent task gets a comment naming each task it made. Task workers run without permission prompts, so
   this, not a prompt, is what keeps one task from starting many.

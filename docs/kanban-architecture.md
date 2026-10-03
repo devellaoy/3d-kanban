@@ -607,7 +607,8 @@ worker runs without prompts). The route is owned by
 the issues plugin (integrations/issues/agent-create.ts) and the creation itself is shared with the board's
 `kanban.task.create` and the issues board (src/server/kanban/create.ts). The task lands in To do; `start` seats a worker
 (or queues), except for a task's own worker, which can't start tasks (the answer's `note`; the parent task gets a `subtask.created` event and a comment).
-The creator is the requesting agent's account, else the parent task's creator, else the desk worker's hirer, else the
+The creator is the requesting agent's account, else the parent task's creator, else the person who hired it at a desk
+(`WorkerInfo.byPerson`, set only by the hire dialog), else the
 agent's name; the agent is in the `created` event (`via`) and the toast. An `issue` is claimed like one made from the
 issues board, after the answer has gone (as the board does), so a slow GitHub can't time the agent out. See docs/kanban.md "Agents creating tasks".
 

@@ -99,6 +99,8 @@ export interface WorkerInfo {
   workingSince?: number;
   /** Sent out by a map's herald (the castle's Hand of the King), so every browser has it run to its seat from beside them. */
   via?: 'herald';
+  /** Hired by a person from a desk's hire dialog: createdBy is that person's name (not an agent's, the queue's or the kanban's). */
+  byPerson?: true;
   /** Hired by the kanban engine for a task, as its implementer or reviewer, with the task's card as it is now (see src/server/kanban). */
   kanban?: KanbanWorkerSummary;
 }

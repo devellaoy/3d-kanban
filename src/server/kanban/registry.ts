@@ -41,7 +41,7 @@ export interface KanbanHookCaller {
   /** The account it runs as and that account's name, when it runs as one. */
   accountId?: string;
   accountName?: string;
-  /** Who hired it (WorkerInfo.createdBy): not always a person's name (see agent-create.ts). */
+  /** The person who hired it from a desk (WorkerInfo.createdBy of a WorkerInfo.byPerson hire); unset for any other hire. */
   hiredBy?: string;
 }
 

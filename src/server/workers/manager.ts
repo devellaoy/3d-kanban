@@ -279,7 +279,7 @@ export class WorkerManager extends KanbanWorkers {
       acked: true,
       createdBy: by,
       createdAt: Date.now(),
-      ...(via ? { via } : {}),
+      ...(via ? { via } : {}), ...(extra?.byPerson ? { byPerson: true as const } : {}), // byPerson: createdBy names the person who hired it
       prompt: kind === 'shell' ? undefined : prompt?.trim() || undefined,
       worktree: wt,
       repos: others,

@@ -260,6 +260,11 @@ test('Claude workers use the configured executable, pass prompts and resume ids,
     assert.ok(hasPrompt(alternateInvocation, 'alternate provider prompt'));
     await workers.kill(alternate.id);
   }
+  // Only a hire that says so is a person's: the kanban's, the queue's and an agent's hires aren't.
+  assert.equal(worker.byPerson, undefined);
+  const byPerson = workers.spawn('desk-5', 'Boss', 'a person hired me', false, 'agent', 'opencode', undefined, undefined, undefined, undefined, [], undefined, { byPerson: true });
+  assert.equal(typeof byPerson === 'string' ? byPerson : byPerson.byPerson, true);
+  if (typeof byPerson !== 'string') await workers.kill(byPerson.id);
 });
 
 test('OpenCode workers use OpenCode-only hooks/config, never invoke Claude naming, and restore provider sessions', async (t) => {
