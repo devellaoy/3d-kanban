@@ -2010,24 +2010,7 @@ export class Orchestrator {
     if (info.kanban) return this.pr(info.kanban.taskId, who, 'create');
     if (info.kind === 'shell') return 'fallback';
     if (info.status === 'needs_input') return `${info.name} is waiting on an answer in its terminal`;
-    const def = this.ctx.project(floorId);
-    const tool = info.provider === 'codex' ? 'codex' : 'claude';
-    const picked = this.ctx.settings.project(floorId).skills.pr?.[tool] ?? [];
-    const what = info.task?.name ?? info.title;
-    const text = withContract(
-      this.compose.text('kanban.pr.create', floorId, {
-        subject: `your current work${what ? ` (${what})` : ''}`,
-        taskId: '-',
-        title: what ?? '',
-        ticket: '',
-        ticketId: 'none',
-        repos: workerReposText(info, floor.dir, def?.name ?? floor.project.name, floor.project.branch),
-        summary: info.task?.summary ? `What you worked on:\n${info.task.summary}` : '',
-        skills: picked.length ? `Skills picked for this step (use them where they fit): ${picked.map((n) => (tool === 'claude' ? `/${n}` : n)).join(', ')}.` : '',
-        language: this.compose.text('kanban.language', floorId),
-      }),
-      'pr',
-    );
+    const text = this.compose.workerPr(floor, info);
     const typed = typeable(text);
     const running = info.status !== 'exited';
     const err = running ? floor.workers.prompt(workerId, typed, who.name) : floor.workers.resume(workerId, typed);

@@ -40,6 +40,8 @@ export interface QueueEvents {
   room?(): number;
   /** The last task on the queue just finished, done: nothing is left queued or running. */
   emptied(): void;
+  /** A task's pull request was linked (first time, or a new one) and doesn't close the task's issue as far as the board can tell: have it say so. */
+  prLinked?(task: QueueTask, pr: { number: number; url: string }): void;
   /** What's added after a task that runs in its own worktree ('queue.worktree' in shared/prompts.ts); empty for nothing. */
   worktreeNote?(): string;
 }
@@ -201,6 +203,12 @@ export class TaskQueue {
     this.pump();
   }
 
+  /** The issue a seated worker's task came from: its number on the floor's repository and/or its source key. */
+  issueOf(workerId: string): { issue?: number; issueKey?: string } {
+    const t = this.tasks.filter((x) => x.workerId === workerId).pop();
+    return { ...(t?.issue !== undefined ? { issue: t.issue } : {}), ...(t?.issueKey ? { issueKey: t.issueKey } : {}) };
+  }
+
   /** Fresh pull requests from GitHub: link each task to the PR that closes its issue (or came from its branch). */
   onPulls(pulls: GhPull[]) {
     let changed = false;
@@ -213,8 +221,12 @@ export class TaskQueue {
       if (!match) continue;
       const pr = { number: match.number, url: match.url, state: match.isDraft ? 'DRAFT' : match.state, title: match.title };
       if (t.pr && t.pr.number === pr.number && t.pr.state === pr.state && t.pr.title === pr.title) continue;
+      const first = t.pr?.number !== pr.number;
       t.pr = pr;
       changed = true;
+      // A PR whose description GitHub doesn't read as closing the task's issue.
+      const wants = t.issue !== undefined || !!t.issueKey;
+      if (first && wants && !(t.issue !== undefined && match.closes.includes(t.issue))) this.events.prLinked?.({ ...t }, { number: pr.number, url: pr.url });
     }
     if (changed) this.changed();
   }

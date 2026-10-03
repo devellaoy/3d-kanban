@@ -11,6 +11,7 @@ import { WorkerManager, workedMs, type HookEnv, type RunAs } from './workers.js'
 import { GitHub, MergeWatch } from './github.js';
 import type { GhAs } from './signins.js';
 import { TaskQueue } from './queue.js';
+import { queueEvents } from './queue-events.js';
 import { Changes } from './changes.js';
 import { Decor } from './decor.js';
 import { FloorPlanStore } from './floorplan.js';
@@ -26,14 +27,15 @@ import { Worktrees, type WorktreeCleanup } from './worktrees.js';
 import { landedWork, landedWorkers, type Landed } from './leave-on-merge.js';
 import type { Ledger } from './usage.js';
 import type { Capacity } from './machine.js';
-import { officePrompt, type PromptSource } from './prompts.js';
+import type { PromptSource } from './prompts.js';
 // The PR board covers every repository of the project (see pullsState).
 import { parseRepoFloorId, projectRepos, uniqueRepos } from './kanban/projects.js';
 import { checkoutRepo } from './ghrepo.js';
+import { ghIssueKey } from './kanban/integrations/issues/github-repo.js';
 // The kanban hears when the PR board has fresh lists (its tasks' linked PRs' states).
 import { floorPulled } from './kanban/integrations/pulls/board.js';
 // The issues board shows the project's issue sources when it has any (see issuesState).
-import { claimGhKey, onWallIssues, refreshWall, wallIssues, wallKnows, watchWall } from './kanban/integrations/issues/wall.js';
+import { claimGhKey, onWallIssues, progressIssue, wallIssues, wallKnows, watchWall } from './kanban/integrations/issues/wall.js';
 import { isPrimaryIssue, parseGhKey } from '../shared/kanban/issuecard.js';
 // What a worker is sent home with (see sendHome).
 import type { DepartureIntent } from '../shared/kanban/types.js';
@@ -255,26 +257,7 @@ export class Floor {
       { off: this.git ? undefined : NOT_GIT },
     );
     // The 📋 task queue seats workers by itself: it watches the workers and links PRs from GitHub.
-    this.queue = new TaskQueue(dataDir, this.workers, !!this.project.branch, {
-      update: (state) => {
-        ctx.emit(this, { t: 'queue', state });
-        // A task's pull request may just have been linked (or merged).
-        this.sendLandedHome();
-      },
-      toast: (text, level) => ctx.toast(this, text, level),
-      claimIssue: (issue, owner, key) => {
-        const as = ctx.ghAs(owner);
-        return typeof as === 'string' ? Promise.resolve(as) : this.claimCard(issue, key, as); // a card from the issue sources too
-      },
-      refreshGitHub: () => void this.github.refresh(),
-      hiringPaused: () => ctx.ledger.hiringPaused,
-      room: () => ctx.capacity.room(),
-      emptied: () => {
-        ctx.toast(this, '📋 The queue is empty: every task is done 🎉');
-        ctx.emit(this, { t: 'gong', why: 'queue' });
-      },
-      worktreeNote: () => officePrompt(ctx.prompts, 'queue.worktree'),
-    });
+    this.queue = new TaskQueue(dataDir, this.workers, !!this.project.branch, queueEvents(this, ctx));
 
     // Meetings seat their own workers round the meeting room's table and run them round by round.
     const workers = this.workers;
@@ -379,16 +362,15 @@ export class Floor {
 
   /**
    * Assigns a card's issue on GitHub to `as` (else the office's gh): one of the floor's own issues as
-   * upstream does, another repository's by its key. A card that isn't a GitHub issue (Jira, a project's
-   * draft) is left be. Resolves to why not, or nothing.
+   * upstream does, another repository's by its key, and moves it to In progress on the project's boards.
+   * A card that isn't a GitHub issue (Jira, a draft) is left be. Resolves to why not, or nothing.
    */
   async claimCard(issue: number | undefined, key: string | undefined, as?: GhAs): Promise<string | undefined> {
-    if (!key) return issue ? this.github.claim(issue, as) : undefined;
-    // The issue is the one the key names, whatever number came with it.
-    const gh = parseGhKey(key);
+    // The issue is the one the key names, whatever number came with it; without a key, the floor's own repository's.
+    const gh = key ? parseGhKey(key) : issue ? { repo: this.def.repo ?? (this.git ? checkoutRepo(this.dir) : undefined), number: issue } : undefined;
     if (!gh) return undefined;
-    const err = isPrimaryIssue({ number: gh.number, key }, this.def.repo) ? await this.github.claim(gh.number, as) : await claimGhKey(key, this.dir, as?.env);
-    if (!err) refreshWall(this.id);
+    const err = !key || isPrimaryIssue({ number: gh.number, key }, this.def.repo) ? await this.github.claim(gh.number, as) : await claimGhKey(key, this.dir, as?.env);
+    if (!err) void progressIssue(this.id, key ?? (gh.repo ? ghIssueKey(gh.repo, gh.number) : ''), as?.env).then((w) => w && this.ctx.toast(this, `📋 ${w}`, 'warn'));
     return err;
   }
 

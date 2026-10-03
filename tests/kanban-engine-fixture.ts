@@ -466,7 +466,7 @@ export async function engineFixture(opts: { engine?: EngineOptions; repos?: Floo
   workers = new WorkerManager(dir, data, path.join(bin, 'claude'), [], { url: hookUrl, token: '' }, { update() {}, remove() {}, data() {}, screen() {}, toast: (t) => void toasts.push(t) }, new Ledger(data, { pauseHiring: false }, () => {}, () => {}), opts.capacity, undefined, opts.runAs);
   const def: FloorDef = { id: 'proj', name: 'Proj', dir, repo: 'acme/proj', palette: 0, addedBy: 'test', addedAt: 0, ...(opts.repos ? { repos: opts.repos } : {}) };
   const pulls: GhPull[] = [];
-  const floor = { id: 'proj', dir, workers, pullsState: () => ({ items: pulls, fetchedAt: 0, loading: false }), project: { name: 'Proj', dir, branch: 'main' }, sendHome: (id: string, cleanup?: 'keep' | 'worktree' | 'all', intent?: DepartureIntent) => workers.kill(id, cleanup, undefined, undefined, intent) } as unknown as Floor;
+  const floor = { id: 'proj', dir, def, queue: { issueOf: () => ({}) }, workers, pullsState: () => ({ items: pulls, fetchedAt: 0, loading: false }), project: { name: 'Proj', dir, branch: 'main' }, sendHome: (id: string, cleanup?: 'keep' | 'worktree' | 'all', intent?: DepartureIntent) => workers.kill(id, cleanup, undefined, undefined, intent) } as unknown as Floor;
   const repo = new KanbanRepository(openKanbanDb(':memory:'));
   // Every update is kept, so a test can check a state the task only passed through (sawTask).
   const history = new Map<number, TaskSnapshot[]>();

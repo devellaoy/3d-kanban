@@ -17,6 +17,7 @@ import { floorPullsListeners, type PulledFloor } from './board.js';
 import type { GhRunner } from '../issues/source.js';
 import { fail, ok } from '../util.js';
 import { forkTest, polledPulls } from './prfix.js';
+import { checkClosing } from './closes.js';
 import { branchPrs, findBundle, prOwners, prState, type BundleBy, type RepoPulls } from './bundle.js';
 
 const FIELDS = 'number,title,url,state,isDraft,headRefName';
@@ -220,6 +221,8 @@ export function createPullsParts(ctx: KanbanContext, opts: PullsOptions = {}) {
   });
   /** A repository's default branch, by gh. Key: owner/name, lower-cased. */
   const defaultBranches = asked(async (repo) => (await runGh(['repo', 'view', repo, '--json', 'defaultBranchRef', '--jq', '.defaultBranchRef.name'], ctx.dataDir)).trim() || undefined);
+  /** The PRs already looked at for their issue's closing line (see checkClosing), by URL. */
+  const closingChecked = new Map<string, number>();
   let stopped = false;
 
   /**
@@ -231,7 +234,7 @@ export function createPullsParts(ctx: KanbanContext, opts: PullsOptions = {}) {
    * sync). Each such link is an event on the task. The browsers hear about the cards that changed.
    * Returns those tasks' ids.
    */
-  const syncPrStates = async (project: string, pulls: (Pick<GhPull, 'number' | 'url' | 'state' | 'isDraft' | 'repo'> & { headRefName?: string; createdAt?: string; isCrossRepository?: boolean })[]): Promise<number[]> => {
+  const syncPrStates = async (project: string, pulls: (Pick<GhPull, 'number' | 'url' | 'state' | 'isDraft' | 'repo'> & { closes?: number[]; headRefName?: string; createdAt?: string; isCrossRepository?: boolean })[]): Promise<number[]> => {
     if (!pulls.length) return [];
     const links = ctx.repo.prLinksOfProject(project);
     const reposMemo = new Map<string, ProjectRepo[]>();
@@ -263,6 +266,7 @@ export function createPullsParts(ctx: KanbanContext, opts: PullsOptions = {}) {
       changed.add(b.taskId);
     }
     for (const id of changed) ctx.taskChanged(id);
+    checkClosing(ctx, project, pulls, closingChecked, { run: runGh, defaultBranch: (repo) => defaultBranches.get(repo) });
     return [...changed];
   };
 
@@ -314,6 +318,7 @@ export function createPullsParts(ctx: KanbanContext, opts: PullsOptions = {}) {
       floorPullsListeners.delete(onBoard);
       forks.clear();
       defaultBranches.clear();
+      closingChecked.clear();
     },
   };
   return { api, plugin, checkReview, bundleItems, syncPrStates, prState };

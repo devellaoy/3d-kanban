@@ -4,6 +4,7 @@ import { existsSync } from 'node:fs';
 import path from 'node:path';
 import type { WorkerInfo } from '../../shared/protocol.js';
 import { DESK_BY_ID } from '../../shared/layout.js';
+import { closingRef, promptIssue } from '../../shared/kanban/issuecard.js';
 import { isBusy } from '../../shared/status.js';
 import { gh } from '../github.js';
 import type { GhAs } from '../signins.js';
@@ -60,20 +61,18 @@ export function withRelated(body: string, block: string): string {
  * title when the task came off the issues board, else the task's first line; the body carries the
  * task, the commits, a "Closes #n" when the task asked for one, and which desk it came from. With
  * `other`, it's for one of the other repositories of a worker across repositories: the issue is its
- * own floor's (`home`), so this one only mentions it.
+ * own floor's (`home`), so this one only mentions it. Exactly one pull request closes the issue.
  */
-function draftPr(info: WorkerInfo, commits: string[], by: string, other?: { home?: string }): { title: string; body: string } {
+function draftPr(info: WorkerInfo, commits: string[], by: string, home: string | undefined, other = false): { title: string; body: string } {
   const task = (info.prompt ?? '').replace(/\r\n?/g, '\n').trim();
   const firstLine = task.split('\n').map((l) => l.trim()).find(Boolean) ?? '';
-  // The issues board hands work over as: Work on GitHub issue #12: "Title".
-  const issue = /\bissue #(\d+):\s*["“](.+?)["”]\.?\s*$/i.exec(firstLine);
-  const title = truncate(issue?.[2] || firstLine.replace(/[.:;,]+$/, '') || commits[0]?.replace(/^\S+\s+/, '') || info.worktree?.branch || info.name, PR_TITLE_MAX);
-  const closes = /\b(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?)\b[^\n]{0,40}?#(\d+)/i.exec(task)?.[1] ?? issue?.[1];
+  const issue = promptIssue(info.prompt);
+  const title = truncate(issue?.title || firstLine.replace(/[.:;,]+$/, '') || commits[0]?.replace(/^\S+\s+/, '') || info.worktree?.branch || info.name, PR_TITLE_MAX);
   const parts: string[] = [];
   if (task) parts.push(`## Task\n\n${task.length > PR_TASK_MAX ? `${task.slice(0, PR_TASK_MAX)}…` : task}`);
   parts.push(`## Commits\n\n${commits.map((c) => `- \`${c.slice(0, c.indexOf(' '))}\` ${c.slice(c.indexOf(' ') + 1)}`).join('\n')}`);
-  if (closes && !other) parts.push(`Closes #${closes}`);
-  else if (closes && other?.home) parts.push(`Part of ${other.home}#${closes}`);
+  if (issue && !other) parts.push(closingRef(home ? `gh:${home}#${issue.number}` : undefined, home) ?? `Closes #${issue.number}`);
+  else if (issue && home) parts.push(`Part of ${home}#${issue.number}`);
   parts.push(`_Opened from Agent Office by ${by} · ${info.name} at ${DESK_BY_ID.get(info.deskId)?.label ?? info.deskId}_`);
   return { title, body: parts.join('\n\n') };
 }
@@ -119,7 +118,7 @@ export class WorkerPrs {
       }
       await run('git', ['push', '-u', 'origin', branch], cwd, 90_000, as?.env);
       const base = await this.pushedBranch([wt.from, this.ctx.trees.currentBranch()], branch);
-      const { title, body } = draftPr(info, commits, by);
+      const { title, body } = draftPr(info, commits, by, originRepo(this.ctx.dir));
       const { number, url } = await createPr(branch, base, title, body, cwd, as);
       info.pr = { number, url };
       this.ctx.persist();
@@ -172,7 +171,7 @@ export class WorkerPrs {
           }
           await run('git', ['push', '-u', 'origin', p.branch], cwd, 90_000, as?.env);
           const base = await this.pushedBranch([p.from, new Worktrees(p.dir).currentBranch()], p.branch, p.dir);
-          const { title, body } = draftPr(info, commits, by, p.own ? undefined : { home });
+          const { title, body } = draftPr(info, commits, by, home, !p.own);
           const pr = await createPr(p.branch, base, title, body, cwd, as);
           p.set(pr);
           this.ctx.persist();
