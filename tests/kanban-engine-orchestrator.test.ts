@@ -550,6 +550,27 @@ test('a prompt typed into the terminal while a background agent works does not h
   assert.equal(results[0]?.text, 'Changed the redirect; tests pass.');
 });
 
+test('a prompt typed into the terminal that the background agent\'s end came in is not the run\'s answer: the agent is asked to restate it', async (t) => {
+  const fx = await engineFixture();
+  t.after(() => fx.close());
+  const release = path.join(fx.root, 'release-helper');
+  fx.setRules([
+    { when: 'Implement kanban task', background: 'Waiting for the helper agent.', typedPrompt: 'How is it going?', typedTakesNotice: true, releaseFile: release, commit: 'Work' },
+    { when: 'Someone typed into your terminal', reply: 'Changed the redirect; tests pass.' },
+    { when: 'You are reviewing the work', reply: 'Fine.\n\nREVIEW: APPROVED' },
+  ]);
+  const task = fx.newTask({ usePlan: false, useReview: true });
+  await fx.engine.start(task.id, ADA);
+  await fx.waitTask(task.id, (x) => x.phase === 'implement' && x.runState === 'running', 'the implement turn');
+  writeFileSync(release, '');
+  // The helper's end came inside the typed turn: that turn's reply ("Answered what you typed.") isn't the run's answer, so the agent is asked for it again.
+  await fx.waitTask(task.id, (x) => x.status === 'review' && x.runState === 'idle' && reviewRuns(fx, x.id) >= 1, 'the review round after the restated answer', 30_000);
+  assert.ok(fx.invocations().some((i) => i.prompt && /Someone typed into your terminal/.test(i.prompt)));
+  const results = fx.repo.listComments(task.id).comments.filter((c) => c.kind === 'result');
+  assert.equal(results[0]?.text, 'Changed the redirect; tests pass.');
+  assert.ok(!results.some((c) => c.text === 'Answered what you typed.'));
+});
+
 test('a stop the agent never confirms (no Stop after Esc) restarts the worker on its session at its desk, never sends it home; Continue prompts the same worker', async (t) => {
   const fx = await engineFixture();
   t.after(() => fx.close());
