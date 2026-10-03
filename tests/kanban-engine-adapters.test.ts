@@ -274,7 +274,7 @@ test('claude transcript: a prompt typed into the terminal after the office\'s is
   const T0 = Date.UTC(2026, 9, 1, 8, 0, 0);
   const at = (n: number) => new Date(T0 + n * 1000).toISOString();
   const timed = (lines: object[], from = 1) => lines.map((l, i) => ({ ...l, timestamp: at(from + i) }));
-  const read = (lines: object[], opts: { runStart?: number; promptAt?: number } = { runStart: T0 }) => readClaudeTurn(write('t.jsonl', lines), opts);
+  const read = (lines: object[], opts: { runStart?: number; promptAt?: number } = { runStart: T0, promptAt: T0 }) => readClaudeTurn(write('t.jsonl', lines), opts);
   const launch = [cAssistant([{ type: 'tool_use', id: 'a1', name: 'Agent', input: {} }], {}, 'ml'), cUser([{ type: 'tool_result', tool_use_id: 'a1', content: [{ type: 'text', text: 'Async agent launched successfully.\nagentId: ag1 (internal ID)' }] }], { toolUseResult: { isAsync: true, status: 'async_launched', agentId: 'ag1' } })];
   const interimText = cAssistant([text('Waiting for the helper.')], {}, 'mi');
   const note = { type: 'attachment', attachment: { type: 'queued_command', commandMode: 'task-notification', prompt: '<task-notification>\n<task-id>ag1</task-id>\n<status>completed</status>\n<summary>Agent "helper" completed</summary>\n</task-notification>' } };
@@ -302,6 +302,8 @@ test('claude transcript: a prompt typed into the terminal after the office\'s is
   const restateAt = T0 + (restated.length - 1) * 1000;
   assert.deepEqual(read(timed(restated), { runStart: T0, promptAt: restateAt }), { text: 'Changed the redirect.', complete: true });
   assert.deepEqual(read(timed([...restated, cUser('Thanks'), cAssistant([text('Welcome.')], {}, 'mw')]), { runStart: T0, promptAt: restateAt }), { text: 'Changed the redirect.', complete: true, typed: true });
+  // After an office restart promptAt is lost: the last prompt's turn is the answer as before, nothing is typed (the restate prompt is no typed one).
+  assert.deepEqual(read(timed(restated), { runStart: T0 }), { text: 'Changed the redirect.', complete: true });
   // promptAt not in the log: the run's first prompt.
   assert.deepEqual(read(timed(final), { runStart: T0, promptAt: T0 + 99_000 }), { text: 'All done.', complete: true });
 

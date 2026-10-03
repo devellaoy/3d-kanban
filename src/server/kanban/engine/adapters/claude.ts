@@ -420,7 +420,7 @@ function runPrompt(lines: Record<string, unknown>[], runStart: number): number {
 }
 
 /**
- * The office's turn: the one after its last prompt (`promptAt` / `runStart` find the prompt, else the last real one). Its `text` is the final answer only: the text blocks of the
+ * The office's turn: the one after its last prompt (`promptAt` finds the prompt, else the last real one). Its `text` is the final answer only: the text blocks of the
  * turn's last assistant message (Claude logs one message's blocks as lines sharing its message id),
  * never what it said on the way, so a verdict or marker it quoted earlier doesn't count.
  * A last message that calls a tool (ExitPlanMode aside) isn't a final answer: the Stop hook can come
@@ -446,10 +446,10 @@ export function readClaudeTurn(file: string, opts?: { since?: number; runStart?:
       break;
     }
   }
-  // The office's prompt (the last it gave the run, else the run's first; not found: the window's start): the turn read starts at the
-  // last of its own or an agent's notification after it. Any other real prompt after it is typed. Without one, the last prompt is it.
-  const ref = opts?.promptAt ?? opts?.runStart;
-  let own = ref !== undefined ? runPrompt(lines, ref) : -1;
+  // The office's prompt (the last it gave the run, by `promptAt`; not found: the window's start): the turn read starts at the
+  // last of its own or an agent's notification after it. Any other real prompt after it is typed. Without a promptAt (an office
+  // restart loses it, the teammate gate has none) the last real prompt is the turn, and nothing is typed.
+  let own = opts?.promptAt !== undefined ? runPrompt(lines, opts.promptAt) : -1;
   if (own < 0 && opts?.promptAt !== undefined) own = start;
   let cut = -1;
   if (own >= 0) {

@@ -174,7 +174,9 @@ async function turn(prompt, answered) {
   if (kind === 'claude') {
     // One API message's blocks are logged as lines sharing its id, as Claude Code does.
     const msgId = 'msg-' + process.pid + '-' + Date.now();
-    append({ type: 'user', timestamp: new Date().toISOString(), message: { role: 'user', content: prompt } });
+    // An answer to a question is a tool result in the log, as Claude Code logs it, not a prompt.
+    if (answered) append({ type: 'user', timestamp: new Date().toISOString(), message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: 'ask-1', content: prompt }] } });
+    else append({ type: 'user', timestamp: new Date().toISOString(), message: { role: 'user', content: prompt } });
     if (rule.earlier) {
       append({ type: 'assistant', message: { id: msgId + '-a', role: 'assistant', content: [{ type: 'text', text: rule.earlier }] } });
       append({ type: 'assistant', message: { id: msgId + '-a', role: 'assistant', content: [{ type: 'tool_use', id: 'read-1', name: 'Read', input: { file_path: 'README.md' } }] } });
@@ -287,6 +289,7 @@ async function turn(prompt, answered) {
     }
     append(final);
     if (rule.ask === 'question') {
+      append({ type: 'assistant', message: { id: msgId, role: 'assistant', content: [{ type: 'tool_use', id: 'ask-1', name: 'AskUserQuestion', input: { questions: [{ question: rule.reply }] } }] } });
       await post('PreToolUse', { tool_name: 'AskUserQuestion', tool_input: { questions: [{ question: rule.reply }] } });
       questions = rule.questions || 1;
       answerDelay = rule.answerDelayMs || 0;

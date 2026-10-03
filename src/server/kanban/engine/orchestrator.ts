@@ -1750,10 +1750,7 @@ export class Orchestrator {
   private answer(live: Live, text: string, who: KanbanCaller): string | undefined {
     if (live.asks !== 'question') return live.asks === 'permission' ? ASKS_PERMISSION : ASKS_UNKNOWN;
     const workers = this.ctx.floor(live.floorId)?.workers;
-    const err = workers ? workers.prompt(live.workerId, typeable(text), who.name) : "The project's floor isn't open";
-    // The answer is the office's own prompt: the run's answer is read from its turn (see promptAt).
-    if (!err) live.promptAt = Date.now();
-    return err;
+    return workers ? workers.prompt(live.workerId, typeable(text), who.name) : "The project's floor isn't open";
   }
 
   retry(taskId: number, who: KanbanCaller): Promise<string | void> {
