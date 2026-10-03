@@ -43,29 +43,34 @@ export class MeetingRooms {
     this.restore();
   }
 
+  /** Every room of the map, with what's on in it. Makes no engines: a room that never had a meeting has none (and no timer). */
   state(): MeetingState {
     const defs = this.rooms();
     const known = new Set(defs.map((d) => d.id));
     // A room the map no longer has still shows while a meeting is in it, so it can be stopped and cleared.
-    const rest = [...this.engines.values()].filter((e) => !known.has(e.def.id) && e.meeting());
-    return { rooms: [...defs.map((d) => this.room(d)), ...rest].map((e) => ({ id: e.def.id, label: e.def.label, current: e.meeting() })), past: this.past.slice() };
+    const rest = [...this.engines.values()].filter((e) => !known.has(e.def.id) && e.peek()).map((e) => e.def);
+    return { rooms: [...defs, ...rest].map((d) => ({ id: d.id, label: d.label, current: this.engines.get(d.id)?.meeting() ?? null })), past: this.past.slice() };
   }
 
   /** Whether a meeting is running in any room. */
   running(): boolean {
-    return [...this.engines.values()].some((e) => e.meeting()?.status === 'running');
+    return [...this.engines.values()].some((e) => e.peek()?.status === 'running');
   }
 
   /** Calls a meeting in `req.room`, or in the first free room. Returns why it couldn't, or undefined once everyone is sitting down. */
   start(req: MeetingRequest, by: string, owner?: string): string | undefined {
     const defs = this.rooms();
-    // A room this map lacks, with a meeting still in it: its workers sit on this map's chairs, which the rooms
-    // that are here share (a one-room map seats every room's workers at its one table), so none is free.
-    const stranded = [...this.engines.values()].find((e) => !defs.some((d) => d.id === e.def.id) && (e.meeting() || e.seated()));
-    if (stranded) return `The ${stranded.def.label} still has ${stranded.meeting() ? `“${stranded.meeting()!.title}”` : 'workers'} from another map at this one's table: ${stranded.meeting()?.status === 'running' ? 'stop that meeting and ' : ''}clear that room first`;
+    // A room this map lacks, with a meeting running in it or workers still seated: they sit on this map's chairs, which the
+    // rooms that are here share (a one-room map seats every room's workers at its one table), so none is free. (A finished
+    // meeting whose workers have gone home is in nobody's way: it only shows, until someone clears it.)
+    const stranded = [...this.engines.values()].find((e) => !defs.some((d) => d.id === e.def.id) && (e.peek()?.status === 'running' || e.seated()));
+    if (stranded) {
+      const m = stranded.peek();
+      return `The ${stranded.def.label} still has ${m ? `“${m.title}”` : 'workers'} from another map at this one's table: ${m?.status === 'running' ? 'stop that meeting and ' : ''}clear that room first`;
+    }
     // One panel per pull request: a second would post a second review on it.
     if (req.pattern === 'review' && req.pr !== undefined) {
-      const same = [...this.engines.values()].find((e) => e.meeting()?.status === 'running' && e.meeting()!.pattern === 'review' && e.meeting()!.pr === req.pr);
+      const same = [...this.engines.values()].find((e) => e.peek()?.status === 'running' && e.peek()!.pattern === 'review' && e.peek()!.pr === req.pr);
       if (same) return `PR #${req.pr} is already being reviewed in the ${same.def.label}`;
     }
     if (req.room !== undefined) {
@@ -74,10 +79,10 @@ export class MeetingRooms {
     }
     const all = defs.map((d) => this.room(d));
     // An empty room first; one with a finished meeting in it (whose workers go home to make room) next.
-    const pick = all.find((e) => !e.meeting() && !e.seated()) ?? all.find((e) => e.meeting() && e.meeting()!.status !== 'running');
+    const pick = all.find((e) => !e.peek() && !e.seated()) ?? all.find((e) => e.peek() && e.peek()!.status !== 'running');
     if (pick) return pick.start(req, by, owner);
-    const on = all.map((e) => e.meeting()).filter((m) => m?.status === 'running').length > 0;
-    const list = all.map((e) => `${e.def.label}: ${e.meeting()?.status === 'running' ? `“${e.meeting()!.title}”` : 'someone is still sitting at the table'}`);
+    const on = all.some((e) => e.peek()?.status === 'running');
+    const list = all.map((e) => `${e.def.label}: ${e.peek()?.status === 'running' ? `“${e.peek()!.title}”` : 'someone is still sitting at the table'}`);
     return `Every meeting room is busy: ${list.join(', ')}; ${on ? 'stop one of those meetings first' : 'send those workers home first'}`;
   }
 
@@ -89,7 +94,7 @@ export class MeetingRooms {
 
   /** Sends a room's last meeting's workers home and clears the table (the room that has one, without `room`). */
   clear(by: string, room?: string): string | undefined {
-    const on = this.target(room, () => true, 'Nobody is in the meeting room');
+    const on = this.target(room, (m) => m.status !== 'running', 'Nobody is in the meeting room');
     return typeof on === 'string' ? on : on.clear(by);
   }
 
@@ -112,10 +117,10 @@ export class MeetingRooms {
   /** The room the caller means: the one named, or the only one with a meeting that `fits`. A string says why there's none. */
   private target(room: string | undefined, fits: (m: Meeting) => boolean, none: string): MeetingRoom | string {
     if (room !== undefined) {
-      this.rooms().forEach((d) => this.room(d));
-      return this.engines.get(room) ?? `There's no meeting room “${room.slice(0, 40)}”`;
+      const def = this.rooms().find((d) => d.id === room);
+      return (def ? this.room(def) : this.engines.get(room)) ?? `There's no meeting room “${room.slice(0, 40)}”`;
     }
-    const some = [...this.engines.values()].filter((e) => e.meeting() && fits(e.meeting()!));
+    const some = [...this.engines.values()].filter((e) => e.peek() && fits(e.peek()!));
     return some.length === 1 ? some[0] : some.length ? `Several rooms have meetings, so say which room: ${some.map((e) => `${e.def.label} (${e.def.id})`).join(', ')}` : none;
   }
 
@@ -130,6 +135,7 @@ export class MeetingRooms {
           this.events.update(this.state());
         },
         save: () => this.persist(),
+        outputBusy: (room, output) => this.outputBusy(room, output),
         archive: (record) => {
           this.past = [record, ...this.past.filter((r) => r.id !== record.id)].slice(0, PAST_MAX);
         },
@@ -137,6 +143,12 @@ export class MeetingRooms {
       this.engines.set(def.id, e);
     } else e.def = def;
     return e;
+  }
+
+  /** Why `output` can't be written for a meeting in `room`: another running meeting writes that file in the project's own folder (one without a worktree of its own). */
+  private outputBusy(room: string, output: string): string | undefined {
+    const same = [...this.engines.values()].find((e) => e.def.id !== room && e.peek()?.status === 'running' && !e.peek()!.worktree && e.peek()!.output === output);
+    return same && `The ${same.def.label}'s meeting is already writing ${output}: give this one another output file`;
   }
 
   private persist() {

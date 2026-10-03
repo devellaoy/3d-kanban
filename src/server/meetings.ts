@@ -54,6 +54,8 @@ export type RoomEvents = Omit<MeetingEvents, 'update'> & {
   save(): void;
   /** A meeting is over for good: onto the list of earlier ones. */
   archive(record: MeetingRecord): void;
+  /** Why `output` is taken by another room's running meeting (they'd write one file in the project's folder), if so. */
+  outputBusy(room: string, output: string): string | undefined;
 };
 
 const PUMP_MS = 3000;
@@ -123,18 +125,16 @@ export class MeetingRoom {
     return this.current && { ...this.current, seats: this.current.seats.map((s) => ({ ...s })), turns: this.current.turns.map((t) => ({ ...t })) };
   }
 
+  /** What's on in the room, not copied (for checks: don't change it), or null when it's empty. */
+  peek(): Readonly<Meeting> | null { return this.current; }
+
   /** A meeting that was on when the office last stopped carries on where it was: the workers at the table outlive a restart. */
-  adopt(m: Meeting) {
-    this.current = m;
-  }
+  adopt(m: Meeting) { this.current = m; }
 
   /** Whether someone (a meeting's worker or any other) sits at one of the room's chairs. */
-  seated(): boolean {
-    return this.def.seats.some((d) => this.workers.list().some((w) => w.deskId === d.id));
-  }
+  seated(): boolean { return this.def.seats.some((d) => this.workers.list().some((w) => w.deskId === d.id)); }
 
-  /** Calls a meeting. Returns why it couldn't, or undefined once everyone is sitting down. */
-  /** `owner` is the account calling it: the workers run on its sign-ins, and a review panel's review is posted as it. */
+  /** Calls a meeting. Returns why it couldn't, or undefined once everyone is sitting down. `owner` is the account calling it: the workers run on its sign-ins, and a review panel's review is posted as it. */
   start(req: MeetingRequest, by: string, owner?: string): string | undefined {
     if (this.current?.status === 'running') return `The ${this.def.label} is busy with “${this.current.title}”: stop that meeting first`;
     if (!isMeetingPattern(req.pattern)) return 'Unknown meeting pattern';
@@ -171,7 +171,7 @@ export class MeetingRoom {
     const room = this.def.id;
     const slug = slugify(title, 32);
     const output = String(req.output ?? '').trim() || pattern.output(slug, pr);
-    const outputBad = outputProblem(output);
+    const outputBad = outputProblem(output) ?? this.events.outputBusy(room, output);
     if (outputBad) return outputBad;
 
     // The last meeting's workers make room: they go home, and their worktree is tidied away after them.
@@ -254,7 +254,7 @@ export class MeetingRoom {
     const m = this.current;
     if (!m) return `Nobody is in the ${this.def.label}`;
     if (m.status === 'running') return 'The meeting is still on: stop it first';
-    this.events.toast(`🤝 ${by} cleared the ${this.def.label.replace(/^\S+\s+/, '').toLowerCase()}`, 'info');
+    this.events.toast(`🤝 ${by} cleared ${this.def.place}`, 'info');
     void this.dismiss(m);
     this.archive(m);
     this.current = null;

@@ -213,8 +213,6 @@ export interface MapPlan {
   desks: DeskDef[];
   overflow: DeskDef[];
   stations: DeskDef[];
-  /** The first meeting room's chairs (all of them, on a map with one room). */
-  meeting: DeskDef[];
   /** The meeting rooms, the first free one first: the office has several, any other map one (its meeting table). */
   meetingRooms: MeetingRoomDef[];
   /** Everywhere a worker can be, by id. */

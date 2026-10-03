@@ -27,7 +27,8 @@ export function installMeeting(ctx: Ctx, parts: Pick<Parts, 'waiting' | 'actions
           if (w) parts.actions.pullRequestFor(w);
         },
       },
-      room ? { ...preset, room } : preset,
+      preset,
+      room,
     );
   }
 

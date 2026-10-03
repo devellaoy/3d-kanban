@@ -200,7 +200,10 @@ export const MEETING_BOARD = { x: (MEETING_ROOM.door.x0 + MEETING_ROOM.door.x1) 
 export interface MeetingRoomDef {
   /** Stable: saved with the meetings held there. */
   id: string;
+  /** What the room is called, with its icon: "🔍 Review room". */
   label: string;
+  icon: string; // the label's icon alone: "🔍 in the review room"
+  place: string; // where someone is in it: "the review room"
   seats: DeskDef[];
 }
 /** A meeting room's glass shell: its door is in the north (minZ) wall, and its board is on the south one. */
@@ -243,8 +246,8 @@ export const REVIEW_SEATS: DeskDef[] = (
 
 /** The office's meeting rooms, the first free one first: a meeting goes to the first free one (see server/meetings). */
 export const MEETING_ROOMS: MeetingRoomPlan[] = [
-  { id: 'meeting', label: '🤝 Meeting room', seats: MEETING_SEATS, room: MEETING_ROOM, table: MEETING_TABLE, board: MEETING_BOARD },
-  { id: 'review', label: '🔍 Review room', seats: REVIEW_SEATS, room: REVIEW_ROOM, table: REVIEW_TABLE, board: REVIEW_BOARD },
+  { id: 'meeting', label: '🤝 Meeting room', icon: '🤝', place: 'the meeting room', seats: MEETING_SEATS, room: MEETING_ROOM, table: MEETING_TABLE, board: MEETING_BOARD },
+  { id: 'review', label: '🔍 Review room', icon: '🔍', place: 'the review room', seats: REVIEW_SEATS, room: REVIEW_ROOM, table: REVIEW_TABLE, board: REVIEW_BOARD },
 ];
 
 /**

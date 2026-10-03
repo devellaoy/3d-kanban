@@ -1,6 +1,8 @@
 import * as THREE from 'three';
 import { MEETING_ROOMS, deskSeat } from '../../../shared/layout';
+import { meetingsOf } from '../../../shared/meetings';
 import type { Ctx } from '../../core/context';
+import { store } from '../../state';
 import type { DeskView } from '../../world/types';
 
 /** How much room (m) a card keeps from the edge of the view of the board. */
@@ -15,9 +17,16 @@ const MARGIN = 0.15;
  * so this is where it stays sideways: it's put back when the worker leaves the chair.)
  */
 export function keepBoardsClear(ctx: Ctx) {
-  const rooms = MEETING_ROOMS.flatMap((r) => r.seats.map((def) => ({ def, r })));
-  /** The workers' roots whose sprites are moved, and the chair each is at. */
-  const shifted = new Map<THREE.Object3D, THREE.Object3D>();
+  // What doesn't change per chair: where the room's door is, and how far from its middle the view of the board reaches at the chair's depth.
+  const chairs = MEETING_ROOMS.flatMap((r) =>
+    r.seats.map((def) => {
+      const axis = (r.room.door.x0 + r.room.door.x1) / 2;
+      const dz = Math.max(0, deskSeat(def, 0.85).z - r.room.minZ);
+      return { def, axis, view: ((r.board.width / 2) * dz) / (r.board.z - r.room.minZ) };
+    }),
+  );
+  /** The workers' roots whose sprites are moved: the chair each is at, and where its sprites were last put. */
+  const shifted = new Map<THREE.Object3D, { anchor: THREE.Object3D; x: number; z: number }>();
   const at = new THREE.Vector3();
   const scale = new THREE.Vector3();
   const put = (root: THREE.Object3D, x: number, z: number) => {
@@ -25,22 +34,20 @@ export function keepBoardsClear(ctx: Ctx) {
   };
 
   ctx.ticks.add('hud', () => {
+    // Nothing is held and nothing is moved: the common case, and no work.
+    if (!shifted.size && !meetingsOf(store.meeting).length) return;
+    const world = ctx.world();
     // Another map's table has chairs of the same names in other places: only the office's are these.
-    if (ctx.world().plan.meetingRooms !== MEETING_ROOMS) return;
+    if (world.plan.meetingRooms !== MEETING_ROOMS) return;
     // Whoever has got up and gone has its sprites back over its head.
-    for (const [root, anchor] of shifted)
-      if (root.parent !== anchor) {
+    for (const [root, s] of shifted)
+      if (root.parent !== s.anchor) {
         put(root, 0, 0);
         shifted.delete(root);
       }
-    for (const { def, r } of rooms) {
-      const desk: DeskView | undefined = ctx.world().desks.get(def.id);
-      if (!desk || desk.def !== def) continue;
-      const axis = (r.room.door.x0 + r.room.door.x1) / 2;
-      const reach = r.board.z - r.room.minZ;
-      const dz = Math.max(0, deskSeat(def, 0.85).z - r.room.minZ);
-      // How far from the door's middle the view of the board reaches, at this chair's depth.
-      const view = ((r.board.width / 2) * dz) / reach;
+    for (const { def, axis, view } of chairs) {
+      const desk: DeskView | undefined = world.desks.get(def.id);
+      if (!desk || desk.def !== def || !desk.seatAnchor.children.length) continue;
       for (const root of desk.seatAnchor.children) {
         root.getWorldPosition(at);
         root.getWorldScale(scale);
@@ -52,11 +59,14 @@ export function keepBoardsClear(ctx: Ctx) {
           const inner = Math.abs(at.x - axis) - (s.scale.x * scale.x) / 2;
           moved = Math.max(moved, view + MARGIN - inner);
         }
-        if (moved <= 0 && !shifted.has(root)) continue;
+        const was = shifted.get(root);
+        if (moved <= 0 && !was) continue;
         at.x += side * Math.max(0, moved);
         const local = root.worldToLocal(at);
+        // Only when it has moved: a worker sitting still keeps its sprites where they are.
+        if (was && Math.abs(was.x - local.x) < 1e-4 && Math.abs(was.z - local.z) < 1e-4) continue;
         put(root, local.x, local.z);
-        shifted.set(root, desk.seatAnchor);
+        shifted.set(root, { anchor: desk.seatAnchor, x: local.x, z: local.z });
       }
     }
   });

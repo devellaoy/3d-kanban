@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { MEETING_PATTERNS, meetingAt, meetingStage, meetingSummary } from '../../../shared/meetings';
+import { MEETING_PATTERNS, meetingStage, meetingSummary, roomAt } from '../../../shared/meetings';
 import { fmtCost, fmtTokens, type Meeting, type MeetingState } from '../../../shared/protocol';
 
 const FONT = 'Nunito, ui-rounded, system-ui, sans-serif';
@@ -43,6 +43,16 @@ export function speaking(m: Meeting): string[] {
 }
 
 /**
+ * What a room's board and sign show, in a cheap string: the same key means the same picture, so a
+ * message about another room (or a change they don't draw) needn't repaint them.
+ */
+export function meetingKey(state: MeetingState, roomId: string): string {
+  const { label, current: m } = roomAt(state, roomId);
+  if (!m) return label;
+  return [label, m.id, m.status, m.round, m.turns.length, m.turns.map((t) => t.state).join(), m.preview?.length ?? 0, m.output, m.tokens, m.budget, m.cost, m.costKnown, m.reason, m.commit, m.review?.url, m.review?.error].join('|');
+}
+
+/**
  * The board on a meeting room's back wall, facing its door: the meeting's output file as it's being written, like a
  * shared screen, with what's being worked on across the top.
  */
@@ -65,8 +75,7 @@ export class MeetingBoardTexture {
     const H = this.canvas.height;
     g.fillStyle = '#fbfdff';
     g.fillRect(0, 0, W, H);
-    const m = meetingAt(state, roomId);
-    const name = state.rooms.find((r) => r.id === roomId)?.label ?? 'Meeting room';
+    const { label: name, current: m } = roomAt(state, roomId);
     g.textBaseline = 'alphabetic';
     if (!m) {
       g.fillStyle = INK;
@@ -148,8 +157,7 @@ export class MeetingSignTexture {
     const { g } = this;
     const W = this.canvas.width;
     const H = this.canvas.height;
-    const m = meetingAt(state, roomId);
-    const name = state.rooms.find((r) => r.id === roomId)?.label ?? 'Meeting room';
+    const { label: name, current: m } = roomAt(state, roomId);
     const pad = 28;
     const lines = (text: string, font: string, color: string, y: number, max: number, lh: number) => {
       g.font = font;

@@ -41,10 +41,7 @@ export function whereabouts(p: PeerInfo, car?: { car: number; seat: CarSeat }, p
   if (p.y > LOFT.y - 0.5 && p.x > LOFT.minX && p.z > LOFT.minZ) return "👔 in the boss's office";
   // "🔍 Review room" -> "🔍 in the review room".
   const room = MEETING_ROOMS.find((r) => p.x > r.room.minX && p.x < r.room.maxX && p.z > r.room.minZ && p.z < r.room.maxZ && p.y < r.room.height);
-  if (room) {
-    const [icon, ...name] = room.label.split(' ');
-    return `${icon} in the ${name.join(' ').toLowerCase()}`;
-  }
+  if (room) return `${room.icon} in ${room.place}`;
   return undefined;
 }
 

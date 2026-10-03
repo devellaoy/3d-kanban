@@ -455,3 +455,40 @@ test('a meeting in a room the map lacks keeps its table: no room of the new map 
   assert.equal(f.start({}), undefined);
   assert.deepEqual(f.room.state().rooms.map((r) => r.id), ['meeting']);
 });
+
+test('a finished meeting in a room the map lacks, once its workers are gone, does not block new meetings', async (t) => {
+  const f = fixture({ rooms: MEETING_ROOMS }); t.after(() => f.close());
+  assert.equal(f.start({ room: 'review', title: 'Old' }), undefined);
+  f.useRooms([MEETING_ROOMS[0]]);
+  assert.equal(f.room.stop('Ada', 'review'), undefined);
+  for (const w of [...f.workers]) await f.kill(w.id);
+  assert.equal(f.start({}), undefined);
+  assert.equal(f.cur(0)!.status, 'running');
+  // It still shows, finished, until someone clears it.
+  assert.deepEqual(f.room.state().rooms.map((r) => r.id), ['meeting', 'review']);
+});
+
+test('without a git worktree, two meetings may not write the same output file', (t) => {
+  const f = fixture({ rooms: MEETING_ROOMS }); t.after(() => f.close());
+  assert.equal(f.start({ title: 'First', output: 'same.md' }), undefined);
+  assert.match(f.start({ title: 'Second', output: 'same.md' }) ?? '', /already writing same\.md/);
+  assert.equal(f.cur(1), null);
+  assert.equal(f.start({ title: 'Second', output: 'other.md' }), undefined);
+});
+
+test('stopping or clearing without a room names the one meeting that can be, not a running one when asked to clear', (t) => {
+  const f = fixture({ rooms: MEETING_ROOMS }); t.after(() => f.close());
+  assert.equal(f.start({ title: 'One' }), undefined);
+  assert.equal(f.start({ title: 'Two' }), undefined);
+  assert.equal(f.room.stop('Ada', 'review'), undefined);
+  // One running, one stopped: only the stopped one can be cleared, so it needs no room.
+  assert.equal(f.room.clear('Ada'), undefined);
+  assert.equal(f.cur(1), null);
+  assert.equal(f.cur(0)!.status, 'running');
+});
+
+test('the state of the rooms makes no engines: a room nobody used has no timer', (t) => {
+  const f = fixture({ rooms: MEETING_ROOMS }); t.after(() => f.close());
+  assert.equal(f.room.state().rooms.length, 2);
+  assert.equal((f.room as unknown as { engines: Map<string, unknown> }).engines.size, 0);
+});

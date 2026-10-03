@@ -180,9 +180,15 @@ export function emptyMeetings(rooms: readonly { id: string; label: string }[] = 
   return { rooms: rooms.map((r) => ({ id: r.id, label: r.label, current: null })), past: [] };
 }
 
+/** A room's name and what's on in it, for a sign or a board: the name falls back to "Meeting room" when there's no such room. */
+export function roomAt(state: Pick<MeetingState, 'rooms'>, roomId: string): { label: string; current: Meeting | null } {
+  const r = state.rooms.find((x) => x.id === roomId);
+  return { label: r?.label ?? 'Meeting room', current: r?.current ?? null };
+}
+
 /** What's on in a room (null when it's empty or there's no such room). */
 export function meetingAt(state: Pick<MeetingState, 'rooms'>, roomId: string): Meeting | null {
-  return state.rooms.find((r) => r.id === roomId)?.current ?? null;
+  return roomAt(state, roomId).current;
 }
 
 /** The room a chair belongs to, if it's any room's. */

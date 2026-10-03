@@ -503,7 +503,7 @@ export function installWorkerActions(ctx: Ctx, core: CoreState, parts: WorkerAct
       if (key === 'L') return openDeskLabel(net, it.deskId);
       const w = store.workerAtDesk(it.deskId);
       // Nobody is hired at the meeting table: a meeting seats its own workers there.
-      if (!w && plan().byId.get(it.deskId)?.room) return key === 'E' ? parts.meeting.showMeeting({ room: roomOfSeat(plan().meetingRooms, it.deskId) }) : undefined;
+      if (!w && plan().byId.get(it.deskId)?.room) return key === 'E' ? parts.meeting.showMeeting(undefined, roomOfSeat(plan().meetingRooms, it.deskId)) : undefined;
       if (key === 'B' && !w) return openShell(it.deskId);
       // P with an issue card at an empty desk makes it a kanban task there.
       if (key === 'P' && ctx.carrying() && !w) return parts.cards.cardTaskAt(it.deskId, ctx.carrying()!);
