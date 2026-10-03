@@ -9,7 +9,7 @@ import type { MeetingWorkers } from '../src/server/meetings.js';
 import { MEETING_ROOMS, type MeetingRoomDef } from '../src/shared/layout.js';
 import { Worktrees } from '../src/server/worktrees.js';
 import type { AgentChoice, Meeting, MeetingRequest, WorkerInfo } from '../src/shared/protocol.js';
-import { MEETING_PATTERN_IDS, RECORD_PROMPT_MAX, isMeetingId, isMeetingPattern, meetingRecord, slimRecord } from '../src/shared/meetings.js';
+import { MEETING_PATTERN_IDS, RECORD_PROMPT_MAX, archiveKey, isMeetingId, isMeetingPattern, meetingRecord, slimRecord } from '../src/shared/meetings.js';
 import { PROMPTS, type PromptId } from '../src/shared/prompts.js';
 
 function fixture(opts: { rooms?: MeetingRoomDef[]; git?: boolean; rewritten?: Partial<Record<PromptId, string>>; officeDefault?: AgentChoice } = {}) {
@@ -648,4 +648,26 @@ test('a review link that arrives after the room was cleared still reaches the sa
   assert.equal(JSON.parse(readFileSync(file, 'utf8')).reviewUrl, 'https://github.com/o/r/pull/42#pullrequestreview-1');
   assert.equal(f.room.state().past[0].id, id);
   assert.equal(f.room.state().past.length, 1);
+});
+
+test('the earlier-meetings list notices a late review link on any earlier meeting, not only the newest', async (t) => {
+  const f = fixture(); t.after(() => f.close());
+  assert.equal(f.start({ pattern: 'review', prompt: 'Review it', pr: 42 }), undefined);
+  const a = f.cur()!.id;
+  for (const i of [0, 1, 2]) f.take(i, '- a.ts:1 — something');
+  f.take(0, 'Looks fine. **[Security]** a.ts:1 — something');
+  assert.equal(f.room.clear('Ada'), undefined); // before the review's post settles
+  // Another meeting is cleared after it, so the review is no longer the newest line.
+  assert.equal(f.start({}), undefined);
+  const b = f.cur()!.id;
+  assert.equal(f.room.stop('Ada'), undefined);
+  assert.equal(f.room.clear('Ada'), undefined);
+  const before = f.room.state();
+  assert.deepEqual(before.past.map((r) => r.id), [b, a]);
+  const key = archiveKey('floor', before);
+  await new Promise((r) => setImmediate(r));
+  const after = f.room.state();
+  assert.equal(after.past[0].summary, before.past[0].summary);
+  assert.match(after.past[1].summary, /posted on the PR/);
+  assert.notEqual(archiveKey('floor', after), key);
 });

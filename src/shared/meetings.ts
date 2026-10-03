@@ -246,3 +246,16 @@ export function meetingsOf(state: Pick<MeetingState, 'rooms'>): Meeting[] {
 export function anyMeetingRunning(state: Pick<MeetingState, 'rooms'>): boolean {
   return state.rooms.some((r) => r.current?.status === 'running');
 }
+
+/**
+ * What the earlier-meetings list depends on, so it's fetched again when this changes: the floor, every
+ * earlier meeting's line (its summary changes when a late commit or review link comes in, on any of them,
+ * not just the newest), and the finished meetings still on a table, with their commit and review.
+ */
+export function archiveKey(floor: string | null | undefined, state: Pick<MeetingState, 'rooms' | 'past'>): string {
+  return [
+    floor ?? '',
+    ...state.past.map((r) => `${r.id}:${r.summary}`),
+    ...state.rooms.flatMap((r) => (r.current && r.current.status !== 'running' ? [`${r.current.id}:${r.current.commit ?? ''}:${r.current.review?.url ?? ''}`] : [])),
+  ].join('|');
+}

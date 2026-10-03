@@ -1,5 +1,5 @@
 import './meetingpast.css';
-import { MEETING_PATTERNS } from '../../shared/meetings';
+import { MEETING_PATTERNS, archiveKey } from '../../shared/meetings';
 import { fmtCost, fmtTokens, type MeetingArchiveList, type MeetingFileInfo, type MeetingFileText, type MeetingRecord } from '../../shared/protocol';
 import { apiUrl } from '../multiplayer/visit';
 import { store } from '../state';
@@ -37,9 +37,7 @@ function fileProblem(status: number, error: string): string {
 
 const isMd = (name: string) => /\.(md|markdown)$/i.test(name);
 const fmtSize = (n: number) => (n < 1024 ? `${n} B` : n < 1024 * 1024 ? `${(n / 1024).toFixed(1)} kB` : `${(n / 1024 / 1024).toFixed(1)} MB`);
-/** What the list depends on: the newest earlier meeting (and its summary), the finished ones still on a table (and their commit and review), and the floor. It's refetched when this changes. */
-const listKey = () =>
-  [store.floor ?? '', store.meeting.past[0]?.id ?? '', store.meeting.past[0]?.summary ?? '', ...store.meeting.rooms.flatMap((r) => (r.current && r.current.status !== 'running' ? [`${r.current.id}:${r.current.commit ?? ''}:${r.current.review?.url ?? ''}`] : []))].join('|');
+const listKey = () => archiveKey(store.floor, store.meeting);
 const roomLabel = (id?: string) => (id ? (store.meeting.rooms.find((r) => r.id === id)?.label ?? id) : '');
 
 /**
