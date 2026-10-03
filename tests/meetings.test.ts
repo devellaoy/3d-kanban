@@ -61,7 +61,7 @@ function fixture(opts: { rooms?: MeetingRoomDef[]; git?: boolean; rewritten?: Pa
       return {};
     },
   };
-  const rooms = opts.rooms ?? [MEETING_ROOMS[0]];
+  let rooms = opts.rooms ?? [MEETING_ROOMS[0]];
   const room: MeetingRooms = new MeetingRooms(dir, dataDir, manager, opts.git ? new Worktrees(dir) : undefined, {
     update() {},
     toast: (text) => toasts.push(text),
@@ -103,7 +103,7 @@ function fixture(opts: { rooms?: MeetingRoomDef[]; git?: boolean; rewritten?: Pa
     }
   };
   const start = (req: Partial<MeetingRequest>) => room.start({ pattern: 'debate', prompt: 'Which cache should we use?', roles: [], ...req } as MeetingRequest, 'Ada');
-  return { dir, dataDir, manager, room, cur, rooms, workers, prompts, typed, toasts, reviews, take, settle, start, cwd, kill: (id: string) => manager.kill(id), close() { room.shutdown(); rmSync(dir, { recursive: true, force: true }); } };
+  return { dir, dataDir, manager, room, cur, rooms, useRooms: (next: MeetingRoomDef[]) => (rooms = next), workers, prompts, typed, toasts, reviews, take, settle, start, cwd, kill: (id: string) => manager.kill(id), close() { room.shutdown(); rmSync(dir, { recursive: true, force: true }); } };
 }
 
 test('a debate runs its rounds and ends when the chair writes the decision', (t) => {
@@ -409,4 +409,20 @@ test('a pull request is reviewed by one panel at a time; two panels on different
   assert.ok(f.reviews.find((r) => r.pr === 43)!.file.endsWith('pr-43.md'));
   // With two rooms holding meetings, stop / clear without a room name them.
   assert.match(f.room.clear('Ada') ?? '', /Several rooms have meetings, so say which room: 🤝 Meeting room \(meeting\), 🔍 Review room \(review\)/);
+});
+
+test('a meeting in a room the map lacks keeps its table: no room of the new map is free until it is cleared', (t) => {
+  const f = fixture({ rooms: MEETING_ROOMS }); t.after(() => f.close());
+  assert.equal(f.start({ room: 'review', pattern: 'review', prompt: 'Review it', pr: 7 }), undefined);
+  // The office switches to the one-room map: the review room's workers sit at its one table.
+  f.useRooms([MEETING_ROOMS[0]]);
+  assert.match(f.start({}) ?? '', /The 🔍 Review room still has .* from another map at this one's table: stop that meeting and clear that room first/);
+  assert.match(f.start({ room: 'meeting' }) ?? '', /clear that room first/);
+  // It still shows, so it can be stopped and cleared; then the room is free.
+  assert.deepEqual(f.room.state().rooms.map((r) => r.id), ['meeting', 'review']);
+  assert.equal(f.room.stop('Ada', 'review'), undefined);
+  assert.match(f.start({}) ?? '', /^The 🔍 Review room still has .*: clear that room first/);
+  assert.equal(f.room.clear('Ada', 'review'), undefined);
+  assert.equal(f.start({}), undefined);
+  assert.deepEqual(f.room.state().rooms.map((r) => r.id), ['meeting']);
 });

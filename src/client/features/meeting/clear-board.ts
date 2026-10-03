@@ -10,7 +10,7 @@ const MARGIN = 0.15;
  * Keeps the cards and name tags of the workers at a meeting room's table off its board. The board
  * faces the door, so that standing in the doorway you read the meeting's summary head-on; a card
  * floating over a head would hang in front of it if it falls inside the view from the door's middle
- * to the board's two edges. So each card that would hangs out sideways, away from that line, just far
+ * to the board's two edges. So any card that would is moved out sideways, away from that line, just far
  * enough to clear it. (A sprite takes its place from its worker only up and down, see Worker.update,
  * so this is where it stays sideways: it's put back when the worker leaves the chair.)
  */

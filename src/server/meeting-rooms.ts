@@ -59,6 +59,10 @@ export class MeetingRooms {
   /** Calls a meeting in `req.room`, or in the first free room. Returns why it couldn't, or undefined once everyone is sitting down. */
   start(req: MeetingRequest, by: string, owner?: string): string | undefined {
     const defs = this.rooms();
+    // A room this map lacks, with a meeting still in it: its workers sit on this map's chairs, which the rooms
+    // that are here share (a one-room map seats every room's workers at its one table), so none is free.
+    const stranded = [...this.engines.values()].find((e) => !defs.some((d) => d.id === e.def.id) && (e.meeting() || e.seated()));
+    if (stranded) return `The ${stranded.def.label} still has ${stranded.meeting() ? `“${stranded.meeting()!.title}”` : 'workers'} from another map at this one's table: ${stranded.meeting()?.status === 'running' ? 'stop that meeting and ' : ''}clear that room first`;
     // One panel per pull request: a second would post a second review on it.
     if (req.pattern === 'review' && req.pr !== undefined) {
       const same = [...this.engines.values()].find((e) => e.meeting()?.status === 'running' && e.meeting()!.pattern === 'review' && e.meeting()!.pr === req.pr);

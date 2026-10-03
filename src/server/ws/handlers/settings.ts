@@ -24,6 +24,8 @@ export const mapNews = (ctx: Ctx, was: string, who?: string) => {
   const now = maps.pick();
   if (now !== was) for (const other of ctx.clients.values()) delete other.peer.seat;
   ctx.broadcast({ t: 'map', state: maps.state() });
+  // The rooms a floor offers depend on the map, so each floor tells its people the rooms it has now.
+  for (const floor of ctx.floors.values()) ctx.toFloor(floor, { t: 'meeting', state: floor.meetings.state() });
   if (now === was) return;
   const plan = maps.plan();
   // Without a pick, a map of your own broke (back to the office) or was fixed (back to it).

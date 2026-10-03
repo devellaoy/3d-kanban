@@ -64,10 +64,22 @@ export function openMeeting(net: Net, actions: MeetingActions, preset?: MeetingP
   };
   const renderTabs = () => {
     tabs.hidden = rooms().length < 2;
+    const ids = rooms().map((r) => r.id);
+    // Only the shown room's tab is in the tab order; the arrows, Home and End move between the others (they're rebuilt on a pick, so the new one takes the focus).
+    const onKey = (e: KeyboardEvent, id: string) => {
+      const i = ids.indexOf(id);
+      const to = e.key === 'ArrowRight' ? ids[(i + 1) % ids.length] : e.key === 'ArrowLeft' ? ids[(i - 1 + ids.length) % ids.length] : e.key === 'Home' ? ids[0] : e.key === 'End' ? ids[ids.length - 1] : null;
+      if (!to) return;
+      e.preventDefault();
+      pick(to);
+      (tabs.querySelector('[aria-selected="true"]') as HTMLElement | null)?.focus();
+    };
     tabs.replaceChildren(
       ...rooms().map((r) => {
         const on = r.current?.status === 'running';
-        return h('button.btn.small.meeting-tab', { type: 'button', role: 'tab', 'aria-selected': String(r.id === shown), class: r.id === shown ? 'on' : '', onclick: () => pick(r.id) }, r.label, on ? ' · in a meeting' : r.current ? ' · done' : ' · free');
+        const sel = r.id === shown;
+        const stop = sel || (!ids.includes(shown ?? '') && r.id === ids[0]);
+        return h('button.btn.small.meeting-tab', { type: 'button', role: 'tab', 'aria-selected': String(sel), tabindex: stop ? 0 : -1, class: sel ? 'on' : '', onclick: () => pick(r.id), onkeydown: (e: Event) => onKey(e as KeyboardEvent, r.id) }, r.label, on ? ' · in a meeting' : r.current ? ' · done' : ' · free');
       }),
     );
   };
