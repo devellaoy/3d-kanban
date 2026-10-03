@@ -6,9 +6,10 @@
 // changed is never overwritten (the result says an update is available instead).
 
 import { createHash } from 'node:crypto';
-import { cpSync, existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import type { SkillInfo } from '../../../../shared/kanban/types.js';
+import { copyTree } from '../../copytree.js';
 import { MARKER, skillHash } from './registry.js';
 
 export const PLUGIN_NAME = 'office-kanban-skills';
@@ -36,7 +37,7 @@ export function pluginDir(filesDir: string, skills: SkillInfo[]): string {
     let folder = path.basename(s.location);
     if (used.has(folder)) folder = s.name.replace(/[^\w.-]/g, '-');
     used.add(folder);
-    cpSync(s.location, path.join(tmp, 'skills', folder), { recursive: true, filter: (src) => path.basename(src) !== MARKER });
+    copyTree(s.location, path.join(tmp, 'skills', folder), (src) => path.basename(src) !== MARKER);
   }
   try {
     renameSync(tmp, dir);
@@ -96,6 +97,6 @@ export function syncCodexSkills(codexHome: string, skills: SkillInfo[]): SyncRes
 
 function copy(from: string, to: string, hash: string) {
   mkdirSync(path.dirname(to), { recursive: true });
-  cpSync(from, to, { recursive: true, filter: (src) => path.basename(src) !== MARKER });
+  copyTree(from, to, (src) => path.basename(src) !== MARKER);
   writeFileSync(path.join(to, MARKER), `${JSON.stringify({ source: '3d-kanban', hash, at: new Date().toISOString() }, null, 2)}\n`);
 }
