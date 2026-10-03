@@ -7,11 +7,10 @@ import type { Fixture } from './fixture';
 // The office's LED lighting: only glowing things, no light of their own, so none of it counts against the
 // room shader's lamps (see MAX_ROOM_LAMPS). Strips along the top of the north, east and south walls (cove
 // lighting), under the boss office's front, behind each board and the TV, and along the foot of the north
-// wall; and a pair of bars hung over each pod. Each colour is a bulb of its own (see bulb), so they glow
-// a little by day and come up with the lamps at night.
+// wall; the ceiling lamps are linear LED fixtures themselves (pendant in props.ts). Each colour is a bulb
+// of its own (see bulb), so they glow a little by day and come up with the lamps at night.
 
 const WARM = '#fff1d6';
-const COOL = '#e8f4ff';
 
 export const ledLights: Fixture = (site) => {
   const night = site.get('night');
@@ -49,14 +48,5 @@ export const ledLights: Fixture = (site) => {
   tvPlate.rotation.y = -Math.PI / 2;
   group.add(tvPlate);
 
-  // Two bars over each pod, hung from the ceiling on fine wires either side of the round pendant's cord, up above its shade.
-  const barMat = bulb(night, COOL, 0.4);
-  const wire = new THREE.MeshBasicMaterial({ color: '#8d99ae' });
-  for (const [px, pz] of [[-10.5, -4], [-1.5, -4], [-10.5, 4], [-1.5, 4]]) {
-    for (const dz of [-1.2, 1.2]) {
-      group.add(mesh(new THREE.BoxGeometry(4.2, 0.06, 0.08), barMat, px, 4.75, pz + dz, false));
-      for (const dx of [-1.9, 1.9]) group.add(mesh(new THREE.CylinderGeometry(0.008, 0.008, WALL_HEIGHT - 4.75, 4), wire, px + dx, 4.75 + (WALL_HEIGHT - 4.75) / 2, pz + dz, false));
-    }
-  }
   return { group: mergeByMaterial(group) };
 };

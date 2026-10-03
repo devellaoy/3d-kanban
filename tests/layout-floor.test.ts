@@ -5,7 +5,6 @@ import {
   builtMeetingRooms, deskSeat, wingMinZ, type DeskDef,
 } from '../src/shared/layout.js';
 import { deskPoint, officeNav, wayIn } from '../src/shared/nav.js';
-import { ART_OBSTACLES } from '../src/shared/art.js';
 
 type Box = [number, number, number, number]; // minX, maxX, minZ, maxZ
 /** Whether two footprints overlap by more than a hair (desks standing back to back touch). */
@@ -45,7 +44,6 @@ function things(rooms: number): Thing[] {
   // The loft is over the first meeting room (its group), on posts.
   out.push({ name: 'loft', group: 'meeting', box: [LOFT.minX, LOFT.maxX, LOFT.minZ, LOFT.maxZ] });
   for (const r of builtMeetingRooms(MEETING_ROOMS, rooms)) out.push({ name: `room ${r.id}`, group: r.id, box: [r.room.minX, r.room.maxX, r.room.minZ, r.room.maxZ] });
-  for (const a of ART_OBSTACLES) out.push({ name: a.name, group: a.name, box: [a.minX, a.maxX, a.minZ, a.maxZ] });
   return out;
 }
 

@@ -4,7 +4,6 @@
 // An office floor built out into the back office (see WING) has more of it to get round: the office's
 // helpers take how many rows it's built out (`wing`), and each level gets a grid of its own.
 
-import { ART_OBSTACLES } from './art.js';
 import { BALCONY, BALCONY_DOOR, BEANBAGS, BOOKSHELF, CABINET, DESK_SIZE, ELEVATOR, ELEVATOR_FRONT, EXIT_DOOR, EXIT_STAIRS, FLOOR, GONG, JUKEBOX, KIOSK, LOFT, MEETING_ROOMS, ROOMS_WING, WING_ROOMS, builtMeetingRooms, roomFrame, roomsLevel, PARACHUTE, ROAD, STAIRS, STATIONS, WHITEBOARD, WING, builtDesks, wingLevel, wingMinZ, type DeskDef } from './layout.js';
 
 
@@ -87,8 +86,6 @@ function obstacles(wing: number, rooms: number): Obstacles {
     const zs = corners.map(([, z]) => z);
     rects.push([Math.min(...xs), Math.max(...xs), Math.min(...zs), Math.max(...zs)]);
   }
-  // The art on the floor.
-  for (const a of ART_OBSTACLES) rects.push([a.minX, a.maxX, a.minZ, a.maxZ]);
   // The meeting rooms that are built: their glass walls, with the doorway in the one the door is in, and
   // the tables with their chairs, as world/office/meeting-room.ts puts them, in each room's own frame
   // (u along its door wall, v in from the door). The first sits under the loft (its east and south sides

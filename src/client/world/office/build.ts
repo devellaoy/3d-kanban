@@ -34,10 +34,6 @@ import { beanbags, desks, kiosks } from './seats';
 import { meetingRoom } from './meeting-room';
 import { roomsWing } from './roomswing';
 import { ledLights } from './led';
-import { constellation } from './art/constellation';
-import { ledWave } from './art/ledwave';
-import { prints } from './art/prints';
-import { sculpture } from './art/sculpture';
 import { loft } from './loft';
 import type { Fixture, Gives, Site } from './fixture';
 
@@ -87,11 +83,7 @@ function floorPlan() {
     deskStuff,
     lightSwitches,
     mergePlant,
-    // The art, and the LED lighting round the room.
-    sculpture,
-    ledWave,
-    prints,
-    constellation,
+    // The LED lighting round the room.
     ledLights,
     camp,
   ] as const;
