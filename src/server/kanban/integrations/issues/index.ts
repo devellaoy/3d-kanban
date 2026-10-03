@@ -3,17 +3,18 @@
 // upstream's pace: every 90 s while someone has looked at them lately, every 10 minutes otherwise.
 // kanban.issues.createTask turns one into a task, once per ticket.
 
-import type { KanbanContext, KanbanPlugin } from '../../registry.js';
+import type { KanbanCaller, KanbanContext, KanbanPlugin } from '../../registry.js';
 import type { IssueSourceConfig, NormalizedIssue } from '../../../../shared/kanban/types.js';
 import type { KanbanServerMsg } from '../../../../shared/kanban/protocol.js';
 import { gh } from '../../../github.js';
-import { createIntegrationTask, fail, ok } from '../util.js';
+import { createIntegrationTask, fail, ok, type IntegrationTaskInput } from '../util.js';
 import { githubRepoSource } from './github-repo.js';
 import { githubProjectSource } from './github-project.js';
 import { jiraSource } from './jira.js';
 import type { IssueSource, IssueSourceIo } from './source.js';
 import { refreshWall, setWallProvider, toGhIssue, wallChanged } from './wall.js';
 import { claimIssueForTask } from './autoassign.js';
+import { agentCreateHook } from './agent-create.js';
 import { issueActionHandlers, type IssuePatch } from './actions.js';
 import { createBrowse } from './browse/index.js';
 import type { GhIssue, GhState } from '../../../../shared/protocol.js';
@@ -48,6 +49,21 @@ interface IssuesState {
   error?: string;
   fetchedAt: number;
   loading: boolean;
+}
+
+/** Who makes a task from an issue: a browser, or an agent (which has no one to warn). */
+export type IssueCaller = KanbanCaller & { warn?(text: string): void };
+export interface IssueTaskResult {
+  taskId: number;
+  existed: boolean;
+  started?: true;
+  startError?: string;
+}
+export interface IssueTaskOptions {
+  start?: boolean;
+  deskId?: string;
+  input?: Partial<Pick<IntegrationTaskInput, 'title' | 'description' | 'tool' | 'model' | 'effort' | 'repoIds' | 'type' | 'event'>>;
+  reply?(r: IssueTaskResult): void;
 }
 
 export interface IssuesOptions {
@@ -260,8 +276,59 @@ export function createIssues(ctx: KanbanContext, opts: IssuesOptions = {}) {
     return seen && now() - seen.at < BROWSED_TTL_MS ? seen.issue : undefined;
   };
 
+  /**
+   * The task for an issue, once per ticket: made, or the one it has already (started if it is still
+   * in To do and `start` is asked). `reply` hears the outcome before the issue is assigned to the
+   * caller (see claimIssueForTask); the same outcome is returned after. Resolves to why not.
+   * `input` changes what the new task is made with: its description is put above the issue's own text.
+   */
+  const createFromIssue = async (project: string, key: string, who: IssueCaller, opts: IssueTaskOptions = {}): Promise<IssueTaskResult | string> => {
+    if (!ctx.project(project)) return `There's no project ${project}`;
+    const startOpts = opts.deskId ? { deskId: opts.deskId } : undefined;
+    const existing = ctx.repo.findTaskByTicket(project, key);
+    if (existing) {
+      // Made before (on the kanban, or a start that failed): one in To do starts now, at the desk asked for; any other (running, done, archived) is only named.
+      if (!opts.start || existing.status !== 'todo') {
+        const r: IssueTaskResult = { taskId: existing.id, existed: true };
+        opts.reply?.(r);
+        return r;
+      }
+      const err = await ctx.engine.start(existing.id, who, startOpts);
+      ctx.taskChanged(existing.id);
+      wallChanged(project);
+      const failed = typeof err === 'string' && err;
+      const r: IssueTaskResult = { taskId: existing.id, existed: true, ...(failed ? { startError: failed } : { started: true }) };
+      opts.reply?.(r);
+      if (failed) return r;
+      const listed = state(project).items.find((i) => i.key === key) ?? (await refresh(project)).items.find((i) => i.key === key);
+      if (listed) await claimIssueForTask(ctx, { patch, io }, project, withChange(project, listed), who);
+      return r;
+    }
+    let issue = find(project, key) ?? (await browsing.load(project, key));
+    if (!issue) issue = (await refresh(project)).items.find((i) => i.key === key);
+    if (!issue) return `${key} isn't among the project's issues (any more)`;
+    const given = opts.input ?? {};
+    const text = given.description?.trim();
+    const made = await createIntegrationTask(
+      ctx,
+      { ...given, project, title: given.title || issue.title, description: text ? `${text}\n\n${issueDescription(issue)}` : issueDescription(issue), ticket: issue.key, ticketUrl: issue.url },
+      who,
+      opts.start,
+      startOpts,
+    );
+    ctx.broadcast(message(project), project);
+    wallChanged(project);
+    const r: IssueTaskResult = { taskId: made.task.id, existed: made.existed, ...(made.startError ? { startError: made.startError } : made.started ? { started: true } : {}) };
+    opts.reply?.(r);
+    // A start that failed takes nothing.
+    if (!made.existed && !made.startError) await claimIssueForTask(ctx, { patch, io }, project, withChange(project, issue), who);
+    return r;
+  };
+
   const plugin: KanbanPlugin = {
     name: 'issues',
+    // An agent's POST /office/tasks/create (this plugin owns it: it alone can look an issue up).
+    hook: { '/office/tasks/create': agentCreateHook(ctx, createFromIssue) },
     ws: {
       ...browsing.ws,
       ...issueActionHandlers(ctx, {
@@ -294,29 +361,12 @@ export function createIssues(ctx: KanbanContext, opts: IssuesOptions = {}) {
       },
       'kanban.issues.createTask': async (c, m) => {
         if (!ctx.project(m.project)) return fail(c, m.rid, `There's no project ${m.project}`);
-        const existing = ctx.repo.findTaskByTicket(m.project, m.issueKey);
-        if (existing) {
-          // Made before (on the kanban, or a start that failed): one in To do starts now, at the desk asked for; any other (running, done, archived) is only named.
-          if (!m.start || existing.status !== 'todo') return ok(c, m.rid, { taskId: existing.id, existed: true });
-          const err = await ctx.engine.start(existing.id, c, m.deskId ? { deskId: m.deskId } : undefined);
-          ctx.taskChanged(existing.id);
-          wallChanged(m.project);
-          const failed = typeof err === 'string' && err;
-          ok(c, m.rid, { taskId: existing.id, existed: true, ...(failed ? { startError: failed } : { started: true }) });
-          if (failed) return;
-          const listed = state(m.project).items.find((i) => i.key === m.issueKey) ?? (await refresh(m.project)).items.find((i) => i.key === m.issueKey);
-          if (listed) await claimIssueForTask(ctx, { patch, io }, m.project, withChange(m.project, listed), c);
-          return;
-        }
-        let issue = find(m.project, m.issueKey) ?? (await browsing.load(m.project, m.issueKey));
-        if (!issue) issue = (await refresh(m.project)).items.find((i) => i.key === m.issueKey);
-        if (!issue) return fail(c, m.rid, `${m.issueKey} isn't among the project's issues (any more)`);
-        const made = await createIntegrationTask(ctx, { project: m.project, title: issue.title, description: issueDescription(issue), ticket: issue.key, ticketUrl: issue.url }, c, m.start, m.deskId ? { deskId: m.deskId } : undefined);
-        ctx.broadcast(message(m.project), m.project);
-        wallChanged(m.project);
-        ok(c, m.rid, { taskId: made.task.id, existed: made.existed, ...(made.startError ? { startError: made.startError } : made.started ? { started: true } : {}) });
-        // A start that failed takes nothing.
-        if (!made.existed && !made.startError) await claimIssueForTask(ctx, { patch, io }, m.project, withChange(m.project, issue), c);
+        const made = await createFromIssue(m.project, m.issueKey, c, {
+          start: m.start,
+          deskId: m.deskId,
+          reply: (r) => ok(c, m.rid, { taskId: r.taskId, existed: r.existed, ...(r.startError ? { startError: r.startError } : r.started ? { started: true } : {}) }),
+        });
+        if (typeof made === 'string') fail(c, m.rid, made);
       },
     },
     start() {

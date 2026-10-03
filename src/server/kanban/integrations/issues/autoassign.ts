@@ -3,7 +3,7 @@
 // shared gh). Never throws: the task is made already, and a failure is a warning to the person.
 
 import type { NormalizedIssue } from '../../../../shared/kanban/types.js';
-import type { KanbanClient, KanbanContext } from '../../registry.js';
+import type { KanbanCaller, KanbanContext } from '../../registry.js';
 import { announce, ghIoFor, route, type ActionDeps } from './actions.js';
 import { ghClaimIfUnassigned } from './github-ops.js';
 import type { IssueSourceIo } from './source.js';
@@ -14,7 +14,7 @@ export interface ClaimDeps {
 }
 
 /** Only under the person's own sign-in (the office's shared gh would put its account on the issue); a failure is a warning to them alone. */
-export async function claimIssueForTask(ctx: KanbanContext, deps: ClaimDeps, project: string, issue: NormalizedIssue, caller: KanbanClient): Promise<void> {
+export async function claimIssueForTask(ctx: KanbanContext, deps: ClaimDeps, project: string, issue: NormalizedIssue, caller: KanbanCaller & { warn?(text: string): void }): Promise<void> {
   if (issue.assignee) return;
   const target = route(ctx.settings.project(project).issueSources, issue);
   // Jira, a draft, a pull request and a closed issue are left as they are.

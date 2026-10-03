@@ -3,7 +3,8 @@
 
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import type { KanbanCaller, KanbanClient, KanbanContext } from '../registry.js';
-import type { KanbanTask, TaskType } from '../../../shared/kanban/types.js';
+import type { KanbanEffort, KanbanTask, KanbanTool, TaskType } from '../../../shared/kanban/types.js';
+import { taskDefaults } from '../create.js';
 import { wallChanged } from './issues/wall.js';
 
 /** The most a JSON request body may be. */
@@ -119,6 +120,14 @@ export interface IntegrationTaskInput {
   ticketUrl?: string;
   type?: TaskType;
   usePlan?: boolean;
+  /** The executor, when the asker chose one (else the office's defaults, see taskDefaults). */
+  tool?: KanbanTool;
+  model?: string;
+  effort?: KanbanEffort;
+  /** Subset of the project's repositories; unset: all of them. */
+  repoIds?: string[];
+  /** Extra data for the `created` event (who it was made through). */
+  event?: Record<string, unknown>;
 }
 
 /**
@@ -139,7 +148,6 @@ export async function createIntegrationTask(
     const had = ticket ? ctx.repo.findTaskByTicket(input.project, ticket) : undefined;
     if (had) return had;
     existed = false;
-    const d = ctx.settings.get().defaults;
     return ctx.repo.createTask({
       project: input.project,
       title: input.title.replace(/\s+/g, ' ').trim().slice(0, 300) || 'Untitled',
@@ -147,19 +155,14 @@ export async function createIntegrationTask(
       type: input.type ?? 'implement',
       ...(ticket ? { ticket } : {}),
       ...(input.ticketUrl ? { ticketUrl: input.ticketUrl } : {}),
-      repoIds: null,
-      tool: d.tool,
-      ...(d.model ? { model: d.model } : {}),
-      ...(d.effort ? { effort: d.effort } : {}),
-      usePlan: input.usePlan ?? d.usePlan,
-      planApproval: ctx.settings.planApproval(input.project),
-      useReview: d.useReview,
+      repoIds: input.repoIds ?? null,
+      ...taskDefaults(ctx, input.project, input),
       createdBy: who.name,
       ...(who.accountId ? { createdByAccount: who.accountId } : {}),
     });
   });
   if (!existed) {
-    ctx.repo.appendEvent(task.id, 'created', { by: who.name, ...(ticket ? { ticket } : {}) });
+    ctx.repo.appendEvent(task.id, 'created', { by: who.name, ...(ticket ? { ticket } : {}), ...input.event });
     ctx.taskChanged(task.id);
   }
   // A new task with a ticket: the 3D issues board's card says which task it became.

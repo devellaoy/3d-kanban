@@ -2,6 +2,7 @@
 import type http from 'node:http';
 import type { Ctx } from '../../office/context.js';
 import { send } from '../../http/util.js';
+import { DESK_BY_ID } from '../../../shared/layout.js';
 
 /** /office/tasks*, the kanban's routes for workers: the asking worker's own hook token says who (and which task) it is. */
 export async function officeTasks(ctx: Ctx, req: http.IncomingMessage, res: http.ServerResponse, url: URL) {
@@ -13,7 +14,20 @@ export async function officeTasks(ctx: Ctx, req: http.IncomingMessage, res: http
   const me = floor?.workers.authenticate(workerId, token);
   if (!floor || !me) return send(res, 401, { error: 'Send your own AGENT_OFFICE_WORKER_ID as ?worker= and AGENT_OFFICE_HOOK_TOKEN as the bearer token' });
   try {
-    if (!(await kanban.handleHook(req, res, url, { workerId: me.id, floorId: floor.id, ...(me.kanban ? { taskId: me.kanban.taskId } : {}) }))) send(res, 404, { error: 'Not found' });
+    const accountId = floor.workers.ownerOf(me.id);
+    const accountName = accountId ? ctx.accounts.get(accountId)?.name : undefined;
+    const who = {
+      workerId: me.id,
+      floorId: floor.id,
+      ...(me.kanban ? { taskId: me.kanban.taskId } : {}),
+      name: me.name,
+      kind: me.kind,
+      ...(DESK_BY_ID.get(me.deskId)?.station ? { station: true } : {}),
+      ...(accountId ? { accountId } : {}),
+      ...(accountName ? { accountName } : {}),
+      ...(me.createdBy ? { hiredBy: me.createdBy } : {}),
+    };
+    if (!(await kanban.handleHook(req, res, url, who))) send(res, 404, { error: 'Not found' });
   } catch (err) {
     console.error(err);
     if (!res.headersSent) send(res, 500, { error: 'Internal error' });

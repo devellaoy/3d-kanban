@@ -13,6 +13,7 @@ import { isKanbanPromptId } from '../../shared/kanban/prompts.js';
 import { PROMPT_MAX } from '../../shared/prompts.js';
 import { COMMENTS_PAGE, publicAttachment, type TaskUpdate } from './db/repository.js';
 import { projectInfo } from './projects.js';
+import { checkRepoIds, createBoardTask } from './create.js';
 import { openFor, taskFolders, workerFolders } from './vscode.js';
 import { wallChanged, wallSourcesChanged } from './integrations/issues/wall.js';
 import { chmodSync, existsSync } from 'node:fs';
@@ -37,14 +38,6 @@ const fail = (c: KanbanClient, rid: string | undefined, message: string) => c.se
 export function projectInfos(ctx: KanbanContext): KanbanProjectInfo[] {
   const settings = ctx.settings.get();
   return ctx.projects().map((def) => projectInfo(def, settings, !!ctx.floor(def.id)));
-}
-
-/** Why `repoIds` aren't all the project's repositories, if they aren't. */
-export function checkRepoIds(ctx: KanbanContext, project: string, repoIds: string[] | null | undefined): string | undefined {
-  if (!repoIds) return undefined;
-  const known = new Set(ctx.repos(project).map((r) => r.id));
-  const unknown = repoIds.filter((id) => !known.has(id));
-  return unknown.length ? `${unknown.join(', ')} ${unknown.length === 1 ? "isn't one of" : "aren't"} the project's repositories` : undefined;
 }
 
 /** The fields of a patch that shape how the task runs: set only while it's in To do. */
@@ -198,49 +191,9 @@ export function createCorePlugin(ctx: KanbanContext, subs: KanbanSubscriptions):
     },
 
     'kanban.task.create': async (c, m) => {
-      const input = m.task;
-      if (!ctx.project(input.project)) return fail(c, m.rid, `There's no project ${input.project}`);
-      const why = checkRepoIds(ctx, input.project, input.repoIds);
-      if (why) return fail(c, m.rid, why);
-      const d = ctx.settings.get().defaults;
-      const tool = input.tool ?? d.tool;
-      const overrides: TaskOverrides = {};
-      if (input.review && Object.keys(input.review).length) overrides.review = input.review;
-      if (input.implementPermission) overrides.implementPermission = input.implementPermission;
-      const task = ctx.repo.createTask({
-        project: input.project,
-        title: input.title,
-        description: input.description ?? '',
-        type: input.type ?? 'implement',
-        ticket: input.ticket,
-        ticketUrl: input.ticketUrl,
-        repoIds: input.repoIds ?? null,
-        tool,
-        // The office's default model is for its default tool; another tool starts on its own default.
-        model: input.model ?? (tool === d.tool ? d.model : undefined),
-        effort: input.effort ?? d.effort,
-        usePlan: input.usePlan ?? d.usePlan,
-        planApproval: input.planApproval ?? ctx.settings.planApproval(input.project),
-        useReview: input.useReview ?? d.useReview,
-        goal: input.goal,
-        overrides,
-        tags: input.tags ?? [],
-        createdBy: c.name,
-        // Its drained, retried and swept hires run on this account's sign-ins.
-        ...(c.accountId ? { createdByAccount: c.accountId } : {}),
-      });
-      if (input.attachmentIds?.length) ctx.repo.linkAttachments(input.attachmentIds, task.id);
-      ctx.repo.appendEvent(task.id, 'created', { by: c.name });
-      ctx.taskChanged(task.id);
-      // The 3D issues board's card for its ticket says which task it became.
-      if (task.ticket) wallChanged(task.project);
-      let startError: string | undefined;
-      if (m.start) {
-        const err = await ctx.engine.start(task.id, c, m.deskId ? { deskId: m.deskId } : undefined);
-        if (typeof err === 'string' && err) startError = err;
-        ctx.taskChanged(task.id);
-      }
-      ok(c, m.rid, { taskId: task.id, ...(startError ? { startError } : {}) });
+      const made = await createBoardTask(ctx, m.task, c, { start: m.start, deskId: m.deskId });
+      if (typeof made === 'string') return fail(c, m.rid, made);
+      ok(c, m.rid, { taskId: made.task.id, ...(made.startError ? { startError: made.startError } : {}) });
     },
 
     'kanban.task.update': (c, m) => {
