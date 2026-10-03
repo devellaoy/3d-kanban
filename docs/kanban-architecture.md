@@ -121,10 +121,10 @@ allowed: `todo → in_progress` (= start), `waiting|review → done`, `done → 
     markers, verdicts, comments and summaries are read from; what the agent said on the way isn't part of it:
     - claude: transcript JSONL (`WorkerInfo` tracker transcript path from hooks): the `text` blocks of the
       last assistant message of the office's segment (Claude logs one message's blocks as lines
-      sharing `message.id`): the office's prompt (found by the run's `promptAt`, the time the office gave it: the launch or a restate) and the notification and teammate-message turns after it.
+      sharing `message.id`): the office's prompt (found by the run's `promptAt`, the time the office gave it: the launch or a restate, and `promptHead`, the first 80 characters of what it typed (whitespace collapsed), which picks the office's own among prompts a person typed since: the first real prompt at or after `promptAt` whose text starts with it, else the first at or after it; only `promptAt` is kept on the run, so after a restart the time alone finds it) and the notification and teammate-message turns after it.
       Any later real prompt that isn't a notification is "typed" (a person, `tell_worker`, `office-workers`, another agent): its
       turn is skipped and `TurnResult.typed` is set; `interim` says (with `typed`) that the office's turns ended with background
-      work still out (or a teammate spawned), so their text is only the interim "waiting" one. An ExitPlanMode in a typed turn still counts as the
+      work still out (or a teammate still at work by the lead's log at that point), so their text is only the interim "waiting" one. `typedOpen` says the typed turn hasn't ended in the log (no reply of text alone after the log's last prompt, or a tool runs). In a log whose CLI sets `origin` on its lines, a line that only reads like a task notification (no `origin`) is not a notice but typed. `promptAt` given but its prompt not in the log yet: `unheard`, and the last prompt's turn is read as without it; the engine holds on such a Stop. An ExitPlanMode in a typed turn still counts as the
       plan, and `toolRunning` follows the log's last message whichever turn it is in. Without a `promptAt` (the teammate gate has none, and Codex ignores it) or timestamps the last real
       prompt is the turn, as before, and nothing is typed. And, if the last assistant `tool_use` is `ExitPlanMode`, its `input.plan`.
       `TurnResult.background` counts the run's background agents still working (an async launch or a
@@ -185,7 +185,7 @@ allowed: `todo → in_progress` (= start), `waiting|review → done`, `done → 
   again, and reads it from that prompt's turn (`Live.promptAt`, kept on the run as `runs.prompted_at` so an office restart restores it; the restate count `Live.restates` is not kept, so a restart resets it). At most twice per run; over that, or when the prompt can't be
   typed, a note ("Someone typed into its terminal while it worked: went on with its last answer to the office's prompt.") is
   written and the run ends on the office segment's last text. When the typed prompt came after the agent's real answer (no
-  background work out) that answer stands and nothing is asked. The same restate covers an office Stop that came before its answer reached the log when a typed prompt follows (the office's segment is then incomplete): if the typed turn is still running, the engine waits for its Stop (a hold, no restate used up) and then asks.
+  background work out) that answer stands and nothing is asked. The same restate covers an office Stop that came before its answer reached the log when a typed prompt follows (the office's segment is then incomplete): if the typed turn is still running (the worker busy, or `typedOpen` in the log), the engine waits for its Stop (a hold, no restate used up) and then asks. The wait's timeout note says it waited for the agent's next Stop. A Stop whose typed prompt froze the answer short is not re-read for it (`readResult` returns at once).
 - **Agent-team teammates** (Claude Code's `Agent` call with a `name`) are counted in `TurnResult.background`
   too, from their own transcripts beside the lead's (`<log>/subagents/agent-*.jsonl`, `taskKind:
   in_process_teammate`): one is working when its transcript ends in a message or tool result it hasn't

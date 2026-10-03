@@ -863,7 +863,7 @@ test('a run held for background agents that never report back goes on after back
   await fx.engine.start(task.id, ADA);
   const done = await fx.waitTask(task.id, (x) => x.status === 'review', 'the review column', 15_000);
   assert.equal(done.summary, 'Waiting for the helper agent.');
-  assert.ok(fx.repo.listComments(task.id).comments.some((c) => c.authorKind === 'system' && /Waited 1 s for its background work/.test(c.text)));
+  assert.ok(fx.repo.listComments(task.id).comments.some((c) => c.authorKind === 'system' && /Waited 1 s for its agent's next Stop/.test(c.text)));
 });
 
 const reviewRuns = (fx: Awaited<ReturnType<typeof engineFixture>>, id: number) => fx.repo.listRuns(id).filter((r) => r.phase === 'review').length;

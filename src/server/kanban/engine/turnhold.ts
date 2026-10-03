@@ -15,23 +15,25 @@ export const typeable = (s: string) => s.replace(/[\x00-\x08\x0b-\x1f\x7f]/g, ''
 /** At most this many restates a run gets: an agent that keeps being typed at isn't asked for ever. */
 const MAX_RESTATES = 2;
 
-/** The part of a followed run the hold and the restate keep state in. */
+/** What the engine follows of a run (its `Live` extends it); the hold and the restate keep their state in it. */
 export interface HeldRun {
   taskId: number;
   runId: number;
   phase: RunPhase;
   workerId: string;
   floorId: string;
+  /** Claude's final answer as its Stop hook gave it (`last_assistant_message`): what the turn said when its session log still hasn't caught up by the time the engine reads it. Claude's only: a Codex turn's end is in its log. */
+  stopText?: string;
+  /** Its turn has ended and is being dealt with. */
   ended: boolean;
   /** Its turn stopped while background work it set off still works: the run goes on until a Stop with none left. */
   background?: boolean;
   /** It has been held for background work at least once: a later Stop on an unanswered notification is the resumed turn's own. */
   held?: boolean;
   holdTimer?: NodeJS.Timeout;
-  /** The Stop hook's final answer (see Live). */
-  stopText?: string;
-  /** When the office last gave the run its prompt (ms): the launch, or a restate. The answer is read from that prompt's turns. */
+  /** When the office last gave the run its prompt (the launch, a restate), and the start of its text: the answer is read from that prompt's turns. Only the time is kept across a restart. */
   promptAt?: number;
+  promptHead?: string;
   /** How many times the run was asked to restate its answer. */
   restates?: number;
   /** A restate was typed and its prompt hasn't been heard yet: a Stop meanwhile is the typed turn's again. */
@@ -48,13 +50,16 @@ export interface TurnHoldDeps<L extends HeldRun> {
   note(task: Pick<KanbanTask, 'id' | 'project'>, text: string, runId?: number): void;
   /** The run's turn ended; `force` is the hold's timeout. */
   turnEnded(live: L, planExit: boolean, force: boolean): Promise<void>;
-  /** The office gives the run a prompt now: `promptAt` is set and kept (see Orchestrator.prompted). */
-  prompted(live: L): void;
+  /** The office gives the run `text` as a prompt now: `promptAt` and `promptHead` are set, and the time kept (see Orchestrator.prompted). */
+  prompted(live: L, text: string): void;
   /** The restate prompt for the task's phase (kanban.restate with the phase's contract). */
   restateText(task: KanbanTask, phase: RunPhase): string;
   /** How long a hold waits for the run's next Stop (ms). */
   waitMs(): number;
 }
+
+/** The start of a prompt's text, whitespace collapsed: what finds the office's own prompt in the log among typed ones (see readTurnResult). */
+export const promptHead = (text: string) => text.replace(/\s+/g, ' ').trim().slice(0, 80);
 
 export class TurnHolds<L extends HeldRun> {
   constructor(private deps: TurnHoldDeps<L>) {}
@@ -71,34 +76,37 @@ export class TurnHolds<L extends HeldRun> {
   /**
    * A prompt typed into the terminal took the turn the run's background work ended in, or came before the office's answer reached the log, so the office's last text is only the interim or an unfinished one: the
    * agent is asked to give its final answer again, and the run goes on (true). Not when it was asked twice already or the prompt can't be typed:
-   * the run ends on the office's own last text (false), with a note.
+   * the run ends on the office's own last text (false), with a note. While the typed turn is still running (`typedOpen` from the log, or the worker busy) the
+   * run waits for its Stop instead, which asks again, and no restate is used up.
    */
-  restate(live: L): boolean {
+  restate(live: L, typedOpen?: boolean): boolean {
     const task = this.deps.task(live.taskId);
     const workers = this.deps.floor(live.floorId)?.workers;
-    const prompt = task && workers && (live.restates ?? 0) < MAX_RESTATES ? typeable(this.deps.restateText(task, live.phase)) : undefined;
-    // The typed turn is still running (the office's own Stop came first): wait for its Stop, which asks again; no restate is used up.
-    if (prompt && workers && isBusy(workers.get(live.workerId)?.status ?? 'idle')) {
+    const giveUp = () => {
+      if (task) this.deps.note(task, "Someone typed into its terminal while it worked: went on with its last answer to the office's prompt.", live.runId);
+      return false;
+    };
+    if (!task || !workers || (live.restates ?? 0) >= MAX_RESTATES) return giveUp();
+    if (typedOpen || isBusy(workers.get(live.workerId)?.status ?? 'idle')) {
       this.hold(live);
       return true;
     }
-    if (prompt && workers) {
-      // Set before the prompt goes in: its turn is the one the answer is read from, and a Stop on the typed turn's tail isn't it.
-      this.deps.prompted(live);
-      live.restates = (live.restates ?? 0) + 1;
-      live.stopText = undefined;
-      live.held = false;
-      live.restating = true;
-      this.arm(live);
-      if (!workers.prompt(live.workerId, prompt)) return true;
-      clearTimeout(live.holdTimer);
-      live.restating = false;
-    }
-    if (task) this.deps.note(task, 'Someone typed into its terminal while it worked: went on with its last answer to the office\'s prompt.', live.runId);
-    return false;
+    // Set before the prompt goes in: its turn is the one the answer is read from, and a Stop on the typed turn's tail isn't it.
+    const text = typeable(this.deps.restateText(task, live.phase));
+    this.deps.prompted(live, text);
+    live.restates = (live.restates ?? 0) + 1;
+    live.stopText = undefined;
+    live.held = false;
+    live.restating = true;
+    this.arm(live);
+    const err = workers.prompt(live.workerId, text);
+    if (!err) return true;
+    clearTimeout(live.holdTimer);
+    live.restating = false;
+    return giveUp();
   }
 
-  /** (Re)starts the wait for the run's next Stop; when it never comes the run goes on with what its log says. */
+  /** (Re)starts the wait for the run's next Stop (after a hold for background work, or a restate); when it never comes the run goes on with what its log says. */
   private arm(live: L) {
     clearTimeout(live.holdTimer);
     live.holdTimer = setTimeout(() => void this.deps.serial(live.taskId, async () => {
@@ -106,8 +114,8 @@ export class TurnHolds<L extends HeldRun> {
       const task = this.deps.task(live.taskId);
       const ms = this.deps.waitMs();
       const waited = ms >= 60_000 ? `${Math.round(ms / 60_000)} min` : `${Math.round(ms / 1000)} s`;
-      console.warn(`agent-office: kanban task #${live.taskId}: no Stop in ${waited} after the ${live.phase} run was held for background work: going on with what its log says`);
-      if (task) this.deps.note(task, `Waited ${waited} for its background work to report back; went on with what its log says.`, live.runId);
+      console.warn(`agent-office: kanban task #${live.taskId}: no Stop in ${waited} while the ${live.phase} run waited for its agent: going on with what its log says`);
+      if (task) this.deps.note(task, `Waited ${waited} for its agent's next Stop; went on with what its log says.`, live.runId);
       live.restating = false;
       await this.deps.turnEnded(live, false, true);
     }), this.deps.waitMs());
