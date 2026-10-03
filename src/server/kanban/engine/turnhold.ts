@@ -48,9 +48,9 @@ export interface TurnHoldDeps<L extends HeldRun> {
   note(task: Pick<KanbanTask, 'id' | 'project'>, text: string, runId?: number): void;
   /** The run's turn ended; `force` is the hold's timeout. */
   turnEnded(live: L, planExit: boolean, force: boolean): Promise<void>;
-  /** The restate prompt for the task's phase (kanban.restate with the phase's contract). */
   /** The office gives the run a prompt now: `promptAt` is set and kept (see Orchestrator.prompted). */
   prompted(live: L): void;
+  /** The restate prompt for the task's phase (kanban.restate with the phase's contract). */
   restateText(task: KanbanTask, phase: RunPhase): string;
   /** How long a hold waits for the run's next Stop (ms). */
   waitMs(): number;
