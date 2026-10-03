@@ -53,8 +53,8 @@ export interface FloorContext {
   ledger: Ledger;
   /** The office's worker limit, across every floor. */
   capacity: Capacity;
-  /** The office's prompts and the worker everyone starts on, as set in ⚙️ Settings. */
-  prompts: PromptSource;
+  /** The office's prompts and the worker everyone starts on, as set in ⚙️ Settings, with a project's own language (see server/language.ts). */
+  prompts(projectId: string): PromptSource;
   /** Workers hired by an account run on its own sign-ins (see signins.ts). */
   runAs?: RunAs;
   /** How to run gh as an account: its own sign-in, the office's (undefined), or why it can't. */
@@ -236,7 +236,7 @@ export class Floor {
       },
       ctx.ledger,
       ctx.capacity,
-      ctx.prompts,
+      ctx.prompts(def.id),
       ctx.runAs,
       ctx.dshProfile,
     );
@@ -273,7 +273,7 @@ export class Floor {
         ctx.toast(this, '📋 The queue is empty: every task is done 🎉');
         ctx.emit(this, { t: 'gong', why: 'queue' });
       },
-      worktreeNote: () => officePrompt(ctx.prompts, 'queue.worktree'),
+      worktreeNote: () => officePrompt(ctx.prompts(def.id), 'queue.worktree'),
     });
 
     // Meetings seat their own workers round the meeting room's table and run them round by round.
@@ -302,7 +302,7 @@ export class Floor {
           const as = ctx.ghAs(owner);
           return typeof as === 'string' ? Promise.reject(new Error(as)) : this.github.review(pr, file, as);
         },
-        prompt: (id) => ctx.prompts.text(id),
+        prompt: (id) => ctx.prompts(def.id).text(id),
       },
       // The office's wing rooms are only there once the floor's built out that far; another map's are all there.
       () => {

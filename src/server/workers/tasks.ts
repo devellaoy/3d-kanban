@@ -3,6 +3,7 @@
 import { officePrompt } from '../prompts.js';
 import { providerAdapter } from '../providers/index.js';
 import { TaskNamer, fallbackTask } from '../tasks.js';
+import type { WorkerKind } from '../../shared/protocol.js';
 import type { Worker, WorkerContext } from './types.js';
 
 /** How many of a worker's latest prompts and tool calls the task namer sees. */
@@ -113,4 +114,14 @@ export function withoutLaunchTail(w: Worker, prompt: string): string {
 export function firstPrompt(brief: string | undefined, prompt: string | undefined, tail: string | undefined): string | undefined {
   const request = brief && prompt ? `${brief}\n\n${prompt}` : prompt;
   return [request, tail].filter(Boolean).join('\n\n') || undefined;
+}
+
+/**
+ * The launch tail with the language rule (server/language.ts) after it, for a new plain or board agent
+ * that has a prompt to follow. A shell has none, and a kanban task's prompts carry the rule themselves.
+ * Anything else keeps its tail as it was.
+ */
+export function languageTail(rule: string | undefined, prompt: string | undefined, tail: string | undefined, kind: WorkerKind, isKanban: boolean): string | undefined {
+  if (!rule || !prompt?.trim() || kind !== 'agent' || isKanban) return tail;
+  return [tail, rule].filter(Boolean).join('\n\n') || undefined;
 }

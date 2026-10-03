@@ -6,6 +6,7 @@ import { OFFICE_MAP } from '../../shared/maps/index.js';
 import { ROOF } from '../../shared/rooftop.js';
 import type { FloorInfo, ServerMsg } from '../../shared/protocol.js';
 import type { Ctx, FloorHelpers, FloorsOpen } from './context.js';
+import { boundPrompts } from '../language.js';
 import { mpOf } from '../multiplayer/registry.js';
 import { SLOW_CLIENT_BYTES, type Client } from './client.js';
 
@@ -103,7 +104,7 @@ export async function openFloors(ctx: Ctx, hookPort: number): Promise<FloorsOpen
     hook: { url: `http://127.0.0.1:${hookPort}`, token: '' },
     ledger: ctx.ledger,
     capacity: ctx.machine,
-    prompts: ctx.prompts,
+    prompts: (id) => boundPrompts(ctx, id),
     emit: ctx.toFloor,
     toast: ctx.toastFloor,
     termData: (workerId, data, viewers) => {
