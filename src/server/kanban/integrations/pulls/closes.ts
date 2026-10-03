@@ -9,7 +9,6 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { sameRepo } from '../../../../shared/floors.js';
 import { closingPr, closingRef, parseGhKey } from '../../../../shared/kanban/issuecard.js';
-import type { GhPull } from '../../../../shared/protocol.js';
 import { gh } from '../../../github.js';
 import type { KanbanContext } from '../../registry.js';
 import type { GhRunner } from '../issues/source.js';
@@ -60,24 +59,25 @@ export async function ensureClosingRef(o: EnsureClosing): Promise<Ensured> {
       const repo = r?.repository?.owner?.login && r.repository.name ? `${r.repository.owner.login}/${r.repository.name}` : /github\.com\/([^/]+\/[^/]+)\/issues\//.exec(String(r?.url ?? ''))?.[1];
       return Number(r?.number) === issue.number && sameRepo(repo ?? prRepo, issue.repo);
     });
-    if (linked || closesIn(body, issue, prRepo)) return { edited: false };
-    const line = closingRef(o.ref, prRepo);
-    if (!line) return { edited: false };
-    tmp = await mkdtemp(path.join(tmpdir(), 'office-closes-'));
-    const file = path.join(tmp, 'body.md');
-    await writeFile(file, body.trim() ? `${body.trimEnd()}\n\n${line}\n` : `${line}\n`);
-    await run(['pr', 'edit', o.prUrl, '--body-file', file], o.cwd, 60_000, o.env);
+    const edited = !(linked || closesIn(body, issue, prRepo));
+    if (edited) {
+      const line = closingRef(o.ref, prRepo);
+      if (!line) return { edited: false };
+      tmp = await mkdtemp(path.join(tmpdir(), 'office-closes-'));
+      const file = path.join(tmp, 'body.md');
+      await writeFile(file, body.trim() ? `${body.trimEnd()}\n\n${line}\n` : `${line}\n`);
+      await run(['pr', 'edit', o.prUrl, '--body-file', file], o.cwd, 60_000, o.env);
+    }
+    // Closing it is for nothing when the PR doesn't go to the default branch, line added or not.
     const base = typeof view.baseRefName === 'string' ? view.baseRefName : undefined;
     const def = o.defaultBranch ?? (prRepo ? (await run(['repo', 'view', prRepo, '--json', 'defaultBranchRef', '--jq', '.defaultBranchRef.name'], o.cwd, 30_000, o.env).catch(() => '')).trim() : '');
-    return base && def && base !== def ? { edited: true, warning: `PR targets \`${base}\`, not the default branch: GitHub closes ${o.ref.replace(/^gh:/, '')} only when it reaches the default branch` } : { edited: true };
+    return base && def && base !== def ? { edited, warning: `PR targets \`${base}\`, not the default branch: GitHub closes ${o.ref.replace(/^gh:/, '')} only when it reaches the default branch` } : { edited };
   } catch (err) {
     return { edited: false, warning: `Couldn't add "${closingRef(o.ref, prRepo)}" to ${o.prUrl}: ${(err as Error).message}` };
   } finally {
     if (tmp) await rm(tmp, { recursive: true, force: true }).catch(() => undefined);
   }
 }
-
-type Pulled = Pick<GhPull, 'number' | 'repo'> & { closes?: number[] };
 
 /** How many times a pull request gh couldn't show is tried before it is given up on. */
 const READ_TRIES = 3;
@@ -90,7 +90,6 @@ const READ_TRIES = 3;
 export function checkClosing(
   ctx: KanbanContext,
   project: string,
-  pulls: Pulled[],
   checked: Map<string, number>,
   io: { run: GhRunner; defaultBranch(repo: string): Promise<string | undefined> },
 ): void {
@@ -103,12 +102,6 @@ export function checkClosing(
     const mine = links.filter((l) => l.taskId === task.id).map((l) => ({ ...l, repo: l.repo ?? repos.find((r) => r.id === l.repoId)?.remote }));
     const pick = closingPr(task.ticket, mine, home);
     if (!pick || (checked.get(pick.url) ?? 0) >= READ_TRIES) continue;
-    const gh = parseGhKey(task.ticket)!;
-    const p = pulls.find((x) => x.number === pick.number && sameRepo(x.repo ?? home, pick.repo));
-    if (p && sameRepo(pick.repo, gh.repo) && p.closes?.includes(gh.number)) {
-      checked.set(pick.url, READ_TRIES);
-      continue;
-    }
     const tries = (checked.get(pick.url) ?? 0) + 1;
     checked.set(pick.url, READ_TRIES);
     const as = ctx.ghAs?.(task.createdByAccount);

@@ -224,9 +224,8 @@ export class TaskQueue {
       const first = t.pr?.number !== pr.number;
       t.pr = pr;
       changed = true;
-      // A PR whose description GitHub doesn't read as closing the task's issue.
-      const wants = t.issue !== undefined || !!t.issueKey;
-      if (first && wants && !(t.issue !== undefined && match.closes.includes(t.issue))) this.events.prLinked?.({ ...t }, { number: pr.number, url: pr.url });
+      // The floor checks the description itself: `closes` has numbers only, from any repository.
+      if (first && (t.issue !== undefined || t.issueKey)) this.events.prLinked?.({ ...t }, { number: pr.number, url: pr.url });
     }
     if (changed) this.changed();
   }

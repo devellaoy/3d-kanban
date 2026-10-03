@@ -51,7 +51,7 @@ const isOpen = (p: { state: string }) => p.state !== 'MERGED' && p.state !== 'CL
 
 export function createPullsParts(ctx: KanbanContext, opts: PullsOptions = {}) {
   const now = opts.now ?? Date.now;
-  const runGh = opts.gh ?? ((args: string[], cwd: string, timeout?: number) => gh(args, cwd, timeout));
+  const runGh = opts.gh ?? ((args: string[], cwd: string, timeout?: number, env?: Record<string, string>) => gh(args, cwd, timeout, env));
 
   /** A repository's PRs: the open floor's board list when it has one, else straight from gh. */
   const listPulls = async (project: string, r: ProjectRepo & { remote: string }): Promise<RepoPulls> => {
@@ -234,7 +234,7 @@ export function createPullsParts(ctx: KanbanContext, opts: PullsOptions = {}) {
    * sync). Each such link is an event on the task. The browsers hear about the cards that changed.
    * Returns those tasks' ids.
    */
-  const syncPrStates = async (project: string, pulls: (Pick<GhPull, 'number' | 'url' | 'state' | 'isDraft' | 'repo'> & { closes?: number[]; headRefName?: string; createdAt?: string; isCrossRepository?: boolean })[]): Promise<number[]> => {
+  const syncPrStates = async (project: string, pulls: (Pick<GhPull, 'number' | 'url' | 'state' | 'isDraft' | 'repo'> & { headRefName?: string; createdAt?: string; isCrossRepository?: boolean })[]): Promise<number[]> => {
     if (!pulls.length) return [];
     const links = ctx.repo.prLinksOfProject(project);
     const reposMemo = new Map<string, ProjectRepo[]>();
@@ -266,7 +266,7 @@ export function createPullsParts(ctx: KanbanContext, opts: PullsOptions = {}) {
       changed.add(b.taskId);
     }
     for (const id of changed) ctx.taskChanged(id);
-    checkClosing(ctx, project, pulls, closingChecked, { run: runGh, defaultBranch: (repo) => defaultBranches.get(repo) });
+    checkClosing(ctx, project, closingChecked, { run: runGh, defaultBranch: (repo) => defaultBranches.get(repo) });
     return [...changed];
   };
 

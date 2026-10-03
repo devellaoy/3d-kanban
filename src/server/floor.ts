@@ -366,6 +366,11 @@ export class Floor {
    * A card that isn't a GitHub issue (Jira, a draft) is left be. Resolves to why not, or nothing.
    */
   async claimCard(issue: number | undefined, key: string | undefined, as?: GhAs): Promise<string | undefined> {
+    // A project's draft has no assignee, only a Status.
+    if (key?.startsWith('ghp:')) {
+      void progressIssue(this.id, key, as?.env).then((w) => w && this.ctx.toast(this, `📋 ${w}`, 'warn'));
+      return undefined;
+    }
     // The issue is the one the key names, whatever number came with it; without a key, the floor's own repository's.
     const gh = key ? parseGhKey(key) : issue ? { repo: this.def.repo ?? (this.git ? checkoutRepo(this.dir) : undefined), number: issue } : undefined;
     if (!gh) return undefined;
