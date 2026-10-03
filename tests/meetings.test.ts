@@ -8,8 +8,8 @@ import { MeetingRooms } from '../src/server/meeting-rooms.js';
 import type { MeetingWorkers } from '../src/server/meetings.js';
 import { MEETING_ROOMS, type MeetingRoomDef } from '../src/shared/layout.js';
 import { Worktrees } from '../src/server/worktrees.js';
-import type { AgentChoice, MeetingRequest, WorkerInfo } from '../src/shared/protocol.js';
-import { MEETING_PATTERN_IDS, isMeetingPattern } from '../src/shared/meetings.js';
+import type { AgentChoice, Meeting, MeetingRequest, WorkerInfo } from '../src/shared/protocol.js';
+import { MEETING_PATTERN_IDS, RECORD_PROMPT_MAX, isMeetingId, isMeetingPattern, meetingRecord, slimRecord } from '../src/shared/meetings.js';
 import { PROMPTS, type PromptId } from '../src/shared/prompts.js';
 
 function fixture(opts: { rooms?: MeetingRoomDef[]; git?: boolean; rewritten?: Partial<Record<PromptId, string>>; officeDefault?: AgentChoice } = {}) {
@@ -533,4 +533,62 @@ test('a room can be walled up only once nothing is on in it and nobody sits at i
   f.room.release('review');
   assert.deepEqual(f.room.state().rooms.map((r) => r.id), ['meeting']);
   assert.equal(f.room.state().past[0]?.title, 'Wing', 'the finished meeting went on the earlier ones');
+});
+
+test('a finished meeting is listed in full while it sits on its table; archiving writes its full record to its folder and only a line to the state', async (t) => {
+  const f = fixture(); t.after(() => f.close());
+  assert.deepEqual(f.room.finished(), []);
+  assert.equal(f.start({ title: 'First' }), undefined);
+  assert.deepEqual(f.room.finished(), [], 'a running meeting is not finished');
+  const id = f.cur()!.id;
+  assert.equal(f.room.stop('Ada'), undefined);
+  const [fin] = f.room.finished();
+  assert.equal(fin.id, id);
+  assert.equal(fin.prompt, 'Which cache should we use?');
+  assert.equal(fin.notesDir, `meetings/${id}`);
+  assert.equal(f.room.archiveDir(), path.join(f.dataDir, 'meetings'));
+  // The next meeting in that room archives the first.
+  assert.equal(f.start({ title: 'Second' }), undefined);
+  const full = JSON.parse(readFileSync(path.join(f.dataDir, 'meetings', id, '.meeting.json'), 'utf8'));
+  assert.equal(full.id, id);
+  assert.equal(full.prompt, 'Which cache should we use?');
+  assert.ok(Array.isArray(full.seats) && full.seats.length === 3);
+  const line = f.room.state().past[0];
+  assert.equal(line.id, id);
+  for (const k of ['prompt', 'seats', 'rounds', 'tokens', 'cost', 'commit', 'pr', 'reviewUrl', 'notesDir']) assert.ok(!(k in line), `${k} stays out of the state`);
+  assert.equal(f.room.pastRecords()[0].id, id);
+});
+
+test('releasing a room writes its finished meeting’s full record too', async (t) => {
+  const f = fixture({ rooms: MEETING_ROOMS }); t.after(() => f.close());
+  assert.equal(f.start({ room: 'review', title: 'Wing' }), undefined);
+  const id = f.cur(1)!.id;
+  assert.equal(f.room.stop('Ada', 'review'), undefined);
+  assert.equal(f.room.clear('Ada', 'review'), undefined);
+  for (const w of [...f.workers]) await f.kill(w.id);
+  f.useRooms(MEETING_ROOMS.filter((r) => (r.level ?? 0) < 1));
+  f.room.release('review');
+  assert.equal(JSON.parse(readFileSync(path.join(f.dataDir, 'meetings', id, '.meeting.json'), 'utf8')).title, 'Wing');
+});
+
+test('a meetings.json from before the full records loads, its lines as they were', (t) => {
+  const f = fixture(); t.after(() => f.close());
+  f.room.shutdown();
+  writeFileSync(path.join(f.dataDir, 'meetings.json'), JSON.stringify({ rooms: {}, past: [{ id: 'aaaaaaaa', pattern: 'debate', title: 'Old', status: 'done', summary: 'it was', calledBy: 'Ada', finishedAt: 1, output: 'o.md' }] }));
+  const again = new MeetingRooms(f.dir, f.dataDir, f.manager, undefined, { update() {}, toast() {}, hiringPaused: () => undefined, postReview: async () => '' }, () => f.rooms);
+  t.after(() => again.shutdown());
+  assert.equal(again.pastRecords()[0].title, 'Old');
+  assert.equal(again.pastRecords()[0].prompt, undefined);
+});
+
+test('a meeting’s full record keeps its details, cuts a long question short, and its state line drops them', () => {
+  const m = { id: 'aaaaaaaa', room: 'meeting', pattern: 'debate', title: 'T', status: 'done', calledBy: 'Ada', finishedAt: 5, output: 'o.md', prompt: 'x'.repeat(RECORD_PROMPT_MAX + 50), round: 2, tokens: 10, cost: 0.5, costKnown: true, commit: 'abc', pr: 7, review: { url: 'https://r' }, seats: [{ role: 'Chair', workerName: 'W1' }, { role: 'Skeptic' }], turns: [] } as unknown as Meeting;
+  const r = meetingRecord(m);
+  assert.equal(r.prompt!.length, RECORD_PROMPT_MAX + 1);
+  assert.deepEqual(r.seats, [{ role: 'Chair', workerName: 'W1' }, { role: 'Skeptic' }]);
+  assert.deepEqual([r.rounds, r.tokens, r.cost, r.commit, r.pr, r.reviewUrl, r.notesDir], [2, 10, 0.5, 'abc', 7, 'https://r', 'meetings/aaaaaaaa']);
+  assert.equal(meetingRecord({ ...m, costKnown: false }).cost, undefined);
+  const slim = slimRecord(r);
+  assert.deepEqual(Object.keys(slim).sort(), ['branch', 'calledBy', 'finishedAt', 'id', 'output', 'pattern', 'room', 'status', 'summary', 'title']);
+  assert.ok(isMeetingId('0a1b2c3d') && !isMeetingId('../etc') && !isMeetingId('0A1B2C3D'));
 });

@@ -168,9 +168,28 @@ export function meetingSummary(m: Meeting): string {
   return `${head} · ✅ ${m.output}${where}`;
 }
 
+/** The most of a meeting's question its full record keeps. */
+export const RECORD_PROMPT_MAX = 8000;
+
+/** A meeting that's over, in full: what MeetingState's `past` has (see slimRecord), and what the earlier-meetings view shows. */
 export function meetingRecord(m: Meeting): MeetingRecord {
-  return { id: m.id, room: m.room, pattern: m.pattern, title: m.title, status: m.status, summary: meetingSummary(m), calledBy: m.calledBy, finishedAt: m.finishedAt ?? Date.now(), branch: m.worktree?.branch, output: m.output };
+  return {
+    id: m.id, room: m.room, pattern: m.pattern, title: m.title, status: m.status, summary: meetingSummary(m), calledBy: m.calledBy, finishedAt: m.finishedAt ?? Date.now(), branch: m.worktree?.branch, output: m.output,
+    prompt: m.prompt.length > RECORD_PROMPT_MAX ? `${m.prompt.slice(0, RECORD_PROMPT_MAX)}…` : m.prompt,
+    seats: m.seats.map((s) => ({ role: s.role, ...(s.workerName ? { workerName: s.workerName } : {}) })),
+    rounds: m.round, tokens: m.tokens, ...(m.costKnown ? { cost: m.cost } : {}),
+    ...(m.commit ? { commit: m.commit } : {}), ...(m.pr !== undefined ? { pr: m.pr } : {}), ...(m.review?.url ? { reviewUrl: m.review.url } : {}),
+    notesDir: `meetings/${m.id}`,
+  };
 }
+
+/** Just the line a record needs in MeetingState's `past`, which goes to every browser (and visitor) every few seconds. */
+export function slimRecord(r: MeetingRecord): MeetingRecord {
+  return { id: r.id, room: r.room, pattern: r.pattern, title: r.title, status: r.status, summary: r.summary, calledBy: r.calledBy, finishedAt: r.finishedAt, branch: r.branch, output: r.output };
+}
+
+/** Whether a string is a meeting's id (8 hex digits, see MeetingRoom.start): the only folder names the archive serves. */
+export const isMeetingId = (s: string): boolean => /^[0-9a-f]{8}$/.test(s);
 
 /** The first meeting room's id: where meetings saved before there were several are. */
 export const FIRST_MEETING_ROOM = 'meeting';

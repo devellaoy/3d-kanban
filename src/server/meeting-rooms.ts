@@ -1,8 +1,8 @@
 // The floor's meeting rooms: each its own meeting, chairs and state (see meetings.ts), with a new meeting going to the first free one.
-import { existsSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { MEETING_ROOMS, type MeetingRoomDef } from '../shared/layout.js';
-import { FIRST_MEETING_ROOM, isMeetingPattern, meetingRecord } from '../shared/meetings.js';
+import { FIRST_MEETING_ROOM, isMeetingId, isMeetingPattern, meetingRecord, slimRecord } from '../shared/meetings.js';
 import type { Meeting, MeetingRecord, MeetingRequest, MeetingState, WorkerInfo } from '../shared/protocol.js';
 import { MeetingRoom, type MeetingEvents, type MeetingTrees, type MeetingWorkers } from './meetings.js';
 
@@ -66,7 +66,7 @@ export class MeetingRooms {
   release(id: string) {
     const e = this.engines.get(id);
     const m = e?.peek();
-    if (m && m.status !== 'running') this.past = [meetingRecord(m), ...this.past.filter((r) => r.id !== m.id)].slice(0, PAST_MAX); // a finished meeting goes on the earlier ones
+    if (m && m.status !== 'running') this.keep(meetingRecord(m)); // a finished meeting goes on the earlier ones
     e?.shutdown(); // its timer goes with it
     this.engines.delete(id);
     this.persist();
@@ -76,6 +76,24 @@ export class MeetingRooms {
   /** The map's rooms changed (the meeting wing was built out or walled up): everyone is told which there are. */
   refresh() {
     this.events.update(this.state());
+  }
+
+  /** The meetings that are over but still on their room's table (not cleared yet), in full. */
+  finished(): MeetingRecord[] {
+    return [...this.engines.values()].flatMap((e) => {
+      const m = e.peek();
+      return m && m.status !== 'running' ? [meetingRecord(m)] : [];
+    });
+  }
+
+  /** The earlier meetings the state lists (a line each, see slimRecord). */
+  pastRecords(): MeetingRecord[] {
+    return this.past.slice();
+  }
+
+  /** Where the meetings' notes folders are, one per meeting id. */
+  archiveDir(): string {
+    return path.join(this.dataDir, 'meetings');
   }
 
   /** Whether a meeting is running in any room. */
@@ -164,9 +182,7 @@ export class MeetingRooms {
         },
         save: () => this.persist(),
         outputBusy: (room, output) => this.outputBusy(room, output),
-        archive: (record) => {
-          this.past = [record, ...this.past.filter((r) => r.id !== record.id)].slice(0, PAST_MAX);
-        },
+        archive: (record) => this.keep(record),
       }, def);
       this.engines.set(def.id, e);
     } else e.def = def;
@@ -177,6 +193,19 @@ export class MeetingRooms {
   private outputBusy(room: string, output: string): string | undefined {
     const same = [...this.engines.values()].find((e) => e.def.id !== room && e.peek()?.status === 'running' && !e.peek()!.worktree && e.peek()!.output === output);
     return same && `The ${same.def.label}'s meeting is already writing ${output}: give this one another output file`;
+  }
+
+  /** Puts a finished meeting on the earlier ones (a line each) and its full record in its own notes folder, where the archive reads it. */
+  private keep(record: MeetingRecord) {
+    this.past = [slimRecord(record), ...this.past.filter((r) => r.id !== record.id)].slice(0, PAST_MAX);
+    if (!isMeetingId(record.id)) return;
+    try {
+      const dir = path.join(this.archiveDir(), record.id);
+      mkdirSync(dir, { recursive: true });
+      writeFileSync(path.join(dir, '.meeting.json'), JSON.stringify(record, null, 2), { mode: 0o600 });
+    } catch {
+      // disk issues shouldn't take the office down
+    }
   }
 
   private persist() {
