@@ -13,6 +13,7 @@ import { store } from '../../state';
 import { modalOpen, toast } from '../../ui/dom';
 import { PIECES, PIECE_FLOOR, check, colliderOf, footprint, snap, turn, type Piece, type PieceKind, type Surroundings, type Verdict } from './model';
 import { buildGhost, buildPiece, heightOf, tintGhost } from './pieces';
+import { makeFixtureBuild } from './fixtures';
 import { makeBuildSeats } from './sit';
 import { loadPieces, newId, savePieces } from './store';
 import { openCatalogue } from './ui';
@@ -42,6 +43,8 @@ export function installBuild(ctx: Ctx) {
   const live = new Map<string, Live>();
   /** Sitting on the chairs and sofas (see sit.ts). */
   const sit = makeBuildSeats(ctx);
+  /** The office's own furniture, which is the floor's (see fixtures.ts). */
+  const fx = makeFixtureBuild(ctx);
   /** The floor whose pieces are up. */
   let floor: string | null = null;
 
@@ -124,6 +127,7 @@ export function installBuild(ctx: Ctx) {
     sit.standUp();
     ctx.activities.stopAll('start', ['build']);
     active = true;
+    fx.enter();
     ctx.hint.invalidate();
     ctx.hud.refresh();
     showCatalogue();
@@ -133,6 +137,7 @@ export function installBuild(ctx: Ctx) {
   function exit() {
     if (!active) return;
     drop();
+    fx.exit();
     active = false;
     aimed = null;
     outline.visible = false;
@@ -148,6 +153,7 @@ export function installBuild(ctx: Ctx) {
     }
     holding = null;
     selected = null;
+    fx.cancel();
     if (ghost) ghost.group.visible = false;
     spot = null;
     ctx.hint.invalidate();
@@ -163,6 +169,12 @@ export function installBuild(ctx: Ctx) {
         ctx.hint.invalidate();
       },
       onClose: () => (catalogueClosedAt = performance.now()),
+      bringBack: (id) => {
+        catalogueClosedAt = performance.now();
+        drop();
+        fx.bringBack(id);
+      },
+      reset: () => ctx.net.send({ t: 'furniture.reset' }),
     });
   }
 
@@ -170,7 +182,7 @@ export function installBuild(ctx: Ctx) {
   let lastHint = '';
   function hintKey(): string {
     const verdict = spot?.verdict;
-    return `build|${selected ?? '-'}|${holding ? 'h' : ''}|${aimed ? aimed.piece.kind : '-'}|${verdict ? (verdict.ok ? 'ok' : verdict.why) : '-'}|${rot}`;
+    return `build|${selected ?? '-'}|${holding ? 'h' : ''}|${aimed ? aimed.piece.kind : '-'}|${verdict ? (verdict.ok ? 'ok' : verdict.why) : '-'}|${rot}|${fx.hint()?.key ?? ''}`;
   }
 
   /** When the last Esc stepped back: the one press can reach us as the mouse being freed and as a keydown. */
@@ -180,7 +192,8 @@ export function installBuild(ctx: Ctx) {
     const now = performance.now();
     if (now - backAt < 250) return;
     backAt = now;
-    if (selected) drop();
+    if (fx.holding()) fx.cancel();
+    else if (selected) drop();
     else exit();
   }
 
@@ -194,6 +207,15 @@ export function installBuild(ctx: Ctx) {
   function aim() {
     ray.setFromCamera(middle, ctx.camera);
     ray.far = REACH * 2;
+    // Carrying one of the floor's own pieces: it follows where you aim on the floor.
+    if (fx.holding()) {
+      aimed = null;
+      outline.visible = false;
+      spot = null;
+      if (ghost) ghost.group.visible = false;
+      fx.carry(ray.ray.intersectPlane(plane, hitPoint) && hitPoint.distanceTo(ray.ray.origin) <= REACH * 2 ? hitPoint : null);
+      return;
+    }
     // A piece you're pointing at, when you hold none.
     aimed = null;
     if (!selected) {
@@ -205,6 +227,8 @@ export function installBuild(ctx: Ctx) {
         }
       }
     }
+    // Otherwise one of the floor's own, if that's what you aim at.
+    fx.aim(ray, !selected && !aimed);
     if (aimed) {
       const f = footprint(aimed.piece);
       (outline.box as THREE.Box3).min.set(f.minX, 0, f.minZ);
@@ -244,6 +268,7 @@ export function installBuild(ctx: Ctx) {
     if (ctx.player.pos.y < -1.5) return exit();
     if (modalOpen()) {
       outline.visible = false;
+      fx.hide();
       if (ghost) ghost.group.visible = false;
       return;
     }
@@ -296,6 +321,7 @@ export function installBuild(ctx: Ctx) {
       if (why !== 'walk') exit();
     },
     key: (e) => {
+      if (fx.onKey(e.code, !!selected || !!aimed)) return true;
       switch (e.code) {
         case 'Escape':
           back();
@@ -321,6 +347,8 @@ export function installBuild(ctx: Ctx) {
     },
     hint: (el) => {
       ctx.hint.draw(el, hintKey(), () => {
+        const own = !selected && !aimed ? fx.hint() : null;
+        if (own) return [...own.parts, key('B', 'Catalogue'), ...(fx.holding() ? [] : [key('U', 'Done')])];
         if (selected) {
           const def = PIECES[selected];
           const title = !spot ? `🛠️ Aim at the floor (${def.label})` : !spot.verdict.ok ? `🚫 ${WHY[spot.verdict.why]}` : `🛠️ ${holding ? 'Moving' : 'Placing'} ${def.label.toLowerCase()}`;
@@ -333,7 +361,9 @@ export function installBuild(ctx: Ctx) {
 
   // A click places (a first click only takes the mouse, as everywhere else).
   ctx.canvas.addEventListener('pointerdown', (e) => {
-    if (!active || e.button !== 0 || modalOpen() || !selected) return;
+    if (!active || e.button !== 0 || modalOpen()) return;
+    if (fx.holding()) return void (ctx.player.locked || !ctx.player.canLock ? fx.putDown() : undefined);
+    if (!selected) return;
     if (ctx.player.locked || !ctx.player.canLock) putDown();
   });
   // Esc frees the mouse before the page sees the key; that steps back too. A window opening or closing frees it as well, which isn't.

@@ -93,6 +93,9 @@ export const CLIENT_MSG_CLASS = {
   'desk.label': 'deny',
   'floor.expand': 'deny',
   'floor.shrink': 'deny',
+  'furniture.move': 'deny',
+  'furniture.remove': 'deny',
+  'furniture.reset': 'deny',
 
   // --- Workers. Watching a terminal grants no input (term.input is separate), but the worker id is
   // not tied to the visitor's floor, so attach and the changes views check the worker's floor. ---

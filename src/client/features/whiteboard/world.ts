@@ -1,7 +1,9 @@
 import * as THREE from 'three';
+import { worldRect } from '../../../shared/arrange';
 import { WHITEBOARD } from '../../../shared/layout';
 import { mesh, roundedBox, textPlane, toon } from '../../world/toon';
 import type { Collider, Interactable } from '../../world/types';
+import { fitTo, standIn } from '../../world/office/arrange';
 import type { Fixture } from '../../world/office/fixture';
 
 // The whiteboard: a rolling whiteboard on casters out on the open floor, with a marker tray. Its
@@ -128,7 +130,24 @@ declare module '../../world/types' {
 }
 
 /** The whiteboard, out on the floor between the desks and the lounge. */
-export const whiteboard: Fixture<'whiteboard'> = () => {
+export const whiteboard: Fixture<'whiteboard'> = (site) => {
   const built = buildWhiteboard();
+  const { group, colliders, interactable } = built;
+  // Build mode moves it, turns it and takes it out (see shared/arrange.ts); the drawing stays on it.
+  site.movables.set('whiteboard', {
+    group,
+    colliders,
+    place(pose, held = false) {
+      group.visible = !!pose;
+      interactable.off = !pose || held;
+      standIn(site.colliders, colliders, !!pose && !held);
+      if (!pose) return;
+      group.position.set(pose.x, 0, pose.z);
+      group.rotation.y = pose.rotY;
+      [interactable.x, interactable.z] = [pose.x + Math.sin(pose.rotY) * 1.7, pose.z + Math.cos(pose.rotY) * 1.7];
+      const post = WHITEBOARD.width / 2 + 0.1;
+      fitTo(colliders[0], worldRect(pose, [-post - 0.1, post + 0.1, -0.48, 0.48]));
+    },
+  });
   return { group: built.group, colliders: built.colliders, interactables: [built.interactable], handle: { whiteboard: built } };
 };

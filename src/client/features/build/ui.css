@@ -7,3 +7,9 @@
 .bd-icon { font-size: 34px; line-height: 1.1; }
 .bd-name { font-weight: 900; font-size: 14px; }
 .bd-size { font-size: 11.5px; font-weight: 700; color: var(--muted); }
+.bd-office { margin-top: 18px; padding-top: 12px; border-top: var(--bw-sm) solid var(--ink); }
+.bd-office h3 { margin: 0 0 6px; font-size: 15px; font-weight: 900; }
+.bd-none { margin: 0 0 10px; font-size: 13px; font-weight: 700; color: var(--muted); }
+.bd-reset { margin-top: 12px; }
+.modal.build-confirm { width: min(440px, 100%); }
+.bd-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 12px; }

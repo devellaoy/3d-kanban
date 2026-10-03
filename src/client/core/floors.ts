@@ -19,11 +19,11 @@ export function floorWings(floors: FloorInfo[]): number[] {
 /**
  * Whether seat `id` is there to sit at on this floor: a back office desk only once the floor's built
  * out that far, on whichever map (the castle names seats for them too, so a worker hired there has
- * one on every map).
+ * one on every map), and a desk or bean bag the floor has taken out (see shared/arrange.ts) isn't.
  */
 export function seatBuilt(id: string): boolean {
   const d = DESK_BY_ID.get(id);
-  return !d || deskBuilt(d, store.floorPlan.wing);
+  return !d || (deskBuilt(d, store.floorPlan.wing) && !store.plan().removed?.has(d.watch ?? d.id));
 }
 
 /**

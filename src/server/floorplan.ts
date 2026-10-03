@@ -1,17 +1,23 @@
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
+import { MOVABLE_BY_ID, NONE_REMOVED, nameOf, removedSeats, sentence, type Furniture, type Layout } from '../shared/arrange.js';
+import { checkPlace, whyNot, withSpot } from '../shared/arrange-check.js';
 import { canLabel, cleanLabel, cleanPlan, rowDesks, signColor, type DeskLabel, type FloorPlan } from '../shared/floorplan.js';
-import { DESK_BY_ID, MEETING_ROOMS, ROOMS_WING, WING } from '../shared/layout.js';
+import { DESKS, DESK_BY_ID, MEETING_ROOMS, ROOMS_WING, WING, WING_DESKS, deskBuilt, watchSpotOf } from '../shared/layout.js';
 
 /**
- * A floor's own layout: the signs over its desks, and how far its back office is built out. Saved in
- * .agent-office/floorplan.json.
+ * A floor's own layout: the signs over its desks, how far its back office is built out, and where its
+ * loose furniture stands (shared/arrange.ts). Saved in .agent-office/floorplan.json.
  */
 export class FloorPlanStore {
   private plan: FloorPlan;
   private file: string;
 
-  constructor(dataDir: string) {
+  /** `officeMap`: whether the building is on the office's own map: only that one has the furniture's arrangement in force. */
+  constructor(
+    dataDir: string,
+    private officeMap: () => boolean = () => true,
+  ) {
     this.file = path.join(dataDir, 'floorplan.json');
     this.plan = this.load();
     // A meeting still going in a room of the meeting wing (saved before it was a wing to build out, or
@@ -21,10 +27,88 @@ export class FloorPlanStore {
       this.plan.rooms = need;
       this.save();
     }
+    // A worker still at a desk or bean bag the floor had taken out (saved with it, or the plan edited by hand): the seat is back.
+    const back = seatsInUse(dataDir).filter((id) => this.plan.furniture[id] && 'removed' in this.plan.furniture[id]);
+    if (back.length) {
+      this.plan.furniture = Object.fromEntries(Object.entries(this.plan.furniture).filter(([id]) => !back.includes(id)));
+      this.save();
+    }
   }
 
   state(): FloorPlan {
-    return { wing: this.plan.wing, rooms: this.plan.rooms, labels: { ...this.plan.labels } };
+    return { wing: this.plan.wing, rooms: this.plan.rooms, labels: { ...this.plan.labels }, furniture: this.plan.furniture };
+  }
+
+  /** Where the loose furniture stands (replaced, never changed, when it moves). */
+  get furniture(): Furniture {
+    return this.plan.furniture;
+  }
+
+  /** The desks and bean bags the floor has taken out. */
+  get removed(): Set<string> {
+    return removedSeats(this.plan.furniture);
+  }
+
+  /** The ones that count as taken out here: none, on a map that isn't the office's. */
+  seatsOut(): ReadonlySet<string> {
+    return this.officeMap() ? this.removed : NONE_REMOVED;
+  }
+
+  /** How far the back office and meeting wing are built, and where the furniture stands: what the walking grid is made from. */
+  layout(): Layout {
+    return { wing: this.plan.wing, rooms: this.plan.rooms, furniture: this.officeMap() ? this.plan.furniture : undefined };
+  }
+
+  /** Moves a piece of furniture, or puts one that was taken out back where it's asked: its name, or why not. `spot` is checked here (see shared/arrange-check.ts). */
+  arrange(id: unknown, spot: unknown): string | { id: string; label: string; back: boolean } {
+    const m = typeof id === 'string' ? MOVABLE_BY_ID.get(id) : undefined;
+    if (!m) return 'There is nothing like that to move';
+    const s = spot && typeof spot === 'object' ? (spot as Record<string, unknown>) : {};
+    const to = { x: Number(s.x), z: Number(s.z), r: Number(s.r ?? 0) };
+    const v = checkPlace(this.plan.furniture, m.id, to);
+    if (!v.ok) return whyNot(v, nameOf(m));
+    const back = !!this.plan.furniture[m.id] && 'removed' in this.plan.furniture[m.id];
+    this.plan.furniture = withSpot(this.plan.furniture, m.id, { x: Math.round(to.x * 100) / 100, z: Math.round(to.z * 100) / 100, r: to.r });
+    this.save();
+    return { id: m.id, label: nameOf(m), back };
+  }
+
+  /** Takes a piece of furniture out of the floor, unless somebody's at it (`taken`) or it's the last desk. Its name, or why not. */
+  remove(id: unknown, taken: (deskId: string) => boolean): string | { id: string; label: string } {
+    const m = typeof id === 'string' ? MOVABLE_BY_ID.get(id) : undefined;
+    if (!m) return 'There is nothing like that to take out';
+    const f = this.plan.furniture[m.id];
+    if (f && 'removed' in f) return `${sentence(nameOf(m))} is already gone`;
+    if ((m.kind === 'desk' || m.kind === 'beanbag') && (taken(m.id) || taken(watchSpotOf(m.id)))) return `Someone's at ${DESK_BY_ID.get(m.id)?.label ?? 'it'}: send them home first`;
+    if (m.kind === 'desk' && !this.otherDesks(m.id)) return 'The floor needs at least one desk';
+    this.plan.furniture = { ...this.plan.furniture, [m.id]: { removed: true } };
+    this.save();
+    return { id: m.id, label: nameOf(m) };
+  }
+
+  /** Whether a desk other than `id` is built (the back office `wing` rows out) and standing on this floor. */
+  private otherDesks(id: string, wing = this.plan.wing): boolean {
+    return [...DESKS, ...WING_DESKS].some((d) => d.id !== id && deskBuilt(d, wing) && !(this.plan.furniture[d.id] && 'removed' in this.plan.furniture[d.id]));
+  }
+
+  /** Puts a piece of furniture back where it comes (as far as that's allowed, standing free), or all of it. The names of what was put back, or why not. */
+  reset(id?: unknown): string | { labels: string[] } {
+    if (id === undefined) {
+      const labels = Object.keys(this.plan.furniture).map((k) => (MOVABLE_BY_ID.has(k) ? nameOf(MOVABLE_BY_ID.get(k)!) : k));
+      if (!labels.length) return 'The furniture is all where it comes already';
+      this.plan.furniture = {};
+      this.save();
+      return { labels };
+    }
+    const m = typeof id === 'string' ? MOVABLE_BY_ID.get(id) : undefined;
+    if (!m || !this.plan.furniture[m.id]) return 'That is where it comes already';
+    const rest = { ...this.plan.furniture };
+    delete rest[m.id];
+    const v = checkPlace(rest, m.id, { x: m.home.x, z: m.home.z, r: 0 });
+    if (!v.ok) return whyNot(v, nameOf(m));
+    this.plan.furniture = rest;
+    this.save();
+    return { labels: [nameOf(m)] };
   }
 
   get wing(): number {
@@ -86,6 +170,7 @@ export class FloorPlanStore {
     const desks = rowDesks(this.plan.wing);
     const busy = desks.find((d) => taken(d.id));
     if (busy) return `Someone's at ${DESK_BY_ID.get(busy.id)?.label ?? 'a desk'} back there: send them home first`;
+    if (!this.otherDesks('', this.plan.wing - 1)) return 'The floor needs at least one desk: put one back first';
     this.plan.wing--;
     this.save();
     return desks.map((d) => d.id);
@@ -107,6 +192,16 @@ export class FloorPlanStore {
     } catch {
       // disk issues shouldn't take the office down
     }
+  }
+}
+
+/** The ids of the seats the floor's saved workers sit at, the spots behind them counted as the seat. */
+function seatsInUse(dataDir: string): string[] {
+  try {
+    const workers: unknown = JSON.parse(readFileSync(path.join(dataDir, 'workers.json'), 'utf8'));
+    return Array.isArray(workers) ? workers.flatMap((w) => (w && typeof (w as { deskId?: unknown }).deskId === 'string' ? [(w as { deskId: string }).deskId.replace(/^watch-/, '')] : [])) : [];
+  } catch {
+    return [];
   }
 }
 

@@ -1,6 +1,7 @@
 import type * as THREE from 'three';
 import type { FloorPalette } from '../../shared/floors';
 import { LOFT, WALL_HEIGHT, WALL_T, FLOOR, type DeskDef } from '../../shared/layout';
+import { arrangedPlan, type Layout } from '../../shared/arrange';
 import { OFFICE_PLAN, type BoardKey, type MapPlan, type Spot } from '../../shared/maps';
 import { officeNav, wayHome, wayIn, wayToBalcony, type Bounds, type NavGrid, type Pt } from '../../shared/nav';
 import type { DungeonView } from './dungeon';
@@ -87,11 +88,14 @@ function ceilingOver(x: number, z: number): number {
 
 /**
  * The office as a world. `upstairs` says whether this floor is above the bottom one (no exit door:
- * workers leave by the balcony), and `wing` how many rows its back office is built out (see WING).
+ * workers leave by the balcony), and `layout` how far its back office and meeting wing are built out
+ * (see WING) and where its loose furniture stands (see shared/arrange.ts).
  */
-export function officeWorld(office: Office, upstairs: () => boolean, wing: () => number, rooms: () => number): World {
+export function officeWorld(office: Office, upstairs: () => boolean, layout: () => Layout): World {
   return {
-    plan: OFFICE_PLAN,
+    get plan() {
+      return arrangedPlan(OFFICE_PLAN, layout().furniture);
+    },
     group: office.group,
     colliders: office.colliders,
     interactables: office.interactables,
@@ -101,11 +105,11 @@ export function officeWorld(office: Office, upstairs: () => boolean, wing: () =>
     meetingScreens: office.meetingScreens,
     gong: office.gong,
     get nav() {
-      return officeNav(wing(), rooms());
+      return officeNav(layout());
     },
     ways: {
-      home: (seat) => (upstairs() ? { way: wayToBalcony(seat, wing(), rooms()), chute: true } : { way: wayHome(seat, wing(), rooms()), chute: false }),
-      in: (seat) => wayIn(seat, wing(), rooms()),
+      home: (seat) => (upstairs() ? { way: wayToBalcony(seat, layout()), chute: true } : { way: wayHome(seat, layout()), chute: false }),
+      in: (seat) => wayIn(seat, layout()),
     },
     rain: [
       { area: FLOOR, top: ceilingOver },

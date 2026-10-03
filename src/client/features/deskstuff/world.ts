@@ -64,6 +64,8 @@ export const deskStuff: Fixture<'deskStuff'> = (site) => {
     root.userData.interact = tray;
     const lampIt: Interactable = { kind: 'deskstuff', deskId: id, decorId: LAMP_SPOT, x: view.def.x, z: view.def.z, radius: 1 };
     spots.set(id, { root, config: emptyConfig(), items: new Map(), glow: 0, lampIt });
+    // Build mode moves the desk, and these with it (see world/office/seats.ts).
+    view.group.userData.carries = [tray, lampIt];
   }
 
   function set(deskId: string, config: DeskConfig) {

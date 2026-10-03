@@ -1,9 +1,10 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
-import { BALCONY, DESKS, DESK_SIZE, EXIT_STAIRS, FLOOR, STREET_Y, WALL_HEIGHT, WINDOWS } from '../../shared/layout';
+import { BALCONY, EXIT_STAIRS, FLOOR, STREET_Y, WALL_HEIGHT, WINDOWS } from '../../shared/layout';
 import type { Theme } from '../../shared/protocol';
 import { mulberry32 } from '../../shared/rng';
 import { batWingGeometry, glowTexture } from './costumes';
+import { hangDeskDeco, type DeskDeco } from './deskdeco';
 import type { Collider, Office } from './types';
 import { SPOOKY_MOON } from './sky';
 import { mergeByMaterial, mesh, textPlane, toon, toonUnique } from './toon';
@@ -24,22 +25,9 @@ type Spot = [x: number, y: number, z: number, r: number, rotY: number];
 
 const FACE = { south: 0, north: Math.PI, east: Math.PI / 2, west: -Math.PI / 2 } as const;
 
-/** A point `lx` along and `lz` out from a desk's middle, in its own frame (see DeskDef.rotY). */
-function onDesk(d: { x: number; z: number; rotY: number }, lx: number, lz: number): [number, number] {
-  const c = Math.cos(d.rotY);
-  const s = Math.sin(d.rotY);
-  return [d.x + lx * c + lz * s, d.z - lx * s + lz * c];
-}
-
-/** On every desk, in the back corner its own knick-knack leaves free (see buildDesk), facing whoever sits there. */
-const DESK_SPOTS: Spot[] = DESKS.map((d, i) => {
-  const [x, z] = onDesk(d, i % 3 === 1 ? 0.78 : -0.78, -0.28);
-  return [x, DESK_SIZE.height, z, 0.12, d.rotY];
-});
-
-/** Jack-o'-lanterns: everywhere. */
+/** Jack-o'-lanterns: everywhere (the desks' are on the desks, see deskdeco.ts). */
 function pumpkinSpots(): Spot[] {
-  const spots: Spot[] = [...DESK_SPOTS];
+  const spots: Spot[] = [];
   // The kitchen counter, and the lounge's coffee table.
   spots.push([-13, 1.03, 12.2, 0.14, FACE.north], [-16.65, 1.03, 12.25, 0.11, FACE.north], [13, 0.46, 0.25, 0.17, FACE.west]);
   // On the window sills, looking in.
@@ -464,6 +452,7 @@ export class Holiday {
   private christmas = new THREE.Group();
   private pumpkin: THREE.MeshToonMaterial;
   private pumpkinGlow: THREE.Points<THREE.BufferGeometry, THREE.PointsMaterial>[] = [];
+  private deskDeco!: DeskDeco;
   private treeGlow: THREE.Points<THREE.BufferGeometry, THREE.PointsMaterial>[] = [];
   private bats: Bat[] = [];
   /** Bats far off round the moon, which ride along with you like the moon does. */
@@ -512,6 +501,22 @@ export class Holiday {
       into.add(...glows);
       this.pumpkinGlow.push(...glows);
     }
+
+    // On the desks: each hangs on its own desk, to go where the desk goes.
+    const stemMat = toon('#5b6e2a');
+    const bigPumpkin = pumpkinGeometry();
+    this.deskDeco = hangDeskDeco(this.office, {
+      pumpkin: (r) => {
+        const group = new THREE.Group();
+        group.add(mesh(bigPumpkin, this.pumpkin), mesh(stem, stemMat));
+        group.children.forEach((c) => c.scale.setScalar(r));
+        const glows = halos([{ p: new THREE.Vector3(0, r * 0.8, r * 1.35), size: r * 5, color: '#ffa640' }]) as THREE.Points<THREE.BufferGeometry, THREE.PointsMaterial>[];
+        group.add(...glows);
+        this.pumpkinGlow.push(...glows);
+        return { group, glows };
+      },
+      present: (i) => present(0.17, ...PAPERS[i % PAPERS.length]),
+    });
 
     const graves = new THREE.Group();
     const rip: THREE.Mesh[] = [];
@@ -565,16 +570,6 @@ export class Holiday {
       m.userData.outlineParameters = { visible: false };
       return m;
     });
-    // A present on every desk.
-    const deskGifts = new THREE.Group();
-    DESK_SPOTS.forEach(([x, y, z, , rotY], i) => {
-      const [paper, ribbon] = PAPERS[i % PAPERS.length];
-      const g = present(0.17, paper, ribbon);
-      g.position.set(x, y, z);
-      g.rotation.y = rotY + 0.3;
-      deskGifts.add(g);
-    });
-    this.christmas.add(mergeByMaterial(deskGifts));
     // The big tree out front, lit up, with a heap of presents.
     const out = new THREE.Group();
     const lit: THREE.Vector3[] = [];
@@ -618,6 +613,8 @@ export class Holiday {
     if (theme) colliders.push(...this.colliders[theme]);
     this.halloween.visible = theme === 'halloween';
     this.christmas.visible = theme === 'christmas';
+    for (const g of this.deskDeco.halloween) g.visible = theme === 'halloween';
+    for (const g of this.deskDeco.christmas) g.visible = theme === 'christmas';
   }
 
   /** `lampsOn` is how far the lamps are on (see Sky), 0 by day and 1 at night: the candles and the tree lights glow brighter. */

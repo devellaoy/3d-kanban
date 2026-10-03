@@ -129,12 +129,36 @@ nothing goes over the network, and what they remember lives in your browser's `l
   table while you pot. Scratch and you get the cue ball in hand. The balls are a small hand-written
   simulation, with no physics library.
 - **Build mode** (W2). **U** on an office floor starts furnishing it, and **B** opens the catalogue: a
-  chair, a small table, a sofa, a potted plant, a bookshelf, a rug, a floor lamp and a whiteboard stand.
+  chair, a small table, a sofa, a potted plant, a bookshelf, a rug, a floor lamp and a standing easel.
   - A ghost of the piece follows your aim on a half-metre grid. It's red where the piece can't go.
   - **R** turns it, and a click places it.
   - Aim at a piece you placed: **E** picks it up to move it, and **X** removes it.
   - Pieces are solid to you and are kept per floor. Workers and click-to-walk don't know about them
-    yet, so they walk through.
+    yet, so they walk through. They are yours: kept in this browser, not shared.
+  - **The office's own furniture is the floor's.** The agents' desks, the bean bags, the couch in front
+    of the TV, the two lounge poufs, the whiteboard and the room's five rugs (the four pods' and the lounge's) can be moved, turned and taken out the same way,
+    but for everyone on the floor: the office keeps it with the floor's plan (`floorplan.json`, per
+    floor, on the office map only: the castle has none of it), so it stays across restarts. Aim at one
+    and the hint says what it is: **E** picks it up (the real thing follows where you aim, green where
+    it can stand and red where it can't, on a 10 cm grid), **R** turns it a quarter turn (not a pouf,
+    which always faces the TV), a click puts it down, **Esc** puts it back, **X** takes it out and **H**
+    puts a moved one back where the office comes with it. Bean bags that are put away until every desk
+    is taken show while you build, so they can be moved too. Seated workers, their laptops and a sign
+    over the desk go with a desk, a desk taken out takes its sign down, and the whiteboard keeps its
+    drawing while it's out (the window closes for whoever is drawing). Someone sitting on the couch or
+    a pouf that's moved or taken out is up on their feet.
+  - The office refuses a spot that is off the floor or against the walls, on the elevator's doors, the exit,
+    the balcony doors or the way into the back office and the meeting wing (kept clear whether or not
+    they are built), on something fixed or on another piece, and one that would shut somebody off
+    from the elevator (a seat, a door, a board agent, the stairs); the same check colours the piece
+    green or red. A desk or bean bag with a worker at it, or one waiting for its reviewer behind it,
+    isn't taken out, nor is the last desk; a worker restored to a seat that had been taken out brings it
+    back. Taken-out seats are not hired at (not by the queue or the kanban either). The couch keeps its
+    TV screen-sharing only while it faces the TV, give or take. Visitors in a multiplayer visit can't change it.
+  - **B** also lists, under *The office's own furniture*, what's been taken out, to place again, and
+    **↺ Reset the floor's layout** (after a confirmation) puts all of it back for everyone.
+  - Rugs lie flat: no collider, no obstacle for walking, and they may lie under desks and on each other. Aim at bare rug to pick it up (a desk or couch on it is aimed at first); only the doors, the elevator and the stairs have to stay bare. Taken-out rugs are listed under **B** like the rest (the back office's rugs stay with their rows).
+  - The holiday decorations on the desks (pumpkins, presents) hang on their desk, so they go where it goes.
 - **A map** (round 2). **§** (the key left of 1) or ☰ → **🗺️ Map** shows a top-down map of the town and
   the scenic loop: the roads, the lake, the sea, the farm and the mountains. It marks the places, with a
   legend:

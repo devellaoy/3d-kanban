@@ -234,7 +234,7 @@ function hire(deskId: string, prompt: string, worktree: boolean, provider?: Agen
 function sendToWorker(title: string, text: { context?: string; initial?: string } = {}) {
   if (!store.project) return toast('Pick a floor first', 'warn');
   // The back office's desks too, as far as the floor's built out (see WING).
-  const desk = nextFreeSeat((id) => !!store.workerAtDesk(id), store.floorPlan.wing)?.id;
+  const desk = nextFreeSeat((id) => !!store.workerAtDesk(id), store.floorPlan.wing, store.plan().removed)?.id;
   // Not a task's reviewer, which takes nothing but its terminal.
   const awake = [...store.workers.values()].filter((w) => w.kind === 'agent' && !isAsleep(w.status) && promptKind(w) !== 'terminal');
   if (!desk && !awake.length) return toast('Every desk and bean bag is taken — send a worker home first', 'warn');
@@ -270,7 +270,7 @@ function boardActions(): BoardActions {
     meeting: (preset) => showMeeting(preset),
     // The issue as a kanban task, at the next free desk (or wherever the engine finds one).
     kanbanTask: (it) => {
-      const desk = nextFreeSeat((id) => !!store.workerAtDesk(id), store.floorPlan.wing)?.id;
+      const desk = nextFreeSeat((id) => !!store.workerAtDesk(id), store.floorPlan.wing, store.plan().removed)?.id;
       cardTask(net, it, desk, desk ? DESK_BY_ID.get(desk)!.label : 'the next free desk');
     },
   };

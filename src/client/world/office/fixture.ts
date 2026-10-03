@@ -1,4 +1,5 @@
 import type * as THREE from 'three';
+import type { Pose } from '../../../shared/arrange';
 import type { WallId } from '../../../shared/decor';
 import type { Collider, DeskView, Interactable, OfficeHandles } from '../types';
 import type { Looks } from './materials';
@@ -30,8 +31,27 @@ export interface Site {
   readonly doors: Door[];
   /** What stands in the way into the back office, and its collider, put away while that's built out. */
   readonly inTheWay: { group: THREE.Group; collider: Collider }[];
+  /** The loose furniture the fixtures built so far, by id (see MovablePiece). */
+  readonly movables: Map<string, MovablePiece>;
   /** What a fixture before this one gives the office. It throws if that one's further down the list. */
   get<K extends keyof OfficeHandles>(key: K): OfficeHandles[K];
+}
+
+/**
+ * A piece of loose furniture build mode can move (see shared/arrange.ts and arrange.ts here): the
+ * fixture that builds it says how to put it somewhere else.
+ */
+export interface MovablePiece {
+  /** What moves, for aiming at it. */
+  group: THREE.Object3D;
+  /** What stands in the way of people because of it (changed in place, and in the floor's list only while it's there). */
+  colliders: Collider[];
+  /** Parts of it that are somebody else's (a seated worker) and stay as they are when it's drawn in a tint. */
+  untinted?: THREE.Object3D[];
+  /** Puts it at `pose`, or takes it out of the floor (null), and its colliders in the floor's list or out of it. `held`: carried about: drawn there, but nobody bumps into it or uses it. */
+  place(pose: Pose | null, held?: boolean): void;
+  /** Shows it even while it's put away (a bean bag nobody needs yet), or lets it go again. */
+  reveal?(on: boolean): void;
 }
 
 /** Down on the street (see downstairs in ground.ts): what's built down there goes down with the street. */

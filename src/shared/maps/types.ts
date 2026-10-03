@@ -1,4 +1,5 @@
 import type { DeskDef, MeetingRoomDef, SeatDef, StationKind } from '../layout.js';
+import type { Furniture } from '../arrange.js';
 import type { Bounds, Obstacles, Pt, Rect } from '../nav.js';
 
 /*
@@ -236,6 +237,9 @@ export interface MapPlan {
   /** What's in the way on the floor, for walking round it (the office has its own: OFFICE_NAV). */
   obstacles?: Obstacles;
   agents: { outfit: 'peasant' | 'none'; ageMinutes: number };
+  /** The office, as a floor has arranged its loose furniture (see shared/arrange.ts): what it rearranged, and the desks and bean bags it took out. Not on any other map. */
+  furniture?: Furniture;
+  removed?: ReadonlySet<string>;
   /** The dungeon under the hall, worked out (see ./dungeon.ts). */
   dungeon?: DungeonPlan;
   /** What happens to a worker sent home, checked (see ./dungeon.ts): none, and it walks out of the door. */

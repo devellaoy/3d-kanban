@@ -2,6 +2,7 @@
  * Sitting down: on a chair, a stool, the couch, the throne. Sitting there already, E gets you up, or
  * does what the seat's for (the TV from the couch, Minesweeper from the boss's chair, the bar's menu).
  */
+import { MOVABLE_BY_ID, removedPlaces } from '../../../shared/arrange';
 import { seatPlace, type SeatDef, type SeatPlace } from '../../../shared/layout';
 import type { Ctx } from '../../core/context';
 import type { Off } from '../../core/registry';
@@ -120,6 +121,13 @@ export function installSeating(ctx: Ctx, deps: SeatingDeps) {
     ctx.net.send({ t: 'sit' });
   }
   ctx.player.onStand = gotUp;
+  // The couch or pouf you're on was moved or taken out (see shared/arrange.ts): up you get.
+  store.on('floorPlan', () => {
+    const at = ctx.player.seat;
+    const seat = at && ctx.plan().seatingById.get(at.seatId);
+    const gone = !!at && removedPlaces(store.floorPlan.furniture).includes(at.key);
+    if (at && MOVABLE_BY_ID.has(at.seatId) && (gone || (seat && Math.hypot(seatPlace(seat, Number(at.key.split(':')[1])).x - at.x, seatPlace(seat, Number(at.key.split(':')[1])).z - at.z) > 0.01))) standUp();
+  });
 
   /** What you're sitting on (an office seat, or a chair or sofa from build mode), so it's what E is about unless you're looking at something else. */
   function mySeat(): Interactable | null {

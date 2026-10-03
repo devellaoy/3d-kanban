@@ -7,6 +7,7 @@
 import type { AccountsClientMsg, AccountsServerMsg, SignInsClientMsg, TeamClientMsg } from './protocol/accounts.js';
 import type { ChangesClientMsg, ChangesServerMsg } from './protocol/changes.js';
 import type { FloorClientMsg, FloorServerMsg, PlanClientMsg } from './protocol/floors.js';
+import type { FurnitureClientMsg } from './protocol/furniture.js';
 import type { GitHubClientMsg, GitHubServerMsg } from './protocol/github.js';
 import type { MeetingClientMsg, MeetingServerMsg } from './protocol/meetings.js';
 import type { PresenceClientMsg, PresenceServerMsg } from './protocol/presence.js';
@@ -26,6 +27,7 @@ export * from './protocol/accounts.js';
 export * from './protocol/agents.js';
 export * from './protocol/changes.js';
 export * from './protocol/floors.js';
+export * from './protocol/furniture.js';
 export * from './protocol/github.js';
 export * from './protocol/meetings.js';
 export * from './protocol/presence.js';
@@ -47,6 +49,7 @@ export type ClientMsg =
   | MeetingClientMsg
   | FloorClientMsg
   | PlanClientMsg
+  | FurnitureClientMsg
   | ChangesClientMsg
   | TeamClientMsg
   | AccountsClientMsg

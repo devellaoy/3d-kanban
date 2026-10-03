@@ -168,7 +168,7 @@ curl -fsSL https://raw.githubusercontent.com/devellaoy/3d-kanban/main/deploy/pro
   switches, a lounge plant that grows from merges, seasons in the landscape, a campsite and a hill lookout,
   a roof garden, fishing, racing with start lights and a ghost car, quick emoji reactions (**7**–**0**),
   a game room with billiards in the garage, a build mode for furnishing a floor (**U**) with furniture you
-  can sit on, a map (**§**), faster cars that drive anywhere on land (nitro, drift) and two off-road 4x4s on
+  can sit on (and for moving or taking out the office's own desks, bean bags, couch, poufs, whiteboard and rugs, for everyone on the floor), a map (**§**), faster cars that drive anywhere on land (nitro, drift) and two off-road 4x4s on
   softer, longer-travel springs than the supercars' for the speed humps and the rough ground, a livelier scenic
   world, a *six seven* emote, and a third-person camera that stays out of walls. They are kept
   in your browser only, so nobody else sees them yet ([features](docs/features.md#office-games-test-branch),

@@ -557,7 +557,7 @@ export class Orchestrator {
    * `preferred` is the spot behind its implementer's seat (see watchSpotFor), anyone else's a seat.
    */
   private noRoom(floor: Floor, preferred?: string, countsWith?: string, role?: KanbanRole): string | undefined {
-    const desk = (preferred && !this.deskRefusal(floor, preferred, role === 'reviewer')) || nextFreeSeat((id) => floor.workers.deskOccupied(id), floor.workers.wing?.() ?? 0);
+    const desk = (preferred && !this.deskRefusal(floor, preferred, role === 'reviewer')) || nextFreeSeat((id) => floor.workers.deskOccupied(id), floor.workers.wing?.() ?? 0, floor.workers.removed?.());
     if (!desk) return "Queued: there's no free desk on the floor for its worker. It starts by itself when one frees.";
     if (countsWith) return undefined;
     const full = this.ctx.capacity?.();
@@ -955,7 +955,7 @@ export class Orchestrator {
 
     // A new hire.
     // The task's desk (the one it was started at, or where it last sat) when it's free, else the next free one.
-    const desk = (preferred && !this.deskRefusal(floor, preferred, role === 'reviewer') ? preferred : undefined) ?? nextFreeSeat((id) => floor.workers.deskOccupied(id), floor.workers.wing?.() ?? 0)?.id;
+    const desk = (preferred && !this.deskRefusal(floor, preferred, role === 'reviewer') ? preferred : undefined) ?? nextFreeSeat((id) => floor.workers.deskOccupied(id), floor.workers.wing?.() ?? 0, floor.workers.removed?.())?.id;
     if (!desk) {
       // Taken while its base was fetched: back to the queue.
       this.finishRun(run.id, task.project, { status: 'interrupted', error: 'There was no free desk for its worker' });
@@ -988,7 +988,7 @@ export class Orchestrator {
       env: extras.env,
       settingsFile: 'kanban',
     });
-    if (typeof hired === 'string') return fail(hired);
+    if (typeof hired === 'string') return /taken out of the floor/.test(hired) ? (this.finishRun(run.id, task.project, { status: 'interrupted', error: hired }), { queued: this.noRoom(floor, preferred, countsWith, role) ?? "Queued: its desk was taken out of the floor. It starts by itself when a desk frees." }) : fail(hired); // a desk taken out while it was being set up: back to the queue
     const live = follow(hired.id);
     this.ctx.repo.updateRun(run.id, { workerId: hired.id, ...(session ? { sessionId: session } : {}) });
     const patch: TaskUpdate = role === 'implementer' ? { workerId: hired.id, deskId: desk } : { reviewerWorkerId: hired.id };
@@ -1101,7 +1101,7 @@ export class Orchestrator {
     };
     if (signIn) return fail(signIn);
     await this.freshBase(floor, def, involved);
-    const desk = nextFreeSeat((id) => floor.workers.deskOccupied(id), floor.workers.wing?.() ?? 0)?.id;
+    const desk = nextFreeSeat((id) => floor.workers.deskOccupied(id), floor.workers.wing?.() ?? 0, floor.workers.removed?.())?.id;
     if (!desk) {
       // Taken while its bases were fetched: back to the queue.
       this.finishRun(run.id, task.project, { status: 'interrupted', error: 'There was no free desk for its reviewer' });
@@ -1116,7 +1116,7 @@ export class Orchestrator {
       env: extras.env,
       settingsFile: 'kanban',
     });
-    if (typeof hired === 'string') return fail(hired);
+    if (typeof hired === 'string') return /taken out of the floor/.test(hired) ? (this.finishRun(run.id, task.project, { status: 'interrupted', error: hired }), { queued: this.noRoom(floor, undefined, countsWith) ?? "Queued: its desk was taken out of the floor. It starts by itself when a desk frees." }) : fail(hired);
     const live: Live = { taskId: task.id, runId: run.id, phase: 'pr-review', role: 'reviewer', tool, workerId: hired.id, floorId: task.project, exitPlan: false, ended: false };
     this.live.set(hired.id, live);
     this.ctx.repo.updateRun(run.id, { workerId: hired.id });
@@ -1688,7 +1688,7 @@ export class Orchestrator {
   private deskRefusal(floor: Floor, deskId: string, watch = false): string | undefined {
     const desk = DESK_BY_ID.get(deskId);
     if (!desk || desk.station || desk.room || !!desk.watch !== watch) return `${deskId} isn't a desk a task's worker can be hired at`;
-    if (!deskBuilt(desk, floor.workers.wing?.() ?? 0)) return `${desk.label} isn't built on this floor yet`;
+    if (!deskBuilt(desk, floor.workers.wing?.() ?? 0) || floor.workers.removed?.().has(desk.watch ?? desk.id)) return `${desk.label} isn't built on this floor yet, or was taken out of it`;
     if (floor.workers.deskOccupied(deskId)) return `${desk.label} is taken: pick a free desk`;
     return undefined;
   }

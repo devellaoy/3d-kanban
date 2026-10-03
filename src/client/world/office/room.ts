@@ -1,9 +1,11 @@
 import * as THREE from 'three';
+import { ROOM_RUGS, worldRect } from '../../../shared/arrange';
 import { BOARDS, LOFT, MACHINE_MONITOR, SEATING_BY_ID, STAIRS, STREET_Y, TV, WALL_HEIGHT } from '../../../shared/layout';
 import { wallFacing } from '../../../shared/decor';
 import type { NightParts } from '../outside';
 import { mesh, roundedBox, textPlane, toon, toonUnique } from '../toon';
 import type { Collider, Interactable } from '../types';
+import { fitTo, movableRug, standIn } from './arrange';
 import type { Fixture } from './fixture';
 import { PALETTE } from './materials';
 import { coffeeTable, loungeCouch, pendant, pendantLight, pouf, wallBoard } from './props';
@@ -31,15 +33,15 @@ const POD_RUGS = [
 
 /** Rugs under each desk cluster. */
 export const rugs: Fixture = (site) => {
-  [
-    [-10.5, -4],
-    [-1.5, -4],
-    [-10.5, 4],
-    [-1.5, 4],
-  ].forEach(([x, z], i) => {
+  ROOM_RUGS.slice(0, 4).forEach(([x, z, w, d], i) => {
     const [base, inset] = POD_RUGS[(i + Math.floor(i / 2)) % 2];
-    site.group.add(mesh(roundedBox(6.2, 0.02, 4.6, 0.6), toon(base), x, 0.011, z, false));
-    site.group.add(mesh(roundedBox(5.7, 0.02, 4.1, 0.5), toon(inset), x, 0.013, z, false));
+    // Each in a group of its own, so build mode can move it (see shared/arrange.ts).
+    const rug = new THREE.Group();
+    rug.position.set(x, 0, z);
+    rug.add(mesh(roundedBox(w, 0.02, d, 0.6), toon(base), 0, 0.011, 0, false));
+    rug.add(mesh(roundedBox(w - 0.5, 0.02, d - 0.5, 0.5), toon(inset), 0, 0.013, 0, false));
+    site.group.add(rug);
+    movableRug(site, `rug-${i + 1}`, rug);
   });
   return {};
 };
@@ -133,15 +135,34 @@ export const lounge: Fixture = (site) => {
   couch.rotation.y = Math.PI / 2;
   site.group.add(couch);
   // Its top on the seat cushions, so someone standing on the couch stands on them.
-  site.colliders.push({ minX: 10, maxX: 11, minZ: -2.2, maxZ: 2.2, top: 0.47 });
-  seatable(couch, 'couch', 2.6, site.interactables);
+  const couchBox: Collider = { minX: 10, maxX: 11, minZ: -2.2, maxZ: 2.2, top: 0.47 };
+  site.colliders.push(couchBox);
+  const couchIt = seatable(couch, 'couch', 2.6, site.interactables);
+  // Build mode moves it, turns it, and takes it out (see shared/arrange.ts).
+  site.movables.set('couch', {
+    group: couch,
+    colliders: [couchBox],
+    place(pose, held = false) {
+      couch.visible = !!pose;
+      couchIt.off = !pose || held;
+      standIn(site.colliders, [couchBox], !!pose && !held);
+      if (!pose) return;
+      couch.position.set(pose.x, 0, pose.z);
+      couch.rotation.y = pose.rotY;
+      [couchIt.x, couchIt.z] = [pose.x, pose.z];
+      fitTo(couchBox, worldRect(pose, [-2.2, 2.2, -0.5, 0.5]));
+    },
+  });
 
   const table = coffeeTable();
   table.position.set(13, 0, 0);
   site.group.add(table);
   site.colliders.push({ minX: 12.2, maxX: 13.8, minZ: -0.8, maxZ: 0.8, top: 0.46 });
-  const rug = mesh(roundedBox(7, 0.02, 7, 1.2), toon('#ffc6ff'), 13.4, 0.011, 0, false);
+  const rug = new THREE.Group();
+  rug.position.set(13.4, 0, 0);
+  rug.add(mesh(roundedBox(7, 0.02, 7, 1.2), toon('#ffc6ff'), 0, 0.011, 0, false));
   site.group.add(rug);
+  movableRug(site, 'rug-lounge', rug);
 
   // A pouf either side of the lounge (the seats still called beanbags), turned to the TV like whoever sits on it.
   for (const [i, [color, x, z]] of (
@@ -156,8 +177,23 @@ export const lounge: Fixture = (site) => {
     seat.rotation.y = SEATING_BY_ID.get(id)!.rotY;
     site.group.add(seat);
     // Its top on the pouf's, the button in the middle of it.
-    site.colliders.push({ minX: x - 0.5, maxX: x + 0.5, minZ: z - 0.5, maxZ: z + 0.5, top: 0.42 });
-    seatable(seat, id, 1.4, site.interactables);
+    const box: Collider = { minX: x - 0.5, maxX: x + 0.5, minZ: z - 0.5, maxZ: z + 0.5, top: 0.42 };
+    site.colliders.push(box);
+    const it = seatable(seat, id, 1.4, site.interactables);
+    site.movables.set(id, {
+      group: seat,
+      colliders: [box],
+      place(pose, held = false) {
+        seat.visible = !!pose;
+        it.off = !pose || held;
+        standIn(site.colliders, [box], !!pose && !held);
+        if (!pose) return;
+        seat.position.set(pose.x, 0, pose.z);
+        seat.rotation.y = pose.rotY;
+        [it.x, it.z] = [pose.x, pose.z];
+        fitTo(box, [pose.x - 0.5, pose.x + 0.5, pose.z - 0.5, pose.z + 0.5]);
+      },
+    });
   }
   return {};
 };

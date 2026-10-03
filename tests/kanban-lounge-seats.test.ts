@@ -57,7 +57,7 @@ test('loungeFigureOn names the figure on a seat place, around the seats taken', 
 });
 
 /** A server context with the office's (or the castle's) map, people on floors and the floor's tasks on hold. */
-function office(opts: { plan?: typeof OFFICE_PLAN; held: { id: number; project: string; at: number }[] }) {
+function office(opts: { plan?: typeof OFFICE_PLAN; furniture?: Record<string, { removed: true }>; held: { id: number; project: string; at: number }[] }) {
   const repo = {
     tasksWhere: () => opts.held.map((h) => ({ id: h.id, project: h.project, title: `Task ${h.id}`, status: 'on_hold', hold: { at: h.at, by: 'x', from: 'waiting', worker: { name: `W${h.id}`, color: '#123456' } } })),
   };
@@ -66,6 +66,7 @@ function office(opts: { plan?: typeof OFFICE_PLAN; held: { id: number; project: 
   const asked: string[] = [];
   const ctx = {
     maps: { plan: () => opts.plan ?? OFFICE_PLAN },
+    floorOf: () => ({ plan: { furniture: opts.furniture ?? {} } }),
     clients,
     kanban: {
       loungeSeat: (floorId: string, seat: string, occupied: ReadonlySet<string>) => {
@@ -123,4 +124,19 @@ test('sit: figures go round the people already seated, the sitter excluded; anot
   const dee = c.person('dee', 'f1');
   c.sit(dee, 'lounge-beanbag-1:0');
   assert.equal(c.sent.length, 0, 'not refused for a figure');
+});
+
+test('sit: a couch or pouf the floor has taken out is not somewhere to sit, and the figures go round it', () => {
+  const o = office({ held: [{ id: 7, project: 'f1', at: 1 }], furniture: { 'lounge-beanbag-1': { removed: true }, couch: { removed: true } } });
+  const ann = o.person('ann', 'f1');
+  o.sit(ann, 'couch:1');
+  assert.equal(ann.peer.seat, undefined);
+  o.sit(ann, 'lounge-beanbag-1:0');
+  assert.equal(ann.peer.seat, undefined);
+  // The figure took beanbag 2 (the first seat left), so that is refused; the seats that are there and free are not.
+  o.sit(ann, 'lounge-beanbag-2:0');
+  assert.equal(ann.peer.seat, undefined);
+  assert.equal(o.sent.at(-1)?.msg.t, 'sit.refused');
+  o.sit(ann, 'bench:0');
+  assert.equal(ann.peer.seat, 'bench:0');
 });

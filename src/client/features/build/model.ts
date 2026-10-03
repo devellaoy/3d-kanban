@@ -39,7 +39,7 @@ export const PIECES: Record<PieceKind, PieceDef> = {
   bookshelf: { kind: 'bookshelf', icon: '📚', label: 'Bookshelf', w: 1.2, d: 0.4, h: 2, solid: true },
   rug: { kind: 'rug', icon: '🟦', label: 'Rug', w: 2, d: 1.4, h: 0.02, solid: false },
   lamp: { kind: 'lamp', icon: '💡', label: 'Floor lamp', w: 0.4, d: 0.4, h: 1.7, solid: true },
-  whiteboard: { kind: 'whiteboard', icon: '📋', label: 'Whiteboard stand', w: 1.2, d: 0.5, h: 1.8, solid: true },
+  whiteboard: { kind: 'whiteboard', icon: '📋', label: 'Standing easel', w: 1.2, d: 0.5, h: 1.8, solid: true },
 };
 
 /** A piece standing on a floor: where its middle is, and turned a quarter turn `r` times (0-3). */

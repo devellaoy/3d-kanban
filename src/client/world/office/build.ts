@@ -35,6 +35,7 @@ import { meetingRoom } from './meeting-room';
 import { roomsWing } from './roomswing';
 import { ledLights } from './led';
 import { loft } from './loft';
+import { arrange } from './arrange';
 import type { Fixture, Gives, Site } from './fixture';
 
 // The office floor, put together from its fixtures (see fixture.ts): the room and its walls, the desks
@@ -86,6 +87,8 @@ function floorPlan() {
     // The LED lighting round the room.
     ledLights,
     camp,
+    // Last: it moves what the ones before built.
+    arrange,
   ] as const;
 }
 
@@ -118,6 +121,7 @@ export function buildOffice(): Office {
     desks,
     doors,
     inTheWay: [],
+    movables: new Map(),
     get: (key) => {
       if (!(key in given)) throw new Error(`The office's ${key} isn't built yet: its fixture comes later in the plan`);
       return given[key]!;
@@ -165,6 +169,12 @@ export function buildOffice(): Office {
       d.show(d.open);
     }
     for (const d of desks.values()) {
+      // A reviewer's spot behind a seat the floor has moved goes with it (see kanban/watch3d.ts).
+      const follows = d.group.userData.follows as THREE.Object3D | undefined;
+      if (follows && d.group.position.distanceToSquared(follows.position) + Math.abs(d.group.rotation.y - follows.rotation.y) > 1e-9) {
+        d.group.position.copy(follows.position);
+        d.group.rotation.copy(follows.rotation);
+      }
       // A board agent waiting to be asked stands still (its own idle bob is in Worker.update).
       if (!d.vacancy.visible || !d.group.visible || d.def.station) continue;
       d.vacancy.position.y = d.vacancyY + Math.sin(t * 2 + d.def.x) * 0.06;

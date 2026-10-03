@@ -1,8 +1,10 @@
 import * as THREE from 'three';
 import { BEANBAGS, DESKS, DESK_SIZE, FLOOR, KIOSK, SEATING_BY_ID, STATIONS, STATION_AGENT, deskSeat, type DeskDef, type StationKind } from '../../../shared/layout';
+import { BEANBAG_BOX, worldRect } from '../../../shared/arrange';
 import { deskPoint } from '../../../shared/nav';
 import { mesh, roundedBox, textPlane, toon } from '../toon';
 import type { Collider, DeskView, Interactable } from '../types';
+import { fitTo, standIn } from './arrange';
 import type { Fixture } from './fixture';
 import { PALETTE, box } from './materials';
 import { deskBooks, deskMug, plant } from './props';
@@ -11,11 +13,12 @@ import { deskBooks, deskMug, plant } from './props';
 // that workers sit (or stand) at, with the "+" over a free one.
 
 /** Makes `obj` somewhere to sit (see SEATING): walk up to it, or look at it, and press E. */
-export function seatable(obj: THREE.Object3D, seatId: string, radius: number, interactables: Interactable[]) {
+export function seatable(obj: THREE.Object3D, seatId: string, radius: number, interactables: Interactable[]): Interactable {
   const seat = SEATING_BY_ID.get(seatId)!;
   const it: Interactable = { kind: 'seat', seatId, x: seat.x, y: seat.y, z: seat.z, radius };
   interactables.push(it);
   obj.userData.interact = it;
+  return it;
 }
 
 export function chair(color: string): THREE.Group {
@@ -111,8 +114,6 @@ export function vacancyMarker(y: number): THREE.Group {
 }
 
 const BEANBAG_COLORS = ['#ff6b6b', '#4ecdc4', '#9b5de5', '#ffd166', '#f15bb5', '#00bbf9', '#06d6a0', '#fb8500'];
-/** A bean bag's footprint, with the lap desk in front of it (-z). */
-export const BEANBAG_BOX = { minX: -0.62, maxX: 0.62, minZ: -1.1, maxZ: 0.64, top: 0.62 } as const;
 
 /** An overflow seat: a squashy bean bag, and a low lap desk in front of it for the laptop. */
 export function buildBeanbag(def: DeskDef, index: number): DeskView {
@@ -229,18 +230,59 @@ export const desks: Fixture = (site) => {
     site.desks.set(def.id, view);
     const hw = DESK_SIZE.width / 2 - 0.05;
     const hd = DESK_SIZE.depth / 2 - 0.02;
-    site.colliders.push({ minX: def.x - hw, maxX: def.x + hw, minZ: def.z - hd, maxZ: def.z + hd, top: DESK_SIZE.height });
+    /** Where it stands now, for moving what's on it along. */
+    let was = { x: def.x, z: def.z };
+    const collider: Collider = { minX: def.x - hw, maxX: def.x + hw, minZ: def.z - hd, maxZ: def.z + hd, top: DESK_SIZE.height };
+    site.colliders.push(collider);
     const seat = deskSeat(def, 1.25);
     const it: Interactable = { kind: 'desk', deskId: def.id, x: seat.x, z: seat.z, radius: 1.3 };
     site.interactables.push(it);
     view.group.userData.interact = it;
+    // Build mode moves it (see shared/arrange.ts): its worker, laptop and chair go with it.
+    site.movables.set(def.id, {
+      group: view.group,
+      colliders: [collider],
+      untinted: [view.seatAnchor, view.laptopAnchor],
+      place(pose, held = false) {
+        view.group.visible = !!pose;
+        it.off = !pose || held;
+        standIn(site.colliders, [collider], !!pose && !held);
+        if (!pose) return;
+        view.group.position.set(pose.x, 0, pose.z);
+        view.group.rotation.y = pose.rotY;
+        view.def = { ...def, x: pose.x, z: pose.z, rotY: pose.rotY };
+        fitTo(collider, worldRect(pose, [-hw, hw, -hd, hd]));
+        const at = deskSeat(view.def, 1.25);
+        [it.x, it.z] = [at.x, at.z];
+        // What's on the desk to use goes with it, each by how far the desk went (see features/deskstuff).
+        for (const t of (view.group.userData.carries ?? []) as Interactable[]) [t.x, t.z] = [t.x + pose.x - was.x, t.z + pose.z - was.z];
+        was = { x: pose.x, z: pose.z };
+      },
+    });
   });
   return {};
 };
 
-/** Bean bags, put away until every desk is taken. */
+/** Bean bags, put away until every desk is taken (or while build mode is showing them all, to move). */
 export const beanbags: Fixture<'setBeanbags'> = (site) => {
-  const bags = new Map<string, { view: DeskView; it: Interactable; collider: Collider }>();
+  interface Bag {
+    view: DeskView;
+    it: Interactable;
+    collider: Collider;
+    /** Out for a worker who needs it (see setBeanbags), and taken out of the floor altogether. */
+    out: boolean;
+    gone: boolean;
+    held: boolean;
+  }
+  const bags = new Map<string, Bag>();
+  let revealed = false;
+  /** Shows the bag as it should be now, and puts its collider where it is: only an out one, not one being carried, is in the way. */
+  const refresh = (b: Bag) => {
+    const visible = !b.gone && (b.out || revealed || b.held);
+    b.view.group.visible = visible;
+    b.it.off = !b.out || b.gone || b.held;
+    standIn(site.colliders, [b.collider], visible && b.out && !b.held);
+  };
   BEANBAGS.forEach((def, i) => {
     const view = buildBeanbag(def, i);
     view.group.visible = false;
@@ -250,24 +292,41 @@ export const beanbags: Fixture<'setBeanbags'> = (site) => {
     site.interactables.push(it);
     view.group.userData.interact = it;
     // Its footprint turned the way it faces (a quarter turn at a time).
-    const c = Math.round(Math.cos(def.rotY));
-    const s = Math.round(Math.sin(def.rotY));
-    const xs = [BEANBAG_BOX.minX, BEANBAG_BOX.maxX].flatMap((lx) => [BEANBAG_BOX.minZ, BEANBAG_BOX.maxZ].map((lz) => def.x + lx * c + lz * s));
-    const zs = [BEANBAG_BOX.minX, BEANBAG_BOX.maxX].flatMap((lx) => [BEANBAG_BOX.minZ, BEANBAG_BOX.maxZ].map((lz) => def.z - lx * s + lz * c));
-    const collider = { minX: Math.min(...xs), maxX: Math.max(...xs), minZ: Math.min(...zs), maxZ: Math.max(...zs), top: BEANBAG_BOX.top };
-    bags.set(def.id, { view, it, collider });
+    const box = (x: number, z: number, rotY: number) => worldRect({ x, z, rotY }, [BEANBAG_BOX.minX, BEANBAG_BOX.maxX, BEANBAG_BOX.minZ, BEANBAG_BOX.maxZ]);
+    const [minX, maxX, minZ, maxZ] = box(def.x, def.z, def.rotY);
+    const bag: Bag = { view, it, collider: { minX, maxX, minZ, maxZ, top: BEANBAG_BOX.top }, out: false, gone: false, held: false };
+    bags.set(def.id, bag);
+    // Build mode moves it (see shared/arrange.ts).
+    site.movables.set(def.id, {
+      group: view.group,
+      colliders: [bag.collider],
+      untinted: [view.seatAnchor, view.laptopAnchor],
+      reveal(on) {
+        revealed = on;
+        refresh(bag);
+      },
+      place(pose, held = false) {
+        bag.gone = !pose;
+        bag.held = held;
+        if (pose) {
+          view.group.position.set(pose.x, 0, pose.z);
+          view.group.rotation.y = pose.rotY;
+          view.def = { ...def, x: pose.x, z: pose.z, rotY: pose.rotY };
+          [it.x, it.z] = [pose.x, pose.z];
+          fitTo(bag.collider, box(pose.x, pose.z, pose.rotY));
+        }
+        refresh(bag);
+      },
+    });
   });
   const setBeanbags = (out: Set<string>) => {
     const appeared: Collider[] = [];
     for (const [id, b] of bags) {
       const show = out.has(id);
-      if (show === b.view.group.visible) continue;
-      b.view.group.visible = show;
-      b.it.off = !show;
-      if (show) {
-        site.colliders.push(b.collider);
-        appeared.push(b.collider);
-      } else site.colliders.splice(site.colliders.indexOf(b.collider), 1);
+      if (show === b.out) continue;
+      b.out = show;
+      refresh(b);
+      if (show && !b.gone) appeared.push(b.collider);
     }
     return appeared;
   };

@@ -28,7 +28,7 @@ export async function officeWorkers(ctx: Ctx, req: http.IncomingMessage, res: ht
   const action = url.pathname.slice('/office/workers'.length);
   if (req.method === 'GET' && !action) {
     const list = floor.workers.list();
-    const free = nextFreeSeat((id) => floor.workers.deskOccupied(id), floor.plan.wing);
+    const free = nextFreeSeat((id) => floor.workers.deskOccupied(id), floor.plan.wing, floor.plan.seatsOut());
     return send(res, 200, {
       floor: { id: floor.id, name: floor.def.name, repo: floor.def.repo, branch: floor.project.branch },
       you: me.id,
@@ -104,7 +104,7 @@ export async function officeWorkers(ctx: Ctx, req: http.IncomingMessage, res: ht
 
   const ask = readHireRequest(body, floor.project.agentProviders);
   if (typeof ask === 'string') return send(res, 400, { error: ask });
-  const desk = ask.desk ?? nextFreeSeat((id) => floor.workers.deskOccupied(id), floor.plan.wing)?.id;
+  const desk = ask.desk ?? nextFreeSeat((id) => floor.workers.deskOccupied(id), floor.plan.wing, floor.plan.seatsOut())?.id;
   if (!desk) return send(res, 409, { error: 'Every desk and bean bag is taken: send someone home first' });
   // A model or effort is the office's default worker's unless it says whose.
   const provider = ask.provider ?? (ask.model || ask.effort ? floor.workers.officeDefault.provider : undefined);
