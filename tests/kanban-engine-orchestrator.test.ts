@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { createPullsParts } from '../src/server/kanban/integrations/pulls/index.js';
@@ -522,6 +522,33 @@ test('a turn that ends on a background command (a test suite) is not the run\'s 
   assert.equal(fx.task(task.id).reviewRound, 1);
 });
 
+test('a prompt typed into the terminal while a background agent works does not hide it: its Stop is not the run\'s end, review waits for the agent', async (t) => {
+  const fx = await engineFixture();
+  t.after(() => fx.close());
+  const release = path.join(fx.root, 'release-helper');
+  fx.setRules([
+    { when: 'Implement kanban task', background: 'Waiting for the helper agent.', typedPrompt: 'How is it going?', reply: 'Changed the redirect; tests pass.', commit: 'Work', releaseFile: release },
+    { when: 'You are reviewing the work', reply: 'Fine.\n\nREVIEW: APPROVED' },
+  ]);
+  const task = fx.newTask({ usePlan: false, useReview: true });
+  await fx.engine.start(task.id, ADA);
+  await fx.waitTask(task.id, (x) => x.phase === 'implement' && x.runState === 'running', 'the implement turn');
+  // The typed prompt's own Stop has come (the helper works until the test releases it): the run goes on, no result, no review.
+  const logs = path.join(fx.root, 'transcripts');
+  const typedLogged = () => readdirSync(logs).some((f) => f.endsWith('.jsonl') && readFileSync(path.join(logs, f), 'utf8').includes('Answered what you typed.'));
+  for (const until = Date.now() + 20_000; !typedLogged(); await new Promise((r) => setTimeout(r, 50))) if (Date.now() > until) assert.fail('the typed prompt was never answered');
+  // Time for the engine to read that Stop's log (readTries × readPauseMs); the helper is held meanwhile, so waiting longer is safe.
+  await new Promise((r) => setTimeout(r, 1500));
+  assert.equal(fx.task(task.id).status, 'in_progress');
+  assert.equal(fx.repo.listRuns(task.id).at(-1)?.status, 'running');
+  assert.deepEqual(fx.repo.listComments(task.id).comments.filter((c) => c.kind === 'result'), []);
+  assert.equal(reviewRuns(fx, task.id), 0);
+  writeFileSync(release, '');
+  // The helper is done and the final Stop comes: the result is that turn's text, and the review starts.
+  await fx.waitTask(task.id, (x) => x.status === 'review' && x.runState === 'idle' && reviewRuns(fx, x.id) >= 1, 'the review round after the helper', 30_000);
+  const results = fx.repo.listComments(task.id).comments.filter((c) => c.kind === 'result');
+  assert.equal(results[0]?.text, 'Changed the redirect; tests pass.');
+});
 
 test('a stop the agent never confirms (no Stop after Esc) restarts the worker on its session at its desk, never sends it home; Continue prompts the same worker', async (t) => {
   const fx = await engineFixture();

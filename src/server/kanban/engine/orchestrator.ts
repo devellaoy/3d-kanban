@@ -170,7 +170,7 @@ export class Orchestrator {
   private live = new Map<string, Live>();
   /**
    * When each worker's Claude process last started (its SessionStart hook: startup or resume), for readTurnResult's `since`;
-   * dropped when the worker exits or goes. After an office restart it's unknown until the next SessionStart: sinceOf falls back to the run's start.
+   * dropped when the worker exits or goes. After an office restart it's unknown until the next SessionStart: turnOpts falls back to the run's start.
    */
   private procSince = new Map<string, number>();
   /** A phase waiting for its own busy worker to rest (see untilRests), by task: Stop cancels it, as the task's chain is held until it ends. */
@@ -907,10 +907,10 @@ export class Orchestrator {
       return err;
     };
 
-    // Its own worker still busy, or its teammates still at work (they wake the lead again after a turn's end): the phase starts when all rest.
+    // Its own worker still busy, or its teammates still at work (they wake the lead again after a turn's end): the phase starts when all rest. Teammates are counted from the start of the task's last run on that worker (its live is usually forgotten by now), so a prompt typed since doesn't hide them.
     const teamWork = (id: string) => {
       const prior = this.live.get(id);
-      return tool === 'claude' && this.teammatesWork(floor, id, prior ? this.sinceOf(prior) : Math.max(this.procSince.get(id) ?? 0, floor.workers.restartedAt(id) ?? 0) || undefined);
+      return tool === 'claude' && this.teammatesWork(floor, id, prior ? this.turnOpts(prior) : { since: Math.max(this.procSince.get(id) ?? 0, floor.workers.restartedAt(id) ?? 0) || undefined, runStart: this.ctx.repo.listRuns(task.id).filter((r) => r.id !== run.id && r.workerId === id).at(-1)?.startedAt });
     };
     if (info && info.kind === 'agent' && info.kanban?.taskId === task.id && (info.status === 'working' || info.status === 'starting' || teamWork(info.id))) {
       const waited = await this.untilRests(floor, info.id, task.id, () => teamWork(info!.id));
@@ -1242,7 +1242,7 @@ export class Orchestrator {
     if (live.phase === 'plan' && live.tool === 'claude') {
       // ExitPlanMode asks for approval: that is the plan being done. The hook says so, or the transcript.
       const file = this.ctx.floor(live.floorId)?.workers.transcripts(live.workerId)?.claude;
-      if (live.exitPlan || (file && this.adapters.claude.readTurnResult(file, { since: this.sinceOf(live) })?.exitPlan)) return this.turnEnded(live, true);
+      if (live.exitPlan || (file && this.adapters.claude.readTurnResult(file, this.turnOpts(live))?.exitPlan)) return this.turnEnded(live, true);
     }
     const task = this.ctx.repo.getTask(live.taskId);
     if (!task || (task.status === 'waiting' && task.waitingReason === 'agent_asking')) return;
@@ -1355,7 +1355,7 @@ export class Orchestrator {
     for (let i = 0; i < this.opts.readTries; i++) {
       const logs = workers?.transcripts(live.workerId);
       const file = live.tool === 'claude' ? logs?.claude : logs?.codex;
-      result = file ? adapter.readTurnResult(file, { since: this.sinceOf(live) }) : undefined;
+      result = file ? adapter.readTurnResult(file, this.turnOpts(live)) : undefined;
       if (result?.complete) return result;
       await sleep(this.opts.readPauseMs);
     }
@@ -1392,15 +1392,16 @@ export class Orchestrator {
     }
   }
 
-  /** When the worker's Claude process started: its SessionStart, else (an office restart) when the run began. */
-  private sinceOf(live: Live): number | undefined {
-    return this.procSince.get(live.workerId) ?? this.ctx.repo.getRun(live.runId)?.startedAt;
+  /** readTurnResult's options: `since` is when the worker's Claude process started (its SessionStart, else, after an office restart, the run's start); `runStart` is when the run began. */
+  private turnOpts(live: Live): { since?: number; runStart?: number } {
+    const run = this.ctx.repo.getRun(live.runId);
+    return { since: this.procSince.get(live.workerId) ?? run?.startedAt, runStart: run?.startedAt };
   }
 
   /** Whether the worker's Claude teammates (agent teams) still work, from their transcripts. */
-  private teammatesWork(floor: Floor, id: string, since: number | undefined): boolean {
+  private teammatesWork(floor: Floor, id: string, opts: { since?: number; runStart?: number }): boolean {
     const file = floor.workers.transcripts(id)?.claude;
-    return !!file && !!this.adapters.claude.readTurnResult(file, { since })?.background;
+    return !!file && !!this.adapters.claude.readTurnResult(file, opts)?.background;
   }
 
   /** Resolves when the worker is at rest (or gone) and `team` says its teammates are too (polled), or after busyWaitMs (the caller looks at it again), or `cancelled` when the task is stopped meanwhile. */

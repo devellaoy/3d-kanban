@@ -228,6 +228,9 @@ test('claude transcript: background commands (Bash run_in_background, Monitor) t
   // TaskStop (its result names the task) and a TaskOutput that finds the task finished end it; a running one doesn't.
   const stop = [call('s1', 'TaskStop', { task_id: 'bash1' }), result('s1', 'Successfully stopped task: bash1 (npm test)', { message: 'Successfully stopped task: bash1 (npm test)', task_id: 'bash1', task_type: 'local_bash', command: 'npm test' })];
   assert.equal(bg(...launch('bash1'), ...stop, cAssistant([text('Stopped it.')], {}, 'm2')), undefined);
+  // An older CLI's KillShell (no task_id, the shell's id) ends it too.
+  const kill = [call('k1', 'KillShell', { shell_id: 'bash1' }), result('k1', 'Successfully killed shell: bash1', { message: 'Successfully killed shell: bash1 (npm test)', shell_id: 'bash1' })];
+  assert.equal(bg(...launch('bash1'), ...kill, cAssistant([text('Killed it.')], {}, 'm2')), undefined);
   // The local_bash TaskOutput shape is assumed from the local_agent one (the only one seen in transcripts).
   const output = (status: string) => [call('o1', 'TaskOutput', { task_id: 'bash1', block: false, timeout: 1000 }), result('o1', 'x', { retrieval_status: 'success', task: { task_id: 'bash1', task_type: 'local_bash', status, description: 'npm test', output: '' } })];
   assert.equal(bg(...launch('bash1'), ...output('completed'), cAssistant([text('Read it.')], {}, 'm2')), undefined);
@@ -241,6 +244,29 @@ test('claude transcript: background commands (Bash run_in_background, Monitor) t
   assert.deepEqual(readClaudeTurn(write('n2.jsonl', [cUser('Implement task #7'), ...launch('bash1'), wait, asUser(done('bash1')), cAssistant([text('It passed.')], {}, 'm2')])), { text: 'It passed.', complete: true });
   // A command from an earlier prompt's turn isn't this run's.
   assert.equal(bg(...launch('bash1'), wait, cUser('Review task #7'), cAssistant([text('Fine.')], {}, 'm9')), undefined);
+
+  // A prompt a human types into the worker's terminal looks like the office's: with `runStart` the window stays at the run's own prompt.
+  const ts = (s: number) => new Date(Date.UTC(2026, 9, 1, 8, 0, s)).toISOString();
+  const runStart = Date.UTC(2026, 9, 1, 8, 0, 0) - 1000;
+  const timed = (lines: object[], from = 0) => lines.map((l, i) => ({ ...l, timestamp: ts(from + i) }));
+  const human = [cUser('Also check the docs'), cAssistant([text('Checked.')], {}, 'mh')];
+  const typedMidRun = [cUser('Implement task #7'), ...launch('bash1'), wait, ...human];
+  // Without runStart the typed prompt is the window's start: the launch vanishes (the old behaviour).
+  assert.equal(readClaudeTurn(write('h1.jsonl', timed(typedMidRun)))?.background, undefined);
+  assert.equal(readClaudeTurn(write('h2.jsonl', timed(typedMidRun)), { runStart })?.background, 1);
+  // Its end logged after the typed prompt ends it.
+  assert.equal(readClaudeTurn(write('h3.jsonl', timed([...typedMidRun, asUser(done('bash1')), cAssistant([text('It passed.')], {}, 'mp')])), { runStart })?.background, undefined);
+  // A previous run's prompt and launch before runStart aren't counted.
+  const previous = timed([cUser('Implement task #6'), ...launch('old1'), wait, cUser('Fix task #6')], -60);
+  const own = timed([cUser('Implement task #7'), cAssistant([text('Done.')], {}, 'mo')]);
+  assert.equal(readClaudeTurn(write('h4.jsonl', [...previous, ...own]), { runStart })?.background, undefined);
+  // ... and a typed prompt later doesn't bring it back, nor hide the run's own launch.
+  assert.equal(readClaudeTurn(write('h5.jsonl', [...previous, ...timed(typedMidRun)]), { runStart })?.background, 1);
+  // No timestamps: no prompt matches runStart, so the last office prompt is the start as before.
+  assert.equal(readClaudeTurn(write('h6.jsonl', typedMidRun), { runStart })?.background, undefined);
+  assert.equal(readClaudeTurn(write('h7.jsonl', [cUser('Implement task #7'), ...launch('bash1'), wait]), { runStart })?.background, 1);
+  // Only a logged end ends a task: one never reported still counts after the typed prompt.
+  assert.equal(readClaudeTurn(write('h8.jsonl', timed([...typedMidRun, cUser('Anything else?'), cAssistant([text('No.')], {}, 'mn')])), { runStart })?.background, 1);
 });
 
 test('claude transcript: teammates (agent teams) still working, from their own transcripts and the lead\'s log', (t) => {
@@ -307,6 +333,11 @@ test('claude transcript: teammates (agent teams) still working, from their own t
   assert.deepEqual(readClaudeTurn(lead([...bgHead, mail(tag('x', 'Report.', ' summary="Done"'))])), { text: '', complete: false, background: 1, resuming: true });
   // A typed prompt quoting the tag (origin human) is the window's prompt.
   assert.deepEqual(readClaudeTurn(lead([...bgHead, cUser(tag('x', 'Report.'), { origin: { kind: 'human' } })])), { text: '', complete: false });
+
+  // A prompt typed into the terminal after the spawn doesn't hide the teammate when the window starts at the run's prompt (`runStart`).
+  const typedAfter = lead(withTs([cUser('Implement task #7'), ...spawn('a', 's1'), wait, cUser('Also check the docs'), cAssistant([text('Checked.')], {}, 'mh')], 1));
+  assert.equal(readClaudeTurn(typedAfter)?.background, undefined);
+  assert.equal(readClaudeTurn(typedAfter, { runStart: Date.parse(at(0)) })?.background, 1);
 
   // A teammate of an earlier phase (spawned before the office's last prompt) that this phase wakes with SendMessage is at work
   // although its transcript still ends at rest.
