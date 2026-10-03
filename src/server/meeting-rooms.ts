@@ -2,7 +2,7 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { MEETING_ROOMS, type MeetingRoomDef } from '../shared/layout.js';
-import { FIRST_MEETING_ROOM, isMeetingId, isMeetingPattern, meetingRecord, slimRecord } from '../shared/meetings.js';
+import { FIRST_MEETING_ROOM, cleanRecord, isMeetingId, isMeetingPattern, meetingRecord, slimRecord } from '../shared/meetings.js';
 import type { Meeting, MeetingRecord, MeetingRequest, MeetingState, WorkerInfo } from '../shared/protocol.js';
 import { MeetingRoom, type MeetingEvents, type MeetingTrees, type MeetingWorkers } from './meetings.js';
 
@@ -222,7 +222,7 @@ export class MeetingRooms {
     if (!existsSync(this.statePath)) return;
     try {
       const saved = JSON.parse(readFileSync(this.statePath, 'utf8')) as Saved;
-      if (Array.isArray(saved.past)) this.past = saved.past.filter((r) => r && typeof r.id === 'string' && typeof r.summary === 'string').slice(0, PAST_MAX);
+      if (Array.isArray(saved.past)) this.past = saved.past.flatMap((r) => { const c = cleanRecord(r); return c ? [slimRecord(c)] : []; }).slice(0, PAST_MAX);
       const defs = this.rooms();
       // The workers at the table outlive a restart of the office, so a meeting carries on where it was.
       const found = Object.entries(saved.rooms ?? {}).map(([id, m]) => [id, m] as const);

@@ -36,6 +36,8 @@ function fileProblem(status: number, error: string): string {
 
 const isMd = (name: string) => /\.(md|markdown)$/i.test(name);
 const fmtSize = (n: number) => (n < 1024 ? `${n} B` : n < 1024 * 1024 ? `${(n / 1024).toFixed(1)} kB` : `${(n / 1024 / 1024).toFixed(1)} MB`);
+/** What the list depends on: the newest earlier meeting, the finished ones still on a table, and the floor. It's refetched when this changes. */
+const listKey = () => [store.floor ?? '', store.meeting.past[0]?.id ?? '', ...store.meeting.rooms.flatMap((r) => (r.current && r.current.status !== 'running' ? [r.current.id] : []))].join('|');
 const roomLabel = (id?: string) => (id ? (store.meeting.rooms.find((r) => r.id === id)?.label ?? id) : '');
 
 /**
@@ -47,7 +49,8 @@ export function meetingPast(back: () => void): { body: HTMLElement; foot: Node[]
   let meetings: ArchivedMeeting[] | null = null;
   let more = false;
   let listError = '';
-  let seen = -1;
+  let seen = '';
+  let seenFloor = store.floor;
   let listSeq = 0;
   let picked: ArchivedMeeting | null = null;
   let files: MeetingFileInfo[] | null = null;
@@ -77,7 +80,7 @@ export function meetingPast(back: () => void): { body: HTMLElement; foot: Node[]
 
   const matches = (m: ArchivedMeeting) => {
     const q = search.value.trim().toLowerCase();
-    return !q || m.title.toLowerCase().includes(q) || (m.prompt ?? '').toLowerCase().includes(q);
+    return !q || (typeof m.title === 'string' && m.title.toLowerCase().includes(q)) || (typeof m.prompt === 'string' && m.prompt.toLowerCase().includes(q));
   };
 
   const renderList = () => {
@@ -111,7 +114,7 @@ export function meetingPast(back: () => void): { body: HTMLElement; foot: Node[]
 
   const loadList = async () => {
     const seq = ++listSeq;
-    seen = store.meeting.past.length;
+    seen = listKey();
     listError = '';
     renderList();
     const got = await get<MeetingArchiveList>('/api/meetings');
@@ -144,14 +147,14 @@ export function meetingPast(back: () => void): { body: HTMLElement; foot: Node[]
       if (m.tokens) rows.push(row('Spend', `${fmtTokens(m.tokens)} tokens${m.cost !== undefined ? ` · ${fmtCost(m.cost)}` : ''}`));
       if (m.branch) rows.push(row('Branch', h('code', {}, m.branch), m.commit ? ` · commit ${m.commit}` : ''));
       if (m.reviewUrl?.startsWith('https://')) rows.push(row('Review', h('a', { href: m.reviewUrl, target: '_blank', rel: 'noopener noreferrer' }, `🔍 The review${m.pr ? ` on PR #${m.pr}` : ''} ↗`)));
-      if (m.seats?.length) rows.push(row('At the table', h('ul.mp-seats', {}, ...m.seats.map((s, i) => h('li', {}, h('b', {}, s.role), s.workerName ? ` · ${s.workerName}` : '', i === 0 ? h('span.muted', {}, ' (head)') : '')))));
+      if (Array.isArray(m.seats) && m.seats.length) rows.push(row('At the table', h('ul.mp-seats', {}, ...m.seats.map((s, i) => h('li', {}, h('b', {}, s.role), s.workerName ? ` · ${s.workerName}` : '', i === 0 ? h('span.muted', {}, ' (head)') : '')))));
     } else rows.push(row('Ended', new Date(m.finishedAt).toLocaleString()));
     detail.replaceChildren(
       h('h3.mp-title', {}, `${m.orphan || !p ? '🗂️' : p.icon} ${m.title}`),
       m.orphan ? h('p.muted', {}, 'Only its notes folder is left: the office kept no record of this meeting.') : '',
       h('dl.mp-facts', {}, ...rows),
       m.summary ? h('p.mp-summary', {}, m.summary) : '',
-      m.prompt ? h('div.mp-question', {}, h('b', {}, 'The question'), h('pre', {}, m.prompt)) : '',
+      typeof m.prompt === 'string' && m.prompt ? h('div.mp-question', {}, h('b', {}, 'The question'), h('pre', {}, m.prompt)) : '',
     );
   };
 
@@ -259,7 +262,23 @@ export function meetingPast(back: () => void): { body: HTMLElement; foot: Node[]
     body: root,
     foot: [h('span.grow', {}, 'The meetings’ notes stay in the floor’s .agent-office/meetings/ folder.'), h('button.btn', { type: 'button', onclick: back }, '← Back')],
     refresh(reload = false) {
-      if (reload || store.meeting.past.length !== seen) void loadList();
+      const key = listKey();
+      if (key === seen && !reload) return;
+      // Another floor has other meetings: back to its list.
+      if (store.floor !== seenFloor) {
+        seenFloor = store.floor;
+        picked = null;
+        files = null;
+        open = null;
+        filesSeq++;
+        fileSeq++;
+        meetings = null;
+        showDetail(false);
+        renderDetail();
+        renderFiles();
+        renderPreview();
+      }
+      void loadList();
     },
   };
 }

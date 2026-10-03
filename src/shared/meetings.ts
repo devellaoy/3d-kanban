@@ -188,6 +188,28 @@ export function slimRecord(r: MeetingRecord): MeetingRecord {
   return { id: r.id, room: r.room, pattern: r.pattern, title: r.title, status: r.status, summary: r.summary, calledBy: r.calledBy, finishedAt: r.finishedAt, branch: r.branch, output: r.output };
 }
 
+/**
+ * A record read off the disk (a `.meeting.json`, or a line of meetings.json), checked: undefined when its core fields
+ * aren't right, else the record with each optional field kept only when it has the right type. Nothing else gets through.
+ */
+export function cleanRecord(x: unknown): MeetingRecord | undefined {
+  const r = x as Record<string, unknown> | null;
+  if (!r || typeof r !== 'object' || typeof r.id !== 'string' || typeof r.title !== 'string' || typeof r.summary !== 'string' || typeof r.calledBy !== 'string' || typeof r.output !== 'string') return undefined;
+  if (!isMeetingPattern(r.pattern) || typeof r.status !== 'string' || typeof r.finishedAt !== 'number' || !Number.isFinite(r.finishedAt)) return undefined;
+  const str = (k: string) => (typeof r[k] === 'string' ? { [k]: r[k] as string } : {});
+  const num = (k: string) => (typeof r[k] === 'number' && Number.isFinite(r[k]) ? { [k]: r[k] as number } : {});
+  const seats = Array.isArray(r.seats)
+    ? r.seats.flatMap((s: unknown) => {
+        const q = s as { role?: unknown; workerName?: unknown } | null;
+        return q && typeof q.role === 'string' ? [{ role: q.role, ...(typeof q.workerName === 'string' ? { workerName: q.workerName } : {}) }] : [];
+      })
+    : undefined;
+  return {
+    id: r.id, pattern: r.pattern, title: r.title, status: r.status as MeetingRecord['status'], summary: r.summary, calledBy: r.calledBy, finishedAt: r.finishedAt, output: r.output,
+    ...str('room'), ...str('branch'), ...str('prompt'), ...(seats ? { seats } : {}), ...num('rounds'), ...num('tokens'), ...num('cost'), ...str('commit'), ...num('pr'), ...str('reviewUrl'), ...str('notesDir'),
+  };
+}
+
 /** Whether a string is a meeting's id (8 hex digits, see MeetingRoom.start): the only folder names the archive serves. */
 export const isMeetingId = (s: string): boolean => /^[0-9a-f]{8}$/.test(s);
 

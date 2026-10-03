@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { linkSync, mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { MEETING_FILE_MAX, listMeetingFiles, listMeetings, readMeetingFile } from '../src/server/meeting-files.js';
@@ -96,4 +96,25 @@ test('reading a file: names that escape are refused, links and unknowns are 404,
   assert.deepEqual(await readMeetingFile(f.root, 'aaaaaaaa', 'plan.md'), { name: 'plan.md', size: 9, text: '# plan.md' });
   writeFileSync(path.join(f.root, 'aaaaaaaa', 'edge.md'), Buffer.alloc(MEETING_FILE_MAX, 98));
   assert.equal(((await readMeetingFile(f.root, 'aaaaaaaa', 'edge.md')) as { text: string }).text.length, MEETING_FILE_MAX);
+});
+
+test('a hard link to a file outside is neither listed nor read; a symlinked id folder gives 404 for files and file', async (t) => {
+  const f = fixture(); t.after(f.close);
+  linkSync(path.join(f.outside, 'secret.md'), path.join(f.root, 'aaaaaaaa', 'hard.md'));
+  assert.equal((await readMeetingFile(f.root, 'aaaaaaaa', 'hard.md') as { status: number }).status, 404);
+  const r = await listMeetingFiles(f.root, 'aaaaaaaa');
+  assert.ok('files' in r && !r.files.some((x) => x.name === 'hard.md'));
+  assert.ok('files' in r && r.files.some((x) => x.name === 'plan.md'));
+  symlinkSync(path.join(f.root, 'aaaaaaaa'), path.join(f.root, 'dddddddd'));
+  assert.equal(((await listMeetingFiles(f.root, 'dddddddd')) as { status: number }).status, 404);
+  assert.equal((await readMeetingFile(f.root, 'dddddddd', 'plan.md') as { status: number }).status, 404);
+});
+
+test('a .meeting.json with fields of the wrong type is listed with those fields dropped', async (t) => {
+  const f = fixture(); t.after(f.close);
+  writeFileSync(path.join(f.root, 'aaaaaaaa', '.meeting.json'), JSON.stringify({ ...rec('aaaaaaaa', 5, { title: 'Odd' }), prompt: 42, seats: 'oops', cost: 'x', tokens: 7, commit: 3 }));
+  const m = (await listMeetings(f.root, [], [])).meetings.find((x) => x.id === 'aaaaaaaa')!;
+  assert.equal(m.title, 'Odd');
+  assert.equal(m.tokens, 7);
+  for (const k of ['prompt', 'seats', 'cost', 'commit'] as const) assert.equal(m[k], undefined, k);
 });

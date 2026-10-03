@@ -592,3 +592,15 @@ test('a meeting’s full record keeps its details, cuts a long question short, a
   assert.deepEqual(Object.keys(slim).sort(), ['branch', 'calledBy', 'finishedAt', 'id', 'output', 'pattern', 'room', 'status', 'summary', 'title']);
   assert.ok(isMeetingId('0a1b2c3d') && !isMeetingId('../etc') && !isMeetingId('0A1B2C3D'));
 });
+
+test('restoring meetings.json: a full record in past goes into the state slim, and one with a non-string prompt does not break it', (t) => {
+  const f = fixture(); t.after(() => f.close());
+  f.room.shutdown();
+  const line = { id: 'aaaaaaaa', pattern: 'debate', title: 'Full', status: 'done', summary: 's', calledBy: 'Ada', finishedAt: 2, output: 'o.md' };
+  writeFileSync(path.join(f.dataDir, 'meetings.json'), JSON.stringify({ rooms: {}, past: [{ ...line, prompt: 'Q?', seats: [{ role: 'Chair' }] }, { ...line, id: 'bbbbbbbb', title: 'Odd', prompt: 42, seats: 'oops' }, { id: 'x' }, null] }));
+  const again = new MeetingRooms(f.dir, f.dataDir, f.manager, undefined, { update() {}, toast() {}, hiringPaused: () => undefined, postReview: async () => '' }, () => f.rooms);
+  t.after(() => again.shutdown());
+  const past = again.state().past;
+  assert.deepEqual(past.map((r) => r.title), ['Full', 'Odd']);
+  for (const r of past) assert.ok(!('prompt' in r) && !('seats' in r));
+});

@@ -2,9 +2,10 @@
 // the floor's `.agent-office/meetings/<id>/` folders, the full record each meeting left in its folder
 // (`.meeting.json`) and the notes files in it. Only 8-hex-digit folders that are real folders directly
 // under the root, and regular files directly in them, are ever read: a link out is never followed.
+import { constants } from 'node:fs';
 import { lstat, open, readdir, readFile, realpath } from 'node:fs/promises';
 import path from 'node:path';
-import { isMeetingId, isMeetingPattern } from '../shared/meetings.js';
+import { cleanRecord, isMeetingId } from '../shared/meetings.js';
 import type { MeetingArchiveList, MeetingFileInfo, MeetingFileText, MeetingRecord } from '../shared/protocol.js';
 
 /** The most meetings a list sends. */
@@ -28,9 +29,8 @@ async function folderRecord(root: string, id: string): Promise<MeetingRecord | u
     const file = path.join(root, id, '.meeting.json');
     const st = await lstat(file);
     if (!st.isFile() || st.size > RECORD_FILE_MAX) return undefined;
-    const r = JSON.parse(await readFile(file, 'utf8')) as Partial<MeetingRecord> | null;
-    const ok = !!r && r.id === id && typeof r.title === 'string' && typeof r.summary === 'string' && typeof r.calledBy === 'string' && typeof r.output === 'string' && isMeetingPattern(r.pattern) && typeof r.finishedAt === 'number' && typeof r.status === 'string';
-    return ok ? (r as MeetingRecord) : undefined;
+    const r = cleanRecord(JSON.parse(await readFile(file, 'utf8')));
+    return r?.id === id ? r : undefined;
   } catch {
     return undefined;
   }
@@ -70,10 +70,11 @@ export async function listMeetings(root: string, past: MeetingRecord[], finished
   return { meetings: all.slice(0, LIST_MAX), more: all.length > LIST_MAX };
 }
 
-/** A meeting's folder, really inside the root (a link to anywhere else is no meeting), or why not. */
+/** A meeting's folder: a real folder (not a link) directly under the root, or why not. */
 async function folder(root: string, id: string): Promise<string | Refusal> {
   if (!isMeetingId(id)) return NO_FOLDER;
   try {
+    if (!(await lstat(path.join(root, id))).isDirectory()) return NO_FOLDER;
     const real = await realpath(path.join(root, id));
     return path.dirname(real) === (await realpath(root)) ? real : NO_FOLDER;
   } catch {
@@ -93,7 +94,7 @@ export async function listMeetingFiles(root: string, id: string): Promise<{ file
     for (const name of await readdir(dir)) {
       if (name.startsWith('.')) continue;
       const st = await lstat(path.join(dir, name)).catch(() => undefined);
-      if (!st?.isFile()) continue;
+      if (!st?.isFile() || st.nlink > 1) continue; // a hard link may lead to a file outside
       const round = roundOf(name);
       files.push({ name, size: st.size, kind: name.startsWith('output-') ? 'output' : 'note', ...(round !== undefined ? { round } : {}) });
     }
@@ -105,27 +106,33 @@ export async function listMeetingFiles(root: string, id: string): Promise<{ file
   return { files };
 }
 
-/** One notes file's text: a plain name in the meeting's folder, a regular file, text, and no bigger than 1 MB. */
+/** Opening without following a link at the end. Windows has no O_NOFOLLOW: there the lstat checks are all there is. */
+// O_NONBLOCK: so a named pipe swapped in can't hold the open (it changes nothing for a regular file).
+const OPEN_FLAGS = constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0) | (constants.O_NONBLOCK ?? 0);
+
+/** One notes file's text: a plain name in the meeting's folder, a regular file with one name, text, and no bigger than 1 MB. */
 export async function readMeetingFile(root: string, id: string, name: string): Promise<MeetingFileText | Refusal> {
   const dir = await folder(root, id);
   if (typeof dir !== 'string') return dir;
   if (!name || /[/\\\0]/.test(name) || name.startsWith('.') || name !== path.basename(name)) return { status: 400, error: 'Bad file name' };
   const file = path.join(dir, name);
+  let fh;
   try {
-    const st = await lstat(file);
-    if (!st.isFile() || path.dirname(await realpath(file)) !== dir) return NO_FILE;
+    // Opened once and checked on the handle, so nothing can be swapped in between the check and the read.
+    if (!constants.O_NOFOLLOW && !(await lstat(file)).isFile()) return NO_FILE;
+    fh = await open(file, OPEN_FLAGS);
+    const st = await fh.stat();
+    // nlink > 1: a hard link, which may be to a file outside the folder.
+    if (!st.isFile() || st.nlink !== 1) return NO_FILE;
     if (st.size > MEETING_FILE_MAX) return { status: 413, error: 'That file is too big to show' };
-    const fh = await open(file, 'r');
-    try {
-      const buf = Buffer.alloc(Math.min(st.size, MEETING_FILE_MAX + 1));
-      const { bytesRead } = await fh.read(buf, 0, buf.length, 0);
-      const body = buf.subarray(0, bytesRead);
-      if (body.subarray(0, 8192).includes(0)) return { status: 415, error: 'That file is not text' };
-      return { name, size: st.size, text: body.toString('utf8') };
-    } finally {
-      await fh.close();
-    }
+    const buf = Buffer.alloc(Math.min(st.size, MEETING_FILE_MAX + 1));
+    const { bytesRead } = await fh.read(buf, 0, buf.length, 0);
+    const body = buf.subarray(0, bytesRead);
+    if (body.subarray(0, 8192).includes(0)) return { status: 415, error: 'That file is not text' };
+    return { name, size: st.size, text: body.toString('utf8') };
   } catch {
-    return NO_FILE;
+    return NO_FILE; // including ELOOP: a link
+  } finally {
+    await fh?.close();
   }
 }
