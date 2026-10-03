@@ -137,10 +137,13 @@ export function closingPr<T extends { repo?: string }>(ticket: string | undefine
  * #12: "Title".) or a "closes #12" in the text. For a worker nothing else says the issue of. `strict`:
  * only the hand-over line, for deciding which issue a pull request closes ("like in PR #45" isn't one).
  */
-export function promptIssue(prompt: string | undefined, o: { strict?: boolean } = {}): { number: number; title?: string } | undefined {
+export function promptIssue(prompt: string | undefined, o: { strict?: boolean } = {}): { number: number; title?: string; repo?: string } | undefined {
   const task = (prompt ?? '').replace(/\r\n?/g, '\n').trim();
   const firstLine = task.split('\n').map((l) => l.trim()).find(Boolean) ?? '';
-  const issue = /\bissue #(\d+):\s*["“](.+?)["”]\.?\s*$/i.exec(firstLine);
-  const number = Number((o.strict ? undefined : /\b(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?)\b[^\n]{0,40}?#(\d+)/i.exec(task)?.[1]) ?? issue?.[1]);
-  return number > 0 ? { number, ...(issue?.[2] ? { title: issue[2] } : {}) } : undefined;
+  // Another repository's card says which: Work on GitHub issue acme/api#7: "Title".
+  const issue = /\bissue (?:([A-Za-z0-9_.-]{1,100}\/[A-Za-z0-9_.-]{1,100}))?#(\d+):\s*["“](.+?)["”]\.?\s*$/i.exec(firstLine);
+  const number = Number((o.strict ? undefined : /\b(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?)\b[^\n]{0,40}?#(\d+)/i.exec(task)?.[1]) ?? issue?.[2]);
+  if (!(number > 0)) return undefined;
+  const repo = issue && Number(issue[2]) === number ? issue[1] : undefined;
+  return { number, ...(issue?.[3] ? { title: issue[3] } : {}), ...(repo ? { repo } : {}) };
 }

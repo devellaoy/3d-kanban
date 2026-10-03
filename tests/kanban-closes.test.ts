@@ -6,6 +6,7 @@ import { TaskQueue, type QueueWorkers } from '../src/server/queue.js';
 import type { GhPull, QueueTask } from '../src/shared/protocol.js';
 import { Floor } from '../src/server/floor.js';
 import { setWallProvider } from '../src/server/kanban/integrations/issues/wall.js';
+import { queueEvents } from '../src/server/queue-events.js';
 import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
@@ -190,5 +191,33 @@ test('claimCard on a project draft moves its Status and assigns nobody', async (
   assert.equal(await Floor.prototype.claimCard.call(floor as never, undefined, 'ghp:acme/3#PVTI_x'), undefined);
   await new Promise((r) => setTimeout(r, 10));
   assert.deepEqual(started, [['app', 'ghp:acme/3#PVTI_x']]);
+  setWallProvider(undefined);
+});
+
+test('promptIssue strict keeps the repository of another repository’s card', () => {
+  assert.deepEqual(promptIssue('Work on GitHub issue acme/api#7: "Fix it".\n\nRead it first.', { strict: true }), { number: 7, title: 'Fix it', repo: 'acme/api' });
+  assert.deepEqual(promptIssue('Work on GitHub issue #7: "Fix it".', { strict: true }), { number: 7, title: 'Fix it' });
+});
+
+test('claimCard moves the Status even when the assignment failed', async () => {
+  const started: string[][] = [];
+  setWallProvider({ started: async (p: string, k: string) => (started.push([p, k]), undefined), refresh() {} } as never);
+  const floor = { id: 'app', def: { repo: 'acme/api' }, dir: '.', git: true, ctx: { toast() {} }, github: { claim: async () => 'HTTP 403: no rights to assign' } };
+  assert.equal(await Floor.prototype.claimCard.call(floor as never, 7, undefined), 'HTTP 403: no rights to assign');
+  await new Promise((r) => setTimeout(r, 10));
+  assert.deepEqual(started, [['app', 'gh:acme/api#7']]);
+  setWallProvider(undefined);
+});
+
+test('a queue task of someone without a gh sign-in still has its Status moved, with nobody assigned', async () => {
+  const started: [string, string, unknown][] = [];
+  setWallProvider({ started: async (p: string, k: string, env?: unknown) => (started.push([p, k, env]), undefined), refresh() {} } as never);
+  const floor = { id: 'app', def: { repo: 'acme/api' }, dir: '.', claimCard: async () => assert.fail('assigned') };
+  const ctx = { ghAs: () => 'Sign in to GitHub first', toast() {} };
+  const events = queueEvents(floor as never, ctx as never);
+  assert.equal(await events.claimIssue(0, 'acct', 'ghp:acme/3#PVTI_x'), 'Sign in to GitHub first');
+  assert.equal(await events.claimIssue(7, 'acct'), 'Sign in to GitHub first');
+  await new Promise((r) => setTimeout(r, 10));
+  assert.deepEqual(started, [['app', 'ghp:acme/3#PVTI_x', undefined], ['app', 'gh:acme/api#7', undefined]]);
   setWallProvider(undefined);
 });

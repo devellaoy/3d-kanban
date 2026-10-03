@@ -15,6 +15,8 @@ export function workerIssueKey(ctx: Pick<KanbanContext, 'repo'>, floor: Floor, i
   const repo = floor.def.repo ?? checkoutRepo(floor.dir);
   const queued = floor.queue.issueOf(info.id);
   if (queued.issueKey) return queued.issueKey;
-  const number = queued.issue ?? promptIssue(info.prompt, { strict: true })?.number;
-  return number !== undefined && repo ? ghIssueKey(repo, number) : undefined;
+  if (queued.issue !== undefined) return repo ? ghIssueKey(repo, queued.issue) : undefined;
+  const handed = promptIssue(info.prompt, { strict: true });
+  const from = handed?.repo ?? repo;
+  return handed && from ? ghIssueKey(from, handed.number) : undefined;
 }

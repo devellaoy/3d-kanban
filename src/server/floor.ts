@@ -375,7 +375,8 @@ export class Floor {
     const gh = key ? parseGhKey(key) : issue ? { repo: this.def.repo ?? (this.git ? checkoutRepo(this.dir) : undefined), number: issue } : undefined;
     if (!gh) return undefined;
     const err = !key || isPrimaryIssue({ number: gh.number, key }, this.def.repo) ? await this.github.claim(gh.number, as) : await claimGhKey(key, this.dir, as?.env);
-    if (!err) void progressIssue(this.id, key ?? (gh.repo ? ghIssueKey(gh.repo, gh.number) : ''), as?.env).then((w) => w && this.ctx.toast(this, `📋 ${w}`, 'warn'));
+    // The board's Status moves even when the assignment failed (it may need other rights): both are said.
+    void progressIssue(this.id, key ?? (gh.repo ? ghIssueKey(gh.repo, gh.number) : ''), as?.env).then((w) => w && this.ctx.toast(this, `📋 ${w}`, 'warn'));
     return err;
   }
 

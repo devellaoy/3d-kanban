@@ -6,6 +6,7 @@ import { officePrompt } from './prompts.js';
 import type { QueueEvents } from './queue.js';
 import { ghIssueKey } from './kanban/integrations/issues/github-repo.js';
 import { ensureClosingRef } from './kanban/integrations/pulls/closes.js';
+import { progressIssue } from './kanban/integrations/issues/wall.js';
 
 export function queueEvents(floor: Floor, ctx: FloorContext): QueueEvents {
   return {
@@ -17,7 +18,12 @@ export function queueEvents(floor: Floor, ctx: FloorContext): QueueEvents {
     toast: (text, level) => ctx.toast(floor, text, level),
     claimIssue: (issue, owner, key) => {
       const as = ctx.ghAs(owner);
-      return typeof as === 'string' ? Promise.resolve(as) : floor.claimCard(issue, key, as); // a card from the issue sources too
+      if (typeof as !== 'string') return floor.claimCard(issue, key, as); // a card from the issue sources too
+      // No gh sign-in of their own: nobody is assigned, but the board's Status moves with the office's gh.
+      const repo = floor.def.repo ?? checkoutRepo(floor.dir);
+      const ref = key ?? (issue && repo ? ghIssueKey(repo, issue) : undefined);
+      if (ref) void progressIssue(floor.id, ref).then((w) => w && ctx.toast(floor, `📋 ${w}`, 'warn'));
+      return Promise.resolve(as);
     },
     // The task's PR is linked: merging it must close the issue, so the line is added if the agent left it out.
     prLinked: (t, pr) => {
