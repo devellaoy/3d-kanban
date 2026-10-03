@@ -357,8 +357,8 @@ function endedTasks(note: string): string[] {
  * How many background tasks the run has working: each one's last event in the log is its launch (an
  * agent, a Bash `run_in_background` command or one moved to the background by its timeout, a
  * non-persistent Monitor) or a resume (SendMessage), not its end. A task ends by a notification with a
- * terminal status, a TaskStop, or a TaskOutput that finds it finished. A persistent Monitor never ends,
- * so it isn't counted. Counted from `start`, the office's last prompt (so an earlier run's tasks don't
+ * terminal status, a TaskStop (or an older CLI's KillShell), or a TaskOutput that finds it finished. A persistent Monitor never ends,
+ * so it isn't counted. Counted from `start`, the run's first office prompt (so an earlier run's tasks don't
  * count; -1, the log's tail cut before it: none). A launch logged before `since` (the process's start)
  * died with that process (a restart ends the helpers): not counted. A launch known only by its text counts
  * just from an Agent, Task or Bash call's result (a Bash one only with `run_in_background`, or the words of its timeout).
@@ -385,6 +385,7 @@ export function backgroundLeft(lines: Record<string, unknown>[], start: number, 
     else if (typeof res?.taskId === 'string' && typeof res.timeoutMs === 'number') {
       if (res.persistent !== true) launch(res.taskId, line); // Monitor; a persistent one never finishes
     } else if (typeof res?.task_id === 'string' && typeof res.task_type === 'string') end(res.task_id); // TaskStop
+    else if (typeof res?.shell_id === 'string' && typeof res.message === 'string') end(res.shell_id); // KillShell, an older CLI's TaskStop
     else if (isObj(res?.task) && TERMINAL_STATUS.has(String(res.task.status))) {
       // TaskOutput that finds the task finished. Only the `local_agent` shape was seen in transcripts: a Bash task's is assumed to be the same.
       end(res.task.task_id);
@@ -410,6 +411,11 @@ export function backgroundLeft(lines: Record<string, unknown>[], start: number, 
   return [...tasks.values()].filter(Boolean).length;
 }
 
+/** The index of the run's first office prompt: the first real prompt, not a notification, logged at or after `runStart` (ms); -1 when none (or no timestamps). */
+function runPrompt(lines: Record<string, unknown>[], runStart: number): number {
+  return lines.findIndex((l) => isRealPrompt(l) && !isAgentNotice(l) && atOf(l) >= runStart);
+}
+
 /**
  * The turn after the last real prompt. Its `text` is the final answer only: the text blocks of the
  * turn's last assistant message (Claude logs one message's blocks as lines sharing its message id),
@@ -417,10 +423,11 @@ export function backgroundLeft(lines: Record<string, unknown>[], start: number, 
  * A last message that calls a tool (ExitPlanMode aside) isn't a final answer: the Stop hook can come
  * before Claude has logged the reply after that tool's result, so the turn isn't complete yet.
  */
-export function readClaudeTurn(file: string, opts?: { since?: number }): TurnResult | undefined {
+export function readClaudeTurn(file: string, opts?: { since?: number; runStart?: number }): TurnResult | undefined {
   const lines = readJsonLines(file);
   if (!lines) return undefined;
-  // The last real prompt, and the office's own (the last that isn't a notification) the background tasks are counted from.
+  // The last real prompt, and the office's own the background tasks are counted from: the run's first (a prompt typed into
+  // the terminal meanwhile doesn't move it), else the last that isn't a notification.
   let from = -1;
   let start = -1;
   for (let i = lines.length - 1; i >= 0; i--) {
@@ -430,6 +437,10 @@ export function readClaudeTurn(file: string, opts?: { since?: number }): TurnRes
       start = i;
       break;
     }
+  }
+  if (opts?.runStart !== undefined) {
+    const first = runPrompt(lines, opts.runStart);
+    if (first >= 0) start = first;
   }
   let texts: string[] = [];
   let message: unknown;

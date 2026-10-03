@@ -123,10 +123,12 @@ allowed: `todo → in_progress` (= start), `waiting|review → done`, `done → 
       last assistant message after the last real user message (Claude logs one message's blocks as lines
       sharing `message.id`); and, if the last assistant `tool_use` is `ExitPlanMode`, its `input.plan`.
       `TurnResult.background` counts the run's background agents still working (an async launch or a
-      `SendMessage` resume in the log with no task-notification after it, since the office's last prompt);
+      `SendMessage` resume in the log with no task-notification after it, since the run's first office prompt:
+      the first real prompt at or after the run's start, so a prompt typed into the worker's terminal
+      meanwhile doesn't move it; when that prompt isn't in the read tail (16 MB) the last office prompt is used);
       `resuming` says the last prompt is a notification (or a teammate's message) no assistant line has
       answered yet. `background` counts agent-team teammates working too (below). `readTurnResult(file,
-      { since })` takes the start of the agent's Claude process; Codex ignores it.
+      { since, runStart })` takes the start of the agent's Claude process and the run's start; Codex ignores both.
       A last message that calls any other tool is not a final answer (`complete: false`): the Stop hook
       can come before Claude has logged the reply after that tool's result, so the engine reads the log
       again (`readTries` × `readPauseMs`, about 3 s, so a turn that really ends at a tool call, an
