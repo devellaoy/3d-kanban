@@ -3,12 +3,13 @@ import assert from 'node:assert/strict';
 import { closingPr, closingRef, promptIssue } from '../src/shared/kanban/issuecard.js';
 import { checkClosing, ensureClosingRef } from '../src/server/kanban/integrations/pulls/closes.js';
 import { TaskQueue, type QueueWorkers } from '../src/server/queue.js';
-import type { GhPull, QueueTask } from '../src/shared/protocol.js';
+import type { GhPull, QueueTask, WorkerInfo } from '../src/shared/protocol.js';
 import { Floor } from '../src/server/floor.js';
 import { setWallProvider } from '../src/server/kanban/integrations/issues/wall.js';
 import { queueEvents } from '../src/server/queue-events.js';
 import { gates } from '../src/server/office/gates.js';
 import { workerIssueKey } from '../src/server/kanban/engine/worker-issue.js';
+import { takeHiredIssue } from '../src/server/hooks/office-workers.js';
 import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
@@ -102,7 +103,7 @@ test('checkClosing leaves a task with a run going alone, and gives up on a pull 
   const ctx = {
     dataDir: '.',
     repos: () => [{ id: 'api', primary: true, remote: 'acme/api' }],
-    repo: { prLinksOfProject: () => [link], listTasks: () => [task], addComment: (c: { text: string }) => void comments.push(c.text) },
+    repo: { prLinksOfProject: () => [link], listTasks: () => [task], listRuns: () => [], addComment: (c: { text: string }) => void comments.push(c.text) },
     taskChanged() {},
   } as unknown as Parameters<typeof checkClosing>[0];
   let views = 0;
@@ -127,7 +128,7 @@ test('a task whose issue number collides with another repository’s is still ch
   const ctx = {
     dataDir: '.',
     repos: () => [{ id: 'api', primary: true, remote: 'acme/api' }],
-    repo: { prLinksOfProject: () => [link], listTasks: () => [task], addComment() {} },
+    repo: { prLinksOfProject: () => [link], listTasks: () => [task], listRuns: () => [], addComment() {} },
     ghAs: (id?: string) => (id === 'ada' ? { env: { GH_TOKEN: 'ada' } } : undefined),
     taskChanged() {},
   } as unknown as Parameters<typeof checkClosing>[0];
@@ -237,18 +238,18 @@ test('the queue checks the closing line once its worker is at rest, again after 
   const refresh = async () => (q.onPulls([pull]), await new Promise((r) => setTimeout(r, 5)));
   await refresh();
   assert.equal(asked, 0, 'not while the worker may still be writing the description');
-  worker.status = 'done';
+  (worker.status = 'done'), q.onWorker({ ...worker } as never);
   await refresh();
   await refresh();
   assert.equal(asked, 1);
-  worker.status = 'working';
+  (worker.status = 'working'), q.onWorker({ ...worker } as never);
   await refresh();
-  worker.status = 'done';
+  (worker.status = 'done'), q.onWorker({ ...worker } as never);
   await refresh();
   assert.equal(asked, 2, 'its final description is checked again');
-  worker.status = 'working';
+  (worker.status = 'working'), q.onWorker({ ...worker } as never);
   await refresh();
-  worker.status = 'done';
+  (worker.status = 'done'), q.onWorker({ ...worker } as never);
   answer = false;
   for (let i = 0; i < 5; i++) await refresh();
   assert.equal(asked, 5, 'gh failing is asked about three times');
@@ -268,5 +269,80 @@ test('a card handed to a worker at its desk is the issue its pull request closes
   await new Promise((r) => setTimeout(r, 10));
   assert.deepEqual(started, ['gh:acme/api#2']);
   assert.ok(warned.some((w) => w.includes('Sign in to GitHub first')));
+  setWallProvider(undefined);
+});
+
+test('a kanban PR is checked again after a later run of its task, which may have rewritten the description', async () => {
+  const task = { id: 1, ticket: 'gh:acme/api#7', status: 'review', runState: 'idle', createdByAccount: undefined };
+  const link = { taskId: 1, repoId: 'api', repo: 'acme/api', number: 3, url: 'https://github.com/acme/api/pull/3', state: 'OPEN' };
+  const runs = [{ id: 10 }];
+  const ctx = {
+    dataDir: '.',
+    repos: () => [{ id: 'api', primary: true, remote: 'acme/api' }],
+    repo: { prLinksOfProject: () => [link], listTasks: () => [task], listRuns: () => runs, addComment() {} },
+    taskChanged() {},
+  } as unknown as Parameters<typeof checkClosing>[0];
+  let body = 'Did things';
+  let views = 0;
+  const io = {
+    run: async (args: string[]) => {
+      if (args[1] === 'view') return (views++, JSON.stringify({ body, baseRefName: 'main', closingIssuesReferences: [] }));
+      if (args[1] === 'edit') body = 'Did things\n\nCloses #7';
+      return '';
+    },
+    defaultBranch: async () => 'main',
+  };
+  const checked = new Map<string, number>();
+  const sync = async () => (checkClosing(ctx, 'api', checked, io), await new Promise((r) => setTimeout(r, 20)));
+  await sync();
+  await sync();
+  assert.equal(views, 1, 'once per run');
+  assert.match(body, /Closes #7/);
+  // Its PR phase writes the description again, without the line.
+  body = 'Rewritten';
+  runs.push({ id: 11 });
+  await sync();
+  assert.equal(views, 2);
+  assert.match(body, /Closes #7/);
+});
+
+test('the queue checks the closing line again after a turn that no PR refresh saw', async () => {
+  const dir = mkdtempSync(path.join(tmpdir(), 'office-closes-'));
+  const worker = { id: 'worker-0', deskId: 'd', status: 'done', name: 'T' } as WorkerInfo;
+  const workers = { defaultProvider: 'claude', list: () => [worker], deskOccupied: () => false, spawn: () => worker, kill: async () => ({}) } as unknown as QueueWorkers;
+  let asked = 0;
+  const q = new TaskQueue(dir, workers, false, { update() {}, toast() {}, claimIssue: async () => undefined, refreshGitHub() {}, hiringPaused: () => undefined, emptied() {}, prLinked: async () => (asked++, true) });
+  (q as unknown as { tasks: QueueTask[] }).tasks.push({ id: 'a', title: 't', prompt: 'p', addedBy: 'x', addedAt: Date.now(), status: 'running', issueKey: 'gh:acme/api#5', workerId: 'worker-0', branch: 'b' });
+  const pull = { number: 9, title: 'x', state: 'OPEN', isDraft: false, url: 'https://github.com/acme/api/pull/9', author: '', labels: [], reviewDecision: '', headRefName: 'b', baseRefName: 'main', createdAt: new Date().toISOString(), updatedAt: '', additions: 0, deletions: 0, checks: 'none', body: '', closes: [] } as GhPull;
+  const refresh = async () => (q.onPulls([pull]), await new Promise((r) => setTimeout(r, 5)));
+  await refresh();
+  assert.equal(asked, 1);
+  // A whole turn between two refreshes: only the worker's own updates see it.
+  q.onWorker({ ...worker, status: 'working' });
+  q.onWorker({ ...worker, status: 'done' });
+  await refresh();
+  assert.equal(asked, 2);
+  q.shutdown();
+});
+
+test('a worker hired for an issue by another agent takes it as a card does, and moves the Status without a gh sign-in', async () => {
+  const started: string[] = [];
+  setWallProvider({ started: async (_p: string, k: string) => (started.push(k), undefined), refresh() {} } as never);
+  const info = { id: 'w1' } as Record<string, unknown>;
+  const claimed: unknown[] = [];
+  const dropped: unknown[] = [];
+  const floor = { id: 'app', def: { repo: 'acme/api' }, dir: '.', git: true, cardRef: Floor.prototype.cardRef, queue: { dropIssue: (n: number) => dropped.push(n) }, workers: { get: () => info }, claimCard: async (...a: unknown[]) => (claimed.push(a), undefined) };
+  const toasts: string[] = [];
+  const signedIn = { signins: { ghAs: () => ({ env: { GH_TOKEN: 'ada' } }) }, toastFloor: (_f: unknown, t: string) => void toasts.push(t) };
+  takeHiredIssue(signedIn as never, floor as never, 'w1', 4, 'ada');
+  assert.deepEqual(claimed, [[4, undefined, { env: { GH_TOKEN: 'ada' } }]], 'through claimCard, which also moves the Status');
+  assert.equal(info.issueKey, 'gh:acme/api#4');
+  assert.deepEqual(dropped, [4]);
+  const signedOut = { signins: { ghAs: () => 'Sign in to GitHub first' }, toastFloor: (_f: unknown, t: string) => void toasts.push(t) };
+  takeHiredIssue(signedOut as never, floor as never, 'w1', 5, 'bob');
+  await new Promise((r) => setTimeout(r, 10));
+  assert.equal(claimed.length, 1, 'nobody assigned without a sign-in');
+  assert.deepEqual(started, ['gh:acme/api#5']);
+  assert.ok(toasts.some((t) => t.includes('Sign in to GitHub first')));
   setWallProvider(undefined);
 });

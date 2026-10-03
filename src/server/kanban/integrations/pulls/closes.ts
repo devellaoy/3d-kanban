@@ -84,8 +84,8 @@ const READ_TRIES = 3;
 
 /**
  * For each active task with a GitHub issue as its ticket: the pull request that is to close it
- * (closingPr among its open ones) gets the closing line when it hasn't, once per pull request
- * (`checked`: tries so far, READ_TRIES once done or given up). Fire and forget; what it did, or couldn't, goes on the task as a status comment.
+ * (closingPr among its open ones) gets the closing line when it hasn't, once per pull request and
+ * task run (`checked`, by URL and the task's latest run: tries so far, READ_TRIES once done or given up). Fire and forget; what it did, or couldn't, goes on the task as a status comment.
  */
 export function checkClosing(
   ctx: KanbanContext,
@@ -101,14 +101,17 @@ export function checkClosing(
     if (!parseGhKey(task.ticket) || task.status === 'done' || task.runState !== 'idle') continue;
     const mine = links.filter((l) => l.taskId === task.id).map((l) => ({ ...l, repo: l.repo ?? repos.find((r) => r.id === l.repoId)?.remote }));
     const pick = closingPr(task.ticket, mine, home);
-    if (!pick || (checked.get(pick.url) ?? 0) >= READ_TRIES) continue;
-    const tries = (checked.get(pick.url) ?? 0) + 1;
-    checked.set(pick.url, READ_TRIES);
+    if (!pick) continue;
+    // Once per run: a later one (its PR phase, a fix) may write the description again without the line.
+    const mark = `${pick.url} ${ctx.repo.listRuns(task.id).at(-1)?.id ?? ''}`;
+    if ((checked.get(mark) ?? 0) >= READ_TRIES) continue;
+    const tries = (checked.get(mark) ?? 0) + 1;
+    checked.set(mark, READ_TRIES);
     const as = ctx.ghAs?.(task.createdByAccount);
     void (async () => {
       const r = await ensureClosingRef({ prUrl: pick.url, ref: task.ticket!, cwd: ctx.dataDir, env: typeof as === 'object' ? as.env : undefined, run: io.run, defaultBranch: pick.repo ? await io.defaultBranch(pick.repo.toLowerCase()).catch(() => undefined) : undefined });
       if (r.retry) {
-        checked.set(pick.url, tries);
+        checked.set(mark, tries);
         if (tries < READ_TRIES) return;
       }
       const text = r.warning ?? (r.edited ? `Added "${closingRef(task.ticket, pick.repo)}" to ${pick.url}, so merging it closes the issue` : '');

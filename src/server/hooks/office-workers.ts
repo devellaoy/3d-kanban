@@ -6,6 +6,8 @@ import type { WorkerInfo } from '../../shared/protocol.js';
 import type { Ctx } from '../office/context.js';
 import { str } from '../office/input.js';
 import { readBody, send } from '../http/util.js';
+import type { Floor } from '../floor.js';
+import { progressIssue } from '../kanban/integrations/issues/wall.js';
 
 /**
  * The floor's workers, for any worker on it (see office-workers.ts, and bin/office-workers.js, the
@@ -117,14 +119,22 @@ export async function officeWorkers(ctx: Ctx, req: http.IncomingMessage, res: ht
   const r = floor.workers.spawn(desk, who, ask.prompt, worktree, 'agent', provider, ask.model, ask.effort, undefined, owner);
   if (typeof r === 'string') return send(res, 400, { error: r });
   ctx.toastFloor(floor, `${who} hired ${r.name}${ask.issue ? ` for issue #${ask.issue}` : ' with a task'}`);
-  if (ask.issue) {
-    const n = ask.issue;
-    floor.queue.dropIssue(n);
-    const info = floor.workers.get(r.id);
-    if (info) info.issueKey = floor.cardRef(n, undefined);
-    const as = owner ? ctx.signins.ghAs(owner) : undefined;
-    if (typeof as === 'string') ctx.toastFloor(floor, `Couldn't assign issue #${n} on GitHub: ${as}`, 'warn');
-    else void floor.github.claim(n, as).then((e) => e && ctx.toastFloor(floor, `Couldn't assign issue #${n} on GitHub: ${e}`, 'warn'));
-  }
+  if (ask.issue) takeHiredIssue(ctx, floor, r.id, ask.issue, owner);
   send(res, 200, { ok: true, worker: row(r.id) });
+}
+
+/**
+ * A worker hired for the floor's issue `n` (office-workers hire --issue, MCP hire_worker) takes it as a
+ * card at a desk does: off the queue, its pull request's issue, assigned as the owner (else the office's
+ * gh), and moved to In progress on the project's boards, with the office's gh when the owner has no sign-in.
+ */
+export function takeHiredIssue(ctx: Pick<Ctx, 'signins' | 'toastFloor'>, floor: Floor, workerId: string, n: number, owner?: string) {
+  floor.queue.dropIssue(n);
+  const ref = floor.cardRef(n, undefined);
+  const info = floor.workers.get(workerId);
+  if (info && ref) info.issueKey = ref;
+  const as = owner ? ctx.signins.ghAs(owner) : undefined;
+  if (typeof as !== 'string') return void floor.claimCard(n, undefined, as).then((e) => e && ctx.toastFloor(floor, `Couldn't assign issue #${n} on GitHub: ${e}`, 'warn'));
+  ctx.toastFloor(floor, `Couldn't assign issue #${n} on GitHub: ${as}`, 'warn');
+  if (ref) void progressIssue(floor.id, ref).then((w) => w && ctx.toastFloor(floor, `📋 ${w}`, 'warn'));
 }

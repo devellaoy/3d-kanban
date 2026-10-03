@@ -201,6 +201,8 @@ export class TaskQueue {
     if (moved.length) this.changed();
     if (this.lastStatus.get(info.id) === info.status) return;
     this.lastStatus.set(info.id, info.status);
+    // A new turn may rewrite its PR's description: the closing line is checked again once it rests.
+    if (isBusy(info.status)) for (const t of this.tasks) if (t.workerId === info.id) this.closing.delete(t.id);
     this.pump();
   }
 
@@ -237,7 +239,7 @@ export class TaskQueue {
 
   /**
    * Has the floor check that the task's open PR closes its issue, once its worker is at rest (it may
-   * still be writing the description), again after it has worked on, and up to CLOSING_TRIES times
+   * still be writing the description), again after each turn it starts (onWorker), and up to CLOSING_TRIES times
    * while gh fails.
    */
   private checkClosing(t: QueueTask, pull: GhPull) {
@@ -245,11 +247,7 @@ export class TaskQueue {
     let c = this.closing.get(t.id);
     if (!c || c.pr !== pull.number) this.closing.set(t.id, (c = { pr: pull.number, done: false, tries: 0 }));
     const worker = t.workerId ? this.workers.list().find((w) => w.id === t.workerId) : undefined;
-    if (worker && isBusy(worker.status)) {
-      c.done = false;
-      c.tries = 0;
-      return;
-    }
+    if (worker && isBusy(worker.status)) return;
     if (c.done || c.asking || c.tries >= CLOSING_TRIES) return;
     c.tries++;
     c.asking = true;
