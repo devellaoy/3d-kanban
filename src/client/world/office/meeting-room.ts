@@ -63,6 +63,8 @@ export function buildMeetingRoom(plan: MeetingRoomPlan, desks: Map<string, DeskV
   const F = roomFrame(R);
   const H = R.height;
   const T = 0.1;
+  /** How far the glass frame's bars stand out in front of the glass (they're T + 0.06 deep). */
+  const FRONT = (T + 0.06) / 2;
   const wing = R.style === 'wing';
   const group = new THREE.Group();
   const colliders: Collider[] = [];
@@ -114,10 +116,12 @@ export function buildMeetingRoom(plan: MeetingRoomPlan, desks: Map<string, DeskV
   if (!wing) run('v', 0, F.depth, F.u0);
   // Over the door, up to the loft's floor (or the room's ceiling).
   bar(R.door.u1 - R.door.u0, 0.1, T + 0.06, (R.door.u0 + R.door.u1) / 2, 2.3, 0);
-  // A lower ceiling over a wing room, on the wing's walls, and a strip of light along the top of its glass front: each room its own colour.
+  // A lower ceiling over a wing room, inside the wing's walls (a hair short of each, so no face is coplanar with theirs), and a strip of light along the top of its glass front: each room its own colour.
   if (wing) {
-    walls.add(mesh(box(F.u1 - F.u0, 0.12, F.depth), toon('#f3efe8'), (F.u0 + F.u1) / 2, H + 0.06, F.depth / 2, false));
-    walls.add(mesh(box(F.u1 - F.u0 - 0.2, 0.04, 0.05), bulb(night, ['#9ad7ff', '#ffd166', '#ff9fb2'][(plan.level ?? 1) - 1], 0.4), (F.u0 + F.u1) / 2, H - 0.14, -T / 2 - 0.04, false));
+    // Clear of the frame's top bar (its top is at H), so the two never share a face and flicker.
+    walls.add(mesh(box(F.u1 - F.u0 - 0.04, 0.12, F.depth - 0.08), toon('#f3efe8'), (F.u0 + F.u1) / 2, H + 0.07, 0.05 + (F.depth - 0.08) / 2, false));
+    // On the face of the top bar, above the name over the door rather than across it.
+    walls.add(mesh(box(F.u1 - F.u0 - 0.2, 0.04, 0.02), bulb(night, ['#9ad7ff', '#ffd166', '#ff9fb2'][(plan.level ?? 1) - 1], 0.4), (F.u0 + F.u1) / 2, H - 0.05, -FRONT - 0.012, false));
   }
   local.add(walls);
 
@@ -153,7 +157,8 @@ export function buildMeetingRoom(plan: MeetingRoomPlan, desks: Map<string, DeskV
   });
   const label = textPlane(plan.label, { bg: '#2b2d42', color: '#fffaf3', size: 56, border: '#fffaf3' });
   label.scale.multiplyScalar(0.62);
-  label.position.set(du, 2.52, -0.07);
+  // In front of the frame's bars (not inside them, where it would flicker), and below the top bar.
+  label.position.set(du, 2.47, -FRONT - 0.02);
   label.rotation.y = Math.PI;
   local.add(label);
 
