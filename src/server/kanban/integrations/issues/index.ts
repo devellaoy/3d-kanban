@@ -13,8 +13,9 @@ import { githubProjectSource } from './github-project.js';
 import { jiraSource } from './jira.js';
 import type { IssueSource, IssueSourceIo } from './source.js';
 import { refreshWall, setWallProvider, toGhIssue, wallChanged } from './wall.js';
-import { claimIssueForTask } from './autoassign.js';
-import { issueActionHandlers, type IssuePatch } from './actions.js';
+import { takeIssueForTask } from './autoassign.js';
+import { takeIssue } from './take.js';
+import { announce, issueActionHandlers, type IssuePatch } from './actions.js';
 import { createBrowse } from './browse/index.js';
 import type { GhIssue, GhState } from '../../../../shared/protocol.js';
 
@@ -303,9 +304,6 @@ export function createIssues(ctx: KanbanContext, opts: IssuesOptions = {}) {
           wallChanged(m.project);
           const failed = typeof err === 'string' && err;
           ok(c, m.rid, { taskId: existing.id, existed: true, ...(failed ? { startError: failed } : { started: true }) });
-          if (failed) return;
-          const listed = state(m.project).items.find((i) => i.key === m.issueKey) ?? (await refresh(m.project)).items.find((i) => i.key === m.issueKey);
-          if (listed) await claimIssueForTask(ctx, { patch, io }, m.project, withChange(m.project, listed), c);
           return;
         }
         let issue = find(m.project, m.issueKey) ?? (await browsing.load(m.project, m.issueKey));
@@ -315,12 +313,21 @@ export function createIssues(ctx: KanbanContext, opts: IssuesOptions = {}) {
         ctx.broadcast(message(m.project), m.project);
         wallChanged(m.project);
         ok(c, m.rid, { taskId: made.task.id, existed: made.existed, ...(made.startError ? { startError: made.startError } : made.started ? { started: true } : {}) });
-        // A start that failed takes nothing.
-        if (!made.existed && !made.startError) await claimIssueForTask(ctx, { patch, io }, m.project, withChange(m.project, issue), c);
+        // A started task takes its issue through the engine's start hook (taskStarted); one made without starting is only assigned.
+        if (!m.start && !made.existed) await takeIssueForTask(ctx, { patch, io, find }, m.project, issue.key, c, { status: false });
       },
+    },
+    async taskStarted(taskId, who) {
+      const task = ctx.repo.getTask(taskId);
+      if (task?.ticket) await takeIssueForTask(ctx, { patch, io, find }, task.project, task.ticket, who, { status: true });
     },
     start() {
       setWallProvider({
+        started: async (project, key, env) => {
+          const took = await takeIssue({ statusIo: { ...io(project), ...(env ? { env } : {}), who: 'office', shared: !env }, key, sources: ctx.settings.project(project).issueSources, status: true });
+          for (const m of took.moved) announce(ctx, patch, project, key, '📋', `${key} moved to ${m.to} on ${m.board}`);
+          return took.warnings.join(' · ') || undefined;
+        },
         board: wall,
         watch,
         refresh: (project) => void (hasSources(project) ? refresh(project).catch(() => {}) : undefined),

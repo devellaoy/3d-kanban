@@ -4,7 +4,7 @@ import { adfToText, buildJql, jiraSource, jqlQuote } from '../src/server/kanban/
 import { ghIssueArgs, githubRepoSource, parseGhIssues } from '../src/server/kanban/integrations/issues/github-repo.js';
 import { PROJECT_SCOPE_ERROR, filterProjectItems, githubProjectSource, parseProjectPage, projectArgs, projectError } from '../src/server/kanban/integrations/issues/github-project.js';
 import { createIssues, issueDescription } from '../src/server/kanban/integrations/issues/index.js';
-import { claimIssueForTask } from '../src/server/kanban/integrations/issues/autoassign.js';
+import { takeIssueForTask } from '../src/server/kanban/integrations/issues/autoassign.js';
 import type { IssueSourceIo } from '../src/server/kanban/integrations/issues/source.js';
 import type { IssueSourceConfig } from '../src/shared/kanban/types.js';
 import { client, def, makeCtx } from './kanban-integrations-ctx.js';
@@ -211,7 +211,7 @@ test('an issue that has an assignee, a Jira key, a pull request or a closed issu
   // A board's copy has no state of its own: GitHub is asked, and a closed issue is left alone.
   const board = claimSetup({ ...env('/h/claim-6'), issues: [{ number: 1, state: 'CLOSED' }] });
   const listed = { source: 'github-project' as const, sourceId: 'p', key: 'gh:o/app#1', title: 'One', url: 'https://github.com/o/app/issues/1', body: '', labels: [], status: 'Todo', updatedAt: '' };
-  await claimIssueForTask(board.ctx, { patch: () => {}, io: () => io({ gh: board.gh }) }, 'app', listed, client(true, 'acc1'));
+  await takeIssueForTask(board.ctx, { patch: () => {}, io: () => io({ gh: board.gh }), find: () => listed }, 'app', listed.key, client(true, 'acc1'), { status: false });
   assert.ok(board.calls.some((a) => a[1] === 'view'), 'asked');
   assert.deepEqual(board.edits(), []);
   // Jira: no gh write either (the source isn't even reachable, so the issue is never found: the task isn't made).
@@ -271,10 +271,10 @@ test('a task whose start failed does not take its issue', async () => {
   assert.deepEqual(edits(), []);
 });
 
-test('starting an existing To do task from its issue assigns it too; only naming a task does not', async () => {
+test('starting a task from its issue leaves taking it to the engine’s start hook (taskStarted); only a task made without starting is assigned here', async () => {
   const { ctx, issues, make, edits } = claimSetup({ ...env('/h/claim-4'), issues: [{ number: 1 }, { number: 2 }] });
   await issues.refresh('app');
-  // Made without starting: assigned then; make the second one while its issue is read as assigned elsewhere, by hand.
+  // Made without starting: assigned then.
   await make('gh:o/app#1');
   assert.equal(edits().length, 1);
   const todo = ctx.repo.createTask({ project: 'app', title: 'Issue 2', ticket: 'gh:o/app#2', tool: 'claude', usePlan: false, planApproval: 'auto', useReview: false, createdBy: 'T' });
@@ -283,14 +283,16 @@ test('starting an existing To do task from its issue assigns it too; only naming
   assert.equal(edits().length, 1, 'named only: no write');
   const started = await make('gh:o/app#2', true);
   assert.equal(started.taskId, todo.id);
-  assert.equal(edits().length, 2);
+  assert.equal(edits().length, 1, 'the hook, not createTask, takes the issue of a started task');
+  await issues.plugin.taskStarted!(todo.id, client(true, 'acc1'));
   assert.deepEqual(edits()[1], ['issue', 'edit', '2', '-R', 'o/app', '--add-assignee=panu']);
 });
 
-test('starting a To do task from its issue with nothing cached refreshes the list and assigns it', async () => {
-  const { ctx, make, edits, calls } = claimSetup(env('/h/claim-7'));
-  const todo = ctx.repo.createTask({ project: 'app', title: 'Issue 1', ticket: 'gh:o/app#1', tool: 'claude', usePlan: false, planApproval: 'auto', useReview: false, createdBy: 'T' });
-  assert.equal(calls.length, 0, 'nothing fetched yet');
-  assert.equal((await make('gh:o/app#1', true)).taskId, todo.id);
+test('a task made and started in one go is taken once the hook runs, not before', async () => {
+  const { ctx, issues, make, edits } = claimSetup(env('/h/claim-7'));
+  const made = await make('gh:o/app#1', true);
+  assert.deepEqual(edits(), []);
+  assert.ok(ctx.repo.getTask(made.taskId));
+  await issues.plugin.taskStarted!(made.taskId, client(true, 'acc1'));
   assert.deepEqual(edits(), [['issue', 'edit', '1', '-R', 'o/app', '--add-assignee=panu']]);
 });

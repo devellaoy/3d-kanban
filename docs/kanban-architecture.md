@@ -666,7 +666,7 @@ For a signed-in browser (the session is checked by the route table in `src/serve
 `kanban.sqlite`, settings, secrets, projects through the Building, the office prompts, the hook URL, broadcast
 and toast. It then creates `pulls`, `refs` and the engine, and the plugins: the core plugin (ws.ts) plus
 `integrationPlugins`. The first plugin to claim a WS type keeps it. `workerExtras` merges the plugins'
-`workerArgs`/`workerEnv`, and a plugin that throws loses only its own part. `engine.begin()` and every
+`workerArgs`/`workerEnv`, and a plugin that throws loses only its own part. The engine in `ctx.engine` (and the one `installKanban` returns) is wrapped so that after every successful `start` each plugin's optional `taskStarted(taskId, who)` runs (guarded: a throw or rejection is logged and loses only that plugin's part; a failed start runs none). The issues plugin uses it to assign the task's issue and move it to In progress on the project's boards. `engine.begin()` and every
 `plugin.start()` run once everything exists; `shutdown()` stops the plugins, disposes of the engine and
 closes the database. `startServer` (`src/server/server.ts`) calls `openKanban` (`src/server/kanban/office.ts`) once
 the floors are open and keeps the result as `ctx.kanban`; `kanbanHandlers` (WS, `kanban/ws/handlers.ts`) and

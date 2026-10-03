@@ -117,6 +117,30 @@ export function boardTransitions(boards: BoardItem[]): IssueTransition[] {
     .flatMap((b) => b.options.map((o): IssueTransition => ({ id: projectTransitionId(b, o.id), name: o.name, to: o.name, group: b.title, ...(b.current === o.name ? { current: true } : {}) })));
 }
 
+/** Moves the item to the option of its board's Status field; a token without the `project` scope is told how to get it. */
+export async function setBoardStatus(io: IssueActIo, board: BoardItem, optionId: string): Promise<void> {
+  try {
+    const out = await graphql(io, SET_STATUS_MUTATION, [['-f', 'project', board.projectId], ['-f', 'item', board.itemId], ['-f', 'field', board.fieldId ?? ''], ['-f', 'option', optionId]]);
+    // gh normally fails on GraphQL errors; one that answers with them is read the same.
+    const errors = (/^\s*\{/.test(out) ? (JSON.parse(out) as { errors?: { message?: string }[] }) : {}).errors;
+    if (errors?.length) throw new Error(errors.map((e) => e.message ?? '').join('; '));
+  } catch (err) {
+    if (SCOPE_RE.test((err as Error)?.message ?? '')) throw new Error(PROJECT_WRITE_SCOPE_ERROR);
+    throw err;
+  }
+}
+
+const IN_PROGRESS = new Set(['in progress', 'in-progress', 'doing', 'started', 'working', 'wip', 'ongoing', 'käynnissä', 'työn alla']);
+
+/** The board's "In progress" Status option, unless the item is on it already or past it (never moved back from Review or Done). */
+export function inProgressOption(b: BoardItem): { id: string; name: string } | undefined {
+  if (!b.fieldId) return undefined;
+  const at = b.options.findIndex((o) => IN_PROGRESS.has(o.name.trim().toLowerCase()));
+  if (at < 0) return undefined;
+  const now = b.options.findIndex((o) => o.name === b.current);
+  return now >= at ? undefined : b.options[at];
+}
+
 /** Moves the item to the option a transition id names, after asking the boards again that it still can. Resolves to the status's name and the board it was moved on. */
 export async function projectTransition(io: IssueActIo, target: ProjectTarget, sources: ProjectConfig[], transitionId: string): Promise<{ to: string; owner: string; number: number }> {
   const [tag, projectId, itemId, fieldId, optionId] = transitionId.split(':');
@@ -125,14 +149,6 @@ export async function projectTransition(io: IssueActIo, target: ProjectTarget, s
   const board = (await resolveBoards(io, target, sources)).find((b) => b.projectId === projectId && b.itemId === itemId && b.fieldId === fieldId);
   const option = board?.options.find((o) => o.id === optionId);
   if (!board || !option) throw gone();
-  try {
-    const out = await graphql(io, SET_STATUS_MUTATION, [['-f', 'project', projectId], ['-f', 'item', itemId], ['-f', 'field', fieldId], ['-f', 'option', optionId]]);
-    // gh normally fails on GraphQL errors; one that answers with them is read the same.
-    const errors = (/^\s*\{/.test(out) ? (JSON.parse(out) as { errors?: { message?: string }[] }) : {}).errors;
-    if (errors?.length) throw new Error(errors.map((e) => e.message ?? '').join('; '));
-  } catch (err) {
-    if (SCOPE_RE.test((err as Error)?.message ?? '')) throw new Error(PROJECT_WRITE_SCOPE_ERROR);
-    throw err;
-  }
+  await setBoardStatus(io, board, optionId);
   return { to: option.name, owner: board.owner, number: board.number };
 }
