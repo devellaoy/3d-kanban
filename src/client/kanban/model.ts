@@ -2,7 +2,7 @@
 // column lists them, where a card may be dropped (from shared/kanban/moves.ts, which the server
 // enforces too), and the words on a card's badges. Kept pure so tests/kanban-ui-*.test.ts can run it.
 
-import { BOARD_COLUMNS, SKILL_PHASES, type KanbanPrBundleItem, type KanbanProjectInfo, type KanbanSettings, type NormalizedIssue, type PrRef, type KanbanTaskCard, type KanbanTool, type TaskStatus, type WaitingReason } from '../../shared/kanban/types.js';
+import { BOARD_COLUMNS, SKILL_PHASES, type KanbanEvent, type KanbanPrBundleItem, type KanbanProjectInfo, type KanbanSettings, type NormalizedIssue, type PrRef, type KanbanTaskCard, type KanbanTool, type TaskStatus, type WaitingReason } from '../../shared/kanban/types.js';
 import { checkMove, isRunning, moveTargets, type MoveAction, type MoveSubject } from '../../shared/kanban/moves.js';
 import { REPO_ID_RE } from '../../shared/kanban/protocol.js';
 
@@ -419,4 +419,10 @@ export function kanbanTaskOf(href: string, base: string): number | null {
   if (!u || (u.pathname !== '/kanban' && u.pathname !== '/kanban.html')) return null;
   const id = Number(u.searchParams.get('task'));
   return Number.isInteger(id) && id > 0 ? id : null;
+}
+
+/** The agent that created a task on someone's behalf (an agent's create_task: the `created` event's `via`), if one did. */
+export function viaAgent(events: KanbanEvent[]): string | undefined {
+  const via = (events.find((e) => e.kind === 'created')?.data as { via?: unknown } | undefined)?.via;
+  return typeof via === 'string' ? via : undefined;
 }

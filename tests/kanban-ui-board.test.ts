@@ -18,6 +18,7 @@ import {
   pickerRows,
   repoIdFrom,
   reviewTaskOf,
+  viaAgent,
   sameRepoPick,
   showsRepoChips,
   skillUsage,
@@ -271,4 +272,12 @@ test('dropZones: a waiting or review card may go on hold, an on hold card back t
 test('boardStats counts a held task in the total only', () => {
   const s = boardStats([card(1, { status: 'on_hold' })], null);
   assert.deepEqual([s.total, s.running, s.attention, s.review, s.done], [1, 0, 0, 0, 0]);
+});
+
+test('the task view names the agent that created a task (the created event\'s via), and nothing for a person\'s own', () => {
+  const ev = (kind: string, data?: unknown) => ({ id: 1, taskId: 1, kind, at: 1, data }) as Parameters<typeof viaAgent>[0][number];
+  assert.equal(viaAgent([ev('moved'), ev('created', { by: 'Panu', via: 'Ada', viaWorker: 'w1' })]), 'Ada');
+  assert.equal(viaAgent([ev('created', { by: 'Panu' })]), undefined);
+  assert.equal(viaAgent([ev('created', { via: 5 })]), undefined);
+  assert.equal(viaAgent([]), undefined);
 });
