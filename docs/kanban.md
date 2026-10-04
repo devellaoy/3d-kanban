@@ -634,7 +634,8 @@ read the real task instead of guessing:
   `office-tasks search <words>`. It calls the hook server's `/office/tasks/reference` and
   `/office/tasks/search` with the worker's own `AGENT_OFFICE_WORKER_ID` and `AGENT_OFFICE_HOOK_TOKEN`.
 - **MCP tools** `get_task` and `search_tasks` on the office's `agent-office` MCP server, listed to every
-  agent worker (Claude workers are allowed them without asking).
+  agent worker; only a kanban task's Claude worker is allowed them without asking (other Claude agents
+  are asked).
 - A task's plan phase, which can't run anything, gets the tasks its text refers to written into
   `<data>/kanban/refs/task-<id>/referenced-tasks.md` beforehand.
 - What an agent gets: description, accepted plan, summary, runs and review verdicts, the latest
@@ -683,30 +684,40 @@ implementation runs, review, the board's columns), not as a plain one-off worker
   ```
 
   It prints the new task's number on stdout and a status line on stderr (`--json` prints the raw answer).
+  Stdin that sends nothing for 3 seconds counts as an empty description, so a pipe nobody closes can't
+  hang the command; `--no-description` skips stdin altogether (for `--issue`). Without `--issue` an empty
+  description is a usage error.
   The office answers as soon as the task is made; assigning a linked issue on GitHub follows after.
 - **Parameters**: `title` and `description` (both needed unless `issue` is given), `project` (id or
   name), `repos` (`--repo`, repeatable; names or ids), `issue` (a GitHub issue: `12` or `owner/repo#12`,
-  or a Jira key), `ticket` / `ticketUrl`, `provider` (`claude` or `codex`), `model`, `effort` (`low` to
-  `max`), `type` (`implement` or `investigate`), `start` and `desk`. Making the same issue again returns
-  the task that exists (`existed`).
-- **It lands in To do** unless `start` is set, which seats a worker for it or queues it when the
-  office is full (the answer says which; a start that failed says why).
+  or a Jira key), `ticket` / `ticketUrl`, `provider` (`claude` or `codex`), `model`, `effort` (`minimal` to
+  `max`), `type` (`implement` or `investigate`), `start` and `desk` (only accepted with `start`). Making
+  the same issue, or the same plain `ticket` in the project, again returns the task that exists (`existed`).
+  Creating a task in another project than the agent's own is allowed, but it only lands in To do.
+- **It lands in To do** for a person unless `start` is set, which seats a worker for it or queues it
+  when the office is full (the answer says which; a start that failed says why). That worker runs
+  without permission prompts, unattended, so `start` is honoured only for an agent a person hired at a
+  desk (`WorkerInfo.byPerson`) or a board agent, and only in the agent's own project; a task's worker,
+  an agent-hired or queue worker, or a task in another project lands in To do with a note.
 - **Who the creator is**: the account the agent runs for; else, for a task's own worker, the parent
   task's creator; else the person who hired the worker at its desk (`WorkerInfo.byPerson`; never a queue,
   kanban or agent hire, whose `createdBy` isn't a person); else the agent's name. The agent is recorded in
   the task's `created` event and in the toast everyone on the floor sees.
 - **Issues**: `issue` links the GitHub issue (or Jira ticket) the way a task made from the issues board
   is linked. It is assigned to the account the agent works for, which needs that account's own GitHub
-  sign-in. A bare number only works when the project has exactly one GitHub repository; `owner/repo`
+  sign-in. An issue key the project doesn't know yet doesn't refresh its issue lists; a key kind the
+  project has no source for (a Jira key without Jira, say) is refused, and Jira keys are upper-cased. A bare number only works when the project has exactly one GitHub repository; `owner/repo`
   is matched to the project's own spelling of the repository, so `O/APP#12` finds the task `o/app#12` has.
+- **The task view** shows which agent created a task ("via").
 - **A task's own worker can't start tasks**: its new tasks stay in To do (the answer says why), and the
   parent task gets a comment naming each task it made. Task workers run without permission prompts, so
   this, not a prompt, is what keeps one task from starting many.
 - **Visibility**: every agent worker gets `AGENT_OFFICE_TASKS=1`, so the MCP server lists `get_task`,
-  `search_tasks` and `create_task`. Claude workers may call `get_task` / `search_tasks` without asking;
-  `create_task` is never pre-approved, so a desk or board agent asks first (a task's own worker runs
-  without prompts, see above). The server's instructions, and `hire_worker`'s description, tell agents to
-  use `create_task` for kanban work and `hire_worker` only for a plain one-off worker.
+  `search_tasks` and `create_task`. Only a kanban task's Claude worker may call `get_task` /
+  `search_tasks` without asking (other Claude agents are asked); `create_task` is never pre-approved, so a
+  desk or board agent asks first (a task's own worker runs without prompts, see above). The MCP server's
+  instructions (and only they) tell agents to use `create_task` for kanban work and `hire_worker` only
+  for a plain one-off worker.
 
 ## Where the data is
 
