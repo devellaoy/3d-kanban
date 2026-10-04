@@ -112,6 +112,59 @@ export interface MeetingRecord {
   finishedAt: number;
   branch?: string;
   output: string;
+  // The rest is only in the full record, kept in the meeting's own folder (meetings/<id>/.meeting.json) and
+  // served over HTTP (/api/meetings), never in MeetingState: the state goes to every browser every few seconds.
+  /** The question or task, cut short when it's long. */
+  prompt?: string;
+  /** Who sat at the table, the head first. */
+  seats?: { role: string; workerName?: string }[];
+  /** The rounds it held. */
+  rounds?: number;
+  tokens?: number;
+  /** Missing when a worker's provider doesn't report its cost. */
+  cost?: number;
+  /** The commit on `branch` that holds the output. */
+  commit?: string;
+  /** Review panel: the pull request, and the review the office posted on it. */
+  pr?: number;
+  reviewUrl?: string;
+  /** Where its notes are kept, relative to the floor's .agent-office/ (meetings/<id>). */
+  notesDir?: string;
+}
+
+/** A meeting in the archive. An orphan is a notes folder with no record: its id and date only. */
+export type ArchivedMeeting = MeetingRecord & { orphan?: boolean };
+
+/**
+ * The floor's earlier meetings, newest first (GET /api/meetings). Each entry is a line (see slimRecord) with only a
+ * snippet of the question as `prompt` (cut with "…"); the full record, seats and all, is GET /api/meetings/<id> (an ArchivedMeeting).
+ */
+export interface MeetingArchiveList {
+  meetings: ArchivedMeeting[];
+  /** More were found than were sent. */
+  more: boolean;
+}
+
+/** A meeting's notes folder (GET /api/meetings/<id>/files): the output first, then the notes by round. */
+export interface MeetingFiles {
+  files: MeetingFileInfo[];
+  /** How many top-level entries were left out: folders, links and files that aren't plain (not hidden files). */
+  skipped: number;
+}
+
+/** One file in a meeting's notes folder. */
+export interface MeetingFileInfo {
+  name: string;
+  size: number;
+  kind: 'output' | 'note';
+  round?: number;
+}
+
+/** One file's text (GET /api/meetings/<id>/file?name=). */
+export interface MeetingFileText {
+  name: string;
+  size: number;
+  text: string;
 }
 
 /** One meeting room on the floor and what's on in it. */

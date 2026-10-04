@@ -34,7 +34,7 @@ async function inReview(fx: EngineFixture, patch: Parameters<EngineFixture['newT
 test('migration 4 adds tasks.hold, a build that knows 3 refuses the database, and the hold round-trips onto the card', () => {
   const db = new Database(':memory:');
   assert.deepEqual(migrate(db, MIGRATIONS.slice(0, 3)), [1, 2, 3]);
-  assert.deepEqual(migrate(db), [4]);
+  assert.deepEqual(migrate(db, MIGRATIONS.slice(0, 4)), [4]);
   assert.equal(db.pragma('user_version', { simple: true }), 4);
   assert.throws(() => migrate(db, MIGRATIONS.slice(0, 3)), /newer than this build/);
   const repo = new KanbanRepository(db);

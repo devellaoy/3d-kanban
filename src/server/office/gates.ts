@@ -4,19 +4,17 @@ import type { Floor } from '../floor.js';
 import type { SignInKind } from '../../shared/protocol.js';
 import type { Ctx, Gates } from './context.js';
 import type { Client } from './client.js';
+import { takeCard } from '../take-card.js';
 
 /** What has to be true before something happens for someone: a sign-in of their own, a fresh base, GitHub. */
 export function gates(ctx: Ctx): Gates {
   /**
-   * A worker took on GitHub issue `n` (an issue card dropped on its desk): assign it on GitHub, which
-   * moves it to In progress on the board, and take it off the queue so nobody else is seated for it.
+   * A worker took on GitHub issue `n` (an issue card dropped on its desk, or an issue-source card by its
+   * `key`): assigned and moved to In progress on GitHub (take-card.ts), and taken off the queue so nobody
+   * else is seated for it.
    */
-  const takeIssue = (c: Client, floor: Floor, n: number | undefined, key?: string) => { // or an issue-source card by its key
-    floor.queue.dropIssue(n, key);
-    const name = n !== undefined ? `#${n}` : key;
-    const as = c.accountId ? ctx.signins.ghAs(c.accountId) : undefined;
-    if (typeof as === 'string') return ctx.warn(c, `Couldn't assign issue ${name} on GitHub: ${as}`);
-    void floor.claimCard(n, key, as).then((err) => ctx.warn(c, err && `Couldn't assign issue ${name} on GitHub: ${err}`));
+  const takeIssue = (c: Client, floor: Floor, n: number | undefined, key?: string, workerId?: string) => {
+    void takeCard(floor, (o) => ctx.signins.ghAs(o), { n, key, owner: c.accountId, workerId }, (text) => ctx.warn(c, text));
   };
 
   /**

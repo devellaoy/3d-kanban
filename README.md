@@ -97,7 +97,7 @@ curl -fsSL https://raw.githubusercontent.com/devellaoy/3d-kanban/main/deploy/pro
 
 - **A task process**: plan (with questions, auto or manual approval) → implement → 1–10 review rounds ⇄
   fix → the Review column → Done (a task that has to wait for something outside goes **On hold**, its worker resting in the 3D lounge: [docs/kanban.md](docs/kanban.md#on-hold)). Comments put the agent back to work (a comment whose work changes nothing since the task came to
-  Review doesn't start a review round), and answer it when it asks in its terminal; usage limits are retried by themselves (a Codex one at the reset time its account reports). A task that finds no free desk or the office's
+  Review doesn't start a review round), and answer it when it asks in its terminal (you can also type into a worker's terminal mid-run: a reply to you doesn't replace the run's result, and if the run's background work ended in that turn the office asks the agent to restate its final answer); usage limits are retried by themselves (a Codex one at the reset time its account reports). A task that finds no free desk or the office's
   worker limit full is queued and starts when there's room, as the account that made it (a task counts
   once against the limit: its reviewer never waits for its own implementer's place, and it takes no desk
   either: it stands behind the implementer's chair, watching over its shoulder); a task waiting on a person is announced on the
@@ -127,6 +127,8 @@ curl -fsSL https://raw.githubusercontent.com/devellaoy/3d-kanban/main/deploy/pro
 - **Multi-PR reviews**: 🔍 Review and 🤝 Review panel pick the PRs that belong together across the
   repositories and review them as one change. The office has one meeting room, and the **🚧 Room for a meeting room** sign on the west wall builds up to
   three more (the same way the back office grows), so panels and other meetings can run at the same time; a new one takes the first free room.
+  **📚 Earlier meetings** in the meeting window lists the floor's finished meetings (searchable) and reads
+  their output and round notes, Markdown rendered or raw, to copy or download.
 - **Languages**: ⚙️ Settings → 🤖 Workers sets the **conversation language** every agent talks to you in and
   the **public language** issues, pull requests, commits and other texts that leave the office are written in;
   a project can pick its own public language in ⚙️ Project, and the **code comment language** (English by

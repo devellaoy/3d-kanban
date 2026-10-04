@@ -6,6 +6,7 @@ import { EventEmitter } from 'node:events';
 import http from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { answerHttp, forbidden } from '../src/server/multiplayer/httpgate.js';
+import { visitorPath } from '../src/server/multiplayer/paths.js';
 import type { Multiplayer } from '../src/server/multiplayer/index.js';
 import type { Ctx } from '../src/server/office/context.js';
 import type { RelayToOffice } from '../src/shared/multiplayer/wire.js';
@@ -91,4 +92,11 @@ test("a changed picture is only for a worker whose every floor is in the visitor
   assert.equal(ask('worker=w1&path=a.png&side=new'), 403, 'the floor is named every time');
   scope.floors.delete('pub');
   assert.equal(ask('floor=pub&worker=w1&path=a.png&side=new'), 403, 'after the unshare');
+});
+
+test('a visitor can not read meeting notes: the path list leaves them out and the gate refuses them', () => {
+  for (const p of ['/api/meetings', '/api/meetings/aaaaaaaa/files', '/api/meetings/aaaaaaaa/file']) assert.equal(visitorPath('GET', p), false, p);
+  const ctx = { floors: new Map() } as unknown as Ctx;
+  const scope = { floors: new Set(['pub']), projects: new Set<string>() };
+  for (const p of ['/api/meetings?floor=pub', '/api/meetings/aaaaaaaa/files?floor=pub', '/api/meetings/aaaaaaaa/file?floor=pub&name=plan.md']) assert.equal(forbidden(ctx, scope, new URL(p, 'http://x')), 403, p);
 });

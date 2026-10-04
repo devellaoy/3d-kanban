@@ -1,0 +1,58 @@
+/* The meeting window's earlier meetings (meetingpast.ts): the list beside the picked meeting, one at a time when narrow */
+.meeting-window footer { flex-wrap: wrap; }
+.modal.meeting-window.past { width: min(1180px, 100%); height: min(860px, calc(100vh - 32px)); }
+.meeting-window.past .body { flex: 1; min-height: 0; padding: 0; overflow: hidden; display: flex; }
+.mp { flex: 1; min-width: 0; min-height: 0; display: grid; grid-template-columns: 320px minmax(0, 1fr); }
+.mp-side { display: flex; flex-direction: column; min-width: 0; min-height: 0; border-right: var(--bw) solid var(--ink); background: var(--paper-2); }
+.mp-find { padding: 12px 12px 6px; }
+.modal .mp-find input[type=text] { font-size: var(--fs-md); padding: 8px 12px; }
+.mp-count { font-size: var(--fs-xs); font-weight: var(--fw-bold); color: var(--muted); padding: 0 16px 6px; min-height: 20px; }
+.mp-list { list-style: none; margin: 0; padding: 0 8px 12px; overflow: auto; flex: 1; min-height: 0; }
+.mp-list li + li { margin-top: 2px; }
+.mp-item { display: flex; flex-direction: column; gap: 2px; width: 100%; min-width: 0; text-align: left; font: inherit; color: var(--text); background: none; padding: 7px 10px; border-radius: 10px; cursor: pointer; border: var(--bw-sm) solid transparent; }
+.mp-item:hover { background: color-mix(in srgb, var(--field) 70%, transparent); }
+.mp-item.on { background: var(--strong); color: var(--text-on-strong); border-color: var(--ink); }
+.mp-item-title { font-weight: var(--fw-bold); font-size: var(--fs-md); line-height: 1.3; overflow-wrap: anywhere; }
+.mp-item-line { font-size: var(--fs-xs); font-weight: var(--fw-semibold); color: var(--muted); overflow-wrap: anywhere; }
+.mp-item.on .mp-item-line { color: color-mix(in srgb, var(--text-on-strong) 75%, transparent); }
+.mp-none { padding: 10px; margin: 0; font-size: var(--fs-sm); font-weight: var(--fw-semibold); color: var(--muted); }
+.mp-none.bad { color: var(--bad); }
+.mp-main { min-width: 0; min-height: 0; overflow: auto; padding: 16px; display: flex; flex-direction: column; gap: 14px; overflow-wrap: anywhere; }
+.mp-main > * { min-width: 0; flex: none; }
+.mp-back { display: none; align-self: flex-start; }
+.mp-title { margin: 0 0 6px; font-size: var(--fs-xl); font-weight: var(--fw-heavy); }
+.mp-facts { margin: 0; display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 4px 12px; font-size: var(--fs-sm); }
+.mp-row { display: contents; }
+.mp-facts dt { font-weight: var(--fw-bold); color: var(--muted); }
+.mp-facts dd { margin: 0; font-weight: var(--fw-semibold); min-width: 0; }
+.mp-facts a { color: var(--link); font-weight: var(--fw-bold); text-decoration: none; }
+.mp-seats { list-style: none; margin: 0; padding: 0; }
+.mp-summary { margin: 10px 0 0; font-size: var(--fs-sm); font-weight: var(--fw-semibold); color: var(--muted); }
+.mp-question { margin-top: 10px; }
+.mp-question pre, .mp-raw { margin: 6px 0 0; padding: 10px; max-width: 100%; overflow-x: auto; white-space: pre-wrap; overflow-wrap: anywhere; font-size: 12.5px; background: var(--field); border: var(--bw-sm) solid var(--ink); border-radius: var(--radius-sm); }
+.mp-question pre { max-height: 220px; overflow-y: auto; }
+.mp-files h4 { margin: 0 0 6px; font-size: var(--fs-md); }
+.mp-files h5 { margin: 10px 0 4px; font-size: var(--fs-xs); color: var(--muted); text-transform: uppercase; letter-spacing: .04em; }
+.mp-file-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 3px; }
+.mp-file { display: flex; align-items: center; gap: 8px; width: 100%; min-width: 0; text-align: left; font: inherit; font-size: var(--fs-sm); color: var(--text); background: var(--field); border: var(--bw-sm) solid var(--ink); border-radius: var(--radius-sm); padding: 5px 10px; cursor: pointer; }
+.mp-file.output { border-width: var(--bw); background: color-mix(in srgb, var(--good) 14%, var(--field)); }
+.mp-file.on { box-shadow: var(--shadow-sm); outline: 2px solid var(--accent); outline-offset: 1px; }
+.mp-file-name { flex: 1; min-width: 0; font-weight: var(--fw-bold); overflow-wrap: anywhere; }
+.mp-preview { min-width: 0; border: var(--bw-sm) solid var(--ink); border-radius: var(--radius-sm); overflow: hidden; background: var(--field); }
+.mp-preview:empty { display: none; }
+.mp-preview-head { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; padding: 6px 10px; background: var(--paper-2); border-bottom: var(--bw-sm) solid var(--ink); font-size: var(--fs-sm); }
+.mp-preview-head .mp-file-name { flex: 1 1 12em; }
+.mp-preview .md { min-width: 0; }
+.mp-preview .md pre, .mp-preview .md table { overflow-x: auto; max-width: 100%; }
+/* A table scrolls sideways rather than breaking its words a letter at a time. */
+.mp-preview .md th, .mp-preview .md td { overflow-wrap: normal; }
+.mp-preview .mp-raw { margin: 0; border: 0; border-radius: 0; }
+@media (max-width: 899px) {
+  .mp { grid-template-columns: minmax(0, 1fr); }
+  .mp-side { border-right: 0; }
+  .mp.mp-picked .mp-side, .mp:not(.mp-picked) .mp-main { display: none; }
+  .mp-back { display: inline-block; }
+}
+@media (max-width: 600px) {
+  .mp-main { padding: 12px 16px; }
+}

@@ -110,6 +110,16 @@ export async function ghIssueState(io: IssueActIo, repo: string, n: number): Pro
   }
 }
 
+/** What `repo#n` is on GitHub now, read fresh (the cached list may be a minute old, or not have it): an issue or a pull request, and open or closed. Undefined when it can't be told. */
+export async function ghIssueKind(io: IssueActIo, repo: string, n: number): Promise<{ isPr: boolean; open: boolean } | undefined> {
+  try {
+    const [state, pr] = (await run(io, ['api', `repos/${repo}/issues/${n}`, '--jq', '[.state, (.pull_request != null)] | @tsv'])).trim().split('\t');
+    return state && (pr === 'true' || pr === 'false') ? { isPr: pr === 'true', open: state.toLowerCase() === 'open' } : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 /** The logins and the state an issue has now (read fresh: the board's list may be a minute old). */
 async function liveIssue(io: IssueActIo, repo: string, n: number): Promise<{ assignees: string[]; state?: string }> {
   const out = await run(io, ['issue', 'view', String(n), '-R', repo, '--json', 'assignees,state']);

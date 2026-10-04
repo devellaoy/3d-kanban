@@ -20,6 +20,8 @@ export interface WallProvider {
   forget(project: string): void;
   /** Whether the project knows the issue within its scope: one on its list, acted on, or browsed (the browsed set only holds scoped issues). */
   known(project: string, key: string): boolean;
+  /** A card was taken (assigned) for work: move it to In progress on the project's boards. Resolves to a warning, or nothing. `env`: the taker's own gh. */
+  started?(project: string, key: string, env?: Record<string, string>): Promise<string | undefined>;
   /** The project's sources changed: its old cards go, and the new ones are fetched (after one under way). */
   sourcesChanged(project: string): void;
 }
@@ -79,6 +81,18 @@ export function refreshWall(project: string, delayMs = WALL_REFRESH_DELAY_MS) {
   }, delayMs);
   t.unref?.();
   pending.set(project, t);
+}
+
+/** A card was taken for work: its Status moves to In progress on the project's boards, and the board is fetched again. Resolves to a warning, or nothing; never throws. */
+export async function progressIssue(project: string, key: string, env?: Record<string, string>): Promise<string | undefined> {
+  let warning: string | undefined;
+  try {
+    warning = await provider?.started?.(project, key, env);
+  } catch (err) {
+    warning = (err as Error)?.message ?? String(err);
+  }
+  refreshWall(project);
+  return warning;
 }
 
 /** The project's issue sources were saved: the board follows them now. */
