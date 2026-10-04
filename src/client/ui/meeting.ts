@@ -1,5 +1,5 @@
 import './meeting.css';
-import { MEETING_PATTERNS, MEETING_PATTERN_IDS, TOKENS_PER_SEAT, meetingAt, meetingSpend, meetingStage, outputProblem, slugify } from '../../shared/meetings';
+import { MEETING_PATTERNS, MEETING_PATTERN_IDS, PAST_LINES, TOKENS_PER_SEAT, meetingAt, meetingSpend, meetingStage, outputProblem, slugify } from '../../shared/meetings';
 import { fmtTokens, type Meeting, type MeetingPattern, type MeetingState, type MeetingTurn } from '../../shared/protocol';
 import type { Net } from '../net';
 import { store } from '../state';
@@ -11,6 +11,8 @@ import { providerPicker } from './provider';
 import { officePrompt } from './prompts';
 import { issueVars } from './github/prompts';
 import { onSendKey } from '../kanban/sendkey';
+import { visiting } from '../multiplayer/visit';
+import { meetingPast } from './meetingpast';
 
 /** What a meeting called from an issue, a PR or a task starts out with. */
 export interface MeetingPreset {
@@ -39,7 +41,8 @@ const PART_LABEL: Record<MeetingTurn['state'], string> = { waiting: '⏳ up next
  * clears the table once it's over); otherwise, or with a preset from an issue or a PR, it's the form
  * that calls one. A tab for each room (when there are several) switches between them. `room` is the
  * one to open (the one a chair is in), or to hold the meeting in; `preset` is only for a meeting
- * called from an issue or a PR, and goes to the first free room without a `room`.
+ * called from an issue or a PR, and goes to the first free room without a `room`. A third view,
+ * 📚 Earlier meetings (meetingpast.ts), reads the floor's finished meetings and their notes.
  */
 export function openMeeting(net: Net, actions: MeetingActions, preset?: MeetingPreset, room?: string) {
   const close = h('button.btn.close', { 'aria-label': 'Close' }, '✕');
@@ -52,8 +55,22 @@ export function openMeeting(net: Net, actions: MeetingActions, preset?: MeetingP
   // The room shown, and where a new meeting goes: the one asked for or last opened; else (unless a meeting is being called) the one
   // with a meeting running or just held; else none, and a new meeting takes the first free room.
   let shown: string | undefined = room ?? (preset ? undefined : (rooms().find((r) => r.current?.status === 'running') ?? rooms().find((r) => r.current))?.id);
-  let view: 'status' | 'form' = preset || !(shown && meetingAt(store.meeting, shown)) ? 'form' : 'status';
+  let view: 'status' | 'form' | 'past' = preset || !(shown && meetingAt(store.meeting, shown)) ? 'form' : 'status';
   let form: ReturnType<typeof meetingForm> | null = null;
+  // The earlier meetings, made once and kept (its search, pick and open file with it), and the view its ← Back returns to.
+  let past: ReturnType<typeof meetingPast> | null = null;
+  let before: 'status' | 'form' = 'form';
+  // Visitors can't read another office's meeting notes (the archive answers them 403), so they don't get the button.
+  const pastBtn = visiting()
+    ? null
+    : h('button.btn', { type: 'button', onclick: () => {
+        if (view !== 'past') before = view;
+        view = 'past';
+        past?.refresh(true);
+        render();
+      } });
+  /** How many earlier meetings the state knows of: those on the list and those still on a table. Older ones may only be on disk, so the button stays at 0. */
+  const pastCount = () => new Set([...store.meeting.past.map((r) => r.id), ...rooms().flatMap((r) => (r.current && r.current.status !== 'running' ? [r.current.id] : []))]).size;
   const pick = (id: string) => {
     shown = id;
     view = meetingAt(store.meeting, id) ? 'status' : 'form';
@@ -85,11 +102,28 @@ export function openMeeting(net: Net, actions: MeetingActions, preset?: MeetingP
     // A room the map no longer has (a map switch) is dropped: the form would send a room that's gone.
     if (shown && !rooms().some((r) => r.id === shown)) shown = undefined;
     renderTabs();
+    const n = pastCount();
+    if (pastBtn) pastBtn.textContent = `📚 Earlier meetings${n ? ` (${store.meeting.past.length >= PAST_LINES ? `${PAST_LINES}+` : n})` : ''}`;
+    el.classList.toggle('past', view === 'past');
+    // Before the form: this runs on every meeting event, and the view only refreshes, keeping what's picked and open.
+    if (view === 'past') {
+      past ??= meetingPast(() => {
+        view = before;
+        render();
+      });
+      if (body.firstChild !== past.body) {
+        title.textContent = '📚 Earlier meetings';
+        body.replaceChildren(past.body);
+        foot.replaceChildren(...past.foot);
+      }
+      past.refresh();
+      return;
+    }
     const here = shown ? meetingAt(store.meeting, shown) : null;
     if (view === 'status' && here) {
       form = null;
       title.textContent = rooms().find((r) => r.id === shown)?.label ?? '🤝 Meeting room';
-      renderStatus(here, body, foot, net, actions, () => {
+      renderStatus(here, body, foot, net, actions, pastBtn, () => {
         view = 'form';
         render();
       });
@@ -100,9 +134,11 @@ export function openMeeting(net: Net, actions: MeetingActions, preset?: MeetingP
         view = 'status';
         render();
       });
+    }
+    if (body.firstChild !== form.body) {
       title.textContent = '🤝 Call a meeting';
       body.replaceChildren(form.body);
-      foot.replaceChildren(...form.foot);
+      foot.replaceChildren(...form.foot.slice(0, 1), ...present(pastBtn), ...form.foot.slice(1));
     }
     form.refresh();
   };
@@ -112,7 +148,7 @@ export function openMeeting(net: Net, actions: MeetingActions, preset?: MeetingP
   render();
 }
 
-function renderStatus(m: Meeting, body: HTMLElement, foot: HTMLElement, net: Net, actions: MeetingActions, callAnother: () => void) {
+function renderStatus(m: Meeting, body: HTMLElement, foot: HTMLElement, net: Net, actions: MeetingActions, pastBtn: HTMLElement | null, callAnother: () => void) {
   const p = MEETING_PATTERNS[m.pattern];
   const running = m.status === 'running';
   const pill = h('span.pill', { class: running ? 'working' : m.status === 'done' ? 'done' : 'needs_input' }, running ? 'in a meeting' : m.status);
@@ -146,15 +182,13 @@ function renderStatus(m: Meeting, body: HTMLElement, foot: HTMLElement, net: Net
     h('div.meeting-budget', { title: m.budget > 0 ? `${m.tokens.toLocaleString()} of ${m.budget.toLocaleString()} tokens` : `${m.tokens.toLocaleString()} tokens, no limit` }, m.budget > 0 ? h('div.meeting-bar', {}, h('i', { style: `width:${(f * 100).toFixed(1)}%;background:${f > 0.9 ? 'var(--bad)' : f > 0.7 ? 'var(--warn)' : 'var(--good)'}` })) : null, h('span', {}, m.budget > 0 ? `${meetingSpend(m)} of ${fmtTokens(m.budget)} tokens` : `${meetingSpend(m)} · no limit`)),
     seats,
     h('div.meeting-out', {}, h('div.meeting-out-head', {}, h('b', {}, '📄 '), h('code', {}, m.output), where, review), h('pre.meeting-preview', {}, m.preview?.trim() ? m.preview : running ? 'Nothing written yet.' : 'Nothing was written.')),
-    store.meeting.past.length
-      ? h('details.meeting-past', {}, h('summary', {}, `Earlier meetings (${store.meeting.past.length})`), h('ul', {}, ...store.meeting.past.map((r) => h('li', { title: `Called by ${r.calledBy}` }, h('b', {}, r.title), h('div.muted', {}, r.summary)))))
-      : null,
     ),
   );
   const head = m.seats[0]?.workerId ? store.workers.get(m.seats[0].workerId) : undefined;
   foot.replaceChildren(
     ...present(
     h('span.grow', {}, running ? 'The workers stay at the table after it ends, so you can read their terminals.' : 'Clearing the room sends the workers home. A committed output stays on its branch.'),
+    pastBtn,
     running ? h('button.btn', { type: 'button', onclick: () => confirmDialog('Stop the meeting?', `The workers stop where they are and stay at the table. ${m.output} is only there if it was written.`, 'Stop it', () => net.send({ t: 'meeting.stop', room: m.room })) }, '⛔ Stop meeting') : null,
     !running && m.commit && head?.worktree ? h('button.btn', { type: 'button', title: `Push ${m.worktree?.branch} and open a pull request`, onclick: () => actions.openPr(head.id) }, head.pr ? `🔀 PR #${head.pr.number}` : '🔀 Open PR') : null,
     !running ? h('button.btn', { type: 'button', onclick: () => net.send({ t: 'meeting.clear', room: m.room }) }, '🧹 Clear the room') : null,

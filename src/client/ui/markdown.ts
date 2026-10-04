@@ -90,6 +90,15 @@ function sanitized(html: string): DocumentFragment {
   return purify.sanitize(html, { RETURN_DOM_FRAGMENT: true, FORBID_TAGS: ['style', 'form', 'button', 'select', 'textarea'], FORBID_ATTR: ['style'] });
 }
 
+/** Swaps every picture for a link to it (https: only) or its alt text, so nothing is fetched until someone clicks. */
+function noImages(root: ParentNode) {
+  for (const img of root.querySelectorAll('img')) {
+    const alt = (img.getAttribute('alt') ?? '').trim();
+    const src = (img.getAttribute('src') ?? '').trim();
+    img.replaceWith(/^https:/i.test(src) ? h('a', { href: src, target: '_blank', rel: 'noopener noreferrer' }, `🖼 ${alt || 'image'}`) : alt);
+  }
+}
+
 /** Renders markdown into a `.md` block. `itemUrl` (the issue or PR on GitHub) anchors its links. */
 export function markdown(src: string, itemUrl?: string): HTMLElement {
   const el = h('div.md');
@@ -108,11 +117,15 @@ export function markdown(src: string, itemUrl?: string): HTMLElement {
 /**
  * Renders a Markdown file from the project into a `.md` block, the way GitHub shows it in the repo:
  * a lone newline is only a space, and #123 is just text. Its links and pictures are left as written,
- * for the bookshelf to point at the project (see features/bookshelf/ui.ts).
+ * for the bookshelf to point at the project (see features/bookshelf/ui.ts). With `images: false` no picture loads by
+ * itself: each becomes a link to it (an https: one) or just its alt text, for text somebody else wrote.
  */
-export function markdownFile(src: string): HTMLElement {
+export function markdownFile(src: string, opts: { images?: boolean } = {}): HTMLElement {
   const el = h('div.md');
-  el.append(sanitized(mdFile.parse(src, { async: false }) as string));
+  const html = sanitized(mdFile.parse(src, { async: false }) as string);
+  // Before it joins the page's document: a picture there starts loading even before it's shown.
+  if (opts.images === false) noImages(html);
+  el.append(html);
   alerts(el);
   return el;
 }

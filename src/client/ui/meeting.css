@@ -37,10 +37,6 @@
 .meeting-out { border: var(--bw-sm) solid var(--ink); border-radius: var(--radius-sm); overflow: hidden; background: var(--field); }
 .meeting-out-head { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; padding: 6px 10px; background: var(--paper-2); border-bottom: var(--bw-sm) solid var(--ink); font-size: var(--fs-sm); font-weight: var(--fw-semibold); }
 .meeting-preview { margin: 0; padding: 10px; max-height: 240px; overflow: auto; white-space: pre-wrap; font-size: 12.5px; }
-.meeting-past { margin-top: 12px; }
-.meeting-past summary { font-weight: var(--fw-bold); cursor: pointer; }
-.meeting-past ul { padding-left: 18px; margin: 6px 0 0; }
-.meeting-past li { margin: 6px 0; }
 .meeting-tabs { display: flex; gap: 6px; flex-wrap: wrap; padding: 0 var(--pad, 14px) 8px; }
 .meeting-tabs[hidden] { display: none; }
 .meeting-window .btn.meeting-tab.on { background: var(--warn); color: var(--text-on-warn); box-shadow: var(--shadow-sm); }

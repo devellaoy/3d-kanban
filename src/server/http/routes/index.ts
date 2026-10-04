@@ -6,6 +6,7 @@ import { agentRoutes } from './agents.js';
 import { authRoutes } from './auth.js';
 import { fileRoutes } from './files.js';
 import { githubRoutes } from './github.js';
+import { meetingRoutes } from './meetings.js';
 import { pageRoutes } from './pages.js';
 import { searchRoutes } from './search.js';
 import { kanbanRoutes } from '../../kanban/http/routes.js';
@@ -40,6 +41,7 @@ export const routes: readonly Route[] = [
   fileRoutes.termDrop,
   fileRoutes.changedFile,
   fileRoutes.docs,
+  meetingRoutes.archive,
   searchRoutes.search,
   githubRoutes.github,
   pageRoutes.office,

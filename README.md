@@ -127,6 +127,8 @@ curl -fsSL https://raw.githubusercontent.com/devellaoy/3d-kanban/main/deploy/pro
 - **Multi-PR reviews**: 🔍 Review and 🤝 Review panel pick the PRs that belong together across the
   repositories and review them as one change. The office has one meeting room, and the **🚧 Room for a meeting room** sign on the west wall builds up to
   three more (the same way the back office grows), so panels and other meetings can run at the same time; a new one takes the first free room.
+  **📚 Earlier meetings** in the meeting window lists the floor's finished meetings (searchable) and reads
+  their output and round notes, Markdown rendered or raw, to copy or download.
 - **Editable prompts**, office-wide or per project, with the process's contract blocks kept fixed (they also
   tell every kanban run and review panel to stop the processes it started, such as a dev server, when it
   finishes, unless it was asked to leave them running).
