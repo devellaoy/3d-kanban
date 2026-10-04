@@ -261,6 +261,11 @@ test('Claude workers use the configured executable, pass prompts and resume ids,
     assert.ok(hasPrompt(alternateInvocation, 'alternate provider prompt'));
     await workers.kill(alternate.id);
   }
+  // Only a hire that says so is a person's: the kanban's, the queue's and an agent's hires aren't.
+  assert.equal(worker.byPerson, undefined);
+  const byPerson = workers.spawn('desk-5', 'Boss', 'a person hired me', false, 'agent', 'opencode', undefined, undefined, undefined, undefined, [], undefined, { byPerson: true });
+  assert.equal(typeof byPerson === 'string' ? byPerson : byPerson.byPerson, true);
+  if (typeof byPerson !== 'string') await workers.kill(byPerson.id);
 });
 
 test('OpenCode workers use OpenCode-only hooks/config, never invoke Claude naming, and restore provider sessions', async (t) => {
@@ -629,7 +634,7 @@ test('Codex workers preserve native approvals, follow authenticated root hooks, 
   assert.ok(first.args.includes('--no-alt-screen'));
   // The office's MCP server, with the office's variables passed on to it, which Codex doesn't do unasked.
   assert.ok(first.args.some((a) => a.startsWith('mcp_servers.agent-office.args=') && a.includes('office-workers.js')));
-  assert.ok(first.args.includes('mcp_servers.agent-office.env_vars=["AGENT_OFFICE_HOOK_URL","AGENT_OFFICE_WORKER_ID","AGENT_OFFICE_HOOK_TOKEN"]'));
+  assert.ok(first.args.includes('mcp_servers.agent-office.env_vars=["AGENT_OFFICE_HOOK_URL","AGENT_OFFICE_WORKER_ID","AGENT_OFFICE_HOOK_TOKEN","AGENT_OFFICE_TASKS"]'));
   assert.deepEqual(first.args.slice(-2), ['--', '- fix the login']);
   assert.equal(first.args.some(a => /bypass|--yolo|--claude-only|--settings/.test(a)), false);
   assert.equal(first.args.filter(a => a.startsWith('hooks.')).length, 7);

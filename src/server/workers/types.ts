@@ -54,6 +54,8 @@ export interface SpawnExtra {
   name?: string;
   color?: string;
   kanban?: WorkerInfo['kanban'];
+  /** A person hired it from a desk (WorkerInfo.byPerson). */
+  byPerson?: boolean;
   env?: Record<string, string>;
   settingsFile?: 'kanban';
   /** When the office last restarted its agent process on its session (KanbanWorkers.relaunch): what that process's log counts from, kept across office restarts. */

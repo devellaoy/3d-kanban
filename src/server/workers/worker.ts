@@ -6,7 +6,7 @@ import { providerAdapter } from '../providers/index.js';
 import type { UsageTracker } from '../usage.js';
 import type { Worker } from './types.js';
 
-export { KanbanWorkers, kanbanExtraArgs, kanbanSetup, type DepartureIntent } from '../kanban/workers.js'; // what WorkerManager takes from the kanban (see kanban/workers.ts)
+export { KanbanWorkers, kanbanExtraArgs, kanbanSetup, kanbanWorkerEnv, kanbanHireInfo, type DepartureIntent } from '../kanban/workers.js'; // what WorkerManager takes from the kanban (see kanban/workers.ts)
 
 export const NAMES = [
   'Pixel', 'Byte', 'Nibble', 'Sprocket', 'Widget', 'Gizmo', 'Bolt', 'Cosmo', 'Dot', 'Echo',

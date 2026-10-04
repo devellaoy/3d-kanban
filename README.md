@@ -140,10 +140,12 @@ curl -fsSL https://raw.githubusercontent.com/devellaoy/3d-kanban/main/deploy/pro
   finishes, unless it was asked to leave them running).
 - **Skills** per project, phase and agent (Claude via `--plugin-dir`, Codex synced into its home). The repository's `user-skills/` (kanban-dev and others) are synced into your own
   `~/.claude` and `~/.codex` on start, see [docs/kanban.md](docs/kanban.md#skills-synced-to-your-own-home).
-- **Task references for agents**: `office-tasks get 14`, the MCP tools `get_task` / `search_tasks`, and
+- **Task references for agents**: `office-tasks get 14`, the MCP tools `get_task` / `search_tasks`, creating
+  tasks from an agent (`office-tasks create`, the MCP tool `create_task`), and
   ai-kanban's `/api/tasks/reference` and `/api/v1` on the loopback hook server (its port is in
   `<data>/hook-port`; `--hook-port <n>` pins it for scripts outside the office, see
-  [docs/kanban.md](docs/kanban.md#agents-reading-other-tasks)).
+  [docs/kanban.md](docs/kanban.md#agents-reading-other-tasks) and
+  [Agents creating tasks](docs/kanban.md#agents-creating-tasks)).
 - **A migration from ai-kanban**: projects, tasks (with their ids), comments, plans and settings.
 - **Third person that plays like first person**: the mouse looks around (click to capture it, no drag
   to orbit), the camera sits over your shoulder, and the crosshair shows what you use, within the same

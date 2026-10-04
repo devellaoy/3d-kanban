@@ -9,8 +9,9 @@ import { createRefs, createRefsPlugin, plainTerminal, referencedTasksPath } from
 import { legacyReferenceAnswer } from '../src/server/kanban/integrations/compat/v1.js';
 import { BODY_MAX } from '../src/server/kanban/integrations/util.js';
 import type { KanbanTask } from '../src/shared/kanban/types.js';
-import { TASK_TOOLS, buildRequest, formatAnswer, main as officeTasks, parseArgs, tasksVisible } from '../bin/office-tasks.js';
-import { handleMcp } from '../bin/office-workers.js';
+import { Readable } from 'node:stream';
+import { EFFORTS, TASK_TOOLS, UsageError, buildRequest, formatAnswer, main as officeTasks, parseArgs, tasksVisible } from '../bin/office-tasks.js';
+import { handleMcp, instructions } from '../bin/office-workers.js';
 import { def, makeCtx, type TestCtx } from './kanban-integrations-ctx.js';
 
 function seeded(): TestCtx {
@@ -255,7 +256,7 @@ test('office-tasks: the CLI and the MCP tools, shown to workers told about tasks
   assert.equal(await officeTasks(['get', '14'], { env: ENV, fetch: fetchOk, out: (s) => out.push(s), err: () => {} }), 0);
   assert.match(out[0], /# Task #14: T[\s\S]*Repository P: branch b[\s\S]*## Accepted plan\n\nPlan[\s\S]*- review 1: succeeded, approved/);
   assert.match(formatAnswer({ match: null, candidates: [{ id: 1, title: 'A', status: 'todo', project: 'p' }, { id: 2, title: 'B', status: 'done', project: 'p' }] }, 'x'), /2 tasks match "x"[\s\S]*#1  A · todo · p/);
-  // MCP: listed only with AIKANBAN_API_BASE (a task worker), and then they work.
+  // MCP: listed only to workers the office tells about tasks (AGENT_OFFICE_TASKS, or AIKANBAN_API_BASE), and then they work.
   const plain = await handleMcp({ jsonrpc: '2.0', id: 1, method: 'tools/list' }, { env: ENV, fetch: fetchOk });
   assert.deepEqual(plain.result.tools.map((x: { name: string }) => x.name), ['list_workers', 'hire_worker', 'send_home', 'tell_worker']);
   const kanbanEnv = { ...ENV, AIKANBAN_API_BASE: 'http://127.0.0.1:4455' };
@@ -267,6 +268,108 @@ test('office-tasks: the CLI and the MCP tools, shown to workers told about tasks
   assert.match(called.result.content[0].text, /# Task #14: T/);
   const hidden = await handleMcp({ jsonrpc: '2.0', id: 4, method: 'tools/call', params: { name: 'get_task', arguments: { ref: '14' } } }, { env: ENV, fetch: fetchOk });
   assert.equal(hidden.error.code, -32602);
+});
+
+test('office-tasks create: flags, the POST, the answer on stdout and stderr, and the MCP tool', async () => {
+  const ENV = { AGENT_OFFICE_HOOK_URL: 'http://127.0.0.1:4455/', AGENT_OFFICE_WORKER_ID: 'w1', AGENT_OFFICE_HOOK_TOKEN: 'tok' };
+  assert.deepEqual(
+    parseArgs(['create', '--title', 'T', '--project=app', '--repo', 'api', '--repo', 'web', '--issue', '12', '--ticket', 'K-1', '--ticket-url', 'http://x', '--provider', 'codex', '--model', 'm', '--effort', 'high', '--type', 'investigate', '--start', '--desk', 'desk-2', '--prompt', 'D', '--json']),
+    { cmd: 'create', json: true, prompt: 'D', title: 'T', project: 'app', ticket: 'K-1', ticketUrl: 'http://x', provider: 'codex', model: 'm', effort: 'high', type: 'investigate', desk: 'desk-2', repos: ['api', 'web'], issue: 12, start: true },
+  );
+  assert.equal((parseArgs(['create', '--issue', 'o/r#3']) as { issue: unknown }).issue, 'o/r#3');
+  assert.equal((parseArgs(['create', '--issue', 'UYT-1415']) as { issue: unknown }).issue, 'UYT-1415');
+  for (const bad of [['--effort', 'huge'], ['--provider', 'gpt'], ['--type', 'build'], ['--title'], ['--nope'], ['stray']]) {
+    assert.throws(() => parseArgs(['create', ...bad]), UsageError, bad.join(' '));
+  }
+  const req = buildRequest('create', { body: { title: 'T', description: 'D', repos: ['api'] } }, ENV);
+  assert.equal(req.method, 'POST');
+  assert.equal(req.url, 'http://127.0.0.1:4455/office/tasks/create?worker=w1');
+  assert.deepEqual(req.headers, { authorization: 'Bearer tok', 'content-type': 'application/json' });
+  assert.deepEqual(JSON.parse(req.body!), { title: 'T', description: 'D', repos: ['api'] });
+  assert.equal(req.timeout, 90_000);
+  assert.equal(buildRequest('get', { ref: '1' }, ENV).timeout, 15_000);
+  assert.throws(() => buildRequest('create', { body: {} }, { AIKANBAN_API_BASE: 'http://127.0.0.1:9' }), /isn't set|aren't set/, 'create needs the worker variables');
+
+  const calls: { url: string; init: RequestInit }[] = [];
+  const answer = (extra: object = {}) => ({ ok: true, task: { id: 12, title: 'T', status: 'todo', runState: 'idle', project: 'app', url: '/kanban?task=12' }, existed: false, started: false, queued: false, ...extra });
+  const stub = (body: unknown, status = 200) => (async (url: string | URL | Request, init?: RequestInit) => {
+    calls.push({ url: String(url), init: init ?? {} });
+    return new Response(JSON.stringify(body), { status });
+  }) as typeof fetch;
+  const run = async (argv: string[], fetchImpl: typeof fetch, stdin = '') => {
+    const out: string[] = [];
+    const err: string[] = [];
+    const code = await officeTasks(argv, { env: ENV, fetch: fetchImpl, stdin: Readable.from([stdin]), out: (s) => out.push(s), err: (s) => err.push(s) });
+    return { code, out: out.join('\n'), err: err.join('\n') };
+  };
+  const made = await run(['create', '--title', 'T', '--repo', 'api'], stub(answer()), 'Do the thing\r\n');
+  assert.deepEqual(made, { code: 0, out: '12', err: 'Created task #12 “T” — in To do — /kanban?task=12' });
+  assert.deepEqual(JSON.parse(String(calls[0].init.body)), { title: 'T', repos: ['api'], description: 'Do the thing' });
+  assert.equal(calls[0].init.method, 'POST');
+  const started = await run(['create', '--title', 'T', '--prompt', 'D', '--start'], stub(answer({ started: true, note: 'N' })));
+  assert.equal(started.err, 'Created task #12 “T” — started — /kanban?task=12\nN');
+  assert.match((await run(['create', '--title', 'T', '--prompt', 'D', '--start'], stub(answer({ queued: true, startError: 'full' })))).err, /queued[\s\S]*full/);
+  assert.match((await run(['create', '--issue', '5', '--prompt', 'D'], stub(answer({ existed: true })))).err, /^Task #12 “T” already existed — in To do/);
+  // A start with no room is both: queued is what the agent needs to hear.
+  assert.match((await run(['create', '--title', 'T', '--prompt', 'D', '--start'], stub(answer({ started: true, queued: true })))).err, /— queued —/);
+  assert.deepEqual(JSON.parse((await run(['create', '--title', 'T', '--prompt', 'D', '--json'], stub(answer()))).out).task, answer().task);
+  const noDesc = await run(['create', '--title', 'T'], stub(answer()), '  \n');
+  assert.equal(noDesc.code, 2);
+  assert.match(noDesc.err, /needs --title and a description/);
+  const issueOnly = await run(['create', '--issue', '5'], stub(answer()), '');
+  assert.equal(issueOnly.code, 0);
+  assert.deepEqual(JSON.parse(String(calls.at(-1)!.init.body)), { issue: 5 });
+  // --no-description skips stdin; stdin that never sends anything counts as empty after the idle timeout.
+  assert.equal((parseArgs(['create', '--issue', '5', '--no-description']) as { noDescription: unknown }).noDescription, true);
+  assert.equal((parseArgs(['create', '--title', 'T', '--effort', 'minimal']) as { effort: unknown }).effort, 'minimal');
+  const never = () => new Readable({ read() {} });
+  const runIdle = async (argv: string[], stdin: Readable) => {
+    const err: string[] = [];
+    const code = await officeTasks(argv, { env: ENV, fetch: stub(answer()), stdin, stdinIdleMs: 30, out: () => {}, err: (s) => err.push(s) });
+    return { code, err: err.join('\n') };
+  };
+  const hung = await runIdle(['create', '--title', 'T'], never());
+  assert.equal(hung.code, 2);
+  assert.match(hung.err, /needs --title and a description/);
+  const hungIssue = await runIdle(['create', '--issue', '5'], never());
+  assert.equal(hungIssue.code, 0);
+  const skipped = await runIdle(['create', '--issue', '5', '--no-description'], never());
+  assert.equal(skipped.code, 0);
+  assert.deepEqual(JSON.parse(String(calls.at(-1)!.init.body)), { issue: 5 });
+  const slow = new Readable({ read() {} });
+  setTimeout(() => slow.push('late but started'), 10);
+  setTimeout(() => slow.push(null), 80);
+  assert.equal((await runIdle(['create', '--title', 'T'], slow)).code, 0);
+  assert.equal(JSON.parse(String(calls.at(-1)!.init.body)).description, 'late but started');
+  const refused = await run(['create', '--title', 'T', '--prompt', 'D'], stub({ error: 'No such project' }, 404));
+  assert.equal(refused.code, 1);
+
+  // The MCP tool: listed (with a schema clients tolerate) and run, only for workers told about tasks.
+  const env = { ...ENV, AGENT_OFFICE_TASKS: '1' };
+  const tool = TASK_TOOLS.find((t) => t.name === 'create_task')!;
+  assert.deepEqual(tool.inputSchema.required, []);
+  assert.equal(tool.inputSchema.additionalProperties, false);
+  assert.deepEqual(tool.annotations, { destructiveHint: false, openWorldHint: true });
+  const names = async (e: Record<string, string>) =>
+    ((await handleMcp({ jsonrpc: '2.0', id: 1, method: 'tools/list' }, { env: e, fetch: stub({}) })) as { result: { tools: { name: string; description: string }[] } }).result.tools;
+  assert.equal((await names(ENV)).some((t) => t.name === 'create_task'), false);
+  const visible = await names(env);
+  assert.ok(visible.some((t) => t.name === 'create_task'));
+  assert.doesNotMatch(visible.find((t) => t.name === 'hire_worker')!.description, /create_task|kanban/, 'the kanban guidance is in the instructions only');
+  assert.doesNotMatch(tool.description, /hire_worker/);
+  assert.match(tool.description, /without permission prompts, unattended/);
+  assert.match(tool.description, /person hired at a desk or a board agent/);
+  assert.deepEqual(EFFORTS, ['minimal', 'low', 'medium', 'high', 'xhigh', 'max']);
+  assert.deepEqual((tool.inputSchema.properties.effort as { enum: string[] }).enum, EFFORTS);
+  assert.equal(TASK_TOOLS.length, 3);
+  assert.doesNotMatch(instructions(ENV), /create_task/);
+  assert.match(instructions(env), /create_task[\s\S]*hire_worker only when explicitly asked/);
+  const mcp = (e: Record<string, string>, args: object) =>
+    handleMcp({ jsonrpc: '2.0', id: 2, method: 'tools/call', params: { name: 'create_task', arguments: args } }, { env: e, fetch: stub(answer({ queued: true, note: 'Waiting for a desk' })) });
+  const res = (await mcp(env, { title: 'T', description: 'D' })) as { result: { content: { text: string }[] } };
+  assert.equal(res.result.content[0].text, 'Created task #12 “T” — queued — /kanban?task=12\nWaiting for a desk');
+  assert.deepEqual(JSON.parse(String(calls.at(-1)!.init.body)), { title: 'T', description: 'D' });
+  assert.equal(((await mcp(ENV, {})) as { error: { code: number } }).error.code, -32602, 'hidden from workers not told about tasks');
 });
 
 test("a terminal's saved scrollback, as plain text", () => {

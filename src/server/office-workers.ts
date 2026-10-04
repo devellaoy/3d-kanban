@@ -171,7 +171,7 @@ export function readHireRequest(body: unknown, providers: AgentProvider[]): Hire
 /** The MCP server's name, which agents put before its tools (Claude Code: mcp__agent-office__send_home). */
 export const MCP_NAME = 'agent-office';
 /** What it needs from the worker's environment; Codex hands an MCP server only what it's told to. */
-const MCP_ENV = ['AGENT_OFFICE_HOOK_URL', 'AGENT_OFFICE_WORKER_ID', 'AGENT_OFFICE_HOOK_TOKEN'];
+const MCP_ENV = ['AGENT_OFFICE_HOOK_URL', 'AGENT_OFFICE_WORKER_ID', 'AGENT_OFFICE_HOOK_TOKEN', 'AGENT_OFFICE_TASKS'];
 /** Its tools that only look, which Claude Code workers may call without asking. */
 export const MCP_READ_ONLY = [`mcp__${MCP_NAME}__list_workers`];
 /**

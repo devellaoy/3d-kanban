@@ -55,12 +55,12 @@ export const workerHandlers = {
         if (typeof r !== 'string' && (issue || key)) ctx.takeIssue(c, floor, issue, key, r.id);
       };
       // Files attached to a direct hire go to its drops folder before it exists, and into its first prompt (see kanban/hirefiles.ts).
-      if (kind !== 'agent' || !Array.isArray(msg.attachmentIds) || !msg.attachmentIds.length) return spawn();
+      if (kind !== 'agent' || !Array.isArray(msg.attachmentIds) || !msg.attachmentIds.length) return spawn({ byPerson: true });
       if (!ctx.kanban) return ctx.warn(c, 'Attachments need the kanban');
       // Uploads as the upload route names them: the account's name, 'Guest' without accounts.
       const files = ctx.kanban.hireFiles(msg.attachmentIds, c.accountId ? who : 'Guest');
       if (typeof files === 'string') return ctx.warn(c, files);
-      if (!files) return spawn();
+      if (!files) return spawn({ byPerson: true });
       const id = randomBytes(6).toString('hex');
       const tryAgain = () => ctx.warn(c, 'The office could not hire with these files: try again');
       void floor.workers.drops
@@ -74,7 +74,7 @@ export const workerHandlers = {
             floor.workers.drops.remove(id);
             return gone ? undefined : tryAgain();
           }
-          spawn({ id, promptTail: attachedFilesText(copied.saved), readDir: copied.dir });
+          spawn({ id, promptTail: attachedFilesText(copied.saved), readDir: copied.dir, byPerson: true });
         })
         .catch(tryAgain);
     };

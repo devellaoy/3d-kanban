@@ -29,7 +29,7 @@ import { codexLimitsChip } from './codexlimits';
 import { effortSelect, modelInput } from './create';
 import { renderMarkdown } from './md';
 import { REVIEW_DEFAULTS } from './defaults';
-import { cardRepoNames, countdown, needsAttention, phaseBadge, prTone, showIn3dLink, tabFor, visibleTabs, type TaskTab } from './model';
+import { cardRepoNames, countdown, needsAttention, phaseBadge, prTone, showIn3dLink, tabFor, viaAgent, visibleTabs, type TaskTab } from './model';
 import { kstore } from './store';
 import { onSendKey, sendHint } from './sendkey';
 import { holdActions, holdBox } from './holdview';
@@ -644,7 +644,7 @@ class View implements TaskView {
       ],
       ['Branch', task.branch ? h('code', {}, task.branch) : null],
       ['Workspace', task.workspace ? h('code', { title: task.workspace.worktree.path }, task.workspace.worktree.path) : null],
-      ['Created', `${task.createdBy} · ${fmtTime(task.createdAt)}`],
+      ['Created', `${task.createdBy}${viaAgent(d.events) ? ` (via ${viaAgent(d.events)})` : ''} · ${fmtTime(task.createdAt)}`],
       ['Started', task.startedAt ? fmtTime(task.startedAt) : null],
       ['Finished', task.finishedAt ? fmtTime(task.finishedAt) : null],
       ['Tags', task.tags.length ? task.tags.map((x) => `#${x}`).join(' ') : null],

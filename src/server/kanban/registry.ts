@@ -35,6 +35,16 @@ export interface KanbanHookCaller {
   floorId: string;
   /** The kanban task the worker works on, when it is a task worker. */
   taskId?: number;
+  /** The worker's name, and whether it is an agent or a shell. (Set by the office; absent only in test stand-ins.) */
+  name?: string;
+  kind?: 'agent' | 'shell';
+  /** Whether it is one of the agents standing by the boards (a kiosk). */
+  station?: boolean;
+  /** The account it runs as and that account's name, when it runs as one. */
+  accountId?: string;
+  accountName?: string;
+  /** The person who hired it from a desk (WorkerInfo.createdBy of a WorkerInfo.byPerson hire); unset for any other hire. */
+  hiredBy?: string;
 }
 
 export type KanbanWsHandler<T extends KanbanClientType = KanbanClientType> = (c: KanbanClient, msg: Extract<KanbanClientMsg, { t: T }>) => void | Promise<void>;

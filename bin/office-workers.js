@@ -10,7 +10,7 @@
 import { realpathSync } from 'node:fs';
 import { createInterface } from 'node:readline';
 import { fileURLToPath } from 'node:url';
-// get_task and search_tasks, for the workers the office tells about tasks (see office-tasks.js).
+// get_task, search_tasks and create_task, for the workers the office tells about tasks (see office-tasks.js).
 import { TASK_TOOLS, runTaskTool, tasksVisible } from './office-tasks.js';
 
 const USAGE = `Usage:
@@ -26,7 +26,10 @@ const USAGE = `Usage:
                                                 that isn't on GitHub, and says what it kept
   office-workers home --merged                  send home everyone whose pull request merged
   office-workers tell <name|id> <<'EOF'         type a prompt to a worker (or --prompt "…")
-  office-workers mcp                            serve these as MCP tools on stdio`;
+  office-workers mcp                            serve these as MCP tools on stdio
+                                                (with get_task, search_tasks and create_task where
+                                                the office tells workers about tasks; office-tasks
+                                                create puts work on the kanban from a shell)`;
 
 /** A mistake in how the command was called: the usage is shown with it. */
 export class UsageError extends Error {}
@@ -316,12 +319,27 @@ export const TOOLS = [
   },
 ];
 
-const INSTRUCTIONS =
+const BASE_INSTRUCTIONS =
   "You work in Agent Office, where coding agents (the office's workers) sit at desks, each usually in its own git worktree and branch. These tools are the way to see and manage " +
   'the other agents: whenever you are asked about the agents or workers (who is working on what, whose pull request merged, hiring one, sending them home), use them, ' +
   "rather than looking for the agents with git, ps or HTTP calls. list_workers says where each one's pull request stands (merged: true means it merged), hire_worker " +
   'puts a new agent to work, send_home sends agents home and deletes their worktrees and branches, and tell_worker gives one a prompt. Everyone in the office sees who did what. ' +
   'The office-workers command on your PATH does the same from a shell.';
+
+/** The one place the kanban guidance is said, so "get an agent to do this" lands on the board. */
+const KANBAN_NOTE =
+  'This office runs a kanban: when you are asked to create a task, or to get an agent or worker to do some piece of work, use create_task (the task goes on the board and through plan, runs and review); ' +
+  'use hire_worker only when explicitly asked for a plain one-off worker outside the kanban. get_task and search_tasks read tasks.';
+
+/** The server's instructions; the kanban sentence only for the workers the office tells about tasks. */
+export function instructions(env) {
+  return tasksVisible(env) ? `${BASE_INSTRUCTIONS} ${KANBAN_NOTE}` : BASE_INSTRUCTIONS;
+}
+
+/** The tools to list: the kanban's only for the workers the office tells about tasks. */
+export function listedTools(env) {
+  return tasksVisible(env) ? [...TOOLS, ...TASK_TOOLS] : TOOLS;
+}
 
 /** Runs a tool; resolves to its text, and whether nothing it was asked came off, or throws with why it failed. */
 async function runTool(name, args, io) {
@@ -363,13 +381,13 @@ export async function handleMcp(msg, io) {
         protocolVersion: MCP_VERSIONS.includes(asked) ? asked : MCP_VERSIONS[0],
         capabilities: { tools: { listChanged: false } },
         serverInfo: { name: 'agent-office', title: 'Agent Office', version: '1.0.0' },
-        instructions: INSTRUCTIONS,
+        instructions: instructions(io.env),
       });
     }
     case 'ping':
       return ok({});
     case 'tools/list':
-      return ok({ tools: tasksVisible(io.env) ? [...TOOLS, ...TASK_TOOLS] : TOOLS });
+      return ok({ tools: listedTools(io.env) });
     case 'tools/call': {
       const name = msg.params?.name;
       if (!TOOLS.some((t) => t.name === name) && !(tasksVisible(io.env) && TASK_TOOLS.some((t) => t.name === name))) return { jsonrpc: '2.0', id: msg.id, error: { code: -32602, message: `Unknown tool: ${name}` } };

@@ -29,6 +29,8 @@ export function saveWorkers(file: string, workers: Iterable<Worker>, stopping: b
     name: info.name,
     color: info.color,
     createdBy: info.createdBy,
+    // Whether createdBy is a person's name (a hire from a desk's dialog), which an agent's tasks may be created under.
+    byPerson: info.byPerson,
     createdAt: info.createdAt,
     prompt: info.prompt,
     worktree: info.worktree,
@@ -88,6 +90,7 @@ export function restoreWorkers(file: string, workers: Map<string, Worker>, defau
         status: 'offline',
         acked: true,
         createdBy: s.createdBy ?? '?',
+        ...(s.byPerson === true ? { byPerson: true as const } : {}),
         createdAt: s.createdAt ?? Date.now(),
         prompt: s.prompt,
         worktree: s.worktree,
