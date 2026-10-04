@@ -391,6 +391,8 @@ source, status, label and assignee); **＋ Create task** makes a task in To do f
 plus a *Source:* link, the ticket key and link); an open GitHub issue nobody has is assigned to you then (as taking a card does), but only under your own GitHub sign-in; without one, or with an assignee already, it is left alone. An issue already made into a task shows its number
 instead, and is never made twice.
 
+**Starting a task from an issue**, from anywhere (the issue window, the board's ▶, the API, `office-tasks`, the queue, taking a card at a desk), takes the issue: it is assigned to the person who started it and moved to **In progress** on the project's GitHub Project boards that are issue sources (the board's own Status field). The option is found by name: *In progress*, *In-progress*, *Doing*, *Started*, *Working*, *WIP*, *Ongoing*, *Käynnissä* or *Työn alla*; an item already on it, or past it (Review, Done), is not moved, and a board without such an option gives a warning. Moving a Status needs `gh auth refresh -s project` on the machine whose sign-in is used. Whose gh does it: the person's own GitHub sign-in assigns and moves the Status. Someone with no account (the shared password), or whose gh is the office's by an admin's choice, has the office's gh as theirs: the Status moves under it (and a queue task or a card at a desk assigns under it too), but a kanban task is never assigned under the office's gh. Someone with an account but no GitHub sign-in gets neither: nobody is assigned, the Status does not move, and a warning says why (the Status is a write to GitHub like the assignment, so the office's shared gh is never lent to them). This holds for starting a kanban task (the issue window, the board, the API, `office-tasks`), a queue task, a card taken at a desk and a worker hired for an issue by another agent (`office-workers hire --issue`, `hire_worker`). A pull request, or an issue that is closed on GitHub now (asked fresh, not from the cached list), is left alone: nobody is assigned and no Status moves. A failed assignment doesn't stop the Status move (both are reported), and a GitHub Project draft only has its Status moved. A task made without starting only assigns.
+
 | Source | Filters | Needs |
 |---|---|---|
 | GitHub repositories | repositories (none picked: every repository of the project with a GitHub remote), assignee (`@me` or a login), labels (all of them), state (open, closed, all) | `gh` signed in on the office's machine |
@@ -524,6 +526,20 @@ reads its own. A kanban task made from a card keeps the description as its own, 
   the task's PR phase. Any other agent worker gets the *Open pull requests* prompt typed in, and
   pushes and opens (or updates) a PR in every repository of its workspace with commits. Only a shell worker falls back to upstream's draft PR. Once a worker has a
   PR, **O** shows it.
+- **Closing the issue**: the PR of a task or worker with a GitHub issue carries `Closes #12` (`Closes owner/repo#12` when
+  the PR is in another repository), so merging it closes the issue. The *Open pull requests* prompt asks for it (the
+  *Pull requests · closing the issue* prompt, editable): the PR in the issue's own repository closes it, the ones in a
+  project's other repositories say `Part of owner/repo#12`. The office then checks and, if the agent left the line out, adds it
+  itself: to a task's PR (when the board refreshes: only one recorded with the task's own branch, in one of the project's
+  repositories, which in practice leaves out PRs linked by hand), to a queue task's PR when it is linked, and to a plain worker's PR (its
+  card handed at its desk, or hired for an issue; the PR from its worktree branch) once the worker is at rest, again
+  after each turn it starts. It says so on the task (a status comment) or in a toast. The line goes in as the person who
+  owns the task or worker: with their own GitHub sign-in, or the office's gh only where that is theirs (no account, or
+  the shared password; a worker with no owner is edited under the office's gh). A worker's handed issue goes with its
+  first PR: once that PR is merged or closed, a later PR from the same worker isn't edited. An account user without a sign-in gets a warning instead, and the PR is left alone. A
+  description edited while the line is being added is not overwritten: the check is made again. If the PR targets a
+  branch other than the repository's default branch, it still adds the line but warns once, because GitHub closes an
+  issue only when the PR reaches the default branch. Jira tickets and GitHub project drafts have no such line.
 - **PR phase** (a task in Waiting, Review or Done): **🔀 Create PRs** (or **Push & update PRs**) has
   the implementer push and open or update a PR in every repository of the task with commits, each
   listing the others. It reports each as a `PR: <url>` line, which the office links to the task; the

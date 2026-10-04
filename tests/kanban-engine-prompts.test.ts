@@ -4,6 +4,8 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import type { FloorDef } from '../src/server/building.js';
+import type { Floor } from '../src/server/floor.js';
+import type { WorkerInfo } from '../src/shared/protocol.js';
 import { openKanbanDb } from '../src/server/kanban/db/open.js';
 import { KanbanRepository } from '../src/server/kanban/db/repository.js';
 import { Composer, reposText, slugify } from '../src/server/kanban/engine/compose.js';
@@ -219,4 +221,27 @@ test('kanban.pr.fix: review comments and CI logs are data; only OWNER, MEMBER an
   assert.match(text, /gh pr view <url> --json reviews,comments/);
   assert.match(text, /secrets or credentials, or for changes to CI, workflows or credentials/);
   assert.ok(text.includes('pull/3') && !text.includes('pull/4'), 'the listed PRs are the run\'s');
+});
+
+test('pr.create asks for the closing line of a GitHub issue ticket, in the pull request of its own repository', (t) => {
+  const { def, dir, repo, compose } = setup(t);
+  const mk = (ticket: string, repoIds?: string[]) => repo.createTask({ project: 'proj', title: 'T', tool: 'claude', usePlan: false, planApproval: 'auto', useReview: false, createdBy: 'Ada', ticket, ...(repoIds ? { repoIds } : {}) });
+  const own = compose.build('pr.create', def, mk('gh:acme/api#7', ['api']), 'claude', dir, { phase: 'pr' });
+  assert.match(own, /resolves GitHub issue acme\/api#7: put `Closes #7` on a line of its own in the description of the pull request in acme\/api/);
+  assert.match(own, /Part of acme\/api#7/);
+  const other = compose.build('pr.create', def, mk('gh:acme/web#9'), 'claude', dir, { phase: 'pr' });
+  assert.match(other, /`Closes acme\/web#9`/);
+  for (const ticket of ['UYT-12', 'ghp:acme/3#PVTI_x']) assert.doesNotMatch(compose.build('pr.create', def, mk(ticket), 'claude', dir, { phase: 'pr' }), /resolves GitHub issue/);
+});
+
+test('workerPr gives an office worker the ticket of its queue task, else of its prompt', (t) => {
+  const { def, dir, ctx, compose } = setup(t);
+  const queued: Record<string, { issue?: number; issueKey?: string }> = { w1: { issue: 5 }, w2: { issueKey: 'gh:acme/api#8' } };
+  const floor = { id: 'proj', def, dir, project: { name: 'Proj', branch: 'main' }, queue: { issueOf: (id: string) => queued[id] ?? {} } } as unknown as Floor;
+  const info = (id: string, prompt?: string) => ({ id, name: 'W', title: '', prompt }) as unknown as WorkerInfo;
+  assert.match(compose.workerPr(floor, info('w1')), /`Closes acme\/proj#5`|`Closes #5`/);
+  assert.match(compose.workerPr(floor, info('w2')), /`Closes acme\/api#8`/);
+  assert.match(compose.workerPr(floor, info('w3', 'Work on GitHub issue #12: "Title".')), /issue acme\/proj#12/);
+  assert.doesNotMatch(compose.workerPr(floor, info('w4', 'Tidy things up')), /resolves GitHub issue/);
+  void ctx;
 });

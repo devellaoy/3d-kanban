@@ -168,9 +168,53 @@ export function meetingSummary(m: Meeting): string {
   return `${head} · ✅ ${m.output}${where}`;
 }
 
+/** How many earlier meetings MeetingState's `past` lists. */
+export const PAST_LINES = 20;
+
+/** The most of a meeting's question its full record keeps. */
+export const RECORD_PROMPT_MAX = 8000;
+
+/** A meeting that's over, in full: what MeetingState's `past` has (see slimRecord), and what the earlier-meetings view shows. */
 export function meetingRecord(m: Meeting): MeetingRecord {
-  return { id: m.id, room: m.room, pattern: m.pattern, title: m.title, status: m.status, summary: meetingSummary(m), calledBy: m.calledBy, finishedAt: m.finishedAt ?? Date.now(), branch: m.worktree?.branch, output: m.output };
+  return {
+    id: m.id, room: m.room, pattern: m.pattern, title: m.title, status: m.status, summary: meetingSummary(m), calledBy: m.calledBy, finishedAt: m.finishedAt ?? Date.now(), branch: m.worktree?.branch, output: m.output,
+    prompt: m.prompt.length > RECORD_PROMPT_MAX ? `${m.prompt.slice(0, RECORD_PROMPT_MAX)}…` : m.prompt,
+    seats: m.seats.map((s) => ({ role: s.role, ...(s.workerName ? { workerName: s.workerName } : {}) })),
+    rounds: m.round, tokens: m.tokens, ...(m.costKnown ? { cost: m.cost } : {}),
+    ...(m.commit ? { commit: m.commit } : {}), ...(m.pr !== undefined ? { pr: m.pr } : {}), ...(m.review?.url ? { reviewUrl: m.review.url } : {}),
+    notesDir: `meetings/${m.id}`,
+  };
 }
+
+/** Just the line a record needs in MeetingState's `past`, which goes to every browser (and visitor) every few seconds. */
+export function slimRecord(r: MeetingRecord): MeetingRecord {
+  return { id: r.id, room: r.room, pattern: r.pattern, title: r.title, status: r.status, summary: r.summary, calledBy: r.calledBy, finishedAt: r.finishedAt, branch: r.branch, output: r.output };
+}
+
+/**
+ * A record read off the disk (a `.meeting.json`, or a line of meetings.json), checked: undefined when its core fields
+ * aren't right, else the record with each optional field kept only when it has the right type. Nothing else gets through.
+ */
+export function cleanRecord(x: unknown): MeetingRecord | undefined {
+  const r = x as Record<string, unknown> | null;
+  if (!r || typeof r !== 'object' || typeof r.id !== 'string' || typeof r.title !== 'string' || typeof r.summary !== 'string' || typeof r.calledBy !== 'string' || typeof r.output !== 'string') return undefined;
+  if (!isMeetingPattern(r.pattern) || typeof r.status !== 'string' || typeof r.finishedAt !== 'number' || !Number.isFinite(r.finishedAt)) return undefined;
+  const str = (k: string) => (typeof r[k] === 'string' ? { [k]: r[k] as string } : {});
+  const num = (k: string) => (typeof r[k] === 'number' && Number.isFinite(r[k]) ? { [k]: r[k] as number } : {});
+  const seats = Array.isArray(r.seats)
+    ? r.seats.flatMap((s: unknown) => {
+        const q = s as { role?: unknown; workerName?: unknown } | null;
+        return q && typeof q.role === 'string' ? [{ role: q.role, ...(typeof q.workerName === 'string' ? { workerName: q.workerName } : {}) }] : [];
+      })
+    : undefined;
+  return {
+    id: r.id, pattern: r.pattern, title: r.title, status: r.status as MeetingRecord['status'], summary: r.summary, calledBy: r.calledBy, finishedAt: r.finishedAt, output: r.output,
+    ...str('room'), ...str('branch'), ...str('prompt'), ...(seats ? { seats } : {}), ...num('rounds'), ...num('tokens'), ...num('cost'), ...str('commit'), ...num('pr'), ...str('reviewUrl'), ...str('notesDir'),
+  };
+}
+
+/** Whether a string is a meeting's id (8 hex digits, see MeetingRoom.start): the only folder names the archive serves. */
+export const isMeetingId = (s: string): boolean => /^[0-9a-f]{8}$/.test(s);
 
 /** The first meeting room's id: where meetings saved before there were several are. */
 export const FIRST_MEETING_ROOM = 'meeting';
@@ -204,4 +248,17 @@ export function meetingsOf(state: Pick<MeetingState, 'rooms'>): Meeting[] {
 /** Whether a meeting is running in any room. */
 export function anyMeetingRunning(state: Pick<MeetingState, 'rooms'>): boolean {
   return state.rooms.some((r) => r.current?.status === 'running');
+}
+
+/**
+ * What the earlier-meetings list depends on, so it's fetched again when this changes: the floor, every
+ * earlier meeting's line (its summary changes when a late commit or review link comes in, on any of them,
+ * not just the newest), and the finished meetings still on a table, with their commit and review.
+ */
+export function archiveKey(floor: string | null | undefined, state: Pick<MeetingState, 'rooms' | 'past'>): string {
+  return [
+    floor ?? '',
+    ...state.past.map((r) => `${r.id}:${r.summary}`),
+    ...state.rooms.flatMap((r) => (r.current && r.current.status !== 'running' ? [`${r.current.id}:${r.current.commit ?? ''}:${r.current.review?.url ?? ''}`] : [])),
+  ].join('|');
 }

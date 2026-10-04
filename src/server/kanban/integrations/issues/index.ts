@@ -13,9 +13,10 @@ import { githubProjectSource } from './github-project.js';
 import { jiraSource } from './jira.js';
 import type { IssueSource, IssueSourceIo } from './source.js';
 import { refreshWall, setWallProvider, toGhIssue, wallChanged } from './wall.js';
-import { claimIssueForTask } from './autoassign.js';
+import { takeIssueForTask } from './autoassign.js';
+import { takeIssue } from './take.js';
 import { agentCreateHook } from './agent-create.js';
-import { issueActionHandlers, type IssuePatch } from './actions.js';
+import { announce, issueActionHandlers, statusIoFor, type IssuePatch } from './actions.js';
 import { createBrowse } from './browse/index.js';
 import type { GhIssue, GhState } from '../../../../shared/protocol.js';
 
@@ -285,7 +286,8 @@ export function createIssues(ctx: KanbanContext, opts: IssuesOptions = {}) {
   /**
    * The task for an issue, once per ticket: made, or the one it has already (started if it is still
    * in To do and `start` is asked). The caller answers with `result` first and then awaits `claim`,
-   * which assigns the issue to the caller (see claimIssueForTask). Resolves to why not.
+   * which assigns a task's issue made without starting to the caller (takeIssueForTask; a start takes it through
+   * the engine's taskStarted hook). Resolves to why not.
    * `input` changes what the new task is made with: its description is put above the issue's own text.
    */
   const createFromIssue = async (project: string, key: string, who: IssueCaller, opts: IssueTaskOptions = {}): Promise<IssueTaskMade | string> => {
@@ -302,12 +304,8 @@ export function createIssues(ctx: KanbanContext, opts: IssuesOptions = {}) {
       wallChanged(project);
       const failed = typeof err === 'string' && err;
       const r: IssueTaskResult = { taskId: existing.id, existed: true, ...(failed ? { startError: failed } : { started: true }) };
-      if (failed) return { result: r };
-      const claim = async () => {
-        const listed = state(project).items.find((i) => i.key === key) ?? (opts.refresh === false ? find(project, key) : (await refresh(project)).items.find((i) => i.key === key));
-        if (listed) await claimIssueForTask(ctx, { patch, io }, project, withChange(project, listed), who);
-      };
-      return { result: r, claim };
+      // Its issue is taken by the engine's start hook (taskStarted), as for any task that starts.
+      return { result: r };
     }
     let issue = find(project, key) ?? (await browsing.load(project, key));
     if (!issue && opts.refresh !== false) issue = (await refresh(project)).items.find((i) => i.key === key);
@@ -324,9 +322,9 @@ export function createIssues(ctx: KanbanContext, opts: IssuesOptions = {}) {
     ctx.broadcast(message(project), project);
     wallChanged(project);
     const r: IssueTaskResult = { taskId: made.task.id, existed: made.existed, ...(made.startError ? { startError: made.startError } : made.started ? { started: true } : {}) };
-    // A start that failed takes nothing.
-    const found = issue;
-    return { result: r, ...(!made.existed && !made.startError ? { claim: () => claimIssueForTask(ctx, { patch, io }, project, withChange(project, found), who) } : {}) };
+    // A started task takes its issue through the engine's start hook (taskStarted); one made without starting is only assigned.
+    const ticket = issue.key;
+    return { result: r, ...(!opts.start && !made.existed ? { claim: () => takeIssueForTask(ctx, { patch, io, find }, project, ticket, who, { status: false }) } : {}) };
   };
 
   const plugin: KanbanPlugin = {
@@ -375,8 +373,17 @@ export function createIssues(ctx: KanbanContext, opts: IssuesOptions = {}) {
         await made.claim?.();
       },
     },
+    async taskStarted(taskId, who) {
+      const task = ctx.repo.getTask(taskId);
+      if (task?.ticket) await takeIssueForTask(ctx, { patch, io, find }, task.project, task.ticket, who, { status: true });
+    },
     start() {
       setWallProvider({
+        started: async (project, key, env) => {
+          const took = await takeIssue({ statusIo: statusIoFor(io(project), 'office', env), key, sources: ctx.settings.project(project).issueSources, status: true });
+          for (const m of took.moved) announce(ctx, patch, project, key, '📋', `${key} moved to ${m.to} on ${m.board}`);
+          return took.warnings.join(' · ') || undefined;
+        },
         board: wall,
         watch,
         refresh: (project) => void (hasSources(project) ? refresh(project).catch(() => {}) : undefined),

@@ -57,6 +57,8 @@ export interface Rule {
   launchLateMs?: number;
   /** With `background`: 200 ms after the first Stop someone types this into the worker's terminal (a logged prompt, a short reply, a Stop of its own) while the helper still works. */
   typedPrompt?: string;
+  /** With `typedPrompt`: the typed turn takes the helper's report: it is logged as an attachment inside that turn (no turn of its own), the typed reply follows with a Stop, and nothing more (no `reply`). */
+  typedTakesNotice?: boolean;
   /** With `background`: the helper reports back only once this file exists (instead of after `backgroundMs`), so a test holds it as long as it looks. */
   releaseFile?: string;
   /**
@@ -82,6 +84,11 @@ export interface Rule {
    * turn's reply that is logged late (its Stop first).
    */
   lateLogMs?: number;
+  /** With `lateLogMs` (also after a `background` helper's report): right after the Stop someone types this into the terminal; its turn (a prompt line, a reply, a Stop of its own) lasts `typedMs` (500 by default), and the late final reply, if any (`lateLogMs` of 0 or more), is logged after it. */
+  typedAfterStop?: string;
+  typedMs?: number;
+  /** With `typedAfterStop`: the typed turn calls ExitPlanMode with this plan (the agent then waits for its approval) instead of replying. */
+  typedExitPlan?: string;
   /**
    * Claude only: a forged Stop, as anything in the agent's shell could post, carrying this as its
    * last_assistant_message while the tool call after `earlier` still runs (its result never logged).
@@ -156,6 +163,21 @@ let answerDelay = 0;
 let silent = false;
 let escLogs = false;
 let escStopMs;
+// Someone types rule.typedAfterStop into the terminal: a prompt line, then (after typedMs) a reply and a Stop, or an ExitPlanMode.
+async function typedAfter(rule, msgId) {
+  if (!rule.typedAfterStop) return;
+  await post('UserPromptSubmit', { prompt: rule.typedAfterStop });
+  append({ type: 'user', timestamp: new Date().toISOString(), message: { role: 'user', content: rule.typedAfterStop } });
+  await new Promise((r) => setTimeout(r, rule.typedMs ?? 500));
+  if (rule.typedExitPlan) {
+    append({ type: 'assistant', message: { id: msgId + '-typed', role: 'assistant', content: [{ type: 'tool_use', id: 'typed-plan', name: 'ExitPlanMode', input: { plan: rule.typedExitPlan } }] } });
+    await post('PreToolUse', { tool_name: 'ExitPlanMode', tool_input: { plan: rule.typedExitPlan } });
+    await post('PermissionRequest', { tool_name: 'ExitPlanMode' });
+    return;
+  }
+  append({ type: 'assistant', message: { id: msgId + '-typed', role: 'assistant', content: [{ type: 'text', text: 'Answered what you typed.' }] } });
+  await post('Stop', { last_assistant_message: 'Answered what you typed.' });
+}
 async function turn(prompt, answered) {
   record({ prompt });
   if (!answered) await post('UserPromptSubmit', { prompt });
@@ -172,7 +194,9 @@ async function turn(prompt, answered) {
   if (kind === 'claude') {
     // One API message's blocks are logged as lines sharing its id, as Claude Code does.
     const msgId = 'msg-' + process.pid + '-' + Date.now();
-    append({ type: 'user', timestamp: new Date().toISOString(), message: { role: 'user', content: prompt } });
+    // An answer to a question is a tool result in the log, as Claude Code logs it, not a prompt.
+    if (answered) append({ type: 'user', timestamp: new Date().toISOString(), message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: 'ask-1', content: prompt }] } });
+    else append({ type: 'user', timestamp: new Date().toISOString(), message: { role: 'user', content: prompt } });
     if (rule.earlier) {
       append({ type: 'assistant', message: { id: msgId + '-a', role: 'assistant', content: [{ type: 'text', text: rule.earlier }] } });
       append({ type: 'assistant', message: { id: msgId + '-a', role: 'assistant', content: [{ type: 'tool_use', id: 'read-1', name: 'Read', input: { file_path: 'README.md' } }] } });
@@ -199,15 +223,24 @@ async function turn(prompt, answered) {
         await post('Stop', { last_assistant_message: rule.background });
       }
       let waited = 0;
+      const released = async (ms) => {
+        if (rule.releaseFile) while (!fs.existsSync(rule.releaseFile)) await new Promise((r) => setTimeout(r, 50));
+        else await new Promise((r) => setTimeout(r, Math.max(0, ms)));
+      };
       if (rule.typedPrompt) {
         await new Promise((r) => setTimeout(r, 200));
         waited = 200;
+        await post('UserPromptSubmit', { prompt: rule.typedPrompt });
         append({ type: 'user', timestamp: new Date().toISOString(), message: { role: 'user', content: rule.typedPrompt } });
+        if (rule.typedTakesNotice) {
+          await released((rule.backgroundMs ?? 300) - waited);
+          append({ type: 'attachment', timestamp: new Date().toISOString(), attachment: { type: 'queued_command', commandMode: 'task-notification', prompt: '<task-notification>\n<task-id>' + agent + '</task-id>\n<status>completed</status>\n<summary>Agent "helper" completed</summary>\n</task-notification>' } });
+        }
         append({ type: 'assistant', message: { id: msgId + '-typed', role: 'assistant', content: [{ type: 'text', text: 'Answered what you typed.' }] } });
         await post('Stop', { last_assistant_message: 'Answered what you typed.' });
+        if (rule.typedTakesNotice) return;
       }
-      if (rule.releaseFile) while (!fs.existsSync(rule.releaseFile)) await new Promise((r) => setTimeout(r, 50));
-      else await new Promise((r) => setTimeout(r, Math.max(0, (rule.backgroundMs ?? 300) - waited)));
+      await released((rule.backgroundMs ?? 300) - waited);
       append({ type: 'user', origin: { kind: 'task-notification', producer: 'session-task' }, message: { role: 'user', content: '<task-notification>\n<task-id>' + agent + '</task-id>\n<status>completed</status>\n<summary>' + (rule.backgroundCommand ? 'Background command "suite" completed (exit code 0)' : 'Agent "helper" completed') + '</summary>\n</task-notification>' } });
       if (rule.resumeToolMs) {
         append({ type: 'assistant', message: { id: msgId + '-tool', role: 'assistant', content: [{ type: 'tool_use', id: 'bg-2', name: 'Bash', input: { command: 'sleep' } }] } });
@@ -219,8 +252,11 @@ async function turn(prompt, answered) {
       const reply = { type: 'assistant', message: { id: msgId, role: 'assistant', content: [{ type: 'text', text: rule.reply }] } };
       if (rule.lateLogMs !== undefined) {
         await post('Stop', { last_assistant_message: rule.reply });
-        await new Promise((r) => setTimeout(r, rule.lateLogMs));
-        append(reply);
+        await typedAfter(rule, msgId);
+        if (rule.lateLogMs >= 0) {
+          await new Promise((r) => setTimeout(r, rule.lateLogMs));
+          append(reply);
+        }
         return;
       }
       append(reply);
@@ -268,6 +304,7 @@ async function turn(prompt, answered) {
     const final = { type: 'assistant', message: { id: msgId, role: 'assistant', content: [{ type: 'text', text: rule.reply }] } };
     if (rule.lateLogMs !== undefined) {
       await post('Stop', { last_assistant_message: rule.reply });
+      await typedAfter(rule, msgId);
       if (rule.lateLogMs >= 0) {
         await new Promise((r) => setTimeout(r, rule.lateLogMs));
         append(final);
@@ -276,6 +313,7 @@ async function turn(prompt, answered) {
     }
     append(final);
     if (rule.ask === 'question') {
+      append({ type: 'assistant', message: { id: msgId, role: 'assistant', content: [{ type: 'tool_use', id: 'ask-1', name: 'AskUserQuestion', input: { questions: [{ question: rule.reply }] } }] } });
       await post('PreToolUse', { tool_name: 'AskUserQuestion', tool_input: { questions: [{ question: rule.reply }] } });
       questions = rule.questions || 1;
       answerDelay = rule.answerDelayMs || 0;
@@ -466,7 +504,7 @@ export async function engineFixture(opts: { engine?: EngineOptions; repos?: Floo
   workers = new WorkerManager(dir, data, path.join(bin, 'claude'), [], { url: hookUrl, token: '' }, { update() {}, remove() {}, data() {}, screen() {}, toast: (t) => void toasts.push(t) }, new Ledger(data, { pauseHiring: false }, () => {}, () => {}), opts.capacity, undefined, opts.runAs);
   const def: FloorDef = { id: 'proj', name: 'Proj', dir, repo: 'acme/proj', palette: 0, addedBy: 'test', addedAt: 0, ...(opts.repos ? { repos: opts.repos } : {}) };
   const pulls: GhPull[] = [];
-  const floor = { id: 'proj', dir, workers, pullsState: () => ({ items: pulls, fetchedAt: 0, loading: false }), project: { name: 'Proj', dir, branch: 'main' }, sendHome: (id: string, cleanup?: 'keep' | 'worktree' | 'all', intent?: DepartureIntent) => workers.kill(id, cleanup, undefined, undefined, intent) } as unknown as Floor;
+  const floor = { id: 'proj', dir, def, queue: { issueOf: () => ({}) }, workers, pullsState: () => ({ items: pulls, fetchedAt: 0, loading: false }), project: { name: 'Proj', dir, branch: 'main' }, sendHome: (id: string, cleanup?: 'keep' | 'worktree' | 'all', intent?: DepartureIntent) => workers.kill(id, cleanup, undefined, undefined, intent) } as unknown as Floor;
   const repo = new KanbanRepository(openKanbanDb(':memory:'));
   // Every update is kept, so a test can check a state the task only passed through (sawTask).
   const history = new Map<number, TaskSnapshot[]>();

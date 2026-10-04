@@ -278,26 +278,30 @@ test('with an issue the agent’s title replaces the issue’s, its text comes f
   assert.deepEqual(ctx.repo.listEvents(1).find((e) => e.kind === 'created')?.data, { by: 'Ada', ticket: 'gh:o/app#12', via: 'Ada', viaWorker: 'w1' });
 });
 
-test('start with an issue assigns it under the account’s own gh sign-in, and without an account it does not', async () => {
-  const signed = setup(env('/h/agent-create-1'));
-  const r = await signed.call({ issue: 12, start: true }, signed.worker({ accountId: 'acc1', accountName: 'Panu', hiredBy: 'Panu' }));
+test('an issue is taken as from the issues board: assigned at once in To do, by the engine’s start hook when started; never without an account', async () => {
+  const who = { accountId: 'acc1', accountName: 'Panu', hiredBy: 'Panu' };
+  // Made in To do: assigned here, under the account's own gh sign-in, after the answer has gone (a slow GitHub can't time the agent out into asking again).
+  let assignedBeforeAnswer: boolean | undefined;
+  const todo = setup(env('/h/agent-create-1'));
+  const req = Object.assign(Readable.from([Buffer.from(JSON.stringify({ issue: 12 }))]), { method: 'POST', headers: {} }) as unknown as IncomingMessage;
+  const res = { writeHead: () => {}, end: () => void (assignedBeforeAnswer = todo.edits().length > 0) } as unknown as ServerResponse;
+  await todo.issues.plugin.hook![PATH]!(req, res, new URL(PATH, 'http://127.0.0.1'), todo.worker(who));
+  assert.equal(assignedBeforeAnswer, false);
+  assert.deepEqual(todo.edits(), [['issue', 'edit', '12', '-R', 'o/app', '--add-assignee=panu']]);
+
+  // Started: the hook leaves taking it to the engine's start hook (taskStarted), as for any task that starts.
+  const started = setup(env('/h/agent-create-2'));
+  const r = await started.call({ issue: 12, start: true }, started.worker(who));
   assert.equal(r.status, 200, JSON.stringify(r.body));
   assert.equal(r.body.started, true);
-  assert.deepEqual(signed.ctx.started, [1]);
-  assert.deepEqual(signed.edits(), [['issue', 'edit', '12', '-R', 'o/app', '--add-assignee=panu']]);
-
-  // The answer goes before the issue is assigned (as the board does): a slow GitHub can't time the agent out into asking again.
-  let assignedBeforeAnswer: boolean | undefined;
-  const slow = setup(env('/h/agent-create-2'));
-  const req = Object.assign(Readable.from([Buffer.from(JSON.stringify({ issue: 12, start: true }))]), { method: 'POST', headers: {} }) as unknown as IncomingMessage;
-  const res = { writeHead: () => {}, end: () => void (assignedBeforeAnswer = slow.edits().length > 0) } as unknown as ServerResponse;
-  await slow.issues.plugin.hook![PATH]!(req, res, new URL(PATH, 'http://127.0.0.1'), slow.worker({ accountId: 'acc1', accountName: 'Panu', hiredBy: 'Panu' }));
-  assert.equal(assignedBeforeAnswer, false);
-  assert.equal(slow.edits().length, 1);
+  assert.deepEqual(started.ctx.started, [1]);
+  assert.deepEqual(started.edits(), []);
+  await started.issues.plugin.taskStarted!(1, { name: 'Panu', accountId: 'acc1', admin: false });
+  assert.deepEqual(started.edits(), [['issue', 'edit', '12', '-R', 'o/app', '--add-assignee=panu']]);
 
   const anon = setup();
-  const a = await anon.call({ issue: 12, start: true }, anon.worker({ hiredBy: 'Boss' }));
-  assert.equal(a.body.started, true);
+  const a = await anon.call({ issue: 12 }, anon.worker({ hiredBy: 'Boss' }));
+  assert.equal(a.status, 200);
   assert.deepEqual(anon.edits(), []);
 });
 

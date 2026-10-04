@@ -260,7 +260,24 @@ export function installKanban(opts: KanbanInstallOptions): Kanban {
   // The parts: each only reaches the others through ctx, lazily, so the order here doesn't matter to them.
   ctx.pulls = (opts.createPulls ?? createPulls)(ctx);
   ctx.refs = (opts.createRefs ?? createRefs)(ctx);
-  const engine = (opts.createEngine ?? createEngine)(ctx);
+  const created = (opts.createEngine ?? createEngine)(ctx);
+  // Every start, whoever asks, tells the plugins once it took (the issues plugin takes the task's issue).
+  const engine: KanbanEngine = {
+    ...created,
+    start: async (taskId, who, o) => {
+      const err = await created.start(taskId, who, o);
+      if (typeof err === 'string' && err) return err;
+      for (const p of plugins) {
+        const failed = (e: unknown) => console.error(`agent-office: the kanban's ${p.name} couldn't follow task #${taskId}'s start: ${(e as Error)?.message ?? String(e)}`);
+        try {
+          void Promise.resolve(p.taskStarted?.(taskId, who)).catch(failed);
+        } catch (e) {
+          failed(e);
+        }
+      }
+      return err;
+    },
+  };
   ctx.engine = engine;
 
   const subs = {

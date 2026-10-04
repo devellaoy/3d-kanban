@@ -550,6 +550,94 @@ test('a prompt typed into the terminal while a background agent works does not h
   assert.equal(results[0]?.text, 'Changed the redirect; tests pass.');
 });
 
+test('a prompt typed into the terminal that the background agent\'s end came in is not the run\'s answer: the agent is asked to restate it', async (t) => {
+  const fx = await engineFixture();
+  t.after(() => fx.close());
+  const release = path.join(fx.root, 'release-helper');
+  fx.setRules([
+    { when: 'Implement kanban task', background: 'Waiting for the helper agent.', typedPrompt: 'How is it going?', typedTakesNotice: true, releaseFile: release, commit: 'Work' },
+    { when: 'Someone typed into your terminal', reply: 'Changed the redirect; tests pass.' },
+    { when: 'You are reviewing the work', reply: 'Fine.\n\nREVIEW: APPROVED' },
+  ]);
+  const task = fx.newTask({ usePlan: false, useReview: true });
+  await fx.engine.start(task.id, ADA);
+  await fx.waitTask(task.id, (x) => x.phase === 'implement' && x.runState === 'running', 'the implement turn');
+  writeFileSync(release, '');
+  // The helper's end came inside the typed turn: that turn's reply ("Answered what you typed.") isn't the run's answer, so the agent is asked for it again.
+  await fx.waitTask(task.id, (x) => x.status === 'review' && x.runState === 'idle' && reviewRuns(fx, x.id) >= 1, 'the review round after the restated answer', 30_000);
+  assert.ok(fx.invocations().some((i) => i.prompt && /Someone typed into your terminal/.test(i.prompt)));
+  const results = fx.repo.listComments(task.id).comments.filter((c) => c.kind === 'result');
+  assert.equal(results[0]?.text, 'Changed the redirect; tests pass.');
+  assert.ok(!results.some((c) => c.text === 'Answered what you typed.'));
+});
+
+test('an office restart while the run is held keeps the typed-prompt protection: the agent is still asked to restate', async (t) => {
+  const fx = await engineFixture();
+  t.after(() => fx.close());
+  const release = path.join(fx.root, 'release-helper');
+  fx.setRules([
+    { when: 'Implement kanban task', background: 'Waiting for the helper agent.', typedPrompt: 'How is it going?', typedTakesNotice: true, releaseFile: release, commit: 'Work' },
+    { when: 'Someone typed into your terminal', reply: 'Changed the redirect; tests pass.' },
+    { when: 'You are reviewing the work', reply: 'Fine.\n\nREVIEW: APPROVED' },
+  ]);
+  const task = fx.newTask({ usePlan: false, useReview: true });
+  await fx.engine.start(task.id, ADA);
+  await fx.waitTask(task.id, (x) => x.phase === 'implement' && x.runState === 'running', 'the implement turn');
+  await holdsForHelper(fx, task.id, fx.repo.activeRun(task.id)!.workerId!);
+  assert.ok(fx.repo.activeRun(task.id)?.promptedAt, 'the office kept when it prompted the run');
+  fx.restartEngine();
+  writeFileSync(release, '');
+  await fx.waitTask(task.id, (x) => x.status === 'review' && x.runState === 'idle' && reviewRuns(fx, x.id) >= 1, 'the review round after the restated answer', 30_000);
+  assert.ok(fx.invocations().some((i) => i.prompt && /Someone typed into your terminal/.test(i.prompt)));
+  const results = fx.repo.listComments(task.id).comments.filter((c) => c.kind === 'result');
+  assert.equal(results[0]?.text, 'Changed the redirect; tests pass.');
+});
+
+test('a prompt typed after the office\'s Stop but before its answer reached the log: the review keeps its verdict by restating it', async (t) => {
+  const fx = await engineFixture();
+  t.after(() => fx.close());
+  fx.settings.setProject('proj', { review: { tool: 'claude', rounds: 1 } });
+  fx.setRules([
+    { when: 'Implement kanban task', reply: 'Done.', commit: 'Work' },
+    { when: 'This is review round 1 of', earlier: 'Reading the diff.', reply: 'unused', lateLogMs: -1, typedAfterStop: 'How is it going?', typedMs: 1500 },
+    { when: 'Someone typed into your terminal', reply: 'No findings.\n\nREVIEW: APPROVED' },
+  ]);
+  const task = fx.newTask({ usePlan: false });
+  assert.equal(await fx.engine.start(task.id, ADA), undefined);
+  await fx.waitTask(task.id, (x) => x.status === 'review' && x.runState === 'idle', 'the review column', 40_000);
+  assert.deepEqual(fx.repo.listRuns(task.id).map((r) => `${r.phase}/${r.verdict ?? '-'}`), ['implement/-', 'review/approved']);
+  assert.ok(fx.invocations().some((i) => i.prompt && /Someone typed into your terminal/.test(i.prompt)));
+  assert.equal(fx.repo.listComments(task.id).comments.find((c) => c.kind === 'review')?.text, 'No findings.\n\nREVIEW: APPROVED');
+});
+
+test('a held run whose helper\'s report turn has no answer in the log yet, with a prompt typed right after it, restates the answer', async (t) => {
+  const fx = await engineFixture();
+  t.after(() => fx.close());
+  fx.setRules([
+    { when: 'Implement kanban task', background: 'Waiting for the helper agent.', reply: 'unused', lateLogMs: -1, typedAfterStop: 'How is it going?', typedMs: 1500, commit: 'Work' },
+    { when: 'Someone typed into your terminal', reply: 'Changed the redirect; tests pass.' },
+    { when: 'You are reviewing the work', reply: 'Fine.\n\nREVIEW: APPROVED' },
+  ]);
+  const task = fx.newTask({ usePlan: false, useReview: true });
+  await fx.engine.start(task.id, ADA);
+  await fx.waitTask(task.id, (x) => x.status === 'review' && x.runState === 'idle' && reviewRuns(fx, x.id) >= 1, 'the review round after the restated answer', 40_000);
+  assert.ok(fx.invocations().some((i) => i.prompt && /Someone typed into your terminal/.test(i.prompt)));
+  assert.equal(fx.repo.listComments(task.id).comments.find((c) => c.kind === 'result')?.text, 'Changed the redirect; tests pass.');
+});
+
+test('a plan asked for in a prompt typed after a tool-only planning turn is stored as the plan', async (t) => {
+  const fx = await engineFixture();
+  t.after(() => fx.close());
+  fx.setRules([{ when: 'You are planning kanban task', earlier: ' ', reply: 'unused', lateLogMs: -1, typedAfterStop: 'Make a plan', typedMs: 800, typedExitPlan: '1. Change the redirect\n2. Test it' }]);
+  const task = fx.newTask({ planApproval: 'manual' });
+  await fx.engine.start(task.id, ADA);
+  await fx.waitTask(task.id, (x) => x.status === 'waiting' && x.waitingReason === 'plan_approval', 'the plan approval', 30_000);
+  const plans = fx.repo.listPlans(task.id);
+  assert.equal(plans.length, 1);
+  assert.equal(plans[0].text, '1. Change the redirect\n2. Test it');
+  assert.equal(fx.repo.listRuns(task.id)[0].status, 'succeeded');
+});
+
 test('a stop the agent never confirms (no Stop after Esc) restarts the worker on its session at its desk, never sends it home; Continue prompts the same worker', async (t) => {
   const fx = await engineFixture();
   t.after(() => fx.close());
@@ -803,7 +891,7 @@ test('a run held for background agents that never report back goes on after back
   await fx.engine.start(task.id, ADA);
   const done = await fx.waitTask(task.id, (x) => x.status === 'review', 'the review column', 15_000);
   assert.equal(done.summary, 'Waiting for the helper agent.');
-  assert.ok(fx.repo.listComments(task.id).comments.some((c) => c.authorKind === 'system' && /Waited 1 s for its background work/.test(c.text)));
+  assert.ok(fx.repo.listComments(task.id).comments.some((c) => c.authorKind === 'system' && /Waited 1 s for its agent's next Stop/.test(c.text)));
 });
 
 const reviewRuns = (fx: Awaited<ReturnType<typeof engineFixture>>, id: number) => fx.repo.listRuns(id).filter((r) => r.phase === 'review').length;

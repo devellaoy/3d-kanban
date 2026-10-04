@@ -52,7 +52,7 @@ export const workerHandlers = {
         const across = repos.length ? ` across ${[floor.def.name, ...repos.map((x) => x.name)].join(' + ')}` : '';
         if (typeof r === 'string') ctx.warn(c, r);
         else ctx.toastFloor(floor, kind === 'shell' ? `${who} opened a shell at a desk` : `${who} hired ${r.name}${issue ? ` for issue #${issue}` : key ? ` for ${key}` : r.prompt ? ' with a task' : ''}${across}`);
-        if (typeof r !== 'string' && (issue || key)) ctx.takeIssue(c, floor, issue, key);
+        if (typeof r !== 'string' && (issue || key)) ctx.takeIssue(c, floor, issue, key, r.id);
       };
       // Files attached to a direct hire go to its drops folder before it exists, and into its first prompt (see kanban/hirefiles.ts).
       if (kind !== 'agent' || !Array.isArray(msg.attachmentIds) || !msg.attachmentIds.length) return spawn({ byPerson: true });
@@ -164,7 +164,7 @@ export const workerHandlers = {
         if (err) return ctx.warn(c, err);
         if (!issue && !key) return;
         ctx.toastFloor(w.floor, `${who} handed issue ${issue ? `#${issue}` : key} to ${w.info.name}'s task #${w.info.kanban!.taskId}`);
-        ctx.takeIssue(c, w.floor, issue, key);
+        ctx.takeIssue(c, w.floor, issue, key, w.wid);
       });
     }
     const err = w ? w.floor.workers.prompt(w.wid, str(msg.prompt, 20000), who) : 'No such worker';
@@ -173,7 +173,7 @@ export const workerHandlers = {
     const key = w?.info.kind === 'agent' ? w.floor.cardKey(msg.issueKey) : undefined; // only a card on the floor's board
     if (w && !err && (issue || key)) {
       ctx.toastFloor(w.floor, `${who} handed issue ${issue ? `#${issue}` : key} to ${w.info.name}`);
-      ctx.takeIssue(c, w.floor, issue, key);
+      ctx.takeIssue(c, w.floor, issue, key, w.wid);
     }
   },
   'station.prompt'(ctx, c, msg) {

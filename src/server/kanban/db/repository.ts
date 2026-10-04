@@ -101,7 +101,7 @@ export interface NewRun {
   startedAt?: number;
 }
 
-export type RunUpdate = Partial<Pick<KanbanRun, 'status' | 'verdict' | 'summary' | 'error' | 'sessionId' | 'workerId' | 'finishedAt' | 'model' | 'effort'>>;
+export type RunUpdate = Partial<Pick<KanbanRun, 'status' | 'verdict' | 'summary' | 'error' | 'sessionId' | 'workerId' | 'finishedAt' | 'model' | 'effort' | 'promptedAt'>>;
 
 /** An attachment row as the server keeps it: `stored` is the file's name in the uploads folder, never sent to browsers. */
 export interface AttachmentRow extends KanbanAttachment {
@@ -439,7 +439,7 @@ export class KanbanRepository {
   }
 
   updateRun(id: number, patch: RunUpdate): KanbanRun | undefined {
-    const cols: Record<string, string> = { status: 'status', verdict: 'verdict', summary: 'summary', error: 'error', sessionId: 'session_id', workerId: 'worker_id', finishedAt: 'finished_at', model: 'model', effort: 'effort' };
+    const cols: Record<string, string> = { status: 'status', verdict: 'verdict', summary: 'summary', error: 'error', sessionId: 'session_id', workerId: 'worker_id', finishedAt: 'finished_at', model: 'model', effort: 'effort', promptedAt: 'prompted_at' };
     const sets: string[] = [];
     const args: Record<string, unknown> = { id };
     for (const [k, v] of Object.entries(patch)) {
@@ -458,6 +458,11 @@ export class KanbanRepository {
 
   listRuns(taskId: number): KanbanRun[] {
     return (this.db.prepare('SELECT * FROM runs WHERE task_id = ? ORDER BY id').all(taskId) as Row[]).map(run);
+  }
+
+  /** The id of the task's latest run, if it has one. */
+  latestRunId(taskId: number): number | undefined {
+    return (this.db.prepare('SELECT id FROM runs WHERE task_id = ? ORDER BY id DESC LIMIT 1').get(taskId) as Row | undefined)?.id as number | undefined;
   }
 
   /** The task's run still going, if any (the latest one). */
@@ -760,6 +765,7 @@ function run(r: Row): KanbanRun {
     summary: opt<string>(r.summary),
     error: opt<string>(r.error),
     startedAt: r.started_at as number,
+    promptedAt: opt<number>(r.prompted_at),
     finishedAt: opt<number>(r.finished_at),
   });
 }

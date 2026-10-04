@@ -54,7 +54,7 @@ export type RoomEvents = Omit<MeetingEvents, 'update'> & {
   /** This room's meeting changed in a way nobody needs telling: just save it. */
   save(): void;
   /** A meeting is over for good: onto the list of earlier ones. */
-  archive(record: MeetingRecord): void;
+  archive(record: MeetingRecord, m?: Meeting): void;
   /** Why `output` is taken by another room's running meeting (they'd write one file in the project's folder), if so. */
   outputBusy(room: string, output: string): string | undefined;
 };
@@ -502,7 +502,7 @@ export class MeetingRoom {
 
   /** Puts a finished meeting on the list of earlier ones. */
   private archive(m: Meeting) {
-    this.events.archive(meetingRecord(m));
+    this.events.archive(meetingRecord(m), m);
   }
 
   /** Adds up what the workers at the table have used. Returns whether it changed. */
