@@ -418,6 +418,25 @@ test('settings, accounts, sign-ins and the boards answer as before', async () =>
   a.send({ t: 'prompts.set', id: 'nope', text: 'x' });
   a.send({ t: 'prompts.agent', choice: null });
   assert.equal(await told('🤖'), '🤖 Eve put the office’s default worker back to claude');
+  a.send({ t: 'prompts.language', language: { talk: 'Finnish', public: '12' } });
+  await warned("That isn't a language name");
+  a.send({ t: 'prompts.language', language: { talk: 'Finnish', public: 'English' } });
+  assert.deepEqual((await a.take('prompts', (m) => !!m.state.language)).state.language?.talk, 'Finnish');
+  assert.equal(await told('🌐'), '🌐 Eve set the office’s languages: talking in Finnish, writing in English');
+  // A bad value never wipes what is saved (and nothing is broadcast).
+  a.inbox.splice(0);
+  a.send({ t: 'prompts.language', language: { talk: 12, public: 12 } } as never);
+  await warned("That isn't a language name");
+  a.send({ t: 'prompts.language', language: { talk: 'Finnish', public: 'x'.repeat(60) } });
+  await warned("That isn't a language name");
+  a.send({ t: 'prompts.language', language: [] } as never);
+  await warned("That isn't a language name");
+  a.send({ t: 'prompts.language', language: 'Finnish' } as never);
+  await warned("That isn't a language name");
+  assert.ok(!a.inbox.some((m) => m.t === 'toast' && m.text.startsWith('🌐')), 'a bad language was announced');
+  assert.ok(!a.inbox.some((m) => m.t === 'prompts'), 'a bad language changed the languages');
+  a.send({ t: 'prompts.language', language: null });
+  assert.equal(await told('🌐'), '🌐 Eve put the office’s languages back to the task’s language');
   a.send({ t: 'notify.webhook', url: 'not a url' });
   assert.match((await a.take('toast', (m) => m.level === 'warn')).text, /./);
   a.send({ t: 'upgrade.check' });

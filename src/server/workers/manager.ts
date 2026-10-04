@@ -23,7 +23,7 @@ import { midTurn } from './lifecycle.js';
 import { restoreWorkers, saveWorkers } from './persist.js';
 import { WorkerPrs } from './pr.js';
 import { WIN, binScript, defaultShell, resolveCommand, shellRun, shq, writeOfficeCommands } from './process.js';
-import { CARRY_ON_PROMPT, WorkerTasks, firstPrompt } from './tasks.js';
+import { CARRY_ON_PROMPT, WorkerTasks, firstPrompt, languageTail } from './tasks.js';
 import { flushScreens, fullScreens, newTerm, offlineBanner, screenText, type HeadlessTerminal } from './terminal.js';
 import type { HookEnv, OpenedPr, RepoSource, RunAs, SpawnExtra, Worker, WorkerContext, WorkerEvents, WorkerHandle } from './types.js';
 import { clamp, safeEq, truncate } from './util.js';
@@ -291,11 +291,13 @@ export class WorkerManager extends KanbanWorkers {
       meeting: meeting?.id,
     };
     const w = newWorker(info, newTracker());
-    this.hired(w, owner, extra); // its owner, and how the kanban launches it
+    // Its owner and how the kanban launches it; its launch tail (attached files) gets the language rule after it.
+    this.hired(w, owner, extra);
+    w.launchTail = languageTail(this.prompts?.language?.(), info.prompt, w.launchTail, kind, !!extra?.kanban);
     this.workers.set(id, w);
     if (info.prompt) this.tasks.notePrompt(w, info.prompt, true);
     // A board agent is told what it's there for ahead of its first request (which is what shows).
-    this.launch(w, firstPrompt(seat.station && info.prompt ? stationBrief(seat.station, this.prompts) : undefined, info.prompt, extra?.promptTail), extra?.resumeSessionId);
+    this.launch(w, firstPrompt(seat.station && info.prompt ? stationBrief(seat.station, this.prompts) : undefined, info.prompt, w.launchTail), extra?.resumeSessionId);
     this.persist();
     return info;
   }
@@ -316,11 +318,8 @@ export class WorkerManager extends KanbanWorkers {
     w.info.exitCode = undefined;
     const station = DESK_BY_ID.get(w.info.deskId)?.station;
     // A board agent with no session to carry on starts over, so it needs telling what it's for again.
-    const first = prompt && station && !w.info.sessionId ? `${stationBrief(station, this.prompts)}\n\n${prompt}` : prompt;
-    if (prompt) {
-      w.info.activity = truncate(prompt, 80);
-      this.tasks.notePrompt(w, prompt);
-    }
+    const brief = station && stationBrief(station, this.prompts);
+    const first = this.tasks.restartPrompt(w, brief, prompt, this.prompts?.language?.());
     // Cut off mid-turn by a restart: it gets on with it, as whoever was watching would have told it to.
     const carryOn = !prompt && w.interrupted && w.info.kind === 'agent' && !!w.info.sessionId;
     w.interrupted = false;

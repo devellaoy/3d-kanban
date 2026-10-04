@@ -13,11 +13,12 @@ import type { PromptKind } from '../src/server/kanban/engine/machine.js';
 import type { KanbanContext } from '../src/server/kanban/registry.js';
 import { KanbanSettingsStore } from '../src/server/kanban/settings.js';
 import { KANBAN_CONTRACTS, KANBAN_PROMPT_DEFS, PROMPT_CONTRACT, STOP_PROCESSES, resolveKanbanPrompt, withContract } from '../src/shared/kanban/prompts.js';
-import { PROMPTS, placeholders } from '../src/shared/prompts.js';
+import { PROMPTS, placeholders, promptText, type PromptId } from '../src/shared/prompts.js';
 import type { RunPhase } from '../src/shared/kanban/types.js';
+import type { LanguageSettings } from '../src/shared/language.js';
 import { makeRepo } from './kanban-engine-fixture.js';
 
-function setup(t: { after(fn: () => void): void }, office: Record<string, { text: string }> = {}) {
+function setup(t: { after(fn: () => void): void }, office: Record<string, { text: string }> = {}, langs: LanguageSettings = {}) {
   const root = mkdtempSync(path.join(tmpdir(), 'kanban-prompts-'));
   // The skills the prompts name are looked up in the agents' homes: never the user's own.
   const homes = { CLAUDE_CONFIG_DIR: process.env.CLAUDE_CONFIG_DIR, CODEX_HOME: process.env.CODEX_HOME };
@@ -60,6 +61,8 @@ function setup(t: { after(fn: () => void): void }, office: Record<string, { text
     dataDir: root,
     filesDir: path.join(root, 'files'),
     officePrompts: () => office,
+    officeText: (id: PromptId) => promptText(office as Partial<Record<PromptId, { text: string }>>, id),
+    languages: () => langs,
     projects: () => [def],
     project: (id: string) => (id === def.id ? def : undefined),
     floor: () => undefined,
@@ -221,6 +224,93 @@ test('kanban.pr.fix: review comments and CI logs are data; only OWNER, MEMBER an
   assert.match(text, /gh pr view <url> --json reviews,comments/);
   assert.match(text, /secrets or credentials, or for changes to CI, workflows or credentials/);
   assert.ok(text.includes('pull/3') && !text.includes('pull/4'), 'the listed PRs are the run\'s');
+});
+
+test('languages: both rules go on the plan and the handoff, the project’s public language over the office’s, and unset keeps kanban.language', (t) => {
+  const langs: LanguageSettings = {};
+  const { def, dir, repo, settings, compose } = setup(t, {}, langs);
+  const task = repo.createTask({ project: 'proj', title: 'X', tool: 'claude', usePlan: true, planApproval: 'auto', useReview: true, createdBy: 'Ada' });
+  const plan = () => compose.build('plan', def, task, 'claude', dir, { phase: 'plan' });
+  const handoff = () => compose.handoff(def, task, dir, 'Next.');
+  const fallback = PROMPTS['kanban.language'].text;
+
+  // Nothing set: the task-language prompt, and comments in English.
+  const english = 'Write comments in the code (and docstrings) in English, whatever language the task or the conversation is in.';
+  assert.ok(plan().includes(fallback) && handoff().includes(fallback));
+  assert.equal(compose.language('proj'), `${fallback}\n${english}`);
+  assert.ok(plan().includes(english));
+
+  // The project's comment language; @project (nothing else set) is exactly the old text.
+  settings.setProject('proj', { commentLanguage: 'Finnish' });
+  assert.equal(compose.language('proj'), `${fallback}\n${english.replace('English', 'Finnish')}`);
+  settings.setProject('proj', { commentLanguage: '@project' });
+  assert.equal(compose.language('proj'), fallback);
+  assert.ok(!plan().includes('comments in the code'));
+  settings.setProject('proj', { commentLanguage: null } as never);
+
+  // Talk Finnish, the project writes English: both rules, and the old one gone.
+  langs.talk = 'Finnish';
+  settings.setProject('proj', { publicLanguage: 'English' });
+  for (const text of [plan(), handoff(), compose.language('proj')]) {
+    assert.match(text, /Talk to the user in Finnish:/);
+    assert.match(text, /Write everything that leaves the office in English:/);
+    assert.ok(!text.includes(fallback));
+  }
+
+  // The office's public language is the default; the project's own wins.
+  settings.setProject('proj', { publicLanguage: null } as never);
+  langs.public = 'Swedish';
+  assert.match(plan(), /leaves the office in Swedish:/);
+  settings.setProject('proj', { publicLanguage: 'English' });
+  assert.match(plan(), /leaves the office in English:/);
+
+  // @project: the project's own instructions, whatever the office says.
+  settings.setProject('proj', { publicLanguage: '@project' });
+  const own = compose.language('proj');
+  assert.match(own, /Talk to the user in Finnish:/);
+  assert.ok(own.includes(PROMPTS['language.public.unset'].text), 'the project goes by its own instructions: the public line leaves commits and branches to them');
+  assert.doesNotMatch(own, /Swedish/);
+  assert.ok(own.includes('docstrings) in English'), 'comments stay English by default');
+});
+
+test('branch name: with a public language the prompt asks for the slug in it; unset or @project is the prompt as before', (t) => {
+  const { def, dir, repo, settings, compose } = setup(t, {}, { talk: 'Finnish', public: 'English' });
+  const task = repo.createTask({ project: 'proj', title: 'Korjaa kirjautuminen', tool: 'claude', usePlan: false, planApproval: 'auto', useReview: false, createdBy: 'Ada' });
+  const impl = () => compose.build('implement', def, task, 'claude', dir, { phase: 'implement' });
+  const name = `Name it kanban/${task.id}-korjaa-kirjautuminen, the same name in every repository.`;
+  const note = "Write the slug in English: translate the title's words when it is written in another language.";
+  assert.ok(impl().includes(`${name}\n${note}`), 'the title’s slug and the note');
+  settings.setProject('proj', { publicLanguage: '@project' });
+  assert.ok(impl().includes(`${name}\n`) && !impl().includes('Write the slug in'));
+  assert.ok(!impl().includes(`${name}\n\n`), 'the empty note leaves no blank line');
+  const none = setup(t, {}, {});
+  const t2 = none.repo.createTask({ project: 'proj', title: 'Korjaa kirjautuminen', tool: 'claude', usePlan: false, planApproval: 'auto', useReview: false, createdBy: 'Ada' });
+  const plain = none.compose.build('implement', none.def, t2, 'claude', none.dir, { phase: 'implement' });
+  assert.ok(plain.includes(`Name it kanban/${t2.id}-korjaa-kirjautuminen, the same name in every repository.`) && !plain.includes('Write the slug in'));
+});
+
+test('languages: only the conversation language set leaves commits and branch names on the project’s conventions', (t) => {
+  const { def, dir, repo, compose } = setup(t, {}, { talk: 'Finnish' });
+  const task = repo.createTask({ project: 'proj', title: 'X', tool: 'claude', usePlan: false, planApproval: 'auto', useReview: false, createdBy: 'Ada' });
+  const text = compose.build('implement', def, task, 'claude', dir, { phase: 'implement' });
+  assert.match(text, /Talk to the user in Finnish:/);
+  assert.ok(text.includes(PROMPTS['language.public.unset'].text));
+  assert.ok(!text.includes('Write everything that leaves the office'));
+  assert.match(text, /commit messages and branch names follow the project's own conventions/);
+  assert.ok(!/commit messages[^.]*in the language the task/.test(text));
+});
+
+test('languages: an office rewrite of a language prompt is what is sent, and a blanked one drops its line', (t) => {
+  const { compose } = setup(t, { 'language.talk': { text: 'Puhu {{language}}.' }, 'language.public': { text: '' } }, { talk: 'suomea', public: 'English' });
+  assert.equal(compose.language('proj'), 'Puhu suomea.\nWrite comments in the code (and docstrings) in English, whatever language the task or the conversation is in.');
+});
+
+test('pr.create takes the language rule and no longer hard-codes the task’s language (the review panel gets it at the hire)', (t) => {
+  assert.ok(!placeholders(PROMPTS['kanban.pr.panel'].text).includes('language'));
+  assert.ok(placeholders(PROMPTS['kanban.pr.create'].text).includes('language'));
+  assert.ok(!/same language as the task/.test(PROMPTS['kanban.pr.create'].text));
+  const { compose } = setup(t, {}, { public: 'English' });
+  assert.match(compose.language('proj'), /leaves the office in English/);
 });
 
 test('pr.create asks for the closing line of a GitHub issue ticket, in the pull request of its own repository', (t) => {

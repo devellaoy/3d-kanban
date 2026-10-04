@@ -135,4 +135,12 @@ export const settingsHandlers = {
     if (err) return ctx.warn(c, err);
     ctx.toastAll(choice ? `🤖 ${who} set the office’s default worker` : `🤖 ${who} put the office’s default worker back to ${path.basename(ctx.cfg.agentCmd)}`);
   },
+  'prompts.language'(ctx, c, msg) {
+    const who = c.peer.name;
+    if (!ctx.meOfClient(c).admin) return ctx.warn(c, 'Only admins can set the office’s languages');
+    const err = ctx.prompts.setLanguage(msg.language, who);
+    if (err) return ctx.warn(c, err);
+    const { talk, public: pub } = ctx.prompts.languages();
+    ctx.toastAll(talk || pub ? `🌐 ${who} set the office’s languages${talk ? `: talking in ${talk}` : ''}${pub ? `${talk ? ',' : ':'} writing in ${pub}` : ''}` : `🌐 ${who} put the office’s languages back to the task’s language`);
+  },
 } satisfies HandlerMap<SettingsClientMsg>;

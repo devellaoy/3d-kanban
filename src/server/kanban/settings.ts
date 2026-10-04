@@ -23,6 +23,7 @@ import { KANBAN_EFFORTS, KANBAN_TOOLS, SKILL_PHASES } from '../../shared/kanban/
 import { GH_REPO_RE, MODEL_RE, PROJECT_ID_RE, type KanbanSettingsPatch } from '../../shared/kanban/protocol.js';
 import { isKanbanPromptId } from '../../shared/kanban/prompts.js';
 import { PROMPT_MAX } from '../../shared/prompts.js';
+import { cleanProjectLanguage } from '../../shared/language.js';
 
 export const SETTINGS_SCHEMA_VERSION = 1;
 export const INSTRUCTIONS_MAX = 20_000;
@@ -169,6 +170,11 @@ export function sanitizeProjectSettings(raw: unknown, base: ProjectSettings = de
   if (approval) out.planApproval = approval;
   const permission = 'implementPermission' in r ? optOneOf(r.implementPermission, PERMISSIONS) : base.implementPermission;
   if (permission) out.implementPermission = permission;
+  // An invalid value keeps the earlier choice when a file is loaded; checking a request, and clearing (null), are setProject's.
+  const lang = 'publicLanguage' in r ? cleanProjectLanguage(r.publicLanguage) ?? base.publicLanguage : base.publicLanguage;
+  if (lang) out.publicLanguage = lang;
+  const comment = 'commentLanguage' in r ? cleanProjectLanguage(r.commentLanguage) ?? base.commentLanguage : base.commentLanguage;
+  if (comment) out.commentLanguage = comment;
   const review = 'review' in r ? sanitizePartialReview(r.review) : base.review;
   if (review) out.review = review;
   return out;
@@ -268,15 +274,20 @@ export class KanbanSettingsStore {
     return structuredClone(this.settings.projects[id] ?? defaultProjectSettings());
   }
 
-  /** Changes some of a project's settings. */
-  setProject(id: string, patch: Partial<ProjectSettings>): ProjectSettings {
+  /** Changes some of a project's settings; a string is why not (a language that isn't one), and nothing is saved then. */
+  setProject(id: string, patch: Partial<ProjectSettings>): ProjectSettings | string {
     if (!PROJECT_ID_RE.test(id)) throw new Error('Not a project id');
+    for (const k of ['publicLanguage', 'commentLanguage'] as const) {
+      const v = obj(patch)[k];
+      if (v !== undefined && v !== null && cleanProjectLanguage(v) === undefined) return "That isn't a language name";
+    }
     // A copy: the fields set to null (cleared) are dropped from it, and read from the patch after.
     const p = { ...obj(patch) };
     const cleared = new Set(Object.keys(p).filter((k) => p[k] === null));
     for (const k of cleared) delete p[k];
     this.settings.projects[id] = sanitizeProjectSettings(p, this.settings.projects[id] ?? defaultProjectSettings());
     if (cleared.has('review')) delete this.settings.projects[id].review;
+    for (const k of ['publicLanguage', 'commentLanguage'] as const) if (cleared.has(k)) delete this.settings.projects[id][k];
     if (cleared.has('planApproval')) delete this.settings.projects[id].planApproval;
     if (cleared.has('implementPermission')) delete this.settings.projects[id].implementPermission;
     this.changed();

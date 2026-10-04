@@ -3,6 +3,7 @@
 // agents are handed. Timestamps are integer milliseconds since the epoch.
 
 import type { WorkerInfo, WorkerRepo } from '../protocol.js';
+import type { IssueSourceConfig, IssueSourceKind } from './issue-sources.js';
 
 // --- Columns, phases and runs ---------------------------------------------------------------------
 
@@ -391,39 +392,17 @@ export const SKILL_PHASES: readonly SkillPhase[] = ['plan', 'implement', 'review
 /** Skills per phase and tool, by name (SkillInfo.name). */
 export type SkillSelection = Partial<Record<SkillPhase, { claude?: string[]; codex?: string[] }>>;
 
-/** Where a project's issues come from (see server/kanban/issues). */
-export type IssueSourceConfig =
-  | {
-      id: string;
-      kind: 'github-repo';
-      /** owner/name; empty = the project's git repositories with a GitHub remote. */
-      repos: string[];
-      filters: { assignee?: string; labels?: string[]; state?: 'open' | 'closed' | 'all' };
-    }
-  | {
-      id: string;
-      kind: 'github-project';
-      /** User or organisation that owns the Projects v2 board. */
-      owner: string;
-      number: number;
-      filters: { assignee?: string; status?: string; iteration?: string };
-    }
-  | {
-      id: string;
-      kind: 'jira';
-      /** e.g. yourteam.atlassian.net (the token is in kanban-secrets.json). */
-      site: string;
-      projectKeys: string[];
-      filters: { assignee?: string; epic?: string; labels?: string[]; statusCategoryNot?: string[]; jql?: string };
-    };
-export type IssueSourceKind = IssueSourceConfig['kind'];
+export type { IssueSourceConfig, IssueSourceKind };
 
 export interface ProjectSettings {
   branchInstructions: string;
   generalInstructions: string;
   testingInstructions: string;
-  /** Tasks of this project running at once. */
-  maxConcurrent: number;
+  maxConcurrent: number; // tasks of this project running at once
+  /** What its issues, pull requests and commits are written in: FOLLOW_PROJECT (@project) goes by its own instructions; unset, the office's. */
+  publicLanguage?: string;
+  /** What comments in its code are written in: FOLLOW_PROJECT (@project) goes by its own conventions; unset, English. */
+  commentLanguage?: string;
   planApproval?: PlanApproval;
   implementPermission?: ImplementPermission;
   review?: Partial<ReviewSettings>;

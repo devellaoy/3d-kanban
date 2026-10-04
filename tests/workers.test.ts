@@ -10,6 +10,7 @@ import { Worktrees } from '../src/server/worktrees.js';
 import type { AgentProvider, WorkerInfo } from '../src/shared/protocol.js';
 import type { PromptSource } from '../src/server/prompts.js';
 import { PROMPTS } from '../src/shared/prompts.js';
+import { stationBrief } from '../src/server/stations.js';
 
 type Invocation = {
   kind: string;
@@ -1519,4 +1520,93 @@ test("a worker whose worktree was deleted outside the office waits, marked lost,
   assert.equal(git(path.join(f.root, gone.worktree!.path), 'rev-parse', 'HEAD'), gone.worktree!.base);
   assert.equal(after.get(gone.id)?.lost, undefined);
   assert.deepEqual(toasts, []);
+});
+
+test('a new agent’s first prompt ends with the language rule; a resume, a shell and a kanban task do not get it again', async (t) => {
+  const f = fixture();
+  const updates: WorkerInfo[] = [];
+  isolateProviderEnvironment(f, t);
+  const previousExit = process.env.FAKE_AGENT_EXIT_MS;
+  const previousLog = process.env.FAKE_AGENT_LOG;
+  process.env.FAKE_AGENT_EXIT_MS = '600';
+  process.env.FAKE_AGENT_LOG = f.log;
+  t.after(() => {
+    if (previousExit === undefined) delete process.env.FAKE_AGENT_EXIT_MS;
+    else process.env.FAKE_AGENT_EXIT_MS = previousExit;
+    if (previousLog === undefined) delete process.env.FAKE_AGENT_LOG;
+    else process.env.FAKE_AGENT_LOG = previousLog;
+    f.close();
+  });
+  const RULE = 'Talk to the user in Finnish.\nWrite everything that leaves the office in English.';
+  let rule = '';
+  const prompts: PromptSource = { text: (id) => PROMPTS[id].text, agent: () => undefined, language: () => rule };
+  const workers = new WorkerManager(f.root, f.data, f.claude, ['--from-test'], { url: 'http://127.0.0.1:1', token: '' }, events(updates), ledger(f.data), undefined, prompts);
+  t.after(() => workers.shutdown());
+  const launches = (id: string) => f.read().filter((r) => r.kind === 'claude' && r.args.includes('--settings') && r.stdin === undefined && r.env.workerId === id);
+
+  // Without a language the prompt is exactly what it was.
+  const plain0 = workers.spawn('desk-1', 'Ada', 'Fix the dog');
+  assert.equal(typeof plain0, 'object');
+  if (typeof plain0 === 'string') return;
+  const [first0] = await waitFor(() => launches(plain0.id), (l) => l.length === 1);
+  assert.equal(first0.args.at(-1), 'Fix the dog');
+  workers.kill(plain0.id);
+
+  rule = RULE;
+  // A plain worker: the rule after the prompt, and not in what the sign shows.
+  const plain = workers.spawn('desk-2', 'Ada', 'Fix the cat');
+  assert.equal(typeof plain, 'object');
+  if (typeof plain === 'string') return;
+  const [first] = await waitFor(() => launches(plain.id), (l) => l.length === 1);
+  assert.equal(first.args.at(-1), `Fix the cat\n\n${RULE}`);
+  assert.equal(plain.activity, 'Fix the cat');
+  // The provider reports its whole launch prompt back as the first prompt: the rule is not the work.
+  assert.equal(workers.handleHook(plain.id, first.env.hookToken!, 'SessionStart', { session_id: 'plain-session' }), true);
+  assert.equal(workers.handleHook(plain.id, first.env.hookToken!, 'UserPromptSubmit', { prompt: first.args.at(-1) }), true);
+  assert.equal(workers.get(plain.id)?.activity, 'Fix the cat');
+  assert.ok(!JSON.stringify(workers.get(plain.id)?.task ?? '').includes('Finnish'));
+  // Carrying on its session: the rule is already in it.
+  await waitFor(() => workers.get(plain.id)?.status, (s) => s === 'exited');
+  assert.equal(workers.resume(plain.id, 'And the bird'), undefined);
+  const [, again] = await waitFor(() => launches(plain.id), (l) => l.length === 2);
+  assert.ok(again.args.includes('--resume'));
+  assert.equal(again.args.at(-1), 'And the bird');
+
+  // A worker that never reported a session starts over on its next prompt: the rule again, kept off its activity too.
+  const fish = workers.spawn('desk-5', 'Ada', 'Fix the fish');
+  assert.equal(typeof fish, 'object');
+  if (typeof fish === 'string') return;
+  const [fish1] = await waitFor(() => launches(fish.id), (l) => l.length === 1);
+  assert.equal(workers.handleHook(fish.id, fish1.env.hookToken!, 'UserPromptSubmit', { prompt: fish1.args.at(-1) }), true);
+  await waitFor(() => workers.get(fish.id)?.status, (s) => s === 'exited');
+  assert.equal(workers.resume(fish.id, 'And the bird'), undefined);
+  const [, fish2] = await waitFor(() => launches(fish.id), (l) => l.length === 2);
+  assert.equal(fish2.args.at(-1), `And the bird\n\n${RULE}`);
+  assert.equal(workers.handleHook(fish.id, fish2.env.hookToken!, 'UserPromptSubmit', { prompt: fish2.args.at(-1) }), true);
+  assert.equal(workers.get(fish.id)?.activity, 'And the bird');
+
+  // A board agent: the brief, the request, then the rule.
+  const hired = workers.station('station-issues', 'Ada', 'File one about the dog');
+  assert.equal(typeof hired, 'object');
+  if (typeof hired === 'string') return;
+  const [board] = await waitFor(() => launches(hired.info.id), (l) => l.length === 1);
+  assert.ok(board.args.at(-1)!.startsWith(stationBrief('issues', prompts)));
+  assert.ok(board.args.at(-1)!.endsWith(`File one about the dog\n\n${RULE}`));
+  // Woken with no session to carry on (it never reported one): it starts over, brief and rule again.
+  await waitFor(() => workers.get(hired.info.id)?.status, (s) => s === 'exited');
+  const woken = workers.station('station-issues', 'Ada', 'Close the duplicates');
+  assert.equal(typeof woken === 'object' && woken.hired, false);
+  const [, over] = await waitFor(() => launches(hired.info.id), (l) => l.length === 2);
+  assert.ok(over.args.at(-1)!.startsWith(stationBrief('issues', prompts)));
+  assert.ok(over.args.at(-1)!.endsWith(`Close the duplicates\n\n${RULE}`));
+
+  // A kanban task's prompts carry the rule themselves, and a shell has no prompt.
+  const task = workers.spawn('desk-3', 'Ada', 'Task prompt', false, 'agent', undefined, undefined, undefined, undefined, undefined, [], undefined, { kanban: { taskId: 1, role: 'implementer' } });
+  assert.equal(typeof task, 'object');
+  if (typeof task === 'string') return;
+  const [kanban] = await waitFor(() => launches(task.id), (l) => l.length === 1);
+  assert.equal(kanban.args.at(-1), 'Task prompt');
+  const shell = workers.spawn('desk-4', 'Ada', 'echo hi', false, 'shell');
+  assert.equal(typeof shell, 'object');
+  if (typeof shell !== 'string') assert.ok(!f.read().some((r) => (r.stdin ?? '').includes('Finnish')));
 });

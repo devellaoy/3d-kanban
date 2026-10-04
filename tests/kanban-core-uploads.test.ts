@@ -1,4 +1,5 @@
 import test from 'node:test';
+import { PROMPTS } from '../src/shared/prompts.js';
 import assert from 'node:assert/strict';
 import http from 'node:http';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
@@ -30,6 +31,8 @@ async function office(t: Ctx) {
     floor: () => undefined,
     saveRepos: () => 'no',
     officePrompts: () => ({}),
+    officeText: (id: keyof typeof PROMPTS) => PROMPTS[id].text,
+    languages: () => ({}),
     hookUrl: 'http://127.0.0.1:9',
     toast: () => {},
     createEngine: idleEngine,

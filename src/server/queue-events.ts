@@ -49,6 +49,6 @@ export function queueEvents(floor: Floor, ctx: FloorContext): QueueEvents {
       ctx.toast(floor, '📋 The queue is empty: every task is done 🎉');
       ctx.emit(floor, { t: 'gong', why: 'queue' });
     },
-    worktreeNote: () => officePrompt(ctx.prompts, 'queue.worktree'),
+    worktreeNote: () => officePrompt(ctx.prompts(floor.id), 'queue.worktree'),
   };
 }

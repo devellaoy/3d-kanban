@@ -2,6 +2,7 @@
 // CLIs that answer prompts by rules, write transcripts in the real CLIs' shapes and post their hooks
 // to a local hook server, a real WorkerManager, and a KanbanContext around them.
 
+import { PROMPTS } from '../src/shared/prompts.js';
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
@@ -535,6 +536,8 @@ export async function engineFixture(opts: { engine?: EngineOptions; repos?: Floo
     setRepos: () => 'not in tests',
     setName: () => 'not in tests',
     officePrompts: () => ({}),
+    officeText: (id: keyof typeof PROMPTS) => PROMPTS[id].text,
+    languages: () => ({}),
     hookUrl,
     broadcast: (msg) => void broadcasts.push(msg),
     toast: (_f, text) => void toasts.push(text),

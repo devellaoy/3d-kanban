@@ -1,4 +1,5 @@
 import test from 'node:test';
+import { PROMPTS } from '../src/shared/prompts.js';
 import assert from 'node:assert/strict';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -84,6 +85,8 @@ function office(t: Ctx, opts: { answers?: Partial<Record<string, string>>; plugi
     saveRepos: (id, repos) => building.setRepos(id, repos),
     saveName: (id, name) => building.setName(id, name),
     officePrompts: () => ({}),
+    officeText: (id: keyof typeof PROMPTS) => PROMPTS[id].text,
+    languages: () => ({}),
     hookUrl: 'http://127.0.0.1:9',
     toast: (_floor, text) => void toasts.push(text),
     toFloor: (_floor, msg) => void floorMsgs.push(structuredClone(msg)),
@@ -391,6 +394,22 @@ test('settings, projects, prompts and secrets are for admins; everyone may read 
   okOf(await boss.ask({ t: 'kanban.project.settings.set', project: 'web', settings: { maxConcurrent: 5, planApproval: 'manual' } }));
   assert.equal(kanban.ctx.settings.project('web').maxConcurrent, 5);
   assert.equal(kanban.ctx.settings.planApproval('web'), 'manual');
+  okOf(await boss.ask({ t: 'kanban.project.settings.set', project: 'web', settings: { publicLanguage: 'English' } }));
+  for (const bad of [12, 'not a language!!']) {
+    errorOf(await boss.ask({ t: 'kanban.project.settings.set', project: 'web', settings: { maxConcurrent: 9, publicLanguage: bad } } as never), /isn't a language name/);
+    assert.equal(kanban.ctx.settings.project('web').publicLanguage, 'English');
+    assert.equal(kanban.ctx.settings.project('web').maxConcurrent, 5, 'nothing saved');
+  }
+  okOf(await boss.ask({ t: 'kanban.project.settings.set', project: 'web', settings: { publicLanguage: null } } as never));
+  assert.equal(kanban.ctx.settings.project('web').publicLanguage, undefined);
+  okOf(await boss.ask({ t: 'kanban.project.settings.set', project: 'web', settings: { commentLanguage: 'Finnish' } }));
+  for (const bad of [12, 'not a language!!']) {
+    errorOf(await boss.ask({ t: 'kanban.project.settings.set', project: 'web', settings: { maxConcurrent: 9, commentLanguage: bad } } as never), /isn't a language name/);
+    assert.equal(kanban.ctx.settings.project('web').commentLanguage, 'Finnish');
+    assert.equal(kanban.ctx.settings.project('web').maxConcurrent, 5, 'nothing saved');
+  }
+  okOf(await boss.ask({ t: 'kanban.project.settings.set', project: 'web', settings: { commentLanguage: null } } as never));
+  assert.equal(kanban.ctx.settings.project('web').commentLanguage, undefined);
 
   errorOf(await boss.ask({ t: 'kanban.project.prompt.set', project: 'web', id: 'kanban.nothing', text: 'x' }), /isn't a kanban prompt/);
   okOf(await boss.ask({ t: 'kanban.project.prompt.set', project: 'web', id: 'kanban.plan', text: 'Plan it our way' }));

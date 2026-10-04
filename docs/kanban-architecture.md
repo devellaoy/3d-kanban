@@ -596,10 +596,12 @@ answers `kanban.ok {rid, ...}` or `kanban.error {rid, message}`. Deltas are push
 
 ## 7. Prompts
 
-Every prefilled prompt is a `PromptDef` in `src/shared/kanban/prompts.ts` (group `kanban`), spread into
+Every prefilled prompt is a `PromptDef` in `src/shared/kanban/prompt-defs.ts` (group `kanban`), spread into
 upstream's `DEFS`, so the upstream prompt editor shows it. Layering: default → office-wide custom
 (upstream `prompts.json`) → project override (`kanban-settings.json` `projects[id].prompts`). Contract
 blocks (markers, safety rules) are appended by the engine and shown read-only in the editor.
+
+`{{language}}` is `Composer.language(project)`: with a conversation or public language set (office `prompts.json` `language`, project `publicLanguage`, resolved by `resolveLanguages` in `src/shared/language.ts`), the office prompts `language.talk` and `language.public` (`language.public.unset` when only the conversation language is set, so commits and branch names stay on the project's conventions; `languageRules` in `src/server/language.ts`, the office's texts via `KanbanContext.officeText`); otherwise `kanban.language`; then, unless the project's `commentLanguage` is `@project`, the `language.code` prompt (`codeRule`; the language is `resolveCommentLanguage`, English by default, carried as `code` in `resolveLanguages`' result and never stored in the office's settings). Non-kanban workers get the same rule after their first prompt from `WorkerManager` (the floor's `PromptSource.language()`, `boundPrompts`); kanban workers are skipped there, since their prompts carry it.
 
 `kanban.unhold` ("Carry on after a hold": `taskId`, `heldAt`, `holdNote`, `comments`, `language`) is the prompt a task taken off hold resumes with (§3, §4).
 `kanban.restate` ("Restate the final answer": `taskId`, `language`) is what a run is asked when a prompt typed into its terminal took the turn its background work ended in, or came before the office's answer reached the log (§4).

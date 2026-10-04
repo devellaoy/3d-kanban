@@ -197,3 +197,62 @@ test('a rename the office keeps off the primary repository leaves its box alone,
   assert.equal(names[0].value, 'Front');
   cleanups.run();
 });
+
+test('⚙️ Project saves its public language: the office’s default, the project’s instructions, or a language of its own', async () => {
+  const { all, sent, cleanups } = await projectPaneFixture(true);
+  const pick = all.find((el) => el.tagName === 'select' && el.children.some((o) => typeof o !== 'string' && o.getAttribute('value') === '@project'))!;
+  assert.ok(pick, 'a Public language select');
+  assert.equal(pick.value, '', 'unset: the office’s default');
+  const own = all.find((el) => el.tagName === 'input' && el.getAttribute('aria-label') === 'Public language of this project')!;
+  const save = all.filter((el) => el.tagName === 'button' && el.textContent === 'Save').pop()!;
+  // A save keeps its button off until the office answers.
+  const click = () => (save.fire('click'), new Promise((r) => setTimeout(r, 0)));
+  const saved = () => (sent.pop() as { settings: { publicLanguage: unknown } }).settings.publicLanguage;
+  await click();
+  assert.equal(saved(), null, 'the office’s default clears it');
+  pick.value = '@project';
+  pick.fire('change');
+  await click();
+  assert.equal(saved(), '@project');
+  pick.value = 'other';
+  pick.fire('change');
+  own.value = '  Brazilian   Portuguese ';
+  await click();
+  assert.equal(saved(), 'Brazilian Portuguese');
+  own.value = 'en; rm -rf';
+  await click();
+  assert.equal(sent.length, 0, 'not a language: nothing is saved');
+  own.value = '  ';
+  await click();
+  assert.equal(saved(), null, 'another language with an empty box is back to the default');
+  cleanups.run();
+});
+
+test('⚙️ Project saves its code comment language: English by default, the project’s conventions, or a language of its own', async () => {
+  const { all, sent, cleanups } = await projectPaneFixture(true);
+  const pick = all.filter((el) => el.tagName === 'select' && el.children.some((o) => typeof o !== 'string' && o.getAttribute('value') === '@project'))[1]!;
+  assert.ok(pick, 'a Code comment language select');
+  assert.equal(pick.value, '', 'unset: English');
+  const own = all.find((el) => el.tagName === 'input' && el.getAttribute('aria-label') === 'Code comment language of this project')!;
+  const save = all.filter((el) => el.tagName === 'button' && el.textContent === 'Save').pop()!;
+  const click = () => (save.fire('click'), new Promise((r) => setTimeout(r, 0)));
+  const saved = () => (sent.pop() as { settings: { commentLanguage: unknown } }).settings.commentLanguage;
+  await click();
+  assert.equal(saved(), null, 'the default clears it');
+  pick.value = '@project';
+  pick.fire('change');
+  await click();
+  assert.equal(saved(), '@project');
+  pick.value = 'other';
+  pick.fire('change');
+  own.value = ' Finnish ';
+  await click();
+  assert.equal(saved(), 'Finnish');
+  own.value = 'en; rm -rf';
+  await click();
+  assert.equal(sent.length, 0, 'not a language: nothing is saved');
+  own.value = '  ';
+  await click();
+  assert.equal(saved(), null, 'another language with an empty box is back to the default');
+  cleanups.run();
+});

@@ -3,6 +3,7 @@
 import type { CustomMap } from '../maps/index.js';
 import type { PromptId } from '../prompts.js';
 import type { AgentChoice } from './agents.js';
+import type { LanguageSettings } from '../language.js';
 
 /**
  * The prompts the office writes for workers by itself (shared/prompts.ts) and the worker everyone
@@ -16,6 +17,8 @@ export interface PromptsState {
    * started with (--agent), on its own default model.
    */
   agent?: AgentChoice & { by: string; at: number };
+  /** The languages agents talk in and write public texts in (shared/language.ts); unset: as before. */
+  language?: LanguageSettings & { by: string; at: number };
 }
 
 /** Where a team webhook posts: Slack and Discord get their own message format, anything else plain JSON. */
@@ -190,7 +193,9 @@ export type SettingsClientMsg =
   /** Rewrite one of the office's prompts (admins only); null puts the default back. */
   | { t: 'prompts.set'; id: PromptId; text: string | null }
   /** Pick the worker everyone starts on (admins only); null goes back to the office's --agent. */
-  | { t: 'prompts.agent'; choice: AgentChoice | null };
+  | { t: 'prompts.agent'; choice: AgentChoice | null }
+  /** Set the office's languages (admins only); null, or both unset, goes back to the task's language. */
+  | { t: 'prompts.language'; language: LanguageSettings | null };
 
 export type SettingsServerMsg =
   | { t: 'upgrade'; state: UpgradeState }

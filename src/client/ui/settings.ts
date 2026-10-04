@@ -19,6 +19,7 @@ import { masterRow, mixRows, musicRow } from './settings-mix';
 import { appearanceRow } from './appearance';
 import { setting } from './settingrow';
 import { outsideSetting } from './settings-sky';
+import { languageRows } from './language';
 
 const VIEWS: [ViewMode, string, string][] = [
   ['first', '👀 First person', 'See through your own eyes. Click the office to look around with the mouse and click things to use them. Esc frees the mouse.'],
@@ -462,6 +463,7 @@ export function openSettings(net: Net, settings: Settings, onChange: (s: Setting
   const signOut = h('button.btn', { type: 'button' }, '🚪 Sign out');
   signOut.addEventListener('click', onSignOut);
   const character = h('button.btn', { type: 'button' }, account ? '🧍 Change your look' : '🧍 Change your look & name');
+  const languages = languageRows(net); // the office's languages (ui/language.ts)
   const kanban = kanbanSettingsSlots(net), multiplayer = multiplayerSettingsSlot(net), appearance = appearanceRow(); // its listener goes when the window closes
   const panes: Record<SettingsPane, Node[]> = {
     you: [
@@ -493,6 +495,7 @@ export function openSettings(net: Net, settings: Settings, onChange: (s: Setting
       setting('Default worker', 'office', agentNow, agent.element, agentActions, agentNote),
       setting('Worker limit', 'office', limitRow, limitNote),
       setting('Workers whose pull request merged', 'office', leaveRow, leaveNote),
+      ...languages.rows,
       setting('Prompts', 'office', promptsOpen, promptsNote),
     ],
     // The kanban's settings.
@@ -548,7 +551,7 @@ export function openSettings(net: Net, settings: Settings, onChange: (s: Setting
   const modal = openModal(el, {
     doing: '⚙️ in settings',
     onClose: () => {
-      [offNotify, offDog, offTheme, appearance.off, offMap, offLeave].forEach((off) => off());
+      [offNotify, offDog, offTheme, appearance.off, offMap, offLeave, languages.off].forEach((off) => off());
       sky?.off();
       offLimit.forEach((off) => off());
       offDir.forEach((off) => off());

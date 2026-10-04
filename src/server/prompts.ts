@@ -1,18 +1,23 @@
 import { readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { isAgentEffort, isAgentProvider, type AgentChoice, type AgentProvider, type PromptsState } from '../shared/protocol.js';
+import { cleanLanguage, cleanLanguages, type LanguageSettings } from '../shared/language.js';
 import { PROMPTS, PROMPT_MAX, fillPrompt, isPromptId, promptText, type PromptId, type PromptVars } from '../shared/prompts.js';
 import { validateWorkerEffort, validateWorkerModel } from './agents.js';
+
+const NOT_A_LANGUAGE = "That isn't a language name";
 
 /** What the floors read: a prompt as the office has it now, and what workers start on. */
 export interface PromptSource {
   text(id: PromptId): string;
   /** The worker picked in ⚙️ Settings, when one was. */
   agent(): AgentChoice | undefined;
+  /** The language rule for new agents (server/language.ts): empty when no language is set. */
+  language?(): string;
 }
 
 /** A prompt's text, from `source` when there is one, else the default. */
-export function officePrompt(source: PromptSource | undefined, id: PromptId, vars: PromptVars = {}): string {
+export function officePrompt(source: Pick<PromptSource, 'text'> | undefined, id: PromptId, vars: PromptVars = {}): string {
   return fillPrompt(source ? source.text(id) : PROMPTS[id].text, vars);
 }
 
@@ -36,7 +41,7 @@ export class OfficePrompts implements PromptSource {
   }
 
   state(): PromptsState {
-    return { custom: { ...this.saved.custom }, ...(this.saved.agent ? { agent: { ...this.saved.agent } } : {}) };
+    return { custom: { ...this.saved.custom }, ...(this.saved.agent ? { agent: { ...this.saved.agent } } : {}), ...(this.saved.language ? { language: { ...this.saved.language } } : {}) };
   }
 
   text(id: PromptId): string {
@@ -46,6 +51,31 @@ export class OfficePrompts implements PromptSource {
   agent(): AgentChoice | undefined {
     const a = this.saved.agent;
     return a && { provider: a.provider, ...(a.model ? { model: a.model } : {}), ...(a.effort ? { effort: a.effort } : {}) };
+  }
+
+  /** The office's languages (each one unset: as before). */
+  languages(): LanguageSettings {
+    const { talk, public: pub } = this.saved.language ?? {};
+    return { ...(talk ? { talk } : {}), ...(pub ? { public: pub } : {}) };
+  }
+
+  /** Sets the languages; null, or neither set, goes back to the task's language. Returns why it can't, if it can't. */
+  setLanguage(l: unknown, by: string): string | undefined {
+    if (l !== null && (!l || typeof l !== 'object' || Array.isArray(l))) return NOT_A_LANGUAGE;
+    const given = (l ?? {}) as Record<string, unknown>;
+    const clean: LanguageSettings = {};
+    for (const key of ['talk', 'public'] as const) {
+      const raw = given[key];
+      if (raw === undefined) continue;
+      if (typeof raw !== 'string') return NOT_A_LANGUAGE;
+      const name = cleanLanguage(raw);
+      if (raw.trim() && !name) return NOT_A_LANGUAGE;
+      if (name) clean[key] = name;
+    }
+    if (!clean.talk && !clean.public) delete this.saved.language;
+    else this.saved.language = { ...clean, by, at: Date.now() };
+    this.changed();
+    return undefined;
   }
 
   /** Rewrites a prompt; `text` null (or the default's own text) puts the default back. Returns why it can't, if it can't. */
@@ -97,6 +127,8 @@ export class OfficePrompts implements PromptSource {
       if (!isPromptId(id) || typeof v?.text !== 'string') continue;
       this.saved.custom[id] = { text: v.text.slice(0, PROMPT_MAX), by: typeof v.by === 'string' ? v.by : 'someone', at: typeof v.at === 'number' ? v.at : 0 };
     }
+    const lang = cleanLanguages(raw?.language);
+    if (lang.talk || lang.public) this.saved.language = { ...lang, by: typeof raw.language?.by === 'string' ? raw.language.by : 'someone', at: typeof raw.language?.at === 'number' ? raw.language.at : 0 };
     const a = raw?.agent;
     if (a && isAgentProvider(a.provider)) {
       const choice: AgentChoice = { provider: a.provider, model: typeof a.model === 'string' ? a.model : undefined, effort: isAgentEffort(a.effort) ? a.effort : undefined };

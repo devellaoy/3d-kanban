@@ -56,8 +56,8 @@ export interface FloorContext {
   ledger: Ledger;
   /** The office's worker limit, across every floor. */
   capacity: Capacity;
-  /** The office's prompts and the worker everyone starts on, as set in ⚙️ Settings. */
-  prompts: PromptSource;
+  /** The office's prompts and the worker everyone starts on, as set in ⚙️ Settings, with a project's own language (see server/language.ts). */
+  prompts(projectId: string): PromptSource;
   /** Workers hired by an account run on its own sign-ins (see signins.ts). */
   runAs?: RunAs;
   /** How to run gh as an account: its own sign-in, the office's (undefined), or why it can't. */
@@ -196,6 +196,7 @@ export class Floor {
     // Before the workers and the dog: the back office's desks are only there once it's built.
     this.plan = new FloorPlanStore(dataDir, () => ctx.officeMap?.() !== false);
     this.jail = new Jail(dataDir);
+    const prompts = ctx.prompts(def.id);
 
     // Before the workers, so it hears about the ones who wake up needing input.
     this.dog = new Dog(def.id, dataDir, {
@@ -241,7 +242,7 @@ export class Floor {
       },
       ctx.ledger,
       ctx.capacity,
-      ctx.prompts,
+      prompts,
       ctx.runAs,
       ctx.dshProfile,
     );
@@ -290,7 +291,7 @@ export class Floor {
           const as = ctx.ghAs(owner);
           return typeof as === 'string' ? Promise.reject(new Error(as)) : this.github.review(pr, file, as);
         },
-        prompt: (id) => ctx.prompts.text(id),
+        prompt: (id) => prompts.text(id),
       },
       // The office's wing rooms are only there once the floor's built out that far; another map's are all there.
       () => {

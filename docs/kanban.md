@@ -243,6 +243,8 @@ over it, and the task's own over both.
 | Keep the reviewer off the web | 🗂️ Kanban → Reviews; 📁 Projects | on | Claude reviewers get no WebFetch/WebSearch (Bash keeps the network, for `gh`). A Codex review round always runs in Codex's read-only sandbox (no network); a Codex multi-PR review in its workspace sandbox with the network on, for `gh`. |
 | Resume after a usage limit or a network break | 🗂️ Kanban | on, 5 tries, 6 hours | A turn cut short by a usage limit or a lost connection is retried by itself: at the reset time the message names (plus a minute); for a Codex run whose message names none, when the last of the Codex account's windows at 100% starts over (plus a minute; it reads the account's numbers afresh when the limit hits, waiting at most 5 seconds; when the percentages lag behind Codex saying the limit is reached, the fullest window's reset is taken; a Codex week that is used up gives up straight away, naming when it resets); else after 5, 10, 20… minutes (at most an hour apart). It gives up after *tries at most* or *waits at most (hours)*, naming the reset time when it knows it; then it waits for Retry. |
 | Archive done tasks after (days) | 🗂️ Kanban | 30 | 0 keeps them on the board. Checked at start-up and hourly. |
+| Code comment language | 📁 Projects → ⚙️ Project | English | What comments in the code are written in; *The project's own conventions* adds no rule (see [Languages](agents.md#languages)). |
+| Conversation language, public language | ⚙️ Settings → 🤖 Workers; public language also 📁 Projects → ⚙️ Project | unset (the task's language and the project's instructions) | What agents talk to you in, and what issues, PRs and commits are written in. Set, they replace the *Language* prompt with two rules (see [Languages](agents.md#languages)). |
 | Project name | 📁 Projects → ⚙️ Project (admin) | the repository's or folder's name | See *Projects and repositories*. The id, folder and repository don't change. |
 | Repositories, instructions, tasks at once | 📁 Projects → ⚙️ Project | — | See *Projects and repositories*. |
 
@@ -374,7 +376,7 @@ the repository, so a changed `origin` (say `git remote set-url` in a worktree, w
 Saving the form keeps the field empty; type an `owner/name` to pin one.
 
 A task gets a worktree of each git repository it works in, all on the same branch (named by the
-project's *Branch naming* instructions, else `kanban/<ticket or task id>-<slug>`). A *folder*
+project's *Branch naming* instructions, else `kanban/<ticket or task id>-<slug>`; with a public language set the default prompt also asks for the slug in that language, and a rewrite of the *Branch naming* prompt can use `{{slugNote}}` for that line, which is empty otherwise and then leaves no blank line). A *folder*
 repository has no worktree: the agent works in the folder itself. The same page has the project's
 general and testing instructions (they go into the prompts), *tasks at once*, and the project's own
 plan approval, implementation mode and review settings.
@@ -573,7 +575,7 @@ reads its own. A kanban task made from a card keeps the description as its own, 
 
 Every prompt the kanban sends is editable: plan, replan, branch naming, checkout, implement,
 implement (folder project), investigate, review, next review round, fix, comment, acceptance
-criteria, open PRs, fix PRs, review PRs together, the review panel of several PRs, carry on, language, reading other tasks
+criteria, open PRs, fix PRs, review PRs together, the review panel of several PRs, carry on, language (used only while no language is set in ⚙️ Settings, see [Languages](agents.md#languages)), reading other tasks
 and handoff, and the smaller texts they're built from (Continue without answers, what the user said
 since, the ticket line, attached files, the project's instructions and their parts, the referenced
 tasks file, the accepted plan, what the task did, and the handoff's summary and comments). Each lists
@@ -585,6 +587,10 @@ its `{{placeholders}}`.
   the office's editor). A project's text wins over the office's; **Back to the office's** drops it.
   Saving the office's own text for a project stores nothing.
 - The layers, lowest first: the default → the office's → the project's.
+- **Languages**: the conversation and public language rules are the office prompts in **🌐 Languages**; set
+  languages replace the *Language* prompt, and a project's or the office's rewrite of *Pull requests* that still says
+  which language to write in should drop that sentence. The **Code comment language** rule (English unless the
+  project picks otherwise) is added after the language rule in every prompt, whether or not a language is set.
 - **Contract blocks** (🔒, shown read-only under the prompt) are appended by the office and can't be
   changed: the `PLAN READY` / `QUESTIONS:` markers, the `REVIEW:` verdict line and the reviewer's
   rules, the implementer's and the investigation's safety rules, and the `PR:` lines. A rewritten

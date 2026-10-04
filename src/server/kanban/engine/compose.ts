@@ -18,6 +18,9 @@ import { openPrs } from '../../../shared/kanban/prs.js';
 import type { KanbanPrLink, KanbanTask, KanbanTool, ProjectRepo, RunPhase, SkillPhase, TaskWorkspace } from '../../../shared/kanban/types.js';
 import type { WorkerInfo } from '../../../shared/protocol.js';
 import type { PromptKind } from './machine.js';
+import { resolveLanguages, type LanguageSettings } from '../../../shared/language.js';
+import type { PromptId } from '../../../shared/prompts.js';
+import { languageRules } from '../../language.js';
 import { skillHint } from '../integrations/skills/index.js';
 import { workerIssueKey } from './worker-issue.js';
 
@@ -139,6 +142,21 @@ export class Composer {
     return { office: this.ctx.officePrompts(), project: this.ctx.settings.project(project).prompts };
   }
 
+  /** The languages a project's agents go by (the project's public language over the office's). */
+  languages(project: string) {
+    const p = this.ctx.settings.project(project);
+    return resolveLanguages(this.ctx.languages(), p.publicLanguage, p.commentLanguage);
+  }
+
+  /**
+   * The language rule of a project's prompts: the office's talk language and the project's (else the office's)
+   * public one, as two rules; when no language is set anywhere, the kanban.language prompt as before.
+   */
+  language(project: string, langs: LanguageSettings = this.languages(project)): string {
+    const source = { text: (id: PromptId) => this.ctx.officeText(id) };
+    return languageRules(source, langs, this.text('kanban.language', project));
+  }
+
   /** One kanban prompt, layered and filled in. */
   text(id: KanbanPromptId, project: string, vars: Vars = {}): string {
     return resolveKanbanPrompt(id, this.layers(project), vars);
@@ -179,7 +197,7 @@ export class Composer {
         repos: workerReposText(info, floor.dir, name, floor.project.branch),
         summary: info.task?.summary ? `What you worked on:\n${info.task.summary}` : '',
         skills: picked.length ? `Skills picked for this step (use them where they fit): ${picked.map((n) => (tool === 'claude' ? `/${n}` : n)).join(', ')}.` : '',
-        language: this.text('kanban.language', id),
+        language: this.language(id),
       }),
       'pr',
     );
@@ -217,10 +235,16 @@ export class Composer {
     return lines.length ? this.text('kanban.attachments', project, { files: lines.join('\n') }) : '';
   }
 
+  /** The branch prompt's note on the slug: with a public language set, to write it in that language. */
+  private slugNote(pub: string | undefined): string {
+    return pub ? `Write the slug in ${pub}: translate the title's words when it is written in another language.` : '';
+  }
+
   /** Every placeholder the task prompts share. */
   taskVars(def: FloorDef, task: KanbanTask, tool: KanbanTool, floorDir: string, x: ComposeExtra): Vars {
     const accepted = this.ctx.repo.acceptedPlan(task.id);
     const ticketId = task.ticket ?? 'none';
+    const langs = this.languages(task.project);
     return {
       taskId: task.id,
       title: task.title,
@@ -236,11 +260,11 @@ export class Composer {
         refsFile: x.refsFile ? this.text('kanban.refsFile', task.project, { file: x.refsFile }) : '',
       }),
       skills: this.skillsLine(task, tool, x.phase),
-      language: this.text('kanban.language', task.project),
+      language: this.language(task.project, langs),
       plan: accepted ? this.text('kanban.acceptedPlan', task.project, { plan: accepted.text.trim() }) : '',
       branchInstructions: x.checkout
         ? this.checkout(task, x.checkout)
-        : this.ctx.settings.project(task.project).branchInstructions.trim() || this.text('kanban.branch', task.project, { taskId: task.id, slug: slugify(task.title), ticketId: task.ticket ? slugify(task.ticket.replace(/^ghp?:/, ''), 30) : String(task.id) }),
+        : this.ctx.settings.project(task.project).branchInstructions.trim() || this.text('kanban.branch', task.project, { taskId: task.id, slug: slugify(task.title), slugNote: this.slugNote(langs.public), ticketId: task.ticket ? slugify(task.ticket.replace(/^ghp?:/, ''), 30) : String(task.id) }),
       ticketId,
       reportDir: task.type === 'investigate' ? reportDir(this.ctx, task.id) : '',
       round: x.round ?? '',
@@ -332,7 +356,7 @@ export class Composer {
   /** The prompt asking a run's agent to give its final answer again (kanban.restate), with the phase's contract. */
   restate(task: KanbanTask, phase: RunPhase): string {
     const c = this.contract(task, phase);
-    const text = this.text('kanban.restate', task.project, { taskId: task.id, language: this.text('kanban.language', task.project) });
+    const text = this.text('kanban.restate', task.project, { taskId: task.id, language: this.language(task.project) });
     return c ? withContract(text, c) : text.trim();
   }
 
@@ -353,7 +377,7 @@ export class Composer {
       summary: task.summary?.trim() ? this.text('kanban.handoff.summary', task.project, { summary: task.summary.trim() }) : '',
       recent: recent.length ? this.text('kanban.handoff.comments', task.project, { comments: recent.join('\n') }) : '',
       repos: reposText(def, task, floorDir),
-      language: this.text('kanban.language', task.project),
+      language: this.language(task.project),
     });
     return `${intro}\n\n${next}`.trim();
   }

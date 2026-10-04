@@ -412,7 +412,8 @@ export function createCorePlugin(ctx: KanbanContext, subs: KanbanSubscriptions):
     'kanban.project.settings.set': (c, m) => {
       if (!adminOnly(c, m.rid)) return;
       if (!ctx.project(m.project)) return fail(c, m.rid, `There's no project ${m.project}`);
-      ctx.settings.setProject(m.project, m.settings);
+      const err = ctx.settings.setProject(m.project, m.settings);
+      if (typeof err === 'string') return fail(c, m.rid, err);
       settingsChanged();
       // The floor's issues board follows the sources: theirs now, or its own repository's without any.
       if (m.settings && 'issueSources' in m.settings) wallSourcesChanged(m.project);
