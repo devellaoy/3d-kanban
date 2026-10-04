@@ -1,6 +1,6 @@
 // The meeting room: calling a meeting, stopping it, and clearing the table.
 import { isAgentEffort, isAgentProvider, type MeetingClientMsg, type MeetingRequest } from '../../../shared/protocol.js';
-import { emptyMeetings } from '../../../shared/meetings.js';
+import { emptyMeetings, isMeetingId } from '../../../shared/meetings.js';
 import { OPEN_CODE_MODEL_MAX } from '../../../shared/providers.js';
 import { str } from '../../office/input.js';
 import { here } from './common.js';
@@ -45,5 +45,11 @@ export const meetingHandlers = {
     const who = c.peer.name;
     const floor = here(ctx, c);
     if (floor) ctx.warn(c, floor.meetings.clear(who, str(msg.room, 40) || undefined));
+  },
+  'meeting.handed'(ctx, c, msg) {
+    const floor = here(ctx, c);
+    const id = str(msg.id, 8);
+    if (!floor || !isMeetingId(id) || !Number.isSafeInteger(msg.task) || msg.task < 1) return;
+    void floor.meetings.noteHandoff(id, { task: msg.task, by: c.peer.name, at: Date.now() }).then((why) => ctx.warn(c, why));
   },
 } satisfies HandlerMap<MeetingClientMsg>;

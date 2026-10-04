@@ -3,8 +3,9 @@ import { randomBytes } from 'node:crypto';
 import { closeSync, existsSync, lstatSync, mkdirSync, openSync, readFileSync, realpathSync, renameSync, unlinkSync, writeFileSync, writeSync } from 'node:fs';
 import path from 'node:path';
 import { MEETING_ROOMS, type MeetingRoomDef } from '../shared/layout.js';
-import { FIRST_MEETING_ROOM, PAST_LINES, cleanRecord, isMeetingId, isMeetingPattern, meetingRecord, slimRecord } from '../shared/meetings.js';
-import type { Meeting, MeetingRecord, MeetingRequest, MeetingState, WorkerInfo } from '../shared/protocol.js';
+import { FIRST_MEETING_ROOM, HANDOFF_MAX, PAST_LINES, cleanHandoffs, cleanRecord, isMeetingId, isMeetingPattern, meetingRecord, slimRecord } from '../shared/meetings.js';
+import type { Meeting, MeetingHandoff, MeetingRecord, MeetingRequest, MeetingState, WorkerInfo } from '../shared/protocol.js';
+import { folderRecord } from './meeting-files.js';
 import { MeetingRoom, type MeetingEvents, type MeetingTrees, type MeetingWorkers } from './meetings.js';
 
 /** How long after a meeting is archived its late commit or review link still goes into its record. */
@@ -41,6 +42,8 @@ export class MeetingRooms {
   /** Archived meetings that may still get a commit or review link, with when they were archived and the record last written. */
   private late = new Map<string, { m: Meeting; at: number; json: string }>();
   private statePath: string;
+  /** Hand-offs being noted, one after another: each reads a record and writes it back. */
+  private noting: Promise<unknown> = Promise.resolve();
 
   constructor(
     private dir: string,
@@ -153,6 +156,40 @@ export class MeetingRooms {
   clear(by: string, room?: string): string | undefined {
     const on = this.target(room, (m) => m.status !== 'running', 'Nobody is in the meeting room');
     return typeof on === 'string' ? on : on.clear(by);
+  }
+
+  /**
+   * Remembers that a finished meeting's output was handed on (to a kanban task or a hired worker): on its record, and on the
+   * meeting itself when it is still on a table. Returns why it couldn't, or undefined.
+   */
+  noteHandoff(id: string, h: MeetingHandoff): Promise<string | undefined> {
+    const next = this.noting.then(() => this.noteHandoffNow(id, h));
+    this.noting = next.catch(() => undefined);
+    return next;
+  }
+
+  private async noteHandoffNow(id: string, h: MeetingHandoff): Promise<string | undefined> {
+    const add = (list?: MeetingHandoff[]) => [...(list ?? []), h].slice(-HANDOFF_MAX);
+    const onTable = [...this.engines.values()].map((e) => e.peek()).find((m) => m && m.id === id);
+    if (onTable && onTable.status === 'running') return 'That meeting is still running';
+    // The meeting's own object, changed in place: the same one sits in `late`, so settleLate keeps the hand-off in its record.
+    const live = (onTable as Meeting | undefined) ?? this.late.get(id)?.m;
+    if (live) {
+      live.handedTo = add(live.handedTo);
+      const json = JSON.stringify(meetingRecord(live), null, 2);
+      const l = this.late.get(id);
+      if (l) l.json = json;
+      this.writeRecord(id, json);
+      if (onTable) {
+        this.persist();
+        this.events.update(this.state());
+      }
+      return undefined;
+    }
+    const rec = (await folderRecord(this.archiveDir(), id)) ?? this.past.find((r) => r.id === id);
+    if (!rec) return 'No such meeting';
+    this.writeRecord(id, JSON.stringify({ ...rec, handedTo: add(rec.handedTo) }, null, 2));
+    return undefined;
   }
 
   /** A worker changed: cheap unless it's at a table. */
@@ -300,6 +337,7 @@ export class MeetingRooms {
         const def = defs.find((d) => d.id === want) ?? MEETING_ROOMS.find((d) => d.id === want) ?? defs[0];
         if (!def || this.engines.get(def.id)?.meeting()) continue;
         m.room = def.id;
+        m.handedTo = cleanHandoffs(m.handedTo);
         this.room(def).adopt(m);
       }
     } catch {

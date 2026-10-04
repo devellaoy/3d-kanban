@@ -134,6 +134,7 @@ export const CLIENT_MSG_CLASS = {
   'meeting.start': 'deny',
   'meeting.stop': 'deny',
   'meeting.clear': 'deny',
+  'meeting.handed': 'deny',
 
   // --- The owner's settings, accounts and sign-ins ---
   'team.get': 'deny',
