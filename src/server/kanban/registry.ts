@@ -202,6 +202,11 @@ export interface KanbanPlugin {
   workerEnv?(taskId: number): Record<string, string>;
   /** Extra CLI args for a task worker's agent (e.g. --plugin-dir for skills). */
   workerArgs?(taskId: number, tool: 'claude' | 'codex', phase: string): string[];
+  /**
+   * A task was started (from anywhere: the board, an API call, a queue): called once the engine took the
+   * start, never for one that failed. A throw or rejection is logged and loses only this plugin's part.
+   */
+  taskStarted?(taskId: number, who: KanbanCaller): void | Promise<void>;
   start?(): void;
   stop?(): void;
 }

@@ -288,6 +288,7 @@ Do what the comment asks. Commit any changes locally as before (never push unles
       taskId: "The task number, or '-' for an office worker that has no task",
       title: "The task's title, or the worker's current task",
       ticket: TASK_VARS.ticket,
+      closes: 'The line asking for “Closes #12” in the pull request (the “Pull requests · closing the issue” prompt), when the ticket is a GitHub issue; empty otherwise',
       ticketId: "The ticket id, or 'none'",
       repos: TASK_VARS.repos,
       summary: 'What the task did (its latest summary) under a heading; empty when there is none',
@@ -298,6 +299,7 @@ Do what the comment asks. Commit any changes locally as before (never push unles
     text: `Open the pull requests for {{subject}}
 
 {{ticket}}
+{{closes}}
 
 The workspace:
 {{repos}}
@@ -552,6 +554,14 @@ Look at the branch's commits and uncommitted changes (git log, git status, git d
     text: `The accepted plan:
 
 {{plan}}`,
+  },
+  'kanban.pr.closes': {
+    group: 'kanban',
+    label: 'Pull requests · closing the issue',
+    used: 'The {{closes}} of “Open pull requests”, when the ticket is a GitHub issue: which pull request closes it.',
+    vars: { ref: 'The issue, as owner/repo#12', repo: 'The repository whose pull request closes it (owner/name)', line: 'The line to put in its description: “Closes #12”, or “Closes owner/repo#12” from another repository' },
+    needs: ['line'],
+    text: 'This work resolves GitHub issue {{ref}}: put `{{line}}` on a line of its own in the description of the pull request in {{repo}}, so merging it closes the issue. The pull requests in the other repositories say `Part of {{ref}}` instead.',
   },
   'kanban.prSummary': {
     group: 'kanban',

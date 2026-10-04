@@ -110,3 +110,40 @@ export function toGhIssue(i: NormalizedIssue, taskId?: number, projectRepos: str
     ...(taskId !== undefined ? { taskId } : {}),
   };
 }
+
+/**
+ * The line that makes merging a pull request in `prRepo` close the issue (a GitHub issue's key,
+ * `gh:owner/name#12`): `Closes #12` on the issue's own repository, else `Closes owner/name#12`.
+ * None for Jira, a project's draft or no ticket.
+ */
+export function closingRef(ticket: string | undefined, prRepo: string | undefined): string | undefined {
+  const gh = parseGhKey(ticket);
+  if (!gh) return undefined;
+  return sameRepo(gh.repo, prRepo) ? `Closes #${gh.number}` : `Closes ${gh.repo}#${gh.number}`;
+}
+
+/**
+ * Which of a change's pull requests closes the issue: the one in the issue's own repository, else
+ * the one in the project's primary, else the first. None when the ticket isn't a GitHub issue.
+ */
+export function closingPr<T extends { repo?: string }>(ticket: string | undefined, prs: T[], primaryRepo?: string): T | undefined {
+  const gh = parseGhKey(ticket);
+  if (!gh || !prs.length) return undefined;
+  return prs.find((p) => sameRepo(p.repo, gh.repo)) ?? prs.find((p) => sameRepo(p.repo, primaryRepo)) ?? prs[0];
+}
+
+/**
+ * The issue a worker was handed by its prompt: the issues board's first line (Work on GitHub issue
+ * #12: "Title".) or a "closes #12" in the text. For a worker nothing else says the issue of. `strict`:
+ * only the hand-over line, for deciding which issue a pull request closes ("like in PR #45" isn't one).
+ */
+export function promptIssue(prompt: string | undefined, o: { strict?: boolean } = {}): { number: number; title?: string; repo?: string } | undefined {
+  const task = (prompt ?? '').replace(/\r\n?/g, '\n').trim();
+  const firstLine = task.split('\n').map((l) => l.trim()).find(Boolean) ?? '';
+  // Another repository's card says which: Work on GitHub issue acme/api#7: "Title".
+  const issue = /\bissue (?:([A-Za-z0-9_.-]{1,100}\/[A-Za-z0-9_.-]{1,100}))?#(\d+):\s*["“](.+?)["”]\.?\s*$/i.exec(firstLine);
+  const number = Number((o.strict ? undefined : /\b(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?)\b[^\n]{0,40}?#(\d+)/i.exec(task)?.[1]) ?? issue?.[2]);
+  if (!(number > 0)) return undefined;
+  const repo = issue && Number(issue[2]) === number ? issue[1] : undefined;
+  return { number, ...(issue?.[3] ? { title: issue[3] } : {}), ...(repo ? { repo } : {}) };
+}

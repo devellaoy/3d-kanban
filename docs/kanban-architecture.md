@@ -574,8 +574,8 @@ answers `kanban.ok {rid, ...}` or `kanban.error {rid, message}`. Deltas are push
     `skills.list` are for anyone signed in.
     - Taking the issue (`integrations/issues/autoassign.ts`), after the answer:
       - when: a new task, or a To do one started from its card (not a start that failed);
-      - who: the person, under their own gh sign-in (the office's shared gh, or no sign-in: skipped);
-      - only if: an open GitHub issue (not a pull request, a draft or Jira) with no assignee, read fresh;
+      - who: the person, under their own gh sign-in (never the office's shared gh for an assignment); the Status move also runs under the office's gh where that is theirs (`ghAs` undefined, the shared password), and an account without a gh sign-in gets neither, only a warning;
+      - only if: an open GitHub issue (not a pull request, a draft or Jira) with no assignee, read fresh (`takeIssue` asks GitHub whether it is a pull request or closed: then nothing is assigned and no Status moves; a draft only gets its Status);
       - result: a floor toast, a status line on the task and the overlay (as any write above);
       - failure: a warn toast to the person only.
   - `meta.get` (anyone signed in) is answered with `kanban.meta {projects, settings, secrets, me}`: what a
@@ -678,7 +678,7 @@ For a signed-in browser (the session is checked by the route table in `src/serve
 `kanban.sqlite`, settings, secrets, projects through the Building, the office prompts, the hook URL, broadcast
 and toast. It then creates `pulls`, `refs` and the engine, and the plugins: the core plugin (ws.ts) plus
 `integrationPlugins`. The first plugin to claim a WS type keeps it. `workerExtras` merges the plugins'
-`workerArgs`/`workerEnv`, and a plugin that throws loses only its own part. `engine.begin()` and every
+`workerArgs`/`workerEnv`, and a plugin that throws loses only its own part. The engine in `ctx.engine` (and the one `installKanban` returns) is wrapped so that after every successful `start` each plugin's optional `taskStarted(taskId, who)` runs (guarded: a throw or rejection is logged and loses only that plugin's part; a failed start runs none). The issues plugin uses it to assign the task's issue and move it to In progress on the project's boards. `engine.begin()` and every
 `plugin.start()` run once everything exists; `shutdown()` stops the plugins, disposes of the engine and
 closes the database. `startServer` (`src/server/server.ts`) calls `openKanban` (`src/server/kanban/office.ts`) once
 the floors are open and keeps the result as `ctx.kanban`; `kanbanHandlers` (WS, `kanban/ws/handlers.ts`) and

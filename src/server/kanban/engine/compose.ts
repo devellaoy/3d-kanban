@@ -5,17 +5,21 @@
 import { mkdirSync } from 'node:fs';
 import path from 'node:path';
 import type { FloorDef } from '../../building.js';
+import type { Floor } from '../../floor.js';
+import { checkoutRepo } from '../../ghrepo.js';
 import { workspaceNames } from '../../workers.js';
 import { Worktrees } from '../../worktrees.js';
 import type { KanbanContext } from '../registry.js';
 import { projectRepos, parseRepoFloorId } from '../projects.js';
 import { grantFiles } from '../uploads.js';
 import { resolveKanbanPrompt, withContract, type KanbanContractId, type KanbanPromptId } from '../../../shared/kanban/prompts.js';
+import { closingPr, closingRef, parseGhKey } from '../../../shared/kanban/issuecard.js';
 import { openPrs } from '../../../shared/kanban/prs.js';
 import type { KanbanPrLink, KanbanTask, KanbanTool, ProjectRepo, RunPhase, SkillPhase, TaskWorkspace } from '../../../shared/kanban/types.js';
 import type { WorkerInfo } from '../../../shared/protocol.js';
 import type { PromptKind } from './machine.js';
 import { skillHint } from '../integrations/skills/index.js';
+import { workerIssueKey } from './worker-issue.js';
 
 type Vars = Record<string, string | number>;
 
@@ -140,6 +144,47 @@ export class Composer {
     return resolveKanbanPrompt(id, this.layers(project), vars);
   }
 
+  /**
+   * The {{closes}} of the pull-request prompt: which of these repositories' pull requests closes the
+   * GitHub issue `ticket` (the issue's own, else the primary's), and the line it is to carry. Empty
+   * for any other ticket.
+   */
+  closesText(project: string, ticket: string | undefined, repos: (string | undefined)[], primary: string | undefined): string {
+    const gh = parseGhKey(ticket);
+    if (!gh) return '';
+    const repo = closingPr(ticket, repos.map((repo) => ({ repo })), primary)?.repo;
+    return this.text('kanban.pr.closes', project, { ref: `${gh.repo}#${gh.number}`, repo: repo ?? gh.repo, line: closingRef(ticket, repo) ?? '' });
+  }
+
+  /**
+   * The "open pull requests" prompt typed to an ordinary office worker at its desk (a kanban task's
+   * worker gets its task's, see build): its own folder and the other repositories it works in.
+   */
+  workerPr(floor: Floor, info: WorkerInfo): string {
+    const id = floor.id;
+    const name = this.ctx.project(id)?.name ?? floor.project.name;
+    const tool = info.provider === 'codex' ? 'codex' : 'claude';
+    const picked = this.ctx.settings.project(id).skills.pr?.[tool] ?? [];
+    const what = info.task?.name ?? info.title;
+    const ticket = workerIssueKey(this.ctx, floor, info);
+    const home = floor.def.repo ?? checkoutRepo(floor.dir);
+    return withContract(
+      this.text('kanban.pr.create', id, {
+        subject: `your current work${what ? ` (${what})` : ''}`,
+        taskId: '-',
+        title: what ?? '',
+        ticket: '',
+        closes: this.closesText(id, ticket, [home, ...(info.repos ?? []).map((r) => r.repo)], home),
+        ticketId: ticket?.replace(/^gh:/, '') ?? 'none',
+        repos: workerReposText(info, floor.dir, name, floor.project.branch),
+        summary: info.task?.summary ? `What you worked on:\n${info.task.summary}` : '',
+        skills: picked.length ? `Skills picked for this step (use them where they fit): ${picked.map((n) => (tool === 'claude' ? `/${n}` : n)).join(', ')}.` : '',
+        language: this.text('kanban.language', id),
+      }),
+      'pr',
+    );
+  }
+
   /** The {{skills}} line: the skills picked for the phase that are really installed (the skills plugin's skillHint). */
   skillsLine(task: KanbanTask, tool: KanbanTool, phase: RunPhase): string {
     return skillHint(this.ctx, task.id, tool, skillPhase(phase));
@@ -261,6 +306,7 @@ export class Composer {
             taskId: task.id,
             title: task.title,
             ticket: v.ticket,
+            closes: this.closesText(p, task.ticket, taskRepos(def, task).map((r) => r.remote), projectRepos(def).find((r) => r.primary)?.remote),
             ticketId: v.ticketId,
             repos: v.repos,
             summary: task.summary?.trim() ? this.text('kanban.prSummary', p, { summary: task.summary.trim() }) : '',

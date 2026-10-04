@@ -62,12 +62,16 @@ export function route(sources: IssueSourceConfig[], issue: NormalizedIssue): Tar
   return `${issue.key} isn't an issue the office can act on`;
 }
 
-/** The identity GitHub runs under for a person, as taking a card does: their own sign-in, else the office's gh (`shared`); the reason when they can't have one. */
+/** The identity GitHub runs under for a person, as taking a card does: their own sign-in, else the office's gh (`shared`) for who has none to give; the reason when they can't have one. */
 export function ghIoFor(ctx: KanbanContext, base: IssueSourceIo, caller: KanbanCaller): IssueActIo | string {
   const as = ctx.ghAs?.(caller.accountId);
   if (typeof as === 'string') return as;
-  const env = as?.env;
-  return { ...base, ...(env ? { env } : {}), who: caller.name, shared: !env };
+  return statusIoFor(base, caller.name, as?.env);
+}
+
+/** The io a Status move runs under: the person's own gh (`env`), else the office's, which is theirs on the shared password (`shared`). */
+export function statusIoFor(base: IssueSourceIo, who: string, env?: Record<string, string>): IssueActIo {
+  return { ...base, ...(env ? { env } : {}), who, shared: !env };
 }
 
 /** A write went through: show it (the cached issue, the floor toast) and say who did it on the issue's task. */

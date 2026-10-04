@@ -252,7 +252,7 @@ test('only a card on the floor’s board is taken from a client, and a claim goe
   await issues.refresh('app');
 
   const claimed: number[] = [];
-  const floor = { id: 'app', dir: '/tmp/app', def: { repo: 'o/app' }, github: { claim: async (n: number) => (claimed.push(n), undefined) } };
+  const floor = { id: 'app', dir: '/tmp/app', def: { repo: 'o/app' }, cardRef: Floor.prototype.cardRef, github: { claim: async (n: number) => (claimed.push(n), undefined) } };
   const cardKey = (v: unknown) => Floor.prototype.cardKey.call(floor as never, v);
   assert.equal(cardKey('gh:o/app#12'), 'gh:o/app#12');
   assert.equal(cardKey('gh:victim/repo#1'), undefined, 'not on the board: dropped');
