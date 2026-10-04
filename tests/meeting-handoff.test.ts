@@ -22,7 +22,10 @@ test('a hand-off starts with the title, fills the placeholders and ends with whe
 
 test('a review hand-off says to work on the pull request, a stopped one that the result may be partial', () => {
   const r = compose({ record: rec({ pattern: 'review', pr: 12, status: 'stopped', summary: 'Review · ⛔ over budget' }) });
-  assert.match(r.text, /pull request #12, and the result below is that review\..*Don't check out or push to its branch/);
+  assert.match(r.text, /pull request #12, and the result below is that review\./);
+  // The new worktree has the base's code only: the PR's head is merged into the worker's own branch, never checked out.
+  assert.match(r.text, /`git fetch origin pull\/12\/head` and `git merge FETCH_HEAD`/);
+  assert.match(r.text, /Don't check out or push to the pull request's branch/);
   assert.match(r.text, /stopped before it finished \(Review · ⛔ over budget\)/);
   assert.match(r.text, /PR #12\)\.$/);
   assert.doesNotMatch(compose().text, /pull request #|stopped before/);
