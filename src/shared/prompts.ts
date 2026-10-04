@@ -392,7 +392,8 @@ const DEFS = {
     used: 'Added to a hand-off of a Review panel meeting: where the changes go.',
     vars: { pr: 'The pull request the meeting reviewed', title: "The meeting's title" },
     optional: true,
-    text: "The meeting reviewed pull request #{{pr}}. Make the changes on that pull request's branch, not a new one: in your own worktree run `gh pr checkout {{pr}}`, and push your commits to it.",
+    // Not "check the PR out": a kanban task must stay on its own branch, and a PR may be a fork's or an integration branch's.
+    text: "The meeting reviewed pull request #{{pr}}, and the result below is that review. Read the pull request with `gh pr view {{pr}} --comments` and `gh pr diff {{pr}}`. Don't check out or push to its branch unless you're asked to: make the changes on your own branch, and name #{{pr}} in your pull request.",
   },
   'meeting.handoff.stopped': {
     group: 'meetings',

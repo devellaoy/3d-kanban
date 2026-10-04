@@ -187,7 +187,8 @@ function renderStatus(m: Meeting, body: HTMLElement, foot: HTMLElement, net: Net
     h('div.meeting-out', {}, h('div.meeting-out-head', {}, h('b', {}, '📄 '), h('code', {}, m.output), where, review, m.handedTo?.length ? h('span.muted', { title: 'Where this meeting’s output was handed on to' }, handedLabel(m)) : null), h('pre.meeting-preview', {}, m.preview?.trim() ? m.preview : running ? 'Nothing written yet.' : 'Nothing was written.')),
     ),
   );
-  const handoff = !running && !visiting() && !!actions.handoff && (m.status === 'done' || (m.status === 'stopped' && !!m.preview?.trim()));
+  // Only once its output was written (the preview is the file's start): a meeting that wrote nothing has nothing to hand on.
+  const handoff = !running && !visiting() && !!actions.handoff && !!m.preview?.trim();
   const head = m.seats[0]?.workerId ? store.workers.get(m.seats[0].workerId) : undefined;
   foot.replaceChildren(
     ...present(

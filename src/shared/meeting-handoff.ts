@@ -77,7 +77,7 @@ export function composeHandoff(o: { record: MeetingRecord; output: string; templ
   const inline = output.length <= INLINE_MAX ? build(output) : undefined;
   if (inline !== undefined && inline.length <= TEXT_MAX) return { text: inline, attach: false, branchParagraph };
   if (o.canAttach) return { text: build(`(The meeting's output, ${outputFileName(record.output)}, is attached: read it first.)`), attach: true, branchParagraph };
-  const note = `…\n\n(Cut short: the whole output is in the meeting's notes, .agent-office/meetings/${record.id}/${outputFileName(record.output)}.)`;
+  const note = `…\n\n(Cut short: the whole output is in the meeting's notes, .agent-office/meetings/${record.id}/${outputFileName(record.output)} in the project's main checkout, not in a worktree.)`;
   const room = TEXT_MAX - build(note).length;
   const kept = output.slice(0, Math.max(0, Math.min(INLINE_MAX, room))).trimEnd();
   return { text: build(kept + note), attach: false, branchParagraph };

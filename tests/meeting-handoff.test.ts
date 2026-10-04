@@ -22,7 +22,7 @@ test('a hand-off starts with the title, fills the placeholders and ends with whe
 
 test('a review hand-off says to work on the pull request, a stopped one that the result may be partial', () => {
   const r = compose({ record: rec({ pattern: 'review', pr: 12, status: 'stopped', summary: 'Review · ⛔ over budget' }) });
-  assert.match(r.text, /pull request #12\. Make the changes on that pull request's branch/);
+  assert.match(r.text, /pull request #12, and the result below is that review\..*Don't check out or push to its branch/);
   assert.match(r.text, /stopped before it finished \(Review · ⛔ over budget\)/);
   assert.match(r.text, /PR #12\)\.$/);
   assert.doesNotMatch(compose().text, /pull request #|stopped before/);
@@ -65,7 +65,7 @@ test('without attachments the output is cut to fit and says where the rest is', 
   const r = compose({ output: 'x'.repeat(50_000), canAttach: false });
   assert.equal(r.attach, false);
   assert.ok(r.text.length <= TEXT_MAX);
-  assert.match(r.text, /\(Cut short: the whole output is in the meeting's notes, \.agent-office\/meetings\/abcdef01\/output-pick-a-cache\.md\.\)/);
+  assert.match(r.text, /\(Cut short: the whole output is in the meeting's notes, \.agent-office\/meetings\/abcdef01\/output-pick-a-cache\.md in the project's main checkout, not in a worktree\.\)/);
   const tight = compose({ output: 'x'.repeat(5000), canAttach: false, templates: { ...templates, main: `${'t'.repeat(16_000)}\n\n{{content}}` } });
   assert.ok(tight.text.length <= TEXT_MAX);
   assert.match(tight.text, /Cut short/);

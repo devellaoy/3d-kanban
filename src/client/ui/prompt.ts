@@ -116,7 +116,6 @@ export function openPrompt(opts: PromptOptions) {
   // While the toggle is on, a task is made: no worktree options (the engine has its own), its own title.
   const kanbanPaint = (on: boolean) => {
     wtRow?.classList.toggle('hidden', on);
-    extraRow?.classList.toggle('hidden', on);
     repos.element?.classList.toggle('hidden', on);
     // The subtitle is about hiring ("start with an empty prompt"): a task needs its text, and says so below.
     form.querySelector(':scope > .body > p:not(.setting-note)')?.classList.toggle('hidden', on);
