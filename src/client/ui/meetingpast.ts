@@ -3,7 +3,7 @@ import { MEETING_PATTERNS, archiveKey } from '../../shared/meetings';
 import { fmtCost, fmtTokens, type ArchivedMeeting, type MeetingArchiveList, type MeetingFileInfo, type MeetingFiles, type MeetingFileText } from '../../shared/protocol';
 import { store } from '../state';
 import { fileProblem, get } from './meetingapi';
-import { handoffButtons, type HandoffHost } from './meetinghandoff';
+import { handoffButtons, type HandoffHost, type HandoffWindow } from './meetinghandoff';
 import type { Net } from '../net';
 import { h, timeAgo, toast } from './dom';
 import { markdownFile } from './markdown';
@@ -23,7 +23,7 @@ const roomLabel = (id?: string) => (id ? (store.meeting.rooms.find((r) => r.id =
  * file (one panel at a time on a narrow screen). `back` returns to the window's previous view; `refresh`
  * (on every meeting event) only refetches the list when it's asked to or the floor's earlier meetings changed.
  */
-export function meetingPast(back: () => void, hand?: { handoff: HandoffHost; net: Net; close(): void }): { body: HTMLElement; foot: Node[]; refresh(reload?: boolean): void } {
+export function meetingPast(back: () => void, hand?: { handoff: HandoffHost; net: Net; win: HandoffWindow }): { body: HTMLElement; foot: Node[]; refresh(reload?: boolean): void } {
   let meetings: ArchivedMeeting[] | null = null;
   let more = false;
   let listError = '';
@@ -158,7 +158,7 @@ export function meetingPast(back: () => void, hand?: { handoff: HandoffHost; net
       h('dl.mp-facts', {}, ...rows),
       m.summary ? h('p.mp-summary', {}, m.summary) : '',
       // The output is what's handed on: only once the notes are listed is it known to be there.
-      hand && !m.orphan && files?.some((f) => f.kind === 'output') ? h('div.mp-handoff', {}, ...handoffButtons(hand.net, m.id, hand.handoff, hand.close)) : '',
+      hand && !m.orphan && files?.some((f) => f.kind === 'output') ? h('div.mp-handoff', {}, ...handoffButtons(hand.net, m.id, hand.handoff, hand.win)) : '',
       typeof m.prompt === 'string' && m.prompt ? h('div.mp-question', {}, h('b', {}, 'The question'), h('pre', {}, m.prompt)) : '',
     );
   };
