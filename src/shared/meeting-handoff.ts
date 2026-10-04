@@ -7,7 +7,7 @@ import { fillPrompt, type PromptVars } from './prompts.js';
 
 /** The most of the output that goes into the text itself; more is attached (or cut, where nothing can be attached). */
 export const INLINE_MAX = 12_000;
-/** The longest the whole text may be (a task's description takes 20 000 characters, with room for what is added to it). */
+/** The longest the whole text may be (a hire's first prompt takes 20 000 characters, worker.spawn cuts it there, with room for what is added to it; a kanban description takes 100 000). */
 export const TEXT_MAX = 19_000;
 /** The most of the meeting's question the text quotes. */
 export const QUESTION_MAX = 2_000;

@@ -59,6 +59,8 @@ export interface HireOptions {
   via?: 'herald';
   /** Files uploaded to the kanban beforehand (see kanban/hirefiles.ts). */
   attachmentIds?: string[];
+  /** The meeting whose output this hire carries on (recorded by the office). */
+  meeting?: string;
 }
 
 /** Registers the worktree answer (worker.worktree), and defines what's done at a desk and at a board agent. */
@@ -100,10 +102,10 @@ export function installWorkerActions(ctx: Ctx, core: CoreState, parts: WorkerAct
   }
 
   function hire(deskId: string, prompt?: string, o: HireOptions = {}) {
-    const { worktree = false, provider, model, effort, issue, repos, via, attachmentIds } = o;
+    const { worktree = false, provider, model, effort, issue, repos, via, attachmentIds, meeting } = o;
     // `issue` can be a card's fields (kanban/issuecards cardFields): the floor's own issue's number and an issue source's key.
     const ids = typeof issue === 'object' ? issue : { issue };
-    net.send({ t: 'worker.spawn', deskId, prompt, worktree, provider, model, effort, issue: ids.issue, repos: repos?.length ? repos : undefined, via, ...(ids.issueKey ? { issueKey: ids.issueKey } : {}), ...(attachmentIds?.length ? { attachmentIds } : {}) });
+    net.send({ t: 'worker.spawn', deskId, prompt, worktree, provider, model, effort, issue: ids.issue, repos: repos?.length ? repos : undefined, via, ...(ids.issueKey ? { issueKey: ids.issueKey } : {}), ...(attachmentIds?.length ? { attachmentIds } : {}), ...(meeting ? { meeting } : {}) });
     // The moment notifications start to matter: ask once (it has to come from a key press or click).
     if (settings.notify && notifyPermission() === 'default' && !askedToNotify) {
       askedToNotify = true;
@@ -569,5 +571,5 @@ export function installWorkerActions(ctx: Ctx, core: CoreState, parts: WorkerAct
     };
   }
 
-  return { officeIsFull, firstFreeSeat, hire, hireAtDesk, resumeWorker, fixLostWorktree, pullRequestFor, standAt, boardActions, goToDesk };
+  return { officeIsFull, freeSeat: () => { const id = freeDesk(); return id ? { id, label: plan().byId.get(id)!.label } : undefined; }, firstFreeSeat, hire, hireAtDesk, resumeWorker, fixLostWorktree, pullRequestFor, standAt, boardActions, goToDesk };
 }

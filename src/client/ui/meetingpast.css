@@ -28,6 +28,7 @@
 .mp-facts a { color: var(--link); font-weight: var(--fw-bold); text-decoration: none; }
 .mp-seats { list-style: none; margin: 0; padding: 0; }
 .mp-summary { margin: 10px 0 0; font-size: var(--fs-sm); font-weight: var(--fw-semibold); color: var(--muted); }
+.mp-handoff { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
 .mp-question { margin-top: 10px; }
 .mp-question pre, .mp-raw { margin: 6px 0 0; padding: 10px; max-width: 100%; overflow-x: auto; white-space: pre-wrap; overflow-wrap: anywhere; font-size: 12.5px; background: var(--field); border: var(--bw-sm) solid var(--ink); border-radius: var(--radius-sm); }
 .mp-question pre { max-height: 220px; overflow-y: auto; }

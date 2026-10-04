@@ -26,6 +26,7 @@ export function installMeeting(ctx: Ctx, parts: Pick<Parts, 'waiting' | 'actions
           const w = store.workers.get(id);
           if (w) parts.actions.pullRequestFor(w);
         },
+        handoff: { freeDesk: parts.actions.freeSeat, officeIsFull: parts.actions.officeIsFull, hire: parts.actions.hire },
       },
       preset,
       room,

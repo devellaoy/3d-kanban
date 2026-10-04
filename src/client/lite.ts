@@ -10,6 +10,7 @@ import { AVATAR_COLORS, loadProfile, loadSettings, saveProfile, store } from './
 import { randomLook } from '../shared/avatar';
 import { ROOF } from '../shared/rooftop';
 import { DESK_BY_ID, nextFreeSeat } from '../shared/layout';
+import { officeFull } from '../shared/machine';
 import { isAsleep } from '../shared/status';
 import type { AgentEffort, AgentProvider, FloorInfo, WorkerInfo } from '../shared/protocol';
 import { openSafe } from './ui/url';
@@ -289,6 +290,18 @@ function showMeeting(preset?: MeetingPreset) {
         if (it) openPull(it, net, boardActions());
         else if (w.pr) openSafe(w.pr.url);
         else net.send({ t: 'worker.pr', workerId: id });
+      },
+      handoff: {
+        freeDesk: () => {
+          const id = nextFreeSeat((d) => !!store.workerAtDesk(d), store.floorPlan.wing, store.plan().removed)?.id;
+          return id ? { id, label: DESK_BY_ID.get(id)!.label } : undefined;
+        },
+        officeIsFull: () => {
+          if (!officeFull(store.machine)) return false;
+          toast(`🚫 The office is at its limit of ${store.machine.limit} workers — send one home before hiring another`, 'warn');
+          return true;
+        },
+        hire: (deskId, prompt, o) => net.send({ t: 'worker.spawn', deskId, prompt, worktree: o.worktree, provider: o.provider, model: o.model, effort: o.effort, repos: o.repos.length ? o.repos : undefined, ...(o.attachmentIds?.length ? { attachmentIds: o.attachmentIds } : {}), ...(o.meeting ? { meeting: o.meeting } : {}) }),
       },
     },
     preset,

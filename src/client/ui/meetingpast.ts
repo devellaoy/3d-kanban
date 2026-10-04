@@ -1,8 +1,10 @@
 import './meetingpast.css';
 import { MEETING_PATTERNS, archiveKey } from '../../shared/meetings';
 import { fmtCost, fmtTokens, type ArchivedMeeting, type MeetingArchiveList, type MeetingFileInfo, type MeetingFiles, type MeetingFileText } from '../../shared/protocol';
-import { apiUrl } from '../multiplayer/visit';
 import { store } from '../state';
+import { fileProblem, get } from './meetingapi';
+import { handoffButtons, type HandoffHost } from './meetinghandoff';
+import type { Net } from '../net';
 import { h, timeAgo, toast } from './dom';
 import { markdownFile } from './markdown';
 import { copy } from './team';
@@ -10,28 +12,6 @@ import { copy } from './team';
 // The meeting window's earlier meetings: the floor's archive (GET /api/meetings), a meeting's details and
 // its notes folder, and one note read at a time. What's in the notes was written by agents, so it only
 // ever reaches the page as text or as markdown that markdownFile sanitizes.
-
-/** A request's answer, or why there isn't one (with the HTTP status, 0 when the request never got there). */
-type Got<T> = { ok: true; data: T } | { ok: false; status: number; error: string };
-
-async function get<T>(path: string, params: Record<string, string> = {}): Promise<Got<T>> {
-  const q = new URLSearchParams({ ...params, floor: store.floor ?? '' }).toString();
-  try {
-    const r = await fetch(apiUrl(`${path}?${q}`), { credentials: 'same-origin' });
-    if (!r.ok) return { ok: false, status: r.status, error: (await r.json().catch(() => null))?.error ?? `HTTP ${r.status}` };
-    return { ok: true, data: (await r.json()) as T };
-  } catch (e) {
-    return { ok: false, status: 0, error: e instanceof Error ? e.message : String(e) };
-  }
-}
-
-/** What to say when a note can't be shown. */
-function fileProblem(status: number, error: string): string {
-  if (status === 413) return 'This file is too big to show here (over 1 MB). It’s still in the meeting’s notes folder.';
-  if (status === 415) return 'This file isn’t text, so it can’t be shown here.';
-  if (status === 404) return 'This file isn’t there any more.';
-  return `Couldn’t open the file: ${error}`;
-}
 
 const isMd = (name: string) => /\.(md|markdown)$/i.test(name);
 const fmtSize = (n: number) => (n < 1024 ? `${n} B` : n < 1024 * 1024 ? `${(n / 1024).toFixed(1)} kB` : `${(n / 1024 / 1024).toFixed(1)} MB`);
@@ -43,7 +23,7 @@ const roomLabel = (id?: string) => (id ? (store.meeting.rooms.find((r) => r.id =
  * file (one panel at a time on a narrow screen). `back` returns to the window's previous view; `refresh`
  * (on every meeting event) only refetches the list when it's asked to or the floor's earlier meetings changed.
  */
-export function meetingPast(back: () => void): { body: HTMLElement; foot: Node[]; refresh(reload?: boolean): void } {
+export function meetingPast(back: () => void, hand?: { handoff: HandoffHost; net: Net; close(): void }): { body: HTMLElement; foot: Node[]; refresh(reload?: boolean): void } {
   let meetings: ArchivedMeeting[] | null = null;
   let more = false;
   let listError = '';
@@ -165,6 +145,11 @@ export function meetingPast(back: () => void): { body: HTMLElement; foot: Node[]
       if (m.tokens) rows.push(row('Spend', `${fmtTokens(m.tokens)} tokens${m.cost !== undefined ? ` · ${fmtCost(m.cost)}` : ''}`));
       if (m.branch) rows.push(row('Branch', h('code', {}, m.branch), m.commit ? ` · commit ${m.commit}` : ''));
       if (m.reviewUrl?.startsWith('https://')) rows.push(row('Review', h('a', { href: m.reviewUrl, target: '_blank', rel: 'noopener noreferrer' }, `🔍 The review${m.pr ? ` on PR #${m.pr}` : ''} ↗`)));
+      if (m.handedTo?.length) {
+        rows.push(
+          row('Handed on', ...m.handedTo.flatMap((x, i) => [i ? ', ' : '', x.task !== undefined ? h('button.btn.small', { type: 'button', title: `Open task #${x.task}`, onclick: () => hand && void import('../kanban/taskview').then((k) => k.openTaskWindow(hand.net, x.task!)) }, `#${x.task}`) : (x.worker ?? '')])),
+        );
+      }
       if (Array.isArray(m.seats) && m.seats.length) rows.push(row('At the table', h('ul.mp-seats', {}, ...m.seats.map((s, i) => h('li', {}, h('b', {}, s.role), s.workerName ? ` · ${s.workerName}` : '', i === 0 ? h('span.muted', {}, ' (head)') : '')))));
     } else rows.push(row('Ended', new Date(m.finishedAt).toLocaleString()));
     detail.replaceChildren(
@@ -172,6 +157,8 @@ export function meetingPast(back: () => void): { body: HTMLElement; foot: Node[]
       m.orphan ? h('p.muted', {}, 'Only its notes folder is left: the office kept no record of this meeting.') : '',
       h('dl.mp-facts', {}, ...rows),
       m.summary ? h('p.mp-summary', {}, m.summary) : '',
+      // The output is what's handed on: only once the notes are listed is it known to be there.
+      hand && !m.orphan && files?.some((f) => f.kind === 'output') ? h('div.mp-handoff', {}, ...handoffButtons(hand.net, m.id, hand.handoff, hand.close)) : '',
       typeof m.prompt === 'string' && m.prompt ? h('div.mp-question', {}, h('b', {}, 'The question'), h('pre', {}, m.prompt)) : '',
     );
   };
@@ -241,6 +228,7 @@ export function meetingPast(back: () => void): { body: HTMLElement; foot: Node[]
       skipped = got.data.skipped;
     } else filesError = got.error;
     renderFiles();
+    renderDetail();
     // The output is what most people came for: open it straight away.
     const out = files?.find((f) => f.kind === 'output');
     if (out) void openFile(out.name);
