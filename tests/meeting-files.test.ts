@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { linkSync, mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import { MEETING_FILE_MAX, listMeetingFiles, listMeetings, readMeetingFile } from '../src/server/meeting-files.js';
+import { MEETING_FILE_MAX, listMeetingFiles, listMeetings, meetingRecordOf, readMeetingFile } from '../src/server/meeting-files.js';
 import type { MeetingRecord } from '../src/shared/protocol.js';
 
 /** Later than any folder's own date (an orphan's is its folder's, so about now). */
@@ -82,7 +82,7 @@ test('a meeting’s files: output first, then by round, no hidden files, folders
   assert.deepEqual(r.files.map((x) => x.name), ['output-decision.md', 'plan.md', 'r1-1-skeptic.md', 'r2-red.md', 'big.md', 'bin.md', 'zeta.md']);
   assert.deepEqual(r.files.map((x) => [x.kind, x.round]), [['output', undefined], ['note', 1], ['note', 1], ['note', 2], ['note', undefined], ['note', undefined], ['note', undefined]]);
   for (const id of ['bbbbbbbb', 'not-an-id', '..', 'dddddddd']) assert.deepEqual(await listMeetingFiles(f.root, id), { status: 404, error: 'No such meeting' });
-  assert.deepEqual((await listMeetingFiles(f.root, 'cccccccc')), { files: [] });
+  assert.deepEqual((await listMeetingFiles(f.root, 'cccccccc')), { files: [], skipped: 0 });
 });
 
 test('reading a file: names that escape are refused, links and unknowns are 404, big is 413, binary 415', async (t) => {
@@ -110,10 +110,11 @@ test('a hard link to a file outside is neither listed nor read; a symlinked id f
   assert.equal((await readMeetingFile(f.root, 'dddddddd', 'plan.md') as { status: number }).status, 404);
 });
 
-test('a .meeting.json with fields of the wrong type is listed with those fields dropped', async (t) => {
+test('a .meeting.json with fields of the wrong type is served with those fields dropped', async (t) => {
   const f = fixture(); t.after(f.close);
   writeFileSync(path.join(f.root, 'aaaaaaaa', '.meeting.json'), JSON.stringify({ ...rec('aaaaaaaa', 5, { title: 'Odd' }), prompt: 42, seats: 'oops', cost: 'x', tokens: 7, commit: 3 }));
-  const m = (await listMeetings(f.root, [], [])).meetings.find((x) => x.id === 'aaaaaaaa')!;
+  assert.equal((await listMeetings(f.root, [], [])).meetings.find((x) => x.id === 'aaaaaaaa')!.title, 'Odd');
+  const m = (await meetingRecordOf(f.root, 'aaaaaaaa', [], [])) as MeetingRecord;
   assert.equal(m.title, 'Odd');
   assert.equal(m.tokens, 7);
   for (const k of ['prompt', 'seats', 'cost', 'commit'] as const) assert.equal(m[k], undefined, k);
@@ -126,4 +127,60 @@ test('a linked archive root is not read: the list is empty, files and file are 4
   assert.deepEqual((await listMeetings(linked, [], [])).meetings, []);
   assert.deepEqual(await listMeetingFiles(linked, 'aaaaaaaa'), { status: 404, error: 'No such meeting' });
   assert.deepEqual(await readMeetingFile(linked, 'aaaaaaaa', 'plan.md'), { status: 404, error: 'No such meeting' });
+});
+
+test('list entries are lines: no seats or details, and the question cut to a snippet; the single record has it all', async (t) => {
+  const f = fixture(); t.after(f.close);
+  const long = 'q'.repeat(1000);
+  const full = rec('aaaaaaaa', 500, { title: 'Full', prompt: long, seats: [{ role: 'Chair', workerName: 'W' }], rounds: 3, tokens: 9, commit: 'abc' });
+  writeFileSync(path.join(f.root, 'aaaaaaaa', '.meeting.json'), JSON.stringify(full));
+  const onTable = rec('eeeeeeee', LATER, { prompt: 'short', seats: [{ role: 'Chair' }], tokens: 5 });
+  const r = await listMeetings(f.root, [], [onTable]);
+  const a = r.meetings.find((m) => m.id === 'aaaaaaaa')!;
+  assert.equal(a.prompt, `${'q'.repeat(300)}…`);
+  for (const k of ['seats', 'rounds', 'tokens', 'commit'] as const) assert.equal(a[k], undefined, k);
+  const e = r.meetings.find((m) => m.id === 'eeeeeeee')!;
+  assert.equal(e.prompt, 'short');
+  assert.equal(e.seats, undefined);
+  assert.equal(r.meetings.find((m) => m.id === 'cccccccc')!.orphan, true);
+  assert.deepEqual(await meetingRecordOf(f.root, 'aaaaaaaa', [], []), full);
+});
+
+test('one meeting in full: a table meeting, then the folder record, then the state line; an orphan is minimal; unknown or bad ids are 404', async (t) => {
+  const f = fixture(); t.after(f.close);
+  const table = rec('aaaaaaaa', LATER, { title: 'Table', prompt: 'p', seats: [{ role: 'Chair' }] });
+  assert.deepEqual(await meetingRecordOf(f.root, 'aaaaaaaa', [], [table]), table);
+  assert.equal(((await meetingRecordOf(f.root, 'aaaaaaaa', [rec('aaaaaaaa', 1, { title: 'State' })], [])) as MeetingRecord).title, 'From folder');
+  const line = rec('dddddddd', 300, { title: 'Gone folder' });
+  assert.deepEqual(await meetingRecordOf(f.root, 'dddddddd', [line], []), line);
+  const o = (await meetingRecordOf(f.root, 'cccccccc', [], [])) as MeetingRecord & { orphan?: boolean };
+  assert.deepEqual([o.orphan, o.title, o.summary, o.output], [true, 'Meeting cccccccc', '', '']);
+  for (const id of ['dddddddd', 'bbbbbbbb', 'not-an-id', '..', 'ffffffff']) assert.deepEqual(await meetingRecordOf(f.root, id, [], []), { status: 404, error: 'No such meeting' }, id);
+  assert.deepEqual(await meetingRecordOf(path.join(f.tmp, 'nope'), 'aaaaaaaa', [], []), { status: 404, error: 'No such meeting' });
+});
+
+test('the output is told by the record’s output name when it is known, by the output- prefix when not', async (t) => {
+  const f = fixture(); t.after(f.close);
+  const dir = path.join(f.root, 'aaaaaaaa');
+  writeFileSync(path.join(dir, 'output-notes.md'), 'an agent’s note, merged in');
+  const kinds = async (output?: string) => {
+    const r = await listMeetingFiles(f.root, 'aaaaaaaa', output);
+    assert.ok('files' in r);
+    return Object.fromEntries(r.files.filter((x) => x.name.startsWith('output-')).map((x) => [x.name, x.kind]));
+  };
+  assert.deepEqual(await kinds(), { 'output-decision.md': 'output', 'output-notes.md': 'output' });
+  assert.deepEqual(await kinds('docs/decision.md'), { 'output-decision.md': 'output', 'output-notes.md': 'note' });
+  assert.deepEqual(await kinds('notes.md'), { 'output-decision.md': 'note', 'output-notes.md': 'output' });
+  const r = await listMeetingFiles(f.root, 'aaaaaaaa', 'nothing.md');
+  assert.ok('files' in r && !r.files.some((x) => x.kind === 'output'));
+});
+
+test('files counts what it left out at the top level: folders, links, hard links; not hidden files', async (t) => {
+  const f = fixture(); t.after(f.close);
+  linkSync(path.join(f.outside, 'secret.md'), path.join(f.root, 'aaaaaaaa', 'hard.md'));
+  const r = await listMeetingFiles(f.root, 'aaaaaaaa');
+  // sub, link.md, linkdir and hard.md; .meeting.json is hidden, not skipped.
+  assert.ok('files' in r);
+  assert.equal(r.skipped, 4);
+  assert.equal(r.files.length, 7);
 });

@@ -132,14 +132,27 @@ export interface MeetingRecord {
   notesDir?: string;
 }
 
-/** The floor's earlier meetings, newest first (GET /api/meetings). An orphan is a notes folder with no record: its id and date only. */
+/** A meeting in the archive. An orphan is a notes folder with no record: its id and date only. */
+export type ArchivedMeeting = MeetingRecord & { orphan?: boolean };
+
+/**
+ * The floor's earlier meetings, newest first (GET /api/meetings). Each entry is a line (see slimRecord) with only a
+ * snippet of the question as `prompt` (cut with "…"); the full record, seats and all, is GET /api/meetings/<id> (an ArchivedMeeting).
+ */
 export interface MeetingArchiveList {
-  meetings: (MeetingRecord & { orphan?: boolean })[];
+  meetings: ArchivedMeeting[];
   /** More were found than were sent. */
   more: boolean;
 }
 
-/** One file in a meeting's notes folder (GET /api/meetings/<id>/files): the output first, then the notes by round. */
+/** A meeting's notes folder (GET /api/meetings/<id>/files): the output first, then the notes by round. */
+export interface MeetingFiles {
+  files: MeetingFileInfo[];
+  /** How many top-level entries were left out: folders, links and files that aren't plain (not hidden files). */
+  skipped: number;
+}
+
+/** One file in a meeting's notes folder. */
 export interface MeetingFileInfo {
   name: string;
   size: number;

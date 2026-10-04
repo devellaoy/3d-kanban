@@ -168,6 +168,9 @@ export function meetingSummary(m: Meeting): string {
   return `${head} · ✅ ${m.output}${where}`;
 }
 
+/** How many earlier meetings MeetingState's `past` lists. */
+export const PAST_LINES = 20;
+
 /** The most of a meeting's question its full record keeps. */
 export const RECORD_PROMPT_MAX = 8000;
 

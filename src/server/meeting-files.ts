@@ -5,7 +5,7 @@
 import { constants } from 'node:fs';
 import { lstat, open, readdir, readFile, realpath } from 'node:fs/promises';
 import path from 'node:path';
-import { cleanRecord, isMeetingId } from '../shared/meetings.js';
+import { cleanRecord, isMeetingId, slimRecord } from '../shared/meetings.js';
 import type { MeetingArchiveList, MeetingFileInfo, MeetingFileText, MeetingRecord } from '../shared/protocol.js';
 
 /** The most meetings a list sends. */
@@ -23,7 +23,7 @@ export interface Refusal {
 const NO_FOLDER: Refusal = { status: 404, error: 'No such meeting' };
 const NO_FILE: Refusal = { status: 404, error: 'No such file' };
 
-/** Whether the archive's root is a real folder, not a link to somewhere else. */
+/** Whether the archive's root is a real folder, not a link to somewhere else (deliberate defence in depth, with the realpath checks in folder()). */
 const realRoot = (root: string): Promise<boolean> => lstat(root).then((st) => st.isDirectory() && !st.isSymbolicLink(), () => false);
 
 /** The record a meeting left in its folder, or undefined when there is none or it isn't one (then the others are used). */
@@ -39,14 +39,49 @@ async function folderRecord(root: string, id: string): Promise<MeetingRecord | u
   }
 }
 
+/** The longest piece of a meeting's question the list carries (the whole of it comes with the single record). */
+const SNIPPET_MAX = 300;
+/** How many folders' records are read at once. */
+const READ_AT_ONCE = 16;
+
+type Archived = MeetingRecord & { orphan?: boolean };
+
+/** A list entry: the meeting's line and a short piece of its question. */
+function entry(r: Archived): Archived {
+  const prompt = typeof r.prompt === 'string' ? (r.prompt.length > SNIPPET_MAX ? `${r.prompt.slice(0, SNIPPET_MAX)}…` : r.prompt) : undefined;
+  return { ...slimRecord(r), ...(prompt !== undefined ? { prompt } : {}), ...(r.orphan ? { orphan: true } : {}) };
+}
+
+/** A folder with no record and no state line: just its id and date. */
+const orphanOf = (id: string, mtimeMs: number): Archived => ({ id, pattern: 'debate', title: `Meeting ${id}`, status: 'done', summary: '', calledBy: '', finishedAt: Math.round(mtimeMs), output: '', orphan: true });
+
+/** Runs `fn` over `items`, `limit` at a time. */
+async function inBatches<T, R>(items: T[], limit: number, fn: (x: T) => Promise<R>): Promise<R[]> {
+  const out: R[] = [];
+  for (let i = 0; i < items.length; i += limit) out.push(...(await Promise.all(items.slice(i, i + limit).map(fn))));
+  return out;
+}
+
+/** What a meeting's folder says about it: its record, else the state's line, else (a folder with neither) an orphan; undefined when it's no real folder. */
+async function fromFolder(root: string, id: string, pastBy: Map<string, MeetingRecord>): Promise<Archived | undefined> {
+  let st;
+  try {
+    st = await lstat(path.join(root, id));
+  } catch {
+    return undefined;
+  }
+  if (!st.isDirectory()) return undefined;
+  return (await folderRecord(root, id)) ?? pastBy.get(id) ?? orphanOf(id, st.mtimeMs);
+}
+
 /**
  * Every earlier meeting: those still on a room's table (`finished`), then the ones with a record in their
  * folder, then the ones the state lists (`past`) and, for a folder with nothing else, just its id and date
  * (an orphan: it has the title "Meeting <id>", the debate pattern and no summary, which the list marks).
- * Newest first, at most 500.
+ * Newest first, at most 500, each as a line with a short piece of its question (the whole record is meetingRecordOf).
  */
 export async function listMeetings(root: string, past: MeetingRecord[], finished: MeetingRecord[]): Promise<MeetingArchiveList> {
-  const found = new Map<string, MeetingRecord & { orphan?: boolean }>();
+  const found = new Map<string, Archived>();
   for (const r of finished) found.set(r.id, r);
   let names: string[] = [];
   try {
@@ -55,25 +90,28 @@ export async function listMeetings(root: string, past: MeetingRecord[], finished
     // no meetings yet
   }
   const pastBy = new Map(past.map((r) => [r.id, r]));
-  for (const id of names) {
-    if (!isMeetingId(id)) continue;
-    let st;
-    try {
-      st = await lstat(path.join(root, id));
-    } catch {
-      continue;
-    }
-    if (!st.isDirectory()) continue;
-    if (found.has(id)) continue;
-    const r = (await folderRecord(root, id)) ?? pastBy.get(id);
-    found.set(id, r ?? { id, pattern: 'debate', title: `Meeting ${id}`, status: 'done', summary: '', calledBy: '', finishedAt: Math.round(st.mtimeMs), output: '', orphan: true });
-  }
+  const todo = names.filter((id) => isMeetingId(id) && !found.has(id));
+  const read = await inBatches(todo, READ_AT_ONCE, (id) => fromFolder(root, id, pastBy));
+  todo.forEach((id, i) => read[i] && found.set(id, read[i]!));
   for (const r of past) if (!found.has(r.id)) found.set(r.id, r);
   const all = [...found.values()].sort((a, b) => b.finishedAt - a.finishedAt);
-  return { meetings: all.slice(0, LIST_MAX), more: all.length > LIST_MAX };
+  return { meetings: all.slice(0, LIST_MAX).map(entry), more: all.length > LIST_MAX };
 }
 
-/** A meeting's folder: a real folder (not a link) directly under the root, or why not. */
+/**
+ * One meeting in full (GET /api/meetings/<id>), by the same priority as the list: on a table, in its folder's
+ * record, in the state; a folder with nothing else is the orphan; no such meeting is a 404.
+ */
+export async function meetingRecordOf(root: string, id: string, past: MeetingRecord[], finished: MeetingRecord[]): Promise<Archived | Refusal> {
+  if (!isMeetingId(id)) return NO_FOLDER;
+  const table = finished.find((r) => r.id === id);
+  if (table) return table;
+  const pastBy = new Map(past.map((r) => [r.id, r]));
+  const r = (await realRoot(root)) ? await fromFolder(root, id, pastBy) : undefined;
+  return r ?? pastBy.get(id) ?? NO_FOLDER;
+}
+
+/** A meeting's folder: a real folder (not a link) directly under the root, or why not. The realpath checks are deliberate defence in depth on top of the lstat ones. */
 async function folder(root: string, id: string): Promise<string | Refusal> {
   if (!isMeetingId(id)) return NO_FOLDER;
   try {
@@ -87,27 +125,41 @@ async function folder(root: string, id: string): Promise<string | Refusal> {
 }
 
 /** The round a notes file belongs to: `r2-red.md` is round 2, and the plan is the first round's. */
-const roundOf = (name: string): number | undefined => (name === 'plan.md' ? 1 : /^r(\d+)-/.exec(name)?.[1] ? Number(/^r(\d+)-/.exec(name)![1]) : undefined);
+const roundOf = (name: string): number | undefined => {
+  const m = /^r(\d+)-/.exec(name);
+  return name === 'plan.md' ? 1 : m ? Number(m[1]) : undefined;
+};
 
-/** The files in a meeting's folder (its top level, no hidden files, no links): the output first, then the notes by round. */
-export async function listMeetingFiles(root: string, id: string): Promise<{ files: MeetingFileInfo[] } | Refusal> {
+/**
+ * The files in a meeting's folder (its top level, no hidden files, no links): the output first, then the notes by round,
+ * and how many entries were left out (folders, links, hard-linked or other files that aren't plain). With the meeting's
+ * `output` path (from its record), only `output-<its name>` is the output: agents' notes are merged into the same folder.
+ */
+export async function listMeetingFiles(root: string, id: string, output?: string): Promise<{ files: MeetingFileInfo[]; skipped: number } | Refusal> {
   const dir = await folder(root, id);
   if (typeof dir !== 'string') return dir;
   const files: MeetingFileInfo[] = [];
+  let skipped = 0;
+  const outName = output ? `output-${path.basename(output)}` : undefined;
   try {
     for (const name of await readdir(dir)) {
       if (name.startsWith('.')) continue;
       const st = await lstat(path.join(dir, name)).catch(() => undefined);
-      if (!st?.isFile() || st.nlink > 1) continue; // a hard link may lead to a file outside
+      if (!st) continue; // gone since the listing
+      if (!st.isFile() || st.nlink > 1) { // a hard link may lead to a file outside
+        skipped++;
+        continue;
+      }
       const round = roundOf(name);
-      files.push({ name, size: st.size, kind: name.startsWith('output-') ? 'output' : 'note', ...(round !== undefined ? { round } : {}) });
+      const isOutput = outName !== undefined ? name === outName : name.startsWith('output-');
+      files.push({ name, size: st.size, kind: isOutput ? 'output' : 'note', ...(round !== undefined ? { round } : {}) });
     }
   } catch {
     return NO_FOLDER;
   }
   const rank = (f: MeetingFileInfo) => (f.kind === 'output' ? 0 : 1);
   files.sort((a, b) => rank(a) - rank(b) || (a.round ?? Infinity) - (b.round ?? Infinity) || (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
-  return { files };
+  return { files, skipped };
 }
 
 /** Opening without following a link at the end. Windows has no O_NOFOLLOW: there the lstat checks are all there is. */

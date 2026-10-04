@@ -1,5 +1,5 @@
 import './meeting.css';
-import { MEETING_PATTERNS, MEETING_PATTERN_IDS, TOKENS_PER_SEAT, meetingAt, meetingSpend, meetingStage, outputProblem, slugify } from '../../shared/meetings';
+import { MEETING_PATTERNS, MEETING_PATTERN_IDS, PAST_LINES, TOKENS_PER_SEAT, meetingAt, meetingSpend, meetingStage, outputProblem, slugify } from '../../shared/meetings';
 import { fmtTokens, type Meeting, type MeetingPattern, type MeetingState, type MeetingTurn } from '../../shared/protocol';
 import type { Net } from '../net';
 import { store } from '../state';
@@ -103,7 +103,7 @@ export function openMeeting(net: Net, actions: MeetingActions, preset?: MeetingP
     if (shown && !rooms().some((r) => r.id === shown)) shown = undefined;
     renderTabs();
     const n = pastCount();
-    if (pastBtn) pastBtn.textContent = `📚 Earlier meetings${n ? ` (${n})` : ''}`;
+    if (pastBtn) pastBtn.textContent = `📚 Earlier meetings${n ? ` (${store.meeting.past.length >= PAST_LINES ? `${PAST_LINES}+` : n})` : ''}`;
     el.classList.toggle('past', view === 'past');
     // Before the form: this runs on every meeting event, and the view only refreshes, keeping what's picked and open.
     if (view === 'past') {

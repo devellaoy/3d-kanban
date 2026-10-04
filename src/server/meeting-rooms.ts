@@ -1,17 +1,20 @@
 // The floor's meeting rooms: each its own meeting, chairs and state (see meetings.ts), with a new meeting going to the first free one.
 import { randomBytes } from 'node:crypto';
-import { closeSync, existsSync, lstatSync, mkdirSync, openSync, readFileSync, renameSync, unlinkSync, writeFileSync, writeSync } from 'node:fs';
+import { closeSync, existsSync, lstatSync, mkdirSync, openSync, readFileSync, realpathSync, renameSync, unlinkSync, writeFileSync, writeSync } from 'node:fs';
 import path from 'node:path';
 import { MEETING_ROOMS, type MeetingRoomDef } from '../shared/layout.js';
-import { FIRST_MEETING_ROOM, cleanRecord, isMeetingId, isMeetingPattern, meetingRecord, slimRecord } from '../shared/meetings.js';
+import { FIRST_MEETING_ROOM, PAST_LINES, cleanRecord, isMeetingId, isMeetingPattern, meetingRecord, slimRecord } from '../shared/meetings.js';
 import type { Meeting, MeetingRecord, MeetingRequest, MeetingState, WorkerInfo } from '../shared/protocol.js';
 import { MeetingRoom, type MeetingEvents, type MeetingTrees, type MeetingWorkers } from './meetings.js';
 
-const PAST_MAX = 20;
 /** How long after a meeting is archived its late commit or review link still goes into its record. */
 const SETTLE_MS = 10 * 60 * 1000;
 
-/** Whether a finished meeting still waits for its commit or its posted review. */
+/**
+ * Whether a finished meeting still waits for its commit or its posted review. When the commit fails or there was nothing
+ * to commit, `m.commit` never comes and the entry simply stays in `late` until SETTLE_MS (the commit's promise isn't
+ * visible from here without changing meetings.ts).
+ */
 const pending = (m: Meeting) => m.status === 'done' && ((m.pattern === 'review' && m.pr !== undefined && !m.review) || (m.pattern !== 'review' && !!m.worktree && !m.commit));
 
 /** What is saved: the meeting in each room by its id, and the earlier ones. (Older files had just `current`, which was the first room's.) */
@@ -206,7 +209,7 @@ export class MeetingRooms {
 
   /** Puts a finished meeting on the earlier ones (a line each) and its full record in its own notes folder, where the archive reads it. */
   private keep(record: MeetingRecord, m?: Meeting) {
-    this.past = [slimRecord(record), ...this.past.filter((r) => r.id !== record.id)].slice(0, PAST_MAX);
+    this.past = [slimRecord(record), ...this.past.filter((r) => r.id !== record.id)].slice(0, PAST_LINES);
     this.late.delete(record.id);
     if (!isMeetingId(record.id)) return;
     const json = JSON.stringify(record, null, 2);
@@ -244,7 +247,11 @@ export class MeetingRooms {
     if (!st.isDirectory() || st.isSymbolicLink()) throw new Error(`${p} is not a folder`);
   }
 
-  /** Writes a meeting's `.meeting.json` without following a link: to a new file of its own, renamed over the old one (a link there is replaced, not written through). */
+  /**
+   * Writes a meeting's `.meeting.json` without following a link: to a new file of its own, renamed over the old one (a link there is replaced, not written through).
+   * Between the lstat checks in realDir and the open and rename below, someone with write access to the folder could still swap a folder for a
+   * link; the new file is `wx` (never follows a link at its own name), and the folder's real path is checked again just before the rename.
+   */
   private writeRecord(id: string, json: string) {
     let tmp: string | undefined;
     try {
@@ -258,6 +265,8 @@ export class MeetingRooms {
       } finally {
         closeSync(fd);
       }
+      // Still the archive's own folder for this meeting, not a link swapped in since the checks above?
+      if (realpathSync(dir) !== path.join(realpathSync(this.archiveDir()), id)) throw new Error(`${dir} is not in the archive`);
       renameSync(tmp, path.join(dir, '.meeting.json'));
       tmp = undefined;
     } catch {
@@ -280,7 +289,7 @@ export class MeetingRooms {
     if (!existsSync(this.statePath)) return;
     try {
       const saved = JSON.parse(readFileSync(this.statePath, 'utf8')) as Saved;
-      if (Array.isArray(saved.past)) this.past = saved.past.flatMap((r) => { const c = cleanRecord(r); return c ? [slimRecord(c)] : []; }).slice(0, PAST_MAX);
+      if (Array.isArray(saved.past)) this.past = saved.past.flatMap((r) => { const c = cleanRecord(r); return c ? [slimRecord(c)] : []; }).slice(0, PAST_LINES);
       const defs = this.rooms();
       // The workers at the table outlive a restart of the office, so a meeting carries on where it was.
       const found = Object.entries(saved.rooms ?? {}).map(([id, m]) => [id, m] as const);

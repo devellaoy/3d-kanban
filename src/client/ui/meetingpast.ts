@@ -1,6 +1,6 @@
 import './meetingpast.css';
 import { MEETING_PATTERNS, archiveKey } from '../../shared/meetings';
-import { fmtCost, fmtTokens, type MeetingArchiveList, type MeetingFileInfo, type MeetingFileText, type MeetingRecord } from '../../shared/protocol';
+import { fmtCost, fmtTokens, type ArchivedMeeting, type MeetingArchiveList, type MeetingFileInfo, type MeetingFiles, type MeetingFileText } from '../../shared/protocol';
 import { apiUrl } from '../multiplayer/visit';
 import { store } from '../state';
 import { h, timeAgo, toast } from './dom';
@@ -10,8 +10,6 @@ import { copy } from './team';
 // The meeting window's earlier meetings: the floor's archive (GET /api/meetings), a meeting's details and
 // its notes folder, and one note read at a time. What's in the notes was written by agents, so it only
 // ever reaches the page as text or as markdown that markdownFile sanitizes.
-
-type ArchivedMeeting = MeetingRecord & { orphan?: boolean };
 
 /** A request's answer, or why there isn't one (with the HTTP status, 0 when the request never got there). */
 type Got<T> = { ok: true; data: T } | { ok: false; status: number; error: string };
@@ -53,7 +51,11 @@ export function meetingPast(back: () => void): { body: HTMLElement; foot: Node[]
   let seenFloor = store.floor;
   let listSeq = 0;
   let picked: ArchivedMeeting | null = null;
+  /** The picked meeting in full (the list has only a snippet of its question); the list's line shows until it arrives. */
+  let full: ArchivedMeeting | null = null;
+  let fullSeq = 0;
   let files: MeetingFileInfo[] | null = null;
+  let skipped = 0;
   let filesError = '';
   let filesSeq = 0;
   let open: { name: string; text?: MeetingFileText; error?: string } | null = null;
@@ -78,39 +80,51 @@ export function meetingPast(back: () => void): { body: HTMLElement; foot: Node[]
     (list.querySelector('.mp-item.on') as HTMLElement | null)?.focus();
   });
 
-  const matches = (m: ArchivedMeeting) => {
+  /** The list's rows with what the search looks in (lowercased title and question snippet), made once per list load. */
+  let rows: { m: ArchivedMeeting; li: HTMLElement; text: string }[] = [];
+  const noMatch = h('li.mp-none', {}, 'No meeting matches that.');
+
+  /** Hides the rows the search doesn't match, without rebuilding them. */
+  const filterList = () => {
+    if (!meetings?.length) return;
     const q = search.value.trim().toLowerCase();
-    return !q || (typeof m.title === 'string' && m.title.toLowerCase().includes(q)) || (typeof m.prompt === 'string' && m.prompt.toLowerCase().includes(q));
+    let n = 0;
+    for (const r of rows) {
+      r.li.hidden = !!q && !r.text.includes(q);
+      if (!r.li.hidden) n++;
+    }
+    noMatch.hidden = n > 0;
+    count.textContent = n === meetings.length ? `${meetings.length} meeting${meetings.length === 1 ? '' : 's'}${more ? ', the newest' : ''}` : `${n} of ${meetings.length}`;
   };
 
   const renderList = () => {
+    rows = [];
     if (!meetings) {
       count.textContent = listError ? '' : 'Looking through the notes…';
       list.replaceChildren(listError ? h('li.mp-none.bad', {}, `Couldn’t load the earlier meetings: ${listError}`) : '');
       return;
     }
-    const shown = meetings.filter(matches);
-    count.textContent = !meetings.length ? '' : shown.length === meetings.length ? `${meetings.length} meeting${meetings.length === 1 ? '' : 's'}${more ? ', the newest' : ''}` : `${shown.length} of ${meetings.length}`;
+    count.textContent = '';
     if (!meetings.length) return list.replaceChildren(h('li.mp-none', {}, 'No earlier meetings on this floor yet. A meeting shows up here once it’s over.'));
-    if (!shown.length) return list.replaceChildren(h('li.mp-none', {}, 'No meeting matches that.'));
-    list.replaceChildren(
-      ...shown.map((m) => {
-        const p = MEETING_PATTERNS[m.pattern];
-        const room = roomLabel(m.room);
-        const line = m.orphan
-          ? `${new Date(m.finishedAt).toLocaleString()} · no record, only notes`
-          : [room, m.status === 'done' ? '✅ done' : '⛔ stopped', m.calledBy, timeAgo(new Date(m.finishedAt).toISOString())].filter(Boolean).join(' · ');
-        return h(
-          'li',
-          {},
-          h('button.mp-item', { type: 'button', class: m.id === picked?.id ? 'on' : '', 'aria-current': m.id === picked?.id ? 'true' : false, onclick: () => pick(m) },
-            h('span.mp-item-title', {}, `${m.orphan || !p ? '🗂️' : p.icon} ${m.title}`),
-            h('span.mp-item-line', {}, line)),
-        );
-      }),
-    );
+    rows = meetings.map((m) => {
+      const p = MEETING_PATTERNS[m.pattern];
+      const room = roomLabel(m.room);
+      const line = m.orphan
+        ? `${new Date(m.finishedAt).toLocaleString()} · no record, only notes`
+        : [room, m.status === 'done' ? '✅ done' : '⛔ stopped', m.calledBy, timeAgo(new Date(m.finishedAt).toISOString())].filter(Boolean).join(' · ');
+      const li = h(
+        'li',
+        {},
+        h('button.mp-item', { type: 'button', class: m.id === picked?.id ? 'on' : '', 'aria-current': m.id === picked?.id ? 'true' : false, onclick: () => pick(m) },
+          h('span.mp-item-title', {}, `${m.orphan || !p ? '🗂️' : p.icon} ${m.title}`),
+          h('span.mp-item-line', {}, line)),
+      );
+      return { m, li, text: `${typeof m.title === 'string' ? m.title : ''}\n${typeof m.prompt === 'string' ? m.prompt : ''}`.toLowerCase() };
+    });
+    list.replaceChildren(...rows.map((r) => r.li), noMatch);
+    filterList();
   };
-  search.addEventListener('input', renderList);
+  search.addEventListener('input', filterList);
 
   const loadList = async () => {
     const seq = ++listSeq;
@@ -126,6 +140,7 @@ export function meetingPast(back: () => void): { body: HTMLElement; foot: Node[]
       if (picked) {
         picked = meetings.find((m) => m.id === picked!.id) ?? picked;
         renderDetail(); // a late commit or review link shows; the notes and the open file stay as they are
+        void loadFull(picked.id); // and the full record is fetched again, for the same reason
       }
     } else if (!meetings) listError = got.error;
     else toast(`Couldn’t refresh the earlier meetings: ${got.error}`, 'warn');
@@ -134,7 +149,7 @@ export function meetingPast(back: () => void): { body: HTMLElement; foot: Node[]
   };
 
   const renderDetail = () => {
-    const m = picked;
+    const m = full && full.id === picked?.id ? full : picked;
     if (!m) {
       detail.replaceChildren(h('p.mp-none', {}, meetings?.length ? 'Pick a meeting to see how it went and read its notes.' : ''));
       return;
@@ -165,24 +180,25 @@ export function meetingPast(back: () => void): { body: HTMLElement; foot: Node[]
     if (!picked) return fileList.replaceChildren();
     if (filesError) return fileList.replaceChildren(h('p.mp-none.bad', {}, `Couldn’t list the notes: ${filesError}`));
     if (!files) return fileList.replaceChildren(h('p.mp-none', {}, 'Opening the notes folder…'));
-    if (!files.length) return fileList.replaceChildren(h('p.mp-none', {}, 'There are no notes left for this meeting.'));
+    const skippedNote = skipped ? h('p.mp-none.muted', {}, `${skipped} item${skipped === 1 ? '' : 's'} not shown (folders or links)`) : '';
+    if (!files.length) return fileList.replaceChildren(h('p.mp-none', {}, skipped ? 'No notes can be shown for this meeting.' : 'There are no notes left for this meeting.'), skippedNote);
     const item = (f: MeetingFileInfo) =>
       h('li', {}, h('button.mp-file', { type: 'button', class: `${f.kind === 'output' ? 'output' : ''} ${open?.name === f.name ? 'on' : ''}`, 'aria-current': open?.name === f.name ? 'true' : false, onclick: () => openFile(f.name) },
         h('span.mp-file-name', {}, `${f.kind === 'output' ? '📄' : '📝'} ${f.name}`),
         f.kind === 'output' ? h('span.pill.done', {}, 'output') : '',
         h('span.muted', {}, fmtSize(f.size))));
     const outputs = files.filter((f) => f.kind === 'output');
-    const groups = new Map<string, MeetingFileInfo[]>();
+    const groups = new Map<number, MeetingFileInfo[]>();
     for (const f of files.filter((x) => x.kind !== 'output')) {
-      const g = f.round ? `Round ${f.round}` : 'Other';
-      groups.set(g, [...(groups.get(g) ?? []), f]);
+      const r = f.round ?? Infinity; // the files that belong to no round come last
+      groups.set(r, [...(groups.get(r) ?? []), f]);
     }
-    // Rounds in order, the files that belong to none last.
-    const names = [...groups.keys()].sort((a, b) => (a === 'Other' ? 1 : b === 'Other' ? -1 : Number(a.slice(6)) - Number(b.slice(6))));
+    const rounds = [...groups.keys()].sort((a, b) => a - b);
     fileList.replaceChildren(
       h('h4', {}, '🗂️ Files'),
       outputs.length ? h('ul.mp-file-list', {}, ...outputs.map(item)) : '',
-      ...names.flatMap((g) => [h('h5', {}, g), h('ul.mp-file-list', {}, ...groups.get(g)!.map(item))]),
+      ...rounds.flatMap((r) => [h('h5', {}, r === Infinity ? 'Other' : `Round ${r}`), h('ul.mp-file-list', {}, ...groups.get(r)!.map(item))]),
+      skippedNote,
     );
   };
 
@@ -198,12 +214,14 @@ export function meetingPast(back: () => void): { body: HTMLElement; foot: Node[]
       h('button.btn.small', { type: 'button', title: 'Copy the file’s text', onclick: () => copyText(f.text) }, '📋 Copy'),
       h('button.btn.small', { type: 'button', title: 'Save the file', onclick: () => download(f) }, '⬇️ Download'),
     );
-    preview.replaceChildren(head, md && !raw ? markdownFile(f.text) : h('pre.mp-raw', {}, f.text));
+    preview.replaceChildren(head, md && !raw ? markdownFile(f.text, { images: false }) : h('pre.mp-raw', {}, f.text));
   };
 
   const pick = async (m: ArchivedMeeting) => {
     picked = m;
+    full = null;
     files = null;
+    skipped = 0;
     filesError = '';
     open = null;
     raw = false;
@@ -214,15 +232,27 @@ export function meetingPast(back: () => void): { body: HTMLElement; foot: Node[]
     renderFiles();
     renderPreview();
     main.scrollTop = 0;
+    void loadFull(m.id);
     const seq = ++filesSeq;
-    const got = await get<{ files: MeetingFileInfo[] }>(`/api/meetings/${encodeURIComponent(m.id)}/files`);
+    const got = await get<MeetingFiles>(`/api/meetings/${encodeURIComponent(m.id)}/files`);
     if (seq !== filesSeq) return;
-    if (got.ok) files = got.data.files;
-    else filesError = got.error;
+    if (got.ok) {
+      files = got.data.files;
+      skipped = got.data.skipped;
+    } else filesError = got.error;
     renderFiles();
     // The output is what most people came for: open it straight away.
     const out = files?.find((f) => f.kind === 'output');
     if (out) void openFile(out.name);
+  };
+
+  /** Fetches the picked meeting's full record; the answer of an earlier pick (or of one that's no longer picked) is dropped. */
+  const loadFull = async (id: string) => {
+    const seq = ++fullSeq;
+    const got = await get<ArchivedMeeting>(`/api/meetings/${encodeURIComponent(id)}`);
+    if (seq !== fullSeq || picked?.id !== id || !got.ok) return; // on failure the list's line stays
+    full = got.data;
+    renderDetail();
   };
 
   const openFile = async (name: string) => {
@@ -246,7 +276,7 @@ export function meetingPast(back: () => void): { body: HTMLElement; foot: Node[]
     // Not through h(): its href guard lets only http(s) through, and this is a blob: of our own.
     const a = document.createElement('a');
     a.href = url;
-    a.download = f.name.split('/').pop() || 'note.txt';
+    a.download = f.name;
     document.body.append(a);
     a.click();
     a.remove();
@@ -267,6 +297,8 @@ export function meetingPast(back: () => void): { body: HTMLElement; foot: Node[]
       if (store.floor !== seenFloor) {
         seenFloor = store.floor;
         picked = null;
+        full = null;
+        fullSeq++;
         files = null;
         open = null;
         filesSeq++;
