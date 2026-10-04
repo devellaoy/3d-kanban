@@ -37,6 +37,8 @@ export interface PromptOptions {
   maxLength?: number;
   /** One more checkbox; ticking it also ticks the worktree box when there is one. */
   toggle?: { label: string; checked: boolean; onChange(on: boolean, ta: HTMLTextAreaElement): void };
+  /** Opens with the cursor (and the view) at the start of `initial`, not its end: its first line matters (a hand-off's title). */
+  fromTop?: boolean;
   /** A second button that sends with `raw` (a task implementer's "type straight into the terminal"). */
   rawLabel?: string;
   onSubmit(text: string, opts: { worktree: boolean; provider?: AgentProvider; model?: string; effort?: AgentEffort; repos: string[]; raw?: boolean; attachmentIds?: string[] }): void;
@@ -168,7 +170,9 @@ export function openPrompt(opts: PromptOptions) {
   onSendKey(ta, () => send());
   setTimeout(() => {
     ta.focus();
-    ta.setSelectionRange(ta.value.length, ta.value.length);
+    const at = opts.fromTop ? 0 : ta.value.length;
+    ta.setSelectionRange(at, at);
+    if (opts.fromTop) ta.scrollTop = 0;
   }, 30);
 }
 

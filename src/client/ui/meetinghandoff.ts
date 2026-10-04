@@ -67,7 +67,7 @@ export async function handOffMeeting(net: Net, id: string, kind: 'task' | 'worke
   let kanbanOption: KanbanOption | undefined;
   if (base) {
     officeCss();
-    kanbanOption = { ...base, ...(desk ? {} : { queued: true as const, title: '🗂️ New kanban task' }), checked: kind === 'task', tags: [handoffTag(id)], onCreated: (task) => net.send({ t: 'meeting.handed', id, task }) };
+    kanbanOption = { ...base, ...(desk ? {} : { queued: true as const }), title: `🗂️ ${clip(record.title.split('\n')[0], 60)}`, checked: kind === 'task', tags: [handoffTag(id)], onCreated: (task) => net.send({ t: 'meeting.handed', id, task }) };
   }
   closeWindow();
   openPrompt({
@@ -75,6 +75,7 @@ export async function handOffMeeting(net: Net, id: string, kind: 'task' | 'worke
     subtitle: `Handed on from the meeting “${clip(record.title.split('\n')[0], 60)}”: its output, ready to edit.`,
     warning: pressureNote(store.machine),
     initial: text,
+    fromTop: true,
     maxLength: SPAWN_PROMPT_MAX,
     submitLabel: 'Hire & start',
     providerOption: true,
