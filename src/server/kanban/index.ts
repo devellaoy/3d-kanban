@@ -34,6 +34,7 @@ import { createPulls, createRefs, integrationPlugins } from './integrations/inde
 import { parseKanbanClientMsg, ridOf, type KanbanClientType, type KanbanServerMsg } from '../../shared/kanban/protocol.js';
 import type { ProjectRepo } from '../../shared/kanban/types.js';
 import type { LanguageSettings } from '../../shared/language.js';
+import type { PromptId } from '../../shared/prompts.js';
 import type { WorkerInfo } from '../../shared/protocol.js';
 import type { KanbanRunAs } from './registry.js';
 import { LoungeSender, loungeFigures } from './lounge.js';
@@ -54,6 +55,8 @@ export interface KanbanOffice {
   saveName?(id: string, name: string): FloorDef | string;
   /** The office-wide custom prompt texts (OfficePrompts.state().custom). */
   officePrompts(): Partial<Record<string, { text: string }>>;
+  /** An office prompt's text as the office has it now (OfficePrompts.text). */
+  officeText(id: PromptId): string;
   /** The office's languages (OfficePrompts.languages). */
   languages(): LanguageSettings;
   /** The loopback hook server's base URL. */
@@ -201,6 +204,7 @@ export function installKanban(opts: KanbanInstallOptions): Kanban {
       return undefined;
     },
     officePrompts: () => opts.officePrompts(),
+    officeText: (id: PromptId) => opts.officeText(id),
     languages: () => opts.languages(),
     hookUrl: opts.hookUrl,
     broadcast,

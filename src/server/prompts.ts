@@ -5,6 +5,8 @@ import { cleanLanguage, cleanLanguages, type LanguageSettings } from '../shared/
 import { PROMPTS, PROMPT_MAX, fillPrompt, isPromptId, promptText, type PromptId, type PromptVars } from '../shared/prompts.js';
 import { validateWorkerEffort, validateWorkerModel } from './agents.js';
 
+const NOT_A_LANGUAGE = "That isn't a language name";
+
 /** What the floors read: a prompt as the office has it now, and what workers start on. */
 export interface PromptSource {
   text(id: PromptId): string;
@@ -58,12 +60,18 @@ export class OfficePrompts implements PromptSource {
   }
 
   /** Sets the languages; null, or neither set, goes back to the task's language. Returns why it can't, if it can't. */
-  setLanguage(l: LanguageSettings | null, by: string): string | undefined {
-    const isName = (v: unknown) => v === undefined || typeof v === 'string';
-    if (l !== null && (!l || typeof l !== 'object' || Array.isArray(l) || !isName(l.talk) || !isName(l.public))) return "That isn't a language name";
-    const raw = (v: unknown) => (typeof v === 'string' ? v.trim() : '');
-    if ((raw(l?.talk) && !cleanLanguage(l?.talk)) || (raw(l?.public) && !cleanLanguage(l?.public))) return "That isn't a language name";
-    const clean = cleanLanguages(l);
+  setLanguage(l: unknown, by: string): string | undefined {
+    if (l !== null && (!l || typeof l !== 'object' || Array.isArray(l))) return NOT_A_LANGUAGE;
+    const given = (l ?? {}) as Record<string, unknown>;
+    const clean: LanguageSettings = {};
+    for (const key of ['talk', 'public'] as const) {
+      const raw = given[key];
+      if (raw === undefined) continue;
+      if (typeof raw !== 'string') return NOT_A_LANGUAGE;
+      const name = cleanLanguage(raw);
+      if (raw.trim() && !name) return NOT_A_LANGUAGE;
+      if (name) clean[key] = name;
+    }
     if (!clean.talk && !clean.public) delete this.saved.language;
     else this.saved.language = { ...clean, by, at: Date.now() };
     this.changed();

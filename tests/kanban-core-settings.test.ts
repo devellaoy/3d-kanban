@@ -133,9 +133,10 @@ test('the settings file is saved privately, reloaded, and changed a part at a ti
   store.setProject('web', { publicLanguage: '@project' });
   assert.equal(store.project('web').publicLanguage, '@project');
   assert.equal(new KanbanSettingsStore(dir).project('web').publicLanguage, '@project', 'survives a reload');
-  store.setProject('web', { publicLanguage: 'rm -rf /; Finnish' });
+  assert.match(String(store.setProject('web', { publicLanguage: 'rm -rf /; Finnish' })), /isn't a language name/);
   assert.equal(store.project('web').publicLanguage, '@project', 'not a language: the earlier choice stays');
-  store.setProject('web', { publicLanguage: 12 } as never);
+  assert.match(String(store.setProject('web', { publicLanguage: 12, maxConcurrent: 9 } as never)), /isn't a language name/);
+  assert.notEqual(store.project('web').maxConcurrent, 9, 'nothing is saved');
   assert.equal(store.project('web').publicLanguage, '@project');
   store.setProject('web', { publicLanguage: 'Swedish' });
   store.setProject('web', { publicLanguage: null } as never);
@@ -143,8 +144,8 @@ test('the settings file is saved privately, reloaded, and changed a part at a ti
   assert.equal(store.project('web').commentLanguage, undefined, 'English by default: nothing stored');
   store.setProject('web', { commentLanguage: ' Finnish ' });
   assert.equal(store.project('web').commentLanguage, 'Finnish');
-  store.setProject('web', { commentLanguage: 'x; drop' });
-  store.setProject('web', { commentLanguage: 7 } as never);
+  assert.match(String(store.setProject('web', { commentLanguage: 'x; drop' })), /isn't a language name/);
+  assert.match(String(store.setProject('web', { commentLanguage: 7 } as never)), /isn't a language name/);
   assert.equal(store.project('web').commentLanguage, 'Finnish', 'not a language: the earlier choice stays');
   store.setProject('web', { commentLanguage: '@project' });
   assert.equal(new KanbanSettingsStore(dir).project('web').commentLanguage, '@project');

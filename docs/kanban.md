@@ -376,7 +376,7 @@ the repository, so a changed `origin` (say `git remote set-url` in a worktree, w
 Saving the form keeps the field empty; type an `owner/name` to pin one.
 
 A task gets a worktree of each git repository it works in, all on the same branch (named by the
-project's *Branch naming* instructions, else `kanban/<ticket or task id>-<slug>`). A *folder*
+project's *Branch naming* instructions, else `kanban/<ticket or task id>-<slug>`; with a public language set the default prompt also asks for the slug in that language, and a rewrite of the *Branch naming* prompt can use `{{slugNote}}` for that line, which is empty otherwise and then leaves no blank line). A *folder*
 repository has no worktree: the agent works in the folder itself. The same page has the project's
 general and testing instructions (they go into the prompts), *tasks at once*, and the project's own
 plan approval, implementation mode and review settings.

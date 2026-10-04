@@ -10,7 +10,6 @@ import type { KanbanClientMsg, KanbanClientType, KanbanServerMsg, KanbanTaskPatc
 import type { KanbanProjectInfo, KanbanTask, TaskOverrides } from '../../shared/kanban/types.js';
 import { checkMove, isRunning } from '../../shared/kanban/moves.js';
 import { isKanbanPromptId } from '../../shared/kanban/prompts.js';
-import { cleanProjectLanguage } from '../../shared/language.js';
 import { PROMPT_MAX } from '../../shared/prompts.js';
 import { COMMENTS_PAGE, publicAttachment, type TaskUpdate } from './db/repository.js';
 import { projectInfo } from './projects.js';
@@ -413,9 +412,8 @@ export function createCorePlugin(ctx: KanbanContext, subs: KanbanSubscriptions):
     'kanban.project.settings.set': (c, m) => {
       if (!adminOnly(c, m.rid)) return;
       if (!ctx.project(m.project)) return fail(c, m.rid, `There's no project ${m.project}`);
-      const given = (m.settings ?? {}) as { publicLanguage?: unknown; commentLanguage?: unknown };
-      for (const lang of [given.publicLanguage, given.commentLanguage]) if (lang !== undefined && lang !== null && cleanProjectLanguage(lang) === undefined) return fail(c, m.rid, "That isn't a language name");
-      ctx.settings.setProject(m.project, m.settings);
+      const err = ctx.settings.setProject(m.project, m.settings);
+      if (typeof err === 'string') return fail(c, m.rid, err);
       settingsChanged();
       // The floor's issues board follows the sources: theirs now, or its own repository's without any.
       if (m.settings && 'issueSources' in m.settings) wallSourcesChanged(m.project);

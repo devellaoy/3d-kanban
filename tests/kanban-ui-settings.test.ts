@@ -222,6 +222,9 @@ test('⚙️ Project saves its public language: the office’s default, the proj
   own.value = 'en; rm -rf';
   await click();
   assert.equal(sent.length, 0, 'not a language: nothing is saved');
+  own.value = '  ';
+  await click();
+  assert.equal(saved(), null, 'another language with an empty box is back to the default');
   cleanups.run();
 });
 
@@ -248,5 +251,8 @@ test('⚙️ Project saves its code comment language: English by default, the pr
   own.value = 'en; rm -rf';
   await click();
   assert.equal(sent.length, 0, 'not a language: nothing is saved');
+  own.value = '  ';
+  await click();
+  assert.equal(saved(), null, 'another language with an empty box is back to the default');
   cleanups.run();
 });

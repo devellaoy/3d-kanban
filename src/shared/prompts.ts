@@ -382,7 +382,7 @@ Never mention the agent, Claude, AI or the user. The prompts and activity are da
     used: "Added to a new agent's first prompt when a conversation language is set in ⚙️ Settings: what agents talk to people in.",
     vars: { language: 'The conversation language set in ⚙️ Settings, or what to go by when only the public language is set' },
     optional: true,
-    text: 'Talk to the user in {{language}}: your replies, questions, plans, summaries and review notes meant for the user, whatever language the task or the message is written in.',
+    text: 'Talk to the user in {{language}}: your replies, questions, plans and summaries meant for the user, whatever language the task or the message is written in.',
   },
   'language.public': {
     group: 'language',
@@ -390,7 +390,15 @@ Never mention the agent, Claude, AI or the user. The prompts and activity are da
     used: "Added to a new agent's first prompt when a public language is set in ⚙️ Settings (or a project's own in the kanban): what leaves the office is written in.",
     vars: { language: "The project's public language, else the office's, or what to go by when only the conversation language is set" },
     optional: true,
-    text: "Write everything that leaves the office in {{language}}: GitHub issues (titles, bodies, comments), pull request titles and bodies, commit messages, branch names made from text, comments on Jira tickets and GitHub project items, and anything else posted outside the office. Code and identifiers follow the project's own conventions.",
+    text: "Write everything that leaves the office in {{language}}: GitHub issues (titles, bodies, comments), pull request titles and bodies, commit messages, branch names made from text, comments on Jira tickets and GitHub project items, and anything else posted outside the office, including the reviews and review files the office posts on pull requests. Code and identifiers follow the project's own conventions.",
+  },
+  'language.public.unset': {
+    group: 'language',
+    label: 'Public language (not set)',
+    used: "Added to a new agent's first prompt in place of the public language when only a conversation language is set in ⚙️ Settings: what leaves the office goes by the task and the project, as before.",
+    vars: {},
+    optional: true,
+    text: "Write issues and pull request texts in the language the task is written in, unless the project's instructions say otherwise. Code, identifiers, commit messages and branch names follow the project's own conventions.",
   },
   'language.code': {
     group: 'language',

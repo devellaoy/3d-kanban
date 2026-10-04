@@ -23,17 +23,15 @@ import {
   type PlanApproval,
   type ProjectRepo,
   type ProjectSettings,
-  type ReviewSettings,
 } from '../../shared/kanban/types.js';
 import { KANBAN_CONTRACTS, KANBAN_PROMPT_DEFS, KANBAN_PROMPT_IDS, PROMPT_CONTRACT, kanbanPromptSource, type KanbanPromptId, type KanbanPromptScope } from '../../shared/kanban/prompts.js';
 import { kanbanApi, type KanbanApi, type KanbanError } from './api';
-import { KANBAN_DEFAULTS, projectDefaults, REVIEW_DEFAULTS } from './defaults';
+import { KANBAN_DEFAULTS, projectDefaults } from './defaults';
 import { repoIdFrom } from './model';
 import { kstore } from './store';
 import { loadSkills, skillsOverview, skillsPane } from './skills';
 import { newProjectButton } from './newproject';
-import { commentLanguageField, publicLanguageField } from './language-field';
-import { LANGUAGE_HELP } from '../ui/language';
+import { PERMISSION_NAMES, optionalModel, reviewFields, thisProjectFields } from './project-fields';
 import type { KanbanSettingsPane } from './settingsslot';
 import { Cleanups, settingsRedraw } from './settingsflow';
 import { APPROVAL_NAMES, effortName, SOURCE_KIND_NAMES, toolName } from './labels';
@@ -43,7 +41,6 @@ import { checkbox, field, numberInput, numberValue, run, select, tabStrip, textA
 export type ProjectTab = 'project' | 'sources' | 'skills' | 'prompts';
 const PROJECT_TABS: readonly ProjectTab[] = ['project', 'sources', 'skills', 'prompts'];
 const TAB_NAMES: Record<ProjectTab, string> = { project: '⚙️ Project', sources: '📌 Issue sources', skills: '🧩 Skills', prompts: '📝 Prompts' };
-const PERMISSION_NAMES: Record<ImplementPermission, string> = { bypass: 'without permission prompts', 'workspace-write': 'in Codex’s workspace sandbox' };
 /** A prompt's scope: the short tag in the list, and the line over the editor. */
 const SCOPE_TAGS: Record<KanbanPromptScope, string> = { default: 'default', office: 'office', project: 'project' };
 const SCOPE_NOW: Record<KanbanPromptScope, string> = { default: 'The default text', office: 'The office’s text', project: 'This project’s own text' };
@@ -62,27 +59,6 @@ function saveButton(label = 'Save'): HTMLButtonElement {
 function lockForNonAdmins(root: HTMLElement) {
   if (kstore.me.admin) return;
   for (const el of root.querySelectorAll<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement | HTMLButtonElement>('input, select, textarea, button.kb-admin')) el.disabled = true;
-}
-
-const optionalModel = (v: string) => v.trim() || null;
-
-function reviewFields(r: Partial<ReviewSettings>, base: ReviewSettings | null) {
-  const tool = select<KanbanTool | ''>([...(base ? [] : ([['', 'Default']] as const)), ...KANBAN_TOOLS.map((x) => [x, toolName(x)] as const)], r.tool ?? (base ? base.tool : ''));
-  const model = textInput(r.model ?? '', { maxlength: KANBAN_LIMITS.model, placeholder: 'Default' });
-  const effort = select<KanbanEffort | ''>([['', 'Default'], ...KANBAN_EFFORTS.map((e) => [e, effortName(e)] as const)], r.effort ?? '');
-  const rounds = numberInput(r.rounds ?? base?.rounds ?? REVIEW_DEFAULTS.rounds, 1, 10);
-  const reRev = checkbox('Review the last fix too', r.reReviewLastFix ?? base?.reReviewLastFix ?? REVIEW_DEFAULTS.reReviewLastFix);
-  const sandbox = checkbox('Keep the reviewer off the web', r.sandbox ?? base?.sandbox ?? REVIEW_DEFAULTS.sandbox);
-  const el = h('div.kb-subfields', {}, field('Reviewer', tool), field('Model', model), field('Effort', effort), field('Rounds', rounds, '1–10 review rounds, each followed by a fix when changes are asked for'), reRev.el, sandbox.el);
-  const value = (): { tool?: KanbanTool; model: string | null; effort: KanbanEffort | null; rounds: number; reReviewLastFix: boolean; sandbox: boolean } => ({
-    ...(tool.value ? { tool: tool.value as KanbanTool } : {}),
-    model: optionalModel(model.value),
-    effort: (effort.value as KanbanEffort) || null,
-    rounds: numberValue(rounds, 1, 10, REVIEW_DEFAULTS.rounds),
-    reReviewLastFix: reRev.box.checked,
-    sandbox: sandbox.box.checked,
-  });
-  return { el, value };
 }
 
 /**
@@ -381,30 +357,16 @@ export function projectPane(api: Pick<KanbanApi, 'request'>, projectId: string, 
   const branch = textArea(ps.branchInstructions, { rows: 3, maxlength: KANBAN_LIMITS.promptText, placeholder: 'e.g. gh-{issue}/short-slug' });
   const general = textArea(ps.generalInstructions, { rows: 4, maxlength: KANBAN_LIMITS.promptText });
   const testing = textArea(ps.testingInstructions, { rows: 4, maxlength: KANBAN_LIMITS.promptText });
-  const maxConc = numberInput(ps.maxConcurrent, 1, 20);
-  const approval = select<PlanApproval | ''>([['', `Default (${APPROVAL_NAMES[s.defaults.planApproval]})`], ['auto', APPROVAL_NAMES.auto], ['manual', APPROVAL_NAMES.manual]], ps.planApproval ?? '');
-  const perm = select<ImplementPermission | ''>([['', `Default (${PERMISSION_NAMES[s.defaults.implementPermission]})`], ['bypass', PERMISSION_NAMES.bypass], ['workspace-write', PERMISSION_NAMES['workspace-write']]], ps.implementPermission ?? '');
-  const language = publicLanguageField(ps.publicLanguage), comments = commentLanguageField(ps.commentLanguage);
-  const overrideReview = checkbox('Its own review settings', !!ps.review);
-  const review = reviewFields(ps.review ?? {}, { ...s.review, ...ps.review });
-  const paintReview = () => review.el.classList.toggle('hidden', !overrideReview.box.checked);
-  overrideReview.box.addEventListener('change', paintReview);
-  paintReview();
+  const fields = thisProjectFields(ps, s);
   const save = saveButton();
   save.addEventListener('click', () => {
-    const rv = review.value(), publicLanguage = language.value(), commentLanguage = comments.value();
-    if (publicLanguage === undefined || commentLanguage === undefined) return toast(LANGUAGE_HELP, 'warn');
+    const own = fields.read();
+    if (!own) return;
     const settings: Record<string, unknown> = {
       branchInstructions: branch.value,
       generalInstructions: general.value,
       testingInstructions: testing.value,
-      maxConcurrent: numberValue(maxConc, 1, 20, projectDefaults().maxConcurrent),
-      // null: back to the office's.
-      planApproval: approval.value || null,
-      implementPermission: perm.value || null,
-      publicLanguage,
-      commentLanguage,
-      review: overrideReview.box.checked ? { ...rv, model: rv.model ?? undefined, effort: rv.effort ?? undefined } : null,
+      ...own,
     };
     void run(() => api.request({ t: 'kanban.project.settings.set', project: projectId, settings: settings as Partial<ProjectSettings> }), save, 'Saved');
   });
@@ -428,7 +390,7 @@ export function projectPane(api: Pick<KanbanApi, 'request'>, projectId: string, 
       field('General instructions', general),
       field('Debugging and testing', testing),
     ),
-    h('fieldset', {}, h('legend', {}, 'This project'), h('div.kb-three', {}, field('Tasks at once', maxConc), field('Plan approval', approval), field('Implementation runs', perm)), language.el, comments.el, overrideReview.el, review.el),
+    fields.el,
     h('div.kb-row.kb-save', {}, h('span.grow'), save),
   );
 }

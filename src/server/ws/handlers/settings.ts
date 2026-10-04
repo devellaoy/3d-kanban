@@ -138,11 +138,7 @@ export const settingsHandlers = {
   'prompts.language'(ctx, c, msg) {
     const who = c.peer.name;
     if (!ctx.meOfClient(c).admin) return ctx.warn(c, 'Only admins can set the office’s languages');
-    const l = msg.language;
-    const ok = (v: unknown) => v === undefined || typeof v === 'string';
-    // Null or { talk?, public? } of strings; anything else (an array, a number) changes nothing.
-    if (l !== null && (!l || typeof l !== 'object' || Array.isArray(l) || !ok(l.talk) || !ok(l.public))) return ctx.warn(c, "That isn't a language name");
-    const err = ctx.prompts.setLanguage(l, who);
+    const err = ctx.prompts.setLanguage(msg.language, who);
     if (err) return ctx.warn(c, err);
     const { talk, public: pub } = ctx.prompts.languages();
     ctx.toastAll(talk || pub ? `🌐 ${who} set the office’s languages${talk ? `: talking in ${talk}` : ''}${pub ? `${talk ? ',' : ':'} writing in ${pub}` : ''}` : `🌐 ${who} put the office’s languages back to the task’s language`);

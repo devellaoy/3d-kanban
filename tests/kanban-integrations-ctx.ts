@@ -1,6 +1,7 @@
 // A KanbanContext for the integrations' tests: a real (in-memory) database, real settings and
 // secrets files in a temp folder, projects as given, and everything that goes out recorded.
 
+import { PROMPTS } from '../src/shared/prompts.js';
 import { mkdirSync, mkdtempSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -48,6 +49,7 @@ export function makeCtx(defs: FloorDef[] = [], opts: { start?: (id: number) => s
     setRepos: () => 'not in tests',
     setName: () => 'not in tests',
     officePrompts: () => ({}),
+    officeText: (id: keyof typeof PROMPTS) => PROMPTS[id].text,
     languages: () => ({}),
     hookUrl: 'http://127.0.0.1:4555',
     sent: [] as TestCtx['sent'],

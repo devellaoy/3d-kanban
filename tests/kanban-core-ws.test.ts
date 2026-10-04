@@ -1,4 +1,5 @@
 import test from 'node:test';
+import { PROMPTS } from '../src/shared/prompts.js';
 import assert from 'node:assert/strict';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -84,6 +85,7 @@ function office(t: Ctx, opts: { answers?: Partial<Record<string, string>>; plugi
     saveRepos: (id, repos) => building.setRepos(id, repos),
     saveName: (id, name) => building.setName(id, name),
     officePrompts: () => ({}),
+    officeText: (id: keyof typeof PROMPTS) => PROMPTS[id].text,
     languages: () => ({}),
     hookUrl: 'http://127.0.0.1:9',
     toast: (_floor, text) => void toasts.push(text),

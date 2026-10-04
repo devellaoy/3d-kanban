@@ -32,6 +32,7 @@ export function openKanban(ctx: Ctx, hookPort: number): Kanban {
       return r;
     },
     officePrompts: () => ctx.prompts.state().custom,
+    officeText: (id) => ctx.prompts.text(id),
     languages: () => ctx.prompts.languages(),
     hookUrl: `http://127.0.0.1:${hookPort}`,
     toast: (id, text, level) => ctx.toastFloor(ctx.floors.get(id), text, level),

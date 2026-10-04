@@ -170,7 +170,7 @@ export function sanitizeProjectSettings(raw: unknown, base: ProjectSettings = de
   if (approval) out.planApproval = approval;
   const permission = 'implementPermission' in r ? optOneOf(r.implementPermission, PERMISSIONS) : base.implementPermission;
   if (permission) out.implementPermission = permission;
-  // An invalid value keeps the earlier choice; clearing is setProject's null.
+  // An invalid value keeps the earlier choice when a file is loaded; checking a request, and clearing (null), are setProject's.
   const lang = 'publicLanguage' in r ? cleanProjectLanguage(r.publicLanguage) ?? base.publicLanguage : base.publicLanguage;
   if (lang) out.publicLanguage = lang;
   const comment = 'commentLanguage' in r ? cleanProjectLanguage(r.commentLanguage) ?? base.commentLanguage : base.commentLanguage;
@@ -274,9 +274,13 @@ export class KanbanSettingsStore {
     return structuredClone(this.settings.projects[id] ?? defaultProjectSettings());
   }
 
-  /** Changes some of a project's settings. */
-  setProject(id: string, patch: Partial<ProjectSettings>): ProjectSettings {
+  /** Changes some of a project's settings; a string is why not (a language that isn't one), and nothing is saved then. */
+  setProject(id: string, patch: Partial<ProjectSettings>): ProjectSettings | string {
     if (!PROJECT_ID_RE.test(id)) throw new Error('Not a project id');
+    for (const k of ['publicLanguage', 'commentLanguage'] as const) {
+      const v = obj(patch)[k];
+      if (v !== undefined && v !== null && cleanProjectLanguage(v) === undefined) return "That isn't a language name";
+    }
     // A copy: the fields set to null (cleared) are dropped from it, and read from the patch after.
     const p = { ...obj(patch) };
     const cleared = new Set(Object.keys(p).filter((k) => p[k] === null));

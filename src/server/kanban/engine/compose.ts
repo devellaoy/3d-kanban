@@ -15,9 +15,9 @@ import { openPrs } from '../../../shared/kanban/prs.js';
 import type { KanbanPrLink, KanbanTask, KanbanTool, ProjectRepo, RunPhase, SkillPhase, TaskWorkspace } from '../../../shared/kanban/types.js';
 import type { WorkerInfo } from '../../../shared/protocol.js';
 import type { PromptKind } from './machine.js';
-import { resolveLanguages } from '../../../shared/language.js';
-import { promptText, type PromptId } from '../../../shared/prompts.js';
-import { codeRule, languageRule } from '../../language.js';
+import { resolveLanguages, type LanguageSettings } from '../../../shared/language.js';
+import type { PromptId } from '../../../shared/prompts.js';
+import { languageRules } from '../../language.js';
 import { skillHint } from '../integrations/skills/index.js';
 
 type Vars = Record<string, string | number>;
@@ -144,20 +144,13 @@ export class Composer {
     return resolveLanguages(this.ctx.languages(), p.publicLanguage, p.commentLanguage);
   }
 
-  /** The public language a project writes in, if one is set. */
-  publicLanguage(project: string): string | undefined {
-    return this.languages(project).public;
-  }
-
   /**
    * The language rule of a project's prompts: the office's talk language and the project's (else the office's)
    * public one, as two rules; when no language is set anywhere, the kanban.language prompt as before.
    */
-  language(project: string): string {
-    const custom = this.ctx.officePrompts() as Partial<Record<PromptId, { text: string }>>;
-    const langs = this.languages(project);
-    const source = { text: (id: PromptId) => promptText(custom, id) };
-    return [languageRule(source, langs) || this.text('kanban.language', project), codeRule(source, langs.code)].filter(Boolean).join('\n');
+  language(project: string, langs: LanguageSettings = this.languages(project)): string {
+    const source = { text: (id: PromptId) => this.ctx.officeText(id) };
+    return languageRules(source, langs, this.text('kanban.language', project));
   }
 
   /** One kanban prompt, layered and filled in. */
@@ -197,16 +190,16 @@ export class Composer {
     return lines.length ? this.text('kanban.attachments', project, { files: lines.join('\n') }) : '';
   }
 
-  /** The branch name's slug: of the title, or with a public language set an instruction to write one in it. */
-  private slug(task: KanbanTask): string {
-    const pub = this.publicLanguage(task.project);
-    return pub ? `<a short slug of the task's title in ${pub}, like fix-login-redirect>` : slugify(task.title);
+  /** The branch prompt's note on the slug: with a public language set, to write it in that language. */
+  private slugNote(pub: string | undefined): string {
+    return pub ? `Write the slug in ${pub}: translate the title's words when it is written in another language.` : '';
   }
 
   /** Every placeholder the task prompts share. */
   taskVars(def: FloorDef, task: KanbanTask, tool: KanbanTool, floorDir: string, x: ComposeExtra): Vars {
     const accepted = this.ctx.repo.acceptedPlan(task.id);
     const ticketId = task.ticket ?? 'none';
+    const langs = this.languages(task.project);
     return {
       taskId: task.id,
       title: task.title,
@@ -222,11 +215,11 @@ export class Composer {
         refsFile: x.refsFile ? this.text('kanban.refsFile', task.project, { file: x.refsFile }) : '',
       }),
       skills: this.skillsLine(task, tool, x.phase),
-      language: this.language(task.project),
+      language: this.language(task.project, langs),
       plan: accepted ? this.text('kanban.acceptedPlan', task.project, { plan: accepted.text.trim() }) : '',
       branchInstructions: x.checkout
         ? this.checkout(task, x.checkout)
-        : this.ctx.settings.project(task.project).branchInstructions.trim() || this.text('kanban.branch', task.project, { taskId: task.id, slug: this.slug(task), ticketId: task.ticket ? slugify(task.ticket.replace(/^ghp?:/, ''), 30) : String(task.id) }),
+        : this.ctx.settings.project(task.project).branchInstructions.trim() || this.text('kanban.branch', task.project, { taskId: task.id, slug: slugify(task.title), slugNote: this.slugNote(langs.public), ticketId: task.ticket ? slugify(task.ticket.replace(/^ghp?:/, ''), 30) : String(task.id) }),
       ticketId,
       reportDir: task.type === 'investigate' ? reportDir(this.ctx, task.id) : '',
       round: x.round ?? '',

@@ -5,6 +5,7 @@ import { providerAdapter } from '../providers/index.js';
 import { TaskNamer, fallbackTask } from '../tasks.js';
 import type { WorkerKind } from '../../shared/protocol.js';
 import type { Worker, WorkerContext } from './types.js';
+import { truncate } from './util.js';
 
 /** How many of a worker's latest prompts and tool calls the task namer sees. */
 const TASK_PROMPTS = 5;
@@ -54,6 +55,24 @@ export class WorkerTasks {
     if (hadTask && clean.length < 16) return text;
     this.name(w);
     return text;
+  }
+
+  /**
+   * The first prompt of a worker started again with `prompt` (shown as its activity right away). With a session
+   * to carry on, `prompt` goes as it is. One started over gets the station's brief ahead of it and the language
+   * rule after it, as a launch tail kept off its activity (and so its launch is not a report coming back).
+   */
+  restartPrompt(w: Worker, brief: string | undefined, prompt: string | undefined, rule: string | undefined): string | undefined {
+    if (!prompt) return prompt;
+    w.info.activity = truncate(prompt, 80);
+    if (w.info.sessionId) {
+      this.notePrompt(w, prompt);
+      return prompt;
+    }
+    const tail = languageTail(rule, prompt, undefined, w.info.kind, !!w.info.kanban);
+    if (tail) w.launchTail = tail;
+    this.notePrompt(w, prompt, true);
+    return [brief, prompt, tail].filter(Boolean).join('\n\n');
   }
 
   noteTool(w: Worker, tool: string) {

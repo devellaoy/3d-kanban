@@ -5,17 +5,26 @@ import type { Ctx } from './office/context.js';
 import { officePrompt, type PromptSource } from './prompts.js';
 
 export const TALK_FALLBACK = "the language the task or the user's message is written in";
-export const PUBLIC_FALLBACK = "the language the project's instructions ask for (when they say nothing, the language the task is written in)";
 
-/** The rule for `langs`: empty when neither is set; one set says the other goes by the task and the project, as before. */
+/**
+ * The rule for `langs`: empty when neither is set. One set says the other goes by the task and the project, as
+ * before: with only the conversation language set, the public line leaves commits and branch names alone.
+ */
 export function languageRule(source: Pick<PromptSource, 'text'> | undefined, langs: LanguageSettings): string {
   if (!langs.talk && !langs.public) return '';
-  return [officePrompt(source, 'language.talk', { language: langs.talk ?? TALK_FALLBACK }), officePrompt(source, 'language.public', { language: langs.public ?? PUBLIC_FALLBACK })].filter(Boolean).join('\n');
+  const talk = officePrompt(source, 'language.talk', { language: langs.talk ?? TALK_FALLBACK });
+  const pub = langs.public ? officePrompt(source, 'language.public', { language: langs.public }) : officePrompt(source, 'language.public.unset');
+  return [talk, pub].filter(Boolean).join('\n');
 }
 
 /** The comment rule for the code language: empty when the project follows its own conventions. */
 export function codeRule(source: Pick<PromptSource, 'text'> | undefined, code: string | undefined): string {
   return code ? officePrompt(source, 'language.code', { language: code }) : '';
+}
+
+/** The whole rule: the language lines (or `fallback` when none is set) and then the comment rule for the code. */
+export function languageRules(source: Pick<PromptSource, 'text'> | undefined, langs: LanguageSettings, fallback?: string): string {
+  return [languageRule(source, langs) || fallback, codeRule(source, langs.code)].filter(Boolean).join('\n');
 }
 
 /**
@@ -31,7 +40,7 @@ export function boundPrompts(ctx: Pick<Ctx, 'prompts' | 'kanban'>, projectId: st
     language: () => {
       const project = ctx.kanban?.ctx.settings.project(projectId);
       const langs = resolveLanguages(prompts.languages(), project?.publicLanguage, project?.commentLanguage);
-      return [languageRule(prompts, langs), codeRule(prompts, langs.code)].filter(Boolean).join('\n');
+      return languageRules(prompts, langs);
     },
   };
 }

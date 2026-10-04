@@ -192,6 +192,7 @@ export class Floor {
     // Before the workers and the dog: the back office's desks are only there once it's built.
     this.plan = new FloorPlanStore(dataDir, () => ctx.officeMap?.() !== false);
     this.jail = new Jail(dataDir);
+    const prompts = ctx.prompts(def.id);
 
     // Before the workers, so it hears about the ones who wake up needing input.
     this.dog = new Dog(def.id, dataDir, {
@@ -236,7 +237,7 @@ export class Floor {
       },
       ctx.ledger,
       ctx.capacity,
-      ctx.prompts(def.id),
+      prompts,
       ctx.runAs,
       ctx.dshProfile,
     );
@@ -273,7 +274,7 @@ export class Floor {
         ctx.toast(this, '📋 The queue is empty: every task is done 🎉');
         ctx.emit(this, { t: 'gong', why: 'queue' });
       },
-      worktreeNote: () => officePrompt(ctx.prompts(def.id), 'queue.worktree'),
+      worktreeNote: () => officePrompt(prompts, 'queue.worktree'),
     });
 
     // Meetings seat their own workers round the meeting room's table and run them round by round.
@@ -302,7 +303,7 @@ export class Floor {
           const as = ctx.ghAs(owner);
           return typeof as === 'string' ? Promise.reject(new Error(as)) : this.github.review(pr, file, as);
         },
-        prompt: (id) => ctx.prompts(def.id).text(id),
+        prompt: (id) => prompts.text(id),
       },
       // The office's wing rooms are only there once the floor's built out that far; another map's are all there.
       () => {

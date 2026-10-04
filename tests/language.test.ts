@@ -4,7 +4,7 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { FOLLOW_PROJECT, cleanLanguage, cleanLanguages, cleanProjectLanguage, resolveCommentLanguage, resolveLanguages } from '../src/shared/language.js';
-import { PUBLIC_FALLBACK, TALK_FALLBACK, boundPrompts, codeRule, languageRule } from '../src/server/language.js';
+import { TALK_FALLBACK, boundPrompts, codeRule, languageRule } from '../src/server/language.js';
 import { OfficePrompts } from '../src/server/prompts.js';
 import { languageTail } from '../src/server/workers/tasks.js';
 import { PROMPTS } from '../src/shared/prompts.js';
@@ -56,7 +56,9 @@ test('the rule is empty when nothing is set, and says both things when anything 
   assert.equal(languageRule(undefined, {}), '');
   const talkOnly = languageRule(undefined, { talk: 'Finnish' });
   assert.match(talkOnly, /^Talk to the user in Finnish:/);
-  assert.ok(talkOnly.includes(`Write everything that leaves the office in ${PUBLIC_FALLBACK}:`));
+  assert.ok(talkOnly.endsWith(PROMPTS['language.public.unset'].text));
+  assert.ok(!talkOnly.includes('leaves the office'), 'commits and branch names stay on the project’s conventions');
+  assert.match(talkOnly, /commit messages and branch names follow the project's own conventions/);
   const pubOnly = languageRule(undefined, { public: 'English' });
   assert.ok(pubOnly.startsWith(`Talk to the user in ${TALK_FALLBACK}:`));
   assert.match(pubOnly, /\nWrite everything that leaves the office in English:/);
@@ -133,7 +135,7 @@ test('a floor’s prompts carry the rule with the project’s own public languag
   assert.ok(!boundPrompts(ctx as never, 'api').language!().includes('comments in the code'));
   assert.match(web.language!(), /comments in the code/);
   assert.match(web.language!(), /Talk to the user in Finnish:[^]*leaves the office in Swedish:/);
-  assert.ok(boundPrompts(ctx as never, 'api').language!().includes(`leaves the office in ${PUBLIC_FALLBACK}:`));
+  assert.ok(boundPrompts(ctx as never, 'api').language!().includes(PROMPTS['language.public.unset'].text));
   assert.match(boundPrompts(ctx as never, 'other').language!(), /leaves the office in English:/);
   assert.equal(web.text('language.talk'), PROMPTS['language.talk'].text);
   assert.equal(web.agent(), undefined);

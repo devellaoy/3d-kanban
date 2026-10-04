@@ -166,10 +166,10 @@ export abstract class KanbanWorkers {
   }
 
   /** A worker was just hired (WorkerManager.spawn): its owner, how the kanban launches it, and which task it works on (see SpawnExtra). */
-  protected hired(w: Worker, owner: string | undefined, extra: SpawnExtra | undefined, tail = extra?.promptTail) {
+  protected hired(w: Worker, owner: string | undefined, extra: SpawnExtra | undefined) {
     w.owner = owner;
     w.extra = kanbanExtra(extra);
-    w.launchTail = tail;
+    w.launchTail = extra?.promptTail;
     if (extra?.readDir && w.extra && (w.info.provider === 'claude' || w.info.provider === 'codex')) w.extra.launchArgs = [...(w.extra.launchArgs ?? []), '--add-dir', extra.readDir];
     if (extra?.resumeSessionId) w.info.sessionId = extra.resumeSessionId;
     if (extra?.kanban) w.info.kanban = { taskId: extra.kanban.taskId, role: extra.kanban.role };

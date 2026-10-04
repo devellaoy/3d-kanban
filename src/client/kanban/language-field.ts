@@ -6,13 +6,13 @@ import { FOLLOW_PROJECT } from '../../shared/language';
 import { languageInput, languageList, readLanguage } from '../ui/language';
 import { field, select } from './ui';
 
-type Pick = '' | typeof FOLLOW_PROJECT | 'other';
+type LanguagePick = '' | typeof FOLLOW_PROJECT | 'other';
 type LanguageField = { el: HTMLElement; value(): string | null | undefined };
 
-/** A select (default / follow the project / another language) with a language box; value: a language, FOLLOW_PROJECT, null (the default) or undefined when the language isn't one. */
+/** A select (default / follow the project / another language) with a language box; value: a language, FOLLOW_PROJECT, null (the default, also an empty box) or undefined when the language isn't one. */
 function languageField(saved: string | undefined, o: { label: string; hint: string; aria: string; options: [string, string]; placeholder: string }): LanguageField {
-  const now: Pick = !saved ? '' : saved === FOLLOW_PROJECT ? FOLLOW_PROJECT : 'other';
-  const pick = select<Pick>([['', o.options[0]], [FOLLOW_PROJECT, o.options[1]], ['other', 'Another language…']], now);
+  const now: LanguagePick = !saved ? '' : saved === FOLLOW_PROJECT ? FOLLOW_PROJECT : 'other';
+  const pick = select<LanguagePick>([['', o.options[0]], [FOLLOW_PROJECT, o.options[1]], ['other', 'Another language…']], now);
   const input = languageInput(now === 'other' ? saved! : '', o.placeholder, o.aria);
   const own = h('div.kb-row', {}, input, languageList(input));
   const paint = () => own.classList.toggle('hidden', pick.value !== 'other');
@@ -20,7 +20,11 @@ function languageField(saved: string | undefined, o: { label: string; hint: stri
   paint();
   return {
     el: h('div', {}, field(o.label, pick, o.hint), own),
-    value: () => (pick.value !== 'other' ? pick.value || null : readLanguage(input).language),
+    value: () => {
+      if (pick.value !== 'other') return pick.value || null;
+      const read = readLanguage(input);
+      return read.error ? undefined : (read.language ?? null);
+    },
   };
 }
 

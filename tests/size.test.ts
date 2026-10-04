@@ -21,7 +21,7 @@ const BUDGET = 600;
  */
 const CEILINGS: Readonly<Record<string, number>> = {
   'src/server/dsh.ts': 1148,
-  'src/server/workers/manager.ts': 1029,
+  'src/server/workers/manager.ts': 1028,
   'src/client/features/rooftop/world.ts': 989,
   'src/client/world/sky.ts': 1076,
   'src/server/meetings.ts': 767,
@@ -42,8 +42,8 @@ const CEILINGS: Readonly<Record<string, number>> = {
   'src/client/kanban/taskview.ts': 959,
   'src/server/kanban/db/repository.ts': 901,
   'src/client/kanban/changesview.ts': 830,
-  'src/shared/kanban/types.ts': 692,
-  'src/client/kanban/settings.ts': 663,
+  'src/shared/kanban/types.ts': 671,
+  'src/client/kanban/settings.ts': 622,
 };
 
 const SPLIT = 'Split it along the registries instead (see docs/code-layout.md).';

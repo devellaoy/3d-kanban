@@ -291,7 +291,9 @@ export class WorkerManager extends KanbanWorkers {
       meeting: meeting?.id,
     };
     const w = newWorker(info, newTracker());
-    this.hired(w, owner, extra, languageTail(this.prompts?.language?.(), info.prompt, extra?.promptTail, kind, !!extra?.kanban)); // its owner, how the kanban launches it, and the launch tail (attached files, the language rule)
+    // Its owner and how the kanban launches it; its launch tail (attached files) gets the language rule after it.
+    this.hired(w, owner, extra);
+    w.launchTail = languageTail(this.prompts?.language?.(), info.prompt, w.launchTail, kind, !!extra?.kanban);
     this.workers.set(id, w);
     if (info.prompt) this.tasks.notePrompt(w, info.prompt, true);
     // A board agent is told what it's there for ahead of its first request (which is what shows).
@@ -316,11 +318,8 @@ export class WorkerManager extends KanbanWorkers {
     w.info.exitCode = undefined;
     const station = DESK_BY_ID.get(w.info.deskId)?.station;
     // A board agent with no session to carry on starts over, so it needs telling what it's for again.
-    const first = prompt && !w.info.sessionId ? [station && stationBrief(station, this.prompts), prompt, (w.launchTail = languageTail(this.prompts?.language?.(), prompt, undefined, w.info.kind, !!w.info.kanban))].filter(Boolean).join('\n\n') : prompt; // a session started over gets the language rule too, as its launch tail (kept off its activity)
-    if (prompt) {
-      w.info.activity = truncate(prompt, 80);
-      this.tasks.notePrompt(w, prompt, true); // what it's launched with, so its launch tail waits for the report
-    }
+    const brief = station && stationBrief(station, this.prompts);
+    const first = this.tasks.restartPrompt(w, brief, prompt, this.prompts?.language?.());
     // Cut off mid-turn by a restart: it gets on with it, as whoever was watching would have told it to.
     const carryOn = !prompt && w.interrupted && w.info.kind === 'agent' && !!w.info.sessionId;
     w.interrupted = false;
