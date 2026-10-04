@@ -39,7 +39,9 @@ function setup(opts: Setup = {}) {
     if (args[1] === 'list') return JSON.stringify(data.map((i) => ({ number: i.number, title: `Issue ${i.number}`, url: `https://github.com/o/app/issues/${i.number}`, body: 'Issue body', state: 'OPEN', assignees: (i.assignees ?? []).map((login) => ({ login })), labels: [], updatedAt: '2026-09-02T10:00:00Z' })));
     if (args[1] === 'view') {
       const i = data.find((x) => String(x.number) === args[2]);
-      return JSON.stringify({ state: 'OPEN', assignees: (i?.assignees ?? []).map((login) => ({ login })) });
+      if (!i) throw new Error('no such issue');
+      // Both what the claim reads (state, assignees) and the issue itself, as the lookup by key reads it.
+      return JSON.stringify({ number: Number(args[2]), title: `Issue ${args[2]}`, url: `https://github.com/o/app/issues/${args[2]}`, body: 'Issue body', state: 'OPEN', assignees: (i?.assignees ?? []).map((login) => ({ login })), labels: [], updatedAt: '2026-09-02T10:00:00Z' });
     }
     if (args[0] === 'api') return 'panu\n';
     return '';
@@ -146,18 +148,18 @@ test('an issue key is the project’s spelling of its repository, so another cas
   assert.equal(ctx.repo.getTask(2), undefined);
   assert.equal(ctx.repo.getTask(1)!.ticket, 'gh:o/app#12');
   // A repository the project doesn't know keeps the agent's spelling (and isn't found among its issues).
-  assert.equal((readCreateRequest({ issue: 'Else/Where#3' }, ctx, 'app') as { issue: string }).issue, 'gh:Else/Where#3');
+  assert.match(readCreateRequest({ issue: 'Else/Where#3' }, ctx, 'app') as string, /isn't one of the project's GitHub repositories/);
 });
 
 test('start from a desk worker starts the task and says if it is queued', async () => {
-  const { ctx, call } = setup();
-  const r = await call({ title: 'Go', description: 'now', start: true, desk: 'desk-3' });
+  const { ctx, call, worker } = setup();
+  const r = await call({ title: 'Go', description: 'now', start: true, desk: 'desk-3' }, worker({ hiredBy: 'Boss' }));
   assert.deepEqual(ctx.started, [1]);
   assert.equal(r.body.started, true);
   assert.equal(r.body.queued, true);
   assert.equal(r.body.task.status, 'in_progress');
   const failing = setup({ startError: 'No free desk' });
-  const f = await failing.call({ title: 'Go', description: 'now', start: true });
+  const f = await failing.call({ title: 'Go', description: 'now', start: true }, failing.worker({ hiredBy: 'Boss' }));
   assert.equal(f.status, 200);
   assert.equal(f.body.started, false);
   assert.equal(f.body.startError, 'No free desk');
@@ -172,7 +174,7 @@ test('a task worker cannot start tasks: it lands in To do with a note, and the p
   assert.deepEqual(ctx.started, []);
   assert.equal(r.body.started, false);
   assert.equal(r.body.task.status, 'todo');
-  assert.match(r.body.note, /can't start tasks/);
+  assert.match(r.body.note, /only an agent a person hired at a desk/);
   assert.deepEqual(ctx.repo.listEvents(parent.id).find((e) => e.kind === 'subtask.created')?.data, { taskId: 2, by: 'Ada' });
   assert.deepEqual(ctx.repo.listComments(parent.id).comments.map((c) => [c.authorKind, c.text]), [['system', 'Created #2 “Child”']]);
   assert.ok(ctx.changed.includes(parent.id));
@@ -256,7 +258,7 @@ test('an issue number means gh:<repo>#n when the project has one GitHub reposito
   assert.equal(one.ctx.repo.getTask(2), undefined);
   assert.deepEqual(one.ctx.toasts.length, 1);
 
-  const two = setup({ sources: [{ id: 's1', kind: 'github-repo', repos: ['o/app', 'o/web'], filters: {} }] as IssueSourceConfig[] });
+  const two = setup({ sources: [{ id: 's1', kind: 'github-repo', repos: ['o/app', 'o/web'], filters: {} }, { id: 's2', kind: 'jira', site: 'x.atlassian.net', projectKeys: ['UYT'] }] as IssueSourceConfig[] });
   const e = await two.call({ issue: 12 });
   assert.equal(e.status, 400);
   assert.match(e.body.error, /give owner\/repo#12/);
@@ -278,7 +280,7 @@ test('with an issue the agent’s title replaces the issue’s, its text comes f
 
 test('start with an issue assigns it under the account’s own gh sign-in, and without an account it does not', async () => {
   const signed = setup(env('/h/agent-create-1'));
-  const r = await signed.call({ issue: 12, start: true }, signed.worker({ accountId: 'acc1', accountName: 'Panu' }));
+  const r = await signed.call({ issue: 12, start: true }, signed.worker({ accountId: 'acc1', accountName: 'Panu', hiredBy: 'Panu' }));
   assert.equal(r.status, 200, JSON.stringify(r.body));
   assert.equal(r.body.started, true);
   assert.deepEqual(signed.ctx.started, [1]);
@@ -289,21 +291,103 @@ test('start with an issue assigns it under the account’s own gh sign-in, and w
   const slow = setup(env('/h/agent-create-2'));
   const req = Object.assign(Readable.from([Buffer.from(JSON.stringify({ issue: 12, start: true }))]), { method: 'POST', headers: {} }) as unknown as IncomingMessage;
   const res = { writeHead: () => {}, end: () => void (assignedBeforeAnswer = slow.edits().length > 0) } as unknown as ServerResponse;
-  await slow.issues.plugin.hook![PATH]!(req, res, new URL(PATH, 'http://127.0.0.1'), slow.worker({ accountId: 'acc1', accountName: 'Panu' }));
+  await slow.issues.plugin.hook![PATH]!(req, res, new URL(PATH, 'http://127.0.0.1'), slow.worker({ accountId: 'acc1', accountName: 'Panu', hiredBy: 'Panu' }));
   assert.equal(assignedBeforeAnswer, false);
   assert.equal(slow.edits().length, 1);
 
   const anon = setup();
-  const a = await anon.call({ issue: 12, start: true });
+  const a = await anon.call({ issue: 12, start: true }, anon.worker({ hiredBy: 'Boss' }));
   assert.equal(a.body.started, true);
   assert.deepEqual(anon.edits(), []);
 });
 
 test('an issue whose task waits in To do is started by a later request with start', async () => {
-  const { ctx, call } = setup();
+  const { ctx, call, worker } = setup();
   await call({ issue: 12 });
-  const r = await call({ issue: 12, start: true });
+  const r = await call({ issue: 12, start: true }, worker({ hiredBy: 'Boss' }));
   assert.equal(r.body.existed, true);
   assert.equal(r.body.started, true);
   assert.deepEqual(ctx.started, [1]);
+});
+
+test('a start needs a person behind the agent and its own project: anything else lands in To do with a note', async () => {
+  const { ctx, call, worker } = setup();
+  const asked = { title: 'Go', description: 'd', start: true };
+  // As hire_worker makes one: an agent's hire, no person.
+  const hired = hookCaller({ id: 'w1', name: 'Ada', kind: 'agent', deskId: 'desk-1', createdBy: 'Ada (kanban #1)' } as WorkerInfo, 'app');
+  const a = await call(asked, hired);
+  assert.equal(a.body.started, false);
+  assert.equal(a.body.task.status, 'todo');
+  assert.match(a.body.note, /only an agent a person hired at a desk/);
+  assert.deepEqual(ctx.started, []);
+  // A person's desk hire, and a board kiosk, start.
+  const desk = await call(asked, hookCaller({ id: 'w1', name: 'Ada', kind: 'agent', deskId: 'desk-1', createdBy: 'Bob', byPerson: true } as WorkerInfo, 'app'));
+  assert.equal(desk.body.started, true);
+  assert.equal(desk.body.note, undefined);
+  const kiosk = await call(asked, worker({ station: true }));
+  assert.equal(kiosk.body.started, true);
+  assert.deepEqual(ctx.started, [2, 3]);
+});
+
+test('another project may be named, but nothing there is started', async () => {
+  const ctx = makeCtx([def('app', '/tmp/app', { repo: 'o/app' }), def('web', '/tmp/web', { repo: 'o/web' })]);
+  const handler = createIssues(ctx, { gh: async () => '' }).plugin.hook![PATH]!;
+  const req = Object.assign(Readable.from([Buffer.from(JSON.stringify({ title: 'T', description: 'd', project: 'web', start: true }))]), { method: 'POST', headers: {} }) as unknown as IncomingMessage;
+  let text = '';
+  const res = { writeHead: () => {}, end: (t: string) => void (text = t) } as unknown as ServerResponse;
+  await handler(req, res, new URL(PATH, 'http://127.0.0.1'), { workerId: 'w1', floorId: 'app', name: 'Ada', kind: 'agent', hiredBy: 'Boss' });
+  const body = JSON.parse(text) as Json;
+  assert.equal(body.task.project, 'web');
+  assert.equal(body.task.status, 'todo');
+  assert.match(body.note, /only start tasks in its own project/);
+  assert.deepEqual(ctx.started, []);
+});
+
+test('a ticket without an issue is made once: asked again it is the task it has, started if it waits in To do', async () => {
+  const { ctx, call, worker } = setup();
+  const first = await call({ title: 'T', description: 'd', ticket: 'X-1' });
+  const again = await call({ title: 'T2', description: 'd', ticket: 'X-1', start: true }, worker({ hiredBy: 'Boss' }));
+  assert.equal(again.body.existed, true);
+  assert.equal(again.body.task.id, first.body.task.id);
+  assert.equal(again.body.started, true);
+  assert.deepEqual(ctx.started, [1]);
+  assert.equal(ctx.repo.getTask(2), undefined);
+  const third = await call({ title: 'T3', description: 'd', ticket: 'X-1' });
+  assert.equal(third.body.existed, true);
+  assert.match(third.body.note, /was made from this ticket before/);
+});
+
+test('a refused start is said also for a task made before, and a desk without start is refused', async () => {
+  const { ctx, call } = setup();
+  await call({ issue: 12 });
+  const r = await call({ issue: 12, start: true, desk: 'desk-3' });
+  assert.equal(r.body.existed, true);
+  assert.match(r.body.note, /was made from this issue before\. Created in To do: only an agent a person hired/);
+  assert.match(r.body.note, /The desk wasn't used/);
+  assert.deepEqual(ctx.started, []);
+  const bad = await call({ title: 't', description: 'd', desk: 'desk-3' });
+  assert.equal(bad.status, 400);
+  assert.match(bad.body.error, /desk only goes with start/);
+});
+
+test('an issue key of a kind the project has no source for is refused, and a Jira key is upper-cased', async () => {
+  const { ctx } = setup();
+  const read = (issue: string) => readCreateRequest({ issue }, ctx, 'app') as { issue: string } | string;
+  assert.match(read('UYT-1') as string, /no Jira source/);
+  assert.match(read('ghp:o/1#PVTI_x') as string, /no GitHub project board/);
+  assert.match(read('o/other#3') as string, /isn't one of the project's GitHub repositories/);
+  const withJira = setup({ sources: [{ id: 's1', kind: 'github-repo', repos: ['o/app'], filters: {} }, { id: 's2', kind: 'jira', site: 'x.atlassian.net', projectKeys: ['UYT'] }] as IssueSourceConfig[] });
+  assert.equal((readCreateRequest({ issue: 'uyt-1415' }, withJira.ctx, 'app') as { issue: string }).issue, 'UYT-1415');
+  const board = setup({ sources: [{ id: 's1', kind: 'github-project', owner: 'o', number: 1, filters: {} }] as IssueSourceConfig[] });
+  assert.equal((readCreateRequest({ issue: 'x/y#3' }, board.ctx, 'app') as { issue: string }).issue, 'gh:x/y#3');
+});
+
+test('an agent’s unknown issue key does not make the project fetch all its issues again', async () => {
+  const { call, calls } = setup();
+  await call({ issue: 12 });
+  const lists = () => calls.filter((a) => a[1] === 'list').length;
+  const before = lists();
+  const r = await call({ issue: 99 });
+  assert.equal(r.status, 400);
+  assert.equal(lists(), before);
 });

@@ -63,7 +63,13 @@ export interface IssueTaskOptions {
   start?: boolean;
   deskId?: string;
   input?: Partial<Pick<IntegrationTaskInput, 'title' | 'description' | 'tool' | 'model' | 'effort' | 'repoIds' | 'type' | 'event'>>;
-  reply?(r: IssueTaskResult): void;
+  /** Asked again of the sources (every one of them) when the issue isn't known yet; an agent's request leaves that to the lookup by key, so a wrong key can't cost a full refresh. Default true. */
+  refresh?: boolean;
+}
+/** What createFromIssue made: the outcome to answer with, then `claim` (assigning the issue to the caller, slow on GitHub) to await after answering. */
+export interface IssueTaskMade {
+  result: IssueTaskResult;
+  claim?: () => Promise<void>;
 }
 
 export interface IssuesOptions {
@@ -278,34 +284,33 @@ export function createIssues(ctx: KanbanContext, opts: IssuesOptions = {}) {
 
   /**
    * The task for an issue, once per ticket: made, or the one it has already (started if it is still
-   * in To do and `start` is asked). `reply` hears the outcome before the issue is assigned to the
-   * caller (see claimIssueForTask); the same outcome is returned after. Resolves to why not.
+   * in To do and `start` is asked). The caller answers with `result` first and then awaits `claim`,
+   * which assigns the issue to the caller (see claimIssueForTask). Resolves to why not.
    * `input` changes what the new task is made with: its description is put above the issue's own text.
    */
-  const createFromIssue = async (project: string, key: string, who: IssueCaller, opts: IssueTaskOptions = {}): Promise<IssueTaskResult | string> => {
+  const createFromIssue = async (project: string, key: string, who: IssueCaller, opts: IssueTaskOptions = {}): Promise<IssueTaskMade | string> => {
     if (!ctx.project(project)) return `There's no project ${project}`;
     const startOpts = opts.deskId ? { deskId: opts.deskId } : undefined;
     const existing = ctx.repo.findTaskByTicket(project, key);
     if (existing) {
       // Made before (on the kanban, or a start that failed): one in To do starts now, at the desk asked for; any other (running, done, archived) is only named.
       if (!opts.start || existing.status !== 'todo') {
-        const r: IssueTaskResult = { taskId: existing.id, existed: true };
-        opts.reply?.(r);
-        return r;
+        return { result: { taskId: existing.id, existed: true } };
       }
       const err = await ctx.engine.start(existing.id, who, startOpts);
       ctx.taskChanged(existing.id);
       wallChanged(project);
       const failed = typeof err === 'string' && err;
       const r: IssueTaskResult = { taskId: existing.id, existed: true, ...(failed ? { startError: failed } : { started: true }) };
-      opts.reply?.(r);
-      if (failed) return r;
-      const listed = state(project).items.find((i) => i.key === key) ?? (await refresh(project)).items.find((i) => i.key === key);
-      if (listed) await claimIssueForTask(ctx, { patch, io }, project, withChange(project, listed), who);
-      return r;
+      if (failed) return { result: r };
+      const claim = async () => {
+        const listed = state(project).items.find((i) => i.key === key) ?? (opts.refresh === false ? find(project, key) : (await refresh(project)).items.find((i) => i.key === key));
+        if (listed) await claimIssueForTask(ctx, { patch, io }, project, withChange(project, listed), who);
+      };
+      return { result: r, claim };
     }
     let issue = find(project, key) ?? (await browsing.load(project, key));
-    if (!issue) issue = (await refresh(project)).items.find((i) => i.key === key);
+    if (!issue && opts.refresh !== false) issue = (await refresh(project)).items.find((i) => i.key === key);
     if (!issue) return `${key} isn't among the project's issues (any more)`;
     const given = opts.input ?? {};
     const text = given.description?.trim();
@@ -319,10 +324,9 @@ export function createIssues(ctx: KanbanContext, opts: IssuesOptions = {}) {
     ctx.broadcast(message(project), project);
     wallChanged(project);
     const r: IssueTaskResult = { taskId: made.task.id, existed: made.existed, ...(made.startError ? { startError: made.startError } : made.started ? { started: true } : {}) };
-    opts.reply?.(r);
     // A start that failed takes nothing.
-    if (!made.existed && !made.startError) await claimIssueForTask(ctx, { patch, io }, project, withChange(project, issue), who);
-    return r;
+    const found = issue;
+    return { result: r, ...(!made.existed && !made.startError ? { claim: () => claimIssueForTask(ctx, { patch, io }, project, withChange(project, found), who) } : {}) };
   };
 
   const plugin: KanbanPlugin = {
@@ -364,9 +368,11 @@ export function createIssues(ctx: KanbanContext, opts: IssuesOptions = {}) {
         const made = await createFromIssue(m.project, m.issueKey, c, {
           start: m.start,
           deskId: m.deskId,
-          reply: (r) => ok(c, m.rid, { taskId: r.taskId, existed: r.existed, ...(r.startError ? { startError: r.startError } : r.started ? { started: true } : {}) }),
         });
-        if (typeof made === 'string') fail(c, m.rid, made);
+        if (typeof made === 'string') return fail(c, m.rid, made);
+        const r = made.result;
+        ok(c, m.rid, { taskId: r.taskId, existed: r.existed, ...(r.startError ? { startError: r.startError } : r.started ? { started: true } : {}) });
+        await made.claim?.();
       },
     },
     start() {

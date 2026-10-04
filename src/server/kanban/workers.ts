@@ -224,3 +224,8 @@ export function kanbanExtraArgs(w: Worker, adapter: { id: string }, setup: unkno
 export function kanbanWorkerEnv(info: Pick<WorkerInfo, 'kind'>): Record<string, string> {
   return info.kind === 'shell' ? {} : { AGENT_OFFICE_TASKS: '1' };
 }
+
+/** What a hire's WorkerInfo takes from its SpawnExtra: byPerson when createdBy names the person who hired it at a desk. */
+export function kanbanHireInfo(extra?: Pick<SpawnExtra, 'byPerson'>): { byPerson?: true } {
+  return extra?.byPerson ? { byPerson: true } : {};
+}

@@ -27,7 +27,7 @@ import { CARRY_ON_PROMPT, WorkerTasks, firstPrompt } from './tasks.js';
 import { flushScreens, fullScreens, newTerm, offlineBanner, screenText, type HeadlessTerminal } from './terminal.js';
 import type { HookEnv, OpenedPr, RepoSource, RunAs, SpawnExtra, Worker, WorkerContext, WorkerEvents, WorkerHandle } from './types.js';
 import { clamp, safeEq, truncate } from './util.js';
-import { COLORS, KanbanWorkers, NAMES, kanbanExtraArgs, kanbanSetup, kanbanWorkerEnv, newWorker, type DepartureIntent } from './worker.js'; // KanbanWorkers and friends, via worker.js
+import { COLORS, KanbanWorkers, NAMES, kanbanExtraArgs, kanbanSetup, kanbanWorkerEnv, kanbanHireInfo, newWorker, type DepartureIntent } from './worker.js'; // KanbanWorkers and friends, via worker.js
 import { WorkerTrees, lostMessage } from './worktree.js';
 
 const SCREEN_INTERVAL_MS = 250;
@@ -279,7 +279,7 @@ export class WorkerManager extends KanbanWorkers {
       acked: true,
       createdBy: by,
       createdAt: Date.now(),
-      ...(via ? { via } : {}), ...(extra?.byPerson ? { byPerson: true as const } : {}), // byPerson: createdBy names the person who hired it
+      ...(via ? { via } : {}), ...kanbanHireInfo(extra),
       prompt: kind === 'shell' ? undefined : prompt?.trim() || undefined,
       worktree: wt,
       repos: others,
