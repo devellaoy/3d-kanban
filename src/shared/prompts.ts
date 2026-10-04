@@ -369,6 +369,48 @@ const DEFS = {
     text: `Read every reviewer's findings ({{findings}}). Drop the duplicates, keeping the clearest wording, and write one combined review to {{output}} in Markdown: a short summary with your verdict first, then the findings, the most serious first, each tagged with the lens it came from in bold brackets like **[{{exampleRole}}]**, with its file:line. Don't post it: the office posts it on the pull request once the file is written. ${OUTPUT}`,
   },
 
+  'meeting.handoff': {
+    group: 'meetings',
+    label: '🗂️ Handing the output on',
+    used: "What 🗂️ Make a kanban task and 🤖 Hand to a worker on a finished meeting put in the hire dialog (and the task's description): the meeting's question and its output.",
+    vars: {
+      title: "The meeting's title",
+      question: 'What the meeting was about, as it was called (cut short when it is long)',
+      pattern: 'The kind of meeting: Debate, Lead & team…',
+      output: "The meeting's output file",
+      content: "The output itself, or a line saying it is attached or cut short",
+      branch: "The meeting's branch, when it has one",
+      commit: 'The commit on that branch that holds the output',
+      pr: 'The pull request the meeting reviewed, if any',
+      summary: "The meeting's line: pattern, rounds, tokens and how it ended",
+    },
+    text: 'The meeting “{{title}}” ({{pattern}}) was about:\n{{question}}\n\nIt came to the result below ({{output}}). Act on it in this project. Check it against the code first: if anything is unclear or contradicts the code, ask before you change anything.\n\n{{content}}',
+  },
+  'meeting.handoff.pr': {
+    group: 'meetings',
+    label: '🗂️ Handing a review on',
+    used: 'Added to a hand-off of a Review panel meeting: where the changes go.',
+    vars: { pr: 'The pull request the meeting reviewed', title: "The meeting's title" },
+    optional: true,
+    text: "The meeting reviewed pull request #{{pr}}. Make the changes on that pull request's branch, not a new one: in your own worktree run `gh pr checkout {{pr}}`, and push your commits to it.",
+  },
+  'meeting.handoff.stopped': {
+    group: 'meetings',
+    label: '🗂️ Handing a stopped meeting on',
+    used: 'Added to a hand-off of a meeting that was stopped before it finished.',
+    vars: { summary: "The meeting's line, with why it stopped", title: "The meeting's title" },
+    optional: true,
+    text: 'The meeting was stopped before it finished ({{summary}}), so the result below may be partial.',
+  },
+  'meeting.handoff.branch': {
+    group: 'meetings',
+    label: '🗂️ Starting from the meeting’s branch',
+    used: "Added to a hand-off when 'Start from the meeting's branch' is on and the meeting committed its work.",
+    vars: { branch: "The meeting's branch", commit: 'The commit on it that holds the output', title: "The meeting's title" },
+    optional: true,
+    text: 'The meeting committed its work on the branch {{branch}} (commit {{commit}}). Start from it: in your own worktree run `git merge {{branch}}` before anything else. If the branch is gone, say so and work from the result below.',
+  },
+
   // --- 🏷️ Worker signs ---
   'office.namer': {
     group: 'office',
