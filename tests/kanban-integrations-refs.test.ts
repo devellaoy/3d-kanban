@@ -10,7 +10,7 @@ import { legacyReferenceAnswer } from '../src/server/kanban/integrations/compat/
 import { BODY_MAX } from '../src/server/kanban/integrations/util.js';
 import type { KanbanTask } from '../src/shared/kanban/types.js';
 import { Readable } from 'node:stream';
-import { TASK_TOOLS, UsageError, buildRequest, formatAnswer, main as officeTasks, parseArgs, tasksVisible } from '../bin/office-tasks.js';
+import { EFFORTS, TASK_TOOLS, UsageError, buildRequest, formatAnswer, main as officeTasks, parseArgs, tasksVisible } from '../bin/office-tasks.js';
 import { handleMcp, instructions } from '../bin/office-workers.js';
 import { def, makeCtx, type TestCtx } from './kanban-integrations-ctx.js';
 
@@ -319,6 +319,28 @@ test('office-tasks create: flags, the POST, the answer on stdout and stderr, and
   const issueOnly = await run(['create', '--issue', '5'], stub(answer()), '');
   assert.equal(issueOnly.code, 0);
   assert.deepEqual(JSON.parse(String(calls.at(-1)!.init.body)), { issue: 5 });
+  // --no-description skips stdin; stdin that never sends anything counts as empty after the idle timeout.
+  assert.equal((parseArgs(['create', '--issue', '5', '--no-description']) as { noDescription: unknown }).noDescription, true);
+  assert.equal((parseArgs(['create', '--title', 'T', '--effort', 'minimal']) as { effort: unknown }).effort, 'minimal');
+  const never = () => new Readable({ read() {} });
+  const runIdle = async (argv: string[], stdin: Readable) => {
+    const err: string[] = [];
+    const code = await officeTasks(argv, { env: ENV, fetch: stub(answer()), stdin, stdinIdleMs: 30, out: () => {}, err: (s) => err.push(s) });
+    return { code, err: err.join('\n') };
+  };
+  const hung = await runIdle(['create', '--title', 'T'], never());
+  assert.equal(hung.code, 2);
+  assert.match(hung.err, /needs --title and a description/);
+  const hungIssue = await runIdle(['create', '--issue', '5'], never());
+  assert.equal(hungIssue.code, 0);
+  const skipped = await runIdle(['create', '--issue', '5', '--no-description'], never());
+  assert.equal(skipped.code, 0);
+  assert.deepEqual(JSON.parse(String(calls.at(-1)!.init.body)), { issue: 5 });
+  const slow = new Readable({ read() {} });
+  setTimeout(() => slow.push('late but started'), 10);
+  setTimeout(() => slow.push(null), 80);
+  assert.equal((await runIdle(['create', '--title', 'T'], slow)).code, 0);
+  assert.equal(JSON.parse(String(calls.at(-1)!.init.body)).description, 'late but started');
   const refused = await run(['create', '--title', 'T', '--prompt', 'D'], stub({ error: 'No such project' }, 404));
   assert.equal(refused.code, 1);
 
@@ -333,8 +355,12 @@ test('office-tasks create: flags, the POST, the answer on stdout and stderr, and
   assert.equal((await names(ENV)).some((t) => t.name === 'create_task'), false);
   const visible = await names(env);
   assert.ok(visible.some((t) => t.name === 'create_task'));
-  assert.doesNotMatch((await names(ENV)).find((t) => t.name === 'hire_worker')!.description, /create_task/);
-  assert.match(visible.find((t) => t.name === 'hire_worker')!.description, /create_task/);
+  assert.doesNotMatch(visible.find((t) => t.name === 'hire_worker')!.description, /create_task|kanban/, 'the kanban guidance is in the instructions only');
+  assert.doesNotMatch(tool.description, /hire_worker/);
+  assert.match(tool.description, /without permission prompts, unattended/);
+  assert.match(tool.description, /person hired at a desk or a board agent/);
+  assert.deepEqual(EFFORTS, ['minimal', 'low', 'medium', 'high', 'xhigh', 'max']);
+  assert.deepEqual((tool.inputSchema.properties.effort as { enum: string[] }).enum, EFFORTS);
   assert.equal(TASK_TOOLS.length, 3);
   assert.doesNotMatch(instructions(ENV), /create_task/);
   assert.match(instructions(env), /create_task[\s\S]*hire_worker only when explicitly asked/);

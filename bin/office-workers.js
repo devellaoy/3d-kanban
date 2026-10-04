@@ -326,7 +326,7 @@ const BASE_INSTRUCTIONS =
   'puts a new agent to work, send_home sends agents home and deletes their worktrees and branches, and tell_worker gives one a prompt. Everyone in the office sees who did what. ' +
   'The office-workers command on your PATH does the same from a shell.';
 
-/** Said where the kanban tools are listed, so "get an agent to do this" lands on the board. */
+/** The one place the kanban guidance is said, so "get an agent to do this" lands on the board. */
 const KANBAN_NOTE =
   'This office runs a kanban: when you are asked to create a task, or to get an agent or worker to do some piece of work, use create_task (the task goes on the board and through plan, runs and review); ' +
   'use hire_worker only when explicitly asked for a plain one-off worker outside the kanban. get_task and search_tasks read tasks.';
@@ -336,11 +336,9 @@ export function instructions(env) {
   return tasksVisible(env) ? `${BASE_INSTRUCTIONS} ${KANBAN_NOTE}` : BASE_INSTRUCTIONS;
 }
 
-/** The tools to list: with the kanban's, hire_worker points at create_task. */
+/** The tools to list: the kanban's only for the workers the office tells about tasks. */
 export function listedTools(env) {
-  if (!tasksVisible(env)) return TOOLS;
-  const note = ' This office runs a kanban: for work to be done as a task on the board (plan, runs, review), or when asked to create a task, use create_task instead; hire_worker is for a plain one-off worker outside the kanban.';
-  return [...TOOLS.map((t) => (t.name === 'hire_worker' ? { ...t, description: t.description + note } : t)), ...TASK_TOOLS];
+  return tasksVisible(env) ? [...TOOLS, ...TASK_TOOLS] : TOOLS;
 }
 
 /** Runs a tool; resolves to its text, and whether nothing it was asked came off, or throws with why it failed. */

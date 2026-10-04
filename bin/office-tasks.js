@@ -26,11 +26,17 @@ const USAGE = `Usage:
                                                       or Jira key; then title and description may be
                                                       left out) --ticket <id> --ticket-url <url>
                                                       --provider claude|codex --model <m>
-                                                      --effort low|medium|high|xhigh|max
+                                                      --effort minimal|low|medium|high|xhigh|max
                                                       --type implement|investigate --start
-                                                      --desk <id> --json
-                                              prints the task's number; --start seats a worker
-                                              (or queues it when the office is full)`;
+                                                      --desk <id> (with --start) --no-description --json
+                                              prints the task's number. --start seats a worker
+                                              (or queues it when the office is full) that runs
+                                              without permission prompts, unattended; it is
+                                              honoured only for an agent a person hired at a
+                                              desk or a board agent, in its own project —
+                                              otherwise the task waits in To do for a person.
+                                              --no-description skips reading stdin (with --issue);
+                                              stdin that sends nothing for 3 s counts as empty`;
 
 export class UsageError extends Error {}
 
@@ -39,7 +45,9 @@ const RETRY_MS = 6000;
 const TIMEOUT_MS = 15_000;
 /** Creating a task may fetch the issue from GitHub and start a worker. */
 const CREATE_TIMEOUT_MS = 90_000;
-export const EFFORTS = ['low', 'medium', 'high', 'xhigh', 'max'];
+/** A description on stdin that has not started within this long is taken as none. */
+const STDIN_IDLE_MS = 3000;
+export const EFFORTS = ['minimal', 'low', 'medium', 'high', 'xhigh', 'max'];
 export const PROVIDERS = ['claude', 'codex'];
 export const TASK_TYPES = ['implement', 'investigate'];
 
@@ -83,7 +91,7 @@ function parseCreate(rest) {
   const { opts, words } = options(
     rest,
     ['--title', '--prompt', '--project', '--issue', '--ticket', '--ticket-url', '--provider', '--model', '--effort', '--type', '--desk'],
-    ['--start', '--json'],
+    ['--start', '--json', '--no-description'],
     ['--repo'],
   );
   if (words.length) throw new UsageError(`Unexpected argument: ${words[0]} (give the description on stdin or with --prompt)`);
@@ -106,6 +114,7 @@ function parseCreate(rest) {
     out.issue = /^\d+$/.test(issue) ? Number(issue) : issue;
   }
   if (opts['--start']) out.start = true;
+  if (opts['--no-description']) out.noDescription = true;
   return out;
 }
 
@@ -275,7 +284,8 @@ export const TASK_TOOLS = [
       "Puts work on this office's kanban board as a task, which runs through the kanban process (plan, implementation runs, review, the board's columns), not as a plain worker. " +
       'Give a title and a description that is complete on its own (what to change and where, how to check it), unless you give issue. ' +
       'issue links a GitHub issue (a number, or owner/repo#12) or a Jira key, which the task takes like one made from the issues board; it is assigned to whoever you work for when they have their own GitHub sign-in. ' +
-      "The task stays in To do unless start is true, which seats a worker for it (or queues it when the office is full). A task's own worker can only leave new tasks in To do. " +
+      'The task stays in To do for a person unless start is true, which seats a worker for it (or queues it when the office is full); that worker runs without permission prompts, unattended. ' +
+      "start is honoured only for an agent a person hired at a desk or a board agent, and only in its own project; for any other caller (a task's worker, an agent-hired or queued worker) or another project the task waits in To do. " +
       'Returns the task\'s number and link; get_task reads it afterwards.',
     inputSchema: {
       type: 'object',
@@ -291,7 +301,7 @@ export const TASK_TOOLS = [
         model: { type: 'string', description: "A model for it, instead of the provider's default." },
         effort: { type: 'string', enum: EFFORTS, description: 'Reasoning effort, for agents that take one.' },
         type: { type: 'string', enum: TASK_TYPES, description: 'implement (default) changes code; investigate only reports.' },
-        start: { type: 'boolean', description: 'Start it now instead of leaving it in To do.' },
+        start: { type: 'boolean', description: 'Start it now instead of leaving it in To do. The worker runs unattended without permission prompts; honoured only for a person-hired or board agent, in its own project.' },
         desk: { type: 'string', description: 'A desk id for the worker, when start is true.' },
       },
       required: [],
@@ -355,13 +365,27 @@ export async function runTaskTool(name, args, io) {
  * @param {string[]} argv
  * @param {{ env?: Record<string, string | undefined>, stdin?: NodeJS.ReadableStream & { isTTY?: boolean }, fetch?: typeof fetch, out?: (s: string) => void, err?: (s: string) => void }} [io]
  */
-function readStdin(stdin) {
+/** Stdin to its end; empty when nothing has arrived within idleMs (a pipe nobody closes). Once data starts, it reads to EOF. */
+function readStdin(stdin, idleMs) {
   return new Promise((resolve, reject) => {
     let data = '';
+    const timer = setTimeout(() => {
+      stdin.pause?.();
+      resolve('');
+    }, idleMs);
     stdin.setEncoding('utf8');
-    stdin.on('data', (c) => (data += c));
-    stdin.on('end', () => resolve(data));
-    stdin.on('error', reject);
+    stdin.on('data', (c) => {
+      clearTimeout(timer);
+      data += c;
+    });
+    stdin.on('end', () => {
+      clearTimeout(timer);
+      resolve(data);
+    });
+    stdin.on('error', (e) => {
+      clearTimeout(timer);
+      reject(e);
+    });
   });
 }
 
@@ -377,13 +401,13 @@ export async function main(argv, io = {}) {
       return 0;
     }
     if (cmd.cmd === 'create') {
-      const { cmd: _, json, prompt, ...body } = cmd;
+      const { cmd: _, json, prompt, noDescription, ...body } = cmd;
       // The description comes from --prompt or stdin; an issue can stand in for it.
       if (prompt !== undefined) body.description = prompt.trim();
-      else if (body.issue === undefined || !(io.stdin ?? process.stdin).isTTY) {
+      else if (!noDescription && (body.issue === undefined || !(io.stdin ?? process.stdin).isTTY)) {
         const stdin = io.stdin ?? process.stdin;
         if (stdin.isTTY) throw new UsageError(`Give the description on stdin (office-tasks create --title "…" <<'EOF' … EOF) or with --prompt "…"`);
-        const text = (await readStdin(stdin)).trim();
+        const text = (await readStdin(stdin, io.stdinIdleMs ?? STDIN_IDLE_MS)).trim();
         if (text) body.description = text;
       }
       if (body.issue === undefined && (!body.title || !body.description)) throw new UsageError('A task needs --title and a description (stdin or --prompt), unless --issue is given');
