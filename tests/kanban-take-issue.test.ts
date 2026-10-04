@@ -25,19 +25,19 @@ const board = (names: string[], current?: string, fieldId: string | undefined = 
 
 test('inProgressOption finds the board’s own name for In progress, case and spaces aside', () => {
   for (const name of ['In progress', ' IN-PROGRESS ', 'Doing', 'started', 'Working', 'WIP', 'Ongoing', 'Käynnissä', 'Työn alla']) {
-    assert.equal(inProgressOption(board(['Todo', name, 'Done']))?.name, name, name);
+    assert.equal((inProgressOption(board(['Todo', name, 'Done'])) as { option: { name: string } }).option.name, name, name);
   }
-  assert.equal(inProgressOption(board(['Todo', 'Done'])), undefined);
+  assert.equal(inProgressOption(board(['Todo', 'Done'])), 'none');
 });
 
 test('inProgressOption leaves an item that is on it already, or past it, and a board without a Status field', () => {
   const names = ['Inbox', 'Doing', 'Review', 'Shipped'];
-  assert.equal(inProgressOption(board(names, 'Inbox'))?.id, 'o-Doing');
-  assert.equal(inProgressOption(board(names))?.id, 'o-Doing');
-  assert.equal(inProgressOption(board(names, 'Doing')), undefined);
-  assert.equal(inProgressOption(board(names, 'Review')), undefined);
-  assert.equal(inProgressOption(board(names, 'Shipped')), undefined);
-  assert.equal(inProgressOption({ ...board(names, 'Inbox'), fieldId: undefined }), undefined);
+  assert.deepEqual(inProgressOption(board(names, 'Inbox')), { option: { id: 'o-Doing', name: 'Doing' } });
+  assert.deepEqual(inProgressOption(board(names)), { option: { id: 'o-Doing', name: 'Doing' } });
+  assert.equal(inProgressOption(board(names, 'Doing')), 'at-or-past');
+  assert.equal(inProgressOption(board(names, 'Review')), 'at-or-past');
+  assert.equal(inProgressOption(board(names, 'Shipped')), 'at-or-past');
+  assert.equal(inProgressOption({ ...board(names, 'Inbox'), fieldId: undefined }), 'none');
 });
 
 // --- takeIssue ------------------------------------------------------------------------------------
@@ -52,7 +52,7 @@ function item(status: string | undefined, options = ['Todo', 'In progress', 'Don
   };
 }
 
-function ioWith(opts: { status?: string; options?: string[]; scope?: boolean; unassigned?: boolean } = {}) {
+function ioWith(opts: { status?: string; options?: string[]; scope?: boolean; unassigned?: boolean; kind?: 'issue' | 'pr' | 'closed' } = {}) {
   const calls: string[][] = [];
   const io: IssueActIo = {
     gh: async (args) => {
@@ -66,6 +66,7 @@ function ioWith(opts: { status?: string; options?: string[]; scope?: boolean; un
         const it = item(opts.status, opts.options);
         return JSON.stringify({ data: q.includes('node(id') ? { node: it } : { repository: { issueOrPullRequest: { projectItems: { nodes: [it] } } } } });
       }
+      if (args[0] === 'api' && args[1].startsWith('repos/')) return `${opts.kind === 'closed' ? 'closed' : 'open'}\t${opts.kind === 'pr'}\n`;
       if (args[0] === 'api') return 'panu\n';
       if (args[1] === 'view') return JSON.stringify({ state: 'OPEN', assignees: opts.unassigned === false ? [{ login: 'x' }] : [] });
       return '';
@@ -134,7 +135,7 @@ test('takeIssue without project sources makes no gh call for the Status', async 
   const repoOnly = [{ id: 's', kind: 'github-repo', repos: ['o/app'], filters: {} }] as IssueSourceConfig[];
   const r = await takeIssue({ statusIo: g.io, key: 'gh:o/app#1', sources: repoOnly });
   assert.deepEqual(r, { moved: [], warnings: [] });
-  assert.deepEqual(g.calls, []);
+  assert.deepEqual(g.calls.filter((a) => a[1] === 'graphql'), []);
 });
 
 // --- the engine's start hook ----------------------------------------------------------------------
@@ -185,4 +186,30 @@ test('a successful start, through ctx.engine or the returned engine, runs every 
   } finally {
     failed.done();
   }
+});
+
+test('takeIssue reads a pull request fresh and does nothing with it: no assignee, no Status', async () => {
+  const g = ioWith({ status: 'Todo', kind: 'pr' });
+  const r = await takeIssue({ assignIo: g.io, statusIo: g.io, key: 'gh:o/app#1', sources: SOURCES });
+  assert.deepEqual(r, { moved: [], warnings: [] });
+  assert.deepEqual(g.edits(), []);
+  assert.deepEqual(g.mutations(), []);
+});
+
+test('takeIssue leaves a closed issue alone: not assigned, Status not moved', async () => {
+  const g = ioWith({ status: 'Todo', kind: 'closed' });
+  const r = await takeIssue({ assignIo: g.io, statusIo: g.io, key: 'gh:o/app#1', sources: SOURCES });
+  assert.deepEqual(r, { moved: [], warnings: [] });
+  assert.deepEqual(g.edits(), []);
+  assert.deepEqual(g.mutations(), []);
+  // An open issue is still taken.
+  const open = ioWith({ status: 'Todo', kind: 'issue' });
+  assert.equal((await takeIssue({ assignIo: open.io, statusIo: open.io, key: 'gh:o/app#1', sources: SOURCES })).moved.length, 1);
+});
+
+test('takeIssue: a board without an In progress option warns once, an item already at it does not', async () => {
+  const none = ioWith({ status: 'Todo', options: ['Todo', 'Done'] });
+  assert.deepEqual((await takeIssue({ statusIo: none.io, key: 'gh:o/app#1', sources: SOURCES })).warnings, ['📋 Roadmap has no In progress status']);
+  const at = ioWith({ status: 'In progress' });
+  assert.deepEqual(await takeIssue({ statusIo: at.io, key: 'gh:o/app#1', sources: SOURCES }), { moved: [], warnings: [] });
 });

@@ -563,8 +563,8 @@ answers `kanban.ok {rid, ...}` or `kanban.error {rid, message}`. Deltas are push
     `skills.list` are for anyone signed in.
     - Taking the issue (`integrations/issues/autoassign.ts`), after the answer:
       - when: a new task, or a To do one started from its card (not a start that failed);
-      - who: the person, under their own gh sign-in (the office's shared gh, or no sign-in: skipped);
-      - only if: an open GitHub issue (not a pull request, a draft or Jira) with no assignee, read fresh;
+      - who: the person, under their own gh sign-in (never the office's shared gh for an assignment); the Status move also runs under the office's gh where that is theirs (`ghAs` undefined, the shared password), and an account without a gh sign-in gets neither, only a warning;
+      - only if: an open GitHub issue (not a pull request, a draft or Jira) with no assignee, read fresh (`takeIssue` asks GitHub whether it is a pull request or closed: then nothing is assigned and no Status moves; a draft only gets its Status);
       - result: a floor toast, a status line on the task and the overlay (as any write above);
       - failure: a warn toast to the person only.
   - `meta.get` (anyone signed in) is answered with `kanban.meta {projects, settings, secrets, me}`: what a

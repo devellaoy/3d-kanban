@@ -63,7 +63,7 @@ export function withRelated(body: string, block: string): string {
  * `other`, it's for one of the other repositories of a worker across repositories: the issue is its
  * own floor's (`home`), so this one only mentions it. Exactly one pull request closes the issue.
  */
-function draftPr(info: WorkerInfo, commits: string[], by: string, home: string | undefined, other = false): { title: string; body: string } {
+export function draftPr(info: WorkerInfo, commits: string[], by: string, home: string | undefined, other = false): { title: string; body: string } {
   const task = (info.prompt ?? '').replace(/\r\n?/g, '\n').trim();
   const firstLine = task.split('\n').map((l) => l.trim()).find(Boolean) ?? '';
   const issue = promptIssue(info.prompt);
@@ -71,8 +71,10 @@ function draftPr(info: WorkerInfo, commits: string[], by: string, home: string |
   const parts: string[] = [];
   if (task) parts.push(`## Task\n\n${task.length > PR_TASK_MAX ? `${task.slice(0, PR_TASK_MAX)}…` : task}`);
   parts.push(`## Commits\n\n${commits.map((c) => `- \`${c.slice(0, c.indexOf(' '))}\` ${c.slice(c.indexOf(' ') + 1)}`).join('\n')}`);
-  if (issue && !other) parts.push(closingRef(home ? `gh:${home}#${issue.number}` : undefined, home) ?? `Closes #${issue.number}`);
-  else if (issue && home) parts.push(`Part of ${home}#${issue.number}`);
+  // The issue's own repository is where "#n" points, which is not always the floor's.
+  const repo = issue?.repo ?? home;
+  if (issue && !other) parts.push(closingRef(repo ? `gh:${repo}#${issue.number}` : undefined, home) ?? `Closes #${issue.number}`);
+  else if (issue && repo) parts.push(`Part of ${repo}#${issue.number}`);
   parts.push(`_Opened from Agent Office by ${by} · ${info.name} at ${DESK_BY_ID.get(info.deskId)?.label ?? info.deskId}_`);
   return { title, body: parts.join('\n\n') };
 }

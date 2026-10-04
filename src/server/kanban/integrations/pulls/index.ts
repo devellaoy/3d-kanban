@@ -17,7 +17,7 @@ import { floorPullsListeners, type PulledFloor } from './board.js';
 import type { GhRunner } from '../issues/source.js';
 import { fail, ok } from '../util.js';
 import { forkTest, polledPulls } from './prfix.js';
-import { checkClosing } from './closes.js';
+import { checkClosing, type ClosingMark } from './closes.js';
 import { branchPrs, findBundle, prOwners, prState, type BundleBy, type RepoPulls } from './bundle.js';
 
 const FIELDS = 'number,title,url,state,isDraft,headRefName';
@@ -222,7 +222,7 @@ export function createPullsParts(ctx: KanbanContext, opts: PullsOptions = {}) {
   /** A repository's default branch, by gh. Key: owner/name, lower-cased. */
   const defaultBranches = asked(async (repo) => (await runGh(['repo', 'view', repo, '--json', 'defaultBranchRef', '--jq', '.defaultBranchRef.name'], ctx.dataDir)).trim() || undefined);
   /** The PRs already looked at for their issue's closing line (see checkClosing), by URL. */
-  const closingChecked = new Map<string, number>();
+  const closingChecked = new Map<string, ClosingMark>();
   let stopped = false;
 
   /**

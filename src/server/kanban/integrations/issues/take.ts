@@ -5,7 +5,7 @@
 
 import { parseGhKey } from '../../../../shared/kanban/issuecard.js';
 import type { IssueSourceConfig } from '../../../../shared/kanban/types.js';
-import { ghClaimIfUnassigned } from './github-ops.js';
+import { ghClaimIfUnassigned, ghIssueKind } from './github-ops.js';
 import { inProgressOption, resolveBoards, setBoardStatus, type ProjectTarget } from './project-ops.js';
 import type { IssueActIo } from './source.js';
 
@@ -25,7 +25,12 @@ export async function takeIssue(opts: { assignIo?: IssueActIo; statusIo: IssueAc
   const draft = /^ghp:[^#]+#(.+)$/.exec(opts.key);
   // Jira and anything else is left as it is.
   if (!issue && !draft) return out;
-  if (issue && opts.assignIo && !opts.isPr) {
+  // A pull request is not taken and a closed issue is left as it is, whatever the cached list said: asked of GitHub now.
+  if (issue) {
+    const kind = opts.isPr ? { isPr: true, open: true } : await ghIssueKind(opts.statusIo, issue.repo, issue.number);
+    if (kind && (kind.isPr || !kind.open)) return out;
+  }
+  if (issue && opts.assignIo) {
     try {
       out.assigned = await ghClaimIfUnassigned(opts.assignIo, issue.repo, issue.number);
     } catch (err) {
@@ -38,15 +43,13 @@ export async function takeIssue(opts: { assignIo?: IssueActIo; statusIo: IssueAc
   try {
     for (const board of await resolveBoards(opts.statusIo, target, boards)) {
       if (!board.fieldId) continue;
-      const option = inProgressOption(board);
-      if (!option) {
-        // On it already, or past it, is fine; a board with no such option is worth a word.
-        if (!inProgressOption({ ...board, current: undefined })) out.warnings.push(`📋 ${board.title} has no In progress status`);
-        continue;
-      }
+      const found = inProgressOption(board);
+      if (found === 'none') out.warnings.push(`📋 ${board.title} has no In progress status`);
+      // On it already, or past it, is fine.
+      if (typeof found === 'string') continue;
       try {
-        await setBoardStatus(opts.statusIo, board, option.id);
-        out.moved.push({ to: option.name, board: board.title });
+        await setBoardStatus(opts.statusIo, board, found.option.id);
+        out.moved.push({ to: found.option.name, board: board.title });
       } catch (err) {
         out.warnings.push(`📋 Couldn’t move ${opts.key} on ${board.title}: ${msg(err)}`);
       }

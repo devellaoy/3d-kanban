@@ -11,6 +11,7 @@ import { WorkerManager, workedMs, type HookEnv, type RunAs } from './workers.js'
 import { GitHub, MergeWatch } from './github.js';
 import type { GhAs } from './signins.js';
 import { TaskQueue } from './queue.js';
+import { WorkerCloses } from './worker-closes.js';
 import { queueEvents } from './queue-events.js';
 import { Changes } from './changes.js';
 import { Decor } from './decor.js';
@@ -142,6 +143,7 @@ export class Floor {
   readonly workers: WorkerManager;
   readonly github: GitHub;
   readonly queue: TaskQueue;
+  private readonly closes: WorkerCloses;
   readonly changes: Changes;
   readonly decor: Decor;
   /** The signs over its desks, and how far its back office is built out. */
@@ -215,6 +217,7 @@ export class Floor {
           ctx.emit(this, { t: 'worker.update', worker });
           // Still being built: the first updates come from waking the workers already at their desks.
           this.queue?.onWorker(worker);
+          this.closes?.onWorker(worker);
           this.meetings?.onWorker(worker);
           this.dog.onWorker(worker);
           ctx.workerChanged(this, worker);
@@ -251,12 +254,14 @@ export class Floor {
         // The board shows every repository of the project (the same list as upstream's for one).
         ctx.emit(this, { t: 'gh.pulls', state: this.pullsState() });
         this.queue?.onPulls(state.items);
+        this.closes?.onPulls(state.items);
         if (state.loading || state.error) return;
         this.boardPulled();
       },
       { off: this.git ? undefined : NOT_GIT },
     );
     // The 📋 task queue seats workers by itself: it watches the workers and links PRs from GitHub.
+    this.closes = new WorkerCloses(this, ctx);
     this.queue = new TaskQueue(dataDir, this.workers, !!this.project.branch, queueEvents(this, ctx));
 
     // Meetings seat their own workers round the meeting room's table and run them round by round.
@@ -360,17 +365,17 @@ export class Floor {
     return wallIssues(this.id) ?? this.github.issues;
   }
 
-  /**
-   * Assigns a card's issue on GitHub to `as` (else the office's gh): one of the floor's own issues as
-   * upstream does, another repository's by its key, and moves it to In progress on the project's boards.
-   * A card that isn't a GitHub issue (Jira, a draft) is left be. Resolves to why not, or nothing.
-   */
   /** A card's issue as a key: its own, else the floor's repository's issue `n` (`gh:owner/repo#n`). */
   cardRef(issue: number | undefined, key: string | undefined): string | undefined {
     const repo = this.def.repo ?? (this.git ? checkoutRepo(this.dir) : undefined);
     return key ?? (issue && repo ? ghIssueKey(repo, issue) : undefined);
   }
 
+  /**
+   * Assigns a card's issue on GitHub to `as` (else the office's gh): one of the floor's own issues as
+   * upstream does, another repository's by its key, and moves it to In progress on the project's boards.
+   * A card that isn't a GitHub issue (Jira, a draft) is left be. Resolves to why not, or nothing.
+   */
   async claimCard(issue: number | undefined, key: string | undefined, as?: GhAs): Promise<string | undefined> {
     // A project's draft has no assignee, only a Status.
     if (key?.startsWith('ghp:')) {
@@ -378,11 +383,12 @@ export class Floor {
       return undefined;
     }
     // The issue is the one the key names, whatever number came with it; without a key, the floor's own repository's.
-    const gh = key ? parseGhKey(key) : issue ? { repo: this.def.repo ?? (this.git ? checkoutRepo(this.dir) : undefined), number: issue } : undefined;
-    if (!gh) return undefined;
-    const err = !key || isPrimaryIssue({ number: gh.number, key }, this.def.repo) ? await this.github.claim(gh.number, as) : await claimGhKey(key, this.dir, as?.env);
+    const ref = this.cardRef(issue, key);
+    const gh = parseGhKey(ref);
+    if (!ref || !gh) return undefined;
+    const err = isPrimaryIssue({ number: gh.number, key: ref }, this.def.repo) ? await this.github.claim(gh.number, as) : await claimGhKey(ref, this.dir, as?.env);
     // The board's Status moves even when the assignment failed (it may need other rights): both are said.
-    void progressIssue(this.id, key ?? (gh.repo ? ghIssueKey(gh.repo, gh.number) : ''), as?.env).then((w) => w && this.ctx.toast(this, `📋 ${w}`, 'warn'));
+    void progressIssue(this.id, ref, as?.env).then((w) => w && this.ctx.toast(this, `📋 ${w}`, 'warn'));
     return err;
   }
 

@@ -132,13 +132,16 @@ export async function setBoardStatus(io: IssueActIo, board: BoardItem, optionId:
 
 const IN_PROGRESS = new Set(['in progress', 'in-progress', 'doing', 'started', 'working', 'wip', 'ongoing', 'käynnissä', 'työn alla']);
 
-/** The board's "In progress" Status option, unless the item is on it already or past it (never moved back from Review or Done). */
-export function inProgressOption(b: BoardItem): { id: string; name: string } | undefined {
-  if (!b.fieldId) return undefined;
+/**
+ * The board's "In progress" Status option to move the item to: `{ option }`, or 'at-or-past' when the item
+ * is on it already or past it (never moved back from Review or Done), or 'none' when the board has no such option.
+ */
+export function inProgressOption(b: BoardItem): { option: { id: string; name: string } } | 'at-or-past' | 'none' {
+  if (!b.fieldId) return 'none';
   const at = b.options.findIndex((o) => IN_PROGRESS.has(o.name.trim().toLowerCase()));
-  if (at < 0) return undefined;
+  if (at < 0) return 'none';
   const now = b.options.findIndex((o) => o.name === b.current);
-  return now >= at ? undefined : b.options[at];
+  return now >= at ? 'at-or-past' : { option: b.options[at] };
 }
 
 /** Moves the item to the option a transition id names, after asking the boards again that it still can. Resolves to the status's name and the board it was moved on. */

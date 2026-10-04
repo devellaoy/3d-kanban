@@ -7,7 +7,7 @@ import type { Ctx } from '../office/context.js';
 import { str } from '../office/input.js';
 import { readBody, send } from '../http/util.js';
 import type { Floor } from '../floor.js';
-import { progressIssue } from '../kanban/integrations/issues/wall.js';
+import { takeCard } from '../take-card.js';
 
 /**
  * The floor's workers, for any worker on it (see office-workers.ts, and bin/office-workers.js, the
@@ -125,16 +125,9 @@ export async function officeWorkers(ctx: Ctx, req: http.IncomingMessage, res: ht
 
 /**
  * A worker hired for the floor's issue `n` (office-workers hire --issue, MCP hire_worker) takes it as a
- * card at a desk does: off the queue, its pull request's issue, assigned as the owner (else the office's
- * gh), and moved to In progress on the project's boards, with the office's gh when the owner has no sign-in.
+ * card at a desk does (take-card.ts): off the queue, its pull request's issue, assigned and moved to In
+ * progress as the owner, with the office's gh only where that is theirs.
  */
 export function takeHiredIssue(ctx: Pick<Ctx, 'signins' | 'toastFloor'>, floor: Floor, workerId: string, n: number, owner?: string) {
-  floor.queue.dropIssue(n);
-  const ref = floor.cardRef(n, undefined);
-  const info = floor.workers.get(workerId);
-  if (info && ref) info.issueKey = ref;
-  const as = owner ? ctx.signins.ghAs(owner) : undefined;
-  if (typeof as !== 'string') return void floor.claimCard(n, undefined, as).then((e) => e && ctx.toastFloor(floor, `Couldn't assign issue #${n} on GitHub: ${e}`, 'warn'));
-  ctx.toastFloor(floor, `Couldn't assign issue #${n} on GitHub: ${as}`, 'warn');
-  if (ref) void progressIssue(floor.id, ref).then((w) => w && ctx.toastFloor(floor, `📋 ${w}`, 'warn'));
+  void takeCard(floor, (o) => ctx.signins.ghAs(o), { n, owner, workerId }, (text) => ctx.toastFloor(floor, text, 'warn'));
 }

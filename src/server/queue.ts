@@ -202,7 +202,12 @@ export class TaskQueue {
     if (this.lastStatus.get(info.id) === info.status) return;
     this.lastStatus.set(info.id, info.status);
     // A new turn may rewrite its PR's description: the closing line is checked again once it rests.
-    if (isBusy(info.status)) for (const t of this.tasks) if (t.workerId === info.id) this.closing.delete(t.id);
+    if (isBusy(info.status)) {
+      for (const t of this.tasks) {
+        const c = t.workerId === info.id ? this.closing.get(t.id) : undefined;
+        if (c) (c.done = false), (c.tries = 0); // not `asking`: a check still going is not started twice
+      }
+    }
     this.pump();
   }
 
@@ -220,6 +225,7 @@ export class TaskQueue {
   /** Fresh pull requests from GitHub: link each task to the PR that closes its issue (or came from its branch). */
   onPulls(pulls: GhPull[]) {
     let changed = false;
+    for (const id of this.closing.keys()) if (!this.tasks.some((t) => t.id === id)) this.closing.delete(id);
     for (const t of this.tasks) {
       if (t.status === 'queued') continue;
       const since = (t.startedAt ?? t.addedAt) - 60_000;

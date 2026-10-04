@@ -15,7 +15,7 @@ import type { IssueSource, IssueSourceIo } from './source.js';
 import { refreshWall, setWallProvider, toGhIssue, wallChanged } from './wall.js';
 import { takeIssueForTask } from './autoassign.js';
 import { takeIssue } from './take.js';
-import { announce, issueActionHandlers, type IssuePatch } from './actions.js';
+import { announce, issueActionHandlers, statusIoFor, type IssuePatch } from './actions.js';
 import { createBrowse } from './browse/index.js';
 import type { GhIssue, GhState } from '../../../../shared/protocol.js';
 
@@ -324,7 +324,7 @@ export function createIssues(ctx: KanbanContext, opts: IssuesOptions = {}) {
     start() {
       setWallProvider({
         started: async (project, key, env) => {
-          const took = await takeIssue({ statusIo: { ...io(project), ...(env ? { env } : {}), who: 'office', shared: !env }, key, sources: ctx.settings.project(project).issueSources, status: true });
+          const took = await takeIssue({ statusIo: statusIoFor(io(project), 'office', env), key, sources: ctx.settings.project(project).issueSources, status: true });
           for (const m of took.moved) announce(ctx, patch, project, key, '📋', `${key} moved to ${m.to} on ${m.board}`);
           return took.warnings.join(' · ') || undefined;
         },

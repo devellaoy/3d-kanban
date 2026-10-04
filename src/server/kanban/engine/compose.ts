@@ -6,6 +6,7 @@ import { mkdirSync } from 'node:fs';
 import path from 'node:path';
 import type { FloorDef } from '../../building.js';
 import type { Floor } from '../../floor.js';
+import { checkoutRepo } from '../../ghrepo.js';
 import { workspaceNames } from '../../workers.js';
 import { Worktrees } from '../../worktrees.js';
 import type { KanbanContext } from '../registry.js';
@@ -166,7 +167,7 @@ export class Composer {
     const picked = this.ctx.settings.project(id).skills.pr?.[tool] ?? [];
     const what = info.task?.name ?? info.title;
     const ticket = workerIssueKey(this.ctx, floor, info);
-    const home = floor.def.repo;
+    const home = floor.def.repo ?? checkoutRepo(floor.dir);
     return withContract(
       this.text('kanban.pr.create', id, {
         subject: `your current work${what ? ` (${what})` : ''}`,

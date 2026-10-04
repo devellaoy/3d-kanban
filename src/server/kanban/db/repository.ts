@@ -460,6 +460,11 @@ export class KanbanRepository {
     return (this.db.prepare('SELECT * FROM runs WHERE task_id = ? ORDER BY id').all(taskId) as Row[]).map(run);
   }
 
+  /** The id of the task's latest run, if it has one. */
+  latestRunId(taskId: number): number | undefined {
+    return (this.db.prepare('SELECT id FROM runs WHERE task_id = ? ORDER BY id DESC LIMIT 1').get(taskId) as Row | undefined)?.id as number | undefined;
+  }
+
   /** The task's run still going, if any (the latest one). */
   activeRun(taskId: number): KanbanRun | undefined {
     const row = this.db.prepare(`SELECT * FROM runs WHERE task_id = ? AND status = 'running' ORDER BY id DESC LIMIT 1`).get(taskId) as Row | undefined;

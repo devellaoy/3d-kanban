@@ -169,6 +169,10 @@ function claimSetup(opts: { ghAs?: Parameters<typeof makeCtx>[1] extends infer O
       const i = data.find((x) => String(x.number) === args[2]);
       return JSON.stringify({ state: i?.state ?? 'OPEN', assignees: (i?.assignees ?? []).map((login) => ({ login })) });
     }
+    if (args[0] === 'api' && args[1].startsWith('repos/')) {
+      const i = data.find((x) => args[1].endsWith(`/issues/${x.number}`));
+      return `${(i?.state ?? 'OPEN').toLowerCase()}\t${/\/pull\//.test(i?.url ?? '')}\n`;
+    }
     if (args[0] === 'api') return `${opts.login ?? 'panu'}\n`;
     if (args[1] === 'edit' && opts.fail) throw new Error('gh: forbidden');
     return '';
@@ -212,7 +216,7 @@ test('an issue that has an assignee, a Jira key, a pull request or a closed issu
   const board = claimSetup({ ...env('/h/claim-6'), issues: [{ number: 1, state: 'CLOSED' }] });
   const listed = { source: 'github-project' as const, sourceId: 'p', key: 'gh:o/app#1', title: 'One', url: 'https://github.com/o/app/issues/1', body: '', labels: [], status: 'Todo', updatedAt: '' };
   await takeIssueForTask(board.ctx, { patch: () => {}, io: () => io({ gh: board.gh }), find: () => listed }, 'app', listed.key, client(true, 'acc1'), { status: false });
-  assert.ok(board.calls.some((a) => a[1] === 'view'), 'asked');
+  assert.ok(board.calls.some((a) => a[1]?.startsWith('repos/')), 'asked GitHub fresh');
   assert.deepEqual(board.edits(), []);
   // Jira: no gh write either (the source isn't even reachable, so the issue is never found: the task isn't made).
   const jira = claimSetup({ sources: [{ id: 'j', kind: 'jira', site: 'x.atlassian.net', projectKeys: ['UYT'], filters: {} }] as IssueSourceConfig[] });
@@ -220,14 +224,40 @@ test('an issue that has an assignee, a Jira key, a pull request or a closed issu
   assert.deepEqual(jira.edits(), []);
 });
 
-test('no GitHub sign-in of the person: no call is made and the task is made all the same', async () => {
-  const { ctx, issues, make, edits } = claimSetup({ ghAs: () => 'Sign in to GitHub first' });
+test('no GitHub sign-in of the person: no call is made, no Status moves, a warning says why, and the task is made all the same', async () => {
+  const { ctx, issues, c, make, edits, calls } = claimSetup({ ghAs: () => 'Sign in to GitHub first' });
   await issues.refresh('app');
-  const made = await make('gh:o/app#1');
+  const before = calls.length;
+  const made = await make('gh:o/app#1', true);
   assert.equal(made.t, 'kanban.ok');
   assert.ok(ctx.repo.getTask(made.taskId));
   assert.deepEqual(edits(), []);
   assert.deepEqual(ctx.toasts, []);
+  await issues.plugin.taskStarted!(made.taskId, c);
+  assert.equal(calls.length, before, 'not a gh call, not for the Status either');
+  assert.deepEqual(c.warned, ['👤 Couldn’t take gh:o/app#1: Sign in to GitHub first']);
+});
+
+test('the Status moves under the office’s gh for the shared password, and assigns nobody there', async () => {
+  const item = { id: 'ITEM', status: { name: 'Todo' }, project: { id: 'PRJ', number: 3, title: 'Roadmap', owner: { login: 'acme' }, field: { id: 'FLD', options: [{ id: 'a', name: 'Todo' }, { id: 'b', name: 'In progress' }] } } };
+  const calls: string[][] = [];
+  const gh: IssueSourceIo['gh'] = async (args) => {
+    calls.push(args);
+    if (args[1] === 'graphql') {
+      const q = args.find((a) => a.startsWith('query=')) ?? '';
+      if (q.includes('mutation')) return '{"data":{}}';
+      return JSON.stringify({ data: q.includes('node(id') ? { node: item } : { repository: { issueOrPullRequest: { projectItems: { nodes: [item] } } } } });
+    }
+    if (args[0] === 'api') return 'open\tfalse\n';
+    return '';
+  };
+  const ctx = makeCtx([def('app', '/tmp/app', { repo: 'o/app' })], { ghAs: () => undefined });
+  ctx.settings.setProject('app', { issueSources: [{ id: 'p', kind: 'github-project', owner: 'acme', number: 3, filters: {} }] as IssueSourceConfig[] });
+  const c = client(true, undefined);
+  await takeIssueForTask(ctx, { patch: () => {}, io: () => io({ gh }), find: () => undefined }, 'app', 'gh:o/app#1', c, { status: true });
+  assert.equal(calls.filter((a) => a.some((x) => x.startsWith('query=mutation'))).length, 1, 'the Status moved');
+  assert.deepEqual(calls.filter((a) => a[1] === 'edit'), [], 'nobody assigned under the shared gh');
+  assert.deepEqual(c.warned, []);
 });
 
 test('a failed assignment is a warning and the task stands', async () => {
