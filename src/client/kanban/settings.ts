@@ -32,7 +32,7 @@ import { repoIdFrom } from './model';
 import { kstore } from './store';
 import { loadSkills, skillsOverview, skillsPane } from './skills';
 import { newProjectButton } from './newproject';
-import { publicLanguageField } from './language-field';
+import { commentLanguageField, publicLanguageField } from './language-field';
 import { LANGUAGE_HELP } from '../ui/language';
 import type { KanbanSettingsPane } from './settingsslot';
 import { Cleanups, settingsRedraw } from './settingsflow';
@@ -384,7 +384,7 @@ export function projectPane(api: Pick<KanbanApi, 'request'>, projectId: string, 
   const maxConc = numberInput(ps.maxConcurrent, 1, 20);
   const approval = select<PlanApproval | ''>([['', `Default (${APPROVAL_NAMES[s.defaults.planApproval]})`], ['auto', APPROVAL_NAMES.auto], ['manual', APPROVAL_NAMES.manual]], ps.planApproval ?? '');
   const perm = select<ImplementPermission | ''>([['', `Default (${PERMISSION_NAMES[s.defaults.implementPermission]})`], ['bypass', PERMISSION_NAMES.bypass], ['workspace-write', PERMISSION_NAMES['workspace-write']]], ps.implementPermission ?? '');
-  const language = publicLanguageField(ps.publicLanguage);
+  const language = publicLanguageField(ps.publicLanguage), comments = commentLanguageField(ps.commentLanguage);
   const overrideReview = checkbox('Its own review settings', !!ps.review);
   const review = reviewFields(ps.review ?? {}, { ...s.review, ...ps.review });
   const paintReview = () => review.el.classList.toggle('hidden', !overrideReview.box.checked);
@@ -392,8 +392,8 @@ export function projectPane(api: Pick<KanbanApi, 'request'>, projectId: string, 
   paintReview();
   const save = saveButton();
   save.addEventListener('click', () => {
-    const rv = review.value(), publicLanguage = language.value();
-    if (publicLanguage === undefined) return toast(LANGUAGE_HELP, 'warn');
+    const rv = review.value(), publicLanguage = language.value(), commentLanguage = comments.value();
+    if (publicLanguage === undefined || commentLanguage === undefined) return toast(LANGUAGE_HELP, 'warn');
     const settings: Record<string, unknown> = {
       branchInstructions: branch.value,
       generalInstructions: general.value,
@@ -403,6 +403,7 @@ export function projectPane(api: Pick<KanbanApi, 'request'>, projectId: string, 
       planApproval: approval.value || null,
       implementPermission: perm.value || null,
       publicLanguage,
+      commentLanguage,
       review: overrideReview.box.checked ? { ...rv, model: rv.model ?? undefined, effort: rv.effort ?? undefined } : null,
     };
     void run(() => api.request({ t: 'kanban.project.settings.set', project: projectId, settings: settings as Partial<ProjectSettings> }), save, 'Saved');
@@ -427,7 +428,7 @@ export function projectPane(api: Pick<KanbanApi, 'request'>, projectId: string, 
       field('General instructions', general),
       field('Debugging and testing', testing),
     ),
-    h('fieldset', {}, h('legend', {}, 'This project'), h('div.kb-three', {}, field('Tasks at once', maxConc), field('Plan approval', approval), field('Implementation runs', perm)), language.el, overrideReview.el, review.el),
+    h('fieldset', {}, h('legend', {}, 'This project'), h('div.kb-three', {}, field('Tasks at once', maxConc), field('Plan approval', approval), field('Implementation runs', perm)), language.el, comments.el, overrideReview.el, review.el),
     h('div.kb-row.kb-save', {}, h('span.grow'), save),
   );
 }

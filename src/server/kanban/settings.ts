@@ -173,6 +173,8 @@ export function sanitizeProjectSettings(raw: unknown, base: ProjectSettings = de
   // An invalid value keeps the earlier choice; clearing is setProject's null.
   const lang = 'publicLanguage' in r ? cleanProjectLanguage(r.publicLanguage) ?? base.publicLanguage : base.publicLanguage;
   if (lang) out.publicLanguage = lang;
+  const comment = 'commentLanguage' in r ? cleanProjectLanguage(r.commentLanguage) ?? base.commentLanguage : base.commentLanguage;
+  if (comment) out.commentLanguage = comment;
   const review = 'review' in r ? sanitizePartialReview(r.review) : base.review;
   if (review) out.review = review;
   return out;
@@ -281,7 +283,7 @@ export class KanbanSettingsStore {
     for (const k of cleared) delete p[k];
     this.settings.projects[id] = sanitizeProjectSettings(p, this.settings.projects[id] ?? defaultProjectSettings());
     if (cleared.has('review')) delete this.settings.projects[id].review;
-    if (cleared.has('publicLanguage')) delete this.settings.projects[id].publicLanguage;
+    for (const k of ['publicLanguage', 'commentLanguage'] as const) if (cleared.has(k)) delete this.settings.projects[id][k];
     if (cleared.has('planApproval')) delete this.settings.projects[id].planApproval;
     if (cleared.has('implementPermission')) delete this.settings.projects[id].implementPermission;
     this.changed();

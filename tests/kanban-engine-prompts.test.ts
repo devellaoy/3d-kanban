@@ -231,9 +231,19 @@ test('languages: both rules go on the plan and the handoff, the project’s publ
   const handoff = () => compose.handoff(def, task, dir, 'Next.');
   const fallback = PROMPTS['kanban.language'].text;
 
-  // Nothing set: the task-language prompt, as before.
+  // Nothing set: the task-language prompt, and comments in English.
+  const english = 'Write comments in the code (and docstrings) in English, whatever language the task or the conversation is in.';
   assert.ok(plan().includes(fallback) && handoff().includes(fallback));
+  assert.equal(compose.language('proj'), `${fallback}\n${english}`);
+  assert.ok(plan().includes(english));
+
+  // The project's comment language; @project (nothing else set) is exactly the old text.
+  settings.setProject('proj', { commentLanguage: 'Finnish' });
+  assert.equal(compose.language('proj'), `${fallback}\n${english.replace('English', 'Finnish')}`);
+  settings.setProject('proj', { commentLanguage: '@project' });
   assert.equal(compose.language('proj'), fallback);
+  assert.ok(!plan().includes('comments in the code'));
+  settings.setProject('proj', { commentLanguage: null } as never);
 
   // Talk Finnish, the project writes English: both rules, and the old one gone.
   langs.talk = 'Finnish';
@@ -256,7 +266,8 @@ test('languages: both rules go on the plan and the handoff, the project’s publ
   const own = compose.language('proj');
   assert.match(own, /Talk to the user in Finnish:/);
   assert.ok(own.includes("leaves the office in the language the project's instructions ask for"));
-  assert.doesNotMatch(own, /Swedish|English/);
+  assert.doesNotMatch(own, /Swedish/);
+  assert.ok(own.includes('docstrings) in English'), 'comments stay English by default');
 });
 
 test('branch name: with a public language the agent writes the slug in it; unset or @project keeps the title’s slug', (t) => {
@@ -274,7 +285,7 @@ test('branch name: with a public language the agent writes the slug in it; unset
 
 test('languages: an office rewrite of a language prompt is what is sent, and a blanked one drops its line', (t) => {
   const { compose } = setup(t, { 'language.talk': { text: 'Puhu {{language}}.' }, 'language.public': { text: '' } }, { talk: 'suomea', public: 'English' });
-  assert.equal(compose.language('proj'), 'Puhu suomea.');
+  assert.equal(compose.language('proj'), 'Puhu suomea.\nWrite comments in the code (and docstrings) in English, whatever language the task or the conversation is in.');
 });
 
 test('pr.create takes the language rule and no longer hard-codes the task’s language (the review panel gets it at the hire)', (t) => {

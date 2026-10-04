@@ -140,6 +140,16 @@ test('the settings file is saved privately, reloaded, and changed a part at a ti
   store.setProject('web', { publicLanguage: 'Swedish' });
   store.setProject('web', { publicLanguage: null } as never);
   assert.equal(store.project('web').publicLanguage, undefined, 'null clears it');
+  assert.equal(store.project('web').commentLanguage, undefined, 'English by default: nothing stored');
+  store.setProject('web', { commentLanguage: ' Finnish ' });
+  assert.equal(store.project('web').commentLanguage, 'Finnish');
+  store.setProject('web', { commentLanguage: 'x; drop' });
+  store.setProject('web', { commentLanguage: 7 } as never);
+  assert.equal(store.project('web').commentLanguage, 'Finnish', 'not a language: the earlier choice stays');
+  store.setProject('web', { commentLanguage: '@project' });
+  assert.equal(new KanbanSettingsStore(dir).project('web').commentLanguage, '@project');
+  store.setProject('web', { commentLanguage: null } as never);
+  assert.equal(store.project('web').commentLanguage, undefined, 'null clears it');
   store.setProject('web', { maxConcurrent: 3 });
   assert.equal(store.project('web').maxConcurrent, 3, 'what was not given stays');
   assert.throws(() => store.setProject('Bad Id', {}), /Not a project id/);

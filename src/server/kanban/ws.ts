@@ -413,8 +413,8 @@ export function createCorePlugin(ctx: KanbanContext, subs: KanbanSubscriptions):
     'kanban.project.settings.set': (c, m) => {
       if (!adminOnly(c, m.rid)) return;
       if (!ctx.project(m.project)) return fail(c, m.rid, `There's no project ${m.project}`);
-      const lang = (m.settings as { publicLanguage?: unknown } | undefined)?.publicLanguage;
-      if (lang !== undefined && lang !== null && cleanProjectLanguage(lang) === undefined) return fail(c, m.rid, "That isn't a language name");
+      const given = (m.settings ?? {}) as { publicLanguage?: unknown; commentLanguage?: unknown };
+      for (const lang of [given.publicLanguage, given.commentLanguage]) if (lang !== undefined && lang !== null && cleanProjectLanguage(lang) === undefined) return fail(c, m.rid, "That isn't a language name");
       ctx.settings.setProject(m.project, m.settings);
       settingsChanged();
       // The floor's issues board follows the sources: theirs now, or its own repository's without any.

@@ -243,6 +243,7 @@ over it, and the task's own over both.
 | Keep the reviewer off the web | 🗂️ Kanban → Reviews; 📁 Projects | on | Claude reviewers get no WebFetch/WebSearch (Bash keeps the network, for `gh`). A Codex review round always runs in Codex's read-only sandbox (no network); a Codex multi-PR review in its workspace sandbox with the network on, for `gh`. |
 | Resume after a usage limit or a network break | 🗂️ Kanban | on, 5 tries, 6 hours | A turn cut short by a usage limit or a lost connection is retried by itself: at the reset time the message names (plus a minute); for a Codex run whose message names none, when the last of the Codex account's windows at 100% starts over (plus a minute; it reads the account's numbers afresh when the limit hits, waiting at most 5 seconds; when the percentages lag behind Codex saying the limit is reached, the fullest window's reset is taken; a Codex week that is used up gives up straight away, naming when it resets); else after 5, 10, 20… minutes (at most an hour apart). It gives up after *tries at most* or *waits at most (hours)*, naming the reset time when it knows it; then it waits for Retry. |
 | Archive done tasks after (days) | 🗂️ Kanban | 30 | 0 keeps them on the board. Checked at start-up and hourly. |
+| Code comment language | 📁 Projects → ⚙️ Project | English | What comments in the code are written in; *The project's own conventions* adds no rule (see [Languages](agents.md#languages)). |
 | Conversation language, public language | ⚙️ Settings → 🤖 Workers; public language also 📁 Projects → ⚙️ Project | unset (the task's language and the project's instructions) | What agents talk to you in, and what issues, PRs and commits are written in. Set, they replace the *Language* prompt with two rules (see [Languages](agents.md#languages)). |
 | Project name | 📁 Projects → ⚙️ Project (admin) | the repository's or folder's name | See *Projects and repositories*. The id, folder and repository don't change. |
 | Repositories, instructions, tasks at once | 📁 Projects → ⚙️ Project | — | See *Projects and repositories*. |
@@ -572,7 +573,8 @@ its `{{placeholders}}`.
 - The layers, lowest first: the default → the office's → the project's.
 - **Languages**: the conversation and public language rules are the office prompts in **🌐 Languages**; set
   languages replace the *Language* prompt, and a project's or the office's rewrite of *Pull requests* that still says
-  which language to write in should drop that sentence.
+  which language to write in should drop that sentence. The **Code comment language** rule (English unless the
+  project picks otherwise) is added after the language rule in every prompt, whether or not a language is set.
 - **Contract blocks** (🔒, shown read-only under the prompt) are appended by the office and can't be
   changed: the `PLAN READY` / `QUESTIONS:` markers, the `REVIEW:` verdict line and the reviewer's
   rules, the implementer's and the investigation's safety rules, and the `PR:` lines. A rewritten

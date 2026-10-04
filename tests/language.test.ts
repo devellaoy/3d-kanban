@@ -3,8 +3,8 @@ import assert from 'node:assert/strict';
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import { FOLLOW_PROJECT, cleanLanguage, cleanLanguages, cleanProjectLanguage, resolveLanguages } from '../src/shared/language.js';
-import { PUBLIC_FALLBACK, TALK_FALLBACK, boundPrompts, languageRule } from '../src/server/language.js';
+import { FOLLOW_PROJECT, cleanLanguage, cleanLanguages, cleanProjectLanguage, resolveCommentLanguage, resolveLanguages } from '../src/shared/language.js';
+import { PUBLIC_FALLBACK, TALK_FALLBACK, boundPrompts, codeRule, languageRule } from '../src/server/language.js';
 import { OfficePrompts } from '../src/server/prompts.js';
 import { languageTail } from '../src/server/workers/tasks.js';
 import { PROMPTS } from '../src/shared/prompts.js';
@@ -30,11 +30,26 @@ test('a language is a name: letters, spaces and a little punctuation, trimmed', 
 });
 
 test('a project’s public language wins over the office’s, @project drops the default, and unset is empty', () => {
-  assert.deepEqual(resolveLanguages({ talk: 'Finnish', public: 'English' }, 'Swedish'), { talk: 'Finnish', public: 'Swedish' });
-  assert.deepEqual(resolveLanguages({ talk: 'Finnish', public: 'English' }), { talk: 'Finnish', public: 'English' });
-  assert.deepEqual(resolveLanguages({ talk: 'Finnish', public: 'English' }, FOLLOW_PROJECT), { talk: 'Finnish' });
-  assert.deepEqual(resolveLanguages({}, undefined), {});
-  assert.deepEqual(resolveLanguages(undefined, FOLLOW_PROJECT), {});
+  const own = FOLLOW_PROJECT;
+  assert.deepEqual(resolveLanguages({ talk: 'Finnish', public: 'English' }, 'Swedish', own), { talk: 'Finnish', public: 'Swedish' });
+  assert.deepEqual(resolveLanguages({ talk: 'Finnish', public: 'English' }, undefined, own), { talk: 'Finnish', public: 'English' });
+  assert.deepEqual(resolveLanguages({ talk: 'Finnish', public: 'English' }, FOLLOW_PROJECT, own), { talk: 'Finnish' });
+  assert.deepEqual(resolveLanguages({}, undefined, own), {});
+  assert.deepEqual(resolveLanguages(undefined, FOLLOW_PROJECT, own), {});
+  // The comment language rides along: English unless the project picks.
+  assert.deepEqual(resolveLanguages({}), { code: 'English' });
+  assert.deepEqual(resolveLanguages({ talk: 'Finnish' }, undefined, 'Swedish'), { talk: 'Finnish', code: 'Swedish' });
+});
+
+test('the comment language is English unless the project picks another or follows its own conventions', () => {
+  assert.equal(resolveCommentLanguage(undefined), 'English');
+  assert.equal(resolveCommentLanguage(FOLLOW_PROJECT), undefined);
+  assert.equal(resolveCommentLanguage('Finnish'), 'Finnish');
+  assert.equal(codeRule(undefined, undefined), '');
+  assert.equal(codeRule(undefined, 'Finnish'), 'Write comments in the code (and docstrings) in Finnish, whatever language the task or the conversation is in.');
+  assert.equal(codeRule({ text: () => '' }, 'Finnish'), '');
+  // Never stored with the office's languages.
+  assert.deepEqual(cleanLanguages({ talk: 'Finnish', code: 'English' }), { talk: 'Finnish' });
 });
 
 test('the rule is empty when nothing is set, and says both things when anything is', () => {
@@ -108,12 +123,15 @@ test('a floor’s prompts carry the rule with the project’s own public languag
   const dir = scratch(t);
   const book = new OfficePrompts(dir, providers, () => {});
   const projects: Record<string, string | undefined> = { web: 'Swedish', api: FOLLOW_PROJECT };
-  const ctx = { prompts: book, kanban: undefined as undefined | { ctx: { settings: { project(id: string): { publicLanguage?: string } } } } };
+  const ctx = { prompts: book, kanban: undefined as undefined | { ctx: { settings: { project(id: string): { publicLanguage?: string; commentLanguage?: string } } } } };
   const web = boundPrompts(ctx as never, 'web');
-  assert.equal(web.language?.(), '', 'unset: nothing');
+  assert.match(web.language!(), /^Write comments in the code \(and docstrings\) in English/, 'unset: just the English comment rule');
+  assert.ok(!web.language!().includes('Talk to the user'));
   book.setLanguage({ talk: 'Finnish', public: 'English' }, 'Ada');
   assert.match(web.language!(), /in English:/, 'no kanban yet: the office’s');
-  ctx.kanban = { ctx: { settings: { project: (id) => ({ publicLanguage: projects[id] }) } } };
+  ctx.kanban = { ctx: { settings: { project: (id) => ({ publicLanguage: projects[id], ...(id === 'api' ? { commentLanguage: FOLLOW_PROJECT } : {}) }) } } };
+  assert.ok(!boundPrompts(ctx as never, 'api').language!().includes('comments in the code'));
+  assert.match(web.language!(), /comments in the code/);
   assert.match(web.language!(), /Talk to the user in Finnish:[^]*leaves the office in Swedish:/);
   assert.ok(boundPrompts(ctx as never, 'api').language!().includes(`leaves the office in ${PUBLIC_FALLBACK}:`));
   assert.match(boundPrompts(ctx as never, 'other').language!(), /leaves the office in English:/);

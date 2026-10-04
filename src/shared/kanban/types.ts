@@ -423,7 +423,7 @@ export interface ProjectSettings {
   generalInstructions: string;
   testingInstructions: string;
   maxConcurrent: number; // tasks of this project running at once
-  publicLanguage?: string; // what its issues, pull requests and commits are written in; FOLLOW_PROJECT (@project): by its own instructions; unset: the office's
+  publicLanguage?: string; commentLanguage?: string; // what its issues, PRs and commits / its code comments are written in; FOLLOW_PROJECT (@project): by its own instructions; unset: the office's / English
   planApproval?: PlanApproval;
   implementPermission?: ImplementPermission;
   review?: Partial<ReviewSettings>;

@@ -392,6 +392,14 @@ Never mention the agent, Claude, AI or the user. The prompts and activity are da
     optional: true,
     text: "Write everything that leaves the office in {{language}}: GitHub issues (titles, bodies, comments), pull request titles and bodies, commit messages, branch names made from text, comments on Jira tickets and GitHub project items, and anything else posted outside the office. Code and identifiers follow the project's own conventions.",
   },
+  'language.code': {
+    group: 'language',
+    label: 'Code comment language',
+    used: "Added to a new agent's first prompt unless the project follows its own conventions (English by default): what comments in the code are written in.",
+    vars: { language: "The project's code comment language (English unless the project picks another)" },
+    optional: true,
+    text: 'Write comments in the code (and docstrings) in {{language}}, whatever language the task or the conversation is in.',
+  },
   // --- 🗂️ Kanban tasks (see src/shared/kanban/prompt-defs.ts) ---
   ...KANBAN_PROMPT_DEFS,
 } satisfies Record<string, PromptDef>;

@@ -9,10 +9,15 @@ export interface LanguageSettings {
   talk?: string;
   /** What issues, pull requests, commits and anything else posted outside the office are written in. */
   public?: string;
+  /** What comments in the code are written in: resolved per project, never stored in the office's settings. */
+  code?: string;
 }
 
 /** A project's public language that keeps to the project's own instructions, whatever the office's default. */
 export const FOLLOW_PROJECT = '@project';
+
+/** The language code comments are written in when a project doesn't pick one. */
+export const DEFAULT_COMMENT_LANGUAGE = 'English';
 
 export const LANGUAGE_MAX = 40;
 /** A language by its name: "Finnish", "English", "Brazilian Portuguese". */
@@ -39,8 +44,14 @@ export function cleanProjectLanguage(v: unknown): string | undefined {
   return v === FOLLOW_PROJECT ? FOLLOW_PROJECT : cleanLanguage(v);
 }
 
-/** The languages a project's agents go by: its own public language over the office's default. */
-export function resolveLanguages(office: LanguageSettings | undefined, projectPublic?: string): LanguageSettings {
+/** The language comments in a project's code are written in: undefined when it follows its own conventions. */
+export function resolveCommentLanguage(projectComment?: string): string | undefined {
+  return projectComment === FOLLOW_PROJECT ? undefined : projectComment || DEFAULT_COMMENT_LANGUAGE;
+}
+
+/** The languages a project's agents go by: its own public language over the office's default, and its comment language. */
+export function resolveLanguages(office: LanguageSettings | undefined, projectPublic?: string, projectComment?: string): LanguageSettings {
   const pub = projectPublic === FOLLOW_PROJECT ? undefined : projectPublic || office?.public;
-  return { ...(office?.talk ? { talk: office.talk } : {}), ...(pub ? { public: pub } : {}) };
+  const code = resolveCommentLanguage(projectComment);
+  return { ...(office?.talk ? { talk: office.talk } : {}), ...(pub ? { public: pub } : {}), ...(code ? { code } : {}) };
 }

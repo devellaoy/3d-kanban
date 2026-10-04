@@ -129,7 +129,8 @@ curl -fsSL https://raw.githubusercontent.com/devellaoy/3d-kanban/main/deploy/pro
   three more (the same way the back office grows), so panels and other meetings can run at the same time; a new one takes the first free room.
 - **Languages**: ⚙️ Settings → 🤖 Workers sets the **conversation language** every agent talks to you in and
   the **public language** issues, pull requests, commits and other texts that leave the office are written in;
-  a project can pick its own public language in ⚙️ Project. Kanban runs, plain workers, queue tasks,
+  a project can pick its own public language in ⚙️ Project, and the **code comment language** (English by
+  default; per project, or `The project's own conventions` to opt out). Kanban runs, plain workers, queue tasks,
   `hire_worker` and the board agents all get the two rules; unset, agents go by the task's language and the
   project's instructions as before ([agents](docs/agents.md#languages)).
 - **Editable prompts**, office-wide or per project, with the process's contract blocks kept fixed (they also

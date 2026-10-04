@@ -13,6 +13,11 @@ export function languageRule(source: Pick<PromptSource, 'text'> | undefined, lan
   return [officePrompt(source, 'language.talk', { language: langs.talk ?? TALK_FALLBACK }), officePrompt(source, 'language.public', { language: langs.public ?? PUBLIC_FALLBACK })].filter(Boolean).join('\n');
 }
 
+/** The comment rule for the code language: empty when the project follows its own conventions. */
+export function codeRule(source: Pick<PromptSource, 'text'> | undefined, code: string | undefined): string {
+  return code ? officePrompt(source, 'language.code', { language: code }) : '';
+}
+
 /**
  * The office's prompts for one project's floor: the same texts and worker, and the language rule with
  * the project's own public language over the office's. The kanban is installed after the floors open,
@@ -23,6 +28,10 @@ export function boundPrompts(ctx: Pick<Ctx, 'prompts' | 'kanban'>, projectId: st
   return {
     text: (id) => prompts.text(id),
     agent: () => prompts.agent(),
-    language: () => languageRule(prompts, resolveLanguages(prompts.languages(), ctx.kanban?.ctx.settings.project(projectId).publicLanguage)),
+    language: () => {
+      const project = ctx.kanban?.ctx.settings.project(projectId);
+      const langs = resolveLanguages(prompts.languages(), project?.publicLanguage, project?.commentLanguage);
+      return [languageRule(prompts, langs), codeRule(prompts, langs.code)].filter(Boolean).join('\n');
+    },
   };
 }

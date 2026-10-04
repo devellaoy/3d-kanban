@@ -50,16 +50,17 @@ DeepSeek Harness metrics come from ACP `usage_update`: tokens in context and the
 
 ## Languages
 
-Two settings decide which language agents use, and both are unset by default (agents then go by the task's or the message's language and the project's instructions, as before):
+Three settings decide which language agents use. The first two are unset by default (agents then go by the task's or the message's language and the project's instructions, as before):
 
 - **Conversation language** (⚙️ Settings → 🤖 Workers, office-wide): what agents talk to you in: replies, questions, plans, summaries and review notes.
 - **Public language** (⚙️ Settings → 🤖 Workers for the office's default; ⚙️ Settings → 📁 Projects → ⚙️ Project → *Public language* for a project's own): what everything that leaves the office is written in: GitHub issues and their comments, pull request titles and bodies, commit messages, branch names made from text, comments on Jira tickets and GitHub project items. A project picks *Office default*, *The project's own instructions* (ignore the office's default, as before there were settings) or a language of its own.
+- **Code comment language** (⚙️ Settings → 📁 Projects → ⚙️ Project → *Code comment language*, per project only): what comments in the code and docstrings are written in. **English by default**; a project picks *The project's own conventions* (no rule, agents follow the code as it is) or a language of its own. It applies even when no other language is set.
 
-A language is written by its name in English (*Finnish*, *English*, *Brazilian Portuguese*). Admins change them; the office's are kept in `.agent-office/prompts.json` (`language`), a project's in `kanban-settings.json` (`projects[id].publicLanguage`).
+A language is written by its name in English (*Finnish*, *English*, *Brazilian Portuguese*). Admins change them; the office's are kept in `.agent-office/prompts.json` (`language`), a project's in `kanban-settings.json` (`projects[id].publicLanguage` and `projects[id].commentLanguage`).
 
-When either one is set, an agent gets two rules, the prompts **🌐 Languages → Conversation language** and **Public language** (editable like the others; an emptied one is left out). The one that isn't set says to go by the task and the project's instructions, so the two never disagree. Where they go:
+When a conversation or public language is set, an agent gets two rules, the prompts **🌐 Languages → Conversation language** and **Public language**, and unless the project follows its own conventions a third, **Code comment language** (editable like the others; an emptied one is left out). The one that isn't set says to go by the task and the project's instructions, so the two never disagree. Where they go:
 
-- **Kanban runs** carry them in every prompt in place of the *Language* prompt, so a change applies from a task's next prompt. With no language set, the *Language* prompt (and a project's rewrite of it) is used as before; with one set, the two rules replace it.
+- **Kanban runs** carry them in every prompt in place of the *Language* prompt, so a change applies from a task's next prompt. With no language set, the *Language* prompt (and a project's rewrite of it) is used as before; with one set, the two rules replace it. The comment rule is added to either (English unless the project says otherwise).
 - **Every other agent**, whatever its provider (a worker hired at a desk, with `hire_worker` or `office-workers`, a queue task, a board agent, a meeting's workers), gets them after its first prompt when a new session starts (a hire with a prompt, or a board agent starting over without a session). They're left out of the worker's activity line and sign. A worker hired without a prompt, prompts typed in later and `tell_worker` don't repeat them, and a running session keeps the rules it started with: a changed setting applies to sessions started after it.
 - **O on a shell**: the pull request the office opens itself from a shell's commits is a fixed template, not written by an agent, so it isn't translated. O on an agent asks the agent, which follows the rules.
 

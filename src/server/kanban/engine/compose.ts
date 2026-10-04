@@ -17,7 +17,7 @@ import type { WorkerInfo } from '../../../shared/protocol.js';
 import type { PromptKind } from './machine.js';
 import { resolveLanguages } from '../../../shared/language.js';
 import { promptText, type PromptId } from '../../../shared/prompts.js';
-import { languageRule } from '../../language.js';
+import { codeRule, languageRule } from '../../language.js';
 import { skillHint } from '../integrations/skills/index.js';
 
 type Vars = Record<string, string | number>;
@@ -140,7 +140,8 @@ export class Composer {
 
   /** The languages a project's agents go by (the project's public language over the office's). */
   languages(project: string) {
-    return resolveLanguages(this.ctx.languages(), this.ctx.settings.project(project).publicLanguage);
+    const p = this.ctx.settings.project(project);
+    return resolveLanguages(this.ctx.languages(), p.publicLanguage, p.commentLanguage);
   }
 
   /** The public language a project writes in, if one is set. */
@@ -155,7 +156,8 @@ export class Composer {
   language(project: string): string {
     const custom = this.ctx.officePrompts() as Partial<Record<PromptId, { text: string }>>;
     const langs = this.languages(project);
-    return languageRule({ text: (id) => promptText(custom, id) }, langs) || this.text('kanban.language', project);
+    const source = { text: (id: PromptId) => promptText(custom, id) };
+    return [languageRule(source, langs) || this.text('kanban.language', project), codeRule(source, langs.code)].filter(Boolean).join('\n');
   }
 
   /** One kanban prompt, layered and filled in. */
