@@ -25,7 +25,7 @@ export interface RestartDeps<L extends HeldRun> {
   folder(project: string): boolean;
   finishRun(id: number, project: string, patch: { status: 'interrupted'; error: string }): void;
   note(task: Pick<KanbanTask, 'id' | 'project'>, text: string, runId?: number): void;
-  update(id: number, patch: { runState?: KanbanTask['runState']; queuedRun?: KanbanTask['queuedRun'] | null }): void;
+  update(id: number, patch: { runState?: KanbanTask['runState']; queuedRun?: KanbanTask['queuedRun'] | null; sessionId?: string; reviewerSessionId?: string }): void;
   apply(taskId: number, e: MachineEvent): Promise<string | undefined>;
   drain(project: string): void;
   /** Follows the run on its worker as an ordinary live run; its result is read from the run's start, not from the woken process's. */
@@ -78,8 +78,10 @@ export class Restarts<L extends HeldRun> {
       return `The office restarted, but its worktree is gone: Retry to carry on in a fresh worktree${task.branch ? ` on branch ${task.branch}` : ''}`;
     }
     const session = info?.sessionId ?? (role === 'implementer' ? task.sessionId : task.reviewerSessionId);
-    if (session && sessionLogged(this.deps.ctx, task, tool, session, info ? floor.workers.transcripts(info.id)?.claude : undefined) === false) return "The office restarted, but its agent's session is gone: Retry starts it again in a fresh session";
-    return undefined;
+    if (!session || sessionLogged(this.deps.ctx, task, tool, session, info ? floor.workers.transcripts(info.id)?.claude : undefined) !== false) return undefined;
+    // Known to the task from now on, so that a Retry whose resume fails falls back to a fresh session with the handoff (see Orchestrator.exited).
+    this.deps.update(task.id, role === 'implementer' ? { sessionId: session } : { reviewerSessionId: session });
+    return "The office restarted, but its agent's session is gone: Retry starts it again in a fresh session";
   }
 
   /** Whether a queued run's worker still sits at its desk: it carries on in it, so it needs no desk of its own nor room under the office's worker limit. */

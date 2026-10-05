@@ -502,3 +502,22 @@ test('a manual review that asked a question when the office stopped continues as
   await fx.waitTask(task.id, (x) => x.status === 'review' && x.runState === 'idle' && fx.repo.listRuns(x.id).filter((r) => r.phase === 'review' && r.status === 'succeeded').length === 2, 'the manual review done', 60_000);
   assert.deepEqual(fx.repo.listRuns(task.id).filter((r) => r.phase === 'review').map((r) => `${r.round ?? '-'}/${r.verdict ?? r.status}`), ['1/approved', '-/interrupted', '-/approved']);
 });
+
+test('a session that is gone after a restart: Retry starts a fresh session with the handoff and the phase finishes', async (t) => {
+  const fx = await fixture();
+  t.after(() => fx.close());
+  fx.setRules([{ when: 'Implement kanban task', reply: 'Finished in a fresh session.', commit: 'Work', delayMs: 60_000 }]);
+  const task = fx.newTask({ usePlan: false, useReview: false });
+  const run = await midTurn(fx, task.id);
+  // Only the worker knows its session so far (the task stores it at a turn's end); Claude no longer has it, and a resume of it exits at once.
+  mkdirSync(path.join(process.env.CLAUDE_CONFIG_DIR!, 'projects', 'x'), { recursive: true });
+  staleSession(fx, run.workerId!);
+  await fx.restartOffice({ exitedFirst: true });
+  const waiting = await fx.waitTask(task.id, (x) => x.status === 'waiting' && x.waitingReason === 'interrupted', 'the interrupted task');
+  assert.match(waiting.waitingText ?? '', /session is gone/);
+  fx.setRules([{ when: 'Implement kanban task', reply: 'Finished in a fresh session.', commit: 'Work' }]);
+  assert.equal(await fx.engine.retry(task.id, ADA), undefined);
+  const done = await fx.waitTask(task.id, (x) => x.status === 'review' && x.runState === 'idle', 'the review column', 60_000);
+  assert.equal(done.summary, 'Finished in a fresh session.');
+  assert.ok(fx.invocations().some((i) => i.prompt && /Implement kanban task/.test(i.prompt) && i.args.length && !i.args.includes('stale-1')), 'a fresh session ran the phase');
+});
