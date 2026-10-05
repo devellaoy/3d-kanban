@@ -7,7 +7,7 @@ import path from 'node:path';
 import type { FloorDef } from '../../building.js';
 import type { Floor } from '../../floor.js';
 import { checkoutRemote, checkoutRepo } from '../../ghrepo.js';
-import { hostLabel, hostOf, remoteLabel } from '../../../shared/hosting/remote.js';
+import { hostLabel, hostOf, remoteLabel, repoRefOf } from '../../../shared/hosting/remote.js';
 import { parseAbKey, workItemUrl } from '../../../shared/hosting/workitems.js';
 import { workspaceNames } from '../../workers.js';
 import { Worktrees } from '../../worktrees.js';
@@ -184,8 +184,12 @@ export class Composer {
    */
   closesText(project: string, ticket: string | undefined, repos: (string | undefined)[], primary: string | undefined): string {
     // An Azure Boards work item, when one of the repositories is on Azure DevOps.
+    // Only the repositories on Azure DevOps in the work item's own organization: AB#n names organization's own item n.
     const ab = parseAbKey(ticket);
-    if (ab) return repos.some((r) => hostOf(r) === 'azure') ? this.text('kanban.pr.workitem', project, { id: ab.id, url: workItemUrl(ab) }) : '';
+    if (ab) {
+      const same = repos.map((r) => repoRefOf(r)).filter((r) => r?.host === 'azure' && r.owner.toLowerCase() === ab.org.toLowerCase());
+      return same.length ? this.text('kanban.pr.workitem', project, { id: ab.id, url: workItemUrl(ab), repos: [...new Set(same.map((r) => `${r!.project}/${r!.name}`))].join(', ') }) : '';
+    }
     const gh = parseGhKey(ticket);
     if (!gh) return '';
     const repo = closingPr(ticket, repos.map((repo) => ({ repo })), primary)?.repo;

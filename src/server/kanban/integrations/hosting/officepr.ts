@@ -31,12 +31,19 @@ export interface OfficePrDeps {
 
 type Ask = { dir?: unknown; number?: unknown; head?: unknown; base?: unknown; title?: unknown; body?: unknown; draft?: unknown; comments?: unknown; state?: unknown };
 
-/** What the PR does about its task's work item: the ticket's, if it's an Azure Boards one in the same organization, and every AB#n its text names. */
+/**
+ * The work items a pull request on Azure DevOps is linked to: its task's ticket when that is an Azure
+ * Boards work item of the repository's own organization, and every AB#n its text names (as Azure
+ * DevOps reads them: items of the repository's organization). An AB#n that repeats the number of a
+ * ticket in another organization is that ticket written in the wrong place, and is left out: here it
+ * would name somebody else's work item.
+ */
 export function workItemsFor(repo: RepoRef, ticket: string | undefined, text: string): number[] {
   if (repo.host !== 'azure') return [];
-  const ids = new Set(workItemMentions(text));
   const ab = parseAbKey(ticket);
-  if (ab && ab.org.toLowerCase() === repo.owner.toLowerCase()) ids.add(ab.id);
+  const own = !!ab && ab.org.toLowerCase() === repo.owner.toLowerCase();
+  const ids = new Set(workItemMentions(text).filter((id) => !ab || own || id !== ab.id));
+  if (ab && own) ids.add(ab.id);
   return [...ids];
 }
 

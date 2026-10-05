@@ -153,7 +153,9 @@ test("prompts: a note on office-pr only for repositories elsewhere, and the work
   assert.equal(c.hostingNote('p', [{ name: 'web', remote: 'o/web' }, { name: 'docs' }]), '', "a GitHub project's prompts are as they were");
   const note = c.hostingNote('p', [{ name: 'web', remote: 'o/web' }, { name: 'api', remote: AZ }, { name: 'ui', remote: 'bitbucket:acme/ui' }]);
   assert.match(note, /^\n\nApi is on Azure DevOps, ui is on Bitbucket: gh doesn't work there\. For those, use office-pr/);
-  assert.match(c.closesText('p', 'ab:contoso/Web#42', [AZ], AZ), /put `AB#42` in the description/);
+  assert.match(c.closesText('p', 'ab:contoso/Web#42', [AZ], AZ), /put `AB#42` in the description of the pull request in Web\/api/);
+  assert.equal(c.closesText('p', 'ab:fabrikam/Web#42', [AZ], AZ), '', "a repository of another organization: AB#42 there would be its own #42");
+  assert.match(c.closesText('p', 'ab:contoso/Web#42', [AZ, 'azure:fabrikam/Web/ui'], AZ), /in Web\/api, so it is linked/);
   assert.equal(c.closesText('p', 'ab:contoso/Web#42', ['o/web'], 'o/web'), '', 'no repository on Azure DevOps: nothing to link it from');
   assert.match(c.closesText('p', 'gh:o/web#3', ['o/web'], 'o/web'), /Closes #3/);
 });

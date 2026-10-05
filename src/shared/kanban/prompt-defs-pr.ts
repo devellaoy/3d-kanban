@@ -87,10 +87,10 @@ Merge, never rebase, and never force-push. Don't merge the pull request and chan
   'kanban.pr.workitem': {
     group: 'kanban',
     label: 'Pull requests · linking the work item',
-    used: 'The {{closes}} of “Open pull requests”, when the ticket is an Azure Boards work item and a repository is on Azure DevOps.',
-    vars: { id: 'The work item number', url: "The work item's page" },
-    needs: ['id'],
-    text: 'This work resolves Azure Boards work item #{{id}} ({{url}}): put `AB#{{id}}` in the description of each pull request on Azure DevOps, so it is linked to the work item. The office completes the work item when the pull request merges.',
+    used: "The {{closes}} of “Open pull requests”, when the ticket is an Azure Boards work item and a repository is on Azure DevOps in the work item's organization.",
+    vars: { id: 'The work item number', url: "The work item's page", repos: "The repositories on Azure DevOps in the work item's organization (an AB# in any other organization's pull request would name another work item)" },
+    needs: ['id', 'repos'],
+    text: 'This work resolves Azure Boards work item #{{id}} ({{url}}): put `AB#{{id}}` in the description of the pull request in {{repos}}, so it is linked to the work item; the office completes the work item when the pull request merges. Leave AB#{{id}} out of pull requests in any other repository: there it would name another work item.',
   },
   'kanban.hosting': {
     group: 'kanban',

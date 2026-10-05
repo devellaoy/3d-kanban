@@ -160,6 +160,7 @@ test('view, comment and list on Bitbucket', async () => {
 test('work items: the ticket’s only in its own organization, and only on Azure DevOps', () => {
   assert.deepEqual(workItemsFor(AZ, 'ab:CONTOSO/Web#9', 'AB#1 and AB#1, not xAB#2'), [1, 9]);
   assert.deepEqual(workItemsFor(AZ, 'ab:other/Web#9', ''), []);
+  assert.deepEqual(workItemsFor(AZ, 'ab:other/Web#9', 'Fixes AB#9 and AB#3'), [3], "another organization's ticket number written here would name this organization's #9");
   assert.deepEqual(workItemsFor(BB, 'ab:contoso/Web#9', 'AB#1'), []);
 });
 
