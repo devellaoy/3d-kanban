@@ -4,6 +4,7 @@ import os from 'node:os';
 import path from 'node:path';
 import * as pty from '@lydell/node-pty';
 import type { SignInKind, SignInState, SignInsState } from '../shared/protocol.js';
+import { gitConfigText } from './gitconfig.js';
 
 /*
  * Everyone's own Claude and GitHub
@@ -595,23 +596,16 @@ export class SignIns {
     });
   }
 
-  /**
-   * The account's git config: the office's own (included), with gh as the credentials for GitHub,
-   * so pushes go out as them, and their GitHub name and private email on commits once it's known.
-   */
+  /** The account's git config (gitconfig.ts): pushes go out as them, on GitHub and on Azure DevOps or Bitbucket. */
   private writeGitConfig(id: string, user?: { name: string; email: string }) {
     const home = this.home(id);
     const base = this.base();
     const xdg = base.XDG_CONFIG_HOME || path.join(os.homedir(), '.config');
     const includes = base.GIT_CONFIG_GLOBAL ? [base.GIT_CONFIG_GLOBAL] : [path.join(xdg, 'git', 'config'), path.join(os.homedir(), '.gitconfig')];
-    const lines = ['# Written by Agent Office: git for this account, on top of the office machine’s own settings.', '[include]', ...includes.map((p) => `\tpath = ${quote(p)}`)];
-    if (this.gh) {
-      for (const host of ['https://github.com', 'https://gist.github.com']) {
-        lines.push(`[credential ${quote(host)}]`, '\thelper =', `\thelper = ${quote(`!'${this.gh.replace(/'/g, `'\\''`)}' auth git-credential`)}`);
-      }
-    }
-    if (user) lines.push('[user]', `\tname = ${quote(user.name)}`, `\temail = ${quote(user.email)}`);
-    const text = `${lines.join('\n')}\n`;
+    const data = path.dirname(this.homes);
+    const helper = path.join(data, 'bin', 'office-git-credential');
+    const hosting = existsSync(helper) ? { helper, files: [path.join(home, 'hosting.json'), path.join(data, 'hosting-secrets.json')] } : undefined;
+    const text = gitConfigText({ includes, gh: this.gh ?? undefined, hosting, user });
     const file = path.join(home, 'gitconfig');
     try {
       if (existsSync(file) && readFileSync(file, 'utf8') === text) return;
@@ -622,10 +616,6 @@ export class SignIns {
   }
 }
 
-/** A value for a git config file, quoted. */
-function quote(v: string): string {
-  return `"${v.replace(/[\p{C}]/gu, '').replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`;
-}
 
 /** Terminal output as plain text: no colors, links or cursor moves. */
 function plain(s: string): string {

@@ -5,6 +5,7 @@ import { store } from '../state';
 import { h, openModal, type Modal } from './dom';
 import { confirmDialog } from './prompt';
 import { copyButton } from './team';
+import { hostCards } from './signins-hosts';
 
 const NAMES: Record<SignInKind, string> = { claude: 'Claude', github: 'GitHub' };
 
@@ -21,6 +22,7 @@ export function openSignIns(net: Net, why?: string) {
   const close = h('button.btn.close', { 'aria-label': 'Close' }, '✕');
   const banner = h('p.team-status', { hidden: true });
   const cards = h('div.signins');
+  const hosts = hostCards(net);
   const el = h(
     'div.modal',
     { role: 'dialog', 'aria-label': 'Your sign-ins', style: 'width:min(640px,100%)' },
@@ -31,6 +33,7 @@ export function openSignIns(net: Net, why?: string) {
       h('p.note.lead', {}, 'Your workers run on your own Claude plan, and the office acts on GitHub as you: comments, merges and pull requests show up under your name. Only your workers use them.'),
       banner,
       cards,
+      hosts.el,
       h('p.note', {}, 'Or open a 🐚 shell at any desk: it runs as you, so ', h('code', {}, 'claude auth login'), ' and ', h('code', {}, 'gh auth login'), ' typed there sign you in too.'),
     ),
   );
@@ -151,9 +154,11 @@ export function openSignIns(net: Net, why?: string) {
   };
 
   const unsub = store.on('signins', render);
+  const unsubHosts = store.on('hosting', hosts.render);
   const modal = openModal(el, {
     onClose: () => {
       unsub();
+      unsubHosts();
       open = null;
     },
   });
@@ -161,7 +166,9 @@ export function openSignIns(net: Net, why?: string) {
   open = { modal, say };
   say(why);
   render();
+  hosts.render();
   net.send({ t: 'signins.get' });
+  net.send({ t: 'hosting.get' });
 }
 
 /** Whether the panel should greet someone who just came in: their Claude sign-in still to do. */
