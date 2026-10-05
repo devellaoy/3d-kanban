@@ -61,6 +61,19 @@ instead; the task waits (failed) with upstream's reason, naming whose sign-in is
   dropped from the queue, never hired for.
 - The desk card and worker label show `🗂️ #14 · <status/phase> <round>/<rounds> · <waiting reason>`.
   N ("next waiting") includes task workers waiting on a person.
+- A task worker waits on a person as its task does (`taskWaiting`, `src/shared/kanban/waiting.ts`): while
+  the task waits for a reason that needs someone (the plan's questions or approval, the agent asking in its
+  terminal, a stopped, failed or interrupted run), and in Review until its implementer's finished turn is
+  seen (a reviewer never waits there). The engine's own hand-overs between steps (plan → implement,
+  implement → review, review → fix, …) are no wait: a worker that ends its turn, or sits at the plan's
+  exit prompt, while its task is in progress with its own run under way (the reviewer's in a review, the
+  implementer's in any other phase; the other one asking meanwhile does wait) doesn't chime, notify, count in the tab
+  title or the elevator, call the dog or post to the webhook, and is shown working rather than "needs
+  you". The same rule (`waitingOnSomeone`, `src/shared/status.ts`) feeds all of them, and the alert goes off
+  when a worker starts waiting, whether its status or its task's summary changed; a task that starts
+  waiting resets the worker's seen flag and waiting time (`setKanbanSummary`). A wait the engine
+  announces itself (plan approval or questions, ready for review) gets no second webhook post, and a
+  task stopped by a person (Stop, or its worker sent home mid-run) waits without a ding (`quietWait`).
 - "📍 Show in 3D" on the kanban opens `/?floor=<id>&worker=<workerId>&desk=<deskId>`; the 3D client
   goes to that floor and that desk.
 - The 📋 queue board's form can make a kanban task (above), and its "🗂️ Kanban on this floor" section
