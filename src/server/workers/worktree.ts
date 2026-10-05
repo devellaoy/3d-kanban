@@ -7,7 +7,8 @@ import path from 'node:path';
 import type { WorkerInfo, WorkerRepo } from '../../shared/protocol.js';
 import { normalizeRepo } from '../../shared/floors.js';
 import { officePrompt } from '../prompts.js';
-import { WORKSPACE_FILES, WORKTREES_DIR, Worktrees, describeWork, workspaceOf, type WorktreeCleanup, type WorktreeRef, type WorktreeState } from '../worktrees.js';
+import { worktreesHome } from '../worktree-home.js';
+import { WORKSPACE_FILES, Worktrees, describeWork, workspaceOf, type WorktreeCleanup, type WorktreeRef, type WorktreeState } from '../worktrees.js';
 import { midTurn } from './lifecycle.js';
 import type { RepoSource, SpawnExtra, Worker, WorkerContext, Worktree } from './types.js';
 
@@ -69,7 +70,7 @@ export class WorkerTrees {
   constructor(private ctx: WorkerContext) {}
 
   /**
-   * The workspace of a worker across repositories: `.agent-office/worktrees/<slug>`, with a worktree of
+   * The workspace of a worker across repositories: `<floor>.worktrees/<slug>` beside the floor, with a worktree of
    * this floor's project and of each of `repos` in it, all on office/<slug>, and a brief for the agent
    * (the 'worker.repos' prompt, as CLAUDE.md and AGENTS.md). All or nothing: when one repository
    * can't have its worktree, the ones already made are taken out again.
@@ -93,7 +94,7 @@ export class WorkerTrees {
       // Fresh branches with nothing on them: nothing is lost taking them out again.
       void (async () => {
         for (const m of made.reverse()) await m.trees.remove(m.ref, 'all');
-        clearWorkspace(path.join(this.ctx.dir, WORKTREES_DIR, slug));
+        clearWorkspace(path.join(worktreesHome(this.ctx.dir), slug));
       })();
       return why;
     };

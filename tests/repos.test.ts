@@ -9,6 +9,7 @@ import { excludeFromGit } from '../src/server/config.js';
 import { landedWorkers } from '../src/server/leave-on-merge.js';
 import { Ledger } from '../src/server/usage.js';
 import { WorkerManager, relatedBlock, withRelated, workspaceNames, type RepoSource, type WorkerEvents } from '../src/server/workers.js';
+import { worktreesHome } from '../src/server/worktree-home.js';
 import { Worktrees } from '../src/server/worktrees.js';
 import type { ChangesState, GhPull, WorkerInfo } from '../src/shared/protocol.js';
 
@@ -150,11 +151,11 @@ test('a worker across repositories gets a workspace with a worktree of each on o
   assert.equal(typeof w, 'object', String(w));
   if (typeof w === 'string') return;
   const slug = w.worktree!.branch.replace(/^office\//, '');
-  const ws = path.join(f.a, '.agent-office', 'worktrees', slug);
-  assert.equal(w.worktree!.path, path.join('.agent-office', 'worktrees', slug, 'web'));
+  const ws = path.join(worktreesHome(f.a), slug);
+  assert.equal(w.worktree!.path, path.join('..', 'web.worktrees', slug, 'web'));
   assert.deepEqual(w.repos!.map((r) => [r.floor, r.name, r.path, r.branch, r.from]), [
-    ['floor-api', 'api', path.join('.agent-office', 'worktrees', slug, 'api'), w.worktree!.branch, 'main'],
-    ['floor-admin', 'admin', path.join('.agent-office', 'worktrees', slug, 'admin'), w.worktree!.branch, 'main'],
+    ['floor-api', 'api', path.join('..', 'web.worktrees', slug, 'api'), w.worktree!.branch, 'main'],
+    ['floor-admin', 'admin', path.join('..', 'web.worktrees', slug, 'admin'), w.worktree!.branch, 'main'],
   ]);
   // Each is a worktree of its own repository, on the worker's branch.
   for (const [name, dir] of [['web', f.a], ['api', f.b], ['admin', f.c]]) {
@@ -200,7 +201,7 @@ test('hiring across repositories needs its own worktree and different repositori
   assert.match(String(failed), /^api: Could not create a git worktree/);
   await waitFor(() => git(f.a, 'branch', '--list', 'office/sprocket-0000'), (out) => out === '');
   assert.equal(git(f.a, 'branch', '--list', 'office/*'), before);
-  await waitFor(() => existsSync(path.join(f.a, '.agent-office', 'worktrees', 'sprocket-0000')), (there) => !there);
+  await waitFor(() => existsSync(path.join(worktreesHome(f.a), 'sprocket-0000')), (there) => !there);
   assert.equal(git(f.b, 'branch', '--list', 'office/sprocket-0000'), 'office/sprocket-0000', "api's own branch stays");
 });
 
@@ -209,7 +210,7 @@ test('sending a worker across repositories home checks every worktree, and delet
   const workers = manager(f, t);
   const hire = () => workers.spawn('desk-1', 'Cody', undefined, true, 'agent', undefined, undefined, undefined, undefined, undefined, [source('floor-api', f.b)]) as WorkerInfo;
   const w = hire();
-  const ws = path.join(f.a, '.agent-office', 'worktrees', w.worktree!.branch.slice('office/'.length));
+  const ws = path.join(worktreesHome(f.a), w.worktree!.branch.slice('office/'.length));
   writeFileSync(path.join(ws, 'api', 'server.js'), 'wip\n');
   const state = await workers.inspectWorktree(w.id);
   assert.deepEqual(state?.repos?.map((r) => [r.name, r.state.dirty]), [['web', 0], ['api', 1]]);
@@ -220,7 +221,7 @@ test('sending a worker across repositories home checks every worktree, and delet
   assert.ok(existsSync(path.join(ws, 'api', 'server.js')));
 
   const w2 = hire();
-  const ws2 = path.join(f.a, '.agent-office', 'worktrees', w2.worktree!.branch.slice('office/'.length));
+  const ws2 = path.join(worktreesHome(f.a), w2.worktree!.branch.slice('office/'.length));
   const done = await workers.kill(w2.id, 'all');
   assert.match(done.note ?? '', /Deleted .*worktrees and branch office\/\S+ in web, api/);
   assert.equal(existsSync(ws2), false);
@@ -232,7 +233,7 @@ test('O opens a pull request in each repository with commits, and each one lists
   const f = fixture(t);
   const workers = manager(f, t);
   const w = workers.spawn('desk-1', 'Cody', 'Work on GitHub issue #12: "Sign in with passkeys".', true, 'agent', undefined, undefined, undefined, undefined, undefined, [source('floor-api', f.b), source('floor-admin', f.c)]) as WorkerInfo;
-  const ws = path.join(f.a, '.agent-office', 'worktrees', w.worktree!.branch.slice('office/'.length));
+  const ws = path.join(worktreesHome(f.a), w.worktree!.branch.slice('office/'.length));
   await waitFor(() => workers.get(w.id)?.status, (s) => s !== 'starting');
   // Work in web and api; nothing in admin.
   for (const name of ['web', 'api']) {
@@ -328,11 +329,11 @@ test('prune leaves a workspace with worktrees in it alone, and lists the other r
   assert.equal(typeof web.create('pip-1', 'web'), 'object');
   assert.equal(typeof api.create('pip-1', 'api', f.a), 'object');
   const listed = await web.list();
-  assert.deepEqual(listed.worktrees.map((w) => [w.path, w.branch]), [[path.join('.agent-office', 'worktrees', 'pip-1', 'web'), 'office/pip-1']]);
+  assert.deepEqual(listed.worktrees.map((w) => [w.path, w.branch]), [[path.join('..', 'web.worktrees', 'pip-1', 'web'), 'office/pip-1']]);
   assert.deepEqual(listed.strays, []);
   const theirs = await api.list();
   assert.deepEqual(theirs.worktrees, []);
-  assert.deepEqual([...theirs.elsewhere], [['office/pip-1', path.join(f.a, '.agent-office', 'worktrees', 'pip-1', 'api')]]);
+  assert.deepEqual([...theirs.elsewhere], [['office/pip-1', path.join(worktreesHome(f.a), 'pip-1', 'api')]]);
 });
 
 const pull = (number: number, state: string, headRefName: string, headRefOid?: string): GhPull => ({

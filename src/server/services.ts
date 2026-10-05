@@ -2,6 +2,7 @@ import { execFile } from 'node:child_process';
 import { readFile, readlink } from 'node:fs/promises';
 import http from 'node:http';
 import path from 'node:path';
+import { worktreesHome } from './worktree-home.js';
 import type { ServiceInfo } from '../shared/protocol.js';
 
 // Finds the web servers workers start (npm run dev, python -m http.server, ...) so teammates can
@@ -278,7 +279,9 @@ export class Services {
     for (const [port, f] of found) {
       const cwd = f.cwd ?? more.get(f.l.pid);
       const root = byId.get(f.workerId)?.root;
-      const rel = cwd && root && inside(root, cwd) ? path.relative(root, cwd) : undefined;
+      // The folder it runs in: under the floor's checkout, or in a worktree beside it (shown from its worktrees folder).
+      const home = root ? worktreesHome(root) : undefined;
+      const rel = cwd && root && inside(root, cwd) ? path.relative(root, cwd) : cwd && home && inside(home, cwd) ? path.relative(home, cwd) : undefined;
       const fresh = { host: f.l.host, pid: f.l.pid, command: shortCommand(procs.get(f.l.pid)?.args ?? '?'), cwd: rel, since: now };
       let t = this.tracked.get(port);
       if (!t) {

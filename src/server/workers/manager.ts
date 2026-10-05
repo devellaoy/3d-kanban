@@ -684,7 +684,7 @@ export class WorkerManager extends KanbanWorkers {
     }
 
     const cwd = this.cwd(info);
-    // A workspace isn't a repository, but it's inside this floor's checkout: git run in it must not
+    // A workspace isn't a repository, but it's beside this floor's checkout (or inside it, for older ones): git run in it must not
     // find that checkout (and switch its branch, say) instead of saying it's no repository.
     if (info.repos?.length) env.GIT_CEILING_DIRECTORIES = [path.dirname(cwd), env.GIT_CEILING_DIRECTORIES].filter(Boolean).join(path.delimiter);
     if (w.owner && this.runAs) {

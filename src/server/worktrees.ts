@@ -1,17 +1,16 @@
 import { execFile, execFileSync } from 'node:child_process';
-import { existsSync, readdirSync, realpathSync, statSync } from 'node:fs';
-import { rm } from 'node:fs/promises';
+import { existsSync, lstatSync, readdirSync, statSync, unlinkSync } from 'node:fs';
+import { mkdir, rm } from 'node:fs/promises';
 import path from 'node:path';
 import { promisify } from 'node:util';
 import { NO_FSMONITOR } from './floor-git.js';
+import { ensureHome, linkNodeModules, realish, storedPath, within, worktreeHomes } from './worktree-home.js';
 import type { LostBranch, WorktreeState } from '../shared/protocol.js';
 
 export type { WorktreeCleanup, WorktreeState } from '../shared/protocol.js';
 
 const execFileP = promisify(execFile);
 
-/** Where the office keeps its workers' worktrees, relative to the project. */
-export const WORKTREES_DIR = path.join('.agent-office', 'worktrees');
 /** Their branches are office/<worker>-<id>. */
 export const BRANCH_PREFIX = 'office/';
 /** A fetch this recent is fresh enough for the next worktree: a burst of hires shares one. */
@@ -21,7 +20,7 @@ const FETCH_TIMEOUT_MS = 15_000;
 export const WORKSPACE_FILES = new Set(['AGENTS.md', 'CLAUDE.md']);
 
 export interface WorktreeRef {
-  /** Folder relative to the project dir; missing for a branch whose worktree is already gone. */
+  /** Folder relative to the project dir (`../<project>.worktrees/<slug>`, or `.agent-office/worktrees/<slug>` for older ones); missing for a branch whose worktree is already gone. */
   path?: string;
   branch: string;
   /** The commit it was branched from, when known. */
@@ -39,8 +38,6 @@ export interface ListedWorktree {
 
 /** Git plumbing for the worktrees the office makes for its workers: hiring, sending home and pruning. */
 export class Worktrees {
-  /** The project dir with symlinks resolved, so it compares with the paths git prints. */
-  private readonly root: string;
   private fetchedAt = 0;
   private fetching?: Promise<void>;
   /** The last fetch's error, so the office's log says it once rather than on every hire. */
@@ -48,9 +45,7 @@ export class Worktrees {
   /** The branch the last fetch was of (see fetch). */
   private fetchedFor?: string;
 
-  constructor(private dir: string) {
-    this.root = real(dir);
-  }
+  constructor(private dir: string) {}
 
   /**
    * A new branch and worktree, from the latest of the branch the project is on (see startPoint).
@@ -58,8 +53,8 @@ export class Worktrees {
    * project has were left out. Returns what went wrong as a string.
    *
    * For a worker across repositories, `sub` puts it in the folder of that name in the workspace
-   * `slug`, which is in `root` (the worker's own floor, when that isn't this project). The path it
-   * returns is relative to `root`.
+   * `slug`, which is in the worktrees folder of `root` (the worker's own floor, when that isn't this
+   * project): `<root>.worktrees`, beside it. The path it returns is relative to `root`.
    *
    * `baseBranch` cuts it from that branch instead of the one the project is on (see
    * baseStartPoint), and fails when there's no such branch.
@@ -71,9 +66,12 @@ export class Worktrees {
       const start = baseBranch ? this.baseStartPoint(baseBranch) : this.startPoint(from);
       if (typeof start === 'string') return start;
       const { base, note } = start;
-      const rel = path.join(WORKTREES_DIR, slug, sub ?? '');
+      const home = ensureHome(root);
+      const abs = path.join(home, slug, sub ?? '');
+      const rel = storedPath(root, abs) ?? path.relative(path.resolve(root), abs);
       const branch = `${BRANCH_PREFIX}${slug}`;
-      this.gitSync(['worktree', 'add', '-b', branch, path.resolve(root, rel), base]);
+      this.gitSync(['worktree', 'add', '-b', branch, abs, base]);
+      linkNodeModules(this.dir, abs);
       return { path: rel, branch, base, from, note };
     } catch (err) {
       return `Could not create a git worktree: ${gitError(err)}`;
@@ -238,12 +236,14 @@ export class Worktrees {
       // Git still lists the deleted folder, and won't check its branch out anywhere else while it does.
       await this.git(['worktree', 'prune']);
       const from = this.branchState(wt.branch);
+      await mkdir(path.dirname(abs), { recursive: true });
       if (from === 'here') await this.git(['worktree', 'add', abs, wt.branch]);
       else if (from === 'origin') await this.git(['worktree', 'add', '-b', wt.branch, abs, `refs/remotes/origin/${wt.branch}`]);
       else {
         const base = wt.base && (await this.git(['cat-file', '-e', `${wt.base}^{commit}`]).then(() => true, () => false)) ? wt.base : 'HEAD';
         await this.git(['worktree', 'add', '-b', wt.branch, abs, base]);
       }
+      linkNodeModules(this.dir, abs);
       return { from };
     } catch (err) {
       return { error: gitError(err) };
@@ -305,6 +305,7 @@ export class Worktrees {
       if (wt.path) {
         const abs = path.join(this.dir, wt.path);
         if (existsSync(abs)) {
+          unlinkModules(abs);
           try {
             await this.git(['worktree', 'remove', '--force', '--force', abs]);
           } catch (err) {
@@ -330,13 +331,14 @@ export class Worktrees {
   }
 
   /**
-   * The worktrees git has under .agent-office/worktrees, every office/* branch, and folders there git
-   * doesn't know. A workspace (a worker across repositories) is a folder there with worktrees in it,
-   * not a stray. `elsewhere` are office/* branches checked out somewhere else: in another floor's
-   * workspace, by a worker across repositories that this project's office doesn't list.
+   * The worktrees git has in the project's worktrees folders (`<project>.worktrees/` and the older
+   * .agent-office/worktrees/), every office/* branch, and folders there git doesn't know. A workspace
+   * (a worker across repositories) is a folder there with worktrees in it, not a stray. `elsewhere`
+   * are office/* branches checked out somewhere else: in another floor's workspace, by a worker
+   * across repositories that this project's office doesn't list.
    */
   async list(): Promise<{ worktrees: ListedWorktree[]; branches: string[]; strays: string[]; elsewhere: Map<string, string> }> {
-    const home = path.join(this.root, WORKTREES_DIR);
+    const homes = worktreeHomes(this.dir);
     const worktrees: ListedWorktree[] = [];
     const elsewhere = new Map<string, string>();
     let cur: ListedWorktree | undefined;
@@ -344,7 +346,8 @@ export class Worktrees {
     for (const line of (await this.git(['worktree', 'list', '--porcelain'])).split('\n')) {
       if (line.startsWith('worktree ')) {
         abs = real(line.slice('worktree '.length));
-        cur = within(home, abs) ? { path: path.relative(this.root, abs), head: '' } : undefined;
+        const rel = storedPath(this.dir, abs);
+        cur = rel === undefined ? undefined : { path: rel, head: '' };
         if (cur) worktrees.push(cur);
       } else if (cur && line.startsWith('HEAD ')) cur.head = line.slice('HEAD '.length);
       else if (line.startsWith('branch ')) {
@@ -354,19 +357,23 @@ export class Worktrees {
       }
     }
     const branches = (await this.git(['for-each-ref', '--format=%(refname:short)', `refs/heads/${BRANCH_PREFIX}`])).split('\n').filter(Boolean);
-    const known = worktrees.map((w) => path.join(this.root, w.path));
-    const strays = existsSync(home)
-      ? readdirSync(home)
-          .map((n) => path.join(home, n))
-          .filter((p) => !known.some((k) => k === p || within(p, k)) && isDir(p))
-          .map((p) => path.relative(this.root, p))
-      : [];
+    const base = path.resolve(this.dir);
+    const known = worktrees.map((w) => path.join(base, w.path));
+    const strays = homes.flatMap((home) =>
+      existsSync(home)
+        ? readdirSync(home)
+            .map((n) => path.join(home, n))
+            .filter((p) => !known.some((k) => k === p || within(p, k)) && isDir(p))
+            .map((p) => path.relative(base, p))
+        : [],
+    );
     return { worktrees, branches, strays, elsewhere };
   }
 
-  /** True for a folder inside .agent-office/worktrees, the only place this class deletes on its own. */
+  /** True for a folder inside the project's worktrees folders, the only places this class deletes on its own. */
   owns(abs: string): boolean {
-    return within(path.join(this.root, WORKTREES_DIR), real(abs));
+    const r = real(abs);
+    return worktreeHomes(this.dir).some((home) => within(real(home), r));
   }
 
   // A worker's worktree is somebody's own doing (hiring it): the repository's hooks run, its fsmonitor never does.
@@ -404,17 +411,17 @@ export function gitError(err: unknown): string {
   return String(e.stderr || e.message || err).trim().split('\n').filter(Boolean).pop() ?? 'git failed';
 }
 
-function real(p: string): string {
-  try {
-    return realpathSync(p);
-  } catch {
-    return path.resolve(p);
-  }
-}
+/** Symlinks resolved, so it compares with the paths git prints. */
+const real = realish;
 
-function within(root: string, p: string): boolean {
-  const rel = path.relative(root, p);
-  return rel !== '' && !rel.startsWith('..') && !path.isAbsolute(rel);
+/** Takes the node_modules link (see linkNodeModules) out before the folder goes, so nothing can follow it into the project's own. */
+function unlinkModules(worktree: string): void {
+  try {
+    const link = path.join(worktree, 'node_modules');
+    if (lstatSync(link).isSymbolicLink()) unlinkSync(link);
+  } catch {
+    // no link
+  }
 }
 
 function isDir(p: string): boolean {

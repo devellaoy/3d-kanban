@@ -99,7 +99,7 @@ Commands:
   setup                   Pick the folder projects are cloned into and clone
                           projects as floors: a walkthrough in a terminal, or
                           just --projects / --project for scripts (see setup --help)
-  prune                   Remove leftover worker worktrees (.agent-office/worktrees/)
+  prune                   Remove leftover worker worktrees (<project>.worktrees/)
                           and their office/* branches. Anything with uncommitted
                           changes or unpushed commits is kept unless --force is given.
   accounts                Invite, list and revoke people's own accounts, and switch
@@ -204,15 +204,19 @@ export function officeHome(): string {
   return path.resolve(process.env.AGENT_OFFICE_HOME || path.join(os.homedir(), 'agent-office'));
 }
 
-/** Keep the office's own data out of git without touching the project's .gitignore. */
-export function excludeFromGit(dir: string) {
+/**
+ * Keep something out of git without touching the project's .gitignore, in the repository's own
+ * info/exclude: the office's own data by default, or `pattern` (a line in gitignore syntax).
+ */
+export function excludeFromGit(dir: string, pattern = '.agent-office/') {
   try {
     const gitDir = execFileSync('git', ['rev-parse', '--git-common-dir'], { cwd: dir, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim();
     const exclude = path.resolve(dir, gitDir, 'info', 'exclude');
     const cur = existsSync(exclude) ? readFileSync(exclude, 'utf8') : '';
-    if (!cur.split('\n').some((l) => l.trim() === '.agent-office/' || l.trim() === '.agent-office')) {
+    const bare = pattern.replace(/\/$/, '');
+    if (!cur.split('\n').some((l) => l.trim() === pattern || l.trim() === bare)) {
       mkdirSync(path.dirname(exclude), { recursive: true });
-      appendFileSync(exclude, `${cur && !cur.endsWith('\n') ? '\n' : ''}.agent-office/\n`);
+      appendFileSync(exclude, `${cur && !cur.endsWith('\n') ? '\n' : ''}${pattern}\n`);
     }
   } catch {
     // not a git repo; nothing to exclude

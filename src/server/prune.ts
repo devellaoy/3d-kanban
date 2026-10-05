@@ -2,14 +2,16 @@ import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
 import { rm } from 'node:fs/promises';
 import { execFileSync } from 'node:child_process';
 import path from 'node:path';
-import { WORKSPACE_FILES, WORKTREES_DIR, Worktrees, describeWork, gitError } from './worktrees.js';
+import { WORKSPACE_FILES, Worktrees, describeWork, gitError } from './worktrees.js';
+import { LEGACY_WORKTREES_DIR, officeOfWorktree, worktreeHomes } from './worktree-home.js';
 
 const HELP = `agent-office prune — remove leftover worker worktrees and branches
 
 Usage:
   agent-office prune [dir] [options]
 
-Removes the worktrees under ${WORKTREES_DIR}/ and the office/* branches that
+Removes the worktrees beside the project (<project>.worktrees/, or ${LEGACY_WORKTREES_DIR}/
+in it, where older ones are) and the office/* branches that
 no worker of the office in [dir] (default: current directory) uses any more.
 Anything with uncommitted changes, or with commits that no remote has, is kept
 and listed, so nothing is lost by accident. A worker across several projects has
@@ -117,6 +119,7 @@ export async function prune(argv: string[]): Promise<number> {
     }
   };
 
+  const homes = worktreeHomes(dir).map((h) => path.relative(path.resolve(dir), h));
   console.log(`\n  agent-office prune — ${dir}${dryRun ? ' (dry run)' : ''}\n`);
   const withWorktree = new Set<string>();
   for (const wt of worktrees) {
@@ -134,17 +137,17 @@ export async function prune(argv: string[]): Promise<number> {
       continue;
     }
     await drop(label, work ? `${work} (forced)` : 'clean, nothing unpushed', () => trees.remove(ref, wt.branch ? 'all' : 'worktree'));
-    if (path.dirname(path.normalize(wt.path)) !== path.normalize(WORKTREES_DIR)) emptied.add(path.dirname(wt.path));
+    // A worktree straight in a worktrees folder has no workspace around it.
+    if (!homes.includes(path.dirname(path.normalize(wt.path)))) emptied.add(path.dirname(wt.path));
   }
   // This project's worktrees in another floor's workspace, made for a worker there across repositories.
   for (const [branch, abs] of elsewhere) {
     withWorktree.add(branch);
-    const at = abs.lastIndexOf(`${path.sep}${WORKTREES_DIR}${path.sep}`);
-    if (at < 0) {
+    const office = officeOfWorktree(abs);
+    if (!office) {
       keep(branch, `checked out at ${abs}`);
       continue;
     }
-    const office = abs.slice(0, at);
     const owner = savedWorkers(office).find((w) => w.worktree?.branch === branch || w.repos?.some((r) => r.branch === branch));
     if (owner) {
       const name = owner.name ?? 'a worker';
@@ -209,7 +212,7 @@ export async function prune(argv: string[]): Promise<number> {
       }
     });
   }
-  if (!worktrees.length && !branches.length && !strays.length && !elsewhere.size) console.log(`  nothing under ${WORKTREES_DIR}/ and no office/* branches — all clean`);
+  if (!worktrees.length && !branches.length && !strays.length && !elsewhere.size) console.log(`  nothing under ${homes.join('/ or ')}/ and no office/* branches — all clean`);
   console.log(`\n  ${removed} ${dryRun ? 'to remove' : 'removed'}, ${kept} kept.\n`);
   return 0;
 }

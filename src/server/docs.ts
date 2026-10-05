@@ -168,7 +168,7 @@ export class Docs {
    * (tracked, or new and not ignored; without git, not under a hidden or build folder). read() and
    * picture() serve anything inside the checkout (the owner's own bookshelf only asks for what it
    * was shown), so a visitor, who may ask for any path, is held to this: no CLAUDE.local.md, no
-   * ignored notes, no `.agent-office/` worktrees.
+   * ignored notes, no `.agent-office/` folder (the office's data and older worktrees).
    */
   async shown(file: string): Promise<boolean> {
     const rel = path.posix.normalize(file.split(path.sep).join('/'));
