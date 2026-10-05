@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { test } from 'node:test';
 import { prune } from '../src/server/prune.js';
-import { ensureHome, officeOfWorktree, worktreeHomes, worktreesHome } from '../src/server/worktree-home.js';
+import { ensureHome, linkNodeModules, linkNodeModulesAsync, officeOfWorktree, worktreeHomes, worktreesHome } from '../src/server/worktree-home.js';
 import { Worktrees } from '../src/server/worktrees.js';
 
 // New worktrees live beside the project, in <project>.worktrees/, linked to the project's node_modules;
@@ -28,7 +28,7 @@ function repo(dir: string, gitignore = 'node_modules/\n'): string {
 
 /** A temp folder with the repository in a subfolder of it, so the sibling .worktrees goes with the folder. */
 function fixture(t: { after(fn: () => void): void }, name = 'proj') {
-  const root = mkdtempSync(path.join(tmpdir(), 'agent-office-home-'));
+  const root = realpathSync(mkdtempSync(path.join(tmpdir(), 'agent-office-home-')));
   t.after(() => rmSync(root, { recursive: true, force: true }));
   const dir = repo(path.join(root, name));
   mkdirSync(path.join(dir, 'node_modules', 'dep'), { recursive: true });
@@ -36,16 +36,22 @@ function fixture(t: { after(fn: () => void): void }, name = 'proj') {
   return { root, dir };
 }
 
-test('worktreesHome is beside the folder as given, and officeOfWorktree reads both homes back', () => {
-  assert.equal(worktreesHome('/a/b/proj'), '/a/b/proj.worktrees');
-  assert.deepEqual(worktreeHomes('/a/b/proj'), ['/a/b/proj.worktrees', '/a/b/proj/.agent-office/worktrees']);
-  assert.equal(officeOfWorktree('/a/b/proj.worktrees/slug'), '/a/b/proj');
-  assert.equal(officeOfWorktree('/a/b/proj.worktrees/slug/api'), '/a/b/proj');
-  assert.equal(officeOfWorktree('/a/b/proj/.agent-office/worktrees/slug/api'), '/a/b/proj');
-  assert.equal(officeOfWorktree('/a/b/proj.worktrees'), undefined);
-  assert.equal(officeOfWorktree('/a/b/proj'), undefined);
+test('worktreesHome is beside the real folder; officeOfWorktree names a floor only when it is one', (t) => {
+  const { root, dir } = fixture(t);
+  assert.equal(worktreesHome(dir), path.join(root, 'proj.worktrees'));
+  assert.deepEqual(worktreeHomes(dir), [path.join(root, 'proj.worktrees'), path.join(dir, '.agent-office', 'worktrees')]);
+  mkdirSync(path.join(dir, '.agent-office'));
+  assert.equal(officeOfWorktree(path.join(root, 'proj.worktrees', 'slug')), dir);
+  assert.equal(officeOfWorktree(path.join(root, 'proj.worktrees', 'slug', 'api')), dir);
+  assert.equal(officeOfWorktree(path.join(dir, '.agent-office', 'worktrees', 'slug', 'api')), dir);
+  assert.equal(officeOfWorktree(path.join(root, 'proj.worktrees')), undefined);
+  assert.equal(officeOfWorktree(dir), undefined);
+  // Someone's own `<name>.worktrees` isn't an office's: nothing named code has an .agent-office.
+  assert.equal(officeOfWorktree(path.join(root, 'code.worktrees', 'review')), undefined);
   // A floor that is a worktree itself: the innermost home counts.
-  assert.equal(officeOfWorktree('/a/proj.worktrees/x/x.worktrees/y'), '/a/proj.worktrees/x/x');
+  const inner = path.join(root, 'proj.worktrees', 'x');
+  mkdirSync(path.join(inner, '.agent-office'), { recursive: true });
+  assert.equal(officeOfWorktree(path.join(root, 'proj.worktrees', 'x.worktrees', 'y')), inner);
 });
 
 /** A package folder in a repository's node_modules, with `scope` for @scope/name. */
@@ -116,12 +122,21 @@ test('create and list give the same path, even when the folder is reached throug
   const made = trees.create('pip-2');
   assert.equal(typeof made, 'object', String(made));
   if (typeof made === 'string') return;
-  assert.equal(made.path, path.join('..', 'link.worktrees', 'pip-2'));
+  // The same whichever way the floor is spelled: its real name, not the link's.
+  assert.equal(made.path, path.join('..', 'proj.worktrees', 'pip-2'));
+  assert.equal(worktreesHome(link), worktreesHome(dir));
   const listed = await trees.list();
   assert.deepEqual(listed.worktrees.map((w) => w.path), [made.path]);
   assert.deepEqual(listed.strays, []);
   assert.equal(existsSync(path.join(link, made.path, 'a.txt')), true);
-  assert.equal(trees.owns(path.join(link, made.path)), true);
+  // Asked the other way: inspect, list, owns and restore through the real path agree.
+  const direct = new Worktrees(dir);
+  assert.equal((await direct.inspect(made)).exists, true);
+  assert.deepEqual((await direct.list()).worktrees.map((w) => w.path), [made.path]);
+  assert.equal(direct.owns(path.join(link, made.path), made), true);
+  rmSync(path.join(dir, made.path), { recursive: true });
+  assert.deepEqual(await direct.restore(made), { from: 'here' });
+  assert.equal(existsSync(path.join(link, made.path, 'a.txt')), true);
 });
 
 test('list and owns see worktrees in both homes, and strays in either', async (t) => {
@@ -141,10 +156,15 @@ test('list and owns see worktrees in both homes, and strays in either', async (t
     [path.join('.agent-office', 'worktrees', 'old-1'), 'office/old-1'],
   ].sort());
   assert.deepEqual(listed.strays, [path.join('.agent-office', 'worktrees', 'stray-old')]);
-  assert.equal(trees.owns(path.join(root, 'proj.worktrees', 'new-1')), true);
-  assert.equal(trees.owns(old), true);
-  assert.equal(trees.owns(dir), false);
-  assert.equal(trees.owns(path.join(root, 'proj.worktrees')), false);
+  const mine = { path: path.join('..', 'proj.worktrees', 'new-1'), branch: 'office/new-1' };
+  const oldRef = { path: path.join('.agent-office', 'worktrees', 'old-1'), branch: 'office/old-1' };
+  assert.equal(trees.owns(path.join(root, 'proj.worktrees', 'new-1'), mine), true);
+  assert.equal(trees.owns(old, oldRef), true);
+  assert.equal(trees.owns(dir, mine), false);
+  assert.equal(trees.owns(path.join(root, 'proj.worktrees'), mine), false);
+  // In the new home only the folder of the office's slug is the office's.
+  assert.equal(trees.owns(path.join(root, 'proj.worktrees', 'notes'), mine), false);
+  assert.equal(trees.owns(path.join(root, 'proj.worktrees', 'new-1', 'api'), mine), true);
   // The old one is taken out as before.
   assert.equal(await trees.remove({ path: path.join('.agent-office', 'worktrees', 'old-1'), branch: 'office/old-1' }, 'all'), undefined);
   assert.equal(existsSync(old), false);
@@ -271,7 +291,7 @@ test('ensureHome makes the folder, and a floor nested in another repository has 
   const floor = path.join(mono, 'packages', 'app');
   mkdirSync(floor, { recursive: true });
   const home = ensureHome(floor);
-  assert.equal(home, path.join(mono, 'packages', 'app.worktrees'));
+  assert.equal(home, path.join(realpathSync(mono), 'packages', 'app.worktrees'));
   assert.ok(existsSync(home));
   const exclude = () => readFileSync(path.join(mono, '.git', 'info', 'exclude'), 'utf8');
   assert.match(exclude(), /^\/packages\/app\.worktrees\/$/m);
@@ -288,4 +308,104 @@ test('create says so, naming the folder, when the one beside the project can not
   const made = new Worktrees(dir).create('pip-7');
   assert.match(String(made), /^Could not create a git worktree: can't make .*proj\.worktrees for the worktrees/);
   assert.equal(git(dir, 'branch', '--list', 'office/*'), '');
+});
+
+test('remove does not rm a folder of the user\'s in the new home, whatever the ref says', async (t) => {
+  const { root, dir } = fixture(t);
+  const home = path.join(root, 'proj.worktrees');
+  mkdirSync(path.join(home, 'notes'), { recursive: true });
+  writeFileSync(path.join(home, 'notes', 'todo.md'), 'keep\n');
+  const err = await new Worktrees(dir).remove({ path: path.join('..', 'proj.worktrees', 'notes'), branch: 'office/other' }, 'worktree');
+  assert.equal(typeof err, 'string');
+  assert.equal(readFileSync(path.join(home, 'notes', 'todo.md'), 'utf8'), 'keep\n');
+});
+
+test('prune keeps an office/* branch checked out in a folder that is not an office\'s', async (t) => {
+  const { root, dir } = fixture(t);
+  const theirs = path.join(root, 'code.worktrees', 'review');
+  git(dir, 'worktree', 'add', '-q', '-b', 'office/hand-made', theirs);
+  const lines: string[] = [];
+  const log = console.log;
+  console.log = (...a: unknown[]) => void lines.push(a.join(' '));
+  try {
+    assert.equal(await prune([dir, '--force']), 0);
+  } finally {
+    console.log = log;
+  }
+  assert.ok(existsSync(path.join(theirs, 'a.txt')));
+  assert.match(git(dir, 'branch', '--list', 'office/hand-made'), /office\/hand-made/);
+  assert.match(lines.join('\n'), /kept\s+office\/hand-made\s+checked out at/);
+});
+
+test('a detached office worktree in the new home is listed, and prune does not delete its branch from under it', async (t) => {
+  const { dir } = fixture(t);
+  const made = new Worktrees(dir).create('pip-10');
+  if (typeof made === 'string') return assert.fail(made);
+  const abs = path.join(dir, made.path);
+  git(abs, 'checkout', '-q', '--detach');
+  writeFileSync(path.join(abs, 'wip.txt'), 'uncommitted\n');
+  const listed = await new Worktrees(dir).list();
+  assert.deepEqual(listed.worktrees.map((w) => [w.path, w.branch, w.office]), [[made.path, undefined, 'office/pip-10']]);
+  const lines: string[] = [];
+  const log = console.log;
+  console.log = (...a: unknown[]) => void lines.push(a.join(' '));
+  try {
+    assert.equal(await prune([dir]), 0);
+  } finally {
+    console.log = log;
+  }
+  assert.match(lines.join('\n'), /kept\s+\S+ \(detached\)/);
+  assert.ok(existsSync(path.join(abs, 'wip.txt')), 'the folder stays');
+  assert.match(git(dir, 'branch', '--list', 'office/pip-10'), /office\/pip-10/, 'and so does its branch');
+});
+
+test('restore makes the home again, and says why when it can not', async (t) => {
+  const { dir: web } = fixture(t, 'mono');
+  const floor = path.join(web, 'packages', 'app');
+  mkdirSync(floor, { recursive: true });
+  git(web, 'branch', 'office/r1');
+  const trees = new Worktrees(floor);
+  assert.deepEqual(await trees.restore({ path: path.join('..', 'app.worktrees', 'r1'), branch: 'office/r1' }), { from: 'here' });
+  assert.match(readFileSync(path.join(web, '.git', 'info', 'exclude'), 'utf8'), /^\/packages\/app\.worktrees\/$/m);
+  rmSync(path.join(web, 'packages', 'app.worktrees'), { recursive: true, force: true });
+  writeFileSync(path.join(web, 'packages', 'app.worktrees'), 'in the way\n');
+  git(web, 'worktree', 'prune');
+  const r = await trees.restore({ path: path.join('..', 'app.worktrees', 'r1'), branch: 'office/r1' });
+  assert.match(JSON.stringify(r), /can't make .*app\.worktrees for the worktrees/);
+});
+
+test('ensureHome escapes the folder name for gitignore, and writes nothing for one with control characters', (t) => {
+  const { root } = fixture(t, 'mono');
+  const mono = path.join(root, 'mono');
+  const floor = path.join(mono, 'we*ird [1] !x ', 'app');
+  mkdirSync(floor, { recursive: true });
+  const home = ensureHome(floor);
+  const exclude = () => readFileSync(path.join(mono, '.git', 'info', 'exclude'), 'utf8');
+  assert.ok(exclude().split('\n').includes('/we\\*ird \\[1] \\!x\\ /app.worktrees/'), exclude());
+  writeFileSync(path.join(home, 'x.txt'), 'x\n');
+  mkdirSync(path.join(mono, 'we-also', 'app.worktrees'), { recursive: true });
+  writeFileSync(path.join(mono, 'we-also', 'app.worktrees', 'y.txt'), 'y\n');
+  assert.equal(git(mono, 'status', '--porcelain', '-uall').includes('ird'), false, 'ignored');
+  assert.match(git(mono, 'status', '--porcelain', '-uall'), /we-also/, 'the pattern does not reach beyond its folder');
+  const before = exclude();
+  const odd = path.join(mono, 'a\nb', 'app');
+  mkdirSync(odd, { recursive: true });
+  assert.ok(existsSync(ensureHome(odd)));
+  assert.equal(exclude(), before);
+});
+
+test('the async node_modules walk makes what the sync one does', async (t) => {
+  const { root, dir } = fixture(t);
+  pkg(dir, '@types/node');
+  mkdirSync(path.join(dir, 'node_modules', '.bin'));
+  symlinkSync('../dep/index.js', path.join(dir, 'node_modules', '.bin', 'dep'));
+  const tree = (d: string) => readdirSync(path.join(d, 'node_modules'), { recursive: true }).map(String).sort();
+  const a = path.join(root, 'a');
+  const b = path.join(root, 'b');
+  mkdirSync(a);
+  mkdirSync(b);
+  linkNodeModules(dir, a);
+  await linkNodeModulesAsync(dir, b);
+  assert.deepEqual(tree(b), tree(a));
+  assert.ok(tree(a).includes(path.join('@types', 'node')));
 });

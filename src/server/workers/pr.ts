@@ -14,6 +14,7 @@ import type { OpenedPr, Worker, WorkerContext } from './types.js';
 import { truncate } from './util.js';
 import { originRepo } from './worktree.js';
 import { checkoutRepo, repoFlag } from '../ghrepo.js'; // gh acts on the checkout's origin
+import { worktreeDir } from '../worktree-home.js';
 
 const PR_TITLE_MAX = 72;
 const PR_TASK_MAX = 2500;
@@ -101,7 +102,7 @@ export class WorkerPrs {
       return `${info.name} is still ${info.status === 'needs_input' ? 'waiting on input' : info.status} — wait until it's done`;
     }
     if (info.repos?.length) return this.openPrs(w, by, as);
-    const cwd = path.join(this.ctx.dir, wt.path);
+    const cwd = worktreeDir(this.ctx.dir, wt.path);
     if (!existsSync(cwd)) return `${info.name}'s worktree is gone (${wt.path})`;
     info.prOpening = true;
     this.ctx.emit(w);
@@ -148,7 +149,7 @@ export class WorkerPrs {
       { name: path.basename(wt.path), dir: this.ctx.dir, ...wt, pr: info.pr, own: true, set: (pr: { number: number; url: string }) => (info.pr = pr) },
       ...info.repos!.map((r) => ({ ...r, own: false, set: (pr: { number: number; url: string }) => (r.pr = pr) })),
     ];
-    const gone = parts.filter((p) => !existsSync(path.join(this.ctx.dir, p.path)));
+    const gone = parts.filter((p) => !existsSync(worktreeDir(this.ctx.dir, p.path)));
     if (gone.length) return `${info.name}'s worktree${gone.length > 1 ? 's' : ''} of ${gone.map((p) => p.name).join(', ')} ${gone.length > 1 ? 'are' : 'is'} gone`;
     info.prOpening = true;
     this.ctx.emit(w);
@@ -157,7 +158,7 @@ export class WorkerPrs {
     const uncommitted: string[] = [];
     try {
       for (const p of parts) {
-        const cwd = path.join(this.ctx.dir, p.path);
+        const cwd = worktreeDir(this.ctx.dir, p.path);
         try {
           const dirty = (await run('git', ['status', '--porcelain'], cwd)) !== '';
           const known = p.pr ?? (await findOpenPr(p.branch, cwd));

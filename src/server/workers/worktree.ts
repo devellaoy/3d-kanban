@@ -7,7 +7,7 @@ import path from 'node:path';
 import type { WorkerInfo, WorkerRepo } from '../../shared/protocol.js';
 import { normalizeRepo } from '../../shared/floors.js';
 import { officePrompt } from '../prompts.js';
-import { worktreesHome } from '../worktree-home.js';
+import { realish, worktreeDir, worktreesHome } from '../worktree-home.js';
 import { WORKSPACE_FILES, Worktrees, describeWork, workspaceOf, type WorktreeCleanup, type WorktreeRef, type WorktreeState } from '../worktrees.js';
 import { midTurn } from './lifecycle.js';
 import type { RepoSource, SpawnExtra, Worker, WorkerContext, Worktree } from './types.js';
@@ -109,7 +109,7 @@ export class WorkerTrees {
       const wt = trees.create(slug, names[i + 1], this.ctx.dir, bases?.[path.resolve(r.dir)]);
       if (typeof wt === 'string') return fail(`${r.name}: ${wt}`);
       if (wt.note) notes.push(`${names[i + 1]} ${wt.note}`);
-      made.push({ trees, ref: { ...wt, path: path.relative(r.dir, path.join(this.ctx.dir, wt.path)) } });
+      made.push({ trees, ref: { ...wt, path: path.relative(realish(r.dir), worktreeDir(this.ctx.dir, wt.path)) } });
       others.push({ floor: r.floor, name: names[i + 1], repo: r.repo, dir: r.dir, path: wt.path, branch: wt.branch, base: wt.base, from: wt.from });
     }
     try {
@@ -133,7 +133,7 @@ export class WorkerTrees {
       home,
       repos: [line(path.basename(primary.path), home, primary.from, " (this floor's project)"), ...others.map((o) => line(o.name, o.project, o.from))].join('\n'),
     });
-    for (const file of WORKSPACE_FILES) writeFileSync(path.join(this.ctx.dir, path.dirname(primary.path), file), `${brief.trim()}\n`);
+    for (const file of WORKSPACE_FILES) writeFileSync(path.join(path.dirname(worktreeDir(this.ctx.dir, primary.path)), file), `${brief.trim()}\n`);
   }
 
   /** Sending home a worker across repositories: what `kill` does with a worktree, for each of its worktrees, and then its workspace. */
@@ -154,7 +154,7 @@ export class WorkerTrees {
       return error && `${t.name}: ${error}`;
     }))).filter(Boolean);
     if (errors.length) return { error: `Couldn't delete all of ${name}'s worktrees: ${errors.join('; ')}` };
-    clearWorkspace(path.join(this.ctx.dir, workspaceOf(info)!));
+    clearWorkspace(worktreeDir(this.ctx.dir, workspaceOf(info)!));
     return { note: how === 'all' ? `Deleted ${name}'s worktrees and branch ${branch} in ${where}` : `Deleted ${name}'s worktrees in ${where} and kept branch ${branch}` };
   }
 
@@ -171,7 +171,7 @@ export class WorkerTrees {
         name: r.name,
         dir: r.dir,
         trees: new Worktrees(r.dir),
-        ref: { path: path.relative(r.dir, path.join(this.ctx.dir, r.path)), branch: r.branch, base: r.base },
+        ref: { path: path.relative(realish(r.dir), worktreeDir(this.ctx.dir, r.path)), branch: r.branch, base: r.base },
         landed: landedRepos?.[r.floor],
       })),
     ];
@@ -292,7 +292,7 @@ export class WorkerTrees {
       w.rebuilding = true;
       try {
         for (const t of this.treesOf(info)) {
-          if (t.ref.path && existsSync(path.resolve(t.dir, t.ref.path))) continue;
+          if (t.ref.path && existsSync(worktreeDir(t.dir, t.ref.path))) continue;
           const r = await t.trees.restore(t.ref);
           const which = across ? `${t.name}'s ` : '';
           if ('error' in r) return { error: `Couldn't rebuild ${info.name}'s worktree${across ? ` of ${t.name}` : ''}: ${r.error}` };

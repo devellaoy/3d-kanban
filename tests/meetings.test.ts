@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
-import { existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { MeetingRooms } from '../src/server/meeting-rooms.js';
@@ -13,7 +13,7 @@ import { MEETING_PATTERN_IDS, RECORD_PROMPT_MAX, archiveKey, isMeetingId, isMeet
 import { PROMPTS, type PromptId } from '../src/shared/prompts.js';
 
 function fixture(opts: { rooms?: MeetingRoomDef[]; git?: boolean; rewritten?: Partial<Record<PromptId, string>>; officeDefault?: AgentChoice } = {}) {
-  const dir = mkdtempSync(path.join(tmpdir(), 'office-meeting-'));
+  const dir = realpathSync(mkdtempSync(path.join(tmpdir(), 'office-meeting-')));
   const dataDir = path.join(dir, '.agent-office');
   mkdirSync(dataDir, { recursive: true });
   if (opts.git) {

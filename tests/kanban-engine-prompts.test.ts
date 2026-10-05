@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import type { FloorDef } from '../src/server/building.js';
@@ -19,7 +19,7 @@ import type { LanguageSettings } from '../src/shared/language.js';
 import { makeRepo } from './kanban-engine-fixture.js';
 
 function setup(t: { after(fn: () => void): void }, office: Record<string, { text: string }> = {}, langs: LanguageSettings = {}) {
-  const root = mkdtempSync(path.join(tmpdir(), 'kanban-prompts-'));
+  const root = realpathSync(mkdtempSync(path.join(tmpdir(), 'kanban-prompts-')));
   // The skills the prompts name are looked up in the agents' homes: never the user's own.
   const homes = { CLAUDE_CONFIG_DIR: process.env.CLAUDE_CONFIG_DIR, CODEX_HOME: process.env.CODEX_HOME };
   process.env.CLAUDE_CONFIG_DIR = path.join(root, 'claude-home');

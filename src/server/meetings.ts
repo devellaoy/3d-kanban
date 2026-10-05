@@ -8,7 +8,7 @@ import { MEETING_NOTES_DIR, MEETING_PATTERNS, budgetText, isMeetingPattern, meet
 import { fmtTokens, isAgentEffort, isAgentProvider, tokensOf, type AgentChoice, type AgentEffort, type AgentProvider, type Meeting, type MeetingRecord, type MeetingRequest, type MeetingState, type MeetingTurn, type WorkerInfo, type WorkerStatus } from '../shared/protocol.js';
 import { validateWorkerEffort, validateWorkerModel } from './agents.js';
 import { providerMeta, takesEffort, takesModel } from '../shared/providers.js';
-import { worktreeHomes } from './worktree-home.js';
+import { worktreeDir, worktreeHomes } from './worktree-home.js';
 import { gitError, type WorktreeRef, type WorktreeState } from './worktrees.js';
 import { PROMPTS, fillPrompt, type PromptId, type PromptVars } from '../shared/prompts.js';
 import { copyTree } from './kanban/copytree.js';
@@ -660,7 +660,7 @@ export class MeetingRoom {
   // --- Files -----------------------------------------------------------------
 
   private cwd(m: Meeting): string {
-    return m.worktree ? path.join(this.dir, m.worktree.path) : this.dir;
+    return m.worktree ? worktreeDir(this.dir, m.worktree.path) : this.dir;
   }
 
   /** Whether a part's file is there, with something in it, written since the part was handed over. */

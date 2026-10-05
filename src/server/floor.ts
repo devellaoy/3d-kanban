@@ -24,7 +24,7 @@ import { Garage } from './garage.js';
 import { Jukebox } from './jukebox.js';
 import { Whiteboard } from './whiteboard.js';
 import { MeetingRooms } from './meeting-rooms.js';
-import { Worktrees, type WorktreeCleanup } from './worktrees.js';
+import { Worktrees, worktreeDir, type WorktreeCleanup } from './worktrees.js';
 import { landedWork, landedWorkers, type Landed } from './leave-on-merge.js';
 import type { Ledger } from './usage.js';
 import type { Capacity } from './machine.js';
@@ -307,7 +307,7 @@ export class Floor {
       (workerId, repo) => {
         const w = this.workers.get(workerId);
         if (!w) return undefined;
-        if (!repo) return { name: w.name, cwd: w.worktree ? path.join(def.dir, w.worktree.path) : def.dir, rel: w.worktree?.path ?? '', worktreeBase: w.worktree?.base, ...(this.git ? {} : { noGit: true }) };
+        if (!repo) return { name: w.name, cwd: w.worktree ? worktreeDir(def.dir, w.worktree.path) : def.dir, rel: w.worktree?.path ?? '', worktreeBase: w.worktree?.base, ...(this.git ? {} : { noGit: true }) };
         // One of the other floors' repositories it works in: diffed against, and PRs opened against, that floor's branch.
         const r = w.repos?.find((x) => x.floor === repo);
         if (!r) return undefined;
@@ -316,7 +316,7 @@ export class Floor {
         const board = this.boardOf(r.floor);
         return {
           name: w.name,
-          cwd: path.join(def.dir, r.path),
+          cwd: worktreeDir(def.dir, r.path),
           rel: r.path,
           worktreeBase: r.base,
           baseBranch: r.from ?? null,

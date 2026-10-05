@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, realpathSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import type { FloorDef } from '../src/server/building.js';
@@ -29,7 +29,7 @@ function worktree(repo: string, dir: string, branch: string): string {
 }
 
 function setup(t: Ctx, over: { repos?: (root: string) => ProjectRepo[] } = {}) {
-  const root = mkdtempSync(path.join(tmpdir(), 'kanban-vscode-'));
+  const root = realpathSync(mkdtempSync(path.join(tmpdir(), 'kanban-vscode-')));
   t.after(() => rmSync(root, { recursive: true, force: true }));
   const dir = checkout(path.join(root, 'web'));
   const def: FloorDef = { id: 'web', name: 'Shop', dir, palette: 0, addedBy: 'Sam', addedAt: 1 };

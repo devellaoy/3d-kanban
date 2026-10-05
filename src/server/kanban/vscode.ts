@@ -7,6 +7,7 @@ import { existsSync, mkdirSync, realpathSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import path from 'node:path';
 import type { Floor } from '../floor.js';
+import { worktreeDir } from '../worktree-home.js';
 import { workspaceOf } from '../worktrees.js';
 import { resolveCommand, run } from '../workers/process.js';
 import type { KanbanTask } from '../../shared/kanban/types.js';
@@ -128,14 +129,14 @@ export async function workerFolders(ctx: KanbanContext, floor: Pick<Floor, 'dir'
   const name = floor.project.name;
   if (!info.worktree) return [{ name, dir: floor.dir }];
   if (!info.repos?.length) {
-    const own = path.join(floor.dir, workspaceOf(info)!);
+    const own = worktreeDir(floor.dir, workspaceOf(info)!);
     return [{ name, dir: existsSync(own) ? own : floor.dir }];
   }
   const out: VsFolder[] = [];
-  const primary = path.join(floor.dir, info.worktree.path);
+  const primary = worktreeDir(floor.dir, info.worktree.path);
   out.push({ name, dir: existsSync(primary) ? primary : floor.dir });
   for (const r of info.repos) {
-    const dir = path.join(floor.dir, r.path);
+    const dir = worktreeDir(floor.dir, r.path);
     out.push({ name: r.name, dir: existsSync(dir) ? dir : r.dir });
   }
   return unique(out);

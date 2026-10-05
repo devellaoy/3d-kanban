@@ -24,6 +24,7 @@ import { PROJECT_ID_RE, REPO_ID_RE } from '../../../../shared/kanban/protocol.js
 import { repoFloorId } from '../../projects.js';
 import { sendJson } from '../util.js';
 import { HASH_RE, REF_RE, branchOf, commitDiff, commitOf, commitsIn, diffRange, firstCommit, originHead, uncommittedCount, workingTree } from './git.js';
+import { worktreeDir } from '../../../worktree-home.js';
 
 const ROUTE_RE = /^\/api\/kanban\/tasks\/(\d{1,12})\/(changes|commits|commit|uncommitted)$/;
 /** A checkout is fetched at most this often. */
@@ -59,7 +60,7 @@ function worktreeOf(ctx: KanbanContext, task: KanbanTask, repo: ProjectRepo): { 
   if (!ws || !floorDir) return undefined;
   const w = repo.primary ? ws.worktree : ws.repos?.find((r) => r.floor === repoFloorId(task.project, repo.id));
   if (!w) return undefined;
-  const dir = path.resolve(floorDir, w.path);
+  const dir = worktreeDir(floorDir, w.path);
   return existsSync(dir) ? { dir, base: w.base, branch: w.branch, from: w.from } : undefined;
 }
 
