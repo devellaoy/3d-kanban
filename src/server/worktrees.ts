@@ -4,7 +4,7 @@ import { mkdir, rm } from 'node:fs/promises';
 import path from 'node:path';
 import { promisify } from 'node:util';
 import { NO_FSMONITOR } from './floor-git.js';
-import { LEGACY_WORKTREES_DIR, ensureHome, realish, storedPath, within, worktreeHomes } from './worktree-home.js';
+import { LEGACY_WORKTREES_DIR, ensureHome, linkNodeModules, realish, storedPath, within, worktreeHomes } from './worktree-home.js';
 import type { LostBranch, WorktreeState } from '../shared/protocol.js';
 
 export type { WorktreeCleanup, WorktreeState } from '../shared/protocol.js';
@@ -66,18 +66,12 @@ export class Worktrees {
       const start = baseBranch ? this.baseStartPoint(baseBranch) : this.startPoint(from);
       if (typeof start === 'string') return start;
       const { base, note } = start;
-      // Beside the project, or where older offices kept them when that folder can't be made (the
-      // project is at a mount's root, say, or its parent isn't writable).
-      let home: string;
-      try {
-        home = ensureHome(root);
-      } catch {
-        home = path.join(path.resolve(root), LEGACY_WORKTREES_DIR);
-      }
+      const home = ensureHome(root); // throws, naming the folder, when it can't be made
       const abs = path.join(home, slug, sub ?? '');
       const rel = storedPath(root, abs) ?? path.relative(path.resolve(root), abs);
       const branch = `${BRANCH_PREFIX}${slug}`;
       this.gitSync(['worktree', 'add', '-b', branch, abs, base]);
+      linkNodeModules(this.dir, abs);
       return { path: rel, branch, base, from, note };
     } catch (err) {
       return `Could not create a git worktree: ${gitError(err)}`;
@@ -249,6 +243,7 @@ export class Worktrees {
         const base = wt.base && (await this.git(['cat-file', '-e', `${wt.base}^{commit}`]).then(() => true, () => false)) ? wt.base : 'HEAD';
         await this.git(['worktree', 'add', '-b', wt.branch, abs, base]);
       }
+      linkNodeModules(this.dir, abs);
       return { from };
     } catch (err) {
       return { error: gitError(err) };

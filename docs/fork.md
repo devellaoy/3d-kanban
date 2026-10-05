@@ -76,7 +76,7 @@ clashes with an upstream install on the same machine:
   install (the package has a `binding.gyp` and no install script), a no-op build when its bundled
   prebuild fits but one that still needs Python 3, make and a C++ toolchain.
 
-Worktrees: upstream makes a worker's worktree in the project, under `.agent-office/worktrees/<slug>`, where the project's lint, `tsc`, jest and IDE find the copies. This fork makes them in `<checkout>.worktrees/<slug>` beside it (`src/server/worktree-home.ts`), links the checkout's `node_modules` once into that folder (not into each worktree, where `npm ci` would follow it), falls back to the old place when the folder can't be made, makes `prune` touch only `office/*` worktrees there, and still lists, removes and prunes the older ones. Reconcile with that when taking upstream changes to `worktrees.ts`.
+Worktrees: upstream makes a worker's worktree in the project, under `.agent-office/worktrees/<slug>`, where the project's lint, `tsc`, jest and IDE find the copies. This fork makes them in `<checkout>.worktrees/<slug>` beside it (`src/server/worktree-home.ts`), gives each worktree a `node_modules` folder of links to its repository's packages (scopes and `.bin` as real folders, so `npm ci` can't write through to the checkout's), makes `prune` touch only `office/*` worktrees there, and still lists, removes and prunes the older ones. Reconcile with that when taking upstream changes to `worktrees.ts`.
 
 The Codex limits reader (`src/server/codex-limits/`) is adapted from the still-unmerged upstream PR #232: if it merges, reconcile with it and prefer ours.
 

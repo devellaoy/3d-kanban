@@ -1,5 +1,5 @@
 import { execFileSync } from 'node:child_process';
-import { lstatSync, mkdirSync, realpathSync, symlinkSync } from 'node:fs';
+import { copyFileSync, lstatSync, mkdirSync, readdirSync, realpathSync, statSync, symlinkSync } from 'node:fs';
 import path from 'node:path';
 import { excludeFromGit } from './config.js';
 
@@ -76,7 +76,7 @@ export function storedPath(dir: string, abs: string): string | undefined {
 }
 
 /**
- * Makes the floor's worktrees folder, with its node_modules link (see linkModules). When it lands inside a git work tree (the floor is in a monorepo,
+ * Makes the floor's worktrees folder. When it lands inside a git work tree (the floor is in a monorepo,
  * or its parent folder is a repository of its own) that work tree is told to ignore it, so the
  * copies don't show up there as untracked. Throws when the folder can't be made, naming it; the
  * ignore is a courtesy and never throws.
@@ -88,7 +88,6 @@ export function ensureHome(dir: string): string {
   } catch (err) {
     throw new Error(`can't make ${home} for the worktrees: ${(err as Error).message}`);
   }
-  linkModules(dir, home);
   try {
     const top = execFileSync('git', ['rev-parse', '--show-toplevel'], { cwd: path.dirname(home), encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim();
     const rel = path.relative(realish(top), realish(home));
@@ -100,25 +99,59 @@ export function ensureHome(dir: string): string {
 }
 
 /**
- * Links the floor's node_modules into its worktrees folder, `<floor>.worktrees/node_modules`: a worktree
- * there finds it by Node's lookup through the parent folders, and by `npm run` through the ancestors'
- * node_modules/.bin, as a worktree nested in the floor did. It is one link beside the worktrees, not one
- * in each, so `npm ci` in a worktree makes the worktree's own node_modules and never reaches the
- * floor's. Never throws; leaves anything already there alone.
+ * Gives a new worktree the node_modules of the repository it was made from (`repo`): a worktree
+ * beside the project no longer finds the project's by Node's lookup through the parent folders. It is a
+ * real folder with one symlink per package in it, not a link to the project's: npm writes and
+ * deletes through a symlinked node_modules, and through a symlinked `@scope` folder, so `npm ci` or
+ * `npm install` in the worktree would change the project's. Scopes and `.bin` are real folders
+ * with a link per child for that reason; with this layout npm only replaces links, and leaves the
+ * project's node_modules as it was. Dot entries other than `.bin` (npm's `.package-lock.json`) are not
+ * linked. Absolute targets. On Windows folders are junctions and files (.bin's .cmd shims) are copied.
+ * Packages added to the project later aren't seen until the worktree's node_modules is rebuilt or
+ * installed. Only when `repo` has a node_modules and the worktree has none; never throws.
  */
-function linkModules(floor: string, home: string): void {
+export function linkNodeModules(repo: string, worktree: string): void {
   try {
-    const link = path.join(home, 'node_modules');
+    const from = path.join(path.resolve(repo), 'node_modules');
+    const to = path.join(worktree, 'node_modules');
     try {
-      lstatSync(link);
+      lstatSync(to);
       return;
     } catch {
       // nothing there yet
     }
-    const target = path.join(path.resolve(floor), 'node_modules');
-    lstatSync(target);
-    symlinkSync(target, link, process.platform === 'win32' ? 'junction' : 'dir');
+    if (!lstatSync(from).isDirectory()) return;
+    mkdirSync(to);
+    const win = process.platform === 'win32';
+    const place = (src: string, dest: string, isDir: boolean) => {
+      if (!win) symlinkSync(src, dest, isDir ? 'dir' : 'file');
+      else if (isDir) symlinkSync(src, dest, 'junction');
+      else copyFileSync(src, dest);
+    };
+    const fill = (src: string, dest: string, nested: boolean) => {
+      for (const name of readdirSync(src)) {
+        if (!nested && name.startsWith('.') && name !== '.bin') continue;
+        const at = path.join(src, name);
+        let isDir = false;
+        try {
+          isDir = statSync(at).isDirectory();
+        } catch {
+          // a dangling link: link it anyway
+        }
+        if (!nested && isDir && (name === '.bin' || name.startsWith('@'))) {
+          mkdirSync(path.join(dest, name));
+          fill(at, path.join(dest, name), true);
+        } else place(at, path.join(dest, name), isDir);
+      }
+    };
+    fill(from, to, false);
+    // `node_modules/` in a .gitignore matches the folder; when a project has none, ignore it here.
+    try {
+      execFileSync('git', ['check-ignore', '-q', 'node_modules'], { cwd: worktree, stdio: 'ignore' });
+    } catch {
+      excludeFromGit(worktree, '/node_modules/');
+    }
   } catch {
-    // no node_modules to link, or no way to: the worktrees work without
+    // no node_modules to give, or no way to: the worktree works without
   }
 }
