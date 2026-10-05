@@ -1,4 +1,4 @@
-// Which of a task's open pull requests a Fix PRs run may work on. A PR's head branch is whatever its
+// Which of a task's open pull requests a Fix PRs or Resolve conflicts run may work on. A PR's head branch is whatever its
 // author named it, so it is never trusted as ours: a fork's PR, and one from the repository's base
 // or an integration branch (main, develop, ...), are skipped, never checked out.
 
@@ -8,7 +8,10 @@ import type { Floor } from '../../../floor.js';
 import { sameRepo } from '../../../../shared/floors.js';
 import type { GhPull } from '../../../../shared/protocol.js';
 import { INTEGRATION_BRANCHES, openPrs } from '../../../../shared/kanban/prs.js';
-import type { KanbanPrLink, KanbanTask, ProjectRepo } from '../../../../shared/kanban/types.js';
+import type { KanbanPrLink, KanbanTask, ProjectRepo, RunPhase } from '../../../../shared/kanban/types.js';
+
+/** Runs that work on each open PR's own branch (Fix PRs, Resolve conflicts). */
+export const onPrBranches = (phase: RunPhase | string): boolean => phase === 'pr-fix' || phase === 'pr-conflicts';
 
 /** The floor's polled pull requests; none when it has not polled any (or is a stand-in without a board). */
 export function polledPulls(floor: Pick<Floor, 'pullsState'> | undefined): GhPull[] {

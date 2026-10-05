@@ -298,7 +298,7 @@ export const claudeAdapter: TaskAgentAdapter = {
     const args: string[] = [];
     if (phase === 'plan') args.push('--permission-mode', 'plan');
     else if (phase === 'review' || phase === 'pr-review') args.push('--permission-mode', 'bypassPermissions', '--disallowedTools', ...REVIEW_DISALLOWED, ...(opts.sandbox ? REVIEW_SANDBOXED : []));
-    // implement, fix, resume, pr, pr-fix, compact, and an investigation (which writes its report
+    // implement, fix, resume, pr, pr-fix, pr-conflicts, compact, and an investigation (which writes its report
     // files: the contract keeps it off the repositories). Bash keeps the network in every phase, so a
     // pull-request review's gh works with the review sandbox on too.
     else args.push('--permission-mode', 'bypassPermissions');

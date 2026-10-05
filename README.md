@@ -123,7 +123,7 @@ curl -fsSL https://raw.githubusercontent.com/devellaoy/3d-kanban/main/deploy/pro
   in ⚙️ Settings → 📁 Projects; its id, folder and repository stay.
 - **Issue sources per project**: GitHub repositories, GitHub Projects v2 and Jira, made into tasks in a click, **🔎 browsed in full** (a tree of all of a Jira project's or board's issues, with filters), and moved on (status), commented on and assigned from the issue's window, on the kanban and in 3D. They are also the 3D office's 📌 Issues board, cards you carry to desks, workers and the queue.
 - **Agent-written pull requests**: **O** at a desk and the task's PR phase have the agent push and open
-  (or fix) the PRs in every repository.
+  (or fix, or bring up to date with their target branches and resolve the conflicts of) the PRs in every repository.
 - **Multi-PR reviews**: 🔍 Review and 🤝 Review panel pick the PRs that belong together across the
   repositories and review them as one change. The office has one meeting room, and the **🚧 Room for a meeting room** sign on the west wall builds up to
   three more (the same way the back office grows), so panels and other meetings can run at the same time; a new one takes the first free room.

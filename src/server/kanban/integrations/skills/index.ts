@@ -25,7 +25,7 @@ export const ALWAYS_BUNDLED = ['office-task-refs'];
 export function skillPhase(phase: string): SkillPhase {
   const p = phase as RunPhase;
   if (p === 'plan' || p === 'review') return p;
-  if (p === 'pr' || p === 'pr-fix') return 'pr';
+  if (p === 'pr' || p === 'pr-fix' || p === 'pr-conflicts') return 'pr';
   return 'implement';
 }
 

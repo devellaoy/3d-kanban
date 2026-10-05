@@ -43,3 +43,6 @@ export function canFixPrs<P extends Pick<KanbanPrLink, 'state'>>(task: PrSubject
   if (isFork && open.every((p) => isFork(p) === true)) return no('A pull request from a fork: fix it by hand');
   return { ok: true };
 }
+
+/** What the task's PR action does: open the pull requests, fix their review comments and checks, or merge their target branches in and resolve the conflicts. */
+export type PrMode = 'create' | 'fix' | 'conflicts';

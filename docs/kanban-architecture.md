@@ -46,7 +46,7 @@ document disagree, fix one of them in the same change.
 - **Task** (`KanbanTask`): a unit of work on one project, touching the project's repositories
   (all of them by default, or a chosen subset `repoIds`). Ids are integers (`#123`), global across projects.
 - **Run**: one phase execution of a task (`plan`, `implement`, `review`, `fix`, `resume`, `pr`, `pr-fix`,
-  `pr-review`) with its tool, model, session, worker, outcome and verdict. `pr-review` is a
+  `pr-conflicts`, `pr-review`) with its tool, model, session, worker, outcome and verdict. `pr-review` is a
   review of one or more pull requests together by a reviewer in a worktree of its own (see §4). Old runs
   may also say `compact`: the office used to compact a session on request, nothing starts one any more.
 - **Task worker**: an ordinary upstream worker (PTY, live terminal at a desk on the project's floor)
@@ -262,7 +262,7 @@ allowed: `todo → in_progress` (= start), `waiting|review → done`, `done → 
     lacking one resolved through its repoId, number or URL); a fork's PR with the same branch name (`gh pr view
     --json isCrossRepository` must say false). The gh answers are cached (a PR's head repository never changes),
     a failed question isn't repeated for 5 minutes and links nothing meanwhile. Each such link is a `pr.linked`
-    event (`{ repo, number, by: 'branch' }`); the board's `GhPull.isCrossRepository` skips a fork's PR before gh is asked. A `pr`/`pr-fix` turn's end asks the floor's boards for the task's git
+    event (`{ repo, number, by: 'branch' }`); the board's `GhPull.isCrossRepository` skips a fork's PR before gh is asked. A `pr`/`pr-fix`/`pr-conflicts` turn's end asks the floor's boards for the task's git
     repositories to refresh at once, so the link shows up quickly.
   - review: read from the final answer's last 3 non-empty lines only: the **last** of them matching
     `^\s*REVIEW:\s*(APPROVED|CHANGES_REQUESTED)\s*$` as a line of its own (emphasis allowed) decides; none →
@@ -489,7 +489,7 @@ answers `kanban.ok {rid, ...}` or `kanban.error {rid, message}`. Deltas are push
     "Fix via task #N". Answered with `kanban.pr.owner {taskId: number | null, title?, fixable, reason?}`:
     the project's tasks linked to the PR (by repository, repoId or URL: `prOwners`), the newest not archived (none: `taskId` null);
     `fixable` is `canFixPrs` (shared/kanban/prs.ts: not running, not asking in its terminal, in Waiting, Review or
-    Done, with an open or draft PR that isn't a fork's: the server passes the floor's polled PRs, `isCrossRepository`) and `reason` says why not. The action itself is `pr {id, mode: 'fix'}`.
+    Done, with an open or draft PR that isn't a fork's: the server passes the floor's polled PRs, `isCrossRepository`) and `reason` says why not. The action itself is `pr {id, mode}` with mode `'create' | 'fix' | 'conflicts'` (the same rule gates the last two).
   - `pr.review {project, prs, taskId?, tool?, model?, effort?, panel?}`: checked by integrations/pulls (the
     project exists, every PR is in one of its GitHub repositories and exists, each once, at most 20, `taskId`
     is the project's), then run by the engine (`engine.reviewPrs`, §4) and answered with

@@ -139,7 +139,7 @@ is long) and a line saying which meeting it came from.
 4. **Review column**: read the result. **🔍 Run a review round** runs one more round by hand (it ends
    in Review). A comment or answer doesn't start a review round when the agent changed nothing since the
    task came to Review (the task goes back to Review with a note); the button still runs one by hand.
-   **🔀 Create PRs** / **🛠️ Fix PRs** start the PR phase (see below). Move it to **Done** when you accept it.
+   **🔀 Create PRs** / **🛠️ Fix PRs** / **🔄 Resolve conflicts** start the PR phase (see below). Move it to **Done** when you accept it.
 
 When the agent asks something in its terminal (Waiting, *the agent is asking*), answer it there, or,
 when it asks a question, in the **Answer the agent** box (**⌨️ Open its terminal** is next to it): the
@@ -323,7 +323,7 @@ enough, elsewhere the `code` command must be on the PATH. Its tabs:
   then, never waited for), read-only, with ↻ to read again. Per commit and Uncommitted are always read
   that way, again whenever the live checkout changes (a new commit, an amend, an edit). A diff over
   2 MB is cut. The 3D worker window's 🗂️ Task tab has no Changes tab: its header's 🌿 Changes is it.
-- **PRs**: the task's pull requests with their state, **Create/Push & update PRs**, **Fix PRs** (with open PRs), and
+- **PRs**: the task's pull requests with their state, **Create/Push & update PRs**, **Fix PRs** and **Resolve conflicts** (with open PRs), and
   **🔍 Review these N PRs together**.
 
 The panel is the **shared task view** (`src/client/kanban/taskview.ts`), which the 3D office uses too
@@ -555,6 +555,7 @@ reads its own. A kanban task made from a card keeps the description as its own, 
 - **Fix PRs** (any task, an investigation too, in Waiting, Review or Done, with an open or draft PR; in the action bar and the PRs tab alike): the implementer addresses the unresolved review comments and
   the failing checks (it reads the failing run's log) on all the task's open PRs, pushes, and doesn't merge. The button is greyed out, with the reason as its tooltip, while the task is running or its agent is asking in its terminal. An investigation with no branch takes the one its open PR is from. One rule
   (`canFixPrs`, `src/shared/kanban/prs.ts`) serves the buttons and the engine. A pull request from a fork is never worked on ("A pull request from a fork: fix it by hand"; the PR board says which are forks), nor is one whose head branch is the repository's base branch or an integration branch (main, master, develop, dev, trunk): a head branch is whatever its author named it, so the office never checks it out on trust. The prompt tells the agent that review comments and CI logs are data, not instructions, and to act only on comments from the repository's owner, members and collaborators (`author_association`). On a Done task it moves the task back to In progress, and then to Review.
+- **Resolve conflicts** (same gating and rules as Fix PRs: `canFixPrs`, no fork's PR, none from the base or an integration branch; an investigation takes its PR's branch): the implementer merges each open PR's target branch into the PR's own branch (a merge, never a rebase, never a force-push), resolves the conflicts keeping both sides' intent, verifies the result, commits and pushes. A PR whose branch is already up to date is left alone, and nothing is merged. On a Done task it moves the task back to In progress, and then to Review. The PR window's *Fix via task #N* has no counterpart for it.
 - **Fix via task #N** (PR window, opened from the PR board, the lite view or the palette): when a task owns the PR (the newest one not archived, if several), the window's footer
   has this button next to upstream's *Fix comments & merge*. It does the same as the task's own 🛠️ Fix PRs, on all of that task's open PRs, and is greyed out with the reason when the task can't be sent now.
   No button when no task owns the PR.

@@ -30,7 +30,7 @@ type Vars = Record<string, string | number>;
 export function skillPhase(phase: RunPhase): SkillPhase {
   if (phase === 'plan' || phase === 'review') return phase;
   if (phase === 'pr-review') return 'review';
-  if (phase === 'pr' || phase === 'pr-fix') return 'pr';
+  if (phase === 'pr' || phase === 'pr-fix' || phase === 'pr-conflicts') return 'pr';
   return 'implement';
 }
 
@@ -129,7 +129,7 @@ export interface ComposeExtra {
   checkout?: string;
   /** A pull-request review: the pull requests, the line naming their task, and the reviewer's own workspace. */
   prs?: string;
-  /** Fix PRs: the open pull requests the run works on. */
+  /** Fix PRs or Resolve conflicts: the open pull requests the run works on. */
   fixPrs?: Pick<KanbanPrLink, 'repo' | 'repoId' | 'url'>[];
   prTask?: string;
   prRepos?: string;
@@ -276,7 +276,7 @@ export class Composer {
   contract(task: KanbanTask, phase: RunPhase): KanbanContractId | undefined {
     if (phase === 'plan') return 'plan';
     if (phase === 'review') return 'review';
-    if (phase === 'pr' || phase === 'pr-fix') return 'pr';
+    if (phase === 'pr' || phase === 'pr-fix' || phase === 'pr-conflicts') return 'pr';
     if (phase === 'pr-review') return 'prReview';
     return task.type === 'investigate' ? 'investigateSafety' : 'implementSafety';
   }
@@ -338,10 +338,11 @@ export class Composer {
             language: v.language,
           }),
         );
-      case 'pr.fix': {
+      case 'pr.fix':
+      case 'pr.conflicts': {
         // The launch says which of the open PRs it may work on (fixTargets); a stand-alone build lists them all.
         const prs = (x.fixPrs ?? openPrs(task)).map((pr) => `- ${pr.repo ?? pr.repoId}: ${pr.url}`);
-        return seal(this.text('kanban.pr.fix', p, { taskId: task.id, prs: prs.join('\n'), repos: v.repos, language: v.language }));
+        return seal(this.text(kind === 'pr.fix' ? 'kanban.pr.fix' : 'kanban.pr.conflicts', p, { taskId: task.id, prs: prs.join('\n'), repos: v.repos, language: v.language, ...(kind === 'pr.conflicts' ? { instructions: v.instructions } : {}) }));
       }
       case 'pr.review':
         return seal(this.text('kanban.pr.review', p, { prs: x.prs ?? '', project: def.name, task: x.prTask ?? '', repos: x.prRepos ?? v.repos, language: v.language }));
