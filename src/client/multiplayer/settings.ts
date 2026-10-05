@@ -53,7 +53,7 @@ export function multiplayerPane(net: Net): { el: HTMLElement; close(): void } {
     toggle.disabled = !mp.configured;
     online.replaceChildren(connect, toggle);
     status.className = `setting-note${mp.status === 'error' && !mp.offline ? ' bad' : ''}`;
-    status.textContent = (mp.offline ? '⚪ Offline' : (STATUS[mp.status] ?? mp.status)) + (mp.error && !mp.offline ? ` — ${mp.error}` : '');
+    status.textContent = (mp.offline ? '⚪ Offline' : (STATUS[mp.status] ?? mp.status)) + (mp.error && !mp.offline ? ` — ${mp.error}` : '') + (mp.status === 'error' && !mp.offline && mp.signInAgain ? `. Your address and password are saved: press ${mp.login ? '🔁 Verify again' : '🔑 Verify GitHub account'}, no need to type them again.` : '');
     const device = mp.device;
     sign.replaceChildren(
       h('p.setting-note', {}, mp.login ? `Signed in as @${mp.login}.` : 'Other players know this office by its GitHub login. Verify yours to connect.'),

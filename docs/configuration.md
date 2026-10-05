@@ -73,6 +73,8 @@ kanban3d relay --password <pw> [options]
                               X-Forwarded-For (for the limit on password attempts)
 ```
 
+The relay closes an office's connection with code 4403 when GitHub says the token is not valid (the office then asks you to sign in again, after checking the token with GitHub itself), and with 4504 when GitHub could not be asked (a timeout or a GitHub error; the office just tries again). Behind a reverse proxy (for example Apache) pass `--trust-proxy` and make sure the relay's port is reachable only through the proxy (otherwise anyone can set `X-Forwarded-For` and get past the attempts limit); without it every office appears to come from the proxy and they all share one limit on attempts.
+
 The relay listens on `/mp` (`ws://host:4700/mp`, or `wss://` with TLS) and keeps nothing on disk. Offices type its address into ⚙️ Settings → **🌐 Multiplayer** (see [Features](features.md#multiplayer-visit-each-others-offices)); running it on a server is in [Self-hosting](self-hosting.md#run-a-multiplayer-relay).
 
 **The GitHub OAuth App.** The relay uses it so offices can prove their GitHub login. In GitHub, go to Settings → Developer settings → OAuth Apps → **New OAuth App**, give it any name, any homepage and any callback URL (the device flow never uses it), tick **Enable Device Flow** and save. Only the **Client ID** is needed, passed as `--github-client-id`: no client secret, and offices ask GitHub for no permissions. Without a client id the relay starts but offices can't verify themselves through it.

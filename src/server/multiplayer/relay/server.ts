@@ -17,7 +17,7 @@ import {
 } from '../../../shared/multiplayer/wire.js';
 import { clientIp } from '../../http/util.js';
 import { Directory, Peer } from './directory.js';
-import { githubVerifier, type IdentityVerifier } from './github.js';
+import { githubVerifier, TokenRejected, type IdentityVerifier } from '../github-user.js';
 import { Sessions } from './sessions.js';
 
 export interface RelayOptions {
@@ -122,8 +122,10 @@ export function startRelay(opts: RelayOptions): Promise<RunningRelay> {
     try {
       login = await verifier.login(msg.identityToken);
     } catch (err) {
-      log(`identity refused for ${conn.ip}: ${(err as Error).message}`);
-      return void ws.close(MP_CLOSE.identity, 'GitHub did not accept the token');
+      // Only a token GitHub itself refuses is the office's problem; a timeout or a GitHub hiccup is not.
+      const code = err instanceof TokenRejected ? MP_CLOSE.identity : MP_CLOSE.identityUnavailable;
+      log(`identity not verified for ${conn.ip} (close ${code}): ${(err as Error).message}`);
+      return void ws.close(code, code === MP_CLOSE.identity ? 'GitHub did not accept the token' : 'GitHub could not be reached');
     }
     // The token is not kept anywhere past this point.
     if (!LOGIN_RE.test(login)) return void ws.close(MP_CLOSE.identity, 'Unusable GitHub login');
