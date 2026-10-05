@@ -1,6 +1,6 @@
 import { execFile, execFileSync } from 'node:child_process';
-import { copyFileSync, existsSync, lstatSync, mkdirSync, readdirSync, realpathSync, statSync, symlinkSync } from 'node:fs';
-import { copyFile, lstat, mkdir, readdir, stat, symlink } from 'node:fs/promises';
+import { copyFileSync, existsSync, lstatSync, mkdirSync, readFileSync, readdirSync, readlinkSync, realpathSync, statSync, symlinkSync } from 'node:fs';
+import { copyFile, lstat, mkdir, readdir, realpath, stat, symlink } from 'node:fs/promises';
 import path from 'node:path';
 import { promisify } from 'node:util';
 import { excludeFromGit } from './config.js';
@@ -133,51 +133,108 @@ export function ensureHome(dir: string): string {
   return home;
 }
 
-type Entry = { src: string; dest: string; dir: boolean };
+/** `alt` is what a file is copied from instead when `src` isn't there yet (Windows copies files rather than linking them). */
+type Entry = { src: string; dest: string; dir: boolean; alt?: string };
+/** What an entry of a node_modules is: a folder (a link is followed), and where it really points when it is a link (undefined for any other entry, and for a dangling link). */
+type Kind = { dir: boolean; target?: string };
 /** What the node_modules walk asks of the file system, so the one walk serves a sync and an async caller. */
-type Ask = { op: 'exists' | 'isDir' | 'list' | 'mkdir'; path: string } | ({ op: 'link' } & Entry) | { op: 'ignored'; path: string };
+type Ask =
+  | { op: 'exists' | 'isDir' | 'list' | 'mkdir' | 'top' | 'real' | 'entry'; path: string }
+  /** Which of `paths` (relative to `cwd`) git ignores. */
+  | { op: 'ignored'; cwd: string; paths: string[] }
+  | ({ op: 'link' } & Entry);
+/**
+ * What a walk carries: the repository (`top` is its real root, asked for at the first link) and the
+ * worktree's root (`realRoot` its real path), the packages whose own node_modules was walked, and
+ * the packages (relative to the root, '' for the root's own) whose node_modules was made.
+ */
+type Ctx = { repo: string; top?: string; root: string; realRoot: string; seen: Set<string>; made: string[] };
+
+/** The repository's real root, from git on the first call. */
+function* topOf(ctx: Ctx): Generator<Ask, string, unknown> {
+  return (ctx.top ??= ((yield { op: 'top', path: ctx.repo }) as string | undefined) ?? realish(ctx.repo));
+}
+
+/** The nearest folder above `r` (relative to the repository root) that is a package of it, undefined when none is. */
+function* packageAbove(top: string, r: string): Generator<Ask, string | undefined, unknown> {
+  for (let p = path.dirname(r); p !== '.' && p !== path.dirname(p); p = path.dirname(p)) {
+    if (yield { op: 'exists', path: path.join(top, p, 'package.json') }) return p;
+  }
+  return undefined;
+}
 
 /**
  * The walk that makes a worktree's node_modules (see linkNodeModules), asking for each file system step
  * it needs by yielding it: scopes and `.bin` become real folders with a link per child, anything
- * else a link, and the dot entries other than `.bin` are left out.
+ * else a link, and the dot entries other than `.bin` are left out. A link that points at a workspace
+ * package (a folder of the repository outside any node_modules) is made to point at the worktree's
+ * copy of it, and that copy gets the package's own node_modules the same way. The copy has to really
+ * be in the worktree: a folder that is a link in the branch is not followed.
  */
 function* walkModules(repo: string, worktree: string): Generator<Ask, void, unknown> {
-  const from = path.join(path.resolve(repo), 'node_modules');
-  const to = path.join(worktree, 'node_modules');
+  const realRoot = (yield { op: 'real', path: worktree }) as string | undefined;
+  if (!realRoot) return;
+  const ctx: Ctx = { repo: path.resolve(repo), root: worktree, realRoot, seen: new Set(), made: [] };
+  // `from` is followed: a project's node_modules may itself be a link (to a shared or cached install).
+  yield* modules(path.join(ctx.repo, 'node_modules'), path.join(worktree, 'node_modules'), ctx);
+  // `node_modules/` in a .gitignore matches the folder. When it doesn't, the project's shared
+  // info/exclude (git has none per worktree) is told to ignore it at the package's place in any worktree.
+  const paths = ctx.made.map((rel) => path.join(rel, 'node_modules')).filter((p) => !/[\x00-\x1f\x7f]/.test(p));
+  if (!paths.length) return;
+  const ignored = new Set((yield { op: 'ignored', cwd: worktree, paths: paths.map((p) => p.split(path.sep).join('/')) }) as string[]);
+  for (const p of paths) {
+    if (!ignored.has(p.split(path.sep).join('/'))) excludeFromGit(worktree, `/${p.split(path.sep).map(gitignoreEscape).join('/')}/`);
+  }
+}
+
+/** Links `from` (a node_modules of the repository) into `to`, in the worktree; `rel` is the package it belongs to, relative to the repository root, '' for the root's own. */
+function* modules(from: string, to: string, ctx: Ctx, rel = ''): Generator<Ask, void, unknown> {
   if (yield { op: 'exists', path: to }) return;
-  // Followed: a project's node_modules may itself be a link (to a shared or cached install).
   if (!(yield { op: 'isDir', path: from })) return;
   yield { op: 'mkdir', path: to };
+  ctx.made.push(rel);
+  // Whether `p`, in the worktree, really is where it says: no link along the way, so nothing is followed out of the worktree.
+  const inside = function* (p: string): Generator<Ask, boolean, unknown> {
+    return ((yield { op: 'real', path: path.join(ctx.root, p) }) as string | undefined) === path.join(ctx.realRoot, p);
+  };
+  // Where a link to `at` should point: the worktree's copy when it is a package of the repository, else `at` itself.
+  const remap = function* (at: string, e: Kind): Generator<Ask, { src: string; rel?: string; alt?: string }, unknown> {
+    if (!e.target) return { src: at };
+    const top = yield* topOf(ctx);
+    if (!within(top, e.target)) return { src: at };
+    const r = path.relative(top, e.target);
+    // Installed packages (a pnpm store, an npm link) stay shared.
+    if (r.split(path.sep).includes('node_modules')) return { src: at };
+    const cand = path.join(ctx.root, r);
+    if (yield* inside(r)) return { src: cand, rel: r };
+    // Not in the worktree: a file of build output not made there yet (a `.bin` link into `dist/`) still
+    // goes to the worktree's copy when the package it is in is there, so building it there is what it
+    // runs. Anything else, a folder above all (an untracked package, even one inside a tracked one), stays the project's.
+    if (e.dir) return { src: at };
+    const p = yield* packageAbove(top, r);
+    return p !== undefined && (yield* inside(path.join(p, 'package.json'))) ? { src: cand, alt: at } : { src: at };
+  };
+  const put = function* (at: string, dest: string, e: Kind): Generator<Ask, void, unknown> {
+    const { src, rel: pkgRel, alt } = yield* remap(at, e);
+    yield { op: 'link', src, dest, dir: e.dir, alt };
+    if (pkgRel === undefined || !e.dir || ctx.seen.has(src)) return;
+    ctx.seen.add(src);
+    yield* modules(path.join(ctx.top as string, pkgRel, 'node_modules'), path.join(src, 'node_modules'), ctx, pkgRel);
+  };
   const fill = function* (src: string, dest: string, nested: boolean): Generator<Ask, void, unknown> {
     for (const name of (yield { op: 'list', path: src }) as string[]) {
       if (!nested && name.startsWith('.') && name !== '.bin') continue;
       const at = path.join(src, name);
-      const dir = (yield { op: 'isDir', path: at }) as boolean;
-      if (!nested && dir && (name === '.bin' || name.startsWith('@'))) {
+      const e = (yield { op: 'entry', path: at }) as Kind;
+      if (!nested && e.dir && (name === '.bin' || name.startsWith('@'))) {
         yield { op: 'mkdir', path: path.join(dest, name) };
         yield* fill(at, path.join(dest, name), true);
-      } else yield { op: 'link', src: at, dest: path.join(dest, name), dir };
+      } else yield* put(at, path.join(dest, name), e);
     }
   };
   yield* fill(from, to, false);
-  // `node_modules/` in a .gitignore matches the folder. When it doesn't, the project's shared
-  // info/exclude (git has none per worktree) is told to ignore a node_modules at any worktree's top.
-  if (!(yield { op: 'ignored', path: worktree })) excludeFromGit(worktree, '/node_modules/');
 }
 
-const link = ({ src, dest, dir }: Entry): void => {
-  if (process.platform !== 'win32') symlinkSync(src, dest, dir ? 'dir' : 'file');
-  else if (dir) symlinkSync(src, dest, 'junction');
-  else copyFileSync(src, dest);
-};
-const isDir = (p: string): boolean => {
-  try {
-    return statSync(p).isDirectory();
-  } catch {
-    return false; // a dangling link: linked anyway
-  }
-};
 const exists = (p: string): boolean => {
   try {
     lstatSync(p);
@@ -186,13 +243,75 @@ const exists = (p: string): boolean => {
     return false;
   }
 };
+const existsAsync = (p: string): Promise<boolean> => lstat(p).then(() => true, () => false);
+// A dangling link isn't a folder, and is linked anyway.
+const isDir = (p: string): boolean => {
+  try {
+    return statSync(p).isDirectory();
+  } catch {
+    return false;
+  }
+};
+const isDirAsync = (p: string): Promise<boolean> => stat(p).then((st) => st.isDirectory(), () => false);
+const real = (p: string): string | undefined => {
+  try {
+    return realpathSync.native(p);
+  } catch {
+    return undefined;
+  }
+};
+const realAsync = (p: string): Promise<string | undefined> => realpath(p).then((r) => r, () => undefined); // fs/promises' realpath is the native one
+
+/** One lstat tells a link from the rest; only a link costs more. */
+const entryOf = (p: string): Kind => {
+  try {
+    const lst = lstatSync(p);
+    return lst.isSymbolicLink() ? { dir: isDir(p), target: real(p) } : { dir: lst.isDirectory() };
+  } catch {
+    return { dir: false };
+  }
+};
+const entryOfAsync = async (p: string): Promise<Kind> => {
+  try {
+    const lst = await lstat(p);
+    return lst.isSymbolicLink() ? { dir: await isDirAsync(p), target: await realAsync(p) } : { dir: lst.isDirectory() };
+  } catch {
+    return { dir: false };
+  }
+};
+
+const link = ({ src, dest, dir, alt }: Entry): void => {
+  if (process.platform !== 'win32') symlinkSync(src, dest, dir ? 'dir' : 'file');
+  else if (dir) symlinkSync(src, dest, 'junction');
+  else copyFileSync(alt && !exists(src) ? alt : src, dest);
+};
+const linkAsync = async ({ src, dest, dir, alt }: Entry): Promise<void> => {
+  if (process.platform !== 'win32') await symlink(src, dest, dir ? 'dir' : 'file');
+  else if (dir) await symlink(src, dest, 'junction');
+  else await copyFile(alt && !(await existsAsync(src)) ? alt : src, dest);
+};
+
+/** The git work tree root of `cwd`, real; undefined when it isn't in one. */
+function topOfGit(cwd: string, async: false): string | undefined;
+function topOfGit(cwd: string, async: true): Promise<string | undefined>;
+function topOfGit(cwd: string, async: boolean): string | undefined | Promise<string | undefined> {
+  const args = ['rev-parse', '--show-toplevel'];
+  if (async) return execFileP('git', args, { cwd }).then((r) => realish(r.stdout.trim()), () => undefined);
+  try {
+    return realish(execFileSync('git', args, { cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim());
+  } catch {
+    return undefined;
+  }
+}
 
 /**
  * Gives a new worktree a node_modules of its own, made of links to the packages of the repository it
  * is of (`repo`), which a worktree beside the project can no longer find through its parent folders.
- * Only when `repo` has one and the worktree doesn't; never throws. The packages stay shared (see
- * docs/how-it-works.md for why it isn't one link), and the `/node_modules/` line it may add to the
- * repository's info/exclude applies to every checkout of it. Sync, for create(); see linkNodeModulesAsync.
+ * Only when `repo` has one and the worktree doesn't; never throws. Installed packages stay shared (see
+ * docs/how-it-works.md for why it isn't one link), but a workspace package (a link into the repository
+ * outside node_modules) points at the worktree's own copy of it, whose own node_modules is linked the
+ * same way, so the worktree's tests and builds use its own edits to it. The `/node_modules/` lines it
+ * may add to the repository's info/exclude apply to every checkout of it. Sync, for create(); see linkNodeModulesAsync.
  */
 export function linkNodeModules(repo: string, worktree: string): void {
   try {
@@ -206,7 +325,10 @@ export function linkNodeModules(repo: string, worktree: string): void {
       else if (a.op === 'list') got = readdirSync(a.path);
       else if (a.op === 'mkdir') mkdirSync(a.path);
       else if (a.op === 'link') link(a);
-      else got = checkIgnored(a.path, false);
+      else if (a.op === 'top') got = topOfGit(a.path, false);
+      else if (a.op === 'real') got = real(a.path);
+      else if (a.op === 'entry') got = entryOf(a.path);
+      else if (a.op === 'ignored') got = ignoredBy(a.cwd, a.paths, false);
       r = walk.next(got);
     }
   } catch {
@@ -222,15 +344,15 @@ export async function linkNodeModulesAsync(repo: string, worktree: string): Prom
     while (!r.done) {
       const a = r.value;
       let got: unknown;
-      if (a.op === 'exists') got = await lstat(a.path).then(() => true, () => false);
-      else if (a.op === 'isDir') got = await stat(a.path).then((st) => st.isDirectory(), () => false);
+      if (a.op === 'exists') got = await existsAsync(a.path);
+      else if (a.op === 'isDir') got = await isDirAsync(a.path);
       else if (a.op === 'list') got = await readdir(a.path);
       else if (a.op === 'mkdir') await mkdir(a.path);
-      else if (a.op === 'link') {
-        if (process.platform !== 'win32') await symlink(a.src, a.dest, a.dir ? 'dir' : 'file');
-        else if (a.dir) await symlink(a.src, a.dest, 'junction');
-        else await copyFile(a.src, a.dest);
-      } else got = await checkIgnored(a.path, true);
+      else if (a.op === 'link') await linkAsync(a);
+      else if (a.op === 'top') got = await topOfGit(a.path, true);
+      else if (a.op === 'real') got = await realAsync(a.path);
+      else if (a.op === 'entry') got = await entryOfAsync(a.path);
+      else if (a.op === 'ignored') got = await ignoredBy(a.cwd, a.paths, true);
       r = walk.next(got);
     }
   } catch {
@@ -238,14 +360,55 @@ export async function linkNodeModulesAsync(repo: string, worktree: string): Prom
   }
 }
 
-function checkIgnored(cwd: string, async: false): boolean;
-function checkIgnored(cwd: string, async: true): Promise<boolean>;
-function checkIgnored(cwd: string, async: boolean): boolean | Promise<boolean> {
-  if (async) return execFileP('git', ['check-ignore', '-q', 'node_modules'], { cwd }).then(() => true, () => false);
-  try {
-    execFileSync('git', ['check-ignore', '-q', 'node_modules'], { cwd, stdio: 'ignore' });
-    return true;
-  } catch {
-    return false;
+/** The ones of `paths` that git ignores in `cwd`, one `git check-ignore` for all (NUL-separated, so no name is quoted); none when git can't tell. */
+function ignoredBy(cwd: string, paths: string[], async: false): string[];
+function ignoredBy(cwd: string, paths: string[], async: true): Promise<string[]>;
+function ignoredBy(cwd: string, paths: string[], async: boolean): string[] | Promise<string[]> {
+  const args = ['check-ignore', '-z', '--stdin'];
+  const input = paths.join('\0');
+  const parse = (out: string) => out.split('\0').filter(Boolean);
+  if (async) {
+    const p = execFileP('git', args, { cwd });
+    p.child.stdin?.on('error', () => undefined);
+    p.child.stdin?.end(input);
+    return p.then((r) => parse(r.stdout), () => []);
   }
+  try {
+    return parse(execFileSync('git', args, { cwd, input, encoding: 'utf8', stdio: ['pipe', 'pipe', 'ignore'] })); // exit 1, none ignored, throws
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * The workspace packages in a worktree's node_modules (top level and scopes) that are links into the
+ * worktree itself and whose `main` isn't there: build output not made in the worktree yet. Their names;
+ * never throws.
+ */
+export function unbuiltWorkspaces(worktree: string): string[] {
+  const out: string[] = [];
+  try {
+    const nm = path.join(worktree, 'node_modules');
+    const realWt = real(worktree);
+    const check = (name: string): void => {
+      const at = path.join(nm, name);
+      try {
+        if (!lstatSync(at).isSymbolicLink()) return;
+        const dir = path.resolve(path.dirname(at), readlinkSync(at));
+        if (!within(worktree, dir) && !(realWt && within(realWt, dir))) return;
+        const main = String((JSON.parse(readFileSync(path.join(dir, 'package.json'), 'utf8')) as { main?: unknown }).main || 'index.js');
+        if (![main, `${main}.js`, path.join(main, 'index.js')].some((m) => exists(path.resolve(dir, m)))) out.push(name);
+      } catch {
+        // not a package, or no way to tell
+      }
+    };
+    for (const name of readdirSync(nm)) {
+      if (name.startsWith('.')) continue;
+      if (name.startsWith('@') && lstatSync(path.join(nm, name)).isDirectory()) for (const child of readdirSync(path.join(nm, name))) check(`${name}/${child}`);
+      else check(name);
+    }
+  } catch {
+    // no node_modules
+  }
+  return out;
 }

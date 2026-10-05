@@ -23,7 +23,7 @@ import type { PromptId } from '../../../shared/prompts.js';
 import { languageRules } from '../../language.js';
 import { skillHint } from '../integrations/skills/index.js';
 import { workerIssueKey } from './worker-issue.js';
-import { worktreeDir } from '../../worktree-home.js';
+import { unbuiltWorkspaces, worktreeDir } from '../../worktree-home.js';
 
 type Vars = Record<string, string | number>;
 
@@ -74,6 +74,14 @@ export function workspaceDirs(floorDir: string, def: FloorDef, ws: TaskWorkspace
   return out;
 }
 
+/** What a worktree's line says when workspace packages linked in its node_modules need building there first. */
+function buildNote(dir: string): string {
+  const names = unbuiltWorkspaces(dir);
+  if (!names.length) return '';
+  const shown = names.slice(0, 5).join(', ') + (names.length > 5 ? ` and ${names.length - 5} more` : '');
+  return `; build its workspace packages ${shown} there first (their node_modules links go to this worktree's copies, whose build output isn't made yet)`;
+}
+
 const remoteOf = (r: ProjectRepo | undefined) => (r?.remote ? ` (${r.remote})` : '');
 
 /**
@@ -88,7 +96,7 @@ export function reposText(def: FloorDef, task: Pick<KanbanTask, 'repoIds' | 'wor
     return [...repos.filter((r) => r.primary || r.kind === 'folder').map((r) => `- \`${r.dir}\`: ${r.name} (a plain folder, not git)`), ...repos.filter((r) => !r.primary && r.kind === 'git').map((r) => `- \`${r.dir}\`: ${r.name}${remoteOf(r)} (its own git checkout)`)].join('\n');
   }
   if (task.workspace) {
-    const lines = workspaceDirs(floorDir, def, task.workspace).map((w) => `- \`${w.dir}\`: ${w.repo?.name ?? path.basename(w.dir)}${remoteOf(w.repo)}, on branch \`${w.branch}\`${w.from ? `, cut from \`${w.from}\`` : ''}${w.base ? ` at ${w.base.slice(0, 10)}` : ''}`);
+    const lines = workspaceDirs(floorDir, def, task.workspace).map((w) => `- \`${w.dir}\`: ${w.repo?.name ?? path.basename(w.dir)}${remoteOf(w.repo)}, on branch \`${w.branch}\`${w.from ? `, cut from \`${w.from}\`` : ''}${w.base ? ` at ${w.base.slice(0, 10)}` : ''}${buildNote(w.dir)}`);
     return [...lines, ...folders].join('\n');
   }
   const git = repos.filter((r) => r.kind === 'git');
@@ -106,8 +114,12 @@ export function reposText(def: FloorDef, task: Pick<KanbanTask, 'repoIds' | 'wor
 /** The {{repos}} lines of an ordinary office worker (its worktree, its workspace, or the project's checkout). */
 export function workerReposText(info: WorkerInfo, floorDir: string, projectName: string, branch?: string): string {
   if (!info.worktree) return `- \`${floorDir}\`: ${projectName}${branch ? `, on branch \`${branch}\`` : ''}`;
-  const lines = [`- \`${worktreeDir(floorDir, info.worktree.path)}\`: ${projectName}, on branch \`${info.worktree.branch}\`${info.worktree.from ? `, cut from \`${info.worktree.from}\`` : ''}`];
-  for (const r of info.repos ?? []) lines.push(`- \`${worktreeDir(floorDir, r.path)}\`: ${r.repo ?? r.name}, on branch \`${r.branch}\`${r.from ? `, cut from \`${r.from}\`` : ''}`);
+  const home = worktreeDir(floorDir, info.worktree.path);
+  const lines = [`- \`${home}\`: ${projectName}, on branch \`${info.worktree.branch}\`${info.worktree.from ? `, cut from \`${info.worktree.from}\`` : ''}${buildNote(home)}`];
+  for (const r of info.repos ?? []) {
+    const dir = worktreeDir(floorDir, r.path);
+    lines.push(`- \`${dir}\`: ${r.repo ?? r.name}, on branch \`${r.branch}\`${r.from ? `, cut from \`${r.from}\`` : ''}${buildNote(dir)}`);
+  }
   return lines.join('\n');
 }
 
