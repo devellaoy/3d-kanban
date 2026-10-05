@@ -4,7 +4,7 @@
 import type { IssueSourceKind, KanbanEffort, KanbanTool, PlanApproval, RunPhase, TaskStatus, WaitingReason } from '../../shared/kanban/types.js';
 
 const COLUMNS: Record<TaskStatus, string> = { todo: 'To do', in_progress: 'In progress', waiting: 'Waiting', review: 'Review', on_hold: 'On hold', done: 'Done', archived: 'Archive' };
-const PHASES: Record<RunPhase, string> = { plan: 'plan', implement: 'implement', review: 'review', fix: 'fix', resume: 'resume', pr: 'PR', 'pr-fix': 'PR fix', compact: 'compact', 'pr-review': 'PR review' };
+const PHASES: Record<RunPhase, string> = { plan: 'plan', implement: 'implement', review: 'review', fix: 'fix', resume: 'resume', pr: 'PR', 'pr-fix': 'PR fix', 'pr-conflicts': 'PR conflicts', compact: 'compact', 'pr-review': 'PR review' };
 const WAITING: Record<WaitingReason, string> = {
   plan_questions: 'The plan has questions',
   plan_approval: 'The plan waits for your approval',

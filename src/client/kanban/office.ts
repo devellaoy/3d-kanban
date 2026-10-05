@@ -35,6 +35,7 @@ export const PHASE_TEXT: Record<RunPhase, string> = {
   resume: 'working',
   pr: 'opening PRs',
   'pr-fix': 'fixing PRs',
+  'pr-conflicts': 'resolving PR conflicts',
   compact: 'compacting',
   'pr-review': 'reviewing PRs',
 };
