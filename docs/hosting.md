@@ -147,5 +147,7 @@ supported, rather than showing a `gh` error.
   request there (the window's footer links to it). On Azure DevOps the diff shows the latest
   iteration's first 300 files, each up to 1 MB.
 - Upstream's PR-window prompts (*Fix comments & merge*, *Fix conflicts & merge*) use `gh` and are hidden
-  for pull requests elsewhere. The kanban's Fix PRs and Resolve conflicts work.
+  for pull requests elsewhere. The kanban's Fix PRs and Resolve conflicts work. 🔍 Review of a pull
+  request elsewhere goes to the kanban's reviewer even for just that one (its prompt says to use
+  `office-pr`), and *Ask a worker…* adds the same note to the office's prompt.
 - Azure DevOps doesn't link a work item that isn't in the repository's organisation.

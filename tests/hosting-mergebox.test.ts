@@ -24,3 +24,12 @@ test('a pull request elsewhere can never be merged from the office, whatever it 
   assert.match(hostedMergeStatus(detail({ isDraft: true }), 'Azure DevOps').text, /draft: publish it on Azure DevOps/);
   assert.equal(hostedMergeStatus(detail({ state: 'MERGED' }), 'Azure DevOps').text, 'Merged.');
 });
+
+test("a worker's prompt about a pull request elsewhere says to use office-pr where it says gh; GitHub's are as they were", async () => {
+  const { elsewhereNote } = await import('../src/shared/hosting/prnote.js');
+  assert.equal(elsewhereNote({ number: 3, url: 'https://github.com/o/r/pull/3' }), '');
+  const note = elsewhereNote({ number: 7, url: 'https://dev.azure.com/contoso/Web/_git/api/pullrequest/7' });
+  assert.match(note, /on Azure DevOps, where gh doesn't work/);
+  assert.match(note, /`office-pr view 7 --comments`[\s\S]*`office-pr diff 7`/);
+  assert.match(elsewhereNote({ number: 2, url: 'https://bitbucket.org/acme/ui/pull-requests/2' }), /on Bitbucket/);
+});
