@@ -22,7 +22,7 @@ with a token. It doesn't need the `az` CLI or any Bitbucket tool.
 | **O** at a desk, and a task's 🔀 Create PRs (the agent opens the PR) | `gh` | `office-pr` | `office-pr` |
 | **O** on a 🐚 shell worker, and the Changes window's PR (the office opens it) | ✅ | ✅ | ✅ |
 | The 🔀 PR board, PR states on kanban tasks, a task following its PR to merged | ✅ | ✅ | ✅ |
-| Checks and reviews on the board | ✅ | statuses, votes | build statuses, approvals |
+| Checks and reviews on the board | ✅ | statuses and branch policies (build validation, required statuses), votes | build statuses, approvals |
 | The PR window | everything | description, checks, comments, commenting | description, checks, comments, commenting |
 | Merging, closing, labels from the office | ✅ | do it on Azure DevOps | do it on Bitbucket |
 | Fix PRs, Resolve conflicts, 🔍 Review (kanban) | ✅ | ✅ (the agent uses `office-pr`) | ✅ (the agent uses `office-pr`) |
@@ -34,9 +34,12 @@ with a token. It doesn't need the `az` CLI or any Bitbucket tool.
 
 Open **☰ → 🔐 Your sign-ins**. Below Claude and GitHub there is a card for each host:
 
-- **Azure DevOps**: a personal access token (dev.azure.com → User settings → Personal access tokens)
-  with **Code (Read & write)** and **Work Items (Read & write)**. Pick the organisation the projects are
-  in, or all accessible organisations.
+- **Azure DevOps**: an organisation-scoped personal access token (dev.azure.com → User settings →
+  Personal access tokens) with **Code (Read & write)** and **Work Items (Read & write)**, and the name of
+  its organisation (`dev.azure.com/<organisation>`). The office checks the token there (the
+  organisation's `connectionData`: Azure DevOps' Profiles API doesn't take PATs). Global PATs stop
+  working on 1 December 2026, and a PAT reaches only its own organisations, so keep the projects of
+  one office in one organisation, or use a token for each.
 - **Bitbucket**: an Atlassian API token *with scopes*
   (id.atlassian.com → Security → API tokens → *Create API token with scopes* → Bitbucket) and the
   e-mail of your Atlassian account. Scopes: `read:repository:bitbucket`, `write:repository:bitbucket`,
@@ -56,10 +59,16 @@ itself never goes back to a browser.
 
 When a token is missing, the action says so and opens 🔐 Your sign-ins.
 
-**Pushing over HTTPS.** Each account's git config has the office's credential helper
-(`office-git-credential`) for `dev.azure.com`, `*.visualstudio.com` and `bitbucket.org`, so a push from
-a worker or the office uses the same token: yours, else the office's. Remotes over SSH keep using the
-machine's SSH keys. Without accounts, the machine's own git credentials are used, as before.
+**Pushing over HTTPS.** The office's credential helper (`office-git-credential`) answers for
+`dev.azure.com`, `*.visualstudio.com` and `bitbucket.org` with the same token: yours, else the office's.
+When the office pushes for you (O on a 🐚 shell worker, the Changes window's pull request), it hands
+git the helper itself, ahead of any the machine has for those hosts, so that holds with or without
+accounts and whatever your GitHub sign-in is. Your workers' own pushes get it from your account's git
+config. Remotes over SSH keep using the machine's SSH keys.
+
+**Each repository by its own host.** O and the Changes window ask for the sign-ins the repositories
+they push to need: GitHub's only when one of them is on GitHub, and your token for each other host. A
+worker across repositories on GitHub and Bitbucket opens each pull request on its own host.
 
 Where they are kept: `<data>/homes/<account>/hosting.json` (yours) and `<data>/hosting-secrets.json`
 (the office's), both mode 600. Revoking an account deletes its folder.
@@ -106,7 +115,11 @@ The source reads with the office's Azure DevOps token (or an account's, see abov
 3. On each board refresh, a task's open pull request on Azure DevOps that isn't linked to the work item
    yet (one opened another way) is linked. Once one of them merges, the office moves the work item to
    its type's *Completed* state (Done, Closed, …), unless Azure DevOps already did. Each step goes on the
-   task as a status comment, and happens once.
+   task as a status comment, and happens once; one that fails (Azure DevOps down, say) is tried again
+   on the next refreshes, three times in all.
+
+Both are done with the Azure DevOps token of the task's creator, else the office's own, never with
+another person's. Without either, the task says so.
 
 Only work items in the same organisation as the repository are linked.
 
@@ -122,6 +135,4 @@ supported, rather than showing a `gh` error.
   the pull request there (the window's footer links to it).
 - Upstream's PR-window prompts (*Fix comments & merge*, *Fix conflicts & merge*) use `gh` and are hidden
   for pull requests elsewhere. The kanban's Fix PRs and Resolve conflicts work.
-- A worker across repositories on two different hosts opens its pull requests with the token of the
-  host of the floor's own repository; the others fail with a message.
 - Azure DevOps doesn't link a work item that isn't in the repository's organisation.

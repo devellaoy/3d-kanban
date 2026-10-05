@@ -54,7 +54,9 @@ Back to the [README](../README.md).
   and comments to `hosting/board.ts`, and GitHub-only actions say so), `ghrepo.ts` (`checkoutRemote`), `floor.ts`
   (`githubFor` and the PR board's `repos` know a hosted primary; the meeting's review posts with the host's token),
   `workers/pr.ts`, `workers/manager.ts` and `changes.ts` (a hosted repository's PR through its provider),
-  `office/gates.ts` and `office/context.ts` (`withRepoHost`), `ws/handlers/{github,workers,changes}.ts` (those gates),
+  `office/gates.ts` and `office/context.ts` (`withRepoHost` for a board, `withHosts` for work on checkouts: each
+  repository's own host, GitHub's sign-in only when one is on GitHub, git pushing with the office's credential helper),
+  `changes.ts` (`dirOf`), `ws/handlers/{github,workers,changes}.ts` (those gates),
   `http/routes/github.ts`, `signins.ts` (its git config is written by `gitconfig.ts`, with the office's credential
   helper for the other hosts), `workers/process.ts` (the two commands), `office/services.ts` (`openHosting`),
   `shared/protocol/{github,accounts}.ts` (`GhState.host` and `.note`, `signins.needed` for a host), `shared/protocol.ts`,

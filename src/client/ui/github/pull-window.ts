@@ -13,7 +13,7 @@ import { getJson, getText } from './api';
 import { openClose } from './close';
 import { commentBox } from './comment-box';
 import { labelButton, labelChip } from './labels';
-import { checksList, conflicted, mergeStatus, openMerge } from './merge';
+import { checksList, conflicted, hostedMergeStatus, mergeStatus, openMerge } from './merge';
 import { avatar, commentCard, errorBox, nodes, REVIEW_BADGE, spinnerRow, stateOf } from './pieces';
 import { FILES_KEY, mergePref, pref, savePref, TAB_KEY } from './prefs';
 import { fixAndMergePrompt, fixConflictsPrompt, pullContext, pullVars, reviewPrompt, type BoardActions } from './prompts';
@@ -181,8 +181,10 @@ export function openPull(first: GhPull, net: Net, actions: BoardActions) {
     thread.append(...items.map((x) => x.node));
     if (!items.length) thread.append(h('p.gh-quiet', {}, 'No comments or reviews yet.'));
 
-    const st = mergeStatus(d);
+    // Elsewhere the office doesn't merge: the box says how it stands and where it merges, and has no buttons.
+    const st = onGitHub ? mergeStatus(d) : hostedMergeStatus(d, hostLabel(host));
     const box = h('section.gh-mergebox', { class: st.cls }, h('div.gh-status', { class: st.cls }, h('span', {}, st.icon), st.text), d.checks.length ? checksList(d.checks) : null);
+    if (!onGitHub) return void thread.append(box);
     if (it.state === 'OPEN' && st.can) box.append(h('div.gh-mergebox-go', {}, h('button.btn.primary', { type: 'button', onclick: () => openMerge(it, d, net, handToWorker, loadAll) }, '🔀 Merge…')));
     if (conflicted(d)) box.append(h('div.gh-mergebox-go', {}, h('button.btn.primary', { type: 'button', onclick: handToWorker }, '✨ New worker: fix conflicts & merge')));
     else if (it.state === 'OPEN' && !st.can && !d.isDraft) box.append(h('div.gh-mergebox-go', {}, h('button.btn', { type: 'button', onclick: handToWorker }, '🤖 Have a worker fix it & merge')));
