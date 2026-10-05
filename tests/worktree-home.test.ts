@@ -4,8 +4,9 @@ import { existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, readdirSyn
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { test } from 'node:test';
+import { workerReposText } from '../src/server/kanban/engine/compose.js';
 import { prune } from '../src/server/prune.js';
-import { ensureHome, linkNodeModules, linkNodeModulesAsync, officeOfWorktree, worktreeHomes, worktreesHome } from '../src/server/worktree-home.js';
+import { ensureHome, linkNodeModules, linkNodeModulesAsync, officeOfWorktree, unbuiltWorkspaces, worktreeHomes, worktreesHome } from '../src/server/worktree-home.js';
 import { Worktrees } from '../src/server/worktrees.js';
 
 // New worktrees live beside the project, in <project>.worktrees/, linked to the project's node_modules;
@@ -568,4 +569,60 @@ test('restore links the workspace packages to the worktree again', async (t) => 
   assert.deepEqual(await trees.restore(m), { from: 'here' });
   const wt = path.join(dir, m.path);
   assert.equal(real(wt, 'node_modules', '@acme', 'ui'), real(wt, 'packages', 'ui'));
+});
+
+test('a branch that commits a workspace folder as a link out of the worktree is not followed', (t) => {
+  const { root, dir } = workspace(t);
+  mkdirSync(path.join(dir, 'evil'));
+  git(dir, 'rm', '-rq', 'packages/ui');
+  symlinkSync(path.join(dir, 'evil'), path.join(dir, 'packages', 'ui'));
+  git(dir, 'add', '-A');
+  git(dir, 'commit', '-q', '-m', 'ui is a link');
+  // The project itself has the real one, as before the commit; the worktree gets the committed link.
+  const wt = path.join(root, 'wt');
+  git(dir, 'worktree', 'add', '-q', '-b', 'evil', wt);
+  rmSync(path.join(dir, 'packages', 'ui'));
+  mkdirSync(path.join(dir, 'packages', 'ui'));
+  writeFileSync(path.join(dir, 'packages', 'ui', 'package.json'), '{}');
+  linkNodeModules(dir, wt);
+  assert.equal(real(wt, 'node_modules', '@acme', 'ui'), real(dir, 'packages', 'ui'));
+  assert.deepEqual(readdirSync(path.join(dir, 'evil')), []);
+  assert.equal(existsSync(path.join(dir, 'evil', 'node_modules')), false);
+});
+
+test('workspace packages with their own links to other workspace packages are the worktree\'s, cycles included', (t) => {
+  const { dir, put } = workspace(t);
+  put('packages/app/index.js', 'app\n');
+  put('packages/app/package.json', JSON.stringify({ name: '@acme/app' }));
+  git(dir, 'add', '-A');
+  git(dir, 'commit', '-q', '-m', 'app');
+  const nm = (pkgDir: string) => path.join(dir, 'packages', pkgDir, 'node_modules', '@acme');
+  mkdirSync(nm('app'), { recursive: true });
+  symlinkSync('../../../ui', path.join(nm('app'), 'ui'));
+  symlinkSync('../../packages/app', path.join(dir, 'node_modules', '@acme', 'app'));
+  const wt = made(dir, 'ws-pnpm');
+  assert.equal(real(wt, 'packages', 'app', 'node_modules', '@acme', 'ui'), real(wt, 'packages', 'ui'));
+  // And back: ui's node_modules links to app, app's to ui.
+  mkdirSync(nm('ui'), { recursive: true });
+  symlinkSync('../../../app', path.join(nm('ui'), 'app'));
+  const wt2 = made(dir, 'ws-cycle');
+  assert.equal(real(wt2, 'packages', 'ui', 'node_modules', '@acme', 'app'), real(wt2, 'packages', 'app'));
+  assert.equal(real(wt2, 'packages', 'app', 'node_modules', '@acme', 'ui'), real(wt2, 'packages', 'ui'));
+});
+
+test('unbuiltWorkspaces names the linked workspace packages whose main is not made in the worktree; the brief says so', (t) => {
+  const { dir, put } = workspace(t, 'node_modules/\ndist/\n');
+  put('packages/ui/package.json', JSON.stringify({ name: '@acme/ui', main: 'dist/index' }));
+  put('packages/ui/dist/index.js', 'built\n');
+  git(dir, 'add', '-A');
+  git(dir, 'commit', '-q', '-am', 'main is build output');
+  const wt = made(dir, 'ws-unbuilt');
+  assert.deepEqual(unbuiltWorkspaces(wt), ['@acme/ui']);
+  const info = { worktree: { path: path.relative(dir, wt), branch: 'office/x' } } as Parameters<typeof workerReposText>[0];
+  assert.match(workerReposText(info, dir, 'proj'), /build its workspace packages @acme\/ui there first/);
+  mkdirSync(path.join(wt, 'packages', 'ui', 'dist'));
+  writeFileSync(path.join(wt, 'packages', 'ui', 'dist', 'index.js'), 'built\n');
+  assert.deepEqual(unbuiltWorkspaces(wt), []);
+  assert.doesNotMatch(workerReposText(info, dir, 'proj'), /build its workspace/);
+  assert.deepEqual(unbuiltWorkspaces(path.join(dir, 'nowhere')), []);
 });
