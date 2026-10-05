@@ -231,9 +231,6 @@ test('stop: interrupts a running turn, then waits as stopped; a queued one just 
   const retried = drive([{ type: 'retry', last: { phase: 'implement', role: 'implementer' } }], {}, {}, stopped.state);
   assert.deepEqual(runOf(retried.last.effects), { type: 'run', phase: 'implement', role: 'implementer', prompt: 'continue' });
   assert.equal(retried.state.status, 'in_progress');
-  // After a full office restart the run says so; a plain Retry doesn't.
-  const restarted = drive([{ type: 'retry', last: { phase: 'implement', role: 'implementer' }, restarted: true }], {}, {}, stopped.state);
-  assert.deepEqual(runOf(restarted.last.effects), { type: 'run', phase: 'implement', role: 'implementer', prompt: 'continue', restarted: true });
   // Continue without an answer is a retry; with one, the answer resumes the work.
   assert.equal(runOf(drive([{ type: 'continue', last: { phase: 'fix', round: 2, role: 'implementer' } }], {}, {}, stopped.state).last.effects)?.round, 2);
   assert.equal(runOf(drive([{ type: 'continue', answer: 'Skip the tests' }], {}, {}, stopped.state).last.effects)?.phase, 'resume');

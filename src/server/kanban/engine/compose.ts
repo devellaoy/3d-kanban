@@ -120,8 +120,6 @@ export interface ComposeExtra {
   text?: string;
   /** The task's pending messages, by whom and with their files, for the run that delivers them (the unhold prompt, a plan's approval or answer, a Retry). */
   held?: string;
-  /** The office was restarted while the run's turn was under way (a Retry's `continue`). */
-  restarted?: boolean;
   author?: string;
   /** The reviewer's findings (fix), the implementer's reply (rereview). */
   findings?: string;
@@ -312,7 +310,9 @@ export class Composer {
       case 'resume':
         return seal(this.text('kanban.resume', p, { taskId: task.id, author: x.author ?? 'The user', message: x.text ?? '', attachments: v.attachments, language: v.language }));
       case 'continue':
-        return seal(`${x.restarted ? `${this.text('kanban.restarted', p, {})}\n\n` : ''}${this.text('kanban.continue', p, { taskId: task.id, language: v.language })}`);
+        return seal(this.text('kanban.continue', p, { taskId: task.id, language: v.language }));
+      case 'restarted':
+        return seal(`${this.text('kanban.restarted', p, {})}\n\n${this.text('kanban.continue', p, { taskId: task.id, language: v.language })}`);
       case 'unhold': {
         const hold = task.hold;
         const note = hold?.note?.trim();

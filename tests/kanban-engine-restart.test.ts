@@ -178,12 +178,110 @@ test('a Claude session that is gone is not resumed: the run is interrupted with 
   t.after(() => fx.close());
   fx.setRules(RULES);
   const task = fx.newTask({ usePlan: false, useReview: false });
-  await midTurn(fx, task.id);
-  // A projects folder that knows no such session, and a task whose session is another one.
+  const run = await midTurn(fx, task.id);
+  // The worker's own session (the task hasn't stored one yet) has no transcript any more, in a projects folder that knows no other.
+  rmSync(fx.workers.transcripts(run.workerId!)!.claude!, { force: true });
   mkdirSync(path.join(process.env.CLAUDE_CONFIG_DIR!, 'projects', 'x'), { recursive: true });
-  fx.repo.updateTask(task.id, { sessionId: 'gone-session' });
+  assert.equal(fx.task(task.id).sessionId, undefined);
   await fx.restartOffice();
   const waiting = await fx.waitTask(task.id, (x) => x.status === 'waiting' && x.waitingReason === 'interrupted', 'the interrupted task');
   assert.match(waiting.waitingText ?? '', /session is gone/);
   assert.equal(prompts(fx, RESTARTED).length, 0);
+});
+
+test('a turn that ended with background work still out in its log carries on instead of being handled as finished', async (t) => {
+  const fx = await fixture();
+  t.after(() => fx.close());
+  fx.setRules([{ when: 'office was restarted', reply: 'Finished after the restart.', commit: 'Work' }, { when: 'Implement kanban task', background: 'Waiting for the helper agent.', releaseFile: path.join(fx.root, 'never'), reply: 'unused', delayMs: 800 }]);
+  const task = fx.newTask({ usePlan: false, useReview: false });
+  const run = await midTurn(fx, task.id);
+  // The office is gone before it hears the Stop, so the run isn't held in the database although its helper is out.
+  fx.engine.dispose();
+  const end = Date.now() + 15_000;
+  while (fx.workers.get(run.workerId!)?.status !== 'done' && Date.now() < end) await sleep(30);
+  assert.equal(fx.repo.runHeldAt(run.id), undefined);
+  await fx.restartOffice();
+  const done = await fx.waitTask(task.id, (x) => x.status === 'review' && x.runState === 'idle', 'the review column', 40_000);
+  assert.equal(done.summary, 'Finished after the restart.');
+  assert.equal(prompts(fx, RESTARTED).length, 1);
+});
+
+test('with the project at its limit of 2, a restart never lets a third task start before one of the two finishes', async (t) => {
+  const fx = await fixture();
+  t.after(() => fx.close());
+  fx.setRules(RULES);
+  const [a, b, c] = [fx.newTask({ usePlan: false, useReview: false }), fx.newTask({ usePlan: false, useReview: false }), fx.newTask({ usePlan: false, useReview: false })];
+  for (const x of [a, b]) {
+    await fx.engine.start(x.id, ADA);
+    await fx.waitTask(x.id, (y) => y.runState === 'running', 'running');
+  }
+  await fx.engine.start(c.id, ADA);
+  assert.equal(fx.task(c.id).runState, 'queued');
+  await sleep(1000);
+  await fx.restartOffice();
+  const end = Date.now() + 60_000;
+  while ((fx.task(a.id).status !== 'review' || fx.task(b.id).status !== 'review') && Date.now() < end) {
+    const active = [a, b, c].filter((x) => fx.repo.listRuns(x.id).some((r) => r.status === 'running') || (fx.task(x.id).status === 'in_progress' && fx.task(x.id).queuedRun)).length;
+    assert.ok(active <= 2, `${active} tasks active at once`);
+    if (fx.task(a.id).status === 'in_progress' && fx.task(b.id).status === 'in_progress') assert.equal(fx.repo.listRuns(c.id).length, 0, 'the third has no run yet');
+    await sleep(40);
+  }
+  assert.equal(fx.task(a.id).status, 'review');
+  assert.equal(fx.task(b.id).status, 'review');
+});
+
+test('two restarts in a row before the stagger fires: both runs still carry on', async (t) => {
+  const fx = await engineFixture({ engine: { restartStaggerMs: 1500 } });
+  t.after(() => fx.close());
+  fx.setRules(RULES);
+  const [a, b] = [fx.newTask({ usePlan: false, useReview: false }), fx.newTask({ usePlan: false, useReview: false })];
+  for (const x of [a, b]) {
+    await fx.engine.start(x.id, ADA);
+    await fx.waitTask(x.id, (y) => y.runState === 'running', 'running');
+  }
+  await sleep(1000);
+  await fx.restartOffice();
+  await fx.restartOffice();
+  for (const x of [a, b]) {
+    const done = await fx.waitTask(x.id, (y) => y.status === 'review' && y.runState === 'idle', 'the review column', 90_000);
+    assert.equal(done.summary, 'Finished after the restart.');
+  }
+});
+
+test('the setting turned off between the restart and the run starting: the task waits interrupted with a note', async (t) => {
+  const fx = await fixture();
+  t.after(() => fx.close());
+  fx.setRules(RULES);
+  const [a, b] = [fx.newTask({ usePlan: false, useReview: false }), fx.newTask({ usePlan: false, useReview: false })];
+  for (const x of [a, b]) {
+    await fx.engine.start(x.id, ADA);
+    await fx.waitTask(x.id, (y) => y.runState === 'running', 'running');
+  }
+  await sleep(1000);
+  await fx.restartOffice();
+  // The first run is already on its way; the second waits behind it in the queue.
+  fx.ctx.hiringPaused = () => 'The daily budget is spent';
+  const waiting = await fx.waitTask(b.id, (y) => y.status === 'waiting' && y.waitingReason === 'interrupted', 'the second task waiting', 60_000);
+  assert.match(waiting.waitingText ?? '', /Retry to carry on/);
+  assert.ok(fx.repo.listComments(b.id).comments.some((c) => /daily budget is spent/.test(c.text)));
+  await fx.waitTask(a.id, (y) => y.status === 'review', 'the first task done', 60_000);
+});
+
+test('a pull-request review cut off by a restart goes on with its own reviewer, not a fresh one', async (t) => {
+  const fx = await fixture();
+  t.after(() => fx.close());
+  fx.setRules([{ when: 'office was restarted', reply: 'They fit together.\n\nREVIEW: APPROVED' }, { when: 'Review these pull requests', reply: 'unused', delayMs: 60_000 }]);
+  const got = await fx.engine.reviewPrs({ project: 'proj', prs: [{ repo: 'acme/proj', number: 3 }, { repo: 'acme/proj', number: 4 }] as never, tool: 'claude' }, ADA);
+  assert.ok(typeof got !== 'string', String(got));
+  const taskId = (got as { taskId: number }).taskId;
+  const end = Date.now() + 15_000;
+  while (!prompts(fx, /Review these pull requests/).length && Date.now() < end) await sleep(30);
+  const first = fx.repo.activeRun(taskId)!;
+  await fx.restartOffice();
+  await fx.waitTask(taskId, (x) => x.runState === 'idle' && x.status !== 'in_progress', 'the review done', 60_000);
+  const runs = fx.repo.listRuns(taskId);
+  assert.deepEqual(runs.map((r) => `${r.phase}/${r.status}`), ['pr-review/interrupted', 'pr-review/succeeded']);
+  assert.equal(runs[1].workerId, first.workerId, 'the same reviewer');
+  assert.equal(prompts(fx, /Review these pull requests/).length, 1, 'no second review prompt: nobody was hired fresh');
+  assert.equal(prompts(fx, RESTARTED).length, 1);
 });

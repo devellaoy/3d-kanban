@@ -82,6 +82,7 @@ const KINDS: [PromptKind, RunPhase][] = [
   ['fix', 'fix'],
   ['resume', 'resume'],
   ['continue', 'implement'],
+  ['restarted', 'implement'],
   ['pr.create', 'pr'],
   ['pr.fix', 'pr-fix'],
   ['pr.conflicts', 'pr-conflicts'],
@@ -127,7 +128,7 @@ test('a continue after an office restart says the turn was cut off, in front of 
   const { def, dir, repo, compose } = setup(t);
   const task = repo.createTask({ project: 'proj', title: 'Fix the login redirect', description: 'x', tool: 'claude', usePlan: false, planApproval: 'auto', useReview: false, createdBy: 'Ada' });
   const plain = compose.build('continue', def, task, 'claude', dir, { phase: 'implement' });
-  const restarted = compose.build('continue', def, task, 'claude', dir, { phase: 'implement', restarted: true });
+  const restarted = compose.build('restarted', def, task, 'claude', dir, { phase: 'implement' });
   assert.doesNotMatch(plain, /office was restarted/);
   assert.match(restarted, /^The office was restarted while you were working on this task, and your turn was cut off/);
   assert.ok(restarted.endsWith(plain), 'the usual continue prompt and its contract follow');
