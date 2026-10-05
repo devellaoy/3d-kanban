@@ -132,10 +132,13 @@ export abstract class KanbanWorkers {
   setKanbanSummary(id: string, summary: NonNullable<WorkerInfo['kanban']>) {
     const w = this.workers.get(id);
     if (!w?.info.kanban || JSON.stringify(w.info.kanban) === JSON.stringify(summary)) return;
-    const was = waitingOnSomeone(w.info);
+    // Whether it would wait with nobody having looked yet: a look before the wait began (at the end of
+    // the implementation, say) doesn't count for the review that comes after.
+    const unseen = (kanban: WorkerInfo['kanban']) => waitingOnSomeone({ ...w.info, kanban, acked: false });
+    const begins = !unseen(w.info.kanban) && unseen(summary);
     w.info.kanban = summary;
     // The task starts waiting on a person (a review, a plan's questions): the wait begins now, as on a status change.
-    if (!was && waitingOnSomeone(w.info)) {
+    if (begins) {
       w.info.acked = w.info.status === 'done' && (w.viewers.size > 0 || !!w.info.meeting);
       w.info.waitingSince = Date.now();
     }

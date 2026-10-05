@@ -72,8 +72,7 @@ instead; the task waits (failed) with upstream's reason, naming whose sign-in is
   you". The same rule (`waitingOnSomeone`, `src/shared/status.ts`) feeds all of them, and the alert goes off
   when a worker starts waiting, whether its status or its task's summary changed; a task that starts
   waiting resets the worker's seen flag and waiting time (`setKanbanSummary`). A wait the engine
-  announces itself (plan approval or questions, ready for review) gets no second webhook post, and a
-  task stopped by a person (Stop, or its worker sent home mid-run) waits without a ding (`quietWait`).
+  announces itself (plan approval or questions, ready for review) gets no second webhook post.
 - "📍 Show in 3D" on the kanban opens `/?floor=<id>&worker=<workerId>&desk=<deskId>`; the 3D client
   goes to that floor and that desk.
 - The 📋 queue board's form can make a kanban task (above), and its "🗂️ Kanban on this floor" section

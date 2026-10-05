@@ -2,7 +2,6 @@ import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import type { NotifyState, WebhookKind, WorkerInfo, WorkerStatus } from '../shared/protocol.js';
 import { alertDetail, waitingOnSomeone } from '../shared/status.js';
-import { quietWait } from '../shared/kanban/waiting.js';
 
 /** A worker has to stay put this long before the channel hears about it, so a flicker never posts. */
 const SETTLE_MS = 5_000;
@@ -14,11 +13,11 @@ const MAX_BACKLOG = 20;
 
 /**
  * A task worker whose wait the engine announces itself (a plan's approval or questions, a finished turn
- * in review), or one a person caused (Stop): no worker alert on top. A later question in review still posts.
+ * in review): no worker alert on top. A later question in review still posts.
  */
 export function announcedByEngine(w: WorkerInfo): boolean {
   const k = w.kanban;
-  if (!k || quietWait(w)) return !!k;
+  if (!k) return false;
   return (k.status === 'review' && w.status === 'done') || (k.status === 'waiting' && (k.waitingReason === 'plan_approval' || k.waitingReason === 'plan_questions'));
 }
 

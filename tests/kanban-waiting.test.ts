@@ -5,7 +5,9 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import type { WorkerInfo } from '../src/shared/protocol.js';
 import type { KanbanWorkerSummary } from '../src/shared/kanban/types.js';
-import { engineCarriesOn, quietWait } from '../src/shared/kanban/waiting.js';
+import { engineCarriesOn } from '../src/shared/kanban/waiting.js';
+import { KanbanWorkers } from '../src/server/kanban/workers.js';
+import type { Worker } from '../src/server/workers/types.js';
 import { shownStatus, waitingOnSomeone } from '../src/shared/status.js';
 import { shouldAlert } from '../src/client/notify.js';
 import { callsForDog } from '../src/server/dog.js';
@@ -53,9 +55,9 @@ test('announcedByEngine: plan waits and review are the engine\'s own announcemen
   assert.equal(announcedByEngine(w('done', false, { status: 'review' })), true);
   assert.equal(announcedByEngine(w('needs_input', false, { status: 'waiting', waitingReason: 'agent_asking' })), false);
   assert.equal(announcedByEngine(w('needs_input', false)), false);
-  // A question in review after its finished turn was announced is news; a Stop someone pressed is not.
+  // A question in review after its finished turn was announced is news, and so is a stopped run.
   assert.equal(announcedByEngine(w('needs_input', false, { status: 'review' })), false);
-  assert.equal(announcedByEngine(w('done', false, { status: 'waiting', waitingReason: 'stopped' })), true);
+  assert.equal(announcedByEngine(w('done', false, { status: 'waiting', waitingReason: 'stopped' })), false);
 });
 
 test('only the run\'s own worker is handed on: another one asking mid-run waits on someone', () => {
@@ -70,15 +72,17 @@ test('only the run\'s own worker is handed on: another one asking mid-run waits 
   assert.equal(waitingOnSomeone(w('needs_input', false, { status: 'in_progress', phase: 'fix', runState: 'running', role: 'reviewer' })), true);
 });
 
-test('a Stop someone pressed waits quietly: listed, but no ding', () => {
-  const stopped = w('done', false, { status: 'waiting', waitingReason: 'stopped' });
-  assert.equal(waitingOnSomeone(stopped), true);
-  assert.equal(quietWait(stopped), true);
-  assert.equal(quietWait(w('done', false, { status: 'waiting', waitingReason: 'failed' })), false);
-  assert.equal(quietWait(w('done', false)), false);
+test('a stopped run waits on someone and alerts (a teammate may have pressed Stop)', () => {
+  const steps = [
+    w('working', true, { status: 'in_progress', phase: 'implement', runState: 'running' }),
+    w('working', true, { status: 'in_progress', phase: 'implement', runState: 'stopping' }),
+    w('done', false, { status: 'in_progress', phase: 'implement', runState: 'stopping' }),
+    w('done', false, { status: 'waiting', waitingReason: 'stopped', runState: 'idle' }),
+  ];
+  assert.deepEqual(alertsOver(steps), [3]);
 });
 
-test('the webhook posts a question in review, and nothing for a Stop', (t) => {
+test('the webhook posts a question in review, and a stopped run', (t) => {
   const { h, alerts, tick } = hook(t);
   h.onWorker(w('working', true, { status: 'review' }));
   h.onWorker(w('needs_input', false, { status: 'review' }));
@@ -88,7 +92,7 @@ test('the webhook posts a question in review, and nothing for a Stop', (t) => {
   h.onWorker(w('done', false, { status: 'in_progress', phase: 'implement', runState: 'stopping' }));
   h.onWorker(w('done', false, { status: 'waiting', waitingReason: 'stopped', runState: 'idle' }));
   tick(6_000);
-  assert.deepEqual(alerts, ['Ada:needs_input']);
+  assert.deepEqual(alerts, ['Ada:needs_input', 'Ada:done']);
 });
 
 /** A webhook whose worker alerts are counted instead of posted; the clock is the test's. */
@@ -173,4 +177,40 @@ test('alerts: the engine\'s handovers stay quiet and the real wait alerts once',
   );
   // First sight of a waiting worker: no alert.
   assert.deepEqual(alertsOver([w('needs_input', false, { status: 'waiting', waitingReason: 'agent_asking' })]), []);
+});
+
+/** The kanban's side of the worker manager over its workers, its updates counted. */
+class Workers extends KanbanWorkers {
+  readonly workers = new Map<string, Worker>();
+  updates = 0;
+  protected emitUpdate() {
+    this.updates++;
+  }
+  protected setStatus() {}
+  resume() {
+    return undefined;
+  }
+}
+
+test('setKanbanSummary: a task reaching Review is a new wait, even if its worker was looked at before', () => {
+  const m = new Workers();
+  // Looked at when the implementation ended, nobody watching now.
+  const info = w('done', true, { status: 'in_progress', phase: 'review', runState: 'running' }, { waitingSince: 1 });
+  m.workers.set('w1', { info, viewers: new Map() } as unknown as Worker);
+  m.setKanbanSummary('w1', { taskId: 14, role: 'implementer', status: 'review', runState: 'idle' });
+  assert.equal(info.acked, false);
+  assert.ok(info.waitingSince! > 1);
+  assert.equal(waitingOnSomeone(info), true);
+  assert.equal(m.updates, 1);
+  // Someone watching as it arrives has seen it.
+  const watched = w('done', true, { status: 'in_progress', phase: 'review', runState: 'running' }, { id: 'w2', waitingSince: 1 });
+  m.workers.set('w2', { info: watched, viewers: new Map([['c1', 'Bo']]) } as unknown as Worker);
+  m.setKanbanSummary('w2', { taskId: 14, role: 'implementer', status: 'review', runState: 'idle' });
+  assert.equal(watched.acked, true);
+  // A later change within the same wait resets nothing.
+  info.acked = true;
+  const since = info.waitingSince;
+  m.setKanbanSummary('w1', { taskId: 14, role: 'implementer', status: 'review', runState: 'idle', round: 2 });
+  assert.equal(info.acked, true);
+  assert.equal(info.waitingSince, since);
 });

@@ -34,7 +34,6 @@ import { openMeeting, type MeetingPreset } from './ui/meeting';
 import { openSignIns } from './ui/signins';
 import { byUrgency, waitingInOrder, waitingLabel } from './nextup';
 import { askNotifyPermission, DesktopNotifier, notifyPermission, shouldAlert, waitingOnSomeone } from './notify';
-import { quietWait } from '../shared/kanban/waiting';
 import { repoChoices } from './shared/hiring';
 import { workerCard } from './shared/workercard';
 // The tab title counts the workers waiting on someone, on every floor, as the 3D office's does.
@@ -157,7 +156,7 @@ function noticeWorkers() {
     const now = waitingOnSomeone(w);
     const before = lastWaiting.get(w.id);
     lastWaiting.set(w.id, now);
-    if (!shouldAlert(before, now) || !waitingOnSomeone(w) || quietWait(w)) continue;
+    if (!shouldAlert(before, now) || !waitingOnSomeone(w)) continue;
     notifier.alert(w);
     if (w.status === 'needs_input') navigator.vibrate?.(200);
   }

@@ -33,11 +33,6 @@ function runRole(phase: RunPhase | undefined): KanbanRole {
   return phase === 'review' || phase === 'pr-review' ? 'reviewer' : 'implementer';
 }
 
-/** A wait a person just caused themselves (Stop, or sending its worker home mid-run): it waits, but it's no news to ding about. */
-export function quietWait(w: Pick<WorkerInfo, 'kanban'>): boolean {
-  return w.kanban?.status === 'waiting' && w.kanban.waitingReason === 'stopped';
-}
-
 /** A needs-input worker the engine carries on with by itself (e.g. a plan's approval prompt): shown as working. */
 export function engineCarriesOn(w: Pick<WorkerInfo, 'kanban' | 'status' | 'acked'>): boolean {
   return w.status === 'needs_input' && taskWaiting(w) === false;
