@@ -51,6 +51,13 @@ export class CarryOn {
     return carries(w, this.host.enabled());
   }
 
+  /** Whether resuming `w` now tells it to go on: it was cut off mid-turn and carries on by itself at start (see carries), or its terminal host died under a running office (always, a task's worker included: the engine follows its run). */
+  prompts(w: Worker): boolean {
+    const lost = !!w.hostLost && !!w.interrupted && w.info.kind === 'agent' && !!w.info.sessionId;
+    w.hostLost = false;
+    return lost || this.carries(w);
+  }
+
   /**
    * The office is closing: what the worker was doing is kept (`cutOff`, since its status reads
    * `exited` once its process is killed) and a turn in progress is marked to carry on, whether the

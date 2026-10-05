@@ -1768,3 +1768,34 @@ test('an office stopped again before the carried-on worker has heard its prompt 
   assert.equal(third.carriesOn(w.id), true);
   assert.equal(promptOf((await waitFor(() => launches(f), (x) => x.length >= 3))[2]), CARRY_ON_PROMPT);
 });
+
+test("a host terminal that is gone at the next start leaves the worker cut off as it was saved: a plain one carries on, a task's worker is left to the engine", async (t) => {
+  const f = carryOnFixture(t);
+  const saved = (id: string, deskId: string, sessionId: string, extra = {}) => ({
+    id, kind: 'agent', provider: 'claude', deskId, name: id, sessionId, hookToken: `${id}-token`, midTurn: true,
+    pty: { id: `${id}-pty`, status: 'working', acked: true }, ...extra,
+  });
+  writeFileSync(path.join(f.data, 'workers.json'), JSON.stringify([saved('plain', 'desk-1', 'plain-session'), saved('task', 'desk-2', 'task-session', { kanban: { taskId: 3, role: 'implementer' } })]));
+  const workers = manager(f, f.claude, []);
+  t.after(() => workers.shutdown());
+  await workers.start();
+  assert.equal(workers.cutOffStatus('plain'), 'working');
+  assert.equal(workers.cutOffStatus('task'), 'working');
+  const resumed = await waitFor(() => launches(f), (x) => x.length >= 2);
+  assert.equal(promptOf(resumed.find((r) => r.args.includes('plain-session'))!), CARRY_ON_PROMPT);
+  assert.equal(promptOf(resumed.find((r) => r.args.includes('task-session'))!), undefined);
+});
+
+test("a task's worker the engine follows is told to continue when its terminal host dies under a running office", async (t) => {
+  const f = carryOnFixture(t);
+  const workers = manager(f, f.claude, []);
+  t.after(() => workers.shutdown());
+  await workers.start();
+  const w = await hireInState(f, workers, 'desk-1', 'followed-run', 'working');
+  w.kanban = { taskId: 3, role: 'implementer' };
+  workers.follows(w.id, true);
+  (workers as any).host.sock.destroy(); // the host dies
+  const resumed = (await waitFor(() => launches(f), (x) => x.length >= 2))[1];
+  assert.ok(resumed.args.includes('followed-run'));
+  assert.equal(promptOf(resumed), CARRY_ON_PROMPT);
+});

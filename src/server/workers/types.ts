@@ -162,6 +162,8 @@ export interface Worker {
   carryOnPending?: boolean;
   /** Why its carry-on was given up (the budget was spent, its session or worktree was gone): it is at rest, not on its turn. */
   carryOnDropped?: string;
+  /** Its terminal host died while the office ran: it is resumed with the carry-on prompt, a task's worker too (the engine still follows its run). */
+  hostLost?: boolean;
   /** Its next start is the office carrying on by itself: the terminal says so. */
   autoResume?: boolean;
   /** A prompt its start couldn't pass on the command line (a Muse resume): typed into its session after SessionStart. */

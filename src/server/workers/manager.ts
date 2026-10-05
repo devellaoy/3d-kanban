@@ -155,6 +155,7 @@ export class WorkerManager extends KanbanWorkers {
         w.saved = undefined;
         const adopted = saved && (await this.host.attach(saved.ptyId));
         if (adopted) this.adopt(w, adopted, saved);
+        else if (saved) w.cutOff = saved.status; // its terminal is gone with the host: it was cut off as it stood
       }),
     );
     // Terminals nobody saved a claim on (their worker was sent home as the office went down).
@@ -321,7 +322,7 @@ export class WorkerManager extends KanbanWorkers {
     const brief = station && stationBrief(station, this.prompts);
     const first = this.tasks.restartPrompt(w, brief, prompt, this.prompts?.language?.());
     // Cut off mid-turn by a restart: it gets on with it, as whoever was watching would have told it to.
-    const carryOn = !prompt && this.carry.carries(w);
+    const carryOn = this.carry.prompts(w) && !prompt;
     w.interrupted = w.carryOnSent = carryOn; w.carryOnPending = false; // a carried-on turn counts as cut off until its prompt is heard (setStatus)
     this.launch(w, carryOn ? CARRY_ON_PROMPT : first, w.info.sessionId);
     return undefined;
@@ -799,7 +800,7 @@ export class WorkerManager extends KanbanWorkers {
       }
       // The terminal host died and took the process with it: nothing the worker did.
       if (lost && !this.closing) {
-        if (midTurn(w)) w.interrupted = true;
+        if (midTurn(w)) w.interrupted = w.hostLost = true;
         this.resume(info.id);
         return;
       }
