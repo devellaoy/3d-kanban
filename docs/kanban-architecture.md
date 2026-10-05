@@ -186,6 +186,20 @@ allowed: `todo → in_progress` (= start), `waiting|review → done`, `done → 
   typed, a note ("Someone typed into its terminal while it worked: went on with its last answer to the office's prompt.") is
   written and the run ends on the office segment's last text. When the typed prompt came after the agent's real answer (no
   background work out) that answer stands and nothing is asked. The same restate covers an office Stop that came before its answer reached the log when a typed prompt follows (the office's segment is then incomplete): if the typed turn is still running (the worker busy, or `typedOpen` in the log), the engine waits for its Stop (a hold, no restate used up) and then asks. The wait's timeout note says it waited for the agent's next Stop. A Stop whose typed prompt froze the answer short is not re-read for it (`readResult` returns at once).
+- **After a full restart** (`engine/restart.ts`, called from `reconcile()`): when the office was stopped as a whole, the worker manager wakes every worker on its session
+  without a prompt (a kanban worker's resume that fails is not given a fresh session: it exits) and keeps what each was doing
+  (`floor.workers.cutOffStatus(id)`; undefined when its terminal survived, which `reconcile` handles as before). For a running run whose worker was cut off the
+  engine decides at once from that saved status, never from the woken worker's status now: (1) cut off at `needs_input`, or the task already
+  `waiting`/`agent_asking` (checked first, so a gone worktree or session doesn't change it): the run is finished as interrupted *without* the machine's `interrupted` event, the task is made
+  `agent_asking` (the `asking` event) if it isn't, and a note says an answer carries on (a comment starts a `resume` run, Retry a `continue`); (2) worktree gone (`info.lost`, `missingFolders`) or the Claude
+  session gone (`sessionLogged === false`): the run is interrupted with the reason, Retry starts it again in a fresh worktree or session; (3) the turn was `done` and the run not held (`runs.held_at` unset): a `Live` is attached with
+  `pinSince` (the result is read from the run's start, the woken process's `SessionStart` is later) and `turnEnded` handles the result, nothing is prompted;
+  (4) anything else (`working`, `needs_input`, `starting`, `idle`, or a run held for background work: `held_at`, set by `TurnHolds.hold`, cleared when the resumed turn starts): with the
+  office setting `carriesOnAfterRestart()` (default on) the run is interrupted ("The office restarted mid-run: its agent carries on by itself") and
+  `restartStaggerMs` apart (5 s; the workers' own carry-on is 3 s) and only while `ctx.hiringPaused()` (the daily budget) is clear, else a note says why the machine's `retry` with `restarted: true` runs inside the task's chain, so the `continue` prompt starts with `kanban.restarted`
+  and goes through `launch` as any Retry (waiting for the woken worker to rest, `freshSession`, limits, drain); with the setting off it is only interrupted ("…Retry to carry on"). A retry that is no
+  longer due (someone retried it first) is skipped. A task with no running run (plan approval, a review decision, a usage limit with `retryAt`) is untouched.
+  The queued form of the run (`QueuedRun`) does not keep `restarted`: a run that has to wait for a desk loses the extra sentence.
 - **Agent-team teammates** (Claude Code's `Agent` call with a `name`) are counted in `TurnResult.background`
   too, from their own transcripts beside the lead's (`<log>/subagents/agent-*.jsonl`, `taskKind:
   in_process_teammate`): one is working when its transcript ends in a message or tool result it hasn't
@@ -402,6 +416,7 @@ allowed: `todo → in_progress` (= start), `waiting|review → done`, `done → 
 - `<officeData>/.agent-office/kanban-settings.json` (`schemaVersion`), `kanban-secrets.json` (chmod 600).
 - `<officeData>/.agent-office/kanban/uploads/`, `kanban/grants/task-<id>/`, `kanban/reports/task-<id>/`, `kanban/refs/task-<id>/`,
   `kanban/skills/plugin-<hash>/` (generated Claude skill plugins), `kanban/legacy/` (migrated stream logs).
+- Migration 6 adds `runs.held_at` (ms: when the run was held for background work, NULL otherwise; `KanbanRepository.runHeldAt` / `setRunHeld`, not on `KanbanRun`); a build that knows only 5 refuses the database.
 - Migration 5 adds `runs.prompted_at` (ms: when the office last gave the run its prompt, see §4's restate); a build that knows only 4 refuses the database.
 - Migration 4 adds `tasks.hold` (JSON, see `TaskHold`; parsed defensively like the other JSON columns). It raises
   `user_version` to 4, so a build that knows only 3 refuses the database: back up `kanban.sqlite` before trying
@@ -604,6 +619,7 @@ blocks (markers, safety rules) are appended by the engine and shown read-only in
 `{{language}}` is `Composer.language(project)`: with a conversation or public language set (office `prompts.json` `language`, project `publicLanguage`, resolved by `resolveLanguages` in `src/shared/language.ts`), the office prompts `language.talk` and `language.public` (`language.public.unset` when only the conversation language is set, so commits and branch names stay on the project's conventions; `languageRules` in `src/server/language.ts`, the office's texts via `KanbanContext.officeText`); otherwise `kanban.language`; then, unless the project's `commentLanguage` is `@project`, the `language.code` prompt (`codeRule`; the language is `resolveCommentLanguage`, English by default, carried as `code` in `resolveLanguages`' result and never stored in the office's settings). Non-kanban workers get the same rule after their first prompt from `WorkerManager` (the floor's `PromptSource.language()`, `boundPrompts`); kanban workers are skipped there, since their prompts carry it.
 
 `kanban.unhold` ("Carry on after a hold": `taskId`, `heldAt`, `holdNote`, `comments`, `language`) is the prompt a task taken off hold resumes with (§3, §4).
+`kanban.restarted` ("The office was restarted": no variables) is put in front of `kanban.continue` when a run is carried on after a full office restart (§4, "After a full restart").
 `kanban.restate` ("Restate the final answer": `taskId`, `language`) is what a run is asked when a prompt typed into its terminal took the turn its background work ended in, or came before the office's answer reached the log (§4).
 
 ## 8. Agent-facing endpoints

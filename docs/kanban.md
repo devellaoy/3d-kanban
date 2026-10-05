@@ -165,7 +165,15 @@ desk, which ends its helpers, and the conversation says so. ▶️ Continue or a
 terminal. A stopped worker keeps its desk (and counts towards the worker limit); **X** sends it home.
 A worker that can't be restarted (no session yet) stays at its desk, with its agent ended if it was still working (R resumes it), and the conversation says so. A failed or interrupted phase waits with **🔁 Retry** (run it again)
 and **▶️ Continue**. After an office restart a run is picked up again when its worker is still at
-its desk; a run whose worker went away (or exited) is marked interrupted.
+its desk; a run whose worker went away (or exited) is marked interrupted. When the whole office was shut down (Ctrl+C) and
+started again, the agents' terminals died with it, and the runs that were mid-step **carry on by themselves**: each is marked
+interrupted ("The office restarted mid-run: its agent carries on by itself") and, 5 seconds apart (workers outside the kanban start 3 seconds apart), put back to work on its
+session with a prompt saying that the office was restarted and its background agents and teammates were stopped. A run whose
+turn had already finished is not run again: its result is handled as if nothing happened. Tasks that wait for you (plan
+approval, plan questions, a review decision, an agent asking something) stay waiting and nobody is nudged; for an agent that was
+asking (also at a permission prompt), a note says to answer here to carry on, whatever else is gone. When the office's daily budget has paused hiring, nothing carries on by itself: the runs are only interrupted, with a note why. When the worktree or the agent's session is gone the run is not resumed: it is
+interrupted with the reason, and **Retry** carries on in a fresh worktree or session. ⚙️ Settings → **Carry on after a restart**
+(on by default) turns the automatic part off: the cut-off runs are then only marked interrupted, to Retry by hand.
 
 ### Sending a task's worker home
 
