@@ -22,9 +22,10 @@ const USAGE = `Usage:
   …the description, complete on its own…              description on stdin (or --prompt "…"). It
   EOF                                                 stays in To do unless --start. Options:
                                                       --project <id|name> --repo <name|id> (repeat)
-                                                      --issue <12|owner/repo#12|KEY> (a GitHub issue
-                                                      or Jira key; then title and description may be
-                                                      left out) --ticket <id> --ticket-url <url>
+                                                      --issue <12|owner/repo#12|KEY|AB#12> (a GitHub
+                                                      issue, Jira key or Azure Boards work item,
+                                                      ab:org/project#12 when the project has several;
+                                                      then title and description may be left out) --ticket <id> --ticket-url <url>
                                                       --provider claude|codex --model <m>
                                                       --effort minimal|low|medium|high|xhigh|max
                                                       --type implement|investigate --start
@@ -110,7 +111,7 @@ function parseCreate(rest) {
   if (opts['--repo']) out.repos = opts['--repo'].map((r) => r.trim()).filter(Boolean);
   if (opts['--issue'] !== undefined) {
     const issue = text('--issue').replace(/^#(?=\d+$)/, '');
-    if (!issue) throw new UsageError('--issue needs an issue: 12, owner/repo#12 or a Jira key');
+    if (!issue) throw new UsageError('--issue needs an issue: 12, owner/repo#12, a Jira key or AB#12');
     out.issue = /^\d+$/.test(issue) ? Number(issue) : issue;
   }
   if (opts['--start']) out.start = true;
@@ -283,7 +284,7 @@ export const TASK_TOOLS = [
     description:
       "Puts work on this office's kanban board as a task, which runs through the kanban process (plan, implementation runs, review, the board's columns), not as a plain worker. " +
       'Give a title and a description that is complete on its own (what to change and where, how to check it), unless you give issue. ' +
-      'issue links a GitHub issue (a number, or owner/repo#12) or a Jira key, which the task takes like one made from the issues board; it is assigned to whoever you work for when they have their own GitHub sign-in. ' +
+      'issue links a GitHub issue (a number, or owner/repo#12), a Jira key or an Azure Boards work item (AB#12, or ab:org/project#12), which the task takes like one made from the issues board; it is assigned to whoever you work for when they have their own GitHub sign-in. ' +
       'The task stays in To do for a person unless start is true, which seats a worker for it (or queues it when the office is full); that worker runs without permission prompts, unattended. ' +
       "start is honoured only for an agent a person hired at a desk or a board agent, and only in its own project; for any other caller (a task's worker, an agent-hired or queued worker) or another project the task waits in To do. " +
       'Returns the task\'s number and link; get_task reads it afterwards.',
@@ -294,7 +295,7 @@ export const TASK_TOOLS = [
         description: { type: 'string', description: 'What to do, complete on its own. Needed with title unless issue is given.' },
         project: { type: 'string', description: "The project's id or name. Default: the office's only or current one." },
         repos: { type: 'array', items: { type: 'string' }, description: "The repositories the task touches, by name or id (default: the project's)." },
-        issue: { anyOf: [{ type: 'string' }, { type: 'integer', minimum: 1 }], description: 'A GitHub issue (12 or owner/repo#12) or a Jira key (UYT-1415) to take the title and description from.' },
+        issue: { anyOf: [{ type: 'string' }, { type: 'integer', minimum: 1 }], description: 'A GitHub issue (12 or owner/repo#12), a Jira key (UYT-1415) or an Azure Boards work item (AB#12, ab:org/project#12) to take the title and description from.' },
         ticket: { type: 'string', description: 'A ticket id to record on the task.' },
         ticketUrl: { type: 'string', description: "The ticket's link." },
         provider: { type: 'string', enum: PROVIDERS, description: "Which agent runs it (default: the project's)." },

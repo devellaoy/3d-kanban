@@ -386,6 +386,20 @@ test('an issue key of a kind the project has no source for is refused, and a Jir
   assert.equal((readCreateRequest({ issue: 'x/y#3' }, board.ctx, 'app') as { issue: string }).issue, 'gh:x/y#3');
 });
 
+test('an Azure Boards work item: ab:org/project#n of a source (in its spelling), or AB#n when the project has one', () => {
+  const azure = (org: string, project: string, id: string) => ({ id, kind: 'azure-boards', org, project, filters: {} });
+  const read = (ctx: ReturnType<typeof setup>['ctx'], issue: string) => readCreateRequest({ issue }, ctx, 'app') as { issue: string } | string;
+  assert.match(read(setup().ctx, 'AB#12') as string, /no Azure Boards source/);
+  assert.match(read(setup().ctx, 'ab:contoso/Web#12') as string, /no Azure Boards source/);
+  const one = setup({ sources: [azure('contoso', 'My Web', 's1')] as IssueSourceConfig[] });
+  assert.equal((read(one.ctx, 'AB#12') as { issue: string }).issue, 'ab:contoso/My Web#12');
+  assert.equal((read(one.ctx, 'ab:CONTOSO/my web#12') as { issue: string }).issue, 'ab:contoso/My Web#12');
+  assert.match(read(one.ctx, 'ab:fabrikam/Web#12') as string, /fabrikam\/Web isn't one of the project's Azure Boards sources \(contoso\/My Web\)/);
+  const two = setup({ sources: [azure('contoso', 'Web', 's1'), azure('contoso', 'Api', 's2')] as IssueSourceConfig[] });
+  assert.match(read(two.ctx, 'AB#12') as string, /could be a work item of contoso\/Web or contoso\/Api: give ab:org\/project#12/);
+  assert.equal((read(two.ctx, 'ab:contoso/Api#7') as { issue: string }).issue, 'ab:contoso/Api#7');
+});
+
 test('an agent’s unknown issue key does not make the project fetch all its issues again', async () => {
   const { call, calls } = setup();
   await call({ issue: 12 });

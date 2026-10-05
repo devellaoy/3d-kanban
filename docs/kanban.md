@@ -739,7 +739,8 @@ implementation runs, review, the board's columns), not as a plain one-off worker
 - **Issues**: `issue` links the GitHub issue (or Jira ticket) the way a task made from the issues board
   is linked. It is assigned to the account the agent works for, which needs that account's own GitHub
   sign-in. An issue key the project doesn't know yet doesn't refresh its issue lists; a key kind the
-  project has no source for (a Jira key without Jira, say) is refused, and Jira keys are upper-cased. A bare number only works when the project has exactly one GitHub repository; `owner/repo`
+  project has no source for (a Jira key without Jira, say) is refused, and Jira keys are upper-cased. An Azure
+  Boards work item is `ab:org/project#12` of one of the project's Azure Boards sources, or `AB#12` when it has just one. A bare number only works when the project has exactly one GitHub repository; `owner/repo`
   is matched to the project's own spelling of the repository, so `O/APP#12` finds the task `o/app#12` has.
 - **The task view** shows which agent created a task ("via").
 - **A task's own worker can't start tasks**: its new tasks stay in To do (the answer says why), and the
