@@ -51,15 +51,10 @@ export function sameRepoPick(a: string[] | null | undefined, b: string[] | null 
   return ids(a) === ids(b);
 }
 
-/** The names of the repositories a card works in, for its chips and the search. */
+/** The names of the repositories a card works in, for the task view and the search. */
 export function cardRepoNames(card: Pick<KanbanTaskCard, 'repoIds'>, project?: Pick<KanbanProjectInfo, 'repos'>): string[] {
   const ids = cardRepoIds(card, project);
   return ids.map((id) => project?.repos.find((r) => r.id === id)?.name ?? id);
-}
-
-/** Whether a card is worth chips for its repositories: the project has more than one, or the task picked some. */
-export function showsRepoChips(card: Pick<KanbanTaskCard, 'repoIds'>, project?: Pick<KanbanProjectInfo, 'repos'>): boolean {
-  return project ? project.repos.length > 1 : !!card.repoIds?.length;
 }
 
 /** The words of a search, lower-cased; `#12` also matches the task number 12. */

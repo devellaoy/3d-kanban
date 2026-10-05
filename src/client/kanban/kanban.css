@@ -98,6 +98,9 @@ a.kb-chip:hover { background: var(--field-hover); }
 .kb-pr.draft { background: var(--tint-grey); }
 .kb-pr.merged { background: var(--tint-violet); }
 .kb-pr.closed { background: var(--bad-soft); }
+.kb-prs .kb-pr { display: inline-flex; align-items: center; gap: 4px; max-width: 100%; min-width: 0; overflow: hidden; }
+.kb-prs .kb-pr-repo { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.kb-prs .kb-pr-num { flex: none; }
 .kb-wait { margin-top: 6px; font-size: var(--fs-xs); font-weight: var(--fw-bold); color: var(--muted); overflow-wrap: anywhere; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
 .kb-wait.attention { color: var(--bad-ink); }
 .kb-hold { margin-top: 6px; font-size: var(--fs-xs); font-weight: var(--fw-bold); color: var(--muted); overflow-wrap: anywhere; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
