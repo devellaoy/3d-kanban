@@ -28,6 +28,7 @@ export function createHostingPlugin(ctx: KanbanContext, opts: HostingOptions = {
       floorPullsListeners.delete(onBoard);
       marks.done.clear();
       marks.failed.clear();
+      marks.told.clear();
     },
   };
 }

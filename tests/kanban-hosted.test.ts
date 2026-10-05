@@ -185,9 +185,16 @@ test("a work item is changed only with the task creator's token or the office's,
     fetch: () => (async () => new Response('{}')) as Fetch,
     complete: async () => (completed++, 'Closed'),
   };
-  await checkWorkItems(ctx, 'web', merged, workItemMarks(), noToken);
+  const waiting = workItemMarks();
+  for (let i = 0; i < WORK_ITEM_TRIES + 1; i++) await checkWorkItems(ctx, 'web', merged, waiting, noToken);
   assert.equal(completed, 0, "another account's token is never used to write");
-  assert.ok(ctx.repo.listComments(t.id).comments.some((c) => /wasn't completed: Set your Azure DevOps token first/.test(c.text)));
+  const told = ctx.repo.listComments(t.id).comments.filter((c) => /completed once there's a token to do it with: Set your Azure DevOps token first/.test(c.text));
+  assert.equal(told.length, 1, 'the task hears it once, however many refreshes it waits through');
+  // A token set later: the next refresh completes it (the wait spent none of its tries).
+  const office: HostAs = { kind: 'azure', auth: 'Basic office', key: 'office' };
+  await checkWorkItems(ctx, 'web', merged, waiting, { ...noToken, creds: () => ({ as: () => office, anyAs: () => someoneElse }) as never });
+  assert.equal(completed, 1);
+  completed = 0;
   // A host that fails (503) is asked again on the next refreshes, up to WORK_ITEM_TRIES times.
   const mine: HostAs = { kind: 'azure', auth: 'Basic mine', key: 'acc123456' };
   const asked: (string | undefined)[] = [];
@@ -201,8 +208,10 @@ test("a work item is changed only with the task creator's token or the office's,
       return 'Closed';
     },
   };
+  const task2 = ctx.repo.createTask({ project: 'web', title: 'A2', tool: 'claude', usePlan: false, planApproval: 'auto', useReview: false, createdBy: 't', createdByAccount: 'acc123456', ticket: 'ab:contoso/Web#44' });
+  ctx.repo.upsertPrLink(task2.id, { repoId: 'web', repo: AZ, number: 9, url: AZ_PR(9), state: 'MERGED' });
   const marks = workItemMarks();
-  for (let i = 0; i < 4; i++) await checkWorkItems(ctx, 'web', merged, marks, flaky);
+  for (let i = 0; i < 4; i++) await checkWorkItems(ctx, 'web', [...merged, { number: 9, url: AZ_PR(9), state: 'MERGED', repo: AZ }], marks, flaky);
   assert.equal(completed, 1, 'the third try did it, and then it is done');
   assert.ok(asked.every((a) => a === 'acc123456'));
   // One that keeps failing is given up on after WORK_ITEM_TRIES, and the task hears why.

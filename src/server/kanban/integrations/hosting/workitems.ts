@@ -32,16 +32,21 @@ export const WORK_ITEM_TRIES = 3;
 
 /**
  * What this run of the office did, by `<taskId>:<what>`: `done` holds the ones done, given up on,
- * or in flight (so a refresh while one runs doesn't start it again); `failed` how often each failed.
+ * or in flight (so a refresh while one runs doesn't start it again); `failed` how often each failed;
+ * `told` the ones whose task heard they wait for a token.
  */
 export interface WorkItemMarks {
   done: Set<string>;
   failed: Map<string, number>;
+  told: Set<string>;
 }
 
 export function workItemMarks(): WorkItemMarks {
-  return { done: new Set(), failed: new Map() };
+  return { done: new Set(), failed: new Map(), told: new Set() };
 }
+
+/** What a link or a completion came to: done (undefined), an error to try again, or waiting for a token to be set. */
+type Outcome = undefined | { error: string } | { wait: string };
 
 /**
  * Whose credentials change the work item: the task's creator's own, else the office's own. Never
@@ -54,19 +59,32 @@ function actor(deps: WorkItemDeps, account: string | undefined): HostAs | string
 }
 
 /**
- * Runs `job` for `key` unless it was done, given up on, or is running. A failure (`job` resolves to
- * an error) leaves it to be tried again on a later refresh, up to WORK_ITEM_TRIES times; `gaveUp`
- * hears the last error.
+ * Runs `job` for `key` unless it was done, given up on, or is running. A failure leaves it to be
+ * tried again on a later refresh, up to WORK_ITEM_TRIES times (`gaveUp` hears the last error). One
+ * waiting for a token is tried again on every refresh, without counting, until someone sets one;
+ * `waiting` hears why, once.
  */
-function once(marks: WorkItemMarks, key: string, job: () => Promise<string | undefined>, gaveUp: (error: string) => void): Promise<void> | undefined {
+function once(marks: WorkItemMarks, key: string, job: () => Promise<Outcome>, gaveUp: (error: string) => void, waiting: (why: string) => void): Promise<void> | undefined {
   if (marks.done.has(key)) return undefined;
   marks.done.add(key);
-  return job().then((error) => {
-    if (!error) return void marks.failed.delete(key);
+  return job().then((out) => {
+    if (!out) {
+      marks.failed.delete(key);
+      marks.told.delete(key);
+      return;
+    }
+    marks.done.delete(key);
+    if ('wait' in out) {
+      if (!marks.told.has(key)) waiting(out.wait);
+      marks.told.add(key);
+      return;
+    }
     const tries = (marks.failed.get(key) ?? 0) + 1;
     marks.failed.set(key, tries);
-    if (tries < WORK_ITEM_TRIES) marks.done.delete(key);
-    else gaveUp(error);
+    if (tries >= WORK_ITEM_TRIES) {
+      marks.done.add(key);
+      gaveUp(out.error);
+    }
   });
 }
 
@@ -92,14 +110,27 @@ export function checkWorkItems(ctx: KanbanContext, project: string, pulls: Pick<
         marks.done.add(key);
         continue;
       }
-      const job = once(marks, key, () => complete(ctx, task.id, account, item, deps), (error) => say(ctx, task.id, `Its pull request merged, but work item #${item.id} couldn't be completed: ${error}`));
+      const job = once(
+        marks,
+        key,
+        () => complete(ctx, task.id, account, item, deps),
+        (error) => say(ctx, task.id, `Its pull request merged, but work item #${item.id} couldn't be completed: ${error}`),
+        (why) => say(ctx, task.id, `Its pull request merged; work item #${item.id} is completed once there's a token to do it with: ${why}`),
+      );
       if (job) jobs.push(job);
       continue;
     }
     for (const x of prs) {
       const state = x.pull?.state ?? x.link.state;
       if (state !== 'OPEN' && state !== 'DRAFT') continue;
-      const job = once(marks, `${task.id}:link:${x.link.url}`, () => link(ctx, task.id, account, item, x.hosted, x.link.number, deps), (error) => say(ctx, task.id, `Couldn't link work item #${item.id} to pull request #${x.link.number}: ${error}`));
+      const job = once(
+        marks,
+        `${task.id}:link:${x.link.url}`,
+        () => link(ctx, task.id, account, item, x.hosted, x.link.number, deps),
+        (error) => say(ctx, task.id, `Couldn't link work item #${item.id} to pull request #${x.link.number}: ${error}`),
+        // Quietly: office-pr links what it opens itself, so a missing token here is no news.
+        () => undefined,
+      );
       if (job) jobs.push(job);
     }
   }
@@ -111,32 +142,29 @@ function say(ctx: KanbanContext, taskId: number, text: string) {
   ctx.taskChanged(taskId);
 }
 
-/** Links the work item to the pull request; resolves to an error to try again later, else nothing. No credentials: nothing to do. */
-async function link(ctx: KanbanContext, taskId: number, account: string | undefined, item: WorkItemRef, repo: HostedRepo, n: number, deps: WorkItemDeps): Promise<string | undefined> {
+/** Links the work item to the pull request. */
+async function link(ctx: KanbanContext, taskId: number, account: string | undefined, item: WorkItemRef, repo: HostedRepo, n: number, deps: WorkItemDeps): Promise<Outcome> {
   const as = actor(deps, account);
-  if (typeof as === 'string') return undefined;
+  if (typeof as === 'string') return { wait: as };
   try {
     const linked = await (deps.link ?? linkWorkItemToPr)(repo, n, item.id, as, deps.fetch());
     if (linked) say(ctx, taskId, `Linked work item #${item.id} to pull request #${n} on Azure DevOps (${workItemUrl(item)})`);
     return undefined;
   } catch (err) {
-    return (err as Error).message;
+    return { error: (err as Error).message };
   }
 }
 
-/** Completes the work item; resolves to an error to try again later, else nothing. No credentials: said once, not retried. */
-async function complete(ctx: KanbanContext, taskId: number, account: string | undefined, item: WorkItemRef, deps: WorkItemDeps): Promise<string | undefined> {
+/** Completes the work item. */
+async function complete(ctx: KanbanContext, taskId: number, account: string | undefined, item: WorkItemRef, deps: WorkItemDeps): Promise<Outcome> {
   const as = actor(deps, account);
-  if (typeof as === 'string') {
-    say(ctx, taskId, `Its pull request merged, but work item #${item.id} wasn't completed: ${as}`);
-    return undefined;
-  }
+  if (typeof as === 'string') return { wait: as };
   try {
     const state = await (deps.complete ?? completeWorkItem)(item.org, item.project, item.id, as, deps.fetch());
     ctx.repo.appendEvent(taskId, COMPLETED_EVENT, { id: item.id, state });
     if (state !== 'already') say(ctx, taskId, `Its pull request merged: moved work item #${item.id} to ${state} (${workItemUrl(item)})`);
     return undefined;
   } catch (err) {
-    return (err as Error).message;
+    return { error: (err as Error).message };
   }
 }
