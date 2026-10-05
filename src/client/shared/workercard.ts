@@ -3,7 +3,7 @@
 import './workercard.css';
 import { store } from '../state';
 import { DESK_BY_ID } from '../../shared/layout';
-import { isAsleep } from '../../shared/status';
+import { isAsleep, shownStatus } from '../../shared/status';
 import type { ProjectInfo, WorkerInfo } from '../../shared/protocol';
 import { clip, h, STATUS_LABEL, timeAgo } from '../ui/dom';
 import { modelBadge, providerLabel } from '../ui/provider';
@@ -31,7 +31,7 @@ export function workerCard(w: WorkerInfo, opts: WorkerCardOpts): HTMLElement {
   // What it's asking, doing or did, in a line.
   const now = w.lost
     ? '🌿 Its worktree was deleted outside agent-office: open it to fix it'
-    : w.status === 'needs_input'
+    : shownStatus(w) === 'needs_input'
       ? `🙋 ${w.activity ?? 'Waiting on an answer'}`
       : asleep
         ? '💤 Asleep: open it to wake it up'
@@ -48,7 +48,7 @@ export function workerCard(w: WorkerInfo, opts: WorkerCardOpts): HTMLElement {
   ].filter(Boolean);
   return h(
     'li.lite-worker',
-    { class: `${w.status}${waiting ? ' waiting' : ''}` },
+    { class: `${shownStatus(w)}${waiting ? ' waiting' : ''}` },
     h(
       'button.lite-card',
       { type: 'button', ...(opts.key ? { 'data-key': opts.key } : {}), onclick: () => opts.onOpen(w.id), 'aria-label': `${w.name}, ${STATUS_LABEL[w.status] ?? w.status}: open its terminal` },
@@ -61,7 +61,7 @@ export function workerCard(w: WorkerInfo, opts: WorkerCardOpts): HTMLElement {
         now ? h('span.lite-now', {}, now) : null,
         h('span.lite-sub', {}, sub.join(' · ')),
       ),
-      h('span.lite-state', {}, h('span.pill', { class: w.status }, STATUS_LABEL[w.status] ?? w.status), waiting && w.waitingSince ? h('small', {}, timeAgo(w.waitingSince)) : null),
+      h('span.lite-state', {}, h('span.pill', { class: shownStatus(w) }, STATUS_LABEL[shownStatus(w)] ?? w.status), waiting && w.waitingSince ? h('small', {}, timeAgo(w.waitingSince)) : null),
     ),
     // One that's asking something is answered in its terminal, where the question is.
     !opts.onPrompt || asleep || w.lost || w.status === 'needs_input' ? null : h('button.btn.lite-say', { type: 'button', title: `Send ${w.name} a prompt`, 'aria-label': `Send ${w.name} a prompt`, onclick: () => opts.onPrompt!(w.id) }, '✍️'),

@@ -33,7 +33,8 @@ import { openAsk } from './ui/ask';
 import { openMeeting, type MeetingPreset } from './ui/meeting';
 import { openSignIns } from './ui/signins';
 import { byUrgency, waitingInOrder, waitingLabel } from './nextup';
-import { askNotifyPermission, DesktopNotifier, notifyPermission, waitingOnSomeone } from './notify';
+import { askNotifyPermission, DesktopNotifier, notifyPermission, shouldAlert, waitingOnSomeone } from './notify';
+import { quietWait } from '../shared/kanban/waiting';
 import { repoChoices } from './shared/hiring';
 import { workerCard } from './shared/workercard';
 // The tab title counts the workers waiting on someone, on every floor, as the 3D office's does.
@@ -138,8 +139,8 @@ store.on('floor', renderFloors);
 store.on('project', renderFloors);
 
 // ---- Workers ------------------------------------------------------------------------------------
-/** What each worker was last, to tell when one starts waiting on someone. */
-const lastStatus = new Map<string, string>();
+/** Whether each worker waited on someone when last seen, to tell when one starts. */
+const lastWaiting = new Map<string, boolean>();
 
 function renderWorkers() {
   const list = byUrgency(store.workers.values());
@@ -153,9 +154,10 @@ function renderWorkers() {
 /** A worker needs input or is done: a notification while you're elsewhere, and a buzz. */
 function noticeWorkers() {
   for (const w of store.workers.values()) {
-    const before = lastStatus.get(w.id);
-    lastStatus.set(w.id, w.status);
-    if (before === undefined || before === w.status || !waitingOnSomeone(w)) continue;
+    const now = waitingOnSomeone(w);
+    const before = lastWaiting.get(w.id);
+    lastWaiting.set(w.id, now);
+    if (!shouldAlert(before, now) || !waitingOnSomeone(w) || quietWait(w)) continue;
     notifier.alert(w);
     if (w.status === 'needs_input') navigator.vibrate?.(200);
   }

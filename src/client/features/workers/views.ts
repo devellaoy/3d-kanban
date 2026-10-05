@@ -9,7 +9,8 @@ import { FLOOR, ROOMS_WING, WING, WING_ROOMS, beanbagsOut, deskBuilt, vacantSeat
 import { OFFICE_PLAN } from '../../../shared/maps';
 import { MEETING_PATTERNS, meetingsOf } from '../../../shared/meetings';
 import type { WorkerInfo, WorkerTask } from '../../../shared/protocol';
-import { workerPr } from '../../../shared/status';
+import { shownStatus, workerPr } from '../../../shared/status';
+import { quietWait } from '../../../shared/kanban/waiting';
 import type { Ctx } from '../../core/context';
 import type { CoreState } from '../../core/ctx';
 import { pastTheRooms, pastTheWing, seatBuilt } from '../../core/floors';
@@ -17,7 +18,7 @@ import { aside, hintTitle, key, onE } from '../../core/hint';
 import { noOutline } from '../../core/outline';
 import type { Parts } from '../../core/parts';
 import { waitingInOrder } from '../../nextup';
-import { waitingOnSomeone } from '../../notify';
+import { shouldAlert, waitingOnSomeone } from '../../notify';
 import { renderTitle } from '../../shared/title';
 import { store } from '../../state';
 import { $ } from '../../ui/dom';
@@ -76,6 +77,8 @@ export interface WorkerView {
   laptop: Laptop;
   deskId: string;
   status: string;
+  /** Whether it waited on someone when last seen (see shouldAlert). */
+  waiting: boolean;
   acked: boolean;
 }
 
@@ -171,12 +174,13 @@ export function installWorkerViews(ctx: Ctx, core: CoreState, parts: WorkerViews
         desk.laptopAnchor.add(laptop.root);
         noOutline(desk.group);
         desk.chair.rotation.y = 0;
-        v = { model, laptop, deskId: w.deskId, status: '', acked: true };
+        v = { model, laptop, deskId: w.deskId, status: '', acked: true, waiting: false };
         workerViews.set(w.id, v);
       }
-      if (v.status !== w.status || v.acked !== w.acked) {
+      const waiting = waitingOnSomeone(w);
+      if (v.status !== w.status || v.acked !== w.acked || v.waiting !== waiting) {
         // It just finished or started waiting on you (not already so when this page first saw it): ding, and notify if you're away.
-        if (waitingOnSomeone(w) && v.status !== '' && w.status !== v.status) {
+        if (waitingOnSomeone(w) && shouldAlert(v.status === '' ? undefined : v.waiting, waiting) && !quietWait(w)) {
           sound.ding(w.status);
           parts.notifier.alert(w);
           // Playing at the arcade: one of yours stops the game.
@@ -189,7 +193,8 @@ export function installWorkerViews(ctx: Ctx, core: CoreState, parts: WorkerViews
         }
         v.status = w.status;
         v.acked = w.acked;
-        v.model.setStatus(w.status, waitingOnSomeone(w));
+        v.waiting = waiting;
+        v.model.setStatus(shownStatus(w), waiting);
         noOutline(v.model.root);
       }
       v.model.setAction(w.action);
