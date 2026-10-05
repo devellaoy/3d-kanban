@@ -188,7 +188,9 @@ export class MeetingRooms {
     }
     const rec = (await folderRecord(this.archiveDir(), id)) ?? this.past.find((r) => r.id === id);
     if (!rec) return 'No such meeting';
+    // A meeting with no .meeting.json falls back to its `past` line (a slim record), which then becomes its folder's record.
     this.writeRecord(id, JSON.stringify({ ...rec, handedTo: add(rec.handedTo) }, null, 2));
+    this.events.update(this.state());
     return undefined;
   }
 

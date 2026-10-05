@@ -37,6 +37,8 @@ export interface PromptOptions {
   maxLength?: number;
   /** One more checkbox; ticking it also ticks the worktree box when there is one. */
   toggle?: { label: string; checked: boolean; onChange(on: boolean, ta: HTMLTextAreaElement): void };
+  /** Checked when the person sends a plain hire (the kanban toggle off), before the dialog closes: a string is why it can't be, shown as a warning with the dialog kept open. */
+  canHire?(): string | undefined;
   /** Opens with the cursor (and the view) at the start of `initial`, not its end: its first line matters (a hand-off's title). */
   fromTop?: boolean;
   /** A second button that sends with `raw` (a task implementer's "type straight into the terminal"). */
@@ -94,6 +96,12 @@ export function openPrompt(opts: PromptOptions) {
       if (extraBox.checked && opts.worktreeOption) wtBox.checked = true;
       opts.toggle!.onChange(extraBox.checked, ta);
     });
+    // Without its own worktree there is nothing for the toggle to start from.
+    wtBox.addEventListener('change', () => {
+      if (wtBox.checked || !extraBox.checked) return;
+      extraBox.checked = false;
+      opts.toggle!.onChange(false, ta);
+    });
   }
   const extraRow = extraBox && opts.toggle ? h('label', { for: 'extra-toggle', style: 'display:flex;gap:8px;align-items:center;margin:10px 0 0;font-weight:700;cursor:pointer' }, extraBox, opts.toggle.label) : null;
   const repos = repoPicker(opts.worktreeOption ? opts.repoOptions : undefined, wtBox);
@@ -150,6 +158,8 @@ export function openPrompt(opts: PromptOptions) {
       return;
     }
     if (provider && !provider.valid()) return;
+    const why = opts.canHire?.();
+    if (why) return void toast(why, 'warn');
     if (opts.maxLength && text.length > opts.maxLength) return void toast(`The prompt is ${text.length.toLocaleString()} characters; a worker's first prompt takes at most ${opts.maxLength.toLocaleString()}. Cut it down or run it as a kanban task`, 'warn');
     modal.close();
     if (opts.worktreeOption) {

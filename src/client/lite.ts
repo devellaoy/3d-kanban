@@ -228,14 +228,16 @@ function promptWorker(id: string) {
 }
 
 // ---- New work: a prompt for a worker who's here, or a new one at a free desk -------------------
-function hire(deskId: string, prompt: string, worktree: boolean, provider?: AgentProvider, model?: string, effort?: AgentEffort, repos?: string[]) {
-  net.send({ t: 'worker.spawn', deskId, prompt, worktree, provider, model, effort, repos: repos?.length ? repos : undefined });
+function hire(deskId: string, prompt: string, worktree: boolean, provider?: AgentProvider, model?: string, effort?: AgentEffort, repos?: string[], extra: { attachmentIds?: string[]; meeting?: string } = {}) {
+  net.send({ t: 'worker.spawn', deskId, prompt, worktree, provider, model, effort, repos: repos?.length ? repos : undefined, ...(extra.attachmentIds?.length ? { attachmentIds: extra.attachmentIds } : {}), ...(extra.meeting ? { meeting: extra.meeting } : {}) });
 }
+
+/** The next free seat for a new worker, the back office's included as far as the floor's built out (see WING). */
+const freeSeat = () => nextFreeSeat((id) => !!store.workerAtDesk(id), store.floorPlan.wing, store.plan().removed)?.id;
 
 function sendToWorker(title: string, text: { context?: string; initial?: string } = {}) {
   if (!store.project) return toast('Pick a floor first', 'warn');
-  // The back office's desks too, as far as the floor's built out (see WING).
-  const desk = nextFreeSeat((id) => !!store.workerAtDesk(id), store.floorPlan.wing, store.plan().removed)?.id;
+  const desk = freeSeat();
   // Not a task's reviewer, which takes nothing but its terminal.
   const awake = [...store.workers.values()].filter((w) => w.kind === 'agent' && !isAsleep(w.status) && promptKind(w) !== 'terminal');
   if (!desk && !awake.length) return toast('Every desk and bean bag is taken — send a worker home first', 'warn');
@@ -271,7 +273,7 @@ function boardActions(): BoardActions {
     meeting: (preset) => showMeeting(preset),
     // The issue as a kanban task, at the next free desk (or wherever the engine finds one).
     kanbanTask: (it) => {
-      const desk = nextFreeSeat((id) => !!store.workerAtDesk(id), store.floorPlan.wing, store.plan().removed)?.id;
+      const desk = freeSeat();
       cardTask(net, it, desk, desk ? DESK_BY_ID.get(desk)!.label : 'the next free desk');
     },
   };
@@ -293,7 +295,7 @@ function showMeeting(preset?: MeetingPreset) {
       },
       handoff: {
         freeDesk: () => {
-          const id = nextFreeSeat((d) => !!store.workerAtDesk(d), store.floorPlan.wing, store.plan().removed)?.id;
+          const id = freeSeat();
           return id ? { id, label: DESK_BY_ID.get(id)!.label } : undefined;
         },
         officeIsFull: () => {
@@ -301,7 +303,7 @@ function showMeeting(preset?: MeetingPreset) {
           toast(`🚫 The office is at its limit of ${store.machine.limit} workers — send one home before hiring another`, 'warn');
           return true;
         },
-        hire: (deskId, prompt, o) => net.send({ t: 'worker.spawn', deskId, prompt, worktree: o.worktree, provider: o.provider, model: o.model, effort: o.effort, repos: o.repos.length ? o.repos : undefined, ...(o.attachmentIds?.length ? { attachmentIds: o.attachmentIds } : {}), ...(o.meeting ? { meeting: o.meeting } : {}) }),
+        hire: (deskId, prompt, o) => hire(deskId, prompt, o.worktree, o.provider, o.model, o.effort, o.repos, o),
       },
     },
     preset,

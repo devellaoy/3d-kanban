@@ -55,7 +55,7 @@ export const workerHandlers = {
         else ctx.toastFloor(floor, kind === 'shell' ? `${who} opened a shell at a desk` : `${who} hired ${r.name}${issue ? ` for issue #${issue}` : key ? ` for ${key}` : r.prompt ? ' with a task' : ''}${across}`);
         if (typeof r !== 'string' && (issue || key)) ctx.takeIssue(c, floor, issue, key, r.id);
         const from = str(msg.meeting, 8);
-        if (typeof r !== 'string' && kind === 'agent' && isMeetingId(from)) void floor.meetings.noteHandoff(from, { worker: r.name, by: who, at: Date.now() });
+        if (typeof r !== 'string' && kind === 'agent' && isMeetingId(from)) void floor.meetings.noteHandoff(from, { worker: r.name, by: str(who, 80), at: Date.now() });
       };
       // Files attached to a direct hire go to its drops folder before it exists, and into its first prompt (see kanban/hirefiles.ts).
       if (kind !== 'agent' || !Array.isArray(msg.attachmentIds) || !msg.attachmentIds.length) return spawn({ byPerson: true });

@@ -27,6 +27,7 @@ import { kanbanDbPath, openKanbanDb } from './db/open.js';
 import { KanbanSecrets, KanbanSettingsStore } from './settings.js';
 import { primaryRepo, projectRepos, validateProjectRepos } from './projects.js';
 import { attachmentPath } from './uploads.js';
+import { taskOf } from './handoff.js';
 import { hireFiles } from './hirefiles.js';
 import { createCorePlugin, projectInfos } from './ws.js';
 import { createEngine, type KanbanEngine } from './engine/index.js';
@@ -112,6 +113,8 @@ export interface Kanban {
   workerResume(info: WorkerInfo, who: KanbanCaller): Promise<string | void> | undefined;
   /** Files attached to a direct hire (see hirefiles.ts): the caller's own loose uploads to copy for the worker; a string: why not; undefined: none. */
   hireFiles(ids: unknown, who: string): { path: string; name: string; type: string }[] | string | undefined;
+  /** A task's floor and tags (a meeting hand-off checks them before recording it); undefined: no such task. */
+  taskOf(id: number): { project: string; tags: string[] } | undefined;
   shutdown(): void;
 }
 
@@ -370,6 +373,7 @@ export function installKanban(opts: KanbanInstallOptions): Kanban {
     workerPrompt: (info, text, who, asComment) => (closed ? undefined : promptTaskWorker(ctx, info, text, who, asComment)),
     workerResume: (info, who) => (closed ? undefined : resumeTaskWorker(ctx, info, who)),
     hireFiles: (ids, who) => (closed ? (Array.isArray(ids) && ids.length ? 'The kanban is closing: attach the files again' : undefined) : hireFiles(repo, filesDir, ids, who)),
+    taskOf: (id) => (closed ? undefined : taskOf(repo, id)),
     shutdown() {
       if (closed) return;
       closed = true;
