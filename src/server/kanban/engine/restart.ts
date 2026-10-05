@@ -30,7 +30,7 @@ export interface RestartDeps<L extends HeldRun> {
   drain(project: string): void;
   /** Follows the run on its worker as an ordinary live run; its result is read from the run's start, not from the woken process's. */
   attach(run: KanbanRun, task: KanbanTask, info: WorkerInfo): L;
-  turnEnded(live: L): Promise<void>;
+  turnEnded(live: L, planExit?: boolean): Promise<void>;
   /** Why the office has stopped hiring (its daily budget), if it has. */
   hiringPaused(): string | undefined;
   /** The gap between one run being carried on and the next (ms), so the woken agents don't all start together. */
@@ -125,6 +125,12 @@ export class Restarts<L extends HeldRun> {
    */
   resume(run: KanbanRun, task: KanbanTask, floor: Floor, info: WorkerInfo, cut: WorkerStatus): void {
     const { ctx, note } = this.deps;
+    // A plan finished (ExitPlanMode) is not a question: its result is handled, and the task reaches plan approval.
+    if (cut === 'needs_input' && run.phase === 'plan' && this.readLog(run, floor, info)?.exitPlan) {
+      const live = this.deps.attach(run, task, info);
+      void this.deps.serial(task.id, () => this.deps.turnEnded(live, true));
+      return;
+    }
     // Waiting for an answer to its question (the agent was cut off at its prompt): the task waits for the user, whatever else is gone; the answer goes the normal ways.
     if (cut === 'needs_input' || (task.status === 'waiting' && task.waitingReason === 'agent_asking')) {
       this.deps.finishRun(run.id, task.project, { status: 'interrupted', error: 'The office restarted while its agent was asking' });
@@ -154,8 +160,13 @@ export class Restarts<L extends HeldRun> {
 
   /** Whether the session log of the run's turns shows background agents, commands or teammates still out. */
   private leftWork(run: KanbanRun, floor: Floor, info: WorkerInfo): boolean {
+    return !!this.readLog(run, floor, info)?.background;
+  }
+
+  /** What the run's turns say in the session log, read from the run's start. */
+  private readLog(run: KanbanRun, floor: Floor, info: WorkerInfo) {
     const file = run.tool === 'claude' ? floor.workers.transcripts(info.id)?.claude : undefined;
-    return !!file && !!claudeAdapter.readTurnResult(file, { since: run.startedAt, runStart: run.startedAt, promptAt: run.promptedAt })?.background;
+    return file ? claudeAdapter.readTurnResult(file, { since: run.startedAt, runStart: run.startedAt, promptAt: run.promptedAt }) : undefined;
   }
 
   /** The run is over for good: it waits interrupted for a Retry. */

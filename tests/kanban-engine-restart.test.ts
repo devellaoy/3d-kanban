@@ -373,3 +373,81 @@ test('a queued carry-on whose session vanished while the office was down waits i
   assert.match(waiting.waitingText ?? '', /session is gone/);
   assert.equal(fx.repo.listRuns(b.id).length, 1, 'no new run');
 });
+
+test('a plan question cut off by a restart: the answer goes on in the plan phase, on the implementer', async (t) => {
+  const fx = await fixture();
+  t.after(() => fx.close());
+  fx.setRules([{ when: 'You are planning kanban task', reply: 'Which database?', ask: 'question' }, { when: 'The user replied about the plan', reply: 'Plan again.\n\nPLAN READY', exitPlan: 'The plan' }]);
+  const task = fx.newTask({ usePlan: true, planApproval: 'manual', useReview: false });
+  await fx.engine.start(task.id, ADA);
+  await fx.waitTask(task.id, (x) => x.status === 'waiting' && x.waitingReason === 'agent_asking', 'the agent asking');
+  const worker = fx.task(task.id).workerId;
+  await fx.restartOffice();
+  await sleep(500);
+  assert.deepEqual([fx.task(task.id).status, fx.task(task.id).waitingReason], ['waiting', 'agent_asking']);
+  assert.equal(await fx.engine.continue(task.id, ADA, 'Postgres'), undefined);
+  await fx.waitTask(task.id, (x) => x.status === 'waiting' && x.waitingReason === 'plan_approval', 'the plan waiting for approval', 60_000);
+  const runs = fx.repo.listRuns(task.id);
+  assert.deepEqual(runs.map((r) => `${r.phase}/${r.role}`), ['plan/implementer', 'plan/implementer']);
+  assert.equal(runs[1].workerId, worker, 'the same worker');
+});
+
+test('a reviewer question cut off by a restart: the answer goes on in the review, on the reviewer', async (t) => {
+  const fx = await fixture();
+  t.after(() => fx.close());
+  fx.settings.setProject('proj', { review: { tool: 'claude', rounds: 1 } });
+  fx.setRules([
+    { when: 'Implement kanban task', reply: 'Done.', commit: 'Work' },
+    { when: 'You are reviewing the work', reply: 'Which standard?', ask: 'question' },
+    { when: 'commented on task', reply: 'Fine.\n\nREVIEW: APPROVED' },
+  ]);
+  const task = fx.newTask({ usePlan: false, useReview: true });
+  await fx.engine.start(task.id, ADA);
+  await fx.waitTask(task.id, (x) => x.status === 'waiting' && x.waitingReason === 'agent_asking', 'the reviewer asking', 60_000);
+  const reviewer = fx.task(task.id).reviewerWorkerId;
+  assert.ok(reviewer);
+  await fx.restartOffice();
+  await sleep(500);
+  assert.deepEqual([fx.task(task.id).status, fx.task(task.id).waitingReason], ['waiting', 'agent_asking']);
+  assert.equal(await fx.engine.continue(task.id, ADA, 'The house style'), undefined);
+  await fx.waitTask(task.id, (x) => x.status === 'review' && x.runState === 'idle', 'the review column', 60_000);
+  const reviews = fx.repo.listRuns(task.id).filter((r) => r.phase === 'review');
+  assert.deepEqual(reviews.map((r) => `${r.role}/${r.verdict ?? r.status}`), ['reviewer/interrupted', 'reviewer/approved']);
+  assert.equal(reviews[1].workerId, reviewer, 'the same reviewer');
+});
+
+test('a plan that finished (ExitPlanMode) when the office stopped reaches plan approval, not a question', async (t) => {
+  const fx = await fixture();
+  t.after(() => fx.close());
+  fx.setRules([{ when: 'You are planning kanban task', reply: 'Plan text.\n\nPLAN READY', exitPlan: 'The plan', delayMs: 1200 }]);
+  const task = fx.newTask({ usePlan: true, planApproval: 'manual', useReview: false });
+  await fx.engine.start(task.id, ADA);
+  await fx.waitTask(task.id, (x) => x.phase === 'plan' && x.runState === 'running', 'the plan run');
+  const run = fx.repo.activeRun(task.id)!;
+  fx.engine.dispose();
+  const end = Date.now() + 15_000;
+  while (fx.workers.get(run.workerId!)?.status !== 'needs_input' && Date.now() < end) await sleep(30);
+  await fx.restartOffice();
+  await fx.waitTask(task.id, (x) => x.status === 'waiting' && x.waitingReason === 'plan_approval', 'the plan waiting for approval', 30_000);
+});
+
+test('a pull-request review question cut off by a restart: the answer goes on in pr-review, on the same reviewer', async (t) => {
+  const fx = await fixture();
+  t.after(() => fx.close());
+  fx.setRules([{ when: 'Review these pull requests', reply: 'Which standard?', ask: 'question' }, { when: 'commented on task', reply: 'They fit together.\n\nREVIEW: APPROVED' }]);
+  const got = await fx.engine.reviewPrs({ project: 'proj', prs: [{ repo: 'acme/proj', number: 3 }, { repo: 'acme/proj', number: 4 }] as never, tool: 'claude' }, ADA);
+  assert.ok(typeof got !== 'string', String(got));
+  const taskId = (got as { taskId: number }).taskId;
+  await fx.waitTask(taskId, (x) => x.status === 'waiting' && x.waitingReason === 'agent_asking', 'the reviewer asking');
+  const first = fx.repo.listRuns(taskId)[0];
+  await fx.restartOffice();
+  await sleep(500);
+  assert.deepEqual([fx.task(taskId).status, fx.task(taskId).waitingReason], ['waiting', 'agent_asking']);
+  assert.equal(await fx.engine.continue(taskId, ADA, 'The house style'), undefined);
+  await fx.waitTask(taskId, (x) => x.runState === 'idle' && x.status !== 'waiting' && x.status !== 'in_progress', 'the review done', 60_000);
+  const runs = fx.repo.listRuns(taskId);
+  assert.deepEqual(runs.map((r) => `${r.phase}/${r.role}`), ['pr-review/reviewer', 'pr-review/reviewer']);
+  assert.equal(runs[1].workerId, first.workerId, 'the same reviewer');
+  assert.equal(prompts(fx, /Review these pull requests/).length, 1, 'nobody was hired fresh');
+  assert.ok(prompts(fx, /The house style/).length >= 1, 'the answer was delivered');
+});

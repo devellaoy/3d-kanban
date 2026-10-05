@@ -234,7 +234,7 @@ export class Orchestrator {
       apply: (id, e) => this.apply(id, e),
       drain: (project) => void this.drain(project),
       attach: (run, task, info) => Object.assign(this.attach(run, task, info), { pinSince: true }),
-      turnEnded: (live) => this.turnEnded(live),
+      turnEnded: (live, planExit) => this.turnEnded(live, planExit),
       hiringPaused: () => this.ctx.hiringPaused?.(),
       staggerMs: options.restartStaggerMs ?? 5000,
     });
@@ -806,8 +806,8 @@ export class Orchestrator {
     const def = this.ctx.project(task.project);
     const floor = this.watch(task.project);
     if (!def || !floor) return "The project's floor isn't open";
-    // A pull-request review carried on after an office restart goes on with its own reviewer, in its session and worktree, as that last run had them.
-    const last = eff.phase === 'pr-review' && eff.prompt === 'restarted' && floor.workers.get(task.reviewerWorkerId ?? '') ? this.ctx.repo.listRuns(task.id).filter((r) => r.phase === 'pr-review').at(-1) : undefined;
+    // A pull-request review carried on after an office restart (or its reviewer's question answered) goes on with its own reviewer, in its session and worktree, as that last run had them.
+    const last = eff.phase === 'pr-review' && (eff.prompt === 'restarted' || eff.prompt === 'resume') && floor.workers.get(task.reviewerWorkerId ?? '') ? this.ctx.repo.listRuns(task.id).filter((r) => r.phase === 'pr-review').at(-1) : undefined;
     if (eff.phase === 'pr-review' && !last) return this.launchPrReview(task, def, floor, via);
     const role = eff.role;
     const review = this.reviewSettings(task);

@@ -226,6 +226,12 @@ function resumeWith(s: MachineState, text: string, pending = false): { state: Ma
     const feedback: Effect[] = s.waitingReason === 'plan_approval' ? [{ type: 'planFeedback', text }] : [];
     return ok(running(s, 'plan'), ...feedback, { type: 'run', phase: 'plan', role: 'implementer', prompt: 'replan', text, ...(pending ? { pending } : {}) });
   }
+  // The agent was asking when the office restarted (its run is over, its task still waits for the answer): the answer goes on in the phase and role it was asked in.
+  const asked = s.status === 'waiting' && s.waitingReason === 'agent_asking' ? s.phase : undefined;
+  const round = s.reviewRound ? { round: s.reviewRound } : {};
+  if (asked === 'plan') return ok(running(s, 'plan'), { type: 'run', phase: 'plan', role: 'implementer', prompt: 'replan', text });
+  if (asked === 'review' || asked === 'pr-review') return ok(running(s, asked), { type: 'run', phase: asked, role: 'reviewer', prompt: 'resume', text, ...(asked === 'review' ? round : {}) });
+  if (asked === 'fix') return ok(running(s, 'fix'), { type: 'run', phase: 'fix', role: 'implementer', prompt: 'resume', text, ...round });
   return ok(running(s, 'resume'), { type: 'run', phase: 'resume', role: 'implementer', prompt: 'resume', text, ...(pending ? { pending } : {}) });
 }
 
@@ -396,7 +402,7 @@ export function next(s: MachineState, e: MachineEvent, t: MachineTask, cfg: Mach
         if (answer) return ok(running(s, 'plan'), { type: 'planFeedback', text: answer }, { type: 'run', phase: 'plan', role: 'implementer', prompt: 'replan', text: answer });
         return ok(running(s, 'implement'), { type: 'acceptPlan' }, { type: 'run', phase: 'implement', role: 'implementer', prompt: 'implement' });
       }
-      if (answer) return ok(running(s, 'resume'), { type: 'run', phase: 'resume', role: 'implementer', prompt: 'resume', text: answer });
+      if (answer) return resumeWith(s, answer);
       return next(s, { type: 'retry', last: e.last }, t, cfg);
     }
 
