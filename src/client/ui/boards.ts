@@ -14,7 +14,7 @@ import { boardRepos, inRepo, keptRepo, tabRepos, loadRepoFilter, repoChip, openB
 import { issueCardLabel, openCard, sourceChips, taskForCard } from '../kanban/issuecards';
 import { noteSeed } from '../../shared/kanban/issuecard.js';
 // The PR board's All / 👤 Mine / 👀 To review toggle beside the repository tabs.
-import { emptyNote, loadPrWho, mineTasks, minePredicate, myLogin, prFilterBar, prWhoToggle, reviewPredicate, savePrWho, type PrWho } from '../kanban/prmine';
+import { emptyNote, loadPrWho, mineTasks, minePredicate, myLogin, prFilterBar, prWhoToggle, reviewPredicate, savePrWho, shownWho, WHO_TOPICS, type PrWho } from '../kanban/prmine';
 
 const TILTS = ['-1.2deg', '0.8deg', '-0.4deg', '1.4deg', '0deg', '-0.9deg'];
 const NOTE_COLORS = ['var(--note-yellow)', 'var(--note-pink)', 'var(--note-green)', 'var(--note-blue)', 'var(--note-peach)'];
@@ -295,13 +295,15 @@ export function openBoard(kind: 'issues' | 'pulls', net: Net, actions: BoardActi
     // The toggle narrows the PRs before the tabs count them and the columns deal them.
     const login = myLogin(store.signins, store.pulls.viewer);
     const name = mine.name() || (store.me.account?.name ?? store.profile.name);
-    if (who !== 'all') mine.refresh();
-    const pulls = who === 'all' ? store.pulls.items : store.pulls.items.filter(who === 'mine' ? minePredicate({ login, name, tasks: mine.tasks(), workers: store.workers.values(), workerOf: workerForPull }) : reviewPredicate(login));
+    const off = { review: login ? undefined : 'Sign in to GitHub (🔐 Your sign-ins) to see the reviews asked of you' };
+    const shownWhoNow = shownWho(who, off);
+    if (shownWhoNow !== 'all') mine.refresh();
+    const pulls = shownWhoNow === 'all' ? store.pulls.items : store.pulls.items.filter(shownWhoNow === 'mine' ? minePredicate({ login, name, tasks: mine.tasks(), workers: store.workers.values(), primary: store.currentFloor()?.repo }) : reviewPredicate(login));
     if (tabs) {
       const open = openByRepo(pulls);
       tabs.update(repos, shownRepo, open.counts, open.total);
-      whoToggle?.update(who, { review: login ? undefined : 'Sign in to GitHub (🔐 Your sign-ins) to see the reviews asked of you' });
-      const note = emptyNote(who, shownRepo, shownRepo ? (open.counts.get(shownRepo) ?? 0) : open.total);
+      whoToggle?.update(shownWhoNow, off);
+      const note = emptyNote(shownWhoNow, shownRepo, shownRepo ? (open.counts.get(shownRepo) ?? 0) : open.total);
       empty.textContent = note;
       empty.classList.toggle('hidden', !note);
     }
@@ -353,8 +355,9 @@ export function openBoard(kind: 'issues' | 'pulls', net: Net, actions: BoardActi
   };
 
   const unsubs = [store.on(kind, render), store.on('queue', render)];
-  // Which desk a PR came from can change (a worker sent home, a PR opened from a desk).
-  if (kind === 'pulls') unsubs.push(store.on('workers', render));
+  // Which desk a PR came from can change (a worker sent home, a PR opened from a desk),
+  // and "mine" follows my GitHub sign-in.
+  if (kind === 'pulls') unsubs.push(...WHO_TOPICS.map((t) => store.on(t, render)));
   const timer = setInterval(stamp, 15000);
   const modal = openModal(el, {
     doing: kind === 'issues' ? '📋 at the issues board' : '🔀 at the PR board',

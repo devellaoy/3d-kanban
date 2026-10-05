@@ -1,14 +1,13 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import type { GhPull, SignInState, WorkerInfo } from '../src/shared/protocol.js';
-import { emptyNote, loadPrWho, minePredicate, myLogin, openedFromOfficeBy, reviewPredicate, savePrWho, type Me } from '../src/client/kanban/prmine.js';
+import { emptyNote, loadPrWho, minePredicate, myLogin, openedFromOfficeBy, reviewPredicate, savePrWho, shownWho, tabStop, WHO_TOPICS, type Me } from '../src/client/kanban/prmine.js';
 import { openByRepo } from '../src/client/kanban/boardrepos.js';
 
 const pr = (repo: string, number: number, o: Partial<GhPull> = {}) =>
   ({ number, url: `https://github.com/${repo}/pull/${number}`, repo, author: 'office-bot', body: '', state: 'OPEN', headRefName: `b${number}`, ...o }) as GhPull;
 const gh = (o: Partial<SignInState>): { github: SignInState } => ({ github: { status: 'ok', how: 'login', ...o } });
-const noWorker: Me['workerOf'] = () => undefined;
-const me = (o: Partial<Me> = {}): Me => ({ login: 'ada', name: 'Ada', tasks: [], workers: [], workerOf: noWorker, ...o });
+const me = (o: Partial<Me> = {}): Me => ({ login: 'ada', name: 'Ada', tasks: [], workers: [], ...o });
 
 test('my login: my own GitHub sign-in, else the office’s gh', () => {
   assert.equal(myLogin(gh({ who: '@ada' }), 'office-bot'), 'ada');
@@ -40,10 +39,10 @@ test('a kanban task I made owns it: by link, or by repository and number', () =>
 });
 
 test('a worker I hired at a desk, or the office’s "Opened from Agent Office by" line', () => {
-  const w = { createdBy: 'Ada', byPerson: true, pr: { number: 3, url: '' } } as WorkerInfo;
-  const is = minePredicate(me({ workers: [w], workerOf: (ws, p) => [...ws].find((x) => x.pr?.number === p.number) }));
+  const w = { createdBy: 'Ada', byPerson: true, pr: { number: 3, url: 'https://github.com/acme/web/pull/3' } } as WorkerInfo;
+  const is = minePredicate(me({ workers: [w], primary: 'acme/web' }));
   assert.ok(is(pr('acme/web', 3)));
-  assert.ok(!minePredicate(me({ workers: [{ ...w, byPerson: undefined }], workerOf: () => ({ ...w, byPerson: undefined }) }))(pr('acme/web', 3)));
+  assert.ok(!minePredicate(me({ workers: [{ ...w, byPerson: undefined }], primary: 'acme/web' }))(pr('acme/web', 3)));
   const body = '## Task\n\nfix\n\n_Opened from Agent Office by Ada · Otto at Desk 3_';
   assert.equal(openedFromOfficeBy(body), 'Ada');
   assert.ok(is(pr('acme/web', 4, { body })));
@@ -93,4 +92,40 @@ test('the choice is kept in this browser, and survives storage that throws', () 
   } finally {
     g.localStorage = before;
   }
+});
+
+test('a worker is matched in the PR’s own repository', () => {
+  // My worker's own-floor PR is web#7; across repositories it also has api#12.
+  const w = {
+    createdBy: 'Ada',
+    byPerson: true,
+    worktree: { path: 'wt', branch: 'office/otto-1', base: 'abc' },
+    pr: { number: 7, url: 'https://github.com/acme/web/pull/7' },
+    repos: [{ floor: 'api', name: 'api', repo: 'acme/api', dir: '/x/api', path: 'wt/api', branch: 'office/otto-1', base: 'abc', pr: { number: 12, url: 'https://github.com/acme/api/pull/12' } }],
+  } as WorkerInfo;
+  const is = minePredicate(me({ login: '', workers: [w], primary: 'acme/web' }));
+  assert.ok(is(pr('acme/web', 7)));
+  assert.ok(!is(pr('acme/api', 7, { headRefName: 'someone-else' })), 'another repository’s #7');
+  assert.ok(is(pr('acme/api', 12, { headRefName: 'office/otto-1' })), 'its PR in another repository of its task');
+  // A card without `repo` (a one-repository floor) is still placed by its link.
+  assert.ok(!is({ ...pr('acme/api', 7, { headRefName: 'x' }), repo: undefined }));
+});
+
+test('a GitHub sign-in that comes in late turns the filter on, and the board follows it', () => {
+  assert.ok(WHO_TOPICS.includes('signins'));
+  // Before the sign-ins arrive an account has no login, so 👀 can't work and All shows…
+  const off = (login: string) => ({ review: login ? undefined : 'no login' });
+  const before = myLogin(gh({ status: 'busy' }), 'office-bot');
+  assert.equal(shownWho('review', off(before)), 'all');
+  // …and once they do, the kept 👀 comes back by itself.
+  const after = myLogin(gh({ who: '@ada' }), 'office-bot');
+  assert.equal(shownWho('review', off(after)), 'review');
+  assert.ok(reviewPredicate(after)(pr('acme/web', 1, { reviewRequests: ['ada'] })));
+});
+
+test('the toggle always has a Tab stop that works', () => {
+  assert.equal(tabStop('review', { review: 'no login' }), 'all');
+  assert.equal(tabStop('mine', {}), 'mine');
+  assert.equal(tabStop('all', { review: 'no login' }), 'all');
+  assert.equal(tabStop('review', { all: 'x', review: 'no login' }), 'mine');
 });

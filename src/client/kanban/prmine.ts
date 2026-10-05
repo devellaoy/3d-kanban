@@ -11,6 +11,8 @@ import type { GhPull, SignInsState, WorkerInfo } from '../../shared/protocol';
 import type { KanbanServerMsg } from '../../shared/kanban/protocol.js';
 import type { KanbanTaskCard } from '../../shared/kanban/types.js';
 import { kanbanApi } from './api';
+import type { Topic } from '../state';
+import { workerForRepoPull } from '../ui/github/ghrepo';
 import { repoOfItem } from './boardrepos';
 import { officeCss } from './officecss';
 
@@ -49,8 +51,18 @@ export interface Me {
   /** The project's kanban tasks (kanban.snapshot). */
   tasks: Pick<KanbanTaskCard, 'prs' | 'createdBy'>[];
   workers: Iterable<WorkerInfo>;
-  /** Which worker a PR came from (state.ts workerForPull). */
-  workerOf: (workers: Iterable<WorkerInfo>, pr: GhPull) => WorkerInfo | undefined;
+  /** owner/name of the floor's own repository, which a worker's own PR (WorkerInfo.pr) is in when its link doesn't say. */
+  primary?: string;
+}
+
+/**
+ * The worker a PR came from, matched in the PR's own repository (read off its link when the card
+ * doesn't name one), so another repository's #7 isn't taken for this one's and a worker's PR in one
+ * of its other repositories (WorkerInfo.repos) is found.
+ */
+export function workerOfPull(workers: Iterable<WorkerInfo>, pr: GhPull, primary?: string): WorkerInfo | undefined {
+  const repo = repoOfItem(pr);
+  return repo ? workerForRepoPull(workers, pr, repo, primary) : undefined;
 }
 
 /** Whether a pull request is mine: authored by my login or opened by the office on my behalf. */
@@ -61,7 +73,7 @@ export function minePredicate(me: Me): (pr: GhPull) => boolean {
     if (same(me.login, pr.author)) return true;
     if (!me.name) return false;
     if (mine.some((t) => linksTo(t, pr))) return true;
-    const w = me.workerOf(workers, pr);
+    const w = workerOfPull(workers, pr, me.primary);
     if (w?.byPerson && w.createdBy === me.name) return true;
     return openedFromOfficeBy(pr.body ?? '') === me.name;
   };
@@ -97,6 +109,19 @@ export function emptyNote(who: PrWho, repo: string, open: number): string {
   if (who === 'all' || open > 0) return '';
   const where = repo ? ` in ${repo.split('/').pop() ?? repo}` : '';
   return who === 'mine' ? `You have no open pull requests${where}` : `Nothing${where} is waiting for your review`;
+}
+
+/** The topics the PR board redraws on besides its own: which desk a PR came from, and my GitHub sign-in (it can come in after the board opened). */
+export const WHO_TOPICS = ['workers', 'signins'] as const satisfies readonly Topic[];
+
+/** What the board shows for the kept choice: All while that choice can't work (no login for 👀), so it comes back by itself once it can. */
+export function shownWho(kept: PrWho, off: Partial<Record<PrWho, string>>): PrWho {
+  return off[kept] ? 'all' : kept;
+}
+
+/** The button Tab lands on: the picked one, else the first that works, so the toggle is always reachable from the keyboard. */
+export function tabStop(value: PrWho, off: Partial<Record<PrWho, string>>): PrWho {
+  return !off[value] ? value : (WHOS.find((w) => !off[w]) ?? 'all');
 }
 
 const LABEL: Record<PrWho, string> = { all: 'All', mine: '👤 Mine', review: '👀 To review' };
@@ -136,12 +161,13 @@ export function prWhoToggle(onChange: (who: PrWho) => void): { el: HTMLElement; 
   return {
     el,
     update(value, off) {
+      const stop = tabStop(value, off);
       for (const b of buttons) {
         const who = b.dataset.who as PrWho;
         b.disabled = !!off[who];
         b.title = off[who] ?? TITLE[who];
         b.setAttribute('aria-checked', String(who === value));
-        b.tabIndex = who === value ? 0 : -1;
+        b.tabIndex = who === stop ? 0 : -1;
       }
     },
   };
