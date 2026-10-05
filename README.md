@@ -189,7 +189,8 @@ curl -fsSL https://raw.githubusercontent.com/devellaoy/3d-kanban/main/deploy/pro
   small relay (`kanban3d relay`), see who is online in **☰ → 🌐 Players** and walk into each other's
   offices read-only (chat, voice, the whiteboard and the games work; nothing else can be changed).
   Sharing is per floor and off by default, and a visitor only gets the floors whose GitHub repositories
-  they can read themselves, checked by the owner's office ([features](docs/features.md#multiplayer-visit-each-others-offices),
+  they can read themselves, checked by the owner's office. An online office reconnects by itself, also
+  right after the computer wakes from sleep ([features](docs/features.md#multiplayer-visit-each-others-offices),
   [running a relay](docs/self-hosting.md#run-a-multiplayer-relay)).
 
 The rest is the office's own guide, from upstream agent-office; its install and run commands point at

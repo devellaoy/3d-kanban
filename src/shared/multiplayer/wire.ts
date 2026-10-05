@@ -47,8 +47,10 @@ export const MP_HARD_CAP = MP_MESSAGE_MAX + 8 * 1024 * 1024;
 export const MP_CLOSE = {
   /** The password was wrong. */
   password: 4401,
-  /** The identity token was bad (or GitHub could not be asked). */
+  /** GitHub said the token is not valid. */
   identity: 4403,
+  /** GitHub could not be asked; the office tries again. */
+  identityUnavailable: 4504,
   /** A malformed or oversized message, or one before `hello`, or no `hello` in time. */
   protocol: 4400,
   /** Too many attempts from one address. */

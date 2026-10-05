@@ -19,14 +19,25 @@ import {
 } from '../../shared/multiplayer/wire.js';
 import { Reassembler, splitFrame } from './chunks.js';
 import type { MpConfigStore } from './config.js';
+import { githubVerifier, TokenRejected, type IdentityVerifier } from './github-user.js';
 
 export type LinkStatus = 'off' | 'connecting' | 'online' | 'error';
 
 const LOCAL_HOSTS = new Set(['localhost', '127.0.0.1', '[::1]']);
 const BACKOFF_START_MS = 1000;
 const BACKOFF_MAX_MS = 30_000;
+/** The longest pause while the relay could not check our GitHub sign-in (it is not our fault, so we keep trying). */
+const IDENTITY_BACKOFF_MAX_MS = 60_000;
+/** The least we wait after the relay could not ask GitHub, so a GitHub outage is not hammered. */
+const UNAVAILABLE_MIN_MS = 5000;
+/** A wake-up check that comes this much later than planned means the computer slept. */
+const SLEEP_SLACK_MS = 15_000;
 /** The relay pings every 30 s; a link that has heard nothing for this long is dead. */
 const SILENCE_MS = 100_000;
+/** After a wake from sleep an open socket gets this long to answer a ping before it is dropped. */
+const WAKE_PROBE_MS = 5000;
+/** This many 4403s in a row that GitHub contradicts mean the relay is at fault, not the token. */
+const CONTRADICTED_MAX = 10;
 
 /**
  * The WebSocket URL for what someone typed: `https://host` → `wss://host/mp`, `wss://host` the
@@ -59,6 +70,18 @@ export interface LinkOptions {
   onMessage(msg: RelayToOffice): void;
   /** The link went down (or was closed): sessions riding on it are over. */
   onDown(): void;
+  /** Asks GitHub whether our token is still good, after the relay refused it. Tests inject one. */
+  verifier?: IdentityVerifier;
+  /** The clock; tests move it to pretend the computer slept. */
+  now?: () => number;
+  /** How often to look for a wake from sleep and for a silent socket. */
+  wakeTickMs?: number;
+  /** The first pause before retrying (tests make it short). */
+  backoffStartMs?: number;
+  /** The longest pause while the relay could not check our GitHub sign-in (tests make it short). */
+  identityBackoffMaxMs?: number;
+  /** The least pause after the relay could not ask GitHub (close 4504). */
+  unavailableMinMs?: number;
 }
 
 export class Link {
@@ -74,13 +97,27 @@ export class Link {
   private pieces = new Reassembler();
   private queued = new Map<string, number>();
   private timer?: NodeJS.Timeout;
-  private watchdog?: NodeJS.Timeout;
+  /** One interval for as long as the link wants to be connected: spots a wake from sleep and a silent socket. */
+  private tick?: NodeJS.Timeout;
+  private lastTick = 0;
+  /** Bumped by open and disconnect (connect goes through one of them), so a GitHub check that finishes late does nothing. */
+  private generation = 0;
+  /** Consecutive 4403s that GitHub contradicted. */
+  private contradicted = 0;
+  private lastLoggedCode?: number;
+  private verifier: IdentityVerifier;
   private lastHeard = 0;
-  private backoff = BACKOFF_START_MS;
+  private backoff: number;
   private presence: { where: MpWhere; floorKey?: string } = { where: 'home' };
 
   constructor(private o: LinkOptions) {
     this.login = o.config.get().login;
+    this.verifier = o.verifier ?? githubVerifier();
+    this.backoff = this.backoffStart;
+  }
+
+  private get backoffStart(): number {
+    return this.o.backoffStartMs ?? BACKOFF_START_MS;
   }
 
   get online(): boolean {
@@ -105,23 +142,72 @@ export class Link {
   connect() {
     this.stop();
     const { url, password } = this.o.config.get();
-    if (!url || !password) return this.set('off');
-    this.backoff = BACKOFF_START_MS;
+    if (!url || !password) {
+      this.generation++; // a GitHub check still running must not act on a link that is off
+      this.stopTick();
+      return this.set('off');
+    }
+    this.backoff = this.backoffStart;
+    this.contradicted = 0;
     this.needsIdentity = false;
+    this.startTick();
     this.open();
   }
 
   disconnect() {
+    this.generation++;
     this.stop();
+    this.stopTick();
     this.players = [];
     this.set('off');
+  }
+
+  private now(): number {
+    return (this.o.now ?? Date.now)();
+  }
+
+  private stopTick() {
+    clearInterval(this.tick);
+    this.tick = undefined;
+  }
+
+  /**
+   * Timers stop while a computer sleeps, so on wake the socket may be dead and the pause before the
+   * next try may be long. A tick that comes much later than planned means that happened: a waiting
+   * link tries again now, and an open socket gets a ping and a few seconds to answer it. The same
+   * tick drops a socket that has been silent too long.
+   */
+  private startTick() {
+    const every = this.o.wakeTickMs ?? 5000;
+    this.stopTick();
+    this.lastTick = this.now();
+    this.tick = setInterval(() => {
+      const t = this.now();
+      const slept = t - this.lastTick > every + SLEEP_SLACK_MS;
+      this.lastTick = t;
+      const ws = this.ws;
+      if (slept && (this.status === 'connecting' || this.status === 'online')) {
+        this.backoff = this.backoffStart;
+        if (ws?.readyState === WebSocket.OPEN) {
+          ws.ping();
+          this.lastHeard = t - SILENCE_MS + WAKE_PROBE_MS;
+        } else if (ws) {
+          ws.terminate(); // still handshaking: the close handler tries again after the short pause
+        } else if (this.timer) {
+          clearTimeout(this.timer);
+          this.timer = undefined;
+          this.open();
+        }
+        return;
+      }
+      if (ws && t - this.lastHeard > SILENCE_MS) ws.terminate();
+    }, every);
+    this.tick.unref();
   }
 
   private stop() {
     clearTimeout(this.timer);
     this.timer = undefined;
-    clearInterval(this.watchdog);
-    this.watchdog = undefined;
     const ws = this.ws;
     this.ws = undefined;
     this.pieces.clear();
@@ -140,18 +226,21 @@ export class Link {
   }
 
   private open() {
+    // A GitHub check still running for an earlier attempt must not act on this one.
+    this.generation++;
     const { url, password, identityToken } = this.o.config.get();
     this.set('connecting', this.error);
     const ws = new WebSocket(url, { maxPayload: MP_MAX_PAYLOAD, handshakeTimeout: 10_000 });
     this.ws = ws;
-    this.lastHeard = Date.now();
+    this.lastHeard = this.now();
     ws.on('open', () => {
-      this.lastHeard = Date.now();
+      this.lastHeard = this.now();
       this.send({ t: 'hello', password, ...(identityToken ? { identityToken } : {}), version: this.o.version, protocol: MP_PROTOCOL });
     });
-    ws.on('ping', () => (this.lastHeard = Date.now()));
+    ws.on('ping', () => (this.lastHeard = this.now()));
+    ws.on('pong', () => (this.lastHeard = this.now()));
     ws.on('message', (data, isBinary) => {
-      this.lastHeard = Date.now();
+      this.lastHeard = this.now();
       if (isBinary) return;
       let raw: unknown;
       try {
@@ -167,16 +256,10 @@ export class Link {
       if (this.ws !== ws) return;
       this.ws = undefined;
       this.pieces.clear();
-      clearInterval(this.watchdog);
       this.players = [];
       this.o.onDown();
       this.closed(code, reason.toString());
     });
-    clearInterval(this.watchdog);
-    this.watchdog = setInterval(() => {
-      if (Date.now() - this.lastHeard > SILENCE_MS) ws.terminate();
-    }, 30_000);
-    this.watchdog.unref();
   }
 
   private receive(msg: RelayToOffice) {
@@ -185,7 +268,9 @@ export class Link {
         this.login = msg.login;
         if (msg.githubClientId) this.clientId = msg.githubClientId;
         if (this.o.config.get().login !== msg.login) this.o.config.update({ login: msg.login });
-        this.backoff = BACKOFF_START_MS;
+        this.backoff = this.backoffStart;
+        this.contradicted = 0;
+        this.lastLoggedCode = undefined;
         this.set('online');
         this.sendPresence();
         return;
@@ -211,20 +296,66 @@ export class Link {
   }
 
   /** Whatever the close meant: a reason to stop and show, or a reason to try again. */
-  private closed(code: number, reason: string) {
+  private closed(code: number, rawReason: string) {
+    // The reason comes from the network: no control characters in the log or on screen.
+    const reason = rawReason.replace(/[\x00-\x1f\x7f]/g, ' ').slice(0, 200);
+    if (code !== this.lastLoggedCode) {
+      this.lastLoggedCode = code;
+      console.warn(`agent-office: multiplayer link closed ${code}${reason ? ` ${reason}` : ''}`);
+    }
     const stopWith = (error: string, identity = false) => {
       this.needsIdentity = identity;
       this.set('error', error);
     };
     if (code === MP_CLOSE.password) return stopWith('Wrong relay password');
-    if (code === MP_CLOSE.identity) return stopWith('The relay did not accept your GitHub sign-in: sign in again', true);
     if (code === MP_CLOSE.replaced) return stopWith('Another office signed in as the same GitHub user and took this connection');
     if (code === 1000 && !this.o.config.get().identityToken) return stopWith('Sign in to GitHub to connect', true);
-    const wait = code === MP_CLOSE.rateLimited ? BACKOFF_MAX_MS : this.backoff;
-    this.backoff = Math.min(BACKOFF_MAX_MS, this.backoff * 2);
-    this.set('connecting', reason || (this.error ?? 'The relay cannot be reached; trying again'));
-    this.timer = setTimeout(() => this.open(), wait);
+    if (code === MP_CLOSE.identity) return void this.checkToken();
+    if (code === MP_CLOSE.identityUnavailable) return this.retry('GitHub could not be reached; trying again', { floor: this.o.unavailableMinMs ?? UNAVAILABLE_MIN_MS });
+    this.retry(reason || (this.error ?? 'The relay cannot be reached; trying again'), code === MP_CLOSE.rateLimited ? { floor: BACKOFF_MAX_MS } : {});
+  }
+
+  /** Shows why we are waiting, grows the pause (never below `floor`, never above `cap`) and opens again after it. */
+  private retry(why: string, { floor = 0, cap = BACKOFF_MAX_MS }: { floor?: number; cap?: number } = {}) {
+    const wait = Math.max(floor, Math.min(this.backoff, cap));
+    this.backoff = Math.min(cap, this.backoff * 2);
+    this.set('connecting', why);
+    this.timer = setTimeout(() => {
+      // Fired: nothing is pending any more, so a wake from sleep must not open a second connection.
+      this.timer = undefined;
+      this.open();
+    }, wait);
     this.timer.unref();
+  }
+
+  /**
+   * The relay refused our token. Only GitHub can say whether it really is bad (older relays also
+   * refuse when they merely could not reach GitHub), so ask it ourselves before sending the person
+   * to sign in again. If GitHub keeps contradicting the relay, the relay is at fault: stop and say so.
+   */
+  private async checkToken() {
+    const token = this.o.config.get().identityToken;
+    if (!token) return this.signInAgain();
+    const gen = this.generation;
+    this.set('connecting', 'Checking your GitHub sign-in…');
+    let rejected = false;
+    try {
+      await this.verifier.login(token);
+    } catch (e) {
+      rejected = e instanceof TokenRejected;
+    }
+    if (gen !== this.generation) return;
+    if (rejected) return this.signInAgain();
+    if (++this.contradicted >= CONTRADICTED_MAX) {
+      this.needsIdentity = false;
+      return this.set('error', 'The relay keeps refusing your GitHub sign-in although GitHub accepts it; check the relay');
+    }
+    this.retry('The relay could not check your GitHub sign-in; trying again', { cap: this.o.identityBackoffMaxMs ?? IDENTITY_BACKOFF_MAX_MS });
+  }
+
+  private signInAgain() {
+    this.needsIdentity = true;
+    this.set('error', 'The relay did not accept your GitHub sign-in: sign in again');
   }
 
   /** Sends one message. `droppable` ones are skipped while the link is backed up. Returns whether it was sent. */

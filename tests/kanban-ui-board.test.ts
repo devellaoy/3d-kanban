@@ -20,7 +20,6 @@ import {
   reviewTaskOf,
   viaAgent,
   sameRepoPick,
-  showsRepoChips,
   skillUsage,
   sortCards,
   type BoardFilter,
@@ -166,11 +165,9 @@ test('countdown', () => {
   assert.equal(countdown(1500, 0, { s: 's', min: 'min', h: 'h', now: 'hetken' }), '2 s');
 });
 
-test('needsAttention and repository chips', () => {
+test('needsAttention', () => {
   assert.equal(needsAttention(card(1, { status: 'waiting', waitingReason: 'agent_asking' })), true);
   assert.equal(needsAttention(card(1, { status: 'review', waitingReason: 'agent_asking' })), false);
-  assert.equal(showsRepoChips(card(1), project), true);
-  assert.equal(showsRepoChips(card(1), { repos: [project.repos[0]] }), false);
 });
 
 test('deep links: ?task opens it, ?project picks it, and the rest of the query stays', () => {

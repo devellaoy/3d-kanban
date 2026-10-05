@@ -84,6 +84,7 @@ export class Multiplayer {
       passwordSet: !!cfg.password,
       ...(this.link.login && cfg.identityToken ? { login: this.link.login } : {}),
       ...(this.link.needsIdentity || !cfg.identityToken ? { needsIdentity: true } : {}),
+      ...(this.link.needsIdentity && !!cfg.identityToken ? { signInAgain: true } : {}),
       ...(device ? { device } : {}),
       ...(error ? { error } : {}),
       players,
