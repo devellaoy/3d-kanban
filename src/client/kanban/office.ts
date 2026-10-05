@@ -8,6 +8,8 @@
 import type { AgentEffort, AgentProvider, WorkerInfo, WorkerTask } from '../../shared/protocol';
 import type { KanbanClientMsg, KanbanTaskInput } from '../../shared/kanban/protocol.js';
 import { KANBAN_LIMITS, PROJECT_ID_RE } from '../../shared/kanban/protocol.js';
+
+export { taskWaiting } from '../../shared/kanban/waiting.js';
 import type { KanbanEffort, KanbanTaskCard, KanbanTool, KanbanWorkerSummary, PlanApproval, RunPhase, TaskStatus, TaskType, WaitingReason } from '../../shared/kanban/types.js';
 
 /** What a task worker says about its task (WorkerInfo.kanban): the server keeps the summary current. */
@@ -50,9 +52,6 @@ export const WAITING_TEXT: Record<WaitingReason, string> = {
   usage_limit: '⏳ usage limit',
   interrupted: '⚠️ interrupted: Retry in the kanban',
 };
-
-/** The waits that need a person (a usage limit retries by itself). The kanban page's ATTENTION_REASONS. */
-const ATTENTION: readonly WaitingReason[] = ['plan_questions', 'plan_approval', 'agent_asking', 'stopped', 'failed', 'interrupted'];
 
 /** "4 min 05 s": how long until `at`. */
 export function countdown(at: number, now: number): string {
@@ -115,24 +114,6 @@ export function kanbanChip(w: Pick<WorkerInfo, 'kanban'>, now: number): string {
 export function workerLabel(w: Pick<WorkerInfo, 'name' | 'kanban'>): string {
   const k = kanbanOf(w);
   return k ? `${w.name} · #${k.taskId}` : w.name;
-}
-
-/**
- * Whether a task worker waits on someone, for N, the arrows and the count; undefined for any other
- * worker, and whenever the task says nothing (upstream's rule then). A task waiting on you (the plan's
- * questions or approval, a failed phase) keeps waiting until it's handled, not just until you looked;
- * one the engine is carrying on with (in progress, or retrying after a usage limit) doesn't, even
- * though its worker just finished a turn. It only ever narrows upstream's statuses, so a waiting
- * worker is still needs_input or done.
- */
-export function taskWaiting(w: Pick<WorkerInfo, 'kanban' | 'status' | 'acked'>): boolean | undefined {
-  const k = kanbanOf(w);
-  if (!k?.status || (w.status !== 'done' && w.status !== 'needs_input')) return undefined;
-  if (w.status === 'needs_input') return true;
-  if (k.status === 'waiting') return !!k.waitingReason && ATTENTION.includes(k.waitingReason);
-  if (k.status === 'review') return !w.acked;
-  if (k.status === 'in_progress') return false;
-  return undefined;
 }
 
 /**

@@ -2,7 +2,7 @@ import { execFileSync } from 'node:child_process';
 import { mkdirSync } from 'node:fs';
 import path from 'node:path';
 import type { ChangesState, FloorInfo, GhIssue, GhPull, GhState, PeerInfo, ProjectInfo, ServerMsg, WorkerInfo } from '../shared/protocol.js';
-import { isBusy } from '../shared/status.js';
+import { isBusy, waitingOnSomeone } from '../shared/status.js';
 import { DESK_BY_ID, MEETING_ROOMS, builtMeetingRooms, type MeetingRoomDef } from '../shared/layout.js';
 import type { FloorDef } from './building.js';
 import { excludeFromGit } from './config.js';
@@ -576,7 +576,7 @@ export class Floor {
       addedAt: this.def.addedAt,
       workers: ws.filter((w) => !DESK_BY_ID.get(w.deskId)?.station).length,
       busy: ws.filter((w) => w.status === 'working').length,
-      waiting: ws.filter((w) => w.kind === 'agent' && (w.status === 'needs_input' || (w.status === 'done' && !w.acked))).length,
+      waiting: ws.filter((w) => w.kind === 'agent' && waitingOnSomeone(w)).length,
       people: this.ctx.people(this),
       wing: this.plan.wing,
       rooms: this.plan.rooms,

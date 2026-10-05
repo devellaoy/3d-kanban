@@ -2,8 +2,9 @@
 // column lists them, where a card may be dropped (from shared/kanban/moves.ts, which the server
 // enforces too), and the words on a card's badges. Kept pure so tests/kanban-ui-*.test.ts can run it.
 
-import { BOARD_COLUMNS, SKILL_PHASES, type KanbanEvent, type KanbanPrBundleItem, type KanbanProjectInfo, type KanbanSettings, type NormalizedIssue, type PrRef, type KanbanTaskCard, type KanbanTool, type TaskStatus, type WaitingReason } from '../../shared/kanban/types.js';
+import { BOARD_COLUMNS, SKILL_PHASES, type KanbanEvent, type KanbanPrBundleItem, type KanbanProjectInfo, type KanbanSettings, type NormalizedIssue, type PrRef, type KanbanTaskCard, type KanbanTool, type TaskStatus } from '../../shared/kanban/types.js';
 import { checkMove, isRunning, moveTargets, type MoveAction, type MoveSubject } from '../../shared/kanban/moves.js';
+import { ATTENTION_REASONS } from '../../shared/kanban/waiting.js';
 import { REPO_ID_RE } from '../../shared/kanban/protocol.js';
 
 // --- Filters --------------------------------------------------------------------------------------
@@ -27,8 +28,7 @@ export interface BoardFilter {
 
 export const EMPTY_FILTER: BoardFilter = { q: '', repos: [], state: 'all', tools: [], ticket: 'any' };
 
-/** The waiting reasons that need a person to do something (a retry after a usage limit doesn't). */
-export const ATTENTION_REASONS: readonly WaitingReason[] = ['plan_questions', 'plan_approval', 'agent_asking', 'stopped', 'failed', 'interrupted'];
+export { ATTENTION_REASONS };
 
 /** Whether the task waits on a person. */
 export function needsAttention(card: Pick<KanbanTaskCard, 'status' | 'waitingReason'>): boolean {

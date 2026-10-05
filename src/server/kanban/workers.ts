@@ -4,6 +4,7 @@
 // and a worker can be relaunched on its session with other flags.
 import type { AgentEffort, WorkerInfo, WorkerStatus } from '../../shared/protocol.js';
 import type { DepartureIntent } from '../../shared/kanban/types.js';
+import { waitingOnSomeone } from '../../shared/status.js';
 import { codexHookTrustArgs } from './codex-trust.js';
 import type { Pty } from '../ptys.js';
 import { validateWorkerEffort, validateWorkerModel } from '../agents.js';
@@ -131,7 +132,13 @@ export abstract class KanbanWorkers {
   setKanbanSummary(id: string, summary: NonNullable<WorkerInfo['kanban']>) {
     const w = this.workers.get(id);
     if (!w?.info.kanban || JSON.stringify(w.info.kanban) === JSON.stringify(summary)) return;
+    const was = waitingOnSomeone(w.info);
     w.info.kanban = summary;
+    // The task starts waiting on a person (a review, a plan's questions): the wait begins now, as on a status change.
+    if (!was && waitingOnSomeone(w.info)) {
+      w.info.acked = w.info.status === 'done' && (w.viewers.size > 0 || !!w.info.meeting);
+      w.info.waitingSince = Date.now();
+    }
     this.emitUpdate(w);
   }
 

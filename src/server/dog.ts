@@ -6,6 +6,7 @@ import { OFFICE_PLAN } from '../shared/maps/index.js';
 import { cleanDogName, dogAt, dogDefaults, legSeconds, type DogAct, type DogBreed, type DogState } from '../shared/dog.js';
 import { deskPoint, nearestWalkable, route, walkable, type Pt } from '../shared/nav.js';
 import type { PeerInfo, WorkerInfo } from '../shared/protocol.js';
+import { taskWaiting } from '../shared/kanban/waiting.js';
 
 // ---- Its day ------------------------------------------------------------------------------------
 
@@ -31,7 +32,7 @@ const toward = (from: Pt, to: Pt) => Math.atan2(to[0] - from[0], to[1] - from[1]
 
 /** Needs input and nobody has answered yet. */
 export function callsForDog(w: WorkerInfo): boolean {
-  return w.status === 'needs_input' && !w.acked && DESK_BY_ID.has(w.deskId);
+  return w.status === 'needs_input' && !w.acked && taskWaiting(w) !== false && DESK_BY_ID.has(w.deskId);
 }
 
 type Mode = 'lounge' | 'nap' | 'wander' | 'follow' | 'bark' | 'pet';
