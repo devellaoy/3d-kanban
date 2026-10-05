@@ -198,8 +198,9 @@ export const workerHandlers = {
     const w = workerOf(ctx, msg.workerId);
     if (!w) return;
     const { floor, wid } = w;
-    // A repository on Azure DevOps or Bitbucket opens it with the presser's credentials there (withRepoHost).
-    ctx.withRepoHost(c, floor.github, (as, host) => void floor.workers.openPr(wid, who, as, host).then((r) => {
+    // Each repository on Azure DevOps or Bitbucket opens it with the presser's credentials there; GitHub's sign-in only when one is on GitHub (withHosts).
+    const across = floor.workers.get(wid)?.repos ?? [];
+    ctx.withHosts(c, [floor.dir, ...across.map((r) => r.dir)], (as, hosts) => void floor.workers.openPr(wid, who, as, hosts).then((r) => {
       if (typeof r === 'string') return ctx.warn(c, r);
       const info = floor.workers.get(wid);
       const name = info?.name ?? 'the worker';

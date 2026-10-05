@@ -45,7 +45,11 @@ export const changesHandlers = {
   'changes.pr'(ctx, c, msg) {
     const who = c.peer.name;
     const w = workerOf(ctx, msg.workerId);
-    if (w) ctx.withRepoHost(c, w.floor.github, (as, host) => void w.floor.changes.pullRequest(w.wid, str(msg.title, 300), str(msg.body, 20000), who, as?.env, repoOf(msg.repo), host).then((err) => ctx.warn(c, err)));
+    if (!w) return;
+    // The credentials of the host the picked repository is on, not the floor's own (a project can mix hosts).
+    const repo = repoOf(msg.repo);
+    const dir = w.floor.changes.dirOf(w.wid, repo) ?? w.floor.dir;
+    ctx.withHosts(c, [dir], (as, hosts) => void w.floor.changes.pullRequest(w.wid, str(msg.title, 300), str(msg.body, 20000), who, as?.env, repo, hosts).then((err) => ctx.warn(c, err)));
   },
 } satisfies HandlerMap<ChangesClientMsg>;
 

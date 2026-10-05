@@ -5,7 +5,7 @@ import type { ImageResult } from './decor.js';
 import { changedImageType, type ChangedFile, type ChangeStatus, type ChangesState } from '../shared/protocol.js';
 import { checkoutRepo, repoFlag } from './ghrepo.js';
 import { hostFetch, otherHostRepo, providerOf } from './hosting/index.js';
-import type { HostAs } from './hosting/provider.js';
+import type { HostPick } from './hosting/provider.js';
 import { hostLabel } from '../shared/hosting/remote.js';
 import { NOT_GIT, NO_DRIVERS, NO_FSMONITOR, SAFE_GIT } from './floor-git.js';
 
@@ -321,9 +321,10 @@ export class Changes {
 
   /**
    * Pushes the branch and opens a pull request for it with `gh`; with `env`, as whoever pressed the
-   * button. A repository on Azure DevOps or Bitbucket opens it with their credentials there (`host`).
+   * button. A repository on Azure DevOps or Bitbucket is pushed to and opens it with their
+   * credentials there (`hosts`, see gates.withHosts).
    */
-  async pullRequest(workerId: string, title: string, body: string, who: string, env?: Record<string, string>, repo?: string, host?: HostAs): Promise<string | undefined> {
+  async pullRequest(workerId: string, title: string, body: string, who: string, env?: Record<string, string>, repo?: string, hosts?: HostPick): Promise<string | undefined> {
     if (!title.trim()) return 'The pull request needs a title';
     return this.action(workerId, repo, 'Pushing the branch and opening a pull request…', async (t, w) => {
       const s = w.last ?? (await this.compute(w, t));
@@ -334,12 +335,13 @@ export class Changes {
       const remotes = (await git(['remote'], t.cwd)).split('\n').filter(Boolean);
       const remote = remotes.includes('origin') ? 'origin' : remotes[0];
       if (!remote) return 'This project has no git remote to push to';
-      await git(['push', '-u', remote, s.branch], t.cwd, 120_000, env);
       const hosted = otherHostRepo(t.cwd, remote);
-      if (hosted) {
+      const host = hosted && hosts?.get(hosted.host);
+      if (hosted && !host) return `Opening it on ${hostLabel(hosted.host)} needs your token there (☰ → 🔐 Your sign-ins)`;
+      await git(['push', '-u', remote, s.branch], t.cwd, 120_000, hosted && hosts?.git ? hosts.git : env);
+      if (hosted && host) {
         const p = providerOf(hosted.host);
         if (typeof p === 'string') return p;
-        if (host?.kind !== hosted.host) return `Opening it on ${hostLabel(hosted.host)} needs your token there (☰ → 🔐 Your sign-ins)`;
         const pr = await p.createPr(hosted, { head: s.branch, base: s.prBase, title: title.trim(), body }, host, hostFetch());
         return this.prOpened(t, repo, s.branch, pr, who);
       }
@@ -387,6 +389,11 @@ export class Changes {
   }
 
   /** A file in the worker's list of changes, looking again when it isn't in the last one. */
+  /** The checkout a worker's Changes window is about (its repository `repo`, else its own), for whose credentials it needs. */
+  dirOf(workerId: string, repo?: string): string | undefined {
+    return this.target(workerId, repo)?.cwd;
+  }
+
   private async changedFile(workerId: string, repo: string | undefined, t: ChangesTarget, filePath: string): Promise<ChangedFile | string> {
     let state = this.watches.get(watchKey(workerId, repo))?.last;
     if (!state?.files.some((f) => f.path === filePath)) state = await this.compute({ workerId, repo }, t);

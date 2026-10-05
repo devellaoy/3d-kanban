@@ -42,3 +42,26 @@ export function quote(v: string): string {
 function shq(s: string): string {
   return `'${s.replace(/'/g, `'\\''`)}'`;
 }
+
+/**
+ * `env` with the office's credential helper for the HELPER_HOSTS put in through git's own
+ * environment config (GIT_CONFIG_COUNT, git 2.31+), ahead of any helper the machine has for them, so
+ * a push over HTTPS goes out with the token in `files` (the first that has one) whatever git config
+ * the environment points at. Changed in place, and returned.
+ */
+export function withHelperEnv(env: Record<string, string>, helper: string, files: string[]): Record<string, string> {
+  let n = Number(env.GIT_CONFIG_COUNT) || 0;
+  const add = (key: string, value: string) => {
+    env[`GIT_CONFIG_KEY_${n}`] = key;
+    env[`GIT_CONFIG_VALUE_${n}`] = value;
+    n++;
+  };
+  const command = `!${[helper, ...files].map(shq).join(' ')}`;
+  for (const host of HELPER_HOSTS) {
+    // An empty helper first: the machine's own helpers for the host are left out.
+    add(`credential.${host}.helper`, '');
+    add(`credential.${host}.helper`, command);
+  }
+  env.GIT_CONFIG_COUNT = String(n);
+  return env;
+}
