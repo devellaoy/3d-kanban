@@ -22,13 +22,13 @@ import {
   queuedKanbanTasks,
   TabMemory,
   tabLabel,
-  taskWaiting,
   titleFrom,
   withoutOfficeLink,
   workerLabel,
   workerTabs,
   type HireTaskForm,
 } from '../src/client/kanban/office.js';
+import { taskWaiting } from '../src/shared/kanban/waiting.js';
 import type { WorkerInfo } from '../src/shared/protocol.js';
 import type { KanbanTaskCard, KanbanWorkerSummary } from '../src/shared/kanban/types.js';
 import { showIn3dLink } from '../src/client/kanban/model.js';
@@ -65,7 +65,28 @@ test('who waits on you: a task waiting on a person, or an unseen review; not one
   assert.equal(taskWaiting(w('done', false, { status: 'review' })), true);
   assert.equal(taskWaiting(w('done', true, { status: 'review' })), false);
   assert.equal(taskWaiting(w('done', false, { status: 'in_progress' })), false);
+  // No run under way (idle, or the card doesn't say): a needs-input worker waits; a done one never does.
   assert.equal(taskWaiting(w('needs_input', true, { status: 'in_progress' })), true);
+  assert.equal(taskWaiting(w('needs_input', true, { status: 'in_progress', runState: 'idle' })), true);
+  assert.equal(taskWaiting(w('done', false, { status: 'in_progress', runState: 'idle' })), false);
+  // The engine hands the task on by itself while a run is under way: a plan's ExitPlanMode prompt, a finished step.
+  for (const runState of ['running', 'starting', 'queued', 'stopping'] as const) {
+    assert.equal(taskWaiting(w('needs_input', false, { status: 'in_progress', phase: 'plan', runState })), false);
+  }
+  for (const phase of ['implement', 'review', 'fix'] as const) {
+    // Outside a plan, a prompt mid-run is a permission or a question: it waits, before the engine says so too.
+    assert.equal(taskWaiting(w('needs_input', false, { status: 'in_progress', phase, runState: 'running', role: phase === 'review' ? 'reviewer' : 'implementer' })), true);
+    assert.equal(taskWaiting(w('done', false, { status: 'in_progress', phase, runState: 'running' })), false);
+    assert.equal(taskWaiting(w('done', false, { status: 'in_progress', phase, runState: 'running', role: 'reviewer' })), false);
+  }
+  for (const waitingReason of ['agent_asking', 'plan_approval', 'plan_questions'] as const) {
+    assert.equal(taskWaiting(w('needs_input', false, { status: 'waiting', waitingReason })), true);
+  }
+  assert.equal(taskWaiting(w('needs_input', false, { status: 'waiting', waitingReason: 'usage_limit' })), false);
+  // Review: the implementer's unseen finish waits, the reviewer's never does; a prompt always does.
+  assert.equal(taskWaiting(w('done', false, { status: 'review', role: 'implementer' })), true);
+  assert.equal(taskWaiting(w('done', false, { status: 'review', role: 'reviewer' })), false);
+  assert.equal(taskWaiting(w('needs_input', true, { status: 'review' })), true);
   // Working, or not a task worker: upstream's rule.
   assert.equal(taskWaiting(w('working', false, { status: 'waiting', waitingReason: 'failed' })), undefined);
   assert.equal(taskWaiting({ status: 'done', acked: false, kanban: undefined }), undefined);
