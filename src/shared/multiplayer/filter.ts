@@ -116,6 +116,7 @@ export const SERVER_MSG_OUT = {
   machine: 'drop',
   prompts: 'drop',
   leaveOnMerge: 'drop',
+  carryOn: 'drop',
   usage: 'drop',
   limits: 'drop',
   'codex-limits': 'drop',
@@ -257,6 +258,7 @@ export function filterForVisitor(msg: ServerMsg, scope: VisitorScope, ctx: Filte
         machine: { cpu: 0, cores: 0, memUsed: 0, memTotal: 0, history: [], workers: 0 },
         prompts: { custom: {} },
         leaveOnMerge: { on: false },
+        carryOn: { on: true },
       };
       return out;
     }

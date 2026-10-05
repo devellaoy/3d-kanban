@@ -6,7 +6,7 @@ import type { EmoteId } from '../emotes.js';
 import type { DrinkId } from '../rooftop.js';
 import type { Me } from './accounts.js';
 import type { FloorInfo, FloorView, ProjectsDirState } from './floors.js';
-import type { LeaveOnMergeState, MachineState, MapState, NotifyState, PromptsState, SkyState, ThemeState, UpgradeState } from './settings.js';
+import type { CarryOnState, LeaveOnMergeState, MachineState, MapState, NotifyState, PromptsState, SkyState, ThemeState, UpgradeState } from './settings.js';
 import type { PlanLimits, UsageState } from './usage.js';
 
 /** The issue on a card someone carries around the floor (see PeerInfo.carrying). */
@@ -137,6 +137,7 @@ export type PresenceServerMsg =
       /** The office's prompts and the worker everyone starts on. */
       prompts: PromptsState;
       leaveOnMerge: LeaveOnMergeState;
+      carryOn: CarryOnState;
     } & FloorView)
   | { t: 'peer.join'; peer: PeerInfo }
   | { t: 'peer.update'; peer: PeerInfo }

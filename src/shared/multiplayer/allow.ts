@@ -162,6 +162,7 @@ export const CLIENT_MSG_CLASS = {
   'sky.clock': 'deny',
   'map.set': 'deny',
   'leaveOnMerge.set': 'deny',
+  'carryOn.set': 'deny',
   'prompts.set': 'deny',
   'prompts.agent': 'deny',
   'prompts.language': 'deny',
