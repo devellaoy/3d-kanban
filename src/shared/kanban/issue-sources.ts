@@ -25,5 +25,24 @@ export type IssueSourceConfig =
       site: string;
       projectKeys: string[];
       filters: { assignee?: string; epic?: string; labels?: string[]; statusCategoryNot?: string[]; jql?: string };
+    }
+  | {
+      id: string;
+      kind: 'azure-boards';
+      /** The Azure DevOps organisation (dev.azure.com/<org>); the token is in ☰ → 🔐 Your sign-ins. */
+      org: string;
+      project: string;
+      filters: {
+        /** `@Me` (whose token reads), or a person's name or e-mail. */
+        assignee?: string;
+        /** Work item types ("User Story", "Bug"); none = every type. */
+        types?: string[];
+        /** Under this area path (and its children). */
+        areaPath?: string;
+        /** Also the Completed and Removed ones. */
+        closed?: boolean;
+        /** Extra WIQL condition, AND-ed in parentheses. */
+        wiql?: string;
+      };
     };
 export type IssueSourceKind = IssueSourceConfig['kind'];

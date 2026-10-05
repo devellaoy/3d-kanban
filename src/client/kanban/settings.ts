@@ -36,6 +36,7 @@ import type { KanbanSettingsPane } from './settingsslot';
 import { Cleanups, settingsRedraw } from './settingsflow';
 import { APPROVAL_NAMES, effortName, SOURCE_KIND_NAMES, toolName } from './labels';
 import { checkbox, field, numberInput, numberValue, run, select, tabStrip, textArea, textInput } from './ui';
+import { azureBoardsForm, csv, jiraForm } from './source-forms';
 
 /** The tabs of 📁 Projects. */
 export type ProjectTab = 'project' | 'sources' | 'skills' | 'prompts';
@@ -397,7 +398,6 @@ export function projectPane(api: Pick<KanbanApi, 'request'>, projectId: string, 
 
 // --- Issue sources ---------------------------------------------------------------------------------
 
-const csv = (v: string) => v.split(',').map((x) => x.trim()).filter(Boolean);
 
 function sourcesPane(api: KanbanApi, projectId: string, s: KanbanSettings): HTMLElement {
   const info = kstore.projectOf(projectId)!;
@@ -450,40 +450,7 @@ function sourcesPane(api: KanbanApi, projectId: string, s: KanbanSettings): HTML
           filters: { ...(assignee.value.trim() ? { assignee: assignee.value.trim() } : {}), ...(status.value.trim() ? { status: status.value.trim() } : {}), ...(iteration.value.trim() ? { iteration: iteration.value.trim() } : {}) },
         };
       };
-    } else {
-      const site = textInput(src.site, { placeholder: 'yourteam.atlassian.net' });
-      const keys = textInput(src.projectKeys.join(', '), { placeholder: 'UYT, OPS' });
-      const assignee = textInput(src.filters.assignee ?? '', { placeholder: 'currentUser()' });
-      const epic = textInput(src.filters.epic ?? '', { placeholder: 'UYT-100' });
-      const labels = textInput((src.filters.labels ?? []).join(', '), { placeholder: 'ai' });
-      const notStatus = textInput((src.filters.statusCategoryNot ?? []).join(', '), { placeholder: 'Done' });
-      const jql = textArea(src.filters.jql ?? '', { rows: 2, placeholder: 'priority = High' });
-      fields = h(
-        'div',
-        {},
-        h('div.kb-two', {}, field('Jira site', site), field('Project keys', keys)),
-        h('div.kb-three', {}, field('Assignee', assignee), field('Epic', epic), field('Labels', labels)),
-        h('div.kb-two', {}, field('Leave out status categories', notStatus), field('Extra JQL', jql)),
-        h('small.kb-hint', {}, s && kstore.secrets.jira.configured ? `The Jira token is set in 🗂️ Kanban (${kstore.secrets.jira.site ?? ''}).` : 'The Jira e-mail and API token go in 🗂️ Kanban → Jira.'),
-      );
-      read = () => {
-        const host = site.value.trim().replace(/^https?:\/\//, '').replace(/\/+$/, '');
-        if (!/^[A-Za-z0-9.-]+(:\d+)?$/.test(host)) return 'A Jira source needs its site, like yourteam.atlassian.net';
-        return {
-          id: src.id,
-          kind: 'jira',
-          site: host,
-          projectKeys: csv(keys.value).map((k) => k.toUpperCase()),
-          filters: {
-            ...(assignee.value.trim() ? { assignee: assignee.value.trim() } : {}),
-            ...(epic.value.trim() ? { epic: epic.value.trim() } : {}),
-            ...(csv(labels.value).length ? { labels: csv(labels.value) } : {}),
-            ...(csv(notStatus.value).length ? { statusCategoryNot: csv(notStatus.value) } : {}),
-            ...(jql.value.trim() ? { jql: jql.value.trim() } : {}),
-          },
-        };
-      };
-    }
+    } else ({ fields, read } = src.kind === 'jira' ? jiraForm(src) : azureBoardsForm(src));
     const el = h('div.kb-source', {}, head, fields);
     const item = { read: () => read(), el };
     remove.addEventListener('click', () => {
@@ -500,6 +467,7 @@ function sourcesPane(api: KanbanApi, projectId: string, s: KanbanSettings): HTML
     'github-repo': () => ({ id: newId(), kind: 'github-repo', repos: [], filters: { state: 'open' } }),
     'github-project': () => ({ id: newId(), kind: 'github-project', owner: '', number: 1, filters: {} }),
     jira: () => ({ id: newId(), kind: 'jira', site: kstore.secrets.jira.site ?? '', projectKeys: [], filters: {} }),
+    'azure-boards': () => ({ id: newId(), kind: 'azure-boards', org: '', project: '', filters: {} }),
   };
   const adders = (Object.keys(blank) as IssueSourceKind[]).map((k) => h('button.btn.small.kb-admin', { type: 'button', onclick: () => makeSource(blank[k]()) }, `＋ ${SOURCE_KIND_NAMES[k]}`));
   const save = saveButton();
