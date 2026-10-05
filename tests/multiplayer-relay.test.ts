@@ -1,6 +1,7 @@
 import { after, before, test } from 'node:test';
 import assert from 'node:assert/strict';
 import WebSocket from 'ws';
+import { TokenRejected } from '../src/server/multiplayer/github-user.js';
 import { startRelay, type RunningRelay } from '../src/server/multiplayer/relay/server.js';
 import { MP_BODY_B64_MAX, MP_CLOSE, MP_FRAME_MAX, MP_PROTOCOL, parseOfficeMsg, parseRelayMsg, type MpWirePlayer, type RelayToOffice } from '../src/shared/multiplayer/wire.js';
 
@@ -18,7 +19,7 @@ before(async () => {
     host: '127.0.0.1',
     password: PASSWORD,
     githubClientId: 'client-id-1',
-    verifier: { login: async (t) => (TOKENS[t] ? TOKENS[t] : Promise.reject(new Error('bad token'))) },
+    verifier: { login: async (t) => (TOKENS[t] ? TOKENS[t] : Promise.reject(new TokenRejected('bad token'))) },
   });
   url = `ws://127.0.0.1:${relay.port}/mp`;
 });
@@ -106,6 +107,18 @@ test('a wrong password closes with 4401, a bad token with 4403, no hello with 44
   const c = new Office();
   c.send({ t: 'presence', where: 'home' });
   assert.equal(await c.closedWith(), MP_CLOSE.protocol);
+});
+
+test('a verifier that cannot reach GitHub closes with 4504, not 4403', async () => {
+  const flaky = await startRelay({ port: 0, host: '127.0.0.1', password: PASSWORD, verifier: { login: async () => Promise.reject(new Error('timed out')) }, log: () => {} });
+  try {
+    const ws = new WebSocket(`ws://127.0.0.1:${flaky.port}/mp`);
+    const code = new Promise<number>((r) => ws.on('close', (c) => r(c)));
+    ws.on('open', () => ws.send(JSON.stringify({ t: 'hello', password: PASSWORD, identityToken: 'tok-alice', version: '0.1.0', protocol: 1 })));
+    assert.equal(await code, MP_CLOSE.identityUnavailable);
+  } finally {
+    await flaky.close();
+  }
 });
 
 test('without a token, the right password gets the client id and a close', async () => {
