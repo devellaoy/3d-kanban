@@ -181,7 +181,7 @@ export interface JailState {
 export type WorkerClientMsg =
   /** With `issue`, the worker is there for that GitHub issue: it's assigned on GitHub (so it moves to In progress) and taken off the queue. */
   /** With `repos` (other floors' ids), the worker works in their repositories too, each in a worktree of its own (see WorkerInfo.repos). */
-  | { t: 'worker.spawn'; deskId: string; prompt?: string; worktree?: boolean; kind?: WorkerKind; provider?: AgentProvider; model?: string; effort?: AgentEffort; issue?: number; repos?: string[]; via?: 'herald'; issueKey?: string; attachmentIds?: string[] }
+  | { t: 'worker.spawn'; deskId: string; prompt?: string; worktree?: boolean; kind?: WorkerKind; provider?: AgentProvider; model?: string; effort?: AgentEffort; issue?: number; repos?: string[]; via?: 'herald'; issueKey?: string; attachmentIds?: string[]; meeting?: string }
   | { t: 'worker.resume'; workerId: string }
   /** `kanban.done` asks for a task worker's task to be done as it goes (see docs/kanban-coupling.md). */
   | { t: 'worker.kill'; workerId: string; cleanup?: WorktreeCleanup; kanban?: { done?: boolean } }

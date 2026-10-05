@@ -1,7 +1,7 @@
 // The meeting room's patterns: how 2–5 workers at the table work on one question or task together.
 // The server runs them (server/meetings.ts); the client offers them when a meeting is called.
 
-import { fmtCost, fmtTokens, type Meeting, type MeetingPattern, type MeetingRecord, type MeetingState } from './protocol.js';
+import { fmtCost, fmtTokens, type Meeting, type MeetingHandoff, type MeetingPattern, type MeetingRecord, type MeetingState } from './protocol.js';
 
 export interface PatternDef {
   icon: string;
@@ -174,6 +174,22 @@ export const PAST_LINES = 20;
 /** The most of a meeting's question its full record keeps. */
 export const RECORD_PROMPT_MAX = 8000;
 
+/** The most hand-offs a meeting remembers (the newest). */
+export const HANDOFF_MAX = 10;
+
+/** A saved `handedTo`, checked: the valid entries, the newest HANDOFF_MAX of them; undefined when it isn't a list or nothing in it is valid. */
+export function cleanHandoffs(x: unknown): MeetingHandoff[] | undefined {
+  if (!Array.isArray(x)) return undefined;
+  const out = x.flatMap((e: unknown): MeetingHandoff[] => {
+    const h = e as { task?: unknown; worker?: unknown; by?: unknown; at?: unknown } | null;
+    if (!h || typeof h !== 'object' || typeof h.by !== 'string' || h.by.length > 80 || typeof h.at !== 'number' || !Number.isFinite(h.at)) return [];
+    if (typeof h.task === 'number' && Number.isSafeInteger(h.task) && h.task > 0) return [{ task: h.task, by: h.by, at: h.at }];
+    if (typeof h.worker === 'string' && h.worker.length > 0 && h.worker.length <= 80) return [{ worker: h.worker, by: h.by, at: h.at }];
+    return [];
+  });
+  return out.length ? out.slice(-HANDOFF_MAX) : undefined;
+}
+
 /** A meeting that's over, in full: what MeetingState's `past` has (see slimRecord), and what the earlier-meetings view shows. */
 export function meetingRecord(m: Meeting): MeetingRecord {
   return {
@@ -183,6 +199,7 @@ export function meetingRecord(m: Meeting): MeetingRecord {
     rounds: m.round, tokens: m.tokens, ...(m.costKnown ? { cost: m.cost } : {}),
     ...(m.commit ? { commit: m.commit } : {}), ...(m.pr !== undefined ? { pr: m.pr } : {}), ...(m.review?.url ? { reviewUrl: m.review.url } : {}),
     notesDir: `meetings/${m.id}`,
+    ...(m.handedTo?.length ? { handedTo: m.handedTo.slice() } : {}),
   };
 }
 
@@ -207,9 +224,11 @@ export function cleanRecord(x: unknown): MeetingRecord | undefined {
         return q && typeof q.role === 'string' ? [{ role: q.role, ...(typeof q.workerName === 'string' ? { workerName: q.workerName } : {}) }] : [];
       })
     : undefined;
+  const handedTo = cleanHandoffs(r.handedTo);
   return {
     id: r.id, pattern: r.pattern, title: r.title, status: r.status as MeetingRecord['status'], summary: r.summary, calledBy: r.calledBy, finishedAt: r.finishedAt, output: r.output,
     ...str('room'), ...str('branch'), ...str('prompt'), ...(seats ? { seats } : {}), ...num('rounds'), ...num('tokens'), ...num('cost'), ...str('commit'), ...num('pr'), ...str('reviewUrl'), ...str('notesDir'),
+    ...(handedTo ? { handedTo } : {}),
   };
 }
 

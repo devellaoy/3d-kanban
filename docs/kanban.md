@@ -111,6 +111,11 @@ In the office, a hire at a desk and the **📋 Task queue**'s form can tick **�
 (type, plan, review rounds and repositories; the agent is the form's own, Claude Code or Codex): the
 task is made and started at once, at that desk or, from the queue, at the next free one.
 
+A finished meeting's output can become a task too: **🗂️ Make a kanban task** in the meeting room opens
+that hire dialog with **🗂️ Run as a kanban task** ticked. The task is tagged `meeting:<id>`, its title is
+the meeting's title (the text's first line), and its description holds the output (or attaches it when it
+is long) and a line saying which meeting it came from.
+
 ## The process
 
 1. **Plan** (when *Plan first* is on): the agent plans read-only. It ends with the plan (the line
@@ -579,7 +584,8 @@ criteria, open PRs, fix PRs, review PRs together, the review panel of several PR
 and handoff, and the smaller texts they're built from (Continue without answers, what the user said
 since, the ticket line, attached files, the project's instructions and their parts, the referenced
 tasks file, the accepted plan, what the task did, and the handoff's summary and comments). Each lists
-its `{{placeholders}}`.
+its `{{placeholders}}`. The text that hands a finished meeting's output on is editable too, in the office's
+prompts (group Meetings): *Handing the output on* and its pieces for a review posted on a PR, a stopped meeting and the meeting's branch.
 
 - **Office-wide**: ⚙️ Settings → 🤖 Workers → **📝 Edit the prompts…**, group **🗂️ Kanban tasks**
   (kept in the office's `prompts.json`, like upstream's prompts).

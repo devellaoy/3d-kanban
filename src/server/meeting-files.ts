@@ -27,7 +27,7 @@ const NO_FILE: Refusal = { status: 404, error: 'No such file' };
 const realRoot = (root: string): Promise<boolean> => lstat(root).then((st) => st.isDirectory() && !st.isSymbolicLink(), () => false);
 
 /** The record a meeting left in its folder, or undefined when there is none or it isn't one (then the others are used). */
-async function folderRecord(root: string, id: string): Promise<MeetingRecord | undefined> {
+export async function folderRecord(root: string, id: string): Promise<MeetingRecord | undefined> {
   try {
     const file = path.join(root, id, '.meeting.json');
     const st = await lstat(file);

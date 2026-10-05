@@ -671,3 +671,59 @@ test('the earlier-meetings list notices a late review link on any earlier meetin
   assert.match(after.past[1].summary, /posted on the PR/);
   assert.notEqual(archiveKey('floor', after), key);
 });
+
+test('noteHandoff: a finished meeting on the table keeps what it was handed on to, in its state and its record', async (t) => {
+  const f = fixture(); t.after(() => f.close());
+  assert.equal(f.start({ rounds: 2, output: 'docs/decision.md' }), undefined);
+  const id = f.cur()!.id;
+  assert.equal(await f.room.noteHandoff(id, { task: 7, by: 'Ada', at: 1 }), 'That meeting is still running');
+  for (const i of [0, 1, 2]) f.take(i);
+  f.take(0, '# Done');
+  assert.equal(f.cur()!.status, 'done');
+  assert.equal(await f.room.noteHandoff(id, { task: 7, by: 'Ada', at: 1 }), undefined);
+  assert.equal(await f.room.noteHandoff(id, { worker: 'Pixel', by: 'Bob', at: 2 }), undefined);
+  assert.deepEqual(f.cur()!.handedTo, [{ task: 7, by: 'Ada', at: 1 }, { worker: 'Pixel', by: 'Bob', at: 2 }]);
+  assert.deepEqual(f.room.finished()[0].handedTo?.length, 2);
+  const file = JSON.parse(readFileSync(path.join(f.dataDir, 'meetings', id, '.meeting.json'), 'utf8'));
+  assert.equal(file.handedTo.length, 2);
+  assert.equal(file.handedTo[1].worker, 'Pixel');
+  // The state line stays slim, and the state file keeps the hand-offs through a restart.
+  assert.equal(f.room.state().past.every((r) => r.handedTo === undefined), true);
+  f.room.shutdown();
+  const again = new MeetingRooms(f.dir, f.dataDir, f.manager, undefined, { update() {}, toast() {}, hiringPaused: () => undefined, postReview: async () => '' }, () => f.rooms);
+  t.after(() => again.shutdown());
+  assert.equal(again.state().rooms[0].current!.handedTo?.length, 2);
+});
+
+test('noteHandoff: an archived meeting gets it in its folder record, or from its state line; an unknown one is refused', async (t) => {
+  const f = fixture(); t.after(() => f.close());
+  const base = { pattern: 'debate', title: 'Old', status: 'done', summary: 's', calledBy: 'Ada', finishedAt: 5, output: 'o.md' };
+  const dir = path.join(f.dataDir, 'meetings', 'abcdef01');
+  mkdirSync(dir, { recursive: true });
+  writeFileSync(path.join(dir, '.meeting.json'), JSON.stringify({ id: 'abcdef01', ...base, prompt: 'Q?' }));
+  assert.equal(await f.room.noteHandoff('abcdef01', { task: 3, by: 'Ada', at: 9 }), undefined);
+  const rec = JSON.parse(readFileSync(path.join(dir, '.meeting.json'), 'utf8'));
+  assert.equal(rec.prompt, 'Q?');
+  assert.deepEqual(rec.handedTo, [{ task: 3, by: 'Ada', at: 9 }]);
+  assert.equal(await f.room.noteHandoff('00000000', { task: 3, by: 'Ada', at: 9 }), 'No such meeting');
+
+  // Only a line in meetings.json, no folder record.
+  f.room.shutdown();
+  writeFileSync(path.join(f.dataDir, 'meetings.json'), JSON.stringify({ rooms: {}, past: [{ id: '12345678', ...base }] }));
+  const again = new MeetingRooms(f.dir, f.dataDir, f.manager, undefined, { update() {}, toast() {}, hiringPaused: () => undefined, postReview: async () => '' }, () => f.rooms);
+  t.after(() => again.shutdown());
+  assert.equal(await again.noteHandoff('12345678', { worker: 'Pixel', by: 'Ada', at: 1 }), undefined);
+  const line = JSON.parse(readFileSync(path.join(f.dataDir, 'meetings', '12345678', '.meeting.json'), 'utf8'));
+  assert.equal(line.title, 'Old');
+  assert.deepEqual(line.handedTo, [{ worker: 'Pixel', by: 'Ada', at: 1 }]);
+});
+
+test('noteHandoff keeps the newest ten', async (t) => {
+  const f = fixture(); t.after(() => f.close());
+  const dir = path.join(f.dataDir, 'meetings', 'abcdef02');
+  mkdirSync(dir, { recursive: true });
+  writeFileSync(path.join(dir, '.meeting.json'), JSON.stringify({ id: 'abcdef02', pattern: 'debate', title: 'T', status: 'done', summary: 's', calledBy: 'Ada', finishedAt: 5, output: 'o.md' }));
+  for (let i = 1; i <= 12; i++) await f.room.noteHandoff('abcdef02', { task: i, by: 'Ada', at: i });
+  const rec = JSON.parse(readFileSync(path.join(dir, '.meeting.json'), 'utf8'));
+  assert.deepEqual(rec.handedTo.map((h: { task: number }) => h.task), [3, 4, 5, 6, 7, 8, 9, 10, 11, 12]);
+});

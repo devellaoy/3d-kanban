@@ -28,6 +28,10 @@ export interface KanbanOption {
   title?: string;
   /** Made from the 📋 queue board: no desk of its own, it starts at the next free one or waits its turn. */
   queued?: true;
+  /** The toggle starts ticked (still off when the provider can't run the kanban). */
+  checked?: boolean;
+  /** Tags the task gets. */
+  tags?: string[];
   /** The task was made (its id). */
   onCreated?: (taskId: number) => void;
 }
@@ -56,7 +60,7 @@ export function kanbanSection(opt: KanbanOption, provider: ProviderPicker | null
   const listeners: ((on: boolean) => void)[] = [];
   // Off in every new dialog: a hire is upstream's plain one unless this one is asked to be a task.
   const box = h('input', { type: 'checkbox' }) as HTMLInputElement;
-  box.checked = false;
+  box.checked = !!opt.checked;
   const hint = h('small', { style: 'font-weight:600;color:var(--muted)' });
   const toggle = h(
     'label',
@@ -168,6 +172,7 @@ export function kanbanSection(opt: KanbanOption, provider: ProviderPicker | null
         repoIds: [...repoBoxes].filter(([, b]) => b.checked).map(([id]) => id),
         allRepoIds: repos.map((r) => r.id),
         primaryId: repos.find((r) => r.primary)?.id,
+        ...(opt.tags?.length ? { tags: opt.tags } : {}),
         ...agent,
       };
       createTask(opt.net, form, opt.deskLabel, opt.onCreated);

@@ -13,6 +13,7 @@ import { issueVars } from './github/prompts';
 import { onSendKey } from '../kanban/sendkey';
 import { visiting } from '../multiplayer/visit';
 import { meetingPast } from './meetingpast';
+import { handedLabel, handoffButtons, type HandoffHost, type HandoffWindow } from './meetinghandoff';
 
 /** What a meeting called from an issue, a PR or a task starts out with. */
 export interface MeetingPreset {
@@ -27,6 +28,8 @@ export interface MeetingActions {
   openTerminal(workerId: string): void;
   /** Push the meeting's branch and open a pull request for it, through the head of the table's worker. */
   openPr(workerId: string): void;
+  /** Hands a finished meeting's output on as a kanban task or a worker (not offered when it's missing, or to visitors). */
+  handoff?: HandoffHost;
 }
 
 /** A meeting about a GitHub issue: the form filled in with it. */
@@ -46,6 +49,9 @@ const PART_LABEL: Record<MeetingTurn['state'], string> = { waiting: '⏳ up next
  */
 export function openMeeting(net: Net, actions: MeetingActions, preset?: MeetingPreset, room?: string) {
   const close = h('button.btn.close', { 'aria-label': 'Close' }, '✕');
+  // Whether the window is still open: a hand-off that waited on the archive is dropped once it isn't.
+  let open = true;
+  const win: HandoffWindow = { close: () => modal.close(), isOpen: () => open };
   const title = h('h2', {}, '🤝 Meeting room');
   const tabs = h('div.meeting-tabs', { role: 'tablist', 'aria-label': 'Meeting rooms' });
   const body = h('div.body.meeting');
@@ -110,7 +116,7 @@ export function openMeeting(net: Net, actions: MeetingActions, preset?: MeetingP
       past ??= meetingPast(() => {
         view = before;
         render();
-      });
+      }, actions.handoff && !visiting() ? { handoff: actions.handoff, net, win } : undefined);
       if (body.firstChild !== past.body) {
         title.textContent = '📚 Earlier meetings';
         body.replaceChildren(past.body);
@@ -126,7 +132,7 @@ export function openMeeting(net: Net, actions: MeetingActions, preset?: MeetingP
       renderStatus(here, body, foot, net, actions, pastBtn, () => {
         view = 'form';
         render();
-      });
+      }, win);
       return;
     }
     if (!form) {
@@ -143,12 +149,18 @@ export function openMeeting(net: Net, actions: MeetingActions, preset?: MeetingP
     form.refresh();
   };
   const offs = [store.on('meeting', render), store.on('workers', () => view === 'status' && render()), store.on('pulls', () => form?.refresh())];
-  const modal: Modal = openModal(el, { doing: '🤝 at the meeting room', onClose: () => offs.forEach((off) => off()) });
+  const modal: Modal = openModal(el, {
+    doing: '🤝 at the meeting room',
+    onClose: () => {
+      open = false;
+      offs.forEach((off) => off());
+    },
+  });
   close.addEventListener('click', () => modal.close());
   render();
 }
 
-function renderStatus(m: Meeting, body: HTMLElement, foot: HTMLElement, net: Net, actions: MeetingActions, pastBtn: HTMLElement | null, callAnother: () => void) {
+function renderStatus(m: Meeting, body: HTMLElement, foot: HTMLElement, net: Net, actions: MeetingActions, pastBtn: HTMLElement | null, callAnother: () => void, win: HandoffWindow) {
   const p = MEETING_PATTERNS[m.pattern];
   const running = m.status === 'running';
   const pill = h('span.pill', { class: running ? 'working' : m.status === 'done' ? 'done' : 'needs_input' }, running ? 'in a meeting' : m.status);
@@ -181,9 +193,11 @@ function renderStatus(m: Meeting, body: HTMLElement, foot: HTMLElement, net: Net
     h('p.meeting-line', {}, running ? `${meetingStage(m)} · called by ${m.calledBy} ${timeAgo(new Date(m.startedAt).toISOString())}` : m.status === 'done' ? `✅ Wrote ${m.output} in ${m.round} round${m.round === 1 ? '' : 's'}` : `⛔ Stopped in round ${m.round}: ${m.reason ?? 'stopped'}`),
     h('div.meeting-budget', { title: m.budget > 0 ? `${m.tokens.toLocaleString()} of ${m.budget.toLocaleString()} tokens` : `${m.tokens.toLocaleString()} tokens, no limit` }, m.budget > 0 ? h('div.meeting-bar', {}, h('i', { style: `width:${(f * 100).toFixed(1)}%;background:${f > 0.9 ? 'var(--bad)' : f > 0.7 ? 'var(--warn)' : 'var(--good)'}` })) : null, h('span', {}, m.budget > 0 ? `${meetingSpend(m)} of ${fmtTokens(m.budget)} tokens` : `${meetingSpend(m)} · no limit`)),
     seats,
-    h('div.meeting-out', {}, h('div.meeting-out-head', {}, h('b', {}, '📄 '), h('code', {}, m.output), where, review), h('pre.meeting-preview', {}, m.preview?.trim() ? m.preview : running ? 'Nothing written yet.' : 'Nothing was written.')),
+    h('div.meeting-out', {}, h('div.meeting-out-head', {}, h('b', {}, '📄 '), h('code', {}, m.output), where, review, m.handedTo?.length ? h('span.muted', { title: 'Where this meeting’s output was handed on to' }, handedLabel(m)) : null), h('pre.meeting-preview', {}, m.preview?.trim() ? m.preview : running ? 'Nothing written yet.' : 'Nothing was written.')),
     ),
   );
+  // Only once its output was written (the preview is the file's start): a meeting that wrote nothing has nothing to hand on.
+  const handoff = !running && !visiting() && !!actions.handoff && !!m.preview?.trim();
   const head = m.seats[0]?.workerId ? store.workers.get(m.seats[0].workerId) : undefined;
   foot.replaceChildren(
     ...present(
@@ -191,6 +205,7 @@ function renderStatus(m: Meeting, body: HTMLElement, foot: HTMLElement, net: Net
     pastBtn,
     running ? h('button.btn', { type: 'button', onclick: () => confirmDialog('Stop the meeting?', `The workers stop where they are and stay at the table. ${m.output} is only there if it was written.`, 'Stop it', () => net.send({ t: 'meeting.stop', room: m.room })) }, '⛔ Stop meeting') : null,
     !running && m.commit && head?.worktree ? h('button.btn', { type: 'button', title: `Push ${m.worktree?.branch} and open a pull request`, onclick: () => actions.openPr(head.id) }, head.pr ? `🔀 PR #${head.pr.number}` : '🔀 Open PR') : null,
+    ...(handoff ? handoffButtons(net, m.id, actions.handoff!, win) : []),
     !running ? h('button.btn', { type: 'button', onclick: () => net.send({ t: 'meeting.clear', room: m.room }) }, '🧹 Clear the room') : null,
     !running ? h('button.btn.primary', { type: 'button', onclick: callAnother }, '🤝 Call a meeting…') : null,
     ),

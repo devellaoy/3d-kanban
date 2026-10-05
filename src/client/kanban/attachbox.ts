@@ -12,6 +12,8 @@ export interface AttachBox {
   /** Uploads still under way. */
   busy(): boolean;
   clear(): void;
+  /** Adds a file that is already uploaded (no link goes into the text). */
+  adopt(a: KanbanAttachment): void;
 }
 
 export function attachBox(opts: { target: HTMLTextAreaElement; dropZone?: HTMLElement; taskId?: () => number | undefined; insertLinks: boolean; max?: number; onChange?: () => void }): AttachBox {
@@ -112,6 +114,11 @@ export function attachBox(opts: { target: HTMLTextAreaElement; dropZone?: HTMLEl
     el: h('div.kb-attach', {}, pick, input, list),
     ids: () => done.map((a) => a.id),
     busy: () => uploading > 0,
+    adopt: (a) => {
+      done.push(a);
+      paint();
+      opts.onChange?.();
+    },
     clear: () => {
       done.length = 0;
       paint();

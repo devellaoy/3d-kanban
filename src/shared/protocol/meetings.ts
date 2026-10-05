@@ -33,6 +33,17 @@ export interface MeetingTurn {
   retried?: boolean;
 }
 
+/** Where a finished meeting's output was handed on to: a kanban task or a hired worker (exactly one of `task` and `worker`). */
+export interface MeetingHandoff {
+  /** A kanban task's id. */
+  task?: number;
+  /** A hired worker's name. */
+  worker?: string;
+  /** Who handed it on. */
+  by: string;
+  at: number;
+}
+
 export type MeetingStatus = 'running' | 'done' | 'stopped';
 
 /**
@@ -96,6 +107,8 @@ export interface Meeting {
   preview?: string;
   /** Its workers have gone home and its worktree was tidied away. */
   cleared?: boolean;
+  /** Where its output was handed on to, oldest first (see MeetingHandoff). */
+  handedTo?: MeetingHandoff[];
 }
 
 /** A meeting that's over, in a line. */
@@ -130,6 +143,8 @@ export interface MeetingRecord {
   reviewUrl?: string;
   /** Where its notes are kept, relative to the floor's .agent-office/ (meetings/<id>). */
   notesDir?: string;
+  /** Where its output was handed on to, oldest first (see MeetingHandoff). */
+  handedTo?: MeetingHandoff[];
 }
 
 /** A meeting in the archive. An orphan is a notes folder with no record: its id and date only. */
@@ -209,7 +224,9 @@ export type MeetingClientMsg =
   /** Stop the meeting that's running in a room; its workers stay at the table. */
   | { t: 'meeting.stop'; room?: string }
   /** Send a room's last meeting's workers home and clear the table. */
-  | { t: 'meeting.clear'; room?: string };
+  | { t: 'meeting.clear'; room?: string }
+  /** A finished meeting's output was made into kanban task `task` (the client created it): the meeting remembers where it went. */
+  | { t: 'meeting.handed'; id: string; task: number };
 
 export type MeetingServerMsg =
   | { t: 'meeting'; state: MeetingState };

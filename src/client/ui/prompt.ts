@@ -7,6 +7,7 @@ import { providerPicker, type ProviderPicker } from './provider';
 import { kanbanSection, type KanbanOption } from '../kanban/hireform';
 import { onSendKey, sendHint } from '../kanban/sendkey';
 import { attachBox } from '../kanban/attachbox';
+import type { KanbanAttachment } from '../../shared/kanban/types.js';
 
 export interface PromptOptions {
   title: string;
@@ -28,6 +29,18 @@ export interface PromptOptions {
   kanbanOption?: KanbanOption;
   /** Files can be attached (📎, paste, drop): they are uploaded to the kanban and their ids go with the hire. */
   attachments?: boolean;
+  /** Files already uploaded that start in the list (needs `attachments`). */
+  presetAttachments?: KanbanAttachment[];
+  /** The worktree box's first state, in place of the last hire's choice (the stored choice only changes when the person sends). */
+  worktreeDefault?: boolean;
+  /** The longest a plain hire's prompt may be; a longer one is refused with a toast. */
+  maxLength?: number;
+  /** One more checkbox; ticking it also ticks the worktree box when there is one. */
+  toggle?: { label: string; checked: boolean; onChange(on: boolean, ta: HTMLTextAreaElement): void };
+  /** Checked when the person sends a plain hire (the kanban toggle off), before the dialog closes: a string is why it can't be, shown as a warning with the dialog kept open. */
+  canHire?(): string | undefined;
+  /** Opens with the cursor (and the view) at the start of `initial`, not its end: its first line matters (a hand-off's title). */
+  fromTop?: boolean;
   /** A second button that sends with `raw` (a task implementer's "type straight into the terminal"). */
   rawLabel?: string;
   onSubmit(text: string, opts: { worktree: boolean; provider?: AgentProvider; model?: string; effort?: AgentEffort; repos: string[]; raw?: boolean; attachmentIds?: string[] }): void;
@@ -67,7 +80,7 @@ export function openPrompt(opts: PromptOptions) {
   const ta = h('textarea', { rows: 7, placeholder: opts.placeholder ?? 'What should the worker work on?', 'aria-label': 'Prompt' }) as HTMLTextAreaElement;
   ta.value = opts.initial ?? '';
   const wtBox = h('input', { type: 'checkbox', id: 'wt-toggle' }) as HTMLInputElement;
-  wtBox.checked = worktreePref();
+  wtBox.checked = opts.worktreeDefault ?? worktreePref();
   const wtRow = opts.worktreeOption
     ? h(
         'label',
@@ -76,6 +89,21 @@ export function openPrompt(opts: PromptOptions) {
         '🌿 Work in its own git worktree & branch',
     )
     : null;
+  const extraBox = opts.toggle ? (h('input', { type: 'checkbox', id: 'extra-toggle' }) as HTMLInputElement) : null;
+  if (extraBox && opts.toggle) {
+    extraBox.checked = opts.toggle.checked;
+    extraBox.addEventListener('change', () => {
+      if (extraBox.checked && opts.worktreeOption) wtBox.checked = true;
+      opts.toggle!.onChange(extraBox.checked, ta);
+    });
+    // Without its own worktree there is nothing for the toggle to start from.
+    wtBox.addEventListener('change', () => {
+      if (wtBox.checked || !extraBox.checked) return;
+      extraBox.checked = false;
+      opts.toggle!.onChange(false, ta);
+    });
+  }
+  const extraRow = extraBox && opts.toggle ? h('label', { for: 'extra-toggle', style: 'display:flex;gap:8px;align-items:center;margin:10px 0 0;font-weight:700;cursor:pointer' }, extraBox, opts.toggle.label) : null;
   const repos = repoPicker(opts.worktreeOption ? opts.repoOptions : undefined, wtBox);
   const provider: ProviderPicker | null = opts.providerOption ? providerPicker(store.project, 'prompt-provider') : null;
   const submit = h('button.btn.primary', { type: 'submit' }, opts.submitLabel ?? 'Send ✨');
@@ -83,9 +111,10 @@ export function openPrompt(opts: PromptOptions) {
   // The kanban toggle and the raw button.
   const kanban = opts.kanbanOption ? kanbanSection(opts.kanbanOption, provider) : null;
   const rawBtn = opts.rawLabel ? h('button.btn.kb-raw', { type: 'button' }, opts.rawLabel) : null;
-  const body = h('div.body', {}, opts.warning ? h('p.setting-note.bad', { style: 'margin:0 0 10px', role: 'alert' }, opts.warning) : null, opts.subtitle ? h('p', { style: 'margin:0 0 10px;font-weight:700;color:var(--muted)' }, opts.subtitle) : null, ta, provider?.element ?? null, wtRow, repos.element, kanban?.element ?? null);
+  const body = h('div.body', {}, opts.warning ? h('p.setting-note.bad', { style: 'margin:0 0 10px', role: 'alert' }, opts.warning) : null, opts.subtitle ? h('p', { style: 'margin:0 0 10px;font-weight:700;color:var(--muted)' }, opts.subtitle) : null, ta, provider?.element ?? null, wtRow, extraRow, repos.element, kanban?.element ?? null);
   const files = opts.attachments ? attachBox({ target: ta, dropZone: body, insertLinks: false }) : null;
   if (files) ta.after(files.el);
+  for (const a of opts.presetAttachments ?? []) files?.adopt(a);
   const form = h(
     'form.modal',
     { role: 'dialog', 'aria-label': opts.title },
@@ -129,6 +158,9 @@ export function openPrompt(opts: PromptOptions) {
       return;
     }
     if (provider && !provider.valid()) return;
+    const why = opts.canHire?.();
+    if (why) return void toast(why, 'warn');
+    if (opts.maxLength && text.length > opts.maxLength) return void toast(`The prompt is ${text.length.toLocaleString()} characters; a worker's first prompt takes at most ${opts.maxLength.toLocaleString()}. Cut it down or run it as a kanban task`, 'warn');
     modal.close();
     if (opts.worktreeOption) {
       try {
@@ -148,7 +180,9 @@ export function openPrompt(opts: PromptOptions) {
   onSendKey(ta, () => send());
   setTimeout(() => {
     ta.focus();
-    ta.setSelectionRange(ta.value.length, ta.value.length);
+    const at = opts.fromTop ? 0 : ta.value.length;
+    ta.setSelectionRange(at, at);
+    if (opts.fromTop) ta.scrollTop = 0;
   }, 30);
 }
 

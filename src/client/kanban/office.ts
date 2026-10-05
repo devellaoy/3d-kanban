@@ -250,6 +250,7 @@ export interface HireTaskForm {
   attachmentIds?: string[];
   /** The title, when it isn't the text's first line (an issue's). */
   title?: string;
+  tags?: string[];
 }
 
 export type TaskCreateMsg = Extract<KanbanClientMsg, { t: 'kanban.task.create' }>;
@@ -286,6 +287,7 @@ export function hireTaskMsg(f: HireTaskForm): { msg: Omit<TaskCreateMsg, 'rid'> 
     ...(f.ticket ? { ticket: f.ticket.slice(0, KANBAN_LIMITS.ticket) } : {}),
     ...(f.ticketUrl ? { ticketUrl: f.ticketUrl.slice(0, KANBAN_LIMITS.url) } : {}),
     ...(f.attachmentIds?.length ? { attachmentIds: f.attachmentIds } : {}),
+    ...(f.tags?.length ? { tags: f.tags.slice(0, KANBAN_LIMITS.tags) } : {}),
   };
   return { msg: { t: 'kanban.task.create', task, start: true, ...(f.deskId ? { deskId: f.deskId } : {}) } };
 }

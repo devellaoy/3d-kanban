@@ -128,7 +128,9 @@ curl -fsSL https://raw.githubusercontent.com/devellaoy/3d-kanban/main/deploy/pro
   repositories and review them as one change. The office has one meeting room, and the **🚧 Room for a meeting room** sign on the west wall builds up to
   three more (the same way the back office grows), so panels and other meetings can run at the same time; a new one takes the first free room.
   **📚 Earlier meetings** in the meeting window lists the floor's finished meetings (searchable) and reads
-  their output and round notes, Markdown rendered or raw, to copy or download.
+  their output and round notes, Markdown rendered or raw, to copy or download. A finished meeting's output can
+  be handed on with **🗂️ Make a kanban task** or **🤖 Hand to a worker** (in the meeting window and in the
+  earlier meetings view): the hire dialog opens with the output as the prompt, and the meeting remembers where it went.
 - **Languages**: ⚙️ Settings → 🤖 Workers sets the **conversation language** every agent talks to you in and
   the **public language** issues, pull requests, commits and other texts that leave the office are written in;
   a project can pick its own public language in ⚙️ Project, and the **code comment language** (English by

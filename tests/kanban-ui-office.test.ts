@@ -152,6 +152,13 @@ test('the hire form: attachment ids go on the task, and are left out when there 
   assert.ok('msg' in none && !('attachmentIds' in none.msg.task));
 });
 
+test('the hire form: tags go on the task, and are left out when there are none', () => {
+  const some = hireTaskMsg(form({ tags: ['meeting:m1'] }));
+  assert.ok('msg' in some && JSON.stringify(some.msg.task.tags) === '["meeting:m1"]');
+  const none = hireTaskMsg(form({ tags: [] }));
+  assert.ok('msg' in none && !('tags' in none.msg.task));
+});
+
 test('the hire form: repositories keep the primary one, all of them is the default', () => {
   const all = hireTaskMsg(form({ repoIds: ['web'], allRepoIds: ['api', 'web'], primaryId: 'api' }));
   assert.ok('msg' in all && all.msg.task.repoIds === undefined);
