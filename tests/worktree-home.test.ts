@@ -180,6 +180,42 @@ test('restore puts the worktree back, with its node_modules, even when the whole
   assert.equal(readFileSync(path.join(abs, 'node_modules', 'dep', 'index.js'), 'utf8'), 'x\n');
 });
 
+test('a project whose node_modules is itself a link gives its worktree the packages it links to', (t) => {
+  const { root, dir } = fixture(t);
+  // The real install lives elsewhere (a shared or cached one), the project only links to it.
+  const store = path.join(root, 'store');
+  mkdirSync(path.join(store, 'linked-dep'), { recursive: true });
+  writeFileSync(path.join(store, 'linked-dep', 'index.js'), 'linked\n');
+  rmSync(path.join(dir, 'node_modules'), { recursive: true });
+  symlinkSync(store, path.join(dir, 'node_modules'), process.platform === 'win32' ? 'junction' : 'dir');
+  const made = new Worktrees(dir).create('pip-6');
+  if (typeof made === 'string') return assert.fail(made);
+  const nm = path.join(dir, made.path, 'node_modules');
+  assert.ok(!lstatSync(nm).isSymbolicLink(), 'a real folder');
+  assert.equal(readFileSync(path.join(nm, 'linked-dep', 'index.js'), 'utf8'), 'linked\n');
+});
+
+test('a linked package is the project\'s: npm rebuild in the worktree runs its scripts in the project\'s copy', (t) => {
+  const { dir } = fixture(t);
+  // A package with an install script that writes into its own folder, as a native build does.
+  pkg(dir, 'native-dep');
+  writeFileSync(
+    path.join(dir, 'node_modules', 'native-dep', 'package.json'),
+    JSON.stringify({ name: 'native-dep', version: '1.0.0', scripts: { install: 'node -e "require(\'fs\').writeFileSync(\'built.txt\', \'built\')"' } }),
+  );
+  const made = new Worktrees(dir).create('pip-7');
+  if (typeof made === 'string') return assert.fail(made);
+  const wt = path.join(dir, made.path);
+  writeFileSync(path.join(wt, 'package.json'), JSON.stringify({ name: 'wt', version: '1.0.0', dependencies: { 'native-dep': '1.0.0' } }));
+  execFileSync(process.platform === 'win32' ? 'npm.cmd' : 'npm', ['rebuild', '--foreground-scripts', '--no-audit', '--no-fund'], { cwd: wt, stdio: 'ignore', shell: process.platform === 'win32' });
+  // Shared, not copied (see linkNodeModules): the script's output lands in the project's package...
+  assert.equal(readFileSync(path.join(dir, 'node_modules', 'native-dep', 'built.txt'), 'utf8'), 'built');
+  // ...while the worktree keeps its own folder of links, and the project's other packages are untouched.
+  assert.ok(!lstatSync(path.join(wt, 'node_modules')).isSymbolicLink());
+  assert.ok(lstatSync(path.join(wt, 'node_modules', 'native-dep')).isSymbolicLink());
+  assert.equal(readFileSync(path.join(dir, 'node_modules', 'dep', 'index.js'), 'utf8'), 'x\n');
+});
+
 test('a repository without node_modules gives its worktree none', (t) => {
   const { dir } = fixture(t);
   rmSync(path.join(dir, 'node_modules'), { recursive: true });

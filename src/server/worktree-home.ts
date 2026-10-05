@@ -101,14 +101,17 @@ export function ensureHome(dir: string): string {
 /**
  * Gives a new worktree the node_modules of the repository it was made from (`repo`): a worktree
  * beside the project no longer finds the project's by Node's lookup through the parent folders. It is a
- * real folder with one symlink per package in it, not a link to the project's: npm writes and
- * deletes through a symlinked node_modules, and through a symlinked `@scope` folder, so `npm ci` or
- * `npm install` in the worktree would change the project's. Scopes and `.bin` are real folders
- * with a link per child for that reason; with this layout npm only replaces links, and leaves the
- * project's node_modules as it was. Dot entries other than `.bin` (npm's `.package-lock.json`) are not
- * linked. Absolute targets. On Windows folders are junctions and files (.bin's .cmd shims) are copied.
- * Packages added to the project later aren't seen until the worktree's node_modules is rebuilt or
- * installed. Only when `repo` has a node_modules and the worktree has none; never throws.
+ * real folder with one symlink per package in it, not a link to the project's: npm deletes and
+ * replaces through a symlinked node_modules, and through a symlinked `@scope` folder, so `npm ci` or
+ * `npm install` in the worktree would wipe or change the project's. Scopes and `.bin` are real folders
+ * with a link per child for that reason; with this layout installing in the worktree only replaces
+ * links with its own packages. The packages themselves are still the project's, shared, not a copy:
+ * anything that runs in a linked package's folder (`npm rebuild`, a package's install or build
+ * scripts) writes to the project's node_modules, as a worktree nested in the project did. Dot entries
+ * other than `.bin` (npm's `.package-lock.json`) are not linked. Absolute targets. On Windows folders
+ * are junctions and files (.bin's .cmd shims) are copied. Packages added to the project later aren't
+ * seen until the worktree's node_modules is rebuilt or installed. Only when `repo` has a node_modules
+ * (a folder, or a link to one) and the worktree has none; never throws.
  */
 export function linkNodeModules(repo: string, worktree: string): void {
   try {
@@ -120,7 +123,8 @@ export function linkNodeModules(repo: string, worktree: string): void {
     } catch {
       // nothing there yet
     }
-    if (!lstatSync(from).isDirectory()) return;
+    // Followed: a project's node_modules may itself be a link (to a shared or cached install).
+    if (!statSync(from).isDirectory()) return;
     mkdirSync(to);
     const win = process.platform === 'win32';
     const place = (src: string, dest: string, isDir: boolean) => {

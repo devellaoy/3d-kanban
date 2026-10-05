@@ -769,8 +769,8 @@ implementation runs, review, the board's columns), not as a plain one-off worker
 | `<data>/hook-port` | The hook server's port (upstream's file), for scripts outside the office; see `--hook-port`. |
 
 Worktrees are upstream's code, but not its place: beside the floor's checkout, in `<checkout>.worktrees/<slug>`
-(a multi-repository task's workspace folder there holds a worktree of each of its repositories), with the
-each worktree's own `node_modules` folder of links to its repository's packages. Tasks saved with a path under `.agent-office/worktrees/` keep working.
+(a multi-repository task's workspace folder there holds a worktree of each of its repositories), with
+each worktree's own `node_modules` folder of links to its repository's packages (shared, not copied). Tasks saved with a path under `.agent-office/worktrees/` keep working.
 
 ## Limitations
 
