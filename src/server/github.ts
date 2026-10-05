@@ -5,7 +5,7 @@ import { checkoutRepo, repoApi, repoFlag } from './ghrepo.js';
 import { pullDiffOrFiles } from './prfiles.js';
 import { hostLabel, repoRefOf } from '../shared/hosting/remote.js';
 import { hostCredentials, otherHostRepo } from './hosting/index.js';
-import { hostedComment, hostedPullDetail, hostedPulls, notOnHost, type HostedRepo } from './hosting/board.js';
+import { hostedComment, hostedDiff, hostedPullDetail, hostedPulls, notOnHost, type HostedRepo } from './hosting/board.js';
 import type { HostAs } from './hosting/provider.js';
 import { readFile } from 'node:fs/promises';
 
@@ -260,7 +260,7 @@ export class GitHub {
   /** The PR's unified diff, as `git diff` prints it. */
   pullDiff(n: number): Promise<string> {
     const hosted = this.hosted;
-    if (hosted) return Promise.reject(new Error(notOnHost('The diff', hosted.host)));
+    if (hosted) return hostedDiff(hosted, n);
     // A PR over GitHub's 300-file diff limit is built from the files API instead (prfiles.ts).
     return pullDiffOrFiles(this.gh, this.target, n, this.dir, () => this.gh(['pr', 'diff', String(n), ...repoFlag(this.target), '--color', 'never'], this.dir, 60_000));
   }

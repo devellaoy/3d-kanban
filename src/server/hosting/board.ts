@@ -57,6 +57,11 @@ export async function hostedPullDetail(repo: HostedRepo, n: number, as?: HostAs)
   };
 }
 
+/** A pull request's unified diff, for the PR window's Files tab. */
+export function hostedDiff(repo: HostedRepo, n: number): Promise<string> {
+  return provider(repo).diff(repo, n, reader(repo), hostFetch());
+}
+
 /** Comments on a pull request's conversation as `as`; resolves to the comment's URL. */
 export function hostedComment(repo: HostedRepo, n: number, body: string, as: HostAs): Promise<string | undefined> {
   return provider(repo).comment(repo, n, body, as, hostFetch());

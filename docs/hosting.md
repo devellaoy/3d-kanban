@@ -23,7 +23,7 @@ with a token. It doesn't need the `az` CLI or any Bitbucket tool.
 | **O** on a 🐚 shell worker, and the Changes window's PR (the office opens it) | ✅ | ✅ | ✅ |
 | The 🔀 PR board, PR states on kanban tasks, a task following its PR to merged | ✅ | ✅ | ✅ |
 | Checks and reviews on the board | ✅ | statuses and branch policies (build validation, required statuses: a posted status shows the policy's state when that is worse), votes | build statuses, approvals |
-| The PR window | everything | description, checks, comments, commenting | description, checks, comments, commenting |
+| The PR window | everything | description, checks, comments, commenting, the diff | description, checks, comments, commenting, the diff |
 | Merging, closing, labels from the office | ✅ | do it on Azure DevOps | do it on Bitbucket |
 | Fix PRs, Resolve conflicts, 🔍 Review (kanban) | ✅ | ✅ (the agent uses `office-pr`) | ✅ (the agent uses `office-pr`) |
 | 🤝 Review panel | ✅ | the review is posted as a comment | the review is posted as a comment |
@@ -90,7 +90,9 @@ office-pr list [--all] [--head <branch>]
 
 `create` opens the current branch's pull request (push the branch first), or updates the title and
 description of the one it already has. Without a number, the other commands mean the current
-branch's pull request. `office-pr` asks the office through the hook server, and the office talks to
+branch's pull request. `diff` is read from the host (Bitbucket's own diff; on Azure DevOps the
+changed files' contents, diffed by the office), so it fetches nothing into the checkout and works in a
+reviewer's read-only one. `office-pr` asks the office through the hook server, and the office talks to
 the host with the credentials of the account the worker runs as, so the token never reaches the worker.
 On a GitHub repository it says to use `gh`.
 
@@ -133,8 +135,9 @@ supported, rather than showing a `gh` error.
 
 ## Limitations
 
-- The board's merge and close buttons, labels and the diff tab are GitHub's: on the other hosts, open
-  the pull request there (the window's footer links to it).
+- The board's merge and close buttons and labels are GitHub's: on the other hosts, open the pull
+  request there (the window's footer links to it). On Azure DevOps the diff shows the latest
+  iteration's first 300 files, each up to 1 MB.
 - Upstream's PR-window prompts (*Fix comments & merge*, *Fix conflicts & merge*) use `gh` and are hidden
   for pull requests elsewhere. The kanban's Fix PRs and Resolve conflicts work.
 - Azure DevOps doesn't link a work item that isn't in the repository's organisation.

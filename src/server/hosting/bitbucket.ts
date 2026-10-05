@@ -3,7 +3,7 @@
 
 import type { GhCheck, GhPull } from '../../shared/protocol.js';
 import { prWebUrl, type RepoRef } from '../../shared/hosting/remote.js';
-import { hostCall } from './http.js';
+import { hostCall, hostText } from './http.js';
 import { bbCheck, bbComments, bbIsFork, bbPrView, bbPull } from './bitbucket-map.js';
 import type { Fetch, HostAs, HostingProvider } from './provider.js';
 
@@ -53,6 +53,11 @@ export const bitbucketProvider: HostingProvider = {
   async whoAmI(as, fetch) {
     const me = await hostCall(fetch, as, 'GET', `${API}/user`);
     return String(me?.display_name || me?.nickname || me?.username || '');
+  },
+
+  async diff(repo, n, as, fetch) {
+    // Bitbucket redirects to the diff of the two commits, on its own API.
+    return hostText(fetch, as, `${prUrl(repo, n)}/diff`);
   },
 
   async findOpenPr(repo, branch, as, fetch) {

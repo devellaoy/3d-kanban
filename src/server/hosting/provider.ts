@@ -85,6 +85,8 @@ export interface HostingProvider {
   listPulls(repo: RepoRef, as: HostAs, fetch: Fetch): Promise<GhPull[]>;
   checks(repo: RepoRef, n: number, as: HostAs, fetch: Fetch): Promise<GhCheck[]>;
   comments(repo: RepoRef, n: number, as: HostAs, fetch: Fetch): Promise<HostComment[]>;
+  /** Its changes as a unified diff (as `git diff` of its merge base and head prints them), read from the host: nothing is fetched into a checkout. */
+  diff(repo: RepoRef, n: number, as: HostAs, fetch: Fetch): Promise<string>;
   /** Comments on its conversation; resolves to the comment's URL when the host gives one. */
   comment(repo: RepoRef, n: number, body: string, as: HostAs, fetch: Fetch): Promise<string | undefined>;
   defaultBranch(repo: RepoRef, as: HostAs, fetch: Fetch): Promise<string | undefined>;

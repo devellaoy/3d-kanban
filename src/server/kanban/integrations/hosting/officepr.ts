@@ -123,6 +123,10 @@ export function officePrHook(ctx: KanbanContext, deps: OfficePrDeps = {}): Kanba
       const [view, checks, comments] = await Promise.all([p.viewPr(repo, n2, as, f), p.checks(repo, n2, as, f), ask.comments === true ? p.comments(repo, n2, as, f) : Promise.resolve(undefined)]);
       return { pr: view, checks, ...(comments ? { comments } : {}) };
     }
+    if (action === 'diff') {
+      if (!number) return 'Name the pull request by its number';
+      return { diff: await p.diff(repo, number, as, f) };
+    }
     if (action === 'checks') {
       if (!number) return 'Name the pull request by its number';
       return { checks: await p.checks(repo, number, as, f) };
@@ -138,7 +142,7 @@ export function officePrHook(ctx: KanbanContext, deps: OfficePrDeps = {}): Kanba
       const state = ask.state === 'all' ? undefined : 'OPEN';
       return { prs: all.filter((x) => (!state || x.state === state) && (!head || x.headRefName === head)).map(({ number: num, title, state: s, isDraft, url, headRefName, baseRefName, author, checks, reviewDecision }) => ({ number: num, title, state: s, isDraft, url, headRefName, baseRefName, author, checks, reviewDecision })) };
     }
-    return `Unknown action ${action || '(none)'}: create, view, checks, comment or list`;
+    return `Unknown action ${action || '(none)'}: create, view, diff, checks, comment or list`;
   }
 }
 

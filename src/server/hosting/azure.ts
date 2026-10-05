@@ -5,6 +5,7 @@ import { prWebUrl, type RepoRef } from '../../shared/hosting/remote.js';
 import type { GhCheck, GhPull } from '../../shared/protocol.js';
 import { azureDescription, branchOf, checksOfPr, commentsOfThreads, pullOf, refOf, summaryOf, viewOf } from './azure-map.js';
 import { hostCall } from './http.js';
+import { azureDiff } from './azure-diff.js';
 import type { Fetch, HostAs, HostingProvider } from './provider.js';
 
 const API = 'api-version=7.1';
@@ -132,6 +133,8 @@ export const azureProvider: HostingProvider = {
   async checks(repo, n, as, fetch) {
     return prChecks(repo, await hostCall(fetch, as, 'GET', pr(repo, n)), as, fetch);
   },
+
+  diff: (repo, n, as, fetch) => azureDiff(repo, n, as, fetch),
 
   async comments(repo, n, as, fetch) {
     return commentsOfThreads(repo, n, (await hostCall(fetch, as, 'GET', pr(repo, n, '/threads')))?.value);

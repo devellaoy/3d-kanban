@@ -22,7 +22,8 @@ const USAGE = `Usage (inside your checkout; for a repository on GitHub, use gh):
                                     a pull request (by default the current branch's): its state,
                                     branches, description, checks and with --comments its comments
   office-pr checks [<number>] [--json]   its checks / pipelines
-  office-pr diff [<number>]         its changes, as git diff of its base and head (fetched from origin)
+  office-pr diff [<number>]         its changes, as git diff of its merge base and head prints them
+                                    (read from the host: nothing is fetched into the checkout)
   office-pr comment <number> (--body-file <file|-> | --body "…")
                                     comments on its conversation
   office-pr list [--all] [--head <branch>] [--json]
@@ -208,10 +209,8 @@ export async function main(argv, io = {}) {
     // view, checks, diff: the pull request by number, else the current branch's.
     const answer = await ask('view', { dir, ...(cmd.number ? { number: cmd.number } : { head: current() }), comments: cmd.comments === true }, env, fetchImpl);
     if (cmd.cmd === 'diff') {
-      const { baseRefName: base, headRefName: head } = answer.pr;
-      if (!BRANCH.test(base) || !BRANCH.test(head)) throw new Error('Its branch names have characters this won’t pass to git');
-      runGit(['fetch', '--quiet', 'origin', `refs/heads/${base}:refs/remotes/origin/${base}`, `refs/heads/${head}:refs/remotes/origin/${head}`], dir);
-      out(runGit(['diff', '--no-color', `origin/${base}...origin/${head}`], dir));
+      // Read from the host: nothing is fetched into the checkout (a reviewer's is read-only).
+      out((await ask('diff', { dir, number: answer.pr.number }, env, fetchImpl)).diff);
       return 0;
     }
     if (cmd.json) out(JSON.stringify(cmd.cmd === 'checks' ? answer.checks : answer, null, 2));
