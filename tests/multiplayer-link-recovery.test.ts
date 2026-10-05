@@ -5,6 +5,8 @@ import assert from 'node:assert/strict';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
+import type { AddressInfo } from 'node:net';
+import { WebSocketServer } from 'ws';
 import { MpConfigStore } from '../src/server/multiplayer/config.js';
 import { TokenRejected, type IdentityVerifier } from '../src/server/multiplayer/github-user.js';
 import { Link } from '../src/server/multiplayer/link.js';
@@ -19,7 +21,7 @@ console.warn = () => {};
 after(() => void (console.warn = warn));
 
 /** A relay whose GitHub check runs `script` (throwing what it throws, once per hello). */
-async function setup(script: (hello: number) => Error | undefined, officeCheck: IdentityVerifier, extra: { now?: () => number; wakeTickMs?: number } = {}) {
+async function setup(script: (hello: number) => Error | undefined, officeCheck: IdentityVerifier, extra: { now?: () => number; wakeTickMs?: number; unavailableMinMs?: number; backoffStartMs?: number; identityBackoffMaxMs?: number } = {}) {
   let hellos = 0;
   const relay: RunningRelay = await startRelay({
     port: 0,
@@ -91,15 +93,58 @@ test('a token both the relay and GitHub reject ends in sign-in again, with no mo
   assert.equal(t.hellos(), n);
 });
 
-test('after a wake from sleep an online link reconnects at once', async () => {
+test('after a wake from sleep a healthy online link answers the ping and stays connected', async () => {
   let clock = 1_000_000;
   const t = await setup(() => undefined, fine, { now: () => clock, wakeTickMs: 50 });
   t.link.connect();
   await until('online', () => t.link.status === 'online');
   assert.equal(t.hellos(), 1);
   clock += 3_600_000;
-  await until('second hello', () => t.hellos() === 2, 3000);
-  await until('online again', () => t.link.status === 'online');
+  await new Promise((r) => setTimeout(r, 300));
+  clock += 6000; // past the time the ping had to be answered in
+  await new Promise((r) => setTimeout(r, 300));
+  assert.equal(t.hellos(), 1, 'the socket answered, so it was kept');
+  assert.equal(t.link.status, 'online');
+});
+
+test('after a wake from sleep a socket that does not answer the ping is dropped and reopened', async () => {
+  let clock = 1_000_000;
+  let connections = 0;
+  const server = new WebSocketServer({ port: 0, host: '127.0.0.1', autoPong: false });
+  await new Promise((r) => server.once('listening', r));
+  server.on('connection', (ws) => {
+    connections++;
+    ws.once('message', () => ws.send(JSON.stringify({ t: 'welcome', login: 'alice' })));
+  });
+  const dir = mkdtempSync(path.join(tmpdir(), 'agent-office-mp-link-'));
+  const config = new MpConfigStore(dir);
+  config.update({ enabled: true, url: `ws://127.0.0.1:${(server.address() as AddressInfo).port}/mp`, password: 'pw', identityToken: 'tok' });
+  const link = new Link({ config, version: '0.0.0', onChange: () => {}, onMessage: () => {}, onDown: () => {}, verifier: fine, now: () => clock, wakeTickMs: 50, backoffStartMs: 50 });
+  cleanup.push(async () => {
+    link.disconnect();
+    for (const c of server.clients) c.terminate();
+    await new Promise((r) => server.close(r));
+    rmSync(dir, { recursive: true, force: true });
+  });
+  link.connect();
+  await until('online', () => link.status === 'online');
+  clock += 3_600_000;
+  await new Promise((r) => setTimeout(r, 300));
+  assert.equal(connections, 1, 'the ping is given time to be answered');
+  clock += 6000;
+  await until('second connection', () => connections === 2, 3000);
+  await until('online again', () => link.status === 'online');
+});
+
+test('a relay that keeps refusing a token GitHub accepts ends in an error that does not ask for a sign-in', async () => {
+  const t = await setup(() => new TokenRejected('x'), fine, { backoffStartMs: 5, identityBackoffMaxMs: 20 });
+  t.link.connect();
+  await until('error', () => t.link.status === 'error');
+  assert.equal(t.link.needsIdentity, false);
+  assert.match(t.link.error ?? '', /keeps refusing/);
+  assert.equal(t.hellos(), 10);
+  await new Promise((r) => setTimeout(r, 300));
+  assert.equal(t.hellos(), 10);
 });
 
 test('a link waiting out a long pause reconnects at once after a wake', async () => {
