@@ -17,17 +17,27 @@ const prUrl = (repo: RepoRef, n: number) => `${repoUrl(repo)}/pullrequests/${enc
 /** A BBQL string literal. */
 const bbqlString = (s: string) => `"${s.replace(/[\\"]/g, (c) => `\\${c}`)}"`;
 
-/** A page's values and the pages after it, up to `pages`; `next` is followed only on Bitbucket's own API. */
-async function pagesOf(fetch: Fetch, as: HostAs, url: string, pages: number): Promise<any[]> {
-  const out: any[] = [];
+/**
+ * A page's values and the pages after it, up to `pages`; `next` is followed only on Bitbucket's own
+ * API. `more`: there were pages after the last one read.
+ */
+async function pagesWithMore(fetch: Fetch, as: HostAs, url: string, pages: number): Promise<{ values: any[]; more: boolean }> {
+  const values: any[] = [];
   let next: string | undefined = url;
   for (let i = 0; next && i < pages; i++) {
     const page: any = await hostCall(fetch, as, 'GET', next);
-    if (Array.isArray(page?.values)) out.push(...page.values);
+    if (Array.isArray(page?.values)) values.push(...page.values);
     next = typeof page?.next === 'string' && page.next.startsWith(`${API}/`) ? page.next : undefined;
   }
-  return out;
+  return { values, more: !!next };
 }
+
+async function pagesOf(fetch: Fetch, as: HostAs, url: string, pages: number): Promise<any[]> {
+  return (await pagesWithMore(fetch, as, url, pages)).values;
+}
+
+/** How many pages of comments (100 each) are read, the newest first. */
+export const COMMENT_PAGES = 10;
 
 async function statusesOf(repo: RepoRef, n: number, as: HostAs, fetch: Fetch): Promise<GhCheck[]> {
   return (await pagesOf(fetch, as, `${prUrl(repo, n)}/statuses?pagelen=100`, 1)).map(bbCheck);
@@ -112,15 +122,19 @@ export const bitbucketProvider: HostingProvider = {
   },
 
   async comments(repo, n, as, fetch) {
-    const [values, p, r] = await Promise.all([
-      pagesOf(fetch, as, `${prUrl(repo, n)}/comments?pagelen=100`, 1),
+    // The newest first (Bitbucket lists the oldest first), so a long conversation keeps its latest requests.
+    const [{ values, more }, p, r] = await Promise.all([
+      pagesWithMore(fetch, as, `${prUrl(repo, n)}/comments?pagelen=100&sort=-created_on`, COMMENT_PAGES),
       hostCall(fetch, as, 'GET', prUrl(repo, n)),
       // A repository that can't be read counts as public: only the author's and reviewers' are trusted then.
       hostCall(fetch, as, 'GET', repoUrl(repo)).catch(() => undefined),
     ]);
     const reviewers = ((p?.participants ?? []) as any[]).filter((x) => x?.role === 'REVIEWER').map((x) => x.user);
     const ids = new Set([...bbUserIds(p?.author), ...reviewers.flatMap(bbUserIds)]);
-    return bbComments(values, { ids, everyone: r?.is_private === true });
+    const comments = bbComments([...values].reverse(), { ids, everyone: r?.is_private === true });
+    // Said where the conversation starts, so whoever reads it knows the oldest are missing.
+    if (more) comments.unshift({ id: 'older', author: 'Agent Office', body: `Only the latest ${COMMENT_PAGES * 100} comments are shown here: see the older ones on the pull request's page on Bitbucket.`, createdAt: '' });
+    return comments;
   },
 
   async comment(repo, n, body, as, fetch) {

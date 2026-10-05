@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { bitbucketProvider as bb } from '../src/server/hosting/bitbucket.js';
+import { COMMENT_PAGES, bitbucketProvider as bb } from '../src/server/hosting/bitbucket.js';
 import type { Fetch, HostAs } from '../src/server/hosting/provider.js';
 import { repoRefOf } from '../src/shared/hosting/remote.js';
 
@@ -125,11 +125,12 @@ test('findOpenPr asks for the branch with its quotes and backslashes escaped', a
 
 test('comment posts raw content and answers with its page; comments skip the deleted', async () => {
   const { fetch, calls } = stub({
-    [`${API}/pullrequests/3/comments?pagelen=100`]: {
+    // Asked for the newest first.
+    [`${API}/pullrequests/3/comments?pagelen=100&sort=-created_on`]: {
       values: [
-        { id: 11, user: { display_name: 'Bob', uuid: '{bob}' }, content: { raw: 'hi' }, created_on: '2026-10-03', links: { html: { href: 'https://bitbucket.org/c/11' } } },
-        { id: 12, deleted: true, user: { display_name: 'Bob' }, content: { raw: '' } },
         { id: 13, user: { nickname: 'eve', uuid: '{eve}' }, content: { raw: 'nit' }, created_on: '2026-10-04', inline: { path: 'src/a.ts', to: 7 } },
+        { id: 12, deleted: true, user: { display_name: 'Bob' }, content: { raw: '' } },
+        { id: 11, user: { display_name: 'Bob', uuid: '{bob}' }, content: { raw: 'hi' }, created_on: '2026-10-03', links: { html: { href: 'https://bitbucket.org/c/11' } } },
       ],
     },
     [`${API}/pullrequests/3/comments`]: { id: 14, links: { html: { href: 'https://bitbucket.org/c/14' } } },
@@ -147,9 +148,9 @@ test('comment posts raw content and answers with its page; comments skip the del
 
 test('comments on a private repository are trusted from anyone (only people with access can comment); unreadable repository: public', async () => {
   const values = { values: [{ id: 1, user: { uuid: '{eve}' }, content: { raw: 'x' }, created_on: '1' }] };
-  const priv = stub({ [`${API}/pullrequests/3/comments?pagelen=100`]: values, [`${API}/pullrequests/3`]: pr(3, 'OPEN', { participants: [] }), [API]: { is_private: true } });
+  const priv = stub({ [`${API}/pullrequests/3/comments?pagelen=100&sort=-created_on`]: values, [`${API}/pullrequests/3`]: pr(3, 'OPEN', { participants: [] }), [API]: { is_private: true } });
   assert.equal((await bb.comments(repo, 3, as, priv.fetch))[0].trusted, true);
-  const unknown = stub({ [`${API}/pullrequests/3/comments?pagelen=100`]: values, [`${API}/pullrequests/3`]: pr(3, 'OPEN', { participants: [] }) });
+  const unknown = stub({ [`${API}/pullrequests/3/comments?pagelen=100&sort=-created_on`]: values, [`${API}/pullrequests/3`]: pr(3, 'OPEN', { participants: [] }) });
   assert.equal((await bb.comments(repo, 3, as, unknown.fetch))[0].trusted, false);
 });
 
@@ -197,4 +198,22 @@ test('updatePr puts only what changed', async () => {
 test('a 401 is a readable error about the sign-in', async () => {
   const { fetch } = stub({ 'https://api.bitbucket.org/2.0/user': { type: 'error' } }, 401);
   await assert.rejects(bb.whoAmI(as, fetch), /Your Bitbucket sign-in stopped working/);
+});
+
+test('comments: every page up to the limit, the newest kept, in order; past the limit it says the oldest are missing', async () => {
+  const first = `${API}/pullrequests/3/comments?pagelen=100&sort=-created_on`;
+  const page2 = `${API}/pullrequests/3/comments?pagelen=100&sort=-created_on&page=2`;
+  const c = (id: number) => ({ id, user: { uuid: '{bob}' }, content: { raw: `c${id}` }, created_on: `2026-10-${String(id).padStart(2, '0')}` });
+  const two = stub({ [page2]: { values: [c(2), c(1)] }, [first]: { values: [c(4), c(3)], next: page2 }, [`${API}/pullrequests/3`]: pr(3, 'OPEN', { participants: [] }), [API]: { is_private: true } });
+  assert.deepEqual((await bb.comments(repo, 3, as, two.fetch)).map((x) => x.body), ['c1', 'c2', 'c3', 'c4'], 'the second page’s too, oldest first');
+  // A conversation longer than the pages read: the newest are there, and the first line says the rest are not.
+  const routes: Record<string, unknown> = { [`${API}/pullrequests/3`]: pr(3, 'OPEN', { participants: [] }), [API]: { is_private: true } };
+  for (let i = 1; i <= COMMENT_PAGES; i++) {
+    const url = i === 1 ? first : `${first}&page=${i}`;
+    routes[url] = { values: [c(100 - i)], next: `${first}&page=${i + 1}` };
+  }
+  const long = await bb.comments(repo, 3, as, stub(routes).fetch);
+  assert.equal(long.length, COMMENT_PAGES + 1);
+  assert.match(long[0].body, /Only the latest 1000 comments are shown here/);
+  assert.equal(long.at(-1)!.body, 'c99', 'the newest last');
 });
