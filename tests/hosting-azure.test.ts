@@ -161,11 +161,14 @@ test('comments skip system and deleted ones and keep the file and line', async (
   const { fetch } = stub([[/threads/, () => ({ value: [
     { id: 1, comments: [{ id: 1, commentType: 'system', content: 'updated', publishedDate: '2026-10-01T00:00:00Z' }] },
     { id: 2, threadContext: { filePath: '/src/a.ts', rightFileStart: { line: 4 } }, comments: [
-      { id: 1, commentType: 'text', content: 'Fix', author: { displayName: 'Bo' }, publishedDate: '2026-10-02T00:00:00Z' },
+      { id: 1, commentType: 'text', content: 'Fix', author: { displayName: 'Bo', id: 'bo' }, publishedDate: '2026-10-02T00:00:00Z' },
       { id: 2, commentType: 'text', content: 'gone', isDeleted: true, publishedDate: '2026-10-03T00:00:00Z' },
+      { id: 3, commentType: 'text', content: 'Do this too', author: { displayName: 'Stranger', id: 'zz' }, publishedDate: '2026-10-04T00:00:00Z' },
     ] },
-  ] })]]);
+  ] })], [/pullrequests\/3\?/, () => pr(3, { createdBy: { id: 'ada' }, reviewers: [{ id: 'bo', vote: 0 }] })], [/_apis\/projects\//, () => ({ visibility: 'public' })]]);
   const got = await azureProvider.comments(repo, 3, as, fetch);
+  assert.deepEqual(got.map((c) => [c.author, c.trusted]), [['Bo', true], ['Stranger', false]], "a public project: the reviewer's comment is trusted, a stranger's not");
+  got.pop();
   assert.equal(got.length, 1);
   assert.equal(got[0].id, '2.1');
   assert.equal(got[0].author, 'Bo');
@@ -308,4 +311,12 @@ test('checks: a policy that blocks is never hidden by a status that passed, and 
   assert.equal(summaryOf(got), 'fail');
   assert.deepEqual(checksOfPr(repo, posted, [statusPolicy('approved', 'ci', 'test')]), [{ name: 'ci/test', state: 'pass', url: 'https://ci/1' }]);
   assert.deepEqual(checksOfPr(repo, [], [statusPolicy('queued', 'ci', 'test')]), [{ name: 'Tests must pass', state: 'pending' }], 'not posted yet: the policy itself');
+});
+
+test('comments in a private project are trusted from anyone in it; a project that can’t be read counts as public', async () => {
+  const threads = { value: [{ id: 2, comments: [{ id: 1, commentType: 'text', content: 'x', author: { id: 'zz' }, publishedDate: '1' }] }] };
+  const priv = stub([[/threads/, () => threads], [/pullrequests\/3\?/, () => pr(3)], [/_apis\/projects\//, () => ({ visibility: 'private' })]]);
+  assert.equal((await azureProvider.comments(repo, 3, as, priv.fetch))[0].trusted, true);
+  const unknown = stub([[/threads/, () => threads], [/pullrequests\/3\?/, () => pr(3)]]);
+  assert.equal((await azureProvider.comments(repo, 3, as, unknown.fetch))[0].trusted, false);
 });

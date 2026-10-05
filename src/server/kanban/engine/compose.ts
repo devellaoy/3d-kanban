@@ -7,7 +7,7 @@ import path from 'node:path';
 import type { FloorDef } from '../../building.js';
 import type { Floor } from '../../floor.js';
 import { checkoutRemote, checkoutRepo } from '../../ghrepo.js';
-import { hostLabel, hostOf, remoteLabel, repoRefOf } from '../../../shared/hosting/remote.js';
+import { hostLabel, hostOf, hostOfUrl, remoteLabel, repoRefOf } from '../../../shared/hosting/remote.js';
 import { parseAbKey, workItemUrl } from '../../../shared/hosting/workitems.js';
 import { workspaceNames } from '../../workers.js';
 import { Worktrees } from '../../worktrees.js';
@@ -378,7 +378,10 @@ export class Composer {
         const prs = (x.fixPrs ?? openPrs(task)).map((pr) => `- ${pr.repo ?? pr.repoId}: ${pr.url}`);
         const id = kind === 'pr.fix' ? 'kanban.pr.fix' : 'kanban.pr.conflicts';
         // `instructions` is only in the conflicts prompt; a prompt ignores variables it has no placeholder for.
-        return seal(this.text(id, p, { taskId: task.id, prs: prs.join('\n'), repos: v.repos, instructions: v.instructions, language: v.language }));
+        const text = this.text(id, p, { taskId: task.id, prs: prs.join('\n'), repos: v.repos, instructions: v.instructions, language: v.language });
+        // Elsewhere review comments carry no author_association: office-pr marks the ones to act on.
+        const elsewhere = kind === 'pr.fix' && (x.fixPrs ?? openPrs(task)).some((pr) => (hostOfUrl(pr.url) ?? hostOf(pr.repo)) !== 'github');
+        return seal(elsewhere ? `${text.trimEnd()}\n\n${this.text('kanban.pr.fixHosted', p)}` : text);
       }
       case 'pr.review':
         return seal(this.text('kanban.pr.review', p, { prs: x.prs ?? '', project: def.name, task: x.prTask ?? '', repos: x.prRepos ? x.prRepos + this.hostingNote(p, projectRepos(def)) : v.repos, language: v.language }));

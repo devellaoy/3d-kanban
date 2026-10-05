@@ -4,7 +4,7 @@
 import type { GhCheck, GhPull } from '../../shared/protocol.js';
 import { prWebUrl, type RepoRef } from '../../shared/hosting/remote.js';
 import { hostCall, hostText } from './http.js';
-import { bbCheck, bbComments, bbIsFork, bbPrView, bbPull } from './bitbucket-map.js';
+import { bbCheck, bbComments, bbIsFork, bbPrView, bbPull, bbUserIds } from './bitbucket-map.js';
 import type { Fetch, HostAs, HostingProvider } from './provider.js';
 
 const API = 'https://api.bitbucket.org/2.0';
@@ -112,7 +112,15 @@ export const bitbucketProvider: HostingProvider = {
   },
 
   async comments(repo, n, as, fetch) {
-    return bbComments(await pagesOf(fetch, as, `${prUrl(repo, n)}/comments?pagelen=100`, 1));
+    const [values, p, r] = await Promise.all([
+      pagesOf(fetch, as, `${prUrl(repo, n)}/comments?pagelen=100`, 1),
+      hostCall(fetch, as, 'GET', prUrl(repo, n)),
+      // A repository that can't be read counts as public: only the author's and reviewers' are trusted then.
+      hostCall(fetch, as, 'GET', repoUrl(repo)).catch(() => undefined),
+    ]);
+    const reviewers = ((p?.participants ?? []) as any[]).filter((x) => x?.role === 'REVIEWER').map((x) => x.user);
+    const ids = new Set([...bbUserIds(p?.author), ...reviewers.flatMap(bbUserIds)]);
+    return bbComments(values, { ids, everyone: r?.is_private === true });
   },
 
   async comment(repo, n, body, as, fetch) {

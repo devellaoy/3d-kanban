@@ -3,7 +3,7 @@
 
 import type { GhCheck, GhPull } from '../../shared/protocol.js';
 import { prWebUrl, type RepoRef } from '../../shared/hosting/remote.js';
-import type { HostComment, HostPrView } from './provider.js';
+import type { CommentTrust, HostComment, HostPrView } from './provider.js';
 
 const BODY_MAX = 4000;
 
@@ -92,7 +92,12 @@ export function bbPrView(repo: RepoRef, pr: any): HostPrView {
 }
 
 /** A PR's comments, without the deleted ones. */
-export function bbComments(values: unknown): HostComment[] {
+/** A Bitbucket user's ids (uuid and account id), to tell who wrote a comment. */
+export function bbUserIds(u: any): string[] {
+  return [u?.uuid, u?.account_id].filter((x): x is string => typeof x === 'string' && !!x);
+}
+
+export function bbComments(values: unknown, trust?: CommentTrust): HostComment[] {
   const vs = Array.isArray(values) ? values : [];
   return vs
     .filter((c) => c && !c.deleted)
@@ -106,6 +111,7 @@ export function bbComments(values: unknown): HostComment[] {
         ...(typeof c.links?.html?.href === 'string' ? { url: c.links.html.href } : {}),
         ...(typeof c.inline?.path === 'string' ? { path: c.inline.path } : {}),
         ...(typeof line === 'number' ? { line } : {}),
+        ...(trust ? { trusted: trust.everyone || bbUserIds(c.user).some((id) => trust.ids.has(id)) } : {}),
       };
     });
 }

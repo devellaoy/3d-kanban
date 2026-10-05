@@ -137,7 +137,14 @@ export const azureProvider: HostingProvider = {
   diff: (repo, n, as, fetch) => azureDiff(repo, n, as, fetch),
 
   async comments(repo, n, as, fetch) {
-    return commentsOfThreads(repo, n, (await hostCall(fetch, as, 'GET', pr(repo, n, '/threads')))?.value);
+    const [threads, p, project] = await Promise.all([
+      hostCall(fetch, as, 'GET', pr(repo, n, '/threads')),
+      hostCall(fetch, as, 'GET', pr(repo, n)),
+      // A project that can't be read counts as public: only the author's and reviewers' are trusted then.
+      hostCall(fetch, as, 'GET', `https://dev.azure.com/${encodeURIComponent(repo.owner)}/_apis/projects/${encodeURIComponent(repo.project ?? repo.name)}?api-version=7.1`).catch(() => undefined),
+    ]);
+    const ids = new Set<string>([p?.createdBy?.id, ...((p?.reviewers ?? []) as any[]).map((r) => r?.id)].filter((x): x is string => typeof x === 'string' && !!x));
+    return commentsOfThreads(repo, n, threads?.value, { ids, everyone: project?.visibility === 'private' });
   },
 
   async comment(repo, n, body, as, fetch) {

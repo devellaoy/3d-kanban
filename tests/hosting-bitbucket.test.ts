@@ -127,20 +127,30 @@ test('comment posts raw content and answers with its page; comments skip the del
   const { fetch, calls } = stub({
     [`${API}/pullrequests/3/comments?pagelen=100`]: {
       values: [
-        { id: 11, user: { display_name: 'Bob' }, content: { raw: 'hi' }, created_on: '2026-10-03', links: { html: { href: 'https://bitbucket.org/c/11' } } },
+        { id: 11, user: { display_name: 'Bob', uuid: '{bob}' }, content: { raw: 'hi' }, created_on: '2026-10-03', links: { html: { href: 'https://bitbucket.org/c/11' } } },
         { id: 12, deleted: true, user: { display_name: 'Bob' }, content: { raw: '' } },
-        { id: 13, user: { nickname: 'eve' }, content: { raw: 'nit' }, created_on: '2026-10-04', inline: { path: 'src/a.ts', to: 7 } },
+        { id: 13, user: { nickname: 'eve', uuid: '{eve}' }, content: { raw: 'nit' }, created_on: '2026-10-04', inline: { path: 'src/a.ts', to: 7 } },
       ],
     },
     [`${API}/pullrequests/3/comments`]: { id: 14, links: { html: { href: 'https://bitbucket.org/c/14' } } },
+    [`${API}/pullrequests/3`]: pr(3, 'OPEN', { author: { uuid: '{ann}' }, participants: [{ role: 'REVIEWER', user: { uuid: '{bob}' } }, { role: 'PARTICIPANT', user: { uuid: '{eve}' } }] }),
+    [API]: { is_private: false },
   });
   assert.equal(await bb.comment(repo, 3, 'Looks good', as, fetch), 'https://bitbucket.org/c/14');
   assert.equal(calls[0].method, 'POST');
   assert.deepEqual(calls[0].body, { content: { raw: 'Looks good' } });
   assert.deepEqual(await bb.comments(repo, 3, as, fetch), [
-    { id: '11', author: 'Bob', body: 'hi', createdAt: '2026-10-03', url: 'https://bitbucket.org/c/11' },
-    { id: '13', author: 'eve', body: 'nit', createdAt: '2026-10-04', path: 'src/a.ts', line: 7 },
-  ]);
+    { id: '11', author: 'Bob', body: 'hi', createdAt: '2026-10-03', url: 'https://bitbucket.org/c/11', trusted: true },
+    { id: '13', author: 'eve', body: 'nit', createdAt: '2026-10-04', path: 'src/a.ts', line: 7, trusted: false },
+  ], 'a public repository: a reviewer’s comment is trusted, a passer-by’s is not');
+});
+
+test('comments on a private repository are trusted from anyone (only people with access can comment); unreadable repository: public', async () => {
+  const values = { values: [{ id: 1, user: { uuid: '{eve}' }, content: { raw: 'x' }, created_on: '1' }] };
+  const priv = stub({ [`${API}/pullrequests/3/comments?pagelen=100`]: values, [`${API}/pullrequests/3`]: pr(3, 'OPEN', { participants: [] }), [API]: { is_private: true } });
+  assert.equal((await bb.comments(repo, 3, as, priv.fetch))[0].trusted, true);
+  const unknown = stub({ [`${API}/pullrequests/3/comments?pagelen=100`]: values, [`${API}/pullrequests/3`]: pr(3, 'OPEN', { participants: [] }) });
+  assert.equal((await bb.comments(repo, 3, as, unknown.fetch))[0].trusted, false);
 });
 
 test('viewPr maps the state, review and a fork; isFork agrees', async () => {

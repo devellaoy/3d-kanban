@@ -3,7 +3,7 @@
 
 import type { GhCheck, GhLabel, GhPull } from '../../shared/protocol.js';
 import { prWebUrl, type RepoRef } from '../../shared/hosting/remote.js';
-import type { HostComment, HostPrView } from './provider.js';
+import type { CommentTrust, HostComment, HostPrView } from './provider.js';
 
 /** Azure DevOps keeps a pull request's description to this many characters. */
 export const AZURE_DESCRIPTION_MAX = 4000;
@@ -195,7 +195,7 @@ export function viewOf(repo: RepoRef, p: any): HostPrView {
 }
 
 /** The people's comments in a pull request's threads (not the system's "updated the source branch" notes), oldest first. */
-export function commentsOfThreads(repo: RepoRef, n: number, threads: any[] | undefined): HostComment[] {
+export function commentsOfThreads(repo: RepoRef, n: number, threads: any[] | undefined, trust?: CommentTrust): HostComment[] {
   const out: HostComment[] = [];
   for (const t of threads ?? []) {
     if (t?.isDeleted) continue;
@@ -211,6 +211,7 @@ export function commentsOfThreads(repo: RepoRef, n: number, threads: any[] | und
         url: `${prWebUrl(repo, n)}?discussionId=${t.id}`,
         ...(ctx?.filePath ? { path: String(ctx.filePath).replace(/^\//, '') } : {}),
         ...(Number.isInteger(line) && line > 0 ? { line } : {}),
+        ...(trust ? { trusted: trust.everyone || trust.ids.has(String(c.author?.id ?? '')) } : {}),
       });
     }
   }

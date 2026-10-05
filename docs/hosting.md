@@ -96,6 +96,14 @@ reviewer's read-only one. `office-pr` asks the office through the hook server, a
 the host with the credentials of the account the worker runs as, so the token never reaches the worker.
 On a GitHub repository it says to use `gh`.
 
+**Whose review comments count.** GitHub says how each commenter stands to the repository
+(`author_association`), and Fix PRs acts only on its owners', members' and collaborators'. Azure DevOps
+and Bitbucket don't, so `office-pr view --comments` marks each comment `[trusted]` (written by the
+pull request's author or one of its reviewers, or anyone when the repository is private, a private
+Azure DevOps project, since only people with access can comment there) or `[untrusted]`, and Fix PRs
+acts only on trusted ones (the *Fix pull requests · on Azure DevOps and Bitbucket* prompt). A
+repository or project the token can't read counts as public.
+
 The kanban's prompts add a note about `office-pr` (the *Repositories on Azure DevOps and Bitbucket*
 prompt, editable) after the workspace lines, only when a repository of the task or worker is
 elsewhere. A GitHub project's prompts are unchanged.

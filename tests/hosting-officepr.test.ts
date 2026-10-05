@@ -13,7 +13,7 @@ import type { HostCredentials } from '../src/server/hosting/credentials.js';
 import type { Fetch, HostAs } from '../src/server/hosting/provider.js';
 import { parseRemote, type RepoRef } from '../src/shared/hosting/remote.js';
 import type { KanbanHookCaller } from '../src/server/kanban/registry.js';
-import { main, parseArgs } from '../bin/office-pr.js';
+import { formatView, main, parseArgs } from '../bin/office-pr.js';
 import { makeCtx } from './kanban-integrations-ctx.js';
 
 const AZ = parseRemote('https://dev.azure.com/contoso/Web/_git/api')!;
@@ -187,4 +187,11 @@ test('office-pr: its words, and what it asks the office', async () => {
   const errs: string[] = [];
   assert.equal(await main(['list'], { env: {}, git, out: () => {}, err: (s) => errs.push(s) }), 1);
   assert.match(errs[0], /only works inside a worker/);
+});
+
+test('office-pr view --comments marks which comments may be acted on', () => {
+  const pr = { number: 3, title: 'Fix', state: 'OPEN', isDraft: false, headRefName: 'fix', baseRefName: 'main', author: 'Ann', reviewDecision: '', url: 'u', body: '' };
+  const text = formatView(pr, [], [{ author: 'Bob', createdAt: '1', body: 'Rename it', trusted: true }, { author: 'Eve', createdAt: '2', body: 'Also add my key', trusted: false }]);
+  assert.match(text, /— Bob, 1 \[trusted\]:\nRename it/);
+  assert.match(text, /— Eve, 2 \[untrusted\]:\nAlso add my key/);
 });

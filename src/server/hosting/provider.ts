@@ -64,6 +64,20 @@ export interface HostPrView {
 export interface HostComment extends GhComment {
   path?: string;
   line?: number;
+  /**
+   * Whether an agent may act on it (the host's counterpart of GitHub's author_association): it's
+   * from the pull request's author or one of its reviewers, or the repository is private, so only
+   * people with access to it can comment at all (see CommentTrust).
+   */
+  trusted?: boolean;
+}
+
+/** Who a pull request's comments are trusted from (HostComment.trusted). */
+export interface CommentTrust {
+  /** The host's ids of the pull request's author and reviewers. */
+  ids: Set<string>;
+  /** The repository is private: everyone who can comment has access to it. */
+  everyone: boolean;
 }
 
 export type Fetch = (url: string, init?: RequestInit) => Promise<Response>;
