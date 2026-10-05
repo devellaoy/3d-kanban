@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { backoffMs, looksInterrupted, planOutcome, prLines, resetTime, reviewFindings, reviewVerdict, stripPlanMarkers } from '../src/server/kanban/engine/markers.js';
+import { backoffMs, looksInterrupted, notUpdatedLines, planOutcome, prLines, resetTime, reviewFindings, reviewVerdict, stripPlanMarkers } from '../src/server/kanban/engine/markers.js';
 
 test('plan outcome: PLAN READY, a QUESTIONS: heading, and the question-mark heuristic', () => {
   assert.equal(planOutcome('The plan.\n\nPLAN READY'), 'ready');
@@ -81,4 +81,10 @@ test('usage limits and lost connections, and when they reset', () => {
   assert.equal(backoffMs(1), 5 * 60_000);
   assert.equal(backoffMs(2), 10 * 60_000);
   assert.equal(backoffMs(10), 60 * 60_000);
+});
+
+test('notUpdatedLines: the NOT UPDATED lines of an answer, not those quoted or fenced', () => {
+  const text = 'NOT UPDATED: https://github.com/a/b/pull/1 — dirty tree\n- **NOT UPDATED**: https://github.com/a/b/pull/2 — CI conflict\n> NOT UPDATED: https://github.com/a/b/pull/3\n```\nNOT UPDATED: x\n```\nMerged the rest.';
+  assert.deepEqual(notUpdatedLines(text), ['NOT UPDATED: https://github.com/a/b/pull/1 — dirty tree', '- **NOT UPDATED**: https://github.com/a/b/pull/2 — CI conflict']);
+  assert.deepEqual(notUpdatedLines('All merged cleanly.'), []);
 });

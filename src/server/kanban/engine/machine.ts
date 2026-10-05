@@ -180,7 +180,14 @@ function firstRun(s: MachineState, t: MachineTask): { state: MachineState; effec
 }
 
 /** The phase and prompt of each PR action. */
-const PR_RUNS: Record<PrMode, { phase: RunPhase; prompt: PromptKind }> = { create: { phase: 'pr', prompt: 'pr.create' }, fix: { phase: 'pr-fix', prompt: 'pr.fix' }, conflicts: { phase: 'pr-conflicts', prompt: 'pr.conflicts' } };
+const PR_RUNS: Record<PrMode, { phase: RunPhase; prompt: PromptKind; verb: string }> = {
+  create: { phase: 'pr', prompt: 'pr.create', verb: 'opened' },
+  fix: { phase: 'pr-fix', prompt: 'pr.fix', verb: 'fixed' },
+  conflicts: { phase: 'pr-conflicts', prompt: 'pr.conflicts', verb: 'updated' },
+};
+
+/** The prompt of a PR phase's run; undefined for any other phase. */
+export const prPrompt = (phase: RunPhase): PromptKind | undefined => Object.values(PR_RUNS).find((r) => r.phase === phase)?.prompt;
 
 /** The prompt a run of `phase` that never started is retried with (plan and resume carry on: what the user said went with the queue). */
 function ownPrompt(phase: RunPhase, round: number | undefined, t: MachineTask): PromptKind {
@@ -191,16 +198,10 @@ function ownPrompt(phase: RunPhase, round: number | undefined, t: MachineTask): 
       return round !== undefined && round > 1 ? 'rereview' : 'review';
     case 'fix':
       return 'fix';
-    case 'pr':
-      return 'pr.create';
-    case 'pr-fix':
-      return 'pr.fix';
-    case 'pr-conflicts':
-      return 'pr.conflicts';
     case 'pr-review':
       return 'pr.review';
     default:
-      return 'continue';
+      return prPrompt(phase) ?? 'continue';
   }
 }
 
@@ -425,7 +426,7 @@ export function next(s: MachineState, e: MachineEvent, t: MachineTask, cfg: Mach
     case 'pr':
       if (busy(s)) return no('Stop it first: it is running');
       if (t.type === 'investigate' && e.mode === 'create') return no('An investigation has no changes to open pull requests for');
-      if (!prStatusOk(s.status)) return no(`Pull requests are ${e.mode === 'create' ? 'opened' : e.mode === 'fix' ? 'fixed' : 'updated'} from Waiting, Review or Done`);
+      if (!prStatusOk(s.status)) return no(`Pull requests are ${PR_RUNS[e.mode].verb} from Waiting, Review or Done`);
       return ok(running(s, PR_RUNS[e.mode].phase), { type: 'run', phase: PR_RUNS[e.mode].phase, role: 'implementer', prompt: PR_RUNS[e.mode].prompt });
   }
 }

@@ -31,10 +31,10 @@ test('canFixPrs: a task whose open PRs are all forks is refused; one own PR is e
   const prs = [{ state: 'OPEN' as const, n: 1 }, { state: 'DRAFT' as const, n: 2 }];
   const fork = (forks: Record<number, boolean | undefined>) => (p: { n: number }) => forks[p.n];
   const got = (forks: Record<number, boolean | undefined>) => canFixPrs({ status: 'review', runState: 'idle', prs }, fork(forks));
-  assert.deepEqual(got({ 1: true, 2: true }), { ok: false, reason: 'A pull request from a fork: fix it by hand' });
+  assert.deepEqual(got({ 1: true, 2: true }), { ok: false, reason: 'A pull request from a fork: handle it by hand' });
   assert.deepEqual(got({ 1: true, 2: false }), { ok: true });
   assert.deepEqual(got({ 1: true }), { ok: true }, 'the board has not listed #2 (yet)');
-  assert.deepEqual(canFixPrs({ status: 'review', runState: 'idle', prs: [{ state: 'MERGED' as const, n: 3 }, ...prs.slice(1)] }, fork({ 2: true })), { ok: false, reason: 'A pull request from a fork: fix it by hand' }, 'only open ones count');
+  assert.deepEqual(canFixPrs({ status: 'review', runState: 'idle', prs: [{ state: 'MERGED' as const, n: 3 }, ...prs.slice(1)] }, fork({ 2: true })), { ok: false, reason: 'A pull request from a fork: handle it by hand' }, 'only open ones count');
 });
 
 test('prStatusOk: the columns pull requests are opened and fixed from', () => {

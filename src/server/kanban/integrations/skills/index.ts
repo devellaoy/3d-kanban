@@ -5,6 +5,7 @@
 
 import type { KanbanContext, KanbanPlugin } from '../../registry.js';
 import type { KanbanTool, RunPhase, SkillInfo, SkillPhase, SkillSelection } from '../../../../shared/kanban/types.js';
+import { isPrPhase } from '../../../../shared/kanban/prs.js';
 import { projectRepos } from '../../projects.js';
 import { fail } from '../util.js';
 import { pluginDir, syncCodexSkills, type SyncResult } from './delivery.js';
@@ -25,7 +26,7 @@ export const ALWAYS_BUNDLED = ['office-task-refs'];
 export function skillPhase(phase: string): SkillPhase {
   const p = phase as RunPhase;
   if (p === 'plan' || p === 'review') return p;
-  if (p === 'pr' || p === 'pr-fix' || p === 'pr-conflicts') return 'pr';
+  if (isPrPhase(p)) return 'pr';
   return 'implement';
 }
 

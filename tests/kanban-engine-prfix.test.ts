@@ -31,7 +31,7 @@ test("Fix PRs: a task whose open PRs are all forks' is refused; forks and base-b
   const task = await investigated(fx);
   link(fx, task.id, 'proj', 'acme/proj', 5, 'fix/from-a-fork');
   polled(fx, 'acme/proj', 5, true);
-  assert.match(String(await fx.engine.pr(task.id, ADA, 'fix')), /from a fork: fix it by hand/);
+  assert.match(String(await fx.engine.pr(task.id, ADA, 'fix')), /from a fork: handle it by hand/);
   assert.equal(fx.repo.listRuns(task.id).filter((r) => r.phase === 'pr-fix').length, 0, 'no run was started');
 
   link(fx, task.id, 'proj', 'acme/proj', 6, 'main');

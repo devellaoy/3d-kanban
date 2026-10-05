@@ -14,7 +14,7 @@ import { projectRepos, parseRepoFloorId } from '../projects.js';
 import { grantFiles } from '../uploads.js';
 import { resolveKanbanPrompt, withContract, type KanbanContractId, type KanbanPromptId } from '../../../shared/kanban/prompts.js';
 import { closingPr, closingRef, parseGhKey } from '../../../shared/kanban/issuecard.js';
-import { openPrs } from '../../../shared/kanban/prs.js';
+import { isPrPhase, openPrs } from '../../../shared/kanban/prs.js';
 import type { KanbanPrLink, KanbanTask, KanbanTool, ProjectRepo, RunPhase, SkillPhase, TaskWorkspace } from '../../../shared/kanban/types.js';
 import type { WorkerInfo } from '../../../shared/protocol.js';
 import type { PromptKind } from './machine.js';
@@ -30,7 +30,7 @@ type Vars = Record<string, string | number>;
 export function skillPhase(phase: RunPhase): SkillPhase {
   if (phase === 'plan' || phase === 'review') return phase;
   if (phase === 'pr-review') return 'review';
-  if (phase === 'pr' || phase === 'pr-fix' || phase === 'pr-conflicts') return 'pr';
+  if (isPrPhase(phase)) return 'pr';
   return 'implement';
 }
 
@@ -276,7 +276,7 @@ export class Composer {
   contract(task: KanbanTask, phase: RunPhase): KanbanContractId | undefined {
     if (phase === 'plan') return 'plan';
     if (phase === 'review') return 'review';
-    if (phase === 'pr' || phase === 'pr-fix' || phase === 'pr-conflicts') return 'pr';
+    if (isPrPhase(phase)) return 'pr';
     if (phase === 'pr-review') return 'prReview';
     return task.type === 'investigate' ? 'investigateSafety' : 'implementSafety';
   }
@@ -342,7 +342,9 @@ export class Composer {
       case 'pr.conflicts': {
         // The launch says which of the open PRs it may work on (fixTargets); a stand-alone build lists them all.
         const prs = (x.fixPrs ?? openPrs(task)).map((pr) => `- ${pr.repo ?? pr.repoId}: ${pr.url}`);
-        return seal(this.text(kind === 'pr.fix' ? 'kanban.pr.fix' : 'kanban.pr.conflicts', p, { taskId: task.id, prs: prs.join('\n'), repos: v.repos, language: v.language, ...(kind === 'pr.conflicts' ? { instructions: v.instructions } : {}) }));
+        const id = kind === 'pr.fix' ? 'kanban.pr.fix' : 'kanban.pr.conflicts';
+        // `instructions` is only in the conflicts prompt; a prompt ignores variables it has no placeholder for.
+        return seal(this.text(id, p, { taskId: task.id, prs: prs.join('\n'), repos: v.repos, instructions: v.instructions, language: v.language }));
       }
       case 'pr.review':
         return seal(this.text('kanban.pr.review', p, { prs: x.prs ?? '', project: def.name, task: x.prTask ?? '', repos: x.prRepos ?? v.repos, language: v.language }));

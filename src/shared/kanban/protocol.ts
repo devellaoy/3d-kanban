@@ -34,6 +34,7 @@ import type {
 import { KANBAN_EFFORTS, KANBAN_TOOLS, PR_REVIEW_MAX, TASK_STATUSES, TASK_TYPES } from './types.js';
 import { Bad, KANBAN_LIMITS, MODEL_RE, PROJECT_ID_RE, bad, bool, deskId, id, isObj, list, model, nullableText, oneOf, optInt, optOneOf, optText, project, text, workerId, type Obj, type Req } from './validate.js';
 import { moveExtras } from './hold.js';
+import { PR_MODES, type PrMode } from './prs.js';
 import type { LoungeServerMsg } from './lounge.js';
 import { ISSUE_OPS_CLIENT_TYPE_LIST, parseIssueOpsMsg, type IssueOpsClientMsg, type IssueOpsServerMsg } from './issueops.js';
 
@@ -136,8 +137,8 @@ export type KanbanClientMsg =
   | Req<{ t: 'kanban.task.review'; id: number }>
   | Req<{ t: 'kanban.plan.approve'; id: number; planId?: number }>
   | Req<{ t: 'kanban.plan.requestChanges'; id: number; text: string; attachmentIds?: string[] }>
-  /** Have the agent open (create) or fix the task's pull requests. */
-  | Req<{ t: 'kanban.task.pr'; id: number; mode: 'create' | 'fix' | 'conflicts' }>
+  /** Have the agent open (create) the task's pull requests, fix them (review comments, checks) or resolve their conflicts. */
+  | Req<{ t: 'kanban.task.pr'; id: number; mode: PrMode }>
   /** Send the task's workers home, keeping the worktree for later. */
   | Req<{ t: 'kanban.task.delete'; id: number }>
   /** Admins: opens the task's folder(s) in VS Code on the office's machine; answered with kanban.ok. */
@@ -528,7 +529,7 @@ function parse(raw: unknown): KanbanClientMsg {
       return m({ t: 'kanban.plan.requestChanges', id: id(r.id), text: body, ...(ids?.length ? { attachmentIds: ids } : {}) });
     }
     case 'kanban.task.pr':
-      return m({ t: 'kanban.task.pr', id: id(r.id), mode: oneOf(r.mode, 'mode', ['create', 'fix', 'conflicts'] as const) });
+      return m({ t: 'kanban.task.pr', id: id(r.id), mode: oneOf(r.mode, 'mode', PR_MODES) });
     case 'kanban.comment.add': {
       const ids = attachmentIds(r.attachmentIds);
       const body = text(r.text, 'The comment', KANBAN_LIMITS.comment, { empty: !!ids?.length });
