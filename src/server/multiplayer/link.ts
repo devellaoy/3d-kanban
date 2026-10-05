@@ -19,12 +19,19 @@ import {
 } from '../../shared/multiplayer/wire.js';
 import { Reassembler, splitFrame } from './chunks.js';
 import type { MpConfigStore } from './config.js';
+import { githubVerifier, TokenRejected, type IdentityVerifier } from './github-user.js';
 
 export type LinkStatus = 'off' | 'connecting' | 'online' | 'error';
 
 const LOCAL_HOSTS = new Set(['localhost', '127.0.0.1', '[::1]']);
 const BACKOFF_START_MS = 1000;
 const BACKOFF_MAX_MS = 30_000;
+/** The longest pause while the relay could not check our GitHub sign-in (it is not our fault, so we keep trying). */
+const IDENTITY_BACKOFF_MAX_MS = 60_000;
+/** The least we wait after the relay could not ask GitHub, so a GitHub outage is not hammered. */
+const UNAVAILABLE_MIN_MS = 5000;
+/** A wake-up check that comes this much later than planned means the computer slept. */
+const SLEEP_SLACK_MS = 15_000;
 /** The relay pings every 30 s; a link that has heard nothing for this long is dead. */
 const SILENCE_MS = 100_000;
 
@@ -59,6 +66,14 @@ export interface LinkOptions {
   onMessage(msg: RelayToOffice): void;
   /** The link went down (or was closed): sessions riding on it are over. */
   onDown(): void;
+  /** Asks GitHub whether our token is still good, after the relay refused it. Tests inject one. */
+  verifier?: IdentityVerifier;
+  /** The clock; tests move it to pretend the computer slept. */
+  now?: () => number;
+  /** How often to look for a wake from sleep. */
+  wakeTickMs?: number;
+  /** The least pause after the relay could not ask GitHub (close 4504). */
+  unavailableMinMs?: number;
 }
 
 export class Link {
@@ -75,12 +90,18 @@ export class Link {
   private queued = new Map<string, number>();
   private timer?: NodeJS.Timeout;
   private watchdog?: NodeJS.Timeout;
+  private wakeTimer?: NodeJS.Timeout;
+  private lastTick = 0;
+  /** Bumped by connect, disconnect and stop, so a GitHub check that finishes late does nothing. */
+  private generation = 0;
+  private verifier: IdentityVerifier;
   private lastHeard = 0;
   private backoff = BACKOFF_START_MS;
   private presence: { where: MpWhere; floorKey?: string } = { where: 'home' };
 
   constructor(private o: LinkOptions) {
     this.login = o.config.get().login;
+    this.verifier = o.verifier ?? githubVerifier();
   }
 
   get online(): boolean {
@@ -108,16 +129,47 @@ export class Link {
     if (!url || !password) return this.set('off');
     this.backoff = BACKOFF_START_MS;
     this.needsIdentity = false;
+    this.startWakeTimer();
     this.open();
   }
 
   disconnect() {
     this.stop();
+    clearInterval(this.wakeTimer);
+    this.wakeTimer = undefined;
     this.players = [];
     this.set('off');
   }
 
+  private now(): number {
+    return (this.o.now ?? Date.now)();
+  }
+
+  /**
+   * Timers stop while a computer sleeps, so on wake the old socket is dead and the pause before the
+   * next try may be long. A tick that comes much later than planned means that happened: try again now.
+   */
+  private startWakeTimer() {
+    const every = this.o.wakeTickMs ?? 5000;
+    clearInterval(this.wakeTimer);
+    this.lastTick = this.now();
+    this.wakeTimer = setInterval(() => {
+      const t = this.now();
+      const slept = t - this.lastTick > every + SLEEP_SLACK_MS;
+      this.lastTick = t;
+      if (!slept || (this.status !== 'connecting' && this.status !== 'online')) return;
+      this.backoff = BACKOFF_START_MS;
+      if (this.ws) return this.ws.terminate(); // the close handler reconnects after the short pause
+      if (!this.timer) return;
+      clearTimeout(this.timer);
+      this.timer = undefined;
+      this.open();
+    }, every);
+    this.wakeTimer.unref();
+  }
+
   private stop() {
+    this.generation++;
     clearTimeout(this.timer);
     this.timer = undefined;
     clearInterval(this.watchdog);
@@ -212,19 +264,53 @@ export class Link {
 
   /** Whatever the close meant: a reason to stop and show, or a reason to try again. */
   private closed(code: number, reason: string) {
+    console.warn(`agent-office: multiplayer link closed ${code}${reason ? ` ${reason}` : ''}`);
     const stopWith = (error: string, identity = false) => {
       this.needsIdentity = identity;
       this.set('error', error);
     };
     if (code === MP_CLOSE.password) return stopWith('Wrong relay password');
-    if (code === MP_CLOSE.identity) return stopWith('The relay did not accept your GitHub sign-in: sign in again', true);
     if (code === MP_CLOSE.replaced) return stopWith('Another office signed in as the same GitHub user and took this connection');
     if (code === 1000 && !this.o.config.get().identityToken) return stopWith('Sign in to GitHub to connect', true);
-    const wait = code === MP_CLOSE.rateLimited ? BACKOFF_MAX_MS : this.backoff;
-    this.backoff = Math.min(BACKOFF_MAX_MS, this.backoff * 2);
-    this.set('connecting', reason || (this.error ?? 'The relay cannot be reached; trying again'));
+    if (code === MP_CLOSE.identity) return this.checkToken();
+    if (code === MP_CLOSE.identityUnavailable) {
+      return this.retry(Math.max(this.backoff, this.o.unavailableMinMs ?? UNAVAILABLE_MIN_MS), 'GitHub could not be reached; trying again');
+    }
+    this.retry(code === MP_CLOSE.rateLimited ? BACKOFF_MAX_MS : Math.min(this.backoff, BACKOFF_MAX_MS), reason || (this.error ?? 'The relay cannot be reached; trying again'));
+  }
+
+  /** Shows why we are waiting, grows the pause and opens again after `wait`. */
+  private retry(wait: number, why: string, cap = BACKOFF_MAX_MS) {
+    this.backoff = Math.min(cap, this.backoff * 2);
+    this.set('connecting', why);
     this.timer = setTimeout(() => this.open(), wait);
     this.timer.unref();
+  }
+
+  /**
+   * The relay refused our token. Only GitHub can say whether it really is bad (older relays also
+   * refuse when they merely could not reach GitHub), so ask it ourselves before sending the person
+   * to sign in again.
+   */
+  private checkToken() {
+    const token = this.o.config.get().identityToken;
+    if (!token) return this.signInAgain();
+    const gen = this.generation;
+    this.set('connecting', 'Checking your GitHub sign-in…');
+    this.verifier.login(token).then(
+      () => undefined,
+      (err) => {
+        if (err instanceof TokenRejected) throw err;
+      },
+    ).then(
+      () => gen === this.generation && this.retry(this.backoff, 'The relay could not check your GitHub sign-in; trying again', IDENTITY_BACKOFF_MAX_MS),
+      () => gen === this.generation && this.signInAgain(),
+    );
+  }
+
+  private signInAgain() {
+    this.needsIdentity = true;
+    this.set('error', 'The relay did not accept your GitHub sign-in: sign in again');
   }
 
   /** Sends one message. `droppable` ones are skipped while the link is backed up. Returns whether it was sent. */
