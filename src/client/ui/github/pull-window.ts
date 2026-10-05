@@ -8,6 +8,7 @@ import { officePrompt } from '../prompts';
 import { openReviewPicker } from '../../kanban/prpicker';
 import { prOwner } from '../../kanban/prowner';
 import { ghLabel, ghUrl, sameItem } from './ghrepo';
+import { hostLabel, hostOfUrl } from '../../../shared/hosting/remote';
 import { getJson, getText } from './api';
 import { openClose } from './close';
 import { commentBox } from './comment-box';
@@ -27,6 +28,9 @@ export function openPull(first: GhPull, net: Net, actions: BoardActions) {
   const itemUrl = it.url;
   // Which of the project's repositories it's in (none: the floor's own, as upstream).
   const repo = first.repo;
+  // A pull request on Azure DevOps or Bitbucket: the window reads and comments on it, and what only GitHub has (labels, merging, closing, gh's fix-up prompts) is left out.
+  const host = hostOfUrl(it.url) ?? 'github';
+  const onGitHub = host === 'github';
   const label = ghLabel(it.number, repo);
   const reviewed = new Reviewed(it.url);
   const owner = prOwner(net, () => it); // the task that owns it
@@ -46,7 +50,7 @@ export function openPull(first: GhPull, net: Net, actions: BoardActions) {
   // --- Frame
   const pill = h('span.pill');
   const title = h('h2');
-  const reload = h('button.btn', { type: 'button', title: 'Reload from GitHub' }, '🔄');
+  const reload = h('button.btn', { type: 'button', title: `Reload from ${hostLabel(host)}` }, '🔄');
   const close = h('button.btn.close', { 'aria-label': 'Close' }, '✕');
   const meta = h('div.gh-meta');
   const tabConv = h('button.gh-tab', { type: 'button', role: 'tab' });
@@ -71,7 +75,7 @@ export function openPull(first: GhPull, net: Net, actions: BoardActions) {
     meta,
     h('nav.gh-tabs', { role: 'tablist' }, tabConv, tabFiles),
     h('div.gh-body', {}, conv, filesPane),
-    h('footer', {}, h('a.grow', { href: it.url, target: '_blank', rel: 'noopener noreferrer' }, 'Open on GitHub ↗'), footBtns),
+    h('footer', {}, h('a.grow', { href: it.url, target: '_blank', rel: 'noopener noreferrer' }, `Open on ${hostLabel(host)} ↗`), footBtns),
   );
 
   const handToWorker = () => {
@@ -97,7 +101,7 @@ export function openPull(first: GhPull, net: Net, actions: BoardActions) {
       h('code', {}, it.headRefName),
       h('span.gh-pm', {}, h('span.add', {}, `+${it.additions}`), ' ', h('span.del', {}, `−${it.deletions}`)),
       ...it.labels.map(labelChip),
-      labelButton('pull', () => it, net, (labels) => ((it = { ...it, labels }), renderFrame())),
+      onGitHub ? labelButton('pull', () => it, net, (labels) => ((it = { ...it, labels }), renderFrame())) : null,
       it.reviewDecision ? h('span.gh-badge', { class: REVIEW_BADGE[it.reviewDecision]?.[1] ?? '' }, it.reviewDecision === 'REVIEW_REQUIRED' ? 'review required' : (REVIEW_BADGE[it.reviewDecision]?.[0] ?? it.reviewDecision.toLowerCase())) : null,
       ),
     );
@@ -122,17 +126,19 @@ export function openPull(first: GhPull, net: Net, actions: BoardActions) {
       h('button.btn', { type: 'button', title: 'Send a worker your own prompt about this PR', onclick: () => actions.ask(pullContext(it), `Ask about PR #${it.number}`) }, '✍️ Ask a worker…'),
       // Both reviews first ask which of the project's PRs go with it (kanban/prpicker.ts).
       isOpen ? h('button.btn', { type: 'button', onclick: () => openReviewPicker(net, it, 'review', () => actions.assign(reviewPrompt(it), `Review PR #${it.number}`)) }, '🔍 Review') : null,
-      isOpen
+      isOpen && onGitHub
         ? h('button.btn', { type: 'button', title: 'A few workers review it in the meeting room, each through its own lens, and the office posts one combined review', onclick: () => openReviewPicker(net, it, 'panel', () => actions.meeting({ pattern: 'review', pr: it.number, title: `Review of PR #${it.number}`, prompt: officePrompt('pull.panel', pullVars(it)) })) }, '🤝 Review panel…')
         : null,
-      conflicts
+      !onGitHub
+        ? null
+        : conflicts
         ? h('button.btn.primary', { type: 'button', title: 'A new worker merges the base in, resolves the conflicts, gets the checks green, then merges', onclick: handToWorker }, '✨ Fix conflicts & merge')
         : isOpen
           ? h('button.btn', { type: 'button', title: 'A worker addresses the review comments, gets the checks green, then merges', onclick: handToWorker }, '🤖 Fix comments & merge')
           : null,
       isOpen ? owner.button() : null, // 🛠️ Fix via task #N
-      isOpen ? h('button.btn', { type: 'button', title: 'Close this pull request without merging it', onclick: () => openClose('pull', it, net, loadAll) }, '🚫 Close PR…') : null,
-      isOpen ? merge : null,
+      isOpen && onGitHub ? h('button.btn', { type: 'button', title: 'Close this pull request without merging it', onclick: () => openClose('pull', it, net, loadAll) }, '🚫 Close PR…') : null,
+      isOpen && onGitHub ? merge : null,
       ),
     );
   };
