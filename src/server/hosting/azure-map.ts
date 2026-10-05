@@ -1,0 +1,156 @@
+// Azure DevOps' pull requests, statuses and threads in the office's shapes (GitHub's): pure, so
+// the tests can feed them canned answers. The calls themselves are in azure.ts.
+
+import type { GhCheck, GhLabel, GhPull } from '../../shared/protocol.js';
+import { prWebUrl, type RepoRef } from '../../shared/hosting/remote.js';
+import type { HostComment, HostPrView } from './provider.js';
+
+/** Azure DevOps keeps a pull request's description to this many characters. */
+export const AZURE_DESCRIPTION_MAX = 4000;
+
+const CUT_NOTE = '\n\n… (cut short: Azure DevOps keeps 4000 characters of a description)';
+
+/** A description Azure DevOps takes: cut short with a note when it's too long. */
+export function azureDescription(body: string): string {
+  return body.length <= AZURE_DESCRIPTION_MAX ? body : body.slice(0, AZURE_DESCRIPTION_MAX - CUT_NOTE.length) + CUT_NOTE;
+}
+
+/** A branch name without refs/heads/. */
+export function branchOf(ref: unknown): string {
+  return String(ref ?? '').replace(/^refs\/heads\//, '');
+}
+
+/** refs/heads/<branch>, unless it already is a ref. */
+export function refOf(branch: string): string {
+  return branch.startsWith('refs/') ? branch : `refs/heads/${branch}`;
+}
+
+/** active / completed / abandoned as OPEN / MERGED / CLOSED. */
+export function stateOf(status: unknown): string {
+  return status === 'completed' ? 'MERGED' : status === 'abandoned' ? 'CLOSED' : 'OPEN';
+}
+
+/** GitHub's reviewDecision from the reviewers' votes (10 approved, 5 with suggestions, -5 waiting, -10 rejected). */
+export function reviewDecisionOf(reviewers: any[] | undefined): string {
+  const r = reviewers ?? [];
+  if (r.some((x) => x?.vote === -10)) return 'CHANGES_REQUESTED';
+  if (r.some((x) => x?.vote === 10 || x?.vote === 5)) return 'APPROVED';
+  if (r.some((x) => x?.isRequired)) return 'REVIEW_REQUIRED';
+  return '';
+}
+
+/** A status' context: genre/name, or the name alone. */
+function contextOf(s: any): string {
+  const c = s?.context ?? {};
+  return c.genre ? `${c.genre}/${c.name ?? ''}` : String(c.name ?? '');
+}
+
+/** Of the statuses posted on a pull request, the newest per context (latest iteration, then latest posted). */
+export function latestStatuses(statuses: any[] | undefined): any[] {
+  const newest = new Map<string, any>();
+  const rank = (s: any) => [Number(s?.iterationId ?? 0), Date.parse(s?.creationDate ?? '') || 0, Number(s?.id ?? 0)];
+  for (const s of statuses ?? []) {
+    const key = contextOf(s);
+    const had = newest.get(key);
+    if (!had) {
+      newest.set(key, s);
+      continue;
+    }
+    const [a, b] = [rank(s), rank(had)];
+    const i = a.findIndex((v, k) => v !== b[k]);
+    if (i >= 0 && a[i] > b[i]) newest.set(key, s);
+  }
+  return [...newest.values()];
+}
+
+function checkState(state: unknown): GhCheck['state'] {
+  if (state === 'failed' || state === 'error') return 'fail';
+  if (state === 'succeeded' || state === 'partiallySucceeded') return 'pass';
+  if (state === 'notApplicable') return 'skip';
+  return 'pending';
+}
+
+/** A pull request's statuses as the PR window's checks (the newest per context). */
+export function checksOfStatuses(statuses: any[] | undefined): GhCheck[] {
+  return latestStatuses(statuses).map((s) => ({ name: contextOf(s) || 'status', state: checkState(s.state), ...(s.targetUrl ? { url: String(s.targetUrl) } : {}) }));
+}
+
+/** The statuses folded into the board card's one word. */
+export function checksSummary(statuses: any[] | undefined): GhPull['checks'] {
+  const states = checksOfStatuses(statuses).map((c) => c.state);
+  if (states.includes('fail')) return 'fail';
+  if (states.includes('pending')) return 'pending';
+  return states.includes('pass') ? 'pass' : 'none';
+}
+
+function labelsOf(raw: any[] | undefined): GhLabel[] {
+  return (raw ?? []).filter((l) => l?.name && l.active !== false).map((l) => ({ name: String(l.name), color: '#888888' }));
+}
+
+/** One of Azure DevOps' pull requests as a PR board card; `checks` is worked out separately (statuses are a call of their own). */
+export function pullOf(repo: RepoRef, p: any, checks: GhPull['checks'] = 'none'): GhPull {
+  const number = Number(p.pullRequestId);
+  return {
+    number,
+    title: String(p.title ?? ''),
+    state: stateOf(p.status),
+    isDraft: !!p.isDraft,
+    url: prWebUrl(repo, number),
+    author: String(p.createdBy?.displayName ?? ''),
+    labels: labelsOf(p.labels),
+    reviewDecision: reviewDecisionOf(p.reviewers),
+    headRefName: branchOf(p.sourceRefName),
+    ...(p.lastMergeSourceCommit?.commitId ? { headRefOid: String(p.lastMergeSourceCommit.commitId) } : {}),
+    isCrossRepository: !!p.forkSource,
+    baseRefName: branchOf(p.targetRefName),
+    createdAt: String(p.creationDate ?? ''),
+    updatedAt: String(p.closedDate ?? p.creationDate ?? ''),
+    additions: 0,
+    deletions: 0,
+    checks,
+    body: String(p.description ?? '').slice(0, AZURE_DESCRIPTION_MAX),
+    closes: [],
+    repo: repo.id,
+  };
+}
+
+/** One pull request as office-pr's `view` shows it. */
+export function viewOf(repo: RepoRef, p: any): HostPrView {
+  const number = Number(p.pullRequestId);
+  return {
+    number,
+    url: prWebUrl(repo, number),
+    title: String(p.title ?? ''),
+    body: String(p.description ?? ''),
+    state: stateOf(p.status),
+    isDraft: !!p.isDraft,
+    headRefName: branchOf(p.sourceRefName),
+    baseRefName: branchOf(p.targetRefName),
+    author: String(p.createdBy?.displayName ?? ''),
+    reviewDecision: reviewDecisionOf(p.reviewers),
+    isCrossRepository: !!p.forkSource,
+  };
+}
+
+/** The people's comments in a pull request's threads (not the system's "updated the source branch" notes), oldest first. */
+export function commentsOfThreads(repo: RepoRef, n: number, threads: any[] | undefined): HostComment[] {
+  const out: HostComment[] = [];
+  for (const t of threads ?? []) {
+    if (t?.isDeleted) continue;
+    const ctx = t.threadContext;
+    const line = Number(ctx?.rightFileStart?.line);
+    for (const c of t.comments ?? []) {
+      if (c?.commentType !== 'text' || c.isDeleted) continue;
+      out.push({
+        id: `${t.id}.${c.id}`,
+        author: String(c.author?.displayName ?? ''),
+        body: String(c.content ?? ''),
+        createdAt: String(c.publishedDate ?? ''),
+        url: `${prWebUrl(repo, n)}?discussionId=${t.id}`,
+        ...(ctx?.filePath ? { path: String(ctx.filePath).replace(/^\//, '') } : {}),
+        ...(Number.isInteger(line) && line > 0 ? { line } : {}),
+      });
+    }
+  }
+  return out.sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+}
