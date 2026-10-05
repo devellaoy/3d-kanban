@@ -11,7 +11,7 @@ import { GitHub } from '../src/server/github.js';
 import { openHosting, setHostFetch } from '../src/server/hosting/index.js';
 import type { Fetch, HostAs } from '../src/server/hosting/provider.js';
 import { createPullsParts } from '../src/server/kanban/integrations/pulls/index.js';
-import { checkWorkItems, COMPLETED_EVENT } from '../src/server/kanban/integrations/hosting/workitems.js';
+import { checkWorkItems, COMPLETED_EVENT, workItemMarks, WORK_ITEM_TRIES } from '../src/server/kanban/integrations/hosting/workitems.js';
 import { Composer } from '../src/server/kanban/engine/compose.js';
 import { gitConfigText } from '../src/server/gitconfig.js';
 import { answer, parseRequest } from '../bin/office-git-credential.js';
@@ -129,14 +129,14 @@ test("a task's work item: linked to its open PR once, completed once its PR merg
     link: async (_repo: unknown, n: number, id: number) => (linked.push(`${n}->${id}`), true),
     complete: async (org: string, project: string, id: number) => (completed.push(`${org}/${project}#${id}`), 'Closed'),
   };
-  const marks = new Set<string>();
+  const marks = workItemMarks();
   const open = [{ number: 7, url: AZ_PR(7), state: 'OPEN', repo: AZ }];
   await checkWorkItems(ctx, 'web', open, marks, deps);
   await checkWorkItems(ctx, 'web', open, marks, deps);
   assert.deepEqual(linked, ['7->42'], 'once');
   const merged = [{ number: 7, url: AZ_PR(7), state: 'MERGED', repo: AZ }];
   await checkWorkItems(ctx, 'web', merged, marks, deps);
-  await checkWorkItems(ctx, 'web', merged, new Set(), deps);
+  await checkWorkItems(ctx, 'web', merged, workItemMarks(), deps);
   assert.deepEqual(completed, ['contoso/Web#42'], 'once, even after a restart (the event remembers)');
   assert.ok(ctx.repo.listEvents(t.id).some((e) => e.kind === COMPLETED_EVENT));
   assert.ok(ctx.repo.listComments(t.id).comments.some((c) => /moved work item #42 to Closed/.test(c.text)));
@@ -170,4 +170,48 @@ test("an account's git config: GitHub's credentials as before, the office's help
   assert.equal(answer(parseRequest('protocol=https\nhost=contoso.visualstudio.com\n'), ['missing', 'mine', 'office'], read), 'username=office\npassword=az-token\n');
   assert.equal(answer(parseRequest('protocol=https\nhost=github.com\n'), ['office'], read), '');
   assert.equal(answer(parseRequest('protocol=http\nhost=dev.azure.com\n'), ['office'], read), '', 'never over plain http');
+});
+
+test("a work item is changed only with the task creator's token or the office's, and a failure is tried again", async () => {
+  const ctx = azureProject();
+  const t = ctx.repo.createTask({ project: 'web', title: 'A', tool: 'claude', usePlan: false, planApproval: 'auto', useReview: false, createdBy: 't', createdByAccount: 'acc123456', ticket: 'ab:contoso/Web#42' });
+  ctx.repo.upsertPrLink(t.id, { repoId: 'web', repo: AZ, number: 7, url: AZ_PR(7), state: 'MERGED' });
+  const merged = [{ number: 7, url: AZ_PR(7), state: 'MERGED', repo: AZ }];
+  const someoneElse: HostAs = { kind: 'azure', auth: 'Basic other', key: 'other00001' };
+  let completed = 0;
+  // Neither the creator nor the office has a token; another account does.
+  const noToken = {
+    creds: () => ({ as: () => 'Set your Azure DevOps token first', anyAs: () => someoneElse }) as never,
+    fetch: () => (async () => new Response('{}')) as Fetch,
+    complete: async () => (completed++, 'Closed'),
+  };
+  await checkWorkItems(ctx, 'web', merged, workItemMarks(), noToken);
+  assert.equal(completed, 0, "another account's token is never used to write");
+  assert.ok(ctx.repo.listComments(t.id).comments.some((c) => /wasn't completed: Set your Azure DevOps token first/.test(c.text)));
+  // A host that fails (503) is asked again on the next refreshes, up to WORK_ITEM_TRIES times.
+  const mine: HostAs = { kind: 'azure', auth: 'Basic mine', key: 'acc123456' };
+  const asked: (string | undefined)[] = [];
+  let fails = 2;
+  const flaky = {
+    creds: () => ({ as: (account: string | undefined) => (asked.push(account), mine), anyAs: () => someoneElse }) as never,
+    fetch: () => (async () => new Response('{}')) as Fetch,
+    complete: async () => {
+      if (fails-- > 0) throw new Error('Azure DevOps said 503');
+      completed++;
+      return 'Closed';
+    },
+  };
+  const marks = workItemMarks();
+  for (let i = 0; i < 4; i++) await checkWorkItems(ctx, 'web', merged, marks, flaky);
+  assert.equal(completed, 1, 'the third try did it, and then it is done');
+  assert.ok(asked.every((a) => a === 'acc123456'));
+  // One that keeps failing is given up on after WORK_ITEM_TRIES, and the task hears why.
+  const other = ctx.repo.createTask({ project: 'web', title: 'B', tool: 'claude', usePlan: false, planApproval: 'auto', useReview: false, createdBy: 't', ticket: 'ab:contoso/Web#43' });
+  ctx.repo.upsertPrLink(other.id, { repoId: 'web', repo: AZ, number: 8, url: AZ_PR(8), state: 'MERGED' });
+  let tries = 0;
+  const down = { ...flaky, complete: async () => (tries++, Promise.reject(new Error('Azure DevOps said 503'))) };
+  const marks2 = workItemMarks();
+  for (let i = 0; i < WORK_ITEM_TRIES + 2; i++) await checkWorkItems(ctx, 'web', [{ number: 8, url: AZ_PR(8), state: 'MERGED', repo: AZ }], marks2, down);
+  assert.equal(tries, WORK_ITEM_TRIES);
+  assert.ok(ctx.repo.listComments(other.id).comments.some((c) => /#43 couldn't be completed: Azure DevOps said 503/.test(c.text)));
 });

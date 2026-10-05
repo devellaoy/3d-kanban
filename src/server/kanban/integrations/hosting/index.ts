@@ -6,7 +6,7 @@ import type { KanbanContext, KanbanPlugin } from '../../registry.js';
 import { floorPullsListeners, type PulledFloor } from '../pulls/board.js';
 import { hostCredentials, hostFetch } from '../../../hosting/index.js';
 import { officePrHook, type OfficePrDeps } from './officepr.js';
-import { checkWorkItems, type WorkItemDeps, type WorkItemMarks } from './workitems.js';
+import { checkWorkItems, workItemMarks, type WorkItemDeps } from './workitems.js';
 
 export interface HostingOptions {
   officePr?: OfficePrDeps;
@@ -14,7 +14,7 @@ export interface HostingOptions {
 }
 
 export function createHostingPlugin(ctx: KanbanContext, opts: HostingOptions = {}): KanbanPlugin {
-  const marks: WorkItemMarks = new Set();
+  const marks = workItemMarks();
   const deps: WorkItemDeps = { creds: hostCredentials, fetch: hostFetch, ...opts.workItems };
   const onBoard = (floor: PulledFloor) =>
     void checkWorkItems(ctx, floor.id, floor.pullsState().items, marks, deps).catch((err) => console.error('agent-office: keeping work items with their pull requests failed:', err));
@@ -26,7 +26,8 @@ export function createHostingPlugin(ctx: KanbanContext, opts: HostingOptions = {
     },
     stop() {
       floorPullsListeners.delete(onBoard);
-      marks.clear();
+      marks.done.clear();
+      marks.failed.clear();
     },
   };
 }

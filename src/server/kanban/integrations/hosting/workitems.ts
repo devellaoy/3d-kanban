@@ -4,8 +4,10 @@
 // opens one). So on every board refresh, for each task whose ticket is a work item (`ab:org/project#12`):
 // an open linked pull request gets linked to the work item if it isn't (one opened another way), and
 // once one has merged the work item is moved to its type's Completed state, if Azure didn't already.
-// Each is done once (an event on the task remembers the completion across restarts); what it did,
-// or couldn't, goes on the task as a status comment.
+// Each is written with the task creator's own Azure DevOps token, else the office's (never another
+// account's), and done once: an event on the task remembers the completion across restarts, and one
+// that failed is tried again on the next refreshes, WORK_ITEM_TRIES times in all. What it did, or
+// couldn't, goes on the task as a status comment.
 
 import type { KanbanContext } from '../../registry.js';
 import type { GhPull } from '../../../../shared/protocol.js';
@@ -25,15 +27,47 @@ export interface WorkItemDeps {
   complete?: typeof completeWorkItem;
 }
 
-/** What was done already in this run of the office, by `<taskId>:<what>`. */
-export type WorkItemMarks = Set<string>;
+/** How many times a link or a completion that failed is tried, on the board's next refreshes, before it is given up on. */
+export const WORK_ITEM_TRIES = 3;
 
-/** Whose credentials act for the task: its creator's, else the office's (or any account's). */
+/**
+ * What this run of the office did, by `<taskId>:<what>`: `done` holds the ones done, given up on,
+ * or in flight (so a refresh while one runs doesn't start it again); `failed` how often each failed.
+ */
+export interface WorkItemMarks {
+  done: Set<string>;
+  failed: Map<string, number>;
+}
+
+export function workItemMarks(): WorkItemMarks {
+  return { done: new Set(), failed: new Map() };
+}
+
+/**
+ * Whose credentials change the work item: the task's creator's own, else the office's own. Never
+ * another account's: the work item is written to, and that is theirs to do (HostCredentials.as).
+ */
 function actor(deps: WorkItemDeps, account: string | undefined): HostAs | string {
   const creds = deps.creds();
   if (!creds) return 'The office keeps no Azure DevOps credentials';
-  const as = creds.as(account, 'azure');
-  return typeof as === 'string' ? (creds.anyAs('azure') ?? as) : as;
+  return creds.as(account, 'azure');
+}
+
+/**
+ * Runs `job` for `key` unless it was done, given up on, or is running. A failure (`job` resolves to
+ * an error) leaves it to be tried again on a later refresh, up to WORK_ITEM_TRIES times; `gaveUp`
+ * hears the last error.
+ */
+function once(marks: WorkItemMarks, key: string, job: () => Promise<string | undefined>, gaveUp: (error: string) => void): Promise<void> | undefined {
+  if (marks.done.has(key)) return undefined;
+  marks.done.add(key);
+  return job().then((error) => {
+    if (!error) return void marks.failed.delete(key);
+    const tries = (marks.failed.get(key) ?? 0) + 1;
+    marks.failed.set(key, tries);
+    if (tries < WORK_ITEM_TRIES) marks.done.delete(key);
+    else gaveUp(error);
+  });
 }
 
 /** The tasks of `project` with a work item for a ticket, against the pull requests the board lists now. */
@@ -50,21 +84,23 @@ export function checkWorkItems(ctx: KanbanContext, project: string, pulls: Pick<
       .filter((x): x is typeof x & { hosted: HostedRepo } => x.hosted?.host === 'azure' && x.hosted.owner.toLowerCase() === item.org.toLowerCase());
     if (!prs.length) continue;
     const merged = prs.some((x) => (x.pull?.state ?? x.link.state) === 'MERGED');
+    const account = task.createdByAccount ?? undefined;
     if (merged) {
       const key = `${task.id}:complete`;
-      if (marks.has(key)) continue;
-      marks.add(key);
-      if (ctx.repo.listEvents(task.id).some((e) => e.kind === COMPLETED_EVENT)) continue;
-      jobs.push(complete(ctx, task.id, task.createdByAccount ?? undefined, item, deps));
+      if (marks.done.has(key)) continue;
+      if (ctx.repo.listEvents(task.id).some((e) => e.kind === COMPLETED_EVENT)) {
+        marks.done.add(key);
+        continue;
+      }
+      const job = once(marks, key, () => complete(ctx, task.id, account, item, deps), (error) => say(ctx, task.id, `Its pull request merged, but work item #${item.id} couldn't be completed: ${error}`));
+      if (job) jobs.push(job);
       continue;
     }
     for (const x of prs) {
       const state = x.pull?.state ?? x.link.state;
       if (state !== 'OPEN' && state !== 'DRAFT') continue;
-      const key = `${task.id}:link:${x.link.url}`;
-      if (marks.has(key)) continue;
-      marks.add(key);
-      jobs.push(link(ctx, task.id, task.createdByAccount ?? undefined, item, x.hosted, x.link.number, deps));
+      const job = once(marks, `${task.id}:link:${x.link.url}`, () => link(ctx, task.id, account, item, x.hosted, x.link.number, deps), (error) => say(ctx, task.id, `Couldn't link work item #${item.id} to pull request #${x.link.number}: ${error}`));
+      if (job) jobs.push(job);
     }
   }
   return Promise.all(jobs).then(() => undefined);
@@ -75,25 +111,32 @@ function say(ctx: KanbanContext, taskId: number, text: string) {
   ctx.taskChanged(taskId);
 }
 
-async function link(ctx: KanbanContext, taskId: number, account: string | undefined, item: WorkItemRef, repo: HostedRepo, n: number, deps: WorkItemDeps) {
+/** Links the work item to the pull request; resolves to an error to try again later, else nothing. No credentials: nothing to do. */
+async function link(ctx: KanbanContext, taskId: number, account: string | undefined, item: WorkItemRef, repo: HostedRepo, n: number, deps: WorkItemDeps): Promise<string | undefined> {
   const as = actor(deps, account);
-  if (typeof as === 'string') return;
+  if (typeof as === 'string') return undefined;
   try {
     const linked = await (deps.link ?? linkWorkItemToPr)(repo, n, item.id, as, deps.fetch());
     if (linked) say(ctx, taskId, `Linked work item #${item.id} to pull request #${n} on Azure DevOps (${workItemUrl(item)})`);
+    return undefined;
   } catch (err) {
-    say(ctx, taskId, `Couldn't link work item #${item.id} to pull request #${n}: ${(err as Error).message}`);
+    return (err as Error).message;
   }
 }
 
-async function complete(ctx: KanbanContext, taskId: number, account: string | undefined, item: WorkItemRef, deps: WorkItemDeps) {
+/** Completes the work item; resolves to an error to try again later, else nothing. No credentials: said once, not retried. */
+async function complete(ctx: KanbanContext, taskId: number, account: string | undefined, item: WorkItemRef, deps: WorkItemDeps): Promise<string | undefined> {
   const as = actor(deps, account);
-  if (typeof as === 'string') return say(ctx, taskId, `Its pull request merged, but work item #${item.id} wasn't completed: ${as}`);
+  if (typeof as === 'string') {
+    say(ctx, taskId, `Its pull request merged, but work item #${item.id} wasn't completed: ${as}`);
+    return undefined;
+  }
   try {
     const state = await (deps.complete ?? completeWorkItem)(item.org, item.project, item.id, as, deps.fetch());
     ctx.repo.appendEvent(taskId, COMPLETED_EVENT, { id: item.id, state });
     if (state !== 'already') say(ctx, taskId, `Its pull request merged: moved work item #${item.id} to ${state} (${workItemUrl(item)})`);
+    return undefined;
   } catch (err) {
-    say(ctx, taskId, `Its pull request merged, but work item #${item.id} couldn't be completed: ${(err as Error).message}`);
+    return (err as Error).message;
   }
 }
