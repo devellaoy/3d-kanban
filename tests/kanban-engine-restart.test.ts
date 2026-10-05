@@ -451,3 +451,54 @@ test('a pull-request review question cut off by a restart: the answer goes on in
   assert.equal(prompts(fx, /Review these pull requests/).length, 1, 'nobody was hired fresh');
   assert.ok(prompts(fx, /The house style/).length >= 1, 'the answer was delivered');
 });
+
+for (const [mode, phase, opening, reply] of [
+  ['create', 'pr', 'Open the pull requests for', 'Opened it.\nPR: https://github.com/acme/proj/pull/42'],
+  ['fix', 'pr-fix', 'Address the open review comments', 'Answered the comments.'],
+  ['conflicts', 'pr-conflicts', 'Bring the open pull requests', 'Merged the target branch.'],
+] as const) {
+  test(`a question in the ${phase} phase cut off by a restart: the answer goes on in ${phase}, with its own PR handling`, async (t) => {
+    const fx = await fixture();
+    t.after(() => fx.close());
+    fx.setRules([{ when: opening, reply: 'Which base?', ask: 'question' }, { when: 'commented on task', reply }, { when: 'nvestigat', reply: 'Found it.' }, { when: 'Implement kanban task', reply: 'Changed it.', commit: 'Work' }]);
+    const task = fx.newTask({ usePlan: false, useReview: false, ...(mode === 'create' ? {} : { type: 'investigate' as const }) });
+    assert.equal(await fx.engine.start(task.id, ADA), undefined);
+    await fx.waitTask(task.id, (x) => x.status === 'review' && x.runState === 'idle', 'the work done', 40_000);
+    if (mode !== 'create') fx.repo.upsertPrLink(task.id, { repoId: 'proj', repo: 'acme/proj', number: 5, url: 'https://github.com/acme/proj/pull/5', state: 'OPEN', branch: 'fix/the-pr-branch' });
+    assert.equal(await fx.engine.pr(task.id, ADA, mode), undefined);
+    await fx.waitTask(task.id, (x) => x.status === 'waiting' && x.waitingReason === 'agent_asking', 'the agent asking');
+    await fx.restartOffice();
+    await sleep(500);
+    assert.equal(await fx.engine.continue(task.id, ADA, 'Main'), undefined);
+    const done = await fx.waitTask(task.id, (x) => x.runState === 'idle' && x.status === 'review' && fx.repo.listRuns(x.id).some((r) => r.phase === phase && r.status === 'succeeded'), `the ${phase} run`, 60_000);
+    const runs = fx.repo.listRuns(task.id).filter((r) => r.phase !== 'implement');
+    assert.deepEqual(runs.map((r) => `${r.phase}/${r.status}`), [`${phase}/interrupted`, `${phase}/succeeded`], 'no resume or review run in between');
+    if (mode === 'create') {
+      assert.deepEqual(done.prs.map((p) => p.number), [42]);
+      assert.equal(done.flags.prRequested, true);
+    }
+  });
+}
+
+test('a manual review that asked a question when the office stopped continues as a manual review: no round, no extra re-review', async (t) => {
+  const fx = await fixture();
+  t.after(() => fx.close());
+  fx.settings.setProject('proj', { review: { tool: 'claude', rounds: 2 } });
+  fx.setRules([
+    { when: 'Implement kanban task', reply: 'Done.', commit: 'Work' },
+    { when: 'This is review round 1 of', reply: 'Fine.\n\nREVIEW: APPROVED' },
+    { when: 'You are reviewing the work', reply: 'Which standard?', ask: 'question' },
+    { when: 'commented on task', reply: 'Fine.\n\nREVIEW: APPROVED' },
+  ]);
+  const task = fx.newTask({ usePlan: false, useReview: true });
+  assert.equal(await fx.engine.start(task.id, ADA), undefined);
+  await fx.waitTask(task.id, (x) => x.status === 'review' && x.runState === 'idle', 'the automatic review done', 60_000);
+  assert.equal(await fx.engine.review(task.id, ADA), undefined);
+  await fx.waitTask(task.id, (x) => x.status === 'waiting' && x.waitingReason === 'agent_asking', 'the manual reviewer asking', 60_000);
+  assert.equal(fx.repo.listRuns(task.id).at(-1)?.round, undefined, 'a manual review has no round');
+  await fx.restartOffice();
+  await sleep(500);
+  assert.equal(await fx.engine.continue(task.id, ADA, 'The house style'), undefined);
+  await fx.waitTask(task.id, (x) => x.status === 'review' && x.runState === 'idle' && fx.repo.listRuns(x.id).filter((r) => r.phase === 'review' && r.status === 'succeeded').length === 2, 'the manual review done', 60_000);
+  assert.deepEqual(fx.repo.listRuns(task.id).filter((r) => r.phase === 'review').map((r) => `${r.round ?? '-'}/${r.verdict ?? r.status}`), ['1/approved', '-/interrupted', '-/approved']);
+});

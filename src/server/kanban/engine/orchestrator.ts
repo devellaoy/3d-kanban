@@ -1901,7 +1901,7 @@ export class Orchestrator {
       const own = c.attachmentIds.length ? this.ctx.repo.listAttachments(taskId).filter((a) => a.commentId === c.id) : [];
       if (asking?.asks === 'question' && !this.answer(asking, [c.text, this.compose.filesInline(taskId, own)].filter(Boolean).join(' '), who)) return;
       const live = this.liveOf(task.id);
-      const err = await this.apply(taskId, { type: 'comment', text: [c.text, this.compose.filesText(task.project, taskId, own)].filter(Boolean).join('\n\n'), busy: !!live || task.runState !== 'idle' }, { who, commentId });
+      const err = await this.apply(taskId, { type: 'comment', text: [c.text, this.compose.filesText(task.project, taskId, own)].filter(Boolean).join('\n\n'), busy: !!live || task.runState !== 'idle', last: this.lastRun(taskId) }, { who, commentId });
       if (err) this.note(task, `Couldn't hand the comment to the agent: ${err}`);
       if (live && task.status === 'waiting' && task.waitingReason === 'agent_asking') {
         const there = asking && asking.asks !== 'question' ? (asking.asks === 'permission' ? ASKS_PERMISSION : ASKS_UNKNOWN) : undefined;
