@@ -4,6 +4,9 @@ import path from 'node:path';
 import type { ImageResult } from './decor.js';
 import { changedImageType, type ChangedFile, type ChangeStatus, type ChangesState } from '../shared/protocol.js';
 import { checkoutRepo, repoFlag } from './ghrepo.js';
+import { hostFetch, otherHostRepo, providerOf } from './hosting/index.js';
+import type { HostAs } from './hosting/provider.js';
+import { hostLabel } from '../shared/hosting/remote.js';
 import { NOT_GIT, NO_DRIVERS, NO_FSMONITOR, SAFE_GIT } from './floor-git.js';
 
 // What a worker changed, for the Changes window at its desk: the files it touched and their diff,
@@ -316,8 +319,11 @@ export class Changes {
     });
   }
 
-  /** Pushes the branch and opens a pull request for it with `gh`; with `env`, as whoever pressed the button. */
-  async pullRequest(workerId: string, title: string, body: string, who: string, env?: Record<string, string>, repo?: string): Promise<string | undefined> {
+  /**
+   * Pushes the branch and opens a pull request for it with `gh`; with `env`, as whoever pressed the
+   * button. A repository on Azure DevOps or Bitbucket opens it with their credentials there (`host`).
+   */
+  async pullRequest(workerId: string, title: string, body: string, who: string, env?: Record<string, string>, repo?: string, host?: HostAs): Promise<string | undefined> {
     if (!title.trim()) return 'The pull request needs a title';
     return this.action(workerId, repo, 'Pushing the branch and opening a pull request…', async (t, w) => {
       const s = w.last ?? (await this.compute(w, t));
@@ -329,15 +335,27 @@ export class Changes {
       const remote = remotes.includes('origin') ? 'origin' : remotes[0];
       if (!remote) return 'This project has no git remote to push to';
       await git(['push', '-u', remote, s.branch], t.cwd, 120_000, env);
+      const hosted = otherHostRepo(t.cwd, remote);
+      if (hosted) {
+        const p = providerOf(hosted.host);
+        if (typeof p === 'string') return p;
+        if (host?.kind !== hosted.host) return `Opening it on ${hostLabel(hosted.host)} needs your token there (☰ → 🔐 Your sign-ins)`;
+        const pr = await p.createPr(hosted, { head: s.branch, base: s.prBase, title: title.trim(), body }, host, hostFetch());
+        return this.prOpened(t, repo, s.branch, pr, who);
+      }
       const r = await run('gh', ['pr', 'create', ...repoFlag(checkoutRepo(t.cwd, remote)), '--head', s.branch, '--base', s.prBase, '--title', title.trim(), '--body', body], t.cwd, 120_000, env);
       const url = r.out.trim().split('\n').pop() ?? '';
       if (r.code !== 0 || !/^https?:\/\//.test(url)) throw new GitError(reason(r, url || 'gh pr create failed'));
       const number = Number(/\/(\d+)$/.exec(url)?.[1] ?? 0);
-      this.opened.set(openedKey(repo, s.branch), { number, url });
-      this.events.toast(`${who} opened a pull request for ${t.name}: ${url}`, 'info');
-      (t.refreshGitHub ?? this.events.refreshGitHub)();
-      return undefined;
+      return this.prOpened(t, repo, s.branch, { number, url }, who);
     });
+  }
+
+  private prOpened(t: ChangesTarget, repo: string | undefined, branch: string, pr: { number: number; url: string }, who: string): undefined {
+    this.opened.set(openedKey(repo, branch), pr);
+    this.events.toast(`${who} opened a pull request for ${t.name}: ${pr.url}`, 'info');
+    (t.refreshGitHub ?? this.events.refreshGitHub)();
+    return undefined;
   }
 
   // ---------------------------------------------------------------------------

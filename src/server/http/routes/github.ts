@@ -3,6 +3,16 @@ import { send } from '../util.js';
 import type { Route } from '../router.js';
 import { ghRepoOf, notInProject } from '../../kanban/office.js';
 import { floorParam } from './files.js';
+import { hostCredentials } from '../../hosting/index.js';
+import type { HostAs } from '../../hosting/provider.js';
+import type { OtherHost } from '../../../shared/hosting/remote.js';
+
+/** For a repository elsewhere (Azure DevOps, Bitbucket), the asker's credentials there, when they have any. */
+function hostedAs(board: { hosted?: { host: OtherHost } }, account?: string): HostAs | undefined {
+  const kind = board.hosted?.host;
+  const as = kind ? hostCredentials()?.as(account, kind) : undefined;
+  return typeof as === 'string' ? undefined : as;
+}
 
 export const githubRoutes = {
   github: {
@@ -23,7 +33,7 @@ export const githubRoutes = {
       try {
         // "You" on comments is your own GitHub login once you've signed in to it.
         const me = session.account ? ctx.signins.githubLogin(session.account.id) : undefined;
-        if (p === '/api/gh/pull') return send(res, 200, await github.pullDetail(n, me));
+        if (p === '/api/gh/pull') return send(res, 200, await github.pullDetail(n, me, hostedAs(github, session.account?.id)));
         if (p === '/api/gh/issue') return send(res, 200, await github.issueDetail(n, me));
         if (p === '/api/gh/labels') return send(res, 200, await github.repoLabels());
         if (p === '/api/gh/pull/diff') {

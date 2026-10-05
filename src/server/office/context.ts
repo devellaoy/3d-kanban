@@ -3,6 +3,8 @@
 // time, in the order the office has always started up in (see each stage's interface), so a part
 // only ever uses what was already there when it was made.
 import type { Config } from '../config.js';
+import type { OtherHost } from '../../shared/hosting/remote.js';
+import type { HostAs } from '../hosting/provider.js';
 import type { Auth } from '../auth.js';
 import type { Accounts } from '../accounts.js';
 import type { SignIns, GhAs } from '../signins.js';
@@ -190,6 +192,11 @@ export interface Gates {
   withFreshBase(c: Client, floor: Floor | Floor[], go: () => void): void;
   /** Runs `go` with how the office acts on GitHub for `c`: as them, or as itself (no account, or an admin's choice). */
   withGitHub(c: Client, go: (as: GhAs | undefined) => void, refused?: (why: string) => void): void;
+  /**
+   * withGitHub for one of a floor's boards: for a repository on another host (Azure DevOps,
+   * Bitbucket), `go` gets `c`'s credentials there instead (`host`), or they hear what to set.
+   */
+  withRepoHost(c: Client, board: { hosted?: { host: OtherHost } }, go: (as: GhAs | undefined, host?: HostAs) => void, refused?: (why: string) => void): void;
   /** Needs a Claude sign-in of its own when the worker it starts runs Claude. */
   claudeFor(provider: string | undefined): SignInKind | undefined;
 }

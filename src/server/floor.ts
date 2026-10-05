@@ -31,7 +31,7 @@ import type { Capacity } from './machine.js';
 import type { PromptSource } from './prompts.js';
 // The PR board covers every repository of the project (see pullsState).
 import { parseRepoFloorId, projectRepos, uniqueRepos } from './kanban/projects.js';
-import { checkoutRepo } from './ghrepo.js';
+import { checkoutRemote, checkoutRepo } from './ghrepo.js';
 import { ghIssueKey } from './kanban/integrations/issues/github-repo.js';
 // The kanban hears when the PR board has fresh lists (its tasks' linked PRs' states).
 import { floorPulled } from './kanban/integrations/pulls/board.js';
@@ -288,8 +288,8 @@ export class Floor {
         toast: (text, level) => ctx.toast(this, text, level),
         hiringPaused: () => ctx.ledger.hiringPaused,
         postReview: (pr, file, owner) => {
-          const as = ctx.ghAs(owner);
-          return typeof as === 'string' ? Promise.reject(new Error(as)) : this.github.review(pr, file, as);
+          const as = this.github.hosted ? undefined : ctx.ghAs(owner); // a repository elsewhere posts with its host's credentials (GitHub.review)
+          return typeof as === 'string' ? Promise.reject(new Error(as)) : this.github.review(pr, file, as, owner);
         },
         prompt: (id) => prompts.text(id),
       },
@@ -422,14 +422,14 @@ export class Floor {
       fetchedAt: Math.max(own.fetchedAt, ...states.map((b) => b.pulls.fetchedAt)),
       loading: own.loading || states.some((b) => b.pulls.loading),
       // The floor's own board lists the repository GitHub.target names (FloorDef.repo, else the origin); the others are projectRepos'.
-      repos: uniqueRepos([this.def.repo ?? (this.git ? checkoutRepo(this.dir) : undefined), ...projectRepos(this.def).filter((r) => !r.primary).map((r) => r.remote)]),
+      repos: uniqueRepos([this.def.repo ?? (this.git ? checkoutRemote(this.dir) : undefined), ...projectRepos(this.def).filter((r) => !r.primary).map((r) => r.remote)]),
       ...(errors.length ? { error: errors.join(' · ') } : {}),
     };
   }
 
   /** The GitHub of one of the project's repositories, by owner/name: the floor's own for none (or its own name). */
   githubFor(repo?: string): GitHub | undefined {
-    if (!repo || sameRepo(repo, this.def.repo)) return this.github;
+    if (!repo || sameRepo(repo, this.def.repo) || sameRepo(repo, this.github.hosted?.id)) return this.github;
     for (const b of this.boards.values()) if (sameRepo(b.remote, repo)) return b.board;
     return undefined;
   }

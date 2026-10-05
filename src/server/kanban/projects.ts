@@ -13,11 +13,13 @@ import path from 'node:path';
 import type { FloorDef } from '../building.js';
 import type { RepoSource } from '../workers.js';
 import { MAX_REPOS } from '../workers.js';
-import { normalizeRepo, sameRepo } from '../../shared/floors.js';
+import { sameRepo } from '../../shared/floors.js';
 import type { KanbanProjectInfo, KanbanSettings, ProjectRepo } from '../../shared/kanban/types.js';
 import { REPO_ID_RE, type ProjectRepoInput } from '../../shared/kanban/protocol.js';
 import { repoFloorId } from '../../shared/kanban/repofloor.js';
-import { checkoutRepo } from '../ghrepo.js';
+import { checkoutRemote } from '../ghrepo.js';
+import { normalizeRemote } from '../../shared/hosting/remote.js';
+import { otherHostRepo, serverHosts } from '../hosting/index.js';
 import { BRANCH_RE } from './repos-file.js';
 
 export { loadRepos } from './repos-file.js';
@@ -54,8 +56,9 @@ function projectReposResolved(def: FloorDef): ProjectRepo[] {
   const saved = projectReposSaved(def);
   const taken = saved.map((r) => r.remote).filter((r): r is string => !!r);
   return saved.map((r) => {
-    if (r.primary || r.kind !== 'git' || r.remote) return r;
-    const found = checkoutRepo(r.dir);
+    if (r.kind !== 'git' || r.remote) return r;
+    // The primary's GitHub repository is the floor's own (FloorDef.repo); one elsewhere is read from its checkout like the others.
+    const found = r.primary ? otherHostRepo(r.dir)?.id : checkoutRemote(r.dir);
     if (!found || taken.some((t) => sameRepo(t, found))) return r;
     taken.push(found);
     return { ...r, detectedRemote: found };
@@ -119,8 +122,8 @@ export function validateProjectRepos(def: FloorDef, input: ProjectRepoInput[]): 
     const git = isGit(dir);
     const kind = r.kind ?? (git ? 'git' : 'folder');
     if (kind === 'git' && !git) return `${name}: ${dir} isn't a git checkout (pick “folder” for a plain folder)`;
-    const remote = r.remote === undefined || r.remote === '' ? undefined : normalizeRepo(r.remote);
-    if (r.remote && !remote) return `${name}: the GitHub repository is owner/name`;
+    const remote = r.remote === undefined || r.remote === '' ? undefined : normalizeRemote(r.remote, serverHosts());
+    if (r.remote && !remote) return `${name}: the repository is owner/name on GitHub, or its Azure DevOps or Bitbucket URL`;
     if (r.primary && def.repo && remote && !sameRepo(remote, def.repo)) return `The floor's own repository is ${def.repo}; add another repository instead, or re-add the floor`;
     if (r.baseBranch !== undefined && r.baseBranch !== '' && !BRANCH_RE.test(r.baseBranch)) return `${name}: that isn't a branch name`;
     out.push({

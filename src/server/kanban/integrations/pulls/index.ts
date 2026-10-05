@@ -11,8 +11,10 @@ import { canFixPrs } from '../../../../shared/kanban/prs.js';
 import { PR_REVIEW_MAX } from '../../../../shared/kanban/types.js';
 import type { AgentEffort, GhPull, MeetingRequest } from '../../../../shared/protocol.js';
 import { sameRepo } from '../../../../shared/floors.js';
+import { prWebUrl, repoRefOf } from '../../../../shared/hosting/remote.js';
 import { resolveKanbanPrompt, withContract } from '../../../../shared/kanban/prompts.js';
 import { gh } from '../../../github.js';
+import { hostedDefaultBranch, hostedIsFork, hostedPulls, hostedRepoOf } from '../../../hosting/board.js';
 import { floorPullsListeners, type PulledFloor } from './board.js';
 import type { GhRunner } from '../issues/source.js';
 import { fail, ok } from '../util.js';
@@ -57,6 +59,9 @@ export function createPullsParts(ctx: KanbanContext, opts: PullsOptions = {}) {
   const listPulls = async (project: string, r: ProjectRepo & { remote: string }): Promise<RepoPulls> => {
     const board = ctx.floor(project)?.githubFor(r.remote);
     if (board && board.pulls.fetchedAt > 0 && !board.pulls.error) return { repo: r.remote, repoId: r.id, pulls: board.pulls.items };
+    // A repository on Azure DevOps or Bitbucket: its provider, as the board would ask.
+    const hosted = hostedRepoOf(r.remote);
+    if (hosted) return { repo: r.remote, repoId: r.id, pulls: await hostedPulls(hosted) };
     const out = await runGh(['pr', 'list', '-R', r.remote, '--state', 'all', '--limit', '100', '--json', FIELDS], ctx.dataDir);
     const raw = JSON.parse(out || '[]') as GhPull[];
     return { repo: r.remote, repoId: r.id, pulls: Array.isArray(raw) ? raw.filter((p) => Number.isSafeInteger(p?.number)) : [] };
@@ -66,7 +71,7 @@ export function createPullsParts(ctx: KanbanContext, opts: PullsOptions = {}) {
   const bundleItems = async (project: string, by: BundleBy, includeClosed = false): Promise<KanbanPrBundleItem[] | string> => {
     if (!ctx.project(project)) return `There's no project ${project}`;
     const repos = githubRepos(ctx, project);
-    if (!repos.length) return 'None of the project’s repositories has a GitHub remote';
+    if (!repos.length) return 'None of the project’s repositories has a remote on GitHub, Azure DevOps or Bitbucket';
     let task: Parameters<typeof findBundle>[2];
     if (by.taskId !== undefined) {
       const t = ctx.repo.getTask(by.taskId);
@@ -107,6 +112,7 @@ export function createPullsParts(ctx: KanbanContext, opts: PullsOptions = {}) {
       seen.add(key);
       if (!lists.has(r.id)) lists.set(r.id, await listPulls(req.project, r).catch(() => undefined));
       let found = lists.get(r.id)?.pulls.find((p) => p.number === pr.number);
+      if (!found && hostedRepoOf(r.remote)) return `${r.remote} has no pull request #${pr.number}`;
       if (!found) {
         try {
           found = JSON.parse(await runGh(['pr', 'view', String(pr.number), '-R', r.remote, '--json', FIELDS], ctx.dataDir)) as GhPull;
@@ -216,11 +222,17 @@ export function createPullsParts(ctx: KanbanContext, opts: PullsOptions = {}) {
   /** Whether a PR's head is in another repository (a fork); that never changes. Key: owner/name#number, lower-cased. */
   const forks = asked(async (key) => {
     const at = key.lastIndexOf('#');
+    const hosted = hostedRepoOf(key.slice(0, at));
+    if (hosted) return hostedIsFork(hosted, Number(key.slice(at + 1)));
     const v = (JSON.parse(await runGh(['pr', 'view', key.slice(at + 1), '-R', key.slice(0, at), '--json', 'isCrossRepository'], ctx.dataDir)) as { isCrossRepository?: unknown }).isCrossRepository;
     return typeof v === 'boolean' ? v : undefined;
   });
   /** A repository's default branch, by gh. Key: owner/name, lower-cased. */
-  const defaultBranches = asked(async (repo) => (await runGh(['repo', 'view', repo, '--json', 'defaultBranchRef', '--jq', '.defaultBranchRef.name'], ctx.dataDir)).trim() || undefined);
+  const defaultBranches = asked(async (repo) => {
+    const hosted = hostedRepoOf(repo);
+    if (hosted) return hostedDefaultBranch(hosted);
+    return (await runGh(['repo', 'view', repo, '--json', 'defaultBranchRef', '--jq', '.defaultBranchRef.name'], ctx.dataDir)).trim() || undefined;
+  });
   /** The PRs already looked at for their issue's closing line (see checkClosing), by URL. */
   const closingChecked = new Map<string, ClosingMark>();
   let stopped = false;
@@ -290,7 +302,8 @@ export function createPullsParts(ctx: KanbanContext, opts: PullsOptions = {}) {
       },
       // Which task owns a PR (the newest not archived), for the PR window's "Fix via task #N".
       'kanban.pr.owner': (c, m) => {
-        const pr = { repo: m.repo, number: m.number, url: `https://github.com/${m.repo}/pull/${m.number}` };
+        const ref = repoRefOf(m.repo);
+        const pr = { repo: m.repo, number: m.number, url: ref ? prWebUrl(ref, m.number) : `https://github.com/${m.repo}/pull/${m.number}` };
         const owners = prOwners(ctx.repo.prLinksMatching(pr.number, pr.url), (proj, repoId) => ctx.repos(proj).find((r) => r.id === repoId)?.remote, pr);
         const tasks = owners.map((id) => ctx.repo.getTask(id)).filter((t): t is KanbanTask => !!t && t.project === m.project && t.status !== 'archived');
         const t = tasks.sort((a, b) => b.id - a.id)[0];

@@ -198,7 +198,8 @@ export const workerHandlers = {
     const w = workerOf(ctx, msg.workerId);
     if (!w) return;
     const { floor, wid } = w;
-    ctx.withGitHub(c, (as) => void floor.workers.openPr(wid, who, as).then((r) => {
+    // A repository on Azure DevOps or Bitbucket opens it with the presser's credentials there (withRepoHost).
+    ctx.withRepoHost(c, floor.github, (as, host) => void floor.workers.openPr(wid, who, as, host).then((r) => {
       if (typeof r === 'string') return ctx.warn(c, r);
       const info = floor.workers.get(wid);
       const name = info?.name ?? 'the worker';

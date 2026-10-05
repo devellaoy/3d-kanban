@@ -2,7 +2,7 @@
 // of the worker code, because building.ts imports it.
 
 import path from 'node:path';
-import { normalizeRepo } from '../../shared/floors.js';
+import { normalizeRemote } from '../../shared/hosting/remote.js';
 import type { ProjectRepo } from '../../shared/kanban/types.js';
 import { REPO_ID_RE } from '../../shared/kanban/protocol.js';
 
@@ -32,7 +32,7 @@ export function loadRepos(raw: unknown, floorId: string, floorDir: string): Proj
       name: typeof x.name === 'string' && x.name.trim() ? x.name.trim().slice(0, 100) : path.basename(x.dir),
       kind: x.kind === 'folder' ? 'folder' : 'git',
       dir: x.dir,
-      ...(normalizeRepo(x.remote) ? { remote: normalizeRepo(x.remote) } : {}),
+      ...(normalizeRemote(x.remote) ? { remote: normalizeRemote(x.remote) } : {}),
       ...(typeof x.baseBranch === 'string' && BRANCH_RE.test(x.baseBranch) ? { baseBranch: x.baseBranch } : {}),
       primary,
       ...(typeof x.instructions === 'string' && x.instructions.trim() ? { instructions: x.instructions.slice(0, 20_000) } : {}),

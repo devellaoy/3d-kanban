@@ -5,6 +5,9 @@ import type { SignInKind } from '../../shared/protocol.js';
 import type { Ctx, Gates } from './context.js';
 import type { Client } from './client.js';
 import { takeCard } from '../take-card.js';
+import { hostCredentials } from '../hosting/index.js';
+import type { OtherHost } from '../../shared/hosting/remote.js';
+import type { HostAs } from '../hosting/provider.js';
 
 /** What has to be true before something happens for someone: a sign-in of their own, a fresh base, GitHub. */
 export function gates(ctx: Ctx): Gates {
@@ -63,8 +66,17 @@ export function gates(ctx: Ctx): Gates {
       },
       refused,
     );
+  const withRepoHost = (c: Client, board: { hosted?: { host: OtherHost } }, go: (as: GhAs | undefined, host?: HostAs) => void, refused?: (why: string) => void) => {
+    const kind = board.hosted?.host;
+    if (!kind) return withGitHub(c, go, refused);
+    const host = hostCredentials()?.as(c.accountId, kind) ?? 'The office keeps no credentials yet';
+    if (typeof host !== 'string') return go(undefined, host);
+    if (refused) refused(host);
+    else ctx.warn(c, host);
+    ctx.sendTo(c, { t: 'signins.needed', which: kind, why: host });
+  };
   /** Needs a Claude sign-in of its own when the worker it starts runs Claude. */
   const claudeFor = (provider: string | undefined): SignInKind | undefined => (provider === 'claude' ? 'claude' : undefined);
 
-  return { takeIssue, withSignIn, withFreshBase, withGitHub, claudeFor };
+  return { takeIssue, withSignIn, withFreshBase, withGitHub, withRepoHost, claudeFor };
 }

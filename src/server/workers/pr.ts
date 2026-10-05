@@ -15,6 +15,9 @@ import { truncate } from './util.js';
 import { originRepo } from './worktree.js';
 import { checkoutRepo, repoFlag } from '../ghrepo.js'; // gh acts on the checkout's origin
 import { worktreeDir } from '../worktree-home.js';
+import { otherHostRepo, hostFetch, providerOf } from '../hosting/index.js';
+import type { HostAs } from '../hosting/provider.js';
+import { hostLabel } from '../../shared/hosting/remote.js';
 
 const PR_TITLE_MAX = 72;
 const PR_TASK_MAX = 2500;
@@ -22,14 +25,31 @@ const PR_TASK_MAX = 2500;
 const RELATED_START = '<!-- agent-office:related -->';
 const RELATED_END = '<!-- /agent-office:related -->';
 
-async function findOpenPr(branch: string, cwd: string): Promise<{ number: number; url: string } | undefined> {
+/**
+ * For a checkout on Azure DevOps or Bitbucket, its provider and repository, with whose credentials
+ * (`host`: the presser's, see gates.withRepoHost); undefined for one on GitHub, which gh handles.
+ */
+function hostedOf(cwd: string, host: HostAs | undefined) {
+  const repo = otherHostRepo(cwd);
+  if (!repo) return undefined;
+  const p = providerOf(repo.host);
+  if (typeof p === 'string') throw new Error(p);
+  if (!host || host.kind !== repo.host) throw new Error(`Opening a pull request on ${hostLabel(repo.host)} needs your token there (☰ → 🔐 Your sign-ins)`);
+  return { repo, p, host };
+}
+
+async function findOpenPr(branch: string, cwd: string, host?: HostAs): Promise<{ number: number; url: string } | undefined> {
+  const hosted = hostedOf(cwd, host);
+  if (hosted) return hosted.p.findOpenPr(hosted.repo, branch, hosted.host, hostFetch());
   const out = await gh(['pr', 'list', ...repoFlag(checkoutRepo(cwd)), '--head', branch, '--state', 'open', '--limit', '1', '--json', 'number,url'], cwd);
   const found = (JSON.parse(out || '[]') as { number: number; url: string }[])[0];
   return found ? { number: found.number, url: found.url } : undefined;
 }
 
 /** `gh pr create` for a pushed branch; resolves to the new pull request. */
-async function createPr(branch: string, base: string | undefined, title: string, body: string, cwd: string, as?: GhAs): Promise<{ number: number; url: string }> {
+async function createPr(branch: string, base: string | undefined, title: string, body: string, cwd: string, as?: GhAs, host?: HostAs): Promise<{ number: number; url: string }> {
+  const hosted = hostedOf(cwd, host);
+  if (hosted) return hosted.p.createPr(hosted.repo, { head: branch, ...(base ? { base } : {}), title, body }, hosted.host, hostFetch());
   const out = await gh(['pr', 'create', ...repoFlag(checkoutRepo(cwd)), '--head', branch, ...(base ? ['--base', base] : []), '--title', title, '--body', body], cwd, 60_000, as?.env);
   const url = out.trim().split('\n').pop() ?? '';
   const number = Number(/\/pull\/(\d+)/.exec(url)?.[1]);
@@ -37,7 +57,7 @@ async function createPr(branch: string, base: string | undefined, title: string,
   return { number, url };
 }
 
-/** owner/name#12 for a pull request on GitHub (which links it with its title), else its URL. */
+/** owner/name#12 for a pull request on GitHub (which links it with its title), else its URL (Azure DevOps and Bitbucket link only that). */
 function prRef(url: string): string {
   const m = /github\.com\/([^/]+\/[^/]+)\/pull\/(\d+)/.exec(url);
   return m ? `${m[1]}#${m[2]}` : url;
@@ -91,7 +111,7 @@ export class WorkerPrs {
    * press, or one opened by hand): that one is used. A worker across repositories gets one in each
    * repository it committed to (see openPrs).
    */
-  async openPr(id: string, by: string, as?: GhAs): Promise<{ prs: OpenedPr[]; failed: string[] } | string> {
+  async openPr(id: string, by: string, as?: GhAs, host?: HostAs): Promise<{ prs: OpenedPr[]; failed: string[] } | string> {
     const w = this.ctx.workers.get(id);
     if (!w) return 'No such worker';
     const { info } = w;
@@ -101,7 +121,7 @@ export class WorkerPrs {
     if (isBusy(info.status)) {
       return `${info.name} is still ${info.status === 'needs_input' ? 'waiting on input' : info.status} — wait until it's done`;
     }
-    if (info.repos?.length) return this.openPrs(w, by, as);
+    if (info.repos?.length) return this.openPrs(w, by, as, host);
     const cwd = worktreeDir(this.ctx.dir, wt.path);
     if (!existsSync(cwd)) return `${info.name}'s worktree is gone (${wt.path})`;
     info.prOpening = true;
@@ -113,7 +133,7 @@ export class WorkerPrs {
       const commits = (await run('git', ['log', '--reverse', '--format=%h %s', `${wt.base}..${branch}`], cwd)).split('\n').filter(Boolean);
       const dirty = (await run('git', ['status', '--porcelain'], cwd)) !== '';
       if (!commits.length) return dirty ? `${info.name} hasn't committed anything yet — ask it to commit first` : `${info.name} has no commits on ${branch} yet`;
-      const open = await findOpenPr(branch, cwd);
+      const open = await findOpenPr(branch, cwd, host);
       if (open) {
         info.pr = open;
         this.ctx.persist();
@@ -122,7 +142,7 @@ export class WorkerPrs {
       await run('git', ['push', '-u', 'origin', branch], cwd, 90_000, as?.env);
       const base = await this.pushedBranch([wt.from, this.ctx.trees.currentBranch()], branch);
       const { title, body } = draftPr(info, commits, by, originRepo(this.ctx.dir));
-      const { number, url } = await createPr(branch, base, title, body, cwd, as);
+      const { number, url } = await createPr(branch, base, title, body, cwd, as, host);
       info.pr = { number, url };
       this.ctx.persist();
       return { prs: [{ number, url, existed: false, dirty }], failed: [] };
@@ -141,7 +161,7 @@ export class WorkerPrs {
    * description, so they're reviewed and merged together. The issue its task came from is closed by
    * its own floor's pull request; the others only mention it.
    */
-  private async openPrs(w: Worker, by: string, as?: GhAs): Promise<{ prs: OpenedPr[]; failed: string[] } | string> {
+  private async openPrs(w: Worker, by: string, as?: GhAs, host?: HostAs): Promise<{ prs: OpenedPr[]; failed: string[] } | string> {
     const { info } = w;
     const wt = info.worktree!;
     const home = originRepo(this.ctx.dir);
@@ -161,7 +181,7 @@ export class WorkerPrs {
         const cwd = worktreeDir(this.ctx.dir, p.path);
         try {
           const dirty = (await run('git', ['status', '--porcelain'], cwd)) !== '';
-          const known = p.pr ?? (await findOpenPr(p.branch, cwd));
+          const known = p.pr ?? (await findOpenPr(p.branch, cwd, host));
           if (known) {
             p.set(known);
             prs.push({ repo: p.name, ...known, existed: true, dirty, cwd });
@@ -175,7 +195,7 @@ export class WorkerPrs {
           await run('git', ['push', '-u', 'origin', p.branch], cwd, 90_000, as?.env);
           const base = await this.pushedBranch([p.from, new Worktrees(p.dir).currentBranch()], p.branch, p.dir);
           const { title, body } = draftPr(info, commits, by, home, !p.own);
-          const pr = await createPr(p.branch, base, title, body, cwd, as);
+          const pr = await createPr(p.branch, base, title, body, cwd, as, host);
           p.set(pr);
           this.ctx.persist();
           prs.push({ repo: p.name, ...pr, existed: false, dirty, cwd });
@@ -189,6 +209,8 @@ export class WorkerPrs {
       }
       if (prs.length > 1 && prs.some((p) => !p.existed)) {
         for (const p of prs) {
+          // Elsewhere each description lists the others only once their links are known: not edited after.
+          if (otherHostRepo(p.cwd)) continue;
           try {
             const body = await gh(['pr', 'view', p.url, '--json', 'body', '--jq', '.body'], p.cwd, 30_000, as?.env);
             const next = withRelated(body, relatedBlock(prs, p.url, wt.branch));

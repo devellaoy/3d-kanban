@@ -1,6 +1,7 @@
 // The floor's GitHub boards: issues, pull requests, and what the office does to them.
 
 import type { IssueSourceKind } from '../kanban/types.js';
+import type { HostKind } from '../hosting/remote.js';
 
 /** A GitHub label; `color` is a CSS color ("#d73a4a"). */
 export interface GhLabel {
@@ -70,6 +71,10 @@ export interface GhState<T> {
   repos?: string[];
   /** The project isn't a git repository: nothing on GitHub to show or refresh (`error` says so). */
   notGit?: true;
+  /** Where the repository is when it isn't on GitHub (Azure DevOps, Bitbucket): the boards name it, and hide what only GitHub has. */
+  host?: HostKind;
+  /** Something to know that isn't an error (a host whose issues come from the issue sources). */
+  note?: string;
 }
 
 export type GhMergeMethod = 'squash' | 'merge' | 'rebase';

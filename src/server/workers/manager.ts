@@ -529,8 +529,8 @@ export class WorkerManager extends KanbanWorkers {
    * press, or one opened by hand): that one is used. A worker across repositories gets one in each
    * repository it committed to (see WorkerPrs).
    */
-  openPr(id: string, by: string, as?: GhAs): Promise<{ prs: OpenedPr[]; failed: string[] } | string> {
-    return this.prs.openPr(id, by, as);
+  openPr(id: string, by: string, as?: GhAs, host?: Parameters<WorkerPrs['openPr']>[3]): Promise<{ prs: OpenedPr[]; failed: string[] } | string> {
+    return this.prs.openPr(id, by, as, host);
   }
 
   resize(id: string, cols: number, rows: number) {

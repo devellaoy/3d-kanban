@@ -4,6 +4,8 @@
 
 import { PLAN_READY, PR_LINE, PR_URL, QUESTIONS_HEADING, REVIEW_LINE } from '../../../shared/kanban/prompts.js';
 import type { ReviewVerdict } from '../../../shared/kanban/types.js';
+import { parsePrUrl } from '../../../shared/hosting/remote.js';
+import { serverHosts } from '../../hosting/index.js';
 
 export type PlanOutcome = 'ready' | 'questions';
 
@@ -121,7 +123,7 @@ export function reviewFindings(text: string): string {
 
 export interface PrLine {
   url: string;
-  /** owner/name, for a github.com pull request URL. */
+  /** The repository as the office names it (owner/name on GitHub, azure:… or bitbucket:… elsewhere), for a pull request URL it knows. */
   repo?: string;
   number?: number;
 }
@@ -131,7 +133,10 @@ const GH_PULL = /^https?:\/\/github\.com\/([\w.-]+\/[\w.-]+)\/pull\/(\d+)/i;
 /** A PR URL as the office keeps it: a github.com one is reduced to its pull request (no /files, #..., ?...). */
 function prLine(url: string): PrLine {
   const gh = GH_PULL.exec(url);
-  return gh ? { url: `https://github.com/${gh[1]}/pull/${gh[2]}`, repo: gh[1], number: Number(gh[2]) } : { url };
+  if (gh) return { url: `https://github.com/${gh[1]}/pull/${gh[2]}`, repo: gh[1], number: Number(gh[2]) };
+  // Azure DevOps and Bitbucket: reduced to the pull request's page the same way.
+  const other = parsePrUrl(url, serverHosts());
+  return other && other.repo.host !== 'github' ? { url: other.url, repo: other.repo.id, number: other.number } : { url };
 }
 
 /** The `NOT UPDATED: <url> — why` lines of a Resolve conflicts answer (not in a code block or quote). */
