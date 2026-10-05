@@ -1757,7 +1757,9 @@ test('an office stopped again before the carried-on worker has heard its prompt 
   second.shutdown(false); // before any hook of the carried-on worker
   await new Promise((resolve) => setTimeout(resolve, 200));
   const saved = savedWorkers(f).find((x) => x.id === w.id)!;
-  assert.deepEqual([saved.midTurn, saved.cutOff], [true, 'starting']);
+  // Still booting, or already busy by what its terminal printed (that races the stop): mid-turn either way.
+  assert.equal(saved.midTurn, true);
+  assert.ok(saved.cutOff === 'starting' || saved.cutOff === 'working', `cut off as ${saved.cutOff}`);
 
   const third = manager(f, f.claude, []);
   t.after(() => third.shutdown());
