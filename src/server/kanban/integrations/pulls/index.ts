@@ -14,7 +14,7 @@ import { sameRepo } from '../../../../shared/floors.js';
 import { prWebUrl, repoRefOf } from '../../../../shared/hosting/remote.js';
 import { resolveKanbanPrompt, withContract } from '../../../../shared/kanban/prompts.js';
 import { gh } from '../../../github.js';
-import { hostedDefaultBranch, hostedIsFork, hostedPulls, hostedRepoOf } from '../../../hosting/board.js';
+import { hostedDefaultBranch, hostedIsFork, hostedPulls, hostedRepoOf, hostedView } from '../../../hosting/board.js';
 import { floorPullsListeners, type PulledFloor } from './board.js';
 import type { GhRunner } from '../issues/source.js';
 import { fail, ok } from '../util.js';
@@ -29,6 +29,8 @@ export type ReviewPr = PrRef & { title?: string; url?: string; branch?: string }
 
 export interface PullsOptions {
   gh?: GhRunner;
+  /** One pull request on Azure DevOps or Bitbucket, from its provider (tests stub it). */
+  viewHosted?: typeof hostedView;
   /** The clock, for the back-off after a failed gh question. */
   now?: () => number;
 }
@@ -53,6 +55,7 @@ const isOpen = (p: { state: string }) => p.state !== 'MERGED' && p.state !== 'CL
 
 export function createPullsParts(ctx: KanbanContext, opts: PullsOptions = {}) {
   const now = opts.now ?? Date.now;
+  const viewHosted = opts.viewHosted ?? hostedView;
   const runGh = opts.gh ?? ((args: string[], cwd: string, timeout?: number, env?: Record<string, string>) => gh(args, cwd, timeout, env));
 
   /** A repository's PRs: the open floor's board list when it has one, else straight from gh. */
@@ -112,7 +115,16 @@ export function createPullsParts(ctx: KanbanContext, opts: PullsOptions = {}) {
       seen.add(key);
       if (!lists.has(r.id)) lists.set(r.id, await listPulls(req.project, r).catch(() => undefined));
       let found = lists.get(r.id)?.pulls.find((p) => p.number === pr.number);
-      if (!found && hostedRepoOf(r.remote)) return `${r.remote} has no pull request #${pr.number}`;
+      // Not in the list (it's capped, or couldn't be read): asked for on its own, as gh is below.
+      const hosted = found ? undefined : hostedRepoOf(r.remote);
+      if (hosted) {
+        try {
+          const v = await viewHosted(hosted, pr.number);
+          found = { number: v.number, title: v.title, url: v.url, state: v.state, isDraft: v.isDraft, headRefName: v.headRefName } as GhPull;
+        } catch {
+          return `${r.remote} has no pull request #${pr.number}`;
+        }
+      }
       if (!found) {
         try {
           found = JSON.parse(await runGh(['pr', 'view', String(pr.number), '-R', r.remote, '--json', FIELDS], ctx.dataDir)) as GhPull;

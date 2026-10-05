@@ -226,3 +226,23 @@ test("a work item is changed only with the task creator's token or the office's,
   assert.equal(tries, WORK_ITEM_TRIES);
   assert.ok(ctx.repo.listComments(other.id).comments.some((c) => /#43 couldn't be completed: Azure DevOps said 503/.test(c.text)));
 });
+
+test("a review of a pull request elsewhere the list left out asks its provider for it, as gh is asked for GitHub's", async () => {
+  const ctx = azureProject();
+  // The floor's list has #5 only (it's capped, say).
+  ctx.floors.set('web', { githubFor: () => ({ pulls: { items: [{ number: 5, title: 'Listed', url: AZ_PR(5), state: 'OPEN', isDraft: false, headRefName: 'a', repo: AZ }], fetchedAt: 1, loading: false } }) } as never);
+  const viewed: number[] = [];
+  const parts = createPullsParts(ctx, {
+    gh: async () => Promise.reject(new Error('gh is not for Azure DevOps')),
+    viewHosted: async (_repo, n) => {
+      viewed.push(n);
+      if (n === 404) throw new Error("Azure DevOps can't find it (404)");
+      return { number: n, url: AZ_PR(n), title: 'Old one', body: '', state: 'OPEN', isDraft: false, headRefName: 'feat/old', baseRefName: 'main', author: 'Ada', reviewDecision: '', isCrossRepository: false };
+    },
+  });
+  const ok = await parts.checkReview({ project: 'web', prs: [{ repo: AZ, number: 5 }, { repo: AZ, number: 77 }] });
+  assert.ok(typeof ok === 'object', String(ok));
+  assert.deepEqual(ok.prs.map((p) => `${p.number}:${p.title}:${p.branch}`), ['5:Listed:a', '77:Old one:feat/old']);
+  assert.deepEqual(viewed, [77], 'only the one the list left out');
+  assert.match(String(await parts.checkReview({ project: 'web', prs: [{ repo: AZ, number: 404 }] })), /has no pull request #404/);
+});

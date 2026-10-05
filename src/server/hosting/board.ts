@@ -5,7 +5,7 @@
 import { hostLabel, repoRefOf, type OtherHost, type RepoRef } from '../../shared/hosting/remote.js';
 import type { GhPull, GhPullDetail } from '../../shared/protocol.js';
 import { hostCredentials, hostFetch, providerOf } from './index.js';
-import type { HostAs, HostingProvider } from './provider.js';
+import type { HostAs, HostingProvider, HostPrView } from './provider.js';
 
 export type HostedRepo = RepoRef & { host: OtherHost };
 
@@ -77,6 +77,11 @@ export function notOnHost(what: string, kind: OtherHost): string {
 export function hostedRepoOf(id: string | undefined): HostedRepo | undefined {
   const r = repoRefOf(id);
   return r && r.host !== 'github' ? (r as HostedRepo) : undefined;
+}
+
+/** One pull request, read with the board's credentials (one a list left out: a capped or failed list). */
+export function hostedView(repo: HostedRepo, n: number): Promise<HostPrView> {
+  return provider(repo).viewPr(repo, n, reader(repo), hostFetch());
 }
 
 /** Whether a pull request's head is a fork's, read with the board's credentials. */
