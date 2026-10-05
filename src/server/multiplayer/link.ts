@@ -192,6 +192,8 @@ export class Link {
   }
 
   private open() {
+    // A GitHub check still running for an earlier attempt must not act on this one.
+    this.generation++;
     const { url, password, identityToken } = this.o.config.get();
     this.set('connecting', this.error);
     const ws = new WebSocket(url, { maxPayload: MP_MAX_PAYLOAD, handshakeTimeout: 10_000 });
@@ -283,7 +285,11 @@ export class Link {
   private retry(wait: number, why: string, cap = BACKOFF_MAX_MS) {
     this.backoff = Math.min(cap, this.backoff * 2);
     this.set('connecting', why);
-    this.timer = setTimeout(() => this.open(), wait);
+    this.timer = setTimeout(() => {
+      // Fired: nothing is pending any more, so a wake from sleep must not open a second connection.
+      this.timer = undefined;
+      this.open();
+    }, wait);
     this.timer.unref();
   }
 

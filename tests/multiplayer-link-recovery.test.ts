@@ -112,3 +112,29 @@ test('a link waiting out a long pause reconnects at once after a wake', async ()
   clock += 3_600_000;
   await until('online', () => t.link.status === 'online', 3000);
 });
+
+test('a wake while our own GitHub check is running opens no extra connection', async () => {
+  let clock = 1_000_000;
+  let release: () => void = () => {};
+  let checking = false;
+  const slowCheck: IdentityVerifier = {
+    login: () =>
+      new Promise((resolve) => {
+        checking = true;
+        release = () => resolve('alice');
+      }),
+  };
+  // Hello 1: GitHub hiccup (4504, a retry that fires); hello 2: refused (4403, our slow check); then fine.
+  const t = await setup((n) => (n === 1 ? new Error('timeout') : n === 2 ? new TokenRejected('x') : undefined), slowCheck, { now: () => clock, wakeTickMs: 50 });
+  t.link.connect();
+  await until('checking the token', () => checking && t.hellos() === 2);
+  clock += 3_600_000;
+  await new Promise((r) => setTimeout(r, 300));
+  assert.equal(t.hellos(), 2, 'the wake did not open another connection mid-check');
+  release();
+  await until('online', () => t.link.status === 'online');
+  await new Promise((r) => setTimeout(r, 200));
+  assert.equal(t.hellos(), 3);
+  assert.equal(t.link.status, 'online');
+  assert.equal(t.seen.identity, false);
+});
