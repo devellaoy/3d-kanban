@@ -13,6 +13,8 @@ import { boardRepos, inRepo, keptRepo, tabRepos, loadRepoFilter, repoChip, openB
 // Cards from the project's issue sources (Jira, a GitHub project, other repositories), by their key.
 import { issueCardLabel, openCard, sourceChips, taskForCard } from '../kanban/issuecards';
 import { noteSeed } from '../../shared/kanban/issuecard.js';
+// The PR board's All / 👤 Mine / 👀 To review toggle beside the repository tabs.
+import { emptyNote, loadPrWho, mineTasks, minePredicate, myLogin, prFilterBar, prWhoToggle, reviewPredicate, savePrWho, type PrWho } from '../kanban/prmine';
 
 const TILTS = ['-1.2deg', '0.8deg', '-0.4deg', '1.4deg', '0deg', '-0.9deg'];
 const NOTE_COLORS = ['var(--note-yellow)', 'var(--note-pink)', 'var(--note-green)', 'var(--note-blue)', 'var(--note-peach)'];
@@ -142,7 +144,12 @@ export function openBoard(kind: 'issues' | 'pulls', net: Net, actions: BoardActi
   const repoSlot = h('span');
   // The PR board picks its repository from tabs below the header instead.
   const tabs = kind === 'pulls' ? repoTabs((r) => pickRepo(r)) : null;
-  const el = h('div.modal.board', { role: 'dialog', 'aria-label': kind === 'issues' ? 'Issues board' : 'Pull requests board' }, h('header', {}, h('h2', {}, kind === 'issues' ? '📌 Issues' : '🔀 Pull Requests'), status, repoSlot, kind === 'issues' ? browseButton(net, actions) : null, refresh, close), tabs?.el ?? null, body);
+  // Whose PRs it shows (a visitor sees everyone's), with the kanban tasks "mine" looks at, and a note when that leaves none open.
+  let who: PrWho = store.me.visitor ? 'all' : loadPrWho();
+  const whoToggle = tabs && !store.me.visitor ? prWhoToggle((w) => (w !== who && ((who = w), savePrWho(w), render()))) : null;
+  const mine = mineTasks(net, () => store.floor, () => render());
+  const empty = h('div.board-pr-empty.hidden', { role: 'status' });
+  const el = h('div.modal.board', { role: 'dialog', 'aria-label': kind === 'issues' ? 'Issues board' : 'Pull requests board' }, h('header', {}, h('h2', {}, kind === 'issues' ? '📌 Issues' : '🔀 Pull Requests'), status, repoSlot, kind === 'issues' ? browseButton(net, actions) : null, refresh, close), tabs ? prFilterBar(tabs.el, whoToggle?.el ?? h('span')) : null, tabs ? empty : null, body);
 
   const filters = loadFilters(kind);
   /** What each column's filter box holds (column key → text), for as long as the board is open. */
@@ -285,9 +292,18 @@ export function openBoard(kind: 'issues' | 'pulls', net: Net, actions: BoardActi
     // Only the picked repository's cards, each with its repository's chip.
     const repos = tabs ? tabRepos(st.items, store.pulls.repos) : boardRepos(st.items);
     const shownRepo = tabs ? keptRepo(repo, repos) : repos.includes(repo) ? repo : '';
+    // The toggle narrows the PRs before the tabs count them and the columns deal them.
+    const login = myLogin(store.signins, store.pulls.viewer);
+    const name = mine.name() || (store.me.account?.name ?? store.profile.name);
+    if (who !== 'all') mine.refresh();
+    const pulls = who === 'all' ? store.pulls.items : store.pulls.items.filter(who === 'mine' ? minePredicate({ login, name, tasks: mine.tasks(), workers: store.workers.values(), workerOf: workerForPull }) : reviewPredicate(login));
     if (tabs) {
-      const open = openByRepo(store.pulls.items);
+      const open = openByRepo(pulls);
       tabs.update(repos, shownRepo, open.counts, open.total);
+      whoToggle?.update(who, { review: login ? undefined : 'Sign in to GitHub (🔐 Your sign-ins) to see the reviews asked of you' });
+      const note = emptyNote(who, shownRepo, shownRepo ? (open.counts.get(shownRepo) ?? 0) : open.total);
+      empty.textContent = note;
+      empty.classList.toggle('hidden', !note);
     }
     else repoSlot.replaceChildren(repoFilterSelect(repos, repo, pickRepo));
     const chip = (it: GhIssue | GhPull) => (repos.length > 1 ? repoChip(it) : '');
@@ -302,7 +318,7 @@ export function openBoard(kind: 'issues' | 'pulls', net: Net, actions: BoardActi
         );
       }
     } else {
-      for (const col of pullColumns(inRepo(store.pulls.items, shownRepo))) {
+      for (const col of pullColumns(inRepo(pulls, shownRepo))) {
         body.append(
           column(col, all, (it, i) => {
             const w = workerForPull(store.workers.values(), it);
@@ -345,6 +361,7 @@ export function openBoard(kind: 'issues' | 'pulls', net: Net, actions: BoardActi
     onClose: () => {
       unsubs.forEach((u) => u());
       clearInterval(timer);
+      mine.stop();
     },
   });
   close.addEventListener('click', () => modal.close());
