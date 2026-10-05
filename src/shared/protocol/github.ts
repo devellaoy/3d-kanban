@@ -57,6 +57,8 @@ export interface GhPull {
   body: string;
   /** Issues it closes ("closes #12" in its description), as GitHub links them. */
   closes: number[];
+  /** Logins whose review is requested (teams left out), for the PR board's 👀 filter. */
+  reviewRequests?: string[];
   /** owner/name of the repository it's in, on a project with several (see Floor.pullsState). */
   repo?: string;
 }
@@ -70,6 +72,8 @@ export interface GhState<T> {
   repos?: string[];
   /** The project isn't a git repository: nothing on GitHub to show or refresh (`error` says so). */
   notGit?: true;
+  /** Who the office's own gh is signed in as (the PR board's "mine" on the shared password); missing when unknown. */
+  viewer?: string;
 }
 
 export type GhMergeMethod = 'squash' | 'merge' | 'rebase';

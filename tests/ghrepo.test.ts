@@ -59,7 +59,8 @@ test("the floor's boards and actions name the checkout's origin in every gh call
     await github.setLabels('issue', 4, ['bug'], [], undefined);
     const calls = readFileSync(log, 'utf8').split('\n').filter((l) => l.trim());
     assert.ok(calls.length >= 8, calls.join('\n'));
-    for (const c of calls) {
+    // `gh api user` (who the office's gh is, for the PR board's "mine") isn't about a repository.
+    for (const c of calls.filter((l) => !l.startsWith('api user '))) {
       assert.ok(/-R devellaoy\/3d-kanban |repos\/devellaoy\/3d-kanban\//.test(c), `not about origin: gh ${c}`);
       assert.doesNotMatch(c, /agent-office|\{owner\}/);
     }

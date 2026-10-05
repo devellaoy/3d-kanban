@@ -420,7 +420,7 @@ export class Floor {
     return {
       items: [...own.items.map((p) => (this.def.repo && !p.repo ? { ...p, repo: this.def.repo } : p)), ...states.flatMap((b) => b.pulls.items)],
       fetchedAt: Math.max(own.fetchedAt, ...states.map((b) => b.pulls.fetchedAt)),
-      loading: own.loading || states.some((b) => b.pulls.loading),
+      loading: own.loading || states.some((b) => b.pulls.loading), ...(own.viewer ? { viewer: own.viewer } : {}),
       // The floor's own board lists the repository GitHub.target names (FloorDef.repo, else the origin); the others are projectRepos'.
       repos: uniqueRepos([this.def.repo ?? (this.git ? checkoutRepo(this.dir) : undefined), ...projectRepos(this.def).filter((r) => !r.primary).map((r) => r.remote)]),
       ...(errors.length ? { error: errors.join(' · ') } : {}),
