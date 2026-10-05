@@ -27,7 +27,7 @@ import { CARRY_ON_PROMPT, WorkerTasks, firstPrompt, languageTail } from './tasks
 import { flushScreens, fullScreens, newTerm, offlineBanner, screenText, type HeadlessTerminal } from './terminal.js';
 import type { HookEnv, OpenedPr, RepoSource, RunAs, SpawnExtra, Worker, WorkerContext, WorkerEvents, WorkerHandle } from './types.js';
 import { clamp, safeEq, truncate } from './util.js';
-import { COLORS, KanbanWorkers, NAMES, kanbanExtraArgs, kanbanSetup, kanbanWorkerEnv, kanbanHireInfo, newWorker, type DepartureIntent } from './worker.js'; // KanbanWorkers and friends, via worker.js
+import { COLORS, KanbanWorkers, NAMES, kanbanExtraArgs, kanbanSetup, kanbanWorkerEnv, kanbanHireInfo, newWorker, workerHostEnv, type DepartureIntent } from './worker.js'; // KanbanWorkers and friends, via worker.js
 import { WorkerTrees, lostMessage } from './worktree.js';
 
 const SCREEN_INTERVAL_MS = 250;
@@ -674,7 +674,7 @@ export class WorkerManager extends KanbanWorkers {
       AGENT_OFFICE_HOOK_URL: this.hook.url,
       AGENT_OFFICE_HOOK_TOKEN: w.hookToken,
     });
-    Object.assign(env, plan.env, kanbanWorkerEnv(info), info.kanban && { AIKANBAN_API_BASE: this.hook.url, AIKANBAN_TASK_ID: String(info.kanban.taskId) }); // how a task's agent reaches the kanban (ai-kanban's names, so existing skills keep working)
+    Object.assign(env, plan.env, kanbanWorkerEnv(info), workerHostEnv(env, w.owner), info.kanban && { AIKANBAN_API_BASE: this.hook.url, AIKANBAN_TASK_ID: String(info.kanban.taskId) }); // how a task's agent reaches the kanban (ai-kanban's names, so existing skills keep working)
     // Whichever agent it runs, a worker reaches the office's workers with office-workers, and a board
     // agent the queue with office-queue.
     if (this.officeBin) {

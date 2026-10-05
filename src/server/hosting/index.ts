@@ -83,3 +83,15 @@ export function forgetRemotes() {
 }
 
 export type { HostKind };
+
+/**
+ * What a worker's environment (`env`, as it is so far) needs for its own pushes to Azure DevOps and
+ * Bitbucket over HTTPS: the office's credential helper with `owner`'s tokens, then the office's
+ * (HostCredentials.gitEnv), through git's environment config. Only the variables to add: it doesn't
+ * hang on how the account's GitHub sign-in is set up, nor on accounts at all. Nothing before openHosting.
+ */
+export function workerHostEnv(env: Record<string, string>, owner: string | undefined): Record<string, string> {
+  const next = creds?.gitEnv({ ...env }, owner);
+  if (!next) return {};
+  return Object.fromEntries(Object.entries(next).filter(([k, v]) => env[k] !== v));
+}

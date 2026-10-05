@@ -122,3 +122,21 @@ test("git's environment for a push elsewhere: the office's helper with the accou
   assert.equal(env.GIT_CONFIG_KEY_5, 'credential.https://bitbucket.org.helper');
   assert.ok(!creds.gitEnv({}, undefined).GIT_CONFIG_VALUE_1!.includes('homes'), "without an account, only the office's");
 });
+
+test("a worker's own pushes: the helper in its environment, with or without an account, whatever its GitHub sign-in", async () => {
+  const { workerHostEnv, openHosting } = await import('../src/server/hosting/index.js');
+  const dir = mkdtempSync(path.join(os.tmpdir(), 'hosting-worker-'));
+  openHosting(dir);
+  assert.deepEqual(workerHostEnv({ PATH: '/bin' }, 'acc123456'), {}, 'no helper installed: nothing');
+  mkdirSync(path.join(dir, 'bin'), { recursive: true });
+  writeFileSync(path.join(dir, 'bin', 'office-git-credential'), '');
+  const env = { PATH: '/bin', GIT_CONFIG_COUNT: '1', GIT_CONFIG_KEY_0: 'core.x', GIT_CONFIG_VALUE_0: 'y' };
+  const added = workerHostEnv(env, 'acc123456');
+  assert.equal(added.PATH, undefined, 'only what it adds');
+  assert.equal(added.GIT_CONFIG_KEY_0, undefined, 'what was there stays');
+  assert.equal(added.GIT_CONFIG_COUNT, '7');
+  assert.match(added.GIT_CONFIG_VALUE_2, /homes\/acc123456\/hosting\.json' '.*hosting-secrets\.json'$/);
+  const office = workerHostEnv({}, undefined);
+  assert.match(office.GIT_CONFIG_VALUE_1, /office-git-credential' '.*hosting-secrets\.json'$/, "no account (the shared password): the office's");
+  assert.ok(!office.GIT_CONFIG_VALUE_1.includes('homes'));
+});

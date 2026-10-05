@@ -53,7 +53,8 @@ Back to the [README](../README.md).
   `hosting` slice). The seams in upstream's files: `github.ts` (`GitHub.hosted` hands the boards, the PR window's detail
   and comments to `hosting/board.ts`, and GitHub-only actions say so), `ghrepo.ts` (`checkoutRemote`), `floor.ts`
   (`githubFor` and the PR board's `repos` know a hosted primary; the meeting's review posts with the host's token),
-  `workers/pr.ts`, `workers/manager.ts` and `changes.ts` (a hosted repository's PR through its provider),
+  `workers/pr.ts`, `workers/manager.ts` and `changes.ts` (a hosted repository's PR through its provider; every
+  worker's environment gets `workerHostEnv`, re-exported by `workers/worker.ts`),
   `office/gates.ts` and `office/context.ts` (`withRepoHost` for a board, `withHosts` for work on checkouts: each
   repository's own host, GitHub's sign-in only when one is on GitHub, git pushing with the office's credential helper),
   `changes.ts` (`dirOf`), `ws/handlers/{github,workers,changes}.ts` (those gates),
