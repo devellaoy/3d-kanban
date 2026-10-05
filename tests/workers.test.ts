@@ -1722,3 +1722,22 @@ test("a finished worker whose terminal didn't survive is marked restarted at the
   assert.ok(after.restartedAt(w.id)! >= stopped);
   assert.equal(after.get(w.id)?.status, 'starting');
 });
+
+test('turning carrying on off before a worker\'s turn wakes it without the prompt and records that it was dropped', async (t) => {
+  const f = carryOnFixture(t);
+  const before = manager(f, f.claude, []);
+  await before.start();
+  const w = await hireInState(f, before, 'desk-1', 'switched-off', 'working');
+  before.shutdown(false);
+  await new Promise((resolve) => setTimeout(resolve, 200));
+
+  const after = manager(f, f.claude, []);
+  t.after(() => after.shutdown());
+  await after.start();
+  assert.equal(after.carriesOn(w.id), true);
+  after.carryOn = () => false; // before its turn comes
+  const resumed = (await waitFor(() => launches(f), (x) => x.length >= 2))[1];
+  assert.equal(promptOf(resumed), undefined);
+  assert.equal(after.carryOnDropped(w.id), 'carrying on after a restart was turned off');
+  assert.equal(after.carriesOn(w.id), false);
+});

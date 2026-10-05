@@ -93,11 +93,12 @@ export class CarryOn {
     if (!w) return;
     w.carryOnPending = false;
     if (this.host.closing() || w.pty || w.dsh) return;
-    // A spent budget lets nobody start something big: they wake, and wait to be told.
-    if (this.host.hiringPaused()) {
+    // Turned off meanwhile, or a spent budget that lets nobody start something big: they wake, and wait to be told.
+    const why = !this.host.enabled() ? 'carrying on after a restart was turned off' : this.host.hiringPaused() ? 'the budget for today is spent' : undefined;
+    if (why) {
       w.interrupted = false;
       w.autoResume = false;
-      w.carryOnDropped = 'the budget for today is spent';
+      w.carryOnDropped = why;
     }
     const error = this.host.resume(id);
     // It can't start (its worktree is gone, say): there is no turn to pick up, and whoever waits for it is told.
