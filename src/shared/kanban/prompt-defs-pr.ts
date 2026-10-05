@@ -74,7 +74,7 @@ For each pull request, in the repository it belongs to:
 1. Read its head and target branches: gh pr view <url> --json headRefName,baseRefName.
 2. Make sure the worktree is on the head branch and git status is clean. Commit anything uncommitted that belongs to the work; if something else is there, stop and say so rather than sweeping it into the merge.
 3. git fetch origin, then git merge --ff-only origin/<head> to bring the head branch level with what is pushed (skip it when the head isn't on origin yet). If that can't fast-forward, stop and say so.
-4. git merge origin/<base>. If it says the branch is already up to date, leave that pull request alone.
+4. git merge origin/<base>. If it says the branch is already up to date, check git log origin/<head>..HEAD: when the head has commits origin doesn't (an earlier merge whose push failed), push them with a plain git push without merging again; only when it has none, leave that pull request alone.
 5. Resolve each conflict so both sides' intent is kept: read what the target branch changed and why, don't just pick one side. Verify the result (build and tests as the project's instructions say) and fix what the merge broke.
 6. Commit the merge and push the branch with a plain git push.
 

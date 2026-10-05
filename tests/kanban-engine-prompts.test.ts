@@ -238,6 +238,7 @@ test('kanban.pr.conflicts: merges the target branch in, never rebases or force-p
   assert.match(text, /gh pr view <url> --json headRefName,baseRefName/);
   assert.match(text, /Run npm test\./, "the project's instructions say how to verify the merge");
   assert.match(text, /NOT UPDATED: <url>/);
+  assert.match(text, /git log origin\/<head>\.\.HEAD/, 'an earlier merge whose push failed is pushed, not skipped as up to date');
   assert.ok(text.includes('pull/3') && !text.includes('pull/4'), "the listed PRs are the run's");
 });
 
