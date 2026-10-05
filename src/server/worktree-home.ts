@@ -133,7 +133,8 @@ export function ensureHome(dir: string): string {
   return home;
 }
 
-type Entry = { src: string; dest: string; dir: boolean };
+/** `alt` is what a file is copied from instead when `src` isn't there yet (Windows copies files rather than linking them). */
+type Entry = { src: string; dest: string; dir: boolean; alt?: string };
 /** What the node_modules walk asks of the file system, so the one walk serves a sync and an async caller. */
 type Ask =
   | { op: 'exists' | 'isDir' | 'list' | 'mkdir' | 'top' | 'target' | 'ignored'; path: string }
@@ -162,19 +163,26 @@ function* modules(from: string, to: string, ctx: Ctx, rel?: string): Generator<A
   if (!(yield { op: 'isDir', path: from })) return;
   yield { op: 'mkdir', path: to };
   // Where a link to `at` should point: the worktree's copy when it is a package of the repository, else `at` itself.
-  const remap = function* (at: string): Generator<Ask, { src: string; rel?: string }, unknown> {
+  const remap = function* (at: string): Generator<Ask, { src: string; rel?: string; alt?: string }, unknown> {
     const t = (yield { op: 'target', path: at }) as string | undefined;
     if (!t || !within(ctx.top, t)) return { src: at };
     const r = path.relative(ctx.top, t);
     // Installed packages (a pnpm store, an npm link) stay shared.
     if (r.split(path.sep).includes('node_modules')) return { src: at };
     const cand = path.join(ctx.root, r);
-    return (yield { op: 'exists', path: cand }) ? { src: cand, rel: r } : { src: at };
+    if (yield { op: 'exists', path: cand }) return { src: cand, rel: r };
+    // Not in the worktree: build output not made there yet (a `.bin` link into `dist/`) still goes to
+    // the worktree's copy when the package it is in is there, so building it there is what it runs.
+    // Anything else (an untracked package) stays the project's.
+    for (let p = path.dirname(r); p !== '.' && p !== path.dirname(p); p = path.dirname(p)) {
+      if (yield { op: 'exists', path: path.join(ctx.top, p, 'package.json') }) return (yield { op: 'exists', path: path.join(ctx.root, p) }) ? { src: cand, alt: at } : { src: at };
+    }
+    return { src: at };
   };
   const put = function* (at: string, dest: string): Generator<Ask, void, unknown> {
     const dir = (yield { op: 'isDir', path: at }) as boolean;
-    const { src, rel: pkgRel } = yield* remap(at);
-    yield { op: 'link', src, dest, dir };
+    const { src, rel: pkgRel, alt } = yield* remap(at);
+    yield { op: 'link', src, dest, dir, alt };
     if (pkgRel === undefined || !dir || ctx.seen.has(src)) return;
     ctx.seen.add(src);
     yield* modules(path.join(ctx.top, pkgRel, 'node_modules'), path.join(src, 'node_modules'), ctx, pkgRel);
@@ -199,10 +207,10 @@ function* modules(from: string, to: string, ctx: Ctx, rel?: string): Generator<A
   else if (!/[\x00-\x1f\x7f]/.test(rel)) excludeFromGit(ctx.root, `/${rel.split(path.sep).map(gitignoreEscape).join('/')}/node_modules/`);
 }
 
-const link = ({ src, dest, dir }: Entry): void => {
+const link = ({ src, dest, dir, alt }: Entry): void => {
   if (process.platform !== 'win32') symlinkSync(src, dest, dir ? 'dir' : 'file');
   else if (dir) symlinkSync(src, dest, 'junction');
-  else copyFileSync(src, dest);
+  else copyFileSync(alt && !exists(src) ? alt : src, dest);
 };
 const isDir = (p: string): boolean => {
   try {
@@ -288,7 +296,7 @@ export async function linkNodeModulesAsync(repo: string, worktree: string): Prom
       else if (a.op === 'link') {
         if (process.platform !== 'win32') await symlink(a.src, a.dest, a.dir ? 'dir' : 'file');
         else if (a.dir) await symlink(a.src, a.dest, 'junction');
-        else await copyFile(a.src, a.dest);
+        else await copyFile(a.alt && !(await lstat(a.src).then(() => true, () => false)) ? a.alt : a.src, a.dest);
       } else if (a.op === 'top') got = await topOf(a.path, true);
       else if (a.op === 'target') got = await lstat(a.path).then((st) => (st.isSymbolicLink() ? realpath(a.path) : undefined), () => undefined).catch(() => undefined);
       else got = await checkIgnored(a.path, true);

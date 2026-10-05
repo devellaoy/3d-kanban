@@ -484,9 +484,25 @@ test('a .bin link into a workspace package points into the worktree', (t) => {
   assert.equal(real(wt, 'node_modules', '.bin', 'ui-cli'), real(wt, 'packages', 'ui', 'cli.js'));
 });
 
+test('a .bin link into build output the worktree has not made yet runs the worktree\'s build once it is made', (t) => {
+  const { dir, put } = workspace(t, 'node_modules/\ndist/\n');
+  put('packages/ui/dist/cli.js', "process.stdout.write('main');\n");
+  mkdirSync(path.join(dir, 'node_modules', '.bin'));
+  symlinkSync('../@acme/ui/dist/cli.js', path.join(dir, 'node_modules', '.bin', 'ui-cli'));
+  const wt = made(dir, 'ws-dist');
+  const cli = path.join(wt, 'node_modules', '.bin', 'ui-cli');
+  assert.equal(readlinkSync(cli), path.join(wt, 'packages', 'ui', 'dist', 'cli.js'));
+  // Built in the worktree after the links were made.
+  mkdirSync(path.join(wt, 'packages', 'ui', 'dist'));
+  writeFileSync(path.join(wt, 'packages', 'ui', 'dist', 'cli.js'), "process.stdout.write('worktree');\n");
+  assert.equal(execFileSync(process.execPath, [cli], { encoding: 'utf8' }), 'worktree');
+  assert.equal(execFileSync(process.execPath, [path.join(dir, 'node_modules', '.bin', 'ui-cli')], { encoding: 'utf8' }), 'main');
+});
+
 test('a link to a package the worktree does not have falls back to the project\'s', (t) => {
   const { dir, put } = workspace(t);
   put('packages/local/index.js', 'local\n');
+  put('packages/local/package.json', JSON.stringify({ name: 'local' }));
   symlinkSync('../packages/local', path.join(dir, 'node_modules', 'local'));
   const wt = made(dir, 'ws-local');
   assert.equal(existsSync(path.join(wt, 'packages', 'local')), false);
