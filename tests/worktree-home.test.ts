@@ -507,6 +507,15 @@ test('a link to a package the worktree does not have falls back to the project\'
   const wt = made(dir, 'ws-local');
   assert.equal(existsSync(path.join(wt, 'packages', 'local')), false);
   assert.equal(real(wt, 'node_modules', 'local'), real(dir, 'packages', 'local'));
+  // Inside a package the worktree has: still the project's.
+  put('packages/ui/local/index.js', 'inner\n');
+  put('packages/ui/local/package.json', JSON.stringify({ name: 'inner' }));
+  symlinkSync('../packages/ui/local', path.join(dir, 'node_modules', 'inner'));
+  rmSync(path.join(wt, 'node_modules'), { recursive: true });
+  linkNodeModules(dir, wt);
+  assert.equal(existsSync(path.join(wt, 'packages', 'ui', 'local')), false);
+  assert.equal(real(wt, 'node_modules', 'inner'), real(dir, 'packages', 'ui', 'local'));
+  assert.equal(real(wt, 'node_modules', 'local'), real(dir, 'packages', 'local'));
 });
 
 test('a pnpm store link and a link out of the repository stay what they were', (t) => {

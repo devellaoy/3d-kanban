@@ -163,7 +163,7 @@ function* modules(from: string, to: string, ctx: Ctx, rel?: string): Generator<A
   if (!(yield { op: 'isDir', path: from })) return;
   yield { op: 'mkdir', path: to };
   // Where a link to `at` should point: the worktree's copy when it is a package of the repository, else `at` itself.
-  const remap = function* (at: string): Generator<Ask, { src: string; rel?: string; alt?: string }, unknown> {
+  const remap = function* (at: string, dir: boolean): Generator<Ask, { src: string; rel?: string; alt?: string }, unknown> {
     const t = (yield { op: 'target', path: at }) as string | undefined;
     if (!t || !within(ctx.top, t)) return { src: at };
     const r = path.relative(ctx.top, t);
@@ -171,9 +171,10 @@ function* modules(from: string, to: string, ctx: Ctx, rel?: string): Generator<A
     if (r.split(path.sep).includes('node_modules')) return { src: at };
     const cand = path.join(ctx.root, r);
     if (yield { op: 'exists', path: cand }) return { src: cand, rel: r };
-    // Not in the worktree: build output not made there yet (a `.bin` link into `dist/`) still goes to
-    // the worktree's copy when the package it is in is there, so building it there is what it runs.
-    // Anything else (an untracked package) stays the project's.
+    // Not in the worktree: a file of build output not made there yet (a `.bin` link into `dist/`) still
+    // goes to the worktree's copy when the package it is in is there, so building it there is what it
+    // runs. Anything else, a folder above all (an untracked package, even one inside a tracked one), stays the project's.
+    if (dir) return { src: at };
     for (let p = path.dirname(r); p !== '.' && p !== path.dirname(p); p = path.dirname(p)) {
       if (yield { op: 'exists', path: path.join(ctx.top, p, 'package.json') }) return (yield { op: 'exists', path: path.join(ctx.root, p) }) ? { src: cand, alt: at } : { src: at };
     }
@@ -181,7 +182,7 @@ function* modules(from: string, to: string, ctx: Ctx, rel?: string): Generator<A
   };
   const put = function* (at: string, dest: string): Generator<Ask, void, unknown> {
     const dir = (yield { op: 'isDir', path: at }) as boolean;
-    const { src, rel: pkgRel, alt } = yield* remap(at);
+    const { src, rel: pkgRel, alt } = yield* remap(at, dir);
     yield { op: 'link', src, dest, dir, alt };
     if (pkgRel === undefined || !dir || ctx.seen.has(src)) return;
     ctx.seen.add(src);
