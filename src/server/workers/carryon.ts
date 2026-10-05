@@ -40,7 +40,7 @@ export interface CarryOnHost {
 
 /** Whether `w` was cut off mid-turn and picks its turn up by itself (see CarryOn.carries). */
 export function carries(w: Worker, enabled: boolean): boolean {
-  return enabled && !!w.interrupted && w.info.kind === 'agent' && !!w.info.sessionId && !w.info.kanban;
+  return enabled && !!w.interrupted && !w.carryOnSent && w.info.kind === 'agent' && !!w.info.sessionId && !w.info.kanban;
 }
 
 export class CarryOn {

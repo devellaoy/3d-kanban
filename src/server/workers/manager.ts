@@ -322,7 +322,7 @@ export class WorkerManager extends KanbanWorkers {
     const first = this.tasks.restartPrompt(w, brief, prompt, this.prompts?.language?.());
     // Cut off mid-turn by a restart: it gets on with it, as whoever was watching would have told it to.
     const carryOn = !prompt && this.carry.carries(w);
-    w.interrupted = w.carryOnPending = false;
+    w.interrupted = w.carryOnSent = carryOn; w.carryOnPending = false; // a carried-on turn counts as cut off until its prompt is heard (setStatus)
     this.launch(w, carryOn ? CARRY_ON_PROMPT : first, w.info.sessionId);
     return undefined;
   }
@@ -808,7 +808,7 @@ export class WorkerManager extends KanbanWorkers {
       // ever starts. Start a fresh one rather than leave the worker asleep.
       if (adapter?.freshIfResumeFails && resumeSessionId && info.status === 'starting' && !this.closing && !this.followed.has(info.id) && !info.kanban) { // not for a task's worker, nor a run the engine follows: it starts the task's worker afresh, with the handoff, when the session is really gone
         this.events.toast(`${info.name}'s last conversation couldn't be resumed — starting a fresh one`, 'warn');
-        w.carryOnDropped = 'its last conversation couldn’t be resumed'; this.launch(w, undefined, undefined); // its turn is not picked up: the session is gone
+        w.carryOnDropped = 'its last conversation couldn’t be resumed'; w.interrupted = false; this.launch(w, undefined, undefined); // its turn is not picked up: the session is gone
         return;
       }
       info.exitCode = exitCode;
@@ -905,6 +905,7 @@ export class WorkerManager extends KanbanWorkers {
     if (w.info.status === 'needs_input') w.leftNeedsInputAt = Date.now();
     clockWork(w.info, status);
     w.info.status = status;
+    if (status === 'working') w.interrupted = w.carryOnSent = false; // the carry-on prompt, if one was sent, arrived
     // Done, idle or asleep: it's not acting anything out any more.
     if (status !== 'working' && status !== 'needs_input') w.info.action = undefined;
     // Nobody is looking at the terminal right now -> raise the flag (the worker jumps). A worker at the

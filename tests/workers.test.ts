@@ -1741,3 +1741,28 @@ test('turning carrying on off before a worker\'s turn wakes it without the promp
   assert.equal(after.carryOnDropped(w.id), 'carrying on after a restart was turned off');
   assert.equal(after.carriesOn(w.id), false);
 });
+
+test('an office stopped again before the carried-on worker has heard its prompt still carries it on the next time', async (t) => {
+  const f = carryOnFixture(t);
+  const first = manager(f, f.claude, []);
+  await first.start();
+  const w = await hireInState(f, first, 'desk-1', 'twice', 'working');
+  first.shutdown(false);
+  await new Promise((resolve) => setTimeout(resolve, 200));
+
+  const second = manager(f, f.claude, []);
+  await second.start();
+  assert.equal(promptOf((await waitFor(() => launches(f), (x) => x.length >= 2))[1]), CARRY_ON_PROMPT);
+  assert.equal(second.carriesOn(w.id), false, 'not prompted twice');
+  second.shutdown(false); // before any hook of the carried-on worker
+  await new Promise((resolve) => setTimeout(resolve, 200));
+  const saved = savedWorkers(f).find((x) => x.id === w.id)!;
+  assert.deepEqual([saved.midTurn, saved.cutOff], [true, 'starting']);
+
+  const third = manager(f, f.claude, []);
+  t.after(() => third.shutdown());
+  third.carryOnStaggerMs = 5000;
+  await third.start();
+  assert.equal(third.carriesOn(w.id), true);
+  assert.equal(promptOf((await waitFor(() => launches(f), (x) => x.length >= 3))[2]), CARRY_ON_PROMPT);
+});
