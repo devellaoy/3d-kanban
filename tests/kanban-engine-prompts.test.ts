@@ -234,12 +234,17 @@ test('kanban.pr.conflicts: merges the target branch in, never rebases or force-p
   for (const n of [3, 4]) repo.upsertPrLink(task.id, { repoId: 'proj', repo: 'acme/proj', number: n, url: `https://github.com/acme/proj/pull/${n}`, state: 'OPEN' });
   const t2 = repo.getTask(task.id)!;
   const text = compose.build('pr.conflicts', def, t2, 'claude', dir, { phase: 'pr-conflicts', fixPrs: t2.prs.slice(0, 1) });
-  assert.match(text, /git merge origin\/<base>/);
+  assert.match(text, /git merge "origin\/<base>"/);
   assert.match(text, /never force-push/);
   assert.match(text, /gh pr view <url> --json headRefName,baseRefName/);
   assert.match(text, /Run npm test\./, "the project's instructions say how to verify the merge");
   assert.match(text, /NOT UPDATED: <url>/);
-  assert.match(text, /git log origin\/<head>\.\.HEAD/, 'an earlier merge whose push failed is pushed, not skipped as up to date');
+  assert.match(text, /If git status is not clean, stop with NOT UPDATED[\s\S]*never commit anything before the merge/, 'a dirty tree stops it');
+  assert.match(text, /git switch "<head>"/);
+  assert.match(text, /character outside A-Z a-z 0-9 \. _ \/ -/, 'odd branch names are refused');
+  assert.match(text, /git log --no-merges "origin\/<head>\.\.HEAD" --not "origin\/<base>"/, 'only an earlier merge whose push failed is pushed');
+  assert.match(text, /CI or workflow files[\s\S]*stop with NOT UPDATED/, 'a CI or credentials conflict is not hand-merged');
+  assert.match(text, /secrets or credentials, or for changes to CI, workflows or credentials/);
   assert.ok(text.includes('pull/3') && !text.includes('pull/4'), "the listed PRs are the run's");
 });
 
