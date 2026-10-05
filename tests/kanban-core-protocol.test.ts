@@ -93,6 +93,8 @@ test('good messages come through rebuilt, without anything the validator did not
   assert.deepEqual(good({ t: 'kanban.comment.add', id: 1, text: '', attachmentIds: ['b'.repeat(16)] }), { t: 'kanban.comment.add', id: 1, text: '', attachmentIds: ['b'.repeat(16)] });
   assert.deepEqual(good({ t: 'kanban.plan.approve', id: 1, planId: 4 }), { t: 'kanban.plan.approve', id: 1, planId: 4 });
   assert.deepEqual(good({ t: 'kanban.task.pr', id: 1, mode: 'fix' }), { t: 'kanban.task.pr', id: 1, mode: 'fix' });
+  assert.deepEqual(good({ t: 'kanban.task.pr', id: 1, mode: 'conflicts' }), { t: 'kanban.task.pr', id: 1, mode: 'conflicts' });
+  refused({ t: 'kanban.task.pr', id: 1, mode: 'rebase' }, /mode/);
   assert.deepEqual(good({ t: 'kanban.project.prompt.set', project: 'web', id: 'kanban.pr.create', text: null }), { t: 'kanban.project.prompt.set', project: 'web', id: 'kanban.pr.create', text: null });
   assert.deepEqual(good({ t: 'kanban.secrets.set', jira: { site: 'https://acme.atlassian.net/', email: ' a@b.fi ', token: ' t ' } }), { t: 'kanban.secrets.set', jira: { site: 'acme.atlassian.net', email: 'a@b.fi', token: 't' } });
   assert.deepEqual(good({ t: 'kanban.pr.review', project: 'web', prs: [{ repo: 'acme/web', number: 1 }, { repo: 'ACME/web', number: 1 }, { repo: 'acme/api', number: 2 }] }), { t: 'kanban.pr.review', project: 'web', prs: [{ repo: 'acme/web', number: 1 }, { repo: 'acme/api', number: 2 }] });

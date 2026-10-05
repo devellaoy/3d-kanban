@@ -24,8 +24,8 @@ export const TASK_TYPES: readonly TaskType[] = ['implement', 'investigate'];
  * One phase execution of a task (a KanbanRun). `pr-review`: a review of several pull requests
  * together (KanbanEngineApi.reviewPrs), by a reviewer in a worktree of its own. `compact`: historical only.
  */
-export type RunPhase = 'plan' | 'implement' | 'review' | 'fix' | 'resume' | 'pr' | 'pr-fix' | 'compact' | 'pr-review';
-export const RUN_PHASES: readonly RunPhase[] = ['plan', 'implement', 'review', 'fix', 'resume', 'pr', 'pr-fix', 'compact', 'pr-review'];
+export type RunPhase = 'plan' | 'implement' | 'review' | 'fix' | 'resume' | 'pr' | 'pr-fix' | 'pr-conflicts' | 'compact' | 'pr-review';
+export const RUN_PHASES: readonly RunPhase[] = ['plan', 'implement', 'review', 'fix', 'resume', 'pr', 'pr-fix', 'pr-conflicts', 'compact', 'pr-review'];
 
 /**
  * What the engine is doing with a task right now (KanbanTask.runState). `queued`: started, waiting for

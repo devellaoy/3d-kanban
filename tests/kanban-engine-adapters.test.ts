@@ -27,7 +27,7 @@ const messageTextOf = (l: { message: { content: unknown } }) => String(l.message
 test('claude launch flags per phase, with the review sandbox, extra dirs, models and plugin extras', () => {
   const base = { permission: 'bypass' as const, sandbox: false };
   assert.deepEqual(claudeAdapter.launchArgs('plan', { ...base, addDirs: ['/refs', '/refs'] }), ['--permission-mode', 'plan', '--add-dir', '/refs']);
-  for (const phase of ['implement', 'fix', 'resume', 'pr', 'pr-fix'] as const) assert.deepEqual(claudeAdapter.launchArgs(phase, base), ['--permission-mode', 'bypassPermissions'], phase);
+  for (const phase of ['implement', 'fix', 'resume', 'pr', 'pr-fix', 'pr-conflicts'] as const) assert.deepEqual(claudeAdapter.launchArgs(phase, base), ['--permission-mode', 'bypassPermissions'], phase);
   assert.deepEqual(claudeAdapter.launchArgs('review', base), ['--permission-mode', 'bypassPermissions', '--disallowedTools', 'Edit', 'Write', 'NotebookEdit']);
   assert.deepEqual(claudeAdapter.launchArgs('review', { ...base, sandbox: true }), ['--permission-mode', 'bypassPermissions', '--disallowedTools', 'Edit', 'Write', 'NotebookEdit', 'WebFetch', 'WebSearch']);
   // A pull-request review has the review's flags (Bash keeps the network, for gh).
@@ -65,7 +65,7 @@ test('codex launch flags per phase, the workspace-write setting, models and effo
   assert.deepEqual(codexAdapter.launchArgs('review', base), ['-s', 'read-only', '-a', 'never']);
   // Reading pull requests takes gh and so the network: the workspace sandbox with the network on.
   assert.deepEqual(codexAdapter.launchArgs('pr-review', base), ['-s', 'workspace-write', '-a', 'never', '-c', 'sandbox_workspace_write.network_access=true']);
-  for (const phase of ['implement', 'fix', 'resume', 'pr', 'pr-fix'] as const) assert.deepEqual(codexAdapter.launchArgs(phase, base), ['--dangerously-bypass-approvals-and-sandbox'], phase);
+  for (const phase of ['implement', 'fix', 'resume', 'pr', 'pr-fix', 'pr-conflicts'] as const) assert.deepEqual(codexAdapter.launchArgs(phase, base), ['--dangerously-bypass-approvals-and-sandbox'], phase);
   assert.deepEqual(codexAdapter.launchArgs('implement', { ...base, permission: 'workspace-write', addDirs: ['/uploads'] }), ['-s', 'workspace-write', '-a', 'never', '--add-dir', '/uploads']);
   // An investigation writes only its report folder.
   assert.deepEqual(codexAdapter.launchArgs('implement', { ...base, investigate: true, addDirs: ['/reports/task-3'] }), ['-s', 'workspace-write', '-a', 'never', '--add-dir', '/reports/task-3']);

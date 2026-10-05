@@ -11,6 +11,7 @@ import type { KanbanClientMsg, KanbanClientType, KanbanServerMsg } from '../../s
 import type { LanguageSettings } from '../../shared/language.js';
 import type { PromptId } from '../../shared/prompts.js';
 import type { KanbanPrReviewRequest, KanbanTaskCard, PrRef, ProjectRepo } from '../../shared/kanban/types.js';
+import type { PrMode } from '../../shared/kanban/prs.js';
 
 /** Who sent a WS message or an HTTP request from a browser. */
 export interface KanbanCaller {
@@ -64,7 +65,7 @@ export interface KanbanEngineApi {
   review(taskId: number, who: KanbanCaller): Promise<string | void>;
   approvePlan(taskId: number, who: KanbanCaller): Promise<string | void>;
   requestPlanChanges(taskId: number, who: KanbanCaller, text: string, attachmentIds?: string[]): Promise<string | void>;
-  pr(taskId: number, who: KanbanCaller, mode: 'create' | 'fix'): Promise<string | void>;
+  pr(taskId: number, who: KanbanCaller, mode: PrMode): Promise<string | void>;
   /**
    * The task is moved back to To do or deleted: its workers at rest go home, worktree kept (reason
    * `released`); a run live only because the agent asks in its terminal is stopped. Resolves to why

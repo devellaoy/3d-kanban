@@ -8,7 +8,7 @@
 // unless it changed nothing since the task last came to Review.
 
 import type { KanbanRole, KanbanTask, PlanApproval, QueuedRun, RunPhase, RunState, TaskStatus, TaskType, WaitingReason } from '../../../shared/kanban/types.js';
-import { prStatusOk } from '../../../shared/kanban/prs.js';
+import { prStatusOk, type PrMode } from '../../../shared/kanban/prs.js';
 import { KANBAN_PROMPT_DEFS } from '../../../shared/kanban/prompt-defs.js';
 
 /** The part of a task the machine decides about. */
@@ -44,7 +44,7 @@ export interface MachineConfig {
  * Which prompt a run is sent with. The orchestrator fills it in; `continue` is the short "carry on"
  * for a session that was cut off (it falls back to the phase's own prompt when there is no session).
  */
-export type PromptKind = 'plan' | 'replan' | 'implement' | 'investigate' | 'review' | 'rereview' | 'fix' | 'resume' | 'continue' | 'unhold' | 'pr.create' | 'pr.fix' | 'pr.review';
+export type PromptKind = 'plan' | 'replan' | 'implement' | 'investigate' | 'review' | 'rereview' | 'fix' | 'resume' | 'continue' | 'unhold' | 'pr.create' | 'pr.fix' | 'pr.conflicts' | 'pr.review';
 
 export type Effect =
   /**
@@ -85,7 +85,7 @@ export type MachineEvent =
   | { type: 'fixed'; round?: number; changes: boolean; pending?: boolean }
   /** A resume turn (a comment worked on) ended. `since` 'handoff': `changes` counts from when the task last came to Review rather than from the base branch. */
   | { type: 'resumed'; changes: boolean; since?: 'handoff'; pending?: boolean }
-  /** A pr or pr-fix turn ended. */
+  /** A pr, pr-fix or pr-conflicts turn ended. */
   | { type: 'prDone'; pending?: boolean }
   /** A review of several pull requests together (KanbanEngineApi.reviewPrs). */
   | { type: 'prReview' }
@@ -119,7 +119,7 @@ export type MachineEvent =
   | { type: 'comment'; text: string; busy: boolean }
   /** One review round by hand. */
   | { type: 'review' }
-  | { type: 'pr'; mode: 'create' | 'fix' };
+  | { type: 'pr'; mode: PrMode };
 
 /**
  * The run Retry and Continue carry on. `fresh`: it never started (stopped while queued), so it goes
@@ -179,6 +179,16 @@ function firstRun(s: MachineState, t: MachineTask): { state: MachineState; effec
   return ok(running(s, 'implement', { reviewRound: 0, retryAttempts: 0 }), { type: 'run', phase: 'implement', role: 'implementer', prompt: 'implement' });
 }
 
+/** The phase and prompt of each PR action. */
+const PR_RUNS: Record<PrMode, { phase: RunPhase; prompt: PromptKind; verb: string }> = {
+  create: { phase: 'pr', prompt: 'pr.create', verb: 'opened' },
+  fix: { phase: 'pr-fix', prompt: 'pr.fix', verb: 'fixed' },
+  conflicts: { phase: 'pr-conflicts', prompt: 'pr.conflicts', verb: 'updated' },
+};
+
+/** The prompt of a PR phase's run; undefined for any other phase. */
+export const prPrompt = (phase: RunPhase): PromptKind | undefined => Object.values(PR_RUNS).find((r) => r.phase === phase)?.prompt;
+
 /** The prompt a run of `phase` that never started is retried with (plan and resume carry on: what the user said went with the queue). */
 function ownPrompt(phase: RunPhase, round: number | undefined, t: MachineTask): PromptKind {
   switch (phase) {
@@ -188,14 +198,10 @@ function ownPrompt(phase: RunPhase, round: number | undefined, t: MachineTask): 
       return round !== undefined && round > 1 ? 'rereview' : 'review';
     case 'fix':
       return 'fix';
-    case 'pr':
-      return 'pr.create';
-    case 'pr-fix':
-      return 'pr.fix';
     case 'pr-review':
       return 'pr.review';
     default:
-      return 'continue';
+      return prPrompt(phase) ?? 'continue';
   }
 }
 
@@ -420,8 +426,8 @@ export function next(s: MachineState, e: MachineEvent, t: MachineTask, cfg: Mach
     case 'pr':
       if (busy(s)) return no('Stop it first: it is running');
       if (t.type === 'investigate' && e.mode === 'create') return no('An investigation has no changes to open pull requests for');
-      if (!prStatusOk(s.status)) return no(`Pull requests are ${e.mode === 'create' ? 'opened' : 'fixed'} from Waiting, Review or Done`);
-      return ok(running(s, e.mode === 'create' ? 'pr' : 'pr-fix'), { type: 'run', phase: e.mode === 'create' ? 'pr' : 'pr-fix', role: 'implementer', prompt: e.mode === 'create' ? 'pr.create' : 'pr.fix' });
+      if (!prStatusOk(s.status)) return no(`Pull requests are ${PR_RUNS[e.mode].verb} from Waiting, Review or Done`);
+      return ok(running(s, PR_RUNS[e.mode].phase), { type: 'run', phase: PR_RUNS[e.mode].phase, role: 'implementer', prompt: PR_RUNS[e.mode].prompt });
   }
 }
 

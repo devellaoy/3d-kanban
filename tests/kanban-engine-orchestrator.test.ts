@@ -1003,6 +1003,26 @@ test('Fix PRs on an investigation checks out the PR branch, not the investigatio
   assert.ok(!fx.invocations().slice(before).some((i) => i.args.some((a) => a.includes('reports'))), 'no report folder is granted');
 });
 
+test('Resolve conflicts on an investigation checks out the PR branch, and refuses a task with no PR of its own', async (t) => {
+  const fx = await engineFixture();
+  t.after(() => fx.close());
+  fx.setRules([{ when: 'Bring the open pull requests', reply: 'Merged the target branch.' }, { when: 'nvestigat', reply: 'Found it.' }]);
+  const task = fx.newTask({ type: 'investigate', usePlan: false, useReview: false });
+  assert.equal(await fx.engine.start(task.id, ADA), undefined);
+  await fx.waitTask(task.id, (x) => x.status === 'review' && x.runState === 'idle', 'the investigation done');
+  assert.match((await fx.engine.pr(task.id, ADA, 'conflicts')) ?? '', /no open pull requests/);
+  fx.repo.updateTask(task.id, { branch: 'office/scratch' });
+  fx.repo.setRepoBranch(task.id, 'proj', 'office/scratch');
+  fx.repo.upsertPrLink(task.id, { repoId: 'proj', repo: 'acme/proj', number: 5, url: 'https://github.com/acme/proj/pull/5', state: 'OPEN', branch: 'fix/the-pr-branch' });
+  const before = fx.invocations().length;
+  assert.equal(await fx.engine.pr(task.id, ADA, 'conflicts'), undefined);
+  await fx.waitTask(task.id, (x) => x.status === 'review' && x.runState === 'idle' && fx.repo.listRuns(task.id).some((r) => r.phase === 'pr-conflicts' && r.status === 'succeeded'), 'the pr-conflicts run');
+  const text = fx.invocations().slice(before).filter((i) => i.kind === 'claude').map((i) => i.prompt ?? i.args.join(' ')).join('\n');
+  assert.match(text, /Bring the open pull requests[\s\S]*pull\/5/);
+  assert.match(text, /fix\/the-pr-branch/, 'told to check out the PR branch');
+  assert.ok(!text.includes('office/scratch'), "not told to check out the investigation's branch");
+});
+
 test('Fix PRs in two repositories checks out the PR branch only where the task has an open PR', async (t) => {
   const api = path.join(mkdtempSync(path.join(tmpdir(), 'kanban-api-')), 'api');
   makeRepo(api);

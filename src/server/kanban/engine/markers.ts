@@ -134,6 +134,11 @@ function prLine(url: string): PrLine {
   return gh ? { url: `https://github.com/${gh[1]}/pull/${gh[2]}`, repo: gh[1], number: Number(gh[2]) } : { url };
 }
 
+/** The `NOT UPDATED: <url> — why` lines of a Resolve conflicts answer (not in a code block or quote). */
+export function notUpdatedLines(text: string): string[] {
+  return markerLines(text).filter((l) => l.marker && /^(?:[-+*]\s+)?[*_`]*NOT UPDATED[*_`]*\s*:/i.test(l.line)).map((l) => l.line);
+}
+
 /**
  * The pull requests a PR turn reported, one `PR: <url>` line each (see PR_LINE; duplicates once,
  * first appearance first). A URL anywhere else in the text isn't reported: the board sync links a

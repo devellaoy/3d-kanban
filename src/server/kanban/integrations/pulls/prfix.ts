@@ -1,4 +1,4 @@
-// Which of a task's open pull requests a Fix PRs run may work on. A PR's head branch is whatever its
+// Which of a task's open pull requests a Fix PRs or Resolve conflicts run may work on. A PR's head branch is whatever its
 // author named it, so it is never trusted as ours: a fork's PR, and one from the repository's base
 // or an integration branch (main, develop, ...), are skipped, never checked out.
 

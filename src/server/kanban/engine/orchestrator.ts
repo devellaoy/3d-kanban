@@ -28,10 +28,10 @@ import { claudeAdapter } from './adapters/claude.js';
 import { codexAdapter } from './adapters/codex.js';
 import type { TaskAgentAdapter, TurnResult } from './adapters/types.js';
 import { Composer, isFolderProject, reportDir, reposText, skillPhase, taskRepos, workerReposText, type ComposeExtra } from './compose.js';
-import { canFixPrs } from '../../../shared/kanban/prs.js';
+import { canFixPrs, isPrPhase, onPrBranches, type PrMode } from '../../../shared/kanban/prs.js';
 import { fixTargetsOf, forkTest, polledPulls } from '../integrations/pulls/prfix.js';
-import { next, queuedOf, runOf, stateOf, type Effect, type LastRun, type MachineEvent, type PromptKind, type RunEffect } from './machine.js';
-import { backoffMs, looksInterrupted, planOutcome, prLines, reviewFindings, reviewVerdict, stripPlanMarkers } from './markers.js';
+import { next, prPrompt, queuedOf, runOf, stateOf, type Effect, type LastRun, type MachineEvent, type PromptKind, type RunEffect } from './machine.js';
+import { backoffMs, looksInterrupted, notUpdatedLines, planOutcome, prLines, reviewFindings, reviewVerdict, stripPlanMarkers } from './markers.js';
 import { limitReset } from './limitreset.js';
 import { endStop, type StopRun } from './stopping.js';
 import { branchExists, checkoutLines, currentBranch, homeCleanup, hasChanges, missingFolders } from './workspace.js';
@@ -124,6 +124,8 @@ const SUMMARY_MAX = 20_000;
 /** How much of a Stop hook's final answer is kept (it becomes a comment, a summary, a PR comment). */
 const STOP_TEXT_MAX = 100_000;
 const PENDING_MAX = 50;
+/** The prompts a fresh session taking over work under way is handed off with. */
+const HANDOFF_KINDS = new Set<PromptKind>(['fix', 'resume', 'continue', 'unhold', 'pr.create', 'pr.fix', 'pr.conflicts']);
 const ESC = '\x1b';
 const RESTING = new Set(['done', 'idle', 'needs_input', 'exited']);
 /** A tool that asks the user a question in the terminal: Claude's AskUserQuestion, Codex's request_user_input. */
@@ -764,12 +766,8 @@ export class Orchestrator {
         return task.type === 'investigate' ? 'investigate' : 'implement';
       case 'review':
         return 'review';
-      case 'pr':
-        return 'pr.create';
-      case 'pr-fix':
-        return 'pr.fix';
       default:
-        return 'continue';
+        return prPrompt(phase) ?? 'continue';
     }
   }
 
@@ -787,10 +785,10 @@ export class Orchestrator {
     const effort: KanbanEffort | undefined = role === 'reviewer' ? review.effort : (task.effort ?? (task.tool === defaults.tool ? defaults.effort : undefined));
     const adapter = this.adapters[tool];
     const folder = isFolderProject(def);
-    if (folder && (eff.phase === 'pr' || eff.phase === 'pr-fix')) return 'A folder project has no git repositories to open pull requests in';
-    // Only pull requests of the project's own (a fork's, or one from a base branch, is fixed by hand).
-    const fixPrs = eff.phase === 'pr-fix' ? fixTargetsOf(task, def, this.ctx.floor(task.project)) : undefined;
-    if (fixPrs && !fixPrs.length) return 'The task has no open pull requests of its own to fix (a pull request from a fork is fixed by hand)';
+    if (folder && isPrPhase(eff.phase)) return 'A folder project has no git repositories to open pull requests in';
+    // Only pull requests of the project's own (a fork's, or one from a base branch, is handled by hand).
+    const fixPrs = onPrBranches(eff.phase) ? fixTargetsOf(task, def, this.ctx.floor(task.project)) : undefined;
+    if (fixPrs && !fixPrs.length) return 'The task has no open pull requests of its own to work on (a pull request from a fork is handled by hand)';
 
     // Its worktree is gone (its worker went home with leave-on-merge, or it was pruned): anyone seated
     // there would only be marked lost. The workspace goes, its branch stays, and a fresh worktree takes
@@ -868,7 +866,7 @@ export class Orchestrator {
     } catch (err) {
       console.error(`agent-office: couldn't make task #${task.id}'s folder of attached files: ${(err as Error).message}`);
     }
-    const investigate = task.type === 'investigate' && role === 'implementer' && eff.phase !== 'pr-fix';
+    const investigate = task.type === 'investigate' && role === 'implementer' && !onPrBranches(eff.phase);
     if (investigate) addDirs.push(reportDir(this.ctx, task.id));
     for (const r of taskRepos(def, task)) if (!r.primary && (r.kind === 'folder' || folder)) addDirs.push(r.dir);
     const extras = this.ctx.workerExtras(task.id, tool, skillPhase(eff.phase));
@@ -961,7 +959,7 @@ export class Orchestrator {
     x.checkout = await this.checkoutFor(now, def, floor.dir, role, eff.phase, !folder && !now.workspace);
     let prompt = build(kind);
     // A fresh session taking over work already under way is told where things stand first.
-    if (!session && role === 'implementer' && (kind === 'fix' || kind === 'resume' || kind === 'continue' || kind === 'unhold' || kind === 'pr.create' || kind === 'pr.fix') && (now.workspace || x.checkout)) {
+    if (!session && role === 'implementer' && HANDOFF_KINDS.has(kind) && (now.workspace || x.checkout)) {
       prompt = this.compose.handoff(def, now, floor.dir, withCheckout(prompt));
     } else prompt = withCheckout(prompt);
     if (eff.prompt === 'replan' && !session && text) prompt = `${prompt}\n\n${this.compose.text('kanban.sinceSaid', task.project, { text })}`.trim();
@@ -1014,12 +1012,12 @@ export class Orchestrator {
    * investigation, a folder project, no branch yet, or already on it).
    */
   private async checkoutFor(task: KanbanTask, def: FloorDef, floorDir: string, role: KanbanRole, phase: RunPhase, freshTree: boolean): Promise<string | undefined> {
-    if (role !== 'implementer' || phase === 'plan' || (task.type === 'investigate' && phase !== 'pr-fix') || isFolderProject(def)) return undefined;
-    // A Fix PRs run works on each open PR's own branch, whatever branch the task (an investigation's, say) has.
-    const prs = phase === 'pr-fix' ? fixTargetsOf(task, def, this.ctx.floor(task.project)).filter((p) => p.branch) : [];
+    if (role !== 'implementer' || phase === 'plan' || (task.type === 'investigate' && !onPrBranches(phase)) || isFolderProject(def)) return undefined;
+    // A Fix PRs or Resolve conflicts run works on each open PR's own branch, whatever branch the task (an investigation's, say) has.
+    const prs = onPrBranches(phase) ? fixTargetsOf(task, def, this.ctx.floor(task.project)).filter((p) => p.branch) : [];
     if (!task.branch && !prs.length) return undefined;
     const saved = { ...this.ctx.repo.repoBranches(task.id), ...Object.fromEntries(prs.map((p) => [p.repoId, p.branch])) };
-    return checkoutLines(floorDir, task, taskRepos(def, task), saved, phase === 'pr-fix', prs.length > 0, freshTree);
+    return checkoutLines(floorDir, task, taskRepos(def, task), saved, onPrBranches(phase), prs.length > 0, freshTree);
   }
 
   /** The task's workspace is gone: its workers go home, and it (and the sessions that ran there) is forgotten; its branch stays. */
@@ -1514,10 +1512,13 @@ export class Orchestrator {
         event = await this.handoffs.resumed(task, pending, changes);
         break;
       case 'pr':
-      case 'pr-fix': {
+      case 'pr-fix':
+      case 'pr-conflicts': {
         say('result', text);
         this.recordPrs(task, text);
         this.refreshPrBoards(task);
+        const missed = live.phase === 'pr-conflicts' ? notUpdatedLines(text).length : 0;
+        if (missed) this.note(task, `${missed} pull request${missed === 1 ? ' was' : 's were'} not updated: read the result for why`, live.runId);
         if (live.phase === 'pr') this.update(task.id, { flags: { ...(this.ctx.repo.getTask(task.id)?.flags ?? task.flags), prRequested: true } });
         event = { type: 'prDone', pending };
         break;
@@ -1777,17 +1778,17 @@ export class Orchestrator {
     });
   }
 
-  pr(taskId: number, who: KanbanCaller, mode: 'create' | 'fix'): Promise<string | void> {
+  pr(taskId: number, who: KanbanCaller, mode: PrMode): Promise<string | void> {
     return this.op(taskId, (task) => {
-      // Fixing, the shared rule answers first: the server gives the reason the button does.
+      // Fixing or resolving conflicts, the shared rule answers first: the server gives the reason the button does.
       const def = this.ctx.project(task.project);
-      const fix = mode === 'fix' && def ? canFixPrs(task, forkTest(polledPulls(this.ctx.floor(task.project)), projectRepos(def))) : undefined;
+      const fix = mode !== 'create' && def ? canFixPrs(task, forkTest(polledPulls(this.ctx.floor(task.project)), projectRepos(def))) : undefined;
       if (fix && !fix.ok) return Promise.resolve(fix.reason);
       if (this.liveOf(task.id)) return Promise.resolve('Stop it first: it is running');
       if (this.folder(task.project)) return Promise.resolve('A folder project has no git repositories to open pull requests in');
       // A task whose worktree went still has its branch: a fresh worktree checks it out (see launch).
-      // Fixing, an open pull request's branch is work enough (checkoutFor sends the agent to it).
-      if (!task.workspace && !task.branch && !(fix && fixTargetsOf(task, def!, this.ctx.floor(task.project)).some((p) => p.branch))) return Promise.resolve('It has no work to open pull requests for yet');
+      // Fixing or resolving conflicts, an open pull request's branch is work enough (checkoutFor sends the agent to it).
+      if (!task.workspace && !task.branch && !(fix && fixTargetsOf(task, def!, this.ctx.floor(task.project)).some((p) => p.branch))) return Promise.resolve(`It has no ${mode === 'create' ? 'work to open pull requests for' : 'pull request branch to work on'} yet`);
       return this.apply(taskId, { type: 'pr', mode }, { who });
     });
   }

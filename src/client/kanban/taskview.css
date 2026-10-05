@@ -21,7 +21,7 @@
 .kb-tv .kb-phase.implement, .kb-tv .kb-phase.resume { background: var(--note-blue); }
 .kb-tv .kb-phase.review, .kb-tv .kb-phase.pr-review { background: var(--note-green); }
 .kb-tv .kb-phase.fix { background: var(--tint-orange); }
-.kb-tv .kb-phase.pr, .kb-tv .kb-phase.pr-fix { background: var(--tint-blue); }
+.kb-tv .kb-phase.pr, .kb-tv .kb-phase.pr-fix, .kb-tv .kb-phase.pr-conflicts { background: var(--tint-blue); }
 .kb-tv .kb-pulse { width: 12px; height: 12px; flex: none; border-radius: 50%; background: var(--good); border: var(--bw-sm) solid var(--ink); animation: kb-tv-pulse 1.1s ease-in-out infinite; }
 @keyframes kb-tv-pulse { 0%, 100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--good) 70%, transparent); } 50% { box-shadow: 0 0 0 6px color-mix(in srgb, var(--good) 0%, transparent); transform: scale(1.12); } }
 .kb-tv .kb-pr { padding: 1px 7px; font-size: var(--fs-2xs); font-weight: var(--fw-heavy); border: var(--bw-sm) solid var(--ink); border-radius: 8px; text-decoration: none; color: var(--text); background: var(--field); white-space: nowrap; }

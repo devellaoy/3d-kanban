@@ -304,6 +304,14 @@ test('manual review and pull requests from the review column', () => {
   const fixInv = next(inReview, { type: 'pr', mode: 'fix' }, inv, CFG);
   assert.ok(!('error' in fixInv) && runOf(fixInv.effects)?.prompt === 'pr.fix', 'an investigation can have its PR fixed');
   assert.ok('error' in next(inReview, { type: 'pr', mode: 'create' }, inv, CFG), 'but opens none');
+  const conf = drive([{ type: 'pr', mode: 'conflicts' }], {}, {}, inReview);
+  assert.deepEqual(runOf(conf.last.effects), { type: 'run', phase: 'pr-conflicts', role: 'implementer', prompt: 'pr.conflicts' });
+  assert.equal(conf.state.status, 'in_progress');
+  assert.equal(drive([{ type: 'prDone' }], {}, {}, conf.state).state.status, 'review');
+  assert.equal(runOf(drive([{ type: 'pr', mode: 'conflicts' }], {}, {}, { ...inReview, status: 'done' }).last.effects)?.prompt, 'pr.conflicts');
+  const confInv = next(inReview, { type: 'pr', mode: 'conflicts' }, inv, CFG);
+  assert.ok(!('error' in confInv) && runOf(confInv.effects)?.prompt === 'pr.conflicts', 'an investigation can have its PR brought up to date');
+  assert.ok('error' in next({ ...inReview, runState: 'running' }, { type: 'pr', mode: 'conflicts' }, TASK, CFG), 'busy refused');
   assert.ok('error' in next({ ...inReview, runState: 'running' }, { type: 'pr', mode: 'create' }, TASK, CFG));
   assert.ok('error' in next(TODO, { type: 'pr', mode: 'create' }, TASK, CFG));
 });

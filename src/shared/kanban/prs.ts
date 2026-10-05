@@ -2,7 +2,7 @@
 // the PR window's "Fix via task #N" and the engine's `pr` command, so they never disagree.
 
 import { isRunning } from './moves.js';
-import type { KanbanPrLink, RunState, TaskStatus, WaitingReason } from './types.js';
+import type { KanbanPrLink, RunPhase, RunState, TaskStatus, WaitingReason } from './types.js';
 
 /** What the rule looks at. */
 export interface PrSubject<P extends Pick<KanbanPrLink, 'state'> = Pick<KanbanPrLink, 'state'>> {
@@ -37,9 +37,19 @@ export function canFixPrs<P extends Pick<KanbanPrLink, 'state'>>(task: PrSubject
   if (isRunning(task)) return no('Stop it first: it is running');
   if (task.status === 'waiting' && task.waitingReason === 'agent_asking') return no('The agent is asking in its terminal: answer it first');
   if (task.status === 'on_hold') return no('It is on hold: resume it first');
-  if (!prStatusOk(task.status)) return no('Pull requests are fixed from Waiting, Review or Done');
+  if (!prStatusOk(task.status)) return no('Pull requests are worked on from Waiting, Review or Done');
   const open = openPrs(task);
-  if (!open.length) return no('The task has no open pull requests to fix');
-  if (isFork && open.every((p) => isFork(p) === true)) return no('A pull request from a fork: fix it by hand');
+  if (!open.length) return no('The task has no open pull requests to work on');
+  if (isFork && open.every((p) => isFork(p) === true)) return no('A pull request from a fork: handle it by hand');
   return { ok: true };
 }
+
+/** What the task's PR action does: open the pull requests, fix their review comments and checks, or merge their target branches in and resolve the conflicts. */
+export const PR_MODES = ['create', 'fix', 'conflicts'] as const;
+export type PrMode = (typeof PR_MODES)[number];
+
+/** The runs of the PR actions. */
+export const isPrPhase = (phase: RunPhase): boolean => phase === 'pr' || phase === 'pr-fix' || phase === 'pr-conflicts';
+
+/** Runs that work on each open PR's own branch (Fix PRs, Resolve conflicts). */
+export const onPrBranches = (phase: RunPhase): boolean => phase === 'pr-fix' || phase === 'pr-conflicts';

@@ -147,6 +147,7 @@ export const PROMPT_CONTRACT: Partial<Record<KanbanPromptId, KanbanContractId>> 
   'kanban.rereview': 'review',
   'kanban.pr.create': 'pr',
   'kanban.pr.fix': 'pr',
+  'kanban.pr.conflicts': 'pr',
   'kanban.pr.review': 'prReview',
   'kanban.pr.panel': 'panel',
 };

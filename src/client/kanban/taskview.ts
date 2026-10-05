@@ -20,7 +20,6 @@ import type { Net } from '../net';
 import type { KanbanServerMsg } from '../../shared/kanban/protocol.js';
 import { KANBAN_TOOLS, type CommentKind, type KanbanAttachment, type KanbanComment, type KanbanEffort, type KanbanEvent, type KanbanPlan, type KanbanProjectInfo, type KanbanReportFile, type KanbanRole, type KanbanRun, type KanbanSettings, type KanbanTask, type KanbanTaskCard, type KanbanTool, type PlanStatus, type ReviewVerdict, type RunStatus, type TaskStatus, type TaskType } from '../../shared/kanban/types.js';
 import { isRunning } from '../../shared/kanban/moves.js';
-import { canFixPrs, openPrs, prStatusOk } from '../../shared/kanban/prs.js';
 import { getJson, kanbanApi, type KanbanApi, type KanbanOk } from './api';
 import { attachmentUrl, formatSize, isImage } from './attach';
 import { attachBox, type AttachBox } from './attachbox';
@@ -33,6 +32,7 @@ import { cardRepoNames, countdown, needsAttention, phaseBadge, prTone, showIn3dL
 import { kstore } from './store';
 import { onSendKey, sendHint } from './sendkey';
 import { holdActions, holdBox } from './holdview';
+import { prActionButtons } from './prbuttons';
 import { mountChangesView, type ChangesViewHandle } from './changesview';
 import { APPROVAL_NAMES, columnName, COUNTDOWN_UNITS, effortName, fmtDuration, fmtTime, phaseName, PR_STATE_NAMES, toolName, waitingName } from './labels';
 import { run, select, tabStrip, textArea } from './ui';
@@ -499,7 +499,7 @@ class View implements TaskView {
       }
     }
     holdActions(task, add, (to, extras, b) => void this.req({ t: 'kanban.task.move', id, to, ...extras }, b));
-    this.fixPrs(task, bar);
+    prActionButtons(task, bar, (m, b, d) => this.req(m, b, d));
     if (task.status !== 'in_progress' && this.o.moveMenu) add('↔️ Move…', '', () => this.o.moveMenu?.(id), 'Move to another column (M)');
     if (!running) add('🗑️ Delete', '.danger', (b) => confirmDialog(`Delete #${id}?`, `The task, its conversation, plans and runs are deleted for good. ${hasWorker ? 'Its workers go home. ' : ''}${task.workspace ? `Its worktree (${task.workspace.worktree.path}), its branches` : 'Its branches'}${task.branch ? ` (${task.branch})` : ''} and pull requests stay.`, 'Delete', () => void this.req({ t: 'kanban.task.delete', id }, b)));
     return bar;
@@ -822,15 +822,6 @@ class View implements TaskView {
 
   // --- Pull requests ----------------------------------------------------------------------------
 
-  /** 🛠️ Fix PRs, in the action bar and the PRs tab: only where there are open PRs to fix, greyed out (with why) while the task is busy. */
-  private fixPrs(task: KanbanTask, bar: HTMLElement) {
-    if (!openPrs(task).length || !prStatusOk(task.status)) return;
-    const can = canFixPrs(task);
-    const b = h('button.btn', { type: 'button', disabled: !can.ok, title: can.ok ? 'The agent addresses the review comments and failing checks on the task’s open PRs; it doesn’t merge' : can.reason, 'data-focus': 'act-fix-prs' }, '🛠️ Fix PRs') as HTMLButtonElement;
-    b.addEventListener('click', () => void this.req({ t: 'kanban.task.pr', id: task.id, mode: 'fix' }, b, 'An agent is on the pull requests'));
-    bar.append(b);
-  }
-
   private prs(task: KanbanTask): HTMLElement[] {
     const project = this.projectOf(task.project);
     const out: HTMLElement[] = [];
@@ -841,7 +832,7 @@ class View implements TaskView {
       create.addEventListener('click', () => void this.req({ t: 'kanban.task.pr', id: task.id, mode: 'create' }, create, 'An agent is on the pull requests'));
       bar.append(create);
     }
-    this.fixPrs(task, bar);
+    prActionButtons(task, bar, (m, b, d) => this.req(m, b, d));
     const reviewable = task.prs.filter((p) => p.repo && (p.state === 'OPEN' || p.state === 'DRAFT'));
     if (reviewable.length) {
       const rev = h('button.btn', { type: 'button', title: 'One reviewer takes every pull request of the task at once' }, `🔍 Review these ${reviewable.length} PRs together`) as HTMLButtonElement;
