@@ -98,8 +98,14 @@ export class CarryOn {
     if (this.host.hiringPaused()) {
       w.interrupted = false;
       w.autoResume = false;
-      w.carryOnDropped = true;
+      w.carryOnDropped = 'the budget for today is spent';
     }
-    this.host.resume(id);
+    const error = this.host.resume(id);
+    // It can't start (its worktree is gone, say): there is no turn to pick up, and whoever waits for it is told.
+    if (error) {
+      w.interrupted = false;
+      w.autoResume = false;
+      w.carryOnDropped = error;
+    }
   }
 }

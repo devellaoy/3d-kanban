@@ -66,9 +66,9 @@ export abstract class KanbanWorkers {
     return !!w && carries(w, this.carryOn());
   }
 
-  /** Whether the worker's carry-on was given up (the budget was spent, or its session was gone), so it will not pick its turn up. */
-  carryOnDropped(id: string): boolean {
-    return !!this.workers.get(id)?.carryOnDropped;
+  /** Why the worker's carry-on was given up (the budget was spent, its session or worktree was gone), so it will not pick its turn up; undefined when it was not. */
+  carryOnDropped(id: string): string | undefined {
+    return this.workers.get(id)?.carryOnDropped;
   }
 
   /** What the engine asks at reconcile: does the office carry its cut-off workers on itself (then it resumes a task's worker as the engine tells it to, with its own prompt)? */

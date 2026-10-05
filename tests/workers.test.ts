@@ -1678,3 +1678,30 @@ test('a new agent’s first prompt ends with the language rule; a resume, a shel
   assert.equal(typeof shell, 'object');
   if (typeof shell !== 'string') assert.ok(!f.read().some((r) => (r.stdin ?? '').includes('Finnish')));
 });
+
+test("a mid-turn worker whose worktree was deleted while the office was down can't carry on: that is recorded, for whoever waits for it", async (t) => {
+  const f = carryOnFixture(t);
+  const git = (cwd: string, ...args: string[]) => execFileSync('git', ['-c', 'user.email=t@t', '-c', 'user.name=t', ...args], { cwd, encoding: 'utf8' }).trim();
+  git(f.root, 'init', '-q', '-b', 'main');
+  writeFileSync(path.join(f.root, 'a.txt'), 'a');
+  git(f.root, 'add', 'a.txt');
+  git(f.root, 'commit', '-qm', 'init');
+  const before = manager(f, f.claude, []);
+  const w = before.spawn('desk-1', 'test', 'task for lost-turn', true);
+  assert.notEqual(typeof w, 'string'); if (typeof w === 'string') return;
+  const token = (await waitFor(() => launches(f), (x) => x.length > 0))[0].env.hookToken!;
+  assert.equal(before.handleHook(w.id, token, 'SessionStart', { session_id: 'lost-turn' }), true);
+  assert.equal(before.handleHook(w.id, token, 'UserPromptSubmit', { session_id: 'lost-turn', prompt: 'task for lost-turn' }), true);
+  before.shutdown(false);
+  await new Promise((resolve) => setTimeout(resolve, 200));
+  rmSync(path.join(f.root, w.worktree!.path), { recursive: true, force: true });
+  git(f.root, 'worktree', 'prune');
+
+  const after = manager(f, f.claude, []);
+  t.after(() => after.shutdown());
+  await after.start();
+  assert.equal(after.carriesOn(w.id), true, 'before its turn comes');
+  await waitFor(() => after.carryOnDropped(w.id), (x) => !!x);
+  assert.match(after.carryOnDropped(w.id)!, /worktree .* was deleted outside agent-office/);
+  assert.equal(after.carriesOn(w.id), false);
+});

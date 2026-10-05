@@ -21,8 +21,8 @@ export interface QueueWorkers {
   list(): WorkerInfo[];
   /** Whether the worker was cut off mid-turn and picks it up by itself once the office has started (⚙️ Settings). */
   carriesOn?(id: string): boolean;
-  /** Whether its carry-on was given up after all (see WorkerManager.carryOnDropped): a task waiting for it is over. */
-  carryOnDropped?(id: string): boolean;
+  /** Why its carry-on was given up after all (see KanbanWorkers.carryOnDropped): a task waiting for it is over. */
+  carryOnDropped?(id: string): string | undefined;
   deskOccupied(deskId: string): boolean;
   /** How many rows the floor's back office is built out, for its desks (see WING). */
   wing?(): number;
@@ -304,9 +304,12 @@ export class TaskQueue {
     for (const t of this.tasks) {
       if (t.status !== 'running' || !t.workerId) continue;
       const w = byId.get(t.workerId);
+      const dropped = w && !isBusy(w.status) && w.status !== 'done' ? this.workers.carryOnDropped?.(w.id) : undefined;
       if (!w) this.finish(t, 'killed');
-      else if (FINISHED.has(w.status) && !(w.status === 'offline' && this.workers.carriesOn?.(w.id))) done = this.finish(t, w.status === 'done' ? 'done' : 'exited') || done;
-      else if (this.workers.carryOnDropped?.(w.id) && !isBusy(w.status)) done = this.finish(t, 'exited') || done;
+      else if (dropped) {
+        this.finish(t, 'exited');
+        t.error = `The office restarted, but its worker couldn't carry on: ${dropped}`;
+      } else if (FINISHED.has(w.status) && !(w.status === 'offline' && this.workers.carriesOn?.(w.id))) done = this.finish(t, w.status === 'done' ? 'done' : 'exited') || done;
       else continue;
       changed = true;
     }

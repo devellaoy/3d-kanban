@@ -808,7 +808,7 @@ export class WorkerManager extends KanbanWorkers {
       // ever starts. Start a fresh one rather than leave the worker asleep.
       if (adapter?.freshIfResumeFails && resumeSessionId && info.status === 'starting' && !this.closing && !this.followed.has(info.id) && !info.kanban) { // not for a task's worker, nor a run the engine follows: it starts the task's worker afresh, with the handoff, when the session is really gone
         this.events.toast(`${info.name}'s last conversation couldn't be resumed — starting a fresh one`, 'warn');
-        w.carryOnDropped = true; this.launch(w, undefined, undefined); // its turn is not picked up: the session is gone
+        w.carryOnDropped = 'its last conversation couldn’t be resumed'; this.launch(w, undefined, undefined); // its turn is not picked up: the session is gone
         return;
       }
       info.exitCode = exitCode;

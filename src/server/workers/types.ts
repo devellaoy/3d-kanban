@@ -158,8 +158,8 @@ export interface Worker {
   cutOff?: WorkerStatus;
   /** Cut off mid-turn and waiting its turn to carry on by itself (see CarryOn). */
   carryOnPending?: boolean;
-  /** Its carry-on was given up (the budget was spent, or its session was gone): it is at rest, not on its turn. */
-  carryOnDropped?: boolean;
+  /** Why its carry-on was given up (the budget was spent, its session or worktree was gone): it is at rest, not on its turn. */
+  carryOnDropped?: string;
   /** Its next start is the office carrying on by itself: the terminal says so. */
   autoResume?: boolean;
   /** A prompt its start couldn't pass on the command line (a Muse resume): typed into its session after SessionStart. */

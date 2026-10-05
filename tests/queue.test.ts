@@ -12,12 +12,12 @@ function fixture(defaultProvider: AgentProvider = 'claude') {
   let hired = 0;
   /** The workers that will carry on by themselves once the office has started. */
   const carrying = new Set<string>();
-  const dropped = new Set<string>();
+  const dropped = new Map<string, string>();
   const manager: QueueWorkers = {
     defaultProvider,
     list: () => workers,
     carriesOn: (id) => carrying.has(id),
-    carryOnDropped: (id) => dropped.has(id),
+    carryOnDropped: (id) => dropped.get(id),
     deskOccupied: (desk) => workers.some((w) => w.deskId === desk),
     spawn(deskId, by, prompt, worktree, kind, provider, model, effort) {
       const id = `worker-${hired++}`;
@@ -431,7 +431,8 @@ test('a task restored as running whose worker drops its carry-on is finished, an
   f.carrying.delete(f.workers[0].id); f.workers[0].status = 'idle'; restored.pump();
   assert.equal(restored.state().tasks[0].status, 'running');
   // The carry-on is given up (budget spent, session gone): nothing will pick the turn up.
-  f.dropped.add(f.workers[0].id); restored.pump();
+  f.dropped.set(f.workers[0].id, 'its worktree is gone'); restored.pump();
   assert.equal(restored.state().tasks[0].outcome, 'exited');
+  assert.match(restored.state().tasks[0].error ?? '', /couldn't carry on: its worktree is gone/);
   assert.equal(restored.state().tasks[1].status, 'running');
 });
