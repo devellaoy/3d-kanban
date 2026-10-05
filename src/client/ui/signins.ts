@@ -167,7 +167,8 @@ export function openSignIns(net: Net, why?: string) {
   say(why);
   render();
   hosts.render();
-  net.send({ t: 'signins.get' });
+  // Only accounts have sign-ins of their own; an admin on the shared password comes for the office's tokens.
+  if (store.me.account) net.send({ t: 'signins.get' });
   net.send({ t: 'hosting.get' });
 }
 

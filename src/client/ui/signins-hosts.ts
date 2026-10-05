@@ -35,7 +35,7 @@ export function hostCards(net: Net): HostCards {
   // Kept across renders, so a half-typed token survives the next update.
   const inputs = {
     azure: { token: field('password', 'Personal access token', HOW.azure.token), office: false },
-    bitbucket: { token: field('password', 'API token', HOW.bitbucket.token), email: field('email', 'you@example.com', 'Atlassian account e-mail'), office: false },
+    bitbucket: { token: field('password', 'API token', HOW.bitbucket.token), email: field('text', 'you@example.com', 'Atlassian account e-mail', 'email'), office: false },
   };
 
   const card = (s: HostSignIn, admin: boolean): HTMLElement => {
@@ -48,9 +48,14 @@ export function hostCards(net: Net): HostCards {
         ? h('span.signin-who', {}, `The office’s own${s.office.who ? ` (${s.office.who})` : ''}`)
         : h('span.signin-who.none', {}, 'No token');
     const body = h('div.signin-body');
-    const box = h('section.signin', { class: s.mine ? 'ok' : '', 'data-host': kind }, h('div.team-head', {}, h('h4', {}, `${how.icon} ${label}`), status), body);
+    const box = h('section.signin', { class: (store.me.account ? s.mine : s.office) ? 'ok' : '', 'data-host': kind }, h('div.team-head', {}, h('h4', {}, `${how.icon} ${label}`), status), body);
     const saved = store.hostingSaved;
     if (saved?.kind === kind && saved.error && Date.now() - saved.at < 60_000) body.append(h('p.team-status.error', {}, saved.error));
+    // Without an account (the shared password) there's only the office's own, which an admin sets here.
+    if (!store.me.account) {
+      body.append(...officePart(s, label, how));
+      return box;
+    }
     if (s.mine) {
       const clear = h('button.btn', { type: 'button' }, 'Remove my token');
       clear.addEventListener('click', () => confirmDialog(`Remove your ${label} token?`, `The office stops acting on ${label} as you${s.office ? ' and uses its own instead' : ''}.`, 'Remove', () => net.send({ t: 'hosting.clear', kind: s.kind })));
@@ -61,23 +66,23 @@ export function hostCards(net: Net): HostCards {
         tokenForm(kind, false),
       );
     }
-    if (admin) {
-      const office = h('details.signin-office', {}, h('summary', {}, s.office ? `The office’s own: ${s.office.who || 'set'}` : 'The office’s own (for everyone without one, and the boards)'));
-      if (s.office) {
-        const clear = h('button.btn', { type: 'button' }, 'Remove the office’s token');
-        clear.addEventListener('click', () => confirmDialog(`Remove the office’s ${label} token?`, 'People without their own token, the PR board and the issue sources lose it.', 'Remove', () => net.send({ t: 'hosting.clear', kind: s.kind, office: true })));
-        office.append(h('div.signin-actions', {}, clear));
-      } else office.append(tokenForm(kind, true));
-      body.append(office);
-    }
+    if (admin) body.append(h('details.signin-office', {}, h('summary', {}, s.office ? `The office’s own: ${s.office.who || 'set'}` : 'The office’s own (for everyone without one, and the boards)'), ...officePart(s, label, how)));
     return box;
+  };
+
+  /** The office's own token: who it is with a way to remove it, or the form to set it. */
+  const officePart = (s: HostSignIn, label: string, how: (typeof HOW)['azure']): HTMLElement[] => {
+    if (!s.office) return [h('p.note', {}, 'Paste ', h('a', { href: how.make, target: '_blank', rel: 'noopener noreferrer' }, 'a token'), ` (${how.what}).`), tokenForm(s.kind as 'azure' | 'bitbucket', true)];
+    const clear = h('button.btn', { type: 'button' }, 'Remove the office’s token');
+    clear.addEventListener('click', () => confirmDialog(`Remove the office’s ${label} token?`, 'People without their own token, the PR board and the issue sources lose it.', 'Remove', () => net.send({ t: 'hosting.clear', kind: s.kind, office: true })));
+    return [h('div.signin-actions', {}, clear)];
   };
 
   /** The form for a token: yours, or the office's (`office`). Bitbucket's also takes the account's e-mail. */
   const tokenForm = (kind: 'azure' | 'bitbucket', office: boolean): HTMLElement => {
     // The office's form has inputs of its own, so typing in one doesn't show in the other.
     const token = office ? field('password', 'Token', HOW[kind].token) : inputs[kind].token;
-    const email = kind === 'bitbucket' ? (office ? field('email', 'e-mail', 'Atlassian account e-mail') : inputs.bitbucket.email) : undefined;
+    const email = kind === 'bitbucket' ? (office ? field('text', 'e-mail', 'Atlassian account e-mail', 'email') : inputs.bitbucket.email) : undefined;
     const save = h('button.btn', { type: 'submit' }, 'Save');
     const form = h('form.invite-row', {}, ...(email ? [email] : []), token, save) as HTMLFormElement;
     form.addEventListener('submit', (e) => {
@@ -104,7 +109,8 @@ export function hostCards(net: Net): HostCards {
   return { el, render };
 }
 
-function field(type: string, placeholder: string, label: string): HTMLInputElement {
-  return h('input', { type, placeholder, 'aria-label': label, autocomplete: 'off', spellcheck: 'false' }) as HTMLInputElement;
+/** An input styled like the panel's others (`inputmode` for an e-mail: type=email isn't styled). */
+function field(type: string, placeholder: string, label: string, inputmode?: string): HTMLInputElement {
+  return h('input', { type, placeholder, 'aria-label': label, autocomplete: 'off', spellcheck: 'false', ...(inputmode ? { inputmode } : {}) }) as HTMLInputElement;
 }
 
