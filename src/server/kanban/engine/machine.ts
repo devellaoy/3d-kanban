@@ -52,7 +52,7 @@ export type Effect =
    * in the review column. `pending`: its text is the comments queued while the worker was busy.
    * `text`: what the user said (an answer, a comment, requested plan changes).
    */
-  | { type: 'run'; phase: RunPhase; role: KanbanRole; prompt: PromptKind; round?: number; pending?: boolean; text?: string }
+  | { type: 'run'; phase: RunPhase; role: KanbanRole; prompt: PromptKind; round?: number; pending?: boolean; text?: string; restarted?: boolean }
   /** The latest draft plan becomes the accepted one. */
   | { type: 'acceptPlan' }
   /** Record what the user asked to change on the latest draft. */
@@ -107,8 +107,8 @@ export type MachineEvent =
   | { type: 'gaveUp'; text: string }
   /** Its worker went away mid-run (an office restart, sent home). */
   | { type: 'interrupted'; text?: string }
-  /** Run the last phase again. `last`: the task's latest run, if it has one. */
-  | { type: 'retry'; last?: LastRun }
+  /** Run the last phase again. `last`: the task's latest run, if it has one. `restarted`: the office restarted mid-run, so the prompt says its turn was cut off by it. */
+  | { type: 'retry'; last?: LastRun; restarted?: boolean }
   /** Carry on from Waiting, with the user's answer when there is one. */
   | { type: 'continue'; answer?: string; last?: LastRun }
   | { type: 'approvePlan' }
@@ -385,7 +385,7 @@ export function next(s: MachineState, e: MachineEvent, t: MachineTask, cfg: Mach
       if (!canRetry(s)) return no('Only a stopped, failed or interrupted task can be retried');
       if (!e.last) return firstRun(s, t);
       const { phase, round, role, fresh } = e.last;
-      return ok(running(s, phase), { type: 'run', phase, role, prompt: fresh ? ownPrompt(phase, round, t) : 'continue', ...(round !== undefined ? { round } : {}) });
+      return ok(running(s, phase), { type: 'run', phase, role, prompt: fresh ? ownPrompt(phase, round, t) : 'continue', ...(round !== undefined ? { round } : {}), ...(e.restarted ? { restarted: true } : {}) });
     }
 
     case 'continue': {

@@ -438,6 +438,16 @@ export class KanbanRepository {
     return row && run(row);
   }
 
+  /** When the run was held for background work (ms), or undefined: kept apart from KanbanRun, only the engine's restart reads it. */
+  runHeldAt(id: number): number | undefined {
+    const row = this.db.prepare('SELECT held_at FROM runs WHERE id = ?').get(id) as { held_at: number | null } | undefined;
+    return row?.held_at ?? undefined;
+  }
+
+  setRunHeld(id: number, at: number | null) {
+    this.db.prepare('UPDATE runs SET held_at = ? WHERE id = ?').run(at, id);
+  }
+
   updateRun(id: number, patch: RunUpdate): KanbanRun | undefined {
     const cols: Record<string, string> = { status: 'status', verdict: 'verdict', summary: 'summary', error: 'error', sessionId: 'session_id', workerId: 'worker_id', finishedAt: 'finished_at', model: 'model', effort: 'effort', promptedAt: 'prompted_at' };
     const sets: string[] = [];

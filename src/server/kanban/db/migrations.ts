@@ -211,6 +211,12 @@ ALTER TABLE tasks ADD COLUMN queued_run TEXT;`),
     // prompted_at: when the office last gave the run its prompt (ms), so a restart still tells a prompt typed into the terminal from the office's own.
     up: (db) => db.exec('ALTER TABLE runs ADD COLUMN prompted_at INTEGER;'),
   },
+  {
+    version: 6,
+    name: 'run held at',
+    // held_at: when the run was held for background work it set off (ms; NULL when it isn't), so a full restart still knows its turn had not really ended.
+    up: (db) => db.exec('ALTER TABLE runs ADD COLUMN held_at INTEGER;'),
+  },
 ];
 
 /** The schema version this build expects. */

@@ -43,6 +43,7 @@ export function openKanban(ctx: Ctx, hookPort: number): Kanban {
     },
     // Task hires wait (queued) for the worker limit, keep to upstream's sign-in rule, and a task waiting on a person is announced.
     capacity: () => ctx.machine.full(),
+    hiringPaused: () => ctx.ledger.hiringPaused,
     runAs: ctx.signins,
     // GitHub writes on issues (comments, assignees) go out under the person's own gh sign-in, as taking a card does.
     ghAs: (id) => (id ? ctx.signins.ghAs(id) : undefined),

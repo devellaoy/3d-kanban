@@ -67,6 +67,8 @@ export interface KanbanOffice {
   toFloor?(floorId: string, msg: KanbanServerMsg): void;
   /** Why the office can't take another worker now (upstream's Capacity.full: its worker limit), if it can't. */
   capacity?(): string | undefined;
+  /** Why the office has stopped hiring (its daily budget), if it has. */
+  hiringPaused?(): string | undefined;
   /** Upstream's sign-in rule (signins as RunAs): task hires run on their owner's own Claude sign-in. */
   runAs?: KanbanRunAs;
   /** How gh runs for an account (signins.ghAs), for the actions on issues (see KanbanContext.ghAs). */
@@ -213,6 +215,7 @@ export function installKanban(opts: KanbanInstallOptions): Kanban {
     broadcast,
     toast: (floorId: string, text: string, level?: 'info' | 'warn' | 'error') => opts.toast(floorId, text, level),
     ...(opts.capacity ? { capacity: () => opts.capacity!() } : {}),
+    ...(opts.hiringPaused ? { hiringPaused: () => opts.hiringPaused!() } : {}),
     ...(opts.runAs ? { runAs: opts.runAs } : {}),
     ...(opts.ghAs ? { ghAs: (accountId?: string) => opts.ghAs!(accountId) } : {}),
     ...(opts.codexResetAt ? { codexResetAt: (home?: string) => opts.codexResetAt!(home) } : {}),

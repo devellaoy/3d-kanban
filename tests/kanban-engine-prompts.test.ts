@@ -123,6 +123,16 @@ test('every prompt the engine sends is filled in completely and ends with its ph
   assert.ok(compose.build('resume', def, inv, 'codex', dir, { phase: 'resume', text: 'x' }).endsWith(KANBAN_CONTRACTS.investigateSafety));
 });
 
+test('a continue after an office restart says the turn was cut off, in front of the usual text', (t) => {
+  const { def, dir, repo, compose } = setup(t);
+  const task = repo.createTask({ project: 'proj', title: 'Fix the login redirect', description: 'x', tool: 'claude', usePlan: false, planApproval: 'auto', useReview: false, createdBy: 'Ada' });
+  const plain = compose.build('continue', def, task, 'claude', dir, { phase: 'implement' });
+  const restarted = compose.build('continue', def, task, 'claude', dir, { phase: 'implement', restarted: true });
+  assert.doesNotMatch(plain, /office was restarted/);
+  assert.match(restarted, /^The office was restarted while you were working on this task, and your turn was cut off/);
+  assert.ok(restarted.endsWith(plain), 'the usual continue prompt and its contract follow');
+});
+
 test('filesText and filesInline give the task grant copies by name and path, empty for none or missing files', (t) => {
   const { compose, ctx } = setup(t);
   mkdirSync(path.join(ctx.filesDir, 'uploads'), { recursive: true });

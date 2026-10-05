@@ -178,6 +178,8 @@ export interface KanbanContext {
   toast(floorId: string, text: string, level?: 'info' | 'warn' | 'error'): void;
   /** Why the office can't take another worker now (its worker limit, upstream Capacity.full), if it can't. */
   capacity?(): string | undefined;
+  /** Why the office has stopped hiring (its daily budget, Ledger.hiringPaused), if it has. */
+  hiringPaused?(): string | undefined;
   /** Upstream's sign-in rule (RunAs): whether an account's Claude sign-in is ready, and what to tell it when it isn't. */
   runAs?: KanbanRunAs;
   /**

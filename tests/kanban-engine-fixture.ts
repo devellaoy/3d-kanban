@@ -405,6 +405,11 @@ export interface EngineFixture {
   engine: KanbanEngine;
   /** An office restart of the engine: the old one is disposed and a new one begins over the same context, repository and workers (what it kept in memory is gone). */
   restartEngine(): KanbanEngine;
+  /**
+   * The whole office is shut down (Ctrl+C: the terminals die, the workers are saved with what they were doing) and started again: a new
+   * WorkerManager over the same data, which wakes everyone on their sessions, and a new engine. `carryOn`: the office setting (default on).
+   */
+  restartOffice(opts?: { carryOn?: boolean; beforeStart?: () => void }): Promise<KanbanEngine>;
   broadcasts: KanbanServerMsg[];
   setRules(rules: Rule[]): void;
   invocations(): Invocation[];
@@ -569,6 +574,16 @@ export async function engineFixture(opts: { engine?: EngineOptions; repos?: Floo
     engine,
     restartEngine() {
       fx.engine.dispose();
+      return (fx.engine = makeEngine());
+    },
+    async restartOffice(o = {}) {
+      fx.engine.dispose();
+      workers.shutdown(false);
+      o.beforeStart?.();
+      workers = new WorkerManager(dir, data, path.join(bin, 'claude'), [], { url: hookUrl, token: '' }, { update() {}, remove() {}, data() {}, screen() {}, toast: (t) => void toasts.push(t) }, new Ledger(data, { pauseHiring: false }, () => {}, () => {}), opts.capacity, undefined, opts.runAs);
+      workers.carryOn = () => o.carryOn !== false;
+      await workers.start();
+      fx.workers = (floor as unknown as { workers: WorkerManager }).workers = workers;
       return (fx.engine = makeEngine());
     },
     broadcasts,

@@ -38,6 +38,7 @@ import { branchExists, checkoutLines, currentBranch, homeCleanup, hasChanges, mi
 import { Handoffs } from './handoff.js';
 import { Departures } from './departures.js';
 import { Holds } from './hold.js';
+import { Restarts } from './restart.js';
 import { promptHead, TurnHolds, typeable, type HeldRun } from './turnhold.js';
 import { sessionLogged } from './sessions.js';
 
@@ -53,6 +54,8 @@ export interface EngineOptions {
   backgroundWaitMs?: number;
   /** A phase that finds its own worker still busy (its teammates keep it working) waits this long for it to rest before it fails (10 min). */
   busyWaitMs?: number;
+  /** The gap between one run carried on after an office restart and the next (5 s). */
+  restartStaggerMs?: number;
   adapters?: Partial<Record<KanbanTool, TaskAgentAdapter>>;
   now?: () => number;
 }
@@ -76,6 +79,8 @@ interface Live extends HeldRun {
   via?: Via;
   ack?: () => void;
   stopping?: { by?: string; timer?: NodeJS.Timeout };
+  /** A finished turn handled after an office restart: its result is read from the run's start, the woken process's SessionStart is later. */
+  pinSince?: boolean;
 }
 
 /** What an operation carries into the effects it causes. */
@@ -170,7 +175,8 @@ export class Orchestrator {
   private departures: Departures<Live>;
   private holds: Holds;
   private turnHolds: TurnHolds<Live>;
-  private opts: Required<Omit<EngineOptions, 'adapters'>>;
+  private restarts: Restarts<Live>;
+  private opts: Required<Omit<EngineOptions, 'adapters' | 'restartStaggerMs'>>;
   private disposed = false;
 
   constructor(
@@ -216,6 +222,20 @@ export class Orchestrator {
       prompted: (live, text) => this.prompted(live, text),
       restateText: (task, phase) => this.compose.restate(task, phase),
       waitMs: () => this.opts.backgroundWaitMs,
+      heldChanged: (live, held) => this.ctx.repo.setRunHeld(live.runId, held ? this.opts.now() : null),
+    });
+    this.restarts = new Restarts<Live>({
+      ctx,
+      serial: (taskId, fn) => this.serial(taskId, fn),
+      folder: (project) => this.folder(project),
+      interrupted: (run, task, text) => this.interruptedRun(run, task, text),
+      finishRun: (id, project, patch) => this.finishRun(id, project, patch),
+      note: (task, text, runId) => this.note(task, text, runId),
+      attach: (run, task, info) => Object.assign(this.attach(run, task, info), { pinSince: true }),
+      turnEnded: (live) => this.turnEnded(live),
+      asking: async (taskId) => void (await this.apply(taskId, { type: 'asking', text: 'The agent was asking something in its terminal when the office restarted' })), hiringPaused: () => this.ctx.hiringPaused?.(),
+      retry: (taskId) => this.apply(taskId, { type: 'retry', last: this.lastRun(taskId), restarted: true }, { who: OFFICE }),
+      staggerMs: options.restartStaggerMs ?? 5000,
     });
     this.opts = {
       sweepMs: options.sweepMs ?? 60_000,
@@ -239,6 +259,7 @@ export class Orchestrator {
 
   dispose() {
     this.disposed = true;
+    this.restarts.dispose();
     clearInterval(this.sweepTimer);
     for (const f of this.floors.values()) f.off();
     this.floors.clear();
@@ -307,13 +328,18 @@ export class Orchestrator {
       }
       const floor = this.watch(task.project);
       const info = run.workerId ? floor?.workers.get(run.workerId) : undefined;
-      if (!floor || !info || info.status === 'exited' || info.status === 'idle' || attached.has(task.id)) {
+      // A worker whose terminal didn't survive a full restart (cut off) was woken on its session: its saved status says what it was doing.
+      const cut = floor && info ? floor.workers.cutOffStatus(info.id) : undefined;
+      if (!floor || !info || info.status === 'exited' || (info.status === 'idle' && cut === undefined) || attached.has(task.id)) {
         void this.serial(task.id, () => this.interruptedRun(run, task, 'The office restarted while it ran: Retry to carry on'));
         continue;
       }
       attached.add(task.id);
-      const live: Live = { taskId: task.id, runId: run.id, phase: run.phase, ...(run.round !== undefined ? { round: run.round } : {}), role: run.role, tool: run.tool, workerId: info.id, floorId: task.project, exitPlan: false, ended: false, promptAt: run.promptedAt };
-      this.live.set(info.id, live);
+      if (cut !== undefined) {
+        this.restarts.resume(run, task, floor, info, cut);
+        continue;
+      }
+      const live = this.attach(run, task, info);
       if (info.status === 'done') void this.serial(task.id, () => this.turnEnded(live));
       else if (info.status === 'needs_input') void this.serial(task.id, () => this.needsInput(live, info));
     }
@@ -331,6 +357,13 @@ export class Orchestrator {
       const ids = new Set(this.ctx.floor(def.id)?.workers.list().flatMap((w) => (w.kanban ? [w.kanban.taskId] : [])));
       for (const id of ids) this.syncSummaries(this.ctx.repo.getTask(id));
     }
+  }
+
+  /** Follows a run left `running` by the last office on its worker. */
+  private attach(run: KanbanRun, task: KanbanTask, info: WorkerInfo): Live {
+    const live: Live = { taskId: task.id, runId: run.id, phase: run.phase, ...(run.round !== undefined ? { round: run.round } : {}), role: run.role, tool: run.tool, workerId: info.id, floorId: task.project, exitPlan: false, ended: false, promptAt: run.promptedAt };
+    this.live.set(info.id, live);
+    return live;
   }
 
   private async interruptedRun(run: KanbanRun, task: KanbanTask, text: string) {
@@ -822,6 +855,7 @@ export class Orchestrator {
       refsFile,
       fixPrs,
       held,
+      restarted: eff.restarted,
     };
     const fresh = { ...(this.ctx.repo.getTask(task.id) ?? task), ...(via.hold ? { hold: via.hold } : {}) };
     const build = (kind: PromptKind) => this.compose.build(kind, def, fresh, tool, floor.dir, x);
@@ -1158,7 +1192,7 @@ export class Orchestrator {
       if (o.hookEvent === 'UserPromptSubmit') Object.assign(live, { stopText: undefined, restating: false });
       else if (o.hookEvent === 'Stop' && live.tool === 'claude') live.stopText = stopMessage(o.payload);
       // The resumed turn has started (these hooks also set the worker `working`): its end is a normal `done` again.
-      if (live.background && (o.hookEvent === 'PreToolUse' || o.hookEvent === 'UserPromptSubmit')) live.background = false;
+      if (live.background && (o.hookEvent === 'PreToolUse' || o.hookEvent === 'UserPromptSubmit')) this.turnHolds.release(live);
       // A Stop while stopping is the stop done (the worker may stay `done`, which emits no status).
       if (o.hookEvent === 'Stop' && live.stopping) return void this.serial(live.taskId, () => this.stoppedRun(live));
       // The worker stays `done` across the resumed turn (upstream drops an unchanged status), so its Stop is heard here.
@@ -1391,7 +1425,7 @@ export class Orchestrator {
   /** readTurnResult's options: `since` is when the worker's Claude process started (its SessionStart, else, after an office restart, the run's start); `runStart` is when the run began; `promptAt` is when the office last prompted it. */
   private turnOpts(live: Live): { since?: number; runStart?: number; promptAt?: number; promptHead?: string } {
     const run = this.ctx.repo.getRun(live.runId);
-    return { since: this.procSince.get(live.workerId) ?? run?.startedAt, runStart: run?.startedAt, promptAt: live.promptAt, promptHead: live.promptHead };
+    return { since: live.pinSince ? run?.startedAt : (this.procSince.get(live.workerId) ?? run?.startedAt), runStart: run?.startedAt, promptAt: live.promptAt, promptHead: live.promptHead };
   }
 
   /** Whether the worker's Claude teammates (agent teams) still work, from their transcripts. */
