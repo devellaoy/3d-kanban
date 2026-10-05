@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { repoRefOf } from '../src/shared/hosting/remote.js';
 import { azureProvider } from '../src/server/hosting/azure.js';
-import { azureDescription, latestStatuses } from '../src/server/hosting/azure-map.js';
+import { azureDescription, checksOfPr, latestStatuses, summaryOf } from '../src/server/hosting/azure-map.js';
 import { completeWorkItem, linkWorkItemToPr, workItemOf } from '../src/server/hosting/azure-workitems.js';
 import type { Fetch, HostAs } from '../src/server/hosting/provider.js';
 
@@ -283,10 +283,10 @@ test('checks: the branch policies (build validation, required statuses) with the
     [/searchCriteria\.status=/, () => ({ value: [] })],
   ]);
   assert.deepEqual(await azureProvider.checks(repo, 7, as, fetch), [
-    { name: 'ci/test', state: 'pass' },
+    { name: 'ci/test', state: 'pending' },
     { name: 'PR build', state: 'fail', url: 'https://dev.azure.com/contoso/My%20Project/_build/results?buildId=77' },
     { name: 'sonar/quality', state: 'pending' },
-  ], 'a required status already posted shows once; reviewer and disabled policies are not checks');
+  ], 'a required status already posted shows once, still pending while its policy is; reviewer and disabled policies are not checks');
   const asked = calls.find((c) => /policy\/evaluations/.test(c.url))!.url;
   assert.match(asked, /artifactId=vstfs%3A%2F%2F%2FCodeReview%2FCodeReviewId%2Fp-guid%2F7&/);
   const [card] = await azureProvider.listPulls(repo, as, fetch);
@@ -294,4 +294,18 @@ test('checks: the branch policies (build validation, required statuses) with the
   // Evaluations the token can't read leave the statuses.
   const noPolicy = stub([[/statuses/, () => ({ value: [{ id: 1, state: 'succeeded', context: { name: 'x' } }] })], [/policy/, () => ({}), 403], [/pullrequests\/7\?/, () => projectPr(7)]]);
   assert.deepEqual(await azureProvider.checks(repo, 7, as, noPolicy.fetch), [{ name: 'x', state: 'pass' }]);
+});
+
+test('checks: a policy that blocks is never hidden by a status that passed, and builds stay their own', () => {
+  const statusPolicy = (status: string, genre: string, name: string) => ({ status, configuration: { isEnabled: true, type: { id: 'cbdc66da-9728-4af8-aada-9a5a32e4a226' }, settings: { statusGenre: genre, statusName: name, defaultDisplayName: 'Tests must pass' } } });
+  const buildPolicy = (status: string, displayName: string) => ({ status, configuration: { isEnabled: true, type: { id: '0609b952-1397-4640-95ec-e00a01b2c241' }, settings: { displayName } }, context: {} });
+  const posted = [{ id: 1, state: 'succeeded', context: { genre: 'ci', name: 'test' }, targetUrl: 'https://ci/1' }];
+  const got = checksOfPr(repo, posted, [statusPolicy('rejected', 'ci', 'test'), buildPolicy('rejected', 'ci/test')]);
+  assert.deepEqual(got, [
+    { name: 'ci/test', state: 'fail', url: 'https://ci/1' },
+    { name: 'ci/test', state: 'fail' },
+  ], 'the required status keeps the policy’s rejection (matched by its context, not its display name), and the build of the same name is a check of its own');
+  assert.equal(summaryOf(got), 'fail');
+  assert.deepEqual(checksOfPr(repo, posted, [statusPolicy('approved', 'ci', 'test')]), [{ name: 'ci/test', state: 'pass', url: 'https://ci/1' }]);
+  assert.deepEqual(checksOfPr(repo, [], [statusPolicy('queued', 'ci', 'test')]), [{ name: 'Tests must pass', state: 'pending' }], 'not posted yet: the policy itself');
 });

@@ -90,8 +90,8 @@ function policyState(status: unknown): GhCheck['state'] {
  * A pull request's branch policy evaluations as checks: each enabled build validation (its build's
  * page when there is one) and required status (named like the status it waits for).
  */
-export function checksOfEvaluations(repo: RepoRef, evaluations: any[] | undefined): GhCheck[] {
-  const out: GhCheck[] = [];
+export function checksOfEvaluations(repo: RepoRef, evaluations: any[] | undefined): (GhCheck & { status?: string })[] {
+  const out: (GhCheck & { status?: string })[] = [];
   for (const e of evaluations ?? []) {
     const c = e?.configuration;
     if (!c || c.isEnabled === false || c.isDeleted) continue;
@@ -104,21 +104,32 @@ export function checksOfEvaluations(repo: RepoRef, evaluations: any[] | undefine
       const url = buildId > 0 ? `https://dev.azure.com/${encodeURIComponent(repo.owner)}/${encodeURIComponent(repo.project ?? repo.name)}/_build/results?buildId=${buildId}` : undefined;
       out.push({ name, state: policyState(e.status), ...(url ? { url } : {}) });
     } else if (type === STATUS_POLICY || (!type && typeName === 'Status')) {
-      const name = String(s.defaultDisplayName || (s.statusGenre ? `${s.statusGenre}/${s.statusName ?? ''}` : s.statusName ?? 'status'));
-      out.push({ name, state: policyState(e.status) });
+      // `status`: the context it requires, as a posted status names it (contextOf).
+      const status = s.statusGenre ? `${s.statusGenre}/${s.statusName ?? ''}` : String(s.statusName ?? '');
+      out.push({ name: String(s.defaultDisplayName || status || 'status'), state: policyState(e.status), ...(status ? { status } : {}) });
     }
   }
   return out;
 }
 
+const SEVERITY: GhCheck['state'][] = ['skip', 'pass', 'pending', 'fail'];
+const worse = (a: GhCheck['state'], b: GhCheck['state']) => (SEVERITY.indexOf(a) >= SEVERITY.indexOf(b) ? a : b);
+
 /**
- * The statuses and the policy evaluations together: a required status that was posted shows once
- * (as the status, which links to its run).
+ * The statuses and the policy evaluations together. A required-status policy whose status was
+ * posted shows once, as that status (it links to its run), with the worse of the two states, so a
+ * policy that blocks the merge still shows failing or pending whatever the status says. Build
+ * validations are checks of their own, never merged into a status that happens to share a name.
  */
 export function checksOfPr(repo: RepoRef, statuses: any[] | undefined, evaluations: any[] | undefined): GhCheck[] {
   const posted = checksOfStatuses(statuses);
-  const names = new Set(posted.map((c) => c.name.toLowerCase()));
-  return [...posted, ...checksOfEvaluations(repo, evaluations).filter((c) => !names.has(c.name.toLowerCase()))];
+  const out: GhCheck[] = [...posted];
+  for (const { status, ...c } of checksOfEvaluations(repo, evaluations)) {
+    const i = status ? posted.findIndex((p) => p.name.toLowerCase() === status.toLowerCase()) : -1;
+    if (i < 0) out.push(c);
+    else out[i] = { ...out[i], state: worse(out[i].state, c.state) };
+  }
+  return out;
 }
 
 /** Checks folded into the board card's one word. */

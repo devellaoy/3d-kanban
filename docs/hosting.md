@@ -22,7 +22,7 @@ with a token. It doesn't need the `az` CLI or any Bitbucket tool.
 | **O** at a desk, and a task's 🔀 Create PRs (the agent opens the PR) | `gh` | `office-pr` | `office-pr` |
 | **O** on a 🐚 shell worker, and the Changes window's PR (the office opens it) | ✅ | ✅ | ✅ |
 | The 🔀 PR board, PR states on kanban tasks, a task following its PR to merged | ✅ | ✅ | ✅ |
-| Checks and reviews on the board | ✅ | statuses and branch policies (build validation, required statuses), votes | build statuses, approvals |
+| Checks and reviews on the board | ✅ | statuses and branch policies (build validation, required statuses: a posted status shows the policy's state when that is worse), votes | build statuses, approvals |
 | The PR window | everything | description, checks, comments, commenting | description, checks, comments, commenting |
 | Merging, closing, labels from the office | ✅ | do it on Azure DevOps | do it on Bitbucket |
 | Fix PRs, Resolve conflicts, 🔍 Review (kanban) | ✅ | ✅ (the agent uses `office-pr`) | ✅ (the agent uses `office-pr`) |
@@ -61,10 +61,11 @@ When a token is missing, the action says so and opens 🔐 Your sign-ins.
 
 **Pushing over HTTPS.** The office's credential helper (`office-git-credential`) answers for
 `dev.azure.com`, `*.visualstudio.com` and `bitbucket.org` with the same token: yours, else the office's.
-When the office pushes for you (O on a 🐚 shell worker, the Changes window's pull request), it hands
-git the helper itself, ahead of any the machine has for those hosts, so that holds with or without
-accounts and whatever your GitHub sign-in is. Your workers' own pushes get it from your account's git
-config. Remotes over SSH keep using the machine's SSH keys.
+Git gets the helper through its environment (git 2.31 or newer), ahead of any the machine has for
+those hosts: every worker's (agents and shells alike, so an agent's own `git push` and `office-pr`'s
+pull request go out as the person who hired it), and the office's own pushes for you (O on a 🐚 shell
+worker, the Changes window's pull request). That holds with or without accounts and whatever your
+GitHub sign-in is. Remotes over SSH keep using the machine's SSH keys.
 
 **Each repository by its own host.** O and the Changes window ask for the sign-ins the repositories
 they push to need: GitHub's only when one of them is on GitHub, and your token for each other host. A
@@ -119,7 +120,8 @@ The source reads with the office's Azure DevOps token (or an account's, see abov
    on the next refreshes, three times in all.
 
 Both are done with the Azure DevOps token of the task's creator, else the office's own, never with
-another person's. Without either, the task says so.
+another person's. Without either, they wait (the task says so once) and go ahead on the first refresh
+after someone sets one.
 
 Only work items in the same organisation as the repository are linked.
 

@@ -642,7 +642,8 @@ missing token (403). `create` updates the branch's open PR when it has one, and 
 when a repository of the workspace is elsewhere. On every board refresh (`floorPullsListeners`, after the pulls plugin),
 integrations/hosting/workitems.ts links a task's work item to its open Azure DevOps PRs and completes it once one
 merged (the `workitem.completed` event keeps that once across restarts), with the creator's token or the office's,
-never another account's (`HostCredentials.as`), and tries a failed one again on the next refreshes (`WORK_ITEM_TRIES`).
+never another account's (`HostCredentials.as`), and tries a failed one again on the next refreshes (`WORK_ITEM_TRIES`);
+one with no token waits, without spending tries, until one is set.
 
 User skills (integrations/userskills/): a plugin that syncs the repository's `user-skills/claude/*` and
 `user-skills/codex/*` into the machine's `<claude home>/skills/` and `<codex home>/skills/` (the same homes
