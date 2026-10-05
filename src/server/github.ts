@@ -1,5 +1,6 @@
 import { execFile } from 'node:child_process';
 import type { GhCheck, GhCloseReason, GhComment, GhIssue, GhIssueDetail, GhLabel, GhMergeMethod, GhPull, GhPullDetail, GhRepoInfo, GhReviewComment, GhState } from '../shared/protocol.js';
+import { openedFromOfficeBy } from '../shared/officepr.js';
 import type { GhAs } from './signins.js';
 import { checkoutRepo, repoApi, repoFlag } from './ghrepo.js';
 import { pullDiffOrFiles } from './prfiles.js';
@@ -413,7 +414,6 @@ export class GitHub {
       const [open, closed] = await Promise.all([
         this.gh(['issue', 'list', ...repoFlag(this.target), '--state', 'open', '--limit', '300', '--json', fields], this.dir),
         this.gh(['issue', 'list', ...repoFlag(this.target), '--state', 'closed', '--limit', '40', '--json', fields], this.dir),
-        this.viewer(),
       ]);
       const fetched: GhIssue[] = [...JSON.parse(open), ...JSON.parse(closed)].map((i: any) => ({
         number: i.number,
@@ -473,6 +473,8 @@ export class GitHub {
         deletions: p.deletions ?? 0,
         checks: checksOf(p.statusCheckRollup),
         body: String(p.body ?? '').slice(0, 4000),
+        // Read before the cut: the office's footer is the description's last line.
+        ...withOpenedBy(String(p.body ?? '')),
         closes: (p.closingIssuesReferences ?? []).map((r: any) => Number(r.number)).filter((n: number) => Number.isInteger(n) && n > 0),
         // People asked to review it, by login (a team's request has no login and is left out).
         reviewRequests: (p.reviewRequests ?? []).map((r: any) => r?.login).filter((l: unknown): l is string => typeof l === 'string' && !!l),
@@ -485,4 +487,10 @@ export class GitHub {
     }
     this.onPulls(this.pulls);
   }
+}
+
+/** GhPull.openedBy from a description, when it has the office's "Opened from Agent Office by" line. */
+function withOpenedBy(body: string): { openedBy?: string } {
+  const by = openedFromOfficeBy(body);
+  return by ? { openedBy: by } : {};
 }

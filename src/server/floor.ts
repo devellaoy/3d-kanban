@@ -407,10 +407,9 @@ export class Floor {
   // --- the project's other repositories' pull requests --------------------------------
 
   /**
-   * The PR board's list: the floor's own repository's pull requests and, for a project with several
-   * repositories, each other one's, every one marked with its repository (GhPull.repo). A floor with
-   * one repository gets exactly upstream's list. `repos` names every repository of the project (the
-   * floor's own, then the others), so the PR board has a tab for one without pull requests too.
+   * The PR board's list: the floor's own repository's pull requests and, on a project with several,
+   * each other one's, all marked with their repository (GhPull.repo); one repository gets upstream's
+   * list. `repos` names every repository (the floor's own first), so one without PRs gets a tab too.
    */
   pullsState(): GhState<GhPull> {
     const own = this.github.pulls;
@@ -420,7 +419,8 @@ export class Floor {
     return {
       items: [...own.items.map((p) => (this.def.repo && !p.repo ? { ...p, repo: this.def.repo } : p)), ...states.flatMap((b) => b.pulls.items)],
       fetchedAt: Math.max(own.fetchedAt, ...states.map((b) => b.pulls.fetchedAt)),
-      loading: own.loading || states.some((b) => b.pulls.loading), ...(own.viewer ? { viewer: own.viewer } : {}),
+      loading: own.loading || states.some((b) => b.pulls.loading),
+      ...(own.viewer ? { viewer: own.viewer } : {}),
       // The floor's own board lists the repository GitHub.target names (FloorDef.repo, else the origin); the others are projectRepos'.
       repos: uniqueRepos([this.def.repo ?? (this.git ? checkoutRepo(this.dir) : undefined), ...projectRepos(this.def).filter((r) => !r.primary).map((r) => r.remote)]),
       ...(errors.length ? { error: errors.join(' · ') } : {}),

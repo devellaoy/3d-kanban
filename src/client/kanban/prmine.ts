@@ -20,19 +20,17 @@ export type PrWho = 'all' | 'mine' | 'review';
 const WHOS: readonly PrWho[] = ['all', 'mine', 'review'];
 
 /**
- * My GitHub login: my own sign-in's, when I have one; the office's own gh (`officeViewer`) when I use
- * the office's sign-in or there are no accounts (`signins` null). An account without a GitHub sign-in
- * has none, so the office's PRs don't all count as everyone's.
+ * My GitHub login: on the shared password (no `account`), the office's own gh (`officeViewer`); with
+ * an account, my own sign-in's, or the office's when I use its sign-in. An account without a GitHub
+ * sign-in has none, so the office's PRs don't all count as everyone's, and neither has one whose
+ * sign-ins haven't come in yet (`signins` is null until the server sends them, after welcome).
  */
-export function myLogin(signins: Pick<SignInsState, 'github'> | null, officeViewer: string | undefined): string {
+export function myLogin(signins: Pick<SignInsState, 'github'> | null, officeViewer: string | undefined, account: boolean): string {
+  if (!account) return officeViewer ?? '';
   const gh = signins?.github;
-  if (!signins || gh?.how === 'office') return officeViewer ?? '';
-  return gh?.status === 'ok' && gh.who ? gh.who.replace(/^@/, '').trim() : '';
-}
-
-/** Who the office's own drafted PR says opened it: "_Opened from Agent Office by NAME · …_" (server/workers/pr.ts). */
-export function openedFromOfficeBy(body: string): string | undefined {
-  return /_Opened from Agent Office by (.+?) · /.exec(body)?.[1];
+  if (!gh) return '';
+  if (gh.how === 'office') return officeViewer ?? '';
+  return gh.status === 'ok' && gh.who ? gh.who.replace(/^@/, '').trim() : '';
 }
 
 const same = (a: string, b: string) => !!a && a.toLowerCase() === b.toLowerCase();
@@ -65,7 +63,11 @@ export function workerOfPull(workers: Iterable<WorkerInfo>, pr: GhPull, primary?
   return repo ? workerForRepoPull(workers, pr, repo, primary) : undefined;
 }
 
-/** Whether a pull request is mine: authored by my login or opened by the office on my behalf. */
+/**
+ * Whether a pull request is mine: authored by my login or opened by the office on my behalf. Only for
+ * what the board shows: GhPull.openedBy is a line anyone can write in a description, so this never
+ * decides rights or triggers actions (merging, "my PR" buttons, notifications).
+ */
 export function minePredicate(me: Me): (pr: GhPull) => boolean {
   const workers = [...me.workers];
   const mine = me.name ? me.tasks.filter((t) => t.createdBy === me.name) : [];
@@ -75,7 +77,7 @@ export function minePredicate(me: Me): (pr: GhPull) => boolean {
     if (mine.some((t) => linksTo(t, pr))) return true;
     const w = workerOfPull(workers, pr, me.primary);
     if (w?.byPerson && w.createdBy === me.name) return true;
-    return openedFromOfficeBy(pr.body ?? '') === me.name;
+    return pr.openedBy === me.name;
   };
 }
 
@@ -102,6 +104,15 @@ export function savePrWho(who: PrWho) {
   } catch {
     // storage blocked
   }
+}
+
+/**
+ * Whether the board knows enough to say none of the PRs are open: not before the first list has come
+ * in, nor after a failed one, nor for 👤 Mine before the kanban's tasks (`mineSettled`) have.
+ */
+export function noteReady(who: PrWho, pulls: { loading: boolean; error?: string; fetchedAt: number; items: unknown[] }, mineSettled: boolean): boolean {
+  if (pulls.error || !pulls.fetchedAt || (pulls.loading && !pulls.items.length)) return false;
+  return who !== 'mine' || mineSettled;
 }
 
 /** The board's empty note while a filter leaves no open PRs ('' when there's nothing to say). */
@@ -183,30 +194,39 @@ type Snapshot = Extract<KanbanServerMsg, { t: 'kanban.snapshot' }>;
 
 /**
  * The floor's kanban tasks and my name as the kanban knows it, for "mine": a kanban.snapshot (never
- * kanban.subscribe, which would take the connection's delta filter), asked again by `refresh` at most
- * every 30 seconds. A failure leaves what it had; login matches work without it.
+ * kanban.subscribe, which would take the connection's delta filter). The snapshot is the whole board
+ * (every card with its review settings, the projects, the settings), more than "mine" needs, so the PR
+ * board asks only when it opens on 👤 Mine and when Mine is picked, not on its redraws; a task linked
+ * to a PR meanwhile counts from the next time. `settled` once the first answer (or failure) is in; a
+ * failure leaves what it had, and login matches work without it.
  */
 export function mineTasks(net: Net, project: () => string | null | undefined, changed: () => void) {
   let tasks: KanbanTaskCard[] = [];
   let name = '';
-  let asked = 0;
+  let settled = false;
+  let busy = false;
   let stopped = false;
   return {
     tasks: () => tasks,
     name: () => name,
+    settled: () => settled,
     refresh() {
       const p = project();
-      if (stopped || !p || Date.now() - asked < 30_000) return;
-      asked = Date.now();
+      if (stopped || busy) return;
+      if (!p) return void (settled = true);
+      busy = true;
       kanbanApi(net)
         .request<Snapshot>({ t: 'kanban.snapshot', project: p })
         .then((s) => {
-          if (stopped) return;
           tasks = s.tasks;
           name = s.me.name;
-          changed();
         })
-        .catch(() => {});
+        .catch(() => {})
+        .finally(() => {
+          busy = false;
+          settled = true;
+          if (!stopped) changed();
+        });
     },
     stop: () => void (stopped = true),
   };

@@ -57,6 +57,8 @@ export interface GhPull {
   body: string;
   /** Issues it closes ("closes #12" in its description), as GitHub links them. */
   closes: number[];
+  /** Who the office's "Opened from Agent Office by" line names, read before the body is cut (see shared/officepr.ts). */
+  openedBy?: string;
   /** Logins whose review is requested (teams left out), for the PR board's 👀 filter. */
   reviewRequests?: string[];
   /** owner/name of the repository it's in, on a project with several (see Floor.pullsState). */

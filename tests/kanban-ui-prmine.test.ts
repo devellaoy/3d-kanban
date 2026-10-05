@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import type { GhPull, SignInState, WorkerInfo } from '../src/shared/protocol.js';
-import { emptyNote, loadPrWho, minePredicate, myLogin, openedFromOfficeBy, reviewPredicate, savePrWho, shownWho, tabStop, WHO_TOPICS, type Me } from '../src/client/kanban/prmine.js';
+import { emptyNote, loadPrWho, minePredicate, myLogin, noteReady, reviewPredicate, savePrWho, shownWho, tabStop, WHO_TOPICS, type Me } from '../src/client/kanban/prmine.js';
 import { openByRepo } from '../src/client/kanban/boardrepos.js';
 
 const pr = (repo: string, number: number, o: Partial<GhPull> = {}) =>
@@ -10,12 +10,15 @@ const gh = (o: Partial<SignInState>): { github: SignInState } => ({ github: { st
 const me = (o: Partial<Me> = {}): Me => ({ login: 'ada', name: 'Ada', tasks: [], workers: [], ...o });
 
 test('my login: my own GitHub sign-in, else the office’s gh', () => {
-  assert.equal(myLogin(gh({ who: '@ada' }), 'office-bot'), 'ada');
-  assert.equal(myLogin(gh({ who: '@office-bot', how: 'office' }), 'office-bot'), 'office-bot');
-  assert.equal(myLogin(null, 'office-bot'), 'office-bot');
-  assert.equal(myLogin(null, undefined), '');
-  // An account that hasn't signed in to GitHub doesn't get every office PR as its own.
-  assert.equal(myLogin(gh({ status: 'none' }), 'office-bot'), '');
+  assert.equal(myLogin(gh({ who: '@ada' }), 'office-bot', true), 'ada');
+  assert.equal(myLogin(gh({ who: '@office-bot', how: 'office' }), 'office-bot', true), 'office-bot');
+  // The shared password (no account): the office's.
+  assert.equal(myLogin(null, 'office-bot', false), 'office-bot');
+  assert.equal(myLogin(null, undefined, false), '');
+  // An account that hasn't signed in to GitHub doesn't get every office PR as its own…
+  assert.equal(myLogin(gh({ status: 'none' }), 'office-bot', true), '');
+  // …nor does one whose sign-ins haven't come in yet.
+  assert.equal(myLogin(null, 'office-bot', true), '');
 });
 
 test('authored by my login counts, ignoring case', () => {
@@ -43,10 +46,9 @@ test('a worker I hired at a desk, or the office’s "Opened from Agent Office by
   const is = minePredicate(me({ workers: [w], primary: 'acme/web' }));
   assert.ok(is(pr('acme/web', 3)));
   assert.ok(!minePredicate(me({ workers: [{ ...w, byPerson: undefined }], primary: 'acme/web' }))(pr('acme/web', 3)));
-  const body = '## Task\n\nfix\n\n_Opened from Agent Office by Ada · Otto at Desk 3_';
-  assert.equal(openedFromOfficeBy(body), 'Ada');
-  assert.ok(is(pr('acme/web', 4, { body })));
-  assert.ok(!is(pr('acme/web', 4, { body: body.replace('Ada', 'Bob') })));
+  // GhPull.openedBy: the server reads the footer before it cuts the description.
+  assert.ok(is(pr('acme/web', 4, { openedBy: 'Ada' })));
+  assert.ok(!is(pr('acme/web', 4, { openedBy: 'Bob' })));
 });
 
 test('review requested from my login', () => {
@@ -115,10 +117,10 @@ test('a GitHub sign-in that comes in late turns the filter on, and the board fol
   assert.ok(WHO_TOPICS.includes('signins'));
   // Before the sign-ins arrive an account has no login, so 👀 can't work and All shows…
   const off = (login: string) => ({ review: login ? undefined : 'no login' });
-  const before = myLogin(gh({ status: 'busy' }), 'office-bot');
+  const before = myLogin(null, 'office-bot', true);
   assert.equal(shownWho('review', off(before)), 'all');
   // …and once they do, the kept 👀 comes back by itself.
-  const after = myLogin(gh({ who: '@ada' }), 'office-bot');
+  const after = myLogin(gh({ who: '@ada' }), 'office-bot', true);
   assert.equal(shownWho('review', off(after)), 'review');
   assert.ok(reviewPredicate(after)(pr('acme/web', 1, { reviewRequests: ['ada'] })));
 });
@@ -128,4 +130,15 @@ test('the toggle always has a Tab stop that works', () => {
   assert.equal(tabStop('mine', {}), 'mine');
   assert.equal(tabStop('all', { review: 'no login' }), 'all');
   assert.equal(tabStop('review', { all: 'x', review: 'no login' }), 'mine');
+});
+
+test('no empty note before the PRs (and, for Mine, the kanban’s tasks) are in', () => {
+  const loaded = { loading: false, fetchedAt: 1, items: [] };
+  assert.ok(!noteReady('mine', { loading: true, fetchedAt: 0, items: [] }, true), 'first load');
+  assert.ok(!noteReady('mine', { ...loaded, error: 'gh failed' }, true), 'a failed load');
+  assert.ok(!noteReady('mine', loaded, false), 'the kanban snapshot not answered yet');
+  assert.ok(noteReady('mine', loaded, true));
+  assert.ok(noteReady('review', loaded, false));
+  // A refresh of a list already in keeps the note.
+  assert.ok(noteReady('mine', { loading: true, fetchedAt: 1, items: [{}] }, true));
 });

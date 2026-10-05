@@ -14,7 +14,7 @@ import { boardRepos, inRepo, keptRepo, tabRepos, loadRepoFilter, repoChip, openB
 import { issueCardLabel, openCard, sourceChips, taskForCard } from '../kanban/issuecards';
 import { noteSeed } from '../../shared/kanban/issuecard.js';
 // The PR board's All / 👤 Mine / 👀 To review toggle beside the repository tabs.
-import { emptyNote, loadPrWho, mineTasks, minePredicate, myLogin, prFilterBar, prWhoToggle, reviewPredicate, savePrWho, shownWho, WHO_TOPICS, type PrWho } from '../kanban/prmine';
+import { emptyNote, loadPrWho, mineTasks, minePredicate, myLogin, noteReady, prFilterBar, prWhoToggle, reviewPredicate, savePrWho, shownWho, WHO_TOPICS, type PrWho } from '../kanban/prmine';
 
 const TILTS = ['-1.2deg', '0.8deg', '-0.4deg', '1.4deg', '0deg', '-0.9deg'];
 const NOTE_COLORS = ['var(--note-yellow)', 'var(--note-pink)', 'var(--note-green)', 'var(--note-blue)', 'var(--note-peach)'];
@@ -146,8 +146,16 @@ export function openBoard(kind: 'issues' | 'pulls', net: Net, actions: BoardActi
   const tabs = kind === 'pulls' ? repoTabs((r) => pickRepo(r)) : null;
   // Whose PRs it shows (a visitor sees everyone's), with the kanban tasks "mine" looks at, and a note when that leaves none open.
   let who: PrWho = store.me.visitor ? 'all' : loadPrWho();
-  const whoToggle = tabs && !store.me.visitor ? prWhoToggle((w) => (w !== who && ((who = w), savePrWho(w), render()))) : null;
-  const mine = mineTasks(net, () => store.floor, () => render());
+  const pickWho = (w: PrWho) => {
+    if (w === who) return;
+    who = w;
+    savePrWho(w);
+    if (w === 'mine') mine?.refresh();
+    render();
+  };
+  const whoToggle = tabs && !store.me.visitor ? prWhoToggle(pickWho) : null;
+  const mine = whoToggle ? mineTasks(net, () => store.floor, () => render()) : null;
+  if (who === 'mine') mine?.refresh();
   const empty = h('div.board-pr-empty.hidden', { role: 'status' });
   const el = h('div.modal.board', { role: 'dialog', 'aria-label': kind === 'issues' ? 'Issues board' : 'Pull requests board' }, h('header', {}, h('h2', {}, kind === 'issues' ? '📌 Issues' : '🔀 Pull Requests'), status, repoSlot, kind === 'issues' ? browseButton(net, actions) : null, refresh, close), tabs ? prFilterBar(tabs.el, whoToggle?.el ?? h('span')) : null, tabs ? empty : null, body);
 
@@ -293,17 +301,17 @@ export function openBoard(kind: 'issues' | 'pulls', net: Net, actions: BoardActi
     const repos = tabs ? tabRepos(st.items, store.pulls.repos) : boardRepos(st.items);
     const shownRepo = tabs ? keptRepo(repo, repos) : repos.includes(repo) ? repo : '';
     // The toggle narrows the PRs before the tabs count them and the columns deal them.
-    const login = myLogin(store.signins, store.pulls.viewer);
-    const name = mine.name() || (store.me.account?.name ?? store.profile.name);
+    const login = myLogin(store.signins, store.pulls.viewer, !!store.me.account);
+    const name = mine?.name() || (store.me.account?.name ?? store.profile.name);
     const off = { review: login ? undefined : 'Sign in to GitHub (🔐 Your sign-ins) to see the reviews asked of you' };
-    const shownWhoNow = shownWho(who, off);
-    if (shownWhoNow !== 'all') mine.refresh();
-    const pulls = shownWhoNow === 'all' ? store.pulls.items : store.pulls.items.filter(shownWhoNow === 'mine' ? minePredicate({ login, name, tasks: mine.tasks(), workers: store.workers.values(), primary: store.currentFloor()?.repo }) : reviewPredicate(login));
+    const shownWhoNow = mine ? shownWho(who, off) : 'all';
+    const pulls = shownWhoNow === 'all' ? store.pulls.items : store.pulls.items.filter(shownWhoNow === 'mine' ? minePredicate({ login, name, tasks: mine?.tasks() ?? [], workers: store.workers.values(), primary: store.currentFloor()?.repo }) : reviewPredicate(login));
     if (tabs) {
       const open = openByRepo(pulls);
       tabs.update(repos, shownRepo, open.counts, open.total);
       whoToggle?.update(shownWhoNow, off);
-      const note = emptyNote(shownWhoNow, shownRepo, shownRepo ? (open.counts.get(shownRepo) ?? 0) : open.total);
+      // Nothing to say until the PRs (and, for Mine, the kanban's tasks) have come in.
+      const note = noteReady(shownWhoNow, store.pulls, !!mine?.settled()) ? emptyNote(shownWhoNow, shownRepo, shownRepo ? (open.counts.get(shownRepo) ?? 0) : open.total) : '';
       empty.textContent = note;
       empty.classList.toggle('hidden', !note);
     }
@@ -364,7 +372,7 @@ export function openBoard(kind: 'issues' | 'pulls', net: Net, actions: BoardActi
     onClose: () => {
       unsubs.forEach((u) => u());
       clearInterval(timer);
-      mine.stop();
+      mine?.stop();
     },
   });
   close.addEventListener('click', () => modal.close());

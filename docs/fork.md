@@ -94,8 +94,9 @@ Taking upstream changes is ordinary merge or cherry-pick work, only when the use
    `WorkerManager.spawn`, `extraArgs` before `--resume` and the prompt), and
    `tests/kanban-welcome-views.test.ts` pins that the PR and issue boards follow the project's repositories,
    the PR board's **👤 Mine / 👀 To review** toggle (`client/kanban/prmine.ts`, wired into `ui/boards.ts`, client side
-   pinned by `tests/kanban-ui-prmine.test.ts`) needs `reviewRequests` in `server/github.ts`'s `gh pr list --json` fields
-   and the office's gh login as `GhState.viewer` (set there, passed on by `Floor.pullsState` in `server/floor.ts`),
+   pinned by `tests/kanban-ui-prmine.test.ts`) needs `reviewRequests` in `server/github.ts`'s `gh pr list --json` fields,
+   `GhPull.openedBy` read there before the description is cut (`shared/officepr.ts`, also `draftPr`'s footer;
+   `tests/gh-pulls-mine.test.ts`) and the office's gh login as `GhState.viewer` (set there, passed on by `Floor.pullsState` in `server/floor.ts`),
    and `tests/kanban-codex-trust.test.ts` that the hook commands a Codex task worker trusts are still the ones
    `codexHookArgs` (`server/codex.ts`) gives it.
    For YouTube on the Office TV, the renderer keeps `alpha: true` (`core/scene.ts`), and the TV fixture still
