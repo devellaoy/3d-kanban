@@ -179,7 +179,7 @@ export function installWorkerViews(ctx: Ctx, core: CoreState, parts: WorkerViews
       const waiting = waitingOnSomeone(w);
       if (v.status !== w.status || v.acked !== w.acked || v.waiting !== waiting) {
         // It just finished or started waiting on you (not already so when this page first saw it): ding, and notify if you're away.
-        if (waitingOnSomeone(w) && shouldAlert(v.status === '' ? undefined : v.waiting, waiting)) {
+        if (waiting && shouldAlert(v.status === '' ? undefined : v.waiting, waiting)) {
           sound.ding(w.status);
           parts.notifier.alert(w);
           // Playing at the arcade: one of yours stops the game.

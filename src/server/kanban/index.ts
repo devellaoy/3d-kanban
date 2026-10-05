@@ -72,7 +72,7 @@ export interface KanbanOffice {
   /** How gh runs for an account (signins.ghAs), for the actions on issues (see KanbanContext.ghAs). */
   ghAs?(accountId?: string): { env: Record<string, string> } | string | undefined;
   /** The office's team notifications (upstream's webhook). */
-  notify?(title: string, detail?: string): void;
+  notify?(title: string, detail?: string, taskId?: number): void;
   /** The Codex account's limit reset (see KanbanContext.codexResetAt). */
   codexResetAt?(codexHome?: string): Promise<number | undefined>;
 }
@@ -216,7 +216,7 @@ export function installKanban(opts: KanbanInstallOptions): Kanban {
     ...(opts.runAs ? { runAs: opts.runAs } : {}),
     ...(opts.ghAs ? { ghAs: (accountId?: string) => opts.ghAs!(accountId) } : {}),
     ...(opts.codexResetAt ? { codexResetAt: (home?: string) => opts.codexResetAt!(home) } : {}),
-    ...(opts.notify ? { notify: (title: string, detail?: string) => opts.notify!(title, detail) } : {}),
+    ...(opts.notify ? { notify: (title: string, detail?: string, taskId?: number) => opts.notify!(title, detail, taskId) } : {}),
     card: (taskId: number) =>
       repo.card(taskId, (t) => {
         const r = settings.effectiveReview(t.project, t.overrides);

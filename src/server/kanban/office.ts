@@ -46,7 +46,7 @@ export function openKanban(ctx: Ctx, hookPort: number): Kanban {
     runAs: ctx.signins,
     // GitHub writes on issues (comments, assignees) go out under the person's own gh sign-in, as taking a card does.
     ghAs: (id) => (id ? ctx.signins.ghAs(id) : undefined),
-    notify: (title, detail) => ctx.webhook.announce(title, detail),
+    notify: (title, detail, taskId) => ctx.webhook.announce(title, detail, taskId),
     // A Codex usage limit resumes when its account's own limits say they reset.
     codexResetAt: (home) => codexLimitsOf(ctx).resetAt(home),
   });

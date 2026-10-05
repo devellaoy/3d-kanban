@@ -12,17 +12,21 @@ export const ATTENTION_REASONS: readonly WaitingReason[] = ['plan_questions', 'p
  * nothing (upstream's rule then). A task waiting on you (the plan's questions or approval, a failed
  * phase) keeps waiting until it's handled, not just until you looked. In progress, the engine hands the
  * task between steps by itself (plan to implement, implement to review, ...), so a worker that ends a
- * turn, or sits at a plan's approval prompt, while its run is under way (running, queued, stopping) isn't
- * waiting on anyone; once the run is idle the worker is (needs input; done is not, the engine moves on).
+ * turn while its run is under way (running, queued, stopping), or sits at its plan's exit prompt, isn't
+ * waiting on anyone; any other prompt is (a permission the engine may not have turned into a wait yet).
  * In review, an implementer's finished turn waits until seen and a reviewer's never does. It only ever
  * narrows upstream's statuses, so a waiting worker is still needs_input or done.
  */
 export function taskWaiting(w: Pick<WorkerInfo, 'kanban' | 'status' | 'acked'>): boolean | undefined {
   const k = w.kanban;
   if (!k?.status || (w.status !== 'done' && w.status !== 'needs_input')) return undefined;
-  // The run's own worker is handed on by the engine; another one asking (say the implementer, typed into
-  // during a review) has nobody driving it.
-  if (k.status === 'in_progress') return k.runState && k.runState !== 'idle' && k.role === runRole(k.phase) ? false : w.status === 'needs_input';
+  if (k.status === 'in_progress') {
+    // The run's own worker is handed on by the engine: its finished turn, and in a plan its exit prompt
+    // (ExitPlanMode, which the engine answers). Any other prompt, or another worker asking (say the
+    // implementer, typed into during a review), waits on someone.
+    const own = !!k.runState && k.runState !== 'idle' && k.role === runRole(k.phase);
+    return w.status === 'needs_input' && !(own && k.phase === 'plan');
+  }
   if (k.status === 'waiting') return !!k.waitingReason && ATTENTION_REASONS.includes(k.waitingReason);
   if (k.status === 'review') return w.status === 'needs_input' || (k.role !== 'reviewer' && !w.acked);
   return undefined;

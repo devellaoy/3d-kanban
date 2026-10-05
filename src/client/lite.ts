@@ -156,7 +156,7 @@ function noticeWorkers() {
     const now = waitingOnSomeone(w);
     const before = lastWaiting.get(w.id);
     lastWaiting.set(w.id, now);
-    if (!shouldAlert(before, now) || !waitingOnSomeone(w)) continue;
+    if (!now || !shouldAlert(before, now)) continue;
     notifier.alert(w);
     if (w.status === 'needs_input') navigator.vibrate?.(200);
   }

@@ -28,8 +28,6 @@ export interface BoardFilter {
 
 export const EMPTY_FILTER: BoardFilter = { q: '', repos: [], state: 'all', tools: [], ticket: 'any' };
 
-export { ATTENTION_REASONS };
-
 /** Whether the task waits on a person. */
 export function needsAttention(card: Pick<KanbanTaskCard, 'status' | 'waitingReason'>): boolean {
   return card.status === 'waiting' && !!card.waitingReason && ATTENTION_REASONS.includes(card.waitingReason);

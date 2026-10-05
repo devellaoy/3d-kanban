@@ -14,7 +14,7 @@ export function isBusy(status: WorkerStatus): boolean {
 }
 
 /** Waiting on a person: needs input, or finished its turn and nobody has looked yet. A task worker waits as its task does. */
-export function waitingOnSomeone(w: WorkerInfo): w is WorkerInfo & { status: 'needs_input' | 'done' } {
+export function waitingOnSomeone<W extends Pick<WorkerInfo, 'status' | 'acked' | 'kanban'>>(w: W): w is W & { status: 'needs_input' | 'done' } {
   const task = taskWaiting(w);
   if (task !== undefined) return task;
   return w.status === 'needs_input' || (w.status === 'done' && !w.acked);

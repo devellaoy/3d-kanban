@@ -11,16 +11,6 @@ const TIMEOUT_MS = 10_000;
 /** More than this many posts waiting means a stuck channel; drop the extras instead of piling up. */
 const MAX_BACKLOG = 20;
 
-/**
- * A task worker whose wait the engine announces itself (a plan's approval or questions, a finished turn
- * in review): no worker alert on top. A later question in review still posts.
- */
-export function announcedByEngine(w: WorkerInfo): boolean {
-  const k = w.kanban;
-  if (!k) return false;
-  return (k.status === 'review' && w.status === 'done') || (k.status === 'waiting' && (k.waitingReason === 'plan_approval' || k.waitingReason === 'plan_questions'));
-}
-
 type Alert = Extract<WorkerStatus, 'needs_input' | 'done'>;
 
 interface Saved {
@@ -61,8 +51,8 @@ export class Webhook {
   /** Each worker's latest state, and the alert waiting out its settle time. */
   private latest = new Map<string, WorkerInfo>();
   private pending = new Map<string, NodeJS.Timeout>();
-  /** Whether each worker waited on someone at its last update. */
-  private waiting = new Map<string, boolean>();
+  /** When the engine last announced each kanban task waiting on a person (see announce). */
+  private announced = new Map<number, number>();
   private chain: Promise<unknown> = Promise.resolve();
   private backlog = 0;
 
@@ -107,19 +97,20 @@ export class Webhook {
 
   /** Called with every worker update. */
   onWorker(w: WorkerInfo) {
-    const was = this.waiting.get(w.id);
+    const prev = this.latest.get(w.id);
+    const was = prev && waitingOnSomeone(prev);
     const now = waitingOnSomeone(w);
     this.latest.set(w.id, w);
-    this.waiting.set(w.id, now);
     // Only a worker that starts waiting is news (a task worker the engine hands on isn't waiting).
-    if (w.kind !== 'agent' || was === undefined || was === now) return;
+    if (w.kind !== 'agent' || !prev || was === now) return;
     this.cancel(w.id);
     if (!now) return;
+    const since = Date.now();
     const timer = setTimeout(() => {
       this.pending.delete(w.id);
       const cur = this.latest.get(w.id);
       // Someone opened its terminal (or it moved on) meanwhile: they've got it.
-      if (!cur || !waitingOnSomeone(cur) || cur.acked || cur.viewers.length || announcedByEngine(cur)) return;
+      if (!cur || !waitingOnSomeone(cur) || cur.acked || cur.viewers.length || this.announcedSince(cur, since)) return;
       void this.alert(cur, cur.status);
     }, SETTLE_MS);
     timer.unref();
@@ -129,11 +120,26 @@ export class Webhook {
   onWorkerGone(id: string) {
     this.cancel(id);
     this.latest.delete(id);
-    this.waiting.delete(id);
+  }
+
+  /**
+   * Whether the engine announced this worker's task itself around when its wait began (a plan's
+   * approval or questions, ready for review): no worker alert on top. The engine announces just after
+   * the summary that starts the wait, so a little before `since` counts too.
+   */
+  private announcedSince(w: WorkerInfo, since: number): boolean {
+    const at = w.kanban && this.announced.get(w.kanban.taskId);
+    return at !== undefined && at >= since - SETTLE_MS;
   }
 
   /** A kanban task waiting on a person ("🗂️ #14 … needs plan approval in …"), posted like a worker's alert. */
-  announce(title: string, detail?: string) {
+  announce(title: string, detail?: string, taskId?: number) {
+    if (taskId !== undefined) {
+      const now = Date.now();
+      // Only a recent one can still match a wait settling now (see announcedSince).
+      for (const [id, at] of this.announced) if (at < now - 2 * SETTLE_MS) this.announced.delete(id);
+      this.announced.set(taskId, now);
+    }
     if (this.saved) void this.post({ kind: 'needs_input', title, ...(detail ? { detail: oneLine(detail, 300) } : {}) });
   }
 

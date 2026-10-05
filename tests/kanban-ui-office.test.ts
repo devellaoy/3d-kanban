@@ -22,13 +22,13 @@ import {
   queuedKanbanTasks,
   TabMemory,
   tabLabel,
-  taskWaiting,
   titleFrom,
   withoutOfficeLink,
   workerLabel,
   workerTabs,
   type HireTaskForm,
 } from '../src/client/kanban/office.js';
+import { taskWaiting } from '../src/shared/kanban/waiting.js';
 import type { WorkerInfo } from '../src/shared/protocol.js';
 import type { KanbanTaskCard, KanbanWorkerSummary } from '../src/shared/kanban/types.js';
 import { showIn3dLink } from '../src/client/kanban/model.js';
@@ -74,6 +74,8 @@ test('who waits on you: a task waiting on a person, or an unseen review; not one
     assert.equal(taskWaiting(w('needs_input', false, { status: 'in_progress', phase: 'plan', runState })), false);
   }
   for (const phase of ['implement', 'review', 'fix'] as const) {
+    // Outside a plan, a prompt mid-run is a permission or a question: it waits, before the engine says so too.
+    assert.equal(taskWaiting(w('needs_input', false, { status: 'in_progress', phase, runState: 'running', role: phase === 'review' ? 'reviewer' : 'implementer' })), true);
     assert.equal(taskWaiting(w('done', false, { status: 'in_progress', phase, runState: 'running' })), false);
     assert.equal(taskWaiting(w('done', false, { status: 'in_progress', phase, runState: 'running', role: 'reviewer' })), false);
   }

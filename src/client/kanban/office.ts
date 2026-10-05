@@ -8,8 +8,6 @@
 import type { AgentEffort, AgentProvider, WorkerInfo, WorkerTask } from '../../shared/protocol';
 import type { KanbanClientMsg, KanbanTaskInput } from '../../shared/kanban/protocol.js';
 import { KANBAN_LIMITS, PROJECT_ID_RE } from '../../shared/kanban/protocol.js';
-
-export { taskWaiting } from '../../shared/kanban/waiting.js';
 import type { KanbanEffort, KanbanTaskCard, KanbanTool, KanbanWorkerSummary, PlanApproval, RunPhase, TaskStatus, TaskType, WaitingReason } from '../../shared/kanban/types.js';
 
 /** What a task worker says about its task (WorkerInfo.kanban): the server keeps the summary current. */

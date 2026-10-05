@@ -66,13 +66,15 @@ instead; the task waits (failed) with upstream's reason, naming whose sign-in is
   terminal, a stopped, failed or interrupted run), and in Review until its implementer's finished turn is
   seen (a reviewer never waits there). The engine's own hand-overs between steps (plan → implement,
   implement → review, review → fix, …) are no wait: a worker that ends its turn, or sits at the plan's
-  exit prompt, while its task is in progress with its own run under way (the reviewer's in a review, the
-  implementer's in any other phase; the other one asking meanwhile does wait) doesn't chime, notify, count in the tab
-  title or the elevator, call the dog or post to the webhook, and is shown working rather than "needs
-  you". The same rule (`waitingOnSomeone`, `src/shared/status.ts`) feeds all of them, and the alert goes off
+  exit prompt (ExitPlanMode), while its task is in progress with its own run under way (the reviewer's in
+  a review, the implementer's in any other phase) doesn't chime, notify, count in the tab title or the
+  elevator, call the dog or post to the webhook, and is shown working rather than "needs you". Any other
+  prompt mid-run (a permission, a question), and the other worker asking meanwhile, does wait. The same rule (`waitingOnSomeone`, `src/shared/status.ts`) feeds all of them, and the alert goes off
   when a worker starts waiting, whether its status or its task's summary changed; a task that starts
   waiting resets the worker's seen flag and waiting time (`setKanbanSummary`). A wait the engine
-  announces itself (plan approval or questions, ready for review) gets no second webhook post.
+  announced itself (plan approval or questions, ready for review: the webhook keeps which task it
+  announced when) gets no second webhook post; a run started from Review (Fix PRs, Resolve conflicts)
+  that ends there posts as any worker does.
 - "📍 Show in 3D" on the kanban opens `/?floor=<id>&worker=<workerId>&desk=<deskId>`; the 3D client
   goes to that floor and that desk.
 - The 📋 queue board's form can make a kanban task (above), and its "🗂️ Kanban on this floor" section

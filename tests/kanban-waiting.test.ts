@@ -11,7 +11,7 @@ import type { Worker } from '../src/server/workers/types.js';
 import { shownStatus, waitingOnSomeone } from '../src/shared/status.js';
 import { shouldAlert } from '../src/client/notify.js';
 import { callsForDog } from '../src/server/dog.js';
-import { Webhook, announcedByEngine } from '../src/server/webhook.js';
+import { Webhook } from '../src/server/webhook.js';
 
 const w = (status: WorkerInfo['status'], acked: boolean, kanban?: Partial<KanbanWorkerSummary>, extra: Partial<WorkerInfo> = {}) =>
   ({ id: 'w1', name: 'Ada', kind: 'agent', deskId: 'desk-1', status, acked, viewers: [], ...(kanban ? { kanban: { taskId: 14, role: 'implementer', ...kanban } } : {}), ...extra }) as unknown as WorkerInfo;
@@ -49,16 +49,6 @@ test('the dog does not bark at a task worker the engine carries on with', () => 
   assert.equal(callsForDog(w('needs_input', false, { status: 'waiting', waitingReason: 'agent_asking' })), true);
 });
 
-test('announcedByEngine: plan waits and review are the engine\'s own announcements', () => {
-  assert.equal(announcedByEngine(w('needs_input', false, { status: 'waiting', waitingReason: 'plan_approval' })), true);
-  assert.equal(announcedByEngine(w('needs_input', false, { status: 'waiting', waitingReason: 'plan_questions' })), true);
-  assert.equal(announcedByEngine(w('done', false, { status: 'review' })), true);
-  assert.equal(announcedByEngine(w('needs_input', false, { status: 'waiting', waitingReason: 'agent_asking' })), false);
-  assert.equal(announcedByEngine(w('needs_input', false)), false);
-  // A question in review after its finished turn was announced is news, and so is a stopped run.
-  assert.equal(announcedByEngine(w('needs_input', false, { status: 'review' })), false);
-  assert.equal(announcedByEngine(w('done', false, { status: 'waiting', waitingReason: 'stopped' })), false);
-});
 
 test('only the run\'s own worker is handed on: another one asking mid-run waits on someone', () => {
   // The implementer, typed into while the reviewer reviews, asks for a permission.
@@ -97,7 +87,7 @@ test('the webhook posts a question in review, and a stopped run', (t) => {
 
 /** A webhook whose worker alerts are counted instead of posted; the clock is the test's. */
 function hook(t: import('node:test').TestContext) {
-  t.mock.timers.enable({ apis: ['setTimeout'] });
+  t.mock.timers.enable({ apis: ['setTimeout', 'Date'], now: 1_000_000 });
   const h = new Webhook('/nonexistent', () => 'Proj', () => {});
   const alerts: string[] = [];
   (h as unknown as { alert: (x: WorkerInfo, s: string) => void }).alert = (x, s) => void alerts.push(`${x.name}:${s}`);
@@ -116,9 +106,39 @@ test('the webhook stays quiet while the engine hands a task between steps', (t) 
   ];
   for (const s of steps) {
     h.onWorker(s);
+    // The engine announces the task ready for review itself, just after the summary that moves it there.
+    if (s.kanban?.status === 'review') h.announce('🗂️ #14 is ready for review', undefined, 14);
     tick(6_000);
   }
   assert.deepEqual(alerts, []);
+});
+
+test('the webhook skips a plan waiting for approval that the engine announced', (t) => {
+  const { h, alerts, tick } = hook(t);
+  h.onWorker(w('working', true, { status: 'in_progress', phase: 'plan', runState: 'running' }));
+  h.onWorker(w('needs_input', false, { status: 'in_progress', phase: 'plan', runState: 'running' }));
+  h.onWorker(w('needs_input', false, { status: 'waiting', phase: 'plan', waitingReason: 'plan_approval', runState: 'idle' }));
+  h.announce('🗂️ #14 needs plan approval', undefined, 14);
+  tick(6_000);
+  assert.deepEqual(alerts, []);
+});
+
+test('the webhook posts a run in Review the engine never announces (Fix PRs), once', (t) => {
+  const { h, alerts, tick } = hook(t);
+  // Announced when it came to Review, long before.
+  h.announce('🗂️ #14 is ready for review', undefined, 14);
+  tick(60_000);
+  h.onWorker(w('done', true, { status: 'review' }));
+  h.onWorker(w('working', true, { status: 'review', phase: 'pr-fix', runState: 'running' }));
+  h.onWorker(w('done', false, { status: 'review', phase: 'pr-fix', runState: 'idle' }));
+  tick(6_000);
+  assert.deepEqual(alerts, ['Ada:done']);
+  // Another task's announcement doesn't count for this one.
+  h.onWorker(w('working', true, { status: 'review', phase: 'pr-fix', runState: 'running' }));
+  h.onWorker(w('done', false, { status: 'review', phase: 'pr-fix', runState: 'idle' }));
+  h.announce('🗂️ #15 is ready for review', undefined, 15);
+  tick(6_000);
+  assert.deepEqual(alerts, ['Ada:done', 'Ada:done']);
 });
 
 test('the webhook posts once when a task worker asks, and not for a worker that was handled', (t) => {
