@@ -7,6 +7,9 @@ import { confirmDialog, openPrompt } from './prompt';
 import { kanbanOf } from '../kanban/office';
 import { apiUrl } from '../multiplayer/visit';
 
+/** A worktree's folder for people: beside the project it is `../<project>.worktrees/<slug>`, shown without the `../`. */
+const shownDir = (dir: string) => dir.replace(/^(\.\.[\\/])+/, '');
+
 // The Changes window at a desk: the files a worker changed and their diff against the branch the
 // office was opened on, refreshed while the worker works, with commit / discard / open-a-PR.
 
@@ -162,7 +165,7 @@ export function openChanges(net: Net, workerId: string, onTerminal?: () => void,
     h('footer', {}, summary, discardBtn, commitBtn, prSlot),
   );
 
-  const where = () => (state?.dir ? state.dir : 'the project folder');
+  const where = () => (state?.dir ? shownDir(state.dir) : 'the project folder');
 
   const requestDiff = () => {
     const f = state?.files.find((x) => x.path === selected);
@@ -251,7 +254,7 @@ export function openChanges(net: Net, workerId: string, onTerminal?: () => void,
       bits.push(uncommitted ? `${uncommitted} uncommitted` : s.files.length ? 'all committed' : '');
       if (s.ahead) bits.push(`${s.ahead} commit${s.ahead > 1 ? 's' : ''} ahead of ${s.base}`);
       if (!s.dir) bits.push(h('span', { title: "This worker works in the project folder itself, so this is everything uncommitted there — everyone's edits, not just its own." }, '📁 shared project folder'));
-      else bits.push(h('span', { title: `Its own worktree at ${s.dir}` }, `📁 ${s.dir}`));
+      else bits.push(h('span', { title: `Its own worktree at ${s.dir}` }, `📁 ${shownDir(s.dir)}`));
       summary.append(...bits.filter(Boolean).map((b) => (typeof b === 'string' ? h('span', {}, b) : b)));
     }
     discardBtn.disabled = busy || !uncommitted;

@@ -159,7 +159,7 @@ test('a pull-request review is an engine run: a new investigate task, a reviewer
   assert.equal(reviewer.kanban?.role, 'reviewer');
   assert.equal(reviewer.model, 'opus', "a full model id passes upstream's spawn as its alias");
   const wt = path.join(fx.dir, reviewer.worktree!.path);
-  assert.ok(wt.includes(path.join('.agent-office', 'worktrees')), 'its own worktree, never the floor checkout');
+  assert.ok(wt.includes('.worktrees'), 'its own worktree, never the floor checkout');
 
   const done = await fx.waitTask(got.taskId, (x) => x.status === 'review' && x.runState === 'idle', 'the review column', 20_000);
   assert.equal(done.reviewerWorkerId, undefined);
@@ -178,7 +178,7 @@ test('a pull-request review is an engine run: a new investigate task, a reviewer
   assert.ok(comments.some((c) => c.kind === 'status' && /Ada asked \w+ to review acme\/proj#3, acme\/proj#4/.test(c.text)));
 
   const inv = fx.invocations().find((i) => i.kind === 'claude' && promptOf(i) && /Review these pull requests/.test(promptOf(i)!))!;
-  assert.ok(inv.cwd.includes(path.join('.agent-office', 'worktrees')), `it ran in its worktree, not ${inv.cwd}`);
+  assert.ok(inv.cwd.includes('.worktrees'), `it ran in its worktree, not ${inv.cwd}`);
   assert.ok(['--permission-mode', 'bypassPermissions', '--disallowedTools', 'Edit', 'Write', 'NotebookEdit', 'WebFetch', 'WebSearch'].every((a) => inv.args.includes(a)));
   assert.equal(inv.args[inv.args.lastIndexOf('--model') + 1], 'claude-opus-5-5[1m]', 'the full id is what runs');
   const prompt = promptOf(inv)!;

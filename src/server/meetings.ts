@@ -8,6 +8,7 @@ import { MEETING_NOTES_DIR, MEETING_PATTERNS, budgetText, isMeetingPattern, meet
 import { fmtTokens, isAgentEffort, isAgentProvider, tokensOf, type AgentChoice, type AgentEffort, type AgentProvider, type Meeting, type MeetingRecord, type MeetingRequest, type MeetingState, type MeetingTurn, type WorkerInfo, type WorkerStatus } from '../shared/protocol.js';
 import { validateWorkerEffort, validateWorkerModel } from './agents.js';
 import { providerMeta, takesEffort, takesModel } from '../shared/providers.js';
+import { worktreeDir, worktreeHomes } from './worktree-home.js';
 import { gitError, type WorktreeRef, type WorktreeState } from './worktrees.js';
 import { PROMPTS, fillPrompt, type PromptId, type PromptVars } from '../shared/prompts.js';
 import { copyTree } from './kanban/copytree.js';
@@ -485,10 +486,9 @@ export class MeetingRoom {
     // Kept with the floor's state already (keepNotes): the notes, and a review panel's review, which
     // is on the pull request now, go, so they don't count as work left behind.
     const cwd = this.cwd(m);
-    const own = path.resolve(this.dir, '.agent-office', 'worktrees') + path.sep;
     for (const leftover of [m.notes, m.pattern === 'review' ? m.output : undefined]) {
       const abs = leftover && path.resolve(cwd, leftover);
-      if (abs && abs.startsWith(own)) rmSync(abs, { recursive: true, force: true });
+      if (abs && worktreeHomes(this.dir).some((h) => abs.startsWith(h + path.sep))) rmSync(abs, { recursive: true, force: true });
     }
     const state = await this.trees.inspect(wt);
     if (state.error || state.dirty) {
@@ -660,7 +660,7 @@ export class MeetingRoom {
   // --- Files -----------------------------------------------------------------
 
   private cwd(m: Meeting): string {
-    return m.worktree ? path.join(this.dir, m.worktree.path) : this.dir;
+    return m.worktree ? worktreeDir(this.dir, m.worktree.path) : this.dir;
   }
 
   /** Whether a part's file is there, with something in it, written since the part was handed over. */

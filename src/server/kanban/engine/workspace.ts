@@ -10,6 +10,7 @@ import path from 'node:path';
 import { promisify } from 'node:util';
 import type { WorkerInfo } from '../../../shared/protocol.js';
 import type { KanbanTask, ProjectRepo, TaskWorkspace } from '../../../shared/kanban/types.js';
+import { worktreeDir } from '../../worktree-home.js';
 
 const run = promisify(execFile);
 
@@ -44,7 +45,7 @@ export async function hasChanges(floorDir: string, ws: TaskWorkspace | undefined
 
 /** The folders of a workspace with the base each started from, primary first. */
 function repoFolders(floorDir: string, ws: TaskWorkspace): { dir: string; base: string | undefined }[] {
-  return [{ dir: path.join(floorDir, ws.worktree.path), base: ws.worktree.base }, ...(ws.repos ?? []).map((r) => ({ dir: path.join(floorDir, r.path), base: r.base }))];
+  return [{ dir: worktreeDir(floorDir, ws.worktree.path), base: ws.worktree.base }, ...(ws.repos ?? []).map((r) => ({ dir: worktreeDir(floorDir, r.path), base: r.base }))];
 }
 
 /** The folders of a workspace, primary first. */
@@ -180,7 +181,7 @@ export async function branchExists(dir: string, branch: string): Promise<boolean
  */
 export async function allOn(floorDir: string, ws: TaskWorkspace, want: { r: ProjectRepo; b: string }[]): Promise<boolean> {
   const there = want.map(({ r, b }) => ({ b, rel: r.primary ? ws.worktree.path : ws.repos?.find((x) => x.name === r.name)?.path })).filter((w) => w.rel);
-  const on = await Promise.all(there.map((w) => currentBranch(path.join(floorDir, w.rel!))));
+  const on = await Promise.all(there.map((w) => currentBranch(worktreeDir(floorDir, w.rel!))));
   return there.every(({ b }, i) => on[i] === b);
 }
 
@@ -198,7 +199,7 @@ export async function checkoutLines(floorDir: string, task: Pick<KanbanTask, 'br
   if (!want.length) return undefined;
   if (!freshTree) {
     if (!task.workspace) return undefined;
-    const on = await currentBranch(path.join(floorDir, task.workspace.worktree.path));
+    const on = await currentBranch(worktreeDir(floorDir, task.workspace.worktree.path));
     if (!on || (byPrs ? await allOn(floorDir, task.workspace, want) : on === task.branch)) return undefined;
   }
   return want.map(({ r, b }) => `- ${r.name}: \`${b}\``).join('\n');

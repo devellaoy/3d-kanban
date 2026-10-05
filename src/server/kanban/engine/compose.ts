@@ -23,6 +23,7 @@ import type { PromptId } from '../../../shared/prompts.js';
 import { languageRules } from '../../language.js';
 import { skillHint } from '../integrations/skills/index.js';
 import { workerIssueKey } from './worker-issue.js';
+import { worktreeDir } from '../../worktree-home.js';
 
 type Vars = Record<string, string | number>;
 
@@ -65,10 +66,10 @@ export function reportDir(ctx: KanbanContext, taskId: number): string {
 /** The absolute folders of a workspace, primary first, with the repository each one is. */
 export function workspaceDirs(floorDir: string, def: FloorDef, ws: TaskWorkspace): { repo: ProjectRepo | undefined; dir: string; branch: string; from?: string; base?: string }[] {
   const repos = projectRepos(def);
-  const out: { repo: ProjectRepo | undefined; dir: string; branch: string; from?: string; base?: string }[] = [{ repo: repos[0], dir: path.join(floorDir, ws.worktree.path), branch: ws.worktree.branch, from: ws.worktree.from, base: ws.worktree.base }];
+  const out: { repo: ProjectRepo | undefined; dir: string; branch: string; from?: string; base?: string }[] = [{ repo: repos[0], dir: worktreeDir(floorDir, ws.worktree.path), branch: ws.worktree.branch, from: ws.worktree.from, base: ws.worktree.base }];
   for (const r of ws.repos ?? []) {
     const id = parseRepoFloorId(r.floor)?.repo;
-    out.push({ repo: repos.find((x) => x.id === id) ?? repos.find((x) => path.resolve(x.dir) === path.resolve(r.dir)), dir: path.join(floorDir, r.path), branch: r.branch, from: r.from, base: r.base });
+    out.push({ repo: repos.find((x) => x.id === id) ?? repos.find((x) => path.resolve(x.dir) === path.resolve(r.dir)), dir: worktreeDir(floorDir, r.path), branch: r.branch, from: r.from, base: r.base });
   }
   return out;
 }
@@ -105,8 +106,8 @@ export function reposText(def: FloorDef, task: Pick<KanbanTask, 'repoIds' | 'wor
 /** The {{repos}} lines of an ordinary office worker (its worktree, its workspace, or the project's checkout). */
 export function workerReposText(info: WorkerInfo, floorDir: string, projectName: string, branch?: string): string {
   if (!info.worktree) return `- \`${floorDir}\`: ${projectName}${branch ? `, on branch \`${branch}\`` : ''}`;
-  const lines = [`- \`${path.join(floorDir, info.worktree.path)}\`: ${projectName}, on branch \`${info.worktree.branch}\`${info.worktree.from ? `, cut from \`${info.worktree.from}\`` : ''}`];
-  for (const r of info.repos ?? []) lines.push(`- \`${path.join(floorDir, r.path)}\`: ${r.repo ?? r.name}, on branch \`${r.branch}\`${r.from ? `, cut from \`${r.from}\`` : ''}`);
+  const lines = [`- \`${worktreeDir(floorDir, info.worktree.path)}\`: ${projectName}, on branch \`${info.worktree.branch}\`${info.worktree.from ? `, cut from \`${info.worktree.from}\`` : ''}`];
+  for (const r of info.repos ?? []) lines.push(`- \`${worktreeDir(floorDir, r.path)}\`: ${r.repo ?? r.name}, on branch \`${r.branch}\`${r.from ? `, cut from \`${r.from}\`` : ''}`);
   return lines.join('\n');
 }
 

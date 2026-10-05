@@ -2,7 +2,7 @@ import { randomBytes } from 'node:crypto';
 import path from 'node:path';
 import type { AgentChoice, AgentEffort, AgentProvider, TerminalHit, WorkerInfo, WorkerKind, WorkerRepo, WorkerStatus } from '../../shared/protocol.js';
 import { AGENT_PROVIDERS, takesEffort, takesModel } from '../../shared/providers.js';
-import { Worktrees, workspaceOf, type WorktreeCleanup, type WorktreeState } from '../worktrees.js';
+import { Worktrees, workspaceOf, worktreeDir, type WorktreeCleanup, type WorktreeState } from '../worktrees.js';
 import { DESK_BY_ID, STATION_AGENT, deskBuilt } from '../../shared/layout.js';
 import { stationBrief } from '../stations.js';
 import type { PromptSource } from '../prompts.js';
@@ -684,7 +684,7 @@ export class WorkerManager extends KanbanWorkers {
     }
 
     const cwd = this.cwd(info);
-    // A workspace isn't a repository, but it's inside this floor's checkout: git run in it must not
+    // A workspace isn't a repository, but it's beside this floor's checkout (or inside it, for older ones): git run in it must not
     // find that checkout (and switch its branch, say) instead of saying it's no repository.
     if (info.repos?.length) env.GIT_CEILING_DIRECTORIES = [path.dirname(cwd), env.GIT_CEILING_DIRECTORIES].filter(Boolean).join(path.delimiter);
     if (w.owner && this.runAs) {
@@ -862,7 +862,7 @@ export class WorkerManager extends KanbanWorkers {
   /** Where a worker works: its worktree, a workspace for a worker across repositories, or the project itself. */
   private cwd(info: WorkerInfo): string {
     const rel = workspaceOf(info);
-    return rel ? path.join(this.dir, rel) : this.dir;
+    return rel ? worktreeDir(this.dir, rel) : this.dir;
   }
 
   /** Hooks fire in bursts (every tool call); one read a moment later covers the whole burst. */
