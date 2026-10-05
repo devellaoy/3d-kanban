@@ -1,12 +1,12 @@
 // One task on the board: a sticky note like upstream's issue cards, with the badges a glance needs —
-// #id, title, ticket, repositories, the phase and review round, the tool, each repository's PR,
+// #id, title, ticket, the phase and review round, the tool, each repository's PR,
 // why it waits and when it retries. A pulsing dot while the engine works on it.
 
 import { h } from '../ui/dom';
 import type { KanbanProjectInfo, KanbanTaskCard } from '../../shared/kanban/types.js';
 import { isRunning } from '../../shared/kanban/moves.js';
 import { holdLine } from '../../shared/kanban/hold.js';
-import { cardRepoNames, countdown, needsAttention, phaseBadge, prTone, showsRepoChips } from './model';
+import { countdown, needsAttention, phaseBadge, prTone } from './model';
 import { COUNTDOWN_UNITS, phaseName, PR_STATE_NAMES, toolName, waitingName } from './labels';
 
 const TILTS = ['-0.8deg', '0.6deg', '-0.3deg', '0.9deg', '0deg', '-0.6deg'];
@@ -35,7 +35,6 @@ export function taskCard(c: KanbanTaskCard, project: KanbanProjectInfo | undefin
   const chips: (Node | null)[] = [];
   if (showProject && project) chips.push(h('span.kb-chip.project', { title: 'Project' }, `🏢 ${project.name}`));
   if (c.ticket) chips.push(ticketChip(c.ticket, c.ticketUrl));
-  if (showsRepoChips(c, project)) for (const name of cardRepoNames(c, project)) chips.push(h('span.kb-chip.repo', { title: 'Repository' }, `📦 ${name}`));
   if (c.type === 'investigate') chips.push(h('span.kb-chip.type', {}, '🔎 Investigate'));
   for (const tag of c.tags.slice(0, 3)) chips.push(h('span.kb-chip.tag', {}, `#${tag}`));
 
@@ -45,10 +44,15 @@ export function taskCard(c: KanbanTaskCard, project: KanbanProjectInfo | undefin
         {},
         ...c.prs.map((p) => {
           const repo = project?.repos.find((r) => r.id === p.repoId)?.name ?? p.repo ?? p.repoId;
+          const label = `${repo} #${p.number}: ${PR_STATE_NAMES[prTone(p.state)]}`;
           return h(
             'a.kb-pr',
-            { class: prTone(p.state), href: p.url, target: '_blank', rel: 'noopener noreferrer', title: `${repo} #${p.number}: ${PR_STATE_NAMES[prTone(p.state)]}`, onclick: ((e: Event) => e.stopPropagation()) as EventListener },
-            `🔀 ${project && project.repos.length > 1 ? `${repo} ` : ''}#${p.number}`,
+            // The parts below are spaced by CSS, so the label gives screen readers the words apart.
+            { class: prTone(p.state), href: p.url, target: '_blank', rel: 'noopener noreferrer', title: label, 'aria-label': label, onclick: ((e: Event) => e.stopPropagation()) as EventListener },
+            '🔀',
+            // The repository's name shrinks to an ellipsis on a narrow card; the number always shows.
+            project && project.repos.length > 1 ? h('span.kb-pr-repo', {}, repo) : null,
+            h('span.kb-pr-num', {}, `#${p.number}`),
           );
         }),
       )
