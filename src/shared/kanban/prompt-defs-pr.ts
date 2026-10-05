@@ -84,4 +84,20 @@ Merge, never rebase, and never force-push. Don't merge the pull request and chan
 
 {{language}}`,
   },
+  'kanban.pr.workitem': {
+    group: 'kanban',
+    label: 'Pull requests · linking the work item',
+    used: 'The {{closes}} of “Open pull requests”, when the ticket is an Azure Boards work item and a repository is on Azure DevOps.',
+    vars: { id: 'The work item number', url: "The work item's page" },
+    needs: ['id'],
+    text: 'This work resolves Azure Boards work item #{{id}} ({{url}}): put `AB#{{id}}` in the description of each pull request on Azure DevOps, so it is linked to the work item. The office completes the work item when the pull request merges.',
+  },
+  'kanban.hosting': {
+    group: 'kanban',
+    label: 'Repositories on Azure DevOps and Bitbucket',
+    used: 'Added after the workspace lines ({{repos}}) of every prompt whose workspace has a repository on Azure DevOps or Bitbucket, where gh doesn’t work.',
+    vars: { hosts: 'Which of the repositories are where (“api is on Azure DevOps”)' },
+    needs: ['hosts'],
+    text: `{{hosts}}: gh doesn't work there. For those, use office-pr (on your PATH) inside the checkout wherever you would use gh for pull requests. office-pr create --title "…" --body-file <file> opens the current branch's pull request against its default branch (push the branch first; --base <branch> for another target, --draft for a draft) or updates the title and description of the one it has, and prints its PR: line. office-pr view [<number>] --comments shows one with its checks and comments, office-pr checks [<number>] its checks (pipelines), office-pr diff [<number>] its changes, office-pr comment <number> --body-file <file> replies on it, and office-pr list lists the open ones. Without a number it means the current branch's.`,
+  },
 } satisfies Record<string, PromptDef>;
