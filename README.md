@@ -24,7 +24,8 @@ an upstream `agent-office` install if you have one.
   in the Node.js installer (or install Visual Studio Build Tools with *Desktop development with C++*).
   The terminals' module (node-pty) comes prebuilt and needs nothing.
 - **git**, and the **GitHub CLI** signed in (`gh auth login`), for projects, worktrees and the issue
-  and PR boards.
+  and PR boards. Repositories on **Azure DevOps** or **Bitbucket** need no CLI: a token in
+  ☰ → 🔐 Your sign-ins ([docs/hosting.md](docs/hosting.md)).
 - **Claude Code** (`claude`) or **Codex** (`codex`), signed in: the kanban's tasks run on them (the
   office's other agents stay ordinary workers).
 
@@ -121,7 +122,11 @@ curl -fsSL https://raw.githubusercontent.com/devellaoy/3d-kanban/main/deploy/pro
   its repositories on one branch, cut from each repository's configured base branch (else the branch
   its checkout is on). The issues and PR boards show every repository; the PR board (E) has a tab per repository. An admin can rename a project
   in ⚙️ Settings → 📁 Projects; its id, folder and repository stay.
-- **Issue sources per project**: GitHub repositories, GitHub Projects v2 and Jira, made into tasks in a click, **🔎 browsed in full** (a tree of all of a Jira project's or board's issues, with filters), and moved on (status), commented on and assigned from the issue's window, on the kanban and in 3D. They are also the 3D office's 📌 Issues board, cards you carry to desks, workers and the queue.
+- **Repositories on Azure DevOps and Bitbucket**, not only GitHub: the office reads each repository's host
+  from its remote, follows their pull requests on the PR board and on kanban tasks (to merged), opens
+  them with a token of yours (☰ → 🔐 Your sign-ins), and its agents use `office-pr` there instead of `gh`.
+  A task's Azure Boards work item is completed when its pull request merges ([docs/hosting.md](docs/hosting.md)).
+- **Issue sources per project**: GitHub repositories, GitHub Projects v2, Jira and Azure Boards, made into tasks in a click, **🔎 browsed in full** (a tree of all of a Jira project's or board's issues, with filters), and moved on (status), commented on and assigned from the issue's window, on the kanban and in 3D. They are also the 3D office's 📌 Issues board, cards you carry to desks, workers and the queue.
 - **Agent-written pull requests**: **O** at a desk and the task's PR phase have the agent push and open
   (or fix, or bring up to date with their target branches and resolve the conflicts of) the PRs in every repository.
 - **Multi-PR reviews**: 🔍 Review and 🤝 Review panel pick the PRs that belong together across the

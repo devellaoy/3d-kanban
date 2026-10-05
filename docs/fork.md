@@ -47,6 +47,19 @@ Back to the [README](../README.md).
   means keeping these.
 - Several meeting rooms per floor (#90): upstream's `server/meetings.ts` `MeetingRoom` is now one room's engine (it takes its `MeetingRoomDef`, no longer holds the state file or the list of earlier meetings), and the new `server/meeting-rooms.ts` `MeetingRooms` owns one per room and is what `Floor.meetings` is. The seams in upstream's files: `MeetingState` is `{ rooms, past }` (was `{ current, past }`) and `Meeting.room`, `MeetingRequest.room`, `meeting.stop` / `meeting.clear` `room` in `shared/protocol/meetings.ts`; `MeetingRoomDef` / `MEETING_ROOMS` (built by `buildMeetingRooms` in `shared/meetingrooms.ts`, re-exported by `shared/layout.ts`; the second room's id is still `review`, from before it was renamed, and rooms 2-4 are the meeting wing's: `FloorPlan.rooms`, `world/office/roomswing.ts`) and `MapPlan.meetingRooms` in `shared/maps/`; `floor.ts` (`meetings`, `ctx.meetingRooms`), `office/floors.ts`, `ws/handlers/meetings.ts`, the top bar chip in `features/hud`, `ui/meeting.ts` (a tab per room) and the places that read the one `current` meeting (`features/workers/{actions,views}.ts`, `state/slices/meeting.ts`). Syncing upstream's meeting room means keeping these.
 - The office's LED lighting (`world/office/led.ts`) is a fixture of its own at the end of `floorPlan()` in `world/office/build.ts`, and the ceiling lamps are linear LED fixtures (`pendant` in `world/office/props.ts`); the strips are `bulb`s (each colour its own entry in `NightParts.bulbs`), not `RoomLamp`s. `MAX_ROOM_LAMPS` in `world/roomlight.ts` is 24: the meeting wing's rooms light two lamps each. The meeting wing itself (`world/office/roomswing.ts`, `FloorPlan.rooms`, `floor.expand` / `floor.shrink` with `part: 'meeting'`) mirrors the back office through the north wall; the machine monitor moved to the south wall over the kitchen to make room for it.
+- Repositories on Azure DevOps and Bitbucket (#122, [hosting](hosting.md)): the providers are new code of the fork's own
+  (`src/{server,shared}/hosting/`, `server/kanban/integrations/hosting/`, `server/gitconfig.ts`,
+  `bin/office-pr.js`, `bin/office-git-credential.js`, `ws/handlers/hosting.ts`, `client/ui/signins-hosts.ts`, the
+  `hosting` slice). The seams in upstream's files: `github.ts` (`GitHub.hosted` hands the boards, the PR window's detail
+  and comments to `hosting/board.ts`, and GitHub-only actions say so), `ghrepo.ts` (`checkoutRemote`), `floor.ts`
+  (`githubFor` and the PR board's `repos` know a hosted primary; the meeting's review posts with the host's token),
+  `workers/pr.ts`, `workers/manager.ts` and `changes.ts` (a hosted repository's PR through its provider),
+  `office/gates.ts` and `office/context.ts` (`withRepoHost`), `ws/handlers/{github,workers,changes}.ts` (those gates),
+  `http/routes/github.ts`, `signins.ts` (its git config is written by `gitconfig.ts`, with the office's credential
+  helper for the other hosts), `workers/process.ts` (the two commands), `office/services.ts` (`openHosting`),
+  `shared/protocol/{github,accounts}.ts` (`GhState.host` and `.note`, `signins.needed` for a host), `shared/protocol.ts`,
+  `ui/boards.ts`, `ui/github/pull-window.ts`, `ui/signins.ts`, `features/boards/world.ts` and the multiplayer tables.
+  GitHub's own paths are unchanged.
 - When #219 merges upstream, syncing it means resolving the same hunks once more (the SHAs differ). Upstream #220
   (the `settings.ts` ceiling in `size.test.ts`) and #221 (party dimming against the lamp boost in `lamplight`) are
   likely to conflict later.
