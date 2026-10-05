@@ -8,14 +8,16 @@ export interface HostCredentialInput {
   token: string;
   /** Bitbucket Cloud: the Atlassian account's e-mail (Basic auth with an API token). */
   email?: string;
+  /** Azure DevOps: the organization the token is for (dev.azure.com/<org>). */
+  org?: string;
 }
 
 export interface HostSignIn {
   kind: OtherHost;
   /** Set when the account has its own token: whom the host said it belongs to. */
-  mine?: { who: string; email?: string };
+  mine?: { who: string; email?: string; org?: string };
   /** Set when the office has one of its own. */
-  office?: { who: string };
+  office?: { who: string; org?: string };
 }
 
 export interface HostingState {
@@ -29,7 +31,7 @@ export interface HostingState {
 export type HostingClientMsg =
   | { t: 'hosting.get' }
   /** `office`: the office's own (admins only); else the account's. Answered with hosting.saved. */
-  | { t: 'hosting.set'; kind: OtherHost; office?: boolean; token: string; email?: string }
+  | { t: 'hosting.set'; kind: OtherHost; office?: boolean; token: string; email?: string; org?: string }
   | { t: 'hosting.clear'; kind: OtherHost; office?: boolean }
   /** Admins: the Bitbucket Server / Data Center hosts to recognise in remotes. */
   | { t: 'hosting.servers'; hosts: string[] };

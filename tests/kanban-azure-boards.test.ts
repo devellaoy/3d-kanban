@@ -215,6 +215,17 @@ test('assigning: a team member by id, nobody, and "me" refused under the officeâ
   await assert.rejects(azureAssign({ fetch }, { ...AS, key: 'office' }, REF, { me: true }), /pick yourself/);
 });
 
+test('assigning "me": who the token is, from the organization (connectionData takes a PAT; the Profiles API does not)', async () => {
+  const { fetch, calls } = fetchStub((c) => {
+    if (c.url.includes('/_apis/connectionData')) return { body: { authenticatedUser: { id: 'u1', descriptor: 'Microsoft.IdentityModel.Claims.ClaimsIdentity;x', providerDisplayName: 'Maija', properties: { Account: { $value: 'maija@x.fi' } } } } };
+    return { body: { id: 42 } };
+  });
+  assert.equal(await azureAssign({ fetch }, AS, REF, { me: true }), 'Maija');
+  assert.ok(calls.some((c) => c.url.startsWith(`https://dev.azure.com/${REF.org}/_apis/connectionData`)));
+  assert.ok(!calls.some((c) => /vssps|profile/.test(c.url)));
+  assert.deepEqual(calls.at(-1)!.body, [{ op: 'add', path: '/fields/System.AssignedTo', value: 'maija@x.fi' }]);
+});
+
 test('an ab: key routes to Azure Boards', () => {
   const issue = { source: 'azure-boards', key: 'ab:acme/My Project#42', title: '', url: '', body: '', labels: [], updatedAt: '' } as NormalizedIssue;
   assert.deepEqual(route([config()], issue), { kind: 'azure', org: 'acme', project: 'My Project', id: 42 });

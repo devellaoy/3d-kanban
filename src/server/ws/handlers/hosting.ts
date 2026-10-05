@@ -32,7 +32,7 @@ export const hostingHandlers = {
     if (!kind || !creds) return;
     const scope = scopeOf(ctx, c, msg.office);
     if (scope !== null && typeof scope === 'object') return ctx.sendTo(c, { t: 'hosting.saved', kind, error: scope.error });
-    void creds.set(scope, { kind, token: str(msg.token, 600), ...(msg.email ? { email: str(msg.email, 320) } : {}) }).then((error) => {
+    void creds.set(scope, { kind, token: str(msg.token, 600), ...(msg.email ? { email: str(msg.email, 320) } : {}), ...(msg.org ? { org: str(msg.org, 200) } : {}) }).then((error) => {
       ctx.sendTo(c, { t: 'hosting.saved', kind, ...(error ? { error } : {}) });
       send(ctx, c);
     });

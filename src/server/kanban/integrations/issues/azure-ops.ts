@@ -4,6 +4,7 @@
 // default team). Every function throws an Error with a text a person can act on.
 
 import type { WorkItemRef } from '../../../../shared/hosting/workitems.js';
+import { azureMe } from '../../../hosting/azure.js';
 import type { IssueAssignTo, IssueCommentItem, IssuePerson, IssueTransition } from '../../../../shared/kanban/issueops.js';
 import { hostCredentials } from '../../../hosting/index.js';
 import { hostCall } from '../../../hosting/http.js';
@@ -159,9 +160,9 @@ export async function azureAssign(io: Io, as: HostAs, ref: WorkItemRef, to: Issu
   if (to && 'me' in to) {
     // The office's token is nobody's in particular: it can't say who "me" is.
     if (as.key === 'office') throw new Error('The office acts on Azure Boards with its own token, so it doesn’t know which user you are: pick yourself in the list, or set your own token in ☰ → 🔐 Your sign-ins');
-    const me = await hostCall(io.fetch, as, 'GET', `https://app.vssps.visualstudio.com/_apis/profile/profiles/me?${API}`);
-    value = String(me?.emailAddress ?? '');
-    name = String(me?.displayName || value);
+    const me = await azureMe(ref.org, as, io.fetch);
+    value = me.email;
+    name = me.name;
     if (!value) throw new Error("Azure DevOps didn't say whose the token is");
   } else if (to) {
     const m = (await teamMembers(io, as, ref)).find((x) => x.id === to.id);

@@ -13,7 +13,7 @@ const HOW: Record<'azure' | 'bitbucket', { icon: string; make: string; what: str
   azure: {
     icon: '🔷',
     make: 'https://dev.azure.com/_usersSettings/tokens',
-    what: 'a personal access token with Code (Read & write) and Work Items (Read & write)',
+    what: 'an organization-scoped personal access token with Code (Read & write) and Work Items (Read & write), and its organization',
     token: 'Azure DevOps personal access token',
   },
   bitbucket: {
@@ -34,7 +34,7 @@ export function hostCards(net: Net): HostCards {
   const el = h('div.signins');
   // Kept across renders, so a half-typed token survives the next update.
   const inputs = {
-    azure: { token: field('password', 'Personal access token', HOW.azure.token), office: false },
+    azure: { token: field('password', 'Personal access token', HOW.azure.token), org: field('text', 'organization', 'Azure DevOps organization'), office: false },
     bitbucket: { token: field('password', 'API token', HOW.bitbucket.token), email: field('text', 'you@example.com', 'Atlassian account e-mail', 'email'), office: false },
   };
 
@@ -43,9 +43,9 @@ export function hostCards(net: Net): HostCards {
     const label = hostLabel(s.kind);
     const how = HOW[kind];
     const status = s.mine
-      ? h('span.signin-who.ok', {}, '✅ ', s.mine.who || 'Token set')
+      ? h('span.signin-who.ok', {}, '✅ ', s.mine.who || 'Token set', s.mine.org ? ` · ${s.mine.org}` : '')
       : s.office
-        ? h('span.signin-who', {}, `The office’s own${s.office.who ? ` (${s.office.who})` : ''}`)
+        ? h('span.signin-who', {}, `The office’s own${s.office.who ? ` (${s.office.who}${s.office.org ? ` · ${s.office.org}` : ''})` : ''}`)
         : h('span.signin-who.none', {}, 'No token');
     const body = h('div.signin-body');
     const box = h('section.signin', { class: (store.me.account ? s.mine : s.office) ? 'ok' : '', 'data-host': kind }, h('div.team-head', {}, h('h4', {}, `${how.icon} ${label}`), status), body);
@@ -83,14 +83,17 @@ export function hostCards(net: Net): HostCards {
     // The office's form has inputs of its own, so typing in one doesn't show in the other.
     const token = office ? field('password', 'Token', HOW[kind].token) : inputs[kind].token;
     const email = kind === 'bitbucket' ? (office ? field('text', 'e-mail', 'Atlassian account e-mail', 'email') : inputs.bitbucket.email) : undefined;
+    // An Azure DevOps PAT is scoped to its organization, and is checked there.
+    const org = kind === 'azure' ? (office ? field('text', 'organization', 'Azure DevOps organization') : inputs.azure.org) : undefined;
     const save = h('button.btn', { type: 'submit' }, 'Save');
-    const form = h('form.invite-row', {}, ...(email ? [email] : []), token, save) as HTMLFormElement;
+    const form = h('form.invite-row', {}, ...(email ? [email] : []), ...(org ? [org] : []), token, save) as HTMLFormElement;
     form.addEventListener('submit', (e) => {
       e.preventDefault();
       const t = token.value.trim();
       if (!t) return token.focus();
       if (email && !email.value.trim()) return email.focus();
-      net.send({ t: 'hosting.set', kind, token: t, ...(email ? { email: email.value.trim() } : {}), ...(office ? { office: true } : {}) });
+      if (org && !org.value.trim()) return org.focus();
+      net.send({ t: 'hosting.set', kind, token: t, ...(email ? { email: email.value.trim() } : {}), ...(org ? { org: org.value.trim() } : {}), ...(office ? { office: true } : {}) });
       token.value = '';
     });
     return form;

@@ -104,11 +104,14 @@ test('checks keep the newest status per context', async () => {
     { id: 5, iterationId: 3, state: 'pending', context: { genre: 'ci', name: 'test' } },
     { id: 9, iterationId: 2, state: 'failed', context: { genre: 'ci', name: 'test' } },
   ]).map((s) => s.id), [5]);
-  const { fetch } = stub([[/statuses/, () => ({ value: [
-    { id: 1, iterationId: 1, state: 'pending', context: { genre: 'ci', name: 'test' } },
-    { id: 2, iterationId: 2, state: 'failed', context: { genre: 'ci', name: 'test' }, targetUrl: 'https://ci/t' },
-    { id: 3, iterationId: 1, state: 'notApplicable', context: { name: 'policy' } },
-  ] })]]);
+  const { fetch } = stub([
+    [/statuses/, () => ({ value: [
+      { id: 1, iterationId: 1, state: 'pending', context: { genre: 'ci', name: 'test' } },
+      { id: 2, iterationId: 2, state: 'failed', context: { genre: 'ci', name: 'test' }, targetUrl: 'https://ci/t' },
+      { id: 3, iterationId: 1, state: 'notApplicable', context: { name: 'policy' } },
+    ] })],
+    [/pullrequests\/7\?/, () => pr(7)],
+  ]);
   assert.deepEqual(await azureProvider.checks(repo, 7, as, fetch), [
     { name: 'ci/test', state: 'fail', url: 'https://ci/t' },
     { name: 'policy', state: 'skip' },
@@ -179,9 +182,16 @@ test('viewPr maps the PR', async () => {
   });
 });
 
-test('whoAmI and defaultBranch', async () => {
-  const { fetch } = stub([[/profiles\/me/, () => ({ emailAddress: 'ada@x' })], [/repositories\/web%20app\?/, () => ({ defaultBranch: 'refs/heads/main' })]]);
-  assert.equal(await azureProvider.whoAmI(as, fetch), 'ada@x');
+test('whoAmI asks the organization (a PAT works there, not on the Profiles API), and defaultBranch', async () => {
+  const { fetch, calls } = stub([
+    [/^GET https:\/\/dev\.azure\.com\/contoso\/_apis\/connectionData$/, () => ({ authenticatedUser: { id: 'u1', descriptor: 'Microsoft.IdentityModel.Claims.ClaimsIdentity;x', providerDisplayName: 'Ada Lovelace', properties: { Account: { $value: 'ada@x' } } } })],
+    [/repositories\/web%20app\?/, () => ({ defaultBranch: 'refs/heads/main' })],
+  ]);
+  assert.equal(await azureProvider.whoAmI(as, fetch, { org: 'contoso' }), 'Ada Lovelace');
+  assert.ok(!calls.some((c) => /vssps|profile/.test(c.url)));
+  await assert.rejects(azureProvider.whoAmI(as, fetch), /needs the organization/);
+  const anon = stub([[/connectionData/, () => ({ authenticatedUser: { id: 'a', descriptor: 'Microsoft.TeamFoundation.UnauthenticatedIdentity;x', providerDisplayName: 'Anonymous' } })]]);
+  await assert.rejects(azureProvider.whoAmI(as, anon.fetch, { org: 'contoso' }), /didn't take the token for contoso/);
   assert.equal(await azureProvider.defaultBranch(repo, as, fetch), 'main');
 });
 
@@ -254,4 +264,34 @@ test('workItemOf reads the title, state and kind', async () => {
   assert.deepEqual(await workItemOf('contoso', 'My Project', 12, as, fetch), {
     id: 12, title: 'Login', state: 'New', type: 'Bug', url: 'https://dev.azure.com/contoso/My%20Project/_workitems/edit/12',
   });
+});
+
+test('checks: the branch policies (build validation, required statuses) with the statuses, on the board and in the window', async () => {
+  const projectPr = (id: number) => pr(id, { repository: { id: 'r1', project: { id: 'p-guid' } } });
+  const evaluations = [
+    { status: 'rejected', configuration: { isEnabled: true, isBlocking: true, type: { id: '0609b952-1397-4640-95ec-e00a01b2c241', displayName: 'Build' }, settings: { displayName: 'PR build', buildDefinitionId: 3 } }, context: { buildId: 77 } },
+    { status: 'queued', configuration: { isEnabled: true, type: { id: 'cbdc66da-9728-4af8-aada-9a5a32e4a226', displayName: 'Status' }, settings: { statusGenre: 'sonar', statusName: 'quality' } } },
+    { status: 'running', configuration: { isEnabled: true, type: { id: 'cbdc66da-9728-4af8-aada-9a5a32e4a226', displayName: 'Status' }, settings: { statusGenre: 'ci', statusName: 'test' } } },
+    { status: 'approved', configuration: { isEnabled: true, type: { id: 'fa4e907d-c16b-4a4c-9dfa-4906e5d171dd', displayName: 'Minimum number of reviewers' }, settings: {} } },
+    { status: 'rejected', configuration: { isEnabled: false, type: { id: '0609b952-1397-4640-95ec-e00a01b2c241' }, settings: { displayName: 'Off' } } },
+  ];
+  const { fetch, calls } = stub([
+    [/pullrequests\/7\/statuses/, () => ({ value: [{ id: 1, state: 'succeeded', context: { genre: 'ci', name: 'test' } }] })],
+    [/policy\/evaluations/, () => ({ value: evaluations })],
+    [/pullrequests\/7\?/, () => projectPr(7)],
+    [/searchCriteria\.status=active/, () => ({ value: [projectPr(7)] })],
+    [/searchCriteria\.status=/, () => ({ value: [] })],
+  ]);
+  assert.deepEqual(await azureProvider.checks(repo, 7, as, fetch), [
+    { name: 'ci/test', state: 'pass' },
+    { name: 'PR build', state: 'fail', url: 'https://dev.azure.com/contoso/My%20Project/_build/results?buildId=77' },
+    { name: 'sonar/quality', state: 'pending' },
+  ], 'a required status already posted shows once; reviewer and disabled policies are not checks');
+  const asked = calls.find((c) => /policy\/evaluations/.test(c.url))!.url;
+  assert.match(asked, /artifactId=vstfs%3A%2F%2F%2FCodeReview%2FCodeReviewId%2Fp-guid%2F7&/);
+  const [card] = await azureProvider.listPulls(repo, as, fetch);
+  assert.equal(card.checks, 'fail', 'a failed build validation fails the card too');
+  // Evaluations the token can't read leave the statuses.
+  const noPolicy = stub([[/statuses/, () => ({ value: [{ id: 1, state: 'succeeded', context: { name: 'x' } }] })], [/policy/, () => ({}), 403], [/pullrequests\/7\?/, () => projectPr(7)]]);
+  assert.deepEqual(await azureProvider.checks(repo, 7, as, noPolicy.fetch), [{ name: 'x', state: 'pass' }]);
 });

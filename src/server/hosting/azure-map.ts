@@ -75,12 +75,63 @@ export function checksOfStatuses(statuses: any[] | undefined): GhCheck[] {
   return latestStatuses(statuses).map((s) => ({ name: contextOf(s) || 'status', state: checkState(s.state), ...(s.targetUrl ? { url: String(s.targetUrl) } : {}) }));
 }
 
-/** The statuses folded into the board card's one word. */
-export function checksSummary(statuses: any[] | undefined): GhPull['checks'] {
-  const states = checksOfStatuses(statuses).map((c) => c.state);
+/** The branch policies that are checks: build validation (Azure Pipelines) and required statuses. Reviewer policies are reviews, not checks. */
+const BUILD_POLICY = '0609b952-1397-4640-95ec-e00a01b2c241';
+const STATUS_POLICY = 'cbdc66da-9728-4af8-aada-9a5a32e4a226';
+
+function policyState(status: unknown): GhCheck['state'] {
+  if (status === 'approved') return 'pass';
+  if (status === 'rejected' || status === 'broken') return 'fail';
+  if (status === 'notApplicable') return 'skip';
+  return 'pending'; // queued, running
+}
+
+/**
+ * A pull request's branch policy evaluations as checks: each enabled build validation (its build's
+ * page when there is one) and required status (named like the status it waits for).
+ */
+export function checksOfEvaluations(repo: RepoRef, evaluations: any[] | undefined): GhCheck[] {
+  const out: GhCheck[] = [];
+  for (const e of evaluations ?? []) {
+    const c = e?.configuration;
+    if (!c || c.isEnabled === false || c.isDeleted) continue;
+    const type = String(c.type?.id ?? '').toLowerCase();
+    const typeName = String(c.type?.displayName ?? '');
+    const s = c.settings ?? {};
+    if (type === BUILD_POLICY || (!type && typeName === 'Build')) {
+      const buildId = Number(e.context?.buildId);
+      const name = String(s.displayName || `Build ${s.buildDefinitionId ?? ''}`.trim());
+      const url = buildId > 0 ? `https://dev.azure.com/${encodeURIComponent(repo.owner)}/${encodeURIComponent(repo.project ?? repo.name)}/_build/results?buildId=${buildId}` : undefined;
+      out.push({ name, state: policyState(e.status), ...(url ? { url } : {}) });
+    } else if (type === STATUS_POLICY || (!type && typeName === 'Status')) {
+      const name = String(s.defaultDisplayName || (s.statusGenre ? `${s.statusGenre}/${s.statusName ?? ''}` : s.statusName ?? 'status'));
+      out.push({ name, state: policyState(e.status) });
+    }
+  }
+  return out;
+}
+
+/**
+ * The statuses and the policy evaluations together: a required status that was posted shows once
+ * (as the status, which links to its run).
+ */
+export function checksOfPr(repo: RepoRef, statuses: any[] | undefined, evaluations: any[] | undefined): GhCheck[] {
+  const posted = checksOfStatuses(statuses);
+  const names = new Set(posted.map((c) => c.name.toLowerCase()));
+  return [...posted, ...checksOfEvaluations(repo, evaluations).filter((c) => !names.has(c.name.toLowerCase()))];
+}
+
+/** Checks folded into the board card's one word. */
+export function summaryOf(checks: GhCheck[]): GhPull['checks'] {
+  const states = checks.map((c) => c.state);
   if (states.includes('fail')) return 'fail';
   if (states.includes('pending')) return 'pending';
   return states.includes('pass') ? 'pass' : 'none';
+}
+
+/** The statuses folded into the board card's one word. */
+export function checksSummary(statuses: any[] | undefined): GhPull['checks'] {
+  return summaryOf(checksOfStatuses(statuses));
 }
 
 function labelsOf(raw: any[] | undefined): GhLabel[] {

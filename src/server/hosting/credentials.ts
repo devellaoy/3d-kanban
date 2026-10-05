@@ -13,11 +13,14 @@ import path from 'node:path';
 import { hostLabel, OTHER_HOSTS, type OtherHost } from '../../shared/hosting/remote.js';
 import type { HostCredentialInput, HostingState, HostSignIn } from '../../shared/protocol/hosting.js';
 import type { Fetch, HostAs, HostingProvider } from './provider.js';
+import { withHelperEnv } from '../gitconfig.js';
 
 export interface SavedHost {
   token: string;
   /** Bitbucket Cloud: the Atlassian account's e-mail, for Basic auth with an API token. */
   email?: string;
+  /** Azure DevOps: the organization the token was checked with (a PAT is scoped to its organizations). */
+  org?: string;
   /** Who the host said the token belongs to when it was set. */
   who?: string;
 }
@@ -36,6 +39,7 @@ const ACCOUNT_ID = /^[A-Za-z0-9]{6,64}$/;
 const TOKEN = /^[A-Za-z0-9_\-=+/.:]{16,512}$/;
 const EMAIL = /^[^\s@]{1,64}@[^\s@]{1,255}$/;
 const SERVER = /^[a-zA-Z0-9.-]{1,253}(?::\d{1,5})?$/;
+const AZ_ORG = /^[a-zA-Z0-9][a-zA-Z0-9-]{0,49}$/;
 export const MAX_SERVERS = 10;
 
 /** The Authorization header for a saved credential. */
@@ -153,11 +157,13 @@ export class HostCredentials {
     const email = input.email ? String(input.email).trim() : undefined;
     if (email && !EMAIL.test(email)) return "That doesn't look like an e-mail address";
     if (kind === 'bitbucket' && !email) return 'Bitbucket needs the e-mail of your Atlassian account with an API token';
-    const saved: SavedHost = { token, ...(email ? { email } : {}) };
+    const org = input.org ? String(input.org).trim().replace(/^https?:\/\/dev\.azure\.com\//i, '').replace(/\/.*$/, '') : undefined;
+    if (kind === 'azure' && (!org || !AZ_ORG.test(org))) return 'Azure DevOps needs the organization the token is for (dev.azure.com/<organization>)';
+    const saved: SavedHost = { token, ...(email ? { email } : {}), ...(kind === 'azure' ? { org } : {}) };
     const provider = this.providers[kind];
     if (!provider) return `${hostLabel(kind)} isn't supported yet`;
     try {
-      const who = await provider.whoAmI({ kind, auth: authOf(kind, saved), key: scope ?? 'office' }, this.fetch);
+      const who = await provider.whoAmI({ kind, auth: authOf(kind, saved), key: scope ?? 'office' }, this.fetch, { org });
       if (who) saved.who = who;
     } catch (err) {
       return (err as Error).message.replace(/Your .* sign-in stopped working.*$/, `${hostLabel(kind)} turned that token down`);
@@ -179,10 +185,22 @@ export class HostCredentials {
     const office = this.load(null);
     const hosts: HostSignIn[] = (['azure', 'bitbucket'] as const).map((kind) => ({
       kind,
-      ...(mine[kind]?.token ? { mine: { who: mine[kind]!.who ?? '', ...(mine[kind]!.email ? { email: mine[kind]!.email } : {}) } } : {}),
-      ...(office[kind]?.token ? { office: { who: office[kind]!.who ?? '' } } : {}),
+      ...(mine[kind]?.token ? { mine: { who: mine[kind]!.who ?? '', ...(mine[kind]!.email ? { email: mine[kind]!.email } : {}), ...(mine[kind]!.org ? { org: mine[kind]!.org } : {}) } } : {}),
+      ...(office[kind]?.token ? { office: { who: office[kind]!.who ?? '', ...(office[kind]!.org ? { org: office[kind]!.org } : {}) } } : {}),
     }));
     return { hosts, admin, servers: this.serverHosts() };
+  }
+
+  /**
+   * `env` for git run as `accountId` (or the office) on a repository on Azure DevOps or Bitbucket:
+   * the office's credential helper (bin/office-git-credential.js) with their tokens, then the
+   * office's. Unchanged when the helper isn't installed (writeOfficeCommands hasn't run: tests).
+   */
+  gitEnv(env: Record<string, string>, accountId: string | undefined): Record<string, string> {
+    const helper = path.join(this.dataDir, 'bin', 'office-git-credential');
+    if (!existsSync(helper)) return env;
+    const files = [...(accountId && ACCOUNT_ID.test(accountId) ? [this.file(accountId)] : []), this.file(null)];
+    return withHelperEnv(env, helper, files);
   }
 
   /** Whether `accountId` (or the office) has any credentials for `kind`. */

@@ -19,6 +19,13 @@ export interface HostAs {
   who?: string;
 }
 
+/** The credentials picked for each host a piece of work needs (see gates.withHosts). */
+export interface HostPick {
+  get(kind: OtherHost): HostAs | undefined;
+  /** The environment git pushes to those hosts with: the asker's, with the office's credential helper (HostCredentials.gitEnv). */
+  git?: Record<string, string>;
+}
+
 export interface PrInput {
   /** The branch with the changes. */
   head: string;
@@ -63,8 +70,8 @@ export type Fetch = (url: string, init?: RequestInit) => Promise<Response>;
 
 export interface HostingProvider {
   kind: OtherHost;
-  /** Who the credentials belong to (their display name), or throws when the host turns them down. */
-  whoAmI(as: HostAs, fetch: Fetch): Promise<string>;
+  /** Who the credentials belong to (their display name), or throws when the host turns them down. `org`: Azure DevOps' organization. */
+  whoAmI(as: HostAs, fetch: Fetch, opts?: { org?: string }): Promise<string>;
   /** The open pull request from `branch`, if there is one. */
   findOpenPr(repo: RepoRef, branch: string, as: HostAs, fetch: Fetch): Promise<OpenedHostPr | undefined>;
   createPr(repo: RepoRef, pr: PrInput, as: HostAs, fetch: Fetch): Promise<OpenedHostPr>;

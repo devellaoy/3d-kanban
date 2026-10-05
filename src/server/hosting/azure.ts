@@ -2,8 +2,8 @@
 // office's shapes by azure-map.ts; Azure Boards' work items are in azure-workitems.ts.
 
 import { prWebUrl, type RepoRef } from '../../shared/hosting/remote.js';
-import type { GhPull } from '../../shared/protocol.js';
-import { azureDescription, branchOf, checksOfStatuses, checksSummary, commentsOfThreads, pullOf, refOf, viewOf } from './azure-map.js';
+import type { GhCheck, GhPull } from '../../shared/protocol.js';
+import { azureDescription, branchOf, checksOfPr, commentsOfThreads, pullOf, refOf, summaryOf, viewOf } from './azure-map.js';
 import { hostCall } from './http.js';
 import type { Fetch, HostAs, HostingProvider } from './provider.js';
 
@@ -25,6 +25,25 @@ async function defaultBranch(repo: RepoRef, as: HostAs, fetch: Fetch): Promise<s
   return r?.defaultBranch ? branchOf(r.defaultBranch) : undefined;
 }
 
+/**
+ * A pull request's checks (`p` as the API gives it): the statuses posted on it and its branch
+ * policies' evaluations (build validation, required statuses). Evaluations the token can't read
+ * leave just the statuses.
+ */
+async function prChecks(repo: RepoRef, p: any, as: HostAs, fetch: Fetch): Promise<GhCheck[]> {
+  const n = Number(p.pullRequestId);
+  const projectId = p.repository?.project?.id;
+  const artifact = projectId ? `vstfs:///CodeReview/CodeReviewId/${projectId}/${n}` : undefined;
+  const evaluationsUrl = artifact
+    ? `https://dev.azure.com/${encodeURIComponent(repo.owner)}/${encodeURIComponent(repo.project ?? repo.name)}/_apis/policy/evaluations?artifactId=${encodeURIComponent(artifact)}&api-version=7.1-preview.1`
+    : undefined;
+  const [statuses, evaluations] = await Promise.all([
+    hostCall(fetch, as, 'GET', pr(repo, n, '/statuses')).then((r) => r?.value as any[] | undefined),
+    evaluationsUrl ? hostCall(fetch, as, 'GET', evaluationsUrl).then((r) => r?.value as any[] | undefined, () => undefined) : Promise.resolve(undefined),
+  ]);
+  return checksOfPr(repo, statuses, evaluations);
+}
+
 /** Runs `fn` over `items`, `limit` at a time, keeping their order. */
 async function pooled<T, R>(items: T[], limit: number, fn: (item: T) => Promise<R>): Promise<R[]> {
   const out: R[] = new Array(items.length);
@@ -39,14 +58,25 @@ async function pooled<T, R>(items: T[], limit: number, fn: (item: T) => Promise<
   return out;
 }
 
+/**
+ * Whose the credentials are, as `org` sees them. The organization's connectionData takes a PAT
+ * (the Profiles API takes only Microsoft Entra tokens), and a PAT is scoped to its organizations.
+ */
+export async function azureMe(org: string, as: HostAs, fetch: Fetch): Promise<{ id: string; name: string; email: string }> {
+  const r = await hostCall(fetch, as, 'GET', `https://dev.azure.com/${encodeURIComponent(org)}/_apis/connectionData`);
+  const u = r?.authenticatedUser;
+  const email = String(u?.properties?.Account?.$value ?? '');
+  const name = String(u?.providerDisplayName || email);
+  if (!u?.id || !name || /UnauthenticatedIdentity/i.test(String(u.descriptor ?? ''))) throw new Error(`Azure DevOps didn't take the token for ${org}: check that it is for this organization`);
+  return { id: String(u.id), name, email };
+}
+
 export const azureProvider: HostingProvider = {
   kind: 'azure',
 
-  async whoAmI(as, fetch) {
-    const me = await hostCall(fetch, as, 'GET', `https://app.vssps.visualstudio.com/_apis/profile/profiles/me?${API}`);
-    const who = String(me?.displayName || me?.emailAddress || '');
-    if (!who) throw new Error("Azure DevOps didn't say whose the token is");
-    return who;
+  async whoAmI(as, fetch, opts) {
+    if (!opts?.org) throw new Error('Azure DevOps needs the organization the token is for');
+    return (await azureMe(opts.org, as, fetch)).name;
   },
 
   async findOpenPr(repo, branch, as, fetch) {
@@ -93,14 +123,14 @@ export const azureProvider: HostingProvider = {
     const list = (status: string, top: number) => hostCall(fetch, as, 'GET', azureRepoApi(repo, `/pullrequests?searchCriteria.status=${status}&$top=${top}`)).then((r) => (r?.value ?? []) as any[]);
     const [active, completed, abandoned] = await Promise.all([list('active', 150), list('completed', 30), list('abandoned', 40)]);
     const open = await pooled(active, STATUS_CALLS, async (p): Promise<GhPull> => {
-      const checks = await hostCall(fetch, as, 'GET', pr(repo, Number(p.pullRequestId), '/statuses')).then((r) => checksSummary(r?.value), () => 'none' as const);
+      const checks = await prChecks(repo, p, as, fetch).then(summaryOf, () => 'none' as const);
       return pullOf(repo, p, checks);
     });
     return [...open, ...completed.map((p) => pullOf(repo, p)), ...abandoned.map((p) => pullOf(repo, p))];
   },
 
   async checks(repo, n, as, fetch) {
-    return checksOfStatuses((await hostCall(fetch, as, 'GET', pr(repo, n, '/statuses')))?.value);
+    return prChecks(repo, await hostCall(fetch, as, 'GET', pr(repo, n)), as, fetch);
   },
 
   async comments(repo, n, as, fetch) {
