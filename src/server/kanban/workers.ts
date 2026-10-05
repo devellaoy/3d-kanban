@@ -4,6 +4,7 @@
 // and a worker can be relaunched on its session with other flags.
 import type { AgentEffort, WorkerInfo, WorkerStatus } from '../../shared/protocol.js';
 import type { DepartureIntent } from '../../shared/kanban/types.js';
+import { CARRY_ON_STAGGER_MS, carries } from '../workers/carryon.js';
 import { codexHookTrustArgs } from './codex-trust.js';
 import type { Pty } from '../ptys.js';
 import { validateWorkerEffort, validateWorkerModel } from '../agents.js';
@@ -52,6 +53,32 @@ export abstract class KanbanWorkers {
   follows(id: string, on: boolean) {
     if (on) this.followed.add(id);
     else this.followed.delete(id);
+  }
+
+  /** ⚙️ Settings: whether workers cut off mid-turn by the office stopping carry on by themselves (set by the floor; on without it). */
+  carryOn: () => boolean = () => true;
+  /** Between one carrying-on worker's start and the next one's. */
+  carryOnStaggerMs = CARRY_ON_STAGGER_MS;
+
+  /** Whether `id` will pick its cut-off turn up by itself once the office has started (QueueWorkers.carriesOn; never a task's worker). */
+  carriesOn(id: string): boolean {
+    const w = this.workers.get(id);
+    return !!w && carries(w, this.carryOn());
+  }
+
+  /** Whether the worker's carry-on was given up (the budget was spent, or its session was gone), so it will not pick its turn up. */
+  carryOnDropped(id: string): boolean {
+    return !!this.workers.get(id)?.carryOnDropped;
+  }
+
+  /** What the engine asks at reconcile: does the office carry its cut-off workers on itself (then it resumes a task's worker as the engine tells it to, with its own prompt)? */
+  carriesOnAfterRestart(): boolean {
+    return this.carryOn();
+  }
+
+  /** The worker's status as the office closed, when its terminal did not survive (only meaningful for the first reconcile after start: it is not cleared at runtime); undefined when it survived, was adopted or never saved. */
+  cutOffStatus(id: string): WorkerStatus | undefined {
+    return this.workers.get(id)?.cutOff;
   }
 
   /** Who hears about status changes and hooks (see addObserver). */

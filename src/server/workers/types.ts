@@ -154,6 +154,14 @@ export interface Worker {
   saved?: { ptyId: string; status: WorkerStatus; acked: boolean; waitingSince?: number };
   /** Its process went away mid-turn with the office or the terminal host: its next start carries on (CARRY_ON_PROMPT). */
   interrupted?: boolean;
+  /** Its status when the office closed and its terminal did not survive (the kanban engine reads it once, as it starts; only a closing office saves it). */
+  cutOff?: WorkerStatus;
+  /** Cut off mid-turn and waiting its turn to carry on by itself (see CarryOn). */
+  carryOnPending?: boolean;
+  /** Its carry-on was given up (the budget was spent, or its session was gone): it is at rest, not on its turn. */
+  carryOnDropped?: boolean;
+  /** Its next start is the office carrying on by itself: the terminal says so. */
+  autoResume?: boolean;
   /** A prompt its start couldn't pass on the command line (a Muse resume): typed into its session after SessionStart. */
   pendingPrompt?: string;
   /** Output since its scrollback was last saved to disk. */

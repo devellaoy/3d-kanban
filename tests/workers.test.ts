@@ -1269,21 +1269,84 @@ test('a worker whose terminal was in the host when an older office went down car
   assert.equal(promptOf(resumed.find((r) => r.args.includes('was-done'))!), undefined);
 });
 
-test('stopping the office on purpose (Ctrl+C) leaves nothing to carry on', async (t) => {
+/** What workers.json says of each worker now. */
+const savedWorkers = (f: Fixture) => JSON.parse(readFileSync(path.join(f.data, 'workers.json'), 'utf8')) as { id: string; midTurn: boolean; cutOff?: string }[];
+
+test('stopping the office on purpose (Ctrl+C) still carries a mid-turn worker on when it starts again, and keeps what it was doing', async (t) => {
   const f = carryOnFixture(t);
   const before = manager(f, f.claude, []);
   // Its terminals run in the host, which ends them without telling the office they exited.
+  await before.start();
+  const worker = await hireInState(f, before, 'desk-1', 'stopped', 'working');
+  const resting = await hireInState(f, before, 'desk-2', 'rested', 'done');
+  before.shutdown(false);
+  await new Promise((resolve) => setTimeout(resolve, 200));
+  // The exit events that came after the kill did not turn the saved status into `exited`.
+  const saved = savedWorkers(f);
+  assert.deepEqual(saved.find((w) => w.id === worker.id), { ...saved.find((w) => w.id === worker.id)!, midTurn: true, cutOff: 'working' });
+  assert.deepEqual([saved.find((w) => w.id === resting.id)!.midTurn, saved.find((w) => w.id === resting.id)!.cutOff], [false, 'done']);
+
+  const after = manager(f, f.claude, []);
+  t.after(() => after.shutdown());
+  await after.start();
+  assert.equal(after.cutOffStatus(worker.id), 'working');
+  const resumed = (await waitFor(() => launches(f), (x) => x.length >= 4)).slice(2);
+  assert.equal(promptOf(resumed.find((r) => r.args.includes('stopped'))!), CARRY_ON_PROMPT);
+  assert.equal(promptOf(resumed.find((r) => r.args.includes('rested'))!), undefined);
+});
+
+test('with carrying on turned off a mid-turn worker wakes without a prompt', async (t) => {
+  const f = carryOnFixture(t);
+  const before = manager(f, f.claude, []);
   await before.start();
   await hireInState(f, before, 'desk-1', 'stopped', 'working');
   before.shutdown(false);
   await new Promise((resolve) => setTimeout(resolve, 200));
 
   const after = manager(f, f.claude, []);
+  after.carryOn = () => false;
   t.after(() => after.shutdown());
   await after.start();
+  assert.equal(after.carriesOnAfterRestart(), false);
   const resumed = (await waitFor(() => launches(f), (x) => x.length >= 2))[1];
   assert.ok(resumed.args.includes('stopped'));
   assert.equal(promptOf(resumed), undefined);
+});
+
+test("a task's worker is not told to continue by the office: the kanban engine resumes it", async (t) => {
+  const f = carryOnFixture(t);
+  writeFileSync(path.join(f.data, 'workers.json'), JSON.stringify([
+    { id: 'task-worker', kind: 'agent', provider: 'claude', deskId: 'desk-1', name: 'Task', sessionId: 'task-session', hookToken: 'tok', kanban: { taskId: 7, role: 'implementer' }, midTurn: true, cutOff: 'working' },
+  ]));
+  const workers = manager(f, f.claude, []);
+  t.after(() => workers.shutdown());
+  await workers.start();
+  assert.equal(workers.cutOffStatus('task-worker'), 'working');
+  const resumed = (await waitFor(() => launches(f), (x) => x.length >= 1))[0];
+  assert.ok(resumed.args.includes('task-session'));
+  assert.equal(promptOf(resumed), undefined);
+  assert.ok(workers.restartedAt('task-worker'));
+});
+
+test('workers that carry on start one after another, not all at once', async (t) => {
+  const f = carryOnFixture(t);
+  const before = manager(f, f.claude, []);
+  await before.start();
+  await hireInState(f, before, 'desk-1', 'first', 'working');
+  await hireInState(f, before, 'desk-2', 'second', 'working');
+  before.shutdown(false);
+  await new Promise((resolve) => setTimeout(resolve, 200));
+
+  const after = manager(f, f.claude, []);
+  after.carryOnStaggerMs = 700;
+  t.after(() => after.shutdown());
+  await after.start();
+  await waitFor(() => launches(f), (x) => x.length >= 3);
+  const began = Date.now();
+  await new Promise((resolve) => setTimeout(resolve, 300));
+  assert.equal(launches(f).length, 3, 'the second waits for its turn');
+  await waitFor(() => launches(f), (x) => x.length >= 4);
+  assert.ok(Date.now() - began >= 300);
 });
 
 test('a worktree worker that makes its own branch is followed there: O finds the PR it opened, and sending it home tidies both branches', async (t) => {

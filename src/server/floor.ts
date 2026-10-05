@@ -75,8 +75,8 @@ export interface FloorContext {
   people(floor: Floor): number;
   /** Who's on this floor, and where they stand. */
   peers(floor: Floor): PeerInfo[];
-  /** ⚙️ Settings: a worker whose pull request merged goes home by itself. */
-  leaveOnMerge(): boolean;
+  /** ⚙️ Settings: a worker whose pull request merged goes home by itself (leaveOnMerge); workers cut off by the office stopping carry on by themselves (carryOn). */
+  leaveOnMerge(): boolean; carryOn(): boolean;
   /** Another floor of the building: a worker across repositories works in its project too (see WorkerInfo.repos). */
   floor(id: string): Floor | undefined;
   /** This floor's pull requests came back: a worker on another floor with a repository here may have landed. */
@@ -246,7 +246,7 @@ export class Floor {
       ctx.runAs,
       ctx.dshProfile,
     );
-    this.workers.wing = () => this.plan.wing; this.workers.removed = () => this.plan.seatsOut();
+    this.workers.carryOn = () => ctx.carryOn(); this.workers.wing = () => this.plan.wing; this.workers.removed = () => this.plan.seatsOut();
 
     this.github = new GitHub(
       def.dir,

@@ -23,6 +23,7 @@ import { midTurn } from './lifecycle.js';
 import { restoreWorkers, saveWorkers } from './persist.js';
 import { WorkerPrs } from './pr.js';
 import { WIN, binScript, defaultShell, resolveCommand, shellRun, shq, writeOfficeCommands } from './process.js';
+import { CarryOn, restoredNote } from './carryon.js';
 import { CARRY_ON_PROMPT, WorkerTasks, firstPrompt, languageTail } from './tasks.js';
 import { flushScreens, fullScreens, newTerm, offlineBanner, screenText, type HeadlessTerminal } from './terminal.js';
 import type { HookEnv, OpenedPr, RepoSource, RunAs, SpawnExtra, Worker, WorkerContext, WorkerEvents, WorkerHandle } from './types.js';
@@ -39,8 +40,6 @@ export const MAX_REPOS = 8;
 const USAGE_SCAN_MS = 10_000;
 /** How often a terminal with new output is saved to disk, so even a crash loses at most this much. */
 const SAVE_SCROLLBACK_MS = 15_000;
-/** Between a worker's saved scrollback and what it prints after the office restarted. */
-const RESTORED_NOTE = '\x1b[2m──── the office restarted · earlier output above ────\x1b[0m\r\n';
 
 export class WorkerManager extends KanbanWorkers {
   protected workers = new Map<string, Worker>();
@@ -69,6 +68,7 @@ export class WorkerManager extends KanbanWorkers {
   private scrollback: ScrollbackStore;
   readonly drops: DropStore;
   private saveTimer: NodeJS.Timeout;
+  private carry = new CarryOn({ workers: this.workers, resume: (id) => this.resume(id), enabled: () => this.carryOn(), hiringPaused: () => this.ledger.hiringPaused, closing: () => this.closing, staggerMs: () => this.carryOnStaggerMs });
   wing: () => number = () => 0; // how many rows the floor's back office is built out: its desks past that aren't there to hire at (see WING)
   removed: () => ReadonlySet<string> = () => new Set(); // the desks and bean bags the floor has taken out (see shared/arrange.ts)
 
@@ -321,8 +321,8 @@ export class WorkerManager extends KanbanWorkers {
     const brief = station && stationBrief(station, this.prompts);
     const first = this.tasks.restartPrompt(w, brief, prompt, this.prompts?.language?.());
     // Cut off mid-turn by a restart: it gets on with it, as whoever was watching would have told it to.
-    const carryOn = !prompt && w.interrupted && w.info.kind === 'agent' && !!w.info.sessionId;
-    w.interrupted = false;
+    const carryOn = !prompt && this.carry.carries(w);
+    w.interrupted = w.carryOnPending = false;
     this.launch(w, carryOn ? CARRY_ON_PROMPT : first, w.info.sessionId);
     return undefined;
   }
@@ -355,11 +355,9 @@ export class WorkerManager extends KanbanWorkers {
     return (w?.pty || w?.dsh) && token && safeEq(token, w.hookToken) ? w.info : undefined;
   }
 
-  /** Starts every worker that isn't running: nobody should be found asleep at their desk. */
-  wakeAll() {
-    // A DeepSeek Harness worker has no PTY but is still running: only the ones that are gone wake up.
-    for (const w of this.workers.values()) if (!w.pty && !w.dsh) this.resume(w.info.id);
-  }
+  /** Starts every worker that isn't running: nobody should be found asleep at their desk (see CarryOn). */
+  wakeAll() { this.carry.wakeAll(); }
+
 
   /**
    * Sends a worker home. For one with its own worktree, `cleanup` says what becomes of it; with no
@@ -601,6 +599,7 @@ export class WorkerManager extends KanbanWorkers {
     clearInterval(this.usageTimer);
     clearInterval(this.saveTimer);
     for (const w of this.workers.values()) {
+      this.carry.cutOff(w, keep); // before anything is killed, while its status still says what it was doing
       clearTimeout(w.scanTimer);
       this.scanUsage(w);
       // Before the process goes, so the next office shows what it was doing, not how it was stopped.
@@ -617,8 +616,6 @@ export class WorkerManager extends KanbanWorkers {
         }
       }
       if (keep && w.pty?.id) continue;
-      // A restart only takes this one down because it runs in-process: the next office carries on its turn.
-      if (keep && midTurn(w)) w.interrupted = true;
       try {
         w.pty?.kill();
       } catch {
@@ -645,7 +642,7 @@ export class WorkerManager extends KanbanWorkers {
     // when the office last stopped, so earlier output is still there to scroll back to and search.
     const restarted = !w.term;
     const before = w.term && w.ser ? terminalTail(w.term, w.ser, SCROLLBACK) : this.scrollback.load(info.id);
-    const prelude = before ? `${before}\r\n${restarted ? RESTORED_NOTE : ''}` : undefined;
+    const prelude = before ? `${before}\r\n${restarted ? restoredNote(w) : ''}` : undefined;
     const term = this.newTerm(w);
     if (prelude) {
       // Writes are parsed in order, so this lands before anything the new process prints.
@@ -739,7 +736,7 @@ export class WorkerManager extends KanbanWorkers {
   private adopt(w: Worker, adopted: Adopted, saved: NonNullable<Worker['saved']>) {
     const { info } = w;
     // It kept working through the restart: nothing to carry on.
-    w.interrupted = false;
+    w.interrupted = false; w.cutOff = undefined;
     info.cols = adopted.cols;
     info.rows = adopted.rows;
     const term = this.newTerm(w);
@@ -809,9 +806,9 @@ export class WorkerManager extends KanbanWorkers {
       if (adapter?.usage?.scanOnExit && !this.closing) this.scheduleScan(w);
       // Resuming a conversation Claude no longer has ("No conversation found") exits before Claude
       // ever starts. Start a fresh one rather than leave the worker asleep.
-      if (adapter?.freshIfResumeFails && resumeSessionId && info.status === 'starting' && !this.closing && !this.followed.has(info.id)) { // not for a run the engine follows: it starts the task's worker afresh, with the handoff, when the session is really gone
+      if (adapter?.freshIfResumeFails && resumeSessionId && info.status === 'starting' && !this.closing && !this.followed.has(info.id) && !info.kanban) { // not for a task's worker, nor a run the engine follows: it starts the task's worker afresh, with the handoff, when the session is really gone
         this.events.toast(`${info.name}'s last conversation couldn't be resumed — starting a fresh one`, 'warn');
-        this.launch(w, undefined, undefined);
+        w.carryOnDropped = true; this.launch(w, undefined, undefined); // its turn is not picked up: the session is gone
         return;
       }
       info.exitCode = exitCode;
@@ -1023,6 +1020,6 @@ export class WorkerManager extends KanbanWorkers {
   }
 
   private persist() {
-    saveWorkers(this.statePath, this.workers.values(), this.stopping);
+    saveWorkers(this.statePath, this.workers.values(), this.closing);
   }
 }

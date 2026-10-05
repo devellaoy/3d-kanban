@@ -19,6 +19,10 @@ export interface QueueWorkers {
   /** What a task starts on when whoever queued it didn't pick (⚙️ Settings); the default provider without it. */
   readonly officeDefault?: AgentChoice;
   list(): WorkerInfo[];
+  /** Whether the worker was cut off mid-turn and picks it up by itself once the office has started (⚙️ Settings). */
+  carriesOn?(id: string): boolean;
+  /** Whether its carry-on was given up after all (see WorkerManager.carryOnDropped): a task waiting for it is over. */
+  carryOnDropped?(id: string): boolean;
   deskOccupied(deskId: string): boolean;
   /** How many rows the floor's back office is built out, for its desks (see WING). */
   wing?(): number;
@@ -301,7 +305,8 @@ export class TaskQueue {
       if (t.status !== 'running' || !t.workerId) continue;
       const w = byId.get(t.workerId);
       if (!w) this.finish(t, 'killed');
-      else if (FINISHED.has(w.status)) done = this.finish(t, w.status === 'done' ? 'done' : 'exited') || done;
+      else if (FINISHED.has(w.status) && !(w.status === 'offline' && this.workers.carriesOn?.(w.id))) done = this.finish(t, w.status === 'done' ? 'done' : 'exited') || done;
+      else if (this.workers.carryOnDropped?.(w.id) && !isBusy(w.status)) done = this.finish(t, 'exited') || done;
       else continue;
       changed = true;
     }
@@ -462,8 +467,8 @@ export class TaskQueue {
           error: s.error,
           pr: s.pr,
         };
-        // Whatever was running died with the old office process; its worker comes back asleep at best.
-        if (t.status === 'running') {
+        // Whatever was running died with the old office process; its worker comes back asleep at best, or carries on by itself.
+        if (t.status === 'running' && !(t.workerId && this.workers.carriesOn?.(t.workerId))) {
           t.status = 'done';
           t.outcome = 'exited';
           t.finishedAt = Date.now();
