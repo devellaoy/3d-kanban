@@ -323,7 +323,7 @@ export class Orchestrator {
       const floor = this.watch(task.project);
       const info = this.restarts.workerOf(run, task, floor);
       // A worker whose terminal didn't survive a full restart (cut off) was woken on its session: its saved status says what it was doing.
-      const cut = floor && info && info.status !== 'exited' && !attached.has(task.id) ? floor.workers.cutOffStatus(info.id) : undefined;
+      const cut = floor && info && !attached.has(task.id) ? floor.workers.cutOffStatus(info.id) : undefined;
       if (floor && info && cut !== undefined) {
         attached.add(task.id);
         this.restarts.resume(run, task, floor, info, cut);

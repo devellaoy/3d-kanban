@@ -69,6 +69,19 @@ export class Restarts<L extends HeldRun> {
     return w && floor.workers.cutOffStatus(w.id) !== undefined ? w : undefined;
   }
 
+  /**
+   * Why a run can't be carried on after the restart, as its task says it: its worktree is gone (the worker lost, or the task's folders missing:
+   * the launch would silently cut a fresh one) or its Claude session is (the restored worker's own session first, else the task's). Undefined when both are there.
+   */
+  private gone(task: KanbanTask, role: KanbanRun['role'], tool: KanbanRun['tool'], floor: Floor, info?: WorkerInfo): string | undefined {
+    if (info?.lost || (!this.deps.folder(task.project) && task.workspace && missingFolders(floor.dir, task.workspace).length)) {
+      return `The office restarted, but its worktree is gone: Retry to carry on in a fresh worktree${task.branch ? ` on branch ${task.branch}` : ''}`;
+    }
+    const session = info?.sessionId ?? (role === 'implementer' ? task.sessionId : task.reviewerSessionId);
+    if (session && sessionLogged(this.deps.ctx, task, tool, session, info ? floor.workers.transcripts(info.id)?.claude : undefined) === false) return "The office restarted, but its agent's session is gone: Retry starts it again in a fresh session";
+    return undefined;
+  }
+
   /** Whether a queued run's worker still sits at its desk: it carries on in it, so it needs no desk of its own nor room under the office's worker limit. */
   reuses(t: KanbanTask, floor: Floor): boolean {
     const id = t.queuedRun?.role === 'reviewer' ? t.reviewerWorkerId : t.workerId;
@@ -81,12 +94,17 @@ export class Restarts<L extends HeldRun> {
    */
   async admit(t: KanbanTask, floor: Floor): Promise<boolean> {
     const paused = this.deps.hiringPaused();
-    if (!floor.workers.carriesOnAfterRestart() || paused) {
+    const q = t.queuedRun!;
+    const id = q.role === 'reviewer' ? t.reviewerWorkerId : t.workerId;
+    // The same preconditions as at the restart: the office was down again since, and the launch would quietly start a fresh worktree or session.
+    const lost = this.gone(t, q.role, this.deps.ctx.repo.listRuns(t.id).at(-1)?.tool ?? t.tool, floor, id ? floor.workers.get(id) : undefined);
+    const why = !floor.workers.carriesOnAfterRestart() ? "the office's setting for that is off" : paused;
+    if (why || lost) {
       await this.deps.serial(t.id, async () => {
         const task = this.deps.ctx.repo.getTask(t.id);
         if (!task || task.runState !== 'queued' || task.queuedRun?.prompt !== 'restarted') return;
-        await this.deps.apply(task.id, { type: 'interrupted', text: 'The office restarted while it ran: Retry to carry on' });
-        this.deps.note(task, paused ? `It doesn't carry on by itself: ${paused}` : "It doesn't carry on by itself: the office's setting for that is off.");
+        await this.deps.apply(task.id, { type: 'interrupted', text: lost ?? 'The office restarted while it ran: Retry to carry on' });
+        if (!lost) this.deps.note(task, `It doesn't carry on by itself: ${why}`);
       });
       return false;
     }
@@ -106,8 +124,7 @@ export class Restarts<L extends HeldRun> {
    * status now (a woken worker without a prompt turns idle after a while). Synchronous: the first drain after it sees the queue.
    */
   resume(run: KanbanRun, task: KanbanTask, floor: Floor, info: WorkerInfo, cut: WorkerStatus): void {
-    const { ctx, folder, note } = this.deps;
-    const branch = task.branch ? ` on branch ${task.branch}` : '';
+    const { ctx, note } = this.deps;
     // Waiting for an answer to its question (the agent was cut off at its prompt): the task waits for the user, whatever else is gone; the answer goes the normal ways.
     if (cut === 'needs_input' || (task.status === 'waiting' && task.waitingReason === 'agent_asking')) {
       this.deps.finishRun(run.id, task.project, { status: 'interrupted', error: 'The office restarted while its agent was asking' });
@@ -115,11 +132,8 @@ export class Restarts<L extends HeldRun> {
       note(task, 'The office restarted while its agent was asking: answer here to carry on.', run.id);
       return;
     }
-    // Its worktree is gone: nothing to carry on in.
-    if (info.lost || (!folder(task.project) && task.workspace && missingFolders(floor.dir, task.workspace).length)) return this.interrupt(run, task, `The office restarted, but its worktree is gone: Retry to carry on in a fresh worktree${branch}`);
-    // Its Claude session is gone: nothing to resume. The restored worker's own session first, the task's after.
-    const session = info.sessionId ?? (run.role === 'implementer' ? task.sessionId : task.reviewerSessionId);
-    if (session && sessionLogged(ctx, task, run.tool, session, floor.workers.transcripts(info.id)?.claude) === false) return this.interrupt(run, task, "The office restarted, but its agent's session is gone: Retry starts it again in a fresh session");
+    const lost = this.gone(task, run.role, run.tool, floor, info);
+    if (lost) return this.interrupt(run, task, lost);
     // Its turn had finished (the run was prompted), wasn't held for background work, and left none or teammates out in the log (they died with the shutdown): its result is handled, nothing is run again.
     if (cut === 'done' && run.promptedAt !== undefined && ctx.repo.runHeldAt(run.id) === undefined && !this.leftWork(run, floor, info)) {
       const live = this.deps.attach(run, task, info);

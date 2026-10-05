@@ -285,3 +285,91 @@ test('a pull-request review cut off by a restart goes on with its own reviewer, 
   assert.equal(prompts(fx, /Review these pull requests/).length, 1, 'no second review prompt: nobody was hired fresh');
   assert.equal(prompts(fx, RESTARTED).length, 1);
 });
+
+/** The worker's stored session is one Claude no longer has (a stale- one makes the fake agent exit at once), so the woken terminal is gone before the engine looks. */
+const staleSession = (fx: EngineFixture, workerId: string) => void (fx.workers.get(workerId)!.sessionId = 'stale-1');
+
+test('a woken terminal that exited already: the saved session check still speaks', async (t) => {
+  const fx = await fixture();
+  t.after(() => fx.close());
+  fx.setRules(RULES);
+  const task = fx.newTask({ usePlan: false, useReview: false });
+  const run = await midTurn(fx, task.id);
+  mkdirSync(path.join(process.env.CLAUDE_CONFIG_DIR!, 'projects', 'x'), { recursive: true });
+  staleSession(fx, run.workerId!);
+  await fx.restartOffice({ exitedFirst: true });
+  const waiting = await fx.waitTask(task.id, (x) => x.status === 'waiting' && x.waitingReason === 'interrupted', 'the interrupted task');
+  assert.match(waiting.waitingText ?? '', /session is gone/);
+});
+
+test('a woken terminal that exited already: a finished turn is still handled', async (t) => {
+  const fx = await fixture();
+  t.after(() => fx.close());
+  fx.setRules([{ when: 'Implement kanban task', reply: 'Finished before the restart.', commit: 'Work', delayMs: 1500 }, { when: 'office was restarted', reply: 'Should not be asked.' }]);
+  const task = fx.newTask({ usePlan: false, useReview: false });
+  const run = await midTurn(fx, task.id);
+  fx.engine.dispose();
+  const end = Date.now() + 15_000;
+  while (fx.workers.get(run.workerId!)?.status !== 'done' && Date.now() < end) await sleep(30);
+  staleSession(fx, run.workerId!);
+  await fx.restartOffice({ exitedFirst: true });
+  const done = await fx.waitTask(task.id, (x) => x.status === 'review' && x.runState === 'idle', 'the review column', 40_000);
+  assert.equal(done.summary, 'Finished before the restart.');
+  assert.equal(prompts(fx, RESTARTED).length, 0);
+});
+
+test('a woken terminal that exited already: an agent that was asking keeps the task waiting', async (t) => {
+  const fx = await fixture();
+  t.after(() => fx.close());
+  fx.setRules([{ when: 'Implement kanban task', reply: 'Which colour?', ask: 'question' }]);
+  const task = fx.newTask({ usePlan: false, useReview: false });
+  const run = await midTurn(fx, task.id);
+  await fx.waitTask(task.id, (x) => x.status === 'waiting' && x.waitingReason === 'agent_asking', 'the agent asking');
+  staleSession(fx, run.workerId!);
+  await fx.restartOffice({ exitedFirst: true });
+  const end = Date.now() + 15_000;
+  while (fx.repo.getRun(run.id)?.status === 'running' && Date.now() < end) await sleep(30);
+  await sleep(300);
+  assert.deepEqual([fx.task(task.id).status, fx.task(task.id).waitingReason], ['waiting', 'agent_asking']);
+  assert.ok(fx.repo.listComments(task.id).comments.some((c) => /restarted while its agent was asking/.test(c.text)));
+});
+
+/** Two tasks cut off; the office restarts again before the second one's queued run starts, with `spoil` done to it while the office is down. */
+async function queuedThenSpoiled(t: import('node:test').TestContext, spoil: (fx: EngineFixture, taskId: number, workerId: string) => string[] | void) {
+  const fx = await fixture();
+  t.after(() => fx.close());
+  fx.setRules(RULES);
+  const [a, b] = [fx.newTask({ usePlan: false, useReview: false }), fx.newTask({ usePlan: false, useReview: false })];
+  const runs = [] as Awaited<ReturnType<typeof midTurn>>[];
+  for (const x of [a, b]) {
+    await fx.engine.start(x.id, ADA);
+    await fx.waitTask(x.id, (y) => y.runState === 'running', 'running');
+    runs.push(fx.repo.activeRun(x.id)!);
+  }
+  await sleep(1000);
+  await fx.restartOffice();
+  assert.equal(fx.task(b.id).runState, 'queued', 'the second is queued behind the first');
+  const workspace = fx.task(b.id).workspace;
+  await fx.restartOffice({ beforeStart: () => void spoil(fx, b.id, runs[1].workerId!) });
+  return { fx, b, workspace };
+}
+
+test('a queued carry-on whose worktree vanished while the office was down waits interrupted, no fresh worktree', async (t) => {
+  const { fx, b, workspace } = await queuedThenSpoiled(t, (fx, id) => {
+    rmSync(path.join(fx.dir, fx.task(id).workspace!.worktree.path), { recursive: true, force: true });
+  });
+  const waiting = await fx.waitTask(b.id, (x) => x.status === 'waiting' && x.waitingReason === 'interrupted', 'the interrupted task', 60_000);
+  assert.match(waiting.waitingText ?? '', /worktree is gone/);
+  assert.deepEqual(waiting.workspace, workspace);
+  assert.equal(fx.repo.listRuns(b.id).length, 1, 'no new run');
+});
+
+test('a queued carry-on whose session vanished while the office was down waits interrupted, no fresh session', async (t) => {
+  const { fx, b } = await queuedThenSpoiled(t, (fx, _id, workerId) => {
+    rmSync(fx.workers.transcripts(workerId)!.claude!, { force: true });
+    mkdirSync(path.join(process.env.CLAUDE_CONFIG_DIR!, 'projects', 'x'), { recursive: true });
+  });
+  const waiting = await fx.waitTask(b.id, (x) => x.status === 'waiting' && x.waitingReason === 'interrupted', 'the interrupted task', 60_000);
+  assert.match(waiting.waitingText ?? '', /session is gone/);
+  assert.equal(fx.repo.listRuns(b.id).length, 1, 'no new run');
+});
