@@ -770,7 +770,7 @@ implementation runs, review, the board's columns), not as a plain one-off worker
 
 Worktrees are upstream's code, but not its place: beside the floor's checkout, in `<checkout>.worktrees/<slug>`
 (a multi-repository task's workspace folder there holds a worktree of each of its repositories), with the
-project's `node_modules` linked in. Tasks saved with a path under `.agent-office/worktrees/` keep working.
+project's `node_modules` shared through a link in that folder. Tasks saved with a path under `.agent-office/worktrees/` keep working.
 
 ## Limitations
 

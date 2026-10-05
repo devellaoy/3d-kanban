@@ -48,7 +48,7 @@ test('worktreesHome is beside the folder as given, and officeOfWorktree reads bo
   assert.equal(officeOfWorktree('/a/proj.worktrees/x/x.worktrees/y'), '/a/proj.worktrees/x/x');
 });
 
-test('create puts the worktree in the sibling folder and links node_modules, which git ignores', async (t) => {
+test('create puts the worktree in the sibling folder, with one node_modules link beside the worktrees', async (t) => {
   const { root, dir } = fixture(t);
   const trees = new Worktrees(dir);
   const made = trees.create('pip-1');
@@ -57,12 +57,17 @@ test('create puts the worktree in the sibling folder and links node_modules, whi
   assert.equal(made.path, path.join('..', 'proj.worktrees', 'pip-1'));
   const wt = path.join(dir, made.path);
   assert.ok(existsSync(path.join(root, 'proj.worktrees', 'pip-1', 'a.txt')));
-  assert.ok(lstatSync(path.join(wt, 'node_modules')).isSymbolicLink());
-  assert.equal(realpathSync(path.join(wt, 'node_modules')), realpathSync(path.join(dir, 'node_modules')));
-  assert.ok(existsSync(path.join(wt, 'node_modules', 'dep', 'index.js')));
-  // `node_modules/` in the .gitignore doesn't match a symlink: the office ignores the link itself.
+  const link = path.join(root, 'proj.worktrees', 'node_modules');
+  assert.ok(lstatSync(link).isSymbolicLink());
+  assert.equal(realpathSync(link), realpathSync(path.join(dir, 'node_modules')));
+  // Found by the lookup through the parent folders, as it was for a nested worktree; none in the worktree itself.
+  assert.ok(existsSync(path.join(wt, '..', 'node_modules', 'dep', 'index.js')));
+  assert.equal(existsSync(path.join(wt, 'node_modules')), false);
   assert.equal(git(wt, 'status', '--porcelain'), '');
   assert.equal(git(dir, 'status', '--porcelain'), '');
+  // A second worktree reuses the link.
+  assert.equal(typeof trees.create('pip-1b'), 'object');
+  assert.equal(realpathSync(link), realpathSync(path.join(dir, 'node_modules')));
 });
 
 test('create and list give the same path, even when the folder is reached through a symlink', async (t) => {
@@ -88,14 +93,16 @@ test('list and owns see worktrees in both homes, and strays in either', async (t
   // One of an older office: inside the project.
   const old = path.join(dir, '.agent-office', 'worktrees', 'old-1');
   git(dir, 'worktree', 'add', '-q', '-b', 'office/old-1', old);
-  mkdirSync(path.join(root, 'proj.worktrees', 'stray-new'));
+  // Folders and worktrees people keep in the new home themselves aren't the office's.
+  mkdirSync(path.join(root, 'proj.worktrees', 'notes'));
+  git(dir, 'worktree', 'add', '-q', '-b', 'feature', path.join(root, 'proj.worktrees', 'mine'));
   mkdirSync(path.join(dir, '.agent-office', 'worktrees', 'stray-old'));
   const listed = await trees.list();
   assert.deepEqual(listed.worktrees.map((w) => [w.path, w.branch]).sort(), [
     [path.join('..', 'proj.worktrees', 'new-1'), 'office/new-1'],
     [path.join('.agent-office', 'worktrees', 'old-1'), 'office/old-1'],
   ].sort());
-  assert.deepEqual(listed.strays.sort(), [path.join('..', 'proj.worktrees', 'stray-new'), path.join('.agent-office', 'worktrees', 'stray-old')].sort());
+  assert.deepEqual(listed.strays, [path.join('.agent-office', 'worktrees', 'stray-old')]);
   assert.equal(trees.owns(path.join(root, 'proj.worktrees', 'new-1')), true);
   assert.equal(trees.owns(old), true);
   assert.equal(trees.owns(dir), false);
@@ -105,18 +112,23 @@ test('list and owns see worktrees in both homes, and strays in either', async (t
   assert.equal(existsSync(old), false);
 });
 
-test('remove never follows the node_modules link into the project', async (t) => {
-  const { dir } = fixture(t);
+test('remove and an npm ci in a worktree never touch the project node_modules', async (t) => {
+  const { root, dir } = fixture(t);
   const trees = new Worktrees(dir);
   const made = trees.create('pip-3');
   assert.equal(typeof made, 'object', String(made));
   if (typeof made === 'string') return;
+  // What `npm ci` does there: a node_modules of the worktree's own, next to the link in the home.
+  const own = path.join(dir, made.path, 'node_modules');
+  mkdirSync(own);
+  writeFileSync(path.join(own, 'x.js'), 'y\n');
   assert.equal(await trees.remove(made, 'all'), undefined);
   assert.equal(existsSync(path.join(dir, made.path)), false);
   assert.equal(readFileSync(path.join(dir, 'node_modules', 'dep', 'index.js'), 'utf8'), 'x\n');
+  assert.ok(lstatSync(path.join(root, 'proj.worktrees', 'node_modules')).isSymbolicLink(), 'the home keeps its link');
 });
 
-test('restore puts the worktree back with its node_modules link', async (t) => {
+test('restore puts the worktree back where it was', async (t) => {
   const { dir } = fixture(t);
   const trees = new Worktrees(dir);
   const made = trees.create('pip-4');
@@ -124,15 +136,15 @@ test('restore puts the worktree back with its node_modules link', async (t) => {
   const abs = path.join(dir, made.path);
   rmSync(abs, { recursive: true, force: true });
   assert.deepEqual(await trees.restore(made), { from: 'here' });
-  assert.equal(readlinkSync(path.join(abs, 'node_modules')), path.join(dir, 'node_modules'));
+  assert.ok(existsSync(path.join(abs, 'a.txt')));
 });
 
-test('a repository without node_modules gets no link', (t) => {
+test('a repository without node_modules gets no link in the home', (t) => {
   const { dir } = fixture(t);
   rmSync(path.join(dir, 'node_modules'), { recursive: true });
   const made = new Worktrees(dir).create('pip-5');
   if (typeof made === 'string') return assert.fail(made);
-  assert.equal(existsSync(path.join(dir, made.path, 'node_modules')), false);
+  assert.equal(existsSync(path.join(worktreesHome(dir), 'node_modules')), false);
 });
 
 test('prune does not take a worktree straight in the new home for an emptied workspace', async (t) => {
@@ -153,6 +165,30 @@ test('prune does not take a worktree straight in the new home for an emptied wor
   assert.equal(existsSync(path.join(root, 'proj.worktrees', 'pip-6')), false);
 });
 
+test('prune leaves the home node_modules link, the user\'s own worktrees and folders there alone, even with --force', async (t) => {
+  const { root, dir } = fixture(t);
+  const home = path.join(root, 'proj.worktrees');
+  assert.equal(typeof new Worktrees(dir).create('pip-8'), 'object');
+  mkdirSync(path.join(home, 'notes'));
+  writeFileSync(path.join(home, 'notes', 'todo.md'), 'keep\n');
+  git(dir, 'worktree', 'add', '-q', '-b', 'feature', path.join(home, 'mine'));
+  git(dir, 'worktree', 'add', '-q', '--detach', path.join(home, 'loose'));
+  const log = console.log;
+  console.log = () => {};
+  try {
+    assert.equal(await prune([dir, '--force']), 0);
+  } finally {
+    console.log = log;
+  }
+  assert.equal(existsSync(path.join(home, 'pip-8')), false, "the office's own goes");
+  assert.ok(existsSync(path.join(home, 'mine', 'a.txt')));
+  assert.ok(existsSync(path.join(home, 'loose', 'a.txt')));
+  assert.equal(readFileSync(path.join(home, 'notes', 'todo.md'), 'utf8'), 'keep\n');
+  assert.match(git(dir, 'branch', '--list', 'feature'), /feature/);
+  assert.ok(lstatSync(path.join(home, 'node_modules')).isSymbolicLink());
+  assert.ok(existsSync(path.join(dir, 'node_modules', 'dep', 'index.js')));
+});
+
 test('ensureHome makes the folder, and a floor nested in another repository has it ignored there', (t) => {
   const { root } = fixture(t, 'mono');
   const mono = path.join(root, 'mono');
@@ -169,11 +205,15 @@ test('ensureHome makes the folder, and a floor nested in another repository has 
   assert.equal(git(mono, 'status', '--porcelain', '-uall'), '');
 });
 
-test('create says so when the folder beside the project can not be made', (t) => {
+test('create falls back to the folder inside the project when the one beside it can not be made', async (t) => {
   const { root, dir } = fixture(t);
   // Something in the way: a file where the folder should be.
   writeFileSync(path.join(root, 'proj.worktrees'), 'not a folder\n');
-  const made = new Worktrees(dir).create('pip-7');
-  assert.equal(typeof made, 'string');
-  assert.match(String(made), /proj\.worktrees/);
+  const trees = new Worktrees(dir);
+  const made = trees.create('pip-7');
+  assert.equal(typeof made, 'object', String(made));
+  if (typeof made === 'string') return;
+  assert.equal(made.path, path.join('.agent-office', 'worktrees', 'pip-7'));
+  assert.ok(existsSync(path.join(dir, made.path, 'a.txt')));
+  assert.deepEqual((await trees.list()).worktrees.map((w) => w.path), [made.path]);
 });

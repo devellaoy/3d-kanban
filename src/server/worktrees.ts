@@ -1,10 +1,10 @@
 import { execFile, execFileSync } from 'node:child_process';
-import { existsSync, lstatSync, readdirSync, statSync, unlinkSync } from 'node:fs';
+import { existsSync, readdirSync, statSync } from 'node:fs';
 import { mkdir, rm } from 'node:fs/promises';
 import path from 'node:path';
 import { promisify } from 'node:util';
 import { NO_FSMONITOR } from './floor-git.js';
-import { ensureHome, linkNodeModules, realish, storedPath, within, worktreeHomes } from './worktree-home.js';
+import { LEGACY_WORKTREES_DIR, ensureHome, realish, storedPath, within, worktreeHomes } from './worktree-home.js';
 import type { LostBranch, WorktreeState } from '../shared/protocol.js';
 
 export type { WorktreeCleanup, WorktreeState } from '../shared/protocol.js';
@@ -66,12 +66,18 @@ export class Worktrees {
       const start = baseBranch ? this.baseStartPoint(baseBranch) : this.startPoint(from);
       if (typeof start === 'string') return start;
       const { base, note } = start;
-      const home = ensureHome(root);
+      // Beside the project, or where older offices kept them when that folder can't be made (the
+      // project is at a mount's root, say, or its parent isn't writable).
+      let home: string;
+      try {
+        home = ensureHome(root);
+      } catch {
+        home = path.join(path.resolve(root), LEGACY_WORKTREES_DIR);
+      }
       const abs = path.join(home, slug, sub ?? '');
       const rel = storedPath(root, abs) ?? path.relative(path.resolve(root), abs);
       const branch = `${BRANCH_PREFIX}${slug}`;
       this.gitSync(['worktree', 'add', '-b', branch, abs, base]);
-      linkNodeModules(this.dir, abs);
       return { path: rel, branch, base, from, note };
     } catch (err) {
       return `Could not create a git worktree: ${gitError(err)}`;
@@ -243,7 +249,6 @@ export class Worktrees {
         const base = wt.base && (await this.git(['cat-file', '-e', `${wt.base}^{commit}`]).then(() => true, () => false)) ? wt.base : 'HEAD';
         await this.git(['worktree', 'add', '-b', wt.branch, abs, base]);
       }
-      linkNodeModules(this.dir, abs);
       return { from };
     } catch (err) {
       return { error: gitError(err) };
@@ -305,7 +310,6 @@ export class Worktrees {
       if (wt.path) {
         const abs = path.join(this.dir, wt.path);
         if (existsSync(abs)) {
-          unlinkModules(abs);
           try {
             await this.git(['worktree', 'remove', '--force', '--force', abs]);
           } catch (err) {
@@ -332,13 +336,13 @@ export class Worktrees {
 
   /**
    * The worktrees git has in the project's worktrees folders (`<project>.worktrees/` and the older
-   * .agent-office/worktrees/), every office/* branch, and folders there git doesn't know. A workspace
+   * .agent-office/worktrees/), every office/* branch, and folders in the older one git doesn't know.
+   * Only office/* worktrees count in the new folder, which people use for their own too; a workspace
    * (a worker across repositories) is a folder there with worktrees in it, not a stray. `elsewhere`
    * are office/* branches checked out somewhere else: in another floor's workspace, by a worker
    * across repositories that this project's office doesn't list.
    */
   async list(): Promise<{ worktrees: ListedWorktree[]; branches: string[]; strays: string[]; elsewhere: Map<string, string> }> {
-    const homes = worktreeHomes(this.dir);
     const worktrees: ListedWorktree[] = [];
     const elsewhere = new Map<string, string>();
     let cur: ListedWorktree | undefined;
@@ -356,10 +360,14 @@ export class Worktrees {
         else if (branch.startsWith(BRANCH_PREFIX)) elsewhere.set(branch, abs);
       }
     }
+    // Beside the project, `<project>.worktrees/` may hold the user's own worktrees and folders too:
+    // only office/* worktrees there are the office's, and nothing else in it is listed or stray.
+    const mine = worktrees.filter((w) => w.path.startsWith(LEGACY_WORKTREES_DIR) || w.branch?.startsWith(BRANCH_PREFIX));
+    worktrees.splice(0, worktrees.length, ...mine);
     const branches = (await this.git(['for-each-ref', '--format=%(refname:short)', `refs/heads/${BRANCH_PREFIX}`])).split('\n').filter(Boolean);
     const base = path.resolve(this.dir);
     const known = worktrees.map((w) => path.join(base, w.path));
-    const strays = homes.flatMap((home) =>
+    const strays = [worktreeHomes(this.dir)[1]].flatMap((home) =>
       existsSync(home)
         ? readdirSync(home)
             .map((n) => path.join(home, n))
@@ -413,16 +421,6 @@ export function gitError(err: unknown): string {
 
 /** Symlinks resolved, so it compares with the paths git prints. */
 const real = realish;
-
-/** Takes the node_modules link (see linkNodeModules) out before the folder goes, so nothing can follow it into the project's own. */
-function unlinkModules(worktree: string): void {
-  try {
-    const link = path.join(worktree, 'node_modules');
-    if (lstatSync(link).isSymbolicLink()) unlinkSync(link);
-  } catch {
-    // no link
-  }
-}
 
 function isDir(p: string): boolean {
   try {

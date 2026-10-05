@@ -76,7 +76,7 @@ export function storedPath(dir: string, abs: string): string | undefined {
 }
 
 /**
- * Makes the floor's worktrees folder. When it lands inside a git work tree (the floor is in a monorepo,
+ * Makes the floor's worktrees folder, with its node_modules link (see linkModules). When it lands inside a git work tree (the floor is in a monorepo,
  * or its parent folder is a repository of its own) that work tree is told to ignore it, so the
  * copies don't show up there as untracked. Throws when the folder can't be made, naming it; the
  * ignore is a courtesy and never throws.
@@ -88,6 +88,7 @@ export function ensureHome(dir: string): string {
   } catch (err) {
     throw new Error(`can't make ${home} for the worktrees: ${(err as Error).message}`);
   }
+  linkModules(dir, home);
   try {
     const top = execFileSync('git', ['rev-parse', '--show-toplevel'], { cwd: path.dirname(home), encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim();
     const rel = path.relative(realish(top), realish(home));
@@ -99,28 +100,25 @@ export function ensureHome(dir: string): string {
 }
 
 /**
- * Gives a new worktree the project's node_modules: a worktree inside the project found them by Node's
- * lookup through the parent folders, one beside it has none. Linked, not copied. Never throws.
+ * Links the floor's node_modules into its worktrees folder, `<floor>.worktrees/node_modules`: a worktree
+ * there finds it by Node's lookup through the parent folders, and by `npm run` through the ancestors'
+ * node_modules/.bin, as a worktree nested in the floor did. It is one link beside the worktrees, not one
+ * in each, so `npm ci` in a worktree makes the worktree's own node_modules and never reaches the
+ * floor's. Never throws; leaves anything already there alone.
  */
-export function linkNodeModules(repo: string, worktree: string): void {
+function linkModules(floor: string, home: string): void {
   try {
-    const target = path.join(repo, 'node_modules');
-    const link = path.join(worktree, 'node_modules');
+    const link = path.join(home, 'node_modules');
     try {
       lstatSync(link);
       return;
     } catch {
       // nothing there yet
     }
+    const target = path.join(path.resolve(floor), 'node_modules');
     lstatSync(target);
     symlinkSync(target, link, process.platform === 'win32' ? 'junction' : 'dir');
-    // `node_modules/` in a .gitignore doesn't match a symlink (git sees a file): ignore the link itself.
-    try {
-      execFileSync('git', ['check-ignore', '-q', 'node_modules'], { cwd: worktree, stdio: 'ignore' });
-    } catch {
-      excludeFromGit(worktree, '/node_modules');
-    }
   } catch {
-    // no node_modules to link, or no way to: the worktree works without
+    // no node_modules to link, or no way to: the worktrees work without
   }
 }
