@@ -72,12 +72,11 @@ export class CarryOn {
     // A DeepSeek Harness worker has no PTY but is still running: only the ones that are gone wake up.
     for (const w of this.host.workers.values()) {
       if (w.pty || w.dsh || w.carryOnPending) continue;
-      // Cut off mid-turn and the office is to carry on: its old process's teammates are gone too (see SpawnExtra.restartedAt).
+      // Cut off mid-turn and the office is to carry on.
       const auto = this.host.enabled() && !!w.interrupted && w.info.kind === 'agent' && !!w.info.sessionId;
-      if (auto) {
-        w.autoResume = true;
-        (w.extra ??= {}).restartedAt = Date.now();
-      }
+      if (auto) w.autoResume = true;
+      // Whatever its status was, its old process is gone with the teammates and background agents it had (see SpawnExtra.restartedAt).
+      if (w.info.kind === 'agent' && (w.cutOff || w.interrupted)) (w.extra ??= {}).restartedAt = Date.now();
       if (!this.carries(w)) {
         this.host.resume(w.info.id);
         continue;

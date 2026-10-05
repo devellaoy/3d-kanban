@@ -1705,3 +1705,20 @@ test("a mid-turn worker whose worktree was deleted while the office was down can
   assert.match(after.carryOnDropped(w.id)!, /worktree .* was deleted outside agent-office/);
   assert.equal(after.carriesOn(w.id), false);
 });
+
+test("a finished worker whose terminal didn't survive is marked restarted at the new start, so its old teammates aren't counted", async (t) => {
+  const f = carryOnFixture(t);
+  const before = manager(f, f.claude, []);
+  await before.start();
+  const w = await hireInState(f, before, 'desk-1', 'finished-run', 'done');
+  before.shutdown(false);
+  await new Promise((resolve) => setTimeout(resolve, 200));
+  const stopped = Date.now();
+
+  const after = manager(f, f.claude, []);
+  t.after(() => after.shutdown());
+  await after.start();
+  assert.equal(after.cutOffStatus(w.id), 'done');
+  assert.ok(after.restartedAt(w.id)! >= stopped);
+  assert.equal(after.get(w.id)?.status, 'starting');
+});
