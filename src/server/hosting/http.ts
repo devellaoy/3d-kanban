@@ -80,14 +80,42 @@ export async function hostCall(fetch: Fetch, as: HostAs, method: 'GET' | 'POST' 
   return parsed;
 }
 
-/** How much of a text answer is read (a diff, a file). */
+/** How much of a text answer is read (a diff, a file), unless the caller asks for less. */
 export const TEXT_MAX = 8 * 1024 * 1024;
+
+/** An answer longer than the caller would read: refused before the rest of it comes in. */
+export class TooBig extends Error {}
+
+/** An answer's text, read only up to `max` bytes (Content-Length, when it says, refuses it at once). */
+async function textUpTo(res: Response, max: number, label: string): Promise<string> {
+  const big = () => new TooBig(`${label} sent more than ${Math.round((max / 1024 / 1024) * 10) / 10} MB`);
+  if (Number(res.headers.get('content-length')) > max) {
+    void res.body?.cancel().catch(() => undefined);
+    throw big();
+  }
+  if (!res.body) return '';
+  const reader = res.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let size = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    size += value.byteLength;
+    if (size > max) {
+      void reader.cancel().catch(() => undefined);
+      throw big();
+    }
+    chunks.push(value);
+  }
+  return new TextDecoder().decode(Buffer.concat(chunks));
+}
 
 /**
  * A GET whose answer is text (a diff, a file's contents). A redirect is followed (a few times) only
- * to the same origin, so the token never goes anywhere else; an answer over TEXT_MAX is refused.
+ * to the same origin, so the token never goes anywhere else; an answer over `max` (TEXT_MAX) is
+ * refused with TooBig, without reading the rest of it.
  */
-export async function hostText(fetch: Fetch, as: HostAs, url: string, accept = 'text/plain'): Promise<string> {
+export async function hostText(fetch: Fetch, as: HostAs, url: string, accept = 'text/plain', max = TEXT_MAX): Promise<string> {
   let at = url;
   for (let hop = 0; hop < 4; hop++) {
     const res = await send(fetch, as, at, { method: 'GET', headers: { authorization: as.auth, accept } });
@@ -98,10 +126,8 @@ export async function hostText(fetch: Fetch, as: HostAs, url: string, accept = '
       at = next.href;
       continue;
     }
-    const text = await res.text();
-    if (!res.ok || res.status === 203) refuse(as, res.status, jsonOf(text));
-    if (text.length > TEXT_MAX) throw new Error(`${hostLabel(as.kind)} sent more than ${TEXT_MAX / 1024 / 1024} MB`);
-    return text;
+    if (!res.ok || res.status === 203) refuse(as, res.status, jsonOf(await res.text()));
+    return await textUpTo(res, max, hostLabel(as.kind));
   }
   throw new Error(`${hostLabel(as.kind)} redirected too many times`);
 }

@@ -50,25 +50,36 @@ export function serverHosts(): string[] {
   return creds?.serverHosts() ?? [];
 }
 
-/** How long a found remote is trusted, and a miss (see ghrepo.ts, which this follows). */
+/** How long a found remote is trusted (it is read on hot paths: every gh call, every state broadcast). */
 const FOUND_MS = 10 * 60_000;
+/** How long a miss (no remote, a host the office doesn't know, no git) is trusted: short, since a remote can be added later. */
 const MISS_MS = 30_000;
-const cache = new Map<string, { at: number; repo?: RepoRef }>();
+const cache = new Map<string, { at: number; url?: string; repo?: RepoRef }>();
+
+/** A checkout's `remote` as git has it, and where that is hosted: one cache for both (ghrepo.ts' checkoutRepo reads it too). */
+function remoteOf(dir: string, remote: string): { url?: string; repo?: RepoRef } {
+  const key = `${path.resolve(dir)}\0${remote}`;
+  const hit = cache.get(key);
+  if (hit && Date.now() - hit.at < (hit.repo ? FOUND_MS : MISS_MS)) return hit;
+  let url: string | undefined;
+  try {
+    url = execFileSync('git', ['remote', 'get-url', remote], { cwd: dir, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'], timeout: 2_000 }).trim();
+  } catch {
+    url = undefined;
+  }
+  const got = { at: Date.now(), url, repo: url ? parseRemote(url, serverHosts()) : undefined };
+  cache.set(key, got);
+  return got;
+}
 
 /** Where a checkout's `remote` (origin by default) is hosted; undefined for no remote, or a host the office doesn't know. */
 export function repoOf(dir: string, remote = 'origin'): RepoRef | undefined {
-  const key = `${path.resolve(dir)}\0${remote}`;
-  const hit = cache.get(key);
-  if (hit && Date.now() - hit.at < (hit.repo ? FOUND_MS : MISS_MS)) return hit.repo;
-  let repo: RepoRef | undefined;
-  try {
-    const url = execFileSync('git', ['remote', 'get-url', remote], { cwd: dir, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'], timeout: 2_000 }).trim();
-    repo = parseRemote(url, serverHosts());
-  } catch {
-    repo = undefined;
-  }
-  cache.set(key, { at: Date.now(), repo });
-  return repo;
+  return remoteOf(dir, remote).repo;
+}
+
+/** A checkout's `remote` URL (origin by default); undefined when it has none, or isn't a git checkout. */
+export function remoteUrlOf(dir: string, remote = 'origin'): string | undefined {
+  return remoteOf(dir, remote).url;
 }
 
 /** A checkout on a host other than GitHub, or undefined (GitHub, no remote, an unknown host). */

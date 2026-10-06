@@ -3,6 +3,7 @@
 
 import type { GhCheck, GhLabel, GhPull } from '../../shared/protocol.js';
 import { prWebUrl, type RepoRef } from '../../shared/hosting/remote.js';
+import { openedByOf, openedFromOfficeBy } from '../../shared/officepr.js';
 import type { CommentTrust, HostComment, HostPrView } from './provider.js';
 
 /** Azure DevOps keeps a pull request's description to this many characters. */
@@ -10,9 +11,17 @@ export const AZURE_DESCRIPTION_MAX = 4000;
 
 const CUT_NOTE = '\n\n… (cut short: Azure DevOps keeps 4000 characters of a description)';
 
-/** A description Azure DevOps takes: cut short with a note when it's too long. */
+/**
+ * A description Azure DevOps takes: cut short with a note when it's too long. The office's "Opened
+ * from Agent Office by" line, when the cut would take it, is kept after the note, for the PR board's 👤 Mine.
+ */
 export function azureDescription(body: string): string {
-  return body.length <= AZURE_DESCRIPTION_MAX ? body : body.slice(0, AZURE_DESCRIPTION_MAX - CUT_NOTE.length) + CUT_NOTE;
+  if (body.length <= AZURE_DESCRIPTION_MAX) return body;
+  const line = /^_Opened from Agent Office by .+$/m.exec(body);
+  const footer = line && line[0].length < 500 && openedFromOfficeBy(line[0]) ? `\n\n${line[0]}` : '';
+  const keep = AZURE_DESCRIPTION_MAX - CUT_NOTE.length - footer.length;
+  if (!footer || line!.index + line![0].length <= keep) return body.slice(0, AZURE_DESCRIPTION_MAX - CUT_NOTE.length) + CUT_NOTE;
+  return body.slice(0, keep) + CUT_NOTE + footer;
 }
 
 /** A branch name without refs/heads/. */
@@ -30,13 +39,23 @@ export function stateOf(status: unknown): string {
   return status === 'completed' ? 'MERGED' : status === 'abandoned' ? 'CLOSED' : 'OPEN';
 }
 
-/** GitHub's reviewDecision from the reviewers' votes (10 approved, 5 with suggestions, -5 waiting, -10 rejected). */
+/**
+ * GitHub's reviewDecision from the reviewers' votes (10 approved, 5 with suggestions, -5 waiting for
+ * the author, -10 rejected): a rejection or a wait is changes asked for; a required reviewer who
+ * hasn't approved keeps it waiting for review, whoever else approved.
+ */
 export function reviewDecisionOf(reviewers: any[] | undefined): string {
   const r = reviewers ?? [];
-  if (r.some((x) => x?.vote === -10)) return 'CHANGES_REQUESTED';
+  if (r.some((x) => x?.vote === -10 || x?.vote === -5)) return 'CHANGES_REQUESTED';
+  if (r.some((x) => x?.isRequired && !(Number(x.vote) > 0))) return 'REVIEW_REQUIRED';
   if (r.some((x) => x?.vote === 10 || x?.vote === 5)) return 'APPROVED';
-  if (r.some((x) => x?.isRequired)) return 'REVIEW_REQUIRED';
   return '';
+}
+
+/** When it last changed, as far as the list tells: the newest of its creation, its close and its latest push. */
+export function updatedAtOf(p: any): string {
+  const dates = [p.creationDate, p.closedDate, p.lastMergeSourceCommit?.committer?.date, p.lastMergeSourceCommit?.author?.date].filter((d) => typeof d === 'string' && !Number.isNaN(Date.parse(d)));
+  return dates.reduce<string>((m, d) => (!m || Date.parse(d) > Date.parse(m) ? d : m), '');
 }
 
 /** A status' context: genre/name, or the name alone. */
@@ -166,11 +185,12 @@ export function pullOf(repo: RepoRef, p: any, checks: GhPull['checks'] = 'none')
     isCrossRepository: !!p.forkSource,
     baseRefName: branchOf(p.targetRefName),
     createdAt: String(p.creationDate ?? ''),
-    updatedAt: String(p.closedDate ?? p.creationDate ?? ''),
+    updatedAt: updatedAtOf(p),
     additions: 0,
     deletions: 0,
     checks,
     body: String(p.description ?? '').slice(0, AZURE_DESCRIPTION_MAX),
+    ...openedByOf(String(p.description ?? '')),
     closes: [],
     repo: repo.id,
   };

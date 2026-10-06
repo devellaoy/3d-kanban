@@ -108,7 +108,9 @@ changed files' contents, diffed by the office), so it fetches nothing into the c
 reviewer's read-only one. `office-pr` asks the office through the hook server, and the office talks to
 the host with the credentials of the account the worker runs as (else the office's), so `office-pr`
 itself hands no token to the worker; the worker's own git has its owner's token (see *Pushing over HTTPS*).
-On a GitHub repository it says to use `gh`.
+It acts only on the project's own repositories (its floor's, and those of a worker across
+repositories), read from the office's checkouts: a checkout whose `origin` was pointed somewhere
+else is refused. On a GitHub repository it says to use `gh`.
 
 **Whose review comments count.** GitHub says how each commenter stands to the repository
 (`author_association`), and Fix PRs acts only on its owners', members' and collaborators'. Azure DevOps
@@ -161,11 +163,16 @@ supported, rather than showing a `gh` error.
 
 ## API limits
 
-Bitbucket Cloud allows a token about 1000 requests an hour, and the PR board is read every 90
-seconds while someone is on its floor. Each look lists the open, merged and declined pull requests
-(three requests); an open one's reviewers and build statuses are asked for again only when it changed
-(updated, or pushed to), or after 30 minutes (5 while its checks run). A dozen open pull requests
-stay well under 300 requests an hour. When a host answers 429 (too many requests), the office sends
+Bitbucket Cloud allows a token about 1000 requests an hour, Azure DevOps throttles one that asks too
+much, and the PR board is read every 90 seconds while someone is on its floor. Each look lists the
+open, merged and closed pull requests (three requests); what the list leaves out of an open one
+(Bitbucket's reviewers and build statuses, Azure DevOps' statuses and policy evaluations) is asked
+for again only when it changed (updated, or pushed to; on Azure DevOps also its target branch,
+merge status or votes), or after 30 minutes (5 while its checks run). Azure DevOps cuts the list's
+descriptions to 400 characters, so a longer one is read whole once (for the *Opened from Agent Office
+by* line the PR board's 👤 Mine reads). A dozen open pull requests stay well under 300 requests an
+hour. The kanban reads a project's pull requests from the board; before the board has them it lists
+none there (no request per pull request), and a task's linked ones stand. When a host answers 429 (too many requests), the office sends
 nothing more with that token until the time it asks for has passed (Retry-After, else a minute),
 and the board says when it tries again.
 
@@ -173,7 +180,11 @@ and the board says when it tries again.
 
 - The board's merge and close buttons and labels are GitHub's: on the other hosts, open the pull
   request there (the window's footer links to it). On Azure DevOps the diff shows the latest
-  iteration's first 300 files, each up to 1 MB.
+  iteration's first 300 files, each up to 1 MB and 16 MB in all (the rest are named); it's worked
+  out once per push. A big file changed all over shows as its old lines taken out and the new put in.
+- On Azure DevOps a pull request is 👍 Approved only once every required reviewer approved; a
+  *rejected* or *waiting for author* vote is changes requested. The PR board's 👀 To review is
+  GitHub's review requests, so it shows nothing for the other hosts.
 - Upstream's PR-window prompts (*Fix comments & merge*, *Fix conflicts & merge*) use `gh` and are hidden
   for pull requests elsewhere. The kanban's Fix PRs and Resolve conflicts work. 🔍 Review of a pull
   request elsewhere goes to the kanban's reviewer even for just that one (its prompt says to use

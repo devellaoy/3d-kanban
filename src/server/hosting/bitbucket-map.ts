@@ -3,6 +3,7 @@
 
 import type { GhCheck, GhPull } from '../../shared/protocol.js';
 import { prWebUrl, type RepoRef } from '../../shared/hosting/remote.js';
+import { openedByOf } from '../../shared/officepr.js';
 import type { CommentTrust, HostComment, HostPrView } from './provider.js';
 
 const BODY_MAX = 4000;
@@ -69,6 +70,8 @@ export function bbPull(repo: RepoRef, pr: any, extra: { participants?: unknown; 
     deletions: 0,
     checks: bbChecksOf(extra.checks ?? []),
     body: String(pr.description ?? '').slice(0, BODY_MAX),
+    // Read before the cut: the office's "Opened from Agent Office by" line is the description's last.
+    ...openedByOf(String(pr.description ?? '')),
     closes: [],
     repo: repo.id,
   };

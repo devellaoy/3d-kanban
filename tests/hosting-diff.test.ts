@@ -68,6 +68,45 @@ test("Azure DevOps: the latest iteration's files against the merge base, from th
   assert.ok(asked.some((u) => /\/iterations\/3\/changes\?\$top=2000&\$compareTo=0&api-version=7\.1/.test(u)), 'the latest iteration');
 });
 
+test('unifiedHunks: a big file with changes everywhere shows as taken out and put in, without a long search', () => {
+  const a = Array.from({ length: 40_000 }, (_, i) => `line ${i}`).join('\n') + '\n';
+  const b = a.replace(/line (\d*7)\n/g, 'changed $1\n');
+  const at = Date.now();
+  const hunks = unifiedHunks(a, b);
+  assert.ok(Date.now() - at < 2000, `took ${Date.now() - at} ms`);
+  assert.equal(hunks.match(/^@@/gm)?.length, 1, 'one hunk: the old lines out, the new in');
+});
+
+test('Azure DevOps: blobs past the file cap are named, not read; the diff is kept per iteration', async () => {
+  const { azureDiffCache } = await import('../src/server/hosting/azure-diff.js');
+  azureDiffCache.clear();
+  const repo = repoRefOf('azure:contoso/Web/big')!;
+  let iteration = 1;
+  const asked: string[] = [];
+  const fetch: Fetch = async (url) => {
+    asked.push(url);
+    if (/\/iterations\?/.test(url)) return new Response(JSON.stringify({ value: [{ id: iteration }] }));
+    if (/\/changes\?/.test(url)) {
+      return new Response(JSON.stringify({ changeEntries: [
+        { changeType: 'add', item: { path: '/huge.txt', objectId: 'huge', gitObjectType: 'blob' } },
+        { changeType: 'add', item: { path: '/small.txt', objectId: 'small', gitObjectType: 'blob' } },
+      ] }));
+    }
+    if (url.includes('/blobs/huge')) return new Response('x'.repeat(2 * 1024 * 1024));
+    if (url.includes('/blobs/small')) return new Response('hi\n');
+    return new Response('{"message":"no"}', { status: 404 });
+  };
+  const diff = await azureProvider.diff(repo, 1, AZ, fetch);
+  assert.match(diff, /diff --git a\/huge\.txt b\/huge\.txt\nnew file mode 100644\n\\ Too big to show here/);
+  assert.match(diff, /\+\+\+ b\/small\.txt\n@@ -0,0 \+1,1 @@\n\+hi\n/);
+  const blobs = () => asked.filter((u) => u.includes('/blobs/')).length;
+  assert.equal(await azureProvider.diff(repo, 1, AZ, fetch), diff);
+  assert.equal(blobs(), 2, 'the same iteration: kept');
+  iteration = 2;
+  await azureProvider.diff(repo, 1, AZ, fetch);
+  assert.equal(blobs(), 4, 'a new push: read again');
+});
+
 test('Bitbucket: its own diff, following its redirect on its own API only', async () => {
   const repo = repoRefOf('bitbucket:acme/widget')!;
   const seen: string[] = [];

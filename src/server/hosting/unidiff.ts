@@ -7,6 +7,11 @@
 const CONTEXT = 3;
 /** Beyond this many differences the edit script isn't searched for (memory grows with its square). */
 const MAX_EDITS = 2000;
+/**
+ * About how many line comparisons a file's search may take (each difference costs up to the two
+ * files' lines): a big file gets fewer differences, so one diff never holds the event loop for long.
+ */
+const MAX_WORK = 4_000_000;
 
 type Op = { k: ' ' | '-' | '+'; line: string };
 
@@ -27,11 +32,11 @@ function printed(k: string, line: string): string {
   return line.endsWith(NO_EOL) ? `${k}${line.slice(0, -NO_EOL.length)}\n\\ No newline at end of file\n` : `${k}${line}\n`;
 }
 
-/** The shortest edit script from `a` to `b`, or undefined when it needs more than MAX_EDITS edits. */
+/** The shortest edit script from `a` to `b`, or undefined when it needs more edits than MAX_EDITS (fewer for big files: MAX_WORK). */
 function myers(a: string[], b: string[]): Op[] | undefined {
   const n = a.length;
   const m = b.length;
-  const max = Math.min(n + m, MAX_EDITS);
+  const max = Math.min(n + m, MAX_EDITS, Math.floor(MAX_WORK / Math.max(1, n + m)));
   const off = max + 1;
   const v = new Int32Array(2 * max + 3);
   const trace: Int32Array[] = [];

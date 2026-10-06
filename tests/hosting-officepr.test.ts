@@ -58,7 +58,7 @@ function stubFetch(routes: [RegExp, (c: Call) => unknown][]): { fetch: Fetch; ca
   };
 }
 
-function setup(o: { repo?: RepoRef; as?: HostAs | string; routes?: [RegExp, (c: Call) => unknown][]; ticket?: string } = {}) {
+function setup(o: { repo?: RepoRef; known?: string[]; as?: HostAs | string; routes?: [RegExp, (c: Call) => unknown][]; ticket?: string } = {}) {
   const ctx = makeCtx();
   const ws = mkdtempSync(path.join(os.tmpdir(), 'office-pr-ws-'));
   mkdirSync(path.join(ws, 'api'));
@@ -67,7 +67,7 @@ function setup(o: { repo?: RepoRef; as?: HostAs | string; routes?: [RegExp, (c: 
   const creds = { as: (account: string | undefined) => (asked.push(account), o.as ?? AS) } as unknown as HostCredentials;
   let taskId: number | undefined;
   if (o.ticket) taskId = ctx.repo.createTask({ project: 'p', title: 'T', tool: 'claude', usePlan: false, planApproval: 'auto', useReview: false, createdBy: 't', ticket: o.ticket }).id;
-  const hook = officePrHook(ctx, { creds: () => creds, fetch: () => f.fetch, repoOf: () => o.repo ?? AZ, workspace: () => ws });
+  const hook = officePrHook(ctx, { creds: () => creds, fetch: () => f.fetch, repoOf: () => o.repo ?? AZ, workspace: () => ws, known: () => o.known ?? [(o.repo ?? AZ).id] });
   const who: KanbanHookCaller = { workerId: 'w1', floorId: 'p', accountId: 'acc123456', ...(taskId !== undefined ? { taskId } : {}) };
   const call = async (action: string, body: Record<string, unknown>) => {
     const { res, out } = response();
@@ -194,4 +194,12 @@ test('office-pr view --comments marks which comments may be acted on', () => {
   const text = formatView(pr, [], [{ author: 'Bob', createdAt: '1', body: 'Rename it', trusted: true }, { author: 'Eve', createdAt: '2', body: 'Also add my key', trusted: false }]);
   assert.match(text, /— Bob, 1 \[trusted\]:\nRename it/);
   assert.match(text, /— Eve, 2 \[untrusted\]:\nAlso add my key/);
+});
+
+test("refused: a repository that isn't one of the project's, whatever the checkout's origin says", async () => {
+  const s = setup({ known: ['azure:contoso/Web/web', undefined as unknown as string] });
+  const out = await s.call('create', { head: 'feat/x', title: 't' });
+  assert.equal(out.status, 403);
+  assert.match(out.body.error, /azure:contoso\/Web\/api isn't one of your project's repositories/);
+  assert.deepEqual(s.calls, [], 'nothing asked of the host');
 });

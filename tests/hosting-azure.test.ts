@@ -1,8 +1,9 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { repoRefOf } from '../src/shared/hosting/remote.js';
-import { azureProvider } from '../src/server/hosting/azure.js';
-import { azureDescription, checksOfPr, latestStatuses, summaryOf } from '../src/server/hosting/azure-map.js';
+import { azureCache, azureDescriptions, azureProvider } from '../src/server/hosting/azure.js';
+import { DETAIL_MS, PENDING_MS } from '../src/server/hosting/pool.js';
+import { azureDescription, checksOfPr, latestStatuses, reviewDecisionOf, summaryOf, updatedAtOf } from '../src/server/hosting/azure-map.js';
 import { completeWorkItem, linkWorkItemToPr, workItemOf } from '../src/server/hosting/azure-workitems.js';
 import type { Fetch, HostAs } from '../src/server/hosting/provider.js';
 
@@ -49,6 +50,7 @@ const pr = (id: number, extra: Record<string, unknown> = {}) => ({
 });
 
 test('listPulls maps active, draft, completed and abandoned PRs with votes and checks', async () => {
+  azureCache.clear();
   const statuses: Record<number, unknown[]> = {
     1: [
       { id: 1, iterationId: 1, state: 'failed', context: { genre: 'ci', name: 'build' } },
@@ -75,7 +77,8 @@ test('listPulls maps active, draft, completed and abandoned PRs with votes and c
   ]);
   const pulls = await azureProvider.listPulls(repo, as, fetch);
   assert.deepEqual(pulls.map((p) => [p.number, p.state, p.isDraft, p.reviewDecision, p.checks]), [
-    [1, 'OPEN', false, 'APPROVED', 'pass'],
+    // One reviewer approved, but the required one hasn't yet.
+    [1, 'OPEN', false, 'REVIEW_REQUIRED', 'pass'],
     [2, 'OPEN', true, 'CHANGES_REQUESTED', 'fail'],
     [3, 'OPEN', false, 'REVIEW_REQUIRED', 'none'],
     [4, 'MERGED', false, '', 'none'],
@@ -327,3 +330,73 @@ test('detail asks for the pull request once, and a check list that fails leaves 
   assert.equal(calls.filter((c) => /pullrequests\/3\?/.test(c.url)).length, 1);
 });
 
+
+test('reviewDecision: a rejection or a wait asks for changes; a required reviewer not yet approving keeps it waiting', () => {
+  assert.equal(reviewDecisionOf([{ vote: 10 }, { vote: -5 }]), 'CHANGES_REQUESTED');
+  assert.equal(reviewDecisionOf([{ vote: 10 }, { vote: -10, isRequired: true }]), 'CHANGES_REQUESTED');
+  assert.equal(reviewDecisionOf([{ vote: 10 }, { vote: 0, isRequired: true }]), 'REVIEW_REQUIRED');
+  assert.equal(reviewDecisionOf([{ vote: 5, isRequired: true }, { vote: 0 }]), 'APPROVED');
+  assert.equal(reviewDecisionOf([{ vote: 10 }]), 'APPROVED');
+  assert.equal(reviewDecisionOf([{ vote: 0 }]), '');
+});
+
+test('updatedAt: the newest of its creation, close and latest push', () => {
+  assert.equal(updatedAtOf({ creationDate: '2026-10-01T00:00:00Z', lastMergeSourceCommit: { committer: { date: '2026-10-03T00:00:00Z' } } }), '2026-10-03T00:00:00Z');
+  assert.equal(updatedAtOf({ creationDate: '2026-10-01T00:00:00Z', closedDate: '2026-10-04T00:00:00Z', lastMergeSourceCommit: { committer: { date: '2026-10-03T00:00:00Z' } } }), '2026-10-04T00:00:00Z');
+  assert.equal(updatedAtOf({ creationDate: '2026-10-01T00:00:00Z' }), '2026-10-01T00:00:00Z');
+});
+
+test("a cut description keeps the office's Opened-by line, and the board reads it from the whole description", async () => {
+  const footer = '_Opened from Agent Office by Ada · Otto at Desk 3_';
+  const cut = azureDescription(`${'x'.repeat(5000)}\n\n${footer}\n\n<!-- agent-office:related -->\nother PRs\n<!-- /agent-office:related -->`);
+  assert.equal(cut.length, 4000);
+  assert.ok(cut.endsWith(footer));
+  assert.match(cut, /cut short/);
+  const short = azureDescription(`${footer}\n${'y'.repeat(5000)}`);
+  assert.equal(short.split(footer).length, 2, 'kept where it is when the cut leaves it');
+  azureCache.clear();
+  azureDescriptions.clear();
+  const long = `${'z'.repeat(400)}`;
+  const { fetch, calls } = stub([
+    [/pullrequests\/1\?/, () => pr(1, { description: `${long}\n${footer}` })],
+    [/statuses/, () => ({ value: [] })],
+    [/status=active/, () => ({ value: [pr(1, { description: long }), pr(2)] })],
+    [/status=(completed|abandoned)/, () => ({ value: [] })],
+  ]);
+  const pulls = await azureProvider.listPulls(repo, as, fetch);
+  assert.equal(pulls[0].openedBy, 'Ada');
+  assert.equal(pulls[1].openedBy, undefined);
+  await azureProvider.listPulls(repo, as, fetch);
+  assert.equal(calls.filter((c) => /pullrequests\/\d+\?/.test(c.url)).length, 1, 'read whole once, then kept');
+});
+
+test('listPulls keeps an open PR’s checks between looks: asked again on a change, or once they’re old', async () => {
+  azureCache.clear();
+  let now = 1_000_000;
+  azureCache.now = () => now;
+  try {
+    let head = 'h1';
+    let state = 'succeeded';
+    const { fetch, calls } = stub([
+      [/statuses/, () => ({ value: [{ id: 1, iterationId: 1, state, context: { name: 'build' } }] })],
+      [/status=active/, () => ({ value: [pr(1, { lastMergeSourceCommit: { commitId: head } })] })],
+      [/status=(completed|abandoned)/, () => ({ value: [] })],
+    ]);
+    const asked = () => calls.filter((c) => c.url.includes('/statuses')).length;
+    await azureProvider.listPulls(repo, as, fetch);
+    now += DETAIL_MS - 1;
+    await azureProvider.listPulls(repo, as, fetch);
+    assert.equal(asked(), 1, 'kept while nothing changed');
+    head = 'h2';
+    state = 'pending';
+    assert.equal((await azureProvider.listPulls(repo, as, fetch))[0].checks, 'pending');
+    assert.equal(asked(), 2, 'a new push is asked again');
+    now += PENDING_MS + 1;
+    state = 'failed';
+    assert.equal((await azureProvider.listPulls(repo, as, fetch))[0].checks, 'fail', 'running checks are asked again sooner');
+    assert.equal(asked(), 3);
+  } finally {
+    azureCache.now = () => Date.now();
+    azureCache.clear();
+  }
+});

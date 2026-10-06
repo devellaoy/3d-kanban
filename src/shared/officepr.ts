@@ -12,3 +12,9 @@ export function officePrFooter(by: string, worker: string, desk: string): string
 export function openedFromOfficeBy(body: string): string | undefined {
   return /_Opened from Agent Office by (.+?) · /.exec(body)?.[1];
 }
+
+/** GhPull.openedBy from a whole description (read before it's cut short: the office's line is its last). */
+export function openedByOf(description: string): { openedBy?: string } {
+  const by = openedFromOfficeBy(description);
+  return by ? { openedBy: by } : {};
+}

@@ -50,9 +50,10 @@ Back to the [README](../README.md).
 - Repositories on Azure DevOps and Bitbucket (#122, [hosting](hosting.md)): the providers are new code of the fork's own
   (`src/{server,shared}/hosting/`, `server/kanban/integrations/hosting/`, `server/gitconfig.ts`,
   `bin/office-pr.js`, `bin/office-git-credential.js`, `ws/handlers/hosting.ts`, `client/ui/signins-hosts.ts`, the
-  `hosting` slice). The seams in upstream's files: `github.ts` (`GitHub.hosted` hands the boards, the PR window's detail
-  and comments to `hosting/board.ts`, and GitHub-only actions say so), `ghrepo.ts` (`checkoutRemote`), `floor.ts`
-  (`githubFor` and the PR board's `repos` know a hosted primary; the meeting's review posts with the host's token),
+  `hosting` slice). The seams in upstream's files: `github.ts` (its `GitHub` class is upstream's as it was; `openBoard` at its
+  end picks `hosting/hosted-board.ts`' `HostedBoard` for a repository elsewhere, and `Board` is either), `ghrepo.ts`
+  (`checkoutRemote`; `checkoutRepo` reads `hosting/index.ts`' cache of the remotes), `floor.ts` (its boards come from
+  `openBoard`; `githubFor` and the PR board's `repos` know a hosted primary; the meeting's review posts with the host's token),
   `workers/pr.ts`, `workers/manager.ts` and `changes.ts` (a hosted repository's PR through its provider; every
   worker's environment gets `workerHostEnv`, re-exported by `workers/worker.ts`),
   `office/gates.ts` and `office/context.ts` (`withRepoHost` for a board, `withHosts` for work on checkouts: each

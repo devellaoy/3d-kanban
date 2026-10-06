@@ -3,14 +3,58 @@
 
 import { prWebUrl, type RepoRef } from '../../shared/hosting/remote.js';
 import type { GhCheck, GhPull } from '../../shared/protocol.js';
+import { openedFromOfficeBy } from '../../shared/officepr.js';
 import { azureDescription, branchOf, checksOfPr, commentsOfThreads, pullOf, refOf, summaryOf, viewOf } from './azure-map.js';
 import { hostCall } from './http.js';
 import { azureDiff } from './azure-diff.js';
 import type { Fetch, HostAs, HostingProvider } from './provider.js';
+import { DetailCache, pooled } from './pool.js';
 
 const API = 'api-version=7.1';
 /** How many PRs' statuses are asked for at once. */
 const STATUS_CALLS = 6;
+
+/**
+ * An active pull request's checks (its statuses and policy evaluations, two requests each) are kept
+ * between the board's looks, and asked again only when the pull request changed (a new source or
+ * target commit, its merge status, its votes) or after DETAIL_MS (PENDING_MS while they run): Azure
+ * DevOps throttles a token that asks too much, and the board, O and office-pr share it.
+ */
+export const azureCache = new DetailCache<GhPull['checks']>((c) => c === 'pending');
+
+const stampOf = (p: any) =>
+  [p.lastMergeSourceCommit?.commitId, p.lastMergeTargetCommit?.commitId, p.mergeStatus, p.isDraft, ...(p.reviewers ?? []).map((r: any) => `${r?.id}:${r?.vote}`)].join('|');
+
+/**
+ * The list cuts descriptions to 400 characters, and the office's "Opened from Agent Office by" line
+ * is a long one's last: such a pull request is read whole for its description, again only when it
+ * changed (or after DETAIL_MS), so the PR board's 👤 Mine finds it.
+ */
+const LISTED_DESCRIPTION = 400;
+export const azureDescriptions = new DetailCache<string>(() => false);
+
+async function wholeDescription(repo: RepoRef, p: any, as: HostAs, fetch: Fetch): Promise<string> {
+  const listed = String(p.description ?? '');
+  if (listed.length < LISTED_DESCRIPTION || openedFromOfficeBy(listed)) return listed;
+  const key = `${repo.id}#${p.pullRequestId}`;
+  const stamp = `${p.status}|${p.lastMergeSourceCommit?.commitId ?? ''}|${p.closedDate ?? ''}`;
+  const { fresh, last } = azureDescriptions.get(key, stamp);
+  if (fresh !== undefined) return fresh;
+  const got = await hostCall(fetch, as, 'GET', pr(repo, Number(p.pullRequestId))).then((r) => (typeof r?.description === 'string' ? (r.description as string) : undefined), () => undefined);
+  if (got !== undefined) azureDescriptions.set(key, stamp, got);
+  return got ?? last ?? listed;
+}
+
+/** An active pull request's checks in one word: kept while fresh, else asked for. */
+async function checksWord(repo: RepoRef, p: any, as: HostAs, fetch: Fetch): Promise<GhPull['checks']> {
+  const key = `${repo.id}#${p.pullRequestId}`;
+  const stamp = stampOf(p);
+  const { fresh, last } = azureCache.get(key, stamp);
+  if (fresh) return fresh;
+  const got = await prChecks(repo, p, as, fetch).then(summaryOf, () => undefined);
+  if (got) azureCache.set(key, stamp, got);
+  return got ?? last ?? 'none';
+}
 
 /** The repository's REST address, with `rest` (a path and query) after it. */
 export function azureRepoApi(repo: RepoRef, rest = ''): string {
@@ -52,20 +96,6 @@ async function prChecks(repo: RepoRef, p: any, as: HostAs, fetch: Fetch): Promis
  */
 async function azureComments(repo: RepoRef, n: number, as: HostAs, fetch: Fetch) {
   return commentsOfThreads(repo, n, (await hostCall(fetch, as, 'GET', pr(repo, n, '/threads')))?.value, { members: new Set(), everyone: true });
-}
-
-/** Runs `fn` over `items`, `limit` at a time, keeping their order. */
-async function pooled<T, R>(items: T[], limit: number, fn: (item: T) => Promise<R>): Promise<R[]> {
-  const out: R[] = new Array(items.length);
-  let next = 0;
-  const worker = async () => {
-    while (next < items.length) {
-      const i = next++;
-      out[i] = await fn(items[i]);
-    }
-  };
-  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, worker));
-  return out;
 }
 
 /**
@@ -132,11 +162,10 @@ export const azureProvider: HostingProvider = {
   async listPulls(repo, as, fetch) {
     const list = (status: string, top: number) => hostCall(fetch, as, 'GET', azureRepoApi(repo, `/pullrequests?searchCriteria.status=${status}&$top=${top}`)).then((r) => (r?.value ?? []) as any[]);
     const [active, completed, abandoned] = await Promise.all([list('active', 150), list('completed', 30), list('abandoned', 40)]);
-    const open = await pooled(active, STATUS_CALLS, async (p): Promise<GhPull> => {
-      const checks = await prChecks(repo, p, as, fetch).then(summaryOf, () => 'none' as const);
-      return pullOf(repo, p, checks);
-    });
-    return [...open, ...completed.map((p) => pullOf(repo, p)), ...abandoned.map((p) => pullOf(repo, p))];
+    const whole = async (p: any) => ({ ...p, description: await wholeDescription(repo, p, as, fetch) });
+    const open = await pooled(active, STATUS_CALLS, async (p): Promise<GhPull> => pullOf(repo, await whole(p), await checksWord(repo, p, as, fetch)));
+    const closed = await pooled([...completed, ...abandoned], STATUS_CALLS, async (p): Promise<GhPull> => pullOf(repo, await whole(p)));
+    return [...open, ...closed];
   },
 
   async checks(repo, n, as, fetch) {

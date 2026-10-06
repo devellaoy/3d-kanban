@@ -28,6 +28,8 @@ export interface OfficePrDeps {
   repoOf?: (dir: string) => RepoRef | undefined;
   /** Where the worker works (its workspace), to keep `dir` inside it; by default from its floor. */
   workspace?: (who: KanbanHookCaller) => string | undefined;
+  /** The repositories its work is in (the office's names for them), the only ones it acts on; by default its project's and those of its other repositories' floors. */
+  known?: (who: KanbanHookCaller) => (string | undefined)[];
 }
 
 type Ask = { dir?: unknown; number?: unknown; head?: unknown; base?: unknown; title?: unknown; body?: unknown; draft?: unknown; comments?: unknown; state?: unknown };
@@ -62,6 +64,15 @@ export function officePrHook(ctx: KanbanContext, deps: OfficePrDeps = {}): Kanba
       return rel ? worktreeDir(floor.dir, rel) : floor.dir;
     });
 
+  const known =
+    deps.known ??
+    ((who: KanbanHookCaller) => {
+      const info = ctx.floor(who.floorId)?.workers.get(who.workerId);
+      const floors = [who.floorId, ...(info?.repos ?? []).map((r) => r.floor)];
+      // Read off the office's own checkouts, never the worker's: its origin is the worker's to change.
+      return [...floors.flatMap((f) => ctx.repos(f).map((r) => r.remote)), ...(info?.repos ?? []).map((r) => repoOf(r.dir)?.id)];
+    });
+
   const fail = (res: ServerResponse, status: number, error: string) => (sendJson(res, status, { error }), true);
 
   return async (req: IncomingMessage, res: ServerResponse, url: URL, who: KanbanHookCaller) => {
@@ -77,6 +88,8 @@ export function officePrHook(ctx: KanbanContext, deps: OfficePrDeps = {}): Kanba
     const repo = where(dir);
     if (!repo) return fail(res, 400, "This checkout's origin isn't on GitHub, Azure DevOps or Bitbucket");
     if (repo.host === 'github') return fail(res, 400, 'This repository is on GitHub: use gh (gh pr create, gh pr view …) as usual');
+    // The checkout's origin is the worker's to set: only the project's own repositories are acted on, with the person's token.
+    if (!known(who).some((id) => id?.toLowerCase() === repo.id.toLowerCase())) return fail(res, 403, `${repo.id} isn't one of your project's repositories: office-pr works only on those`);
     const provider = providerOf(repo.host as OtherHost);
     if (typeof provider === 'string') return fail(res, 400, provider);
     const as = creds()?.as(who.accountId, repo.host as OtherHost, orgOf(repo)) ?? `The office keeps no ${hostLabel(repo.host)} credentials yet`;

@@ -14,7 +14,7 @@ import { sameRepo } from '../../../../shared/floors.js';
 import { prWebUrl, repoRefOf } from '../../../../shared/hosting/remote.js';
 import { resolveKanbanPrompt, withContract } from '../../../../shared/kanban/prompts.js';
 import { gh } from '../../../github.js';
-import { hostedDefaultBranch, hostedIsFork, hostedPulls, hostedRepoOf, hostedView } from '../../../hosting/board.js';
+import { hostedDefaultBranch, hostedIsFork, hostedRepoOf, hostedView } from '../../../hosting/board.js';
 import { floorPullsListeners, type PulledFloor } from './board.js';
 import type { GhRunner } from '../issues/source.js';
 import { fail, ok } from '../util.js';
@@ -62,9 +62,9 @@ export function createPullsParts(ctx: KanbanContext, opts: PullsOptions = {}) {
   const listPulls = async (project: string, r: ProjectRepo & { remote: string }): Promise<RepoPulls> => {
     const board = ctx.floor(project)?.githubFor(r.remote);
     if (board && board.pulls.fetchedAt > 0 && !board.pulls.error) return { repo: r.remote, repoId: r.id, pulls: board.pulls.items };
-    // A repository on Azure DevOps or Bitbucket: its provider, as the board would ask.
-    const hosted = hostedRepoOf(r.remote);
-    if (hosted) return { repo: r.remote, repoId: r.id, pulls: await hostedPulls(hosted) };
+    // A repository on Azure DevOps or Bitbucket with no board list yet: none listed (a listing there is
+    // a request per pull request), so the task's linked PRs stand (findBundle) and a picked one is read alone (checkReview).
+    if (hostedRepoOf(r.remote)) return { repo: r.remote, repoId: r.id, pulls: [] };
     const out = await runGh(['pr', 'list', '-R', r.remote, '--state', 'all', '--limit', '100', '--json', FIELDS], ctx.dataDir);
     const raw = JSON.parse(out || '[]') as GhPull[];
     return { repo: r.remote, repoId: r.id, pulls: Array.isArray(raw) ? raw.filter((p) => Number.isSafeInteger(p?.number)) : [] };

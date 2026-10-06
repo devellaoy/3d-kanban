@@ -4,11 +4,10 @@ import { openedFromOfficeBy } from '../shared/officepr.js';
 import type { GhAs } from './signins.js';
 import { checkoutRepo, repoApi, repoFlag } from './ghrepo.js';
 import { pullDiffOrFiles } from './prfiles.js';
-import { hostLabel, orgOf, repoRefOf } from '../shared/hosting/remote.js';
-import { hostCredentials, otherHostRepo } from './hosting/index.js';
-import { hostedComment, hostedDiff, hostedPullDetail, hostedPulls, notOnHost, type HostedRepo } from './hosting/board.js';
+import { otherHostRepo } from './hosting/index.js';
+import { hostedRepoOf, type HostedRepo } from './hosting/board.js';
 import type { HostAs } from './hosting/provider.js';
-import { readFile } from 'node:fs/promises';
+import { HostedBoard } from './hosting/hosted-board.js';
 
 const REFRESH_MS = 90_000;
 /** How long the repo's list of labels is kept before the label picker asks GitHub again. */
@@ -153,17 +152,6 @@ export class GitHub {
     return this.nameWithOwner ?? (this.off ? undefined : checkoutRepo(this.dir));
   }
 
-  /**
-   * The repository when it's on a host other than GitHub (Azure DevOps, Bitbucket): the boards ask
-   * its provider instead of gh (see hosting/board.ts), and what only GitHub has says so.
-   */
-  get hosted(): HostedRepo | undefined {
-    if (this.off) return undefined;
-    if (!this.nameWithOwner) return otherHostRepo(this.dir);
-    const r = repoRefOf(this.nameWithOwner);
-    return r && r.host !== 'github' ? (r as HostedRepo) : undefined;
-  }
-
   start() {
     void this.refresh();
     if (!this.off) this.timer = setInterval(() => void this.refresh(), REFRESH_MS);
@@ -187,8 +175,6 @@ export class GitHub {
 
   /** The repository's full name and how it lets PRs merge. Asked once (again after a failure). */
   repoInfo(): Promise<GhRepoInfo> {
-    const hosted = this.hosted;
-    if (hosted) return Promise.resolve({ nameWithOwner: hosted.id, methods: [] });
     this.repo ??= this.gh(['repo', 'view', ...(this.target ? [this.target] : []), '--json', 'nameWithOwner,squashMergeAllowed,mergeCommitAllowed,rebaseMergeAllowed'], this.dir).then((out) => {
       const r = JSON.parse(out);
       const methods = (['squash', 'merge', 'rebase'] as const).filter((m) => r[{ squash: 'squashMergeAllowed', merge: 'mergeCommitAllowed', rebase: 'rebaseMergeAllowed' }[m]]);
@@ -200,7 +186,6 @@ export class GitHub {
 
   /** Who the office's own gh is signed in as, which is who it comments as for everyone without their own. Asked once; '' when gh can't say. */
   viewer(): Promise<string> {
-    if (this.hosted) return Promise.resolve('');
     this.login ??= this.gh(['api', 'user', '--jq', '.login'], this.dir).then((out) => out.trim());
     this.login.catch(() => (this.login = undefined));
     return this.login.catch(() => '');
@@ -210,9 +195,7 @@ export class GitHub {
    * A PR's description, conversation, line comments, checks and whether it can merge. `me` is the
    * GitHub login of whoever asked, when they're signed in to their own; else it's the office's.
    */
-  async pullDetail(n: number, me?: string, host?: HostAs): Promise<GhPullDetail> {
-    const hosted = this.hosted;
-    if (hosted) return hostedPullDetail(hosted, n, host);
+  async pullDetail(n: number, me?: string): Promise<GhPullDetail> {
     const fields = 'number,body,state,isDraft,reviewDecision,headRefName,baseRefName,mergeable,mergeStateStatus,commits,comments,reviews,statusCheckRollup';
     const jq = '.[] | {id, in_reply_to_id, path, line, side, body, user: .user.login, created_at, html_url}';
     const [view, lines, repo, viewer] = await Promise.all([
@@ -260,15 +243,11 @@ export class GitHub {
 
   /** The PR's unified diff, as `git diff` prints it. */
   pullDiff(n: number): Promise<string> {
-    const hosted = this.hosted;
-    if (hosted) return hostedDiff(hosted, n);
     // A PR over GitHub's 300-file diff limit is built from the files API instead (prfiles.ts).
     return pullDiffOrFiles(this.gh, this.target, n, this.dir, () => this.gh(['pr', 'diff', String(n), ...repoFlag(this.target), '--color', 'never'], this.dir, 60_000));
   }
 
   async issueDetail(n: number, me?: string): Promise<GhIssueDetail> {
-    const hosted = this.hosted;
-    if (hosted) throw new Error(notOnHost('An issue', hosted.host));
     const [view, viewer] = await Promise.all([this.gh(['issue', 'view', String(n), ...repoFlag(this.target), '--json', 'number,state,body,comments'], this.dir), me ?? this.viewer()]);
     const i = JSON.parse(view);
     return { number: i.number, state: i.state, body: String(i.body ?? ''), comments: commentsOf(i.comments), viewer };
@@ -278,9 +257,7 @@ export class GitHub {
    * Comments on an issue, or on a PR's conversation (to GitHub a PR is an issue too), as `as` or
    * else the office. Returns the comment as GitHub saved it, or why it couldn't.
    */
-  async comment(kind: 'issue' | 'pull', n: number, body: string, as?: GhAs, host?: HostAs): Promise<{ comment?: GhComment; error?: string }> {
-    const hosted = this.hosted;
-    if (hosted) return this.hostedComment(hosted, kind, n, body, host);
+  async comment(kind: 'issue' | 'pull', n: number, body: string, as?: GhAs): Promise<{ comment?: GhComment; error?: string }> {
     let comment: GhComment;
     try {
         // -f sends the body as a plain string: no @file reading, no {owner} filling in.
@@ -299,14 +276,7 @@ export class GitHub {
    * Posts a review on a pull request that only comments (the meeting room's review panel), its body
    * read from a file. Resolves to the review's URL.
    */
-  async review(n: number, file: string, as?: GhAs, owner?: string): Promise<string> {
-    const hosted = this.hosted;
-    if (hosted) {
-      // Elsewhere it's a comment on the conversation, as whoever called the meeting (else the office).
-      const host = hostCredentials()?.as(owner, hosted.host, orgOf(hosted)) ?? `Posting the review needs ${hostLabel(hosted.host)} credentials (☰ → 🔐 Your sign-ins)`;
-      if (typeof host === 'string') throw new Error(host);
-      return (await hostedComment(hosted, n, await readFile(file, 'utf8'), host)) ?? '';
-    }
+  async review(n: number, file: string, as?: GhAs): Promise<string> {
     // -F reads @file's contents as the value.
     const url = (await this.gh(['api', '--method', 'POST', repoApi(this.target, `pulls/${n}/reviews`), '-F', `body=@${file}`, '-f', 'event=COMMENT', '--jq', '.html_url'], this.dir, 60_000, as?.env)).trim();
     void this.refreshPulls();
@@ -315,8 +285,6 @@ export class GitHub {
 
   /** Merges a PR, or with `auto` has GitHub merge it once its requirements pass. Returns an error. */
   async merge(n: number, method: GhMergeMethod, deleteBranch: boolean, auto: boolean, as?: GhAs): Promise<string | undefined> {
-    const hosted = this.hosted;
-    if (hosted) return notOnHost('Merging', hosted.host);
     try {
       const repo = await this.repoInfo();
       // --repo keeps gh out of the office's own checkout: without it, --delete-branch also deletes
@@ -334,8 +302,6 @@ export class GitHub {
 
   /** Closes an issue, or a pull request without merging it, optionally saying why. Returns an error. */
   async close(kind: 'issue' | 'pull', n: number, opts: { comment?: string; reason?: GhCloseReason; deleteBranch?: boolean }, as?: GhAs): Promise<string | undefined> {
-    const hosted = this.hosted;
-    if (hosted) return notOnHost('Closing', hosted.host);
     try {
       const repo = await this.repoInfo();
       // --repo for the same reason as merge: --delete-branch must leave the office's checkout alone.
@@ -358,7 +324,6 @@ export class GitHub {
 
   /** Every label the repository has, for the label picker. Asked again after a minute (or a failure). */
   repoLabels(): Promise<GhLabel[]> {
-    if (this.hosted) return Promise.resolve([]);
     if (!this.labelList || Date.now() - this.labelList.at > LABELS_MS) {
       const list = this.gh(['api', repoApi(this.target, 'labels?per_page=100'), '--paginate', '--jq', '.[] | {name, color, description}'], this.dir).then((out) =>
         out
@@ -378,8 +343,6 @@ export class GitHub {
    * else the office. Returns the labels it has now, or why they didn't change.
    */
   async setLabels(kind: 'issue' | 'pull', n: number, add: string[], remove: string[], as?: GhAs): Promise<{ labels?: GhLabel[]; error?: string }> {
-    const hosted = this.hosted;
-    if (hosted) return { error: notOnHost('Labels', hosted.host) };
     const path = repoApi(this.target, `issues/${n}/labels`);
     const jq = '[.[] | {name, color}]';
     let now: GhLabel[] | undefined;
@@ -434,8 +397,6 @@ export class GitHub {
 
   /** Assigns the issue to `as` (else the office's own gh), which moves it to In progress on the board. */
   async claim(issue: number, as?: GhAs): Promise<string | undefined> {
-    const hosted = this.hosted;
-    if (hosted) return notOnHost('Assigning an issue', hosted.host);
     try {
         await this.gh(['issue', 'edit', String(issue), ...repoFlag(this.target), '--add-assignee', '@me'], this.dir, undefined, as?.env);
     } catch (err) {
@@ -445,30 +406,9 @@ export class GitHub {
     return undefined;
   }
 
-  /** A comment from the PR window on a repository elsewhere: its conversation only (issues come from the issue sources). */
-  private async hostedComment(hosted: HostedRepo, kind: 'issue' | 'pull', n: number, body: string, host?: HostAs): Promise<{ comment?: GhComment; error?: string }> {
-    if (kind === 'issue') return { error: notOnHost('Commenting on an issue', hosted.host) };
-    if (!host) return { error: `Commenting needs ${hostLabel(hosted.host)} credentials (☰ → 🔐 Your sign-ins)` };
-    try {
-      const url = await hostedComment(hosted, n, body, host);
-      void this.refreshPulls();
-      return { comment: { id: url ?? String(Date.now()), author: host.who ?? '', body, createdAt: new Date().toISOString(), ...(url ? { url } : {}) } };
-    } catch (err) {
-      return { error: (err as Error).message };
-    }
-  }
-
   private async refreshIssues() {
     // Nothing to ask on a project that isn't a git repository (refresh() says so), whoever asks for it.
     if (this.off || this.issues.loading) return;
-    const hosted = this.hosted;
-    if (hosted) {
-      // Only GitHub has issues of its own: elsewhere the board shows the project's issue sources (Jira, Azure Boards).
-      const label = hostLabel(hosted.host);
-      this.issues = { items: [], fetchedAt: Date.now(), loading: false, host: hosted.host, note: `${label} repositories have no issues board of their own: add the project's issue tracker (Jira, Azure Boards) in 🗂️ Kanban → Issue sources` };
-      this.onIssues(this.issues);
-      return;
-    }
     this.issues = { ...this.issues, loading: true };
     this.onIssues(this.issues);
     const asked = Date.now();
@@ -507,16 +447,6 @@ export class GitHub {
     this.pulls = { ...this.pulls, loading: true };
     this.onPulls(this.pulls);
     const asked = Date.now();
-    const hosted = this.hosted;
-    if (hosted) {
-      try {
-        this.pulls = { items: await hostedPulls(hosted), fetchedAt: Date.now(), loading: false, host: hosted.host };
-      } catch (err) {
-        this.pulls = { ...this.pulls, loading: false, error: (err as Error).message, fetchedAt: Date.now(), host: hosted.host };
-      }
-      this.onPulls(this.pulls);
-      return;
-    }
     try {
       const fields = 'number,title,state,isDraft,url,author,labels,reviewDecision,headRefName,headRefOid,isCrossRepository,baseRefName,createdAt,updatedAt,additions,deletions,statusCheckRollup,body,closingIssuesReferences,reviewRequests';
       const [open, merged, closed, viewer] = await Promise.all([
@@ -567,4 +497,25 @@ export class GitHub {
 function withOpenedBy(body: string): { openedBy?: string } {
   const by = openedFromOfficeBy(body);
   return by ? { openedBy: by } : {};
+}
+
+/**
+ * A floor's board for one repository: GitHub's, or a provider's for one on another host
+ * (hosting/hosted-board.ts), which is `hosted` and takes that host's credentials where GitHub's takes gh's.
+ */
+export type Board = Omit<GitHub, 'pullDetail' | 'comment' | 'review'> & {
+  readonly hosted?: HostedRepo;
+  pullDetail(n: number, me?: string, host?: HostAs): Promise<GhPullDetail>;
+  comment(kind: 'issue' | 'pull', n: number, body: string, as?: GhAs, host?: HostAs): Promise<{ comment?: GhComment; error?: string }>;
+  review(n: number, file: string, as?: GhAs, owner?: string): Promise<string>;
+};
+
+/**
+ * The board for the repository in `dir` (or the one `opts.nameWithOwner` names): where it's hosted is
+ * worked out once, here, and a repository on Azure DevOps or Bitbucket gets a HostedBoard, so GitHub
+ * stays GitHub's alone.
+ */
+export function openBoard(dir: string, onIssues: (s: GhState<GhIssue>) => void, onPulls: (s: GhState<GhPull>) => void, opts: ConstructorParameters<typeof GitHub>[3] = {}): Board {
+  const hosted = opts.off ? undefined : opts.nameWithOwner ? hostedRepoOf(opts.nameWithOwner) : otherHostRepo(dir);
+  return hosted ? new HostedBoard(hosted, onIssues, onPulls, opts) : new GitHub(dir, onIssues, onPulls, opts);
 }

@@ -7,7 +7,7 @@ import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { prLines } from '../src/server/kanban/engine/markers.js';
-import { GitHub } from '../src/server/github.js';
+import { openBoard } from '../src/server/github.js';
 import { openHosting, setHostFetch } from '../src/server/hosting/index.js';
 import type { Fetch, HostAs } from '../src/server/hosting/provider.js';
 import { createPullsParts } from '../src/server/kanban/integrations/pulls/index.js';
@@ -66,7 +66,7 @@ test("the floor's PR board for a repository on Azure DevOps comes from its provi
   try {
     const states: GhState<GhPull>[] = [];
     const issues: unknown[] = [];
-    const board = new GitHub(os.tmpdir(), (st) => issues.push(st), (st) => states.push(st), { nameWithOwner: AZ });
+    const board = openBoard(os.tmpdir(), (st) => issues.push(st), (st) => states.push(st), { nameWithOwner: AZ });
     assert.equal(board.hosted?.host, 'azure');
     await board.refresh();
     const last = states.at(-1)!;

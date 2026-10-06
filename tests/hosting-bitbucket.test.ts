@@ -111,6 +111,11 @@ test('createPr sends the branches, the draft flag and keeps the source branch; t
   assert.deepEqual(calls[1].body, { title: 'T2', description: 'B2', source: { branch: { name: 'feat/y' } }, draft: false, close_source_branch: false });
 });
 
+test("createPr: an answer without the pull request's id is an error, not PR #NaN", async () => {
+  const { fetch } = stub({ [`${API}/pullrequests`]: {} });
+  await assert.rejects(bb.createPr(repo, { head: 'feat/x', title: 'T', body: 'B' }, as, fetch), /didn't say which pull request it opened/);
+});
+
 test('findOpenPr asks for the branch with its quotes and backslashes escaped', async () => {
   const { fetch, calls } = stub({ [`${API}/pullrequests?`]: { values: [{ id: 9 }] } });
   const found = await bb.findOpenPr(repo, 'we"ird\\branch', as, fetch);

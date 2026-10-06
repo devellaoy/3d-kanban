@@ -216,12 +216,14 @@ export class WorkerPrs {
       }
       if (prs.length > 1 && prs.some((p) => !p.existed)) {
         for (const p of prs) {
-          // Elsewhere each description lists the others only once their links are known: not edited after.
-          if (otherHostRepo(p.cwd)) continue;
           try {
-            const body = await gh(['pr', 'view', p.url, '--json', 'body', '--jq', '.body'], p.cwd, 30_000, as?.env);
+            // Each description lists the others, once all their links are known: on another host through its provider.
+            const hosted = hostedOf(p.cwd, hosts);
+            const body = hosted ? (await hosted.p.viewPr(hosted.repo, p.number, hosted.host, hostFetch())).body : await gh(['pr', 'view', p.url, '--json', 'body', '--jq', '.body'], p.cwd, 30_000, as?.env);
             const next = withRelated(body, relatedBlock(prs, p.url, wt.branch));
-            if (next !== body) await gh(['pr', 'edit', p.url, '--body', next], p.cwd, 60_000, as?.env);
+            if (next === body) continue;
+            if (hosted) await hosted.p.updatePr(hosted.repo, p.number, { body: next }, hosted.host, hostFetch());
+            else await gh(['pr', 'edit', p.url, '--body', next], p.cwd, 60_000, as?.env);
           } catch (err) {
             failed.push(`Couldn't list the other pull requests on ${p.repo} #${p.number}: ${(err as Error).message}`);
           }
