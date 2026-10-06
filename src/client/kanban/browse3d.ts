@@ -44,7 +44,7 @@ export function browseButton(net: Net, actions: BoardActions): HTMLElement | nul
     );
   const open = (issue: BrowseIssue, scope: BrowseScope) => {
     const load = () => api.request<Extract<KanbanServerMsg, { t: 'kanban.browseIssue' }>>({ t: 'kanban.browse.issue', project, scope: scope.id, issueKey: issue.key }).then((m) => m.issue);
-    const card = (i: BrowseIssue) => toGhIssue(i, i.taskId, projectRepos());
+    const card = (i: BrowseIssue) => toGhIssue({ ...i, sourceId: i.sourceId ?? scope.id }, i.taskId, projectRepos());
     load().then(
       (full) => openCard(card(full), net, actions, { reload: () => load().then(card, () => undefined) }),
       (err: Error) => toast(err.message, 'error'),

@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { toGhIssue } from '../src/shared/kanban/issuecard.js';
 import { actionIssue, actionsTarget, closesOrReopens, keyedComment, safeUrl, shownStatus, groupTransitions, isGithubKey, jiraSite, pinnedMe, transitionLabel } from '../src/client/kanban/issueactionsmodel.js';
 
 test('only a card with a key on a floor with a project gets the issue actions', () => {
@@ -58,4 +59,9 @@ test('the status shown is the choices’ own when they name one; only a close or
   assert.ok(closesOrReopens('gh:reopen'));
   assert.ok(!closesOrReopens('p:PVT_1:PVTI_1:F:o'));
   assert.ok(!closesOrReopens('31'));
+});
+
+test('a 3D card opened through a source hands that source to the actions panel', () => {
+  const card = toGhIssue({ source: 'jira', key: 'DEV-1', title: 't', url: 'https://x.atlassian.net/browse/DEV-1', body: '', labels: [], updatedAt: '', sourceId: 'src-2' });
+  assert.equal(actionIssue(card).sourceId, 'src-2');
 });
