@@ -88,7 +88,7 @@ function connectionRow(api: KanbanApi, c: JiraConnectionStatus): HTMLElement {
     no.addEventListener('click', closeBelow);
     yes.addEventListener('click', () => void run(() => api.request({ t: 'kanban.secrets.jira.remove', id: c.id }), yes, 'Removed').then((ok) => ok || closeBelow()));
     buttons.classList.add('hidden');
-    below.replaceChildren(h('div.kb-row.kb-jira-confirm', {}, h('span.grow', {}, `Remove ${c.name || c.site}? Issue sources that use it go to the next connection for their site, or stop reading.`), no, yes));
+    below.replaceChildren(h('div.kb-row.kb-jira-confirm', {}, h('span.grow', {}, `Remove ${c.name || c.site}? Sources that name it stop reading until they pick another; those on Automatic take the next one for their site.`), no, yes));
     setTimeout(() => no.focus(), 0);
   });
   return el;
