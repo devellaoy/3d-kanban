@@ -4,12 +4,20 @@
 // primary repository's #5, and lookups by repository and number. No repository: the single-repository behaviour.
 
 import { sameRepo } from '../../../shared/floors';
+import { parsePrUrl } from '../../../shared/hosting/remote';
 import type { WorkerInfo } from '../../../shared/protocol';
 import { apiUrl } from '../../multiplayer/visit';
 
-/** owner/name of an issue or PR: its `repo`, or from its URL (https://github.com/owner/name/pull/12). */
+/**
+ * The repository of an issue or PR as the office names it: its `repo`, or from its URL. A pull
+ * request's URL on any host the office knows (parsePrUrl: …/pull/12, Azure DevOps' …/pullrequest/12,
+ * Bitbucket's …/pull-requests/12) gives owner/name or the host's qualified name; any other, owner/name as before.
+ */
 export function repoOfItem(it: { url: string; repo?: string }): string {
   if (typeof it.repo === 'string' && it.repo) return it.repo;
+  const pr = parsePrUrl(it.url);
+  if (pr) return pr.repo.id;
+  // Anything else as before: owner/name off a …/pull/12 or …/issues/12 URL.
   const m = /^https?:\/\/[^/]+\/([^/]+\/[^/]+)\/(?:pull|issues)\/\d+/.exec(it.url);
   return m ? m[1] : '';
 }
