@@ -5,6 +5,10 @@ import type { SignInKind } from '../../shared/protocol.js';
 import type { Ctx, Gates } from './context.js';
 import type { Client } from './client.js';
 import { takeCard } from '../take-card.js';
+import { hostCredentials, otherHostRepo } from '../hosting/index.js';
+import { childEnv } from '../workers/env.js';
+import { orgOf } from '../../shared/hosting/remote.js';
+import { pickKey, type HostAs, type HostPick, type HostPickRepo } from '../hosting/provider.js';
 
 /** What has to be true before something happens for someone: a sign-in of their own, a fresh base, GitHub. */
 export function gates(ctx: Ctx): Gates {
@@ -63,8 +67,41 @@ export function gates(ctx: Ctx): Gates {
       },
       refused,
     );
+  /**
+   * withGitHub for repositories that may be elsewhere: `repos` (undefined for one on GitHub, or on a
+   * host the office doesn't know). GitHub's sign-in is asked for only when one of them is on GitHub;
+   * for each other host (and Azure DevOps organization), `c`'s token there, else the office's, or
+   * they hear what to set. `hosts.git` is the environment the office's own git pushes to those hosts
+   * with: theirs (their git config, even with no GitHub sign-in), with the credential helper.
+   */
+  const withRepos = (c: Client, repos: (HostPickRepo | undefined)[], go: (as: GhAs | undefined, hosts: HostPick) => void, refused?: (why: string) => void) => {
+    const creds = hostCredentials();
+    const picked = new Map<string, HostAs>();
+    for (const r of repos) {
+      if (!r || picked.has(pickKey(r))) continue;
+      const host = creds?.as(c.accountId, r.host, orgOf(r)) ?? 'The office keeps no credentials yet';
+      if (typeof host === 'string') {
+        if (refused) refused(host);
+        else ctx.warn(c, host);
+        ctx.sendTo(c, { t: 'signins.needed', which: r.host, why: host });
+        return;
+      }
+      picked.set(pickKey(r), host);
+    }
+    const own = picked.size && c.accountId ? ctx.signins.ghAs(c.accountId) : undefined;
+    const git = picked.size && creds ? creds.gitEnv({ ...(own && typeof own !== 'string' ? own.env : childEnv()) }, c.accountId) : undefined;
+    const hosts: HostPick = { get: (r) => picked.get(pickKey(r)), ...(git ? { git } : {}) };
+    if (repos.some((r) => !r)) return withGitHub(c, (as) => go(as, hosts), refused);
+    go(undefined, hosts);
+  };
+  const withRepoHost = (c: Client, board: { hosted?: HostPickRepo }, go: (as: GhAs | undefined, host?: HostAs) => void, refused?: (why: string) => void) => {
+    const r = board.hosted;
+    withRepos(c, [r], (as, hosts) => go(r ? undefined : as, r ? hosts.get(r) : undefined), refused);
+  };
+  const withHosts = (c: Client, dirs: string[], go: (as: GhAs | undefined, hosts: HostPick) => void, refused?: (why: string) => void) =>
+    withRepos(c, dirs.map((d) => otherHostRepo(d)), go, refused);
   /** Needs a Claude sign-in of its own when the worker it starts runs Claude. */
   const claudeFor = (provider: string | undefined): SignInKind | undefined => (provider === 'claude' ? 'claude' : undefined);
 
-  return { takeIssue, withSignIn, withFreshBase, withGitHub, claudeFor };
+  return { takeIssue, withSignIn, withFreshBase, withGitHub, withRepoHost, withHosts, claudeFor };
 }

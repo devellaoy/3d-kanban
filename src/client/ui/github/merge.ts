@@ -43,6 +43,23 @@ export function mergeStatus(d: GhPullDetail): MergeStatus {
   return { icon: '✅', text: `Ready to merge: no conflicts with ${d.baseRefName}${d.checks.length ? ' and all checks passed' : ''}.`, cls: 'ok', can: true, auto: false };
 }
 
+/**
+ * mergeStatus for a pull request on Azure DevOps or Bitbucket (`host`), which the office doesn't
+ * merge: what its checks and reviews say, and that it merges there. `can` is always false.
+ */
+export function hostedMergeStatus(d: GhPullDetail, host: string): MergeStatus {
+  const failing = d.checks.filter((c) => c.state === 'fail').length;
+  const pending = d.checks.filter((c) => c.state === 'pending').length;
+  const no = { can: false, auto: false } as const;
+  if (d.state === 'MERGED') return { icon: '🎉', text: 'Merged.', cls: 'ok', ...no };
+  if (d.state === 'CLOSED') return { icon: '🗑️', text: 'Closed without merging.', cls: 'muted', ...no };
+  if (d.isDraft) return { icon: '📝', text: `This is still a draft: publish it on ${host} when it's ready.`, cls: 'muted', ...no };
+  if (failing) return { icon: '❌', text: `${failing} check${failing > 1 ? 's' : ''} failing. Merge it on ${host}.`, cls: 'warn', ...no };
+  if (d.reviewDecision === 'CHANGES_REQUESTED') return { icon: '🚫', text: `Changes were requested. Merge it on ${host}.`, cls: 'bad', ...no };
+  if (pending) return { icon: '🟡', text: `Checks are still running. Merge it on ${host}.`, cls: 'warn', ...no };
+  return { icon: '🔀', text: `Merge it on ${host}: the office doesn't merge pull requests there.`, cls: 'muted', ...no };
+}
+
 export function checksList(checks: GhCheck[]) {
   const order: GhCheck['state'][] = ['fail', 'pending', 'pass', 'skip'];
   const sorted = [...checks].sort((a, b) => order.indexOf(a.state) - order.indexOf(b.state));

@@ -1,6 +1,7 @@
 // What a worker's status means, for the checks the server and the browser both make.
 
 import type { GhPull, QueueTask, WorkerInfo, WorkerStatus } from './protocol.js';
+import { engineCarriesOn, taskWaiting } from './kanban/waiting.js';
 
 /** Its process isn't running: it exited, or came back asleep after a restart. R wakes it. */
 export function isAsleep(status: WorkerStatus): boolean {
@@ -10,6 +11,18 @@ export function isAsleep(status: WorkerStatus): boolean {
 /** In the middle of a turn: booting, working, or waiting on an answer. */
 export function isBusy(status: WorkerStatus): boolean {
   return status === 'starting' || status === 'working' || status === 'needs_input';
+}
+
+/** Waiting on a person: needs input, or finished its turn and nobody has looked yet. A task worker waits as its task does. */
+export function waitingOnSomeone<W extends Pick<WorkerInfo, 'status' | 'acked' | 'kanban'>>(w: W): w is W & { status: 'needs_input' | 'done' } {
+  const task = taskWaiting(w);
+  if (task !== undefined) return task;
+  return w.status === 'needs_input' || (w.status === 'done' && !w.acked);
+}
+
+/** The status to show: a needs-input worker the engine carries on with by itself counts as working. */
+export function shownStatus(w: WorkerInfo): WorkerStatus {
+  return engineCarriesOn(w) ? 'working' : w.status;
 }
 
 /**

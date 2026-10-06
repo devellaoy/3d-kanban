@@ -1,8 +1,13 @@
 import { execFile } from 'node:child_process';
 import type { GhCheck, GhCloseReason, GhComment, GhIssue, GhIssueDetail, GhLabel, GhMergeMethod, GhPull, GhPullDetail, GhRepoInfo, GhReviewComment, GhState } from '../shared/protocol.js';
+import { openedFromOfficeBy } from '../shared/officepr.js';
 import type { GhAs } from './signins.js';
 import { checkoutRepo, repoApi, repoFlag } from './ghrepo.js';
 import { pullDiffOrFiles } from './prfiles.js';
+import { otherHostRepo } from './hosting/index.js';
+import { hostedRepoOf, type HostedRepo } from './hosting/board.js';
+import type { HostAs } from './hosting/provider.js';
+import { HostedBoard } from './hosting/hosted-board.js';
 
 const REFRESH_MS = 90_000;
 /** How long the repo's list of labels is kept before the label picker asks GitHub again. */
@@ -443,11 +448,12 @@ export class GitHub {
     this.onPulls(this.pulls);
     const asked = Date.now();
     try {
-      const fields = 'number,title,state,isDraft,url,author,labels,reviewDecision,headRefName,headRefOid,isCrossRepository,baseRefName,createdAt,updatedAt,additions,deletions,statusCheckRollup,body,closingIssuesReferences';
-      const [open, merged, closed] = await Promise.all([
+      const fields = 'number,title,state,isDraft,url,author,labels,reviewDecision,headRefName,headRefOid,isCrossRepository,baseRefName,createdAt,updatedAt,additions,deletions,statusCheckRollup,body,closingIssuesReferences,reviewRequests';
+      const [open, merged, closed, viewer] = await Promise.all([
         this.gh(['pr', 'list', ...repoFlag(this.target), '--state', 'open', '--limit', '150', '--json', fields], this.dir),
         this.gh(['pr', 'list', ...repoFlag(this.target), '--state', 'merged', '--limit', '30', '--json', fields], this.dir),
         this.gh(['pr', 'list', ...repoFlag(this.target), '--state', 'closed', '--limit', '40', '--json', fields], this.dir),
+        this.viewer(),
       ]);
       // `--state closed` includes merged PRs; keep only the ones closed without merging.
       const seen = new Set<number>();
@@ -471,14 +477,45 @@ export class GitHub {
         deletions: p.deletions ?? 0,
         checks: checksOf(p.statusCheckRollup),
         body: String(p.body ?? '').slice(0, 4000),
+        // Read before the cut: the office's footer is the description's last line.
+        ...withOpenedBy(String(p.body ?? '')),
         closes: (p.closingIssuesReferences ?? []).map((r: any) => Number(r.number)).filter((n: number) => Number.isInteger(n) && n > 0),
+        // People asked to review it, by login (a team's request has no login and is left out).
+        reviewRequests: (p.reviewRequests ?? []).map((r: any) => r?.login).filter((l: unknown): l is string => typeof l === 'string' && !!l),
         ...(this.nameWithOwner ? { repo: this.nameWithOwner } : {}),
       }));
       const items = this.relabel('pull', fetched, asked);
-      this.pulls = { items, fetchedAt: Date.now(), loading: false };
+      this.pulls = { items, fetchedAt: Date.now(), loading: false, ...(viewer ? { viewer } : {}) };
     } catch (err) {
       this.pulls = { ...this.pulls, loading: false, error: (err as Error).message, fetchedAt: Date.now() };
     }
     this.onPulls(this.pulls);
   }
+}
+
+/** GhPull.openedBy from a description, when it has the office's "Opened from Agent Office by" line. */
+function withOpenedBy(body: string): { openedBy?: string } {
+  const by = openedFromOfficeBy(body);
+  return by ? { openedBy: by } : {};
+}
+
+/**
+ * A floor's board for one repository: GitHub's, or a provider's for one on another host
+ * (hosting/hosted-board.ts), which is `hosted` and takes that host's credentials where GitHub's takes gh's.
+ */
+export type Board = Omit<GitHub, 'pullDetail' | 'comment' | 'review'> & {
+  readonly hosted?: HostedRepo;
+  pullDetail(n: number, me?: string, host?: HostAs): Promise<GhPullDetail>;
+  comment(kind: 'issue' | 'pull', n: number, body: string, as?: GhAs, host?: HostAs): Promise<{ comment?: GhComment; error?: string }>;
+  review(n: number, file: string, as?: GhAs, owner?: string): Promise<string>;
+};
+
+/**
+ * The board for the repository in `dir` (or the one `opts.nameWithOwner` names): where it's hosted is
+ * worked out once, here, and a repository on Azure DevOps or Bitbucket gets a HostedBoard, so GitHub
+ * stays GitHub's alone.
+ */
+export function openBoard(dir: string, onIssues: (s: GhState<GhIssue>) => void, onPulls: (s: GhState<GhPull>) => void, opts: ConstructorParameters<typeof GitHub>[3] = {}): Board {
+  const hosted = opts.off ? undefined : opts.nameWithOwner ? hostedRepoOf(opts.nameWithOwner) : otherHostRepo(dir);
+  return hosted ? new HostedBoard(hosted, onIssues, onPulls, opts) : new GitHub(dir, onIssues, onPulls, opts);
 }

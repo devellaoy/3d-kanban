@@ -31,9 +31,10 @@ export const githubHandlers = {
       ctx.sendTo(c, { t: 'gh.merged', number: n, ...(ghRepo ? { repo: ghRepo } : {}), error: notInProject(ghRepo) });
       return;
     }
-    ctx.withGitHub(
+    ctx.withRepoHost(
       c,
-      (as) =>
+      github,
+      (as, host) =>
         void github.merge(n, method, msg.deleteBranch === true, msg.auto === true, as).then((error) => {
           ctx.sendTo(c, { t: 'gh.merged', number: n, ...(ghRepo ? { repo: ghRepo } : {}), error });
           if (error) return;
@@ -64,10 +65,11 @@ export const githubHandlers = {
       ctx.sendTo(c, { t: 'gh.commented', kind, number: n, ...(ghRepo ? { repo: ghRepo } : {}), error: notInProject(ghRepo) });
       return;
     }
-    ctx.withGitHub(
+    ctx.withRepoHost(
       c,
-      (as) =>
-        void github.comment(kind, n, body, as).then((r) => {
+      github,
+      (as, host) =>
+        void github.comment(kind, n, body, as, host).then((r) => {
           ctx.sendTo(c, { t: 'gh.commented', kind, number: n, ...(ghRepo ? { repo: ghRepo } : {}), ...r });
           if (r.comment) ctx.toastFloor(floor, `💬 ${who} commented on ${kind === 'pull' ? 'PR' : 'issue'} #${n}`);
         }),
@@ -88,9 +90,10 @@ export const githubHandlers = {
       ctx.sendTo(c, { t: 'gh.closed', kind, number: n, ...(ghRepo ? { repo: ghRepo } : {}), error: notInProject(ghRepo) });
       return;
     }
-    ctx.withGitHub(
+    ctx.withRepoHost(
       c,
-      (as) =>
+      github,
+      (as, host) =>
         void github.close(kind, n, { comment: str(msg.comment, 20000).trim() || undefined, reason, deleteBranch: msg.deleteBranch === true }, as).then((error) => {
           ctx.sendTo(c, { t: 'gh.closed', kind, number: n, ...(ghRepo ? { repo: ghRepo } : {}), error });
           if (error) return;
@@ -124,9 +127,10 @@ export const githubHandlers = {
       ctx.sendTo(c, { t: 'gh.labeled', kind, number: n, error: notInProject(ghRepo) });
       return;
     }
-    ctx.withGitHub(
+    ctx.withRepoHost(
       c,
-      (as) =>
+      github,
+      (as, host) =>
         void github.setLabels(kind, n, add, remove, as).then((r) => {
           ctx.sendTo(c, { t: 'gh.labeled', kind, number: n, ...r });
           if (r.labels) ctx.toastFloor(floor, `🏷️ ${who} labeled ${kind === 'pull' ? 'PR' : 'issue'} #${n}: ${[...add.map((l) => `+${l}`), ...remove.map((l) => `−${l}`)].join(' ')}`);

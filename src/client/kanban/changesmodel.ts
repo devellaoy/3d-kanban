@@ -4,6 +4,7 @@
 // when the live window's data (the worker's checkout over the WebSocket) can stand in for the HTTP one.
 
 import type { ChangedFile, ChangesState, WorkerInfo } from '../../shared/protocol';
+import { hostLabel, hostOfUrl } from '../../shared/hosting/remote';
 import type { KanbanChangedFile, KanbanRepoChangesInfo } from '../../shared/kanban/types.js';
 import { parseRepoFloorId, repoFloorId } from '../../shared/kanban/repofloor.js';
 
@@ -156,4 +157,9 @@ export class LatestReads {
   clear() {
     this.latest.clear();
   }
+}
+
+/** The host a pull request's link opens on ("GitHub", "Azure DevOps", "Bitbucket"), for its button's title. */
+export function prHostName(url: string): string {
+  return hostLabel(hostOfUrl(url));
 }

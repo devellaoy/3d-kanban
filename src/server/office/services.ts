@@ -1,6 +1,7 @@
 import path from 'node:path';
 import { childEnv, resolveCommand } from '../workers.js';
 import { SignIns } from '../signins.js';
+import { openHosting } from '../hosting/index.js';
 import { agentProviders, configuredProvider } from '../agents.js';
 import { Tailnet } from '../tailnet.js';
 import { Team } from '../team.js';
@@ -48,6 +49,9 @@ export function createServices(ctx: Ctx): BuildingServices {
     (state) => ctx.broadcast({ t: 'usage', state }),
     ctx.toastAll,
   );
+
+  // Everyone's own Azure DevOps and Bitbucket tokens, and the office's (see hosting/credentials.ts).
+  openHosting(cfg.dataDir);
 
   const claudeBin = configuredProvider(cfg.agentCmd) === 'claude' ? resolveCommand(cfg.agentCmd) : resolveCommand('claude');
   // Everyone with an account runs on their own Claude and GitHub sign-ins (see signins.ts). On the

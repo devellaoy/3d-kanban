@@ -19,7 +19,7 @@ import { h, openModal, timeAgo, type Modal } from '../ui/dom';
 import { confirmDialog, openPrompt } from '../ui/prompt';
 import { onChangesMessage, pathLabel, plusMinus, renderDiff, renderPreview } from '../ui/changes';
 import { getJson } from './api';
-import { LatestReads, branchMoved, changesModes, httpNeeds, liveFloor, liveRow, prOfRepo, repoOfFloor, sortRepos, stepRow, taskRow, uncommittedNow, type ChangeRow, type ChangesMode } from './changesmodel';
+import { LatestReads, branchMoved, changesModes, httpNeeds, liveFloor, liveRow, prHostName, prOfRepo, repoOfFloor, sortRepos, stepRow, taskRow, uncommittedNow, type ChangeRow, type ChangesMode } from './changesmodel';
 import { holdChangesWatch } from './changeswatch';
 import { fmtTime } from './labels';
 import { splitDiff } from './model';
@@ -721,7 +721,7 @@ class ChangesView {
     this.commitBtn.disabled = busy || !uncommitted;
     this.commitBtn.textContent = uncommitted ? `✅ Commit ${uncommitted} file${uncommitted > 1 ? 's' : ''}…` : '✅ Commit…';
     if (!s) return;
-    if (s.pr) this.prSlot.append(h('a.btn.primary', { href: s.pr.url, target: '_blank', rel: 'noopener', title: 'Open on GitHub' }, `🔀 PR #${s.pr.number} ↗`));
+    if (s.pr) this.prSlot.append(h('a.btn.primary', { href: s.pr.url, target: '_blank', rel: 'noopener', title: `Open on ${prHostName(s.pr.url)}` }, `🔀 PR #${s.pr.number} ↗`));
     else if (s.prBase) {
       const why = busy ? '' : uncommitted ? 'Commit first' : !s.ahead ? `Nothing on ${s.branch} that ${s.prBase} lacks yet` : '';
       const pr = h('button.btn.primary', { type: 'button', title: why || `Push ${s.branch} and open a pull request against ${s.prBase}` }, '🔀 Open PR…') as HTMLButtonElement;

@@ -386,6 +386,20 @@ test('an issue key of a kind the project has no source for is refused, and a Jir
   assert.equal((readCreateRequest({ issue: 'x/y#3' }, board.ctx, 'app') as { issue: string }).issue, 'gh:x/y#3');
 });
 
+test('an Azure Boards work item: ab:org/project#n of a source (in its spelling), or AB#n when the project has one', () => {
+  const azure = (org: string, project: string, id: string) => ({ id, kind: 'azure-boards', org, project, filters: {} });
+  const read = (ctx: ReturnType<typeof setup>['ctx'], issue: string) => readCreateRequest({ issue }, ctx, 'app') as { issue: string } | string;
+  assert.match(read(setup().ctx, 'AB#12') as string, /no Azure Boards source/);
+  assert.match(read(setup().ctx, 'ab:contoso/Web#12') as string, /no Azure Boards source/);
+  const one = setup({ sources: [azure('contoso', 'My Web', 's1')] as IssueSourceConfig[] });
+  assert.equal((read(one.ctx, 'AB#12') as { issue: string }).issue, 'ab:contoso/My Web#12');
+  assert.equal((read(one.ctx, 'ab:CONTOSO/my web#12') as { issue: string }).issue, 'ab:contoso/My Web#12');
+  assert.match(read(one.ctx, 'ab:fabrikam/Web#12') as string, /fabrikam\/Web isn't one of the project's Azure Boards sources \(contoso\/My Web\)/);
+  const two = setup({ sources: [azure('contoso', 'Web', 's1'), azure('contoso', 'Api', 's2')] as IssueSourceConfig[] });
+  assert.match(read(two.ctx, 'AB#12') as string, /could be a work item of contoso\/Web or contoso\/Api: give ab:org\/project#12/);
+  assert.equal((read(two.ctx, 'ab:contoso/Api#7') as { issue: string }).issue, 'ab:contoso/Api#7');
+});
+
 test('an agent’s unknown issue key does not make the project fetch all its issues again', async () => {
   const { call, calls } = setup();
   await call({ issue: 12 });
@@ -394,4 +408,32 @@ test('an agent’s unknown issue key does not make the project fetch all its iss
   const r = await call({ issue: 99 });
   assert.equal(r.status, 400);
   assert.equal(lists(), before);
+});
+
+test('an agent’s AB#n of a work item the issue lists don’t have yet is read on its own, in the source’s organization and project', async () => {
+  const { openHosting } = await import('../src/server/hosting/index.js');
+  const data = mkdtempSync(path.join(tmpdir(), 'agent-create-ab-'));
+  writeFileSync(path.join(data, 'hosting-secrets.json'), JSON.stringify({ azure: { token: 'x'.repeat(52), org: 'contoso', who: 'Office' } }), { mode: 0o600 });
+  openHosting(data);
+  const ctx = makeCtx([def('app', '/tmp/app')]);
+  ctx.settings.setProject('app', { issueSources: [{ id: 'ab1', kind: 'azure-boards', org: 'contoso', project: 'My Web', filters: {} }] as IssueSourceConfig[] });
+  const asked: string[] = [];
+  const fetch = (async (url: string) => {
+    asked.push(url);
+    if (/\/_apis\/wit\/workitems\?ids=42&/.test(url)) return new Response(JSON.stringify({ value: [{ id: 42, fields: { 'System.TeamProject': 'My Web', 'System.Title': 'New bug', 'System.State': 'New', 'System.Description': '<p>Broken</p>' } }] }));
+    return new Response('{"message":"no"}', { status: 404 });
+  }) as unknown as IssueSourceIo['fetch'];
+  const issues = createIssues(ctx, { gh: async () => '[]', fetch });
+  const handler = issues.plugin.hook![PATH]!;
+  let status = 0;
+  let text = '';
+  const req = Object.assign(Readable.from([Buffer.from(JSON.stringify({ issue: 'AB#42' }))]), { method: 'POST', headers: {} }) as unknown as IncomingMessage;
+  const res = { writeHead: (s: number) => void (status = s), end: (t: string) => void (text = t) } as unknown as ServerResponse;
+  await handler(req, res, new URL(PATH, 'http://127.0.0.1'), { workerId: 'w1', floorId: 'app', name: 'Ada', kind: 'agent' });
+  assert.equal(status, 200, text);
+  const task = ctx.repo.getTask(JSON.parse(text).task.id)!;
+  assert.equal(task.ticket, 'ab:contoso/My Web#42');
+  assert.equal(task.title, 'New bug');
+  assert.ok(asked.length === 1 && asked[0].startsWith('https://dev.azure.com/contoso/_apis/wit/workitems?ids=42&'), `one read of that work item, no list: ${asked.join(', ')}`);
+  rmSync(data, { recursive: true, force: true });
 });

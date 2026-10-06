@@ -11,6 +11,7 @@ import type { GhPull } from '../../shared/protocol';
 import type { KanbanServerMsg } from '../../shared/kanban/protocol.js';
 import { PR_REVIEW_MAX, type KanbanPrBundleItem, type PrRef } from '../../shared/kanban/types.js';
 import { kanbanApi, type KanbanOk } from './api';
+import { hostOfUrl } from '../../shared/hosting/remote';
 import { repoOfItem } from './boardrepos';
 import { pickerRows, refKey, reviewTaskOf } from './model';
 import { officeCss } from './officecss';
@@ -77,37 +78,50 @@ export function openReviewPicker(net: Net, pull: GhPull, mode: 'review' | 'panel
   };
 
   const onlySelf = () => picked.size === 1 && picked.has(refKey(self));
+  // A pull request on Azure DevOps or Bitbucket is reviewed by the kanban's reviewer even alone: its
+  // prompt tells it to use office-pr there, where upstream's single-PR review would use gh.
+  const elsewhere = mode === 'review' && (hostOfUrl(pull.url) ?? 'github') !== 'github';
   const paintGo = () => {
     go.textContent = onlySelf() ? (mode === 'panel' ? 'Call the panel for this PR' : 'Review this PR') : `Review ${picked.size} PRs together`;
     go.disabled = picked.size === 0;
   };
 
-  justThis.addEventListener('click', () => {
+  /** The kanban's review of the PRs `keys` names (one task's keep their task; any other mix is a new task). */
+  const reviewOf = async (keys: Set<string>, button: HTMLButtonElement) => {
+    const all = [self, ...bundle, ...others()];
+    const prs: PrRef[] = [];
+    for (const k of keys) {
+      const p = all.find((x) => refKey(x) === k);
+      if (p) prs.push({ repo: p.repo, number: p.number });
+    }
+    const taskId = reviewTaskOf(keys, bundle);
+    // 🤝 keeps being a panel for several PRs too: the meeting room reviews them as one change set.
+    const ok = await run(() => api.request<KanbanOk>({ t: 'kanban.pr.review', project, prs, ...(taskId ? { taskId } : {}), ...(mode === 'panel' ? { panel: true } : {}) }), button);
+    return { ok, prs };
+  };
+
+  justThis.addEventListener('click', async () => {
+    if (elsewhere) return void reviewed(await reviewOf(new Set([refKey(self)]), justThis));
     modal.close();
     single();
   });
   go.addEventListener('click', async () => {
-    if (onlySelf()) {
+    if (onlySelf() && !elsewhere) {
       modal.close();
       return single();
     }
-    const all = [self, ...bundle, ...others()];
-    const prs: PrRef[] = [];
-    for (const k of picked) {
-      const p = all.find((x) => refKey(x) === k);
-      if (p) prs.push({ repo: p.repo, number: p.number });
-    }
-    // One task's PRs keep their task, so the review is written into it; any other mix is a new task.
-    const taskId = reviewTaskOf(picked, bundle);
-    // 🤝 keeps being a panel for several PRs too: the meeting room reviews them as one change set.
-    const ok = await run(() => api.request<KanbanOk>({ t: 'kanban.pr.review', project, prs, ...(taskId ? { taskId } : {}), ...(mode === 'panel' ? { panel: true } : {}) }), go);
+    reviewed(await reviewOf(picked, go));
+  });
+
+  const reviewed = ({ ok, prs }: { ok: KanbanOk | undefined | null; prs: PrRef[] }) => {
     if (!ok) return;
     modal.close();
     // The review is a kanban task of its own now (or goes into the bundle's task).
     // No reviewer yet (a panel, or no room in the office: the review task is queued and starts by itself).
-    if (ok.taskId && !ok.workerId && mode !== 'panel') toast(`The review of the ${prs.length} PRs is queued: task #${ok.taskId} starts when the office has room`);
-    else toast(ok.taskId ? `A reviewer takes the ${prs.length} PRs together: task #${ok.taskId}` : `A reviewer takes the ${prs.length} PRs together`);
-  });
+    const what = prs.length === 1 ? 'the PR' : `the ${prs.length} PRs`;
+    if (ok.taskId && !ok.workerId && mode !== 'panel') toast(`The review of ${what} is queued: task #${ok.taskId} starts when the office has room`);
+    else toast(ok.taskId ? `A reviewer takes ${what}${prs.length > 1 ? ' together' : ''}: task #${ok.taskId}` : `A reviewer takes ${what}${prs.length > 1 ? ' together' : ''}`);
+  };
 
   paint();
   api

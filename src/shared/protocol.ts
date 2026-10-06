@@ -9,6 +9,7 @@ import type { ChangesClientMsg, ChangesServerMsg } from './protocol/changes.js';
 import type { FloorClientMsg, FloorServerMsg, PlanClientMsg } from './protocol/floors.js';
 import type { FurnitureClientMsg } from './protocol/furniture.js';
 import type { GitHubClientMsg, GitHubServerMsg } from './protocol/github.js';
+import type { HostingClientMsg, HostingServerMsg } from './protocol/hosting.js';
 import type { MeetingClientMsg, MeetingServerMsg } from './protocol/meetings.js';
 import type { PresenceClientMsg, PresenceServerMsg } from './protocol/presence.js';
 import type { QueueClientMsg, QueueServerMsg } from './protocol/queue.js';
@@ -29,6 +30,7 @@ export * from './protocol/changes.js';
 export * from './protocol/floors.js';
 export * from './protocol/furniture.js';
 export * from './protocol/github.js';
+export * from './protocol/hosting.js';
 export * from './protocol/meetings.js';
 export * from './protocol/presence.js';
 export * from './protocol/queue.js';
@@ -54,6 +56,7 @@ export type ClientMsg =
   | TeamClientMsg
   | AccountsClientMsg
   | SignInsClientMsg
+  | HostingClientMsg // Azure DevOps and Bitbucket tokens
   | SettingsClientMsg
   | UsageClientMsg
   | DecorClientMsg
@@ -79,6 +82,7 @@ export type ServerMsg =
   | FloorServerMsg
   | ChangesServerMsg
   | AccountsServerMsg
+  | HostingServerMsg // Azure DevOps and Bitbucket tokens
   | SettingsServerMsg
   | UsageServerMsg
   | ToysServerMsg

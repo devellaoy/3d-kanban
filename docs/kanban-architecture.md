@@ -19,6 +19,7 @@ document disagree, fix one of them in the same change.
   - `src/client/kanban/` + `src/client/kanban.html` — the kanban page.
   - `src/{shared,server,client}/youtube/` — YouTube on the Office TV (see fork.md).
   - `bin/office-tasks.js`, `scripts/migrate-ai-kanban/`, `skills/`, `user-skills/`, `tests/kanban-*.test.ts`, `docs/kanban*.md`.
+  - `src/{shared,server}/hosting/`, `src/server/kanban/integrations/hosting/`, `bin/office-pr.js`, `bin/office-git-credential.js` — repositories on Azure DevOps and Bitbucket (see hosting.md).
   General code (the shoulder camera, the GitHub repo picker, PR file lists and so on) lives where it
   belongs, outside these folders, and any file may be changed where that is the clean solution.
   The registries and the size guard ([Code layout](code-layout.md)) apply to the kanban like to the rest.
@@ -265,8 +266,10 @@ allowed: `todo → in_progress` (= start), `waiting|review → done`, `done → 
   - pr: one `PR: <url>` line per pull request opened or updated. The line starts with `PR` or `Pull request`
     (optionally `created`/`opened`/`updated`; a list bullet and bold are allowed) and a colon; the URL is bare,
     `<url>` or a Markdown link, text after it is fine, any http(s) host (`PR_LINE` in `shared/kanban/prompts.ts`
-    is the one rule). GitHub URLs are reduced to `…/pull/<n>` (no `/files`, `#…`, `?…`) and duplicates count once
-    (case-insensitively). Such a PR is linked to the task (`pr_links`) only when it is a GitHub PR of one of the
+    is the one rule). GitHub URLs are reduced to `…/pull/<n>` (no `/files`, `#…`, `?…`), Azure DevOps and Bitbucket
+    ones to their `…/pullrequest/<n>` and `…/pull-requests/<n>` (`parsePrUrl`, `shared/hosting/remote.ts`, which names
+    their repository `azure:org/project/repo` or `bitbucket:workspace/repo`), and duplicates count once
+    (case-insensitively). Such a PR is linked to the task (`pr_links`) only when it is a PR of one of the
     task's repositories and no other task, of any project, has it (by repository, number or URL). A URL anywhere
     else in the answer is not reported at all.
   - Branch linking: whatever the answer says, when the floor's PR board syncs (`syncPrStates`) an open or draft PR
@@ -647,6 +650,18 @@ The creator is the requesting agent's account, else the parent task's creator, e
 (`WorkerInfo.byPerson`, set only by the hire dialog), else the
 agent's name; the agent is in the `created` event (`via`) and the toast. An `issue` is claimed like one made from the
 issues board, after the answer has gone (as the board does), so a slow GitHub can't time the agent out. See docs/kanban.md "Agents creating tasks".
+
+`POST /office/pr/<create|view|checks|comment|list>?worker=` (the same bearer token; JSON body with `dir`, the checkout
+inside the worker's own workspace, and the action's fields) is `office-pr`'s, for a repository on Azure DevOps or
+Bitbucket (integrations/hosting/officepr.ts): it acts with the credentials of the account the worker runs as, else the
+office's (`HostCredentials.as`), and refuses a checkout outside the workspace, a GitHub repository (use `gh`) and a
+missing token (403). `create` updates the branch's open PR when it has one, and links the task's Azure Boards work item
+(`ab:org/project#id`, same organisation) and every `AB#n` of the text. The prompts' `kanban.hosting` note names it only
+when a repository of the workspace is elsewhere. On every board refresh (`floorPullsListeners`, after the pulls plugin),
+integrations/hosting/workitems.ts links a task's work item to its open Azure DevOps PRs and completes it once one
+merged (the `workitem.completed` event keeps that once across restarts), with the creator's token or the office's,
+never another account's (`HostCredentials.as`), and tries a failed one again on the next refreshes (`WORK_ITEM_TRIES`);
+one with no token waits, without spending tries, until one is set.
 
 User skills (integrations/userskills/): a plugin that syncs the repository's `user-skills/claude/*` and
 `user-skills/codex/*` into the machine's `<claude home>/skills/` and `<codex home>/skills/` (the same homes

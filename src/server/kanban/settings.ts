@@ -24,6 +24,7 @@ import { GH_REPO_RE, MODEL_RE, PROJECT_ID_RE, type KanbanSettingsPatch } from '.
 import { isKanbanPromptId } from '../../shared/kanban/prompts.js';
 import { PROMPT_MAX } from '../../shared/prompts.js';
 import { cleanProjectLanguage } from '../../shared/language.js';
+import { AZURE_ORG_RE, AZURE_PROJECT_RE, WIQL_EXTRA_MAX, wiqlExtraProblem } from '../../shared/kanban/azure-boards.js';
 
 export const SETTINGS_SCHEMA_VERSION = 1;
 export const INSTRUCTIONS_MAX = 20_000;
@@ -147,6 +148,20 @@ export function sanitizeIssueSource(raw: unknown): IssueSourceConfig | undefined
         site,
         projectKeys: strings(raw.projectKeys, 20, 50, /^[A-Z][A-Z0-9_]*$/),
         filters: compact({ assignee: opt(f.assignee, 100), epic: opt(f.epic, 100), labels: strings(f.labels, 20, 100), statusCategoryNot: strings(f.statusCategoryNot, 10, 50), jql: opt(f.jql, 2000) }),
+      };
+    }
+    case 'azure-boards': {
+      const org = opt(raw.org, 50);
+      const project = opt(raw.project, 64);
+      if (!org || !AZURE_ORG_RE.test(org) || !project || !AZURE_PROJECT_RE.test(project)) return undefined;
+      const wiql = opt(f.wiql, WIQL_EXTRA_MAX + 1);
+      if (wiql && wiqlExtraProblem(wiql)) return undefined;
+      return {
+        id,
+        kind: 'azure-boards',
+        org,
+        project,
+        filters: compact({ assignee: opt(f.assignee, 100), types: strings(f.types, 20, 100), areaPath: opt(f.areaPath, 400), closed: f.closed === true ? true : undefined, wiql }),
       };
     }
     default:

@@ -32,7 +32,7 @@ import type {
   TaskType,
 } from './types.js';
 import { KANBAN_EFFORTS, KANBAN_TOOLS, PR_REVIEW_MAX, TASK_STATUSES, TASK_TYPES } from './types.js';
-import { Bad, KANBAN_LIMITS, MODEL_RE, PROJECT_ID_RE, bad, bool, deskId, id, isObj, list, model, nullableText, oneOf, optInt, optOneOf, optText, project, text, workerId, type Obj, type Req } from './validate.js';
+import { Bad, KANBAN_LIMITS, MODEL_RE, PROJECT_ID_RE, bad, bool, deskId, id, isObj, isRepoName, list, model, nullableText, oneOf, optInt, optOneOf, optText, project, text, workerId, type Obj, type Req } from './validate.js';
 import { moveExtras } from './hold.js';
 import { PR_MODES, type PrMode } from './prs.js';
 import type { LoungeServerMsg } from './lounge.js';
@@ -346,7 +346,7 @@ function taskPatch(v: unknown): KanbanTaskPatch {
 function prRef(x: unknown): PrRef {
   if (!isObj(x)) bad('prs must be pull requests: {repo, number}');
   const p = x as Obj;
-  if (typeof p.repo !== 'string' || !GH_REPO_RE.test(p.repo)) bad('A pull request needs its repository as owner/name');
+  if (typeof p.repo !== 'string' || !isRepoName(p.repo)) bad('A pull request needs its repository: owner/name on GitHub, azure:org/project/repo or bitbucket:workspace/repo');
   if (!Number.isSafeInteger(p.number) || (p.number as number) <= 0) bad('A pull request needs its number');
   return { repo: p.repo as string, number: p.number as number };
 }

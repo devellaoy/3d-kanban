@@ -3,6 +3,7 @@ import { store } from '../../state';
 import { repoUrlOf } from '../markdown';
 import type { MeetingPreset } from '../meeting';
 import { officePrompt } from '../prompts';
+import { elsewhereNote } from '../../../shared/hosting/prnote';
 
 // ---- Prompts for workers ------------------------------------------------------------------------
 
@@ -44,8 +45,9 @@ export function pullVars(it: GhPull) {
 }
 
 export function reviewPrompt(it: GhPull) {
-  return officePrompt('pull.review', pullVars(it));
+  return officePrompt('pull.review', pullVars(it)) + elsewhereNote(it);
 }
+
 
 function mergeCommand(it: GhPull, method: GhMergeMethod, deleteBranch: boolean) {
   return `gh pr merge ${it.number} --${method}${deleteBranch ? ' --delete-branch' : ''} --repo ${nameWithOwner(it.url)}`;
@@ -64,7 +66,7 @@ export function fixConflictsPrompt(it: GhPull, method: GhMergeMethod, deleteBran
 }
 
 export function pullContext(it: GhPull) {
-  return officePrompt('pull.ask', pullVars(it));
+  return officePrompt('pull.ask', pullVars(it)) + elsewhereNote(it);
 }
 
 export function issueContext(it: GhIssue) {

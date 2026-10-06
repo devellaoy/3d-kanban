@@ -1,9 +1,10 @@
 // A project's issues from its issue sources (ProjectSettings.issueSources: GitHub repositories,
-// a GitHub Projects v2 board, Jira), cached per project and refreshed in the background at
+// a GitHub Projects v2 board, Jira, Azure Boards), cached per project and refreshed in the background at
 // upstream's pace: every 90 s while someone has looked at them lately, every 10 minutes otherwise.
 // kanban.issues.createTask turns one into a task, once per ticket.
 
 import type { KanbanCaller, KanbanContext, KanbanPlugin } from '../../registry.js';
+import { hostOf } from '../../../../shared/hosting/remote.js';
 import type { IssueSourceConfig, NormalizedIssue } from '../../../../shared/kanban/types.js';
 import type { KanbanServerMsg } from '../../../../shared/kanban/protocol.js';
 import { gh } from '../../../github.js';
@@ -11,6 +12,7 @@ import { createIntegrationTask, fail, ok, type IntegrationTaskInput } from '../u
 import { githubRepoSource } from './github-repo.js';
 import { githubProjectSource } from './github-project.js';
 import { jiraSource } from './jira.js';
+import { azureBoardsSource } from './azure-boards.js';
 import type { IssueSource, IssueSourceIo } from './source.js';
 import { refreshWall, setWallProvider, toGhIssue, wallChanged } from './wall.js';
 import { takeIssueForTask } from './autoassign.js';
@@ -24,6 +26,7 @@ export const ISSUE_SOURCES: Record<IssueSourceConfig['kind'], IssueSource> = {
   'github-repo': githubRepoSource,
   'github-project': githubProjectSource,
   jira: jiraSource,
+  'azure-boards': azureBoardsSource,
 };
 
 /** Fresh enough while someone looks at the project's issues. */
@@ -84,6 +87,7 @@ export interface IssuesOptions {
 function sourceLabel(s: IssueSourceConfig): string {
   if (s.kind === 'github-repo') return s.repos.length ? `GitHub ${s.repos.join(', ')}` : 'GitHub issues';
   if (s.kind === 'github-project') return `GitHub project ${s.owner}/${s.number}`;
+  if (s.kind === 'azure-boards') return `Azure Boards ${s.org}/${s.project}`;
   return `Jira ${s.projectKeys.join(', ') || s.site}`;
 }
 
@@ -158,7 +162,8 @@ export function createIssues(ctx: KanbanContext, opts: IssuesOptions = {}) {
 
   const io = (project: string): IssueSourceIo => {
     const def = ctx.project(project);
-    const repos = ctx.repos(project).filter((r) => r.kind === 'git' && r.remote).map((r) => r.remote!);
+    // GitHub's only (IssueSourceIo.projectRepos): a project's repositories on Azure DevOps or Bitbucket aren't gh's.
+    const repos = ctx.repos(project).filter((r) => r.kind === 'git' && r.remote && hostOf(r.remote) === 'github').map((r) => r.remote!);
     return { gh: runGh, fetch: doFetch, cwd: ctx.floor(project)?.dir ?? def?.dir ?? ctx.dataDir, jira: ctx.secrets.jira(), projectRepos: repos };
   };
 

@@ -399,10 +399,21 @@ With several repositories, the floor's issues and PR boards show every repositor
 repository chip. The issues board has a repository filter; the PR board (E at the board) has a tab
 per repository of the project below its header (📦 All, then every repository, with its open PRs, if any).
 
+Beside the tabs (on a one-repository floor too), **All / 👤 Mine / 👀 To review** narrows the PR board to your
+own pull requests, in the picked tab or across all of them, and the tabs count only what it leaves. *Mine* is a PR
+authored by your GitHub login (your own GitHub sign-in in 🔐 Your sign-ins; on the shared password, or with the
+office's sign-in, the office's own `gh` login), or one the office opened for you under its account: a PR linked to a
+kanban task you made (the project's tasks that aren't archived), one from a worker you hired at a desk, or one whose
+description says *Opened from Agent Office by* your name. An account without a GitHub sign-in of its own gets only
+the second kind, so the office's PRs don't all count as everyone's. *To review* is the PRs whose review is asked of
+your login (a team's request doesn't count), and it is off without a login. With nothing of yours open, the board
+says so above the columns (merged and closed ones still show). The choice is kept in your browser, the same on every
+floor; a visitor always sees every PR.
+
 ## Issue sources
 
 ⚙️ Settings → **📁 Projects** → **📌 Issue sources**, per project: **GitHub repositories**, a **GitHub project** (Projects
-v2) or **Jira**, up to 10 per project. **📌 Issues** on the board lists them (search, and filter by
+v2), **Jira** or **Azure Boards**, up to 10 per project. **📌 Issues** on the board lists them (search, and filter by
 source, status, label and assignee); **＋ Create task** makes a task in To do from one (title, body
 plus a *Source:* link, the ticket key and link); an open GitHub issue nobody has is assigned to you then (as taking a card does), but only under your own GitHub sign-in; without one, or with an assignee already, it is left alone. An issue already made into a task shows its number
 instead, and is never made twice.
@@ -414,10 +425,11 @@ instead, and is never made twice.
 | GitHub repositories | repositories (none picked: every repository of the project with a GitHub remote), assignee (`@me` or a login), labels (all of them), state (open, closed, all) | `gh` signed in on the office's machine |
 | GitHub project | owner (user or organisation), project number, assignee (`@me` or a login), status, iteration | `gh auth refresh -s read:project` on the office's machine: `gh` doesn't ask for that scope by default |
 | Jira | site (`yourteam.atlassian.net`), project keys, assignee (`me`, an account id or e-mail), epic, labels, status categories to leave out (default *Done*), extra JQL (no ORDER BY) | ⚙️ Settings → **🗂️ Kanban** → **Jira**: site, e-mail and API token (id.atlassian.com → Security → API tokens). The token is used only for the site it was given for. |
+| Azure Boards | organisation, project, assignee (`@Me` or a name or e-mail), work item types, area path, completed ones too, extra WIQL condition (no ORDER BY) | The office's Azure DevOps token for the organisation in ☰ → **🔐 Your sign-ins** to read it; yours (else the office's) to change a card, see [Repositories on Azure DevOps and Bitbucket](hosting.md#azure-boards). Status, comments and assignee change as you. |
 
 Issues are fetched again every 90 seconds while someone looks at them, every 10 minutes otherwise, and
 with **Refresh**. Keys: `gh:owner/repo#12` (GitHub issues), `ghp:<owner>/<number>#<item>` (project
-draft issues), the Jira key.
+draft issues), the Jira key, `ab:<org>/<project>#123` (Azure Boards work items, not browsable).
 
 ### Browsing all issues
 
@@ -555,7 +567,10 @@ reads its own. A kanban task made from a card keeps the description as its own, 
   first PR: once that PR is merged or closed, a later PR from the same worker isn't edited. An account user without a sign-in gets a warning instead, and the PR is left alone. A
   description edited while the line is being added is not overwritten: the check is made again. If the PR targets a
   branch other than the repository's default branch, it still adds the line but warns once, because GitHub closes an
-  issue only when the PR reaches the default branch. Jira tickets and GitHub project drafts have no such line.
+  issue only when the PR reaches the default branch. Jira tickets and GitHub project drafts have no such line. An Azure
+  Boards work item is linked with `AB#123` and completed by the office when its pull request merges ([hosting](hosting.md#azure-boards)).
+- **Repositories on Azure DevOps and Bitbucket**: everything above works the same, with the agent using `office-pr`
+  where it would use `gh`, and the PR board and linked PR states read over the host's API ([hosting](hosting.md)).
 - **PR phase** (a task in Waiting, Review or Done): **🔀 Create PRs** (or **Push & update PRs**) has
   the implementer push and open or update a PR in every repository of the task with commits, each
   listing the others. It reports each as a `PR: <url>` line, which the office links to the task; the
@@ -744,7 +759,8 @@ implementation runs, review, the board's columns), not as a plain one-off worker
 - **Issues**: `issue` links the GitHub issue (or Jira ticket) the way a task made from the issues board
   is linked. It is assigned to the account the agent works for, which needs that account's own GitHub
   sign-in. An issue key the project doesn't know yet doesn't refresh its issue lists; a key kind the
-  project has no source for (a Jira key without Jira, say) is refused, and Jira keys are upper-cased. A bare number only works when the project has exactly one GitHub repository; `owner/repo`
+  project has no source for (a Jira key without Jira, say) is refused, and Jira keys are upper-cased. An Azure
+  Boards work item is `ab:org/project#12` of one of the project's Azure Boards sources, or `AB#12` when it has just one. A bare number only works when the project has exactly one GitHub repository; `owner/repo`
   is matched to the project's own spelling of the repository, so `O/APP#12` finds the task `o/app#12` has.
 - **The task view** shows which agent created a task ("via").
 - **A task's own worker can't start tasks**: its new tasks stay in To do (the answer says why), and the
@@ -768,6 +784,7 @@ implementation runs, review, the board's columns), not as a plain one-off worker
 | `<data>/kanban.sqlite` (+ `-wal`, `-shm`) | Tasks, comments, runs, plans, attachments' records, history, PR links. |
 | `<data>/kanban-settings.json` | The kanban's settings, per project too (mode 600). |
 | `<data>/kanban-secrets.json` | Jira site, e-mail and token; the API key's hash (mode 600). Never sent to a browser. |
+| `<data>/hosting-secrets.json`, `<data>/homes/<account>/hosting.json` | The office's and each account's Azure DevOps and Bitbucket tokens (mode 600; [hosting](hosting.md#tokens)). Never sent to a browser. |
 | `<data>/kanban/uploads/` | Attached files (mode 600); ones never attached are removed after a day. |
 | `<data>/kanban/grants/task-<id>/` | Copies of a task's attached files, the one folder its agents may read (mode 700); removed with the task. |
 | `<data>/kanban/reports/task-<id>/` | An investigation's report files. |
@@ -775,12 +792,12 @@ implementation runs, review, the board's columns), not as a plain one-off worker
 | `<data>/kanban/skills/` | Generated Claude skill plugins. |
 | `<data>/kanban/legacy/` | ai-kanban's stream logs, when migrated with `--with-stream-logs`. |
 | `<data>/floors.json` | The floors, with each project's repositories. |
-| `<data>/claude-hooks-kanban.json`, `<data>/bin/office-tasks` | Task workers' Claude settings; the `office-tasks` command. |
+| `<data>/claude-hooks-kanban.json`, `<data>/bin/office-tasks`, `<data>/bin/office-pr`, `<data>/bin/office-git-credential` | Task workers' Claude settings; the `office-tasks` and `office-pr` commands; the git credential helper for Azure DevOps and Bitbucket. |
 | `<data>/hook-port` | The hook server's port (upstream's file), for scripts outside the office; see `--hook-port`. |
 
 Worktrees are upstream's code, but not its place: beside the floor's checkout, in `<checkout>.worktrees/<slug>`
 (a multi-repository task's workspace folder there holds a worktree of each of its repositories), with
-each worktree's own `node_modules` folder of links to its repository's packages (shared, not copied). Tasks saved with a path under `.agent-office/worktrees/` keep working.
+each worktree's own `node_modules` folder of links to its repository's packages (shared, not copied; a workspace package such as `packages/ui` links to the worktree's own copy). Tasks saved with a path under `.agent-office/worktrees/` keep working.
 
 ## Limitations
 
@@ -811,3 +828,4 @@ each worktree's own `node_modules` folder of links to its repository's packages 
   project has no worktree of its own.
 - A 🤝 review panel of several PRs posts its review on a PR of the project's primary repository.
 - GitHub Projects need `gh`'s `read:project` scope; Jira takes one site's token per office.
+- On Azure DevOps and Bitbucket the office doesn't merge, close or label pull requests; Bitbucket Server is not supported yet ([hosting](hosting.md#limitations)).

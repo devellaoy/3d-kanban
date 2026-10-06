@@ -10,6 +10,7 @@ import { GH_REPO_RE } from '../../../../shared/kanban/protocol.js';
 import { createBoardTask } from '../../create.js';
 import { BODY_MAX, readJson, sendJson } from '../util.js';
 import { JIRA_KEY_RE } from './browse/jql.js';
+import { abKey, parseAbKey } from '../../../../shared/hosting/workitems.js';
 import type { IssueCaller, IssueTaskMade, IssueTaskOptions } from './index.js';
 
 const TITLE_MAX = 300;
@@ -61,6 +62,26 @@ function githubRepos(ctx: KanbanContext, project: string): string[] {
   return all.filter((r) => !seen.has(r.toLowerCase()) && seen.add(r.toLowerCase()));
 }
 
+/**
+ * An Azure Boards work item as the agent wrote it, against the project's Azure Boards sources:
+ * `ab:org/project#12` of one of them (in the source's spelling), or `AB#12` (how Azure DevOps names
+ * it in a pull request) when the project has exactly one. Undefined when `raw` is neither.
+ */
+function azureBoardsKey(ctx: KanbanContext, project: string, raw: string): string | { error: string } | undefined {
+  const boards = ctx.settings.project(project).issueSources.flatMap((s) => (s.kind === 'azure-boards' ? [{ org: s.org, project: s.project }] : []));
+  const short = /^AB#(\d{1,9})$/i.exec(raw);
+  const full = short ? undefined : parseAbKey(raw);
+  if (!short && !full) return undefined;
+  if (!boards.length) return { error: `The project has no Azure Boards source, so there's no work item ${raw}` };
+  if (short) {
+    if (boards.length > 1) return { error: `${raw} could be a work item of ${boards.map((b) => `${b.org}/${b.project}`).join(' or ')}: give ab:org/project#${short[1]}` };
+    return abKey(boards[0].org, boards[0].project, Number(short[1]));
+  }
+  const b = boards.find((x) => same(x.org, full!.org) && same(x.project, full!.project));
+  if (!b) return { error: `${full!.org}/${full!.project} isn't one of the project's Azure Boards sources (${boards.map((x) => `${x.org}/${x.project}`).join(', ')})` };
+  return abKey(b.org, b.project, full!.id);
+}
+
 /** An issue as the agent wrote it (12, "#12", "o/app#12", gh:…, ghp:…, a Jira key) as the key the issue sources use, or why not. Only kinds the project has a source for. */
 function issueKey(ctx: KanbanContext, project: string, v: unknown): string | { error: string } {
   const raw = typeof v === 'number' ? String(v) : typeof v === 'string' ? v.trim() : '';
@@ -81,7 +102,9 @@ function issueKey(ctx: KanbanContext, project: string, v: unknown): string | { e
   }
   if (/^ghp:\S+$/.test(raw)) return kinds.has('github-project') ? raw : { error: "The project has no GitHub project board, so there's no ghp: issue" };
   if (JIRA_KEY_RE.test(raw)) return kinds.has('jira') ? raw.toUpperCase() : { error: `The project has no Jira source, so there's no issue ${raw}` };
-  return { error: `${raw.slice(0, 80)} isn't an issue: give a number, owner/repo#n or a Jira key` };
+  const ab = azureBoardsKey(ctx, project, raw);
+  if (ab) return ab;
+  return { error: `${raw.slice(0, 80)} isn't an issue: give a number, owner/repo#n, a Jira key or an Azure Boards work item (AB#n, ab:org/project#n)` };
 }
 
 /** What an agent asked for, checked against the office, or why it can't be done. Pure: nothing is changed. */

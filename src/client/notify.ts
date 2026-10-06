@@ -2,9 +2,7 @@
 // for workers that need input or finish (the tab title counts them too, see main.ts).
 
 import type { WorkerInfo } from '../shared/protocol';
-import { alertDetail } from '../shared/status';
-// Whether a task worker waits on someone is its task's.
-import { taskWaiting } from './kanban/office';
+import { alertDetail, waitingOnSomeone } from '../shared/status';
 
 export type NotifyPermission = NotificationPermission | 'unsupported';
 
@@ -25,12 +23,15 @@ export async function askNotifyPermission(): Promise<NotifyPermission> {
   return notifyPermission();
 }
 
-/** Waiting on a person: needs input, or finished its turn and nobody has looked yet. */
-export function waitingOnSomeone(w: WorkerInfo): w is WorkerInfo & { status: 'needs_input' | 'done' } {
-  // A task worker waits while its task waits on a person (or its review is unseen), not while the engine carries on.
-  const task = taskWaiting(w);
-  if (task !== undefined) return task;
-  return w.status === 'needs_input' || (w.status === 'done' && !w.acked);
+export { waitingOnSomeone } from '../shared/status';
+
+/**
+ * Whether to alert for a worker: it just started waiting on someone. `before` is whether it waited when
+ * last seen (undefined: first sight, e.g. a page that just loaded, which never alerts). The wait can begin
+ * with the task's summary arriving after the status, so the status changing isn't the signal.
+ */
+export function shouldAlert(before: boolean | undefined, now: boolean): boolean {
+  return before === false && now;
 }
 
 export class DesktopNotifier {

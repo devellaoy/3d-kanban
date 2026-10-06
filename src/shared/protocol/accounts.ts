@@ -1,4 +1,5 @@
 // Who is signed in: accounts and invites, people's own sign-ins, and the SSH team.
+import type { OtherHost } from '../hosting/remote.js';
 
 export type AccountRole = 'admin' | 'member';
 
@@ -136,4 +137,5 @@ export type AccountsServerMsg =
   /** Your own sign-ins, whenever they change (accounts only). */
   | { t: 'signins'; state: SignInsState }
   /** What you tried needs a sign-in of your own first. */
-  | { t: 'signins.needed'; which: SignInKind; why: string };
+  // `which` is a host other than GitHub when it's their Azure DevOps or Bitbucket token that's missing (server/hosting).
+  | { t: 'signins.needed'; which: SignInKind | OtherHost; why: string };

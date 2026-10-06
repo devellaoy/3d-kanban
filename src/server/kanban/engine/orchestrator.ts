@@ -643,7 +643,7 @@ export class Orchestrator {
   private announce(task: KanbanTask, what: string) {
     const name = this.ctx.project(task.project)?.name ?? task.project;
     try {
-      this.ctx.notify?.(`🗂️ #${task.id} ${clip(task.title, 80)} ${what} in ${name}`);
+      this.ctx.notify?.(`🗂️ #${task.id} ${clip(task.title, 80)} ${what} in ${name}`, undefined, task.id);
     } catch (err) {
       console.error(`agent-office: couldn't announce kanban task #${task.id}: ${(err as Error).message}`);
     }

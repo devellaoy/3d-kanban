@@ -1,5 +1,6 @@
 import './boards.css';
 import type { GhIssue, GhLabel, GhPull, WorkerInfo } from '../../shared/protocol';
+import { hostLabel } from '../../shared/hosting/remote';
 import type { Net } from '../net';
 import { store, workerForPull } from '../state';
 import { h, openModal, timeAgo } from './dom';
@@ -13,6 +14,8 @@ import { boardRepos, inRepo, keptRepo, tabRepos, loadRepoFilter, repoChip, openB
 // Cards from the project's issue sources (Jira, a GitHub project, other repositories), by their key.
 import { issueCardLabel, openCard, sourceChips, taskForCard } from '../kanban/issuecards';
 import { noteSeed } from '../../shared/kanban/issuecard.js';
+// The PR board's All / 👤 Mine / 👀 To review toggle beside the repository tabs.
+import { emptyNote, loadPrWho, mineTasks, minePredicate, myLogin, noteReady, prFilterBar, prWhoToggle, reviewPredicate, savePrWho, shownWho, WHO_TOPICS, type PrWho } from '../kanban/prmine';
 
 const TILTS = ['-1.2deg', '0.8deg', '-0.4deg', '1.4deg', '0deg', '-0.9deg'];
 const NOTE_COLORS = ['var(--note-yellow)', 'var(--note-pink)', 'var(--note-green)', 'var(--note-blue)', 'var(--note-peach)'];
@@ -135,14 +138,27 @@ function card(n: number, title: string, meta: (Node | string)[], i: number, oncl
 export function openBoard(kind: 'issues' | 'pulls', net: Net, actions: BoardActions) {
   const body = h('div.body');
   const status = h('span.board-status');
-  const refresh = h('button.btn', { title: 'Refresh from GitHub', onclick: () => net.send({ t: 'gh.refresh' }) }, '🔄 Refresh');
+  const refresh = h('button.btn', { title: 'Refresh', onclick: () => net.send({ t: 'gh.refresh' }) }, '🔄 Refresh');
   const close = h('button.btn.close', { 'aria-label': 'Close' }, '✕');
   // The repository filter, shown when the cards come from more than one repository.
   let repo = loadRepoFilter(kind, store.floor ?? '');
   const repoSlot = h('span');
   // The PR board picks its repository from tabs below the header instead.
   const tabs = kind === 'pulls' ? repoTabs((r) => pickRepo(r)) : null;
-  const el = h('div.modal.board', { role: 'dialog', 'aria-label': kind === 'issues' ? 'Issues board' : 'Pull requests board' }, h('header', {}, h('h2', {}, kind === 'issues' ? '📌 Issues' : '🔀 Pull Requests'), status, repoSlot, kind === 'issues' ? browseButton(net, actions) : null, refresh, close), tabs?.el ?? null, body);
+  // Whose PRs it shows (a visitor sees everyone's), with the kanban tasks "mine" looks at, and a note when that leaves none open.
+  let who: PrWho = store.me.visitor ? 'all' : loadPrWho();
+  const pickWho = (w: PrWho) => {
+    if (w === who) return;
+    who = w;
+    savePrWho(w);
+    if (w === 'mine') mine?.refresh();
+    render();
+  };
+  const whoToggle = tabs && !store.me.visitor ? prWhoToggle(pickWho) : null;
+  const mine = whoToggle ? mineTasks(net, () => store.floor, () => render()) : null;
+  if (who === 'mine') mine?.refresh();
+  const empty = h('div.board-pr-empty.hidden', { role: 'status' });
+  const el = h('div.modal.board', { role: 'dialog', 'aria-label': kind === 'issues' ? 'Issues board' : 'Pull requests board' }, h('header', {}, h('h2', {}, kind === 'issues' ? '📌 Issues' : '🔀 Pull Requests'), status, repoSlot, kind === 'issues' ? browseButton(net, actions) : null, refresh, close), tabs ? prFilterBar(tabs.el, whoToggle?.el ?? h('span')) : null, tabs ? empty : null, body);
 
   const filters = loadFilters(kind);
   /** What each column's filter box holds (column key → text), for as long as the board is open. */
@@ -279,15 +295,29 @@ export function openBoard(kind: 'issues' | 'pulls', net: Net, actions: BoardActi
     refresh.classList.toggle('hidden', notGit(st));
     if (notGit(st)) return void body.append(h('div.board-error', {}, st.error ?? "This project isn't a git repository, so there are no issues or pull requests to show."));
     if (st.error && !st.items.length) {
-      body.append(h('div.board-error', {}, `Couldn't load from GitHub: ${st.error}`, h('br'), h('small', {}, 'The server runs `gh` in the project directory — make sure it is installed and authenticated (gh auth login).')));
+      // A repository on Azure DevOps or Bitbucket is read over its API with the tokens in 🔐 Your sign-ins, not gh.
+      const elsewhere = st.host && st.host !== 'github';
+      body.append(h('div.board-error', {}, `Couldn't load from ${hostLabel(st.host)}: ${st.error}`, h('br'), h('small', {}, elsewhere ? 'The office reads it with your token there, or the office’s own (☰ → 🔐 Your sign-ins).' : 'The server runs `gh` in the project directory — make sure it is installed and authenticated (gh auth login).')));
       return;
     }
+    if (st.note && !st.items.length) return void body.append(h('div.board-error', {}, st.note));
     // Only the picked repository's cards, each with its repository's chip.
     const repos = tabs ? tabRepos(st.items, store.pulls.repos) : boardRepos(st.items);
     const shownRepo = tabs ? keptRepo(repo, repos) : repos.includes(repo) ? repo : '';
+    // The toggle narrows the PRs before the tabs count them and the columns deal them.
+    const login = myLogin(store.signins, store.pulls.viewer, !!store.me.account);
+    const name = mine?.name() || (store.me.account?.name ?? store.profile.name);
+    const off = { review: login ? undefined : 'Sign in to GitHub (🔐 Your sign-ins) to see the reviews asked of you' };
+    const shownWhoNow = mine ? shownWho(who, off) : 'all';
+    const pulls = shownWhoNow === 'all' ? store.pulls.items : store.pulls.items.filter(shownWhoNow === 'mine' ? minePredicate({ login, name, tasks: mine?.tasks() ?? [], workers: store.workers.values(), primary: store.currentFloor()?.repo }) : reviewPredicate(login));
     if (tabs) {
-      const open = openByRepo(store.pulls.items);
+      const open = openByRepo(pulls);
       tabs.update(repos, shownRepo, open.counts, open.total);
+      whoToggle?.update(shownWhoNow, off);
+      // Nothing to say until the PRs (and, for Mine, the kanban's tasks) have come in.
+      const note = noteReady(shownWhoNow, store.pulls, !!mine?.settled()) ? emptyNote(shownWhoNow, shownRepo, shownRepo ? (open.counts.get(shownRepo) ?? 0) : open.total) : '';
+      empty.textContent = note;
+      empty.classList.toggle('hidden', !note);
     }
     else repoSlot.replaceChildren(repoFilterSelect(repos, repo, pickRepo));
     const chip = (it: GhIssue | GhPull) => (repos.length > 1 ? repoChip(it) : '');
@@ -302,7 +332,7 @@ export function openBoard(kind: 'issues' | 'pulls', net: Net, actions: BoardActi
         );
       }
     } else {
-      for (const col of pullColumns(inRepo(store.pulls.items, shownRepo))) {
+      for (const col of pullColumns(inRepo(pulls, shownRepo))) {
         body.append(
           column(col, all, (it, i) => {
             const w = workerForPull(store.workers.values(), it);
@@ -337,14 +367,16 @@ export function openBoard(kind: 'issues' | 'pulls', net: Net, actions: BoardActi
   };
 
   const unsubs = [store.on(kind, render), store.on('queue', render)];
-  // Which desk a PR came from can change (a worker sent home, a PR opened from a desk).
-  if (kind === 'pulls') unsubs.push(store.on('workers', render));
+  // Which desk a PR came from can change (a worker sent home, a PR opened from a desk),
+  // and "mine" follows my GitHub sign-in.
+  if (kind === 'pulls') unsubs.push(...WHO_TOPICS.map((t) => store.on(t, render)));
   const timer = setInterval(stamp, 15000);
   const modal = openModal(el, {
     doing: kind === 'issues' ? '📋 at the issues board' : '🔀 at the PR board',
     onClose: () => {
       unsubs.forEach((u) => u());
       clearInterval(timer);
+      mine?.stop();
     },
   });
   close.addEventListener('click', () => modal.close());

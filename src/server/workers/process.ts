@@ -87,7 +87,7 @@ export function shq(s: string) {
 export function writeOfficeCommands(dataDir: string): string | undefined {
   const dir = path.join(dataDir, 'bin');
   let wrote = false;
-  for (const [name, what] of [['office-queue', "Agent Office's task queue, for the board agents"], ['office-workers', "Agent Office's workers, for every worker"], ['office-tasks', "3d-kanban's tasks, for every worker"]]) { // office-tasks, the kanban's tasks for every worker (see bin/office-tasks.js)
+  for (const [name, what] of [['office-queue', "Agent Office's task queue, for the board agents"], ['office-workers', "Agent Office's workers, for every worker"], ['office-tasks', "3d-kanban's tasks, for every worker"], ['office-pr', 'Pull requests on Azure DevOps and Bitbucket, for every worker'], ['office-git-credential', 'The git credential helper for Azure DevOps and Bitbucket']]) { // office-tasks, the kanban's tasks for every worker (see bin/office-tasks.js)
     const script = binScript(`${name}.js`);
     if (!script) continue;
     mkdirSync(dir, { recursive: true, mode: 0o700 });

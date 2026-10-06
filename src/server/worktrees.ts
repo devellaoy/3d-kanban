@@ -1,5 +1,6 @@
 import { execFile, execFileSync } from 'node:child_process';
 import { existsSync, readdirSync, statSync } from 'node:fs';
+import { officeReadGitEnv } from './hosting/index.js';
 import { mkdir, rm } from 'node:fs/promises';
 import path from 'node:path';
 import { promisify } from 'node:util';
@@ -94,8 +95,7 @@ export class Worktrees {
     const from = branch ?? this.currentBranch();
     this.fetchedFor = from;
     if (!from || !this.hasOrigin()) return undefined;
-    // Never stop to ask for a password: there's nobody at the office's terminal to type it.
-    const env = { ...process.env, GIT_TERMINAL_PROMPT: '0' };
+    const env = fetchEnv(process.env);
     this.fetching = execFileP('git', [...NO_FSMONITOR, 'fetch', '--quiet', '--no-tags', 'origin', from], { cwd: this.dir, env, timeout: FETCH_TIMEOUT_MS })
       .then(
         () => (this.fetchError = undefined),
@@ -408,6 +408,17 @@ export class Worktrees {
     const { stdout } = await execFileP('git', [...NO_FSMONITOR, ...args], { cwd, encoding: 'utf8', timeout: 60_000, maxBuffer: 16 * 1024 * 1024 });
     return stdout.trim();
   }
+}
+
+/**
+ * The environment the office fetches a base branch in: never asking for a password (there's nobody
+ * at the office's terminal to type it), and a repository on Azure DevOps or Bitbucket over HTTPS
+ * read with the tokens set in the office (officeReadGitEnv), not only the machine's own.
+ */
+export function fetchEnv(base: NodeJS.ProcessEnv): Record<string, string> {
+  const env: Record<string, string> = {};
+  for (const [k, v] of Object.entries(base)) if (v !== undefined) env[k] = v;
+  return officeReadGitEnv({ ...env, GIT_TERMINAL_PROMPT: '0' });
 }
 
 /**

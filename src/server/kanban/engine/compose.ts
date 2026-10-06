@@ -6,7 +6,9 @@ import { mkdirSync } from 'node:fs';
 import path from 'node:path';
 import type { FloorDef } from '../../building.js';
 import type { Floor } from '../../floor.js';
-import { checkoutRepo } from '../../ghrepo.js';
+import { checkoutRemote, checkoutRepo } from '../../ghrepo.js';
+import { hostLabel, hostOf, hostOfUrl, remoteLabel, repoRefOf } from '../../../shared/hosting/remote.js';
+import { parseAbKey, workItemUrl } from '../../../shared/hosting/workitems.js';
 import { workspaceNames } from '../../workers.js';
 import { Worktrees } from '../../worktrees.js';
 import type { KanbanContext } from '../registry.js';
@@ -23,7 +25,7 @@ import type { PromptId } from '../../../shared/prompts.js';
 import { languageRules } from '../../language.js';
 import { skillHint } from '../integrations/skills/index.js';
 import { workerIssueKey } from './worker-issue.js';
-import { worktreeDir } from '../../worktree-home.js';
+import { unbuiltWorkspaces, worktreeDir } from '../../worktree-home.js';
 
 type Vars = Record<string, string | number>;
 
@@ -74,7 +76,15 @@ export function workspaceDirs(floorDir: string, def: FloorDef, ws: TaskWorkspace
   return out;
 }
 
-const remoteOf = (r: ProjectRepo | undefined) => (r?.remote ? ` (${r.remote})` : '');
+/** What a worktree's line says when workspace packages linked in its node_modules need building there first. */
+function buildNote(dir: string): string {
+  const names = unbuiltWorkspaces(dir);
+  if (!names.length) return '';
+  const shown = names.slice(0, 5).join(', ') + (names.length > 5 ? ` and ${names.length - 5} more` : '');
+  return `; build its workspace packages ${shown} there first (their node_modules links go to this worktree's copies, whose build output isn't made yet)`;
+}
+
+const remoteOf = (r: ProjectRepo | undefined) => (r?.remote ? ` (${remoteLabel(r.remote)})` : '');
 
 /**
  * The {{repos}} lines: each folder the agent works in, what it is and its branch. Before the task
@@ -88,7 +98,7 @@ export function reposText(def: FloorDef, task: Pick<KanbanTask, 'repoIds' | 'wor
     return [...repos.filter((r) => r.primary || r.kind === 'folder').map((r) => `- \`${r.dir}\`: ${r.name} (a plain folder, not git)`), ...repos.filter((r) => !r.primary && r.kind === 'git').map((r) => `- \`${r.dir}\`: ${r.name}${remoteOf(r)} (its own git checkout)`)].join('\n');
   }
   if (task.workspace) {
-    const lines = workspaceDirs(floorDir, def, task.workspace).map((w) => `- \`${w.dir}\`: ${w.repo?.name ?? path.basename(w.dir)}${remoteOf(w.repo)}, on branch \`${w.branch}\`${w.from ? `, cut from \`${w.from}\`` : ''}${w.base ? ` at ${w.base.slice(0, 10)}` : ''}`);
+    const lines = workspaceDirs(floorDir, def, task.workspace).map((w) => `- \`${w.dir}\`: ${w.repo?.name ?? path.basename(w.dir)}${remoteOf(w.repo)}, on branch \`${w.branch}\`${w.from ? `, cut from \`${w.from}\`` : ''}${w.base ? ` at ${w.base.slice(0, 10)}` : ''}${buildNote(w.dir)}`);
     return [...lines, ...folders].join('\n');
   }
   const git = repos.filter((r) => r.kind === 'git');
@@ -106,8 +116,12 @@ export function reposText(def: FloorDef, task: Pick<KanbanTask, 'repoIds' | 'wor
 /** The {{repos}} lines of an ordinary office worker (its worktree, its workspace, or the project's checkout). */
 export function workerReposText(info: WorkerInfo, floorDir: string, projectName: string, branch?: string): string {
   if (!info.worktree) return `- \`${floorDir}\`: ${projectName}${branch ? `, on branch \`${branch}\`` : ''}`;
-  const lines = [`- \`${worktreeDir(floorDir, info.worktree.path)}\`: ${projectName}, on branch \`${info.worktree.branch}\`${info.worktree.from ? `, cut from \`${info.worktree.from}\`` : ''}`];
-  for (const r of info.repos ?? []) lines.push(`- \`${worktreeDir(floorDir, r.path)}\`: ${r.repo ?? r.name}, on branch \`${r.branch}\`${r.from ? `, cut from \`${r.from}\`` : ''}`);
+  const home = worktreeDir(floorDir, info.worktree.path);
+  const lines = [`- \`${home}\`: ${projectName}, on branch \`${info.worktree.branch}\`${info.worktree.from ? `, cut from \`${info.worktree.from}\`` : ''}${buildNote(home)}`];
+  for (const r of info.repos ?? []) {
+    const dir = worktreeDir(floorDir, r.path);
+    lines.push(`- \`${dir}\`: ${r.repo ?? r.name}, on branch \`${r.branch}\`${r.from ? `, cut from \`${r.from}\`` : ''}${buildNote(dir)}`);
+  }
   return lines.join('\n');
 }
 
@@ -169,10 +183,29 @@ export class Composer {
    * for any other ticket.
    */
   closesText(project: string, ticket: string | undefined, repos: (string | undefined)[], primary: string | undefined): string {
+    // An Azure Boards work item, when one of the repositories is on Azure DevOps.
+    // Only the repositories on Azure DevOps in the work item's own organization: AB#n names organization's own item n.
+    const ab = parseAbKey(ticket);
+    if (ab) {
+      const same = repos.map((r) => repoRefOf(r)).filter((r) => r?.host === 'azure' && r.owner.toLowerCase() === ab.org.toLowerCase());
+      return same.length ? this.text('kanban.pr.workitem', project, { id: ab.id, url: workItemUrl(ab), repos: [...new Set(same.map((r) => `${r!.project}/${r!.name}`))].join(', ') }) : '';
+    }
     const gh = parseGhKey(ticket);
     if (!gh) return '';
     const repo = closingPr(ticket, repos.map((repo) => ({ repo })), primary)?.repo;
     return this.text('kanban.pr.closes', project, { ref: `${gh.repo}#${gh.number}`, repo: repo ?? gh.repo, line: closingRef(ticket, repo) ?? '' });
+  }
+
+  /**
+   * The kanban.hosting note after the {{repos}} lines, for the repositories on Azure DevOps or
+   * Bitbucket (whose agents use office-pr where they'd use gh); '' when every one is on GitHub, so
+   * a GitHub project's prompts are exactly as they were.
+   */
+  hostingNote(project: string, repos: { name: string; remote?: string }[]): string {
+    const elsewhere = repos.filter((r) => r.remote && hostOf(r.remote) !== 'github');
+    if (!elsewhere.length) return '';
+    const hosts = elsewhere.map((r) => `${r.name} is on ${hostLabel(hostOf(r.remote))}`).join(', ');
+    return `\n\n${this.text('kanban.hosting', project, { hosts: hosts[0].toUpperCase() + hosts.slice(1) })}`;
   }
 
   /**
@@ -193,9 +226,9 @@ export class Composer {
         taskId: '-',
         title: what ?? '',
         ticket: '',
-        closes: this.closesText(id, ticket, [home, ...(info.repos ?? []).map((r) => r.repo)], home),
+        closes: this.closesText(id, ticket, [home ?? checkoutRemote(floor.dir), ...(info.repos ?? []).map((r) => r.repo ?? checkoutRemote(r.dir))], home),
         ticketId: ticket?.replace(/^gh:/, '') ?? 'none',
-        repos: workerReposText(info, floor.dir, name, floor.project.branch),
+        repos: workerReposText(info, floor.dir, name, floor.project.branch) + this.hostingNote(id, [{ name, remote: checkoutRemote(floor.dir) }, ...(info.repos ?? []).map((r) => ({ name: r.name, remote: checkoutRemote(r.dir) }))]),
         summary: info.task?.summary ? `What you worked on:\n${info.task.summary}` : '',
         skills: picked.length ? `Skills picked for this step (use them where they fit): ${picked.map((n) => (tool === 'claude' ? `/${n}` : n)).join(', ')}.` : '',
         language: this.language(id),
@@ -253,7 +286,7 @@ export class Composer {
       project: def.name,
       ticket: task.ticket ? this.text('kanban.ticket', task.project, { ticket: task.ticket, url: task.ticketUrl ? ` (${task.ticketUrl})` : '' }) : '',
       attachments: this.attachments(task),
-      repos: reposText(def, task, floorDir),
+      repos: reposText(def, task, floorDir) + this.hostingNote(task.project, taskRepos(def, task)),
       instructions: this.instructions(def, task),
       goal: task.goal?.trim() ? this.text('kanban.goal', task.project, { criteria: task.goal.trim() }) : '',
       taskRefs: this.text('kanban.taskRefs', task.project, {
@@ -347,10 +380,13 @@ export class Composer {
         const prs = (x.fixPrs ?? openPrs(task)).map((pr) => `- ${pr.repo ?? pr.repoId}: ${pr.url}`);
         const id = kind === 'pr.fix' ? 'kanban.pr.fix' : 'kanban.pr.conflicts';
         // `instructions` is only in the conflicts prompt; a prompt ignores variables it has no placeholder for.
-        return seal(this.text(id, p, { taskId: task.id, prs: prs.join('\n'), repos: v.repos, instructions: v.instructions, language: v.language }));
+        const text = this.text(id, p, { taskId: task.id, prs: prs.join('\n'), repos: v.repos, instructions: v.instructions, language: v.language });
+        // Elsewhere review comments carry no author_association: office-pr marks the ones to act on.
+        const elsewhere = kind === 'pr.fix' && (x.fixPrs ?? openPrs(task)).some((pr) => (hostOfUrl(pr.url) ?? hostOf(pr.repo)) !== 'github');
+        return seal(elsewhere ? `${text.trimEnd()}\n\n${this.text('kanban.pr.fixHosted', p)}` : text);
       }
       case 'pr.review':
-        return seal(this.text('kanban.pr.review', p, { prs: x.prs ?? '', project: def.name, task: x.prTask ?? '', repos: x.prRepos ?? v.repos, language: v.language }));
+        return seal(this.text('kanban.pr.review', p, { prs: x.prs ?? '', project: def.name, task: x.prTask ?? '', repos: x.prRepos ? x.prRepos + this.hostingNote(p, projectRepos(def)) : v.repos, language: v.language }));
     }
   }
 
@@ -382,7 +418,7 @@ export class Composer {
       plan: accepted ? this.text('kanban.acceptedPlan', task.project, { plan: accepted.text.trim() }) : '',
       summary: task.summary?.trim() ? this.text('kanban.handoff.summary', task.project, { summary: task.summary.trim() }) : '',
       recent: recent.length ? this.text('kanban.handoff.comments', task.project, { comments: recent.join('\n') }) : '',
-      repos: reposText(def, task, floorDir),
+      repos: reposText(def, task, floorDir) + this.hostingNote(task.project, taskRepos(def, task)),
       language: this.language(task.project),
     });
     return `${intro}\n\n${next}`.trim();

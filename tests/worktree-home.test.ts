@@ -4,8 +4,9 @@ import { existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, readdirSyn
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { test } from 'node:test';
+import { workerReposText } from '../src/server/kanban/engine/compose.js';
 import { prune } from '../src/server/prune.js';
-import { ensureHome, linkNodeModules, linkNodeModulesAsync, officeOfWorktree, worktreeHomes, worktreesHome } from '../src/server/worktree-home.js';
+import { ensureHome, linkNodeModules, linkNodeModulesAsync, officeOfWorktree, unbuiltWorkspaces, worktreeHomes, worktreesHome } from '../src/server/worktree-home.js';
 import { Worktrees } from '../src/server/worktrees.js';
 
 // New worktrees live beside the project, in <project>.worktrees/, linked to the project's node_modules;
@@ -408,4 +409,220 @@ test('the async node_modules walk makes what the sync one does', async (t) => {
   await linkNodeModulesAsync(dir, b);
   assert.deepEqual(tree(b), tree(a));
   assert.ok(tree(a).includes(path.join('@types', 'node')));
+});
+
+test('the async walk maps workspace, pnpm and dangling links as the sync one does', async (t) => {
+  const { root, dir } = workspace(t);
+  const nm = path.join(dir, 'node_modules');
+  mkdirSync(path.join(nm, '.pnpm', 'foo@1.0.0', 'node_modules', 'foo'), { recursive: true });
+  symlinkSync('.pnpm/foo@1.0.0/node_modules/foo', path.join(nm, 'foo'));
+  symlinkSync('../nowhere', path.join(nm, 'dangling'));
+  symlinkSync('../../nowhere', path.join(nm, '@acme', 'dangling'));
+  git(dir, 'worktree', 'add', '-q', '-b', 'sync', path.join(root, 'a'));
+  git(dir, 'worktree', 'add', '-q', '-b', 'async', path.join(root, 'b'));
+  linkNodeModules(dir, path.join(root, 'a'));
+  await linkNodeModulesAsync(dir, path.join(root, 'b'));
+  // Link targets, with the worktree's own root taken out.
+  const links = (wt: string) => {
+    const base = path.join(wt, 'node_modules');
+    return (readdirSync(base, { recursive: true }) as string[])
+      .filter((f) => lstatSync(path.join(base, f)).isSymbolicLink())
+      .sort()
+      .map((f) => [f, readlinkSync(path.join(base, f)).replace(wt, '<wt>')]);
+  };
+  assert.deepEqual(links(path.join(root, 'b')), links(path.join(root, 'a')));
+  const got = Object.fromEntries(links(path.join(root, 'a')));
+  assert.equal(got[path.join('@acme', 'ui')], path.join('<wt>', 'packages', 'ui'));
+  assert.equal(got.foo, path.join(nm, 'foo'));
+  assert.equal(got.dangling, path.join(nm, 'dangling'));
+});
+
+/** A repository with workspace packages (committed) and the links an install makes to them in its node_modules (ignored). */
+function workspace(t: { after(fn: () => void): void }, gitignore = 'node_modules/\n') {
+  const root = realpathSync(mkdtempSync(path.join(tmpdir(), 'agent-office-home-')));
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  const dir = repo(path.join(root, 'proj'), gitignore);
+  const put = (rel: string, body: string) => {
+    mkdirSync(path.dirname(path.join(dir, rel)), { recursive: true });
+    writeFileSync(path.join(dir, rel), body);
+  };
+  put('packages/ui/index.js', "module.exports = 'main';\n");
+  put('packages/ui/cli.js', 'cli\n');
+  put('packages/ui/package.json', JSON.stringify({ name: '@acme/ui', main: 'index.js' }));
+  put('packages/plain/index.js', "module.exports = 'plain';\n");
+  put('packages/plain/package.json', JSON.stringify({ name: 'ui-plain', main: 'index.js' }));
+  git(dir, 'add', '-A');
+  git(dir, 'commit', '-q', '-m', 'packages');
+  mkdirSync(path.join(dir, 'node_modules', '@acme'), { recursive: true });
+  symlinkSync('../../packages/ui', path.join(dir, 'node_modules', '@acme', 'ui'));
+  symlinkSync('../packages/plain', path.join(dir, 'node_modules', 'ui-plain'));
+  return { root, dir, put };
+}
+
+const made = (dir: string, slug: string): string => {
+  const m = new Worktrees(dir).create(slug);
+  assert.equal(typeof m, 'object', String(m));
+  return path.join(dir, (m as { path: string }).path);
+};
+const real = (...p: string[]) => realpathSync(path.join(...p));
+const requireIn = (cwd: string, name: string) => execFileSync(process.execPath, ['-e', `process.stdout.write(String(require(${JSON.stringify(name)})))`], { cwd, encoding: 'utf8' });
+
+test('a workspace package linked in node_modules is the worktree\'s own copy, scoped or not', (t) => {
+  const { dir } = workspace(t);
+  const wt = made(dir, 'ws-1');
+  assert.equal(real(wt, 'node_modules', '@acme', 'ui'), real(wt, 'packages', 'ui'));
+  assert.equal(real(wt, 'node_modules', 'ui-plain'), real(wt, 'packages', 'plain'));
+  writeFileSync(path.join(wt, 'packages', 'ui', 'index.js'), "module.exports = 'worktree';\n");
+  assert.equal(requireIn(wt, '@acme/ui'), 'worktree');
+  assert.equal(requireIn(dir, '@acme/ui'), 'main');
+});
+
+test('a .bin link into a workspace package points into the worktree', (t) => {
+  const { dir } = workspace(t);
+  mkdirSync(path.join(dir, 'node_modules', '.bin'));
+  symlinkSync('../@acme/ui/cli.js', path.join(dir, 'node_modules', '.bin', 'ui-cli'));
+  const wt = made(dir, 'ws-bin');
+  assert.equal(real(wt, 'node_modules', '.bin', 'ui-cli'), real(wt, 'packages', 'ui', 'cli.js'));
+});
+
+test('a .bin link into build output the worktree has not made yet runs the worktree\'s build once it is made', (t) => {
+  const { dir, put } = workspace(t, 'node_modules/\ndist/\n');
+  put('packages/ui/dist/cli.js', "process.stdout.write('main');\n");
+  mkdirSync(path.join(dir, 'node_modules', '.bin'));
+  symlinkSync('../@acme/ui/dist/cli.js', path.join(dir, 'node_modules', '.bin', 'ui-cli'));
+  const wt = made(dir, 'ws-dist');
+  const cli = path.join(wt, 'node_modules', '.bin', 'ui-cli');
+  assert.equal(readlinkSync(cli), path.join(wt, 'packages', 'ui', 'dist', 'cli.js'));
+  // Built in the worktree after the links were made.
+  mkdirSync(path.join(wt, 'packages', 'ui', 'dist'));
+  writeFileSync(path.join(wt, 'packages', 'ui', 'dist', 'cli.js'), "process.stdout.write('worktree');\n");
+  assert.equal(execFileSync(process.execPath, [cli], { encoding: 'utf8' }), 'worktree');
+  assert.equal(execFileSync(process.execPath, [path.join(dir, 'node_modules', '.bin', 'ui-cli')], { encoding: 'utf8' }), 'main');
+});
+
+test('a link to a package the worktree does not have falls back to the project\'s', (t) => {
+  const { dir, put } = workspace(t);
+  put('packages/local/index.js', 'local\n');
+  put('packages/local/package.json', JSON.stringify({ name: 'local' }));
+  symlinkSync('../packages/local', path.join(dir, 'node_modules', 'local'));
+  const wt = made(dir, 'ws-local');
+  assert.equal(existsSync(path.join(wt, 'packages', 'local')), false);
+  assert.equal(real(wt, 'node_modules', 'local'), real(dir, 'packages', 'local'));
+  // Inside a package the worktree has: still the project's.
+  put('packages/ui/local/index.js', 'inner\n');
+  put('packages/ui/local/package.json', JSON.stringify({ name: 'inner' }));
+  symlinkSync('../packages/ui/local', path.join(dir, 'node_modules', 'inner'));
+  rmSync(path.join(wt, 'node_modules'), { recursive: true });
+  linkNodeModules(dir, wt);
+  assert.equal(existsSync(path.join(wt, 'packages', 'ui', 'local')), false);
+  assert.equal(real(wt, 'node_modules', 'inner'), real(dir, 'packages', 'ui', 'local'));
+  assert.equal(real(wt, 'node_modules', 'local'), real(dir, 'packages', 'local'));
+});
+
+test('a pnpm store link and a link out of the repository stay what they were', (t) => {
+  const { root, dir } = workspace(t);
+  const nm = path.join(dir, 'node_modules');
+  mkdirSync(path.join(nm, '.pnpm', 'foo@1.0.0', 'node_modules', 'foo'), { recursive: true });
+  writeFileSync(path.join(nm, '.pnpm', 'foo@1.0.0', 'node_modules', 'foo', 'index.js'), 'foo\n');
+  symlinkSync('.pnpm/foo@1.0.0/node_modules/foo', path.join(nm, 'foo'));
+  mkdirSync(path.join(root, 'ext'));
+  symlinkSync(path.join(root, 'ext'), path.join(nm, 'ext'));
+  const wt = made(dir, 'ws-ext');
+  assert.equal(real(wt, 'node_modules', 'foo'), real(nm, 'foo'));
+  assert.equal(real(wt, 'node_modules', 'ext'), path.join(root, 'ext'));
+});
+
+for (const [name, ignore] of [['ignored', 'node_modules/\n'], ['not mentioned in .gitignore', '']] as const) {
+  test(`a workspace package's own node_modules is linked in the worktree too (node_modules ${name}), and git stays clean`, (t) => {
+    const { dir } = workspace(t, ignore);
+    // Needs to be in the project before the worktree is made, as an install would.
+    mkdirSync(path.join(dir, 'packages', 'ui', 'node_modules', 'ui-dep'), { recursive: true });
+    writeFileSync(path.join(dir, 'packages', 'ui', 'node_modules', 'ui-dep', 'index.js'), "module.exports = 'dep';\n");
+    writeFileSync(path.join(dir, 'packages', 'ui', 'index.js'), "module.exports = require('ui-dep');\n");
+    git(dir, 'commit', '-q', '-am', 'ui uses ui-dep');
+    const wt = made(dir, 'ws-nested');
+    assert.equal(requireIn(wt, '@acme/ui'), 'dep');
+    assert.ok(lstatSync(path.join(wt, 'packages', 'ui', 'node_modules')).isDirectory());
+    assert.equal(git(wt, 'status', '--porcelain'), '');
+    assert.equal(git(dir, 'status', '--porcelain'), '');
+  });
+}
+
+test('a floor in a subfolder of a monorepo: the links go to the worktree\'s packages', (t) => {
+  const { dir } = workspace(t);
+  const floor = path.join(dir, 'apps', 'web');
+  mkdirSync(path.join(floor, 'node_modules', '@acme'), { recursive: true });
+  symlinkSync(path.relative(path.join(floor, 'node_modules', '@acme'), path.join(dir, 'packages', 'ui')), path.join(floor, 'node_modules', '@acme', 'ui'));
+  const m = new Worktrees(floor).create('ws-floor');
+  assert.equal(typeof m, 'object', String(m));
+  if (typeof m === 'string') return;
+  const wt = path.resolve(floor, m.path);
+  assert.equal(real(wt, 'node_modules', '@acme', 'ui'), real(wt, 'packages', 'ui'));
+});
+
+test('restore links the workspace packages to the worktree again', async (t) => {
+  const { root, dir } = workspace(t);
+  const trees = new Worktrees(dir);
+  const m = trees.create('ws-restore');
+  if (typeof m === 'string') return assert.fail(m);
+  rmSync(path.join(root, 'proj.worktrees'), { recursive: true, force: true });
+  assert.deepEqual(await trees.restore(m), { from: 'here' });
+  const wt = path.join(dir, m.path);
+  assert.equal(real(wt, 'node_modules', '@acme', 'ui'), real(wt, 'packages', 'ui'));
+});
+
+test('a branch that commits a workspace folder as a link out of the worktree is not followed', (t) => {
+  const { root, dir } = workspace(t);
+  mkdirSync(path.join(dir, 'evil'));
+  git(dir, 'rm', '-rq', 'packages/ui');
+  symlinkSync(path.join(dir, 'evil'), path.join(dir, 'packages', 'ui'));
+  git(dir, 'add', '-A');
+  git(dir, 'commit', '-q', '-m', 'ui is a link');
+  // The project itself has the real one, as before the commit; the worktree gets the committed link.
+  const wt = path.join(root, 'wt');
+  git(dir, 'worktree', 'add', '-q', '-b', 'evil', wt);
+  rmSync(path.join(dir, 'packages', 'ui'));
+  mkdirSync(path.join(dir, 'packages', 'ui'));
+  writeFileSync(path.join(dir, 'packages', 'ui', 'package.json'), '{}');
+  linkNodeModules(dir, wt);
+  assert.equal(real(wt, 'node_modules', '@acme', 'ui'), real(dir, 'packages', 'ui'));
+  assert.deepEqual(readdirSync(path.join(dir, 'evil')), []);
+  assert.equal(existsSync(path.join(dir, 'evil', 'node_modules')), false);
+});
+
+test('workspace packages with their own links to other workspace packages are the worktree\'s, cycles included', (t) => {
+  const { dir, put } = workspace(t);
+  put('packages/app/index.js', 'app\n');
+  put('packages/app/package.json', JSON.stringify({ name: '@acme/app' }));
+  git(dir, 'add', '-A');
+  git(dir, 'commit', '-q', '-m', 'app');
+  const nm = (pkgDir: string) => path.join(dir, 'packages', pkgDir, 'node_modules', '@acme');
+  mkdirSync(nm('app'), { recursive: true });
+  symlinkSync('../../../ui', path.join(nm('app'), 'ui'));
+  symlinkSync('../../packages/app', path.join(dir, 'node_modules', '@acme', 'app'));
+  const wt = made(dir, 'ws-pnpm');
+  assert.equal(real(wt, 'packages', 'app', 'node_modules', '@acme', 'ui'), real(wt, 'packages', 'ui'));
+  // And back: ui's node_modules links to app, app's to ui.
+  mkdirSync(nm('ui'), { recursive: true });
+  symlinkSync('../../../app', path.join(nm('ui'), 'app'));
+  const wt2 = made(dir, 'ws-cycle');
+  assert.equal(real(wt2, 'packages', 'ui', 'node_modules', '@acme', 'app'), real(wt2, 'packages', 'app'));
+  assert.equal(real(wt2, 'packages', 'app', 'node_modules', '@acme', 'ui'), real(wt2, 'packages', 'ui'));
+});
+
+test('unbuiltWorkspaces names the linked workspace packages whose main is not made in the worktree; the brief says so', (t) => {
+  const { dir, put } = workspace(t, 'node_modules/\ndist/\n');
+  put('packages/ui/package.json', JSON.stringify({ name: '@acme/ui', main: 'dist/index' }));
+  put('packages/ui/dist/index.js', 'built\n');
+  git(dir, 'add', '-A');
+  git(dir, 'commit', '-q', '-am', 'main is build output');
+  const wt = made(dir, 'ws-unbuilt');
+  assert.deepEqual(unbuiltWorkspaces(wt), ['@acme/ui']);
+  const info = { worktree: { path: path.relative(dir, wt), branch: 'office/x' } } as Parameters<typeof workerReposText>[0];
+  assert.match(workerReposText(info, dir, 'proj'), /build its workspace packages @acme\/ui there first/);
+  mkdirSync(path.join(wt, 'packages', 'ui', 'dist'));
+  writeFileSync(path.join(wt, 'packages', 'ui', 'dist', 'index.js'), 'built\n');
+  assert.deepEqual(unbuiltWorkspaces(wt), []);
+  assert.doesNotMatch(workerReposText(info, dir, 'proj'), /build its workspace/);
+  assert.deepEqual(unbuiltWorkspaces(path.join(dir, 'nowhere')), []);
 });

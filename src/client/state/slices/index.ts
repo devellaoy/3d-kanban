@@ -39,6 +39,7 @@ import { multiplayer } from './multiplayer';
 import { kanbanLounge } from '../../kanban/loungeslice';
 import { phone } from '../../phone/slice';
 import { phoneMusic } from '../../phone/music-slice';
+import { hosting } from './hosting';
 
 export const SLICES: readonly Slice[] = [
   presence,
@@ -75,4 +76,5 @@ export const SLICES: readonly Slice[] = [
   kanbanLounge, // the kanban's tasks on hold, as figures in the lounge
   phone, // the workers of another floor, for the phone
   phoneMusic, // the phone's music session
+  hosting, // your Azure DevOps and Bitbucket tokens
 ];

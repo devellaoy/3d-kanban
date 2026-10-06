@@ -2,13 +2,13 @@ import { execFileSync } from 'node:child_process';
 import { mkdirSync } from 'node:fs';
 import path from 'node:path';
 import type { ChangesState, FloorInfo, GhIssue, GhPull, GhState, PeerInfo, ProjectInfo, ServerMsg, WorkerInfo } from '../shared/protocol.js';
-import { isBusy } from '../shared/status.js';
+import { isBusy, waitingOnSomeone } from '../shared/status.js';
 import { DESK_BY_ID, MEETING_ROOMS, builtMeetingRooms, type MeetingRoomDef } from '../shared/layout.js';
 import type { FloorDef } from './building.js';
 import { excludeFromGit } from './config.js';
 import { agentProviders, configuredProvider } from './agents.js';
 import { WorkerManager, workedMs, type HookEnv, type RunAs } from './workers.js';
-import { GitHub, MergeWatch } from './github.js';
+import { MergeWatch, openBoard, type Board } from './github.js';
 import type { GhAs } from './signins.js';
 import { TaskQueue } from './queue.js';
 import { WorkerCloses } from './worker-closes.js';
@@ -31,7 +31,7 @@ import type { Capacity } from './machine.js';
 import type { PromptSource } from './prompts.js';
 // The PR board covers every repository of the project (see pullsState).
 import { parseRepoFloorId, projectRepos, uniqueRepos } from './kanban/projects.js';
-import { checkoutRepo } from './ghrepo.js';
+import { checkoutRemote, checkoutRepo } from './ghrepo.js';
 import { ghIssueKey } from './kanban/integrations/issues/github-repo.js';
 // The kanban hears when the PR board has fresh lists (its tasks' linked PRs' states).
 import { floorPulled } from './kanban/integrations/pulls/board.js';
@@ -141,7 +141,7 @@ export class Floor {
   /** See isGitFloor: a plain folder runs no git and asks GitHub nothing. */
   readonly git: boolean;
   readonly workers: WorkerManager;
-  readonly github: GitHub;
+  readonly github: Board;
   readonly queue: TaskQueue;
   private readonly closes: WorkerCloses;
   readonly changes: Changes;
@@ -178,7 +178,7 @@ export class Floor {
    * remote), by ProjectRepo id, each fetched in that repository's checkout. `github` stays the floor's
    * own repository, exactly as upstream has it; the board shows them all (see pullsState).
    */
-  private boards = new Map<string, { board: GitHub; dir: string; remote: string }>();
+  private boards = new Map<string, { board: Board; dir: string; remote: string }>();
 
   constructor(
     readonly def: FloorDef,
@@ -248,7 +248,7 @@ export class Floor {
     );
     this.workers.carryOn = () => ctx.carryOn(); this.workers.wing = () => this.plan.wing; this.workers.removed = () => this.plan.seatsOut();
 
-    this.github = new GitHub(
+    this.github = openBoard(
       def.dir,
       (state) => void (wallIssues(this.id) ? undefined : ctx.emit(this, { t: 'gh.issues', state })), // not while the board shows the project's issue sources
       (state) => {
@@ -288,8 +288,8 @@ export class Floor {
         toast: (text, level) => ctx.toast(this, text, level),
         hiringPaused: () => ctx.ledger.hiringPaused,
         postReview: (pr, file, owner) => {
-          const as = ctx.ghAs(owner);
-          return typeof as === 'string' ? Promise.reject(new Error(as)) : this.github.review(pr, file, as);
+          const as = this.github.hosted ? undefined : ctx.ghAs(owner); // a repository elsewhere posts with its host's credentials (GitHub.review)
+          return typeof as === 'string' ? Promise.reject(new Error(as)) : this.github.review(pr, file, as, owner);
         },
         prompt: (id) => prompts.text(id),
       },
@@ -407,10 +407,9 @@ export class Floor {
   // --- the project's other repositories' pull requests --------------------------------
 
   /**
-   * The PR board's list: the floor's own repository's pull requests and, for a project with several
-   * repositories, each other one's, every one marked with its repository (GhPull.repo). A floor with
-   * one repository gets exactly upstream's list. `repos` names every repository of the project (the
-   * floor's own, then the others), so the PR board has a tab for one without pull requests too.
+   * The PR board's list: the floor's own repository's pull requests and, on a project with several,
+   * each other one's, all marked with their repository (GhPull.repo); one repository gets upstream's
+   * list. `repos` names every repository (the floor's own first), so one without PRs gets a tab too.
    */
   pullsState(): GhState<GhPull> {
     const own = this.github.pulls;
@@ -421,15 +420,16 @@ export class Floor {
       items: [...own.items.map((p) => (this.def.repo && !p.repo ? { ...p, repo: this.def.repo } : p)), ...states.flatMap((b) => b.pulls.items)],
       fetchedAt: Math.max(own.fetchedAt, ...states.map((b) => b.pulls.fetchedAt)),
       loading: own.loading || states.some((b) => b.pulls.loading),
+      ...(own.viewer ? { viewer: own.viewer } : {}),
       // The floor's own board lists the repository GitHub.target names (FloorDef.repo, else the origin); the others are projectRepos'.
-      repos: uniqueRepos([this.def.repo ?? (this.git ? checkoutRepo(this.dir) : undefined), ...projectRepos(this.def).filter((r) => !r.primary).map((r) => r.remote)]),
+      repos: uniqueRepos([this.def.repo ?? (this.git ? checkoutRemote(this.dir) : undefined), ...projectRepos(this.def).filter((r) => !r.primary).map((r) => r.remote)]),
       ...(errors.length ? { error: errors.join(' · ') } : {}),
     };
   }
 
   /** The GitHub of one of the project's repositories, by owner/name: the floor's own for none (or its own name). */
-  githubFor(repo?: string): GitHub | undefined {
-    if (!repo || sameRepo(repo, this.def.repo)) return this.github;
+  githubFor(repo?: string): Board | undefined {
+    if (!repo || sameRepo(repo, this.def.repo) || sameRepo(repo, this.github.hosted?.id)) return this.github;
     for (const b of this.boards.values()) if (sameRepo(b.remote, repo)) return b.board;
     return undefined;
   }
@@ -445,7 +445,7 @@ export class Floor {
     return floor?.boards.get(synthetic.repo)?.board.pulls.items;
   }
 
-  private boardOf(id: string): GitHub | undefined {
+  private boardOf(id: string): Board | undefined {
     const synthetic = parseRepoFloorId(id);
     return synthetic?.floor === this.id ? this.boards.get(synthetic.repo)?.board : undefined;
   }
@@ -466,7 +466,7 @@ export class Floor {
     }
     for (const [id, r] of want) {
       if (this.boards.has(id)) continue;
-      const board = new GitHub(r.dir, () => {}, (state) => {
+      const board = openBoard(r.dir, () => {}, (state) => {
         this.ctx.emit(this, { t: 'gh.pulls', state: this.pullsState() });
         if (!state.loading && !state.error) this.boardPulled();
       }, { nameWithOwner: r.remote, pullsOnly: true });
@@ -576,7 +576,7 @@ export class Floor {
       addedAt: this.def.addedAt,
       workers: ws.filter((w) => !DESK_BY_ID.get(w.deskId)?.station).length,
       busy: ws.filter((w) => w.status === 'working').length,
-      waiting: ws.filter((w) => w.kind === 'agent' && (w.status === 'needs_input' || (w.status === 'done' && !w.acked))).length,
+      waiting: ws.filter((w) => w.kind === 'agent' && waitingOnSomeone(w)).length,
       people: this.ctx.people(this),
       wing: this.plan.wing,
       rooms: this.plan.rooms,
