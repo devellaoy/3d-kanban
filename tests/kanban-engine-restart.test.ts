@@ -588,3 +588,34 @@ test('an office stopped while the plan → implement relaunch waits for the old 
   assert.deepEqual(runs.map((r) => `${r.phase}/${r.status}`), ['plan/succeeded', 'implement/interrupted', 'implement/succeeded']);
   assert.equal(runs[2].workerId, run.workerId, 'on the same worker');
 });
+
+test('the implement prompt survives a second stop before it was delivered: the third start still sends it, not a continue', async (t) => {
+  const fx = await fixture();
+  t.after(() => fx.close());
+  fx.setRules([{ when: 'Plan kanban task', reply: 'Plan ready.', exitPlan: 'The plan.' }, { when: 'Implement kanban task', reply: 'Implemented after two stops.', commit: 'Work' }]);
+  const task = fx.newTask({ usePlan: true, planApproval: 'auto', useReview: false });
+  await fx.engine.start(task.id, ADA);
+  const end = Date.now() + 15_000;
+  let worker: { pty?: { kill(signal?: string): void }; relaunching?: boolean } | undefined;
+  while (!worker?.pty && Date.now() < end) {
+    await sleep(20);
+    const id = fx.repo.activeRun(task.id)?.workerId;
+    worker = id ? (fx.workers as unknown as { workers: Map<string, typeof worker> }).workers.get(id) : undefined;
+  }
+  const pty = worker!.pty!;
+  const kill = pty.kill.bind(pty);
+  pty.kill = (signal) => void setTimeout(() => kill(signal), 1500);
+  while (!worker!.relaunching && Date.now() < end) await sleep(5);
+  await fx.restartOffice();
+  // The second office stops before the implement prompt reaches its agent (the prompt never goes in).
+  const office = fx.workers as unknown as { prompt: () => undefined; relaunch: () => Promise<undefined> };
+  office.prompt = () => undefined;
+  office.relaunch = async () => undefined;
+  while (fx.repo.listRuns(task.id).filter((r) => r.phase === 'implement').length < 2 && Date.now() < end) await sleep(10);
+  await fx.restartOffice();
+  const done = await fx.waitTask(task.id, (x) => x.status === 'review' && x.runState === 'idle', 'the review column', 40_000);
+  assert.equal(done.summary, 'Implemented after two stops.');
+  assert.equal(prompts(fx, RESTARTED).length, 0, 'never a continue: the session only had the plan');
+  assert.equal(prompts(fx, /Implement kanban task/).length, 1);
+  assert.deepEqual(fx.repo.listRuns(task.id).map((r) => r.phase), ['plan', 'implement', 'implement', 'implement']);
+});

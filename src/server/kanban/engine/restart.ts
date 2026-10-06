@@ -176,10 +176,23 @@ export class Restarts<L extends HeldRun> {
       return;
     }
     this.deps.finishRun(run.id, task.project, { status: 'interrupted', error: 'The office restarted mid-run' });
-    // A relaunch cut off before its new process started (cut 'starting') on a phase's first run: nothing was said to the agent in this phase, so it gets the phase's own prompt, not a "carry on" for a cut-off turn.
-    const own = cut === 'starting' && !ctx.repo.listRuns(task.id).some((r) => r.id !== run.id && r.phase === run.phase && r.role === run.role && r.round === run.round) ? ownPrompt(run.phase, run.round, task) : 'continue';
+    // The phase's own prompt, not a "carry on" for a cut-off turn, while the agent never got it (see `unprompted`).
+    const own = this.unprompted(run, task, floor, info, cut) ? ownPrompt(run.phase, run.round, task) : 'continue';
     this.deps.update(task.id, { runState: 'queued', queuedRun: { phase: run.phase, role: run.role, prompt: own === 'continue' ? 'restarted' : own, restarted: true, ...(run.round !== undefined ? { round: run.round } : {}) } });
     note(task, 'The office restarted mid-run: its agent carries on by itself shortly.', run.id);
+  }
+
+  /**
+   * Whether the agent never got the phase's prompt (a relaunch cut off before its new process started, then perhaps cut off again while
+   * it waited for the woken worker): the run's worker was cut off before it worked (`starting`, `idle`) and the session log holds no
+   * prompt since the first run of this phase, role and round started. Without a log, only a first such run counts, and only when cut `starting`.
+   */
+  private unprompted(run: KanbanRun, task: KanbanTask, floor: Floor, info: WorkerInfo, cut: WorkerStatus): boolean {
+    if (cut !== 'starting' && cut !== 'idle') return false;
+    const same = this.deps.ctx.repo.listRuns(task.id).filter((r) => r.phase === run.phase && r.role === run.role && r.round === run.round);
+    const file = run.tool === 'claude' ? floor.workers.transcripts(info.id)?.claude : undefined;
+    const heard = file ? claudeAdapter.readTurnResult(file, { promptAt: same[0]?.startedAt ?? run.startedAt }) : undefined;
+    return heard ? !!heard.unheard : cut === 'starting' && same.length <= 1;
   }
 
   /** Whether the session log of the run's turns shows background agents, commands or teammates still out. */
