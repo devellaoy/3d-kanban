@@ -7,6 +7,8 @@
 
 import type { BrowseClientMsg, BrowseIssue, BrowseScope, BrowseServerMsg } from '../../../../../shared/kanban/browse.js';
 import { parseGhKey } from '../../../../../shared/kanban/issuecard.js';
+import { parseAbKey } from '../../../../../shared/hosting/workitems.js';
+import { readWorkItems, readerAs, type AzureBoardsConfig } from '../azure-boards.js';
 import type { IssueSourceConfig, NormalizedIssue } from '../../../../../shared/kanban/types.js';
 import type { KanbanClient, KanbanContext, KanbanPlugin } from '../../../registry.js';
 import { fail } from '../../util.js';
@@ -200,6 +202,12 @@ export function createBrowse(ctx: KanbanContext, deps: BrowseDeps) {
     const sources = ctx.settings.project(project).issueSources;
     const io = actIo(project, 'Agent Office');
     try {
+      // An Azure Boards work item: only of one of the project's Azure Boards sources (its organization and project).
+      const ab = parseAbKey(key);
+      if (ab) {
+        const board = sources.find((s): s is AzureBoardsConfig => s.kind === 'azure-boards' && s.org.toLowerCase() === ab.org.toLowerCase() && s.project.toLowerCase() === ab.project.toLowerCase());
+        return board ? (await readWorkItems(io, readerAs(), board.org, board.project, [ab.id], board.id))[0] : undefined;
+      }
       if (JIRA_KEY_RE.test(key)) {
         const jira = sources.find((s): s is JiraConfig => s.kind === 'jira' && s.projectKeys.some((k) => k.toUpperCase() === keyProject(key)));
         return jira ? await jiraGet(io, jira, key, caches) : undefined;
