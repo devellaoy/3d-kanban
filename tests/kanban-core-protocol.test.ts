@@ -96,6 +96,12 @@ test('good messages come through rebuilt, without anything the validator did not
   assert.deepEqual(good({ t: 'kanban.task.pr', id: 1, mode: 'conflicts' }), { t: 'kanban.task.pr', id: 1, mode: 'conflicts' });
   refused({ t: 'kanban.task.pr', id: 1, mode: 'rebase' }, /mode/);
   assert.deepEqual(good({ t: 'kanban.project.prompt.set', project: 'web', id: 'kanban.pr.create', text: null }), { t: 'kanban.project.prompt.set', project: 'web', id: 'kanban.pr.create', text: null });
+  assert.deepEqual(good({ t: 'kanban.issue.comment', project: 'web', issueKey: 'DEV-1', text: 'x', source: 'src-1' }), { t: 'kanban.issue.comment', project: 'web', issueKey: 'DEV-1', source: 'src-1', text: 'x' });
+  assert.deepEqual(good({ t: 'kanban.issue.transitions', project: 'web', issueKey: 'DEV-1' }), { t: 'kanban.issue.transitions', project: 'web', issueKey: 'DEV-1' });
+  for (const t of ['kanban.issue.transitions', 'kanban.issue.comments', 'kanban.issue.people']) assert.equal((good({ t, project: 'web', issueKey: 'DEV-1', source: 'a_b-9' }) as { source?: string }).source, 'a_b-9');
+  refused({ t: 'kanban.issue.comments', project: 'web', issueKey: 'DEV-1', source: '../x' }, /issue source id/);
+  refused({ t: 'kanban.issue.assign', project: 'web', issueKey: 'DEV-1', source: 'x'.repeat(41), to: null }, /issue source id/);
+  refused({ t: 'kanban.issue.comments', project: 'web', issueKey: 'DEV-1', source: 5 }, /issue source id/);
   assert.deepEqual(good({ t: 'kanban.secrets.set', apiKey: 'k'.repeat(20) }), { t: 'kanban.secrets.set', apiKey: 'k'.repeat(20) });
   assert.deepEqual(good({ t: 'kanban.secrets.set', apiKey: null }), { t: 'kanban.secrets.set', apiKey: null });
   assert.deepEqual(good({ t: 'kanban.secrets.jira.set', name: ' Acme ', site: 'https://acme.atlassian.net/', email: ' a@b.fi ', token: ' t ' }), { t: 'kanban.secrets.jira.set', name: 'Acme', site: 'acme.atlassian.net', email: 'a@b.fi', token: 't' });

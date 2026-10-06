@@ -10,6 +10,8 @@ export interface ActionIssue {
   url?: string;
   status?: string;
   assignee?: string;
+  /** The issue source it was listed or opened through: its actions go through that source's Jira connection. */
+  sourceId?: string;
 }
 
 /** A link from a source, only when it's http(s): nothing else goes into an href. */
@@ -18,9 +20,9 @@ export function safeUrl(url: string | undefined): string {
 }
 
 /** The panel's view of an issue from the kanban's list (one assignee) or a 3D card (its assignees). */
-export function actionIssue(i: { key?: string; url: string; status?: string; assignee?: string; assignees?: string[] }): ActionIssue {
+export function actionIssue(i: { key?: string; url: string; status?: string; assignee?: string; assignees?: string[]; sourceId?: string }): ActionIssue {
   const assignee = i.assignee ?? (i.assignees?.join(', ') || undefined);
-  return { key: i.key ?? '', url: safeUrl(i.url) || undefined, status: i.status, assignee };
+  return { key: i.key ?? '', url: safeUrl(i.url) || undefined, status: i.status, assignee, ...(i.sourceId ? { sourceId: i.sourceId } : {}) };
 }
 
 /**

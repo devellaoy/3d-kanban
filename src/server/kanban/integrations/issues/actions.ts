@@ -60,7 +60,9 @@ const issueSite = (url: string): string | undefined => {
   }
 };
 
-export function route(sources: IssueSourceConfig[], issue: NormalizedIssue): Target | string {
+/** `via`: the source the asker opened the issue through; for a Jira issue it must be a Jira source on the issue's own site that covers the key's project. */
+export function route(sources: IssueSourceConfig[], issue: NormalizedIssue, via?: string): Target | string {
+  if (via !== undefined && !sources.some((s) => s.id === via)) return `${via} isn't one of the project's issue sources`;
   if (issue.source === 'jira') {
     let jiras = sources.filter((s): s is Extract<IssueSourceConfig, { kind: 'jira' }> => s.kind === 'jira');
     // An issue is acted on at the site it came from: never through a source on another one.
@@ -69,9 +71,12 @@ export function route(sources: IssueSourceConfig[], issue: NormalizedIssue): Tar
       jiras = jiras.filter((s) => sameJiraSite(s.site, site));
       if (!jiras.length) return `${issue.key}'s Jira source (on ${site}) is no longer one of the project's: re-add it to act on the issue`;
     }
-    // The source that listed it, else the one whose projects hold the key, else the first.
     const project = keyProject(issue.key);
-    const jira = jiras.find((s) => s.id === issue.sourceId) ?? jiras.find((s) => s.projectKeys.some((k) => k.toUpperCase() === project)) ?? jiras[0];
+    const covers = (s: (typeof jiras)[number]) => !s.projectKeys.length || s.projectKeys.some((k) => k.toUpperCase() === project);
+    const chosen = via === undefined ? undefined : jiras.find((s) => s.id === via);
+    if (via !== undefined && !(chosen && covers(chosen))) return `${via} isn't a Jira source for ${issue.key}${site ? ` on ${site}` : ''}`;
+    // The source the asker came through, else the one that listed it, else the one whose projects hold the key, else the first.
+    const jira = chosen ?? jiras.find((s) => s.id === issue.sourceId) ?? jiras.find((s) => s.projectKeys.some((k) => k.toUpperCase() === project)) ?? jiras[0];
     return jira ? { kind: 'jira', site: jira.site, ...(jira.connection ? { connection: jira.connection } : {}) } : 'The project has no Jira source';
   }
   const ab = parseAbKey(issue.key);
@@ -122,13 +127,13 @@ export function issueActionHandlers(ctx: KanbanContext, deps: ActionDeps): NonNu
 
   /** Checks the project and the issue, routes the key and picks the identity, then runs `go`; any error it throws is the answer. */
   const scoped =
-    <M extends { project: string; issueKey: string; rid?: string }>(go: (c: KanbanClient, m: M, s: Scope) => Promise<void>, write = false) =>
+    <M extends { project: string; issueKey: string; source?: string; rid?: string }>(go: (c: KanbanClient, m: M, s: Scope) => Promise<void>, write = false) =>
     async (c: KanbanClient, m: M): Promise<void> => {
       if (!ctx.project(m.project)) return fail(c, m.rid, `There's no project ${m.project}`);
       const issue = deps.find(m.project, m.issueKey) ?? (await deps.load(m.project, m.issueKey));
       if (!issue) return fail(c, m.rid, `${m.issueKey} isn't among the project's issues (any more)`);
       const sources = ctx.settings.project(m.project).issueSources;
-      const target = route(sources, issue);
+      const target = route(sources, issue, m.source);
       if (typeof target === 'string') return fail(c, m.rid, target);
       const base = deps.io(m.project);
       let io: IssueActIo;
