@@ -4,6 +4,7 @@
 // kanban.issues.createTask turns one into a task, once per ticket.
 
 import type { KanbanCaller, KanbanContext, KanbanPlugin } from '../../registry.js';
+import { hostOf } from '../../../../shared/hosting/remote.js';
 import type { IssueSourceConfig, NormalizedIssue } from '../../../../shared/kanban/types.js';
 import type { KanbanServerMsg } from '../../../../shared/kanban/protocol.js';
 import { gh } from '../../../github.js';
@@ -161,7 +162,8 @@ export function createIssues(ctx: KanbanContext, opts: IssuesOptions = {}) {
 
   const io = (project: string): IssueSourceIo => {
     const def = ctx.project(project);
-    const repos = ctx.repos(project).filter((r) => r.kind === 'git' && r.remote).map((r) => r.remote!);
+    // GitHub's only (IssueSourceIo.projectRepos): a project's repositories on Azure DevOps or Bitbucket aren't gh's.
+    const repos = ctx.repos(project).filter((r) => r.kind === 'git' && r.remote && hostOf(r.remote) === 'github').map((r) => r.remote!);
     return { gh: runGh, fetch: doFetch, cwd: ctx.floor(project)?.dir ?? def?.dir ?? ctx.dataDir, jira: ctx.secrets.jira(), projectRepos: repos };
   };
 

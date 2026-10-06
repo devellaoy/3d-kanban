@@ -471,6 +471,22 @@ test('Jira people come from the scope’s projects', async () => {
   assert.match(http.calls.at(-1)!.url, /multiProjectSearch\?projectKeys=UYT&query=ma&maxResults=20/);
 });
 
+test('a GitHub board’s people in a project that mixes hosts come from its GitHub repository, not an Azure DevOps primary', async () => {
+  const ctx = makeCtx([def('app', '/tmp/app', { repos: [
+    { id: 'app', name: 'api', kind: 'git', dir: '/tmp/app', remote: 'azure:contoso/Web/api', primary: true },
+    { id: 'web', name: 'web', kind: 'git', dir: '/tmp/web', remote: 'o/r', primary: false },
+  ] })]);
+  ctx.settings.setProject('app', { issueSources: [BOARD] });
+  const gh = ghStub(() => JSON.stringify({ data: { repository: { assignableUsers: { nodes: [{ login: 'maija', name: 'Maija' }] } } } }));
+  const issues = createIssues(ctx, { gh: gh.gh as never, fetch: jiraSite().fetch });
+  const c = client(true, 'acc1');
+  await (issues.plugin.ws as any)['kanban.browse.people'](c, { t: 'kanban.browse.people', project: 'app', rid: 'r1', scope: 'p', query: 'ma' });
+  const asked = gh.calls.at(-1)!;
+  assert.equal(arg(asked, 'owner'), 'o');
+  assert.equal(arg(asked, 'name'), 'r');
+  assert.ok(!gh.calls.some((a) => a.some((x) => x.includes('azure:'))), 'gh never hears of the Azure DevOps repository');
+});
+
 // --- GitHub ---------------------------------------------------------------------------------------
 
 test('GitHub page: the query variable is sent, the cursor goes both ways, items carry sub-issue counts', async () => {
