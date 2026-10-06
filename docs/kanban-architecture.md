@@ -415,8 +415,8 @@ allowed: `todo → in_progress` (= start), `waiting|review → done`, `done → 
   A Jira source (`IssueSourceConfig` `jira`) may name `connection`; every Jira call (`jira.ts` search, `jiraCall` in
   `jira-ops.ts`, which the browse and the actions use) takes a `JiraAt {site, connection?}` and `pickJiraConnection`
   (`integrations/issues/jira-auth.ts`) chooses: the named connection, which must be for that site, else the first for
-  the site; anything else is an error and nothing is sent. `setProject` refuses two Jira sources on different sites that
-  share a project key, since keys identify issues without their site (per project: routing and the issue list are per project). Changing the
+  the site; anything else is an error and nothing is sent. `setProject` refuses (`jiraSourcesProblem`, shared with the browser) Jira sources
+  on different sites that share a project key or have none, since keys identify issues without their site (per project: routing and the issue list are per project). Changing the
   connections also empties the browse caches (counts, versions, sub-task parents), so nothing read with an old account is served.
 - `<officeData>/.agent-office/kanban/uploads/`, `kanban/grants/task-<id>/`, `kanban/reports/task-<id>/`, `kanban/refs/task-<id>/`,
   `kanban/skills/plugin-<hash>/` (generated Claude skill plugins), `kanban/legacy/` (migrated stream logs).
@@ -525,7 +525,9 @@ answers `kanban.ok {rid, ...}` or `kanban.error {rid, message}`. Deltas are push
     `p:<projectId>:<itemId>:<fieldId>:<optionId>` (a Projects v2 Status option, checked again against a fresh read before
     it is written) or `gh:close` / `gh:close:not_planned` / `gh:reopen`.
     - Only keys on the project's cached list are accepted. **Routing is by key**, not by `sourceId` (the list keeps one
-      source's copy of a key two sources both list): a Jira key goes to Jira through a Jira source on the issue's own site (the host of its URL): the one that listed it, else the one whose project keys hold the key, else the first; with none on that site any more the action is refused, never sent to another site,
+      source's copy of a key two sources both list): a Jira key goes to Jira through a Jira source on the issue's own site (the host of its URL): the request's optional
+      `source` (the source the issue was opened through, e.g. in Browse; it must be a Jira source of the project on that site
+      whose project keys hold the key, else the request is refused), else the one that listed it, else the one whose project keys hold the key, else the first; with none on that site any more the action is refused, never sent to another site,
       `ghp:…` to the board's Status, `gh:owner/repo#N` to GitHub for comments and assignees and, for its status, to the Status
       options of the project's `github-project` sources that hold it (`projectItems`) plus GitHub's close / reopen.
     - Identity: Jira always uses the source's Jira connection (below); GitHub runs as `KanbanContext.ghAs(accountId)` (wired from

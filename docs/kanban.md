@@ -431,8 +431,10 @@ for: a picked connection for another site, a removed one, or no connection for t
 the source, not a fallback. `currentUser()` / *me* in a source's assignee filter is the connection's
 account. Changing the connections fetches the projects' Jira issues again at once. An office that had
 the one Jira token from before keeps it as a connection named after its site, with nothing to re-enter.
-Issue keys tell issues apart without their site, so two Jira sources of a project on different sites
-can't share a project key (saving them says so).
+Issue keys tell issues apart without their site, so when a project's Jira sources are on different
+sites, each needs project keys and no key may be on two sites (saving them says so). An issue opened in
+🔎 Browse is changed through the source it was opened from (so its connection's account), one from the
+list through the source that listed it.
 
 Issues are fetched again every 90 seconds while someone looks at them, every 10 minutes otherwise, and
 with **Refresh**. Keys: `gh:owner/repo#12` (GitHub issues), `ghp:<owner>/<number>#<item>` (project
