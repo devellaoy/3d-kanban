@@ -521,3 +521,38 @@ test('a session that is gone after a restart: Retry starts a fresh session with 
   assert.equal(done.summary, 'Finished in a fresh session.');
   assert.ok(fx.invocations().some((i) => i.prompt && /Implement kanban task/.test(i.prompt) && i.args.length && !i.args.includes('stale-1')), 'a fresh session ran the phase');
 });
+
+test('a Stop that had not completed when the office closed completes on the next start: stopped, nothing carries on', async (t) => {
+  const fx = await fixture();
+  t.after(() => fx.close());
+  fx.setRules([{ when: 'Implement kanban task', reply: 'unused', delayMs: 60_000, escSilent: true }, { when: 'office was restarted', reply: 'Should not be asked.' }]);
+  const task = fx.newTask({ usePlan: false, useReview: false });
+  const run = await midTurn(fx, task.id);
+  void fx.engine.stop(task.id, ADA);
+  await fx.waitTask(task.id, (x) => x.runState === 'stopping', 'the stop under way');
+  await fx.restartOffice();
+  const stopped = await fx.waitTask(task.id, (x) => x.status === 'waiting' && x.waitingReason === 'stopped' && x.runState === 'idle', 'the stopped task');
+  assert.equal(fx.repo.getRun(run.id)?.status, 'stopped');
+  await sleep(500);
+  assert.equal(fx.task(task.id).waitingReason, stopped.waitingReason);
+  assert.equal(prompts(fx, RESTARTED).length, 0);
+  assert.equal(fx.repo.listRuns(task.id).length, 1, 'no run was started');
+});
+
+test('a first-turn question whose session is gone: the task keeps waiting with the note, and the answer starts a fresh session', async (t) => {
+  const fx = await fixture();
+  t.after(() => fx.close());
+  fx.setRules([{ when: 'Implement kanban task', reply: 'Which colour?', ask: 'question' }, { when: 'commented on task', reply: 'Finished in a fresh session.', commit: 'Work' }]);
+  const task = fx.newTask({ usePlan: false, useReview: false });
+  const run = await midTurn(fx, task.id);
+  await fx.waitTask(task.id, (x) => x.status === 'waiting' && x.waitingReason === 'agent_asking', 'the agent asking');
+  mkdirSync(path.join(process.env.CLAUDE_CONFIG_DIR!, 'projects', 'x'), { recursive: true });
+  staleSession(fx, run.workerId!);
+  await fx.restartOffice({ exitedFirst: true });
+  await sleep(500);
+  assert.deepEqual([fx.task(task.id).status, fx.task(task.id).waitingReason], ['waiting', 'agent_asking']);
+  assert.ok(fx.repo.listComments(task.id).comments.some((c) => /session is gone, so the answer starts a fresh session/.test(c.text)));
+  assert.equal(await fx.engine.continue(task.id, ADA, 'Blue'), undefined);
+  const done = await fx.waitTask(task.id, (x) => x.status === 'review' && x.runState === 'idle', 'the review column', 60_000);
+  assert.equal(done.summary, 'Finished in a fresh session.');
+});

@@ -23,7 +23,7 @@ export interface RestartDeps<L extends HeldRun> {
   serial<T>(taskId: number, fn: () => Promise<T>): Promise<T>;
   /** Whether the project is a folder project (no worktrees). */
   folder(project: string): boolean;
-  finishRun(id: number, project: string, patch: { status: 'interrupted'; error: string }): void;
+  finishRun(id: number, project: string, patch: { status: 'interrupted' | 'stopped'; error?: string }): void;
   note(task: Pick<KanbanTask, 'id' | 'project'>, text: string, runId?: number): void;
   update(id: number, patch: { runState?: KanbanTask['runState']; queuedRun?: KanbanTask['queuedRun'] | null; sessionId?: string; reviewerSessionId?: string }): void;
   apply(taskId: number, e: MachineEvent): Promise<string | undefined>;
@@ -77,6 +77,11 @@ export class Restarts<L extends HeldRun> {
     if (info?.lost || (!this.deps.folder(task.project) && task.workspace && missingFolders(floor.dir, task.workspace).length)) {
       return `The office restarted, but its worktree is gone: Retry to carry on in a fresh worktree${task.branch ? ` on branch ${task.branch}` : ''}`;
     }
+    return this.sessionGone(task, role, tool, floor, info);
+  }
+
+  /** Whether the Claude session is gone (see `gone`); then the task learns it, so a launch whose resume fails falls back to a fresh session with the handoff. */
+  private sessionGone(task: KanbanTask, role: KanbanRun['role'], tool: KanbanRun['tool'], floor: Floor, info?: WorkerInfo): string | undefined {
     const session = info?.sessionId ?? (role === 'implementer' ? task.sessionId : task.reviewerSessionId);
     if (!session || sessionLogged(this.deps.ctx, task, tool, session, info ? floor.workers.transcripts(info.id)?.claude : undefined) !== false) return undefined;
     // Known to the task from now on, so that a Retry whose resume fails falls back to a fresh session with the handoff (see Orchestrator.exited).
@@ -127,6 +132,14 @@ export class Restarts<L extends HeldRun> {
    */
   resume(run: KanbanRun, task: KanbanTask, floor: Floor, info: WorkerInfo, cut: WorkerStatus): void {
     const { ctx, note } = this.deps;
+    // The user's Stop hadn't completed when the office closed: it completes now, as a Stop does, and nothing carries on.
+    if (task.runState === 'stopping') {
+      void this.deps.serial(task.id, async () => {
+        this.deps.finishRun(run.id, task.project, { status: 'stopped' });
+        await this.deps.apply(task.id, { type: 'stopped' });
+      });
+      return;
+    }
     // A plan finished (ExitPlanMode) is not a question: its result is handled, and the task reaches plan approval.
     if (cut === 'needs_input' && run.phase === 'plan' && this.readLog(run, floor, info)?.exitPlan) {
       const live = this.deps.attach(run, task, info);
@@ -137,7 +150,9 @@ export class Restarts<L extends HeldRun> {
     if (cut === 'needs_input' || (task.status === 'waiting' && task.waitingReason === 'agent_asking')) {
       this.deps.finishRun(run.id, task.project, { status: 'interrupted', error: 'The office restarted while its agent was asking' });
       if (!(task.status === 'waiting' && task.waitingReason === 'agent_asking')) void this.deps.serial(task.id, () => this.deps.apply(task.id, { type: 'asking', text: 'The agent was asking something in its terminal when the office restarted' }));
-      note(task, 'The office restarted while its agent was asking: answer here to carry on.', run.id);
+      // On a first turn only the worker knows the session: if Claude lost it, the answer (or a Retry) must start a fresh one, which the task's knowing it lets the launch do.
+      const lostSession = this.sessionGone(task, run.role, run.tool, floor, info) ? ' Its agent\'s session is gone, so the answer starts a fresh session with the handoff.' : '';
+      note(task, `The office restarted while its agent was asking: answer here to carry on.${lostSession}`, run.id);
       return;
     }
     const lost = this.gone(task, run.role, run.tool, floor, info);
