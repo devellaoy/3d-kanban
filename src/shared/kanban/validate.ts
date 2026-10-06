@@ -2,6 +2,8 @@
 // from protocol.ts (and issueops.ts) so both can use them without importing each other.
 
 import { DESK_BY_ID } from '../layout.js';
+// A pull request's repository as the office names it, on any host (shared/hosting/remote.ts).
+export { isRepoName } from '../hosting/remote.js';
 
 /** A request may carry `rid`; the server answers it exactly once. */
 export type Req<T> = T & { rid?: string };

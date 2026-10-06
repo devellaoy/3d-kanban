@@ -211,3 +211,12 @@ export function remoteLabel(id: string): string {
   const r = hostOf(id) === 'github' ? undefined : repoRefOf(id);
   return r ? `${hostLabel(r.host)}: ${r.web}` : id;
 }
+
+/**
+ * Whether `v` is a repository as the office names it: GitHub's owner/name (as the kanban's
+ * GH_REPO_RE has it), or another host's qualified name (azure:org/project/repo, bitbucket:ws/repo).
+ */
+export function isRepoName(v: string): boolean {
+  if (hostOf(v) === 'github') return /^[A-Za-z0-9_.-]{1,100}\/[A-Za-z0-9_.-]{1,100}$/.test(v);
+  return v.length <= 300 && repoRefOf(v)?.id.toLowerCase() === v.toLowerCase();
+}

@@ -4,7 +4,6 @@
 // `kanban.error`. Deltas (no rid) go to every client subscribed to the task's project (or to all
 // projects). parseKanbanClientMsg is the one gate every browser message passes: types, lengths, enums.
 
-import { hostOf, repoRefOf } from '../hosting/remote.js';
 import type {
   ImplementPermission,
   IssueSourceConfig,
@@ -33,7 +32,7 @@ import type {
   TaskType,
 } from './types.js';
 import { KANBAN_EFFORTS, KANBAN_TOOLS, PR_REVIEW_MAX, TASK_STATUSES, TASK_TYPES } from './types.js';
-import { Bad, KANBAN_LIMITS, MODEL_RE, PROJECT_ID_RE, bad, bool, deskId, id, isObj, list, model, nullableText, oneOf, optInt, optOneOf, optText, project, text, workerId, type Obj, type Req } from './validate.js';
+import { Bad, KANBAN_LIMITS, MODEL_RE, PROJECT_ID_RE, bad, bool, deskId, id, isObj, isRepoName, list, model, nullableText, oneOf, optInt, optOneOf, optText, project, text, workerId, type Obj, type Req } from './validate.js';
 import { moveExtras } from './hold.js';
 import { PR_MODES, type PrMode } from './prs.js';
 import type { LoungeServerMsg } from './lounge.js';
@@ -51,15 +50,6 @@ export const REPO_ID_RE = /^[a-z0-9][a-z0-9-]{0,19}$/;
 export const ATTACHMENT_ID_RE = /^[a-f0-9]{16,64}$/;
 /** owner/name on GitHub. */
 export const GH_REPO_RE = /^[A-Za-z0-9_.-]{1,100}\/[A-Za-z0-9_.-]{1,100}$/;
-
-/**
- * A repository as the office names it (shared/hosting/remote.ts): GitHub's owner/name, or another
- * host's qualified name (azure:org/project/repo, bitbucket:workspace/repo).
- */
-export function isRepoName(v: string): boolean {
-  if (hostOf(v) === 'github') return GH_REPO_RE.test(v);
-  return v.length <= KANBAN_LIMITS.remote && repoRefOf(v)?.id.toLowerCase() === v.toLowerCase();
-}
 
 // --- Inputs ---------------------------------------------------------------------------------------
 
