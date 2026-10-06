@@ -236,6 +236,9 @@ export const CLIENT_MSG_CLASS = {
   'kanban.skills.list': 'deny',
   'kanban.skills.sync': 'deny',
   'kanban.secrets.set': 'deny',
+  'kanban.secrets.jira.set': 'deny',
+  'kanban.secrets.jira.remove': 'deny',
+  'kanban.secrets.jira.test': 'deny',
   'kanban.pr.review': 'deny',
   // Reads, but through the owner's Jira / GitHub credentials, so not covered by the visitor's repo access.
   'kanban.pr.owner': 'deny',

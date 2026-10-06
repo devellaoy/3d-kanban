@@ -430,12 +430,8 @@ export interface KanbanSettings {
   projects: Record<string, ProjectSettings>;
 }
 
-/** What the browser may know about the secrets: whether they're set, never what they are. */
-export interface SecretStatus {
-  jira: { configured: boolean; site?: string };
-  /** The key for the loopback /api/v1 compatibility API (jira-loop, jira-kanban-feeder). */
-  apiKey: { configured: boolean };
-}
+/** What the browser may know about the secrets (the Jira connections, the API key): whether they're set, never what they are. */
+export type { SecretStatus } from './jira-connections.js';
 
 // --- Issues and skills ----------------------------------------------------------------------------
 
