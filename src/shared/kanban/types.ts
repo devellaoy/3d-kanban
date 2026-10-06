@@ -4,6 +4,7 @@
 
 import type { WorkerInfo, WorkerRepo } from '../protocol.js';
 import type { IssueSourceConfig, IssueSourceKind } from './issue-sources.js';
+import type { JiraConnectionStatus } from './jira-connections.js';
 
 // --- Columns, phases and runs ---------------------------------------------------------------------
 
@@ -431,7 +432,7 @@ export interface KanbanSettings {
 }
 
 /** What the browser may know about the secrets (the Jira connections, the API key): whether they're set, never what they are. */
-export type { SecretStatus } from './jira-connections.js';
+export interface SecretStatus { jira: JiraConnectionStatus[]; apiKey: { configured: boolean } }
 
 // --- Issues and skills ----------------------------------------------------------------------------
 

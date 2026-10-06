@@ -6,7 +6,7 @@
 
 import type { NormalizedIssue } from './types.js';
 import { BROWSE_CLIENT_TYPE_LIST, parseBrowseMsg, type BrowseClientMsg, type BrowseServerMsg } from './browse.js';
-import { KANBAN_LIMITS, PERSON_ID_RE, bad, bool, deskId, isObj, optText, project, text, type Obj, type Req } from './validate.js';
+import { KANBAN_LIMITS, PERSON_ID_RE, SOURCE_ID_RE, bad, bool, deskId, isObj, optText, project, text, type Obj, type Req } from './validate.js';
 
 /** One way to move an issue on: a Jira transition, a project's Status option, or GitHub's close / reopen. */
 export interface IssueTransition {
@@ -97,7 +97,7 @@ export const TRANSITION_ID_RE = /^[\w:@.=-]{1,500}$/;
 export { PERSON_ID_RE };
 const PEOPLE_QUERY_MAX = 100;
 /** An issue source's id (the settings' own rule). */
-export const ISSUE_SOURCE_ID_RE = /^[A-Za-z0-9_-]{1,40}$/;
+export const ISSUE_SOURCE_ID_RE = SOURCE_ID_RE;
 
 type Bare<T> = T extends unknown ? Omit<T, 'rid'> : never;
 

@@ -52,7 +52,7 @@ function connectionRow(api: KanbanApi, c: JiraConnectionStatus): HTMLElement {
     {},
     h('b', {}, c.name || c.site),
     c.name && c.name !== c.site ? h('span.kb-muted', {}, c.site) : null,
-    h('span.kb-secret', { class: c.configured ? 'on' : '' }, c.configured ? '✅ token set' : '— no token'),
+    h('span.kb-secret.on', {}, '✅ token set'),
     h('span.grow'),
     buttons,
   );
@@ -110,16 +110,34 @@ function connectionForm(api: KanbanApi, c: JiraConnectionStatus | undefined, don
     const e = email.value.trim();
     const t = token.value.trim();
     if (!c && (!e || !t)) return toast('A new Jira connection needs the e-mail and the API token', 'warn');
-    if (c && !sameJiraSite(host, c.site) && !t) return toast(`A new site needs its API token again: the one saved is for ${c.site}`, 'warn');
+    if (c && !sameJiraSite(host, c.site) && (!e || !t)) return toast(`A new site needs the e-mail and the API token again: the ones saved are for ${c.site}`, 'warn');
     void run(() => api.request({ t: 'kanban.secrets.jira.set', ...(c ? { id: c.id } : {}), name: name.value.trim(), site: host, ...(e ? { email: e } : {}), ...(t ? { token: t } : {}) }), save, 'Saved');
   });
+  // Moving a connection to another site changes what every source that names it reads: say which.
+  const warning = h('small.kb-hint');
+  const paintWarning = () => {
+    const host = cleanJiraSite(site.value);
+    const using = c && host && !sameJiraSite(host, c.site) ? sourcesUsing(c.id) : [];
+    warning.textContent = using.length ? `⚠️ Sources that name it: ${using.join(', ')}. They still name the old site, so they stop reading until you change them.` : '';
+  };
+  site.addEventListener('input', paintWarning);
   setTimeout(() => name.focus(), 0);
   return h(
     'div.kb-subfields.kb-jira-form',
     {},
     h('b', {}, c ? `Edit ${c.name || c.site}` : 'New Jira connection'),
-    h('div.kb-two', {}, field('Name', name, 'What people call it; the site when empty'), field('Jira site', site, c ? 'A changed site needs its API token again' : undefined)),
+    h('div.kb-two', {}, field('Name', name, 'What people call it; the site when empty'), field('Jira site', site, c ? 'A changed site needs the e-mail and the API token again' : undefined)),
+    warning,
     h('div.kb-two', {}, field('E-mail', email), field('API token', token, 'id.atlassian.com → Security → API tokens')),
     h('div.kb-row', {}, h('span.grow'), cancel, save),
   );
+}
+
+/** The issue sources, across the projects, that name this connection ("Web: Jira UYT"), for the warning when its site is changed. */
+function sourcesUsing(connection: string): string[] {
+  const out: string[] = [];
+  for (const [id, p] of Object.entries(kstore.settings?.projects ?? {})) {
+    for (const s of p.issueSources) if (s.kind === 'jira' && s.connection === connection) out.push(`${kstore.projectOf(id)?.name ?? id}: Jira ${s.projectKeys.join(', ') || s.site}`);
+  }
+  return out;
 }

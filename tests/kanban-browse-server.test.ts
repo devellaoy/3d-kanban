@@ -396,7 +396,7 @@ test('a change made through an action also lands on the browsed copy', async () 
 });
 
 test('once the browsed cache has dropped a key, load fetches it again inside the scope; a key outside it is still refused', async () => {
-  const { ask, issues, http } = setup();
+  const { ask, issues, http } = setup({ sources: [JIRA, BOARD, REPO] });
   // Never browsed: the actions load it fresh (a Jira key of the source's project).
   http.calls.length = 0;
   const tr = await ask('kanban.issue.comments', { issueKey: 'UYT-5' });

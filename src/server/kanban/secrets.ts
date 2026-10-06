@@ -71,7 +71,7 @@ export class KanbanSecrets {
 
   /** What the browser may know: the connections' id, name and site, and whether the API key is set. */
   status(): SecretStatus {
-    return { jira: this.secrets.jiraConnections.map(({ id, name, site }) => ({ id, name, site, configured: true })), apiKey: { configured: !!this.secrets.apiKey } };
+    return { jira: this.secrets.jiraConnections.map(({ id, name, site }) => ({ id, name, site })), apiKey: { configured: !!this.secrets.apiKey } };
   }
 
   /** The Jira connections with their tokens (copies), oldest first. */
@@ -93,8 +93,8 @@ export class KanbanSecrets {
       const i = list.findIndex((c) => c.id === input.id);
       if (i < 0) return 'No such Jira connection';
       const old = list[i];
-      // A token never goes to a site it wasn't given for.
-      if (!sameJiraSite(old.site, site) && !input.token) return 'A new Jira site needs the API token again';
+      // A login never goes to a site it wasn't given for: a new site needs the e-mail and the token again.
+      if (!sameJiraSite(old.site, site) && (!input.token || !input.email)) return 'A new Jira site needs the e-mail and the API token again';
       list[i] = { id: old.id, name, site, email: input.email || old.email, token: input.token || old.token };
     }
     this.save();

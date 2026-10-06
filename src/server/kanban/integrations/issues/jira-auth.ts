@@ -4,8 +4,6 @@
 import { sameJiraSite, type JiraAt } from '../../../../shared/kanban/jira-connections.js';
 import type { JiraConnection } from '../../secrets.js';
 
-export type { JiraConnection };
-
 /** The connection for a call; throws an Error a person can act on when there is none that fits. */
 export function pickJiraConnection(list: readonly JiraConnection[], at: JiraAt): JiraConnection {
   if (at.connection !== undefined) {

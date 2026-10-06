@@ -19,6 +19,7 @@ import type {
 } from '../../shared/kanban/types.js';
 import { KANBAN_EFFORTS, KANBAN_TOOLS, SKILL_PHASES } from '../../shared/kanban/types.js';
 import { GH_REPO_RE, MODEL_RE, PROJECT_ID_RE, type KanbanSettingsPatch } from '../../shared/kanban/protocol.js';
+import { SOURCE_ID_RE } from '../../shared/kanban/validate.js';
 import { isKanbanPromptId } from '../../shared/kanban/prompts.js';
 import { PROMPT_MAX } from '../../shared/prompts.js';
 import { cleanProjectLanguage } from '../../shared/language.js';
@@ -107,14 +108,13 @@ export function sanitizeSkillSelection(raw: unknown): SkillSelection {
   return out;
 }
 
-const SOURCE_ID = /^[A-Za-z0-9_-]{1,40}$/;
 let sourceSeq = 0;
 const newSourceId = () => `src-${Date.now().toString(36)}-${(sourceSeq++).toString(36)}`;
 
 /** One issue source, or undefined when it can't be one. */
 export function sanitizeIssueSource(raw: unknown): IssueSourceConfig | undefined {
   if (!isObj(raw)) return undefined;
-  const id = typeof raw.id === 'string' && SOURCE_ID.test(raw.id) ? raw.id : newSourceId();
+  const id = typeof raw.id === 'string' && SOURCE_ID_RE.test(raw.id) ? raw.id : newSourceId();
   const f = obj(raw.filters);
   const opt = (v: unknown, max = 200) => {
     const s = text(v, max).trim();
@@ -261,6 +261,11 @@ export class KanbanSettingsStore {
       raw = undefined; // never saved, or unreadable: the defaults
     }
     this.settings = sanitizeKanbanSettings(raw);
+    // A file edited by hand (or from before the rule) may hold sources that can't sit together: it loads as it is, and says so.
+    for (const [id, p] of Object.entries(this.settings.projects)) {
+      const problem = jiraSourcesProblem(p.issueSources);
+      if (problem) console.warn(`agent-office: the kanban project ${id}'s issue sources: ${problem}`);
+    }
   }
 
   /** A copy of the settings as they stand. */
@@ -297,19 +302,19 @@ export class KanbanSettingsStore {
       const v = obj(patch)[k];
       if (v !== undefined && v !== null && cleanProjectLanguage(v) === undefined) return "That isn't a language name";
     }
-    if ('issueSources' in obj(patch)) {
-      const clash = jiraSourcesProblem((Array.isArray(obj(patch).issueSources) ? (obj(patch).issueSources as unknown[]) : []).map(sanitizeIssueSource).filter((x): x is IssueSourceConfig => !!x));
-      if (clash) return clash;
-    }
     // A copy: the fields set to null (cleared) are dropped from it, and read from the patch after.
     const p = { ...obj(patch) };
     const cleared = new Set(Object.keys(p).filter((k) => p[k] === null));
     for (const k of cleared) delete p[k];
-    this.settings.projects[id] = sanitizeProjectSettings(p, this.settings.projects[id] ?? defaultProjectSettings());
-    if (cleared.has('review')) delete this.settings.projects[id].review;
-    for (const k of ['publicLanguage', 'commentLanguage'] as const) if (cleared.has(k)) delete this.settings.projects[id][k];
-    if (cleared.has('planApproval')) delete this.settings.projects[id].planApproval;
-    if (cleared.has('implementPermission')) delete this.settings.projects[id].implementPermission;
+    const next = sanitizeProjectSettings(p, this.settings.projects[id] ?? defaultProjectSettings());
+    if (cleared.has('review')) delete next.review;
+    for (const k of ['publicLanguage', 'commentLanguage'] as const) if (cleared.has(k)) delete next[k];
+    if (cleared.has('planApproval')) delete next.planApproval;
+    if (cleared.has('implementPermission')) delete next.implementPermission;
+    // Only a change of the sources is held to it: a project that loaded with a problem can still save its other settings.
+    const clash = 'issueSources' in p ? jiraSourcesProblem(next.issueSources) : undefined;
+    if (clash) return clash;
+    this.settings.projects[id] = next;
     this.changed();
     return this.project(id);
   }

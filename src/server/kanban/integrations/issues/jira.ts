@@ -4,7 +4,8 @@
 // user's own extra JQL is AND-ed in parentheses.
 
 import type { IssueSourceConfig, NormalizedIssue } from '../../../../shared/kanban/types.js';
-import { jiraAuthHeader, pickJiraConnection, type JiraConnection } from './jira-auth.js';
+import type { JiraConnection } from '../../secrets.js';
+import { jiraAuthHeader, pickJiraConnection } from './jira-auth.js';
 import { ISSUE_BODY_MAX, SOURCE_MAX, type IssueSource, type IssueSourceIo } from './source.js';
 
 type JiraConfig = Extract<IssueSourceConfig, { kind: 'jira' }>;
@@ -133,11 +134,11 @@ export function jiraIssue(raw: any, site: string, sourceId?: string): Normalized
   };
 }
 
-async function search(io: IssueSourceIo, jira: JiraConnection, site: string, jql: string, sourceId?: string): Promise<NormalizedIssue[]> {
+async function search(io: IssueSourceIo, jira: JiraConnection, c: JiraConfig, jql: string): Promise<NormalizedIssue[]> {
   const out: NormalizedIssue[] = [];
   let next: string | undefined;
   for (let page = 0; page < Math.ceil(SOURCE_MAX / PAGE); page++) {
-    const res = await io.fetch(`https://${jira.site}/rest/api/3/search/jql`, {
+    const res = await io.fetch(`https://${c.site}/rest/api/3/search/jql`, {
       method: 'POST',
       headers: { authorization: jiraAuthHeader(jira), accept: 'application/json', 'content-type': 'application/json' },
       body: JSON.stringify({ jql, fields: FIELDS, maxResults: PAGE, ...(next ? { nextPageToken: next } : {}) }),
@@ -156,7 +157,7 @@ async function search(io: IssueSourceIo, jira: JiraConnection, site: string, jql
       throw new JiraQueryError(`Jira said ${res.status}${said ? `: ${said}` : ''}`, res.status);
     }
     for (const raw of body.issues ?? []) {
-      const issue = jiraIssue(raw, site, sourceId);
+      const issue = jiraIssue(raw, c.site, c.id);
       if (issue) out.push(issue);
     }
     next = typeof body.nextPageToken === 'string' && body.nextPageToken && body.isLast !== true ? body.nextPageToken : undefined;
@@ -179,16 +180,16 @@ export const jiraSource: IssueSource = {
     const c = config as JiraConfig;
     // The connection the source names, else the first for its site: the token only ever goes to its own site.
     const jira = pickJiraConnection(io.jira, c);
-    if (!c.filters.epic) return search(io, jira, c.site, buildJql(c), c.id);
+    if (!c.filters.epic) return search(io, jira, c, buildJql(c));
     // An epic's issues: `parent =` first; older company-managed projects only know "Epic Link".
     try {
-      const found = await search(io, jira, c.site, buildJql(c, 'parent'), c.id);
+      const found = await search(io, jira, c, buildJql(c, 'parent'));
       if (found.length) return found;
     } catch (err) {
       if (!(err instanceof JiraQueryError && err.status === 400)) throw err;
     }
     try {
-      return await search(io, jira, c.site, buildJql(c, 'Epic Link'), c.id);
+      return await search(io, jira, c, buildJql(c, 'Epic Link'));
     } catch (err) {
       // No "Epic Link" field on this site: nothing under that epic, then.
       if (err instanceof JiraQueryError && err.status === 400) return [];

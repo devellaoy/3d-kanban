@@ -423,8 +423,8 @@ connections, each a name, a site, an e-mail and an API token (id.atlassian.com �
 so different projects can use different Jira instances (`company.atlassian.net` for one customer,
 `customer.atlassian.net` for another), or different accounts on one site. Admins add, edit, remove and
 **Test** them (*Connected as …*, Jira's name for the token's account); a token is never shown again, and
-editing one keeps its e-mail and token unless new ones are typed, except that a changed site needs its
-token again. A Jira source uses the connection picked in its **Connection** field, or, on *Automatic*,
+editing one keeps its e-mail and token unless new ones are typed, except that a changed site needs the
+e-mail and the token again. A Jira source uses the connection picked in its **Connection** field, or, on *Automatic*,
 the first connection (oldest) for its site; every Jira call of the source (fetching, 🔎 Browse, status,
 comments, assignee) goes through that connection, and a token only ever goes to the site it was given
 for: a picked connection for another site, a removed one, or no connection for the site is an error on

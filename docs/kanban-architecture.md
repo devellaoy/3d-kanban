@@ -29,7 +29,7 @@ document disagree, fix one of them in the same change.
 - Style: upstream's — TypeScript strict, ES modules with `.js` import suffixes, `node:test` tests,
   comments explain *why*, no new UI framework (client uses `h()` / `openModal` from `ui/dom.ts`).
 - Server code never trusts the browser: validate every WS message field (types, lengths, enums).
-- Secrets (Jira tokens, API keys) never leave the server; the browser only sees `configured: true` (and a Jira connection's id, name and site).
+- Secrets (Jira tokens, API keys) never leave the server; the browser only sees whether the API key is set, and a Jira connection's id, name and site.
 
 ## 2. Concepts
 
@@ -407,10 +407,10 @@ allowed: `todo → in_progress` (= start), `waiting|review → done`, `done → 
   email, token}[]` (oldest first, at most 20). A file with only the older single `jira: {site, email, token}` is read as one
   connection with id `jira`; every write has `jiraConnections` (even empty) and never `jira`, so a removed connection
   can't come back. `SecretStatus.jira` (in `kanban.snapshot` / `meta` / `settings`, which go to every local client) is
-  `{id, name, site, configured}[]`, never the e-mail or token; visitors get `[]`. Admin requests:
+  `{id, name, site}[]`, never the e-mail or token; visitors get `[]`. Admin requests:
   `kanban.secrets.jira.set {id?, name, site, email?, token?}` (new: e-mail and token needed; an edit keeps what isn't
-  given, except that a new site needs its token), `kanban.secrets.jira.remove {id}`, both answered with `kanban.settings`
-  and followed by a refetch of the projects with Jira sources, and `kanban.secrets.jira.test {id}` (Jira's `/myself`),
+  given, except that a new site needs both again), `kanban.secrets.jira.remove {id}`, both answered with `kanban.settings`
+  and followed by a refetch of the projects with a Jira source on an affected site (an edit's old and new site), and `kanban.secrets.jira.test {id}` (Jira's `/myself`),
   answered with `kanban.secrets.jiraTested {id, name, accountId?}`. `kanban.secrets.set` is the API key's only.
   A Jira source (`IssueSourceConfig` `jira`) may name `connection`; every Jira call (`jira.ts` search, `jiraCall` in
   `jira-ops.ts`, which the browse and the actions use) takes a `JiraAt {site, connection?}` and `pickJiraConnection`
@@ -608,8 +608,7 @@ answers `kanban.ok {rid, ...}` or `kanban.error {rid, message}`. Deltas are push
     within its scope (`wallKnows`: on the list, acted on, or browsed, though the filters keep it off the wall), so queueing,
     carrying or handing a browsed issue keeps its `issueKey` (its text can then reach an agent's prompt, see above); any other key is dropped.
   - Admin only (upstream `meOf(accountId).admin`): `settings.set`, `project.settings.set`, `project.repos.set`,
-    `project.rename`, `project.prompt.set`, `secrets.set`, `skills.sync`. `secrets.set` is answered with `kanban.settings` (configured flags
-    only). The `/api/v1` key is stored as `sha256:<hex>`.
+    `project.rename`, `project.prompt.set`, `secrets.set`, `skills.sync`. `secrets.set` is answered with `kanban.settings` (whether the API key is set, and the connections' id, name and site). The `/api/v1` key is stored as `sha256:<hex>`.
 - Auto-archive: done tasks whose `doneAt` (else `updatedAt`) is older than `settings.archiveAfterDays` move to
   `archived`. This runs at start-up and hourly; `0` means never. Unattached uploads older than a day are removed
   in the same sweep.

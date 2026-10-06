@@ -124,7 +124,7 @@ const ksettings = {
   archiveAfterDays: 0,
   projects: Object.fromEntries(floors.map((f) => [f.id, { maxConcurrent: 1, issueSources: [{ kind: 'jira', name: `${SECRET_NAME} board` }], prompts: { x: `secret ${SECRET_NAME}` }, skills: {} }])),
 } as unknown as KanbanSettings;
-const secrets = { jira: [{ id: 'jc-1', name: 'Acme', site: 'acme.atlassian.net', configured: true }], apiKey: { configured: true } };
+const secrets = { jira: [{ id: 'jc-1', name: 'Acme', site: 'acme.atlassian.net' }], apiKey: { configured: true } };
 
 const view = (floor: string) => ({
   floor, project: { name: 'shared-repo', dir: '/home/owner/shared-repo', agentCmd: 'claude --dangerously', defaultProvider: 'claude', agentProviders: ['claude'] }, workers: [], issues: { items: [] }, pulls: { items: [] },

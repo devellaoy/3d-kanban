@@ -6,7 +6,7 @@
 // type in JIRA_CONNECTION_CLIENT_TYPE_LIST. They are all `kanban.secrets.jira.*`, so the guest filter's
 // `kanban.secrets` prefix keeps them from visitors.
 
-import { KANBAN_LIMITS, bad, optText, text, type Obj, type Req } from './validate.js';
+import { KANBAN_LIMITS, SOURCE_ID_RE, bad, optText, text, type Obj, type Req } from './validate.js';
 
 /** Where a Jira call goes: the site, and the connection a source chose (none: the first for the site). */
 export interface JiraAt {
@@ -20,19 +20,10 @@ export interface JiraConnectionStatus {
   /** What people call it ("Customer X"); the site when none was given. */
   name: string;
   site: string;
-  /** Whether its token is set (it always is for a saved one). */
-  configured: boolean;
 }
 
-/** What the browser may know about the secrets: whether they're set, never what they are. */
-export interface SecretStatus {
-  /** The Jira connections, oldest first. */
-  jira: JiraConnectionStatus[];
-  /** The key for the loopback /api/v1 compatibility API (jira-loop, jira-kanban-feeder). */
-  apiKey: { configured: boolean };
-}
-
-export const JIRA_CONNECTION_ID_RE = /^[A-Za-z0-9_-]{1,40}$/;
+/** One id rule for the settings' ids: issue sources and Jira connections alike. */
+export const JIRA_CONNECTION_ID_RE = SOURCE_ID_RE;
 export const MAX_JIRA_CONNECTIONS = 20;
 export const JIRA_CONNECTION_NAME_MAX = 60;
 const JIRA_SITE_RE = /^[A-Za-z0-9.-]+(:\d+)?$/;

@@ -67,13 +67,13 @@ export function jiraForm(src: Extract<IssueSourceConfig, { kind: 'jira' }>): Sou
     const host = cleanJiraSite(site.value);
     if (!host) return 'A Jira source needs its site, like yourteam.atlassian.net';
     const c = chosen();
-    if (connection.value && !c) return 'A Jira source’s connection was removed: pick another, or Automatic';
     if (c && !sameJiraSite(c.site, host)) return `The Jira connection ${c.name} is for ${c.site}, not ${host}`;
     return {
       id: src.id,
       kind: 'jira',
       site: host,
-      ...(c ? { connection: c.id } : {}),
+      // A removed connection stays named: the office says so on the source, and the other settings still save.
+      ...(connection.value ? { connection: connection.value } : {}),
       projectKeys: csv(keys.value).map((k) => k.toUpperCase()),
       filters: {
         ...(assignee.value.trim() ? { assignee: assignee.value.trim() } : {}),

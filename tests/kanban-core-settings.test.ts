@@ -179,7 +179,7 @@ test('secrets are kept in a file only the office can read, and never handed out'
   const added = secrets.setJiraConnection({ name: 'Acme', site: 'acme.atlassian.net', email: 'ada@acme.fi', token: 'tok-SECRET' });
   assert.ok(typeof added !== 'string' && added.jira.length === 1);
   const status = secrets.set({ apiKey: 'k'.repeat(20) });
-  assert.deepEqual(status, { jira: [{ id: secrets.jiraConnections()[0].id, name: 'Acme', site: 'acme.atlassian.net', configured: true }], apiKey: { configured: true } });
+  assert.deepEqual(status, { jira: [{ id: secrets.jiraConnections()[0].id, name: 'Acme', site: 'acme.atlassian.net' }], apiKey: { configured: true } });
   assert.match(secrets.jiraConnections()[0].id, /^jc-[a-z0-9]+$/);
   assert.ok(!JSON.stringify(status).includes('SECRET'));
   assert.ok(!JSON.stringify(status).includes('ada@acme.fi'));
@@ -211,7 +211,7 @@ test('a file with the one legacy Jira login becomes a connection with the stable
   writeFileSync(file, JSON.stringify({ jira: { site: 'https://x.atlassian.net/', email: 'a@x.fi', token: 'old-TOKEN' }, apiKey: 'sha256:abc' }));
   const secrets = new KanbanSecrets(dir);
   assert.deepEqual(secrets.jiraConnections(), [{ id: 'jira', name: 'x.atlassian.net', site: 'x.atlassian.net', email: 'a@x.fi', token: 'old-TOKEN' }]);
-  assert.deepEqual(secrets.status().jira, [{ id: 'jira', name: 'x.atlassian.net', site: 'x.atlassian.net', configured: true }]);
+  assert.deepEqual(secrets.status().jira, [{ id: 'jira', name: 'x.atlassian.net', site: 'x.atlassian.net' }]);
   // The next write has the list and no legacy field.
   secrets.set({});
   const written = JSON.parse(readFileSync(file, 'utf8'));
@@ -237,11 +237,12 @@ test('Jira connections: edit keeps what is not given, a new site needs its token
   secrets.setJiraConnection({ id, name: 'Customer A', site: 'a.ATLASSIAN.net' });
   assert.deepEqual(secrets.jiraConnections()[0], { id, name: 'Customer A', site: 'a.ATLASSIAN.net', email: 'e@a.fi', token: 'tok-A' });
   // A new site without the token is refused and nothing changes; with it, the whole connection moves.
-  assert.match(String(secrets.setJiraConnection({ id, name: 'Customer A', site: 'b.atlassian.net', email: 'other@b.fi' })), /needs the API token again/);
+  assert.match(String(secrets.setJiraConnection({ id, name: 'Customer A', site: 'b.atlassian.net', email: 'other@b.fi' })), /needs the e-mail and the API token again/);
+  assert.match(String(secrets.setJiraConnection({ id, name: 'Customer A', site: 'b.atlassian.net', token: 'tok-B' })), /needs the e-mail and the API token again/, 'the token alone is not enough either');
   assert.equal(secrets.jiraConnections()[0].site, 'a.ATLASSIAN.net');
   assert.equal(secrets.jiraConnections()[0].email, 'e@a.fi');
-  secrets.setJiraConnection({ id, name: 'Customer B', site: 'b.atlassian.net', token: 'tok-B' });
-  assert.deepEqual(secrets.jiraConnections()[0], { id, name: 'Customer B', site: 'b.atlassian.net', email: 'e@a.fi', token: 'tok-B' });
+  secrets.setJiraConnection({ id, name: 'Customer B', site: 'b.atlassian.net', email: 'e@b.fi', token: 'tok-B' });
+  assert.deepEqual(secrets.jiraConnections()[0], { id, name: 'Customer B', site: 'b.atlassian.net', email: 'e@b.fi', token: 'tok-B' });
   // The copies the store hands out are not its own.
   secrets.jiraConnections()[0].token = 'changed';
   assert.equal(secrets.jiraConnections()[0].token, 'tok-B');

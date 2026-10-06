@@ -2,7 +2,7 @@
 // needs from the office handed in (so tests give it canned gh output and HTTP answers).
 
 import type { IssueSourceConfig, NormalizedIssue } from '../../../../shared/kanban/types.js';
-import type { JiraConnection } from './jira-auth.js';
+import type { JiraConnection } from '../../secrets.js';
 
 /** Runs `gh` with these arguments in `cwd`; resolves to its stdout, rejects with a readable error. */
 export type GhRunner = (args: string[], cwd: string, timeout?: number, env?: Record<string, string>) => Promise<string>;

@@ -13,6 +13,7 @@ import { isKanbanPromptId } from '../../shared/kanban/prompts.js';
 import { PROMPT_MAX } from '../../shared/prompts.js';
 import { COMMENTS_PAGE, publicAttachment, type TaskUpdate } from './db/repository.js';
 import { projectInfo } from './projects.js';
+import { answerSecrets } from './secrets-answer.js';
 import { checkRepoIds, createBoardTask } from './create.js';
 import { openFor, taskFolders, workerFolders } from './vscode.js';
 import { wallChanged, wallSourcesChanged } from './integrations/issues/wall.js';
@@ -401,19 +402,7 @@ export function createCorePlugin(ctx: KanbanContext, subs: KanbanSubscriptions):
     },
     'kanban.secrets.set': (c, m) => {
       if (!adminOnly(c, m.rid)) return;
-      const patch: Parameters<KanbanContext['secrets']['set']>[0] = {};
-      if (m.apiKey !== undefined) patch.apiKey = m.apiKey;
-      let secrets;
-      try {
-        secrets = ctx.secrets.set(patch);
-      } catch (err) {
-        console.error(`agent-office: couldn't save the kanban secrets: ${(err as Error).message}`);
-        return fail(c, m.rid, "The office couldn't save them");
-      }
-      // Only whether they're set, never what they are: to the asker, then to everyone.
-      const settings = ctx.settings.get();
-      c.send({ t: 'kanban.settings', ...(m.rid ? { rid: m.rid } : {}), settings, secrets });
-      ctx.broadcast({ t: 'kanban.settings', settings, secrets }, null);
+      answerSecrets(ctx, c, m.rid, () => ctx.secrets.set({ apiKey: m.apiKey }));
     },
   };
 

@@ -15,6 +15,9 @@ export const JIRA_KEY_RE = /^[A-Za-z][A-Za-z0-9_]*-\d+$/;
 /** The project a Jira key belongs to (`UYT-12` → `UYT`). */
 export const keyProject = (key: string): string => key.slice(0, key.lastIndexOf('-')).toUpperCase();
 
+/** Whether a Jira source covers a key: its project keys hold the key's project, or it names none (it then reads every project). */
+export const jiraCovers = (s: Pick<JiraConfig, 'projectKeys'>, key: string): boolean => !s.projectKeys.length || s.projectKeys.some((k) => k.toUpperCase() === keyProject(key));
+
 export const JQL_INCOMPLETE = 'The JQL must be a complete expression (balanced parentheses and quotes)';
 export const JQL_BACKSLASH = 'A backslash is only allowed inside quotes in the JQL';
 

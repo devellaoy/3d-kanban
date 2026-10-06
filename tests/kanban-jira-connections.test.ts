@@ -1,6 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { pickJiraConnection, type JiraConnection } from '../src/server/kanban/integrations/issues/jira-auth.js';
+import { pickJiraConnection } from '../src/server/kanban/integrations/issues/jira-auth.js';
+import type { JiraConnection } from '../src/server/kanban/secrets.js';
 import { route } from '../src/server/kanban/integrations/issues/actions.js';
 import { jiraSource } from '../src/server/kanban/integrations/issues/jira.js';
 import { createIssues } from '../src/server/kanban/integrations/issues/index.js';
@@ -173,6 +174,8 @@ test('routing an issue: its own source, else the source whose projects hold its 
   assert.deepEqual(route(sources, issue('ZZZ-1')), { kind: 'jira', site: 'a.atlassian.net', connection: 'ca' }, 'the first');
   assert.deepEqual(route([src('s', 'c.atlassian.net', [])], issue('ZZZ-1')), { kind: 'jira', site: 'c.atlassian.net' });
   assert.equal(route([], issue('ZZZ-1')), 'The project has no Jira source');
+  assert.deepEqual(route(sources, issue('AAA-9'), 'gone'), route(sources, issue('AAA-9')), 'a source that is not the project’s any more is as good as none');
+  assert.deepEqual(route([src('k', 'a.atlassian.net', [], 'ca')], issue('QQQ-1', 'k'), 'k'), { kind: 'jira', site: 'a.atlassian.net', connection: 'ca' }, 'a source with no project keys covers every key');
 
   // The issue's own site decides: a source on another site is never a fallback.
   const at = (key: string, host: string, sourceId?: string) => ({ ...issue(key, sourceId), url: `https://${host}/browse/${key}` });
@@ -206,14 +209,14 @@ test('the connection handlers: admins only, the answer is the list without e-mai
   assert.equal(added.t, 'kanban.settings');
   assert.equal(added.rid, 'r');
   const id = ctx.secrets.jiraConnections()[0].id;
-  assert.deepEqual(added.secrets, { jira: [{ id, name: 'Customer A', site: 'a.atlassian.net', configured: true }], apiKey: { configured: false } });
+  assert.deepEqual(added.secrets, { jira: [{ id, name: 'Customer A', site: 'a.atlassian.net' }], apiKey: { configured: false } });
   const pushed = ctx.sent.filter((s) => s.msg.t === 'kanban.settings');
   assert.equal(pushed.length, 1, 'everyone is told');
   assert.ok(!JSON.stringify([boss.got, ctx.sent]).includes('TOPSECRET'));
   assert.ok(!JSON.stringify([boss.got, ctx.sent]).includes('boss@a.fi'));
 
   // A bad edit is an error and changes nothing.
-  assert.match((await call(boss, 'kanban.secrets.jira.set', { id, name: 'Customer A', site: 'b.atlassian.net' })).message, /needs the API token again/);
+  assert.match((await call(boss, 'kanban.secrets.jira.set', { id, name: 'Customer A', site: 'b.atlassian.net' })).message, /needs the e-mail and the API token again/);
   assert.match((await call(boss, 'kanban.secrets.jira.set', { id: 'nope', name: 'x', site: 'a.atlassian.net' })).message, /No such Jira connection/);
   assert.equal(ctx.secrets.jiraConnections()[0].site, 'a.atlassian.net');
 
@@ -241,6 +244,7 @@ test('the connection handlers: admins only, the answer is the list without e-mai
 test('saving a connection makes the projects with a Jira source fetch their issues again', async () => {
   const ctx = makeCtx([def('app', '/tmp/app', { repo: 'o/r' }), def('docs', '/tmp/docs')]);
   ctx.settings.setProject('app', { issueSources: [{ id: 'sa', kind: 'jira', site: 'a.atlassian.net', projectKeys: ['AAA'], filters: {} }] });
+  ctx.settings.setProject('docs', { issueSources: [{ id: 'sb', kind: 'jira', site: 'b.atlassian.net', projectKeys: ['BBB'], filters: {} }] });
   const http = jiras();
   const issues = createIssues(ctx, { gh: (async () => '[]') as never, fetch: http.fetch });
   issues.plugin.start?.();
@@ -253,6 +257,8 @@ test('saving a connection makes the projects with a Jira source fetch their issu
     for (let i = 0; i < 50 && !issues.message('app').items.length; i++) await new Promise((r) => setTimeout(r, 10));
     assert.deepEqual(issues.message('app').items.map((i) => i.key), ['AAA-1']);
     assert.equal(issues.message('app').error, undefined);
+    // Only the projects with a source on the changed site fetched: docs reads b, which this connection is not for.
+    assert.ok(!http.calls.some((c) => c.host === 'b.atlassian.net'), 'docs did not fetch');
   } finally {
     issues.plugin.stop?.();
     setWallProvider(undefined);
@@ -296,8 +302,10 @@ test('two sources on one site with different connections: an action goes through
   // A source of another site, one that isn't the project's, and one that doesn't cover the key's project are refused, and nothing is sent.
   n = http.calls.length;
   assert.match((await ask('kanban.issue.comment', { issueKey: 'BBB-1', text: 'Hi', source: 'sa' })).message, /sa isn't a Jira source for BBB-1 on b.atlassian.net/);
-  assert.match((await ask('kanban.issue.comment', { issueKey: 'BBB-1', text: 'Hi', source: 'nope' })).message, /nope isn't one of the project's issue sources/);
   assert.equal(http.calls.length, n);
+  // A source that is no longer the project's is as good as none: the issue goes by the listed copy.
+  assert.equal((await ask('kanban.issue.comment', { issueKey: 'BBB-1', text: 'Hi', source: 'gone' })).t, 'kanban.ok');
+  assert.equal(http.calls.at(-1)!.auth, authOf('cb'));
 });
 
 test('a count read before a connection changed is not kept: the next one is asked again with the new login', async () => {
@@ -327,9 +335,39 @@ test('an issue the list has lost is read again through the source the action nam
   hold.deny = [authOf('cb')]; // Only cb2's account can see BBB-1. It is on no list, and not acted on or browsed.
   // Without a source the first one's account is tried, as before; so is the first source when named.
   assert.match((await ask('kanban.issue.comment', { issueKey: 'BBB-1', text: 'Hi' })).message, /isn't among the project's issues/);
-  assert.match((await ask('kanban.issue.comment', { issueKey: 'BBB-1', text: 'Hi', source: 'sb' })).message, /isn't among the project's issues/);
   assert.ok(hold.denied!.length > 0);
+  // Named, but its account can't see it: the lookup falls back to the next source on the site that covers the key, which finds it
+  // (the comment itself then goes out under the named source's login, and Jira refuses that one).
+  assert.match((await ask('kanban.issue.comment', { issueKey: 'BBB-1', text: 'Hi', source: 'sb' })).message, /Jira said 404/);
+  assert.ok(http.calls.some((c) => c.method === 'GET' && c.path.startsWith('/rest/api/3/issue/BBB-1') && c.auth === authOf('cb2')), 'found through the other source');
   const n = http.calls.length;
   assert.equal((await ask('kanban.issue.comment', { issueKey: 'BBB-1', text: 'Hi', source: 'sb2' })).t, 'kanban.ok');
   assert.ok(http.calls.slice(n).every((c) => c.auth === authOf('cb2')));
+});
+
+test('a source with no project keys reads any key of its site when an issue is loaded through it', async () => {
+  const { http, ask, authOf } = setup((i) => [{ id: 'sk', kind: 'jira', site: 'b.atlassian.net', connection: i.cb2, projectKeys: [], filters: {} }]);
+  for (const source of [undefined, 'sk']) {
+    const n = http.calls.length;
+    assert.equal((await ask('kanban.issue.comment', { issueKey: `BBB-${source ? 2 : 1}`, text: 'Hi', ...(source ? { source } : {}) })).t, 'kanban.ok');
+    assert.ok(http.calls.slice(n).every((c) => c.auth === authOf('cb2')));
+  }
+});
+
+test('connections of one site changing leaves what other sites cached', async () => {
+  const { ctx, http, ask, issues } = setup((i) => [
+    { id: 'sa', kind: 'jira', site: 'a.atlassian.net', connection: i.ca, projectKeys: ['AAA'], filters: {} },
+    { id: 'sb', kind: 'jira', site: 'b.atlassian.net', connection: i.cb, projectKeys: ['BBB'], filters: {} },
+  ]);
+  const counts = () => http.calls.filter((c) => c.path.endsWith('/approximate-count')).length;
+  const count = (scope: string) => ask('kanban.browse.count', { scope, filters: { statusCategory: 'all' }, group: 'none' });
+  await count('sa');
+  await count('sb');
+  assert.equal(counts(), 2);
+  const id = ctx.secrets.jiraConnections().find((c) => c.site === 'a.atlassian.net')!.id;
+  await (issues.plugin.ws as any)['kanban.secrets.jira.set'](client(true), { t: 'kanban.secrets.jira.set', id, name: 'A', site: 'a.atlassian.net', token: 'new-token', rid: 'r' });
+  await count('sb');
+  assert.equal(counts(), 2, 'b was not touched');
+  await count('sa');
+  assert.equal(counts(), 3, 'a is asked again');
 });
