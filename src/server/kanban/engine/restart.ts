@@ -34,6 +34,8 @@ export interface RestartDeps<L extends HeldRun> {
   turnEnded(live: L, planExit?: boolean): Promise<void>;
   /** Why the office has stopped hiring (its daily budget), if it has. */
   hiringPaused(): string | undefined;
+  /** The messages a run that resumes the work carries, and how to release them once an agent has the prompt (HoldFlow.carried). */
+  carried(task: KanbanTask, prompt: string): { ack: () => void };
   /** The gap between one run being carried on and the next (ms), so the woken agents don't all start together. */
   staggerMs: number;
 }
@@ -70,6 +72,14 @@ export class Restarts<L extends HeldRun> {
       this.deps.update(t.id, { runState: 'idle', queuedRun: null });
       this.deps.note(t, 'Compacting is no longer a feature of the office: the compact from before the restart was dropped.');
     }
+  }
+
+  /** What a re-attached run does once its agent has the prompt that was still on its way when the office stopped: its launch record is cleared and its held messages released; undefined when none is. */
+  ack(run: KanbanRun, task: KanbanTask): (() => void) | undefined {
+    const launch = this.deps.ctx.repo.runLaunch(run.id);
+    if (!launch) return undefined;
+    const carried = this.deps.carried(task, launch.prompt);
+    return () => (carried.ack(), this.deps.ctx.repo.clearRunLaunch(run.id));
   }
 
   /** The run's worker on the floor. A run whose launch was cut short before it recorded its worker (a second shutdown while it waited for the woken worker to rest) has the task's own, if that was cut off too. */

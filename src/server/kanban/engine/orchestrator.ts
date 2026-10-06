@@ -234,6 +234,7 @@ export class Orchestrator {
       update: (id, patch) => this.update(id, patch),
       apply: (id, e) => this.apply(id, e),
       drain: (project) => void this.drain(project),
+      carried: (task, prompt) => this.holds.carried(task, prompt),
       attach: (run, task, info) => Object.assign(this.attach(run, task, info), { pinSince: true }),
       turnEnded: (live, planExit) => this.turnEnded(live, planExit),
       hiringPaused: () => this.ctx.hiringPaused?.(),
@@ -336,7 +337,7 @@ export class Orchestrator {
       }
       attached.add(task.id);
       const live = this.attach(run, task, info);
-      if (info.status === 'done') void this.serial(task.id, () => this.turnEnded(live));
+      if (info.status === 'done' && !this.ctx.repo.runLaunch(run.id)) void this.serial(task.id, () => this.turnEnded(live));
       else if (info.status === 'needs_input') void this.serial(task.id, () => this.needsInput(live, info));
     }
     // Tasks the engine was busy with that have no run to follow any more.
@@ -357,7 +358,7 @@ export class Orchestrator {
 
   /** Follows a run left `running` by the last office on its worker. */
   private attach(run: KanbanRun, task: KanbanTask, info: WorkerInfo): Live {
-    const live: Live = { taskId: task.id, runId: run.id, phase: run.phase, ...(run.round !== undefined ? { round: run.round } : {}), role: run.role, tool: run.tool, workerId: info.id, floorId: task.project, exitPlan: false, ended: false, promptAt: run.promptedAt };
+    const live: Live = { taskId: task.id, runId: run.id, phase: run.phase, ...(run.round !== undefined ? { round: run.round } : {}), role: run.role, tool: run.tool, workerId: info.id, floorId: task.project, exitPlan: false, ended: false, promptAt: run.promptedAt, ack: this.restarts.ack(run, task) };
     this.live.set(info.id, live);
     return live;
   }
@@ -1089,7 +1090,7 @@ export class Orchestrator {
     // Whoever reviewed for the task before goes home: this review starts in a worktree of its own.
     const prev = task.reviewerWorkerId ? floor.workers.get(task.reviewerWorkerId) : undefined;
     if (prev) {
-      if (prev.status === 'working' || prev.status === 'starting') return `${prev.name} is busy: wait for its turn to end`;
+      if (prev.status === 'working' || (prev.status === 'starting' && floor.workers.cutOffStatus(prev.id) === undefined)) return `${prev.name} is busy: wait for its turn to end`;
       await floor.sendHome(prev.id, homeCleanup(task, prev), ENGINE);
     }
     this.update(task.id, { reviewerWorkerId: null, reviewerSessionId: null });
@@ -1114,7 +1115,7 @@ export class Orchestrator {
     const full = signIn ? undefined : this.noRoom(floor, undefined, countsWith);
     if (full) return { queued: full };
 
-    const run = this.ctx.repo.createRun({ taskId: task.id, phase: 'pr-review', role: 'reviewer', tool, model, effort });
+    const run = this.ctx.repo.createRun({ taskId: task.id, phase: 'pr-review', role: 'reviewer', tool, model, effort, launch: { phase: 'pr-review', role: 'reviewer', prompt: 'pr.review' } });
     this.ctx.broadcast({ t: 'kanban.run', run, project: task.project }, task.project);
     const fail = (err: string) => {
       this.finishRun(run.id, task.project, { status: 'failed', error: err });
@@ -1138,7 +1139,7 @@ export class Orchestrator {
       settingsFile: 'kanban',
     });
     if (typeof hired === 'string') return /taken out of the floor/.test(hired) ? (this.finishRun(run.id, task.project, { status: 'interrupted', error: hired }), { queued: this.noRoom(floor, undefined, countsWith) ?? "Queued: its desk was taken out of the floor. It starts by itself when a desk frees." }) : fail(hired);
-    const live: Live = { taskId: task.id, runId: run.id, phase: 'pr-review', role: 'reviewer', tool, workerId: hired.id, floorId: task.project, exitPlan: false, ended: false };
+    const live: Live = { taskId: task.id, runId: run.id, phase: 'pr-review', role: 'reviewer', tool, workerId: hired.id, floorId: task.project, exitPlan: false, ended: false, ack: () => this.ctx.repo.clearRunLaunch(run.id) };
     this.live.set(hired.id, live);
     this.prompted(live, prompt);
     this.ctx.repo.updateRun(run.id, { workerId: hired.id });

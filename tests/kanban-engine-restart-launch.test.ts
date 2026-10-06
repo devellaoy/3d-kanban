@@ -180,6 +180,52 @@ test('a finished background agent whose lead never answered is carried on, not w
   assert.deepEqual(fx.repo.listRuns(task.id).map((r) => r.status), ['interrupted', 'succeeded']);
 });
 
+test('a re-attached run whose prompt arrives later is acknowledged: a full stop then carries on instead of sending it again', async (t) => {
+  const fx = await fixture();
+  t.after(() => fx.close());
+  fx.setRules([{ when: 'Implement kanban task', reply: 'Done.', commit: 'Work' }, { when: 'commented on task', reply: 'Handled the comment.', commit: 'Rename', delayMs: 60_000 }, { when: 'office was restarted', reply: 'Finished after the restart.', commit: 'More' }]);
+  const task = fx.newTask({ usePlan: false, useReview: false });
+  await fx.engine.start(task.id, ADA);
+  const done = await fx.waitTask(task.id, (x) => x.status === 'review' && x.runState === 'idle', 'the review column');
+  const office = fx.workers as unknown as Office;
+  const typeIn = office.prompt;
+  // The comment's prompt is typed in, the engine goes away (the terminal stays) before the agent submits it.
+  office.prompt = () => undefined;
+  const c = fx.repo.addComment({ taskId: task.id, authorKind: 'user', authorName: 'Ada', text: 'Also rename foo to bar.' }).comment;
+  await fx.engine.commented(task.id, c.id, ADA);
+  const run = fx.repo.activeRun(task.id)!;
+  assert.ok(fx.repo.runLaunch(run.id), 'its prompt is still to arrive');
+  fx.restartEngine();
+  await sleep(300);
+  assert.equal(fx.repo.getRun(run.id)?.status, 'running', 'the run waits for its prompt, its result is not read yet');
+  (typeIn as (id: string, text: string) => unknown).call(fx.workers, done.workerId!, 'You commented on task #1: Also rename foo to bar.');
+  const end = Date.now() + 15_000;
+  while (fx.repo.runLaunch(run.id) && Date.now() < end) await sleep(20);
+  assert.equal(fx.repo.runLaunch(run.id), undefined, 'the prompt arrived and was acknowledged');
+  await fx.restartOffice();
+  await fx.waitTask(task.id, (x) => x.status === 'review' && x.runState === 'idle' && fx.repo.listRuns(task.id).some((r) => r.status === 'succeeded' && r.phase === 'resume'), 'the carried-on run', 40_000);
+  assert.equal(prompts(fx, /rename foo to bar/).length, 1, 'the comment was not sent again');
+  assert.equal(prompts(fx, RESTARTED).length, 1);
+});
+
+test('a pull-request review whose prompt had not been submitted when the office stopped is delivered once after the restart', async (t) => {
+  const fx = await fixture();
+  t.after(() => fx.close());
+  fx.setRules([{ when: 'Review these pull requests', reply: 'unused', submitDelayMs: 3000 }]);
+  const got = await fx.engine.reviewPrs({ project: 'proj', prs: [{ repo: 'acme/proj', number: 3 }] as never, tool: 'claude' }, ADA);
+  assert.ok(typeof got !== 'string', String(got));
+  const taskId = (got as { taskId: number }).taskId;
+  const end = Date.now() + 15_000;
+  while (!fx.invocations().some((i) => i.prompt) && Date.now() < end) await sleep(30);
+  await sleep(600); // started, prompt not submitted yet
+  fx.setRules([{ when: 'Review these pull requests', reply: 'They fit together.\n\nREVIEW: APPROVED' }]);
+  await fx.restartOffice();
+  await fx.waitTask(taskId, (x) => x.runState === 'idle' && x.status !== 'in_progress', 'the review done', 60_000);
+  assert.deepEqual(fx.repo.listRuns(taskId).map((r) => `${r.phase}/${r.status}`), ['pr-review/interrupted', 'pr-review/succeeded']);
+  assert.equal(prompts(fx, /Review these pull requests/).length, 2, 'the stopped attempt and the one after the restart');
+  assert.equal(prompts(fx, RESTARTED).length, 0, 'not a continue');
+});
+
 test("codex: a session whose rollout is gone interrupts the run with the reason, and Retry starts a fresh session", async (t) => {
   const fx = await fixture();
   t.after(() => fx.close());
