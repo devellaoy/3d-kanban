@@ -66,7 +66,7 @@ function jiras() {
 
 const last = <T extends KanbanServerMsg['t']>(c: { got: KanbanServerMsg[] }, t: T) => c.got.at(-1) as Extract<KanbanServerMsg, { t: T }>;
 
-function setup(sources: (ids: Record<string, string>) => IssueSourceConfig[]) {
+function setup(sources: (ids: Record<string, string>) => IssueSourceConfig[], hold: { gate?: Promise<void> } = {}) {
   const ctx = makeCtx([def('app', '/tmp/app', { repo: 'o/r' })]);
   const ids: Record<string, string> = {};
   for (const [name, site] of [['ca', 'a.atlassian.net'], ['cb', 'b.atlassian.net'], ['cb2', 'b.atlassian.net']]) {
@@ -75,7 +75,11 @@ function setup(sources: (ids: Record<string, string>) => IssueSourceConfig[]) {
   }
   ctx.settings.setProject('app', { issueSources: sources(ids) });
   const http = jiras();
-  const issues = createIssues(ctx, { gh: (async () => '[]') as never, fetch: http.fetch });
+  const held = (async (u: string, init: RequestInit) => {
+    if (String(u).endsWith('/approximate-count') && hold.gate) await hold.gate;
+    return http.fetch(u, init);
+  }) as unknown as typeof fetch;
+  const issues = createIssues(ctx, { gh: (async () => '[]') as never, fetch: held });
   const ws = issues.plugin.ws! as Record<string, (c: unknown, m: unknown) => Promise<void> | void>;
   const c = client(true, 'acc1');
   const ask = async (t: string, m: Record<string, unknown>) => {
@@ -266,4 +270,47 @@ test('saving a connection clears what Browse cached, so the next count is asked 
   assert.equal(http.calls.at(-1)!.auth, basic(ctx.secrets.jiraConnections()[0]));
   await (issues.plugin.ws as any)['kanban.secrets.jira.remove'](client(true), { t: 'kanban.secrets.jira.remove', id, rid: 'r' });
   assert.match((await count()).message, /was removed/);
+});
+
+test('two sources on one site with different connections: an action goes through the source it came through, else through the listed copy', async () => {
+  const { http, issues, ask, authOf } = setup((i) => [
+    { id: 'sb', kind: 'jira', site: 'b.atlassian.net', connection: i.cb, projectKeys: ['BBB'], filters: {} },
+    { id: 'sb2', kind: 'jira', site: 'b.atlassian.net', connection: i.cb2, projectKeys: ['BBB'], filters: {} },
+    { id: 'sa', kind: 'jira', site: 'a.atlassian.net', connection: i.ca, projectKeys: ['AAA'], filters: {} },
+  ]);
+  await issues.refresh('app');
+  assert.equal(issues.message('app').items.find((i) => i.key === 'BBB-1')!.sourceId, 'sb', 'the list keeps the first source’s copy');
+  const authOfLast = (n: number) => new Set(http.calls.slice(n).map((c) => c.auth));
+  let n = http.calls.length;
+  assert.equal((await ask('kanban.issue.comment', { issueKey: 'BBB-1', text: 'Hi' })).t, 'kanban.ok');
+  assert.deepEqual(authOfLast(n), new Set([authOf('cb')]), 'no source: the listed copy');
+  n = http.calls.length;
+  assert.equal((await ask('kanban.issue.comment', { issueKey: 'BBB-1', text: 'Hi', source: 'sb2' })).t, 'kanban.ok');
+  assert.deepEqual(authOfLast(n), new Set([authOf('cb2')]), 'the source it was opened through');
+  n = http.calls.length;
+  assert.equal((await ask('kanban.issue.assign', { issueKey: 'BBB-1', source: 'sb2', to: { id: 'u1' } })).t, 'kanban.ok');
+  assert.deepEqual(authOfLast(n), new Set([authOf('cb2')]));
+  // A source of another site, one that isn't the project's, and one that doesn't cover the key's project are refused, and nothing is sent.
+  n = http.calls.length;
+  assert.match((await ask('kanban.issue.comment', { issueKey: 'BBB-1', text: 'Hi', source: 'sa' })).message, /sa isn't a Jira source for BBB-1 on b.atlassian.net/);
+  assert.match((await ask('kanban.issue.comment', { issueKey: 'BBB-1', text: 'Hi', source: 'nope' })).message, /nope isn't one of the project's issue sources/);
+  assert.equal(http.calls.length, n);
+});
+
+test('a count read before a connection changed is not kept: the next one is asked again with the new login', async () => {
+  const hold: { gate?: Promise<void> } = {};
+  const { ctx, http, ask, issues } = setup((i) => [{ id: 'sa', kind: 'jira', site: 'a.atlassian.net', connection: i.ca, projectKeys: ['AAA'], filters: {} }], hold);
+  const counts = () => http.calls.filter((c) => c.path.endsWith('/approximate-count'));
+  const count = () => ask('kanban.browse.count', { scope: 'sa', filters: { statusCategory: 'all' }, group: 'none' });
+  let release!: () => void;
+  hold.gate = new Promise<void>((r) => (release = r));
+  const old = count();
+  const id = ctx.secrets.jiraConnections()[0].id;
+  await (issues.plugin.ws as any)['kanban.secrets.jira.set'](client(true), { t: 'kanban.secrets.jira.set', id, name: 'A', site: 'a.atlassian.net', token: 'new-token', rid: 'r' });
+  hold.gate = undefined;
+  release();
+  await old;
+  assert.equal((await count()).count, 3);
+  assert.equal(counts().length, 2, 'the old read did not fill the new cache');
+  assert.equal(counts().at(-1)!.auth, basic(ctx.secrets.jiraConnections()[0]));
 });

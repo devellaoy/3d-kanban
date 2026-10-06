@@ -49,7 +49,8 @@ const scopeOf = (s: Browsable): BrowseScope =>
     : { id: s.id, kind: 'github-project', label: `GitHub project ${s.owner}/${s.number}` };
 
 export function createBrowse(ctx: KanbanContext, deps: BrowseDeps) {
-  const caches = newJiraCaches();
+  // Replaced, not cleared, when connections change: a read begun before then writes into the discarded maps.
+  let caches = newJiraCaches();
   /** The GitHub login each account's own gh signs in as: kept for ten minutes, a failed ask not at all. */
   const logins = new Map<string, { at: number; p: Promise<string | undefined> }>();
   /** The keys `load` found nothing for, and when (so an action on a key that isn't the project's doesn't ask GitHub or Jira every time). */
@@ -226,11 +227,9 @@ export function createBrowse(ctx: KanbanContext, deps: BrowseDeps) {
     }
   };
 
-  /** Jira connections changed: what was read with the old logins (counts, versions, parents) is asked again; the Sprint field per site may stay. */
+  /** Jira connections changed: what was read with the old logins (counts, versions, parents) is asked again; the Sprint field per site and the boards' fields may stay. */
   const connectionsChanged = () => {
-    caches.counts.clear();
-    caches.versions.clear();
-    caches.parents.clear();
+    caches = { ...newJiraCaches(), sprintField: caches.sprintField, fields: caches.fields };
     missed.clear();
   };
 
