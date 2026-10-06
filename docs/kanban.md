@@ -390,6 +390,17 @@ With several repositories, the floor's issues and PR boards show every repositor
 repository chip. The issues board has a repository filter; the PR board (E at the board) has a tab
 per repository of the project below its header (📦 All, then every repository, with its open PRs, if any).
 
+Beside the tabs (on a one-repository floor too), **All / 👤 Mine / 👀 To review** narrows the PR board to your
+own pull requests, in the picked tab or across all of them, and the tabs count only what it leaves. *Mine* is a PR
+authored by your GitHub login (your own GitHub sign-in in 🔐 Your sign-ins; on the shared password, or with the
+office's sign-in, the office's own `gh` login), or one the office opened for you under its account: a PR linked to a
+kanban task you made (the project's tasks that aren't archived), one from a worker you hired at a desk, or one whose
+description says *Opened from Agent Office by* your name. An account without a GitHub sign-in of its own gets only
+the second kind, so the office's PRs don't all count as everyone's. *To review* is the PRs whose review is asked of
+your login (a team's request doesn't count), and it is off without a login. With nothing of yours open, the board
+says so above the columns (merged and closed ones still show). The choice is kept in your browser, the same on every
+floor; a visitor always sees every PR.
+
 ## Issue sources
 
 ⚙️ Settings → **📁 Projects** → **📌 Issue sources**, per project: **GitHub repositories**, a **GitHub project** (Projects

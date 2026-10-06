@@ -120,7 +120,7 @@ curl -fsSL https://raw.githubusercontent.com/devellaoy/3d-kanban/main/deploy/pro
   [the contract](docs/kanban-coupling.md)).
 - **Projects with several repositories**: a floor is a project, and a task gets a worktree of each of
   its repositories on one branch, cut from each repository's configured base branch (else the branch
-  its checkout is on). The issues and PR boards show every repository; the PR board (E) has a tab per repository. An admin can rename a project
+  its checkout is on). The issues and PR boards show every repository; the PR board (E) has a tab per repository, and **All / 👤 Mine / 👀 To review** beside them shows only your own pull requests (yours on GitHub, or opened from your kanban tasks and workers) or the ones waiting on your review. An admin can rename a project
   in ⚙️ Settings → 📁 Projects; its id, folder and repository stay.
 - **Repositories on Azure DevOps and Bitbucket**, not only GitHub: the office reads each repository's host
   from its remote, follows their pull requests on the PR board and on kanban tasks (to merged), opens

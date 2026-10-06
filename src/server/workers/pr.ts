@@ -5,6 +5,7 @@ import path from 'node:path';
 import type { WorkerInfo } from '../../shared/protocol.js';
 import { DESK_BY_ID } from '../../shared/layout.js';
 import { closingRef, promptIssue } from '../../shared/kanban/issuecard.js';
+import { officePrFooter } from '../../shared/officepr.js';
 import { isBusy } from '../../shared/status.js';
 import { gh } from '../github.js';
 import type { GhAs } from '../signins.js';
@@ -102,7 +103,7 @@ export function draftPr(info: WorkerInfo, commits: string[], by: string, home: s
   const repo = issue?.repo ?? home;
   if (issue && !other) parts.push(closingRef(repo ? `gh:${repo}#${issue.number}` : undefined, home) ?? `Closes #${issue.number}`);
   else if (issue && repo) parts.push(`Part of ${repo}#${issue.number}`);
-  parts.push(`_Opened from Agent Office by ${by} · ${info.name} at ${DESK_BY_ID.get(info.deskId)?.label ?? info.deskId}_`);
+  parts.push(officePrFooter(by, info.name, DESK_BY_ID.get(info.deskId)?.label ?? info.deskId));
   return { title, body: parts.join('\n\n') };
 }
 
