@@ -78,6 +78,7 @@ They're in `core/registry.ts`, and each is a field of `ctx`. Every registration 
 - **`hooks/`** is the loopback-only hook server the workers call: their agents' hook events (`/hooks/<provider>`), the board agents' queue (`/office/queue`) and `office-workers` (`/office/workers`).
 - **`workers/`** is the worker manager (`WorkerManager` in `workers/manager.ts`) and its pieces: worktrees, pull requests, tasks, terminals, ACP workers, and saving to `workers.json`. `src/server/workers.ts` re-exports it for the modules that imported it from there. Where worktrees live (the folder beside the project, the older one inside it, the `node_modules` links) is `worktree-home.ts`; the git plumbing is `worktrees.ts`.
 - **`providers/`** holds one adapter per agent CLI (see [Adding an agent provider](#adding-an-agent-provider)).
+- **`hosting/`** is where a repository is hosted when it isn't GitHub (see [Adding a hosting provider](#adding-a-hosting-provider)): the providers (`azure.ts`, `bitbucket.ts`, each with its pure `*-map.ts`), the credentials (`credentials.ts`), the floor's board for such a repository (`hosted-board.ts`'s `HostedBoard`, the same surface as `github.ts`'s `GitHub`, picked once by `openBoard` there; `board.ts` holds the calls it and the kanban make), the shared request pool and per-PR cache (`pool.ts`) and `repoOf` (one cache of the checkouts' remotes, which `ghrepo.ts`' `checkoutRepo` reads too). Recognising a remote is `src/shared/hosting/remote.ts`. GitHub itself stays on `gh` in `github.ts`, `workers/pr.ts` and the kanban's integrations.
 
 The rest of `src/server/` is a module per service or per thing a floor keeps (`dog.ts`, `jukebox.ts`, `queue.ts`, `meetings.ts` for one meeting room, `meeting-rooms.ts` for a floor's rooms, `meeting-files.ts` for reading their earlier meetings and notes off the disk (served by `http/routes/meetings.ts`, which is not on a visitor's path list; the browser's view of them is `src/client/ui/meetingpast.ts`); where the office's four rooms stand, and each one's own frame, is `shared/meetingrooms.ts`), made by the office or by each `Floor` (`floor.ts`).
 
@@ -110,6 +111,16 @@ Its HTTP routes, if it has any, go in `http/routes/`, and its tests in `tests/`.
 ## Adding an agent provider
 
 One adapter file in `src/server/providers/`, one entry in `PROVIDERS` in `src/server/providers/index.ts`, and one row in `src/shared/providers.ts` (its id in `AGENT_PROVIDERS`, its entry in `PROVIDER_META`). The typecheck fails until all three are there. What reads them, and the two places that still name providers one by one, are in [Provider seams](dsh-acp-integration.md#provider-seams).
+
+## Adding a hosting provider
+
+GitHub goes through `gh`; every other host is a `HostingProvider` (`src/server/hosting/provider.ts`) over its REST API:
+
+1. **Its remotes** in `src/shared/hosting/remote.ts`: its `HostKind`, how `parseRemote` and `parsePrUrl` read its URLs, its qualified repository name (`azure:org/project/repo`), `prWebUrl` and `hostLabel`. `tests/hosting-remote.test.ts` covers each form.
+2. **Its provider**, `src/server/hosting/<host>.ts` (with the pure mapping into `GhPull` beside it), through `hostCall` (`http.ts`), and its entry in `HOSTS` in `src/server/hosting/index.ts`. Tests stub `fetch` (`tests/hosting-azure.test.ts`).
+3. **Its token**: `authOf` in `credentials.ts`, the card in `src/client/ui/signins-hosts.ts`, and its HTTPS host in `HELPER_HOSTS` (`server/gitconfig.ts`) and `bin/office-git-credential.js` for pushes.
+
+Everything else follows from there: the PR board (`HostedBoard`, via `openBoard`), the kanban's PR states and branch links (`pulls/index.ts`), `office-pr` (`kanban/integrations/hosting/`) and the prompts' note (`Composer.hostingNote`).
 
 ## The size guard
 

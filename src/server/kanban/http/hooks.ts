@@ -54,5 +54,6 @@ export async function kanbanLoopback(ctx: Ctx, req: http.IncomingMessage, res: h
 }
 
 /** Whether a hook-server path is one of the kanban's. */
-export const isTasksPath = (p: string) => p === '/office/tasks' || p.startsWith('/office/tasks/');
+// /office/pr: office-pr's (kanban/integrations/hosting), for a repository on Azure DevOps or Bitbucket.
+export const isTasksPath = (p: string) => p === '/office/tasks' || p.startsWith('/office/tasks/') || p.startsWith('/office/pr/');
 export const isLoopbackPath = (p: string) => p === '/api/tasks/reference' || p === '/api/v1' || p.startsWith('/api/v1/');

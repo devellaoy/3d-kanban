@@ -13,3 +13,7 @@
 .signin-steps .invite-row, .signin-steps .cmd { margin-top: 6px; }
 .signin-code { font-size: var(--fs-3xl) !important; letter-spacing: .12em; text-align: center; }
 .team .note.lead { margin-top: 0; }
+.signin-group { margin: 18px 0 0; font-size: var(--fs-lg); }
+.signin-office { margin-top: 10px; }
+.signin-office summary { cursor: pointer; font-weight: var(--fw-semibold); }
+.signin-office > * + * { margin-top: 8px; }

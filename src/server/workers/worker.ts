@@ -7,6 +7,7 @@ import type { UsageTracker } from '../usage.js';
 import type { Worker } from './types.js';
 
 export { KanbanWorkers, kanbanExtraArgs, kanbanSetup, kanbanWorkerEnv, kanbanHireInfo, type DepartureIntent } from '../kanban/workers.js'; // what WorkerManager takes from the kanban (see kanban/workers.ts)
+export { workerHostEnv } from '../hosting/index.js'; // a worker's pushes to Azure DevOps and Bitbucket (see hosting/credentials.ts)
 
 export const NAMES = [
   'Pixel', 'Byte', 'Nibble', 'Sprocket', 'Widget', 'Gizmo', 'Bolt', 'Cosmo', 'Dot', 'Echo',

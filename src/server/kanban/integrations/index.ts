@@ -1,6 +1,7 @@
 // The kanban's integrations: issue sources, task references and the compatibility API, skills,
 // the repository's user-skills/ synced to the machine's homes, pull requests across a project's
-// repositories. installKanban (../index.ts) registers these.
+// repositories, and repositories on Azure DevOps and Bitbucket (office-pr, work items). installKanban
+// (../index.ts) registers these.
 
 import type { KanbanContext, KanbanPluginFactory, KanbanPullsApi, KanbanRefsApi } from '../registry.js';
 import { createIssues } from './issues/index.js';
@@ -10,6 +11,7 @@ import { createSkills } from './skills/index.js';
 import { createUserSkillsPlugin } from './userskills/index.js';
 import { createChangesPlugin } from './changes/index.js';
 import { createReportsPlugin } from './reports/index.js';
+import { createHostingPlugin } from './hosting/index.js';
 
 /** Every integration plugin, in the order they are consulted. */
 export const integrationPlugins: KanbanPluginFactory[] = [
@@ -20,6 +22,8 @@ export const integrationPlugins: KanbanPluginFactory[] = [
   (ctx) => createUserSkillsPlugin(ctx),
   (ctx) => createChangesPlugin(ctx),
   (ctx) => createReportsPlugin(ctx),
+  // After pulls: a board refresh has set the linked PRs' states before work items follow them.
+  (ctx) => createHostingPlugin(ctx),
 ];
 
 export function createPulls(ctx: KanbanContext): KanbanPullsApi {

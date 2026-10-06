@@ -29,7 +29,7 @@ const CEILINGS: Readonly<Record<string, number>> = {
   'src/client/world/holiday.ts': 660,
   'src/client/features/dog/world.ts': 702,
   'src/client/world/character/person.ts': 699,
-  'src/server/signins.ts': 660,
+  'src/server/signins.ts': 650,
   'src/client/dnb.ts': 641,
   'src/client/features/golf/world.ts': 635,
   'src/client/features/bargames/world.ts': 617,
@@ -43,7 +43,6 @@ const CEILINGS: Readonly<Record<string, number>> = {
   'src/server/kanban/db/repository.ts': 901,
   'src/client/kanban/changesview.ts': 830,
   'src/shared/kanban/types.ts': 671,
-  'src/client/kanban/settings.ts': 622,
 };
 
 const SPLIT = 'Split it along the registries instead (see docs/code-layout.md).';

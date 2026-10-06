@@ -1,5 +1,6 @@
 import './boards.css';
 import type { GhIssue, GhLabel, GhPull, WorkerInfo } from '../../shared/protocol';
+import { hostLabel } from '../../shared/hosting/remote';
 import type { Net } from '../net';
 import { store, workerForPull } from '../state';
 import { h, openModal, timeAgo } from './dom';
@@ -137,7 +138,7 @@ function card(n: number, title: string, meta: (Node | string)[], i: number, oncl
 export function openBoard(kind: 'issues' | 'pulls', net: Net, actions: BoardActions) {
   const body = h('div.body');
   const status = h('span.board-status');
-  const refresh = h('button.btn', { title: 'Refresh from GitHub', onclick: () => net.send({ t: 'gh.refresh' }) }, '🔄 Refresh');
+  const refresh = h('button.btn', { title: 'Refresh', onclick: () => net.send({ t: 'gh.refresh' }) }, '🔄 Refresh');
   const close = h('button.btn.close', { 'aria-label': 'Close' }, '✕');
   // The repository filter, shown when the cards come from more than one repository.
   let repo = loadRepoFilter(kind, store.floor ?? '');
@@ -294,9 +295,12 @@ export function openBoard(kind: 'issues' | 'pulls', net: Net, actions: BoardActi
     refresh.classList.toggle('hidden', notGit(st));
     if (notGit(st)) return void body.append(h('div.board-error', {}, st.error ?? "This project isn't a git repository, so there are no issues or pull requests to show."));
     if (st.error && !st.items.length) {
-      body.append(h('div.board-error', {}, `Couldn't load from GitHub: ${st.error}`, h('br'), h('small', {}, 'The server runs `gh` in the project directory — make sure it is installed and authenticated (gh auth login).')));
+      // A repository on Azure DevOps or Bitbucket is read over its API with the tokens in 🔐 Your sign-ins, not gh.
+      const elsewhere = st.host && st.host !== 'github';
+      body.append(h('div.board-error', {}, `Couldn't load from ${hostLabel(st.host)}: ${st.error}`, h('br'), h('small', {}, elsewhere ? 'The office reads it with your token there, or the office’s own (☰ → 🔐 Your sign-ins).' : 'The server runs `gh` in the project directory — make sure it is installed and authenticated (gh auth login).')));
       return;
     }
+    if (st.note && !st.items.length) return void body.append(h('div.board-error', {}, st.note));
     // Only the picked repository's cards, each with its repository's chip.
     const repos = tabs ? tabRepos(st.items, store.pulls.repos) : boardRepos(st.items);
     const shownRepo = tabs ? keptRepo(repo, repos) : repos.includes(repo) ? repo : '';

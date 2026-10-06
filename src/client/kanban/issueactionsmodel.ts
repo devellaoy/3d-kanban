@@ -32,7 +32,7 @@ export const shownStatus = (issueStatus: string | undefined, current: string | u
 /** Whether a move is GitHub's close or reopen, which changes the issue itself (its window fetches it again). */
 export const closesOrReopens = (transitionId: string) => transitionId.startsWith('gh:');
 
-/** Whether the key is a GitHub one (`gh:owner/repo#5`, `ghp:owner/1#item`); anything else is Jira's. */
+/** Whether the key is a GitHub one (`gh:owner/repo#5`, `ghp:owner/1#item`); anything else is Jira's or Azure Boards' (`ab:org/project#5`), where "me" is pinned per site. */
 export const isGithubKey = (key: string) => /^ghp?:/.test(key);
 
 /** Where a card's actions go: its key on the floor's project, or nowhere (a card with no key is upstream's own issue, and has none). */

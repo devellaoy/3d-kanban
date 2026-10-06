@@ -4,6 +4,10 @@ import { openedFromOfficeBy } from '../shared/officepr.js';
 import type { GhAs } from './signins.js';
 import { checkoutRepo, repoApi, repoFlag } from './ghrepo.js';
 import { pullDiffOrFiles } from './prfiles.js';
+import { otherHostRepo } from './hosting/index.js';
+import { hostedRepoOf, type HostedRepo } from './hosting/board.js';
+import type { HostAs } from './hosting/provider.js';
+import { HostedBoard } from './hosting/hosted-board.js';
 
 const REFRESH_MS = 90_000;
 /** How long the repo's list of labels is kept before the label picker asks GitHub again. */
@@ -493,4 +497,25 @@ export class GitHub {
 function withOpenedBy(body: string): { openedBy?: string } {
   const by = openedFromOfficeBy(body);
   return by ? { openedBy: by } : {};
+}
+
+/**
+ * A floor's board for one repository: GitHub's, or a provider's for one on another host
+ * (hosting/hosted-board.ts), which is `hosted` and takes that host's credentials where GitHub's takes gh's.
+ */
+export type Board = Omit<GitHub, 'pullDetail' | 'comment' | 'review'> & {
+  readonly hosted?: HostedRepo;
+  pullDetail(n: number, me?: string, host?: HostAs): Promise<GhPullDetail>;
+  comment(kind: 'issue' | 'pull', n: number, body: string, as?: GhAs, host?: HostAs): Promise<{ comment?: GhComment; error?: string }>;
+  review(n: number, file: string, as?: GhAs, owner?: string): Promise<string>;
+};
+
+/**
+ * The board for the repository in `dir` (or the one `opts.nameWithOwner` names): where it's hosted is
+ * worked out once, here, and a repository on Azure DevOps or Bitbucket gets a HostedBoard, so GitHub
+ * stays GitHub's alone.
+ */
+export function openBoard(dir: string, onIssues: (s: GhState<GhIssue>) => void, onPulls: (s: GhState<GhPull>) => void, opts: ConstructorParameters<typeof GitHub>[3] = {}): Board {
+  const hosted = opts.off ? undefined : opts.nameWithOwner ? hostedRepoOf(opts.nameWithOwner) : otherHostRepo(dir);
+  return hosted ? new HostedBoard(hosted, onIssues, onPulls, opts) : new GitHub(dir, onIssues, onPulls, opts);
 }

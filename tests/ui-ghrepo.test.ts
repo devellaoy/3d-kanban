@@ -101,3 +101,18 @@ test("workerForRepoPull doesn't take another repository's PR with the same numbe
   assert.equal(workerForRepoPull(workers, pr('acme/web', 14, 'fix-w'), 'acme/web', 'acme/web'), web);
   assert.equal(workerForRepoPull(workers, pr('acme/docs', 5), 'acme/docs', 'acme/web'), undefined);
 });
+
+test('a project mixing hosts: a pull request is told by its repository off any host’s URL, so #7 opens the right #7', () => {
+  const az = { number: 7, url: 'https://dev.azure.com/contoso/Web/_git/api/pullrequest/7', headRefName: 'a' };
+  const bb = { number: 7, url: 'https://bitbucket.org/acme/ui/pull-requests/7', headRefName: 'b' };
+  assert.equal(repoOfItem(az), 'azure:contoso/Web/api');
+  assert.equal(repoOfItem(bb), 'bitbucket:acme/ui');
+  assert.equal(repoOfItem({ url: 'https://github.com/acme/web/issues/3' }), 'acme/web', 'GitHub as before');
+  assert.equal(boardRepoOfItem(bb), 'bitbucket:acme/ui');
+  assert.equal(findItem([az, bb], 7, 'bitbucket:acme/ui'), bb);
+  assert.equal(findItem([az, bb], 7, 'azure:contoso/Web/api'), az);
+  assert.equal(sameItem(az, bb), false);
+  const w = worker('w1', { pr: { number: 7, url: bb.url } });
+  assert.equal(workerForRepoPull([w], az, 'azure:contoso/Web/api', 'azure:contoso/Web/api'), undefined, "the Bitbucket #7's worker isn't the Azure DevOps #7's");
+  assert.equal(workerForRepoPull([w], bb, 'bitbucket:acme/ui', 'azure:contoso/Web/api'), w);
+});

@@ -1,5 +1,6 @@
 // A PR over GitHub's 300-file limit has no `.diff`; its diff is built here from the files API.
 import { repoApi } from './ghrepo.js';
+import { gitPath } from './gitpath.js';
 
 /** What gh says when GitHub won't send a PR's diff because it is too big. */
 export const DIFF_TOO_LARGE = /PullRequest\.diff too_large|diff exceeded the maximum number of (files|lines)/i;
@@ -18,12 +19,6 @@ export interface GhPrFile {
   deletions?: number;
 }
 
-/** A path as git writes it in a diff header: C-quoted when it has a quote, backslash or control character, so a file name can't start a header line of its own. */
-function gitPath(prefix: string, p: string): string {
-  if (!/["\\\x00-\x1f\x7f]/.test(p)) return prefix + p;
-  const esc: Record<string, string> = { '"': '\\"', '\\': '\\\\', '\t': '\\t', '\n': '\\n', '\r': '\\r' };
-  return `"${(prefix + p).replace(/["\\\x00-\x1f\x7f]/g, (c) => esc[c] ?? `\\${c.charCodeAt(0).toString(8).padStart(3, '0')}`)}"`;
-}
 
 /** The files as a unified diff `parseDiff` (client/ui/pulldiff.ts) reads like `gh pr diff`'s. `total` is the PR's file count, when GitHub lists fewer. */
 export function diffFromFiles(files: GhPrFile[], total?: number): string {

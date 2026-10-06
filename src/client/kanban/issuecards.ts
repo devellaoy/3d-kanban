@@ -129,6 +129,7 @@ function sourceName(it: GhIssue): string {
   if (gh) return `GitHub issue ${gh.repo}#${gh.number}`;
   if (it.source === 'github-project') return `GitHub project item ${issueCardLabel(it)}`;
   if (it.source === 'jira') return `Jira issue ${it.key}`;
+  if (it.source === 'azure-boards') return `Azure Boards work item ${it.key}`;
   return `issue ${issueCardLabel(it)}`;
 }
 
@@ -306,7 +307,7 @@ function openSourceIssue(first: GhIssue, net: Net, actions: BoardActions, refetc
     h(
       'footer',
       {},
-      safeUrl(it.url) ? h('a.grow', { href: safeUrl(it.url), target: '_blank', rel: 'noopener noreferrer' }, `Open in ${it.source === 'jira' ? 'Jira' : 'GitHub'} ↗`) : h('span.grow'),
+      safeUrl(it.url) ? h('a.grow', { href: safeUrl(it.url), target: '_blank', rel: 'noopener noreferrer' }, `Open in ${it.source === 'jira' || it.source === 'azure-boards' ? SOURCE_KIND_NAMES[it.source] : 'GitHub'} ↗`) : h('span.grow'),
       h('button.btn', { type: 'button', title: 'Send a worker your own prompt about this issue', onclick: () => actions.ask(`${sourceName(it)}: “${it.title}”.\n\n${readHint(it)}`.trim(), `Ask about ${label}`) }, '✍️ Ask a worker…'),
       h('button.btn', { type: 'button', title: 'Workers take it on together in the meeting room: a debate, lead & team, map-reduce or red / blue', onclick: () => actions.meeting(cardMeeting(it)) }, '🤝 Meeting…'),
       queueProvider.element,

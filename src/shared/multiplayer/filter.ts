@@ -109,6 +109,8 @@ export const SERVER_MSG_OUT = {
   me: 'drop',
   signins: 'drop',
   'signins.needed': 'drop',
+  hosting: 'drop',
+  'hosting.saved': 'drop',
   upgrade: 'drop',
   // Ports, commands and folders of what the owner's workers run.
   services: 'drop',

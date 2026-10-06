@@ -26,7 +26,7 @@ export const waitingName = (w: WaitingReason) => WAITING[w];
 /** A pull request's state, by its tone (model.ts prTone). */
 export const PR_STATE_NAMES = { open: 'open', draft: 'draft', merged: 'merged', closed: 'closed' } as const;
 export const APPROVAL_NAMES: Record<PlanApproval, string> = { auto: 'implement straight away', manual: 'wait for approval' };
-export const SOURCE_KIND_NAMES: Record<IssueSourceKind, string> = { 'github-repo': 'GitHub repositories', 'github-project': 'GitHub project', jira: 'Jira' };
+export const SOURCE_KIND_NAMES: Record<IssueSourceKind, string> = { 'github-repo': 'GitHub repositories', 'github-project': 'GitHub project', jira: 'Jira', 'azure-boards': 'Azure Boards' };
 
 /** The units of a retry countdown (model.ts countdown). */
 export const COUNTDOWN_UNITS = { s: 's', min: 'min', h: 'h', now: 'a moment' };
