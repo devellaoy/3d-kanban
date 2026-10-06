@@ -56,6 +56,7 @@ function jiras() {
     if (u.pathname === '/rest/api/3/search/jql') return json({ issues: [{ key: `${key}-1`, fields: { summary: `On ${u.host}`, status: { name: 'To Do' }, project: { key }, updated: '2026-09-01' } }], isLast: true });
     if (u.pathname === '/rest/api/3/field') return json([]);
     if (u.pathname.endsWith('/approximate-count')) return json({ count: 3 });
+    if (/^\/rest\/api\/3\/issue\/[A-Z]+-\d+$/.test(u.pathname)) return json({ key: u.pathname.split('/').pop(), fields: { summary: 'Only B sees it', project: { key }, status: { name: 'To Do' }, updated: '2026-09-01' } });
     if (u.pathname === '/rest/api/3/myself') return json({ displayName: `Ada on ${u.host}`, accountId: `acc-${key}` });
     if (u.pathname.endsWith('/transitions') && call.method === 'GET') return json({ transitions: [{ id: '21', name: 'Go', to: { name: 'Doing' } }] });
     if (u.pathname.endsWith('/assignable/search')) return json([{ accountId: 'u1', displayName: 'Maija' }]);
@@ -66,7 +67,7 @@ function jiras() {
 
 const last = <T extends KanbanServerMsg['t']>(c: { got: KanbanServerMsg[] }, t: T) => c.got.at(-1) as Extract<KanbanServerMsg, { t: T }>;
 
-function setup(sources: (ids: Record<string, string>) => IssueSourceConfig[], hold: { gate?: Promise<void> } = {}) {
+function setup(sources: (ids: Record<string, string>) => IssueSourceConfig[], hold: { gate?: Promise<void>; deny?: string[]; denied?: string[] } = {}) {
   const ctx = makeCtx([def('app', '/tmp/app', { repo: 'o/r' })]);
   const ids: Record<string, string> = {};
   for (const [name, site] of [['ca', 'a.atlassian.net'], ['cb', 'b.atlassian.net'], ['cb2', 'b.atlassian.net']]) {
@@ -77,6 +78,8 @@ function setup(sources: (ids: Record<string, string>) => IssueSourceConfig[], ho
   const http = jiras();
   const held = (async (u: string, init: RequestInit) => {
     if (String(u).endsWith('/approximate-count') && hold.gate) await hold.gate;
+    const auth = String((init.headers as Record<string, string>).authorization);
+    if (hold.deny?.includes(auth)) return (hold.denied?.push(`${new URL(u).pathname}`), new Response(JSON.stringify({ errorMessages: ['Issue does not exist or you do not have permission to see it.'] }), { status: 404 }));
     return http.fetch(u, init);
   }) as unknown as typeof fetch;
   const issues = createIssues(ctx, { gh: (async () => '[]') as never, fetch: held });
@@ -313,4 +316,20 @@ test('a count read before a connection changed is not kept: the next one is aske
   assert.equal((await count()).count, 3);
   assert.equal(counts().length, 2, 'the old read did not fill the new cache');
   assert.equal(counts().at(-1)!.auth, basic(ctx.secrets.jiraConnections()[0]));
+});
+
+test('an issue the list has lost is read again through the source the action names, with that source’s login', async () => {
+  const hold: { deny?: string[]; denied?: string[] } = { denied: [] };
+  const { http, ask, authOf } = setup((i) => [
+    { id: 'sb', kind: 'jira', site: 'b.atlassian.net', connection: i.cb, projectKeys: ['BBB'], filters: {} },
+    { id: 'sb2', kind: 'jira', site: 'b.atlassian.net', connection: i.cb2, projectKeys: ['BBB'], filters: {} },
+  ], hold);
+  hold.deny = [authOf('cb')]; // Only cb2's account can see BBB-1. It is on no list, and not acted on or browsed.
+  // Without a source the first one's account is tried, as before; so is the first source when named.
+  assert.match((await ask('kanban.issue.comment', { issueKey: 'BBB-1', text: 'Hi' })).message, /isn't among the project's issues/);
+  assert.match((await ask('kanban.issue.comment', { issueKey: 'BBB-1', text: 'Hi', source: 'sb' })).message, /isn't among the project's issues/);
+  assert.ok(hold.denied!.length > 0);
+  const n = http.calls.length;
+  assert.equal((await ask('kanban.issue.comment', { issueKey: 'BBB-1', text: 'Hi', source: 'sb2' })).t, 'kanban.ok');
+  assert.ok(http.calls.slice(n).every((c) => c.auth === authOf('cb2')));
 });

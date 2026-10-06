@@ -36,8 +36,8 @@ export interface IssuePatch {
 export interface ActionDeps {
   /** The issue on the project's list (with any pending change applied), else one acted on or browsed a little while ago. */
   find(project: string, key: string): NormalizedIssue | undefined;
-  /** The issue fetched fresh from its source, when `find` has lost it: only one inside the project's own scope (its Jira project keys, its repositories, its boards). */
-  load(project: string, key: string): Promise<NormalizedIssue | undefined>;
+  /** The issue fetched fresh from its source (`source`: the one the asker opened it through, when it names one), when `find` has lost it: only one inside the project's own scope (its Jira project keys, its repositories, its boards). */
+  load(project: string, key: string, source?: string): Promise<NormalizedIssue | undefined>;
   /** Shows a change at once on the kanban and the 3D board, until a later fetch has it. */
   patch(project: string, key: string, fields: IssuePatch): void;
   io(project: string): IssueSourceIo;
@@ -130,7 +130,7 @@ export function issueActionHandlers(ctx: KanbanContext, deps: ActionDeps): NonNu
     <M extends { project: string; issueKey: string; source?: string; rid?: string }>(go: (c: KanbanClient, m: M, s: Scope) => Promise<void>, write = false) =>
     async (c: KanbanClient, m: M): Promise<void> => {
       if (!ctx.project(m.project)) return fail(c, m.rid, `There's no project ${m.project}`);
-      const issue = deps.find(m.project, m.issueKey) ?? (await deps.load(m.project, m.issueKey));
+      const issue = deps.find(m.project, m.issueKey) ?? (await deps.load(m.project, m.issueKey, m.source));
       if (!issue) return fail(c, m.rid, `${m.issueKey} isn't among the project's issues (any more)`);
       const sources = ctx.settings.project(m.project).issueSources;
       const target = route(sources, issue, m.source);

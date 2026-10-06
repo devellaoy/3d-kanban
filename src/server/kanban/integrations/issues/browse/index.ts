@@ -185,13 +185,13 @@ export function createBrowse(ctx: KanbanContext, deps: BrowseDeps) {
    * An issue of the project fetched fresh, for an action or a task on a key that is not on the list
    * (it was browsed, and the cache let go of it). Only the project's own: a Jira key of a source's
    * project keys; a `gh:` key on one of its boards or of its repositories; a draft of one of its
-   * boards. Anything else, or any failure, is undefined.
+   * boards. Anything else, or any failure, is undefined. `source`: the source the asker came through (a Jira key is read through that one only).
    */
-  const load = async (project: string, key: string): Promise<NormalizedIssue | undefined> => {
-    const at = `${project}|${key}`;
+  const load = async (project: string, key: string, source?: string): Promise<NormalizedIssue | undefined> => {
+    const at = `${project}|${source ?? ''}|${key}`;
     const seen = missed.get(at);
     if (seen !== undefined && Date.now() - seen < MISS_TTL_MS) return undefined;
-    const found = await fetchOwn(project, key);
+    const found = await fetchOwn(project, key, source);
     if (!found) {
       if (missed.size >= MISS_MAX) missed.delete(missed.keys().next().value as string);
       missed.set(at, Date.now());
@@ -199,7 +199,7 @@ export function createBrowse(ctx: KanbanContext, deps: BrowseDeps) {
     return found;
   };
 
-  const fetchOwn = async (project: string, key: string): Promise<NormalizedIssue | undefined> => {
+  const fetchOwn = async (project: string, key: string, source?: string): Promise<NormalizedIssue | undefined> => {
     const sources = ctx.settings.project(project).issueSources;
     const io = actIo(project, 'Agent Office');
     try {
@@ -210,7 +210,8 @@ export function createBrowse(ctx: KanbanContext, deps: BrowseDeps) {
         return board ? (await readWorkItems(io, readerAs(board.org), board.org, board.project, [ab.id], board.id))[0] : undefined;
       }
       if (JIRA_KEY_RE.test(key)) {
-        const jira = sources.find((s): s is JiraConfig => s.kind === 'jira' && s.projectKeys.some((k) => k.toUpperCase() === keyProject(key)));
+        // Through the source the asker opened it through when they named one (its own connection), else the first that holds the key's project.
+        const jira = sources.find((s): s is JiraConfig => s.kind === 'jira' && (source === undefined || s.id === source) && s.projectKeys.some((k) => k.toUpperCase() === keyProject(key)));
         return jira ? await jiraGet(io, jira, key, caches) : undefined;
       }
       // The issue and its parent chain are read once and tested against each board (not one fetch per board).

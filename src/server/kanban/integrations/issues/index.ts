@@ -342,8 +342,8 @@ export function createIssues(ctx: KanbanContext, opts: IssuesOptions = {}) {
       ...jiraConnectionHandlers(ctx, doFetch, browsing.connectionsChanged),
       ...issueActionHandlers(ctx, {
         find,
-        load: async (project, key) => {
-          const issue = await browsing.load(project, key);
+        load: async (project, key, source) => {
+          const issue = await browsing.load(project, key, source);
           if (issue) browse(project, issue);
           return issue;
         },
