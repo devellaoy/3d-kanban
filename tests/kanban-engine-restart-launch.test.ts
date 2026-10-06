@@ -91,6 +91,51 @@ test("a comment's resume run cut off before its prompt was delivered carries the
   assert.equal(prompts(fx, RESTARTED).length, 0);
 });
 
+test('a comment typed in but never submitted when the office stops is typed in again, once', async (t) => {
+  const fx = await fixture();
+  t.after(() => fx.close());
+  fx.setRules([{ when: 'Implement kanban task', reply: 'Done.', commit: 'Work' }, { when: 'commented on task', reply: 'Handled the comment.', commit: 'Rename' }]);
+  const task = fx.newTask({ usePlan: false, useReview: false });
+  await fx.engine.start(task.id, ADA);
+  await fx.waitTask(task.id, (x) => x.status === 'review' && x.runState === 'idle', 'the review column');
+  // The prompt is typed into the resting agent, and the office is gone before Enter reaches it.
+  swallow(fx);
+  const c = fx.repo.addComment({ taskId: task.id, authorKind: 'user', authorName: 'Ada', text: 'Also rename foo to bar.' }).comment;
+  await fx.engine.commented(task.id, c.id, ADA);
+  assert.equal(fx.repo.listRuns(task.id).at(-1)?.phase, 'resume');
+  assert.equal(prompts(fx, /rename foo to bar/).length, 0, 'the prompt never went in');
+  await fx.restartOffice();
+  await fx.waitTask(task.id, (x) => x.status === 'review' && x.runState === 'idle' && fx.repo.listRuns(task.id).some((r) => r.phase === 'resume' && r.status === 'succeeded'), 'the comment handled', 40_000);
+  assert.equal(prompts(fx, /rename foo to bar/).length, 1, 'the comment reached the agent once');
+  assert.equal(prompts(fx, RESTARTED).length, 0);
+});
+
+test('a run held for background work whose final answer was logged before the office stopped is handled, not run again', async (t) => {
+  const fx = await fixture();
+  t.after(() => fx.close());
+  fx.setRules([{ when: 'Implement kanban task', background: 'Waiting for the helper agent.', backgroundMs: 600, reply: 'Finished after the helper.', commit: 'Work' }, { when: 'office was restarted', reply: 'Should not be asked.' }]);
+  const task = fx.newTask({ usePlan: false, useReview: false });
+  await fx.engine.start(task.id, ADA);
+  const end = Date.now() + 15_000;
+  let run = fx.repo.activeRun(task.id);
+  while ((!run || fx.repo.runHeldAt(run.id) === undefined) && Date.now() < end) {
+    await sleep(20);
+    run = fx.repo.activeRun(task.id);
+  }
+  // The office is gone once the answer to the completion notice is in the log, before its result is handled.
+  fx.engine.dispose();
+  const log = fx.workers.transcripts(run!.workerId!)!.claude!;
+  while (!(await import('node:fs')).readFileSync(log, 'utf8').includes('Finished after the helper.') && Date.now() < end) await sleep(20);
+  await sleep(200);
+  assert.ok(fx.repo.runHeldAt(run!.id), 'the hold is still on the run');
+  await fx.restartOffice();
+  const done = await fx.waitTask(task.id, (x) => x.status === 'review' && x.runState === 'idle', 'the review column', 40_000);
+  assert.equal(done.summary, 'Finished after the helper.');
+  assert.equal(fx.repo.getRun(run!.id)?.status, 'succeeded');
+  assert.equal(fx.repo.listRuns(task.id).length, 1, 'no run was started again');
+  assert.equal(prompts(fx, RESTARTED).length, 0);
+});
+
 test("codex: a session whose rollout is gone interrupts the run with the reason, and Retry starts a fresh session", async (t) => {
   const fx = await fixture();
   t.after(() => fx.close());

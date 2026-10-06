@@ -10,6 +10,7 @@
 import type { Floor } from '../../floor.js';
 import type { KanbanContext } from '../registry.js';
 import type { WorkerInfo, WorkerStatus } from '../../../shared/protocol.js';
+import type { WorkerObservation } from '../../workers.js';
 import type { KanbanRun, KanbanTask, QueuedRun } from '../../../shared/kanban/types.js';
 import { claudeAdapter } from './adapters/claude.js';
 import type { MachineEvent } from './machine.js';
@@ -36,6 +37,9 @@ export interface RestartDeps<L extends HeldRun> {
   /** The gap between one run being carried on and the next (ms), so the woken agents don't all start together. */
   staggerMs: number;
 }
+
+/** Whether what a worker's agent just did says it has the prompt the office typed into it: its prompt hook, or its turn beginning. */
+export const receipt = (o: Pick<WorkerObservation, 'event' | 'hookEvent' | 'status'>) => (o.event === 'hook' && o.hookEvent === 'UserPromptSubmit') || o.status === 'working';
 
 export class Restarts<L extends HeldRun> {
   /** Per project: the drain scheduled for when its next queued run may start. */
@@ -165,8 +169,10 @@ export class Restarts<L extends HeldRun> {
     }
     const lost = this.gone(task, run.role, run.tool, floor, info);
     if (lost) return this.interrupt(run, task, lost);
-    // Its turn had finished (the run was prompted), wasn't held for background work, and left none or teammates out in the log (they died with the shutdown): its result is handled, nothing is run again.
-    if (cut === 'done' && run.promptedAt !== undefined && !ctx.repo.runLaunch(run.id) && ctx.repo.runHeldAt(run.id) === undefined && !this.leftWork(run, floor, info)) {
+    // Its turn had finished (the run was prompted; its launch's prompt is known to have arrived) and its log shows no background agents, commands or teammates left out (they died with the shutdown):
+    // its result is handled, nothing is run again. A run held for background work counts too when its log shows the work done and the turn's final answer after it (the answer
+    // to the completion notice came without a prompt hook, which would have cleared the hold); with the work still out, or no answer yet, it carries on.
+    if (cut === 'done' && run.promptedAt !== undefined && !ctx.repo.runLaunch(run.id) && this.finished(run, floor, info)) {
       const live = this.deps.attach(run, task, info);
       void this.deps.serial(task.id, () => this.deps.turnEnded(live));
       return;
@@ -185,9 +191,11 @@ export class Restarts<L extends HeldRun> {
     note(task, 'The office restarted mid-run: its agent carries on by itself shortly.', run.id);
   }
 
-  /** Whether the session log of the run's turns shows background agents, commands or teammates still out. */
-  private leftWork(run: KanbanRun, floor: Floor, info: WorkerInfo): boolean {
-    return !!this.readLog(run, floor, info)?.background;
+  /** Whether the run's turn is over for good: no work left out in its log, and for a run held for background work, the final answer is there after it. */
+  private finished(run: KanbanRun, floor: Floor, info: WorkerInfo): boolean {
+    const result = this.readLog(run, floor, info);
+    if (this.deps.ctx.repo.runHeldAt(run.id) === undefined) return !result?.background;
+    return !!result?.complete && !result.background && !result.unheard && !result.resuming;
   }
 
   /** What the run's turns say in the session log, read from the run's start. */

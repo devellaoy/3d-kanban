@@ -38,7 +38,7 @@ import { branchExists, checkoutLines, currentBranch, homeCleanup, hasChanges, mi
 import { Handoffs } from './handoff.js';
 import { Departures } from './departures.js';
 import { Holds } from './hold.js';
-import { Restarts } from './restart.js';
+import { Restarts, receipt } from './restart.js';
 import { promptHead, TurnHolds, typeable, type HeldRun } from './turnhold.js';
 import { sessionLogged } from './sessions.js';
 
@@ -72,6 +72,7 @@ interface Live extends HeldRun {
   /** Its agent was started on a stored session (--resume) and has not been heard from yet: if it exits now, the session is gone (see exited). */
   resumed?: boolean;
   started?: boolean;
+  typed?: boolean; // its prompt was typed into the running agent: it has it once the agent's prompt hook or work is heard (see receipt)
   /** False while an old process of the worker is still being ended for a relaunch: its events are not the new agent's. */
   armed?: boolean;
   /** What its run was asked to do (the text as it went), to start it again in a fresh session; and what is to be acknowledged once the agent has the prompt. */
@@ -956,6 +957,7 @@ export class Orchestrator {
       const typed = same && (info.status === 'done' || info.status === 'idle');
       // Relaunched on its session: its agent is heard from (and has the prompt) later, and events of the old process meanwhile are not its own. Set before any await.
       if (!typed && info.sessionId) Object.assign(live, { resumed: true, armed: false, ack: heldTaken });
+      else if (typed) Object.assign(live, { typed: true, ack: heldTaken });
       this.ctx.repo.updateRun(run.id, { workerId: info.id, sessionId: info.sessionId }); // before the relaunch awaits: a restart in that window finds the run's worker
       if (typed) err = floor.workers.prompt(info.id, prompt, via.who?.name);
       else if (info.sessionId) err = await floor.workers.relaunch(info.id, { launchArgs, prompt, env: extras.env, model: spawnModel, effort: spawnEffort });
@@ -963,7 +965,6 @@ export class Orchestrator {
       live.armed = true;
       if (!err) {
         this.update(task.id, { runState: 'running' });
-        if (typed) heldTaken(); // typed into a running agent: it has the prompt
         return undefined;
       }
       this.forget(live);
@@ -1172,7 +1173,7 @@ export class Orchestrator {
     }
     const live = this.live.get(o.workerId);
     if (!live || live.ended || live.floorId !== floorId) return;
-    if (live.armed !== false && !live.started && ((o.event === 'hook' && !agentHook(o.payload)) || (o.status && o.status !== 'starting' && o.status !== 'exited'))) {
+    if (live.armed !== false && !live.started && (live.typed ? receipt(o) : (o.event === 'hook' && !agentHook(o.payload)) || (o.status && o.status !== 'starting' && o.status !== 'exited'))) {
       live.started = true;
       live.ack?.();
       live.ack = undefined;
