@@ -86,6 +86,14 @@
 .kb-set .kb-skill-pick[open] { padding: 6px; border: var(--bw-sm) solid var(--ink); border-radius: 10px; background: var(--field); display: flex; flex-direction: column; gap: 4px; }
 .kb-set .kb-secret { font-weight: var(--fw-heavy); }
 .kb-set .kb-secret.on { color: var(--good-ink); }
+/* Jira connections (jira-connections.ts): a row each, its test result and its edit form or confirm under it */
+.kb-set .kb-jira-conns { display: flex; flex-direction: column; gap: 8px; }
+.kb-set .kb-jira-conn .kb-repo-head { flex-wrap: wrap; }
+.kb-set .kb-jira-result:empty { display: none; }
+.kb-set .kb-jira-result { font-weight: var(--fw-bold); }
+.kb-set .kb-jira-result.ok { color: var(--good-ink); }
+.kb-set .kb-jira-result.bad { color: var(--bad-ink); }
+.kb-set .kb-jira-form { grid-template-columns: 1fr; }
 
 /* ＋ New project (newproject.ts): its own window, stacked over Settings, so its rules are scoped under it rather than .kb-set. */
 .modal.kb-new-project-modal { width: min(560px, 100%); }

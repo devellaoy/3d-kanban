@@ -37,7 +37,8 @@ import type { KanbanSettingsPane } from './settingsslot';
 import { Cleanups, settingsRedraw } from './settingsflow';
 import { APPROVAL_NAMES, effortName, SOURCE_KIND_NAMES, toolName } from './labels';
 import { checkbox, field, numberInput, numberValue, run, select, tabStrip, textArea, textInput } from './ui';
-import { azureBoardsForm, csv, jiraForm } from './source-forms';
+import { azureBoardsForm, csv, jiraForm, jiraKeyClash } from './source-forms';
+import { jiraConnectionsFieldset } from './jira-connections';
 
 /** The tabs of 📁 Projects. */
 export type ProjectTab = 'project' | 'sources' | 'skills' | 'prompts';
@@ -467,7 +468,7 @@ function sourcesPane(api: KanbanApi, projectId: string, s: KanbanSettings): HTML
   const blank: Record<IssueSourceKind, () => IssueSourceConfig> = {
     'github-repo': () => ({ id: newId(), kind: 'github-repo', repos: [], filters: { state: 'open' } }),
     'github-project': () => ({ id: newId(), kind: 'github-project', owner: '', number: 1, filters: {} }),
-    jira: () => ({ id: newId(), kind: 'jira', site: kstore.secrets.jira.site ?? '', projectKeys: [], filters: {} }),
+    jira: () => ({ id: newId(), kind: 'jira', site: kstore.secrets.jira[0]?.site ?? '', projectKeys: [], filters: {} }),
     'azure-boards': () => ({ id: newId(), kind: 'azure-boards', org: '', project: '', filters: {} }),
   };
   const adders = (Object.keys(blank) as IssueSourceKind[]).map((k) => h('button.btn.small.kb-admin', { type: 'button', onclick: () => makeSource(blank[k]()) }, `＋ ${SOURCE_KIND_NAMES[k]}`));
@@ -479,6 +480,8 @@ function sourcesPane(api: KanbanApi, projectId: string, s: KanbanSettings): HTML
       if (typeof v === 'string') return toast(v, 'warn');
       out.push(v);
     }
+    const clash = jiraKeyClash(out);
+    if (clash) return toast(clash, 'warn');
     void run(() => api.request({ t: 'kanban.project.settings.set', project: projectId, settings: { issueSources: out } }), save, 'Saved');
   });
   return h('div.kb-pane', {}, h('p.kb-hint', {}, 'Where the project’s issues come from. Filters narrow what’s fetched.'), list, h('div.kb-row', {}, ...adders), h('div.kb-row.kb-save', {}, h('span.grow'), save));
@@ -546,20 +549,7 @@ function promptsPane(api: KanbanApi, projectId: string, s: KanbanSettings, openE
 
 function secretsPane(api: KanbanApi): HTMLElement {
   const sec = kstore.secrets;
-  const status = (on: boolean, extra = '') => h('span.kb-secret', { class: on ? 'on' : '' }, on ? `✅ configured${extra}` : '— not set');
-  const site = textInput(sec.jira.site ?? '', { placeholder: 'yourteam.atlassian.net', autocomplete: 'off' });
-  const email = textInput('', { placeholder: 'me@example.com', autocomplete: 'off', type: 'email' });
-  const token = h('input', { type: 'password', autocomplete: 'new-password', placeholder: sec.jira.configured ? '••••••••' : '', 'aria-label': 'API token' }) as HTMLInputElement;
-  const saveJira = saveButton('Save Jira');
-  const clearJira = h('button.btn.kb-admin', { type: 'button', disabled: !sec.jira.configured }, 'Clear') as HTMLButtonElement;
-  saveJira.addEventListener('click', () => {
-    if (!site.value.trim() || !email.value.trim() || !token.value.trim()) return toast('Jira needs the site, the e-mail and the token', 'warn');
-    void run(() => api.request({ t: 'kanban.secrets.set', jira: { site: site.value.trim(), email: email.value.trim(), token: token.value.trim() } }), saveJira, 'Saved').then((ok) => {
-      if (ok) token.value = '';
-    });
-  });
-  clearJira.addEventListener('click', () => void run(() => api.request({ t: 'kanban.secrets.set', jira: null }), clearJira, 'Saved'));
-
+  const status = (on: boolean) => h('span.kb-secret', { class: on ? 'on' : '' }, on ? '✅ configured' : '— not set');
   const key = h('input', { type: 'password', autocomplete: 'new-password', placeholder: sec.apiKey.configured ? '••••••••' : '', 'aria-label': 'API key', minlength: 16 }) as HTMLInputElement;
   const gen = h('button.btn.kb-admin', { type: 'button', title: 'Make a random key (copy it before saving: it isn’t shown again)' }, '🎲 Generate');
   gen.addEventListener('click', () => {
@@ -585,7 +575,7 @@ function secretsPane(api: KanbanApi): HTMLElement {
     'div.kb-pane',
     {},
     h('p.kb-hint', {}, 'Written here, kept on the office’s machine only: this page is only told whether they’re set.'),
-    h('fieldset', {}, h('legend', {}, 'Jira'), h('p', {}, status(sec.jira.configured, sec.jira.site ? ` · ${sec.jira.site}` : '')), h('div.kb-three', {}, field('Jira site', site), field('E-mail', email), field('API token', token, 'id.atlassian.com → Security → API tokens')), h('div.kb-row.kb-save', {}, h('span.grow'), clearJira, saveJira)),
+    jiraConnectionsFieldset(api),
     h('fieldset', {}, h('legend', {}, 'API key'), h('p', {}, status(sec.apiKey.configured)), h('p.kb-hint', {}, 'For the loopback /api/v1 (jira-loop, jira-kanban-feeder). At least 16 characters.'), h('div.kb-row', {}, key, gen), h('div.kb-row.kb-save', {}, h('span.grow'), clearKey, saveKey)),
   );
 }

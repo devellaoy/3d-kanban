@@ -10,7 +10,7 @@ export class KanbanStore {
   tasks = new Map<number, KanbanTaskCard>();
   projects: KanbanProjectInfo[] = [];
   settings: KanbanSettings | null = null;
-  secrets: SecretStatus = { jira: { configured: false }, apiKey: { configured: false } };
+  secrets: SecretStatus = { jira: [], apiKey: { configured: false } };
   me = { admin: false, name: '' };
   /** The project the board shows (a floor id), or null for all of them. */
   project: string | null = null;
