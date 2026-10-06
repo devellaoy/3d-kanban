@@ -4,6 +4,7 @@ import { execFileSync } from 'node:child_process';
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
+import { CarryOnSetting } from '../src/server/carry-on-setting.js';
 import { LeaveOnMerge, landedWorkers } from '../src/server/leave-on-merge.js';
 import { Worktrees } from '../src/server/worktrees.js';
 import type { GhPull, QueueTask, WorkerInfo, WorkerStatus } from '../src/shared/protocol.js';
@@ -103,4 +104,18 @@ test("commits in the merged PR aren't work a worktree would lose, even with the 
   git('commit', '-qm', 'c3');
   git('checkout', '-q', 'main');
   assert.equal((await trees.inspect(wt, merged)).unpushed, 1);
+});
+
+test('carrying on after a restart is on until someone turns it off, and keeps across restarts', (t) => {
+  const dir = mkdtempSync(path.join(tmpdir(), 'office-carry-'));
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
+  const told: boolean[] = [];
+  const a = new CarryOnSetting(dir, (s) => told.push(s.on));
+  assert.deepEqual(a.state(), { on: true });
+  assert.equal(a.on, true);
+  a.set(false, 'Cody');
+  assert.deepEqual(told, [false]);
+  const b = new CarryOnSetting(dir, () => {});
+  assert.equal(b.on, false);
+  assert.equal(b.state().by, 'Cody');
 });

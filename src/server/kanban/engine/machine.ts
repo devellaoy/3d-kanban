@@ -44,7 +44,7 @@ export interface MachineConfig {
  * Which prompt a run is sent with. The orchestrator fills it in; `continue` is the short "carry on"
  * for a session that was cut off (it falls back to the phase's own prompt when there is no session).
  */
-export type PromptKind = 'plan' | 'replan' | 'implement' | 'investigate' | 'review' | 'rereview' | 'fix' | 'resume' | 'continue' | 'unhold' | 'pr.create' | 'pr.fix' | 'pr.conflicts' | 'pr.review';
+export type PromptKind = 'plan' | 'replan' | 'implement' | 'investigate' | 'review' | 'rereview' | 'fix' | 'resume' | 'continue' | 'restarted' | 'unhold' | 'pr.create' | 'pr.fix' | 'pr.conflicts' | 'pr.review';
 
 export type Effect =
   /**
@@ -116,7 +116,7 @@ export type MachineEvent =
   /** Take it off hold: a worker is hired again and carries on (the 'unhold' prompt). `text`: the user's note, stored as a comment first. */
   | { type: 'unhold'; text?: string; back?: { reason: WaitingReason; text?: string; phase?: RunPhase } }
   /** A user's comment. `busy`: the worker is in the middle of a turn (or asking in its terminal). */
-  | { type: 'comment'; text: string; busy: boolean }
+  | { type: 'comment'; text: string; busy: boolean; last?: LastRun }
   /** One review round by hand. */
   | { type: 'review' }
   | { type: 'pr'; mode: PrMode };
@@ -219,12 +219,23 @@ function afterWork(s: MachineState, t: MachineTask, changes: boolean, since?: 'h
   return ok(running(s, 'review', { reviewRound: 1, retryAttempts: 0 }), { type: 'run', phase: 'review', role: 'reviewer', prompt: 'review', round: 1 });
 }
 
+/** Phases whose agent's question is answered in the same phase (their turn-end handling is their own). */
+const ASKED_IN_PLACE: readonly RunPhase[] = ['review', 'pr-review', 'fix', 'pr', 'pr-fix', 'pr-conflicts'];
+
 /** The phase a comment or an answer resumes with, from where the task waits. */
-function resumeWith(s: MachineState, text: string, pending = false): { state: MachineState; effects: Effect[] } {
+function resumeWith(s: MachineState, text: string, pending = false, last?: LastRun): { state: MachineState; effects: Effect[] } {
   if (s.status === 'waiting' && PLAN_WAITING.includes(s.waitingReason)) {
     // Feedback belongs to a plan the user saw ready; answers to questions are just the next turn.
     const feedback: Effect[] = s.waitingReason === 'plan_approval' ? [{ type: 'planFeedback', text }] : [];
     return ok(running(s, 'plan'), ...feedback, { type: 'run', phase: 'plan', role: 'implementer', prompt: 'replan', text, ...(pending ? { pending } : {}) });
+  }
+  // The agent was asking when the office restarted (its run is over, its task still waits for the answer): the answer goes on in the phase, role and round
+  // of the run it was asked in (a manual review has no round), so that run's own turn-end handling follows.
+  const asked = s.status === 'waiting' && s.waitingReason === 'agent_asking' ? (last?.phase ?? s.phase) : undefined;
+  if (asked === 'plan') return ok(running(s, 'plan'), { type: 'run', phase: 'plan', role: 'implementer', prompt: 'replan', text });
+  if (asked && ASKED_IN_PLACE.includes(asked)) {
+    const round = last ? last.round : s.reviewRound || undefined;
+    return ok(running(s, asked), { type: 'run', phase: asked, role: last?.role ?? (asked === 'review' || asked === 'pr-review' ? 'reviewer' : 'implementer'), prompt: 'resume', text, ...(round !== undefined && (asked === 'review' || asked === 'fix') ? { round } : {}) });
   }
   return ok(running(s, 'resume'), { type: 'run', phase: 'resume', role: 'implementer', prompt: 'resume', text, ...(pending ? { pending } : {}) });
 }
@@ -396,7 +407,7 @@ export function next(s: MachineState, e: MachineEvent, t: MachineTask, cfg: Mach
         if (answer) return ok(running(s, 'plan'), { type: 'planFeedback', text: answer }, { type: 'run', phase: 'plan', role: 'implementer', prompt: 'replan', text: answer });
         return ok(running(s, 'implement'), { type: 'acceptPlan' }, { type: 'run', phase: 'implement', role: 'implementer', prompt: 'implement' });
       }
-      if (answer) return ok(running(s, 'resume'), { type: 'run', phase: 'resume', role: 'implementer', prompt: 'resume', text: answer });
+      if (answer) return resumeWith(s, answer, false, e.last);
       return next(s, { type: 'retry', last: e.last }, t, cfg);
     }
 
@@ -415,7 +426,7 @@ export function next(s: MachineState, e: MachineEvent, t: MachineTask, cfg: Mach
     case 'comment':
       if (s.status === 'todo' || s.status === 'done' || s.status === 'archived') return ok(s);
       if (e.busy || busy(s)) return ok(s, { type: 'queueComment' });
-      return resumeWith(s, e.text);
+      return resumeWith(s, e.text, false, e.last);
 
     case 'review':
       if (busy(s)) return no('Stop it first: it is running');

@@ -61,8 +61,8 @@ export function originRepo(dir: string): string | undefined {
 }
 
 /** What starting a worker whose worktree was deleted (see WorkerInfo.lost) says instead. */
-export function lostMessage(info: WorkerInfo): string {
-  return `${info.name}'s worktree ${workspaceOf(info)} was deleted outside agent-office — rebuild it or send ${info.name} home from its desk`;
+export function lostMessage(info: WorkerInfo, missing: string[] = []): string {
+  return `${info.name}'s worktree ${workspaceOf(info)}${missing.length ? ` (${missing.join(', ')})` : ''} was deleted outside agent-office — rebuild it or send ${info.name} home from its desk`;
 }
 
 /** The worktrees of one floor's workers (see WorkerContext). */
@@ -243,7 +243,7 @@ export class WorkerTrees {
    */
   checkLost(w: Worker, recheck = false): boolean {
     const { info } = w;
-    if (!info.worktree || existsSync(this.ctx.cwd(info))) {
+    if (!info.worktree || (existsSync(this.ctx.cwd(info)) && !this.missingTrees(info).length)) {
       if (info.lost) {
         info.lost = undefined;
         this.ctx.emit(w);
@@ -258,6 +258,13 @@ export class WorkerTrees {
       this.ctx.emit(w);
     }
     return true;
+  }
+
+  /** The worktrees of a worker across repositories that are gone, by repository: the workspace folder can outlive them. */
+  missingTrees(info: WorkerInfo): string[] {
+    if (!info.worktree || !info.repos?.length) return [];
+    const gone = (rel: string) => !existsSync(worktreeDir(this.ctx.dir, rel));
+    return [...(gone(info.worktree.path) ? [path.basename(info.worktree.path)] : []), ...info.repos.filter((r) => gone(r.path)).map((r) => r.name)];
   }
 
   /**
@@ -287,7 +294,7 @@ export class WorkerTrees {
     // Whoever the folder was deleted from under: this worker, and the rest of its meeting's table.
     const stranded = [...this.ctx.workers.values()].filter((o) => o.info.worktree && this.ctx.cwd(o.info) === folder && (o.info.lost || this.checkLost(o)));
     const froms: string[] = [];
-    if (!existsSync(folder)) {
+    if (!existsSync(folder) || this.missingTrees(info).length) {
       const across = !!info.repos?.length;
       w.rebuilding = true;
       try {

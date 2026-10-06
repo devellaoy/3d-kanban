@@ -362,3 +362,32 @@ test('a worker across repositories goes home once its pull requests have merged 
   // web's own PR open: it stays.
   assert.deepEqual(landedWorkers([w], [pull(3, 'OPEN', 'office/pip-1')], [], floors([pull(9, 'MERGED', 'office/pip-1')])), []);
 });
+
+test('a worker across repositories whose worktrees were deleted (the workspace folder kept) while the office was down is not carried on: it waits, marked lost, and says which', async (t) => {
+  const f = fixture(t);
+  const before = manager(f, t);
+  const w = before.spawn('desk-1', 'Cody', 'work across', true, 'agent', undefined, undefined, undefined, undefined, undefined, [source('floor-api', f.b), source('floor-admin', f.c)]);
+  assert.notEqual(typeof w, 'string'); if (typeof w === 'string') return;
+  await waitFor(() => f.starts().length, (n) => n >= 1);
+  before.shutdown(false);
+  await new Promise((r) => setTimeout(r, 200));
+  // As if it was mid-turn with a session when the office stopped.
+  const file = path.join(f.a, '.agent-office', 'workers.json');
+  const saved = JSON.parse(readFileSync(file, 'utf8'));
+  saved[0].midTurn = true; saved[0].sessionId = 'across-session';
+  writeFileSync(file, JSON.stringify(saved));
+  const ws = path.join(worktreesHome(f.a), w.worktree!.branch.replace(/^office\//, ''));
+  rmSync(path.join(ws, 'api'), { recursive: true, force: true });
+  rmSync(path.join(ws, 'admin'), { recursive: true, force: true });
+  assert.ok(existsSync(ws));
+
+  const started = f.starts().length;
+  const after = manager(f, t);
+  await after.start();
+  await waitFor(() => after.carryOnDropped(w.id), (x) => !!x);
+  assert.match(after.carryOnDropped(w.id)!, /api, admin/);
+  assert.equal(after.carriesOn(w.id), false);
+  assert.ok(after.get(w.id)?.lost);
+  await new Promise((r) => setTimeout(r, 200));
+  assert.equal(f.starts().length, started, 'nobody started in the half-deleted workspace');
+});

@@ -4,6 +4,7 @@
 // and a worker can be relaunched on its session with other flags.
 import type { AgentEffort, WorkerInfo, WorkerStatus } from '../../shared/protocol.js';
 import type { DepartureIntent } from '../../shared/kanban/types.js';
+import { CARRY_ON_STAGGER_MS, carries, setCarryOn } from '../workers/carryon.js';
 import { waitingOnSomeone } from '../../shared/status.js';
 import { codexHookTrustArgs } from './codex-trust.js';
 import type { Pty } from '../ptys.js';
@@ -55,6 +56,34 @@ export abstract class KanbanWorkers {
     else this.followed.delete(id);
   }
 
+  /** ⚙️ Settings: whether workers cut off mid-turn by the office stopping carry on by themselves (set by the floor; on without it). */
+  carryOn: () => boolean = () => true;
+  /** Between one carrying-on worker's start and the next one's. */
+  carryOnStaggerMs = CARRY_ON_STAGGER_MS;
+
+  /** Whether `id` will pick its cut-off turn up by itself once the office has started (QueueWorkers.carriesOn; never a task's worker). */
+  carriesOn(id: string): boolean {
+    const w = this.workers.get(id);
+    return !!w && carries(w, this.carryOn());
+  }
+
+  /** Why the worker's carry-on was given up (the budget was spent, its session or worktree was gone), so it will not pick its turn up; undefined when it was not. */
+  carryOnDropped(id: string): string | undefined {
+    const carryOn = this.workers.get(id)?.carryOn;
+    return carryOn?.state === 'dropped' ? carryOn.reason : undefined;
+  }
+
+  /** The worker's status as the office closed, when its terminal did not survive; undefined when it survived, was adopted, never saved, or the cut-off has served (the worker works, is relaunched, or the engine decided its run: see cutOffServed). */
+  cutOffStatus(id: string): WorkerStatus | undefined {
+    return this.workers.get(id)?.carryOn?.cutOff;
+  }
+
+  /** The engine has decided what the cut-off worker's run does: its cut-off is not read again (cutOffStatus is for the first look after the start only). */
+  cutOffServed(id: string) {
+    const w = this.workers.get(id);
+    if (w) setCarryOn(w, { cutOff: undefined });
+  }
+
   /** Who hears about status changes and hooks (see addObserver). */
   private observers = new Set<WorkerObserver>();
   /** Who may keep a worker's worktree as it goes home (see addKeepGuard). */
@@ -88,17 +117,25 @@ export abstract class KanbanWorkers {
     const proc = w.pty;
     // Gone before it exits, so the exit handler knows it was the office and stays quiet.
     w.pty = undefined;
-    // The old process lets go of the session before the new one picks it up; one that won't leave is not resumed over (two agents on a session).
-    const stuck = proc && (await endProcess(proc, w.info.name));
-    if (stuck) {
-      if (!w.pty && this.workers.get(id) === w) w.pty = proc;
-      return stuck;
+    // Until the new process starts (or this fails), the office closing finds no pty: it still counts as cut off (see CarryOn.cutOff).
+    setCarryOn(w, { relaunching: true, cutOff: undefined });
+    try {
+      // The old process lets go of the session before the new one picks it up; one that won't leave is not resumed over (two agents on a session).
+      const stuck = proc && (await endProcess(proc, w.info.name));
+      if (stuck) {
+        if (!w.pty && this.workers.get(id) === w) w.pty = proc;
+        return stuck;
+      }
+      if (this.workers.get(id) !== w) return 'No such worker';
+      if (w.pty) return 'Worker is already running';
+      // The office closed meanwhile (CarryOn.cutOff took the marker): no new process; the next office carries the run on.
+      if (!w.carryOn?.relaunching) return undefined;
+      w.interrupted = false;
+      (w.extra ??= {}).restartedAt = Date.now();
+      return this.resume(id, opts.prompt);
+    } finally {
+      setCarryOn(w, { relaunching: undefined });
     }
-    if (this.workers.get(id) !== w) return 'No such worker';
-    if (w.pty) return 'Worker is already running';
-    w.interrupted = false;
-    (w.extra ??= {}).restartedAt = Date.now();
-    return this.resume(id, opts.prompt);
   }
 
   /** Ends a worker's agent process in place (the exit handler then marks it `exited` at its desk: R resumes it); resolves to what went wrong, if anything. */

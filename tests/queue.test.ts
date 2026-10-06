@@ -10,9 +10,14 @@ function fixture(defaultProvider: AgentProvider = 'claude') {
   const dir = mkdtempSync(path.join(tmpdir(), 'office-queue-'));
   const workers: WorkerInfo[] = [];
   let hired = 0;
+  /** The workers that will carry on by themselves once the office has started. */
+  const carrying = new Set<string>();
+  const dropped = new Map<string, string>();
   const manager: QueueWorkers = {
     defaultProvider,
     list: () => workers,
+    carriesOn: (id) => carrying.has(id),
+    carryOnDropped: (id) => dropped.get(id),
     deskOccupied: (desk) => workers.some((w) => w.deskId === desk),
     spawn(deskId, by, prompt, worktree, kind, provider, model, effort) {
       const id = `worker-${hired++}`;
@@ -42,7 +47,7 @@ function fixture(defaultProvider: AgentProvider = 'claude') {
     queues.push(queue);
     return queue;
   };
-  return { dir, workers, open, emptied: () => emptied, close() { queues.forEach((q) => q.shutdown()); rmSync(dir, { recursive: true, force: true }); } };
+  return { dir, workers, carrying, dropped, open, emptied: () => emptied, close() { queues.forEach((q) => q.shutdown()); rmSync(dir, { recursive: true, force: true }); } };
 }
 
 test('queue seats the selected provider and preserves it through completion and retry', (t) => {
@@ -390,4 +395,44 @@ test("a queue worker that switches to a branch of its own takes its task's branc
     headRefName: 'fix-login', baseRefName: 'main', createdAt: new Date().toISOString(), updatedAt: '', additions: 0, deletions: 0, checks: 'none', body: '', closes: [],
   }]);
   assert.equal(q.state().tasks[0].pr?.number, 242);
+});
+
+test('a running task whose worker will carry on by itself keeps running across a restart; otherwise it is finished', (t) => {
+  const f = fixture(); t.after(() => f.close());
+  const q = f.open(); q.setLimit(2);
+  q.add('Carried on', 'Tester'); q.add('Stopped', 'Tester');
+  assert.deepEqual(f.workers.map((w) => w.status), ['working', 'working']);
+  q.shutdown();
+  // The restarted office: both workers back asleep, one of them about to pick its turn up.
+  for (const w of f.workers) w.status = 'offline';
+  f.carrying.add(f.workers[0].id);
+  const restored = f.open(); restored.setLimit(2);
+  restored.pump();
+  const [carried, stopped] = restored.state().tasks;
+  assert.equal(carried.status, 'running');
+  assert.equal(stopped.status, 'done');
+  assert.equal(stopped.outcome, 'exited');
+  // It ends its turn after all: the task is done.
+  f.workers[0].status = 'done'; restored.onWorker(f.workers[0]);
+  assert.equal(restored.state().tasks[0].outcome, 'done');
+});
+
+test('a task restored as running whose worker drops its carry-on is finished, and the next one starts', (t) => {
+  const f = fixture(); t.after(() => f.close());
+  const q = f.open(); q.setLimit(1);
+  q.add('Carried on', 'Tester'); q.add('Next', 'Tester');
+  q.shutdown();
+  f.workers[0].status = 'offline';
+  f.carrying.add(f.workers[0].id);
+  const restored = f.open(); restored.setLimit(1);
+  restored.pump();
+  assert.equal(restored.state().tasks[0].status, 'running');
+  // It starts up and sits at its prompt for a moment before the carry-on prompt goes in: still running.
+  f.carrying.delete(f.workers[0].id); f.workers[0].status = 'idle'; restored.pump();
+  assert.equal(restored.state().tasks[0].status, 'running');
+  // The carry-on is given up (budget spent, session gone): nothing will pick the turn up.
+  f.dropped.set(f.workers[0].id, 'its worktree is gone'); restored.pump();
+  assert.equal(restored.state().tasks[0].outcome, 'exited');
+  assert.match(restored.state().tasks[0].error ?? '', /couldn't carry on: its worktree is gone/);
+  assert.equal(restored.state().tasks[1].status, 'running');
 });

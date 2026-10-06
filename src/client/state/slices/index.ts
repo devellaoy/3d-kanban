@@ -18,6 +18,7 @@ import { dog } from './dog';
 import { floorPlan } from './floor-plan';
 import { jail } from './jail';
 import { jukebox } from './jukebox';
+import { carryOn } from './carry-on';
 import { leaveOnMerge } from './leave-on-merge';
 import { machine } from './machine';
 import { map } from './map';
@@ -52,6 +53,7 @@ export const SLICES: readonly Slice[] = [
   theme,
   prompts,
   leaveOnMerge,
+  carryOn,
   map,
   floor,
   meeting,

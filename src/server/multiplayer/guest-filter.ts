@@ -8,7 +8,7 @@ import { SERVER_MSG_OUT } from '../../shared/multiplayer/allow.js';
 
 /** Types (exact, or by prefix) a visitor's browser never gets, whatever the owner's table says. */
 const DENY_PREFIX = ['mp.', 'signins', 'upgrade', 'codex-limits', 'kanban.secrets'];
-const DENY = new Set(['me', 'accounts', 'invites', 'team', 'usage', 'limits', 'projectsDir', 'prompts', 'notify', 'machine', 'kanban.settings', 'leaveOnMerge', 'services']);
+const DENY = new Set(['me', 'accounts', 'invites', 'team', 'usage', 'limits', 'projectsDir', 'prompts', 'notify', 'machine', 'kanban.settings', 'leaveOnMerge', 'carryOn', 'services']);
 
 /** Whether a frame type may reach a visitor's browser: one the owner's filter can send at all, and not a denied one. */
 export function visitorMayGet(t: unknown): boolean {

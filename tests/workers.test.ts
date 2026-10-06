@@ -1269,21 +1269,84 @@ test('a worker whose terminal was in the host when an older office went down car
   assert.equal(promptOf(resumed.find((r) => r.args.includes('was-done'))!), undefined);
 });
 
-test('stopping the office on purpose (Ctrl+C) leaves nothing to carry on', async (t) => {
+/** What workers.json says of each worker now. */
+const savedWorkers = (f: Fixture) => JSON.parse(readFileSync(path.join(f.data, 'workers.json'), 'utf8')) as { id: string; midTurn: boolean; cutOff?: string }[];
+
+test('stopping the office on purpose (Ctrl+C) still carries a mid-turn worker on when it starts again, and keeps what it was doing', async (t) => {
   const f = carryOnFixture(t);
   const before = manager(f, f.claude, []);
   // Its terminals run in the host, which ends them without telling the office they exited.
+  await before.start();
+  const worker = await hireInState(f, before, 'desk-1', 'stopped', 'working');
+  const resting = await hireInState(f, before, 'desk-2', 'rested', 'done');
+  before.shutdown(false);
+  await new Promise((resolve) => setTimeout(resolve, 200));
+  // The exit events that came after the kill did not turn the saved status into `exited`.
+  const saved = savedWorkers(f);
+  assert.deepEqual(saved.find((w) => w.id === worker.id), { ...saved.find((w) => w.id === worker.id)!, midTurn: true, cutOff: 'working' });
+  assert.deepEqual([saved.find((w) => w.id === resting.id)!.midTurn, saved.find((w) => w.id === resting.id)!.cutOff], [false, 'done']);
+
+  const after = manager(f, f.claude, []);
+  t.after(() => after.shutdown());
+  await after.start();
+  assert.equal(after.cutOffStatus(worker.id), 'working');
+  const resumed = (await waitFor(() => launches(f), (x) => x.length >= 4)).slice(2);
+  assert.equal(promptOf(resumed.find((r) => r.args.includes('stopped'))!), CARRY_ON_PROMPT);
+  assert.equal(promptOf(resumed.find((r) => r.args.includes('rested'))!), undefined);
+});
+
+test('with carrying on turned off a mid-turn worker wakes without a prompt', async (t) => {
+  const f = carryOnFixture(t);
+  const before = manager(f, f.claude, []);
   await before.start();
   await hireInState(f, before, 'desk-1', 'stopped', 'working');
   before.shutdown(false);
   await new Promise((resolve) => setTimeout(resolve, 200));
 
   const after = manager(f, f.claude, []);
+  after.carryOn = () => false;
   t.after(() => after.shutdown());
   await after.start();
+  assert.equal(after.carryOn(), false);
   const resumed = (await waitFor(() => launches(f), (x) => x.length >= 2))[1];
   assert.ok(resumed.args.includes('stopped'));
   assert.equal(promptOf(resumed), undefined);
+});
+
+test("a task's worker is not told to continue by the office: the kanban engine resumes it", async (t) => {
+  const f = carryOnFixture(t);
+  writeFileSync(path.join(f.data, 'workers.json'), JSON.stringify([
+    { id: 'task-worker', kind: 'agent', provider: 'claude', deskId: 'desk-1', name: 'Task', sessionId: 'task-session', hookToken: 'tok', kanban: { taskId: 7, role: 'implementer' }, midTurn: true, cutOff: 'working' },
+  ]));
+  const workers = manager(f, f.claude, []);
+  t.after(() => workers.shutdown());
+  await workers.start();
+  assert.equal(workers.cutOffStatus('task-worker'), 'working');
+  const resumed = (await waitFor(() => launches(f), (x) => x.length >= 1))[0];
+  assert.ok(resumed.args.includes('task-session'));
+  assert.equal(promptOf(resumed), undefined);
+  assert.ok(workers.restartedAt('task-worker'));
+});
+
+test('workers that carry on start one after another, not all at once', async (t) => {
+  const f = carryOnFixture(t);
+  const before = manager(f, f.claude, []);
+  await before.start();
+  await hireInState(f, before, 'desk-1', 'first', 'working');
+  await hireInState(f, before, 'desk-2', 'second', 'working');
+  before.shutdown(false);
+  await new Promise((resolve) => setTimeout(resolve, 200));
+
+  const after = manager(f, f.claude, []);
+  after.carryOnStaggerMs = 700;
+  t.after(() => after.shutdown());
+  await after.start();
+  await waitFor(() => launches(f), (x) => x.length >= 3);
+  const began = Date.now();
+  await new Promise((resolve) => setTimeout(resolve, 300));
+  assert.equal(launches(f).length, 3, 'the second waits for its turn');
+  await waitFor(() => launches(f), (x) => x.length >= 4);
+  assert.ok(Date.now() - began >= 300);
 });
 
 test('a worktree worker that makes its own branch is followed there: O finds the PR it opened, and sending it home tidies both branches', async (t) => {
@@ -1614,4 +1677,125 @@ test('a new agent’s first prompt ends with the language rule; a resume, a shel
   const shell = workers.spawn('desk-4', 'Ada', 'echo hi', false, 'shell');
   assert.equal(typeof shell, 'object');
   if (typeof shell !== 'string') assert.ok(!f.read().some((r) => (r.stdin ?? '').includes('Finnish')));
+});
+
+test("a mid-turn worker whose worktree was deleted while the office was down can't carry on: that is recorded, for whoever waits for it", async (t) => {
+  const f = carryOnFixture(t);
+  const git = (cwd: string, ...args: string[]) => execFileSync('git', ['-c', 'user.email=t@t', '-c', 'user.name=t', ...args], { cwd, encoding: 'utf8' }).trim();
+  git(f.root, 'init', '-q', '-b', 'main');
+  writeFileSync(path.join(f.root, 'a.txt'), 'a');
+  git(f.root, 'add', 'a.txt');
+  git(f.root, 'commit', '-qm', 'init');
+  const before = manager(f, f.claude, []);
+  const w = before.spawn('desk-1', 'test', 'task for lost-turn', true);
+  assert.notEqual(typeof w, 'string'); if (typeof w === 'string') return;
+  const token = (await waitFor(() => launches(f), (x) => x.length > 0))[0].env.hookToken!;
+  assert.equal(before.handleHook(w.id, token, 'SessionStart', { session_id: 'lost-turn' }), true);
+  assert.equal(before.handleHook(w.id, token, 'UserPromptSubmit', { session_id: 'lost-turn', prompt: 'task for lost-turn' }), true);
+  before.shutdown(false);
+  await new Promise((resolve) => setTimeout(resolve, 200));
+  rmSync(path.join(f.root, w.worktree!.path), { recursive: true, force: true });
+  git(f.root, 'worktree', 'prune');
+
+  const after = manager(f, f.claude, []);
+  t.after(() => after.shutdown());
+  await after.start();
+  assert.equal(after.carriesOn(w.id), true, 'before its turn comes');
+  await waitFor(() => after.carryOnDropped(w.id), (x) => !!x);
+  assert.match(after.carryOnDropped(w.id)!, /worktree .* was deleted outside agent-office/);
+  assert.equal(after.carriesOn(w.id), false);
+});
+
+test("a finished worker whose terminal didn't survive is marked restarted at the new start, so its old teammates aren't counted", async (t) => {
+  const f = carryOnFixture(t);
+  const before = manager(f, f.claude, []);
+  await before.start();
+  const w = await hireInState(f, before, 'desk-1', 'finished-run', 'done');
+  before.shutdown(false);
+  await new Promise((resolve) => setTimeout(resolve, 200));
+  const stopped = Date.now();
+
+  const after = manager(f, f.claude, []);
+  t.after(() => after.shutdown());
+  await after.start();
+  assert.equal(after.cutOffStatus(w.id), 'done');
+  assert.ok(after.restartedAt(w.id)! >= stopped);
+  assert.equal(after.get(w.id)?.status, 'starting');
+});
+
+test('turning carrying on off before a worker\'s turn wakes it without the prompt and records that it was dropped', async (t) => {
+  const f = carryOnFixture(t);
+  const before = manager(f, f.claude, []);
+  await before.start();
+  const w = await hireInState(f, before, 'desk-1', 'switched-off', 'working');
+  before.shutdown(false);
+  await new Promise((resolve) => setTimeout(resolve, 200));
+
+  const after = manager(f, f.claude, []);
+  t.after(() => after.shutdown());
+  await after.start();
+  assert.equal(after.carriesOn(w.id), true);
+  after.carryOn = () => false; // before its turn comes
+  const resumed = (await waitFor(() => launches(f), (x) => x.length >= 2))[1];
+  assert.equal(promptOf(resumed), undefined);
+  assert.equal(after.carryOnDropped(w.id), 'carrying on after a restart was turned off');
+  assert.equal(after.carriesOn(w.id), false);
+});
+
+test('an office stopped again before the carried-on worker has heard its prompt still carries it on the next time', async (t) => {
+  const f = carryOnFixture(t);
+  const first = manager(f, f.claude, []);
+  await first.start();
+  const w = await hireInState(f, first, 'desk-1', 'twice', 'working');
+  first.shutdown(false);
+  await new Promise((resolve) => setTimeout(resolve, 200));
+
+  const second = manager(f, f.claude, []);
+  await second.start();
+  assert.equal(promptOf((await waitFor(() => launches(f), (x) => x.length >= 2))[1]), CARRY_ON_PROMPT);
+  assert.equal(second.carriesOn(w.id), false, 'not prompted twice');
+  second.shutdown(false); // before any hook of the carried-on worker
+  await new Promise((resolve) => setTimeout(resolve, 200));
+  const saved = savedWorkers(f).find((x) => x.id === w.id)!;
+  // Still booting, or already busy by what its terminal printed (that races the stop): mid-turn either way.
+  assert.equal(saved.midTurn, true);
+  assert.ok(saved.cutOff === 'starting' || saved.cutOff === 'working', `cut off as ${saved.cutOff}`);
+
+  const third = manager(f, f.claude, []);
+  t.after(() => third.shutdown());
+  third.carryOnStaggerMs = 5000;
+  await third.start();
+  assert.equal(third.carriesOn(w.id), true);
+  assert.equal(promptOf((await waitFor(() => launches(f), (x) => x.length >= 3))[2]), CARRY_ON_PROMPT);
+});
+
+test("a host terminal that is gone at the next start leaves the worker cut off as it was saved: a plain one carries on, a task's worker is left to the engine", async (t) => {
+  const f = carryOnFixture(t);
+  const saved = (id: string, deskId: string, sessionId: string, extra = {}) => ({
+    id, kind: 'agent', provider: 'claude', deskId, name: id, sessionId, hookToken: `${id}-token`, midTurn: true,
+    pty: { id: `${id}-pty`, status: 'working', acked: true }, ...extra,
+  });
+  writeFileSync(path.join(f.data, 'workers.json'), JSON.stringify([saved('plain', 'desk-1', 'plain-session'), saved('task', 'desk-2', 'task-session', { kanban: { taskId: 3, role: 'implementer' } })]));
+  const workers = manager(f, f.claude, []);
+  t.after(() => workers.shutdown());
+  await workers.start();
+  assert.equal(workers.cutOffStatus('plain'), 'working');
+  assert.equal(workers.cutOffStatus('task'), 'working');
+  const resumed = await waitFor(() => launches(f), (x) => x.length >= 2);
+  assert.equal(promptOf(resumed.find((r) => r.args.includes('plain-session'))!), CARRY_ON_PROMPT);
+  assert.equal(promptOf(resumed.find((r) => r.args.includes('task-session'))!), undefined);
+});
+
+test("a task's worker the engine follows is told to continue when its terminal host dies under a running office", async (t) => {
+  const f = carryOnFixture(t);
+  const workers = manager(f, f.claude, []);
+  t.after(() => workers.shutdown());
+  await workers.start();
+  const w = await hireInState(f, workers, 'desk-1', 'followed-run', 'working');
+  w.kanban = { taskId: 3, role: 'implementer' };
+  workers.follows(w.id, true);
+  (workers as any).host.sock.destroy(); // the host dies
+  const resumed = (await waitFor(() => launches(f), (x) => x.length >= 2))[1];
+  assert.ok(resumed.args.includes('followed-run'));
+  assert.equal(promptOf(resumed), CARRY_ON_PROMPT);
 });

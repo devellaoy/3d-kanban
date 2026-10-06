@@ -344,6 +344,8 @@ export class Composer {
         return seal(this.text('kanban.resume', p, { taskId: task.id, author: x.author ?? 'The user', message: x.text ?? '', attachments: v.attachments, language: v.language }));
       case 'continue':
         return seal(this.text('kanban.continue', p, { taskId: task.id, language: v.language }));
+      case 'restarted':
+        return seal(`${this.text('kanban.restarted', p, {})}\n\n${this.text('kanban.continue', p, { taskId: task.id, language: v.language })}`);
       case 'unhold': {
         const hold = task.hold;
         const note = hold?.note?.trim();

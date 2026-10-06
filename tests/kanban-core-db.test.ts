@@ -278,3 +278,24 @@ test('legacy bookkeeping and tickets', (t) => {
   repo.setMigratedAt(1, 77);
   assert.equal(repo.db.prepare('SELECT migrated_at AS m FROM tasks WHERE id = 1').get() && (repo.db.prepare('SELECT migrated_at AS m FROM tasks WHERE id = 1').get() as { m: number }).m, 77);
 });
+
+test('a run launch that cannot be read launches nothing, and the latest run is read without the whole history', (t) => {
+  const repo = repoOn(t);
+  repo.createTask(task());
+  const queued = { phase: 'implement', role: 'implementer', prompt: 'restarted' } as const;
+  const good = repo.createRun({ taskId: 1, phase: 'implement', tool: 'claude', launch: queued });
+  assert.deepEqual(repo.runLaunch(good.id), queued);
+  const bad = (launch: string) => {
+    const run = repo.createRun({ taskId: 1, phase: 'pr-review', tool: 'claude' });
+    (repo as unknown as { db: { prepare(sql: string): { run(...a: unknown[]): void } } }).db.prepare('UPDATE runs SET launch = ? WHERE id = ?').run(launch, run.id);
+    return repo.runLaunch(run.id);
+  };
+  assert.equal(bad('{not json'), undefined);
+  assert.equal(bad('null'), undefined);
+  assert.equal(bad(JSON.stringify({ phase: 'implement', role: 'implementer' })), undefined, 'no prompt');
+  assert.equal(bad(JSON.stringify({ phase: 4, role: 'implementer', prompt: 'x' })), undefined);
+  assert.equal(repo.lastRun(1)?.phase, 'pr-review');
+  assert.equal(repo.lastRun(1, 'implement')?.id, good.id);
+  assert.equal(repo.lastRun(1, 'plan'), undefined);
+  assert.equal(repo.lastRun(2), undefined);
+});

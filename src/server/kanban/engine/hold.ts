@@ -121,7 +121,7 @@ export class Holds {
    * the task by id then, their comments stop being pending. Not before: a launch that fails or waits for room keeps them.
    */
   carried(task: KanbanTask, prompt: string): { text?: string; ack: () => void } {
-    const msgs = ['implement', 'replan', 'continue', 'unhold', 'resume'].includes(prompt) ? (this.ctx.repo.getTask(task.id) ?? task).pendingMessages : [];
+    const msgs = ['implement', 'replan', 'continue', 'restarted', 'unhold', 'resume'].includes(prompt) ? (this.ctx.repo.getTask(task.id) ?? task).pendingMessages : [];
     const ids = new Set(msgs.map((m) => m.commentId));
     return {
       ...(msgs.length ? { text: msgs.map((m) => `- ${m.by}: ${m.text}`).join('\n') } : {}),
@@ -144,7 +144,7 @@ export class Holds {
     if (floor?.workers.get(live.workerId)) await floor.sendHome(live.workerId, 'keep', { by: 'Kanban', reason: 'engine' });
     const reviewer = live.role !== 'implementer';
     this.d.update(task.id, reviewer ? { reviewerWorkerId: null, reviewerSessionId: null } : { workerId: null, sessionId: null });
-    this.d.note(task, `${reviewer ? "The reviewer's" : 'Its'} session (${session}) couldn't be resumed (it is gone: Claude has no transcript of it), so a fresh one takes over from the task's worktree and what is known of it.`);
+    this.d.note(task, `${reviewer ? "The reviewer's" : 'Its'} session (${session}) couldn't be resumed (it is gone: its agent has no log of it), so a fresh one takes over from the task's worktree and what is known of it.`);
     const err = await this.d.effect(task.id, live.eff!, live.via ?? {});
     if (err) this.d.note(task, `Couldn't start it again: ${err}`);
   }

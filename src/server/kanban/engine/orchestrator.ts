@@ -38,6 +38,7 @@ import { branchExists, checkoutLines, currentBranch, homeCleanup, hasChanges, mi
 import { Handoffs } from './handoff.js';
 import { Departures } from './departures.js';
 import { Holds } from './hold.js';
+import { Restarts, receipt } from './restart.js';
 import { promptHead, TurnHolds, typeable, type HeldRun } from './turnhold.js';
 import { sessionLogged } from './sessions.js';
 
@@ -53,6 +54,8 @@ export interface EngineOptions {
   backgroundWaitMs?: number;
   /** A phase that finds its own worker still busy (its teammates keep it working) waits this long for it to rest before it fails (10 min). */
   busyWaitMs?: number;
+  /** The gap between one run carried on after an office restart and the next (5 s). */
+  restartStaggerMs?: number;
   adapters?: Partial<Record<KanbanTool, TaskAgentAdapter>>;
   now?: () => number;
 }
@@ -69,6 +72,7 @@ interface Live extends HeldRun {
   /** Its agent was started on a stored session (--resume) and has not been heard from yet: if it exits now, the session is gone (see exited). */
   resumed?: boolean;
   started?: boolean;
+  typed?: boolean; // its prompt was typed into the running agent: it has it once the agent's prompt hook or work is heard (see receipt)
   /** False while an old process of the worker is still being ended for a relaunch: its events are not the new agent's. */
   armed?: boolean;
   /** What its run was asked to do (the text as it went), to start it again in a fresh session; and what is to be acknowledged once the agent has the prompt. */
@@ -76,6 +80,8 @@ interface Live extends HeldRun {
   via?: Via;
   ack?: () => void;
   stopping?: { by?: string; timer?: NodeJS.Timeout };
+  /** A finished turn handled after an office restart: its result is read from the run's start, the woken process's SessionStart is later. */
+  pinSince?: boolean;
 }
 
 /** What an operation carries into the effects it causes. */
@@ -125,7 +131,7 @@ const SUMMARY_MAX = 20_000;
 const STOP_TEXT_MAX = 100_000;
 const PENDING_MAX = 50;
 /** The prompts a fresh session taking over work under way is handed off with. */
-const HANDOFF_KINDS = new Set<PromptKind>(['fix', 'resume', 'continue', 'unhold', 'pr.create', 'pr.fix', 'pr.conflicts']);
+const HANDOFF_KINDS = new Set<PromptKind>(['fix', 'resume', 'continue', 'restarted', 'unhold', 'pr.create', 'pr.fix', 'pr.conflicts']);
 const ESC = '\x1b';
 const RESTING = new Set(['done', 'idle', 'needs_input', 'exited']);
 /** A tool that asks the user a question in the terminal: Claude's AskUserQuestion, Codex's request_user_input. */
@@ -170,7 +176,8 @@ export class Orchestrator {
   private departures: Departures<Live>;
   private holds: Holds;
   private turnHolds: TurnHolds<Live>;
-  private opts: Required<Omit<EngineOptions, 'adapters'>>;
+  private restarts: Restarts<Live>;
+  private opts: Required<Omit<EngineOptions, 'adapters' | 'restartStaggerMs'>>;
   private disposed = false;
 
   constructor(
@@ -216,6 +223,22 @@ export class Orchestrator {
       prompted: (live, text) => this.prompted(live, text),
       restateText: (task, phase) => this.compose.restate(task, phase),
       waitMs: () => this.opts.backgroundWaitMs,
+      heldChanged: (live, held) => this.ctx.repo.setRunHeld(live.runId, held ? this.opts.now() : null),
+    });
+    this.restarts = new Restarts<Live>({
+      ctx,
+      serial: (taskId, fn) => this.serial(taskId, fn),
+      folder: (project) => this.folder(project),
+      finishRun: (id, project, patch) => this.finishRun(id, project, patch),
+      note: (task, text, runId) => this.note(task, text, runId),
+      update: (id, patch) => this.update(id, patch),
+      apply: (id, e) => this.apply(id, e),
+      drain: (project) => void this.drain(project),
+      carried: (task, prompt) => this.holds.carried(task, prompt),
+      attach: (run, task, info, launch) => Object.assign(this.attach(run, task, info, launch), { pinSince: true }),
+      turnEnded: (live, planExit) => this.turnEnded(live, planExit),
+      hiringPaused: () => this.ctx.hiringPaused?.(),
+      staggerMs: options.restartStaggerMs ?? 5000,
     });
     this.opts = {
       sweepMs: options.sweepMs ?? 60_000,
@@ -239,6 +262,7 @@ export class Orchestrator {
 
   dispose() {
     this.disposed = true;
+    this.restarts.dispose();
     clearInterval(this.sweepTimer);
     for (const f of this.floors.values()) f.off();
     this.floors.clear();
@@ -285,14 +309,7 @@ export class Orchestrator {
 
   /** Every run left `running` by the last office: re-attached to its worker, or interrupted when that's gone. */
   private reconcile() {
-    // Migration for a removed feature (remove once no office from before #327 is left): a compact from an
-    // older office is over and its task never moved for it, so it just rests. A compact waiting in the
-    // queue has no run, so the tasks are asked for here, and the runs below are only finished.
-    for (const t of this.ctx.repo.tasksWhere({ runState: ['queued', 'starting', 'running', 'stopping'] })) {
-      if (t.queuedRun?.prompt !== 'compact' && t.phase !== 'compact') continue;
-      this.update(t.id, { runState: 'idle', queuedRun: null });
-      this.note(t, 'Compacting is no longer a feature of the office: the compact from before the restart was dropped.');
-    }
+    this.restarts.dropCompacts();
     const runs = this.ctx.repo.runningRuns();
     const attached = new Set<number>();
     for (const run of runs) {
@@ -306,15 +323,22 @@ export class Orchestrator {
         continue;
       }
       const floor = this.watch(task.project);
-      const info = run.workerId ? floor?.workers.get(run.workerId) : undefined;
+      const info = this.restarts.workerOf(run, task, floor);
+      // A worker whose terminal didn't survive a full restart (cut off) was woken on its session: its saved status says what it was doing.
+      const cut = floor && info && !attached.has(task.id) ? floor.workers.cutOffStatus(info.id) : undefined;
+      if (floor && info && cut !== undefined) {
+        attached.add(task.id);
+        this.restarts.resume(run, task, floor, info, cut);
+        continue;
+      }
       if (!floor || !info || info.status === 'exited' || info.status === 'idle' || attached.has(task.id)) {
         void this.serial(task.id, () => this.interruptedRun(run, task, 'The office restarted while it ran: Retry to carry on'));
         continue;
       }
       attached.add(task.id);
-      const live: Live = { taskId: task.id, runId: run.id, phase: run.phase, ...(run.round !== undefined ? { round: run.round } : {}), role: run.role, tool: run.tool, workerId: info.id, floorId: task.project, exitPlan: false, ended: false, promptAt: run.promptedAt };
-      this.live.set(info.id, live);
-      if (info.status === 'done') void this.serial(task.id, () => this.turnEnded(live));
+      const launch = this.ctx.repo.runLaunch(run.id);
+      const live = this.attach(run, task, info, launch);
+      if (info.status === 'done' && this.restarts.delivered(run, floor, info, live, launch)) void this.serial(task.id, () => this.turnEnded(live));
       else if (info.status === 'needs_input') void this.serial(task.id, () => this.needsInput(live, info));
     }
     // Tasks the engine was busy with that have no run to follow any more.
@@ -331,6 +355,13 @@ export class Orchestrator {
       const ids = new Set(this.ctx.floor(def.id)?.workers.list().flatMap((w) => (w.kanban ? [w.kanban.taskId] : [])));
       for (const id of ids) this.syncSummaries(this.ctx.repo.getTask(id));
     }
+  }
+
+  /** Follows a run left `running` by the last office on its worker. */
+  private attach(run: KanbanRun, task: KanbanTask, info: WorkerInfo, launch: QueuedRun | undefined): Live {
+    const live: Live = { taskId: task.id, runId: run.id, phase: run.phase, ...(run.round !== undefined ? { round: run.round } : {}), role: run.role, tool: run.tool, workerId: info.id, floorId: task.project, exitPlan: false, ended: false, promptAt: run.promptedAt, ack: this.restarts.ack(run, task, launch) };
+    this.live.set(info.id, live);
+    return live;
   }
 
   private async interruptedRun(run: KanbanRun, task: KanbanTask, text: string) {
@@ -496,11 +527,13 @@ export class Orchestrator {
     queued.sort((a, b) => Number(!a.queuedRun) - Number(!b.queuedRun));
     for (const t of queued) {
       const floor = this.ctx.floor(project);
-      if (!floor) return;
+      if (!floor || this.disposed) return;
       // No room for this one; a reviewer whose implementer is still at its desk may have it (see sharesLimit),
       // and needs no desk of its own when it can stand behind its implementer's (see watchSpotFor).
       const watch = t.queuedRun?.role === 'reviewer' ? this.watchSpotFor(t, floor) : undefined;
-      if (this.noRoom(floor, watch, t.queuedRun && this.sharesLimit(t, t.queuedRun.role, floor), t.queuedRun?.role)) continue;
+      const restarted = Restarts.queued(t.queuedRun);
+      if (!(restarted && this.restarts.reuses(t, floor)) && this.noRoom(floor, watch, t.queuedRun && this.sharesLimit(t, t.queuedRun.role, floor), t.queuedRun?.role)) continue;
+      if (restarted && !(await this.restarts.admit(t, floor))) continue;
       if (!t.queuedRun && this.busyCount(project) >= max) return;
       await this.serial(t.id, async () => {
         const task = this.ctx.repo.getTask(t.id);
@@ -776,13 +809,15 @@ export class Orchestrator {
     const def = this.ctx.project(task.project);
     const floor = this.watch(task.project);
     if (!def || !floor) return "The project's floor isn't open";
-    if (eff.phase === 'pr-review') return this.launchPrReview(task, def, floor, via);
+    // A pull-request review carried on after an office restart (or its reviewer's question answered) goes on with its own reviewer (see Restarts.reviewer).
+    const { same: last, restarted } = this.restarts.reviewer(task, eff, floor);
+    if (eff.phase === 'pr-review' && !last) return this.launchPrReview(task, def, floor, via, restarted);
     const role = eff.role;
     const review = this.reviewSettings(task);
     const defaults = this.ctx.settings.get().defaults;
-    const tool: KanbanTool = role === 'reviewer' ? review.tool : task.tool;
-    const model = role === 'reviewer' ? review.model : (task.model ?? (task.tool === defaults.tool ? defaults.model : undefined));
-    const effort: KanbanEffort | undefined = role === 'reviewer' ? review.effort : (task.effort ?? (task.tool === defaults.tool ? defaults.effort : undefined));
+    const tool: KanbanTool = last?.tool ?? (role === 'reviewer' ? review.tool : task.tool);
+    const model = last ? last.model : role === 'reviewer' ? review.model : (task.model ?? (task.tool === defaults.tool ? defaults.model : undefined));
+    const effort: KanbanEffort | undefined = last ? last.effort : role === 'reviewer' ? review.effort : (task.effort ?? (task.tool === defaults.tool ? defaults.effort : undefined));
     const adapter = this.adapters[tool];
     const folder = isFolderProject(def);
     if (folder && isPrPhase(eff.phase)) return 'A folder project has no git repositories to open pull requests in';
@@ -795,7 +830,7 @@ export class Orchestrator {
     // over that branch (see checkoutFor).
     const gone = !folder && task.workspace ? missingFolders(floor.dir, task.workspace) : [];
     if (gone.length) await this.dropWorkspace(task, floor, gone);
-    if (role === 'reviewer' && !folder && !this.ctx.repo.getTask(task.id)?.workspace) {
+    if (role === 'reviewer' && !folder && !last && !this.ctx.repo.getTask(task.id)?.workspace) {
       return `${gone.length ? 'Its worktree is gone' : 'It has no worktree yet'}, so there is nothing to review in: comment to have its agent carry on in a fresh worktree${task.branch ? ` on branch ${task.branch}` : ''}, then review`;
     }
 
@@ -809,7 +844,7 @@ export class Orchestrator {
     // Messages kept on the task by id (what was said during a hold, comments typed while the run waited for a desk) go with the run that resumes the work.
     const carried = !eff.pending && role === 'implementer' ? this.holds.carried(task, eff.prompt) : undefined;
     const held = carried?.text;
-    const heldTaken = () => carried?.ack();
+    const heldTaken = () => (carried?.ack(), this.ctx.repo.clearRunLaunch(run.id)); // an agent has the prompt
     const refsFile = eff.phase === 'plan' ? this.ctx.refs.referencedTasksFile(task.id, [task.title, task.description, text ?? ''].join('\n')) : undefined;
     const x: ComposeExtra = {
       phase: eff.phase,
@@ -881,7 +916,7 @@ export class Orchestrator {
     });
     const by = `${via.who?.name ?? 'Kanban'} (kanban #${task.id})`;
 
-    const run = this.ctx.repo.createRun({ taskId: task.id, phase: eff.phase, ...(eff.round !== undefined ? { round: eff.round } : {}), role, tool, model, effort });
+    const run = this.ctx.repo.createRun({ taskId: task.id, phase: eff.phase, ...(eff.round !== undefined ? { round: eff.round } : {}), role, tool, model, effort, launch: queuedOf({ ...eff, text, pending: undefined }) });
     this.ctx.broadcast({ t: 'kanban.run', run, project: task.project }, task.project);
     const follow = (workerId: string, prompt: string): Live => {
       const live: Live = { taskId: task.id, runId: run.id, phase: eff.phase, ...(eff.round !== undefined ? { round: eff.round } : {}), role, tool, workerId, floorId: task.project, exitPlan: false, ended: false, eff: { ...eff, pending: undefined, ...(text !== undefined ? { text } : {}) }, via };
@@ -902,6 +937,7 @@ export class Orchestrator {
     };
     if (info && info.kind === 'agent' && info.kanban?.taskId === task.id && (info.status === 'working' || info.status === 'starting' || teamWork(info.id))) {
       const waited = await this.untilRests(floor, info.id, task.id, () => teamWork(info!.id));
+      if (this.disposed) return undefined; // the office went down meanwhile: nothing may be typed or hired
       if (waited.cancelled) {
         // Stopped while it waited: nothing was prompted, and the run ends as stopped.
         this.finishRun(run.id, task.project, { status: 'stopped' });
@@ -912,7 +948,7 @@ export class Orchestrator {
     }
     if (info && info.kind === 'agent' && info.status !== 'working' && info.status !== 'starting') {
       x.checkout = await this.checkoutFor(fresh, def, floor.dir, role, eff.phase, false);
-      const prompt = typeable(withCheckout(build(eff.prompt === 'continue' && !info.sessionId ? this.freshKind(fresh, eff.phase) : eff.prompt)));
+      const prompt = typeable(withCheckout(build((eff.prompt === 'continue' || eff.prompt === 'restarted') && !info.sessionId ? this.freshKind(fresh, eff.phase) : eff.prompt)));
       const live = follow(info.id, prompt);
       let err: string | undefined;
       // The task's model and effort as they are now (changed since the last run, say): a worker on
@@ -923,14 +959,14 @@ export class Orchestrator {
       const typed = same && (info.status === 'done' || info.status === 'idle');
       // Relaunched on its session: its agent is heard from (and has the prompt) later, and events of the old process meanwhile are not its own. Set before any await.
       if (!typed && info.sessionId) Object.assign(live, { resumed: true, armed: false, ack: heldTaken });
+      else if (typed) Object.assign(live, { typed: true, ack: heldTaken });
+      this.ctx.repo.updateRun(run.id, { workerId: info.id, sessionId: info.sessionId }); // before the relaunch awaits: a restart in that window finds the run's worker
       if (typed) err = floor.workers.prompt(info.id, prompt, via.who?.name);
       else if (info.sessionId) err = await floor.workers.relaunch(info.id, { launchArgs, prompt, env: extras.env, model: spawnModel, effort: spawnEffort });
       else err = 'no session';
       live.armed = true;
       if (!err) {
-        this.ctx.repo.updateRun(run.id, { workerId: info.id, sessionId: info.sessionId });
         this.update(task.id, { runState: 'running' });
-        if (typed) heldTaken(); // typed into a running agent: it has the prompt
         return undefined;
       }
       this.forget(live);
@@ -953,7 +989,7 @@ export class Orchestrator {
     const session = this.sessionFor(now, role, tool);
     let kind = eff.prompt;
     if (!session) {
-      if (kind === 'continue' || kind === 'rereview') kind = kind === 'rereview' ? 'review' : this.freshKind(now, eff.phase);
+      if (kind === 'continue' || kind === 'restarted' || kind === 'rereview') kind = kind === 'rereview' ? 'review' : this.freshKind(now, eff.phase);
       if (kind === 'replan') kind = 'plan';
     }
     x.checkout = await this.checkoutFor(now, def, floor.dir, role, eff.phase, !folder && !now.workspace);
@@ -990,8 +1026,7 @@ export class Orchestrator {
     patch.runState = 'running';
     this.update(task.id, patch);
     // A fresh session has the prompt on its command line; a resumed one is heard from before it is known to have it (the session may be gone).
-    if (session) Object.assign(live, { resumed: true, ack: heldTaken });
-    else heldTaken();
+    Object.assign(live, { ack: heldTaken, ...(session ? { resumed: true } : {}) });
     this.exitedAtHire(live);
     return undefined;
   }
@@ -1041,7 +1076,7 @@ export class Orchestrator {
    * pull requests are in (never the floor's checkout, never the task's worktree), with the review's
    * read-only flags. A Retry reviews them again from the start.
    */
-  private async launchPrReview(task: KanbanTask, def: FloorDef, floor: Floor, via: Via): Promise<string | NoRoom | undefined> {
+  private async launchPrReview(task: KanbanTask, def: FloorDef, floor: Floor, via: Via, restarted: boolean): Promise<string | NoRoom | undefined> {
     if (isFolderProject(def)) return 'A folder project has no pull requests to review';
     const req = via.prReview ?? this.lastPrReview(task.id);
     if (!req?.prs.length) return 'There are no pull requests to review: pick them again';
@@ -1056,7 +1091,7 @@ export class Orchestrator {
     // Whoever reviewed for the task before goes home: this review starts in a worktree of its own.
     const prev = task.reviewerWorkerId ? floor.workers.get(task.reviewerWorkerId) : undefined;
     if (prev) {
-      if (prev.status === 'working' || prev.status === 'starting') return `${prev.name} is busy: wait for its turn to end`;
+      if (prev.status === 'working' || (prev.status === 'starting' && !restarted)) return `${prev.name} is busy: wait for its turn to end`;
       await floor.sendHome(prev.id, homeCleanup(task, prev), ENGINE);
     }
     this.update(task.id, { reviewerWorkerId: null, reviewerSessionId: null });
@@ -1081,7 +1116,7 @@ export class Orchestrator {
     const full = signIn ? undefined : this.noRoom(floor, undefined, countsWith);
     if (full) return { queued: full };
 
-    const run = this.ctx.repo.createRun({ taskId: task.id, phase: 'pr-review', role: 'reviewer', tool, model, effort });
+    const run = this.ctx.repo.createRun({ taskId: task.id, phase: 'pr-review', role: 'reviewer', tool, model, effort, launch: { phase: 'pr-review', role: 'reviewer', prompt: 'pr.review' } });
     this.ctx.broadcast({ t: 'kanban.run', run, project: task.project }, task.project);
     const fail = (err: string) => {
       this.finishRun(run.id, task.project, { status: 'failed', error: err });
@@ -1105,7 +1140,7 @@ export class Orchestrator {
       settingsFile: 'kanban',
     });
     if (typeof hired === 'string') return /taken out of the floor/.test(hired) ? (this.finishRun(run.id, task.project, { status: 'interrupted', error: hired }), { queued: this.noRoom(floor, undefined, countsWith) ?? "Queued: its desk was taken out of the floor. It starts by itself when a desk frees." }) : fail(hired);
-    const live: Live = { taskId: task.id, runId: run.id, phase: 'pr-review', role: 'reviewer', tool, workerId: hired.id, floorId: task.project, exitPlan: false, ended: false };
+    const live: Live = { taskId: task.id, runId: run.id, phase: 'pr-review', role: 'reviewer', tool, workerId: hired.id, floorId: task.project, exitPlan: false, ended: false, ack: () => this.ctx.repo.clearRunLaunch(run.id) };
     this.live.set(hired.id, live);
     this.prompted(live, prompt);
     this.ctx.repo.updateRun(run.id, { workerId: hired.id });
@@ -1139,11 +1174,9 @@ export class Orchestrator {
     }
     const live = this.live.get(o.workerId);
     if (!live || live.ended || live.floorId !== floorId) return;
-    if (live.armed !== false && !live.started && ((o.event === 'hook' && !agentHook(o.payload)) || (o.status && o.status !== 'starting' && o.status !== 'exited'))) {
-      live.started = true;
-      live.ack?.();
-      live.ack = undefined;
-    }
+    if (live.armed !== false && !live.started && (live.typed ? receipt(o) : (o.event === 'hook' && !agentHook(o.payload)) || (o.status && o.status !== 'starting' && o.status !== 'exited'))) live.started = true;
+    // The agent has the prompt once it submits it or starts its turn, not when its process starts (a stop in between must still carry the prompt on).
+    if (live.ack && live.armed !== false && receipt(o) && !(o.event === 'hook' && agentHook(o.payload))) (live.ack(), (live.ack = undefined));
     if (o.event === 'hook') {
       // A subagent's or teammate's hook (it runs in the lead's process, so it reaches the lead's worker): none of the lead's turn,
       // but its question or permission prompt is still what the worker's needs_input waits on.
@@ -1158,7 +1191,7 @@ export class Orchestrator {
       if (o.hookEvent === 'UserPromptSubmit') Object.assign(live, { stopText: undefined, restating: false });
       else if (o.hookEvent === 'Stop' && live.tool === 'claude') live.stopText = stopMessage(o.payload);
       // The resumed turn has started (these hooks also set the worker `working`): its end is a normal `done` again.
-      if (live.background && (o.hookEvent === 'PreToolUse' || o.hookEvent === 'UserPromptSubmit')) live.background = false;
+      if (live.background && (o.hookEvent === 'PreToolUse' || o.hookEvent === 'UserPromptSubmit')) this.turnHolds.release(live);
       // A Stop while stopping is the stop done (the worker may stay `done`, which emits no status).
       if (o.hookEvent === 'Stop' && live.stopping) return void this.serial(live.taskId, () => this.stoppedRun(live));
       // The worker stays `done` across the resumed turn (upstream drops an unchanged status), so its Stop is heard here.
@@ -1248,7 +1281,7 @@ export class Orchestrator {
     // Its agent exited before it was heard from, resuming a stored session: the session is gone (a month on hold, a cleaned-up home). The run
     // starts once more in a fresh session, with the handoff; its messages are still the task's (nothing was acknowledged).
     const session = live.role === 'implementer' ? task?.sessionId : task?.reviewerSessionId;
-    if (live.resumed && !live.started && !lost && live.eff && task && session && sessionLogged(this.ctx, task, live.tool, session, this.ctx.floor(live.floorId)?.workers.transcripts(live.workerId)?.claude) === false) return this.holds.freshSession(live, task, session);
+    if (live.resumed && !live.started && !lost && live.eff && task && session && sessionLogged(this.ctx, task, live.tool, session, this.ctx.floor(live.floorId)?.workers.transcripts(live.workerId)) === false) return this.holds.freshSession(live, task, session);
     const why = lost ? "Its worktree is gone, so its agent couldn't start" : 'The agent exited before its turn was done';
     this.finishRun(live.runId, live.floorId, { status: 'interrupted', error: why });
     if (task) await this.apply(task.id, { type: 'interrupted', text: `${why}: Retry to carry on${lost ? ` in a fresh worktree${task.branch ? ` on branch ${task.branch}` : ''}` : ''}` });
@@ -1391,7 +1424,7 @@ export class Orchestrator {
   /** readTurnResult's options: `since` is when the worker's Claude process started (its SessionStart, else, after an office restart, the run's start); `runStart` is when the run began; `promptAt` is when the office last prompted it. */
   private turnOpts(live: Live): { since?: number; runStart?: number; promptAt?: number; promptHead?: string } {
     const run = this.ctx.repo.getRun(live.runId);
-    return { since: this.procSince.get(live.workerId) ?? run?.startedAt, runStart: run?.startedAt, promptAt: live.promptAt, promptHead: live.promptHead };
+    return { since: live.pinSince ? run?.startedAt : (this.procSince.get(live.workerId) ?? run?.startedAt), runStart: run?.startedAt, promptAt: live.promptAt, promptHead: live.promptHead };
   }
 
   /** Whether the worker's Claude teammates (agent teams) still work, from their transcripts. */
@@ -1868,7 +1901,7 @@ export class Orchestrator {
       const own = c.attachmentIds.length ? this.ctx.repo.listAttachments(taskId).filter((a) => a.commentId === c.id) : [];
       if (asking?.asks === 'question' && !this.answer(asking, [c.text, this.compose.filesInline(taskId, own)].filter(Boolean).join(' '), who)) return;
       const live = this.liveOf(task.id);
-      const err = await this.apply(taskId, { type: 'comment', text: [c.text, this.compose.filesText(task.project, taskId, own)].filter(Boolean).join('\n\n'), busy: !!live || task.runState !== 'idle' }, { who, commentId });
+      const err = await this.apply(taskId, { type: 'comment', text: [c.text, this.compose.filesText(task.project, taskId, own)].filter(Boolean).join('\n\n'), busy: !!live || task.runState !== 'idle', last: this.lastRun(taskId) }, { who, commentId });
       if (err) this.note(task, `Couldn't hand the comment to the agent: ${err}`);
       if (live && task.status === 'waiting' && task.waitingReason === 'agent_asking') {
         const there = asking && asking.asks !== 'question' ? (asking.asks === 'permission' ? ASKS_PERMISSION : ASKS_UNKNOWN) : undefined;

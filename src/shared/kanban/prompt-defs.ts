@@ -322,6 +322,13 @@ The pull request named below (#{{posted}} of {{postedRepo}}) is only where the c
 
 {{language}}`,
   },
+  'kanban.restarted': {
+    group: 'kanban',
+    label: 'The office was restarted',
+    used: "Put in front of the continue prompt when a run is picked up again after the whole office was shut down and started: its turn was cut off by the restart.",
+    vars: {},
+    text: `The office was restarted while you were working on this task, and your turn was cut off; background agents and teammates you started were stopped with it.`,
+  },
   'kanban.restate': {
     group: 'kanban',
     label: 'Restate the final answer',

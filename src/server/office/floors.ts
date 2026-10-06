@@ -140,6 +140,7 @@ export async function openFloors(ctx: Ctx, hookPort: number): Promise<FloorsOpen
     },
     peers: (floor) => [...clients.values()].filter((c) => c.peer.floor === floor.id).map((c) => c.peer),
     leaveOnMerge: () => ctx.leaveOnMerge.on,
+    carryOn: () => ctx.carryOn.on,
     floor: (id) => floors.get(id),
     pullsChanged: (floor) => {
       for (const f of floors.values()) if (f !== floor && worksIn(f, floor)) f.sendLandedHome();

@@ -21,7 +21,7 @@ import { mapNews } from './handlers/settings.js';
  * `@login`, with no account and none of the arrival side effects an owner's people have.
  */
 export function onConnection(ctx: Ctx, ws: WebSocket, url: URL, session: Session, visit?: VisitorScope) {
-  const { cfg, accounts, clients, chat, building, floors, maps, team, upgrader, ledger, webhook, machine, sky, themes, prompts, leaveOnMerge, signins } = ctx;
+  const { cfg, accounts, clients, chat, building, floors, maps, team, upgrader, ledger, webhook, machine, sky, themes, prompts, leaveOnMerge, carryOn, signins } = ctx;
   const { sendTo, broadcast, floorInfos, floorsChanged, arrivalFloor, meOf, accountsChanged, limitsOf } = ctx;
   const id = randomBytes(5).toString('hex');
   // Back on the floor they were on before a reload, a restart or closing the tab, else the first floor.
@@ -89,6 +89,7 @@ export function onConnection(ctx: Ctx, ws: WebSocket, url: URL, session: Session
     map: maps.state(),
     prompts: prompts.state(),
     leaveOnMerge: leaveOnMerge.state(),
+    carryOn: carryOn.state(),
     ...(onRoof ? roofView(ctx) : floorView(ctx, floor)),
   });
   for (const f of features) f.welcomed?.(ctx, client);

@@ -7,6 +7,7 @@ import { providerAdapter } from '../providers/index.js';
 import { reportedUsage } from '../reported-usage.js';
 import { restoreTracker, trackerUsage } from '../usage.js';
 import { workedMs } from './clock.js';
+import { setCarryOn, validCutOff } from './carryon.js';
 import { midTurn } from './lifecycle.js';
 import type { Worker } from './types.js';
 import { COLORS, newWorker } from './worker.js';
@@ -16,9 +17,9 @@ import { validExtra, validKanban } from '../kanban/launch.js';
 /** What a worker with a live terminal can be doing. */
 const RUNNING = new Set<unknown>(['starting', 'idle', 'working', 'done', 'needs_input'] satisfies WorkerStatus[]);
 
-/** Saves every worker; `stopping`: the office is closing for good, so nobody is in the middle of anything. */
-export function saveWorkers(file: string, workers: Iterable<Worker>, stopping: boolean) {
-  const saved = [...workers].map(({ info, owner, tracker, state, hookToken, pty, bootBlocked, interrupted, extra }) => ({
+/** Saves every worker; `closing`: the office is going down, so what its workers were doing is kept (`cutOff`). */
+export function saveWorkers(file: string, workers: Iterable<Worker>, closing: boolean) {
+  const saved = [...workers].map(({ info, owner, tracker, state, hookToken, pty, bootBlocked, interrupted, carryOn, extra }) => ({
     id: info.id,
     owner,
     kind: info.kind,
@@ -53,7 +54,9 @@ export function saveWorkers(file: string, workers: Iterable<Worker>, stopping: b
     hookToken,
     pty: pty?.id ? { id: pty.id, status: info.status, acked: info.acked, waitingSince: info.waitingSince } : undefined,
     // In the middle of something: if its terminal doesn't make it through a restart, it carries on after.
-    midTurn: !stopping && (!!interrupted || midTurn({ info, bootBlocked })),
+    midTurn: !!interrupted || midTurn({ info, bootBlocked }),
+    // Its status when the office closed and its terminal did not survive: after the kill, `info.status` reads exited.
+    cutOff: closing ? carryOn?.cutOff : undefined,
   }));
   try {
     writeFileSync(file, JSON.stringify(saved, null, 2), { mode: 0o600 });
@@ -122,6 +125,7 @@ export function restoreWorkers(file: string, workers: Map<string, Worker>, defau
       // Mid-turn as the office went down: cut off, unless its terminal is picked back up still
       // running (adopt). An office from before midTurn only said so for a terminal in the host.
       w.interrupted = typeof s.midTurn === 'boolean' ? s.midTurn : s.pty?.status === 'working' || s.pty?.status === 'needs_input';
+      setCarryOn(w, { cutOff: validCutOff(s.cutOff) });
       if (info.prompt) w.prompts = [info.prompt.replace(/\s+/g, ' ').trim()];
       workers.set(info.id, w);
     }

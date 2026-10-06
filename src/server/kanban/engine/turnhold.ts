@@ -56,6 +56,8 @@ export interface TurnHoldDeps<L extends HeldRun> {
   restateText(task: KanbanTask, phase: RunPhase): string;
   /** How long a hold waits for the run's next Stop (ms). */
   waitMs(): number;
+  /** The run is held for background work (true), or isn't any more: kept on the run so a full restart knows. */
+  heldChanged(live: L, held: boolean): void;
 }
 
 /** The start of a prompt's text, whitespace collapsed: what finds the office's own prompt in the log among typed ones (see readTurnResult). */
@@ -68,6 +70,7 @@ export class TurnHolds<L extends HeldRun> {
   hold(live: L) {
     live.background = true;
     live.held = true;
+    this.deps.heldChanged(live, true);
     // Stop #1's answer is the interim "I'll wait" text, never the run's.
     live.stopText = undefined;
     this.arm(live);
@@ -104,6 +107,12 @@ export class TurnHolds<L extends HeldRun> {
     clearTimeout(live.holdTimer);
     live.restating = false;
     return giveUp();
+  }
+
+  /** The resumed turn has started: the run is no longer held. */
+  release(live: L) {
+    live.background = false;
+    this.deps.heldChanged(live, false);
   }
 
   /** (Re)starts the wait for the run's next Stop (after a hold for background work, or a restate); when it never comes the run goes on with what its log says. */

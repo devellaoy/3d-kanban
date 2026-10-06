@@ -173,6 +173,17 @@ export interface LeaveOnMergeState {
   at?: number;
 }
 
+/**
+ * Whether workers that were mid-turn when the office was stopped carry on by themselves when it starts
+ * again (⚙️ Settings), for every floor. On until someone turns it off.
+ */
+export interface CarryOnState {
+  on: boolean;
+  /** Who set it, and when. Unset for the default (on). */
+  by?: string;
+  at?: number;
+}
+
 export type SettingsClientMsg =
   /** Set the office's Slack / Discord webhook; '' removes it. */
   | { t: 'notify.webhook'; url: string }
@@ -190,6 +201,8 @@ export type SettingsClientMsg =
   | { t: 'map.set'; map?: string }
   /** Workers whose pull request merged go home by themselves (true), or wait to be sent home. */
   | { t: 'leaveOnMerge.set'; on: boolean }
+  /** Workers that were mid-turn when the office stopped carry on by themselves when it starts again (true), or wait. */
+  | { t: 'carryOn.set'; on: boolean }
   /** Rewrite one of the office's prompts (admins only); null puts the default back. */
   | { t: 'prompts.set'; id: PromptId; text: string | null }
   /** Pick the worker everyone starts on (admins only); null goes back to the office's --agent. */
@@ -206,4 +219,5 @@ export type SettingsServerMsg =
   | { t: 'theme'; state: ThemeState }
   | { t: 'map'; state: MapState }
   | { t: 'prompts'; state: PromptsState }
-  | { t: 'leaveOnMerge'; state: LeaveOnMergeState };
+  | { t: 'leaveOnMerge'; state: LeaveOnMergeState }
+  | { t: 'carryOn'; state: CarryOnState };

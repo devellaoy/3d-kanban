@@ -37,6 +37,8 @@ export interface Rule {
   commit?: string;
   /** Wait this long before answering (to type a comment meanwhile). */
   delayMs?: number;
+  /** Waits this long before submitting the prompt (the UserPromptSubmit hook), after the process started. */
+  submitDelayMs?: number;
   /** Run git with these arguments in the agent's folder first (checking out a branch, say). */
   git?: string[];
   /** Exit mid-turn instead of answering. */
@@ -141,8 +143,8 @@ if (args.includes('--output-format')) {
 record({});
 const at = kind === 'claude' ? args.indexOf('--resume') : args.indexOf('resume');
 const session = at >= 0 ? args[at + 1] : kind + '-' + process.pid + '-' + Date.now();
-// A conversation Claude no longer has (a session id starting with stale-): it exits before it starts, as the real one does.
-if (kind === 'claude' && at >= 0 && /^stale-/.test(session)) { process.stderr.write('No conversation found with session ID: ' + session + '\n'); process.exit(1); }
+// A conversation the CLI no longer has (a session id starting with stale-): it exits before it starts, as the real one does.
+if (at >= 0 && /^stale-/.test(session)) { process.stderr.write('No conversation found with session ID: ' + session + '\n'); process.exit(1); }
 const transcript = path.join(process.env.FAKE_TRANSCRIPTS, session + '.jsonl');
 const append = (o) => fs.appendFileSync(transcript, JSON.stringify(o) + '\n');
 const post = (event, payload) => new Promise((resolve) => {
@@ -182,8 +184,11 @@ async function typedAfter(rule, msgId) {
 }
 async function turn(prompt, answered) {
   record({ prompt });
-  if (!answered) await post('UserPromptSubmit', { prompt });
   const rule = rules().find((r) => new RegExp(r.when).test(prompt)) || { reply: 'OK' };
+  if (!answered) {
+    if (rule.submitDelayMs) await new Promise((r) => setTimeout(r, rule.submitDelayMs));
+    await post('UserPromptSubmit', { prompt });
+  }
   silent = !!rule.escSilent;
   escLogs = !!rule.escLogs;
   escStopMs = rule.escStopMs;
@@ -332,10 +337,10 @@ async function turn(prompt, answered) {
       return;
     }
   } else {
-    append({ type: 'event_msg', payload: { type: 'user_message', message: prompt } });
+    append({ type: 'event_msg', timestamp: new Date().toISOString(), payload: { type: 'user_message', message: prompt } });
     if (rule.earlier) append({ type: 'response_item', payload: { type: 'message', role: 'assistant', content: [{ type: 'output_text', text: rule.earlier }] } });
     append({ type: 'response_item', payload: { type: 'message', role: 'assistant', content: [{ type: 'output_text', text: rule.reply }] } });
-    append({ type: 'event_msg', payload: { type: 'task_complete', last_agent_message: rule.reply } });
+    append({ type: 'event_msg', timestamp: new Date().toISOString(), payload: { type: 'task_complete', last_agent_message: rule.reply } });
   }
   await post('Stop', kind === 'claude' ? { last_assistant_message: rule.reply } : {});
 }
@@ -406,6 +411,11 @@ export interface EngineFixture {
   engine: KanbanEngine;
   /** An office restart of the engine: the old one is disposed and a new one begins over the same context, repository and workers (what it kept in memory is gone). */
   restartEngine(): KanbanEngine;
+  /**
+   * The whole office is shut down (Ctrl+C: the terminals die, the workers are saved with what they were doing) and started again: a new
+   * WorkerManager over the same data, which wakes everyone on their sessions, and a new engine. `carryOn`: the office setting (default on).
+   */
+  restartOffice(opts?: { carryOn?: boolean; beforeStart?: () => void; exitedFirst?: boolean }): Promise<KanbanEngine>;
   broadcasts: KanbanServerMsg[];
   setRules(rules: Rule[]): void;
   invocations(): Invocation[];
@@ -570,6 +580,18 @@ export async function engineFixture(opts: { engine?: EngineOptions; repos?: Floo
     engine,
     restartEngine() {
       fx.engine.dispose();
+      return (fx.engine = makeEngine());
+    },
+    async restartOffice(o = {}) {
+      fx.engine.dispose();
+      workers.shutdown(false);
+      o.beforeStart?.();
+      workers = new WorkerManager(dir, data, path.join(bin, 'claude'), [], { url: hookUrl, token: '' }, { update() {}, remove() {}, data() {}, screen() {}, toast: (t) => void toasts.push(t) }, new Ledger(data, { pauseHiring: false }, () => {}, () => {}), opts.capacity, undefined, opts.runAs);
+      workers.carryOn = () => o.carryOn !== false;
+      await workers.start();
+      // Every woken terminal has exited (a stale session does) before the engine looks at the runs.
+      for (let i = 0; o.exitedFirst && i < 100 && workers.list().some((w) => w.status !== 'exited'); i++) await new Promise((r) => setTimeout(r, 50));
+      fx.workers = (floor as unknown as { workers: WorkerManager }).workers = workers;
       return (fx.engine = makeEngine());
     },
     broadcasts,
