@@ -4,8 +4,8 @@
 // nothing (push the branch first) and opens the current branch's pull request, or updates the one
 // it has; `view`, `checks`, `diff`, `comment` and `list` read and answer them. The office puts it on
 // every worker's PATH with AGENT_OFFICE_HOOK_URL, AGENT_OFFICE_WORKER_ID and AGENT_OFFICE_HOOK_TOKEN,
-// and does the asking on the host with the credentials of the account the worker runs as, so no
-// token reaches the worker (src/server/kanban/integrations/hosting/officepr.ts). A repository on
+// and does the asking on the host with the credentials of the account the worker runs as (else the
+// office's), handing none to the worker (src/server/kanban/integrations/hosting/officepr.ts). A repository on
 // GitHub keeps using gh. Plain Node, no build step, no dependencies.
 
 import { execFileSync } from 'node:child_process';

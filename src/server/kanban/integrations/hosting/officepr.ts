@@ -1,14 +1,15 @@
 // /office/pr/*: what bin/office-pr.js asks for a worker whose repository is on Azure DevOps or
 // Bitbucket, where there's no gh: open (or update) its branch's pull request, read one with its
 // checks and comments, comment on one, list them. It runs with the credentials of the account the
-// worker runs as (else the office's, see hosting/credentials.ts), so the token never reaches the
-// worker. A repository on GitHub is told to use gh, as before.
+// worker runs as (else the office's, see hosting/credentials.ts) and hands no token to the worker:
+// the office's stays with the office (a worker's own git has only its owner's, workerGitEnv). A
+// repository on GitHub is told to use gh, as before.
 
 import { existsSync, statSync } from 'node:fs';
 import path from 'node:path';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import type { KanbanContext, KanbanHookCaller, KanbanHookHandler } from '../../registry.js';
-import { hostLabel, type OtherHost, type RepoRef } from '../../../../shared/hosting/remote.js';
+import { hostLabel, orgOf, type OtherHost, type RepoRef } from '../../../../shared/hosting/remote.js';
 import { parseAbKey, workItemMentions } from '../../../../shared/hosting/workitems.js';
 import type { HostCredentials } from '../../../hosting/credentials.js';
 import type { Fetch, HostAs, HostingProvider } from '../../../hosting/provider.js';
@@ -78,7 +79,7 @@ export function officePrHook(ctx: KanbanContext, deps: OfficePrDeps = {}): Kanba
     if (repo.host === 'github') return fail(res, 400, 'This repository is on GitHub: use gh (gh pr create, gh pr view …) as usual');
     const provider = providerOf(repo.host as OtherHost);
     if (typeof provider === 'string') return fail(res, 400, provider);
-    const as = creds()?.as(who.accountId, repo.host as OtherHost) ?? `The office keeps no ${hostLabel(repo.host)} credentials yet`;
+    const as = creds()?.as(who.accountId, repo.host as OtherHost, orgOf(repo)) ?? `The office keeps no ${hostLabel(repo.host)} credentials yet`;
     if (typeof as === 'string') return fail(res, 403, `${as}. Tell the person you work for.`);
     try {
       const out = await act(action, ask, repo, provider, as, fetchOf(), who);

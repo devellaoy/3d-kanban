@@ -2,7 +2,7 @@
 // set, kept readable by the office alone, and never sent back to a browser (server/hosting/credentials.ts).
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, statSync, utimesSync, writeFileSync, mkdirSync } from 'node:fs';
+import { mkdtempSync, statSync, writeFileSync, mkdirSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { authOf, HostCredentials } from '../src/server/hosting/credentials.js';
@@ -64,18 +64,27 @@ test("whose credentials: the account's own, else the office's, else why not", as
   assert.equal((creds.as('acc654321', 'azure') as string).startsWith('Set your'), true);
 });
 
-test('the boards read with the office’s, else the account that set its own most recently', async () => {
+test('the boards read with the office’s own only, never somebody’s personal token, and only in its Azure DevOps organization', async () => {
   const { dir, creds } = store();
-  assert.equal(creds.anyAs('bitbucket'), undefined);
-  for (const [id, at] of [['older00001', 1_000], ['newer00002', 2_000]] as const) {
-    const home = path.join(dir, 'homes', id);
-    mkdirSync(home, { recursive: true });
-    writeFileSync(path.join(home, 'hosting.json'), JSON.stringify({ bitbucket: { token: TOKEN, email: 'a@b.c' } }));
-    utimesSync(path.join(home, 'hosting.json'), at, at);
-  }
-  assert.equal(creds.anyAs('bitbucket')?.key, 'newer00002');
+  const home = path.join(dir, 'homes', 'acc123456');
+  mkdirSync(home, { recursive: true });
+  writeFileSync(path.join(home, 'hosting.json'), JSON.stringify({ bitbucket: { token: TOKEN, email: 'a@b.c' } }));
+  assert.equal(creds.anyAs('bitbucket'), undefined, "an account's token is theirs, not the boards'");
   await creds.set(null, { kind: 'bitbucket', token: TOKEN, email: 'office@b.c' });
   assert.equal(creds.anyAs('bitbucket')?.key, 'office');
+  await creds.set(null, { kind: 'azure', token: TOKEN, org: 'contoso' });
+  assert.equal(creds.anyAs('azure', 'CONTOSO')?.key, 'office');
+  assert.equal(creds.anyAs('azure', 'fabrikam'), undefined, 'a PAT reaches only its organization');
+});
+
+test('an Azure DevOps token is picked for its own organization: the person’s, else the office’s, else why', async () => {
+  const { creds } = store();
+  await creds.set('acc123456', { kind: 'azure', token: TOKEN, org: 'contoso' });
+  await creds.set(null, { kind: 'azure', token: 'b'.repeat(52), org: 'fabrikam' });
+  assert.equal((creds.as('acc123456', 'azure', 'contoso') as HostAs).key, 'acc123456');
+  assert.equal((creds.as('acc123456', 'azure', 'fabrikam') as HostAs).key, 'office', "theirs is for contoso: the office's is fabrikam's");
+  assert.match(String(creds.as('acc123456', 'azure', 'tailspin')), /Your Azure DevOps token is for contoso, and this is in tailspin/);
+  assert.match(String(creds.as('acc654321', 'azure', 'tailspin')), /The office's Azure DevOps token is for fabrikam, and this is in tailspin/);
 });
 
 test('a browser learns whether a token is set and whose, never the token', async () => {
@@ -114,12 +123,12 @@ test("git's environment for a push elsewhere: the office's helper with the accou
   mkdirSync(path.join(dir, 'bin'), { recursive: true });
   writeFileSync(path.join(dir, 'bin', 'office-git-credential'), '');
   const env = creds.gitEnv({ GIT_CONFIG_COUNT: '1', GIT_CONFIG_KEY_0: 'core.x', GIT_CONFIG_VALUE_0: 'y' }, 'acc123456');
-  assert.equal(env.GIT_CONFIG_COUNT, '7', 'the one there, and a reset and a helper per host');
+  assert.equal(env.GIT_CONFIG_COUNT, '8', 'the one there, a reset and a helper per host, and dev.azure.com’s useHttpPath');
   assert.equal(env.GIT_CONFIG_KEY_0, 'core.x');
   assert.equal(env.GIT_CONFIG_KEY_1, 'credential.https://dev.azure.com.helper');
   assert.equal(env.GIT_CONFIG_VALUE_1, '', "the machine's own helpers for the host are left out");
   assert.equal(env.GIT_CONFIG_VALUE_2, `!'${path.join(dir, 'bin', 'office-git-credential')}' '${path.join(dir, 'homes', 'acc123456', 'hosting.json')}' '${path.join(dir, 'hosting-secrets.json')}'`);
-  assert.equal(env.GIT_CONFIG_KEY_5, 'credential.https://bitbucket.org.helper');
+  assert.equal(env.GIT_CONFIG_KEY_6, 'credential.https://bitbucket.org.helper');
   assert.ok(!creds.gitEnv({}, undefined).GIT_CONFIG_VALUE_1!.includes('homes'), "without an account, only the office's");
 });
 
@@ -134,9 +143,9 @@ test("a worker's own pushes: the helper in its environment, with or without an a
   const added = workerHostEnv(env, 'acc123456');
   assert.equal(added.PATH, undefined, 'only what it adds');
   assert.equal(added.GIT_CONFIG_KEY_0, undefined, 'what was there stays');
-  assert.equal(added.GIT_CONFIG_COUNT, '7');
-  assert.match(added.GIT_CONFIG_VALUE_2, /homes\/acc123456\/hosting\.json' '.*hosting-secrets\.json'$/);
+  assert.equal(added.GIT_CONFIG_COUNT, '8');
+  assert.match(added.GIT_CONFIG_VALUE_2, /office-git-credential' '[^']*homes\/acc123456\/hosting\.json'$/, "an account's worker gets its owner's tokens only, never the office's");
   const office = workerHostEnv({}, undefined);
-  assert.match(office.GIT_CONFIG_VALUE_1, /office-git-credential' '.*hosting-secrets\.json'$/, "no account (the shared password): the office's");
+  assert.match(office.GIT_CONFIG_VALUE_1, /office-git-credential' '[^']*hosting-secrets\.json'$/, "no account (the shared password, everyone its admin): the office's");
   assert.ok(!office.GIT_CONFIG_VALUE_1.includes('homes'));
 });

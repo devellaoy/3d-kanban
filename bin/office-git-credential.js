@@ -28,11 +28,28 @@ export function parseRequest(text) {
   return out;
 }
 
-/** The answer for a request, from the saved files in order; '' when there's none. */
+/**
+ * The Azure DevOps organization a request is for: org.visualstudio.com's, or the first part of
+ * dev.azure.com's path (git sends it: useHttpPath is set for that host). Undefined elsewhere.
+ */
+export function azureOrg(request) {
+  const h = String(request.host ?? '').toLowerCase().replace(/:\d+$/, '');
+  const vs = /^([a-z0-9][a-z0-9-]*)\.visualstudio\.com$/.exec(h);
+  if (vs) return vs[1];
+  if (h !== 'dev.azure.com') return undefined;
+  const first = String(request.path ?? '').replace(/^\/+/, '').split('/')[0];
+  return first || undefined;
+}
+
+/**
+ * The answer for a request, from the saved files in order; '' when there's none. An Azure DevOps
+ * PAT reaches only the organization it was saved for, so one for another is passed over.
+ */
 export function answer(request, files, read = (f) => readFileSync(f, 'utf8')) {
   if (request.protocol !== 'https') return '';
   const host = hostKind(request.host);
   if (!host) return '';
+  const org = host.kind === 'azure' ? azureOrg(request)?.toLowerCase() : undefined;
   for (const f of files) {
     let saved;
     try {
@@ -40,7 +57,9 @@ export function answer(request, files, read = (f) => readFileSync(f, 'utf8')) {
     } catch {
       continue;
     }
-    const token = saved?.[host.kind]?.token;
+    const entry = saved?.[host.kind];
+    if (org && typeof entry?.org === 'string' && entry.org.toLowerCase() !== org) continue;
+    const token = entry?.token;
     // A token never has a line break in it: one that did could add lines of its own to the answer.
     if (typeof token === 'string' && token && !/[\r\n\0]/.test(token)) return `username=${host.username}\npassword=${token}\n`;
   }

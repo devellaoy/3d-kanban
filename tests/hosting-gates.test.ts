@@ -13,6 +13,8 @@ import type { Ctx } from '../src/server/office/context.js';
 import type { Client } from '../src/server/office/client.js';
 import type { HostPick } from '../src/server/hosting/provider.js';
 
+const AZ_REPO = { host: 'azure' as const, owner: 'contoso' };
+
 function checkout(root: string, name: string, url: string): string {
   const dir = path.join(root, name);
   mkdirSync(dir, { recursive: true });
@@ -57,11 +59,12 @@ test('only on Azure DevOps: no GitHub sign-in asked, the office’s token there,
   g.withHosts(c, [dirs.az], (as, hosts) => (got = { as, hosts }));
   assert.ok(got);
   assert.equal(got.as, undefined);
-  assert.equal(got.hosts.get('azure')?.key, 'office');
+  assert.equal(got.hosts.get(AZ_REPO)?.key, 'office');
   const env = got.hosts.git!;
   assert.equal(env.GIT_CONFIG_GLOBAL, '/homes/acc123456/gitconfig', 'their own git config (it may also carry their identity)');
   assert.equal(env.GIT_CONFIG_KEY_0, 'credential.https://dev.azure.com.helper');
-  assert.match(env.GIT_CONFIG_VALUE_1, /office-git-credential' '.*homes\/acc123456\/hosting\.json' '.*hosting-secrets\.json'$/);
+  assert.match(env.GIT_CONFIG_VALUE_1, /office-git-credential' '.*homes\/acc123456\/hosting\.json' '.*hosting-secrets\.json'$/, "the office's own push for them: their token, else the office's");
+  assert.equal(env.GIT_CONFIG_KEY_2, 'credential.https://dev.azure.com.useHttpPath', 'the path names the organization');
   assert.deepEqual(githubAsked, ['acc123456'], 'read for their git environment only: no GitHub gate');
 });
 
@@ -70,7 +73,7 @@ test('a GitHub repository and one on Azure DevOps: the GitHub sign-in and the Az
   let got: { as: unknown; hosts: HostPick } | undefined;
   g.withHosts(c, [dirs.gh, dirs.az], (as, hosts) => (got = { as, hosts }));
   assert.deepEqual(got?.as, { key: 'acc123456', env: { HOME: '/h', GIT_CONFIG_GLOBAL: '/homes/acc123456/gitconfig' } }, "GitHub's as before, untouched");
-  assert.equal(got?.hosts.get('azure')?.key, 'office');
+  assert.equal(got?.hosts.get(AZ_REPO)?.key, 'office');
 });
 
 test('the host the work is on decides: a missing Bitbucket token is asked for, not a GitHub one', () => {
@@ -86,4 +89,15 @@ test('the host the work is on decides: a missing Bitbucket token is asked for, n
   let plain: { hosts: HostPick } | undefined;
   g.withHosts(c, [dirs.gh], (_as, hosts) => (plain = { hosts }));
   assert.equal(plain?.hosts.git, undefined);
+});
+
+test('a repository in another Azure DevOps organization than the token’s is asked for its own, with why', () => {
+  const { g, c, sent } = setup();
+  const root = mkdtempSync(path.join(os.tmpdir(), 'hosting-gates-org-'));
+  forgetRemotes();
+  const other = checkout(root, 'fab', 'https://dev.azure.com/fabrikam/Web/_git/api');
+  const refused: string[] = [];
+  g.withHosts(c, [other], () => assert.fail('no token reaches fabrikam'), (why) => refused.push(why));
+  assert.match(refused[0], /The office's Azure DevOps token is for contoso, and this is in fabrikam: set yours for fabrikam/);
+  assert.equal((sent.at(-1) as { which: string }).which, 'azure');
 });

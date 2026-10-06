@@ -206,7 +206,7 @@ export function createBrowse(ctx: KanbanContext, deps: BrowseDeps) {
       const ab = parseAbKey(key);
       if (ab) {
         const board = sources.find((s): s is AzureBoardsConfig => s.kind === 'azure-boards' && s.org.toLowerCase() === ab.org.toLowerCase() && s.project.toLowerCase() === ab.project.toLowerCase());
-        return board ? (await readWorkItems(io, readerAs(), board.org, board.project, [ab.id], board.id))[0] : undefined;
+        return board ? (await readWorkItems(io, readerAs(board.org), board.org, board.project, [ab.id], board.id))[0] : undefined;
       }
       if (JIRA_KEY_RE.test(key)) {
         const jira = sources.find((s): s is JiraConfig => s.kind === 'jira' && s.projectKeys.some((k) => k.toUpperCase() === keyProject(key)));

@@ -21,7 +21,7 @@ test("git's credentials for the base branch's fetch come from the office's token
   writeFileSync(command, `#!/bin/sh\nexec '${process.execPath}' '${HELPER}' "$@"\n`);
   chmodSync(command, 0o700);
   writeFileSync(path.join(data, 'hosting-secrets.json'), JSON.stringify({ bitbucket: { token: 'bb-office-token', email: 'o@x.y' }, azure: { token: 'az-office-token', org: 'contoso' } }), { mode: 0o600 });
-  // An account's own token comes after the office's for a read nobody in particular asked for.
+  // An account's own token is never used for the office's reads.
   mkdirSync(path.join(data, 'homes', 'acc123456'), { recursive: true });
   writeFileSync(path.join(data, 'homes', 'acc123456', 'hosting.json'), JSON.stringify({ bitbucket: { token: 'bb-account-token' } }));
   openHosting(data);
@@ -30,9 +30,11 @@ test("git's credentials for the base branch's fetch come from the office's token
   mkdirSync(home);
   const env = fetchEnv({ PATH: process.env.PATH, HOME: home, GIT_CONFIG_NOSYSTEM: '1', GIT_CONFIG_GLOBAL: path.join(home, 'none') });
   assert.equal(env.GIT_TERMINAL_PROMPT, '0', 'never waits for a password');
-  const fill = (host: string) => execFileSync('git', ['credential', 'fill'], { env, input: `protocol=https\nhost=${host}\npath=acme/widget.git\n\n`, encoding: 'utf8' });
+  const fill = (host: string, p = 'acme/widget.git') => execFileSync('git', ['credential', 'fill'], { env, input: `protocol=https\nhost=${host}\npath=${p}\n\n`, encoding: 'utf8' });
   assert.match(fill('bitbucket.org'), /username=x-bitbucket-api-token-auth\npassword=bb-office-token\n/);
-  assert.match(fill('dev.azure.com'), /password=az-office-token\n/);
+  assert.match(fill('dev.azure.com', 'contoso/Web/_git/api'), /password=az-office-token\n/);
+  // A PAT reaches only its organization: another's repository gets no answer (and no prompt).
+  assert.throws(() => fill('dev.azure.com', 'fabrikam/Web/_git/api'));
   // GitHub is left to the machine as before: no answer from the office's helper (and no prompt).
   assert.throws(() => fill('github.com'));
 });

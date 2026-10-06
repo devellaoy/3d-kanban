@@ -4,7 +4,7 @@ import { openedFromOfficeBy } from '../shared/officepr.js';
 import type { GhAs } from './signins.js';
 import { checkoutRepo, repoApi, repoFlag } from './ghrepo.js';
 import { pullDiffOrFiles } from './prfiles.js';
-import { hostLabel, repoRefOf } from '../shared/hosting/remote.js';
+import { hostLabel, orgOf, repoRefOf } from '../shared/hosting/remote.js';
 import { hostCredentials, otherHostRepo } from './hosting/index.js';
 import { hostedComment, hostedDiff, hostedPullDetail, hostedPulls, notOnHost, type HostedRepo } from './hosting/board.js';
 import type { HostAs } from './hosting/provider.js';
@@ -303,7 +303,7 @@ export class GitHub {
     const hosted = this.hosted;
     if (hosted) {
       // Elsewhere it's a comment on the conversation, as whoever called the meeting (else the office).
-      const host = hostCredentials()?.as(owner, hosted.host) ?? `Posting the review needs ${hostLabel(hosted.host)} credentials (☰ → 🔐 Your sign-ins)`;
+      const host = hostCredentials()?.as(owner, hosted.host, orgOf(hosted)) ?? `Posting the review needs ${hostLabel(hosted.host)} credentials (☰ → 🔐 Your sign-ins)`;
       if (typeof host === 'string') throw new Error(host);
       return (await hostedComment(hosted, n, await readFile(file, 'utf8'), host)) ?? '';
     }

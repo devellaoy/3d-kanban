@@ -22,7 +22,7 @@ const FIELDS = ['System.Id', 'System.TeamProject', 'System.Title', 'System.State
 /** The states of Azure Boards' own processes (Agile, Scrum, Basic, CMMI) that are done with: left out unless `closed`. */
 export const CLOSED_STATES = ['Done', 'Closed', 'Removed', 'Completed', 'Cut'];
 
-export const NO_AZURE_TOKEN = 'Set an Azure DevOps token in ☰ → 🔐 Your sign-ins (yours or the office’s) to read Azure Boards';
+export const NO_AZURE_TOKEN = 'An admin sets the office’s Azure DevOps token, for this organization, in ☰ → 🔐 Your sign-ins to read Azure Boards';
 
 const enc = encodeURIComponent;
 
@@ -102,8 +102,8 @@ export function azureWorkItem(raw: any, org: string, project: string, sourceId?:
 }
 
 /** The credentials an issue source reads with, or the error to show. */
-export function readerAs(): HostAs {
-  const as = hostCredentials()?.anyAs('azure');
+export function readerAs(org: string): HostAs {
+  const as = hostCredentials()?.anyAs('azure', org);
   if (!as) throw new Error(NO_AZURE_TOKEN);
   return as;
 }
@@ -133,7 +133,7 @@ export const azureBoardsSource: IssueSource = {
     const c = config as AzureBoardsConfig;
     checkOrgProject(c.org, c.project);
     const wiql = buildWiql(c);
-    const as = readerAs();
+    const as = readerAs(c.org);
     const found = await hostCall(io.fetch, as, 'POST', `https://dev.azure.com/${enc(c.org)}/${enc(c.project)}/_apis/wit/wiql?$top=${SOURCE_MAX}&${API}`, { query: wiql });
     const ids = [...new Set<number>((found?.workItems ?? []).map((w: any) => Number(w?.id)).filter((n: number) => Number.isInteger(n) && n > 0))].slice(0, SOURCE_MAX);
     return readWorkItems(io, as, c.org, c.project, ids, c.id);

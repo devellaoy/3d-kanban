@@ -25,18 +25,16 @@ const enc = encodeURIComponent;
 type Io = Pick<IssueSourceIo, 'fetch'>;
 
 /**
- * The credentials the person acts with: their own, else the office's. A read with neither falls back
- * to whoever's the issue source reads with; a write says why it can't.
+ * The credentials the person acts with on organization `org`'s work items, reads and writes alike:
+ * their own, else the office's (an admin's choice). Never another person's: what they can see
+ * isn't everybody's to see. With neither, it says why.
  */
-export function azureActAs(accountId: string | undefined, write: boolean): HostAs {
+export function azureActAs(accountId: string | undefined, org: string): HostAs {
   const creds = hostCredentials();
   if (!creds) throw new Error(NO_AZURE_TOKEN);
-  const as = creds.as(accountId, 'azure');
-  if (typeof as !== 'string') return as;
-  if (write) throw new Error(as);
-  const any = creds.anyAs('azure');
-  if (!any) throw new Error(NO_AZURE_TOKEN);
-  return any;
+  const as = creds.as(accountId, 'azure', org);
+  if (typeof as === 'string') throw new Error(as);
+  return as;
 }
 
 function check(ref: WorkItemRef) {

@@ -35,7 +35,7 @@ function hostedOf(cwd: string, hosts: HostPick | undefined) {
   if (!repo) return undefined;
   const p = providerOf(repo.host);
   if (typeof p === 'string') throw new Error(p);
-  const host = hosts?.get(repo.host);
+  const host = hosts?.get(repo);
   if (!host) throw new Error(`Opening a pull request on ${hostLabel(repo.host)} needs your token there (☰ → 🔐 Your sign-ins)`);
   return { repo, p, host };
 }

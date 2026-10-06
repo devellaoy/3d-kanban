@@ -53,20 +53,31 @@ itself never goes back to a browser.
   Changes window, commenting in the PR window, an Azure Boards card's status, comments and assignee),
   and what your workers' `office-pr` uses. Pull requests and comments show up under your name.
 - **The office's own** (admins set it under the same card) is for everyone who has none of their own,
-  and for the PR board and the issue sources, which nobody in particular asks for. Without it, those
-  read with the token of the account that saved one most recently. An office without accounts (just
-  you, on the shared password) uses only the office's own.
+  and for the PR board, the issue sources and the office's fetches, which nobody in particular asks
+  for. Those read with the office's own only, never with somebody's personal token: what one person
+  can see isn't everybody's to see. Without it, the PR board and the Azure Boards sources say so. An
+  office without accounts (just you, on the shared password) uses only the office's own.
+- **Azure DevOps organisations.** A PAT reaches only its own organisation, so a token is used only
+  for the organisation it was saved with: yours, else the office's. When neither is for the
+  repository's organisation, the action says whose token is for which.
 
 When a token is missing, the action says so and opens 🔐 Your sign-ins.
 
 **Pushing over HTTPS.** The office's credential helper (`office-git-credential`) answers for
-`dev.azure.com`, `*.visualstudio.com` and `bitbucket.org` with the same token: yours, else the office's.
-Git gets the helper through its environment (git 2.31 or newer), ahead of any the machine has for
-those hosts: every worker's (agents and shells alike, so an agent's own `git push` and `office-pr`'s
-pull request go out as the person who hired it), and the office's own pushes for you (O on a 🐚 shell
-worker, the Changes window's pull request), and its fetch of a worktree's base branch (with the
-office's token, else an account's). That holds with or without accounts and whatever your
-GitHub sign-in is. Remotes over SSH keep using the machine's SSH keys.
+`dev.azure.com` (by the organisation in the path), `*.visualstudio.com` and `bitbucket.org`. Git
+gets it through its environment (git 2.31 or newer), ahead of any the machine has for those hosts:
+
+- **A worker's own git** (agents and shells alike) gets the token of the person who hired it, and
+  only theirs: the office's is never handed to a worker of an account, as anything a worker can run,
+  `git credential fill` included, can read what its git is given. A worker of someone with no token
+  of their own can't push to those hosts over HTTPS; `office-pr` still works for it, the office
+  acting with its own token without handing it over. In an office without accounts (everyone is its
+  admin), workers get the office's.
+- **The office's own pushes for you** (O on a 🐚 shell worker, the Changes window's pull request): your
+  token, else the office's; git runs in the office, not in a worker.
+- **The office's fetch of a worktree's base branch**: the office's token.
+
+That holds whatever your GitHub sign-in is. Remotes over SSH keep using the machine's SSH keys.
 
 **Each repository by its own host.** O and the Changes window ask for the sign-ins the repositories
 they push to need: GitHub's only when one of them is on GitHub, and your token for each other host. A
@@ -94,7 +105,8 @@ description of the one it already has. Without a number, the other commands mean
 branch's pull request. `diff` is read from the host (Bitbucket's own diff; on Azure DevOps the
 changed files' contents, diffed by the office), so it fetches nothing into the checkout and works in a
 reviewer's read-only one. `office-pr` asks the office through the hook server, and the office talks to
-the host with the credentials of the account the worker runs as, so the token never reaches the worker.
+the host with the credentials of the account the worker runs as (else the office's), so `office-pr`
+itself hands no token to the worker; the worker's own git has its owner's token (see *Pushing over HTTPS*).
 On a GitHub repository it says to use `gh`.
 
 **Whose review comments count.** GitHub says how each commenter stands to the repository
@@ -115,7 +127,7 @@ elsewhere. A GitHub project's prompts are unchanged.
 organisation, project, assignee (`@Me` or a name or e-mail), work item types, area path, whether to
 include completed ones, and an extra WIQL condition. Cards are keyed `ab:org/project#123`. Their
 window changes the status (the work item type's own states), comments and the assignee, as you.
-The source reads with the office's Azure DevOps token (or an account's, see above).
+The source reads with the office's Azure DevOps token for that organisation (an admin sets it); a card's actions use yours, else the office's.
 
 **Closing it on merge.** A task whose ticket is a work item (made from an Azure Boards card, or
 `office-tasks create --ticket ab:org/project#123`):

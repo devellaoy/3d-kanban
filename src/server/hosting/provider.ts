@@ -19,9 +19,17 @@ export interface HostAs {
   who?: string;
 }
 
-/** The credentials picked for each host a piece of work needs (see gates.withHosts). */
+/** A repository as far as picking its credentials goes: its host, and on Azure DevOps its organization. */
+export type HostPickRepo = { host: OtherHost; owner: string };
+
+/** What one set of credentials serves: a host, and on Azure DevOps one organization (a PAT reaches only its own). */
+export function pickKey(r: HostPickRepo): string {
+  return r.host === 'azure' ? `azure:${r.owner.toLowerCase()}` : r.host;
+}
+
+/** The credentials picked for each repository elsewhere a piece of work needs (see gates.withHosts). */
 export interface HostPick {
-  get(kind: OtherHost): HostAs | undefined;
+  get(repo: HostPickRepo): HostAs | undefined;
   /** The environment git pushes to those hosts with: the asker's, with the office's credential helper (HostCredentials.gitEnv). */
   git?: Record<string, string>;
 }

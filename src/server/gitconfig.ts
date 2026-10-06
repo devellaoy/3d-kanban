@@ -16,6 +16,7 @@ export interface GitConfigParts {
 
 /** The hosts whose HTTPS pushes the office's credential helper answers for. */
 export const HELPER_HOSTS = ['https://dev.azure.com', 'https://*.visualstudio.com', 'https://bitbucket.org'];
+const AZURE_HOST = 'https://dev.azure.com';
 
 export function gitConfigText(p: GitConfigParts): string {
   const lines = ['# Written by Agent Office: git for this account, on top of the office machine’s own settings.', '[include]', ...p.includes.map((f) => `\tpath = ${quote(f)}`)];
@@ -27,7 +28,8 @@ export function gitConfigText(p: GitConfigParts): string {
   if (p.hosting) {
     const helper = `!${[p.hosting.helper, ...p.hosting.files].map(shq).join(' ')}`;
     // useHttpPath off: one token for the whole host, whatever repository.
-    for (const host of HELPER_HOSTS) lines.push(`[credential ${quote(host)}]`, '\thelper =', `\thelper = ${quote(helper)}`);
+    // useHttpPath on dev.azure.com: the path names the organization, whose token the helper picks.
+    for (const host of HELPER_HOSTS) lines.push(`[credential ${quote(host)}]`, '\thelper =', `\thelper = ${quote(helper)}`, ...(host === AZURE_HOST ? ['\tuseHttpPath = true'] : []));
   }
   if (p.user) lines.push('[user]', `\tname = ${quote(p.user.name)}`, `\temail = ${quote(p.user.email)}`);
   return `${lines.join('\n')}\n`;
@@ -61,6 +63,8 @@ export function withHelperEnv(env: Record<string, string>, helper: string, files
     // An empty helper first: the machine's own helpers for the host are left out.
     add(`credential.${host}.helper`, '');
     add(`credential.${host}.helper`, command);
+    // The path names the organization on dev.azure.com, whose token the helper picks.
+    if (host === AZURE_HOST) add(`credential.${host}.useHttpPath`, 'true');
   }
   env.GIT_CONFIG_COUNT = String(n);
   return env;

@@ -52,10 +52,10 @@ type Outcome = undefined | { error: string } | { wait: string };
  * Whose credentials change the work item: the task's creator's own, else the office's own. Never
  * another account's: the work item is written to, and that is theirs to do (HostCredentials.as).
  */
-function actor(deps: WorkItemDeps, account: string | undefined): HostAs | string {
+function actor(deps: WorkItemDeps, account: string | undefined, org: string): HostAs | string {
   const creds = deps.creds();
   if (!creds) return 'The office keeps no Azure DevOps credentials';
-  return creds.as(account, 'azure');
+  return creds.as(account, 'azure', org);
 }
 
 /**
@@ -144,7 +144,7 @@ function say(ctx: KanbanContext, taskId: number, text: string) {
 
 /** Links the work item to the pull request. */
 async function link(ctx: KanbanContext, taskId: number, account: string | undefined, item: WorkItemRef, repo: HostedRepo, n: number, deps: WorkItemDeps): Promise<Outcome> {
-  const as = actor(deps, account);
+  const as = actor(deps, account, item.org);
   if (typeof as === 'string') return { wait: as };
   try {
     const linked = await (deps.link ?? linkWorkItemToPr)(repo, n, item.id, as, deps.fetch());
@@ -157,7 +157,7 @@ async function link(ctx: KanbanContext, taskId: number, account: string | undefi
 
 /** Completes the work item. */
 async function complete(ctx: KanbanContext, taskId: number, account: string | undefined, item: WorkItemRef, deps: WorkItemDeps): Promise<Outcome> {
-  const as = actor(deps, account);
+  const as = actor(deps, account, item.org);
   if (typeof as === 'string') return { wait: as };
   try {
     const state = await (deps.complete ?? completeWorkItem)(item.org, item.project, item.id, as, deps.fetch());

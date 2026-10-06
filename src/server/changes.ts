@@ -336,7 +336,7 @@ export class Changes {
       const remote = remotes.includes('origin') ? 'origin' : remotes[0];
       if (!remote) return 'This project has no git remote to push to';
       const hosted = otherHostRepo(t.cwd, remote);
-      const host = hosted && hosts?.get(hosted.host);
+      const host = hosted && hosts?.get(hosted);
       if (hosted && !host) return `Opening it on ${hostLabel(hosted.host)} needs your token there (☰ → 🔐 Your sign-ins)`;
       await git(['push', '-u', remote, s.branch], t.cwd, 120_000, hosted && hosts?.git ? hosts.git : env);
       if (hosted && host) {

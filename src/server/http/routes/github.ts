@@ -5,12 +5,12 @@ import { ghRepoOf, notInProject } from '../../kanban/office.js';
 import { floorParam } from './files.js';
 import { hostCredentials } from '../../hosting/index.js';
 import type { HostAs } from '../../hosting/provider.js';
-import type { OtherHost } from '../../../shared/hosting/remote.js';
+import { orgOf, type OtherHost } from '../../../shared/hosting/remote.js';
 
 /** For a repository elsewhere (Azure DevOps, Bitbucket), the asker's credentials there, when they have any. */
-function hostedAs(board: { hosted?: { host: OtherHost } }, account?: string): HostAs | undefined {
+function hostedAs(board: { hosted?: { host: OtherHost; owner: string } }, account?: string): HostAs | undefined {
   const kind = board.hosted?.host;
-  const as = kind ? hostCredentials()?.as(account, kind) : undefined;
+  const as = kind ? hostCredentials()?.as(account, kind, orgOf(board.hosted)) : undefined;
   return typeof as === 'string' ? undefined : as;
 }
 

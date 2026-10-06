@@ -5,10 +5,16 @@
 // both readable by the office alone. A token never goes back to a browser: it only learns whether
 // one is set and whom the host says it belongs to.
 //
+// Whose token: a person's own for what they do (as), else the office's; what nobody in particular
+// asks for (the boards, the issue sources, the office's fetches) reads with the office's only, never
+// with somebody's personal token (anyAs). An Azure DevOps PAT reaches only its organization, so
+// one is picked only for its own.
+//
 // The git credential helper (bin/office-git-credential.js) reads the same files, so a push over
-// HTTPS goes out with the same token (see gitconfig.ts).
+// HTTPS goes out with the same token (see gitconfig.ts). A worker's environment names only its
+// owner's file (workerGitEnv): the office's token is handed to no worker of an account.
 
-import { chmodSync, existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { hostLabel, OTHER_HOSTS, type OtherHost } from '../../shared/hosting/remote.js';
 import type { HostCredentialInput, HostingState, HostSignIn } from '../../shared/protocol/hosting.js';
@@ -56,6 +62,9 @@ export class HostCredentials {
     private fetch: Fetch = (url, init) => globalThis.fetch(url, init),
   ) {}
 
+  /** What each scope's file holds, read once (the boards ask on every look) and kept up to date by save. */
+  private cached = new Map<string, SavedHosting>();
+
   /** The file a scope's credentials are in: an account's, or the office's own (null). */
   file(scope: string | null): string {
     if (scope !== null && !ACCOUNT_ID.test(scope)) throw new Error('Not an account id');
@@ -63,12 +72,18 @@ export class HostCredentials {
   }
 
   load(scope: string | null): SavedHosting {
+    const key = scope ?? '';
+    const had = this.cached.get(key);
+    if (had) return had;
+    let saved: SavedHosting = {};
     try {
       const raw = JSON.parse(readFileSync(this.file(scope), 'utf8'));
-      return raw && typeof raw === 'object' ? (raw as SavedHosting) : {};
+      if (raw && typeof raw === 'object') saved = raw as SavedHosting;
     } catch {
-      return {};
+      // none yet
     }
+    this.cached.set(key, saved);
+    return saved;
   }
 
   private save(scope: string | null, saved: SavedHosting) {
@@ -77,6 +92,7 @@ export class HostCredentials {
     writeFileSync(file, `${JSON.stringify(saved, null, 2)}\n`, { mode: 0o600 });
     // writeFileSync keeps an existing file's mode.
     chmodSync(file, 0o600);
+    this.cached.set(scope ?? '', saved);
   }
 
   /** The Bitbucket Server / Data Center hosts the office knows of. */
@@ -100,52 +116,40 @@ export class HostCredentials {
     return { kind, auth: authOf(kind, s), key: scope ?? 'office', ...(s.who ? { who: s.who } : {}) };
   }
 
+  /** The organization a scope's Azure DevOps token was checked with, when it isn't `org`'s (a PAT reaches only its own). */
+  private otherOrg(kind: OtherHost, scope: string | null, org: string | undefined): string | undefined {
+    const had = kind === 'azure' && org ? this.load(scope).azure?.org : undefined;
+    return had && had.toLowerCase() !== org!.toLowerCase() ? had : undefined;
+  }
+
   /**
    * How the office acts on `kind` for `accountId`: with their own token, else the office's, else a
    * reason they can act on. Without an account (an office on the shared password), the office's.
+   * `org`: the Azure DevOps organization it is for; a token checked with another one isn't used.
    */
-  as(accountId: string | undefined, kind: OtherHost): HostAs | string {
+  as(accountId: string | undefined, kind: OtherHost, org?: string): HostAs | string {
     const label = hostLabel(kind);
-    if (accountId) {
-      const mine = ACCOUNT_ID.test(accountId) ? this.asOf(kind, accountId) : undefined;
+    const own = accountId && ACCOUNT_ID.test(accountId) ? accountId : undefined;
+    const mineElsewhere = own ? this.otherOrg(kind, own, org) : undefined;
+    if (own && !mineElsewhere) {
+      const mine = this.asOf(kind, own);
       if (mine) return mine;
     }
-    const office = this.asOf(kind, null);
+    const officeElsewhere = this.otherOrg(kind, null, org);
+    const office = officeElsewhere ? undefined : this.asOf(kind, null);
     if (office) return office;
+    if (mineElsewhere) return `Your ${label} token is for ${mineElsewhere}, and this is in ${org}: set one for ${org} (${SIGN_INS})`;
+    if (officeElsewhere) return `The office's ${label} token is for ${officeElsewhere}, and this is in ${org}: set yours for ${org} (${SIGN_INS})`;
     return accountId ? `Set your ${label} token first (${SIGN_INS}): the office acts on ${label} as you` : `The office has no ${label} token yet: set it in ${SIGN_INS}`;
   }
 
   /**
    * Credentials to read with when nobody in particular asks (the PR board's polling, an issue
-   * source): the office's, else those of the account that set its own most recently.
+   * source): the office's own, an admin's choice, and only for its organization on Azure DevOps.
+   * Never somebody's personal token: what it can see isn't everybody's to see.
    */
-  anyAs(kind: OtherHost): HostAs | undefined {
-    const office = this.asOf(kind, null);
-    if (office) return office;
-    for (const id of this.accountsNewestFirst()) {
-      const a = ACCOUNT_ID.test(id) ? this.asOf(kind, id) : undefined;
-      if (a) return a;
-    }
-    return undefined;
-  }
-
-  /** The accounts that keep credentials of their own, the most recently changed first. */
-  private accountsNewestFirst(): string[] {
-    const homes = path.join(this.dataDir, 'homes');
-    let ids: string[];
-    try {
-      ids = readdirSync(homes).filter((d) => ACCOUNT_ID.test(d));
-    } catch {
-      return [];
-    }
-    const at = (id: string) => {
-      try {
-        return statSync(path.join(homes, id, 'hosting.json')).mtimeMs;
-      } catch {
-        return -1;
-      }
-    };
-    return ids.map((id) => ({ id, t: at(id) })).filter((x) => x.t >= 0).sort((a, b) => b.t - a.t).map((x) => x.id);
+  anyAs(kind: OtherHost, org?: string): HostAs | undefined {
+    return this.otherOrg(kind, null, org) ? undefined : this.asOf(kind, null);
   }
 
   /** Checks a token with the host and keeps it, with whom it belongs to. Resolves to why not. */
@@ -173,7 +177,7 @@ export class HostCredentials {
   }
 
   clear(scope: string | null, kind: OtherHost) {
-    const saved = this.load(scope);
+    const saved = { ...this.load(scope) };
     if (!saved[kind]) return;
     delete saved[kind];
     this.save(scope, saved);
@@ -192,31 +196,36 @@ export class HostCredentials {
   }
 
   /**
-   * `env` for git run as `accountId` (or the office) on a repository on Azure DevOps or Bitbucket:
-   * the office's credential helper (bin/office-git-credential.js) with their tokens, then the
+   * `env` for git the office itself runs for `accountId` (a push from O or the Changes window) on a
+   * repository on Azure DevOps or Bitbucket: the credential helper with their tokens, then the
    * office's. Unchanged when the helper isn't installed (writeOfficeCommands hasn't run: tests).
    */
   gitEnv(env: Record<string, string>, accountId: string | undefined): Record<string, string> {
-    const helper = path.join(this.dataDir, 'bin', 'office-git-credential');
-    if (!existsSync(helper)) return env;
-    const files = [...(accountId && ACCOUNT_ID.test(accountId) ? [this.file(accountId)] : []), this.file(null)];
-    return withHelperEnv(env, helper, files);
+    return this.helperEnv(env, [...(accountId && ACCOUNT_ID.test(accountId) ? [this.file(accountId)] : []), this.file(null)]);
   }
 
   /**
-   * `env` for git that only reads and that nobody in particular asked for (the office fetching a
-   * worktree's base branch): the helper with the office's tokens, then those of the accounts that set
-   * their own, the most recent first, as the boards read (anyAs).
+   * `env` for a worker's own git, which its agent (or whoever types in its shell) runs: the helper
+   * with its owner's tokens only. The office's are for a worker only in an office without accounts,
+   * where everyone is its admin.
    */
+  workerGitEnv(env: Record<string, string>, owner: string | undefined): Record<string, string> {
+    return this.helperEnv(env, [owner && ACCOUNT_ID.test(owner) ? this.file(owner) : this.file(null)]);
+  }
+
+  /** `env` for git that only reads and that nobody in particular asked for (the office fetching a worktree's base branch): the office's tokens. */
   readGitEnv(env: Record<string, string>): Record<string, string> {
+    return this.helperEnv(env, [this.file(null)]);
+  }
+
+  private helperEnv(env: Record<string, string>, files: string[]): Record<string, string> {
     const helper = path.join(this.dataDir, 'bin', 'office-git-credential');
-    if (!existsSync(helper)) return env;
-    return withHelperEnv(env, helper, [this.file(null), ...this.accountsNewestFirst().map((id) => this.file(id))]);
+    return existsSync(helper) ? withHelperEnv(env, helper, files) : env;
   }
 
   /** Whether `accountId` (or the office) has any credentials for `kind`. */
-  has(accountId: string | undefined, kind: OtherHost): boolean {
-    return typeof this.as(accountId, kind) !== 'string';
+  has(accountId: string | undefined, kind: OtherHost, org?: string): boolean {
+    return typeof this.as(accountId, kind, org) !== 'string';
   }
 
   /** Whether the file is there at all (tests, and the credential helper's config). */

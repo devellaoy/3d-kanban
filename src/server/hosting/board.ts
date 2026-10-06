@@ -2,7 +2,7 @@
 // these): its pull requests from the provider, a PR window's detail, and comments, as whoever asks.
 // What only GitHub has (labels, closing an issue, merging from the office) says so instead.
 
-import { hostLabel, repoRefOf, type OtherHost, type RepoRef } from '../../shared/hosting/remote.js';
+import { hostLabel, orgOf, repoRefOf, type OtherHost, type RepoRef } from '../../shared/hosting/remote.js';
 import type { GhPull, GhPullDetail } from '../../shared/protocol.js';
 import { hostCredentials, hostFetch, providerOf } from './index.js';
 import type { HostAs, HostingProvider, HostPrView } from './provider.js';
@@ -19,7 +19,7 @@ function provider(repo: HostedRepo): HostingProvider {
 
 /** Whose credentials read a board nobody in particular asked for: the office's, else an account's (see HostCredentials.anyAs). */
 function reader(repo: HostedRepo): HostAs {
-  const as = hostCredentials()?.anyAs(repo.host);
+  const as = hostCredentials()?.anyAs(repo.host, orgOf(repo));
   const label = hostLabel(repo.host);
   if (!as) throw new Error(`The office has no ${label} token to read this repository with: set yours (or the office's) in ${SIGN_INS}`);
   return as;

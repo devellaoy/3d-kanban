@@ -3,8 +3,7 @@
 // time, in the order the office has always started up in (see each stage's interface), so a part
 // only ever uses what was already there when it was made.
 import type { Config } from '../config.js';
-import type { OtherHost } from '../../shared/hosting/remote.js';
-import type { HostAs, HostPick } from '../hosting/provider.js';
+import type { HostAs, HostPick, HostPickRepo } from '../hosting/provider.js';
 import type { Auth } from '../auth.js';
 import type { Accounts } from '../accounts.js';
 import type { SignIns, GhAs } from '../signins.js';
@@ -196,7 +195,7 @@ export interface Gates {
    * withGitHub for one of a floor's boards: for a repository on another host (Azure DevOps,
    * Bitbucket), `go` gets `c`'s credentials there instead (`host`), or they hear what to set.
    */
-  withRepoHost(c: Client, board: { hosted?: { host: OtherHost } }, go: (as: GhAs | undefined, host?: HostAs) => void, refused?: (why: string) => void): void;
+  withRepoHost(c: Client, board: { hosted?: HostPickRepo }, go: (as: GhAs | undefined, host?: HostAs) => void, refused?: (why: string) => void): void;
   /**
    * withGitHub for work on these checkouts, each on its own host: GitHub's sign-in only when one is
    * on GitHub, and `hosts` has the asker's credentials for each other host and the git environment to push there with.

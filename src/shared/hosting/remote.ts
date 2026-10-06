@@ -220,3 +220,8 @@ export function isRepoName(v: string): boolean {
   if (hostOf(v) === 'github') return /^[A-Za-z0-9_.-]{1,100}\/[A-Za-z0-9_.-]{1,100}$/.test(v);
   return v.length <= 300 && repoRefOf(v)?.id.toLowerCase() === v.toLowerCase();
 }
+
+/** The Azure DevOps organization a repository is in (a PAT reaches only its own); undefined elsewhere. */
+export function orgOf(r: Pick<RepoRef, 'host' | 'owner'> | undefined): string | undefined {
+  return r?.host === 'azure' ? r.owner : undefined;
+}
