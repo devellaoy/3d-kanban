@@ -70,7 +70,7 @@ const arg = (args: string[], name: string) => args.find((a) => a.startsWith(`${n
 
 function setup(opts: { sources?: IssueSourceConfig[]; http?: ReturnType<typeof fetchStub>; gh?: ReturnType<typeof ghStub>; ghAs?: any } = {}) {
   const ctx = makeCtx([def('app', '/tmp/app', { repo: 'o/r' })], { ghAs: opts.ghAs });
-  ctx.settings.setProject('app', { issueSources: opts.sources ?? [JIRA, BOARD, JIRA_NOKEYS, JIRA_OTHER, REPO] });
+  ctx.settings.setProject('app', { issueSources: opts.sources ?? [JIRA, BOARD, JIRA_NOKEYS, REPO] });
   (ctx as unknown as { secrets: unknown }).secrets = { jiraConnections: () => JIRA_TOKEN };
   const http = opts.http ?? jiraSite();
   const gh = opts.gh ?? ghStub(() => '[]');
@@ -89,7 +89,7 @@ test('scopes: Jira and board sources are listed, one without project keys is dis
   const { ask } = setup();
   const got = await ask('kanban.browse.scopes', {});
   assert.equal(got.t, 'kanban.browseScopes');
-  assert.deepEqual(got.scopes.map((s: any) => [s.id, s.kind, s.disabled]), [['j', 'jira', undefined], ['p', 'github-project', undefined], ['jn', 'jira', 'Add project keys to the Jira source to browse it'], ['jo', 'jira', undefined]]);
+  assert.deepEqual(got.scopes.map((s: any) => [s.id, s.kind, s.disabled]), [['j', 'jira', undefined], ['p', 'github-project', undefined], ['jn', 'jira', 'Add project keys to the Jira source to browse it']]);
   assert.equal(got.me, undefined, 'no gh sign-in of the asker: no "me"');
 });
 
@@ -105,8 +105,11 @@ test('scope checks: an unknown scope, a repository scope, a disabled scope and a
   assert.match(await err('nope'), /isn't a Jira or GitHub project source/);
   assert.match(await err('r'), /isn't a Jira or GitHub project source/);
   assert.match(await err('jn'), /Add project keys/);
-  assert.match(await err('jo'), /No Jira connection for other.atlassian.net/);
   assert.equal(http.calls.length, 0, 'nothing went out');
+  // A source on a site with no connection (its keys differ, so the sources may sit together).
+  const other = setup({ sources: [JIRA, JIRA_OTHER] });
+  assert.match((await other.ask('kanban.browse.options', { scope: 'jo' })).message, /No Jira connection for other.atlassian.net/);
+  assert.equal(other.http.calls.length, 0);
   assert.equal((await ask('kanban.browse.options', { scope: 'j', project: 'zzz' })).t, 'kanban.error');
 });
 

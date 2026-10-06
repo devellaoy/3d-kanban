@@ -22,7 +22,7 @@ import { GH_REPO_RE, MODEL_RE, PROJECT_ID_RE, type KanbanSettingsPatch } from '.
 import { isKanbanPromptId } from '../../shared/kanban/prompts.js';
 import { PROMPT_MAX } from '../../shared/prompts.js';
 import { cleanProjectLanguage } from '../../shared/language.js';
-import { JIRA_CONNECTION_ID_RE, cleanJiraSite, sameJiraSite } from '../../shared/kanban/jira-connections.js';
+import { JIRA_CONNECTION_ID_RE, cleanJiraSite, jiraSourcesProblem } from '../../shared/kanban/jira-connections.js';
 import { AZURE_ORG_RE, AZURE_PROJECT_RE, WIQL_EXTRA_MAX, wiqlExtraProblem } from '../../shared/kanban/azure-boards.js';
 
 export const SETTINGS_SCHEMA_VERSION = 1;
@@ -235,21 +235,6 @@ export function sanitizeKanbanSettings(raw: unknown, base: KanbanSettings = defa
   };
 }
 
-/** Why a list of issue sources can't be kept when one Jira project key sits on two sites (issues are told apart by key), else undefined. */
-function jiraKeyClash(raw: unknown): string | undefined {
-  if (!Array.isArray(raw)) return undefined;
-  const sites = new Map<string, string[]>();
-  for (const s of raw.map(sanitizeIssueSource)) {
-    if (s?.kind !== 'jira') continue;
-    for (const key of s.projectKeys ?? []) {
-      const seen = sites.get(key) ?? [];
-      if (!seen.some((x) => sameJiraSite(x, s.site))) sites.set(key, [...seen, s.site]);
-    }
-  }
-  for (const [key, list] of sites) if (list.length > 1) return `Jira project key ${key} is in sources on two sites (${list.join(', ')}): the office tells issues apart by their key`;
-  return undefined;
-}
-
 // --- The settings file ----------------------------------------------------------------------------
 
 /** Writes a file whole or not at all: a crash mid-write never leaves half a settings file. */
@@ -312,8 +297,10 @@ export class KanbanSettingsStore {
       const v = obj(patch)[k];
       if (v !== undefined && v !== null && cleanProjectLanguage(v) === undefined) return "That isn't a language name";
     }
-    const clash = jiraKeyClash(obj(patch).issueSources);
-    if (clash) return clash;
+    if ('issueSources' in obj(patch)) {
+      const clash = jiraSourcesProblem((Array.isArray(obj(patch).issueSources) ? (obj(patch).issueSources as unknown[]) : []).map(sanitizeIssueSource).filter((x): x is IssueSourceConfig => !!x));
+      if (clash) return clash;
+    }
     // A copy: the fields set to null (cleared) are dropped from it, and read from the patch after.
     const p = { ...obj(patch) };
     const cleared = new Set(Object.keys(p).filter((k) => p[k] === null));

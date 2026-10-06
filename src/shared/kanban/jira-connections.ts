@@ -47,6 +47,27 @@ export function cleanJiraSite(v: unknown): string | undefined {
 /** Whether two sites are the same one. */
 export const sameJiraSite = (a: string, b: string): boolean => a.toLowerCase() === b.toLowerCase();
 
+/**
+ * Why a project's Jira sources can't be kept together, else undefined. Issues are told apart by their key
+ * (DEV-1), so when the sources span several sites each must name its project keys, and no key may be on two sites.
+ */
+export function jiraSourcesProblem(sources: readonly { kind: string; site?: string; projectKeys?: readonly string[] }[]): string | undefined {
+  const jira = sources.filter((s): s is { kind: string; site: string; projectKeys?: readonly string[] } => s.kind === 'jira' && typeof s.site === 'string');
+  const sites: string[] = [];
+  for (const s of jira) if (!sites.some((x) => sameJiraSite(x, s.site))) sites.push(s.site);
+  if (sites.length < 2) return undefined;
+  if (jira.some((s) => !s.projectKeys?.length)) return `A Jira source without project keys can't sit beside sources on another site (${sites.join(', ')}): give it project keys, since the office tells issues apart by their key`;
+  const onSites = new Map<string, string[]>();
+  for (const s of jira) {
+    for (const key of s.projectKeys ?? []) {
+      const seen = onSites.get(key) ?? [];
+      if (!seen.some((x) => sameJiraSite(x, s.site))) onSites.set(key, [...seen, s.site]);
+    }
+  }
+  for (const [key, list] of onSites) if (list.length > 1) return `Jira project key ${key} is in sources on two sites (${list.join(', ')}): the office tells issues apart by their key`;
+  return undefined;
+}
+
 export type JiraConnectionClientMsg =
   /**
    * Adds a connection (no id: name, site, e-mail and token all needed) or changes one (by id: what isn't

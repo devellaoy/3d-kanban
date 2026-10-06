@@ -37,7 +37,8 @@ import type { KanbanSettingsPane } from './settingsslot';
 import { Cleanups, settingsRedraw } from './settingsflow';
 import { APPROVAL_NAMES, effortName, SOURCE_KIND_NAMES, toolName } from './labels';
 import { checkbox, field, numberInput, numberValue, run, select, tabStrip, textArea, textInput } from './ui';
-import { azureBoardsForm, csv, jiraForm, jiraKeyClash } from './source-forms';
+import { azureBoardsForm, csv, jiraForm } from './source-forms';
+import { jiraSourcesProblem } from '../../shared/kanban/jira-connections.js';
 import { jiraConnectionsFieldset } from './jira-connections';
 
 /** The tabs of 📁 Projects. */
@@ -480,7 +481,7 @@ function sourcesPane(api: KanbanApi, projectId: string, s: KanbanSettings): HTML
       if (typeof v === 'string') return toast(v, 'warn');
       out.push(v);
     }
-    const clash = jiraKeyClash(out);
+    const clash = jiraSourcesProblem(out);
     if (clash) return toast(clash, 'warn');
     void run(() => api.request({ t: 'kanban.project.settings.set', project: projectId, settings: { issueSources: out } }), save, 'Saved');
   });

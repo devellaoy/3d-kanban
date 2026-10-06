@@ -87,23 +87,6 @@ export function jiraForm(src: Extract<IssueSourceConfig, { kind: 'jira' }>): Sou
   return { fields, read };
 }
 
-/**
- * Why a project's sources can't be saved as they are: one Jira project key on two sites, so an issue
- * key like DEV-1 couldn't say where it lives. The office refuses it too; this says so before asking.
- */
-export function jiraKeyClash(sources: readonly IssueSourceConfig[]): string | undefined {
-  const siteOf = new Map<string, string>();
-  for (const src of sources) {
-    if (src.kind !== 'jira') continue;
-    for (const key of src.projectKeys) {
-      const other = siteOf.get(key);
-      if (other && !sameJiraSite(other, src.site)) return `Jira project key ${key} is in sources on two sites (${other} and ${src.site}): an issue like ${key}-1 couldn’t say which. Keep each key on one site.`;
-      siteOf.set(key, src.site);
-    }
-  }
-  return undefined;
-}
-
 export function azureBoardsForm(src: Extract<IssueSourceConfig, { kind: 'azure-boards' }>): SourceForm {
   const org = textInput(src.org, { placeholder: 'my-org' });
   const project = textInput(src.project, { placeholder: 'My Project' });

@@ -15,7 +15,7 @@ import {
   sanitizeSkillSelection,
 } from '../src/server/kanban/settings.js';
 import { KanbanSecrets, hashApiKey } from '../src/server/kanban/secrets.js';
-import { MAX_JIRA_CONNECTIONS } from '../src/shared/kanban/jira-connections.js';
+import { MAX_JIRA_CONNECTIONS, jiraSourcesProblem } from '../src/shared/kanban/jira-connections.js';
 import { PROMPT_MAX } from '../src/shared/prompts.js';
 
 function scratch(t: { after(fn: () => void): void }) {
@@ -271,6 +271,20 @@ test('a Jira source keeps its connection id when it is one, and its site is clea
   assert.deepEqual(s && s.kind === 'jira' && [s.site, s.connection], ['A.atlassian.net', 'jc-1']);
   const bad = sanitizeIssueSource({ kind: 'jira', site: 'a.atlassian.net', projectKeys: [], connection: '../x', filters: {} });
   assert.ok(bad && !('connection' in bad));
+});
+
+test('Jira sources over several sites must each name their project keys', (t) => {
+  const store = new KanbanSettingsStore(scratch(t));
+  const src = (site: string, id: string, keys: string[]) => ({ kind: 'jira', id, site, projectKeys: keys, filters: {} });
+  const err = store.setProject('web', { issueSources: [src('a.atlassian.net', 's1', []), src('b.atlassian.net', 's2', ['OPS'])] } as never);
+  assert.match(String(err), /without project keys can't sit beside sources on another site \(a\.atlassian\.net, b\.atlassian\.net\): give it project keys/);
+  assert.deepEqual(store.project('web').issueSources, []);
+  assert.match(String(store.setProject('web', { issueSources: [src('a.atlassian.net', 's1', ['DEV']), src('b.atlassian.net', 's2', [])] } as never)), /without project keys/);
+  assert.equal(typeof store.setProject('web', { issueSources: [src('a.atlassian.net', 's1', []), src('A.atlassian.net', 's2', [])] } as never), 'object', 'one site: keys are optional');
+  assert.equal(typeof store.setProject('web', { issueSources: [src('a.atlassian.net', 's1', ['DEV']), src('b.atlassian.net', 's2', ['OPS'])] } as never), 'object');
+  // The same check the browser makes before asking.
+  assert.equal(jiraSourcesProblem([{ kind: 'github-repo' }, { kind: 'jira', site: 'a.atlassian.net', projectKeys: [] }]), undefined);
+  assert.match(String(jiraSourcesProblem([{ kind: 'jira', site: 'a.atlassian.net', projectKeys: ['X'] }, { kind: 'jira', site: 'b.atlassian.net', projectKeys: ['X'] }])), /key X is in sources on two sites/);
 });
 
 test('setProject refuses one Jira project key on two sites, and allows it twice on one', (t) => {
