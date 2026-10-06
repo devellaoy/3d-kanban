@@ -66,7 +66,12 @@ export class CarryOn {
    */
   cutOff(w: Worker, keep: boolean) {
     const live = !!(w.pty || w.dsh);
-    if (keep && w.pty?.id) w.cutOff = undefined;
+    // Between its old process and its new one (a relaunch): nothing ran, but a prompt was about to go in, so it counts as cut off before it started.
+    if (!live && w.relaunching) {
+      w.cutOff = 'starting';
+      w.interrupted = true;
+      w.relaunching = false; // the relaunch sees it and starts nothing in a closing office
+    } else if (keep && w.pty?.id) w.cutOff = undefined;
     else if (live) {
       w.cutOff = w.info.status;
       if (midTurn(w)) w.interrupted = true;

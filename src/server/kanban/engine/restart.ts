@@ -4,15 +4,15 @@
 // (`workers.cutOffStatus` is defined): a worker whose terminal was kept is followed as before.
 //
 // A run to carry on is not retried at once: it is finished as interrupted and its task is put back in the engine's own queue
-// (`runState` queued, `queuedRun.prompt` 'restarted'), in the database, so it keeps its project slot, survives another shutdown
+// (`runState` queued, `queuedRun.restarted`; prompt 'restarted', or the phase's own when a relaunch was cut off before the phase's prompt went in), in the database, so it keeps its project slot, survives another shutdown
 // and starts through `drain` (see `admit` there) under the same limits as any queued run.
 
 import type { Floor } from '../../floor.js';
 import type { KanbanContext } from '../registry.js';
 import type { WorkerInfo, WorkerStatus } from '../../../shared/protocol.js';
-import type { KanbanRun, KanbanTask } from '../../../shared/kanban/types.js';
+import type { KanbanRun, KanbanTask, QueuedRun } from '../../../shared/kanban/types.js';
 import { claudeAdapter } from './adapters/claude.js';
-import type { MachineEvent } from './machine.js';
+import { ownPrompt, type MachineEvent } from './machine.js';
 import { sessionLogged } from './sessions.js';
 import { missingFolders } from './workspace.js';
 import type { HeldRun } from './turnhold.js';
@@ -43,6 +43,11 @@ export class Restarts<L extends HeldRun> {
   private nextAt = 0;
 
   constructor(private deps: RestartDeps<L>) {}
+
+  /** Whether a queued run is one a restart put back (it carries on by itself, under the stagger and the restart's checks). */
+  static queued(q: QueuedRun | undefined): boolean {
+    return !!q && (q.prompt === 'restarted' || !!q.restarted);
+  }
 
   dispose() {
     clearTimeout(this.timer);
@@ -109,7 +114,7 @@ export class Restarts<L extends HeldRun> {
     if (why || lost) {
       await this.deps.serial(t.id, async () => {
         const task = this.deps.ctx.repo.getTask(t.id);
-        if (!task || task.runState !== 'queued' || task.queuedRun?.prompt !== 'restarted') return;
+        if (!task || task.runState !== 'queued' || !Restarts.queued(task.queuedRun)) return;
         await this.deps.apply(task.id, { type: 'interrupted', text: lost ?? 'The office restarted while it ran: Retry to carry on' });
         if (!lost) this.deps.note(task, `It doesn't carry on by itself: ${why}`);
       });
@@ -171,7 +176,9 @@ export class Restarts<L extends HeldRun> {
       return;
     }
     this.deps.finishRun(run.id, task.project, { status: 'interrupted', error: 'The office restarted mid-run' });
-    this.deps.update(task.id, { runState: 'queued', queuedRun: { phase: run.phase, role: run.role, prompt: 'restarted', ...(run.round !== undefined ? { round: run.round } : {}) } });
+    // A relaunch cut off before its new process started (cut 'starting') on a phase's first run: nothing was said to the agent in this phase, so it gets the phase's own prompt, not a "carry on" for a cut-off turn.
+    const own = cut === 'starting' && !ctx.repo.listRuns(task.id).some((r) => r.id !== run.id && r.phase === run.phase && r.role === run.role && r.round === run.round) ? ownPrompt(run.phase, run.round, task) : 'continue';
+    this.deps.update(task.id, { runState: 'queued', queuedRun: { phase: run.phase, role: run.role, prompt: own === 'continue' ? 'restarted' : own, restarted: true, ...(run.round !== undefined ? { round: run.round } : {}) } });
     note(task, 'The office restarted mid-run: its agent carries on by itself shortly.', run.id);
   }
 

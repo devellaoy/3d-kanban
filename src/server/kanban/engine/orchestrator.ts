@@ -528,7 +528,7 @@ export class Orchestrator {
       // No room for this one; a reviewer whose implementer is still at its desk may have it (see sharesLimit),
       // and needs no desk of its own when it can stand behind its implementer's (see watchSpotFor).
       const watch = t.queuedRun?.role === 'reviewer' ? this.watchSpotFor(t, floor) : undefined;
-      const restarted = t.queuedRun?.prompt === 'restarted';
+      const restarted = Restarts.queued(t.queuedRun);
       if (!(restarted && this.restarts.reuses(t, floor)) && this.noRoom(floor, watch, t.queuedRun && this.sharesLimit(t, t.queuedRun.role, floor), t.queuedRun?.role)) continue;
       if (restarted && !(await this.restarts.admit(t, floor))) continue;
       if (!t.queuedRun && this.busyCount(project) >= max) return;
@@ -956,12 +956,12 @@ export class Orchestrator {
       const typed = same && (info.status === 'done' || info.status === 'idle');
       // Relaunched on its session: its agent is heard from (and has the prompt) later, and events of the old process meanwhile are not its own. Set before any await.
       if (!typed && info.sessionId) Object.assign(live, { resumed: true, armed: false, ack: heldTaken });
+      this.ctx.repo.updateRun(run.id, { workerId: info.id, sessionId: info.sessionId }); // before the relaunch awaits: a restart in that window finds the run's worker
       if (typed) err = floor.workers.prompt(info.id, prompt, via.who?.name);
       else if (info.sessionId) err = await floor.workers.relaunch(info.id, { launchArgs, prompt, env: extras.env, model: spawnModel, effort: spawnEffort });
       else err = 'no session';
       live.armed = true;
       if (!err) {
-        this.ctx.repo.updateRun(run.id, { workerId: info.id, sessionId: info.sessionId });
         this.update(task.id, { runState: 'running' });
         if (typed) heldTaken(); // typed into a running agent: it has the prompt
         return undefined;

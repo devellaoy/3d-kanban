@@ -556,3 +556,35 @@ test('a first-turn question whose session is gone: the task keeps waiting with t
   const done = await fx.waitTask(task.id, (x) => x.status === 'review' && x.runState === 'idle', 'the review column', 60_000);
   assert.equal(done.summary, 'Finished in a fresh session.');
 });
+
+test('an office stopped while the plan → implement relaunch waits for the old process carries the implement phase on, with its own prompt', async (t) => {
+  const fx = await fixture();
+  t.after(() => fx.close());
+  fx.setRules([{ when: 'Plan kanban task', reply: 'Plan ready.', exitPlan: 'The plan.' }, { when: 'Implement kanban task', reply: 'Implemented after the restart.', commit: 'Work' }]);
+  const task = fx.newTask({ usePlan: true, planApproval: 'auto', useReview: false });
+  await fx.engine.start(task.id, ADA);
+  // The plan's agent is slow to leave once told to (the relaunch for the implement phase's flags waits for it).
+  const end = Date.now() + 15_000;
+  let worker: { pty?: { kill(signal?: string): void }; relaunching?: boolean } | undefined;
+  while (!worker?.pty && Date.now() < end) {
+    await sleep(20);
+    const id = fx.repo.activeRun(task.id)?.workerId;
+    worker = id ? (fx.workers as unknown as { workers: Map<string, typeof worker> }).workers.get(id) : undefined;
+  }
+  const pty = worker!.pty!;
+  const kill = pty.kill.bind(pty);
+  pty.kill = (signal) => void setTimeout(() => kill(signal), 1500);
+  while (!worker!.relaunching && Date.now() < end) await sleep(5);
+  assert.ok(worker!.relaunching, 'the implement relaunch is waiting for the old process');
+  const run = fx.repo.activeRun(task.id)!;
+  assert.equal(run.phase, 'implement');
+  assert.ok(run.workerId, 'the run knows its worker before the relaunch is over');
+  await fx.restartOffice();
+  const done = await fx.waitTask(task.id, (x) => x.status === 'review' && x.runState === 'idle', 'the review column', 40_000);
+  assert.equal(done.summary, 'Implemented after the restart.');
+  assert.equal(prompts(fx, RESTARTED).length, 0, 'not a continue for a cut-off turn');
+  assert.equal(prompts(fx, /Implement kanban task/).length, 1, 'the implement prompt went in once');
+  const runs = fx.repo.listRuns(task.id);
+  assert.deepEqual(runs.map((r) => `${r.phase}/${r.status}`), ['plan/succeeded', 'implement/interrupted', 'implement/succeeded']);
+  assert.equal(runs[2].workerId, run.workerId, 'on the same worker');
+});

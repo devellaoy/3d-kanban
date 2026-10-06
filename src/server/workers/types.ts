@@ -156,6 +156,8 @@ export interface Worker {
   interrupted?: boolean;
   /** Its status when the office closed and its terminal did not survive (the kanban engine reads it once, as it starts; only a closing office saves it). */
   cutOff?: WorkerStatus;
+  /** The kanban is relaunching its agent (KanbanWorkers.relaunch): the old process is being ended, so it has no pty for a moment; the office closing then still counts it as cut off. */
+  relaunching?: boolean;
   /** Its carry-on prompt went in with this start, and isn't heard yet: still `interrupted` (saved as mid-turn) until it works. */
   carryOnSent?: boolean;
   /** Cut off mid-turn and waiting its turn to carry on by itself (see CarryOn). */

@@ -203,11 +203,11 @@ export interface KanbanTask {
 export interface QueuedRun {
   phase: RunPhase;
   role: KanbanRole;
-  /** The engine's prompt kind (engine/machine.ts PromptKind). */
-  prompt: string;
+  prompt: string; // the engine's prompt kind (engine/machine.ts PromptKind)
   round?: number;
   pending?: boolean;
   text?: string;
+  restarted?: boolean; // put back by a restart that cut the run off: it carries on by itself (engine/restart.ts), whatever its prompt
 }
 
 /** A task as the board shows it: no description body, just what the card's badges need. */

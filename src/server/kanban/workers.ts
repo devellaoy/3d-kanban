@@ -114,17 +114,25 @@ export abstract class KanbanWorkers {
     const proc = w.pty;
     // Gone before it exits, so the exit handler knows it was the office and stays quiet.
     w.pty = undefined;
-    // The old process lets go of the session before the new one picks it up; one that won't leave is not resumed over (two agents on a session).
-    const stuck = proc && (await endProcess(proc, w.info.name));
-    if (stuck) {
-      if (!w.pty && this.workers.get(id) === w) w.pty = proc;
-      return stuck;
+    // Until the new process starts (or this fails), the office closing finds no pty: it still counts as cut off (see CarryOn.cutOff).
+    w.relaunching = true;
+    try {
+      // The old process lets go of the session before the new one picks it up; one that won't leave is not resumed over (two agents on a session).
+      const stuck = proc && (await endProcess(proc, w.info.name));
+      if (stuck) {
+        if (!w.pty && this.workers.get(id) === w) w.pty = proc;
+        return stuck;
+      }
+      if (this.workers.get(id) !== w) return 'No such worker';
+      if (w.pty) return 'Worker is already running';
+      // The office closed meanwhile (CarryOn.cutOff took the marker): no new process; the next office carries the run on.
+      if (!w.relaunching) return undefined;
+      w.interrupted = false;
+      (w.extra ??= {}).restartedAt = Date.now();
+      return this.resume(id, opts.prompt);
+    } finally {
+      w.relaunching = false;
     }
-    if (this.workers.get(id) !== w) return 'No such worker';
-    if (w.pty) return 'Worker is already running';
-    w.interrupted = false;
-    (w.extra ??= {}).restartedAt = Date.now();
-    return this.resume(id, opts.prompt);
   }
 
   /** Ends a worker's agent process in place (the exit handler then marks it `exited` at its desk: R resumes it); resolves to what went wrong, if anything. */
