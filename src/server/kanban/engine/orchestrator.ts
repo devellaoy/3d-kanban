@@ -235,7 +235,7 @@ export class Orchestrator {
       apply: (id, e) => this.apply(id, e),
       drain: (project) => void this.drain(project),
       carried: (task, prompt) => this.holds.carried(task, prompt),
-      attach: (run, task, info) => Object.assign(this.attach(run, task, info), { pinSince: true }),
+      attach: (run, task, info, launch) => Object.assign(this.attach(run, task, info, launch), { pinSince: true }),
       turnEnded: (live, planExit) => this.turnEnded(live, planExit),
       hiringPaused: () => this.ctx.hiringPaused?.(),
       staggerMs: options.restartStaggerMs ?? 5000,
@@ -336,8 +336,9 @@ export class Orchestrator {
         continue;
       }
       attached.add(task.id);
-      const live = this.attach(run, task, info);
-      if (info.status === 'done' && this.restarts.delivered(run, floor, info, live)) void this.serial(task.id, () => this.turnEnded(live));
+      const launch = this.ctx.repo.runLaunch(run.id);
+      const live = this.attach(run, task, info, launch);
+      if (info.status === 'done' && this.restarts.delivered(run, floor, info, live, launch)) void this.serial(task.id, () => this.turnEnded(live));
       else if (info.status === 'needs_input') void this.serial(task.id, () => this.needsInput(live, info));
     }
     // Tasks the engine was busy with that have no run to follow any more.
@@ -357,8 +358,8 @@ export class Orchestrator {
   }
 
   /** Follows a run left `running` by the last office on its worker. */
-  private attach(run: KanbanRun, task: KanbanTask, info: WorkerInfo): Live {
-    const live: Live = { taskId: task.id, runId: run.id, phase: run.phase, ...(run.round !== undefined ? { round: run.round } : {}), role: run.role, tool: run.tool, workerId: info.id, floorId: task.project, exitPlan: false, ended: false, promptAt: run.promptedAt, ack: this.restarts.ack(run, task) };
+  private attach(run: KanbanRun, task: KanbanTask, info: WorkerInfo, launch: QueuedRun | undefined): Live {
+    const live: Live = { taskId: task.id, runId: run.id, phase: run.phase, ...(run.round !== undefined ? { round: run.round } : {}), role: run.role, tool: run.tool, workerId: info.id, floorId: task.project, exitPlan: false, ended: false, promptAt: run.promptedAt, ack: this.restarts.ack(run, task, launch) };
     this.live.set(info.id, live);
     return live;
   }
@@ -808,9 +809,9 @@ export class Orchestrator {
     const def = this.ctx.project(task.project);
     const floor = this.watch(task.project);
     if (!def || !floor) return "The project's floor isn't open";
-    // A pull-request review carried on after an office restart (or its reviewer's question answered) goes on with its own reviewer, in its session and worktree, as that last run had them.
-    const last = eff.phase === 'pr-review' && (eff.prompt === 'restarted' || eff.prompt === 'resume') && floor.workers.get(task.reviewerWorkerId ?? '') ? this.ctx.repo.listRuns(task.id).filter((r) => r.phase === 'pr-review').at(-1) : undefined;
-    if (eff.phase === 'pr-review' && !last) return this.launchPrReview(task, def, floor, via);
+    // A pull-request review carried on after an office restart (or its reviewer's question answered) goes on with its own reviewer (see Restarts.reviewer).
+    const { same: last, restarted } = this.restarts.reviewer(task, eff, floor);
+    if (eff.phase === 'pr-review' && !last) return this.launchPrReview(task, def, floor, via, restarted);
     const role = eff.role;
     const review = this.reviewSettings(task);
     const defaults = this.ctx.settings.get().defaults;
@@ -1075,7 +1076,7 @@ export class Orchestrator {
    * pull requests are in (never the floor's checkout, never the task's worktree), with the review's
    * read-only flags. A Retry reviews them again from the start.
    */
-  private async launchPrReview(task: KanbanTask, def: FloorDef, floor: Floor, via: Via): Promise<string | NoRoom | undefined> {
+  private async launchPrReview(task: KanbanTask, def: FloorDef, floor: Floor, via: Via, restarted: boolean): Promise<string | NoRoom | undefined> {
     if (isFolderProject(def)) return 'A folder project has no pull requests to review';
     const req = via.prReview ?? this.lastPrReview(task.id);
     if (!req?.prs.length) return 'There are no pull requests to review: pick them again';
@@ -1090,7 +1091,7 @@ export class Orchestrator {
     // Whoever reviewed for the task before goes home: this review starts in a worktree of its own.
     const prev = task.reviewerWorkerId ? floor.workers.get(task.reviewerWorkerId) : undefined;
     if (prev) {
-      if (prev.status === 'working' || (prev.status === 'starting' && floor.workers.cutOffStatus(prev.id) === undefined)) return `${prev.name} is busy: wait for its turn to end`;
+      if (prev.status === 'working' || (prev.status === 'starting' && !restarted)) return `${prev.name} is busy: wait for its turn to end`;
       await floor.sendHome(prev.id, homeCleanup(task, prev), ENGINE);
     }
     this.update(task.id, { reviewerWorkerId: null, reviewerSessionId: null });

@@ -565,7 +565,7 @@ test('an office stopped while the plan → implement relaunch waits for the old 
   await fx.engine.start(task.id, ADA);
   // The plan's agent is slow to leave once told to (the relaunch for the implement phase's flags waits for it).
   const end = Date.now() + 15_000;
-  let worker: { pty?: { kill(signal?: string): void }; relaunching?: boolean } | undefined;
+  let worker: { pty?: { kill(signal?: string): void }; carryOn?: { relaunching?: boolean } } | undefined;
   while (!worker?.pty && Date.now() < end) {
     await sleep(20);
     const id = fx.repo.activeRun(task.id)?.workerId;
@@ -574,8 +574,8 @@ test('an office stopped while the plan → implement relaunch waits for the old 
   const pty = worker!.pty!;
   const kill = pty.kill.bind(pty);
   pty.kill = (signal) => void setTimeout(() => kill(signal), 1500);
-  while (!worker!.relaunching && Date.now() < end) await sleep(5);
-  assert.ok(worker!.relaunching, 'the implement relaunch is waiting for the old process');
+  while (!worker!.carryOn?.relaunching && Date.now() < end) await sleep(5);
+  assert.ok(worker!.carryOn?.relaunching, 'the implement relaunch is waiting for the old process');
   const run = fx.repo.activeRun(task.id)!;
   assert.equal(run.phase, 'implement');
   assert.ok(run.workerId, 'the run knows its worker before the relaunch is over');
@@ -596,7 +596,7 @@ test('the implement prompt survives a second stop before it was delivered: the t
   const task = fx.newTask({ usePlan: true, planApproval: 'auto', useReview: false });
   await fx.engine.start(task.id, ADA);
   const end = Date.now() + 15_000;
-  let worker: { pty?: { kill(signal?: string): void }; relaunching?: boolean } | undefined;
+  let worker: { pty?: { kill(signal?: string): void }; carryOn?: { relaunching?: boolean } } | undefined;
   while (!worker?.pty && Date.now() < end) {
     await sleep(20);
     const id = fx.repo.activeRun(task.id)?.workerId;
@@ -605,7 +605,7 @@ test('the implement prompt survives a second stop before it was delivered: the t
   const pty = worker!.pty!;
   const kill = pty.kill.bind(pty);
   pty.kill = (signal) => void setTimeout(() => kill(signal), 1500);
-  while (!worker!.relaunching && Date.now() < end) await sleep(5);
+  while (!worker!.carryOn?.relaunching && Date.now() < end) await sleep(5);
   await fx.restartOffice();
   // The second office stops before the implement prompt reaches its agent (the prompt never goes in).
   const office = fx.workers as unknown as { prompt: () => undefined; relaunch: () => Promise<undefined> };

@@ -111,6 +111,7 @@ export const settingsHandlers = {
   },
   'carryOn.set'(ctx, c, msg) {
     const who = c.peer.name;
+    if (!ctx.meOfClient(c).admin) return ctx.warn(c, 'Only admins can change whether workers carry on after a restart');
     const on = msg.on === true;
     if (on === ctx.carryOn.on) return;
     ctx.carryOn.set(on, who);

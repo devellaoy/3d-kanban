@@ -450,7 +450,13 @@ export class KanbanRepository {
   /** What the run was launched with while no agent has its prompt yet, or undefined: kept apart from KanbanRun, only the engine's restart reads it. */
   runLaunch(id: number): QueuedRun | undefined {
     const row = this.db.prepare('SELECT launch FROM runs WHERE id = ?').get(id) as { launch: string | null } | undefined;
-    return row?.launch ? (JSON.parse(row.launch) as QueuedRun) : undefined;
+    if (!row?.launch) return undefined;
+    try {
+      const q = JSON.parse(row.launch) as Partial<QueuedRun> | null;
+      return q && typeof q.phase === 'string' && typeof q.role === 'string' && typeof q.prompt === 'string' ? (q as QueuedRun) : undefined;
+    } catch {
+      return undefined; // a record that can't be read launches nothing
+    }
   }
 
   /** An agent has the run's prompt (or the run is over): it is no longer one to launch again. */
@@ -482,6 +488,14 @@ export class KanbanRepository {
 
   listRuns(taskId: number): KanbanRun[] {
     return (this.db.prepare('SELECT * FROM runs WHERE task_id = ? ORDER BY id').all(taskId) as Row[]).map(run);
+  }
+
+  /** The task's latest run (of `phase`, when given), if it has one. */
+  lastRun(taskId: number, phase?: RunPhase): KanbanRun | undefined {
+    const row = phase
+      ? this.db.prepare('SELECT * FROM runs WHERE task_id = ? AND phase = ? ORDER BY id DESC LIMIT 1').get(taskId, phase)
+      : this.db.prepare('SELECT * FROM runs WHERE task_id = ? ORDER BY id DESC LIMIT 1').get(taskId);
+    return row ? run(row as Row) : undefined;
   }
 
   /** The id of the task's latest run, if it has one. */

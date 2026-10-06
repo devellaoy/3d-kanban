@@ -26,7 +26,7 @@ function swallow(fx: EngineFixture) {
 async function stopDuringRelaunch(fx: EngineFixture, taskId: number) {
   await fx.engine.start(taskId, ADA);
   const end = Date.now() + 15_000;
-  let worker: { pty?: { kill(signal?: string): void }; relaunching?: boolean } | undefined;
+  let worker: { pty?: { kill(signal?: string): void }; carryOn?: { relaunching?: boolean } } | undefined;
   while (!worker?.pty && Date.now() < end) {
     await sleep(20);
     const id = fx.repo.activeRun(taskId)?.workerId;
@@ -35,7 +35,7 @@ async function stopDuringRelaunch(fx: EngineFixture, taskId: number) {
   const pty = worker!.pty!;
   const kill = pty.kill.bind(pty);
   pty.kill = (signal) => void setTimeout(() => kill(signal), 1500);
-  while (!worker!.relaunching && Date.now() < end) await sleep(5);
+  while (!worker!.carryOn?.relaunching && Date.now() < end) await sleep(5);
   await fx.restartOffice();
 }
 
@@ -77,14 +77,14 @@ test("a comment's resume run cut off before its prompt was delivered carries the
   const done = await fx.waitTask(task.id, (x) => x.status === 'review' && x.runState === 'idle', 'the review column');
   // Another model than the worker's own: the comment's run relaunches it, and the old process is slow to leave.
   fx.repo.updateTask(task.id, { model: 'sonnet' });
-  const worker = (fx.workers as unknown as { workers: Map<string, { pty: { kill(signal?: string): void }; relaunching?: boolean }> }).workers.get(done.workerId!)!;
+  const worker = (fx.workers as unknown as { workers: Map<string, { pty: { kill(signal?: string): void }; carryOn?: { relaunching?: boolean } }> }).workers.get(done.workerId!)!;
   const kill = worker.pty.kill.bind(worker.pty);
   worker.pty.kill = (signal) => void setTimeout(() => kill(signal), 1500);
   const c = fx.repo.addComment({ taskId: task.id, authorKind: 'user', authorName: 'Ada', text: 'Also rename foo to bar.' }).comment;
   void fx.engine.commented(task.id, c.id, ADA);
   const end = Date.now() + 15_000;
-  while (!worker.relaunching && Date.now() < end) await sleep(5);
-  assert.ok(worker.relaunching, 'the relaunch waits for the old process');
+  while (!worker.carryOn?.relaunching && Date.now() < end) await sleep(5);
+  assert.ok(worker.carryOn?.relaunching, 'the relaunch waits for the old process');
   assert.equal(prompts(fx, /rename foo to bar/).length, 0, 'the prompt never went in');
   await fx.restartOffice();
   await fx.waitTask(task.id, (x) => x.status === 'review' && x.runState === 'idle' && fx.repo.listRuns(task.id).some((r) => r.phase === 'resume' && r.status === 'succeeded'), 'the comment handled', 40_000);
@@ -277,10 +277,10 @@ test("codex: a session whose rollout is gone interrupts the run with the reason,
   assert.equal(done.summary, 'Finished in a fresh session.');
 });
 
-test('with two projects waiting, each gets its own wake-up when the stagger has passed', async (t) => {
+test('the stagger is per project: another project starts at once, and each waiting one gets its own wake-up', async (t) => {
   const drained: string[] = [];
   const restarts = new Restarts({
-    ctx: { repo: { listRuns: () => [] } } as never,
+    ctx: { repo: { lastRun: () => undefined } } as never,
     serial: (_id, fn) => fn(),
     folder: () => true,
     finishRun() {},
@@ -294,24 +294,51 @@ test('with two projects waiting, each gets its own wake-up when the stagger has 
     staggerMs: 60,
   });
   t.after(() => restarts.dispose());
-  const floor = { dir: '/x', workers: { get: () => ({ id: 'w' }), carriesOnAfterRestart: () => true, transcripts: () => undefined } } as never;
+  const floor = { dir: '/x', workers: { get: () => ({ id: 'w' }), carryOn: () => true, cutOffServed: () => undefined, transcripts: () => undefined } } as never;
   const queued = (id: number, project: string) => ({ id, project, tool: 'claude', queuedRun: { phase: 'implement', role: 'implementer', prompt: 'restarted' }, workerId: 'w' }) as never;
   assert.equal(await restarts.admit(queued(1, 'a'), floor), true);
-  assert.equal(await restarts.admit(queued(2, 'b'), floor), false);
+  assert.equal(await restarts.admit(queued(2, 'b'), floor), true, "project a's stagger doesn't hold project b");
   assert.equal(await restarts.admit(queued(3, 'a'), floor), false);
+  assert.equal(await restarts.admit(queued(4, 'b'), floor), false);
   await sleep(250);
   assert.deepEqual([...new Set(drained)].sort(), ['a', 'b']);
+});
+
+test("a run that has to wait for the stagger is not looked into until its turn", async (t) => {
+  let looked = 0;
+  const restarts = new Restarts({
+    ctx: { repo: { lastRun: () => void looked++ } } as never,
+    serial: (_id, fn) => fn(),
+    folder: () => true,
+    finishRun() {},
+    note() {},
+    update() {},
+    apply: async () => undefined,
+    drain() {},
+    attach: () => undefined as never,
+    turnEnded: async () => {},
+    hiringPaused: () => undefined,
+    staggerMs: 10_000,
+  });
+  t.after(() => restarts.dispose());
+  const floor = { dir: '/x', workers: { get: () => ({ id: 'w' }), carryOn: () => true, cutOffServed: () => undefined, transcripts: () => undefined } } as never;
+  const queued = (id: number) => ({ id, project: 'a', tool: 'claude', queuedRun: { phase: 'implement', role: 'implementer', prompt: 'restarted' }, workerId: 'w' }) as never;
+  assert.equal(await restarts.admit(queued(1), floor), true);
+  assert.equal(looked, 1);
+  assert.equal(await restarts.admit(queued(2), floor), false);
+  assert.equal(looked, 1, 'its worktree, session and setting are checked when it is about to start');
 });
 
 /** Restarts.delivered on a codex run whose rollout holds the given lines: whether its turn is handled now, and whether the launch was acknowledged. */
 function codexDelivered(lines: object[], launchText?: string) {
   const file = path.join(mkdtempSync(path.join(tmpdir(), 'rollout-')), 'rollout.jsonl');
   writeFileSync(file, lines.map((l) => JSON.stringify(l)).join('\n') + '\n');
-  const restarts = new Restarts({ ctx: { repo: { runLaunch: () => ({ phase: 'resume', role: 'implementer', prompt: 'comment', ...(launchText ? { text: launchText } : {}) }) } } as never } as never);
+  const launch = { phase: 'resume', role: 'implementer', prompt: 'comment', ...(launchText ? { text: launchText } : {}) } as never;
+  const restarts = new Restarts({ ctx: {} as never } as never);
   const live = { ack: () => void (acked = true) } as never;
   let acked = false;
   const floor = { workers: { transcripts: () => ({ codex: file }) } } as never;
-  const got = restarts.delivered({ id: 1, tool: 'codex', promptedAt: Date.parse('2026-01-01T00:00:10Z'), startedAt: 0 } as never, floor, { id: 'w' } as never, live);
+  const got = restarts.delivered({ id: 1, tool: 'codex', promptedAt: Date.parse('2026-01-01T00:00:10Z'), startedAt: 0 } as never, floor, { id: 'w' } as never, live, launch);
   return { got, acked };
 }
 const stamp = (s: string) => `2026-01-01T00:00:${s}Z`;
@@ -330,4 +357,23 @@ test("codex: the previous turn's user message just before the prompt was typed i
 
 test('codex: a user message after the prompt was typed that is not its text is not its receipt', () => {
   assert.deepEqual(codexDelivered(turn(stamp('12'), 'Something somebody else typed', true), 'Also rename foo to bar.'), { got: false, acked: false });
+});
+
+test("codex: a rollout is found by the day folders of the run first, kept once found, and files are not walked into", async (t) => {
+  const { sessionLogged } = await import('../src/server/kanban/engine/sessions.js');
+  const home = mkdtempSync(path.join(tmpdir(), 'codex-home-'));
+  const day = new Date('2026-03-10T12:00:00Z');
+  const folder = path.join(home, 'sessions', String(day.getFullYear()), String(day.getMonth() + 1).padStart(2, '0'), String(day.getDate()).padStart(2, '0'));
+  mkdirSync(folder, { recursive: true });
+  writeFileSync(path.join(home, 'sessions', 'stray.txt'), 'a file among the folders');
+  const file = path.join(folder, 'rollout-2026-03-10T12-00-00-abc123.jsonl');
+  writeFileSync(file, '{}\n');
+  const ctx = {} as never;
+  const task = {} as never;
+  const logs = { codexHome: home };
+  assert.equal(sessionLogged(ctx, task, 'codex', 'abc123', logs, day.getTime()), true);
+  assert.equal(sessionLogged(ctx, task, 'codex', 'abc123', logs), true, 'known by now, without a date');
+  assert.equal(sessionLogged(ctx, task, 'codex', 'missing', logs, day.getTime()), false);
+  writeFileSync(path.join(folder, 'rollout-2026-03-10T12-00-01-missing.jsonl'), '{}\n');
+  assert.equal(sessionLogged(ctx, task, 'codex', 'missing', logs, day.getTime()), true, 'a miss is not remembered');
 });

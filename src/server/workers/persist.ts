@@ -7,7 +7,7 @@ import { providerAdapter } from '../providers/index.js';
 import { reportedUsage } from '../reported-usage.js';
 import { restoreTracker, trackerUsage } from '../usage.js';
 import { workedMs } from './clock.js';
-import { validCutOff } from './carryon.js';
+import { setCarryOn, validCutOff } from './carryon.js';
 import { midTurn } from './lifecycle.js';
 import type { Worker } from './types.js';
 import { COLORS, newWorker } from './worker.js';
@@ -19,7 +19,7 @@ const RUNNING = new Set<unknown>(['starting', 'idle', 'working', 'done', 'needs_
 
 /** Saves every worker; `closing`: the office is going down, so what its workers were doing is kept (`cutOff`). */
 export function saveWorkers(file: string, workers: Iterable<Worker>, closing: boolean) {
-  const saved = [...workers].map(({ info, owner, tracker, state, hookToken, pty, bootBlocked, interrupted, cutOff, extra }) => ({
+  const saved = [...workers].map(({ info, owner, tracker, state, hookToken, pty, bootBlocked, interrupted, carryOn, extra }) => ({
     id: info.id,
     owner,
     kind: info.kind,
@@ -56,7 +56,7 @@ export function saveWorkers(file: string, workers: Iterable<Worker>, closing: bo
     // In the middle of something: if its terminal doesn't make it through a restart, it carries on after.
     midTurn: !!interrupted || midTurn({ info, bootBlocked }),
     // Its status when the office closed and its terminal did not survive: after the kill, `info.status` reads exited.
-    cutOff: closing ? cutOff : undefined,
+    cutOff: closing ? carryOn?.cutOff : undefined,
   }));
   try {
     writeFileSync(file, JSON.stringify(saved, null, 2), { mode: 0o600 });
@@ -125,7 +125,7 @@ export function restoreWorkers(file: string, workers: Map<string, Worker>, defau
       // Mid-turn as the office went down: cut off, unless its terminal is picked back up still
       // running (adopt). An office from before midTurn only said so for a terminal in the host.
       w.interrupted = typeof s.midTurn === 'boolean' ? s.midTurn : s.pty?.status === 'working' || s.pty?.status === 'needs_input';
-      w.cutOff = validCutOff(s.cutOff);
+      setCarryOn(w, { cutOff: validCutOff(s.cutOff) });
       if (info.prompt) w.prompts = [info.prompt.replace(/\s+/g, ' ').trim()];
       workers.set(info.id, w);
     }

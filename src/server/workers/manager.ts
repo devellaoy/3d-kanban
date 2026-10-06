@@ -23,7 +23,7 @@ import { midTurn } from './lifecycle.js';
 import { restoreWorkers, saveWorkers } from './persist.js';
 import { WorkerPrs } from './pr.js';
 import { WIN, binScript, defaultShell, resolveCommand, shellRun, shq, writeOfficeCommands } from './process.js';
-import { CarryOn, restoredNote } from './carryon.js';
+import { CarryOn, reached, restoredNote, setCarryOn } from './carryon.js';
 import { CARRY_ON_PROMPT, WorkerTasks, firstPrompt, languageTail } from './tasks.js';
 import { flushScreens, fullScreens, newTerm, offlineBanner, screenText, type HeadlessTerminal } from './terminal.js';
 import type { HookEnv, OpenedPr, RepoSource, RunAs, SpawnExtra, Worker, WorkerContext, WorkerEvents, WorkerHandle } from './types.js';
@@ -155,7 +155,7 @@ export class WorkerManager extends KanbanWorkers {
         w.saved = undefined;
         const adopted = saved && (await this.host.attach(saved.ptyId));
         if (adopted) this.adopt(w, adopted, saved);
-        else if (saved) w.cutOff = saved.status; // its terminal is gone with the host: it was cut off as it stood
+        else if (saved) setCarryOn(w, { cutOff: saved.status }); // its terminal is gone with the host: it was cut off as it stood
       }),
     );
     // Terminals nobody saved a claim on (their worker was sent home as the office went down).
@@ -322,8 +322,7 @@ export class WorkerManager extends KanbanWorkers {
     const brief = station && stationBrief(station, this.prompts);
     const first = this.tasks.restartPrompt(w, brief, prompt, this.prompts?.language?.());
     // Cut off mid-turn by a restart: it gets on with it, as whoever was watching would have told it to.
-    const carryOn = this.carry.prompts(w) && !prompt;
-    w.interrupted = w.carryOnSent = carryOn; w.carryOnPending = false; // a carried-on turn counts as cut off until its prompt is heard (setStatus)
+    const carryOn = this.carry.start(w, prompt);
     this.launch(w, carryOn ? CARRY_ON_PROMPT : first, w.info.sessionId);
     return undefined;
   }
@@ -357,8 +356,9 @@ export class WorkerManager extends KanbanWorkers {
   }
 
   /** Starts every worker that isn't running: nobody should be found asleep at their desk (see CarryOn). */
-  wakeAll() { this.carry.wakeAll(); }
-
+  wakeAll() {
+    this.carry.wakeAll();
+  }
 
   /**
    * Sends a worker home. For one with its own worktree, `cleanup` says what becomes of it; with no
@@ -737,7 +737,7 @@ export class WorkerManager extends KanbanWorkers {
   private adopt(w: Worker, adopted: Adopted, saved: NonNullable<Worker['saved']>) {
     const { info } = w;
     // It kept working through the restart: nothing to carry on.
-    w.interrupted = false; w.cutOff = undefined;
+    this.carry.adopted(w);
     info.cols = adopted.cols;
     info.rows = adopted.rows;
     const term = this.newTerm(w);
@@ -800,7 +800,7 @@ export class WorkerManager extends KanbanWorkers {
       }
       // The terminal host died and took the process with it: nothing the worker did.
       if (lost && !this.closing) {
-        if (midTurn(w)) w.interrupted = w.hostLost = true;
+        if (midTurn(w)) this.carry.hostLost(w);
         this.resume(info.id);
         return;
       }
@@ -809,7 +809,8 @@ export class WorkerManager extends KanbanWorkers {
       // ever starts. Start a fresh one rather than leave the worker asleep.
       if (adapter?.freshIfResumeFails && resumeSessionId && info.status === 'starting' && !this.closing && !this.followed.has(info.id) && !info.kanban) { // not for a task's worker, nor a run the engine follows: it starts the task's worker afresh, with the handoff, when the session is really gone
         this.events.toast(`${info.name}'s last conversation couldn't be resumed — starting a fresh one`, 'warn');
-        w.carryOnDropped = 'its last conversation couldn’t be resumed'; w.interrupted = false; this.launch(w, undefined, undefined); // its turn is not picked up: the session is gone
+        this.carry.sessionLost(w, 'its last conversation couldn’t be resumed');
+        this.launch(w, undefined, undefined);
         return;
       }
       info.exitCode = exitCode;
@@ -906,7 +907,7 @@ export class WorkerManager extends KanbanWorkers {
     if (w.info.status === 'needs_input') w.leftNeedsInputAt = Date.now();
     clockWork(w.info, status);
     w.info.status = status;
-    if (status === 'working') w.interrupted = w.carryOnSent = false; // the carry-on prompt, if one was sent, arrived
+    if (status === 'working') reached(w); // the carry-on prompt, if one was sent, arrived
     // Done, idle or asleep: it's not acting anything out any more.
     if (status !== 'working' && status !== 'needs_input') w.info.action = undefined;
     // Nobody is looking at the terminal right now -> raise the flag (the worker jumps). A worker at the

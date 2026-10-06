@@ -1307,7 +1307,7 @@ test('with carrying on turned off a mid-turn worker wakes without a prompt', asy
   after.carryOn = () => false;
   t.after(() => after.shutdown());
   await after.start();
-  assert.equal(after.carriesOnAfterRestart(), false);
+  assert.equal(after.carryOn(), false);
   const resumed = (await waitFor(() => launches(f), (x) => x.length >= 2))[1];
   assert.ok(resumed.args.includes('stopped'));
   assert.equal(promptOf(resumed), undefined);

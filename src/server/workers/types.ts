@@ -110,6 +110,19 @@ export interface RunAs {
   apply(owner: string, env: Record<string, string>, dirs: string[]): Record<string, string>;
 }
 
+/** A worker's carrying on after an office restart (owned by CarryOn, see workers/carryon.ts). */
+export interface CarryOnState {
+  /** `pending`: cut off mid-turn, waiting its turn to carry on by itself. `sent`: its carry-on prompt went in with this start and isn't heard yet (still `interrupted` until it works). `dropped`: given up (`reason`: the budget was spent, its session or worktree was gone), it is at rest, not on its turn. Cleared once it works. */
+  state?: 'pending' | 'sent' | 'dropped';
+  reason?: string;
+  /** Its status when the office closed and its terminal did not survive (only a closing office saves it). Only the engine's first look after the start reads it: cleared once it has served (the worker works, is relaunched, or the engine has decided its run). */
+  cutOff?: WorkerStatus;
+  /** The kanban is relaunching its agent (KanbanWorkers.relaunch): the old process is being ended, so it has no pty for a moment; the office closing then still counts it as cut off. */
+  relaunching?: boolean;
+  /** Its terminal host died while the office ran: it is resumed with the carry-on prompt, a task's worker too (the engine still follows its run). */
+  hostLost?: boolean;
+}
+
 export interface Worker {
   info: WorkerInfo;
   /** The account that hired it, whose sign-ins it runs on. None: the office's own. */
@@ -154,20 +167,8 @@ export interface Worker {
   saved?: { ptyId: string; status: WorkerStatus; acked: boolean; waitingSince?: number };
   /** Its process went away mid-turn with the office or the terminal host: its next start carries on (CARRY_ON_PROMPT). */
   interrupted?: boolean;
-  /** Its status when the office closed and its terminal did not survive (the kanban engine reads it once, as it starts; only a closing office saves it). */
-  cutOff?: WorkerStatus;
-  /** The kanban is relaunching its agent (KanbanWorkers.relaunch): the old process is being ended, so it has no pty for a moment; the office closing then still counts it as cut off. */
-  relaunching?: boolean;
-  /** Its carry-on prompt went in with this start, and isn't heard yet: still `interrupted` (saved as mid-turn) until it works. */
-  carryOnSent?: boolean;
-  /** Cut off mid-turn and waiting its turn to carry on by itself (see CarryOn). */
-  carryOnPending?: boolean;
-  /** Why its carry-on was given up (the budget was spent, its session or worktree was gone): it is at rest, not on its turn. */
-  carryOnDropped?: string;
-  /** Its terminal host died while the office ran: it is resumed with the carry-on prompt, a task's worker too (the engine still follows its run). */
-  hostLost?: boolean;
-  /** Its next start is the office carrying on by itself: the terminal says so. */
-  autoResume?: boolean;
+  /** What carrying on after a restart has made of it (see CarryOn); every flag of it lives there. */
+  carryOn?: CarryOnState;
   /** A prompt its start couldn't pass on the command line (a Muse resume): typed into its session after SessionStart. */
   pendingPrompt?: string;
   /** Output since its scrollback was last saved to disk. */

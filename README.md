@@ -118,7 +118,7 @@ curl -fsSL https://raw.githubusercontent.com/devellaoy/3d-kanban/main/deploy/pro
   waiting or in review, **R** retries it, and a hire, or the 📋 Task queue's form, can tick **🗂️ Run as a kanban task** ([controls](docs/controls.md#at-a-kanban-tasks-worker),
   [the contract](docs/kanban-coupling.md)).
 - **Restarts carry on**: stop the office (Ctrl+C) in the middle of a turn and start it again, and the workers that were
-  working pick up their own session with a *continue*, one after another, by themselves; ⚙️ Settings can turn that off
+  working pick up their own session with a *continue*, one after another, by themselves, three seconds apart (a kanban run's are five seconds apart per project); ⚙️ Settings can turn that off, for admins
   (then they wake up and wait for a prompt). A task's worker is resumed by the kanban instead ([docs/features.md](docs/features.md#survives-restarts)).
 - **Projects with several repositories**: a floor is a project, and a task gets a worktree of each of
   its repositories on one branch, cut from each repository's configured base branch (else the branch

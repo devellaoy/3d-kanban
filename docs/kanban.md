@@ -174,7 +174,7 @@ turn had already finished is not run again: its result is handled as if nothing 
 approval, plan questions, a review decision, an agent asking something) stay waiting and nobody is nudged; for an agent that was
 asking (also at a permission prompt), a note says to answer here to carry on, whatever else is gone. When the office's daily budget has paused hiring, nothing carries on by itself: the runs are only interrupted, with a note why. When the worktree or the agent's session is gone the run is not resumed: it is
 interrupted with the reason, and **Retry** carries on in a fresh worktree or session. ⚙️ Settings → **Carry on after a restart**
-(on by default) turns the automatic part off: the cut-off runs are then only marked interrupted, to Retry by hand. The setting and the budget are looked at again when a queued run is about to start.
+(on by default; admins change it) turns the automatic part off: the cut-off runs are then only marked interrupted, to Retry by hand. The setting and the budget are looked at again when a queued run is about to start.
 
 ### Sending a task's worker home
 
