@@ -1,5 +1,6 @@
 import { execFile } from 'node:child_process';
 import type { GhCheck, GhCloseReason, GhComment, GhIssue, GhIssueDetail, GhLabel, GhMergeMethod, GhPull, GhPullDetail, GhRepoInfo, GhReviewComment, GhState } from '../shared/protocol.js';
+import { openedFromOfficeBy } from '../shared/officepr.js';
 import type { GhAs } from './signins.js';
 import { checkoutRepo, repoApi, repoFlag } from './ghrepo.js';
 import { pullDiffOrFiles } from './prfiles.js';
@@ -443,11 +444,12 @@ export class GitHub {
     this.onPulls(this.pulls);
     const asked = Date.now();
     try {
-      const fields = 'number,title,state,isDraft,url,author,labels,reviewDecision,headRefName,headRefOid,isCrossRepository,baseRefName,createdAt,updatedAt,additions,deletions,statusCheckRollup,body,closingIssuesReferences';
-      const [open, merged, closed] = await Promise.all([
+      const fields = 'number,title,state,isDraft,url,author,labels,reviewDecision,headRefName,headRefOid,isCrossRepository,baseRefName,createdAt,updatedAt,additions,deletions,statusCheckRollup,body,closingIssuesReferences,reviewRequests';
+      const [open, merged, closed, viewer] = await Promise.all([
         this.gh(['pr', 'list', ...repoFlag(this.target), '--state', 'open', '--limit', '150', '--json', fields], this.dir),
         this.gh(['pr', 'list', ...repoFlag(this.target), '--state', 'merged', '--limit', '30', '--json', fields], this.dir),
         this.gh(['pr', 'list', ...repoFlag(this.target), '--state', 'closed', '--limit', '40', '--json', fields], this.dir),
+        this.viewer(),
       ]);
       // `--state closed` includes merged PRs; keep only the ones closed without merging.
       const seen = new Set<number>();
@@ -471,14 +473,24 @@ export class GitHub {
         deletions: p.deletions ?? 0,
         checks: checksOf(p.statusCheckRollup),
         body: String(p.body ?? '').slice(0, 4000),
+        // Read before the cut: the office's footer is the description's last line.
+        ...withOpenedBy(String(p.body ?? '')),
         closes: (p.closingIssuesReferences ?? []).map((r: any) => Number(r.number)).filter((n: number) => Number.isInteger(n) && n > 0),
+        // People asked to review it, by login (a team's request has no login and is left out).
+        reviewRequests: (p.reviewRequests ?? []).map((r: any) => r?.login).filter((l: unknown): l is string => typeof l === 'string' && !!l),
         ...(this.nameWithOwner ? { repo: this.nameWithOwner } : {}),
       }));
       const items = this.relabel('pull', fetched, asked);
-      this.pulls = { items, fetchedAt: Date.now(), loading: false };
+      this.pulls = { items, fetchedAt: Date.now(), loading: false, ...(viewer ? { viewer } : {}) };
     } catch (err) {
       this.pulls = { ...this.pulls, loading: false, error: (err as Error).message, fetchedAt: Date.now() };
     }
     this.onPulls(this.pulls);
   }
+}
+
+/** GhPull.openedBy from a description, when it has the office's "Opened from Agent Office by" line. */
+function withOpenedBy(body: string): { openedBy?: string } {
+  const by = openedFromOfficeBy(body);
+  return by ? { openedBy: by } : {};
 }

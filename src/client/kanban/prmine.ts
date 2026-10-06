@@ -1,0 +1,233 @@
+// The PR board's "whose" filter (gh:devellaoy/3d-kanban#123): every pull request, only mine, or the
+// ones waiting on my review, beside the repository tabs, for ui/boards.ts. "Mine" is a PR authored by
+// my GitHub login, or one the office opened on my behalf: from a kanban task I made, a worker I hired
+// at a desk, or with "Opened from Agent Office by <me>" in its description. The choice is this
+// browser's, the same on every floor.
+
+import { h } from '../ui/dom';
+import type { Net } from '../net';
+import { sameRepo } from '../../shared/floors';
+import type { GhPull, SignInsState, WorkerInfo } from '../../shared/protocol';
+import type { KanbanServerMsg } from '../../shared/kanban/protocol.js';
+import type { KanbanTaskCard } from '../../shared/kanban/types.js';
+import { kanbanApi } from './api';
+import type { Topic } from '../state';
+import { workerForRepoPull } from '../ui/github/ghrepo';
+import { repoOfItem } from './boardrepos';
+import { officeCss } from './officecss';
+
+export type PrWho = 'all' | 'mine' | 'review';
+const WHOS: readonly PrWho[] = ['all', 'mine', 'review'];
+
+/**
+ * My GitHub login: on the shared password (no `account`), the office's own gh (`officeViewer`); with
+ * an account, my own sign-in's, or the office's when I use its sign-in. An account without a GitHub
+ * sign-in has none, so the office's PRs don't all count as everyone's, and neither has one whose
+ * sign-ins haven't come in yet (`signins` is null until the server sends them, after welcome).
+ */
+export function myLogin(signins: Pick<SignInsState, 'github'> | null, officeViewer: string | undefined, account: boolean): string {
+  if (!account) return officeViewer ?? '';
+  const gh = signins?.github;
+  if (!gh) return '';
+  if (gh.how === 'office') return officeViewer ?? '';
+  return gh.status === 'ok' && gh.who ? gh.who.replace(/^@/, '').trim() : '';
+}
+
+const same = (a: string, b: string) => !!a && a.toLowerCase() === b.toLowerCase();
+
+/** The PR is one of a task's linked ones (by its link, else by repository and number). */
+function linksTo(task: Pick<KanbanTaskCard, 'prs'>, pr: GhPull): boolean {
+  const url = pr.url.toLowerCase();
+  return task.prs.some((l) => (l.url && l.url.toLowerCase() === url) || (l.number === pr.number && !!l.repo && sameRepo(l.repo, repoOfItem(pr))));
+}
+
+export interface Me {
+  /** My GitHub login (myLogin); '' when unknown. */
+  login: string;
+  /** My name in the office, as kanban tasks and workers record who made them; '' when unknown. */
+  name: string;
+  /** The project's kanban tasks (kanban.snapshot). */
+  tasks: Pick<KanbanTaskCard, 'prs' | 'createdBy'>[];
+  workers: Iterable<WorkerInfo>;
+  /** owner/name of the floor's own repository, which a worker's own PR (WorkerInfo.pr) is in when its link doesn't say. */
+  primary?: string;
+}
+
+/**
+ * The worker a PR came from, matched in the PR's own repository (read off its link when the card
+ * doesn't name one), so another repository's #7 isn't taken for this one's and a worker's PR in one
+ * of its other repositories (WorkerInfo.repos) is found.
+ */
+export function workerOfPull(workers: Iterable<WorkerInfo>, pr: GhPull, primary?: string): WorkerInfo | undefined {
+  const repo = repoOfItem(pr);
+  return repo ? workerForRepoPull(workers, pr, repo, primary) : undefined;
+}
+
+/**
+ * Whether a pull request is mine: authored by my login or opened by the office on my behalf. Only for
+ * what the board shows: GhPull.openedBy is a line anyone can write in a description, so this never
+ * decides rights or triggers actions (merging, "my PR" buttons, notifications).
+ */
+export function minePredicate(me: Me): (pr: GhPull) => boolean {
+  const workers = [...me.workers];
+  const mine = me.name ? me.tasks.filter((t) => t.createdBy === me.name) : [];
+  return (pr) => {
+    if (same(me.login, pr.author)) return true;
+    if (!me.name) return false;
+    if (mine.some((t) => linksTo(t, pr))) return true;
+    const w = workerOfPull(workers, pr, me.primary);
+    if (w?.byPerson && w.createdBy === me.name) return true;
+    return pr.openedBy === me.name;
+  };
+}
+
+/** Whether my review is asked for on a pull request. */
+export function reviewPredicate(login: string): (pr: GhPull) => boolean {
+  return (pr) => !!login && !!pr.reviewRequests?.some((l) => same(l, login));
+}
+
+const KEY = 'agent-office.board-pulls-who';
+
+export function loadPrWho(): PrWho {
+  try {
+    const v = localStorage.getItem(KEY);
+    return WHOS.includes(v as PrWho) ? (v as PrWho) : 'all';
+  } catch {
+    return 'all';
+  }
+}
+
+export function savePrWho(who: PrWho) {
+  try {
+    if (who === 'all') localStorage.removeItem(KEY);
+    else localStorage.setItem(KEY, who);
+  } catch {
+    // storage blocked
+  }
+}
+
+/**
+ * Whether the board knows enough to say none of the PRs are open: not before the first list has come
+ * in, nor after a failed one, nor for 👤 Mine before the kanban's tasks (`mineSettled`) have.
+ */
+export function noteReady(who: PrWho, pulls: { loading: boolean; error?: string; fetchedAt: number; items: unknown[] }, mineSettled: boolean): boolean {
+  if (pulls.error || !pulls.fetchedAt || (pulls.loading && !pulls.items.length)) return false;
+  return who !== 'mine' || mineSettled;
+}
+
+/** The board's empty note while a filter leaves no open PRs ('' when there's nothing to say). */
+export function emptyNote(who: PrWho, repo: string, open: number): string {
+  if (who === 'all' || open > 0) return '';
+  const where = repo ? ` in ${repo.split('/').pop() ?? repo}` : '';
+  return who === 'mine' ? `You have no open pull requests${where}` : `Nothing${where} is waiting for your review`;
+}
+
+/** The topics the PR board redraws on besides its own: which desk a PR came from, and my GitHub sign-in (it can come in after the board opened). */
+export const WHO_TOPICS = ['workers', 'signins'] as const satisfies readonly Topic[];
+
+/** What the board shows for the kept choice: All while that choice can't work (no login for 👀), so it comes back by itself once it can. */
+export function shownWho(kept: PrWho, off: Partial<Record<PrWho, string>>): PrWho {
+  return off[kept] ? 'all' : kept;
+}
+
+/** The button Tab lands on: the picked one, else the first that works, so the toggle is always reachable from the keyboard. */
+export function tabStop(value: PrWho, off: Partial<Record<PrWho, string>>): PrWho {
+  return !off[value] ? value : (WHOS.find((w) => !off[w]) ?? 'all');
+}
+
+const LABEL: Record<PrWho, string> = { all: 'All', mine: '👤 Mine', review: '👀 To review' };
+const TITLE: Record<PrWho, string> = {
+  all: 'Everyone’s pull requests',
+  mine: 'Pull requests by your GitHub account, or opened from the office for you (your kanban tasks and workers)',
+  review: 'Pull requests whose review is asked of your GitHub account',
+};
+
+/**
+ * The All / 👤 Mine / 👀 To review buttons. `update` marks the picked one and turns off the ones that
+ * can't work (with why, as their title). ← → move between them, like the repository tabs.
+ */
+export function prWhoToggle(onChange: (who: PrWho) => void): { el: HTMLElement; update(value: PrWho, off: Partial<Record<PrWho, string>>): void } {
+  officeCss();
+  const el = h('div.board-who', { role: 'radiogroup', 'aria-label': 'Whose pull requests' });
+  const buttons = WHOS.map((who) => {
+    const b = h('button.board-who-opt', { type: 'button', role: 'radio', 'data-who': who }, LABEL[who]) as HTMLButtonElement;
+    b.addEventListener('click', () => onChange(who));
+    el.append(b);
+    return b;
+  });
+  el.addEventListener('keydown', (e) => {
+    const at = buttons.indexOf(document.activeElement as HTMLButtonElement);
+    const step = e.key === 'ArrowRight' ? 1 : e.key === 'ArrowLeft' ? -1 : 0;
+    if (at < 0 || !step) return;
+    e.preventDefault();
+    e.stopPropagation();
+    for (let i = 1; i < buttons.length; i++) {
+      const b = buttons[(at + step * i + buttons.length) % buttons.length];
+      if (b.disabled) continue;
+      b.focus();
+      onChange(b.dataset.who as PrWho);
+      return;
+    }
+  });
+  return {
+    el,
+    update(value, off) {
+      const stop = tabStop(value, off);
+      for (const b of buttons) {
+        const who = b.dataset.who as PrWho;
+        b.disabled = !!off[who];
+        b.title = off[who] ?? TITLE[who];
+        b.setAttribute('aria-checked', String(who === value));
+        b.tabIndex = who === stop ? 0 : -1;
+      }
+    },
+  };
+}
+
+/** The row under the PR board's header: the repository tabs (hidden on a one-repository floor) and the toggle. */
+export function prFilterBar(tabs: HTMLElement, toggle: HTMLElement): HTMLElement {
+  officeCss();
+  return h('div.board-pr-bar', {}, tabs, toggle);
+}
+
+type Snapshot = Extract<KanbanServerMsg, { t: 'kanban.snapshot' }>;
+
+/**
+ * The floor's kanban tasks and my name as the kanban knows it, for "mine": a kanban.snapshot (never
+ * kanban.subscribe, which would take the connection's delta filter). The snapshot is the whole board
+ * (every card with its review settings, the projects, the settings), more than "mine" needs, so the PR
+ * board asks only when it opens on 👤 Mine and when Mine is picked, not on its redraws; a task linked
+ * to a PR meanwhile counts from the next time. `settled` once the first answer (or failure) is in; a
+ * failure leaves what it had, and login matches work without it.
+ */
+export function mineTasks(net: Net, project: () => string | null | undefined, changed: () => void) {
+  let tasks: KanbanTaskCard[] = [];
+  let name = '';
+  let settled = false;
+  let busy = false;
+  let stopped = false;
+  return {
+    tasks: () => tasks,
+    name: () => name,
+    settled: () => settled,
+    refresh() {
+      const p = project();
+      if (stopped || busy) return;
+      if (!p) return void (settled = true);
+      busy = true;
+      kanbanApi(net)
+        .request<Snapshot>({ t: 'kanban.snapshot', project: p })
+        .then((s) => {
+          tasks = s.tasks;
+          name = s.me.name;
+        })
+        .catch(() => {})
+        .finally(() => {
+          busy = false;
+          settled = true;
+          if (!stopped) changed();
+        });
+    },
+    stop: () => void (stopped = true),
+  };
+}
