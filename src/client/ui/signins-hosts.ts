@@ -19,7 +19,7 @@ const HOW: Record<'azure' | 'bitbucket', { icon: string; make: string; what: str
   bitbucket: {
     icon: '🪣',
     make: 'https://id.atlassian.com/manage-profile/security/api-tokens',
-    what: 'an API token with scopes for Bitbucket: read and write repositories and pull requests, and read your user',
+    what: 'an API token with scopes for Bitbucket: read and write repositories and pull requests, and read your user and workspace',
     token: 'Bitbucket API token',
   },
 };

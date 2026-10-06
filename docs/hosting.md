@@ -43,7 +43,8 @@ Open **☰ → 🔐 Your sign-ins**. Below Claude and GitHub there is a card for
 - **Bitbucket**: an Atlassian API token *with scopes*
   (id.atlassian.com → Security → API tokens → *Create API token with scopes* → Bitbucket) and the
   e-mail of your Atlassian account. Scopes: `read:repository:bitbucket`, `write:repository:bitbucket`,
-  `read:pullrequest:bitbucket`, `write:pullrequest:bitbucket` and `read:user:bitbucket`. (Bitbucket's
+  `read:pullrequest:bitbucket`, `write:pullrequest:bitbucket`, `read:user:bitbucket` and
+  `read:workspace:bitbucket` (who is a workspace member, for whose review comments count). (Bitbucket's
   app passwords are gone.)
 
 The office checks a token with the host when you save it, and shows whom it belongs to. The token
@@ -111,11 +112,15 @@ On a GitHub repository it says to use `gh`.
 
 **Whose review comments count.** GitHub says how each commenter stands to the repository
 (`author_association`), and Fix PRs acts only on its owners', members' and collaborators'. Azure DevOps
-and Bitbucket don't, so `office-pr view --comments` marks each comment `[trusted]` (written by the
-pull request's author or one of its reviewers, or anyone when the repository is private, a private
-Azure DevOps project, since only people with access can comment there) or `[untrusted]`, and Fix PRs
-acts only on trusted ones (the *Fix pull requests · on Azure DevOps and Bitbucket* prompt). A
-repository or project the token can't read counts as public.
+and Bitbucket don't, so `office-pr view --comments` marks each comment `[trusted]` or `[untrusted]`,
+and Fix PRs acts only on trusted ones (the *Fix pull requests · on Azure DevOps and Bitbucket* prompt):
+
+- **Bitbucket**: trusted when its author is a member of the repository's workspace, or the repository
+  is private (only people given access can comment there). Being the pull request's author or one of
+  its reviewers isn't enough: anybody's fork picks those. A repository the token can't read counts as
+  public, and a membership the token can't read (it needs `read:workspace:bitbucket`) as none.
+- **Azure DevOps**: every comment, since only a project's members can comment at all (a public project
+  lets everyone else read, not write).
 
 The kanban's prompts add a note about `office-pr` (the *Repositories on Azure DevOps and Bitbucket*
 prompt, editable) after the workspace lines, only when a repository of the task or worker is

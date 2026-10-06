@@ -45,6 +45,15 @@ async function prChecks(repo: RepoRef, p: any, as: HostAs, fetch: Fetch): Promis
   return checksOfPr(repo, statuses, evaluations);
 }
 
+/**
+ * A pull request's comments, every one trusted: on Azure DevOps only the project's members comment
+ * at all (a public project lets everyone else read, not write), which is the membership GitHub's
+ * OWNER/MEMBER/COLLABORATOR stands for.
+ */
+async function azureComments(repo: RepoRef, n: number, as: HostAs, fetch: Fetch) {
+  return commentsOfThreads(repo, n, (await hostCall(fetch, as, 'GET', pr(repo, n, '/threads')))?.value, { members: new Set(), everyone: true });
+}
+
 /** Runs `fn` over `items`, `limit` at a time, keeping their order. */
 async function pooled<T, R>(items: T[], limit: number, fn: (item: T) => Promise<R>): Promise<R[]> {
   const out: R[] = new Array(items.length);
@@ -137,14 +146,13 @@ export const azureProvider: HostingProvider = {
   diff: (repo, n, as, fetch) => azureDiff(repo, n, as, fetch),
 
   async comments(repo, n, as, fetch) {
-    const [threads, p, project] = await Promise.all([
-      hostCall(fetch, as, 'GET', pr(repo, n, '/threads')),
-      hostCall(fetch, as, 'GET', pr(repo, n)),
-      // A project that can't be read counts as public: only the author's and reviewers' are trusted then.
-      hostCall(fetch, as, 'GET', `https://dev.azure.com/${encodeURIComponent(repo.owner)}/_apis/projects/${encodeURIComponent(repo.project ?? repo.name)}?api-version=7.1`).catch(() => undefined),
-    ]);
-    const ids = new Set<string>([p?.createdBy?.id, ...((p?.reviewers ?? []) as any[]).map((r) => r?.id)].filter((x): x is string => typeof x === 'string' && !!x));
-    return commentsOfThreads(repo, n, threads?.value, { ids, everyone: project?.visibility === 'private' });
+    return azureComments(repo, n, as, fetch);
+  },
+
+  async detail(repo, n, as, fetch) {
+    const p = await hostCall(fetch, as, 'GET', pr(repo, n));
+    const [checks, comments] = await Promise.all([prChecks(repo, p, as, fetch).catch(() => []), azureComments(repo, n, as, fetch).catch(() => [])]);
+    return { view: viewOf(repo, p), checks, comments };
   },
 
   async comment(repo, n, body, as, fetch) {

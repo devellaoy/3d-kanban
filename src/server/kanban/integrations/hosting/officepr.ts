@@ -121,8 +121,9 @@ export function officePrHook(ctx: KanbanContext, deps: OfficePrDeps = {}): Kanba
         n2 = (await p.findOpenPr(repo, head, as, f))?.number;
         if (!n2) return `${head} has no open pull request`;
       }
-      const [view, checks, comments] = await Promise.all([p.viewPr(repo, n2, as, f), p.checks(repo, n2, as, f), ask.comments === true ? p.comments(repo, n2, as, f) : Promise.resolve(undefined)]);
-      return { pr: view, checks, ...(comments ? { comments } : {}) };
+      // One that can't read its checks or comments still shows the pull request (detail leaves them empty).
+      const { view, checks, comments } = await p.detail(repo, n2, as, f);
+      return { pr: view, checks, ...(ask.comments === true ? { comments } : {}) };
     }
     if (action === 'diff') {
       if (!number) return 'Name the pull request by its number';

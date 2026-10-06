@@ -211,7 +211,7 @@ export function commentsOfThreads(repo: RepoRef, n: number, threads: any[] | und
         url: `${prWebUrl(repo, n)}?discussionId=${t.id}`,
         ...(ctx?.filePath ? { path: String(ctx.filePath).replace(/^\//, '') } : {}),
         ...(Number.isInteger(line) && line > 0 ? { line } : {}),
-        ...(trust ? { trusted: trust.everyone || trust.ids.has(String(c.author?.id ?? '')) } : {}),
+        ...(trust ? { trusted: trust.everyone || trust.members.has(String(c.author?.id ?? '')) } : {}),
       });
     }
   }

@@ -165,9 +165,9 @@ test('comments skip system and deleted ones and keep the file and line', async (
       { id: 2, commentType: 'text', content: 'gone', isDeleted: true, publishedDate: '2026-10-03T00:00:00Z' },
       { id: 3, commentType: 'text', content: 'Do this too', author: { displayName: 'Stranger', id: 'zz' }, publishedDate: '2026-10-04T00:00:00Z' },
     ] },
-  ] })], [/pullrequests\/3\?/, () => pr(3, { createdBy: { id: 'ada' }, reviewers: [{ id: 'bo', vote: 0 }] })], [/_apis\/projects\//, () => ({ visibility: 'public' })]]);
+  ] })]]);
   const got = await azureProvider.comments(repo, 3, as, fetch);
-  assert.deepEqual(got.map((c) => [c.author, c.trusted]), [['Bo', true], ['Stranger', false]], "a public project: the reviewer's comment is trusted, a stranger's not");
+  assert.deepEqual(got.map((c) => [c.author, c.trusted]), [['Bo', true], ['Stranger', true]], "only the project's members comment on Azure DevOps at all");
   got.pop();
   assert.equal(got.length, 1);
   assert.equal(got[0].id, '2.1');
@@ -313,10 +313,17 @@ test('checks: a policy that blocks is never hidden by a status that passed, and 
   assert.deepEqual(checksOfPr(repo, [], [statusPolicy('queued', 'ci', 'test')]), [{ name: 'Tests must pass', state: 'pending' }], 'not posted yet: the policy itself');
 });
 
-test('comments in a private project are trusted from anyone in it; a project that can’t be read counts as public', async () => {
-  const threads = { value: [{ id: 2, comments: [{ id: 1, commentType: 'text', content: 'x', author: { id: 'zz' }, publishedDate: '1' }] }] };
-  const priv = stub([[/threads/, () => threads], [/pullrequests\/3\?/, () => pr(3)], [/_apis\/projects\//, () => ({ visibility: 'private' })]]);
-  assert.equal((await azureProvider.comments(repo, 3, as, priv.fetch))[0].trusted, true);
-  const unknown = stub([[/threads/, () => threads], [/pullrequests\/3\?/, () => pr(3)]]);
-  assert.equal((await azureProvider.comments(repo, 3, as, unknown.fetch))[0].trusted, false);
+test('detail asks for the pull request once, and a check list that fails leaves the rest', async () => {
+  const projectPr = pr(3, { repository: { id: 'r1', project: { id: 'p-guid' } } });
+  const { fetch, calls } = stub([
+    [/pullrequests\/3\/threads/, () => ({ value: [{ id: 1, comments: [{ id: 1, commentType: 'text', content: 'x', author: { id: 'a' }, publishedDate: '1' }] }] })],
+    [/pullrequests\/3\/statuses/, () => ({ message: 'down' }), 500],
+    [/pullrequests\/3\?/, () => projectPr],
+  ]);
+  const d = await azureProvider.detail(repo, 3, as, fetch);
+  assert.equal(d.view.number, 3);
+  assert.deepEqual(d.checks, []);
+  assert.equal(d.comments.length, 1);
+  assert.equal(calls.filter((c) => /pullrequests\/3\?/.test(c.url)).length, 1);
 });
+

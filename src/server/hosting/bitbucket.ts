@@ -82,6 +82,24 @@ async function statusesOf(repo: RepoRef, n: number, as: HostAs, fetch: Fetch): P
   return (await pagesOf(fetch, as, `${prUrl(repo, n)}/statuses?pagelen=100`, 1)).map(bbCheck);
 }
 
+/** The most commenters a conversation's trust is asked for (each one a request). */
+const MEMBER_CHECKS = 30;
+
+/**
+ * Which of these users are members of the repository's workspace (GET /workspaces/{ws}/members/{user}:
+ * an answer is a yes, a 404 or any failure a no). On a public repository, that is who GitHub would
+ * call a MEMBER; a pull request's author or reviewers are anybody's to pick from a fork.
+ */
+async function workspaceMembers(repo: RepoRef, users: any[], as: HostAs, fetch: Fetch): Promise<Set<string>> {
+  const uuids = [...new Set(users.map((u) => u?.uuid).filter((x): x is string => typeof x === 'string' && !!x))].slice(0, MEMBER_CHECKS);
+  const out = new Set<string>();
+  await mapLimited(uuids, CONCURRENCY, async (uuid) => {
+    const m = await hostCall(fetch, as, 'GET', `${API}/workspaces/${encodeURIComponent(repo.owner)}/members/${encodeURIComponent(uuid)}`).catch(() => undefined);
+    if (m && (m.user?.uuid ?? uuid) === uuid) out.add(uuid);
+  });
+  return out;
+}
+
 /** Runs `fn` over `items`, `limit` at a time, in order. */
 async function mapLimited<T, R>(items: T[], limit: number, fn: (item: T) => Promise<R>): Promise<R[]> {
   const out: R[] = new Array(items.length);
@@ -158,18 +176,22 @@ export const bitbucketProvider: HostingProvider = {
 
   async comments(repo, n, as, fetch) {
     // The newest first (Bitbucket lists the oldest first), so a long conversation keeps its latest requests.
-    const [{ values, more }, p, r] = await Promise.all([
+    const [{ values, more }, r] = await Promise.all([
       pagesWithMore(fetch, as, `${prUrl(repo, n)}/comments?pagelen=100&sort=-created_on`, COMMENT_PAGES),
-      hostCall(fetch, as, 'GET', prUrl(repo, n)),
-      // A repository that can't be read counts as public: only the author's and reviewers' are trusted then.
+      // A repository that can't be read counts as public.
       hostCall(fetch, as, 'GET', repoUrl(repo)).catch(() => undefined),
     ]);
-    const reviewers = ((p?.participants ?? []) as any[]).filter((x) => x?.role === 'REVIEWER').map((x) => x.user);
-    const ids = new Set([...bbUserIds(p?.author), ...reviewers.flatMap(bbUserIds)]);
-    const comments = bbComments([...values].reverse(), { ids, everyone: r?.is_private === true });
+    const everyone = r?.is_private === true;
+    const members = everyone ? new Set<string>() : await workspaceMembers(repo, values.map((c: any) => c?.user), as, fetch);
+    const comments = bbComments([...values].reverse(), { members, everyone });
     // Said where the conversation starts, so whoever reads it knows the oldest are missing.
     if (more) comments.unshift({ id: 'older', author: 'Agent Office', body: `Only the latest ${COMMENT_PAGES * 100} comments are shown here: see the older ones on the pull request's page on Bitbucket.`, createdAt: '' });
     return comments;
+  },
+
+  async detail(repo, n, as, fetch) {
+    const [view, checks, comments] = await Promise.all([this.viewPr(repo, n, as, fetch), statusesOf(repo, n, as, fetch).catch(() => []), this.comments(repo, n, as, fetch).catch(() => [])]);
+    return { view, checks, comments };
   },
 
   async comment(repo, n, body, as, fetch) {

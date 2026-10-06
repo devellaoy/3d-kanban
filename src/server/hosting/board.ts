@@ -32,10 +32,8 @@ export function hostedPulls(repo: HostedRepo): Promise<GhPull[]> {
 
 /** What the PR window shows, as far as the host has it in GitHub's terms. */
 export async function hostedPullDetail(repo: HostedRepo, n: number, as?: HostAs): Promise<GhPullDetail> {
-  const p = provider(repo);
   const by = as ?? reader(repo);
-  const f = hostFetch();
-  const [view, checks, comments] = await Promise.all([p.viewPr(repo, n, by, f), p.checks(repo, n, by, f).catch(() => []), p.comments(repo, n, by, f).catch(() => [])]);
+  const { view, checks, comments } = await provider(repo).detail(repo, n, by, hostFetch());
   return {
     number: view.number,
     body: view.body,

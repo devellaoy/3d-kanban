@@ -134,7 +134,8 @@ test('comment posts raw content and answers with its page; comments skip the del
       ],
     },
     [`${API}/pullrequests/3/comments`]: { id: 14, links: { html: { href: 'https://bitbucket.org/c/14' } } },
-    [`${API}/pullrequests/3`]: pr(3, 'OPEN', { author: { uuid: '{ann}' }, participants: [{ role: 'REVIEWER', user: { uuid: '{bob}' } }, { role: 'PARTICIPANT', user: { uuid: '{eve}' } }] }),
+    // Bob is a member of the workspace; Eve isn't (404).
+    ['https://api.bitbucket.org/2.0/workspaces/acme/members/%7Bbob%7D']: { user: { uuid: '{bob}' } },
     [API]: { is_private: false },
   });
   assert.equal(await bb.comment(repo, 3, 'Looks good', as, fetch), 'https://bitbucket.org/c/14');
@@ -143,16 +144,20 @@ test('comment posts raw content and answers with its page; comments skip the del
   assert.deepEqual(await bb.comments(repo, 3, as, fetch), [
     { id: '11', author: 'Bob', body: 'hi', createdAt: '2026-10-03', url: 'https://bitbucket.org/c/11', trusted: true },
     { id: '13', author: 'eve', body: 'nit', createdAt: '2026-10-04', path: 'src/a.ts', line: 7, trusted: false },
-  ], 'a public repository: a reviewer’s comment is trusted, a passer-by’s is not');
+  ], 'a public repository: a workspace member’s comment is trusted, anybody else’s is not');
 });
 
-test('comments on a private repository are trusted from anyone (only people with access can comment); unreadable repository: public', async () => {
+test('comments on a private repository are trusted from anyone (only people with access can comment); a fork’s author and the reviewers it picked are not trusted for that', async () => {
   const values = { values: [{ id: 1, user: { uuid: '{eve}' }, content: { raw: 'x' }, created_on: '1' }] };
-  const priv = stub({ [`${API}/pullrequests/3/comments?pagelen=100&sort=-created_on`]: values, [`${API}/pullrequests/3`]: pr(3, 'OPEN', { participants: [] }), [API]: { is_private: true } });
+  const priv = stub({ [`${API}/pullrequests/3/comments?pagelen=100&sort=-created_on`]: values, [API]: { is_private: true } });
   assert.equal((await bb.comments(repo, 3, as, priv.fetch))[0].trusted, true);
-  const unknown = stub({ [`${API}/pullrequests/3/comments?pagelen=100&sort=-created_on`]: values, [`${API}/pullrequests/3`]: pr(3, 'OPEN', { participants: [] }) });
-  assert.equal((await bb.comments(repo, 3, as, unknown.fetch))[0].trusted, false);
+  // Public, and Eve wrote the fork's pull request and picked her friend as its reviewer: no member, no trust.
+  const fork = stub({ [`${API}/pullrequests/3/comments?pagelen=100&sort=-created_on`]: values, [`${API}/pullrequests/3`]: pr(3, 'OPEN', { author: { uuid: '{eve}' }, participants: [{ role: 'REVIEWER', user: { uuid: '{eve}' } }] }), [API]: { is_private: false } });
+  assert.equal((await bb.comments(repo, 3, as, fork.fetch))[0].trusted, false);
+  const unknown = stub({ [`${API}/pullrequests/3/comments?pagelen=100&sort=-created_on`]: values });
+  assert.equal((await bb.comments(repo, 3, as, unknown.fetch))[0].trusted, false, 'a repository that can’t be read counts as public');
 });
+
 
 test('viewPr maps the state, review and a fork; isFork agrees', async () => {
   const fork = pr(8, 'SUPERSEDED', { draft: true, participants: [{ state: 'approved' }], source: { branch: { name: 'theirs' }, repository: { full_name: 'other/widgets' } } });

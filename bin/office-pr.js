@@ -146,7 +146,7 @@ export function formatView(pr, checks, comments) {
   lines.push(...formatChecks(checks));
   if (comments) {
     lines.push('', `Comments (${comments.length}):`);
-    // [trusted]: from the pull request's author or a reviewer, or the repository is private (see HostComment.trusted).
+    // [trusted]: from a member of the repository's workspace or project, or the repository is private (see HostComment.trusted).
     for (const c of comments) lines.push('', `— ${c.author}, ${c.createdAt}${c.path ? ` on ${c.path}${c.line ? `:${c.line}` : ''}` : ''}${c.trusted === undefined ? '' : c.trusted ? ' [trusted]' : ' [untrusted]'}:`, c.body);
   }
   return lines.join('\n');

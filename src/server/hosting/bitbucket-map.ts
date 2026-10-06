@@ -111,7 +111,7 @@ export function bbComments(values: unknown, trust?: CommentTrust): HostComment[]
         ...(typeof c.links?.html?.href === 'string' ? { url: c.links.html.href } : {}),
         ...(typeof c.inline?.path === 'string' ? { path: c.inline.path } : {}),
         ...(typeof line === 'number' ? { line } : {}),
-        ...(trust ? { trusted: trust.everyone || bbUserIds(c.user).some((id) => trust.ids.has(id)) } : {}),
+        ...(trust ? { trusted: trust.everyone || bbUserIds(c.user).some((id) => trust.members.has(id)) } : {}),
       };
     });
 }

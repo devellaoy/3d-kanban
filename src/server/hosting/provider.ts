@@ -73,19 +73,27 @@ export interface HostComment extends GhComment {
   path?: string;
   line?: number;
   /**
-   * Whether an agent may act on it (the host's counterpart of GitHub's author_association): it's
-   * from the pull request's author or one of its reviewers, or the repository is private, so only
-   * people with access to it can comment at all (see CommentTrust).
+   * Whether an agent may act on it (the host's counterpart of GitHub's OWNER/MEMBER/COLLABORATOR):
+   * its author is a member of the repository's workspace or project, or the repository is private,
+   * so only people given access can comment at all. Never for being the pull request's author or a
+   * reviewer it picked: anybody's fork can do that (see CommentTrust).
    */
   trusted?: boolean;
 }
 
-/** Who a pull request's comments are trusted from (HostComment.trusted). */
+/** Whose comments on a pull request are trusted (HostComment.trusted). */
 export interface CommentTrust {
-  /** The host's ids of the pull request's author and reviewers. */
-  ids: Set<string>;
-  /** The repository is private: everyone who can comment has access to it. */
+  /** The host's ids of the commenters who are members. */
+  members: Set<string>;
+  /** Everyone who could comment is one: a private repository, or a host where only members comment. */
   everyone: boolean;
+}
+
+/** What the PR window and office-pr view show of one pull request, read with the pull request fetched once. */
+export interface HostPrDetail {
+  view: HostPrView;
+  checks: GhCheck[];
+  comments: HostComment[];
 }
 
 export type Fetch = (url: string, init?: RequestInit) => Promise<Response>;
@@ -107,6 +115,8 @@ export interface HostingProvider {
   listPulls(repo: RepoRef, as: HostAs, fetch: Fetch): Promise<GhPull[]>;
   checks(repo: RepoRef, n: number, as: HostAs, fetch: Fetch): Promise<GhCheck[]>;
   comments(repo: RepoRef, n: number, as: HostAs, fetch: Fetch): Promise<HostComment[]>;
+  /** The pull request, its checks and its comments together (the pull request is asked for once); a check or comment list that can't be read is empty. */
+  detail(repo: RepoRef, n: number, as: HostAs, fetch: Fetch): Promise<HostPrDetail>;
   /** Its changes as a unified diff (as `git diff` of its merge base and head prints them), read from the host: nothing is fetched into a checkout. */
   diff(repo: RepoRef, n: number, as: HostAs, fetch: Fetch): Promise<string>;
   /** Comments on its conversation; resolves to the comment's URL when the host gives one. */
