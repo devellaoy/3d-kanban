@@ -190,7 +190,7 @@ const PR_RUNS: Record<PrMode, { phase: RunPhase; prompt: PromptKind; verb: strin
 export const prPrompt = (phase: RunPhase): PromptKind | undefined => Object.values(PR_RUNS).find((r) => r.phase === phase)?.prompt;
 
 /** The prompt a run of `phase` that never started is retried with (plan and resume carry on: what the user said went with the queue). */
-export function ownPrompt(phase: RunPhase, round: number | undefined, t: Pick<MachineTask, 'type'>): PromptKind {
+function ownPrompt(phase: RunPhase, round: number | undefined, t: MachineTask): PromptKind {
   switch (phase) {
     case 'implement':
       return t.type === 'investigate' ? 'investigate' : 'implement';

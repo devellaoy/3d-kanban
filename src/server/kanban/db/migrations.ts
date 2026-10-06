@@ -217,6 +217,13 @@ ALTER TABLE tasks ADD COLUMN queued_run TEXT;`),
     // held_at: when the run was held for background work it set off (ms; NULL when it isn't), so a full restart still knows its turn had not really ended.
     up: (db) => db.exec('ALTER TABLE runs ADD COLUMN held_at INTEGER;'),
   },
+  {
+    version: 7,
+    name: 'run launch',
+    // launch: the run's prompt kind and text as launched (JSON, a QueuedRun), until an agent has the prompt (NULL then), so a restart that
+    // finds it still there carries the run on with that prompt, not a "carry on" for a turn the agent never began.
+    up: (db) => db.exec('ALTER TABLE runs ADD COLUMN launch TEXT;'),
+  },
 ];
 
 /** The schema version this build expects. */

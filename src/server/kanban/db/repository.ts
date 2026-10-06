@@ -19,6 +19,7 @@ import type {
   KanbanTool,
   LegacyRef,
   PendingMessage,
+  QueuedRun,
   RunPhase,
   RunStatus,
   TaskFlag,
@@ -99,6 +100,8 @@ export interface NewRun {
   workerId?: string;
   status?: RunStatus;
   startedAt?: number;
+  /** What the run was launched with, until an agent has it (see runLaunch). */
+  launch?: QueuedRun;
 }
 
 export type RunUpdate = Partial<Pick<KanbanRun, 'status' | 'verdict' | 'summary' | 'error' | 'sessionId' | 'workerId' | 'finishedAt' | 'model' | 'effort' | 'promptedAt'>>;
@@ -428,8 +431,8 @@ export class KanbanRepository {
 
   createRun(r: NewRun): KanbanRun {
     const res = this.db
-      .prepare('INSERT INTO runs (task_id, phase, round, role, tool, model, effort, session_id, worker_id, status, started_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
-      .run(r.taskId, r.phase, r.round ?? null, r.role ?? 'implementer', r.tool, r.model ?? null, r.effort ?? null, r.sessionId ?? null, r.workerId ?? null, r.status ?? 'running', r.startedAt ?? Date.now());
+      .prepare('INSERT INTO runs (task_id, phase, round, role, tool, model, effort, session_id, worker_id, status, started_at, launch) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
+      .run(r.taskId, r.phase, r.round ?? null, r.role ?? 'implementer', r.tool, r.model ?? null, r.effort ?? null, r.sessionId ?? null, r.workerId ?? null, r.status ?? 'running', r.startedAt ?? Date.now(), r.launch ? JSON.stringify(r.launch) : null);
     return this.getRun(Number(res.lastInsertRowid))!;
   }
 
@@ -442,6 +445,17 @@ export class KanbanRepository {
   runHeldAt(id: number): number | undefined {
     const row = this.db.prepare('SELECT held_at FROM runs WHERE id = ?').get(id) as { held_at: number | null } | undefined;
     return row?.held_at ?? undefined;
+  }
+
+  /** What the run was launched with while no agent has its prompt yet, or undefined: kept apart from KanbanRun, only the engine's restart reads it. */
+  runLaunch(id: number): QueuedRun | undefined {
+    const row = this.db.prepare('SELECT launch FROM runs WHERE id = ?').get(id) as { launch: string | null } | undefined;
+    return row?.launch ? (JSON.parse(row.launch) as QueuedRun) : undefined;
+  }
+
+  /** An agent has the run's prompt (or the run is over): it is no longer one to launch again. */
+  clearRunLaunch(id: number) {
+    this.db.prepare('UPDATE runs SET launch = NULL WHERE id = ?').run(id);
   }
 
   setRunHeld(id: number, at: number | null) {

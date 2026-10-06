@@ -12,7 +12,7 @@ import type { KanbanContext } from '../registry.js';
 import type { WorkerInfo, WorkerStatus } from '../../../shared/protocol.js';
 import type { KanbanRun, KanbanTask, QueuedRun } from '../../../shared/kanban/types.js';
 import { claudeAdapter } from './adapters/claude.js';
-import { ownPrompt, type MachineEvent } from './machine.js';
+import type { MachineEvent } from './machine.js';
 import { sessionLogged } from './sessions.js';
 import { missingFolders } from './workspace.js';
 import type { HeldRun } from './turnhold.js';
@@ -38,7 +38,8 @@ export interface RestartDeps<L extends HeldRun> {
 }
 
 export class Restarts<L extends HeldRun> {
-  private timer?: NodeJS.Timeout;
+  /** Per project: the drain scheduled for when its next queued run may start. */
+  private timers = new Map<string, NodeJS.Timeout>();
   /** When the next queued 'restarted' run may start (the stagger). */
   private nextAt = 0;
 
@@ -50,7 +51,8 @@ export class Restarts<L extends HeldRun> {
   }
 
   dispose() {
-    clearTimeout(this.timer);
+    for (const t of this.timers.values()) clearTimeout(t);
+    this.timers.clear();
   }
 
   /**
@@ -88,7 +90,7 @@ export class Restarts<L extends HeldRun> {
   /** Whether the Claude session is gone (see `gone`); then the task learns it, so a launch whose resume fails falls back to a fresh session with the handoff. */
   private sessionGone(task: KanbanTask, role: KanbanRun['role'], tool: KanbanRun['tool'], floor: Floor, info?: WorkerInfo): string | undefined {
     const session = info?.sessionId ?? (role === 'implementer' ? task.sessionId : task.reviewerSessionId);
-    if (!session || sessionLogged(this.deps.ctx, task, tool, session, info ? floor.workers.transcripts(info.id)?.claude : undefined) !== false) return undefined;
+    if (!session || sessionLogged(this.deps.ctx, task, tool, session, info && floor.workers.transcripts(info.id)) !== false) return undefined;
     // Known to the task from now on, so that a Retry whose resume fails falls back to a fresh session with the handoff (see Orchestrator.exited).
     this.deps.update(task.id, role === 'implementer' ? { sessionId: session } : { reviewerSessionId: session });
     return "The office restarted, but its agent's session is gone: Retry starts it again in a fresh session";
@@ -122,9 +124,10 @@ export class Restarts<L extends HeldRun> {
     }
     const wait = this.nextAt - Date.now();
     if (wait > 0) {
-      clearTimeout(this.timer);
-      this.timer = setTimeout(() => this.deps.drain(t.project), wait);
-      this.timer.unref?.();
+      clearTimeout(this.timers.get(t.project));
+      const timer = setTimeout(() => this.deps.drain(t.project), wait);
+      timer.unref?.();
+      this.timers.set(t.project, timer);
       return false;
     }
     this.nextAt = Date.now() + this.deps.staggerMs;
@@ -163,7 +166,7 @@ export class Restarts<L extends HeldRun> {
     const lost = this.gone(task, run.role, run.tool, floor, info);
     if (lost) return this.interrupt(run, task, lost);
     // Its turn had finished (the run was prompted), wasn't held for background work, and left none or teammates out in the log (they died with the shutdown): its result is handled, nothing is run again.
-    if (cut === 'done' && run.promptedAt !== undefined && ctx.repo.runHeldAt(run.id) === undefined && !this.leftWork(run, floor, info)) {
+    if (cut === 'done' && run.promptedAt !== undefined && !ctx.repo.runLaunch(run.id) && ctx.repo.runHeldAt(run.id) === undefined && !this.leftWork(run, floor, info)) {
       const live = this.deps.attach(run, task, info);
       void this.deps.serial(task.id, () => this.deps.turnEnded(live));
       return;
@@ -176,23 +179,10 @@ export class Restarts<L extends HeldRun> {
       return;
     }
     this.deps.finishRun(run.id, task.project, { status: 'interrupted', error: 'The office restarted mid-run' });
-    // The phase's own prompt, not a "carry on" for a cut-off turn, while the agent never got it (see `unprompted`).
-    const own = this.unprompted(run, task, floor, info, cut) ? ownPrompt(run.phase, run.round, task) : 'continue';
-    this.deps.update(task.id, { runState: 'queued', queuedRun: { phase: run.phase, role: run.role, prompt: own === 'continue' ? 'restarted' : own, restarted: true, ...(run.round !== undefined ? { round: run.round } : {}) } });
+    // An agent that never had the run's prompt (a launch cut off before it went in) gets that prompt, with its text, not a "carry on" for a turn it never began.
+    const launch = ctx.repo.runLaunch(run.id);
+    this.deps.update(task.id, { runState: 'queued', queuedRun: { ...(launch ?? { phase: run.phase, role: run.role, prompt: 'restarted', ...(run.round !== undefined ? { round: run.round } : {}) }), restarted: true } });
     note(task, 'The office restarted mid-run: its agent carries on by itself shortly.', run.id);
-  }
-
-  /**
-   * Whether the agent never got the phase's prompt (a relaunch cut off before its new process started, then perhaps cut off again while
-   * it waited for the woken worker): the run's worker was cut off before it worked (`starting`, `idle`) and the session log holds no
-   * prompt since the first run of this phase, role and round started. Without a log, only a first such run counts, and only when cut `starting`.
-   */
-  private unprompted(run: KanbanRun, task: KanbanTask, floor: Floor, info: WorkerInfo, cut: WorkerStatus): boolean {
-    if (cut !== 'starting' && cut !== 'idle') return false;
-    const same = this.deps.ctx.repo.listRuns(task.id).filter((r) => r.phase === run.phase && r.role === run.role && r.round === run.round);
-    const file = run.tool === 'claude' ? floor.workers.transcripts(info.id)?.claude : undefined;
-    const heard = file ? claudeAdapter.readTurnResult(file, { promptAt: same[0]?.startedAt ?? run.startedAt }) : undefined;
-    return heard ? !!heard.unheard : cut === 'starting' && same.length <= 1;
   }
 
   /** Whether the session log of the run's turns shows background agents, commands or teammates still out. */
