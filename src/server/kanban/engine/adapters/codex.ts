@@ -27,21 +27,23 @@ function isContextMessage(text: string): boolean {
   return /^\s*<(?:environment_context|user_instructions|permissions instructions|INSTRUCTIONS)\b/i.test(text) || text.startsWith('# AGENTS.md instructions');
 }
 
+/** The text of a rollout line that is a user's prompt (its user_message event, or in older rollouts the user response_item), else undefined. */
+export function codexUserMessage(l: Record<string, unknown>): string | undefined {
+  const p = isObj(l.payload) ? l.payload : undefined;
+  if (!p) return undefined;
+  if (l.type === 'event_msg' && p.type === 'user_message') return typeof p.message === 'string' ? p.message : messageText(p);
+  if (l.type === 'response_item' && p.type === 'message' && p.role === 'user' && !isContextMessage(messageText(p))) return messageText(p);
+  return undefined;
+}
+
 /** The turn after the last prompt; its `text` is the final answer (task_complete's last_agent_message, else the last assistant message). */
 export function readCodexTurn(file: string): TurnResult | undefined {
   const lines = readJsonLines(file);
   if (!lines) return undefined;
-  // Where the last turn starts: its user_message event (or, in older rollouts, the user response_item).
+  // Where the last turn starts: its user message.
   let from = -1;
   for (let i = lines.length - 1; i >= 0; i--) {
-    const l = lines[i];
-    const p = isObj(l.payload) ? l.payload : undefined;
-    if (!p) continue;
-    if (l.type === 'event_msg' && p.type === 'user_message') {
-      from = i;
-      break;
-    }
-    if (l.type === 'response_item' && p.type === 'message' && p.role === 'user' && !isContextMessage(messageText(p))) {
+    if (codexUserMessage(lines[i]) !== undefined) {
       from = i;
       break;
     }

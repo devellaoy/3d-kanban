@@ -336,10 +336,10 @@ async function turn(prompt, answered) {
       return;
     }
   } else {
-    append({ type: 'event_msg', payload: { type: 'user_message', message: prompt } });
+    append({ type: 'event_msg', timestamp: new Date().toISOString(), payload: { type: 'user_message', message: prompt } });
     if (rule.earlier) append({ type: 'response_item', payload: { type: 'message', role: 'assistant', content: [{ type: 'output_text', text: rule.earlier }] } });
     append({ type: 'response_item', payload: { type: 'message', role: 'assistant', content: [{ type: 'output_text', text: rule.reply }] } });
-    append({ type: 'event_msg', payload: { type: 'task_complete', last_agent_message: rule.reply } });
+    append({ type: 'event_msg', timestamp: new Date().toISOString(), payload: { type: 'task_complete', last_agent_message: rule.reply } });
   }
   await post('Stop', kind === 'claude' ? { last_assistant_message: rule.reply } : {});
 }

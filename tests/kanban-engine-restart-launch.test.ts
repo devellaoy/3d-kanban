@@ -3,7 +3,8 @@
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdirSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { ADA, engineFixture, type EngineFixture } from './kanban-engine-fixture.js';
 import { Restarts } from '../src/server/kanban/engine/restart.js';
@@ -300,4 +301,33 @@ test('with two projects waiting, each gets its own wake-up when the stagger has 
   assert.equal(await restarts.admit(queued(3, 'a'), floor), false);
   await sleep(250);
   assert.deepEqual([...new Set(drained)].sort(), ['a', 'b']);
+});
+
+/** Restarts.delivered on a codex run whose rollout holds the given lines: whether its turn is handled now, and whether the launch was acknowledged. */
+function codexDelivered(lines: object[], launchText?: string) {
+  const file = path.join(mkdtempSync(path.join(tmpdir(), 'rollout-')), 'rollout.jsonl');
+  writeFileSync(file, lines.map((l) => JSON.stringify(l)).join('\n') + '\n');
+  const restarts = new Restarts({ ctx: { repo: { runLaunch: () => ({ phase: 'resume', role: 'implementer', prompt: 'comment', ...(launchText ? { text: launchText } : {}) }) } } as never } as never);
+  const live = { ack: () => void (acked = true) } as never;
+  let acked = false;
+  const floor = { workers: { transcripts: () => ({ codex: file }) } } as never;
+  const got = restarts.delivered({ id: 1, tool: 'codex', promptedAt: Date.parse('2026-01-01T00:00:10Z'), startedAt: 0 } as never, floor, { id: 'w' } as never, live);
+  return { got, acked };
+}
+const stamp = (s: string) => `2026-01-01T00:00:${s}Z`;
+const turn = (at: string, text: string, old = false) => [
+  old ? { type: 'response_item', timestamp: at, payload: { type: 'message', role: 'user', content: [{ type: 'input_text', text }] } } : { type: 'event_msg', timestamp: at, payload: { type: 'user_message', message: text } },
+  { type: 'event_msg', timestamp: at, payload: { type: 'task_complete', last_agent_message: 'Done.' } },
+];
+
+test('codex: a prompt received while the engine was down is acknowledged, in either rollout format', () => {
+  for (const old of [false, true]) assert.deepEqual(codexDelivered(turn(stamp('11'), 'You commented on task #1: Also rename foo to bar.', old), 'Also rename foo to bar.'), { got: true, acked: true }, old ? 'older format' : 'event format');
+});
+
+test("codex: the previous turn's user message just before the prompt was typed is not its receipt", () => {
+  for (const old of [false, true]) assert.deepEqual(codexDelivered(turn(stamp('09.500'), 'Implement kanban task #1', old), 'Also rename foo to bar.'), { got: false, acked: false }, old ? 'older format' : 'event format');
+});
+
+test('codex: a user message after the prompt was typed that is not its text is not its receipt', () => {
+  assert.deepEqual(codexDelivered(turn(stamp('12'), 'Something somebody else typed', true), 'Also rename foo to bar.'), { got: false, acked: false });
 });

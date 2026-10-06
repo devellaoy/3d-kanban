@@ -13,11 +13,12 @@ import type { WorkerInfo, WorkerStatus } from '../../../shared/protocol.js';
 import type { WorkerObservation } from '../../workers.js';
 import type { KanbanRun, KanbanTask, QueuedRun } from '../../../shared/kanban/types.js';
 import { claudeAdapter } from './adapters/claude.js';
-import { isObj, readJsonLines } from './adapters/types.js';
+import { codexUserMessage } from './adapters/codex.js';
+import { readJsonLines } from './adapters/types.js';
 import type { MachineEvent } from './machine.js';
 import { sessionLogged } from './sessions.js';
 import { missingFolders } from './workspace.js';
-import type { HeldRun } from './turnhold.js';
+import { promptHead, type HeldRun } from './turnhold.js';
 
 /** What the engine lends to the restart handling. */
 export interface RestartDeps<L extends HeldRun> {
@@ -108,9 +109,12 @@ export class Restarts<L extends HeldRun> {
       const result = claudeAdapter.readTurnResult(file, { since: run.startedAt, runStart: run.startedAt, promptAt: at });
       return result ? !result.unheard : undefined;
     }
-    // Codex's rollout names no prompt: a user message stamped at or after the office typed it is the one.
-    const lines = readJsonLines(file);
-    return lines?.some((l) => l.type === 'event_msg' && isObj(l.payload) && l.payload.type === 'user_message' && Date.parse(String(l.timestamp)) >= at - 1000);
+    // Codex's rollout names no prompt: a user message at or after the time the office typed it (stamped before it went in), carrying the launch's text when it has one, is the one.
+    const head = promptHead(this.deps.ctx.repo.runLaunch(run.id)?.text ?? '');
+    return readJsonLines(file)?.some((l) => {
+      const text = codexUserMessage(l);
+      return text !== undefined && Date.parse(String(l.timestamp)) >= at && (!head || text.replace(/\s+/g, ' ').includes(head));
+    });
   }
 
   /** The run's worker on the floor. A run whose launch was cut short before it recorded its worker (a second shutdown while it waited for the woken worker to rest) has the task's own, if that was cut off too. */
