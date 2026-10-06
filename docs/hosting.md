@@ -64,7 +64,8 @@ When a token is missing, the action says so and opens 🔐 Your sign-ins.
 Git gets the helper through its environment (git 2.31 or newer), ahead of any the machine has for
 those hosts: every worker's (agents and shells alike, so an agent's own `git push` and `office-pr`'s
 pull request go out as the person who hired it), and the office's own pushes for you (O on a 🐚 shell
-worker, the Changes window's pull request). That holds with or without accounts and whatever your
+worker, the Changes window's pull request), and its fetch of a worktree's base branch (with the
+office's token, else an account's). That holds with or without accounts and whatever your
 GitHub sign-in is. Remotes over SSH keep using the machine's SSH keys.
 
 **Each repository by its own host.** O and the Changes window ask for the sign-ins the repositories

@@ -77,6 +77,15 @@ export function otherHostRepo(dir: string, remote = 'origin'): (RepoRef & { host
   return r && r.host !== 'github' ? (r as RepoRef & { host: OtherHost }) : undefined;
 }
 
+/**
+ * `env` for the office's own git reads (fetching a worktree's base branch): pushes and pulls over
+ * HTTPS to Azure DevOps and Bitbucket answered with the office's token, else an account's
+ * (HostCredentials.readGitEnv). Unchanged before openHosting.
+ */
+export function officeReadGitEnv(env: Record<string, string>): Record<string, string> {
+  return creds ? creds.readGitEnv(env) : env;
+}
+
 /** Tests: forget what was read from the checkouts. */
 export function forgetRemotes() {
   cache.clear();

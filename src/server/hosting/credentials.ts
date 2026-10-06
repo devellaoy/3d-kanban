@@ -203,6 +203,17 @@ export class HostCredentials {
     return withHelperEnv(env, helper, files);
   }
 
+  /**
+   * `env` for git that only reads and that nobody in particular asked for (the office fetching a
+   * worktree's base branch): the helper with the office's tokens, then those of the accounts that set
+   * their own, the most recent first, as the boards read (anyAs).
+   */
+  readGitEnv(env: Record<string, string>): Record<string, string> {
+    const helper = path.join(this.dataDir, 'bin', 'office-git-credential');
+    if (!existsSync(helper)) return env;
+    return withHelperEnv(env, helper, [this.file(null), ...this.accountsNewestFirst().map((id) => this.file(id))]);
+  }
+
   /** Whether `accountId` (or the office) has any credentials for `kind`. */
   has(accountId: string | undefined, kind: OtherHost): boolean {
     return typeof this.as(accountId, kind) !== 'string';
