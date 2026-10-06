@@ -60,8 +60,8 @@ export interface World {
   acoustics?: { gong: { x: number; y: number; z: number } | null; windows: { x: number; y: number; z: number }[] };
   /** Whoever stands by the throne and sends out new workers (the map's herald), and where to speak to them. */
   herald?: { person: Person; interactable: Interactable };
-  /** Brings out the overflow seats in `out` and puts the rest away: the colliders of the ones that just came out (the castle's; the office has none that come out by themselves). */
-  setBeanbags(out: Set<string>): Collider[];
+  /** Brings out the overflow seats in `out` and puts the rest away: the colliders of the ones that just came out. Only on a map whose overflow seats come out by themselves (the office's bean bags are put down in build mode). */
+  setBeanbags?(out: Set<string>): Collider[];
   /** Paints it in a floor's colors, so each project looks like itself. */
   setLook(p: FloorPalette): void;
   setProjectName(name: string): void;
@@ -117,8 +117,6 @@ export function officeWorld(office: Office, upstairs: () => boolean, layout: () 
     ],
     device: 'laptop',
     room: { wall: WALL_T, enclosed: false },
-    // The office's bean bags are where a floor has put them (see world/office/seats.ts), never brought out.
-    setBeanbags: () => [],
     setLook: (p) => office.setLook(p),
     setProjectName: (name) => office.setProjectName(name),
     update: (t, dt, people) => office.update(t, dt, people),

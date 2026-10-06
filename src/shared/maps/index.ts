@@ -1,3 +1,4 @@
+import { removedSeats } from '../arrange.js';
 import { BEANBAGS, BOARDS, DESKS, ELEVATOR, ELEVATOR_CAR, EXIT_DOOR, FLOOR, MEETING_ROOMS, MEETING_SEATS, SEATING, STATIONS, STATION_AGENT, WALL_HEIGHT, WING_DESKS, seatHere, seatPlace, watchSpots, type DeskDef, type MeetingRoomDef, type SeatDef, type SeatPlace, type StationKind } from '../layout.js';
 import type { Circle, Rect } from '../nav.js';
 import { CASTLE } from './castle.js';
@@ -61,7 +62,7 @@ function officePlan(): MapPlan {
     desks: MAP_DESKS,
     overflow: BEANBAGS,
     // A bean bag is only a seat once a floor puts it down in build mode (see shared/arrange.ts).
-    removed: new Set(BEANBAGS.map((b) => b.id)),
+    removed: removedSeats(undefined),
     stations: STATIONS,
     meetingRooms: MEETING_ROOMS,
     byId,

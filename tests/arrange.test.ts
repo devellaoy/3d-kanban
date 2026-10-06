@@ -6,7 +6,7 @@ import path from 'node:path';
 import { MOVABLES, arrangedPlan, cleanFurniture, furnitureKey, movableObstacles, removedPlaces, removedSeats, spareBeanbag } from '../src/shared/arrange.js';
 import { boxedIn, checkPlace } from '../src/shared/arrange-check.js';
 import { cleanPlan } from '../src/shared/floorplan.js';
-import { BEANBAGS, DESKS, SEATING, beanbagsOut, nextFreeSeat, vacantSeats } from '../src/shared/layout.js';
+import { BEANBAGS, COFFEE_TABLE, DESKS, SEATING, beanbagsOut, nextFreeSeat, vacantSeats } from '../src/shared/layout.js';
 import { OFFICE_PLAN, planOf } from '../src/shared/maps/index.js';
 import { officeNav, route } from '../src/shared/nav.js';
 import { FloorPlanStore } from '../src/server/floorplan.js';
@@ -251,5 +251,52 @@ test('a bean bag is only a seat once a floor puts it down: X takes it away again
     const again = new FloorPlanStore(dir);
     assert.equal(again.removed.has('beanbag-5'), false);
     assert.deepEqual(again.state().furniture['beanbag-5'], { x: BEANBAGS[4].x, z: BEANBAGS[4].z, r: 0 });
+  });
+});
+
+test('two people putting a new bean bag down at once get one each, not a move of the first one', () => {
+  withDir((dir) => {
+    const plan = new FloorPlanStore(dir);
+    const a = { x: BEANBAGS[0].x, z: BEANBAGS[0].z, r: 0 };
+    const b = { x: BEANBAGS[1].x, z: BEANBAGS[1].z, r: 0 };
+    // Both picked beanbag-1 from the catalogue; the first one down gets it.
+    assert.deepEqual(plan.arrange('beanbag-1', a, true), { id: 'beanbag-1', label: 'Bean bag 1', back: true, added: true });
+    // The second is put down as the next spare one, and the first stays where it was put.
+    assert.deepEqual(plan.arrange('beanbag-1', b, true), { id: 'beanbag-2', label: 'Bean bag 2', back: true, added: true });
+    assert.deepEqual(plan.state().furniture['beanbag-1'], a);
+    // Without `fresh` it's a move, as for any piece.
+    assert.equal((plan.arrange('beanbag-1', { ...a, r: 1 }) as { back: boolean }).back, false);
+    for (const bag of BEANBAGS.slice(2)) plan.arrange(bag.id, { x: bag.x, z: bag.z, r: 0 }, true);
+    assert.equal(plan.arrange('beanbag-1', { x: 0, z: 0, r: 0 }, true), 'Every bean bag is on the floor already');
+  });
+});
+
+test('a reset that would bring a piece back onto a bean bag somebody is at is refused', () => {
+  withDir((dir) => {
+    const plan = new FloorPlanStore(dir);
+    // The coffee table moved off, and a bean bag where it comes, with a worker on it.
+    assert.equal(typeof plan.arrange('coffee-table', { x: 8, z: 0, r: 0 }), 'object');
+    assert.equal(typeof plan.arrange('beanbag-1', { x: COFFEE_TABLE.x, z: COFFEE_TABLE.z, r: 0 }), 'object');
+    const before = plan.state().furniture;
+    assert.match(plan.reset(undefined, (id) => id === 'beanbag-1') as string, /Bean bag 1 has somebody at it, and the coffee table would come back where it stands/);
+    assert.equal(plan.state().furniture, before);
+    // Nobody on it: the reset takes it away with the rest.
+    assert.deepEqual(plan.reset(undefined, () => false), { labels: ['the coffee table', 'Bean bag 1'] });
+  });
+});
+
+test('a worker saved at a bean bag whose spot something else stands on now gets another bean bag spot', () => {
+  withDir((dir) => {
+    const bag = BEANBAGS[0];
+    // The whiteboard put right where bean bag 1 is first offered.
+    const plan = new FloorPlanStore(dir);
+    assert.equal(typeof plan.arrange('whiteboard', { x: bag.x, z: bag.z + 0.2, r: 0 }), 'object');
+    writeFileSync(path.join(dir, 'workers.json'), JSON.stringify([{ id: 'w1', deskId: bag.id }]));
+    const again = new FloorPlanStore(dir);
+    const at = again.state().furniture[bag.id] as { x: number; z: number; r: number };
+    assert.ok(at && 'x' in at);
+    assert.notDeepEqual([at.x, at.z], [bag.x, bag.z]);
+    assert.ok(BEANBAGS.some((b) => b.x === at.x && b.z === at.z));
+    assert.deepEqual(checkPlace(again.state().furniture, bag.id, at, { walking: false }), { ok: true });
   });
 });

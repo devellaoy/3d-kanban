@@ -229,7 +229,7 @@ export class WorkerManager extends KanbanWorkers {
     if (effortError) return effortError;
     const seat = DESK_BY_ID.get(deskId);
     if (!seat || (seat.watch && extra?.kanban?.role !== 'reviewer')) return seat ? "Only a kanban task's reviewer stands behind a desk" : 'Unknown desk'; // a task's reviewer watches its implementer from behind a seat (see WATCH_SPOTS)
-    if (!deskBuilt(seat, this.wing()) || this.removed().has(seat.watch ?? seat.id)) return this.removed().has(seat.watch ?? seat.id) ? `${seat.label} was taken out of the floor: put it back in build mode (U) first` : `${seat.label} isn't built yet: expand the back office first`;
+    if (!deskBuilt(seat, this.wing()) || this.removed().has(seat.watch ?? seat.id)) return this.removed().has(seat.watch ?? seat.id) ? (seat.beanbag ? `${seat.label} isn't on the floor: put a bean bag down in build mode (U) first` : `${seat.label} was taken out of the floor: put it back in build mode (U) first`) : `${seat.label} isn't built yet: expand the back office first`;
     if (this.deskOccupied(deskId)) return seat.station ? `The ${STATION_AGENT[seat.station].name} is already there` : `That ${seat.beanbag ? 'bean bag' : 'desk'} is taken`;
     if (kind === 'shell' && seat.station) return 'A board agent is always an agent, not a shell';
     if (seat.station && !prompt?.trim()) return 'Tell the board agent what to do';

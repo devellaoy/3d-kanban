@@ -8,7 +8,7 @@
  * catalogue (B), and so does a bean bag: none is on the floor until somebody puts one down there. The check is shared/arrange-check.ts, the one the office makes before it keeps a move.
  */
 import * as THREE from 'three';
-import { MOVABLE_BY_ID, furnitureKey, keepOf, nameOf as furnitureName, poseAt, sentence, type Movable, type Spot } from '../../../shared/arrange';
+import { MOVABLE_BY_ID, furnitureKey, keepOf, nameOf as furnitureName, poseAt, poseOf, sentence, spareBeanbag, type Movable, type Spot } from '../../../shared/arrange';
 import { checkPlace, whyNot } from '../../../shared/arrange-check';
 import type { Ctx } from '../../core/context';
 import { aside, hintTitle, key } from '../../core/hint';
@@ -36,8 +36,8 @@ export function makeFixtureBuild(ctx: Ctx) {
 
   /** The piece you aim at (when you hold none). */
   let aimed: string | null = null;
-  /** The piece in your hands: its turn so far, and where it would stand. */
-  let held: { id: string; r: number; spot: Spot | null } | null = null;
+  /** The piece in your hands: its turn so far, and where it would stand. `fresh`: a new bean bag from the catalogue, not one on the floor. */
+  let held: { id: string; r: number; spot: Spot | null; fresh?: boolean } | null = null;
   let verdict: Verdict = { ok: true };
   let verdictKey = '';
   /** A move sent and not heard back: put it back if nothing came of it. */
@@ -148,7 +148,7 @@ export function makeFixtureBuild(ctx: Ctx) {
   /** From the catalogue: a piece that was taken out, or a bean bag, to put down. */
   function bringBack(id: string) {
     cancel();
-    held = { id, r: 0, spot: null };
+    held = { id, r: 0, spot: null, fresh: !!movable(id).added };
     ctx.hint.invalidate();
   }
 
@@ -170,11 +170,11 @@ export function makeFixtureBuild(ctx: Ctx) {
       toast(verdict.why, 'warn');
       return true;
     }
-    const { id, spot } = held;
+    const { id, spot, fresh } = held;
     held = null;
     untint();
     arrange().settle(id, poseAt(movable(id), spot));
-    ctx.net.send({ t: 'furniture.move', id, x: spot.x, z: spot.z, r: spot.r });
+    ctx.net.send({ t: 'furniture.move', id, x: spot.x, z: spot.z, r: spot.r, ...(fresh ? { fresh } : {}) });
     // Not heard back (the office said no): put it where the floor has it.
     if (pending) clearTimeout(pending.timer);
     pending = { id, furniture: furniture(), timer: setTimeout(() => (pending?.furniture === furniture() && arrange().release(id), (pending = null)), 2000) };
@@ -184,6 +184,19 @@ export function makeFixtureBuild(ctx: Ctx) {
 
   // Whatever the office answered, the piece is where the floor has it now (a refused move leaves it as it was).
   store.on('floorPlan', () => {
+    // The new bean bag you carry was put down by somebody else meanwhile: theirs goes back where they put it, and you carry the next spare one.
+    if (held?.fresh && poseOf(movable(held.id), furniture())) {
+      const was = held.id;
+      untint();
+      arrange().release(was);
+      const next = spareBeanbag(furniture());
+      if (next) held = { ...held, id: next };
+      else {
+        held = null;
+        toast('Every bean bag is on the floor already', 'info');
+      }
+      ctx.hint.invalidate();
+    }
     if (!pending) return;
     clearTimeout(pending.timer);
     arrange().release(pending.id);

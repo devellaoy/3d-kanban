@@ -46,7 +46,7 @@ export const furnitureHandlers = {
   'furniture.move'(ctx, c, msg) {
     const floor = movable(ctx, c);
     if (!floor) return;
-    const r = floor.plan.arrange(str(msg.id, 40), { x: num(msg.x), z: num(msg.z), r: num(msg.r) });
+    const r = floor.plan.arrange(str(msg.id, 40), { x: num(msg.x), z: num(msg.z), r: num(msg.r) }, msg.fresh === true);
     if (typeof r === 'string') return refused(ctx, c, floor, r);
     planChanged(ctx, floor);
     ctx.toastFloor(floor, r.back ? (r.added ? `🫘 ${c.peer.name} put down ${r.label}` : `🪑 ${c.peer.name} put ${r.label} back in`) : `🪑 ${c.peer.name} moved ${r.label}`);

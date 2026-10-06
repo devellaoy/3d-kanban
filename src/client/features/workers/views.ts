@@ -319,8 +319,9 @@ export function installWorkerViews(ctx: Ctx, core: CoreState, parts: WorkerViews
     // Someone sent home still counts until they get up, so an overflow seat stays out under them.
     const free = vacantSeats(store.workers.values(), (id) => departures.seated(id) || sendoffs.seated(id), plan().removed);
     for (const [id, desk] of world.desks) desk.vacancy.visible = free.has(id) && seatBuilt(id);
+    if (!world.setBeanbags) return;
     const appeared = world.setBeanbags(beanbagsOut((id) => !free.has(id), store.floorPlan.wing, plan().removed));
-    // One came out right where you're standing (on the office floor, not down in the garage): you end up on top of it.
+    // One came out right where you're standing (on the floor, not down in the garage): you end up on top of it.
     const p = player.pos;
     for (const c of appeared) if (p.y > -0.1 && p.y < c.top && p.x > c.minX - 0.3 && p.x < c.maxX + 0.3 && p.z > c.minZ - 0.3 && p.z < c.maxZ + 0.3) p.y = c.top;
   }

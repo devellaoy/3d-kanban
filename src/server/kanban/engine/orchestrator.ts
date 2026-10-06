@@ -1672,7 +1672,7 @@ export class Orchestrator {
   private deskRefusal(floor: Floor, deskId: string, watch = false): string | undefined {
     const desk = DESK_BY_ID.get(deskId);
     if (!desk || desk.station || desk.room || !!desk.watch !== watch) return `${deskId} isn't a desk a task's worker can be hired at`;
-    if (!deskBuilt(desk, floor.workers.wing?.() ?? 0) || floor.workers.removed?.().has(desk.watch ?? desk.id)) return `${desk.label} isn't built on this floor yet, or was taken out of it`;
+    if (!deskBuilt(desk, floor.workers.wing?.() ?? 0) || floor.workers.removed?.().has(desk.watch ?? desk.id)) return desk.beanbag ? `${desk.label} isn't on this floor: put a bean bag down in build mode (U)` : `${desk.label} isn't built on this floor yet, or was taken out of it`;
     if (floor.workers.deskOccupied(deskId)) return `${desk.label} is taken: pick a free desk`;
     return undefined;
   }
