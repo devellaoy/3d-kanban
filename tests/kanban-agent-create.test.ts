@@ -420,7 +420,7 @@ test('an agent’s AB#n of a work item the issue lists don’t have yet is read 
   const asked: string[] = [];
   const fetch = (async (url: string) => {
     asked.push(url);
-    if (/\/_apis\/wit\/workitems\?ids=42&/.test(url)) return new Response(JSON.stringify({ value: [{ id: 42, fields: { 'System.Title': 'New bug', 'System.State': 'New', 'System.Description': '<p>Broken</p>' } }] }));
+    if (/\/_apis\/wit\/workitems\?ids=42&/.test(url)) return new Response(JSON.stringify({ value: [{ id: 42, fields: { 'System.TeamProject': 'My Web', 'System.Title': 'New bug', 'System.State': 'New', 'System.Description': '<p>Broken</p>' } }] }));
     return new Response('{"message":"no"}', { status: 404 });
   }) as unknown as IssueSourceIo['fetch'];
   const issues = createIssues(ctx, { gh: async () => '[]', fetch });

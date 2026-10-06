@@ -18,7 +18,7 @@ export type AzureBoardsConfig = Extract<IssueSourceConfig, { kind: 'azure-boards
 /** How many work items one read asks for. */
 const BATCH = 200;
 const API = 'api-version=7.1';
-const FIELDS = ['System.Id', 'System.Title', 'System.State', 'System.WorkItemType', 'System.AssignedTo', 'System.Tags', 'System.Description', 'System.ChangedDate', 'System.CreatedDate'];
+const FIELDS = ['System.Id', 'System.TeamProject', 'System.Title', 'System.State', 'System.WorkItemType', 'System.AssignedTo', 'System.Tags', 'System.Description', 'System.ChangedDate', 'System.CreatedDate'];
 /** The states of Azure Boards' own processes (Agile, Scrum, Basic, CMMI) that are done with: left out unless `closed`. */
 export const CLOSED_STATES = ['Done', 'Closed', 'Removed', 'Completed', 'Cut'];
 
@@ -108,7 +108,11 @@ export function readerAs(): HostAs {
   return as;
 }
 
-/** The work items with these ids, in batches of BATCH, in the order asked (one that can't be read is left out). */
+/**
+ * The work items with these ids, in batches of BATCH, in the order asked (one that can't be read is
+ * left out). The ids are the organization's, so only the ones in `project` are kept: an id of
+ * another project's work item never comes back as this source's.
+ */
 export async function readWorkItems(io: Pick<IssueSourceIo, 'fetch'>, as: HostAs, org: string, project: string, ids: number[], sourceId?: string): Promise<NormalizedIssue[]> {
   const out: NormalizedIssue[] = [];
   for (let i = 0; i < ids.length; i += BATCH) {
@@ -116,7 +120,8 @@ export async function readWorkItems(io: Pick<IssueSourceIo, 'fetch'>, as: HostAs
     const url = `https://dev.azure.com/${enc(org)}/_apis/wit/workitems?ids=${batch.join(',')}&fields=${FIELDS.join(',')}&errorPolicy=omit&${API}`;
     const body = await hostCall(io.fetch, as, 'GET', url);
     for (const raw of body?.value ?? []) {
-      const item = raw ? azureWorkItem(raw, org, project, sourceId) : undefined;
+      const inProject = String(raw?.fields?.['System.TeamProject'] ?? '').toLowerCase() === project.toLowerCase();
+      const item = raw && inProject ? azureWorkItem(raw, org, project, sourceId) : undefined;
       if (item) out.push(item);
     }
   }

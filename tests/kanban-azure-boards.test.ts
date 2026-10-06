@@ -4,7 +4,7 @@ import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { openHosting } from '../src/server/hosting/index.js';
-import { azureBoardsSource, azureWorkItem, buildWiql, htmlToText, NO_AZURE_TOKEN, wiqlQuote } from '../src/server/kanban/integrations/issues/azure-boards.js';
+import { azureBoardsSource, azureWorkItem, buildWiql, htmlToText, NO_AZURE_TOKEN, readWorkItems, wiqlQuote } from '../src/server/kanban/integrations/issues/azure-boards.js';
 import { azureActAs, azureAssign, azureComment, azureComments, azureTransition, azureTransitions, textToHtml } from '../src/server/kanban/integrations/issues/azure-ops.js';
 import { route } from '../src/server/kanban/integrations/issues/actions.js';
 import type { IssueSourceIo } from '../src/server/kanban/integrations/issues/source.js';
@@ -117,7 +117,7 @@ test('the source asks WIQL for the ids, then reads the work items in batches of 
   const { fetch, calls } = fetchStub((c) => {
     if (c.url.includes('/_apis/wit/wiql')) return { body: { workItems: ids.map((id) => ({ id })) } };
     const asked = new URL(c.url).searchParams.get('ids')!.split(',').map(Number);
-    return { body: { value: asked.map((id) => ({ id, fields: { 'System.Title': `T${id}`, 'System.State': 'New', 'System.ChangedDate': '2026-10-01' } })) } };
+    return { body: { value: asked.map((id) => ({ id, fields: { 'System.TeamProject': 'My Project', 'System.Title': `T${id}`, 'System.State': 'New', 'System.ChangedDate': '2026-10-01' } })) } };
   });
   const got = await azureBoardsSource.list(config({ types: ['Bug'] }), io(fetch));
   assert.equal(calls[0].method, 'POST');
@@ -129,7 +129,7 @@ test('the source asks WIQL for the ids, then reads the work items in batches of 
     reads.map((c) => new URL(c.url).searchParams.get('ids')!.split(',').length),
     [200, 200, 50],
   );
-  assert.ok(reads.every((c) => c.method === 'GET' && c.url.startsWith('https://dev.azure.com/acme/_apis/wit/workitems?') && c.url.includes('fields=System.Id,System.Title,System.State')));
+  assert.ok(reads.every((c) => c.method === 'GET' && c.url.startsWith('https://dev.azure.com/acme/_apis/wit/workitems?') && c.url.includes('fields=System.Id,System.TeamProject,System.Title,System.State')));
   assert.equal(got.length, 450);
   assert.equal(got[0].key, 'ab:acme/My Project#1');
 });
@@ -247,4 +247,19 @@ test('sanitizeIssueSource keeps a good Azure Boards source and refuses a bad one
   assert.equal(sanitizeIssueSource({ kind: 'azure-boards', org: 'acme', project: 'a#b' }), undefined);
   assert.equal(sanitizeIssueSource({ kind: 'azure-boards', org: 'acme', project: 'P', filters: { wiql: "x = 'a'; y" } }), undefined);
   assert.equal(sanitizeIssueSource({ kind: 'azure-boards', org: 'acme', project: 'P', filters: { wiql: 'x'.repeat(2001) } }), undefined);
+});
+
+test("a work item read by its number is the source's only when it's in the source's project (the ids are the organization's)", async () => {
+  const asked: string[] = [];
+  const fetch = (async (url: string) => {
+    asked.push(url);
+    return new Response(JSON.stringify({ value: [
+      { id: 123, fields: { 'System.TeamProject': 'Secret Project', 'System.Title': 'Not yours' } },
+      { id: 124, fields: { 'System.TeamProject': 'my project', 'System.Title': 'Yours' } },
+      { id: 125, fields: { 'System.Title': 'No project said' } },
+    ] }));
+  }) as unknown as IssueSourceIo['fetch'];
+  const got = await readWorkItems({ fetch }, AS, 'acme', 'My Project', [123, 124, 125]);
+  assert.deepEqual(got.map((i) => [i.key, i.title]), [['ab:acme/My Project#124', 'Yours']]);
+  assert.match(asked[0], /fields=System\.Id,System\.TeamProject,/, 'the project is asked for');
 });
