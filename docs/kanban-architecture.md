@@ -320,7 +320,7 @@ allowed: `todo → in_progress` (= start), `waiting|review → done`, `done → 
   hired at a watch spot (`WorkerManager.spawn`); a start's `deskId` can't be one. Walling up the back
   office counts a reviewer behind one of its desks as someone there. The client builds the spot's view beside
   the watched seat's own, in its frame (`client/kanban/watch3d.ts`), so it stands where that seat is on every
-  map and still shows while the seat is hidden (a bean bag put away once its implementer went home).
+  map and still shows while the seat is hidden (a bean bag taken out of the floor in build mode).
 - A worker that exits (or can't start because its folder is gone) during a run interrupts it: task `waiting`
   (`interrupted`), with Retry offered.
 - **Departures** ([kanban-coupling.md](kanban-coupling.md)): every send-home path passes an intent
@@ -373,8 +373,8 @@ allowed: `todo → in_progress` (= start), `waiting|review → done`, `done → 
   office full as before; once the implementer has gone, a reviewer is held to the limit like any hire.
   The desks aren't exempt: a reviewer finding none is queued. Since a queued run keeps its slot, starts
   can't pile up behind it: at most `maxConcurrent` (≤ 20) started tasks of a floor have an implementer
-  seated while its reviewer waits, and a floor has at least 28 seats (16 desks, 12 bean bags), so the rest
-  are held by workers a person sends home (ordinary workers, tasks in Waiting or Review) or by reviewers
+  seated while its reviewer waits, and a floor has 16 desks (20 with its back office built out, plus any
+  bean bags it has put down in build mode), so with a limit under that the rest are held by workers a person sends home (ordinary workers, tasks in Waiting or Review) or by reviewers
   whose cycle ends. Work a person resumes (a comment, Retry or Continue on a task whose implementer is at
   its desk) doesn't take a slot; only when people set more such tasks going at once than the floor has
   seats can every seat be an implementer waiting on its own reviewer, and then a person frees a desk
@@ -448,7 +448,7 @@ answers `kanban.ok {rid, ...}` or `kanban.error {rid, message}`. Deltas are push
   - `task.create`: the project must exist; `repoIds` must be a subset of the project's repository ids.
     Defaults come from the settings (the default model only when the tool is the default tool). `start: true`
     then runs `engine.start` (at `deskId`, when given); its refusal comes back as `kanban.ok {taskId, startError}`.
-    `deskId` (on `task.create` and `task.start`) must be a desk or bean bag of the layout, not a kiosk or a meeting chair.
+    `deskId` (on `task.create` and `task.start`) must be a desk or bean bag of the layout (one the floor has put down), not a kiosk or a meeting chair.
   - `task.update`: `type, repoIds, usePlan, planApproval, useReview, goal, implementPermission` only while the
     task is in `todo`; `tool, model, effort, review` whenever no run is live (`isRunning` false): the next
     phase hires the new tool, whose fresh session gets the handoff. `repoIds` only before the first start. The

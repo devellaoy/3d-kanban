@@ -311,11 +311,12 @@ export function installWorkerViews(ctx: Ctx, core: CoreState, parts: WorkerViews
 
   /**
    * A seat or kiosk shows it's free (its '+', or the board agent waiting there) only while nobody's at
-   * it, and once every desk is taken, bean bags come out for the workers who don't fit.
+   * it, and on a map with overflow seats (not the office: its bean bags are put down in build mode), once
+   * every desk is taken, they come out for the workers who don't fit.
    */
   function arrangeSeats() {
     const world = ctx.world();
-    // Someone sent home still counts until they get up, so a bean bag stays out under them.
+    // Someone sent home still counts until they get up, so an overflow seat stays out under them.
     const free = vacantSeats(store.workers.values(), (id) => departures.seated(id) || sendoffs.seated(id), plan().removed);
     for (const [id, desk] of world.desks) desk.vacancy.visible = free.has(id) && seatBuilt(id);
     const appeared = world.setBeanbags(beanbagsOut((id) => !free.has(id), store.floorPlan.wing, plan().removed));

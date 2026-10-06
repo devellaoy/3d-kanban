@@ -115,8 +115,9 @@ export function builtDesks(level: number): DeskDef[] {
 }
 
 /**
- * Overflow seats: once every desk is taken, bean bags come out around the room, one at a time in
- * this order. Each faces a window or a wall, with open floor behind it to walk up to.
+ * Extra seats: a bean bag is only on a floor once somebody puts it down in build mode (see
+ * shared/arrange.ts, Movable.added), up to these twelve. Where each is listed is where build mode first
+ * offers it: facing a window or a wall, with open floor behind it to walk up to.
  */
 /** Between the meeting wing's rooms along the west wall (where the wall stays when they're built): the west bean bags stand there, clear of the doors. */
 const PIERS = wingRoomSpans(FLOOR).slice(1).map((s, i) => (wingRoomSpans(FLOOR)[i].z1 + s.z0) / 2);
@@ -210,16 +211,17 @@ export const DESK_BY_ID = new Map([...SEATS, ...STATIONS, ...MEETING_ROOMS.flatM
 /**
  * The seat a new worker takes when nobody picks one: the first free desk (in the back office too, as
  * far as the floor is built out: `wing` rows), else the first free bean bag. Not one the floor has
- * taken out (`removed`, see shared/arrange.ts).
+ * taken out or, for a bean bag, hasn't put down (`removed`, see shared/arrange.ts).
  */
 export function nextFreeSeat(taken: (id: string) => boolean, wing = 0, removed?: ReadonlySet<string>): DeskDef | undefined {
   return SEATS.find((d) => !taken(d.id) && deskBuilt(d, wing) && !removed?.has(d.id));
 }
 
 /**
- * The bean bags that are out: every one in use, and while every desk is taken (the back office's
- * too, built out `wing` rows), the next free one too, so there's always somewhere to hire the next worker.
- * (The desks and bean bags the floor has taken out, `removed`, aren't there to take.)
+ * The overflow seats that are out on a map other than the office (the office's bean bags are where a
+ * floor has put them): every one in use, and while every desk is taken (the back office's too, built
+ * out `wing` rows), the next free one too, so there's always somewhere to hire the next worker.
+ * (The seats taken out, `removed`, aren't there to take.)
  */
 export function beanbagsOut(taken: (id: string) => boolean, wing = 0, removed?: ReadonlySet<string>): Set<string> {
   const out = new Set(BEANBAGS.filter((b) => taken(b.id)).map((b) => b.id));
@@ -265,6 +267,8 @@ export const BOARDS = {
 
 /** The big TV on the east wall that shows whoever is screen sharing. */
 export const TV = { x: FLOOR.maxX - 0.1, y: 2.2, z: 0, width: 6.4, height: 3.6 } as const;
+/** The lounge's coffee table in front of the TV, as the office comes: its middle, and the side of its square top. */
+export const COFFEE_TABLE = { x: 13, z: 0, size: 1.6, top: 0.46 } as const;
 /**
  * The monitor on the west wall, between the first two windows from the north and facing
  * the desks: how busy the office's machine is, and how many workers it runs of the most it takes.

@@ -44,13 +44,12 @@ export function deskPoint(d: DeskDef, t: number, s: number): Pt {
 
 /**
  * What's in the way on the office floor that stays where it is, with `rooms` meeting rooms built out
- * (the loose furniture is shared/arrange.ts's). The lounge, kitchen and plants are where
+ * (the loose furniture, the couch and coffee table among it, is shared/arrange.ts's). The lounge, kitchen and plants are where
  * world/office/room.ts (and world/kitchen.ts) put them.
  */
 export function fixedObstacles(rooms: number): Obstacles {
   const rects: Rect[] = [];
   const circles: Circle[] = [];
-  rects.push([12.2, 13.8, -0.8, 0.8]); // coffee table
   rects.push([-17, -10.75, 11.7, 12.7]); // kitchen counter and fridge
   // The loft's posts, the stairs up to it, and the elevator shaft.
   for (const x of [LOFT.minX + 0.15, (LOFT.minX + LOFT.maxX) / 2]) circles.push([x, LOFT.minZ + 0.15, 0.14]);

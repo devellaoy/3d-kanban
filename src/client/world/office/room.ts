@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { ROOM_RUGS, worldRect } from '../../../shared/arrange';
-import { BOARDS, LOFT, MACHINE_MONITOR, SEATING_BY_ID, STAIRS, STREET_Y, TV, WALL_HEIGHT } from '../../../shared/layout';
+import { BOARDS, COFFEE_TABLE, LOFT, MACHINE_MONITOR, SEATING_BY_ID, STAIRS, STREET_Y, TV, WALL_HEIGHT } from '../../../shared/layout';
 import { wallFacing } from '../../../shared/decor';
 import type { NightParts } from '../outside';
 import { mesh, roundedBox, textPlane, toon, toonUnique } from '../toon';
@@ -155,9 +155,24 @@ export const lounge: Fixture = (site) => {
   });
 
   const table = coffeeTable();
-  table.position.set(13, 0, 0);
+  table.position.set(COFFEE_TABLE.x, 0, COFFEE_TABLE.z);
   site.group.add(table);
-  site.colliders.push({ minX: 12.2, maxX: 13.8, minZ: -0.8, maxZ: 0.8, top: 0.46 });
+  const half = COFFEE_TABLE.size / 2;
+  const tableBox: Collider = { minX: COFFEE_TABLE.x - half, maxX: COFFEE_TABLE.x + half, minZ: COFFEE_TABLE.z - half, maxZ: COFFEE_TABLE.z + half, top: COFFEE_TABLE.top };
+  site.colliders.push(tableBox);
+  // Build mode moves it, turns it, and takes it out (see shared/arrange.ts).
+  site.movables.set('coffee-table', {
+    group: table,
+    colliders: [tableBox],
+    place(pose, held = false) {
+      table.visible = !!pose;
+      standIn(site.colliders, [tableBox], !!pose && !held);
+      if (!pose) return;
+      table.position.set(pose.x, 0, pose.z);
+      table.rotation.y = pose.rotY;
+      fitTo(tableBox, worldRect(pose, [-half, half, -half, half]));
+    },
+  });
   const rug = new THREE.Group();
   rug.position.set(13.4, 0, 0);
   rug.add(mesh(roundedBox(7, 0.02, 7, 1.2), toon('#ffc6ff'), 0, 0.011, 0, false));

@@ -1,11 +1,11 @@
-// The office's loose furniture: the desks, the bean bags, the lounge's couch and poufs and the
-// whiteboard, which anyone on a floor can move, turn or take out in build mode (see FloorPlan.furniture).
+// The office's loose furniture: the desks, the bean bags, the lounge's couch, coffee table and poufs,
+// the whiteboard and the rugs, which anyone on a floor can move, turn or take out in build mode (see FloorPlan.furniture).
 // This is the pure part: what there is, where each stands as the office comes (its home), where it
 // stands on a floor that has rearranged it, what's in its way, and the seats that follow from that.
 // Whether a spot is allowed is arrange-check.ts. Everything here is the office's own map: another map
 // (the castle) has its own seats and never reads any of it.
 
-import { BEANBAGS, DESKS, DESK_SIZE, SEATING, TV, WHITEBOARD, watchSpots, type DeskDef, type SeatDef } from './layout.js';
+import { BEANBAGS, COFFEE_TABLE, DESKS, DESK_SIZE, SEATING, TV, WHITEBOARD, watchSpots, type DeskDef, type SeatDef } from './layout.js';
 import type { MapPlan } from './maps/types.js';
 import type { Circle, Rect } from './nav.js';
 
@@ -27,7 +27,7 @@ export interface Layout {
   furniture?: Furniture;
 }
 
-export type MovableKind = 'desk' | 'beanbag' | 'couch' | 'pouf' | 'whiteboard' | 'rug';
+export type MovableKind = 'desk' | 'beanbag' | 'couch' | 'table' | 'pouf' | 'whiteboard' | 'rug';
 
 export interface Movable {
   id: string;
@@ -39,6 +39,8 @@ export interface Movable {
   turns: boolean;
   /** A rug's size, in its own frame (u across, v along): it lies flat, so it's in nobody's way and anything may stand on it. */
   extent?: Local;
+  /** Not on a floor until somebody puts it there in build mode (a bean bag: one more seat for a worker); `home` is only where it's first offered. */
+  added?: true;
 }
 
 /** A piece of furniture standing somewhere: its middle and the way it faces (see DeskDef.rotY), `r` quarter turns from home. */
@@ -51,7 +53,7 @@ export interface Pose {
 
 const QUARTER = Math.PI / 2;
 /** What can be rearranged. */
-const MOVED_ID = /^(desk-\d+|beanbag-\d+|couch|lounge-beanbag-\d+|whiteboard|rug-[0-9]+|rug-lounge)$/;
+const MOVED_ID = /^(desk-\d+|beanbag-\d+|couch|coffee-table|lounge-beanbag-\d+|whiteboard|rug-[0-9]+|rug-lounge)$/;
 
 /** Where each rug of the main room lies as the office comes, and how big it is: x, z, width, depth. The pods', then the lounge's. */
 export const ROOM_RUGS: readonly (readonly [number, number, number, number])[] = [
@@ -67,8 +69,9 @@ const POUF_IDS = SEATING.filter((s) => /^lounge-beanbag-/.test(s.id)).map((s) =>
 
 export const MOVABLES: Movable[] = [
   ...DESKS.map((d): Movable => ({ id: d.id, kind: 'desk', label: d.label, home: { x: d.x, z: d.z, rotY: d.rotY }, turns: true })),
-  ...BEANBAGS.map((d): Movable => ({ id: d.id, kind: 'beanbag', label: d.label, home: { x: d.x, z: d.z, rotY: d.rotY }, turns: true })),
+  ...BEANBAGS.map((d): Movable => ({ id: d.id, kind: 'beanbag', label: d.label, home: { x: d.x, z: d.z, rotY: d.rotY }, turns: true, added: true })),
   { id: 'couch', kind: 'couch', label: 'Couch', home: { x: SEAT('couch').x, z: SEAT('couch').z, rotY: SEAT('couch').rotY }, turns: true },
+  { id: 'coffee-table', kind: 'table', label: 'Coffee table', home: { x: COFFEE_TABLE.x, z: COFFEE_TABLE.z, rotY: 0 }, turns: true },
   ...POUF_IDS.map((id, i): Movable => ({ id, kind: 'pouf', label: `Lounge pouf ${i + 1}`, home: { x: SEAT(id).x, z: SEAT(id).z, rotY: SEAT(id).rotY }, turns: false })),
   { id: 'whiteboard', kind: 'whiteboard', label: 'Whiteboard', home: { x: WHITEBOARD.x, z: WHITEBOARD.z, rotY: 0 }, turns: true },
   // The rugs under the four pods (see world/office/room.ts), and the lounge's under the couch.
@@ -89,10 +92,12 @@ interface Shape {
 }
 const hw = DESK_SIZE.width / 2;
 const hd = DESK_SIZE.depth / 2;
+const ht = COFFEE_TABLE.size / 2;
 const SHAPES: Record<MovableKind, Shape> = {
   desk: { body: { rects: [[-hw, hw, -hd, hd]], circles: [[0, 0.9, 0.35]] }, keep: [[-hw, hw, -hd, hd], [-0.35, 0.35, hd, 1.25]] },
   beanbag: { body: { rects: [[BEANBAG_BOX.minX, BEANBAG_BOX.maxX, BEANBAG_BOX.minZ, BEANBAG_BOX.maxZ]], circles: [] }, keep: [[BEANBAG_BOX.minX, BEANBAG_BOX.maxX, BEANBAG_BOX.minZ, BEANBAG_BOX.maxZ]] },
   couch: { body: { rects: [[-2.2, 2.2, -0.5, 0.5]], circles: [] }, keep: [[-2.2, 2.2, -0.5, 1]] },
+  table: { body: { rects: [[-ht, ht, -ht, ht]], circles: [] }, keep: [[-ht, ht, -ht, ht]] },
   pouf: { body: { rects: [], circles: [[0, 0, 0.5]] }, keep: [[-0.55, 0.55, -0.55, 0.55]] },
   rug: { body: { rects: [], circles: [] }, keep: [] },
   whiteboard: { body: { rects: [[-WHITEBOARD.width / 2 - 0.2, WHITEBOARD.width / 2 + 0.2, -0.48, 0.48]], circles: [] }, keep: [[-WHITEBOARD.width / 2 - 0.2, WHITEBOARD.width / 2 + 0.2, -0.48, 0.48]] },
@@ -122,10 +127,10 @@ export function worldRect(p: { x: number; z: number; rotY: number }, local: Loca
   return [Math.min(...xs), Math.max(...xs), Math.min(...zs), Math.max(...zs)];
 }
 
-/** Where a piece of furniture stands on a floor, or null when its floor has taken it out. */
+/** Where a piece of furniture stands on a floor, or null when its floor has taken it out (or never put it there: see Movable.added). */
 export function poseOf(m: Movable, furniture: Furniture | undefined): Pose | null {
   const f = furniture?.[m.id];
-  if (f && 'removed' in f) return null;
+  if ((f && 'removed' in f) || (!f && m.added)) return null;
   const x = f ? f.x : m.home.x;
   const z = f ? f.z : m.home.z;
   const r = f && m.turns ? f.r : 0;
@@ -171,8 +176,9 @@ export function movableObstacles(furniture: Furniture | undefined): { rects: Rec
 
 const round = (v: number) => Math.round(v * 100) / 100;
 
-/** Whether `p` is where `m` comes. */
+/** Whether `p` is where `m` comes: for a piece that's only there once it's put there, not being there at all. */
 export function atHome(m: Movable, p: Placement): boolean {
+  if (m.added) return 'removed' in p;
   return !('removed' in p) && Math.abs(p.x - m.home.x) < 0.005 && Math.abs(p.z - m.home.z) < 0.005 && (!m.turns || p.r === 0);
 }
 
@@ -214,15 +220,20 @@ export function furnitureKey(furniture: Furniture | undefined): string {
   return key;
 }
 
-/** The ids of the seats a floor has taken out (desks and bean bags), for the places that hire into seats. */
+/** The ids of the seats that aren't on a floor (the desks it has taken out, and the bean bags nobody has put there), for the places that hire into seats. */
 export function removedSeats(furniture: Furniture | undefined): Set<string> {
-  const out = new Set<string>();
+  const out = new Set<string>(BEANBAGS.filter((b) => !furniture?.[b.id]).map((b) => b.id));
   if (furniture) for (const [id, p] of Object.entries(furniture)) if ('removed' in p && /^(desk|beanbag)-/.test(id)) out.add(id);
   return out;
 }
 
 /** What nothing is taken out of. */
 export const NONE_REMOVED: ReadonlySet<string> = new Set();
+
+/** The next bean bag that isn't on a floor yet, for build mode to put down: undefined once they all are. */
+export function spareBeanbag(furniture: Furniture | undefined): string | undefined {
+  return MOVABLES.find((m) => m.added && !poseOf(m, furniture))?.id;
+}
 
 // ---- The seats, as arranged ---------------------------------------------------------------------------
 
@@ -301,9 +312,9 @@ export function removedPlaces(furniture: Furniture | undefined): string[] {
   return out;
 }
 
-/** What a piece is called in a sentence: its label ("Desk 3", "Bean bag 2", "Lounge pouf 1"), or "the couch" and "the whiteboard". */
+/** What a piece is called in a sentence: its label ("Desk 3", "Bean bag 2", "Lounge pouf 1"), or "the couch", "the coffee table" and "the whiteboard". */
 export function nameOf(m: Movable): string {
-  return m.kind === 'couch' || m.kind === 'whiteboard' ? `the ${m.label.toLowerCase()}` : m.label;
+  return m.kind === 'couch' || m.kind === 'table' || m.kind === 'whiteboard' ? `the ${m.label.toLowerCase()}` : m.label;
 }
 
 /** `text` with a capital to start a sentence. */

@@ -87,7 +87,7 @@ come before the office's own, so B, R, X, P, Q and so on mean what's listed here
 | On an office floor | U | Build mode on or off |
 | Build mode | B / R / Click | The catalogue / turn the piece / place it |
 | Build mode, aiming at a piece | E / X (Delete) | Pick it up to move it / remove it |
-| Build mode, aiming at the office's own furniture (a desk, bean bag, couch, pouf, the whiteboard) | E / X / H | Pick it up to move it (R turns it, click puts it down) / take it out / put it back where it comes: for everyone on the floor |
+| Build mode, aiming at the office's own furniture (a desk, bean bag, the couch, the coffee table, a pouf, the whiteboard) | E / X / H | Pick it up to move it (R turns it, click puts it down) / take it out / put it back where it comes: for everyone on the floor |
 | Build mode | Esc | Let go of the piece, then leave build mode |
 
 ## In the kanban view

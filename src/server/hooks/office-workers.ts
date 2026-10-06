@@ -107,7 +107,7 @@ export async function officeWorkers(ctx: Ctx, req: http.IncomingMessage, res: ht
   const ask = readHireRequest(body, floor.project.agentProviders);
   if (typeof ask === 'string') return send(res, 400, { error: ask });
   const desk = ask.desk ?? nextFreeSeat((id) => floor.workers.deskOccupied(id), floor.plan.wing, floor.plan.seatsOut())?.id;
-  if (!desk) return send(res, 409, { error: 'Every desk and bean bag is taken: send someone home first' });
+  if (!desk) return send(res, 409, { error: 'Every desk and bean bag is taken: send someone home first, or put a bean bag down in build mode' });
   // A model or effort is the office's default worker's unless it says whose.
   const provider = ask.provider ?? (ask.model || ask.effort ? floor.workers.officeDefault.provider : undefined);
   const worktree = ask.worktree ?? !!floor.project.branch;

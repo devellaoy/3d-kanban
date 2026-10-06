@@ -3,7 +3,7 @@ import { MOVABLE_BY_ID, furnitureKey, poseOf, type Furniture, type Pose } from '
 import type { Collider } from '../types';
 import type { Fixture, Site } from './fixture';
 
-// The loose furniture of the office floor (the desks, bean bags, couch, poufs and whiteboard, see
+// The loose furniture of the office floor (the desks, bean bags, couch, coffee table, poufs, whiteboard and rugs, see
 // shared/arrange.ts) put where a floor has arranged it. The fixtures that build each register it with
 // `site.movables`; this one, last on the plan, hands the office what moves them all: the floor's
 // arrangement as it comes from the server, and what build mode carries about.
@@ -30,8 +30,6 @@ export interface Arranger {
   settle(id: string, pose: Pose): void;
   /** The parts of piece `id` that aren't its own (a seated worker), which keep their looks while it's tinted. */
   untinted(id: string): THREE.Object3D[];
-  /** In build mode the bean bags that are put away until they're needed show too, so they can be moved. */
-  reveal(on: boolean): void;
   /** Every collider the furniture puts in the office, so a check of where something could go can leave them out. */
   colliders(): Set<Collider>;
 }
@@ -91,7 +89,6 @@ export const arrange: Fixture<'arrange'> = (site) => {
     release: (id) => place(id, poseOf(MOVABLE_BY_ID.get(id)!, current)),
     settle: (id, pose) => place(id, pose),
     untinted: (id) => site.movables.get(id)?.untinted ?? [],
-    reveal: (on) => site.movables.forEach((p) => p.reveal?.(on)),
     colliders: () => new Set([...site.movables.values()].flatMap((p) => p.colliders)),
   };
   return { handle: { arrange: arranger } };

@@ -71,7 +71,7 @@ export function installWorkerActions(ctx: Ctx, core: CoreState, parts: WorkerAct
   const openWorkerChanges = (id: string, repo?: string) => parts.waiting.openWorkerChanges(id, repo);
 
   function freeDesk(): string | null {
-    // Prefer the empty desk nearest to you; when they're all taken, the bean bag that's out.
+    // Prefer the empty desk nearest to you; when they're all taken, a free bean bag the floor has put down.
     let best: string | null = null;
     let bestD = Infinity;
     for (const d of plan().desks) {
@@ -535,7 +535,7 @@ export function installWorkerActions(ctx: Ctx, core: CoreState, parts: WorkerAct
     const desk = freeDesk();
     const awake = [...store.workers.values()].filter((w) => w.kind === 'agent' && !isAsleep(w.status) && promptKind(w) !== 'terminal'); // not a task's reviewer, which takes nothing but its terminal
     if (!desk && !awake.length) {
-      toast('Every desk and bean bag is taken — send a worker home first', 'warn');
+      toast('Every desk and bean bag is taken — send a worker home first, or put a bean bag down in build mode (U)', 'warn');
       return;
     }
     openAsk({

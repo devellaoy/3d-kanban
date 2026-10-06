@@ -70,7 +70,7 @@ export class WorkerManager extends KanbanWorkers {
   readonly drops: DropStore;
   private saveTimer: NodeJS.Timeout;
   wing: () => number = () => 0; // how many rows the floor's back office is built out: its desks past that aren't there to hire at (see WING)
-  removed: () => ReadonlySet<string> = () => new Set(); // the desks and bean bags the floor has taken out (see shared/arrange.ts)
+  removed: () => ReadonlySet<string> = () => new Set(); // the desks the floor has taken out and the bean bags it hasn't put down (see shared/arrange.ts)
 
   constructor(
     private dir: string,

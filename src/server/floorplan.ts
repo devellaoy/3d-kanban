@@ -1,6 +1,6 @@
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
-import { MOVABLE_BY_ID, NONE_REMOVED, nameOf, removedSeats, sentence, type Furniture, type Layout } from '../shared/arrange.js';
+import { MOVABLE_BY_ID, NONE_REMOVED, nameOf, poseOf, removedSeats, sentence, type Furniture, type Layout } from '../shared/arrange.js';
 import { checkPlace, whyNot, withSpot } from '../shared/arrange-check.js';
 import { canLabel, cleanLabel, cleanPlan, rowDesks, signColor, type DeskLabel, type FloorPlan } from '../shared/floorplan.js';
 import { DESKS, DESK_BY_ID, MEETING_ROOMS, ROOMS_WING, WING, WING_DESKS, deskBuilt, watchSpotOf } from '../shared/layout.js';
@@ -27,10 +27,18 @@ export class FloorPlanStore {
       this.plan.rooms = need;
       this.save();
     }
-    // A worker still at a desk or bean bag the floor had taken out (saved with it, or the plan edited by hand): the seat is back.
-    const back = seatsInUse(dataDir).filter((id) => this.plan.furniture[id] && 'removed' in this.plan.furniture[id]);
+    // A worker still at a desk the floor had taken out, or at a bean bag it never put down (saved from
+    // before bean bags were put down by hand, or the plan edited by hand): the seat is back, a bean bag where it's first offered.
+    const out = removedSeats(this.plan.furniture);
+    const back = seatsInUse(dataDir).filter((id) => out.has(id));
     if (back.length) {
-      this.plan.furniture = Object.fromEntries(Object.entries(this.plan.furniture).filter(([id]) => !back.includes(id)));
+      const next = { ...this.plan.furniture };
+      for (const id of back) {
+        const m = MOVABLE_BY_ID.get(id);
+        if (m?.added) next[id] = { x: m.home.x, z: m.home.z, r: 0 };
+        else delete next[id];
+      }
+      this.plan.furniture = next;
       this.save();
     }
   }
@@ -44,7 +52,7 @@ export class FloorPlanStore {
     return this.plan.furniture;
   }
 
-  /** The desks and bean bags the floor has taken out. */
+  /** The desks the floor has taken out, and the bean bags it hasn't put down. */
   get removed(): Set<string> {
     return removedSeats(this.plan.furniture);
   }
@@ -59,29 +67,31 @@ export class FloorPlanStore {
     return { wing: this.plan.wing, rooms: this.plan.rooms, furniture: this.officeMap() ? this.plan.furniture : undefined };
   }
 
-  /** Moves a piece of furniture, or puts one that was taken out back where it's asked: its name, or why not. `spot` is checked here (see shared/arrange-check.ts). */
-  arrange(id: unknown, spot: unknown): string | { id: string; label: string; back: boolean } {
+  /** Moves a piece of furniture, or puts one that isn't on the floor (taken out, or a bean bag) down where it's asked: its name, or why not. `spot` is checked here (see shared/arrange-check.ts). */
+  arrange(id: unknown, spot: unknown): string | { id: string; label: string; back: boolean; added: boolean } {
     const m = typeof id === 'string' ? MOVABLE_BY_ID.get(id) : undefined;
     if (!m) return 'There is nothing like that to move';
     const s = spot && typeof spot === 'object' ? (spot as Record<string, unknown>) : {};
     const to = { x: Number(s.x), z: Number(s.z), r: Number(s.r ?? 0) };
     const v = checkPlace(this.plan.furniture, m.id, to);
     if (!v.ok) return whyNot(v, nameOf(m));
-    const back = !!this.plan.furniture[m.id] && 'removed' in this.plan.furniture[m.id];
+    const back = !poseOf(m, this.plan.furniture);
     this.plan.furniture = withSpot(this.plan.furniture, m.id, { x: Math.round(to.x * 100) / 100, z: Math.round(to.z * 100) / 100, r: to.r });
     this.save();
-    return { id: m.id, label: nameOf(m), back };
+    return { id: m.id, label: nameOf(m), back, added: !!m.added };
   }
 
   /** Takes a piece of furniture out of the floor, unless somebody's at it (`taken`) or it's the last desk. Its name, or why not. */
   remove(id: unknown, taken: (deskId: string) => boolean): string | { id: string; label: string } {
     const m = typeof id === 'string' ? MOVABLE_BY_ID.get(id) : undefined;
     if (!m) return 'There is nothing like that to take out';
-    const f = this.plan.furniture[m.id];
-    if (f && 'removed' in f) return `${sentence(nameOf(m))} is already gone`;
+    if (!poseOf(m, this.plan.furniture)) return `${sentence(nameOf(m))} is already gone`;
     if ((m.kind === 'desk' || m.kind === 'beanbag') && (taken(m.id) || taken(watchSpotOf(m.id)))) return `Someone's at ${DESK_BY_ID.get(m.id)?.label ?? 'it'}: send them home first`;
     if (m.kind === 'desk' && !this.otherDesks(m.id)) return 'The floor needs at least one desk';
-    this.plan.furniture = { ...this.plan.furniture, [m.id]: { removed: true } };
+    const next: Furniture = { ...this.plan.furniture, [m.id]: { removed: true } };
+    // A bean bag taken out just isn't on the floor any more, as it comes.
+    if (m.added) delete next[m.id];
+    this.plan.furniture = next;
     this.save();
     return { id: m.id, label: nameOf(m) };
   }
@@ -91,16 +101,23 @@ export class FloorPlanStore {
     return [...DESKS, ...WING_DESKS].some((d) => d.id !== id && deskBuilt(d, wing) && !(this.plan.furniture[d.id] && 'removed' in this.plan.furniture[d.id]));
   }
 
-  /** Puts a piece of furniture back where it comes (as far as that's allowed, standing free), or all of it. The names of what was put back, or why not. */
-  reset(id?: unknown): string | { labels: string[] } {
+  /**
+   * Puts a piece of furniture back where it comes (as far as that's allowed, standing free), or all of
+   * it: the bean bags put down go again, but not one somebody's at (`taken`). The names of what was put back, or why not.
+   */
+  reset(id?: unknown, taken: (deskId: string) => boolean = () => false): string | { labels: string[] } {
     if (id === undefined) {
-      const labels = Object.keys(this.plan.furniture).map((k) => (MOVABLE_BY_ID.has(k) ? nameOf(MOVABLE_BY_ID.get(k)!) : k));
+      const keep = Object.keys(this.plan.furniture).filter((k) => MOVABLE_BY_ID.get(k)?.added && (taken(k) || taken(watchSpotOf(k))));
+      const labels = Object.keys(this.plan.furniture)
+        .filter((k) => !keep.includes(k))
+        .map((k) => (MOVABLE_BY_ID.has(k) ? nameOf(MOVABLE_BY_ID.get(k)!) : k));
       if (!labels.length) return 'The furniture is all where it comes already';
-      this.plan.furniture = {};
+      this.plan.furniture = Object.fromEntries(keep.map((k) => [k, this.plan.furniture[k]]));
       this.save();
       return { labels };
     }
     const m = typeof id === 'string' ? MOVABLE_BY_ID.get(id) : undefined;
+    if (m?.added) return `${sentence(nameOf(m))} has nowhere it comes: X takes it out`;
     if (!m || !this.plan.furniture[m.id]) return 'That is where it comes already';
     const rest = { ...this.plan.furniture };
     delete rest[m.id];

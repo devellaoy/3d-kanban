@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import { MOVABLES, arrangedPlan, cleanFurniture, furnitureKey, movableObstacles, removedPlaces, removedSeats } from '../src/shared/arrange.js';
+import { MOVABLES, arrangedPlan, cleanFurniture, furnitureKey, movableObstacles, removedPlaces, removedSeats, spareBeanbag } from '../src/shared/arrange.js';
 import { boxedIn, checkPlace } from '../src/shared/arrange-check.js';
 import { cleanPlan } from '../src/shared/floorplan.js';
 import { BEANBAGS, DESKS, SEATING, beanbagsOut, nextFreeSeat, vacantSeats } from '../src/shared/layout.js';
@@ -25,8 +25,8 @@ const why = (v: unknown) => (v as { why: string }).why;
 test('every piece of furniture, where the office comes, is allowed to be there, and nothing is walled in', () => {
   for (const m of MOVABLES) assert.deepEqual(checkPlace({}, m.id, { x: m.home.x, z: m.home.z, r: 0 }, { walking: false }), { ok: true }, m.id);
   assert.deepEqual(boxedIn({}), []);
-  // Every desk, bean bag, the couch, the two poufs, the whiteboard and the five rugs.
-  assert.equal(MOVABLES.length, DESKS.length + BEANBAGS.length + 4 + 5);
+  // Every desk, bean bag, the couch, the coffee table, the two poufs, the whiteboard and the five rugs.
+  assert.equal(MOVABLES.length, DESKS.length + BEANBAGS.length + 5 + 5);
 });
 
 test('a floor with nothing moved has the office plan itself, and the castle never has any', () => {
@@ -38,7 +38,7 @@ test('a floor with nothing moved has the office plan itself, and the castle neve
 });
 
 test('the arranged plan has moved desks and their watch spots, the couch and poufs, and no removed seats', () => {
-  const f = cleanFurniture({ 'desk-1': { x: -11.6, z: 0.2, r: 1 }, couch: { x: 10.5, z: 0, r: 2 }, 'lounge-beanbag-1': { removed: true }, 'beanbag-2': { removed: true } });
+  const f = cleanFurniture({ 'desk-1': { x: -11.6, z: 0.2, r: 1 }, couch: { x: 10.5, z: 0, r: 2 }, 'lounge-beanbag-1': { removed: true }, 'beanbag-2': { x: BEANBAGS[1].x, z: BEANBAGS[1].z, r: 0 } });
   const plan = arrangedPlan(OFFICE_PLAN, f);
   assert.notEqual(plan, OFFICE_PLAN);
   assert.equal(arrangedPlan(OFFICE_PLAN, f), plan);
@@ -52,7 +52,8 @@ test('the arranged plan has moved desks and their watch spots, the couch and pou
   // Turned the other way round it no longer faces the TV, so sitting on it doesn't share the screen.
   assert.equal(plan.seatingById.get('couch')!.tv, false);
   assert.equal(OFFICE_PLAN.seatingById.get('couch')!.tv, true);
-  assert.deepEqual([...plan.removed!], ['beanbag-2']);
+  // Every bean bag but the one put down is no seat.
+  assert.deepEqual([...plan.removed!].sort(), BEANBAGS.filter((b) => b.id !== 'beanbag-2').map((b) => b.id).sort());
   // The original plan is untouched.
   assert.equal(OFFICE_PLAN.byId.get('desk-1')!.x, DESKS[0].x);
 });
@@ -120,7 +121,8 @@ test('removed desks and bean bags are not seats to hire at', () => {
   const vacant = vacantSeats([], undefined, gone);
   assert.equal(vacant.has('desk-1') || vacant.has('watch-desk-1') || vacant.has('beanbag-1'), false);
   assert.equal(vacant.has('desk-3'), true);
-  assert.deepEqual([...removedSeats({ 'desk-1': { removed: true }, couch: { removed: true }, 'desk-2': { x: 1, z: 1, r: 0 } })], ['desk-1']);
+  const notBags = (s: Set<string>) => [...s].filter((id) => !id.startsWith('beanbag-'));
+  assert.deepEqual(notBags(removedSeats({ 'desk-1': { removed: true }, couch: { removed: true }, 'desk-2': { x: 1, z: 1, r: 0 } })), ['desk-1']);
 });
 
 test('the furniture is kept with the floor plan, and what a move asks is checked on the server', () => {
@@ -129,17 +131,17 @@ test('the furniture is kept with the floor plan, and what a move asks is checked
     assert.equal(typeof plan.arrange('desk-1', { x: DESKS[1].x, z: DESKS[1].z, r: 0 }), 'string');
     assert.equal(typeof plan.arrange('nope', { x: 0, z: 0 }), 'string');
     const moved = plan.arrange('desk-1', { x: -11.6, z: 0.51234, r: 0 });
-    assert.deepEqual(moved, { id: 'desk-1', label: 'Desk 1', back: false });
+    assert.deepEqual(moved, { id: 'desk-1', label: 'Desk 1', back: false, added: false });
     assert.deepEqual(plan.state().furniture, { 'desk-1': { x: -11.6, z: 0.51, r: 0 } });
     assert.deepEqual(new FloorPlanStore(dir).state().furniture, plan.state().furniture);
     // The state it gave out isn't changed by what comes after.
     const before = plan.state().furniture;
     assert.deepEqual(plan.remove('desk-1', () => false), { id: 'desk-1', label: 'Desk 1' });
     assert.deepEqual(before, { 'desk-1': { x: -11.6, z: 0.51, r: 0 } });
-    assert.deepEqual([...plan.removed], ['desk-1']);
+    assert.deepEqual([...plan.removed].filter((id) => !id.startsWith('beanbag-')), ['desk-1']);
     assert.equal(typeof plan.remove('desk-1', () => false), 'string');
     // Putting it back is a move.
-    assert.deepEqual(plan.arrange('desk-1', { x: DESKS[0].x, z: DESKS[0].z, r: 0 }), { id: 'desk-1', label: 'Desk 1', back: true });
+    assert.deepEqual(plan.arrange('desk-1', { x: DESKS[0].x, z: DESKS[0].z, r: 0 }), { id: 'desk-1', label: 'Desk 1', back: true, added: false });
     assert.deepEqual(plan.state().furniture, {});
   });
 });
@@ -213,7 +215,41 @@ test('a rug lies flat: it may be under a desk and on other rugs, but keeps the d
   withDir((dir) => {
     const plan = new FloorPlanStore(dir);
     assert.deepEqual(plan.remove('rug-lounge', () => false), { id: 'rug-lounge', label: 'Lounge rug' });
-    assert.deepEqual([...plan.removed], []);
+    assert.deepEqual([...plan.removed].filter((id) => !id.startsWith('beanbag-')), []);
     assert.deepEqual(plan.reset(), { labels: ['Lounge rug'] });
+  });
+});
+
+test('a bean bag is only a seat once a floor puts it down: X takes it away again, and a reset leaves only the ones in use', () => {
+  // None comes with the office: not a seat, not in the way, not to hire at.
+  assert.deepEqual([...removedSeats({})].sort(), BEANBAGS.map((b) => b.id).sort());
+  assert.deepEqual([...(OFFICE_PLAN.removed ?? [])].sort(), BEANBAGS.map((b) => b.id).sort());
+  const taken = (id: string) => DESKS.some((d) => d.id === id);
+  assert.equal(nextFreeSeat(taken, 0, removedSeats({})), undefined);
+  assert.equal(movableObstacles({}).rects.length, movableObstacles({ 'beanbag-1': { removed: true } }).rects.length);
+  assert.equal(spareBeanbag({}), 'beanbag-1');
+  // One put down where it's first offered is kept (that's not where it "comes"), and taking it out keeps nothing.
+  const at = { x: BEANBAGS[0].x, z: BEANBAGS[0].z, r: 0 };
+  assert.deepEqual(cleanFurniture({ 'beanbag-1': at, 'beanbag-2': { removed: true } }), { 'beanbag-1': at });
+  assert.equal(spareBeanbag({ 'beanbag-1': at }), 'beanbag-2');
+  assert.equal(nextFreeSeat(taken, 0, removedSeats({ 'beanbag-1': at }))!.id, 'beanbag-1');
+  withDir((dir) => {
+    const plan = new FloorPlanStore(dir);
+    assert.deepEqual(plan.arrange('beanbag-1', at), { id: 'beanbag-1', label: 'Bean bag 1', back: true, added: true });
+    assert.equal(plan.removed.has('beanbag-1'), false);
+    assert.match(plan.reset('beanbag-1') as string, /X takes it out/);
+    assert.deepEqual(plan.remove('beanbag-1', () => false), { id: 'beanbag-1', label: 'Bean bag 1' });
+    assert.deepEqual(plan.state().furniture, {});
+    assert.match(plan.remove('beanbag-1', () => false) as string, /already gone/);
+    // A reset takes the bean bags away, but not one a worker sits at.
+    plan.arrange('beanbag-1', at);
+    plan.arrange('beanbag-2', { x: BEANBAGS[1].x, z: BEANBAGS[1].z, r: 0 });
+    assert.deepEqual(plan.reset(undefined, (id) => id === 'beanbag-2'), { labels: ['Bean bag 1'] });
+    assert.deepEqual(Object.keys(plan.state().furniture), ['beanbag-2']);
+    // A worker saved at a bean bag the floor never put down (from before they were put down by hand) brings it out.
+    writeFileSync(path.join(dir, 'workers.json'), JSON.stringify([{ id: 'w1', deskId: 'beanbag-5' }]));
+    const again = new FloorPlanStore(dir);
+    assert.equal(again.removed.has('beanbag-5'), false);
+    assert.deepEqual(again.state().furniture['beanbag-5'], { x: BEANBAGS[4].x, z: BEANBAGS[4].z, r: 0 });
   });
 });

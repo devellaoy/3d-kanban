@@ -60,6 +60,8 @@ function officePlan(): MapPlan {
     spawn: { x: ELEVATOR.x, y: 0, z: (ELEVATOR_CAR.minZ + ELEVATOR_CAR.maxZ) / 2, rotY: 0 },
     desks: MAP_DESKS,
     overflow: BEANBAGS,
+    // A bean bag is only a seat once a floor puts it down in build mode (see shared/arrange.ts).
+    removed: new Set(BEANBAGS.map((b) => b.id)),
     stations: STATIONS,
     meetingRooms: MEETING_ROOMS,
     byId,
