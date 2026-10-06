@@ -339,7 +339,7 @@ export function createIssues(ctx: KanbanContext, opts: IssuesOptions = {}) {
     hook: { '/office/tasks/create': agentCreateHook(ctx, createFromIssue) },
     ws: {
       ...browsing.ws,
-      ...jiraConnectionHandlers(ctx, doFetch),
+      ...jiraConnectionHandlers(ctx, doFetch, browsing.connectionsChanged),
       ...issueActionHandlers(ctx, {
         find,
         load: async (project, key) => {

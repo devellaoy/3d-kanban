@@ -226,5 +226,13 @@ export function createBrowse(ctx: KanbanContext, deps: BrowseDeps) {
     }
   };
 
-  return { ws, load };
+  /** Jira connections changed: what was read with the old logins (counts, versions, parents) is asked again; the Sprint field per site may stay. */
+  const connectionsChanged = () => {
+    caches.counts.clear();
+    caches.versions.clear();
+    caches.parents.clear();
+    missed.clear();
+  };
+
+  return { ws, load, connectionsChanged };
 }

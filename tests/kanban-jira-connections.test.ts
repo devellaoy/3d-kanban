@@ -55,6 +55,7 @@ function jiras() {
     const json = (body: unknown, status = 200) => new Response(status === 204 ? null : JSON.stringify(body), { status });
     if (u.pathname === '/rest/api/3/search/jql') return json({ issues: [{ key: `${key}-1`, fields: { summary: `On ${u.host}`, status: { name: 'To Do' }, project: { key }, updated: '2026-09-01' } }], isLast: true });
     if (u.pathname === '/rest/api/3/field') return json([]);
+    if (u.pathname.endsWith('/approximate-count')) return json({ count: 3 });
     if (u.pathname === '/rest/api/3/myself') return json({ displayName: `Ada on ${u.host}`, accountId: `acc-${key}` });
     if (u.pathname.endsWith('/transitions') && call.method === 'GET') return json({ transitions: [{ id: '21', name: 'Go', to: { name: 'Doing' } }] });
     if (u.pathname.endsWith('/assignable/search')) return json([{ accountId: 'u1', displayName: 'Maija' }]);
@@ -165,6 +166,14 @@ test('routing an issue: its own source, else the source whose projects hold its 
   assert.deepEqual(route(sources, issue('ZZZ-1')), { kind: 'jira', site: 'a.atlassian.net', connection: 'ca' }, 'the first');
   assert.deepEqual(route([src('s', 'c.atlassian.net', [])], issue('ZZZ-1')), { kind: 'jira', site: 'c.atlassian.net' });
   assert.equal(route([], issue('ZZZ-1')), 'The project has no Jira source');
+
+  // The issue's own site decides: a source on another site is never a fallback.
+  const at = (key: string, host: string, sourceId?: string) => ({ ...issue(key, sourceId), url: `https://${host}/browse/${key}` });
+  assert.deepEqual(route(sources, at('AAA-12', 'a.atlassian.net', 'sa')), { kind: 'jira', site: 'a.atlassian.net', connection: 'ca' }, 'happy path');
+  assert.deepEqual(route(sources, at('AAA-12', 'A.atlassian.net', 'sb')), { kind: 'jira', site: 'a.atlassian.net', connection: 'ca' }, 'a source id of another site is not taken');
+  const noA = "AAA-12's Jira source (on a.atlassian.net) is no longer one of the project's: re-add it to act on the issue";
+  assert.equal(route([sources[1]], at('AAA-12', 'a.atlassian.net', 'sa')), noA, 'its source was removed');
+  assert.equal(route([src('sa', 'b.atlassian.net', ['AAA'], 'cb'), sources[1]], at('AAA-12', 'a.atlassian.net', 'sa')), noA, 'its source id now names another site');
 });
 
 // --- The WS handlers ----------------------------------------------------------------------------------
@@ -241,4 +250,20 @@ test('saving a connection makes the projects with a Jira source fetch their issu
     issues.plugin.stop?.();
     setWallProvider(undefined);
   }
+});
+
+test('saving a connection clears what Browse cached, so the next count is asked again', async () => {
+  const { ctx, http, ask, issues } = setup((i) => [{ id: 'sa', kind: 'jira', site: 'a.atlassian.net', connection: i.ca, projectKeys: ['AAA'], filters: {} }]);
+  const counts = () => http.calls.filter((c) => c.path.endsWith('/approximate-count')).length;
+  const count = () => ask('kanban.browse.count', { scope: 'sa', filters: { statusCategory: 'all' }, group: 'none' });
+  assert.equal((await count()).count, 3);
+  await count();
+  assert.equal(counts(), 1, 'the second came from the cache');
+  const id = ctx.secrets.jiraConnections()[0].id;
+  await (issues.plugin.ws as any)['kanban.secrets.jira.set'](client(true), { t: 'kanban.secrets.jira.set', id, name: 'A', site: 'a.atlassian.net', token: 'new-token', rid: 'r' });
+  await count();
+  assert.equal(counts(), 2, 'asked again with the new token');
+  assert.equal(http.calls.at(-1)!.auth, basic(ctx.secrets.jiraConnections()[0]));
+  await (issues.plugin.ws as any)['kanban.secrets.jira.remove'](client(true), { t: 'kanban.secrets.jira.remove', id, rid: 'r' });
+  assert.match((await count()).message, /was removed/);
 });

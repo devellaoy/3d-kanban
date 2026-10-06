@@ -9,7 +9,7 @@ import { wallSourcesChanged } from './wall.js';
 
 type Handlers = NonNullable<KanbanPlugin['ws']>;
 
-export function jiraConnectionHandlers(ctx: KanbanContext, doFetch: typeof fetch): Handlers {
+export function jiraConnectionHandlers(ctx: KanbanContext, doFetch: typeof fetch, onChange: () => void): Handlers {
   const adminOnly = (c: KanbanClient, rid: string | undefined): boolean => {
     if (c.admin) return true;
     fail(c, rid, 'Only an admin can change that');
@@ -21,6 +21,7 @@ export function jiraConnectionHandlers(ctx: KanbanContext, doFetch: typeof fetch
     const settings = ctx.settings.get();
     c.send({ t: 'kanban.settings', ...(rid ? { rid } : {}), settings, secrets });
     ctx.broadcast({ t: 'kanban.settings', settings, secrets }, null);
+    onChange();
     for (const def of ctx.projects()) if (ctx.settings.project(def.id).issueSources.some((s) => s.kind === 'jira')) wallSourcesChanged(def.id);
   };
 

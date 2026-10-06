@@ -12,7 +12,7 @@
 import type { KanbanClientMsg, KanbanClientType } from '../../../../shared/kanban/protocol.js';
 import type { IssueAssignTo, IssueTransition } from '../../../../shared/kanban/issueops.js';
 import type { IssueSourceConfig, NormalizedIssue } from '../../../../shared/kanban/types.js';
-import type { JiraAt } from '../../../../shared/kanban/jira-connections.js';
+import { cleanJiraSite, sameJiraSite, type JiraAt } from '../../../../shared/kanban/jira-connections.js';
 import { parseGhKey } from '../../../../shared/kanban/issuecard.js';
 import { parseAbKey, type WorkItemRef } from '../../../../shared/hosting/workitems.js';
 import type { KanbanCaller, KanbanClient, KanbanContext, KanbanPlugin } from '../../registry.js';
@@ -51,9 +51,24 @@ type Target = ({ kind: 'jira' } & JiraAt) | ({ kind: 'azure' } & WorkItemRef) | 
 export const DRAFT_NO_COMMENTS = 'Draft issues have no comments';
 export const DRAFT_NO_ASSIGNEE = 'Convert the draft to an issue on GitHub to assign it';
 
+/** The Jira site an issue's URL (https://<site>/browse/KEY) is on, if it has one. */
+const issueSite = (url: string): string | undefined => {
+  try {
+    return cleanJiraSite(new URL(url).host);
+  } catch {
+    return undefined;
+  }
+};
+
 export function route(sources: IssueSourceConfig[], issue: NormalizedIssue): Target | string {
   if (issue.source === 'jira') {
-    const jiras = sources.filter((s): s is Extract<IssueSourceConfig, { kind: 'jira' }> => s.kind === 'jira');
+    let jiras = sources.filter((s): s is Extract<IssueSourceConfig, { kind: 'jira' }> => s.kind === 'jira');
+    // An issue is acted on at the site it came from: never through a source on another one.
+    const site = issueSite(issue.url);
+    if (site) {
+      jiras = jiras.filter((s) => sameJiraSite(s.site, site));
+      if (!jiras.length) return `${issue.key}'s Jira source (on ${site}) is no longer one of the project's: re-add it to act on the issue`;
+    }
     // The source that listed it, else the one whose projects hold the key, else the first.
     const project = keyProject(issue.key);
     const jira = jiras.find((s) => s.id === issue.sourceId) ?? jiras.find((s) => s.projectKeys.some((k) => k.toUpperCase() === project)) ?? jiras[0];
