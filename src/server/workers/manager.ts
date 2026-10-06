@@ -70,7 +70,7 @@ export class WorkerManager extends KanbanWorkers {
   private saveTimer: NodeJS.Timeout;
   private carry = new CarryOn({ workers: this.workers, resume: (id) => this.resume(id), enabled: () => this.carryOn(), hiringPaused: () => this.ledger.hiringPaused, closing: () => this.closing, staggerMs: () => this.carryOnStaggerMs });
   wing: () => number = () => 0; // how many rows the floor's back office is built out: its desks past that aren't there to hire at (see WING)
-  removed: () => ReadonlySet<string> = () => new Set(); // the desks and bean bags the floor has taken out (see shared/arrange.ts)
+  removed: () => ReadonlySet<string> = () => new Set(); // the desks the floor has taken out and the bean bags it hasn't put down (see shared/arrange.ts)
 
   constructor(
     private dir: string,
@@ -230,7 +230,7 @@ export class WorkerManager extends KanbanWorkers {
     if (effortError) return effortError;
     const seat = DESK_BY_ID.get(deskId);
     if (!seat || (seat.watch && extra?.kanban?.role !== 'reviewer')) return seat ? "Only a kanban task's reviewer stands behind a desk" : 'Unknown desk'; // a task's reviewer watches its implementer from behind a seat (see WATCH_SPOTS)
-    if (!deskBuilt(seat, this.wing()) || this.removed().has(seat.watch ?? seat.id)) return this.removed().has(seat.watch ?? seat.id) ? `${seat.label} was taken out of the floor: put it back in build mode (U) first` : `${seat.label} isn't built yet: expand the back office first`;
+    if (!deskBuilt(seat, this.wing()) || this.removed().has(seat.watch ?? seat.id)) return this.removed().has(seat.watch ?? seat.id) ? (seat.beanbag ? `${seat.label} isn't on the floor: put a bean bag down in build mode (U) first` : `${seat.label} was taken out of the floor: put it back in build mode (U) first`) : `${seat.label} isn't built yet: expand the back office first`;
     if (this.deskOccupied(deskId)) return seat.station ? `The ${STATION_AGENT[seat.station].name} is already there` : `That ${seat.beanbag ? 'bean bag' : 'desk'} is taken`;
     if (kind === 'shell' && seat.station) return 'A board agent is always an agent, not a shell';
     if (seat.station && !prompt?.trim()) return 'Tell the board agent what to do';

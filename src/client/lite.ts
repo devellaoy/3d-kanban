@@ -241,7 +241,7 @@ function sendToWorker(title: string, text: { context?: string; initial?: string 
   const desk = freeSeat();
   // Not a task's reviewer, which takes nothing but its terminal.
   const awake = [...store.workers.values()].filter((w) => w.kind === 'agent' && !isAsleep(w.status) && promptKind(w) !== 'terminal');
-  if (!desk && !awake.length) return toast('Every desk and bean bag is taken — send a worker home first', 'warn');
+  if (!desk && !awake.length) return toast('Every desk and bean bag is taken — send a worker home first, or put a bean bag down in build mode (U)', 'warn');
   openAsk({
     title,
     ...text,

@@ -1,5 +1,5 @@
-// Moving the floor's loose furniture about, in build mode: the desks, the bean bags, the couch and
-// poufs and the whiteboard (see shared/arrange.ts). Everyone on the floor sees it, and it's kept with
+// Moving the floor's loose furniture about, in build mode: the desks, the bean bags (put down there),
+// the couch, coffee table and poufs, the whiteboard and the rugs (see shared/arrange.ts). Everyone on the floor sees it, and it's kept with
 // the floor's plan. Only the office's own map has any of it.
 import { MOVABLE_BY_ID } from '../../../shared/arrange.js';
 import { OFFICE_MAP } from '../../../shared/maps/index.js';
@@ -46,10 +46,10 @@ export const furnitureHandlers = {
   'furniture.move'(ctx, c, msg) {
     const floor = movable(ctx, c);
     if (!floor) return;
-    const r = floor.plan.arrange(str(msg.id, 40), { x: num(msg.x), z: num(msg.z), r: num(msg.r) });
+    const r = floor.plan.arrange(str(msg.id, 40), { x: num(msg.x), z: num(msg.z), r: num(msg.r) }, msg.fresh === true);
     if (typeof r === 'string') return refused(ctx, c, floor, r);
     planChanged(ctx, floor);
-    ctx.toastFloor(floor, r.back ? `🪑 ${c.peer.name} put ${r.label} back in` : `🪑 ${c.peer.name} moved ${r.label}`);
+    ctx.toastFloor(floor, r.back ? (r.added ? `🫘 ${c.peer.name} put down ${r.label}` : `🪑 ${c.peer.name} put ${r.label} back in`) : `🪑 ${c.peer.name} moved ${r.label}`);
   },
   'furniture.remove'(ctx, c, msg) {
     const floor = movable(ctx, c);
@@ -65,7 +65,7 @@ export const furnitureHandlers = {
     if (!floor) return;
     const id = msg.id === undefined ? undefined : str(msg.id, 40);
     if (id !== undefined && !MOVABLE_BY_ID.has(id)) return refused(ctx, c, floor, 'There is nothing like that to put back');
-    const r = floor.plan.reset(id);
+    const r = floor.plan.reset(id, (deskId) => floor.workers.deskOccupied(deskId));
     if (typeof r === 'string') return refused(ctx, c, floor, r);
     planChanged(ctx, floor);
     ctx.toastFloor(floor, id === undefined ? `↺ ${c.peer.name} put all the furniture back where it comes` : `↺ ${c.peer.name} put ${r.labels[0]} back where it comes`);

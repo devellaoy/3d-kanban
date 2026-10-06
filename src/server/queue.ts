@@ -26,7 +26,7 @@ export interface QueueWorkers {
   deskOccupied(deskId: string): boolean;
   /** How many rows the floor's back office is built out, for its desks (see WING). */
   wing?(): number;
-  /** The desks and bean bags the floor has taken out (see shared/arrange.ts). */
+  /** The desks the floor has taken out and the bean bags it hasn't put down (see shared/arrange.ts). */
   removed?(): ReadonlySet<string>;
   spawn(deskId: string, by: string, prompt: string, worktree: boolean, kind: 'agent', provider: AgentProvider, model?: string, effort?: AgentEffort, meeting?: undefined, owner?: string): WorkerInfo | string;
   /** Resolves with a line about what became of the worker's worktree. `intent`: why it goes (see WorkerManager.kill). */

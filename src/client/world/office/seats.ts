@@ -212,16 +212,6 @@ export function buildKiosk(def: DeskDef): DeskView {
   return { def, group, laptopAnchor, seatAnchor, stage, chair: new THREE.Group(), vacancy, vacancyY: 0 };
 }
 
-declare module '../types' {
-  interface OfficeHandles {
-    /**
-     * Brings out the bean bags in `out` and puts the rest away. Returns the colliders of the ones that
-     * just came out, in case someone is standing there.
-     */
-    setBeanbags(out: Set<string>): Collider[];
-  }
-}
-
 /** The desks, each with its chair, and what's on it. */
 export const desks: Fixture = (site) => {
   DESKS.forEach((def, i) => {
@@ -263,26 +253,8 @@ export const desks: Fixture = (site) => {
   return {};
 };
 
-/** Bean bags, put away until every desk is taken (or while build mode is showing them all, to move). */
-export const beanbags: Fixture<'setBeanbags'> = (site) => {
-  interface Bag {
-    view: DeskView;
-    it: Interactable;
-    collider: Collider;
-    /** Out for a worker who needs it (see setBeanbags), and taken out of the floor altogether. */
-    out: boolean;
-    gone: boolean;
-    held: boolean;
-  }
-  const bags = new Map<string, Bag>();
-  let revealed = false;
-  /** Shows the bag as it should be now, and puts its collider where it is: only an out one, not one being carried, is in the way. */
-  const refresh = (b: Bag) => {
-    const visible = !b.gone && (b.out || revealed || b.held);
-    b.view.group.visible = visible;
-    b.it.off = !b.out || b.gone || b.held;
-    standIn(site.colliders, [b.collider], visible && b.out && !b.held);
-  };
+/** Bean bags: on the floor only where somebody has put one down in build mode (see shared/arrange.ts). */
+export const beanbags: Fixture = (site) => {
   BEANBAGS.forEach((def, i) => {
     const view = buildBeanbag(def, i);
     view.group.visible = false;
@@ -294,43 +266,26 @@ export const beanbags: Fixture<'setBeanbags'> = (site) => {
     // Its footprint turned the way it faces (a quarter turn at a time).
     const box = (x: number, z: number, rotY: number) => worldRect({ x, z, rotY }, [BEANBAG_BOX.minX, BEANBAG_BOX.maxX, BEANBAG_BOX.minZ, BEANBAG_BOX.maxZ]);
     const [minX, maxX, minZ, maxZ] = box(def.x, def.z, def.rotY);
-    const bag: Bag = { view, it, collider: { minX, maxX, minZ, maxZ, top: BEANBAG_BOX.top }, out: false, gone: false, held: false };
-    bags.set(def.id, bag);
-    // Build mode moves it (see shared/arrange.ts).
+    const collider: Collider = { minX, maxX, minZ, maxZ, top: BEANBAG_BOX.top };
+    // Build mode puts it down, moves it and takes it out.
     site.movables.set(def.id, {
       group: view.group,
-      colliders: [bag.collider],
+      colliders: [collider],
       untinted: [view.seatAnchor, view.laptopAnchor],
-      reveal(on) {
-        revealed = on;
-        refresh(bag);
-      },
       place(pose, held = false) {
-        bag.gone = !pose;
-        bag.held = held;
-        if (pose) {
-          view.group.position.set(pose.x, 0, pose.z);
-          view.group.rotation.y = pose.rotY;
-          view.def = { ...def, x: pose.x, z: pose.z, rotY: pose.rotY };
-          [it.x, it.z] = [pose.x, pose.z];
-          fitTo(bag.collider, box(pose.x, pose.z, pose.rotY));
-        }
-        refresh(bag);
+        view.group.visible = !!pose;
+        it.off = !pose || held;
+        standIn(site.colliders, [collider], !!pose && !held);
+        if (!pose) return;
+        view.group.position.set(pose.x, 0, pose.z);
+        view.group.rotation.y = pose.rotY;
+        view.def = { ...def, x: pose.x, z: pose.z, rotY: pose.rotY };
+        [it.x, it.z] = [pose.x, pose.z];
+        fitTo(collider, box(pose.x, pose.z, pose.rotY));
       },
     });
   });
-  const setBeanbags = (out: Set<string>) => {
-    const appeared: Collider[] = [];
-    for (const [id, b] of bags) {
-      const show = out.has(id);
-      if (show === b.out) continue;
-      b.out = show;
-      refresh(b);
-      if (show && !b.gone) appeared.push(b.collider);
-    }
-    return appeared;
-  };
-  return { handle: { setBeanbags } };
+  return {};
 };
 
 /** The board agents' kiosks, each just west of its board. */

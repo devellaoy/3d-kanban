@@ -50,8 +50,6 @@ export interface MovablePiece {
   untinted?: THREE.Object3D[];
   /** Puts it at `pose`, or takes it out of the floor (null), and its colliders in the floor's list or out of it. `held`: carried about: drawn there, but nobody bumps into it or uses it. */
   place(pose: Pose | null, held?: boolean): void;
-  /** Shows it even while it's put away (a bean bag nobody needs yet), or lets it go again. */
-  reveal?(on: boolean): void;
 }
 
 /** Down on the street (see downstairs in ground.ts): what's built down there goes down with the street. */

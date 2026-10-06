@@ -127,7 +127,6 @@ export function installBuild(ctx: Ctx) {
     sit.standUp();
     ctx.activities.stopAll('start', ['build']);
     active = true;
-    fx.enter();
     ctx.hint.invalidate();
     ctx.hud.refresh();
     showCatalogue();

@@ -210,7 +210,7 @@ export interface MapPlan {
   height: number;
   /** Where you stand when you arrive. */
   spawn: { x: number; y: number; z: number; rotY: number };
-  /** The regular seats, then the overflow ones that only come out once they're all taken (the office's bean bags). */
+  /** The regular seats, then the overflow ones: on another map they come out once the regular ones are all taken; the office's bean bags are only there once a floor puts them down in build mode. */
   desks: DeskDef[];
   overflow: DeskDef[];
   stations: DeskDef[];
@@ -237,7 +237,7 @@ export interface MapPlan {
   /** What's in the way on the floor, for walking round it (the office has its own: OFFICE_NAV). */
   obstacles?: Obstacles;
   agents: { outfit: 'peasant' | 'none'; ageMinutes: number };
-  /** The office, as a floor has arranged its loose furniture (see shared/arrange.ts): what it rearranged, and the desks and bean bags it took out. Not on any other map. */
+  /** The office, as a floor has arranged its loose furniture (see shared/arrange.ts): what it rearranged, and the desks it took out and bean bags it hasn't put down. Not on any other map. */
   furniture?: Furniture;
   removed?: ReadonlySet<string>;
   /** The dungeon under the hall, worked out (see ./dungeon.ts). */
