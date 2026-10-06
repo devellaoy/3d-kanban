@@ -194,8 +194,9 @@ export class Restarts<L extends HeldRun> {
   /** Whether the run's turn is over for good: no work left out in its log, and for a run held for background work, the final answer is there after it. */
   private finished(run: KanbanRun, floor: Floor, info: WorkerInfo): boolean {
     const result = this.readLog(run, floor, info);
-    if (this.deps.ctx.repo.runHeldAt(run.id) === undefined) return !result?.background;
-    return !!result?.complete && !result.background && !result.unheard && !result.resuming;
+    const out = !!result && (result.background || result.unheard || result.resuming);
+    if (this.deps.ctx.repo.runHeldAt(run.id) === undefined) return !out;
+    return !!result?.complete && !out;
   }
 
   /** What the run's turns say in the session log, read from the run's start. */

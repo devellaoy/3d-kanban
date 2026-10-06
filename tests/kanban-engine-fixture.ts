@@ -36,6 +36,8 @@ export interface Rule {
   commit?: string;
   /** Wait this long before answering (to type a comment meanwhile). */
   delayMs?: number;
+  /** Waits this long before submitting the prompt (the UserPromptSubmit hook), after the process started. */
+  submitDelayMs?: number;
   /** Run git with these arguments in the agent's folder first (checking out a branch, say). */
   git?: string[];
   /** Exit mid-turn instead of answering. */
@@ -181,8 +183,11 @@ async function typedAfter(rule, msgId) {
 }
 async function turn(prompt, answered) {
   record({ prompt });
-  if (!answered) await post('UserPromptSubmit', { prompt });
   const rule = rules().find((r) => new RegExp(r.when).test(prompt)) || { reply: 'OK' };
+  if (!answered) {
+    if (rule.submitDelayMs) await new Promise((r) => setTimeout(r, rule.submitDelayMs));
+    await post('UserPromptSubmit', { prompt });
+  }
   silent = !!rule.escSilent;
   escLogs = !!rule.escLogs;
   escStopMs = rule.escStopMs;

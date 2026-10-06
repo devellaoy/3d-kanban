@@ -136,6 +136,50 @@ test('a run held for background work whose final answer was logged before the of
   assert.equal(prompts(fx, RESTARTED).length, 0);
 });
 
+test('a comment whose relaunched agent started but had not submitted it when the office stops is delivered once after the restart', async (t) => {
+  const fx = await fixture();
+  t.after(() => fx.close());
+  fx.setRules([{ when: 'Implement kanban task', reply: 'Done.', commit: 'Work' }, { when: 'commented on task', reply: 'Handled the comment.', commit: 'Rename', submitDelayMs: 3000 }]);
+  const task = fx.newTask({ usePlan: false, useReview: false });
+  await fx.engine.start(task.id, ADA);
+  await fx.waitTask(task.id, (x) => x.status === 'review' && x.runState === 'idle', 'the review column');
+  fx.repo.updateTask(task.id, { model: 'sonnet' }); // another model than the worker's own: the comment's run relaunches it
+  const c = fx.repo.addComment({ taskId: task.id, authorKind: 'user', authorName: 'Ada', text: 'Also rename foo to bar.' }).comment;
+  const before = fx.invocations().length;
+  void fx.engine.commented(task.id, c.id, ADA);
+  const end = Date.now() + 15_000;
+  while (fx.invocations().length === before && Date.now() < end) await sleep(10);
+  await sleep(600); // its SessionStart is heard; its prompt is still to be submitted
+  assert.equal(fx.repo.listRuns(task.id).at(-1)?.phase, 'resume');
+  fx.setRules([{ when: 'commented on task', reply: 'Handled the comment.', commit: 'Rename' }]);
+  await fx.restartOffice();
+  await fx.waitTask(task.id, (x) => x.status === 'review' && x.runState === 'idle' && fx.repo.listRuns(task.id).some((r) => r.phase === 'resume' && r.status === 'succeeded'), 'the comment handled', 40_000);
+  assert.equal(prompts(fx, /rename foo to bar/).length, 2, 'once before the stop (never submitted) and once after');
+  assert.equal(prompts(fx, RESTARTED).length, 0);
+});
+
+test('a finished background agent whose lead never answered is carried on, not waited for, even before the hold was stored', async (t) => {
+  const fx = await fixture();
+  t.after(() => fx.close());
+  fx.setRules([{ when: 'Implement kanban task', background: 'Waiting for the helper agent.', backgroundMs: 300, lateLogMs: 60_000, reply: 'Never logged.' }, { when: 'office was restarted', reply: 'Finished after the restart.', commit: 'Work' }]);
+  const task = fx.newTask({ usePlan: false, useReview: false });
+  await fx.engine.start(task.id, ADA);
+  const run = fx.repo.activeRun(task.id)!;
+  fx.engine.dispose(); // before the first Stop is heard: no hold is stored
+  fx.repo.clearRunLaunch(run.id); // the prompt was submitted
+  const end = Date.now() + 15_000;
+  const log = () => fx.workers.transcripts(run.workerId!)?.claude;
+  const has = async (s: string) => !!log() && (await import('node:fs')).existsSync(log()!) && (await import('node:fs')).readFileSync(log()!, 'utf8').includes(s);
+  while (!(await has('task-notification')) && Date.now() < end) await sleep(20);
+  await sleep(300);
+  assert.equal(fx.repo.runHeldAt(run.id), undefined);
+  await fx.restartOffice();
+  const done = await fx.waitTask(task.id, (x) => x.status === 'review' && x.runState === 'idle', 'the review column', 40_000);
+  assert.equal(done.summary, 'Finished after the restart.');
+  assert.equal(prompts(fx, RESTARTED).length, 1);
+  assert.deepEqual(fx.repo.listRuns(task.id).map((r) => r.status), ['interrupted', 'succeeded']);
+});
+
 test("codex: a session whose rollout is gone interrupts the run with the reason, and Retry starts a fresh session", async (t) => {
   const fx = await fixture();
   t.after(() => fx.close());

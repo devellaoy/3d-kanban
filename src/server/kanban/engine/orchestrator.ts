@@ -1024,8 +1024,7 @@ export class Orchestrator {
     patch.runState = 'running';
     this.update(task.id, patch);
     // A fresh session has the prompt on its command line; a resumed one is heard from before it is known to have it (the session may be gone).
-    if (session) Object.assign(live, { resumed: true, ack: heldTaken });
-    else heldTaken();
+    Object.assign(live, { ack: heldTaken, ...(session ? { resumed: true } : {}) });
     this.exitedAtHire(live);
     return undefined;
   }
@@ -1173,11 +1172,9 @@ export class Orchestrator {
     }
     const live = this.live.get(o.workerId);
     if (!live || live.ended || live.floorId !== floorId) return;
-    if (live.armed !== false && !live.started && (live.typed ? receipt(o) : (o.event === 'hook' && !agentHook(o.payload)) || (o.status && o.status !== 'starting' && o.status !== 'exited'))) {
-      live.started = true;
-      live.ack?.();
-      live.ack = undefined;
-    }
+    if (live.armed !== false && !live.started && (live.typed ? receipt(o) : (o.event === 'hook' && !agentHook(o.payload)) || (o.status && o.status !== 'starting' && o.status !== 'exited'))) live.started = true;
+    // The agent has the prompt once it submits it or starts its turn, not when its process starts (a stop in between must still carry the prompt on).
+    if (live.ack && live.armed !== false && receipt(o) && !(o.event === 'hook' && agentHook(o.payload))) (live.ack(), (live.ack = undefined));
     if (o.event === 'hook') {
       // A subagent's or teammate's hook (it runs in the lead's process, so it reaches the lead's worker): none of the lead's turn,
       // but its question or permission prompt is still what the worker's needs_input waits on.
