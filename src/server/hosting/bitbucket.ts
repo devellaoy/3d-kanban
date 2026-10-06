@@ -4,12 +4,51 @@
 import type { GhCheck, GhPull } from '../../shared/protocol.js';
 import { prWebUrl, type RepoRef } from '../../shared/hosting/remote.js';
 import { hostCall, hostText } from './http.js';
-import { bbCheck, bbComments, bbIsFork, bbPrView, bbPull, bbUserIds } from './bitbucket-map.js';
+import { bbCheck, bbChecksOf, bbComments, bbIsFork, bbPrView, bbPull, bbUserIds } from './bitbucket-map.js';
 import type { Fetch, HostAs, HostingProvider } from './provider.js';
 
 const API = 'https://api.bitbucket.org/2.0';
 const OPEN_PAGES = 3;
 const CONCURRENCY = 6;
+
+/**
+ * Bitbucket Cloud allows about 1000 requests an hour, and the board is asked every 90 seconds while
+ * someone is on its floor: an open pull request's participants and statuses (two requests each,
+ * which the list leaves out) are kept between looks, and asked again only when the pull request
+ * changed (updated, or a new head commit), or after DETAIL_MS (PENDING_MS while its checks run).
+ */
+export const DETAIL_MS = 30 * 60_000;
+export const PENDING_MS = 5 * 60_000;
+const DETAILS_KEPT = 2000;
+interface Detail {
+  at: number;
+  stamp: string;
+  participants: unknown;
+  checks: GhCheck[];
+}
+const details = new Map<string, Detail>();
+
+/** Tests: forget the kept details, and the clock. */
+export const bitbucketCache = { now: () => Date.now(), clear: () => details.clear() };
+
+/** An open pull request's participants and statuses: kept ones while they're fresh, else asked for. */
+async function detailOf(repo: RepoRef, pr: any, as: HostAs, fetch: Fetch): Promise<Pick<Detail, 'participants' | 'checks'>> {
+  const n = Number(pr.id);
+  const key = `${repo.id}#${n}`;
+  const stamp = `${pr.updated_on ?? ''}|${pr.source?.commit?.hash ?? ''}`;
+  const had = details.get(key);
+  const now = bitbucketCache.now();
+  if (had && had.stamp === stamp && now - had.at < (bbChecksOf(had.checks) === 'pending' ? PENDING_MS : DETAIL_MS)) return had;
+  const [full, checks] = await Promise.all([hostCall(fetch, as, 'GET', prUrl(repo, n)).catch(() => undefined), statusesOf(repo, n, as, fetch).catch(() => undefined)]);
+  const got = { participants: full?.participants ?? had?.participants, checks: checks ?? had?.checks ?? [] };
+  // Kept only when both came back: a failed one is asked again on the next look.
+  if (full && checks) {
+    details.delete(key);
+    details.set(key, { at: now, stamp, ...got });
+    if (details.size > DETAILS_KEPT) details.delete(details.keys().next().value!);
+  }
+  return got;
+}
 
 const repoUrl = (repo: RepoRef) => `${API}/repositories/${encodeURIComponent(repo.owner)}/${encodeURIComponent(repo.name)}`;
 const prUrl = (repo: RepoRef, n: number) => `${repoUrl(repo)}/pullrequests/${encodeURIComponent(String(n))}`;
@@ -108,12 +147,8 @@ export const bitbucketProvider: HostingProvider = {
       pagesOf(fetch, as, `${list}?state=MERGED&pagelen=30`, 1),
       pagesOf(fetch, as, `${list}?state=DECLINED&pagelen=40`, 1),
     ]);
-    // The list leaves out participants, and checks are their own call: both only for the open ones.
-    const openPulls = await mapLimited(open, CONCURRENCY, async (pr): Promise<GhPull> => {
-      const n = Number(pr.id);
-      const [full, checks] = await Promise.all([hostCall(fetch, as, 'GET', prUrl(repo, n)).catch(() => undefined), statusesOf(repo, n, as, fetch).catch(() => [])]);
-      return bbPull(repo, pr, { participants: full?.participants, checks });
-    });
+    // The list leaves out participants, and checks are their own call: both only for the open ones, and kept (detailOf).
+    const openPulls = await mapLimited(open, CONCURRENCY, async (pr): Promise<GhPull> => bbPull(repo, pr, await detailOf(repo, pr, as, fetch)));
     return [...openPulls, ...[...merged, ...declined].map((pr) => bbPull(repo, pr))];
   },
 

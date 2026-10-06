@@ -217,3 +217,71 @@ test('comments: every page up to the limit, the newest kept, in order; past the 
   assert.match(long[0].body, /Only the latest 1000 comments are shown here/);
   assert.equal(long.at(-1)!.body, 'c99', 'the newest last');
 });
+
+test('polling: an open PR’s details are kept until it changes (or a while), so an hour of looks stays far under Bitbucket’s limit', async () => {
+  const { bitbucketCache, DETAIL_MS, PENDING_MS } = await import('../src/server/hosting/bitbucket.js');
+  bitbucketCache.clear();
+  let now = 1_000_000;
+  bitbucketCache.now = () => now;
+  try {
+    const open = Array.from({ length: 12 }, (_, i) => pr(i + 1, 'OPEN', { updated_on: 'u1', source: { branch: { name: `b${i}` }, commit: { hash: 'h1' }, repository: { full_name: 'acme/widgets' } } }));
+    let state = 'SUCCESSFUL';
+    const calls: string[] = [];
+    const fetch: Fetch = async (url) => {
+      calls.push(url);
+      if (url.includes('state=OPEN')) return new Response(JSON.stringify({ values: open }));
+      if (url.includes('pullrequests?state=')) return new Response(JSON.stringify({ values: [] }));
+      if (url.includes('/statuses')) return new Response(JSON.stringify({ values: [{ name: 'ci', state }] }));
+      return new Response(JSON.stringify(pr(1, 'OPEN', { participants: [] })));
+    };
+    const look = () => bb.listPulls(repo, as, fetch);
+    await look();
+    assert.equal(calls.length, 3 + 12 * 2, 'the first look asks for every detail');
+    calls.length = 0;
+    // An hour of looks every 90 seconds while nothing changes.
+    for (let t = 1; t <= 40; t++) {
+      now += 90_000;
+      await look();
+    }
+    assert.ok(calls.length < 300, `${calls.length} requests in an hour`);
+    assert.equal(calls.filter((u) => u.includes('/statuses')).length, Math.floor((40 * 90_000) / DETAIL_MS) * 12, 'details again only after DETAIL_MS');
+    // A changed PR is asked again at once.
+    calls.length = 0;
+    open[0] = { ...open[0], updated_on: 'u2' };
+    await look();
+    assert.equal(calls.filter((u) => u.includes('/statuses')).length, 1);
+    // Running checks are looked at more often.
+    bitbucketCache.clear();
+    state = 'INPROGRESS';
+    await look();
+    calls.length = 0;
+    now += PENDING_MS + 1;
+    await look();
+    assert.equal(calls.filter((u) => u.includes('/statuses')).length, 12);
+  } finally {
+    bitbucketCache.now = () => Date.now();
+    bitbucketCache.clear();
+  }
+});
+
+test('a 429 makes the office wait as Bitbucket asks: nothing goes out until then', async () => {
+  const { hostRate } = await import('../src/server/hosting/http.js');
+  hostRate.clear();
+  let now = 5_000_000;
+  hostRate.now = () => now;
+  try {
+    let sent = 0;
+    const fetch: Fetch = async () => (sent++ === 0 ? new Response('{}', { status: 429, headers: { 'retry-after': '30' } }) : new Response(JSON.stringify(pr(3, 'OPEN'))));
+    const who: HostAs = { ...as, key: 'rate-test' };
+    await assert.rejects(bb.viewPr(repo, 3, who, fetch), /asked the office to slow down \(429\): it tries again in 30 s/);
+    now += 10_000;
+    await assert.rejects(bb.viewPr(repo, 3, who, fetch), /tries again in 20 s/);
+    assert.equal(sent, 1, 'nothing sent while waiting');
+    now += 21_000;
+    assert.equal((await bb.viewPr(repo, 3, who, fetch)).number, 3);
+    assert.equal(sent, 2);
+  } finally {
+    hostRate.now = () => Date.now();
+    hostRate.clear();
+  }
+});

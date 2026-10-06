@@ -20,12 +20,44 @@ function refuse(as: HostAs, status: number, parsed: unknown): never {
   throw new Error(`${label} said ${status}${said ? `: ${said}` : ''}`);
 }
 
+/** Until when (ms) a host asked these credentials to wait (429), by kind and whose. */
+const waiting = new Map<string, number>();
+/** How long to wait after a 429 that doesn't say (Retry-After), and the most a Retry-After is believed. */
+const WAIT_MS = 60_000;
+const WAIT_MAX_MS = 60 * 60_000;
+
+/** Tests: forget the waits, and the clock. */
+export const hostRate = { now: () => Date.now(), clear: () => waiting.clear() };
+
+/** How long a 429 asks to wait: Retry-After in seconds or as a date, else a minute. */
+function retryAfter(res: Response): number {
+  const v = res.headers.get('retry-after');
+  const secs = Number(v);
+  const ms = v && Number.isFinite(secs) ? secs * 1000 : v ? Date.parse(v) - hostRate.now() : NaN;
+  return Math.min(WAIT_MAX_MS, Number.isFinite(ms) && ms > 0 ? ms : WAIT_MS);
+}
+
+/**
+ * One request, unless the host asked these credentials to wait (a 429, until its Retry-After):
+ * then none goes out until then, and the caller hears when it may try again.
+ */
 async function send(fetch: Fetch, as: HostAs, url: string, init: RequestInit): Promise<Response> {
+  const key = `${as.kind}:${as.key}`;
+  const until = waiting.get(key) ?? 0;
+  const label = hostLabel(as.kind);
+  if (until > hostRate.now()) throw new Error(`${label} asked the office to slow down: it tries again in ${Math.ceil((until - hostRate.now()) / 1000)} s`);
+  let res: Response;
   try {
-    return await fetch(url, { ...init, signal: AbortSignal.timeout(TIMEOUT_MS), redirect: 'manual' });
+    res = await fetch(url, { ...init, signal: AbortSignal.timeout(TIMEOUT_MS), redirect: 'manual' });
   } catch (err) {
-    throw new Error(`${hostLabel(as.kind)} didn't answer (${(err as Error).message})`);
+    throw new Error(`${label} didn't answer (${(err as Error).message})`);
   }
+  if (res.status === 429) {
+    const wait = retryAfter(res);
+    waiting.set(key, hostRate.now() + wait);
+    throw new Error(`${label} asked the office to slow down (429): it tries again in ${Math.ceil(wait / 1000)} s`);
+  }
+  return res;
 }
 
 const jsonOf = (text: string): unknown => {

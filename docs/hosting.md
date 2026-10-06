@@ -141,6 +141,16 @@ Not supported yet. An admin can list the hosts (`hosting-secrets.json`'s `server
 `hosting.servers` message) so their remotes are recognised. The boards then say the host isn't
 supported, rather than showing a `gh` error.
 
+## API limits
+
+Bitbucket Cloud allows a token about 1000 requests an hour, and the PR board is read every 90
+seconds while someone is on its floor. Each look lists the open, merged and declined pull requests
+(three requests); an open one's reviewers and build statuses are asked for again only when it changed
+(updated, or pushed to), or after 30 minutes (5 while its checks run). A dozen open pull requests
+stay well under 300 requests an hour. When a host answers 429 (too many requests), the office sends
+nothing more with that token until the time it asks for has passed (Retry-After, else a minute),
+and the board says when it tries again.
+
 ## Limitations
 
 - The board's merge and close buttons and labels are GitHub's: on the other hosts, open the pull
