@@ -208,6 +208,34 @@ test('a re-attached run whose prompt arrives later is acknowledged: a full stop 
   assert.equal(prompts(fx, RESTARTED).length, 1);
 });
 
+test('a re-attached run whose agent received its prompt and finished the turn while the engine was down is handled, not waited for', async (t) => {
+  const fx = await fixture();
+  t.after(() => fx.close());
+  fx.setRules([{ when: 'Implement kanban task', reply: 'Done.', commit: 'Work' }, { when: 'commented on task', reply: 'Handled the comment.', commit: 'Rename' }]);
+  const task = fx.newTask({ usePlan: false, useReview: false });
+  await fx.engine.start(task.id, ADA);
+  const done = await fx.waitTask(task.id, (x) => x.status === 'review' && x.runState === 'idle', 'the review column');
+  const office = fx.workers as unknown as Office;
+  const typeIn = office.prompt;
+  office.prompt = () => undefined;
+  const c = fx.repo.addComment({ taskId: task.id, authorKind: 'user', authorName: 'Ada', text: 'Also rename foo to bar.' }).comment;
+  await fx.engine.commented(task.id, c.id, ADA);
+  const run = fx.repo.activeRun(task.id)!;
+  assert.ok(fx.repo.runLaunch(run.id), 'its prompt is still to arrive');
+  // The engine is gone while the terminal stays: the agent submits the prompt and finishes its turn.
+  fx.engine.dispose();
+  (typeIn as (id: string, text: string) => unknown).call(fx.workers, done.workerId!, 'You commented on task #1: Also rename foo to bar.');
+  const end = Date.now() + 15_000;
+  while (fx.invocations().filter((i) => i.prompt && /rename foo to bar/.test(i.prompt)).length < 1 && Date.now() < end) await sleep(20);
+  await sleep(1500);
+  assert.equal(fx.workers.get(done.workerId!)?.status, 'done');
+  fx.restartEngine();
+  await fx.waitTask(task.id, (x) => x.status === 'review' && x.runState === 'idle' && fx.repo.getRun(run.id)?.status === 'succeeded', 'the comment run handled', 20_000);
+  assert.equal(fx.repo.getRun(run.id)?.summary, 'Handled the comment.');
+  assert.equal(fx.repo.runLaunch(run.id), undefined, 'its launch was acknowledged');
+  assert.equal(prompts(fx, /rename foo to bar/).length, 1, 'the comment was not sent again');
+});
+
 test('a pull-request review whose prompt had not been submitted when the office stopped is delivered once after the restart', async (t) => {
   const fx = await fixture();
   t.after(() => fx.close());

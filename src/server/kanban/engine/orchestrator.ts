@@ -337,7 +337,7 @@ export class Orchestrator {
       }
       attached.add(task.id);
       const live = this.attach(run, task, info);
-      if (info.status === 'done' && !this.ctx.repo.runLaunch(run.id)) void this.serial(task.id, () => this.turnEnded(live));
+      if (info.status === 'done' && this.restarts.delivered(run, floor, info, live)) void this.serial(task.id, () => this.turnEnded(live));
       else if (info.status === 'needs_input') void this.serial(task.id, () => this.needsInput(live, info));
     }
     // Tasks the engine was busy with that have no run to follow any more.

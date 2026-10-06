@@ -13,6 +13,7 @@ import type { WorkerInfo, WorkerStatus } from '../../../shared/protocol.js';
 import type { WorkerObservation } from '../../workers.js';
 import type { KanbanRun, KanbanTask, QueuedRun } from '../../../shared/kanban/types.js';
 import { claudeAdapter } from './adapters/claude.js';
+import { isObj, readJsonLines } from './adapters/types.js';
 import type { MachineEvent } from './machine.js';
 import { sessionLogged } from './sessions.js';
 import { missingFolders } from './workspace.js';
@@ -80,6 +81,36 @@ export class Restarts<L extends HeldRun> {
     if (!launch) return undefined;
     const carried = this.deps.carried(task, launch.prompt);
     return () => (carried.ack(), this.deps.ctx.repo.clearRunLaunch(run.id));
+  }
+
+  /**
+   * A run re-attached on a worker that is `done` while its launch is still pending: whether its turn is to be handled now. The surviving terminal may have
+   * received the prompt and finished the turn before the engine started, and no status event follows a worker that is already `done`. Its session log
+   * says (the run's `promptedAt`, the time the office typed the prompt): received, the launch is acknowledged on `live` (record cleared, held messages
+   * released) and the result is handled (true); not received, the prompt is still to arrive and the run waits for it (false). A log that can't be read
+   * (none, or a run never prompted) doesn't decide, so it isn't waited on forever either: the turn's own reading goes on (true, nothing acknowledged).
+   */
+  delivered(run: KanbanRun, floor: Floor, info: WorkerInfo, live: L & { ack?: () => void }): boolean {
+    if (!this.deps.ctx.repo.runLaunch(run.id)) return true;
+    const got = this.received(run, floor, info);
+    if (got === undefined) return true;
+    if (got) (live.ack?.(), (live.ack = undefined));
+    return got;
+  }
+
+  /** Whether the log shows the office's prompt of the run as received; undefined when it can't tell. */
+  private received(run: KanbanRun, floor: Floor, info: WorkerInfo): boolean | undefined {
+    const at = run.promptedAt;
+    const logs = floor.workers.transcripts(info.id);
+    const file = run.tool === 'claude' ? logs?.claude : logs?.codex;
+    if (!file || at === undefined) return undefined;
+    if (run.tool === 'claude') {
+      const result = claudeAdapter.readTurnResult(file, { since: run.startedAt, runStart: run.startedAt, promptAt: at });
+      return result ? !result.unheard : undefined;
+    }
+    // Codex's rollout names no prompt: a user message stamped at or after the office typed it is the one.
+    const lines = readJsonLines(file);
+    return lines?.some((l) => l.type === 'event_msg' && isObj(l.payload) && l.payload.type === 'user_message' && Date.parse(String(l.timestamp)) >= at - 1000);
   }
 
   /** The run's worker on the floor. A run whose launch was cut short before it recorded its worker (a second shutdown while it waited for the woken worker to rest) has the task's own, if that was cut off too. */
