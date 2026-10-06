@@ -10,7 +10,8 @@ import type { Net } from '../net';
 import { store } from '../state';
 import { openPromptEditor } from '../ui/prompts';
 import type { KanbanServerMsg, KanbanSettingsPatch, ProjectRepoInput } from '../../shared/kanban/protocol.js';
-import { GH_REPO_RE, KANBAN_LIMITS } from '../../shared/kanban/protocol.js';
+import { KANBAN_LIMITS } from '../../shared/kanban/protocol.js';
+import { normalizeRemote } from '../../shared/hosting/remote.js';
 import {
   KANBAN_EFFORTS,
   KANBAN_TOOLS,
@@ -349,8 +350,8 @@ export function projectPane(api: Pick<KanbanApi, 'request'>, projectId: string, 
   const saveRepos = saveButton('Save repositories');
   saveRepos.addEventListener('click', () => {
     const repos = rows.map((r) => r.read());
-    const bad = repos.find((r) => r.remote && !GH_REPO_RE.test(r.remote));
-    if (bad) return toast(`${bad.name}: GitHub is owner/name`, 'warn');
+    const bad = repos.find((r) => r.remote && !normalizeRemote(r.remote));
+    if (bad) return toast(`${bad.name}: owner/name on GitHub, or the repository's Azure DevOps or Bitbucket URL`, 'warn');
     void run(() => api.request({ t: 'kanban.project.repos.set', project: projectId, repos }), saveRepos, 'Saved');
   });
 

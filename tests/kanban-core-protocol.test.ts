@@ -100,6 +100,9 @@ test('good messages come through rebuilt, without anything the validator did not
   assert.deepEqual(good({ t: 'kanban.pr.review', project: 'web', prs: [{ repo: 'acme/web', number: 1 }, { repo: 'ACME/web', number: 1 }, { repo: 'acme/api', number: 2 }] }), { t: 'kanban.pr.review', project: 'web', prs: [{ repo: 'acme/web', number: 1 }, { repo: 'acme/api', number: 2 }] });
   assert.deepEqual(good({ t: 'kanban.pr.bundle', project: 'web', branch: 'gh-1/x' }), { t: 'kanban.pr.bundle', project: 'web', branch: 'gh-1/x' });
   assert.deepEqual(good({ t: 'kanban.pr.owner', project: 'web', repo: 'acme/web', number: 7 }), { t: 'kanban.pr.owner', project: 'web', repo: 'acme/web', number: 7 });
+  // Repositories on Azure DevOps and Bitbucket go by the office's qualified names.
+  assert.deepEqual(good({ t: 'kanban.pr.review', project: 'web', prs: [{ repo: 'azure:contoso/My Web/api', number: 3 }, { repo: 'bitbucket:acme/ui', number: 3 }] }), { t: 'kanban.pr.review', project: 'web', prs: [{ repo: 'azure:contoso/My Web/api', number: 3 }, { repo: 'bitbucket:acme/ui', number: 3 }] });
+  assert.deepEqual(good({ t: 'kanban.pr.owner', project: 'web', repo: 'bitbucket:acme/ui', number: 7 }), { t: 'kanban.pr.owner', project: 'web', repo: 'bitbucket:acme/ui', number: 7 });
   assert.deepEqual(good({ t: 'kanban.project.repos.set', project: 'web', repos: [{ id: 'web', name: 'Web', dir: '/w', primary: true, kind: 'git', remote: 'acme/web' }] }), {
     t: 'kanban.project.repos.set',
     project: 'web',
@@ -165,6 +168,8 @@ test('bad messages are refused with a reason, and their rid is still found for t
   refused({ t: 'kanban.secrets.set', jira: { site: 'evil.com/x', email: 'a', token: 'b' } }, /host name/);
   refused({ t: 'kanban.pr.review', project: 'web', prs: [] }, /at least one/);
   refused({ t: 'kanban.pr.review', project: 'web', prs: [{ repo: 'nope', number: 1 }] }, /owner\/name/);
+  refused({ t: 'kanban.pr.review', project: 'web', prs: [{ repo: 'azure:only/two', number: 1 }] }, /azure:org\/project\/repo/);
+  refused({ t: 'kanban.pr.owner', project: 'web', repo: 'gitlab:a/b', number: 7 }, /owner\/name/);
   refused({ t: 'kanban.pr.bundle', project: 'web', branch: 'a', ticket: 'b' }, /exactly one/);
   refused({ t: 'kanban.pr.owner', project: 'web', repo: 'web', number: 7 }, /owner\/name/);
   refused({ t: 'kanban.pr.owner', project: 'web', repo: 'acme/web', number: 0 }, /needs its number/);

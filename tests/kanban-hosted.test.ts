@@ -246,3 +246,19 @@ test("a review of a pull request elsewhere the list left out asks its provider f
   assert.deepEqual(viewed, [77], 'only the one the list left out');
   assert.match(String(await parts.checkReview({ project: 'web', prs: [{ repo: AZ, number: 404 }] })), /has no pull request #404/);
 });
+
+test("the PR window's messages for a pull request elsewhere pass the protocol and find its task", async () => {
+  const { parseKanbanClientMsg } = await import('../src/shared/kanban/protocol.js');
+  const { client } = await import('./kanban-integrations-ctx.js');
+  const ctx = azureProject();
+  const t = ctx.repo.createTask({ project: 'web', title: 'A', tool: 'claude', usePlan: false, planApproval: 'auto', useReview: false, createdBy: 't' });
+  ctx.repo.upsertPrLink(t.id, { repoId: 'web', repo: AZ, number: 7, url: AZ_PR(7), state: 'OPEN' });
+  const parts = createPullsParts(ctx, { gh: async () => Promise.reject(new Error('no gh')) });
+  const msg = parseKanbanClientMsg({ t: 'kanban.pr.owner', project: 'web', repo: AZ, number: 7, rid: 'r1' });
+  assert.ok(!('error' in msg), JSON.stringify(msg));
+  const c = client();
+  await parts.plugin.ws!['kanban.pr.owner']!(c, msg as never);
+  assert.equal((c.got.at(-1) as { taskId: number | null }).taskId, t.id);
+  const review = parseKanbanClientMsg({ t: 'kanban.pr.review', project: 'web', prs: [{ repo: AZ, number: 7 }], rid: 'r2' });
+  assert.ok(!('error' in review), JSON.stringify(review));
+});

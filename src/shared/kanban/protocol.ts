@@ -4,6 +4,7 @@
 // `kanban.error`. Deltas (no rid) go to every client subscribed to the task's project (or to all
 // projects). parseKanbanClientMsg is the one gate every browser message passes: types, lengths, enums.
 
+import { hostOf, repoRefOf } from '../hosting/remote.js';
 import type {
   ImplementPermission,
   IssueSourceConfig,
@@ -50,6 +51,15 @@ export const REPO_ID_RE = /^[a-z0-9][a-z0-9-]{0,19}$/;
 export const ATTACHMENT_ID_RE = /^[a-f0-9]{16,64}$/;
 /** owner/name on GitHub. */
 export const GH_REPO_RE = /^[A-Za-z0-9_.-]{1,100}\/[A-Za-z0-9_.-]{1,100}$/;
+
+/**
+ * A repository as the office names it (shared/hosting/remote.ts): GitHub's owner/name, or another
+ * host's qualified name (azure:org/project/repo, bitbucket:workspace/repo).
+ */
+export function isRepoName(v: string): boolean {
+  if (hostOf(v) === 'github') return GH_REPO_RE.test(v);
+  return v.length <= KANBAN_LIMITS.remote && repoRefOf(v)?.id.toLowerCase() === v.toLowerCase();
+}
 
 // --- Inputs ---------------------------------------------------------------------------------------
 
@@ -346,7 +356,7 @@ function taskPatch(v: unknown): KanbanTaskPatch {
 function prRef(x: unknown): PrRef {
   if (!isObj(x)) bad('prs must be pull requests: {repo, number}');
   const p = x as Obj;
-  if (typeof p.repo !== 'string' || !GH_REPO_RE.test(p.repo)) bad('A pull request needs its repository as owner/name');
+  if (typeof p.repo !== 'string' || !isRepoName(p.repo)) bad('A pull request needs its repository: owner/name on GitHub, azure:org/project/repo or bitbucket:workspace/repo');
   if (!Number.isSafeInteger(p.number) || (p.number as number) <= 0) bad('A pull request needs its number');
   return { repo: p.repo as string, number: p.number as number };
 }
