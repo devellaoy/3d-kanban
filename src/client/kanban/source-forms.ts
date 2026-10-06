@@ -5,8 +5,10 @@
 import { h } from '../ui/dom';
 import type { IssueSourceConfig } from '../../shared/kanban/types.js';
 import { AZURE_ORG_RE, AZURE_PROJECT_RE, wiqlExtraProblem } from '../../shared/kanban/azure-boards.js';
+import { cleanJiraSite, sameJiraSite } from '../../shared/kanban/jira-connections.js';
+import { connectionLabel } from './jira-connections';
 import { kstore } from './store';
-import { checkbox, field, textArea, textInput } from './ui';
+import { checkbox, field, select, textArea, textInput } from './ui';
 
 /** A source's form: its fields, and the source they say (or why they don't say one). */
 export interface SourceForm {
@@ -18,28 +20,60 @@ export interface SourceForm {
 export const csv = (v: string) => v.split(',').map((x) => x.trim()).filter(Boolean);
 
 export function jiraForm(src: Extract<IssueSourceConfig, { kind: 'jira' }>): SourceForm {
+  const conns = kstore.secrets.jira;
   const site = textInput(src.site, { placeholder: 'yourteam.atlassian.net' });
+  // A connection that was removed since stays picked, so saving doesn't quietly change what the source reads as.
+  const gone = src.connection && !conns.some((c) => c.id === src.connection) ? [[src.connection, '⚠️ A removed connection'] as const] : [];
+  const connection = select([['', 'Automatic (by site)'], ...conns.map((c) => [c.id, connectionLabel(c)] as const), ...gone], src.connection ?? '');
+  const connectionHint = h('small.kb-hint');
   const keys = textInput(src.projectKeys.join(', '), { placeholder: 'UYT, OPS' });
   const assignee = textInput(src.filters.assignee ?? '', { placeholder: 'currentUser()' });
   const epic = textInput(src.filters.epic ?? '', { placeholder: 'UYT-100' });
   const labels = textInput((src.filters.labels ?? []).join(', '), { placeholder: 'ai' });
   const notStatus = textInput((src.filters.statusCategoryNot ?? []).join(', '), { placeholder: 'Done' });
   const jql = textArea(src.filters.jql ?? '', { rows: 2, placeholder: 'priority = High' });
+  const chosen = () => conns.find((c) => c.id === connection.value);
+  /** Which connection the source reads as, said under the picker as the site or the pick changes. */
+  const paintHint = () => {
+    const host = cleanJiraSite(site.value);
+    const c = chosen();
+    if (connection.value && !c) return void (connectionHint.textContent = 'That connection was removed: pick another, or Automatic.');
+    if (c) return void (connectionHint.textContent = host && !sameJiraSite(host, c.site) ? `${c.name} is for ${c.site}, not ${host}` : `Reads as ${c.name}; assignee currentUser() is that account.`);
+    if (!host) return void (connectionHint.textContent = 'Type the Jira site, or pick a connection.');
+    const mine = conns.filter((x) => sameJiraSite(x.site, host));
+    connectionHint.textContent = !mine.length
+      ? `No Jira connection for ${host}: add one in ⚙️ Settings → 🗂️ Kanban`
+      : mine.length > 1
+        ? `Uses ${mine[0].name} (the first for this site); assignee currentUser() is that account`
+        : `Uses ${mine[0].name}.`;
+  };
+  connection.addEventListener('change', () => {
+    const c = chosen();
+    if (c) site.value = c.site;
+    paintHint();
+  });
+  site.addEventListener('input', paintHint);
+  paintHint();
+  const connectionField = field('Connection', connection);
+  connectionField.append(connectionHint);
   const fields = h(
     'div',
     {},
-    h('div.kb-two', {}, field('Jira site', site), field('Project keys', keys)),
-    h('div.kb-three', {}, field('Assignee', assignee), field('Epic', epic), field('Labels', labels)),
-    h('div.kb-two', {}, field('Leave out status categories', notStatus), field('Extra JQL', jql)),
-    h('small.kb-hint', {}, kstore.secrets.jira.configured ? `The Jira token is set in 🗂️ Kanban (${kstore.secrets.jira.site ?? ''}).` : 'The Jira e-mail and API token go in 🗂️ Kanban → Jira.'),
+    h('div.kb-two', {}, connectionField, field('Jira site', site)),
+    h('div.kb-three', {}, field('Project keys', keys), field('Assignee', assignee), field('Epic', epic)),
+    h('div.kb-three', {}, field('Labels', labels), field('Leave out status categories', notStatus), field('Extra JQL', jql)),
   );
   const read = (): IssueSourceConfig | string => {
-    const host = site.value.trim().replace(/^https?:\/\//, '').replace(/\/+$/, '');
-    if (!/^[A-Za-z0-9.-]+(:\d+)?$/.test(host)) return 'A Jira source needs its site, like yourteam.atlassian.net';
+    const host = cleanJiraSite(site.value);
+    if (!host) return 'A Jira source needs its site, like yourteam.atlassian.net';
+    const c = chosen();
+    if (connection.value && !c) return 'A Jira source’s connection was removed: pick another, or Automatic';
+    if (c && !sameJiraSite(c.site, host)) return `The Jira connection ${c.name} is for ${c.site}, not ${host}`;
     return {
       id: src.id,
       kind: 'jira',
       site: host,
+      ...(c ? { connection: c.id } : {}),
       projectKeys: csv(keys.value).map((k) => k.toUpperCase()),
       filters: {
         ...(assignee.value.trim() ? { assignee: assignee.value.trim() } : {}),
@@ -51,6 +85,23 @@ export function jiraForm(src: Extract<IssueSourceConfig, { kind: 'jira' }>): Sou
     };
   };
   return { fields, read };
+}
+
+/**
+ * Why a project's sources can't be saved as they are: one Jira project key on two sites, so an issue
+ * key like DEV-1 couldn't say where it lives. The office refuses it too; this says so before asking.
+ */
+export function jiraKeyClash(sources: readonly IssueSourceConfig[]): string | undefined {
+  const siteOf = new Map<string, string>();
+  for (const src of sources) {
+    if (src.kind !== 'jira') continue;
+    for (const key of src.projectKeys) {
+      const other = siteOf.get(key);
+      if (other && !sameJiraSite(other, src.site)) return `Jira project key ${key} is in sources on two sites (${other} and ${src.site}): an issue like ${key}-1 couldn’t say which. Keep each key on one site.`;
+      siteOf.set(key, src.site);
+    }
+  }
+  return undefined;
 }
 
 export function azureBoardsForm(src: Extract<IssueSourceConfig, { kind: 'azure-boards' }>): SourceForm {
