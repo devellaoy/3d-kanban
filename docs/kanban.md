@@ -415,8 +415,26 @@ instead, and is never made twice.
 |---|---|---|
 | GitHub repositories | repositories (none picked: every repository of the project with a GitHub remote), assignee (`@me` or a login), labels (all of them), state (open, closed, all) | `gh` signed in on the office's machine |
 | GitHub project | owner (user or organisation), project number, assignee (`@me` or a login), status, iteration | `gh auth refresh -s read:project` on the office's machine: `gh` doesn't ask for that scope by default |
-| Jira | site (`yourteam.atlassian.net`), project keys, assignee (`me`, an account id or e-mail), epic, labels, status categories to leave out (default *Done*), extra JQL (no ORDER BY) | ⚙️ Settings → **🗂️ Kanban** → **Jira**: site, e-mail and API token (id.atlassian.com → Security → API tokens). The token is used only for the site it was given for. |
+| Jira | site (`yourteam.atlassian.net`), project keys, assignee (`me`, an account id or e-mail), epic, labels, status categories to leave out (default *Done*), extra JQL (no ORDER BY) A Jira connection for the site in ⚙️ Settings → **🗂️ Kanban** → **Jira connections** (below). The source's **Connection** is *Automatic* (the first connection for its site) or one picked by name. |
 | Azure Boards | organisation, project, assignee (`@Me` or a name or e-mail), work item types, area path, completed ones too, extra WIQL condition (no ORDER BY) | The office's Azure DevOps token for the organisation in ☰ → **🔐 Your sign-ins** to read it; yours (else the office's) to change a card, see [Repositories on Azure DevOps and Bitbucket](hosting.md#azure-boards). Status, comments and assignee change as you. |
+
+**Jira connections.** ⚙️ Settings → **🗂️ Kanban** → **Jira connections** lists the office's Jira
+connections, each a name, a site, an e-mail and an API token (id.atlassian.com → Security → API tokens),
+so different projects can use different Jira instances (`company.atlassian.net` for one customer,
+`customer.atlassian.net` for another), or different accounts on one site. Admins add, edit, remove and
+**Test** them (*Connected as …*, Jira's name for the token's account); a token is never shown again, and
+editing one keeps its e-mail and token unless new ones are typed, except that a changed site needs the
+e-mail and the token again. A Jira source uses the connection picked in its **Connection** field, or, on *Automatic*,
+the first connection (oldest) for its site; every Jira call of the source (fetching, 🔎 Browse, status,
+comments, assignee) goes through that connection, and a token only ever goes to the site it was given
+for: a picked connection for another site, a removed one, or no connection for the site is an error on
+the source, not a fallback. `currentUser()` / *me* in a source's assignee filter is the connection's
+account. Changing the connections fetches the projects' Jira issues again at once. An office that had
+the one Jira token from before keeps it as a connection named after its site, with nothing to re-enter.
+Issue keys tell issues apart without their site, so when a project's Jira sources are on different
+sites, each needs project keys and no key may be on two sites (saving them says so). An issue opened in
+🔎 Browse is changed through the source it was opened from (so its connection's account), one from the
+list through the source that listed it.
 
 Issues are fetched again every 90 seconds while someone looks at them, every 10 minutes otherwise, and
 with **Refresh**. Keys: `gh:owner/repo#12` (GitHub issues), `ghp:<owner>/<number>#<item>` (project
@@ -462,7 +480,7 @@ site and the office only ever shows the source's own projects.
   counts its stories and tasks that match (sub-tasks show under them, uncounted, as in an epic's
   done/total); with any filter beyond the status (search, type, assignee and so on) it shows no count,
   since the listed stories then include ones with a matching sub-task, which a count can't follow. **Load more** fetches the next page.
-- **Needs.** Jira: the token in ⚙️ Settings → 🗂️ Kanban (as for the other Jira features). GitHub project:
+- **Needs.** Jira: a Jira connection for the source in ⚙️ Settings → 🗂️ Kanban (as for the other Jira features). GitHub project:
   `gh auth refresh -s read:project` on the office's machine; without it the window says so.
 
 Click an issue to open it. On the kanban page that is the issue window (*Working on an issue*), with
@@ -495,8 +513,8 @@ its own comments and close) gets its **status** and **assignee** there.
   which Jira user you are: pick yourself once and pin it (**📌 This is me**); your browser remembers
   it per site and **Assign to me** uses it. A draft can't be assigned: convert it to an issue on GitHub.
 
-Whose sign-in is used: **Jira** always the token in ⚙️ Settings → 🗂️ Kanban, so every Jira change
-(transitions, assignee, comments) is made as *the token's* Jira account, whoever clicked; only a comment
+Whose sign-in is used: **Jira** always the source's Jira connection in ⚙️ Settings → 🗂️ Kanban, so every Jira change
+(transitions, assignee, comments) is made as *that token's* Jira account, whoever clicked; only a comment
 carries the person's name (`— <name> via Agent Office`), the rest is told by the floor toast and the task
 line. Scope that token's permissions in Jira accordingly. **GitHub** writes use your own sign-in (☰ → 🔐
 Your sign-ins), or the office's `gh` when an admin chose that for you; with neither they say why and do
@@ -774,7 +792,7 @@ implementation runs, review, the board's columns), not as a plain one-off worker
 |---|---|
 | `<data>/kanban.sqlite` (+ `-wal`, `-shm`) | Tasks, comments, runs, plans, attachments' records, history, PR links. |
 | `<data>/kanban-settings.json` | The kanban's settings, per project too (mode 600). |
-| `<data>/kanban-secrets.json` | Jira site, e-mail and token; the API key's hash (mode 600). Never sent to a browser. |
+| `<data>/kanban-secrets.json` | The Jira connections (`jiraConnections`: id, name, site, e-mail, token; a single `jira` of an older office is read as one connection, id `jira`, and not written back); the API key's hash (mode 600). Never sent to a browser: it only learns each connection's id, name and site. |
 | `<data>/hosting-secrets.json`, `<data>/homes/<account>/hosting.json` | The office's and each account's Azure DevOps and Bitbucket tokens (mode 600; [hosting](hosting.md#tokens)). Never sent to a browser. |
 | `<data>/kanban/uploads/` | Attached files (mode 600); ones never attached are removed after a day. |
 | `<data>/kanban/grants/task-<id>/` | Copies of a task's attached files, the one folder its agents may read (mode 700); removed with the task. |

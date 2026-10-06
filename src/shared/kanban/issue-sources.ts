@@ -23,6 +23,8 @@ export type IssueSourceConfig =
       kind: 'jira';
       /** e.g. yourteam.atlassian.net (the token is in kanban-secrets.json). */
       site: string;
+      /** A Jira connection's id (shared/kanban/jira-connections.ts); none: the first connection for the site. */
+      connection?: string;
       projectKeys: string[];
       filters: { assignee?: string; epic?: string; labels?: string[]; statusCategoryNot?: string[]; jql?: string };
     }

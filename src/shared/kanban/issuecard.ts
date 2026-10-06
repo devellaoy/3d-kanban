@@ -106,6 +106,7 @@ export function toGhIssue(i: NormalizedIssue, taskId?: number, projectRepos: str
     ...(i.repo || ghKey ? { repo: i.repo ?? ghKey!.repo } : {}),
     key: i.key,
     source: i.source,
+    ...(i.sourceId ? { sourceId: i.sourceId } : {}),
     ...(i.status ? { status: i.status } : {}),
     ...(taskId !== undefined ? { taskId } : {}),
   };

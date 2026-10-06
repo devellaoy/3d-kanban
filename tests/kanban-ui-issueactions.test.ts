@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { toGhIssue } from '../src/shared/kanban/issuecard.js';
 import { actionIssue, actionsTarget, closesOrReopens, keyedComment, safeUrl, shownStatus, groupTransitions, isGithubKey, jiraSite, pinnedMe, transitionLabel } from '../src/client/kanban/issueactionsmodel.js';
 
 test('only a card with a key on a floor with a project gets the issue actions', () => {
@@ -44,6 +45,7 @@ test('one view of an issue for the panel, from the kanban’s list or a 3D card;
   assert.deepEqual(actionIssue({ key: 'UYT-12', url: 'https://acme.atlassian.net/browse/UYT-12', status: 'In Progress', assignee: 'Maija' }), { key: 'UYT-12', url: 'https://acme.atlassian.net/browse/UYT-12', status: 'In Progress', assignee: 'Maija' });
   assert.deepEqual(actionIssue({ key: 'gh:o/r#5', url: 'javascript:alert(1)', assignees: ['a', 'b'] }), { key: 'gh:o/r#5', url: undefined, status: undefined, assignee: 'a, b' });
   assert.equal(actionIssue({ url: '', assignees: [] }).assignee, undefined);
+  assert.deepEqual(actionIssue({ key: 'DEV-1', url: '', sourceId: 'src-2' }).sourceId, 'src-2', 'the source it was opened through travels with the actions');
   assert.equal(safeUrl('http://x.test/1'), 'http://x.test/1');
   assert.equal(safeUrl('data:text/html,hi'), '');
   assert.equal(safeUrl(undefined), '');
@@ -57,4 +59,9 @@ test('the status shown is the choices’ own when they name one; only a close or
   assert.ok(closesOrReopens('gh:reopen'));
   assert.ok(!closesOrReopens('p:PVT_1:PVTI_1:F:o'));
   assert.ok(!closesOrReopens('31'));
+});
+
+test('a 3D card opened through a source hands that source to the actions panel', () => {
+  const card = toGhIssue({ source: 'jira', key: 'DEV-1', title: 't', url: 'https://x.atlassian.net/browse/DEV-1', body: '', labels: [], updatedAt: '', sourceId: 'src-2' });
+  assert.equal(actionIssue(card).sourceId, 'src-2');
 });

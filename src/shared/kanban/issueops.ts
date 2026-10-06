@@ -6,7 +6,7 @@
 
 import type { NormalizedIssue } from './types.js';
 import { BROWSE_CLIENT_TYPE_LIST, parseBrowseMsg, type BrowseClientMsg, type BrowseServerMsg } from './browse.js';
-import { KANBAN_LIMITS, PERSON_ID_RE, bad, bool, deskId, isObj, optText, project, text, type Obj, type Req } from './validate.js';
+import { KANBAN_LIMITS, PERSON_ID_RE, SOURCE_ID_RE, bad, bool, deskId, isObj, optText, project, text, type Obj, type Req } from './validate.js';
 
 /** One way to move an issue on: a Jira transition, a project's Status option, or GitHub's close / reopen. */
 export interface IssueTransition {
@@ -44,7 +44,8 @@ export interface IssuePerson {
 /** Who an issue is assigned to: the asker (`me`), a person from the people list (`name` for the toast), or nobody (null). */
 export type IssueAssignTo = { me: true } | { id: string; name?: string } | null;
 
-type IssueReq<T> = Req<{ project: string; issueKey: string } & T>;
+/** `source`: the id of the issue source the issue was opened through (a browse scope, a listed issue's sourceId), so the action goes through that source's Jira connection. */
+type IssueReq<T> = Req<{ project: string; issueKey: string; source?: string } & T>;
 
 export type IssueOpsClientMsg =
   /** Answered with kanban.issues. */
@@ -95,6 +96,8 @@ export const ISSUE_OPS_CLIENT_TYPE_LIST: Readonly<Record<IssueOpsClientMsg['t'],
 export const TRANSITION_ID_RE = /^[\w:@.=-]{1,500}$/;
 export { PERSON_ID_RE };
 const PEOPLE_QUERY_MAX = 100;
+/** An issue source's id (the settings' own rule). */
+export const ISSUE_SOURCE_ID_RE = SOURCE_ID_RE;
 
 type Bare<T> = T extends unknown ? Omit<T, 'rid'> : never;
 
@@ -123,21 +126,23 @@ export function parseIssueOpsMsg(t: IssueOpsClientMsg['t'], r: Obj): Bare<IssueO
     }
   }
   const issueKey = text(r.issueKey, 'issueKey', KANBAN_LIMITS.issueKey).trim();
+  if (r.source !== undefined && (typeof r.source !== 'string' || !ISSUE_SOURCE_ID_RE.test(r.source))) bad('source must be an issue source id');
+  const via = typeof r.source === 'string' ? { source: r.source } : {};
   switch (t) {
     case 'kanban.issue.transitions':
     case 'kanban.issue.comments':
-      return { t, project: proj, issueKey };
+      return { t, project: proj, issueKey, ...via };
     case 'kanban.issue.transition': {
       if (typeof r.transitionId !== 'string' || !TRANSITION_ID_RE.test(r.transitionId)) bad('transitionId must be one of the issue’s transitions');
-      return { t, project: proj, issueKey, transitionId: r.transitionId as string };
+      return { t, project: proj, issueKey, ...via, transitionId: r.transitionId as string };
     }
     case 'kanban.issue.comment':
-      return { t, project: proj, issueKey, text: text(r.text, 'The comment', KANBAN_LIMITS.comment) };
+      return { t, project: proj, issueKey, ...via, text: text(r.text, 'The comment', KANBAN_LIMITS.comment) };
     case 'kanban.issue.people': {
       const query = optText(r.query, 'The search', PEOPLE_QUERY_MAX)?.trim();
-      return { t, project: proj, issueKey, ...(query ? { query } : {}) };
+      return { t, project: proj, issueKey, ...via, ...(query ? { query } : {}) };
     }
     case 'kanban.issue.assign':
-      return { t, project: proj, issueKey, to: assignTo(r.to) };
+      return { t, project: proj, issueKey, ...via, to: assignTo(r.to) };
   }
 }

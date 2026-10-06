@@ -7,7 +7,7 @@
 // in their scope (they cannot stand anywhere else), so floor-scoped updates pass as they are.
 // Broadcasts to everyone (welcome, floors, peer.*, kanban.*) are the ones to rewrite or drop here.
 
-import type { KanbanProjectInfo, KanbanSettings, KanbanTaskCard } from '../kanban/types.js';
+import type { KanbanProjectInfo, KanbanSettings, KanbanTaskCard, SecretStatus } from '../kanban/types.js';
 import type { FloorInfo, FloorView, PeerInfo, ProjectInfo, ServerMsg, WorkerInfo } from '../protocol.js';
 import { repoFloorId } from '../kanban/repofloor.js';
 import { ROOF } from '../rooftop.js';
@@ -142,6 +142,7 @@ export const SERVER_MSG_OUT = {
   'kanban.skills': 'drop',
   'kanban.pr.owner': 'drop',
   'kanban.ok': 'drop',
+  'kanban.secrets.jiraTested': 'drop',
   // Issues of the owner's Jira / GitHub sources: read with the owner's credentials, so not the visitor's to see.
   'kanban.issues': 'drop',
   'kanban.issueTransitions': 'drop',
@@ -215,7 +216,7 @@ function kanbanSettingsFor(s: KanbanSettings, scope: VisitorScope): KanbanSettin
   return { ...s, projects };
 }
 
-const NO_SECRETS = { jira: { configured: false }, apiKey: { configured: false } } as const;
+const NO_SECRETS: SecretStatus = { jira: [], apiKey: { configured: false } };
 
 const zeroUsage = { input: 0, output: 0, cacheWrite: 0, cacheRead: 0, cost: 0, calls: 0 };
 

@@ -37,6 +37,7 @@ import { moveExtras } from './hold.js';
 import { PR_MODES, type PrMode } from './prs.js';
 import type { LoungeServerMsg } from './lounge.js';
 import { ISSUE_OPS_CLIENT_TYPE_LIST, parseIssueOpsMsg, type IssueOpsClientMsg, type IssueOpsServerMsg } from './issueops.js';
+import { JIRA_CONNECTION_CLIENT_TYPE_LIST, parseJiraConnectionMsg, type JiraConnectionClientMsg, type JiraConnectionServerMsg } from './jira-connections.js';
 
 // --- Limits ---------------------------------------------------------------------------------------
 
@@ -165,8 +166,8 @@ export type KanbanClientMsg =
   /** Answered with kanban.skills. */
   | Req<{ t: 'kanban.skills.list' }>
   | Req<{ t: 'kanban.skills.sync' }>
-  /** Secrets (admins). null clears; the answer only says what's configured (kanban.settings.secrets). */
-  | Req<{ t: 'kanban.secrets.set'; jira?: { site: string; email: string; token: string } | null; apiKey?: string | null }>
+  /** Secrets (admins). null clears; the answer only says what's configured (kanban.settings.secrets). The Jira connections: jira-connections.ts. */
+  | Req<{ t: 'kanban.secrets.set'; apiKey: string | null }>
   /**
    * A review of several pull requests together: answered with kanban.ok {taskId, workerId} (the
    * review's task and its reviewer). With `panel`, the floor's meeting room reviews them instead,
@@ -177,7 +178,8 @@ export type KanbanClientMsg =
   | Req<{ t: 'kanban.pr.bundle'; project: string; includeClosed?: boolean } & KanbanPrBundleKey>
   /** The task that owns a pull request, and whether its agent can fix it now: kanban.pr.owner. */
   | Req<{ t: 'kanban.pr.owner'; project: string; repo: string; number: number }>
-  | IssueOpsClientMsg;
+  | IssueOpsClientMsg
+  | JiraConnectionClientMsg;
 
 export type KanbanClientType = KanbanClientMsg['t'];
 
@@ -221,6 +223,7 @@ export type KanbanServerMsg =
   | { t: 'kanban.pr.owner'; rid?: string; taskId: number | null; title?: string; fixable: boolean; reason?: string }
   | { t: 'kanban.ok'; rid?: string; taskId?: number; commentId?: number; workerId?: string; existed?: boolean; startError?: string; started?: true }
   | IssueOpsServerMsg
+  | JiraConnectionServerMsg
   | LoungeServerMsg
   | { t: 'kanban.error'; rid?: string; message: string };
 
@@ -397,6 +400,7 @@ function bundleKey(r: Obj): KanbanPrBundleKey {
  */
 export const KANBAN_CLIENT_TYPE_LIST: Readonly<Record<KanbanClientType, true>> = {
   ...ISSUE_OPS_CLIENT_TYPE_LIST,
+  ...JIRA_CONNECTION_CLIENT_TYPE_LIST,
   'kanban.subscribe': true,
   'kanban.unsubscribe': true,
   'kanban.snapshot': true,
@@ -472,6 +476,7 @@ function parse(raw: unknown): KanbanClientMsg {
   const rid = ridOf(r);
   const m = (msg: WithoutRid<KanbanClientMsg>): KanbanClientMsg => (rid ? { ...msg, rid } : msg) as KanbanClientMsg;
   if (t in ISSUE_OPS_CLIENT_TYPE_LIST) return m(parseIssueOpsMsg(t as keyof typeof ISSUE_OPS_CLIENT_TYPE_LIST, r));
+  if (t in JIRA_CONNECTION_CLIENT_TYPE_LIST) return m(parseJiraConnectionMsg(t as keyof typeof JIRA_CONNECTION_CLIENT_TYPE_LIST, r));
   const nullableProject = (v: unknown) => (v === null || v === undefined ? null : project(v));
   switch (t as KanbanClientType) {
     case 'kanban.subscribe':
@@ -555,23 +560,11 @@ function parse(raw: unknown): KanbanClientMsg {
       return m({ t: 'kanban.project.prompt.set', project: project(r.project), id: r.id as string, text: body });
     }
     case 'kanban.secrets.set': {
-      const out: { t: 'kanban.secrets.set'; jira?: { site: string; email: string; token: string } | null; apiKey?: string | null } = { t: 'kanban.secrets.set' };
-      if (r.jira === null) out.jira = null;
-      else if (r.jira !== undefined) {
-        if (!isObj(r.jira)) bad('jira must be {site, email, token}');
-        const j = r.jira as Obj;
-        const site = text(j.site, 'The Jira site', 200).trim().replace(/^https?:\/\//, '').replace(/\/+$/, '');
-        if (!/^[A-Za-z0-9.-]+(:\d+)?$/.test(site)) bad('The Jira site is a host name, like yourteam.atlassian.net');
-        out.jira = { site, email: text(j.email, 'The Jira e-mail', 320).trim(), token: text(j.token, 'The Jira API token', KANBAN_LIMITS.secret).trim() };
-      }
-      if (r.apiKey === null) out.apiKey = null;
-      else if (r.apiKey !== undefined) {
-        const key = text(r.apiKey, 'The API key', KANBAN_LIMITS.secret).trim();
-        if (key.length < 16) bad('The API key must be at least 16 characters');
-        out.apiKey = key;
-      }
-      if (out.jira === undefined && out.apiKey === undefined) bad('Nothing to change');
-      return m(out);
+      if (r.apiKey === null) return m({ t: 'kanban.secrets.set', apiKey: null });
+      if (r.apiKey === undefined) bad('Nothing to change');
+      const key = text(r.apiKey, 'The API key', KANBAN_LIMITS.secret).trim();
+      if (key.length < 16) bad('The API key must be at least 16 characters');
+      return m({ t: 'kanban.secrets.set', apiKey: key });
     }
     case 'kanban.pr.review': {
       const taskId = r.taskId === undefined ? undefined : id(r.taskId, 'taskId');

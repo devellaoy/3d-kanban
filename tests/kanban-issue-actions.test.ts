@@ -37,7 +37,7 @@ const fetchStub = (answer: (call: HttpCall) => { status?: number; body?: unknown
   return { fetch, calls };
 };
 
-const JIRA_TOKEN = { site: 'team.atlassian.net', email: 'me@x.fi', token: 'tok' };
+const JIRA_TOKEN = [{ id: 'jira', name: 'team.atlassian.net', site: 'team.atlassian.net', email: 'me@x.fi', token: 'tok' }];
 const act = (over: Partial<IssueActIo> = {}): IssueActIo => ({ gh: async () => '', fetch: (async () => new Response('{}')) as typeof fetch, cwd: '/tmp', projectRepos: [], jira: JIRA_TOKEN, who: 'Panu', shared: false, ...over });
 const SITE = 'team.atlassian.net';
 
@@ -53,7 +53,7 @@ test('Jira transitions follow the project’s own workflow, and say which need f
       ],
     },
   }));
-  const got = await jiraTransitions(act({ fetch }), SITE, 'UYT-12');
+  const got = await jiraTransitions(act({ fetch }), { site: SITE }, 'UYT-12');
   assert.equal(calls[0].url, `https://${SITE}/rest/api/3/issue/UYT-12/transitions?expand=transitions.fields`);
   assert.equal(calls[0].auth, `Basic ${Buffer.from('me@x.fi:tok').toString('base64')}`);
   assert.deepEqual(got, [
@@ -61,29 +61,29 @@ test('Jira transitions follow the project’s own workflow, and say which need f
     { id: '21', name: 'Send to QA', to: 'Ready for QA', group: 'In Progress' },
     { id: '31', name: 'Ship it', to: 'Customer review', group: 'Done', needs: ['Resolution'] },
   ]);
-  await assert.rejects(jiraTransitions(act({ fetch }), SITE, 'UYT-12/../x'), /isn’t a Jira issue key/);
+  await assert.rejects(jiraTransitions(act({ fetch }), { site: SITE }, 'UYT-12/../x'), /isn’t a Jira issue key/);
 });
 
 test('a Jira transition is checked against the open ones, refused when it needs fields, and POSTed by id', async () => {
   const open = { transitions: [{ id: '21', name: 'Send to QA', to: { name: 'Ready for QA' } }, { id: '31', name: 'Ship it', to: { name: 'Customer review' }, fields: { resolution: { required: true, hasDefaultValue: false, name: 'Resolution' } } }] };
   const { fetch, calls } = fetchStub((c) => (c.method === 'GET' ? { body: open } : { status: 204 }));
-  assert.equal(await jiraTransition(act({ fetch }), SITE, 'UYT-12', '21'), 'Ready for QA');
+  assert.equal(await jiraTransition(act({ fetch }), { site: SITE }, 'UYT-12', '21'), 'Ready for QA');
   assert.equal(calls[1].method, 'POST');
   assert.equal(calls[1].url, `https://${SITE}/rest/api/3/issue/UYT-12/transitions`);
   assert.deepEqual(calls[1].body, { transition: { id: '21' } });
-  await assert.rejects(jiraTransition(act({ fetch }), SITE, 'UYT-12', '31'), /needs Resolution: do it in Jira/);
-  await assert.rejects(jiraTransition(act({ fetch }), SITE, 'UYT-12', '99'), /can’t be moved that way/);
+  await assert.rejects(jiraTransition(act({ fetch }), { site: SITE }, 'UYT-12', '31'), /needs Resolution: do it in Jira/);
+  await assert.rejects(jiraTransition(act({ fetch }), { site: SITE }, 'UYT-12', '99'), /can’t be moved that way/);
   assert.equal(calls.filter((c) => c.method === 'POST').length, 1, 'only the first one was sent');
 });
 
 test('Jira comments: read oldest first as text, written as rich text with the asker’s name', async () => {
   const adf = (t: string) => ({ type: 'doc', content: [{ type: 'paragraph', content: [{ type: 'text', text: t }] }] });
   const { fetch, calls } = fetchStub((c) => (c.method === 'GET' ? { body: { comments: [{ id: '2', author: { displayName: 'Maija' }, body: adf('newer'), created: '2026-09-02' }, { id: '1', author: { displayName: 'Panu' }, body: adf('older'), created: '2026-09-01' }] } } : { status: 201, body: { id: '3' } }));
-  const got = await jiraComments(act({ fetch }), SITE, 'UYT-12');
+  const got = await jiraComments(act({ fetch }), { site: SITE }, 'UYT-12');
   assert.equal(calls[0].url, `https://${SITE}/rest/api/3/issue/UYT-12/comment?orderBy=-created&maxResults=50`);
   assert.deepEqual(got.map((c) => [c.id, c.author, c.body]), [['1', 'Panu', 'older'], ['2', 'Maija', 'newer']]);
   assert.equal(got[0].url, `https://${SITE}/browse/UYT-12?focusedCommentId=1`);
-  await jiraComment(act({ fetch }), SITE, 'UYT-12', 'First line\nsecond line\n\nNew paragraph');
+  await jiraComment(act({ fetch }), { site: SITE }, 'UYT-12', 'First line\nsecond line\n\nNew paragraph');
   assert.equal(calls[1].method, 'POST');
   assert.deepEqual(calls[1].body.body.content, [
     { type: 'paragraph', content: [{ type: 'text', text: 'First line' }, { type: 'hardBreak' }, { type: 'text', text: 'second line' }] },
@@ -96,31 +96,31 @@ test('Jira comments: read oldest first as text, written as rich text with the as
 
 test('Jira people: the assignable users matching the search, app users left out', async () => {
   const { fetch, calls } = fetchStub(() => ({ body: [{ accountId: '71:a', displayName: 'Maija M', avatarUrls: { '48x48': 'https://a/48' } }, { accountId: 'bot', displayName: 'Bot', accountType: 'app' }, { accountId: '71:b', displayName: 'Pekka' }] }));
-  const got = await jiraPeople(act({ fetch }), SITE, 'UYT-12', 'ma ja');
+  const got = await jiraPeople(act({ fetch }), { site: SITE }, 'UYT-12', 'ma ja');
   assert.equal(calls[0].url, `https://${SITE}/rest/api/3/user/assignable/search?issueKey=UYT-12&query=ma%20ja&maxResults=20`);
   assert.deepEqual(got, [{ id: '71:a', name: 'Maija M', avatar: 'https://a/48' }, { id: '71:b', name: 'Pekka' }]);
 });
 
 test('Jira assign: a PUT of the account id or null, no second read, and `me` is not guessed', async () => {
   const { fetch, calls } = fetchStub(() => ({ status: 204 }));
-  assert.equal(await jiraAssign(act({ fetch }), SITE, 'UYT-12', { id: '71:a', name: 'Maija M' }), 'Maija M');
+  assert.equal(await jiraAssign(act({ fetch }), { site: SITE }, 'UYT-12', { id: '71:a', name: 'Maija M' }), 'Maija M');
   assert.equal(calls[0].method, 'PUT');
   assert.equal(calls[0].url, `https://${SITE}/rest/api/3/issue/UYT-12/assignee`);
   assert.deepEqual(calls[0].body, { accountId: '71:a' });
-  assert.equal(await jiraAssign(act({ fetch }), SITE, 'UYT-12', { id: '71:b' }), '71:b', 'the id when no name was sent');
-  assert.equal(await jiraAssign(act({ fetch }), SITE, 'UYT-12', null), undefined);
+  assert.equal(await jiraAssign(act({ fetch }), { site: SITE }, 'UYT-12', { id: '71:b' }), '71:b', 'the id when no name was sent');
+  assert.equal(await jiraAssign(act({ fetch }), { site: SITE }, 'UYT-12', null), undefined);
   assert.deepEqual(calls[2].body, { accountId: null });
   assert.equal(calls.length, 3, 'only the writes');
-  await assert.rejects(jiraAssign(act({ fetch }), SITE, 'UYT-12', { me: true }), /pick yourself in the list/);
+  await assert.rejects(jiraAssign(act({ fetch }), { site: SITE }, 'UYT-12', { me: true }), /pick yourself in the list/);
 });
 
 test('Jira calls: only to the token’s own site, with the 401 text of the source', async () => {
-  await assert.rejects(jiraCall(act(), 'evil.example.com', 'GET', '/x'), /token is for team.atlassian.net, not evil.example.com/);
-  await assert.rejects(jiraCall(act({ jira: undefined }), SITE, 'GET', '/x'), /Jira isn’t set up/);
+  await assert.rejects(jiraCall(act(), { site: 'evil.example.com' }, 'GET', '/x'), /No Jira connection for evil.example.com/);
+  await assert.rejects(jiraCall(act({ jira: [] }), { site: SITE }, 'GET', '/x'), /No Jira connection for team.atlassian.net/);
   const denied = fetchStub(() => ({ status: 401, body: { errorMessages: ['nope'] } }));
-  await assert.rejects(jiraCall(act({ fetch: denied.fetch }), SITE, 'GET', '/x'), /turned the e-mail and API token down \(401\): nope/);
+  await assert.rejects(jiraCall(act({ fetch: denied.fetch }), { site: SITE }, 'GET', '/x'), /turned the e-mail and API token down \(401\): nope/);
   const bad = fetchStub(() => ({ status: 400, body: { errors: { comment: 'too long' } } }));
-  await assert.rejects(jiraCall(act({ fetch: bad.fetch }), SITE, 'GET', '/x'), /Jira said 400: too long/);
+  await assert.rejects(jiraCall(act({ fetch: bad.fetch }), { site: SITE }, 'GET', '/x'), /Jira said 400: too long/);
 });
 
 // --- GitHub repository ----------------------------------------------------------------------------
@@ -505,7 +505,7 @@ test('a fetch that started before a change does not undo it; a later one, or two
 test('a Jira key goes to Jira with the token’s identity, whoever asks', async () => {
   const ctx = makeCtx([def('app', '/tmp/app', { repo: 'o/r' })], { ghAs: () => 'no GitHub sign-in' });
   ctx.settings.setProject('app', { issueSources: [JIRA_SRC] });
-  (ctx as unknown as { secrets: unknown }).secrets = { jira: () => JIRA_TOKEN };
+  (ctx as unknown as { secrets: unknown }).secrets = { jiraConnections: () => JIRA_TOKEN };
   const http = fetchStub((c) => {
     if (c.url.endsWith('/search/jql')) return { body: { issues: [{ key: 'UYT-12', fields: { summary: 'Jira one', status: { name: 'Backlog' }, updated: '2026-09-01' } }], isLast: true } };
     if (c.url.includes('/transitions') && c.method === 'GET') return { body: { transitions: [{ id: '21', name: 'Send to QA', to: { name: 'Ready for QA' } }] } };

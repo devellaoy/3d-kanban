@@ -12,9 +12,11 @@
 import type { KanbanClientMsg, KanbanClientType } from '../../../../shared/kanban/protocol.js';
 import type { IssueAssignTo, IssueTransition } from '../../../../shared/kanban/issueops.js';
 import type { IssueSourceConfig, NormalizedIssue } from '../../../../shared/kanban/types.js';
+import { cleanJiraSite, sameJiraSite, type JiraAt } from '../../../../shared/kanban/jira-connections.js';
 import { parseGhKey } from '../../../../shared/kanban/issuecard.js';
 import { parseAbKey, type WorkItemRef } from '../../../../shared/hosting/workitems.js';
 import type { KanbanCaller, KanbanClient, KanbanContext, KanbanPlugin } from '../../registry.js';
+import { jiraCovers } from './browse/jql.js';
 import { fail, ok } from '../util.js';
 import { GH_REOPEN, ghAssign, ghComment, ghComments, ghIssueState, ghPeople, ghStateTransition, ghStateTransitions } from './github-ops.js';
 import { azureActAs, azureAssign, azureComment, azureComments, azurePeople, azureTransition, azureTransitions } from './azure-ops.js';
@@ -34,8 +36,8 @@ export interface IssuePatch {
 export interface ActionDeps {
   /** The issue on the project's list (with any pending change applied), else one acted on or browsed a little while ago. */
   find(project: string, key: string): NormalizedIssue | undefined;
-  /** The issue fetched fresh from its source, when `find` has lost it: only one inside the project's own scope (its Jira project keys, its repositories, its boards). */
-  load(project: string, key: string): Promise<NormalizedIssue | undefined>;
+  /** The issue fetched fresh from its source (`source`: the one the asker opened it through, when it names one), when `find` has lost it: only one inside the project's own scope (its Jira project keys, its repositories, its boards). */
+  load(project: string, key: string, source?: string): Promise<NormalizedIssue | undefined>;
   /** Shows a change at once on the kanban and the 3D board, until a later fetch has it. */
   patch(project: string, key: string, fields: IssuePatch): void;
   io(project: string): IssueSourceIo;
@@ -44,15 +46,39 @@ export interface ActionDeps {
 }
 
 /** Where an issue's actions go. */
-type Target = { kind: 'jira'; site: string } | ({ kind: 'azure' } & WorkItemRef) | { kind: 'draft'; itemId: string } | { kind: 'gh'; repo: string; number: number; isPr: boolean; closed: boolean };
+type Target = ({ kind: 'jira' } & JiraAt) | ({ kind: 'azure' } & WorkItemRef) | { kind: 'draft'; itemId: string } | { kind: 'gh'; repo: string; number: number; isPr: boolean; closed: boolean };
 
 export const DRAFT_NO_COMMENTS = 'Draft issues have no comments';
 export const DRAFT_NO_ASSIGNEE = 'Convert the draft to an issue on GitHub to assign it';
 
-export function route(sources: IssueSourceConfig[], issue: NormalizedIssue): Target | string {
+/** The Jira site an issue's URL (https://<site>/browse/KEY) is on, if it has one. */
+const issueSite = (url: string): string | undefined => {
+  try {
+    return cleanJiraSite(new URL(url).host);
+  } catch {
+    return undefined;
+  }
+};
+
+/**
+ * `via`: the source the asker opened the issue through. For a Jira issue it must be a Jira source on the issue's own site that covers the
+ * key; one that isn't among the project's sources (any more) is as good as none, one that exists but doesn't fit is refused.
+ */
+export function route(sources: IssueSourceConfig[], issue: NormalizedIssue, via?: string): Target | string {
   if (issue.source === 'jira') {
-    const jira = sources.find((s) => s.kind === 'jira' && s.id === issue.sourceId) ?? sources.find((s) => s.kind === 'jira');
-    return jira && jira.kind === 'jira' ? { kind: 'jira', site: jira.site } : 'The project has no Jira source';
+    let jiras = sources.filter((s): s is Extract<IssueSourceConfig, { kind: 'jira' }> => s.kind === 'jira');
+    // An issue is acted on at the site it came from: never through a source on another one.
+    const site = issueSite(issue.url);
+    if (site) {
+      jiras = jiras.filter((s) => sameJiraSite(s.site, site));
+      if (!jiras.length) return `${issue.key}'s Jira source (on ${site}) is no longer one of the project's: re-add it to act on the issue`;
+    }
+    const chosen = via === undefined ? undefined : jiras.find((s) => s.id === via);
+    if (via !== undefined && !chosen && sources.some((s) => s.id === via)) return `${via} isn't a Jira source for ${issue.key}${site ? ` on ${site}` : ''}`;
+    if (chosen && !jiraCovers(chosen, issue.key)) return `${via} doesn't cover ${issue.key}`;
+    // The source the asker came through, else the one that listed it, else the one whose projects hold the key, else the first.
+    const jira = chosen ?? jiras.find((s) => s.id === issue.sourceId) ?? jiras.find((s) => s.projectKeys.length && jiraCovers(s, issue.key)) ?? jiras[0];
+    return jira ? { kind: 'jira', site: jira.site, ...(jira.connection ? { connection: jira.connection } : {}) } : 'The project has no Jira source';
   }
   const ab = parseAbKey(issue.key);
   if (ab) return { kind: 'azure', ...ab };
@@ -102,13 +128,13 @@ export function issueActionHandlers(ctx: KanbanContext, deps: ActionDeps): NonNu
 
   /** Checks the project and the issue, routes the key and picks the identity, then runs `go`; any error it throws is the answer. */
   const scoped =
-    <M extends { project: string; issueKey: string; rid?: string }>(go: (c: KanbanClient, m: M, s: Scope) => Promise<void>, write = false) =>
+    <M extends { project: string; issueKey: string; source?: string; rid?: string }>(go: (c: KanbanClient, m: M, s: Scope) => Promise<void>, write = false) =>
     async (c: KanbanClient, m: M): Promise<void> => {
       if (!ctx.project(m.project)) return fail(c, m.rid, `There's no project ${m.project}`);
-      const issue = deps.find(m.project, m.issueKey) ?? (await deps.load(m.project, m.issueKey));
+      const issue = deps.find(m.project, m.issueKey) ?? (await deps.load(m.project, m.issueKey, m.source));
       if (!issue) return fail(c, m.rid, `${m.issueKey} isn't among the project's issues (any more)`);
       const sources = ctx.settings.project(m.project).issueSources;
-      const target = route(sources, issue);
+      const target = route(sources, issue, m.source);
       if (typeof target === 'string') return fail(c, m.rid, target);
       const base = deps.io(m.project);
       let io: IssueActIo;
@@ -137,7 +163,7 @@ export function issueActionHandlers(ctx: KanbanContext, deps: ActionDeps): NonNu
     'kanban.issue.transitions': scoped<Msg<'kanban.issue.transitions'>>(async (c, m, { issue, target, io, boards }) => {
       const reply = (transitions: IssueTransition[], extra: { current?: string; cannot?: string; note?: string } = {}) =>
         c.send({ t: 'kanban.issueTransitions', ...(m.rid ? { rid: m.rid } : {}), project: m.project, issueKey: m.issueKey, transitions, ...extra });
-      if (target.kind === 'jira') return reply(await jiraTransitions(io, target.site, m.issueKey), issue.status ? { current: issue.status } : {});
+      if (target.kind === 'jira') return reply(await jiraTransitions(io, target, m.issueKey), issue.status ? { current: issue.status } : {});
       if (target.kind === 'azure') {
         const got = await azureTransitions(io, azureActAs(c.accountId, target.org), target);
         return reply(got.transitions, got.current || issue.status ? { current: got.current || issue.status } : {});
@@ -167,7 +193,7 @@ export function issueActionHandlers(ctx: KanbanContext, deps: ActionDeps): NonNu
       let to: string;
       let status: string | undefined;
       let dropped = false;
-      if (target.kind === 'jira') status = to = await jiraTransition(io, target.site, m.issueKey, m.transitionId);
+      if (target.kind === 'jira') status = to = await jiraTransition(io, target, m.issueKey, m.transitionId);
       else if (target.kind === 'azure') status = to = await azureTransition(io, azureActAs(c.accountId, target.org), target, m.transitionId);
       else if (m.transitionId.startsWith('gh:')) {
         if (target.kind !== 'gh') throw new Error('A draft can’t be closed: move it on its board, or convert it to an issue');
@@ -192,13 +218,13 @@ export function issueActionHandlers(ctx: KanbanContext, deps: ActionDeps): NonNu
 
     'kanban.issue.comments': scoped<Msg<'kanban.issue.comments'>>(async (c, m, { target, io }) => {
       const items =
-        target.kind === 'jira' ? await jiraComments(io, target.site, m.issueKey) : target.kind === 'azure' ? await azureComments(io, azureActAs(c.accountId, target.org), target) : target.kind === 'gh' ? await ghComments(io, target.repo, target.number) : [];
+        target.kind === 'jira' ? await jiraComments(io, target, m.issueKey) : target.kind === 'azure' ? await azureComments(io, azureActAs(c.accountId, target.org), target) : target.kind === 'gh' ? await ghComments(io, target.repo, target.number) : [];
       c.send({ t: 'kanban.issueComments', ...(m.rid ? { rid: m.rid } : {}), project: m.project, issueKey: m.issueKey, items, ...(target.kind === 'draft' ? { cannot: DRAFT_NO_COMMENTS } : {}) });
     }),
 
     'kanban.issue.comment': scoped<Msg<'kanban.issue.comment'>>(async (c, m, { issue, target, io }) => {
       if (target.kind === 'draft') throw new Error(DRAFT_NO_COMMENTS);
-      if (target.kind === 'jira') await jiraComment(io, target.site, m.issueKey, m.text);
+      if (target.kind === 'jira') await jiraComment(io, target, m.issueKey, m.text);
       else if (target.kind === 'azure') {
         const as = azureActAs(c.accountId, target.org);
         await azureComment(io, as, target, m.text, as.key === 'office' ? c.name : undefined);
@@ -209,7 +235,7 @@ export function issueActionHandlers(ctx: KanbanContext, deps: ActionDeps): NonNu
 
     'kanban.issue.people': scoped<Msg<'kanban.issue.people'>>(async (c, m, { target, io }) => {
       const items =
-        target.kind === 'jira' ? await jiraPeople(io, target.site, m.issueKey, m.query) : target.kind === 'azure' ? await azurePeople(io, azureActAs(c.accountId, target.org), target, m.query) : target.kind === 'gh' ? await ghPeople(io, target.repo, m.query) : [];
+        target.kind === 'jira' ? await jiraPeople(io, target, m.issueKey, m.query) : target.kind === 'azure' ? await azurePeople(io, azureActAs(c.accountId, target.org), target, m.query) : target.kind === 'gh' ? await ghPeople(io, target.repo, m.query) : [];
       c.send({ t: 'kanban.issuePeople', ...(m.rid ? { rid: m.rid } : {}), project: m.project, issueKey: m.issueKey, items, ...(target.kind === 'draft' ? { cannot: DRAFT_NO_ASSIGNEE } : {}) });
     }),
 
@@ -217,7 +243,7 @@ export function issueActionHandlers(ctx: KanbanContext, deps: ActionDeps): NonNu
       if (target.kind === 'draft') throw new Error(DRAFT_NO_ASSIGNEE);
       const to: IssueAssignTo = m.to;
       const who =
-        target.kind === 'jira' ? await jiraAssign(io, target.site, m.issueKey, to) : target.kind === 'azure' ? await azureAssign(io, azureActAs(c.accountId, target.org), target, to) : await ghAssign(io, target.repo, target.number, to);
+        target.kind === 'jira' ? await jiraAssign(io, target, m.issueKey, to) : target.kind === 'azure' ? await azureAssign(io, azureActAs(c.accountId, target.org), target, to) : await ghAssign(io, target.repo, target.number, to);
       wrote(c, m, issue, '👤', who ? `${c.name} assigned ${m.issueKey} to ${who}` : `${c.name} unassigned ${m.issueKey}`, { assignee: who ?? null });
     }, true),
   };

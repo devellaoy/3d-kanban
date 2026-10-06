@@ -29,7 +29,7 @@ document disagree, fix one of them in the same change.
 - Style: upstream's — TypeScript strict, ES modules with `.js` import suffixes, `node:test` tests,
   comments explain *why*, no new UI framework (client uses `h()` / `openModal` from `ui/dom.ts`).
 - Server code never trusts the browser: validate every WS message field (types, lengths, enums).
-- Secrets (Jira tokens, API keys) never leave the server; the browser only sees `configured: true`.
+- Secrets (Jira tokens, API keys) never leave the server; the browser only sees whether the API key is set, and a Jira connection's id, name and site.
 
 ## 2. Concepts
 
@@ -403,6 +403,21 @@ allowed: `todo → in_progress` (= start), `waiting|review → done`, `done → 
   `PRAGMA user_version` in `server/kanban/db/migrations.ts`). `<officeData>` is the office data dir upstream
   uses (`~/agent-office` by default).
 - `<officeData>/.agent-office/kanban-settings.json` (`schemaVersion`), `kanban-secrets.json` (chmod 600).
+- **Jira connections** (`shared/kanban/jira-connections.ts`): `kanban-secrets.json` holds `jiraConnections: {id, name, site,
+  email, token}[]` (oldest first, at most 20). A file with only the older single `jira: {site, email, token}` is read as one
+  connection with id `jira`; every write has `jiraConnections` (even empty) and never `jira`, so a removed connection
+  can't come back. `SecretStatus.jira` (in `kanban.snapshot` / `meta` / `settings`, which go to every local client) is
+  `{id, name, site}[]`, never the e-mail or token; visitors get `[]`. Admin requests:
+  `kanban.secrets.jira.set {id?, name, site, email?, token?}` (new: e-mail and token needed; an edit keeps what isn't
+  given, except that a new site needs both again), `kanban.secrets.jira.remove {id}`, both answered with `kanban.settings`
+  and followed by a refetch of the projects with a Jira source on an affected site (an edit's old and new site), and `kanban.secrets.jira.test {id}` (Jira's `/myself`),
+  answered with `kanban.secrets.jiraTested {id, name, accountId?}`. `kanban.secrets.set` is the API key's only.
+  A Jira source (`IssueSourceConfig` `jira`) may name `connection`; every Jira call (`jira.ts` search, `jiraCall` in
+  `jira-ops.ts`, which the browse and the actions use) takes a `JiraAt {site, connection?}` and `pickJiraConnection`
+  (`integrations/issues/jira-auth.ts`) chooses: the named connection, which must be for that site, else the first for
+  the site; anything else is an error and nothing is sent. `setProject` refuses (`jiraSourcesProblem`, shared with the browser) Jira sources
+  on different sites that share a project key or have none, since keys identify issues without their site (per project: routing and the issue list are per project). Changing the
+  connections also empties the browse caches (counts, versions, sub-task parents), so nothing read with an old account is served.
 - `<officeData>/.agent-office/kanban/uploads/`, `kanban/grants/task-<id>/`, `kanban/reports/task-<id>/`, `kanban/refs/task-<id>/`,
   `kanban/skills/plugin-<hash>/` (generated Claude skill plugins), `kanban/legacy/` (migrated stream logs).
 - Migration 5 adds `runs.prompted_at` (ms: when the office last gave the run its prompt, see §4's restate); a build that knows only 4 refuses the database.
@@ -510,10 +525,12 @@ answers `kanban.ok {rid, ...}` or `kanban.error {rid, message}`. Deltas are push
     `p:<projectId>:<itemId>:<fieldId>:<optionId>` (a Projects v2 Status option, checked again against a fresh read before
     it is written) or `gh:close` / `gh:close:not_planned` / `gh:reopen`.
     - Only keys on the project's cached list are accepted. **Routing is by key**, not by `sourceId` (the list keeps one
-      source's copy of a key two sources both list): a Jira key goes to Jira (the site of the project's Jira source),
+      source's copy of a key two sources both list): a Jira key goes to Jira through a Jira source on the issue's own site (the host of its URL): the request's optional
+      `source` (the source the issue was opened through, e.g. in Browse; it must be a Jira source of the project on that site
+      whose project keys hold the key, else the request is refused), else the one that listed it, else the one whose project keys hold the key, else the first; with none on that site any more the action is refused, never sent to another site,
       `ghp:…` to the board's Status, `gh:owner/repo#N` to GitHub for comments and assignees and, for its status, to the Status
       options of the project's `github-project` sources that hold it (`projectItems`) plus GitHub's close / reopen.
-    - Identity: Jira always uses the kanban-secrets token; GitHub runs as `KanbanContext.ghAs(accountId)` (wired from
+    - Identity: Jira always uses the source's Jira connection (below); GitHub runs as `KanbanContext.ghAs(accountId)` (wired from
       `signins.ghAs`): `{env}` is the person, `undefined` the office's gh, a string refuses with it. Under a shared identity a
       comment is signed `— <name> via Agent Office`.
     - A write patches the cached issue (an **overlay** per key: status, assignee), pushes `kanban.issues`, tells the
@@ -591,8 +608,7 @@ answers `kanban.ok {rid, ...}` or `kanban.error {rid, message}`. Deltas are push
     within its scope (`wallKnows`: on the list, acted on, or browsed, though the filters keep it off the wall), so queueing,
     carrying or handing a browsed issue keeps its `issueKey` (its text can then reach an agent's prompt, see above); any other key is dropped.
   - Admin only (upstream `meOf(accountId).admin`): `settings.set`, `project.settings.set`, `project.repos.set`,
-    `project.rename`, `project.prompt.set`, `secrets.set`, `skills.sync`. `secrets.set` is answered with `kanban.settings` (configured flags
-    only). The `/api/v1` key is stored as `sha256:<hex>`.
+    `project.rename`, `project.prompt.set`, `secrets.set`, `skills.sync`. `secrets.set` is answered with `kanban.settings` (whether the API key is set, and the connections' id, name and site). The `/api/v1` key is stored as `sha256:<hex>`.
 - Auto-archive: done tasks whose `doneAt` (else `updatedAt`) is older than `settings.archiveAfterDays` move to
   `archived`. This runs at start-up and hourly; `0` means never. Unattached uploads older than a day are removed
   in the same sweep.

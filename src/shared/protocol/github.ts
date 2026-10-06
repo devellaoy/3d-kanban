@@ -29,6 +29,8 @@ export interface GhIssue {
   key?: string;
   /** The issue source it came from. */
   source?: IssueSourceKind;
+  /** The id of the issue source it came through: its actions go through that source's Jira connection. */
+  sourceId?: string;
   /** The source's own status (Jira's "In Progress", a project's column). */
   status?: string;
   /** The kanban task already made from it. */

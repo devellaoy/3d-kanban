@@ -7,7 +7,7 @@ import { kstore } from '../src/client/kanban/store.js';
 
 const project = (id: string) => ({ id, name: id }) as KanbanProjectInfo;
 const meta = (ids: string[]) =>
-  ({ t: 'kanban.meta', projects: ids.map(project), settings: null, secrets: { jira: { configured: false }, apiKey: { configured: false } }, me: { admin: true, name: 'me' } }) as unknown as KanbanServerMsg;
+  ({ t: 'kanban.meta', projects: ids.map(project), settings: null, secrets: { jira: [], apiKey: { configured: false } }, me: { admin: true, name: 'me' } }) as unknown as KanbanServerMsg;
 /** A stand-in for the kanban bus: answers kanban.meta.get with `answer`, and keeps what was asked. */
 const fakeApi = (answer: () => Promise<KanbanServerMsg>) => {
   const asked: string[] = [];

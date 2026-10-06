@@ -4,7 +4,9 @@
 // Every function throws an Error with a text a person can act on.
 
 import type { IssueAssignTo, IssueCommentItem, IssuePerson, IssueTransition } from '../../../../shared/kanban/issueops.js';
+import type { JiraAt } from '../../../../shared/kanban/jira-connections.js';
 import { adfToText } from './jira.js';
+import { jiraAuthHeader, pickJiraConnection } from './jira-auth.js';
 import { attribution, type IssueActIo } from './source.js';
 
 const TIMEOUT_MS = 30_000;
@@ -14,16 +16,12 @@ const PEOPLE = 20;
 /** A Jira issue key; anything else never goes into a URL. */
 const KEY_RE = /^[A-Za-z][A-Za-z0-9_]*-\d+$/;
 
-/** One call to the Jira REST API of `site`; resolves to the JSON answer ({} when it has none). */
-export async function jiraCall(io: IssueActIo, site: string, method: 'GET' | 'POST' | 'PUT', path: string, body?: unknown): Promise<any> {
-  const jira = io.jira;
-  if (!jira) throw new Error('Jira isn’t set up: an admin enters the site, e-mail and API token in ⚙️ Settings → 🗂️ Kanban');
-  // The token only ever goes to the site it was given for.
-  if (jira.site.toLowerCase() !== site.toLowerCase()) throw new Error(`The Jira API token is for ${jira.site}, not ${site}`);
-  const auth = Buffer.from(`${jira.email}:${jira.token}`).toString('base64');
-  const res = await io.fetch(`https://${jira.site}${path}`, {
+/** One call to the Jira REST API of `at.site` with the connection the source names (else the first for the site); resolves to the JSON answer ({} when it has none). */
+export async function jiraCall(io: IssueActIo, at: JiraAt, method: 'GET' | 'POST' | 'PUT', path: string, body?: unknown): Promise<any> {
+  const conn = pickJiraConnection(io.jira, at);
+  const res = await io.fetch(`https://${conn.site}${path}`, {
     method,
-    headers: { authorization: `Basic ${auth}`, accept: 'application/json', ...(body !== undefined ? { 'content-type': 'application/json' } : {}) },
+    headers: { authorization: jiraAuthHeader(conn), accept: 'application/json', ...(body !== undefined ? { 'content-type': 'application/json' } : {}) },
     ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
     signal: AbortSignal.timeout(TIMEOUT_MS),
   });
@@ -65,8 +63,8 @@ export function textToAdf(text: string): unknown {
 }
 
 /** The moves open to the issue now, as the project's workflow has them. `needs` are the fields the move asks for. */
-export async function jiraTransitions(io: IssueActIo, site: string, key: string): Promise<IssueTransition[]> {
-  const body = await jiraCall(io, site, 'GET', `${issuePath(key)}/transitions?expand=transitions.fields`);
+export async function jiraTransitions(io: IssueActIo, at: JiraAt, key: string): Promise<IssueTransition[]> {
+  const body = await jiraCall(io, at, 'GET', `${issuePath(key)}/transitions?expand=transitions.fields`);
   const out: IssueTransition[] = [];
   for (const t of body.transitions ?? []) {
     if (!t || (typeof t.id !== 'string' && typeof t.id !== 'number')) continue;
@@ -87,48 +85,48 @@ export async function jiraTransitions(io: IssueActIo, site: string, key: string)
 }
 
 /** Moves the issue by one of its transitions; resolves to the status it is in now. */
-export async function jiraTransition(io: IssueActIo, site: string, key: string, transitionId: string): Promise<string> {
+export async function jiraTransition(io: IssueActIo, at: JiraAt, key: string, transitionId: string): Promise<string> {
   // Asked again so an id that isn't open (any more) is refused here, and the move's status is known.
-  const t = (await jiraTransitions(io, site, key)).find((x) => x.id === transitionId);
+  const t = (await jiraTransitions(io, at, key)).find((x) => x.id === transitionId);
   if (!t) throw new Error(`${key} can’t be moved that way (any more): reload its statuses`);
   if (t.needs?.length) throw new Error(`Moving ${key} to ${t.to} needs ${t.needs.join(', ')}: do it in Jira`);
-  await jiraCall(io, site, 'POST', `${issuePath(key)}/transitions`, { transition: { id: transitionId } });
+  await jiraCall(io, at, 'POST', `${issuePath(key)}/transitions`, { transition: { id: transitionId } });
   return t.to;
 }
 
 /** The newest comments, oldest first. */
-export async function jiraComments(io: IssueActIo, site: string, key: string): Promise<IssueCommentItem[]> {
-  const body = await jiraCall(io, site, 'GET', `${issuePath(key)}/comment?orderBy=-created&maxResults=${COMMENTS}`);
+export async function jiraComments(io: IssueActIo, at: JiraAt, key: string): Promise<IssueCommentItem[]> {
+  const body = await jiraCall(io, at, 'GET', `${issuePath(key)}/comment?orderBy=-created&maxResults=${COMMENTS}`);
   return (body.comments ?? [])
     .map((c: any): IssueCommentItem => ({
       id: String(c.id),
       author: String(c.author?.displayName ?? 'Someone'),
       body: adfToText(c.body),
       createdAt: String(c.created ?? ''),
-      url: `https://${site}/browse/${encodeURIComponent(key)}?focusedCommentId=${encodeURIComponent(String(c.id))}`,
+      url: `https://${at.site}/browse/${encodeURIComponent(key)}?focusedCommentId=${encodeURIComponent(String(c.id))}`,
     }))
     .reverse();
 }
 
 /** Adds a comment, signed with who asked (the token is everybody's). */
-export async function jiraComment(io: IssueActIo, site: string, key: string, text: string): Promise<void> {
+export async function jiraComment(io: IssueActIo, at: JiraAt, key: string, text: string): Promise<void> {
   const doc = textToAdf(`${text.trim()}\n\n${attribution(io.who)}`);
-  await jiraCall(io, site, 'POST', `${issuePath(key)}/comment`, { body: doc });
+  await jiraCall(io, at, 'POST', `${issuePath(key)}/comment`, { body: doc });
 }
 
 /** Who the issue can be assigned to, matching `query`. */
-export async function jiraPeople(io: IssueActIo, site: string, key: string, query = ''): Promise<IssuePerson[]> {
+export async function jiraPeople(io: IssueActIo, at: JiraAt, key: string, query = ''): Promise<IssuePerson[]> {
   const qs = `issueKey=${encodeURIComponent(key)}&query=${encodeURIComponent(query)}&maxResults=${PEOPLE}`;
-  const body = await jiraCall(io, site, 'GET', `/rest/api/3/user/assignable/search?${qs}`);
+  const body = await jiraCall(io, at, 'GET', `/rest/api/3/user/assignable/search?${qs}`);
   return (Array.isArray(body) ? body : [])
     .filter((u: any) => u?.accountId && u.accountType !== 'app')
     .map((u: any): IssuePerson => ({ id: String(u.accountId), name: String(u.displayName ?? u.accountId), ...(u.avatarUrls?.['48x48'] ? { avatar: String(u.avatarUrls['48x48']) } : {}) }));
 }
 
 /** Assigns the issue to a person by account id, or to nobody. Resolves to the new assignee's name (as the browser said it, else the id). */
-export async function jiraAssign(io: IssueActIo, site: string, key: string, to: IssueAssignTo): Promise<string | undefined> {
+export async function jiraAssign(io: IssueActIo, at: JiraAt, key: string, to: IssueAssignTo): Promise<string | undefined> {
   // The token is shared, so the office can't tell which Jira user `me` is: the browser sends the account id it remembers.
   if (to && 'me' in to) throw new Error('The office doesn’t know which Jira user you are: pick yourself in the list and pin it as “This is me”');
-  await jiraCall(io, site, 'PUT', `${issuePath(key)}/assignee`, { accountId: to ? to.id : null });
+  await jiraCall(io, at, 'PUT', `${issuePath(key)}/assignee`, { accountId: to ? to.id : null });
   return to ? (to.name ?? to.id) : undefined;
 }

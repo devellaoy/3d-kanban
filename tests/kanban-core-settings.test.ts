@@ -4,11 +4,9 @@ import { mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from 'node
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import {
-  KanbanSecrets,
   KanbanSettingsStore,
   DEFAULT_REVIEW,
   defaultKanbanSettings,
-  hashApiKey,
   sanitizeIssueSource,
   sanitizeKanbanSettings,
   sanitizePartialReview,
@@ -16,6 +14,8 @@ import {
   sanitizeReview,
   sanitizeSkillSelection,
 } from '../src/server/kanban/settings.js';
+import { KanbanSecrets, hashApiKey } from '../src/server/kanban/secrets.js';
+import { MAX_JIRA_CONNECTIONS, jiraSourcesProblem } from '../src/shared/kanban/jira-connections.js';
 import { PROMPT_MAX } from '../src/shared/prompts.js';
 
 function scratch(t: { after(fn: () => void): void }) {
@@ -175,9 +175,12 @@ test('the settings file is saved privately, reloaded, and changed a part at a ti
 test('secrets are kept in a file only the office can read, and never handed out', (t) => {
   const dir = scratch(t);
   const secrets = new KanbanSecrets(dir);
-  assert.deepEqual(secrets.status(), { jira: { configured: false }, apiKey: { configured: false } });
-  const status = secrets.set({ jira: { site: 'acme.atlassian.net', email: 'ada@acme.fi', token: 'tok-SECRET' }, apiKey: 'k'.repeat(20) });
-  assert.deepEqual(status, { jira: { configured: true, site: 'acme.atlassian.net' }, apiKey: { configured: true } });
+  assert.deepEqual(secrets.status(), { jira: [], apiKey: { configured: false } });
+  const added = secrets.setJiraConnection({ name: 'Acme', site: 'acme.atlassian.net', email: 'ada@acme.fi', token: 'tok-SECRET' });
+  assert.ok(typeof added !== 'string' && added.jira.length === 1);
+  const status = secrets.set({ apiKey: 'k'.repeat(20) });
+  assert.deepEqual(status, { jira: [{ id: secrets.jiraConnections()[0].id, name: 'Acme', site: 'acme.atlassian.net' }], apiKey: { configured: true } });
+  assert.match(secrets.jiraConnections()[0].id, /^jc-[a-z0-9]+$/);
   assert.ok(!JSON.stringify(status).includes('SECRET'));
   assert.ok(!JSON.stringify(status).includes('ada@acme.fi'));
   if (process.platform !== 'win32') assert.equal(mode(secrets.file), 0o600);
@@ -190,18 +193,110 @@ test('secrets are kept in a file only the office can read, and never handed out'
   assert.equal(secrets.checkApiKey(undefined), false);
 
   const again = new KanbanSecrets(dir);
-  assert.equal(again.jira()?.token, 'tok-SECRET');
+  assert.equal(again.jiraConnections()[0].token, 'tok-SECRET');
   assert.equal(again.checkApiKey('k'.repeat(20)), true);
   // What isn't given stays; null clears.
   again.set({ apiKey: null });
   assert.equal(again.status().apiKey.configured, false);
-  assert.equal(again.status().jira.configured, true);
-  again.set({ jira: null });
-  assert.equal(new KanbanSecrets(dir).status().jira.configured, false);
+  assert.equal(again.status().jira.length, 1);
 
   // A key saved before hashing still works.
   writeFileSync(secrets.file, JSON.stringify({ apiKey: 'plain-key-from-before' }));
   assert.equal(new KanbanSecrets(dir).checkApiKey('plain-key-from-before'), true);
+});
+
+test('a file with the one legacy Jira login becomes a connection with the stable id "jira", and is written the new way', (t) => {
+  const dir = scratch(t);
+  const file = path.join(dir, 'kanban-secrets.json');
+  writeFileSync(file, JSON.stringify({ jira: { site: 'https://x.atlassian.net/', email: 'a@x.fi', token: 'old-TOKEN' }, apiKey: 'sha256:abc' }));
+  const secrets = new KanbanSecrets(dir);
+  assert.deepEqual(secrets.jiraConnections(), [{ id: 'jira', name: 'x.atlassian.net', site: 'x.atlassian.net', email: 'a@x.fi', token: 'old-TOKEN' }]);
+  assert.deepEqual(secrets.status().jira, [{ id: 'jira', name: 'x.atlassian.net', site: 'x.atlassian.net' }]);
+  // The next write has the list and no legacy field.
+  secrets.set({});
+  const written = JSON.parse(readFileSync(file, 'utf8'));
+  assert.equal(written.jira, undefined);
+  assert.equal(written.jiraConnections.length, 1);
+  assert.equal(written.apiKey, 'sha256:abc');
+  if (process.platform !== 'win32') assert.equal(mode(file), 0o600);
+  // An invalid legacy login (no token) is nothing.
+  writeFileSync(file, JSON.stringify({ jira: { site: 'x.atlassian.net', email: 'a', token: '' } }));
+  assert.deepEqual(new KanbanSecrets(dir).jiraConnections(), []);
+});
+
+test('Jira connections: edit keeps what is not given, a new site needs its token, remove, the limit, and an empty list stays empty', (t) => {
+  const dir = scratch(t);
+  const secrets = new KanbanSecrets(dir);
+  assert.match(String(secrets.setJiraConnection({ name: 'x', site: 'a.atlassian.net' })), /needs the e-mail and the API token/);
+  assert.match(String(secrets.setJiraConnection({ name: 'x', site: 'not a host', email: 'e', token: 't' })), /host name/);
+  assert.match(String(secrets.setJiraConnection({ id: 'nope', name: 'x', site: 'a.atlassian.net' })), /No such Jira connection/);
+  secrets.setJiraConnection({ name: '', site: 'https://A.atlassian.net/', email: 'e@a.fi', token: 'tok-A' });
+  const id = secrets.jiraConnections()[0].id;
+  assert.equal(secrets.jiraConnections()[0].name, 'A.atlassian.net', 'no name: the site');
+  // Rename; the e-mail and the token stay. The same site in another case is the same site.
+  secrets.setJiraConnection({ id, name: 'Customer A', site: 'a.ATLASSIAN.net' });
+  assert.deepEqual(secrets.jiraConnections()[0], { id, name: 'Customer A', site: 'a.ATLASSIAN.net', email: 'e@a.fi', token: 'tok-A' });
+  // A new site without the token is refused and nothing changes; with it, the whole connection moves.
+  assert.match(String(secrets.setJiraConnection({ id, name: 'Customer A', site: 'b.atlassian.net', email: 'other@b.fi' })), /needs the e-mail and the API token again/);
+  assert.match(String(secrets.setJiraConnection({ id, name: 'Customer A', site: 'b.atlassian.net', token: 'tok-B' })), /needs the e-mail and the API token again/, 'the token alone is not enough either');
+  assert.equal(secrets.jiraConnections()[0].site, 'a.ATLASSIAN.net');
+  assert.equal(secrets.jiraConnections()[0].email, 'e@a.fi');
+  secrets.setJiraConnection({ id, name: 'Customer B', site: 'b.atlassian.net', email: 'e@b.fi', token: 'tok-B' });
+  assert.deepEqual(secrets.jiraConnections()[0], { id, name: 'Customer B', site: 'b.atlassian.net', email: 'e@b.fi', token: 'tok-B' });
+  // The copies the store hands out are not its own.
+  secrets.jiraConnections()[0].token = 'changed';
+  assert.equal(secrets.jiraConnections()[0].token, 'tok-B');
+
+  // Up to the limit.
+  for (let i = 1; i < MAX_JIRA_CONNECTIONS; i++) assert.equal(typeof secrets.setJiraConnection({ name: `c${i}`, site: `c${i}.atlassian.net`, email: 'e', token: 't' }), 'object');
+  assert.match(String(secrets.setJiraConnection({ name: 'one more', site: 'z.atlassian.net', email: 'e', token: 't' })), /20 Jira connections at most/);
+  assert.equal(new KanbanSecrets(dir).jiraConnections().length, MAX_JIRA_CONNECTIONS);
+
+  // Remove; the last one's removal is not undone by a restart, even from a legacy file.
+  assert.match(String(secrets.removeJiraConnection('nope')), /No such Jira connection/);
+  for (const c of secrets.jiraConnections()) secrets.removeJiraConnection(c.id);
+  assert.deepEqual(secrets.status().jira, []);
+  assert.deepEqual(JSON.parse(readFileSync(secrets.file, 'utf8')), { jiraConnections: [] });
+  assert.deepEqual(new KanbanSecrets(dir).status().jira, []);
+});
+
+test('a hand-edited secrets file keeps only sound connections: no duplicate ids, a real site, a token', (t) => {
+  const dir = scratch(t);
+  const ok = { id: 'a', name: '  ', site: 'https://a.atlassian.net', email: 'e', token: 't' };
+  writeFileSync(path.join(dir, 'kanban-secrets.json'), JSON.stringify({ jiraConnections: [ok, { ...ok, site: 'dup.atlassian.net' }, { ...ok, id: 'b', token: '' }, { ...ok, id: 'c', site: 'evil.com/x' }, { ...ok, id: 'bad id!' }, 7] }));
+  assert.deepEqual(new KanbanSecrets(dir).jiraConnections(), [{ id: 'a', name: 'a.atlassian.net', site: 'a.atlassian.net', email: 'e', token: 't' }]);
+});
+
+test('a Jira source keeps its connection id when it is one, and its site is cleaned', () => {
+  const s = sanitizeIssueSource({ kind: 'jira', site: 'https://A.atlassian.net/', projectKeys: ['DEV'], connection: 'jc-1', filters: {} });
+  assert.deepEqual(s && s.kind === 'jira' && [s.site, s.connection], ['A.atlassian.net', 'jc-1']);
+  const bad = sanitizeIssueSource({ kind: 'jira', site: 'a.atlassian.net', projectKeys: [], connection: '../x', filters: {} });
+  assert.ok(bad && !('connection' in bad));
+});
+
+test('Jira sources over several sites must each name their project keys', (t) => {
+  const store = new KanbanSettingsStore(scratch(t));
+  const src = (site: string, id: string, keys: string[]) => ({ kind: 'jira', id, site, projectKeys: keys, filters: {} });
+  const err = store.setProject('web', { issueSources: [src('a.atlassian.net', 's1', []), src('b.atlassian.net', 's2', ['OPS'])] } as never);
+  assert.match(String(err), /without project keys can't sit beside sources on another site \(a\.atlassian\.net, b\.atlassian\.net\): give it project keys/);
+  assert.deepEqual(store.project('web').issueSources, []);
+  assert.match(String(store.setProject('web', { issueSources: [src('a.atlassian.net', 's1', ['DEV']), src('b.atlassian.net', 's2', [])] } as never)), /without project keys/);
+  assert.equal(typeof store.setProject('web', { issueSources: [src('a.atlassian.net', 's1', []), src('A.atlassian.net', 's2', [])] } as never), 'object', 'one site: keys are optional');
+  assert.equal(typeof store.setProject('web', { issueSources: [src('a.atlassian.net', 's1', ['DEV']), src('b.atlassian.net', 's2', ['OPS'])] } as never), 'object');
+  // The same check the browser makes before asking.
+  assert.equal(jiraSourcesProblem([{ kind: 'github-repo' }, { kind: 'jira', site: 'a.atlassian.net', projectKeys: [] }]), undefined);
+  assert.match(String(jiraSourcesProblem([{ kind: 'jira', site: 'a.atlassian.net', projectKeys: ['X'] }, { kind: 'jira', site: 'b.atlassian.net', projectKeys: ['X'] }])), /key X is in sources on two sites/);
+});
+
+test('setProject refuses one Jira project key on two sites, and allows it twice on one', (t) => {
+  const store = new KanbanSettingsStore(scratch(t));
+  const src = (site: string, id: string, key = 'DEV') => ({ kind: 'jira', id, site, projectKeys: [key], filters: {} });
+  const err = store.setProject('web', { issueSources: [src('a.atlassian.net', 's1'), src('b.atlassian.net', 's2')] } as never);
+  assert.match(String(err), /Jira project key DEV is in sources on two sites \(a\.atlassian\.net, b\.atlassian\.net\)/);
+  assert.deepEqual(store.project('web').issueSources, [], 'nothing was saved');
+  assert.equal(typeof store.setProject('web', { issueSources: [src('a.atlassian.net', 's1'), src('A.atlassian.net', 's2')] } as never), 'object', 'the same site, in any case');
+  assert.equal(typeof store.setProject('web', { issueSources: [src('a.atlassian.net', 's1'), src('b.atlassian.net', 's2', 'OPS')] } as never), 'object', 'other keys');
+  assert.equal(store.project('web').issueSources.length, 2);
 });
 
 test('the last fix is not re-reviewed by default: the rounds set are all the reviews a task gets', () => {

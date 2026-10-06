@@ -9,7 +9,7 @@ import type { IssueSourceIo } from '../src/server/kanban/integrations/issues/sou
 import type { IssueSourceConfig } from '../src/shared/kanban/types.js';
 import { client, def, makeCtx } from './kanban-integrations-ctx.js';
 
-const io = (over: Partial<IssueSourceIo> = {}): IssueSourceIo => ({ gh: async () => '[]', fetch: (async () => new Response('{}')) as typeof fetch, cwd: '/tmp', projectRepos: [], ...over });
+const io = (over: Partial<IssueSourceIo> = {}): IssueSourceIo => ({ gh: async () => '[]', fetch: (async () => new Response('{}')) as typeof fetch, cwd: '/tmp', projectRepos: [], jira: [], ...over });
 
 // --- Jira -----------------------------------------------------------------------------------------
 
@@ -53,7 +53,7 @@ test('Jira: Basic auth to the site only, pages through nextPageToken, epic falls
     calls.push({ url, body: JSON.parse(String(init.body)), auth: String((init.headers as Record<string, string>).authorization) });
     return new Response(JSON.stringify(pages[calls.length - 1]));
   }) as unknown as typeof globalThis.fetch;
-  const got = await jiraSource.list(JIRA, io({ fetch, jira: { site: 'team.atlassian.net', email: 'me@x.fi', token: 'tok' } }));
+  const got = await jiraSource.list(JIRA, io({ fetch, jira: [{ id: 'jira', name: 'team', site: 'team.atlassian.net', email: 'me@x.fi', token: 'tok' }] }));
   assert.equal(calls[0].url, 'https://team.atlassian.net/rest/api/3/search/jql');
   assert.equal(calls[0].auth, `Basic ${Buffer.from('me@x.fi:tok').toString('base64')}`);
   assert.match(calls[0].body.jql, /parent = "UYT-1"/);
@@ -61,10 +61,10 @@ test('Jira: Basic auth to the site only, pages through nextPageToken, epic falls
   assert.equal(calls[2].body.nextPageToken, 't2');
   assert.deepEqual(got.map((i) => i.key), ['UYT-2', 'UYT-3']);
   assert.deepEqual({ ...got[0], updatedAt: '' }, { source: 'jira', sourceId: 'j', key: 'UYT-2', title: 'Two', url: 'https://team.atlassian.net/browse/UYT-2', body: 'Body', assignee: 'P', labels: ['a'], status: 'To Do', epic: 'UYT-1', project: 'UYT', updatedAt: '' });
-  await assert.rejects(jiraSource.list({ ...JIRA, site: 'evil.example.com' }, io({ fetch, jira: { site: 'team.atlassian.net', email: 'e', token: 't' } })), /token is for team.atlassian.net/);
-  await assert.rejects(jiraSource.list(JIRA, io()), /Jira isn’t set up/);
+  await assert.rejects(jiraSource.list({ ...JIRA, site: 'evil.example.com' }, io({ fetch, jira: [{ id: 'jira', name: 'team', site: 'team.atlassian.net', email: 'e', token: 't' }] })), /No Jira connection for evil.example.com/);
+  await assert.rejects(jiraSource.list(JIRA, io()), /No Jira connection for team.atlassian.net/);
   const denied = (async () => new Response(JSON.stringify({ errorMessages: ['nope'] }), { status: 401 })) as unknown as typeof globalThis.fetch;
-  await assert.rejects(jiraSource.list({ ...JIRA, filters: {} }, io({ fetch: denied, jira: { site: 'team.atlassian.net', email: 'e', token: 't' } })), /turned the e-mail and API token down \(401\): nope/);
+  await assert.rejects(jiraSource.list({ ...JIRA, filters: {} }, io({ fetch: denied, jira: [{ id: 'jira', name: 'team', site: 'team.atlassian.net', email: 'e', token: 't' }] })), /turned the e-mail and API token down \(401\): nope/);
 });
 
 // --- GitHub repositories --------------------------------------------------------------------------
@@ -131,7 +131,7 @@ test('issues: listed from every source, cached, and made into a task once per ti
   const listed = c.got.at(-1) as Extract<(typeof c.got)[number], { t: 'kanban.issues' }>;
   assert.equal(listed.rid, 'r1');
   assert.deepEqual(listed.items.map((i) => i.key), ['gh:o/app#12']);
-  assert.match(listed.error ?? '', /^Jira UYT: Jira isn’t set up/, 'one broken source leaves the others');
+  assert.match(listed.error ?? '', /^Jira UYT: No Jira connection for x.atlassian.net/, 'one broken source leaves the others');
   assert.ok(ctx.sent.some((s) => s.msg.t === 'kanban.issues' && s.project === 'app'), 'subscribers hear it');
 
   await issues.plugin.ws!['kanban.issues.createTask']!(c, { t: 'kanban.issues.createTask', project: 'app', issueKey: 'gh:o/app#12', rid: 'r2', start: true });

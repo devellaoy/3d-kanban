@@ -49,6 +49,11 @@ test('notes keep upstream’s colors for numbers, and steady ones for keys', () 
 
 const JIRA_ISSUE: NormalizedIssue = { source: 'jira', key: 'UYT-1415', title: 'Login breaks', url: 'https://x.atlassian.net/browse/UYT-1415', body: 'Steps', assignee: 'Panu', labels: ['backend'], status: 'In Progress', updatedAt: '2026-09-02T10:00:00Z' };
 
+test('a card keeps the source it came through', () => {
+  assert.equal(toGhIssue({ ...JIRA_ISSUE, sourceId: 'src-2' }).sourceId, 'src-2');
+  assert.ok(!('sourceId' in toGhIssue(JIRA_ISSUE)));
+});
+
 test('an issue of a source becomes a card: a GitHub issue of the project keeps its number', () => {
   const jira = toGhIssue(JIRA_ISSUE, 7, ['o/app']);
   assert.equal(jira.number, 0);

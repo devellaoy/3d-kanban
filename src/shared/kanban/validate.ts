@@ -40,6 +40,8 @@ export const KANBAN_LIMITS = {
 } as const;
 
 /** A floor id (see Building.newDef). */
+/** An id of something in the settings: an issue source, a Jira connection. */
+export const SOURCE_ID_RE = /^[A-Za-z0-9_-]{1,40}$/;
 export const PROJECT_ID_RE = /^[a-z0-9-]{1,40}$/;
 /** A person's id: a Jira account id (`712020:ab-cd`, `557058:…`), or a GitHub login. */
 export const PERSON_ID_RE = /^[\w:@.-]{1,200}$/;

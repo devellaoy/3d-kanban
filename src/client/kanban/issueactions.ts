@@ -33,7 +33,7 @@ export function issueActions(api: KanbanApi, project: string, first: ActionIssue
   let issue = first;
   const sections = opts.sections ?? ['status', 'assignee', 'comments'];
   const openTask = opts.openTask ?? ((id: number) => location.assign(`/kanban?task=${id}`));
-  const base = { project, issueKey: issue.key };
+  const base = { project, issueKey: issue.key, ...(issue.sourceId ? { source: issue.sourceId } : {}) };
   const github = isGithubKey(issue.key);
   const el = h('div.kb-ia', { role: 'group', 'aria-label': `Actions on ${issue.key}` });
   const errorLine = (msg: string, retry: () => void) => {

@@ -17,7 +17,8 @@ import { parseGhIssues } from '../github-repo.js';
 import type { IssueActIo, IssueSourceIo } from '../source.js';
 import { ghChildren, ghCount, ghGet, ghGetOn, ghGroups, ghLogin, ghOptions, ghPage } from './github.js';
 import { jiraCount, jiraGet, jiraOptions, jiraPage, jiraScopePeople, jiraSearchPage, jiraVersions, newJiraCaches } from './jira.js';
-import { JIRA_KEY_RE, browseJql, keyProject, narrowsBeyondCategory } from './jql.js';
+import { sameJiraSite } from '../../../../../shared/kanban/jira-connections.js';
+import { JIRA_KEY_RE, browseJql, jiraCovers, keyProject, narrowsBeyondCategory } from './jql.js';
 
 type JiraConfig = Extract<IssueSourceConfig, { kind: 'jira' }>;
 type ProjectConfig = Extract<IssueSourceConfig, { kind: 'github-project' }>;
@@ -49,7 +50,8 @@ const scopeOf = (s: Browsable): BrowseScope =>
     : { id: s.id, kind: 'github-project', label: `GitHub project ${s.owner}/${s.number}` };
 
 export function createBrowse(ctx: KanbanContext, deps: BrowseDeps) {
-  const caches = newJiraCaches();
+  // Replaced, not cleared, when connections change: a read begun before then writes into the discarded maps.
+  let caches = newJiraCaches();
   /** The GitHub login each account's own gh signs in as: kept for ten minutes, a failed ask not at all. */
   const logins = new Map<string, { at: number; p: Promise<string | undefined> }>();
   /** The keys `load` found nothing for, and when (so an action on a key that isn't the project's doesn't ask GitHub or Jira every time). */
@@ -184,13 +186,13 @@ export function createBrowse(ctx: KanbanContext, deps: BrowseDeps) {
    * An issue of the project fetched fresh, for an action or a task on a key that is not on the list
    * (it was browsed, and the cache let go of it). Only the project's own: a Jira key of a source's
    * project keys; a `gh:` key on one of its boards or of its repositories; a draft of one of its
-   * boards. Anything else, or any failure, is undefined.
+   * boards. Anything else, or any failure, is undefined. `source`: the source the asker came through (a Jira key is read through that one only).
    */
-  const load = async (project: string, key: string): Promise<NormalizedIssue | undefined> => {
-    const at = `${project}|${key}`;
+  const load = async (project: string, key: string, source?: string): Promise<NormalizedIssue | undefined> => {
+    const at = `${project}|${source ?? ''}|${key}`;
     const seen = missed.get(at);
     if (seen !== undefined && Date.now() - seen < MISS_TTL_MS) return undefined;
-    const found = await fetchOwn(project, key);
+    const found = await fetchOwn(project, key, source);
     if (!found) {
       if (missed.size >= MISS_MAX) missed.delete(missed.keys().next().value as string);
       missed.set(at, Date.now());
@@ -198,7 +200,7 @@ export function createBrowse(ctx: KanbanContext, deps: BrowseDeps) {
     return found;
   };
 
-  const fetchOwn = async (project: string, key: string): Promise<NormalizedIssue | undefined> => {
+  const fetchOwn = async (project: string, key: string, source?: string): Promise<NormalizedIssue | undefined> => {
     const sources = ctx.settings.project(project).issueSources;
     const io = actIo(project, 'Agent Office');
     try {
@@ -209,8 +211,19 @@ export function createBrowse(ctx: KanbanContext, deps: BrowseDeps) {
         return board ? (await readWorkItems(io, readerAs(board.org), board.org, board.project, [ab.id], board.id))[0] : undefined;
       }
       if (JIRA_KEY_RE.test(key)) {
-        const jira = sources.find((s): s is JiraConfig => s.kind === 'jira' && s.projectKeys.some((k) => k.toUpperCase() === keyProject(key)));
-        return jira ? await jiraGet(io, jira, key, caches) : undefined;
+        // Through the source the asker opened it through when it is one that covers the key; else through the first source that does (on the named one's site, when that one covers the key too).
+        const jiras = sources.filter((s): s is JiraConfig => s.kind === 'jira' && jiraCovers(s, key));
+        const named = sources.find((s): s is JiraConfig => s.kind === 'jira' && s.id === source);
+        const tries = [...jiras.filter((s) => s === named), ...jiras.filter((s) => s !== named && (!named || !jiras.includes(named) || sameJiraSite(s.site, named.site))).slice(0, 1)];
+        for (const jira of tries) {
+          try {
+            // A source with no project keys reads any project: the read is scoped to the key's own.
+            return await jiraGet(io, jira.projectKeys.length ? jira : { ...jira, projectKeys: [keyProject(key)] }, key, caches);
+          } catch {
+            // the next one, if any
+          }
+        }
+        return undefined;
       }
       // The issue and its parent chain are read once and tested against each board (not one fetch per board).
       const boards = sources.filter((s): s is ProjectConfig => s.kind === 'github-project');
@@ -226,5 +239,16 @@ export function createBrowse(ctx: KanbanContext, deps: BrowseDeps) {
     }
   };
 
-  return { ws, load };
+  /**
+   * Jira connections changed for these sites: what was read there with the old logins (counts, versions, parents) is asked again; the
+   * other sites' entries, the Sprint field and the boards' fields stay. The maps are replaced, not edited, so a read under way writes into the old ones.
+   */
+  const connectionsChanged = (sites: readonly string[]) => {
+    const gone = (key: string) => sites.some((site) => key.startsWith(`${site.toLowerCase()}|`));
+    const keep = <V>(m: Map<string, V>) => new Map([...m].filter(([key]) => !gone(key)));
+    caches = { ...caches, counts: keep(caches.counts), versions: keep(caches.versions), parents: keep(caches.parents) };
+    missed.clear();
+  };
+
+  return { ws, load, connectionsChanged };
 }
