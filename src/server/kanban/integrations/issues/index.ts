@@ -19,6 +19,7 @@ import { takeIssueForTask } from './autoassign.js';
 import { takeIssue } from './take.js';
 import { agentCreateHook } from './agent-create.js';
 import { announce, issueActionHandlers, statusIoFor, type IssuePatch } from './actions.js';
+import { jiraConnectionHandlers } from './jira-connections-ws.js';
 import { createBrowse } from './browse/index.js';
 import type { GhIssue, GhState } from '../../../../shared/protocol.js';
 
@@ -164,7 +165,7 @@ export function createIssues(ctx: KanbanContext, opts: IssuesOptions = {}) {
     const def = ctx.project(project);
     // GitHub's only (IssueSourceIo.projectRepos): a project's repositories on Azure DevOps or Bitbucket aren't gh's.
     const repos = ctx.repos(project).filter((r) => r.kind === 'git' && r.remote && hostOf(r.remote) === 'github').map((r) => r.remote!);
-    return { gh: runGh, fetch: doFetch, cwd: ctx.floor(project)?.dir ?? def?.dir ?? ctx.dataDir, jira: ctx.secrets.jira(), projectRepos: repos };
+    return { gh: runGh, fetch: doFetch, cwd: ctx.floor(project)?.dir ?? def?.dir ?? ctx.dataDir, jira: ctx.secrets.jiraConnections(), projectRepos: repos };
   };
 
   const browsing = createBrowse(ctx, { io, browsed: browse });
@@ -338,6 +339,7 @@ export function createIssues(ctx: KanbanContext, opts: IssuesOptions = {}) {
     hook: { '/office/tasks/create': agentCreateHook(ctx, createFromIssue) },
     ws: {
       ...browsing.ws,
+      ...jiraConnectionHandlers(ctx, doFetch),
       ...issueActionHandlers(ctx, {
         find,
         load: async (project, key) => {

@@ -2,6 +2,7 @@
 // needs from the office handed in (so tests give it canned gh output and HTTP answers).
 
 import type { IssueSourceConfig, NormalizedIssue } from '../../../../shared/kanban/types.js';
+import type { JiraConnection } from './jira-auth.js';
 
 /** Runs `gh` with these arguments in `cwd`; resolves to its stdout, rejects with a readable error. */
 export type GhRunner = (args: string[], cwd: string, timeout?: number, env?: Record<string, string>) => Promise<string>;
@@ -11,8 +12,8 @@ export interface IssueSourceIo {
   fetch: typeof fetch;
   /** Where gh runs when it doesn't need a checkout (the office's data dir). */
   cwd: string;
-  /** The Jira site, e-mail and API token (kanban-secrets.json), when they're set. */
-  jira?: { site: string; email: string; token: string };
+  /** The Jira connections: site, e-mail and API token each (kanban-secrets.json). */
+  jira: JiraConnection[];
   /** owner/name of the project's git repositories with a GitHub remote, for a github-repo source that names none. */
   projectRepos: string[];
 }

@@ -50,7 +50,7 @@ function friendly(err: unknown, textSearch = false): Error {
 
 async function call(io: IssueActIo, scope: JiraConfig, method: 'GET' | 'POST', path: string, body?: unknown, textSearch = false): Promise<any> {
   try {
-    return await jiraCall(io, scope.site, method, path, body);
+    return await jiraCall(io, scope, method, path, body);
   } catch (err) {
     throw friendly(err, textSearch);
   }
@@ -166,7 +166,7 @@ const refused = (err: unknown): boolean => /^Jira said 400|^Jira couldn’t sear
 async function storyPage(io: IssueActIo, scope: JiraConfig, filters: BrowseFilters, where: JqlWhere, caches: JiraCaches, cursor: string | undefined, lenient: boolean) {
   const textSearch = !!filters.q;
   const parents = narrowsBeyondCategory(filters)
-    ? await memo(caches.parents, `${scope.site.toLowerCase()}|${scope.id}|${browseJql(scope, filters, { subtasksOf: [], lenient }, false)}`, async () => [...new Set((await jiraLookup(io, scope, browseJql(scope, filters, { subtasksOf: [], lenient }), ['parent'], PARENT_LOOKUP, textSearch)).flatMap((i) => (i.parent ? [i.parent] : [])))])
+    ? await memo(caches.parents, `${scope.site.toLowerCase()}|${scope.connection ?? ''}|${scope.id}|${browseJql(scope, filters, { subtasksOf: [], lenient }, false)}`, async () => [...new Set((await jiraLookup(io, scope, browseJql(scope, filters, { subtasksOf: [], lenient }), ['parent'], PARENT_LOOKUP, textSearch)).flatMap((i) => (i.parent ? [i.parent] : [])))])
     : [];
   const page = await jiraSearchPage(io, scope, browseJql(scope, filters, { ...where, topLevel: true, orKeys: parents, lenient }), caches, cursor, textSearch);
   const stories = where.epic === 'none' || filters.epic === 'none' ? page.items.filter((i) => !isEpic(i)) : page.items;
@@ -199,11 +199,11 @@ export async function jiraPage(io: IssueActIo, scope: JiraConfig, filters: Brows
   }
 }
 
-/** The approximate count for the query; `{}` when Jira can't say (a failed count never fails a page). Cached for a minute per site, source and query. */
+/** The approximate count for the query; `{}` when Jira can't say (a failed count never fails a page). Cached for a minute per site, connection, source and query. */
 export function jiraCount(io: IssueActIo, scope: JiraConfig, jql: string, caches: JiraCaches, now = Date.now()): Promise<number | undefined> {
-  return memo(caches.counts, `${scope.site.toLowerCase()}|${scope.id}|${jql}`, async () => {
+  return memo(caches.counts, `${scope.site.toLowerCase()}|${scope.connection ?? ''}|${scope.id}|${jql}`, async () => {
     try {
-      const body = await jiraCall(io, scope.site, 'POST', '/rest/api/3/search/approximate-count', { jql });
+      const body = await jiraCall(io, scope, 'POST', '/rest/api/3/search/approximate-count', { jql });
       return Number.isSafeInteger(body?.count) ? (body.count as number) : undefined;
     } catch (err) {
       // A site without the endpoint (404) or a query it dislikes (400) has no count; anything else (the token, a 429) is the caller's to see.
@@ -216,7 +216,7 @@ export function jiraCount(io: IssueActIo, scope: JiraConfig, jql: string, caches
 /** The fix versions of the scope's projects, one page of each (`cursor`: where it starts). Unreleased ones oldest first, released newest first. */
 export function jiraVersions(io: IssueActIo, scope: JiraConfig, released: boolean, cursor?: string, caches?: JiraCaches): Promise<{ groups: BrowseGroup[]; next?: string }> {
   const make = () => fetchVersions(io, scope, released, cursor);
-  return caches ? memo(caches.versions, `${scope.site.toLowerCase()}|${scope.id}|${scope.projectKeys.join(',')}|${released}|${cursor ?? ''}`, make) : make();
+  return caches ? memo(caches.versions, `${scope.site.toLowerCase()}|${scope.connection ?? ''}|${scope.id}|${scope.projectKeys.join(',')}|${released}|${cursor ?? ''}`, make) : make();
 }
 
 async function fetchVersions(io: IssueActIo, scope: JiraConfig, released: boolean, cursor?: string): Promise<{ groups: BrowseGroup[]; next?: string }> {

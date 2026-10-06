@@ -3,7 +3,6 @@
 // file and from the browser alike, so what the engine reads is always complete and in range. The
 // secrets never leave the server: the browser only ever gets secretStatus().
 
-import { createHash, timingSafeEqual } from 'node:crypto';
 import { chmodSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import type {
@@ -15,7 +14,6 @@ import type {
   PlanApproval,
   ProjectSettings,
   ReviewSettings,
-  SecretStatus,
   SkillSelection,
   TaskOverrides,
 } from '../../shared/kanban/types.js';
@@ -24,6 +22,7 @@ import { GH_REPO_RE, MODEL_RE, PROJECT_ID_RE, type KanbanSettingsPatch } from '.
 import { isKanbanPromptId } from '../../shared/kanban/prompts.js';
 import { PROMPT_MAX } from '../../shared/prompts.js';
 import { cleanProjectLanguage } from '../../shared/language.js';
+import { JIRA_CONNECTION_ID_RE, cleanJiraSite, sameJiraSite } from '../../shared/kanban/jira-connections.js';
 import { AZURE_ORG_RE, AZURE_PROJECT_RE, WIQL_EXTRA_MAX, wiqlExtraProblem } from '../../shared/kanban/azure-boards.js';
 
 export const SETTINGS_SCHEMA_VERSION = 1;
@@ -140,12 +139,14 @@ export function sanitizeIssueSource(raw: unknown): IssueSourceConfig | undefined
       return { id, kind: 'github-project', owner, number, filters: compact({ assignee: opt(f.assignee, 100), status: opt(f.status, 100), iteration: opt(f.iteration, 100) }) };
     }
     case 'jira': {
-      const site = opt(raw.site, 200)?.replace(/^https?:\/\//, '').replace(/\/+$/, '');
-      if (!site || !/^[A-Za-z0-9.-]+(:\d+)?$/.test(site)) return undefined;
+      const site = cleanJiraSite(opt(raw.site, 200));
+      if (!site) return undefined;
+      const connection = typeof raw.connection === 'string' && JIRA_CONNECTION_ID_RE.test(raw.connection) ? raw.connection : undefined;
       return {
         id,
         kind: 'jira',
         site,
+        ...(connection ? { connection } : {}),
         projectKeys: strings(raw.projectKeys, 20, 50, /^[A-Z][A-Z0-9_]*$/),
         filters: compact({ assignee: opt(f.assignee, 100), epic: opt(f.epic, 100), labels: strings(f.labels, 20, 100), statusCategoryNot: strings(f.statusCategoryNot, 10, 50), jql: opt(f.jql, 2000) }),
       };
@@ -234,10 +235,25 @@ export function sanitizeKanbanSettings(raw: unknown, base: KanbanSettings = defa
   };
 }
 
+/** Why a list of issue sources can't be kept when one Jira project key sits on two sites (issues are told apart by key), else undefined. */
+function jiraKeyClash(raw: unknown): string | undefined {
+  if (!Array.isArray(raw)) return undefined;
+  const sites = new Map<string, string[]>();
+  for (const s of raw.map(sanitizeIssueSource)) {
+    if (s?.kind !== 'jira') continue;
+    for (const key of s.projectKeys ?? []) {
+      const seen = sites.get(key) ?? [];
+      if (!seen.some((x) => sameJiraSite(x, s.site))) sites.set(key, [...seen, s.site]);
+    }
+  }
+  for (const [key, list] of sites) if (list.length > 1) return `Jira project key ${key} is in sources on two sites (${list.join(', ')}): the office tells issues apart by their key`;
+  return undefined;
+}
+
 // --- The settings file ----------------------------------------------------------------------------
 
 /** Writes a file whole or not at all: a crash mid-write never leaves half a settings file. */
-function writeAtomic(file: string, body: string, mode: number) {
+export function writeAtomic(file: string, body: string, mode: number) {
   const tmp = `${file}.${process.pid}.tmp`;
   writeFileSync(tmp, body, { mode });
   renameSync(tmp, file);
@@ -296,6 +312,8 @@ export class KanbanSettingsStore {
       const v = obj(patch)[k];
       if (v !== undefined && v !== null && cleanProjectLanguage(v) === undefined) return "That isn't a language name";
     }
+    const clash = jiraKeyClash(obj(patch).issueSources);
+    if (clash) return clash;
     // A copy: the fields set to null (cleared) are dropped from it, and read from the patch after.
     const p = { ...obj(patch) };
     const cleared = new Set(Object.keys(p).filter((k) => p[k] === null));
@@ -352,72 +370,5 @@ export class KanbanSettingsStore {
       console.error(`agent-office: couldn't save the kanban settings: ${(err as Error).message}`);
     }
     this.onChange(this.get());
-  }
-}
-
-// --- Secrets --------------------------------------------------------------------------------------
-
-interface SecretsFile {
-  jira?: { site: string; email: string; token: string };
-  /** hashApiKey of the /api/v1 key (a file from before hashing may hold the key itself). */
-  apiKey?: string;
-}
-
-/** How the /api/v1 key is kept: `sha256:<hex>`, so even the secrets file doesn't give it away. */
-export function hashApiKey(key: string): string {
-  return `sha256:${createHash('sha256').update(key, 'utf8').digest('hex')}`;
-}
-
-/**
- * Tokens the integrations need (Jira's API token, the /api/v1 key), in kanban-secrets.json with only
- * the office's user able to read it. Nothing here is ever sent to a browser.
- */
-export class KanbanSecrets {
-  private secrets: SecretsFile = {};
-  readonly file: string;
-
-  constructor(dataDir: string) {
-    this.file = path.join(dataDir, 'kanban-secrets.json');
-    try {
-      const raw = obj(JSON.parse(readFileSync(this.file, 'utf8')));
-      const j = obj(raw.jira);
-      if (typeof j.site === 'string' && typeof j.email === 'string' && typeof j.token === 'string' && j.token) this.secrets.jira = { site: j.site, email: j.email, token: j.token };
-      if (typeof raw.apiKey === 'string' && raw.apiKey) this.secrets.apiKey = raw.apiKey;
-    } catch {
-      // none yet
-    }
-  }
-
-  /** What the browser may know: which are set (and the Jira site, which isn't secret). */
-  status(): SecretStatus {
-    return { jira: { configured: !!this.secrets.jira, ...(this.secrets.jira ? { site: this.secrets.jira.site } : {}) }, apiKey: { configured: !!this.secrets.apiKey } };
-  }
-
-  jira(): { site: string; email: string; token: string } | undefined {
-    return this.secrets.jira && { ...this.secrets.jira };
-  }
-
-  /** The /api/v1 key as kept: hashApiKey of it (see checkApiKey). */
-  apiKey(): string | undefined {
-    return this.secrets.apiKey;
-  }
-
-  /** Whether `key` is the /api/v1 key, compared in constant time. */
-  checkApiKey(key: string | undefined): boolean {
-    const kept = this.secrets.apiKey;
-    if (!kept || !key) return false;
-    const want = Buffer.from(kept.startsWith('sha256:') ? kept : hashApiKey(kept));
-    const got = Buffer.from(hashApiKey(key));
-    return want.length === got.length && timingSafeEqual(want, got);
-  }
-
-  /** Sets or (null) clears them; what isn't given stays. */
-  set(patch: { jira?: { site: string; email: string; token: string } | null; apiKey?: string | null }): SecretStatus {
-    if (patch.jira === null) delete this.secrets.jira;
-    else if (patch.jira) this.secrets.jira = { site: patch.jira.site, email: patch.jira.email, token: patch.jira.token };
-    if (patch.apiKey === null) delete this.secrets.apiKey;
-    else if (typeof patch.apiKey === 'string') this.secrets.apiKey = hashApiKey(patch.apiKey);
-    writeAtomic(this.file, `${JSON.stringify(this.secrets, null, 2)}\n`, 0o600);
-    return this.status();
   }
 }

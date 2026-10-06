@@ -96,7 +96,12 @@ test('good messages come through rebuilt, without anything the validator did not
   assert.deepEqual(good({ t: 'kanban.task.pr', id: 1, mode: 'conflicts' }), { t: 'kanban.task.pr', id: 1, mode: 'conflicts' });
   refused({ t: 'kanban.task.pr', id: 1, mode: 'rebase' }, /mode/);
   assert.deepEqual(good({ t: 'kanban.project.prompt.set', project: 'web', id: 'kanban.pr.create', text: null }), { t: 'kanban.project.prompt.set', project: 'web', id: 'kanban.pr.create', text: null });
-  assert.deepEqual(good({ t: 'kanban.secrets.set', jira: { site: 'https://acme.atlassian.net/', email: ' a@b.fi ', token: ' t ' } }), { t: 'kanban.secrets.set', jira: { site: 'acme.atlassian.net', email: 'a@b.fi', token: 't' } });
+  assert.deepEqual(good({ t: 'kanban.secrets.set', apiKey: 'k'.repeat(20) }), { t: 'kanban.secrets.set', apiKey: 'k'.repeat(20) });
+  assert.deepEqual(good({ t: 'kanban.secrets.set', apiKey: null }), { t: 'kanban.secrets.set', apiKey: null });
+  assert.deepEqual(good({ t: 'kanban.secrets.jira.set', name: ' Acme ', site: 'https://acme.atlassian.net/', email: ' a@b.fi ', token: ' t ' }), { t: 'kanban.secrets.jira.set', name: 'Acme', site: 'acme.atlassian.net', email: 'a@b.fi', token: 't' });
+  assert.deepEqual(good({ t: 'kanban.secrets.jira.set', id: 'jc-1', name: '', site: 'acme.atlassian.net' }), { t: 'kanban.secrets.jira.set', id: 'jc-1', name: '', site: 'acme.atlassian.net' });
+  assert.deepEqual(good({ t: 'kanban.secrets.jira.remove', id: 'jc-1' }), { t: 'kanban.secrets.jira.remove', id: 'jc-1' });
+  assert.deepEqual(good({ t: 'kanban.secrets.jira.test', id: 'jira' }), { t: 'kanban.secrets.jira.test', id: 'jira' });
   assert.deepEqual(good({ t: 'kanban.pr.review', project: 'web', prs: [{ repo: 'acme/web', number: 1 }, { repo: 'ACME/web', number: 1 }, { repo: 'acme/api', number: 2 }] }), { t: 'kanban.pr.review', project: 'web', prs: [{ repo: 'acme/web', number: 1 }, { repo: 'acme/api', number: 2 }] });
   assert.deepEqual(good({ t: 'kanban.pr.bundle', project: 'web', branch: 'gh-1/x' }), { t: 'kanban.pr.bundle', project: 'web', branch: 'gh-1/x' });
   assert.deepEqual(good({ t: 'kanban.pr.owner', project: 'web', repo: 'acme/web', number: 7 }), { t: 'kanban.pr.owner', project: 'web', repo: 'acme/web', number: 7 });
@@ -119,7 +124,7 @@ test('good messages come through rebuilt, without anything the validator did not
     refused({ t: 'kanban.task.start', id: 2, deskId }, /deskId must be a desk/);
     refused({ t: 'kanban.task.create', task: { project: 'web', title: 'x' }, deskId }, /deskId must be a desk/);
   }
-  assert.equal(KANBAN_CLIENT_TYPES.size, 51);
+  assert.equal(KANBAN_CLIENT_TYPES.size, 54);
 });
 
 test("the primary repository's id is its floor's, up to 40 characters, and repoIds take it", () => {
@@ -165,7 +170,13 @@ test('bad messages are refused with a reason, and their rid is still found for t
   refused({ t: 'kanban.project.prompt.set', project: 'web', id: 'issue.work', text: 'x' }, /kanban prompt id/);
   refused({ t: 'kanban.secrets.set' }, /Nothing to change/);
   refused({ t: 'kanban.secrets.set', apiKey: 'short' }, /at least 16/);
-  refused({ t: 'kanban.secrets.set', jira: { site: 'evil.com/x', email: 'a', token: 'b' } }, /host name/);
+  refused({ t: 'kanban.secrets.set', jira: { site: 'acme.atlassian.net', email: 'a', token: 'b' } }, /Nothing to change/);
+  refused({ t: 'kanban.secrets.jira.set', name: 'x', site: 'evil.com/x', email: 'a', token: 'b' }, /host name/);
+  refused({ t: 'kanban.secrets.jira.set', name: 'x', site: 'acme.atlassian.net' }, /needs the e-mail and the API token/);
+  refused({ t: 'kanban.secrets.jira.set', name: 'x', site: 'acme.atlassian.net', email: 'a' }, /needs the e-mail and the API token/);
+  refused({ t: 'kanban.secrets.jira.set', id: '../x', name: 'x', site: 'acme.atlassian.net' }, /Jira connection id/);
+  refused({ t: 'kanban.secrets.jira.remove', id: 'a b' }, /Jira connection id/);
+  refused({ t: 'kanban.secrets.jira.test' }, /Jira connection id/);
   refused({ t: 'kanban.pr.review', project: 'web', prs: [] }, /at least one/);
   refused({ t: 'kanban.pr.review', project: 'web', prs: [{ repo: 'nope', number: 1 }] }, /owner\/name/);
   refused({ t: 'kanban.pr.review', project: 'web', prs: [{ repo: 'azure:only/two', number: 1 }] }, /azure:org\/project\/repo/);

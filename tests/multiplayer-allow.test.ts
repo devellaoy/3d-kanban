@@ -27,7 +27,7 @@ test('every classified type is a real client message type (no stale keys)', () =
 });
 
 test('mutating messages are denied; unknown ones too', () => {
-  for (const t of ['worker.spawn', 'queue.add', 'gh.comment', 'kanban.task.create', 'term.input', 'mp.connect', 'mp.online', 'carry', 'decor.add', 'jukebox.play', 'kanban.settings.set', 'tv.youtube.play', 'dog.name']) {
+  for (const t of ['worker.spawn', 'queue.add', 'gh.comment', 'kanban.task.create', 'term.input', 'mp.connect', 'mp.online', 'carry', 'decor.add', 'jukebox.play', 'kanban.settings.set', 'kanban.secrets.set', 'kanban.secrets.jira.set', 'kanban.secrets.jira.remove', 'kanban.secrets.jira.test', 'tv.youtube.play', 'dog.name']) {
     assert.equal(classOf(t), 'deny', t);
     assert.equal(may({ t }), false, t);
   }
@@ -124,7 +124,7 @@ const ksettings = {
   archiveAfterDays: 0,
   projects: Object.fromEntries(floors.map((f) => [f.id, { maxConcurrent: 1, issueSources: [{ kind: 'jira', name: `${SECRET_NAME} board` }], prompts: { x: `secret ${SECRET_NAME}` }, skills: {} }])),
 } as unknown as KanbanSettings;
-const secrets = { jira: { configured: true, site: 'acme.atlassian.net' }, apiKey: { configured: true } };
+const secrets = { jira: [{ id: 'jc-1', name: 'Acme', site: 'acme.atlassian.net', configured: true }], apiKey: { configured: true } };
 
 const view = (floor: string) => ({
   floor, project: { name: 'shared-repo', dir: '/home/owner/shared-repo', agentCmd: 'claude --dangerously', defaultProvider: 'claude', agentProviders: ['claude'] }, workers: [], issues: { items: [] }, pulls: { items: [] },
@@ -181,6 +181,7 @@ test('what a visitor never gets', () => {
   const drop = (m: ServerMsg) => filterForVisitor(m, scope);
   assert.equal(drop(fixtures[4]), undefined, 'toast');
   assert.equal(drop(fixtures[6]), undefined, 'kanban.settings');
+  assert.equal(drop({ t: 'kanban.secrets.jiraTested', id: 'jc-1', name: 'Ada', accountId: 'acc' } as ServerMsg), undefined, 'kanban.secrets.jiraTested');
   assert.equal(drop(fixtures[9]), undefined, 'snapshot of all projects');
   assert.equal(drop(fixtures[10]), undefined, 'snapshot of a secret project');
   assert.equal(drop(fixtures[11]), undefined, 'floor.enter to a secret floor');

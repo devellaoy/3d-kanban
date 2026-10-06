@@ -11,7 +11,7 @@ import { presenceHandlers } from '../src/server/ws/handlers/presence.js';
 import { client, def, makeCtx } from './kanban-integrations-ctx.js';
 
 const SITE = 'team.atlassian.net';
-const JIRA_TOKEN = { site: SITE, email: 'me@x.fi', token: 'tok' };
+const JIRA_TOKEN = [{ id: 'jira', name: SITE, site: SITE, email: 'me@x.fi', token: 'tok' }];
 const JIRA: IssueSourceConfig = { id: 'j', kind: 'jira', site: SITE, projectKeys: ['UYT'], filters: {} };
 const JIRA_NOKEYS: IssueSourceConfig = { id: 'jn', kind: 'jira', site: SITE, projectKeys: [], filters: {} };
 const JIRA_OTHER: IssueSourceConfig = { id: 'jo', kind: 'jira', site: 'other.atlassian.net', projectKeys: ['ZZ'], filters: {} };
@@ -71,7 +71,7 @@ const arg = (args: string[], name: string) => args.find((a) => a.startsWith(`${n
 function setup(opts: { sources?: IssueSourceConfig[]; http?: ReturnType<typeof fetchStub>; gh?: ReturnType<typeof ghStub>; ghAs?: any } = {}) {
   const ctx = makeCtx([def('app', '/tmp/app', { repo: 'o/r' })], { ghAs: opts.ghAs });
   ctx.settings.setProject('app', { issueSources: opts.sources ?? [JIRA, BOARD, JIRA_NOKEYS, JIRA_OTHER, REPO] });
-  (ctx as unknown as { secrets: unknown }).secrets = { jira: () => JIRA_TOKEN };
+  (ctx as unknown as { secrets: unknown }).secrets = { jiraConnections: () => JIRA_TOKEN };
   const http = opts.http ?? jiraSite();
   const gh = opts.gh ?? ghStub(() => '[]');
   const issues = createIssues(ctx, { gh: gh.gh as never, fetch: http.fetch });
@@ -105,7 +105,7 @@ test('scope checks: an unknown scope, a repository scope, a disabled scope and a
   assert.match(await err('nope'), /isn't a Jira or GitHub project source/);
   assert.match(await err('r'), /isn't a Jira or GitHub project source/);
   assert.match(await err('jn'), /Add project keys/);
-  assert.match(await err('jo'), /token is for team.atlassian.net, not other.atlassian.net/);
+  assert.match(await err('jo'), /No Jira connection for other.atlassian.net/);
   assert.equal(http.calls.length, 0, 'nothing went out');
   assert.equal((await ask('kanban.browse.options', { scope: 'j', project: 'zzz' })).t, 'kanban.error');
 });

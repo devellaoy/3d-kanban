@@ -4,6 +4,7 @@
 // user's own extra JQL is AND-ed in parentheses.
 
 import type { IssueSourceConfig, NormalizedIssue } from '../../../../shared/kanban/types.js';
+import { jiraAuthHeader, pickJiraConnection, type JiraConnection } from './jira-auth.js';
 import { ISSUE_BODY_MAX, SOURCE_MAX, type IssueSource, type IssueSourceIo } from './source.js';
 
 type JiraConfig = Extract<IssueSourceConfig, { kind: 'jira' }>;
@@ -132,14 +133,13 @@ export function jiraIssue(raw: any, site: string, sourceId?: string): Normalized
   };
 }
 
-async function search(io: IssueSourceIo, jira: NonNullable<IssueSourceIo['jira']>, jql: string, sourceId?: string): Promise<NormalizedIssue[]> {
-  const auth = Buffer.from(`${jira.email}:${jira.token}`).toString('base64');
+async function search(io: IssueSourceIo, jira: JiraConnection, site: string, jql: string, sourceId?: string): Promise<NormalizedIssue[]> {
   const out: NormalizedIssue[] = [];
   let next: string | undefined;
   for (let page = 0; page < Math.ceil(SOURCE_MAX / PAGE); page++) {
     const res = await io.fetch(`https://${jira.site}/rest/api/3/search/jql`, {
       method: 'POST',
-      headers: { authorization: `Basic ${auth}`, accept: 'application/json', 'content-type': 'application/json' },
+      headers: { authorization: jiraAuthHeader(jira), accept: 'application/json', 'content-type': 'application/json' },
       body: JSON.stringify({ jql, fields: FIELDS, maxResults: PAGE, ...(next ? { nextPageToken: next } : {}) }),
       signal: AbortSignal.timeout(30_000),
     });
@@ -156,7 +156,7 @@ async function search(io: IssueSourceIo, jira: NonNullable<IssueSourceIo['jira']
       throw new JiraQueryError(`Jira said ${res.status}${said ? `: ${said}` : ''}`, res.status);
     }
     for (const raw of body.issues ?? []) {
-      const issue = jiraIssue(raw, jira.site, sourceId);
+      const issue = jiraIssue(raw, site, sourceId);
       if (issue) out.push(issue);
     }
     next = typeof body.nextPageToken === 'string' && body.nextPageToken && body.isLast !== true ? body.nextPageToken : undefined;
@@ -177,20 +177,18 @@ class JiraQueryError extends Error {
 export const jiraSource: IssueSource = {
   async list(config, io: IssueSourceIo) {
     const c = config as JiraConfig;
-    const jira = io.jira;
-    if (!jira) throw new Error('Jira isn’t set up: an admin enters the site, e-mail and API token in ⚙️ Settings → 🗂️ Kanban');
-    // The token only ever goes to the site it was given for.
-    if (jira.site.toLowerCase() !== c.site.toLowerCase()) throw new Error(`The Jira API token is for ${jira.site}, not ${c.site}`);
-    if (!c.filters.epic) return search(io, jira, buildJql(c), c.id);
+    // The connection the source names, else the first for its site: the token only ever goes to its own site.
+    const jira = pickJiraConnection(io.jira, c);
+    if (!c.filters.epic) return search(io, jira, c.site, buildJql(c), c.id);
     // An epic's issues: `parent =` first; older company-managed projects only know "Epic Link".
     try {
-      const found = await search(io, jira, buildJql(c, 'parent'), c.id);
+      const found = await search(io, jira, c.site, buildJql(c, 'parent'), c.id);
       if (found.length) return found;
     } catch (err) {
       if (!(err instanceof JiraQueryError && err.status === 400)) throw err;
     }
     try {
-      return await search(io, jira, buildJql(c, 'Epic Link'), c.id);
+      return await search(io, jira, c.site, buildJql(c, 'Epic Link'), c.id);
     } catch (err) {
       // No "Epic Link" field on this site: nothing under that epic, then.
       if (err instanceof JiraQueryError && err.status === 400) return [];

@@ -13,7 +13,7 @@ test('applyMeta takes the projects, settings, secrets and who you are, and leave
   for (const t of ['tasks', 'projects', 'settings', 'me', 'snapshot'] as const) s.on(t, () => heard.push(t));
   const projects = [{ id: 'web', name: 'Web', repos: [] }] as unknown as KanbanProjectInfo[];
   const settings = { archiveAfterDays: 7 } as unknown as KanbanSettings;
-  const secrets = { jira: { configured: true, site: 'x.atlassian.net' }, apiKey: { configured: false } };
+  const secrets = { jira: [{ id: 'jira', name: 'x', site: 'x.atlassian.net', configured: true }], apiKey: { configured: false } };
   s.applyMeta({ projects, settings, secrets, me: { admin: true, name: 'Ada' } });
   assert.equal(s.projects, projects);
   assert.equal(s.settings, settings);

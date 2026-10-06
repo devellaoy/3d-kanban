@@ -402,7 +402,6 @@ export function createCorePlugin(ctx: KanbanContext, subs: KanbanSubscriptions):
     'kanban.secrets.set': (c, m) => {
       if (!adminOnly(c, m.rid)) return;
       const patch: Parameters<KanbanContext['secrets']['set']>[0] = {};
-      if (m.jira !== undefined) patch.jira = m.jira;
       if (m.apiKey !== undefined) patch.apiKey = m.apiKey;
       let secrets;
       try {

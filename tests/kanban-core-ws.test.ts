@@ -145,7 +145,7 @@ test('subscribing answers with the board, and deltas reach only who subscribed t
   if (snap.t !== 'kanban.snapshot') return;
   assert.deepEqual(snap.projects.map((p) => [p.id, p.open, p.repos.length]), [['web', true, 1], ['docs', true, 1]]);
   assert.deepEqual(snap.me, { admin: true, name: 'Ada' });
-  assert.deepEqual(snap.secrets, { jira: { configured: false }, apiKey: { configured: false } });
+  assert.deepEqual(snap.secrets, { jira: [], apiKey: { configured: false } });
   assert.equal(snap.settings.archiveAfterDays, 30);
   await bob.ask({ t: 'kanban.subscribe', project: 'docs' });
 
@@ -457,14 +457,12 @@ test('settings, projects, prompts and secrets are for admins; everyone may read 
   errorOf(await boss.ask({ t: 'kanban.task.update', id: 1, patch: { repoIds: ['api'] } }), /isn't one of/);
 
   // Secrets: the answer and every push say only whether they're set.
-  const answer = await boss.ask({ t: 'kanban.secrets.set', jira: { site: 'acme.atlassian.net', email: 'boss@acme.fi', token: 'TOPSECRET' }, apiKey: 'API-KEY-0123456789' });
+  const answer = await boss.ask({ t: 'kanban.secrets.set', apiKey: 'API-KEY-0123456789' });
   assert.equal(answer.t, 'kanban.settings');
-  assert.deepEqual(answer.t === 'kanban.settings' && answer.secrets, { jira: { configured: true, site: 'acme.atlassian.net' }, apiKey: { configured: true } });
+  assert.deepEqual(answer.t === 'kanban.settings' && answer.secrets, { jira: [], apiKey: { configured: true } });
   const everything = JSON.stringify([...boss.got, ...bob.got]);
-  assert.ok(!everything.includes('TOPSECRET'));
   assert.ok(!everything.includes('API-KEY-0123456789'));
-  assert.ok(!everything.includes('boss@acme.fi'));
-  assert.equal(kanban.ctx.secrets.jira()?.token, 'TOPSECRET');
+  assert.equal(kanban.ctx.secrets.checkApiKey('API-KEY-0123456789'), true);
 });
 
 test('what the validator refuses, and what no plugin handles, is answered with kanban.error', async (t) => {

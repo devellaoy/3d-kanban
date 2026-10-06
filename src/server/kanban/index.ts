@@ -24,7 +24,8 @@ import type {
 } from './registry.js';
 import { KanbanRepository } from './db/repository.js';
 import { kanbanDbPath, openKanbanDb } from './db/open.js';
-import { KanbanSecrets, KanbanSettingsStore } from './settings.js';
+import { KanbanSecrets } from './secrets.js';
+import { KanbanSettingsStore } from './settings.js';
 import { primaryRepo, projectRepos, validateProjectRepos } from './projects.js';
 import { attachmentPath } from './uploads.js';
 import { taskOf } from './handoff.js';
