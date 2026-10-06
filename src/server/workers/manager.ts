@@ -313,7 +313,7 @@ export class WorkerManager extends KanbanWorkers {
     const w = this.workers.get(id);
     if (!w) return 'No such worker';
     if (w.pty || w.dsh) return 'Worker is already running';
-    if (this.worktrees.checkLost(w, true)) return lostMessage(w.info);
+    if (this.worktrees.checkLost(w, true)) return lostMessage(w.info, this.worktrees.missingTrees(w.info));
     clockWork(w.info, 'starting');
     w.info.status = 'starting';
     w.info.exitCode = undefined;
