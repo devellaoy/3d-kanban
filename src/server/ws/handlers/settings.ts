@@ -88,6 +88,20 @@ export const settingsHandlers = {
     ctx.sky.setClock(msg.real);
     ctx.toastAll(msg.real ? `🕰️ ${c.peer.name} put the sky on the real time of day` : `⏩ ${c.peer.name} set the sky to a whole day every hour`);
   },
+  'sky.weather'(ctx, c, msg) {
+    // Only real booleans count: anything else (missing, "yes") leaves that switch as it is.
+    const rain = typeof msg.rain === 'boolean' ? msg.rain : undefined;
+    const lightning = typeof msg.lightning === 'boolean' ? msg.lightning : undefined;
+    if (rain === undefined && lightning === undefined) return;
+    const before = ctx.sky.weatherPrefs;
+    ctx.sky.setWeatherPrefs({ rain, lightning });
+    const after = ctx.sky.weatherPrefs;
+    if (before.rain === after.rain && before.lightning === after.lightning) return;
+    const who = c.peer.name;
+    if (!after.rain) ctx.toastAll(`☁️ ${who} kept the rain out${before.lightning ? ' (and the lightning)' : ''}`);
+    else if (after.lightning) ctx.toastAll(before.rain ? `⛈️ ${who} let the lightning in` : `⛈️ ${who} let rain and lightning into the weather`);
+    else ctx.toastAll(before.rain ? `🌧️ ${who} turned the lightning off` : `🌧️ ${who} let the rain back in`);
+  },
   'map.set'(ctx, c, msg) {
     const who = c.peer.name;
     // Someone opened the list, or picked a map: either way the folder of maps of your own is read again first.

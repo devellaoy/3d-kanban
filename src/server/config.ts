@@ -160,7 +160,8 @@ Options:
                           Without it the weather is made up. Either way a
                           whole day and night go by every hour
       --weather <kind>    Pin the weather: clear, cloudy, rain, storm, snow or
-                          fog (env AGENT_OFFICE_WEATHER)
+                          fog (env AGENT_OFFICE_WEATHER);
+                          rain and storm show only with ⚙️ Rain / Lightning on
       --real-time-sky     Start the sky on the office's real clock, so it's night when
                           it's night there, instead of a day and night every hour
                           (⚙️ Settings can switch it)

@@ -132,6 +132,10 @@ export interface SkyState {
   temp?: number;
   /** The sky keeps the office's real clock (--real-time-sky), instead of a whole day going by every hour. */
   realTime?: boolean;
+  /** ⚙️ Settings let rain into the weather; unset when off, the default. */
+  rain?: true;
+  /** ⚙️ Settings let lightning (and thunder) into the weather; unset when off, the default. */
+  lightning?: true;
 }
 
 /** A holiday the whole building dresses up for (see shared/theme.ts). */
@@ -197,6 +201,8 @@ export type SettingsClientMsg =
   | { t: 'theme.set'; pick: ThemePick }
   /** The sky on the real clock (true), or a whole day and night every hour (false), for everyone. */
   | { t: 'sky.clock'; real: boolean }
+  /** Let rain and / or lightning into the weather (true) or keep them out (false), for everyone. Lightning brings the rain with it; rain off takes the lightning too. */
+  | { t: 'sky.weather'; rain?: boolean; lightning?: boolean }
   /** Change the building's map (see MapState), or with no map, read the custom maps' folder again. */
   | { t: 'map.set'; map?: string }
   /** Workers whose pull request merged go home by themselves (true), or wait to be sent home. */

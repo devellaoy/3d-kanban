@@ -35,7 +35,7 @@ kanban3d [dir] [options]
       --max-workers <n>   Run at most n workers at once, across every floor (env AGENT_OFFICE_MAX_WORKERS)
       --webhook <url>     Post to this Slack / Discord webhook when a worker needs input or finishes
       --city <name>       Put the office in a real city: its sun and live weather (open-meteo.com)
-      --weather <kind>    Pin the weather: clear, cloudy, rain, storm, snow or fog
+      --weather <kind>    Pin the weather: clear, cloudy, rain, storm, snow or fog (rain and storm show only with ⚙️ Rain / Lightning on)
       --real-time-sky     Start the sky on the real clock, not a day an hour (env AGENT_OFFICE_SKY_CLOCK=real; ⚙️ Settings can switch it)
 
 kanban3d setup [--projects <dir>] [--project <owner/repo>]... [--home <dir>]

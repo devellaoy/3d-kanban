@@ -60,8 +60,29 @@ interface Place {
   name: string;
 }
 
+/** Whether ⚙️ Settings let rain and lightning into the weather. Lightning needs rain. */
+export interface WeatherPrefs {
+  rain: boolean;
+  lightning: boolean;
+}
+
+const NO_WEATHER_PREFS: WeatherPrefs = { rain: false, lightning: false };
+const round2 = (n: number) => Math.round(n * 100) / 100;
+
+/**
+ * `w` as the office shows it: with rain off, rain is a cloudy sky (darker the harder it would come down) and a
+ * storm is a full overcast; with lightning off a storm is plain rain. Idempotent.
+ */
+export function tame(w: { weather: Weather; intensity: number }, p: WeatherPrefs): { weather: Weather; intensity: number } {
+  if (!p.rain) {
+    if (w.weather === 'rain') return { weather: 'cloudy', intensity: round2(0.6 + 0.4 * w.intensity) };
+    if (w.weather === 'storm') return { weather: 'cloudy', intensity: 1 };
+  } else if (!p.lightning && w.weather === 'storm') return { weather: 'rain', intensity: Math.max(0.8, w.intensity) };
+  return w;
+}
+
 /** The next spell of made-up weather: likelier to stay as it is, snow only in winter, storms in summer. */
-export function wander(prev: Weather | null, month: number, south: boolean): { weather: Weather; intensity: number } {
+export function wander(prev: Weather | null, month: number, south: boolean, prefs: WeatherPrefs = NO_WEATHER_PREFS): { weather: Weather; intensity: number } {
   const season = SEASONS.indexOf(seasonOfMonth(month, south)); // 0 winter, 1 spring, 2 summer, 3 autumn
   const odds: Record<Weather, number>[] = [
     { clear: 30, cloudy: 25, rain: 10, storm: 0, snow: 25, fog: 10 },
@@ -70,6 +91,8 @@ export function wander(prev: Weather | null, month: number, south: boolean): { w
     { clear: 35, cloudy: 25, rain: 25, storm: 3, snow: 0, fog: 12 },
   ];
   const w = { ...odds[season] };
+  if (!prefs.rain) w.rain = 0;
+  if (!prefs.lightning) w.storm = 0;
   if (prev && w[prev] > 0) w[prev] += 25;
   let r = Math.random() * Object.values(w).reduce((a, b) => a + b, 0);
   let weather: Weather = 'clear';
@@ -114,18 +137,23 @@ export class Sky {
   private realTime: boolean;
   /** What placeFile holds, as last read or written, so an unchanged forecast doesn't write it again. */
   private savedPlace = '';
+  /** Whether rain and lightning may show (see setWeatherPrefs). */
+  private prefs: WeatherPrefs;
+  /** The latest weather before the prefs filter it, so switching them on or off acts at once. */
+  private raw: { weather: Weather; intensity: number };
 
   constructor(
-    private opts: { city?: string; weather?: Weather; realTime?: boolean; placeFile?: string; clockFile?: string },
+    private opts: { city?: string; weather?: Weather; realTime?: boolean; placeFile?: string; clockFile?: string; weatherFile?: string },
     private onChange: (state: SkyState) => void,
   ) {
     this.realTime = this.savedClock() ?? !!opts.realTime;
+    this.prefs = this.savedPrefs();
     const now = new Date();
     const here = guessPlace(now);
-    const weather = opts.weather ? pinned(opts.weather) : opts.city ? pinned('clear') : wander(null, now.getMonth(), here.lat < 0);
+    const weather = (this.raw = opts.weather ? pinned(opts.weather) : opts.city ? pinned('clear') : wander(null, now.getMonth(), here.lat < 0, this.prefs));
     // The city where the last forecast put it, so a restart is already there before the next one comes.
     const known = opts.city ? this.knownPlace(opts.city) : undefined;
-    this.state = this.withClock(known ? { lat: known.lat, lon: known.lon, utcOffset: known.utcOffset, ...weather, city: known.name } : { ...here, utcOffset: -now.getTimezoneOffset(), ...weather });
+    this.state = this.withClock(this.withWeather(known ? { lat: known.lat, lon: known.lon, utcOffset: known.utcOffset, ...weather, city: known.name } : { ...here, utcOffset: -now.getTimezoneOffset(), ...weather }));
     if (known) this.place = { lat: known.lat, lon: known.lon, name: known.name };
   }
 
@@ -189,14 +217,56 @@ export class Sky {
     }
   }
 
+  /**
+   * Whether rain and lightning may show in the weather, picked in ⚙️ Settings and kept in weatherFile. Off by
+   * default; rain off takes the lightning with it, lightning on brings the rain. The weather already on its way
+   * (see raw) is filtered again at once.
+   */
+  setWeatherPrefs(p: Partial<WeatherPrefs>) {
+    const next = { rain: p.rain ?? this.prefs.rain, lightning: p.lightning ?? this.prefs.lightning };
+    if (p.rain === false) next.lightning = false;
+    else if (p.lightning) next.rain = true;
+    this.prefs = next;
+    if (this.opts.weatherFile) {
+      try {
+        writeFileSync(this.opts.weatherFile, JSON.stringify(next));
+      } catch {
+        // It still changes for now.
+      }
+    }
+    this.set({ ...this.state });
+  }
+
+  get weatherPrefs(): WeatherPrefs {
+    return { ...this.prefs };
+  }
+
+  private savedPrefs(): WeatherPrefs {
+    if (!this.opts.weatherFile) return { ...NO_WEATHER_PREFS };
+    try {
+      const saved = JSON.parse(readFileSync(this.opts.weatherFile, 'utf8'));
+      // Rain off wins, as it does in setWeatherPrefs.
+      const rain = saved?.rain === true;
+      return { rain, lightning: rain && saved?.lightning === true };
+    } catch {
+      return { ...NO_WEATHER_PREFS };
+    }
+  }
+
   /** `s` with the clock the sky keeps: realTime only when it's the real time of day. */
   private withClock(s: SkyState): SkyState {
     const { realTime: _, ...rest } = s;
     return this.realTime ? { ...rest, realTime: true } : rest;
   }
 
+  /** `s` with the weather the prefs let through (from raw), and the rain / lightning flags when they're on. */
+  private withWeather(s: SkyState): SkyState {
+    const { rain: _r, lightning: _l, ...rest } = s;
+    return { ...rest, ...tame(this.raw, this.prefs), ...(this.prefs.rain && { rain: true as const }), ...(this.prefs.lightning && { lightning: true as const }) };
+  }
+
   private set(next: SkyState) {
-    next = this.withClock(next);
+    next = this.withClock(this.withWeather(next));
     if (JSON.stringify(next) === JSON.stringify(this.state)) return;
     this.state = next;
     this.onChange(next);
@@ -206,7 +276,8 @@ export class Sky {
   private drift() {
     const now = new Date();
     const here = guessPlace(now);
-    const weather = this.opts.weather ? pinned(this.opts.weather) : wander(this.state.weather, now.getMonth(), here.lat < 0);
+    this.raw = this.opts.weather ? pinned(this.opts.weather) : wander(this.raw.weather, now.getMonth(), here.lat < 0, this.prefs);
+    const weather = this.raw;
     this.set({ ...here, utcOffset: -now.getTimezoneOffset(), ...weather });
     this.later(rand(20, 50) * 60_000, () => this.drift());
   }
@@ -224,7 +295,7 @@ export class Sky {
       const f = await getJson(`${FORECAST}?latitude=${lat}&longitude=${lon}&current=temperature_2m,weather_code&timezone=auto`);
       const code = Number(f?.current?.weather_code);
       if (!Number.isFinite(code)) throw new Error('no current weather in the forecast');
-      const weather = this.opts.weather ? pinned(this.opts.weather) : fromWmo(code);
+      const weather = (this.raw = this.opts.weather ? pinned(this.opts.weather) : fromWmo(code));
       const temp = Number(f.current.temperature_2m);
       const utcOffset = Number.isFinite(f.utc_offset_seconds) ? Math.round(f.utc_offset_seconds / 60) : this.state.utcOffset;
       this.set({ lat, lon, utcOffset, ...weather, city: name, temp: Number.isFinite(temp) ? Math.round(temp) : undefined });
