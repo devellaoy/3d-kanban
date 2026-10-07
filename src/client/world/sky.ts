@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { FLOOR, SLAB, STREET_Y, WALL_HEIGHT, WALL_T, WING, wingMinZ } from '../../shared/layout';
 import type { SkyState, Theme, Weather } from '../../shared/protocol';
 import { guessPlace, skyNow, sunPosition } from '../../shared/sun';
-import type { NightParts } from './outside'; import { annexOutside, annexSheltered, setSkyRooms, skyWest } from './skyannex';
+import type { NightParts } from './outside'; import { annexOutside, annexSheltered, setSkyRooms, skyWest } from './skyannex'; import { letIn, mayStrike } from './skyswitches';
 import { ROOM_LIGHT, ROOM_LIGHT_PARS, SUN_SPLIT, lightRoom, roomLevel, roomLightBefore, roomUniforms, setPanes } from './roomlight';
 
 /*
@@ -779,10 +779,9 @@ export class Sky {
     // A thin, creepy mist hangs about all Halloween.
     if (this.theme === 'halloween') want.fog = Math.max(want.fog, 0.3);
     this.cover = step(this.cover, want.cover, 20);
-    this.rain = step(this.rain, want.rain, 12);
+    ({ rain: this.rain, storm: this.storm } = letIn(s, { rain: step(this.rain, want.rain, 12), storm: step(this.storm, want.storm, 10) }));
     this.snow = step(this.snow, want.snow, 12);
     this.fog = step(this.fog, want.fog, 20);
-    this.storm = step(this.storm, want.storm, 10);
     // Wet ground dries off slowly; snow piles up over a few minutes and takes a while to melt.
     this.wet = snap ? (this.rain > 0.05 ? 1 : 0) : ease(this.wet, this.rain > 0.05 ? 1 : 0, dt, this.rain > 0.05 ? 30 : 400);
     this.lying = snap ? (this.snow > 0.05 ? 1 : 0) : ease(this.lying, this.snow > 0.05 ? 1 : 0, dt, (this.snow > 0.05 ? 120 : 900) * (this.rush > 0 ? 0.04 : 1));
@@ -916,7 +915,8 @@ export class Sky {
 
   /** In a storm, now and then the sky flashes (twice, quickly) and thunder rolls in after. */
   private lightning(t: number, dt: number) {
-    if (this.storm > 0.5 && t >= this.nextFlash) {
+    if (!this.state.lightning) this.flashes.length = 0; // switched off: no flash still to come
+    if (mayStrike(this.state, this.storm) && t >= this.nextFlash) {
       if (this.nextFlash > 0) {
         this.flashes.push(t, t + rand(0.1, 0.25));
         if (Math.random() < 0.5) this.flashes.push(t + rand(0.35, 0.6));
