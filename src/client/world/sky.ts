@@ -521,7 +521,7 @@ export class Sky {
   private festive = 0;
   /** Seconds left of hurrying the weather along, after the theme changed. */
   private rush = 0;
-  /** When a far-off flash lights the Halloween sky next. */
+  /** When a far-off flash lights the Halloween sky next, if Lightning's on in ⚙️. */
   private nextSpook = 0;
   private readonly spookyDome = gradientDome();
   private readonly moonAt = new THREE.Vector3();
@@ -647,9 +647,9 @@ export class Sky {
   }
 
   /**
-   * The building's holiday: Halloween's sky is a creepy one, purple and blood orange with a harvest
-   * moon hanging low and the odd far-off flash, dim enough that the lamps and the jack-o'-lanterns
-   * glow; Christmas brings snow. Either eases in over a few seconds.
+   * The building's holiday: Halloween's sky is a creepy one, purple and blood orange with a harvest moon
+   * hanging low and (with Lightning on) the odd far-off flash, dim enough that the lamps and the
+   * jack-o'-lanterns glow; Christmas brings snow. Either eases in over a few seconds.
    */
   setTheme(theme: Theme | null) {
     if (theme === this.theme) return;
@@ -796,7 +796,7 @@ export class Sky {
     const day = smooth(-8, 4, elD) * (1 - 0.6 * sp);
     const dusk = Math.max(0, 1 - Math.abs(elD + 1) / 9) * (1 - this.cover);
     this.daylight = day;
-    if (sp > 0.5 && this.storm < 0.5 && t >= this.nextSpook) {
+    if (sp > 0.5 && s.lightning && this.storm < 0.5 && t >= this.nextSpook) {
       if (this.nextSpook > 0) {
         this.flashes.push(t, t + rand(0.12, 0.3));
         this.onThunder?.(rand(1.5, 4), rand(0.25, 0.45));

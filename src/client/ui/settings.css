@@ -24,6 +24,8 @@
   .settings-pane { padding: 14px; }
 }
 .outside-now { margin: 0; font-size: var(--fs-lg); font-weight: var(--fw-bold); }
+/* Outside's clock row, then its rain and lightning switches. */
+.setting > .seg + .seg { margin-top: 8px; }
 
 /* Settings: office sounds volume */
 .volume { display: flex; align-items: center; gap: 12px; }
