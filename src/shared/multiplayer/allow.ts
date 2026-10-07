@@ -164,6 +164,7 @@ export const CLIENT_MSG_CLASS = {
   'upgrade.start': 'deny',
   'theme.set': 'deny',
   'sky.clock': 'deny',
+  'sky.weather': 'deny',
   'map.set': 'deny',
   'leaveOnMerge.set': 'deny',
   'carryOn.set': 'deny',

@@ -410,6 +410,30 @@ test('settings, accounts, sign-ins and the boards answer as before', async () =>
   a.send({ t: 'sky.clock', real: false });
   assert.equal((await a.take('sky', (m) => !m.state.realTime)).state.realTime, undefined);
   assert.equal(await told('⏩'), '⏩ Eve set the sky to a whole day every hour');
+  // Rain and lightning: only real booleans count, an unchanged value says nothing, and rain off wins over lightning on.
+  a.send({ t: 'sky.weather', rain: true });
+  assert.equal((await a.take('sky', (m) => !!m.state.rain)).state.rain, true);
+  assert.equal(await told('🌧️'), '🌧️ Eve let the rain back in');
+  a.send({ t: 'sky.weather', rain: 'yes' } as never);
+  a.send({ t: 'sky.weather', rain: true });
+  a.send({ t: 'sky.weather' } as never);
+  a.send({ t: 'map.set', map: 'nowhere' });
+  await warned('There’s no map by that name, or it won’t load: see ⚙️ Settings');
+  assert.ok(!a.inbox.some((m) => (m.t === 'sky' && !m.state.rain) || (m.t === 'toast' && m.text.startsWith('☁️'))), 'a bad sky.weather changed the weather');
+  a.send({ t: 'sky.weather', lightning: true });
+  assert.equal((await a.take('sky', (m) => !!m.state.lightning)).state.lightning, true);
+  assert.equal(await told('⛈️'), '⛈️ Eve let the lightning in');
+  // Lightning off on its own leaves the rain on.
+  a.send({ t: 'sky.weather', lightning: false });
+  assert.equal((await a.take('sky', (m) => !m.state.lightning)).state.rain, true);
+  assert.equal(await told('🌧️'), '🌧️ Eve turned the lightning off');
+  a.send({ t: 'sky.weather', lightning: true });
+  await a.take('sky', (m) => !!m.state.lightning);
+  await told('⛈️');
+  a.send({ t: 'sky.weather', rain: false, lightning: true });
+  const calm = (await a.take('sky', (m) => !m.state.rain)).state;
+  assert.equal(calm.lightning, undefined);
+  assert.equal(await told('☁️'), '☁️ Eve kept the rain out (and the lightning)');
   a.send({ t: 'machine.limit', limit: 0 });
   await warned('The worker limit is a whole number from 1 to 500');
   a.send({ t: 'machine.limit', limit: 3 });
