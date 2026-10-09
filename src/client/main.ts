@@ -37,6 +37,7 @@ import { installBookshelf } from './features/bookshelf';
 import { installCabinet } from './features/cabinet';
 import { installCarrying } from './features/carrying';
 import { installCars } from './features/cars';
+import { installGodMode } from './features/godmode';
 import { installChat } from './features/chat';
 import { installCoffee } from './features/coffee';
 import { installDog } from './features/dog';
@@ -155,6 +156,7 @@ parts.golf = installGolf(ctx, { standUp, stopWalking, stopSmoking: () => parts.s
 parts.bargames = installBarGames(ctx, { roof: parts.rooftop.roof, standUp, stopWalking, personOf });
 parts.hanging = installHanging(ctx, { gallery: parts.gallery, reach });
 parts.cars = installCars(ctx, { standUp, stopWalking });
+installGodMode(ctx, { standUp, stopWalking });
 
 parts.travel = installTravel(ctx, core, parts);
 parts.arrival = installArrival(ctx, core, parts);

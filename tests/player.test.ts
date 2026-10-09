@@ -248,3 +248,77 @@ test('a buzz on you walks you further and jumps you higher', (t) => {
   }
   assert.ok(highest[1] > highest[0] * 1.4, `jumped ${highest[1]} against ${highest[0]}`);
 });
+
+/** God mode on, looking level ahead (-z, as camYaw 0 has it) in either view. */
+function flying(t: TestContext, colliders: Collider[] = []) {
+  const c = controller(t, colliders);
+  c.player.lookPitch = 0;
+  c.player.camPitch = 0.42;
+  c.player.setFlying(true);
+  return c;
+}
+
+test('god mode: hangs in the air with no keys, and Space goes up', (t) => {
+  const { player, keys, frames } = flying(t);
+  player.pos.set(0, 5, 0);
+  keys();
+  frames(60);
+  assert.equal(player.pos.y, 5);
+  keys('Space');
+  frames(30);
+  assert.ok(player.pos.y > 8, `rose only to ${player.pos.y}`);
+});
+
+test('god mode: flies through a wall that stops you on foot', (t) => {
+  const wall: Collider = { minX: -3, maxX: 3, minZ: -1.1, maxZ: -0.9, top: 99 };
+  const walker = controller(t, [wall]);
+  walker.keys('KeyW');
+  walker.frames(60);
+  assert.ok(walker.player.pos.z > -0.9, `walked through to z=${walker.player.pos.z}`);
+  const { player, keys, frames } = flying(t, [wall]);
+  keys('KeyW');
+  frames(60);
+  assert.ok(player.pos.z < -3, `stopped at z=${player.pos.z}`);
+  assert.ok(Math.abs(player.pos.y) < 1e-9, 'level flight keeps its height');
+});
+
+test('god mode: W flies where you look, down too, but never under the street', (t) => {
+  const { player, keys, frames } = flying(t);
+  player.view = 'first';
+  player.lookPitch = -1.2;
+  keys('KeyW', 'ShiftLeft');
+  frames(300);
+  assert.equal(player.pos.y, player.street);
+});
+
+test('god mode off: gravity lands you on the floor again', (t) => {
+  const { player, keys, frames } = flying(t);
+  player.pos.set(0, 4, 0);
+  player.setFlying(false);
+  keys();
+  frames(120);
+  assert.equal(player.pos.y, 0);
+  assert.equal(player.grounded, true);
+});
+
+test('god mode gets you up off a seat, and sitting down lands you', (t) => {
+  const { player } = controller(t, []);
+  player.sit(seatPlace(SEATING_BY_ID.get('couch')!, 2));
+  player.setFlying(true);
+  assert.equal(player.seat, null);
+  assert.equal(player.flying, true);
+  player.sit(seatPlace(SEATING_BY_ID.get('couch')!, 2));
+  assert.equal(player.flying, false);
+});
+
+test('god mode in third person: level from the camera at rest, diving as it tips down', (t) => {
+  const { player, keys, frames } = flying(t);
+  player.view = 'third';
+  keys('KeyW');
+  frames(30);
+  assert.ok(Math.abs(player.pos.y) < 1e-9, `drifted to y=${player.pos.y}`);
+  player.pos.set(0, 5, 0);
+  player.camPitch = 1.2;
+  frames(30);
+  assert.ok(player.pos.y < 4, `did not dive: y=${player.pos.y}`);
+});
