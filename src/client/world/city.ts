@@ -489,7 +489,7 @@ export function buildCity(night: NightParts): City {
   lamps.visible = false;
   street.add(lamps);
 
-  // Cars, up and down the streets round the office's block.
+  // Cars, up and down the streets round the office's block: two each way on each street, so the traffic stays light.
   const cars: Car[] = [];
   const lanes: [boolean, number][] = [
     [true, STREET_Z],
@@ -500,7 +500,7 @@ export function buildCity(night: NightParts): City {
     [false, STREET_X + PERIOD],
   ];
   for (const [alongX, line] of lanes) {
-    for (let k = 0; k < 7; k++) {
+    for (let k = 0; k < 4; k++) {
       const dir = k % 2 ? 1 : -1;
       cars.push({ alongX, lane: line + dir * (ROAD / 4) * (alongX ? 1 : -1), dir, at: -RADIUS + r() * RADIUS * 2, speed: 9 + r() * 6 });
     }

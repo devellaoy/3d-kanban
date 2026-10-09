@@ -47,6 +47,7 @@ export function installPlace(ctx: Ctx, core: CoreState, parts: Pick<Parts, 'worl
   /** On your feet at `at`, facing `rotY` and looking straight ahead. */
   function placeAt(at: { x: number; y: number; z: number; rotY: number }) {
     if (player.seat) parts.seating.standUp();
+    player.setFlying(false);
     // Out of the car, wherever you are (none before the cars are there: nobody's in one yet).
     ctx.activities.stop('driver', 'desk');
     player.pos.set(at.x, at.y, at.z);

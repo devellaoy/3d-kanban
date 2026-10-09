@@ -225,6 +225,11 @@ export interface Activity<Why extends string = string, E = unknown, El = unknown
   readonly hidesHands?: boolean;
   /** Both your hands are on it while it's active (the club): your character holds nothing else (the coffee mug). */
   readonly bothHands?: boolean;
+  /**
+   * It's a way of getting about rather than something you're doing (god mode's flying): it stops like the
+   * others, but you can still aim at and use things while it's on, so it doesn't make you busy().
+   */
+  readonly passive?: boolean;
 }
 
 /** The flags an activity can have, for Activities.any. */
@@ -274,9 +279,9 @@ export class Activities<Why extends string = string, E = unknown, El = unknown> 
     return this.list.find((a) => a.active() && (!match || match(a)));
   }
 
-  /** Whether you're in the middle of anything. */
+  /** Whether you're in the middle of anything (a passive activity isn't anything). */
   busy(): boolean {
-    return this.list.some((a) => a.active());
+    return this.list.some((a) => !a.passive && a.active());
   }
 
   /** Whether anything going on has `flag`. */

@@ -202,6 +202,23 @@ test('stopAll stops what is going on in order, but what is excepted or does not 
   assert.equal(acts.current(), undefined);
 });
 
+test('a passive activity stops like the others but never makes you busy', () => {
+  const log: string[] = [];
+  const acts = new Activities<Why>(['hanger']);
+  const flying = { ...activity('godmode', log, { on: true }), passive: true };
+  flying.active = () => flying.on;
+  flying.stop = (why: Why) => {
+    log.push(`godmode stops for ${why}`);
+    flying.on = false;
+  };
+  acts.add(flying);
+  assert.equal(acts.busy(), false);
+  assert.equal(acts.running('godmode'), true);
+  acts.stopAll('desk');
+  assert.deepEqual(log, ['godmode stops for desk']);
+  assert.equal(acts.running('godmode'), false);
+});
+
 test('stop stops one activity alone, only while it is going on, and it decides whether that stops it', () => {
   const log: string[] = [];
   const acts = new Activities<Why>(['hanger', 'driver']);

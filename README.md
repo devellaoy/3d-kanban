@@ -163,6 +163,9 @@ curl -fsSL https://raw.githubusercontent.com/devellaoy/3d-kanban/main/deploy/pro
   tap uses what you tapped); your character faces where the camera looks; the wheel zooms
   ([controls](docs/controls.md)). Upstream's *Mouse drag /
   wheel* row below is out of date.
+- **God mode**: **Ctrl + N** (or **Alt + N**, since Chrome and Edge keep Ctrl + N for a new window) and you fly
+  through walls and floors where you look, Space up, Shift faster; again to land ([controls](docs/controls.md)).
+- **Lighter traffic**: the city's streets have two cars each way instead of seven a street.
 - **Mouse sensitivity**: ⚙️ Settings → 🧍 You, 25–200% of the usual look speed, kept in your browser.
 - **Indoor lights**: ⚙️ Settings → 🧍 You, 0–200% of the office lamps' usual brightness, kept in your browser.
   It changes the light as you drag. The wall switches still work on top of it, and the daylight is left as it is.
@@ -541,6 +544,7 @@ deploy/dokploy.sh ssh 'node /opt/agent-office/bin/agent-office.js accounts invit
 | P | Give a task to a new worker, or to the one at this desk |
 | C | See a worker's changes: diff, commit, open a PR |
 | N | Go to the next worker that's waiting on you |
+| Ctrl + N / Alt + N | *3d-kanban*: god mode, fly through walls (noclip); again to land |
 | X | Send a worker home |
 | L | Hang a sign over a desk ("Operations", "Code cleanup") |
 | T / Enter | Chat |

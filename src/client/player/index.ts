@@ -7,6 +7,7 @@ import { HIPS } from '../world/character/rig';
 import { PlayerInput, isTyping } from './pointer';
 import { HEIGHT, STEP, blockerAt, ceilingAt, groundAt, stepTo } from './collide';
 import { EYE_HEIGHT, aimCamera, shakeCamera, type Room } from './camera';
+import { THIRD_PITCH_REST } from './shoulder';
 import { Effects } from './effects';
 
 // You: walking, running, jumping and sitting, bumping into things and climbing stairs, and the camera
@@ -16,6 +17,9 @@ const WALK = 4.6;
 const RUN = 7.5;
 const JUMP_V = 6.4;
 const GRAVITY = 18;
+/** God mode's flying speeds (m/s): ten times a walk, and twenty with Shift held. */
+const FLY = WALK * 10;
+const FLY_FAST = WALK * 20;
 
 // What the rest of the client takes from here, wherever it lives now: the eye height (camera.ts), the
 // ground under someone (collide.ts) and isTyping (pointer.ts).
@@ -73,6 +77,8 @@ export class PlayerController extends PlayerInput {
   riding = false;
   /** The car's own boxes while you're in it: the third-person camera's arm passes through them (see arm.ts). */
   armSkip: readonly Collider[] = [];
+  /** God mode: flying where you look, through walls and floors, with no gravity (see fly). Sitting, a rig or a walk of your own lands you. */
+  flying = false;
 
   constructor(
     private camera: THREE.PerspectiveCamera,
@@ -100,6 +106,7 @@ export class PlayerController extends PlayerInput {
 
   /** Sits you down in `place`, facing the way it does. In first person you look out from it; in third the camera stays put. */
   sit(place: SeatPlace) {
+    this.setFlying(false);
     this.seat = place;
     this.pos.set(place.x, place.y, place.z);
     this.vy = 0;
@@ -142,8 +149,20 @@ export class PlayerController extends PlayerInput {
 
   /** Walks you through these corners by yourself until you get there, or take a step or a jump of your own. */
   walkPath(points: { x: number; z: number }[]) {
+    if (points.length) this.setFlying(false);
     this.path = points.length ? points.map((p) => ({ ...p })) : null;
     this.stuckFor = 0;
+  }
+
+  /**
+   * God mode on, or off (gravity takes you down to whatever's under you). The way out of everything else
+   * (your seat, a walk) is god mode's own (features/godmode), which turns it on.
+   */
+  setFlying(on: boolean) {
+    if (on === this.flying) return;
+    this.flying = on;
+    this.vy = 0;
+    this.grounded = false;
   }
 
   stopWalking() {
@@ -159,6 +178,8 @@ export class PlayerController extends PlayerInput {
     dt = Math.min(dt, 0.05);
     const k = this.keys;
     if (this.rig) {
+      // Something has hold of you (a car, the tee): no flying off from it.
+      this.setFlying(false);
       this.rig(dt);
       this.vy = 0;
       this.grounded = false;
@@ -168,6 +189,7 @@ export class PlayerController extends PlayerInput {
       this.updateCamera(false, dt);
       return;
     }
+    if (this.flying) return this.fly(dt);
     if (this.seat) {
       if (!this.enabled || !GET_UP.some((c) => k.has(c))) {
         this.moving = false;
@@ -179,14 +201,7 @@ export class PlayerController extends PlayerInput {
       this.stand();
       this.onStand?.();
     }
-    let ix = 0;
-    let iz = 0;
-    if (this.enabled) {
-      if (k.has('KeyW') || k.has('ArrowUp')) iz -= 1;
-      if (k.has('KeyS') || k.has('ArrowDown')) iz += 1;
-      if (k.has('KeyA') || k.has('ArrowLeft')) ix -= 1;
-      if (k.has('KeyD') || k.has('ArrowRight')) ix += 1;
-    }
+    let [ix, iz] = this.axes();
     const steering = ix !== 0 || iz !== 0;
     this.moving = steering;
     if (this.path && (steering || (this.enabled && k.has('Space')))) {
@@ -194,9 +209,8 @@ export class PlayerController extends PlayerInput {
       this.onPathEnd?.('cancelled');
     }
     if (this.path && this.enabled) this.followPath(dt);
-    if (this.view === 'first') this.facing = Math.atan2(Math.sin(this.camYaw + Math.PI), Math.cos(this.camYaw + Math.PI));
     // Third person faces where the camera looks too, standing or walking (not on a walk of its own, which turns you along it).
-    else if (!this.path) this.facing += Math.atan2(Math.sin(this.camYaw + Math.PI - this.facing), Math.cos(this.camYaw + Math.PI - this.facing)) * (1 - Math.exp(-dt * 25));
+    if (this.view === 'first' || !this.path) this.faceCamera(dt);
     if (steering) {
       const len = Math.hypot(ix, iz);
       ix /= len;
@@ -246,6 +260,52 @@ export class PlayerController extends PlayerInput {
     this.walkPhase += dt * (walking ? (k.has('ShiftLeft') || k.has('ShiftRight') ? 14 : 11) * this.effects.speed : 0);
     const bob = walking ? Math.abs(Math.sin(this.walkPhase)) * 0.035 : 0;
     this.bob += (bob - this.bob) * Math.min(1, dt * 18);
+    this.jitterT += dt;
+    this.updateCamera(false, dt);
+  }
+
+  /** The W A S D (or arrow) keys held: [right, back], each -1, 0 or 1 (none while the controls aren't yours). */
+  private axes(): [number, number] {
+    const k = this.keys;
+    if (!this.enabled) return [0, 0];
+    const x = (k.has('KeyD') || k.has('ArrowRight') ? 1 : 0) - (k.has('KeyA') || k.has('ArrowLeft') ? 1 : 0);
+    const z = (k.has('KeyS') || k.has('ArrowDown') ? 1 : 0) - (k.has('KeyW') || k.has('ArrowUp') ? 1 : 0);
+    return [x, z];
+  }
+
+  /** Turns you to where the camera looks: at once in first person, easing round in third. */
+  private faceCamera(dt: number) {
+    const want = this.camYaw + Math.PI;
+    if (this.view === 'first') this.facing = Math.atan2(Math.sin(want), Math.cos(want));
+    else this.facing += Math.atan2(Math.sin(want - this.facing), Math.cos(want - this.facing)) * (1 - Math.exp(-dt * 25));
+  }
+
+  /**
+   * God mode's step: W A S D fly where you look (pitch and all, so looking down and pressing W takes you
+   * down), Space straight up, Shift faster. Nothing stops you but the street: there's nothing below it.
+   */
+  private fly(dt: number) {
+    const k = this.keys;
+    const [side, back] = this.axes();
+    const fwd = -back;
+    const up = this.enabled && k.has('Space') ? 1 : 0;
+    // Not walking, for everyone who sees you (no legs going in mid-air).
+    this.moving = false;
+    this.faceCamera(dt);
+    // Where you look: in first person your eyes' pitch, in third the orbit's from where it rests (it looks down onto you, so the other way).
+    const pitch = this.view === 'first' ? this.lookPitch : THIRD_PITCH_REST - this.camPitch;
+    const speed = (k.has('ShiftLeft') || k.has('ShiftRight') ? FLY_FAST : FLY) * dt;
+    const sin = Math.sin(this.camYaw);
+    const cos = Math.cos(this.camYaw);
+    const flat = Math.cos(pitch);
+    // Forward is -z turned by camYaw (as walking), tipped up or down by the pitch; sideways stays level.
+    this.pos.x += (-sin * flat * fwd + cos * side) * speed;
+    this.pos.z += (-cos * flat * fwd - sin * side) * speed;
+    this.pos.y = Math.max(this.street, this.pos.y + (Math.sin(pitch) * fwd + up) * speed);
+    this.vy = 0;
+    this.grounded = false;
+    this.bob = 0;
+    this.stepOffset *= Math.exp(-dt * 16);
     this.jitterT += dt;
     this.updateCamera(false, dt);
   }
