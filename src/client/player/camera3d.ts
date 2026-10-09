@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { THIRD_PITCH_MAX, THIRD_PITCH_MIN } from './shoulder';
+import { THIRD_PITCH_MAX, THIRD_PITCH_MIN, THIRD_PITCH_REST } from './shoulder';
 
 /**
  * The third-person camera follows camYaw/camPitch/camDist rigidly (the mouse, a turning car), except that a
@@ -11,7 +11,7 @@ export class OrbitEase {
   pitchGap = 0;
   distGap = 0;
   lastYaw = Math.PI * 0.15;
-  lastPitch = 0.42;
+  lastPitch = THIRD_PITCH_REST;
   lastDist = 7.5;
   /** Where aimCamera last put the camera: if it's elsewhere, golf or throwing moved it and it eases back. */
   lastShown = new THREE.Vector3();

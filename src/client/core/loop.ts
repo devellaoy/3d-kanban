@@ -75,7 +75,7 @@ export function installLoop(ctx: Ctx, core: CoreState, parts: Pick<Parts, 'stage
     me.root.position.copy(player.pos);
     me.root.position.y += player.stepOffset;
     me.root.rotation.y = player.facing;
-    me.update(dt, t, player.moving && player.grounded, !player.grounded && !ctx.activities.any('hidesHands'), player.effects.speed);
+    me.update(dt, t, player.moving && player.grounded, !player.grounded && !player.flying && !ctx.activities.any('hidesHands'), player.effects.speed);
     me.setVoiceLevel(voice.inVoice ? voice.localLevel : 0);
     const firstPerson = player.view === 'first';
     // In first person you are the camera; in third, hide yourself when it's zoomed in right behind your head.
@@ -83,7 +83,7 @@ export function installLoop(ctx: Ctx, core: CoreState, parts: Pick<Parts, 'stage
     // So is the camera over your shoulder at the dart board or the axe lane.
     me.root.visible = ctx.activities.any('takesCamera') || (!firstPerson && camera.position.distanceTo(headPos.set(player.pos.x, player.pos.y + player.stepOffset + THIRD_TARGET, player.pos.z)) > HIDE_BODY_WITHIN);
     // In a car, your hands are on the wheel, out of sight.
-    if (firstPerson && !ctx.activities.any('hidesHands')) hands.update(dt, t, { yaw: player.camYaw, pitch: player.lookPitch, walkPhase: player.walkPhase, walking: player.moving && player.grounded, airborne: !player.grounded, jitter: player.effects.jitter });
+    if (firstPerson && !ctx.activities.any('hidesHands')) hands.update(dt, t, { yaw: player.camYaw, pitch: player.lookPitch, walkPhase: player.walkPhase, walking: player.moving && player.grounded, airborne: !player.grounded && !player.flying, jitter: player.effects.jitter });
     // What you're doing narrows the view (at the oche or the line), and once it's set, may take it
     // over (the telescope): see ctx.view.
     const fov = ctx.view.fov(FOV);

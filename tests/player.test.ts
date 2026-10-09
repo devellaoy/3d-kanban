@@ -301,13 +301,18 @@ test('god mode off: gravity lands you on the floor again', (t) => {
   assert.equal(player.grounded, true);
 });
 
-test('god mode gets you up off a seat, and sitting down lands you', (t) => {
-  const { player } = controller(t, []);
+test('god mode ends with sitting down, a walk of your own or a rig taking hold', (t) => {
+  const { player, frames } = flying(t);
   player.sit(seatPlace(SEATING_BY_ID.get('couch')!, 2));
+  assert.equal(player.flying, false);
+  player.stand();
   player.setFlying(true);
-  assert.equal(player.seat, null);
-  assert.equal(player.flying, true);
-  player.sit(seatPlace(SEATING_BY_ID.get('couch')!, 2));
+  player.walkPath([{ x: 2, z: 2 }]);
+  assert.equal(player.flying, false);
+  player.stopWalking();
+  player.setFlying(true);
+  player.rig = () => {};
+  frames(1);
   assert.equal(player.flying, false);
 });
 

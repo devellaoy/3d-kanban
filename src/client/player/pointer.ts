@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import type { ViewMode } from '../state';
-import { THIRD_PITCH_MAX, THIRD_PITCH_MIN, tapNdc } from './shoulder';
+import { THIRD_PITCH_MAX, THIRD_PITCH_MIN, THIRD_PITCH_REST, tapNdc } from './shoulder';
 import { OrbitEase } from './camera3d';
 
 // Your hands on the controls: the keys you hold, and the mouse, which looks around. In first person a
@@ -23,7 +23,7 @@ const CENTER = new THREE.Vector2(0, 0);
 export abstract class PlayerInput {
   /** Heading of the camera. You look along (-sin, -cos) of it on the XZ plane. */
   camYaw = Math.PI * 0.15;
-  camPitch = 0.42;
+  camPitch = THIRD_PITCH_REST;
   camDist = 7.5;
   /** What the third-person camera shows of camYaw/camPitch/camDist, easing out jumps (see camera3d.ts). */
   readonly ease = new OrbitEase();

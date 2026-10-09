@@ -7,6 +7,8 @@ export const SHOULDER = 0.75;
 /** How far the third-person camera tips: a little from below you, up to looking well down on you. */
 export const THIRD_PITCH_MIN = -0.3;
 export const THIRD_PITCH_MAX = 1.3;
+/** Where the third-person camera's tip rests, looking a little down onto you. */
+export const THIRD_PITCH_REST = 0.42;
 /** Height of the point the third-person camera looks at, above your feet. */
 export const THIRD_TARGET = 1.3;
 
