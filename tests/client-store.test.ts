@@ -220,7 +220,7 @@ test('what the browser remembers keeps its keys and shapes', () => {
   const settings = state.loadSettings();
   const mix = { volume: 1, muted: false };
   const mixes = { background: mix, rain: mix, thumps: mix, steps: mix, typing: mix, effects: mix, alerts: mix };
-  assert.deepEqual(settings, { view: 'first', volume: 0.7, muted: false, mix: mixes, music: 0.5, musicMuted: false, pageTurns: true, pushToTalk: false, notify: true, mouseSensitivity: 1, hud: state.HUD_DEFAULTS, pins: [] });
+  assert.deepEqual(settings, { view: 'first', volume: 0.7, muted: false, mix: mixes, music: 0.5, musicMuted: false, pageTurns: true, pushToTalk: false, notify: true, mouseSensitivity: 1, indoorLight: 1, hud: state.HUD_DEFAULTS, pins: [] });
   state.saveSettings({ ...settings, volume: 2, view: 'third' });
   assert.equal(state.loadSettings().volume, 1);
   assert.equal(state.loadSettings().view, 'third');

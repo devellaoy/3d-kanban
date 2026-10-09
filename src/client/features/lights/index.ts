@@ -1,10 +1,12 @@
 /**
  * Light switches: E at a switch on the wall turns the lamps over the lounge (east wall) or the desks
- * (west wall) off and on, for you alone. Which are off is kept in this browser, per floor.
+ * (west wall) off and on, for you alone. Which are off is kept in this browser, per floor. And
+ * Settings' Indoor lights turns all the lamps' light up or down, for you alone too.
  */
 import type { Ctx } from '../../core/context';
 import { aside, hintTitle, key, onE } from '../../core/hint';
 import { store } from '../../state';
+import { setRoomGain } from '../../world/roomlight';
 import { AREA_INFO, allOn, flip, isArea, type LightsState } from './model';
 import { loadLights, saveLights } from './store';
 
@@ -25,6 +27,9 @@ export function installLights(ctx: Ctx) {
   }
   store.on('floor', enterFloor);
   enterFloor();
+
+  // Settings' Indoor lights, as it is now (Settings changes it in place): before the sky lights the room ('env').
+  ctx.ticks.add('world', () => setRoomGain(ctx.settings.indoorLight));
 
   ctx.interactions.define('lightswitch', {
     reach: 3.5,
