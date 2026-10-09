@@ -79,7 +79,17 @@ Done:
 
 1. **Pacing.** Big gain, low risk.
 2. **Timers and per-frame allocations.** Small gain, no risk.
-3. **The light indoors (#81) without extra lights.** `world/roomlight.ts` lights the room in the lit materials' shader: two short loops (the lamps that are on, at most 12, and at most 12 panes of glass), run only for fragments inside the office's walls, and no extra three.js lights. The lounge's real point light went with it, so indoors there's one light fewer than before. Measured on Windows (headless Chrome, ANGLE on Intel integrated graphics, Direct3D 11), 1280×800, device pixel ratio 1: 40 renders of the scene in a row, each waited out with a one-pixel read, median ms per render, three rounds alternating between `main` and the change. At the desks by day 6.2 → 6.1, at the desks by night 6.5 → 6.1, at the north wall by night 7.3 → 7.0. The difference is within the noise between rounds (±1 ms).
+3. **The light indoors (#81) without extra lights.** `world/roomlight.ts` lights the room in the lit materials' shader: two short loops (the lamps that are on, at most 24, and at most 12 panes of glass), run only for fragments inside the office's walls, and no extra three.js lights. The lounge's real point light went with it, so indoors there's one light fewer than before. Measured on Windows (headless Chrome, ANGLE on Intel integrated graphics, Direct3D 11), 1280×800, device pixel ratio 1: 40 renders of the scene in a row, each waited out with a one-pixel read, median ms per render, three rounds alternating between `main` and the change. At the desks by day 6.2 → 6.1, at the desks by night 6.5 → 6.1, at the north wall by night 7.3 → 7.0. The difference is within the noise between rounds (±1 ms).
+
+   More lamps (#118) took the room from 5 ceiling lamps to 13, so the lamp loop runs about twice as many times. The same measurement, on the same machine: `main` first, then the change, in two rounds alternating between them. Another test run was busy on the machine at the time, so the rounds moved by about ±3 ms.
+
+   | View | `main` | The change |
+   |---|---|---|
+   | Desks by day | 10.3, 15.6 | 13.0, 16.3 |
+   | Desks by night | 12.7, 16.1 | 16.6, 16.5 |
+   | North wall by night | 12.6, 13.0 | 14.2, 15.3 |
+
+   The difference is within that noise. The north wall by night may cost a millisecond or two more. Measuring it again on a quiet machine would settle that.
 
 Not done:
 
