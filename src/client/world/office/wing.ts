@@ -6,7 +6,8 @@ import { wingWindows } from '../tower';
 import type { Collider, DeskView, Interactable } from '../types';
 import type { Fixture } from './fixture';
 import { PALETTE, box, type Looks } from './materials';
-import { pendant, pendantLight } from './props';
+import { pendantLight } from './ceiling-lamps';
+import { pendant } from './props';
 import { buildDesk } from './seats';
 import { wallRun, wetPane, windowIn } from './shell';
 
@@ -84,8 +85,8 @@ export function buildWing(group: THREE.Group, colliders: Collider[], interactabl
     lamp.position.set(midX, 4.05, z);
     extras.add(lamp);
     extras.visible = false;
-    // Lit once the row is built (setLevel).
-    const light = { ...pendantLight(midX, 4.05, z), level: 0 };
+    // Lit once the row is built (setLevel): a row's one lamp lights it alone, as brightly as ever.
+    const light = { ...pendantLight(midX, 4.05, z, 11, 0, WALL_HEIGHT, 3.2), level: 0 };
     night.roomLamps.push(light);
     group.add(extras);
     const seats = WING_DESKS.filter((d) => d.wing === row).map((def) => {

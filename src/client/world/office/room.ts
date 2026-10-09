@@ -7,8 +7,9 @@ import { mesh, roundedBox, textPlane, toon, toonUnique } from '../toon';
 import type { Collider, Interactable } from '../types';
 import { fitTo, movableRug, standIn } from './arrange';
 import type { Fixture } from './fixture';
+import { CEILING_LAMPS, LAMP_Y, pendantLight } from './ceiling-lamps';
 import { PALETTE } from './materials';
-import { coffeeTable, loungeCouch, pendant, pendantLight, pouf, wallBoard } from './props';
+import { coffeeTable, loungeCouch, pendant, pouf, wallBoard } from './props';
 import { seatable } from './seats';
 
 // The room itself, past its walls and its seats: the rugs, what the sky lights and darkens, the boards
@@ -213,22 +214,16 @@ export const lounge: Fixture = (site) => {
   return {};
 };
 
-/** Ceiling lamps (cartoon pendants), hung on long cords down from the high ceiling. */
+/** Ceiling lamps (cartoon pendants), hung on long cords down from the high ceiling, each tagged with its switch's area. */
 export const lamps: Fixture = (site) => {
   const night = site.get('night');
-  const lampY = 4.05;
-  for (const [x, z] of [
-    [-10.5, -4],
-    [-1.5, -4],
-    [-10.5, 4],
-    [-1.5, 4],
-    [13, 0],
-  ]) {
-    const lamp = pendant(WALL_HEIGHT - lampY);
-    lamp.position.set(x, lampY, z);
+  for (const { x, z, area, reach } of CEILING_LAMPS) {
+    const lamp = pendant(WALL_HEIGHT - LAMP_Y);
+    lamp.position.set(x, LAMP_Y, z);
+    lamp.userData.area = area;
     site.group.add(lamp);
-    night.halos.push({ at: new THREE.Vector3(x, lampY - 0.12, z), size: 1.3, color: '#ffe08a' });
-    night.roomLamps.push(pendantLight(x, lampY, z));
+    night.halos.push({ at: new THREE.Vector3(x, LAMP_Y - 0.12, z), size: 1.3, color: '#ffe08a' });
+    night.roomLamps.push({ ...pendantLight(x, LAMP_Y, z, reach), area });
   }
   return {};
 };
