@@ -16,9 +16,9 @@ const WALK = 4.6;
 const RUN = 7.5;
 const JUMP_V = 6.4;
 const GRAVITY = 18;
-/** God mode's flying speeds (m/s): on its own, and with Shift held. */
-const FLY = 9;
-const FLY_FAST = 22;
+/** God mode's flying speeds (m/s): ten times a walk, and twenty with Shift held. */
+const FLY = WALK * 10;
+const FLY_FAST = WALK * 20;
 /** The third-person camera's resting tilt down onto you (PlayerInput.camPitch): flying from it is level, tipping it further dives. */
 const THIRD_LEVEL = 0.42;
 
