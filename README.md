@@ -164,13 +164,17 @@ curl -fsSL https://raw.githubusercontent.com/devellaoy/3d-kanban/main/deploy/pro
   ([controls](docs/controls.md)). Upstream's *Mouse drag /
   wheel* row below is out of date.
 - **Mouse sensitivity**: ⚙️ Settings → 🧍 You, 25–200% of the usual look speed, kept in your browser.
+- **Indoor lights**: ⚙️ Settings → 🧍 You, 0–200% of the office lamps' usual brightness, kept in your browser.
+  It changes the light as you drag. The wall switches still work on top of it, and the daylight is left as it is.
 - **A volume for each kind of sound**: ⚙️ Settings → 🔊 Sound & voice → *Each kind of sound*: background noise, rain, jumps & thumps, footsteps, typing & paper, other effects, and dings & alerts, each 0–100% with its own mute, under the office sounds volume and kept in your browser. Rain indoors and the jump landing are quieter than upstream's ([features](docs/features.md)).
 - **No rain or lightning by default**: the office's weather is sun, clouds, fog and winter snow; ⚙️ Settings → Building → Outside has **Rain** and **Lightning** switches (both off by default, Lightning brings the rain) that let them back for everyone ([features](docs/features.md)).
 - **Themes**: ⚙️ Settings → 🧍 You → Theme: **Office** (the default), **Dark** or **Glossy**, kept per browser. They restyle the windows, the HUD, the kanban and the 2D view, not the 3D office ([features](docs/features.md)).
 - **Light indoors from the lamps and the windows**: inside the office the room is lit only by its own lamps
   (each one lights the area round it, the wall switches turn them off and on, and they come up as it gets
   dark) and by the daylight or moonlight through the windows and the balcony's glass doors, with a little
-  light everywhere so nothing is pitch black. Outdoors and the castle are lit as before ([features](docs/features.md)).
+  light everywhere so nothing is pitch black. Pendants hang over the desks, the lounge, the walkways, the
+  corners and the kitchen, so no part of the floor is left in the dark (#118). Outdoors and the castle are
+  lit as before ([features](docs/features.md)).
 - **YouTube on the Office TV**: press **E** at the lounge TV (or paste a YouTube / YouTube Music link
   into the jukebox) and the whole floor sees and hears the same video or song at the same point, in
   YouTube's own player on the TV; sit on the couch or press **E** again to watch it big. Its window has

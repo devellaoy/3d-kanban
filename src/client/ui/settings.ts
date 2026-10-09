@@ -15,6 +15,7 @@ import { multiplayerSettingsSlot } from '../multiplayer/settingsslot';
 import { PANES, type SettingsPane } from './settings-panes';
 export type { SettingsPane };
 import { mouseSensitivityRow } from './sensitivity';
+import { indoorLightRow } from './settings-light';
 import { masterRow, mixRows, musicRow } from './settings-mix';
 import { appearanceRow } from './appearance';
 import { setting } from './settingrow';
@@ -472,6 +473,7 @@ export function openSettings(net: Net, settings: Settings, onChange: (s: Setting
       setting('Your character', null, character),
       setting('Camera view', 'you', seg, note),
       setting('Mouse sensitivity', 'you', ...mouseSensitivityRow(() => settings, (s) => onChange((settings = s)))), // ⚙️ Settings' mouse sensitivity (ui/sensitivity.ts)
+      setting('Indoor lights', 'you', ...indoorLightRow(() => settings, (s) => onChange((settings = s)))), // how bright the lamps are for you (ui/settings-light.ts)
       setting('Theme', 'you', ...appearance.row), // the pages' look (ui/appearance.ts)
       setting('Signed in', null, h('div.volume', {}, signOut), h('p.setting-note', {}, account ? `As ${account.name}, with your own account (${account.role}).` : 'With the shared office password.')),
     ],

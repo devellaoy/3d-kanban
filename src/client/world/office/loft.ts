@@ -5,7 +5,8 @@ import type { NightParts } from '../outside';
 import type { Collider, Interactable } from '../types';
 import type { Fixture } from './fixture';
 import { PALETTE, box, floorTexture, glassPane, type Looks } from './materials';
-import { pendant, pendantLight } from './props';
+import { pendantLight } from './ceiling-lamps';
+import { pendant } from './props';
 import { chair, seatable } from './seats';
 
 /**

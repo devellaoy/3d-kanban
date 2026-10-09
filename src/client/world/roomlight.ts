@@ -19,6 +19,10 @@ import { wingWindows } from './tower';
  *   the boss office's floor;
  * - and a little light everywhere (BASE), so no corner is ever pitch black.
  *
+ * The lamps hang where they light the whole floor (#118: the walkways, the corners, the kitchen), so no
+ * part of the room is left to BASE alone, and Settings' Indoor lights (setRoomGain) turns all of their
+ * light up or down for you, the pools and the light from overhead alike.
+ *
  * The lamps are the fixtures themselves (RoomLamp, which the room, the loft, the meeting room and the
  * back office push to NightParts.roomLamps); the wall switches dim theirs (features/lights), and they
  * come up as it gets dark (lightRoom's `lampsOn`, the sky's), from DAY_LAMPS by day. It is a few
@@ -43,10 +47,12 @@ export interface RoomLamp {
   level: number;
   floor: number;
   top: number;
+  /** The wall switch's area it's on (features/lights), if any. */
+  area?: string;
 }
 
 /** How bright the lamps are by day, against 1 once it's dark (the sky's lampsOn): on, but outshone by the windows. */
-export const DAY_LAMPS = 0.6;
+export const DAY_LAMPS = 0.7;
 /** The light from overhead indoors, under a lamp that's fully on: its color × strength. */
 const LAMP_SUN = new THREE.Color('#ffe2b8').multiplyScalar(0.85);
 /** How much light a corner no lamp or window reaches still gets. */
@@ -100,6 +106,18 @@ export function panes(wing: number, rooms = 0): Pane[] {
 let shown: Pane[] = [];
 /** How far up the lamps are for the hour (DAY_LAMPS by day to 1 at night), as lightRoom last set it. */
 let hour = 1;
+/** How bright the lamps are for you, 0–2 (Settings' Indoor lights, see setRoomGain). */
+let gain = 1;
+
+/** Turns the lamps' light up or down for you, `k` 0–2 (1 is as they come): their pools and the light from overhead, not BASE or the daylight. */
+export function setRoomGain(k: number) {
+  const next = Number.isFinite(k) ? Math.max(0, Math.min(2, k)) : 1;
+  if (next === gain) return;
+  gain = next;
+  roomUniforms.skyLampSun.value.copy(LAMP_SUN).multiplyScalar(gain);
+}
+/** How bright the lamps are for you, as setRoomGain last set it. */
+export const roomGain = () => gain;
 
 /** Puts the floor's glass in the shader: `wing` rows of back office and `rooms` meeting rooms (see Sky.setWing). */
 export function setPanes(wing: number, rooms = 0) {
@@ -126,7 +144,7 @@ export function lightRoom(lamps: readonly RoomLamp[], lampsOn: number) {
     const on = l.level * hour;
     if (on <= 0) continue;
     roomUniforms.skyRoomLamps.value[n].set(l.x, l.y, l.z, l.reach);
-    const k = l.power * on;
+    const k = l.power * on * gain;
     roomUniforms.skyRoomLampColors.value[n].set(l.color.r * k, l.color.g * k, l.color.b * k, on);
     roomUniforms.skyRoomLampSpans.value[n].set(l.floor - SPAN_GIVE, l.top + SPAN_GIVE);
     n++;
@@ -153,6 +171,30 @@ export function lampCover(p: Point, lamps: readonly RoomLamp[]): number {
   return Math.min(1, sum);
 }
 
+/**
+ * How much of the lamps' light gets to `p` facing `n` (skyRoomLampsAt in ROOM_LIGHT_PARS, in numbers,
+ * before the material's color): each lamp's color × strength × how far it's on, falling off with
+ * distance, more on what faces it.
+ */
+export function lampLightAt(p: Point, n: Point, lamps: readonly RoomLamp[]): number {
+  let sum = 0;
+  for (let i = 0, c = 0; i < lamps.length && c < MAX_ROOM_LAMPS; i++) {
+    const l = lamps[i];
+    const on = l.level * hour;
+    if (on <= 0) continue;
+    c++;
+    if (p.y < l.floor - SPAN_GIVE || p.y > l.top + SPAN_GIVE) continue;
+    const dx = l.x - p.x;
+    const dy = l.y - p.y;
+    const dz = l.z - p.z;
+    const r = Math.sqrt(dx * dx + dy * dy + dz * dz);
+    const k = 1 - Math.min(1, r / l.reach);
+    const toward = r > 0.001 ? Math.max(0, (n.x * dx + n.y * dy + n.z * dz) / r) : 0;
+    sum += l.power * on * gain * k * k * (0.3 + 0.7 * toward);
+  }
+  return sum;
+}
+
 /** How much daylight gets to `p` facing `n`, 0–1 (daylightAt in ROOM_LIGHT_PARS, in numbers): near the glass, and facing it. */
 export function daylightAt(p: Point, n: Point, list: readonly Pane[]): number {
   let sum = 0;
@@ -175,7 +217,7 @@ const UP = { x: 0, y: 1, z: 0 };
 
 /** How lit `p` is indoors, 0–1, with the sky outside giving `outside` (1 a clear day): for your hands (Sky.lightAt). */
 export function roomLevel(p: Point, lamps: readonly RoomLamp[], outside: number, list: readonly Pane[] = shown): number {
-  return Math.min(1, 0.15 + lampCover(p, lamps) + daylightAt(p, UP, list) * outside);
+  return Math.min(1, 0.15 + lampCover(p, lamps) * gain + daylightAt(p, UP, list) * outside);
 }
 
 /** For every lit material: the lamps' and the windows' light (see the top of this file). Mirrored by lampCover and daylightAt. */

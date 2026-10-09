@@ -43,8 +43,22 @@ Back to the [README](../README.md).
   shadows), `core/loop.ts` keeps the sky's shading on only while the office's own scene draws, `features/lights` dims
   the lamps' light (and their bulbs with the hour) instead of laying a dark pool on the floor and lighting the lounge with a point light, and the room's,
   the loft's, the meeting room's and the back office's lamps push a `RoomLamp` to `NightParts.roomLamps`
-  (`world/outside.ts`, `world/office/{room,props,loft,meeting-room,wing}.ts`). Syncing upstream's sky or lamplight
+  (`world/outside.ts`, `world/office/{room,ceiling-lamps,loft,meeting-room,wing}.ts`). Syncing upstream's sky or lamplight
   means keeping these.
+- More lamps and Indoor lights (#118):
+  - The room's pendants are a list, `CEILING_LAMPS` in `world/office/ceiling-lamps.ts` (new, with `pendantLight`,
+    `LAMP_COLOR` and `LAMP_Y`, which moved there out of `props.ts`, `room.ts` and `wing.ts`). `room.ts`'s `lamps`
+    hangs them, each with `ceilingLight`.
+  - There are 13 room pendants now, all reaching 12 (was 11). The 5 that were there keep their power (3.2), so
+    nowhere is darker than before. The 8 new ones are softer (2.2). The loft's and the back office's lamps are as
+    they were (`tests/indoor-light.test.ts` checks the floor against the old five).
+  - Each pendant is tagged with its wall switch's area (`RoomLamp.area`, and `userData.area` on the pendant).
+    `features/lights` finds its lamps by that tag instead of by position.
+  - `world/roomlight.ts` has `DAY_LAMPS` at 0.7 (was 0.6), `lampLightAt` (the shader's pools, in numbers) and
+    `setRoomGain`. That gain scales the lamps' colours in `lightRoom`, `skyLampSun` and `roomLevel`'s cover, all on
+    the CPU, so the shader is unchanged.
+  - `Settings.indoorLight` is in `state/persist.ts`, with its row in `ui/settings.ts` (`ui/settings-light.ts`).
+  - `features/lights` hands the setting to `setRoomGain` from a `'world'` tick.
 - No rain or lightning unless ⚙️ lets them in (#130): `server/sky.ts` keeps the unfiltered weather (`raw`) and
   shows it through `tame` with the building's `WeatherPrefs` (`sky-weather.json`, `setWeatherPrefs`, the `sky.weather`
   message and `SkyState.rain` / `.lightning`), `wander` takes the prefs and leaves rain and storms out, and
@@ -52,7 +66,7 @@ Back to the [README](../README.md).
   storm strikes at once when a switch goes off (`world/skyswitches.ts`); the switches are in
   `ui/settings-sky.ts`. Syncing upstream's sky means keeping these.
 - Several meeting rooms per floor (#90): upstream's `server/meetings.ts` `MeetingRoom` is now one room's engine (it takes its `MeetingRoomDef`, no longer holds the state file or the list of earlier meetings), and the new `server/meeting-rooms.ts` `MeetingRooms` owns one per room and is what `Floor.meetings` is. The seams in upstream's files: `MeetingState` is `{ rooms, past }` (was `{ current, past }`) and `Meeting.room`, `MeetingRequest.room`, `meeting.stop` / `meeting.clear` `room` in `shared/protocol/meetings.ts`; `MeetingRoomDef` / `MEETING_ROOMS` (built by `buildMeetingRooms` in `shared/meetingrooms.ts`, re-exported by `shared/layout.ts`; the second room's id is still `review`, from before it was renamed, and rooms 2-4 are the meeting wing's: `FloorPlan.rooms`, `world/office/roomswing.ts`) and `MapPlan.meetingRooms` in `shared/maps/`; `floor.ts` (`meetings`, `ctx.meetingRooms`), `office/floors.ts`, `ws/handlers/meetings.ts`, the top bar chip in `features/hud`, `ui/meeting.ts` (a tab per room) and the places that read the one `current` meeting (`features/workers/{actions,views}.ts`, `state/slices/meeting.ts`). Syncing upstream's meeting room means keeping these.
-- The office's LED lighting (`world/office/led.ts`) is a fixture of its own at the end of `floorPlan()` in `world/office/build.ts`, and the ceiling lamps are linear LED fixtures (`pendant` in `world/office/props.ts`); the strips are `bulb`s (each colour its own entry in `NightParts.bulbs`), not `RoomLamp`s. `MAX_ROOM_LAMPS` in `world/roomlight.ts` is 24: the meeting wing's rooms light two lamps each. The meeting wing itself (`world/office/roomswing.ts`, `FloorPlan.rooms`, `floor.expand` / `floor.shrink` with `part: 'meeting'`) mirrors the back office through the north wall; the machine monitor moved to the south wall over the kitchen to make room for it.
+- The office's LED lighting (`world/office/led.ts`) is a fixture of its own at the end of `floorPlan()` in `world/office/build.ts`, and the ceiling lamps are linear LED fixtures (`pendant` in `world/office/props.ts`); the strips are `bulb`s (each colour its own entry in `NightParts.bulbs`), not `RoomLamp`s. `MAX_ROOM_LAMPS` in `world/roomlight.ts` is 24: the meeting wing's rooms light two lamps each, and with every room built the office's lamps fill all 24 (`tests/indoor-light.test.ts`). The meeting wing itself (`world/office/roomswing.ts`, `FloorPlan.rooms`, `floor.expand` / `floor.shrink` with `part: 'meeting'`) mirrors the back office through the north wall; the machine monitor moved to the south wall over the kitchen to make room for it.
 - Repositories on Azure DevOps and Bitbucket (#122, [hosting](hosting.md)): the providers are new code of the fork's own
   (`src/{server,shared}/hosting/`, `server/kanban/integrations/hosting/`, `server/gitconfig.ts`,
   `bin/office-pr.js`, `bin/office-git-credential.js`, `ws/handlers/hosting.ts`, `client/ui/signins-hosts.ts`, the

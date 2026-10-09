@@ -5,34 +5,21 @@ import type { Fixture } from '../../world/office/fixture';
 import { roomLampHour, type RoomLamp } from '../../world/roomlight';
 import { AREAS, easeLevel, type AreaId, type LightsState } from './model';
 
-// Light switches on the walls. Each area has its ceiling lamps: their bulbs (found among the pendants
-// the room hangs: each gets a bulb material of its own to dim) and the light they throw on the room
-// (their RoomLamps in NightParts, see world/roomlight.ts), which the switch dims with the bulbs. By
-// day both are turned down, as the sky has the room's lamps (roomLampHour).
-
-/** The pendants the room hangs (room.ts), by (x, z) at LAMP_Y. */
-const LAMP_Y = 4.05;
+// Light switches on the walls. Each area has its ceiling lamps, the ones the room tags with it
+// (room.ts's CEILING_LAMPS): their bulbs (each pendant's bulb gets a material of its own to dim) and the
+// light they throw on the room (their RoomLamps in NightParts, see world/roomlight.ts), which the switch
+// dims with the bulbs. By day both are turned down, as the sky has the room's lamps (roomLampHour).
 
 interface AreaDef {
-  /** The ceiling lamps it switches. */
-  lamps: readonly (readonly [x: number, z: number])[];
   /** Where its switch is: on a wall, at (x, z), facing `rotY`. */
   plate: { x: number; z: number; rotY: number; wall: 'east' | 'west' };
 }
 
 const DEF: Record<AreaId, AreaDef> = {
   // East wall between the TV and the Services board.
-  lounge: { lamps: [[13, 0]], plate: { x: 17.92, z: -4.2, rotY: -Math.PI / 2, wall: 'east' } },
+  lounge: { plate: { x: 17.92, z: -4.2, rotY: -Math.PI / 2, wall: 'east' } },
   // West wall between the last window and the exit door.
-  desks: {
-    lamps: [
-      [-10.5, -4],
-      [-1.5, -4],
-      [-10.5, 4],
-      [-1.5, 4],
-    ],
-    plate: { x: -17.92, z: 5.15, rotY: Math.PI / 2, wall: 'west' },
-  },
+  desks: { plate: { x: -17.92, z: 5.15, rotY: Math.PI / 2, wall: 'west' } },
 };
 
 export interface LightSwitches {
@@ -62,17 +49,15 @@ export const lightSwitches: Fixture<'lightSwitches'> = (site) => {
     levels[id] = 1;
     want[id] = true;
     bulbs[id] = [];
-    lights[id] = [];
+    lights[id] = night.roomLamps.filter((l) => l.area === id);
     // The lamps over this area: the glowing diffuser in each (child 2) gets a bulb of its own.
-    for (const [x, z] of def.lamps) {
-      const pendant = site.group.children.find((o) => o.type === 'Group' && Math.abs(o.position.x - x) < 0.01 && Math.abs(o.position.z - z) < 0.01 && Math.abs(o.position.y - LAMP_Y) < 0.01);
-      const bulb = pendant?.children[2] as THREE.Mesh | undefined;
-      if (!bulb) continue;
+    for (const pendant of site.group.children.filter((o) => o.userData.area === id)) {
+      const bulb = pendant.children[2] as THREE.Mesh | undefined;
+      // No bulb at child 2 means props.ts's pendant() changed shape: fail loudly rather than leave a lamp its switch can't dim.
+      if (!bulb?.isMesh) throw new Error(`lights: the ${id} pendant at (${pendant.position.x}, ${pendant.position.z}) has no bulb (child 2)`);
       const own = (bulb.material as THREE.MeshToonMaterial).clone();
       bulb.material = own;
       bulbs[id].push(own);
-      const lamp = night.roomLamps.find((l) => Math.abs(l.x - x) < 0.01 && Math.abs(l.z - z) < 0.01);
-      if (lamp) lights[id].push(lamp);
     }
 
     // The switch: a plate with a rocker, on the wall at about hand height.

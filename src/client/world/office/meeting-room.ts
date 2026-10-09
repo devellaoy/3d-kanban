@@ -7,7 +7,8 @@ import { mesh, roundedBox, textPlane, toon } from '../toon';
 import type { Collider, DeskView, Interactable, MeetingScreen } from '../types';
 import type { Fixture } from './fixture';
 import { PALETTE, box, glassPane } from './materials';
-import { LAMP_COLOR, wallBoard } from './props';
+import { LAMP_COLOR } from './ceiling-lamps';
+import { wallBoard } from './props';
 import { chair } from './seats';
 import type { Door } from './shell';
 
