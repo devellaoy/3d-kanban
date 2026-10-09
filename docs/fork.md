@@ -43,12 +43,15 @@ Back to the [README](../README.md).
   shadows), `core/loop.ts` keeps the sky's shading on only while the office's own scene draws, `features/lights` dims
   the lamps' light (and their bulbs with the hour) instead of laying a dark pool on the floor and lighting the lounge with a point light, and the room's,
   the loft's, the meeting room's and the back office's lamps push a `RoomLamp` to `NightParts.roomLamps`
-  (`world/outside.ts`, `world/office/{room,props,loft,meeting-room,wing}.ts`). Syncing upstream's sky or lamplight
+  (`world/outside.ts`, `world/office/{room,ceiling-lamps,loft,meeting-room,wing}.ts`). Syncing upstream's sky or lamplight
   means keeping these.
 - More lamps and Indoor lights (#118):
-  - The room's pendants are a list, `CEILING_LAMPS` in `world/office/ceiling-lamps.ts` (new, with `pendantLight` and
-    `LAMP_COLOR`, which moved there out of `props.ts`). It now has 13 pendants, each softer than before (power 2.2,
-    reach 12; the loft keeps its own). `room.ts`'s `lamps` hangs them.
+  - The room's pendants are a list, `CEILING_LAMPS` in `world/office/ceiling-lamps.ts` (new, with `pendantLight`,
+    `LAMP_COLOR` and `LAMP_Y`, which moved there out of `props.ts`, `room.ts` and `wing.ts`). `room.ts`'s `lamps`
+    hangs them, each with `ceilingLight`.
+  - There are 13 room pendants now, all reaching 12 (was 11). The 5 that were there keep their power (3.2), so
+    nowhere is darker than before. The 8 new ones are softer (2.2). The loft's and the back office's lamps are as
+    they were (`tests/indoor-light.test.ts` checks the floor against the old five).
   - Each pendant is tagged with its wall switch's area (`RoomLamp.area`, and `userData.area` on the pendant).
     `features/lights` finds its lamps by that tag instead of by position.
   - `world/roomlight.ts` has `DAY_LAMPS` at 0.7 (was 0.6), `lampLightAt` (the shader's pools, in numbers) and

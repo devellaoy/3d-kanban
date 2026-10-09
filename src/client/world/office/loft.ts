@@ -183,8 +183,7 @@ export function buildLoft(group: THREE.Group, colliders: Collider[], interactabl
   const lamp = pendant();
   lamp.position.set(deskX, roofY - 0.4, cz);
   group.add(lamp);
-  // The boss office's one lamp lights it alone, as brightly as ever.
-  night.roomLamps.push(pendantLight(deskX, roofY - 0.4, cz, 6, floorY, roofY, 3.2));
+  night.roomLamps.push(pendantLight(deskX, roofY - 0.4, cz, 6, floorY, roofY));
 
   // Signs: one on the back wall inside, one over the glass for everyone downstairs.
   const inside = textPlane('👑 Boss Office', { bg: '#fffaf3', size: 64 });

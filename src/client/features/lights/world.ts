@@ -53,10 +53,8 @@ export const lightSwitches: Fixture<'lightSwitches'> = (site) => {
     // The lamps over this area: the glowing diffuser in each (child 2) gets a bulb of its own.
     for (const pendant of site.group.children.filter((o) => o.userData.area === id)) {
       const bulb = pendant.children[2] as THREE.Mesh | undefined;
-      if (!bulb?.isMesh) {
-        console.warn(`lights: the ${id} pendant at (${pendant.position.x}, ${pendant.position.z}) has no bulb`);
-        continue;
-      }
+      // No bulb at child 2 means props.ts's pendant() changed shape: fail loudly rather than leave a lamp its switch can't dim.
+      if (!bulb?.isMesh) throw new Error(`lights: the ${id} pendant at (${pendant.position.x}, ${pendant.position.z}) has no bulb (child 2)`);
       const own = (bulb.material as THREE.MeshToonMaterial).clone();
       bulb.material = own;
       bulbs[id].push(own);

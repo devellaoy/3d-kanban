@@ -3,13 +3,13 @@
 import test, { type TestContext } from 'node:test';
 import assert from 'node:assert/strict';
 import * as THREE from 'three';
-import { MAX_ROOM_LAMPS, lampCover, lampLightAt, lightRoom, roomGain, roomLevel, roomUniforms, setRoomGain, type RoomLamp } from '../src/client/world/roomlight.js';
-import { CEILING_LAMPS, LAMP_Y, pendantLight } from '../src/client/world/office/ceiling-lamps.js';
+import { MAX_ROOM_LAMPS, ROOM_LIGHT_PARS, lampLightAt, lightRoom, roomGain, roomLevel, roomUniforms, setRoomGain, type RoomLamp } from '../src/client/world/roomlight.js';
+import { CEILING_LAMPS, LAMP_Y, ceilingLight, pendantLight } from '../src/client/world/office/ceiling-lamps.js';
 import { lightSwitches } from '../src/client/features/lights/world.js';
 import type { Site } from '../src/client/world/office/fixture.js';
 import type { NightParts } from '../src/client/world/outside.js';
 import { loadSettings } from '../src/client/state/index.js';
-import { FLOOR, MEETING_ROOM, ROOMS_WING, STAIRS } from '../src/shared/layout.js';
+import { DESK_SIZE, FLOOR, MEETING_ROOM, ROOMS_WING, STAIRS } from '../src/shared/layout.js';
 
 const UP = { x: 0, y: 1, z: 0 };
 
@@ -24,12 +24,12 @@ function pendant() {
 function hang() {
   const night = { halos: [], roomLamps: [] as RoomLamp[] } as unknown as NightParts;
   const group = new THREE.Group();
-  for (const { x, z, area, reach } of CEILING_LAMPS) {
+  for (const def of CEILING_LAMPS) {
     const lamp = pendant();
-    lamp.position.set(x, LAMP_Y, z);
-    lamp.userData.area = area;
+    lamp.position.set(def.x, LAMP_Y, def.z);
+    lamp.userData.area = def.area;
     group.add(lamp);
-    night.roomLamps.push({ ...pendantLight(x, LAMP_Y, z, reach), area });
+    night.roomLamps.push(ceilingLight(def));
   }
   const site = { group, get: () => night, wall: () => {} } as unknown as Site;
   return { night, group, site };
@@ -60,20 +60,63 @@ test('a wall switch dims only the lamps tagged with its area', () => {
 const open = (x: number, z: number) =>
   !(x > MEETING_ROOM.minX && z > MEETING_ROOM.minZ) && !(x > STAIRS.fromX && z > STAIRS.minZ);
 
-test('at night no part of the floor is left in the dark: the lamps reach all of it', () => {
-  const { night } = hang();
-  lightRoom(night.roomLamps, 1);
-  let darkest = Infinity;
-  let where = '';
+/** The room's light from its lamps at every metre of the floor, at the floor and at desk height, with the lamps up for the hour (`lampsOn`, 1 at night). */
+function floorLight(lamps: RoomLamp[], lampsOn: number): { at: string; lamps: number }[] {
+  lightRoom(lamps, lampsOn);
+  const out: { at: string; lamps: number }[] = [];
   for (let x = FLOOR.minX + 0.5; x < FLOOR.maxX; x += 1) {
     for (let z = FLOOR.minZ + 0.5; z < FLOOR.maxZ; z += 1) {
       if (!open(x, z)) continue;
-      const p = { x, y: 0, z };
-      const lit = lampLightAt(p, UP, night.roomLamps) + lampCover(p, night.roomLamps);
-      if (lit < darkest) [darkest, where] = [lit, `(${x}, ${z})`];
+      for (const y of [0, DESK_SIZE.height]) out.push({ at: `(${x}, ${y}, ${z})`, lamps: lampLightAt({ x, y, z }, UP, lamps) });
     }
   }
-  assert.ok(darkest > 0.35, `the darkest spot ${where} gets ${darkest.toFixed(2)}`);
+  return out;
+}
+
+/** The room's ceiling lamps as they hung before #118: the four over the pods and the lounge's, as strong as now, reaching 11. */
+const BEFORE: RoomLamp[] = [
+  [-10.5, -4],
+  [-1.5, -4],
+  [-10.5, 4],
+  [-1.5, 4],
+  [13, 0],
+].map(([x, z]) => pendantLight(x, LAMP_Y, z));
+
+/** The base light's level (BASE in roomlight.ts, what a corner no lamp reaches gets): its color's average. */
+const base = () => {
+  const c = roomUniforms.skyRoomBase.value;
+  return (c.r + c.g + c.b) / 3;
+};
+
+test('at night every part of the floor is lit by a lamp, not left to the base light, as the five lamps before #118 left it', () => {
+  // A spot is lit by the lamps when they add at least 40% to the base light there (lampLightAt + base ≥ 1.4 × base):
+  // the five lamps before #118 left the corners at the base light alone (0 from the lamps); the room's lamps now
+  // put about two thirds of the base light (0.13) into the darkest spot, the nook between the stairs and the meeting room.
+  const enough = 0.4 * base();
+  const darkest = (lamps: RoomLamp[]) => floorLight(lamps, 1).reduce((a, b) => (b.lamps < a.lamps ? b : a));
+  const before = darkest(BEFORE);
+  assert.ok(before.lamps < enough, `before #118 the darkest spot ${before.at} got ${before.lamps.toFixed(3)} from the lamps`);
+  const { night } = hang();
+  const now = darkest(night.roomLamps);
+  assert.ok(now.lamps >= enough, `the darkest spot ${now.at} gets ${now.lamps.toFixed(3)} from the lamps, under ${enough.toFixed(3)}`);
+});
+
+test('nowhere on the floor is darker than before #118, by day or by night: the old lamps are as strong as ever', () => {
+  const { night } = hang();
+  for (const lampsOn of [0, 1]) {
+    const before = floorLight(BEFORE, lampsOn);
+    const now = floorLight(night.roomLamps, lampsOn);
+    now.forEach((spot, i) => assert.ok(spot.lamps >= before[i].lamps - 1e-9, `${spot.at} ${lampsOn ? 'at night' : 'by day'}: ${before[i].lamps.toFixed(3)} → ${spot.lamps.toFixed(3)}`));
+  }
+});
+
+test('the room light keeps to the shader’s 24 lamps: their uniforms fit the fragment budget every WebGL 2 device has', () => {
+  // MAX_ROOM_LAMPS is not raised for the new lamps (see the test above that they all fit in it). Each lamp takes three
+  // uniform vectors and each pane two; WebGL 2 promises at least 224 fragment uniform vectors, which three.js's lights
+  // and the sky's lamps share with these, so the room light must keep well under half of them.
+  assert.equal(MAX_ROOM_LAMPS, 24);
+  const vectors = [...ROOM_LIGHT_PARS.matchAll(/uniform (?:vec[234]|float|int) \w+(?:\[ (\d+) \])?;/g)].reduce((n, m) => n + Number(m[1] ?? 1), 0);
+  assert.ok(vectors <= 112, `the room light takes ${vectors} uniform vectors`);
 });
 
 test('Indoor lights turns the lamps’ light up and down, never the base light or the daylight', (t) => {
