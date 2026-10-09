@@ -163,6 +163,9 @@ curl -fsSL https://raw.githubusercontent.com/devellaoy/3d-kanban/main/deploy/pro
   tap uses what you tapped); your character faces where the camera looks; the wheel zooms
   ([controls](docs/controls.md)). Upstream's *Mouse drag /
   wheel* row below is out of date.
+- **God mode**: **Ctrl + N** (or **Alt + N**, since Chrome and Edge keep Ctrl + N for a new window) and you fly
+  through walls and floors where you look, Space up, Shift faster; again to land ([controls](docs/controls.md)).
+- **Lighter traffic**: the city's streets have two cars each way instead of seven a street.
 - **Mouse sensitivity**: ⚙️ Settings → 🧍 You, 25–200% of the usual look speed, kept in your browser.
 - **A volume for each kind of sound**: ⚙️ Settings → 🔊 Sound & voice → *Each kind of sound*: background noise, rain, jumps & thumps, footsteps, typing & paper, other effects, and dings & alerts, each 0–100% with its own mute, under the office sounds volume and kept in your browser. Rain indoors and the jump landing are quieter than upstream's ([features](docs/features.md)).
 - **No rain or lightning by default**: the office's weather is sun, clouds, fog and winter snow; ⚙️ Settings → Building → Outside has **Rain** and **Lightning** switches (both off by default, Lightning brings the rain) that let them back for everyone ([features](docs/features.md)).
@@ -537,6 +540,7 @@ deploy/dokploy.sh ssh 'node /opt/agent-office/bin/agent-office.js accounts invit
 | P | Give a task to a new worker, or to the one at this desk |
 | C | See a worker's changes: diff, commit, open a PR |
 | N | Go to the next worker that's waiting on you |
+| Ctrl + N / Alt + N | *3d-kanban*: god mode, fly through walls (noclip); again to land |
 | X | Send a worker home |
 | L | Hang a sign over a desk ("Operations", "Code cleanup") |
 | T / Enter | Chat |
