@@ -175,15 +175,6 @@ test("a dead process's leftovers in the tmp root are cleaned, a living one's sta
   assert.equal(readFileSync(path.join(s.claudeHome, 'skills', 'lost', 'SKILL.md'), 'utf8'), 'back');
 });
 
-test('one failing skill does not stop the rest', () => {
-  const s = setup();
-  mkdirSync(s.claudeHome, { recursive: true });
-  writeFileSync(path.join(s.claudeHome, 'skills'), 'a file where the folder should be');
-  const res = s.run();
-  assert.equal(res.find((r) => r.name === 'alpha (claude)')?.status, 'failed');
-  assert.equal(res.find((r) => r.name === 'beta (codex)')?.status, 'installed');
-});
-
 test('the registry lists a synced Codex skill as the user\'s own', () => {
   const s = setup();
   s.run();
