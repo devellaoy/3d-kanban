@@ -32,6 +32,15 @@ export function renderMarkdown(src: string, openTask: (id: number) => void, empt
       });
     }
   }
+  // A picture attached in the text opens full size in a new tab (the text shows it scaled down).
+  for (const img of el.querySelectorAll<HTMLImageElement>('img')) {
+    const src = img.getAttribute('src') || '';
+    if (!src.includes('/api/kanban/attachments/') || img.closest('a')) continue;
+    img.classList.add('kb-inline-img');
+    const a = h('a', { href: src, target: '_blank', rel: 'noopener noreferrer', title: img.alt || 'Open the picture' });
+    img.replaceWith(a);
+    a.append(img);
+  }
   const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT, {
     acceptNode: (n) => (n.parentElement?.closest('a, code, pre') ? NodeFilter.FILTER_REJECT : NodeFilter.FILTER_ACCEPT),
   });

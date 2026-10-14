@@ -61,6 +61,8 @@
 .kb-tv .kb-detail-body .md { padding: 4px 2px; font-size: var(--fs-md); }
 .kb-tv .kb-comment .md, .kb-tv .kb-run .md, .kb-tv .kb-summary .md, .kb-tv .kb-goal .md, .kb-tv .kb-waiting .md { padding: 0; }
 .kb-tv .md img { max-width: 100%; }
+/* A picture attached in a description or comment (md.ts): big enough to read, a click opens it full size. */
+.kb-tv .md img.kb-inline-img { max-height: 320px; object-fit: contain; border: var(--bw-sm) solid var(--rule-soft); }
 .kb-tv .kb-run .kb-error { margin: 6px 0 0; font-size: var(--fs-sm); }
 .kb-tv .kb-run details summary, .kb-tv .kb-events summary { cursor: pointer; font-size: var(--fs-xs); font-weight: var(--fw-bold); }
 .kb-tv .kb-detail-body h4 { margin: 0 0 6px; font-size: var(--fs-sm); font-weight: var(--fw-heavy); text-transform: uppercase; letter-spacing: .04em; }

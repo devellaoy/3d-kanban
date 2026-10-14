@@ -51,6 +51,51 @@ export function insertAt(text: string, at: number, snippet: string): { text: str
   return { text: out, cursor: before.length + lead.length + snippet.length };
 }
 
+let marks = 0;
+
+/** What stands in the text, where the file goes, while it uploads: unique, so two of the same name can't mix. */
+export function uploadingMark(name: string): string {
+  return `![⏳ Uploading ${name.replace(/[[\]\\]/g, '')}…](#uploading-${++marks})`;
+}
+
+/**
+ * Swaps `mark` in `text` for `snippet` (an empty one takes the line it had to itself with it), keeping the
+ * selection where it was relative to the text around it. Null when the mark is gone (the user edited it away).
+ */
+export function swapMark(text: string, mark: string, snippet: string, sel: [number, number]): { text: string; sel: [number, number] } | null {
+  let at = text.indexOf(mark);
+  if (at < 0) return null;
+  let end = at + mark.length;
+  if (!snippet) {
+    if (text[end] === '\n') end++;
+    else if (at > 0 && text[at - 1] === '\n') at--;
+  }
+  const delta = snippet.length - (end - at);
+  const move = (p: number) => (p >= end ? p + delta : p > at ? at + snippet.length : p);
+  return { text: text.slice(0, at) + snippet + text.slice(end), sel: [move(sel[0]), move(sel[1])] };
+}
+
+/** The attachments a text links to (its `/api/kanban/attachments/<id>` links), each once, in order. */
+export function linkedIds(text: string): string[] {
+  const out: string[] = [];
+  for (const m of text.matchAll(/\/api\/kanban\/attachments\/([^)\s/?#"'<>]+)/g)) {
+    let id = m[1];
+    try {
+      id = decodeURIComponent(id);
+    } catch {
+      // Left as written.
+    }
+    if (!out.includes(id)) out.push(id);
+  }
+  return out;
+}
+
+/** The files a text doesn't already show (older comments and descriptions list theirs below the text). */
+export function notInText<T extends { id: string }>(files: T[], text: string): T[] {
+  const linked = new Set(linkedIds(text));
+  return files.filter((f) => !linked.has(f.id));
+}
+
 /** The #123 references in a line of text, split out so they can be linked to their tasks (not inside words or URLs). */
 export function splitTaskRefs(text: string): (string | { task: number; text: string })[] {
   const out: (string | { task: number; text: string })[] = [];

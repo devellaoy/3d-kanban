@@ -53,7 +53,7 @@ export function openCreate(api: KanbanApi, o: CreateOptions = {}) {
   const desc = textArea(editing?.description ?? pre.description ?? '', { rows: 8, maxlength: KANBAN_LIMITS.description, placeholder: 'The details, in Markdown. Paste or drop screenshots and files here.', spellcheck: 'true' });
   const descWrap = h('div.kb-desc-box', {}, desc);
   const attach = attachBox({ target: desc, dropZone: descWrap, taskId: () => editing?.id, insertLinks: true });
-  descWrap.append(attach.el, h('small.kb-hint', {}, 'Markdown. Files pasted or dropped are uploaded and linked.'));
+  descWrap.append(attach.el, h('small.kb-hint', {}, 'Markdown. Files pasted, dropped or 📎 attached go in where the cursor is.'));
   const ticket = textInput(editing?.ticket ?? pre.ticket ?? '', { maxlength: KANBAN_LIMITS.ticket, placeholder: 'UYT-1415 / gh:owner/repo#12' });
   const ticketUrl = textInput(editing?.ticketUrl ?? pre.ticketUrl ?? '', { maxlength: KANBAN_LIMITS.url, placeholder: 'https://…', type: 'url' });
   const projectSel = select(projects.map((p) => [p.id, p.name] as const), editing?.project ?? pre.project ?? o.project ?? kstore.project ?? projects[0].id, { disabled: !!editing });
