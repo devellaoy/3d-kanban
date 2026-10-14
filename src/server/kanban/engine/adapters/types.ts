@@ -74,6 +74,8 @@ export interface TurnResult {
   lost?: { launch?: true; office: number[] };
   /** Indices into `officePrompts` of the comments the log doesn't show yet, whether or not a prompt hook heard them (the engine gives them back when the run ends). */
   waiting?: number[];
+  /** Indices into `officePrompts` the reader found in the log for the first time (the engine remembers them: `seen`). */
+  seen?: number[];
 }
 
 /** What readTurnResult may be told (see TaskAgentAdapter.readTurnResult). */
@@ -83,7 +85,7 @@ export interface ReadOpts {
   promptAt?: number;
   promptHead?: string;
   /** Comments the office typed into the run while it worked (when, the start of their text, and whether the agent's prompt hook confirmed them): prompts of the office's own, not a person's. One the log doesn't show yet (a prompt hook hearing it is no proof: the turn read may still be an earlier one) makes the turn `unheard`. */
-  officePrompts?: { at: number; head: string; heard?: boolean }[];
+  officePrompts?: { at: number; head: string; heard?: boolean; seen?: boolean }[];
 }
 
 /** How long a typed comment the log doesn't show yet (and no prompt hook confirmed) is waited for before the run goes on without it (15 min). */
@@ -113,9 +115,13 @@ export interface TaskAgentAdapter {
 /** A session log can be long: its last 16 MB hold the turn the engine wants. */
 const TAIL_BYTES = 16 * 1024 * 1024;
 
+/** The lines of a log; `cut` when only its tail was read. */
+export type JsonLines = Record<string, unknown>[] & { cut?: true };
+
 /** The JSON lines of a log (its last `tailBytes`, 16 MB by default), skipping any that don't parse. */
-export function readJsonLines(file: string, tailBytes = TAIL_BYTES): Record<string, unknown>[] | undefined {
+export function readJsonLines(file: string, tailBytes = TAIL_BYTES): JsonLines | undefined {
   let text: string;
+  let cut = false;
   try {
     const size = statSync(file).size;
     const start = Math.max(0, size - tailBytes);
@@ -128,11 +134,12 @@ export function readJsonLines(file: string, tailBytes = TAIL_BYTES): Record<stri
       closeSync(fd);
     }
     // Cut mid-line: the first line is a fragment.
-    if (start > 0) text = text.slice(text.indexOf('\n') + 1);
+    if (start > 0) (cut = true), (text = text.slice(text.indexOf('\n') + 1));
   } catch {
     return undefined;
   }
-  const out: Record<string, unknown>[] = [];
+  const out: JsonLines = [];
+  if (cut) out.cut = true;
   for (const line of text.split('\n')) {
     if (!line.trim()) continue;
     try {

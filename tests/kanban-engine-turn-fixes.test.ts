@@ -12,7 +12,7 @@ import { ADA, engineFixture, type EngineFixture } from './kanban-engine-fixture.
 const runTypedIds = (fx: EngineFixture, runId: number) => runTyped(fx.repo.db, runId).map((p) => p.msg?.commentId);
 const GRACE = { name: 'Grace', admin: false };
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
-const COMMENT = /Comment from Grace on task #\d+ while you work/;
+const COMMENT = /Comment #\d+ from Grace on task #\d+ while you work/;
 const prompts = (fx: EngineFixture, re: RegExp) => fx.invocations().filter((i) => i.prompt && re.test(i.prompt));
 const phases = (fx: EngineFixture, id: number) => fx.repo.listRuns(id).map((r) => r.phase);
 async function waitFor(pred: () => boolean, what: string, timeout = 15_000) {
@@ -40,7 +40,7 @@ test('an older turn\'s WORK DONE on the Stop hook\'s answer does not end the run
     // The log never gets the first turn's final answer: only the Stop hook carries it.
     { when: 'Implement kanban task', earlier: 'Working on it.', reply: 'Implemented.', commit: 'Work', delayMs: 1500, lateLogMs: -1 },
     // Its agent is slow to take the comment: when the first turn stops, the log does not show it yet.
-    { when: 'Comment from Grace', reply: 'Added the log line too.', commit: 'Log', submitDelayMs: 4000 },
+    { when: 'from Grace on task', reply: 'Added the log line too.', commit: 'Log', submitDelayMs: 4000 },
   ]);
   await say(fx, task.id, 'Log the redirect target too.').done;
   const end = await fx.waitTask(task.id, (x) => x.status === 'review' && x.runState === 'idle', 'the review column');
@@ -115,7 +115,7 @@ test('codex: a comment while the turn works is typed in at once; a WORK DONE tur
     fx,
     [
       { when: 'Implement kanban task', reply: 'Implemented.', commit: 'Work', delayMs: 1500 },
-      { when: 'Comment from Grace', reply: 'Added the log line too.', commit: 'Log' },
+      { when: 'from Grace on task', reply: 'Added the log line too.', commit: 'Log' },
     ],
     { tool: 'codex' },
   );
@@ -226,7 +226,7 @@ test('claude: a typed comment the log never shows within the wait is not answere
   t.after(() => fx.close());
   const task = await working(fx, [
     { when: 'Implement kanban task', earlier: 'Working on it.', reply: 'Implemented.', commit: 'Work', delayMs: 1500, lateLogMs: -1 },
-    { when: 'Comment from Grace', reply: 'Added the log line too.', commit: 'Log', submitDelayMs: 30_000 },
+    { when: 'from Grace on task', reply: 'Added the log line too.', commit: 'Log', submitDelayMs: 30_000 },
   ]);
   const { c, done } = say(fx, task.id, 'Log the redirect target too.');
   await done;
@@ -249,7 +249,7 @@ test('codex: a typed comment the rollout never shows within the wait is not answ
     fx,
     [
       { when: 'Implement kanban task', reply: 'Implemented.', commit: 'Work', delayMs: 1500 },
-      { when: 'Comment from Grace', reply: 'Added the log line too.', commit: 'Log', submitDelayMs: 30_000 },
+      { when: 'from Grace on task', reply: 'Added the log line too.', commit: 'Log', submitDelayMs: 30_000 },
     ],
     { tool: 'codex' },
   );
@@ -281,7 +281,7 @@ test('a Stop before the agent took a comment typed into it gives the comment bac
   t.after(() => fx.close());
   const task = await working(fx, [
     { when: 'Implement kanban task', reply: 'Never.', delayMs: 30_000, escSilent: true, escStopMs: 900 },
-    { when: 'Comment from Grace', reply: 'Took it.', submitDelayMs: 30_000 },
+    { when: 'from Grace on task', reply: 'Took it.', submitDelayMs: 30_000 },
   ]);
   const { c, done } = say(fx, task.id, 'Rename foo to bar.');
   await done;
@@ -304,7 +304,7 @@ test('an office restart before the agent took a comment typed into it keeps the 
   const task = await working(fx, [
     { when: 'office was restarted', reply: 'Finished after the restart.\n\nWORK DONE', commit: 'Work' },
     { when: 'Implement kanban task', reply: 'Never.', delayMs: 60_000 },
-    { when: 'Comment from Grace', reply: 'Took it.', submitDelayMs: 60_000 },
+    { when: 'from Grace on task', reply: 'Took it.', submitDelayMs: 60_000 },
   ]);
   const { c, done } = say(fx, task.id, 'Rename foo to bar.');
   await done;
@@ -338,4 +338,49 @@ test('a run\'s end gives back unheard comments only when the log could not be re
   (a as { heard?: boolean }).heard = true;
   cm.giveBackUnheard(live, () => undefined);
   assert.deepEqual(queued(), [b.msg.commentId], 'a log that can not be read: only the ones no hook heard');
+});
+
+test('a comment a read found in the log is remembered on the run: Live.officePrompts and runs.typed', async (t) => {
+  const fx = await engineFixture();
+  t.after(() => fx.close());
+  const task = fx.newTask({ usePlan: false, useReview: false });
+  const run = fx.repo.createRun({ taskId: task.id, phase: 'implement', role: 'implementer', tool: 'claude' });
+  const cm = new Comments({ ctx: fx.ctx, update: () => {}, note: () => {} } as never);
+  const prompts = [{ at: 1, head: 'a' }, { at: 2, head: 'b' }];
+  const live = { taskId: task.id, runId: run.id, officePrompts: prompts } as never;
+  const read = { text: 'x', complete: true, seen: [1] };
+  assert.equal(cm.saw(live, read), read);
+  assert.deepEqual(prompts.map((p) => (p as { seen?: boolean }).seen), [undefined, true]);
+  assert.deepEqual(runTyped(fx.repo.db, run.id).map((p) => p.seen), [undefined, true], 'kept for a restart too');
+});
+
+test('a run put back in the queue by a restart keeps the comments it took: stopped before its agent has the prompt, they go back, and Retry carries them', async (t) => {
+  const fx = await engineFixture({ engine: { restartStaggerMs: 50 } });
+  t.after(() => fx.close());
+  const task = await working(
+    fx,
+    [
+      { when: 'Implement kanban task', reply: 'Implemented.', commit: 'Work' },
+      { when: 'You are reviewing the work', reply: 'Fine.\n\nREVIEW: APPROVED', delayMs: 1500 },
+    ],
+    { useReview: true },
+  );
+  await fx.waitTask(task.id, (x) => x.phase === 'review' && x.runState === 'running', 'the review round');
+  await sleep(400);
+  fx.setRules([{ when: 'commented on task', reply: 'Handled.', commit: 'Comment', submitDelayMs: 60_000 }, { when: 'office was restarted', reply: 'Handled.', commit: 'Comment', submitDelayMs: 60_000 }]);
+  const a = say(fx, task.id, 'First note.');
+  await a.done;
+  const b = say(fx, task.id, 'Second note.');
+  await b.done;
+  await fx.waitTask(task.id, (x) => x.phase === 'resume' && x.runState === 'running', 'the delivery run');
+  await fx.restartOffice();
+  // The restart put the run back in the queue with its comments; the new run is stopped before its agent has the prompt.
+  await waitFor(() => fx.repo.listRuns(task.id).filter((r) => r.phase === 'resume').length >= 2 && fx.task(task.id).runState === 'running', 'the carried-on run', 40_000);
+  assert.equal(await fx.engine.stop(task.id, ADA), undefined);
+  const stopped = await fx.waitTask(task.id, (x) => x.status === 'waiting' && x.waitingReason === 'stopped', 'the stop', 40_000);
+  assert.deepEqual(stopped.pendingMessages.map((m) => m.commentId).sort(), [a.c.id, b.c.id].sort(), 'both are back in the queue');
+  fx.setRules([{ when: 'was cut short', reply: 'Handled both.\n\nWORK DONE', commit: 'Both' }, { when: 'You are reviewing the work', reply: 'Fine.\n\nREVIEW: APPROVED' }]);
+  assert.equal(await fx.engine.retry(task.id, ADA), undefined);
+  await fx.waitTask(task.id, (x) => x.status === 'review' && x.runState === 'idle', 'the review column after Retry', 40_000);
+  assert.ok(prompts(fx, /First note\./).length && prompts(fx, /Second note\./).length);
 });

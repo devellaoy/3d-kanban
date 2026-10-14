@@ -44,7 +44,7 @@ export interface HeldRun {
   nudges?: number;
   nudgeTimer?: NodeJS.Timeout;
   /** Comments the office typed into the run while it worked (when, and the start of their text): its own prompts, not a person's (see readTurnResult). */
-  officePrompts?: { at: number; head: string; heard?: boolean; /** The comment typed, to be queued again if the agent never got it. */ msg?: PendingMessage }[];
+  officePrompts?: { at: number; head: string; heard?: boolean; seen?: boolean; /** The comment typed, to be queued again if the agent never got it. */ msg?: PendingMessage }[];
 }
 
 /** What holding a turn borrows from the orchestrator. */

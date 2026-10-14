@@ -9,6 +9,7 @@ export interface TypedPrompt {
   at: number;
   head: string;
   heard?: boolean;
+  seen?: boolean;
   msg?: PendingMessage;
 }
 

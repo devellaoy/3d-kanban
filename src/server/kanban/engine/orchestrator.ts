@@ -590,7 +590,7 @@ export class Orchestrator {
           this.update(t.id, { runState: 'idle', queuedRun: null });
           return;
         }
-        const via: Via = { who: { name: task.createdBy, admin: false } };
+        const via: Via = { who: { name: task.createdBy, admin: false }, ...(task.queuedRun?.taken?.length ? { taken: task.queuedRun.taken } : {}) };
         if (task.queuedRun) {
           const err = await this.apply(t.id, { type: 'dequeue', run: runOf(task.queuedRun) }, via);
           if (err) this.note(task, `Couldn't start it from the queue: ${err}`);
@@ -1390,7 +1390,7 @@ export class Orchestrator {
 
   private readNow(live: Live): TurnResult | undefined { // the run's turn as its session log has it now
     const logs = this.ctx.floor(live.floorId)?.workers.transcripts(live.workerId), file = live.tool === 'claude' ? logs?.claude : logs?.codex;
-    return file ? this.adapters[live.tool].readTurnResult(file, this.turnOpts(live)) : undefined;
+    return this.comments.saw(live, file ? this.adapters[live.tool].readTurnResult(file, this.turnOpts(live)) : undefined);
   }
 
   /**

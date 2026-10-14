@@ -652,3 +652,47 @@ test('office comments: one a prompt hook heard but the log does not show yet kee
   assert.equal(c1?.unheard, true);
   assert.deepEqual(c1?.waiting, [0]);
 });
+
+test('office comments: one log prompt acknowledges at most one comment, so two that begin alike are told apart', (t) => {
+  const write = scratch(t);
+  const now = Date.now();
+  const iso = (ms: number) => new Date(now + ms).toISOString();
+  const cx = (t: string, ts: string) => [{ type: 'response_item', timestamp: ts, payload: { type: 'message', role: 'user', content: [{ type: 'input_text', text: t }] } }, { type: 'event_msg', timestamp: ts, payload: { type: 'user_message', message: t } }];
+  const done = (t: string) => ({ type: 'event_msg', payload: { type: 'task_complete', turn_id: 'x', last_agent_message: t } });
+  const same = { head: 'Comment from Grace on task #3' };
+  const prompts = [{ at: now - 3000, ...same }, { at: now - 2000, ...same }];
+  const one = write('one.jsonl', [...cx('Implement it', iso(-9000)), ...cx('Comment from Grace on task #3: rename', iso(-1500)), done('First done.\n\nWORK DONE')]);
+  const r = readCodexTurn(one, { officePrompts: prompts });
+  assert.equal(r?.unheard, true, 'the second is still to be received');
+  assert.deepEqual(r?.waiting, [1]);
+  assert.deepEqual(r?.seen, [0]);
+  const two = write('two.jsonl', [...cx('Implement it', iso(-9000)), ...cx('Comment from Grace on task #3: a', iso(-1500)), ...cx('Comment from Grace on task #3: b', iso(-1000)), done('Both.\n\nWORK DONE')]);
+  assert.equal(readCodexTurn(two, { officePrompts: prompts })?.unheard, undefined);
+  const stamp = (ms: number) => ({ timestamp: iso(ms) });
+  const cl = write('cl.jsonl', [cUser('Implement it', stamp(-9000)), cUser('Comment from Grace on task #3: a', stamp(-1500)), cAssistant([text('First done.\n\nWORK DONE')], {}, 'm1')]);
+  const c = readClaudeTurn(cl, { officePrompts: prompts });
+  assert.equal(c?.unheard, true);
+  assert.deepEqual(c?.waiting, [1]);
+});
+
+test('office comments: one seen in the log once is never waited for or lost again, and one older than the tail that was read counts as received', (t) => {
+  const write = scratch(t);
+  const now = Date.now();
+  const long = now - 20 * 60_000;
+  const iso = (ms: number) => new Date(ms).toISOString();
+  const cx = (t: string, ts: string) => [{ type: 'response_item', timestamp: ts, payload: { type: 'message', role: 'user', content: [{ type: 'input_text', text: t }] } }, { type: 'event_msg', timestamp: ts, payload: { type: 'user_message', message: t } }];
+  const done = (t: string) => ({ type: 'event_msg', payload: { type: 'task_complete', turn_id: 'x', last_agent_message: t } });
+  const tail = [...cx('Later prompt', iso(now - 1000)), done('Done.\n\nWORK DONE')];
+  const f = write('tail.jsonl', tail);
+  const gone = { at: long, head: 'Comment #5 from Grace' };
+  assert.equal(readCodexTurn(f, { officePrompts: [gone] })?.lost?.office[0], 0, 'unseen, not in the log, past the wait: lost');
+  const r = readCodexTurn(f, { officePrompts: [{ ...gone, seen: true }] });
+  assert.equal(r?.lost, undefined);
+  assert.equal(r?.unheard, undefined);
+  // A log cut at its head (a tail of 16 MB was read): the comment's moment is before the tail's first line.
+  const filler = { type: 'event_msg', timestamp: iso(long + 1000), payload: { type: 'agent_message', message: 'x'.repeat(1000) } };
+  const big = write('big.jsonl', [...cx('Comment #5 from Grace on task #1', iso(long)), ...Array.from({ length: 17_500 }, () => filler), ...tail]);
+  const cut = readCodexTurn(big, { officePrompts: [{ at: long - 5000, head: 'Comment #6 from Grace' }] });
+  assert.equal(cut?.lost, undefined, 'older than the tail that was read: received');
+  assert.deepEqual(cut?.seen, [0]);
+});

@@ -97,7 +97,7 @@ export class Comments<L extends CommentLive> {
     const workers: Floor['workers'] | undefined = this.d.ctx.floor(live.floorId)?.workers;
     const info = workers?.get(live.workerId);
     if (!workers || !info || info.provider === 'dsh' || (info.status !== 'working' && info.status !== 'done' && info.status !== 'idle')) return false;
-    const text = typeable(`Comment from ${c.authorName} on task #${task.id} while you work:\n${body}\n(Take it into account in your current work. When everything is finished, end your final reply with ${WORK_DONE} as before.)`);
+    const text = typeable(`Comment #${c.id} from ${c.authorName} on task #${task.id} while you work:\n${body}\n(Take it into account in your current work. When everything is finished, end your final reply with ${WORK_DONE} as before.)`);
     const at = Date.now();
     const err = workers.prompt(live.workerId, text, c.authorName);
     if (err) {
@@ -147,6 +147,13 @@ export class Comments<L extends CommentLive> {
     const result = read();
     const missing = new Set(result ? (result.waiting ?? []) : prompts.map((_, i) => i));
     if (task) this.restore(task, prompts.flatMap((p, i) => (!p.heard && missing.has(i) && p.msg ? [p.msg] : [])));
+  }
+
+  /** A log read: the typed comments it showed for the first time are remembered (`seen`) for good. Returns the read as it was. */
+  saw(live: L, read: TurnResult | undefined): TurnResult | undefined {
+    for (const i of read?.seen ?? []) if (live.officePrompts?.[i]) live.officePrompts[i].seen = true;
+    if (read?.seen?.length) setRunTyped(this.d.ctx.repo.db, live.runId, live.officePrompts);
+    return read;
   }
 
   /** The agent's prompt hook heard a prompt (see hearPrompt); kept on the run. */

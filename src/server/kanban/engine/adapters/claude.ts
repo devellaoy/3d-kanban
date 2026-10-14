@@ -5,6 +5,7 @@
 import { isClaudeModel, type ClaudeModel } from '../../../../shared/protocol.js';
 import type { KanbanEffort, RunPhase } from '../../../../shared/kanban/types.js';
 import { atOf, isRealPrompt, isTaskNotification, isTeammateMessage, messageText, teammateEvents, teammatesAtWork, teammatesBusy, toolResultText, transcriptBusy } from './claude-team.js';
+import { officeReceipts } from './office.js';
 import { isObj, OFFICE_PROMPT_WAIT_MS, readJsonLines, type LaunchOptions, type ReadOpts, type TaskAgentAdapter, type TurnResult } from './types.js';
 
 export { messagesSent, teammateEvents, teammateTags, teammatesBusy, type TeammateEvent } from './claude-team.js';
@@ -184,8 +185,9 @@ export function readClaudeTurn(file: string, opts?: ReadOpts): TurnResult | unde
   const own = opts?.promptAt !== undefined ? runPrompt(lines, opts.promptAt, notice, opts.promptHead) : -1;
   // An office comment that neither the log nor a prompt hook has confirmed yet counts as unheard too (for a while): the turn read is not the one answering it.
   const waiting = (p: { at: number }) => Date.now() - p.at < OFFICE_PROMPT_WAIT_MS;
-  const missing = (p: { at: number; head: string }) => !lines.some((l) => isRealPrompt(l) && officeAt(l, p));
-  const absent = office.flatMap((p, i) => (missing(p) ? [i] : []));
+  const first = lines.cut ? lines.reduce((m, l) => Math.min(m, atOf(l) || Infinity), Infinity) : Infinity;
+  const { received, fresh } = officeReceipts(office, lines.filter(isRealPrompt).map((l) => ({ at: atOf(l), text: collapsed(l) })), (text, head) => text.startsWith(head), Number.isFinite(first) ? first : undefined);
+  const absent = office.flatMap((_, i) => (received.has(i) ? [] : [i]));
   const unheard = (opts?.promptAt !== undefined && own < 0) || absent.some((i) => waiting(office[i]));
   // Past the wait they are given up on, and the run must not end on an older turn's marker: `lost`.
   const lostOffice = absent.filter((i) => !waiting(office[i]));
@@ -311,7 +313,7 @@ export function readClaudeTurn(file: string, opts?: ReadOpts): TurnResult | unde
   const interim = cut >= 0 && (backgroundLeft(lines, start, opts?.since, cut) > 0 || teammatesAtWork(teammateEvents(lines, start, cut), opts?.since));
   // The typed turn isn't over in the log: the log's last prompt has no reply of text alone yet (or a tool runs).
   const open = cut >= 0 && transcriptBusy(after);
-  return { text: texts.join('\n\n'), ...(plan !== undefined ? { plan } : {}), ...(exitPlan ? { exitPlan } : {}), complete: (answered && !toolPending && (texts.length > 0 || exitPlan)) || (exitPlan && typedPlan), ...(apiError ? { apiError } : {}), ...(running.size ? { toolRunning: true } : {}), ...(left ? { background: left } : {}), ...(resuming ? { resuming } : {}), ...(cut >= 0 ? { typed: true as const } : {}), ...(interim ? { interim: true as const } : {}), ...(open ? { typedOpen: true as const } : {}), ...(unheard ? { unheard: true as const } : {}), ...(lostOffice.length ? { lost: { office: lostOffice } } : {}), ...(absent.length ? { waiting: absent } : {}), ...(lastText !== undefined && lastText !== texts.join('\n\n') ? { lastText } : {}) };
+  return { text: texts.join('\n\n'), ...(plan !== undefined ? { plan } : {}), ...(exitPlan ? { exitPlan } : {}), complete: (answered && !toolPending && (texts.length > 0 || exitPlan)) || (exitPlan && typedPlan), ...(apiError ? { apiError } : {}), ...(running.size ? { toolRunning: true } : {}), ...(left ? { background: left } : {}), ...(resuming ? { resuming } : {}), ...(cut >= 0 ? { typed: true as const } : {}), ...(interim ? { interim: true as const } : {}), ...(open ? { typedOpen: true as const } : {}), ...(unheard ? { unheard: true as const } : {}), ...(lostOffice.length ? { lost: { office: lostOffice } } : {}), ...(absent.length ? { waiting: absent } : {}), ...(fresh.length ? { seen: fresh } : {}), ...(lastText !== undefined && lastText !== texts.join('\n\n') ? { lastText } : {}) };
 }
 
 /** Claude logs an Esc on a turn as a user line "[Request interrupted by user…]" (it fires no Stop hook): whether one was logged at or after `since` (ms). */

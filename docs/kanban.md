@@ -284,7 +284,7 @@ back to work:
 - The agent is at rest: the comment is its next turn (typed into its terminal, or a worker is hired
   again with the task's session and worktree). It doesn't wait for teammates that look busy in the log.
   In Waiting on the plan, it's an answer or a change request for the plan.
-- The implementer (Claude or Codex) is working: the comment is **typed into its terminal at once** ("Comment from …
+- The implementer (Claude or Codex) is working: the comment is **typed into its terminal at once** ("Comment #12 from …
   while you work"), and it takes it into account in its current work; the run goes on and its answer is the
   result. The same when you comment while a run is held for a wait. Nothing is typed into a plan run (the
   plan is answered when it is ready), into an agent that is asking, or before the agent has taken its

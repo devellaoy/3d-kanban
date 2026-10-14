@@ -9,7 +9,7 @@ import { ADA, engineFixture, type EngineFixture } from './kanban-engine-fixture.
 
 const GRACE = { name: 'Grace', admin: false };
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
-const COMMENT = /Comment from Grace on task #\d+ while you work/;
+const COMMENT = /Comment #\d+ from Grace on task #\d+ while you work/;
 const prompts = (fx: EngineFixture, re: RegExp) => fx.invocations().filter((i) => i.prompt && re.test(i.prompt));
 const phases = (fx: EngineFixture, id: number) => fx.repo.listRuns(id).map((r) => r.phase);
 async function waitFor(pred: () => boolean, what: string, timeout = 15_000) {
@@ -36,7 +36,7 @@ test('a comment while the implementer works is typed into its terminal at once; 
   t.after(() => fx.close());
   const task = await working(fx, [
     { when: 'Implement kanban task', reply: 'Implemented.', commit: 'Work', delayMs: 1500 },
-    { when: 'Comment from Grace', reply: 'Added the log line too.', commit: 'Log' },
+    { when: 'from Grace on task', reply: 'Added the log line too.', commit: 'Log' },
   ]);
   const { c, done } = say(fx, task.id, 'Log the redirect target too.\x1b[201~ and nothing else');
   await done;
