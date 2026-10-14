@@ -183,11 +183,12 @@ export function readClaudeTurn(file: string, opts?: ReadOpts): TurnResult | unde
   // the last real prompt is the turn, and nothing is typed.
   const own = opts?.promptAt !== undefined ? runPrompt(lines, opts.promptAt, notice, opts.promptHead) : -1;
   // An office comment that neither the log nor a prompt hook has confirmed yet counts as unheard too (for a while): the turn read is not the one answering it.
-  const waiting = (p: { at: number; heard?: boolean }) => !p.heard && Date.now() - p.at < OFFICE_PROMPT_WAIT_MS;
+  const waiting = (p: { at: number }) => Date.now() - p.at < OFFICE_PROMPT_WAIT_MS;
   const missing = (p: { at: number; head: string }) => !lines.some((l) => isRealPrompt(l) && officeAt(l, p));
-  const unheard = (opts?.promptAt !== undefined && own < 0) || office.some((p) => waiting(p) && missing(p));
+  const absent = office.flatMap((p, i) => (missing(p) ? [i] : []));
+  const unheard = (opts?.promptAt !== undefined && own < 0) || absent.some((i) => waiting(office[i]));
   // Past the wait they are given up on, and the run must not end on an older turn's marker: `lost`.
-  const lostOffice = office.flatMap((p, i) => (!p.heard && Date.now() - p.at >= OFFICE_PROMPT_WAIT_MS && missing(p) ? [i] : []));
+  const lostOffice = absent.filter((i) => !waiting(office[i]));
   let cut = -1;
   if (own >= 0) {
     for (let i = lines.length - 1; i >= own; i--) {
@@ -310,7 +311,7 @@ export function readClaudeTurn(file: string, opts?: ReadOpts): TurnResult | unde
   const interim = cut >= 0 && (backgroundLeft(lines, start, opts?.since, cut) > 0 || teammatesAtWork(teammateEvents(lines, start, cut), opts?.since));
   // The typed turn isn't over in the log: the log's last prompt has no reply of text alone yet (or a tool runs).
   const open = cut >= 0 && transcriptBusy(after);
-  return { text: texts.join('\n\n'), ...(plan !== undefined ? { plan } : {}), ...(exitPlan ? { exitPlan } : {}), complete: (answered && !toolPending && (texts.length > 0 || exitPlan)) || (exitPlan && typedPlan), ...(apiError ? { apiError } : {}), ...(running.size ? { toolRunning: true } : {}), ...(left ? { background: left } : {}), ...(resuming ? { resuming } : {}), ...(cut >= 0 ? { typed: true as const } : {}), ...(interim ? { interim: true as const } : {}), ...(open ? { typedOpen: true as const } : {}), ...(unheard ? { unheard: true as const } : {}), ...(lostOffice.length ? { lost: { office: lostOffice } } : {}), ...(lastText !== undefined && lastText !== texts.join('\n\n') ? { lastText } : {}) };
+  return { text: texts.join('\n\n'), ...(plan !== undefined ? { plan } : {}), ...(exitPlan ? { exitPlan } : {}), complete: (answered && !toolPending && (texts.length > 0 || exitPlan)) || (exitPlan && typedPlan), ...(apiError ? { apiError } : {}), ...(running.size ? { toolRunning: true } : {}), ...(left ? { background: left } : {}), ...(resuming ? { resuming } : {}), ...(cut >= 0 ? { typed: true as const } : {}), ...(interim ? { interim: true as const } : {}), ...(open ? { typedOpen: true as const } : {}), ...(unheard ? { unheard: true as const } : {}), ...(lostOffice.length ? { lost: { office: lostOffice } } : {}), ...(absent.length ? { waiting: absent } : {}), ...(lastText !== undefined && lastText !== texts.join('\n\n') ? { lastText } : {}) };
 }
 
 /** Claude logs an Esc on a turn as a user line "[Request interrupted by user…]" (it fires no Stop hook): whether one was logged at or after `since` (ms). */

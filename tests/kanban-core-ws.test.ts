@@ -687,3 +687,19 @@ test('a picture the description and a comment both link stays when the descripti
   assert.equal(a?.taskId, 1, 'not orphaned for the sweep to delete');
   assert.equal(a?.commentId, c.id, 'the comment that links it holds it');
 });
+
+test('the pictures an edit lets go of are looked for in every comment of the task, not only the newest page', async (t) => {
+  const { client, kanban } = office(t);
+  const ada = client('Ada', false);
+  const shared = 'b'.repeat(32);
+  const link = `![s](/api/kanban/attachments/${shared})`;
+  await ada.ask({ t: 'kanban.task.create', task: { project: 'web', title: 'x', description: `see ${link}` } });
+  kanban.ctx.repo.addAttachment({ id: shared, name: 's.png', mime: 'image/png', size: 1, stored: `${shared}-s.png`, createdBy: 'Ada', createdAt: 1 });
+  kanban.ctx.repo.linkAttachments([shared], 1);
+  const first = kanban.ctx.repo.addComment({ taskId: 1, authorKind: 'user', authorName: 'Ada', kind: 'message', text: `same ${link}` }).comment;
+  for (let i = 0; i < 600; i++) kanban.ctx.repo.addComment({ taskId: 1, authorKind: 'user', authorName: 'Ada', kind: 'message', text: `filler ${i}` });
+  okOf(await ada.ask({ t: 'kanban.task.update', id: 1, patch: { description: 'no picture now' } }));
+  const a = kanban.ctx.repo.getAttachment(shared);
+  assert.equal(a?.taskId, 1);
+  assert.equal(a?.commentId, first.id, 'the oldest comment that links it holds it');
+});

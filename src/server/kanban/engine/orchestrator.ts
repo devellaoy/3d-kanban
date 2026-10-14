@@ -41,7 +41,7 @@ import { Holds } from './hold.js';
 import { Restarts, receipt } from './restart.js';
 import { promptHead, TurnHolds, typeable, type HeldRun } from './turnhold.js';
 import { lostText, TurnEnd, unfinishedText } from './turnend.js';
-import { Comments } from './comments.js';
+import { Comments, hearPrompt } from './comments.js';
 import { RestWaits } from './restwait.js';
 import { sessionLogged } from './sessions.js';
 
@@ -1198,7 +1198,7 @@ export class Orchestrator {
     if (o.event === 'hook') {
       live.lastHookAt = Date.now();
       // The agent took a prompt: a comment typed before it is heard.
-      if (o.hookEvent === 'UserPromptSubmit' && !agentHook(o.payload)) for (const p of live.officePrompts ?? []) p.heard = true;
+      if (o.hookEvent === 'UserPromptSubmit' && !agentHook(o.payload)) hearPrompt(live.officePrompts, (o.payload as { prompt?: unknown } | undefined)?.prompt);
       // A subagent's or teammate's hook (it runs in the lead's process, so it reaches the lead's worker): none of the lead's turn,
       // but its question or permission prompt is still what the worker's needs_input waits on.
       if (agentHook(o.payload)) {
@@ -1380,9 +1380,15 @@ export class Orchestrator {
     if (this.live.get(live.workerId) === live) this.live.delete(live.workerId);
     this.ctx.floor(live.floorId)?.workers.follows(live.workerId, false);
     if (live.asks) this.ctx.repo.setAskingKind(live.taskId, undefined);
+    this.comments.giveBackUnheard(live, () => this.readNow(live));
     clearTimeout(live.holdTimer);
     clearTimeout(live.nudgeTimer);
     clearTimeout(live.stopping?.timer);
+  }
+
+  private readNow(live: Live): TurnResult | undefined { // the run's turn as its session log has it now
+    const logs = this.ctx.floor(live.floorId)?.workers.transcripts(live.workerId), file = live.tool === 'claude' ? logs?.claude : logs?.codex;
+    return file ? this.adapters[live.tool].readTurnResult(file, this.turnOpts(live)) : undefined;
   }
 
   /**
@@ -1394,13 +1400,9 @@ export class Orchestrator {
    * a verdict of its own choosing): what the log has goes on, as it does without a Stop answer.
    */
   private async readResult(live: Live): Promise<TurnResult | undefined> {
-    const workers = this.ctx.floor(live.floorId)?.workers;
-    const adapter = this.adapters[live.tool];
     let result: TurnResult | undefined;
     for (let i = 0; i < this.opts.readTries; i++) {
-      const logs = workers?.transcripts(live.workerId);
-      const file = live.tool === 'claude' ? logs?.claude : logs?.codex;
-      result = file ? adapter.readTurnResult(file, this.turnOpts(live)) : undefined;
+      result = this.readNow(live);
       // A typed prompt froze the answer at the office's turn: reading again can't complete it.
       if (result?.complete || result?.typed) return result;
       await sleep(this.opts.readPauseMs);
@@ -1501,8 +1503,7 @@ export class Orchestrator {
       // Not moved on: its last text stays visible, and the task waits for Continue or Retry.
       // The prompt or comments it never received: that text is an older turn's, not shown; the comments are queued again.
       const why = ending.lost ? lostText(!!ending.lost.launch) : unfinishedText(live.phase);
-      if (ending.lost) this.comments.giveBack(task, live, ending.lost);
-      else say('message', stripWorkDone(result.text.trim()));
+      if (ending.lost) this.comments.giveBack(task, live); else say('message', stripWorkDone(result.text.trim()));
       this.finishRun(live.runId, task.project, { status: 'failed', error: why, ...(sessionId ? { sessionId } : {}) });
       this.note(task, why, live.runId);
       await this.apply(task.id, { type: 'failed', error: why });

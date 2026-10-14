@@ -622,3 +622,33 @@ test('codex rollout: past the wait the launch prompt is `lost`, not `unheard` an
   assert.deepEqual(office?.lost, { office: [0] });
   assert.equal(readCodexTurn(write('none.jsonl', [done('x')]), { promptAt: at })?.lost, undefined);
 });
+
+test('office comments: one a prompt hook heard but the log does not show yet keeps the turn unheard, and so does the last of several', (t) => {
+  const write = scratch(t);
+  const now = Date.now();
+  const iso = (ms: number) => new Date(now + ms).toISOString();
+  const cx = (t: string, ts: string) => [{ type: 'response_item', timestamp: ts, payload: { type: 'message', role: 'user', content: [{ type: 'input_text', text: t }] } }, { type: 'event_msg', timestamp: ts, payload: { type: 'user_message', message: t } }];
+  const done = (t: string) => ({ type: 'event_msg', payload: { type: 'task_complete', turn_id: 'x', last_agent_message: t } });
+  const a = { at: now - 3000, head: 'Comment from Grace A' };
+  const b = { at: now - 2000, head: 'Comment from Grace B' };
+  // Codex: the hook heard A, the rollout has only the earlier turn.
+  const lag = write('lag.jsonl', [...cx('Implement it', iso(-9000)), done('Done.\n\nWORK DONE')]);
+  const r1 = readCodexTurn(lag, { officePrompts: [{ ...a, heard: true }] });
+  assert.equal(r1?.unheard, true);
+  assert.deepEqual(r1?.waiting, [0]);
+  // A is in, B (typed right after) is not: the turn read is A's, not B's.
+  const one = write('one.jsonl', [...cx('Implement it', iso(-9000)), ...cx('Comment from Grace A: x', iso(-2500)), done('A done.\n\nWORK DONE')]);
+  const r2 = readCodexTurn(one, { officePrompts: [{ ...a, heard: true }, { ...b, heard: true }] });
+  assert.equal(r2?.unheard, true);
+  assert.deepEqual(r2?.waiting, [1]);
+  const both = write('both.jsonl', [...cx('Implement it', iso(-9000)), ...cx('Comment from Grace A: x', iso(-2500)), done('A done.'), ...cx('Comment from Grace B: y', iso(-1500)), done('B done.\n\nWORK DONE')]);
+  const r3 = readCodexTurn(both, { officePrompts: [{ ...a, heard: true }, { ...b, heard: true }] });
+  assert.equal(r3?.unheard, undefined);
+  assert.equal(r3?.text, 'B done.\n\nWORK DONE');
+  // Claude: the same.
+  const stamp = (ms: number) => ({ timestamp: iso(ms) });
+  const cl = write('cl.jsonl', [cUser('Implement it', stamp(-9000)), cAssistant([text('Done.\n\nWORK DONE')], {}, 'm1')]);
+  const c1 = readClaudeTurn(cl, { officePrompts: [{ ...a, heard: true }] });
+  assert.equal(c1?.unheard, true);
+  assert.deepEqual(c1?.waiting, [0]);
+});

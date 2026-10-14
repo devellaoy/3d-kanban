@@ -129,10 +129,11 @@ test('a comment just typed that the log does not have yet is unheard; one long l
   const log = write([user('Implement task #7', 1), asst(2, 'm1', text('Done.\nWORK DONE'))]);
   const now = Date.now();
   assert.equal(readClaudeTurn(log, { runStart: T0, promptAt: T0, officePrompts: [{ at: now - 1000, head: 'Comment from' }] })?.unheard, true);
-  // Still waited for after a long tool call; confirmed by a prompt hook, or given up on after 15 minutes, it is not.
+  // Still waited for after a long tool call, and when a prompt hook heard it (the log may lag behind); after 15 minutes it is lost, not unheard.
   assert.equal(readClaudeTurn(log, { runStart: T0, promptAt: T0, officePrompts: [{ at: now - 120_000, head: 'Comment from' }] })?.unheard, true);
-  assert.equal(readClaudeTurn(log, { runStart: T0, promptAt: T0, officePrompts: [{ at: now - 1000, head: 'Comment from', heard: true }] })?.unheard, undefined);
+  assert.equal(readClaudeTurn(log, { runStart: T0, promptAt: T0, officePrompts: [{ at: now - 1000, head: 'Comment from', heard: true }] })?.unheard, true);
   assert.equal(readClaudeTurn(log, { runStart: T0, promptAt: T0, officePrompts: [{ at: now - 16 * 60_000, head: 'Comment from' }] })?.unheard, undefined);
+  assert.deepEqual(readClaudeTurn(log, { runStart: T0, promptAt: T0, officePrompts: [{ at: now - 16 * 60_000, head: 'Comment from' }] })?.lost, { office: [0] });
 });
 
 test('lastText is the log\'s last turn when a person\'s typed turn took the end', (t) => {
@@ -188,7 +189,7 @@ test('a teammate whose transcript ends on its approval of a shutdown (the proces
   void stamp;
 });
 
-test('codex: a comment typed into the run that its rollout has no user message for yet is unheard, until the hook or the message confirms it', (t) => {
+test('codex: a comment typed into the run that its rollout has no user message for yet is unheard until its message shows, whatever the hook said', (t) => {
   const write = scratch(t);
   const at0 = Date.now() - 5000;
   const base = [
@@ -198,7 +199,7 @@ test('codex: a comment typed into the run that its rollout has no user message f
   const head = 'Comment from Ada on task #7';
   const unconfirmed = [{ at: at0, head }];
   assert.equal(readCodexTurn(write(base), { officePrompts: unconfirmed })?.unheard, true);
-  assert.equal(readCodexTurn(write(base), { officePrompts: [{ at: at0, head, heard: true }] })?.unheard, undefined);
+  assert.equal(readCodexTurn(write(base), { officePrompts: [{ at: at0, head, heard: true }] })?.unheard, true);
   assert.equal(readCodexTurn(write(base), {})?.unheard, undefined);
   const heard = [...base, { type: 'event_msg', timestamp: new Date(at0 + 2000).toISOString(), payload: { type: 'user_message', message: `${head} while you work: x` } }];
   assert.equal(readCodexTurn(write(heard), { officePrompts: unconfirmed })?.unheard, undefined);

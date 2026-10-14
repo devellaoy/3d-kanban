@@ -72,6 +72,8 @@ export interface TurnResult {
    * marker must never end the run. `launch`: the run's own prompt (Codex); `office`: indices into `officePrompts` of the comments typed in.
    */
   lost?: { launch?: true; office: number[] };
+  /** Indices into `officePrompts` of the comments the log doesn't show yet, whether or not a prompt hook heard them (the engine gives them back when the run ends). */
+  waiting?: number[];
 }
 
 /** What readTurnResult may be told (see TaskAgentAdapter.readTurnResult). */
@@ -80,7 +82,7 @@ export interface ReadOpts {
   runStart?: number;
   promptAt?: number;
   promptHead?: string;
-  /** Comments the office typed into the run while it worked (when, the start of their text, and whether the agent's prompt hook confirmed them): prompts of the office's own, not a person's. One not heard yet makes the turn `unheard`. */
+  /** Comments the office typed into the run while it worked (when, the start of their text, and whether the agent's prompt hook confirmed them): prompts of the office's own, not a person's. One the log doesn't show yet (a prompt hook hearing it is no proof: the turn read may still be an earlier one) makes the turn `unheard`. */
   officePrompts?: { at: number; head: string; heard?: boolean }[];
 }
 

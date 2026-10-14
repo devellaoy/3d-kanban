@@ -11,6 +11,7 @@ import type { KanbanComment, KanbanTask, PendingMessage } from '../../../shared/
 import type { AttachmentRow, TaskUpdate } from '../db/repository.js';
 import { WORK_DONE } from '../../../shared/kanban/prompts.js';
 import type { LastRun, MachineEvent, RunEffect } from './machine.js';
+import type { TurnResult } from './adapters/types.js';
 import { promptHead, typeable, type HeldRun } from './turnhold.js';
 
 /** The most comments a task keeps queued for its next run (the ones carried from a hold, queueHeld, are never dropped). */
@@ -129,9 +130,19 @@ export class Comments<L extends CommentLive> {
   }
 
   /** A run ended because its agent never got its prompt or comments (TurnResult.lost): the comments go back in the queue. */
-  giveBack(task: KanbanTask, live: L, lost: { launch?: true; office: number[] }) {
-    if (lost.launch && live.ack) this.requeue(task, live.eff, live.via?.commentId, live.via?.taken);
-    this.restore(task, lost.office.flatMap((i) => live.officePrompts?.[i]?.msg ?? []));
+  giveBack(task: KanbanTask, live: L) {
+    if (live.ack) this.requeue(task, live.eff, live.via?.commentId, live.via?.taken);
+  }
+
+  /**
+   * A run is over: the comments typed into it that its agent never took are queued again. Those the log shows, or its prompt hook heard, are
+   * the agent's (`read`: the run's log as it is now; when it can't be read, every comment no hook heard).
+   */
+  giveBackUnheard(live: L, read: () => TurnResult | undefined) {
+    const prompts = live.officePrompts ?? [];
+    const task = this.d.ctx.repo.getTask(live.taskId);
+    const missing = new Set(read()?.waiting ?? prompts.map((_, i) => i));
+    if (task) this.restore(task, prompts.flatMap((p, i) => (!p.heard && missing.has(i) && p.msg ? [p.msg] : [])));
   }
 
   /** Puts messages a run took back on the task's queue (those it doesn't hold already); how many went back. */
@@ -181,4 +192,11 @@ export class Comments<L extends CommentLive> {
       msgs,
     };
   }
+}
+
+/** The agent's prompt hook heard a prompt: the typed comment it is marks heard (by the start of its text; a hook without the text hears the oldest one waiting). */
+export function hearPrompt(prompts: { head: string; heard?: boolean }[] | undefined, text: unknown) {
+  const said = typeof text === 'string' ? text.replace(/\s+/g, ' ').trim() : undefined;
+  const p = said ? prompts?.find((x) => !x.heard && said.startsWith(x.head)) : prompts?.find((x) => !x.heard);
+  if (p) p.heard = true;
 }

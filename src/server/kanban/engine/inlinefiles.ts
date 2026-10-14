@@ -30,3 +30,15 @@ export function inlineFiles(ctx: { repo: Pick<KanbanRepository, 'getAttachment'>
     return file ? `${bang}[${name}](${file})` : whole;
   });
 }
+
+/** For each of `ids`, the first (oldest) comment of the task whose text links it. Every comment is looked at, a page at a time. */
+export function firstLinkingComments(repo: Pick<KanbanRepository, 'listComments'>, taskId: number, ids: string[]): Map<string, number> {
+  const out = new Map<string, number>();
+  for (let before: number | undefined, more = ids.length > 0; more; ) {
+    const page = repo.listComments(taskId, { limit: 500, ...(before !== undefined ? { before } : {}) });
+    for (const c of [...page.comments].reverse()) for (const id of linkedAttachmentIds(c.text)) if (ids.includes(id)) out.set(id, c.id);
+    before = page.comments[0]?.id;
+    more = page.more && before !== undefined;
+  }
+  return out;
+}

@@ -2,6 +2,7 @@ import test, { mock } from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdirSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
+import { hearPrompt } from '../src/server/kanban/engine/comments.js';
 import { ADA, engineFixture, type EngineFixture } from './kanban-engine-fixture.js';
 
 // Review round 1 of #392: the turn end waits for unheard comments even on the Stop hook's answer, queue-started runs keep what they took,
@@ -258,4 +259,39 @@ test('codex: a typed comment the rollout never shows within the wait is not answ
   const end = await fx.waitTask(task.id, (x) => x.status === 'waiting' && x.waitingReason === 'failed', 'the task waiting', 30_000);
   assert.deepEqual(end.pendingMessages.map((m) => m.commentId), [c.id]);
   assert.ok(!fx.repo.listComments(task.id).comments.some((x) => x.kind === 'result'));
+});
+
+test('a prompt hook hears only the comment it carries, or the oldest one waiting when it names none', () => {
+  const mk = () => [{ head: 'Comment from Grace on task #3 while you work: A' }, { head: 'Comment from Grace on task #3 while you work: B' }];
+  const p = mk();
+  hearPrompt(p, 'Comment from  Grace on task #3 while you work:\nB please');
+  assert.deepEqual(p.map((x) => (x as { heard?: boolean }).heard), [undefined, true]);
+  hearPrompt(p, 'Something somebody typed');
+  assert.deepEqual(p.map((x) => (x as { heard?: boolean }).heard), [undefined, true], 'not the office\'s comment');
+  const q = mk();
+  hearPrompt(q, undefined);
+  hearPrompt(q, undefined);
+  assert.deepEqual(q.map((x) => (x as { heard?: boolean }).heard), [true, true]);
+});
+
+test('a Stop before the agent took a comment typed into it gives the comment back; Retry carries it', async (t) => {
+  const fx = await engineFixture();
+  t.after(() => fx.close());
+  const task = await working(fx, [
+    { when: 'Implement kanban task', reply: 'Never.', delayMs: 30_000, escSilent: true, escStopMs: 900 },
+    { when: 'Comment from Grace', reply: 'Took it.', submitDelayMs: 30_000 },
+  ]);
+  const { c, done } = say(fx, task.id, 'Rename foo to bar.');
+  await done;
+  assert.equal(fx.task(task.id).pendingMessages.length, 0, 'typed in, not queued');
+  await sleep(50); // a comment made in the very millisecond of the Stop counts as made during it
+  assert.equal(await fx.engine.stop(task.id, ADA), undefined);
+  const stopped = await fx.waitTask(task.id, (x) => x.status === 'waiting' && x.waitingReason === 'stopped', 'the stop', 30_000);
+  assert.deepEqual(stopped.pendingMessages.map((m) => m.commentId), [c.id], 'back in the queue');
+  assert.equal(fx.repo.getComment(c.id)?.pending, true);
+  fx.setRules([{ when: 'was cut short', reply: 'Renamed.\n\nWORK DONE', commit: 'Rename' }]);
+  assert.equal(await fx.engine.retry(task.id, ADA), undefined);
+  await fx.waitTask(task.id, (x) => x.status === 'review' && x.runState === 'idle', 'the review column after Retry', 30_000);
+  assert.ok(prompts(fx, /Rename foo to bar\./).length >= 2, 'the retry prompt carries it');
+  assert.equal(fx.task(task.id).pendingMessages.length, 0);
 });

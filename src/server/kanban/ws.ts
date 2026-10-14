@@ -18,7 +18,7 @@ import { checkRepoIds, createBoardTask } from './create.js';
 import { openFor, taskFolders, workerFolders } from './vscode.js';
 import { wallChanged, wallSourcesChanged } from './integrations/issues/wall.js';
 import { chmodSync, existsSync } from 'node:fs';
-import { linkedAttachmentIds } from './engine/inlinefiles.js';
+import { firstLinkingComments, linkedAttachmentIds } from './engine/inlinefiles.js';
 import { ORPHAN_MAX_AGE_MS, removeAttachmentFiles, removeGrant, sweepOrphanUploads, uploadsDir, uploadRoutes } from './uploads.js';
 
 const DAY_MS = 24 * 60 * 60_000;
@@ -210,10 +210,9 @@ export function createCorePlugin(ctx: KanbanContext, subs: KanbanSubscriptions):
         const keep = new Set(linkedAttachmentIds(`${m.patch.description}\n${m.patch.goal === undefined ? task.goal ?? '' : m.patch.goal ?? ''}`));
         const dropped = linkedAttachmentIds(task.description).filter((id) => !keep.has(id));
         // One a comment copied the link of is that comment's from now on (the first one's), not nobody's.
-        const comments = dropped.length ? ctx.repo.listComments(task.id).comments : [];
+        const users = firstLinkingComments(ctx.repo, task.id, dropped);
         for (const id of dropped) {
-          const user = comments.find((c) => linkedAttachmentIds(c.text).includes(id));
-          if (user) ctx.repo.linkAttachments([id], task.id, user.id);
+          if (users.has(id)) ctx.repo.linkAttachments([id], task.id, users.get(id));
           else ctx.repo.unlinkAttachments([id], task.id);
         }
       }

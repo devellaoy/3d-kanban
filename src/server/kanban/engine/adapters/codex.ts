@@ -72,7 +72,7 @@ export function readCodexTurn(file: string, opts?: ReadOpts): TurnResult | undef
   const seen = (at: number, head?: string) => users.some((u) => u.at >= at && (!head || u.text.includes(head)));
   const expired = (at: number) => Date.now() - at >= OFFICE_PROMPT_WAIT_MS;
   const prompts = opts?.officePrompts ?? [];
-  const waiting = prompts.map((p, i) => ({ p, i })).filter(({ p }) => !p.heard && !seen(p.at, p.head));
+  const waiting = prompts.map((p, i) => ({ p, i })).filter(({ p }) => !seen(p.at, p.head));
   const launching = opts?.promptAt !== undefined && users.length > 0 && users[users.length - 1].at < opts.promptAt && !seen(opts.promptAt, opts.promptHead);
   const lost = {
     ...(launching && expired(opts!.promptAt!) ? { launch: true as const } : {}),
@@ -80,7 +80,7 @@ export function readCodexTurn(file: string, opts?: ReadOpts): TurnResult | undef
   };
   const isLost = !!lost.launch || lost.office.length > 0;
   const unheard = (launching && !lost.launch) || waiting.some(({ p }) => !expired(p.at));
-  return { text, complete, ...(apiError ? { apiError } : {}), ...(unheard ? { unheard: true as const } : {}), ...(isLost ? { lost } : {}) };
+  return { text, complete, ...(apiError ? { apiError } : {}), ...(unheard ? { unheard: true as const } : {}), ...(isLost ? { lost } : {}), ...(waiting.length ? { waiting: waiting.map(({ i }) => i) } : {}) };
 }
 
 export const codexAdapter: TaskAgentAdapter = {
