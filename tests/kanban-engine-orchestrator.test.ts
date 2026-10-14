@@ -137,11 +137,11 @@ test('codex: a read-only plan, relaunched to implement, no review without change
   assert.equal(fx.task(task.id).status, 'review');
 });
 
-test('a comment typed while the agent works waits, and is worked on at the turn end', async (t) => {
+test('a comment made before the agent has taken its launch prompt waits, and is worked on at the turn end (one made later is typed at once: kanban-engine-comments)', async (t) => {
   const fx = await engineFixture();
   t.after(() => fx.close());
   fx.setRules([
-    { when: 'Implement kanban task', reply: 'Implemented.', commit: 'Work', delayMs: 1200 },
+    { when: 'Implement kanban task', reply: 'Implemented.', commit: 'Work', submitDelayMs: 1000 },
     { when: 'commented on task', reply: 'Added the log line too.', commit: 'Log' },
   ]);
   const task = fx.newTask({ usePlan: false, useReview: false });
@@ -884,13 +884,14 @@ test('Stop while a phase waits for its busy own worker ends the run as stopped a
 });
 
 test('a run held for background agents that never report back goes on after backgroundWaitMs, with a note', async (t) => {
-  const fx = await engineFixture({ engine: { backgroundWaitMs: 800 } });
+  const fx = await engineFixture({ engine: { backgroundWaitMs: 800, maxNudges: 0 } });
   t.after(() => fx.close());
   fx.setRules([{ when: 'Implement kanban task', background: 'Waiting for the helper agent.', reply: 'Never logged.', commit: 'Work', backgroundMs: 600_000 }]);
   const task = fx.newTask({ usePlan: false, useReview: false });
   await fx.engine.start(task.id, ADA);
-  const done = await fx.waitTask(task.id, (x) => x.status === 'review', 'the review column', 15_000);
-  assert.equal(done.summary, 'Waiting for the helper agent.');
+  // No marker ever: the task waits for the user with the last text shown, it isn't moved on.
+  await fx.waitTask(task.id, (x) => x.status === 'waiting' && x.waitingReason === 'failed', 'the task waiting', 15_000);
+  assert.equal(fx.repo.listComments(task.id).comments.find((c) => c.kind === 'message')?.text, 'Waiting for the helper agent.');
   assert.ok(fx.repo.listComments(task.id).comments.some((c) => c.authorKind === 'system' && /Waited 1 s for its agent's next Stop/.test(c.text)));
 });
 

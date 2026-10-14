@@ -207,7 +207,8 @@ test('the review contracts forbid changing anything, and no rewrite of the promp
 });
 
 test('every contract, the review panel’s included, tells the agent to stop the processes it started, right after the rule line', () => {
-  for (const [id, c] of Object.entries(KANBAN_CONTRACTS)) assert.ok(c.startsWith(`---\n${STOP_PROCESSES}`), id);
+  // The nudges (finish*) are typed into a run on their own, not appended to a prompt.
+  for (const [id, c] of Object.entries(KANBAN_CONTRACTS)) if (!id.startsWith('finish')) assert.ok(c.startsWith(`---\n${STOP_PROCESSES}`), id);
   assert.equal(PROMPT_CONTRACT['kanban.pr.panel'], 'panel');
   for (const word of ['unless the task or the user explicitly asks', 'by the PID or job', 'never by name or port', 'without removing it', "didn't start alone"]) assert.ok(STOP_PROCESSES.includes(word), word);
 });
@@ -380,4 +381,69 @@ test('workerPr gives an office worker the ticket of its queue task, else of its 
   assert.match(compose.workerPr(floor, info('w3', 'Work on GitHub issue #12: "Title".')), /issue acme\/proj#12/);
   assert.doesNotMatch(compose.workerPr(floor, info('w4', 'Tidy things up')), /resolves GitHub issue/);
   void ctx;
+});
+
+function attach(repo: KanbanRepository, filesDir: string, id: string, name: string, taskId: number, commentId?: number) {
+  mkdirSync(path.join(filesDir, 'uploads'), { recursive: true });
+  const stored = `${id}-${name}`;
+  writeFileSync(path.join(filesDir, 'uploads', stored), 'x');
+  repo.addAttachment({ id, name, mime: 'image/png', size: 1, stored, createdBy: 'Ada', createdAt: 1 });
+  repo.linkAttachments([id], taskId, commentId);
+  return stored;
+}
+
+test('inline attachment links become grant paths; other tasks and unknown ids stay as they are', (t) => {
+  const { def, dir, repo, compose, ctx } = setup(t);
+  const task = repo.createTask({ project: 'proj', title: 'T', description: 'x', tool: 'claude', usePlan: false, planApproval: 'auto', useReview: false, createdBy: 'Ada' });
+  const other = repo.createTask({ project: 'proj', title: 'U', description: 'x', tool: 'claude', usePlan: false, planApproval: 'auto', useReview: false, createdBy: 'Ada' });
+  const a = 'a'.repeat(32);
+  const b = 'b'.repeat(32);
+  const c = 'c'.repeat(32);
+  const stored = attach(repo, ctx.filesDir, a, 'shot.png', task.id);
+  attach(repo, ctx.filesDir, b, 'theirs.png', other.id);
+  const grant = path.join(ctx.filesDir, 'grants', `task-${task.id}`, stored);
+  const text = `see ![shot](/api/kanban/attachments/${a}) and [file](http://localhost:3000/api/kanban/attachments/${a}) but ![x](/api/kanban/attachments/${b}) ![y](/api/kanban/attachments/${c})`;
+  assert.equal(compose.inline(task.id, text), `see ![shot](${grant}) and [file](${grant}) but ![x](/api/kanban/attachments/${b}) ![y](/api/kanban/attachments/${c})`);
+  // The description is inlined in the task prompts and the handoff, and its file is not listed again.
+  repo.updateTask(task.id, { description: `look: ![shot](/api/kanban/attachments/${a})` });
+  const fresh = repo.getTask(task.id)!;
+  const prompt = compose.build('implement', def, fresh, 'claude', dir, { phase: 'implement' });
+  assert.ok(prompt.includes(`![shot](${grant})`));
+  assert.ok(!prompt.includes(`shot.png: ${grant}`), 'no duplicate listing');
+  assert.ok(compose.handoff(def, fresh, dir, 'go').includes(`![shot](${grant})`));
+});
+
+test('task prompts list the task files the description does not link, never a comment\'s', (t) => {
+  const { def, dir, repo, compose, ctx } = setup(t);
+  const task = repo.createTask({ project: 'proj', title: 'T', description: 'x', tool: 'claude', usePlan: false, planApproval: 'auto', useReview: false, createdBy: 'Ada' });
+  const old = attach(repo, ctx.filesDir, 'd'.repeat(32), 'old.png', task.id);
+  const { comment } = repo.addComment({ taskId: task.id, authorKind: 'user', authorName: 'Ada', text: 'hi', kind: 'comment' } as never);
+  attach(repo, ctx.filesDir, 'e'.repeat(32), 'comment.png', task.id, comment.id);
+  const prompt = compose.build('implement', def, task, 'claude', dir, { phase: 'implement' });
+  assert.ok(prompt.includes('old.png') && prompt.includes(old));
+  assert.ok(!prompt.includes('comment.png'));
+});
+
+test('a resume prompt carries only its own message and files, none of the older comments\'', (t) => {
+  const { def, dir, repo, compose, ctx } = setup(t);
+  const task = repo.createTask({ project: 'proj', title: 'T', description: 'x', tool: 'claude', usePlan: false, planApproval: 'auto', useReview: false, createdBy: 'Ada' });
+  attach(repo, ctx.filesDir, 'd'.repeat(32), 'old.png', task.id);
+  const { comment: oldC } = repo.addComment({ taskId: task.id, authorKind: 'user', authorName: 'Ada', text: 'before', kind: 'comment' } as never);
+  attach(repo, ctx.filesDir, 'e'.repeat(32), 'older.png', task.id, oldC.id);
+  const f = attach(repo, ctx.filesDir, 'f'.repeat(32), 'new.png', task.id);
+  const linked = `![n](/api/kanban/attachments/${'f'.repeat(32)})`;
+  const own = [{ id: 'f'.repeat(32), name: 'new.png', stored: f }, { id: '9'.repeat(32), name: 'x.txt', stored: 'gone' }];
+  const body = compose.commentText('proj', task.id, `look ${linked}`, own);
+  const grant = path.join(ctx.filesDir, 'grants', `task-${task.id}`, f);
+  assert.ok(body.includes(`![n](${grant})`));
+  assert.ok(!body.includes('Files attached'), 'a linked file is not listed again');
+  const prompt = compose.build('resume', def, task, 'claude', dir, { phase: 'implement', text: body, author: 'Ada' });
+  assert.ok(prompt.includes(grant));
+  assert.ok(!prompt.includes('old.png') && !prompt.includes('older.png'));
+  // A file the text does not link is listed; in one line for a terminal answer.
+  const listed = compose.commentText('proj', task.id, 'plain', own);
+  assert.match(listed, /^plain\n\nFiles attached/);
+  assert.ok(listed.includes(`new.png: ${grant}`));
+  assert.doesNotMatch(compose.answerText(task.id, `a ${linked}`, own), /attached files/);
+  assert.match(compose.answerText(task.id, 'a', own), /^a \(attached files/);
 });

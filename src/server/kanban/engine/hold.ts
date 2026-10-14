@@ -25,7 +25,7 @@ export interface Holding {
   /** The task's workers at rest (and `also`) go home with the reason 'hold'. */
   sendHome(taskId: number, by: string, also?: string): Promise<number>;
   drain(floorId: string): Promise<unknown>;
-  filesText(project: string, taskId: number, files: { name: string; stored: string }[]): string;
+  commentText(project: string, taskId: number, text: string, files: { id: string; name: string; stored: string }[]): string;
   finishRun(runId: number, floorId: string, patch: Parameters<KanbanContext['repo']['finishRun']>[1]): unknown;
   /** Carries out a run effect (a launch, with what a failed or queued one does). */
   effect(taskId: number, eff: RunEffect, via: unknown): Promise<string | undefined>;
@@ -107,7 +107,7 @@ export class Holds {
     const comments = this.ctx.repo.userCommentsSince(task.id, since).filter((c) => !task.pendingMessages.some((p) => p.commentId === c.id));
     if (!comments.length) return;
     const files = this.ctx.repo.listAttachments(task.id);
-    const queued = comments.map((c) => ({ commentId: c.id, text: [c.text, this.d.filesText(task.project, task.id, files.filter((a) => a.commentId === c.id))].filter(Boolean).join('\n\n'), by: c.authorName, at: c.createdAt, held: true as const }));
+    const queued = comments.map((c) => ({ commentId: c.id, text: this.d.commentText(task.project, task.id, c.text, files.filter((a) => a.commentId === c.id)), by: c.authorName, at: c.createdAt, held: true as const }));
     for (const c of comments) {
       this.ctx.repo.setCommentPending(c.id, true);
       const now = this.ctx.repo.getComment(c.id);

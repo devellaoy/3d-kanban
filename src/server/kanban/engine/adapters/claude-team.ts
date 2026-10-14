@@ -4,8 +4,18 @@
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { isObj, readJsonLines } from './types.js';
 
+/**
+ * A prompt typed while Claude works is logged as an attachment on the turn it was queued in, not as a `user` line:
+ * `attachment.type` `queued_command`, `commandMode` `prompt` (a `task-notification` one is a notification, no prompt).
+ */
+function queuedPrompt(line: Record<string, unknown>): Record<string, unknown> | undefined {
+  const att = isObj(line.attachment) ? line.attachment : undefined;
+  return line.type === 'attachment' && att?.type === 'queued_command' && att.commandMode === 'prompt' ? att : undefined;
+}
+
 /** A prompt the user (or the office) typed, not a tool's result or Claude's own bookkeeping. */
 export function isRealPrompt(line: Record<string, unknown>): boolean {
+  if (queuedPrompt(line)) return true;
   if (line.type !== 'user' || line.isMeta === true || line.isSidechain === true || line.isCompactSummary === true) return false;
   const msg = isObj(line.message) ? line.message : undefined;
   const content = msg?.content;
@@ -16,7 +26,8 @@ export function isRealPrompt(line: Record<string, unknown>): boolean {
 }
 
 export function messageText(line: Record<string, unknown>): string {
-  const content = isObj(line.message) ? line.message.content : undefined;
+  const queued = queuedPrompt(line)?.prompt;
+  const content = queued !== undefined ? queued : isObj(line.message) ? line.message.content : undefined;
   if (typeof content === 'string') return content;
   if (!Array.isArray(content)) return '';
   return content.filter(isObj).map((b) => (b.type === 'text' && typeof b.text === 'string' ? b.text : '')).join('\n');
@@ -186,7 +197,26 @@ export function teammateEvents(lines: Record<string, unknown>[], start: number, 
   return [...events, ...messagesSent(lines, start, end)];
 }
 
-/** Whether a teammate's own transcript ends mid-work: a message or tool result in for it to answer, or its last message isn't text alone, or nothing said yet. */
+/**
+ * Whether a message's blocks answer a shutdown request with an approval (a `SendMessage` whose input is a `shutdown_response`, approve): the
+ * teammate's process ends there, before the call has a result, so a transcript that ends on it is a teammate at rest.
+ */
+function approvesShutdown(blocks: Record<string, unknown>[]): boolean {
+  return blocks.some((b) => {
+    if (b.type !== 'tool_use' || b.name !== 'SendMessage' || !isObj(b.input)) return false;
+    let body: unknown = b.input.message;
+    if (typeof body === 'string') {
+      try {
+        body = JSON.parse(body) as unknown;
+      } catch {
+        body = undefined;
+      }
+    }
+    return [b.input, body].some((o) => isObj(o) && o.type === 'shutdown_response' && o.approve !== false);
+  });
+}
+
+/** Whether a teammate's own transcript ends mid-work: a message or tool result in for it to answer, or its last message isn't text alone, or nothing said yet. A shutdown it approved is no work. */
 export function transcriptBusy(lines: Record<string, unknown>[]): boolean {
   let last = -1;
   for (let i = lines.length - 1; i >= 0; i--) {
@@ -199,6 +229,7 @@ export function transcriptBusy(lines: Record<string, unknown>[]): boolean {
   // At rest only after a message of text alone: a tool call, or thinking not yet followed by its text, is work under way.
   const msg = lines[last].message;
   const blocks = isObj(msg) && Array.isArray(msg.content) ? msg.content.filter(isObj) : [];
+  if (approvesShutdown(blocks)) return false;
   if (!blocks.length || blocks.some((b) => b.type !== 'text')) return true;
   return lines.slice(last + 1).some((l) => l.type === 'user' || (l.type === 'attachment' && isObj(l.attachment) && l.attachment.type === 'queued_command'));
 }

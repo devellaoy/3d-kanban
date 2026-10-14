@@ -4,7 +4,7 @@
 // error...), `response_item` lines what the model saw and said.
 
 import type { KanbanEffort, RunPhase } from '../../../../shared/kanban/types.js';
-import { isObj, readJsonLines, type LaunchOptions, type TaskAgentAdapter, type TurnResult } from './types.js';
+import { isObj, OFFICE_PROMPT_WAIT_MS, readJsonLines, type LaunchOptions, type ReadOpts, type TaskAgentAdapter, type TurnResult } from './types.js';
 
 /** Codex's reasoning efforts: it has minimal…xhigh, so max is xhigh. */
 function codexEffort(effort: KanbanEffort | undefined): string | undefined {
@@ -37,7 +37,7 @@ export function codexUserMessage(l: Record<string, unknown>): string | undefined
 }
 
 /** The turn after the last prompt; its `text` is the final answer (task_complete's last_agent_message, else the last assistant message). */
-export function readCodexTurn(file: string): TurnResult | undefined {
+export function readCodexTurn(file: string, opts?: ReadOpts): TurnResult | undefined {
   const lines = readJsonLines(file);
   if (!lines) return undefined;
   // Where the last turn starts: its user message.
@@ -66,7 +66,17 @@ export function readCodexTurn(file: string): TurnResult | undefined {
     }
   }
   const text = (final ?? lastAssistant).trim() || (apiError ?? '');
-  return { text, complete, ...(apiError ? { apiError } : {}) };
+  // A comment the office typed that the rollout has no user message for yet (and no prompt hook confirmed) is still to be answered: the turn read is an earlier one.
+  const unheard = (opts?.officePrompts ?? []).some(
+    (p) =>
+      !p.heard &&
+      Date.now() - p.at < OFFICE_PROMPT_WAIT_MS &&
+      !lines.some((l) => {
+        const m = codexUserMessage(l);
+        return m !== undefined && Date.parse(String(l.timestamp)) >= p.at && m.replace(/\s+/g, ' ').includes(p.head);
+      }),
+  );
+  return { text, complete, ...(apiError ? { apiError } : {}), ...(unheard ? { unheard: true as const } : {}) };
 }
 
 export const codexAdapter: TaskAgentAdapter = {

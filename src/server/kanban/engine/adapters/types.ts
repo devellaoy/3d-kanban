@@ -60,9 +60,27 @@ export interface TurnResult {
   interim?: true;
   /** With `typed`: the typed turn hasn't ended in the log (no reply of text alone after the log's last prompt yet, or a tool runs). */
   typedOpen?: true;
+  /**
+   * Claude: the final answer of the log's last turn, when that is not `text` (a prompt typed into the terminal took the turn after the
+   * office's): a marker the person's turn ended with still ends the run. Absent otherwise.
+   */
+  lastText?: string;
   /** Claude: the office's last prompt (`promptAt`) isn't in the log yet, so the turn read isn't the one the office asked for. */
   unheard?: true;
 }
+
+/** What readTurnResult may be told (see TaskAgentAdapter.readTurnResult). */
+export interface ReadOpts {
+  since?: number;
+  runStart?: number;
+  promptAt?: number;
+  promptHead?: string;
+  /** Comments the office typed into the run while it worked (when, the start of their text, and whether the agent's prompt hook confirmed them): prompts of the office's own, not a person's. One not heard yet makes the turn `unheard`. */
+  officePrompts?: { at: number; head: string; heard?: boolean }[];
+}
+
+/** How long a typed comment the log doesn't show yet (and no prompt hook confirmed) is waited for before the run goes on without it (15 min). */
+export const OFFICE_PROMPT_WAIT_MS = 15 * 60_000;
 
 export interface TaskAgentAdapter {
   tool: KanbanTool;
@@ -75,9 +93,9 @@ export interface TaskAgentAdapter {
    * logged at or after it, so a prompt typed into the worker's terminal meanwhile doesn't move the window.
    * `promptAt`: when the office last gave this run a prompt (ms; the launch, or a restate): the answer is read from
    * that prompt's turns, and a later prompt that isn't a notification is `typed`; `promptHead`: the start of the text the office typed
-   * then, to find that prompt among a person's typed ones. Codex ignores all four.
+   * then, to find that prompt among a person's typed ones; `officePrompts`: the comments typed into the run since. Codex ignores all of them.
    */
-  readTurnResult(transcriptPath: string, opts?: { since?: number; runStart?: number; promptAt?: number; promptHead?: string }): TurnResult | undefined;
+  readTurnResult(transcriptPath: string, opts?: ReadOpts): TurnResult | undefined;
   /** Whether the log shows the turn interrupted (an Esc) at or after `since` (ms); only Claude logs that. */
   interruptedSince?(transcriptPath: string, since: number): boolean;
   /** What upstream's spawn may carry as the worker's model (it validates it); the rest goes in launchArgs. */

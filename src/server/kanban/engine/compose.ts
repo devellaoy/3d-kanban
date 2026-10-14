@@ -14,6 +14,7 @@ import { Worktrees } from '../../worktrees.js';
 import type { KanbanContext } from '../registry.js';
 import { projectRepos, parseRepoFloorId } from '../projects.js';
 import { grantFiles } from '../uploads.js';
+import { inlineFiles, unlinkedFiles } from './inlinefiles.js';
 import { resolveKanbanPrompt, withContract, type KanbanContractId, type KanbanPromptId } from '../../../shared/kanban/prompts.js';
 import { closingPr, closingRef, parseGhKey } from '../../../shared/kanban/issuecard.js';
 import { isPrPhase, openPrs } from '../../../shared/kanban/prs.js';
@@ -253,8 +254,25 @@ export class Composer {
     return filled.length ? this.text('kanban.instructions', p, { parts: filled.join('\n\n') }) : '';
   }
 
+  /** The task-level files its description does not link (older tasks list their files apart from the text); comments' files travel with their own comment. */
   private attachments(task: KanbanTask): string {
-    return this.filesText(task.project, task.id, this.ctx.repo.listAttachments(task.id));
+    const own = this.ctx.repo.listAttachments(task.id).filter((a) => a.commentId === undefined);
+    return this.filesText(task.project, task.id, unlinkedFiles(task.description, own));
+  }
+
+  /** `text` with its attachment links turned into paths in the task's grant folder. */
+  inline(taskId: number, text: string): string {
+    return inlineFiles(this.ctx, taskId, text);
+  }
+
+  /** A comment (or any message) for a prompt: its links as paths, then the block listing its files that the text does not link. */
+  commentText(project: string, taskId: number, text: string, files: { id: string; name: string; stored: string }[]): string {
+    return [this.inline(taskId, text).trim(), this.filesText(project, taskId, unlinkedFiles(text, files))].filter(Boolean).join('\n\n');
+  }
+
+  /** Like commentText for an answer typed into a terminal: the files that the text does not link go on its line. */
+  answerText(taskId: number, text: string, files: { id: string; stored: string }[]): string {
+    return [this.inline(taskId, text).trim(), this.filesInline(taskId, unlinkedFiles(text, files))].filter(Boolean).join(' ');
   }
 
   /** The files on one line, for an answer typed into a terminal (a newline there may submit it); empty when none. Paths are in the task's grant folder. */
@@ -282,7 +300,7 @@ export class Composer {
     return {
       taskId: task.id,
       title: task.title,
-      description: task.description.trim() || task.title,
+      description: this.inline(task.id, task.description.trim()) || task.title,
       project: def.name,
       ticket: task.ticket ? this.text('kanban.ticket', task.project, { ticket: task.ticket, url: task.ticketUrl ? ` (${task.ticketUrl})` : '' }) : '',
       attachments: this.attachments(task),
@@ -329,7 +347,7 @@ export class Composer {
       case 'plan':
         return seal(this.text('kanban.plan', p, v));
       case 'replan':
-        return seal(this.text('kanban.replan', p, { taskId: task.id, answer: x.text ?? '', language: v.language }));
+        return seal(this.text('kanban.replan', p, { taskId: task.id, answer: this.inline(task.id, x.text ?? ''), language: v.language }));
       case 'implement':
         return seal(this.text(isFolderProject(def) ? 'kanban.implement.folder' : 'kanban.implement', p, v));
       case 'investigate':
@@ -341,7 +359,7 @@ export class Composer {
       case 'fix':
         return seal(this.text('kanban.fix', p, { taskId: task.id, round: x.round ?? 1, rounds: x.round === undefined ? 1 : v.rounds, findings: x.findings?.trim() || '(the review gave no findings; look again at what it said in its terminal)', language: v.language }));
       case 'resume':
-        return seal(this.text('kanban.resume', p, { taskId: task.id, author: x.author ?? 'The user', message: x.text ?? '', attachments: v.attachments, language: v.language }));
+        return seal(this.text('kanban.resume', p, { taskId: task.id, author: x.author ?? 'The user', message: this.inline(task.id, x.text ?? ''), attachments: '', language: v.language }));
       case 'continue':
         return seal(this.text('kanban.continue', p, { taskId: task.id, language: v.language }));
       case 'restarted':
@@ -412,7 +430,7 @@ export class Composer {
     const intro = this.text('kanban.handoff', task.project, {
       taskId: task.id,
       title: task.title,
-      description: task.description.trim() || task.title,
+      description: this.inline(task.id, task.description.trim()) || task.title,
       project: def.name,
       status: `${task.status.replace('_', ' ')}${task.phase ? `, phase ${task.phase}` : ''}`,
       plan: accepted ? this.text('kanban.acceptedPlan', task.project, { plan: accepted.text.trim() }) : '',

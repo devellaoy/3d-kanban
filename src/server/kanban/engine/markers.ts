@@ -2,8 +2,8 @@
 // or asks questions, a review's verdict, the pull requests a PR turn opened, and whether the turn was
 // cut short by a usage limit or the network. Pure: the orchestrator hands in the text it read.
 
-import { PLAN_READY, PR_LINE, PR_URL, QUESTIONS_HEADING, REVIEW_LINE } from '../../../shared/kanban/prompts.js';
-import type { ReviewVerdict } from '../../../shared/kanban/types.js';
+import { PLAN_READY, PR_LINE, PR_URL, QUESTIONS_HEADING, REVIEW_LINE, WORK_DONE_LINE } from '../../../shared/kanban/prompts.js';
+import type { ReviewVerdict, RunPhase } from '../../../shared/kanban/types.js';
 import { parsePrUrl } from '../../../shared/hosting/remote.js';
 import { serverHosts } from '../../hosting/index.js';
 
@@ -111,6 +111,60 @@ export function reviewVerdict(text: string): ReviewVerdict {
     if (m) return m[1] === 'APPROVED' ? 'approved' : 'changes_requested';
   }
   return 'changes_requested';
+}
+
+/** The last few non-empty lines of a text, each with its index among all lines and whether a marker may be on it (see markerLines). */
+function tailLines(text: string): { index: number; line: string; marker: boolean }[] {
+  return markerLines(text)
+    .map((l, index) => ({ index, ...l }))
+    .filter((l) => l.line)
+    .slice(-VERDICT_TAIL);
+}
+
+/** Whether the final answer's last few non-empty lines have a WORK DONE line of their own (not in a code block, not a quote). */
+export function workDone(text: string): boolean {
+  return workDoneLines(text).length > 0;
+}
+
+/** How far from the end WORK DONE may be, the PR lines (which a pr contract asks for just before it) not counted. */
+const WORK_DONE_TAIL = 3;
+
+/** The WORK DONE lines among the last few non-empty lines of an answer, `PR:` lines skipped (indexes among all lines). */
+function workDoneLines(text: string): number[] {
+  return markerLines(text)
+    .map((l, index) => ({ index, ...l }))
+    .filter((l) => l.line && !PR_LINE.test(l.line))
+    .slice(-WORK_DONE_TAIL)
+    .filter((l) => l.marker && WORK_DONE_LINE.test(l.line))
+    .map((l) => l.index);
+}
+
+/**
+ * Whether a turn ended with the marker its phase asks for (the contracts in shared/kanban/prompts.ts): a plan with `PLAN READY`, a `QUESTIONS:`
+ * heading or ExitPlanMode (`exitPlan`); a review with its verdict line; any other turn with `WORK DONE`. A turn without it is an interim update.
+ */
+export function finalMarker(phase: RunPhase, text: string, exitPlan = false): boolean {
+  switch (phase) {
+    case 'plan': {
+      if (exitPlan) return true;
+      const all = planMarkers(text);
+      return all.some((l) => l === PLAN_READY || l.replace(/^#+\s*/, '').startsWith(QUESTIONS_HEADING));
+    }
+    case 'review':
+    case 'pr-review':
+      return tailLines(text).some((l) => l.marker && REVIEW_LINE.test(l.line));
+    default:
+      return workDone(text);
+  }
+}
+
+/** A final answer without its WORK DONE line (the one finalMarker accepted), before it is kept as a comment or a summary. */
+export function stripWorkDone(text: string): string {
+  const drop = new Set(workDoneLines(text));
+  return lines(text)
+    .filter((_, i) => !drop.has(i))
+    .join('\n')
+    .trim();
 }
 
 /** A review's findings, without its verdict lines (what the fix prompt hands the implementer). */

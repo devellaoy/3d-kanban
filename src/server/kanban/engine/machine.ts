@@ -96,8 +96,8 @@ export type MachineEvent =
   /** The agent is working again after asking (someone answered in the terminal). */
   | { type: 'working' }
   | { type: 'stop' }
-  /** The run stopped: by Stop (`by`), or its worker was sent home mid-run (`text` says so). */
-  | { type: 'stopped'; by?: string; text?: string }
+  /** The run stopped: by Stop (`by`), or its worker was sent home mid-run (`text` says so). `pending`: comments came in while it stopped; they are worked on now. */
+  | { type: 'stopped'; by?: string; text?: string; pending?: boolean }
   /** The reviewer was sent home mid-round: the round is dropped. `pending`: comments came in meanwhile. */
   | { type: 'reviewAbandoned'; pending?: boolean }
   | { type: 'failed'; error: string }
@@ -368,6 +368,7 @@ export function next(s: MachineState, e: MachineEvent, t: MachineTask, cfg: Mach
 
     case 'stopped':
       if (!automated) return ok({ ...s, runState: 'idle' });
+      if (e.pending) return deliverPending(s, false);
       return ok(waiting(s, 'stopped', e.text ?? (e.by ? `Stopped by ${e.by}` : 'Stopped')));
 
     case 'reviewAbandoned':

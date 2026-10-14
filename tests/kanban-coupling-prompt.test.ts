@@ -77,7 +77,7 @@ test('an asComment prompt to a task implementer is a comment its agent works on;
 test('R on a task worker whose task waits is Retry; otherwise it is upstream’s resume', async (t) => {
   const fx = await engineFixture();
   t.after(() => fx.close());
-  fx.setRules([{ when: 'Implement kanban task', reply: '', delayMs: 800 }]);
+  fx.setRules([{ when: 'Implement kanban task', reply: '', noMarker: true, delayMs: 800 }]);
   const ctx = ctxOf(fx);
   const task = fx.newTask({ usePlan: false, useReview: false });
   await fx.engine.start(task.id, ADA);

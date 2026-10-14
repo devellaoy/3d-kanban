@@ -583,6 +583,8 @@ export class KanbanRepository {
   /**
    * Attaches uploads to a task (and a comment). Only ones that aren't someone else's yet, or already
    * this task's: an id seen in another task's page can't be pulled over. Returns the ones attached.
+   * A comment takes only what has no comment yet and its task's description doesn't link: a link copied
+   * from an older comment or from the description leaves that file where it is (it still counts as attached).
    */
   linkAttachments(ids: string[], taskId: number, commentId?: number): AttachmentRow[] {
     return this.transaction(() => {
@@ -590,7 +592,8 @@ export class KanbanRepository {
       for (const id of ids) {
         const a = this.getAttachment(id);
         if (!a || (a.taskId !== undefined && a.taskId !== taskId)) continue;
-        this.db.prepare('UPDATE attachments SET task_id = ?, comment_id = COALESCE(?, comment_id) WHERE id = ?').run(taskId, commentId ?? null, id);
+        const kept = commentId !== undefined && a.taskId !== undefined && (a.commentId !== undefined || this.getTask(taskId)?.description.includes(id));
+        if (!kept) this.db.prepare('UPDATE attachments SET task_id = ?, comment_id = COALESCE(?, comment_id) WHERE id = ?').run(taskId, commentId ?? null, id);
         out.push(this.getAttachment(id)!);
       }
       return out;
