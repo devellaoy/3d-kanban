@@ -41,7 +41,7 @@ import { Holds } from './hold.js';
 import { Restarts, receipt } from './restart.js';
 import { promptHead, TurnHolds, typeable, type HeldRun } from './turnhold.js';
 import { lostText, TurnEnd, unfinishedText } from './turnend.js';
-import { Comments, hearPrompt } from './comments.js';
+import { Comments } from './comments.js'; import { runTyped } from '../db/typed.js';
 import { RestWaits } from './restwait.js';
 import { sessionLogged } from './sessions.js';
 
@@ -87,7 +87,7 @@ interface Live extends HeldRun {
   via?: Via;
   ack?: () => void;
   stopping?: { by?: string; at?: number; timer?: NodeJS.Timeout };
-  /** The work on the comments made while it stopped, until its worker is restarted (see deliverStopped). */
+  /** The work on the comments made while it stopped (`defer` in finishStopped), kept until its worker is restarted: deliverStopped starts it (see endStop). */
   afterStop?: () => Promise<void>;
   /** A finished turn handled after an office restart: its result is read from the run's start, the woken process's SessionStart is later. */
   pinSince?: boolean;
@@ -385,6 +385,8 @@ export class Orchestrator {
       if (info.status === 'done' && this.restarts.delivered(run, floor, info, live, launch)) void this.serial(task.id, () => this.turnEnded(live));
       else if (info.status === 'needs_input') void this.serial(task.id, () => this.needsInput(live, info));
     }
+    // The comments typed into runs that are not followed on any more (the followed ones keep tracking them) go back in the queue.
+    this.comments.giveBackTyped(runs.filter((r) => ![...this.live.values()].some((l) => l.runId === r.id)));
     // Tasks the engine was busy with that have no run to follow any more.
     for (const t of this.ctx.repo.tasksWhere({ runState: ['starting', 'running', 'stopping'] })) {
       if (attached.has(t.id) || [...this.live.values()].some((l) => l.taskId === t.id)) continue;
@@ -403,7 +405,7 @@ export class Orchestrator {
 
   /** Follows a run left `running` by the last office on its worker. */
   private attach(run: KanbanRun, task: KanbanTask, info: WorkerInfo, launch: QueuedRun | undefined): Live {
-    const live: Live = { taskId: task.id, runId: run.id, phase: run.phase, ...(run.round !== undefined ? { round: run.round } : {}), role: run.role, tool: run.tool, workerId: info.id, floorId: task.project, exitPlan: false, ended: false, promptAt: run.promptedAt, ack: this.restarts.ack(run, task, launch), ...(launch?.taken?.length ? { via: { taken: launch.taken } } : {}) };
+    const live: Live = { taskId: task.id, runId: run.id, phase: run.phase, ...(run.round !== undefined ? { round: run.round } : {}), role: run.role, tool: run.tool, workerId: info.id, floorId: task.project, exitPlan: false, ended: false, promptAt: run.promptedAt, ack: this.restarts.ack(run, task, launch), officePrompts: runTyped(this.ctx.repo.db, run.id), ...(launch?.taken?.length ? { via: { taken: launch.taken } } : {}) };
     this.live.set(info.id, live);
     return live;
   }
@@ -1198,7 +1200,7 @@ export class Orchestrator {
     if (o.event === 'hook') {
       live.lastHookAt = Date.now();
       // The agent took a prompt: a comment typed before it is heard.
-      if (o.hookEvent === 'UserPromptSubmit' && !agentHook(o.payload)) hearPrompt(live.officePrompts, (o.payload as { prompt?: unknown } | undefined)?.prompt);
+      if (o.hookEvent === 'UserPromptSubmit' && !agentHook(o.payload)) this.comments.heard(live, (o.payload as { prompt?: unknown } | undefined)?.prompt);
       // A subagent's or teammate's hook (it runs in the lead's process, so it reaches the lead's worker): none of the lead's turn,
       // but its question or permission prompt is still what the worker's needs_input waits on.
       if (agentHook(o.payload)) {
@@ -1668,13 +1670,11 @@ export class Orchestrator {
     return true;
   }
 
-  /** The work on the comments made during a Stop whose worker is being restarted (see endStop): started now that it has been. */
   private async deliverStopped(live: Live) {
     await Promise.resolve(live.afterStop?.()).finally(() => (live.afterStop = undefined));
     void this.drain(live.floorId);
   }
 
-  /** `defer`: the worker is restarted next, so the work on the comments made meanwhile waits for deliverStopped. */
   private async finishStopped(live: Live, defer = false) {
     const task = this.ctx.repo.getTask(live.taskId);
     // A comment the run was resumed with that its agent never took is kept for the next run.

@@ -224,6 +224,12 @@ ALTER TABLE tasks ADD COLUMN queued_run TEXT;`),
     // finds it still there carries the run on with that prompt, not a "carry on" for a turn the agent never began.
     up: (db) => db.exec('ALTER TABLE runs ADD COLUMN launch TEXT;'),
   },
+  {
+    version: 8,
+    name: 'run typed comments',
+    // typed: the comments typed into the running agent (JSON, see db/typed.ts), so a restart keeps tracking them or gives them back to the queue.
+    up: (db) => db.exec('ALTER TABLE runs ADD COLUMN typed TEXT;'),
+  },
 ];
 
 /** The schema version this build expects. */

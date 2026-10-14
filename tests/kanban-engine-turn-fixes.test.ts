@@ -2,12 +2,14 @@ import test, { mock } from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdirSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
-import { hearPrompt } from '../src/server/kanban/engine/comments.js';
+import { runTyped } from '../src/server/kanban/db/typed.js';
+import { Comments, hearPrompt } from '../src/server/kanban/engine/comments.js';
 import { ADA, engineFixture, type EngineFixture } from './kanban-engine-fixture.js';
 
 // Review round 1 of #392: the turn end waits for unheard comments even on the Stop hook's answer, queue-started runs keep what they took,
 // a Stop's older comments stay parked through the automatic chain, Codex comments queue, and files whose link was removed are not listed.
 
+const runTypedIds = (fx: EngineFixture, runId: number) => runTyped(fx.repo.db, runId).map((p) => p.msg?.commentId);
 const GRACE = { name: 'Grace', admin: false };
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 const COMMENT = /Comment from Grace on task #\d+ while you work/;
@@ -294,4 +296,46 @@ test('a Stop before the agent took a comment typed into it gives the comment bac
   await fx.waitTask(task.id, (x) => x.status === 'review' && x.runState === 'idle', 'the review column after Retry', 30_000);
   assert.ok(prompts(fx, /Rename foo to bar\./).length >= 2, 'the retry prompt carries it');
   assert.equal(fx.task(task.id).pendingMessages.length, 0);
+});
+
+test('an office restart before the agent took a comment typed into it keeps the comment: it is queued again and the run that carries on delivers it', async (t) => {
+  const fx = await engineFixture({ engine: { restartStaggerMs: 50 } });
+  t.after(() => fx.close());
+  const task = await working(fx, [
+    { when: 'office was restarted', reply: 'Finished after the restart.\n\nWORK DONE', commit: 'Work' },
+    { when: 'Implement kanban task', reply: 'Never.', delayMs: 60_000 },
+    { when: 'Comment from Grace', reply: 'Took it.', submitDelayMs: 60_000 },
+  ]);
+  const { c, done } = say(fx, task.id, 'Rename foo to bar.');
+  await done;
+  assert.equal(fx.task(task.id).pendingMessages.length, 0, 'typed in, not queued');
+  const runId = fx.repo.listRuns(task.id).at(-1)!.id;
+  assert.deepEqual(runTypedIds(fx, runId), [c.id], 'kept on the run');
+  await fx.restartOffice();
+  await fx.waitTask(task.id, (x) => x.status === 'review' && x.runState === 'idle', 'the review column', 40_000);
+  assert.ok(prompts(fx, /office was restarted[\s\S]*Rename foo to bar\.|Rename foo to bar\.[\s\S]*office was restarted/).length >= 1, 'the run that carried on delivered it');
+  assert.equal(fx.task(task.id).pendingMessages.length, 0);
+  assert.equal(fx.repo.getComment(c.id)?.pending, false);
+});
+
+test('a run\'s end gives back unheard comments only when the log could not be read, or names them missing', async (t) => {
+  const fx = await engineFixture();
+  t.after(() => fx.close());
+  const task = fx.newTask({ usePlan: false, useReview: false });
+  const mk = (n: number) => {
+    const c = fx.repo.addComment({ taskId: task.id, authorKind: 'user', authorName: 'Grace', text: `note ${n}` }).comment;
+    return { at: Date.now(), head: `note ${n}`, msg: { commentId: c.id, text: `note ${n}`, by: 'Grace', at: c.createdAt } };
+  };
+  const cm = new Comments({ ctx: fx.ctx, update: (id: number, patch: object) => fx.repo.updateTask(id, patch), note: () => {} } as never);
+  const queued = () => fx.task(task.id).pendingMessages.map((m) => m.commentId);
+  const [a, b] = [mk(1), mk(2)];
+  const live = { taskId: task.id, runId: 1, officePrompts: [a, b] } as never;
+  cm.giveBackUnheard(live, () => ({ text: 'x', complete: true }));
+  assert.deepEqual(queued(), [], 'a read that names none missing shows them all: nothing goes back');
+  cm.giveBackUnheard(live, () => ({ text: 'x', complete: true, waiting: [1] }));
+  assert.deepEqual(queued(), [b.msg.commentId]);
+  fx.repo.updateTask(task.id, { pendingMessages: [] });
+  (a as { heard?: boolean }).heard = true;
+  cm.giveBackUnheard(live, () => undefined);
+  assert.deepEqual(queued(), [b.msg.commentId], 'a log that can not be read: only the ones no hook heard');
 });

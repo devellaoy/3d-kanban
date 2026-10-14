@@ -11,6 +11,7 @@ import type { KanbanComment, KanbanTask, PendingMessage } from '../../../shared/
 import type { AttachmentRow, TaskUpdate } from '../db/repository.js';
 import { WORK_DONE } from '../../../shared/kanban/prompts.js';
 import type { LastRun, MachineEvent, RunEffect } from './machine.js';
+import { runTyped, setRunTyped } from '../db/typed.js';
 import type { TurnResult } from './adapters/types.js';
 import { promptHead, typeable, type HeldRun } from './turnhold.js';
 
@@ -105,6 +106,7 @@ export class Comments<L extends CommentLive> {
     }
     // Its own prompt, not a person's: the log's segmentation and the run's answer go on as before (see readTurnResult's officePrompts).
     (live.officePrompts ??= []).push({ at, head: promptHead(text), msg: { commentId: c.id, text: body, by: c.authorName, at: c.createdAt } });
+    setRunTyped(this.d.ctx.repo.db, live.runId, live.officePrompts);
     return true;
   }
 
@@ -141,8 +143,26 @@ export class Comments<L extends CommentLive> {
   giveBackUnheard(live: L, read: () => TurnResult | undefined) {
     const prompts = live.officePrompts ?? [];
     const task = this.d.ctx.repo.getTask(live.taskId);
-    const missing = new Set(read()?.waiting ?? prompts.map((_, i) => i));
+    // A log that can't be read tells nothing (every comment no hook heard goes back); one that can, and names none missing, shows them all.
+    const result = read();
+    const missing = new Set(result ? (result.waiting ?? []) : prompts.map((_, i) => i));
     if (task) this.restore(task, prompts.flatMap((p, i) => (!p.heard && missing.has(i) && p.msg ? [p.msg] : [])));
+  }
+
+  /** The agent's prompt hook heard a prompt (see hearPrompt); kept on the run. */
+  heard(live: L, text: unknown) {
+    hearPrompt(live.officePrompts, text);
+    setRunTyped(this.d.ctx.repo.db, live.runId, live.officePrompts);
+  }
+
+  /** After an office restart: the typed comments of runs that are not followed on any more go back in the queue (those a hook heard were the agent's). */
+  giveBackTyped(runs: { id: number; taskId: number }[]) {
+    for (const run of runs) {
+      const task = this.d.ctx.repo.getTask(run.taskId);
+      const typed = runTyped(this.d.ctx.repo.db, run.id);
+      if (task) this.restore(task, typed.flatMap((p) => (!p.heard && p.msg ? [p.msg] : [])));
+      if (typed.length) setRunTyped(this.d.ctx.repo.db, run.id, undefined);
+    }
   }
 
   /** Puts messages a run took back on the task's queue (those it doesn't hold already); how many went back. */
