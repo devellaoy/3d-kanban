@@ -18,11 +18,12 @@ import { confirmDialog } from '../ui/prompt';
 import { store } from '../state';
 import type { Net } from '../net';
 import type { KanbanServerMsg } from '../../shared/kanban/protocol.js';
-import { KANBAN_TOOLS, type CommentKind, type KanbanAttachment, type KanbanComment, type KanbanEffort, type KanbanEvent, type KanbanPlan, type KanbanProjectInfo, type KanbanReportFile, type KanbanRole, type KanbanRun, type KanbanSettings, type KanbanTask, type KanbanTaskCard, type KanbanTool, type PlanStatus, type ReviewVerdict, type RunStatus, type TaskStatus, type TaskType } from '../../shared/kanban/types.js';
+import { KANBAN_TOOLS, type KanbanComment, type KanbanEffort, type KanbanEvent, type KanbanPlan, type KanbanProjectInfo, type KanbanReportFile, type KanbanRole, type KanbanRun, type KanbanSettings, type KanbanTask, type KanbanTaskCard, type KanbanTool, type PlanStatus, type ReviewVerdict, type RunStatus, type TaskStatus, type TaskType } from '../../shared/kanban/types.js';
 import { isRunning } from '../../shared/kanban/moves.js';
 import { getJson, kanbanApi, type KanbanApi, type KanbanOk } from './api';
-import { attachmentUrl, formatSize, isImage } from './attach';
+import { formatSize, notInText } from './attach';
 import { attachBox, type AttachBox } from './attachbox';
+import { attachmentList, commentItem } from './commentview';
 import { TOOL_ICON, ticketChip, tickCountdowns } from './card';
 import { codexLimitsChip } from './codexlimits';
 import { effortSelect, modelInput } from './create';
@@ -42,7 +43,6 @@ const COMMENTS_PAGE = 30;
 const TAB_NAMES: Record<TaskTab, string> = { overview: 'Overview', conversation: 'Conversation', plan: 'Plan', runs: 'Runs', terminal: 'Terminal', changes: 'Changes', prs: 'PRs' };
 const TYPE_NAMES: Record<TaskType, string> = { implement: 'Implement', investigate: 'Investigate' };
 const ROLE_NAMES: Record<KanbanRole, string> = { implementer: 'Implementer', reviewer: 'Reviewer' };
-const COMMENT_KIND_NAMES: Record<CommentKind, string> = { message: 'message', result: 'result', plan: 'plan', questions: 'questions', review: 'review', status: 'status' };
 const PLAN_STATUS_NAMES: Record<PlanStatus, string> = { draft: 'draft', accepted: 'accepted', superseded: 'superseded' };
 const RUN_STATUS_NAMES: Record<RunStatus, string> = { running: 'running', succeeded: 'done', failed: 'failed', stopped: 'stopped', interrupted: 'interrupted' };
 const VERDICT_NAMES: Record<ReviewVerdict, string> = { approved: '✅ approved', changes_requested: '🛠 changes requested' };
@@ -391,7 +391,7 @@ class View implements TaskView {
     if (!b) {
       const ta = this.draftArea(key, attrs);
       const wrap = h('div.kb-answerbox');
-      const box = { ta, wrap, attach: attachBox({ target: ta, dropZone: wrap, taskId: () => this.taskId, insertLinks: false }), go: () => {} };
+      const box = { ta, wrap, attach: attachBox({ target: ta, dropZone: wrap, insertLinks: true }), go: () => {} };
       onSendKey(ta, () => box.go());
       this.fileBoxes.set(key, (b = box));
     }
@@ -652,7 +652,7 @@ class View implements TaskView {
       ['From ai-kanban', task.legacy ? `${task.legacy.source} #${task.legacy.id}` : null],
     ];
     const meta = h('dl.kb-meta', {}, ...rows.filter(([, v]) => v !== null && v !== undefined && v !== '').flatMap(([k, v]) => [h('dt', {}, k), h('dd', {}, v as Node | string)]));
-    const files = d.attachments.filter((a) => !a.commentId);
+    const files = notInText(d.attachments.filter((a) => !a.commentId), `${task.description}\n${task.goal ?? ''}`);
     const none = () => h('span.hidden');
     return [
       this.actionButtons(task),
@@ -673,13 +673,13 @@ class View implements TaskView {
     const send = h('button.btn.primary', { type: 'button' }, 'Send') as HTMLButtonElement;
     const hint = h('small.kb-muted', {}, `${sendHint()} · ${task.status === 'todo' || task.status === 'done' ? 'a comment is kept with the task' : task.status === 'on_hold' ? 'a comment is kept and given to the agent when it resumes' : 'a comment puts the agent back to work'}`);
     const wrap = h('div.kb-composer');
-    const attach = attachBox({ target: ta, dropZone: wrap, taskId: () => this.taskId, insertLinks: false });
+    const attach = attachBox({ target: ta, dropZone: wrap, insertLinks: true });
     const go = async () => {
       const text = ta.value.trim();
       const ids = attach.ids();
-      if (!text && !ids.length) return ta.focus();
+      if (!text) return ta.focus();
       if (attach.busy()) return toast('Wait for the files to finish uploading', 'warn');
-      const ok = await this.req({ t: 'kanban.comment.add', id: task.id, text: text || '📎', ...(ids.length ? { attachmentIds: ids } : {}) }, send);
+      const ok = await this.req({ t: 'kanban.comment.add', id: task.id, text, ...(ids.length ? { attachmentIds: ids } : {}) }, send);
       if (ok) {
         ta.value = '';
         attach.clear();
@@ -873,42 +873,6 @@ class View implements TaskView {
 }
 
 // --- Pieces ---------------------------------------------------------------------------------------
-
-function attachmentList(files: KanbanAttachment[]): HTMLElement {
-  return h(
-    'ul.kb-files',
-    {},
-    ...files.map((a) =>
-      h(
-        'li',
-        {},
-        isImage(a.mime) ? h('a.kb-thumb', { href: attachmentUrl(a.id), target: '_blank', rel: 'noopener noreferrer' }, h('img', { src: attachmentUrl(a.id), alt: a.name, loading: 'lazy' })) : null,
-        h('a', { href: attachmentUrl(a.id), target: '_blank', rel: 'noopener noreferrer' }, `📄 ${a.name}`),
-        h('small.kb-muted', {}, formatSize(a.size)),
-      ),
-    ),
-  );
-}
-
-function commentItem(c: KanbanComment, files: Map<string, KanbanAttachment>, openTask: (id: number) => void): HTMLElement {
-  const who = c.authorKind === 'agent' ? `${c.tool ? `${TOOL_ICON[c.tool]} ` : '🤖 '}${c.authorName}` : c.authorKind === 'system' ? `⚙️ ${c.authorName}` : `👤 ${c.authorName}`;
-  const attached = c.attachmentIds.map((id) => files.get(id)).filter((a): a is KanbanAttachment => !!a);
-  return h(
-    'li.kb-comment',
-    { class: `${c.authorKind} ${c.kind}${c.pending ? ' pending' : ''}` },
-    h(
-      'header',
-      {},
-      h('b', {}, who),
-      c.kind !== 'message' ? h('span.kb-kind', { class: c.kind }, COMMENT_KIND_NAMES[c.kind]) : null,
-      c.pending ? h('span.kb-kind.pending', { title: 'Written while the agent was busy: it gets it at its next pause' }, 'waiting') : null,
-      h('time', { datetime: new Date(c.createdAt).toISOString(), title: fmtTime(c.createdAt) }, timeAgo(c.createdAt)),
-    ),
-    // System lines are short and many: plain text keeps them quiet.
-    c.authorKind === 'system' && c.kind === 'status' ? h('p', {}, c.text) : renderMarkdown(c.text, openTask, ''),
-    attached.length ? attachmentList(attached) : null,
-  );
-}
 
 function planItem(p: KanbanPlan, openTask: (id: number) => void): HTMLElement {
   return h(

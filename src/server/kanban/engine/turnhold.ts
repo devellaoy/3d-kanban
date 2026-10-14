@@ -4,7 +4,7 @@
 
 import { isBusy } from '../../../shared/status.js';
 import type { Floor } from '../../floor.js';
-import type { KanbanTask, RunPhase } from '../../../shared/kanban/types.js';
+import type { KanbanTask, PendingMessage, RunPhase } from '../../../shared/kanban/types.js';
 
 /**
  * A prompt as it may be typed into a terminal: prompts go in as a bracketed paste, so an escape in a
@@ -36,8 +36,15 @@ export interface HeldRun {
   promptHead?: string;
   /** How many times the run was asked to restate its answer. */
   restates?: number;
-  /** A restate was typed and its prompt hasn't been heard yet: a Stop meanwhile is the typed turn's again. */
+  /** A restate or nudge was typed and its prompt hasn't been heard yet: a Stop meanwhile is the typed turn's again. */
   restating?: boolean;
+  /** When the run's agent last fired a hook (any, a subagent's or teammate's included), for the nudge's idle test (see TurnEnd). */
+  lastHookAt?: number;
+  /** How many times the run was nudged for its final marker, and the timer of the next look at whether it is due. */
+  nudges?: number;
+  nudgeTimer?: NodeJS.Timeout;
+  /** Comments the office typed into the run while it worked (when, and the start of their text): its own prompts, not a person's (see readTurnResult). */
+  officePrompts?: { at: number; head: string; heard?: boolean; seen?: boolean; /** The comment typed, to be queued again if the agent never got it. */ msg?: PendingMessage }[];
 }
 
 /** What holding a turn borrows from the orchestrator. */
@@ -94,19 +101,30 @@ export class TurnHolds<L extends HeldRun> {
       this.hold(live);
       return true;
     }
+    if (this.retype(live, typeable(this.deps.restateText(task, live.phase)))) {
+      live.restates = (live.restates ?? 0) + 1;
+      return true;
+    }
+    return giveUp();
+  }
+
+  /**
+   * The office gives the held run `text` now (a restate, a nudge): the turn it starts is the one the answer is read from, and a Stop on the
+   * tail of the earlier one isn't it. False when the prompt can't be typed; the run is then no longer waiting for its Stop.
+   */
+  retype(live: L, text: string): boolean {
+    const workers = this.deps.floor(live.floorId)?.workers;
+    if (!workers) return false;
     // Set before the prompt goes in: its turn is the one the answer is read from, and a Stop on the typed turn's tail isn't it.
-    const text = typeable(this.deps.restateText(task, live.phase));
     this.deps.prompted(live, text);
-    live.restates = (live.restates ?? 0) + 1;
     live.stopText = undefined;
     live.held = false;
     live.restating = true;
     this.arm(live);
-    const err = workers.prompt(live.workerId, text);
-    if (!err) return true;
+    if (!workers.prompt(live.workerId, text)) return true;
     clearTimeout(live.holdTimer);
     live.restating = false;
-    return giveUp();
+    return false;
   }
 
   /** The resumed turn has started: the run is no longer held. */

@@ -5,7 +5,8 @@
 import { isClaudeModel, type ClaudeModel } from '../../../../shared/protocol.js';
 import type { KanbanEffort, RunPhase } from '../../../../shared/kanban/types.js';
 import { atOf, isRealPrompt, isTaskNotification, isTeammateMessage, messageText, teammateEvents, teammatesAtWork, teammatesBusy, toolResultText, transcriptBusy } from './claude-team.js';
-import { isObj, readJsonLines, type LaunchOptions, type TaskAgentAdapter, type TurnResult } from './types.js';
+import { officeReceipts } from './office.js';
+import { isObj, OFFICE_PROMPT_WAIT_MS, readJsonLines, type LaunchOptions, type ReadOpts, type TaskAgentAdapter, type TurnResult } from './types.js';
 
 export { messagesSent, teammateEvents, teammateTags, teammatesBusy, type TeammateEvent } from './claude-team.js';
 
@@ -156,10 +157,14 @@ function runPrompt(lines: Record<string, unknown>[], at: number, notice: (l: Rec
  * turn is skipped (but for a plan, and `toolRunning`, which follow the log's end); `typedOpen` says it hasn't ended in the log.
  * `promptAt` given but its prompt not in the log yet: `unheard`, and the last prompt's turn is read as without it.
  */
-export function readClaudeTurn(file: string, opts?: { since?: number; runStart?: number; promptAt?: number; promptHead?: string }): TurnResult | undefined {
+export function readClaudeTurn(file: string, opts?: ReadOpts): TurnResult | undefined {
   const lines = readJsonLines(file);
   if (!lines) return undefined;
   const notice = noticeTest(lines);
+  // The comments the office typed into the run while it worked: prompts of its own, however the log names them (a `user` line, or a queued_command attachment).
+  const office = opts?.officePrompts ?? [];
+  const officeAt = (l: Record<string, unknown>, p: { at: number; head: string }) => atOf(l) >= p.at && collapsed(l).startsWith(p.head);
+  const isOffice = (l: Record<string, unknown>) => office.length > 0 && isRealPrompt(l) && office.some((p) => officeAt(l, p));
   // The last real prompt, and the office's own the background tasks are counted from: the run's first (a prompt typed into
   // the terminal meanwhile doesn't move it; the first of the run's still in the tail when its own was cut), else the last that
   // isn't a notification.
@@ -178,15 +183,22 @@ export function readClaudeTurn(file: string, opts?: { since?: number; runStart?:
   // last of its own or an agent's notification after it. Any other real prompt after it is typed. Without a promptAt (the teammate gate has none)
   // the last real prompt is the turn, and nothing is typed.
   const own = opts?.promptAt !== undefined ? runPrompt(lines, opts.promptAt, notice, opts.promptHead) : -1;
-  const unheard = opts?.promptAt !== undefined && own < 0;
+  // An office comment that neither the log nor a prompt hook has confirmed yet counts as unheard too (for a while): the turn read is not the one answering it.
+  const waiting = (p: { at: number }) => Date.now() - p.at < OFFICE_PROMPT_WAIT_MS;
+  const first = lines.cut ? lines.reduce((m, l) => Math.min(m, atOf(l) || Infinity), Infinity) : Infinity;
+  const { received, fresh } = officeReceipts(office, lines.filter(isRealPrompt).map((l) => ({ at: atOf(l), text: collapsed(l) })), (text, head) => text.startsWith(head), Number.isFinite(first) ? first : undefined);
+  const absent = office.flatMap((_, i) => (received.has(i) ? [] : [i]));
+  const unheard = (opts?.promptAt !== undefined && own < 0) || absent.some((i) => waiting(office[i]));
+  // Past the wait they are given up on, and the run must not end on an older turn's marker: `lost`.
+  const lostOffice = absent.filter((i) => !waiting(office[i]));
   let cut = -1;
   if (own >= 0) {
     for (let i = lines.length - 1; i >= own; i--) {
-      if (!isRealPrompt(lines[i]) || (i !== own && !notice(lines[i]))) continue;
+      if (!isRealPrompt(lines[i]) || (i !== own && !notice(lines[i]) && !isOffice(lines[i]))) continue;
       from = i;
       break;
     }
-    cut = lines.findIndex((l, i) => i > from && isRealPrompt(l));
+    cut = lines.findIndex((l, i) => i > from && isRealPrompt(l) && !isOffice(l));
   }
   let texts: string[] = [];
   let message: unknown;
@@ -271,6 +283,27 @@ export function readClaudeTurn(file: string, opts?: { since?: number; runStart?:
       answeredPlan(content);
     }
   }
+  // The last turn's answer when a typed prompt took it over: what the log's last message says, if that turn is over (a text message with no tool call, and no prompt after it).
+  let lastText: string | undefined;
+  if (cut >= 0) {
+    let id: unknown;
+    let said: string[] = [];
+    let tool = false;
+    for (const line of lines.slice(cut)) {
+      if (line.isSidechain === true) continue;
+      const msg = isObj(line.message) ? line.message : undefined;
+      if (isRealPrompt(line) && !notice(line)) [id, said, tool] = [undefined, [], false];
+      else if (line.type === 'assistant') {
+        if (msg?.id === undefined || msg.id !== id) [said, tool] = [[], false];
+        id = msg?.id;
+        for (const b of Array.isArray(msg?.content) ? msg.content.filter(isObj) : []) {
+          if (b.type === 'tool_use') tool = true;
+          else if (b.type === 'text' && typeof b.text === 'string' && b.text.trim()) said.push(b.text.trim());
+        }
+      }
+    }
+    if (!tool && said.length) lastText = said.join('\n\n');
+  }
   // Background agents, commands and teammates alike: the turn's Stop isn't the run's end while any still works.
   const left = backgroundLeft(lines, start, opts?.since) + teammatesBusy(file, opts?.since ?? 0, teammateEvents(lines, start));
   // The last prompt is a notification or a teammate's message nothing has answered yet: Claude is about to take its turn.
@@ -280,7 +313,7 @@ export function readClaudeTurn(file: string, opts?: { since?: number; runStart?:
   const interim = cut >= 0 && (backgroundLeft(lines, start, opts?.since, cut) > 0 || teammatesAtWork(teammateEvents(lines, start, cut), opts?.since));
   // The typed turn isn't over in the log: the log's last prompt has no reply of text alone yet (or a tool runs).
   const open = cut >= 0 && transcriptBusy(after);
-  return { text: texts.join('\n\n'), ...(plan !== undefined ? { plan } : {}), ...(exitPlan ? { exitPlan } : {}), complete: (answered && !toolPending && (texts.length > 0 || exitPlan)) || (exitPlan && typedPlan), ...(apiError ? { apiError } : {}), ...(running.size ? { toolRunning: true } : {}), ...(left ? { background: left } : {}), ...(resuming ? { resuming } : {}), ...(cut >= 0 ? { typed: true as const } : {}), ...(interim ? { interim: true as const } : {}), ...(open ? { typedOpen: true as const } : {}), ...(unheard ? { unheard: true as const } : {}) };
+  return { text: texts.join('\n\n'), ...(plan !== undefined ? { plan } : {}), ...(exitPlan ? { exitPlan } : {}), complete: (answered && !toolPending && (texts.length > 0 || exitPlan)) || (exitPlan && typedPlan), ...(apiError ? { apiError } : {}), ...(running.size ? { toolRunning: true } : {}), ...(left ? { background: left } : {}), ...(resuming ? { resuming } : {}), ...(cut >= 0 ? { typed: true as const } : {}), ...(interim ? { interim: true as const } : {}), ...(open ? { typedOpen: true as const } : {}), ...(unheard ? { unheard: true as const } : {}), ...(lostOffice.length ? { lost: { office: lostOffice } } : {}), ...(absent.length ? { waiting: absent } : {}), ...(fresh.length ? { seen: fresh } : {}), ...(lastText !== undefined && lastText !== texts.join('\n\n') ? { lastText } : {}) };
 }
 
 /** Claude logs an Esc on a turn as a user line "[Request interrupted by user…]" (it fires no Stop hook): whether one was logged at or after `since` (ms). */

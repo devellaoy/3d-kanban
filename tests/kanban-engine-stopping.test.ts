@@ -26,13 +26,14 @@ function floorWith(err: string | undefined, status: string, opts: { left?: strin
 }
 
 /** What the engine gives a Stop: `ended` is what ending the run answers (false: it had ended already); the run's stop and notes are logged with the floor's calls. */
-function runOf(f: ReturnType<typeof floorWith>, ended: boolean, interrupted = false) {
+function runOf(f: ReturnType<typeof floorWith>, ended: boolean, interrupted = false, deliver = false) {
   const notes: string[] = [];
   const run: StopRun = {
     workerId: 'w1',
     floor: () => f.floor,
     serial: (fn) => fn(),
     stop: async () => (f.calls.push('stop'), ended),
+    ...(deliver ? { deliver: async () => void f.calls.push('deliver') } : {}),
     note: (t) => void notes.push(t),
     interrupted: () => interrupted,
   };
@@ -142,4 +143,19 @@ test('relaunch and halt: SIGTERM first, SIGKILL when it is ignored; a process th
   assert.deepEqual(never.signals, [undefined, 'SIGKILL']);
   assert.deepEqual(never.resumed, [], 'no second agent on the session');
   assert.ok(never.w().pty, 'the old process is still its process');
+});
+
+test('endStop: the comments made during the Stop are delivered only after the worker has been restarted, whatever the restart comes to', async () => {
+  const ok = floorWith(undefined, 'starting');
+  await endStop(runOf(ok, true, false, true).run, 'timeout');
+  assert.deepEqual(ok.calls, ['stop', 'relaunch w1', 'deliver']);
+  const failed = floorWith('no session', 'working');
+  await endStop(runOf(failed, true, false, true).run, 'timeout');
+  assert.deepEqual(failed.calls, ['stop', 'relaunch w1', 'halt w1', 'deliver']);
+  const rested = floorWith(undefined, 'done', { file: '/x' });
+  await endStop(runOf(rested, true, true, true).run, 'timeout');
+  assert.deepEqual(rested.calls, ['rested w1', 'stop', 'deliver'], 'no restart for a rested worker: delivered at once');
+  const gone = floorWith(undefined, 'starting');
+  await endStop(runOf(gone, false, false, true).run, 'timeout');
+  assert.deepEqual(gone.calls, ['stop'], 'a stop that had already finished delivered by itself');
 });

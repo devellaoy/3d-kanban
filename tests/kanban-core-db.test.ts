@@ -244,6 +244,23 @@ test("attachments can't be pulled over from another task, and unattached ones ar
   assert.equal(repo.getAttachment(id), undefined);
 });
 
+test('a comment takes only unclaimed files: links copied from older comments or the description stay put', (t) => {
+  const repo = repoOn(t);
+  repo.createTask(task({ description: `see /api/kanban/attachments/${'d'.repeat(32)}` }));
+  const add = (ch: string) => repo.addAttachment({ id: ch.repeat(32), name: `${ch}.png`, mime: 'image/png', size: 1, stored: `${ch.repeat(32)}-${ch}.png`, createdBy: 'Ada', createdAt: 1 });
+  for (const ch of 'abcd') add(ch);
+  const first = repo.addComment({ taskId: 1, authorKind: 'user', authorName: 'Ada', text: 'one' }).comment;
+  repo.linkAttachments(['a'.repeat(32)], 1, first.id);
+  repo.linkAttachments(['d'.repeat(32)], 1);
+  const second = repo.addComment({ taskId: 1, authorKind: 'user', authorName: 'Ada', text: 'two' }).comment;
+  // b is a fresh upload (orphan, or already this task's with no comment); a and d are claimed.
+  const got = repo.linkAttachments(['a', 'b', 'd'].map((c) => c.repeat(32)), 1, second.id);
+  assert.equal(got.length, 3, 'all accepted, so the comment is not refused');
+  assert.equal(repo.getAttachment('a'.repeat(32))?.commentId, first.id);
+  assert.equal(repo.getAttachment('b'.repeat(32))?.commentId, second.id);
+  assert.equal(repo.getAttachment('d'.repeat(32))?.commentId, undefined);
+});
+
 test('cards count comments per task and take review rounds from the settings', (t) => {
   const repo = repoOn(t);
   repo.createTask(task());

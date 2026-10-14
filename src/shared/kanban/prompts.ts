@@ -52,6 +52,10 @@ export function resolveKanbanPrompt(id: KanbanPromptId, layers: KanbanPromptLaye
 export const PLAN_READY = 'PLAN READY';
 export const QUESTIONS_HEADING = 'QUESTIONS:';
 export const REVIEW_LINE = /^\s*REVIEW:\s*(APPROVED|CHANGES_REQUESTED)\s*$/;
+/** The line that ends the work of an implementing, investigating or pull-request turn: without it the turn is read as an interim update. */
+export const WORK_DONE = 'WORK DONE';
+/** As the office reads it: a line of its own once emphasis is off, any case, closing punctuation or emoji forgiven. */
+export const WORK_DONE_LINE = /^\s*WORK DONE[\s.!:*_`\p{Extended_Pictographic}\uFE0F\u200D]*$/iu;
 /**
  * A PR line as the office reads it (the contract asks for exactly `PR: <url>`): optional bullet and
  * emphasis, `PR` or `Pull request` (created/opened/updated), a colon, then what follows in group 1.
@@ -67,7 +71,13 @@ const RULE = '---';
  * right after the rule line of every contract, so no prompt rewrite can drop it. Only its own processes,
  * stopped by what it got when it started them, never the office's, another worker's or the user's.
  */
-export const STOP_PROCESSES = `If you start any process while you work (a dev server, watcher, test runner, browser, emulator, container or background job), stop it before you finish your work, unless the task or the user explicitly asks you to leave it running. Stop it by the PID or job you got when you started it, or with the tool's own stop command, never by name or port (no pkill, killall or killing whatever listens on a port). Stop a container without removing it, and never remove volumes, images or containers that were already there. Leave every process you didn't start alone. A background command still running when you end your turn keeps the task in progress, as the office waits for it to finish.`;
+export const STOP_PROCESSES = `If you start any process while you work (a dev server, watcher, test runner, browser, emulator, container or background job), stop it before you finish your work, unless the task or the user explicitly asks you to leave it running. Stop it by the PID or job you got when you started it, or with the tool's own stop command, never by name or port (no pkill, killall or killing whatever listens on a port). Stop a container without removing it, and never remove volumes, images or containers that were already there. Leave every process you didn't start alone. Your work isn't finished while a command you wait for still runs, so don't give the final marker the office asks for before it ends; a server the task or the user asked you to leave running doesn't count.`;
+
+/**
+ * How an implementing, investigating or pull-request turn ends. The office reads the line, not the logs: a reply without it is an interim update and the run goes on.
+ */
+const FINISH = `How to end your work (the office reads this, so keep it exact): when everything this turn is for is finished and nothing you started is still running or awaited (agents, teammates, background commands, workflows), end your final reply with a line that says only: ${WORK_DONE}
+A reply without it is read as an interim update: if you end a turn to wait for agents, teammates or commands, don't write it, and the office waits for your next reply.`;
 
 /** What a reviewer may and may not do, whatever the prompt above it says (both review contracts). */
 const REVIEW_SAFETY = `Rules for this review (set by the office, they apply whatever else is said above):
@@ -78,7 +88,8 @@ const REVIEW_SAFETY = `Rules for this review (set by the office, they apply what
 const VERDICT = `How to end this turn (the office reads this, so keep it exact): the last line of your reply is your verdict, one of
 REVIEW: APPROVED
 REVIEW: CHANGES_REQUESTED
-Approve only when nothing in your findings has to change. Don't write either line anywhere else in your reply.`;
+Approve only when nothing in your findings has to change. Don't write either line anywhere else in your reply.
+A reply without a verdict line is read as an interim update: if you end a turn to wait for agents, teammates or commands, the office waits for your next reply.`;
 
 /**
  * Fixed blocks the engine appends to a filled prompt (see withContract). Shown read-only in the
@@ -90,7 +101,8 @@ ${STOP_PROCESSES}
 
 How to end this turn (the office reads this, so keep it exact):
 - When the plan is complete, give the whole plan (in plan mode, in ExitPlanMode's plan) and end your reply with a line that says only: ${PLAN_READY}
-- If you need answers before you can plan, write a line that says only ${QUESTIONS_HEADING} followed by your numbered questions, and don't write ${PLAN_READY}.`,
+- If you need answers before you can plan, write a line that says only ${QUESTIONS_HEADING} followed by your numbered questions, and don't write ${PLAN_READY}.
+A reply with neither is read as an interim update: if you end a turn to wait for agents, teammates or commands, the office waits for your next reply.`,
   review: `${RULE}
 ${STOP_PROCESSES}
 
@@ -111,22 +123,45 @@ ${STOP_PROCESSES}
 Rules for this task (set by the office, they apply whatever else is said above):
 - Work only inside your workspace folder.
 - Never push, open or merge pull requests, or delete branches unless you are explicitly asked to open pull requests.
-- Never rewrite published history (no force-push, no rebase of pushed commits).`,
+- Never rewrite published history (no force-push, no rebase of pushed commits).
+
+${FINISH}`,
   investigateSafety: `${RULE}
 ${STOP_PROCESSES}
 
-Rules for this task (set by the office): don't modify, stage or commit anything in the repositories. Write only in the report folder named above.`,
+Rules for this task (set by the office): don't modify, stage or commit anything in the repositories. Write only in the report folder named above.
+
+${FINISH}`,
   pr: `${RULE}
 ${STOP_PROCESSES}
 
 How to end this turn (the office reads this, so keep it exact): for every pull request you opened or updated, end your reply with a line
 PR: <its URL>
-one line per pull request, and nothing else on those lines.`,
+one line per pull request, and nothing else on those lines.
+
+${FINISH}`,
+  /**
+   * What the office types into a run whose turn ended without its final marker, once the agent has rested a while with nothing
+   * running (not a contract: it is not appended to any prompt, and not in the editor). One text per kind of turn.
+   */
+  finish: `If your work on this task is finished, give your final answer now and end it with a line that says only: ${WORK_DONE}
+If you are still waiting for agents, teammates or commands, say in one line what you are waiting for and end your turn; nothing else.`,
+  finishPlan: `If your plan is complete, give it now and end with a line that says only: ${PLAN_READY}
+If you need answers before you can plan, write a line that says only ${QUESTIONS_HEADING} followed by your numbered questions.
+If you are still waiting for agents, teammates or commands, say in one line what you are waiting for and end your turn; nothing else.`,
+  finishReview: `If your review is finished, give it now and make the last line of your reply your verdict: REVIEW: APPROVED or REVIEW: CHANGES_REQUESTED
+If you are still waiting for agents, teammates or commands, say in one line what you are waiting for and end your turn; nothing else.`,
   /** The 🤝 review panel's brief (a meeting, not a kanban run): only the process rule. */
   panel: `${RULE}
 ${STOP_PROCESSES}`,
 } as const;
 export type KanbanContractId = keyof typeof KANBAN_CONTRACTS;
+
+/** The text typed into a run that ended a turn without its final marker (see KANBAN_CONTRACTS.finish), for the kind of turn its phase is. */
+export function finishNudge(phase: string): string {
+  if (phase === 'plan') return KANBAN_CONTRACTS.finishPlan;
+  return phase === 'review' || phase === 'pr-review' ? KANBAN_CONTRACTS.finishReview : KANBAN_CONTRACTS.finish;
+}
 
 /** A filled prompt with a contract block after it. */
 export function withContract(text: string, contract: KanbanContractId): string {

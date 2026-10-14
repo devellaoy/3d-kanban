@@ -124,7 +124,7 @@ export class Departures<L extends DepartingRun> {
         line += `: its ${what} was stopped, and the task is done`;
         then = () => this.d.markDone(task, intent.by);
       } else if (role === 'reviewer') {
-        const pending = task.pendingMessages.length > 0;
+        const pending = task.pendingMessages.some((m) => !m.parked);
         line += pending ? `: its ${what} was dropped, and the comments that came in meanwhile go to the agent now` : `: its ${what} was dropped, and the task is in Review`;
         then = () => this.d.apply(task.id, { type: 'reviewAbandoned', pending });
       } else {

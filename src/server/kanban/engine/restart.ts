@@ -13,9 +13,10 @@ import type { WorkerInfo, WorkerStatus } from '../../../shared/protocol.js';
 import type { WorkerObservation } from '../../workers.js';
 import type { KanbanEffort, KanbanRun, KanbanTask, KanbanTool, QueuedRun } from '../../../shared/kanban/types.js';
 import { claudeAdapter } from './adapters/claude.js';
-import { codexUserMessage } from './adapters/codex.js';
+import { codexAdapter, codexUserMessage } from './adapters/codex.js';
 import { readJsonLines } from './adapters/types.js';
 import type { MachineEvent } from './machine.js';
+import { finalMarker } from './markers.js';
 import { sessionLogged } from './sessions.js';
 import { missingFolders } from './workspace.js';
 import { promptHead, type HeldRun } from './turnhold.js';
@@ -260,9 +261,14 @@ export class Restarts<L extends HeldRun> {
     note(task, 'The office restarted mid-run: its agent carries on by itself shortly.', run.id);
   }
 
-  /** Whether the run's turn is over for good: no work left out in its log, and for a run held for background work, the final answer is there after it. */
+  /**
+   * Whether the run's turn is over for good: its final answer ends with the marker its phase asks for (an answer without it is an interim
+   * update: the run carries on and the marker decides then), no work left out in its log, and for a run held for background work, the
+   * final answer is there after it.
+   */
   private finished(run: KanbanRun, floor: Floor, info: WorkerInfo): boolean {
     const result = this.readLog(run, floor, info);
+    if (result && !finalMarker(run.phase, `${result.text}\n${result.plan ?? ''}`, result.exitPlan)) return false;
     const out = !!result && (result.background || result.unheard || result.resuming);
     if (this.deps.ctx.repo.runHeldAt(run.id) === undefined) return !out;
     return !!result?.complete && !out;
@@ -270,8 +276,9 @@ export class Restarts<L extends HeldRun> {
 
   /** What the run's turns say in the session log, read from the run's start. */
   private readLog(run: KanbanRun, floor: Floor, info: WorkerInfo) {
-    const file = run.tool === 'claude' ? floor.workers.transcripts(info.id)?.claude : undefined;
-    return file ? claudeAdapter.readTurnResult(file, { since: run.startedAt, runStart: run.startedAt, promptAt: run.promptedAt }) : undefined;
+    const logs = floor.workers.transcripts(info.id);
+    const file = run.tool === 'claude' ? logs?.claude : logs?.codex;
+    return file ? (run.tool === 'claude' ? claudeAdapter : codexAdapter).readTurnResult(file, { since: run.startedAt, runStart: run.startedAt, promptAt: run.promptedAt }) : undefined;
   }
 
   /** The run is over for good: it waits interrupted for a Retry. */

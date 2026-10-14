@@ -91,8 +91,9 @@ Put such a task on hold instead of leaving it in Waiting or Review, where it cou
 **＋ New task** (or make one from an issue: see *Issue sources*). Fields left unset take the project's
 and the office's defaults.
 
-- **What**: title (required), description (Markdown; paste or drop screenshots and files, up to 20
-  files of 20 MB each), ticket (`UYT-1415`, `gh:owner/repo#12`) and ticket link.
+- **What**: title (required), description (Markdown; paste, drop or **📎 Attach** screenshots and files,
+  up to 20 files of 20 MB each: each goes in where the cursor is, as a placeholder while it uploads and
+  then its link, a picture shown in place), ticket (`UYT-1415`, `gh:owner/repo#12`) and ticket link.
 - **Where**: the project (fixed once made) and which of its repositories (all by default; the primary
   one is always included).
 - **How**: type **Implement** or **Investigate** (read-only: writes a report instead of changing code;
@@ -125,7 +126,9 @@ is long) and a line saying which meeting it came from.
    **✍️ Request changes** (the Plan tab); *implement straight away* accepts it by itself. The answer
    box and the change request take files too (📎, paste or drop): they go to the planner as their paths.
 2. **Implement**: the agent works in its own worktree (a workspace with a worktree of each repository,
-   on the same branch), commits, and says what it did. If nothing differs from the base branch in any
+   on the same branch), commits, and says what it did, ending its final answer with a line `WORK DONE`
+   (the office reads that line, not the logs, to know the work is finished: see *When the office decides
+   a turn is over* below). If nothing differs from the base branch in any
    repository, there's nothing to review and the task goes to Review.
 3. **Review rounds**: a reviewer (its own worker, tool, model and effort, sharing the task's worktree)
    reviews and ends with `REVIEW: APPROVED` or `REVIEW: CHANGES_REQUESTED` (no verdict counts as
@@ -152,9 +155,19 @@ with **⌨️ Open its terminal** and no answer box: nothing is typed for you, s
 prompt's highlighted option. A comment then is kept and goes to the agent once that turn is over.
 There is no Continue without an answer then: its run is still going.
 
-A task stays In progress while the agent's background helper agents or commands (a test run, say) still work, until the agent has
-answered after them (at most 3 hours, then it goes on with what the agent said). ⏹️ Stop during that wait
-restarts the worker on its session at its desk, which ends its helper agents too.
+**When the office decides a turn is over.** The agent says so itself: its final answer ends with
+`WORK DONE` (implement, fix, resume and PR turns, and investigations), `PLAN READY` or `QUESTIONS:` (a
+plan), or its `REVIEW:` verdict (a review). The line is taken off before the answer is kept as a comment.
+A reply without it (the agent writing "I'm waiting for the UI teammate" and ending its turn) is only an
+interim update: the task stays In progress, the update isn't kept as a comment, and the office waits for
+the agent's next reply, whatever its helper agents, teammates or background commands seem to be doing. With
+the line the run ends even if the office still believes something runs (a teammate that was shut down, a
+dev server you asked to leave on). If the agent rests for 3 minutes with nothing running and still hasn't
+given the line, the office types a short nudge into its terminal asking for it (again after 6, 12 and 24
+minutes, four nudges at most); an agent that never gives it is not moved on: the task waits (Waiting) with its last answer shown and a
+note, and **Continue** carries on or you move it yourself (a plan's last answer is read the old way). The same goes for Codex. The old wait for background helper agents or commands (a test run,
+say) is a cap now: at most 3 hours, then the agent is nudged. ⏹️ Stop during a wait restarts the worker on its
+session at its desk, which ends its helper agents too.
 The worker shows as working in the 3D office and in /lite until the run ends, also while its background
 agents or teammates still work, instead of flickering between done and working.
 
@@ -269,16 +282,26 @@ the office's status lines. A comment on a task in **In progress, Waiting or Revi
 back to work:
 
 - The agent is at rest: the comment is its next turn (typed into its terminal, or a worker is hired
-  again with the task's session and worktree). In Waiting on the plan, it's an answer or a change
-  request for the plan.
+  again with the task's session and worktree). It doesn't wait for teammates that look busy in the log.
+  In Waiting on the plan, it's an answer or a change request for the plan.
+- The implementer (Claude or Codex) is working: the comment is **typed into its terminal at once** ("Comment #12 from …
+  while you work"), and it takes it into account in its current work; the run goes on and its answer is the
+  result. The same when you comment while a run is held for a wait. Nothing is typed into a plan run (the
+  plan is answered when it is ready), into an agent that is asking, or before the agent has taken its
+  first prompt: those comments are queued.
 - The agent is asking a question in its terminal: the comment is the answer, typed in there now (see
   above). Asking for a permission: the comment is queued until that turn is over.
-- The agent is busy (a review included): the comment is queued (marked *waiting*) and delivered at its
-  next rest. Comments that came in during a review are worked on when the review cycle ends, and that
-  work is reviewed again when the task has review on.
+- A review round is running, or the run is being stopped: the comment is queued (marked *waiting*), with
+  a line saying so, and delivered at the next rest. Comments that came in during a review are worked on
+  when the review cycle ends, and that work is reviewed again when the task has review on. A comment made
+  while a Stop is under way is worked on as soon as the run has stopped; comments queued before the Stop stay
+  put (only Retry or Continue carries them), also through the turn end of the run that follows.
+- A comment's run that couldn't deliver it (its start failed, or you pressed Stop before the agent took
+  it) puts it back in the queue; Retry and Continue carry it. The same for a run that took several queued
+  comments from the queue.
 
 On To do, **On hold**, Done and archived tasks a comment is just kept; on a held task it is handed to the agent when the task is resumed. Comments take attachments too,
-and so do the answer box and the plan's **Request changes** (**Ctrl/⌘ + Enter** sends); files alone are enough. An agent can read only its own task's files (copies in `kanban/grants/task-<id>/`). After upgrading, a live agent session started before this change is relaunched once at its next turn (its launch arguments change); until then a file sent into it may need a permission prompt.
+and so do the answer box and the plan's **Request changes** (**Ctrl/⌘ + Enter** sends). A file goes into the text where the cursor is (a `![⏳ Uploading …]` placeholder until it is uploaded, then its link; a picture shows in the comment, others are links), and the message carries the files whose links are still in the text when it is sent: delete a link and that file isn't sent (a file is uploaded unattached and belongs to the task or the comment only once the message is sent or the task saved, so a removed link leaves nothing behind). Comments from before this list their files below the text. An agent can read only its own task's files (copies in `kanban/grants/task-<id>/`). After upgrading, a live agent session started before this change is relaunched once at its next turn (its launch arguments change); until then a file sent into it may need a permission prompt.
 
 In the 3D office, what you tell a task's **implementer** while the task is in progress, waiting or in
 review is a comment too: **P** ("💬 Message task #N"), the task's issue card dropped on its desk, and

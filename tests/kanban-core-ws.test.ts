@@ -633,3 +633,73 @@ test('moving a held task on: to Review keeps what was said meanwhile for its nex
     kanban.ctx.repo.updateTask(1, { status: to === 'done' ? 'review' : 'done' });
   }
 });
+
+test('an edit links the uploads its new description links; an upload whose link was taken out stays unattached', async (t) => {
+  const { client, kanban } = office(t);
+  const ada = client('Ada', false);
+  await ada.ask({ t: 'kanban.task.create', task: { project: 'web', title: 'x', description: 'first' } });
+  const [kept, dropped] = ['e'.repeat(32), 'f'.repeat(32)];
+  for (const id of [kept, dropped]) kanban.ctx.repo.addAttachment({ id, name: 'shot.png', mime: 'image/png', size: 1, stored: `${id}-shot.png`, createdBy: 'Ada', createdAt: Date.now() });
+  okOf(await ada.ask({ t: 'kanban.task.update', id: 1, patch: { description: `see ![shot](/api/kanban/attachments/${kept})`, attachmentIds: [kept] } }));
+  assert.equal(kanban.ctx.repo.getAttachment(kept)?.taskId, 1);
+  assert.equal(kanban.ctx.repo.getAttachment(kept)?.commentId, undefined);
+  assert.equal(kanban.ctx.repo.getAttachment(dropped)?.taskId, undefined, 'never sent, so never the task’s');
+});
+
+test('the comment, answer and request-changes boxes and the edit dialog upload unattached: the message or the save links what the text still has', () => {
+  for (const f of ['taskview.ts', 'create.ts']) {
+    const src = readFileSync(path.join('src', 'client', 'kanban', f), 'utf8');
+    assert.doesNotMatch(src, /attachBox\([^)]*taskId/, `${f}: an upload attached to the task at once would stay its file when the link is taken out of the text`);
+  }
+  assert.doesNotMatch(readFileSync(path.join('src', 'client', 'kanban', 'attachbox.ts'), 'utf8'), /taskId/);
+});
+
+test('an edit lets go of the pictures the old description linked and the new one does not; files listed apart from the text stay', async (t) => {
+  const { client, kanban } = office(t);
+  const ada = client('Ada', false);
+  const [gone, stays, legacy, other] = ['1', '2', '3', '4'].map((c) => c.repeat(32));
+  await ada.ask({ t: 'kanban.task.create', task: { project: 'web', title: 'x', description: `a ![g](/api/kanban/attachments/${gone}) b ![s](/api/kanban/attachments/${stays})` } });
+  for (const id of [gone, stays, legacy, other]) kanban.ctx.repo.addAttachment({ id, name: 'p.png', mime: 'image/png', size: 1, stored: `${id}-p.png`, createdBy: 'Ada', createdAt: Date.now() });
+  kanban.ctx.repo.linkAttachments([gone, stays, legacy], 1);
+  const c = kanban.ctx.repo.addComment({ taskId: 1, authorKind: 'user', authorName: 'Ada', kind: 'message', text: `again ![g](/api/kanban/attachments/${other})` }).comment;
+  kanban.ctx.repo.linkAttachments([other], 1, c.id);
+  okOf(await ada.ask({ t: 'kanban.task.update', id: 1, patch: { description: `b ![s](/api/kanban/attachments/${stays})` } }));
+  assert.equal(kanban.ctx.repo.getAttachment(gone)?.taskId, undefined, 'the removed picture is nobody’s again');
+  assert.equal(kanban.ctx.repo.getAttachment(stays)?.taskId, 1);
+  assert.equal(kanban.ctx.repo.getAttachment(legacy)?.taskId, 1, 'a file the description never linked stays');
+  assert.equal(kanban.ctx.repo.getAttachment(other)?.taskId, 1, 'a comment’s file stays');
+});
+
+test('a picture the description and a comment both link stays when the description lets go of it: it becomes the comment\'s', async (t) => {
+  const { client, kanban } = office(t);
+  const ada = client('Ada', false);
+  const shared = 'a'.repeat(32);
+  const link = `![s](/api/kanban/attachments/${shared})`;
+  await ada.ask({ t: 'kanban.task.create', task: { project: 'web', title: 'x', description: `see ${link}` } });
+  kanban.ctx.repo.addAttachment({ id: shared, name: 's.png', mime: 'image/png', size: 1, stored: `${shared}-s.png`, createdBy: 'Ada', createdAt: 1 });
+  kanban.ctx.repo.linkAttachments([shared], 1);
+  const c = kanban.ctx.repo.addComment({ taskId: 1, authorKind: 'user', authorName: 'Ada', kind: 'message', text: `same ${link}` }).comment;
+  // Copied into the comment: the file stays the task's own (linkAttachments keeps ownership).
+  kanban.ctx.repo.linkAttachments([shared], 1, c.id);
+  assert.equal(kanban.ctx.repo.getAttachment(shared)?.commentId, undefined);
+  okOf(await ada.ask({ t: 'kanban.task.update', id: 1, patch: { description: 'no picture now' } }));
+  const a = kanban.ctx.repo.getAttachment(shared);
+  assert.equal(a?.taskId, 1, 'not orphaned for the sweep to delete');
+  assert.equal(a?.commentId, c.id, 'the comment that links it holds it');
+});
+
+test('the pictures an edit lets go of are looked for in every comment of the task, not only the newest page', async (t) => {
+  const { client, kanban } = office(t);
+  const ada = client('Ada', false);
+  const shared = 'b'.repeat(32);
+  const link = `![s](/api/kanban/attachments/${shared})`;
+  await ada.ask({ t: 'kanban.task.create', task: { project: 'web', title: 'x', description: `see ${link}` } });
+  kanban.ctx.repo.addAttachment({ id: shared, name: 's.png', mime: 'image/png', size: 1, stored: `${shared}-s.png`, createdBy: 'Ada', createdAt: 1 });
+  kanban.ctx.repo.linkAttachments([shared], 1);
+  const first = kanban.ctx.repo.addComment({ taskId: 1, authorKind: 'user', authorName: 'Ada', kind: 'message', text: `same ${link}` }).comment;
+  for (let i = 0; i < 600; i++) kanban.ctx.repo.addComment({ taskId: 1, authorKind: 'user', authorName: 'Ada', kind: 'message', text: `filler ${i}` });
+  okOf(await ada.ask({ t: 'kanban.task.update', id: 1, patch: { description: 'no picture now' } }));
+  const a = kanban.ctx.repo.getAttachment(shared);
+  assert.equal(a?.taskId, 1);
+  assert.equal(a?.commentId, first.id, 'the oldest comment that links it holds it');
+});

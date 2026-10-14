@@ -16,7 +16,7 @@ import { DESK_BY_ID, deskBuilt, nextFreeSeat, watchSpotOf } from '../../../share
 import type { WorkerInfo } from '../../../shared/protocol.js';
 import { isBusy } from '../../../shared/status.js';
 import { withContract } from '../../../shared/kanban/prompts.js';
-import type { AskingKind, DepartureIntent, KanbanComment, KanbanEffort, KanbanPrLink, KanbanPrReviewRequest, KanbanRole, KanbanRun, KanbanTask, KanbanTool, KanbanWorkerSummary, PrRef, ProjectRepo, QueuedRun, RunPhase } from '../../../shared/kanban/types.js';
+import type { PendingMessage, AskingKind, DepartureIntent, KanbanComment, KanbanEffort, KanbanPrLink, KanbanPrReviewRequest, KanbanRole, KanbanRun, KanbanTask, KanbanTool, KanbanWorkerSummary, PrRef, ProjectRepo, QueuedRun, RunPhase } from '../../../shared/kanban/types.js';
 import { BRANCH_PREFIX, Worktrees } from '../../worktrees.js';
 import type { AttachmentRow, NewComment, TaskUpdate } from '../db/repository.js';
 import { grantDir, grantFiles } from '../uploads.js';
@@ -26,12 +26,12 @@ import { sameRepo } from '../../../shared/floors.js';
 import { prOwners } from '../integrations/pulls/bundle.js';
 import { claudeAdapter } from './adapters/claude.js';
 import { codexAdapter } from './adapters/codex.js';
-import type { TaskAgentAdapter, TurnResult } from './adapters/types.js';
+import type { ReadOpts, TaskAgentAdapter, TurnResult } from './adapters/types.js';
 import { Composer, isFolderProject, reportDir, reposText, skillPhase, taskRepos, workerReposText, type ComposeExtra } from './compose.js';
 import { canFixPrs, isPrPhase, onPrBranches, type PrMode } from '../../../shared/kanban/prs.js';
 import { fixTargetsOf, forkTest, polledPulls } from '../integrations/pulls/prfix.js';
 import { next, prPrompt, queuedOf, runOf, stateOf, type Effect, type LastRun, type MachineEvent, type PromptKind, type RunEffect } from './machine.js';
-import { backoffMs, looksInterrupted, notUpdatedLines, planOutcome, prLines, reviewFindings, reviewVerdict, stripPlanMarkers } from './markers.js';
+import { backoffMs, looksInterrupted, notUpdatedLines, planOutcome, prLines, reviewFindings, reviewVerdict, stripPlanMarkers, stripWorkDone } from './markers.js';
 import { limitReset } from './limitreset.js';
 import { endStop, type StopRun } from './stopping.js';
 import { branchExists, checkoutLines, currentBranch, homeCleanup, hasChanges, missingFolders } from './workspace.js';
@@ -40,6 +40,9 @@ import { Departures } from './departures.js';
 import { Holds } from './hold.js';
 import { Restarts, receipt } from './restart.js';
 import { promptHead, TurnHolds, typeable, type HeldRun } from './turnhold.js';
+import { lostText, TurnEnd, unfinishedText } from './turnend.js';
+import { Comments } from './comments.js'; import { runTyped } from '../db/typed.js';
+import { RestWaits } from './restwait.js';
 import { sessionLogged } from './sessions.js';
 
 export interface EngineOptions {
@@ -52,6 +55,10 @@ export interface EngineOptions {
   readPauseMs?: number;
   /** A run held for background work goes on with what its log says after this long without a Stop (3 h). */
   backgroundWaitMs?: number;
+  /** A held run whose agent has rested this long with nothing running (no hook of any kind) is nudged for its final marker; the wait doubles with each nudge (3 min). */
+  nudgeIdleMs?: number;
+  /** How many times a run is nudged before it ends on its last text (4). */
+  maxNudges?: number;
   /** A phase that finds its own worker still busy (its teammates keep it working) waits this long for it to rest before it fails (10 min). */
   busyWaitMs?: number;
   /** The gap between one run carried on after an office restart and the next (5 s). */
@@ -79,7 +86,9 @@ interface Live extends HeldRun {
   eff?: RunEffect;
   via?: Via;
   ack?: () => void;
-  stopping?: { by?: string; timer?: NodeJS.Timeout };
+  stopping?: { by?: string; at?: number; timer?: NodeJS.Timeout };
+  /** The work on the comments made while it stopped (`defer` in finishStopped), kept until its worker is restarted: deliverStopped starts it (see endStop). */
+  afterStop?: () => Promise<void>;
   /** A finished turn handled after an office restart: its result is read from the run's start, the woken process's SessionStart is later. */
   pinSince?: boolean;
 }
@@ -94,6 +103,10 @@ interface Via {
   deskId?: string;
   /** The hold a task is being taken off (kept for the unhold run's prompt and the worker's look). */
   hold?: KanbanTask['hold'];
+  /** A run that works on the comments made since then (a Stop's own: see finishStopped); the older ones stay queued. */
+  pendingSince?: number;
+  /** The queued comments the run took off the task for its prompt (Comments.take): put back if its agent never gets the prompt. */
+  taken?: PendingMessage[];
 }
 
 /**
@@ -158,8 +171,8 @@ export class Orchestrator {
    * dropped when the worker exits or goes. After an office restart it's unknown until the next SessionStart: turnOpts falls back to the run's start.
    */
   private procSince = new Map<string, number>();
-  /** A phase waiting for its own busy worker to rest (see untilRests), by task: Stop cancels it, as the task's chain is held until it ends. */
-  private busyWaits = new Map<number, (by?: string) => void>();
+  /** A phase waiting for its own busy worker to rest: Stop cancels it, as the task's chain is held until it ends. */
+  private rests = new RestWaits(() => this.opts.busyWaitMs);
   private floors = new Map<string, { workers: WorkerManager; off: () => void }>();
   /** One thing at a time per task: an operation or a turn's end. */
   private chains = new Map<number, Promise<unknown>>();
@@ -176,6 +189,8 @@ export class Orchestrator {
   private departures: Departures<Live>;
   private holds: Holds;
   private turnHolds: TurnHolds<Live>;
+  private turnEnd: TurnEnd<Live>;
+  private comments: Comments<Live>;
   private restarts: Restarts<Live>;
   private opts: Required<Omit<EngineOptions, 'adapters' | 'restartStaggerMs'>>;
   private disposed = false;
@@ -209,7 +224,7 @@ export class Orchestrator {
       apply: (id, e, via) => this.apply(id, e, via),
       sendHome: (taskId, by, also) => this.sendIdleHome(taskId, by, also, 'hold'),
       drain: (floorId) => this.drain(floorId),
-      filesText: (project, taskId, files) => this.compose.filesText(project, taskId, files),
+      commentText: (project, taskId, text, files) => this.compose.commentText(project, taskId, text, files),
       finishRun: (id, project, patch) => this.finishRun(id, project, patch),
       effect: (id, eff, via) => this.effect(id, eff, via as Via),
     }, () => this.opts.now());
@@ -224,6 +239,33 @@ export class Orchestrator {
       restateText: (task, phase) => this.compose.restate(task, phase),
       waitMs: () => this.opts.backgroundWaitMs,
       heldChanged: (live, held) => this.ctx.repo.setRunHeld(live.runId, held ? this.opts.now() : null),
+    });
+    this.turnEnd = new TurnEnd<Live>({
+      holds: this.turnHolds,
+      following: (live) => this.live.get(live.workerId) === live,
+      serial: (taskId, fn) => this.serial(taskId, fn),
+      task: (id) => this.ctx.repo.getTask(id),
+      floor: (id) => this.ctx.floor(id),
+      note: (task, text, runId) => this.note(task, text, runId),
+      read: (live) => this.readResult(live),
+      turnEnded: (live, planExit, force) => this.turnEnded(live, planExit, force),
+      nudgeIdleMs: () => this.opts.nudgeIdleMs,
+      maxNudges: () => this.opts.maxNudges,
+    });
+    this.comments = new Comments<Live>({
+      ctx,
+      compose: this.compose,
+      liveOf: (taskId) => this.liveOf(taskId),
+      asking: (task) => this.asking(task),
+      answer: (live, text, who) => this.answer(live, text, who),
+      apply: (id, e, via) => this.apply(id, e, via),
+      update: (id, patch) => this.update(id, patch),
+      note: (task, text, runId) => this.note(task, text, runId),
+      lastRun: (taskId) => this.lastRun(taskId),
+      askingNote: (_task, live) => {
+        const there = live.asks !== 'question' ? (live.asks === 'permission' ? ASKS_PERMISSION : ASKS_UNKNOWN) : undefined;
+        return there ? `${there}. The comment is kept and goes to it once that turn is over.` : 'The agent is asking something in its terminal: the comment goes to it once that turn is over.';
+      },
     });
     this.restarts = new Restarts<Live>({
       ctx,
@@ -246,6 +288,8 @@ export class Orchestrator {
       readTries: options.readTries ?? 12,
       readPauseMs: options.readPauseMs ?? 250,
       backgroundWaitMs: options.backgroundWaitMs ?? 3 * 3_600_000,
+      nudgeIdleMs: options.nudgeIdleMs ?? 3 * 60_000,
+      maxNudges: options.maxNudges ?? 4,
       busyWaitMs: options.busyWaitMs ?? 600_000,
       now: options.now ?? Date.now,
     };
@@ -341,6 +385,8 @@ export class Orchestrator {
       if (info.status === 'done' && this.restarts.delivered(run, floor, info, live, launch)) void this.serial(task.id, () => this.turnEnded(live));
       else if (info.status === 'needs_input') void this.serial(task.id, () => this.needsInput(live, info));
     }
+    // The comments typed into runs that are not followed on any more (the followed ones keep tracking them) go back in the queue.
+    this.comments.giveBackTyped(runs.filter((r) => ![...this.live.values()].some((l) => l.runId === r.id)));
     // Tasks the engine was busy with that have no run to follow any more.
     for (const t of this.ctx.repo.tasksWhere({ runState: ['starting', 'running', 'stopping'] })) {
       if (attached.has(t.id) || [...this.live.values()].some((l) => l.taskId === t.id)) continue;
@@ -359,7 +405,7 @@ export class Orchestrator {
 
   /** Follows a run left `running` by the last office on its worker. */
   private attach(run: KanbanRun, task: KanbanTask, info: WorkerInfo, launch: QueuedRun | undefined): Live {
-    const live: Live = { taskId: task.id, runId: run.id, phase: run.phase, ...(run.round !== undefined ? { round: run.round } : {}), role: run.role, tool: run.tool, workerId: info.id, floorId: task.project, exitPlan: false, ended: false, promptAt: run.promptedAt, ack: this.restarts.ack(run, task, launch) };
+    const live: Live = { taskId: task.id, runId: run.id, phase: run.phase, ...(run.round !== undefined ? { round: run.round } : {}), role: run.role, tool: run.tool, workerId: info.id, floorId: task.project, exitPlan: false, ended: false, promptAt: run.promptedAt, ack: this.restarts.ack(run, task, launch), officePrompts: runTyped(this.ctx.repo.db, run.id), ...(launch?.taken?.length ? { via: { taken: launch.taken } } : {}) };
     this.live.set(info.id, live);
     return live;
   }
@@ -544,7 +590,7 @@ export class Orchestrator {
           this.update(t.id, { runState: 'idle', queuedRun: null });
           return;
         }
-        const via: Via = { who: { name: task.createdBy, admin: false } };
+        const via: Via = { who: { name: task.createdBy, admin: false }, ...(task.queuedRun?.taken?.length ? { taken: task.queuedRun.taken } : {}) };
         if (task.queuedRun) {
           const err = await this.apply(t.id, { type: 'dequeue', run: runOf(task.queuedRun) }, via);
           if (err) this.note(task, `Couldn't start it from the queue: ${err}`);
@@ -696,12 +742,14 @@ export class Orchestrator {
         const r = await this.launch(task, eff, via);
         if (r && typeof r === 'object') {
           // No desk, or the office's worker limit: it waits in the queue, and starts as it is (drain).
+          this.comments.restore(task, via.taken);
           this.update(taskId, { queuedRun: queuedOf(eff), ...(eff.prompt === 'unhold' && via.hold ? { hold: via.hold } : {}) });
           await this.apply(taskId, { type: 'noRoom', text: r.queued });
           return undefined;
         }
         const err = r;
         if (err) {
+          this.comments.requeue(task, eff, via.commentId, via.taken);
           this.note(task, `Couldn't start the ${eff.phase} phase: ${err}`);
           await this.apply(taskId, { type: 'failed', error: err });
         }
@@ -727,19 +775,9 @@ export class Orchestrator {
       case 'interrupt':
         this.interrupt(task, via.who);
         return undefined;
-      case 'queueComment': {
-        const c = via.commentId !== undefined ? this.ctx.repo.getComment(via.commentId) : undefined;
-        if (!c || task.pendingMessages.some((p) => p.commentId === c.id)) return undefined;
-        const all = [...task.pendingMessages, { commentId: c.id, text: c.text, by: c.authorName, at: c.createdAt }];
-        // Messages carried from a hold (queueHeld) are never dropped: nothing may go undelivered while its comment stays pending.
-        const newest = new Set(all.filter((m) => !m.held).slice(-PENDING_MAX));
-        const pending = all.filter((m) => m.held || newest.has(m));
-        this.ctx.repo.setCommentPending(c.id, true);
-        const updated = this.ctx.repo.getComment(c.id);
-        if (updated) this.ctx.broadcast({ t: 'kanban.comment', comment: updated, project: task.project }, task.project);
-        this.update(taskId, { pendingMessages: pending });
+      case 'queueComment':
+        this.comments.queue(task, via.commentId);
         return undefined;
-      }
       case 'note':
         this.note(task, eff.text);
         return undefined;
@@ -752,29 +790,6 @@ export class Orchestrator {
   }
 
   // --- Starting runs ------------------------------------------------------------------------------
-
-  /** The pending comments, taken off the task to be typed in now: one message, and who wrote it. */
-  private takePending(task: KanbanTask): { text: string; author: string } | undefined {
-    const p = this.pendingText(task);
-    if (!p) return undefined;
-    const msgs = task.pendingMessages;
-    for (const m of msgs) {
-      this.ctx.repo.setCommentPending(m.commentId, false);
-      const c = this.ctx.repo.getComment(m.commentId);
-      if (c) this.ctx.broadcast({ t: 'kanban.comment', comment: c, project: task.project }, task.project);
-    }
-    this.update(task.id, { pendingMessages: [] });
-    return p;
-  }
-
-  /** The pending comments as one message, and who wrote it; they stay on the task (see takePending). */
-  private pendingText(task: KanbanTask): { text: string; author: string } | undefined {
-    const msgs = task.pendingMessages;
-    if (!msgs.length) return undefined;
-    const authors = [...new Set(msgs.map((m) => m.by))];
-    const text = msgs.length === 1 ? msgs[0].text : msgs.map((m) => `${m.by}:\n${m.text}`).join('\n\n');
-    return { text, author: authors.join(', ') };
-  }
 
   /** The findings of the task's latest review, or the implementer's latest fix reply. */
   private latestSummary(taskId: number, phase: RunPhase): string | undefined {
@@ -838,8 +853,9 @@ export class Orchestrator {
     let text = eff.text;
     let author = via.who?.name;
     if (eff.pending) {
-      const p = this.takePending(task);
+      const p = this.comments.take(task, via.pendingSince);
       if (p) ({ text, author } = p);
+      via.taken = p?.msgs;
     }
     // Messages kept on the task by id (what was said during a hold, comments typed while the run waited for a desk) go with the run that resumes the work.
     const carried = !eff.pending && role === 'implementer' ? this.holds.carried(task, eff.prompt) : undefined;
@@ -916,7 +932,7 @@ export class Orchestrator {
     });
     const by = `${via.who?.name ?? 'Kanban'} (kanban #${task.id})`;
 
-    const run = this.ctx.repo.createRun({ taskId: task.id, phase: eff.phase, ...(eff.round !== undefined ? { round: eff.round } : {}), role, tool, model, effort, launch: queuedOf({ ...eff, text, pending: undefined }) });
+    const run = this.ctx.repo.createRun({ taskId: task.id, phase: eff.phase, ...(eff.round !== undefined ? { round: eff.round } : {}), role, tool, model, effort, launch: { ...queuedOf({ ...eff, text, pending: undefined }), ...(via.taken?.length ? { taken: via.taken } : {}) } });
     this.ctx.broadcast({ t: 'kanban.run', run, project: task.project }, task.project);
     const follow = (workerId: string, prompt: string): Live => {
       const live: Live = { taskId: task.id, runId: run.id, phase: eff.phase, ...(eff.round !== undefined ? { round: eff.round } : {}), role, tool, workerId, floorId: task.project, exitPlan: false, ended: false, eff: { ...eff, pending: undefined, ...(text !== undefined ? { text } : {}) }, via };
@@ -935,18 +951,23 @@ export class Orchestrator {
       const prior = this.live.get(id);
       return tool === 'claude' && this.teammatesWork(floor, id, prior ? this.turnOpts(prior) : { since: Math.max(this.procSince.get(id) ?? 0, floor.workers.restartedAt(id) ?? 0) || undefined, runStart: this.ctx.repo.listRuns(task.id).filter((r) => r.id !== run.id && r.workerId === id).at(-1)?.startedAt });
     };
-    if (info && info.kind === 'agent' && info.kanban?.taskId === task.id && (info.status === 'working' || info.status === 'starting' || teamWork(info.id))) {
-      const waited = await this.untilRests(floor, info.id, task.id, () => teamWork(info!.id));
+    // A resume with text (a comment, Continue's answer) doesn't wait for teammates or a working agent, which queue what is typed meanwhile: only for one still starting.
+    const quick = eff.phase === 'resume' && text !== undefined;
+    const relaunches = (i: WorkerInfo) => !(sameArgs(floor.workers.launchArgsOf(i.id), launchArgs) && i.model === adapter.spawnModel(model) && i.effort === adapter.spawnEffort(effort));
+    const waits = (i: WorkerInfo) => (quick ? i.status === 'starting' || (i.status === 'working' && relaunches(i)) : i.status === 'working' || i.status === 'starting' || teamWork(i.id));
+    if (info && info.kind === 'agent' && info.kanban?.taskId === task.id && waits(info)) {
+      const waited = await this.rests.until(floor, info.id, task.id, () => teamWork(info!.id), quick && info.status === 'starting');
       if (this.disposed) return undefined; // the office went down meanwhile: nothing may be typed or hired
       if (waited.cancelled) {
-        // Stopped while it waited: nothing was prompted, and the run ends as stopped.
+        // Stopped while it waited: nothing was prompted, and the run ends as stopped. The comments it took off the task (or was resumed with) go back.
+        this.comments.requeue(task, eff, via.commentId, via.taken);
         this.finishRun(run.id, task.project, { status: 'stopped' });
         await this.apply(task.id, { type: 'stopped', ...(waited.by ? { by: waited.by } : {}) });
         return undefined;
       }
       info = floor.workers.get(info.id);
     }
-    if (info && info.kind === 'agent' && info.status !== 'working' && info.status !== 'starting') {
+    if (info && info.kind === 'agent' && ((info.status !== 'working' && info.status !== 'starting') || (quick && info.status === 'working' && !relaunches(info)))) {
       x.checkout = await this.checkoutFor(fresh, def, floor.dir, role, eff.phase, false);
       const prompt = typeable(withCheckout(build((eff.prompt === 'continue' || eff.prompt === 'restarted') && !info.sessionId ? this.freshKind(fresh, eff.phase) : eff.prompt)));
       const live = follow(info.id, prompt);
@@ -955,11 +976,10 @@ export class Orchestrator {
       // other ones is relaunched with them even when the phase's flags are the same.
       const spawnModel = adapter.spawnModel(model);
       const spawnEffort = adapter.spawnEffort(effort);
-      const same = sameArgs(floor.workers.launchArgsOf(info.id), launchArgs) && info.model === spawnModel && info.effort === spawnEffort;
-      const typed = same && (info.status === 'done' || info.status === 'idle');
+      const typed = !relaunches(info) && (info.status === 'done' || info.status === 'idle' || info.status === 'working');
       // Relaunched on its session: its agent is heard from (and has the prompt) later, and events of the old process meanwhile are not its own. Set before any await.
       if (!typed && info.sessionId) Object.assign(live, { resumed: true, armed: false, ack: heldTaken });
-      else if (typed) Object.assign(live, { typed: true, ack: heldTaken });
+      else if (typed) Object.assign(live, { typed: true, ack: heldTaken, ...(info.status === 'working' ? { started: true } : {}) });
       this.ctx.repo.updateRun(run.id, { workerId: info.id, sessionId: info.sessionId }); // before the relaunch awaits: a restart in that window finds the run's worker
       if (typed) err = floor.workers.prompt(info.id, prompt, via.who?.name);
       else if (info.sessionId) err = await floor.workers.relaunch(info.id, { launchArgs, prompt, env: extras.env, model: spawnModel, effort: spawnEffort });
@@ -1178,6 +1198,9 @@ export class Orchestrator {
     // The agent has the prompt once it submits it or starts its turn, not when its process starts (a stop in between must still carry the prompt on).
     if (live.ack && live.armed !== false && receipt(o) && !(o.event === 'hook' && agentHook(o.payload))) (live.ack(), (live.ack = undefined));
     if (o.event === 'hook') {
+      live.lastHookAt = Date.now();
+      // The agent took a prompt: a comment typed before it is heard.
+      if (o.hookEvent === 'UserPromptSubmit' && !agentHook(o.payload)) this.comments.heard(live, (o.payload as { prompt?: unknown } | undefined)?.prompt);
       // A subagent's or teammate's hook (it runs in the lead's process, so it reaches the lead's worker): none of the lead's turn,
       // but its question or permission prompt is still what the worker's needs_input waits on.
       if (agentHook(o.payload)) {
@@ -1282,6 +1305,7 @@ export class Orchestrator {
     // starts once more in a fresh session, with the handoff; its messages are still the task's (nothing was acknowledged).
     const session = live.role === 'implementer' ? task?.sessionId : task?.reviewerSessionId;
     if (live.resumed && !live.started && !lost && live.eff && task && session && sessionLogged(this.ctx, task, live.tool, session, this.ctx.floor(live.floorId)?.workers.transcripts(live.workerId)) === false) return this.holds.freshSession(live, task, session);
+    if (task && live.ack) this.comments.requeue(task, live.eff, live.via?.commentId, live.via?.taken);
     const why = lost ? "Its worktree is gone, so its agent couldn't start" : 'The agent exited before its turn was done';
     this.finishRun(live.runId, live.floorId, { status: 'interrupted', error: why });
     if (task) await this.apply(task.id, { type: 'interrupted', text: `${why}: Retry to carry on${lost ? ` in a fresh worktree${task.branch ? ` on branch ${task.branch}` : ''}` : ''}` });
@@ -1358,8 +1382,15 @@ export class Orchestrator {
     if (this.live.get(live.workerId) === live) this.live.delete(live.workerId);
     this.ctx.floor(live.floorId)?.workers.follows(live.workerId, false);
     if (live.asks) this.ctx.repo.setAskingKind(live.taskId, undefined);
+    this.comments.giveBackUnheard(live, () => this.readNow(live));
     clearTimeout(live.holdTimer);
+    clearTimeout(live.nudgeTimer);
     clearTimeout(live.stopping?.timer);
+  }
+
+  private readNow(live: Live): TurnResult | undefined { // the run's turn as its session log has it now
+    const logs = this.ctx.floor(live.floorId)?.workers.transcripts(live.workerId), file = live.tool === 'claude' ? logs?.claude : logs?.codex;
+    return this.comments.saw(live, file ? this.adapters[live.tool].readTurnResult(file, this.turnOpts(live)) : undefined);
   }
 
   /**
@@ -1371,19 +1402,15 @@ export class Orchestrator {
    * a verdict of its own choosing): what the log has goes on, as it does without a Stop answer.
    */
   private async readResult(live: Live): Promise<TurnResult | undefined> {
-    const workers = this.ctx.floor(live.floorId)?.workers;
-    const adapter = this.adapters[live.tool];
     let result: TurnResult | undefined;
     for (let i = 0; i < this.opts.readTries; i++) {
-      const logs = workers?.transcripts(live.workerId);
-      const file = live.tool === 'claude' ? logs?.claude : logs?.codex;
-      result = file ? adapter.readTurnResult(file, this.turnOpts(live)) : undefined;
+      result = this.readNow(live);
       // A typed prompt froze the answer at the office's turn: reading again can't complete it.
       if (result?.complete || result?.typed) return result;
       await sleep(this.opts.readPauseMs);
     }
     if (live.tool !== 'claude' || result?.complete) return result;
-    if (result && !result.toolRunning && !result.typed && live.stopText) return { text: live.stopText, complete: true, ...(result.background ? { background: result.background } : {}), ...(result.resuming ? { resuming: true } : {}) };
+    if (result && !result.toolRunning && !result.typed && live.stopText) return { text: live.stopText, complete: true, ...(result.background ? { background: result.background } : {}), ...(result.resuming ? { resuming: true } : {}), ...(result.unheard ? { unheard: true as const } : {}), ...(result.lost ? { lost: result.lost } : {}) };
     const why = !result ? 'no session log' : result.toolRunning ? 'a Stop while a tool was still running' : 'no last_assistant_message in its Stop hook';
     console.warn(`agent-office: kanban task #${live.taskId}: the ${live.phase} run's final answer never reached its session log (${why}): going on with the last text the log has`);
     return result;
@@ -1422,9 +1449,9 @@ export class Orchestrator {
   }
 
   /** readTurnResult's options: `since` is when the worker's Claude process started (its SessionStart, else, after an office restart, the run's start); `runStart` is when the run began; `promptAt` is when the office last prompted it. */
-  private turnOpts(live: Live): { since?: number; runStart?: number; promptAt?: number; promptHead?: string } {
+  private turnOpts(live: Live): ReadOpts {
     const run = this.ctx.repo.getRun(live.runId);
-    return { since: live.pinSince ? run?.startedAt : (this.procSince.get(live.workerId) ?? run?.startedAt), runStart: run?.startedAt, promptAt: live.promptAt, promptHead: live.promptHead };
+    return { since: live.pinSince ? run?.startedAt : (this.procSince.get(live.workerId) ?? run?.startedAt), runStart: run?.startedAt, promptAt: live.promptAt, promptHead: live.promptHead, officePrompts: live.officePrompts };
   }
 
   /** Whether the worker's Claude teammates (agent teams) still work, from their transcripts. */
@@ -1433,48 +1460,18 @@ export class Orchestrator {
     return !!file && !!this.adapters.claude.readTurnResult(file, opts)?.background;
   }
 
-  /** Resolves when the worker is at rest (or gone) and `team` says its teammates are too (polled), or after busyWaitMs (the caller looks at it again), or `cancelled` when the task is stopped meanwhile. */
-  private untilRests(floor: Floor, id: string, taskId: number, team: () => boolean): Promise<{ cancelled: boolean; by?: string }> {
-    return new Promise((resolve) => {
-      const rested = () => {
-        const status = floor.workers.get(id)?.status;
-        return !status || (status !== 'working' && status !== 'starting' && !team());
-      };
-      let off = () => {};
-      const finish = (cancelled = false, by?: string) => {
-        clearTimeout(timer);
-        clearInterval(poll);
-        off();
-        if (this.busyWaits.get(taskId) === cancel) this.busyWaits.delete(taskId);
-        resolve({ cancelled, ...(by ? { by } : {}) });
-      };
-      const cancel = (by?: string) => finish(true, by);
-      this.busyWaits.set(taskId, cancel);
-      const timer = setTimeout(() => finish(), this.opts.busyWaitMs);
-      timer.unref?.();
-      // Teammates finishing is no status of the worker's: look again every so often.
-      const poll = setInterval(() => rested() && finish(), 1000);
-      poll.unref?.();
-      off = floor.workers.addObserver((o) => {
-        if (o.workerId === id && (o.event === 'removed' || (o.event === 'status' && rested()))) finish();
-      });
-      if (rested()) finish();
-    });
-  }
-
   /** A run's turn is over: read what it said, keep it, and move the task on. `planExit`: ExitPlanMode; `force`: the hold's timeout. */
   private async turnEnded(live: Live, planExit = false, force = false) {
     if (live.ended || live.restating || this.live.get(live.workerId) !== live) return;
-    const watch = !planExit && !force && live.tool === 'claude';
     // Read before ending: a log that lags (the launch's result not in it yet) shows the background tasks only by now.
     // Nothing else ends the run meanwhile: they all go through `serial`, and this re-checks after the wait.
-    const result: TurnResult | undefined = await this.readResult(live);
+    const read: TurnResult | undefined = await this.readResult(live);
     if (live.ended || this.live.get(live.workerId) !== live) return;
-    // Agents at work, or Stop #1 raced their notification (Claude answers it and stops again); once held, a Stop on an unanswered one is that turn's own. Or the office's own prompt isn't in the log yet: what was read is an earlier turn's.
-    if (watch && (result?.background || result?.unheard || (result?.resuming && !live.held))) return this.turnHolds.hold(live);
-    // A prompt typed into the terminal took the turn the work ended in (or came before the office's answer reached the log): its answer isn't the run's, so the agent is asked for it again.
-    const retell = result?.typed && (result.interim || !result.complete);
-    if (watch && retell && this.turnHolds.restate(live, result?.typedOpen)) return;
+    // The agent's final marker ends the run; a turn without it is an interim update the run waits through (see TurnEnd).
+    const ending = await this.turnEnd.decide(live, read, { planExit, force });
+    if (!ending.end) return;
+    const result = ending.result;
+    const unfinished = ending.unfinished;
     live.background = false;
     live.ended = true;
     this.forget(live);
@@ -1504,11 +1501,22 @@ export class Orchestrator {
     const say = (kind: KanbanComment['kind'], text: string) => {
       if (text.trim()) this.addComment(task!.project, { taskId: task!.id, authorKind: 'agent', authorName: live.role === 'reviewer' ? `${agent} (reviewer)` : agent, tool: live.tool, kind, text: text.trim(), runId: live.runId });
     };
+    if (unfinished && result) {
+      // Not moved on: its last text stays visible, and the task waits for Continue or Retry.
+      // The prompt or comments it never received: that text is an older turn's, not shown; the comments are queued again.
+      const why = ending.lost ? lostText(!!ending.lost.launch) : unfinishedText(live.phase);
+      if (ending.lost) this.comments.giveBack(task, live); else say('message', stripWorkDone(result.text.trim()));
+      this.finishRun(live.runId, task.project, { status: 'failed', error: why, ...(sessionId ? { sessionId } : {}) });
+      this.note(task, why, live.runId);
+      await this.apply(task.id, { type: 'failed', error: why });
+      void this.drain(task.project);
+      return;
+    }
     // Comments typed while any run went (a review's included) are worked on once it's over (see the machine).
-    const pending = task.pendingMessages.length > 0;
+    const pending = task.pendingMessages.some((m) => !m.parked);
     // A folder project has no git to ask: it always counts as changed.
     const changes = async () => (this.folder(task!.project) || !floor ? true : hasChanges(floor.dir, task!.workspace));
-    const text = result.text.trim();
+    const text = stripWorkDone(result.text.trim());
     let event: MachineEvent;
     let verdict: KanbanRun['verdict'];
     switch (live.phase) {
@@ -1640,11 +1648,11 @@ export class Orchestrator {
       return;
     }
     const floor = this.ctx.floor(live.floorId);
-    live.stopping = { ...(who ? { by: who.name } : {}) };
+    live.stopping = { ...(who ? { by: who.name } : {}), at: Date.now() };
     // At rest while its background work goes on: nothing to interrupt, so it is restarted on its session at its desk (never sent
     // home), which ends its helper agents. A turn that has resumed gets Esc as usual.
     const at = Date.now();
-    const run: StopRun = { workerId: live.workerId, floor: () => this.ctx.floor(live.floorId), serial: (fn) => this.serial(live.taskId, fn), stop: () => this.stoppedRun(live), note: (text) => this.note(task, text, live.runId), interrupted: (file) => !!this.adapters[live.tool].interruptedSince?.(file, at) };
+    const run: StopRun = { workerId: live.workerId, floor: () => this.ctx.floor(live.floorId), serial: (fn) => this.serial(live.taskId, fn), stop: () => this.stoppedRun(live, true), deliver: () => this.deliverStopped(live), note: (text) => this.note(task, text, live.runId), interrupted: (file) => !!this.adapters[live.tool].interruptedSince?.(file, at) };
     const status = floor?.workers.get(live.workerId)?.status;
     if (live.background && floor && (status === 'done' || status === 'idle')) return void endStop(run, 'background');
     floor?.workers.write(live.workerId, ESC, who?.name ?? 'Kanban');
@@ -1653,18 +1661,31 @@ export class Orchestrator {
   }
 
   /** Ends the run as stopped; false when it had ended already. */
-  private async stoppedRun(live: Live): Promise<boolean> {
+  private async stoppedRun(live: Live, defer = false): Promise<boolean> {
     if (live.ended || this.live.get(live.workerId) !== live) return false;
     live.ended = true;
     this.forget(live);
-    await this.finishStopped(live);
-    void this.drain(live.floorId);
+    await this.finishStopped(live, defer);
+    if (!live.afterStop) void this.drain(live.floorId);
     return true;
   }
 
-  private async finishStopped(live: Live) {
+  private async deliverStopped(live: Live) {
+    await Promise.resolve(live.afterStop?.()).finally(() => (live.afterStop = undefined));
+    void this.drain(live.floorId);
+  }
+
+  private async finishStopped(live: Live, defer = false) {
+    const task = this.ctx.repo.getTask(live.taskId);
+    // A comment the run was resumed with that its agent never took is kept for the next run.
+    if (task && live.ack) this.comments.requeue(task, live.eff, live.via?.commentId, live.via?.taken);
     this.finishRun(live.runId, live.floorId, { status: 'stopped' });
-    await this.apply(live.taskId, { type: 'stopped', ...(live.stopping?.by ? { by: live.stopping.by } : {}) });
+    // Comments made while it stopped are worked on now; older ones wait for a Retry or Continue (parked: not for the turn ends that follow either).
+    const since = live.stopping?.at;
+    const pending = since !== undefined && !!this.ctx.repo.getTask(live.taskId)?.pendingMessages.some((m) => m.at >= since);
+    if (pending && task) this.comments.park(task, since!);
+    const go = () => this.apply(live.taskId, { type: 'stopped', ...(live.stopping?.by ? { by: live.stopping.by } : {}), ...(pending ? { pending } : {}) }, pending ? { pendingSince: since } : {}).then(() => undefined);
+    if (defer && pending) live.afterStop = go; else await go();
   }
 
   private async reviewerHome(task: KanbanTask) {
@@ -1712,11 +1733,7 @@ export class Orchestrator {
 
   stop(taskId: number, who: KanbanCaller): Promise<string | void> {
     // A phase waiting for its own busy worker holds the task's chain: cancel it first, and the stop is done when it has wound up.
-    const waiting = this.busyWaits.get(taskId);
-    if (waiting) {
-      waiting(who.name);
-      return this.serial(taskId, async () => undefined);
-    }
+    if (this.rests.cancel(taskId, who.name)) return this.serial(taskId, async () => undefined);
     // A task asking in its terminal is idle but its run still goes: the machine stops that too.
     return this.op(taskId, async (task) => {
       const queued = task.runState === 'queued' ? task.queuedRun : undefined;
@@ -1736,7 +1753,7 @@ export class Orchestrator {
         // pick its highlighted option.
         const text = answer?.trim() ?? '';
         const rows = this.takable(taskId, attachmentIds);
-        const typed = [text, this.compose.filesInline(taskId, rows)].filter(Boolean).join(' ');
+        const typed = this.compose.answerText(taskId, text, rows);
         if (!typed) return 'Type your answer, or answer in the terminal';
         const err = this.answer(asking, typed, who);
         if (!err) this.addComment(task.project, { taskId, authorKind: 'user', authorName: who.name, kind: 'message', text, runId: asking.runId }, rows.map((r) => r.id));
@@ -1745,7 +1762,7 @@ export class Orchestrator {
       if (this.liveOf(task.id)) return 'It is still running: answer in its terminal, or stop it first';
       const text = answer?.trim() ?? '';
       const rows = this.takable(taskId, attachmentIds);
-      const msg = [text, this.compose.filesText(task.project, taskId, rows)].filter(Boolean).join('\n\n');
+      const msg = this.compose.commentText(task.project, taskId, text, rows);
       const err = await this.apply(taskId, { type: 'continue', answer: msg, last: this.lastRun(taskId) }, { who });
       if (!err && (text || rows.length)) this.addComment(task.project, { taskId, authorKind: 'user', authorName: who.name, kind: 'message', text }, rows.map((r) => r.id));
       return err;
@@ -1804,7 +1821,7 @@ export class Orchestrator {
   requestPlanChanges(taskId: number, who: KanbanCaller, text: string, attachmentIds?: string[]): Promise<string | void> {
     return this.op(taskId, async (task) => {
       const rows = this.takable(taskId, attachmentIds);
-      const msg = [text.trim(), this.compose.filesText(task.project, taskId, rows)].filter(Boolean).join('\n\n');
+      const msg = this.compose.commentText(task.project, taskId, text.trim(), rows);
       const err = await this.apply(taskId, { type: 'requestPlanChanges', text: msg }, { who });
       if (!err) this.addComment(task.project, { taskId, authorKind: 'user', authorName: who.name, kind: 'message', text: text.trim() }, rows.map((r) => r.id));
       return err;
@@ -1891,23 +1908,7 @@ export class Orchestrator {
   }
 
   commented(taskId: number, commentId: number, who: KanbanCaller): Promise<void> {
-    return this.op(taskId, async (task) => {
-      const c = this.ctx.repo.getComment(commentId);
-      if (!c || c.taskId !== taskId || c.authorKind !== 'user') return;
-      // The agent asks a question in its terminal: the comment is the answer, typed in there now.
-      // Queued, it would wait for a turn's end that the question itself holds up. A permission prompt
-      // (or an unknown one) is answered in the terminal: the comment waits for the turn's end.
-      const asking = this.asking(task);
-      const own = c.attachmentIds.length ? this.ctx.repo.listAttachments(taskId).filter((a) => a.commentId === c.id) : [];
-      if (asking?.asks === 'question' && !this.answer(asking, [c.text, this.compose.filesInline(taskId, own)].filter(Boolean).join(' '), who)) return;
-      const live = this.liveOf(task.id);
-      const err = await this.apply(taskId, { type: 'comment', text: [c.text, this.compose.filesText(task.project, taskId, own)].filter(Boolean).join('\n\n'), busy: !!live || task.runState !== 'idle', last: this.lastRun(taskId) }, { who, commentId });
-      if (err) this.note(task, `Couldn't hand the comment to the agent: ${err}`);
-      if (live && task.status === 'waiting' && task.waitingReason === 'agent_asking') {
-        const there = asking && asking.asks !== 'question' ? (asking.asks === 'permission' ? ASKS_PERMISSION : ASKS_UNKNOWN) : undefined;
-        this.note(task, there ? `${there}. The comment is kept and goes to it once that turn is over.` : 'The agent is asking something in its terminal: the comment goes to it once that turn is over.');
-      }
-    }).then(() => undefined);
+    return this.op(taskId, (task) => this.comments.handle(task, commentId, who)).then(() => undefined);
   }
 
   /**

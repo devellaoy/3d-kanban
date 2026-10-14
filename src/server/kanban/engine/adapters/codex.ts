@@ -4,7 +4,8 @@
 // error...), `response_item` lines what the model saw and said.
 
 import type { KanbanEffort, RunPhase } from '../../../../shared/kanban/types.js';
-import { isObj, readJsonLines, type LaunchOptions, type TaskAgentAdapter, type TurnResult } from './types.js';
+import { officeReceipts } from './office.js';
+import { isObj, OFFICE_PROMPT_WAIT_MS, readJsonLines, type LaunchOptions, type ReadOpts, type TaskAgentAdapter, type TurnResult } from './types.js';
 
 /** Codex's reasoning efforts: it has minimal…xhigh, so max is xhigh. */
 function codexEffort(effort: KanbanEffort | undefined): string | undefined {
@@ -37,7 +38,7 @@ export function codexUserMessage(l: Record<string, unknown>): string | undefined
 }
 
 /** The turn after the last prompt; its `text` is the final answer (task_complete's last_agent_message, else the last assistant message). */
-export function readCodexTurn(file: string): TurnResult | undefined {
+export function readCodexTurn(file: string, opts?: ReadOpts): TurnResult | undefined {
   const lines = readJsonLines(file);
   if (!lines) return undefined;
   // Where the last turn starts: its user message.
@@ -66,7 +67,24 @@ export function readCodexTurn(file: string): TurnResult | undefined {
     }
   }
   const text = (final ?? lastAssistant).trim() || (apiError ?? '');
-  return { text, complete, ...(apiError ? { apiError } : {}) };
+  // A comment the office typed that the rollout has no user message for yet (and no prompt hook confirmed) is still to be answered: the turn read is an earlier one.
+  // So is the office's last prompt (a launch or a restate) when the rollout's last user message is older than it. Past OFFICE_PROMPT_WAIT_MS they are `lost` instead.
+  // A prompt is logged in two shapes (a response item and an event): one entry for both, or it would acknowledge two comments.
+  const users = lines.flatMap((l) => (codexUserMessage(l) !== undefined ? [{ at: Date.parse(String(l.timestamp)), text: codexUserMessage(l)!.replace(/\s+/g, ' ') }] : [])).filter((u, i, all) => !all.slice(0, i).some((v) => v.at === u.at && v.text === u.text));
+  const seen = (at: number, head?: string) => users.some((u) => u.at >= at && (!head || u.text.includes(head)));
+  const expired = (at: number) => Date.now() - at >= OFFICE_PROMPT_WAIT_MS;
+  const prompts = opts?.officePrompts ?? [];
+  const first = lines.cut ? lines.reduce((m, l) => Math.min(m, Date.parse(String(l.timestamp)) || Infinity), Infinity) : Infinity;
+  const { received, fresh } = officeReceipts(prompts, users, (text, head) => text.includes(head), Number.isFinite(first) ? first : undefined);
+  const waiting = prompts.map((p, i) => ({ p, i })).filter(({ i }) => !received.has(i));
+  const launching = opts?.promptAt !== undefined && users.length > 0 && users[users.length - 1].at < opts.promptAt && !seen(opts.promptAt, opts.promptHead);
+  const lost = {
+    ...(launching && expired(opts!.promptAt!) ? { launch: true as const } : {}),
+    office: waiting.filter(({ p }) => expired(p.at)).map(({ i }) => i),
+  };
+  const isLost = !!lost.launch || lost.office.length > 0;
+  const unheard = (launching && !lost.launch) || waiting.some(({ p }) => !expired(p.at));
+  return { text, complete, ...(apiError ? { apiError } : {}), ...(unheard ? { unheard: true as const } : {}), ...(isLost ? { lost } : {}), ...(waiting.length ? { waiting: waiting.map(({ i }) => i) } : {}), ...(fresh.length ? { seen: fresh } : {}) };
 }
 
 export const codexAdapter: TaskAgentAdapter = {

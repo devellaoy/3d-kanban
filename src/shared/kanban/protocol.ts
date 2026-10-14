@@ -99,6 +99,8 @@ export interface KanbanTaskPatch {
   review?: Partial<ReviewSettings> | null;
   implementPermission?: ImplementPermission | null;
   tags?: string[];
+  /** The uploads the new description links: they become the task's files (uploaded unattached, so one whose link was removed is never kept). */
+  attachmentIds?: string[];
 }
 
 /** The office-wide settings, less the per-project ones (those are set with kanban.project.settings.set). */
@@ -343,6 +345,7 @@ function taskPatch(v: unknown): KanbanTaskPatch {
   assign('review', r.review === null ? null : review(r.review));
   assign('implementPermission', r.implementPermission === null ? null : optOneOf(r.implementPermission, 'implementPermission', PERMISSIONS));
   assign('tags', tags(r.tags));
+  assign('attachmentIds', attachmentIds(r.attachmentIds));
   if (!Object.keys(out).length) bad('Nothing to change');
   return out;
 }

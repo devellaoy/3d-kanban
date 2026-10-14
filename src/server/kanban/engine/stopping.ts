@@ -15,6 +15,8 @@ export interface StopRun {
   serial<T>(fn: () => Promise<T>): Promise<T>;
   /** Ends the run as stopped; false when it already ended (the Stop hook or a rest got there first). */
   stop(): Promise<boolean>;
+  /** Starts the work on the comments made during the Stop (kept back by `stop` until the worker is restarted); runs on the task's chain. Absent: `stop` did it all. */
+  deliver?(): Promise<void>;
   note(text: string): void;
   /** Whether the agent's own log shows the Esc taken (the turn is over), for an agent that fires no Stop hook on Esc. */
   interrupted(file: string): boolean;
@@ -34,11 +36,17 @@ export async function endStop(run: StopRun, reason: StopReason): Promise<void> {
   const rested = !!file && run.interrupted(file);
   if (rested) floor!.workers.rested(id);
   const ended = await run.serial(run.stop);
-  if (!ended || rested || !floor) return;
-  const err = await floor.workers.relaunch(id);
-  if (!err) return run.note(`${WHY[reason]}: restarted on its session at its desk.`);
-  const status = floor.workers.get(id)?.status;
-  if (status !== 'working' && status !== 'starting') return run.note(`${WHY[reason]}: couldn't restart it (${err}); it stays as it is.`);
-  const left = await floor.workers.halt(id);
-  run.note(`${WHY[reason]}: couldn't restart it (${err}), so its agent was ended${left ? ` (${left})` : ''}; it stays at its desk.`);
+  if (!ended) return;
+  // The comments made during the Stop reach a worker only once its old process is gone: a prompt typed before the restart would die with it.
+  try {
+    if (rested || !floor) return;
+    const err = await floor.workers.relaunch(id);
+    if (!err) return run.note(`${WHY[reason]}: restarted on its session at its desk.`);
+    const status = floor.workers.get(id)?.status;
+    if (status !== 'working' && status !== 'starting') return run.note(`${WHY[reason]}: couldn't restart it (${err}); it stays as it is.`);
+    const left = await floor.workers.halt(id);
+    run.note(`${WHY[reason]}: couldn't restart it (${err}), so its agent was ended${left ? ` (${left})` : ''}; it stays at its desk.`);
+  } finally {
+    if (run.deliver) await run.serial(run.deliver);
+  }
 }

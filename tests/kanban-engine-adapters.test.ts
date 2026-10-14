@@ -282,11 +282,11 @@ test('claude transcript: a prompt typed into the terminal after the office\'s is
 
   // The helper ends inside the typed turn (its notification is an attachment there): the office's last text is the interim one.
   const a = read(timed([cUser('Implement task #7'), ...launch, interimText, cUser('How is it going?'), note, cAssistant([text('Fine, all done.')], {}, 'mt')]));
-  assert.deepEqual(a, { text: 'Waiting for the helper.', complete: true, typed: true, interim: true });
+  assert.deepEqual(a, { text: 'Waiting for the helper.', complete: true, typed: true, interim: true, lastText: 'Fine, all done.' });
   // Typed while the agent wrote its final message: the office's segment has the answer (answered or not, the typed turn doesn't count).
   const final = [cUser('Implement task #7'), cAssistant([text('All done.')], {}, 'mf')];
   assert.deepEqual(read(timed([...final, cUser('And the docs?')])), { text: 'All done.', complete: true, typed: true, typedOpen: true });
-  assert.deepEqual(read(timed([...final, cUser('And the docs?'), cAssistant([text('Fine.')], {}, 'mc')])), { text: 'All done.', complete: true, typed: true });
+  assert.deepEqual(read(timed([...final, cUser('And the docs?'), cAssistant([text('Fine.')], {}, 'mc')])), { text: 'All done.', complete: true, typed: true, lastText: 'Fine.' });
   // Without runStart or promptAt the last prompt is the turn, as before.
   assert.deepEqual(readClaudeTurn(write('b.jsonl', timed([...final, cUser('And the docs?'), cAssistant([text('Fine.')], {}, 'mc')]))), { text: 'Fine.', complete: true });
   assert.deepEqual(readClaudeTurn(write('c.jsonl', [...final, cUser('And the docs?'), cAssistant([text('Fine.')], {}, 'mc')]), { runStart: T0 }), { text: 'Fine.', complete: true });
@@ -301,7 +301,7 @@ test('claude transcript: a prompt typed into the terminal after the office\'s is
   const restated = [cUser('Implement task #7'), ...launch, interimText, cUser('How is it going?'), note, cAssistant([text('Fine.')], {}, 'mt'), cUser('Someone typed into your terminal'), cAssistant([text('Changed the redirect.')], {}, 'mx')];
   const restateAt = T0 + (restated.length - 1) * 1000;
   assert.deepEqual(read(timed(restated), { runStart: T0, promptAt: restateAt }), { text: 'Changed the redirect.', complete: true });
-  assert.deepEqual(read(timed([...restated, cUser('Thanks'), cAssistant([text('Welcome.')], {}, 'mw')]), { runStart: T0, promptAt: restateAt }), { text: 'Changed the redirect.', complete: true, typed: true });
+  assert.deepEqual(read(timed([...restated, cUser('Thanks'), cAssistant([text('Welcome.')], {}, 'mw')]), { runStart: T0, promptAt: restateAt }), { text: 'Changed the redirect.', complete: true, typed: true, lastText: 'Welcome.' });
   // After an office restart promptAt is lost: the last prompt's turn is the answer as before, nothing is typed (the restate prompt is no typed one).
   assert.deepEqual(read(timed(restated), { runStart: T0 }), { text: 'Changed the redirect.', complete: true });
   // promptAt not in the log yet: the last prompt's turn is read, and the result says the office's prompt is unheard.
@@ -309,23 +309,23 @@ test('claude transcript: a prompt typed into the terminal after the office\'s is
 
   // The office's answer wasn't logged yet when the typed prompt came: its segment is incomplete, and typed says so (no interim: nothing is out).
   const unfinished = [cUser('Review task #7'), cAssistant([text('Reading the diff.'), { type: 'tool_use', id: 'r1', name: 'Read', input: {} }], {}, 'mu'), cUser([{ type: 'tool_result', tool_use_id: 'r1', content: 'x' }]), cUser('How is it going?'), cAssistant([text('Fine.')], {}, 'mc')];
-  assert.deepEqual(read(timed(unfinished)), { text: 'Reading the diff.', complete: false, typed: true });
+  assert.deepEqual(read(timed(unfinished)), { text: 'Reading the diff.', complete: false, typed: true, lastText: 'Fine.' });
 
   // What reads like a notification isn't one when the CLI sets `origin` (on the transcript's other lines): typed, whatever it starts with.
   const body = '<task-notification>\n<task-id>ag1</task-id>\n<status>completed</status>\n</task-notification>';
   const spoofable = (typedLine: object) => read(timed([cUser('Implement task #7'), ...launch, interimText, notice, cAssistant([text('Done.')], {}, 'md'), typedLine, cAssistant([text('Sure.')], {}, 'ms')]));
-  assert.deepEqual(spoofable(cUser(body)), { text: 'Done.', complete: true, typed: true });
-  assert.deepEqual(spoofable(cUser(body, { origin: { kind: 'human' } })), { text: 'Done.', complete: true, typed: true });
+  assert.deepEqual(spoofable(cUser(body)), { text: 'Done.', complete: true, typed: true, lastText: 'Sure.' });
+  assert.deepEqual(spoofable(cUser(body, { origin: { kind: 'human' } })), { text: 'Done.', complete: true, typed: true, lastText: 'Sure.' });
   // A CLI that sets no origin anywhere keeps the text match: the same line is the notification's own turn.
   assert.deepEqual(read(timed([cUser('Implement task #7'), ...launch, interimText, cUser(body), cAssistant([text('Done.')], {}, 'md')])), { text: 'Done.', complete: true });
 
   // A person's prompt logged after promptAt but before the office's: the head of the office's text finds it.
   const racing = timed([cUser('Chat with me'), cAssistant([text('chat')], {}, 'mc'), cUser('Review task #7,\nplease'), cAssistant([text('REVIEW: APPROVED')], {}, 'mr')]);
   assert.deepEqual(read(racing, { runStart: T0, promptAt: T0, promptHead: 'Review task #7, please' }), { text: 'REVIEW: APPROVED', complete: true });
-  assert.deepEqual(read(racing, { runStart: T0, promptAt: T0 }), { text: 'chat', complete: true, typed: true });
+  assert.deepEqual(read(racing, { runStart: T0, promptAt: T0 }), { text: 'chat', complete: true, typed: true, lastText: 'REVIEW: APPROVED' });
 
   // A helper's notification (its own prompt) nothing has answered in the log, and a typed prompt after it: that turn is over, not resuming.
-  assert.deepEqual(read(timed([cUser('Implement task #7'), ...launch, interimText, notice, cUser('How is it going?'), cAssistant([text('Fine.')], {}, 'mc')])), { text: '', complete: false, typed: true });
+  assert.deepEqual(read(timed([cUser('Implement task #7'), ...launch, interimText, notice, cUser('How is it going?'), cAssistant([text('Fine.')], {}, 'mc')])), { text: '', complete: false, typed: true, lastText: 'Fine.' });
   // A plan asked for in a typed turn is the structured answer, even when the office's turn has no text.
   const toolOnly = [cUser('Plan task #7'), cAssistant([{ type: 'tool_use', id: 'r1', name: 'Read', input: {} }], {}, 'mu'), cUser([{ type: 'tool_result', tool_use_id: 'r1', content: 'x' }])];
   const planTyped = cAssistant([{ type: 'tool_use', id: 'p1', name: 'ExitPlanMode', input: { plan: 'The plan' } }], {}, 'mp');
@@ -406,10 +406,10 @@ test('claude transcript: teammates (agent teams) still working, from their own t
   // A prompt typed over the office's turns: the answer is interim only when a teammate is still at work by the lead's log at that point.
   const mine = { runStart: Date.parse(at(0)), promptAt: Date.parse(at(0)) };
   const typedAfterTeam = (...mid: object[]) => lead(withTs([cUser('Implement task #7'), ...spawn('a', 's1'), wait, ...mid, cUser('How is it going?'), cAssistant([text('Fine.')], {}, 'mc')], 1));
-  assert.deepEqual(readClaudeTurn(typedAfterTeam(), mine), { text: 'Waiting for the teammates.', complete: true, background: 1, typed: true, interim: true });
+  assert.deepEqual(readClaudeTurn(typedAfterTeam(), mine), { text: 'Waiting for the teammates.', complete: true, background: 1, typed: true, interim: true, lastText: 'Fine.' });
   // The teammate finished (idle) and the agent gave its final answer: that answer stands, nothing to restate.
   const finished = [mail(tag('a', idle('a'))), cAssistant([text('All done.')], {}, 'mf')];
-  assert.deepEqual(readClaudeTurn(typedAfterTeam(...finished), mine), { text: 'All done.', complete: true, typed: true });
+  assert.deepEqual(readClaudeTurn(typedAfterTeam(...finished), mine), { text: 'All done.', complete: true, typed: true, lastText: 'Fine.' });
   // A wake after the idle puts it back at work.
   assert.equal(readClaudeTurn(typedAfterTeam(...finished, ...send('a', 'q9')), mine)?.interim, true);
 
@@ -593,4 +593,106 @@ test('claudeInterruptedSince: an Esc Claude logged as an interrupt line at or af
   assert.equal(claudeInterruptedSince(write('t.jsonl', [cUser('go'), interrupt('2026-01-01T10:00:11Z')]), at), true);
   assert.equal(claudeInterruptedSince(write('u.jsonl', [cUser('go'), cUser('[Request interrupted by user for tool use]', { timestamp: '2026-01-01T10:00:11Z' })]), at), true);
   assert.equal(claudeInterruptedSince(path.join(path.dirname(file), 'missing.jsonl'), at), false);
+});
+
+test('codex rollout: the launch prompt not in the rollout yet makes the turn unheard: the previous turn\'s WORK DONE is no answer to it', (t) => {
+  const write = scratch(t);
+  const user = (t: string, ts: string) => [{ type: 'response_item', timestamp: ts, payload: { type: 'message', role: 'user', content: [{ type: 'input_text', text: t }] } }, { type: 'event_msg', timestamp: ts, payload: { type: 'user_message', message: t } }];
+  const done = (t: string) => ({ type: 'event_msg', payload: { type: 'task_complete', turn_id: 'x', last_agent_message: t } });
+  const at = Date.now() - 5000;
+  const iso = (ms: number) => new Date(at + ms).toISOString();
+  const old = write('old.jsonl', [...user('Implement it', iso(-10_000)), done('Done.\n\nWORK DONE')]);
+  assert.equal(readCodexTurn(old, { promptAt: at, promptHead: 'A comment was made' })?.unheard, true, 'only the earlier turn is in the rollout');
+  const got = write('got.jsonl', [...user('Implement it', iso(-10_000)), done('Done.\n\nWORK DONE'), ...user('A comment was made on task 3', iso(1000))]);
+  assert.equal(readCodexTurn(got, { promptAt: at, promptHead: 'A comment was made' })?.unheard, undefined);
+  assert.equal(readCodexTurn(old)?.unheard, undefined, 'no prompt time, nothing to wait for');
+});
+
+test('codex rollout: past the wait the launch prompt is `lost`, not `unheard` and never accepted as the old turn\'s answer; a rollout with no earlier turn is not judged', (t) => {
+  const write = scratch(t);
+  const user = (t: string, ts: string) => [{ type: 'response_item', timestamp: ts, payload: { type: 'message', role: 'user', content: [{ type: 'input_text', text: t }] } }, { type: 'event_msg', timestamp: ts, payload: { type: 'user_message', message: t } }];
+  const done = (t: string) => ({ type: 'event_msg', payload: { type: 'task_complete', turn_id: 'x', last_agent_message: t } });
+  const at = Date.now() - 20 * 60_000;
+  const iso = (ms: number) => new Date(at + ms).toISOString();
+  const old = write('old.jsonl', [...user('Implement it', iso(-60_000)), done('Done.\n\nWORK DONE')]);
+  const r = readCodexTurn(old, { promptAt: at, promptHead: 'A comment was made' });
+  assert.deepEqual(r?.lost, { launch: true, office: [] });
+  assert.equal(r?.unheard, undefined);
+  const office = readCodexTurn(old, { officePrompts: [{ at, head: 'Comment from Grace' }] });
+  assert.deepEqual(office?.lost, { office: [0] });
+  assert.equal(readCodexTurn(write('none.jsonl', [done('x')]), { promptAt: at })?.lost, undefined);
+});
+
+test('office comments: one a prompt hook heard but the log does not show yet keeps the turn unheard, and so does the last of several', (t) => {
+  const write = scratch(t);
+  const now = Date.now();
+  const iso = (ms: number) => new Date(now + ms).toISOString();
+  const cx = (t: string, ts: string) => [{ type: 'response_item', timestamp: ts, payload: { type: 'message', role: 'user', content: [{ type: 'input_text', text: t }] } }, { type: 'event_msg', timestamp: ts, payload: { type: 'user_message', message: t } }];
+  const done = (t: string) => ({ type: 'event_msg', payload: { type: 'task_complete', turn_id: 'x', last_agent_message: t } });
+  const a = { at: now - 3000, head: 'Comment from Grace A' };
+  const b = { at: now - 2000, head: 'Comment from Grace B' };
+  // Codex: the hook heard A, the rollout has only the earlier turn.
+  const lag = write('lag.jsonl', [...cx('Implement it', iso(-9000)), done('Done.\n\nWORK DONE')]);
+  const r1 = readCodexTurn(lag, { officePrompts: [{ ...a, heard: true }] });
+  assert.equal(r1?.unheard, true);
+  assert.deepEqual(r1?.waiting, [0]);
+  // A is in, B (typed right after) is not: the turn read is A's, not B's.
+  const one = write('one.jsonl', [...cx('Implement it', iso(-9000)), ...cx('Comment from Grace A: x', iso(-2500)), done('A done.\n\nWORK DONE')]);
+  const r2 = readCodexTurn(one, { officePrompts: [{ ...a, heard: true }, { ...b, heard: true }] });
+  assert.equal(r2?.unheard, true);
+  assert.deepEqual(r2?.waiting, [1]);
+  const both = write('both.jsonl', [...cx('Implement it', iso(-9000)), ...cx('Comment from Grace A: x', iso(-2500)), done('A done.'), ...cx('Comment from Grace B: y', iso(-1500)), done('B done.\n\nWORK DONE')]);
+  const r3 = readCodexTurn(both, { officePrompts: [{ ...a, heard: true }, { ...b, heard: true }] });
+  assert.equal(r3?.unheard, undefined);
+  assert.equal(r3?.text, 'B done.\n\nWORK DONE');
+  // Claude: the same.
+  const stamp = (ms: number) => ({ timestamp: iso(ms) });
+  const cl = write('cl.jsonl', [cUser('Implement it', stamp(-9000)), cAssistant([text('Done.\n\nWORK DONE')], {}, 'm1')]);
+  const c1 = readClaudeTurn(cl, { officePrompts: [{ ...a, heard: true }] });
+  assert.equal(c1?.unheard, true);
+  assert.deepEqual(c1?.waiting, [0]);
+});
+
+test('office comments: one log prompt acknowledges at most one comment, so two that begin alike are told apart', (t) => {
+  const write = scratch(t);
+  const now = Date.now();
+  const iso = (ms: number) => new Date(now + ms).toISOString();
+  const cx = (t: string, ts: string) => [{ type: 'response_item', timestamp: ts, payload: { type: 'message', role: 'user', content: [{ type: 'input_text', text: t }] } }, { type: 'event_msg', timestamp: ts, payload: { type: 'user_message', message: t } }];
+  const done = (t: string) => ({ type: 'event_msg', payload: { type: 'task_complete', turn_id: 'x', last_agent_message: t } });
+  const same = { head: 'Comment from Grace on task #3' };
+  const prompts = [{ at: now - 3000, ...same }, { at: now - 2000, ...same }];
+  const one = write('one.jsonl', [...cx('Implement it', iso(-9000)), ...cx('Comment from Grace on task #3: rename', iso(-1500)), done('First done.\n\nWORK DONE')]);
+  const r = readCodexTurn(one, { officePrompts: prompts });
+  assert.equal(r?.unheard, true, 'the second is still to be received');
+  assert.deepEqual(r?.waiting, [1]);
+  assert.deepEqual(r?.seen, [0]);
+  const two = write('two.jsonl', [...cx('Implement it', iso(-9000)), ...cx('Comment from Grace on task #3: a', iso(-1500)), ...cx('Comment from Grace on task #3: b', iso(-1000)), done('Both.\n\nWORK DONE')]);
+  assert.equal(readCodexTurn(two, { officePrompts: prompts })?.unheard, undefined);
+  const stamp = (ms: number) => ({ timestamp: iso(ms) });
+  const cl = write('cl.jsonl', [cUser('Implement it', stamp(-9000)), cUser('Comment from Grace on task #3: a', stamp(-1500)), cAssistant([text('First done.\n\nWORK DONE')], {}, 'm1')]);
+  const c = readClaudeTurn(cl, { officePrompts: prompts });
+  assert.equal(c?.unheard, true);
+  assert.deepEqual(c?.waiting, [1]);
+});
+
+test('office comments: one seen in the log once is never waited for or lost again, and one older than the tail that was read counts as received', (t) => {
+  const write = scratch(t);
+  const now = Date.now();
+  const long = now - 20 * 60_000;
+  const iso = (ms: number) => new Date(ms).toISOString();
+  const cx = (t: string, ts: string) => [{ type: 'response_item', timestamp: ts, payload: { type: 'message', role: 'user', content: [{ type: 'input_text', text: t }] } }, { type: 'event_msg', timestamp: ts, payload: { type: 'user_message', message: t } }];
+  const done = (t: string) => ({ type: 'event_msg', payload: { type: 'task_complete', turn_id: 'x', last_agent_message: t } });
+  const tail = [...cx('Later prompt', iso(now - 1000)), done('Done.\n\nWORK DONE')];
+  const f = write('tail.jsonl', tail);
+  const gone = { at: long, head: 'Comment #5 from Grace' };
+  assert.equal(readCodexTurn(f, { officePrompts: [gone] })?.lost?.office[0], 0, 'unseen, not in the log, past the wait: lost');
+  const r = readCodexTurn(f, { officePrompts: [{ ...gone, seen: true }] });
+  assert.equal(r?.lost, undefined);
+  assert.equal(r?.unheard, undefined);
+  // A log cut at its head (a tail of 16 MB was read): the comment's moment is before the tail's first line.
+  const filler = { type: 'event_msg', timestamp: iso(long + 1000), payload: { type: 'agent_message', message: 'x'.repeat(1000) } };
+  const big = write('big.jsonl', [...cx('Comment #5 from Grace on task #1', iso(long)), ...Array.from({ length: 17_500 }, () => filler), ...tail]);
+  const cut = readCodexTurn(big, { officePrompts: [{ at: long - 5000, head: 'Comment #6 from Grace' }] });
+  assert.equal(cut?.lost, undefined, 'older than the tail that was read: received');
+  assert.deepEqual(cut?.seen, [0]);
 });

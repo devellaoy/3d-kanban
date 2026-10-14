@@ -60,9 +60,36 @@ export interface TurnResult {
   interim?: true;
   /** With `typed`: the typed turn hasn't ended in the log (no reply of text alone after the log's last prompt yet, or a tool runs). */
   typedOpen?: true;
+  /**
+   * Claude: the final answer of the log's last turn, when that is not `text` (a prompt typed into the terminal took the turn after the
+   * office's): a marker the person's turn ended with still ends the run. Absent otherwise.
+   */
+  lastText?: string;
   /** Claude: the office's last prompt (`promptAt`) isn't in the log yet, so the turn read isn't the one the office asked for. */
   unheard?: true;
+  /**
+   * The wait for the office's prompts (OFFICE_PROMPT_WAIT_MS) is over and the log still doesn't show them: the turn read is an earlier one, whose
+   * marker must never end the run. `launch`: the run's own prompt (Codex); `office`: indices into `officePrompts` of the comments typed in.
+   */
+  lost?: { launch?: true; office: number[] };
+  /** Indices into `officePrompts` of the comments the log doesn't show yet, whether or not a prompt hook heard them (the engine gives them back when the run ends). */
+  waiting?: number[];
+  /** Indices into `officePrompts` the reader found in the log for the first time (the engine remembers them: `seen`). */
+  seen?: number[];
 }
+
+/** What readTurnResult may be told (see TaskAgentAdapter.readTurnResult). */
+export interface ReadOpts {
+  since?: number;
+  runStart?: number;
+  promptAt?: number;
+  promptHead?: string;
+  /** Comments the office typed into the run while it worked (when, the start of their text, and whether the agent's prompt hook confirmed them): prompts of the office's own, not a person's. One the log doesn't show yet (a prompt hook hearing it is no proof: the turn read may still be an earlier one) makes the turn `unheard`. */
+  officePrompts?: { at: number; head: string; heard?: boolean; seen?: boolean }[];
+}
+
+/** How long a typed comment the log doesn't show yet (and no prompt hook confirmed) is waited for before the run goes on without it (15 min). */
+export const OFFICE_PROMPT_WAIT_MS = 15 * 60_000;
 
 export interface TaskAgentAdapter {
   tool: KanbanTool;
@@ -75,9 +102,9 @@ export interface TaskAgentAdapter {
    * logged at or after it, so a prompt typed into the worker's terminal meanwhile doesn't move the window.
    * `promptAt`: when the office last gave this run a prompt (ms; the launch, or a restate): the answer is read from
    * that prompt's turns, and a later prompt that isn't a notification is `typed`; `promptHead`: the start of the text the office typed
-   * then, to find that prompt among a person's typed ones. Codex ignores all four.
+   * then, to find that prompt among a person's typed ones; `officePrompts`: the comments typed into the run since. Codex ignores all of them.
    */
-  readTurnResult(transcriptPath: string, opts?: { since?: number; runStart?: number; promptAt?: number; promptHead?: string }): TurnResult | undefined;
+  readTurnResult(transcriptPath: string, opts?: ReadOpts): TurnResult | undefined;
   /** Whether the log shows the turn interrupted (an Esc) at or after `since` (ms); only Claude logs that. */
   interruptedSince?(transcriptPath: string, since: number): boolean;
   /** What upstream's spawn may carry as the worker's model (it validates it); the rest goes in launchArgs. */
@@ -88,9 +115,13 @@ export interface TaskAgentAdapter {
 /** A session log can be long: its last 16 MB hold the turn the engine wants. */
 const TAIL_BYTES = 16 * 1024 * 1024;
 
+/** The lines of a log; `cut` when only its tail was read. */
+export type JsonLines = Record<string, unknown>[] & { cut?: true };
+
 /** The JSON lines of a log (its last `tailBytes`, 16 MB by default), skipping any that don't parse. */
-export function readJsonLines(file: string, tailBytes = TAIL_BYTES): Record<string, unknown>[] | undefined {
+export function readJsonLines(file: string, tailBytes = TAIL_BYTES): JsonLines | undefined {
   let text: string;
+  let cut = false;
   try {
     const size = statSync(file).size;
     const start = Math.max(0, size - tailBytes);
@@ -103,11 +134,12 @@ export function readJsonLines(file: string, tailBytes = TAIL_BYTES): Record<stri
       closeSync(fd);
     }
     // Cut mid-line: the first line is a fragment.
-    if (start > 0) text = text.slice(text.indexOf('\n') + 1);
+    if (start > 0) (cut = true), (text = text.slice(text.indexOf('\n') + 1));
   } catch {
     return undefined;
   }
-  const out: Record<string, unknown>[] = [];
+  const out: JsonLines = [];
+  if (cut) out.cut = true;
   for (const line of text.split('\n')) {
     if (!line.trim()) continue;
     try {

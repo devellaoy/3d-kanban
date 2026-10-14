@@ -37,6 +37,8 @@ export interface Rule {
   commit?: string;
   /** Wait this long before answering (to type a comment meanwhile). */
   delayMs?: number;
+  /** The reply is left as it is: a prompt that asks for the WORK DONE line gets it appended otherwise, as an agent that finished its work gives it. */
+  noMarker?: boolean;
   /** Waits this long before submitting the prompt (the UserPromptSubmit hook), after the process started. */
   submitDelayMs?: number;
   /** Run git with these arguments in the agent's folder first (checking out a branch, say). */
@@ -74,6 +76,12 @@ export interface Rule {
    */
   teammates?: string;
   teammatesMs?: number;
+  /**
+   * With `teammates`: how the teammate ends. 'shutdown': it approves a shutdown request (a SendMessage shutdown_response tool call) and its
+   * process dies before the tool result, so its transcript ends on that call and the lead hears nothing; 'busy': it never stops working
+   * (its transcript ends mid-tool) and the lead hears nothing. The lead's final reply and Stop follow either way.
+   */
+  teamEnds?: 'shutdown' | 'busy';
   /** With `teammates`: after the final Stop a teammate still hooks the lead's worker (it works again), and this long after, the lead's turn on its message stops. */
   lateTeamMs?: number;
   /**
@@ -185,6 +193,9 @@ async function typedAfter(rule, msgId) {
 async function turn(prompt, answered) {
   record({ prompt });
   const rule = rules().find((r) => new RegExp(r.when).test(prompt)) || { reply: 'OK' };
+  // Once a prompt of the session has asked for the WORK DONE line, the agent gives it, as one that finished its work does (a rule's noMarker leaves its reply as it is).
+  if (/WORK DONE/.test(prompt)) fs.writeFileSync(transcript + '.marker', '');
+  if (!rule.noMarker && fs.existsSync(transcript + '.marker') && !/^\s*WORK DONE\s*$/m.test(rule.reply)) rule.reply = rule.reply + '\nWORK DONE';
   if (!answered) {
     if (rule.submitDelayMs) await new Promise((r) => setTimeout(r, rule.submitDelayMs));
     await post('UserPromptSubmit', { prompt });
@@ -286,9 +297,12 @@ async function turn(prompt, answered) {
       // The teammate works: its hooks reach the lead's worker with an agent_id, and are none of the lead's turn.
       await post('PreToolUse', { tool_name: 'Bash', tool_input: { command: 'work' }, agent_id: 'helper@session-1' });
       await new Promise((r) => setTimeout(r, rule.teammatesMs ?? 300));
-      own({ type: 'assistant', message: { id: 'tm-own-2', role: 'assistant', content: [{ type: 'text', text: 'Done.' }] } });
-      const idle = JSON.stringify({ type: 'idle_notification', from: 'helper', timestamp: stamp(), idleReason: 'available', summary: '[to main] Done', result: 'Done {with braces}' });
-      lead({ type: 'user', message: { role: 'user', content: 'Another Claude session sent a message:\n<teammate-message teammate_id="helper" color="blue" summary="Done">\nAll done.\n</teammate-message>\n<teammate-message teammate_id="helper" color="blue">\n' + idle + '\n</teammate-message>' } });
+      if (rule.teamEnds === 'shutdown') own({ type: 'assistant', message: { id: 'tm-own-2', role: 'assistant', content: [{ type: 'tool_use', id: 'tm-own-s', name: 'SendMessage', input: { to: 'team-lead', message: { type: 'shutdown_response', request_id: 'r1', approve: true } } }] } });
+      else if (!rule.teamEnds) {
+        own({ type: 'assistant', message: { id: 'tm-own-2', role: 'assistant', content: [{ type: 'text', text: 'Done.' }] } });
+        const idle = JSON.stringify({ type: 'idle_notification', from: 'helper', timestamp: stamp(), idleReason: 'available', summary: '[to main] Done', result: 'Done {with braces}' });
+        lead({ type: 'user', message: { role: 'user', content: 'Another Claude session sent a message:\n<teammate-message teammate_id="helper" color="blue" summary="Done">\nAll done.\n</teammate-message>\n<teammate-message teammate_id="helper" color="blue">\n' + idle + '\n</teammate-message>' } });
+      }
       lead({ type: 'assistant', message: { id: msgId, role: 'assistant', content: [{ type: 'text', text: rule.reply }] } });
       await post('Stop', { last_assistant_message: rule.reply });
       if (rule.teamAgainMs) {
@@ -561,7 +575,7 @@ export async function engineFixture(opts: { engine?: EngineOptions; repos?: Floo
     workerExtras: () => ({ args: [], env: { FAKE_EXTRA: '1' } }),
   };
   const makeEngine = () => {
-    const e = createEngine(ctx, { readPauseMs: 50, stopGraceMs: 1500, ...opts.engine });
+    const e = createEngine(ctx, { readPauseMs: 50, stopGraceMs: 1500, nudgeIdleMs: 400, ...opts.engine });
     ctx.engine = e;
     e.begin();
     return e;

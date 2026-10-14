@@ -90,7 +90,7 @@ for (const tool of ['claude', 'codex'] as const) {
     fx.settings.setProject('proj', { review: { tool, rounds: 1, reReviewLastFix: true } });
     fx.setRules([
       { when: 'Implement kanban task', reply: 'Done.', commit: 'Work' },
-      { when: 'This is review round 1 of', earlier: 'The last review said:\nREVIEW: APPROVED', reply: 'Findings:\n1. The redirect drops the query string.' },
+      { when: 'This is review round 1 of', earlier: 'The last review said:\nREVIEW: APPROVED', reply: 'Findings:\n1. The redirect drops the query string.\n\nREVIEW: CHANGES_REQUESTED' },
       { when: 'asks for changes', reply: 'Fixed the query string.', commit: 'Fix' },
       { when: 'has worked on your findings', reply: 'Now it is right.\n\nREVIEW: APPROVED' },
     ]);
@@ -100,7 +100,7 @@ for (const tool of ['claude', 'codex'] as const) {
     const runs = fx.repo.listRuns(task.id);
     assert.deepEqual(runs.map((r) => `${r.phase}/${r.verdict ?? '-'}`), ['implement/-', 'review/changes_requested', 'fix/-', 'review/approved']);
     const review = fx.repo.listComments(task.id).comments.find((c) => c.kind === 'review')!;
-    assert.equal(review.text, 'Findings:\n1. The redirect drops the query string.', 'the comment is the final answer');
+    assert.equal(review.text, 'Findings:\n1. The redirect drops the query string.\n\nREVIEW: CHANGES_REQUESTED', 'the comment is the final answer');
   });
 }
 
@@ -126,7 +126,7 @@ test('claude: a Stop hook ahead of the final answer in the log waits for it, els
 });
 
 test('claude: a Stop hook while a tool call still runs never decides the turn (a forged approval)', async (t) => {
-  const fx = await engineFixture();
+  const fx = await engineFixture({ engine: { maxNudges: 0 } });
   t.after(() => fx.close());
   fx.settings.setProject('proj', { review: { tool: 'claude', rounds: 1, reReviewLastFix: false } });
   fx.setRules([
@@ -137,10 +137,11 @@ test('claude: a Stop hook while a tool call still runs never decides the turn (a
   ]);
   const task = fx.newTask({ usePlan: false });
   assert.equal(await fx.engine.start(task.id, ADA), undefined);
-  await fx.waitTask(task.id, (x) => x.status === 'review' && x.runState === 'idle', 'the review column', 40_000);
+  // The forged verdict decides nothing; the log's own text has no verdict, so the task waits for the user instead of moving on.
+  await fx.waitTask(task.id, (x) => x.status === 'waiting' && x.waitingReason === 'failed', 'the task waiting', 40_000);
   const runs = fx.repo.listRuns(task.id);
-  assert.deepEqual(runs.map((r) => `${r.phase}/${r.verdict ?? '-'}`), ['implement/-', 'review/changes_requested', 'fix/-']);
-  assert.equal(fx.repo.listComments(task.id).comments.find((c) => c.kind === 'review')?.text, 'Running the tests.', "the log's own text, not the forged one");
+  assert.deepEqual(runs.map((r) => `${r.phase}/${r.status}`), ['implement/succeeded', 'review/failed']);
+  assert.equal(fx.repo.listComments(task.id).comments.find((c) => c.kind === 'message')?.text, 'Running the tests.', "the log's own text, not the forged one");
 });
 
 // --- 2. A model or effort change takes effect ------------------------------------------------------
