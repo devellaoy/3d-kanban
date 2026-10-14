@@ -633,3 +633,23 @@ test('moving a held task on: to Review keeps what was said meanwhile for its nex
     kanban.ctx.repo.updateTask(1, { status: to === 'done' ? 'review' : 'done' });
   }
 });
+
+test('an edit links the uploads its new description links; an upload whose link was taken out stays unattached', async (t) => {
+  const { client, kanban } = office(t);
+  const ada = client('Ada', false);
+  await ada.ask({ t: 'kanban.task.create', task: { project: 'web', title: 'x', description: 'first' } });
+  const [kept, dropped] = ['e'.repeat(32), 'f'.repeat(32)];
+  for (const id of [kept, dropped]) kanban.ctx.repo.addAttachment({ id, name: 'shot.png', mime: 'image/png', size: 1, stored: `${id}-shot.png`, createdBy: 'Ada', createdAt: Date.now() });
+  okOf(await ada.ask({ t: 'kanban.task.update', id: 1, patch: { description: `see ![shot](/api/kanban/attachments/${kept})`, attachmentIds: [kept] } }));
+  assert.equal(kanban.ctx.repo.getAttachment(kept)?.taskId, 1);
+  assert.equal(kanban.ctx.repo.getAttachment(kept)?.commentId, undefined);
+  assert.equal(kanban.ctx.repo.getAttachment(dropped)?.taskId, undefined, 'never sent, so never the task’s');
+});
+
+test('the comment, answer and request-changes boxes and the edit dialog upload unattached: the message or the save links what the text still has', () => {
+  for (const f of ['taskview.ts', 'create.ts']) {
+    const src = readFileSync(path.join('src', 'client', 'kanban', f), 'utf8');
+    assert.doesNotMatch(src, /attachBox\([^)]*taskId/, `${f}: an upload attached to the task at once would stay its file when the link is taken out of the text`);
+  }
+  assert.doesNotMatch(readFileSync(path.join('src', 'client', 'kanban', 'attachbox.ts'), 'utf8'), /taskId/);
+});

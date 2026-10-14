@@ -19,7 +19,7 @@ export interface AttachBox {
   adopt(a: KanbanAttachment): void;
 }
 
-export function attachBox(opts: { target: HTMLTextAreaElement; dropZone?: HTMLElement; taskId?: () => number | undefined; insertLinks: boolean; max?: number; onChange?: () => void }): AttachBox {
+export function attachBox(opts: { target: HTMLTextAreaElement; dropZone?: HTMLElement; insertLinks: boolean; max?: number; onChange?: () => void }): AttachBox {
   const done: KanbanAttachment[] = [];
   let uploading = 0;
   const list = h('ul.kb-attachments', { 'aria-live': 'polite' });
@@ -74,7 +74,7 @@ export function attachBox(opts: { target: HTMLTextAreaElement; dropZone?: HTMLEl
 
   const upload = async (f: File, name: string, mark: string) => {
     try {
-      const a = await uploadAttachment(f, name, opts.taskId?.());
+      const a = await uploadAttachment(f, name);
       done.push(a);
       if (!opts.insertLinks) return;
       const link = attachmentMarkdown(a);

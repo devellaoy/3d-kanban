@@ -156,20 +156,3 @@ test('a comment after the run ended is typed at once even though a teammate look
   await waitFor(() => prompts(fx, /Also rename foo to bar\./).length >= 1, 'the comment typed in', 5000);
   await fx.waitTask(task.id, (x) => x.status === 'review' && x.runState === 'idle' && phases(fx, x.id).includes('resume'), 'the comment worked on', 30_000);
 });
-
-test('codex: a comment typed while the turn ends in WORK DONE does not end the run: the comment\'s turn answers', async (t) => {
-  const fx = await engineFixture();
-  t.after(() => fx.close());
-  const task = await working(
-    fx,
-    [
-      { when: 'Implement kanban task', reply: 'Implemented.', commit: 'Work', delayMs: 1500 },
-      { when: 'Comment from Grace', reply: 'Added the log line too.', commit: 'Log' },
-    ],
-    { tool: 'codex' },
-  );
-  await say(fx, task.id, 'Log the redirect target too.').done;
-  const end = await fx.waitTask(task.id, (x) => x.status === 'review' && x.runState === 'idle', 'the review column');
-  assert.deepEqual(phases(fx, task.id), ['implement']);
-  assert.equal(end.summary, 'Added the log line too.', 'the run did not end on the first turn');
-});

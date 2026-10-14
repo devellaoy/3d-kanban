@@ -203,6 +203,7 @@ export function createCorePlugin(ctx: KanbanContext, subs: KanbanSubscriptions):
       const up = taskUpdateFrom(ctx, task, m.patch);
       if (typeof up === 'string') return fail(c, m.rid, up);
       ctx.repo.updateTask(task.id, up);
+      if (m.patch.attachmentIds?.length) ctx.repo.linkAttachments(m.patch.attachmentIds, task.id);
       ctx.repo.appendEvent(task.id, 'edited', { by: c.name, fields: Object.keys(m.patch) });
       ctx.taskChanged(task.id);
       if ('ticket' in m.patch) wallChanged(task.project);

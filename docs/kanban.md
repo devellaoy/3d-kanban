@@ -284,8 +284,8 @@ back to work:
 - The agent is at rest: the comment is its next turn (typed into its terminal, or a worker is hired
   again with the task's session and worktree). It doesn't wait for teammates that look busy in the log.
   In Waiting on the plan, it's an answer or a change request for the plan.
-- The implementer is working: the comment is **typed into its terminal at once** ("Comment from … while
-  you work"), and it takes it into account in its current work; the run goes on and its answer is the
+- The implementer (Claude or Codex) is working: the comment is **typed into its terminal at once** ("Comment from …
+  while you work"), and it takes it into account in its current work; the run goes on and its answer is the
   result. The same when you comment while a run is held for a wait. Nothing is typed into a plan run (the
   plan is answered when it is ready), into an agent that is asking, or before the agent has taken its
   first prompt: those comments are queued.
@@ -294,12 +294,14 @@ back to work:
 - A review round is running, or the run is being stopped: the comment is queued (marked *waiting*), with
   a line saying so, and delivered at the next rest. Comments that came in during a review are worked on
   when the review cycle ends, and that work is reviewed again when the task has review on. A comment made
-  while a Stop is under way is worked on as soon as the run has stopped.
+  while a Stop is under way is worked on as soon as the run has stopped; comments queued before the Stop stay
+  put (only Retry or Continue carries them), also through the turn end of the run that follows.
 - A comment's run that couldn't deliver it (its start failed, or you pressed Stop before the agent took
-  it) puts it back in the queue; Retry and Continue carry it.
+  it) puts it back in the queue; Retry and Continue carry it. The same for a run that took several queued
+  comments from the queue.
 
 On To do, **On hold**, Done and archived tasks a comment is just kept; on a held task it is handed to the agent when the task is resumed. Comments take attachments too,
-and so do the answer box and the plan's **Request changes** (**Ctrl/⌘ + Enter** sends). A file goes into the text where the cursor is (a `![⏳ Uploading …]` placeholder until it is uploaded, then its link; a picture shows in the comment, others are links), and the message carries the files whose links are still in the text when it is sent: delete a link and that file isn't sent. Comments from before this list their files below the text. An agent can read only its own task's files (copies in `kanban/grants/task-<id>/`). After upgrading, a live agent session started before this change is relaunched once at its next turn (its launch arguments change); until then a file sent into it may need a permission prompt.
+and so do the answer box and the plan's **Request changes** (**Ctrl/⌘ + Enter** sends). A file goes into the text where the cursor is (a `![⏳ Uploading …]` placeholder until it is uploaded, then its link; a picture shows in the comment, others are links), and the message carries the files whose links are still in the text when it is sent: delete a link and that file isn't sent (a file is uploaded unattached and belongs to the task or the comment only once the message is sent or the task saved, so a removed link leaves nothing behind). Comments from before this list their files below the text. An agent can read only its own task's files (copies in `kanban/grants/task-<id>/`). After upgrading, a live agent session started before this change is relaunched once at its next turn (its launch arguments change); until then a file sent into it may need a permission prompt.
 
 In the 3D office, what you tell a task's **implementer** while the task is in progress, waiting or in
 review is a comment too: **P** ("💬 Message task #N"), the task's issue card dropped on its desk, and

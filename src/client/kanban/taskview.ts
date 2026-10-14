@@ -391,7 +391,7 @@ class View implements TaskView {
     if (!b) {
       const ta = this.draftArea(key, attrs);
       const wrap = h('div.kb-answerbox');
-      const box = { ta, wrap, attach: attachBox({ target: ta, dropZone: wrap, taskId: () => this.taskId, insertLinks: true }), go: () => {} };
+      const box = { ta, wrap, attach: attachBox({ target: ta, dropZone: wrap, insertLinks: true }), go: () => {} };
       onSendKey(ta, () => box.go());
       this.fileBoxes.set(key, (b = box));
     }
@@ -673,7 +673,7 @@ class View implements TaskView {
     const send = h('button.btn.primary', { type: 'button' }, 'Send') as HTMLButtonElement;
     const hint = h('small.kb-muted', {}, `${sendHint()} · ${task.status === 'todo' || task.status === 'done' ? 'a comment is kept with the task' : task.status === 'on_hold' ? 'a comment is kept and given to the agent when it resumes' : 'a comment puts the agent back to work'}`);
     const wrap = h('div.kb-composer');
-    const attach = attachBox({ target: ta, dropZone: wrap, taskId: () => this.taskId, insertLinks: true });
+    const attach = attachBox({ target: ta, dropZone: wrap, insertLinks: true });
     const go = async () => {
       const text = ta.value.trim();
       const ids = attach.ids();

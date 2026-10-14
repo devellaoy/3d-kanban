@@ -111,40 +111,57 @@ export class Comments<L extends CommentLive> {
   queue(task: KanbanTask, commentId: number | undefined): void {
     const c = commentId !== undefined ? this.d.ctx.repo.getComment(commentId) : undefined;
     if (!c || task.pendingMessages.some((p) => p.commentId === c.id)) return;
-    this.keep(task, c, commentBody(this.d.compose, task, c, this.filesOf(c)));
+    this.keep(task, [{ commentId: c.id, text: commentBody(this.d.compose, task, c, this.filesOf(c)), by: c.authorName, at: c.createdAt }]);
   }
 
   /**
-   * A run that resumed the work with a comment's text never got it to its agent (its launch failed, or it was stopped or exited first): the
-   * comment is queued again, so the next run carries it. Dated by the comment itself, so a Stop's own delivery (comments since the stop) doesn't
-   * send it straight back.
+   * A run that was handed comments never got them to its agent (its launch failed, or it was stopped or exited first): they are queued again, so
+   * the next run carries them. Those are the messages the run took off the queue (`taken`, kept with the run until its prompt is acknowledged) and
+   * the one comment a resume was started with. Dated by the comments themselves, so a Stop's own delivery (comments since the stop) doesn't send
+   * them straight back.
    */
-  requeue(task: KanbanTask, eff: { prompt?: string; text?: string } | undefined, commentId: number | undefined): void {
-    if (commentId === undefined || eff?.prompt !== 'resume' || !eff.text) return;
-    const c = this.d.ctx.repo.getComment(commentId);
-    const now = this.d.ctx.repo.getTask(task.id) ?? task;
-    if (!c || now.pendingMessages.some((p) => p.commentId === c.id)) return;
-    this.keep(now, c, eff.text);
-    this.d.note(task, "The comment didn't reach the agent: it is kept, and goes to it with its next run.");
+  requeue(task: KanbanTask, eff: { prompt?: string; text?: string } | undefined, commentId: number | undefined, taken?: PendingMessage[]) {
+    const back: PendingMessage[] = [...(taken ?? [])];
+    const c = commentId !== undefined && eff?.prompt === 'resume' && eff.text ? this.d.ctx.repo.getComment(commentId) : undefined;
+    if (c && !back.some((m) => m.commentId === c.id)) back.push({ commentId: c.id, text: eff!.text!, by: c.authorName, at: c.createdAt });
+    const fresh = this.restore(task, back);
+    if (fresh) this.d.note(task, `The comment${fresh === 1 ? '' : 's'} didn't reach the agent: kept, and go${fresh === 1 ? 'es' : ''} to it with its next run.`);
   }
 
-  private keep(task: KanbanTask, c: KanbanComment, text: string) {
+  /** Puts messages a run took back on the task's queue (those it doesn't hold already); how many went back. */
+  restore(task: Pick<KanbanTask, 'id' | 'project'>, msgs: PendingMessage[] | undefined): number {
+    const now = this.d.ctx.repo.getTask(task.id);
+    const fresh = now ? (msgs ?? []).filter((m) => this.d.ctx.repo.getComment(m.commentId) && !now.pendingMessages.some((p) => p.commentId === m.commentId)) : [];
+    if (now && fresh.length) this.keep(now, fresh);
+    return fresh.length;
+  }
+
+  private keep(task: KanbanTask, add: PendingMessage[]) {
     const repo = this.d.ctx.repo;
-    const all: PendingMessage[] = [...task.pendingMessages, { commentId: c.id, text, by: c.authorName, at: c.createdAt }];
+    const all: PendingMessage[] = [...task.pendingMessages, ...add].sort((x, y) => x.at - y.at);
     // Messages carried from a hold (queueHeld) are never dropped: nothing may go undelivered while its comment stays pending.
     const newest = new Set(all.filter((m) => !m.held).slice(-PENDING_MAX));
-    repo.setCommentPending(c.id, true);
-    const updated = repo.getComment(c.id);
-    if (updated) this.d.ctx.broadcast({ t: 'kanban.comment', comment: updated, project: task.project }, task.project);
+    for (const m of add) {
+      repo.setCommentPending(m.commentId, true);
+      const updated = repo.getComment(m.commentId);
+      if (updated) this.d.ctx.broadcast({ t: 'kanban.comment', comment: updated, project: task.project }, task.project);
+    }
     this.d.update(task.id, { pendingMessages: all.filter((m) => m.held || newest.has(m)) });
   }
 
+  /** The comments older than a Stop whose own were delivered: only a Retry or Continue carries them (the automatic hand-over skips them). */
+  park(task: KanbanTask, since: number) {
+    const now = this.d.ctx.repo.getTask(task.id) ?? task;
+    if (now.pendingMessages.some((m) => m.at < since && !m.parked)) this.d.update(task.id, { pendingMessages: now.pendingMessages.map((m) => (m.at < since ? { ...m, parked: true as const } : m)) });
+  }
+
   /**
-   * The pending comments (those made at or after `since`, when it is given), taken off the task to be typed in now: one message, and who
-   * wrote it. The older ones stay for a Retry or Continue.
+   * The pending comments (those made at or after `since`, when it is given; else all but the parked ones), taken off the task to be typed in now:
+   * one message, who wrote it, and the messages themselves (kept by the run until its prompt is acknowledged: see requeue). The older ones stay
+   * for a Retry or Continue.
    */
-  take(task: KanbanTask, since?: number): { text: string; author: string } | undefined {
-    const msgs = since === undefined ? task.pendingMessages : task.pendingMessages.filter((m) => m.at >= since);
+  take(task: KanbanTask, since?: number): { text: string; author: string; msgs: PendingMessage[] } | undefined {
+    const msgs = since === undefined ? task.pendingMessages.filter((m) => !m.parked) : task.pendingMessages.filter((m) => m.at >= since);
     if (!msgs.length) return undefined;
     for (const m of msgs) {
       this.d.ctx.repo.setCommentPending(m.commentId, false);
@@ -155,6 +172,7 @@ export class Comments<L extends CommentLive> {
     return {
       text: msgs.length === 1 ? msgs[0].text : msgs.map((m) => `${m.by}:\n${m.text}`).join('\n\n'),
       author: [...new Set(msgs.map((m) => m.by))].join(', '),
+      msgs,
     };
   }
 }

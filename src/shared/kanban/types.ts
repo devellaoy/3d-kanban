@@ -95,6 +95,7 @@ export interface PendingMessage {
   text: string;
   by: string;
   at: number;
+  parked?: true; // older than a Stop whose own comments were delivered: only Retry or Continue carries it, the automatic hand-over skips it
 }
 
 /** A pull request opened for a task, one per repository (see pr_links). */
@@ -208,6 +209,8 @@ export interface QueuedRun {
   round?: number;
   pending?: boolean;
   text?: string;
+  /** The queued comments the run took off the task for its prompt, kept until an agent has the prompt: if it never does, they are put back. */
+  taken?: PendingMessage[];
   restarted?: boolean; // put back by a restart that cut the run off: it carries on by itself (engine/restart.ts), whatever its prompt
 }
 

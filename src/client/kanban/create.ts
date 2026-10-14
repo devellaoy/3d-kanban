@@ -52,7 +52,7 @@ export function openCreate(api: KanbanApi, o: CreateOptions = {}) {
   const title = textInput(editing?.title ?? pre.title ?? '', { maxlength: KANBAN_LIMITS.title, required: true, autofocus: true, placeholder: 'What needs doing, in a line' });
   const desc = textArea(editing?.description ?? pre.description ?? '', { rows: 8, maxlength: KANBAN_LIMITS.description, placeholder: 'The details, in Markdown. Paste or drop screenshots and files here.', spellcheck: 'true' });
   const descWrap = h('div.kb-desc-box', {}, desc);
-  const attach = attachBox({ target: desc, dropZone: descWrap, taskId: () => editing?.id, insertLinks: true });
+  const attach = attachBox({ target: desc, dropZone: descWrap, insertLinks: true });
   descWrap.append(attach.el, h('small.kb-hint', {}, 'Markdown. Files pasted, dropped or 📎 attached go in where the cursor is.'));
   const ticket = textInput(editing?.ticket ?? pre.ticket ?? '', { maxlength: KANBAN_LIMITS.ticket, placeholder: 'UYT-1415 / gh:owner/repo#12' });
   const ticketUrl = textInput(editing?.ticketUrl ?? pre.ticketUrl ?? '', { maxlength: KANBAN_LIMITS.url, placeholder: 'https://…', type: 'url' });
@@ -201,6 +201,8 @@ export function openCreate(api: KanbanApi, o: CreateOptions = {}) {
       if (goal.value.trim() !== (editing.goal ?? '')) patch.goal = goal.value.trim() || null;
       const rv = reviewValue();
       if (JSON.stringify(rv ?? null) !== JSON.stringify(editing.overrides.review && Object.keys(editing.overrides.review).length ? editing.overrides.review : null)) patch.review = rv ?? null;
+      // Uploads wait unattached until saved, so a file whose link was taken out of the text is never kept.
+      if (patch.description !== undefined && attach.ids().length) patch.attachmentIds = attach.ids();
       if (!Object.keys(patch).length) return modal.close();
       if (await run(() => api.request<KanbanOk>({ t: 'kanban.task.update', id: editing.id, patch }), button, 'Saved')) modal.close();
       return;
