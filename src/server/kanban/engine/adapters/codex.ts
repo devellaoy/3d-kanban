@@ -67,21 +67,20 @@ export function readCodexTurn(file: string, opts?: ReadOpts): TurnResult | undef
   }
   const text = (final ?? lastAssistant).trim() || (apiError ?? '');
   // A comment the office typed that the rollout has no user message for yet (and no prompt hook confirmed) is still to be answered: the turn read is an earlier one.
-  const unheard = (opts?.officePrompts ?? []).some(
-    (p) =>
-      !p.heard &&
-      Date.now() - p.at < OFFICE_PROMPT_WAIT_MS &&
-      !lines.some((l) => {
-        const m = codexUserMessage(l);
-        return m !== undefined && Date.parse(String(l.timestamp)) >= p.at && m.replace(/\s+/g, ' ').includes(p.head);
-      }),
-  );
-  // The office's last prompt (a launch or a restate) isn't in the rollout yet either: the turn read is an earlier one, whose marker is no answer to it.
-  const launched = opts?.promptAt !== undefined && Date.now() - opts.promptAt < OFFICE_PROMPT_WAIT_MS && !lines.some((l) => {
-    const m = codexUserMessage(l);
-    return m !== undefined && Date.parse(String(l.timestamp)) >= opts.promptAt! && (!opts.promptHead || m.replace(/\s+/g, ' ').includes(opts.promptHead));
-  });
-  return { text, complete, ...(apiError ? { apiError } : {}), ...(unheard || launched ? { unheard: true as const } : {}) };
+  // So is the office's last prompt (a launch or a restate) when the rollout's last user message is older than it. Past OFFICE_PROMPT_WAIT_MS they are `lost` instead.
+  const users = lines.flatMap((l) => (codexUserMessage(l) !== undefined ? [{ at: Date.parse(String(l.timestamp)), text: codexUserMessage(l)!.replace(/\s+/g, ' ') }] : []));
+  const seen = (at: number, head?: string) => users.some((u) => u.at >= at && (!head || u.text.includes(head)));
+  const expired = (at: number) => Date.now() - at >= OFFICE_PROMPT_WAIT_MS;
+  const prompts = opts?.officePrompts ?? [];
+  const waiting = prompts.map((p, i) => ({ p, i })).filter(({ p }) => !p.heard && !seen(p.at, p.head));
+  const launching = opts?.promptAt !== undefined && users.length > 0 && users[users.length - 1].at < opts.promptAt && !seen(opts.promptAt, opts.promptHead);
+  const lost = {
+    ...(launching && expired(opts!.promptAt!) ? { launch: true as const } : {}),
+    office: waiting.filter(({ p }) => expired(p.at)).map(({ i }) => i),
+  };
+  const isLost = !!lost.launch || lost.office.length > 0;
+  const unheard = (launching && !lost.launch) || waiting.some(({ p }) => !expired(p.at));
+  return { text, complete, ...(apiError ? { apiError } : {}), ...(unheard ? { unheard: true as const } : {}), ...(isLost ? { lost } : {}) };
 }
 
 export const codexAdapter: TaskAgentAdapter = {

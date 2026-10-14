@@ -67,6 +67,11 @@ export interface TurnResult {
   lastText?: string;
   /** Claude: the office's last prompt (`promptAt`) isn't in the log yet, so the turn read isn't the one the office asked for. */
   unheard?: true;
+  /**
+   * The wait for the office's prompts (OFFICE_PROMPT_WAIT_MS) is over and the log still doesn't show them: the turn read is an earlier one, whose
+   * marker must never end the run. `launch`: the run's own prompt (Codex); `office`: indices into `officePrompts` of the comments typed in.
+   */
+  lost?: { launch?: true; office: number[] };
 }
 
 /** What readTurnResult may be told (see TaskAgentAdapter.readTurnResult). */

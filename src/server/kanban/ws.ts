@@ -208,7 +208,14 @@ export function createCorePlugin(ctx: KanbanContext, subs: KanbanSubscriptions):
       if (m.patch.description !== undefined) {
         // A picture taken out of the description is no longer the task's (only ones the old text linked: files listed apart from it stay).
         const keep = new Set(linkedAttachmentIds(`${m.patch.description}\n${m.patch.goal === undefined ? task.goal ?? '' : m.patch.goal ?? ''}`));
-        ctx.repo.unlinkAttachments(linkedAttachmentIds(task.description).filter((id) => !keep.has(id)), task.id);
+        const dropped = linkedAttachmentIds(task.description).filter((id) => !keep.has(id));
+        // One a comment copied the link of is that comment's from now on (the first one's), not nobody's.
+        const comments = dropped.length ? ctx.repo.listComments(task.id).comments : [];
+        for (const id of dropped) {
+          const user = comments.find((c) => linkedAttachmentIds(c.text).includes(id));
+          if (user) ctx.repo.linkAttachments([id], task.id, user.id);
+          else ctx.repo.unlinkAttachments([id], task.id);
+        }
       }
       ctx.repo.appendEvent(task.id, 'edited', { by: c.name, fields: Object.keys(m.patch) });
       ctx.taskChanged(task.id);

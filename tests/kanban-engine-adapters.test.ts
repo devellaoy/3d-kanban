@@ -607,3 +607,18 @@ test('codex rollout: the launch prompt not in the rollout yet makes the turn unh
   assert.equal(readCodexTurn(got, { promptAt: at, promptHead: 'A comment was made' })?.unheard, undefined);
   assert.equal(readCodexTurn(old)?.unheard, undefined, 'no prompt time, nothing to wait for');
 });
+
+test('codex rollout: past the wait the launch prompt is `lost`, not `unheard` and never accepted as the old turn\'s answer; a rollout with no earlier turn is not judged', (t) => {
+  const write = scratch(t);
+  const user = (t: string, ts: string) => [{ type: 'response_item', timestamp: ts, payload: { type: 'message', role: 'user', content: [{ type: 'input_text', text: t }] } }, { type: 'event_msg', timestamp: ts, payload: { type: 'user_message', message: t } }];
+  const done = (t: string) => ({ type: 'event_msg', payload: { type: 'task_complete', turn_id: 'x', last_agent_message: t } });
+  const at = Date.now() - 20 * 60_000;
+  const iso = (ms: number) => new Date(at + ms).toISOString();
+  const old = write('old.jsonl', [...user('Implement it', iso(-60_000)), done('Done.\n\nWORK DONE')]);
+  const r = readCodexTurn(old, { promptAt: at, promptHead: 'A comment was made' });
+  assert.deepEqual(r?.lost, { launch: true, office: [] });
+  assert.equal(r?.unheard, undefined);
+  const office = readCodexTurn(old, { officePrompts: [{ at, head: 'Comment from Grace' }] });
+  assert.deepEqual(office?.lost, { office: [0] });
+  assert.equal(readCodexTurn(write('none.jsonl', [done('x')]), { promptAt: at })?.lost, undefined);
+});

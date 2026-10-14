@@ -1,4 +1,4 @@
-import test from 'node:test';
+import test, { mock } from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdirSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
@@ -216,4 +216,46 @@ test('an answer typed to a question and a plan change request resolve their uplo
   const sent = prompts(fx2, /Like this/)[0].prompt!;
   assert.match(sent, GRANT);
   assert.doesNotMatch(sent, /api\/kanban\/attachments/);
+});
+
+test('claude: a typed comment the log never shows within the wait is not answered by the older turn\'s WORK DONE: the run ends unfinished and the comment is kept', async (t) => {
+  const fx = await engineFixture();
+  t.after(() => fx.close());
+  const task = await working(fx, [
+    { when: 'Implement kanban task', earlier: 'Working on it.', reply: 'Implemented.', commit: 'Work', delayMs: 1500, lateLogMs: -1 },
+    { when: 'Comment from Grace', reply: 'Added the log line too.', commit: 'Log', submitDelayMs: 30_000 },
+  ]);
+  const { c, done } = say(fx, task.id, 'Log the redirect target too.');
+  await done;
+  // The wait for the comment to show in the log (15 min) is over when the first turn stops.
+  const real = Date.now;
+  mock.method(Date, 'now', () => real() + 20 * 60_000);
+  t.after(() => mock.restoreAll());
+  const end = await fx.waitTask(task.id, (x) => x.status === 'waiting' && x.waitingReason === 'failed', 'the task waiting', 30_000);
+  assert.deepEqual(end.pendingMessages.map((m) => m.commentId), [c.id], 'the comment is queued again');
+  assert.equal(fx.repo.getComment(c.id)?.pending, true);
+  assert.equal(fx.repo.listRuns(task.id).at(-1)?.status, 'failed');
+  assert.ok(fx.repo.listComments(task.id).comments.some((x) => x.kind === 'status' && /never received a comment/.test(x.text)));
+  assert.ok(!fx.repo.listComments(task.id).comments.some((x) => x.kind === 'result'), 'the older turn\'s answer is not shown as the result');
+});
+
+test('codex: a typed comment the rollout never shows within the wait is not answered by the older turn\'s WORK DONE either', async (t) => {
+  const fx = await engineFixture();
+  t.after(() => fx.close());
+  const task = await working(
+    fx,
+    [
+      { when: 'Implement kanban task', reply: 'Implemented.', commit: 'Work', delayMs: 1500 },
+      { when: 'Comment from Grace', reply: 'Added the log line too.', commit: 'Log', submitDelayMs: 30_000 },
+    ],
+    { tool: 'codex' },
+  );
+  const { c, done } = say(fx, task.id, 'Log the redirect target too.');
+  await done;
+  const real = Date.now;
+  mock.method(Date, 'now', () => real() + 20 * 60_000);
+  t.after(() => mock.restoreAll());
+  const end = await fx.waitTask(task.id, (x) => x.status === 'waiting' && x.waitingReason === 'failed', 'the task waiting', 30_000);
+  assert.deepEqual(end.pendingMessages.map((m) => m.commentId), [c.id]);
+  assert.ok(!fx.repo.listComments(task.id).comments.some((x) => x.kind === 'result'));
 });

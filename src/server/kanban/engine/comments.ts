@@ -26,7 +26,7 @@ export interface CommentLive extends HeldRun {
   ack?: () => void;
   stopping?: { by?: string; at?: number };
   eff?: RunEffect;
-  via?: { commentId?: number };
+  via?: { commentId?: number; taken?: PendingMessage[] };
 }
 
 /** The part of the composer comments use: a comment's text for a prompt, and for an answer typed in a terminal. */
@@ -103,7 +103,7 @@ export class Comments<L extends CommentLive> {
       return false;
     }
     // Its own prompt, not a person's: the log's segmentation and the run's answer go on as before (see readTurnResult's officePrompts).
-    (live.officePrompts ??= []).push({ at, head: promptHead(text) });
+    (live.officePrompts ??= []).push({ at, head: promptHead(text), msg: { commentId: c.id, text: body, by: c.authorName, at: c.createdAt } });
     return true;
   }
 
@@ -126,6 +126,12 @@ export class Comments<L extends CommentLive> {
     if (c && !back.some((m) => m.commentId === c.id)) back.push({ commentId: c.id, text: eff!.text!, by: c.authorName, at: c.createdAt });
     const fresh = this.restore(task, back);
     if (fresh) this.d.note(task, `The comment${fresh === 1 ? '' : 's'} didn't reach the agent: kept, and go${fresh === 1 ? 'es' : ''} to it with its next run.`);
+  }
+
+  /** A run ended because its agent never got its prompt or comments (TurnResult.lost): the comments go back in the queue. */
+  giveBack(task: KanbanTask, live: L, lost: { launch?: true; office: number[] }) {
+    if (lost.launch && live.ack) this.requeue(task, live.eff, live.via?.commentId, live.via?.taken);
+    this.restore(task, lost.office.flatMap((i) => live.officePrompts?.[i]?.msg ?? []));
   }
 
   /** Puts messages a run took back on the task's queue (those it doesn't hold already); how many went back. */

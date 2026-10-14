@@ -7,7 +7,7 @@
 import { finishNudge, WORK_DONE } from '../../../shared/kanban/prompts.js';
 import type { KanbanTask, KanbanTool } from '../../../shared/kanban/types.js';
 import type { Floor } from '../../floor.js';
-import { OFFICE_PROMPT_WAIT_MS, type TurnResult } from './adapters/types.js';
+import type { TurnResult } from './adapters/types.js';
 import { finalMarker, looksInterrupted } from './markers.js';
 import { typeable, type HeldRun, type TurnHolds } from './turnhold.js';
 
@@ -38,13 +38,16 @@ export interface TurnEndDeps<L extends EndLive> {
 
 /** What a turn's end comes to: the run goes on (`end` false), or it ends on `result` (undefined: the log had none to read). */
 /** `unfinished`: the agent never gave its marker, even when asked: the run ends, but the task is not moved on (it waits for the user). */
-export type Ending = { end: false } | { end: true; result: TurnResult | undefined; unfinished?: true };
+export type Ending = { end: false } | { end: true; result: TurnResult | undefined; unfinished?: true; lost?: NonNullable<TurnResult['lost']> };
 
 /** What the marker of a phase is called, for the note that an agent never gave it. */
 const markerName = (phase: string) => (phase === 'plan' ? 'PLAN READY or QUESTIONS:' : phase === 'review' || phase === 'pr-review' ? 'a REVIEW: verdict line' : WORK_DONE);
 
 /** What a task that waits because its agent never gave its marker says (see Ending.unfinished). */
 export const unfinishedText = (phase: string) => `The agent never gave its final answer (${markerName(phase)}): Continue to carry on, or move it on yourself`;
+
+/** What a task that waits because its agent never got the office's prompt or comment says (see TurnResult.lost). */
+export const lostText = (launch: boolean) => `The agent never received ${launch ? 'its prompt' : 'a comment typed into its terminal'} (nothing of it showed in its log in 15 minutes), so its last answer is not an answer to it: the ${launch ? 'comment that started it is' : 'comment is'} kept; Continue or Retry to carry on`;
 
 export class TurnEnd<L extends EndLive> {
   constructor(private deps: TurnEndDeps<L>) {}
@@ -58,11 +61,8 @@ export class TurnEnd<L extends EndLive> {
    */
   async decide(live: L, result: TurnResult | undefined, o: { planExit: boolean; force: boolean }): Promise<Ending> {
     if (o.planExit || !result) return { end: true, result };
-    // A comment typed into the run that nothing has confirmed for a long while is given up on: the run goes on without it.
-    const lost = (live.officePrompts ?? []).filter((p) => !p.heard && Date.now() - p.at >= OFFICE_PROMPT_WAIT_MS);
-    const task = lost.length ? this.deps.task(live.taskId) : undefined;
-    if (task) this.deps.note(task, "A comment typed into the agent's terminal never showed in its log: went on without waiting for it.", live.runId);
-    for (const p of lost) p.heard = true;
+    // A prompt or comment the log never showed in the wait for it: the answer read is an older turn's, never the run's. It ends unfinished, the comments kept.
+    if (result.lost) return { end: true, result, unfinished: true, lost: result.lost };
     // A person's typed turn after the office's may have ended the work: its marker counts.
     const r = this.adopt(live, result);
     // An earlier turn's marker (the office's prompt isn't in the log yet) is no answer to this one.
@@ -116,6 +116,7 @@ export class TurnEnd<L extends EndLive> {
     const result = await this.deps.read(live);
     if (live.ended || !this.deps.following(live) || live.restating) return;
     if (!result) return this.schedule(live, interval);
+    if (result.lost) return this.deps.turnEnded(live, false, true);
     const r = this.adopt(live, result);
     // The agent did finish (its Stop was missed): the turn's end is decided on what the log says.
     if (!r.unheard && finalMarker(live.phase, `${r.text}\n${r.plan ?? ''}`, r.exitPlan)) return this.deps.turnEnded(live, false, false);

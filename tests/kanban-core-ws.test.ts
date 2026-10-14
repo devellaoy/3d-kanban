@@ -669,3 +669,21 @@ test('an edit lets go of the pictures the old description linked and the new one
   assert.equal(kanban.ctx.repo.getAttachment(legacy)?.taskId, 1, 'a file the description never linked stays');
   assert.equal(kanban.ctx.repo.getAttachment(other)?.taskId, 1, 'a comment’s file stays');
 });
+
+test('a picture the description and a comment both link stays when the description lets go of it: it becomes the comment\'s', async (t) => {
+  const { client, kanban } = office(t);
+  const ada = client('Ada', false);
+  const shared = 'a'.repeat(32);
+  const link = `![s](/api/kanban/attachments/${shared})`;
+  await ada.ask({ t: 'kanban.task.create', task: { project: 'web', title: 'x', description: `see ${link}` } });
+  kanban.ctx.repo.addAttachment({ id: shared, name: 's.png', mime: 'image/png', size: 1, stored: `${shared}-s.png`, createdBy: 'Ada', createdAt: 1 });
+  kanban.ctx.repo.linkAttachments([shared], 1);
+  const c = kanban.ctx.repo.addComment({ taskId: 1, authorKind: 'user', authorName: 'Ada', kind: 'message', text: `same ${link}` }).comment;
+  // Copied into the comment: the file stays the task's own (linkAttachments keeps ownership).
+  kanban.ctx.repo.linkAttachments([shared], 1, c.id);
+  assert.equal(kanban.ctx.repo.getAttachment(shared)?.commentId, undefined);
+  okOf(await ada.ask({ t: 'kanban.task.update', id: 1, patch: { description: 'no picture now' } }));
+  const a = kanban.ctx.repo.getAttachment(shared);
+  assert.equal(a?.taskId, 1, 'not orphaned for the sweep to delete');
+  assert.equal(a?.commentId, c.id, 'the comment that links it holds it');
+});

@@ -40,7 +40,7 @@ import { Departures } from './departures.js';
 import { Holds } from './hold.js';
 import { Restarts, receipt } from './restart.js';
 import { promptHead, TurnHolds, typeable, type HeldRun } from './turnhold.js';
-import { TurnEnd, unfinishedText } from './turnend.js';
+import { lostText, TurnEnd, unfinishedText } from './turnend.js';
 import { Comments } from './comments.js';
 import { RestWaits } from './restwait.js';
 import { sessionLogged } from './sessions.js';
@@ -1406,7 +1406,7 @@ export class Orchestrator {
       await sleep(this.opts.readPauseMs);
     }
     if (live.tool !== 'claude' || result?.complete) return result;
-    if (result && !result.toolRunning && !result.typed && live.stopText) return { text: live.stopText, complete: true, ...(result.background ? { background: result.background } : {}), ...(result.resuming ? { resuming: true } : {}), ...(result.unheard ? { unheard: true as const } : {}) };
+    if (result && !result.toolRunning && !result.typed && live.stopText) return { text: live.stopText, complete: true, ...(result.background ? { background: result.background } : {}), ...(result.resuming ? { resuming: true } : {}), ...(result.unheard ? { unheard: true as const } : {}), ...(result.lost ? { lost: result.lost } : {}) };
     const why = !result ? 'no session log' : result.toolRunning ? 'a Stop while a tool was still running' : 'no last_assistant_message in its Stop hook';
     console.warn(`agent-office: kanban task #${live.taskId}: the ${live.phase} run's final answer never reached its session log (${why}): going on with the last text the log has`);
     return result;
@@ -1499,10 +1499,13 @@ export class Orchestrator {
     };
     if (unfinished && result) {
       // Not moved on: its last text stays visible, and the task waits for Continue or Retry.
-      say('message', stripWorkDone(result.text.trim()));
-      this.finishRun(live.runId, task.project, { status: 'failed', error: unfinishedText(live.phase), ...(sessionId ? { sessionId } : {}) });
-      this.note(task, unfinishedText(live.phase), live.runId);
-      await this.apply(task.id, { type: 'failed', error: unfinishedText(live.phase) });
+      // The prompt or comments it never received: that text is an older turn's, not shown; the comments are queued again.
+      const why = ending.lost ? lostText(!!ending.lost.launch) : unfinishedText(live.phase);
+      if (ending.lost) this.comments.giveBack(task, live, ending.lost);
+      else say('message', stripWorkDone(result.text.trim()));
+      this.finishRun(live.runId, task.project, { status: 'failed', error: why, ...(sessionId ? { sessionId } : {}) });
+      this.note(task, why, live.runId);
+      await this.apply(task.id, { type: 'failed', error: why });
       void this.drain(task.project);
       return;
     }
@@ -1666,9 +1669,7 @@ export class Orchestrator {
 
   /** The work on the comments made during a Stop whose worker is being restarted (see endStop): started now that it has been. */
   private async deliverStopped(live: Live) {
-    const go = live.afterStop;
-    live.afterStop = undefined;
-    await go?.();
+    await Promise.resolve(live.afterStop?.()).finally(() => (live.afterStop = undefined));
     void this.drain(live.floorId);
   }
 
@@ -1683,8 +1684,7 @@ export class Orchestrator {
     const pending = since !== undefined && !!this.ctx.repo.getTask(live.taskId)?.pendingMessages.some((m) => m.at >= since);
     if (pending && task) this.comments.park(task, since!);
     const go = () => this.apply(live.taskId, { type: 'stopped', ...(live.stopping?.by ? { by: live.stopping.by } : {}), ...(pending ? { pending } : {}) }, pending ? { pendingSince: since } : {}).then(() => undefined);
-    if (defer && pending) live.afterStop = go;
-    else await go();
+    if (defer && pending) live.afterStop = go; else await go();
   }
 
   private async reviewerHome(task: KanbanTask) {
