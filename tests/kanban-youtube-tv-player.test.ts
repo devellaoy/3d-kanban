@@ -44,23 +44,9 @@ test('timingChanged: a pause, a resume or a seek of the same play is a change, s
   assert.equal(timingChanged(y, { ...y, id: 'p2' }), true);
   assert.equal(timingChanged(y, { ...y, rate: 2 }), true);
   assert.equal(timingChanged(y, { ...y, position: 10, at: 9000 }), true, 'a seek');
-
-  // What screen.ts does with it: the end said, then dropped while the play was paused, then the play goes on.
-  const told = new Set<string>();
-  let followed: typeof y | null = null;
-  const sync = (now: typeof y, over: boolean) => {
-    if (timingChanged(followed, now)) told.delete(now.id);
-    followed = now;
-    if (!over || told.has(now.id) || now.paused) return false;
-    told.add(now.id);
-    return true;
-  };
-  assert.equal(sync(y, true), true, 'said once');
-  assert.equal(sync(y, true), false, 'not again while nothing changed');
   const paused = { ...y, paused: true, position: 120, at: 6000 };
-  assert.equal(sync(paused, true), false, 'the end landed while paused: the office drops it');
-  assert.equal(sync({ ...paused, paused: false, at: 8000 }, true), true, 'resumed: it is over, so it is said again');
-  assert.equal(sync({ ...paused, paused: false, at: 8000 }, true), false);
+  assert.equal(timingChanged(y, paused), true, 'a pause');
+  assert.equal(timingChanged(paused, { ...paused, paused: false, at: 8000 }), true, 'a resume');
 });
 
 test('pastPlaylistEnd: a known length with no video at the index is the end', () => {

@@ -3,7 +3,6 @@ import assert from 'node:assert/strict';
 import { createIssues } from '../src/server/kanban/integrations/issues/index.js';
 import { wallIssues, wallSourcesChanged } from '../src/server/kanban/integrations/issues/wall.js';
 import { PROJECT_SCOPE_ERROR } from '../src/server/kanban/integrations/issues/github-project.js';
-import type { KanbanServerMsg } from '../src/shared/kanban/protocol.js';
 import type { IssueSourceConfig } from '../src/shared/kanban/types.js';
 import { groupByEpic } from '../src/shared/kanban/browsetree.js';
 import { Floor } from '../src/server/floor.js';
@@ -626,11 +625,6 @@ test('load: a gh: key of the project’s repository is fetched with gh issue vie
   view.calls.length = 0;
   assert.match((await ask('kanban.issue.comments', { issueKey: 'gh:evil/x#8' })).message, /isn't among the project's issues/);
   assert.ok(!view.calls.some((a) => a.includes('evil/x')));
-});
-
-test('server messages the browse window gets are in the protocol’s union', () => {
-  const m: KanbanServerMsg = { t: 'kanban.browseCount', project: 'app', scope: 'j' };
-  assert.equal(m.t, 'kanban.browseCount');
 });
 
 test('a browsed issue the source filters keep off the wall is still the floor’s to queue or carry; an arbitrary key is not', async (t) => {

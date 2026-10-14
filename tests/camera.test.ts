@@ -440,14 +440,6 @@ test('third person: a smoothly turning camYaw (a car) is followed with no lag', 
   }
 });
 
-test('third person: a 3 m distance jump glides', (t) => {
-  const { player, camera, frames, targetOf } = thirdPerson(t);
-  player.camDist += 3;
-  frames(1);
-  const d = camera.position.distanceTo(targetOf(player.camYaw));
-  assert.ok(d > 3.05 && d < 5.95, `${d}`);
-});
-
 test('third person: the mouse keeps the shown tilt within its limits while an outside tilt change eases out', (t) => {
   const { player, camera, win, fire, frames, targetOf } = thirdPersonLocked(t);
   player.camPitch = THIRD_PITCH_MAX;

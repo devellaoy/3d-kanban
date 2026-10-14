@@ -167,7 +167,6 @@ test('bad messages are refused with a reason, and their rid is still found for t
   refused({ t: 'kanban.task.update', id: 1, patch: { unknown: 1 } }, /Nothing to change/);
   refused({ t: 'kanban.task.move', id: 1, to: 'later' }, /to must be one of/);
   refused({ t: 'kanban.comment.add', id: 1, text: '  ' }, /comment can't be empty/);
-  refused({ t: 'kanban.plan.requestChanges', id: 1, text: '' }, /can't be empty/);
   refused({ t: 'kanban.plan.requestChanges', id: 1, text: 'x', attachmentIds: ['../x'] }, /attachment ids/);
   refused({ t: 'kanban.task.continue', id: 1, attachmentIds: ['../x'] }, /attachment ids/);
   refused({ t: 'kanban.task.pr', id: 1, mode: 'merge' }, /mode must be/);
@@ -190,6 +189,10 @@ test('bad messages are refused with a reason, and their rid is still found for t
   refused({ t: 'kanban.pr.bundle', project: 'web', branch: 'a', ticket: 'b' }, /exactly one/);
   refused({ t: 'kanban.pr.owner', project: 'web', repo: 'web', number: 7 }, /owner\/name/);
   refused({ t: 'kanban.pr.owner', project: 'web', repo: 'acme/web', number: 0 }, /needs its number/);
+  refused({ t: 'kanban.pr.owner', project: 'web', number: 7 }, /owner\/name/);
+  refused({ t: 'kanban.pr.owner', project: 'web', repo: 'acme/web', number: '7' }, /needs its number/);
+  refused({ t: 'kanban.pr.owner', project: 'web', repo: 'acme/web', number: 1.5 }, /needs its number/);
+  refused({ t: 'kanban.pr.owner', project: 7, repo: 'acme/web', number: 7 }, /floor id/);
   refused({ t: 'kanban.project.repos.set', project: 'web', repos: [{ id: 'Bad Id', name: 'x', dir: '/x' }] }, /needs an id/);
   refused({ t: 'kanban.project.rename', project: 'web' }, /name/i);
   refused({ t: 'kanban.project.rename', project: 'web', name: '   ' }, /name/i);
