@@ -600,6 +600,9 @@ export class KanbanRepository {
     });
   }
 
+  /** Lets go of task-level files (no comment) of the task: unattached again, swept after a day unless something takes them. */
+  unlinkAttachments(ids: string[], taskId: number) { for (const id of ids) this.db.prepare('UPDATE attachments SET task_id = NULL WHERE id = ? AND task_id = ? AND comment_id IS NULL').run(id, taskId); }
+
   /** Uploads never attached to anything, older than `before` (to clean up). */
   orphanAttachments(before: number): AttachmentRow[] {
     return (this.db.prepare('SELECT * FROM attachments WHERE task_id IS NULL AND created_at < ?').all(before) as Row[]).map(attachment);

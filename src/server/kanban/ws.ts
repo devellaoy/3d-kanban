@@ -18,6 +18,7 @@ import { checkRepoIds, createBoardTask } from './create.js';
 import { openFor, taskFolders, workerFolders } from './vscode.js';
 import { wallChanged, wallSourcesChanged } from './integrations/issues/wall.js';
 import { chmodSync, existsSync } from 'node:fs';
+import { linkedAttachmentIds } from './engine/inlinefiles.js';
 import { ORPHAN_MAX_AGE_MS, removeAttachmentFiles, removeGrant, sweepOrphanUploads, uploadsDir, uploadRoutes } from './uploads.js';
 
 const DAY_MS = 24 * 60 * 60_000;
@@ -204,6 +205,11 @@ export function createCorePlugin(ctx: KanbanContext, subs: KanbanSubscriptions):
       if (typeof up === 'string') return fail(c, m.rid, up);
       ctx.repo.updateTask(task.id, up);
       if (m.patch.attachmentIds?.length) ctx.repo.linkAttachments(m.patch.attachmentIds, task.id);
+      if (m.patch.description !== undefined) {
+        // A picture taken out of the description is no longer the task's (only ones the old text linked: files listed apart from it stay).
+        const keep = new Set(linkedAttachmentIds(`${m.patch.description}\n${m.patch.goal === undefined ? task.goal ?? '' : m.patch.goal ?? ''}`));
+        ctx.repo.unlinkAttachments(linkedAttachmentIds(task.description).filter((id) => !keep.has(id)), task.id);
+      }
       ctx.repo.appendEvent(task.id, 'edited', { by: c.name, fields: Object.keys(m.patch) });
       ctx.taskChanged(task.id);
       if ('ticket' in m.patch) wallChanged(task.project);

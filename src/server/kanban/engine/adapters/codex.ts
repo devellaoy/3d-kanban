@@ -76,7 +76,12 @@ export function readCodexTurn(file: string, opts?: ReadOpts): TurnResult | undef
         return m !== undefined && Date.parse(String(l.timestamp)) >= p.at && m.replace(/\s+/g, ' ').includes(p.head);
       }),
   );
-  return { text, complete, ...(apiError ? { apiError } : {}), ...(unheard ? { unheard: true as const } : {}) };
+  // The office's last prompt (a launch or a restate) isn't in the rollout yet either: the turn read is an earlier one, whose marker is no answer to it.
+  const launched = opts?.promptAt !== undefined && Date.now() - opts.promptAt < OFFICE_PROMPT_WAIT_MS && !lines.some((l) => {
+    const m = codexUserMessage(l);
+    return m !== undefined && Date.parse(String(l.timestamp)) >= opts.promptAt! && (!opts.promptHead || m.replace(/\s+/g, ' ').includes(opts.promptHead));
+  });
+  return { text, complete, ...(apiError ? { apiError } : {}), ...(unheard || launched ? { unheard: true as const } : {}) };
 }
 
 export const codexAdapter: TaskAgentAdapter = {

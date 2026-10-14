@@ -145,3 +145,75 @@ test('a file uploaded for a comment and taken out of the text before sending is 
   const sent = prompts(fx, /kept\.png|grants/).map((i) => i.prompt!).join('\n');
   assert.doesNotMatch(sent, /removed\.png/);
 });
+
+test('a Stop while the resume run waits for its starting worker puts the comment it was started with back in the queue', async (t) => {
+  const fx = await engineFixture();
+  t.after(() => fx.close());
+  const task = await working(fx, [{ when: 'Implement kanban task', reply: 'Implemented.', commit: 'Work' }]);
+  await fx.waitTask(task.id, (x) => x.status === 'review' && x.runState === 'idle', 'the review column');
+  // Its worker is (made to look) still starting: the comment's run waits for it.
+  const [w] = fx.workers.list();
+  (fx.workers.get(w.id) as { status: string }).status = 'starting';
+  // The run holds the task's chain while it waits, so the comment is not awaited here.
+  const { c, done } = say(fx, task.id, 'Also rename foo to bar.', ADA);
+  await fx.waitTask(task.id, (x) => x.phase === 'resume' && x.runState === 'starting', 'the comment run');
+  await sleep(300);
+  assert.equal(fx.task(task.id).pendingMessages.length, 0, 'taken for the run');
+  assert.equal(await fx.engine.stop(task.id, ADA), undefined);
+  await done;
+  const stopped = await fx.waitTask(task.id, (x) => x.status === 'waiting' && x.waitingReason === 'stopped', 'the stop', 30_000);
+  assert.deepEqual(stopped.pendingMessages.map((m) => m.commentId), [c.id], 'the comment is not lost');
+  assert.equal(fx.repo.getComment(c.id)?.pending, true);
+});
+
+/** An upload that is nobody's yet (as the answer, comment and request-changes boxes leave it), with its file on disk. */
+function orphan(fx: EngineFixture, id: string, name: string) {
+  mkdirSync(path.join(fx.ctx.filesDir, 'uploads'), { recursive: true });
+  writeFileSync(path.join(fx.ctx.filesDir, 'uploads', `${id}-${name}`), 'img');
+  fx.repo.addAttachment({ id, name, mime: 'image/png', size: 3, stored: `${id}-${name}`, createdBy: 'Ada', createdAt: Date.now() });
+  return `![${name}](/api/kanban/attachments/${id})`;
+}
+const GRANT = /grants[\\/]task-\d+[\\/]/;
+
+test('Continue\'s answer and a plan change request turn the links of their unattached uploads into paths, before the files are linked', async (t) => {
+  const fx = await engineFixture();
+  t.after(() => fx.close());
+  const task = await working(fx, [{ when: 'Implement kanban task', reply: 'Implemented.', commit: 'Work' }, { when: 'was cut short', reply: 'Handled.', commit: 'More' }]);
+  await fx.waitTask(task.id, (x) => x.status === 'review' && x.runState === 'idle', 'the review column');
+  fx.repo.updateTask(task.id, { status: 'waiting', waitingReason: 'stopped', runState: 'idle' });
+  const link = orphan(fx, '3'.repeat(32), 'cont.png');
+  assert.equal(await fx.engine.continue(task.id, ADA, `Like this ${link}`, ['3'.repeat(32)]), undefined);
+  await waitFor(() => prompts(fx, /Like this/).length > 0, 'the answer in a prompt');
+  const sent = prompts(fx, /Like this/)[0].prompt!;
+  assert.match(sent, GRANT, 'a path the agent can read');
+  assert.doesNotMatch(sent, /api\/kanban\/attachments/);
+  assert.equal(fx.repo.getAttachment('3'.repeat(32))?.taskId, task.id);
+});
+
+test('an answer typed to a question and a plan change request resolve their uploads to paths too', async (t) => {
+  const fx = await engineFixture();
+  t.after(() => fx.close());
+  fx.setRules([{ when: 'Implement kanban task', reply: 'Which colour?', ask: 'question' }, { when: 'grants', reply: 'Blue then.\n\nWORK DONE', commit: 'Blue' }]);
+  const task = fx.newTask({ usePlan: false, useReview: false });
+  await fx.engine.start(task.id, ADA);
+  await fx.waitTask(task.id, (x) => x.status === 'waiting' && x.waitingReason === 'agent_asking', 'the agent asking');
+  const link = orphan(fx, '4'.repeat(32), 'ans.png');
+  assert.equal(await fx.engine.continue(task.id, ADA, `This one ${link}`, ['4'.repeat(32)]), undefined);
+  await waitFor(() => prompts(fx, /This one/).length > 0, 'the answer typed in');
+  const typed = prompts(fx, /This one/)[0].prompt!;
+  assert.match(typed, GRANT);
+  assert.doesNotMatch(typed, /api\/kanban\/attachments/);
+
+  const fx2 = await engineFixture();
+  t.after(() => fx2.close());
+  fx2.setRules([{ when: 'You are planning kanban task', reply: 'Plan.\n\nPLAN READY', exitPlan: 'The plan' }, { when: 'Like this', reply: 'Plan 2.\n\nPLAN READY', exitPlan: 'Plan two' }]);
+  const t2 = fx2.newTask({ usePlan: true, planApproval: 'manual', useReview: false });
+  await fx2.engine.start(t2.id, ADA);
+  await fx2.waitTask(t2.id, (x) => x.status === 'waiting' && x.waitingReason === 'plan_approval', 'the plan');
+  const link2 = orphan(fx2, '5'.repeat(32), 'plan.png');
+  assert.equal(await fx2.engine.requestPlanChanges(t2.id, ADA, `Like this ${link2}`, ['5'.repeat(32)]), undefined);
+  await waitFor(() => prompts(fx2, /Like this/).length > 0, 'the change request in a prompt');
+  const sent = prompts(fx2, /Like this/)[0].prompt!;
+  assert.match(sent, GRANT);
+  assert.doesNotMatch(sent, /api\/kanban\/attachments/);
+});

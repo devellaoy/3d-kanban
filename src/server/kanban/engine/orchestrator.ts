@@ -87,6 +87,8 @@ interface Live extends HeldRun {
   via?: Via;
   ack?: () => void;
   stopping?: { by?: string; at?: number; timer?: NodeJS.Timeout };
+  /** The work on the comments made while it stopped, until its worker is restarted (see deliverStopped). */
+  afterStop?: () => Promise<void>;
   /** A finished turn handled after an office restart: its result is read from the run's start, the woken process's SessionStart is later. */
   pinSince?: boolean;
 }
@@ -955,7 +957,8 @@ export class Orchestrator {
       const waited = await this.rests.until(floor, info.id, task.id, () => teamWork(info!.id), quick && info.status === 'starting');
       if (this.disposed) return undefined; // the office went down meanwhile: nothing may be typed or hired
       if (waited.cancelled) {
-        // Stopped while it waited: nothing was prompted, and the run ends as stopped.
+        // Stopped while it waited: nothing was prompted, and the run ends as stopped. The comments it took off the task (or was resumed with) go back.
+        this.comments.requeue(task, eff, via.commentId, via.taken);
         this.finishRun(run.id, task.project, { status: 'stopped' });
         await this.apply(task.id, { type: 'stopped', ...(waited.by ? { by: waited.by } : {}) });
         return undefined;
@@ -1643,7 +1646,7 @@ export class Orchestrator {
     // At rest while its background work goes on: nothing to interrupt, so it is restarted on its session at its desk (never sent
     // home), which ends its helper agents. A turn that has resumed gets Esc as usual.
     const at = Date.now();
-    const run: StopRun = { workerId: live.workerId, floor: () => this.ctx.floor(live.floorId), serial: (fn) => this.serial(live.taskId, fn), stop: () => this.stoppedRun(live), note: (text) => this.note(task, text, live.runId), interrupted: (file) => !!this.adapters[live.tool].interruptedSince?.(file, at) };
+    const run: StopRun = { workerId: live.workerId, floor: () => this.ctx.floor(live.floorId), serial: (fn) => this.serial(live.taskId, fn), stop: () => this.stoppedRun(live, true), deliver: () => this.deliverStopped(live), note: (text) => this.note(task, text, live.runId), interrupted: (file) => !!this.adapters[live.tool].interruptedSince?.(file, at) };
     const status = floor?.workers.get(live.workerId)?.status;
     if (live.background && floor && (status === 'done' || status === 'idle')) return void endStop(run, 'background');
     floor?.workers.write(live.workerId, ESC, who?.name ?? 'Kanban');
@@ -1652,16 +1655,25 @@ export class Orchestrator {
   }
 
   /** Ends the run as stopped; false when it had ended already. */
-  private async stoppedRun(live: Live): Promise<boolean> {
+  private async stoppedRun(live: Live, defer = false): Promise<boolean> {
     if (live.ended || this.live.get(live.workerId) !== live) return false;
     live.ended = true;
     this.forget(live);
-    await this.finishStopped(live);
-    void this.drain(live.floorId);
+    await this.finishStopped(live, defer);
+    if (!live.afterStop) void this.drain(live.floorId);
     return true;
   }
 
-  private async finishStopped(live: Live) {
+  /** The work on the comments made during a Stop whose worker is being restarted (see endStop): started now that it has been. */
+  private async deliverStopped(live: Live) {
+    const go = live.afterStop;
+    live.afterStop = undefined;
+    await go?.();
+    void this.drain(live.floorId);
+  }
+
+  /** `defer`: the worker is restarted next, so the work on the comments made meanwhile waits for deliverStopped. */
+  private async finishStopped(live: Live, defer = false) {
     const task = this.ctx.repo.getTask(live.taskId);
     // A comment the run was resumed with that its agent never took is kept for the next run.
     if (task && live.ack) this.comments.requeue(task, live.eff, live.via?.commentId, live.via?.taken);
@@ -1670,7 +1682,9 @@ export class Orchestrator {
     const since = live.stopping?.at;
     const pending = since !== undefined && !!this.ctx.repo.getTask(live.taskId)?.pendingMessages.some((m) => m.at >= since);
     if (pending && task) this.comments.park(task, since!);
-    await this.apply(live.taskId, { type: 'stopped', ...(live.stopping?.by ? { by: live.stopping.by } : {}), ...(pending ? { pending } : {}) }, pending ? { pendingSince: since } : {});
+    const go = () => this.apply(live.taskId, { type: 'stopped', ...(live.stopping?.by ? { by: live.stopping.by } : {}), ...(pending ? { pending } : {}) }, pending ? { pendingSince: since } : {}).then(() => undefined);
+    if (defer && pending) live.afterStop = go;
+    else await go();
   }
 
   private async reviewerHome(task: KanbanTask) {

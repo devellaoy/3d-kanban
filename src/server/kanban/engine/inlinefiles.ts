@@ -19,13 +19,13 @@ export function unlinkedFiles<T extends { id: string }>(text: string, files: T[]
   return files.filter((f) => !linked.has(f.id));
 }
 
-/** `text` with each link to one of the task's attachments pointing at its file in the task's grant folder (copied there first). Other ids, or files gone from disk, stay as they are. */
-export function inlineFiles(ctx: { repo: Pick<KanbanRepository, 'getAttachment'>; filesDir: string }, taskId: number, text: string): string {
+/** `text` with each link to one of the task's attachments (or to one of `accepted`: uploads the message being composed is about to link to the task) pointing at its file in the task's grant folder (copied there first). Other ids, or files gone from disk, stay as they are. */
+export function inlineFiles(ctx: { repo: Pick<KanbanRepository, 'getAttachment'>; filesDir: string }, taskId: number, text: string, accepted: { id: string }[] = []): string {
   if (!text.includes('/api/kanban/attachments/')) return text;
   return text.replace(LINK_RE, (whole, bang: string, name: string, id: string) => {
     const row = ctx.repo.getAttachment(id);
     // Only the task's own files: another task's id must not open its folder to this one.
-    if (!row || row.taskId !== taskId) return whole;
+    if (!row || (row.taskId !== taskId && !accepted.some((a) => a.id === id))) return whole;
     const [file] = grantFiles(ctx.filesDir, taskId, [row]);
     return file ? `${bang}[${name}](${file})` : whole;
   });

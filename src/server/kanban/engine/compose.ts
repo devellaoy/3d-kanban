@@ -261,18 +261,18 @@ export class Composer {
   }
 
   /** `text` with its attachment links turned into paths in the task's grant folder. */
-  inline(taskId: number, text: string): string {
-    return inlineFiles(this.ctx, taskId, text);
+  inline(taskId: number, text: string, accepted: { id: string }[] = []): string {
+    return inlineFiles(this.ctx, taskId, text, accepted);
   }
 
   /** A comment (or any message) for a prompt: its links as paths, then the block listing its files that the text does not link. */
   commentText(project: string, taskId: number, text: string, files: { id: string; name: string; stored: string }[]): string {
-    return [this.inline(taskId, text).trim(), this.filesText(project, taskId, unlinkedFiles(text, files))].filter(Boolean).join('\n\n');
+    return [this.inline(taskId, text, files).trim(), this.filesText(project, taskId, unlinkedFiles(text, files))].filter(Boolean).join('\n\n');
   }
 
   /** Like commentText for an answer typed into a terminal: the files that the text does not link go on its line. */
   answerText(taskId: number, text: string, files: { id: string; stored: string }[]): string {
-    return [this.inline(taskId, text).trim(), this.filesInline(taskId, unlinkedFiles(text, files))].filter(Boolean).join(' ');
+    return [this.inline(taskId, text, files).trim(), this.filesInline(taskId, unlinkedFiles(text, files))].filter(Boolean).join(' ');
   }
 
   /** The files on one line, for an answer typed into a terminal (a newline there may submit it); empty when none. Paths are in the task's grant folder. */

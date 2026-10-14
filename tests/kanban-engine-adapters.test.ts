@@ -594,3 +594,16 @@ test('claudeInterruptedSince: an Esc Claude logged as an interrupt line at or af
   assert.equal(claudeInterruptedSince(write('u.jsonl', [cUser('go'), cUser('[Request interrupted by user for tool use]', { timestamp: '2026-01-01T10:00:11Z' })]), at), true);
   assert.equal(claudeInterruptedSince(path.join(path.dirname(file), 'missing.jsonl'), at), false);
 });
+
+test('codex rollout: the launch prompt not in the rollout yet makes the turn unheard: the previous turn\'s WORK DONE is no answer to it', (t) => {
+  const write = scratch(t);
+  const user = (t: string, ts: string) => [{ type: 'response_item', timestamp: ts, payload: { type: 'message', role: 'user', content: [{ type: 'input_text', text: t }] } }, { type: 'event_msg', timestamp: ts, payload: { type: 'user_message', message: t } }];
+  const done = (t: string) => ({ type: 'event_msg', payload: { type: 'task_complete', turn_id: 'x', last_agent_message: t } });
+  const at = Date.now() - 5000;
+  const iso = (ms: number) => new Date(at + ms).toISOString();
+  const old = write('old.jsonl', [...user('Implement it', iso(-10_000)), done('Done.\n\nWORK DONE')]);
+  assert.equal(readCodexTurn(old, { promptAt: at, promptHead: 'A comment was made' })?.unheard, true, 'only the earlier turn is in the rollout');
+  const got = write('got.jsonl', [...user('Implement it', iso(-10_000)), done('Done.\n\nWORK DONE'), ...user('A comment was made on task 3', iso(1000))]);
+  assert.equal(readCodexTurn(got, { promptAt: at, promptHead: 'A comment was made' })?.unheard, undefined);
+  assert.equal(readCodexTurn(old)?.unheard, undefined, 'no prompt time, nothing to wait for');
+});

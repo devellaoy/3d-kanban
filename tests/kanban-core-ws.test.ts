@@ -653,3 +653,19 @@ test('the comment, answer and request-changes boxes and the edit dialog upload u
   }
   assert.doesNotMatch(readFileSync(path.join('src', 'client', 'kanban', 'attachbox.ts'), 'utf8'), /taskId/);
 });
+
+test('an edit lets go of the pictures the old description linked and the new one does not; files listed apart from the text stay', async (t) => {
+  const { client, kanban } = office(t);
+  const ada = client('Ada', false);
+  const [gone, stays, legacy, other] = ['1', '2', '3', '4'].map((c) => c.repeat(32));
+  await ada.ask({ t: 'kanban.task.create', task: { project: 'web', title: 'x', description: `a ![g](/api/kanban/attachments/${gone}) b ![s](/api/kanban/attachments/${stays})` } });
+  for (const id of [gone, stays, legacy, other]) kanban.ctx.repo.addAttachment({ id, name: 'p.png', mime: 'image/png', size: 1, stored: `${id}-p.png`, createdBy: 'Ada', createdAt: Date.now() });
+  kanban.ctx.repo.linkAttachments([gone, stays, legacy], 1);
+  const c = kanban.ctx.repo.addComment({ taskId: 1, authorKind: 'user', authorName: 'Ada', kind: 'message', text: `again ![g](/api/kanban/attachments/${other})` }).comment;
+  kanban.ctx.repo.linkAttachments([other], 1, c.id);
+  okOf(await ada.ask({ t: 'kanban.task.update', id: 1, patch: { description: `b ![s](/api/kanban/attachments/${stays})` } }));
+  assert.equal(kanban.ctx.repo.getAttachment(gone)?.taskId, undefined, 'the removed picture is nobody’s again');
+  assert.equal(kanban.ctx.repo.getAttachment(stays)?.taskId, 1);
+  assert.equal(kanban.ctx.repo.getAttachment(legacy)?.taskId, 1, 'a file the description never linked stays');
+  assert.equal(kanban.ctx.repo.getAttachment(other)?.taskId, 1, 'a comment’s file stays');
+});
