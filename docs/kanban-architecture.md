@@ -652,9 +652,10 @@ MCP tool `create_task` (listed with `AGENT_OFFICE_TASKS`; never pre-approved, so
 worker runs without prompts). The route is owned by
 the issues plugin (integrations/issues/agent-create.ts) and the creation itself is shared with the board's
 `kanban.task.create` and the issues board (src/server/kanban/create.ts). The task lands in To do; `start` seats a worker
-(or queues; it runs unattended without permission prompts), but is honoured only for an agent a person hired at a desk
-(`WorkerInfo.byPerson`) or a board agent, and only in the caller's own project: a task's worker, an agent-hired or queue worker, or a
-task in another project lands in To do with the answer's `note` (a task's worker also leaves a `subtask.created` event and a comment on the parent).
+(or queues; it runs unattended without permission prompts) for any agent in its own project (desk, board, agent-hired, queue or task
+worker); a task in another project lands in To do with the answer's `note`. A task's worker leaves a `subtask.created` event and a comment on the parent
+for each task it makes, and a `subtask.started` event for each it starts; it may start at most `SUBTASK_STARTS_MAX` (5) per parent (a subtask's
+worker counts against its own task, so delegation can go deeper).
 Creating in another project is allowed (To do only). `desk` is only accepted with `start`. A plain `ticket` is deduplicated like an issue
 (same ticket in the project returns the existing task). An agent's unknown issue key doesn't refresh the project's issue lists, key kinds the
 project has no source for are refused, and Jira keys are upper-cased.

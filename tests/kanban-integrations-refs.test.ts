@@ -358,7 +358,8 @@ test('office-tasks create: flags, the POST, the answer on stdout and stderr, and
   assert.doesNotMatch(visible.find((t) => t.name === 'hire_worker')!.description, /create_task|kanban/, 'the kanban guidance is in the instructions only');
   assert.doesNotMatch(tool.description, /hire_worker/);
   assert.match(tool.description, /without permission prompts, unattended/);
-  assert.match(tool.description, /person hired at a desk or a board agent/);
+  assert.match(tool.description, /start is honoured for any agent in its own project/);
+  assert.match(tool.description, /Any agent may create tasks/);
   assert.deepEqual(EFFORTS, ['minimal', 'low', 'medium', 'high', 'xhigh', 'max']);
   assert.deepEqual((tool.inputSchema.properties.effort as { enum: string[] }).enum, EFFORTS);
   assert.equal(TASK_TOOLS.length, 3);

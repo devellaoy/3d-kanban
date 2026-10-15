@@ -790,9 +790,9 @@ implementation runs, review, the board's columns), not as a plain one-off worker
   Creating a task in another project than the agent's own is allowed, but it only lands in To do.
 - **It lands in To do** for a person unless `start` is set, which seats a worker for it or queues it
   when the office is full (the answer says which; a start that failed says why). That worker runs
-  without permission prompts, unattended, so `start` is honoured only for an agent a person hired at a
-  desk (`WorkerInfo.byPerson`) or a board agent, and only in the agent's own project; a task's worker,
-  an agent-hired or queue worker, or a task in another project lands in To do with a note.
+  without permission prompts, unattended. Any agent may `start` in its own project: a desk or board agent,
+  one hired with `hire_worker`, a queue worker or a kanban task's own worker (with the limits below); a
+  task in another project lands in To do with a note.
 - **Who the creator is**: the account the agent runs for; else, for a task's own worker, the parent
   task's creator; else the person who hired the worker at its desk (`WorkerInfo.byPerson`; never a queue,
   kanban or agent hire, whose `createdBy` isn't a person); else the agent's name. The agent is recorded in
@@ -804,15 +804,21 @@ implementation runs, review, the board's columns), not as a plain one-off worker
   Boards work item is `ab:org/project#12` of one of the project's Azure Boards sources, or `AB#12` when it has just one. A bare number only works when the project has exactly one GitHub repository; `owner/repo`
   is matched to the project's own spelling of the repository, so `O/APP#12` finds the task `o/app#12` has.
 - **The task view** shows which agent created a task ("via").
-- **A task's own worker can't start tasks**: its new tasks stay in To do (the answer says why), and the
-  parent task gets a comment naming each task it made. Task workers run without permission prompts, so
-  this, not a prompt, is what keeps one task from starting many.
-- **Visibility**: every agent worker gets `AGENT_OFFICE_TASKS=1`, so the MCP server lists `get_task`,
+- **A task's own worker can hand work on**: ask it in a comment to delegate something to a new worker and
+  it creates the task with `start`, which starts it (the parent task gets a comment naming each task it
+  made). The worker of a task made that way can hand work on in turn. Task workers run without permission
+  prompts, so a limit, not a prompt, keeps one task from starting many: a task's workers start at most 5
+  tasks in all (`SUBTASK_STARTS_MAX`, counted by the task's `subtask.started` events). Past it, the new task
+  stays in To do and the answer says why.
+- **Visibility**: every worker, a 🐚 shell included, gets `AGENT_OFFICE_TASKS=1`, so the MCP server lists `get_task`,
   `search_tasks` and `create_task`. Only a kanban task's Claude worker may call `get_task` /
   `search_tasks` without asking (other Claude agents are asked); `create_task` is never pre-approved, so a
   desk or board agent asks first (a task's own worker runs without prompts, see above). The MCP server's
   instructions (and only they) tell agents to use `create_task` for kanban work and `hire_worker` only
   for a plain one-off worker.
+- **An agent started by hand in a 🐚 shell** (`claude`, `codex`) has the shell's identity, so
+  `office-tasks create` works from its own shell tool. The office doesn't hand it the MCP server; for
+  `create_task` as a tool, start Claude Code with `claude --mcp-config <data>/agent-office-mcp.json`.
 
 ## Where the data is
 
