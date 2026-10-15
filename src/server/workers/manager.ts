@@ -672,7 +672,7 @@ export class WorkerManager extends KanbanWorkers {
       AGENT_OFFICE_HOOK_URL: this.hook.url,
       AGENT_OFFICE_HOOK_TOKEN: w.hookToken,
     });
-    Object.assign(env, plan.env, kanbanWorkerEnv(info), workerHostEnv(env, w.owner), info.kanban && { AIKANBAN_API_BASE: this.hook.url, AIKANBAN_TASK_ID: String(info.kanban.taskId) }); // how a task's agent reaches the kanban (ai-kanban's names, so existing skills keep working)
+    Object.assign(env, plan.env, kanbanWorkerEnv(), workerHostEnv(env, w.owner), info.kanban && { AIKANBAN_API_BASE: this.hook.url, AIKANBAN_TASK_ID: String(info.kanban.taskId) }); // how a task's agent reaches the kanban (ai-kanban's names, so existing skills keep working)
     // Whichever agent it runs, a worker reaches the office's workers with office-workers, and a board
     // agent the queue with office-queue.
     if (this.officeBin) {

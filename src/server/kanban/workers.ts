@@ -267,9 +267,9 @@ export function kanbanExtraArgs(w: Worker, adapter: { id: string }, setup: unkno
   return adapter.id === 'codex' && w.info.kanban && typeof hook === 'string' ? [...codexHookTrustArgs(hook), ...(w.extra?.launchArgs ?? [])] : w.extra?.launchArgs;
 }
 
-/** What an agent worker's environment gets from the kanban: AGENT_OFFICE_TASKS shows it the task tools (bin/office-tasks.js, the MCP server), as the kanban is always on here. */
-export function kanbanWorkerEnv(info: Pick<WorkerInfo, 'kind'>): Record<string, string> {
-  return info.kind === 'shell' ? {} : { AGENT_OFFICE_TASKS: '1' };
+/** What a worker's environment gets from the kanban: AGENT_OFFICE_TASKS shows it the task tools (bin/office-tasks.js, the MCP server), as the kanban is always on here. A shell gets it too, for the agent someone runs in it. */
+export function kanbanWorkerEnv(): Record<string, string> {
+  return { AGENT_OFFICE_TASKS: '1' };
 }
 
 /** What a hire's WorkerInfo takes from its SpawnExtra: byPerson when createdBy names the person who hired it at a desk. */

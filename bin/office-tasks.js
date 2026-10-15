@@ -32,10 +32,10 @@ const USAGE = `Usage:
                                                       --desk <id> (with --start) --no-description --json
                                               prints the task's number. --start seats a worker
                                               (or queues it when the office is full) that runs
-                                              without permission prompts, unattended; it is
-                                              honoured only for an agent a person hired at a
-                                              desk or a board agent, in its own project —
-                                              otherwise the task waits in To do for a person.
+                                              without permission prompts, unattended. Any agent
+                                              may create and start tasks in its own project; a
+                                              kanban task's own worker starts up to 5 per task —
+                                              past that the task waits in To do.
                                               --no-description skips reading stdin (with --issue);
                                               stdin that sends nothing for 3 s counts as empty`;
 
@@ -286,7 +286,8 @@ export const TASK_TOOLS = [
       'Give a title and a description that is complete on its own (what to change and where, how to check it), unless you give issue. ' +
       'issue links a GitHub issue (a number, or owner/repo#12), a Jira key or an Azure Boards work item (AB#12, or ab:org/project#12), which the task takes like one made from the issues board; it is assigned to whoever you work for when they have their own GitHub sign-in. ' +
       'The task stays in To do for a person unless start is true, which seats a worker for it (or queues it when the office is full); that worker runs without permission prompts, unattended. ' +
-      "start is honoured only for an agent a person hired at a desk or a board agent, and only in its own project; for any other caller (a task's worker, an agent-hired or queued worker) or another project the task waits in To do. " +
+      'Any agent may create tasks: when a person asks you to hand a piece of work to a new worker or agent, or to delegate it, create it here with start: true. ' +
+      "start is honoured for any agent in its own project, except that a kanban task's own worker starts at most 5 per task; past that, or in another project, the task is still created and waits in To do for a person. " +
       'Returns the task\'s number and link; get_task reads it afterwards.',
     inputSchema: {
       type: 'object',
@@ -302,7 +303,7 @@ export const TASK_TOOLS = [
         model: { type: 'string', description: "A model for it, instead of the provider's default." },
         effort: { type: 'string', enum: EFFORTS, description: 'Reasoning effort, for agents that take one.' },
         type: { type: 'string', enum: TASK_TYPES, description: 'implement (default) changes code; investigate only reports.' },
-        start: { type: 'boolean', description: 'Start it now instead of leaving it in To do. The worker runs unattended without permission prompts; honoured only for a person-hired or board agent, in its own project.' },
+        start: { type: 'boolean', description: "Start it now instead of leaving it in To do. The worker runs unattended without permission prompts; honoured in your own project (a kanban task's own worker: up to 5 per task)." },
         desk: { type: 'string', description: 'A desk id for the worker, when start is true.' },
       },
       required: [],

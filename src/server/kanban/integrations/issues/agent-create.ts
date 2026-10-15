@@ -15,9 +15,12 @@ import type { IssueCaller, IssueTaskMade, IssueTaskOptions } from './index.js';
 
 const TITLE_MAX = 300;
 const DESCRIPTION_MAX = 100_000;
-// A start needs a person behind the agent and the agent's own project: a task worker runs unattended, and an agent hired by an agent (hire_worker) has no person either, so either could start tasks without end.
-const NOTE_NO_PERSON = 'Created in To do: only an agent a person hired at a desk (or a board agent) may start tasks; a person starts it from the board.';
+// Any agent may start what it makes (a person asks it to hand work on), in its own project. A task's worker runs unattended, so it
+// starts only so many.
 const NOTE_OTHER_PROJECT = "Created in To do: an agent may only start tasks in its own project; a person starts it from the board.";
+/** How many tasks one task's workers may start, all runs together. */
+export const SUBTASK_STARTS_MAX = 5;
+const NOTE_TOO_MANY = `Created in To do: a task's workers may start at most ${SUBTASK_STARTS_MAX} tasks; a person starts it from the board.`;
 
 /** An agent's request once checked: the project is an id, the repositories are ids, the issue is a key. */
 export interface CreateRequest {
@@ -195,6 +198,12 @@ export function readCreateRequest(body: unknown, ctx: KanbanContext, floorId: st
   };
 }
 
+/** Why task `parentId`'s worker may not start a task (undefined: it may): it has started SUBTASK_STARTS_MAX. */
+function subtaskStartBlocked(ctx: KanbanContext, parentId: number): string | undefined {
+  const starts = ctx.repo.listEvents(parentId, SUBTASK_STARTS_MAX * 400).filter((e) => e.kind === 'subtask.started').length;
+  return starts >= SUBTASK_STARTS_MAX ? NOTE_TOO_MANY : undefined;
+}
+
 type CreateFromIssue = (project: string, key: string, who: IssueCaller, opts?: IssueTaskOptions) => Promise<IssueTaskMade | string>;
 
 /** The route handler; `createFromIssue` is the issues plugin's own (it alone can look an issue up). */
@@ -203,7 +212,6 @@ export function agentCreateHook(ctx: KanbanContext, createFromIssue: CreateFromI
     // This plugin answers the whole prefix, so a neighbour like /office/tasks/createX isn't left to the refs plugin's 405.
     if (url.pathname !== '/office/tasks/create') return sendJson(res, 404, { error: 'Not found' }), true;
     if (req.method !== 'POST') return sendJson(res, 405, { error: 'POST only' }), true;
-    if (hook.kind === 'shell') return sendJson(res, 403, { error: 'Only agents can create tasks, not a plain shell' }), true;
     const body = await readJson(req, BODY_MAX);
     if (typeof body === 'string') return sendJson(res, 400, { error: body }), true;
     const asked = readCreateRequest(body, ctx, hook.floorId);
@@ -216,15 +224,18 @@ export function agentCreateHook(ctx: KanbanContext, createFromIssue: CreateFromI
     // Who the task is the work of: the person the agent runs as; else whoever made the task it works for; else the person who hired it at a desk (hiredBy, set for a person's hire only); else the agent.
     const createdBy = hook.accountName ?? parent?.createdBy ?? (parentId === undefined && !hook.station && hook.hiredBy ? hook.hiredBy : agent);
     const who: IssueCaller & KanbanCaller = { name: createdBy, admin: false, ...(hook.accountId ? { accountId: hook.accountId } : {}), warn: (t) => ctx.toast(hook.floorId, t, 'warn') };
-    // Only a person's agent starts what it makes, in its own project: a task worker, an agent hired by an agent or a queue worker has no person behind it, and one could start tasks without end.
-    const person = parentId === undefined && (!!hook.hiredBy || !!hook.station);
-    const start = wantsStart && person && project === hook.floorId;
-    const refused = wantsStart && !start ? `${person ? NOTE_OTHER_PROJECT : NOTE_NO_PERSON}${deskId ? " The desk wasn't used." : ''}` : undefined;
+    // Any agent starts what it makes, in its own project; a task's worker at most SUBTASK_STARTS_MAX, so one task can't start tasks without end.
+    const blocked = wantsStart && parent ? subtaskStartBlocked(ctx, parent.id) : undefined;
+    const why = blocked ?? (wantsStart && project !== hook.floorId ? NOTE_OTHER_PROJECT : undefined);
+    const start = wantsStart && !why;
+    const refused = why ? `${why}${deskId ? " The desk wasn't used." : ''}` : undefined;
     const event = { via: agent, viaWorker: hook.workerId, ...(parentId !== undefined ? { viaTask: parentId } : {}) };
 
     /** The agent's answer, and what the floor and the parent task hear. */
     const finish = (taskId: number, existed: boolean, started: boolean, startError: string | undefined) => {
       const task = ctx.repo.getTask(taskId)!;
+      // Counted against the parent's SUBTASK_STARTS_MAX.
+      if (parent && started && !startError) ctx.repo.appendEvent(parent.id, 'subtask.started', { taskId: task.id, by: agent });
       if (!existed) {
         ctx.toast(hook.floorId, `📋 ${agent} created task #${task.id} “${task.title}”`, 'info');
         if (parent) {

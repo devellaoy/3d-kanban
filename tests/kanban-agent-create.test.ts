@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import { Readable } from 'node:stream';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { createIssues } from '../src/server/kanban/integrations/issues/index.js';
-import { readCreateRequest } from '../src/server/kanban/integrations/issues/agent-create.js';
+import { SUBTASK_STARTS_MAX, readCreateRequest } from '../src/server/kanban/integrations/issues/agent-create.js';
 import { createRefsPlugin } from '../src/server/kanban/integrations/refs/index.js';
 import type { IssueSourceIo } from '../src/server/kanban/integrations/issues/source.js';
 import type { KanbanHookCaller } from '../src/server/kanban/registry.js';
@@ -166,27 +166,48 @@ test('start from a desk worker starts the task and says if it is queued', async 
   assert.equal(f.body.task.status, 'todo');
 });
 
-test('a task worker cannot start tasks: it lands in To do with a note, and the parent task hears of it', async () => {
+test('a task worker starts the tasks it is asked to hand on, and the parent task hears of each', async () => {
   const { ctx, call, worker } = setup();
   const parent = ctx.repo.createTask({ project: 'app', title: 'Parent', tool: 'claude', usePlan: false, planApproval: 'auto', useReview: false, createdBy: 'Maija' });
   const r = await call({ title: 'Child', description: 'd', start: true }, worker({ taskId: parent.id }));
   assert.equal(r.status, 200);
-  assert.deepEqual(ctx.started, []);
-  assert.equal(r.body.started, false);
-  assert.equal(r.body.task.status, 'todo');
-  assert.match(r.body.note, /only an agent a person hired at a desk/);
+  assert.deepEqual(ctx.started, [2]);
+  assert.equal(r.body.started, true);
+  assert.equal(r.body.note, undefined);
   assert.deepEqual(ctx.repo.listEvents(parent.id).find((e) => e.kind === 'subtask.created')?.data, { taskId: 2, by: 'Ada' });
+  assert.deepEqual(ctx.repo.listEvents(parent.id).find((e) => e.kind === 'subtask.started')?.data, { taskId: 2, by: 'Ada' });
   assert.deepEqual(ctx.repo.listComments(parent.id).comments.map((c) => [c.authorKind, c.text]), [['system', 'Created #2 “Child”']]);
   assert.ok(ctx.changed.includes(parent.id));
   assert.deepEqual(ctx.repo.listEvents(2).find((e) => e.kind === 'created')?.data, { by: 'Maija', via: 'Ada', viaWorker: 'w1', viaTask: parent.id });
-  // Not asked to start: nothing to explain. An issue made before: that, not a claim to have made it.
-  assert.equal((await call({ title: 'Other', description: 'd' }, worker({ taskId: parent.id }))).body.note, undefined);
+  // Not asked to start: To do, nothing to explain. An issue made before: that, started when asked, not a claim to have made it.
+  const other = await call({ title: 'Other', description: 'd' }, worker({ taskId: parent.id }));
+  assert.equal(other.body.task.status, 'todo');
+  assert.equal(other.body.note, undefined);
   const once = await call({ issue: 12 }, worker({ taskId: parent.id }));
+  const again = await call({ issue: 12 }, worker({ taskId: parent.id }));
+  assert.equal(again.body.existed, true);
+  assert.equal(again.body.task.id, once.body.task.id);
+  assert.match(again.body.note, /was made from this issue before/);
   const twice = await call({ issue: 12, start: true }, worker({ taskId: parent.id }));
-  assert.equal(twice.body.existed, true);
-  assert.equal(twice.body.task.id, once.body.task.id);
-  assert.match(twice.body.note, /was made from this issue before/);
+  assert.equal(twice.body.started, true);
+  assert.deepEqual(ctx.started, [2, once.body.task.id]);
   assert.equal(ctx.repo.listComments(parent.id).comments.length, 3, 'one comment per task made, none for one found again');
+});
+
+test("a task worker's starts don't go on without end: a subtask's worker starts too, but each task at most SUBTASK_STARTS_MAX", async () => {
+  const { ctx, call, worker } = setup();
+  const parent = ctx.repo.createTask({ project: 'app', title: 'Parent', tool: 'claude', usePlan: false, planApproval: 'auto', useReview: false, createdBy: 'Maija' });
+  await call({ title: 'Child', description: 'd', start: true }, worker({ taskId: parent.id }));
+  // The child's own worker hands work on as well, counted against the child, not the parent.
+  const nested = await call({ title: 'Grandchild', description: 'd', start: true }, worker({ workerId: 'w2', taskId: 2 }));
+  assert.equal(nested.body.started, true);
+  assert.deepEqual(ctx.started, [2, 3]);
+  assert.equal(ctx.repo.listEvents(2).filter((e) => e.kind === 'subtask.started').length, 1);
+  for (let i = 1; i < SUBTASK_STARTS_MAX; i++) assert.equal((await call({ title: `More ${i}`, description: 'd', start: true }, worker({ taskId: parent.id }))).body.started, true);
+  const over = await call({ title: 'One too many', description: 'd', start: true }, worker({ taskId: parent.id }));
+  assert.equal(over.body.started, false);
+  assert.match(over.body.note, new RegExp(`at most ${SUBTASK_STARTS_MAX} tasks`));
+  assert.equal(ctx.started.length, SUBTASK_STARTS_MAX + 1);
 });
 
 test('provider, model, effort, type, repositories and ticket are stored; the project may be named', async () => {
@@ -221,10 +242,12 @@ test('bad requests are answered with 400 and make nothing', async () => {
   assert.equal(ctx.repo.getTask(1), undefined);
 });
 
-test('only POST (405), only agents (403) and only this exact path (404)', async () => {
+test('only POST (405) and only this exact path (404); a shell (an agent run in it) creates tasks too', async () => {
   const { call, worker } = setup();
   assert.equal((await call(undefined, worker(), 'GET')).status, 405);
-  assert.equal((await call({ title: 't', description: 'd' }, worker({ kind: 'shell' }))).status, 403);
+  const shell = await call({ title: 't', description: 'd', start: true }, worker({ kind: 'shell' }));
+  assert.equal(shell.status, 200);
+  assert.equal(shell.body.started, true);
   assert.equal((await call({ title: 't', description: 'd' }, worker(), 'POST', '/office/tasks/createX')).status, 404);
 });
 
@@ -314,23 +337,21 @@ test('an issue whose task waits in To do is started by a later request with star
   assert.deepEqual(ctx.started, [1]);
 });
 
-test('a start needs a person behind the agent and its own project: anything else lands in To do with a note', async () => {
+test('any agent starts what it makes in its own project: an agent’s hire, a person’s desk hire and a board kiosk', async () => {
   const { ctx, call, worker } = setup();
   const asked = { title: 'Go', description: 'd', start: true };
   // As hire_worker makes one: an agent's hire, no person.
   const hired = hookCaller({ id: 'w1', name: 'Ada', kind: 'agent', deskId: 'desk-1', createdBy: 'Ada (kanban #1)' } as WorkerInfo, 'app');
   const a = await call(asked, hired);
-  assert.equal(a.body.started, false);
-  assert.equal(a.body.task.status, 'todo');
-  assert.match(a.body.note, /only an agent a person hired at a desk/);
-  assert.deepEqual(ctx.started, []);
-  // A person's desk hire, and a board kiosk, start.
+  assert.equal(a.body.started, true);
+  assert.equal(a.body.note, undefined);
+  assert.deepEqual(ctx.started, [1]);
   const desk = await call(asked, hookCaller({ id: 'w1', name: 'Ada', kind: 'agent', deskId: 'desk-1', createdBy: 'Bob', byPerson: true } as WorkerInfo, 'app'));
   assert.equal(desk.body.started, true);
   assert.equal(desk.body.note, undefined);
   const kiosk = await call(asked, worker({ station: true }));
   assert.equal(kiosk.body.started, true);
-  assert.deepEqual(ctx.started, [2, 3]);
+  assert.deepEqual(ctx.started, [1, 2, 3]);
 });
 
 test('another project may be named, but nothing there is started', async () => {
@@ -362,11 +383,14 @@ test('a ticket without an issue is made once: asked again it is the task it has,
 });
 
 test('a refused start is said also for a task made before, and a desk without start is refused', async () => {
-  const { ctx, call } = setup();
+  const { ctx, call, worker } = setup();
   await call({ issue: 12 });
-  const r = await call({ issue: 12, start: true, desk: 'desk-3' });
+  // The worker of a task that has started all it may.
+  const full = ctx.repo.createTask({ project: 'app', title: 'Full', tool: 'claude', usePlan: false, planApproval: 'auto', useReview: false, createdBy: 'Maija' });
+  for (let i = 0; i < SUBTASK_STARTS_MAX; i++) ctx.repo.appendEvent(full.id, 'subtask.started', { taskId: 90 + i, by: 'Ada' });
+  const r = await call({ issue: 12, start: true, desk: 'desk-3' }, worker({ taskId: full.id }));
   assert.equal(r.body.existed, true);
-  assert.match(r.body.note, /was made from this issue before\. Created in To do: only an agent a person hired/);
+  assert.match(r.body.note, /was made from this issue before\. Created in To do: a task's workers may start at most/);
   assert.match(r.body.note, /The desk wasn't used/);
   assert.deepEqual(ctx.started, []);
   const bad = await call({ title: 't', description: 'd', desk: 'desk-3' });

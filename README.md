@@ -151,7 +151,8 @@ curl -fsSL https://raw.githubusercontent.com/devellaoy/3d-kanban/main/deploy/pro
 - **Skills** per project, phase and agent (Claude via `--plugin-dir`, Codex synced into its home). The repository's `user-skills/` (kanban-dev and others) are synced into your own
   `~/.claude` and `~/.codex` on start, see [docs/kanban.md](docs/kanban.md#skills-synced-to-your-own-home).
 - **Task references for agents**: `office-tasks get 14`, the MCP tools `get_task` / `search_tasks`, creating
-  tasks from an agent (`office-tasks create`, the MCP tool `create_task`), and
+  tasks from an agent (`office-tasks create`, the MCP tool `create_task`; a kanban task's worker you ask to
+  delegate a piece of work starts a new task for it, up to 5 per task), and
   ai-kanban's `/api/tasks/reference` and `/api/v1` on the loopback hook server (its port is in
   `<data>/hook-port`; `--hook-port <n>` pins it for scripts outside the office, see
   [docs/kanban.md](docs/kanban.md#agents-reading-other-tasks) and
