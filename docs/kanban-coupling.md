@@ -98,7 +98,7 @@ instead; the task waits (failed) with upstream's reason, naming whose sign-in is
 ## The shared task view
 
 `src/client/kanban/taskview.ts` exports `mountTaskView(container, { net, taskId, embedded })`, the task
-detail used by both the kanban page's side panel and the 3D worker window's 🗂️ Task tab. It fetches
+detail used by both the kanban page's task window and the 3D worker window's 🗂️ Task tab (the kanban page opens a task in its worker's window, `kanban/taskwindow.ts`). It fetches
 with `kanban.task.get`, follows `kanban.*` deltas for that task (it subscribes to the task's project
 itself and unsubscribes on unmount) and returns `{ destroy() }`. Embedded, it hides what the worker
 window already has (its own terminal) and keeps everything else; the worker window also passes

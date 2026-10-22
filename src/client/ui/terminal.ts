@@ -16,7 +16,7 @@ import { providerLabel, providerUsageNote, providerUsageState, providerWaitingLa
 import { clipboardKey, keyAt, naturalKey } from './termkeys';
 import { termTabs } from './termtabs';
 // A task worker's window has tabs: the terminal and its kanban task; files dropped on the task pane aren't the terminal's.
-import { mountWorkerTabs, type WorkerTabs } from '../kanban/worker3d';
+import { mountWorkerTabs, type WorkerTabs, type WorkerTaskHooks } from '../kanban/worker3d';
 import { inTaskPane, type WorkerTab } from '../kanban/office';
 
 /** A line to scroll to once the terminal has loaded: a search hit (see search.ts). */
@@ -76,6 +76,10 @@ export interface TerminalOptions {
   keypad?: boolean;
   /** A task worker's window opens on this tab (the kanban's 📍 Show in 3D asks for the task). */
   tab?: WorkerTab;
+  /** The kanban page's hooks for the task tab's view (the page opens its tasks in this window). */
+  task?: WorkerTaskHooks;
+  /** The window closed, whatever closed it. */
+  onClosed?: () => void;
 }
 
 /** The keypad's keys: what each types, or a function of the terminal for the ones that depend on its mode. */
@@ -339,6 +343,7 @@ export function openTerminal(net: Net, workerId: string, onChanges?: () => void,
       ro.disconnect();
       net.send({ t: 'worker.detach', workerId });
       kanbanTabs?.destroy();
+      opts.onClosed?.();
       term.dispose();
       if (current?.modal === modal) current = null;
     },
@@ -507,9 +512,10 @@ export function openTerminal(net: Net, workerId: string, onChanges?: () => void,
   });
 
   // The tabs, once the terminal is open (xterm measures its cells as it opens).
-  const kanbanTabs: WorkerTabs | null = mountWorkerTabs(net, info, el, host, { tab: opts.tab, focusTerminal: () => void (termHidden() || term.focus()) });
+  const kanbanTabs: WorkerTabs | null = mountWorkerTabs(net, info, el, host, { tab: opts.tab, task: opts.task, focusTerminal: () => void (termHidden() || term.focus()) });
   ro.observe(host);
   refresh();
   net.send({ t: 'worker.attach', workerId });
   if (!opts.keypad) setTimeout(() => term.focus(), 50);
+  return modal;
 }

@@ -27,8 +27,7 @@ body.kanban { display: flex; flex-direction: column; height: 100dvh; background:
 .kb-stats .hot { background: var(--bad-soft); animation: pulse 1.2s infinite; }
 
 /* ---- The board ---- */
-.kb-board { flex: 1; min-height: 0; display: flex; gap: 12px; padding: 12px 14px 14px; overflow-x: auto; overflow-y: hidden; transition: margin-right .15s; }
-body.kb-detail-open .kb-board { margin-right: var(--kb-detail-w, 560px); }
+.kb-board { flex: 1; min-height: 0; display: flex; gap: 12px; padding: 12px 14px 14px; overflow-x: auto; overflow-y: hidden; }
 .kb-col { flex: 1 1 0; min-width: 240px; max-width: 420px; display: flex; flex-direction: column; min-height: 0; background: var(--paper-2); border: var(--bw) solid var(--ink); border-radius: var(--radius); box-shadow: var(--shadow); transition: background .1s, opacity .1s; }
 .kb-col-head { display: flex; align-items: center; gap: 8px; margin: 0; padding: 10px 12px; font-size: var(--fs-md); font-weight: var(--fw-heavy); text-transform: uppercase; letter-spacing: .04em; border-bottom: var(--bw) solid var(--ink); border-radius: 13px 13px 0 0; }
 .kb-col-head > span:first-child { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -109,13 +108,6 @@ a.kb-chip:hover { background: var(--field-hover); }
 .kb-foot { display: flex; gap: 10px; margin-top: 6px; font-size: var(--fs-xs); color: var(--muted); }
 .kb-pending { color: var(--warn-ink); }
 
-/* ---- The detail panel ---- */
-.kb-detail { position: fixed; z-index: 40; top: var(--kb-bar-h, 0px); right: 0; bottom: 0; width: var(--kb-detail-w, 560px); max-width: 100vw; display: flex; flex-direction: column; background: var(--paper); border-left: var(--bw) solid var(--ink); box-shadow: var(--shadow-side); }
-.kb-detail.resizing { user-select: none; }
-.kb-resize { position: absolute; left: -6px; top: 0; bottom: 0; width: 10px; cursor: col-resize; z-index: 2; }
-.kb-resize:hover, .kb-resize:focus-visible, .kb-detail.resizing .kb-resize { background: linear-gradient(90deg, transparent 3px, var(--accent) 3px, var(--accent) 7px, transparent 7px); outline: none; }
-/* The task itself is the shared task view (taskview.ts, its styles in taskview.css), filling the panel. */
-.kb-detail > .kb-tv { flex: 1; min-height: 0; }
 /* Shared with the settings, issues and skills windows. */
 .kb-tabs { flex: none; display: flex; flex-wrap: wrap; gap: 2px; padding: 8px 10px 0; overflow-x: auto; border-bottom: var(--bw) solid var(--ink); background: var(--paper-2); scrollbar-width: none; }
 .kb-tab { flex: none; display: inline-flex; align-items: center; gap: 5px; padding: 7px 9px; font: var(--fw-bold) var(--fs-sm) var(--font); color: var(--text); background: transparent; border: var(--bw) solid transparent; border-bottom: 0; border-radius: var(--radius-sm) 12px 0 0; cursor: pointer; margin-bottom: calc(-1 * var(--bw)); }
@@ -199,9 +191,6 @@ a.kb-chip:hover { background: var(--field-hover); }
   .kb-filters select, .kb-filters .btn { flex: none; }
   .kb-board { scroll-snap-type: x mandatory; padding: 10px; }
   .kb-col { flex: 0 0 84vw; max-width: none; scroll-snap-align: center; }
-  body.kb-detail-open .kb-board { margin-right: 0; }
-  .kb-detail { top: 0; width: 100vw !important; border-left: 0; z-index: 45; }
-  .kb-resize { display: none; }
   .kb-two, .kb-three { grid-template-columns: minmax(0, 1fr); }
   .backdrop { padding: 0; }
   .modal.kb-create, .modal.kb-issues-window { width: 100%; height: 100dvh; max-height: 100dvh; border: 0; border-radius: 0; box-shadow: none; }

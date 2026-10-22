@@ -197,6 +197,23 @@ export function prTone(state: KanbanTaskCard['prs'][number]['state']): 'open' | 
   return state === 'OPEN' ? 'open' : state === 'DRAFT' ? 'draft' : state === 'MERGED' ? 'merged' : 'closed';
 }
 
+// --- Opening a task on the kanban page -----------------------------------------------------------
+
+/** How a task opens on the kanban page: in its worker's window, or in a task window of its own. */
+export type TaskWindowPlan =
+  | { kind: 'worker'; workerId: string; project: string; tab: 'terminal' | 'task' }
+  | { kind: 'plain' };
+
+/**
+ * A task with a worker opens in that worker's terminal window, on its 🗂️ Task tab (the Terminal tab
+ * when the link asked for `tab=terminal`); one without a worker, or whose worker can't be reached,
+ * opens as a task window. `card` is undefined for a task the page doesn't know.
+ */
+export function planTaskWindow(card: { workerId?: string; project: string } | undefined, tab?: TaskTab): TaskWindowPlan {
+  if (!card?.workerId) return { kind: 'plain' };
+  return { kind: 'worker', workerId: card.workerId, project: card.project, tab: tab === 'terminal' ? 'terminal' : 'task' };
+}
+
 // --- The URL --------------------------------------------------------------------------------------
 
 /**

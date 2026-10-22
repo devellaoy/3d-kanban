@@ -59,6 +59,8 @@ export interface TaskViewOptions {
   embedded?: boolean;
   /** The Changes tab (default true); the 3D worker window has none, its header's 🌿 Changes opens the same view. */
   changesTab?: boolean;
+  /** The view is on the kanban page itself (in its task window, or the worker window's tab): no link back to it. */
+  onKanban?: boolean;
   /** Called by the view's own ✕ (shown only when this is given), and when the task is deleted. */
   onClose?: () => void;
   // The kanban page's hooks; without them the view does without what they open.
@@ -100,13 +102,30 @@ export function mountTaskView(container: HTMLElement, opts: TaskViewOptions): Ta
  * straight back into mouse-look, as every upstream window does).
  */
 export function openTaskWindow(net: Net, taskId: number): Modal {
+  return openTaskModal(net, taskId, { embedded: true }).modal;
+}
+
+/**
+ * A task window with the page's own options: the kanban page opens it not embedded (so it keeps 📍 Show
+ * in 3D, 🧩 VSCode, the Terminal and Changes tabs) and with its hooks. `onClosed` hears every close.
+ */
+export function openTaskModal(net: Net, taskId: number, opts: Omit<TaskViewOptions, 'net' | 'taskId' | 'onClose'> & { onClosed?(): void } = {}): { modal: Modal; view: TaskView } {
+  const { onClosed, ...viewOpts } = opts;
   const el = h('div.modal.kb-task-window', { role: 'dialog', 'aria-modal': 'true', 'aria-label': 'Task' });
   let modal: Modal | null = null;
   // Mounted first, so the view's own ✕ is there before openModal looks for one.
-  const view = mountTaskView(el, { net, taskId, embedded: true, onClose: () => modal?.close() });
-  modal = openModal(el, { onClose: () => view.destroy(), doing: `reading task #${taskId}`, reading: true });
+  const view = mountTaskView(el, { ...viewOpts, net, taskId, onClose: () => modal?.close() });
+  modal = openModal(el, {
+    onClose: () => {
+      view.destroy();
+      onClosed?.();
+    },
+    backdropCloses: true,
+    doing: `reading task #${taskId}`,
+    reading: true,
+  });
   setTimeout(() => el.querySelector<HTMLElement>('.kb-tab.on')?.focus({ preventScroll: true }), 30);
-  return modal;
+  return { modal, view };
 }
 
 class View implements TaskView {
@@ -314,7 +333,7 @@ class View implements TaskView {
         links.push(code);
       }
     }
-    if (task && this.embedded) {
+    if (task && this.embedded && !this.o.onKanban) {
       links.push(h('a.btn.small', { href: `/kanban?project=${encodeURIComponent(task.project)}&task=${id}${this.current !== 'overview' ? `&tab=${this.current}` : ''}` }, '🗂️ Open in the kanban'));
     }
     let close: HTMLElement | null = null;

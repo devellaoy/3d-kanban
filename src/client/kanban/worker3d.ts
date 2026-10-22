@@ -16,6 +16,7 @@ import type { Net } from '../net';
 import { h, toast } from '../ui/dom';
 import { TabMemory, TASK_PANE_CLASS, tabLabel, workerTabs, type WorkerTab } from './office';
 import { mountVsCodeButton } from './vscode';
+import type { TaskViewOptions } from './taskview';
 
 const memory = new TabMemory();
 
@@ -36,7 +37,12 @@ function css() {
   document.head.append(el);
 }
 
+/** What the kanban page adds to the task tab's view: its hooks, and that it's on the page itself. */
+export type WorkerTaskHooks = Pick<TaskViewOptions, 'tab' | 'onTab' | 'openTask' | 'edit' | 'moveMenu' | 'onKanban'>;
+
 export interface WorkerTabsOptions {
+  /** The kanban page's hooks for the task tab's view (absent in the 3D office and on the 2D view). */
+  task?: WorkerTaskHooks;
   /** The tab to open on (the kanban's 📍 Show in 3D asks for the task). */
   tab?: WorkerTab;
   focusTerminal(): void;
@@ -95,7 +101,7 @@ export function mountWorkerTabs(net: Net, w: WorkerInfo, el: HTMLElement, anchor
         // "Open its terminal" (an agent asking there) is this window's other tab.
         const openTerminal = (id: string) => (id === w.id ? show('terminal') : toast('That is the task’s other worker: open its terminal at its desk', 'info'));
         // No Changes tab: the window's header has 🌿 Changes, which opens the task's Changes window.
-        view = m.mountTaskView(pane, { net, taskId, embedded: true, changesTab: false, openTerminal });
+        view = m.mountTaskView(pane, { ...opts.task, net, taskId, embedded: true, changesTab: false, openTerminal });
         if (current === 'task') pane.querySelector<HTMLElement>('.kb-tab.on')?.focus({ preventScroll: true });
       });
     }
