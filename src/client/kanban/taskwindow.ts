@@ -1,10 +1,13 @@
 // A task on the kanban page, in a window rather than a panel: the same modal the 3D office shows for a
 // task worker (its terminal window with the 🖥️ Terminal and 🗂️ Task tabs, kanban/worker3d), opened here
-// by clicking a card, a #123 link or a ?task= link. A task without a worker, or whose worker can't be
-// reached (another floor that doesn't answer, a worker gone), opens as a task window of its own instead
-// (taskview.ts), not embedded: 📍 Show in 3D, 🧩 VSCode, the Terminal and Changes tabs stay. Only one is
-// open at a time; the page learns of a close the user made (✕, Esc, the backdrop) through `closed`, never
-// of one it caused itself by opening another task.
+// by clicking a card, a #123 link or a ?task= link. The worker is the active one (the reviewer during a
+// review, else the implementer). A task without a worker, or whose worker can't be reached, opens as a
+// task window of its own instead (taskview.ts), not embedded: 📍 Show in 3D, 🧩 VSCode, the Terminal
+// and Changes tabs stay. Only one task is open at a time, and it owns every window it passes through:
+// the worker's window, its 🌿 Changes window (changesview.ts) and the plain one. The page learns of a
+// close the user made (✕, Esc, the backdrop) through `closed`, never of one a transition caused (the
+// Changes button closing the terminal, another task opening): each window carries a generation
+// (CloseGuard in model.ts) and only the latest one's close is the user's.
 //
 // Riding to the worker's floor and opening its terminal are the page's (main.ts: onFloor, openTerminal),
 // passed in as callbacks.
@@ -13,8 +16,9 @@ import type { Net } from '../net';
 import type { Modal } from '../ui/dom';
 import type { TerminalOptions } from '../ui/terminal';
 import type { KanbanTask } from '../../shared/kanban/types.js';
-import { planTaskWindow, type TaskTab } from './model';
+import { CloseGuard, planTaskWindow, type TaskTab } from './model';
 import { kstore } from './store';
+import { openTaskChanges } from './changesview';
 import { openTaskModal, type TaskView } from './taskview';
 
 export interface TaskWindowsOptions {
@@ -32,15 +36,17 @@ export interface TaskWindowsOptions {
    * instead when it can't (the page has told the user why).
    */
   onFloor(project: string, workerId: string, then: () => void, failed: () => void): void;
-  /** Opens the worker's terminal window with these options. */
-  openWorker(workerId: string, opts: TerminalOptions): Modal | void;
+  /** Opens the worker's terminal window with these options; `onChanges` is its 🌿 Changes button. */
+  openWorker(workerId: string, opts: TerminalOptions, onChanges: () => void): Modal | void;
 }
 
-/** The window open for a task; `stale` once another has taken its place or the page closed it. */
+/** The task open: its windows come and go (`modal` is the one showing), it ends when another takes its place. */
 interface Entry {
   id: number;
-  stale: boolean;
+  guard: CloseGuard;
   tab: TaskTab | null;
+  /** The worker the task's windows are about (the plain window has none until it hands over). */
+  worker?: { workerId: string; project: string };
   view?: TaskView;
   modal?: Modal | void;
 }
@@ -61,71 +67,119 @@ export class TaskWindows {
   open(id: number, tab?: TaskTab) {
     const cur = this.cur;
     if (cur?.id === id) {
-      if (tab) cur.view?.setTab(tab);
+      if (cur.worker && tab === 'changes') this.showChanges(cur, cur.worker.workerId, cur.worker.project);
+      else if (cur.worker && tab === 'terminal') this.showWorker(cur, cur.worker.workerId, cur.worker.project, 'terminal', undefined, false);
+      else if (tab) cur.view?.setTab(tab);
       return;
     }
-    const plan = planTaskWindow(kstore.tasks.get(id), tab);
-    this.show(id, tab, plan.kind === 'worker' ? plan : null, true);
+    if (cur) {
+      cur.guard.end();
+      cur.modal?.close();
+    }
+    const card = kstore.tasks.get(id);
+    const plan = planTaskWindow(card, tab);
+    const entry: Entry = { id, guard: new CloseGuard(), tab: tab ?? null };
+    this.cur = entry;
+    if (plan.kind === 'plain') return this.showPlain(entry, tab);
+    entry.worker = { workerId: plan.workerId, project: plan.project };
+    entry.tab = plan.tab === 'task' ? tab ?? null : plan.tab;
+    if (plan.tab === 'changes') this.showChanges(entry, plan.workerId, plan.project);
+    else this.showWorker(entry, plan.workerId, plan.project, plan.tab, tab, true);
   }
 
-  /** Puts the window of task `id` in place of the one open; `worker` is its worker's window to try first. */
-  private show(id: number, tab: TaskTab | undefined, worker: { workerId: string; project: string; tab: 'terminal' | 'task' } | null, fallback: boolean) {
-    const old = this.cur;
-    if (old) {
-      old.stale = true;
-      old.modal?.close();
-    }
-    const entry: Entry = { id, stale: false, tab: tab ?? null };
-    this.cur = entry;
-    const closed = () => {
-      if (entry.stale || this.cur !== entry) return;
-      this.cur = null;
-      this.o.closed();
-    };
-    const plain = () => {
-      if (entry.stale) return;
-      const { modal, view } = openTaskModal(this.o.net, id, {
-        tab,
-        onClosed: closed,
-        onTab: (t) => this.tabChanged(entry, t),
-        openTask: (other) => this.o.openTask(other),
-        edit: (task) => this.o.edit(task),
-        moveMenu: (task) => this.o.moveMenu(task),
-        // The task's worker has the terminal: its window, on the Terminal tab, in place of this one.
-        openTerminal: (workerId, project) => this.show(id, tab, { workerId, project, tab: 'terminal' }, false),
-      });
-      entry.modal = modal;
-      entry.view = view;
-    };
-    if (!worker) return plain();
+  /** A window of the entry closed: the user closed the task if it was the latest one. */
+  private windowClosed(entry: Entry, gen: number) {
+    if (!entry.guard.latest(gen) || this.cur !== entry) return;
+    entry.guard.end();
+    this.cur = null;
+    this.o.closed();
+  }
+
+  /** A transition begins: the windows so far stop speaking for the task. Returns the next window's generation. */
+  private begin(entry: Entry): number {
+    const gen = entry.guard.bump();
+    entry.view = undefined;
+    return gen;
+  }
+
+  private showPlain(entry: Entry, tab: TaskTab | undefined) {
+    const gen = this.begin(entry);
+    const { modal, view } = openTaskModal(this.o.net, entry.id, {
+      tab,
+      onClosed: () => this.windowClosed(entry, gen),
+      onTab: (t) => this.tabChanged(entry, gen, t),
+      openTask: (other) => this.o.openTask(other),
+      edit: (task) => this.o.edit(task),
+      moveMenu: (task) => this.o.moveMenu(task),
+      // The task's worker has the terminal: its window, on the Terminal tab, in place of this one.
+      openTerminal: (workerId, project) => this.showWorker(entry, workerId, project, 'terminal', undefined, false),
+    });
+    entry.modal = modal;
+    entry.view = view;
+  }
+
+  /**
+   * The worker's window in place of the entry's window now showing. `asked` is the task tab the link
+   * asked for; `fallback`: a worker that can't be reached opens the plain window, else the task closes.
+   */
+  private showWorker(entry: Entry, workerId: string, project: string, tab: 'terminal' | 'task', asked: TaskTab | undefined, fallback: boolean) {
+    const gen = this.begin(entry);
+    const old = entry.modal;
+    entry.modal = undefined;
+    entry.worker = { workerId, project };
+    if (tab === 'terminal') this.tabChanged(entry, gen, 'terminal');
+    old?.close();
     this.o.onFloor(
-      worker.project,
-      worker.workerId,
+      project,
+      workerId,
       () => {
-        if (entry.stale) return;
-        entry.modal = this.o.openWorker(worker.workerId, {
-          tab: worker.tab,
-          onClosed: closed,
-          task: {
-            tab: worker.tab === 'task' && tab !== 'terminal' ? tab : undefined,
-            onTab: (t) => this.tabChanged(entry, t),
-            openTask: (other) => this.o.openTask(other),
-            edit: (task) => this.o.edit(task),
-            moveMenu: (task) => this.o.moveMenu(task),
-            onKanban: true,
+        if (!entry.guard.latest(gen)) return;
+        entry.modal = this.o.openWorker(
+          workerId,
+          {
+            tab,
+            onClosed: () => this.windowClosed(entry, gen),
+            task: {
+              tab: tab === 'task' && asked !== 'terminal' && asked !== 'changes' ? asked : undefined,
+              onTab: (t) => this.tabChanged(entry, gen, t),
+              onWorkerTab: (t) => this.tabChanged(entry, gen, t),
+              openTask: (other) => this.o.openTask(other),
+              edit: (task) => this.o.edit(task),
+              moveMenu: (task) => this.o.moveMenu(task),
+              // The task's other worker (the reviewer): its window, on the Terminal tab.
+              openTerminal: (id, proj) => this.showWorker(entry, id, proj, 'terminal', undefined, false),
+              onKanban: true,
+            },
           },
-        });
+          () => this.showChanges(entry, workerId, project),
+        );
       },
       () => {
-        if (entry.stale) return;
-        if (fallback) plain();
-        else closed();
+        if (!entry.guard.latest(gen)) return;
+        if (fallback) this.showPlain(entry, asked);
+        else this.windowClosed(entry, gen);
       },
     );
   }
 
-  private tabChanged(entry: Entry, tab: TaskTab) {
+  /** The task's Changes window, opened before the window it replaces closes (never a moment without one). */
+  private showChanges(entry: Entry, workerId: string, project: string) {
+    const gen = this.begin(entry);
+    const old = entry.modal;
+    entry.worker = { workerId, project };
+    entry.modal = openTaskChanges(this.o.net, {
+      taskId: entry.id,
+      workerId,
+      onClosed: () => this.windowClosed(entry, gen),
+      onTerminal: () => this.showWorker(entry, workerId, project, 'terminal', undefined, false),
+    });
+    this.tabChanged(entry, gen, 'changes');
+    old?.close();
+  }
+
+  private tabChanged(entry: Entry, gen: number, tab: TaskTab) {
+    if (!entry.guard.latest(gen)) return;
     entry.tab = tab;
-    if (!entry.stale && this.cur === entry) this.o.tabChanged(tab);
+    if (this.cur === entry) this.o.tabChanged(tab);
   }
 }

@@ -113,7 +113,7 @@ const taskWindows = new TaskWindows({
   edit: (task) => openCreate(api, { task }),
   moveMenu: (id) => board.moveMenu(id),
   onFloor,
-  openWorker: (workerId, opts) => showTerminal(workerId, opts),
+  openWorker: (workerId, opts, onChanges) => showTerminal(workerId, opts, onChanges),
 });
 
 let lastOpened: number | null = null;
@@ -142,8 +142,8 @@ function toggleArchive() {
 }
 
 /** A task worker's terminal. The narrow screen gets the keypad, as on the 2D view. */
-function showTerminal(workerId: string, opts: TerminalOptions = {}) {
-  return openTerminal(net, workerId, () => openChanges(net, workerId, () => showTerminal(workerId, opts)), undefined, { ...opts, keypad: window.matchMedia('(max-width: 700px)').matches });
+function showTerminal(workerId: string, opts: TerminalOptions = {}, onChanges?: () => void) {
+  return openTerminal(net, workerId, onChanges ?? (() => openChanges(net, workerId, () => showTerminal(workerId, opts))), undefined, { ...opts, keypad: window.matchMedia('(max-width: 700px)').matches });
 }
 
 /**

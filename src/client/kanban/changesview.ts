@@ -776,16 +776,14 @@ export interface TaskChangesOptions {
   floor?: string;
   /** ⌨️ Terminal in the header: the worker's terminal instead. */
   onTerminal?: () => void;
+  /** The window closed, whatever closed it (also when ⌨️ Terminal did). */
+  onClosed?: () => void;
 }
 
 let current: { taskId: number; workerId?: string; view: ChangesView; modal: Modal } | null = null;
 
-/**
- * The view in a window of its own, upstream's Changes window's frame: the worker's dot and name, the
- * branch, ⌨️ Terminal, ✕. Asked again for the same task and worker, it switches repository; another
- * one closes it, as upstream's does.
- */
-export function openTaskChanges(net: Net, o: TaskChangesOptions) {
+/** The view in upstream's Changes window frame (dot, name, branch, ⌨️ Terminal, ✕); the same task and worker again switches repository, another closes it. */
+export function openTaskChanges(net: Net, o: TaskChangesOptions): Modal | void {
   if (current && current.taskId === o.taskId && current.workerId === o.workerId) return current.view.showRepo(o.repo, o.floor);
   const previous = current;
   const w = o.workerId ? store.workers.get(o.workerId) : undefined;
@@ -819,6 +817,7 @@ export function openTaskChanges(net: Net, o: TaskChangesOptions) {
     onClose: () => {
       view.destroy();
       if (current?.modal === modal) current = null;
+      o.onClosed?.();
     },
   });
   current = { taskId: o.taskId, workerId: o.workerId, view, modal };
@@ -827,4 +826,5 @@ export function openTaskChanges(net: Net, o: TaskChangesOptions) {
   view.start();
   renderHeader();
   setTimeout(() => el.focus(), 30);
+  return modal;
 }

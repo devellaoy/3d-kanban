@@ -199,19 +199,53 @@ export function prTone(state: KanbanTaskCard['prs'][number]['state']): 'open' | 
 
 // --- Opening a task on the kanban page -----------------------------------------------------------
 
-/** How a task opens on the kanban page: in its worker's window, or in a task window of its own. */
+/** How a task opens on the kanban page: in a worker's window (or its Changes window), or in a task window of its own. */
 export type TaskWindowPlan =
-  | { kind: 'worker'; workerId: string; project: string; tab: 'terminal' | 'task' }
+  | { kind: 'worker'; workerId: string; project: string; tab: 'terminal' | 'task' | 'changes' }
   | { kind: 'plain' };
 
 /**
- * A task with a worker opens in that worker's terminal window, on its 🗂️ Task tab (the Terminal tab
- * when the link asked for `tab=terminal`); one without a worker, or whose worker can't be reached,
- * opens as a task window. `card` is undefined for a task the page doesn't know.
+ * A task with a worker opens in the window of the worker that is active: the reviewer during a review
+ * ('review', 'pr-review'), else the implementer, else the reviewer (the only one left). It opens on
+ * its 🗂️ Task tab, the Terminal tab when the link asked for `tab=terminal`, or in its Changes window
+ * for `tab=changes` (the worker window has no Changes tab). One without a worker, or whose worker can't
+ * be reached, opens as a task window. `card` is undefined for a task the page doesn't know.
  */
-export function planTaskWindow(card: { workerId?: string; project: string } | undefined, tab?: TaskTab): TaskWindowPlan {
-  if (!card?.workerId) return { kind: 'plain' };
-  return { kind: 'worker', workerId: card.workerId, project: card.project, tab: tab === 'terminal' ? 'terminal' : 'task' };
+export function planTaskWindow(
+  card: { workerId?: string; reviewerWorkerId?: string; phase?: string; project: string } | undefined,
+  tab?: TaskTab,
+): TaskWindowPlan {
+  if (!card) return { kind: 'plain' };
+  const reviewing = card.phase === 'review' || card.phase === 'pr-review';
+  const workerId = (reviewing && card.reviewerWorkerId) || card.workerId || card.reviewerWorkerId;
+  if (!workerId) return { kind: 'plain' };
+  return { kind: 'worker', workerId, project: card.project, tab: tab === 'terminal' ? 'terminal' : tab === 'changes' ? 'changes' : 'task' };
+}
+
+/**
+ * Which close of a task's windows is the user closing the task. A task can pass through several
+ * windows (worker, Changes, plain); each one takes a generation when it is opened, and its close counts
+ * only while it is still the latest and the task hasn't ended. `bump` is called at the start of a
+ * transition, before the old window's close fires.
+ */
+export class CloseGuard {
+  private gen = 0;
+  private ended = false;
+
+  /** A transition begins: the windows opened so far no longer speak for the task. Returns the next one's generation. */
+  bump(): number {
+    return ++this.gen;
+  }
+
+  /** Another task took the place, or the user closed this one: nothing counts any more. */
+  end() {
+    this.ended = true;
+  }
+
+  /** Is `gen`'s window still the one the user sees (and so is its close the user's)? */
+  latest(gen: number): boolean {
+    return !this.ended && gen === this.gen;
+  }
 }
 
 // --- The URL --------------------------------------------------------------------------------------
