@@ -16,7 +16,7 @@ import type { Net } from '../net';
 import type { Modal } from '../ui/dom';
 import type { TerminalOptions } from '../ui/terminal';
 import type { KanbanTask } from '../../shared/kanban/types.js';
-import { CloseGuard, planTaskWindow, type TaskTab } from './model';
+import { CloseGuard, planAfterWorkerGone, planTaskWindow, type TaskTab } from './model';
 import { kstore } from './store';
 import { openTaskChanges } from './changesview';
 import { openTaskModal, type TaskView } from './taskview';
@@ -47,6 +47,8 @@ interface Entry {
   tab: TaskTab | null;
   /** The worker the task's windows are about (the plain window has none until it hands over). */
   worker?: { workerId: string; project: string };
+  /** Which window is showing. */
+  showing?: 'worker' | 'changes' | 'plain';
   view?: TaskView;
   modal?: Modal | void;
 }
@@ -102,8 +104,22 @@ export class TaskWindows {
     return gen;
   }
 
+  /**
+   * The worker of the window showing left the office (a reviewer going home after its review): not the
+   * user closing the task, which stays open in its other worker's window, else in a task window.
+   */
+  private workerGone(entry: Entry, gen: number, workerId: string) {
+    if (!entry.guard.latest(gen) || this.cur !== entry) return;
+    const tab = entry.tab === 'terminal' || entry.tab === 'changes' ? undefined : entry.tab ?? undefined;
+    const plan = planAfterWorkerGone(kstore.tasks.get(entry.id), workerId, tab);
+    entry.worker = undefined;
+    if (plan.kind === 'plain') this.showPlain(entry, tab);
+    else this.showWorker(entry, plan.workerId, plan.project, 'task', tab, true);
+  }
+
   private showPlain(entry: Entry, tab: TaskTab | undefined) {
     const gen = this.begin(entry);
+    entry.showing = 'plain';
     const { modal, view } = openTaskModal(this.o.net, entry.id, {
       tab,
       onClosed: () => this.windowClosed(entry, gen),
@@ -126,6 +142,7 @@ export class TaskWindows {
     const gen = this.begin(entry);
     const old = entry.modal;
     entry.modal = undefined;
+    entry.showing = 'worker';
     entry.worker = { workerId, project };
     if (tab === 'terminal') this.tabChanged(entry, gen, 'terminal');
     old?.close();
@@ -138,7 +155,7 @@ export class TaskWindows {
           workerId,
           {
             tab,
-            onClosed: () => this.windowClosed(entry, gen),
+            onClosed: (why) => (why === 'gone' ? this.workerGone(entry, gen, workerId) : this.windowClosed(entry, gen)),
             task: {
               tab: tab === 'task' && asked !== 'terminal' && asked !== 'changes' ? asked : undefined,
               onTab: (t) => this.tabChanged(entry, gen, t),
@@ -164,8 +181,11 @@ export class TaskWindows {
 
   /** The task's Changes window, opened before the window it replaces closes (never a moment without one). */
   private showChanges(entry: Entry, workerId: string, project: string) {
+    // Already showing that worker's Changes window: it stays, no transition.
+    if (entry.showing === 'changes' && entry.modal && entry.worker?.workerId === workerId) return;
     const gen = this.begin(entry);
     const old = entry.modal;
+    entry.showing = 'changes';
     entry.worker = { workerId, project };
     entry.modal = openTaskChanges(this.o.net, {
       taskId: entry.id,

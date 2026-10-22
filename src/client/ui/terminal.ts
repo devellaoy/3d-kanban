@@ -78,8 +78,8 @@ export interface TerminalOptions {
   tab?: WorkerTab;
   /** The kanban page's hooks for the task tab's view (the page opens its tasks in this window). */
   task?: WorkerTaskHooks;
-  /** The window closed, whatever closed it. */
-  onClosed?: () => void;
+  /** The window closed: by the user, or because the worker left the office ('gone'). */
+  onClosed?: (why: 'user' | 'gone') => void;
 }
 
 /** The keypad's keys: what each types, or a function of the terminal for the ones that depend on its mode. */
@@ -242,9 +242,11 @@ export function openTerminal(net: Net, workerId: string, onChanges?: () => void,
     net.send({ t: 'term.typing', workerId });
   };
 
+  let gone = false;
   const refresh = () => {
     const w = findWorker(workerId);
     if (!w) {
+      gone = true;
       modal.close();
       return;
     }
@@ -343,7 +345,7 @@ export function openTerminal(net: Net, workerId: string, onChanges?: () => void,
       ro.disconnect();
       net.send({ t: 'worker.detach', workerId });
       kanbanTabs?.destroy();
-      opts.onClosed?.();
+      opts.onClosed?.(gone ? 'gone' : 'user');
       term.dispose();
       if (current?.modal === modal) current = null;
     },

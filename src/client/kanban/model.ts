@@ -223,6 +223,16 @@ export function planTaskWindow(
 }
 
 /**
+ * Where an open task goes on when the worker whose window showed it leaves the office (a reviewer going
+ * home once its review is done): the task's other worker's window on its Task tab, else a task window.
+ * The task stays open, since the user didn't close it.
+ */
+export function planAfterWorkerGone(card: Parameters<typeof planTaskWindow>[0], goneId: string, tab?: TaskTab): TaskWindowPlan {
+  const left = card && { ...card, workerId: card.workerId === goneId ? undefined : card.workerId, reviewerWorkerId: card.reviewerWorkerId === goneId ? undefined : card.reviewerWorkerId };
+  return planTaskWindow(left, tab === 'terminal' || tab === 'changes' ? undefined : tab);
+}
+
+/**
  * Which close of a task's windows is the user closing the task. A task can pass through several
  * windows (worker, Changes, plain); each one takes a generation when it is opened, and its close counts
  * only while it is still the latest and the task hasn't ended. `bump` is called at the start of a

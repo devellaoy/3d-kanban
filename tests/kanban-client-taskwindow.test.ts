@@ -1,7 +1,7 @@
 // How a task opens on the kanban page: in its worker's window (Task tab, or Terminal when asked), else a task window.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { CloseGuard, planTaskWindow } from '../src/client/kanban/model.js';
+import { CloseGuard, planAfterWorkerGone, planTaskWindow } from '../src/client/kanban/model.js';
 
 test('a task with a worker opens in the worker window on the Task tab', () => {
   assert.deepEqual(planTaskWindow({ workerId: 'w1', project: 'api' }), { kind: 'worker', workerId: 'w1', project: 'api', tab: 'task' });
@@ -59,4 +59,13 @@ test('a task that ended hears nothing from its windows', () => {
   const w = g.bump();
   g.end();
   assert.equal(g.latest(w), false);
+});
+
+test('the worker of the window going home leaves the task open: the other worker, else a task window', () => {
+  const reviewing = { workerId: 'impl', reviewerWorkerId: 'rev', phase: 'review', project: 'api' };
+  assert.deepEqual(planAfterWorkerGone(reviewing, 'rev', 'conversation'), { kind: 'worker', workerId: 'impl', project: 'api', tab: 'task' });
+  // Its Terminal or Changes was the gone worker's: the next one opens on its Task tab.
+  assert.equal((planAfterWorkerGone(reviewing, 'rev', 'terminal') as { tab: string }).tab, 'task');
+  assert.deepEqual(planAfterWorkerGone({ workerId: 'impl', project: 'api' }, 'impl'), { kind: 'plain' });
+  assert.deepEqual(planAfterWorkerGone(undefined, 'impl'), { kind: 'plain' });
 });
