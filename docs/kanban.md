@@ -314,9 +314,20 @@ Retry (stopped, failed, interrupted, a usage limit) is the task's 🔁 Retry. Th
 effort and review override can be changed whenever no run is going; the next phase picks them up, and a
 new tool starts a fresh session with the task's handoff.
 
-## The detail panel
+## The task window
 
-Click a card (or Enter on it). The panel's tab is kept in the page's link (`&tab=`). Its head has
+Click a card (or Enter on it, or follow a `#123` link). A task with a worker opens in that worker's
+terminal window, the one **E** opens in the 3D office: tabs **🖥️ Terminal** and **🗂️ Task #N**, and in
+the header Esc, **🌿 Changes**, **🧩 VSCode** and ✕ (a task on another project's floor takes you to that
+floor first). The worker is the one at work: the reviewer while the task is in a review, else the
+implementer; the task's **⌨️ Open its terminal** switches to the other worker's window. **🌿 Changes**
+opens the task's Changes window and its **⌨️ Terminal** comes back; all of these stay the same open
+task, so `?task=` stays in the link. `&tab=terminal` opens the Terminal tab and `&tab=changes` the
+Changes window; the link's `&tab=` follows the window's tabs. A task without a worker, or whose worker
+can't be reached, opens in a task window of its own (✕ top right, Esc closes), with the tabs below and
+**⌨️ Open the terminal**, which swaps it for the worker's window. One task window is open at a time.
+Closing it by ✕, Esc or the backdrop clears `?task=` from the link. The task's tab is kept in the
+page's link (`&tab=`). Its head has
 **📍 Show in 3D**: the 3D office at the task's worker's desk (`/?floor=<project>&worker=<id>&desk=<id>`),
 or on its floor when it has no worker, and, for admins, **🧩 VSCode**: the task's folder opened in VS
 Code on the office's machine. A task with one repository opens its worktree; one with several opens all

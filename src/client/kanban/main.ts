@@ -7,7 +7,7 @@ import { Net } from '../net';
 import { AVATAR_COLORS, lastFloor, loadProfile, loadSettings, saveProfile, saveSettings, store } from '../state';
 import { randomLook } from '../../shared/avatar';
 import { $, h, modalOpen, openModal, toast } from '../ui/dom';
-import { openTerminal, openTerminalFor, routeTerminalMessage } from '../ui/terminal';
+import { openTerminal, openTerminalFor, routeTerminalMessage, type TerminalOptions } from '../ui/terminal';
 import { openChanges, openChangesFor, routeChangesMessage } from '../ui/changes';
 import { routeWorktreeMessage } from '../ui/prompt';
 import { routePullMessage } from '../ui/pull';
@@ -20,11 +20,11 @@ import { kanbanApi, type KanbanError, type KanbanOk } from './api';
 import { Board } from './board';
 import { tickCountdowns } from './card';
 import { openCreate } from './create';
-import { DetailPanel, isDetailTab } from './detail';
 import { moveWithDialog } from './holddialog';
 import { openIssues } from './issues';
-import { boardStats, deepLink, EMPTY_FILTER, filterActive, parseDeepLink, STATE_FILTERS, TICKET_FILTERS, type BoardFilter, type StateFilter, type TicketFilter } from './model';
+import { boardStats, deepLink, EMPTY_FILTER, filterActive, isTaskTab, parseDeepLink, STATE_FILTERS, TICKET_FILTERS, type BoardFilter, type StateFilter, type TicketFilter } from './model';
 import { kstore } from './store';
+import { TaskWindows } from './taskwindow';
 import { toolName } from './labels';
 import { run, select, textInput } from './ui';
 import { initAppearance } from '../themes';
@@ -88,7 +88,6 @@ kstore.project = firstProject();
 // ---- The page -------------------------------------------------------------------------------------
 const bar = $('kb-bar');
 const boardEl = $('kb-board');
-const detailEl = $('kb-detail');
 let archiveOpen = false;
 
 const board = new Board({
@@ -98,12 +97,11 @@ const board = new Board({
   move: (id, to) => move(id, to),
   archiveOpen: () => archiveOpen,
   toggleArchive: () => toggleArchive(),
-  selected: () => detail.id,
+  selected: () => taskWindows.id,
 });
 
-const detail = new DetailPanel({
+const taskWindows = new TaskWindows({
   net,
-  root: detailEl,
   openTask: (id) => openTask(id),
   tabChanged: (tab) => history.replaceState(null, '', `${location.pathname}${deepLink(location.search, { tab })}`),
   closed: () => {
@@ -114,15 +112,16 @@ const detail = new DetailPanel({
   },
   edit: (task) => openCreate(api, { task }),
   moveMenu: (id) => board.moveMenu(id),
-  openTerminal: (workerId, project) => onFloor(project, workerId, () => showTerminal(workerId)),
+  onFloor,
+  openWorker: (workerId, opts, onChanges) => showTerminal(workerId, opts, onChanges),
 });
 
 let lastOpened: number | null = null;
 function openTask(id: number, tab?: string) {
   lastOpened = id;
-  const same = detail.id === id;
-  detail.open(id, isDetailTab(tab) ? tab : undefined);
-  history.replaceState(null, '', `${location.pathname}${deepLink(location.search, { task: id, ...(same && !tab ? {} : { tab: detail.tab }) })}`);
+  const same = taskWindows.id === id;
+  taskWindows.open(id, isTaskTab(tab) ? tab : undefined);
+  history.replaceState(null, '', `${location.pathname}${deepLink(location.search, { task: id, ...(same && !tab ? {} : { tab: taskWindows.tab }) })}`);
   board.render();
 }
 
@@ -143,17 +142,21 @@ function toggleArchive() {
 }
 
 /** A task worker's terminal. The narrow screen gets the keypad, as on the 2D view. */
-function showTerminal(workerId: string) {
-  openTerminal(net, workerId, () => openChanges(net, workerId, () => showTerminal(workerId)), undefined, { keypad: window.matchMedia('(max-width: 700px)').matches });
+function showTerminal(workerId: string, opts: TerminalOptions = {}, onChanges?: () => void) {
+  return openTerminal(net, workerId, onChanges ?? (() => openChanges(net, workerId, () => showTerminal(workerId, opts))), undefined, { ...opts, keypad: window.matchMedia('(max-width: 700px)').matches });
 }
 
 /**
  * Runs `then` once the page is on `project`'s floor with `workerId` in sight: the office tells a page
  * only about the workers of the floor it's on, so another project's terminal takes a ride first.
+ * `failed` runs when it can't (after the user has been told why).
  */
-function onFloor(project: string, workerId: string, then: () => void) {
+function onFloor(project: string, workerId: string, then: () => void, failed: () => void = () => {}) {
   if (store.floor === project && store.workers.has(workerId)) return then();
-  if (store.floor === project) return toast('That worker isn’t here any more', 'warn');
+  if (store.floor === project) {
+    toast('That worker isn’t here any more', 'warn');
+    return failed();
+  }
   const note = toast(`Going to ${kstore.projectOf(project)?.name ?? project}’s floor…`);
   let done = false;
   const check = () => {
@@ -164,14 +167,19 @@ function onFloor(project: string, workerId: string, then: () => void) {
     clearTimeout(timer);
     note.remove();
     if (store.workers.has(workerId)) then();
-    else toast('That worker isn’t here any more', 'warn');
+    else {
+      toast('That worker isn’t here any more', 'warn');
+      failed();
+    }
   };
   const offFloor = store.on('floor', check);
   const offWorkers = store.on('workers', check);
   const timer = setTimeout(() => {
     offFloor();
     offWorkers();
-    if (!done) toast('Couldn’t get to that floor', 'error');
+    if (done) return;
+    toast('Couldn’t get to that floor', 'error');
+    failed();
   }, 8000);
   net.send({ t: 'floor.go', floor: project });
 }
@@ -406,14 +414,6 @@ const typing = (e: KeyboardEvent) => {
 };
 window.addEventListener('keydown', (e) => {
   if (modalOpen() || e.metaKey || e.ctrlKey || e.altKey) return;
-  if (e.key === 'Escape' && detail.id !== null) {
-    e.preventDefault();
-    // Half-written text isn't thrown away by one Esc: the first one leaves the box, the next closes.
-    const el = e.target as HTMLInputElement | HTMLTextAreaElement;
-    if (typing(e) && 'value' in el && el.value.trim()) return el.blur();
-    detail.close();
-    return;
-  }
   if (typing(e)) return;
   if (e.key === '/') {
     e.preventDefault();
@@ -423,9 +423,6 @@ window.addEventListener('keydown', (e) => {
     newTask();
   }
 });
-
-// The detail panel sits under the top bar, however tall the bar wraps to.
-new ResizeObserver(() => document.documentElement.style.setProperty('--kb-bar-h', `${bar.offsetHeight}px`)).observe(bar);
 
 // Every retry countdown ticks by itself.
 setInterval(() => tickCountdowns(document), 1000);

@@ -16,6 +16,8 @@ import type { Net } from '../net';
 import { h, toast } from '../ui/dom';
 import { TabMemory, TASK_PANE_CLASS, tabLabel, workerTabs, type WorkerTab } from './office';
 import { mountVsCodeButton } from './vscode';
+import type { TaskView, TaskViewOptions } from './taskview';
+import type { TaskTab } from './model';
 
 const memory = new TabMemory();
 
@@ -36,7 +38,15 @@ function css() {
   document.head.append(el);
 }
 
+/** What the kanban page adds to the task tab's view: its hooks, and that it's on the page itself. */
+export type WorkerTaskHooks = Pick<TaskViewOptions, 'tab' | 'onTab' | 'openTask' | 'edit' | 'moveMenu' | 'onKanban' | 'openTerminal'> & {
+  /** The window's Terminal/Task strip switched (to 'task': the task view's tab, 'overview' if it isn't mounted yet). */
+  onWorkerTab?(tab: TaskTab): void;
+};
+
 export interface WorkerTabsOptions {
+  /** The kanban page's hooks for the task tab's view (absent in the 3D office and on the 2D view). */
+  task?: WorkerTaskHooks;
   /** The tab to open on (the kanban's 📍 Show in 3D asks for the task). */
   tab?: WorkerTab;
   focusTerminal(): void;
@@ -74,7 +84,9 @@ export function mountWorkerTabs(net: Net, w: WorkerInfo, el: HTMLElement, anchor
   el.querySelector(':scope > header')!.after(strip);
   anchor.after(pane);
 
-  let view: { destroy(): void } | null = null;
+  // The page's hooks, less the two this window answers itself: the strip's switch is reported, and "Open its terminal" of this worker is the strip's.
+  const { onWorkerTab, openTerminal: pageOpenTerminal, ...taskHooks } = opts.task ?? {};
+  let view: TaskView | null = null;
   let destroyed = false;
   let current: WorkerTab = 'terminal';
   const show = (tab: WorkerTab) => {
@@ -86,16 +98,19 @@ export function mountWorkerTabs(net: Net, w: WorkerInfo, el: HTMLElement, anchor
     }
     el.classList.toggle('kb-on-task', tab === 'task');
     pane.classList.toggle('hidden', tab !== 'task');
+    onWorkerTab?.(tab === 'terminal' ? 'terminal' : view?.tab ?? taskHooks.tab ?? 'overview');
     if (tab === 'terminal') return void setTimeout(opts.focusTerminal, 0);
     // Out of the terminal, so its keys stop going to the worker.
     (document.activeElement as HTMLElement | null)?.blur?.();
     if (!view) {
       void import('./taskview').then((m) => {
         if (destroyed || view) return;
-        // "Open its terminal" (an agent asking there) is this window's other tab.
-        const openTerminal = (id: string) => (id === w.id ? show('terminal') : toast('That is the task’s other worker: open its terminal at its desk', 'info'));
+        // "Open its terminal" (an agent asking there) is this window's other tab; another worker's (the
+        // reviewer's) is the page's to open, else it can only be told where to find it.
+        const openTerminal = (id: string, project: string) =>
+          id === w.id ? show('terminal') : pageOpenTerminal ? pageOpenTerminal(id, project) : toast('That is the task’s other worker: open its terminal at its desk', 'info');
         // No Changes tab: the window's header has 🌿 Changes, which opens the task's Changes window.
-        view = m.mountTaskView(pane, { net, taskId, embedded: true, changesTab: false, openTerminal });
+        view = m.mountTaskView(pane, { ...taskHooks, net, taskId, embedded: true, changesTab: false, openTerminal });
         if (current === 'task') pane.querySelector<HTMLElement>('.kb-tab.on')?.focus({ preventScroll: true });
       });
     }
