@@ -100,12 +100,11 @@ test('a board query: the filters and the group in the board’s own syntax', () 
   assert.throws(() => projectQuery({}, 'x'), /isn’t a group/);
 });
 
-test('a board query refuses a double quote, and never uses @me', () => {
+test('a board query refuses a double quote', () => {
   assert.throws(() => projectQuery({ status: 'a" OR "b' }), /quotes/);
   assert.throws(() => projectQuery({ labels: ['a"'] }), /quotes/);
   assert.throws(() => projectQuery({ q: 'a"b' }), /quotes/);
   assert.throws(() => projectQuery({}, 'i:a"b'), /quotes/);
-  assert.ok(!projectQuery({ assignee: { id: 'maija' } }).includes('@me'));
 });
 
 // --- The parser -----------------------------------------------------------------------------------

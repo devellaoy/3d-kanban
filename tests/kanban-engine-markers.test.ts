@@ -6,6 +6,7 @@ test('plan outcome: PLAN READY, a QUESTIONS: heading, and the question-mark heur
   assert.equal(planOutcome('The plan.\n\nPLAN READY'), 'ready');
   assert.equal(planOutcome('The plan.\n**PLAN READY**'), 'ready', 'emphasis around the marker');
   assert.equal(planOutcome('Should it? Or not?\nPLAN READY'), 'ready', 'the marker wins over question marks');
+  assert.equal(planOutcome('Steps?\nWhy?\n```ts\nconst x = 1;\nPLAN READY'), 'ready', 'an unclosed code fence does not hide the marker');
   assert.equal(planOutcome('QUESTIONS:\n1. Which API?\n2. Keep v1?'), 'questions');
   assert.equal(planOutcome('Some context.\n## QUESTIONS:\n1. Which one'), 'questions', 'as a markdown heading');
   assert.equal(planOutcome('QUESTIONS: 1. only one'), 'questions');

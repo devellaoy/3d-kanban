@@ -59,8 +59,8 @@ test('the badge says the count once there is more than one; progress runs 0 to 1
 
 test('the four reactions sit on the keys after the emotes (7, 8, 9, 0)', () => {
   assert.deepEqual(
-    REACTIONS.map((r) => r.code),
-    ['Digit7', 'Digit8', 'Digit9', 'Digit0'],
+    REACTIONS.map((r) => r.key),
+    ['7', '8', '9', '0'],
   );
 });
 
