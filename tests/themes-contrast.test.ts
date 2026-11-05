@@ -24,20 +24,9 @@ interface Pair {
   except?: Record<string, string>;
   /** A translucent `bg` is blended over this token instead of --bg, per theme (glossy's frosted panels sit on --bg). */
   over?: Record<string, string>;
-  /** A colour laid over `bg` first (a gradient's light end), for pairs a plain token can't say. */
-  overlay?: string;
   /** Only these themes. */
   themes?: string[];
 }
-
-/** The light end of glossy's coloured-button gradient, read from the rule itself so the test follows the CSS. */
-const GLOSSY_BTN_TOP = (() => {
-  const css = stripComments(readFileSync(path.join(themes, 'glossy.css'), 'utf8'));
-  const rule = /:root\[data-theme="glossy"\]\s*:is\(\.btn\.primary,\s*\.btn\.on,\s*\.btn\.danger\)\s*\{([^}]*)\}/.exec(css);
-  const top = rule && /linear-gradient\(\s*180deg\s*,\s*(rgba\([^)]*\))/.exec(rule[1]);
-  assert.ok(top, "glossy.css: no linear-gradient(180deg, rgba(...)) in the coloured buttons' rule");
-  return top[1];
-})();
 
 const PAIRS: Pair[] = [
   { fg: '--text', bg: '--paper', min: 4.5, why: 'body text on a panel, window or card', over: { glossy: '--bg' } },
@@ -56,9 +45,6 @@ const PAIRS: Pair[] = [
   { fg: '--text-on-strong', bg: '--purple', min: 4.5, why: 'a merged PR\'s pill' },
   { fg: '--text-on-accent', bg: '--accent', min: 4.5, why: 'a primary button, the sign-in button', except: { default: 'the default look is frozen pixel-identical (white on #ff8a5b is 2.3:1)' } },
   { fg: '--text-on-accent', bg: '--accent-hover', min: 4.5, why: 'a hovered primary button', except: { default: 'the default look is frozen pixel-identical (white on #ff8a5b is 2.3:1)' } },
-  { fg: '--text-on-accent', bg: '--accent', overlay: GLOSSY_BTN_TOP, themes: ['glossy'], min: 4.5, why: 'glossy\'s coloured button at the light top of its gradient (glossy.css .btn.primary/.btn.on and the sign-in button)' },
-  { fg: '--text-on-accent', bg: '--accent-hover', overlay: GLOSSY_BTN_TOP, themes: ['glossy'], min: 4.5, why: 'the same, hovered' },
-  { fg: '--text-on-strong', bg: '--bad', overlay: GLOSSY_BTN_TOP, themes: ['glossy'], min: 4.5, why: 'glossy\'s danger button at the top of its gradient' },
   { fg: '--hint-title', bg: '--strong', min: 4.5, why: 'the name of what you face, in the HUD\'s hint bubble' },
   { fg: '--hint-cost', bg: '--strong', min: 4.5, why: 'the cost in the HUD\'s hint bubble' },
   { fg: '--code-text', bg: '--code-bg', min: 4.5, why: 'a code block, the terminal' },
@@ -131,6 +117,18 @@ export function contrast(a: Rgba, b: Rgba): number {
   return (hi + 0.05) / (lo + 0.05);
 }
 
+// The coloured buttons' text is checked on their plain fill (--accent, --accent-hover, --bad above), which
+// holds only while no theme lays a gradient or image over them.
+test('no theme lays a gradient over a button', () => {
+  for (const { id } of APPEARANCES) {
+    if (id === 'default') continue;
+    const css = stripComments(readFileSync(path.join(themes, `${id}.css`), 'utf8'));
+    for (const m of css.matchAll(/([^{}]*(?:\.btn\b|\.card button)[^{}]*)\{([^}]*)\}/g)) {
+      assert.doesNotMatch(m[2], /background(-image)?\s*:[^;]*gradient/, `${id}.css: ${m[1].trim()} has a gradient`);
+    }
+  }
+});
+
 test('the contrast helper matches the WCAG reference values', () => {
   assert.equal(Math.round(contrast([0, 0, 0, 1], [255, 255, 255, 1])), 21);
   assert.equal(contrast([255, 255, 255, 1], [255, 255, 255, 1]), 1);
@@ -147,8 +145,7 @@ for (const { id } of APPEARANCES) {
       try {
         const page = parseColor(resolve(p.over?.[id] ?? '--bg', own));
         assert.equal(page[3], 1, `${p.over?.[id] ?? '--bg'} must be opaque`);
-        let bg = blend(parseColor(resolve(p.bg, own)), page);
-        if (p.overlay) bg = blend(parseColor(p.overlay), bg);
+        const bg = blend(parseColor(resolve(p.bg, own)), page);
         const fg = blend(parseColor(resolve(p.fg, own)), bg);
         const ratio = contrast(fg, bg);
         if (ratio < p.min) failures.push(`${label}: ${ratio.toFixed(2)}:1, needs ${p.min}:1`);

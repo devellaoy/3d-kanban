@@ -48,10 +48,14 @@
   --shadow-key: 0 1px 0 rgba(0, 0, 0, .5);
 
   /* ---- Shape ---- */
-  --radius: 16px;
-  --radius-sm: 12px;
-  --radius-lg: 16px;
+  /* Tight corners: a few pixels everywhere, pills only for chips, badges and switches. */
+  --radius: 8px;
+  --radius-sm: 6px;
+  --radius-lg: 10px;
   --radius-pill: 999px;
+  --radius-xs: 4px;
+  --radius-md: 6px;
+  --radius-box: 8px;
   --hit-min: 36px;
 
   /* ---- Accent and status ---- */
@@ -186,8 +190,7 @@
 :root[data-theme="dark"] ::selection { background: rgba(138, 180, 248, .35); }
 :root[data-theme="dark"] body { line-height: 1.45; }
 
-/* Pill buttons; the primary one lightens on hover rather than turning the field colour. */
-:root[data-theme="dark"] .btn { border-radius: var(--radius-pill); }
+/* The primary button lightens on hover rather than turning the field colour. */
 :root[data-theme="dark"] .btn.primary:hover { background: var(--accent-hover); }
 :root[data-theme="dark"] .btn.on:hover { background: color-mix(in srgb, var(--good) 88%, white); }
 
@@ -228,10 +231,17 @@
 :root[data-theme="dark"] .kb-card { border-radius: var(--radius-sm); }
 :root[data-theme="dark"] .kb-card::before { width: 8px; height: 8px; margin-left: -4px; top: -4px; opacity: .7; border: 0; }
 
+/* No thick coloured bar on the left of a task's messages, a plan or a quote: hairlines all round, the
+   tint and the role badge still tell who wrote it. */
+:root[data-theme="dark"] .kb-tv .kb-comment.agent:is(.implementer, .reviewer) { border-left: var(--bw-sm) solid var(--ink); }
+:root[data-theme="dark"] .kb-tv .kb-plan.accepted { box-shadow: none; }
+:root[data-theme="dark"] .kb-tv .kb-feedback { border-left: 0; border-radius: var(--radius-sm); }
+:root[data-theme="dark"] .md blockquote { border-left-width: 2px; }
+:root[data-theme="dark"] .md blockquote.alert { border-radius: var(--radius-sm); }
+
 /* The 2D view's floor picker draws its chevron in the light theme's text colour. */
 :root[data-theme="dark"] .lite-floor select { background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 8'%3E%3Cpath d='M1 1l5 5 5-5' fill='none' stroke='%23ececec' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E"); }
 
 /* The sign-in card: a soft shadow instead of the hard ink one, and no press jump. */
 :root[data-theme="dark"] .card { border-radius: var(--radius-lg); box-shadow: var(--shadow-lg); }
-:root[data-theme="dark"] .card button { border-radius: var(--radius-pill); }
 :root[data-theme="dark"] .card button:active { transform: none; }
