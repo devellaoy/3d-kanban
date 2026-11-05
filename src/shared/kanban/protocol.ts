@@ -37,6 +37,7 @@ import { moveExtras } from './hold.js';
 import { PR_MODES, type PrMode } from './prs.js';
 import type { LoungeServerMsg } from './lounge.js';
 import { ISSUE_OPS_CLIENT_TYPE_LIST, parseIssueOpsMsg, type IssueOpsClientMsg, type IssueOpsServerMsg } from './issueops.js';
+import { FILE_OPS_CLIENT_TYPE_LIST, parseFileOpsMsg, type FileOpsClientMsg } from './fileops.js';
 import { JIRA_CONNECTION_CLIENT_TYPE_LIST, parseJiraConnectionMsg, type JiraConnectionClientMsg, type JiraConnectionServerMsg } from './jira-connections.js';
 
 // --- Limits ---------------------------------------------------------------------------------------
@@ -181,6 +182,7 @@ export type KanbanClientMsg =
   /** The task that owns a pull request, and whether its agent can fix it now: kanban.pr.owner. */
   | Req<{ t: 'kanban.pr.owner'; project: string; repo: string; number: number }>
   | IssueOpsClientMsg
+  | FileOpsClientMsg
   | JiraConnectionClientMsg;
 
 export type KanbanClientType = KanbanClientMsg['t'];
@@ -403,6 +405,7 @@ function bundleKey(r: Obj): KanbanPrBundleKey {
  */
 export const KANBAN_CLIENT_TYPE_LIST: Readonly<Record<KanbanClientType, true>> = {
   ...ISSUE_OPS_CLIENT_TYPE_LIST,
+  ...FILE_OPS_CLIENT_TYPE_LIST,
   ...JIRA_CONNECTION_CLIENT_TYPE_LIST,
   'kanban.subscribe': true,
   'kanban.unsubscribe': true,
@@ -479,6 +482,7 @@ function parse(raw: unknown): KanbanClientMsg {
   const rid = ridOf(r);
   const m = (msg: WithoutRid<KanbanClientMsg>): KanbanClientMsg => (rid ? { ...msg, rid } : msg) as KanbanClientMsg;
   if (t in ISSUE_OPS_CLIENT_TYPE_LIST) return m(parseIssueOpsMsg(t as keyof typeof ISSUE_OPS_CLIENT_TYPE_LIST, r));
+  if (t in FILE_OPS_CLIENT_TYPE_LIST) return m(parseFileOpsMsg(t as keyof typeof FILE_OPS_CLIENT_TYPE_LIST, r));
   if (t in JIRA_CONNECTION_CLIENT_TYPE_LIST) return m(parseJiraConnectionMsg(t as keyof typeof JIRA_CONNECTION_CLIENT_TYPE_LIST, r));
   const nullableProject = (v: unknown) => (v === null || v === undefined ? null : project(v));
   switch (t as KanbanClientType) {

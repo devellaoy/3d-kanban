@@ -90,13 +90,24 @@ export function waitText(k: WorkerKanban, now: number): string {
 }
 
 /**
+ * A ticket key as short as the card over a worker's head can take it: a Jira key as it is, a GitHub
+ * issue as repo#12; '' for one too long to help (a GitHub project item's).
+ */
+export function shortTicket(key: string): string {
+  const gh = /^gh:[^/]+\/([^#]+)#(\d+)$/.exec(key);
+  if (gh) return `${gh[1]}#${gh[2]}`;
+  return key.length <= 20 && !key.startsWith('ghp:') ? key : '';
+}
+
+/**
  * The card over a task worker's head: "🗂️ #14 · Fix the login" over "review 2/3 · 🙋 …". A reviewer is
  * "🔍 reviewing #14". Undefined for any other worker (upstream's card then).
  */
 export function kanbanCard(w: Pick<WorkerInfo, 'kanban'>, now: number): WorkerTask | undefined {
   const k = kanbanOf(w);
   if (!k) return undefined;
-  const title = k.title ? ` · ${clipText(k.title, 40)}` : '';
+  const ticket = k.ticket ? shortTicket(k.ticket) : '';
+  const title = `${ticket ? ` · ${ticket}` : ''}${k.title ? ` · ${clipText(k.title, 40)}` : ''}`;
   const name = k.role === 'reviewer' ? `🔍 reviewing #${k.taskId}${title}` : `🗂️ #${k.taskId}${title}`;
   const summary = [phaseText(k), waitText(k, now)].filter(Boolean).join(' · ') || 'kanban task';
   return { name, summary };

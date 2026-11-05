@@ -162,28 +162,35 @@ function scrubbed(env: NodeJS.ProcessEnv): Record<string, string> {
   return out;
 }
 
-/** Opens a folder or a .code-workspace file in VS Code; rejects with why it couldn't. */
-export async function openInVsCode(target: string, deps: VsCodeDeps = defaultDeps): Promise<void> {
+/**
+ * Opens a folder, a .code-workspace file or (with `line`) a file at a line in VS Code; rejects with why
+ * it couldn't. A line needs the `code` command (`code -g file:line`); without it a file opens at its top.
+ */
+export async function openInVsCode(target: string, deps: VsCodeDeps = defaultDeps, line?: number): Promise<void> {
   const cwd = homedir();
   let failure = '';
-  if (deps.platform === 'darwin') {
+  const code = deps.resolveCommand('code');
+  const viaOpen = async () => {
     try {
       await deps.run('open', ['-a', 'Visual Studio Code', target], cwd, TIMEOUT);
-      return;
+      return true;
     } catch (err) {
       failure = (err as Error).message;
+      return false;
     }
-  }
-  const code = deps.resolveCommand('code');
+  };
+  if (deps.platform === 'darwin' && !(line && code) && (await viaOpen())) return;
   if (code) {
+    const args = line ? ['-g', `${target}:${line}`] : [target];
     // A .cmd shim (Windows) can only be started through cmd.
     const cmd = deps.platform === 'win32' && /\.(cmd|bat)$/i.test(code);
     try {
-      await (cmd ? deps.runVerbatim(deps.env.ComSpec || 'cmd.exe', winCmdLine(code, [target]), cwd, TIMEOUT, scrubbed(deps.env)) : deps.run(code, [target], cwd, TIMEOUT, scrubbed(deps.env)));
+      await (cmd ? deps.runVerbatim(deps.env.ComSpec || 'cmd.exe', winCmdLine(code, args), cwd, TIMEOUT, scrubbed(deps.env)) : deps.run(code, args, cwd, TIMEOUT, scrubbed(deps.env)));
       return;
     } catch (err) {
       failure = (err as Error).message;
     }
+    if (deps.platform === 'darwin' && line && (await viaOpen())) return;
   }
   throw new Error(`VS Code wasn't found: install it, or in VS Code run 'Shell Command: Install code command in PATH'${failure ? ` (${failure})` : ''}`);
 }

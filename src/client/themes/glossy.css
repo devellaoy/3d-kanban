@@ -80,6 +80,10 @@
   --warn-wash: #fffbea;
   --good-wash: #f0faf2;
   --info-wash: #f0f6fe;
+  --comment-implementer: #fff6ea;
+  --comment-implementer-edge: #e08a2b;
+  --comment-reviewer: #f6f0fd;
+  --comment-reviewer-edge: #8944ab;
   --run-bg: #ebf8ee;
   --ok-bg: #f3faf5;
   --drop-ok: #e7f7ec;

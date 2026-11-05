@@ -714,7 +714,9 @@ class View implements TaskView {
     this.composer ??= this.makeComposer(d.task);
     const byId = new Map(d.attachments.map((a) => [a.id, a]));
     const list = h('ol.kb-comments', { 'aria-label': 'Conversation' });
-    for (const c of [...d.comments].reverse()) list.append(commentItem(c, byId, (id) => this.openTask(id)));
+    const runs = new Map(d.runs.map((r) => [r.id, r]));
+    const openFile = kstore.me.admin || store.me.admin ? (path: string, line?: number) => void this.req({ t: 'kanban.task.openFile', id: d.task.id, path, ...(line ? { line } : {}) }, undefined, 'Opening in VS Code…') : undefined;
+    for (const c of [...d.comments].reverse()) list.append(commentItem(c, byId, (id) => this.openTask(id), { runs, openFile }));
     if (!d.comments.length) list.append(h('li.kb-muted', {}, 'No comments yet.'));
     const more = d.commentsMore
       ? h('button.btn.kb-older', { type: 'button', disabled: this.loadingOlder, onclick: () => void this.older() }, this.loadingOlder ? 'Loading…' : 'Older comments')

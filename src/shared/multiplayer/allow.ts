@@ -227,6 +227,7 @@ export const CLIENT_MSG_CLASS = {
   'kanban.task.delete': 'deny',
   'kanban.task.vscode': 'deny',
   'kanban.worker.vscode': 'deny',
+  'kanban.task.openFile': 'deny',
   'kanban.comment.add': 'deny',
   'kanban.settings.get': 'deny',
   'kanban.settings.set': 'deny',

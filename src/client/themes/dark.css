@@ -78,6 +78,10 @@
   --warn-wash: #2e2a1f;
   --good-wash: #1f2b25;
   --info-wash: #1f2833;
+  --comment-implementer: #30281d;
+  --comment-implementer-edge: #e0a458;
+  --comment-reviewer: #2a2436;
+  --comment-reviewer-edge: #c084fc;
   --run-bg: #1f2b25;
   --ok-bg: #1f2b25;
   --drop-ok: #1e2f27;
