@@ -1,7 +1,5 @@
 import './terminal.css';
-import { Terminal } from '@xterm/xterm';
-import { FitAddon } from '@xterm/addon-fit';
-import { WebLinksAddon } from '@xterm/addon-web-links';
+import type { Terminal } from '@xterm/xterm';
 import type { Net } from '../net';
 import { store } from '../state';
 import { findWorker, floorOfWorker, projectOf } from '../state/workers';
@@ -15,6 +13,7 @@ import { DROP_MAX_BYTES, droppedPaths } from '../../shared/drops';
 import { providerLabel, providerUsageNote, providerUsageState, providerWaitingLabel, resolvedProvider } from './provider';
 import { clipboardKey, keyAt, naturalKey } from './termkeys';
 import { termTabs } from './termtabs';
+import { makeXterm } from './xterm';
 // A task worker's window has tabs: the terminal and its kanban task; files dropped on the task pane aren't the terminal's.
 import { mountWorkerTabs, type WorkerTabs, type WorkerTaskHooks } from '../kanban/worker3d';
 import { inTaskPane, type WorkerTab } from '../kanban/office';
@@ -142,24 +141,22 @@ export function openTerminal(net: Net, workerId: string, onChanges?: () => void,
   const sayBtn = h('button.btn.primary', { type: 'submit' }, 'Send');
   const sayForm = h('form.term-say', {}, say, sayBtn);
   const keypad = opts.keypad ? h('div.term-keypad', {}, keys, sayForm) : null;
-  const tabs = termTabs(workerId, { host, keypad, focusTerm: () => term.focus() });
+  // Its shell tabs, which follow the same server messages as the terminal.
+  const tabs = termTabs(workerId, {
+    net,
+    host,
+    keypad,
+    focusTerm: () => term.focus(),
+    closeWindow: () => modal.close(),
+    listen: (fn) => {
+      listeners.add(fn);
+      return () => void listeners.delete(fn);
+    },
+  });
   // The keypad has an Esc of its own.
   const el = h('div.modal.term', { role: 'dialog', 'aria-label': `${info.name} terminal` }, h('header', {}, dot, title, pill, cost, viewers, typed, modelsBtn, keypad ? null : escBtn, onChanges ? changesBtn : null, closeBtn), tabs.bar, host, tabs.pages, keypad);
 
-  const term = new Terminal({
-    fontFamily: 'ui-monospace, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace',
-    // A few more columns on a phone's narrow screen.
-    fontSize: opts.keypad ? 12 : 14,
-    lineHeight: 1.1,
-    theme: TERM_THEME,
-    cursorBlink: true,
-    scrollback: 5000,
-    allowProposedApi: true,
-    macOptionIsMeta: true,
-  });
-  const fit = new FitAddon();
-  term.loadAddon(fit);
-  term.loadAddon(new WebLinksAddon());
+  const { term, fit } = makeXterm({ keypad: opts.keypad });
 
   let ready = false;
   let lastSentSize = '';
@@ -346,6 +343,7 @@ export function openTerminal(net: Net, workerId: string, onChanges?: () => void,
       ro.disconnect();
       net.send({ t: 'worker.detach', workerId });
       kanbanTabs?.destroy();
+      tabs.destroy();
       opts.onClosed?.(gone ? 'gone' : 'user');
       term.dispose();
       if (current?.modal === modal) current = null;
@@ -419,7 +417,7 @@ export function openTerminal(net: Net, workerId: string, onChanges?: () => void,
   // Files dropped in, or a screenshot pasted, go up to the office's machine and the terminal types
   // where they are, as a terminal does with a file dragged into it: Claude Code attaches a picture.
   let uploading = 0;
-  const termHidden = () => host.getClientRects().length === 0; // a web page tab or the task tab is showing
+  const termHidden = () => host.getClientRects().length === 0; // a shell tab or the task tab is showing
   const insertFiles = async (files: File[]) => {
     if (!files.length) return;
     el.classList.toggle('uploading', ++uploading > 0);
@@ -446,7 +444,7 @@ export function openTerminal(net: Net, workerId: string, onChanges?: () => void,
     el.classList.remove('dropping');
   };
   modal.backdrop.addEventListener('dragenter', (e) => {
-    if (!hasFiles(e) || termHidden()) return; // not with the terminal hidden (a web page tab or the task tab)
+    if (!hasFiles(e) || termHidden()) return; // not with the terminal hidden (a shell tab or the task tab)
     e.preventDefault();
     dragDepth++;
     el.classList.add('dropping');
@@ -481,6 +479,7 @@ export function openTerminal(net: Net, workerId: string, onChanges?: () => void,
     true,
   );
   escBtn.addEventListener('click', () => {
+    if (tabs.inputActive('\x1b')) return; // a shell tab is showing: the Esc is its shell's
     if (escBtn.hasAttribute('disabled')) return;
     sendEsc();
     term.focus();
@@ -515,7 +514,9 @@ export function openTerminal(net: Net, workerId: string, onChanges?: () => void,
   });
 
   // The tabs, once the terminal is open (xterm measures its cells as it opens).
-  const kanbanTabs: WorkerTabs | null = mountWorkerTabs(net, info, el, host, { tab: opts.tab, task: opts.task, focusTerminal: () => void (termHidden() || term.focus()) });
+  // The terminal's side of the window (its own tab or a shell tab) is hidden while the task tab shows.
+  const terminalSideHidden = () => termHidden() && tabs.pages.getClientRects().length === 0;
+  const kanbanTabs: WorkerTabs | null = mountWorkerTabs(net, info, el, host, { tab: opts.tab, task: opts.task, focusTerminal: () => void (terminalSideHidden() || tabs.focusActive()) });
   ro.observe(host);
   refresh();
   net.send({ t: 'worker.attach', workerId });

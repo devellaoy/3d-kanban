@@ -54,7 +54,7 @@ body.lite { min-height: 100dvh; background: var(--paper); -webkit-tap-highlight-
   body.lite .modal.term, body.lite .modal.board, body.lite .modal.gh-window, body.lite .modal.desk-changes, body.lite .modal.meeting-window,
   body.lite .modal[aria-label="Task queue"] { width: 100%; height: 100dvh; max-height: 100dvh; border: 0; border-radius: 0; box-shadow: none; }
   .modal { max-height: calc(100dvh - 16px); }
-  body.lite .modal.term .term-host { padding: 6px 2px 2px 6px; }
+  body.lite .modal.term .term-host, body.lite .modal.term .term-shellhost { padding: 6px 2px 2px 6px; }
   body.lite .modal.board .body { padding: 10px; overflow-x: auto; }
   .modal.board .column { min-width: 78vw; }
   .modal.board header .board-status { display: none; }
