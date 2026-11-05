@@ -277,6 +277,9 @@ test('a pull-request review cut off by a restart goes on with its own reviewer, 
   const end = Date.now() + 15_000;
   while (!prompts(fx, /Review these pull requests/).length && Date.now() < end) await sleep(30);
   const first = fx.repo.activeRun(taskId)!;
+  // Mid-turn as the office sees it: the reviewer has the prompt (its launch record is cleared) and is working. Restarting before that
+  // makes the restart treat the prompt as never delivered and send it again, which the slow rule above never answers in time.
+  while ((fx.repo.runLaunch(first.id) || fx.workers.get(first.workerId!)?.status !== 'working') && Date.now() < end) await sleep(30);
   await fx.restartOffice();
   await fx.waitTask(taskId, (x) => x.runState === 'idle' && x.status !== 'in_progress', 'the review done', 60_000);
   const runs = fx.repo.listRuns(taskId);
