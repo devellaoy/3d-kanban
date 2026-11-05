@@ -1,6 +1,6 @@
 /* Signs over the desks, and the back office */
 .modal.desklabel { width: min(520px, 100%); }
-.sign-preview { display: grid; place-items: center; min-height: 92px; padding: 12px 18px; border: var(--bw) solid var(--ink); border-radius: 14px; box-shadow: inset 0 0 0 6px rgba(255, 255, 255, .18); font-size: 34px; font-weight: var(--fw-heavy); text-align: center; line-height: 1.1; overflow-wrap: anywhere; }
+.sign-preview { display: grid; place-items: center; min-height: 92px; padding: 12px 18px; border: var(--bw) solid var(--ink); border-radius: var(--radius-box); box-shadow: inset 0 0 0 6px rgba(255, 255, 255, .18); font-size: 34px; font-weight: var(--fw-heavy); text-align: center; line-height: 1.1; overflow-wrap: anywhere; }
 .sign-preview.placeholder { opacity: .45; }
 .label-ideas { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
 .label-ideas .btn { padding: 3px 10px; font-size: var(--fs-sm); }

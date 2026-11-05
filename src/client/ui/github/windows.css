@@ -26,7 +26,7 @@
 /* Many actions on a narrow window: they wrap onto a second row rather than run off the edge. */
 .modal.gh-window footer { flex-wrap: wrap; row-gap: 8px; }
 .gh-avatar { width: 24px; height: 24px; flex: none; border-radius: 50%; border: var(--bw-sm) solid var(--ink); color: var(--text-on-color); font-size: var(--fs-xs); font-weight: var(--fw-heavy); display: inline-grid; place-items: center; }
-.gh-card { background: var(--field); border: var(--bw-sm) solid var(--ink); border-radius: 14px; box-shadow: var(--shadow-sm); overflow: clip; }
+.gh-card { background: var(--field); border: var(--bw-sm) solid var(--ink); border-radius: var(--radius-box); box-shadow: var(--shadow-sm); overflow: clip; }
 /* article.gh-card outranks the frame's .modal header, whatever order the sheets load in. */
 article.gh-card > header { display: flex; align-items: center; gap: 8px; padding: 7px 12px; background: var(--paper-2); border-bottom: var(--bw-sm) solid color-mix(in srgb, var(--text) 15%, transparent); font-size: var(--fs-sm); font-weight: var(--fw-semibold); color: var(--muted); }
 .gh-card > header:last-child { border-bottom: 0; }
@@ -42,9 +42,9 @@ article.gh-card > header { display: flex; align-items: center; gap: 8px; padding
 .gh-badge.muted { background: var(--note-slate); }
 .gh-thread .pd-thread { margin: 0; border: 0; border-radius: 0; box-shadow: none; }
 .gh-loading { display: flex; align-items: center; justify-content: center; gap: 10px; padding: 18px; font-weight: var(--fw-bold); color: var(--muted); }
-.gh-error { margin: 16px auto; max-width: 560px; display: flex; flex-direction: column; align-items: center; gap: 10px; text-align: center; background: var(--bad-soft); border: var(--bw) solid var(--ink); border-radius: 14px; padding: 14px 18px; font-weight: var(--fw-bold); }
+.gh-error { margin: 16px auto; max-width: 560px; display: flex; flex-direction: column; align-items: center; gap: 10px; text-align: center; background: var(--bad-soft); border: var(--bw) solid var(--ink); border-radius: var(--radius-box); padding: 14px 18px; font-weight: var(--fw-bold); }
 .gh-quiet { text-align: center; color: var(--muted); font-weight: var(--fw-semibold); margin: 4px 0; }
-.gh-mergebox { background: var(--field); border: var(--bw-sm) solid var(--ink); border-radius: 14px; box-shadow: var(--shadow-sm); padding: 12px; display: flex; flex-direction: column; gap: 10px; }
+.gh-mergebox { background: var(--field); border: var(--bw-sm) solid var(--ink); border-radius: var(--radius-box); box-shadow: var(--shadow-sm); padding: 12px; display: flex; flex-direction: column; gap: 10px; }
 .gh-mergebox-go { display: flex; justify-content: flex-end; }
 /* The redrawn part of a conversation; its cards still space out in .gh-col's gap. */
 .gh-items { display: contents; }
@@ -56,7 +56,7 @@ article.gh-card > header { display: flex; align-items: center; gap: 8px; padding
 .gh-compose .gh-merge-result { margin: 10px 12px 0; }
 .gh-compose-foot { display: flex; align-items: center; gap: 10px; padding: 10px 12px 12px; font-size: var(--fs-xs); font-weight: var(--fw-semibold); color: var(--muted); }
 .gh-compose-foot .grow { flex: 1; min-width: 0; }
-.gh-status { display: flex; align-items: flex-start; gap: 8px; padding: 9px 12px; border: var(--bw-sm) solid var(--ink); border-radius: 10px; font-weight: var(--fw-bold); font-size: var(--fs-md); line-height: 1.4; background: var(--status-bg); }
+.gh-status { display: flex; align-items: flex-start; gap: 8px; padding: 9px 12px; border: var(--bw-sm) solid var(--ink); border-radius: var(--radius-md); font-weight: var(--fw-bold); font-size: var(--fs-md); line-height: 1.4; background: var(--status-bg); }
 .gh-status.ok { background: var(--good-soft); }
 .gh-status.warn { background: var(--warn-soft); }
 .gh-status.bad { background: var(--bad-soft); }
@@ -72,7 +72,7 @@ article.gh-card > header { display: flex; align-items: center; gap: 8px; padding
 .gh-merge .seg .btn { padding: 5px 10px; font-size: var(--fs-sm); }
 .modal label.gh-check { display: flex; align-items: center; gap: 8px; margin: 0; font-weight: var(--fw-semibold); cursor: pointer; }
 .gh-check input { width: 16px; height: 16px; margin: 0; accent-color: var(--accent); }
-.gh-merge-result { display: flex; align-items: center; gap: 8px; padding: 9px 12px; border: var(--bw-sm) solid var(--ink); border-radius: 10px; font-weight: var(--fw-bold); background: var(--info-soft); }
+.gh-merge-result { display: flex; align-items: center; gap: 8px; padding: 9px 12px; border: var(--bw-sm) solid var(--ink); border-radius: var(--radius-md); font-weight: var(--fw-bold); background: var(--info-soft); }
 .gh-merge-result.error { display: block; background: var(--bad-soft); white-space: pre-wrap; overflow-wrap: anywhere; font-weight: var(--fw-semibold); font-size: var(--fs-sm); }
 /* A label chip (labelChip): on a board's cards, in the windows and in the label picker. */
 .label { padding: 1px 6px; border-radius: var(--radius-pill); border: 1.5px solid var(--ink); color: var(--text); font-size: var(--fs-3xs); font-weight: var(--fw-bold); }
@@ -81,7 +81,7 @@ article.gh-card > header { display: flex; align-items: center; gap: 8px; padding
 .gh-labeler .body { min-height: 0; }
 .gh-labels { list-style: none; margin: 0; padding: 4px; max-height: min(420px, 50vh); overflow: auto; border: var(--bw) solid var(--ink); border-radius: var(--radius-sm); background: var(--field); }
 .gh-labels li + li { border-top: 1px solid color-mix(in srgb, var(--text) 10%, transparent); }
-.gh-labels label.gh-check { padding: 7px 8px; border-radius: 8px; flex-wrap: wrap; }
+.gh-labels label.gh-check { padding: 7px 8px; border-radius: var(--radius-xs); flex-wrap: wrap; }
 .gh-labels label.gh-check:hover { background: var(--field-hover); }
 .gh-labels .label { font-size: var(--fs-xs); }
 .gh-labels small { flex-basis: 100%; padding-left: 24px; color: var(--muted); font-weight: var(--fw-medium); font-size: var(--fs-xs); }

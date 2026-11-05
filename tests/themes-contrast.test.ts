@@ -4,6 +4,7 @@
 //
 // Translucent colours: a surface with alpha (glossy's frosted --paper) is blended over the theme's --bg,
 // the page that shows through it (or the token a pair's `over` names); a text colour with alpha is blended over the surface it is on.
+// A theme with a colour wash over its page (glossy's --wash-* tokens) is checked over each wash colour too, alone and all together.
 // A pair that does not resolve to a plain colour (gradient, color-mix, ...) fails loudly unless excepted.
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -24,20 +25,9 @@ interface Pair {
   except?: Record<string, string>;
   /** A translucent `bg` is blended over this token instead of --bg, per theme (glossy's frosted panels sit on --bg). */
   over?: Record<string, string>;
-  /** A colour laid over `bg` first (a gradient's light end), for pairs a plain token can't say. */
-  overlay?: string;
   /** Only these themes. */
   themes?: string[];
 }
-
-/** The light end of glossy's coloured-button gradient, read from the rule itself so the test follows the CSS. */
-const GLOSSY_BTN_TOP = (() => {
-  const css = stripComments(readFileSync(path.join(themes, 'glossy.css'), 'utf8'));
-  const rule = /:root\[data-theme="glossy"\]\s*:is\(\.btn\.primary,\s*\.btn\.on,\s*\.btn\.danger\)\s*\{([^}]*)\}/.exec(css);
-  const top = rule && /linear-gradient\(\s*180deg\s*,\s*(rgba\([^)]*\))/.exec(rule[1]);
-  assert.ok(top, "glossy.css: no linear-gradient(180deg, rgba(...)) in the coloured buttons' rule");
-  return top[1];
-})();
 
 const PAIRS: Pair[] = [
   { fg: '--text', bg: '--paper', min: 4.5, why: 'body text on a panel, window or card', over: { glossy: '--bg' } },
@@ -45,6 +35,7 @@ const PAIRS: Pair[] = [
   { fg: '--text', bg: '--field', min: 4.5, why: 'a button\'s and an input\'s text' },
   { fg: '--text', bg: '--field-hover', min: 4.5, why: 'a hovered button or the selected row' },
   { fg: '--text', bg: '--bg', min: 4.5, why: 'text straight on the page (kanban, 2D view)' },
+  { fg: '--muted', bg: '--bg', min: 4.5, why: 'secondary text straight on the page (the 2D view\'s meta lines, an empty list)', except: { default: 'the default look is frozen pixel-identical (#7a6f65 on #bfe3ff is 3.6:1)' } },
   { fg: '--muted', bg: '--paper', min: 4.5, why: 'secondary text (ids, hints, meta lines) on a panel', over: { glossy: '--bg' } },
   { fg: '--muted', bg: '--field', min: 4.5, why: 'secondary text on a button or row' },
   { fg: '--text-on-warn', bg: '--warn', min: 4.5, why: 'a working pill, a search or palette hit, a modified-file letter, the upgrading banner' },
@@ -56,9 +47,6 @@ const PAIRS: Pair[] = [
   { fg: '--text-on-strong', bg: '--purple', min: 4.5, why: 'a merged PR\'s pill' },
   { fg: '--text-on-accent', bg: '--accent', min: 4.5, why: 'a primary button, the sign-in button', except: { default: 'the default look is frozen pixel-identical (white on #ff8a5b is 2.3:1)' } },
   { fg: '--text-on-accent', bg: '--accent-hover', min: 4.5, why: 'a hovered primary button', except: { default: 'the default look is frozen pixel-identical (white on #ff8a5b is 2.3:1)' } },
-  { fg: '--text-on-accent', bg: '--accent', overlay: GLOSSY_BTN_TOP, themes: ['glossy'], min: 4.5, why: 'glossy\'s coloured button at the light top of its gradient (glossy.css .btn.primary/.btn.on and the sign-in button)' },
-  { fg: '--text-on-accent', bg: '--accent-hover', overlay: GLOSSY_BTN_TOP, themes: ['glossy'], min: 4.5, why: 'the same, hovered' },
-  { fg: '--text-on-strong', bg: '--bad', overlay: GLOSSY_BTN_TOP, themes: ['glossy'], min: 4.5, why: 'glossy\'s danger button at the top of its gradient' },
   { fg: '--hint-title', bg: '--strong', min: 4.5, why: 'the name of what you face, in the HUD\'s hint bubble' },
   { fg: '--hint-cost', bg: '--strong', min: 4.5, why: 'the cost in the HUD\'s hint bubble' },
   { fg: '--code-text', bg: '--code-bg', min: 4.5, why: 'a code block, the terminal' },
@@ -131,6 +119,18 @@ export function contrast(a: Rgba, b: Rgba): number {
   return (hi + 0.05) / (lo + 0.05);
 }
 
+// The coloured buttons' text is checked on their plain fill (--accent, --accent-hover, --bad above), which
+// holds only while no theme lays a gradient or image over them.
+test('no theme lays a gradient over a button', () => {
+  for (const { id } of APPEARANCES) {
+    if (id === 'default') continue;
+    const css = stripComments(readFileSync(path.join(themes, `${id}.css`), 'utf8'));
+    for (const m of css.matchAll(/([^{}]*(?:\.btn\b|\.card button)[^{}]*)\{([^}]*)\}/g)) {
+      assert.doesNotMatch(m[2], /background(-image)?\s*:[^;]*gradient/, `${id}.css: ${m[1].trim()} has a gradient`);
+    }
+  }
+});
+
 test('the contrast helper matches the WCAG reference values', () => {
   assert.equal(Math.round(contrast([0, 0, 0, 1], [255, 255, 255, 1])), 21);
   assert.equal(contrast([255, 255, 255, 1], [255, 255, 255, 1]), 1);
@@ -145,13 +145,21 @@ for (const { id } of APPEARANCES) {
       const label = `${id}: ${p.fg} on ${p.bg} (${p.why})`;
       if (p.except?.[id] || (p.themes && !p.themes.includes(id))) continue;
       try {
-        const page = parseColor(resolve(p.over?.[id] ?? '--bg', own));
-        assert.equal(page[3], 1, `${p.over?.[id] ?? '--bg'} must be opaque`);
-        let bg = blend(parseColor(resolve(p.bg, own)), page);
-        if (p.overlay) bg = blend(parseColor(p.overlay), bg);
-        const fg = blend(parseColor(resolve(p.fg, own)), bg);
-        const ratio = contrast(fg, bg);
-        if (ratio < p.min) failures.push(`${label}: ${ratio.toFixed(2)}:1, needs ${p.min}:1`);
+        const base = parseColor(resolve(p.over?.[id] ?? '--bg', own));
+        assert.equal(base[3], 1, `${p.over?.[id] ?? '--bg'} must be opaque`);
+        // The page is --bg, and wherever the theme's colour wash (--wash-*) lies over it: each colour
+        // alone and all of them together.
+        const washes = [...own.keys()].filter((k) => k.startsWith('--wash-')).map((k) => parseColor(resolve(k, own)));
+        const pages = [base, ...washes.map((w) => blend(w, base))];
+        if (washes.length > 1) pages.push(washes.reduce((under, w) => blend(w, under), base));
+        const worst = Math.min(
+          ...pages.map((page) => {
+            // Text straight on the page sits on the page itself, wash and all.
+            const bg = p.bg === (p.over?.[id] ?? '--bg') ? page : blend(parseColor(resolve(p.bg, own)), page);
+            return contrast(blend(parseColor(resolve(p.fg, own)), bg), bg);
+          }),
+        );
+        if (worst < p.min) failures.push(`${label}: ${worst.toFixed(2)}:1, needs ${p.min}:1`);
       } catch (e) {
         failures.push(`${label}: ${(e as Error).message}`);
       }

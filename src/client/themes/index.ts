@@ -17,8 +17,8 @@ export interface Appearance {
 /** Every appearance. A new one is also a file `themes/<id>.css` and its `@import` in `themes/index.css`. */
 export const APPEARANCES = [
   { id: 'default', label: 'Office', icon: '🧡', colorScheme: 'light', themeColor: '#fff1de', blurb: 'The warm, toy-like look the office has always had.' },
-  { id: 'dark', label: 'Dark', icon: '🌙', colorScheme: 'dark', themeColor: '#212121', blurb: 'Dark grey surfaces and soft contrast, easy on the eyes at night.' },
-  { id: 'glossy', label: 'Glossy', icon: '✨', colorScheme: 'light', themeColor: '#f5f5f7', blurb: 'Light, airy and rounded, with frosted glass and soft shadows.' },
+  { id: 'dark', label: 'Dark', icon: '🌙', colorScheme: 'dark', themeColor: '#0f0f0f', blurb: 'Near-black surfaces, compact type and tight corners, easy on the eyes at night.' },
+  { id: 'glossy', label: 'Glossy', icon: '✨', colorScheme: 'light', themeColor: '#eef1f7', blurb: 'Translucent glass over soft colour, in the manner of modern iOS.' },
 ] as const satisfies readonly Appearance[];
 
 export type AppearanceId = (typeof APPEARANCES)[number]['id'];

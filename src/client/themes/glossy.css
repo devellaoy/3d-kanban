@@ -1,5 +1,6 @@
-/* The "Glossy" appearance: light and airy in the manner of Apple's apps — frosted translucent panels,
-   hairline borders, layered soft shadows, glossy pill buttons and the system font. The tokens first
+/* The "Glossy" appearance: light glass in the manner of today's iOS — translucent frosted panels over a
+   pale wash of colour, a light rim along their top edge, soft wide shadows, flat glass pill buttons
+   (no gloss gradient), rounded corners and the system font. The tokens first
    (every one in tokens.css, see the comments there for what each one is for), then the few component
    rules tokens can't say. */
 
@@ -7,19 +8,19 @@
   color-scheme: light;
 
   /* ---- Surfaces ---- */
-  --bg: #f5f5f7;
-  --bg-login: #f5f5f7;
-  --paper: rgba(255, 255, 255, .72);
-  --paper-2: rgba(242, 242, 247, .72);
+  --bg: #eef1f7;
+  --bg-login: #eef1f7;
+  --paper: rgba(255, 255, 255, .64);
+  --paper-2: rgba(255, 255, 255, .42);
   --field: #ffffff;
-  --field-hover: #f2f2f7;
+  --field-hover: #f0f3f9;
   --field-off: #ececf0;
-  --overlay: rgba(0, 0, 0, .22);
+  --overlay: rgba(20, 28, 52, .2);
   --scrim: rgba(255, 255, 255, .6);
 
   /* ---- Text ---- */
   --text: #1d1d1f;
-  --muted: #6e6e73;
+  --muted: #5b5b61;         /* at least 5:1 on the page's colour wash too (tests/themes-contrast.test.ts) */
   --text-on-accent: #ffffff;
   --accent-ink: #ffffff;
   --strong: #1d1d1f;
@@ -34,25 +35,29 @@
   --ink: rgba(0, 0, 0, .08);
   --bw: 1px;
   --bw-sm: 1px;
-  --focus-ring: 3px solid rgba(0, 113, 227, .5);
+  --focus-ring: 3px solid rgba(0, 102, 204, .45);
   --rule-soft: rgba(0, 0, 0, .06);
   --rule-code: rgba(0, 0, 0, .1);
 
   /* ---- Shadows ---- */
-  --shadow: 0 1px 2px rgba(0, 0, 0, .06), 0 4px 16px rgba(0, 0, 0, .06);
-  --shadow-sm: 0 1px 2px rgba(0, 0, 0, .08), 0 2px 6px rgba(0, 0, 0, .05);
-  --shadow-xs: 0 1px 2px rgba(0, 0, 0, .08);
-  --shadow-lg: 0 2px 6px rgba(0, 0, 0, .06), 0 20px 60px rgba(0, 0, 0, .18);
-  --shadow-pressed: 0 0 1px rgba(0, 0, 0, .12);
+  /* Soft, wide and a little cool, each with the glass's light rim along the top edge. */
+  --shadow: 0 1px 2px rgba(0, 0, 0, .04), 0 8px 28px rgba(30, 42, 90, .08), inset 0 1px 0 rgba(255, 255, 255, .75);
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, .05), 0 3px 10px rgba(30, 42, 90, .06), inset 0 1px 0 rgba(255, 255, 255, .7);
+  --shadow-xs: 0 1px 2px rgba(0, 0, 0, .06);
+  --shadow-lg: 0 2px 8px rgba(0, 0, 0, .05), 0 24px 64px rgba(30, 42, 90, .18), inset 0 1px 0 rgba(255, 255, 255, .8);
+  --shadow-pressed: 0 1px 2px rgba(0, 0, 0, .06);
   --press: 0px;
   --shadow-side: -1px 0 0 rgba(0, 0, 0, .04), -12px 0 32px rgba(0, 0, 0, .06);
   --shadow-key: 0 1px 1px rgba(0, 0, 0, .18);
 
   /* ---- Shape ---- */
-  --radius: 16px;
-  --radius-sm: 12px;
-  --radius-lg: 18px;
+  --radius: 22px;
+  --radius-sm: 14px;
+  --radius-lg: 28px;
   --radius-pill: 999px;
+  --radius-xs: 10px;
+  --radius-md: 12px;
+  --radius-box: 18px;
   --hit-min: 36px;
 
   /* ---- Accent and status ---- */
@@ -178,68 +183,103 @@
   --fs-avatar: 11px;
 
   /* ---- Glass ---- */
-  --glass-blur: saturate(180%) blur(20px);
+  --glass-blur: saturate(180%) blur(28px);
+
+  /* ---- The page's colour wash (glossy only) ---- */
+  /* The soft colours behind the kanban and the 2D view, each faded out from its corner over --bg. The
+     contrast test lays each one (and all of them) over --bg, so text on the page is checked where it's
+     darkest. */
+  --wash-blue: rgba(168, 196, 255, .4);
+  --wash-pink: rgba(255, 200, 228, .35);
+  --wash-mint: rgba(184, 238, 226, .4);
 }
 
 /* ---- Components: only what the tokens can't say ---- */
 
-/* Scrollbars, the selection and the page: a faint cool gradient behind the kanban and the 2D view. */
+/* Scrollbars, the selection and the page: a soft, pale wash of colour behind the kanban and the 2D view,
+   so the frosted glass over it has something to show. */
 :root[data-theme="glossy"] { scrollbar-color: rgba(0, 0, 0, .22) transparent; }
-:root[data-theme="glossy"] ::selection { background: rgba(0, 113, 227, .22); }
+:root[data-theme="glossy"] ::selection { background: rgba(0, 102, 204, .2); }
 :root[data-theme="glossy"] body { line-height: 1.45; letter-spacing: -.005em; }
-:root[data-theme="glossy"] body.kanban,
-:root[data-theme="glossy"] body.lite { background: linear-gradient(180deg, #fbfbfd 0, var(--bg) 320px) var(--bg); }
+:root[data-theme="glossy"] :is(body.kanban, body.lite) {
+  background:
+    radial-gradient(1100px 760px at 0% 0%, var(--wash-blue), transparent 62%),
+    radial-gradient(900px 680px at 100% 8%, var(--wash-pink), transparent 60%),
+    radial-gradient(1200px 820px at 60% 100%, var(--wash-mint), transparent 62%),
+    var(--bg);
+  background-attachment: fixed;
+}
 
-/* Frosted glass on the kanban and the 2D view: the windows, the ☰ menu, the top bars and the toasts.
-   Where backdrop-filter isn't supported they stay translucent white over the page, which still reads. */
+/* Frosted glass on the kanban and the 2D view: the windows, the ☰ menu, the top bars, the columns and
+   the toasts. Where backdrop-filter isn't supported they stay translucent white over the page, which
+   still reads. Cards aren't blurred: there can be hundreds of them. */
 @supports ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
-  :root[data-theme="glossy"] :is(body.kanban, body.lite) :is(.modal, .hud-menu, .kb-bar, .lite-bar, .toast) {
+  :root[data-theme="glossy"] :is(body.kanban, body.lite) :is(.modal, .hud-menu, .kb-bar, .lite-bar, .toast, .kb-col) {
     -webkit-backdrop-filter: var(--glass-blur);
     backdrop-filter: var(--glass-blur);
   }
 }
 /* No blur in the 3D office: its canvas redraws every frame, so every blurred element over it would be
    blurred again every frame, real GPU work on laptops and phones. A whiter glass reads over the moving
-   scene instead; the hairline, shadow and highlight stay. The windows and the ☰ menu, which open over
-   the HUD's own text, are near opaque so that text doesn't show through them. */
+   scene instead; the hairline, shadow and rim stay. The windows and the ☰ menu, which open over the
+   HUD's own text, are near opaque so that text doesn't show through them. */
 :root[data-theme="glossy"] body:not(.kanban, .lite) :is(#hud .panel, .dock-btn, .toast) { --paper: rgba(255, 255, 255, .9); }
 :root[data-theme="glossy"] body:not(.kanban, .lite) :is(.modal, .hud-menu) { --paper: rgba(255, 255, 255, .97); }
 
-/* Glossy pill buttons: a soft top-lit gradient and a highlight along the top edge. */
+/* Buttons: flat glass pills, as in today's iOS. No gloss gradient: a translucent white fill, a hairline,
+   the rim along the top and a soft shadow; a press shrinks the button a little instead of moving it.
+   The fill is set through --field so the coloured buttons (primary, on, danger) keep their own. */
 :root[data-theme="glossy"] .btn {
+  --field: rgba(255, 255, 255, .62);
+  --field-hover: rgba(255, 255, 255, .92);
   border-radius: var(--radius-pill);
-  background-image: linear-gradient(180deg, rgba(255, 255, 255, .9), rgba(255, 255, 255, 0));
-  box-shadow: var(--shadow-sm), inset 0 1px 0 rgba(255, 255, 255, .6);
-  border-color: rgba(0, 0, 0, .1);
+  border-color: rgba(0, 0, 0, .07);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, .04), 0 2px 10px rgba(30, 42, 90, .06), inset 0 1px 0 rgba(255, 255, 255, .9);
+  transition: transform .12s ease-out, background-color .12s;
 }
-:root[data-theme="glossy"] .btn:active { box-shadow: var(--shadow-pressed), inset 0 1px 2px rgba(0, 0, 0, .08); }
+/* What's inside a button (a count badge) keeps the opaque field. Over the 3D office, which moves under
+   it and isn't blurred, the glass is near opaque. */
+:root[data-theme="glossy"] .btn * { --field: #ffffff; --field-hover: #f0f3f9; }
+:root[data-theme="glossy"] body:not(.kanban, .lite) .btn { --field: rgba(255, 255, 255, .9); }
+:root[data-theme="glossy"] .btn:active { transform: scale(.97); box-shadow: var(--shadow-pressed); }
+:root[data-theme="glossy"] .btn:disabled:active { transform: none; }
+/* A coloured button: a flat fill and a faint rim; white text stays at least 4.5:1 on it. */
 :root[data-theme="glossy"] :is(.btn.primary, .btn.on, .btn.danger) {
-  /* A fainter highlight on a coloured button: white text must stay 4.5:1 at its lightest point. */
-  background-image: linear-gradient(180deg, rgba(255, 255, 255, .1), rgba(255, 255, 255, 0));
-  border-color: rgba(0, 0, 0, .06);
+  border-color: transparent;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, .08), 0 4px 14px rgba(0, 102, 204, .18), inset 0 1px 0 rgba(255, 255, 255, .18);
 }
 :root[data-theme="glossy"] .btn.primary:hover { background-color: var(--accent-hover); }
 /* A picked segment (the Theme row, the camera view) is the accent, as Apple's; green stays for done. */
 :root[data-theme="glossy"] .btn.on { background-color: var(--accent); color: var(--text-on-accent); }
 :root[data-theme="glossy"] .dock-btn { background-color: var(--paper); }
 :root[data-theme="glossy"] .dock-btn:hover { background-color: #fff; }
-/* A button held down (a shown panel, the open menu): the accent's wash, as the base's paper-2 is too faint here. */
-:root[data-theme="glossy"] :is(.btn[aria-pressed=true], .dock-menu[aria-expanded=true]) { background-color: #dcebfb; border-color: rgba(0, 113, 227, .3); }
+/* A button held down (a shown panel, the open menu): a wash of the accent. */
+:root[data-theme="glossy"] :is(.btn[aria-pressed=true], .dock-menu[aria-expanded=true]) { background-color: rgba(0, 102, 204, .12); border-color: rgba(0, 102, 204, .25); }
 
-/* Text fields: a hairline a shade darker than the panels', so an empty field still shows. */
-:root[data-theme="glossy"] :is(textarea, input:not([type=checkbox], [type=radio], [type=range]), select) { border-color: rgba(0, 0, 0, .14); }
-:root[data-theme="glossy"] :is(textarea, input:not([type=checkbox], [type=radio], [type=range]), select):focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(0, 113, 227, .2); }
+/* Text fields: a lighter glass with a hairline a shade darker than the panels', so an empty field still
+   shows, and a soft accent halo on focus. */
+:root[data-theme="glossy"] :is(textarea, input:not([type=checkbox], [type=radio], [type=range]), select) { border-color: rgba(0, 0, 0, .12); }
+:root[data-theme="glossy"] :is(textarea, input:not([type=checkbox], [type=radio], [type=range]), select):focus { border-color: var(--accent); box-shadow: 0 0 0 4px rgba(0, 102, 204, .18); }
 
-/* Windows and the ☰ menu: soft layered shadow instead of the hard ink one. */
+/* Windows and the ☰ menu: soft layered shadow; the header and footer a slightly whiter band of the same glass. */
 :root[data-theme="glossy"] .hud-menu { border-radius: var(--radius-lg); box-shadow: var(--shadow-lg); }
 :root[data-theme="glossy"] .modal header,
-:root[data-theme="glossy"] .modal footer { background: rgba(250, 250, 252, .6); }
+:root[data-theme="glossy"] .modal footer { background: rgba(255, 255, 255, .35); }
 
-/* The kanban: columns a white frosted sheet, headers a soft tint of their colour. */
-:root[data-theme="glossy"] .kb-col { background: rgba(255, 255, 255, .6); }
+/* The kanban: columns a sheet of glass, headers a soft tint of their colour, cards straight with a
+   small pin. */
+:root[data-theme="glossy"] .kb-col { background: rgba(255, 255, 255, .4); }
 :root[data-theme="glossy"] .kb-col-head { border-radius: calc(var(--radius) - var(--bw)) calc(var(--radius) - var(--bw)) 0 0; letter-spacing: .02em; }
 :root[data-theme="glossy"] .kb-card { border-radius: var(--radius-sm); }
 :root[data-theme="glossy"] .kb-card::before { width: 8px; height: 8px; margin-left: -4px; top: -4px; border: 0; box-shadow: 0 1px 2px rgba(0, 0, 0, .25); }
+
+/* No thick coloured bar on the left of a task's messages, a plan or a quote: hairlines all round, the
+   tint and the role badge still tell who wrote it. */
+:root[data-theme="glossy"] .kb-tv .kb-comment.agent:is(.implementer, .reviewer) { border-left: var(--bw-sm) solid var(--ink); }
+:root[data-theme="glossy"] .kb-tv .kb-plan.accepted { box-shadow: none; }
+:root[data-theme="glossy"] .kb-tv .kb-feedback { border-left: 0; border-radius: var(--radius-sm); }
+:root[data-theme="glossy"] .md blockquote { border-left-width: 2px; }
+:root[data-theme="glossy"] .md blockquote.alert { border-radius: var(--radius-sm); }
 
 /* The bars' controls: at least 36px tall. */
 :root[data-theme="glossy"] .kb-bar .btn.small,
@@ -265,14 +305,13 @@
 :root[data-theme="glossy"] .switch::after { background: #fff; border-color: transparent; box-shadow: 0 1px 3px rgba(0, 0, 0, .25); }
 :root[data-theme="glossy"] .menu-toggle[aria-checked=true] .switch { background: #34c759; }
 
-/* The sign-in card: frosted, with a soft shadow and a glossy button. */
+/* The sign-in card: frosted glass with a soft shadow and a flat pill button. */
 :root[data-theme="glossy"] .card {
-  border-radius: 22px; box-shadow: var(--shadow-lg);
+  border-radius: var(--radius-lg); box-shadow: var(--shadow-lg);
   -webkit-backdrop-filter: var(--glass-blur); backdrop-filter: var(--glass-blur);
 }
 :root[data-theme="glossy"] .card button {
   border-radius: var(--radius-pill); border-color: transparent;
-  background-image: linear-gradient(180deg, rgba(255, 255, 255, .1), rgba(255, 255, 255, 0));
-  box-shadow: var(--shadow-sm), inset 0 1px 0 rgba(255, 255, 255, .35);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, .08), 0 4px 14px rgba(0, 102, 204, .18), inset 0 1px 0 rgba(255, 255, 255, .18);
 }
-:root[data-theme="glossy"] .card button:active { transform: none; }
+:root[data-theme="glossy"] .card button:active { transform: scale(.97); }

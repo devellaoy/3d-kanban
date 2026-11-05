@@ -7,7 +7,7 @@ body.kanban { display: flex; flex-direction: column; height: 100dvh; background:
 .grow { flex: 1; }
 .kb-muted { color: var(--muted); font-weight: var(--fw-medium); }
 .kb-hint { display: block; margin: 4px 0 0; font-size: var(--fs-xs); font-weight: var(--fw-semibold); color: var(--muted); }
-.btn.small { padding: 4px 9px; font-size: var(--fs-sm); border-radius: 10px; box-shadow: var(--shadow-xs); }
+.btn.small { padding: 4px 9px; font-size: var(--fs-sm); border-radius: var(--radius-md); box-shadow: var(--shadow-xs); }
 .btn[aria-pressed=true] { background: var(--paper-2); transform: translateY(var(--press)); box-shadow: var(--shadow-pressed); }
 :focus-visible { outline: var(--focus-ring); outline-offset: 2px; }
 
@@ -29,7 +29,7 @@ body.kanban { display: flex; flex-direction: column; height: 100dvh; background:
 /* ---- The board ---- */
 .kb-board { flex: 1; min-height: 0; display: flex; gap: 12px; padding: 12px 14px 14px; overflow-x: auto; overflow-y: hidden; }
 .kb-col { flex: 1 1 0; min-width: 240px; max-width: 420px; display: flex; flex-direction: column; min-height: 0; background: var(--paper-2); border: var(--bw) solid var(--ink); border-radius: var(--radius); box-shadow: var(--shadow); transition: background .1s, opacity .1s; }
-.kb-col-head { display: flex; align-items: center; gap: 8px; margin: 0; padding: 10px 12px; font-size: var(--fs-md); font-weight: var(--fw-heavy); text-transform: uppercase; letter-spacing: .04em; border-bottom: var(--bw) solid var(--ink); border-radius: 13px 13px 0 0; }
+.kb-col-head { display: flex; align-items: center; gap: 8px; margin: 0; padding: 10px 12px; font-size: var(--fs-md); font-weight: var(--fw-heavy); text-transform: uppercase; letter-spacing: .04em; border-bottom: var(--bw) solid var(--ink); border-radius: calc(var(--radius-box) - 1px) calc(var(--radius-box) - 1px) 0 0; }
 .kb-col-head > span:first-child { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .kb-col.todo .kb-col-head { background: var(--note-yellow); }
 .kb-col.in_progress .kb-col-head { background: var(--note-blue); }
@@ -43,7 +43,7 @@ body.kanban { display: flex; flex-direction: column; height: 100dvh; background:
 .kb-empty { margin: 8px 4px; text-align: center; font-size: var(--fs-sm); font-weight: var(--fw-semibold); color: var(--muted); }
 
 /* While a card is dragged: where it can go lights up, where it can't says why. */
-.kb-drop-why { display: none; margin: 8px 10px 0; padding: 6px 8px; font-size: var(--fs-xs); font-weight: var(--fw-bold); border-radius: 10px; }
+.kb-drop-why { display: none; margin: 8px 10px 0; padding: 6px 8px; font-size: var(--fs-xs); font-weight: var(--fw-bold); border-radius: var(--radius-md); }
 .kb-board.dragging .kb-drop-why:not(:empty) { display: block; }
 .kb-board.dragging .kb-col.drop-ok { background: var(--drop-ok); outline: 3px dashed var(--good); outline-offset: -8px; }
 .kb-board.dragging .kb-col.drop-ok .kb-drop-why { background: var(--good); color: var(--text-on-strong); }
@@ -55,7 +55,7 @@ body.kanban { display: flex; flex-direction: column; height: 100dvh; background:
 .kb-archive-label { font-weight: var(--fw-heavy); }
 
 /* ---- Cards: sticky notes ---- */
-.kb-card { position: relative; flex: none; padding: 12px 12px 10px; background: var(--note-yellow); border: var(--bw) solid var(--ink); border-radius: 6px 6px 14px 6px; box-shadow: var(--shadow); transform: rotate(calc(var(--tilt, 0deg) * var(--note-tilt))); cursor: grab; transition: transform .08s, box-shadow .08s; font-size: var(--fs-sm); font-weight: var(--fw-semibold); }
+.kb-card { position: relative; flex: none; padding: 12px 12px 10px; background: var(--note-yellow); border: var(--bw) solid var(--ink); border-radius: 6px 6px var(--radius-box) 6px; box-shadow: var(--shadow); transform: rotate(calc(var(--tilt, 0deg) * var(--note-tilt))); cursor: grab; transition: transform .08s, box-shadow .08s; font-size: var(--fs-sm); font-weight: var(--fw-semibold); }
 .kb-card::before { content: ''; position: absolute; top: -8px; left: 50%; width: 14px; height: 14px; margin-left: -7px; border-radius: 50%; background: var(--pin, var(--bad)); border: var(--bw-sm) solid var(--ink); }
 .kb-card:hover, .kb-card:focus-visible { transform: rotate(0deg) translateY(-2px); box-shadow: var(--shadow-lg); }
 .kb-card:focus-visible { outline: var(--focus-ring); outline-offset: 3px; }
@@ -71,7 +71,7 @@ body.kanban { display: flex; flex-direction: column; height: 100dvh; background:
 .kb-card-top { display: flex; align-items: center; gap: 6px; margin-bottom: 4px; }
 .kb-id { font-weight: var(--fw-heavy); color: var(--muted); font-variant-numeric: tabular-nums; }
 .kb-tool { margin-left: auto; font-size: var(--fs-lg); }
-.kb-move { width: 26px; height: 22px; padding: 0; border: var(--bw-sm) solid var(--ink); border-radius: 8px; background: var(--field); font: var(--fw-heavy) var(--fs-md)/1 var(--font); cursor: pointer; }
+.kb-move { width: 26px; height: 22px; padding: 0; border: var(--bw-sm) solid var(--ink); border-radius: var(--radius-xs); background: var(--field); font: var(--fw-heavy) var(--fs-md)/1 var(--font); cursor: pointer; }
 .kb-move:hover { background: var(--field-hover); }
 .kb-title { font-size: var(--fs-lg); font-weight: var(--fw-heavy); line-height: 1.25; overflow-wrap: anywhere; }
 .kb-chips { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 6px; }
@@ -92,7 +92,7 @@ a.kb-chip:hover { background: var(--field-hover); }
 .kb-pulse { width: 12px; height: 12px; flex: none; border-radius: 50%; background: var(--good); border: var(--bw-sm) solid var(--ink); animation: kb-pulse 1.1s ease-in-out infinite; }
 @keyframes kb-pulse { 0%, 100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--good) 70%, transparent); } 50% { box-shadow: 0 0 0 6px color-mix(in srgb, var(--good) 0%, transparent); transform: scale(1.12); } }
 .kb-prs { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 6px; }
-.kb-pr { padding: 1px 7px; font-size: var(--fs-2xs); font-weight: var(--fw-heavy); border: var(--bw-sm) solid var(--ink); border-radius: 8px; text-decoration: none; color: var(--text); background: var(--field); white-space: nowrap; }
+.kb-pr { padding: 1px 7px; font-size: var(--fs-2xs); font-weight: var(--fw-heavy); border: var(--bw-sm) solid var(--ink); border-radius: var(--radius-xs); text-decoration: none; color: var(--text); background: var(--field); white-space: nowrap; }
 .kb-pr.open { background: var(--good-soft); }
 .kb-pr.draft { background: var(--tint-grey); }
 .kb-pr.merged { background: var(--tint-violet); }
@@ -110,12 +110,12 @@ a.kb-chip:hover { background: var(--field-hover); }
 
 /* Shared with the settings, issues and skills windows. */
 .kb-tabs { flex: none; display: flex; flex-wrap: wrap; gap: 2px; padding: 8px 10px 0; overflow-x: auto; border-bottom: var(--bw) solid var(--ink); background: var(--paper-2); scrollbar-width: none; }
-.kb-tab { flex: none; display: inline-flex; align-items: center; gap: 5px; padding: 7px 9px; font: var(--fw-bold) var(--fs-sm) var(--font); color: var(--text); background: transparent; border: var(--bw) solid transparent; border-bottom: 0; border-radius: var(--radius-sm) 12px 0 0; cursor: pointer; margin-bottom: calc(-1 * var(--bw)); }
+.kb-tab { flex: none; display: inline-flex; align-items: center; gap: 5px; padding: 7px 9px; font: var(--fw-bold) var(--fs-sm) var(--font); color: var(--text); background: transparent; border: var(--bw) solid transparent; border-bottom: 0; border-radius: var(--radius-sm) var(--radius-sm) 0 0; cursor: pointer; margin-bottom: calc(-1 * var(--bw)); }
 .kb-tab:hover { background: var(--scrim); }
 .kb-tab.on { background: var(--paper); border-color: var(--ink); }
 .kb-tab-n { min-width: 18px; padding: 0 5px; border-radius: var(--radius-pill); background: var(--strong); color: var(--text-on-strong); font-size: var(--fs-2xs); line-height: 18px; text-align: center; }
 .kb-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
-.kb-error { padding: 8px 10px; border: var(--bw-sm) solid var(--bad); border-radius: 10px; background: var(--bad-wash); font-weight: var(--fw-bold); }
+.kb-error { padding: 8px 10px; border: var(--bw-sm) solid var(--bad); border-radius: var(--radius-md); background: var(--bad-wash); font-weight: var(--fw-bold); }
 .kb-ref { font-weight: var(--fw-heavy); }
 .kb-table { width: 100%; border-collapse: collapse; font-size: var(--fs-sm); }
 .kb-table th, .kb-table td { padding: 6px 8px; border-bottom: var(--bw-sm) solid var(--rule-soft); text-align: left; vertical-align: top; }
@@ -127,7 +127,7 @@ a.kb-chip:hover { background: var(--field-hover); }
 .modal.kb-move-dialog { width: min(380px, 100%); }
 .modal.kb-pr-picker { width: min(640px, 100%); }
 .modal .body.kb-form { display: flex; flex-direction: column; gap: 12px; }
-.modal fieldset, .kb-pane fieldset { margin: 0; padding: 10px 14px 14px; border: var(--bw) solid var(--ink); border-radius: 14px; background: var(--field); display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+.modal fieldset, .kb-pane fieldset { margin: 0; padding: 10px 14px 14px; border: var(--bw) solid var(--ink); border-radius: var(--radius-box); background: var(--field); display: flex; flex-direction: column; gap: 10px; min-width: 0; }
 .modal legend { padding: 0 6px; font-weight: var(--fw-heavy); font-size: var(--fs-sm); text-transform: uppercase; letter-spacing: .04em; }
 .kb-field { display: flex; flex-direction: column; min-width: 0; }
 .kb-field > label { margin-bottom: 4px; font-size: var(--fs-sm); }
@@ -168,7 +168,7 @@ a.kb-chip:hover { background: var(--field-hover); }
 
 /* The PR review picker (from the PR window in the office too) */
 .kb-pr-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
-.kb-pr-list li { display: flex; align-items: center; gap: 8px; padding: 6px 8px; border: var(--bw-sm) solid var(--ink); border-radius: 10px; background: var(--field); }
+.kb-pr-list li { display: flex; align-items: center; gap: 8px; padding: 6px 8px; border: var(--bw-sm) solid var(--ink); border-radius: var(--radius-md); background: var(--field); }
 .kb-pr-list li.this { background: var(--warn-wash); }
 .kb-pr-list .kb-pr-title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: var(--fw-bold); }
 .kb-pr-list h5 { margin: 10px 0 4px; }

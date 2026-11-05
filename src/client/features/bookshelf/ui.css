@@ -8,7 +8,7 @@
 .modal .bs-find input[type=text] { font-size: var(--fs-md); padding: 8px 12px; }
 .bs-count { font-size: var(--fs-xs); font-weight: var(--fw-bold); color: var(--muted); padding: 0 16px 6px; min-height: 20px; }
 .bs-list { list-style: none; margin: 0; padding: 0 8px 12px; overflow: auto; flex: 1; min-height: 0; }
-.bs-item { padding: 7px 10px; border-radius: 10px; cursor: pointer; border: var(--bw-sm) solid transparent; min-width: 0; }
+.bs-item { padding: 7px 10px; border-radius: var(--radius-md); cursor: pointer; border: var(--bw-sm) solid transparent; min-width: 0; }
 .bs-item + .bs-item { margin-top: 2px; }
 .bs-item:hover { background: color-mix(in srgb, var(--field) 70%, transparent); }
 .bs-item.sel { border-color: var(--accent); background: var(--field); }
@@ -26,7 +26,7 @@
 .bs-meta { display: flex; gap: 10px; align-items: center; color: var(--muted); font-weight: var(--fw-semibold); font-size: var(--fs-xs); white-space: nowrap; }
 .bs-meta a { color: var(--link); font-weight: var(--fw-bold); text-decoration: none; }
 .bs-meta a:hover { text-decoration: underline; }
-.bs-toc { font: inherit; font-size: 12.5px; font-weight: var(--fw-bold); color: var(--text); border: var(--bw-sm) solid var(--ink); border-radius: 10px; padding: 4px 8px; max-width: 220px; background: var(--field); cursor: pointer; }
+.bs-toc { font: inherit; font-size: 12.5px; font-weight: var(--fw-bold); color: var(--text); border: var(--bw-sm) solid var(--ink); border-radius: var(--radius-md); padding: 4px 8px; max-width: 220px; background: var(--field); cursor: pointer; }
 .bs-page { flex: 1; overflow: auto; min-height: 0; outline: none; }
 .bs-page .md { max-width: 860px; margin: 0 auto; padding: 28px 44px 72px; font-size: 15.5px; line-height: 1.7; }
 .bs-page .md h1 { font-size: 28px; }
