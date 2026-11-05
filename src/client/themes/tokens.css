@@ -85,6 +85,10 @@
   --warn-wash: #fffbe6;     /* ... the picked row of a list */
   --good-wash: #eefff0;     /* ... an accepted plan */
   --info-wash: #eef6ff;     /* ... your comment */
+  --comment-implementer: #fff5e8;       /* an implementer agent's comment in a task's conversation */
+  --comment-implementer-edge: #ff8a5b;  /* ... its left edge */
+  --comment-reviewer: #f9f5ff;          /* a reviewer agent's comment */
+  --comment-reviewer-edge: #9d4edd;     /* ... its left edge */
   --run-bg: #e7f8ee;        /* a running queue row */
   --ok-bg: #f3fbf6;         /* a signed-in account's card */
   --drop-ok: #e3fff3;       /* a column a dragged card can be dropped in */

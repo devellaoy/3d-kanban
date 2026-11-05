@@ -97,6 +97,13 @@
 .kb-tv .kb-comment { padding: 8px 12px 10px; border: var(--bw-sm) solid var(--ink); border-radius: var(--radius-sm); background: var(--field); }
 .kb-tv .kb-comment.user { background: var(--info-wash); margin-left: 24px; }
 .kb-tv .kb-comment.agent { background: var(--field); margin-right: 24px; }
+/* An agent's comment by who wrote it: tinted, with a coloured left edge, so it stands off the pane. */
+.kb-tv .kb-comment.agent.implementer { background: var(--comment-implementer); border-left: 6px solid var(--comment-implementer-edge); }
+.kb-tv .kb-comment.agent.reviewer { background: var(--comment-reviewer); border-left: 6px solid var(--comment-reviewer-edge); }
+.kb-tv .kb-role { padding: 0 6px; font-size: var(--fs-2xs); font-weight: var(--fw-heavy); color: var(--text); border: var(--bw-sm) solid var(--comment-implementer-edge); border-radius: var(--radius-pill); background: var(--field); }
+.kb-tv .kb-role.reviewer { border-color: var(--comment-reviewer-edge); }
+.kb-tv .md a.kb-file { text-decoration: underline dotted; cursor: pointer; }
+.kb-tv .md a.kb-file code { color: inherit; }
 .kb-tv .kb-comment.system { background: var(--field-quiet); border-style: dashed; font-size: var(--fs-sm); }
 .kb-tv .kb-comment.pending { opacity: .75; border-style: dashed; }
 .kb-tv .kb-comment header { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 0 0 4px; padding: 0; font-size: var(--fs-sm); background: none; border: 0; }

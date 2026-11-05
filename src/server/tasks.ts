@@ -101,7 +101,10 @@ export class TaskNamer {
     if (!this.enabled) return null;
     // Synchronous spawn errors also use the optional namer's fallback/backoff.
     const out = await run(this.claude!, this.env, this.system(), describe(ctx)).catch(() => null);
-    const task = out === null ? null : parse(out);
+    const parsed = out === null ? null : parse(out);
+    // "Working On GitHub Issue" says nothing: the issue's own number and title say what it is.
+    const issue = parsed && isGeneric(parsed.name) ? latestIssueTask(ctx.prompts) : undefined;
+    const task = issue ? { ...parsed!, name: issue.name } : parsed;
     if (task) this.fails = 0;
     else if (++this.fails >= FAILS_BEFORE_BACKOFF) {
       this.fails = 0;
@@ -111,8 +114,36 @@ export class TaskNamer {
   }
 }
 
-/** The label to show while the model is still thinking, or when there is no model: the prompt. */
+/** A name that only says it works on an issue or a task ("Work On GitHub Issue", "Working on issue #12"). */
+export function isGeneric(name: string): boolean {
+  return /^(?:(?:work|working|look|looking|start|starting|handle|handling|fix|fixing)\s+(?:on\s+)?)?(?:a\s+|the\s+)?(?:github\s+|jira\s+)?(?:issue|task|ticket)s?(?:\s*#?\d+)?$/i.test(name.trim());
+}
+
+/**
+ * A prompt that hands over an issue (the issues board's "Work on GitHub issue #12: "Title"", in whatever
+ * words it has been edited to, as long as it has "issue #12" and the quoted title after it): named by the issue, else undefined.
+ */
+export function issueTask(prompt: string): WorkerTask | undefined {
+  const one = prompt.replace(/\s+/g, ' ').trim();
+  const m = /\bissue #(\d+)\b[^"“”]{0,12}["“]([^"”]{2,200})["”]/i.exec(one);
+  if (!m) return undefined;
+  const title = m[2].trim();
+  return { name: cap(clip(`#${m[1]} ${title}`, NAME_MAX)), summary: cap(clip(`Issue #${m[1]}: ${title}`, SUMMARY_MAX)) };
+}
+
+/** The issue the newest prompt that hands one over is about (prompts are oldest first): the worker's current issue. */
+export function latestIssueTask(prompts: readonly string[]): WorkerTask | undefined {
+  for (let i = prompts.length - 1; i >= 0; i--) {
+    const issue = issueTask(prompts[i]);
+    if (issue) return issue;
+  }
+  return undefined;
+}
+
+/** The label to show while the model is still thinking, or when there is no model: the issue it hands over, else the prompt. */
 export function fallbackTask(prompt: string): WorkerTask {
+  const issue = issueTask(prompt);
+  if (issue) return issue;
   const one = prompt.replace(/\s+/g, ' ').trim();
   const words = one.replace(/^(please|can you|could you|hey|ok|so)\b[\s,]*/i, '').split(' ');
   const name = words.slice(0, 4).join(' ').replace(/[\s,.;:!?-]+$/, '');

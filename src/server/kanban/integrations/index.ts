@@ -12,6 +12,7 @@ import { createUserSkillsPlugin } from './userskills/index.js';
 import { createChangesPlugin } from './changes/index.js';
 import { createReportsPlugin } from './reports/index.js';
 import { createHostingPlugin } from './hosting/index.js';
+import { createOpenFilePlugin } from '../openfile.js';
 
 /** Every integration plugin, in the order they are consulted. */
 export const integrationPlugins: KanbanPluginFactory[] = [
@@ -24,6 +25,7 @@ export const integrationPlugins: KanbanPluginFactory[] = [
   (ctx) => createReportsPlugin(ctx),
   // After pulls: a board refresh has set the linked PRs' states before work items follow them.
   (ctx) => createHostingPlugin(ctx),
+  (ctx) => createOpenFilePlugin(ctx),
 ];
 
 export function createPulls(ctx: KanbanContext): KanbanPullsApi {

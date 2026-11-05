@@ -16,6 +16,7 @@ import {
   kanbanCard,
   kanbanStarter,
   kanbanUrl,
+  shortTicket,
   officeLink,
   parseOfficeLink,
   promptKind,
@@ -52,6 +53,10 @@ test('the desk card: task, title, phase and round, what it waits on', () => {
   assert.equal(kanbanCard(k({ role: 'reviewer', title: 'Fix the login' }), NOW)!.name, '🔍 reviewing #14 · Fix the login');
   assert.equal(kanbanCard(k({ title: 'x'.repeat(60) }), NOW)!.name.length, '🗂️ #14 · '.length + 40);
   assert.equal(kanbanCard({ kanban: undefined }, NOW), undefined);
+  // Its ticket goes before the title, as short as it can be.
+  assert.equal(kanbanCard(k({ title: 'Fix the login', ticket: 'UYT-12' }), NOW)!.name, '🗂️ #14 · UYT-12 · Fix the login');
+  assert.equal(kanbanCard(k({ role: 'reviewer', ticket: 'gh:acme/api#5' }), NOW)!.name, '🔍 reviewing #14 · api#5');
+  assert.equal(shortTicket('ghp:acme/1#PVTI_abc'), '');
   assert.equal(workerLabel({ name: 'Ada', ...k() }), 'Ada · #14');
   assert.equal(workerLabel({ name: 'Ada', kanban: undefined }), 'Ada');
   assert.equal(countdown(NOW + 3_600_000 + 120_000, NOW), '1 h 02 min');

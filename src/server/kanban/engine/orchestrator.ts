@@ -473,7 +473,7 @@ export class Orchestrator {
       const summary: KanbanWorkerSummary = {
         taskId: task.id,
         role: w.kanban!.role,
-        title: task.title,
+        title: task.title, ...(task.ticket ? { ticket: task.ticket } : {}),
         status: task.status,
         ...(task.phase ? { phase: task.phase } : {}),
         runState: task.runState,

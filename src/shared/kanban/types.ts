@@ -642,7 +642,7 @@ export interface KanbanReportFile {
 export interface KanbanWorkerSummary {
   taskId: number;
   role: KanbanRole;
-  title?: string;
+  title?: string; ticket?: string; // ticket: the task's issue key (UYT-12, gh:owner/repo#5), for the card over its head
   status?: TaskStatus;
   phase?: RunPhase;
   /** The engine's state of it: anything but idle means a run is under way (or queued, or stopping). */

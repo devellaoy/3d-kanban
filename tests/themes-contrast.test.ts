@@ -65,6 +65,11 @@ const PAIRS: Pair[] = [
   { fg: '--code-text-2', bg: '--code-bg', min: 4.5, why: 'code in a search hit' },
   { fg: '--text-on-color', bg: '--code-bg', min: 4.5, why: 'the terminal\'s drop/upload notice' },
   { fg: '--link', bg: '--field', min: 4.5, why: 'links' },
+  ...(['--comment-implementer', '--comment-reviewer'] as const).flatMap((bg): Pair[] => [
+    { fg: '--text', bg, min: 4.5, why: 'an agent\'s comment in a task\'s conversation' },
+    { fg: '--muted', bg, min: 4.5, why: 'the time of an agent\'s comment' },
+    { fg: '--link', bg, min: 4.5, why: 'a link (a file, a URL) in an agent\'s comment' },
+  ]),
   { fg: '--accent-text', bg: '--field', min: 4.5, why: 'accent-coloured text (a menu\'s main action)', except: { default: 'the default look is frozen pixel-identical' } },
 ];
 

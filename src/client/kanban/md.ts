@@ -4,6 +4,7 @@
 import { h } from '../ui/dom';
 import { markdown } from '../ui/markdown';
 import { splitTaskRefs } from './attach';
+import { linkPathsAndUrls, type OpenFile } from './mdlinks';
 import { deepLink, isAppPage, kanbanTaskOf } from './model';
 
 /** Links to the office's own pages open in this window: a second tab would start a second character. */
@@ -16,10 +17,15 @@ export function sameWindowAppLinks(root: HTMLElement): HTMLElement {
   return root;
 }
 
-/** Rendered markdown, its #123 references opening the task in the detail panel. */
-export function renderMarkdown(src: string, openTask: (id: number) => void, empty = 'No description.'): HTMLElement {
+/**
+ * Rendered markdown, its #123 references opening the task in the detail panel and its URLs in `code`
+ * linked; with `openFile`, file paths are links that open the file (mdlinks.ts).
+ */
+export function renderMarkdown(src: string, openTask: (id: number) => void, empty = 'No description.', openFile?: OpenFile): HTMLElement {
   if (!src.trim()) return h('div.md', {}, h('p.none', {}, empty));
-  const el = sameWindowAppLinks(markdown(src));
+  const el = markdown(src);
+  linkPathsAndUrls(el, openFile);
+  sameWindowAppLinks(el);
   // On the kanban page a link to a task opens it in the detail panel, as #123 does: a reload would lose a draft.
   if (location.pathname.startsWith('/kanban')) {
     for (const a of el.querySelectorAll<HTMLAnchorElement>('a[href]')) {
