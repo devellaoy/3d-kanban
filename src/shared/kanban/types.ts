@@ -420,10 +420,8 @@ export interface KanbanSettings {
   schemaVersion: number;
   defaults: {
     tool: KanbanTool;
-    model?: string;
-    effort?: KanbanEffort;
-    usePlan: boolean;
-    planApproval: PlanApproval;
+    model?: string; effort?: KanbanEffort;
+    usePlan: boolean; planApproval: PlanApproval;
     useReview: boolean;
     implementPermission: ImplementPermission;
   };
@@ -431,6 +429,8 @@ export interface KanbanSettings {
   autoResume: { enabled: boolean; maxAttempts: number; maxWaitHours: number };
   /** Done tasks older than this go to the archive (0: never). */
   archiveAfterDays: number;
+  /** A task's agent left idle this many hours is closed (0: never; 0..168). */
+  idleCloseHours: number;
   projects: Record<string, ProjectSettings>;
 }
 

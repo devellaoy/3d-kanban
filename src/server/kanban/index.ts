@@ -31,6 +31,7 @@ import { attachmentPath } from './uploads.js';
 import { taskOf } from './handoff.js';
 import { hireFiles } from './hirefiles.js';
 import { createCorePlugin, projectInfos } from './ws.js';
+import { createIdle } from './idle.js';
 import { createEngine, type KanbanEngine } from './engine/index.js';
 import { createPulls, createRefs, integrationPlugins } from './integrations/index.js';
 import { parseKanbanClientMsg, ridOf, type KanbanClientType, type KanbanServerMsg } from '../../shared/kanban/protocol.js';
@@ -303,7 +304,7 @@ export function installKanban(opts: KanbanInstallOptions): Kanban {
       subscribers.delete(clientId);
     },
   };
-  plugins = [createCorePlugin(ctx, subs), ...(opts.plugins ?? integrationPlugins).map((f) => f(ctx))];
+  plugins = [createCorePlugin(ctx, subs), createIdle(ctx).plugin, ...(opts.plugins ?? integrationPlugins).map((f) => f(ctx))];
 
   // One plugin per message type: the first to claim one keeps it.
   const wsRoutes = new Map<KanbanClientType, { plugin: string; handler: KanbanWsHandler }>();

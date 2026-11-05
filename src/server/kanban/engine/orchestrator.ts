@@ -1698,7 +1698,7 @@ export class Orchestrator {
 
   // --- The API ------------------------------------------------------------------------------------
 
-  private op(taskId: number, fn: (task: KanbanTask) => Promise<string | undefined | void>): Promise<string | void> {
+  op(taskId: number, fn: (task: KanbanTask) => Promise<string | undefined | void>): Promise<string | void> {
     return this.serial(taskId, async () => {
       const task = this.ctx.repo.getTask(taskId);
       if (!task) return 'No such task';

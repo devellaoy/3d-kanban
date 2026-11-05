@@ -144,6 +144,24 @@ export abstract class KanbanWorkers {
     return w?.pty ? endProcess(w.pty, w.info.name) : undefined;
   }
 
+  /**
+   * The kanban closes a task worker's idle agent in place: marks it `dozing` (WorkerInfo.dozing, so CarryOn.wakeAll leaves it
+   * asleep) and ends the process, which the exit handler then records as `exited` at its desk. Resolves to what went wrong, if
+   * anything (the mark is taken back then). A worker with no process of its own to end (not running, or a DeepSeek Harness one) is left alone.
+   */
+  async doze(id: string, at: number): Promise<string | undefined> {
+    const w = this.workers.get(id);
+    if (!w?.pty || w.dsh) return `${w?.info.name ?? 'The worker'} has no agent process to close`;
+    w.info.dozing = at;
+    this.emitUpdate(w);
+    const err = await this.halt(id);
+    if (err && this.workers.get(id) === w && w.pty) {
+      w.info.dozing = undefined;
+      this.emitUpdate(w);
+    }
+    return err;
+  }
+
   /** A worker whose turn is over without a Stop hook (Esc'd): at rest, as it was `working` a moment ago. */
   rested(id: string) {
     const w = this.workers.get(id);
