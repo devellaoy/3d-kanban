@@ -1,69 +1,90 @@
-// Tabs on a worker's terminal: the terminal itself, plus any web pages pinned open beside it (a
-// linked chat, docs for the task). They're this browser's own: nothing goes to the office or to
-// anyone else, and they're kept per worker until the page reloads.
+// Tabs on a worker's terminal: the terminal itself, plus its shell tabs (shared/shelltabs/protocol.ts),
+// each a plain login shell in the worker's folder that runs on the office's machine. They're the
+// worker's, not this browser's: everyone who opens the worker's window sees the same ones, they keep
+// running when the window closes, and they end with their ×, `exit`, the worker going home or the
+// office restarting. A shell tab's terminal is made the first time the tab shows here.
 import './termtabs.css';
-import { clip, h, toast } from './dom';
-import { safeUrl } from './url';
-
-/** A web page pinned open beside a worker's terminal. */
-interface WebTab {
-  id: string;
-  title: string;
-  url: string;
-}
-
-/** Web tabs survive closing and reopening a worker's terminal, until the page reloads. */
-const tabsByWorker = new Map<string, WebTab[]>();
-
-/**
- * What a pinned page may do in its frame: run, sign in, send forms and open links in a new tab,
- * but never navigate the office's own tab away, or reach camera, mic or clipboard.
- */
-const SANDBOX = 'allow-scripts allow-same-origin allow-forms allow-popups allow-popups-to-escape-sandbox';
+import type { Terminal } from '@xterm/xterm';
+import type { FitAddon } from '@xterm/addon-fit';
+import type { Net } from '../net';
+import type { ServerMsg, ShellTab } from '../../shared/protocol';
+import { h, timeAgo } from './dom';
+import { clipboardKey, keyAt, naturalKey } from './termkeys';
+import { makeXterm } from './xterm';
 
 export interface TermTabsOptions {
-  /** The terminal's own area and keypad, hidden while a web page shows. */
+  net: Net;
+  /** The terminal's own area and keypad, hidden while a shell tab shows (the keypad is the terminal's). */
   host: HTMLElement;
   keypad: HTMLElement | null;
   /** Back on the terminal's tab. */
   focusTerm(): void;
+  /** Closes the worker's window (Ctrl+] in a shell tab, as in the terminal). */
+  closeWindow(): void;
+  /** Follows the server's messages for this window; hands back the way to stop. */
+  listen(fn: (msg: ServerMsg) => void): () => void;
+  /** A different tab came to show (the terminal's own or a shell tab). */
+  onActiveChange?(): void;
 }
 
-/** The tab bar (above the terminal) and where the pages show (beside it). */
-export function termTabs(workerId: string, opts: TermTabsOptions): { bar: HTMLElement; pages: HTMLElement } {
-  const tabsBar = h('div.term-tabs', { role: 'tablist', 'aria-label': 'Tabs' });
-  const tabName = h('input', { type: 'text', placeholder: 'Tab name (e.g. ChatGPT)', 'aria-label': 'Tab name', maxlength: '40', autocomplete: 'off' }) as HTMLInputElement;
-  const tabUrl = h('input', { type: 'url', placeholder: 'https://…', 'aria-label': 'Web page address', autocomplete: 'off' }) as HTMLInputElement;
-  const cancelBtn = h('button.btn', { type: 'button' }, 'Cancel');
-  const form = h('form.term-tab-form.hidden', {}, tabName, tabUrl, h('button.btn.primary', { type: 'submit' }, 'Add'), cancelBtn);
-  const addBtn = h('button.term-tab-add', { type: 'button', title: 'Pin a web page open beside this terminal (a linked chat, docs, anything with an address)' }, '+ Web page');
-  // Plenty of sites won't show inside another page (chatgpt.com doesn't): this opens the one showing in a tab of its own.
-  const openOut = h('a.term-tab-out.hidden', { target: '_blank', rel: 'noopener noreferrer', title: "Open this page in a browser tab of its own (for a site that won't show here)" }, '↗ New tab') as HTMLAnchorElement;
-  const bar = h('div.term-tabbar', {}, tabsBar, openOut, addBtn, form);
-  const pages = h('div.term-webhost.hidden');
+export interface TermTabs {
+  /** The tab bar (above the terminal) and where the shell tabs show (beside it). */
+  bar: HTMLElement;
+  pages: HTMLElement;
+  /** Focuses the terminal of the tab showing. */
+  focusActive(): void;
+  /** Types into the shell tab showing; false when the terminal's own tab is showing. */
+  inputActive(data: string): boolean;
+  /** A shell tab is showing (not the terminal's own). */
+  onShell(): boolean;
+  /** The window closed: stops watching the tabs (they keep running) and lets their terminals go. */
+  destroy(): void;
+}
 
-  const tabs = tabsByWorker.get(workerId) ?? [];
-  tabsByWorker.set(workerId, tabs);
-  const frames = new Map<string, HTMLIFrameElement>();
-  let active = 'main';
+/** A shell tab's terminal in this window, made the first time the tab shows. */
+interface ShellView {
+  el: HTMLElement;
+  term: Terminal;
+  fit: FitAddon;
+  ro: ResizeObserver;
+  /** The size last sent, so a resize goes once per change. */
+  sent: string;
+  /** The snapshot has come: the terminal shows the shell, and sizes it. */
+  ready: boolean;
+  /** The size the shell has, and how many are watching it (0: not told yet). */
+  shared: { cols: number; rows: number };
+  viewers: number;
+}
+
+export function termTabs(workerId: string, opts: TermTabsOptions): TermTabs {
+  const { net } = opts;
+  const tabsBar = h('div.term-tabs', { role: 'tablist', 'aria-label': 'Tabs' });
+  const addBtn = h('button.term-tab-add', { type: 'button', title: "Open a shell in this worker's folder in a new tab (it keeps running when you close this window, and ends when the office restarts)" }, '+ New tab');
+  const bar = h('div.term-tabbar', {}, tabsBar, addBtn);
+  const pages = h('div.term-shellpages.hidden');
+
+  let tabs: ShellTab[] = [];
+  const views = new Map<string, ShellView>();
+  /** The shell tab showing; null for the terminal's own. */
+  let active: string | null = null;
 
   const render = () => {
-    const mainTab = h('div.term-tab', { class: active === 'main' ? 'on' : '' }, h('button.term-tab-label', { type: 'button', role: 'tab', 'aria-selected': String(active === 'main'), onclick: () => show('main') }, '💻 Terminal'));
+    const tab = (on: boolean, label: HTMLElement, close?: HTMLElement) => h('div.term-tab', { class: on ? 'on' : '' }, label, close ?? null);
     tabsBar.replaceChildren(
-      mainTab,
+      tab(active === null, h('button.term-tab-label', { type: 'button', role: 'tab', 'aria-selected': String(active === null), onclick: () => show(null) }, '💻 Terminal')),
       ...tabs.map((t) =>
-        h(
-          'div.term-tab',
-          { class: active === t.id ? 'on' : '' },
-          h('button.term-tab-label', { type: 'button', role: 'tab', 'aria-selected': String(active === t.id), title: t.url, onclick: () => show(t.id) }, `🌐 ${clip(t.title, 18)}`),
+        tab(
+          active === t.id,
+          h('button.term-tab-label', { type: 'button', role: 'tab', 'aria-selected': String(active === t.id), title: `Opened by ${t.by}, ${timeAgo(t.at)}`, onclick: () => show(t.id) }, t.title),
           h(
             'button.term-tab-close',
             {
               type: 'button',
-              'aria-label': `Close ${t.title} tab`,
+              title: 'Close this shell (ends whatever runs in it)',
+              'aria-label': `Close ${t.title}`,
               onclick: (e: Event) => {
                 e.stopPropagation();
-                close(t.id);
+                net.send({ t: 'shelltab.close', tabId: t.id });
               },
             },
             '×',
@@ -71,64 +92,179 @@ export function termTabs(workerId: string, opts: TermTabsOptions): { bar: HTMLEl
         ),
       ),
     );
-    const page = tabs.find((t) => t.id === active);
-    openOut.classList.toggle('hidden', !page);
-    if (page) { const href = safeUrl(page.url); if (href) openOut.href = href; else openOut.removeAttribute('href'); }
   };
-  const show = (id: string) => {
-    active = id;
-    const onMain = id === 'main';
-    opts.host.classList.toggle('hidden', !onMain);
-    pages.classList.toggle('hidden', onMain);
-    opts.keypad?.classList.toggle('hidden', !onMain);
-    for (const [tid, frame] of frames) frame.classList.toggle('hidden', tid !== id);
-    render();
-    if (onMain) opts.focusTerm();
-  };
-  const close = (id: string) => {
-    const i = tabs.findIndex((t) => t.id === id);
-    if (i < 0) return;
-    tabs.splice(i, 1);
-    frames.get(id)?.remove();
-    frames.delete(id);
-    if (active === id) show('main');
-    else render();
-  };
-  const frameFor = (t: WebTab) => {
-    const frame = h('iframe.term-webframe.hidden', { src: t.url, title: t.title, loading: 'lazy', referrerpolicy: 'no-referrer', sandbox: SANDBOX }) as HTMLIFrameElement;
-    frames.set(t.id, frame);
-    pages.append(frame);
-  };
-  for (const t of tabs) frameFor(t);
-  render();
 
-  addBtn.addEventListener('click', () => {
-    form.classList.remove('hidden');
-    tabName.focus();
-  });
-  const closeForm = () => {
-    form.classList.add('hidden');
-    tabName.value = '';
-    tabUrl.value = '';
-  };
-  cancelBtn.addEventListener('click', closeForm);
-  form.addEventListener('submit', (e) => {
-    e.preventDefault();
-    let parsed: URL;
-    try {
-      parsed = new URL(tabUrl.value.trim());
-    } catch {
-      toast('That doesn’t look like a web address', 'warn');
+  /**
+   * Sizes a shell tab to this window, as the terminal does (ui/terminal.ts): typing claims the shell's
+   * size (latest typist wins); opening or resizing the window only does when nobody else is watching,
+   * otherwise this view follows the shell's size so cursor movements render right for everyone.
+   */
+  const sizeView = (id: string, v: ShellView, typing = false) => {
+    if (!v.ready) return;
+    if (!typing && v.viewers !== 1) {
+      if (v.shared.cols > 0 && (v.shared.cols !== v.term.cols || v.shared.rows !== v.term.rows)) v.term.resize(v.shared.cols, v.shared.rows);
       return;
     }
-    if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return toast('Only http:// and https:// addresses can open in a tab', 'warn');
-    // The office itself would run in the frame signed in as you, with nothing between it and this page.
-    if (parsed.origin === location.origin) return toast("The office's own pages can't open in a tab", 'warn');
-    const tab: WebTab = { id: `web-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`, title: tabName.value.trim() || parsed.hostname.replace(/^www\./, ''), url: parsed.toString() };
-    tabs.push(tab);
-    frameFor(tab);
-    closeForm();
-    show(tab.id);
-  });
-  return { bar, pages };
+    if (v.el.clientWidth === 0 || v.el.clientHeight === 0) return;
+    try {
+      v.fit.fit();
+    } catch {
+      return;
+    }
+    const key = `${v.term.cols}x${v.term.rows}`;
+    if (v.term.cols > 0 && v.term.rows > 0 && key !== v.sent && (v.term.cols !== v.shared.cols || v.term.rows !== v.shared.rows)) {
+      v.sent = key;
+      net.send({ t: 'shelltab.resize', tabId: id, cols: v.term.cols, rows: v.term.rows });
+    }
+  };
+
+  const viewFor = (id: string): ShellView => {
+    const existing = views.get(id);
+    if (existing) return existing;
+    const el = h('div.term-shellhost');
+    pages.append(el);
+    const { term, fit } = makeXterm({ keypad: !!opts.keypad });
+    const v: ShellView = { el, term, fit, ro: new ResizeObserver(() => sizeView(id, v)), sent: '', ready: false, shared: { cols: 0, rows: 0 }, viewers: 0 };
+    views.set(id, v);
+    term.open(el);
+    term.attachCustomKeyEventHandler((e) => {
+      if (e.type === 'keydown' && e.ctrlKey && !e.altKey && !e.metaKey) {
+        // As in the terminal (ui/terminal.ts): Ctrl+] leaves the window, Ctrl+[ is an Esc for the shell.
+        if (keyAt(e, ']', 'BracketRight')) {
+          opts.closeWindow();
+          return false;
+        }
+        if (keyAt(e, '[', 'BracketLeft')) {
+          e.preventDefault();
+          term.input('\x1b');
+          return false;
+        }
+      }
+      // Copy and paste off a Mac, and the prompt's editing keys, as in the terminal (termkeys.ts).
+      const clip = e.type === 'keydown' && !e.isComposing ? clipboardKey(e, term.hasSelection()) : undefined;
+      if (clip === 'paste') return false;
+      if (clip === 'copy') {
+        e.preventDefault();
+        document.execCommand('copy');
+        term.clearSelection();
+        return false;
+      }
+      const natural = e.type === 'keydown' && !e.isComposing ? naturalKey(e) : undefined;
+      if (natural !== undefined) {
+        e.preventDefault();
+        e.stopPropagation();
+        term.input(natural);
+        return false;
+      }
+      return true;
+    });
+    term.onData((data) => {
+      sizeView(id, v, true);
+      net.send({ t: 'shelltab.input', tabId: id, data });
+    });
+    v.ro.observe(el);
+    net.send({ t: 'shelltab.attach', tabId: id });
+    return v;
+  };
+
+  const dropView = (id: string) => {
+    const v = views.get(id);
+    if (!v) return;
+    v.ro.disconnect();
+    v.term.dispose();
+    v.el.remove();
+    views.delete(id);
+  };
+
+  const focusActive = () => {
+    if (active === null) opts.focusTerm();
+    else views.get(active)?.term.focus();
+  };
+
+  const show = (id: string | null) => {
+    active = id;
+    const onMain = id === null;
+    opts.host.classList.toggle('hidden', !onMain);
+    opts.keypad?.classList.toggle('hidden', !onMain);
+    pages.classList.toggle('hidden', onMain);
+    if (id !== null) viewFor(id);
+    for (const [vid, v] of views) v.el.classList.toggle('hidden', vid !== id);
+    render();
+    if (id !== null) sizeView(id, views.get(id)!);
+    focusActive();
+    opts.onActiveChange?.();
+  };
+
+  const onMsg = (msg: ServerMsg) => {
+    if (msg.t === 'shelltab.tabs' && msg.workerId === workerId) {
+      tabs = msg.tabs;
+      const ids = new Set(tabs.map((t) => t.id));
+      for (const id of [...views.keys()]) if (!ids.has(id)) dropView(id);
+      if (msg.opened && ids.has(msg.opened)) show(msg.opened);
+      else if (active !== null && !ids.has(active)) show(null);
+      else render();
+    } else if (msg.t === 'welcome') {
+      // After a reconnect the server has forgotten this window's subscriptions and views: ask again.
+      // Each snapshot that comes back resets its terminal.
+      net.send({ t: 'shelltab.list', workerId });
+      for (const [id, v] of views) {
+        v.ready = false;
+        v.viewers = 0;
+        v.sent = '';
+        net.send({ t: 'shelltab.attach', tabId: id });
+      }
+    } else if (msg.t === 'shelltab.snapshot') {
+      const v = views.get(msg.tabId);
+      if (!v) return;
+      v.ready = false;
+      v.term.reset();
+      v.term.resize(msg.cols, msg.rows);
+      v.shared = { cols: msg.cols, rows: msg.rows };
+      v.sent = `${msg.cols}x${msg.rows}`;
+      v.term.write(msg.data, () => {
+        v.ready = true;
+        sizeView(msg.tabId, v);
+        v.term.scrollToBottom();
+      });
+    } else if (msg.t === 'shelltab.size') {
+      const v = views.get(msg.tabId);
+      if (!v) return;
+      v.shared = { cols: msg.cols, rows: msg.rows };
+      v.viewers = msg.viewers;
+      // Someone else sized the shell: follow it (a lone viewer owns the size, so an echo of their own changes nothing).
+      if (v.ready && msg.viewers > 1 && (msg.cols !== v.term.cols || msg.rows !== v.term.rows) && `${msg.cols}x${msg.rows}` !== v.sent) {
+        v.term.resize(msg.cols, msg.rows);
+        v.sent = '';
+      } else if (v.ready) sizeView(msg.tabId, v);
+    } else if (msg.t === 'shelltab.data') {
+      views.get(msg.tabId)?.term.write(msg.data);
+    }
+  };
+  const unlisten = opts.listen(onMsg);
+
+  addBtn.addEventListener('click', () => net.send({ t: 'shelltab.open', workerId }));
+  render();
+  net.send({ t: 'shelltab.list', workerId });
+
+  return {
+    bar,
+    pages,
+    focusActive,
+    onShell: () => active !== null,
+    inputActive: (data) => {
+      const v = active === null ? undefined : views.get(active);
+      if (!v) return false;
+      v.term.input(data);
+      v.term.focus();
+      return true;
+    },
+    destroy: () => {
+      unlisten();
+      for (const id of [...views.keys()]) {
+        if (tabs.some((t) => t.id === id)) net.send({ t: 'shelltab.detach', tabId: id });
+        dropView(id);
+      }
+      net.send({ t: 'shelltab.unlist', workerId });
+    },
+  };
 }

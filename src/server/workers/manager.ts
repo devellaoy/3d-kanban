@@ -142,10 +142,8 @@ export class WorkerManager extends KanbanWorkers {
   }
 
   /**
-   * Picks every worker whose terminal outlived the last office (a dev-server reload, an upgrade)
-   * back up where it is, mid-turn or not. Whoever else was at a desk when the office stopped (a
-   * restart, a crash) gets straight back to work, carrying on with whatever it was in the middle of.
-   * Call once, before anyone can walk in.
+   * Picks every worker whose terminal outlived the last office (a reload, an upgrade) back up where it is. Whoever
+   * else was at a desk when the office stopped gets back to work, carrying on. Call once, before anyone can walk in.
    */
   async start() {
     await this.host.connect();
@@ -328,9 +326,8 @@ export class WorkerManager extends KanbanWorkers {
   }
 
   /**
-   * A request for the agent standing by a board (see STATIONS): typed into its session, which is woken
-   * up with it if it's asleep, or it's hired there with it when nobody is. Returns what went wrong, or
-   * the agent and whether it was just hired.
+   * A request for the agent standing by a board (see STATIONS): typed into its session (woken if asleep), or it's hired
+   * there with it when nobody is. Returns what went wrong, or the agent and whether it was just hired.
    */
   station(deskId: string, by: string, text: string, owner?: string): { info: WorkerInfo; hired: boolean } | string {
     if (!DESK_BY_ID.get(deskId)?.station) return 'There is no agent to ask there';
@@ -361,10 +358,8 @@ export class WorkerManager extends KanbanWorkers {
   }
 
   /**
-   * Sends a worker home. For one with its own worktree, `cleanup` says what becomes of it; with no
-   * choice given, the worktree and branch go only when they hold no work, where `landed` (its merged
-   * pull request's head commit) is work delivered. Resolves once that's done, with a line for the team
-   * about the worktree.
+   * Sends a worker home. For one with its own worktree, `cleanup` says what becomes of it; with no choice the worktree
+   * and branch go only when they hold no work (`landed`, its merged PR's head commit, is work delivered). Resolves with a line about the worktree.
    */
   async kill(id: string, cleanup?: WorktreeCleanup, landed?: string, landedRepos?: Record<string, string | undefined>, intent?: DepartureIntent): Promise<{ note?: string; error?: string }> {
     const w = this.workers.get(id);
@@ -522,11 +517,9 @@ export class WorkerManager extends KanbanWorkers {
   }
 
   /**
-   * Pushes a worktree worker's branch and opens a pull request for it, with a title and body
-   * drafted from its task, as `as` (whoever pressed the button) or else the office. Resolves to the
-   * PR, or to a message saying why there is none. The branch may already have an open PR (a second
-   * press, or one opened by hand): that one is used. A worker across repositories gets one in each
-   * repository it committed to (see WorkerPrs).
+   * Pushes a worktree worker's branch and opens a pull request for it (title and body drafted from its task), as `as`
+   * or else the office. Resolves to the PR(s), or a message saying why there is none. An already open PR is reused;
+   * a worker across repositories gets one in each repository it committed to (see WorkerPrs).
    */
   openPr(id: string, by: string, as?: GhAs, host?: Parameters<WorkerPrs['openPr']>[3]): Promise<{ prs: OpenedPr[]; failed: string[] } | string> {
     return this.prs.openPr(id, by, as, host);
@@ -862,6 +855,12 @@ export class WorkerManager extends KanbanWorkers {
   private cwd(info: WorkerInfo): string {
     const rel = workspaceOf(info);
     return rel ? worktreeDir(this.dir, rel) : this.dir;
+  }
+
+  /** What a shell tab needs to start in a worker's folder (see shelltabs/env.ts). */
+  shellSpec(id: string) {
+    const w = this.workers.get(id);
+    return w && { info: w.info, cwd: this.cwd(w.info), owner: w.owner, hookUrl: this.hook.url, officeBin: this.officeBin, dir: this.dir };
   }
 
   /** Hooks fire in bursts (every tool call); one read a moment later covers the whole burst. */

@@ -1,5 +1,5 @@
 // The worker window's tabs (E at a task worker's desk, or its card on the 2D view): 🖥️ Terminal (upstream's
-// terminal and its web page tabs, upstream #212, as they are), 🗂️ Task #14 (the shared task view, embedded:
+// terminal and its shell tabs, ui/termtabs.ts), 🗂️ Task #14 (the shared task view, embedded:
 // conversation with its composer and history, plan, runs, PRs); its changes are the header's 🌿 Changes
 // button, which opens the task's Changes window (kanban/changesview, every repository and per commit), not
 // a tab here. The task view is mounted the first time its tab opens and destroyed with the window; the tab
@@ -25,7 +25,7 @@ const CSS = `
 .modal.term .worker-tabs { display: flex; gap: 6px; padding: 6px 10px 0; background: var(--paper); border-bottom: var(--bw) solid var(--ink); }
 .modal.term .worker-tabs button { padding: 6px 12px; font: var(--fw-bold) var(--fs-sm) var(--font); color: var(--text); background: var(--field-off); border: var(--bw) solid var(--ink); border-bottom: 0; border-radius: 10px 10px 0 0; cursor: pointer; }
 .modal.term .worker-tabs button.on { background: var(--field); }
-/* The task tab hides the whole terminal side (the terminal, its web page tabs, the keypad) at window level. */
+/* The task tab hides the whole terminal side (the terminal, its shell tabs, the keypad) at window level. */
 .modal.term.kb-on-task > :not(header, .worker-tabs, .worker-task) { display: none !important; }
 .modal.term .worker-task { flex: 1; min-height: 0; overflow: auto; background: var(--field); color: var(--text); }
 `;
