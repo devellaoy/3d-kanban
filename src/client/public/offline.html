@@ -8,7 +8,7 @@
     <!-- The service worker's stand-in for a page when the office can't be reached (sw.js).
          Self-contained: it's shown with the network gone. It's served at the page's own address, so
          a reload is that page again. -->
-    <script>try{var t=localStorage.getItem('agent-office.appearance');if(t){document.documentElement.dataset.theme=t;var c={default:'#fff1de',dark:'#212121',glossy:'#eef1f7'}[t];if(c)document.querySelector('meta[name=theme-color]').content=c}}catch(e){}</script>
+    <script>try{var t=localStorage.getItem('agent-office.appearance');if(t){document.documentElement.dataset.theme=t;var c={default:'#fff1de',dark:'#0f0f0f',glossy:'#eef1f7'}[t];if(c)document.querySelector('meta[name=theme-color]').content=c}}catch(e){}</script>
     <style>
       /* The shared tokens (themes/) are not loaded here, so the three looks' few values are set out as variables. */
       :root {
@@ -21,11 +21,11 @@
       }
       :root[data-theme="dark"] {
         color-scheme: dark;
-        --bg: #212121; --card: #2f2f2f; --text: #ececec; --muted: #b4b4b4; --line: rgba(255, 255, 255, .12);
-        --btn: #ececec; --btn-text: #171717; --bw: 1px; --radius: 8px; --radius-btn: 6px;
+        --bg: #0f0f0f; --card: #171717; --text: #e8e8e8; --muted: #a0a0a0; --line: rgba(255, 255, 255, .12);
+        --btn: #e8e8e8; --btn-text: #171717; --bw: 1px; --radius: 8px; --radius-btn: 6px;
         --shadow: 0 1px 2px rgba(0, 0, 0, .3); --shadow-btn: 0 1px 2px rgba(0, 0, 0, .3); --shadow-pressed: none; --press: 0px;
-        --fw: 600;
-        --font: ui-sans-serif, -apple-system, 'Segoe UI', Inter, Roboto, sans-serif;
+        --fw: 500;
+        --font: Inter, Geist, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
       }
       :root[data-theme="glossy"] {
         color-scheme: light;

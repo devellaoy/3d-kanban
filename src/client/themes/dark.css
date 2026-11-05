@@ -1,27 +1,28 @@
-/* The "Dark" appearance: dark grey surfaces, hairline borders, soft shadows and calm type, in the
-   manner of ChatGPT's dark mode. The tokens first (every one in tokens.css, see the comments there for
+/* The "Dark" appearance: near-black surfaces, faint hairlines, small corners and compact, calm type
+   (13px text, regular and medium weights, sentence-case headings), in the manner of modern developer
+   tools such as Orca. The tokens first (every one in tokens.css, see the comments there for
    what each one is for), then the few component rules tokens can't say. */
 
 :root[data-theme="dark"] {
   color-scheme: dark;
 
   /* ---- Surfaces ---- */
-  --bg: #212121;
-  --bg-login: #171717;
-  --paper: #2f2f2f;
-  --paper-2: #171717;
-  --field: #303030;
-  --field-hover: #3a3a3a;
-  --field-off: #262626;
-  --overlay: rgba(0, 0, 0, .6);
-  --scrim: rgba(255, 255, 255, .06);
+  --bg: #0f0f0f;
+  --bg-login: #0a0a0a;
+  --paper: #171717;
+  --paper-2: #121212;
+  --field: #1f1f1f;
+  --field-hover: #282828;
+  --field-off: #161616;
+  --overlay: rgba(0, 0, 0, .7);
+  --scrim: rgba(255, 255, 255, .05);
 
   /* ---- Text ---- */
-  --text: #ececec;
-  --muted: #b4b4b4;
+  --text: #e8e8e8;
+  --muted: #a0a0a0;
   --text-on-accent: #0d0d0d;
   --accent-ink: #0d0d0d;
-  --strong: #ececec;
+  --strong: #e8e8e8;
   --text-on-strong: #0d0d0d;
   --text-on-color: #fff;
   --text-on-warn: #0d0d0d;   /* 11.9:1 on --warn, 9.1:1 on --warn-hot */
@@ -30,21 +31,21 @@
   --link-strong: #a8d1ff;
 
   /* ---- Lines ---- */
-  --ink: rgba(255, 255, 255, .1);
+  --ink: rgba(255, 255, 255, .09);
   --bw: 1px;
   --bw-sm: 1px;
   --focus-ring: 2px solid #8ab4f8;
-  --rule-soft: rgba(255, 255, 255, .08);
-  --rule-code: rgba(255, 255, 255, .12);
+  --rule-soft: rgba(255, 255, 255, .06);
+  --rule-code: rgba(255, 255, 255, .1);
 
   /* ---- Shadows ---- */
-  --shadow: 0 1px 2px rgba(0, 0, 0, .3), 0 4px 12px rgba(0, 0, 0, .2);
-  --shadow-sm: 0 1px 2px rgba(0, 0, 0, .3);
-  --shadow-xs: 0 1px 1px rgba(0, 0, 0, .25);
-  --shadow-lg: 0 2px 6px rgba(0, 0, 0, .3), 0 16px 48px rgba(0, 0, 0, .45);
+  --shadow: 0 1px 2px rgba(0, 0, 0, .4);
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, .35);
+  --shadow-xs: 0 1px 1px rgba(0, 0, 0, .3);
+  --shadow-lg: 0 0 0 1px rgba(255, 255, 255, .04), 0 24px 64px rgba(0, 0, 0, .6);
   --shadow-pressed: none;
   --press: 0px;
-  --shadow-side: -8px 0 24px rgba(0, 0, 0, .3);
+  --shadow-side: -8px 0 24px rgba(0, 0, 0, .45);
   --shadow-key: 0 1px 0 rgba(0, 0, 0, .5);
 
   /* ---- Shape ---- */
@@ -60,8 +61,8 @@
 
   /* ---- Accent and status ---- */
   /* The primary button is white with dark text, as ChatGPT's; green is the "on" and "done" colour. */
-  --accent: #ececec;
-  --accent-hover: #d4d4d4;
+  --accent: #e8e8e8;
+  --accent-hover: #d0d0d0;
   --good: #19c37d;
   --warn: #f5c451;
   --bad: #f87171;
@@ -73,7 +74,7 @@
   --good-ink: #4ade80;
   --warn-ink: #f5c451;
   --warn-hot: #f59e0b;
-  --accent-soft: rgba(255, 255, 255, .08);
+  --accent-soft: rgba(255, 255, 255, .06);
   --accent-text: #19c37d;
   --bad-hover: #573239;
   --alert-hover: #4f2c33;
@@ -81,10 +82,10 @@
   --bad-wash: #2e2224;
   --warn-wash: #2e2a1f;
   --good-wash: #1f2b25;
-  --info-wash: #1f2833;
-  --comment-implementer: #30281d;
+  --info-wash: #16202b;
+  --comment-implementer: #1f1b15;
   --comment-implementer-edge: #e0a458;
-  --comment-reviewer: #2a2436;
+  --comment-reviewer: #1d1925;
   --comment-reviewer-edge: #c084fc;
   --run-bg: #1f2b25;
   --ok-bg: #1f2b25;
@@ -98,7 +99,7 @@
   --diff-del-ink: #ff8a80;
   --diff-add-gutter: #183026;
   --diff-del-gutter: #3a2025;
-  --pd-bg: #1a1a1a;
+  --pd-bg: #0f0f0f;
   --pd-add: #1b3326;
   --pd-add-gutter: #17301f;
   --pd-del: #3a2025;
@@ -107,24 +108,24 @@
   --pd-hunk-gutter: #1b2533;
   --pd-hunk-ink: #8ab4f8;
   --pd-flash: #4a3f1a;
-  --gutter-bg: #262626;
+  --gutter-bg: #141414;
   --gutter-ink: #8e8e8e;
   --gutter-ink-2: #8e8e8e;
 
   /* ---- Kanban notes and chips ---- */
   /* Muted dark tints of the paper notes, straight. */
-  --note-yellow: #39362a;
-  --note-blue: #273342;
-  --note-pink: #3f2c33;
-  --note-green: #283a2c;
-  --note-grey: #2c3230;
-  --note-slate: #333333;
-  --note-peach: #3d3328;
-  --note-card-blue: #2b333d;
-  --bad-tint: #3b2a2f;
-  --note-card-green: #2b352d;
-  --note-card-grey: #2d3130;
-  --note-card-slate: #2e2e2e;
+  --note-yellow: #24221a;
+  --note-blue: #1a222e;
+  --note-pink: #2a1d22;
+  --note-green: #1b261e;
+  --note-grey: #1e2120;
+  --note-slate: #222222;
+  --note-peach: #2a231b;
+  --note-card-blue: #1b2129;
+  --bad-tint: #2a1e22;
+  --note-card-green: #1c241e;
+  --note-card-grey: #1d201f;
+  --note-card-slate: #1d1d1d;
   --note-tilt: 0;
   --tint-blue: #243049;
   --tint-purple: #31264a;
@@ -132,8 +133,8 @@
   --tint-magenta: #3d2642;
   --tint-orange: #45311e;
   --tint-violet: #33284d;
-  --tint-grey: #383838;
-  --tint-wash: #2a2a2a;
+  --tint-grey: #262626;
+  --tint-wash: #1c1c1c;
   --purple: #c084fc;
   --teal: #4fc3dc;
   --amber: #f5b942;
@@ -142,42 +143,42 @@
   --scope-office: #45311e;
   --hint-cost: #0b6e8a;     /* the HUD hint's bubble is light here (--strong), so the cost is dark */
   --hint-title: #8a5a00;   /* 5.0:1 on the light --strong bubble */
-  --track: #3a3a3a;
+  --track: #2a2a2a;
 
   /* ---- Code and terminals ---- */
-  --code-bg: #0d0d0d;
+  --code-bg: #0a0a0a;
   --code-text: #ececec;
   --code-text-2: #e6e6f0;
-  --code-inline: #383838;
+  --code-inline: #262626;
   --callout-note: #1f2833;
   --callout-tip: #1f2b25;
   --callout-warn: #2e2a1f;
   --callout-caution: #2e2224;
-  --reader-bg: #262626;
-  --status-bg: #2a2a2a;
-  --field-quiet: #262626;
+  --reader-bg: #141414;
+  --status-bg: #1a1a1a;
+  --field-quiet: #161616;
   --rule-md: rgba(255, 255, 255, .14);
   --rule-md-2: rgba(255, 255, 255, .08);
   --rule-quote: rgba(255, 255, 255, .22);
 
   /* ---- Type ---- */
-  --font: ui-sans-serif, -apple-system, system-ui, 'Segoe UI', Inter, Roboto, 'Helvetica Neue', Arial, sans-serif;
-  --font-mono: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+  --font: Inter, Geist, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  --font-mono: 'JetBrains Mono', 'Geist Mono', 'SF Mono', ui-monospace, Menlo, Consolas, monospace;
   --fw-medium: 400;
   --fw-semibold: 500;
-  --fw-bold: 600;
+  --fw-bold: 500;
   --fw-heavy: 600;
-  --fs-2xs: 12px;
+  --fs-2xs: 11px;
   --fs-xs: 12px;
   --fs-sm: 13px;
-  --fs-md: 14px;
-  --fs-lg: 15px;
-  --fs-xl: 16px;
-  --fs-2xl: 18px;
-  --fs-3xl: 20px;
-  --fs-3xs: 12px;
+  --fs-md: 13px;
+  --fs-lg: 14px;
+  --fs-xl: 15px;
+  --fs-2xl: 16px;
+  --fs-3xl: 18px;
+  --fs-3xs: 11px;
   --fs-2xs-plus: 12px;
-  --fs-avatar: 11px;
+  --fs-avatar: 10px;
 
   /* ---- Glass ---- */
   --glass-blur: none;
@@ -188,7 +189,12 @@
 /* Scrollbars and the selection. */
 :root[data-theme="dark"] { scrollbar-color: #4a4a4a transparent; }
 :root[data-theme="dark"] ::selection { background: rgba(138, 180, 248, .35); }
-:root[data-theme="dark"] body { line-height: 1.45; }
+:root[data-theme="dark"] body { line-height: 1.5; -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; }
+
+/* Headings and labels in sentence case, without the wide uppercase tracking of the default look. */
+:root[data-theme="dark"] :is(.kb-col-head, .modal legend, .kb-set legend, .kb-tv .kb-detail-body h4, .kb-ia-head h4, .kb-tv .kb-run-status,
+  .lite-floor-label, .lite-h, .menu-sec, .side h3, .team h4, .kb-pr-picker h5) { text-transform: none; letter-spacing: 0; }
+:root[data-theme="dark"] .modal header h2 { letter-spacing: -.01em; }
 
 /* The primary button lightens on hover rather than turning the field colour. */
 :root[data-theme="dark"] .btn.primary:hover { background: var(--accent-hover); }
@@ -202,10 +208,11 @@
 :root[data-theme="dark"] .switch::after { background: var(--muted); border-color: transparent; }
 :root[data-theme="dark"] .menu-toggle[aria-checked=true] .switch::after { background: #fff; }
 
-/* A dark page under the kanban and the 2D view, the panels a step lighter, like ChatGPT's chat area. */
+/* A near-black page under the kanban and the 2D view, the columns a step lighter. */
 :root[data-theme="dark"] body.kanban,
 :root[data-theme="dark"] body.lite { background: var(--bg); }
-:root[data-theme="dark"] .kb-col { background: #1b1b1b; }
+:root[data-theme="dark"] .kb-col { background: #141414; }
+:root[data-theme="dark"] .kb-col-head { font-weight: var(--fw-bold); }
 :root[data-theme="dark"] .kb-col-head { border-radius: calc(var(--radius) - var(--bw)) calc(var(--radius) - var(--bw)) 0 0; }
 
 /* The bars' controls: at least 36px tall. */

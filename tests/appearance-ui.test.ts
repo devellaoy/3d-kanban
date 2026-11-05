@@ -138,7 +138,7 @@ test('applying what the page already shows fires no event; a head script that se
   win.addEventListener('appearancechange', () => changes++);
   root.dataset.theme = 'dark'; // what the head script leaves before the module runs
   applyAppearance('dark');
-  assert.equal(meta.getAttribute('content'), '#212121');
+  assert.equal(meta.getAttribute('content'), '#0f0f0f');
   assert.equal(changes, 1);
   applyAppearance('dark');
   applyAppearance('dark');
