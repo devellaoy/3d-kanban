@@ -148,6 +148,7 @@ export function openTerminal(net: Net, workerId: string, onChanges?: () => void,
     keypad,
     focusTerm: () => term.focus(),
     closeWindow: () => modal.close(),
+    onActiveChange: () => refresh(),
     listen: (fn) => {
       listeners.add(fn);
       return () => void listeners.delete(fn);
@@ -260,7 +261,7 @@ export function openTerminal(net: Net, workerId: string, onChanges?: () => void,
     const openCode = w.kind === 'agent' && resolvedProvider(w.provider, projectOf(workerId)) === 'opencode';
     modelsBtn.classList.toggle('hidden', !openCode);
     modelsBtn.toggleAttribute('disabled', !openCode || !ready || isAsleep(w.status));
-    escBtn.toggleAttribute('disabled', !ready || isAsleep(w.status));
+    escBtn.toggleAttribute('disabled', !tabs.onShell() && (!ready || isAsleep(w.status))); // a shell tab's Esc is its shell's
     for (const b of keys.children) b.toggleAttribute('disabled', !ready || isAsleep(w.status));
     sayBtn.toggleAttribute('disabled', isAsleep(w.status));
     // Someone else resized the shared PTY (the latest typist wins): follow it so this view renders

@@ -167,6 +167,11 @@ export class ShellTabs {
     return undefined;
   }
 
+  /** Tells every viewer the tab's size and how many are watching. */
+  private announce(tab: Tab) {
+    for (const v of tab.viewers) this.deps.send(v, { t: 'shelltab.size', tabId: tab.info.id, cols: tab.cols, rows: tab.rows, viewers: tab.viewers.size });
+  }
+
   private flush(tab: Tab) {
     const data = tab.pending;
     tab.pending = '';
@@ -222,10 +227,12 @@ export class ShellTabs {
     tab.viewers.add(c);
     tab.stale.delete(c);
     this.deps.send(c, { t: 'shelltab.snapshot', tabId, data: tab.snapshot(), cols: tab.cols, rows: tab.rows });
+    this.announce(tab);
   }
 
   detach(c: Client, tabId: string) {
-    this.tabs.get(tabId)?.viewers.delete(c);
+    const tab = this.tabs.get(tabId);
+    if (tab?.viewers.delete(c)) this.announce(tab);
   }
 
   /** Keys typed by someone who is attached to the tab. */
@@ -253,6 +260,7 @@ export class ShellTabs {
     } catch {
       // it exited between checks
     }
+    this.announce(tab);
   }
 
   /** `c` is gone (or left the worker's floor): no more tab lists or output for them. `workerIds` limits it to those workers' tabs. */
@@ -262,7 +270,7 @@ export class ShellTabs {
       set.delete(c);
       if (!set.size) this.subs.delete(id);
     }
-    for (const t of this.tabs.values()) if (!workerIds || workerIds.has(t.info.workerId)) t.viewers.delete(c);
+    for (const t of this.tabs.values()) if ((!workerIds || workerIds.has(t.info.workerId)) && t.viewers.delete(c)) this.announce(t);
   }
 
   /** The worker went home: its shells end. */

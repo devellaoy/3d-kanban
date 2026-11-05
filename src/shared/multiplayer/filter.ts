@@ -67,6 +67,7 @@ export const SERVER_MSG_OUT = {
   'shelltab.tabs': 'drop',
   'shelltab.snapshot': 'drop',
   'shelltab.data': 'drop',
+  'shelltab.size': 'drop',
   changes: 'rewrite',
   'changes.diff': 'rewrite',
   'gh.issues': 'pass',

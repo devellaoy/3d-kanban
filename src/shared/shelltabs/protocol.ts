@@ -32,4 +32,6 @@ export type ShellTabServerMsg =
   /** A worker's tabs, to everyone who listed them; `opened` only to whoever just opened that one, so their window shows it. */
   | { t: 'shelltab.tabs'; workerId: string; tabs: ShellTab[]; opened?: string }
   | { t: 'shelltab.snapshot'; tabId: string; data: string; cols: number; rows: number }
-  | { t: 'shelltab.data'; tabId: string; data: string };
+  | { t: 'shelltab.data'; tabId: string; data: string }
+  /** The tab's size changed, or someone started or stopped watching it: sent to every viewer. Only a lone viewer sizes the shell by resizing their window; with more, they follow `cols` x `rows` (typing claims it). */
+  | { t: 'shelltab.size'; tabId: string; cols: number; rows: number; viewers: number };

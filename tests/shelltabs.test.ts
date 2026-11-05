@@ -168,3 +168,56 @@ test('closing kills the whole process group, even a child that ignores SIGHUP', 
     tabs.closeAll();
   }
 });
+
+test('after a disconnect a new client re-lists and re-attaches, and the shell works again', { skip }, async () => {
+  const { tabs, sent, client, last, output, until } = setup();
+  try {
+    const a = client();
+    tabs.list(a, 'w1');
+    tabs.open(a, 'w1', 'Ann');
+    const id = last(a).opened!;
+    tabs.attach(a, id);
+    tabs.input(a, id, 'echo before\n');
+    await until(() => output(a, id).includes('before'));
+    tabs.forget(a); // what the socket closing does
+    tabs.input(a, id, 'echo ghost\n');
+    const a2 = client(); // the reconnected socket
+    tabs.list(a2, 'w1');
+    assert.equal(last(a2).tabs[0].id, id);
+    tabs.attach(a2, id);
+    assert.ok(sent.some((s) => s.c === a2 && s.msg.t === 'shelltab.snapshot' && s.msg.tabId === id));
+    tabs.input(a2, id, 'echo after\n');
+    await until(() => output(a2, id).includes('after'));
+    assert.ok(!output(a2, id).includes('ghost\r\n'));
+  } finally {
+    tabs.closeAll();
+  }
+});
+
+test('a resize reaches every viewer, and the viewer count follows attach and detach', { skip }, () => {
+  const { tabs, sent, client, last } = setup();
+  try {
+    const a = client();
+    const b = client();
+    tabs.open(a, 'w1', 'Ann');
+    const id = last(a).opened!;
+    const sizes = (c: Client) => sent.filter((s) => s.c === c && s.msg.t === 'shelltab.size').map((s) => s.msg as Extract<ShellTabServerMsg, { t: 'shelltab.size' }>);
+    tabs.attach(a, id);
+    assert.equal(sizes(a).at(-1)?.viewers, 1);
+    tabs.attach(b, id);
+    assert.equal(sizes(a).at(-1)?.viewers, 2);
+    assert.equal(sizes(b).at(-1)?.viewers, 2);
+    tabs.resize(a, id, 100, 30);
+    for (const c of [a, b]) assert.deepEqual([sizes(c).at(-1)?.cols, sizes(c).at(-1)?.rows], [100, 30]);
+    const n = sizes(b).length;
+    tabs.resize(a, id, 100, 30); // unchanged: nothing sent
+    assert.equal(sizes(b).length, n);
+    tabs.detach(b, id);
+    assert.equal(sizes(a).at(-1)?.viewers, 1);
+    tabs.attach(b, id);
+    tabs.forget(b); // b's socket closed
+    assert.equal(sizes(a).at(-1)?.viewers, 1);
+  } finally {
+    tabs.closeAll();
+  }
+});

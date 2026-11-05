@@ -23,6 +23,8 @@ export interface TermTabsOptions {
   closeWindow(): void;
   /** Follows the server's messages for this window; hands back the way to stop. */
   listen(fn: (msg: ServerMsg) => void): () => void;
+  /** A different tab came to show (the terminal's own or a shell tab). */
+  onActiveChange?(): void;
 }
 
 export interface TermTabs {
@@ -33,6 +35,8 @@ export interface TermTabs {
   focusActive(): void;
   /** Types into the shell tab showing; false when the terminal's own tab is showing. */
   inputActive(data: string): boolean;
+  /** A shell tab is showing (not the terminal's own). */
+  onShell(): boolean;
   /** The window closed: stops watching the tabs (they keep running) and lets their terminals go. */
   destroy(): void;
 }
@@ -47,6 +51,9 @@ interface ShellView {
   sent: string;
   /** The snapshot has come: the terminal shows the shell, and sizes it. */
   ready: boolean;
+  /** The size the shell has, and how many are watching it (0: not told yet). */
+  shared: { cols: number; rows: number };
+  viewers: number;
 }
 
 export function termTabs(workerId: string, opts: TermTabsOptions): TermTabs {
@@ -87,16 +94,25 @@ export function termTabs(workerId: string, opts: TermTabsOptions): TermTabs {
     );
   };
 
-  /** Fits a shell tab's terminal to its area and tells the shell its size, when that changed. */
-  const sizeView = (id: string, v: ShellView) => {
-    if (!v.ready || v.el.clientWidth === 0 || v.el.clientHeight === 0) return;
+  /**
+   * Sizes a shell tab to this window, as the terminal does (ui/terminal.ts): typing claims the shell's
+   * size (latest typist wins); opening or resizing the window only does when nobody else is watching,
+   * otherwise this view follows the shell's size so cursor movements render right for everyone.
+   */
+  const sizeView = (id: string, v: ShellView, typing = false) => {
+    if (!v.ready) return;
+    if (!typing && v.viewers !== 1) {
+      if (v.shared.cols > 0 && (v.shared.cols !== v.term.cols || v.shared.rows !== v.term.rows)) v.term.resize(v.shared.cols, v.shared.rows);
+      return;
+    }
+    if (v.el.clientWidth === 0 || v.el.clientHeight === 0) return;
     try {
       v.fit.fit();
     } catch {
       return;
     }
     const key = `${v.term.cols}x${v.term.rows}`;
-    if (v.term.cols > 0 && v.term.rows > 0 && key !== v.sent) {
+    if (v.term.cols > 0 && v.term.rows > 0 && key !== v.sent && (v.term.cols !== v.shared.cols || v.term.rows !== v.shared.rows)) {
       v.sent = key;
       net.send({ t: 'shelltab.resize', tabId: id, cols: v.term.cols, rows: v.term.rows });
     }
@@ -108,7 +124,7 @@ export function termTabs(workerId: string, opts: TermTabsOptions): TermTabs {
     const el = h('div.term-shellhost');
     pages.append(el);
     const { term, fit } = makeXterm({ keypad: !!opts.keypad });
-    const v: ShellView = { el, term, fit, ro: new ResizeObserver(() => sizeView(id, v)), sent: '', ready: false };
+    const v: ShellView = { el, term, fit, ro: new ResizeObserver(() => sizeView(id, v)), sent: '', ready: false, shared: { cols: 0, rows: 0 }, viewers: 0 };
     views.set(id, v);
     term.open(el);
     term.attachCustomKeyEventHandler((e) => {
@@ -142,7 +158,10 @@ export function termTabs(workerId: string, opts: TermTabsOptions): TermTabs {
       }
       return true;
     });
-    term.onData((data) => net.send({ t: 'shelltab.input', tabId: id, data }));
+    term.onData((data) => {
+      sizeView(id, v, true);
+      net.send({ t: 'shelltab.input', tabId: id, data });
+    });
     v.ro.observe(el);
     net.send({ t: 'shelltab.attach', tabId: id });
     return v;
@@ -171,11 +190,9 @@ export function termTabs(workerId: string, opts: TermTabsOptions): TermTabs {
     if (id !== null) viewFor(id);
     for (const [vid, v] of views) v.el.classList.toggle('hidden', vid !== id);
     render();
-    if (id !== null) {
-      const v = views.get(id)!;
-      sizeView(id, v);
-    }
+    if (id !== null) sizeView(id, views.get(id)!);
     focusActive();
+    opts.onActiveChange?.();
   };
 
   const onMsg = (msg: ServerMsg) => {
@@ -186,17 +203,39 @@ export function termTabs(workerId: string, opts: TermTabsOptions): TermTabs {
       if (msg.opened && ids.has(msg.opened)) show(msg.opened);
       else if (active !== null && !ids.has(active)) show(null);
       else render();
+    } else if (msg.t === 'welcome') {
+      // After a reconnect the server has forgotten this window's subscriptions and views: ask again.
+      // Each snapshot that comes back resets its terminal.
+      net.send({ t: 'shelltab.list', workerId });
+      for (const [id, v] of views) {
+        v.ready = false;
+        v.viewers = 0;
+        v.sent = '';
+        net.send({ t: 'shelltab.attach', tabId: id });
+      }
     } else if (msg.t === 'shelltab.snapshot') {
       const v = views.get(msg.tabId);
       if (!v) return;
+      v.ready = false;
       v.term.reset();
       v.term.resize(msg.cols, msg.rows);
+      v.shared = { cols: msg.cols, rows: msg.rows };
       v.sent = `${msg.cols}x${msg.rows}`;
       v.term.write(msg.data, () => {
         v.ready = true;
         sizeView(msg.tabId, v);
         v.term.scrollToBottom();
       });
+    } else if (msg.t === 'shelltab.size') {
+      const v = views.get(msg.tabId);
+      if (!v) return;
+      v.shared = { cols: msg.cols, rows: msg.rows };
+      v.viewers = msg.viewers;
+      // Someone else sized the shell: follow it (a lone viewer owns the size, so an echo of their own changes nothing).
+      if (v.ready && msg.viewers > 1 && (msg.cols !== v.term.cols || msg.rows !== v.term.rows) && `${msg.cols}x${msg.rows}` !== v.sent) {
+        v.term.resize(msg.cols, msg.rows);
+        v.sent = '';
+      } else if (v.ready) sizeView(msg.tabId, v);
     } else if (msg.t === 'shelltab.data') {
       views.get(msg.tabId)?.term.write(msg.data);
     }
@@ -211,6 +250,7 @@ export function termTabs(workerId: string, opts: TermTabsOptions): TermTabs {
     bar,
     pages,
     focusActive,
+    onShell: () => active !== null,
     inputActive: (data) => {
       const v = active === null ? undefined : views.get(active);
       if (!v) return false;
