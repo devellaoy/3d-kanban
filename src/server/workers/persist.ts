@@ -45,6 +45,7 @@ export function saveWorkers(file: string, workers: Iterable<Worker>, closing: bo
     // A task worker, and how it's launched (see SpawnExtra).
     kanban: info.kanban,
     issueKey: info.issueKey,
+    dozing: info.dozing,
     extra,
     workedMs: workedMs(info),
     tracker: info.kind === 'agent' ? tracker : undefined,
@@ -112,6 +113,7 @@ export function restoreWorkers(file: string, workers: Map<string, Worker>, defau
         workedMs: typeof s.workedMs === 'number' && Number.isFinite(s.workedMs) && s.workedMs > 0 ? s.workedMs : undefined,
         ...(validKanban(s.kanban) ? { kanban: validKanban(s.kanban) } : {}),
         ...(typeof s.issueKey === 'string' && s.issueKey.length <= 300 ? { issueKey: s.issueKey } : {}),
+        ...(typeof s.dozing === 'number' && s.dozing > 0 && validKanban(s.kanban) ? { dozing: s.dozing } : {}),
       };
       const w = newWorker(info, tracker, typeof s.hookToken === 'string' && s.hookToken ? s.hookToken : undefined);
       if (typeof s.owner === 'string' && s.owner) w.owner = s.owner;

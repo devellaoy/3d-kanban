@@ -147,6 +147,11 @@ export const workerHandlers = {
     if (w && snap) {
       c.attached.add(w.wid);
       ctx.sendTo(c, { t: 'term.snapshot', workerId: w.wid, ...snap });
+      // A task worker the kanban closed while idle (WorkerInfo.dozing) carries on its session as someone in the office opens it; a visitor does not wake it.
+      if (!c.visitor && w.info.dozing) {
+        const err = w.floor.workers.resume(w.wid);
+        if (err && err !== 'Worker is already running') ctx.warn(c, err); // already running: the close in progress resumes it (idle.ts)
+      }
     }
   },
   'worker.detach'(ctx, c, msg) {

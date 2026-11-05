@@ -79,3 +79,11 @@ test('only admins change whether workers carry on after a restart', () => {
   settingsHandlers['carryOn.set'](ctx(true), c, { t: 'carryOn.set', on: false });
   assert.deepEqual(set, [false]);
 });
+
+test('wakeAll leaves a worker the kanban closed while idle (dozing) asleep, and wakes the others', () => {
+  const dozing = agent({}, { id: 'a', dozing: 1 });
+  const other = agent({}, { id: 'b' });
+  const { carry, resumed } = office([dozing, other]);
+  carry.wakeAll();
+  assert.deepEqual(resumed, ['b']);
+});

@@ -131,7 +131,7 @@ export class CarryOn {
     let n = 0;
     // A DeepSeek Harness worker has no PTY but is still running: only the ones that are gone wake up.
     for (const w of this.host.workers.values()) {
-      if (w.pty || w.dsh || w.carryOn?.state === 'pending') continue;
+      if (w.pty || w.dsh || w.carryOn?.state === 'pending' || w.info.dozing) continue; // a dozing one (the kanban closed its idle agent) wakes when someone opens it
       const agent = w.info.kind === 'agent';
       // Whatever its status was, its old process is gone with the teammates and background agents it had (see SpawnExtra.restartedAt).
       if (agent && (w.carryOn?.cutOff || w.interrupted)) (w.extra ??= {}).restartedAt = Date.now();

@@ -316,7 +316,7 @@ export class WorkerManager extends KanbanWorkers {
     if (this.worktrees.checkLost(w, true)) return lostMessage(w.info, this.worktrees.missingTrees(w.info));
     clockWork(w.info, 'starting');
     w.info.status = 'starting';
-    w.info.exitCode = undefined;
+    w.info.exitCode = w.info.dozing = undefined;
     const station = DESK_BY_ID.get(w.info.deskId)?.station;
     // A board agent with no session to carry on starts over, so it needs telling what it's for again.
     const brief = station && stationBrief(station, this.prompts);
