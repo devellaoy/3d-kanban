@@ -14,10 +14,12 @@ export interface PathHit {
 }
 
 // A path with at least one folder, ending in a file name with an extension that starts with a letter
-// (so 1/2.5 and v1.2 aren't paths); optionally :12, :12:3 or #L12 after it.
+// (so 1/2.5 and v1.2 aren't paths); optionally :12, :12:3 or #L12 after it. Folders are split by / or,
+// as on Windows, by \, and an absolute path may start with a drive (C:\repo\src\app.ts:42).
 const SEG = String.raw`[\w@+-][\w.@+-]*`;
+const SEP = String.raw`[\\/]`;
 const LINE = String.raw`(?::(\d+)(?::\d+)?|#L(\d+)(?:-L?\d+)?)?`;
-const PATH_RE = new RegExp(String.raw`(^|[\s(\[{"'“‘,;=])((?:\.{1,2})?\/?(?:${SEG}\/)+${SEG}\.[A-Za-z][\w]{0,9})${LINE}`, 'g');
+const PATH_RE = new RegExp(String.raw`(^|[\s(\[{"'“‘,;=])((?:[A-Za-z]:${SEP}|\.{1,2}${SEP}|${SEP})?(?:${SEG}${SEP})+${SEG}\.[A-Za-z][\w]{0,9})${LINE}`, 'g');
 /** A lone file name counts only as all of a `code` span, and only with an extension of a source or config file. */
 const BARE_RE = new RegExp(String.raw`^(${SEG}\.(?:tsx?|jsx?|mjs|cjs|json|jsonc|md|mdx|css|scss|less|html?|vue|svelte|py|go|rs|java|kt|swift|rb|php|cs|c|h|cpp|hpp|ya?ml|toml|ini|sql|sh|ps1|xml|lock|gradle|env\.example))${LINE}$`);
 const URL_RE = /^https?:\/\/[^\s<>"'`]+$/i;

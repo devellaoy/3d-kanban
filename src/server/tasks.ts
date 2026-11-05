@@ -103,7 +103,7 @@ export class TaskNamer {
     const out = await run(this.claude!, this.env, this.system(), describe(ctx)).catch(() => null);
     const parsed = out === null ? null : parse(out);
     // "Working On GitHub Issue" says nothing: the issue's own number and title say what it is.
-    const issue = parsed && isGeneric(parsed.name) ? ctx.prompts.map(issueTask).find(Boolean) : undefined;
+    const issue = parsed && isGeneric(parsed.name) ? latestIssueTask(ctx.prompts) : undefined;
     const task = issue ? { ...parsed!, name: issue.name } : parsed;
     if (task) this.fails = 0;
     else if (++this.fails >= FAILS_BEFORE_BACKOFF) {
@@ -129,6 +129,15 @@ export function issueTask(prompt: string): WorkerTask | undefined {
   if (!m) return undefined;
   const title = m[2].trim();
   return { name: cap(clip(`#${m[1]} ${title}`, NAME_MAX)), summary: cap(clip(`Issue #${m[1]}: ${title}`, SUMMARY_MAX)) };
+}
+
+/** The issue the newest prompt that hands one over is about (prompts are oldest first): the worker's current issue. */
+export function latestIssueTask(prompts: readonly string[]): WorkerTask | undefined {
+  for (let i = prompts.length - 1; i >= 0; i--) {
+    const issue = issueTask(prompts[i]);
+    if (issue) return issue;
+  }
+  return undefined;
 }
 
 /** The label to show while the model is still thinking, or when there is no model: the issue it hands over, else the prompt. */

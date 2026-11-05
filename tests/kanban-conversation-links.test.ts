@@ -27,6 +27,19 @@ test('paths with a folder are found in text, with their line, and not in URLs, n
   assert.deepEqual(findPaths('./scripts/run.sh').map((h) => h.path), ['./scripts/run.sh']);
 });
 
+test('Windows paths are found too: a drive, backslashes, and the line after them', () => {
+  assert.deepEqual(
+    findPaths('Changed C:\\repo\\src\\app.ts:42, src\\client\\md.ts and D:/w/a.css.').map((h) => [h.text, h.path, h.line]),
+    [
+      ['C:\\repo\\src\\app.ts:42', 'C:\\repo\\src\\app.ts', 42],
+      ['src\\client\\md.ts', 'src\\client\\md.ts', undefined],
+      ['D:/w/a.css', 'D:/w/a.css', undefined],
+    ],
+  );
+  assert.deepEqual(codePath('C:\\repo\\src\\app.ts:42'), { index: 0, text: 'C:\\repo\\src\\app.ts:42', path: 'C:\\repo\\src\\app.ts', line: 42 });
+  assert.deepEqual(findPaths('a ratio of 1\\2.5 or http:\\x'), []);
+});
+
 test('a code span is a path when all of it is one, or a lone source file name', () => {
   assert.deepEqual(codePath('src/a.ts:12'), { index: 0, text: 'src/a.ts:12', path: 'src/a.ts', line: 12 });
   assert.deepEqual(codePath('package.json'), { index: 0, text: 'package.json', path: 'package.json' });
@@ -52,6 +65,9 @@ test('a file opens only from inside the task’s folders', (t) => {
   assert.deepEqual(resolveTaskFile(list, 'src/a.ts'), { file });
   assert.deepEqual(resolveTaskFile(list, './src/a.ts'), { file });
   assert.deepEqual(resolveTaskFile(list, 'b/src/a.ts'), { file });
+  // Written the Windows way, on any machine.
+  assert.deepEqual(resolveTaskFile(list, 'src\\a.ts'), { file });
+  assert.deepEqual(resolveTaskFile(list, '.\\src\\a.ts'), { file });
   assert.deepEqual(resolveTaskFile(list, file), { file });
   assert.ok('error' in resolveTaskFile(list, '../secret.txt'));
   assert.ok('error' in resolveTaskFile(list, path.join(root, 'secret.txt')));
@@ -94,7 +110,7 @@ test('kanban.task.openFile takes a task, a one-line path and an optional line', 
 });
 
 test('a worker handed an issue is named by the issue, never just "working on an issue"', async () => {
-  const { fallbackTask, isGeneric, issueTask } = await import('../src/server/tasks.ts');
+  const { fallbackTask, isGeneric, issueTask, latestIssueTask } = await import('../src/server/tasks.ts');
   assert.deepEqual(fallbackTask('Work on GitHub issue #12: "Fix the login redirect".\n\nRead it first with `gh issue view 12`.'), {
     name: '#12 Fix the login redirect',
     summary: 'Issue #12: Fix the login redirect',
@@ -102,6 +118,9 @@ test('a worker handed an issue is named by the issue, never just "working on an 
   assert.equal(issueTask('GitHub issue #7: “Dark mode”. Read it first.')?.name, '#7 Dark mode');
   assert.equal(issueTask('Fix the login redirect'), undefined);
   assert.equal(issueTask('fix #12 so that "Save" works'), undefined);
+  // The worker moved on from #12 to #34: its issue is the newest one handed over.
+  assert.equal(latestIssueTask(['Work on GitHub issue #12: "Fix the login".', 'ok', 'Work on GitHub issue #34: "Dark mode".', 'go on'])?.name, '#34 Dark mode');
+  assert.equal(latestIssueTask(['just a prompt']), undefined);
   assert.equal(fallbackTask('please fix the login redirect now').name, 'Fix the login redirect');
   for (const name of ['Working On GitHub Issue', 'Work on issue #12', 'GitHub Issue', 'Handling the task']) assert.ok(isGeneric(name), name);
   for (const name of ['Fix Login Redirect', '#12 Fix Login', 'Review PR #42']) assert.ok(!isGeneric(name), name);

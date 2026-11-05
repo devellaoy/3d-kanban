@@ -21,11 +21,14 @@ const inside = (file: string, dir: string) => {
   return !!rel && !rel.startsWith('..') && !path.isAbsolute(rel);
 };
 
-/** Paths as agents write them: `a/`/`b/` diff prefixes and `./` dropped, `~` left alone (it is never a task's). */
+/**
+ * Paths as agents write them: `a/`/`b/` diff prefixes and `./` dropped, `~` left alone (it is never a
+ * task's). Off Windows a \ in it is a folder separator written the Windows way (src\app.ts).
+ */
 function candidates(written: string): string[] {
-  const p = written.replace(/^\.\//, '');
+  const p = (process.platform === 'win32' ? written : written.replace(/\\/g, '/')).replace(/^\.[\\/]/, '');
   const out = [p];
-  if (/^[ab]\//.test(p)) out.push(p.slice(2));
+  if (/^[ab][\\/]/.test(p)) out.push(p.slice(2));
   return out;
 }
 
