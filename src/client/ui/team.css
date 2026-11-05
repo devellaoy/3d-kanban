@@ -5,7 +5,7 @@
 .team code { font: var(--fs-xs) var(--font-mono); background: var(--paper-2); border-radius: 5px; padding: 1px 4px; color: var(--text); word-break: break-all; }
 .invite-row { display: flex; gap: 8px; }
 .invite-row input { flex: 1; min-width: 0; }
-.team-status { margin: 10px 0 0; padding: 8px 12px; border: var(--bw-sm) solid var(--ink); border-radius: 10px; font-weight: var(--fw-bold); font-size: var(--fs-md); background: var(--info-soft); }
+.team-status { margin: 10px 0 0; padding: 8px 12px; border: var(--bw-sm) solid var(--ink); border-radius: var(--radius-md); font-weight: var(--fw-bold); font-size: var(--fs-md); background: var(--info-soft); }
 .team-status.ok { background: var(--good-soft); }
 .team-status.error { background: var(--bad-soft); }
 .team-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 18px; }
@@ -13,7 +13,7 @@
 .os-tabs { display: flex; gap: 4px; }
 .os-tabs .btn { padding: 3px 10px; font-size: var(--fs-sm); }
 .cmd { display: flex; gap: 8px; align-items: flex-start; margin-top: 8px; }
-.cmd pre { flex: 1; margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; font: var(--fs-sm)/1.5 var(--font-mono); background: var(--code-bg); color: var(--code-text); border: var(--bw-sm) solid var(--ink); border-radius: 10px; padding: 10px 12px; user-select: all; }
+.cmd pre { flex: 1; margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; font: var(--fs-sm)/1.5 var(--font-mono); background: var(--code-bg); color: var(--code-text); border: var(--bw-sm) solid var(--ink); border-radius: var(--radius-md); padding: 10px 12px; user-select: all; }
 .team-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
 .team-list li { display: flex; align-items: center; gap: 10px; font-weight: var(--fw-bold); }
 .team-list .name { flex: 1; }

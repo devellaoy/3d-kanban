@@ -84,7 +84,7 @@ button { font-family: inherit; }
 .swatch.sel { outline: var(--focus-ring); outline-offset: 2px; }
 
 .svc-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
-.svc-list li { display: flex; align-items: center; gap: 12px; padding: 10px 12px; border: var(--bw) solid var(--ink); border-radius: 14px; background: var(--field); cursor: pointer; box-shadow: var(--shadow-sm); }
+.svc-list li { display: flex; align-items: center; gap: 12px; padding: 10px 12px; border: var(--bw) solid var(--ink); border-radius: var(--radius-box); background: var(--field); cursor: pointer; box-shadow: var(--shadow-sm); }
 .svc-list li:hover { background: var(--field-hover); }
 .svc-list li.on { background: var(--paper-2); border-color: var(--accent); }
 .svc-list li:focus-visible { outline: var(--focus-ring); outline-offset: 2px; }
@@ -105,12 +105,12 @@ a.when:hover { text-decoration: underline; }
 .provider-choice label { margin: 0; white-space: nowrap; }
 .provider-model label { margin: 0; font-size: var(--fs-xs); }
 .provider-model input:invalid { border-color: var(--bad); }
-.provider-summary .btn { padding: 3px 9px; font-size: var(--fs-xs); border-width: var(--bw-sm); border-radius: 9px; box-shadow: var(--shadow-xs); }
+.provider-summary .btn { padding: 3px 9px; font-size: var(--fs-xs); border-width: var(--bw-sm); border-radius: calc(var(--radius-md) - 1px); box-shadow: var(--shadow-xs); }
 .charsel-opts label { margin: 14px 0 8px; }
-.col-search input[type=text] { font-size: var(--fs-sm); border-width: var(--bw-sm); border-radius: 9px; padding: 5px 26px 5px 9px; }
+.col-search input[type=text] { font-size: var(--fs-sm); border-width: var(--bw-sm); border-radius: calc(var(--radius-md) - 1px); padding: 5px 26px 5px 9px; }
 .gh-label-edit { padding: 1px 9px; font-size: var(--fs-xs); box-shadow: var(--shadow-xs); }
-.pd-side input[type=text] { width: 100%; font: inherit; font-size: var(--fs-sm); border: var(--bw-sm) solid var(--ink); border-radius: 10px; padding: 5px 9px; background: var(--field); outline: none; }
-.elevator .dir-change { margin-left: 6px; padding: 1px 8px; font-size: var(--fs-xs); border-width: var(--bw-sm); border-radius: 9px; box-shadow: var(--shadow-xs); vertical-align: baseline; }
+.pd-side input[type=text] { width: 100%; font: inherit; font-size: var(--fs-sm); border: var(--bw-sm) solid var(--ink); border-radius: var(--radius-md); padding: 5px 9px; background: var(--field); outline: none; }
+.elevator .dir-change { margin-left: 6px; padding: 1px 8px; font-size: var(--fs-xs); border-width: var(--bw-sm); border-radius: calc(var(--radius-md) - 1px); box-shadow: var(--shadow-xs); vertical-align: baseline; }
 .meeting-field label { margin: 0; }
 
 /* Touch targets: a theme that sets --hit-min (themes/tokens.css) grows the small controls to that size

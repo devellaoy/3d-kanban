@@ -58,6 +58,9 @@
   --radius-sm: 12px;        /* buttons, inputs, cards' insides */
   --radius-lg: 20px;        /* windows */
   --radius-pill: 999px;     /* pills, chips, count badges */
+  --radius-xs: 8px;         /* small boxes: a chip-sized panel, a thumbnail, a small row */
+  --radius-md: 10px;        /* list rows, small fields and boxes (a 9px corner is calc(var(--radius-md) - 1px)) */
+  --radius-box: 14px;       /* boxes inside a window: the composer, a plan, a callout */
   --hit-min: 0px;           /* the smallest touch target of a small control (a card's ⋯, a chip's ✕): styles/base.css
                                grows them to it with an invisible ::after; a theme that sets it also spaces the controls so the
                                target has room (see dark.css); 0 leaves them as drawn */

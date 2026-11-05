@@ -2,7 +2,7 @@
 .modal.meeting-window { width: min(780px, 100%); }
 .meeting-window .muted { color: var(--muted); font-weight: var(--fw-semibold); font-size: var(--fs-xs); }
 .meeting-window .bad { color: var(--bad); }
-.meeting-window .btn.small { padding: 3px 8px; font-size: var(--fs-xs); border-width: var(--bw-sm); border-radius: 9px; }
+.meeting-window .btn.small { padding: 3px 8px; font-size: var(--fs-xs); border-width: var(--bw-sm); border-radius: calc(var(--radius-md) - 1px); }
 .meeting-form { display: flex; flex-direction: column; gap: 12px; }
 .meeting-patterns { display: grid; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); gap: 8px; }
 .meeting-pattern { text-align: left; font: inherit; color: var(--text); background: var(--field); border: var(--bw) solid var(--ink); border-radius: var(--radius-sm); padding: 8px 10px; cursor: pointer; display: flex; flex-direction: column; gap: 3px; }

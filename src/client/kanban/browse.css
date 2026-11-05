@@ -12,21 +12,21 @@
 .kb-browse-window .kb-br-bar input[type=search] { flex: 1 1 220px; }
 .kb-browse-window .kb-br-bar select, .kb-browse-window .kb-br-bar input[type=search] { width: auto; min-width: 0; height: 38px; padding: 0 10px; font: var(--fw-bold) var(--fs-md) var(--font); color: var(--text); background: var(--field); border: var(--bw) solid var(--ink); border-radius: var(--radius-sm); outline: none; }
 .kb-br-filters { display: flex; flex-wrap: wrap; gap: 6px; }
-.kb-browse-window .kb-br-filters select, .kb-browse-window .kb-br-filters input[type=search] { width: auto; max-width: 220px; min-width: 0; height: 32px; padding: 0 8px; font: var(--fw-bold) var(--fs-sm) var(--font); color: var(--text); background: var(--field); border: var(--bw-sm) solid var(--ink); border-radius: 10px; outline: none; }
+.kb-browse-window .kb-br-filters select, .kb-browse-window .kb-br-filters input[type=search] { width: auto; max-width: 220px; min-width: 0; height: 32px; padding: 0 8px; font: var(--fw-bold) var(--fs-sm) var(--font); color: var(--text); background: var(--field); border: var(--bw-sm) solid var(--ink); border-radius: var(--radius-md); outline: none; }
 .kb-browse-window .kb-br-filters .kb-br-labels { width: 180px; }
 .kb-browse-window select:focus, .kb-browse-window input:focus, .kb-browse-window textarea:focus { border-color: var(--accent); }
-.kb-browse-window .btn.small { padding: 4px 10px; font-size: var(--fs-sm); border-width: var(--bw-sm); border-radius: 10px; box-shadow: var(--shadow-xs); }
+.kb-browse-window .btn.small { padding: 4px 10px; font-size: var(--fs-sm); border-width: var(--bw-sm); border-radius: var(--radius-md); box-shadow: var(--shadow-xs); }
 .kb-browse-window .kb-br-bar .btn.small { height: 38px; }
 .kb-br-jqlbtn[aria-pressed=true] { background: var(--warn-soft); }
 .kb-br-jql { display: flex; flex-direction: column; gap: 6px; }
-.kb-browse-window .kb-br-jql textarea { width: 100%; min-height: 54px; padding: 6px 10px; font: var(--fw-medium) var(--fs-sm) var(--font-mono); color: var(--text); background: var(--field); border: var(--bw-sm) solid var(--ink); border-radius: 10px; outline: none; resize: vertical; box-sizing: border-box; }
+.kb-browse-window .kb-br-jql textarea { width: 100%; min-height: 54px; padding: 6px 10px; font: var(--fw-medium) var(--fs-sm) var(--font-mono); color: var(--text); background: var(--field); border: var(--bw-sm) solid var(--ink); border-radius: var(--radius-md); outline: none; resize: vertical; box-sizing: border-box; }
 .kb-br-jqlfoot { display: flex; align-items: center; gap: 8px; }
 .kb-br-jqlfoot small { flex: 1; }
 .kb-br-scopechip { font-size: var(--fs-xs); background: var(--tint-purple); }
 
 /* Someone…: the people search */
-.kb-br-picker { display: flex; flex-direction: column; gap: 6px; padding: 8px; border: var(--bw-sm) dashed var(--ink); border-radius: 12px; background: var(--paper-2); }
-.kb-browse-window .kb-br-picker input[type=search] { width: 100%; max-width: 360px; height: 34px; padding: 0 10px; font: var(--fw-bold) var(--fs-sm) var(--font); color: var(--text); background: var(--field); border: var(--bw-sm) solid var(--ink); border-radius: 10px; outline: none; }
+.kb-br-picker { display: flex; flex-direction: column; gap: 6px; padding: 8px; border: var(--bw-sm) dashed var(--ink); border-radius: var(--radius-sm); background: var(--paper-2); }
+.kb-browse-window .kb-br-picker input[type=search] { width: 100%; max-width: 360px; height: 34px; padding: 0 10px; font: var(--fw-bold) var(--fs-sm) var(--font); color: var(--text); background: var(--field); border: var(--bw-sm) solid var(--ink); border-radius: var(--radius-md); outline: none; }
 .kb-br-people { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 4px; max-height: 140px; overflow-y: auto; }
 .kb-br-person { display: inline-flex; align-items: baseline; gap: 6px; padding: 4px 10px; font: var(--fw-semibold) var(--fs-sm) var(--font); color: var(--text); background: var(--field); border: var(--bw-sm) solid var(--ink); border-radius: var(--radius-pill); cursor: pointer; }
 .kb-br-person:hover { background: var(--field-hover); }
@@ -34,9 +34,9 @@
 
 /* ---- Lines ---- */
 .kb-br-quiet { margin: 0; font-size: var(--fs-sm); font-weight: var(--fw-semibold); color: var(--muted); }
-.kb-br-error { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; margin: 2px 0; padding: 6px 8px; font-size: var(--fs-sm); font-weight: var(--fw-bold); border: var(--bw-sm) solid var(--bad); border-radius: 10px; background: var(--bad-wash); overflow-wrap: anywhere; }
+.kb-br-error { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; margin: 2px 0; padding: 6px 8px; font-size: var(--fs-sm); font-weight: var(--fw-bold); border: var(--bw-sm) solid var(--bad); border-radius: var(--radius-md); background: var(--bad-wash); overflow-wrap: anywhere; }
 .kb-br-error > span { flex: 1; min-width: 0; }
-.kb-br-empty-proj { margin: 12px 0; padding: 12px 14px; font-weight: var(--fw-bold); line-height: 1.5; border: var(--bw-sm) dashed var(--ink); border-radius: 12px; background: var(--field); }
+.kb-br-empty-proj { margin: 12px 0; padding: 12px 14px; font-weight: var(--fw-bold); line-height: 1.5; border: var(--bw-sm) dashed var(--ink); border-radius: var(--radius-sm); background: var(--field); }
 
 /* ---- The tree ---- */
 .kb-br-treebox { flex: 1; min-height: 0; overflow-y: auto; overflow-x: hidden; padding: 6px; border: var(--bw-sm) solid var(--ink); border-radius: var(--radius-sm); background: var(--field); }
@@ -47,7 +47,7 @@
 .kb-br-tail { padding: 3px 0 4px 26px; }
 .kb-br-empty { padding: 3px 0 3px 26px; font-size: var(--fs-sm); font-weight: var(--fw-semibold); color: var(--muted); }
 
-.kb-br-row { display: flex; align-items: center; flex-wrap: wrap; gap: 2px 6px; min-height: 30px; padding: 2px 6px 2px 0; border-radius: 8px; }
+.kb-br-row { display: flex; align-items: center; flex-wrap: wrap; gap: 2px 6px; min-height: 30px; padding: 2px 6px 2px 0; border-radius: var(--radius-xs); }
 .kb-br-row:hover, .kb-br-row:focus-within { background: var(--field-hover); }
 .kb-br-tog { flex: none; width: 22px; height: 22px; display: inline-flex; align-items: center; justify-content: center; padding: 0; font: var(--fw-heavy) var(--fs-sm) var(--font); color: var(--text); background: none; border: 0; border-radius: 6px; cursor: pointer; }
 .kb-br-tog:hover { background: var(--paper-2); }

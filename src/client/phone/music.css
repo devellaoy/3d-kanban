@@ -36,7 +36,7 @@
 .phm .ytv-queue li { flex-wrap: wrap; gap: 6px; }
 .phm .ytv-queue .svc-main { flex-basis: calc(100% - 32px); }
 .phm .ytv-acts { margin-left: 28px; }
-.phm .btn.small { padding: 3px 8px; font-size: var(--fs-xs); border-width: var(--bw-sm); border-radius: 9px; }
+.phm .btn.small { padding: 3px 8px; font-size: var(--fs-xs); border-width: var(--bw-sm); border-radius: calc(var(--radius-md) - 1px); }
 .phm .btn.small[hidden] { display: none; }
 .phone-empty.phm-idle { margin: 16px 12px; }
 

@@ -45,7 +45,7 @@
 .side .count { color: var(--muted); font-weight: var(--fw-semibold); }
 .side section { padding: 10px 12px; overflow: auto; }
 .side ul { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
-.people li, .workers li { display: flex; align-items: center; gap: 8px; font-size: var(--fs-md); font-weight: var(--fw-semibold); padding: 3px 4px; border-radius: 8px; }
+.people li, .workers li { display: flex; align-items: center; gap: 8px; font-size: var(--fs-md); font-weight: var(--fw-semibold); padding: 3px 4px; border-radius: var(--radius-xs); }
 .workers li { cursor: pointer; }
 .workers li:hover { background: var(--field-hover); }
 .people .you { color: var(--muted); font-weight: var(--fw-medium); }
@@ -86,7 +86,7 @@
 .limits .muted { color: var(--muted); font-weight: var(--fw-medium); }
 
 /* Workers waiting on you: a count in the Workers panel (click or N to go to them) and arrows at the edge of the screen. */
-#waiting { display: flex; align-items: center; gap: 6px; width: 100%; margin: 0 0 8px; padding: 5px 8px; border: var(--bw-sm) solid var(--ink); border-radius: 10px; background: var(--bad-tint); color: var(--text); font: inherit; font-size: var(--fs-sm); font-weight: var(--fw-heavy); text-align: left; cursor: pointer; }
+#waiting { display: flex; align-items: center; gap: 6px; width: 100%; margin: 0 0 8px; padding: 5px 8px; border: var(--bw-sm) solid var(--ink); border-radius: var(--radius-md); background: var(--bad-tint); color: var(--text); font: inherit; font-size: var(--fs-sm); font-weight: var(--fw-heavy); text-align: left; cursor: pointer; }
 #waiting:hover { background: var(--alert-hover); }
 #waiting.all-done { background: var(--good-soft); }
 #waiting.all-done:hover { background: var(--good-hover); }
@@ -97,18 +97,18 @@
 #hud > .chat { pointer-events: none; }
 #chat-log { list-style: none; margin: 0; padding: 0 0 3px; max-height: 190px; width: 100%; overflow: auto; font-size: var(--fs-sm); display: flex; flex-direction: column; align-items: flex-start; gap: 4px; scrollbar-width: none; }
 #chat-log:empty { display: none; }
-#chat-log li { max-width: 100%; padding: 3px 9px; background: color-mix(in srgb, var(--paper) 94%, transparent); border: var(--bw-sm) solid var(--ink); border-radius: 10px; box-shadow: var(--shadow-xs); overflow-wrap: anywhere; animation: chat-out .6s ease-in forwards; }
+#chat-log li { max-width: 100%; padding: 3px 9px; background: color-mix(in srgb, var(--paper) 94%, transparent); border: var(--bw-sm) solid var(--ink); border-radius: var(--radius-md); box-shadow: var(--shadow-xs); overflow-wrap: anywhere; animation: chat-out .6s ease-in forwards; }
 @keyframes chat-out { to { opacity: 0; visibility: hidden; } }
 .chat:is(:hover, :focus-within) #chat-log { pointer-events: auto; scrollbar-width: thin; }
 .chat:is(:hover, :focus-within) #chat-log li { animation: none; }
 #chat-log b { font-weight: var(--fw-heavy); }
 #chat-log .sys { color: var(--muted); font-style: italic; }
-#chat-input { pointer-events: auto; width: 180px; border: var(--bw-sm) solid var(--ink); border-radius: 10px; padding: 7px 10px; font: inherit; font-size: var(--fs-md); background: color-mix(in srgb, var(--field) 92%, transparent); box-shadow: var(--shadow-xs); outline: none; transition: width .15s; }
+#chat-input { pointer-events: auto; width: 180px; border: var(--bw-sm) solid var(--ink); border-radius: var(--radius-md); padding: 7px 10px; font: inherit; font-size: var(--fs-md); background: color-mix(in srgb, var(--field) 92%, transparent); box-shadow: var(--shadow-xs); outline: none; transition: width .15s; }
 #chat-input:focus { width: 100%; border-color: var(--accent); background: var(--field); }
 
 .hint {
   position: absolute; left: 50%; bottom: 28px; transform: translateX(-50%);
-  background: var(--strong); color: var(--paper); border: var(--bw) solid var(--paper); border-radius: 14px;
+  background: var(--strong); color: var(--paper); border: var(--bw) solid var(--paper); border-radius: var(--radius-box);
   padding: 10px 16px; font-weight: var(--fw-bold); font-size: var(--fs-lg); box-shadow: 0 4px 0 rgba(0,0,0,.35);
   display: flex; gap: 14px; align-items: center; flex-wrap: wrap; justify-content: center; max-width: min(720px, calc(100vw - 380px));
   pointer-events: none !important;
@@ -118,7 +118,7 @@
 /* Winding up a shot with the basketball: the marker runs up and down; let go in the green. */
 .shot-meter {
   position: absolute; left: 50%; bottom: 92px; width: 240px; height: 18px; transform: translateX(-50%);
-  background: var(--strong); border: var(--bw) solid var(--paper); border-radius: 10px; box-shadow: 0 4px 0 rgba(0,0,0,.35);
+  background: var(--strong); border: var(--bw) solid var(--paper); border-radius: var(--radius-md); box-shadow: 0 4px 0 rgba(0,0,0,.35);
   overflow: hidden; pointer-events: none !important;
 }
 .shot-meter .sweet {
@@ -139,7 +139,7 @@
 .crosshair.on { transform: scale(1.6); background: var(--accent); opacity: 1; }
 .crosshair .look-hint {
   display: none; position: absolute; top: 18px; left: 50%; transform: translateX(-50%); white-space: nowrap;
-  background: var(--strong); color: var(--paper); border-radius: 10px; padding: 4px 10px; font-size: var(--fs-sm); font-weight: var(--fw-bold);
+  background: var(--strong); color: var(--paper); border-radius: var(--radius-md); padding: 4px 10px; font-size: var(--fs-sm); font-weight: var(--fw-bold);
 }
 .crosshair.free .look-hint { display: block; }
 .crosshair.on .look-hint { transform: translateX(-50%) scale(.625); transform-origin: top center; }
@@ -205,7 +205,7 @@ body.telescope-active #hud { visibility: hidden; }
 #hud:has(#project-meta:not(.hud-off)) :is(.caffeine, #shares) { translate: 0 16px; }
 .share-thumb { width: 220px; border: var(--bw) solid var(--ink); border-radius: var(--radius-sm); overflow: hidden; background: #000; box-shadow: var(--shadow); cursor: pointer; position: relative; }
 .share-thumb video { width: 100%; display: block; aspect-ratio: 16/9; object-fit: contain; background: #111; }
-.share-thumb .who { position: absolute; left: 6px; bottom: 6px; background: var(--paper); border: var(--bw-sm) solid var(--ink); border-radius: 8px; padding: 1px 6px; font-size: var(--fs-xs); font-weight: var(--fw-bold); }
+.share-thumb .who { position: absolute; left: 6px; bottom: 6px; background: var(--paper); border: var(--bw-sm) solid var(--ink); border-radius: var(--radius-xs); padding: 1px 6px; font-size: var(--fs-xs); font-weight: var(--fw-bold); }
 
 /* Screen share viewer */
 .modal.viewer { width: min(1400px, 100%); background: #111; }
@@ -243,10 +243,10 @@ body.telescope-active #hud { visibility: hidden; }
 .arcade { position: relative; animation: fade .25s .3s both; }
 .arcade-screen { width: 100%; height: 100%; overflow: hidden; background: #0b1320; }
 .arcade canvas { display: block; width: 100%; height: 100%; cursor: pointer; touch-action: none; }
-.arcade-bar { position: absolute; top: calc(100% + 10px); left: 50%; translate: -50% 0; display: flex; align-items: center; gap: 12px; white-space: nowrap; padding: 6px 6px 6px 14px; background: var(--paper); border: var(--bw) solid var(--ink); border-radius: 14px; box-shadow: var(--shadow); font-weight: var(--fw-bold); font-size: var(--fs-md); }
+.arcade-bar { position: absolute; top: calc(100% + 10px); left: 50%; translate: -50% 0; display: flex; align-items: center; gap: 12px; white-space: nowrap; padding: 6px 6px 6px 14px; background: var(--paper); border: var(--bw) solid var(--ink); border-radius: var(--radius-box); box-shadow: var(--shadow); font-weight: var(--fw-bold); font-size: var(--fs-md); }
 .arcade-bar .tip { color: var(--muted); font-size: var(--fs-xs); }
 /* Its ✕ hangs off the screen's top right corner rather than over the game. */
 .arcade > .close.corner { top: 0; right: auto; left: calc(100% + 10px); }
 /* The arcade cabinet in the lounge (features/cabinet/ui.ts) plays on the keyboard, and says so over the game when a worker of yours needs input. */
 .arcade.cabinet canvas { cursor: default; }
-.cabinet-call { position: absolute; bottom: calc(100% + 10px); left: 50%; translate: -50% 0; display: flex; align-items: center; gap: 10px; white-space: nowrap; padding: 6px 6px 6px 14px; background: var(--warn); color: var(--text-on-warn); border: var(--bw) solid var(--ink); border-radius: 14px; box-shadow: var(--shadow); font-weight: var(--fw-heavy); font-size: var(--fs-lg); animation: pop .18s ease-out; }
+.cabinet-call { position: absolute; bottom: calc(100% + 10px); left: 50%; translate: -50% 0; display: flex; align-items: center; gap: 10px; white-space: nowrap; padding: 6px 6px 6px 14px; background: var(--warn); color: var(--text-on-warn); border: var(--bw) solid var(--ink); border-radius: var(--radius-box); box-shadow: var(--shadow); font-weight: var(--fw-heavy); font-size: var(--fs-lg); animation: pop .18s ease-out; }

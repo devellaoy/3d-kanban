@@ -28,17 +28,17 @@ const CSS = `
 .kb-pr-picker .body { display: flex; flex-direction: column; gap: 8px; }
 .kb-pr-picker h5 { margin: 8px 0 2px; font-size: var(--fs-xs); font-weight: var(--fw-heavy); text-transform: uppercase; letter-spacing: .04em; color: var(--muted); }
 .kb-pr-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
-.kb-pr-list li label { display: flex; align-items: center; gap: 8px; margin: 0; padding: 6px 8px; border: var(--bw-sm) solid var(--ink); border-radius: 10px; background: var(--field); font-size: var(--fs-sm); cursor: pointer; }
+.kb-pr-list li label { display: flex; align-items: center; gap: 8px; margin: 0; padding: 6px 8px; border: var(--bw-sm) solid var(--ink); border-radius: var(--radius-md); background: var(--field); font-size: var(--fs-sm); cursor: pointer; }
 .kb-pr-list li.this label { background: var(--warn-wash); }
 .kb-pr-list input { width: 18px; height: 18px; accent-color: var(--accent); flex: none; }
 .kb-pr-list .kb-pr-title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .kb-pr-picker .kb-note { margin: 0; font-size: var(--fs-xs); font-weight: var(--fw-semibold); color: var(--muted); }
-.kb-pr-picker .kb-err { margin: 0; padding: 6px 8px; border: 2px solid var(--bad); border-radius: 10px; background: var(--bad-wash); font-size: var(--fs-sm); font-weight: var(--fw-bold); }
+.kb-pr-picker .kb-err { margin: 0; padding: 6px 8px; border: 2px solid var(--bad); border-radius: var(--radius-md); background: var(--bad-wash); font-size: var(--fs-sm); font-weight: var(--fw-bold); }
 .kb-scope-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 6px 0; font-size: var(--fs-sm); font-weight: var(--fw-bold); }
-.kb-scope-bar select { height: 32px; padding: 0 8px; font: var(--fw-bold) var(--fs-sm) var(--font); border: var(--bw-sm) solid var(--ink); border-radius: 10px; background: var(--field); }
+.kb-scope-bar select { height: 32px; padding: 0 8px; font: var(--fw-bold) var(--fs-sm) var(--font); border: var(--bw-sm) solid var(--ink); border-radius: var(--radius-md); background: var(--field); }
 .kb-scope-contract { margin: 8px 0 0; }
 .kb-scope-contract summary { cursor: pointer; font-size: var(--fs-xs); font-weight: var(--fw-heavy); }
-.kb-scope-contract pre { margin: 6px 0 0; padding: 8px; white-space: pre-wrap; font-size: var(--fs-xs); background: var(--field-off); border: var(--bw-sm) dashed var(--ink); border-radius: 10px; color: var(--muted); }
+.kb-scope-contract pre { margin: 6px 0 0; padding: 8px; white-space: pre-wrap; font-size: var(--fs-xs); background: var(--field-off); border: var(--bw-sm) dashed var(--ink); border-radius: var(--radius-md); color: var(--muted); }
 /* The 📋 queue board's kanban toggle (ui/queue.ts) takes a row of its own under the text. */
 .queue-add > .kanban-queue-toggle { flex: 1 1 100%; min-width: 0; }
 /* A task worker's P (ui/prompt.ts): three buttons don't fit beside the hint, so the window is wider and the hint gets a row of its own. */

@@ -5,7 +5,7 @@
 .choice input { margin: 3px 0 0; accent-color: var(--accent); flex: none; }
 .choice small { display: block; font-size: var(--fs-xs); font-weight: var(--fw-medium); color: var(--muted); margin-top: 2px; line-height: 1.4; }
 .wt-status { margin: 12px 0 0; font-size: var(--fs-sm); font-weight: var(--fw-semibold); color: var(--muted); line-height: 1.45; }
-.wt-status.warn { color: var(--text); background: var(--warn-soft); border: var(--bw-sm) solid var(--ink); border-radius: 10px; padding: 8px 10px; }
+.wt-status.warn { color: var(--text); background: var(--warn-soft); border: var(--bw-sm) solid var(--ink); border-radius: var(--radius-md); padding: 8px 10px; }
 
 /* Hiring across repositories: the other floors' projects to take on too. */
 .repo-picks { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 8px 0 0 26px; font-size: var(--fs-sm); font-weight: var(--fw-bold); }

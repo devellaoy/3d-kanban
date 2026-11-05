@@ -133,6 +133,44 @@ test('raw colours in the sheets only shrink', () => {
   assert.deepEqual(problems, []);
 });
 
+/**
+ * The corner radii of 8px or more each sheet may still have in a border-radius declaration (shorthand
+ * and longhands), by repo path. Rounded corners use the radius tokens so a theme can change them; a
+ * sheet not listed has none, a listed one may not have more, and a lower count forces the number down.
+ */
+// What's left is a shape of its own rather than a themed corner: the phone's bezel and notch, the
+// login card, the menu's 18px pill, and the in-world car dashboard and YouTube TV (not themed windows).
+const RADIUS_ALLOWED: Readonly<Record<string, number>> = {
+  'src/client/features/cars/speedo.css': 2,
+  'src/client/login.css': 1,
+  'src/client/phone/phone.css': 2,
+  'src/client/ui/menu.css': 1,
+  'src/client/youtube/youtube.css': 4,
+};
+
+const RADIUS_DECL = /border(?:-[a-z]+)*-radius\s*:([^;}]*)/g;
+
+/** How many lengths of 8px or more the border-radius declarations of a sheet hold. */
+function bigRadii(css: string): number {
+  let n = 0;
+  for (const d of css.matchAll(RADIUS_DECL)) {
+    for (const m of d[1].matchAll(/(?<![\w.-])(\d+(?:\.\d+)?)px\b/g)) if (Number(m[1]) >= 8) n++;
+  }
+  return n;
+}
+
+test('raw corner radii in the sheets only shrink', () => {
+  const problems: string[] = [];
+  for (const [file, css] of sheets()) {
+    const n = bigRadii(css);
+    const allowed = RADIUS_ALLOWED[file] ?? 0;
+    if (n > allowed) problems.push(`${file} has ${n} raw radii of 8px or more, ${allowed} allowed: use a --radius token from themes/tokens.css`);
+    else if (n < allowed) problems.push(`${file} is down to ${n} raw radii: lower its number in RADIUS_ALLOWED (${allowed}) to ${n}${n ? '' : ', or remove it'}`);
+  }
+  for (const file of Object.keys(RADIUS_ALLOWED)) if (!sheets().has(file)) problems.push(`${file} is in RADIUS_ALLOWED but isn't a sheet the guard reads: remove it`);
+  assert.deepEqual(problems, []);
+});
+
 // ---- The pages -------------------------------------------------------------------------------------
 
 test('every page sets its appearance before the stylesheet', () => {
