@@ -31,26 +31,28 @@ export function restingUnwatched(w: WorkerInfo, task: IdleTask | undefined): boo
   );
 }
 
+/** When a worker last had any sign of life: the latest of its waiting mark, the last text typed to it, its task's last change, the last time it was seen busy or watched, and the last time a person opened or shut its window. */
+export function quietSince(w: WorkerInfo, task: IdleTask, seen: number | undefined, touched: number | undefined): number {
+  return Math.max(w.waitingSince ?? 0, w.lastInput?.at ?? 0, task.updatedAt, seen ?? 0, touched ?? 0);
+}
+
 /**
  * The workers whose agent is to be closed at `now` after `hours` of quiet. `seen` is the plugin's memory of when each worker
  * was last busy or looked at (it is updated here): without it an agent woken by someone opening its window would be closed
  * again minutes after they leave, since resuming it with no prompt moves none of the task's own clocks. A worker not seen
- * before is seen now, so a restart of the office starts every clock over.
+ * before is seen now, so a restart of the office starts every clock over. The caller forgets the workers that are gone
+ * (a floor's list is not all of them).
  */
-export function idleVictims(now: number, hours: number, workers: WorkerInfo[], taskOf: (taskId: number) => IdleTask | undefined, seen: Map<string, number>): string[] {
+export function idleVictims(now: number, hours: number, workers: WorkerInfo[], taskOf: (taskId: number) => IdleTask | undefined, seen: Map<string, number>, touchedAt: (id: string) => number | undefined = () => undefined): string[] {
   const out: string[] = [];
-  const ids = new Set<string>();
   for (const w of workers) {
     if (w.kind !== 'agent' || !w.kanban) continue;
-    ids.add(w.id);
     const task = taskOf(w.kanban.taskId);
     if (w.viewerIds.length > 0 || !RESTING.has(w.status) || (task && task.runState !== 'idle')) seen.set(w.id, now);
     else if (!seen.has(w.id)) seen.set(w.id, now);
     if (hours <= 0 || !restingUnwatched(w, task)) continue;
-    const last = Math.max(w.waitingSince ?? 0, w.lastInput?.at ?? 0, task!.updatedAt, seen.get(w.id) ?? 0);
-    if (last < now - hours * 3_600_000) out.push(w.id);
+    if (quietSince(w, task!, seen.get(w.id), touchedAt(w.id)) < now - hours * 3_600_000) out.push(w.id);
   }
-  for (const id of seen.keys()) if (!ids.has(id)) seen.delete(id);
   return out;
 }
 
@@ -73,15 +75,18 @@ export function createIdle(ctx: KanbanContext, opts: { now?: () => number; every
     if (!floor || !info || taskId === undefined) return false;
     // Inside the engine's turn for the task, so a comment, Retry or approval cannot type into the process as it dies.
     const done = await ctx.engine.serialized?.(taskId, async (task) => {
-      const now2 = floor.workers.get(id);
-      if (!now2 || !restingUnwatched(now2, task)) return false;
+      const fresh = floor.workers.get(id);
+      // The same conditions as when it was picked, on what is true now (a comment or a window opened since moves the clock).
+      if (!fresh || !restingUnwatched(fresh, task) || quietSince(fresh, task, seen.get(id), floor.workers.touchedAt(id)) >= now - hours * 3_600_000) return false;
+      floor.workers.takeWake(id);
       const err = await floor.workers.doze(id, now);
       if (err) return false;
-      // Someone opened it while the process was going down (their attach found it still running): it carries on at once.
-      if ((floor.workers.get(id)?.viewerIds.length ?? 0) > 0) {
+      // A person opened it while the process was going down (their attach found it still running and asked for it): it carries on at once.
+      if (floor.workers.takeWake(id)) {
         floor.workers.resume(id);
         return false;
       }
+      if (!floor.workers.get(id)?.dozing) return false; // resumed by someone meanwhile
       const { comment, deduped } = ctx.repo.addComment({ taskId, authorKind: 'system', authorName: 'Kanban', kind: 'status', text: `Closed ${info.name}'s idle agent after ${hours} h; opening the task resumes it.` });
       if (!deduped) ctx.broadcast({ t: 'kanban.comment', comment, project: task.project }, task.project);
       return true;
@@ -93,10 +98,12 @@ export function createIdle(ctx: KanbanContext, opts: { now?: () => number; every
     const now = at ?? clock();
     const hours = ctx.settings.get().idleCloseHours;
     const closed: string[] = [];
+    const present = new Set<string>();
     for (const project of ctx.projects()) {
       const floor = ctx.floor(project.id);
       if (!floor) continue;
-      const victims = idleVictims(now, hours, floor.workers.list(), (id) => ctx.repo.getTask(id), seen);
+      for (const w of floor.workers.list()) present.add(w.id);
+      const victims = idleVictims(now, hours, floor.workers.list(), (id) => ctx.repo.getTask(id), seen, (id) => floor.workers.touchedAt(id));
       for (const id of victims) {
         try {
           if (await close(project.id, id, now, hours)) closed.push(id);
@@ -105,6 +112,7 @@ export function createIdle(ctx: KanbanContext, opts: { now?: () => number; every
         }
       }
     }
+    for (const id of seen.keys()) if (!present.has(id)) seen.delete(id);
     return closed;
   };
 

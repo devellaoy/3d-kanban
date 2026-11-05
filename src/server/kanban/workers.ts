@@ -144,6 +144,24 @@ export abstract class KanbanWorkers {
     return w?.pty ? endProcess(w.pty, w.info.name) : undefined;
   }
 
+  /** When a person last opened or shut this worker's window (in memory): a sign of life for the idle close, which a sweep between the two would miss. */
+  private readonly touched = new Map<string, number>();
+  touch(id: string, at = Date.now()) {
+    this.touched.set(id, at);
+  }
+  touchedAt(id: string): number | undefined {
+    return this.touched.get(id);
+  }
+
+  /** A person opened a worker whose idle close is under way (its process not yet gone): the close resumes it. Taking the request clears it. */
+  private readonly wakes = new Set<string>();
+  askWake(id: string) {
+    this.wakes.add(id);
+  }
+  takeWake(id: string): boolean {
+    return this.wakes.delete(id);
+  }
+
   /**
    * The kanban closes a task worker's idle agent in place: marks it `dozing` (WorkerInfo.dozing, so CarryOn.wakeAll leaves it
    * asleep) and ends the process, which the exit handler then records as `exited` at its desk. Resolves to what went wrong, if

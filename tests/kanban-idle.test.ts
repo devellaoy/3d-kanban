@@ -6,7 +6,7 @@ import assert from 'node:assert/strict';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import { idleVictims, createIdle, type IdleTask } from '../src/server/kanban/idle.js';
+import { idleVictims, createIdle, quietSince, type IdleTask } from '../src/server/kanban/idle.js';
 import { restoreWorkers, saveWorkers } from '../src/server/workers/persist.js';
 import { handlers } from '../src/server/ws/handlers/index.js';
 import type { Worker } from '../src/server/workers/types.js';
@@ -52,7 +52,7 @@ test('idleVictims: not a worker someone is looking at, one at work, a task with 
   assert.deepEqual(none(info(), quiet(), 0), [], 'the setting is off');
 });
 
-test('idleVictims: sightings restart the clock; a worker not seen before is seen now; the memory forgets workers that are gone', () => {
+test('idleVictims: sightings restart the clock; a worker not seen before is seen now', () => {
   const seen = new Map<string, number>();
   const w = info();
   assert.deepEqual(idleVictims(NOW, 2, [w], () => quiet(), seen), [], 'after a restart the clock starts at the first look');
@@ -65,8 +65,6 @@ test('idleVictims: sightings restart the clock; a worker not seen before is seen
   // At work counts as seen too.
   idleVictims(NOW + 5 * H, 2, [info({ status: 'working' })], () => quiet({ runState: 'running' }), seen);
   assert.equal(seen.get('w1'), NOW + 5 * H);
-  idleVictims(NOW, 2, [], () => undefined, seen);
-  assert.equal(seen.size, 0);
 });
 
 // --- The sweep and the wake-up ------------------------------------------------------------------------
@@ -248,4 +246,104 @@ test('someone opens the window while the close is under way: the agent comes bac
   await until('the agent running again', () => fx.workers.get(id)!.status === 'idle' && fx.workers.get(id)!.dozing === undefined);
   assert.deepEqual(warnings, []);
   assert.equal(fx.repo.listComments(r.id).comments.some((c) => c.text.startsWith('Closed ')), false);
+});
+
+// --- Several floors, the clock, and the visitor (stand-in office) ---------------------------------------
+
+/** A kanban context over stand-in floors, one worker each: what the plugin reads and calls, with the calls recorded. */
+function standIn(floors: string[], hooks: { beforeRun?: (taskId: number) => void } = {}) {
+  const calls: string[] = [];
+  const tasks = new Map<number, IdleTask & { project: string }>();
+  const touched = new Map<string, number>();
+  const wakes = new Set<string>();
+  const infos = new Map<string, WorkerInfo>();
+  const floorOf = (project: string, n: number) => {
+    const w = info({ id: `w-${project}`, kanban: { taskId: n, role: 'implementer' } as WorkerInfo['kanban'], name: project, waitingSince: NOW - 9 * H });
+    infos.set(w.id, w);
+    tasks.set(n, { runState: 'idle', updatedAt: NOW - 9 * H, project });
+    return {
+      workers: {
+        list: () => [w],
+        get: (id: string) => (id === w.id ? w : undefined),
+        touchedAt: (id: string) => touched.get(id),
+        takeWake: (id: string) => wakes.delete(id),
+        doze: async (id: string, at: number) => (calls.push(`doze ${id}`), (w.dozing = at), undefined),
+        resume: (id: string) => (calls.push(`resume ${id}`), (w.dozing = undefined), undefined),
+      },
+    };
+  };
+  const byProject = new Map(floors.map((f, i) => [f, floorOf(f, i + 1)]));
+  const ctx = {
+    projects: () => floors.map((id) => ({ id })),
+    floor: (id: string) => byProject.get(id),
+    repo: { getTask: (id: number) => tasks.get(id), addComment: () => ({ comment: {}, deduped: false }) },
+    settings: { get: () => ({ idleCloseHours: 2 }) },
+    broadcast() {},
+    engine: { serialized: async (id: number, fn: (t: unknown) => Promise<unknown>) => (hooks.beforeRun?.(id), fn(tasks.get(id))) },
+  };
+  return { ctx: ctx as never, calls, tasks, touched, wakes, infos };
+}
+
+test('with several floors every floor\'s clocks survive each other\'s sweep, and every floor\'s idle agent is closed', async () => {
+  const fx = standIn(['a', 'b']);
+  const idle = createIdle(fx.ctx);
+  assert.deepEqual(await idle.sweep(NOW - 9 * H + 1), [], 'the first look on each floor only starts its clock');
+  assert.deepEqual(await idle.sweep(NOW), ['w-a', 'w-b']);
+});
+
+test('a window opened and shut between two sweeps starts the quiet over', async () => {
+  const fx = standIn(['a']);
+  const idle = createIdle(fx.ctx);
+  await idle.sweep(NOW - 9 * H + 1);
+  fx.touched.set('w-a', NOW - 1);
+  assert.deepEqual(await idle.sweep(NOW), [], 'touched a moment ago');
+  assert.deepEqual(await idle.sweep(NOW + 2 * H - 2), []);
+  assert.deepEqual(await idle.sweep(NOW + 2 * H), ['w-a'], 'N hours after the touch');
+  assert.equal(quietSince(info({ waitingSince: 5 }), quiet({ updatedAt: 7 }), 3, 9), 9);
+});
+
+test('the time is checked again inside the close: a task changed meanwhile is not closed', async () => {
+  const fx = standIn(['a'], { beforeRun: (id) => (fx.tasks.get(id)!.updatedAt = NOW - 1) });
+  const idle = createIdle(fx.ctx);
+  await idle.sweep(NOW - 9 * H + 1);
+  assert.deepEqual(await idle.sweep(NOW), []);
+  assert.deepEqual(fx.calls, []);
+});
+
+test('a visitor opening the window during the close does not wake it; a member does', async () => {
+  const wake = async (member: boolean) => {
+    const fx = standIn(['a']);
+    const idle = createIdle(fx.ctx);
+    await idle.sweep(NOW - 9 * H + 1);
+    // The member\'s attach found the process still running and asked for it (the handler); a visitor's asks for nothing.
+    const doze = (fx.ctx as never as { floor(id: string): { workers: { doze(id: string, at: number): Promise<undefined> } } }).floor('a').workers;
+    const real = doze.doze;
+    doze.doze = async (id, at) => (member && fx.wakes.add(id), real(id, at));
+    const closed = await idle.sweep(NOW);
+    return { closed, calls: fx.calls };
+  };
+  assert.deepEqual(await wake(false), { closed: ['w-a'], calls: ['doze w-a'] });
+  assert.deepEqual(await wake(true), { closed: [], calls: ['doze w-a', 'resume w-a'] });
+});
+
+test('opening and shutting a window as a member touches the worker; a visitor does not', async (t) => {
+  const fx = await engineFixture();
+  t.after(() => fx.close());
+  fx.setRules([IMPLEMENT]);
+  const r = await inReview(fx);
+  const id = r.workerId!;
+  const { attach } = attacher(fx);
+  attach(id, 'guest', true);
+  assert.equal(fx.workers.touchedAt(id), undefined);
+  const before = Date.now();
+  attach(id, 'ada');
+  const opened = fx.workers.touchedAt(id)!;
+  assert.ok(opened >= before && opened <= Date.now());
+  fx.workers.touch(id, 0);
+  const ctx = { workerFloor: () => ({ workers: fx.workers }) } as never;
+  const c = (visitor: boolean) => ({ id: 'ada', peer: { name: 'ada' }, visitor, attached: new Set<string>(), typingAt: new Map() }) as never;
+  (handlers['worker.detach'] as (ctx: never, c: never, m: ClientMsg) => void)(ctx, c(true), { t: 'worker.detach', workerId: id });
+  assert.equal(fx.workers.touchedAt(id), 0);
+  (handlers['worker.detach'] as (ctx: never, c: never, m: ClientMsg) => void)(ctx, c(false), { t: 'worker.detach', workerId: id });
+  assert.ok(fx.workers.touchedAt(id)! >= before);
 });

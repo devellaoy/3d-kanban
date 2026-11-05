@@ -289,7 +289,7 @@ test('every admin browser gets the multiplayer status, not only the ones watchin
 
 test('a visitor looking at a terminal does not acknowledge the worker; the owner does', () => {
   const calls: boolean[] = [];
-  const floor = { workers: { get: () => ({ id: 'w1' }), attach: (_id: string, _c: string, _n: string, ack?: boolean) => (calls.push(ack ?? true), { data: '', cols: 1, rows: 1 }) } };
+  const floor = { workers: { get: () => ({ id: 'w1' }), touch() {}, attach: (_id: string, _c: string, _n: string, ack?: boolean) => (calls.push(ack ?? true), { data: '', cols: 1, rows: 1 }) } };
   const ctx = { workerFloor: () => floor, sendTo() {} } as unknown as Ctx;
   const client = (visitor: boolean) => {
     const c = newClient('c', {} as never, { accountId: undefined, admin: !visitor }, peer('c', 'a'));

@@ -99,6 +99,7 @@ task's conversation says so. Nothing about the task changes: its column, plan, r
   **R**, a comment, **Retry** or approving a plan all carry on the same session (`claude --resume` / `codex resume`), with no prompt when it is just opened.
   Someone looking at the office as a visitor does not wake it; neither does coming to the office or walking to another floor, nor a restart of the office.
 - **What does not wake it**: the Changes window (`tab=changes`), and, while a review runs, the window of the implementer (the worker window shows the reviewer then). Opening its terminal or task window, or commenting, does.
+- **Opening or shutting its window restarts the quiet** (a person in the office; a visitor's does not count), so an agent woken for a quick look is not closed again before the full time has passed.
 - **Open windows**: a worker window left open keeps its agent awake, and a reconnect of the page with a window open (the office restarted, a lost connection) opens it again. The quiet
   starts over from the last time anyone had it open, and from the office's start.
 
