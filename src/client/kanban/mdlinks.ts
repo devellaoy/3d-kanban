@@ -50,8 +50,33 @@ export function codePath(s: string): PathHit | null {
 
 export type OpenFile = (path: string, line?: number) => void;
 
-function fileLink(hit: PathHit, openFile: OpenFile, content: Node | string): HTMLAnchorElement {
-  const a = h('a.kb-file', { href: '#', title: `Open ${hit.path}${hit.line ? ` at line ${hit.line}` : ''} in VS Code on the office’s computer` }, content) as HTMLAnchorElement;
+/** The office's own pages and API, which a link with a path-like href still means. */
+const APP_PATH_RE = /^\/(?:api|kanban|lite|login|office)(?:[/?#.]|$)/;
+
+/**
+ * The file a markdown link points at, as agents write them ([app.ts](/repo/src/app.ts:42),
+ * [md.ts](src/client/md.ts#L7), file:///repo/a.ts), else null: a URL with a scheme, an anchor, a page
+ * of the office, or anything that isn't all one file path.
+ */
+export function hrefPath(href: string): PathHit | null {
+  let v = href.trim();
+  if (/^file:\/\//i.test(v)) v = v.replace(/^file:\/\/(?:localhost)?/i, '').replace(/^\/([A-Za-z]:)/, '$1');
+  else if (!v || v.startsWith('#') || v.startsWith('//') || (/^[a-z][a-z0-9+.-]*:/i.test(v) && !/^[A-Za-z]:[\\/]/.test(v)) || APP_PATH_RE.test(v)) return null;
+  try {
+    v = decodeURIComponent(v);
+  } catch {
+    // left as written
+  }
+  return codePath(v);
+}
+
+/** Makes `a` open `hit` in VS Code (through `openFile`) instead of following its href. */
+function wireFileLink(a: HTMLAnchorElement, hit: PathHit, openFile: OpenFile): HTMLAnchorElement {
+  a.setAttribute('href', '#');
+  a.removeAttribute('target');
+  a.removeAttribute('rel');
+  a.classList.add('kb-file');
+  a.setAttribute('title', `Open ${hit.path}${hit.line ? ` at line ${hit.line}` : ''} in VS Code on the office’s computer`);
   a.addEventListener('click', (e) => {
     e.preventDefault();
     openFile(hit.path, hit.line);
@@ -59,8 +84,22 @@ function fileLink(hit: PathHit, openFile: OpenFile, content: Node | string): HTM
   return a;
 }
 
-/** Links the URLs in `code` spans, and with `openFile` the file paths in text and `code`, outside existing links and code blocks. */
+function fileLink(hit: PathHit, openFile: OpenFile, content: Node | string): HTMLAnchorElement {
+  return wireFileLink(h('a', {}, content) as HTMLAnchorElement, hit, openFile);
+}
+
+/**
+ * Links the URLs in `code` spans, and with `openFile` the file paths in text and `code`, outside code
+ * blocks. A markdown link to a file opens it too; without `openFile` it is left as text (its href is
+ * a path on the office's machine, which the browser can only answer with a 404).
+ */
 export function linkPathsAndUrls(root: HTMLElement, openFile?: OpenFile): void {
+  for (const a of root.querySelectorAll<HTMLAnchorElement>('a[href]')) {
+    const hit = hrefPath(a.getAttribute('href') ?? '');
+    if (!hit) continue;
+    if (openFile) wireFileLink(a, hit, openFile);
+    else a.removeAttribute('href');
+  }
   for (const code of root.querySelectorAll<HTMLElement>('code')) {
     if (code.closest('a, pre')) continue;
     const t = code.textContent ?? '';

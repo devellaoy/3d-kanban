@@ -7,7 +7,7 @@ import assert from 'node:assert/strict';
 import { mkdirSync, mkdtempSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import { codePath, findPaths } from '../src/client/kanban/mdlinks.ts';
+import { codePath, findPaths, hrefPath, linkPathsAndUrls } from '../src/client/kanban/mdlinks.ts';
 import { resolveTaskFile } from '../src/server/kanban/openfile.ts';
 import { openInVsCode, type VsCodeDeps } from '../src/server/kanban/vscode.ts';
 import { parseKanbanClientMsg } from '../src/shared/kanban/protocol.ts';
@@ -46,6 +46,80 @@ test('a code span is a path when all of it is one, or a lone source file name', 
   assert.equal(codePath('foo.bar()'), null);
   assert.equal(codePath('npm run build'), null);
   assert.equal(codePath('see src/a.ts'), null);
+});
+
+test('a markdown link to a file is a file, a link to a page is not', () => {
+  assert.deepEqual(hrefPath('/repo/src/app.ts:42'), { index: 0, text: '/repo/src/app.ts:42', path: '/repo/src/app.ts', line: 42 });
+  assert.deepEqual(hrefPath('src/client/md.ts#L7')?.line, 7);
+  assert.equal(hrefPath('README.md')?.path, 'README.md');
+  assert.equal(hrefPath('file:///repo/src/a.ts')?.path, '/repo/src/a.ts');
+  assert.equal(hrefPath('file:///C:/repo/a.ts')?.path, 'C:/repo/a.ts');
+  assert.equal(hrefPath('/repo/node_modules/%40scope/a.ts')?.path, '/repo/node_modules/@scope/a.ts');
+  for (const href of ['https://example.com/a.ts', '//cdn.example.com/a.js', '#section', 'mailto:a@b.fi', '/kanban?task=3', '/api/kanban/attachments/ab12.png', '/lite', 'docs/page?x=1']) assert.equal(hrefPath(href), null, href);
+});
+
+/** Just enough of an <a> for linkPathsAndUrls: attributes, classes and click listeners. */
+class FakeAnchor {
+  attrs = new Map<string, string>();
+  classes = new Set<string>();
+  listeners: ((e: { preventDefault(): void }) => void)[] = [];
+  classList = { add: (c: string) => this.classes.add(c) };
+  constructor(href: string, extra: Record<string, string> = {}) {
+    this.attrs.set('href', href);
+    for (const [k, v] of Object.entries(extra)) this.attrs.set(k, v);
+  }
+  getAttribute(k: string) {
+    return this.attrs.get(k) ?? null;
+  }
+  setAttribute(k: string, v: string) {
+    this.attrs.set(k, v);
+  }
+  removeAttribute(k: string) {
+    this.attrs.delete(k);
+  }
+  addEventListener(type: string, fn: (e: { preventDefault(): void }) => void) {
+    if (type === 'click') this.listeners.push(fn);
+  }
+  /** A click as the browser sends it: whether the default (following the href) was stopped. */
+  click(): boolean {
+    let prevented = false;
+    for (const fn of this.listeners) fn({ preventDefault: () => (prevented = true) });
+    return prevented;
+  }
+}
+
+function withFakeDom(anchors: FakeAnchor[], fn: (root: HTMLElement) => void) {
+  const g = globalThis as Record<string, unknown>;
+  const saved = { document: g.document, NodeFilter: g.NodeFilter };
+  g.document = { createTreeWalker: () => ({ nextNode: () => false }) };
+  g.NodeFilter = { SHOW_TEXT: 4, FILTER_ACCEPT: 1, FILTER_REJECT: 2 };
+  try {
+    fn({ querySelectorAll: (sel: string) => (sel === 'a[href]' ? anchors : []) } as unknown as HTMLElement);
+  } finally {
+    Object.assign(g, saved);
+  }
+}
+
+test('clicking a markdown link to a file opens it in VS Code instead of following the href', () => {
+  const file = new FakeAnchor('/repo/src/app.ts:42', { target: '_blank', rel: 'noopener noreferrer' });
+  const page = new FakeAnchor('https://example.com/a.ts', { target: '_blank' });
+  const opened: [string, number | undefined][] = [];
+  withFakeDom([file, page], (root) => linkPathsAndUrls(root, (p, line) => opened.push([p, line])));
+  assert.equal(file.click(), true, 'the browser must not follow the href');
+  assert.deepEqual(opened, [['/repo/src/app.ts', 42]]);
+  assert.equal(file.getAttribute('href'), '#');
+  assert.equal(file.getAttribute('target'), null);
+  assert.ok(file.classes.has('kb-file'));
+  // A link to a page is left as it was.
+  assert.equal(page.click(), false);
+  assert.equal(page.getAttribute('href'), 'https://example.com/a.ts');
+  assert.equal(opened.length, 1);
+});
+
+test('without opening files (not an admin) a markdown link to a file is plain text, not a 404', () => {
+  const file = new FakeAnchor('/repo/src/app.ts:42');
+  withFakeDom([file], (root) => linkPathsAndUrls(root));
+  assert.equal(file.getAttribute('href'), null);
 });
 
 function folders(t: { after(fn: () => void): void }) {

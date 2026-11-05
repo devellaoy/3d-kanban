@@ -282,7 +282,8 @@ the office's status lines. Each agent's comment is tinted by who wrote it, with 
 *implementer* or *reviewer* chip (the role of the run that wrote it), so the two agents and your own
 comments (blue) read apart at a glance. URLs are links (a URL written as `code` too), and for admins
 so are file paths (`src/app.ts`, `src/app.ts:42`, `docs/x.md#L7`, an absolute path, or a lone
-`package.json` as `code`): a click opens the file in VS Code on the office's machine, at its line,
+`package.json` as `code`, Windows paths, and a markdown link to a file such as `[app.ts](/repo/src/app.ts:42)`, which
+for others is plain text rather than a link to a 404): a click opens the file in VS Code on the office's machine, at its line,
 when it is a file in one of the task's folders (its worktrees, or its repositories' checkouts once
 those are gone: a path into a removed worktree says so). The line needs the `code` command on the
 PATH; without it the file opens at its top. A comment on a task in **In progress, Waiting or Review** puts the agent
