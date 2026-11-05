@@ -43,6 +43,7 @@ export function defaultKanbanSettings(): KanbanSettings {
     review: { ...DEFAULT_REVIEW },
     autoResume: { enabled: true, maxAttempts: 5, maxWaitHours: 6 },
     archiveAfterDays: 30,
+    idleCloseHours: 2,
     projects: {},
   };
 }
@@ -231,6 +232,7 @@ export function sanitizeKanbanSettings(raw: unknown, base: KanbanSettings = defa
       maxWaitHours: int(a.maxWaitHours, 1, 168, base.autoResume.maxWaitHours),
     },
     archiveAfterDays: int(r.archiveAfterDays, 0, 3650, base.archiveAfterDays),
+    idleCloseHours: int(r.idleCloseHours, 0, 168, base.idleCloseHours),
     projects,
   };
 }
@@ -281,6 +283,7 @@ export class KanbanSettingsStore {
       review: { ...this.settings.review, ...obj(p.review) },
       autoResume: { ...this.settings.autoResume, ...obj(p.autoResume) },
       archiveAfterDays: 'archiveAfterDays' in p ? p.archiveAfterDays : this.settings.archiveAfterDays,
+      idleCloseHours: 'idleCloseHours' in p ? p.idleCloseHours : this.settings.idleCloseHours,
       projects: this.settings.projects,
     };
     // Fields set to null go back to their defaults (a model or effort cleared, say).

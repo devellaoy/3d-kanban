@@ -622,6 +622,17 @@ answers `kanban.ok {rid, ...}` or `kanban.error {rid, message}`. Deltas are push
     carrying or handing a browsed issue keeps its `issueKey` (its text can then reach an agent's prompt, see above); any other key is dropped.
   - Admin only (upstream `meOf(accountId).admin`): `settings.set`, `project.settings.set`, `project.repos.set`,
     `project.rename`, `project.prompt.set`, `secrets.set`, `skills.sync`. `secrets.set` is answered with `kanban.settings` (whether the API key is set, and the connections' id, name and site). The `/api/v1` key is stored as `sha256:<hex>`.
+- Idle close (`idle.ts`, the `idle` plugin; kanban #401): every 5 minutes (`IDLE_SWEEP_MS`, unref'd) it looks at each open floor's task workers
+  (`idleVictims`) and, for the ones that have been quiet for `settings.idleCloseHours` (0..168, default 2; 0 never) closes the agent
+  in place. A worker qualifies when it is an agent with `info.kanban` and a `sessionId`, at rest (`done`, `idle`, `needs_input`), with no
+  viewers, on a task whose `runState` is `idle` with no `queuedRun`, and the latest of `waitingSince`, `lastInput.at`, the task's `updatedAt`
+  and the plugin's in-memory `seen` (any sweep that finds it watched or busy, or finds it for the first time, so a restart starts the clock over)
+  is older than the limit. The close runs through `engine.serialized(taskId, fn)` (the orchestrator's per-task `op`), which re-checks everything: so a
+  comment, Retry or approval never types into a dying process. `KanbanWorkers.doze(id, at)` sets `WorkerInfo.dozing` (saved in `workers.json`)
+  and ends the process (`halt`); the exit handler leaves the worker `exited` at its desk with its card and session, and a status note goes in the conversation.
+  `CarryOn.wakeAll` skips a dozing worker (so connecting, changing floors and starting the office leave it asleep), and `WorkerManager.resume`
+  clears the mark (R, the engine's launch for a comment or Retry, and the `worker.attach` wake-up). `worker.attach` from a person who is not a
+  visitor resumes a dozing worker with no prompt; the worker window sends it on every open and reconnect.
 - Auto-archive: done tasks whose `doneAt` (else `updatedAt`) is older than `settings.archiveAfterDays` move to
   `archived`. This runs at start-up and hourly; `0` means never. Unattached uploads older than a day are removed
   in the same sweep.
@@ -740,7 +751,7 @@ For a signed-in browser (the session is checked by the route table in `src/serve
 
 `installKanban` builds the `KanbanContext` (registry.ts): data and files dirs, the repository over
 `kanban.sqlite`, settings, secrets, projects through the Building, the office prompts, the hook URL, broadcast
-and toast. It then creates `pulls`, `refs` and the engine, and the plugins: the core plugin (ws.ts) plus
+and toast. It then creates `pulls`, `refs` and the engine, and the plugins: the core plugin (ws.ts), the idle plugin (idle.ts) plus
 `integrationPlugins`. The first plugin to claim a WS type keeps it. `workerExtras` merges the plugins'
 `workerArgs`/`workerEnv`, and a plugin that throws loses only its own part. The engine in `ctx.engine` (and the one `installKanban` returns) is wrapped so that after every successful `start` each plugin's optional `taskStarted(taskId, who)` runs (guarded: a throw or rejection is logged and loses only that plugin's part; a failed start runs none). The issues plugin uses it to assign the task's issue and move it to In progress on the project's boards. `engine.begin()` and every
 `plugin.start()` run once everything exists; `shutdown()` stops the plugins, disposes of the engine and

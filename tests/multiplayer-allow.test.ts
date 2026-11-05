@@ -122,6 +122,7 @@ const ksettings = {
   review: { tool: 'claude', rounds: 1, reReviewLastFix: false, sandbox: false },
   autoResume: { enabled: false, maxAttempts: 1, maxWaitHours: 1 },
   archiveAfterDays: 0,
+  idleCloseHours: 2,
   projects: Object.fromEntries(floors.map((f) => [f.id, { maxConcurrent: 1, issueSources: [{ kind: 'jira', name: `${SECRET_NAME} board` }], prompts: { x: `secret ${SECRET_NAME}` }, skills: {} }])),
 } as unknown as KanbanSettings;
 const secrets = { jira: [{ id: 'jc-1', name: 'Acme', site: 'acme.atlassian.net' }], apiKey: { configured: true } };

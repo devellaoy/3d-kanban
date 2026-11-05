@@ -73,6 +73,8 @@ export interface WorkerInfo {
   title?: string;
   sessionId?: string;
   exitCode?: number;
+  /** When the kanban closed this task worker's idle agent in place (ms); it stays at its desk, exited, and opening its window resumes it. Cleared by every resume. */
+  dozing?: number;
   cols: number;
   rows: number;
   /** Names of people currently viewing the terminal. */

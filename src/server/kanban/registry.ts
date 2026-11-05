@@ -11,7 +11,7 @@ import type { KanbanSettingsStore } from './settings.js';
 import type { KanbanClientMsg, KanbanClientType, KanbanServerMsg } from '../../shared/kanban/protocol.js';
 import type { LanguageSettings } from '../../shared/language.js';
 import type { PromptId } from '../../shared/prompts.js';
-import type { KanbanPrReviewRequest, KanbanTaskCard, PrRef, ProjectRepo } from '../../shared/kanban/types.js';
+import type { KanbanPrReviewRequest, KanbanTask, KanbanTaskCard, PrRef, ProjectRepo } from '../../shared/kanban/types.js';
 import type { PrMode } from '../../shared/kanban/prs.js';
 
 /** Who sent a WS message or an HTTP request from a browser. */
@@ -78,6 +78,11 @@ export interface KanbanEngineApi {
    * `released`). (Optional only so stand-ins in tests needn't have it.)
    */
   releaseIdle?(taskId: number, who: KanbanCaller): Promise<void>;
+  /**
+   * Runs `fn` inside the engine's per-task serialization (after any comment, Retry or approval already under way, before the
+   * next), with the task as it is then; resolves to what `fn` returned, or undefined when there is no such task. (Optional only so stand-ins in tests needn't have it.)
+   */
+  serialized?<T>(taskId: number, fn: (task: KanbanTask) => Promise<T>): Promise<T | undefined>;
   /**
    * A task in Waiting or Review is put on hold: its workers go home (reason `hold`, worktree kept), nothing
    * runs for it. `who` must be its creator or an admin. Resolves to why not. (Optional only so stand-ins in tests needn't have it.)

@@ -86,6 +86,23 @@ Put such a task on hold instead of leaving it in Waiting or Review, where it cou
 - **Otherwise**: a held task doesn't count toward *tasks at once*, is never archived by itself, and leave-on-merge
   doesn't touch it. Fixing or reviewing its PRs through the task asks you to resume it first.
 
+## Idle agents close
+
+A task's agent (Claude or Codex) left alone in Review, Waiting or Done keeps its terminal process for as long as the office runs. After the
+*close idle agents after* hours in the settings (default 2; 0 never) of nobody touching the task, the office ends that process in place:
+the worker stays at its desk and on its card, shown as asleep ("💤 closed while idle"), its worktree and session kept, and a line in the
+task's conversation says so. Nothing about the task changes: its column, plan, runs and PRs stay as they were.
+
+- **What counts as quiet**: the task has no run going or waiting for a desk, its agent is at rest (not working, not starting), nobody has its
+  window open, and none of its waiting mark, the last text typed into its terminal, the task's last change and the last time the window was open is newer than the limit.
+- **What opens it again**: opening the task from the board (which opens the worker's window), opening the worker's window in the 3D office or the lite view,
+  **R**, a comment, **Retry** or approving a plan all carry on the same session (`claude --resume` / `codex resume`), with no prompt when it is just opened.
+  Someone looking at the office as a visitor does not wake it; neither does coming to the office or walking to another floor, nor a restart of the office.
+- **What does not wake it**: the Changes window (`tab=changes`), and, while a review runs, the window of the implementer (the worker window shows the reviewer then). Opening its terminal or task window, or commenting, does.
+- **Opening or shutting its window restarts the quiet** (a person in the office; a visitor's does not count), so an agent woken for a quick look is not closed again before the full time has passed.
+- **Open windows**: a worker window left open keeps its agent awake, and a reconnect of the page with a window open (the office restarted, a lost connection) opens it again. The quiet
+  starts over from the last time anyone had it open, and from the office's start.
+
 ## Creating a task
 
 **＋ New task** (or make one from an issue: see *Issue sources*). Fields left unset take the project's
@@ -270,6 +287,7 @@ over it, and the task's own over both.
 | Keep the reviewer off the web | 🗂️ Kanban → Reviews; 📁 Projects | on | Claude reviewers get no WebFetch/WebSearch (Bash keeps the network, for `gh`). A Codex review round always runs in Codex's read-only sandbox (no network); a Codex multi-PR review in its workspace sandbox with the network on, for `gh`. |
 | Resume after a usage limit or a network break | 🗂️ Kanban | on, 5 tries, 6 hours | A turn cut short by a usage limit or a lost connection is retried by itself: at the reset time the message names (plus a minute); for a Codex run whose message names none, when the last of the Codex account's windows at 100% starts over (plus a minute; it reads the account's numbers afresh when the limit hits, waiting at most 5 seconds; when the percentages lag behind Codex saying the limit is reached, the fullest window's reset is taken; a Codex week that is used up gives up straight away, naming when it resets); else after 5, 10, 20… minutes (at most an hour apart). It gives up after *tries at most* or *waits at most (hours)*, naming the reset time when it knows it; then it waits for Retry. |
 | Archive done tasks after (days) | 🗂️ Kanban | 30 | 0 keeps them on the board. Checked at start-up and hourly. |
+| Close idle agents after (hours) | 🗂️ Kanban | 2 | 0–168; 0 never closes them. See [Idle agents close](#idle-agents-close). |
 | Code comment language | 📁 Projects → ⚙️ Project | English | What comments in the code are written in; *The project's own conventions* adds no rule (see [Languages](agents.md#languages)). |
 | Conversation language, public language | ⚙️ Settings → 🤖 Workers; public language also 📁 Projects → ⚙️ Project | unset (the task's language and the project's instructions) | What agents talk to you in, and what issues, PRs and commits are written in. Set, they replace the *Language* prompt with two rules (see [Languages](agents.md#languages)). |
 | Project name | 📁 Projects → ⚙️ Project (admin) | the repository's or folder's name | See *Projects and repositories*. The id, folder and repository don't change. |

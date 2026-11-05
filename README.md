@@ -121,6 +121,7 @@ curl -fsSL https://raw.githubusercontent.com/devellaoy/3d-kanban/main/deploy/pro
 - **Restarts carry on**: stop the office (Ctrl+C) in the middle of a turn and start it again, and the workers that were
   working pick up their own session with a *continue*, one after another, by themselves, three seconds apart (a kanban run's are five seconds apart per project); ⚙️ Settings can turn that off, for admins
   (then they wake up and wait for a prompt). A task's worker is resumed by the kanban instead ([docs/features.md](docs/features.md#survives-restarts)).
+- **Idle agents close**: a kanban task's agent left untouched in Review, Waiting or Done is closed after 2 hours (⚙️ Settings → 🗂️ Kanban, 0 never); opening the task or its worker window carries on the same session by itself ([docs/kanban.md](docs/kanban.md#idle-agents-close)). A worker window left open keeps it awake.
 - **Projects with several repositories**: a floor is a project, and a task gets a worktree of each of
   its repositories on one branch, cut from each repository's configured base branch (else the branch
   its checkout is on). The issues and PR boards show every repository; the PR board (E) has a tab per repository, and **All / 👤 Mine / 👀 To review** beside them shows only your own pull requests (yours on GitHub, or opened from your kanban tasks and workers) or the ones waiting on your review. An admin can rename a project

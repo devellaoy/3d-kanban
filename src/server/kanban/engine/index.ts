@@ -29,6 +29,11 @@ export function createEngine(ctx: KanbanContext, options: EngineOptions = {}): K
     pr: (id, who, mode) => o.pr(id, who, mode),
     sendWorkersHome: (id, who, why) => o.sendWorkersHome(id, who, why),
     releaseIdle: (id, who) => o.releaseIdle(id, who),
+    serialized: async (id, fn) => {
+      let out: Awaited<ReturnType<typeof fn>> | undefined;
+      await o.op(id, async (task) => void (out = await fn(task)));
+      return out;
+    },
     hold: (id, who, opts) => o.hold(id, who, opts),
     unhold: (id, who, note) => o.unhold(id, who, note),
     releaseHeld: (id) => o.releaseHeld(id),

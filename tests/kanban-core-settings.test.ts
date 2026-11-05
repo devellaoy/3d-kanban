@@ -31,6 +31,7 @@ test('a missing or broken settings file is the defaults', () => {
   assert.deepEqual(sanitizeKanbanSettings('nonsense'), defaultKanbanSettings());
   assert.deepEqual(sanitizeKanbanSettings([1, 2]), defaultKanbanSettings());
   assert.equal(defaultKanbanSettings().archiveAfterDays, 30);
+  assert.equal(defaultKanbanSettings().idleCloseHours, 2);
 });
 
 test('every field is clamped or dropped into range', () => {
@@ -56,6 +57,7 @@ test('every field is clamped or dropped into range', () => {
   assert.equal(s.projects.web.maxConcurrent, 20);
   assert.equal(s.projects.web.planApproval, undefined);
   assert.equal(sanitizeKanbanSettings({ archiveAfterDays: 1e9 }).archiveAfterDays, 3650);
+  assert.deepEqual([-3, 0, 5.4, 1e9, 'x'].map((idleCloseHours) => sanitizeKanbanSettings({ idleCloseHours }).idleCloseHours), [0, 0, 5, 168, 2]);
   assert.equal(sanitizeReview({ rounds: 11.6 }).rounds, 10);
   assert.equal(sanitizeReview({ rounds: 2.4 }).rounds, 2);
   assert.equal(sanitizePartialReview({ nothing: 1 }), undefined);
@@ -114,6 +116,10 @@ test('the settings file is saved privately, reloaded, and changed a part at a ti
   store.set({ defaults: { model: null } as never });
   assert.equal(store.get().defaults.model, undefined);
   store.set({ archiveAfterDays: 7 });
+  store.set({ idleCloseHours: 6 });
+  assert.equal(store.get().idleCloseHours, 6);
+  store.set({ review: { rounds: 4 } });
+  assert.equal(store.get().idleCloseHours, 6, 'a patch without it keeps it');
 
   store.setProject('web', { maxConcurrent: 3, review: { rounds: 5 }, planApproval: 'manual' });
   assert.equal(store.project('web').maxConcurrent, 3);

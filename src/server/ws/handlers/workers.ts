@@ -147,13 +147,22 @@ export const workerHandlers = {
     if (w && snap) {
       c.attached.add(w.wid);
       ctx.sendTo(c, { t: 'term.snapshot', workerId: w.wid, ...snap });
+      // A task worker the kanban closed while idle (WorkerInfo.dozing) carries on its session as someone in the office opens it; a visitor does not wake it.
+      if (!c.visitor) w.floor.workers.touch(w.wid); // opening a window is a sign of life for the idle close
+      if (!c.visitor && w.info.dozing) {
+        const err = w.floor.workers.resume(w.wid);
+        if (err === 'Worker is already running') w.floor.workers.askWake(w.wid); // its close is under way: that resumes it once the process is gone (idle.ts)
+        else if (err) ctx.warn(c, err);
+      }
     }
   },
   'worker.detach'(ctx, c, msg) {
     const wid = str(msg.workerId, 32);
     c.attached.delete(wid);
     c.typingAt.delete(wid);
-    ctx.workerFloor(wid)?.workers.detach(wid, c.id);
+    const floor = ctx.workerFloor(wid);
+    floor?.workers.detach(wid, c.id);
+    if (!c.visitor) floor?.workers.touch(wid);
   },
   'worker.prompt'(ctx, c, msg) {
     const who = c.peer.name;
