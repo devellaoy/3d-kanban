@@ -4,6 +4,7 @@
 //
 // Translucent colours: a surface with alpha (glossy's frosted --paper) is blended over the theme's --bg,
 // the page that shows through it (or the token a pair's `over` names); a text colour with alpha is blended over the surface it is on.
+// A theme with a colour wash over its page (glossy's --wash-* tokens) is checked over each wash colour too, alone and all together.
 // A pair that does not resolve to a plain colour (gradient, color-mix, ...) fails loudly unless excepted.
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -34,6 +35,7 @@ const PAIRS: Pair[] = [
   { fg: '--text', bg: '--field', min: 4.5, why: 'a button\'s and an input\'s text' },
   { fg: '--text', bg: '--field-hover', min: 4.5, why: 'a hovered button or the selected row' },
   { fg: '--text', bg: '--bg', min: 4.5, why: 'text straight on the page (kanban, 2D view)' },
+  { fg: '--muted', bg: '--bg', min: 4.5, why: 'secondary text straight on the page (the 2D view\'s meta lines, an empty list)', except: { default: 'the default look is frozen pixel-identical (#7a6f65 on #bfe3ff is 3.6:1)' } },
   { fg: '--muted', bg: '--paper', min: 4.5, why: 'secondary text (ids, hints, meta lines) on a panel', over: { glossy: '--bg' } },
   { fg: '--muted', bg: '--field', min: 4.5, why: 'secondary text on a button or row' },
   { fg: '--text-on-warn', bg: '--warn', min: 4.5, why: 'a working pill, a search or palette hit, a modified-file letter, the upgrading banner' },
@@ -143,12 +145,21 @@ for (const { id } of APPEARANCES) {
       const label = `${id}: ${p.fg} on ${p.bg} (${p.why})`;
       if (p.except?.[id] || (p.themes && !p.themes.includes(id))) continue;
       try {
-        const page = parseColor(resolve(p.over?.[id] ?? '--bg', own));
-        assert.equal(page[3], 1, `${p.over?.[id] ?? '--bg'} must be opaque`);
-        const bg = blend(parseColor(resolve(p.bg, own)), page);
-        const fg = blend(parseColor(resolve(p.fg, own)), bg);
-        const ratio = contrast(fg, bg);
-        if (ratio < p.min) failures.push(`${label}: ${ratio.toFixed(2)}:1, needs ${p.min}:1`);
+        const base = parseColor(resolve(p.over?.[id] ?? '--bg', own));
+        assert.equal(base[3], 1, `${p.over?.[id] ?? '--bg'} must be opaque`);
+        // The page is --bg, and wherever the theme's colour wash (--wash-*) lies over it: each colour
+        // alone and all of them together.
+        const washes = [...own.keys()].filter((k) => k.startsWith('--wash-')).map((k) => parseColor(resolve(k, own)));
+        const pages = [base, ...washes.map((w) => blend(w, base))];
+        if (washes.length > 1) pages.push(washes.reduce((under, w) => blend(w, under), base));
+        const worst = Math.min(
+          ...pages.map((page) => {
+            // Text straight on the page sits on the page itself, wash and all.
+            const bg = p.bg === (p.over?.[id] ?? '--bg') ? page : blend(parseColor(resolve(p.bg, own)), page);
+            return contrast(blend(parseColor(resolve(p.fg, own)), bg), bg);
+          }),
+        );
+        if (worst < p.min) failures.push(`${label}: ${worst.toFixed(2)}:1, needs ${p.min}:1`);
       } catch (e) {
         failures.push(`${label}: ${(e as Error).message}`);
       }

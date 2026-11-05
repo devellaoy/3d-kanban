@@ -20,7 +20,7 @@
 
   /* ---- Text ---- */
   --text: #1d1d1f;
-  --muted: #6e6e73;
+  --muted: #5b5b61;         /* at least 5:1 on the page's colour wash too (tests/themes-contrast.test.ts) */
   --text-on-accent: #ffffff;
   --accent-ink: #ffffff;
   --strong: #1d1d1f;
@@ -184,6 +184,14 @@
 
   /* ---- Glass ---- */
   --glass-blur: saturate(180%) blur(28px);
+
+  /* ---- The page's colour wash (glossy only) ---- */
+  /* The soft colours behind the kanban and the 2D view, each faded out from its corner over --bg. The
+     contrast test lays each one (and all of them) over --bg, so text on the page is checked where it's
+     darkest. */
+  --wash-blue: rgba(168, 196, 255, .4);
+  --wash-pink: rgba(255, 200, 228, .35);
+  --wash-mint: rgba(184, 238, 226, .4);
 }
 
 /* ---- Components: only what the tokens can't say ---- */
@@ -195,9 +203,9 @@
 :root[data-theme="glossy"] body { line-height: 1.45; letter-spacing: -.005em; }
 :root[data-theme="glossy"] :is(body.kanban, body.lite) {
   background:
-    radial-gradient(1100px 760px at 0% 0%, rgba(168, 196, 255, .55), transparent 62%),
-    radial-gradient(900px 680px at 100% 8%, rgba(255, 200, 228, .45), transparent 60%),
-    radial-gradient(1200px 820px at 60% 100%, rgba(184, 238, 226, .5), transparent 62%),
+    radial-gradient(1100px 760px at 0% 0%, var(--wash-blue), transparent 62%),
+    radial-gradient(900px 680px at 100% 8%, var(--wash-pink), transparent 60%),
+    radial-gradient(1200px 820px at 60% 100%, var(--wash-mint), transparent 62%),
     var(--bg);
   background-attachment: fixed;
 }
