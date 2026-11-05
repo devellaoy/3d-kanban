@@ -4,7 +4,7 @@
  * Which card you hold is the office's (ctx.carrying), since so much else looks at it.
  */
 import type { CarriedIssue, GhIssue, WorkerInfo } from '../../../shared/protocol';
-import { isAsleep } from '../../../shared/status';
+import { asleepNote, isAsleep } from '../../../shared/status';
 import type { Ctx, Hint } from '../../core/context';
 import { aside, key } from '../../core/hint';
 import type { HireOptions } from '../workers/actions';
@@ -163,7 +163,7 @@ export function installCarrying(ctx: Ctx, deps: CarryingDeps) {
   function cantTakeCard(w: WorkerInfo): string {
     if (w.kind === 'shell') return `${w.name} is a shell, not an agent`;
     if (w.lost) return `${w.name}'s worktree was deleted — press E at its desk to fix it`;
-    if (isAsleep(w.status)) return `${w.name} is asleep — press R to resume first`;
+    if (isAsleep(w.status)) return asleepNote(w);
     if (w.status === 'needs_input') return `${w.name} is waiting on an answer — open the terminal first`;
     return '';
   }

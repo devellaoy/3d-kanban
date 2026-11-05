@@ -206,7 +206,7 @@ export function installWorkerViews(ctx: Ctx, core: CoreState, parts: WorkerViews
       // Keys clack while it types, not while it reads, watches its tests or browses.
       if (deskDef) sound.setTyping(w.id, deskDef.x, deskDef.z, w.status === 'working' && (!w.action || w.action === 'edit'));
       const again = w.kind === 'shell' ? 'restart' : 'resume';
-      v.laptop.setPlaceholder(w.lost ? `🌿 ${w.name}'s worktree was deleted — press E to fix it` : w.status === 'offline' ? `💤 ${w.name} is asleep — press R to ${again}` : w.status === 'exited' ? `${w.name} exited` : 'booting…');
+      v.laptop.setPlaceholder(w.lost ? `🌿 ${w.name}'s worktree was deleted — press E to fix it` : w.status === 'offline' ? `💤 ${w.name} is asleep — press R to ${again}` : w.status === 'exited' ? (w.dozing ? `💤 ${w.name} was closed while idle — open its terminal or task to wake it` : `${w.name} exited`) : 'booting…');
     }
     for (const [id, v] of workerViews) {
       if (store.workers.has(id)) continue;

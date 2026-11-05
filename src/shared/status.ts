@@ -8,6 +8,11 @@ export function isAsleep(status: WorkerStatus): boolean {
   return status === 'exited' || status === 'offline';
 }
 
+/** What stops a sleeping worker taking more: one closed while idle (WorkerInfo.dozing) opens again by itself. */
+export function asleepNote(w: Pick<WorkerInfo, 'name' | 'dozing'>): string {
+  return w.dozing ? `💤 ${w.name} was closed while idle — it opens again when you open its terminal or task` : `${w.name} is asleep — press R to resume first`;
+}
+
 /** In the middle of a turn: booting, working, or waiting on an answer. */
 export function isBusy(status: WorkerStatus): boolean {
   return status === 'starting' || status === 'working' || status === 'needs_input';

@@ -252,7 +252,8 @@ export function openTerminal(net: Net, workerId: string, onChanges?: () => void,
     }
     title.textContent = [w.kind === 'agent' ? providerLabel(w.provider, projectOf(workerId)) : null, w.name, w.title, w.worktree && `🌿 ${w.worktree.branch}`, w.repos?.length && `🗂️ ${[w.worktree?.path.split(/[\\/]/).pop(), ...w.repos.map((r) => r.name)].join(' + ')}`].filter(Boolean).join(' · ');
     pill.className = `pill ${w.status}`;
-    pill.textContent = STATUS_LABEL[w.status] ?? w.status;
+    pill.textContent = w.dozing && w.status === 'exited' ? '💤 closed while idle' : STATUS_LABEL[w.status] ?? w.status;
+    pill.title = w.dozing && w.status === 'exited' ? 'Closed after sitting idle; it opens again where it left off.' : '';
     const workerProvider = w.kind === 'agent' ? resolvedProvider(w.provider, projectOf(workerId)) : undefined;
     const usageState = w.kind === 'agent' ? providerUsageState(w.provider, projectOf(workerId), w.usage) : undefined;
     const waiting = usageState === 'waiting' ? providerWaitingLabel(workerProvider, projectOf(workerId)) : '';

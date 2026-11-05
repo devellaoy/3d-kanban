@@ -228,6 +228,7 @@ function generalPane(api: KanbanApi, s: KanbanSettings, refetch: boolean): HTMLE
   const attempts = numberInput(s.autoResume.maxAttempts, 0, 50);
   const waitHours = numberInput(s.autoResume.maxWaitHours, 1, 168);
   const archive = numberInput(s.archiveAfterDays, 0, 3650);
+  const idleClose = numberInput(s.idleCloseHours, 0, 168);
   const save = saveButton();
   save.addEventListener('click', () => {
     const settings = {
@@ -235,6 +236,7 @@ function generalPane(api: KanbanApi, s: KanbanSettings, refetch: boolean): HTMLE
       review: review.value(),
       autoResume: { enabled: auto.box.checked, maxAttempts: numberValue(attempts, 0, 50, KANBAN_DEFAULTS.autoResume.maxAttempts), maxWaitHours: numberValue(waitHours, 1, 168, KANBAN_DEFAULTS.autoResume.maxWaitHours) },
       archiveAfterDays: numberValue(archive, 0, 3650, KANBAN_DEFAULTS.archiveAfterDays),
+      idleCloseHours: numberValue(idleClose, 0, 168, KANBAN_DEFAULTS.idleCloseHours),
     };
     // null clears a model or an effort (the server takes it as "back to the default").
     void run(() => api.request({ t: 'kanban.settings.set', settings: settings as unknown as KanbanSettingsPatch }), save, 'Saved').then((ok) => {
@@ -248,6 +250,7 @@ function generalPane(api: KanbanApi, s: KanbanSettings, refetch: boolean): HTMLE
     h('fieldset', {}, h('legend', {}, 'New tasks'), h('div.kb-three', {}, field('Agent', tool), field('Model', model), field('Effort', effort)), h('div.kb-two', {}, usePlan.el, field('Plan approval', approval)), useReview.el, field('Implementation runs', perm, 'How implement, fix and PR phases run. Plans and reviews are always read-only.')),
     h('fieldset', {}, h('legend', {}, 'Reviews'), review.el),
     h('fieldset', {}, h('legend', {}, 'Resume after a usage limit or a network break'), auto.el, h('div.kb-two', {}, field('Tries at most', attempts), field('Waits at most (hours)', waitHours)), h('small.kb-hint', {}, 'A task that stopped on a usage limit is tried again when the limit resets.')),
+    h('fieldset', {}, h('legend', {}, 'Idle agents'), field('Close idle agents after (hours)', idleClose, '0 never closes them. Opening the task or its terminal starts the agent again where it left off.')),
     h('fieldset', {}, h('legend', {}, 'Archive'), field('Archive done tasks after (days)', archive, '0 keeps them on the board')),
     h('div.kb-row.kb-save', {}, h('span.grow'), save),
   );

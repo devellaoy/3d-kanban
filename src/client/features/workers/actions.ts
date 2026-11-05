@@ -9,7 +9,7 @@ import { canLabel } from '../../../shared/floorplan';
 import { officeFull, pressureNote } from '../../../shared/machine';
 import { meetingsOf, roomOfSeat } from '../../../shared/meetings';
 import type { AgentEffort, AgentProvider, GhIssue, WorkerInfo } from '../../../shared/protocol';
-import { isAsleep, isBusy } from '../../../shared/status';
+import { asleepNote, isAsleep, isBusy } from '../../../shared/status';
 import type { Ctx, Hint } from '../../core/context';
 import type { CoreState } from '../../core/ctx';
 import { seatBuilt } from '../../core/floors';
@@ -139,8 +139,8 @@ export function installWorkerActions(ctx: Ctx, core: CoreState, parts: WorkerAct
       });
     } else if (w.lost) {
       fixLostWorktree(w);
-    } else if (isAsleep(w.status)) {
-      toast(`${w.name} is asleep — press R to resume first`, 'warn');
+    } else if (isAsleep(w.status) && !(w.dozing && w.kanban)) { // a task worker closed while idle takes a message on its task, which resumes it
+      toast(asleepNote(w), 'warn');
     } else if (promptTaskWorker(net, w, () => openWorkerTerminal(w.id))) {
       // A message on its task (or its terminal, for a reviewer).
     } else if (w.kind === 'shell') {
