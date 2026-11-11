@@ -6,7 +6,7 @@ import { h, toast } from '../ui/dom';
 import type { KanbanServerMsg } from '../../shared/kanban/protocol.js';
 import type { KanbanTask, NormalizedIssue } from '../../shared/kanban/types.js';
 import type { KanbanApi } from './api';
-import { safeUrl } from './issueactionsmodel';
+import { issueGetMsg, safeUrl } from './issueactionsmodel';
 import { issueView, type IssueView } from './issueview';
 
 type Detail = Extract<KanbanServerMsg, { t: 'kanban.issueDetail' }>;
@@ -16,14 +16,18 @@ export function mountIssueTab(api: KanbanApi, openTask: (id: number) => void): {
   let key = '';
   let view: IssueView | null = null;
   let gone = false;
+  // The issue source the issue shown came through, for the reads after the first.
+  let source: string | undefined;
   const current = (k: string) => !gone && key === k;
   // The task this issue was made for is the viewer's own; a ticket may have several tasks.
   const plain = (i: NormalizedIssue): NormalizedIssue => ({ ...i, taskId: undefined });
 
   const load = async (task: KanbanTask, fresh: boolean): Promise<NormalizedIssue | undefined> => {
     const k = key;
-    const msg = await api.request<Detail>({ t: 'kanban.issue.get', project: task.project, issueKey: task.ticket!, ...(fresh ? { fresh: true } : {}) });
-    return current(k) ? plain(msg.issue) : undefined;
+    const msg = await api.request<Detail>(issueGetMsg(task.project, task.ticket!, { source, fresh }));
+    if (!current(k)) return undefined;
+    source ??= msg.issue.sourceId;
+    return plain(msg.issue);
   };
   const fail = (task: KanbanTask, why: string) => {
     const url = safeUrl(task.ticketUrl);
@@ -47,7 +51,7 @@ export function mountIssueTab(api: KanbanApi, openTask: (id: number) => void): {
         refresh.addEventListener('click', () => {
           refresh.disabled = true;
           reload()
-            .then((i) => i && view?.set(i))
+            .then((i) => i && view?.set(i, true))
             .catch((e: Error) => toast(e.message || 'The issue could not be read', 'error'))
             .finally(() => (refresh.disabled = false));
         });
@@ -63,6 +67,7 @@ export function mountIssueTab(api: KanbanApi, openTask: (id: number) => void): {
       const next = task.ticket ? `${task.project}\n${task.ticket}` : '';
       if (next === key && (key || host.childElementCount)) return;
       key = next;
+      source = undefined;
       view?.destroy();
       view = null;
       if (!task.ticket) host.replaceChildren(h('p.kb-muted', {}, 'No issue is linked to this task. Add its key (UYT-1415, gh:owner/repo#12) with ✏️ Edit.'));

@@ -29,7 +29,7 @@ export interface IssueActionsOpts {
   onChanged?: (what: 'status' | 'assignee' | 'comment', moved?: IssueTransition) => void;
 }
 
-export function issueActions(api: KanbanApi, project: string, first: ActionIssue, opts: IssueActionsOpts = {}): { el: HTMLElement; update(issue: ActionIssue): void } {
+export function issueActions(api: KanbanApi, project: string, first: ActionIssue, opts: IssueActionsOpts = {}): { el: HTMLElement; update(issue: ActionIssue): void; reload(): void } {
   let issue = first;
   const sections = opts.sections ?? ['status', 'assignee', 'comments'];
   const openTask = opts.openTask ?? ((id: number) => location.assign(`/kanban?task=${id}`));
@@ -43,6 +43,8 @@ export function issueActions(api: KanbanApi, project: string, first: ActionIssue
     return h('p.kb-ia-error', { role: 'alert' }, `⚠️ ${msg} `, again);
   };
   const painters: (() => void)[] = [];
+  /** What each section asked the source for, to ask again (reload): the status choices, the comments. */
+  const loaders: (() => void)[] = [];
 
   // ---- Status ----
   if (sections.includes('status')) {
@@ -106,6 +108,7 @@ export function issueActions(api: KanbanApi, project: string, first: ActionIssue
     };
     reload.addEventListener('click', load);
     painters.push(paintNow);
+    loaders.push(load);
     el.append(h('section.kb-ia-sec', {}, h('div.kb-ia-head', {}, h('h4', {}, 'Status'), now, reload), box));
     paintNow();
     load();
@@ -234,6 +237,7 @@ export function issueActions(api: KanbanApi, project: string, first: ActionIssue
     onSendKey(ta, () => void post());
     send.addEventListener('click', () => void post());
     el.append(h('section.kb-ia-sec', {}, h('div.kb-ia-head', {}, h('h4', {}, 'Comments')), h('div.kb-ia-body', {}, list, composer)));
+    loaders.push(load);
     load();
   }
 
@@ -242,6 +246,10 @@ export function issueActions(api: KanbanApi, project: string, first: ActionIssue
     update(next) {
       issue = { ...next, key: issue.key };
       for (const p of painters) p();
+    },
+    // The status as the source has it now, where it can go from there, and the comments; a comment being written stays as it is.
+    reload() {
+      for (const l of loaders) l();
     },
   };
 }

@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { toGhIssue } from '../src/shared/kanban/issuecard.js';
-import { LIST_BODY, listedBody, actionIssue, actionsTarget, closesOrReopens, keyedComment, safeUrl, shownStatus, groupTransitions, isGithubKey, jiraSite, pinnedMe, transitionLabel } from '../src/client/kanban/issueactionsmodel.js';
+import { LIST_BODY, issueGetMsg, listedBody, actionIssue, actionsTarget, closesOrReopens, keyedComment, safeUrl, shownStatus, groupTransitions, isGithubKey, jiraSite, pinnedMe, transitionLabel } from '../src/client/kanban/issueactionsmodel.js';
 
 test('only a card with a key on a floor with a project gets the issue actions', () => {
   assert.equal(actionsTarget({}, 'demo'), undefined, 'upstream’s key-less issue keeps its own window as it was');
@@ -96,4 +96,10 @@ test('a body read whole that grows past the cut is not replaced by its cut copy:
   // A body exactly at the cut that was read whole and did not change stays, and nothing is asked.
   const exact = 'c'.repeat(LIST_BODY);
   assert.deepEqual(listedBody(exact, true, exact), { body: exact, whole: true, stale: false });
+});
+
+test('a later read of a task’s issue names the source the issue shown came through (two Jira sites may share a key)', () => {
+  assert.deepEqual(issueGetMsg('app', 'UYT-12'), { t: 'kanban.issue.get', project: 'app', issueKey: 'UYT-12' }, 'the first read: the source is not known yet');
+  assert.deepEqual(issueGetMsg('app', 'UYT-12', { source: 'jira-b', fresh: true }), { t: 'kanban.issue.get', project: 'app', issueKey: 'UYT-12', source: 'jira-b', fresh: true });
+  assert.deepEqual(issueGetMsg('app', 'UYT-12', { source: undefined, fresh: false }), { t: 'kanban.issue.get', project: 'app', issueKey: 'UYT-12' });
 });

@@ -96,6 +96,15 @@ export function groupTransitions(ts: readonly IssueTransition[]): [string, Issue
   return [...groups];
 }
 
+/**
+ * The read of a task's issue (kanban.issue.get). `source` is the issue source the issue shown came
+ * through: a later read names it, so a key two Jira sites both have is read from the same site again
+ * (and the actions panel, which keeps to that source, stays in step with what is shown).
+ */
+export function issueGetMsg(project: string, issueKey: string, o: { source?: string; fresh?: boolean } = {}) {
+  return { t: 'kanban.issue.get' as const, project, issueKey, ...(o.source ? { source: o.source } : {}), ...(o.fresh ? { fresh: true } : {}) };
+}
+
 /** How much of a body the office's issues list carries (LIST_BODY in the server's issues module): a plain cut, no marker. */
 export const LIST_BODY = 4000;
 

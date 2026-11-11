@@ -522,10 +522,12 @@ export function createPullsParts(ctx: KanbanContext, opts: PullsOptions = {}) {
         ok(c, m.rid, { taskId: m.taskId });
       },
       'kanban.pr.unlink': (c, m) => {
-        const got = taskOf(m.project, m.taskId);
-        if (typeof got === 'string') return fail(c, m.rid, got);
-        const remoteOf = (repoId: string) => got.repos.find((r) => r.id === repoId)?.remote;
-        const link = got.task.prs.find((l) => l.number === m.number && (m.repoId ? l.repoId === m.repoId : !!m.repo && sameRepo(l.repo ?? remoteOf(l.repoId) ?? '', m.repo)));
+        // The project, the task and the stored link are all it takes: a project whose repositories lost their remotes keeps its old links, and they come off too.
+        if (!ctx.project(m.project)) return fail(c, m.rid, `There's no project ${m.project}`);
+        const task = ctx.repo.getTask(m.taskId);
+        if (!task || task.project !== m.project) return fail(c, m.rid, `There's no task #${m.taskId} in this project`);
+        const remoteOf = (repoId: string) => ctx.repos(m.project).find((r) => r.id === repoId)?.remote;
+        const link = task.prs.find((l) => l.number === m.number && (m.repoId ? l.repoId === m.repoId : !!m.repo && sameRepo(l.repo ?? remoteOf(l.repoId) ?? '', m.repo)));
         const name = `${m.repo ?? m.repoId}#${m.number}`;
         if (!link) return fail(c, m.rid, `Task #${m.taskId} has no link to ${name}`);
         ctx.repo.removePrLink(m.taskId, link.repoId, link.number);

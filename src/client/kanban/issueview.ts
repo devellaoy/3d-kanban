@@ -14,8 +14,8 @@ import { renderMarkdown } from './md';
 export interface IssueView {
   el: HTMLElement;
   issue(): NormalizedIssue;
-  /** Replaces the issue (a task made from it, say) and repaints. */
-  set(issue: NormalizedIssue): void;
+  /** Replaces the issue (a task made from it, say) and repaints; `reread`: the actions panel asks the source again too (a refresh). */
+  set(issue: NormalizedIssue, reread?: boolean): void;
   /** Runs `fn` now and after each repaint, with the issue as it is. */
   onPaint(fn: (issue: NormalizedIssue) => void): void;
   destroy(): void;
@@ -83,10 +83,11 @@ export function issueView(api: KanbanApi, projectId: string, first: NormalizedIs
   return {
     el,
     issue: () => it,
-    set(issue) {
+    set(issue, reread) {
       it = issue;
       whole = true;
       paint();
+      if (reread) panel.reload();
     },
     onPaint: (fn) => (painted.push(fn), fn(it)),
     destroy: off,

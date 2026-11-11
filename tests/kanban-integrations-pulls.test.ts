@@ -762,6 +762,20 @@ test('kanban.pr.link: checks the PR exists in a project repository, refuses anot
   assert.deepEqual(changed, [a.id]);
 });
 
+test('kanban.pr.unlink works in a project that has no repository with a remote any more', async () => {
+  const { ctx, mk, ws } = findSetup({});
+  const t = mk('A');
+  ctx.repo.upsertPrLink(t.id, { repoId: 'gone', repo: 'o/gone', number: 4, url: 'https://github.com/o/gone/pull/4', state: 'OPEN' });
+  ctx.repos = () => [];
+  const c = client();
+  await ws['kanban.pr.unlink']!(c, { t: 'kanban.pr.unlink', project: 'web', taskId: t.id, repoId: 'gone', number: 4, rid: 'u' });
+  assert.deepEqual(lastOf(c, 'kanban.ok'), { t: 'kanban.ok', rid: 'u', taskId: t.id });
+  assert.equal(ctx.repo.listPrLinks(t.id).length, 0);
+  assert.deepEqual(ctx.repo.listEvents(t.id).filter((e) => e.kind === 'pr.unlinked').map((e) => (e.data as { repo?: string }).repo), ['o/gone']);
+  await ws['kanban.pr.unlink']!(c, { t: 'kanban.pr.unlink', project: 'web', taskId: 999, repoId: 'gone', number: 4 });
+  assert.match(lastOf(c, 'kanban.error').message, /no task #999/);
+});
+
 test('kanban.pr.unlink takes the link off, says so on the task, and refuses a PR the task has no link to', async () => {
   const { ctx, mk, changed, ws } = findSetup({});
   const a = mk('A');

@@ -765,3 +765,23 @@ test('kanban.issue.get: the list first, else loaded; `fresh` loads first; an unk
   await get(c, { t: 'kanban.issue.get', project: 'nope', issueKey: 'gh:o/r#5' });
   assert.match(last().message, /no project nope/);
 });
+
+test('kanban.issue.get: a key two Jira sources both have is read again from the source the asker names', async () => {
+  const ctx = makeCtx([def('app', '/tmp/app', { repo: 'o/r' })]);
+  const of = (sourceId: string, status: string) => ({ key: 'UYT-12', title: `Twelve at ${sourceId}`, url: `https://${sourceId}.atlassian.net/browse/UYT-12`, source: 'jira', sourceId, status }) as never;
+  const sites: Record<string, unknown> = { 'jira-a': of('jira-a', 'To Do'), 'jira-b': of('jira-b', 'Done') };
+  const ws = issueActionHandlers(ctx, {
+    // The list kept source B's copy; with no source named a load answers from the first source that has the key (A).
+    find: () => of('jira-b', 'In Progress'),
+    load: async (_p, _k, source) => sites[source ?? 'jira-a'] as never,
+    patch: () => {},
+    io: () => ({}) as never,
+    remember: () => {},
+  });
+  const c = client(false, 'acc1');
+  const last = () => c.got.at(-1) as any;
+  await ws['kanban.issue.get']!(c, { t: 'kanban.issue.get', project: 'app', issueKey: 'UYT-12' });
+  assert.equal(last().issue.sourceId, 'jira-b', 'opened from the list: source B');
+  await ws['kanban.issue.get']!(c, { t: 'kanban.issue.get', project: 'app', issueKey: 'UYT-12', source: last().issue.sourceId, fresh: true });
+  assert.deepEqual([last().issue.sourceId, last().issue.status], ['jira-b', 'Done'], 'the refresh stays with source B');
+});
