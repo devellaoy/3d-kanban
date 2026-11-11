@@ -1,0 +1,5 @@
+/* The Issue tab's link controls (issuelink.ts): the bar's buttons wrap, and the key-by-hand form sits under the bar. */
+.kb-tv .kb-tv-issue .kb-iw-bar { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 6px; max-width: 100%; margin-bottom: 6px; }
+.kb-tv .kb-tv-issue .kb-iw-bar:empty { display: none; }
+.kb-il-form { clear: both; display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 8px 0 10px; padding: 8px 10px; border: var(--bw-sm) dashed var(--ink); border-radius: var(--radius-sm); background: var(--field); }
+.kb-il-form > input { flex: 1 1 200px; min-width: 0; }

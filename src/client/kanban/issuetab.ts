@@ -1,21 +1,39 @@
 // A task's Issue tab: the issue its ticket names, as the issue window shows it (issueview.ts), read
 // through kanban.issue.get. The task view redraws on every update, so the tab keeps its host and the
 // view inside (a comment being written survives) and only reloads when the ticket changes.
+//
+// Its bar also changes which issue that is (issuelink.ts): link, change, type a key by hand, unlink,
+// at any status but the archive. The bar and the key form stay in the host across every state (no
+// issue, loading, shown, could not be read), so what is typed there outlives a redraw too.
 
 import { h, toast } from '../ui/dom';
 import type { KanbanServerMsg } from '../../shared/kanban/protocol.js';
 import type { KanbanTask, NormalizedIssue } from '../../shared/kanban/types.js';
 import type { KanbanApi } from './api';
 import { issueGetMsg, safeUrl } from './issueactionsmodel';
+import { issueLink } from './issuelink';
 import { issueView, type IssueView } from './issueview';
 
 type Detail = Extract<KanbanServerMsg, { t: 'kanban.issueDetail' }>;
 
 export function mountIssueTab(api: KanbanApi, openTask: (id: number) => void): { host: HTMLElement; setTask(task: KanbanTask): void; destroy(): void } {
-  const host = h('div.kb-tv-issue');
+  const link = issueLink(api);
+  const bar = h('div.kb-iw-bar');
+  const host = h('div.kb-tv-issue', {}, bar, link.form);
+  /** The bar (floating beside the issue, or `miss`: a box that says why there is none to show) and what is under the form. */
+  const put = (miss: boolean, inBar: (Node | string)[], ...content: Node[]) => {
+    // A button of the bar that had the keyboard keeps it: the bar is filled again around it.
+    const active = document.activeElement;
+    bar.className = miss ? 'kb-iw-miss' : 'kb-iw-bar';
+    bar.replaceChildren(...inBar, ...link.buttons);
+    if (active instanceof HTMLElement && active !== document.activeElement && bar.contains(active)) active.focus({ preventScroll: true });
+    while (link.form.nextSibling) link.form.nextSibling.remove();
+    host.append(...content);
+  };
   let key = '';
   let view: IssueView | null = null;
   let gone = false;
+  let drawn = false;
   // The issue source the issue shown came through, for the reads after the first.
   let source: string | undefined;
   const current = (k: string) => !gone && key === k;
@@ -33,15 +51,13 @@ export function mountIssueTab(api: KanbanApi, openTask: (id: number) => void): {
     const url = safeUrl(task.ticketUrl);
     const again = h('button.btn.small', { type: 'button', 'data-focus': 'issue-retry' }, '🔄 Try again') as HTMLButtonElement;
     again.addEventListener('click', () => show(task, true));
-    host.replaceChildren(
-      h('div.kb-iw-miss', {}, url ? h('a.kb-iw-key', { href: url, target: '_blank', rel: 'noopener noreferrer', title: 'Open it at the source' }, `${task.ticket} ↗`) : h('span.kb-iw-key', {}, task.ticket), h('p.kb-muted', {}, why), again),
-    );
+    put(true, [url ? h('a.kb-iw-key', { href: url, target: '_blank', rel: 'noopener noreferrer', title: 'Open it at the source' }, `${task.ticket} ↗`) : h('span.kb-iw-key', {}, task.ticket), h('p.kb-muted', {}, why), again]);
   };
   const show = (task: KanbanTask, fresh: boolean) => {
     const k = key;
     view?.destroy();
     view = null;
-    host.replaceChildren(h('p.kb-muted', {}, 'Loading the issue…'));
+    put(false, [], h('p.kb-muted', {}, 'Loading the issue…'));
     load(task, fresh).then(
       (issue) => {
         if (!issue || !current(k)) return;
@@ -55,7 +71,7 @@ export function mountIssueTab(api: KanbanApi, openTask: (id: number) => void): {
             .catch((e: Error) => toast(e.message || 'The issue could not be read', 'error'))
             .finally(() => (refresh.disabled = false));
         });
-        host.replaceChildren(h('div.kb-iw-bar', {}, refresh), view.el);
+        put(false, [refresh], view.el);
       },
       (err: Error) => current(k) && fail(task, err.message || 'The issue could not be read'),
     );
@@ -64,13 +80,16 @@ export function mountIssueTab(api: KanbanApi, openTask: (id: number) => void): {
   return {
     host,
     setTask(task) {
-      const next = task.ticket ? `${task.project}\n${task.ticket}` : '';
-      if (next === key && (key || host.childElementCount)) return;
+      link.set(task);
+      // The link is in it too: the box of an issue that couldn't be read shows it.
+      const next = task.ticket ? `${task.project}\n${task.ticket}\n${task.ticketUrl ?? ''}` : '';
+      if (next === key && (key || drawn)) return;
       key = next;
+      drawn = true;
       source = undefined;
       view?.destroy();
       view = null;
-      if (!task.ticket) host.replaceChildren(h('p.kb-muted', {}, 'No issue is linked to this task. Add its key (UYT-1415, gh:owner/repo#12) with ✏️ Edit.'));
+      if (!task.ticket) put(true, [h('p.kb-muted', {}, 'No issue is linked to this task.')]);
       else show(task, false);
     },
     destroy() {
