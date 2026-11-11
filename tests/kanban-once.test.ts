@@ -83,3 +83,12 @@ test('a made answer expires after it settled, and the oldest go when there are t
   assert.equal((await small.run(ada, 'key-bbbbbbbb', make)).repeated, true);
   assert.equal((await small.run(ada, 'key-aaaaaaaa', make)).repeated, false, 'the oldest was dropped');
 });
+
+test('a repeat that asks for something else than the first is marked changed', async () => {
+  const once = createOnce();
+  const make = async () => ({ id: 1 });
+  await once.run(ada, KEY, make, 'issue\napp\ngh:o/app#1');
+  assert.deepEqual(await once.run(ada, KEY, make, 'issue\napp\ngh:o/app#1'), { value: { id: 1 }, repeated: true });
+  assert.deepEqual(await once.run(ada, KEY, make, 'issue\napp\ngh:o/app#2'), { value: { id: 1 }, repeated: true, changed: true });
+  assert.deepEqual(await once.run(ada, KEY, make, 'task\napp'), { value: { id: 1 }, repeated: true, changed: true });
+});

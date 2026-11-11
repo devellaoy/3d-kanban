@@ -216,7 +216,8 @@ export function kanbanSection(opt: KanbanOption, provider: ProviderPicker | null
       const made = await createTask(opt.net, form, opt.deskLabel, opt.onCreated);
       if (made !== false) once = newOnceKey();
       // The issue has its task now, new or from before: the pick is spent (the 📋 queue's form stays open for the next one).
-      if (made !== false && issue) setIssue(undefined);
+      // Not after 'earlier': this request wasn't made, and its pick is what the next send is for.
+      if ((made === true || made === 'existed') && issue) setIssue(undefined);
       return made === true;
     },
   };
@@ -237,9 +238,11 @@ function taskToast(net: Net, text: string, taskId: number, level: 'info' | 'warn
 /**
  * Sends the task and says how it went. Without a desk, the engine seats it at a free one or queues it.
  * Resolves to true when the task was made, 'existed' when the picked issue already had one (nothing
- * was made or started), and false when the office turned it down: the caller keeps its text then.
+ * was made or started), 'earlier' when an earlier send of this dialog had made a task of something else
+ * (another issue, or none: nothing was made now), and false when the office turned it down: the caller
+ * keeps its text in all but the first.
  */
-export function createTask(net: Net, form: HireTaskForm, deskLabel: string, onCreated?: (taskId: number) => void): Promise<boolean | 'existed'> {
+export function createTask(net: Net, form: HireTaskForm, deskLabel: string, onCreated?: (taskId: number) => void): Promise<boolean | 'existed' | 'earlier'> {
   const made = hireTaskMsg(form);
   if ('error' in made) {
     toast(made.error, 'warn');
@@ -249,6 +252,10 @@ export function createTask(net: Net, form: HireTaskForm, deskLabel: string, onCr
     .request<KanbanOk>(made.msg)
     .then((ok) => {
       if (!ok.taskId) return false;
+      if (ok.earlier) {
+        taskToast(net, `🗂️ Your earlier send had already made task #${ok.taskId}, so nothing was made now. Send again to make this one too`, ok.taskId, 'warn');
+        return 'earlier' as const;
+      }
       if (ok.existed) {
         taskToast(net, `🗂️ ${form.issueKey ?? 'The issue'} is already task #${ok.taskId}`, ok.taskId, 'warn');
         return 'existed' as const;

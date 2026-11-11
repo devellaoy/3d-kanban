@@ -15,7 +15,7 @@ import { COMMENTS_PAGE, publicAttachment, type TaskUpdate } from './db/repositor
 import { projectInfo } from './projects.js';
 import { answerSecrets } from './secrets-answer.js';
 import { checkRepoIds, createBoardTask } from './create.js';
-import { onceFor } from './once.js';
+import { onceFor, type CreateAnswer } from './once.js';
 import { openFor, taskFolders, workerFolders } from './vscode.js';
 import { wallChanged, wallSourcesChanged } from './integrations/issues/wall.js';
 import { chmodSync, existsSync } from 'node:fs';
@@ -195,9 +195,14 @@ export function createCorePlugin(ctx: KanbanContext, subs: KanbanSubscriptions):
 
     'kanban.task.create': async (c, m) => {
       // A repeat of a creation (same `once`) is answered with the first one's result, never a second task.
-      const { value: made } = await onceFor(ctx).run(c, m.once, () => createBoardTask(ctx, m.task, c, { start: m.start, deskId: m.deskId }));
+      const make = async (): Promise<CreateAnswer | string> => {
+        const made = await createBoardTask(ctx, m.task, c, { start: m.start, deskId: m.deskId });
+        return typeof made === 'string' ? made : { taskId: made.task.id, ...(made.startError ? { startError: made.startError } : {}) };
+      };
+      const { value: made, changed } = await onceFor(ctx).run(c, m.once, make, `task\n${m.task.project}`);
       if (typeof made === 'string') return fail(c, m.rid, made);
-      ok(c, m.rid, { taskId: made.task.id, ...(made.startError ? { startError: made.startError } : {}) });
+      // The key's first request made something else (a task from an issue): that one, said to be the earlier one.
+      ok(c, m.rid, changed ? { taskId: made.taskId, earlier: true } : made);
     },
 
     'kanban.task.update': (c, m) => {

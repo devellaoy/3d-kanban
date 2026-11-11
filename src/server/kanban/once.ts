@@ -15,26 +15,37 @@ export interface Once {
    * that one is still running. `repeated` is true for every answer but the first's. A string (a
    * refusal: nothing was made) or a throw is forgotten at once so the form can be fixed and sent again.
    * Without a key, `make` just runs.
+   * `what` says what the request makes (its kind and target): a repeat whose `what` differs from the
+   * first's is `changed`, so its caller can say that the earlier request was made and this one wasn't,
+   * instead of passing the earlier answer off as this request's.
    */
-  run<R>(who: KanbanCaller, key: string | undefined, make: () => Promise<R | string>): Promise<{ value: R | string; repeated: boolean }>;
+  run<R>(who: KanbanCaller, key: string | undefined, make: () => Promise<R | string>, what?: string): Promise<{ value: R | string; repeated: boolean; changed?: true }>;
+}
+
+/** What a creation answers with, the same for every way a task is made, so a repeat's answer always fits. */
+export interface CreateAnswer {
+  taskId: number;
+  existed?: boolean;
+  startError?: string;
+  started?: true;
 }
 
 export function createOnce(keepMs = ONCE_KEEP_MS, max = ONCE_MAX): Once {
   // A Map keeps insertion order, so its first key is the oldest.
-  const seen = new Map<string, Promise<unknown>>();
+  const seen = new Map<string, { answer: Promise<unknown>; what: string }>();
   return {
-    run<R>(who: KanbanCaller, key: string | undefined, make: () => Promise<R | string>) {
+    run<R>(who: KanbanCaller, key: string | undefined, make: () => Promise<R | string>, what = '') {
       if (!key) return make().then((value) => ({ value, repeated: false }));
       // The account, not the connection: a reconnect changes the clientId but it's the same person.
       const id = `${who.accountId ?? who.name}\n${key}`;
-      const known = seen.get(id) as Promise<R | string> | undefined;
-      if (known) return known.then((value) => ({ value, repeated: true }));
+      const known = seen.get(id);
+      if (known) return (known.answer as Promise<R | string>).then((value) => ({ value, repeated: true, ...(known.what !== what ? { changed: true as const } : {}) }));
       // Stored before any await, so a repeat that arrives while the first is still running shares it.
       const first = make();
-      seen.set(id, first);
+      seen.set(id, { answer: first, what });
       if (seen.size > max) seen.delete(seen.keys().next().value as string);
       const forget = () => {
-        if (seen.get(id) === first) seen.delete(id);
+        if (seen.get(id)?.answer === first) seen.delete(id);
       };
       first.then(
         (value) => {

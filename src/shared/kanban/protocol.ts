@@ -198,7 +198,8 @@ export type KanbanServerMsg =
   | { t: 'kanban.skills'; rid?: string; skills: SkillInfo[]; error?: string }
   | { t: 'kanban.pr.bundle'; rid?: string; project: string; key: KanbanPrBundleKey; prs: KanbanPrBundleItem[]; error?: string }
   | { t: 'kanban.pr.owner'; rid?: string; taskId: number | null; title?: string; fixable: boolean; reason?: string }
-  | { t: 'kanban.ok'; rid?: string; taskId?: number; commentId?: number; workerId?: string; existed?: boolean; startError?: string; started?: true }
+  /** `earlier`: a creation's `once` key had already made `taskId` from another request (another issue, or none): nothing was made now. */
+  | { t: 'kanban.ok'; rid?: string; taskId?: number; commentId?: number; workerId?: string; existed?: boolean; startError?: string; started?: true; earlier?: true }
   | IssueOpsServerMsg
   | JiraConnectionServerMsg
   | LoungeServerMsg

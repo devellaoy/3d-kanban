@@ -265,6 +265,12 @@ export function openCreate(api: KanbanApi, o: CreateOptions = {}) {
     }
     const ok = await run(() => api.request<KanbanOk>(made.msg), button);
     if (!ok) return;
+    // An earlier send of this dialog, whose answer never came, made a task of something else (another
+    // issue, or none): nothing was made now, and what is here stays for the next send, under a new key.
+    if (ok.earlier) {
+      once = newOnceKey();
+      return toast(`Your earlier send had already made task #${ok.taskId ?? ''}, so nothing was made now. Create again to make this one too`, 'warn');
+    }
     // The issue got its task meanwhile: nothing was made or started, and what was written stays here.
     if (ok.existed) {
       setPicked(null);

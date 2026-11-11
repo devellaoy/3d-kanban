@@ -1,6 +1,7 @@
 import test from 'node:test';
 import { PROMPTS } from '../src/shared/prompts.js';
 import assert from 'node:assert/strict';
+import { onceFor } from '../src/server/kanban/once.js';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
@@ -199,6 +200,20 @@ test('a creation repeated with the same once key is one task; without a key it i
   await ada.ask({ t: 'kanban.task.create', task: { project: 'web', title: 'Plain' } });
   await ada.ask({ t: 'kanban.task.create', task: { project: 'web', title: 'Plain' } });
   assert.equal(kanban.ctx.repo.listTasks('web').length, 3);
+});
+
+// The answer to a task made from an issue was lost, and the person took the issue off before sending again.
+test('the same once key after a task from an issue names that task and makes no plain one', async (t) => {
+  const { client, kanban } = office(t);
+  const ada = client('Ada', false);
+  const key = 'try-4-abcdefgh';
+  // The issues plugin keeps its answers in the same memory, under what it made.
+  const first = okOf(await ada.ask({ t: 'kanban.task.create', task: { project: 'web', title: 'Stands in for the issue’s task' } }));
+  await onceFor(kanban.ctx).run(ada.c, key, async () => ({ taskId: first.taskId as number, existed: false }), 'issue\nweb\ngh:o/web#1');
+  const again = okOf(await ada.ask({ t: 'kanban.task.create', task: { project: 'web', title: 'No issue now' }, once: key }));
+  assert.equal(again.taskId, first.taskId);
+  assert.equal(again.earlier, true);
+  assert.equal(kanban.ctx.repo.listTasks('web').length, 1, 'no plain task was made');
 });
 
 test('a start the engine refuses is still a created task, with why', async (t) => {

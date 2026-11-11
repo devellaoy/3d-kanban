@@ -10,7 +10,7 @@ import { KANBAN_LIMITS, type IssueTaskFields, type KanbanServerMsg } from '../..
 import { gh } from '../../../github.js';
 import { createIntegrationTask, fail, ok, taskTitle, type IntegrationTaskInput } from '../util.js';
 import { createBoardTask } from '../../create.js';
-import { onceFor } from '../../once.js';
+import { onceFor, type CreateAnswer } from '../../once.js';
 import { githubRepoSource } from './github-repo.js';
 import { githubProjectSource } from './github-project.js';
 import { jiraSource } from './jira.js';
@@ -399,11 +399,21 @@ export function createIssues(ctx: KanbanContext, opts: IssuesOptions = {}) {
       'kanban.issues.createTask': async (c, m) => {
         if (!ctx.project(m.project)) return fail(c, m.rid, `There's no project ${m.project}`);
         // A repeat (same `once`) is answered with the first creation's result, and its claim doesn't run again.
-        const { value: made, repeated } = await onceFor(ctx).run(c, m.once, () => createFromIssue(m.project, m.issueKey, c, { start: m.start, deskId: m.deskId, task: m.task }));
+        let claim: (() => Promise<void>) | undefined;
+        const make = async (): Promise<CreateAnswer | string> => {
+          const made = await createFromIssue(m.project, m.issueKey, c, { start: m.start, deskId: m.deskId, task: m.task });
+          if (typeof made === 'string') return made;
+          claim = made.claim;
+          const r = made.result;
+          return { taskId: r.taskId, existed: r.existed, ...(r.startError ? { startError: r.startError } : r.started ? { started: true } : {}) };
+        };
+        // What it makes is the issue's task: the same key sent for another issue, or for a plain task, is `changed`.
+        const { value: made, changed } = await onceFor(ctx).run(c, m.once, make, `issue\n${m.project}\n${m.issueKey}`);
         if (typeof made === 'string') return fail(c, m.rid, made);
-        const r = made.result;
-        ok(c, m.rid, { taskId: r.taskId, existed: r.existed, ...(r.startError ? { startError: r.startError } : r.started ? { started: true } : {}) });
-        if (!repeated) await made.claim?.();
+        // The key's first request made another task (a plain one, or another issue's): that one, said to be the earlier one.
+        ok(c, m.rid, changed ? { taskId: made.taskId, earlier: true } : made);
+        // Set by this call's own creation only: a repeat never ran `make`.
+        await claim?.();
       },
     },
     async taskStarted(taskId, who) {

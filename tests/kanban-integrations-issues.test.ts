@@ -5,6 +5,7 @@ import { ghIssueArgs, githubRepoSource, parseGhIssues } from '../src/server/kanb
 import { PROJECT_SCOPE_ERROR, filterProjectItems, githubProjectSource, parseProjectPage, projectArgs, projectError } from '../src/server/kanban/integrations/issues/github-project.js';
 import { createIssues, issueDescription } from '../src/server/kanban/integrations/issues/index.js';
 import { takeIssueForTask } from '../src/server/kanban/integrations/issues/autoassign.js';
+import { onceFor } from '../src/server/kanban/once.js';
 import type { IssueSourceIo } from '../src/server/kanban/integrations/issues/source.js';
 import type { IssueSourceConfig } from '../src/shared/kanban/types.js';
 import { client, def, makeCtx } from './kanban-integrations-ctx.js';
@@ -409,4 +410,26 @@ test('createTask with a task: an unknown repository is an error and makes nothin
   assert.equal(r.existed, false);
   assert.equal(r.started, true);
   assert.deepEqual(ctx.started, [r.taskId]);
+});
+
+// The answer to a creation was lost, and the person changed the pick before sending again with the dialog's key.
+test('the same once key for another issue, or after a plain task, names the earlier task and makes nothing', async () => {
+  const { ctx, issues, c, edits } = claimSetup({ ...env('/h/once-2'), issues: [{ number: 1 }, { number: 2 }] });
+  await issues.refresh('app');
+  const ws = issues.plugin.ws!['kanban.issues.createTask']!;
+  const key = 'try-2-abcdefgh';
+  await ws(c, { t: 'kanban.issues.createTask', project: 'app', issueKey: 'gh:o/app#1', task: { description: 'x' }, once: key } as never);
+  const first = c.got.at(-1) as { taskId: number };
+  // The pick changed to another issue: issue 2 gets no task, and the answer says which task the earlier send made.
+  await ws(c, { t: 'kanban.issues.createTask', project: 'app', issueKey: 'gh:o/app#2', task: { description: 'x' }, once: key } as never);
+  assert.deepEqual(c.got.at(-1), { t: 'kanban.ok', taskId: first.taskId, earlier: true });
+  assert.equal(ctx.repo.listTasks('app').length, 1);
+  assert.equal(ctx.repo.findTaskByTicket('app', 'gh:o/app#2'), undefined);
+  assert.equal(edits().length, 1, 'nothing claimed for the request that was not made');
+  // The first send was a plain task: kanban.task.create keeps its answer in the same memory.
+  const plain = 'try-3-abcdefgh';
+  await onceFor(ctx).run(c, plain, async () => ({ taskId: 77 }), 'task\napp');
+  await ws(c, { t: 'kanban.issues.createTask', project: 'app', issueKey: 'gh:o/app#2', task: { description: 'x' }, once: plain } as never);
+  assert.deepEqual(c.got.at(-1), { t: 'kanban.ok', taskId: 77, earlier: true });
+  assert.equal(ctx.repo.listTasks('app').length, 1);
 });
