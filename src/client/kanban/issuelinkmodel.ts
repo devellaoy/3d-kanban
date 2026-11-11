@@ -18,6 +18,13 @@ const LINK_RE = /^https?:\/\/\S+$/;
 /** A task's issue can be changed at any status but the archive (the office refuses it there). */
 export const canChangeIssue = (task: { status: string }) => task.status !== 'archived';
 
+/**
+ * What the Issue tab shows, as a key: it reads the issue again only when this changes. The project and
+ * the ticket, never the ticket's link: a link-only edit leaves the issue shown (and a comment being
+ * written under it) alone. Empty for a task without an issue.
+ */
+export const issueKeyOf = (task: { project: string; ticket?: string }) => (task.ticket ? `${task.project}\n${task.ticket}` : '');
+
 /** An issue picked from the project's list: its key and its own link. */
 export function pickedPatch(issue: { key: string; url?: string }): TicketPatch {
   const url = issue.url?.trim() ?? '';

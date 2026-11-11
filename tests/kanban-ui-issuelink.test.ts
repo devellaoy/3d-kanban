@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { canChangeIssue, pickedPatch, sameIssue, savedText, typedPatch, unlinkPatch } from '../src/client/kanban/issuelinkmodel.js';
+import { canChangeIssue, issueKeyOf, pickedPatch, sameIssue, savedText, typedPatch, unlinkPatch } from '../src/client/kanban/issuelinkmodel.js';
 import { parseKanbanClientMsg } from '../src/shared/kanban/protocol.js';
 
 test('a task’s issue can be changed at every status but the archive', () => {
@@ -52,4 +52,13 @@ test('the office’s parser takes every patch the tab builds', () => {
     const msg = parseKanbanClientMsg({ t: 'kanban.task.update', id: 1, patch });
     assert.deepEqual(msg && 'patch' in msg && msg.patch, patch);
   }
+});
+
+test('the tab reads the issue again when the project or the ticket changes, never for a link-only edit', () => {
+  const task = { project: 'web', ticket: 'UYT-1', ticketUrl: 'https://jira.example/browse/UYT-1' };
+  assert.equal(issueKeyOf(task), issueKeyOf({ ...task, ticketUrl: 'https://other.example/1' }));
+  assert.equal(issueKeyOf(task), issueKeyOf({ project: 'web', ticket: 'UYT-1' }));
+  assert.notEqual(issueKeyOf(task), issueKeyOf({ ...task, ticket: 'UYT-2' }));
+  assert.notEqual(issueKeyOf(task), issueKeyOf({ ...task, project: 'api' }));
+  assert.equal(issueKeyOf({ project: 'web' }), '', 'no issue, nothing to read');
 });
