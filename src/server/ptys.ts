@@ -284,7 +284,7 @@ export class PtyHost {
     this.sock?.end();
   }
 
-  /** The office is closing for good: the host ends every terminal and exits. */
+  /** The office is closing for good: the host ends every terminal (SIGHUP, then SIGKILL after the grace period) and exits. */
   stop() {
     this.leaving = true;
     this.sock?.end(frame({ t: 'stop' }));

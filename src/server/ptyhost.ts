@@ -11,7 +11,7 @@ import net from 'node:net';
 import * as pty from '@lydell/node-pty';
 import headless from '@xterm/headless';
 import serialize from '@xterm/addon-serialize';
-import { PTY_PROTOCOL, SCROLLBACK, readMessages, type FromHost, type SpawnOpts, type ToHost } from './ptys.js';
+import { KILL_GRACE_MS, PTY_PROTOCOL, SCROLLBACK, readMessages, type FromHost, type SpawnOpts, type ToHost } from './ptys.js';
 import { screenSnapshot } from './screen.js';
 
 /** How long terminals keep running with no office connected before the host gives up on it. */
@@ -68,21 +68,34 @@ function orphaned() {
   idleTimer = setTimeout(stopAll, ORPHAN_MS);
 }
 
-function stopAll() {
-  stopping = true;
-  server.close();
+/** Sends `signal` (the default, SIGHUP, when none) to every terminal still running; how many there were. */
+function killLive(signal?: string): number {
   let n = 0;
   for (const s of sessions.values()) {
     if (s.exitCode !== undefined) continue;
     n++;
     try {
-      s.proc.kill();
+      s.proc.kill(signal);
     } catch {
       // already gone
     }
   }
-  if (!n) process.exit(0);
-  setTimeout(() => process.exit(0), 3000);
+  return n;
+}
+
+/**
+ * Ends every terminal and then the host: SIGHUP first, SIGKILL to whatever is still there after the
+ * grace period (a shell can miss a SIGHUP it gets while starting up, see endPty in ptys.ts), and the
+ * host exits as soon as the last one is gone (see spawn's onExit), or a moment after the SIGKILL.
+ */
+function stopAll() {
+  stopping = true;
+  server.close();
+  if (!killLive()) process.exit(0);
+  setTimeout(() => {
+    if (!killLive('SIGKILL')) process.exit(0);
+    setTimeout(() => process.exit(0), 1000);
+  }, KILL_GRACE_MS);
 }
 
 function spawn(id: string, opts: SpawnOpts) {
