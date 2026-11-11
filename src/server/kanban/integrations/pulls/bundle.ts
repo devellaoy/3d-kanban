@@ -173,3 +173,61 @@ export function findBundle(
   }
   return [...out.values()].sort((a, b) => a.repo.localeCompare(b.repo) || a.number - b.number);
 }
+
+/** A repository's fresh PR list for findTaskPrs (`primary`: it is the project's primary repository). */
+export interface FoundList extends Omit<RepoPulls, 'pulls'> {
+  primary?: boolean;
+  pulls: (RepoPulls['pulls'][number] & { isCrossRepository?: boolean })[];
+}
+
+/** A PR findTaskPrs found, with the list it came from. */
+export interface FoundPr {
+  repoId: string;
+  /** The project repository's owner/name. */
+  repo: string;
+  pull: FoundList['pulls'][number];
+}
+
+/**
+ * What the "Find PRs" button looks for, for one task: `byBranch` are the PRs whose head branch is
+ * the task's in that repository (sure enough to link at once), `byTicket` those whose title or
+ * branch names the task's ticket (only offered: tasks of one ticket, or a similar title, share them).
+ * A PR another task owns (`ownersOf`: the tasks it is linked to) is `skipped`, never taken over; one
+ * this task has linked already is in none of the lists.
+ *
+ * Unlike the automatic branchPrs this deliberately has no "only active tasks", "only open and draft"
+ * or "created after the task" rule: those are exactly what leaves a PR unlinked (a task that's done,
+ * a PR that merged already, one opened before the task was), and here the user asks for this task's PRs.
+ */
+export function findTaskPrs(
+  lists: FoundList[],
+  task: Pick<KanbanTask, 'id' | 'branch' | 'ticket'> & { branches: Record<string, string> },
+  ownersOf: (pr: { repo: string; number: number; url: string }) => number[],
+): { byBranch: FoundPr[]; byTicket: FoundPr[]; skipped: { repo: string; number: number; reason: string }[] } {
+  const byBranch: FoundPr[] = [];
+  const byTicket: FoundPr[] = [];
+  const skipped: { repo: string; number: number; reason: string }[] = [];
+  const token = ticketToken(task.ticket);
+  const seen = new Set<string>();
+  for (const l of lists) {
+    const branch = task.branches[l.repoId] ?? (l.primary ? task.branch : undefined);
+    for (const p of l.pulls) {
+      const key = `${l.repo.toLowerCase()}#${p.number}`;
+      if (seen.has(key)) continue;
+      const head = p.headRefName;
+      const onBranch = !!branch && head === branch;
+      const onTicket = !!token && (mentionsTicket(p.title, token) || mentionsTicket(head ?? '', token));
+      if (!onBranch && !onTicket) continue;
+      seen.add(key);
+      const owners = ownersOf({ repo: l.repo, number: p.number, url: p.url });
+      if (owners.includes(task.id)) continue;
+      const other = owners[0];
+      const skip = (reason: string) => void skipped.push({ repo: l.repo, number: p.number, reason });
+      if (other !== undefined) skip(`already linked to task #${other}`);
+      else if (onBranch && INTEGRATION_BRANCHES.has((branch ?? '').toLowerCase())) skip(`its branch ${branch} is an integration branch`);
+      else if (onBranch && p.isCrossRepository) skip('it comes from a fork');
+      else (onBranch ? byBranch : byTicket).push({ repoId: l.repoId, repo: l.repo, pull: p });
+    }
+  }
+  return { byBranch, byTicket, skipped };
+}

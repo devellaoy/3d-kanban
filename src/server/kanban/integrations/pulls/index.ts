@@ -20,9 +20,12 @@ import type { GhRunner } from '../issues/source.js';
 import { fail, ok } from '../util.js';
 import { forkTest, polledPulls } from './prfix.js';
 import { checkClosing, type ClosingMark } from './closes.js';
-import { branchPrs, findBundle, prOwners, prState, type BundleBy, type RepoPulls } from './bundle.js';
+import { branchPrs, findBundle, findTaskPrs, prOwners, prState, type BundleBy, type FoundList, type FoundPr, type RepoPulls } from './bundle.js';
 
 const FIELDS = 'number,title,url,state,isDraft,headRefName';
+/** What Find PRs lists: the fork flag and the date too. gh's answer is waited for 20 s at most (the browser gives up on a request at 30 s). */
+const FIND_FIELDS = `${FIELDS},createdAt,isCrossRepository`;
+const FIND_TIMEOUT_MS = 20_000;
 
 /** A PR as a review names it, with what its list says about it. */
 export type ReviewPr = PrRef & { title?: string; url?: string; branch?: string };
@@ -294,6 +297,103 @@ export function createPullsParts(ctx: KanbanContext, opts: PullsOptions = {}) {
     return [...changed];
   };
 
+  /** The task a PR-by-task message names, with its project's repositories; or why not. */
+  const taskOf = (project: string, taskId: number): { task: KanbanTask; repos: (ProjectRepo & { remote: string })[] } | string => {
+    if (!ctx.project(project)) return `There's no project ${project}`;
+    const task = ctx.repo.getTask(taskId);
+    if (!task || task.project !== project) return `There's no task #${taskId} in this project`;
+    const repos = githubRepos(ctx, project);
+    if (!repos.length) return 'None of the project’s repositories has a remote on GitHub, Azure DevOps or Bitbucket';
+    return { task, repos };
+  };
+  /** The tasks (of any project) a PR is linked to. */
+  const ownersOf = (pr: { repo: string; number: number; url: string }) => prOwners(ctx.repo.prLinksMatching(pr.number, pr.url), (proj, repoId) => ctx.repos(proj).find((r) => r.id === repoId)?.remote, pr);
+
+  /**
+   * A repository's PRs of any state, asked fresh: gh's newest 100 plus, for the task's `branch`, the
+   * ones from that head (the plain list is capped). A repository on Azure DevOps or Bitbucket has
+   * the floor board's list, or none to give. Rejects with the reason, worded for the user.
+   */
+  const freshList = async (project: string, r: ProjectRepo & { remote: string }, branch: string | undefined): Promise<FoundList> => {
+    const base = { repo: r.remote, repoId: r.id, primary: r.primary };
+    if (hostedRepoOf(r.remote)) {
+      const board = ctx.floor(project)?.githubFor(r.remote);
+      if (board && board.pulls.fetchedAt > 0 && !board.pulls.error) return { ...base, pulls: board.pulls.items };
+      throw new Error(`${r.remote}: pull requests couldn't be listed here`);
+    }
+    const ask = async (extra: string[]): Promise<GhPull[]> => {
+      const raw = JSON.parse((await runGh(['pr', 'list', '-R', r.remote, '--state', 'all', ...extra, '--json', FIND_FIELDS], ctx.dataDir, FIND_TIMEOUT_MS)) || '[]') as GhPull[];
+      return Array.isArray(raw) ? raw.filter((p) => Number.isSafeInteger(p?.number)) : [];
+    };
+    const [all, head] = await Promise.allSettled([ask(['--limit', '100']), branch ? ask(['--head', branch, '--limit', '100']) : Promise.resolve([])]);
+    if (all.status === 'rejected' && (!branch || head.status === 'rejected')) throw new Error(`${r.remote}: ${(all.reason as Error).message}`);
+    const pulls = new Map<number, GhPull>();
+    for (const s of [all, head]) if (s.status === 'fulfilled') for (const p of s.value) pulls.set(p.number, p);
+    return { ...base, pulls: [...pulls.values()] };
+  };
+
+  /** Whether a PR on the task's branch is surely the task's own: not from a fork, not on the default branch (one gh can't answer for isn't linked). Else why not. */
+  const sureOwn = async (b: FoundPr): Promise<string | undefined> => {
+    const [fork, base] = await Promise.all([forks.get(`${b.repo.toLowerCase()}#${b.pull.number}`), defaultBranches.get(b.repo.toLowerCase())]);
+    if (fork === true) return 'it comes from a fork';
+    if (fork === undefined || base === undefined) return "GitHub didn't say whether it comes from a fork or the default branch";
+    return base === b.pull.headRefName ? `its branch ${base} is the repository's default branch` : undefined;
+  };
+
+  const find = async (c: KanbanCaller, m: { project: string; taskId: number }): Promise<{ linked: PrRef[]; candidates: KanbanPrBundleItem[]; skipped: { repo: string; number: number; reason: string }[]; notes: string[] } | string> => {
+    const got = taskOf(m.project, m.taskId);
+    if (typeof got === 'string') return got;
+    const { task, repos } = got;
+    const branches = { ...ctx.repo.repoBranches(task.id) };
+    const settled = await Promise.allSettled(repos.map((r) => freshList(m.project, r, branches[r.id] ?? (r.primary ? task.branch : undefined))));
+    const lists: FoundList[] = [];
+    const notes: string[] = [];
+    for (const s of settled) {
+      if (s.status === 'fulfilled') lists.push(s.value);
+      else notes.push((s.reason as Error).message);
+    }
+    const changed = new Set<number>();
+    // The states of what is linked already, from the fresh lists.
+    for (const l of task.prs) {
+      const p = lists.find((x) => x.repoId === l.repoId)?.pulls.find((x) => x.number === l.number);
+      if (p && ctx.repo.setPrLinkState(task.id, l.repoId, l.number, prState(p))) changed.add(task.id);
+    }
+    const { byBranch, byTicket, skipped } = findTaskPrs(lists, { ...task, branches }, ownersOf);
+    const linked: PrRef[] = [];
+    const why = await Promise.all(byBranch.map(sureOwn));
+    for (const [i, b] of byBranch.entries()) {
+      if (why[i]) skipped.push({ repo: b.repo, number: b.pull.number, reason: why[i]! });
+      else if (ownersOf({ repo: b.repo, number: b.pull.number, url: b.pull.url }).length) skipped.push({ repo: b.repo, number: b.pull.number, reason: 'it was linked to a task just now' });
+      else {
+        ctx.repo.upsertPrLink(task.id, { repoId: b.repoId, repo: b.repo, number: b.pull.number, url: b.pull.url, state: prState(b.pull), branch: b.pull.headRefName });
+        ctx.repo.appendEvent(task.id, 'pr.linked', { repo: b.repo, number: b.pull.number, by: 'find', who: c.name });
+        linked.push({ repo: b.repo, number: b.pull.number });
+        changed.add(task.id);
+      }
+    }
+    if (changed.size) ctx.taskChanged(task.id);
+    const candidates = byTicket.map((t): KanbanPrBundleItem => ({ repo: t.repo, number: t.pull.number, url: t.pull.url, title: t.pull.title, state: prState(t.pull), ...(t.pull.headRefName ? { branch: t.pull.headRefName } : {}), repoId: t.repoId }));
+    return { linked, candidates, skipped, notes };
+  };
+
+  /** A PR picked by hand, as its repository has it now; or why it can't be linked to `taskId`. */
+  const pickPr = async (repos: (ProjectRepo & { remote: string })[], taskId: number, pr: PrRef): Promise<{ repo: ProjectRepo & { remote: string }; pull: GhPull } | string> => {
+    const repo = repos.find((x) => sameRepo(x.remote, pr.repo));
+    if (!repo) return `${pr.repo} isn't one of the project's repositories${repos.length ? ` (${repos.map((x) => x.remote).join(', ')})` : ''}`;
+    let pull: GhPull;
+    try {
+      const hosted = hostedRepoOf(repo.remote);
+      if (hosted) {
+        const v = await viewHosted(hosted, pr.number);
+        pull = { number: v.number, title: v.title, url: v.url, state: v.state, isDraft: v.isDraft, headRefName: v.headRefName } as GhPull;
+      } else pull = JSON.parse(await runGh(['pr', 'view', String(pr.number), '-R', repo.remote, '--json', FIELDS], ctx.dataDir, FIND_TIMEOUT_MS)) as GhPull;
+    } catch {
+      return `${repo.remote} has no pull request #${pr.number}`;
+    }
+    const other = ownersOf({ repo: repo.remote, number: pr.number, url: pull.url }).find((id) => id !== taskId);
+    return other !== undefined ? `${repo.remote}#${pr.number} is linked to task #${other} already: unlink it there first` : { repo, pull };
+  };
+
   const onBoard = (floor: PulledFloor) => void syncPrStates(floor.id, floor.pullsState().items).catch((err) => console.error("agent-office: syncing a floor's linked pull requests failed:", err));
 
   const api: KanbanPullsApi = {
@@ -321,6 +421,39 @@ export function createPullsParts(ctx: KanbanContext, opts: PullsOptions = {}) {
         const t = tasks.sort((a, b) => b.id - a.id)[0];
         const check = t ? canFixPrs(t, forkTest(polledPulls(ctx.floor(t.project)), ctx.repos(t.project))) : undefined;
         c.send({ t: 'kanban.pr.owner', ...(m.rid ? { rid: m.rid } : {}), taskId: t?.id ?? null, ...(t ? { title: t.title } : {}), fixable: check?.ok === true, ...(check && !check.ok ? { reason: check.reason } : {}) });
+      },
+      // Looks for the task's PRs: its branches' are linked at once, its ticket's are only offered (kanban.pr.link takes them).
+      'kanban.pr.find': async (c, m) => {
+        const got = await find(c, m).catch((err: Error) => err.message);
+        if (typeof got === 'string') return fail(c, m.rid, got);
+        c.send({ t: 'kanban.prFound', ...(m.rid ? { rid: m.rid } : {}), taskId: m.taskId, ...got });
+      },
+      'kanban.pr.link': async (c, m) => {
+        const got = taskOf(m.project, m.taskId);
+        if (typeof got === 'string') return fail(c, m.rid, got);
+        const picked: Exclude<Awaited<ReturnType<typeof pickPr>>, string>[] = [];
+        for (const pr of m.prs) {
+          const one = await pickPr(got.repos, m.taskId, pr);
+          if (typeof one === 'string') return fail(c, m.rid, one);
+          picked.push(one);
+        }
+        for (const { repo, pull } of picked) {
+          const had = got.task.prs.some((l) => l.repoId === repo.id && l.number === pull.number);
+          ctx.repo.upsertPrLink(m.taskId, { repoId: repo.id, repo: repo.remote, number: pull.number, url: pull.url, state: prState(pull), ...(pull.headRefName ? { branch: pull.headRefName } : {}) });
+          if (!had) ctx.repo.appendEvent(m.taskId, 'pr.linked', { repo: repo.remote, number: pull.number, by: 'manual', who: c.name });
+        }
+        ctx.taskChanged(m.taskId);
+        ok(c, m.rid, { taskId: m.taskId });
+      },
+      'kanban.pr.unlink': (c, m) => {
+        const got = taskOf(m.project, m.taskId);
+        if (typeof got === 'string') return fail(c, m.rid, got);
+        const link = got.task.prs.find((l) => l.number === m.number && sameRepo(l.repo ?? got.repos.find((r) => r.id === l.repoId)?.remote ?? '', m.repo));
+        if (!link) return fail(c, m.rid, `Task #${m.taskId} has no link to ${m.repo}#${m.number}`);
+        ctx.repo.removePrLink(m.taskId, link.repoId, link.number);
+        ctx.repo.appendEvent(m.taskId, 'pr.unlinked', { repo: link.repo ?? m.repo, number: link.number, who: c.name });
+        ctx.taskChanged(m.taskId);
+        ok(c, m.rid, { taskId: m.taskId });
       },
       'kanban.pr.review': async (c, m) => {
         const req: KanbanPrReviewRequest = { project: m.project, prs: m.prs, ...(m.taskId !== undefined ? { taskId: m.taskId } : {}), ...(m.tool ? { tool: m.tool } : {}), ...(m.model ? { model: m.model } : {}), ...(m.effort ? { effort: m.effort } : {}) };

@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { mkdirSync } from 'node:fs';
 import path from 'node:path';
 import { MergeWatch } from '../src/server/github.js';
-import { branchPrs, findBundle, mentionsTicket, prState, ticketToken, type RepoPulls } from '../src/server/kanban/integrations/pulls/bundle.js';
+import { branchPrs, findBundle, findTaskPrs, mentionsTicket, prState, ticketToken, type RepoPulls } from '../src/server/kanban/integrations/pulls/bundle.js';
 import { createPullsParts } from '../src/server/kanban/integrations/pulls/index.js';
 import { floorPulled } from '../src/server/kanban/integrations/pulls/board.js';
 import { PR_REVIEW_MAX } from '../src/shared/kanban/types.js';
@@ -422,4 +422,173 @@ test('branchPrs: a PR the board says is from a fork is never linked by its branc
   const p = (number: number, isCrossRepository?: boolean) => ({ number, url: `u${number}`, state: 'OPEN', isDraft: false, headRefName: 'b1', createdAt: LATER, repo: 'o/web', ...(isCrossRepository === undefined ? {} : { isCrossRepository }) });
   const got = branchPrs('web', () => tasks, [p(1, true), p(2, false), p(3)], () => repos, 'o/web', () => false);
   assert.deepEqual(got.map((g) => g.pull.number), [2, 3], 'the fork is out; one the board has no word on is left to gh');
+});
+
+// --- Find PRs ---------------------------------------------------------------------------------------
+
+const fpull = (number: number, head: string, title = `PR ${number}`, state = 'OPEN', extra: Record<string, unknown> = {}) => ({ ...pr(number, head, title, state), url: `https://github.com/o/web/pull/${number}`, createdAt: '2020-01-01T00:00:00Z', ...extra });
+const FTASK = { id: 7, branch: 'kanban/a', ticket: 'UYT-1', branches: { api: 'kanban/a-api' } };
+const flist = (repo: string, repoId: string, pulls: ReturnType<typeof fpull>[], primary = false) => ({ repo, repoId, primary, pulls });
+
+test('findTaskPrs: the task’s branch per repository in any state, the ticket only as a candidate, nothing taken over', () => {
+  const lists = [
+    flist('o/web', 'web', [
+      fpull(1, 'kanban/a'),
+      fpull(2, 'kanban/a', 'Done long ago', 'MERGED'),
+      fpull(3, 'other', 'UYT-1 follow-up', 'MERGED'),
+      fpull(4, 'kanban/a-api', 'wrong repository for this branch'),
+      fpull(5, 'kanban/a', 'theirs'),
+      fpull(6, 'kanban/a', 'from a fork', 'OPEN', { isCrossRepository: true }),
+      fpull(7, 'feat/UYT-1-x', 'by branch name'),
+      fpull(8, 'kanban/a', 'mine already'),
+      fpull(9, 'other', 'UYT-12 is another ticket'),
+    ], true),
+    flist('o/api', 'api', [fpull(1, 'kanban/a-api', 'api side', 'CLOSED'), fpull(2, 'kanban/a', 'primary branch, but not this repository’s')]),
+  ];
+  const owners = (n: number, repo: string) => (repo === 'o/web' && n === 5 ? [3] : repo === 'o/web' && n === 8 ? [7] : []);
+  const got = findTaskPrs(lists, FTASK, (p) => owners(p.number, p.repo));
+  assert.deepEqual(got.byBranch.map((b) => `${b.repo}#${b.pull.number}`), ['o/web#1', 'o/web#2', 'o/api#1']);
+  assert.deepEqual(got.byTicket.map((b) => `${b.repo}#${b.pull.number}`), ['o/web#3', 'o/web#7']);
+  assert.deepEqual(got.skipped, [
+    { repo: 'o/web', number: 5, reason: 'already linked to task #3' },
+    { repo: 'o/web', number: 6, reason: 'it comes from a fork' },
+  ]);
+  const main = findTaskPrs([flist('o/web', 'web', [fpull(1, 'main')], true)], { ...FTASK, branch: 'main' }, () => []);
+  assert.deepEqual([main.byBranch.length, main.skipped.map((x) => x.reason)], [0, ['its branch main is an integration branch']]);
+  assert.deepEqual(findTaskPrs(lists, { ...FTASK, ticket: undefined as never }, () => []).byTicket, [], 'no ticket: no candidates');
+});
+
+/** A project with two repositories and a gh that lists the given pulls per repository (`--head` filters). */
+function findSetup(listed: Record<string, ReturnType<typeof fpull>[] | Error>, opts: { fork?: boolean; base?: string } = {}) {
+  const { ctx } = project();
+  const calls: string[][] = [];
+  const parts = createPullsParts(ctx, {
+    gh: async (args) => {
+      calls.push(args);
+      if (args[0] === 'repo') return `${opts.base ?? 'main'}\n`;
+      if (args[1] === 'view') {
+        const found = (listed[args[4]] instanceof Error ? [] : (listed[args[4]] ?? [])).find((p) => String(p.number) === args[2]);
+        if (!found) throw new Error('no such PR');
+        return JSON.stringify({ isCrossRepository: opts.fork ?? false, ...found });
+      }
+      const l = listed[args[3]];
+      if (l instanceof Error) throw l;
+      const head = args.indexOf('--head');
+      return JSON.stringify((l ?? []).filter((p) => head < 0 || p.headRefName === args[head + 1]));
+    },
+  });
+  const mk = (title: string, ticket?: string, branch?: string) => {
+    const t = ctx.repo.createTask({ project: 'web', title, tool: 'claude', usePlan: true, planApproval: 'auto', useReview: true, createdBy: 't', ...(ticket ? { ticket } : {}) });
+    if (branch) ctx.repo.updateTask(t.id, { branch });
+    return t;
+  };
+  const changed: number[] = [];
+  ctx.taskChanged = (id: number) => void changed.push(id);
+  return { ctx, calls, parts, mk, changed, ws: parts.plugin.ws! };
+}
+const lastOf = <T extends KanbanServerMsg['t']>(c: { got: KanbanServerMsg[] }, t: T) => c.got.at(-1) as Extract<KanbanServerMsg, { t: T }>;
+
+test('kanban.pr.find links the task’s branch PRs (even merged, even for a done task) and refreshes states', async () => {
+  const { ctx, calls, mk, changed, ws } = findSetup({
+    'o/web': [fpull(1, 'kanban/a'), fpull(2, 'kanban/a', 'Merged one', 'MERGED'), fpull(30, 'kanban/old', 'Old state', 'MERGED')],
+    'o/api': [fpull(4, 'kanban/a-api', 'api', 'CLOSED')],
+  });
+  const t = mk('A', undefined, 'kanban/a');
+  ctx.repo.setRepoBranch(t.id, 'api', 'kanban/a-api');
+  ctx.repo.upsertPrLink(t.id, { repoId: 'web', repo: 'o/web', number: 30, url: 'https://github.com/o/web/pull/30', state: 'OPEN', branch: 'kanban/old' });
+  ctx.repo.updateTask(t.id, { status: 'done' });
+  const c = client();
+  await ws['kanban.pr.find']!(c, { t: 'kanban.pr.find', project: 'web', taskId: t.id, rid: 'f' });
+  const got = lastOf(c, 'kanban.prFound');
+  assert.deepEqual(got, { t: 'kanban.prFound', rid: 'f', taskId: t.id, linked: [{ repo: 'o/web', number: 1 }, { repo: 'o/web', number: 2 }, { repo: 'o/api', number: 4 }], candidates: [], skipped: [], notes: [] });
+  assert.deepEqual(ctx.repo.listPrLinks(t.id).map((l) => `${l.repoId}#${l.number}:${l.state}`).sort(), ['api#4:CLOSED', 'web#1:OPEN', 'web#2:MERGED', 'web#30:MERGED']);
+  const ev = ctx.repo.listEvents(t.id).filter((e) => e.kind === 'pr.linked');
+  assert.equal(ev.length, 3);
+  assert.deepEqual(ev.map((e) => (e.data as any).by), ['find', 'find', 'find']);
+  assert.equal((ev[0].data as any).who, 'Tester');
+  assert.deepEqual(changed, [t.id]);
+  assert.ok(calls.some((a) => a[1] === 'list' && a.includes('--head') && a.includes('kanban/a-api')), 'a targeted list for the branch of each repository');
+  assert.ok(calls.filter((a) => a[1] === 'list').every((a) => a.includes('--state') && a[a.indexOf('--state') + 1] === 'all'));
+  changed.length = 0;
+  await ws['kanban.pr.find']!(c, { t: 'kanban.pr.find', project: 'web', taskId: t.id });
+  assert.deepEqual(lastOf(c, 'kanban.prFound').linked, [], 'a second search finds nothing new');
+  assert.deepEqual(changed, [], 'and changes nothing');
+});
+
+test('kanban.pr.find does not link a ticket match: the PR comes back as a candidate, even with two tasks on the ticket', async () => {
+  const { ctx, mk, ws } = findSetup({ 'o/web': [fpull(5, 'somewhere/else', 'UYT-1 cleanup', 'MERGED')], 'o/api': [] });
+  const a = mk('A', 'UYT-1', 'kanban/a');
+  const b = mk('B', 'UYT-1', 'kanban/b');
+  const c = client();
+  for (const t of [a, b]) {
+    await ws['kanban.pr.find']!(c, { t: 'kanban.pr.find', project: 'web', taskId: t.id });
+    const got = lastOf(c, 'kanban.prFound');
+    assert.deepEqual(got.linked, []);
+    assert.deepEqual(got.candidates, [{ repo: 'o/web', number: 5, url: 'https://github.com/o/web/pull/5', title: 'UYT-1 cleanup', state: 'MERGED', branch: 'somewhere/else', repoId: 'web' }]);
+    assert.equal(ctx.repo.listPrLinks(t.id).length, 0);
+  }
+});
+
+test('kanban.pr.find: skips another task’s PR, a fork, and what gh can’t vouch for; one repository failing is a note', async () => {
+  const { ctx, mk, ws } = findSetup({ 'o/web': [fpull(1, 'kanban/a'), fpull(2, 'kanban/a')], 'o/api': new Error('rate limited') });
+  const a = mk('A', undefined, 'kanban/a');
+  const other = mk('Other');
+  ctx.repo.upsertPrLink(other.id, { repoId: 'web', repo: 'o/web', number: 2, url: 'https://github.com/o/web/pull/2', state: 'OPEN' });
+  const c = client();
+  await ws['kanban.pr.find']!(c, { t: 'kanban.pr.find', project: 'web', taskId: a.id });
+  let got = lastOf(c, 'kanban.prFound');
+  assert.deepEqual(got.linked, [{ repo: 'o/web', number: 1 }]);
+  assert.deepEqual(got.skipped, [{ repo: 'o/web', number: 2, reason: `already linked to task #${other.id}` }]);
+  assert.deepEqual(got.notes, ['o/api: rate limited']);
+  // A fork, or a branch that is the default one, is not linked.
+  for (const o of [{ fork: true }, { base: 'kanban/a' }]) {
+    const s = findSetup({ 'o/web': [fpull(1, 'kanban/a')], 'o/api': [] }, o);
+    const t = s.mk('A', undefined, 'kanban/a');
+    const cc = client();
+    await s.ws['kanban.pr.find']!(cc, { t: 'kanban.pr.find', project: 'web', taskId: t.id });
+    got = lastOf(cc, 'kanban.prFound');
+    assert.deepEqual(got.linked, []);
+    assert.equal(got.skipped.length, 1);
+    assert.equal(s.ctx.repo.listPrLinks(t.id).length, 0);
+  }
+  await ws['kanban.pr.find']!(c, { t: 'kanban.pr.find', project: 'web', taskId: 999, rid: 'n' });
+  assert.match(lastOf(c, 'kanban.error').message, /no task #999/);
+});
+
+test('kanban.pr.link: checks the PR exists in a project repository, refuses another task’s, links with by: manual', async () => {
+  const { ctx, mk, changed, ws } = findSetup({ 'o/web': [fpull(5, 'x', 'UYT-1 cleanup', 'MERGED'), fpull(6, 'y')], 'o/api': [] });
+  const a = mk('A', 'UYT-1');
+  const other = mk('Other');
+  ctx.repo.upsertPrLink(other.id, { repoId: 'web', repo: 'o/web', number: 6, url: 'https://github.com/o/web/pull/6', state: 'OPEN' });
+  const c = client();
+  await ws['kanban.pr.link']!(c, { t: 'kanban.pr.link', project: 'web', taskId: a.id, prs: [{ repo: 'o/web', number: 6 }], rid: 'l' });
+  assert.match(lastOf(c, 'kanban.error').message, new RegExp(`o/web#6 is linked to task #${other.id}`));
+  await ws['kanban.pr.link']!(c, { t: 'kanban.pr.link', project: 'web', taskId: a.id, prs: [{ repo: 'elsewhere/repo', number: 5 }] });
+  assert.match(lastOf(c, 'kanban.error').message, /isn't one of the project's repositories/);
+  await ws['kanban.pr.link']!(c, { t: 'kanban.pr.link', project: 'web', taskId: a.id, prs: [{ repo: 'o/web', number: 404 }] });
+  assert.match(lastOf(c, 'kanban.error').message, /has no pull request #404/);
+  assert.equal(ctx.repo.listPrLinks(a.id).length, 0, 'nothing was linked by the refused ones');
+  await ws['kanban.pr.link']!(c, { t: 'kanban.pr.link', project: 'web', taskId: a.id, prs: [{ repo: 'O/Web', number: 5 }], rid: 'ok' });
+  assert.deepEqual(lastOf(c, 'kanban.ok'), { t: 'kanban.ok', rid: 'ok', taskId: a.id });
+  assert.deepEqual(ctx.repo.listPrLinks(a.id).map((l) => `${l.repoId}#${l.number}:${l.state}:${l.repo}`), ['web#5:MERGED:o/web']);
+  const ev = ctx.repo.listEvents(a.id).filter((e) => e.kind === 'pr.linked');
+  assert.deepEqual(ev.map((e) => ({ ...(e.data as object) })), [{ repo: 'o/web', number: 5, by: 'manual', who: 'Tester' }]);
+  assert.deepEqual(changed, [a.id]);
+});
+
+test('kanban.pr.unlink takes the link off, says so on the task, and refuses a PR the task has no link to', async () => {
+  const { ctx, mk, changed, ws } = findSetup({});
+  const a = mk('A');
+  ctx.repo.upsertPrLink(a.id, { repoId: 'web', repo: 'o/web', number: 5, url: 'https://github.com/o/web/pull/5', state: 'OPEN' });
+  ctx.repo.upsertPrLink(a.id, { repoId: 'api', number: 6, url: 'https://github.com/o/api/pull/6', state: 'OPEN' });
+  const c = client();
+  await ws['kanban.pr.unlink']!(c, { t: 'kanban.pr.unlink', project: 'web', taskId: a.id, repo: 'o/web', number: 7, rid: 'u' });
+  assert.match(lastOf(c, 'kanban.error').message, /has no link to o\/web#7/);
+  await ws['kanban.pr.unlink']!(c, { t: 'kanban.pr.unlink', project: 'web', taskId: a.id, repo: 'O/Web', number: 5, rid: 'u' });
+  assert.deepEqual(lastOf(c, 'kanban.ok'), { t: 'kanban.ok', rid: 'u', taskId: a.id });
+  await ws['kanban.pr.unlink']!(c, { t: 'kanban.pr.unlink', project: 'web', taskId: a.id, repo: 'o/api', number: 6 });
+  assert.equal(lastOf(c, 'kanban.ok').t, 'kanban.ok', 'a link made without a repository is found through its repo id');
+  assert.equal(ctx.repo.listPrLinks(a.id).length, 0);
+  assert.deepEqual(ctx.repo.listEvents(a.id).filter((e) => e.kind === 'pr.unlinked').map((e) => (e.data as any).number), [5, 6]);
+  assert.deepEqual(changed, [a.id, a.id]);
 });
