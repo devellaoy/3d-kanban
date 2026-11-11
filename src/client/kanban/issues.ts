@@ -2,8 +2,14 @@
 // one list: filter chips by source, status, label and assignee, a refresh, and "Create task" on each
 // (idempotent by the issue's key: an issue already made into a task opens that task instead). Its title
 // opens the issue's own window (issuewindow.ts).
+//
+// The same window is the 🔗 Select issue picker of the new-task form and the hire dialogs (`pick`): its
+// rows then hand the issue back instead of making a task, and one that already has a task can't be
+// picked. The hire dialogs open it in the 3D office and /lite, so it brings its own styles and asks for
+// the project's deltas itself.
 
-import { h, timeAgo, toast } from '../ui/dom';
+import './issues.css';
+import { h, timeAgo, toast, type Modal } from '../ui/dom';
 import type { KanbanServerMsg } from '../../shared/kanban/protocol.js';
 import type { NormalizedIssue } from '../../shared/kanban/types.js';
 import type { KanbanApi, KanbanOk } from './api';
@@ -17,8 +23,22 @@ import { dialog, run, select, showDialog, textInput } from './ui';
 
 type IssuesMsg = Extract<KanbanServerMsg, { t: 'kanban.issues' }>;
 
-export function openIssues(api: KanbanApi, projectId: string, openTask: (id: number) => void) {
+export interface IssuesOpts {
+  /** Picking one for a task being written: the rows say Select, and nothing is made here. */
+  pick?(issue: NormalizedIssue): void;
+  /** The window closed, picked or not. */
+  onClose?(): void;
+}
+
+/** The picker: `pick` gets the chosen issue once the window has closed, `onClose` hears every close. */
+export function openIssuePicker(api: KanbanApi, projectId: string, pick: (issue: NormalizedIssue) => void, onClose?: () => void) {
+  openIssues(api, projectId, () => {}, { pick, onClose });
+}
+
+export function openIssues(api: KanbanApi, projectId: string, openTask: (id: number) => void, opts: IssuesOpts = {}) {
+  // Empty in the 3D office and /lite, where nothing fills the kanban page's store: the id stands in.
   const project = kstore.projectOf(projectId);
+  const picking = opts.pick;
   let state: IssuesMsg | null = null;
   let error = '';
   const f = { q: '', source: '', status: '', label: '', assignee: '' };
@@ -29,10 +49,23 @@ export function openIssues(api: KanbanApi, projectId: string, openTask: (id: num
   const status = h('span.kb-muted');
   const refresh = h('button.btn', { type: 'button', title: 'Fetch them again from the sources' }, '🔄 Refresh') as HTMLButtonElement;
   const browse = h('button.btn', { type: 'button', title: 'Every issue of the Jira project or GitHub board, in a tree with filters' }, '🔎 Browse all') as HTMLButtonElement;
-  const d = dialog('kb-issues-window', `📌 Issues · ${project?.name ?? projectId}`, h('div.body', {}, h('div.kb-row', {}, search, status), chips, list), null, [refresh]);
+  const d = dialog('kb-issues-window', `${picking ? '🔗 Select issue' : '📌 Issues'} · ${project?.name ?? projectId}`, h('div.body', {}, h('div.kb-row', {}, search, status), chips, list), null, [refresh]);
+  // The finished list is only broadcast to connections that follow the project: the kanban page does,
+  // the 3D office and /lite do while this watch stands.
+  const unwatch = api.watch(projectId);
+  let closed = false;
   const modal = showDialog(d, {
-    onClose: () => off(),
+    onClose: () => {
+      closed = true;
+      off();
+      unwatch();
+      opts.onClose?.();
+    },
   });
+  const choose = (issue: NormalizedIssue) => {
+    modal.close();
+    picking?.(issue);
+  };
 
   const chipSelect = (key: keyof typeof f, label: string, values: string[]) => {
     if (values.length < 2 && !f[key]) return null;
@@ -63,26 +96,33 @@ export function openIssues(api: KanbanApi, projectId: string, openTask: (id: num
   };
 
   const issueRow = (i: NormalizedIssue) => {
-    const make = h('button.btn.small.primary', { type: 'button' }, i.taskId ? `↗ #${i.taskId}` : '＋ Create task') as HTMLButtonElement;
-    make.addEventListener('click', async () => {
-      if (i.taskId) {
-        modal.close();
-        return openTask(i.taskId);
-      }
-      const ok = await run(() => api.request<KanbanOk>({ t: 'kanban.issues.createTask', project: projectId, issueKey: i.key }), make, 'Task created');
-      if (ok?.taskId) {
-        i.taskId = ok.taskId;
-        paint();
-      }
-    });
+    let make: HTMLElement;
+    if (picking) {
+      make = i.taskId ? h('span.kb-issue-taken', { title: 'One task per issue' }, `already task #${i.taskId}`) : h('button.btn.small.primary', { type: 'button', onclick: () => choose(i) }, 'Select');
+    } else {
+      const button = (make = h('button.btn.small.primary', { type: 'button' }, i.taskId ? `↗ #${i.taskId}` : '＋ Create task')) as HTMLButtonElement;
+      button.addEventListener('click', async () => {
+        if (i.taskId) {
+          modal.close();
+          return openTask(i.taskId);
+        }
+        const ok = await run(() => api.request<KanbanOk>({ t: 'kanban.issues.createTask', project: projectId, issueKey: i.key }), button, 'Task created');
+        if (ok?.taskId) {
+          i.taskId = ok.taskId;
+          paint();
+        }
+      });
+    }
+    // Picking, the title is only text: the issue's own window makes tasks, which isn't what is asked here.
+    const title = picking ? h('span.kb-issue-title', {}, i.title) : h('button.kb-issue-title.kb-issue-open', { type: 'button', title: 'Open it: status, assignee and comments', onclick: () => openIssueWindow(api, projectId, i, (id) => (modal.close(), openTask(id))) }, i.title);
     return h(
-      'li.kb-issue',
+      `li.kb-issue${picking && i.taskId ? '.taken' : ''}`,
       {},
       h(
         'div.kb-issue-main',
         {},
         h('a.kb-issue-key', { href: i.url, target: '_blank', rel: 'noopener noreferrer' }, i.key),
-        h('button.kb-issue-title.kb-issue-open', { type: 'button', title: 'Open it: status, assignee and comments', onclick: () => openIssueWindow(api, projectId, i, (id) => (modal.close(), openTask(id))) }, i.title),
+        title,
         h(
           'span.kb-chips',
           {},
@@ -115,17 +155,40 @@ export function openIssues(api: KanbanApi, projectId: string, openTask: (id: num
   );
   const openFull = (issue: BrowseIssue, scope: BrowseScope) => {
     const load = () => api.request<Extract<KanbanServerMsg, { t: 'kanban.browseIssue' }>>({ t: 'kanban.browse.issue', project: projectId, scope: scope.id, issueKey: issue.key }).then((m) => m.issue);
+    // Only the answer to the latest pick, of the browse window still open, counts: one that comes after
+    // that window (or this one) closed, or after another issue was chosen, would swap the choice.
+    const mine = ++asked;
+    const from = browsing;
+    const stale = () => closed || mine !== asked || !from?.backdrop.isConnected;
     load().then(
-      (full) => openIssueWindow(api, projectId, full, openTaskClosing, { reload: () => load().catch(() => undefined) }),
-      (err: Error) => toast(err.message, 'error'),
+      (full) => {
+        if (stale()) return;
+        if (!picking) return openIssueWindow(api, projectId, full, openTaskClosing, { reload: () => load().catch(() => undefined) });
+        if (full.taskId) return void toast(`${full.key} is already task #${full.taskId}`, 'warn');
+        browsing?.close();
+        choose({ ...full, sourceId: full.sourceId ?? scope.id });
+      },
+      (err: Error) => void (stale() || toast(err.message, 'error')),
     );
   };
+  let asked = 0;
   const openTaskClosing = (id: number) => (modal.close(), openTask(id));
-  browse.addEventListener('click', () => openBrowse(api, projectId, { open: openFull, openTask: openTaskClosing }));
-  refresh.addEventListener('click', () => void run(() => api.request({ t: 'kanban.issues.refresh', project: projectId }), refresh));
-  paint();
-  api.request<IssuesMsg>({ t: 'kanban.issues.list', project: projectId }).catch((err: Error) => {
-    error = err.message;
-    paint();
+  let browsing: Modal | undefined;
+  browse.addEventListener('click', () => {
+    browsing = openBrowse(api, projectId, { open: openFull, openTask: picking ? (id) => void toast(`It is already task #${id}`, 'warn') : openTaskClosing });
   });
+  const fetchAgain = () => api.request<IssuesMsg>({ t: 'kanban.issues.refresh', project: projectId });
+  refresh.addEventListener('click', () => void run(fetchAgain, refresh));
+  paint();
+  api.request<IssuesMsg>({ t: 'kanban.issues.list', project: projectId }).then(
+    (m) => {
+      // A fetch is under way and its list goes out as a broadcast, which a watch riding on a page's own
+      // filter for another project never gets: wait for that fetch here as well (the office runs one at a time).
+      if (m.loading && !closed) fetchAgain().catch(() => {});
+    },
+    (err: Error) => {
+      error = err.message;
+      paint();
+    },
+  );
 }

@@ -33,7 +33,8 @@ import type {
   TaskType,
 } from './types.js';
 import { KANBAN_EFFORTS, KANBAN_TOOLS, PR_REVIEW_MAX, TASK_STATUSES, TASK_TYPES } from './types.js';
-import { Bad, KANBAN_LIMITS, MODEL_RE, PROJECT_ID_RE, bad, bool, deskId, id, isObj, isRepoName, list, model, nullableText, oneOf, optInt, optOneOf, optText, project, text, workerId, type Obj, type Req } from './validate.js';
+import { Bad, KANBAN_LIMITS, MODEL_RE, PROJECT_ID_RE, bad, bool, deskId, id, isObj, onceKey, isRepoName, list, model, nullableText, oneOf, optInt, optOneOf, optText, project, text, workerId, type Obj, type Req } from './validate.js';
+import { PERMISSIONS, PLAN_APPROVALS, REPO_ID_RE, attachmentIds, repoIds, review, tags, taskInput, url, type KanbanTaskInput } from './taskinput.js';
 import { moveExtras } from './hold.js';
 import { PR_MODES, type PrMode } from './prs.js';
 import type { LoungeServerMsg } from './lounge.js';
@@ -44,41 +45,12 @@ import { JIRA_CONNECTION_CLIENT_TYPE_LIST, parseJiraConnectionMsg, type JiraConn
 // --- Limits ---------------------------------------------------------------------------------------
 
 export { KANBAN_LIMITS, PROJECT_ID_RE, MODEL_RE } from './validate.js';
+export { REPO_ID_RE, ATTACHMENT_ID_RE, type KanbanTaskInput, type IssueTaskFields } from './taskinput.js';
 
-/**
- * A ProjectRepo id. Short, so `<floorId>~<repoId>` (the synthetic RepoSource.floor of a project's other
- * repositories) fits in the 64 characters upstream's Changes messages take.
- */
-export const REPO_ID_RE = /^[a-z0-9][a-z0-9-]{0,19}$/;
-export const ATTACHMENT_ID_RE = /^[a-f0-9]{16,64}$/;
 /** owner/name on GitHub. */
 export const GH_REPO_RE = /^[A-Za-z0-9_.-]{1,100}\/[A-Za-z0-9_.-]{1,100}$/;
 
 // --- Inputs ---------------------------------------------------------------------------------------
-
-/** A new task, as the create dialog (or an issue) sends it. Unset fields take the project's and office's defaults. */
-export interface KanbanTaskInput {
-  project: string;
-  title: string;
-  description?: string;
-  type?: TaskType;
-  ticket?: string;
-  ticketUrl?: string;
-  /** Subset of the project's repositories; null or unset: all of them. */
-  repoIds?: string[] | null;
-  tool?: KanbanTool;
-  model?: string;
-  effort?: KanbanEffort;
-  usePlan?: boolean;
-  planApproval?: PlanApproval;
-  useReview?: boolean;
-  goal?: string;
-  review?: Partial<ReviewSettings>;
-  implementPermission?: ImplementPermission;
-  tags?: string[];
-  /** Uploaded files (POST /api/kanban/upload) to attach. */
-  attachmentIds?: string[];
-}
 
 /**
  * What an edit may change. The description is locked once the task has first started (comment
@@ -126,8 +98,9 @@ export type KanbanClientMsg =
   /**
    * Answered with kanban.ok {taskId} (and startError when start was asked for and couldn't).
    * `deskId`: with start, its worker is hired at that desk (see kanban.task.start).
+   * `once`: a key the browser chose for this creation; a repeat with the same key from the same person gets the first one's answer instead of a second task.
    */
-  | Req<{ t: 'kanban.task.create'; task: KanbanTaskInput; start?: boolean; deskId?: string }>
+  | Req<{ t: 'kanban.task.create'; task: KanbanTaskInput; start?: boolean; deskId?: string; once?: string }>
   | Req<{ t: 'kanban.task.update'; id: number; patch: KanbanTaskPatch }>
   /** A drag between columns (see moves.ts). `note`/`until`: the reason and date of a hold, or a message for the agent on a resume (see hold.ts). */
   | Req<{ t: 'kanban.task.move'; id: number; to: TaskStatus; note?: string; until?: number }>
@@ -217,7 +190,8 @@ export type KanbanServerMsg =
   | { t: 'kanban.skills'; rid?: string; skills: SkillInfo[]; error?: string }
   | { t: 'kanban.pr.bundle'; rid?: string; project: string; key: KanbanPrBundleKey; prs: KanbanPrBundleItem[]; error?: string }
   | { t: 'kanban.pr.owner'; rid?: string; taskId: number | null; title?: string; fixable: boolean; reason?: string }
-  | { t: 'kanban.ok'; rid?: string; taskId?: number; commentId?: number; workerId?: string; existed?: boolean; startError?: string; started?: true }
+  /** `earlier`: a creation's `once` key had already made `taskId` from another request (another issue, or none): nothing was made now. */
+  | { t: 'kanban.ok'; rid?: string; taskId?: number; commentId?: number; workerId?: string; existed?: boolean; startError?: string; started?: true; earlier?: true }
   | IssueOpsServerMsg
   | JiraConnectionServerMsg
   | LoungeServerMsg
@@ -227,28 +201,6 @@ export type KanbanServerType = KanbanServerMsg['t'];
 
 // --- The validator --------------------------------------------------------------------------------
 
-function repoIds(v: unknown): string[] | null | undefined {
-  if (v === undefined) return undefined;
-  if (v === null) return null;
-  const ids = list(v, 'repoIds', KANBAN_LIMITS.repoIds, (x) => {
-    // The primary repository's id is its floor's id (up to 40 characters), the others' are short.
-    if (typeof x !== 'string' || !(REPO_ID_RE.test(x) || PROJECT_ID_RE.test(x))) bad('repoIds must be repository ids');
-    return x as string;
-  });
-  if (!ids.length) bad('Pick at least one repository');
-  return ids;
-}
-function attachmentIds(v: unknown): string[] | undefined {
-  if (v === undefined) return undefined;
-  return list(v, 'attachmentIds', KANBAN_LIMITS.attachments, (x) => {
-    if (typeof x !== 'string' || !ATTACHMENT_ID_RE.test(x)) bad('attachmentIds must be attachment ids');
-    return x as string;
-  });
-}
-function tags(v: unknown): string[] | undefined {
-  if (v === undefined) return undefined;
-  return list(v, 'tags', KANBAN_LIMITS.tags, (x) => text(x, 'A tag', KANBAN_LIMITS.tag).trim()).filter(Boolean);
-}
 /** A settings-like object: just its shape and size here; server/kanban/settings.ts sanitises every field. */
 function settingsObj(v: unknown, name: string): Obj {
   if (!isObj(v)) bad(`${name} must be an object`);
@@ -260,59 +212,6 @@ function settingsObj(v: unknown, name: string): Obj {
   }
   if (json.length > KANBAN_LIMITS.settingsJson) bad(`${name} is too big`);
   return v as Obj;
-}
-function review(v: unknown): Partial<ReviewSettings> | undefined {
-  if (v === undefined) return undefined;
-  if (!isObj(v)) bad('review must be an object');
-  const r = v as Obj;
-  const out: Partial<ReviewSettings> = {};
-  const tool = optOneOf(r.tool, 'review.tool', KANBAN_TOOLS);
-  if (tool) out.tool = tool;
-  const m = model(r.model);
-  if (m) out.model = m;
-  const effort = optOneOf(r.effort, 'review.effort', KANBAN_EFFORTS);
-  if (effort) out.effort = effort;
-  const rounds = optInt(r.rounds, 'review.rounds', 1, 10);
-  if (rounds !== undefined) out.rounds = rounds;
-  const re = bool(r.reReviewLastFix, 'review.reReviewLastFix');
-  if (re !== undefined) out.reReviewLastFix = re;
-  const sandbox = bool(r.sandbox, 'review.sandbox');
-  if (sandbox !== undefined) out.sandbox = sandbox;
-  return out;
-}
-const PLAN_APPROVALS: readonly PlanApproval[] = ['auto', 'manual'];
-const PERMISSIONS: readonly ImplementPermission[] = ['bypass', 'workspace-write'];
-
-function taskInput(v: unknown): KanbanTaskInput {
-  if (!isObj(v)) bad('task must be an object');
-  const r = v as Obj;
-  const out: KanbanTaskInput = { project: project(r.project), title: text(r.title, 'The title', KANBAN_LIMITS.title).trim() };
-  const assign = <K extends keyof KanbanTaskInput>(k: K, val: KanbanTaskInput[K] | undefined) => {
-    if (val !== undefined) out[k] = val;
-  };
-  assign('description', optText(r.description, 'The description', KANBAN_LIMITS.description));
-  assign('type', optOneOf(r.type, 'type', TASK_TYPES));
-  assign('ticket', optText(r.ticket, 'The ticket', KANBAN_LIMITS.ticket)?.trim() || undefined);
-  assign('ticketUrl', url(r.ticketUrl));
-  assign('repoIds', repoIds(r.repoIds));
-  assign('tool', optOneOf(r.tool, 'tool', KANBAN_TOOLS));
-  assign('model', model(r.model));
-  assign('effort', optOneOf(r.effort, 'effort', KANBAN_EFFORTS));
-  assign('usePlan', bool(r.usePlan, 'usePlan'));
-  assign('planApproval', optOneOf(r.planApproval, 'planApproval', PLAN_APPROVALS));
-  assign('useReview', bool(r.useReview, 'useReview'));
-  assign('goal', optText(r.goal, 'The acceptance criteria', KANBAN_LIMITS.goal)?.trim() || undefined);
-  assign('review', review(r.review));
-  assign('implementPermission', optOneOf(r.implementPermission, 'implementPermission', PERMISSIONS));
-  assign('tags', tags(r.tags));
-  assign('attachmentIds', attachmentIds(r.attachmentIds));
-  return out;
-}
-function url(v: unknown): string | undefined {
-  const s = optText(v, 'The link', KANBAN_LIMITS.url)?.trim();
-  if (!s) return undefined;
-  if (!/^https?:\/\/\S+$/.test(s)) bad('The link must be an http(s) URL');
-  return s;
 }
 function taskPatch(v: unknown): KanbanTaskPatch {
   if (!isObj(v)) bad('patch must be an object');
@@ -498,7 +397,8 @@ function parse(raw: unknown): KanbanClientMsg {
     }
     case 'kanban.task.create': {
       const desk = deskId(r.deskId);
-      return m({ t: 'kanban.task.create', task: taskInput(r.task), ...(bool(r.start, 'start') ? { start: true } : {}), ...(desk ? { deskId: desk } : {}) });
+      const once = onceKey(r.once);
+      return m({ t: 'kanban.task.create', task: taskInput(r.task), ...(bool(r.start, 'start') ? { start: true } : {}), ...(desk ? { deskId: desk } : {}), ...(once ? { once } : {}) });
     }
     case 'kanban.task.update':
       return m({ t: 'kanban.task.update', id: id(r.id), patch: taskPatch(r.patch) });

@@ -74,14 +74,25 @@ export function openQueue(net: Net, actions: QueueActions) {
   });
   const form = h('form.queue-add', {}, ta, provider.element, addBtn, kanban ? h('div.kanban-queue-toggle', {}, kanban.element) : null) as HTMLFormElement;
   form.noValidate = true;
+  let sending = false;
   const submit = () => {
+    // A kanban task is being made: a second send would make it twice (or queue a plain task with the same text).
+    if (sending) return;
     const text = ta.value.trim();
-    if (!text) {
+    // A kanban task made from a picked issue takes its title from it, so it needs no text.
+    if (!text && !kanban?.hasIssue()) {
       ta.focus();
       return;
     }
     if (!provider.valid()) return;
-    if (kanban?.on()) return void kanban.send((kanbanText = text), { provider: provider.value(), model: provider.model(), effort: provider.effort() });
+    if (kanban?.on()) {
+      sending = true;
+      addBtn.disabled = true;
+      return void kanban.send((kanbanText = text), { provider: provider.value(), model: provider.model(), effort: provider.effort() }).finally(() => {
+        sending = false;
+        addBtn.disabled = false;
+      });
+    }
     net.send({ t: 'queue.add', prompt: text, provider: provider.value(), model: provider.model(), effort: provider.effort() });
     ta.value = '';
   };
