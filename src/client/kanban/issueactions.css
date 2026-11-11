@@ -50,6 +50,8 @@
 .modal.kb-issue-window > .body { display: flex; flex-direction: column; gap: 12px; overflow-y: auto; min-height: 0; }
 .modal.kb-issue-window > .body > * { flex: none; }
 .modal.kb-issue-window > header h2 { white-space: normal; overflow-wrap: anywhere; }
+.kb-iw { display: flex; flex-direction: column; gap: 12px; }
+.kb-iw > * { flex: none; }
 .kb-iw-top { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; }
 .kb-iw-key { font-weight: var(--fw-heavy); font-size: var(--fs-sm); }
 .kb-iw-desc { padding: 10px 12px; border: var(--bw-sm) dashed var(--ink); border-radius: var(--radius-sm); background: var(--field); overflow-wrap: anywhere; max-height: 320px; overflow-y: auto; }

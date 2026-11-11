@@ -11,6 +11,7 @@ import type { ServerMsg } from '../src/shared/protocol.js';
 
 test('?tab= opens a task on that tab; anything else is ignored', () => {
   assert.deepEqual(parseDeepLink('?task=12&tab=changes'), { task: 12, tab: 'changes', settings: false });
+  assert.deepEqual(parseDeepLink('?task=12&tab=issue'), { task: 12, tab: 'issue', settings: false });
   assert.deepEqual(parseDeepLink('?task=12&tab=terminal&project=web'), { task: 12, project: 'web', tab: 'terminal', settings: false });
   assert.deepEqual(parseDeepLink('?task=12&tab=nope'), { task: 12, settings: false });
   assert.deepEqual(parseDeepLink('?task=12&tab=__proto__'), { task: 12, settings: false });
@@ -31,8 +32,8 @@ test('the page keeps the open tab in its link', () => {
 });
 
 test('the task view shows every tab on the page, and no Terminal embedded', () => {
-  assert.deepEqual(visibleTabs(false), ['overview', 'conversation', 'plan', 'runs', 'terminal', 'changes', 'prs']);
-  assert.deepEqual(visibleTabs(true), ['overview', 'conversation', 'plan', 'runs', 'changes', 'prs']);
+  assert.deepEqual(visibleTabs(false), ['overview', 'conversation', 'plan', 'runs', 'terminal', 'changes', 'prs', 'issue']);
+  assert.deepEqual(visibleTabs(true), ['overview', 'conversation', 'plan', 'runs', 'changes', 'prs', 'issue']);
   assert.equal(tabFor('terminal', false), 'terminal');
   assert.equal(tabFor('terminal', true), 'overview');
   assert.equal(tabFor('changes', true), 'changes');
@@ -41,8 +42,8 @@ test('the task view shows every tab on the page, and no Terminal embedded', () =
 });
 
 test('the worker window’s task tab has no Changes tab (its header’s 🌿 Changes opens the view)', () => {
-  assert.deepEqual(visibleTabs(true, false), ['overview', 'conversation', 'plan', 'runs', 'prs']);
-  assert.deepEqual(visibleTabs(false, false), ['overview', 'conversation', 'plan', 'runs', 'terminal', 'prs']);
+  assert.deepEqual(visibleTabs(true, false), ['overview', 'conversation', 'plan', 'runs', 'prs', 'issue']);
+  assert.deepEqual(visibleTabs(false, false), ['overview', 'conversation', 'plan', 'runs', 'terminal', 'prs', 'issue']);
   assert.equal(tabFor('changes', true, false), 'overview');
   assert.equal(tabFor('changes', true, true), 'changes');
   assert.equal(tabFor('plan', true, false), 'plan');
