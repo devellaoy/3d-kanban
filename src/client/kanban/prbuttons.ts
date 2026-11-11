@@ -5,7 +5,7 @@ import { h, toast } from '../ui/dom';
 import { confirmDialog } from '../ui/prompt';
 import type { KanbanPrLink, KanbanTask } from '../../shared/kanban/types.js';
 import type { KanbanServerMsg } from '../../shared/kanban/protocol.js';
-import { canFixPrs, openPrs, prStatusOk, type PrMode } from '../../shared/kanban/prs.js';
+import { canFixPrs, type PrMode } from '../../shared/kanban/prs.js';
 import type { KanbanApi } from './api';
 import { openFindWindow } from './prfind';
 import { foundToasts, goneToast } from './prfindmodel';
@@ -13,17 +13,20 @@ import { run } from './ui';
 
 type Req = (msg: Parameters<KanbanApi['request']>[0], button?: HTMLButtonElement, done?: string) => unknown;
 
-/** Only where there are open PRs to work on, greyed out (with why) while the task is busy. */
-export function prActionButtons(task: KanbanTask, bar: HTMLElement, req: Req): void {
-  if (!openPrs(task).length || !prStatusOk(task.status)) return;
+/**
+ * One of the two buttons that send the agent to the open PRs, greyed out (with why) while the task is
+ * busy. Whether the task offers it at all is taskactions.ts's.
+ */
+export function prModeButton(task: KanbanTask, id: 'fix-prs' | 'resolve-conflicts', req: Req): HTMLButtonElement {
   const can = canFixPrs(task);
-  const add = (mode: Exclude<PrMode, 'create'>, label: string, title: string, focus: string) => {
-    const b = h('button.btn', { type: 'button', disabled: !can.ok, title: can.ok ? title : can.reason, 'data-focus': focus }, label) as HTMLButtonElement;
-    b.addEventListener('click', () => void req({ t: 'kanban.task.pr', id: task.id, mode }, b, 'An agent is on the pull requests'));
-    bar.append(b);
-  };
-  add('fix', '🛠️ Fix PRs', 'The agent addresses the review comments and failing checks on the task’s open PRs; it doesn’t merge', 'act-fix-prs');
-  add('conflicts', '🔄 Resolve conflicts', 'The agent merges each open PR’s target branch into its branch, resolves any conflicts and pushes; it doesn’t merge', 'act-resolve-conflicts');
+  const mode: Exclude<PrMode, 'create'> = id === 'fix-prs' ? 'fix' : 'conflicts';
+  const [label, title] =
+    id === 'fix-prs'
+      ? ['🛠️ Fix PRs', 'The agent addresses the review comments and failing checks on the task’s open PRs; it doesn’t merge']
+      : ['🔄 Resolve conflicts', 'The agent merges each open PR’s target branch into its branch, resolves any conflicts and pushes; it doesn’t merge'];
+  const b = h('button.btn', { type: 'button', disabled: !can.ok, title: can.ok ? title : can.reason, 'data-focus': `act-${id}` }, label) as HTMLButtonElement;
+  b.addEventListener('click', () => void req({ t: 'kanban.task.pr', id: task.id, mode }, b, 'An agent is on the pull requests'));
+  return b;
 }
 
 /** Tasks being searched, kept here because the PRs tab is drawn anew on every update: its button stays off meanwhile. */
@@ -32,7 +35,7 @@ const finding = new Set<number>();
 /** 🔎 Find PRs: links the PRs of the task's branches, asks about the ones that only mention its ticket. Not for an archived task. */
 export function findPrsButton(task: KanbanTask, api: KanbanApi): HTMLButtonElement | null {
   if (task.status === 'archived') return null;
-  const b = h('button.btn', { type: 'button', disabled: finding.has(task.id), title: 'Look for this task’s pull requests by its branches and ticket, and link them here', 'data-task': String(task.id) }, '🔎 Find PRs') as HTMLButtonElement;
+  const b = h('button.btn', { type: 'button', disabled: finding.has(task.id), title: 'Look for this task’s pull requests by its branches and ticket, and link them here', 'data-task': String(task.id), 'data-focus': 'act-find-prs' }, '🔎 Find PRs') as HTMLButtonElement;
   // Only this task's buttons (the view may be mounted twice, and the tab is redrawn on updates).
   const mine = () => document.querySelectorAll<HTMLButtonElement>(`button.kb-find-prs[data-task="${task.id}"]`);
   b.addEventListener('click', async () => {

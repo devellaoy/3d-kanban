@@ -438,7 +438,7 @@ enough, elsewhere the `code` command must be on the PATH. Its tabs:
   itself added for the old one is taken out (see *Closing the issue*). The tab is in the
   embedded task window too (the 3D office's as well), and `&tab=issue` opens it.
 
-The panel is the **shared task view** (`src/client/kanban/taskview.ts`), which the 3D office uses too
+The panel is the **shared task view** (`src/client/kanban/taskview.ts`, with its panes in `task*.ts`), which the 3D office uses too
 (a window of its own, or a tab of the worker window). There it has no Terminal tab (the worker
 window has the terminal, whose tab bar also has **+ New tab** for shell tabs in the worker's folder, see [Features](features.md)), no Edit or Move, and a **🗂️ Open in the kanban** link (it opens the kanban in the same window) instead of Show in 3D (and no 🧩 VSCode: the worker
 window's header has it).

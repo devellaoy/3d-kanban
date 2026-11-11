@@ -49,7 +49,7 @@ test('without a navigator it is not a Mac', (t) => {
 });
 
 test('every prompt box uses the shared send key', () => {
-  const files = ['ui/prompt.ts', 'ui/ask.ts', 'ui/queue.ts', 'ui/meeting.ts', 'ui/github/comment-box.ts', 'kanban/create.ts', 'kanban/taskview.ts', 'kanban/issueactions.ts'];
+  const files = ['ui/prompt.ts', 'ui/ask.ts', 'ui/queue.ts', 'ui/meeting.ts', 'ui/github/comment-box.ts', 'kanban/create.ts', 'kanban/taskview.ts', 'kanban/taskconv.ts', 'kanban/taskwaiting.ts', 'kanban/issueactions.ts'];
   for (const f of files) {
     const src = readFileSync(new URL(`../src/client/${f}`, import.meta.url), 'utf8');
     assert.match(src, /from '[./]*(?:kanban\/)?sendkey'/, `${f} imports sendkey`);

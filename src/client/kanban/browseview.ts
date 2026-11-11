@@ -10,6 +10,7 @@ import type { KanbanServerMsg } from '../../shared/kanban/protocol.js';
 import type { BrowseFilters, BrowseGroup, BrowseIssue, BrowseScope } from '../../shared/kanban/browse.js';
 import { groupByEpic, groupProjectItems, issueProgress, mergeIssues, progress, type EpicNode, type ItemNode } from '../../shared/kanban/browsetree.js';
 import type { KanbanApi } from './api';
+import { lazyCounts } from './browsecounts';
 import { MAX_EMPTY_PAGES, afterPage, hasMoreKids, isContext, issueSignature, parentTaskId, syncChildren, viewsFor } from './browsesync';
 
 /** What a row of an issue that doesn't match the filters says. */
@@ -17,7 +18,6 @@ const CONTEXT_HINT = 'Doesn’t match the filters: shown as the parent of a matc
 
 type Groups = Extract<KanbanServerMsg, { t: 'kanban.browseGroups' }>;
 type Page = Extract<KanbanServerMsg, { t: 'kanban.browsePage' }>;
-type Count = Extract<KanbanServerMsg, { t: 'kanban.browseCount' }>;
 
 export interface BrowseTreeOpts {
   api: KanbanApi;
@@ -32,9 +32,6 @@ export interface BrowseTreeOpts {
   seen(items: BrowseIssue[]): void;
 }
 
-/** How many counts may be asked for at once. */
-const COUNTS_IN_FLIGHT = 3;
-
 export function browseTree(o: BrowseTreeOpts): {
   el: HTMLElement;
   destroy(): void;
@@ -43,57 +40,7 @@ export function browseTree(o: BrowseTreeOpts): {
   const jira = o.scope.kind === 'jira';
   const ask = <T extends KanbanServerMsg>(msg: Record<string, unknown>) => o.api.request<T>({ ...base, ...msg } as never);
 
-  // ---- Lazy counts ----
-  const queue: (() => Promise<void>)[] = [];
-  let inFlight = 0;
-  const waiting = new Map<Element, () => void>();
-  const pump = () => {
-    while (inFlight < COUNTS_IN_FLIGHT && queue.length) {
-      const job = queue.shift()!;
-      inFlight++;
-      void job().finally(() => {
-        inFlight--;
-        pump();
-      });
-    }
-  };
-  const seenRows =
-    typeof IntersectionObserver === 'function'
-      ? new IntersectionObserver((entries) => {
-          for (const e of entries) {
-            if (!e.isIntersecting) continue;
-            seenRows?.unobserve(e.target);
-            waiting.get(e.target)?.();
-            waiting.delete(e.target);
-          }
-        })
-      : null;
-  /** The count of a group (or an epic in it) into `out`, once `row` is in view. */
-  const countWhen = (row: HTMLElement, out: HTMLElement, where: { group?: string; epic?: string }) => {
-    const start = () => {
-      queue.push(async () => {
-        if (!o.live()) return;
-        out.textContent = '…';
-        out.title = 'Counting…';
-        try {
-          const a = await ask<Count>({
-            t: 'kanban.browse.count',
-            filters: o.filters,
-            ...where,
-          });
-          if (!o.live()) return;
-          out.textContent = a.count === undefined ? '' : String(a.count);
-          out.title = a.count === undefined ? '' : `${jira ? 'About ' : ''}${a.count} issue${a.count === 1 ? '' : 's'}${where.epic ? '' : ' (top level)'}`;
-        } catch {
-          if (o.live()) out.textContent = '';
-        }
-      });
-      pump();
-    };
-    if (!seenRows) return start();
-    waiting.set(row, start);
-    seenRows.observe(row);
-  };
+  const { countWhen, destroy: stopCounts } = lazyCounts({ live: o.live, filters: o.filters, jira, ask });
 
   // ---- Building blocks ----
   const errorLine = (msg: string, retry: () => void) => {
@@ -584,9 +531,7 @@ export function browseTree(o: BrowseTreeOpts): {
   return {
     el,
     destroy() {
-      seenRows?.disconnect();
-      waiting.clear();
-      queue.length = 0;
+      stopCounts();
     },
   };
 }
