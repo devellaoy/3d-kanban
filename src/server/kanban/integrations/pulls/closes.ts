@@ -17,8 +17,10 @@ export interface EnsureClosing {
   prUrl: string;
   /** The issue's key: gh:owner/repo#12 (none: the task has no GitHub issue now, only `drop` is done). */
   ref?: string;
-  /** Issues the task had before: the closing line the office wrote for each is taken out (an exact line of its own, nothing else). */
+  /** Issues the task had before whose closing line the office itself added to this PR: that exact line is taken out, nothing else. */
   drop?: string[];
+  /** Issues the task had before whose line the office did not add: never edited, only said if the PR still closes them. */
+  leave?: string[];
   cwd: string;
   /** gh as the account that opened the pull request (undefined: the office's own sign-in). */
   env?: Record<string, string>;
@@ -33,6 +35,8 @@ export interface Ensured {
   added?: true;
   /** The closing lines taken out. */
   removed?: string[];
+  /** Former issues (as keys) the pull request still closes, written by someone else: left as they are. */
+  kept?: string[];
   warning?: string;
   /** gh couldn't show or edit the pull request: asking again later may work. */
   retry?: boolean;
@@ -89,7 +93,7 @@ export async function ensureClosingRef(o: EnsureClosing): Promise<Ensured> {
   const run = o.run ?? gh;
   const issue = parseGhKey(o.ref);
   const prRepo = /github\.com\/([^/]+\/[^/]+)\/pull\//.exec(o.prUrl)?.[1];
-  if (!issue && !o.drop?.length) return { edited: false };
+  if (!issue && !o.drop?.length && !o.leave?.length) return { edited: false };
   let tmp: string | undefined;
   try {
     let view: { body?: unknown; updatedAt?: unknown; baseRefName?: unknown; closingIssuesReferences?: unknown };
@@ -108,15 +112,15 @@ export async function ensureClosingRef(o: EnsureClosing): Promise<Ensured> {
     let next = body;
     const removed: string[] = [];
     const kept: string[] = [];
-    for (const key of o.drop ?? []) {
+    for (const key of [...(o.drop ?? []), ...(o.leave ?? [])]) {
       const old = parseGhKey(key);
       const gone = closingRef(key, prRepo);
       if (!old || !gone || (issue && old.number === issue.number && sameRepo(old.repo, issue.repo))) continue;
-      const cut = withoutLine(next, gone);
+      const cut = o.drop?.includes(key) ? withoutLine(next, gone) : { body: next, n: 0 };
       next = cut.body;
       if (cut.n) removed.push(gone);
       // GitHub still lists it, or the text names it: the author's own words, left alone.
-      if (closesIn(next, old, prRepo) || (!cut.n && isLinked(old))) kept.push(`${old.repo}#${old.number}`);
+      if (closesIn(next, old, prRepo) || (!cut.n && isLinked(old))) kept.push(key);
     }
     const add = !!issue && !(isLinked(issue) || closesIn(next, issue, prRepo));
     const line = add ? closingRef(o.ref, prRepo) : undefined;
@@ -131,12 +135,11 @@ export async function ensureClosingRef(o: EnsureClosing): Promise<Ensured> {
       if (again.body !== view.body || again.updatedAt !== view.updatedAt) return { edited: false, retry: true, warning: `Couldn't ${line ? `add "${line}" to` : 'take the old closing line out of'} ${o.prUrl}: the description kept changing` };
       await run(['pr', 'edit', o.prUrl, '--body-file', file], o.cwd, 60_000, o.env);
     }
-    const did: Ensured = { edited: !!(line || removed.length), ...(line ? { added: true as const } : {}), ...(removed.length ? { removed } : {}) };
+    const did: Ensured = { edited: !!(line || removed.length), ...(line ? { added: true as const } : {}), ...(removed.length ? { removed } : {}), ...(kept.length ? { kept } : {}) };
     // Closing it is for nothing when the PR doesn't go to the default branch, line added or not.
     const base = typeof view.baseRefName === 'string' ? view.baseRefName : undefined;
     const def = !issue ? '' : (o.defaultBranch ?? (prRepo ? await defaultOf(prRepo, run, o) : ''));
     const warnings = [
-      kept.length ? `${o.prUrl} still closes ${kept.join(', ')}, which the task no longer has: the author's own words, left as they are` : '',
       base && def && base !== def ? `PR targets \`${base}\`, not the default branch: GitHub closes ${o.ref!.replace(/^gh:/, '')} only when it reaches the default branch` : '',
     ].filter(Boolean);
     return warnings.length ? { ...did, warning: warnings.join('. ') } : did;
@@ -159,16 +162,68 @@ export interface ClosingMark {
   told?: true;
 }
 
-/** The GitHub issues a task had before, from its `edited` events (they carry `ticketWas`), without the one it has now. */
-function formerIssues(ctx: KanbanContext, task: { id: number; ticket?: string }): string[] {
-  const now = parseGhKey(task.ticket);
-  const out = new Map<string, string>();
-  for (const e of ctx.repo.listEvents(task.id, 500)) {
-    const was = e.kind === 'edited' ? (e.data as { ticketWas?: unknown } | undefined)?.ticketWas : undefined;
-    const key = typeof was === 'string' ? parseGhKey(was) : undefined;
-    if (key && !(now && key.number === now.number && sameRepo(key.repo, now.repo))) out.set(`${key.repo.toLowerCase()}#${key.number}`, was as string);
+/** What is to be done to one pull request for a task. */
+interface ClosingJob {
+  repo?: string;
+  ref?: string;
+  drop: string[];
+  leave: string[];
+}
+
+const issueId = (key: string | undefined) => {
+  const i = parseGhKey(key);
+  return i ? `${i.repo.toLowerCase()}#${i.number}` : undefined;
+};
+
+/**
+ * What each of the task's pull requests is to have done now: the line of the task's issue (not for a
+ * done task), the lines the office added for its former issues (from the `edited` events, which carry
+ * `ticketWas`, and the `closing` events, which record what the office added to which PR) taken out, and
+ * the former issues whose line it did not add only looked at, unless that was said already.
+ */
+function closingJobs(ctx: KanbanContext, project: string, task: { id: number; branch?: string; ticket?: string; status: string }): Map<string, ClosingJob> {
+  const jobs = new Map<string, ClosingJob>();
+  const now = issueId(task.ticket);
+  const events = ctx.repo.listEvents(task.id, 500);
+  const former = new Map<string, string>();
+  const did = new Set<string>();
+  for (const e of events) {
+    const d = (e.data ?? {}) as { ticketWas?: unknown; url?: unknown; ref?: unknown; did?: unknown };
+    if (e.kind === 'edited' && typeof d.ticketWas === 'string') {
+      const id = issueId(d.ticketWas);
+      if (id && id !== now) former.set(id, d.ticketWas);
+    } else if (e.kind === 'closing' && typeof d.url === 'string' && typeof d.ref === 'string') did.add(`${d.did}|${d.url}|${issueId(d.ref)}`);
   }
-  return [...out.values()];
+  const live = !!now && task.status !== 'done';
+  if (!live && !former.size) return jobs;
+  const repos = ctx.repos(project);
+  const home = repos.find((r) => r.primary)?.remote;
+  // Only the task's own branches' pull requests, in the project's repositories: not one linked by hand.
+  const branches = new Set([task.branch, ...Object.values(ctx.repo.repoBranches(task.id))]);
+  const mine = ctx.repo.prLinksOfProject(project)
+    .filter((l) => (l.state === 'OPEN' || l.state === 'DRAFT') && l.taskId === task.id)
+    .map((l) => ({ ...l, repo: l.repo ?? repos.find((r) => r.id === l.repoId)?.remote }))
+    .filter((l) => !!l.branch && branches.has(l.branch) && repos.some((r) => sameRepo(r.remote, l.repo)));
+  const job = (p: { url: string; repo?: string }) => jobs.get(p.url) ?? jobs.set(p.url, { repo: p.repo, drop: [], leave: [] }).get(p.url)!;
+  const pick = live ? closingPr(task.ticket, mine, home) : undefined;
+  if (pick) job(pick).ref = task.ticket;
+  for (const [id, key] of former) {
+    const p = closingPr(key, mine, home);
+    if (!p) continue;
+    if (did.has(`added|${p.url}|${id}`)) job(p).drop.push(key);
+    else if (!did.has(`left|${p.url}|${id}`)) job(p).leave.push(key);
+  }
+  return jobs;
+}
+
+const sigOf = (j: ClosingJob) => [j.ref ?? '', ...j.drop, '/', ...j.leave].join('|');
+
+/** The work on each pull request, one after the other (an entry goes when its chain is idle). */
+const chains = new Map<string, Promise<void>>();
+function inOrder(url: string, work: () => Promise<void>): void {
+  const next = (chains.get(url) ?? Promise.resolve()).then(work).catch((err) => console.error('agent-office: checking that a pull request closes its issue failed:', err));
+  chains.set(url, next);
+  void next.then(() => { if (chains.get(url) === next) chains.delete(url); });
 }
 
 /**
@@ -176,10 +231,12 @@ function formerIssues(ctx: KanbanContext, task: { id: number; ticket?: string })
  * (closingPr among its open ones off the task's own branches, in the project's repositories) gets
  * the closing line when it hasn't, once per pull request and task run (`checked`, by URL: the
  * task's latest run, the issues and the tries so far, READ_TRIES once done or given up; marks of pull requests
- * not seen in this pass are dropped). A task whose ticket was changed away from a GitHub issue (see
- * formerIssues) has the closing line the office wrote for the old issue taken out of the pull request that
- * closed it, a done task's too (its issue is not added to). Nothing is edited as an account user without a gh sign-in of
- * their own: a comment on the task says so, once. Fire and forget; what it did, or couldn't, goes on the task as a status comment.
+ * not seen in this pass are dropped). A task whose ticket was changed away from a GitHub issue has
+ * the closing line the office added for the old issue taken out of that pull request (closingJobs), a
+ * done task's too (its issue is not added to). Work on one pull request runs one job at a time, and a
+ * job takes the task as it is when its turn comes, so the last thing done reflects its current issue.
+ * Nothing is edited as an account user without a gh sign-in of their own: a comment on the task says
+ * so, once. Fire and forget; what it did, or couldn't, goes on the task as a status comment.
  */
 export function checkClosing(
   ctx: KanbanContext,
@@ -187,32 +244,11 @@ export function checkClosing(
   checked: Map<string, ClosingMark>,
   io: { run: GhRunner; defaultBranch(repo: string): Promise<string | undefined> },
 ): void {
-  const repos = ctx.repos(project);
-  const home = repos.find((r) => r.primary)?.remote;
-  const links = ctx.repo.prLinksOfProject(project).filter((l) => l.state === 'OPEN' || l.state === 'DRAFT');
   const seen = new Set<string>();
   for (const task of ctx.repo.listTasks(project)) {
-    const live = !!parseGhKey(task.ticket) && task.status !== 'done';
-    const old = formerIssues(ctx, task);
-    if (!live && !old.length) continue;
-    // Only the task's own branches' pull requests, in the project's repositories: not one linked by hand.
-    const branches = new Set([task.branch, ...Object.values(ctx.repo.repoBranches(task.id))]);
-    const mine = links
-      .filter((l) => l.taskId === task.id)
-      .map((l) => ({ ...l, repo: l.repo ?? repos.find((r) => r.id === l.repoId)?.remote }))
-      .filter((l) => !!l.branch && branches.has(l.branch) && repos.some((r) => sameRepo(r.remote, l.repo)));
-    // What each pull request is to have done: the new issue's line, and the old ones' taken out.
-    const jobs = new Map<string, { repo?: string; ref?: string; drop: string[] }>();
-    const job = (p: { url: string; repo?: string }) => jobs.get(p.url) ?? jobs.set(p.url, { repo: p.repo, drop: [] }).get(p.url)!;
-    const pick = live ? closingPr(task.ticket, mine, home) : undefined;
-    if (pick) job(pick).ref = task.ticket;
-    for (const key of old) {
-      const p = closingPr(key, mine, home);
-      if (p) job(p).drop.push(key);
-    }
-    for (const [url, { repo, ref, drop }] of jobs) {
+    for (const [url, job] of closingJobs(ctx, project, task)) {
       seen.add(url);
-      const sig = [ref ?? '', ...drop].join('|');
+      const sig = sigOf(job);
       const was = checked.get(url);
       if (was?.told && was.sig === sig) continue;
       // Not while a run is going: the agent may still be writing its PR's description over ours.
@@ -222,27 +258,45 @@ export function checkClosing(
       const tries = (was && was.runId === runId && was.sig === sig ? was.tries : 0) + 1;
       if (tries > READ_TRIES) continue;
       checked.set(url, { runId, sig, tries: READ_TRIES });
-      const editor = ghEditor(ctx.ghAs?.(task.createdByAccount));
-      // Told once per pull request, not once per run.
-      if ('warning' in editor) checked.set(url, { runId, sig, tries: READ_TRIES, told: true });
-      void (async () => {
-        const r: Ensured = 'warning' in editor
-          ? { edited: false, warning: ref ? `Not checking that ${url} closes ${ref.replace(/^gh:/, '')}: ${editor.warning}` : `Not taking the old closing line out of ${url}: ${editor.warning}` }
-          : await ensureClosingRef({ prUrl: url, ref, drop, cwd: ctx.dataDir, env: editor.env, run: io.run, defaultBranch: repo ? await io.defaultBranch(repo.toLowerCase()).catch(() => undefined) : undefined });
-        if (r.retry) {
-          checked.set(url, { runId, sig, tries });
-          if (tries < READ_TRIES) return;
-        }
-        const did = [
-          r.added ? `Added "${closingRef(ref, repo)}" to ${url}` : '',
-          r.removed?.length ? `Took ${r.removed.map((l) => `"${l}"`).join(', ')} out of ${url}, since the task's issue changed` : '',
-        ].filter(Boolean).join('; ');
-        const text = did ? (r.warning ? `${did}. ${r.warning}` : r.removed?.length ? did : `${did}, so merging it closes the issue`) : (r.warning ?? '');
-        if (!text) return;
-        ctx.repo.addComment({ taskId: task.id, authorKind: 'system', authorName: 'Kanban', kind: 'status', text });
-        ctx.taskChanged(task.id);
-      })().catch((err) => console.error('agent-office: checking that a pull request closes its issue failed:', err));
+      inOrder(url, () => closeOne(ctx, project, task.id, url, sig, runId, tries, checked, io));
     }
   }
   for (const url of checked.keys()) if (!seen.has(url)) checked.delete(url);
+}
+
+/** One pull request's job, when its turn comes: from the task as it is then, unless a later job has taken its place. */
+async function closeOne(
+  ctx: KanbanContext, project: string, taskId: number, url: string, queued: string, runId: number | undefined, tries: number,
+  checked: Map<string, ClosingMark>, io: { run: GhRunner; defaultBranch(repo: string): Promise<string | undefined> },
+): Promise<void> {
+  // A later pass queued another job (it runs after this one and works from the task as it is then).
+  if (checked.get(url)?.sig !== queued) return;
+  const task = ctx.repo.listTasks(project).find((t) => t.id === taskId);
+  const job = task && closingJobs(ctx, project, task).get(url);
+  if (!task || !job || task.runState !== 'idle') return void checked.delete(url);
+  const sig = sigOf(job);
+  checked.set(url, { runId, sig, tries: READ_TRIES });
+  const { ref, repo, drop, leave } = job;
+  const editor = ghEditor(ctx.ghAs?.(task.createdByAccount));
+  // Told once per pull request, not once per run.
+  if ('warning' in editor) checked.set(url, { runId, sig, tries: READ_TRIES, told: true });
+  const r: Ensured = 'warning' in editor
+    ? { edited: false, warning: ref ? `Not checking that ${url} closes ${ref.replace(/^gh:/, '')}: ${editor.warning}` : `Not taking the old closing line out of ${url}: ${editor.warning}` }
+    : await ensureClosingRef({ prUrl: url, ref, drop, leave, cwd: ctx.dataDir, env: editor.env, run: io.run, defaultBranch: repo ? await io.defaultBranch(repo.toLowerCase()).catch(() => undefined) : undefined });
+  if (r.retry) {
+    checked.set(url, { runId, sig, tries });
+    if (tries < READ_TRIES) return;
+  }
+  // What the office added is the only thing it may take out later; what it said it left is not said again.
+  if (r.added && ref) ctx.repo.appendEvent(task.id, 'closing', { url, ref, did: 'added' });
+  for (const key of r.kept ?? []) ctx.repo.appendEvent(task.id, 'closing', { url, ref: key, did: 'left' });
+  const said = [
+    r.added ? `Added "${closingRef(ref, repo)}" to ${url}` : '',
+    r.removed?.length ? `Took ${r.removed.map((l) => `"${l}"`).join(', ')} out of ${url}, since the task's issue changed` : '',
+  ].filter(Boolean).join('; ');
+  const left = r.kept?.length ? `${url} still closes ${r.kept.map((k) => k.replace(/^gh:/, '')).join(', ')}, which the task no longer has: left as it is` : '';
+  const text = [said ? (r.warning || r.removed?.length || left ? said : `${said}, so merging it closes the issue`) : '', left, r.warning ?? ''].filter(Boolean).join('. ');
+  if (!text) return;
+  ctx.repo.addComment({ taskId: task.id, authorKind: 'system', authorName: 'Kanban', kind: 'status', text });
+  ctx.taskChanged(task.id);
 }

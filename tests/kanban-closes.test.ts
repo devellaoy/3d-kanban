@@ -103,7 +103,7 @@ test('checkClosing leaves a task with a run going alone, and gives up on a pull 
   const ctx = {
     dataDir: '.',
     repos: () => [{ id: 'api', primary: true, remote: 'acme/api' }],
-    repo: { prLinksOfProject: () => [link], listTasks: () => [task], listEvents: () => [], latestRunId: () => undefined, repoBranches: () => ({}), addComment: (c: { text: string }) => void comments.push(c.text) },
+    repo: { prLinksOfProject: () => [link], listTasks: () => [task], listEvents: () => [], appendEvent() {}, latestRunId: () => undefined, repoBranches: () => ({}), addComment: (c: { text: string }) => void comments.push(c.text) },
     taskChanged() {},
   } as unknown as Parameters<typeof checkClosing>[0];
   let views = 0;
@@ -128,7 +128,7 @@ test('a task whose issue number collides with another repository’s is still ch
   const ctx = {
     dataDir: '.',
     repos: () => [{ id: 'api', primary: true, remote: 'acme/api' }],
-    repo: { prLinksOfProject: () => [link], listTasks: () => [task], listEvents: () => [], latestRunId: () => undefined, repoBranches: () => ({}), addComment() {} },
+    repo: { prLinksOfProject: () => [link], listTasks: () => [task], listEvents: () => [], appendEvent() {}, latestRunId: () => undefined, repoBranches: () => ({}), addComment() {} },
     ghAs: (id?: string) => (id === 'ada' ? { env: { GH_TOKEN: 'ada' } } : undefined),
     taskChanged() {},
   } as unknown as Parameters<typeof checkClosing>[0];
@@ -283,7 +283,7 @@ test('a kanban PR is checked again after a later run of its task, which may have
   const ctx = {
     dataDir: '.',
     repos: () => [{ id: 'api', primary: true, remote: 'acme/api' }],
-    repo: { prLinksOfProject: () => [link], listTasks: () => [task], listEvents: () => [], latestRunId: () => runs.at(-1)?.id, repoBranches: () => ({}), addComment() {} },
+    repo: { prLinksOfProject: () => [link], listTasks: () => [task], listEvents: () => [], appendEvent() {}, latestRunId: () => runs.at(-1)?.id, repoBranches: () => ({}), addComment() {} },
     taskChanged() {},
   } as unknown as Parameters<typeof checkClosing>[0];
   let body = 'Did things';
@@ -356,7 +356,7 @@ const kctx = (task: Record<string, unknown>, link: Record<string, unknown>, extr
   ({
     dataDir: '.',
     repos: () => repos,
-    repo: { prLinksOfProject: () => [link], listTasks: () => [task], listEvents: () => [], latestRunId: () => 1, repoBranches: () => ({}), addComment: (c: { text: string }) => void ((extra.comments as string[] | undefined)?.push(c.text)), },
+    repo: { prLinksOfProject: () => [link], listTasks: () => [task], listEvents: () => [], appendEvent() {}, latestRunId: () => 1, repoBranches: () => ({}), addComment: (c: { text: string }) => void ((extra.comments as string[] | undefined)?.push(c.text)), },
     ghAs: extra.ghAs,
     taskChanged() {},
   }) as unknown as Parameters<typeof checkClosing>[0];
@@ -567,14 +567,16 @@ test('a plain worker’s issue goes with its first pull request, and its warning
 });
 
 /** A pull request whose description gh shows and edits, and the task whose ticket is changed under it. */
-function movable(first: string, extra: { updatedAt?: () => string } = {}) {
+function movable(first: string, extra: { updatedAt?: () => string; office?: boolean } = {}) {
   const pr = { body: first, edits: 0 };
   const task: Record<string, unknown> = { id: 1, branch: 'b', ticket: 'gh:acme/api#7', status: 'review', runState: 'idle' };
   const events: { kind: string; data: unknown }[] = [];
   const comments: string[] = [];
   const link = { taskId: 1, repoId: 'api', repo: 'acme/api', number: 3, url: 'https://github.com/acme/api/pull/3', state: 'OPEN', branch: 'b' };
+  // The office added the line itself (its record), or the author or the agent wrote it.
+  if (extra.office) events.push({ kind: 'closing', data: { url: link.url, ref: 'gh:acme/api#7', did: 'added' } });
   const ctx = kctx(task, link, { comments });
-  (ctx.repo as unknown as { listEvents: () => unknown[] }).listEvents = () => events;
+  Object.assign(ctx.repo, { listEvents: () => events, appendEvent: (_id: number, kind: string, data: unknown) => void events.push({ kind, data }) });
   const io = {
     run: async (args: string[]) => {
       if (args[1] === 'view') return JSON.stringify({ body: pr.body, updatedAt: extra.updatedAt?.() ?? 'x', baseRefName: 'main', closingIssuesReferences: [] });
@@ -604,7 +606,7 @@ test('a ticket changed to another issue in the same run: the new line is added a
 
 test('unlinking a task takes the office’s closing line out; a non-GitHub key does too', async () => {
   for (const next of [undefined, 'UYT-12']) {
-    const t = movable('Did it\n\nCloses #7\n');
+    const t = movable('Did it\n\nCloses #7\n', { office: true });
     t.retarget(next);
     await t.sync();
     assert.equal(t.pr.body, 'Did it\n');
@@ -623,13 +625,13 @@ test('a Fixes #7 the author wrote, or Closes #7 inside prose, is not touched, an
 
 test('an old line is taken out of a done task’s open pull request, and a description edited meanwhile is looked at again', async () => {
   let stamp = 'a';
-  const t = movable('Did it\n\nCloses #7\n', { updatedAt: () => stamp });
+  const t = movable('Did it\n\nCloses #7\n', { updatedAt: () => stamp, office: true });
   t.task.status = 'done';
   t.retarget('gh:acme/api#8');
   await t.sync();
   assert.equal(t.pr.body, 'Did it\n', 'done: the old line is out, no new one is added');
   // Concurrent edit: the second read differs from the first.
-  const c = movable('Did it\n\nCloses #7\n', { updatedAt: () => (stamp += 'x') });
+  const c = movable('Did it\n\nCloses #7\n', { updatedAt: () => (stamp += 'x'), office: true });
   c.retarget(undefined);
   await c.sync();
   assert.equal(c.pr.edits, 0, 'not overwritten');
@@ -638,4 +640,52 @@ test('an old line is taken out of a done task’s open pull request, and a descr
   await c.sync();
   assert.equal(c.pr.edits, 0);
   assert.ok(c.comments.some((x) => /kept changing/.test(x)));
+});
+
+test('an exact closing line the office did not add stays, and is warned about once', async () => {
+  const t = movable('Did it\n\nCloses #7\n');
+  t.retarget(undefined);
+  await t.sync();
+  await t.sync();
+  assert.equal(t.pr.edits, 0);
+  assert.equal(t.pr.body, 'Did it\n\nCloses #7\n');
+  assert.equal(t.comments.length, 1);
+  assert.match(t.comments[0], /still closes acme\/api#7, which the task no longer has: left as it is/);
+});
+
+test('jobs on one pull request run in order and the last one reflects the task’s current issue', async () => {
+  // gh answers are released by hand: each call waits for its turn.
+  const waiting: { args: string[]; go: (v: string) => void }[] = [];
+  let body = 'Did it';
+  const task: Record<string, unknown> = { id: 1, branch: 'b', ticket: 'gh:acme/api#7', status: 'review', runState: 'idle' };
+  const events: { kind: string; data: unknown }[] = [{ kind: 'closing', data: { url: 'https://github.com/acme/api/pull/3', ref: 'gh:acme/api#7', did: 'added' } }];
+  body = 'Did it\n\nCloses #7\n';
+  const link = { taskId: 1, repoId: 'api', repo: 'acme/api', number: 3, url: 'https://github.com/acme/api/pull/3', state: 'OPEN', branch: 'b' };
+  const ctx = kctx(task, link, { comments: [] });
+  Object.assign(ctx.repo, { listEvents: () => events, appendEvent: (_i: number, kind: string, data: unknown) => void events.push({ kind, data }) });
+  const io = {
+    run: (args: string[]) => new Promise<string>((go) => waiting.push({ args, go: (v) => go(v) })),
+    defaultBranch: async () => 'main',
+  };
+  const checked = new Map<string, ClosingMark>();
+  const change = (ticket: string) => { events.push({ kind: 'edited', data: { ticketWas: task.ticket } }); task.ticket = ticket; checkClosing(ctx, 'api', checked, io); };
+  const view = () => JSON.stringify({ body, updatedAt: 'x', baseRefName: 'main', closingIssuesReferences: [] });
+  const release = async (kind: string) => {
+    for (let i = 0; i < 50 && !waiting.some((w) => w.args[1] === kind); i++) await wait(2);
+    const at = waiting.findIndex((w) => w.args[1] === kind);
+    assert.ok(at >= 0, `a pr ${kind} is asked for`);
+    const [w] = waiting.splice(at, 1);
+    if (kind === 'edit') body = (await import('node:fs')).readFileSync(w.args[w.args.indexOf('--body-file') + 1], 'utf8');
+    w.go(kind === 'view' ? view() : '');
+  };
+  change('gh:acme/api#8');
+  await wait(5);
+  change('gh:acme/api#9');
+  // The first job is in its first read; the second waits behind it, then works from the task as it is by then.
+  await release('view');
+  await release('view');
+  await release('edit');
+  for (let i = 0; i < 20; i++) await wait(3), (waiting.length ? await release(waiting[0].args[1]) : undefined);
+  assert.equal(body, 'Did it\n\nCloses #9\n');
+  assert.equal(checked.get('https://github.com/acme/api/pull/3')?.sig?.startsWith('gh:acme/api#9'), true);
 });
