@@ -1,7 +1,6 @@
 /* The kanban page's bottom bar (workerbar.ts): the floor's plain workers as tabs, and the buttons for
    a new one. The mirror of the top bar (.kb-bar): the same surface, with the ink line on top. */
 .kb-wbar { flex: none; z-index: 30; display: flex; align-items: center; gap: 8px; min-width: 0; padding: 5px 14px; padding-bottom: max(5px, env(safe-area-inset-bottom)); padding-left: max(14px, env(safe-area-inset-left)); padding-right: max(14px, env(safe-area-inset-right)); background: var(--paper-2); border-top: var(--bw) solid var(--ink); color: var(--text); }
-.kb-wbar-floor { flex: none; max-width: 22vw; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--fs-sm); font-weight: var(--fw-heavy); }
 .kb-wbar-note { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--fs-sm); font-weight: var(--fw-semibold); line-height: 40px; color: var(--muted); }
 /* Another floor's project is on the board: the way back takes the tabs' place. */
 .kb-wbar .btn.small { height: 32px; }
@@ -13,10 +12,17 @@
 /* The tabs: one row that scrolls sideways and never wraps. The padding is the room a tab's shadow and
    its focus ring need inside the scroller. */
 .kb-wtabs { flex: 1; min-width: 0; display: flex; align-items: center; gap: 6px; padding: 3px 3px 5px; overflow-x: auto; overflow-y: hidden; scrollbar-width: thin; overscroll-behavior-x: contain; }
-.kb-wtab { flex: none; display: inline-flex; align-items: center; gap: 6px; height: 32px; max-width: 260px; padding: 0 7px 0 9px; font: var(--fw-bold) var(--fs-sm) var(--font); color: var(--text); background: var(--field); border: var(--bw-sm) solid var(--ink); border-radius: var(--radius-md); box-shadow: var(--shadow-xs); cursor: pointer; transition: transform .05s; }
+/* A tab is two buttons in one frame: the worker (opens its terminal) and a ✕ (sends it home). */
+.kb-wtab { flex: none; display: inline-flex; align-items: stretch; height: 32px; max-width: 300px; color: var(--text); background: var(--field); border: var(--bw-sm) solid var(--ink); border-radius: var(--radius-md); box-shadow: var(--shadow-xs); transition: transform .05s; }
 .kb-wtab:hover { background: var(--field-hover); }
-.kb-wtab:active { transform: translateY(var(--press)); box-shadow: var(--shadow-pressed); }
-.kb-wtab:focus-visible { outline: var(--focus-ring); outline-offset: 0; }
+.kb-wtab:has(.kb-wtab-open:active) { transform: translateY(var(--press)); box-shadow: var(--shadow-pressed); }
+.kb-wtab button { font: var(--fw-bold) var(--fs-sm) var(--font); color: inherit; background: none; border: 0; border-radius: calc(var(--radius-md) - var(--bw-sm)); cursor: pointer; }
+.kb-wtab button:focus-visible { outline: var(--focus-ring); outline-offset: 0; }
+.kb-wtab-open { flex: 0 1 auto; min-width: 0; display: inline-flex; align-items: center; gap: 6px; padding: 0 4px 0 9px; }
+.kb-wtab-close { flex: none; width: 26px; padding: 0; line-height: 1; color: var(--muted); }
+.kb-wtab-close:hover { color: var(--text); background: var(--bad-soft); }
+.kb-wtab-close.hidden { display: none; }
+.kb-wtab-open:has(+ .kb-wtab-close.hidden) { padding-right: 7px; }
 .kb-wtab-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .kb-wtab .pill { flex: none; }
 /* One that's waiting on you stands out; one that's asleep or gone steps back. */
@@ -30,8 +36,7 @@
   .kb-wbar { gap: 6px; padding-top: 4px; padding-left: max(10px, env(safe-area-inset-left)); padding-right: max(10px, env(safe-area-inset-right)); }
   .kb-wbar .kb-lbl { display: none; }
   .kb-wbar-actions { gap: 6px; }
-  .kb-wbar-floor { max-width: 26vw; font-size: var(--fs-xs); }
-  .kb-wtab { max-width: 190px; }
+  .kb-wtab { max-width: 240px; }
 }
 /* A phone on its side: one low row. */
 @media (max-height: 500px) {

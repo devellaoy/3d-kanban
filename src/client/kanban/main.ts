@@ -328,8 +328,8 @@ const { boardActions, hireNew, openShell } = officeActions(net, (id) => {
 });
 
 /** The bottom bar: the floor's plain workers as tabs (their terminals as the 2D view opens them), and a new worker or shell. */
-const { openWorker: openPlainWorker } = workerOpener(net, { keypad: () => window.matchMedia('(max-width: 700px)').matches });
-const workerBar = installWorkerBar({ root: $('kb-workers'), openWorker: openPlainWorker, hireNew, openShell, boardProject: () => kstore.project, projectName: (id) => kstore.projectOf(id)?.name, goToFloor: (id) => net.send({ t: 'floor.go', floor: id }) });
+const { openWorker: openPlainWorker, sendHome } = workerOpener(net, { keypad: () => window.matchMedia('(max-width: 700px)').matches });
+const workerBar = installWorkerBar({ root: $('kb-workers'), openWorker: openPlainWorker, sendHome, hireNew, openShell, boardProject: () => kstore.project, projectName: (id) => kstore.projectOf(id)?.name, goToFloor: (id) => net.send({ t: 'floor.go', floor: id }) });
 
 function showIssues() {
   const p = kstore.project ?? (kstore.projectOf(store.floor ?? undefined) ? store.floor : kstore.projects[0]?.id);
