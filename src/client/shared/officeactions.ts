@@ -4,7 +4,7 @@
 // terminal instead (`openWorker`).
 
 import { DESK_BY_ID, nextFreeSeat } from '../../shared/layout';
-import { officeFull } from '../../shared/machine';
+import { officeFull, pressureNote } from '../../shared/machine';
 import { isAsleep } from '../../shared/status';
 import type { AgentEffort, AgentProvider } from '../../shared/protocol';
 import type { Net } from '../net';
@@ -18,16 +18,64 @@ import { promptKind } from '../kanban/office';
 import { askWorker, hireOption } from '../kanban/office3d';
 import { cardTask } from '../kanban/issuecards'; // a card from the issue sources too
 import { openAsk } from '../ui/ask';
+import { openPrompt } from '../ui/prompt';
 import { openMeeting, type MeetingPreset } from '../ui/meeting';
 import { repoChoices } from './hiring';
 
 export function officeActions(net: Net, openWorker: (id: string) => void) {
-  function hire(deskId: string, prompt: string, worktree: boolean, provider?: AgentProvider, model?: string, effort?: AgentEffort, repos?: string[], extra: { attachmentIds?: string[]; meeting?: string } = {}) {
+  function hire(deskId: string, prompt: string | undefined, worktree: boolean, provider?: AgentProvider, model?: string, effort?: AgentEffort, repos?: string[], extra: { attachmentIds?: string[]; meeting?: string } = {}) {
     net.send({ t: 'worker.spawn', deskId, prompt, worktree, provider, model, effort, repos: repos?.length ? repos : undefined, ...(extra.attachmentIds?.length ? { attachmentIds: extra.attachmentIds } : {}), ...(extra.meeting ? { meeting: extra.meeting } : {}) });
   }
 
   /** The next free seat for a new worker, the back office's included as far as the floor's built out (see WING). */
   const freeSeat = () => nextFreeSeat((id) => !!store.workerAtDesk(id), store.floorPlan.wing, store.plan().removed)?.id;
+
+  /** The office is at its worker limit: says so, and says yes (the office would refuse the hire anyway). */
+  function officeIsFull(): boolean {
+    const m = store.machine;
+    if (!officeFull(m)) return false;
+    toast(`🚫 The office is at its limit of ${m.limit} worker${m.limit === 1 ? '' : 's'} — send one home before hiring another`, 'warn');
+    return true;
+  }
+
+  /** The desk for a new worker from the kanban page's bar, or why there is none (said in a toast). */
+  function deskForNew(): string | undefined {
+    if (!store.project) return void toast('Pick a floor first', 'warn');
+    if (officeIsFull()) return;
+    const desk = freeSeat();
+    if (!desk) toast('Every desk and bean bag is taken — send a worker home first, or put a bean bag down in build mode (U)', 'warn');
+    return desk;
+  }
+
+  /** The 3D office's plain hire dialog, without the kanban's option and attachments. */
+  function hireNew(floorName?: string) {
+    const desk = deskForNew();
+    if (!desk || !store.project) return;
+    openPrompt({
+      title: `✨ Hire a worker at ${DESK_BY_ID.get(desk)!.label}${floorName ? ` · ${floorName}` : ''}`,
+      subtitle: 'You can start with an empty prompt and send work later.',
+      warning: pressureNote(store.machine),
+      placeholder: 'Optional first task…',
+      submitLabel: 'Hire & start',
+      allowEmpty: true,
+      providerOption: true,
+      worktreeOption: !!store.project.branch,
+      repoOptions: repoChoices(),
+      // A kanban task may have taken that desk while the dialog was open (the engine picks seats the same way): the next free one then.
+      onSubmit: (text, o) => {
+        const seat = store.workerAtDesk(desk) ? freeSeat() : desk;
+        if (!seat) return void toast('Every desk and bean bag is taken — send a worker home first, or put a bean bag down in build mode (U)', 'warn');
+        hire(seat, text || undefined, o.worktree, o.provider, o.model, o.effort, o.repos);
+      },
+    });
+  }
+
+  /** A shell at the next free desk; the desk's id, or undefined when nothing was sent. */
+  function openShell(): string | undefined {
+    const deskId = deskForNew();
+    if (deskId) net.send({ t: 'worker.spawn', deskId, kind: 'shell' });
+    return deskId;
+  }
 
   function sendToWorker(title: string, text: { context?: string; initial?: string } = {}) {
     if (!store.project) return toast('Pick a floor first', 'warn');
@@ -92,11 +140,7 @@ export function officeActions(net: Net, openWorker: (id: string) => void) {
             const id = freeSeat();
             return id ? { id, label: DESK_BY_ID.get(id)!.label } : undefined;
           },
-          officeIsFull: () => {
-            if (!officeFull(store.machine)) return false;
-            toast(`🚫 The office is at its limit of ${store.machine.limit} workers — send one home before hiring another`, 'warn');
-            return true;
-          },
+          officeIsFull,
           hire: (deskId, prompt, o) => hire(deskId, prompt, o.worktree, o.provider, o.model, o.effort, o.repos, o),
         },
       },
@@ -104,5 +148,5 @@ export function officeActions(net: Net, openWorker: (id: string) => void) {
     );
   }
 
-  return { boardActions, sendToWorker, showMeeting, freeSeat, hire };
+  return { boardActions, sendToWorker, showMeeting, freeSeat, hire, officeIsFull, hireNew, openShell };
 }
