@@ -406,7 +406,7 @@ enough, elsewhere the `code` command must be on the PATH. Its tabs:
   has many). A window lists them with their state and branch, you tick the ones that are this task's and
   press **Link selected**. A repository that couldn't be searched, or a PR it left out, is told in a message.
 - **Issue**: the issue the task's ticket names (a Jira key, `gh:owner/repo#12`), as the issue window
-  shows it: the text, status, assignee and comments, with the same actions (see *Working on an issue*)
+  shows it: the title, the text, status, assignee and comments, with the same actions (see *Working on an issue*)
   and a **🔄 Refresh** that reads it from the source again. A task without a ticket says so (add one
   with **✏️ Edit**); an issue the sources can't find or you can't read shows the ticket, the reason and
   **🔄 Try again**. The tab is in the embedded task window too, and `&tab=issue` opens it.

@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { toGhIssue } from '../src/shared/kanban/issuecard.js';
-import { actionIssue, actionsTarget, closesOrReopens, keyedComment, safeUrl, shownStatus, groupTransitions, isGithubKey, jiraSite, pinnedMe, transitionLabel } from '../src/client/kanban/issueactionsmodel.js';
+import { LIST_BODY, listedBody, actionIssue, actionsTarget, closesOrReopens, keyedComment, safeUrl, shownStatus, groupTransitions, isGithubKey, jiraSite, pinnedMe, transitionLabel } from '../src/client/kanban/issueactionsmodel.js';
 
 test('only a card with a key on a floor with a project gets the issue actions', () => {
   assert.equal(actionsTarget({}, 'demo'), undefined, 'upstream’s key-less issue keeps its own window as it was');
@@ -64,4 +64,14 @@ test('the status shown is the choices’ own when they name one; only a close or
 test('a 3D card opened through a source hands that source to the actions panel', () => {
   const card = toGhIssue({ source: 'jira', key: 'DEV-1', title: 't', url: 'https://x.atlassian.net/browse/DEV-1', body: '', labels: [], updatedAt: '', sourceId: 'src-2' });
   assert.equal(actionIssue(card).sourceId, 'src-2');
+});
+
+test('the issues list cuts a body: a cut copy never replaces the full one it is the start of', () => {
+  const full = 'x'.repeat(LIST_BODY + 500);
+  assert.equal(listedBody(full, full.slice(0, LIST_BODY)), full, 'the same issue, listed cut');
+  assert.equal(listedBody(full.slice(0, LIST_BODY), full.slice(0, LIST_BODY)), full.slice(0, LIST_BODY));
+  assert.equal(listedBody(full, 'edited'), 'edited', 'a short body is whole: the source changed');
+  const changed = 'y' + 'x'.repeat(LIST_BODY + 100);
+  assert.equal(listedBody(full, changed.slice(0, LIST_BODY)), changed.slice(0, LIST_BODY), 'changed within the first part');
+  assert.equal(listedBody('', 'new'), 'new');
 });

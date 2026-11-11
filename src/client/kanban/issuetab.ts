@@ -27,7 +27,7 @@ export function mountIssueTab(api: KanbanApi, openTask: (id: number) => void): {
   };
   const fail = (task: KanbanTask, why: string) => {
     const url = safeUrl(task.ticketUrl);
-    const again = h('button.btn.small', { type: 'button' }, '🔄 Try again') as HTMLButtonElement;
+    const again = h('button.btn.small', { type: 'button', 'data-focus': 'issue-retry' }, '🔄 Try again') as HTMLButtonElement;
     again.addEventListener('click', () => show(task, true));
     host.replaceChildren(
       h('div.kb-iw-miss', {}, url ? h('a.kb-iw-key', { href: url, target: '_blank', rel: 'noopener noreferrer', title: 'Open it at the source' }, `${task.ticket} ↗`) : h('span.kb-iw-key', {}, task.ticket), h('p.kb-muted', {}, why), again),
@@ -43,7 +43,7 @@ export function mountIssueTab(api: KanbanApi, openTask: (id: number) => void): {
         if (!issue || !current(k)) return;
         const refresh = h('button.btn.small', { type: 'button', title: 'Read the issue from its source again' }, '🔄 Refresh') as HTMLButtonElement;
         const reload = () => load(task, true);
-        view = issueView(api, task.project, issue, openTask, { reload });
+        view = issueView(api, task.project, issue, openTask, { reload, title: true });
         refresh.addEventListener('click', () => {
           refresh.disabled = true;
           reload()

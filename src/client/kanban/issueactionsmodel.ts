@@ -95,3 +95,16 @@ export function groupTransitions(ts: readonly IssueTransition[]): [string, Issue
   }
   return [...groups];
 }
+
+/** How much of a body the office's issues list carries (LIST_BODY in the server's issues module): a plain cut, no marker. */
+export const LIST_BODY = 4000;
+
+/**
+ * The body to show when the issues list (cut at LIST_BODY) has the issue again: a listed body that
+ * is full length may be a cut one, and when it is the start of the body held (the full one from
+ * kanban.issue.get) nothing has changed, so the held body stays. A shorter listed body is whole
+ * and wins; so does a full-length one that differs from the held start (the source changed).
+ */
+export function listedBody(held: string, listed: string): string {
+  return listed.length >= LIST_BODY && held.startsWith(listed) ? held : listed;
+}

@@ -7,7 +7,7 @@ import { h, timeAgo } from '../ui/dom';
 import type { NormalizedIssue } from '../../shared/kanban/types.js';
 import type { KanbanApi } from './api';
 import { issueActions } from './issueactions';
-import { actionIssue, safeUrl } from './issueactionsmodel';
+import { actionIssue, listedBody, safeUrl } from './issueactionsmodel';
 import { SOURCE_KIND_NAMES } from './labels';
 import { renderMarkdown } from './md';
 
@@ -24,13 +24,16 @@ export interface IssueView {
 /**
  * `reload` fetches the issue again (a browsed one is not on the issues list, so nothing else keeps it
  * current): called after a change made from the panel, and its answer repaints the view.
+ * `title` puts the issue's title at the top (the issue window's frame shows it already).
  */
-export function issueView(api: KanbanApi, projectId: string, first: NormalizedIssue, openTask: (id: number) => void, opts: { reload?: () => Promise<NormalizedIssue | undefined> } = {}): IssueView {
+export function issueView(api: KanbanApi, projectId: string, first: NormalizedIssue, openTask: (id: number) => void, opts: { reload?: () => Promise<NormalizedIssue | undefined>; title?: boolean } = {}): IssueView {
   let it = first;
   const painted: ((issue: NormalizedIssue) => void)[] = [];
   const top = h('div.kb-iw-top');
   const chips = h('span.kb-chips');
-  const desc = h('div.kb-iw-desc', {}, renderMarkdown(it.body, openTask));
+  const heading = opts.title ? h('h3.kb-iw-title') : null;
+  const desc = h('div.kb-iw-desc');
+  let shownBody: string | undefined;
   const reload = async () => {
     const fresh = await opts.reload?.();
     if (!fresh) return;
@@ -40,8 +43,11 @@ export function issueView(api: KanbanApi, projectId: string, first: NormalizedIs
   const panel = issueActions(api, projectId, actionIssue(it), { openTask, onChanged: () => void reload() });
   const url = safeUrl(it.url);
   top.append(url ? h('a.kb-iw-key', { href: url, target: '_blank', rel: 'noopener noreferrer', title: 'Open it at the source' }, `${it.key} ↗`) : h('span.kb-iw-key', {}, it.key), chips);
-  const el = h('div.kb-iw', {}, top, desc, panel.el);
+  const el = h('div.kb-iw', {}, heading, top, desc, panel.el);
   const paint = () => {
+    if (heading && heading.textContent !== it.title) heading.textContent = it.title;
+    // Only when the body changed, so a repaint keeps the reader's scroll and selection.
+    if (it.body !== shownBody) desc.replaceChildren(renderMarkdown((shownBody = it.body), openTask));
     chips.replaceChildren(
       h('span.kb-chip', {}, SOURCE_KIND_NAMES[it.source]),
       it.status ? h('span.kb-chip.status', {}, it.status) : '',
@@ -57,7 +63,7 @@ export function issueView(api: KanbanApi, projectId: string, first: NormalizedIs
     if (msg.t !== 'kanban.issues' || msg.project !== projectId) return;
     const fresh = msg.items.find((i) => i.key === it.key);
     if (!fresh) return;
-    it = { ...fresh, taskId: fresh.taskId ?? it.taskId };
+    it = { ...fresh, taskId: fresh.taskId ?? it.taskId, body: listedBody(it.body, fresh.body) };
     paint();
   });
   paint();
