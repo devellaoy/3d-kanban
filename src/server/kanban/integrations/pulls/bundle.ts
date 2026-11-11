@@ -76,6 +76,25 @@ export interface BranchPr {
   pull: Pick<GhPull, 'number' | 'url' | 'state' | 'isDraft'>;
 }
 
+/** The active tasks on each (repository, branch), by `remote.toLowerCase()\nbranch`. A branch is owned per repository and the primary repository's falls back to the task's `branch`. */
+export function branchOwners(tasks: BranchTask[], reposOf: (project: string) => Pick<ProjectRepo, 'id' | 'kind' | 'remote' | 'primary'>[]): Map<string, { task: BranchTask; repoId: string; remote: string }[]> {
+  const owners = new Map<string, { task: BranchTask; repoId: string; remote: string }[]>();
+  for (const t of tasks) {
+    for (const r of reposOf(t.project)) {
+      const branch = t.branches[r.id] ?? (r.primary ? t.branch : undefined);
+      if (r.kind !== 'git' || !r.remote || !branch) continue;
+      const key = `${r.remote.toLowerCase()}\n${branch}`;
+      owners.set(key, [...(owners.get(key) ?? []), { task: t, repoId: r.id, remote: r.remote }]);
+    }
+  }
+  return owners;
+}
+
+/** Whether a task other than `taskId` is on that branch of that repository (`owners`: branchOwners). */
+export function sharedBranch(owners: ReturnType<typeof branchOwners>, taskId: number, repo: string, branch: string): boolean {
+  return !!owners.get(`${repo.toLowerCase()}\n${branch}`)?.some((o) => o.task.id !== taskId);
+}
+
 /**
  * The open or draft PRs whose head branch is an active task's in that repository, created no
  * earlier than the task (a PR with no readable createdAt isn't), of the `project` being synced.
@@ -98,15 +117,7 @@ export function branchPrs(
 ): BranchPr[] {
   const heads = pulls.filter((p) => p.headRefName && !p.isCrossRepository && !INTEGRATION_BRANCHES.has(p.headRefName.toLowerCase()) && (prState(p) === 'OPEN' || prState(p) === 'DRAFT'));
   if (!heads.length) return [];
-  const owners = new Map<string, { task: BranchTask; repoId: string; remote: string }[]>();
-  for (const t of tasks()) {
-    for (const r of reposOf(t.project)) {
-      const branch = t.branches[r.id] ?? (r.primary ? t.branch : undefined);
-      if (r.kind !== 'git' || !r.remote || !branch) continue;
-      const key = `${r.remote.toLowerCase()}\n${branch}`;
-      owners.set(key, [...(owners.get(key) ?? []), { task: t, repoId: r.id, remote: r.remote }]);
-    }
-  }
+  const owners = branchOwners(tasks(), reposOf);
   const out: BranchPr[] = [];
   const seen = new Set<string>();
   for (const p of heads) {
@@ -193,7 +204,8 @@ export interface FoundPr {
  * the task's in that repository, in any state (the caller links the open and the newer ones at once
  * and only offers an old closed one: a reused branch like staging has many), `byTicket` those whose
  * title or branch names the task's ticket (only offered: tasks of one ticket, or a similar title,
- * share them). A PR another task owns (`ownersOf`: the tasks it is linked to) is `skipped`, never
+ * share them). A branch match whose branch another task (`shared`) is on too is ambiguous: it is
+ * returned in `shared`, to be offered and never linked at once. A PR another task owns (`ownersOf`: the tasks it is linked to) is `skipped`, never
  * taken over; one this task has linked already is in none of the lists.
  *
  * Unlike the automatic branchPrs this deliberately has no "only active tasks" or "only open and
@@ -204,8 +216,10 @@ export function findTaskPrs(
   lists: FoundList[],
   task: Pick<KanbanTask, 'id' | 'branch' | 'ticket'> & { branches: Record<string, string> },
   ownersOf: (pr: { repo: string; number: number; url: string }) => number[],
-): { byBranch: FoundPr[]; byTicket: FoundPr[]; skipped: { repo: string; number: number; reason: string }[] } {
+  shared: (repo: string, branch: string) => boolean = () => false,
+): { byBranch: FoundPr[]; sharedBranch: FoundPr[]; byTicket: FoundPr[]; skipped: { repo: string; number: number; reason: string }[] } {
   const byBranch: FoundPr[] = [];
+  const sharedBranch: FoundPr[] = [];
   const byTicket: FoundPr[] = [];
   const skipped: { repo: string; number: number; reason: string }[] = [];
   const token = ticketToken(task.ticket);
@@ -227,8 +241,8 @@ export function findTaskPrs(
       if (other !== undefined) skip(`already linked to task #${other}`);
       else if (onBranch && INTEGRATION_BRANCHES.has((branch ?? '').toLowerCase())) skip(`its branch ${branch} is an integration branch`);
       else if (onBranch && p.isCrossRepository) skip('it comes from a fork');
-      else (onBranch ? byBranch : byTicket).push({ repoId: l.repoId, repo: l.repo, pull: p });
+      else (onBranch ? (shared(l.repo, branch!) ? sharedBranch : byBranch) : byTicket).push({ repoId: l.repoId, repo: l.repo, pull: p });
     }
   }
-  return { byBranch, byTicket, skipped };
+  return { byBranch, sharedBranch, byTicket, skipped };
 }

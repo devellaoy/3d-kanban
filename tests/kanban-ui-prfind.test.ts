@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { foundToasts, linkedText } from '../src/client/kanban/prfindmodel.js';
+import { PR_LINK_MAX, canPickMore, foundToasts, linkedText, pickedText } from '../src/client/kanban/prfindmodel.js';
 
 const pr = (n: number) => ({ repo: 'acme/api', number: n });
 const none = { linked: [], candidates: [], skipped: [], notes: [] };
@@ -20,4 +20,11 @@ test('skipped pull requests and unsearchable repositories are one warning each',
 
 test('a long list of links is cut short', () => {
   assert.equal(linkedText([1, 2, 3, 4, 5, 6].map(pr)), 'Linked acme/api#1, acme/api#2, acme/api#3, acme/api#4 and 2 more');
+});
+
+test('one go links at most 20 pull requests: a further tick is refused and the window counts', () => {
+  assert.equal(PR_LINK_MAX, 20);
+  assert.deepEqual([19, 20, 21].map(canPickMore), [true, false, false]);
+  assert.equal(pickedText(3, 20), '', 'nothing to say while every candidate fits');
+  assert.equal(pickedText(3, 21), '3 of at most 20 selected');
 });

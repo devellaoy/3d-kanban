@@ -2,6 +2,15 @@
 // -> toasts. Kept free of the DOM so a test can read it.
 
 import type { PrRef } from '../../shared/kanban/types.js';
+import { PR_LINK_MAX } from '../../shared/kanban/prmsgs.js';
+
+export { PR_LINK_MAX };
+
+/** Whether one more PR may be ticked when `picked` are: one go links at most PR_LINK_MAX. */
+export const canPickMore = (picked: number): boolean => picked < PR_LINK_MAX;
+
+/** What the window says of its ticks: only when there are more candidates than one go takes. */
+export const pickedText = (picked: number, candidates: number): string => (candidates > PR_LINK_MAX ? `${picked} of at most ${PR_LINK_MAX} selected` : '');
 
 export interface FoundToast {
   text: string;

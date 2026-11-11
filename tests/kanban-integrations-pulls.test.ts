@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { mkdirSync } from 'node:fs';
 import path from 'node:path';
 import { MergeWatch } from '../src/server/github.js';
-import { branchPrs, findBundle, findTaskPrs, mentionsTicket, prState, ticketToken, type RepoPulls } from '../src/server/kanban/integrations/pulls/bundle.js';
+import { branchOwners, branchPrs, findBundle, findTaskPrs, mentionsTicket, prState, sharedBranch, ticketToken, type RepoPulls } from '../src/server/kanban/integrations/pulls/bundle.js';
 import { createPullsParts } from '../src/server/kanban/integrations/pulls/index.js';
 import { floorPulled } from '../src/server/kanban/integrations/pulls/board.js';
 import { PR_REVIEW_MAX } from '../src/shared/kanban/types.js';
@@ -611,6 +611,46 @@ test('an unlinked PR is not linked again by the branch sync; Find or Link select
   assert.equal(ctx.repo.listPrLinks(t.id).length, 1);
   await unlink();
   assert.deepEqual(await parts.syncPrStates('web', board), []);
+  assert.equal(ctx.repo.listPrLinks(t.id).length, 0);
+});
+
+test('findTaskPrs: a branch another task is on too goes to sharedBranch, not byBranch; sharedBranch ignores the task itself', () => {
+  const t = (id: number, branch: string) => ({ id, project: 'web', createdAt: 0, branch, branches: {} });
+  const repos = () => [{ id: 'web', kind: 'git' as const, remote: 'o/web', primary: true }];
+  const owners = branchOwners([t(1, 'kanban/a'), t(2, 'kanban/a'), t(3, 'kanban/c')], repos);
+  assert.deepEqual([sharedBranch(owners, 1, 'O/Web', 'kanban/a'), sharedBranch(owners, 3, 'o/web', 'kanban/c'), sharedBranch(owners, 3, 'o/web', 'kanban/a')], [true, false, true]);
+  const got = findTaskPrs([flist('o/web', 'web', [fpull(1, 'kanban/a'), fpull(2, 'kanban/a2')], true)], { id: 7, branch: 'kanban/a', ticket: undefined, branches: {} }, () => [], (repo, branch) => branch === 'kanban/a' && repo === 'o/web');
+  assert.deepEqual([got.byBranch.length, got.sharedBranch.map((b) => b.pull.number)], [0, [1]]);
+});
+
+test('kanban.pr.find: a branch two tasks share is only offered; a task alone on its branch gets its open PR linked', async () => {
+  const { ctx, mk, ws } = findSetup({ 'o/web': [fpull(1, 'kanban/shared'), fpull(2, 'kanban/solo')], 'o/api': [] });
+  const a = mk('A', undefined, 'kanban/shared');
+  const b = mk('B', undefined, 'kanban/shared');
+  const solo = mk('C', undefined, 'kanban/solo');
+  const c = client();
+  for (const t of [a, b]) {
+    await ws['kanban.pr.find']!(c, { t: 'kanban.pr.find', project: 'web', taskId: t.id });
+    const got = lastOf(c, 'kanban.prFound');
+    assert.deepEqual(got.linked, []);
+    assert.deepEqual(got.candidates.map((x) => x.number), [1]);
+    assert.equal(ctx.repo.listPrLinks(t.id).length, 0);
+  }
+  await ws['kanban.pr.find']!(c, { t: 'kanban.pr.find', project: 'web', taskId: solo.id });
+  assert.deepEqual(lastOf(c, 'kanban.prFound').linked, [{ repo: 'o/web', number: 2 }]);
+});
+
+test('kanban.pr.unlink by repoId takes off an old link stored without repo, and the sync does not relink it', async () => {
+  const { ctx, mk, parts, ws } = findSetup({ 'o/web': [], 'o/api': [] });
+  const t = mk('A', undefined, 'office/a');
+  const p = fpull(10, 'office/a', 'mine', 'OPEN', { createdAt: LATER });
+  ctx.repo.upsertPrLink(t.id, { repoId: 'web', number: 10, url: p.url, state: 'OPEN' });
+  const c = client();
+  await ws['kanban.pr.unlink']!(c, { t: 'kanban.pr.unlink', project: 'web', taskId: t.id, repoId: 'web', number: 10 });
+  assert.equal(lastOf(c, 'kanban.ok').t, 'kanban.ok');
+  assert.equal(ctx.repo.listPrLinks(t.id).length, 0);
+  assert.deepEqual(ctx.repo.listEvents(t.id, 5).filter((e) => e.kind === 'pr.unlinked').map((e) => (e.data as { repo?: string }).repo), ['o/web']);
+  assert.deepEqual(await parts.syncPrStates('web', [{ ...p, repo: 'o/web' }] as unknown as GhPull[]), [], 'the sync leaves it unlinked');
   assert.equal(ctx.repo.listPrLinks(t.id).length, 0);
 });
 

@@ -5,7 +5,10 @@
 
 import type { KanbanEffort, KanbanPrBundleItem, KanbanPrBundleKey, KanbanTool, PrRef } from './types.js';
 import { KANBAN_EFFORTS, KANBAN_TOOLS, PR_REVIEW_MAX } from './types.js';
-import { KANBAN_LIMITS, bad, bool, id, isObj, isRepoName, list, model, optOneOf, project, text, type Obj, type Req } from './validate.js';
+import { KANBAN_LIMITS, PROJECT_ID_RE, bad, bool, id, isObj, isRepoName, list, model, optOneOf, project, text, type Obj, type Req } from './validate.js';
+
+/** How many pull requests one kanban.pr.link takes (the review's limit too). */
+export const PR_LINK_MAX = PR_REVIEW_MAX;
 
 export type PrClientMsg =
   /**
@@ -22,8 +25,8 @@ export type PrClientMsg =
   | Req<{ t: 'kanban.pr.find'; project: string; taskId: number }>
   /** Links pull requests to the task by hand; answered with kanban.ok. */
   | Req<{ t: 'kanban.pr.link'; project: string; taskId: number; prs: PrRef[] }>
-  /** Takes a pull request off the task; answered with kanban.ok. */
-  | Req<{ t: 'kanban.pr.unlink'; project: string; taskId: number; repo: string; number: number }>;
+  /** Takes a pull request off the task, named by its link's `repoId` (older links have no `repo`) or its `repo`, one of them at least; answered with kanban.ok. */
+  | Req<{ t: 'kanban.pr.unlink'; project: string; taskId: number; number: number; repoId?: string; repo?: string }>;
 
 export type PrServerMsg =
   | { t: 'kanban.pr.bundle'; rid?: string; project: string; key: KanbanPrBundleKey; prs: KanbanPrBundleItem[]; error?: string }
@@ -50,7 +53,7 @@ export function prRef(x: unknown): PrRef {
 }
 function prRefs(v: unknown): PrRef[] {
   const seen = new Set<string>();
-  const prs = list(v, 'prs', PR_REVIEW_MAX, prRef).filter((p) => {
+  const prs = list(v, 'prs', PR_LINK_MAX, prRef).filter((p) => {
     const key = `${p.repo.toLowerCase()}#${p.number}`;
     if (seen.has(key)) return false;
     seen.add(key);
@@ -96,7 +99,11 @@ export function parsePrMsg(t: PrClientMsg['t'], r: Obj): Bare<PrClientMsg> {
       return { t, project: project(r.project), taskId: id(r.taskId, 'taskId') };
     case 'kanban.pr.link':
       return { t, project: project(r.project), taskId: id(r.taskId, 'taskId'), prs: prRefs(r.prs) };
-    case 'kanban.pr.unlink':
-      return { t, project: project(r.project), taskId: id(r.taskId, 'taskId'), ...prRef(r) };
+    case 'kanban.pr.unlink': {
+      if (r.repoId === undefined && r.repo === undefined) bad('Name the pull request’s repository: repoId or repo');
+      if (r.repoId !== undefined && (typeof r.repoId !== 'string' || !PROJECT_ID_RE.test(r.repoId))) bad('repoId must be a repository id');
+      const number = prRef({ repo: 'a/b', number: r.number }).number;
+      return { t, project: project(r.project), taskId: id(r.taskId, 'taskId'), number, ...(r.repoId !== undefined ? { repoId: r.repoId as string } : {}), ...(r.repo !== undefined ? { repo: prRef({ repo: r.repo, number }).repo } : {}) };
+    }
   }
 }

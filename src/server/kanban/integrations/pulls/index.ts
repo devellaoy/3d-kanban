@@ -20,7 +20,7 @@ import type { GhRunner } from '../issues/source.js';
 import { fail, ok } from '../util.js';
 import { forkTest, polledPulls } from './prfix.js';
 import { checkClosing, type ClosingMark } from './closes.js';
-import { branchPrs, findBundle, findTaskPrs, prOwners, prState, type BundleBy, type FoundList, type FoundPr, type RepoPulls } from './bundle.js';
+import { branchOwners, branchPrs, findBundle, findTaskPrs, sharedBranch, prOwners, prState, type BundleBy, type FoundList, type FoundPr, type RepoPulls } from './bundle.js';
 
 const FIELDS = 'number,title,url,state,isDraft,headRefName';
 /** What Find PRs lists: the fork flag and the date too. */
@@ -401,7 +401,8 @@ export function createPullsParts(ctx: KanbanContext, opts: PullsOptions = {}) {
       const p = lists.find((x) => x.repoId === l.repoId)?.pulls.find((x) => x.number === l.number);
       if (p && ctx.repo.setPrLinkState(task.id, l.repoId, l.number, prState(p))) changed.add(task.id);
     }
-    const { byBranch, byTicket, skipped } = findTaskPrs(lists, { ...task, branches }, ownersOf);
+    const owners = branchOwners(ctx.repo.activeTaskBranches(), (proj) => ctx.repos(proj));
+    const { byBranch, sharedBranch: shared, byTicket, skipped } = findTaskPrs(lists, { ...task, branches }, ownersOf, (repo, branch) => sharedBranch(owners, task.id, repo, branch));
     const linked: PrRef[] = [];
     // A branch match is the task's own when it is open, or was made after the task; an older closed one
     // (a reused or long-lived branch like staging has many) is only offered, with the ticket's.
@@ -420,7 +421,7 @@ export function createPullsParts(ctx: KanbanContext, opts: PullsOptions = {}) {
       }
     }
     if (changed.size) ctx.taskChanged(task.id);
-    const candidates = [...older, ...byTicket].map((t): KanbanPrBundleItem => ({ repo: t.repo, number: t.pull.number, url: t.pull.url, title: t.pull.title, state: prState(t.pull), ...(t.pull.headRefName ? { branch: t.pull.headRefName } : {}), repoId: t.repoId }));
+    const candidates = [...older, ...shared, ...byTicket].map((t): KanbanPrBundleItem => ({ repo: t.repo, number: t.pull.number, url: t.pull.url, title: t.pull.title, state: prState(t.pull), ...(t.pull.headRefName ? { branch: t.pull.headRefName } : {}), repoId: t.repoId }));
     return { linked, candidates, skipped, notes };
   };
 
@@ -503,10 +504,14 @@ export function createPullsParts(ctx: KanbanContext, opts: PullsOptions = {}) {
       'kanban.pr.unlink': (c, m) => {
         const got = taskOf(m.project, m.taskId);
         if (typeof got === 'string') return fail(c, m.rid, got);
-        const link = got.task.prs.find((l) => l.number === m.number && sameRepo(l.repo ?? got.repos.find((r) => r.id === l.repoId)?.remote ?? '', m.repo));
-        if (!link) return fail(c, m.rid, `Task #${m.taskId} has no link to ${m.repo}#${m.number}`);
+        const remoteOf = (repoId: string) => got.repos.find((r) => r.id === repoId)?.remote;
+        const link = got.task.prs.find((l) => l.number === m.number && (m.repoId ? l.repoId === m.repoId : !!m.repo && sameRepo(l.repo ?? remoteOf(l.repoId) ?? '', m.repo)));
+        const name = `${m.repo ?? m.repoId}#${m.number}`;
+        if (!link) return fail(c, m.rid, `Task #${m.taskId} has no link to ${name}`);
         ctx.repo.removePrLink(m.taskId, link.repoId, link.number);
-        ctx.repo.appendEvent(m.taskId, 'pr.unlinked', { repo: link.repo ?? m.repo, number: link.number, who: c.name });
+        // The event names the resolved remote: the sync's "unlinked stays unlinked" compares repo + number.
+        const repo = link.repo ?? remoteOf(link.repoId) ?? m.repo;
+        ctx.repo.appendEvent(m.taskId, 'pr.unlinked', { ...(repo ? { repo } : {}), number: link.number, who: c.name });
         ctx.taskChanged(m.taskId);
         ok(c, m.rid, { taskId: m.taskId });
       },

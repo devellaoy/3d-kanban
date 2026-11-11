@@ -528,12 +528,12 @@ answers `kanban.ok {rid, ...}` or `kanban.error {rid, message}`. Deltas are push
     handler **links it at once** (`by: 'find'` event) when it is open or draft, or was created at or after the task (so a
     done task's merged PR works), and gh says it isn't a fork's nor the default branch; a merged or closed one created
     before the task (or with no readable date; a reused branch like staging has many) is **offered** with the ticket
-    matches; one whose title or branch only names the ticket is **offered, never linked** (tasks share tickets);
+    matches; so is one on a (repository, branch) another active task is on too (decided like the automatic sync's `branchPrs`, which treats such a branch as nobody's: `branchOwners` in bundle.ts, any project, the task itself left out); one whose title or branch only names the ticket is **offered, never linked** (tasks share tickets);
     one another task has linked is skipped, never taken over. The states of the task's existing links are refreshed from the
     same lists. Answered with `kanban.prFound {taskId, linked, candidates, skipped: {repo, number, reason}[], notes}`
-    (`linked`: just linked; `candidates`: the ticket matches and the old closed branch matches, `KanbanPrBundleItem`; `notes`: repositories that couldn't be
+    (`linked`: just linked; `candidates`: the ticket matches, the old closed branch matches and the shared-branch matches, `KanbanPrBundleItem`; `notes`: repositories that couldn't be
     listed). `pr.link {project, taskId, prs}` links the picked ones (each must exist in a project repository and be no other
-    task's; all checked in parallel, each at most 10 s, and written only if all are fine; a PR gh can't read is told as "couldn't be read (reason)", not as missing; `by: 'manual'`) and `pr.unlink {project, taskId, repo, number}` takes one off; both answer `kanban.ok {taskId}`.
+    task's, and at most `PR_LINK_MAX` = 20 (`PR_REVIEW_MAX`) at a time; all checked in parallel, each at most 10 s, and written only if all are fine; a PR gh can't read is told as "couldn't be read (reason)", not as missing; `by: 'manual'`) and `pr.unlink {project, taskId, number, repoId?, repo?}` takes one off (at least one of `repoId` and `repo`; the link's `repoId` is preferred, so an older link stored without `repo` can be unlinked; the `pr.unlinked` event carries the resolved remote); both answer `kanban.ok {taskId}`.
   - `pr.review {project, prs, taskId?, tool?, model?, effort?, panel?}`: checked by integrations/pulls (the
     project exists, every PR is in one of its GitHub repositories and exists, each once, at most 20, `taskId`
     is the project's), then run by the engine (`engine.reviewPrs`, §4) and answered with

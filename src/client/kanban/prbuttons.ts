@@ -47,11 +47,10 @@ export function findPrsButton(task: KanbanTask, api: KanbanApi): HTMLButtonEleme
   return b;
 }
 
-/** The ✕ at the end of a PR's row: takes the link off the task (only for a PR with its repository known). */
-export function unlinkButton(task: KanbanTask, p: KanbanPrLink, req: Req): HTMLElement | string {
-  if (!p.repo) return '';
+/** The ✕ at the end of a PR's row: takes the link off the task, by its repoId (older links have no repo). `name`: the repository as the PRs table shows it. */
+export function unlinkButton(task: KanbanTask, p: KanbanPrLink, req: Req, name?: string): HTMLElement {
   const b = h('button.btn.small.kb-unlink', { type: 'button', title: 'Unlink this pull request from the task' }, '✕') as HTMLButtonElement;
-  const name = `${p.repo}#${p.number}`;
-  b.addEventListener('click', () => confirmDialog(`Unlink ${name}?`, 'The pull request itself is not touched. 🔎 Find PRs can link it again.', 'Unlink', () => void req({ t: 'kanban.pr.unlink', project: task.project, taskId: task.id, repo: p.repo!, number: p.number }, b, 'Unlinked')));
+  const what = `${p.repo ?? name ?? ''}#${p.number}`;
+  b.addEventListener('click', () => confirmDialog(`Unlink ${what}?`, 'The pull request itself is not touched. 🔎 Find PRs can link it again.', 'Unlink', () => void req({ t: 'kanban.pr.unlink', project: task.project, taskId: task.id, repoId: p.repoId, ...(p.repo ? { repo: p.repo } : {}), number: p.number }, b, 'Unlinked')));
   return b;
 }

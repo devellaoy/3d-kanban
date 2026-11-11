@@ -117,6 +117,13 @@ test('good messages come through rebuilt, without anything the validator did not
   assert.deepEqual(good({ t: 'kanban.pr.find', project: 'web', taskId: 4, rid: 'r' }), { t: 'kanban.pr.find', project: 'web', taskId: 4, rid: 'r' });
   assert.deepEqual(good({ t: 'kanban.pr.link', project: 'web', taskId: 4, prs: [{ repo: 'acme/web', number: 1 }, { repo: 'ACME/web', number: 1 }] }), { t: 'kanban.pr.link', project: 'web', taskId: 4, prs: [{ repo: 'acme/web', number: 1 }] });
   assert.deepEqual(good({ t: 'kanban.pr.unlink', project: 'web', taskId: 4, repo: 'bitbucket:acme/ui', number: 3 }), { t: 'kanban.pr.unlink', project: 'web', taskId: 4, repo: 'bitbucket:acme/ui', number: 3 });
+  assert.deepEqual(good({ t: 'kanban.pr.unlink', project: 'web', taskId: 4, repoId: 'web', number: 3 }), { t: 'kanban.pr.unlink', project: 'web', taskId: 4, repoId: 'web', number: 3 });
+  assert.deepEqual(good({ t: 'kanban.pr.unlink', project: 'web', taskId: 4, repoId: 'api', repo: 'acme/api', number: 3 }), { t: 'kanban.pr.unlink', project: 'web', taskId: 4, repoId: 'api', repo: 'acme/api', number: 3 });
+  const prs = (n: number) => Array.from({ length: n }, (_, i) => ({ repo: 'acme/web', number: i + 1 }));
+  assert.equal((good({ t: 'kanban.pr.link', project: 'web', taskId: 4, prs: prs(20) }) as { prs: unknown[] }).prs.length, 20);
+  refused({ t: 'kanban.pr.link', project: 'web', taskId: 4, prs: prs(21) }, /prs/);
+  refused({ t: 'kanban.pr.unlink', project: 'web', taskId: 4, number: 3 }, /repoId or repo/);
+  refused({ t: 'kanban.pr.unlink', project: 'web', taskId: 4, repoId: 'Bad Id!', number: 3 }, /repository id/);
   assert.deepEqual(good({ t: 'kanban.issue.get', project: 'web', issueKey: ' UYT-1 ', source: 'jira', fresh: true }), { t: 'kanban.issue.get', project: 'web', issueKey: 'UYT-1', source: 'jira', fresh: true });
   assert.deepEqual(good({ t: 'kanban.issue.get', project: 'web', issueKey: 'UYT-1' }), { t: 'kanban.issue.get', project: 'web', issueKey: 'UYT-1' });
   assert.deepEqual(good({ t: 'kanban.project.repos.set', project: 'web', repos: [{ id: 'web', name: 'Web', dir: '/w', primary: true, kind: 'git', remote: 'acme/web' }] }), {

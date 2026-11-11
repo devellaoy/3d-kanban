@@ -906,7 +906,7 @@ class View implements TaskView {
                 h('td', {}, h('span.kb-pr', { class: prTone(p.state) }, PR_STATE_NAMES[prTone(p.state)])),
                 h('td', {}, p.branch ? h('code', {}, p.branch) : ''),
                 h('td', {}, timeAgo(p.updatedAt)),
-                h('td', {}, unlinkButton(task, p, (m, b, d) => this.req(m, b, d))),
+                h('td', {}, unlinkButton(task, p, (m, b, d) => this.req(m, b, d), project?.repos.find((r) => r.id === p.repoId)?.name)),
               ),
             ),
           ),
