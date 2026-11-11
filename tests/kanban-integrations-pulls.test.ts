@@ -705,6 +705,26 @@ test('kanban.pr.find: a link is refreshed only from the repository it names (the
   }
 });
 
+test('a link from before the remote changed is never overwritten by the new repository’s PR of the same number (find and link)', async () => {
+  const { ctx, mk, ws } = findSetup({ 'o/web': [fpull(7, 'kanban/a'), fpull(8, 'kanban/a')], 'o/api': [] });
+  const t = mk('A', undefined, 'kanban/a');
+  const old = { repoId: 'web', repo: 'acme/old', number: 7, url: 'https://github.com/acme/old/pull/7', state: 'MERGED' as const };
+  ctx.repo.upsertPrLink(t.id, old);
+  const kept = () => ctx.repo.listPrLinks(t.id).find((l) => l.number === 7)!;
+  const c = client();
+  await ws['kanban.pr.find']!(c, { t: 'kanban.pr.find', project: 'web', taskId: t.id });
+  const got = lastOf(c, 'kanban.prFound');
+  assert.deepEqual(got.linked, [{ repo: 'o/web', number: 8 }], 'the one that overwrites nothing is linked');
+  assert.equal(got.skipped.length, 1);
+  assert.match(got.skipped[0].reason, /acme\/old#7 from before the repository's remote changed: unlink that one first/);
+  assert.deepEqual([kept().repo, kept().url, kept().state], [old.repo, old.url, old.state]);
+  // By hand it is refused as well, and nothing of the request is written.
+  const d = client();
+  await ws['kanban.pr.link']!(d, { t: 'kanban.pr.link', project: 'web', taskId: t.id, prs: [{ repo: 'o/web', number: 7 }], rid: 'l' });
+  assert.match(lastOf(d, 'kanban.error').message, /o\/web#7 can't be linked: .*acme\/old#7/);
+  assert.deepEqual([kept().repo, kept().url], [old.repo, old.url]);
+});
+
 test('kanban.pr.find: when only the branch list or only the newest-100 list fails, the other’s PRs count and a note says what is missing', async () => {
   const lists = { 'o/web': [fpull(1, 'kanban/a'), fpull(3, 'other', 'UYT-1 follow-up', 'MERGED')], 'o/api': [] };
   for (const fail of ['head', 'plain'] as const) {

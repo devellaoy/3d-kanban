@@ -43,7 +43,7 @@ export function mountIssueTab(api: KanbanApi, openTask: (id: number) => void): {
         if (!issue || !current(k)) return;
         const refresh = h('button.btn.small', { type: 'button', title: 'Read the issue from its source again', 'data-focus': 'issue-refresh' }, '🔄 Refresh') as HTMLButtonElement;
         const reload = () => load(task, true);
-        view = issueView(api, task.project, issue, openTask, { reload, title: true });
+        view = issueView(api, task.project, issue, openTask, { reload, title: true, whole: true });
         refresh.addEventListener('click', () => {
           refresh.disabled = true;
           reload()

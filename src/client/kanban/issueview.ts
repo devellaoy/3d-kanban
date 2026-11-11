@@ -7,7 +7,7 @@ import { h, timeAgo } from '../ui/dom';
 import type { NormalizedIssue } from '../../shared/kanban/types.js';
 import type { KanbanApi } from './api';
 import { issueActions } from './issueactions';
-import { actionIssue, listedBody, safeUrl } from './issueactionsmodel';
+import { LIST_BODY, actionIssue, listedBody, safeUrl } from './issueactionsmodel';
 import { SOURCE_KIND_NAMES } from './labels';
 import { renderMarkdown } from './md';
 
@@ -26,8 +26,10 @@ export interface IssueView {
  * current): called after a change made from the panel, and its answer repaints the view.
  * `title` puts the issue's title at the top (the issue window's frame shows it already).
  */
-export function issueView(api: KanbanApi, projectId: string, first: NormalizedIssue, openTask: (id: number) => void, opts: { reload?: () => Promise<NormalizedIssue | undefined>; title?: boolean } = {}): IssueView {
+export function issueView(api: KanbanApi, projectId: string, first: NormalizedIssue, openTask: (id: number) => void, opts: { reload?: () => Promise<NormalizedIssue | undefined>; title?: boolean; whole?: boolean } = {}): IssueView {
   let it = first;
+  // Whether the body held was read whole; one that came with a reload was read on its own, so it is.
+  let whole = opts.whole ?? (!!opts.reload || first.body.length < LIST_BODY);
   const painted: ((issue: NormalizedIssue) => void)[] = [];
   const top = h('div.kb-iw-top');
   const chips = h('span.kb-chips');
@@ -42,6 +44,7 @@ export function issueView(api: KanbanApi, projectId: string, first: NormalizedIs
     reloading = false;
     if (!fresh) return;
     it = { ...fresh, taskId: fresh.taskId ?? it.taskId };
+    whole = true;
     paint();
   };
   const panel = issueActions(api, projectId, actionIssue(it), { openTask, onChanged: () => void reload() });
@@ -68,10 +71,13 @@ export function issueView(api: KanbanApi, projectId: string, first: NormalizedIs
     const fresh = msg.items.find((i) => i.key === it.key);
     if (!fresh) return;
     // A cut copy never replaces a body read whole: that one stays until the changed one is read whole too.
-    const { body, stale } = listedBody(it.body, fresh.body);
-    it = { ...fresh, taskId: fresh.taskId ?? it.taskId, body };
+    const got = listedBody(it.body, whole, fresh.body);
+    // Nothing to read it whole with (a window opened from the list): the newer copy, cut as it may be, beats a stale one.
+    const take = got.stale && !opts.reload;
+    it = { ...fresh, taskId: fresh.taskId ?? it.taskId, body: take ? fresh.body : got.body };
+    whole = take ? false : got.whole;
     paint();
-    if (stale) void reload();
+    if (got.stale && !take) void reload();
   });
   paint();
   return {
@@ -79,6 +85,7 @@ export function issueView(api: KanbanApi, projectId: string, first: NormalizedIs
     issue: () => it,
     set(issue) {
       it = issue;
+      whole = true;
       paint();
     },
     onPaint: (fn) => (painted.push(fn), fn(it)),

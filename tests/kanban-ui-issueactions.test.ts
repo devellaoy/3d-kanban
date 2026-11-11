@@ -69,20 +69,31 @@ test('a 3D card opened through a source hands that source to the actions panel',
 test('the issues list cuts a body: a cut copy never replaces a body that was read whole', () => {
   const full = 'x'.repeat(LIST_BODY + 500);
   const cut = full.slice(0, LIST_BODY);
-  assert.deepEqual(listedBody(full, cut), { body: full, stale: false }, 'the same issue, listed cut');
-  assert.deepEqual(listedBody(full, 'edited'), { body: 'edited', stale: false }, 'a short body is whole: the source changed');
-  assert.deepEqual(listedBody('', 'new'), { body: 'new', stale: false });
+  assert.deepEqual(listedBody(full, true, cut), { body: full, whole: true, stale: false }, 'the same issue, listed cut');
+  assert.deepEqual(listedBody(full, true, 'edited'), { body: 'edited', whole: true, stale: false }, 'a short body is whole: the source changed');
+  assert.deepEqual(listedBody('', false, 'new'), { body: 'new', whole: true, stale: false });
   // The held body is a list copy itself (the window opened from the list): the newer copy replaces it.
-  assert.deepEqual(listedBody(cut, 'y' + cut.slice(1)), { body: 'y' + cut.slice(1), stale: false });
-  assert.deepEqual(listedBody(cut, cut), { body: cut, stale: false });
+  assert.deepEqual(listedBody(cut, false, 'y' + cut.slice(1)), { body: 'y' + cut.slice(1), whole: false, stale: false });
+  assert.deepEqual(listedBody(cut, false, cut), { body: cut, whole: false, stale: false });
 });
 
 test('a changed, cut list copy arriving after the whole body was read keeps the whole body and asks for a fresh read', () => {
   const full = 'x'.repeat(LIST_BODY + 500);
   const changed = 'y' + 'x'.repeat(LIST_BODY + 100);
-  const got = listedBody(full, changed.slice(0, LIST_BODY));
+  const got = listedBody(full, true, changed.slice(0, LIST_BODY));
   assert.equal(got.body, full, 'nothing of the whole body is lost to the cut copy');
   assert.equal(got.stale, true, 'the source changed: the whole body is to be read again');
   // Once it has been read whole again, the same list copy is its start and changes nothing.
-  assert.deepEqual(listedBody(changed, changed.slice(0, LIST_BODY)), { body: changed, stale: false });
+  assert.deepEqual(listedBody(changed, true, changed.slice(0, LIST_BODY)), { body: changed, whole: true, stale: false });
+});
+
+test('a body read whole that grows past the cut is not replaced by its cut copy: it is read whole again', () => {
+  const short = 'a'.repeat(3000);
+  const grown = short + 'b'.repeat(3000);
+  const got = listedBody(short, true, grown.slice(0, LIST_BODY));
+  assert.deepEqual(got, { body: short, whole: true, stale: true }, 'whole is known apart from the length: the short body stays until the grown one is read');
+  assert.deepEqual(listedBody(grown, true, grown.slice(0, LIST_BODY)), { body: grown, whole: true, stale: false });
+  // A body exactly at the cut that was read whole and did not change stays, and nothing is asked.
+  const exact = 'c'.repeat(LIST_BODY);
+  assert.deepEqual(listedBody(exact, true, exact), { body: exact, whole: true, stale: false });
 });

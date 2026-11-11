@@ -343,6 +343,16 @@ export function createPullsParts(ctx: KanbanContext, opts: PullsOptions = {}) {
   };
   /** The tasks (of any project) a PR is linked to. */
   const ownersOf = (pr: { repo: string; number: number; url: string }) => prOwners(ctx.repo.prLinksMatching(pr.number, pr.url), (proj, repoId) => ctx.repos(proj).find((r) => r.id === repoId)?.remote, pr);
+  /**
+   * The task's own link that a new one to `remote`#`number` would overwrite though it names another
+   * repository (links are keyed by repoId and number, and a repository's remote can change): why the
+   * new one isn't written, or undefined when there is no such link.
+   */
+  const clash = (taskId: number, repoId: string, remote: string, number: number, url: string): string | undefined => {
+    const l = ctx.repo.getTask(taskId)?.prs.find((x) => x.repoId === repoId && x.number === number);
+    if (!l || (l.repo ? sameRepo(l.repo, remote) : !l.url || l.url === url)) return undefined;
+    return `the task has a link to ${l.repo ? `${l.repo}#${number}` : l.url} from before the repository's remote changed: unlink that one first`;
+  };
 
   /**
    * A repository's PRs of any state, asked fresh: gh's newest 100 plus, for the task's `branch`, the
@@ -420,6 +430,7 @@ export function createPullsParts(ctx: KanbanContext, opts: PullsOptions = {}) {
     for (const [i, b] of direct.entries()) {
       if (why[i]) skipped.push({ repo: b.repo, number: b.pull.number, reason: why[i]! });
       else if (ownersOf({ repo: b.repo, number: b.pull.number, url: b.pull.url }).length) skipped.push({ repo: b.repo, number: b.pull.number, reason: 'it was linked to a task just now' });
+      else if (clash(task.id, b.repoId, b.repo, b.pull.number, b.pull.url)) skipped.push({ repo: b.repo, number: b.pull.number, reason: clash(task.id, b.repoId, b.repo, b.pull.number, b.pull.url)! });
       else {
         ctx.repo.upsertPrLink(task.id, { repoId: b.repoId, repo: b.repo, number: b.pull.number, url: b.pull.url, state: prState(b.pull), branch: b.pull.headRefName });
         ctx.repo.appendEvent(task.id, 'pr.linked', { repo: b.repo, number: b.pull.number, by: 'find', who: c.name });
@@ -498,6 +509,8 @@ export function createPullsParts(ctx: KanbanContext, opts: PullsOptions = {}) {
         for (const { repo, pull } of picked) {
           const other = ownersOf({ repo: repo.remote, number: pull.number, url: pull.url }).find((id) => id !== m.taskId);
           if (other !== undefined) return fail(c, m.rid, `${repo.remote}#${pull.number} is linked to task #${other} already: unlink it there first`);
+          const old = clash(m.taskId, repo.id, repo.remote, pull.number, pull.url);
+          if (old) return fail(c, m.rid, `${repo.remote}#${pull.number} can't be linked: ${old}`);
         }
         const now = ctx.repo.getTask(m.taskId) ?? got.task;
         for (const { repo, pull } of picked) {
