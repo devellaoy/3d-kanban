@@ -6,6 +6,7 @@
 
 import './browse.css';
 import { h, type Modal } from '../ui/dom';
+import { icon, withIcon } from '../ui/icons';
 import type { KanbanServerMsg } from '../../shared/kanban/protocol.js';
 import type { BrowseIssue, BrowseOptions, BrowseScope } from '../../shared/kanban/browse.js';
 import type { KanbanApi } from './api';
@@ -90,7 +91,7 @@ export function openBrowse(api: KanbanApi, projectId: string, opts: BrowseOpts):
   const treeBox = h('div.kb-br-treebox', { 'aria-live': 'polite' }, h('p.kb-br-quiet', {}, 'Loading the sources…'));
   const bar = h('div.kb-br-bar', {}, scopeBox, search, jqlBtn, reset);
   const body = h('div.body', {}, bar, filters, jqlRow, peopleBox, notices, treeBox, labelList);
-  const d = dialog('kb-browse-window', `🔎 Browse issues · ${projectName}`, body);
+  const d = dialog('kb-browse-window', `Browse issues · ${projectName}`, body);
   const modal = showDialog(d, {
     onClose: () => {
       closed = true;
@@ -174,7 +175,7 @@ export function openBrowse(api: KanbanApi, projectId: string, opts: BrowseOpts):
       },
       { v: 'none', label: 'Unassigned' },
       { v: 'any', label: 'Assigned' },
-      ...(s.person ? [{ v: 'person', label: `👤 ${s.person.name}` }] : []),
+      ...(s.person ? [{ v: 'person', label: s.person.name }] : []),
       { v: 'someone', label: 'Someone…' },
     ];
     const el = pick('Assignee', list, s.who);
@@ -310,7 +311,7 @@ export function openBrowse(api: KanbanApi, projectId: string, opts: BrowseOpts):
           ),
         );
       })
-      .catch((err: Error) => g === peopleGen && peopleList.replaceChildren(h('li.kb-br-error', {}, `⚠️ ${err.message}`)));
+      .catch((err: Error) => g === peopleGen && peopleList.replaceChildren(h('li.kb-br-error', {}, err.message)));
   };
   const showPeople = (on: boolean) => {
     peopleBox.hidden = !on;
@@ -398,8 +399,8 @@ export function openBrowse(api: KanbanApi, projectId: string, opts: BrowseOpts):
       })
       .catch((err: Error) => {
         if (g !== gen || closed) return;
-        const again = h('button.btn.small', { type: 'button', onclick: () => useScope(next) }, 'Try again');
-        treeBox.replaceChildren(h('div.kb-br-error', { role: 'alert' }, h('span', {}, `⚠️ ${err.message}`), again));
+        const again = h('button.btn.small', { type: 'button', onclick: () => useScope(next) }, ...withIcon('rotate-cw', 'Retry'));
+        treeBox.replaceChildren(h('div.kb-br-error', { role: 'alert' }, icon('triangle-alert', { size: 16 }), h('span', {}, err.message), again));
       });
   };
   const paintScopes = () => {
@@ -441,7 +442,7 @@ export function openBrowse(api: KanbanApi, projectId: string, opts: BrowseOpts):
               {},
               scopes.length ? `None of the issue sources can be browsed (${why}).` : 'This project has no Jira or GitHub Project source to browse.',
               h('br'),
-              'Add a Jira or GitHub project issue source in ⚙️ Settings → 📌 Issue sources.',
+              'Add a Jira or GitHub project issue source in Settings → Kanban → Projects → Issue sources.',
             ),
           );
         }
@@ -452,7 +453,7 @@ export function openBrowse(api: KanbanApi, projectId: string, opts: BrowseOpts):
       })
       .catch((err: Error) => {
         if (closed) return;
-        treeBox.replaceChildren(h('div.kb-br-error', { role: 'alert' }, h('span', {}, `⚠️ ${err.message}`), h('button.btn.small', { type: 'button', onclick: loadScopes }, 'Try again')));
+        treeBox.replaceChildren(h('div.kb-br-error', { role: 'alert' }, icon('triangle-alert', { size: 16 }), h('span', {}, err.message), h('button.btn.small', { type: 'button', onclick: loadScopes }, ...withIcon('rotate-cw', 'Retry'))));
       });
   };
   loadScopes();

@@ -6,6 +6,7 @@
 
 import type { KanbanPrLink, RunPhase, TaskStatus } from '../../shared/kanban/types.js';
 import { columnName, phaseName } from '../kanban/labels';
+import { isMac } from '../kanban/sendkey';
 import { h } from './dom';
 import { icon, type IconName } from './icons';
 
@@ -28,8 +29,8 @@ export function pill(status: TaskStatus): HTMLElement {
   return h('span.st-pill', { class: status }, icon(STATUS_ICON[status], { size: 13 }), columnName(status));
 }
 
-/** What a run is doing ("plan", "review 2"), in its phase's colours. */
-export function phaseBadge(phase: RunPhase | string, round?: number): HTMLElement {
+/** What a run is doing ("plan", "review 2", "review 2/3"), in its phase's colours. */
+export function phaseBadge(phase: RunPhase | string, round?: number | string): HTMLElement {
   return h('span.kb-phase', { class: phase }, `${phaseName(phase)}${round ? ` ${round}` : ''}`);
 }
 
@@ -98,4 +99,81 @@ export interface BtnOptions {
 export function btn(label: string, o: BtnOptions = {}): HTMLButtonElement {
   const size = o.size ?? 'lg';
   return h('button.btn', { type: 'button', ...o.attrs, class: `${o.kind ?? 'secondary'} ${size} ${o.attrs?.class ?? ''}`.trim() }, o.icon ? icon(o.icon, { size: size === 'xs' ? 14 : 16 }) : null, label) as HTMLButtonElement;
+}
+
+let fieldSeq = 0;
+/**
+ * A field as the windows draw it: a small label over its control, "Optional" after the label and a hint
+ * under the control. A group of controls (chips, a segmented control) gets a group with that name.
+ */
+export function formField(label: string, control: HTMLElement, o: { optional?: boolean; hint?: Child; cls?: string } = {}): HTMLElement {
+  const single = /^(INPUT|SELECT|TEXTAREA)$/.test(control.tagName);
+  if (single && !control.id) control.id = `fld-${++fieldSeq}`;
+  const opt = o.optional ? h('span.field-opt', {}, 'Optional') : null;
+  const name = single ? h('label', { for: control.id }, label, opt) : h('span.field-label', {}, label, opt);
+  if (!single && !control.getAttribute('aria-label')) control.setAttribute('aria-label', label);
+  return h('div.field', { class: o.cls ?? '' }, name, control, o.hint ? h('span.field-hint', {}, o.hint) : null);
+}
+
+/** A tick box with its words on one line. */
+export function checkLine(label: Child | readonly Child[], attrs: Attrs = {}): { el: HTMLLabelElement; box: HTMLInputElement } {
+  const box = h('input', { type: 'checkbox', ...attrs }) as HTMLInputElement;
+  const words = Array.isArray(label) ? (label as readonly Child[]) : [label as Child];
+  return { el: h('label.check-line', {}, box, h('span', {}, ...words)) as HTMLLabelElement, box };
+}
+
+/** A link that leaves the office: its words and the external-link icon. */
+export function outLink(label: string, href: string, attrs: Attrs = {}): HTMLAnchorElement {
+  return h('a.out-link', { href, target: '_blank', rel: 'noopener noreferrer', ...attrs }, label, icon('external-link', { size: 14 })) as HTMLAnchorElement;
+}
+
+/**
+ * A native select drawn as a chip (styles/kit-chips.css .filter-chip): its name, what is picked and a
+ * chevron, with the select itself laid over them, invisible, so the keyboard, the screen reader and a
+ * phone's own picker work as for any select. `on` says when a choice counts as a filter that is set
+ * (the chip takes the accent then); `sync()` after setting the select's value from code.
+ */
+export function selectChip(sel: HTMLSelectElement, o: { label?: string; icon?: IconName; cls?: string; on?: () => boolean } = {}): { el: HTMLLabelElement; sync(): void } {
+  const value = h('span.filter-chip-value');
+  const el = h('label.filter-chip', { class: o.cls ?? '' }, o.icon ? icon(o.icon) : null, o.label ? h('span.filter-chip-label', {}, o.label) : null, value, icon('chevron-down', { size: 14 }), sel) as HTMLLabelElement;
+  const sync = () => {
+    value.textContent = sel.selectedOptions[0]?.textContent ?? '';
+    el.classList.toggle('on', !!o.on?.());
+  };
+  sel.addEventListener('change', sync);
+  sync();
+  return { el, sync };
+}
+
+
+export interface Segmented<T extends string> {
+  el: HTMLElement;
+  value(): T;
+  /** Shows `v` as picked, without calling `onPick`. */
+  set(v: T): void;
+  buttons: Map<T, HTMLButtonElement>;
+}
+
+/** A segmented control (styles/kit-controls.css): one of a few, each a button with aria-pressed. `onPick` hears a click on another one. */
+export function segmented<T extends string>(options: readonly (readonly [T, Child | readonly Child[]])[], value: T, onPick: (v: T) => void, label: string): Segmented<T> {
+  let now = value;
+  const buttons = new Map<T, HTMLButtonElement>();
+  const set = (v: T) => {
+    now = v;
+    for (const [k, b] of buttons) b.setAttribute('aria-pressed', String(k === v));
+  };
+  const el = h('div.segmented', { role: 'group', 'aria-label': label });
+  for (const [v, text] of options) {
+    const kids = Array.isArray(text) ? (text as readonly Child[]) : [text as Child];
+    const b = h('button', { type: 'button', onclick: () => v !== now && (set(v), onPick(v)) }, ...kids) as HTMLButtonElement;
+    buttons.set(v, b);
+    el.append(b);
+  }
+  set(value);
+  return { el, value: () => now, set, buttons };
+}
+
+/** A footer's hint of the send key: the key cap and what it does ("⌘ Enter" "sends"). */
+export function sendKeyHint(does = 'sends'): HTMLElement {
+  return h('span.foot-hint', {}, h('kbd.kbd', {}, isMac() ? '⌘ Enter' : 'Ctrl Enter'), does);
 }

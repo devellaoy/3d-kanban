@@ -5,7 +5,10 @@
 import { normalizeRepo } from '../../shared/floors';
 import type { Net } from '../net';
 import { store } from '../state';
-import { h, openModal, toast } from '../ui/dom';
+import { h, toast } from '../ui/dom';
+import { withIcon } from '../ui/icons';
+import { btn } from '../ui/kit';
+import { modalShell, openShell } from '../ui/shell';
 import { folderNote, folderPath, folderProblem, requestFloor } from '../ui/flooradd';
 import type { KanbanServerMsg } from '../../shared/kanban/protocol.js';
 import { kanbanApi, type KanbanApi } from './api';
@@ -17,12 +20,12 @@ type Kind = 'dir' | 'repo';
 const PICK_WAIT_MS = 30_000;
 
 /**
- * The "＋ New project" button, shown to admins only. Off the kanban page, who you are comes in with the
+ * The "New project" button, shown to admins only. Off the kanban page, who you are comes in with the
  * settings after the window opens, so it follows kstore's `me` (and stops once it's out of the page).
  * `onCreated` gets the new project once the list has it.
  */
 export function newProjectButton(net: Net, onCreated: (id: string) => void): HTMLElement {
-  const btn = h('button.btn.small.kb-new-project', { type: 'button', onclick: () => openNewProject(net, onCreated) }, '＋ New project');
+  const btn = h('button.btn.small.kb-new-project', { type: 'button', onclick: () => openNewProject(net, onCreated) }, ...withIcon('plus', 'New project'));
   const show = () => btn.classList.toggle('hidden', !kstore.me.admin);
   const off = kstore.on('me', () => (btn.isConnected ? show() : off()));
   show();
@@ -58,15 +61,15 @@ function openNewProject(net: Net, onCreated: (id: string) => void) {
   let busy = false;
   let open = true;
 
-  const close = h('button.btn.close', { type: 'button', 'aria-label': 'Close', title: 'Close (Esc)' }, '✕');
   const kinds: Record<Kind, HTMLButtonElement> = {
-    dir: h('button.kb-np-kind', { type: 'button', 'aria-pressed': 'true' }, '📁 Local folder'),
-    repo: h('button.kb-np-kind', { type: 'button', 'aria-pressed': 'false' }, 'GitHub repository'),
+    dir: h('button.kb-np-kind', { type: 'button', 'aria-pressed': 'true' }, ...withIcon('folder', 'Local folder')),
+    repo: h('button.kb-np-kind', { type: 'button', 'aria-pressed': 'false' }, ...withIcon('package', 'GitHub repository')),
   };
   const input = h('input', { type: 'text', autocomplete: 'off', spellcheck: 'false' }) as HTMLInputElement;
   const noteEl = h('p.kb-np-note');
   const errEl = h('p.kb-np-err.hidden', { role: 'alert' });
-  const create = h('button.btn.primary', { type: 'button' }, 'Create') as HTMLButtonElement;
+  const create = btn('Create', { kind: 'primary' });
+  const cancel = btn('Cancel', { kind: 'quiet' });
 
   const repoNote = (repo: string | undefined) => {
     const dir = store.projectsDir.dir;
@@ -92,12 +95,12 @@ function openNewProject(net: Net, onCreated: (id: string) => void) {
     const problem = typedProblem();
     if (kind === 'dir') {
       // When it can't be added from here, the error line under it says why instead.
-      noteEl.textContent = busy ? `⏳ Adding ${value}…` : problem ? '' : folderNote(value || '<folder>');
-      create.textContent = busy ? '⏳ Adding…' : 'Create';
+      noteEl.textContent = busy ? `Adding ${value}…` : problem ? '' : folderNote(value || '<folder>');
+      create.textContent = busy ? 'Adding…' : 'Create';
     } else {
       const repo = normalizeRepo(value);
-      noteEl.textContent = busy ? `⏳ Cloning ${repo}… a big repository can take a minute.` : repoNote(repo);
-      create.textContent = busy ? '⏳ Cloning…' : 'Create';
+      noteEl.textContent = busy ? `Cloning ${repo}… a big repository can take a minute.` : repoNote(repo);
+      create.textContent = busy ? 'Cloning…' : 'Create';
     }
     noteEl.classList.toggle('busy', busy);
     noteEl.classList.toggle('hidden', !noteEl.textContent);
@@ -158,16 +161,16 @@ function openNewProject(net: Net, onCreated: (id: string) => void) {
   });
   create.addEventListener('click', submit);
 
-  const el = h(
-    'div.modal.kb-new-project-modal',
-    { role: 'dialog', 'aria-label': 'New project' },
-    h('header', {}, h('h2', {}, '＋ New project'), close),
-    h('div.body', {}, h('div.kb-np-kinds', { role: 'group', 'aria-label': 'Where the project comes from' }, kinds.dir, kinds.repo), input, noteEl, errEl),
-    h('footer', {}, h('span.grow'), create),
-  );
+  const shell = modalShell({
+    cls: 'kb-new-project-modal',
+    icon: 'plus',
+    title: 'New project',
+    body: h('div.kb-np-body', {}, h('div.kb-np-kinds', { role: 'group', 'aria-label': 'Where the project comes from' }, kinds.dir, kinds.repo), input, noteEl, errEl),
+    footerRight: [cancel, create],
+  });
   // ✕ and Esc close this window only (Settings under it stays); a stray click on the backdrop doesn't.
-  const modal = openModal(el, { backdropCloses: false, onClose: () => (open = false) });
-  close.addEventListener('click', () => modal.close());
+  const modal = openShell(shell, { backdropCloses: false, onClose: () => (open = false) });
+  cancel.addEventListener('click', () => modal.close());
   paint();
   setTimeout(() => input.focus(), 30);
 }

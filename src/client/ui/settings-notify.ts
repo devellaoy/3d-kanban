@@ -6,6 +6,7 @@ import { store, type Settings } from '../state';
 import { askNotifyPermission, notifyPermission, type DesktopNotifier } from '../notify';
 import type { WebhookKind } from '../../shared/protocol';
 import { h, timeAgo } from './dom';
+import { withIcon } from './icons';
 
 const WEBHOOK_NAME: Record<WebhookKind, string> = { slack: 'Slack', discord: 'Discord', other: 'a webhook' };
 
@@ -31,13 +32,13 @@ export function desktopNotifications(settings: () => Settings, change: (s: Setti
               paintNotify();
             },
           },
-          '🔔 Turn on notifications',
+          ...withIcon('bell', 'Turn on notifications'),
         ),
       );
     } else if (perm === 'granted') {
       for (const [value, label] of [
-        [true, '🔔 On'],
-        [false, '🔕 Off'],
+        [true, 'On'],
+        [false, 'Off'],
       ] as const) {
         notifyRow.append(
           h(
@@ -76,7 +77,7 @@ export function teamWebhook(net: Net) {
   const hookSave = h('button.btn.primary', { type: 'button' }, 'Save');
   const hookTest = h('button.btn', { type: 'button' }, 'Send a test');
   const hookRemove = h('button.btn.danger', { type: 'button' }, 'Remove');
-  const hookActions = h('div.seg', { style: 'margin-top:8px' }, hookTest, hookRemove);
+  const hookActions = h('div.seg.below', {}, hookTest, hookRemove);
   const paintHook = () => {
     const { webhook, error, lastSentAt } = store.notify;
     hookActions.classList.toggle('hidden', !webhook);
@@ -85,8 +86,8 @@ export function teamWebhook(net: Net) {
     hookStatus.textContent = !webhook
       ? 'Paste an incoming webhook from Slack or Discord, and the office posts to that channel when a worker needs input or finishes and nobody has its terminal open. It’s for everyone in the office.'
       : error
-        ? `⚠️ Posting to ${WEBHOOK_NAME[webhook.kind]} (${webhook.hint}) failed: ${error}`
-        : `📣 Posting to ${WEBHOOK_NAME[webhook.kind]} (${webhook.hint}), set by ${webhook.by} ${timeAgo(webhook.at)}${lastSentAt ? ` · last message ${timeAgo(lastSentAt)}` : ''}.`;
+        ? `Posting to ${WEBHOOK_NAME[webhook.kind]} (${webhook.hint}) failed: ${error}`
+        : `Posting to ${WEBHOOK_NAME[webhook.kind]} (${webhook.hint}), set by ${webhook.by} ${timeAgo(webhook.at)}${lastSentAt ? ` · last message ${timeAgo(lastSentAt)}` : ''}.`;
   };
   paintHook();
   const saveHook = () => {

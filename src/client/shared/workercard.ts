@@ -6,6 +6,7 @@ import { DESK_BY_ID } from '../../shared/layout';
 import { isAsleep, shownStatus } from '../../shared/status';
 import type { ProjectInfo, WorkerInfo } from '../../shared/protocol';
 import { clip, h, STATUS_LABEL, timeAgo } from '../ui/dom';
+import { iconButton } from '../ui/icons';
 import { modelBadge, providerLabel } from '../ui/provider';
 import { kanbanChip } from '../kanban/office';
 import { waitingOnSomeone } from '../notify';
@@ -32,21 +33,21 @@ export function workerCard(w: WorkerInfo, opts: WorkerCardOpts): HTMLElement {
   const task = w.task?.name ?? w.title ?? (w.prompt ? clip(w.prompt, 90) : undefined);
   // What it's asking, doing or did, in a line.
   const now = w.lost
-    ? '🌿 Its worktree was deleted outside agent-office: open it to fix it'
+    ? 'Its worktree was deleted outside agent-office: open it to fix it'
     : shown === 'needs_input'
-      ? `🙋 ${w.activity ?? 'Waiting on an answer'}`
+      ? w.activity ?? 'Waiting on an answer'
       : asleep
-        ? '💤 Asleep: open it to wake it up'
+        ? 'Asleep: open it to wake it up'
         : w.status === 'done'
-          ? w.task?.summary && `✅ ${w.task.summary}`
+          ? w.task?.summary && w.task.summary
           : (w.task?.summary ?? w.activity);
   const sub = [
     w.kanban && kanbanChip(w, Date.now()),
-    w.kind === 'agent' ? `⚙️ ${providerLabel(w.provider, opts.project === undefined ? store.project : opts.project)}${badge ? ` · ${badge}` : ''}` : '🐚 shell',
-    desk && (desk.station ? `📌 ${desk.label}` : desk.label),
-    w.worktree && `🌿 ${w.worktree.branch}`,
-    w.pr && `🔀 PR #${w.pr.number}`,
-    w.lastInput && `⌨️ ${w.lastInput.by} ${timeAgo(w.lastInput.at)}`,
+    w.kind === 'agent' ? `${providerLabel(w.provider, opts.project === undefined ? store.project : opts.project)}${badge ? ` · ${badge}` : ''}` : 'shell',
+    desk && desk.label,
+    w.worktree && w.worktree.branch,
+    w.pr && `PR #${w.pr.number}`,
+    w.lastInput && `${w.lastInput.by} typed ${timeAgo(w.lastInput.at)}`,
   ].filter(Boolean);
   return h(
     'li.lite-worker',
@@ -67,6 +68,6 @@ export function workerCard(w: WorkerInfo, opts: WorkerCardOpts): HTMLElement {
     ),
     // One that's asking something is answered in its terminal, where the question is. The raw status on
     // purpose: an agent the engine carries on with still sits at a prompt that would swallow the text.
-    !opts.onPrompt || asleep || w.lost || w.status === 'needs_input' ? null : h('button.btn.lite-say', { type: 'button', title: `Send ${w.name} a prompt`, 'aria-label': `Send ${w.name} a prompt`, onclick: () => opts.onPrompt!(w.id) }, '✍️'),
+    !opts.onPrompt || asleep || w.lost || w.status === 'needs_input' ? null : iconButton('send', `Send ${w.name} a prompt`, { class: 'lite-say', onclick: () => opts.onPrompt!(w.id) }),
   );
 }

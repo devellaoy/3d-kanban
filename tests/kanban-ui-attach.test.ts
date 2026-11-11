@@ -33,7 +33,7 @@ test('an attachment goes in on a line of its own, where the cursor is', () => {
 
 test('a file goes in as a placeholder at the cursor, and its link takes the placeholder’s place', () => {
   const mark = uploadingMark('shot [1].png');
-  assert.match(mark, /^!\[⏳ Uploading shot 1\.png…\]\(#uploading-\d+\)$/);
+  assert.match(mark, /^!\[Uploading shot 1\.png…\]\(#uploading-\d+\)$/);
   assert.notEqual(uploadingMark('shot.png'), uploadingMark('shot.png'), 'two of the same name stay apart');
   const put = insertAt('see this', 4, mark);
   assert.equal(put.text, `see \n${mark}\nthis`);
@@ -60,7 +60,7 @@ test('a failed upload takes its placeholder and the line it had away', () => {
 test('the files sent are the ones the text still links to', () => {
   const text = 'look ![a.png](/api/kanban/attachments/ab12) and [log.txt](/api/mp/visit/sam/api/kanban/attachments/cd%2034)\n![a.png](/api/kanban/attachments/ab12)';
   assert.deepEqual(linkedIds(text), ['ab12', 'cd 34']);
-  assert.deepEqual(linkedIds('![⏳ Uploading a.png…](#uploading-3) [x](https://example.com/api/other)'), []);
+  assert.deepEqual(linkedIds('![Uploading a.png…](#uploading-3) [x](https://example.com/api/other)'), []);
   const files = [{ id: 'ab12' }, { id: 'zz9' }];
   assert.deepEqual(notInText(files, text), [{ id: 'zz9' }], 'a comment lists only the files its text doesn’t show');
 });

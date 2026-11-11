@@ -18,7 +18,7 @@ export function openPulls(net: Net, project: string | null, actions: () => Board
   if (target === 'none') return toast(project ? 'That project has no floor open: open it in the 3D office first.' : 'No projects yet: add a floor in the 3D office first.', 'warn');
   if (target === 'here') {
     // Under "All projects" nothing else says whose board this is.
-    if (!project) toast(`🔀 ${store.floors.find((f) => f.id === store.floor)?.name ?? store.floor}’s pull requests`);
+    if (!project) toast(`${store.floors.find((f) => f.id === store.floor)?.name ?? store.floor}’s pull requests`);
     return openBoard('pulls', net, actions());
   }
   // A second click while the page is on its way opens nothing more.

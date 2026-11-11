@@ -49,7 +49,7 @@ export function installKanban3d(ctx: Ctx, core: CoreState, parts: Kanban3dParts)
       // One ride over: the floor.enter it ends with comes back here.
       if (link.rode || !store.floors.some((f) => f.id === link!.floor && !f.cloning)) {
         link = null;
-        return void toast('🗂️ Couldn’t get to that floor', 'warn');
+        return void toast('Couldn’t get to that floor', 'warn');
       }
       link.rode = true;
       return parts.travel.switchFloor(link.floor);

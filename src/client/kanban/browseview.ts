@@ -6,6 +6,7 @@
 // scroll into view, three at a time. Nothing the office answers lands once the tree is replaced (live()).
 
 import { h } from '../ui/dom';
+import { icon, withIcon, type IconName } from '../ui/icons';
 import type { KanbanServerMsg } from '../../shared/kanban/protocol.js';
 import type { BrowseFilters, BrowseGroup, BrowseIssue, BrowseScope } from '../../shared/kanban/browse.js';
 import { groupByEpic, groupProjectItems, issueProgress, mergeIssues, progress, type EpicNode, type ItemNode } from '../../shared/kanban/browsetree.js';
@@ -44,9 +45,9 @@ export function browseTree(o: BrowseTreeOpts): {
 
   // ---- Building blocks ----
   const errorLine = (msg: string, retry: () => void) => {
-    const again = h('button.btn.small', { type: 'button' }, 'Try again');
+    const again = h('button.btn.small', { type: 'button' }, ...withIcon('rotate-cw', 'Retry'));
     again.addEventListener('click', retry);
-    return h('div.kb-br-error', { role: 'alert' }, h('span', {}, `⚠️ ${msg}`), again);
+    return h('div.kb-br-error', { role: 'alert' }, icon('triangle-alert', { size: 16 }), h('span', {}, msg), again);
   };
 
   /**
@@ -102,7 +103,7 @@ export function browseTree(o: BrowseTreeOpts): {
     let touched = false;
     const makeTog = (): HTMLElement => {
       if (!canOpen) return h('span.kb-br-tog.leaf', { 'aria-hidden': 'true' }, '•');
-      const b = h('button.kb-br-tog', { type: 'button', 'aria-expanded': 'false', 'aria-label': `Open ${label}`, title: 'Open (→) / close (←)' }, '▸');
+      const b = h('button.kb-br-tog', { type: 'button', 'aria-expanded': 'false', 'aria-label': `Open ${label}`, title: 'Open (→) / close (←)' }, icon('chevron-right', { size: 14 }));
       b.addEventListener('click', () => {
         touched = true;
         set(!!sub.hidden);
@@ -116,7 +117,7 @@ export function browseTree(o: BrowseTreeOpts): {
       sub.hidden = !on;
       tog.setAttribute('aria-expanded', String(on));
       tog.setAttribute('aria-label', `${on ? 'Close' : 'Open'} ${label}`);
-      tog.textContent = on ? '▾' : '▸';
+      tog.replaceChildren(icon(on ? 'chevron-down' : 'chevron-right', { size: 14 }));
       if (on && !opened) {
         opened = true;
         firstOpen(byUser);
@@ -180,7 +181,7 @@ export function browseTree(o: BrowseTreeOpts): {
   /** The `↗ #id` button to a task made from an issue. */
   const taskLink = (task: number | undefined, from: string) => {
     if (!task) return null;
-    const b = h('button.btn.small.kb-br-task', { type: 'button', title: `Open task #${task}, made from ${from}` }, `↗ #${task}`);
+    const b = h('button.btn.small.kb-br-task', { type: 'button', title: `Open task #${task}, made from ${from}` }, ...withIcon('external-link', `#${task}`));
     b.addEventListener('click', () => o.openTask(task));
     return b;
   };
@@ -282,7 +283,7 @@ export function browseTree(o: BrowseTreeOpts): {
           context ? h('span.kb-chip.context', { title: CONTEXT_HINT }, 'context') : null,
           issue.issueType ? h('span.kb-chip.type', {}, issue.issueType) : null,
           statusChip(issue.status, issue.statusCategory),
-          issue.assignee ? h('span.kb-chip.who', { title: `Assigned to ${issue.assignee}` }, `👤 ${issue.assignee}`) : null,
+          issue.assignee ? h('span.kb-chip.who', { title: `Assigned to ${issue.assignee}` }, ...withIcon('user', issue.assignee)) : null,
           p ? doneChip(p.done, p.total, false) : null,
           taskLink(issue.taskId, issue.key),
         ),
@@ -415,7 +416,7 @@ export function browseTree(o: BrowseTreeOpts): {
                 title: `Open the epic ${epic.key}`,
                 onclick: () => o.open(asIssue()),
               },
-              `🧭 ${epic.title}`,
+              epic.title,
             )
           : h('span.kb-br-title.plain', {}, epic.title),
         h('span.kb-br-meta', {}, statusChip(epic.status, epic.statusCategory), doneChip(p.done, p.total, !own), count, epic.key ? taskLink(epicTask(), epic.key) : null),
@@ -437,14 +438,14 @@ export function browseTree(o: BrowseTreeOpts): {
   const groupView = (g: BrowseGroup): HTMLElement => {
     const row = h(`div.kb-br-row.group.${g.kind}`);
     const count = h('span.kb-br-count');
-    const icon = g.kind === 'released' ? '🗄️' : g.kind === 'none' ? '∅' : g.kind === 'version' ? '🏷️' : g.kind === 'iteration' ? '🔁' : '🚦';
+    const mark: IconName = g.kind === 'released' ? 'archive' : g.kind === 'none' ? 'minus' : g.kind === 'version' ? 'tag' : g.kind === 'iteration' ? 'rotate-cw' : 'flag';
     row.append(
-      h('span.kb-br-gtitle', {}, `${icon} ${g.title}`),
+      h('span.kb-br-gtitle', {}, ...withIcon(mark, g.title)),
       h(
         'span.kb-br-meta',
         {},
         g.released && g.kind !== 'released' ? h('span.kb-chip.cat-done', {}, 'released') : null,
-        g.releaseDate ? h('span.kb-br-date', { title: 'Release date' }, `📅 ${g.releaseDate}`) : null,
+        g.releaseDate ? h('span.kb-br-date', { title: 'Release date' }, ...withIcon('calendar', g.releaseDate)) : null,
         g.kind === 'released' ? null : count,
       ),
     );

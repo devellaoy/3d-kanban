@@ -1,9 +1,10 @@
-// What the ✨ New task form sends, worked out without the DOM (create.ts reads the fields, this decides):
+// What the New task form sends, worked out without the DOM (create.ts reads the fields, this decides):
 // a plain kanban.task.create titled by the description's first line, or, with an issue picked by
-// 🔗 Select issue, kanban.issues.createTask carrying the form's fields (the office then takes the title,
+// Select issue, kanban.issues.createTask carrying the form's fields (the office then takes the title,
 // the link and the text from the issue, and makes one task per issue).
 
 import { KANBAN_LIMITS, type IssueTaskFields, type KanbanClientMsg } from '../../shared/kanban/protocol.js';
+import type { KanbanEffort, KanbanTool, ReviewSettings } from '../../shared/kanban/types.js';
 import { titleFrom } from './office';
 
 type WithoutRid<T> = T extends unknown ? Omit<T, 'rid'> : never;
@@ -56,4 +57,38 @@ export function newTaskMsg(f: NewTaskFields, picked: { key: string } | null | un
       ...once,
     },
   };
+}
+
+/** The form's review fields as they stand. */
+export interface ReviewForm {
+  useReview: boolean;
+  /** "Choose the reviewer" is ticked: the task has a reviewer of its own. */
+  choose: boolean;
+  /** The number beside "Review rounds". */
+  rounds: number;
+  /** The project's number of rounds, which the box shows until it is changed. */
+  baseRounds: number;
+  tool: KanbanTool;
+  model: string;
+  effort: KanbanEffort | '';
+  reReviewLastFix: boolean;
+}
+
+/**
+ * The task's own review settings, or undefined for none: the project's number of rounds with no
+ * reviewer chosen is no override at all (the message is then what it was before the number stood beside
+ * its tick box); another number alone is a rounds-only override; a chosen reviewer carries everything.
+ */
+export function reviewOverride(f: ReviewForm): Partial<ReviewSettings> | undefined {
+  if (!f.useReview) return undefined;
+  if (!f.choose) return f.rounds === f.baseRounds ? undefined : { rounds: f.rounds };
+  const out: Partial<ReviewSettings> = { tool: f.tool, rounds: f.rounds, reReviewLastFix: f.reReviewLastFix };
+  if (f.model.trim()) out.model = f.model.trim();
+  if (f.effort) out.effort = f.effort;
+  return out;
+}
+
+/** What the form opens with for a stored override: its rounds (the project's without one), and whether a reviewer was chosen (more than the rounds is stored). */
+export function reviewStart(override: Partial<ReviewSettings> | undefined, baseRounds: number): { rounds: number; choose: boolean; ownRounds: boolean } {
+  return { rounds: override?.rounds ?? baseRounds, choose: !!override && Object.keys(override).some((k) => k !== 'rounds'), ownRounds: override?.rounds !== undefined };
 }

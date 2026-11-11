@@ -4,6 +4,7 @@
 // which skills each phase gets for each tool.
 
 import { h } from '../ui/dom';
+import { icon, withIcon } from '../ui/icons';
 import type { KanbanServerMsg } from '../../shared/kanban/protocol.js';
 import { KANBAN_TOOLS, SKILL_PHASES, type KanbanSettings, type KanbanTool, type SkillInfo, type SkillPhase, type SkillSelection } from '../../shared/kanban/types.js';
 import type { KanbanApi } from './api';
@@ -37,15 +38,15 @@ function follow(paint: () => void, cleanups: Cleanups) {
   cleanups.add(painters.add(paint));
 }
 
-/** Every skill the office found, which projects use it, and 🔄 Sync (office-wide). */
+/** Every skill the office found, which projects use it, and Sync (office-wide). */
 export function skillsOverview(api: KanbanApi, s: KanbanSettings, cleanups: Cleanups): HTMLElement {
   const list = h('div.kb-skill-list', { 'aria-live': 'polite' });
-  const sync = h('button.btn.kb-admin', { type: 'button', title: 'Look for skills again and install the office’s own' }, '🔄 Sync') as HTMLButtonElement;
+  const sync = h('button.btn.kb-admin', { type: 'button', title: 'Look for skills again and install the office’s own' }, ...withIcon('refresh-cw', 'Sync')) as HTMLButtonElement;
   const projectName = (id: string) => kstore.projectOf(id)?.name ?? id;
 
   const paintList = () => {
     if (!cache) return list.replaceChildren(h('p.kb-muted', {}, 'Loading…'));
-    if (cache.error) list.replaceChildren(h('p.kb-error', {}, `⚠️ ${cache.error}`));
+    if (cache.error) list.replaceChildren(h('p.kb-error', {}, cache.error));
     else list.replaceChildren();
     if (!cache.skills.length) return list.append(h('p.kb-muted', {}, 'No skills found.'));
     list.append(
@@ -112,7 +113,7 @@ export function skillsPane(api: KanbanApi, projectId: string, s: KanbanSettings,
               summary.textContent = now.size ? [...now].join(', ') : 'none';
             });
             const missing = !skills.some((k) => k.name === n && k.tool === tool);
-            return h('label.kb-check', { class: missing ? 'missing' : '', title: missing ? 'Picked, but the office can’t find it' : '' }, box, h('span', {}, `${n}${missing ? ' ⚠️' : ''}`));
+            return h('label.kb-check', { class: missing ? 'missing' : '', title: missing ? 'Picked, but the office can’t find it' : '' }, box, h('span', {}, ...(missing ? [n, icon('triangle-alert', { size: 13, label: 'missing' })] : [n])));
           }),
           names.length ? null : h('small.kb-muted', {}, `No skills for ${toolName(tool)}`),
         ),

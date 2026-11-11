@@ -5,6 +5,7 @@
 
 import './issueactions.css';
 import { h, timeAgo } from '../ui/dom';
+import { icon, withIcon } from '../ui/icons';
 import type { KanbanServerMsg } from '../../shared/kanban/protocol.js';
 import type { IssueAssignTo, IssueCommentItem, IssuePerson, IssueTransition } from '../../shared/kanban/issueops.js';
 import type { KanbanApi } from './api';
@@ -38,9 +39,9 @@ export function issueActions(api: KanbanApi, project: string, first: ActionIssue
   const el = h('div.kb-ia', { role: 'group', 'aria-label': `Actions on ${issue.key}` });
   // `focus` keys the button for the task view, which puts the focus back after a redraw (data-focus).
   const errorLine = (msg: string, retry: () => void, focus: string) => {
-    const again = h('button.btn.small', { type: 'button', 'data-focus': focus }, 'Try again');
+    const again = h('button.btn.small', { type: 'button', 'data-focus': focus }, ...withIcon('rotate-cw', 'Retry'));
     again.addEventListener('click', retry);
-    return h('p.kb-ia-error', { role: 'alert' }, `⚠️ ${msg} `, again);
+    return h('p.kb-ia-error', { role: 'alert' }, icon('triangle-alert', { size: 14 }), `${msg} `, again);
   };
   const painters: (() => void)[] = [];
   /** What each section asked the source for, to ask again (reload): the status choices, the comments. */
@@ -50,7 +51,7 @@ export function issueActions(api: KanbanApi, project: string, first: ActionIssue
   if (sections.includes('status')) {
     const now = h('span.kb-ia-now');
     const box = h('div.kb-ia-body');
-    const reload = h('button.btn.small.kb-ia-icon', { type: 'button', title: 'Load the choices again', 'data-focus': 'issue-status-reload', 'aria-label': 'Load the status choices again' }, '↻') as HTMLButtonElement;
+    const reload = h('button.btn.small.kb-ia-icon', { type: 'button', title: 'Refresh', 'data-focus': 'issue-status-reload', 'aria-label': 'Refresh the status choices' }, icon('refresh-cw', { size: 14 })) as HTMLButtonElement;
     let answer: Transitions | null = null;
     let gen = 0;
     const paintNow = () => (now.textContent = shownStatus(issue.status, answer?.current));
@@ -101,9 +102,9 @@ export function issueActions(api: KanbanApi, project: string, first: ActionIssue
         parts.push(sel);
         const needs = ts.filter((t) => t.needs?.length);
         if (needs.length && issue.url)
-          parts.push(h('p.kb-ia-quiet', {}, `${needs.map((t) => t.name).join(', ')} need${needs.length === 1 ? 's' : ''} more fields: `, h('a', { href: issue.url, target: '_blank', rel: 'noopener noreferrer' }, 'do it in Jira ↗')));
+          parts.push(h('p.kb-ia-quiet', {}, `${needs.map((t) => t.name).join(', ')} need${needs.length === 1 ? 's' : ''} more fields: `, h('a', { href: issue.url, target: '_blank', rel: 'noopener noreferrer' }, 'do it in Jira', icon('external-link', { size: 12 }))));
       }
-      if (a.note) parts.push(h('p.kb-ia-note', {}, `⚠️ ${a.note}`));
+      if (a.note) parts.push(h('p.kb-ia-note', {}, icon('triangle-alert', { size: 14 }), a.note));
       box.replaceChildren(...parts);
     };
     reload.addEventListener('click', load);
@@ -118,7 +119,7 @@ export function issueActions(api: KanbanApi, project: string, first: ActionIssue
   if (sections.includes('assignee')) {
     const site = github ? '' : jiraSite(issue.url);
     const who = h('span.kb-ia-now');
-    const mine = h('button.btn.small', { type: 'button', 'data-focus': 'issue-assign-me' }, '🙋 Assign to me') as HTMLButtonElement;
+    const mine = h('button.btn.small', { type: 'button', 'data-focus': 'issue-assign-me' }, ...withIcon('user', 'Assign to me')) as HTMLButtonElement;
     const other = h('button.btn.small', { type: 'button', 'aria-expanded': 'false', 'data-focus': 'issue-assign-other' }, 'Someone else…') as HTMLButtonElement;
     const none = h('button.btn.small', { type: 'button', 'data-focus': 'issue-unassign' }, 'Unassign') as HTMLButtonElement;
     const search = textInput('', { type: 'search', placeholder: 'Search people', 'aria-label': 'Search people to assign', 'data-focus': 'issue-people-search' });
@@ -130,9 +131,9 @@ export function issueActions(api: KanbanApi, project: string, first: ActionIssue
     let found: { items: IssuePerson[]; query: string } | null = null;
     const paintPeople = () => found && results.replaceChildren(...(found.items.length ? found.items.map(person) : [h('li.kb-ia-quiet', {}, found.query ? 'Nobody matches' : 'Type a name')]));
     const paintWho = () => {
-      who.textContent = issue.assignee ? `👤 ${issue.assignee}` : 'Unassigned';
+      who.replaceChildren(...(issue.assignee ? withIcon('user', issue.assignee, 14) : ['Unassigned']));
       const me = site ? pinnedMe(site) : undefined;
-      mine.title = github ? 'Assign it to your own GitHub sign-in' : me ? `Assign it to ${me.name} (pinned as you on ${site})` : `Pin yourself first: 📌 on your name in the search`;
+      mine.title = github ? 'Assign it to your own GitHub sign-in' : me ? `Assign it to ${me.name} (pinned as you on ${site})` : `Pin yourself first: press This is me on your name in the search`;
       none.disabled = !issue.assignee;
     };
     const assign = (to: IssueAssignTo, button: HTMLButtonElement | null, label: string) =>
@@ -146,10 +147,10 @@ export function issueActions(api: KanbanApi, project: string, first: ActionIssue
       pick.addEventListener('click', () => void assign({ id: p.id, name: p.name }, pick, `${issue.key} → ${p.name}`));
       if (!site) return h('li', {}, pick);
       const pinned = pinnedMe(site)?.id === p.id;
-      const pin = h('button.btn.small.kb-ia-pin', { type: 'button', 'aria-pressed': String(pinned), title: pinned ? `You are pinned as ${p.name} on ${site}: click to unpin` : `This is me (on ${site}): makes 🙋 Assign to me work` }, pinned ? '📌 Me' : '📌 This is me');
+      const pin = h('button.btn.small.kb-ia-pin', { type: 'button', 'aria-pressed': String(pinned), title: pinned ? `You are pinned as ${p.name} on ${site}: click to unpin` : `This is me (on ${site}): makes Assign to me work` }, ...withIcon('map-pin', pinned ? 'Me' : 'This is me', 14));
       pin.addEventListener('click', () => {
         setPinnedMe(site, pinned ? undefined : p);
-        hint.textContent = pinned ? '' : `📌 This browser knows you as ${p.name} on ${site}: 🙋 Assign to me works now.`;
+        hint.textContent = pinned ? '' : `This browser knows you as ${p.name} on ${site}: Assign to me works now.`;
         hint.hidden = pinned;
         paintWho();
         paintPeople();
@@ -187,7 +188,7 @@ export function issueActions(api: KanbanApi, project: string, first: ActionIssue
       if (github) return void assign({ me: true }, mine, `${issue.key} is yours`);
       const me = site ? pinnedMe(site) : undefined;
       if (me) return void assign({ id: me.id, name: me.name }, mine, `${issue.key} is yours`);
-      showPicker(true, `Find yourself and press 📌 This is me once: this browser then knows you on ${site || 'this Jira site'}.`);
+      showPicker(true, `Find yourself and press This is me once: this browser then knows you on ${site || 'this Jira site'}.`);
     });
     other.addEventListener('click', () => showPicker(!!picker.hidden));
     none.addEventListener('click', () => void assign(null, none, `${issue.key} is unassigned`));
@@ -200,14 +201,14 @@ export function issueActions(api: KanbanApi, project: string, first: ActionIssue
   if (sections.includes('comments')) {
     const list = h('ol.kb-ia-comments', { 'aria-label': 'Comments' });
     const ta = textArea('', { rows: 3, placeholder: `Comment on ${issue.key} · ${sendHint()}`, 'aria-label': `Comment on ${issue.key}`, 'data-focus': 'issue-comment' });
-    const send = h('button.btn.small.primary', { type: 'button', 'data-focus': 'issue-comment-send' }, 'Comment') as HTMLButtonElement;
+    const send = h('button.btn.small', { type: 'button', 'data-focus': 'issue-comment-send' }, 'Comment') as HTMLButtonElement;
     const composer = h('div.kb-ia-composer', {}, ta, h('div.kb-ia-row', {}, h('small.kb-ia-quiet.grow', {}, sendHint()), send));
     let gen = 0;
     const comment = (c: IssueCommentItem) =>
       h(
         'li.kb-ia-comment',
         {},
-        h('header', {}, h('b', {}, c.author || 'someone'), h('time', { datetime: c.createdAt, title: new Date(c.createdAt).toLocaleString() }, timeAgo(c.createdAt)), c.url ? h('a', { href: c.url, target: '_blank', rel: 'noopener noreferrer', title: 'Open it at the source' }, '↗') : null),
+        h('header', {}, h('b', {}, c.author || 'someone'), h('time', { datetime: c.createdAt, title: new Date(c.createdAt).toLocaleString() }, timeAgo(c.createdAt)), c.url ? h('a', { href: c.url, target: '_blank', rel: 'noopener noreferrer', title: 'Open it at the source', 'aria-label': 'Open it at the source' }, icon('external-link', { size: 14 })) : null),
         renderMarkdown(c.body, openTask, '(empty)'),
       );
     const load = () => {

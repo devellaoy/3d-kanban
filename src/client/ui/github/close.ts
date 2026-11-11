@@ -1,13 +1,16 @@
 import type { GhCloseReason, GhIssue, GhPull } from '../../../shared/protocol';
 import type { Net } from '../../net';
 import { store, workerForPull } from '../../state';
-import { h, openModal } from '../dom';
+import { h } from '../dom';
+import { icon } from '../icons';
+import { btn, checkLine, formField, segmented } from '../kit';
+import { modalShell, openShell } from '../shell';
 import { ghKey, ghLabel, ghRepoField } from './ghrepo';
 import { closeWaiters } from './api';
 
 // ---- Close dialog -------------------------------------------------------------------------------
 
-const REASON_LABEL: Record<GhCloseReason, string> = { completed: '✅ Completed', 'not planned': '🚫 Not planned' };
+const REASON_LABEL: Record<GhCloseReason, string> = { completed: 'Completed', 'not planned': 'Not planned' };
 
 /** Closes an issue (as completed or not planned) or a PR without merging, with an optional comment. */
 export function openClose(kind: 'issue' | 'pull', it: GhIssue | GhPull, net: Net, onClosed: () => void) {
@@ -18,39 +21,37 @@ export function openClose(kind: 'issue' | 'pull', it: GhIssue | GhPull, net: Net
   let reason: GhCloseReason = 'completed';
   let busy = false;
 
-  const go = h('button.btn.danger', { type: 'button' });
-  const reasons = h('div.seg');
-  const renderReasons = () => {
-    reasons.replaceChildren(...(Object.keys(REASON_LABEL) as GhCloseReason[]).map((r) => h('button.btn', { type: 'button', class: r === reason ? 'on' : '', onclick: () => ((reason = r), renderReasons()) }, REASON_LABEL[r])));
-    go.textContent = pull ? '🚫 Close pull request' : `${reason === 'completed' ? '✔️' : '🚫'} Close as ${reason}`;
-  };
-  const comment = h('textarea', { rows: 4, placeholder: 'Leave a comment (optional)', 'aria-label': 'Closing comment' }) as HTMLTextAreaElement;
-  const del = h('input', { type: 'checkbox', id: 'close-del' }) as HTMLInputElement;
+  const goText = h('span');
+  const go = h('button.btn.danger.lg', { type: 'button' }, icon(pull ? 'git-pull-request-closed' : 'circle-check'), goText) as HTMLButtonElement;
+  const paintGo = () => (goText.textContent = pull ? 'Close pull request' : `Close as ${reason}`);
+  const reasons = segmented<GhCloseReason>((Object.keys(REASON_LABEL) as GhCloseReason[]).map((r) => [r, REASON_LABEL[r]] as const), reason, (r) => ((reason = r), paintGo()), 'Why');
+  const comment = h('textarea.inp', { rows: 4, placeholder: 'Leave a comment', 'aria-label': 'Closing comment', autofocus: true }) as HTMLTextAreaElement;
+  const del = pull ? checkLine(['Delete ', h('code.code-chip', {}, pull.headRefName), ' too'], { id: 'close-del' }) : null;
   const w = pull && workerForPull(store.workers.values(), pull);
   const result = h('div.gh-merge-result.hidden');
-  const cancel = h('button.btn', { type: 'button' }, 'Cancel');
+  const cancel = btn('Cancel', { kind: 'quiet' });
   const noun = pull ? 'pull request' : 'issue';
 
-  const el = h(
-    'div.modal.gh-merge',
-    { role: 'dialog', 'aria-label': `Close ${noun} ${label}` },
-    h('header', {}, h('h2', {}, `${pull ? '🚫' : '✔️'} Close ${pull ? 'PR' : 'issue'} ${label}`)),
-    h(
-      'div.body',
+  const shell = modalShell({
+    cls: 'gh-merge',
+    icon: pull ? 'git-pull-request-closed' : 'circle-check',
+    title: `Close ${noun}`,
+    id: label,
+    label: `Close ${noun} ${label}`,
+    body: h(
+      'div.gh-merge-body',
       {},
-      h('p.gh-merge-title', {}, it.title, pull ? h('small', {}, `${pull.headRefName} → ${pull.baseRefName}`) : null),
-      pull
-        ? h('div.gh-status.muted', {}, h('span', {}, 'ℹ️'), `It won't be merged, and can be reopened on GitHub later.${w ? ` ${w.name} is still at a desk working on its branch.` : ''}`)
-        : h('label', {}, 'Why'),
-      pull ? h('label.gh-check', { for: 'close-del' }, del, `Delete ${pull.headRefName} too`) : reasons,
-      comment,
+      h('p.gh-merge-title', {}, it.title, pull ? h('small', {}, `${pull.headRefName} into ${pull.baseRefName}`) : null),
+      pull ? h('p.gh-note', {}, icon('info', { size: 16 }), h('span', {}, `It won't be merged, and can be reopened on GitHub later.${w ? ` ${w.name} is still at a desk working on its branch.` : ''}`)) : formField('Why', reasons.el),
+      del?.el ?? null,
+      formField('Comment', comment, { optional: true }),
       result,
     ),
-    h('footer', {}, h('span.grow'), cancel, go),
-  );
-  renderReasons();
+    footerRight: [cancel, go],
+  });
+  paintGo();
 
-  const modal = openModal(el, { onClose: () => closeWaiters.delete(key) });
+  const modal = openShell(shell, { onClose: () => closeWaiters.delete(key) });
   cancel.addEventListener('click', () => modal.close());
   go.addEventListener('click', () => {
     if (busy) return;
@@ -71,7 +72,6 @@ export function openClose(kind: 'issue' | 'pull', it: GhIssue | GhPull, net: Net
       onClosed();
     });
     // The repo it's in.
-    net.send({ t: 'gh.close', kind, number: it.number, comment: comment.value.trim() || undefined, reason: pull ? undefined : reason, deleteBranch: !!pull && del.checked, ...ghRepoField(it.repo) });
+    net.send({ t: 'gh.close', kind, number: it.number, comment: comment.value.trim() || undefined, reason: pull ? undefined : reason, deleteBranch: !!pull && !!del?.box.checked, ...ghRepoField(it.repo) });
   });
-  setTimeout(() => comment.focus(), 30);
 }

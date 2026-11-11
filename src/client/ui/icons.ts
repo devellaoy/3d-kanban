@@ -12,8 +12,9 @@ import {
   Link, Unlink, TriangleAlert, User, Users, Signpost, CircleDashed, Wrench, GitPullRequestClosed, Download, Upload,
   Send, Copy, Info, CircleAlert, CircleX, Clock, Tag, Folder, FolderOpen, Sparkles, Brain, Keyboard, Undo2, LogOut,
   CornerUpLeft, ArrowUp, ArrowDown, ArrowRight, Minus, List, Filter, Star, Sun, Moon, Palette,
+  Sprout,
+  Bell, BellOff, Calendar, Compass, Dices, Flag, Globe, House, Image, KeyRound, Layers, Save, Shield, Video, Volume2, ChevronUp, Zap, Hash, History, AtSign, CircleHelp, TrafficCone, Scissors,
 } from 'lucide';
-import { h } from './dom';
 
 /** The icons by their Lucide (kebab-case) name. */
 export const ICONS = {
@@ -99,6 +100,30 @@ export const ICONS = {
   'sun': Sun,
   'moon': Moon,
   'palette': Palette,
+  'sprout': Sprout,
+  'bell': Bell,
+  'bell-off': BellOff,
+  'calendar': Calendar,
+  'compass': Compass,
+  'dices': Dices,
+  'flag': Flag,
+  'globe': Globe,
+  'house': House,
+  'image': Image,
+  'key-round': KeyRound,
+  'layers': Layers,
+  'save': Save,
+  'shield': Shield,
+  'video': Video,
+  'volume-2': Volume2,
+  'chevron-up': ChevronUp,
+  'zap': Zap,
+  'hash': Hash,
+  'history': History,
+  'at-sign': AtSign,
+  'circle-help': CircleHelp,
+  'traffic-cone': TrafficCone,
+  'scissors': Scissors,
 } satisfies Record<string, IconNode>;
 
 export type IconName = keyof typeof ICONS;
@@ -141,5 +166,18 @@ export function withIcon(name: IconName, text: string, size?: number): [SVGSVGEl
 
 /** A button that is only an icon: its name for screen readers and its tooltip is `label`. */
 export function iconButton(name: IconName, label: string, attrs: Record<string, unknown> = {}, size?: number): HTMLButtonElement {
-  return h('button.btn.icon-btn', { type: 'button', ...(attrs as Parameters<typeof h>[1]), 'aria-label': label, title: label }, icon(name, { size })) as HTMLButtonElement;
+  // Built without ui/dom.ts's h(), which draws its ✕ with icon(): the two files would import each other.
+  const b = document.createElement('button');
+  b.className = 'btn icon-btn';
+  b.setAttribute('type', 'button');
+  for (const [k, v] of Object.entries(attrs)) {
+    if (v === undefined || v === null || v === false) continue;
+    if (k.startsWith('on') && typeof v === 'function') b.addEventListener(k.slice(2), v as EventListener);
+    else if (k === 'class') b.className = `${b.className} ${String(v)}`.trim();
+    else b.setAttribute(k, v === true ? '' : String(v));
+  }
+  b.setAttribute('aria-label', label);
+  b.setAttribute('title', label);
+  b.append(icon(name, { size }));
+  return b;
 }

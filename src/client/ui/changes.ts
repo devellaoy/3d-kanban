@@ -3,7 +3,10 @@ import { tabStrip } from './tabs';
 import { changedImageType, type ChangedFile, type ChangesState, type ServerMsg } from '../../shared/protocol';
 import type { Net } from '../net';
 import { store } from '../state';
-import { h, openModal, type Modal } from './dom';
+import { h, type Modal } from './dom';
+import { icon, withIcon, type IconName } from './icons';
+import { btn } from './kit';
+import { modalShell, openShell } from './shell';
 import { confirmDialog, openPrompt } from './prompt';
 import { kanbanOf } from '../kanban/office';
 import { apiUrl } from '../multiplayer/visit';
@@ -109,7 +112,7 @@ export function renderPreview(workerId: string, repo: string | undefined, f: Cha
       const size = h('span.size');
       const frame = h('div.img-frame');
       const img = h('img', { src: imageUrl(workerId, repo, f, side), alt: `${side === 'old' ? f.from ?? f.path : f.path} (${label.toLowerCase()})` });
-      img.addEventListener('load', () => (size.textContent = `${img.naturalWidth} × ${img.naturalHeight}`));
+      img.addEventListener('load', () => (size.textContent = `${img.naturalWidth} x ${img.naturalHeight}`));
       img.addEventListener('error', () => frame.replaceChildren(h('p', {}, `Couldn't load the picture ${side === 'old' ? 'from before' : 'as it is now'}.`)));
       frame.append(img);
       return h('figure', {}, h('figcaption', {}, h('b', {}, label), size), frame);
@@ -142,10 +145,10 @@ export function openChanges(net: Net, workerId: string, onTerminal?: () => void,
   let loading = false;
 
   const dot = h('span.dot', { style: `background:${info.color}` });
-  const title = h('h2', {}, `${info.name} · changes`);
   const branch = h('span.branch');
-  const terminalBtn = h('button.btn', { type: 'button', title: 'Open the terminal instead' }, '⌨️ Terminal');
-  const closeBtn = h('button.btn.close', { 'aria-label': 'Close' }, '✕');
+  const terminalBtn = btn('Terminal', { kind: 'quiet', size: 'sm', icon: 'square-terminal', attrs: { title: 'Open the terminal instead' } });
+  /** A button's icon and words, replaced together. */
+  const label = (b: HTMLElement, name: IconName, text: string) => b.replaceChildren(...withIcon(name, text));
   const filesHead = h('h4', {}, 'Changed files');
   const list = h('ul', { role: 'listbox', 'aria-label': 'Changed files' });
   const files = h('aside.changes-files', {}, filesHead, list);
@@ -153,18 +156,23 @@ export function openChanges(net: Net, workerId: string, onTerminal?: () => void,
   const diffBody = h('div.diff-scroll');
   const diff = h('section.changes-diff', {}, diffHead, diffBody);
   const summary = h('span.grow');
-  const discardBtn = h('button.btn', { type: 'button', title: 'Throw away every uncommitted change in this checkout' }, '🗑️ Discard all');
-  const commitBtn = h('button.btn', { type: 'button', title: 'git add -A && git commit' }, '✅ Commit…');
+  const discardBtn = btn('Discard all', { kind: 'quiet-danger', icon: 'trash-2', attrs: { title: 'Throw away every uncommitted change in this checkout' } });
+  const commitBtn = btn('Commit…', { icon: 'check', attrs: { title: 'git add -A && git commit' } });
   const prSlot = h('span.pr-slot');
   const tabs = h('nav.changes-tabs.changes-repos');
-  const el = h(
-    'div.modal.desk-changes',
-    { role: 'dialog', 'aria-label': `${info.name}'s changes`, tabindex: -1 },
-    h('header', {}, dot, title, branch, onTerminal ? terminalBtn : null, closeBtn),
-    tabs,
-    h('div.changes-body', {}, files, diff),
-    h('footer', {}, summary, discardBtn, commitBtn, prSlot),
-  );
+  const shell = modalShell({
+    cls: 'desk-changes',
+    icon: 'file-diff',
+    title: `${info.name} · changes`,
+    label: `${info.name}'s changes`,
+    id: h('span.changes-id', {}, dot, branch),
+    tools: onTerminal ? [terminalBtn] : [],
+    body: [tabs, h('div.changes-body', {}, files, diff)],
+    footerLeft: [summary],
+    footerRight: [discardBtn, commitBtn, prSlot],
+  });
+  const el = shell.el;
+  el.tabIndex = -1;
 
   const where = () => (state?.dir ? shownDir(state.dir) : 'the project folder');
 
@@ -190,12 +198,12 @@ export function openChanges(net: Net, workerId: string, onTerminal?: () => void,
   const renderEmpty = () => {
     diffHead.replaceChildren();
     if (!state) return diffBody.replaceChildren(h('div.changes-empty', {}, h('div.spinner')));
-    if (state.error) return diffBody.replaceChildren(h('div.changes-empty', {}, h('div.big', {}, '🚧'), h('p', {}, `Couldn't read ${where()}: ${state.error}`)));
+    if (state.error) return diffBody.replaceChildren(h('div.changes-empty', {}, h('div.big', {}, icon('triangle-alert', { size: 44 })), h('p', {}, `Couldn't read ${where()}: ${state.error}`)));
     diffBody.replaceChildren(
       h(
         'div.changes-empty',
         {},
-        h('div.big', {}, '🌱'),
+        h('div.big', {}, icon('sprout', { size: 44 })),
         h('p', {}, state.base === 'HEAD' ? `Nothing uncommitted in ${where()}.` : `${info.name} hasn't changed anything since ${state.base} yet.`),
         h('p.note', {}, 'This window follows the checkout as the worker works, so changes show up here as they are made.'),
       ),
@@ -226,7 +234,7 @@ export function openChanges(net: Net, workerId: string, onTerminal?: () => void,
   const renderDiffHead = () => {
     const f = state?.files.find((x) => x.path === selected);
     if (!f) return diffHead.replaceChildren();
-    const discardOne = h('button.btn', { type: 'button', title: 'Throw away the uncommitted changes to this file' }, '↩︎ Discard');
+    const discardOne = btn('Discard', { kind: 'quiet-danger', size: 'sm', icon: 'undo-2', attrs: { title: 'Throw away the uncommitted changes to this file' } });
     discardOne.addEventListener('click', () =>
       confirmDialog(`Discard the changes to ${f.path.split('/').pop()}?`, `This puts ${f.path} back to the last commit in ${where()}. ${f.status === '?' ? 'The file is deleted.' : 'Committed changes stay.'}`, 'Discard', () =>
         net.send({ t: 'changes.discard', workerId, path: f.path, repo }),
@@ -254,27 +262,27 @@ export function openChanges(net: Net, workerId: string, onTerminal?: () => void,
       if (s.files.length) bits.push(plusMinus(adds, dels));
       bits.push(uncommitted ? `${uncommitted} uncommitted` : s.files.length ? 'all committed' : '');
       if (s.ahead) bits.push(`${s.ahead} commit${s.ahead > 1 ? 's' : ''} ahead of ${s.base}`);
-      if (!s.dir) bits.push(h('span', { title: "This worker works in the project folder itself, so this is everything uncommitted there — everyone's edits, not just its own." }, '📁 shared project folder'));
-      else bits.push(h('span', { title: `Its own worktree at ${s.dir}` }, `📁 ${shownDir(s.dir)}`));
+      if (!s.dir) bits.push(h('span', { title: "This worker works in the project folder itself, so this is everything uncommitted there — everyone's edits, not just its own." }, ...withIcon('folder', 'shared project folder')));
+      else bits.push(h('span', { title: `Its own worktree at ${s.dir}` }, ...withIcon('folder', shownDir(s.dir))));
       summary.append(...bits.filter(Boolean).map((b) => (typeof b === 'string' ? h('span', {}, b) : b)));
     }
     discardBtn.disabled = busy || !uncommitted;
     commitBtn.disabled = busy || !uncommitted;
-    commitBtn.textContent = uncommitted ? `✅ Commit ${uncommitted} file${uncommitted > 1 ? 's' : ''}…` : '✅ Commit…';
+    label(commitBtn, 'check', uncommitted ? `Commit ${uncommitted} file${uncommitted > 1 ? 's' : ''}…` : 'Commit…');
     prSlot.replaceChildren();
     if (!s) return;
-    if (s.pr) prSlot.append(h('a.btn.primary', { href: s.pr.url, target: '_blank', rel: 'noopener', title: 'Open on GitHub' }, `🔀 PR #${s.pr.number} ↗`));
+    if (s.pr) prSlot.append(h('a.btn.primary.lg', { href: s.pr.url, target: '_blank', rel: 'noopener', title: 'Open on GitHub' }, ...withIcon('git-pull-request', `PR #${s.pr.number}`), icon('external-link', { size: 14 })));
     else if (s.prBase) {
       const why = busy ? '' : uncommitted ? 'Commit first' : !s.ahead ? `Nothing on ${s.branch} that ${s.prBase} lacks yet` : '';
-      const pr = h('button.btn.primary', { type: 'button', title: why || `Push ${s.branch} and open a pull request against ${s.prBase}` }, '🔀 Open PR…');
+      const pr = btn('Open PR…', { kind: 'primary', icon: 'git-pull-request', attrs: { title: why || `Push ${s.branch} and open a pull request against ${s.prBase}` } });
       pr.disabled = busy || !!why;
       pr.addEventListener('click', () =>
         openPrompt({
-          title: '🔀 Open a pull request',
+          title: 'Open a pull request',
           subtitle: `Pushes ${s.branch} to origin and opens a PR against ${s.prBase}. The first line is the title; the rest is the description.`,
           initial: s.subject ?? '',
           placeholder: 'Title',
-          submitLabel: 'Open PR ↗',
+          submitLabel: 'Open PR',
           onSubmit: (text) => {
             const [first, ...rest] = text.split('\n');
             net.send({ t: 'changes.pr', workerId, title: first.trim(), body: rest.join('\n').trim(), repo });
@@ -287,10 +295,10 @@ export function openChanges(net: Net, workerId: string, onTerminal?: () => void,
 
   const renderHeader = () => {
     const w = store.workers.get(workerId);
-    if (w) title.textContent = `${w.name} · changes`;
+    if (w) shell.setTitle(`${w.name} · changes`);
     const s = state;
-    if (!s || s.error) branch.textContent = '';
-    else branch.textContent = s.base === 'HEAD' ? `🌿 ${s.branch} · uncommitted changes` : `🌿 ${s.branch} · vs ${s.base}`;
+    if (!s || s.error) branch.replaceChildren();
+    else branch.replaceChildren(...withIcon('git-branch', s.base === 'HEAD' ? `${s.branch} · uncommitted changes` : `${s.branch} · vs ${s.base}`, 13));
   };
 
   const onState = (s: ChangesState) => {
@@ -352,7 +360,7 @@ export function openChanges(net: Net, workerId: string, onTerminal?: () => void,
   commitBtn.addEventListener('click', () => {
     const n = state?.files.filter((f) => f.uncommitted).length ?? 0;
     openPrompt({
-      title: `✅ Commit ${n} file${n === 1 ? '' : 's'}`,
+      title: `Commit ${n} file${n === 1 ? '' : 's'}`,
       subtitle: `Stages everything in ${where()} and commits it${state?.branch ? ` on ${state.branch}` : ''}.`,
       placeholder: 'What changed, and why',
       submitLabel: 'Commit',
@@ -375,7 +383,7 @@ export function openChanges(net: Net, workerId: string, onTerminal?: () => void,
     const strip = tabStrip(
       [{ id: '', name: own, pr: w.pr }, ...repos.map((r) => ({ id: r.floor as string, name: r.name, pr: r.pr }))].map((t) => ({
         id: t.id,
-        label: [`📁 ${t.name}`, t.pr ? h('small', {}, ` · #${t.pr.number}`) : null],
+        label: [icon('folder', { size: 14 }), t.name, t.pr ? h('small', {}, ` · #${t.pr.number}`) : null],
         title: t.id ? `Its worktree of ${t.name}` : `Its worktree of this floor's project, ${t.name}`,
       })),
       repo ?? '',
@@ -414,7 +422,7 @@ export function openChanges(net: Net, workerId: string, onTerminal?: () => void,
       renderTabs();
     }
   });
-  const modal = openModal(el, {
+  const modal = openShell(shell, {
     doing: `🌿 looking over ${info.name}'s changes`,
     onClose: () => {
       listeners.delete(onMsg);
@@ -425,7 +433,6 @@ export function openChanges(net: Net, workerId: string, onTerminal?: () => void,
   });
   current = { workerId, repo: () => repo, show, modal };
   previous?.modal.close();
-  closeBtn.addEventListener('click', () => modal.close());
   if (repo && !info.repos?.some((r) => r.floor === repo)) repo = undefined;
   renderTabs();
   renderHeader();

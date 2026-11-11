@@ -49,7 +49,7 @@ const GITHUB_CATS: BrowseStatusFilter[] = ['open', 'done', 'all'];
 export const catsFor = (scope: BrowseScope): [BrowseStatusFilter, string][] => (scope.kind === 'github-project' ? CATS.filter(([v]) => GITHUB_CATS.includes(v)) : CATS);
 /** A remembered status category the scope doesn't offer (a "To do" kept on a GitHub board) falls back to Not done. */
 export const catOf = (cat: BrowseStatusFilter, scope: BrowseScope): BrowseStatusFilter => (catsFor(scope).some(([v]) => v === cat) ? cat : 'open');
-export const PIN_FIRST = 'Pin yourself first: 📌 This is me in an issue’s Assignee';
+export const PIN_FIRST = 'Pin yourself first: This is me in an issue’s Assignee';
 export const SEARCH_MS = 300;
 
 export const savedKey = (project: string, scope: string) => `kb-browse:${project}:${scope}`;

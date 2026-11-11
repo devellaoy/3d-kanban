@@ -3,6 +3,7 @@
 // worker's, not this browser's: everyone who opens the worker's window sees the same ones, they keep
 // running when the window closes, and they end with their ×, `exit`, the worker going home or the
 // office restarting. A shell tab's terminal is made the first time the tab shows here.
+import { icon, withIcon } from './icons';
 import './termtabs.css';
 import type { Terminal } from '@xterm/xterm';
 import type { FitAddon } from '@xterm/addon-fit';
@@ -71,7 +72,7 @@ export function termTabs(workerId: string, opts: TermTabsOptions): TermTabs {
   const render = () => {
     const tab = (on: boolean, label: HTMLElement, close?: HTMLElement) => h('div.term-tab', { class: on ? 'on' : '' }, label, close ?? null);
     tabsBar.replaceChildren(
-      tab(active === null, h('button.term-tab-label', { type: 'button', role: 'tab', 'aria-selected': String(active === null), onclick: () => show(null) }, '💻 Terminal')),
+      tab(active === null, h('button.term-tab-label', { type: 'button', role: 'tab', 'aria-selected': String(active === null), onclick: () => show(null) }, ...withIcon('square-terminal', 'Terminal', 14))),
       ...tabs.map((t) =>
         tab(
           active === t.id,
@@ -87,7 +88,7 @@ export function termTabs(workerId: string, opts: TermTabsOptions): TermTabs {
                 net.send({ t: 'shelltab.close', tabId: t.id });
               },
             },
-            '×',
+            icon('x', { size: 12 }),
           ),
         ),
       ),

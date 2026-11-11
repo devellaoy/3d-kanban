@@ -25,15 +25,15 @@ test('a long list of links is cut short', () => {
 test('one go links at most 20 pull requests: a further tick is refused and the window counts', () => {
   assert.equal(PR_LINK_MAX, 20);
   assert.deepEqual([19, 20, 21].map(canPickMore), [true, false, false]);
-  assert.equal(pickedText(3, 20), '', 'nothing to say while every candidate fits');
-  assert.equal(pickedText(3, 21), '3 of at most 20 selected');
+  assert.equal(pickedText(3, 20), '3 of 20 selected', 'the most is not named while every candidate fits');
+  assert.equal(pickedText(3, 21), '3 of 21 selected · 20 at most in one go');
 });
 
 test('a search whose task is no longer shown names the task in every toast and in the one that replaces the window', () => {
   const t = foundToasts({ ...none, linked: [pr(1)], notes: ['acme/api: the newest pull requests couldn\'t be listed (boom), so ones that only mention the ticket may be missing'] }, 12);
   assert.ok(t.every((x) => x.text.startsWith('Task #12: ')));
   assert.equal(foundToasts(none, 12)[0].text, 'Task #12: No pull requests found');
-  assert.equal(goneToast(12, 3), 'Task #12: 3 pull requests may be its. Open its PRs tab and use 🔎 Find PRs again.');
+  assert.equal(goneToast(12, 3), 'Task #12: 3 pull requests may be its. Open its Pull requests tab and use Find PRs again.');
   assert.match(goneToast(12, 1), /1 pull request may/);
   assert.equal(taskLabel({ id: 12, title: 'Fix login' }), '#12 Fix login');
 });

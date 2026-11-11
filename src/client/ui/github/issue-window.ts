@@ -2,9 +2,12 @@ import './windows.css';
 import type { GhIssue, GhIssueDetail } from '../../../shared/protocol';
 import type { Net } from '../../net';
 import { store } from '../../state';
-import { h, openModal, timeAgo } from '../dom';
+import { h, timeAgo } from '../dom';
+import { iconButton } from '../icons';
+import { btn, detailsRail, outLink } from '../kit';
 import { issueMeeting } from '../meeting';
 import { providerPicker } from '../provider';
+import { modalShell, openShell } from '../shell';
 // Which of the project's repositories an issue is in (github/ghrepo.ts), and the queue's task for a card from the issue sources.
 import { ghLabel, ghUrl, sameItem } from './ghrepo';
 import { taskForCard } from '../../kanban/issuecards';
@@ -12,19 +15,30 @@ import { getJson } from './api';
 import { openClose } from './close';
 import { commentBox } from './comment-box';
 import { labelButton, labelChip } from './labels';
-import { avatar, commentCard, errorBox, nodes, spinnerRow } from './pieces';
+import { avatar, commentCard, errorBox, issuePill, railButton, railStack, sectionHead, spinnerRow } from './pieces';
 import { issueContext, issuePrompt, type BoardActions } from './prompts';
 
 // ---- The issue window -----------------------------------------------------------------------------
 
-/** For a card from the issue sources (kanban/issuecards.ts): its status and assignee actions on top of the conversation (`reload` fetches the issue again after one), and its comments posted by its key. */
+/**
+ * For a card from the issue sources (kanban/issuecards.ts): its status and assignee actions at the top of
+ * the rail (`reload` fetches the issue again after one), its comments posted by its key, and the way to
+ * its kanban task.
+ */
 export interface IssueWindowExtras {
   extra?: (it: GhIssue, reload: () => void) => Node;
   postComment?: (body: string) => Promise<void>;
+  /** Opens the kanban task made from it (the footer's "Task #N"). */
+  openTask?: (id: number) => void;
   /** The window closed. */
   closed?: () => void;
 }
 
+/**
+ * The window of a GitHub issue: the shared shell with its number, state and author in the header, the
+ * description and the comments in the body, its people, labels and the ways to hand it to a worker in
+ * the rail, and closing it and its kanban task in the footer.
+ */
 export function openIssue(first: GhIssue, net: Net, actions: BoardActions, extras: IssueWindowExtras = {}) {
   let it = first;
   const itemUrl = it.url;
@@ -33,64 +47,78 @@ export function openIssue(first: GhIssue, net: Net, actions: BoardActions, extra
   const label = ghLabel(it.number, repo);
   let detail: GhIssueDetail | null = null;
   let error = '';
-  const close = h('button.btn.close', { 'aria-label': 'Close' }, '✕');
-  const pill = h('span.pill');
-  const conv = h('div.gh-conv');
-  const thread = h('div.gh-items');
+  const state = h('span.iw-slot');
+  const meta = h('span.iw-meta');
+  const desc = h('section.iw-sec');
+  const thread = h('section.iw-sec');
   const comment = commentBox('issue', it.number, itemUrl, net, (c) => {
     if (!detail) return load();
     detail.comments.push(c);
     render();
   }, repo, extras.postComment && { post: extras.postComment, sent: () => load() });
-  conv.append(h('div.gh-col', {}, extras.extra?.(first, () => load()) ?? null, thread, comment.el));
-  // The footer stays put and renderFrame only shows, hides and relabels, so a board refresh never
-  // pulls focus out of the provider picker.
-  const closeIssue = h('button.btn', { type: 'button', title: 'Close this issue on GitHub', onclick: () => openClose('issue', it, net, load) }, '✔️ Close issue…');
+  // The rail and the footer stay put and renderFrame only shows, hides and relabels, so a board refresh
+  // never pulls focus out of the provider picker.
+  const details = h('div.iw-details');
+  const closeIssue = btn('Close issue', { kind: 'quiet', icon: 'circle-check', attrs: { title: 'Close this issue on GitHub', onclick: () => openClose('issue', it, net, load) } });
   const queueProvider = providerPicker(store.project, `issue-provider-${it.number}`, 'Queue on');
   const addIssueToQueue = () => {
     if (!queueProvider.valid()) return;
     modal.close();
     actions.queue(issuePrompt(it), `#${it.number} ${it.title}`, it.number, queueProvider.value(), queueProvider.model(), queueProvider.effort());
   };
-  const queue = h('button.btn', { type: 'button', onclick: addIssueToQueue }) as HTMLButtonElement;
+  const queueText = h('span');
+  const queue = railButton('', 'list', addIssueToQueue);
+  queue.append(queueText);
   const carry = actions.pickUp;
-  const pickUp = carry ? h('button.btn', { type: 'button', title: 'Carry its card to an empty desk, a worker or the queue board, and press E there', onclick: () => carry(it) }, '✋ Pick it up') : null;
-  const meta = h('div.gh-meta');
-  const el = h(
-    'div.modal.gh-window.issue',
-    { role: 'dialog', 'aria-label': `Issue ${label}` },
-    h('header', {}, pill, h('h2', { title: repo ? `${repo}#${it.number} ${it.title}` : it.title }, `${label} ${it.title}`), close),
-    meta,
-    h('div.gh-body', {}, conv),
-    h(
-      'footer',
-      {},
-      h('a.grow', { href: it.url, target: '_blank', rel: 'noopener noreferrer' }, 'Open on GitHub ↗'),
-      h('button.btn', { type: 'button', title: 'Send a worker your own prompt about this issue', onclick: () => actions.ask(issueContext(it), `Ask about issue #${it.number}`) }, '✍️ Ask a worker…'),
-      h('button.btn', { type: 'button', title: 'Workers take it on together in the meeting room: a debate, lead & team, map-reduce or red / blue', onclick: () => actions.meeting(issueMeeting(it.number, it.title)) }, '🤝 Meeting…'),
-      closeIssue,
-      queueProvider.element,
-      queue,
-      pickUp,
-      // planned, built and reviewed on the kanban, by a worker at a free desk.
-      actions.kanbanTask ? h('button.btn', { type: 'button', title: 'A kanban task for it (plan → implement → review), started at a free desk', onclick: () => (modal.close(), actions.kanbanTask!(it)) }, '🗂️ Kanban task') : null,
-      h('button.btn.primary', { type: 'button', onclick: () => actions.assign(issuePrompt(it), `Hand issue #${it.number} to a worker`) }, '🤖 Hand to a worker'),
-    ),
-  );
+  const pickUp = carry ? railButton('Pick it up', 'hand', () => carry(it), 'Carry its card to an empty desk, a worker or the queue board, and press E there') : null;
+  const assign = () => actions.assign(issuePrompt(it), `Hand issue #${it.number} to a worker`);
+  // Planned, built and reviewed on the kanban by a worker at a free desk: the window's main button where the office has it.
+  const kanban = actions.kanbanTask;
+  const start = kanban
+    ? btn('Create and start', { kind: 'primary', icon: 'play', attrs: { title: 'A kanban task for it (plan → implement → review), started at a free desk', onclick: () => (modal.close(), kanban(it)) } })
+    : btn('Hand to a worker', { kind: 'primary', icon: 'bot', attrs: { onclick: assign } });
+  const toTask = h('button.link-btn.iw-task-link.hidden', { type: 'button', title: 'Open the kanban task made from it', onclick: () => it.taskId && (modal.close(), extras.openTask?.(it.taskId)) }) as HTMLButtonElement;
+  const refresh = iconButton('refresh-cw', 'Refresh', { title: 'Refresh: read it from GitHub again' });
+  const shell = modalShell({
+    cls: 'iw w840',
+    kind: 'rich',
+    title: it.title,
+    label: `Issue ${label}`,
+    id: outLink(repo ? `${repo.split('/').pop()} #${it.number}` : label, it.url, { title: 'Open it on GitHub' }),
+    pill: state,
+    meta: [meta],
+    tools: [refresh],
+    body: h('div.iw-main', {}, desc, thread, comment.el),
+    rail: [
+      extras.extra?.(first, () => load()) ?? null,
+      details,
+      h('hr.rail-sep'),
+      railStack(
+        'Hand it to a worker',
+        kanban ? railButton('Hand to a worker', 'bot', assign, 'A worker starts on it at a free desk, outside the kanban') : null,
+        railButton('Ask a worker', 'message-square', () => actions.ask(issueContext(it), `Ask about issue #${it.number}`), 'Send a worker your own prompt about this issue'),
+        railButton('Meeting', 'users', () => actions.meeting(issueMeeting(it.number, it.title)), 'Workers take it on together in the meeting room: a debate, lead & team, map-reduce or red / blue'),
+        pickUp,
+        queueProvider.element,
+        queue,
+      ),
+    ],
+    footerLeft: [outLink('Open on GitHub', it.url)],
+    footerRight: [closeIssue, toTask, start],
+  });
   const renderFrame = () => {
     const isOpen = it.state === 'OPEN';
-    meta.replaceChildren(
-      ...nodes(
-        avatar(it.author),
-        h('b', {}, it.author),
-        h('span', {}, `opened this ${timeAgo(it.createdAt)}`),
-        it.assignees.length ? h('span', {}, `· 👤 ${it.assignees.join(', ')}`) : null,
-        ...it.labels.map(labelChip),
-        labelButton('issue', () => it, net, (labels) => ((it = { ...it, labels }), renderFrame())),
-      ),
+    shell.setTitle(it.title);
+    state.replaceChildren(issuePill(isOpen));
+    meta.replaceChildren(h('b', {}, it.author), ` opened this ${timeAgo(it.createdAt)}`);
+    details.replaceChildren(
+      detailsRail([
+        { label: 'Author', value: h('span.iw-with-icon', {}, avatar(it.author), it.author) },
+        { label: 'Assignees', value: it.assignees.length ? it.assignees.join(', ') : extras.extra ? null : h('span.iw-none', {}, 'Nobody') },
+        { label: 'Labels', value: h('span.iw-labels', {}, ...it.labels.map(labelChip), labelButton('issue', () => it, net, (labels) => ((it = { ...it, labels }), renderFrame()))) },
+        { label: 'Updated', value: timeAgo(it.updatedAt) },
+      ]),
     );
-    pill.className = `pill ${isOpen ? 'done' : 'offline'}`;
-    pill.textContent = isOpen ? 'open' : 'closed';
     const task = it.key ? taskForCard(it) : store.taskForIssue(it.number); // a card from the issue sources by its key
     const onQueue = !!task && task.status !== 'done';
     closeIssue.classList.toggle('hidden', !isOpen);
@@ -99,14 +127,20 @@ export function openIssue(first: GhIssue, net: Net, actions: BoardActions, extra
     queue.classList.toggle('hidden', !isOpen);
     queue.disabled = onQueue;
     queue.title = onQueue ? '' : 'A worker picks it up by itself when a desk is free and there is room under the worker limit';
-    queue.textContent = onQueue ? (task!.status === 'running' ? `🤖 ${task!.workerName ?? 'A worker'} is on it` : '📋 On the queue') : '📋 Add to queue';
+    queueText.textContent = onQueue ? (task!.status === 'running' ? `${task!.workerName ?? 'A worker'} is on it` : 'On the queue') : 'Add to queue';
+    // A card that already has its kanban task leads to it, where the office can open one from here.
+    const hasTask = !!it.taskId && !!extras.openTask;
+    toTask.textContent = hasTask ? `Task #${it.taskId}` : '';
+    toTask.classList.toggle('hidden', !hasTask);
+    start.classList.toggle('hidden', hasTask && !!kanban);
   };
   const render = () => {
-    thread.replaceChildren(commentCard({ id: 'body', author: it.author, body: detail?.body ?? it.body, createdAt: it.createdAt, url: it.url }, itemUrl, 'opened this'));
+    desc.replaceChildren(sectionHead('Description'), commentCard({ id: 'body', author: it.author, body: detail?.body ?? it.body, createdAt: it.createdAt, url: it.url }, itemUrl, 'opened this', { role: 'Author' }));
+    thread.replaceChildren(sectionHead('Comments', detail?.comments.length));
     if (error) thread.append(errorBox(error, load));
     else if (!detail) thread.append(spinnerRow('Loading comments…'));
     else if (!detail.comments.length) thread.append(h('p.gh-quiet', {}, 'No comments yet.'));
-    else thread.append(...detail.comments.map((c) => commentCard(c, itemUrl, 'commented')));
+    else thread.append(...detail.comments.map((c) => commentCard(c, itemUrl, '', c.author === it.author ? { role: 'Author' } : {})));
   };
   let generation = 0;
   function load() {
@@ -133,7 +167,7 @@ export function openIssue(first: GhIssue, net: Net, actions: BoardActions, extra
     }),
     store.on('queue', renderFrame),
   ];
-  const modal = openModal(el, {
+  const modal = openShell(shell, {
     doing: `📋 reading issue ${label}`,
     onClose: () => {
       comment.dispose();
@@ -141,7 +175,7 @@ export function openIssue(first: GhIssue, net: Net, actions: BoardActions, extra
       extras.closed?.();
     },
   });
-  close.addEventListener('click', () => modal.close());
+  refresh.addEventListener('click', () => load());
   renderFrame();
   load();
 }

@@ -16,6 +16,9 @@ import type { KanbanChangesList, KanbanCommitChanges, KanbanCommitList, KanbanDi
 import type { Net } from '../net';
 import { store } from '../state';
 import { h, timeAgo } from '../ui/dom';
+import { icon, iconButton, withIcon } from '../ui/icons';
+import { btn } from '../ui/kit';
+import { tabStrip } from '../ui/tabs';
 import { confirmDialog, openPrompt } from '../ui/prompt';
 import { onChangesMessage, pathLabel, plusMinus, renderDiff, renderPreview } from '../ui/changes';
 import { getJson } from './api';
@@ -26,7 +29,7 @@ import { splitDiff } from './model';
 import { kstore } from './store';
 import { apiUrl } from '../multiplayer/visit';
 
-const MODE_NAMES: Record<ChangesMode, string> = { all: 'All changes', commits: 'Per commit', uncommitted: '✏️ Uncommitted' };
+const MODE_NAMES: Record<ChangesMode, string> = { all: 'All changes', commits: 'Per commit', uncommitted: 'Uncommitted' };
 const SOURCE_NAME: Record<KanbanRepoChangesInfo['source'], string> = { worktree: 'from the task’s worktree', checkout: 'from the project’s checkout' };
 
 /** What the left list and the diff show right now. */
@@ -72,8 +75,8 @@ export class ChangesView {
   private diffBody = h('div.diff-scroll');
   readonly body = h('div.changes-body', {}, h('aside.changes-files', {}, this.commitsBox, this.filesHead, this.list), h('section.changes-diff', {}, this.diffHead, this.diffBody));
   private summary = h('span.grow');
-  private discardBtn = h('button.btn', { type: 'button', title: 'Throw away every uncommitted change in this checkout' }, '🗑️ Discard all') as HTMLButtonElement;
-  private commitBtn = h('button.btn', { type: 'button', title: 'git add -A && git commit' }, '✅ Commit…') as HTMLButtonElement;
+  private discardBtn = btn('Discard all', { kind: 'quiet-danger', icon: 'trash-2', attrs: { title: 'Throw away every uncommitted change in this checkout' } });
+  private commitBtn = btn('Commit…', { icon: 'check', attrs: { title: 'git add -A && git commit' } });
   private prSlot = h('span.pr-slot');
 
   private workerId: string | undefined;
@@ -175,10 +178,10 @@ export class ChangesView {
   /** The branch line of the window's header. */
   branchText(): string {
     const s = this.live?.state;
-    if (this.live) return !s || s.error ? '' : s.base === 'HEAD' ? `🌿 ${s.branch} · uncommitted changes` : `🌿 ${s.branch} · vs ${s.base}`;
+    if (this.live) return !s || s.error ? '' : s.base === 'HEAD' ? `${s.branch} · uncommitted changes` : `${s.branch} · vs ${s.base}`;
     const info = this.info();
     if (!info?.branch || info.error) return '';
-    return `🌿 ${info.branch}${info.base ? ` · vs ${info.base}` : ''}`;
+    return `${info.branch}${info.base ? ` · vs ${info.base}` : ''}`;
   }
 
   // --- Data -------------------------------------------------------------------------------------
@@ -453,7 +456,7 @@ export class ChangesView {
     // The shared project folder: everyone's edits are in it, not just this worker's. Said first, and on the button.
     const shared = !s?.dir;
     confirmDialog(
-      shared ? `⚠️ Discard everyone's uncommitted changes in the shared project folder?` : `Discard all uncommitted changes at ${this.name()}'s desk?`,
+      shared ? `Discard everyone's uncommitted changes in the shared project folder?` : `Discard all uncommitted changes at ${this.name()}'s desk?`,
       shared
         ? `${this.name()} works in the project folder itself, so this throws away every uncommitted edit there, anyone's, not just its own: ${n} file${n === 1 ? '' : 's'} back to the last commit, and new files deleted. Commits stay.`
         : `This puts ${n} file${n === 1 ? '' : 's'} in ${this.where()} back to the last commit and deletes new files. Commits stay.`,
@@ -466,7 +469,7 @@ export class ChangesView {
     const s = this.live?.state;
     const n = this.uncommittedCount() ?? 0;
     openPrompt({
-      title: `✅ Commit ${n} file${n === 1 ? '' : 's'}`,
+      title: `Commit ${n} file${n === 1 ? '' : 's'}`,
       subtitle: `Stages everything in ${this.where()} and commits it${s?.branch ? ` on ${s.branch}` : ''}.`,
       placeholder: 'What changed, and why',
       submitLabel: 'Commit',
@@ -541,22 +544,17 @@ export class ChangesView {
     const w = this.worker();
     const out: HTMLElement[] = [];
     if (repos.length > 1) {
-      out.push(
-        h(
-          'div.kb-cv-repos',
-          { role: 'tablist', 'aria-label': 'Repositories' },
-          ...repos.map((r) => {
-            const pr = prOfRepo(project, r.id, prs, w);
-            const on = r.id === this.repoId;
-            return h(
-              'button.btn',
-              { type: 'button', role: 'tab', class: on ? 'on' : '', 'aria-selected': String(on), title: r.error ?? (r.branch ? `${r.name}: ${r.branch}` : r.name), onclick: () => this.pickRepo(r.id) },
-              `📁 ${r.name}`,
-              pr ? h('small', {}, ` · #${pr}`) : null,
-            );
-          }),
-        ),
+      const strip = tabStrip(
+        repos.map((r) => {
+          const pr = prOfRepo(project, r.id, prs, w);
+          return { id: r.id, label: [icon('folder', { size: 14 }), r.name, pr ? h('small', {}, ` · #${pr}`) : null], title: r.error ?? (r.branch ? `${r.name}: ${r.branch}` : r.name) };
+        }),
+        ...[this.repoId, (id: string) => this.pickRepo(id), 'Repositories', 'cvrepo'] as const,
       );
+      strip.el.classList.add('kb-cv-repos');
+      out.push(strip.el);
+      // The focus stays on the strip when it is rebuilt under it (an arrow key picked another repository).
+      if (this.bar.contains(document.activeElement) && (document.activeElement as HTMLElement).closest('.kb-cv-repos')) queueMicrotask(() => strip.buttons.get(this.repoId)?.focus());
     }
     out.push(
       h(
@@ -570,7 +568,7 @@ export class ChangesView {
           ),
         ),
       ),
-      h('button.btn.kb-cv-refresh', { type: 'button', title: 'Read the task’s changes again', 'aria-label': 'Refresh', onclick: () => void this.refresh() }, '↻'),
+      iconButton('refresh-cw', 'Refresh', { class: 'kb-cv-refresh', onclick: () => void this.refresh() }),
     );
     this.bar.replaceChildren(...out);
   }
@@ -637,9 +635,9 @@ export class ChangesView {
       plusMinus(f.additions, f.deletions, f.binary),
     );
     if (l.kind === 'rows' && l.live && f.uncommitted && !this.live?.state?.busy) {
-      const discardOne = h('button.btn', { type: 'button', title: 'Throw away the uncommitted changes to this file' }, '↩︎ Discard');
+      const discardOne = btn('Discard', { kind: 'quiet-danger', size: 'sm', icon: 'undo-2', attrs: { title: 'Throw away the uncommitted changes to this file' } });
       discardOne.addEventListener('click', () =>
-        confirmDialog(`Discard the changes to ${f.path.split('/').pop()}?`, `This puts ${f.path} back to the last commit in ${this.where()}. ${f.word === 'new file' ? 'The file is deleted.' : 'Committed changes stay.'}${this.live?.state?.dir ? '' : ' ⚠️ That is the shared project folder: anyone’s uncommitted edits to this file go too.'}`, 'Discard', () =>
+        confirmDialog(`Discard the changes to ${f.path.split('/').pop()}?`, `This puts ${f.path} back to the last commit in ${this.where()}. ${f.word === 'new file' ? 'The file is deleted.' : 'Committed changes stay.'}${this.live?.state?.dir ? '' : ' That is the shared project folder: anyone’s uncommitted edits to this file go too.'}`, 'Discard', () =>
           this.send({ t: 'changes.discard', path: f.path }),
         ),
       );
@@ -654,10 +652,10 @@ export class ChangesView {
       this.diffBody.replaceChildren(h('div.changes-empty', {}, ...kids));
     };
     if (l.kind === 'loading') return empty('loading', h('div.spinner'));
-    if (l.kind === 'error') return empty(`error:${l.text}`, h('div.big', {}, '🚧'), h('p', {}, l.text));
-    if (l.kind === 'note') return empty(`note:${l.text}`, h('div.big', {}, '🌱'), h('p', {}, l.text));
+    if (l.kind === 'error') return empty(`error:${l.text}`, h('div.big', {}, icon('triangle-alert', { size: 44 })), h('p', {}, l.text));
+    if (l.kind === 'note') return empty(`note:${l.text}`, h('div.big', {}, icon('sprout', { size: 44 })), h('p', {}, l.text));
     const row = l.rows.find((r) => r.path === this.selected);
-    if (!row) return empty(`none:${this.mode}:${l.empty.join()}`, h('div.big', {}, '🌱'), ...l.empty.map((t, i) => h(i ? 'p.note' : 'p', {}, t)));
+    if (!row) return empty(`none:${this.mode}:${l.empty.join()}`, h('div.big', {}, icon('sprout', { size: 44 })), ...l.empty.map((t, i) => h(i ? 'p.note' : 'p', {}, t)));
     const key = `${l.live ? 'live' : `http:${this.gen}`}:${this.repoId}:${this.mode}:${this.mode === 'commits' ? this.picked.get(this.repoId) : ''}:${row.path}`;
     if (l.live) {
       if (key !== this.diffKey) {
@@ -674,7 +672,7 @@ export class ChangesView {
     const text = parts?.get(row.path);
     const last = l.last === row.path;
     if (text) this.diffBody.replaceChildren(renderDiff(text, !!l.truncated && last));
-    else this.diffBody.replaceChildren(h('div.changes-empty', {}, h('p', {}, l.truncated ? '✂️ The diff is over 2 MB: this file is past where it stops.' : row.binary ? 'A binary file: no diff to show.' : 'No diff to show for this file.')));
+    else this.diffBody.replaceChildren(h('div.changes-empty', {}, h('p', {}, l.truncated ? 'The diff is over 2 MB: this file is past where it stops.' : row.binary ? 'A binary file: no diff to show.' : 'No diff to show for this file.')));
   }
 
   private paintFooter() {
@@ -714,26 +712,26 @@ export class ChangesView {
       if (s.files.length) bits.push(plusMinus(adds, dels));
       bits.push(uncommitted ? `${uncommitted} uncommitted` : s.files.length ? 'all committed' : '');
       if (s.ahead) bits.push(`${s.ahead} commit${s.ahead > 1 ? 's' : ''} ahead of ${s.base}`);
-      if (!s.dir) bits.push(h('span', { title: "This worker works in the project folder itself, so this is everything uncommitted there — everyone's edits, not just its own." }, '📁 shared project folder'));
-      else bits.push(h('span', { title: `Its own worktree at ${s.dir}` }, `📁 ${s.dir}`));
+      if (!s.dir) bits.push(h('span', { title: "This worker works in the project folder itself, so this is everything uncommitted there — everyone's edits, not just its own." }, ...withIcon('folder', 'shared project folder')));
+      else bits.push(h('span', { title: `Its own worktree at ${s.dir}` }, ...withIcon('folder', s.dir)));
       this.summary.append(...bits.filter(Boolean).map((b) => (typeof b === 'string' ? h('span', {}, b) : b)));
     }
     this.discardBtn.disabled = busy || !uncommitted;
     this.commitBtn.disabled = busy || !uncommitted;
-    this.commitBtn.textContent = uncommitted ? `✅ Commit ${uncommitted} file${uncommitted > 1 ? 's' : ''}…` : '✅ Commit…';
+    this.commitBtn.replaceChildren(...withIcon('check', uncommitted ? `Commit ${uncommitted} file${uncommitted > 1 ? 's' : ''}…` : 'Commit…'));
     if (!s) return;
-    if (s.pr) this.prSlot.append(h('a.btn.primary', { href: s.pr.url, target: '_blank', rel: 'noopener', title: `Open on ${prHostName(s.pr.url)}` }, `🔀 PR #${s.pr.number} ↗`));
+    if (s.pr) this.prSlot.append(h('a.btn.primary.lg', { href: s.pr.url, target: '_blank', rel: 'noopener', title: `Open on ${prHostName(s.pr.url)}` }, ...withIcon('git-pull-request', `PR #${s.pr.number}`), icon('external-link', { size: 14 })));
     else if (s.prBase) {
       const why = busy ? '' : uncommitted ? 'Commit first' : !s.ahead ? `Nothing on ${s.branch} that ${s.prBase} lacks yet` : '';
-      const pr = h('button.btn.primary', { type: 'button', title: why || `Push ${s.branch} and open a pull request against ${s.prBase}` }, '🔀 Open PR…') as HTMLButtonElement;
+      const pr = btn('Open PR…', { kind: 'primary', icon: 'git-pull-request', attrs: { title: why || `Push ${s.branch} and open a pull request against ${s.prBase}` } });
       pr.disabled = busy || !!why;
       pr.addEventListener('click', () =>
         openPrompt({
-          title: '🔀 Open a pull request',
+          title: 'Open a pull request',
           subtitle: `Pushes ${s.branch} to origin and opens a PR against ${s.prBase}. The first line is the title; the rest is the description.`,
           initial: s.subject ?? '',
           placeholder: 'Title',
-          submitLabel: 'Open PR ↗',
+          submitLabel: 'Open PR',
           onSubmit: (text) => {
             const [first, ...rest] = text.split('\n');
             this.send({ t: 'changes.pr', title: first.trim(), body: rest.join('\n').trim() });

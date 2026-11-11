@@ -132,10 +132,10 @@ export function openModal(content: HTMLElement, opts: { escCloses?: boolean; onC
 
 /**
  * Where a window's own ✕ sits: in its header (a shell's rich header keeps it on its first row,
- * ui/shell.ts), straight on the window, or in the header of a task view mounted as the whole window
- * (kanban/taskview.ts). A `.close` anywhere deeper is the content's, and doesn't stand in for it.
+ * ui/shell.ts) or straight on the window. A `.close` anywhere deeper is the content's, and doesn't
+ * stand in for it.
  */
-const OWN_CLOSE = ':scope > header > .close, :scope > header .shell-row > .close, :scope > .close, :scope > .kb-tv > header > .close';
+const OWN_CLOSE = ':scope > header > .close, :scope > header .shell-row > .close, :scope > .close';
 
 /** The ✕ for a window that didn't bring its own: at the end of its header, or else on its top right corner. */
 function addCloseButton(content: HTMLElement, close: () => void) {

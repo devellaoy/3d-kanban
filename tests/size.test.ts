@@ -40,7 +40,7 @@ const CEILINGS: Readonly<Record<string, number>> = {
   // apart from it: their length then, as for the rest.
   'src/server/kanban/engine/orchestrator.ts': 2036,
   'src/server/kanban/db/repository.ts': 901,
-  'src/client/kanban/changesview.ts': 771,
+  'src/client/kanban/changesview.ts': 769,
   'src/shared/kanban/types.ts': 671,
 };
 

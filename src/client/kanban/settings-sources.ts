@@ -2,6 +2,7 @@
 // projects, Jira and Azure Boards, each a form that reads back to an IssueSourceConfig.
 
 import { h, toast } from '../ui/dom';
+import { icon, withIcon } from '../ui/icons';
 import type { IssueSourceConfig, IssueSourceKind, KanbanSettings } from '../../shared/kanban/types.js';
 import { jiraSourcesProblem } from '../../shared/kanban/jira-connections.js';
 import type { KanbanApi } from './api';
@@ -18,7 +19,7 @@ export function sourcesPane(api: KanbanApi, projectId: string, s: KanbanSettings
   const list = h('div.kb-sources');
 
   const makeSource = (src: IssueSourceConfig) => {
-    const remove = h('button.btn.small.kb-admin', { type: 'button', 'aria-label': 'Remove this source' }, '✕');
+    const remove = h('button.btn.small.kb-admin', { type: 'button', 'aria-label': 'Remove this source' }, icon('x', { size: 14 }));
     const head = h('div.kb-repo-head', {}, h('b', {}, SOURCE_KIND_NAMES[src.kind]), h('span.grow'), remove);
     let read: () => IssueSourceConfig | string;
     let fields: HTMLElement;
@@ -81,7 +82,7 @@ export function sourcesPane(api: KanbanApi, projectId: string, s: KanbanSettings
     jira: () => ({ id: newId(), kind: 'jira', site: kstore.secrets.jira[0]?.site ?? '', projectKeys: [], filters: {} }),
     'azure-boards': () => ({ id: newId(), kind: 'azure-boards', org: '', project: '', filters: {} }),
   };
-  const adders = (Object.keys(blank) as IssueSourceKind[]).map((k) => h('button.btn.small.kb-admin', { type: 'button', onclick: () => makeSource(blank[k]()) }, `＋ ${SOURCE_KIND_NAMES[k]}`));
+  const adders = (Object.keys(blank) as IssueSourceKind[]).map((k) => h('button.btn.small.kb-admin', { type: 'button', onclick: () => makeSource(blank[k]()) }, ...withIcon('plus', SOURCE_KIND_NAMES[k])));
   const save = saveButton();
   save.addEventListener('click', () => {
     const out: IssueSourceConfig[] = [];

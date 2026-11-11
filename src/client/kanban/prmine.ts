@@ -135,7 +135,7 @@ export function tabStop(value: PrWho, off: Partial<Record<PrWho, string>>): PrWh
   return !off[value] ? value : (WHOS.find((w) => !off[w]) ?? 'all');
 }
 
-const LABEL: Record<PrWho, string> = { all: 'All', mine: '👤 Mine', review: '👀 To review' };
+const LABEL: Record<PrWho, string> = { all: 'All', mine: 'Mine', review: 'To review' };
 const TITLE: Record<PrWho, string> = {
   all: 'Everyone’s pull requests',
   mine: 'Pull requests by your GitHub account, or opened from the office for you (your kanban tasks and workers)',

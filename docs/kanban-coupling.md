@@ -97,7 +97,7 @@ instead; the task waits (failed) with upstream's reason, naming whose sign-in is
 
 ## The shared task view
 
-`src/client/kanban/taskview.ts` (frame, header, tabs and the fetch; its panes are `taskoverview.ts`, `taskconv.ts`, `taskplan.ts`, `taskruns.ts` and `taskprs.ts`, its buttons `taskactionbar.ts` drawn from the lists in `taskactions.ts`, which decides which actions a task offers) exports `mountTaskView(container, { net, taskId, embedded })`, the task
+`src/client/kanban/taskview.ts` (the frame on the window shell's parts, `ui/shell.ts`: the rich header with the tabs, the body with the Overview's details rail, the footer with the actions; and the fetch; its panes are `taskoverview.ts` with the rail in `taskdetails.ts`, `taskconv.ts`, `taskplan.ts`, `taskruns.ts` and `taskprs.ts`, its buttons `taskactionbar.ts` drawn from the lists in `taskactions.ts`, which decides which actions a task offers and where) exports `mountTaskView(container, { net, taskId, embedded })`, the task
 detail used by both the kanban page's task window and the 3D worker window's 🗂️ Task tab (the kanban page opens a task in its worker's window, `kanban/taskwindow.ts`). It fetches
 with `kanban.task.get`, follows `kanban.*` deltas for that task (it subscribes to the task's project
 itself and unsubscribes on unmount) and returns `{ destroy() }`. Embedded, it hides what the worker

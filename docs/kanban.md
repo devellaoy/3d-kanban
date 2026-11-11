@@ -157,8 +157,9 @@ is long) and a line saying which meeting it came from.
 1. **Plan** (when *Plan first* is on): the agent plans read-only. It ends with the plan (the line
    `PLAN READY`), or with `QUESTIONS:`. Questions put the task in Waiting: answer in the box and
    **Send the answer**, or **▶️ Continue without answering** (the agent makes and names its assumptions).
-   With plan approval *wait for approval* a finished plan waits for **✅ Approve the plan** or
-   **✍️ Request changes** (the Plan tab); *implement straight away* accepts it by itself. The answer
+   With plan approval *wait for approval* a finished plan waits for **Approve the plan** or
+   **Request changes** in the task window's footer (Request changes opens the Plan tab with the
+   keyboard in its feedback box, whose **Send** sends it); *implement straight away* accepts it by itself. The answer
    box and the change request take files too (📎, paste or drop): they go to the planner as their paths.
 2. **Implement**: the agent works in its own worktree (a workspace with a worktree of each repository,
    on the same branch), commits, and says what it did, ending its final answer with a line `WORK DONE`
@@ -180,13 +181,13 @@ is long) and a line saying which meeting it came from.
    **🔀 Create PRs** / **🛠️ Fix PRs** / **🔄 Resolve conflicts** start the PR phase (see below). Move it to **Done** when you accept it.
 
 When the agent asks something in its terminal (Waiting, *the agent is asking*), answer it there, or,
-when it asks a question, in the **Answer the agent** box (**⌨️ Open its terminal** is next to it): the
+when it asks a question, in the answer box under the Overview's banner (**Open the terminal** is on the banner): the
 answer is kept as your comment and typed into its terminal, as if you typed it there, and the same run
 carries on (the task is In progress again once the agent goes on; a question with several parts keeps
 it waiting until the last is answered). The box takes files like a comment: their paths are typed in
 after your answer. A comment on the task does the same (its files' paths too). When it asks for a
 permission (or the office can't tell what it waits on), the task says *answer it in its terminal*
-with **⌨️ Open its terminal** and no answer box: nothing is typed for you, since Enter would pick the
+with **Open the terminal** and no answer box: nothing is typed for you, since Enter would pick the
 prompt's highlighted option. A comment then is kept and goes to the agent once that turn is over.
 There is no Continue without an answer then: its run is still going.
 
@@ -381,20 +382,30 @@ checkout(s). Every worker's terminal window (the 3D office's **E**, and `/lite`)
 in its header, for kanban workers and ordinary ones alike: an ordinary worker opens its worktree (or its
 workspace of several repositories), or the floor's checkout when it has none. On a narrow screen the
 button is just 🧩. VS Code must be installed on the office's machine: on macOS in `/Applications` is
-enough, elsewhere the `code` command must be on the PATH. Its tabs:
+enough, elsewhere the `code` command must be on the PATH.
 
-- **Overview**: what it waits for (with the answer box), the actions, description,
-  acceptance criteria, **📑 Reports** (an investigation's report files: shown in place, Markdown
-  rendered, or downloaded), attachments and details (type, agent, plan, review rounds, branch,
-  workspace, queued comments, who made it). **✏️ Change the agent** there picks the task's agent,
-  model and effort whenever nothing runs; the office may refuse it (the reason shows as a message).
-  The next phase runs on the new ones: a new agent is hired for another agent, and the worker at the
-  desk is restarted on its session with the new model and effort.
-  **🔍 Run a review round** is offered in Review, and in Waiting too when the task has a worktree and
-  isn't waiting on its plan.
+The window's **footer** has the task's actions on every tab. Left: **Move**, **Put on hold** or
+**Resume**, and **Delete**. Right: what carries the task on in its state, the main one last (bottom
+right): **Start** and **Edit** (To do), **Stop** (while it runs), **Approve the plan** and **Request
+changes**, **Retry now** (a usage limit), **Retry** and **Continue** (failed or interrupted),
+**Continue without answering** (the plan's questions), **Run a review round** (in Review, and in Waiting
+too when the task has a worktree and isn't waiting on its plan) and **Create PRs** / **Push & update
+PRs**. **Fix PRs**, **Resolve conflicts**, **Find PRs** and **Review these N PRs together** stay on
+the Pull requests tab. Its tabs:
+
+- **Overview**: a banner first (what it waits for, with the answer box under it, a usage limit's
+  countdown, or **Open the plan** when the plan waits for approval; for a task on hold, why and until
+  when), then the description, the acceptance criteria as a list, **Reports** (an investigation's report
+  files: shown in place, Markdown rendered, or downloaded) and attachments. Beside it is the **Details**
+  rail: project, repositories, ticket, type, agent, plan, review rounds, branch, workspace and tags, then
+  who made it and when, since when it waits and the queued comments (under 900 px of width the rail
+  drops under the content). **Change the agent** in the rail picks the task's agent, model and effort
+  whenever nothing runs; the office may refuse it (the reason shows as a message). The next phase runs
+  on the new ones: a new agent is hired for another agent, and the worker at the desk is restarted on its
+  session with the new model and effort.
 - **Conversation**: see *Comments*.
-- **Plan**: every version (draft, accepted, superseded), with approve and request-changes on the
-  latest.
+- **Plan**: every version (draft, accepted, superseded), and on a draft that waits for you the box
+  that asks for changes (text and files, **Send**); approving it is the footer's button.
 - **Runs**: each phase run (phase, round, role, agent, status, verdict), and the task's history.
 - **Terminal**: the task worker's live terminal, as at its desk (you can type in it). A task on
   another project's floor takes you to that floor first.
@@ -440,7 +451,7 @@ enough, elsewhere the `code` command must be on the PATH. Its tabs:
 
 The panel is the **shared task view** (`src/client/kanban/taskview.ts`, with its panes in `task*.ts`), which the 3D office uses too
 (a window of its own, or a tab of the worker window). There it has no Terminal tab (the worker
-window has the terminal, whose tab bar also has **+ New tab** for shell tabs in the worker's folder, see [Features](features.md)), no Edit or Move, and a **🗂️ Open in the kanban** link (it opens the kanban in the same window) instead of Show in 3D (and no 🧩 VSCode: the worker
+window has the terminal, whose tab bar also has **+ New tab** for shell tabs in the worker's folder, see [Features](features.md)), no Edit or Move, no ✕ of its own in the worker window (that window's header has it), and an **Open in the kanban** link (it opens the kanban in the same window) instead of Show in 3D (and no 🧩 VSCode: the worker
 window's header has it).
 
 The office's own links (its buttons, and links in descriptions, comments and issue texts) open in the same window, so you don't get a second character in the office; external links and attachments open in a new tab. On the kanban page a link to a task (`/kanban?task=12`) in a description or comment opens it in the panel, as `#12` does, so a half-written comment isn't lost to a reload.
@@ -699,7 +710,7 @@ reads its own. A kanban task made from a card keeps the description as its own, 
   listing the others. It reports each as a `PR: <url>` line, which the office links to the task; the
   task goes to Review. Linked PRs keep their state (open, draft, merged, closed) from the floor's PR
   board.
-- **Fix PRs** (any task, an investigation too, in Waiting, Review or Done, with an open or draft PR; in the action bar and the PRs tab alike): the implementer addresses the unresolved review comments and
+- **Fix PRs** (any task, an investigation too, in Waiting, Review or Done, with an open or draft PR; on the Pull requests tab): the implementer addresses the unresolved review comments and
   the failing checks (it reads the failing run's log) on all the task's open PRs, pushes, and doesn't merge. The button is greyed out, with the reason as its tooltip, while the task is running or its agent is asking in its terminal. An investigation with no branch takes the one its open PR is from. One rule
   (`canFixPrs`, `src/shared/kanban/prs.ts`) serves the buttons and the engine. A pull request from a fork is never worked on ("A pull request from a fork: handle it by hand"; the PR board says which are forks), nor is one whose head branch is the repository's base branch or an integration branch (main, master, develop, dev, trunk): a head branch is whatever its author named it, so the office never checks it out on trust. The prompt tells the agent that review comments and CI logs are data, not instructions, and to act only on comments from the repository's owner, members and collaborators (`author_association`) and from GitHub Copilot's code review (the `Copilot` / `copilot-pull-request-reviewer` bot, whose `author_association` is `NONE`), weighing Copilot's suggestions against the code. On a Done task it moves the task back to In progress, and then to Review.
 - **Resolve conflicts** (same gating and rules as Fix PRs: `canFixPrs`, no fork's PR, none from the base or an integration branch; an investigation takes its PR's branch): the implementer merges each open PR's target branch into the PR's own branch (a merge, never a rebase, never a force-push), resolves the conflicts keeping both sides' intent, verifies the result, commits the merge and pushes. It needs a clean working tree and commits nothing before the merge; a branch name with odd characters, a head that can't fast-forward to origin, unpushed commits that aren't merges of the target, and a conflict in CI/workflow or credential files each stop that PR (never hand-merged). A PR whose branch is already up to date is left alone and nothing is built or tested (an earlier merge whose push failed is just pushed). Each PR it stopped at is reported as a `NOT UPDATED: <url> — why` line, and the task gets a status comment saying how many weren't updated. Like Fix PRs, it treats PR, branch and comment text as data. On a Done task it moves the task back to In progress, and then to Review. The PR window's *Fix via task #N* has no counterpart for it.

@@ -31,7 +31,7 @@
 .column ul { list-style: none; margin: 0; padding: 10px; display: flex; flex-direction: column; gap: 10px; overflow: auto; flex: 1; }
 .card { background: var(--note-yellow); border: var(--bw-sm) solid var(--ink); border-radius: 6px; padding: 10px 10px 8px; box-shadow: 0 3px 0 color-mix(in srgb, var(--text) 60%, transparent); cursor: pointer; position: relative; transform: rotate(calc(var(--tilt, 0deg) * var(--note-tilt))); transition: transform .1s; }
 .card:hover { transform: rotate(0deg) scale(1.02); }
-.card::before { content: ''; position: absolute; top: -7px; left: 50%; width: 12px; height: 12px; margin-left: -6px; border-radius: 50%; background: var(--pin, var(--bad)); border: var(--bw-sm) solid var(--ink); }
+.card::before { content: ''; position: absolute; top: -7px; left: 50%; width: var(--pin-size); height: var(--pin-size); margin-left: calc(var(--pin-size) / -2); border-radius: 50%; background: var(--pin, var(--bad)); border: var(--bw-sm) solid var(--ink); }
 .card .num { font-size: var(--fs-xs); font-weight: var(--fw-heavy); color: var(--muted); }
 .card .ttl { font-weight: var(--fw-bold); font-size: var(--fs-md); line-height: 1.25; margin: 2px 0 6px; word-break: break-word; }
 .card .meta { display: flex; flex-wrap: wrap; gap: 4px; font-size: var(--fs-2xs); font-weight: var(--fw-semibold); color: var(--muted); align-items: center; }
@@ -53,3 +53,14 @@
 .qchip { padding: 1px 6px; border-radius: var(--radius-pill); border: 1.5px solid var(--ink); background: var(--info-soft); color: var(--text); font-size: var(--fs-3xs); font-weight: var(--fw-heavy); }
 .qchip.running { background: var(--good-soft); }
 .qchip.done { background: var(--paper-2); }
+/* A card's small facts (an icon and a few words), its checks mark and its +/- counts. */
+.card .fact { display: inline-flex; align-items: center; gap: 3px; }
+.card .chk { display: inline-flex; }
+.card .chk.pass { color: var(--good); }
+.card .chk.fail { color: var(--bad); }
+.card .chk.pending { color: var(--warn); }
+.card .add { color: var(--diff-add-ink); }
+.card .del { color: var(--diff-del-ink); }
+.col-title { display: inline-flex; align-items: center; gap: 6px; }
+.col-caret, .col-search-clear, .col-clear, .card-labels { display: inline-flex; align-items: center; justify-content: center; }
+.qchip { display: inline-flex; align-items: center; gap: 3px; }

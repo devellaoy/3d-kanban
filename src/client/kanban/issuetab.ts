@@ -7,6 +7,7 @@
 // issue, loading, shown, could not be read), so what is typed there outlives a redraw too.
 
 import { h, toast } from '../ui/dom';
+import { btn, outLink } from '../ui/kit';
 import type { KanbanServerMsg } from '../../shared/kanban/protocol.js';
 import type { KanbanTask, NormalizedIssue } from '../../shared/kanban/types.js';
 import type { KanbanApi } from './api';
@@ -61,9 +62,9 @@ export function mountIssueTab(api: KanbanApi, openTask: (id: number) => void): {
   const fail = (task: KanbanTask, why: string) => {
     const url = safeUrl(task.ticketUrl);
     failed = { why, url };
-    const again = h('button.btn.small', { type: 'button', 'data-focus': 'issue-retry' }, '🔄 Try again') as HTMLButtonElement;
+    const again = btn('Retry', { icon: 'rotate-cw', size: 'sm', attrs: { 'data-focus': 'issue-retry' } });
     again.addEventListener('click', () => show(task, true));
-    put(true, [url ? h('a.kb-iw-key', { href: url, target: '_blank', rel: 'noopener noreferrer', title: 'Open it at the source' }, `${task.ticket} ↗`) : h('span.kb-iw-key', {}, task.ticket), h('p.kb-muted', {}, why), again]);
+    put(true, [url ? outLink(task.ticket ?? '', url, { class: 'kb-iw-key', title: 'Open it at the source' }) : h('span.kb-iw-key', {}, task.ticket), h('p.kb-muted', {}, why), again]);
   };
   const show = (task: KanbanTask, fresh: boolean) => {
     const k = key;
@@ -74,7 +75,7 @@ export function mountIssueTab(api: KanbanApi, openTask: (id: number) => void): {
     load(task, fresh).then(
       (issue) => {
         if (!issue || !current(k)) return;
-        const refresh = h('button.btn.small', { type: 'button', title: 'Read the issue from its source again', 'data-focus': 'issue-refresh' }, '🔄 Refresh') as HTMLButtonElement;
+        const refresh = btn('Refresh', { icon: 'refresh-cw', size: 'sm', attrs: { title: 'Read the issue from its source again', 'data-focus': 'issue-refresh' } });
         const reload = () => load(task, true);
         view = issueView(api, task.project, issue, openTask, { reload, title: true, whole: true });
         refresh.addEventListener('click', () => {

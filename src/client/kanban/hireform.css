@@ -1,0 +1,17 @@
+/* The kanban section of the hire dialog (hireform.ts): the toggle, and while it is on, the task's fields.
+   The 3D page has no kanban.css, so it brings its own styles. */
+.kh-hint { font-weight: var(--fw-semibold); color: var(--muted); }
+.kh-toggle { display: flex; gap: 8px; align-items: center; margin: 10px 0 0; font-weight: var(--fw-bold); cursor: pointer; }
+.kh-fields { margin: 4px 0 0 26px; }
+.kh-label { font-size: var(--fs-md); font-weight: var(--fw-heavy); }
+.kh-row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin: 6px 0 0; font-weight: var(--fw-bold); }
+.kh-row.issue { min-width: 0; }
+.kh-check { display: flex; gap: 6px; align-items: center; margin: 0; cursor: pointer; }
+.kh-rounds { width: 4.5em; }
+.kh-repos { margin: 8px 0 0; }
+.kh-repos-label { display: inline-flex; align-items: center; gap: 6px; }
+.kh-note { margin: 6px 0 0; }
+.kh-chip { display: inline-flex; align-items: center; gap: 6px; min-width: 0; max-width: 100%; padding: 2px 4px 2px 10px; font-size: var(--fs-sm); background: var(--field); border: var(--bw-sm) solid var(--ink); border-radius: var(--radius-pill); }
+.kh-chip-title { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.kh-unlink { box-shadow: none; }
+.kh-toast-open { pointer-events: auto; margin-left: 8px; }

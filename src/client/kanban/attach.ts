@@ -55,7 +55,7 @@ let marks = 0;
 
 /** What stands in the text, where the file goes, while it uploads: unique, so two of the same name can't mix. */
 export function uploadingMark(name: string): string {
-  return `![⏳ Uploading ${name.replace(/[[\]\\]/g, '')}…](#uploading-${++marks})`;
+  return `![Uploading ${name.replace(/[[\]\\]/g, '')}…](#uploading-${++marks})`;
 }
 
 /**

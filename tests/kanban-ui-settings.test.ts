@@ -122,7 +122,7 @@ async function projectPaneFixture(admin: boolean, repos: FixtureRepo[] = [{ id: 
   const g = globalThis as Record<string, unknown>;
   const toasts = new FakeEl('div');
   g.Node ??= FakeEl;
-  g.document ??= { createElement: (tag: string) => new FakeEl(tag), getElementById: (id: string) => (id === 'toasts' ? toasts : null) };
+  g.document ??= { createElement: (tag: string) => new FakeEl(tag), createElementNS: (_ns: string, tag: string) => new FakeEl(tag), getElementById: (id: string) => (id === 'toasts' ? toasts : null) };
   const { projectPane } = await import('../src/client/kanban/settings.js');
   const { kstore } = await import('../src/client/kanban/store.js');
   const { KANBAN_DEFAULTS, projectDefaults } = await import('../src/client/kanban/defaults.js');

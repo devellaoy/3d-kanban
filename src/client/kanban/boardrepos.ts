@@ -2,6 +2,7 @@
 // a chip naming each card's repository and a filter by it, for ui/boards.ts. An item's
 // repository is its `repo` when the office sends one, else read off its GitHub URL.
 
+import { withIcon } from '../ui/icons';
 import { h } from '../ui/dom';
 import { sameRepo } from '../../shared/floors';
 import { repoOfItem } from '../ui/github/ghrepo';
@@ -57,7 +58,7 @@ export function inRepo<T extends { url: string; repo?: string }>(items: T[], rep
 export function repoChip(it: { url: string; repo?: string }): HTMLElement {
   officeCss();
   const full = repoOfItem(it);
-  return h('span.repo-chip', { title: full }, `📦 ${full.split('/').pop() ?? full}`);
+  return h('span.repo-chip', { title: full }, ...withIcon('package', full.split('/').pop() ?? full, 12));
 }
 
 function key(kind: string, floor: string): string {
@@ -86,7 +87,7 @@ export function saveRepoFilter(kind: string, floor: string, repo: string) {
 export function repoFilterSelect(repos: string[], value: string, onChange: (repo: string) => void): HTMLSelectElement {
   officeCss();
   const sel = h('select.board-repo', { 'aria-label': 'Repository', title: 'Only one repository’s cards' }) as HTMLSelectElement;
-  sel.append(h('option', { value: '' }, '📦 All repositories'), ...repos.map((r) => h('option', { value: r }, `📦 ${r}`)));
+  sel.append(h('option', { value: '' }, 'All repositories'), ...repos.map((r) => h('option', { value: r }, r)));
   sel.value = repos.includes(value) ? value : '';
   sel.classList.toggle('hidden', repos.length < 2);
   sel.addEventListener('change', () => onChange(sel.value));
@@ -133,7 +134,7 @@ export function repoTabs(onChange: (repo: string) => void): { el: HTMLElement; u
       for (const [repo, b] of tabs) if (!order.includes(repo)) (b.remove(), tabs.delete(repo));
       order.forEach((repo, i) => {
         const b = tabOf(repo);
-        const name = repo ? (repo.split('/').pop() ?? repo) : '📦 All';
+        const name = repo ? (repo.split('/').pop() ?? repo) : 'All';
         const n = repo ? (counts.get(repo) ?? 0) : total;
         const [label, count] = b.children as unknown as [HTMLElement, HTMLElement];
         if (label.textContent !== name) label.textContent = name;

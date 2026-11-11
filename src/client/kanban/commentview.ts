@@ -3,11 +3,11 @@
 // files went in a list of their own, still list them below the text. An agent's comment is coloured by
 // who wrote it, the implementer or the reviewer (its run's role), and its file paths can be links.
 
+import { withIcon } from '../ui/icons';
 import { h, timeAgo } from '../ui/dom';
 import type { CommentKind, KanbanAttachment, KanbanComment, KanbanRole, KanbanRun } from '../../shared/kanban/types.js';
 import { attachmentUrl, formatSize, isImage, notInText } from './attach';
-import { TOOL_ICON } from './card';
-import { fmtTime } from './labels';
+import { fmtTime, toolName } from './labels';
 import { renderMarkdown } from './md';
 import type { OpenFile } from './mdlinks';
 
@@ -22,7 +22,7 @@ export function attachmentList(files: KanbanAttachment[]): HTMLElement {
         'li',
         {},
         isImage(a.mime) ? h('a.kb-thumb', { href: attachmentUrl(a.id), target: '_blank', rel: 'noopener noreferrer' }, h('img', { src: attachmentUrl(a.id), alt: a.name, loading: 'lazy' })) : null,
-        h('a', { href: attachmentUrl(a.id), target: '_blank', rel: 'noopener noreferrer' }, `📄 ${a.name}`),
+        h('a', { href: attachmentUrl(a.id), target: '_blank', rel: 'noopener noreferrer' }, ...withIcon('file-text', a.name, 14)),
         h('small.kb-muted', {}, formatSize(a.size)),
       ),
     ),
@@ -46,7 +46,7 @@ export interface CommentOpts {
 
 export function commentItem(c: KanbanComment, files: Map<string, KanbanAttachment>, openTask: (id: number) => void, opts: CommentOpts = {}): HTMLElement {
   const role = commentRole(c, opts.runs ?? new Map());
-  const who = c.authorKind === 'agent' ? `${c.tool ? `${TOOL_ICON[c.tool]} ` : '🤖 '}${c.authorName}` : c.authorKind === 'system' ? `⚙️ ${c.authorName}` : `👤 ${c.authorName}`;
+  const who = h('b.kb-who', { title: c.authorKind === 'agent' && c.tool ? toolName(c.tool) : undefined }, ...withIcon(c.authorKind === 'agent' ? 'bot' : c.authorKind === 'system' ? 'settings' : 'user', c.authorName, 14));
   const attached = notInText(c.attachmentIds.map((id) => files.get(id)).filter((a): a is KanbanAttachment => !!a), c.text);
   return h(
     'li.kb-comment',
@@ -54,7 +54,7 @@ export function commentItem(c: KanbanComment, files: Map<string, KanbanAttachmen
     h(
       'header',
       {},
-      h('b', {}, who),
+      who,
       role ? h('span.kb-role', { class: role }, ROLE_NAMES[role]) : null,
       c.kind !== 'message' ? h('span.kb-kind', { class: c.kind }, COMMENT_KIND_NAMES[c.kind]) : null,
       c.pending ? h('span.kb-kind.pending', { title: 'Written while the agent was busy: it gets it at its next pause' }, 'waiting') : null,

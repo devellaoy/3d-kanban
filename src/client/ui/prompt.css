@@ -16,5 +16,33 @@
 
 /* The hire dialog's attachments (kanban/attachbox.ts, styled in attachbox.css): under the prompt, and the
    whole body is their drop zone, outlined inside its edge since the body scrolls. */
-.modal > .body > .kb-attach { margin-top: 8px; }
-.modal > .body.kb-dropping { outline-offset: -5px; border-radius: var(--radius-sm); }
+.prompt-form > .kb-attach { margin-top: 8px; }
+.prompt .shell-main.kb-dropping { outline-offset: -5px; border-radius: var(--radius-sm); }
+
+/* The prompt dialog (openPrompt): a note or a warning, the prompt, and the hire's choices under it. */
+.prompt-form { display: flex; flex-direction: column; margin: 0; }
+.prompt-form > textarea.inp { min-height: 120px; font-size: var(--fs-md); resize: vertical; }
+.prompt-sub { margin: 0 0 10px; color: var(--text-2); }
+.prompt-form > .prompt-warn { margin: 0 0 10px; }
+label.prompt-tick { margin-top: 10px; align-self: flex-start; }
+.prompt-tick > svg { flex: none; color: var(--text-2); }
+
+/* A question before something that can't be undone (confirmDialog), sending a worker home and a lost
+   worktree: a bold line, then what it means. */
+.confirm.danger .shell-head > svg { color: var(--danger-ink); }
+.confirm-body { display: flex; flex-direction: column; gap: 6px; overflow-wrap: anywhere; }
+.confirm-body > strong { font-size: var(--fs-md); font-weight: var(--fw-semibold); }
+.confirm-body > span { color: var(--text-2); }
+.confirm-lead { margin: 0 0 12px; font-weight: var(--fw-semibold); overflow-wrap: anywhere; }
+.send-home { margin: 0; }
+/* A task worker's task over the choices (kanban/sendhome.ts). */
+.kb-home { display: flex; flex-direction: column; gap: 6px; margin: 0 0 12px; }
+.kb-home-task { display: flex; align-items: center; gap: 6px; margin: 0; font-weight: var(--fw-semibold); overflow-wrap: anywhere; }
+.kb-home-task > svg { flex: none; color: var(--text-2); }
+.kb-home-task small { font-size: var(--fs-xs); font-weight: var(--fw-medium); color: var(--muted); }
+.kb-home .wt-status { margin: 0; }
+label.kb-home-done { align-items: flex-start; }
+.kb-home-done > input { margin-top: 3px; }
+.kb-home-done small { display: block; font-size: var(--fs-xs); color: var(--muted); }
+/* A prompt's title names the desk and the floor, or the task: it wraps rather than being cut. */
+.prompt .shell-head h2, .confirm .shell-head h2 { white-space: normal; overflow-wrap: anywhere; line-height: 1.25; }

@@ -9,13 +9,14 @@
 import type { WorkerInfo } from '../../shared/protocol';
 import type { Net } from '../net';
 import { h } from '../ui/dom';
+import { btn } from '../ui/kit';
 import { store } from '../state';
 import { kanbanApi } from './api';
 import { run } from './ui';
 
 const CSS = `
 .modal.term header .kb-vscode { white-space: nowrap; }
-/* A narrow window: just the 🧩 (its aria-label still says what it does). */
+/* A narrow window: just the icon (its aria-label still says what it does). */
 @media (max-width: 640px) {
   .modal.term header .kb-vscode .kb-vscode-label { display: none; }
 }
@@ -29,23 +30,21 @@ function css() {
   document.head.append(el);
 }
 
-/** Puts 🧩 VSCode into the header of worker `w`'s terminal window `el`, before its ✕. */
+/** Puts VSCode into the header tools of worker `w`'s terminal window `el`, before its ✕. */
 export function mountVsCodeButton(net: Net, w: WorkerInfo, el: HTMLElement, focusTerminal?: () => void): void {
   const header = el.querySelector(':scope > header');
   if (!header) return;
   css();
-  const b = h(
-    'button.btn.kb-vscode',
-    { type: 'button', title: 'Open this worker’s folder in VS Code on the office’s computer: its worktree, or all its repositories’ worktrees in one window', 'aria-label': 'Open in VS Code' },
-    '🧩',
-    h('span.kb-vscode-label', {}, ' VSCode'),
-  ) as HTMLButtonElement;
+  const b = btn('', { kind: 'quiet', size: 'sm', icon: 'code-xml', attrs: { class: 'kb-vscode', title: 'Open this worker’s folder in VS Code on the office’s computer: its worktree, or all its repositories’ worktrees in one window', 'aria-label': 'Open in VS Code' } });
+  b.append(h('span.kb-vscode-label', {}, 'VSCode'));
   b.addEventListener('click', async () => {
     await run(() => kanbanApi(net).request({ t: 'kanban.worker.vscode', workerId: w.id }), b, 'Opening VS Code…');
     b.blur();
     focusTerminal?.();
   });
-  header.insertBefore(b, header.querySelector(':scope > .btn.close'));
+  const tools = header.querySelector(':scope > .shell-tools');
+  if (tools) tools.append(b);
+  else header.insertBefore(b, header.querySelector(':scope > .btn.close'));
   const paint = () => b.classList.toggle('hidden', !store.me.admin);
   paint();
   // The window has no close hook for us: the subscription drops itself at the first change after it's gone.

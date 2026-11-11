@@ -44,11 +44,7 @@
   .kb-ia-composer .kb-ia-row { justify-content: flex-end; }
 }
 
-/* The kanban's issue window (issuewindow.ts) */
-.modal.kb-issue-window { width: min(820px, 100%); max-height: calc(100vh - 32px); }
-.modal.kb-issue-window > .body { display: flex; flex-direction: column; gap: 12px; overflow-y: auto; min-height: 0; }
-.modal.kb-issue-window > .body > * { flex: none; }
-.modal.kb-issue-window > header h2 { white-space: normal; overflow-wrap: anywhere; }
+/* The issue panel's pieces (issuetab.ts) */
 .kb-iw { display: flex; flex-direction: column; gap: 12px; }
 .kb-iw > * { flex: none; }
 .kb-iw-top { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; }
@@ -60,10 +56,14 @@
 .kb-iw-desc .md { padding: 0; font-size: var(--fs-md); }
 .kb-iw-desc .md img { max-width: 100%; }
 @media (max-width: 700px) {
-  .modal.kb-issue-window { width: 100%; height: 100dvh; max-height: 100dvh; border: 0; border-radius: 0; box-shadow: none; }
-  .kb-iw-desc { max-height: none; }
+    .kb-iw-desc { max-height: none; }
 }
 
 /* A row's title in the issues list opens its window. */
 .kb-issue-open { padding: 0; font: inherit; font-weight: var(--fw-heavy); color: var(--text); text-align: left; background: none; border: 0; cursor: pointer; overflow-wrap: anywhere; }
 .kb-issue-open:hover { text-decoration: underline; }
+.kb-ia-error, .kb-ia-note, .kb-ia-now, .kb-ia-pin { display: inline-flex; align-items: center; gap: 6px; }
+.kb-ia-head .kb-ia-icon { justify-content: center; }
+/* In a window's details rail the sections are plain: a label, then the controls, no boxes. */
+.shell-rail .kb-ia-sec { padding: 0; border: 0; border-radius: 0; background: none; }
+.shell-rail .kb-ia-head h4 { font-size: var(--fs-xs); font-weight: var(--fw-bold); text-transform: none; letter-spacing: 0; color: var(--text-2); }

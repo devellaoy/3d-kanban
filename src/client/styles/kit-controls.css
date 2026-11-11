@@ -36,6 +36,8 @@
 .btn.md { height: var(--ctl-h); padding: 0 12px; }
 .btn.sm { height: var(--ctl-h-sm); padding: 0 10px; font-size: var(--fs-xs); }
 .btn.xs { height: var(--ctl-h-xs); padding: 0 6px; font-size: var(--fs-2xs); border-width: var(--bw-sm); border-radius: var(--radius-xs); }
+/* The one that matters in a sized row is a step heavier than its neighbours. */
+.btn:is(.lg, .md, .sm):is(.primary, .danger) { font-weight: var(--fw-heavy); }
 /* The older small button, sized by its padding. */
 .btn.small { padding: 4px 9px; font-size: var(--fs-sm); border-radius: var(--radius-md); box-shadow: var(--shadow-xs); }
 
@@ -68,7 +70,7 @@ textarea.inp { height: auto; padding: 8px 10px; line-height: 1.45; resize: verti
 /* A segmented control: one of a few, each a button with aria-pressed (or a radio's role). */
 .segmented { display: inline-flex; padding: 2px; border-radius: var(--radius-sm); background: var(--tint-grey); }
 .segmented > button { height: calc(var(--field-h) - 4px); padding: 0 12px; font: inherit; font-weight: var(--fw-semibold); color: var(--text-2); background: transparent; border: 0; border-radius: calc(var(--radius-sm) - 1px); cursor: pointer; }
-.segmented > button:is([aria-pressed=true], [aria-checked=true]) { font-weight: var(--fw-bold); color: var(--text); background: var(--field); box-shadow: var(--shadow-xs); }
+.segmented > button:is([aria-pressed=true], [aria-checked=true]) { font-weight: var(--fw-heavy); color: var(--text); background: var(--field); box-shadow: var(--shadow-xs); }
 .segmented > button:disabled { color: var(--muted); cursor: not-allowed; }
 
 /* A checkbox drawn as a chip (the repositories of a new task); `.check-chip-tag` is its small note ("Primary"). */
@@ -86,3 +88,20 @@ label.check-chip { display: inline-flex; align-items: center; gap: 8px; height: 
 .composite > textarea, .modal .composite > textarea { width: 100%; padding: 10px 12px; font: inherit; font-size: var(--fs-md); line-height: 1.5; color: inherit; background: transparent; border: 0; border-radius: 0; outline: 0; resize: none; }
 .composite-bar { display: flex; align-items: center; gap: 4px; padding: 6px 8px; background: var(--paper-2); border-top: var(--bw-sm) solid var(--rule-soft); }
 .composite-note { margin-left: auto; font-size: var(--fs-xs); color: var(--muted); }
+
+/* ---------- A field as the windows draw it (ui/kit.ts formField) ---------- */
+/* A small quiet label over its control, "Optional" after the label, a hint under the control. */
+.field { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.field > label, .field > .field-label { margin: 0; padding: 0; font-size: var(--fs-xs); font-weight: var(--fw-medium); color: var(--text-2); }
+.field-opt { margin-left: 4px; color: var(--muted); }
+.field > .segmented { align-self: flex-start; }
+.field-hint { font-size: var(--fs-xs); color: var(--muted); }
+/* A tick box and its words on one line, as a form's row (with a control after it). */
+label.check-line { display: inline-flex; align-items: center; gap: 8px; margin: 0; font-size: var(--fs-sm); font-weight: var(--fw-medium); color: var(--text); cursor: pointer; }
+.check-line > input { flex: none; margin: 0; accent-color: var(--accent); }
+/* A footer's key hint: the key cap and what it does. */
+.foot-hint { display: inline-flex; align-items: center; gap: 6px; font-size: var(--fs-xs); color: var(--muted); }
+/* A link that leaves the office (ui/kit.ts outLink): its words and the external-link icon. */
+.out-link { display: inline-flex; align-items: center; gap: 6px; font-weight: var(--fw-medium); color: var(--link); text-decoration: none; }
+.out-link:hover { text-decoration: underline; }
+.out-link > svg { flex: none; }

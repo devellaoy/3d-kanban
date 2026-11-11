@@ -1,8 +1,8 @@
 /* Changes window: changed files + diff at a desk */
 .modal.desk-changes { width: min(1300px, 100%); height: min(860px, calc(100vh - 32px)); outline: none; }
-.modal.desk-changes header .branch { font-size: var(--fs-sm); font-weight: var(--fw-bold); color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 40%; }
-.modal.desk-changes header .btn { padding: 4px 10px; font-size: var(--fs-sm); }
-.modal.desk-changes header .close { width: 34px; padding: 0; }
+.shell.desk-changes .shell-main { padding: 0; display: flex; flex-direction: column; overflow: hidden; }
+.changes-id { display: inline-flex; align-items: center; gap: 8px; min-width: 0; }
+.changes-id .branch { display: inline-flex; align-items: center; gap: 4px; font-size: var(--fs-sm); font-weight: var(--fw-bold); color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 40vw; }
 .changes-tabs { display: flex; flex-wrap: wrap; gap: 6px; padding: 8px 12px; border-bottom: var(--bw) solid var(--ink); background: var(--paper-2); }
 .changes-tabs .btn { padding: 3px 10px; font-size: var(--fs-sm); }
 .changes-tabs .btn small { font-weight: var(--fw-semibold); opacity: .8; }
@@ -55,7 +55,7 @@
 .img-frame img { display: block; max-width: 100%; max-height: 60vh; object-fit: contain; }
 .img-frame p { margin: 0; color: var(--muted); font-weight: var(--fw-semibold); font-size: var(--fs-sm); background: var(--field); padding: 4px 8px; border-radius: var(--radius-xs); }
 .changes-empty { margin: auto; text-align: center; padding: 24px; color: var(--muted); font-weight: var(--fw-semibold); max-width: 460px; }
-.changes-empty .big { font-size: 48px; line-height: 1; margin-bottom: 8px; }
+.changes-empty .big { display: flex; justify-content: center; margin-bottom: 8px; }
 .changes-empty p { margin: 6px 0 0; }
 .changes-empty .note { font-size: var(--fs-sm); font-weight: var(--fw-medium); }
 .modal.desk-changes footer .grow { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; min-width: 0; }

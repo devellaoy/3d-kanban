@@ -72,7 +72,7 @@ const saved = new Map<string, string>();
 function installFakeDom() {
   const g = globalThis as Record<string, unknown>;
   g.Node ??= FakeEl;
-  g.document ??= { createElement: (tag: string) => new FakeEl(tag), getElementById: () => null };
+  g.document ??= { createElement: (tag: string) => new FakeEl(tag), createElementNS: (_ns: string, tag: string) => new FakeEl(tag), getElementById: () => null };
   g.localStorage ??= { getItem: (k: string) => saved.get(k) ?? null, setItem: (k: string, v: string) => void saved.set(k, v), removeItem: (k: string) => void saved.delete(k) };
   return saved;
 }

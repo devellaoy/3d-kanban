@@ -1,6 +1,6 @@
 /* The kanban's categories of ⚙️ Settings (settings.ts): in upstream's settings window, on the 3D page
    (upstream's style.css, no kanban.css) and the kanban page alike. Every rule is scoped under .kb-set,
-   the categories' root (＋ New project's window under .kb-new-project-modal), so this file restyles
+   the categories' root (the New project window under .kb-new-project-modal), so this file restyles
    nothing of upstream's. It relies on upstream's variables
    (--ink, --paper…), .btn, .hidden and its `.modal` text boxes and labels. */
 
@@ -15,6 +15,7 @@
 .kb-set .kb-settings-project select { max-width: 320px; }
 .kb-set .kb-projects-head { justify-content: space-between; }
 .kb-set .kb-new-project { margin-left: auto; }
+.kb-icon-row { display: inline-flex; align-items: center; gap: 6px; }
 /* The project's tabs (the kit's strip, styles/kit-modal.css) start at the pane's edge and wrap. */
 .kb-set .tabs { padding: 0; flex-wrap: wrap; }
 
@@ -81,7 +82,7 @@
 
 /* ＋ New project (newproject.ts): its own window, stacked over Settings, so its rules are scoped under it rather than .kb-set. */
 .modal.kb-new-project-modal { width: min(560px, 100%); }
-.kb-new-project-modal .body { display: flex; flex-direction: column; gap: 10px; }
+.kb-new-project-modal .kb-np-body { display: flex; flex-direction: column; gap: 10px; }
 .kb-new-project-modal .kb-np-kinds { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
 .kb-new-project-modal .kb-np-kind { padding: 9px 12px; font: var(--fw-bold) var(--fs-md) var(--font); color: var(--text); background: var(--field); border: var(--bw) solid var(--ink); border-radius: var(--radius-sm); cursor: pointer; }
 .kb-new-project-modal .kb-np-kind:hover:not(:disabled) { background: var(--field-hover); }

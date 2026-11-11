@@ -8,8 +8,8 @@ import type { Net } from '../net';
 
 /** The kanban's categories in ⚙️ Settings, after upstream's own. */
 export const KANBAN_PANES = [
-  { id: 'kanban', icon: '🗂️', label: 'Kanban', blurb: 'What new kanban tasks start with, their reviews, resuming and archiving, the secrets for Jira and the API, and the skills the office found.' },
-  { id: 'projects', icon: '📁', label: 'Projects', blurb: 'Per project: its repositories and instructions, where its issues come from, which skills its phases get and its own wording of the kanban prompts.' },
+  { id: 'kanban', icon: 'square-kanban', label: 'Kanban', blurb: 'What new kanban tasks start with, their reviews, resuming and archiving, the secrets for Jira and the API, and the skills the office found.' },
+  { id: 'projects', icon: 'folder', label: 'Projects', blurb: 'Per project: its repositories and instructions, where its issues come from, which skills its phases get and its own wording of the kanban prompts.' },
 ] as const;
 export type KanbanSettingsPane = (typeof KANBAN_PANES)[number]['id'];
 

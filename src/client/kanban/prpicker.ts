@@ -1,4 +1,4 @@
-// Before a pull request is reviewed (🔍 Review or 🤝 Review panel in upstream's PR window): which PRs
+// Before a pull request is reviewed (Review or Review panel in upstream's PR window): which PRs
 // the review takes. The ones that belong with it — the same branch in the project's other
 // repositories, or the same task — come picked (kanban.pr.bundle); any other open PR of the project
 // can be added. Several go to one reviewer together (kanban.pr.review). Just this one keeps
@@ -14,21 +14,22 @@ import { kanbanApi, type KanbanOk } from './api';
 import { hostOfUrl } from '../../shared/hosting/remote';
 import { repoOfItem } from './boardrepos';
 import { pickerRows, refKey, reviewTaskOf } from './model';
-import { officeCss } from './officecss';
-import { dialog, run, showDialog } from './ui';
+import { btn } from '../ui/kit';
+import { modalShell, openShell } from '../ui/shell';
+import { prPickRow } from './prfind';
+import { run } from './ui';
 
 type BundleMsg = Extract<KanbanServerMsg, { t: 'kanban.pr.bundle' }>;
 
 /**
  * Opens the picker for `pull` on the floor you're on. `single` is upstream's review of just this PR
- * (the 🔍 Review prompt, or the meeting room's panel), for when that's all that's wanted.
+ * (the Review prompt, or the meeting room's panel), for when that's all that's wanted.
  */
 export function openReviewPicker(net: Net, pull: GhPull, mode: 'review' | 'panel', single: () => void) {
   const project = store.floor;
   const repo = repoOfItem(pull);
   // Nothing to bundle with outside a project, or for a PR the office can't place.
   if (!project || !repo) return single();
-  officeCss();
   const api = kanbanApi(net);
   const self = { repo, number: pull.number, title: pull.title, url: pull.url };
   let bundle: KanbanPrBundleItem[] = [];
@@ -36,12 +37,23 @@ export function openReviewPicker(net: Net, pull: GhPull, mode: 'review' | 'panel
   let error = '';
   const picked = new Set<string>([refKey(self)]);
 
-  const list = h('div.kb-pr-lists');
-  const note = h('p.kb-note', {}, 'PRs of the same branch or task in the project’s other repositories are picked with it. Add any other open PR of the project.');
-  const justThis = h('button.btn', { type: 'button', title: 'Review only this pull request, as before' }, 'Just this PR') as HTMLButtonElement;
-  const go = h('button.btn.primary', { type: 'button' }) as HTMLButtonElement;
-  const d = dialog('kb-pr-picker', mode === 'panel' ? `🤝 Review panel for PR #${pull.number}: which PRs?` : `🔍 Review PR #${pull.number}: which PRs?`, h('div.body', {}, note, list), h('footer', {}, h('span.grow'), justThis, go));
-  const modal = showDialog(d);
+  const list = h('div.kb-prs-body');
+  const note = h('span.kb-prs-note', {}, 'Pull requests of the same branch or task in the project’s other repositories are picked with it. Add any other open pull request of the project.');
+  const cancel = btn('Cancel', { kind: 'quiet' });
+  const justThis = btn('Just this PR', { attrs: { title: 'Review only this pull request, as before' } });
+  const go = btn('', { kind: 'primary' });
+  const count = h('span', { 'aria-live': 'polite' });
+  const shell = modalShell({
+    cls: 'kb-prs w640',
+    icon: mode === 'panel' ? 'users' : 'eye',
+    title: mode === 'panel' ? 'Review panel: which pull requests?' : 'Review: which pull requests?',
+    id: `${repo.split('/').pop()} #${pull.number}`,
+    body: [h('div.kb-prs-body', {}, note, list)],
+    footerLeft: [count],
+    footerRight: [cancel, justThis, go],
+  });
+  const modal = openShell(shell);
+  cancel.addEventListener('click', () => modal.close());
 
   const others = () =>
     store.pulls.items
@@ -62,17 +74,17 @@ export function openReviewPicker(net: Net, pull: GhPull, mode: 'review' | 'panel
       } else picked.delete(k);
       paintGo();
     });
-    return h('li', { class: cls }, h('label', {}, box, h('b', {}, `${p.repo.split('/').pop()} #${p.number}`), h('span.kb-pr-title', { title: p.title }, p.title)));
+    return prPickRow({ box, title: p.title, name: `${p.repo.split('/').pop()} #${p.number}`, url: p.url, branch: 'branch' in p ? (p as KanbanPrBundleItem).branch : undefined, cls });
   };
 
   const paint = () => {
     const rows = pickerRows(self, bundle, others());
     list.replaceChildren(
-      h('ul.kb-pr-list', {}, row(self, 'this')),
-      ...(loading ? [h('p.kb-note', {}, 'Looking for the PRs that go with it…')] : []),
-      ...(error ? [h('p.kb-err', {}, `⚠️ ${error}`)] : []),
-      ...(rows.related.length ? [h('h5', {}, 'Belong with it'), h('ul.kb-pr-list', {}, ...rows.related.map((p) => row(p)))] : !loading && !error ? [h('p.kb-note', {}, 'No other PRs share its branch or task.')] : []),
-      ...(rows.rest.length ? [h('h5', {}, 'Other open PRs in this project'), h('ul.kb-pr-list', {}, ...rows.rest.map((p) => row(p)))] : []),
+      h('div.list-box.kb-prs-list', {}, row(self, 'this')),
+      ...(loading ? [h('span.kb-prs-note', {}, 'Looking for the pull requests that go with it…')] : []),
+      ...(error ? [h('p.kb-prs-error', { role: 'alert' }, error)] : []),
+      ...(rows.related.length ? [h('h3.kb-prs-h', {}, 'Belong with it'), h('div.list-box.kb-prs-list', {}, ...rows.related.map((p) => row(p)))] : !loading && !error ? [h('span.kb-prs-note', {}, 'No other pull requests share its branch or task.')] : []),
+      ...(rows.rest.length ? [h('h3.kb-prs-h', {}, 'Other open pull requests in this project'), h('div.list-box.kb-prs-list', {}, ...rows.rest.map((p) => row(p)))] : []),
     );
     paintGo();
   };
@@ -84,6 +96,7 @@ export function openReviewPicker(net: Net, pull: GhPull, mode: 'review' | 'panel
   const paintGo = () => {
     go.textContent = onlySelf() ? (mode === 'panel' ? 'Call the panel for this PR' : 'Review this PR') : `Review ${picked.size} PRs together`;
     go.disabled = picked.size === 0;
+    count.textContent = `${picked.size} selected`;
   };
 
   /** The kanban's review of the PRs `keys` names (one task's keep their task; any other mix is a new task). */
@@ -95,7 +108,7 @@ export function openReviewPicker(net: Net, pull: GhPull, mode: 'review' | 'panel
       if (p) prs.push({ repo: p.repo, number: p.number });
     }
     const taskId = reviewTaskOf(keys, bundle);
-    // 🤝 keeps being a panel for several PRs too: the meeting room reviews them as one change set.
+    // The panel keeps being a panel for several PRs too: the meeting room reviews them as one change set.
     const ok = await run(() => api.request<KanbanOk>({ t: 'kanban.pr.review', project, prs, ...(taskId ? { taskId } : {}), ...(mode === 'panel' ? { panel: true } : {}) }), button);
     return { ok, prs };
   };

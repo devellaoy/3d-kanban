@@ -6,6 +6,7 @@
 
 import './settings.css';
 import { h, toast } from '../ui/dom';
+import { icon, withIcon, type IconName } from '../ui/icons';
 import type { Net } from '../net';
 import { store } from '../state';
 import { openPromptEditor } from '../ui/prompts';
@@ -38,10 +39,11 @@ import { checkbox, field, numberInput, numberValue, run, select, tabStrip, textA
 import { sourcesPane } from './settings-sources';
 import { jiraConnectionsFieldset } from './jira-connections';
 
-/** The tabs of 📁 Projects. */
+/** The tabs of Projects. */
 export type ProjectTab = 'project' | 'sources' | 'skills' | 'prompts';
 const PROJECT_TABS: readonly ProjectTab[] = ['project', 'sources', 'skills', 'prompts'];
-const TAB_NAMES: Record<ProjectTab, string> = { project: '⚙️ Project', sources: '📌 Issue sources', skills: '🧩 Skills', prompts: '📝 Prompts' };
+const TAB_NAMES: Record<ProjectTab, string> = { project: 'Project', sources: 'Issue sources', skills: 'Skills', prompts: 'Prompts' };
+const TAB_ICONS: Record<ProjectTab, IconName> = { project: 'settings', sources: 'circle-dot', skills: 'sparkles', prompts: 'file-text' };
 /** A prompt's scope: the short tag in the list, and the line over the editor. */
 const SCOPE_TAGS: Record<KanbanPromptScope, string> = { default: 'default', office: 'office', project: 'project' };
 const SCOPE_NOW: Record<KanbanPromptScope, string> = { default: 'The default text', office: 'The office’s text', project: 'This project’s own text' };
@@ -102,7 +104,7 @@ export function kanbanSettingsPanes(net: Net): { panes: Record<KanbanSettingsPan
   const projectPick = h('label.kb-settings-project', {}, h('span', {}, 'Project'));
   const note = h('p.kb-settings-note');
   const body = h('div.kb-settings-body');
-  const strip = tabStrip(PROJECT_TABS.map((x) => ({ id: x, label: TAB_NAMES[x] })), tab, (x) => {
+  const strip = tabStrip(PROJECT_TABS.map((x) => ({ id: x, label: withIcon(TAB_ICONS[x], TAB_NAMES[x]) })), tab, (x) => {
     tab = x;
     paintProject();
   }, 'Project settings');
@@ -125,7 +127,7 @@ export function kanbanSettingsPanes(net: Net): { panes: Record<KanbanSettingsPan
     note.textContent = kstore.me.admin ? 'For the project picked here only. Changes apply to its tasks from their next phase.' : 'Only admins can change these. This is how they’re set now.';
     const s = kstore.settings;
     if (!s || !ready) return body.replaceChildren(h('p.kb-muted', {}, 'Loading…'));
-    if (!kstore.projectOf(project)) return body.replaceChildren(h('p.kb-muted', {}, 'No projects yet: ＋ New project, or add a floor in the 3D office.'));
+    if (!kstore.projectOf(project)) return body.replaceChildren(h('p.kb-muted', {}, 'No projects yet: use New project, or add a floor in the 3D office.'));
     const panes: Record<ProjectTab, () => HTMLElement> = {
       project: () => projectPane(api, project, s, projectCleanups),
       sources: () => sourcesPane(api, project, s),
@@ -295,11 +297,11 @@ export function projectPane(api: Pick<KanbanApi, 'request'>, projectId: string, 
     const remote = textInput(fixedRemote ?? r.remote ?? '', { maxlength: 200, placeholder: r.detectedRemote || 'owner/name', title: r.detectedRemote ? 'From the checkout’s origin' : '', 'aria-label': 'GitHub (owner/name)', disabled: !!fixedRemote });
     const base = textInput(r.baseBranch ?? '', { maxlength: KANBAN_LIMITS.branch, placeholder: 'main', 'aria-label': 'Base branch' });
     const ins = textArea(r.instructions ?? '', { rows: 2, maxlength: KANBAN_LIMITS.promptText, placeholder: 'Instructions for work in this repository', 'aria-label': 'Instructions for work in this repository' });
-    const remove = h('button.btn.small.kb-admin', { type: 'button', 'aria-label': `Remove ${r.name}`, disabled: r.primary, title: r.primary ? 'The floor’s own repository stays' : '' }, '✕');
+    const remove = h('button.btn.small.kb-admin', { type: 'button', 'aria-label': `Remove ${r.name}`, disabled: r.primary, title: r.primary ? 'The floor’s own repository stays' : '' }, icon('x', { size: 14 }));
     const el = h(
       'div.kb-repo',
       { class: r.primary ? 'primary' : '' },
-      h('div.kb-repo-head', {}, h('b', {}, r.primary ? '⭐ Primary (the floor)' : `📦 ${r.id}`), h('span.grow'), remove),
+      h('div.kb-repo-head', {}, h('b', { class: 'kb-icon-row' }, ...(r.primary ? withIcon('star', 'Primary (the floor)') : withIcon('package', r.id))), h('span.grow'), remove),
       h('div.kb-three', {}, field('Name', name), field('Kind', kind), field('Base branch', base)),
       h('div.kb-two', {}, field('Folder', dir, r.primary ? 'The floor’s checkout: change it from the elevator in the 3D office' : undefined), field('GitHub (owner/name)', remote, fixedRemote ? `The floor’s own repository is ${fixedRemote}; add another repository instead, or re-add the floor` : undefined)),
       ins,
@@ -328,7 +330,7 @@ export function projectPane(api: Pick<KanbanApi, 'request'>, projectId: string, 
   for (const r of info.repos) rows.push(makeRow(r));
   list.append(...rows.map((r) => r.el));
   const addDir = textInput('', { placeholder: '/absolute/path/to/checkout', 'aria-label': 'Add a local repository' });
-  const addBtn = h('button.btn.kb-admin', { type: 'button' }, '＋ Add a local repository');
+  const addBtn = h('button.btn.kb-admin', { type: 'button' }, ...withIcon('plus', 'Add a local repository'));
   addBtn.addEventListener('click', () => {
     const dir = addDir.value.trim();
     if (!dir.startsWith('/') && !/^[A-Za-z]:[\\/]/.test(dir)) return toast('Give the folder as an absolute path', 'warn');
@@ -402,8 +404,8 @@ function promptsPane(api: KanbanApi, projectId: string, s: KanbanSettings, openE
   const vars = h('div.kb-vars');
   const contract = h('div.kb-contract');
   const save = saveButton('Save for this project');
-  const reset = h('button.btn.kb-admin', { type: 'button', title: 'Drop this project’s text and use the office’s again' }, '↺ Back to the office’s') as HTMLButtonElement;
-  const office = h('button.btn', { type: 'button' }, '📝 Edit the office-wide text');
+  const reset = h('button.btn.kb-admin', { type: 'button', title: 'Drop this project’s text and use the office’s again' }, ...withIcon('undo-2', 'Back to the office’s')) as HTMLButtonElement;
+  const office = h('button.btn', { type: 'button' }, ...withIcon('pencil', 'Edit the office-wide text'));
 
   const paintNav = () => {
     const l = layers();
@@ -426,7 +428,7 @@ function promptsPane(api: KanbanApi, projectId: string, s: KanbanSettings, openE
     reset.disabled = src.scope !== 'project' || !kstore.me.admin;
     vars.replaceChildren(...Object.entries(def.vars as Record<string, string>).map(([k, v]) => h('span.kb-var', { title: v }, h('code', {}, `{{${k}}}`))));
     const c = PROMPT_CONTRACT[id];
-    contract.replaceChildren(...(c ? [h('h5', {}, '🔒 Added by the office after it (can’t be changed)'), h('pre', { 'aria-readonly': 'true' }, KANBAN_CONTRACTS[c])] : []));
+    contract.replaceChildren(...(c ? [h('h5', { class: 'kb-icon-row' }, ...withIcon('lock', 'Added by the office after it (can’t be changed)')), h('pre', { 'aria-readonly': 'true' }, KANBAN_CONTRACTS[c])] : []));
     paintNav();
   };
   save.addEventListener('click', () => {
@@ -451,9 +453,9 @@ function promptsPane(api: KanbanApi, projectId: string, s: KanbanSettings, openE
 
 function secretsPane(api: KanbanApi): HTMLElement {
   const sec = kstore.secrets;
-  const status = (on: boolean) => h('span.kb-secret', { class: on ? 'on' : '' }, on ? '✅ configured' : '— not set');
+  const status = (on: boolean) => h('span.kb-secret', { class: on ? 'on' : '' }, ...(on ? withIcon('circle-check', 'configured') : ['— not set']));
   const key = h('input', { type: 'password', autocomplete: 'new-password', placeholder: sec.apiKey.configured ? '••••••••' : '', 'aria-label': 'API key', minlength: 16 }) as HTMLInputElement;
-  const gen = h('button.btn.kb-admin', { type: 'button', title: 'Make a random key (copy it before saving: it isn’t shown again)' }, '🎲 Generate');
+  const gen = h('button.btn.kb-admin', { type: 'button', title: 'Make a random key (copy it before saving: it isn’t shown again)' }, ...withIcon('dices', 'Generate'));
   gen.addEventListener('click', () => {
     const bytes = crypto.getRandomValues(new Uint8Array(24));
     key.value = [...bytes].map((b) => b.toString(16).padStart(2, '0')).join('');

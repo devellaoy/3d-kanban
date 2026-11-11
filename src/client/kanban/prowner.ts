@@ -2,7 +2,7 @@
 // sent to fix the review comments and failing checks on all the task's open PRs (kanban.pr.owner
 // says who owns it and whether that works now; the click is the task view's own kanban.task.pr).
 
-import { h } from '../ui/dom';
+import { btn } from '../ui/kit';
 import type { Net } from '../net';
 import { store } from '../state';
 import type { GhPull } from '../../shared/protocol';
@@ -17,9 +17,12 @@ type OwnerMsg = Extract<KanbanServerMsg, { t: 'kanban.pr.owner' }>;
 export function prOwner(net: Net, pull: () => GhPull) {
   const api = kanbanApi(net);
   let button: HTMLButtonElement | null = null;
+  let taskId: number | null = null;
   let generation = 0;
   return {
     button: () => button,
+    /** The task that owns the pull request, once that is known. */
+    taskId: () => taskId,
     load(redraw: () => void) {
       const project = store.floor;
       const repo = repoOfItem(pull());
@@ -30,8 +33,9 @@ export function prOwner(net: Net, pull: () => GhPull) {
         .then((o) => {
           if (g !== generation) return;
           const id = o.taskId;
+          taskId = id;
           if (id === null) return void (button = null);
-          button = h('button.btn', { type: 'button', disabled: !o.fixable, title: o.fixable ? `Task #${id}'s agent addresses the review comments and failing checks on all of the task's open PRs; it doesn't merge` : o.reason }, `🛠️ Fix via task #${id}`) as HTMLButtonElement;
+          button = btn(`Fix via task #${id}`, { icon: 'square-kanban', size: 'md', attrs: { disabled: !o.fixable, title: o.fixable ? `Task #${id}'s agent addresses the review comments and failing checks on all of the task's open PRs; it doesn't merge` : o.reason } });
           button.addEventListener('click', async () => {
             if (!(await run(() => api.request<KanbanOk>({ t: 'kanban.task.pr', id, mode: 'fix' }), button, `Task #${id}'s agent is on the PR`)) || !button) return;
             button.disabled = true;
@@ -39,7 +43,7 @@ export function prOwner(net: Net, pull: () => GhPull) {
           });
         })
         .catch(() => {
-          if (g === generation) button = null;
+          if (g === generation) button = taskId = null;
         })
         .finally(() => g === generation && redraw());
     },

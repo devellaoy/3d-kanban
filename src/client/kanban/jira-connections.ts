@@ -4,6 +4,7 @@
 // windows of their own. Saving or removing answers with kanban.settings, which redraws the pane.
 
 import { h, toast } from '../ui/dom';
+import { withIcon } from '../ui/icons';
 import type { KanbanServerMsg } from '../../shared/kanban/protocol.js';
 import { JIRA_CONNECTION_NAME_MAX, cleanJiraSite, sameJiraSite, type JiraConnectionStatus } from '../../shared/kanban/jira-connections.js';
 import type { KanbanApi, KanbanError } from './api';
@@ -15,13 +16,13 @@ type Tested = Extract<KanbanServerMsg, { t: 'kanban.secrets.jiraTested' }>;
 /** A connection as people read it: its name and site, or the site alone when it has no name of its own. */
 export const connectionLabel = (c: JiraConnectionStatus): string => (c.name && c.name !== c.site ? `${c.name} · ${c.site}` : c.site);
 
-const adminButton = (label: string, cls: `button.${string}` = 'button.btn.small.kb-admin', attrs: Record<string, string> = {}) => h(cls, { type: 'button', ...attrs }, label) as HTMLButtonElement;
+const adminButton = (label: string | readonly (string | Node)[], cls: `button.${string}` = 'button.btn.small.kb-admin', attrs: Record<string, string> = {}) => h(cls, { type: 'button', ...attrs }, ...(typeof label === 'string' ? [label] : label)) as HTMLButtonElement;
 
-/** The Jira fieldset: the connections, each with Test, Edit and Remove, and ＋ Add Jira connection. */
+/** The Jira fieldset: the connections, each with Test, Edit and Remove, and Add Jira connection. */
 export function jiraConnectionsFieldset(api: KanbanApi): HTMLElement {
   const conns = kstore.secrets.jira;
   const list = h('div.kb-jira-conns');
-  const add = adminButton('＋ Add Jira connection', 'button.btn.kb-admin');
+  const add = adminButton(withIcon('plus', 'Add Jira connection'), 'button.btn.kb-admin');
   const addSlot = h('div');
   add.addEventListener('click', () => {
     add.classList.add('hidden');
@@ -52,7 +53,7 @@ function connectionRow(api: KanbanApi, c: JiraConnectionStatus): HTMLElement {
     {},
     h('b', {}, c.name || c.site),
     c.name && c.name !== c.site ? h('span.kb-muted', {}, c.site) : null,
-    h('span.kb-secret.on', {}, '✅ token set'),
+    h('span.kb-secret.on', {}, ...withIcon('circle-check', 'token set')),
     h('span.grow'),
     buttons,
   );
@@ -65,10 +66,10 @@ function connectionRow(api: KanbanApi, c: JiraConnectionStatus): HTMLElement {
     try {
       const r = await api.request<Tested>({ t: 'kanban.secrets.jira.test', id: c.id });
       result.className = 'kb-jira-result ok';
-      result.textContent = `✅ Connected as ${r.name}`;
+      result.textContent = `Connected as ${r.name}`;
     } catch (err) {
       result.className = 'kb-jira-result bad';
-      result.textContent = `⚠️ ${(err as KanbanError).message || 'That didn’t work'}`;
+      result.textContent = (err as KanbanError).message || 'That didn’t work';
     } finally {
       test.disabled = false;
     }
@@ -84,7 +85,7 @@ function connectionRow(api: KanbanApi, c: JiraConnectionStatus): HTMLElement {
   remove.addEventListener('click', () => {
     // Asked here in the row: a window over ⚙️ Settings would be one more to shut.
     const yes = adminButton('Remove', 'button.btn.small.danger.kb-admin');
-    const no = adminButton('Never mind', 'button.btn.small');
+    const no = adminButton('Cancel', 'button.btn.small');
     no.addEventListener('click', closeBelow);
     yes.addEventListener('click', () => void run(() => api.request({ t: 'kanban.secrets.jira.remove', id: c.id }), yes, 'Removed').then((ok) => ok || closeBelow()));
     buttons.classList.add('hidden');
@@ -118,7 +119,7 @@ function connectionForm(api: KanbanApi, c: JiraConnectionStatus | undefined, don
   const paintWarning = () => {
     const host = cleanJiraSite(site.value);
     const using = c && host && !sameJiraSite(host, c.site) ? sourcesUsing(c.id) : [];
-    warning.textContent = using.length ? `⚠️ Sources that name it: ${using.join(', ')}. They still name the old site, so they stop reading until you change them.` : '';
+    warning.textContent = using.length ? `Sources that name it: ${using.join(', ')}. They still name the old site, so they stop reading until you change them.` : '';
   };
   site.addEventListener('input', paintWarning);
   setTimeout(() => name.focus(), 0);

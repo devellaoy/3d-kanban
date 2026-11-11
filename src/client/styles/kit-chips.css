@@ -16,7 +16,7 @@
 .code-chip { padding: 1px 6px; font-family: var(--font-mono); font-size: var(--fs-xs); color: var(--text); background: var(--code-inline); border-radius: var(--radius-xs); overflow-wrap: anywhere; }
 
 /* ---------- Status pill: a task's column, with its icon ---------- */
-.st-pill, .pr-pill, .attn-pill { display: inline-flex; align-items: center; gap: 5px; padding: 1px 7px; font-size: var(--fs-xs); font-weight: var(--fw-bold); white-space: nowrap; border: var(--bw-sm) solid var(--chip-edge); border-radius: var(--radius-pill); background: var(--tint-grey); color: var(--text-neutral); }
+.st-pill, .pr-pill, .attn-pill { display: inline-flex; align-items: center; gap: 5px; padding: 1px 7px; font-size: var(--fs-xs); font-weight: var(--fw-heavy); white-space: nowrap; border: var(--bw-sm) solid var(--chip-edge); border-radius: var(--radius-pill); background: var(--tint-grey); color: var(--text-neutral); }
 .st-pill > svg, .pr-pill > svg, .attn-pill > svg { flex: none; }
 .st-pill.todo { background: var(--st-todo-soft); color: var(--st-todo-ink); }
 .st-pill.in_progress { background: var(--st-progress-soft); color: var(--st-progress-ink); }
@@ -50,25 +50,29 @@
 .kb-chip { display: inline-flex; align-items: center; gap: 3px; max-width: 100%; padding: 1px 7px; font-size: var(--fs-2xs); font-weight: var(--fw-bold); line-height: 18px; background: var(--field); border: var(--bw-sm) solid var(--ink); border-radius: var(--radius-chip); color: var(--text); text-decoration: none; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .kb-chip > svg { flex: none; }
 a.kb-chip:hover { background: var(--field-hover); }
-.kb-chip.ticket { background: var(--warn-soft); }
+.kb-chip.ticket { background: var(--chip-ticket); }
 .kb-chip.repo { background: var(--tint-blue); }
 .kb-chip.project { background: var(--tint-purple); }
-.kb-chip.type { background: var(--tint-cyan); }
+.kb-chip.type { background: var(--chip-type); }
 .kb-chip.tag { background: var(--tint-wash); color: var(--muted); }
 
 /* A filter drawn as a chip: its name, what is picked and a chevron, over the native select that does the
    work (it covers the chip, invisible, so the keyboard and the screen reader get a real select). */
-.filter-chip { position: relative; display: inline-flex; align-items: center; gap: 6px; height: var(--ctl-h-sm); padding: 0 8px 0 10px; font-size: var(--fs-xs); color: var(--text); white-space: nowrap; background: var(--field); border: var(--bw-sm) solid var(--ink); border-radius: var(--radius-sm); cursor: pointer; }
+.filter-chip, label.filter-chip { position: relative; display: inline-flex; margin: 0; align-items: center; gap: 6px; height: var(--ctl-h-sm); padding: 0 8px 0 10px; font-size: var(--fs-xs); color: var(--text); white-space: nowrap; background: var(--field); border: var(--bw-sm) solid var(--ink); border-radius: var(--radius-sm); cursor: pointer; }
 .filter-chip > svg { flex: none; }
 .filter-chip-label { color: var(--muted); }
 .filter-chip.on { font-weight: var(--fw-semibold); color: var(--accent-soft-ink); background: var(--accent-soft); border-color: var(--accent-edge); }
 .filter-chip.on .filter-chip-label { color: inherit; }
 .filter-chip > select { position: absolute; inset: 0; width: 100%; height: 100%; margin: 0; padding: 0; border: 0; opacity: 0; cursor: pointer; appearance: none; -webkit-appearance: none; }
 .filter-chip:focus-within { outline: var(--focus-ring); outline-offset: 2px; }
+/* The same over a bar's main picker (the board's project): a control's height and line, its value in the text's weight. */
+.filter-chip.md { height: var(--ctl-h); font-size: var(--fs-sm); font-weight: var(--fw-semibold); border: var(--bw) solid var(--line-control); }
+.filter-chip-value { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.filter-chip.hidden { display: none; }
 
 /* ---------- Counts ---------- */
 .count { display: inline-block; min-width: 18px; padding: 0 6px; font-size: var(--fs-2xs); font-weight: var(--fw-semibold); line-height: 18px; text-align: center; font-variant-numeric: tabular-nums; border-radius: var(--radius-pill); background: var(--tint-grey); color: var(--text-neutral); }
-.count.attention { font-weight: var(--fw-bold); background: var(--attn-soft); color: var(--attn-ink); }
+.count.attention { font-weight: var(--fw-heavy); background: var(--attn-soft); color: var(--attn-ink); }
 
 /* ---------- Running ---------- */
 /* The pulsing dot of a task whose agent is at work, and the still one (a dot in its halo) for a line of text. */

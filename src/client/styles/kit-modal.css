@@ -12,10 +12,10 @@
 @keyframes fade { from { opacity: 0; } }
 .modal { background: var(--paper); border: var(--bw) solid var(--ink); border-radius: var(--radius-lg); box-shadow: var(--shadow-lg); width: min(560px, 100%); max-height: calc(100vh - 32px); display: flex; flex-direction: column; overflow: hidden; animation: pop .18s ease-out; }
 @keyframes pop { from { transform: scale(.96); opacity: .5; } }
-.modal header { display: flex; align-items: center; gap: 10px; padding: 12px 16px; border-bottom: var(--bw) solid var(--ink); background: var(--paper-2); }
+.modal header { display: flex; align-items: center; gap: 10px; padding: 12px 16px; border-bottom: var(--bw) solid var(--ink); background: var(--bar-bg); }
 .modal header h2 { margin: 0; font-size: var(--fs-2xl); font-weight: var(--fw-heavy); flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .modal .body { padding: 16px; overflow: auto; }
-.modal footer { display: flex; gap: 8px; justify-content: flex-end; padding: 12px 16px; border-top: var(--bw) solid var(--ink); background: var(--paper-2); align-items: center; }
+.modal footer { display: flex; gap: 8px; justify-content: flex-end; padding: 12px 16px; border-top: var(--bw) solid var(--ink); background: var(--bar-bg); align-items: center; }
 .modal footer .grow { flex: 1; font-size: var(--fs-xs); color: var(--muted); font-weight: var(--fw-semibold); }
 /* Not the kit's own fields (.inp, kit-controls.css): :where() keeps these selectors as weak as they were. */
 .modal textarea:where(:not(.inp)), .modal input[type=text]:where(:not(.inp)), .modal input[type=password]:where(:not(.inp)) { width: 100%; font: inherit; font-size: var(--fs-lg); border: var(--bw) solid var(--ink); border-radius: var(--radius-sm); padding: 10px 12px; background: var(--field); outline: none; resize: vertical; }
@@ -57,6 +57,8 @@
 .shell-body { flex: 1; min-height: 0; display: flex; }
 .shell-main { flex: 1; min-width: 0; padding: 18px 20px; overflow: auto; }
 .shell-head.rich ~ .shell-body > .shell-main { padding: 20px 24px; }
+/* A window's own words, at the size and leading the artboards are drawn in (a view's own sheet may say otherwise). */
+.shell-main, .shell-foot { font-size: var(--fs-sm); line-height: 1.45; }
 .shell-rail { flex: none; width: var(--rail-w); display: flex; flex-direction: column; gap: 14px; padding: 20px; overflow: auto; background: var(--paper-2); border-left: var(--bw) solid var(--ink); font-size: var(--fs-sm); }
 .shell-rail.hidden { display: none; }
 
@@ -78,18 +80,18 @@
 .tabs.hidden, .kb-tabs.hidden { display: none; }
 .tab, .kb-tab { flex: none; display: inline-flex; align-items: center; gap: 6px; padding: 8px 10px 10px; font: var(--fw-semibold) var(--fs-sm) var(--font); color: var(--text-2); white-space: nowrap; background: none; border: 0; border-bottom: max(2px, var(--bw)) solid transparent; border-radius: 0; cursor: pointer; }
 .tab:hover, .kb-tab:hover { color: var(--text); }
-.tab.on, .kb-tab.on { color: var(--text); font-weight: var(--fw-bold); border-bottom-color: var(--accent); }
+.tab.on, .kb-tab.on { color: var(--text); font-weight: var(--fw-heavy); border-bottom-color: var(--accent); }
 .tab:focus-visible, .kb-tab:focus-visible { outline: var(--focus-ring); outline-offset: -2px; }
 .tab > svg, .kb-tab > svg { flex: none; }
 .tab-n, .kb-tab-n { min-width: 18px; padding: 0 6px; font-size: var(--fs-2xs); font-weight: var(--fw-semibold); line-height: 18px; text-align: center; border-radius: var(--radius-pill); background: var(--tint-grey); color: var(--text-neutral); }
-.tab-n.attention, .kb-tab-n.attention { font-weight: var(--fw-bold); background: var(--attn-soft); color: var(--attn-ink); }
+.tab-n.attention, .kb-tab-n.attention { font-weight: var(--fw-heavy); background: var(--attn-soft); color: var(--attn-ink); }
 
 /* ---------- Banner: what a window says first (a task that waits for you, one on hold, an error) ---------- */
 .banner { display: flex; align-items: flex-start; gap: 12px; padding: 12px 14px; border: var(--bw-sm) solid var(--banner-edge); border-radius: var(--radius); background: var(--banner-bg); color: var(--banner-text); }
 .banner > svg { flex: none; margin-top: 1px; color: var(--attn-icon); }
 .banner-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; overflow-wrap: anywhere; }
-.banner-title { font-weight: var(--fw-bold); color: var(--banner-title); }
-.banner-link { align-self: center; flex: none; display: inline-flex; align-items: center; gap: 4px; padding: 0; font: inherit; font-weight: var(--fw-bold); white-space: nowrap; color: var(--link); text-decoration: none; background: none; border: 0; cursor: pointer; }
+.banner-title { font-weight: var(--fw-heavy); color: var(--banner-title); }
+.banner-link { align-self: center; flex: none; display: inline-flex; align-items: center; gap: 4px; padding: 0; font: inherit; font-weight: var(--fw-heavy); white-space: nowrap; color: var(--link); text-decoration: none; background: none; border: 0; cursor: pointer; }
 .banner-link:hover { text-decoration: underline; }
 .banner.neutral { border-color: var(--ink); background: var(--paper-2); color: var(--text-2); }
 .banner.neutral .banner-title { color: var(--text); }
@@ -99,7 +101,7 @@
 .banner.danger > svg { color: var(--danger-ink); }
 
 /* ---------- The details rail: a heading, label and value rows, a separator ---------- */
-.rail-h { margin: 0; font-size: var(--fs-xs); font-weight: var(--fw-bold); color: var(--text-2); }
+.rail-h { margin: 0; font-size: var(--fs-xs); font-weight: var(--fw-heavy); color: var(--text-2); }
 .rail-dl { margin: 0; display: grid; grid-template-columns: 92px minmax(0, 1fr); gap: 12px; align-items: start; }
 .rail-dl.small { row-gap: 10px; font-size: var(--fs-xs); }
 .rail-dl dt { color: var(--muted); }

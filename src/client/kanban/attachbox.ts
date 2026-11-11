@@ -5,6 +5,7 @@
 // Its styles load with it: the 3D page has no kanban.css.
 import './attachbox.css';
 import { h, toast } from '../ui/dom';
+import { icon, withIcon } from '../ui/icons';
 import type { KanbanAttachment } from '../../shared/kanban/types.js';
 import { attachmentMarkdown, attachmentUrl, formatSize, insertAt, linkedIds, pastedName, swapMark, uploadAttachment, uploadingMark } from './attach';
 
@@ -24,7 +25,7 @@ export function attachBox(opts: { target: HTMLTextAreaElement; dropZone?: HTMLEl
   let uploading = 0;
   const list = h('ul.kb-attachments', { 'aria-live': 'polite' });
   const input = h('input', { type: 'file', multiple: true, class: 'hidden', tabindex: -1, 'aria-hidden': 'true' }) as HTMLInputElement;
-  const pick = h('button.btn.small', { type: 'button', title: 'Attach files (or paste / drop them)' }, '📎 Attach');
+  const pick = h('button.btn.quiet.sm', { type: 'button', title: 'Attach files (or paste / drop them)' }, ...withIcon('paperclip', 'Attach'));
   pick.addEventListener('click', () => input.click());
   input.addEventListener('change', () => {
     add([...(input.files ?? [])]);
@@ -33,7 +34,7 @@ export function attachBox(opts: { target: HTMLTextAreaElement; dropZone?: HTMLEl
 
   const paint = () => {
     if (opts.insertLinks) {
-      list.replaceChildren(...(uploading ? [h('li.kb-attachment.busy', {}, `⏳ Uploading ${uploading}…`)] : []));
+      list.replaceChildren(...(uploading ? [h('li.kb-attachment.busy', {}, ...withIcon('loader', `Uploading ${uploading}…`, 14))] : []));
       return;
     }
     list.replaceChildren(
@@ -41,7 +42,7 @@ export function attachBox(opts: { target: HTMLTextAreaElement; dropZone?: HTMLEl
         h(
           'li.kb-attachment',
           {},
-          h('a', { href: attachmentUrl(a.id), target: '_blank', rel: 'noopener noreferrer' }, `📄 ${a.name}`),
+          h('a', { href: attachmentUrl(a.id), target: '_blank', rel: 'noopener noreferrer' }, ...withIcon('file-text', a.name, 14)),
           h('small', {}, formatSize(a.size)),
           h(
             'button.kb-x',
@@ -54,11 +55,11 @@ export function attachBox(opts: { target: HTMLTextAreaElement; dropZone?: HTMLEl
                 opts.onChange?.();
               },
             },
-            '✕',
+            icon('x', { size: 12 }),
           ),
         ),
       ),
-      ...(uploading ? [h('li.kb-attachment.busy', {}, `⏳ Uploading ${uploading}…`)] : []),
+      ...(uploading ? [h('li.kb-attachment.busy', {}, ...withIcon('loader', `Uploading ${uploading}…`, 14))] : []),
     );
   };
 
