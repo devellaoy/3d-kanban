@@ -4,8 +4,10 @@
 .kb-wbar-floor { flex: none; max-width: 22vw; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--fs-sm); font-weight: var(--fw-heavy); }
 .kb-wbar-note { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--fs-sm); font-weight: var(--fw-semibold); line-height: 40px; color: var(--muted); }
 /* Another floor's project is on the board: the way back takes the tabs' place. */
-.kb-wbar .kb-wbar-back { flex: 0 1 auto; min-width: 0; margin: 4px auto 4px 0; overflow: hidden; text-overflow: ellipsis; display: block; }
-.kb-wbar .btn.small { flex: none; height: 32px; }
+.kb-wbar .btn.small { height: 32px; }
+/* Only the two on the right keep their width: the way back gives way to a long project name. */
+.kb-wbar-actions .btn.small { flex: none; }
+.kb-wbar .kb-wbar-back { flex: 0 1 auto; min-width: 0; margin: 4px auto 4px 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; display: block; }
 .kb-wbar-actions { flex: none; display: flex; gap: 8px; margin-left: auto; }
 
 /* The tabs: one row that scrolls sideways and never wraps. The padding is the room a tab's shadow and
@@ -37,7 +39,7 @@
   .kb-wbar .btn.small, .kb-wtab { height: 28px; }
   .kb-wtabs { padding-top: 2px; padding-bottom: 4px; }
   .kb-wbar-note { line-height: 34px; }
-  .kb-wbar-back { margin-top: 2px; margin-bottom: 4px; }
+  .kb-wbar .kb-wbar-back { margin-top: 2px; margin-bottom: 4px; }
 }
 @media (prefers-reduced-motion: reduce) {
   .kb-wtab .pill { animation: none; }
