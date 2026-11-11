@@ -689,3 +689,20 @@ test('jobs on one pull request run in order and the last one reflects the taskâ€
   assert.equal(body, 'Did it\n\nCloses #9\n');
   assert.equal(checked.get('https://github.com/acme/api/pull/3')?.sig?.startsWith('gh:acme/api#9'), true);
 });
+
+test('a line the office took out and the author wrote again is the authorâ€™s: it stays and is said once', async () => {
+  const t = movable('Did it');
+  await t.sync();
+  assert.equal(t.pr.body, 'Did it\n\nCloses #7\n');
+  t.retarget('gh:acme/api#8');
+  await t.sync();
+  assert.equal(t.pr.body, 'Did it\n\nCloses #8\n');
+  // The author wants both issues closed and writes the old line back.
+  t.pr.body = 'Did it\n\nCloses #8\n\nCloses #7\n';
+  const edits = t.pr.edits;
+  await t.sync();
+  await t.sync();
+  assert.equal(t.pr.body, 'Did it\n\nCloses #8\n\nCloses #7\n');
+  assert.equal(t.pr.edits, edits);
+  assert.equal(t.comments.filter((c) => /still closes acme\/api#7/.test(c)).length, 1);
+});

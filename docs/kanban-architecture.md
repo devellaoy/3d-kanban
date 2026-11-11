@@ -492,7 +492,7 @@ answers `kanban.ok {rid, ...}` or `kanban.error {rid, message}`. Deltas are push
     old issue's link never stays). It only rewrites the two fields: no issue is assigned or moved, and
     nothing is done to either issue at its source. A change of `ticket` logs the old one in the `edited` event
     (`ticketWas`); when `checkClosing` (`server/kanban/integrations/pulls/closes.ts`, on every board refresh) adds a
-    closing line it records a `closing` event `{url, ref, did: 'added'}`. Only a line recorded there, an exact line
+    closing line it records a `closing` event `{url, ref, did: 'added'}`, and `did: 'removed'` once it has taken that line out (the latest record per pull request and issue decides, so a line the author writes back afterwards is the author's). Only a line recorded there, an exact line
     of its own (`closingRef`), is taken out of that PR once the task has another issue or none; a line the author or the
     agent wrote (its prompt asks for one) is never edited, and if the PR still closes the old issue (text or GitHub's
     list) one status comment says so (a `closing` event `did: 'left'` keeps it to once). The new issue's line is added

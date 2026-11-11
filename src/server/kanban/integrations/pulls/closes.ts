@@ -186,13 +186,14 @@ function closingJobs(ctx: KanbanContext, project: string, task: { id: number; br
   const now = issueId(task.ticket);
   const events = ctx.repo.listEvents(task.id, 500);
   const former = new Map<string, string>();
-  const did = new Set<string>();
+  // The last thing the office recorded per pull request and issue: only a line it added and has not taken out since is its own.
+  const did = new Map<string, unknown>();
   for (const e of events) {
     const d = (e.data ?? {}) as { ticketWas?: unknown; url?: unknown; ref?: unknown; did?: unknown };
     if (e.kind === 'edited' && typeof d.ticketWas === 'string') {
       const id = issueId(d.ticketWas);
       if (id && id !== now) former.set(id, d.ticketWas);
-    } else if (e.kind === 'closing' && typeof d.url === 'string' && typeof d.ref === 'string') did.add(`${d.did}|${d.url}|${issueId(d.ref)}`);
+    } else if (e.kind === 'closing' && typeof d.url === 'string' && typeof d.ref === 'string') did.set(`${d.url}|${issueId(d.ref)}`, d.did);
   }
   const live = !!now && task.status !== 'done';
   if (!live && !former.size) return jobs;
@@ -210,8 +211,9 @@ function closingJobs(ctx: KanbanContext, project: string, task: { id: number; br
   for (const [id, key] of former) {
     const p = closingPr(key, mine, home);
     if (!p) continue;
-    if (did.has(`added|${p.url}|${id}`)) job(p).drop.push(key);
-    else if (!did.has(`left|${p.url}|${id}`)) job(p).leave.push(key);
+    const last = did.get(`${p.url}|${id}`);
+    if (last === 'added') job(p).drop.push(key);
+    else if (last !== 'left') job(p).leave.push(key);
   }
   return jobs;
 }
@@ -289,6 +291,8 @@ async function closeOne(
   }
   // What the office added is the only thing it may take out later; what it said it left is not said again.
   if (r.added && ref) ctx.repo.appendEvent(task.id, 'closing', { url, ref, did: 'added' });
+  // A line it took out (or found gone) is no longer its own: one that comes back is the author's.
+  if (!r.retry && !('warning' in editor)) for (const key of drop) ctx.repo.appendEvent(task.id, 'closing', { url, ref: key, did: 'removed' });
   for (const key of r.kept ?? []) ctx.repo.appendEvent(task.id, 'closing', { url, ref: key, did: 'left' });
   const said = [
     r.added ? `Added "${closingRef(ref, repo)}" to ${url}` : '',
