@@ -102,13 +102,14 @@ export function repoFilterSelect(repos: string[], value: string, onChange: (repo
  */
 export function repoTabs(onChange: (repo: string) => void): { el: HTMLElement; update(repos: string[], value: string, counts: Map<string, number>, total: number): void } {
   officeCss();
-  const el = h('div.board-repo-tabs.hidden', { role: 'tablist', 'aria-label': 'Repositories' });
+  // The look of the shared tab strip (styles/kit-modal.css); the tabs come and go with the repositories, so they are kept here.
+  const el = h('div.tabs.board-repo-tabs.hidden', { role: 'tablist', 'aria-label': 'Repositories' });
   const tabs = new Map<string, HTMLButtonElement>();
   let picked: string | null = null;
   const tabOf = (repo: string) => {
     let b = tabs.get(repo);
     if (!b) {
-      b = h('button.board-repo-tab', { type: 'button', role: 'tab', 'data-repo': repo }, h('span'), h('small')) as HTMLButtonElement;
+      b = h('button.tab.board-repo-tab', { type: 'button', role: 'tab', 'data-repo': repo }, h('span'), h('small.tab-n')) as HTMLButtonElement;
       b.addEventListener('click', () => onChange(repo));
       tabs.set(repo, b);
     }
@@ -140,6 +141,7 @@ export function repoTabs(onChange: (repo: string) => void): { el: HTMLElement; u
         b.title = repo ? `${repo}: ${n} open` : `Every repository: ${n} open`;
         b.setAttribute('aria-label', `${repo || 'All repositories'}, ${n} open pull request${n === 1 ? '' : 's'}`);
         b.setAttribute('aria-selected', String(repo === value));
+        b.classList.toggle('on', repo === value);
         b.tabIndex = repo === value ? 0 : -1;
         if (el.children[i] !== b) el.insertBefore(b, el.children[i] ?? null);
       });

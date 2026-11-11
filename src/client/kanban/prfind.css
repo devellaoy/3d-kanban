@@ -17,8 +17,3 @@
 .kb-pr-find .kb-pr-list .kb-pr-title { grid-column: 2 / -1; overflow: visible; white-space: normal; overflow-wrap: anywhere; font-weight: var(--fw-semibold); }
 .kb-pr-find .kb-pr-list code { grid-column: 2 / -1; justify-self: start; max-width: 100%; padding: 1px 4px; font-size: var(--fs-xs); overflow-wrap: anywhere; background: var(--paper); border: 1px solid var(--rule-code); border-radius: 4px; }
 /* taskview.css's PR state pill, which is scoped to the task view. */
-.kb-pr-find .kb-pr { padding: 1px 7px; font-size: var(--fs-2xs); font-weight: var(--fw-heavy); border: var(--bw-sm) solid var(--ink); border-radius: var(--radius-xs); color: var(--text); background: var(--field); white-space: nowrap; }
-.kb-pr-find .kb-pr.open { background: var(--good-soft); }
-.kb-pr-find .kb-pr.draft { background: var(--tint-grey); }
-.kb-pr-find .kb-pr.merged { background: var(--tint-violet); }
-.kb-pr-find .kb-pr.closed { background: var(--bad-soft); }

@@ -59,6 +59,22 @@ const PAIRS: Pair[] = [
     { fg: '--link', bg, min: 4.5, why: 'a link (a file, a URL) in an agent\'s comment' },
   ]),
   { fg: '--accent-text', bg: '--field', min: 4.5, why: 'accent-coloured text (a menu\'s main action)', except: { default: 'the default look is frozen pixel-identical' } },
+  // The kit (styles/kit-*.css): secondary text, and each soft fill with the text on it.
+  { fg: '--text-2', bg: '--paper', min: 4.5, why: 'a tab, a section label, a quiet button on a window', over: { glossy: '--bg' } },
+  { fg: '--text-2', bg: '--paper-2', min: 4.5, why: 'a quiet button in a bar or on the details rail', over: { glossy: '--bg' } },
+  { fg: '--text-2', bg: '--field-hover', min: 4.5, why: 'a hovered quiet button' },
+  { fg: '--text-neutral', bg: '--tint-grey', min: 4.5, why: 'a count badge, an archived pill' },
+  { fg: '--accent-soft-ink', bg: '--accent-soft', min: 4.5, why: 'an active filter chip' },
+  ...(['todo', 'progress', 'waiting', 'review', 'hold', 'done'] as const).flatMap((s): Pair[] => [
+    { fg: `--st-${s}-ink`, bg: `--st-${s}-soft`, min: 4.5, why: `a task's status pill (${s})` },
+    { fg: `--st-${s}`, bg: '--paper', min: 3, why: `a status icon and its column's line (${s}), which are graphics: 3:1`, over: { glossy: '--bg' } },
+  ]),
+  ...(['plan', 'implement', 'review', 'fix', 'pr'] as const).map((p): Pair => ({ fg: `--ph-${p}-ink`, bg: `--ph-${p}-soft`, min: 4.5, why: `a run phase badge (${p})` })),
+  ...(['open', 'draft', 'merged', 'closed'] as const).map((p): Pair => ({ fg: `--pr-${p}-ink`, bg: `--pr-${p}-soft`, min: 4.5, why: `a pull request's state (${p})` })),
+  { fg: '--attn-ink', bg: '--attn-soft', min: 4.5, why: 'the "needs you" pill and a waiting card\'s note' },
+  { fg: '--attn-icon', bg: '--paper', min: 3, why: 'the "needs you" icon on a panel, a graphic: 3:1', over: { glossy: '--bg' } },
+  { fg: '--banner-title', bg: '--banner-bg', min: 4.5, why: 'the title of a waiting task\'s banner' },
+  { fg: '--banner-text', bg: '--banner-bg', min: 4.5, why: 'the text of a waiting task\'s banner' },
 ];
 
 /** A theme's tokens: the declarations of the first block that `selector` opens. */

@@ -1,4 +1,5 @@
 import './changes.css';
+import { tabStrip } from './tabs';
 import { changedImageType, type ChangedFile, type ChangesState, type ServerMsg } from '../../shared/protocol';
 import type { Net } from '../net';
 import { store } from '../state';
@@ -126,7 +127,7 @@ export function openChanges(net: Net, workerId: string, onTerminal?: () => void,
   if (!info) return;
   // A kanban task's worker gets its task's Changes window instead: every repository, per commit too.
   const task = kanbanOf(info);
-  if (task) return void import('../kanban/changesview').then((m) => {
+  if (task) return void import('../kanban/changeswindow').then((m) => {
     const old = current;
     m.openTaskChanges(net, { taskId: task.taskId, workerId, floor: repo, onTerminal });
     old?.modal.close(); // after: never a moment without a window, which would take the mouse back
@@ -155,7 +156,7 @@ export function openChanges(net: Net, workerId: string, onTerminal?: () => void,
   const discardBtn = h('button.btn', { type: 'button', title: 'Throw away every uncommitted change in this checkout' }, '🗑️ Discard all');
   const commitBtn = h('button.btn', { type: 'button', title: 'git add -A && git commit' }, '✅ Commit…');
   const prSlot = h('span.pr-slot');
-  const tabs = h('nav.changes-tabs', { role: 'tablist', 'aria-label': 'Repositories' });
+  const tabs = h('nav.changes-tabs.changes-repos');
   const el = h(
     'div.modal.desk-changes',
     { role: 'dialog', 'aria-label': `${info.name}'s changes`, tabindex: -1 },
@@ -370,16 +371,22 @@ export function openChanges(net: Net, workerId: string, onTerminal?: () => void,
     tabs.classList.toggle('hidden', !repos.length);
     if (!repos.length) return tabs.replaceChildren();
     const own = w.worktree?.path.split(/[\\/]/).pop() ?? 'this project';
-    tabs.replaceChildren(
-      ...[{ id: undefined as string | undefined, name: own, pr: w.pr }, ...repos.map((r) => ({ id: r.floor as string | undefined, name: r.name, pr: r.pr }))].map((t) =>
-        h(
-          'button.btn',
-          { type: 'button', role: 'tab', class: t.id === repo ? 'on' : '', 'aria-selected': t.id === repo ? 'true' : 'false', title: t.id ? `Its worktree of ${t.name}` : `Its worktree of this floor's project, ${t.name}`, onclick: () => show(t.id) },
-          `📁 ${t.name}`,
-          t.pr ? h('small', {}, ` · #${t.pr.number}`) : null,
-        ),
-      ),
+    // The shared strip (ui/tabs.ts), rebuilt with the repositories; '' is the floor's own project.
+    const strip = tabStrip(
+      [{ id: '', name: own, pr: w.pr }, ...repos.map((r) => ({ id: r.floor as string, name: r.name, pr: r.pr }))].map((t) => ({
+        id: t.id,
+        label: [`📁 ${t.name}`, t.pr ? h('small', {}, ` · #${t.pr.number}`) : null],
+        title: t.id ? `Its worktree of ${t.name}` : `Its worktree of this floor's project, ${t.name}`,
+      })),
+      repo ?? '',
+      (id) => show(id || undefined),
+      'Repositories',
+      'chtab',
     );
+    // The focus stays on the strip when it is rebuilt under it (an arrow key picked another repository).
+    const focused = tabs.contains(document.activeElement);
+    tabs.replaceChildren(strip.el);
+    if (focused) strip.buttons.get(repo ?? '')?.focus();
   };
 
   /** Switches to another of its repositories: stops following the one on screen and follows that one. */

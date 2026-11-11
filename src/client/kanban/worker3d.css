@@ -1,0 +1,6 @@
+/* The worker window's Terminal / Task strip (worker3d.ts): the shared tabs (styles/kit-modal.css) under
+   the terminal window's header, and the task pane that takes the terminal's place. */
+.modal.term .worker-tabs { background: var(--paper); }
+/* The task tab hides the whole terminal side (the terminal, its shell tabs, the keypad) at window level. */
+.modal.term.kb-on-task > :not(header, .worker-tabs, .worker-task) { display: none !important; }
+.modal.term .worker-task { flex: 1; min-height: 0; overflow: auto; background: var(--field); color: var(--text); }

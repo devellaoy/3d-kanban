@@ -3,6 +3,7 @@ import type { GhPull, GhPullDetail, GhReviewComment } from '../../../shared/prot
 import type { Net } from '../../net';
 import { store, workerForPull } from '../../state';
 import { h, openModal, type Modal } from '../dom';
+import { tabStrip } from '../tabs';
 import { officePrompt } from '../prompts';
 // The PR review picker, and which of the project's repositories a PR is in (github/ghrepo.ts).
 import { openReviewPicker } from '../../kanban/prpicker';
@@ -53,8 +54,11 @@ export function openPull(first: GhPull, net: Net, actions: BoardActions) {
   const reload = h('button.btn', { type: 'button', title: `Reload from ${hostLabel(host)}` }, '🔄');
   const close = h('button.btn.close', { 'aria-label': 'Close' }, '✕');
   const meta = h('div.gh-meta');
-  const tabConv = h('button.gh-tab', { type: 'button', role: 'tab' });
-  const tabFiles = h('button.gh-tab', { type: 'button', role: 'tab' });
+  // The shared tab strip (ui/tabs.ts); the labels are filled in by renderFrame.
+  const strip = tabStrip<typeof tab>([{ id: 'conversation', label: '' }, { id: 'files', label: '' }], tab, (t) => setTab(t), 'Pull request sections', 'ghtab');
+  strip.el.classList.add('gh-tabs');
+  const tabConv = strip.buttons.get('conversation')!;
+  const tabFiles = strip.buttons.get('files')!;
   const conv = h('div.gh-conv');
   // The comment box stays put while the conversation above it is redrawn, so a load finishing
   // doesn't take the focus (or the text) away from someone typing.
@@ -73,7 +77,7 @@ export function openPull(first: GhPull, net: Net, actions: BoardActions) {
     { role: 'dialog', 'aria-label': `Pull request ${label}`, tabindex: -1 },
     h('header', {}, pill, title, reload, close),
     meta,
-    h('nav.gh-tabs', { role: 'tablist' }, tabConv, tabFiles),
+    strip.el,
     h('div.gh-body', {}, conv, filesPane),
     h('footer', {}, h('a.grow', { href: it.url, target: '_blank', rel: 'noopener noreferrer' }, `Open on ${hostLabel(host)} ↗`), footBtns),
   );
@@ -108,10 +112,7 @@ export function openPull(first: GhPull, net: Net, actions: BoardActions) {
     const done = files ? files.filter((f) => reviewed.mark(f) === 'reviewed').length : 0;
     tabConv.replaceChildren(...nodes('💬 Conversation', detail ? h('span.gh-count', {}, String(detail.comments.length + detail.reviews.length + detail.reviewComments.filter((c) => !c.replyTo).length)) : null));
     tabFiles.replaceChildren(...nodes('📄 Files changed', files ? h('span.gh-count', {}, String(files.length)) : null, files?.length ? h('span.gh-progress', { class: done === files.length ? 'all' : '' }, `✓ ${done}/${files.length}`) : null));
-    tabConv.classList.toggle('on', tab === 'conversation');
-    tabFiles.classList.toggle('on', tab === 'files');
-    tabConv.setAttribute('aria-selected', String(tab === 'conversation'));
-    tabFiles.setAttribute('aria-selected', String(tab === 'files'));
+    strip.set(tab);
     conv.classList.toggle('hidden', tab !== 'conversation');
     filesPane.classList.toggle('hidden', tab !== 'files');
 
@@ -484,8 +485,6 @@ export function openPull(first: GhPull, net: Net, actions: BoardActions) {
     renderFrame();
     if (t === 'files') filesPane.querySelector<HTMLElement>('.pd-main')?.focus({ preventScroll: true });
   };
-  tabConv.addEventListener('click', () => setTab('conversation'));
-  tabFiles.addEventListener('click', () => setTab('files'));
 
   // --- Loading
   let generation = 0;

@@ -8,9 +8,6 @@
 .kb-issues-window .kb-row input[type=search], .kb-issues-window .kb-issue-chips select { font: var(--fw-semibold) var(--fs-md) var(--font); color: var(--text); background: var(--field); border: var(--bw) solid var(--ink); border-radius: var(--radius-sm); padding: 0 10px; outline: none; }
 .kb-issues-window .kb-row input[type=search] { width: 100%; height: 44px; }
 .kb-issues-window .kb-row input[type=search]:focus, .kb-issues-window .kb-issue-chips select:focus { border-color: var(--accent); }
-.kb-issues-window .kb-muted { color: var(--muted); font-weight: var(--fw-medium); }
-.kb-issues-window .kb-error { padding: 8px 10px; border: var(--bw-sm) solid var(--bad); border-radius: var(--radius-md); background: var(--bad-wash); font-weight: var(--fw-bold); }
-.kb-issues-window .btn.small { padding: 4px 9px; font-size: var(--fs-sm); border-radius: var(--radius-md); box-shadow: var(--shadow-xs); }
 .kb-issue-chips { display: flex; flex-wrap: wrap; gap: 6px; }
 .kb-issue-chips:empty { display: none; }
 .kb-issues-window .kb-issue-chips select { width: auto; max-width: 100%; height: 32px; font-size: var(--fs-sm); border-width: var(--bw-sm); }
@@ -23,8 +20,6 @@
 .kb-issue.taken { background: var(--field-off); }
 .kb-issue-taken { flex: none; font-size: var(--fs-sm); font-weight: var(--fw-bold); color: var(--muted); white-space: nowrap; }
 .kb-issues-window .kb-chips { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; }
-.kb-issues-window .kb-chip { display: inline-flex; align-items: center; gap: 3px; max-width: 100%; padding: 1px 7px; font-size: var(--fs-2xs); font-weight: var(--fw-bold); line-height: 18px; background: var(--field); border: var(--bw-sm) solid var(--ink); border-radius: var(--radius-pill); color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.kb-issues-window .kb-chip.tag { background: var(--tint-wash); color: var(--muted); }
 
 @media (max-width: 700px) {
   .modal.kb-issues-window { width: 100%; height: 100dvh; max-height: 100dvh; border: 0; border-radius: 0; box-shadow: none; }

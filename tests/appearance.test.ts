@@ -76,7 +76,7 @@ test('every theme defines every token', () => {
 // ---- The colour guard -------------------------------------------------------------------------------
 
 /** The CSS inside the template strings of the files that carry their own (put on the page by code). */
-const CSS_IN_TS = ['src/client/kanban/officecss.ts', 'src/client/kanban/worker3d.ts', 'src/client/kanban/vscode.ts'];
+const CSS_IN_TS = ['src/client/kanban/officecss.ts', 'src/client/kanban/vscode.ts'];
 
 /** Every stylesheet the guard reads, as repo path → its CSS (comments out). */
 function sheets(): Map<string, string> {

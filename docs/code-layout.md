@@ -60,9 +60,17 @@ They're in `core/registry.ts`, and each is a field of `ctx`. Every registration 
 
 `style.css` is the 3D office's sheet. It pulls in `styles/base.css` (the colors, the reset, panels, buttons and the window frame, which the 2D view's `lite.css` loads too), `styles/hud.css` and `styles/loading.css`. Every other sheet sits next to its module and comes in with it. A module's sheet loads in no fixed order against `base.css`, so a module rule that overrides a base rule of the same specificity has to be more specific, or live at the end of `base.css` with the others there.
 
+`base.css` starts by importing **the kit**, the pieces every window is made of, so the 3D office, the kanban page and the 2D view all have them:
+
+- `styles/kit-modal.css`: the window frame (`.modal`, its header, `.body` and footer), the shell on top of it, the underlined tabs, the banner, the details rail and the list box.
+- `styles/kit-controls.css`: buttons (`.btn` with a kind: `primary`, `secondary`, `quiet`, `danger`, `quiet-danger`, and a size: `lg`, `md`, `sm`, `xs`), `.icon-btn`, the kit's field `.inp`, the segmented control, the checkbox chip, `.kbd` and the text box with a toolbar.
+- `styles/kit-chips.css`: the status pill, the phase badge, a pull request's state, chips, the filter chip, counts, the running dot, avatars, the plain table and an attachment's chip.
+
+The kit takes every colour, line, corner and height from tokens, upper-cases nothing, never uses `!important`, and keeps its selectors weak (a class, or a class and an element) so a window's sheet overrides it without a fight. A piece several windows need goes into the kit once, not into each window's sheet. The code side is three small modules in `ui/`, free of three.js: `ui/shell.ts` (`modalShell` builds a window in the shell: a simple or a rich header, a body with an optional rail, a footer with a left and a right group; `openShell` opens it through `openModal`), `ui/tabs.ts` (`tabStrip`, the one tab strip, and `tabCount`) and `ui/kit.ts` (`pill`, `phaseBadge`, `prPill`, `chip`, `banner`, `detailsRail`, `btn`). A window's own ✕ sits in its header (on the first row of a rich one); `openModal` adds one only when it finds none there.
+
 ### Themes
 
-`src/client/themes/` is how the pages get their looks (the registry is `themes/index.ts`). In the code a look is an *appearance*, because *theme* already means the holiday decorations. `themes/tokens.css` is the contract: every colour, border, radius, shadow and font the sheets use is a custom property in its first `:root` block, with the default look's values. `styles/base.css` imports `themes/index.css`, which imports the tokens and then each theme.
+`src/client/themes/` is how the pages get their looks (the registry is `themes/index.ts`). In the code a look is an *appearance*, because *theme* already means the holiday decorations. `themes/tokens.css` is the contract: every colour, border, radius, shadow and font the sheets use is a custom property in its first `:root` block, with the default look's values. The sizes every look shares (`--ctl-h`, `--field-h`, `--ctl-h-sm`, `--ctl-h-xs`, `--rail-w`) are in a second `:root` block there, outside the contract, so a theme doesn't repeat them. `styles/base.css` imports `themes/index.css`, which imports the tokens and then each theme.
 
 **Adding a theme:**
 

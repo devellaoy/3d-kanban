@@ -6,15 +6,10 @@
 const CSS = `
 .repo-chip { display: inline-flex; align-items: center; padding: 0 6px; font-size: var(--fs-2xs); font-weight: var(--fw-heavy); border: var(--bw-sm) solid var(--ink); border-radius: var(--radius-pill); background: var(--tint-blue); white-space: nowrap; }
 .board-repo { height: 36px; padding: 0 8px; font: var(--fw-bold) var(--fs-sm) var(--font); color: var(--text); background: var(--field); border: var(--bw) solid var(--ink); border-radius: var(--radius-sm); }
-.board-repo-tabs { flex: none; display: flex; gap: 6px; padding: 8px 12px; overflow-x: auto; overscroll-behavior-x: contain; scrollbar-width: thin; background: var(--paper-2); border-bottom: var(--bw) solid var(--ink); }
-.board-repo-tab { flex: none; display: inline-flex; align-items: center; gap: 6px; padding: 4px 6px 4px 12px; font: var(--fw-bold) var(--fs-sm) var(--font); color: var(--text); white-space: nowrap; background: var(--field); border: var(--bw) solid var(--ink); border-radius: var(--radius-sm); cursor: pointer; }
-.board-repo-tab:hover { background: var(--paper); }
-.board-repo-tab small { min-width: 22px; padding: 0 6px; font-size: var(--fs-2xs); font-weight: var(--fw-heavy); text-align: center; border-radius: var(--radius-pill); background: var(--paper-2); border: var(--bw-sm) solid var(--ink); }
-.board-repo-tab[aria-selected="true"] { color: var(--text-on-strong); background: var(--strong); }
-.board-repo-tab[aria-selected="true"] small { color: var(--text); background: var(--field); border-color: var(--field); }
-.board-repo-tab:focus-visible { outline: var(--focus-ring); outline-offset: 1px; }
+/* The repository tabs are the shared strip (styles/kit-modal.css): this is only where they sit and how they scroll. */
+.board-repo-tabs { padding: 0 12px; overscroll-behavior-x: contain; scrollbar-width: thin; background: var(--paper-2); }
 .board-pr-bar { flex: none; display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; padding: 0 12px 0 0; background: var(--paper-2); border-bottom: var(--bw) solid var(--ink); }
-.board-pr-bar > .board-repo-tabs { flex: 1 1 auto; min-width: 0; border-bottom: 0; background: none; }
+.board-pr-bar > .board-repo-tabs { flex: 1 1 auto; min-width: 0; align-self: flex-end; box-shadow: none; background: none; }
 .board-who { flex: none; display: inline-flex; margin: 8px 0 8px auto; border: var(--bw) solid var(--ink); border-radius: var(--radius-sm); overflow: hidden; background: var(--field); }
 .board-who-opt { padding: 4px 10px; font: var(--fw-bold) var(--fs-sm) var(--font); color: var(--text); white-space: nowrap; background: none; border: 0; cursor: pointer; }
 .board-who-opt + .board-who-opt { border-left: var(--bw-sm) solid var(--ink); }

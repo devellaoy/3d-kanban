@@ -184,6 +184,52 @@
   --fs-2xs-plus: 11.5px;    /* a key in Markdown, a prompt variable's note, a doc's path */
   --fs-avatar: 10px;        /* the initials in a chat avatar */
 
+  /* ---- Controls, statuses and "needs you" (the kit: styles/kit-*.css) ---- */
+  --line-control: #2b2d42;   /* the border of a control (a button, an input, a select); a step stronger than --ink where the look has hairlines */
+  --chip-edge: #2b2d42;   /* the line round a pill, badge or chip: --ink in the outlined looks, transparent in the flat ones */
+  --radius-chip: 999px;   /* the corner of a chip and a phase badge: a pill here, a few pixels in the flat looks */
+  --text-2: #534e54;   /* secondary text a step above --muted: a quiet button, a tab, a section label */
+  --text-neutral: #2b2d42;   /* text on a neutral soft fill: a count badge, a draft pill */
+  --accent-soft-ink: #2b2d42;   /* text on --accent-soft: an active filter chip */
+  --accent-edge: #2b2d42;   /* the border of an active filter chip or a picked choice chip */
+  /* A task status: the solid colour is its column line and icon, -soft and -ink its pill. */
+  --st-todo: #9a6700; --st-todo-soft: #fff7b0; --st-todo-ink: #2b2d42;
+  --st-progress: #1d6fd6; --st-progress-soft: #bde0fe; --st-progress-ink: #2b2d42;
+  --st-waiting: #c9184a; --st-waiting-soft: #ffd6e0; --st-waiting-ink: #2b2d42;
+  --st-review: #1b7f5b; --st-review-soft: #caffbf; --st-review-ink: #2b2d42;
+  --st-hold: #7a6f65; --st-hold-soft: #ffe5b4; --st-hold-ink: #2b2d42;
+  --st-done: #5f6d68; --st-done-soft: #e2ece9; --st-done-ink: #2b2d42;
+  /* A run phase badge, and a pull request state. */
+  --ph-plan-soft: #fde2ff; --ph-plan-ink: #2b2d42;
+  --ph-implement-soft: #bde0fe; --ph-implement-ink: #2b2d42;
+  --ph-review-soft: #caffbf; --ph-review-ink: #2b2d42;
+  --ph-fix-soft: #ffd6a5; --ph-fix-ink: #2b2d42;
+  --ph-pr-soft: #e7f0ff; --ph-pr-ink: #2b2d42;
+  --pr-open-soft: #d8f5e3; --pr-open-ink: #2b2d42;
+  --pr-draft-soft: #e9ecef; --pr-draft-ink: #2b2d42;
+  --pr-merged-soft: #e5d4ff; --pr-merged-ink: #2b2d42;
+  --pr-closed-soft: #ffd6e0; --pr-closed-ink: #2b2d42;
+  --attn-edge: #ef476f;   /* "needs you": the border of a card that waits for you */
+  --attn-soft: #ffd6e0;   /* ... its note and the "needs you" pill */
+  --attn-ink: #2b2d42;   /* ... the text on --attn-soft */
+  --attn-icon: #c9184a;   /* ... its icon on a plain surface */
+  --banner-edge: #2b2d42;   /* the banner on top of a task that waits: its border, */
+  --banner-bg: #ffe3ea;   /* ... background, */
+  --banner-title: #2b2d42;   /* ... title */
+  --banner-text: #2b2d42;   /* ... and text */
+  --run-dot: #06d6a0;   /* the dot of a task whose agent is running */
+  --run-halo: rgba(6, 214, 160, .7);   /* ... and the halo round it */
+  --pin-size: 14px;   /* the pin on a card's top edge (0: no pin) */
+
   /* ---- Glass ---- */
   --glass-blur: none;       /* backdrop-filter of windows and HUD panels (a glass theme blurs here) */
+}
+
+/* Sizes every theme shares: not part of the per-theme contract (the tests read only the first block). */
+:root {
+  --ctl-h: 32px;            /* a control in a bar: the board's buttons, search and project picker */
+  --field-h: 34px;          /* a field or a button in a window */
+  --ctl-h-sm: 28px;         /* a small control: a filter chip, a toolbar button */
+  --ctl-h-xs: 22px;         /* a mini button on a card */
+  --rail-w: 316px;          /* a window's details rail (a window may set its own) */
 }

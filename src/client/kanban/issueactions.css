@@ -9,7 +9,6 @@
 .kb-ia-head .kb-ia-icon { margin-left: auto; }
 .kb-ia-body { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
 .kb-ia-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
-.kb-ia .btn.small { padding: 4px 9px; font-size: var(--fs-sm); border-radius: var(--radius-md); box-shadow: var(--shadow-xs); }
 .kb-ia .btn.small[aria-pressed=true] { background: var(--warn-soft); }
 .kb-ia-quiet { margin: 0; font-size: var(--fs-sm); font-weight: var(--fw-semibold); color: var(--muted); }
 .kb-ia-quiet.grow { flex: 1; }
