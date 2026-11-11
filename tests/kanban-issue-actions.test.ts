@@ -785,3 +785,30 @@ test('kanban.issue.get: a key two Jira sources both have is read again from the 
   await ws['kanban.issue.get']!(c, { t: 'kanban.issue.get', project: 'app', issueKey: 'UYT-12', source: last().issue.sourceId, fresh: true });
   assert.deepEqual([last().issue.sourceId, last().issue.status], ['jira-b', 'Done'], 'the refresh stays with source B');
 });
+
+test('a refresh of an issue (kanban.issue.get, fresh) updates the list’s own copy: the actions after it answer with the status the source has now', async () => {
+  const ctx = makeCtx([def('app', '/tmp/app', { repo: 'o/r' })], { ghAs: () => 'no GitHub sign-in' });
+  ctx.settings.setProject('app', { issueSources: [JIRA_SRC] });
+  (ctx as unknown as { secrets: unknown }).secrets = { jiraConnections: () => JIRA_TOKEN };
+  const fields = (status: string) => ({ summary: 'Jira one', status: { name: status }, updated: '2026-09-01' });
+  const http = fetchStub((c) => {
+    // The list was fetched while it was in Backlog; someone moved it to Done in Jira since.
+    if (c.url.endsWith('/search/jql')) return { body: { issues: [{ key: 'UYT-12', fields: fields('Backlog') }], isLast: true } };
+    if (c.url.includes('/transitions') && c.method === 'GET') return { body: { transitions: [{ id: '31', name: 'Reopen', to: { name: 'Backlog' } }] } };
+    if (c.url.includes('/issue/UYT-12')) return { body: { key: 'UYT-12', fields: fields('Done') } };
+    return { status: 204 };
+  });
+  const issues = createIssues(ctx, { gh: ghStub(() => '').gh, fetch: http.fetch });
+  await issues.refresh('app');
+  const ws = issues.plugin.ws!;
+  const c = client(false, 'acc1');
+  const current = async () => {
+    await ws['kanban.issue.transitions']!(c, { t: 'kanban.issue.transitions', project: 'app', issueKey: 'UYT-12', source: JIRA_SRC.id });
+    return last(c, 'kanban.issueTransitions').current;
+  };
+  assert.equal(await current(), 'Backlog', 'before the refresh: what the list has');
+  await ws['kanban.issue.get']!(c, { t: 'kanban.issue.get', project: 'app', issueKey: 'UYT-12', source: JIRA_SRC.id, fresh: true });
+  assert.equal(last(c, 'kanban.issueDetail').issue.status, 'Done');
+  assert.equal(await current(), 'Done', 'the panel’s reload after the refresh says Done too');
+  assert.equal(issues.message('app').items[0].status, 'Done', 'and so does the list');
+});
