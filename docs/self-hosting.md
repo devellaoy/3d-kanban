@@ -135,6 +135,6 @@ WantedBy=multi-user.target
 
 `--trust-proxy` is for exactly this setup: the relay limits password attempts per client address, and behind a proxy it needs `X-Forwarded-For` to tell clients apart. Don't use it when the relay is reachable directly. Without a proxy, give the relay `--tls-cert` and `--tls-key` (and `--host 0.0.0.0`) to serve `wss://` itself. Browsers only let an HTTPS office use an `https://` relay, so use TLS on any relay that isn't on localhost.
 
-Each person then puts `https://relay.example.com` and the password into ⚙️ Settings → **🌐 Multiplayer** in their own office. Everyone who has the password can see who is online, and a visit only shows what its owner shared with that person's GitHub login. The relay carries the content of visits in progress, so run it yourself.
+Each person then puts `https://relay.example.com` and the password into ⚙️ Settings → **Multiplayer** in their own office. Everyone who has the password can see who is online, and a visit only shows what its owner shared with that person's GitHub login. The relay carries the content of visits in progress, so run it yourself.
 
 **Voice across offices.** A visitor's voice goes straight between browsers, using the ICE servers the owner's office hands out. If the owner started the office with `--turn` (see above), visitors get those TURN servers too, so a visit through strict NATs needs the owner's TURN server to be reachable by the visitor.

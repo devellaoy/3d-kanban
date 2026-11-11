@@ -1,9 +1,9 @@
 // The ✨ New task form's message, without the DOM (src/client/kanban/createmsg.ts): a task titled by its
-// first line, or one made from the issue picked with 🔗 Select issue.
+// first line, or one made from the issue picked with Select issue.
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { markdownTitle, newTaskMsg, type NewTaskFields } from '../src/client/kanban/createmsg.js';
+import { markdownTitle, newTaskMsg, reviewOverride, reviewStart, type NewTaskFields, type ReviewForm } from '../src/client/kanban/createmsg.js';
 
 const fields = (f: Partial<NewTaskFields> = {}): NewTaskFields => ({
   project: 'api',
@@ -89,4 +89,29 @@ test('markdownTitle skips the lines that are only an image or a file link', () =
   // Nothing but attachments: the first of them names it.
   assert.equal(markdownTitle('![shot.png](/a1)\n[log.txt](/b2)'), '![shot.png](/a1)');
   assert.equal(markdownTitle(''), '');
+});
+
+const review = (o: Partial<ReviewForm> = {}): ReviewForm => ({ useReview: true, choose: false, rounds: 2, baseRounds: 2, tool: 'claude', model: '', effort: '', reReviewLastFix: false, ...o });
+
+test('the project’s number of review rounds with no reviewer chosen is no override: the message is as it was', () => {
+  assert.equal(reviewOverride(review()), undefined);
+  assert.equal(reviewOverride(review({ useReview: false, rounds: 5, choose: true })), undefined, 'no review rounds, nothing of its own');
+  // Sent as create.ts does: the override goes into the message only when there is one.
+  const rv = reviewOverride(review());
+  const made = newTaskMsg(fields({ rest: { repoIds: null, type: 'implement', usePlan: true, useReview: true, ...(rv ? { review: rv } : {}) } }), null);
+  assert.ok('msg' in made && made.msg.t === 'kanban.task.create');
+  assert.deepEqual(made.msg.task, { project: 'api', title: 'Fix the login', repoIds: null, type: 'implement', usePlan: true, useReview: true, description: fields().description });
+  // Another number alone is the task's own rounds; a chosen reviewer carries everything.
+  assert.deepEqual(reviewOverride(review({ rounds: 4 })), { rounds: 4 });
+  assert.deepEqual(reviewOverride(review({ choose: true, tool: 'codex', model: ' gpt-5 ', effort: 'high', reReviewLastFix: true })), { tool: 'codex', rounds: 2, reReviewLastFix: true, model: 'gpt-5', effort: 'high' });
+});
+
+test('editing a task shows its stored rounds, and saving it unchanged changes nothing', () => {
+  assert.deepEqual(reviewStart({ rounds: 5 }, 2), { rounds: 5, choose: false, ownRounds: true });
+  assert.deepEqual(reviewStart(undefined, 2), { rounds: 2, choose: false, ownRounds: false });
+  assert.deepEqual(reviewStart({ tool: 'codex', rounds: 3, reReviewLastFix: false }, 2), { rounds: 3, choose: true, ownRounds: true });
+  // What the form then sends is what was stored.
+  const stored = { rounds: 5 };
+  const start = reviewStart(stored, 2);
+  assert.deepEqual(reviewOverride(review({ rounds: start.rounds, choose: start.choose })), stored);
 });

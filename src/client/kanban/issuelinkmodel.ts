@@ -42,7 +42,7 @@ export const unlinkPatch = (): TicketPatch => ({ ticket: null, ticketUrl: null }
 export function typedPatch(key: string, link: string, now: Linked = {}): TicketPatch | string {
   const ticket = key.trim();
   let url = link.trim();
-  if (!ticket) return 'Type the issue’s key (✕ Unlink takes the issue off the task)';
+  if (!ticket) return 'Type the issue’s key (Unlink takes the issue off the task)';
   if (ticket.length > KANBAN_LIMITS.ticket) return `The key is too long (${KANBAN_LIMITS.ticket} characters at most)`;
   if (url && ticket !== (now.ticket ?? '') && url === (now.ticketUrl ?? '')) url = '';
   if (url && !LINK_RE.test(url)) return 'The link must be an http(s) URL';

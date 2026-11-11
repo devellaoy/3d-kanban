@@ -1,19 +1,20 @@
 // The board: the five columns (and the archive drawer), cards dragged between them. While a card is
 // dragged, the columns that take it light up and the others say why not (the rules are
-// shared/kanban/moves.ts, which the server enforces as well). Without a mouse, every card's ⋯ (or M
-// on a focused card) opens the same moves as a menu.
+// shared/kanban/moves.ts, which the server enforces as well). Without a mouse, every card's move button
+// (or M on a focused card) opens the same moves as a dialog.
 
 import { h, toast } from '../ui/dom';
+import { icon, iconButton } from '../ui/icons';
+import { STATUS_ICON } from '../ui/kit';
+import { modalShell, openShell } from '../ui/shell';
 import { BOARD_COLUMNS, type KanbanTaskCard, type TaskStatus } from '../../shared/kanban/types.js';
 import { columnsOf, dropZones, filterActive, type BoardFilter } from './model';
 import { taskCard } from './card';
 import { columnName } from './labels';
 import { kstore } from './store';
-import { dialog, showDialog } from './ui';
 
-const COLUMN_ICON: Record<TaskStatus, string> = { todo: '📥', in_progress: '🚧', waiting: '🙋', review: '👀', on_hold: '⏸️', done: '✅', archived: '🗄️' };
 const EMPTY_TEXT: Record<TaskStatus, string> = {
-  todo: 'Nothing to do. ＋ New task adds one.',
+  todo: 'Nothing to do. New task adds one.',
   in_progress: 'Nothing running',
   waiting: 'Nobody is waiting on you',
   review: 'Nothing to review',
@@ -32,6 +33,8 @@ export interface BoardOptions {
   toggleArchive(): void;
   /** The task the detail panel shows, to mark its card. */
   selected(): number | null;
+  /** The To do column's + (absent: no button). */
+  newTask?(): void;
 }
 
 export class Board {
@@ -78,9 +81,11 @@ export class Board {
           h(
             'h3.kb-col-head',
             {},
-            h('span', {}, `${COLUMN_ICON[status]} ${columnName(status)}`),
+            icon(STATUS_ICON[status]),
+            h('span.kb-col-name', {}, columnName(status)),
             h('span.kb-count', { title: hidden ? `${hidden} hidden by the filters` : '' }, hidden ? `${cards.length}/${all[status].length}` : String(cards.length)),
-            status === 'archived' ? h('button.btn.small', { type: 'button', onclick: () => this.o.toggleArchive(), 'aria-label': 'Hide the archive' }, '✕') : null,
+            status === 'todo' && this.o.newTask ? iconButton('plus', 'New task', { class: 'xs', onclick: () => this.o.newTask?.() }) : null,
+            status === 'archived' ? iconButton('x', 'Hide the archive', { class: 'xs', onclick: () => this.o.toggleArchive() }) : null,
           ),
           h('div.kb-drop-why', { 'aria-hidden': 'true' }),
           ul,
@@ -101,7 +106,7 @@ export class Board {
   }
 
   private archiveDropStrip(): HTMLElement {
-    const strip = h('section.kb-col.kb-archive-drop', { 'data-status': 'archived', 'aria-hidden': 'true' }, h('div.kb-archive-label', {}, `🗄️ ${columnName('archived')}`), h('div.kb-drop-why'));
+    const strip = h('section.kb-col.kb-archive-drop', { 'data-status': 'archived', 'aria-hidden': 'true' }, h('div.kb-archive-label', {}, icon(STATUS_ICON.archived), columnName('archived')), h('div.kb-drop-why'));
     this.wireDrop(strip, 'archived');
     this.sections.set('archived', strip);
     return strip;
@@ -128,7 +133,7 @@ export class Board {
       s.classList.toggle('drop-no', !z?.ok && status !== card.status);
       s.classList.toggle('drop-home', status === card.status);
       const why = s.querySelector('.kb-drop-why');
-      if (why) why.textContent = z?.ok ? (z.action === 'start' ? '▶️ Starts the task' : 'Drop here') : z?.reason ?? '';
+      if (why) why.textContent = z?.ok ? (z.action === 'start' ? 'Starts the task' : 'Drop here') : z?.reason ?? '';
     }
   }
 
@@ -163,24 +168,27 @@ export class Board {
     });
   }
 
-  /** The keyboard's way to move a card: every column, the ones it can't go to greyed out with why. */
+  /** The keyboard's way to move a card: every column as a row, the task's own marked, the ones it can't go to greyed out with why. */
   moveMenu(id: number) {
     const card = kstore.tasks.get(id);
     if (!card) return;
-    const zones = dropZones(card);
-    const body = h('div.body.kb-move-menu', { role: 'menu' });
-    const d = dialog('kb-move-dialog', `Move #${id}`, body);
-    const modal = showDialog(d);
-    for (const z of zones) {
-      const b = h(
-        'button.btn.kb-move-to',
-        { type: 'button', role: 'menuitem', disabled: !z.ok, title: z.ok ? '' : z.reason ?? '' },
-        h('span', {}, `${COLUMN_ICON[z.to]} ${columnName(z.to)}`),
-        z.ok ? (z.action === 'start' ? h('small.kb-starts', {}, '▶️ Starts the task') : z.action === 'reset' ? h('small', {}, 'Starts over: the automation’s state is cleared') : null) : h('small', {}, z.reason ?? ''),
-      ) as HTMLButtonElement;
+    const zones = new Map(dropZones(card).map((z) => [z.to, z]));
+    const rows: HTMLElement[] = [];
+    const shell = modalShell({ cls: 'kb-move-dialog w400', icon: 'arrow-right-left', title: 'Move', id: `#${id}`, label: `Move task ${id}`, body: rows });
+    const body = shell.main;
+    body.setAttribute('role', 'menu');
+    const modal = openShell(shell);
+    for (const to of [...BOARD_COLUMNS, 'archived' as const]) {
+      const z = zones.get(to);
+      if (!z) {
+        body.append(h('div.kb-move-here', { class: to, 'aria-current': 'true' }, icon(STATUS_ICON[to]), h('span', {}, columnName(to)), h('small', {}, 'Current')));
+        continue;
+      }
+      const why = z.ok ? (z.action === 'start' ? h('small.kb-starts', {}, 'Starts the task') : z.action === 'reset' ? h('small', {}, 'Starts over: the automation’s state is cleared') : null) : z.reason ? h('small', {}, z.reason) : null;
+      const b = h('button.kb-move-to', { type: 'button', role: 'menuitem', class: to, disabled: !z.ok, title: z.ok ? '' : z.reason ?? '' }, icon(STATUS_ICON[to]), h('span', {}, columnName(to), why)) as HTMLButtonElement;
       b.addEventListener('click', () => {
         modal.close();
-        void this.o.move(id, z.to);
+        void this.o.move(id, to);
       });
       body.append(b);
     }

@@ -1,7 +1,10 @@
 import './windows.css';
 import type { GhIssue, GhLabel, GhPull } from '../../../shared/protocol';
 import type { Net } from '../../net';
-import { h, openModal } from '../dom';
+import { h } from '../dom';
+import { iconButton } from '../icons';
+import { btn, outLink } from '../kit';
+import { modalShell, openShell } from '../shell';
 import { repoUrlOf } from '../markdown';
 import { ghKey, ghLabel, ghRepoField, ghUrl } from './ghrepo';
 import { getJson, labelWaiters } from './api';
@@ -35,26 +38,30 @@ export function openLabels(kind: 'issue' | 'pull', it: GhIssue | GhPull, net: Ne
   /** Each row and the text the filter looks in. */
   const rows = new Map<HTMLElement, string>();
 
-  const filter = h('input', { type: 'text', placeholder: 'Filter labels…', 'aria-label': 'Filter labels' }) as HTMLInputElement;
+  const filter = h('input.inp', { type: 'text', placeholder: 'Filter labels…', 'aria-label': 'Filter labels', autofocus: true }) as HTMLInputElement;
   const list = h('ul.gh-labels');
   const none = h('p.gh-quiet.hidden');
   const result = h('div.gh-merge-result.hidden');
-  const summary = h('span.grow');
-  const cancel = h('button.btn', { type: 'button' }, 'Cancel');
-  const save = h('button.btn.primary', { type: 'button' }, '🏷️ Save labels');
-  const el = h(
-    'div.modal.gh-merge.gh-labeler',
-    { role: 'dialog', 'aria-label': `Labels on ${noun} ${label}` },
-    h('header', {}, h('h2', {}, `🏷️ Labels on ${noun} ${label}`)),
-    h('div.body', {}, h('p.gh-merge-title', {}, it.title), filter, list, none, result),
-    h('footer', {}, summary, cancel, save),
-  );
+  const summary = h('span.gh-labels-sum');
+  const cancel = btn('Cancel', { kind: 'quiet' });
+  const save = btn('Save labels', { kind: 'primary' });
+  const shell = modalShell({
+    cls: 'gh-merge gh-labeler',
+    icon: 'tag',
+    title: 'Labels',
+    id: label,
+    label: `Labels on ${noun} ${label}`,
+    body: h('div.gh-merge-body', {}, h('p.gh-merge-title', {}, it.title), filter, list, none, result),
+    footerLeft: [summary],
+    footerRight: [cancel, save],
+  });
+  const el = shell.el;
 
   const changes = () => ({ add: [...on].filter((n) => !had.has(n)), remove: [...had].filter((n) => !on.has(n)) });
   const sync = () => {
     const { add, remove } = changes();
     save.disabled = busy || (!add.length && !remove.length);
-    save.textContent = busy ? 'Saving…' : '🏷️ Save labels';
+    save.textContent = busy ? 'Saving…' : 'Save labels';
     summary.textContent = add.length || remove.length ? [...add.map((l) => `+${l}`), ...remove.map((l) => `−${l}`)].join('  ') : `${on.size} label${on.size === 1 ? '' : 's'} on it`;
     for (const box of list.querySelectorAll('input')) box.disabled = busy;
   };
@@ -69,7 +76,7 @@ export function openLabels(kind: 'issue' | 'pull', it: GhIssue | GhPull, net: Ne
     const empty = !!repo && !shown;
     none.classList.toggle('hidden', !empty);
     if (empty)
-      none.replaceChildren(q ? `No labels match “${filter.value.trim()}”. ` : 'This repository has no labels yet. ', h('a', { href: manage, target: '_blank', rel: 'noopener noreferrer' }, 'Make one on GitHub ↗'));
+      none.replaceChildren(q ? `No labels match “${filter.value.trim()}”. ` : 'This repository has no labels yet. ', outLink('Make one on GitHub', manage));
   };
   const row = (l: GhLabel) => {
     const box = h('input', { type: 'checkbox' }) as HTMLInputElement;
@@ -145,15 +152,15 @@ export function openLabels(kind: 'issue' | 'pull', it: GhIssue | GhPull, net: Ne
     else return;
     e.preventDefault();
   });
-  const modal = openModal(el, { onClose: settle });
+  const modal = openShell(shell, { onClose: settle });
   cancel.addEventListener('click', () => modal.close());
   save.addEventListener('click', submit);
   load();
-  setTimeout(() => filter.focus(), 30);
 }
 
 /** The button that opens the label picker, after an issue's or PR's labels. */
 export function labelButton(kind: 'issue' | 'pull', it: () => GhIssue | GhPull, net: Net, onSaved: (labels: GhLabel[]) => void) {
-  const has = it().labels.length > 0;
-  return h('button.btn.gh-label-edit', { type: 'button', title: 'Change the labels', 'aria-label': 'Change the labels', onclick: () => openLabels(kind, it(), net, onSaved) }, has ? '🏷️ Edit' : '🏷️ Add labels');
+  const open = () => openLabels(kind, it(), net, onSaved);
+  if (it().labels.length > 0) return iconButton('pencil', 'Edit labels', { class: 'xs', onclick: open }, 14);
+  return h('button.link-btn', { type: 'button', onclick: open }, 'Add labels');
 }

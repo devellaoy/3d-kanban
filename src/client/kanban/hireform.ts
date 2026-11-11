@@ -1,4 +1,4 @@
-// Hiring in the 3D office (and the 2D view) as a kanban task: the "🗂️ Run as a kanban task" toggle and
+// Hiring in the 3D office (and the 2D view) as a kanban task: the "Run as a kanban task" toggle and
 // its fields in upstream's hire dialogs (ui/prompt.ts openPrompt, ui/ask.ts openAsk), and a task made
 // from an issue card. Either way the office sends kanban.task.create with the desk (or, with an issue
 // picked by 🔗 Select issue, kanban.issues.createTask), and the engine hires its worker there
@@ -11,6 +11,8 @@ import type { KanbanProjectInfo, KanbanSettings, KanbanTaskCard, NormalizedIssue
 import type { Net } from '../net';
 import { store } from '../state';
 import { h, toast } from '../ui/dom';
+import { icon, withIcon } from '../ui/icons';
+import './hireform.css';
 import { officeChoice, type ProviderPicker } from '../ui/provider';
 import { kanbanApi, KanbanError, type KanbanOk } from './api';
 import { hireTaskMsg, newOnceKey, issueDescription, issueTicket, kanbanTool, STATUS_TEXT, titleFrom, type HireTaskForm } from './office';
@@ -56,8 +58,6 @@ function snapshot(net: Net, project: string): Promise<Snapshot> {
   return kanbanApi(net).request<Snapshot>({ t: 'kanban.snapshot', project });
 }
 
-const row = 'display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:6px 0 0;font-weight:700';
-
 /**
  * The toggle and, while it's on, the task's fields. `provider` is the dialog's agent picker: only
  * Claude Code and Codex run the kanban process, so any other provider turns the toggle off.
@@ -69,12 +69,12 @@ export function kanbanSection(opt: KanbanOption, provider: ProviderPicker | null
   // Off in every new dialog: a hire is upstream's plain one unless this one is asked to be a task.
   const box = h('input', { type: 'checkbox' }) as HTMLInputElement;
   box.checked = !!opt.checked;
-  const hint = h('small', { style: 'font-weight:600;color:var(--muted)' });
+  const hint = h('small.kh-hint');
   const toggle = h(
-    'label',
-    { style: 'display:flex;gap:8px;align-items:center;margin:10px 0 0;font-weight:700;cursor:pointer', title: 'The task goes on the kanban and runs its process at this desk: the worker plans, implements, and a reviewer reviews it' },
+    'label.kh-toggle',
+    { title: 'The task goes on the kanban and runs its process at this desk: the worker plans, implements, and a reviewer reviews it' },
     box,
-    '🗂️ Run as a kanban task (plan → implement → review)',
+    'Run as a kanban task (plan → implement → review)',
     hint,
   );
 
@@ -82,16 +82,16 @@ export function kanbanSection(opt: KanbanOption, provider: ProviderPicker | null
   const plan = h('input', { type: 'checkbox' }) as HTMLInputElement;
   const approval = h('select', { 'aria-label': 'Plan approval' }, h('option', { value: '' }, 'approval: the default'), h('option', { value: 'auto' }, 'implement straight away'), h('option', { value: 'manual' }, 'wait for my approval')) as HTMLSelectElement;
   const review = h('input', { type: 'checkbox' }) as HTMLInputElement;
-  const rounds = h('input', { type: 'number', min: 1, max: 10, step: 1, style: 'width:4.5em', 'aria-label': 'Review rounds' }) as HTMLInputElement;
-  const repoRow = h('div.repo-picks', { role: 'group', 'aria-label': 'Repositories', style: 'margin:8px 0 0' });
-  const note = h('p.setting-note', { style: 'margin:6px 0 0' });
-  const planRow = h('div', { style: row }, h('label', { style: 'display:flex;gap:6px;align-items:center;margin:0;cursor:pointer' }, plan, '📝 Plan first'), approval);
-  const reviewRow = h('div', { style: row }, h('label', { style: 'display:flex;gap:6px;align-items:center;margin:0;cursor:pointer' }, review, '🔍 Review rounds'), rounds);
-  // 🔗 Select issue: the picker (issues.ts) comes in only when asked for, so a hire dialog stays light.
+  const rounds = h('input', { type: 'number', min: 1, max: 10, step: 1, class: 'kh-rounds', 'aria-label': 'Review rounds' }) as HTMLInputElement;
+  const repoRow = h('div.repo-picks.kh-repos', { role: 'group', 'aria-label': 'Repositories' });
+  const note = h('p.setting-note.kh-note');
+  const planRow = h('div.kh-row', {}, h('label.kh-check', {}, plan, 'Plan first'), approval);
+  const reviewRow = h('div.kh-row', {}, h('label.kh-check', {}, review, 'Review rounds'), rounds);
+  // Select issue: the picker (issues.ts) comes in only when asked for, so a hire dialog stays light.
   let issue: NormalizedIssue | undefined;
-  const issueBtn = h('button.btn', { type: 'button', style: 'padding:4px 10px;font-size:var(--fs-sm)', title: 'Make the task from one of the project’s issues: its key, link and text go on the task' }, '🔗 Select issue') as HTMLButtonElement;
-  const issueChip = h('span', { style: 'display:inline-flex;align-items:center;gap:6px;min-width:0;max-width:100%;padding:2px 4px 2px 10px;font-size:var(--fs-sm);background:var(--field);border:var(--bw-sm) solid var(--ink);border-radius:var(--radius-pill)' });
-  const issueRow = h('div', { style: `${row};min-width:0` }, issueBtn, issueChip);
+  const issueBtn = h('button.btn.small', { type: 'button', title: 'Make the task from one of the project’s issues: its key, link and text go on the task' }, ...withIcon('link', 'Select issue')) as HTMLButtonElement;
+  const issueChip = h('span.kh-chip');
+  const issueRow = h('div.kh-row.issue', {}, issueBtn, issueChip);
   const setIssue = (next: NormalizedIssue | undefined) => {
     issue = next;
     paint();
@@ -105,7 +105,7 @@ export function kanbanSection(opt: KanbanOption, provider: ProviderPicker | null
       (err: Error) => toast(err.message, 'error'),
     );
   });
-  const fields = h('div.kanban-hire', { style: 'margin:4px 0 0 26px' }, h('div', { style: row }, h('span', { style: 'font-size:14px;font-weight:800' }, 'Type'), type), planRow, reviewRow, repoRow, issueRow, note);
+  const fields = h('div.kanban-hire.kh-fields', {}, h('div.kh-row', {}, h('span.kh-label', {}, 'Type'), type), planRow, reviewRow, repoRow, issueRow, note);
   const element = h('div', {}, toggle, fields);
 
   let project: KanbanProjectInfo | undefined;
@@ -126,11 +126,11 @@ export function kanbanSection(opt: KanbanOption, provider: ProviderPicker | null
     reviewRow.classList.toggle('hidden', investigate);
     approval.disabled = !plan.checked;
     rounds.disabled = !review.checked;
-    issueBtn.textContent = issue ? '🔗 Change issue' : '🔗 Select issue';
+    issueBtn.replaceChildren(...withIcon('link', issue ? 'Change issue' : 'Select issue'));
     issueChip.classList.toggle('hidden', !issue);
     if (issue) {
-      const clear = h('button.btn', { type: 'button', style: 'padding:0 7px;font-size:var(--fs-xs);box-shadow:none', 'aria-label': `Unlink ${issue.key}`, title: 'Unlink the issue', onclick: () => setIssue(undefined) }, '✕');
-      issueChip.replaceChildren(h('span', { style: 'min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap', title: `${issue.key} · ${issue.title}` }, `${issue.key} · ${issue.title}`), clear);
+      const clear = h('button.btn.small.kh-unlink', { type: 'button', 'aria-label': `Unlink ${issue.key}`, title: 'Unlink the issue', onclick: () => setIssue(undefined) }, icon('x', { size: 14 }));
+      issueChip.replaceChildren(h('span.kh-chip-title', { title: `${issue.key} · ${issue.title}` }, `${issue.key} · ${issue.title}`), clear);
     }
     const where = opt.queued ? 'It goes on the kanban and starts at the next free desk now, or waits its turn.' : `It goes on the kanban and starts at ${opt.deskLabel} now.`;
     if (issue) note.textContent = `The issue's title is the task's title; what you write goes above the issue's text. ${where}`;
@@ -149,7 +149,7 @@ export function kanbanSection(opt: KanbanOption, provider: ProviderPicker | null
     // One repository: nothing to pick.
     if (repos.length < 2) return repoRow.replaceChildren();
     repoRow.replaceChildren(
-      h('span', {}, '📦 Repositories'),
+      h('span.kh-repos-label', {}, ...withIcon('package', 'Repositories')),
       ...[...repos].sort((a, b) => Number(b.primary) - Number(a.primary)).map((r) => {
         const b = h('input', { type: 'checkbox', checked: true, disabled: r.primary }) as HTMLInputElement;
         repoBoxes.set(r.id, b);
@@ -227,7 +227,7 @@ export function kanbanSection(opt: KanbanOption, provider: ProviderPicker | null
 function taskToast(net: Net, text: string, taskId: number, level: 'info' | 'warn' = 'info') {
   const el = toast(text, level);
   // The toasts don't take the mouse; this button does.
-  const open = h('button.btn.small', { type: 'button', style: 'pointer-events:auto;margin-left:8px' }, 'open');
+  const open = h('button.btn.small.kh-toast-open', { type: 'button' }, 'open');
   open.addEventListener('click', () => {
     el.remove();
     void import('./taskview').then((m) => m.openTaskWindow(net, taskId));
@@ -253,29 +253,29 @@ export function createTask(net: Net, form: HireTaskForm, deskLabel: string, onCr
     .then((ok) => {
       if (!ok.taskId) return false;
       if (ok.earlier) {
-        taskToast(net, `🗂️ Your earlier send had already made task #${ok.taskId}, without what you changed since: nothing was made now. Open it, or send again to make another`, ok.taskId, 'warn');
+        taskToast(net, `Your earlier send had already made task #${ok.taskId}, without what you changed since: nothing was made now. Open it, or send again to make another`, ok.taskId, 'warn');
         return 'earlier' as const;
       }
       if (ok.existed) {
-        taskToast(net, `🗂️ ${form.issueKey ?? 'The issue'} is already task #${ok.taskId}`, ok.taskId, 'warn');
+        taskToast(net, `${form.issueKey ?? 'The issue'} is already task #${ok.taskId}`, ok.taskId, 'warn');
         return 'existed' as const;
       }
-      if (ok.startError) taskToast(net, `🗂️ Task #${ok.taskId} is in To do, but couldn't start: ${ok.startError}`, ok.taskId, 'warn');
-      else if (!form.deskId) taskToast(net, `🗂️ Task #${ok.taskId} is on the kanban: it starts at ${deskLabel}, or waits its turn`, ok.taskId);
-      else taskToast(net, `🗂️ Task #${ok.taskId} starts at ${deskLabel}`, ok.taskId);
+      if (ok.startError) taskToast(net, `Task #${ok.taskId} is in To do, but couldn't start: ${ok.startError}`, ok.taskId, 'warn');
+      else if (!form.deskId) taskToast(net, `Task #${ok.taskId} is on the kanban: it starts at ${deskLabel}, or waits its turn`, ok.taskId);
+      else taskToast(net, `Task #${ok.taskId} starts at ${deskLabel}`, ok.taskId);
       onCreated?.(ok.taskId);
       return true;
     })
     .catch((err: Error) => {
       // No answer (timeout, lost connection) isn't a refusal: the task may well be made, and sending again with the same key finds it.
-      if (err instanceof KanbanError && !err.fromOffice) toast("🗂️ No answer from the office yet: send again to check. The task isn't made twice.", 'warn');
-      else toast(`🗂️ ${err.message}`, 'error');
+      if (err instanceof KanbanError && !err.fromOffice) toast("No answer from the office yet: send again to check. The task isn't made twice.", 'warn');
+      else toast(`${err.message}`, 'error');
       return false;
     });
 }
 
 /**
- * An issue as a kanban task, started at `deskId` (P with its card at an empty desk, or 🗂️ Kanban task
+ * An issue as a kanban task, started at `deskId` (P with its card at an empty desk, or Kanban task
  * in its window; without a desk, the engine seats it at a free one or queues it): ticket
  * `gh:owner/repo#12`, the issue's title, its body and link. kanban.task.create doesn't look for a task
  * with the same ticket, so this does first: one in To do starts at the desk, any other is only named.
@@ -284,16 +284,16 @@ export function issueTask(net: Net, issue: Pick<GhIssue, 'number' | 'title' | 'u
   const project = store.floor;
   if (!project) return void toast('Go to a project’s floor first', 'warn');
   const agent = officeChoice(store.project);
-  if (!kanbanTool(agent.provider)) return void toast('The kanban process runs on Claude Code or Codex: pick one of them as the office’s worker in ⚙️ Settings', 'warn');
+  if (!kanbanTool(agent.provider)) return void toast('The kanban process runs on Claude Code or Codex: pick one of them as the office’s worker in Settings', 'warn');
   const ticket = issueTicket(issue.repo ?? store.currentFloor()?.repo, issue.number);
   const api = kanbanApi(net);
   snapshot(net, project)
     .then((s) => {
       const same: KanbanTaskCard | undefined = ticket ? s.tasks.find((t) => t.ticket === ticket) : undefined;
       if (same?.status === 'todo') {
-        return api.request<KanbanOk>({ t: 'kanban.task.start', id: same.id, ...(deskId ? { deskId } : {}) }).then(() => taskToast(net, `🗂️ #${issue.number} was already task #${same.id}: it starts at ${deskLabel}`, same.id));
+        return api.request<KanbanOk>({ t: 'kanban.task.start', id: same.id, ...(deskId ? { deskId } : {}) }).then(() => taskToast(net, `#${issue.number} was already task #${same.id}: it starts at ${deskLabel}`, same.id));
       }
-      if (same) return taskToast(net, `🗂️ #${issue.number} is already task #${same.id} (${STATUS_TEXT[same.status]})`, same.id, 'warn');
+      if (same) return taskToast(net, `#${issue.number} is already task #${same.id} (${STATUS_TEXT[same.status]})`, same.id, 'warn');
       const repos = s.projects.find((p) => p.id === project)?.repos ?? [];
       void createTask(
         net,
@@ -315,5 +315,5 @@ export function issueTask(net: Net, issue: Pick<GhIssue, 'number' | 'title' | 'u
         deskLabel,
       );
     })
-    .catch((err: Error) => toast(`🗂️ ${err.message}`, 'error'));
+    .catch((err: Error) => toast(`${err.message}`, 'error'));
 }

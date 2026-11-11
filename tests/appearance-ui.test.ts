@@ -59,6 +59,7 @@ function fakePage() {
   g.localStorage = { getItem: (k: string) => storage.get(k) ?? null, setItem: (k: string, v: string) => void storage.set(k, v) };
   g.document = {
     createElement: (tag: string) => new FakeEl(tag),
+    createElementNS: (_ns: string, tag: string) => new FakeEl(tag),
     querySelector: () => null,
     documentElement: { dataset: {} as Record<string, string>, style: {} },
   };
@@ -73,20 +74,21 @@ test('the Theme row follows a change made in another tab, and clicking the old o
   const { appearanceRow } = await import('../src/client/ui/appearance.ts');
   const { row: [seg] } = appearanceRow() as unknown as { row: [FakeEl, FakeEl] };
   seg.isConnected = true;
-  assert.equal(seg.children.length, 3);
-  assert.deepEqual(checked(seg), ['🧡 Office']);
+  assert.equal(seg.children.length, 5);
+  assert.deepEqual((seg.children as FakeEl[]).map((b) => b.textContent), ['Office', 'Dark', 'Glossy', 'Daylight', 'Midnight']);
+  assert.deepEqual(checked(seg), ['Office']);
 
   // Another tab picks Dark: the storage event makes the page apply it.
   storage.set(APPEARANCE_KEY, 'dark');
   applyAppearance('dark');
   assert.equal(root.dataset.theme, 'dark');
-  assert.deepEqual(checked(seg), ['🌙 Dark']);
+  assert.deepEqual(checked(seg), ['Dark']);
 
   // Office is not what the page has now, so clicking it must do something.
   (seg.children[0] as FakeEl).click();
   assert.equal(root.dataset.theme, 'default');
   assert.equal(storage.get(APPEARANCE_KEY), 'default');
-  assert.deepEqual(checked(seg), ['🧡 Office']);
+  assert.deepEqual(checked(seg), ['Office']);
 
   // Clicking what is already chosen changes nothing.
   let changes = 0;
@@ -113,10 +115,10 @@ test('a Theme row that was closed no longer repaints', async () => {
   const { row, off } = appearanceRow();
   const seg = row[0] as unknown as FakeEl;
   applyAppearance('glossy');
-  assert.deepEqual(checked(seg), ['✨ Glossy']);
+  assert.deepEqual(checked(seg), ['Glossy']);
   off();
   applyAppearance('dark');
-  assert.deepEqual(checked(seg), ['✨ Glossy']);
+  assert.deepEqual(checked(seg), ['Glossy']);
   assert.equal(count('appearancechange'), 0);
 });
 

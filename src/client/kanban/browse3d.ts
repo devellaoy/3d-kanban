@@ -6,6 +6,7 @@
 import type { Net } from '../net';
 import { store } from '../state';
 import type { BoardActions } from '../ui/github/prompts';
+import { withIcon } from '../ui/icons';
 import { h, toast } from '../ui/dom';
 import { toGhIssue } from '../../shared/kanban/issuecard.js';
 import type { BrowseIssue, BrowseScope } from '../../shared/kanban/browse.js';
@@ -30,7 +31,7 @@ export function browseButton(net: Net, actions: BoardActions): HTMLElement | nul
   const project = store.floor;
   if (!project) return null;
   const api = kanbanApi(net);
-  const button = h('button.btn.hidden', { type: 'button', title: 'Browse every issue of the project’s Jira or GitHub board, with filters' }, '🔎 Browse') as HTMLButtonElement;
+  const button = h('button.btn.hidden', { type: 'button', title: 'Browse every issue of the project’s Jira or GitHub board, with filters' }, ...withIcon('list-filter', 'Browse')) as HTMLButtonElement;
   const seen = scopesSeen.get(project);
   if (seen && Date.now() - seen.at < SCOPES_MS) button.classList.toggle('hidden', !seen.usable);
   else

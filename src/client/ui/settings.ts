@@ -1,12 +1,14 @@
 import './settings.css';
 import type { Net } from '../net';
 import { store, type Settings, type ViewMode } from '../state';
-import { askNotifyPermission, notifyPermission, type DesktopNotifier } from '../notify';
-import type { SkyState, ThemePick, WebhookKind } from '../../shared/protocol';
+import type { DesktopNotifier } from '../notify';
+import type { SkyState, ThemePick } from '../../shared/protocol';
 import { THEME_PICKS } from '../../shared/theme';
 import { mapChoices } from '../../shared/maps';
 import { DOG_NAME_MAX, cleanDogName } from '../../shared/dog';
-import { h, openModal, timeAgo } from './dom';
+import { h, timeAgo } from './dom';
+import { icon, withIcon, type IconName } from './icons';
+import { modalShell, openShell } from './shell';
 import { agentFields, choiceLabel, officeChoice } from './provider';
 import { openPromptEditor, rewrittenPrompts } from './prompts';
 // The kanban's settings are categories of this window, loaded when one is first shown.
@@ -22,17 +24,19 @@ import { setting } from './settingrow';
 import { outsideSetting } from './settings-sky';
 import { languageRows } from './language';
 import { carryOnSetting } from './settings-carry-on';
+import { desktopNotifications, teamWebhook } from './settings-notify';
 
 const VIEWS: [ViewMode, string, string][] = [
-  ['first', '👀 First person', 'See through your own eyes. Click the office to look around with the mouse and click things to use them. Esc frees the mouse.'],
-  ['third', '🎥 Third person', 'Follow your character from behind. The mouse looks around like in first person (click to start), scroll to zoom.'],
+  ['first', 'First person', 'See through your own eyes. Click the office to look around with the mouse and click things to use them. Esc frees the mouse.'],
+  ['third', 'Third person', 'Follow your character from behind. The mouse looks around like in first person (click to start), scroll to zoom.'],
 ];
 
-const THEME_LABEL: Record<ThemePick, string> = { auto: '📅 By the calendar', halloween: '🎃 Halloween', christmas: '🎄 Christmas', off: 'Off' };
+const THEME_LABEL: Record<ThemePick, string> = { auto: 'By the calendar', halloween: 'Halloween', christmas: 'Christmas', off: 'Off' };
 
-const WEBHOOK_NAME: Record<WebhookKind, string> = { slack: 'Slack', discord: 'Discord', other: 'a webhook' };
+/** The icon of each category down the side. */
+const PANE_ICON: Record<SettingsPane, IconName> = { you: 'user', sound: 'volume-2', notify: 'bell', building: 'building-2', workers: 'bot', kanban: 'square-kanban', projects: 'folder', multiplayer: 'globe' };
 
-/** Where ⚙️ Settings was last, so it opens there again. */
+/** Where Settings was last, so it opens there again. */
 let lastPane: SettingsPane = 'you';
 
 /** `outside` describes the sky over the office (`describe`, see describeSky), once the server has said. `first` opens on that category instead of the last one. */
@@ -73,8 +77,8 @@ export function openSettings(net: Net, settings: Settings, onChange: (s: Setting
     talkRow.replaceChildren(
       ...(
         [
-          [false, '🎙️ Open mic'],
-          [true, '✋ Push to talk'],
+          [false, 'Open mic'],
+          [true, 'Push to talk'],
         ] as const
       ).map(([ptt, label]) =>
         h(
@@ -104,7 +108,7 @@ export function openSettings(net: Net, settings: Settings, onChange: (s: Setting
     pagesRow.replaceChildren(
       ...(
         [
-          [true, '📖 On'],
+          [true, 'On'],
           [false, 'Off'],
         ] as const
       ).map(([on, label]) =>
@@ -167,7 +171,7 @@ export function openSettings(net: Net, settings: Settings, onChange: (s: Setting
   net.send({ t: 'map.set' });
   const mapRow = h('div.seg', { role: 'radiogroup', 'aria-label': 'Map' });
   const mapNote = h('p.setting-note');
-  const mapBad = h('p.setting-note.bad', { style: 'white-space: pre-line' });
+  const mapBad = h('p.setting-note.bad.pre');
   const paintMap = () => {
     const { pick, by, at, custom } = store.map;
     const choices = mapChoices(custom);
@@ -186,108 +190,20 @@ export function openSettings(net: Net, settings: Settings, onChange: (s: Setting
               if (!m.error && store.map.pick !== m.id) net.send({ t: 'map.set', map: m.id });
             },
           },
-          `${m.icon} ${m.name}`,
+          m.name,
         ),
       ),
     );
     const now = choices.find((m) => m.id === pick) ?? choices[0];
     mapNote.textContent = `${now.description} It’s the same on every floor, for everyone in the building${by ? `, picked by ${by}${at ? ` ${timeAgo(at)}` : ''}` : ''}. Maps of your own go in the office’s .agent-office/maps/ folder as JSON (see docs/maps.md).`;
     const broken = choices.filter((m) => m.error);
-    mapBad.textContent = broken.map((m) => `⚠️ ${m.id} won't load: ${m.error}`).join('\n');
+    mapBad.textContent = broken.map((m) => `${m.id} won't load: ${m.error}`).join('\n');
     mapBad.hidden = !broken.length;
   };
   paintMap();
 
-  // Desktop notifications: this browser's permission, then your own on/off.
-  const notifyRow = h('div.seg');
-  const notifyNote = h('p.setting-note');
-  const paintNotify = () => {
-    const perm = notifyPermission();
-    const on = perm === 'granted' && settings.notify;
-    notifyRow.replaceChildren();
-    if (perm === 'default') {
-      notifyRow.append(
-        h(
-          'button.btn.primary',
-          {
-            type: 'button',
-            onclick: async () => {
-              if ((await askNotifyPermission()) === 'granted') {
-                settings = { ...settings, notify: true };
-                onChange(settings);
-                notifier.sample();
-              }
-              paintNotify();
-            },
-          },
-          '🔔 Turn on notifications',
-        ),
-      );
-    } else if (perm === 'granted') {
-      for (const [value, label] of [
-        [true, '🔔 On'],
-        [false, '🔕 Off'],
-      ] as const) {
-        notifyRow.append(
-          h(
-            'button.btn',
-            {
-              type: 'button',
-              role: 'radio',
-              'aria-checked': String(on === value),
-              class: on === value ? 'on' : '',
-              onclick: () => {
-                settings = { ...settings, notify: value };
-                onChange(settings);
-                paintNotify();
-              },
-            },
-            label,
-          ),
-        );
-      }
-      if (on) notifyRow.append(h('button.btn', { type: 'button', onclick: () => notifier.sample() }, 'Show me one'));
-    }
-    notifyNote.textContent =
-      perm === 'unsupported'
-        ? 'This browser can’t show notifications from the office here. They need https or localhost (an SSH tunnel counts).'
-        : perm === 'denied'
-          ? 'Your browser blocks notifications from the office. Allow them in the site settings (the icon left of the address), then open this again.'
-          : 'When a worker needs input or finishes while you’re in another tab or app, you get a notification. Click it to jump to that worker’s terminal. The tab title counts the workers waiting on someone either way.';
-  };
-  paintNotify();
-
-  // The office's Slack / Discord webhook, shared by everyone.
-  const hookStatus = h('p.setting-note');
-  const hookInput = h('input', { type: 'text', placeholder: 'https://hooks.slack.com/services/…', 'aria-label': 'Slack or Discord webhook URL', spellcheck: 'false', autocomplete: 'off' }) as HTMLInputElement;
-  const hookSave = h('button.btn.primary', { type: 'button' }, 'Save');
-  const hookTest = h('button.btn', { type: 'button' }, 'Send a test');
-  const hookRemove = h('button.btn.danger', { type: 'button' }, 'Remove');
-  const hookActions = h('div.seg', { style: 'margin-top:8px' }, hookTest, hookRemove);
-  const paintHook = () => {
-    const { webhook, error, lastSentAt } = store.notify;
-    hookActions.classList.toggle('hidden', !webhook);
-    hookSave.textContent = webhook ? 'Replace' : 'Save';
-    hookStatus.classList.toggle('bad', !!error);
-    hookStatus.textContent = !webhook
-      ? 'Paste an incoming webhook from Slack or Discord, and the office posts to that channel when a worker needs input or finishes and nobody has its terminal open. It’s for everyone in the office.'
-      : error
-        ? `⚠️ Posting to ${WEBHOOK_NAME[webhook.kind]} (${webhook.hint}) failed: ${error}`
-        : `📣 Posting to ${WEBHOOK_NAME[webhook.kind]} (${webhook.hint}), set by ${webhook.by} ${timeAgo(webhook.at)}${lastSentAt ? ` · last message ${timeAgo(lastSentAt)}` : ''}.`;
-  };
-  paintHook();
-  const saveHook = () => {
-    const url = hookInput.value.trim();
-    if (!url) return hookInput.focus();
-    net.send({ t: 'notify.webhook', url });
-    hookInput.value = '';
-  };
-  hookSave.addEventListener('click', saveHook);
-  hookInput.addEventListener('keydown', (e) => {
-    if (e.key === 'Enter') saveHook();
-  });
-  hookTest.addEventListener('click', () => net.send({ t: 'notify.test' }));
-  hookRemove.addEventListener('click', () => net.send({ t: 'notify.webhook', url: '' }));
+  const { row: notifyRow, note: notifyNote } = desktopNotifications(() => settings, change, notifier);
+  const { input: hookInput, save: hookSave, actions: hookActions, status: hookStatus, paint: paintHook } = teamWebhook(net);
 
   // The worker everyone starts on, unless whoever starts one picks another. Admins pick it.
   const agent = agentFields(store.project, 'office-agent', officeChoice(store.project));
@@ -296,7 +212,7 @@ export function openSettings(net: Net, settings: Settings, onChange: (s: Setting
   agent.element.addEventListener('input', () => (agentTouched = true));
   const agentSave = h('button.btn.primary', { type: 'button' }, 'Save');
   const agentBack = h('button.btn', { type: 'button' });
-  const agentActions = h('div.seg', { style: 'margin-top:8px' }, agentSave, agentBack);
+  const agentActions = h('div.seg.below', {}, agentSave, agentBack);
   const agentNow = h('p.outside-now');
   const agentNote = h('p.setting-note');
   const paintAgent = () => {
@@ -311,7 +227,7 @@ export function openSettings(net: Net, settings: Settings, onChange: (s: Setting
     agentBack.textContent = `Back to ${store.project?.agentCmd.split(' ')[0].split(/[\\/]/).pop() ?? 'the --agent'}`;
     if (!agentTouched) agent.set(now);
     agentNote.textContent =
-      'Every worker starts on this: hired at a desk, handed an issue or a pull request from the boards, taken off the queue, the board agents and meetings. Where you start one, ✏️ Edit picks another just for it.' +
+      'Every worker starts on this: hired at a desk, handed an issue or a pull request from the boards, taken off the queue, the board agents and meetings. Where you start one, Edit picks another just for it.' +
       (picked ? ` Set by ${picked.by} ${timeAgo(picked.at)}.` : ' It’s the agent the office was started with, on its own default model.') +
       (admin ? '' : ' Admins can change it.');
   };
@@ -331,9 +247,9 @@ export function openSettings(net: Net, settings: Settings, onChange: (s: Setting
   const promptsNote = h('p.setting-note');
   const paintPrompts = () => {
     const n = rewrittenPrompts();
-    promptsOpen.textContent = store.me.admin ? '📝 Edit the prompts…' : '📝 Read the prompts…';
+    promptsOpen.replaceChildren(...withIcon(store.me.admin ? 'pencil' : 'file-text', store.me.admin ? 'Edit the prompts…' : 'Read the prompts…'));
     promptsNote.textContent =
-      'What 🤖 Hand to a worker, 🔍 Review and the boards’ other buttons tell a worker, the note the queue adds to a task, the board agents’ briefs, the meeting room’s parts and the sign writer’s instructions. ' +
+      'What Hand to a worker, Review and the boards’ other buttons tell a worker, the note the queue adds to a task, the board agents’ briefs, the meeting room’s parts and the sign writer’s instructions. ' +
       (n ? `${n} of them rewritten.` : 'All as the office wrote them.') +
       (store.me.admin ? '' : ' Admins can rewrite them.');
   };
@@ -380,8 +296,8 @@ export function openSettings(net: Net, settings: Settings, onChange: (s: Setting
     const { on, by, at } = store.leaveOnMerge;
     leaveRow.replaceChildren(
       ...([
-        [true, '🏠 Go home by themselves'],
-        [false, '🪑 Stay until sent home'],
+        [true, 'Go home by themselves'],
+        [false, 'Stay until sent home'],
       ] as const).map(([value, label]) =>
         h(
           'button.btn',
@@ -410,7 +326,7 @@ export function openSettings(net: Net, settings: Settings, onChange: (s: Setting
   const dirSave = h('button.btn.primary', { type: 'button' }, 'Save');
   const dirDefault = h('button.btn', { type: 'button' }, 'Use the default');
   const dirRow = h('div.webhook', {}, dirInput, dirSave);
-  const dirActions = h('div.seg', { style: 'margin-top:8px' }, dirDefault);
+  const dirActions = h('div.seg.below', {}, dirDefault);
   const dirNote = h('p.setting-note');
   const paintDir = () => {
     const { dir, custom, by, at } = store.projectsDir;
@@ -462,9 +378,9 @@ export function openSettings(net: Net, settings: Settings, onChange: (s: Setting
   // What the sky's doing, and which clock it keeps (see settings-sky.ts).
   const sky = outside && outsideSetting(net, outside, (body) => setting('Outside', 'office', ...body));
   const account = store.me.account;
-  const signOut = h('button.btn', { type: 'button' }, '🚪 Sign out');
+  const signOut = h('button.btn', { type: 'button' }, ...withIcon('log-out', 'Sign out'));
   signOut.addEventListener('click', onSignOut);
-  const character = h('button.btn', { type: 'button' }, account ? '🧍 Change your look' : '🧍 Change your look & name');
+  const character = h('button.btn', { type: 'button' }, ...withIcon('user', account ? 'Change your look' : 'Change your look & name'));
   const languages = languageRows(net); // the office's languages (ui/language.ts)
   const carryOn = carryOnSetting(net); // its listener goes when the window closes
   const kanban = kanbanSettingsSlots(net), multiplayer = multiplayerSettingsSlot(net), appearance = appearanceRow(); // its listener goes when the window closes
@@ -480,7 +396,7 @@ export function openSettings(net: Net, settings: Settings, onChange: (s: Setting
     sound: [
       setting('Office sounds', 'you', soundRow, h('p.setting-note', {}, 'Everything the office sounds like, from the room’s air to the ding when a worker is done. Voice chat and the jukebox aren’t affected.')),
       setting('Each kind of sound', 'you', ...mixRows(() => settings, change)), // per-kind volumes (ui/settings-mix.ts)
-      setting('Page turns at the bookshelf', 'you', pagesRow, h('p.setting-note', {}, 'A soft swish each time the book in your hands turns a page, as you open a doc or scroll through one. The 🔈 at the top of the bookshelf turns it off too.')),
+      setting('Page turns at the bookshelf', 'you', pagesRow, h('p.setting-note', {}, 'A soft swish each time the book in your hands turns a page, as you open a doc or scroll through one. The speaker icon at the top of the bookshelf turns it off too.')),
       setting('Jukebox', 'you', musicRow(() => settings, change), h('p.setting-note', {}, 'The jukebox in the lounge. Everyone on the floor hears the same song, louder the closer they are to it; this is how loud it is for you alone.')),
       setting('Voice chat', 'you', talkRow, h('p.setting-note', {}, 'Either way, V joins voice, holding V talks and you’re muted once you let go, and M mutes or unmutes. With push to talk you join muted. Leave voice from the ☰ menu.')),
     ],
@@ -514,10 +430,10 @@ export function openSettings(net: Net, settings: Settings, onChange: (s: Setting
   const tabs = new Map<SettingsPane, HTMLButtonElement>();
   const bodies = new Map<SettingsPane, HTMLElement>();
   for (const p of PANES) {
-    const tab = h('button.settings-tab', { type: 'button', role: 'tab', onclick: () => show(p.id) }, h('span.icon', { 'aria-hidden': 'true' }, p.icon), h('span', {}, p.label)) as HTMLButtonElement;
+    const tab = h('button.settings-tab', { type: 'button', role: 'tab', onclick: () => show(p.id) }, icon(PANE_ICON[p.id], { size: 18 }), h('span', {}, p.label)) as HTMLButtonElement;
     tabs.set(p.id, tab);
     nav.append(tab);
-    bodies.set(p.id, h('section.settings-pane', { role: 'tabpanel', 'aria-label': p.label }, h('div.settings-head', {}, h('h3', {}, `${p.icon} ${p.label}`), h('p', {}, p.blurb)), ...panes[p.id]));
+    bodies.set(p.id, h('section.settings-pane', { role: 'tabpanel', 'aria-label': p.label }, h('div.settings-head', {}, h('h3', {}, p.label), h('p', {}, p.blurb)), ...panes[p.id]));
   }
   const show = (id: SettingsPane) => {
     lastPane = id;
@@ -543,8 +459,7 @@ export function openSettings(net: Net, settings: Settings, onChange: (s: Setting
     tabs.get(next)!.focus();
   });
 
-  const close = h('button.btn.close', { 'aria-label': 'Close' }, '✕');
-  const el = h('div.modal.settings', { role: 'dialog', 'aria-label': 'Settings' }, h('header', {}, h('h2', {}, '⚙️ Settings'), close), h('div.settings-body', {}, nav, ...bodies.values()));
+  const shell = modalShell({ cls: 'settings', icon: 'settings', title: 'Settings', body: h('div.settings-body', {}, nav, ...bodies.values()) });
   const offNotify = store.on('notify', paintHook);
   const offDog = store.on('dog', paintDog);
   const offTheme = store.on('theme', paintTheme);
@@ -553,7 +468,7 @@ export function openSettings(net: Net, settings: Settings, onChange: (s: Setting
   const offLimit = [store.on('machine', paintLimit), store.on('me', paintLimit)];
   const offDir = [store.on('projectsDir', paintDir), store.on('me', paintDir)];
   const offPrompts = [store.on('prompts', paintAgent), store.on('prompts', paintPrompts), store.on('me', paintAgent), store.on('me', paintPrompts)];
-  const modal = openModal(el, {
+  const modal = openShell(shell, {
     doing: '⚙️ in settings',
     onClose: () => {
       [offNotify, offDog, offTheme, appearance.off, offMap, offLeave, carryOn.off, languages.off].forEach((off) => off());
@@ -566,7 +481,6 @@ export function openSettings(net: Net, settings: Settings, onChange: (s: Setting
     },
   });
   show(first ?? lastPane);
-  close.addEventListener('click', () => modal.close());
   character.addEventListener('click', () => {
     modal.close();
     onCharacter();

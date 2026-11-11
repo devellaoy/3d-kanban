@@ -23,7 +23,7 @@ export function jiraForm(src: Extract<IssueSourceConfig, { kind: 'jira' }>): Sou
   const conns = kstore.secrets.jira;
   const site = textInput(src.site, { placeholder: 'yourteam.atlassian.net' });
   // A connection that was removed since stays picked, so saving doesn't quietly change what the source reads as.
-  const gone = src.connection && !conns.some((c) => c.id === src.connection) ? [[src.connection, '⚠️ A removed connection'] as const] : [];
+  const gone = src.connection && !conns.some((c) => c.id === src.connection) ? [[src.connection, 'A removed connection'] as const] : [];
   const connection = select([['', 'Automatic (by site)'], ...conns.map((c) => [c.id, connectionLabel(c)] as const), ...gone], src.connection ?? '');
   const connectionHint = h('small.kb-hint');
   const keys = textInput(src.projectKeys.join(', '), { placeholder: 'UYT, OPS' });
@@ -42,7 +42,7 @@ export function jiraForm(src: Extract<IssueSourceConfig, { kind: 'jira' }>): Sou
     if (!host) return void (connectionHint.textContent = 'Type the Jira site, or pick a connection.');
     const mine = conns.filter((x) => sameJiraSite(x.site, host));
     connectionHint.textContent = !mine.length
-      ? `No Jira connection for ${host}: add one in ⚙️ Settings → 🗂️ Kanban`
+      ? `No Jira connection for ${host}: add one in Settings → Kanban`
       : mine.length > 1
         ? `Uses ${mine[0].name} (the first for this site); assignee currentUser() is that account`
         : `Uses ${mine[0].name}.`;
@@ -101,7 +101,7 @@ export function azureBoardsForm(src: Extract<IssueSourceConfig, { kind: 'azure-b
     h('div.kb-two', {}, field('Organisation (dev.azure.com/…)', org), field('Project', project)),
     h('div.kb-three', {}, field('Assignee', assignee, '@Me: whose token reads'), field('Work item types', types), field('Area path', area)),
     h('div.kb-two', {}, field('Extra WIQL condition', wiql), h('div', {}, closed.el)),
-    h('small.kb-hint', {}, 'It reads with the office’s Azure DevOps token, else the newest of yours set in ☰ → 🔐 Your sign-ins (Work Items: read & write).'),
+    h('small.kb-hint', {}, 'It reads with the office’s Azure DevOps token, else the newest of yours set in the menu → Your sign-ins (Work Items: read & write).'),
   );
   const read = (): IssueSourceConfig | string => {
     const o = org.value.trim().replace(/^https?:\/\/dev\.azure\.com\//i, '').replace(/\/+$/, '');

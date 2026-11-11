@@ -3,6 +3,7 @@ import type { Net } from '../net';
 import { store } from '../state';
 import { PROMPTS, PROMPT_GROUPS, PROMPT_IDS, PROMPT_MAX, fillPrompt, placeholders, promptText, type PromptGroup, type PromptId, type PromptVars } from '../../shared/prompts';
 import { h, openModal, timeAgo } from './dom';
+import { icon } from './icons';
 // A project scope and the read-only contract for the kanban's prompts.
 import { promptScope } from '../kanban/promptscope';
 
@@ -59,15 +60,15 @@ export function openPromptEditor(net: Net, first: PromptId = PROMPT_IDS[0]) {
   const ta = h('textarea.prompt-text', { spellcheck: 'false', 'aria-label': 'Prompt', maxlength: PROMPT_MAX }) as HTMLTextAreaElement;
   const vars = h('div.prompt-vars');
   const warnings = h('div.prompt-warnings');
-  const reset = h('button.btn', { type: 'button', title: 'Put the office’s own wording back in the box (then Save)' }, '↺ Default');
+  const reset = h('button.btn', { type: 'button', title: 'Put the office’s own wording back in the box (then Save)' }, icon('undo-2'), 'Default');
   const undo = h('button.btn', { type: 'button', title: 'Back to what’s saved' }, 'Undo changes');
   const save = h('button.btn.primary', { type: 'button' }, 'Save');
   const note = h('span.grow');
-  const close = h('button.btn.close', { 'aria-label': 'Close' }, '✕');
+  const close = h('button.btn.close', { type: 'button', 'aria-label': 'Close', title: 'Close (Esc)' }, icon('x', { size: 18 }));
   const el = h(
     'div.modal.prompts',
     { role: 'dialog', 'aria-label': 'Prompts' },
-    h('header', {}, h('h2', {}, '📝 Prompts'), close),
+    h('header', {}, icon('file-text', { size: 18 }), h('h2', {}, 'Prompts'), close),
     h('div.prompts-body', {}, list, h('section.prompt-edit', {}, h('div.prompt-head', {}, heading, status), used, scope.el, ta, vars, warnings)),
     h('footer', {}, note, reset, undo, save),
   );
@@ -78,7 +79,7 @@ export function openPromptEditor(net: Net, first: PromptId = PROMPT_IDS[0]) {
       b.setAttribute('aria-current', String(id === current));
       const mark = b.querySelector('.prompt-mark')!;
       const edited = !!store.prompts.custom[id];
-      mark.textContent = dirty(id) ? '●' : edited ? '✎' : '';
+      mark.textContent = dirty(id) ? '●' : edited ? '○' : '';
       b.title = dirty(id) ? 'Not saved yet' : edited ? 'Rewritten' : 'The default';
     }
   };
@@ -90,7 +91,7 @@ export function openPromptEditor(net: Net, first: PromptId = PROMPT_IDS[0]) {
     if (!ta.value.trim() && !def.optional) lines.push('It can’t be empty: write something, or put the default back.');
     for (const name of inText) if (!(name in def.vars)) lines.push(`{{${name}}} isn’t filled in here, so it’s sent just as it’s written.`);
     for (const name of def.needs ?? []) if (!inText.includes(name)) lines.push(`The office counts on {{${name}}} (${def.vars[name].toLowerCase()}): without it the worker isn’t told.`);
-    warnings.replaceChildren(...lines.map((l) => h('p', {}, `⚠️ ${l}`)));
+    warnings.replaceChildren(...lines.map((l) => h('p', {}, icon('triangle-alert', { size: 14 }), ' ', l)));
   };
 
   const paint = () => {
@@ -98,7 +99,7 @@ export function openPromptEditor(net: Net, first: PromptId = PROMPT_IDS[0]) {
     const admin = store.me.admin;
     const edit = store.prompts.custom[current];
     heading.textContent = def.label;
-    status.textContent = dirty(current) ? '● Not saved yet' : edit ? `✎ Rewritten by ${edit.by} ${timeAgo(edit.at)}` : 'The default';
+    status.textContent = dirty(current) ? '● Not saved yet' : edit ? `Rewritten by ${edit.by} ${timeAgo(edit.at)}` : 'The default';
     status.classList.toggle('dirty', dirty(current));
     used.textContent = def.used + (def.optional ? ' Leave it empty to send nothing.' : '');
     ta.readOnly = !admin;

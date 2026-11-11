@@ -150,8 +150,8 @@ const RESTING = new Set(['done', 'idle', 'needs_input', 'exited']);
 /** A tool that asks the user a question in the terminal: Claude's AskUserQuestion, Codex's request_user_input. */
 const QUESTION_TOOL = /(?:^|[._])(?:AskUserQuestion|ask_user_question|request_user_input)$/;
 /** Why an answer from the kanban isn't typed into a terminal that isn't asking a question (answer). */
-const ASKS_PERMISSION = 'The agent is asking for a permission in its terminal: answer it there (⌨️ Open its terminal)';
-const ASKS_UNKNOWN = 'The agent is waiting on something in its terminal: answer it there (⌨️ Open its terminal)';
+const ASKS_PERMISSION = 'The agent is asking for a permission in its terminal: answer it there (Open the terminal)';
+const ASKS_UNKNOWN = 'The agent is waiting on something in its terminal: answer it there (Open the terminal)';
 
 /** A hook payload from a subagent or a teammate: Claude Code adds `agent_id` only to those. */
 const agentHook = (payload: unknown): boolean => typeof (payload as { agent_id?: unknown } | undefined)?.agent_id === 'string';

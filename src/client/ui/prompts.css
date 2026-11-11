@@ -24,7 +24,7 @@
 .prompt-var:disabled { cursor: default; }
 .prompt-var code { font: var(--fw-semibold) var(--fs-xs) var(--font-mono); color: var(--text); }
 .prompt-var small { max-width: 280px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--fs-2xs-plus); font-weight: var(--fw-medium); color: var(--muted); }
-.prompt-warnings p { margin: 0; font-size: 12.5px; font-weight: var(--fw-semibold); color: var(--bad); }
+.prompt-warnings p { margin: 0; font-size: 12.5px; font-weight: var(--fw-semibold); color: var(--danger-ink); }
 @media (max-width: 720px) {
   .prompts-body { grid-template-columns: minmax(0, 1fr); grid-template-rows: 180px minmax(0, 1fr); }
   .prompt-list { border-right: 0; border-bottom: var(--bw) solid var(--ink); }

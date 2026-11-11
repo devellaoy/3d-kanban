@@ -2,6 +2,7 @@
 // a chip naming each card's repository and a filter by it, for ui/boards.ts. An item's
 // repository is its `repo` when the office sends one, else read off its GitHub URL.
 
+import { withIcon } from '../ui/icons';
 import { h } from '../ui/dom';
 import { sameRepo } from '../../shared/floors';
 import { repoOfItem } from '../ui/github/ghrepo';
@@ -57,7 +58,7 @@ export function inRepo<T extends { url: string; repo?: string }>(items: T[], rep
 export function repoChip(it: { url: string; repo?: string }): HTMLElement {
   officeCss();
   const full = repoOfItem(it);
-  return h('span.repo-chip', { title: full }, `📦 ${full.split('/').pop() ?? full}`);
+  return h('span.repo-chip', { title: full }, ...withIcon('package', full.split('/').pop() ?? full, 12));
 }
 
 function key(kind: string, floor: string): string {
@@ -86,7 +87,7 @@ export function saveRepoFilter(kind: string, floor: string, repo: string) {
 export function repoFilterSelect(repos: string[], value: string, onChange: (repo: string) => void): HTMLSelectElement {
   officeCss();
   const sel = h('select.board-repo', { 'aria-label': 'Repository', title: 'Only one repository’s cards' }) as HTMLSelectElement;
-  sel.append(h('option', { value: '' }, '📦 All repositories'), ...repos.map((r) => h('option', { value: r }, `📦 ${r}`)));
+  sel.append(h('option', { value: '' }, 'All repositories'), ...repos.map((r) => h('option', { value: r }, r)));
   sel.value = repos.includes(value) ? value : '';
   sel.classList.toggle('hidden', repos.length < 2);
   sel.addEventListener('change', () => onChange(sel.value));
@@ -102,13 +103,14 @@ export function repoFilterSelect(repos: string[], value: string, onChange: (repo
  */
 export function repoTabs(onChange: (repo: string) => void): { el: HTMLElement; update(repos: string[], value: string, counts: Map<string, number>, total: number): void } {
   officeCss();
-  const el = h('div.board-repo-tabs.hidden', { role: 'tablist', 'aria-label': 'Repositories' });
+  // The look of the shared tab strip (styles/kit-modal.css); the tabs come and go with the repositories, so they are kept here.
+  const el = h('div.tabs.board-repo-tabs.hidden', { role: 'tablist', 'aria-label': 'Repositories' });
   const tabs = new Map<string, HTMLButtonElement>();
   let picked: string | null = null;
   const tabOf = (repo: string) => {
     let b = tabs.get(repo);
     if (!b) {
-      b = h('button.board-repo-tab', { type: 'button', role: 'tab', 'data-repo': repo }, h('span'), h('small')) as HTMLButtonElement;
+      b = h('button.tab.board-repo-tab', { type: 'button', role: 'tab', 'data-repo': repo }, h('span'), h('small.tab-n')) as HTMLButtonElement;
       b.addEventListener('click', () => onChange(repo));
       tabs.set(repo, b);
     }
@@ -132,7 +134,7 @@ export function repoTabs(onChange: (repo: string) => void): { el: HTMLElement; u
       for (const [repo, b] of tabs) if (!order.includes(repo)) (b.remove(), tabs.delete(repo));
       order.forEach((repo, i) => {
         const b = tabOf(repo);
-        const name = repo ? (repo.split('/').pop() ?? repo) : '📦 All';
+        const name = repo ? (repo.split('/').pop() ?? repo) : 'All';
         const n = repo ? (counts.get(repo) ?? 0) : total;
         const [label, count] = b.children as unknown as [HTMLElement, HTMLElement];
         if (label.textContent !== name) label.textContent = name;
@@ -140,6 +142,7 @@ export function repoTabs(onChange: (repo: string) => void): { el: HTMLElement; u
         b.title = repo ? `${repo}: ${n} open` : `Every repository: ${n} open`;
         b.setAttribute('aria-label', `${repo || 'All repositories'}, ${n} open pull request${n === 1 ? '' : 's'}`);
         b.setAttribute('aria-selected', String(repo === value));
+        b.classList.toggle('on', repo === value);
         b.tabIndex = repo === value ? 0 : -1;
         if (el.children[i] !== b) el.insertBefore(b, el.children[i] ?? null);
       });

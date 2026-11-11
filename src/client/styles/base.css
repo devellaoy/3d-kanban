@@ -1,9 +1,16 @@
 /* The base every page of the office builds on, the 3D office and the 2D view alike: colors and the font,
-   the reset, panels and buttons, the small pieces many windows share, and the window (modal) frame.
+   the reset, panels, the small pieces many windows share, and the kit (kit-*.css: the window frame and
+   shell, buttons and fields, chips and pills).
    The office adds its HUD and loading screen (style.css); each window's own look sits next to its
    module in ui/ and comes in with it. The colors, borders, shadows and type are tokens in themes/
    (themes/tokens.css lists them), so a theme is a file there, not a rule here. */
 @import '../themes/index.css';
+@import './fonts.css';
+/* The kit: the window frame and shell, the controls, the chips. They come before every rule here and in
+   the windows' own sheets, and keep their selectors weak, so those can override them. */
+@import './kit-modal.css';
+@import './kit-controls.css';
+@import './kit-chips.css';
 
 * { box-sizing: border-box; }
 html, body { margin: 0; height: 100%; overflow: hidden; background: var(--bg); }
@@ -17,20 +24,6 @@ button { font-family: inherit; }
   border-radius: var(--radius);
   box-shadow: var(--shadow);
 }
-
-.btn {
-  display: inline-flex; align-items: center; gap: 6px;
-  padding: 7px 12px; font-size: var(--fs-md); font-weight: var(--fw-bold); color: var(--text);
-  background: var(--field); border: var(--bw) solid var(--ink); border-radius: var(--radius-sm); cursor: pointer;
-  box-shadow: var(--shadow-sm); transition: transform .05s;
-  white-space: nowrap;
-}
-.btn:hover { background: var(--field-hover); }
-.btn:active { transform: translateY(var(--press)); box-shadow: var(--shadow-pressed); }
-.btn.on { background: var(--good); color: var(--text-on-strong); }
-.btn.danger { background: var(--bad); color: var(--text-on-strong); }
-.btn.primary { background: var(--accent); color: var(--text-on-accent); }
-.btn:disabled { opacity: .5; cursor: default; }
 
 /* Status dots and pills, empty lists, key caps, toasts and the reconnecting banner: the office's HUD
    and windows show them, and so does the 2D view. */
@@ -54,28 +47,11 @@ button { font-family: inherit; }
 
 .conn { position: absolute; top: 12px; left: 50%; transform: translateX(-50%); background: var(--bad); color: var(--text-on-strong); font-weight: var(--fw-heavy); padding: 6px 14px; border-radius: var(--radius-sm); border: var(--bw) solid var(--ink); }
 
-/* ---------- Modals ---------- */
-.backdrop { position: fixed; inset: 0; background: var(--overlay); display: grid; place-items: center; padding: 16px; z-index: 50; animation: fade .15s; }
-@keyframes fade { from { opacity: 0; } }
-.modal { background: var(--paper); border: var(--bw) solid var(--ink); border-radius: var(--radius-lg); box-shadow: var(--shadow-lg); width: min(560px, 100%); max-height: calc(100vh - 32px); display: flex; flex-direction: column; overflow: hidden; animation: pop .18s ease-out; }
-@keyframes pop { from { transform: scale(.96); opacity: .5; } }
-.modal header { display: flex; align-items: center; gap: 10px; padding: 12px 16px; border-bottom: var(--bw) solid var(--ink); background: var(--paper-2); }
-.modal header h2 { margin: 0; font-size: var(--fs-2xl); font-weight: var(--fw-heavy); flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.modal .body { padding: 16px; overflow: auto; }
-.modal footer { display: flex; gap: 8px; justify-content: flex-end; padding: 12px 16px; border-top: var(--bw) solid var(--ink); background: var(--paper-2); align-items: center; }
-.modal footer .grow { flex: 1; font-size: var(--fs-xs); color: var(--muted); font-weight: var(--fw-semibold); }
-.modal textarea, .modal input[type=text], .modal input[type=password] { width: 100%; font: inherit; font-size: var(--fs-lg); border: var(--bw) solid var(--ink); border-radius: var(--radius-sm); padding: 10px 12px; background: var(--field); outline: none; resize: vertical; }
-.modal textarea:focus, .modal input[type=text]:focus, .modal input[type=password]:focus { border-color: var(--accent); }
-.modal label { font-weight: var(--fw-bold); font-size: var(--fs-md); display: block; margin-bottom: 6px; }
-.close { width: 34px; height: 34px; padding: 0; justify-content: center; }
-/* The ✕ openModal gives a window without a header of its own. */
-.close.corner { position: absolute; top: 10px; right: 10px; z-index: 1; }
-
 /* Pieces several windows share: button rows, the notes under a setting, an input with its buttons,
    color swatches, a list of things to click (services, the jukebox, the bar), a spinner and a when. */
 .seg { display: flex; gap: 8px; flex-wrap: wrap; }
 .setting-note { margin: 10px 0 0; font-size: var(--fs-sm); font-weight: var(--fw-medium); color: var(--muted); line-height: 1.4; }
-.setting-note.bad { color: var(--bad); }
+.setting-note.bad { color: var(--danger-ink); }
 .webhook { display: flex; gap: 8px; }
 .webhook input[type=text] { flex: 1; min-width: 0; }
 
@@ -108,8 +84,6 @@ a.when:hover { text-decoration: underline; }
 .provider-summary .btn { padding: 3px 9px; font-size: var(--fs-xs); border-width: var(--bw-sm); border-radius: calc(var(--radius-md) - 1px); box-shadow: var(--shadow-xs); }
 .charsel-opts label { margin: 14px 0 8px; }
 .col-search input[type=text] { font-size: var(--fs-sm); border-width: var(--bw-sm); border-radius: calc(var(--radius-md) - 1px); padding: 5px 26px 5px 9px; }
-.gh-label-edit { padding: 1px 9px; font-size: var(--fs-xs); box-shadow: var(--shadow-xs); }
-.pd-side input[type=text] { width: 100%; font: inherit; font-size: var(--fs-sm); border: var(--bw-sm) solid var(--ink); border-radius: var(--radius-md); padding: 5px 9px; background: var(--field); outline: none; }
 .elevator .dir-change { margin-left: 6px; padding: 1px 8px; font-size: var(--fs-xs); border-width: var(--bw-sm); border-radius: calc(var(--radius-md) - 1px); box-shadow: var(--shadow-xs); vertical-align: baseline; }
 .meeting-field label { margin: 0; }
 

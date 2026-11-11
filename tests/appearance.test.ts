@@ -76,7 +76,7 @@ test('every theme defines every token', () => {
 // ---- The colour guard -------------------------------------------------------------------------------
 
 /** The CSS inside the template strings of the files that carry their own (put on the page by code). */
-const CSS_IN_TS = ['src/client/kanban/officecss.ts', 'src/client/kanban/worker3d.ts', 'src/client/kanban/vscode.ts'];
+const CSS_IN_TS = ['src/client/kanban/officecss.ts', 'src/client/kanban/vscode.ts'];
 
 /** Every stylesheet the guard reads, as repo path → its CSS (comments out). */
 function sheets(): Map<string, string> {
@@ -110,7 +110,6 @@ test('no sheet uses --ink for text or for a heavy line', () => {
 const ALLOWED: Readonly<Record<string, number>> = {
   'src/client/features/hanging/ui.css': 3,
   'src/client/styles/hud.css': 19,
-  'src/client/ui/boards.css': 2,
   'src/client/ui/changes.css': 2,
   'src/client/ui/character.css': 3,
   'src/client/ui/elevator.css': 1,

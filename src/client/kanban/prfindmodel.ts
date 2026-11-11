@@ -1,4 +1,4 @@
-// What 🔎 Find PRs tells you (the wording as pure functions, prbuttons.ts shows it): kanban.prFound
+// What Find PRs tells you (the wording as pure functions, prbuttons.ts shows it): kanban.prFound
 // -> toasts. Kept free of the DOM so a test can read it.
 
 import type { PrRef } from '../../shared/kanban/types.js';
@@ -9,8 +9,8 @@ export { PR_LINK_MAX };
 /** Whether one more PR may be ticked when `picked` are: one go links at most PR_LINK_MAX. */
 export const canPickMore = (picked: number): boolean => picked < PR_LINK_MAX;
 
-/** What the window says of its ticks: only when there are more candidates than one go takes. */
-export const pickedText = (picked: number, candidates: number): string => (candidates > PR_LINK_MAX ? `${picked} of at most ${PR_LINK_MAX} selected` : '');
+/** What the window says of its ticks ("1 of 2 selected"), and the most one go takes when there are more candidates than that. */
+export const pickedText = (picked: number, candidates: number): string => `${picked} of ${candidates} selected${candidates > PR_LINK_MAX ? ` · ${PR_LINK_MAX} at most in one go` : ''}`;
 
 export interface FoundToast {
   text: string;
@@ -29,7 +29,7 @@ export function linkedText(prs: readonly PrRef[], max = 4): string {
 export const taskLabel = (t: { id: number; title: string }): string => `#${t.id} ${t.title}`;
 
 /** The one toast for candidates when the task view is gone: no window can ask, so it says where to look. */
-export const goneToast = (taskId: number, candidates: number): string => `Task #${taskId}: ${candidates} pull request${candidates === 1 ? '' : 's'} may be its. Open its PRs tab and use 🔎 Find PRs again.`;
+export const goneToast = (taskId: number, candidates: number): string => `Task #${taskId}: ${candidates} pull request${candidates === 1 ? '' : 's'} may be its. Open its Pull requests tab and use Find PRs again.`;
 
 /**
  * The toasts for an answer; when there are candidates, the window that asks about them says the rest.

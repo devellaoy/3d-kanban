@@ -1,6 +1,7 @@
 import type { GhComment } from '../../../shared/protocol';
 import type { Net } from '../../net';
 import { h } from '../dom';
+import { btn } from '../kit';
 import { markdown } from '../markdown';
 import { commentWaiters } from './api';
 import { ghKey, ghRepoField } from './ghrepo';
@@ -29,27 +30,20 @@ export function commentBox(kind: 'issue' | 'pull', number: number, itemUrl: stri
   const waitKey = ghKey(kind, number, repo);
   let busy = false;
   let timer = 0;
-  const ta = h('textarea', { rows: 4, placeholder: `Leave a comment. Markdown works; ${sendHint()}.`, 'aria-label': 'Comment' }) as HTMLTextAreaElement;
+  const ta = h('textarea', { rows: 3, placeholder: 'Write a comment', title: `Markdown supported. ${sendHint()}.`, 'aria-label': 'Write a comment' }) as HTMLTextAreaElement;
   ta.value = pref<string>(draftKey, '');
   const shown = h('div.gh-compose-preview.hidden');
-  const write = h('button.btn.on', { type: 'button' }, 'Write');
-  const preview = h('button.btn', { type: 'button' }, 'Preview');
-  const who = h('span.grow', {}, "Posts to GitHub as the office's gh account");
-  const post = h('button.btn.primary', { type: 'button' }, '💬 Comment');
-  const result = h('div.gh-merge-result.error.hidden');
-  const el = h(
-    'article.gh-card.gh-compose',
-    {},
-    h('header', {}, h('b', {}, 'Add a comment'), h('span.grow'), h('div.seg', {}, write, preview)),
-    h('div.gh-compose-body', {}, ta, shown),
-    result,
-    h('div.gh-compose-foot', {}, who, post),
-  );
+  // One toggle: the text box, or what it will look like.
+  const preview = btn('Preview', { kind: 'quiet', size: 'sm', attrs: { 'aria-pressed': 'false', title: 'Show the comment as it will look' } });
+  const who = h('span.gh-compose-who', {}, "Posts to GitHub as the office's gh account");
+  const post = btn('Comment', { size: 'sm' });
+  const result = h('div.gh-merge-result.error.hidden', { role: 'alert' });
+  const el = h('div.gh-compose', {}, h('div.composite', {}, ta, shown, h('div.composite-bar', {}, who, preview, post)), result);
 
   const sync = () => {
     post.disabled = busy || !ta.value.trim();
     ta.readOnly = busy;
-    post.textContent = busy ? 'Posting…' : '💬 Comment';
+    post.textContent = busy ? 'Posting…' : 'Comment';
   };
   const saveDraft = () => {
     if (ta.value) savePref(draftKey, ta.value);
@@ -61,8 +55,7 @@ export function commentBox(kind: 'issue' | 'pull', number: number, itemUrl: stri
       }
   };
   const setPreview = (on: boolean) => {
-    write.classList.toggle('on', !on);
-    preview.classList.toggle('on', on);
+    preview.setAttribute('aria-pressed', String(on));
     ta.classList.toggle('hidden', on);
     shown.classList.toggle('hidden', !on);
     if (on) shown.replaceChildren(ta.value.trim() ? markdown(ta.value, itemUrl) : h('p.gh-quiet', {}, 'Nothing to preview.'));
@@ -122,8 +115,7 @@ export function commentBox(kind: 'issue' | 'pull', number: number, itemUrl: stri
       submit();
     }
   });
-  write.addEventListener('click', () => setPreview(false));
-  preview.addEventListener('click', () => setPreview(true));
+  preview.addEventListener('click', () => setPreview(preview.getAttribute('aria-pressed') !== 'true'));
   post.addEventListener('click', submit);
   sync();
   return {

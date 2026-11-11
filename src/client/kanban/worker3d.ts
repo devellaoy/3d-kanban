@@ -1,6 +1,6 @@
-// The worker window's tabs (E at a task worker's desk, or its card on the 2D view): 🖥️ Terminal (upstream's
-// terminal and its shell tabs, ui/termtabs.ts), 🗂️ Task #14 (the shared task view, embedded:
-// conversation with its composer and history, plan, runs, PRs); its changes are the header's 🌿 Changes
+// The worker window's tabs (E at a task worker's desk, or its card on the 2D view): Terminal (upstream's
+// terminal and its shell tabs, ui/termtabs.ts), Task #14 (the shared task view, embedded, with no ✕ of
+// its own: its header, tabs, details rail and footer); its changes are the header's Changes
 // button, which opens the task's Changes window (kanban/changesview, every repository and per commit), not
 // a tab here. The task view is mounted the first time its tab opens and destroyed with the window; the tab
 // chosen is remembered per worker for the session (the Task tab until another is picked). The task tab
@@ -14,29 +14,15 @@
 import type { WorkerInfo } from '../../shared/protocol';
 import type { Net } from '../net';
 import { h, toast } from '../ui/dom';
-import { TabMemory, TASK_PANE_CLASS, tabLabel, workerTabs, type WorkerTab } from './office';
+import { icon } from '../ui/icons';
+import { tabStrip } from '../ui/tabs';
+import './worker3d.css';
+import { TabMemory, TASK_PANE_CLASS, tabText, workerTabs, type WorkerTab } from './office';
 import { mountVsCodeButton } from './vscode';
 import type { TaskView, TaskViewOptions } from './taskview';
 import type { TaskTab } from './model';
 
 const memory = new TabMemory();
-
-const CSS = `
-.modal.term .worker-tabs { display: flex; gap: 6px; padding: 6px 10px 0; background: var(--paper); border-bottom: var(--bw) solid var(--ink); }
-.modal.term .worker-tabs button { padding: 6px 12px; font: var(--fw-bold) var(--fs-sm) var(--font); color: var(--text); background: var(--field-off); border: var(--bw) solid var(--ink); border-bottom: 0; border-radius: var(--radius-md) var(--radius-md) 0 0; cursor: pointer; }
-.modal.term .worker-tabs button.on { background: var(--field); }
-/* The task tab hides the whole terminal side (the terminal, its shell tabs, the keypad) at window level. */
-.modal.term.kb-on-task > :not(header, .worker-tabs, .worker-task) { display: none !important; }
-.modal.term .worker-task { flex: 1; min-height: 0; overflow: auto; background: var(--field); color: var(--text); }
-`;
-
-function css() {
-  if (document.getElementById('kb-worker-tabs-css')) return;
-  const el = document.createElement('style');
-  el.id = 'kb-worker-tabs-css';
-  el.textContent = CSS;
-  document.head.append(el);
-}
 
 /** What the kanban page adds to the task tab's view: its hooks, and that it's on the page itself. */
 export type WorkerTaskHooks = Pick<TaskViewOptions, 'tab' | 'onTab' | 'openTask' | 'edit' | 'moveMenu' | 'onKanban' | 'openTerminal'> & {
@@ -47,7 +33,7 @@ export type WorkerTaskHooks = Pick<TaskViewOptions, 'tab' | 'onTab' | 'openTask'
 export interface WorkerTabsOptions {
   /** The kanban page's hooks for the task tab's view (absent in the 3D office and on the 2D view). */
   task?: WorkerTaskHooks;
-  /** The tab to open on (the kanban's 📍 Show in 3D asks for the task). */
+  /** The tab to open on (the kanban's Show in 3D asks for the task). */
   tab?: WorkerTab;
   focusTerminal(): void;
 }
@@ -61,27 +47,21 @@ export interface WorkerTabs {
  * after `anchor` (the terminal's own area); null for a worker without a task, whose window stays upstream's.
  */
 export function mountWorkerTabs(net: Net, w: WorkerInfo, el: HTMLElement, anchor: HTMLElement, opts: WorkerTabsOptions): WorkerTabs | null {
-  // Every worker's window, with tabs or without, gets 🧩 VSCode in its header (admins only).
+  // Every worker's window, with tabs or without, gets VS Code in its header (admins only).
   mountVsCodeButton(net, w, el, opts.focusTerminal);
   const tabs = workerTabs(w);
   if (!tabs.length) return null;
-  css();
-  // The header's 🌿 Changes opens the task's Changes window: loaded now, so it opens at once (no
+  // The header's Changes opens the task's Changes window: loaded now, so it opens at once (no
   // moment without a window, when the office would take the mouse back).
-  void import('./changesview');
+  void import('./changeswindow');
   const taskId = w.kanban!.taskId;
   const pane = h(`div.${TASK_PANE_CLASS}.hidden`, { role: 'tabpanel', 'aria-label': `Task #${taskId}` });
   // The composer's keys stay in it (Esc still closes the window: it's caught on the way down).
   pane.addEventListener('keydown', (e) => e.key !== 'Escape' && e.stopPropagation());
-  const buttons = new Map<WorkerTab, HTMLButtonElement>();
-  const strip = h('nav.worker-tabs', { role: 'tablist', 'aria-label': `${w.name}'s window` });
-  for (const tab of tabs) {
-    const b = h('button', { type: 'button', role: 'tab' }, tabLabel(tab, w)) as HTMLButtonElement;
-    b.addEventListener('click', () => show(tab));
-    buttons.set(tab, b);
-    strip.append(b);
-  }
-  el.querySelector(':scope > header')!.after(strip);
+  // The shared strip (ui/tabs.ts), with ids of its own: the task view inside has a strip too.
+  const strip = tabStrip(tabs.map((tab) => ({ id: tab, label: [icon(tab === 'terminal' ? 'square-terminal' : 'square-kanban'), tabText(tab, w)] })), tabs[0], (tab) => show(tab), `${w.name}'s window`, 'wtab');
+  strip.el.classList.add('worker-tabs');
+  el.querySelector(':scope > header')!.after(strip.el);
   anchor.after(pane);
 
   // The page's hooks, less the two this window answers itself: the strip's switch is reported, and "Open its terminal" of this worker is the strip's.
@@ -92,10 +72,7 @@ export function mountWorkerTabs(net: Net, w: WorkerInfo, el: HTMLElement, anchor
   const show = (tab: WorkerTab) => {
     current = tab;
     memory.chose(w.id, tab);
-    for (const [t, b] of buttons) {
-      b.classList.toggle('on', t === tab);
-      b.setAttribute('aria-selected', String(t === tab));
-    }
+    strip.set(tab);
     el.classList.toggle('kb-on-task', tab === 'task');
     pane.classList.toggle('hidden', tab !== 'task');
     onWorkerTab?.(tab === 'terminal' ? 'terminal' : view?.tab ?? taskHooks.tab ?? 'overview');
@@ -109,9 +86,9 @@ export function mountWorkerTabs(net: Net, w: WorkerInfo, el: HTMLElement, anchor
         // reviewer's) is the page's to open, else it can only be told where to find it.
         const openTerminal = (id: string, project: string) =>
           id === w.id ? show('terminal') : pageOpenTerminal ? pageOpenTerminal(id, project) : toast('That is the task’s other worker: open its terminal at its desk', 'info');
-        // No Changes tab: the window's header has 🌿 Changes, which opens the task's Changes window.
+        // No Changes tab: the window's header has Changes, which opens the task's Changes window.
         view = m.mountTaskView(pane, { ...taskHooks, net, taskId, embedded: true, changesTab: false, openTerminal });
-        if (current === 'task') pane.querySelector<HTMLElement>('.kb-tab.on')?.focus({ preventScroll: true });
+        if (current === 'task') pane.querySelector<HTMLElement>('[role=tab][aria-selected=true]')?.focus({ preventScroll: true });
       });
     }
   };

@@ -1,6 +1,6 @@
 // The kanban page's bottom bar: the floor's plain workers (hired outside the kanban, shells included)
-// as tabs that open the worker's terminal (each with a ✕ that sends the worker home, asking first as X
-// does in the 3D office), and the two buttons that put a new one on the floor. Which workers, their
+// as tabs that open the worker's terminal (each with a close button that sends the worker home, asking
+// first as X does in the 3D office), and the two buttons that put a new one on the floor. Which workers, their
 // order, a tab's name and tooltip and the bar's state are workerbarmodel.ts; this is the DOM.
 //
 // The office sends a worker update on every status and activity change, so the tabs are kept by id
@@ -11,6 +11,7 @@ import { shownStatus } from '../../shared/status';
 import type { WorkerInfo } from '../../shared/protocol';
 import { store } from '../state';
 import { h, modalOpen, STATUS_LABEL } from '../ui/dom';
+import { icon, iconButton } from '../ui/icons';
 import { barState, barWorkers, tabName, tabTitle } from './workerbarmodel';
 
 export interface WorkerBarDeps {
@@ -56,12 +57,13 @@ export function installWorkerBar(deps: WorkerBarDeps): { refresh(): void } {
   // Buttons that each open a window, not a tablist: nothing here stays selected.
   const strip = h('div.kb-wtabs', { role: 'group', 'aria-label': 'Workers on this floor' });
   const note = h('span.kb-wbar-note');
-  const back = h('button.btn.small.kb-wbar-back', { type: 'button', onclick: () => {
+  const backName = h('span');
+  const back = h('button.btn.secondary.md.kb-wbar-back', { type: 'button', onclick: () => {
     const p = deps.boardProject();
     if (p) deps.goToFloor(p);
-  } });
-  const newBtn = h('button.btn.small', { type: 'button', id: 'kb-wbar-new', title: 'Hire a worker on this floor, outside the kanban', 'aria-label': 'New task', onclick: () => deps.hireNew(floorName()) }, '✨ ', h('span.kb-lbl', {}, 'New task'));
-  const shellBtn = h('button.btn.small', { type: 'button', id: 'kb-wbar-shell', title: 'Open a shell at the next free desk', 'aria-label': 'New shell', onclick: newShell }, '🐚 ', h('span.kb-lbl', {}, 'New shell'));
+  } }, icon('corner-up-left'), backName);
+  const newBtn = h('button.btn.secondary.md', { type: 'button', id: 'kb-wbar-new', title: 'Hire a worker on this floor, outside the kanban', 'aria-label': 'New worker', onclick: () => deps.hireNew(floorName()) }, icon('plus'), h('span.kb-lbl', {}, 'New worker'));
+  const shellBtn = h('button.btn.secondary.md', { type: 'button', id: 'kb-wbar-shell', title: 'Open a shell at the next free desk', 'aria-label': 'New shell', onclick: newShell }, icon('square-terminal'), h('span.kb-lbl', {}, 'New shell'));
   const actions = h('div.kb-wbar-actions', {}, newBtn, shellBtn);
   deps.root.replaceChildren(strip, note, back, actions);
 
@@ -75,7 +77,8 @@ export function installWorkerBar(deps: WorkerBarDeps): { refresh(): void } {
     const name = h('span.kb-wtab-name');
     const pill = h('span.pill');
     const open = h('button.kb-wtab-open', { type: 'button', onclick: () => deps.openWorker(id) }, dot, name, pill) as HTMLButtonElement;
-    const close = h('button.kb-wtab-close', { type: 'button', onclick: () => deps.sendHome(id) }, '✕') as HTMLButtonElement;
+    // Its name and tooltip are set in paintTab ("Send <name> home").
+    const close = iconButton('x', 'Send home', { class: 'xs kb-wtab-close', onclick: () => deps.sendHome(id) }, 14);
     // Two buttons side by side in one tab: a button can't hold another.
     const el = h('div.kb-wtab', { 'data-id': id }, open, close);
     return { el, open, close, dot, name, pill };
@@ -127,7 +130,7 @@ export function installWorkerBar(deps: WorkerBarDeps): { refresh(): void } {
     const closed = state === 'elsewhere' && !store.floors.some((f) => f.id === boardProject);
     setText(note, state === 'none' ? 'No floor' : closed ? 'The picked project’s floor is closed' : state === 'tabs' && !workers.length ? 'No workers on this floor' : '');
     note.classList.toggle('hidden', !note.textContent);
-    if (state === 'elsewhere' && boardProject) setText(back, `↩ ${nameOf(boardProject) ?? boardProject}’s floor`);
+    if (state === 'elsewhere' && boardProject) setText(backName, `${nameOf(boardProject) ?? boardProject}’s floor`);
     back.classList.toggle('hidden', state !== 'elsewhere' || closed);
     newBtn.disabled = shellBtn.disabled = state !== 'tabs';
     // A visitor in someone else's office may not put a worker on its floor (shared/multiplayer/allow.ts).

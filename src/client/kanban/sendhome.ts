@@ -6,30 +6,31 @@
 
 import type { WorkerInfo, WorktreeCleanup } from '../../shared/protocol';
 import type { Net } from '../net';
-import { h, openModal } from '../ui/dom';
+import { h } from '../ui/dom';
+import { icon } from '../ui/icons';
+import { btn, checkLine } from '../ui/kit';
 import { sendHomeDialog } from '../ui/prompt';
+import { modalShell, openShell } from '../ui/shell';
 import { clipText, doneDefault, kanbanOf, STATUS_TEXT } from './office';
 
 /** The task's part of the dialog, and whether its Done box is ticked (undefined: there's no box). */
 function taskBlock(w: WorkerInfo): { el: HTMLElement; done(): boolean | undefined } {
   const k = kanbanOf(w)!;
   const title = k.title ? ` · ${clipText(k.title, 80)}` : '';
-  const head = h('p', { style: 'margin:0 0 6px;font-weight:800' }, `${k.role === 'reviewer' ? '🔍 Reviewing' : '🗂️'} task #${k.taskId}${title}`, k.status ? h('small', { style: 'margin-left:6px;color:var(--muted)' }, `(${STATUS_TEXT[k.status]})`) : null);
+  const head = h('p.kb-home-task', {}, icon(k.role === 'reviewer' ? 'eye' : 'square-kanban', { size: 14 }), h('span', {}, `${k.role === 'reviewer' ? 'Reviewing task' : 'Task'} #${k.taskId}${title}`, k.status ? h('small', {}, ` (${STATUS_TEXT[k.status]})`) : null));
   if (k.role === 'reviewer') {
     return {
-      el: h('div.kb-home', { style: 'margin:0 0 12px' }, head, h('p.wt-status', { style: 'margin:0' }, 'The review round is abandoned: the task goes back to review (or takes the messages waiting for it). The task’s worktree stays as it is.')),
+      el: h('div.kb-home', {}, head, h('p.wt-status', {}, 'The review round is abandoned: the task goes back to review (or takes the messages waiting for it). The task’s worktree stays as it is.')),
       done: () => undefined,
     };
   }
   const def = doneDefault(k.status);
-  if (def === null) return { el: h('div.kb-home', { style: 'margin:0 0 12px' }, head), done: () => undefined };
-  const box = h('input', { type: 'checkbox' }) as HTMLInputElement;
-  box.checked = def;
-  const note = h('small', { style: 'display:block;font-weight:600;color:var(--muted)' }, def ? 'Its automation is finished.' : 'Unticked, it keeps its column: a live run is stopped and the task waits with Retry.');
-  return {
-    el: h('div.kb-home', { style: 'margin:0 0 12px' }, head, h('label', { style: 'display:flex;gap:8px;align-items:flex-start;margin:0;font-weight:700;cursor:pointer' }, box, h('span', {}, `Move task #${k.taskId} to Done`, note))),
-    done: () => box.checked,
-  };
+  if (def === null) return { el: h('div.kb-home', {}, head), done: () => undefined };
+  const note = h('small', {}, def ? 'Its automation is finished.' : 'Unticked, it keeps its column: a live run is stopped and the task waits with Retry.');
+  const tick = checkLine([`Move task #${k.taskId} to Done`, note]);
+  tick.el.classList.add('kb-home-done');
+  tick.box.checked = def;
+  return { el: h('div.kb-home', {}, head, tick.el), done: () => tick.box.checked };
 }
 
 function kill(net: Net, w: WorkerInfo, cleanup: WorktreeCleanup | undefined, done: boolean | undefined) {
@@ -59,22 +60,21 @@ export function sendTaskWorkerHome(net: Net, w: WorkerInfo, where: string): bool
     });
     return true;
   }
-  const title = `Send ${w.name} home?`;
-  const yes = h('button.btn.danger', { type: 'button' }, 'Send home');
-  const no = h('button.btn', { type: 'button' }, 'Never mind');
-  const el = h(
-    'div.modal',
-    { role: 'alertdialog', 'aria-label': title },
-    h('header', {}, h('h2', {}, title)),
-    h('div.body', {}, block.el, h('p', { style: 'margin:0;font-weight:700' }, `This stops the session at ${where} for everyone and frees the desk.`)),
-    h('footer', {}, no, yes),
-  );
-  const modal = openModal(el);
+  const yes = btn('Send home', { kind: 'danger', icon: 'log-out', attrs: { autofocus: true } });
+  const no = btn('Cancel', { kind: 'quiet' });
+  const shell = modalShell({
+    cls: 'confirm danger w420',
+    role: 'alertdialog',
+    icon: 'triangle-alert',
+    title: `Send ${w.name} home?`,
+    body: [block.el, h('div.confirm-body', {}, h('span', {}, `This stops the session at ${where} for everyone and frees the desk.`))],
+    footerRight: [no, yes],
+  });
+  const modal = openShell(shell);
   no.addEventListener('click', () => modal.close());
   yes.addEventListener('click', () => {
     modal.close();
     kill(net, w, k.role === 'reviewer' ? 'keep' : undefined, block.done());
   });
-  setTimeout(() => yes.focus(), 30);
   return true;
 }

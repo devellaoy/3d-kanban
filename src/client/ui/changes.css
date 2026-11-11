@@ -1,14 +1,17 @@
 /* Changes window: changed files + diff at a desk */
 .modal.desk-changes { width: min(1300px, 100%); height: min(860px, calc(100vh - 32px)); outline: none; }
-.modal.desk-changes header .branch { font-size: var(--fs-sm); font-weight: var(--fw-bold); color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 40%; }
-.modal.desk-changes header .btn { padding: 4px 10px; font-size: var(--fs-sm); }
-.modal.desk-changes header .close { width: 34px; padding: 0; }
+.shell.desk-changes .shell-main { padding: 0; display: flex; flex-direction: column; overflow: hidden; }
+.changes-id { display: inline-flex; align-items: center; gap: 8px; min-width: 0; }
+.changes-id .branch { display: inline-flex; align-items: center; gap: 4px; font-size: var(--fs-sm); font-weight: var(--fw-bold); color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 40vw; }
 .changes-tabs { display: flex; flex-wrap: wrap; gap: 6px; padding: 8px 12px; border-bottom: var(--bw) solid var(--ink); background: var(--paper-2); }
 .changes-tabs .btn { padding: 3px 10px; font-size: var(--fs-sm); }
 .changes-tabs .btn small { font-weight: var(--fw-semibold); opacity: .8; }
+/* A worker's repositories are the shared tab strip (styles/kit-modal.css), which draws the bar's bottom line itself. */
+.changes-tabs.changes-repos { padding: 0; border-bottom: 0; }
+.changes-repos .tab small { font-weight: var(--fw-semibold); opacity: .8; }
 .changes-body { flex: 1; min-height: 0; display: flex; }
 .changes-files { width: 320px; flex: none; border-right: var(--bw) solid var(--ink); display: flex; flex-direction: column; background: var(--paper-2); min-height: 0; }
-.changes-files h4 { margin: 0; padding: 8px 12px; font-size: var(--fs-xs); font-weight: var(--fw-heavy); text-transform: uppercase; letter-spacing: .04em; color: var(--muted); border-bottom: var(--bw-sm) solid color-mix(in srgb, var(--text) 15%, transparent); }
+.changes-files h4 { margin: 0; padding: 8px 12px; font-size: var(--fs-xs); font-weight: var(--fw-heavy); color: var(--muted); border-bottom: var(--bw-sm) solid color-mix(in srgb, var(--text) 15%, transparent); }
 .changes-files ul { list-style: none; margin: 0; padding: 6px; overflow: auto; flex: 1; display: flex; flex-direction: column; gap: 2px; }
 .changes-files li { display: flex; align-items: center; gap: 8px; padding: 5px 8px; border-radius: var(--radius-md); cursor: pointer; font-size: var(--fs-sm); font-weight: var(--fw-semibold); border: var(--bw-sm) solid transparent; min-width: 0; }
 .changes-files li:hover { background: color-mix(in srgb, var(--field) 70%, transparent); }
@@ -52,7 +55,7 @@
 .img-frame img { display: block; max-width: 100%; max-height: 60vh; object-fit: contain; }
 .img-frame p { margin: 0; color: var(--muted); font-weight: var(--fw-semibold); font-size: var(--fs-sm); background: var(--field); padding: 4px 8px; border-radius: var(--radius-xs); }
 .changes-empty { margin: auto; text-align: center; padding: 24px; color: var(--muted); font-weight: var(--fw-semibold); max-width: 460px; }
-.changes-empty .big { font-size: 48px; line-height: 1; margin-bottom: 8px; }
+.changes-empty .big { display: flex; justify-content: center; margin-bottom: 8px; }
 .changes-empty p { margin: 6px 0 0; }
 .changes-empty .note { font-size: var(--fs-sm); font-weight: var(--fw-medium); }
 .modal.desk-changes footer .grow { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; min-width: 0; }

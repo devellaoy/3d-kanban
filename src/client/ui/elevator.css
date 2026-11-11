@@ -16,7 +16,7 @@
 .elevator .here-tag { font-size: var(--fs-2xs); font-weight: var(--fw-bold); color: var(--muted); }
 .elevator .floor-sub { font-size: var(--fs-xs); font-weight: var(--fw-semibold); color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .elevator .floor-stats { font-size: var(--fs-sm); font-weight: var(--fw-bold); white-space: nowrap; }
-.elevator .floor-stats .waiting { color: var(--bad); }
+.elevator .floor-stats .waiting { color: var(--danger-ink); }
 .elevator .add { margin-top: 16px; }
 .elevator .add h3 { margin: 0 0 8px; font-size: var(--fs-lg); font-weight: var(--fw-heavy); }
 .elevator .repo-search { display: flex; gap: 8px; }
@@ -33,10 +33,10 @@
 .elevator .repo.folder .desc { flex: none; max-width: 55%; }
 .elevator .repo.off { cursor: default; }
 .elevator .repo.off:hover { background: none; }
-.elevator .repo.off .desc { flex: 1; max-width: none; white-space: normal; font-weight: var(--fw-bold); color: var(--bad); }
+.elevator .repo.off .desc { flex: 1; max-width: none; white-space: normal; font-weight: var(--fw-bold); color: var(--danger-ink); }
 .elevator .repo .when { font-size: var(--fs-2xs); color: var(--muted); white-space: nowrap; }
 .elevator .note { margin: 8px 0 0; font-size: var(--fs-xs); font-weight: var(--fw-semibold); color: var(--muted); overflow-wrap: anywhere; }
 .elevator .note.busy { color: var(--text); }
 /* The folder's Change button: styles/base.css, after the button rules it restyles. */
 .elevator .dir-pick { margin-top: 8px; }
-.elevator .err { margin: 8px 0 0; font-size: var(--fs-sm); font-weight: var(--fw-bold); color: var(--bad); overflow-wrap: anywhere; }
+.elevator .err { margin: 8px 0 0; font-size: var(--fs-sm); font-weight: var(--fw-bold); color: var(--danger-ink); overflow-wrap: anywhere; }

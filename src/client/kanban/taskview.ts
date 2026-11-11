@@ -1,80 +1,58 @@
-// The shared task view: one task in full, as the kanban page's side panel and the 3D office's windows
-// show it (docs/kanban-coupling.md, "The shared task view"). Tabs: Overview (what it waits for, the
-// actions, description, reports and details), Conversation (write at the top, newest first), Plan
-// (its versions), Runs (every phase it ran), Terminal (the kanban page only: the 3D worker window has
-// its own), Changes (the task's Changes view, changesview.ts; not in the worker window, whose header
-// has 🌿 Changes for it) and PRs.
+// The shared task view: one task in full, as the kanban page's task window and the 3D office's windows
+// show it (docs/kanban-coupling.md, "The shared task view"), built from the window shell's parts
+// (ui/shell.ts): a rich header (id, status, phase, the tools and, in a window of its own, the ✕; the
+// title; the tabs), a body whose Overview has the details rail beside it, and a footer with the task's
+// actions on every tab. Tabs: Overview (what it waits for, description, criteria, reports,
+// attachments), Conversation (write at the top, newest first), Plan (its versions), Runs (every phase it
+// ran), Terminal (the kanban page only: the 3D worker window has its own), Changes (the task's Changes
+// view, changesview.ts; not in the worker window, whose header has Changes for it), Pull requests and
+// Issue.
+//
+// As a window of its own (openTaskModal) the view's root is the modal itself, so the header's ✕ is the
+// window's; mounted in another window (mountTaskView: the worker window's Task tab) it has no ✕.
 //
 // It fetches the task with kanban.task.get on the connection's kanban bus (api.ts) and follows the
 // kanban.task / kanban.comment / kanban.run / kanban.plan deltas for it. On the kanban page those come
 // from the page's own subscription; anywhere else it asks for its project's deltas with api.watch(),
 // which subscribes the connection for as long as a view needs it and never fights a page's filter.
+// Its panes are taskoverview.ts (and taskdetails.ts, the rail), taskconv.ts, taskplan.ts, taskruns.ts
+// and taskprs.ts; the buttons are taskactionbar.ts's, from the lists in taskactions.ts.
 // Its styles (taskview.css) are scoped under .kb-tv and load with this module, so the 3D page gets
 // them only when it uses the view.
 
 import './taskview.css';
-import { h, openModal, timeAgo, toast, type Modal } from '../ui/dom';
-import { confirmDialog } from '../ui/prompt';
+import { h, openModal, toast, type Modal } from '../ui/dom';
+import { icon } from '../ui/icons';
+import { btn, phaseBadge as phasePill, pill } from '../ui/kit';
+import { shellHead } from '../ui/shell';
 import { store } from '../state';
 import type { Net } from '../net';
 import type { KanbanServerMsg } from '../../shared/kanban/protocol.js';
-import { KANBAN_TOOLS, type KanbanComment, type KanbanEffort, type KanbanEvent, type KanbanPlan, type KanbanProjectInfo, type KanbanReportFile, type KanbanRole, type KanbanRun, type KanbanSettings, type KanbanTask, type KanbanTaskCard, type KanbanTool, type PlanStatus, type ReviewVerdict, type RunStatus, type TaskStatus, type TaskType } from '../../shared/kanban/types.js';
+import type { KanbanProjectInfo, KanbanSettings, KanbanTask, KanbanTaskCard, TaskStatus } from '../../shared/kanban/types.js';
 import { isRunning } from '../../shared/kanban/moves.js';
-import { getJson, kanbanApi, type KanbanApi, type KanbanOk } from './api';
-import { formatSize, notInText } from './attach';
-import { attachBox, type AttachBox } from './attachbox';
-import { attachmentList, commentItem } from './commentview';
-import { TOOL_ICON, ticketChip, tickCountdowns } from './card';
-import { codexLimitsChip } from './codexlimits';
-import { effortSelect, modelInput } from './create';
-import { renderMarkdown } from './md';
+import { kanbanApi, type KanbanApi, type KanbanOk } from './api';
+import { attachBox } from './attachbox';
 import { REVIEW_DEFAULTS } from './defaults';
-import { cardRepoNames, countdown, needsAttention, phaseBadge, prTone, showIn3dLink, tabFor, viaAgent, visibleTabs, type TaskTab } from './model';
+import { phaseBadge, showIn3dLink, tabFor, visibleTabs, type TaskTab } from './model';
 import { kstore } from './store';
-import { onSendKey, sendHint } from './sendkey';
-import { holdActions, holdBox } from './holdview';
-import { findPrsButton, prActionButtons, unlinkButton } from './prbuttons';
+import { onSendKey } from './sendkey';
 import { mountChangesView, type ChangesViewHandle } from './changesview';
 import { mountIssueTab } from './issuetab';
-import { APPROVAL_NAMES, columnName, COUNTDOWN_UNITS, effortName, fmtDuration, fmtTime, phaseName, PR_STATE_NAMES, toolName, waitingName } from './labels';
-import { run, select, tabStrip, textArea } from './ui';
-import { apiUrl } from '../multiplayer/visit';
+import { run, tabCount, tabStrip, textArea } from './ui';
+import { Conversation, COMMENTS_PAGE } from './taskconv';
+import { footerButtons } from './taskactionbar';
+import type { Detail, FileBox, TaskCtx, TaskViewOptions } from './taskctx';
+import { detailsPane } from './taskdetails';
+import { overviewPane } from './taskoverview';
+import { planPane } from './taskplan';
+import { prsPane } from './taskprs';
+import { Reports } from './taskreports';
+import { runsPane, terminalPane } from './taskruns';
+import { RETRY_ATTR, retryText } from './taskwaiting';
 
-const COMMENTS_PAGE = 30;
-const TAB_NAMES: Record<TaskTab, string> = { overview: 'Overview', conversation: 'Conversation', plan: 'Plan', runs: 'Runs', terminal: 'Terminal', changes: 'Changes', prs: 'PRs', issue: 'Issue' };
-const TYPE_NAMES: Record<TaskType, string> = { implement: 'Implement', investigate: 'Investigate' };
-const ROLE_NAMES: Record<KanbanRole, string> = { implementer: 'Implementer', reviewer: 'Reviewer' };
-const PLAN_STATUS_NAMES: Record<PlanStatus, string> = { draft: 'draft', accepted: 'accepted', superseded: 'superseded' };
-const RUN_STATUS_NAMES: Record<RunStatus, string> = { running: 'running', succeeded: 'done', failed: 'failed', stopped: 'stopped', interrupted: 'interrupted' };
-const VERDICT_NAMES: Record<ReviewVerdict, string> = { approved: '✅ approved', changes_requested: '🛠 changes requested' };
+export type { TaskViewOptions } from './taskctx';
 
-type Detail = Extract<KanbanServerMsg, { t: 'kanban.task.detail' }>;
-
-export interface TaskViewOptions {
-  net: Net;
-  taskId: number;
-  /**
-   * In another window (the 3D worker window's task tab, openTaskWindow): no Terminal tab (that window
-   * has the worker's terminal) and nothing that only the board page can do (edit, move).
-   */
-  embedded?: boolean;
-  /** The Changes tab (default true); the 3D worker window has none, its header's 🌿 Changes opens the same view. */
-  changesTab?: boolean;
-  /** The view is on the kanban page itself (in its task window, or the worker window's tab): no link back to it. */
-  onKanban?: boolean;
-  /** Called by the view's own ✕ (shown only when this is given), and when the task is deleted. */
-  onClose?: () => void;
-  // The kanban page's hooks; without them the view does without what they open.
-  /** The tab it opens on (a tab it doesn't show falls back to Overview). */
-  tab?: TaskTab;
-  /** The tab changed (for the page's ?tab= link). */
-  onTab?(tab: TaskTab): void;
-  /** Another task (a #123 link, or a review's new task). Default: a task window of its own. */
-  openTask?(id: number): void;
-  edit?(task: KanbanTask): void;
-  moveMenu?(id: number): void;
-  openTerminal?(workerId: string, project: string): void;
-}
+const TAB_NAMES: Record<TaskTab, string> = { overview: 'Overview', conversation: 'Conversation', plan: 'Plan', runs: 'Runs', terminal: 'Terminal', changes: 'Changes', prs: 'Pull requests', issue: 'Issue' };
 
 export interface TaskViewHandle {
   destroy(): void;
@@ -90,16 +68,19 @@ export interface TaskView extends TaskViewHandle {
 
 /** What's typed in a task's answer and plan boxes, kept across redraws and across windows opened again. */
 const drafts = new Map<number, Map<string, string>>();
-let headSeq = 0;
+/** Under this width the details rail drops under the content. */
+const NARROW = 900;
 
 /** Mounts a task's view into `container` (appended to it); destroy() takes it out and stops its subscriptions. */
 export function mountTaskView(container: HTMLElement, opts: TaskViewOptions): TaskView {
-  return new View(container, opts);
+  const view = new View(opts, false);
+  container.append(view.root);
+  return view;
 }
 
 /**
  * A task in a window of its own (the 3D office, the 2D view, a #123 link in an embedded view): the
- * view in upstream's modal, with its ✕ top right; ✕ and Esc close it (and, in the 3D office, put you
+ * view as a modal, with the ✕ at the right of its header; ✕ and Esc close it (and, in the 3D office, put you
  * straight back into mouse-look, as every upstream window does).
  */
 export function openTaskWindow(net: Net, taskId: number): Modal {
@@ -107,15 +88,15 @@ export function openTaskWindow(net: Net, taskId: number): Modal {
 }
 
 /**
- * A task window with the page's own options: the kanban page opens it not embedded (so it keeps 📍 Show
- * in 3D, 🧩 VSCode, the Terminal and Changes tabs) and with its hooks. `onClosed` hears every close.
+ * A task window with the page's own options: the kanban page opens it not embedded (so it keeps Show
+ * in 3D, VS Code, the Terminal and Changes tabs) and with its hooks. `onClosed` hears every close.
  */
 export function openTaskModal(net: Net, taskId: number, opts: Omit<TaskViewOptions, 'net' | 'taskId' | 'onClose'> & { onClosed?(): void } = {}): { modal: Modal; view: TaskView } {
   const { onClosed, ...viewOpts } = opts;
-  const el = h('div.modal.kb-task-window', { role: 'dialog', 'aria-modal': 'true', 'aria-label': 'Task' });
   let modal: Modal | null = null;
-  // Mounted first, so the view's own ✕ is there before openModal looks for one.
-  const view = mountTaskView(el, { ...viewOpts, net, taskId, onClose: () => modal?.close() });
+  // Drawn first, so the header's ✕ is there before openModal looks for a window's own.
+  const view = new View({ ...viewOpts, net, taskId, onClose: () => modal?.close() }, true);
+  const el = view.root;
   modal = openModal(el, {
     onClose: () => {
       view.destroy();
@@ -125,7 +106,7 @@ export function openTaskModal(net: Net, taskId: number, opts: Omit<TaskViewOptio
     doing: `reading task #${taskId}`,
     reading: true,
   });
-  setTimeout(() => el.querySelector<HTMLElement>('.kb-tab.on')?.focus({ preventScroll: true }), 30);
+  setTimeout(() => el.querySelector<HTMLElement>('[role=tab][aria-selected=true]')?.focus({ preventScroll: true }), 30);
   return { modal, view };
 }
 
@@ -134,16 +115,18 @@ class View implements TaskView {
   private api: KanbanApi;
   private embedded: boolean;
   private changesTab: boolean;
-  private root: HTMLElement;
-  private body = h('div.kb-detail-body', { role: 'tabpanel' });
-  private headId = `kb-tv-h-${++headSeq}`;
+  readonly root: HTMLElement;
+  /** The open tab's panel (the shell's main), the details rail beside it and the row that holds both: kept across redraws, so their scroll stays. */
+  private body = h('div.shell-main.kb-detail-body', { role: 'tabpanel' });
+  private rail = h('aside.shell-rail.hidden', { 'aria-label': 'Details' });
+  private row = h('div.shell-body.solo', {}, this.body, this.rail);
+  private head: HTMLElement | null = null;
+  private foot: HTMLElement | null = null;
   private d: Detail | null = null;
   private error = '';
   private current: TaskTab;
-  private composer: { el: HTMLElement; ta: HTMLTextAreaElement; attach: AttachBox } | null = null;
   /** The answer and change-request boxes, kept across redraws so their uploaded files stay. */
-  private fileBoxes = new Map<string, { ta: HTMLTextAreaElement; attach: AttachBox; wrap: HTMLElement; go: () => void }>();
-  private loadingOlder = false;
+  private fileBoxes = new Map<string, FileBox>();
   private refetch: ReturnType<typeof setTimeout> | undefined;
   private strip: ReturnType<typeof tabStrip<TaskTab>> | null = null;
   private card: KanbanTaskCard | undefined;
@@ -155,33 +138,71 @@ class View implements TaskView {
   /** The Changes tab's view: mounted the first time the tab opens, taken down when another tab does. */
   private issue: ReturnType<typeof mountIssueTab> | null = null;
   private changes: { host: HTMLElement; view: ChangesViewHandle } | null = null;
-  private reports: { list: KanbanReportFile[]; shown: Map<string, HTMLElement> } | null = null;
-  private reportsFor = '';
-  private agentOpen = false;
+  private reports: Reports;
+  private conv: Conversation;
+  /** What the panes see of this view. */
+  private c: TaskCtx;
 
+  /** `asWindow`: the view is the modal itself (openTaskModal), else a part of another window. */
   constructor(
-    container: HTMLElement,
     private o: TaskViewOptions,
+    asWindow: boolean,
   ) {
     this.taskId = o.taskId;
     this.embedded = !!o.embedded;
     this.changesTab = o.changesTab ?? true;
     this.api = kanbanApi(o.net);
     this.current = tabFor(o.tab, this.embedded, this.changesTab);
-    this.root = h('div.kb-tv', { class: this.embedded ? 'embedded' : '' });
+    this.root = asWindow ? h('div.modal.shell.kb-tv.kb-task-window', { role: 'dialog', 'aria-modal': 'true', 'aria-label': `Task #${o.taskId}` }) : h('div.shell.kb-tv');
+    this.root.append(this.row);
     this.card = kstore.tasks.get(o.taskId);
     this.projects = kstore.projects;
     this.settings = kstore.settings;
-    container.append(this.root);
+    const ui = { agentOpen: false };
+    const view = this;
+    this.c = {
+      o,
+      ui,
+      api: this.api,
+      taskId: this.taskId,
+      embedded: this.embedded,
+      get detail() {
+        return view.d;
+      },
+      settings: () => this.settings,
+      project: (id) => this.projectOf(id),
+      review: (task) => this.reviewSettings(task),
+      req: (msg, button, done) => this.req(msg, button, done),
+      openTask: (id) => this.openTask(id),
+      setTab: (tab) => this.setTab(tab),
+      paint: (onlyOn) => {
+        if (this.destroyed || (onlyOn && this.current !== onlyOn)) return;
+        const restore = this.focusMark();
+        this.paintBody();
+        restore();
+      },
+      focusBox: (key) => void setTimeout(() => this.root.querySelector<HTMLElement>(`[data-focus="${CSS.escape(key)}"]`)?.focus(), 0),
+      drafts: () => this.drafts(),
+      fileBox: (key, attrs) => this.fileBox(key, attrs),
+      alive: () => !this.destroyed,
+    };
+    this.reports = new Reports(this.c);
+    this.conv = new Conversation(this.c);
     this.offs.push(
       this.api.on((msg) => this.onMsg(msg)),
       // A worker's name and state (Terminal) come from the floor's workers.
       store.on('workers', () => this.workersChanged()),
     );
-    if (this.embedded) {
-      // The kanban page ticks every countdown itself; elsewhere the view ticks its own.
-      const timer = setInterval(() => tickCountdowns(this.root), 1000);
-      this.offs.push(() => clearInterval(timer));
+    // The retry countdown of the Overview's banner.
+    const timer = setInterval(() => {
+      for (const el of this.root.querySelectorAll<HTMLElement>(`[${RETRY_ATTR}]`)) el.textContent = retryText(Number(el.getAttribute(RETRY_ATTR)));
+    }, 1000);
+    this.offs.push(() => clearInterval(timer));
+    // The rail drops under the content by the view's own width: in a worker's window it is narrower than the page.
+    if (typeof ResizeObserver !== 'undefined') {
+      const sized = new ResizeObserver(() => this.root.classList.toggle('narrow', this.root.clientWidth < NARROW));
+      sized.observe(this.root);
+      this.offs.push(() => sized.disconnect());
     }
     this.render();
     void this.load();
@@ -237,10 +258,7 @@ class View implements TaskView {
       // Its project's deltas (a no-op where a page's own subscription already brings them).
       this.unwatch ??= this.api.watch(d.task.project);
       const key = `${d.task.status}:${d.task.phase ?? ''}:${d.task.runState}`;
-      if (this.reportsFor !== key) {
-        this.reportsFor = key;
-        void this.loadReports();
-      }
+      this.reports.follow(key);
     } catch (err) {
       if (this.destroyed) return false;
       this.error = (err as Error).message;
@@ -325,44 +343,25 @@ class View implements TaskView {
     const running = task ? isRunning(task) : card ? isRunning(card) : false;
     const badge = card ? phaseBadge(card) : task ? phaseBadge({ ...task, reviewRounds: this.reviewSettings(task).rounds }) : null;
     const waitingReason = task?.waitingReason ?? card?.waitingReason;
-    const links: HTMLElement[] = [];
+    const tools: HTMLElement[] = [];
     if (task && !this.embedded) {
       const w = task.workerId ? store.workers.get(task.workerId) : undefined;
-      links.push(h('a.btn.small', { href: showIn3dLink(task.project, task.workerId, w?.deskId), title: 'The 3D office, at this task’s worker (or on its floor)' }, '📍 Show in 3D'));
-      // The 3D worker window has its own 🧩 VSCode in its header (kanban/vscode), so only here.
+      tools.push(h('a.btn.quiet.sm', { href: showIn3dLink(task.project, task.workerId, w?.deskId), title: 'The 3D office, at this task’s worker (or on its floor)', 'data-focus': 'tool-3d' }, icon('map-pin'), 'Show in 3D'));
+      // The 3D worker window has its own VS Code in its header (kanban/vscode), so only here.
       if (kstore.me.admin) {
-        const code = h('button.btn.small', { type: 'button', title: 'Open this task’s folder in VS Code on the office’s computer: its worktree, or all its repositories’ worktrees in one window' }, '🧩 VSCode') as HTMLButtonElement;
+        const code = btn('VS Code', { kind: 'quiet', size: 'sm', icon: 'code-xml', attrs: { title: 'Open this task’s folder in VS Code on the office’s computer: its worktree, or all its repositories’ worktrees in one window', 'data-focus': 'tool-code' } });
         code.addEventListener('click', () => void this.req({ t: 'kanban.task.vscode', id: task.id }, code, 'Opening VS Code…'));
-        links.push(code);
+        tools.push(code);
       }
     }
     if (task && this.embedded && !this.o.onKanban) {
-      links.push(h('a.btn.small', { href: `/kanban?project=${encodeURIComponent(task.project)}&task=${id}${this.current !== 'overview' ? `&tab=${this.current}` : ''}` }, '🗂️ Open in the kanban'));
+      tools.push(h('a.btn.quiet.sm', { href: `/kanban?project=${encodeURIComponent(task.project)}&task=${id}${this.current !== 'overview' ? `&tab=${this.current}` : ''}`, 'data-focus': 'tool-kanban' }, icon('square-kanban'), 'Open in the kanban'));
     }
-    let close: HTMLElement | null = null;
-    if (this.o.onClose) {
-      close = h('button.btn.close', { type: 'button', 'aria-label': 'Close', title: 'Close (Esc)' }, '✕');
-      close.addEventListener('click', () => this.o.onClose?.());
-    }
-    const head = h(
-      'header.kb-detail-head',
-      {},
-      h('div.kb-detail-title', {}, h('span.kb-id', {}, `#${id}`), h('h2', { id: this.headId }, title || 'Loading…')),
-      h(
-        'div.kb-detail-sub',
-        {},
-        status ? h('span.kb-status', { class: status }, columnName(status)) : null,
-        running ? h('span.kb-pulse', { title: 'Running' }) : null,
-        badge ? h('span.kb-phase', { class: badge.phase }, `${phaseName(badge.phase)}${badge.round ? ` ${badge.round}` : ''}`) : null,
-        waitingReason && status === 'waiting' ? h('span.kb-wait-pill', { class: needsAttention({ status, waitingReason }) ? 'attention' : '' }, waitingName(waitingReason)) : null,
-        links.length ? h('span.kb-head-links', {}, ...links) : null,
-      ),
-      close,
-    );
     const d = this.d;
+    const planWaits = status === 'waiting' && waitingReason === 'plan_approval';
     const counts: Partial<Record<TaskTab, number>> = d ? { conversation: card?.commentCount ?? d.comments.length, plan: d.plans.length, runs: d.runs.length, prs: d.task.prs.length } : {};
     this.strip = tabStrip(
-      visibleTabs(this.embedded, this.changesTab).map((tab) => ({ id: tab, label: h('span', {}, TAB_NAMES[tab], counts[tab] ? h('span.kb-tab-n', {}, String(counts[tab])) : null) })),
+      visibleTabs(this.embedded, this.changesTab).map((tab) => ({ id: tab, label: [TAB_NAMES[tab], tabCount(counts[tab], tab === 'plan' && planWaits)] })),
       this.current,
       (tab) => {
         this.current = tab;
@@ -371,10 +370,44 @@ class View implements TaskView {
       },
       'Task',
     );
-    this.root.setAttribute('aria-labelledby', this.headId);
-    this.root.replaceChildren(head, this.strip.el, this.body);
+    const { head, close } = shellHead({
+      kind: 'rich',
+      title: title || 'Loading…',
+      id: `#${id}`,
+      pill: status ? pill(status) : null,
+      meta: [
+        running ? h('span.kb-pulse', { title: 'Running' }) : null,
+        badge ? phasePill(badge.phase, badge.round) : null,
+      ],
+      tools,
+      tabs: this.strip.el,
+    });
+    // The ✕ is the header's only in a window of the task's own; inside another window that one has it.
+    if (this.o.onClose) {
+      close.dataset.focus = 'close';
+      close.addEventListener('click', () => this.o.onClose?.());
+    } else {
+      close.remove();
+      head.querySelector('.shell-sep')?.remove();
+    }
+    if (this.head) this.head.replaceWith(head);
+    else this.root.prepend(head);
+    this.head = head;
+    if (this.root.getAttribute('role') === 'dialog') this.root.setAttribute('aria-label', title ? `Task #${id}: ${title}` : `Task #${id}`);
     this.paintBody();
+    this.paintFooter();
     restore();
+  }
+
+  /** The footer: the task's actions, on every tab (taskactionbar.ts); none while the task isn't loaded, or for a task with nothing to do. */
+  private paintFooter() {
+    const task = this.task;
+    const { left, right } = task ? footerButtons(task, this.c) : { left: [], right: [] };
+    const foot = left.length || right.length ? h('footer.shell-foot', {}, h('div.shell-foot-left', {}, ...left), h('div.shell-foot-right', {}, ...right)) : null;
+    if (this.foot && foot) this.foot.replaceWith(foot);
+    else if (foot) this.root.append(foot);
+    else this.foot?.remove();
+    this.foot = foot;
   }
 
   /**
@@ -412,7 +445,7 @@ class View implements TaskView {
     let b = this.fileBoxes.get(key);
     if (!b) {
       const ta = this.draftArea(key, attrs);
-      const wrap = h('div.kb-answerbox');
+      const wrap = h('div.kb-answerbox.composite');
       const box = { ta, wrap, attach: attachBox({ target: ta, dropZone: wrap, insertLinks: true }), go: () => {} };
       onSendKey(ta, () => box.go());
       this.fileBoxes.set(key, (b = box));
@@ -437,7 +470,9 @@ class View implements TaskView {
     this.body.setAttribute('aria-labelledby', `kbtab-${this.current}`);
     const d = this.d;
     if (!d) {
-      this.body.replaceChildren(this.error ? h('div.kb-error', {}, `⚠️ ${this.error} `, h('button.btn.small', { type: 'button', onclick: () => void this.load() }, 'Try again')) : h('p.kb-muted', {}, 'Loading…'));
+      const again = btn('Retry', { icon: 'rotate-cw', size: 'sm', attrs: { 'data-focus': 'load-retry', onclick: () => void this.load() } });
+      this.body.replaceChildren(this.error ? h('div.kb-error.kb-row', { role: 'alert' }, icon('triangle-alert'), h('span.grow', {}, this.error), again) : h('p.kb-muted', {}, 'Loading…'));
+      this.showRail(null);
       return;
     }
     // The Changes view draws itself: a redraw only tells it who the worker is now.
@@ -450,22 +485,28 @@ class View implements TaskView {
       return;
     }
     const content: Record<TaskTab, () => HTMLElement[]> = {
-      overview: () => this.overview(d),
-      conversation: () => this.conversation(d),
-      plan: () => this.plans(d),
-      runs: () => this.runs(d),
-      terminal: () => this.terminal(d.task),
+      overview: () => overviewPane(this.c, d, this.reports),
+      conversation: () => this.conv.pane(d),
+      plan: () => planPane(this.c, d),
+      runs: () => runsPane(this.c, d),
+      terminal: () => terminalPane(this.c, d.task),
       changes: () => [this.changesPane(d.task)],
-      prs: () => this.prs(d.task),
+      prs: () => prsPane(this.c, d.task),
       issue: () => [this.issuePane(d.task)],
     };
     if (this.current !== 'changes') this.dropChanges();
     if (this.current !== 'issue') this.dropIssue();
     this.body.replaceChildren(...content[this.current]());
+    this.showRail(this.current === 'overview' ? d : null);
     if (keep) this.body.scrollTop = scroll;
   }
 
-  // --- Overview ---------------------------------------------------------------------------------
+  /** The details rail, beside the Overview only: the other tabs get the whole width. */
+  private showRail(d: Detail | null) {
+    this.rail.classList.toggle('hidden', !d);
+    this.row.classList.toggle('solo', !d);
+    this.rail.replaceChildren(...(d ? detailsPane(this.c, d) : []));
+  }
 
   private req(msg: Parameters<KanbanApi['request']>[0], button?: HTMLButtonElement, done?: string) {
     return run(() => this.api.request<KanbanOk>(msg), button, done);
@@ -475,363 +516,6 @@ class View implements TaskView {
     return { ...REVIEW_DEFAULTS, ...this.settings?.review, ...this.settings?.projects[task.project]?.review, ...task.overrides.review };
   }
 
-  private actionButtons(task: KanbanTask): HTMLElement {
-    const bar = h('div.kb-actions');
-    const add = (label: string, cls: string, fn: (b: HTMLButtonElement) => void, title?: string) => {
-      const b = h(`button.btn${cls}`, { type: 'button', title, 'data-focus': `act-${label}` }, label) as HTMLButtonElement;
-      b.addEventListener('click', () => fn(b));
-      bar.append(b);
-      return b;
-    };
-    const id = task.id;
-    const running = isRunning(task);
-    const hasWorker = !!(task.workerId || task.reviewerWorkerId);
-    const reviewRound = () => add('🔍 Run a review round', '', (b) => void this.req({ t: 'kanban.task.review', id }, b, 'A review round starts'), 'A reviewer looks at the work once more; changes it asks for are fixed');
-    if (task.status === 'todo') {
-      add('▶️ Start', '.primary', (b) => void this.req({ t: 'kanban.task.start', id }, b, 'Started'));
-      if (this.o.edit) add('✏️ Edit', '', () => this.o.edit?.(task));
-    }
-    if (running) add('⏹️ Stop', '.danger', (b) => void this.req({ t: 'kanban.task.stop', id }, b, 'Stopping…'));
-    if (task.status === 'waiting' && !running) {
-      switch (task.waitingReason) {
-        case 'plan_approval':
-          add('✅ Approve the plan', '.primary', (b) => void this.req({ t: 'kanban.plan.approve', id }, b, 'Plan approved'));
-          add('✍️ Request changes', '', () => this.setTab('plan'));
-          break;
-        case 'usage_limit':
-          add('🔁 Retry now', '.primary', (b) => void this.req({ t: 'kanban.task.retry', id }, b, 'Trying again'));
-          break;
-        case 'failed':
-        case 'interrupted':
-          add('🔁 Retry', '.primary', (b) => void this.req({ t: 'kanban.task.retry', id }, b, 'Trying again'));
-          add('▶️ Continue', '', (b) => void this.req({ t: 'kanban.task.continue', id }, b, 'Continuing'));
-          break;
-        case 'agent_asking':
-          // Answered in the box above the actions (typed into its terminal), or in the terminal itself:
-          // there's nothing to carry on without an answer, its run is still going.
-          break;
-        case 'plan_questions':
-          // Answered in the box above the actions; or carried on without an answer (the planner assumes).
-          add('▶️ Continue without answering', '', (b) => void this.req({ t: 'kanban.task.continue', id }, b, 'Continuing'), 'The agent goes on with assumptions of its own, and names them');
-          break;
-        default:
-          add('▶️ Continue', '.primary', (b) => void this.req({ t: 'kanban.task.continue', id }, b, 'Continuing'));
-      }
-      // The engine reviews a waiting task by hand too, when it has work to review (not a plan waiting).
-      if (task.type === 'implement' && task.workspace && task.waitingReason !== 'plan_questions' && task.waitingReason !== 'plan_approval') reviewRound();
-    }
-    if (task.status === 'review' && !running) {
-      if (task.type === 'implement') reviewRound();
-      if (task.type === 'implement') {
-        add(`🔀 ${task.prs.length ? 'Push & update PRs' : 'Create PRs'}`, '.primary', (b) => void this.req({ t: 'kanban.task.pr', id, mode: 'create' }, b, 'An agent is on the pull requests'), 'The agent pushes and opens (or updates) a pull request in every repository with commits');
-      }
-    }
-    holdActions(task, add, (to, extras, b) => void this.req({ t: 'kanban.task.move', id, to, ...extras }, b));
-    prActionButtons(task, bar, (m, b, d) => this.req(m, b, d));
-    if (task.status !== 'in_progress' && this.o.moveMenu) add('↔️ Move…', '', () => this.o.moveMenu?.(id), 'Move to another column (M)');
-    if (!running) add('🗑️ Delete', '.danger', (b) => confirmDialog(`Delete #${id}?`, `The task, its conversation, plans and runs are deleted for good. ${hasWorker ? 'Its workers go home. ' : ''}${task.workspace ? `Its worktree (${task.workspace.worktree.path}), its branches` : 'Its branches'}${task.branch ? ` (${task.branch})` : ''} and pull requests stay.`, 'Delete', () => void this.req({ t: 'kanban.task.delete', id }, b)));
-    return bar;
-  }
-
-  /** What the task waits for, with a box to answer when it asked something. */
-  private waitingBox(task: KanbanTask): HTMLElement | null {
-    if (task.status !== 'waiting' || !task.waitingReason) return null;
-    const open = (id: number) => this.openTask(id);
-    const box = h('section.kb-waiting', { class: task.waitingReason }, h('h4', {}, `🙋 ${waitingName(task.waitingReason)}`), task.waitingText ? renderMarkdown(task.waitingText, open, '') : null);
-    if (task.retryAt) {
-      box.append(
-        h('p.kb-retry', { 'data-retry-at': String(task.retryAt) }, `🔁 retries in ${countdown(task.retryAt, Date.now(), COUNTDOWN_UNITS)}`),
-        h('small.kb-muted', {}, `Tried ${task.retryAttempts} times so far`),
-      );
-    }
-    // An agent asking in its terminal gets an answer from here only for a question (askingKind): a
-    // permission prompt, or one the office can't tell, is answered in its terminal.
-    if (task.waitingReason === 'agent_asking' && task.askingKind !== 'question') {
-      const workerId = task.phase === 'review' || task.phase === 'pr-review' ? task.reviewerWorkerId : task.workerId;
-      const open = workerId && this.o.openTerminal ? h('button.btn.small', { type: 'button', onclick: () => this.o.openTerminal?.(workerId, task.project) }, '⌨️ Open its terminal') : null;
-      const what = task.askingKind === 'permission' ? 'The agent asks for a permission — answer it in its terminal' : 'The agent waits on something in its terminal — answer it there';
-      box.append(h('div.kb-row', {}, h('b', {}, what), open), h('small.kb-muted', {}, 'A comment waits until that turn is over.'));
-      return box;
-    }
-    if (task.waitingReason === 'plan_questions' || task.waitingReason === 'agent_asking') {
-      const asking = task.waitingReason === 'agent_asking';
-      const fb = this.fileBox('answer', { rows: 4, placeholder: asking ? 'Your answer…' : 'Your answers… (paste or drop files)', 'aria-label': asking ? 'Answer the agent' : 'Answer' });
-      const { ta, attach, wrap } = fb;
-      const send = h('button.btn.primary', { type: 'button' }, 'Send the answer') as HTMLButtonElement;
-      const go = async () => {
-        const answer = ta.value.trim();
-        const ids = attach.ids();
-        if (!answer && !ids.length) return ta.focus();
-        if (attach.busy()) return toast('Wait for the files to finish uploading', 'warn');
-        const ok = await this.req({ t: 'kanban.task.continue', id: task.id, answer, ...(ids.length ? { attachmentIds: ids } : {}) }, send, 'Answer sent');
-        if (ok) {
-          ta.value = '';
-          attach.clear();
-          this.drafts().delete('answer');
-        }
-      };
-      send.addEventListener('click', () => void go());
-      fb.go = () => void go();
-      if (asking) {
-        // The asking worker is the reviewer during a review round, else the implementer.
-        const workerId = task.phase === 'review' || task.phase === 'pr-review' ? task.reviewerWorkerId : task.workerId;
-        const open = workerId && this.o.openTerminal ? h('button.btn.small', { type: 'button', onclick: () => this.o.openTerminal?.(workerId, task.project) }, '⌨️ Open its terminal') : null;
-        box.append(h('div.kb-row', {}, h('b', {}, 'Answer the agent'), h('small.kb-muted', {}, 'It is typed into its terminal, as if you typed it there.'), open));
-      }
-      wrap.replaceChildren(ta, h('div.kb-row', {}, attach.el, h('span.grow'), send), h('small.kb-muted', {}, sendHint()));
-      box.append(wrap);
-    }
-    return box;
-  }
-
-  /** Tool, model and effort, changeable whenever no run is live (the office says no when it won't). */
-  private agentEditor(task: KanbanTask): HTMLElement | null {
-    if (isRunning(task) || task.status === 'archived') return null;
-    const tool = select<KanbanTool>(KANBAN_TOOLS.map((x) => [x, `${TOOL_ICON[x]} ${toolName(x)}`] as const), task.tool, { 'aria-label': 'Agent' });
-    const model = modelInput(task.model ?? '', () => tool.value as KanbanTool);
-    const effort = effortSelect(task.effort, 'Default');
-    tool.addEventListener('change', () => {
-      model.refresh();
-      // Another tool's model name means nothing to this one.
-      if (tool.value !== task.tool) model.input.value = '';
-    });
-    const save = h('button.btn.small.primary', { type: 'button' }, 'Save') as HTMLButtonElement;
-    save.addEventListener('click', () => {
-      const m = model.input.value.trim();
-      void this.req({ t: 'kanban.task.update', id: task.id, patch: { tool: tool.value as KanbanTool, model: m || null, effort: (effort.value as KanbanEffort) || null } }, save, 'Agent changed');
-    });
-    const box = h('details.kb-agent-edit', { open: this.agentOpen }, h('summary', {}, '✏️ Change the agent'), h('small.kb-muted', {}, 'Who carries on from the next phase. Not while it runs.'), h('div.kb-row', {}, tool, model.el, effort, save)) as HTMLDetailsElement;
-    box.addEventListener('toggle', () => (this.agentOpen = box.open));
-    return box;
-  }
-
-  private async loadReports() {
-    try {
-      const r = await getJson<{ reports: KanbanReportFile[] }>(apiUrl(`/api/kanban/tasks/${this.taskId}/reports`));
-      if (this.destroyed) return;
-      this.reports = { list: r.reports, shown: this.reports?.shown ?? new Map<string, HTMLElement>() };
-    } catch {
-      // Nothing to list (or an office without the plugin): the section stays away.
-      if (!this.destroyed) this.reports = null;
-    }
-    if (this.current === 'overview' && !this.destroyed) this.paintBody();
-  }
-
-  /** An investigation's report files: shown in place (Markdown as the page renders it), or downloaded. */
-  private reportsSection(): HTMLElement | null {
-    const r = this.reports;
-    if (!r?.list.length) return null;
-    const url = (name: string) => apiUrl(`/api/kanban/tasks/${this.taskId}/reports/${encodeURIComponent(name)}`);
-    const items = r.list.map((f) => {
-      const shownEl = r.shown.get(f.name);
-      const toggle = h('button.btn.small', { type: 'button', 'aria-expanded': String(!!shownEl) }, shownEl ? 'Hide' : 'Show') as HTMLButtonElement;
-      toggle.addEventListener('click', async () => {
-        if (r.shown.has(f.name)) {
-          r.shown.delete(f.name);
-          return this.paintBody();
-        }
-        toggle.disabled = true;
-        try {
-          const res = await fetch(url(f.name), { cache: 'no-store', credentials: 'same-origin' });
-          if (!res.ok) throw new Error(((await res.json().catch(() => ({}))) as { error?: string }).error ?? `HTTP ${res.status}`);
-          const text = await res.text();
-          r.shown.set(f.name, /\.(md|markdown)$/i.test(f.name) ? renderMarkdown(text, (id) => this.openTask(id), '') : h('pre', {}, text));
-        } catch (err) {
-          toast((err as Error).message, 'error');
-        }
-        this.paintBody();
-      });
-      return h(
-        'li.kb-report',
-        {},
-        h('div.kb-row', {}, h('b', {}, `📄 ${f.name}`), h('small.kb-muted', { title: fmtTime(f.mtime) }, `${formatSize(f.size)} · ${timeAgo(f.mtime)}`), toggle, h('a.btn.small', { href: `${url(f.name)}?download=1`, download: f.name.split('/').pop() ?? f.name }, '⬇️ Download')),
-        shownEl ?? null,
-      );
-    });
-    return h('section', {}, h('h4', {}, '📑 Reports'), h('ul.kb-reports', {}, ...items));
-  }
-
-  private overview(d: Detail): HTMLElement[] {
-    const task = d.task;
-    const project = this.projectOf(task.project);
-    const repos = cardRepoNames(task, project);
-    const review = this.reviewSettings(task);
-    const open = (id: number) => this.openTask(id);
-    const rows: [string, Node | string | null | undefined][] = [
-      ['Project', project?.name ?? task.project],
-      ['Repositories', repos.length ? h('span.kb-chips', {}, ...repos.map((r) => h('span.kb-chip.repo', {}, `📦 ${r}`))) : null],
-      ['Ticket', task.ticket ? ticketChip(task.ticket, task.ticketUrl) : null],
-      ['Type', TYPE_NAMES[task.type]],
-      ['Agent', h('span', {}, `${TOOL_ICON[task.tool]} ${toolName(task.tool)}${task.model ? ` · ${task.model}` : ''}${task.effort ? ` · ${effortName(task.effort)}` : ''}`, task.tool === 'codex' ? codexLimitsChip(this.o.net) : null)],
-      ['Plan', task.usePlan ? `on · ${APPROVAL_NAMES[task.planApproval]}` : 'off'],
-      [
-        'Review',
-        task.useReview
-          ? `on · ${review.tool ? toolName(review.tool) : ''}${review.model ? ` ${review.model}` : ''} · ${review.rounds} rounds${task.reviewRound ? ` · round ${task.reviewRound}` : ''}`
-          : 'off',
-      ],
-      ['Branch', task.branch ? h('code', {}, task.branch) : null],
-      ['Workspace', task.workspace ? h('code', { title: task.workspace.worktree.path }, task.workspace.worktree.path) : null],
-      ['Created', `${task.createdBy}${viaAgent(d.events) ? ` (via ${viaAgent(d.events)})` : ''} · ${fmtTime(task.createdAt)}`],
-      ['Started', task.startedAt ? fmtTime(task.startedAt) : null],
-      ['Finished', task.finishedAt ? fmtTime(task.finishedAt) : null],
-      ['Tags', task.tags.length ? task.tags.map((x) => `#${x}`).join(' ') : null],
-      ['Comments waiting for the agent', task.pendingMessages.length ? String(task.pendingMessages.length) : null],
-      ['From ai-kanban', task.legacy ? `${task.legacy.source} #${task.legacy.id}` : null],
-    ];
-    const meta = h('dl.kb-meta', {}, ...rows.filter(([, v]) => v !== null && v !== undefined && v !== '').flatMap(([k, v]) => [h('dt', {}, k), h('dd', {}, v as Node | string)]));
-    const files = notInText(d.attachments.filter((a) => !a.commentId), `${task.description}\n${task.goal ?? ''}`);
-    const none = () => h('span.hidden');
-    return [
-      this.actionButtons(task),
-      this.waitingBox(task) ?? holdBox(task) ?? none(),
-      h('section.kb-desc', {}, h('h4', {}, 'Description', task.flags.descriptionLocked ? h('small.kb-muted', { title: 'The task has started: add to it with a comment instead' }, ' 🔒 locked') : null), renderMarkdown(task.description, open)),
-      task.goal ? h('section.kb-goal', {}, h('h4', {}, '🎯 Acceptance criteria'), renderMarkdown(task.goal, open, '')) : none(),
-      this.reportsSection() ?? none(),
-      files.length ? h('section', {}, h('h4', {}, '📎 Attachments'), attachmentList(files)) : none(),
-      h('section', {}, h('h4', {}, 'Details'), meta, this.agentEditor(task)),
-    ];
-  }
-
-  // --- Conversation -----------------------------------------------------------------------------
-
-  private makeComposer(task: KanbanTask) {
-    const ta = textArea('', { rows: 3, placeholder: 'Write a comment, answer, or tell the agent what to do next… (paste or drop files)', 'aria-label': 'Comment', 'data-focus': 'comment' });
-    const send = h('button.btn.primary', { type: 'button' }, 'Send') as HTMLButtonElement;
-    const hint = h('small.kb-muted', {}, `${sendHint()} · ${task.status === 'todo' || task.status === 'done' ? 'a comment is kept with the task' : task.status === 'on_hold' ? 'a comment is kept and given to the agent when it resumes' : 'a comment puts the agent back to work'}`);
-    const wrap = h('div.kb-composer');
-    const attach = attachBox({ target: ta, dropZone: wrap, insertLinks: true });
-    const go = async () => {
-      const text = ta.value.trim();
-      const ids = attach.ids();
-      if (!text) return ta.focus();
-      if (attach.busy()) return toast('Wait for the files to finish uploading', 'warn');
-      const ok = await this.req({ t: 'kanban.comment.add', id: task.id, text, ...(ids.length ? { attachmentIds: ids } : {}) }, send);
-      if (ok) {
-        ta.value = '';
-        attach.clear();
-      }
-    };
-    send.addEventListener('click', () => void go());
-    onSendKey(ta, () => void go());
-    wrap.append(ta, h('div.kb-row', {}, attach.el, h('span.grow'), send), hint);
-    return { el: wrap, ta, attach };
-  }
-
-  private conversation(d: Detail): HTMLElement[] {
-    this.composer ??= this.makeComposer(d.task);
-    const byId = new Map(d.attachments.map((a) => [a.id, a]));
-    const list = h('ol.kb-comments', { 'aria-label': 'Conversation' });
-    const runs = new Map(d.runs.map((r) => [r.id, r]));
-    const openFile = kstore.me.admin || store.me.admin ? (path: string, line?: number) => void this.req({ t: 'kanban.task.openFile', id: d.task.id, path, ...(line ? { line } : {}) }, undefined, 'Opening in VS Code…') : undefined;
-    for (const c of [...d.comments].reverse()) list.append(commentItem(c, byId, (id) => this.openTask(id), { runs, openFile }));
-    if (!d.comments.length) list.append(h('li.kb-muted', {}, 'No comments yet.'));
-    const more = d.commentsMore
-      ? h('button.btn.kb-older', { type: 'button', disabled: this.loadingOlder, onclick: () => void this.older() }, this.loadingOlder ? 'Loading…' : 'Older comments')
-      : null;
-    return [this.composer.el, list, ...(more ? [more] : [])];
-  }
-
-  private async older() {
-    const d = this.d;
-    if (!d || this.loadingOlder) return;
-    this.loadingOlder = true;
-    this.paintBody();
-    try {
-      const r = await this.api.request<Extract<KanbanServerMsg, { t: 'kanban.comments' }>>({ t: 'kanban.comments.page', id: d.task.id, before: d.comments[0]?.id, limit: COMMENTS_PAGE });
-      if (this.d === d) {
-        const have = new Set(d.comments.map((c) => c.id));
-        d.comments = [...r.comments.filter((c) => !have.has(c.id)), ...d.comments].sort((a, b) => a.id - b.id);
-        d.commentsMore = r.more;
-      }
-    } catch (err) {
-      toast((err as Error).message, 'error');
-    } finally {
-      this.loadingOlder = false;
-      if (!this.destroyed) this.paintBody();
-    }
-  }
-
-  // --- Plan -------------------------------------------------------------------------------------
-
-  private plans(d: Detail): HTMLElement[] {
-    const task = d.task;
-    const plans = [...d.plans].sort((a, b) => b.version - a.version);
-    if (!plans.length) return [h('p.kb-muted', {}, task.usePlan ? 'No plan yet: it’s written when the task starts.' : 'This task runs without a plan.')];
-    const latest = plans[0];
-    const out: HTMLElement[] = [];
-    if (latest.status === 'draft' && task.status === 'waiting' && !isRunning(task)) {
-      const fb = this.fileBox('planChanges', { rows: 4, placeholder: 'What should change in the plan? (paste or drop files)', 'aria-label': 'Request changes' });
-      const { ta, attach, wrap } = fb;
-      const approve = h('button.btn.primary', { type: 'button' }, '✅ Approve the plan') as HTMLButtonElement;
-      const changes = h('button.btn', { type: 'button' }, '✍️ Request changes') as HTMLButtonElement;
-      approve.addEventListener('click', () => void this.req({ t: 'kanban.plan.approve', id: task.id, planId: latest.id }, approve, 'Plan approved'));
-      const go = async () => {
-        const text = ta.value.trim();
-        const ids = attach.ids();
-        if (!text && !ids.length) return ta.focus();
-        if (attach.busy()) return toast('Wait for the files to finish uploading', 'warn');
-        if (await this.req({ t: 'kanban.plan.requestChanges', id: task.id, text, ...(ids.length ? { attachmentIds: ids } : {}) }, changes, 'Sent to the planner')) {
-          ta.value = '';
-          attach.clear();
-          this.drafts().delete('planChanges');
-        }
-      };
-      changes.addEventListener('click', () => void go());
-      fb.go = () => void go();
-      wrap.replaceChildren(ta, h('div.kb-row', {}, attach.el, h('span.grow'), changes, approve));
-      out.push(h('section.kb-plan-act', {}, h('h4', {}, `Plan v${latest.version} waits for you`), wrap));
-    }
-    for (const p of plans) out.push(planItem(p, (id) => this.openTask(id)));
-    return out;
-  }
-
-  // --- Runs -------------------------------------------------------------------------------------
-
-  private runs(d: Detail): HTMLElement[] {
-    const runs = [...d.runs].sort((a, b) => b.startedAt - a.startedAt);
-    const out: HTMLElement[] = [];
-    out.push(runs.length ? h('ol.kb-runs', {}, ...runs.map((r) => runItem(r, (id) => this.openTask(id)))) : h('p.kb-muted', {}, 'Nothing has run yet.'));
-    if (d.events.length) out.push(h('details.kb-events', {}, h('summary', {}, `History (${d.events.length})`), h('ul', {}, ...[...d.events].sort((a, b) => b.at - a.at).map(eventItem))));
-    return out;
-  }
-
-  // --- Terminal & changes -----------------------------------------------------------------------
-
-  private workers(task: KanbanTask): { id: string; role: 'implementer' | 'reviewer' }[] {
-    return [
-      ...(task.workerId ? [{ id: task.workerId, role: 'implementer' as const }] : []),
-      ...(task.reviewerWorkerId ? [{ id: task.reviewerWorkerId, role: 'reviewer' as const }] : []),
-    ];
-  }
-
-  /** A worker's line: its name and state when the page knows it (it's on the floor the page is on). */
-  private workerLabel(id: string, role: KanbanRole, project: string): HTMLElement {
-    const w = store.workers.get(id);
-    return h(
-      'div.kb-worker',
-      {},
-      h('span.dot', { style: `background:${w?.color ?? '#ccc'}` }),
-      h('b', {}, w?.name ?? ROLE_NAMES[role]),
-      h('small.kb-muted', {}, w ? `${ROLE_NAMES[role]} · ${w.status}` : store.floor === project ? 'That worker isn’t here any more' : 'on the project’s floor'),
-    );
-  }
-
-  private terminal(task: KanbanTask): HTMLElement[] {
-    const ws = this.workers(task);
-    if (!ws.length) return [h('p.kb-muted', {}, 'No worker is on this task now. Starting it, a comment or an action hires one.')];
-    return [
-      h('p.kb-muted', {}, 'The worker’s live terminal, as at its desk: you can type in it too.'),
-      ...ws.map((w) =>
-        h(
-          'div.kb-worker-row',
-          {},
-          this.workerLabel(w.id, w.role, task.project),
-          this.o.openTerminal ? h('button.btn.primary', { type: 'button', onclick: () => this.o.openTerminal?.(w.id, task.project) }, '⌨️ Open the terminal') : null,
-        ),
-      ),
-    ];
-  }
 
   /** The task's Changes view, kept across redraws (and following a new worker), so its place and live watch stay. */
   private changesPane(task: KanbanTask): HTMLElement {
@@ -860,98 +544,4 @@ class View implements TaskView {
     this.issue?.destroy();
     this.issue = null;
   }
-
-  // --- Pull requests ----------------------------------------------------------------------------
-
-  private prs(task: KanbanTask): HTMLElement[] {
-    const project = this.projectOf(task.project);
-    const out: HTMLElement[] = [];
-    const running = isRunning(task);
-    const bar = h('div.kb-actions');
-    if (task.type === 'implement' && !running && (task.status === 'review' || task.status === 'waiting' || task.status === 'done')) {
-      const create = h('button.btn.primary', { type: 'button', title: 'The agent pushes and opens (or updates) a pull request in every repository with commits' }, `🔀 ${task.prs.length ? 'Push & update PRs' : 'Create PRs'}`) as HTMLButtonElement;
-      create.addEventListener('click', () => void this.req({ t: 'kanban.task.pr', id: task.id, mode: 'create' }, create, 'An agent is on the pull requests'));
-      bar.append(create);
-    }
-    prActionButtons(task, bar, (m, b, d) => this.req(m, b, d));
-    bar.append(findPrsButton(task, this.api) ?? '');
-    const reviewable = task.prs.filter((p) => p.repo && (p.state === 'OPEN' || p.state === 'DRAFT'));
-    if (reviewable.length) {
-      const rev = h('button.btn', { type: 'button', title: 'One reviewer takes every pull request of the task at once' }, `🔍 Review these ${reviewable.length} PRs together`) as HTMLButtonElement;
-      rev.addEventListener('click', async () => {
-        const ok = await this.req({ t: 'kanban.pr.review', project: task.project, taskId: task.id, prs: reviewable.map((p) => ({ repo: p.repo!, number: p.number })) }, rev, 'A reviewer takes the PRs together');
-        // The review runs as a task: another one than this, when the office made a new one.
-        if (ok?.taskId && ok.taskId !== task.id) this.openTask(ok.taskId);
-      });
-      bar.append(rev);
-    }
-    if (bar.childElementCount) out.push(bar);
-    if (!task.prs.length) out.push(h('p.kb-muted', {}, 'No pull requests yet.'));
-    else
-      out.push(
-        h(
-          'table.kb-table',
-          {},
-          h('thead', {}, h('tr', {}, h('th', {}, 'Repository'), h('th', {}, 'PR'), h('th', {}, 'State'), h('th', {}, 'Branch'), h('th', {}, 'Updated'), h('th'))),
-          h(
-            'tbody',
-            {},
-            ...task.prs.map((p) =>
-              h(
-                'tr',
-                {},
-                h('td', {}, project?.repos.find((r) => r.id === p.repoId)?.name ?? p.repo ?? p.repoId),
-                h('td', {}, h('a', { href: p.url, target: '_blank', rel: 'noopener noreferrer' }, `#${p.number} ↗`)),
-                h('td', {}, h('span.kb-pr', { class: prTone(p.state) }, PR_STATE_NAMES[prTone(p.state)])),
-                h('td', {}, p.branch ? h('code', {}, p.branch) : ''),
-                h('td', {}, timeAgo(p.updatedAt)),
-                h('td', {}, unlinkButton(task, p, (m, b, d) => this.req(m, b, d), project?.repos.find((r) => r.id === p.repoId)?.name)),
-              ),
-            ),
-          ),
-        ),
-      );
-    return out;
-  }
-}
-
-// --- Pieces ---------------------------------------------------------------------------------------
-
-function planItem(p: KanbanPlan, openTask: (id: number) => void): HTMLElement {
-  return h(
-    'details.kb-plan',
-    { class: p.status, open: p.status !== 'superseded' },
-    h(
-      'summary',
-      {},
-      h('b', {}, `Version ${p.version}`),
-      h('span.kb-plan-status', { class: p.status }, PLAN_STATUS_NAMES[p.status]),
-      h('small.kb-muted', {}, p.acceptedAt ? `accepted by ${p.acceptedBy ?? ''}, ${fmtTime(p.acceptedAt)}` : fmtTime(p.createdAt)),
-    ),
-    p.feedback ? h('blockquote.kb-feedback', {}, h('b', {}, 'Asked to change: '), p.feedback) : null,
-    renderMarkdown(p.text, openTask),
-  );
-}
-
-function runItem(r: KanbanRun, openTask: (id: number) => void): HTMLElement {
-  const took = r.finishedAt ? fmtDuration(r.finishedAt - r.startedAt) : '';
-  return h(
-    'li.kb-run',
-    { class: `${r.status}${r.verdict ? ` ${r.verdict}` : ''}` },
-    h(
-      'header',
-      {},
-      h('span.kb-phase', { class: r.phase }, `${phaseName(r.phase)}${r.round ? ` ${r.round}` : ''}`),
-      h('span', {}, `${TOOL_ICON[r.tool]} ${toolName(r.tool)}${r.model ? ` · ${r.model}` : ''}${r.effort ? ` · ${effortName(r.effort)}` : ''}`),
-      h('span.kb-run-status', { class: r.status }, RUN_STATUS_NAMES[r.status]),
-      r.verdict ? h('span.kb-verdict', { class: r.verdict }, VERDICT_NAMES[r.verdict]) : null,
-      h('small.kb-muted', {}, `${fmtTime(r.startedAt)}${took ? ` · ${took}` : ''}`),
-    ),
-    r.error ? h('p.kb-error', {}, r.error) : null,
-    r.summary ? h('details', {}, h('summary', {}, 'Summary'), renderMarkdown(r.summary, openTask, '')) : null,
-  );
-}
-
-function eventItem(e: KanbanEvent): HTMLElement {
-  return h('li', {}, h('time', {}, fmtTime(e.at)), ' ', h('code', {}, e.kind), e.data !== undefined ? h('small.kb-muted', {}, ` ${JSON.stringify(e.data).slice(0, 200)}`) : null);
 }

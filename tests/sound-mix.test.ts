@@ -92,6 +92,9 @@ class FakeEl {
   append(...c: (FakeEl | string)[]) {
     this.children.push(...c);
   }
+  replaceChildren(...c: (FakeEl | string)[]) {
+    this.children = c;
+  }
   addEventListener(type: string, fn: () => void) {
     this.listeners.set(type, [...(this.listeners.get(type) ?? []), fn]);
   }
@@ -110,7 +113,7 @@ const g = globalThis as Record<string, unknown>;
 g.AudioContext = FakeAudioContext;
 g.window = { addEventListener: () => {} };
 g.Node = FakeEl;
-g.document = { hidden: false, addEventListener: () => {}, createElement: (tag: string) => new FakeEl(tag) };
+g.document = { hidden: false, addEventListener: () => {}, createElement: (tag: string) => new FakeEl(tag), createElementNS: (_ns: string, tag: string) => new FakeEl(tag) };
 
 const { MIXES, cleanMix, mixDefaults, mixGain } = await import('../src/client/sound/mix.js');
 const { AudioCore } = await import('../src/client/sound/core.js');

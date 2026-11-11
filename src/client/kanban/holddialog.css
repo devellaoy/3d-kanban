@@ -1,4 +1,7 @@
-.kb-hold-dialog textarea, .kb-hold-dialog input[type=date] { width: 100%; box-sizing: border-box; font: inherit; font-size: var(--fs-lg); color: var(--text); border: var(--bw) solid var(--ink); border-radius: var(--radius-sm); padding: 10px 12px; background: var(--field); outline: none; }
-.kb-hold-dialog textarea { resize: vertical; }
-.kb-hold-dialog textarea:focus, .kb-hold-dialog input[type=date]:focus { border-color: var(--accent); }
-.kb-hold-dialog .kb-hold-since { margin: 0 0 12px; font-weight: var(--fw-bold); overflow-wrap: anywhere; }
+/* Put on hold and Resume (holddialog.ts): the shared shell with two fields. Tokens only. */
+.kb-hold-fields { display: flex; flex-direction: column; gap: 14px; }
+.kb-hold-fields textarea.inp { min-height: 76px; }
+.kb-hold-fields .kb-hold-until { width: 180px; }
+.kb-hold-since { display: flex; align-items: flex-start; gap: 8px; margin: 0; color: var(--text-2); overflow-wrap: anywhere; }
+.kb-hold-since > svg { flex: none; margin-top: 2px; }
+.kb-hold-since small { font-size: var(--fs-xs); color: var(--muted); }

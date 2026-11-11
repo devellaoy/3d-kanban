@@ -1,0 +1,138 @@
+/* The kit, part 1: the window (modal) frame every page shares. The plain frame (.modal with a header,
+   a .body and a footer) that older windows build by hand, the shell on top of it (ui/shell.ts: a simple
+   or a rich header, a body with an optional details rail, a footer with a left and a right group), the
+   underlined tabs (ui/tabs.ts), the banner, the rail's definition list and the list box.
+
+   Everything comes from tokens (themes/tokens.css), nothing is upper-cased, and the selectors are kept
+   weak (a class, or a class and an element) so a window's own sheet can override them. This sheet is
+   imported at the top of base.css, before kit-controls.css and kit-chips.css, which may override it. */
+
+/* ---------- The frame ---------- */
+.backdrop { position: fixed; inset: 0; background: var(--overlay); display: grid; place-items: center; padding: 16px; z-index: 50; animation: fade .15s; }
+@keyframes fade { from { opacity: 0; } }
+.modal { background: var(--paper); border: var(--bw) solid var(--ink); border-radius: var(--radius-lg); box-shadow: var(--shadow-lg); width: min(560px, 100%); max-height: calc(100vh - 32px); display: flex; flex-direction: column; overflow: hidden; animation: pop .18s ease-out; }
+@keyframes pop { from { transform: scale(.96); opacity: .5; } }
+.modal header { display: flex; align-items: center; gap: 10px; padding: 12px 16px; border-bottom: var(--bw) solid var(--ink); background: var(--bar-bg); }
+.modal header h2 { margin: 0; font-size: var(--fs-2xl); font-weight: var(--fw-heavy); flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.modal .body { padding: 16px; overflow: auto; }
+.modal footer { display: flex; gap: 8px; justify-content: flex-end; padding: 12px 16px; border-top: var(--bw) solid var(--ink); background: var(--bar-bg); align-items: center; }
+.modal footer .grow { flex: 1; font-size: var(--fs-xs); color: var(--muted); font-weight: var(--fw-semibold); }
+/* Not the kit's own fields (.inp, kit-controls.css): :where() keeps these selectors as weak as they were. */
+.modal textarea:where(:not(.inp)), .modal input[type=text]:where(:not(.inp)), .modal input[type=password]:where(:not(.inp)) { width: 100%; font: inherit; font-size: var(--fs-lg); border: var(--bw) solid var(--ink); border-radius: var(--radius-sm); padding: 10px 12px; background: var(--field); outline: none; resize: vertical; }
+.modal textarea:focus, .modal input[type=text]:focus, .modal input[type=password]:focus { border-color: var(--accent); }
+.modal label { font-weight: var(--fw-bold); font-size: var(--fs-md); display: block; margin-bottom: 6px; }
+.close { width: 34px; height: 34px; padding: 0; justify-content: center; }
+/* The ✕ openModal gives a window without a header of its own. */
+.close.corner { position: absolute; top: 10px; right: 10px; z-index: 1; }
+
+/* Widths of the small dialogs and the wide windows (the default is 560px). */
+.modal.w400 { width: min(400px, 100%); }
+.modal.w420 { width: min(420px, 100%); }
+.modal.w480 { width: min(480px, 100%); }
+.modal.w640 { width: min(640px, 100%); }
+.modal.w840 { width: min(840px, 100%); }
+.modal.w920 { width: min(920px, 100%); }
+.modal.w1200 { width: min(1200px, 100%); }
+
+/* ---------- The shell (ui/shell.ts) ---------- */
+/* Simple header: icon, title, an id or a context in mono, the tools and the ✕ on one row. */
+.shell > .shell-head { gap: 10px; padding: 14px 20px; }
+.shell .shell-head h2 { flex: 0 1 auto; font-size: var(--fs-xl); }
+.shell-head > svg, .shell-row > svg { flex: none; color: var(--text-2); }
+/* The title and the id or context give way with an ellipsis each, the context first. */
+.shell-id { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; font-family: var(--font-mono); font-size: var(--fs-xs); color: var(--muted); white-space: nowrap; }
+/* In a simple header the context takes only the room the title leaves. */
+.shell-head.simple > .shell-id { flex: 1 1 0; }
+/* The tools give way before the title does: they wrap inside their own group, right-aligned, and the ✕ (which
+   alone never shrinks) keeps the top right corner. */
+.shell-tools { flex: 0 100 auto; min-width: 0; margin-left: auto; display: flex; flex-wrap: wrap; justify-content: flex-end; align-items: center; gap: 4px; }
+.shell-head > .close, .shell-row > .close { align-self: flex-start; }
+.shell-row > :is(.st-pill, .kb-phase, .attn-pill, .pr-pill) { flex: none; }
+/* A header's tools are a step taller than a toolbar's small buttons, level with the ✕. */
+.shell-tools > .btn.sm { height: calc(var(--ctl-h-sm) + 2px); }
+.shell-sep { align-self: center; height: 18px; margin: 0 4px; border-left: var(--bw-sm) solid var(--ink); }
+/* The ✕ is a quiet icon button here, whatever .close says about its size. */
+.shell-head .close { width: calc(var(--ctl-h-sm) + 2px); height: calc(var(--ctl-h-sm) + 2px); flex: none; }
+/* Rich header: a row of id, status and tools, then the title on its own line, then what the window adds
+   (a line of context, the tabs). */
+.shell > .shell-head.rich { flex-direction: column; align-items: stretch; gap: 10px; padding: 16px 20px; }
+.shell > .shell-head.rich.has-tabs { padding-bottom: 0; }
+.shell-row { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.shell .shell-head.rich h2 { flex: none; font-size: var(--fs-3xl); line-height: 1.3; letter-spacing: -.01em; white-space: normal; overflow-wrap: anywhere; }
+.shell-line { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; min-width: 0; color: var(--text-2); font-size: var(--fs-sm); }
+/* The tabs sit on the header's own bottom line. */
+.shell-head > .tabs { margin: 2px 0 calc(-1 * var(--bw)); padding: 0; box-shadow: none; }
+
+.shell-body { flex: 1; min-height: 0; display: flex; }
+.shell-main { flex: 1; min-width: 0; padding: 18px 20px; overflow: auto; }
+.shell-head.rich ~ .shell-body > .shell-main { padding: 20px 24px; }
+/* A window's own words, at the size and leading the artboards are drawn in (a view's own sheet may say otherwise). */
+.shell-main, .shell-foot { font-size: var(--fs-sm); line-height: 1.45; }
+.shell-rail { flex: none; width: var(--rail-w); display: flex; flex-direction: column; gap: 14px; padding: 20px; overflow: auto; background: var(--paper-2); border-left: var(--bw) solid var(--ink); font-size: var(--fs-sm); }
+.shell-rail.hidden { display: none; }
+
+.shell > .shell-foot { justify-content: flex-start; flex-wrap: wrap; gap: 8px; padding: 12px 20px; }
+.shell-foot-left { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; min-width: 0; font-size: var(--fs-xs); color: var(--muted); }
+.shell-foot-right { margin-left: auto; display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 8px; min-width: 0; }
+
+/* A phone: a rich header's first row wraps (its tools go under the id and the status), and the ✕ keeps the top right corner. */
+@media (max-width: 700px) {
+  .shell-head.rich { position: relative; }
+  .shell-head.rich > .shell-row { flex-wrap: wrap; row-gap: 6px; padding-right: 36px; }
+  .shell-head.rich > .shell-row > * { min-width: 0; max-width: 100%; overflow: hidden; text-overflow: ellipsis; }
+  .shell-head.rich > .shell-row > .shell-tools { flex-basis: 100%; margin-left: -10px; overflow: visible; }
+  .shell-head.rich > .shell-row > .shell-tools:empty, .shell-head.rich .shell-sep { display: none; }
+  .shell-head.rich > .shell-row > .close { position: absolute; top: 10px; right: 12px; overflow: visible; }
+}
+
+/* A narrow window: the rail drops under the content, and both scroll as one. */
+@media (max-width: 900px) {
+  .shell-body { flex-direction: column; overflow: auto; }
+  .shell-body > .shell-main { flex: none; overflow: visible; }
+  .shell-body > .shell-rail { width: auto; overflow: visible; border-left: 0; border-top: var(--bw) solid var(--ink); }
+}
+
+/* ---------- Tabs (ui/tabs.ts): underlined, with a count and an attention count ---------- */
+/* .kb-tabs, .kb-tab and .kb-tab-n are the older names of the same pieces. The strip's bottom line is an
+   inset shadow, so the picked tab's underline is drawn over it. */
+.tabs, .kb-tabs { flex: none; display: flex; gap: 4px; min-width: 0; padding: 0 10px; overflow-x: auto; scrollbar-width: none; box-shadow: inset 0 calc(-1 * var(--bw)) 0 var(--ink); }
+.tabs.hidden, .kb-tabs.hidden { display: none; }
+.tab, .kb-tab { flex: none; display: inline-flex; align-items: center; gap: 6px; padding: 8px 10px 10px; font: var(--fw-semibold) var(--fs-sm) var(--font); color: var(--text-2); white-space: nowrap; background: none; border: 0; border-bottom: max(2px, var(--bw)) solid transparent; border-radius: 0; cursor: pointer; }
+.tab:hover, .kb-tab:hover { color: var(--text); }
+.tab.on, .kb-tab.on { color: var(--text); font-weight: var(--fw-heavy); border-bottom-color: var(--accent); }
+.tab:focus-visible, .kb-tab:focus-visible { outline: var(--focus-ring); outline-offset: -2px; }
+.tab > svg, .kb-tab > svg { flex: none; }
+.tab-n, .kb-tab-n { min-width: 18px; padding: 0 6px; font-size: var(--fs-2xs); font-weight: var(--fw-semibold); line-height: 18px; text-align: center; border-radius: var(--radius-pill); background: var(--tint-grey); color: var(--text-neutral); }
+.tab-n.attention, .kb-tab-n.attention { font-weight: var(--fw-heavy); background: var(--attn-soft); color: var(--attn-ink); }
+
+/* ---------- Banner: what a window says first (a task that waits for you, one on hold, an error) ---------- */
+.banner { display: flex; align-items: flex-start; gap: 12px; padding: 12px 14px; border: var(--bw-sm) solid var(--banner-edge); border-radius: var(--radius); background: var(--banner-bg); color: var(--banner-text); }
+.banner > svg { flex: none; margin-top: 1px; color: var(--attn-icon); }
+.banner-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; overflow-wrap: anywhere; }
+.banner-title { font-weight: var(--fw-heavy); color: var(--banner-title); }
+.banner-link { align-self: center; flex: none; display: inline-flex; align-items: center; gap: 4px; padding: 0; font: inherit; font-weight: var(--fw-heavy); white-space: nowrap; color: var(--link); text-decoration: none; background: none; border: 0; cursor: pointer; }
+.banner-link:hover { text-decoration: underline; }
+.banner.neutral { border-color: var(--ink); background: var(--paper-2); color: var(--text-2); }
+.banner.neutral .banner-title { color: var(--text); }
+.banner.neutral > svg { color: var(--text-2); }
+.banner.danger { border-color: var(--bad); background: var(--bad-wash); color: var(--text); }
+.banner.danger .banner-title { color: var(--text); }
+.banner.danger > svg { color: var(--danger-ink); }
+
+/* ---------- The details rail: a heading, label and value rows, a separator ---------- */
+.rail-h { margin: 0; font-size: var(--fs-xs); font-weight: var(--fw-heavy); color: var(--text-2); }
+.rail-dl { margin: 0; display: grid; grid-template-columns: 92px minmax(0, 1fr); gap: 12px; align-items: start; }
+.rail-dl.small { row-gap: 10px; font-size: var(--fs-xs); }
+.rail-dl dt { color: var(--muted); }
+.rail-dl dd { margin: 0; min-width: 0; overflow-wrap: anywhere; }
+.rail-sep { flex: none; height: 0; margin: 0; border: 0; border-top: var(--bw-sm) solid var(--ink); }
+
+/* ---------- List box: rows in one outlined box (criteria, checks, the PRs to pick) ---------- */
+.list-box { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; border: var(--bw-sm) solid var(--ink); border-radius: var(--radius); }
+.list-box > :is(li, label, div, a, button) { display: flex; align-items: center; gap: 12px; margin: 0; padding: 10px 12px; font-weight: inherit; }
+.list-box > :is(li, label, div, a, button) + :is(li, label, div, a, button) { border-top: var(--bw-sm) solid var(--rule-soft); }
+
+/* ---------- A dialog whose body and footer are still the plain frame's (kanban/ui.ts dialog()) ---------- */
+/* They line up with the shell's header until each window builds its own shell. */
+.shell > .body { padding: 18px 20px; }
+.shell > footer { padding: 12px 20px; }

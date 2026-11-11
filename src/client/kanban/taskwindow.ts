@@ -18,7 +18,7 @@ import type { TerminalOptions } from '../ui/terminal';
 import type { KanbanTask } from '../../shared/kanban/types.js';
 import { CloseGuard, planAfterWorkerGone, planTaskWindow, type TaskTab } from './model';
 import { kstore } from './store';
-import { openTaskChanges } from './changesview';
+import { openTaskChanges } from './changeswindow';
 import { openTaskModal, type TaskView } from './taskview';
 
 export interface TaskWindowsOptions {

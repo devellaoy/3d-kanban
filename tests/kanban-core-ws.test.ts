@@ -733,7 +733,7 @@ test('an edit links the uploads its new description links; an upload whose link 
 });
 
 test('the comment, answer and request-changes boxes and the edit dialog upload unattached: the message or the save links what the text still has', () => {
-  for (const f of ['taskview.ts', 'create.ts']) {
+  for (const f of ['taskview.ts', 'taskconv.ts', 'taskplan.ts', 'taskwaiting.ts', 'create.ts']) {
     const src = readFileSync(path.join('src', 'client', 'kanban', f), 'utf8');
     assert.doesNotMatch(src, /attachBox\([^)]*taskId/, `${f}: an upload attached to the task at once would stay its file when the link is taken out of the text`);
   }

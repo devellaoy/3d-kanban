@@ -17,6 +17,7 @@ import {
 import { projectDefaults, REVIEW_DEFAULTS } from './defaults';
 import { commentLanguageField, publicLanguageField } from './language-field';
 import { APPROVAL_NAMES, effortName, toolName } from './labels';
+import { kstore } from './store';
 import { checkbox, field, numberInput, numberValue, select, textInput } from './ui';
 
 export const PERMISSION_NAMES: Record<ImplementPermission, string> = { bypass: 'without permission prompts', 'workspace-write': 'in Codex’s workspace sandbox' };
@@ -95,4 +96,14 @@ export function thisProjectFields(ps: ProjectSettings, s: KanbanSettings): { el:
       };
     },
   };
+}
+
+/** A save button that says whether you may. */
+export function saveButton(label = 'Save'): HTMLButtonElement {
+  const b = h('button.btn.primary', { type: 'button' }, label) as HTMLButtonElement;
+  if (!kstore.me.admin) {
+    b.disabled = true;
+    b.title = 'Only admins can change this';
+  }
+  return b;
 }

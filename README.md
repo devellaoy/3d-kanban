@@ -109,9 +109,9 @@ curl -fsSL https://raw.githubusercontent.com/devellaoy/3d-kanban/main/deploy/pro
   In its conversation the implementer's and the reviewer's comments have colours of their own, and
   URLs and (for admins) file paths are links: a path opens in VS Code on the office's machine.
   A bar along the bottom has the floor's workers from outside the kanban as tabs (a tab opens the
-  worker's terminal window, its ✕ sends the worker home), with **✨ New task** to hire one and **🐚 New shell** for a shell
+  worker's terminal window, its close button sends the worker home), with **New worker** to hire one and **New shell** for a shell
   ([docs/kanban.md](docs/kanban.md#opening-it)).
-- **🧩 VSCode**: the task view's head on the kanban and every worker's terminal window (3D office and
+- **VS Code**: the task view's head on the kanban and every worker's terminal window (3D office and
   `/lite`) open the task's or worker's folder in VS Code on the office's machine: its worktree, or all
   its repositories' worktrees in one window. Admins only. VS Code must be installed there: on macOS in
   `/Applications` is enough, elsewhere `code` must be on the PATH ([docs/kanban.md](docs/kanban.md#the-task-window)).
@@ -121,16 +121,16 @@ curl -fsSL https://raw.githubusercontent.com/devellaoy/3d-kanban/main/deploy/pro
   In the office, a task worker's card says `🗂️ #14 · …`; **E** opens its window with a **🗂️ Task** tab
   (the task's conversation, plan and runs), **C** its task's Changes window (every repository, per
   commit too, the same view as the kanban's Changes tab), **P** is a message on its task while it's in progress,
-  waiting or in review, **R** retries it, and a hire, or the 📋 Task queue's form, can tick **🗂️ Run as a kanban task** ([controls](docs/controls.md#at-a-kanban-tasks-worker),
+  waiting or in review, **R** retries it, and a hire, or the 📋 Task queue's form, can tick **Run as a kanban task** ([controls](docs/controls.md#at-a-kanban-tasks-worker),
   [the contract](docs/kanban-coupling.md)).
 - **Restarts carry on**: stop the office (Ctrl+C) in the middle of a turn and start it again, and the workers that were
   working pick up their own session with a *continue*, one after another, by themselves, three seconds apart (a kanban run's are five seconds apart per project); ⚙️ Settings can turn that off, for admins
   (then they wake up and wait for a prompt). A task's worker is resumed by the kanban instead ([docs/features.md](docs/features.md#survives-restarts)).
-- **Idle agents close**: a kanban task's agent left untouched in Review, Waiting or Done is closed after 2 hours (⚙️ Settings → 🗂️ Kanban, 0 never); opening the task or its worker window carries on the same session by itself ([docs/kanban.md](docs/kanban.md#idle-agents-close)). A worker window left open keeps it awake.
+- **Idle agents close**: a kanban task's agent left untouched in Review, Waiting or Done is closed after 2 hours (⚙️ Settings → Kanban, 0 never); opening the task or its worker window carries on the same session by itself ([docs/kanban.md](docs/kanban.md#idle-agents-close)). A worker window left open keeps it awake.
 - **Projects with several repositories**: a floor is a project, and a task gets a worktree of each of
   its repositories on one branch, cut from each repository's configured base branch (else the branch
-  its checkout is on). The issues and PR boards show every repository; the PR board (E) has a tab per repository, and **All / 👤 Mine / 👀 To review** beside them shows only your own pull requests (yours on GitHub, or opened from your kanban tasks and workers) or the ones waiting on your review. An admin can rename a project
-  in ⚙️ Settings → 📁 Projects; its id, folder and repository stay.
+  its checkout is on). The issues and PR boards show every repository; the PR board (E) has a tab per repository, and **All / Mine / To review** beside them shows only your own pull requests (yours on GitHub, or opened from your kanban tasks and workers) or the ones waiting on your review. An admin can rename a project
+  in ⚙️ Settings → Projects; its id, folder and repository stay.
 - **Repositories on Azure DevOps and Bitbucket**, not only GitHub: the office reads each repository's host
   from its remote, follows their pull requests on the PR board and on kanban tasks (to merged), opens
   them with a token of yours (☰ → 🔐 Your sign-ins), and its agents use `office-pr` there instead of `gh`.
@@ -145,7 +145,7 @@ curl -fsSL https://raw.githubusercontent.com/devellaoy/3d-kanban/main/deploy/pro
   their output and round notes, Markdown rendered or raw, to copy or download. A finished meeting's output can
   be handed on with **🗂️ Make a kanban task** or **🤖 Hand to a worker** (in the meeting window and in the
   earlier meetings view): the hire dialog opens with the output as the prompt, and the meeting remembers where it went.
-- **Languages**: ⚙️ Settings → 🤖 Workers sets the **conversation language** every agent talks to you in and
+- **Languages**: ⚙️ Settings → Workers sets the **conversation language** every agent talks to you in and
   the **public language** issues, pull requests, commits and other texts that leave the office are written in;
   a project can pick its own public language in ⚙️ Project, and the **code comment language** (English by
   default; per project, or `The project's own conventions` to opt out). Kanban runs, plain workers, queue tasks,
@@ -173,12 +173,12 @@ curl -fsSL https://raw.githubusercontent.com/devellaoy/3d-kanban/main/deploy/pro
 - **God mode**: **Ctrl + N** (or **Alt + N**, since Chrome and Edge keep Ctrl + N for a new window) and you fly
   through walls and floors where you look, Space up, Shift faster; again to land ([controls](docs/controls.md)).
 - **Lighter traffic**: the city's streets have two cars each way instead of seven a street.
-- **Mouse sensitivity**: ⚙️ Settings → 🧍 You, 25–200% of the usual look speed, kept in your browser.
-- **Indoor lights**: ⚙️ Settings → 🧍 You, 0–200% of the office lamps' usual brightness, kept in your browser.
+- **Mouse sensitivity**: ⚙️ Settings → You, 25–200% of the usual look speed, kept in your browser.
+- **Indoor lights**: ⚙️ Settings → You, 0–200% of the office lamps' usual brightness, kept in your browser.
   It changes the light as you drag. The wall switches still work on top of it, and the daylight is left as it is.
-- **A volume for each kind of sound**: ⚙️ Settings → 🔊 Sound & voice → *Each kind of sound*: background noise, rain, jumps & thumps, footsteps, typing & paper, other effects, and dings & alerts, each 0–100% with its own mute, under the office sounds volume and kept in your browser. Rain indoors and the jump landing are quieter than upstream's ([features](docs/features.md)).
+- **A volume for each kind of sound**: ⚙️ Settings → Sound & voice → *Each kind of sound*: background noise, rain, jumps & thumps, footsteps, typing & paper, other effects, and dings & alerts, each 0–100% with its own mute, under the office sounds volume and kept in your browser. Rain indoors and the jump landing are quieter than upstream's ([features](docs/features.md)).
 - **No rain or lightning by default**: the office's weather is sun, clouds, fog and winter snow; ⚙️ Settings → Building → Outside has **Rain** and **Lightning** switches (both off by default, Lightning brings the rain) that let them back for everyone ([features](docs/features.md)).
-- **Themes**: ⚙️ Settings → 🧍 You → Theme: **Office** (the default), **Dark** (near-black, compact type, tight corners) or **Glossy** (translucent glass and soft colour in the manner of modern iOS), kept per browser. They restyle the windows, the HUD, the kanban and the 2D view, not the 3D office ([features](docs/features.md)).
+- **Themes**: ⚙️ Settings → You → Theme: **Office** (the default), **Dark** (near-black, compact type, tight corners), **Glossy** (translucent glass and soft colour in the manner of modern iOS), **Daylight** (white cards on a grey page, hairlines and one blue accent) or **Midnight** (Daylight's dark twin), kept per browser. They restyle the windows, the HUD, the kanban and the 2D view, not the 3D office ([features](docs/features.md)).
 - **Light indoors from the lamps and the windows**: inside the office the room is lit only by its own lamps
   (each one lights the area round it, the wall switches turn them off and on, and they come up as it gets
   dark) and by the daylight or moonlight through the windows and the balcony's glass doors, with a little

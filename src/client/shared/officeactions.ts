@@ -1,5 +1,5 @@
 // The 2D view's and the kanban page's way to put a worker on something: a new one at a free desk, a
-// prompt for one that's here, the meeting room, and the BoardActions the 📌 Issues and 🔀 Pull Requests
+// prompt for one that's here, the meeting room, and the BoardActions the Issues and Pull Requests
 // boards call. Both pages are in the office without standing anywhere in it, so "go to its desk" is its
 // terminal instead (`openWorker`).
 
@@ -36,7 +36,7 @@ export function officeActions(net: Net, openWorker: (id: string) => void) {
   function officeIsFull(): boolean {
     const m = store.machine;
     if (!officeFull(m)) return false;
-    toast(`🚫 The office is at its limit of ${m.limit} worker${m.limit === 1 ? '' : 's'} — send one home before hiring another`, 'warn');
+    toast(`The office is at its limit of ${m.limit} worker${m.limit === 1 ? '' : 's'} — send one home before hiring another`, 'warn');
     return true;
   }
 
@@ -54,11 +54,11 @@ export function officeActions(net: Net, openWorker: (id: string) => void) {
     const desk = deskForNew();
     if (!desk || !store.project) return;
     openPrompt({
-      title: `✨ Hire a worker at ${DESK_BY_ID.get(desk)!.label}${floorName ? ` · ${floorName}` : ''}`,
+      title: `Hire a worker at ${DESK_BY_ID.get(desk)!.label}${floorName ? ` · ${floorName}` : ''}`,
       subtitle: 'You can start with an empty prompt and send work later.',
       warning: pressureNote(store.machine),
       placeholder: 'Optional first task…',
-      submitLabel: 'Hire & start',
+      submitLabel: 'Hire and start',
       allowEmpty: true,
       providerOption: true,
       worktreeOption: !!store.project.branch,
@@ -109,8 +109,8 @@ export function officeActions(net: Net, openWorker: (id: string) => void) {
   function boardActions(): BoardActions {
     return {
       queue: (prompt, title, issue, provider, model, effort) => net.send({ t: 'queue.add', prompt, title, issue, provider, model, effort }),
-      assign: (prompt, title) => sendToWorker(`🤖 ${title}`, { initial: prompt }),
-      ask: (context, title) => sendToWorker(`✍️ ${title}`, { context }),
+      assign: (prompt, title) => sendToWorker(title, { initial: prompt }),
+      ask: (context, title) => sendToWorker(title, { context }),
       // There's no desk to walk to from here: its terminal instead.
       goToDesk: (deskId) => {
         const w = store.workerAtDesk(deskId);

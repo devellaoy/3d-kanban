@@ -3,6 +3,7 @@
 // contract block — what the engine appends and reads back — is shown under it, read-only.
 
 import { h } from '../ui/dom';
+import { withIcon } from '../ui/icons';
 import type { Net } from '../net';
 import { store } from '../state';
 import type { PromptId } from '../../shared/prompts';
@@ -33,9 +34,9 @@ export function promptScope(net: Net, changed: () => void): PromptScope {
   let current: PromptId | null = null;
   const sel = h('select', { 'aria-label': 'Where this wording applies' }) as HTMLSelectElement;
   const state = h('span');
-  const reset = h('button.btn.small', { type: 'button', title: 'Drop this project’s text and use the office’s again' }, '↺ Back to the office’s') as HTMLButtonElement;
+  const reset = h('button.btn.small', { type: 'button', title: 'Drop this project’s text and use the office’s again' }, ...withIcon('undo-2', 'Back to the office’s')) as HTMLButtonElement;
   const contract = h('details.kb-scope-contract');
-  const bar = h('div.kb-scope-bar', {}, h('span', {}, '🗂️ For'), sel, state, reset);
+  const bar = h('div.kb-scope-bar', {}, h('span', {}, 'For'), sel, state, reset);
   const el = h('div.kb-scope', {}, bar, contract);
 
   const projectText = (id: PromptId) => (project && isKanbanPromptId(id) ? settings?.projects[project]?.prompts[id] : undefined);
@@ -44,7 +45,7 @@ export function promptScope(net: Net, changed: () => void): PromptScope {
   const optionIds = () => [...sel.options].slice(1).map((o) => o.value);
   const paintOptions = () => {
     const floors = store.floors.filter((f) => !f.cloning);
-    sel.replaceChildren(h('option', { value: '' }, '🏢 The whole office'), ...floors.map((f) => h('option', { value: f.id }, f.name)));
+    sel.replaceChildren(h('option', { value: '' }, 'The whole office'), ...floors.map((f) => h('option', { value: f.id }, f.name)));
     if (!floors.some((f) => f.id === project)) project = '';
     sel.value = project;
   };
@@ -65,7 +66,7 @@ export function promptScope(net: Net, changed: () => void): PromptScope {
       reset.classList.toggle('hidden', !project || src.scope !== 'project' || !store.me.admin);
       const c = PROMPT_CONTRACT[id];
       contract.classList.toggle('hidden', !c);
-      contract.replaceChildren(...(c ? [h('summary', {}, '🔒 Added by the office after it (can’t be changed)'), h('pre', { 'aria-readonly': 'true' }, KANBAN_CONTRACTS[c])] : []));
+      contract.replaceChildren(...(c ? [h('summary', {}, ...withIcon('lock', 'Added by the office after it (can’t be changed)')), h('pre', { 'aria-readonly': 'true' }, KANBAN_CONTRACTS[c])] : []));
     },
     save(id, text) {
       if (!project || !isKanbanPromptId(id)) return false;

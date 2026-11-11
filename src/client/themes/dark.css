@@ -180,6 +180,54 @@
   --fs-2xs-plus: 12px;
   --fs-avatar: 10px;
 
+  /* ---- Controls, statuses and "needs you" (the kit: styles/kit-*.css) ---- */
+  --line-control: rgba(255, 255, 255, .09);   /* the border of a control (a button, an input, a select); a step stronger than --ink where the look has hairlines */
+  --chip-edge: rgba(255, 255, 255, .09);   /* the line round a pill, badge or chip: --ink in the outlined looks, transparent in the flat ones */
+  --radius-chip: 999px;   /* the corner of a chip and a phase badge: a pill here, a few pixels in the flat looks */
+  --text-2: #c4c4c4;   /* secondary text a step above --muted: a quiet button, a tab, a section label */
+  --text-neutral: #e8e8e8;   /* text on a neutral soft fill: a count badge, a draft pill */
+  --accent-soft-ink: #e8e8e8;   /* text on --accent-soft: an active filter chip */
+  --accent-edge: rgba(255, 255, 255, .22);   /* the border of an active filter chip or a picked choice chip */
+  /* A task status: the solid colour is its column line and icon, -soft and -ink its pill. */
+  --st-todo: #d4b45a; --st-todo-soft: #24221a; --st-todo-ink: #e8e8e8;
+  --st-progress: #60a5fa; --st-progress-soft: #1a222e; --st-progress-ink: #e8e8e8;
+  --st-waiting: #ff8fa3; --st-waiting-soft: #2a1d22; --st-waiting-ink: #e8e8e8;
+  --st-review: #4ade80; --st-review-soft: #1b261e; --st-review-ink: #e8e8e8;
+  --st-hold: #e0a458; --st-hold-soft: #2a231b; --st-hold-ink: #e8e8e8;
+  --st-done: #a0a0a0; --st-done-soft: #1e2120; --st-done-ink: #e8e8e8;
+  /* A run phase badge, and a pull request state. */
+  --ph-plan-soft: #3d2642; --ph-plan-ink: #e8e8e8;
+  --ph-implement-soft: #1a222e; --ph-implement-ink: #e8e8e8;
+  --ph-review-soft: #1b261e; --ph-review-ink: #e8e8e8;
+  --ph-fix-soft: #45311e; --ph-fix-ink: #e8e8e8;
+  --ph-pr-soft: #243049; --ph-pr-ink: #e8e8e8;
+  --pr-open-soft: #1d3b2f; --pr-open-ink: #e8e8e8;
+  --pr-draft-soft: #262626; --pr-draft-ink: #e8e8e8;
+  --pr-merged-soft: #33284d; --pr-merged-ink: #e8e8e8;
+  --pr-closed-soft: #472a30; --pr-closed-ink: #e8e8e8;
+  --attn-edge: #f87171;   /* "needs you": the border of a card that waits for you */
+  --attn-soft: #472a30;   /* ... its note and the "needs you" pill */
+  --attn-ink: #e8e8e8;   /* ... the text on --attn-soft */
+  --attn-icon: #ff8fa3;   /* ... its icon on a plain surface */
+  --banner-edge: rgba(255, 255, 255, .09);   /* the banner on top of a task that waits: its border, */
+  --banner-bg: #2a1e22;   /* ... background, */
+  --banner-title: #e8e8e8;   /* ... title */
+  --banner-text: #e8e8e8;   /* ... and text */
+  --run-dot: #19c37d;   /* the dot of a task whose agent is running */
+  --run-halo: rgba(25, 195, 125, .7);   /* ... and the halo round it */
+  --pin-size: 8px;   /* the pin on a card's top edge (0: no pin) */
+  --page-bg: #0f0f0f;   /* the page under the kanban board (a look may lay a wash over it) */
+  --bar-bg: #121212;   /* a window's header and footer, and the board's top row */
+  --col-bg: #141414;   /* a board column's surface (transparent: the cards stand on the page) */
+  --col-edge: rgba(255, 255, 255, .09);   /* ... its border */
+  --col-shadow: 0 1px 2px rgba(0, 0, 0, .4);   /* ... its shadow */
+  --col-pad: 10px;   /* ... and the room between its edge and its cards */
+  --note-card-pink: #2a1e22;   /* a waiting task's card */
+  --chip-ticket: #3d3420;   /* a ticket's chip */
+  --chip-type: #1f3a3d;   /* a type chip (Investigate) */
+  --board-bg: #d8a86a;   /* the issue and pull request boards' surface: a cork board, or the page */
+  --board-dot: rgba(0, 0, 0, .08);   /* ... and its dots */
+
   /* ---- Glass ---- */
   --glass-blur: none;
 }
@@ -192,8 +240,8 @@
 :root[data-theme="dark"] body { line-height: 1.5; -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; }
 
 /* Headings and labels in sentence case, without the wide uppercase tracking of the default look. */
-:root[data-theme="dark"] :is(.kb-col-head, .modal legend, .kb-set legend, .kb-tv .kb-detail-body h4, .kb-ia-head h4, .kb-tv .kb-run-status,
-  .lite-floor-label, .lite-h, .menu-sec, .side h3, .team h4, .kb-pr-picker h5) { text-transform: none; letter-spacing: 0; }
+:root[data-theme="dark"] :is(.kb-tv .kb-run-status,
+  .lite-floor-label, .lite-h, .menu-sec, .side h3, .team h4) { text-transform: none; letter-spacing: 0; }
 :root[data-theme="dark"] .modal header h2 { letter-spacing: -.01em; }
 
 /* The primary button lightens on hover rather than turning the field colour. */
@@ -209,19 +257,14 @@
 :root[data-theme="dark"] .menu-toggle[aria-checked=true] .switch::after { background: #fff; }
 
 /* A near-black page under the kanban and the 2D view, the columns a step lighter. */
-:root[data-theme="dark"] body.kanban,
 :root[data-theme="dark"] body.lite { background: var(--bg); }
-:root[data-theme="dark"] .kb-col { background: #141414; }
-:root[data-theme="dark"] .kb-col-head { font-weight: var(--fw-bold); }
-:root[data-theme="dark"] .kb-col-head { border-radius: calc(var(--radius) - var(--bw)) calc(var(--radius) - var(--bw)) 0 0; }
 
 /* The bars' controls: at least 36px tall. */
-:root[data-theme="dark"] .kb-bar .btn.small,
-:root[data-theme="dark"] .kb-filters select { height: 36px; }
+:root[data-theme="dark"] :is(.kb-bar, .kb-wbar) :is(.btn, .filter-chip, .kb-search, .kb-wtab) { min-height: 36px; }
+:root[data-theme="dark"] .kb-bar .icon-btn { min-width: 36px; }
 
 /* Room for the small controls' 36px touch targets (--hit-min, styles/base.css): each one gets the free
    space around it that its invisible hit area grows into, so the target is 36px and lands on nothing else. */
-:root[data-theme="dark"] .kb-card-top { margin-bottom: 8px; }
 :root[data-theme="dark"] .kb-attachments { gap: 8px; }
 :root[data-theme="dark"] .kb-attachment { min-height: 36px; gap: 8px; padding: 0 6px 0 12px; }
 :root[data-theme="dark"] .kb-attachment.busy { padding-right: 12px; }

@@ -5,6 +5,8 @@ import { store } from '../state';
 import { findWorker, floorOfWorker, projectOf } from '../state/workers';
 import { TERM_THEME } from './termtheme';
 import { h, openModal, STATUS_LABEL, timeAgo, toast, type Modal } from './dom';
+import { btn } from './kit';
+import { shellHead } from './shell';
 import { usageLabel, usageTitle } from './usage';
 import type { ServerMsg, WorkerInfo } from '../../shared/protocol';
 import { isAsleep } from '../../shared/status';
@@ -116,26 +118,29 @@ export function openTerminal(net: Net, workerId: string, onChanges?: () => void,
   if (!info) return;
 
   const dot = h('span.dot', { style: `background:${info.color}` });
-  const title = h('h2', {}, info.kind === 'agent' ? `${providerLabel(info.provider, projectOf(workerId))} · ${info.name}` : info.name);
   const pill = h('span.pill', {}, '');
   const cost = h('span.cost', {});
   const viewers = h('div.viewers', {});
-  const modelsBtn = h('button.btn', {
-    type: 'button',
-    title: 'OpenCode models: Ctrl+X then M (use /models if custom bindings override it)',
-    'aria-label': 'OpenCode models',
-  }, '🧠 Models');
+  const modelsBtn = btn('Models', {
+    kind: 'quiet',
+    size: 'sm',
+    icon: 'brain',
+    attrs: { title: 'OpenCode models: Ctrl+X then M (use /models if custom bindings override it)', 'aria-label': 'OpenCode models' },
+  });
   const typed = h('span.typed', {});
   // The Esc key leaves the terminal, so this is how Esc reaches the program: to close a menu like
   // Claude's /skills, or to interrupt it. Ctrl+[ does the same from the keyboard.
-  const escBtn = h('button.btn', {
-    type: 'button',
-    title: 'Send Esc to the terminal (Ctrl+[): closes a menu like /skills, or interrupts the agent. The Esc key on its own leaves the terminal',
-    'aria-label': 'Send Esc to the terminal',
-  }, '⎋ Esc');
-  const changesBtn = h('button.btn', { type: 'button', title: 'What this worker changed: files, diff, commit, open a PR (C at the desk)' }, '🌿 Changes');
-  const closeBtn = h('button.btn.close', { title: 'Leave terminal (Esc or Ctrl+]) · ⎋ Esc or Ctrl+[ sends Esc to the terminal', 'aria-label': 'Close' }, '✕');
-  const host = h('div.term-host', { 'data-drop': '📎 Drop screenshots or files here to put them in the terminal' });
+  const escBtn = btn('Esc', {
+    kind: 'quiet',
+    size: 'sm',
+    icon: 'keyboard',
+    attrs: {
+      title: 'Send Esc to the terminal (Ctrl+[): closes a menu like /skills, or interrupts the agent. The Esc key on its own leaves the terminal',
+      'aria-label': 'Send Esc to the terminal',
+    },
+  });
+  const changesBtn = btn('Changes', { kind: 'quiet', size: 'sm', icon: 'file-diff', attrs: { title: 'What this worker changed: files, diff, commit, open a PR (C at the desk)' } });
+  const host = h('div.term-host', { 'data-drop': 'Drop screenshots or files here to put them in the terminal' });
   const keys = h('div.term-keys', { role: 'group', 'aria-label': 'Keys' });
   const say = h('input', { type: 'text', placeholder: 'Reply, or tell it what to do next…', 'aria-label': 'Prompt', enterkeyhint: 'send', autocomplete: 'off' }) as HTMLInputElement;
   const sayBtn = h('button.btn.primary', { type: 'submit' }, 'Send');
@@ -155,7 +160,13 @@ export function openTerminal(net: Net, workerId: string, onChanges?: () => void,
     },
   });
   // The keypad has an Esc of its own.
-  const el = h('div.modal.term', { role: 'dialog', 'aria-label': `${info.name} terminal` }, h('header', {}, dot, title, pill, cost, viewers, typed, modelsBtn, keypad ? null : escBtn, onChanges ? changesBtn : null, closeBtn), tabs.bar, host, tabs.pages, keypad);
+  const { head, close: closeBtn, title } = shellHead({
+    icon: 'square-terminal',
+    title: info.kind === 'agent' ? `${providerLabel(info.provider, projectOf(workerId))} · ${info.name}` : info.name,
+    tools: [dot, pill, cost, viewers, typed, modelsBtn, keypad ? null : escBtn, onChanges ? changesBtn : null],
+  });
+  closeBtn.title = 'Leave terminal (Esc or Ctrl+]) · Esc or Ctrl+[ sends Esc to the terminal';
+  const el = h('div.modal.shell.term', { role: 'dialog', 'aria-modal': 'true', 'aria-label': `${info.name} terminal` }, head, tabs.bar, host, tabs.pages, keypad);
 
   const { term, fit } = makeXterm({ keypad: opts.keypad });
 
@@ -206,10 +217,10 @@ export function openTerminal(net: Net, workerId: string, onChanges?: () => void,
     const typists = people.filter((v) => v.typing && !v.you).map((v) => v.name);
     typed.classList.toggle('now', typists.length > 0);
     if (typists.length) {
-      typed.textContent = `✍️ ${typingLine(typists)}`;
+      typed.textContent = typingLine(typists);
       typed.title = '';
     } else {
-      typed.textContent = w.lastInput ? `⌨️ ${w.lastInput.by}` : '';
+      typed.textContent = w.lastInput ? `Last typed: ${w.lastInput.by}` : '';
       typed.title = w.lastInput ? `${w.lastInput.by} typed here last, ${timeAgo(w.lastInput.at)}` : '';
     }
   };
@@ -248,9 +259,9 @@ export function openTerminal(net: Net, workerId: string, onChanges?: () => void,
       modal.close();
       return;
     }
-    title.textContent = [w.kind === 'agent' ? providerLabel(w.provider, projectOf(workerId)) : null, w.name, w.title, w.worktree && `🌿 ${w.worktree.branch}`, w.repos?.length && `🗂️ ${[w.worktree?.path.split(/[\\/]/).pop(), ...w.repos.map((r) => r.name)].join(' + ')}`].filter(Boolean).join(' · ');
+    title.textContent = [w.kind === 'agent' ? providerLabel(w.provider, projectOf(workerId)) : null, w.name, w.title, w.worktree && w.worktree.branch, w.repos?.length && `${[w.worktree?.path.split(/[\\/]/).pop(), ...w.repos.map((r) => r.name)].join(' + ')}`].filter(Boolean).join(' · ');
     pill.className = `pill ${w.status}`;
-    pill.textContent = w.dozing && w.status === 'exited' ? '💤 closed while idle' : STATUS_LABEL[w.status] ?? w.status;
+    pill.textContent = w.dozing && w.status === 'exited' ? 'Closed while idle' : STATUS_LABEL[w.status] ?? w.status;
     pill.title = w.dozing && w.status === 'exited' ? 'Closed after sitting idle; it opens again where it left off.' : '';
     const workerProvider = w.kind === 'agent' ? resolvedProvider(w.provider, projectOf(workerId)) : undefined;
     const usageState = w.kind === 'agent' ? providerUsageState(w.provider, projectOf(workerId), w.usage) : undefined;
@@ -335,7 +346,7 @@ export function openTerminal(net: Net, workerId: string, onChanges?: () => void,
     doing: `💻 in ${info.name}'s terminal`,
     onClose: (byEsc) => {
       // Leaving with Esc while the program wanted one (you were in /skills, say): say how to send it one.
-      if (byEsc && ready && screenMentionsEsc(term)) toast(`Esc left the terminal. To send ${findWorker(workerId)?.name ?? info.name} an Esc (to close a menu), use ⎋ Esc at the top or Ctrl+[`);
+      if (byEsc && ready && screenMentionsEsc(term)) toast(`Esc left the terminal. To send ${findWorker(workerId)?.name ?? info.name} an Esc (to close a menu), use Esc at the top or Ctrl+[`);
       listeners.delete(onMsg);
       unsub();
       unsubPhone();

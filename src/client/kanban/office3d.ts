@@ -9,6 +9,7 @@ import { cardLabel } from '../../shared/kanban/issuecard.js';
 import type { Net } from '../net';
 import { store } from '../state';
 import { h, toast } from '../ui/dom';
+import { withIcon } from '../ui/icons';
 import { openPrompt } from '../ui/prompt';
 import { kanbanApi } from './api';
 import type { KanbanOption } from './hireform';
@@ -43,13 +44,13 @@ export function promptTaskWorker(net: Net, w: WorkerInfo, openTerminal: () => vo
   if (kind === 'plain') return false;
   const k = kanbanOf(w)!;
   if (kind === 'terminal') {
-    toast(`🔍 ${w.name} is reviewing task #${k.taskId}: anything for it goes into its terminal`);
+    toast(`${w.name} is reviewing task #${k.taskId}: anything for it goes into its terminal`);
     openTerminal();
     return true;
   }
   officeCss();
   openPrompt({
-    title: `💬 Message task #${k.taskId} (continues the kanban process)`,
+    title: `Message task #${k.taskId} (continues the kanban process)`,
     subtitle: `It goes on the task’s conversation, and ${w.name} carries on with it${w.status === 'working' ? ' once its turn is done' : ''}.`,
     placeholder: 'A change, an answer, what to do next…',
     submitLabel: 'Send to the task',
@@ -68,18 +69,18 @@ export function cardToTaskWorker(net: Net, w: WorkerInfo, card: CarriedIssue, pr
   if (!k) return false;
   const name = cardLabel({ number: card.issue, key: card.key }, store.currentFloor()?.repo);
   if (k.role === 'reviewer') {
-    toast(`🔍 ${w.name} is reviewing task #${k.taskId}: hand ${name} to someone else`, 'warn');
+    toast(`${w.name} is reviewing task #${k.taskId}: hand ${name} to someone else`, 'warn');
     return true;
   }
   kanbanApi(net)
     .request<Detail>({ t: 'kanban.task.get', id: k.taskId, comments: 0 })
     .then((d) => {
-      if (!cardIsTasks(d.task.ticket, store.currentFloor()?.repo, card.issue, card.key)) return void toast(`🗂️ ${w.name} is on task #${k.taskId}, not ${name}: take the card to an empty desk (P makes it a kanban task)`, 'warn');
+      if (!cardIsTasks(d.task.ticket, store.currentFloor()?.repo, card.issue, card.key)) return void toast(`${w.name} is on task #${k.taskId}, not ${name}: take the card to an empty desk (P makes it a kanban task)`, 'warn');
       // A message on the task while the engine carries it; out of the process, upstream's prompt.
       promptWorker(net, w.id, prompt, takesMessage(d.task.status), card.issue, card.key);
       done();
     })
-    .catch((err: Error) => toast(`🗂️ ${err.message}`, 'error'));
+    .catch((err: Error) => toast(`${err.message}`, 'error'));
   return true;
 }
 
@@ -89,8 +90,8 @@ export function retryTask(net: Net, w: WorkerInfo): boolean {
   const id = kanbanOf(w)!.taskId;
   kanbanApi(net)
     .request({ t: 'kanban.task.retry', id })
-    .then(() => toast(`🗂️ Retrying task #${id}`))
-    .catch((err: Error) => toast(`🗂️ ${err.message}`, 'error'));
+    .then(() => toast(`Retrying task #${id}`))
+    .catch((err: Error) => toast(`${err.message}`, 'error'));
   return true;
 }
 
@@ -98,7 +99,7 @@ export function retryTask(net: Net, w: WorkerInfo): boolean {
 export function hireOption(net: Net, deskId: () => string | undefined, deskLabel: string): KanbanOption | undefined {
   const project = store.floor;
   if (!project || !store.project) return undefined;
-  return { net, project, deskId, deskLabel, title: `🗂️ New kanban task at ${deskLabel}` };
+  return { net, project, deskId, deskLabel, title: `New kanban task at ${deskLabel}` };
 }
 
 /**
@@ -180,11 +181,11 @@ export function kanbanQueueSection(net: Net, tasks: readonly KanbanTaskCard[] = 
   const workers = [...store.workers.values()].filter((w) => w.kanban).sort((a, b) => a.kanban!.taskId - b.kanban!.taskId || a.id.localeCompare(b.id));
   const waiting = queuedKanbanTasks(tasks, new Set(workers.map((w) => w.kanban!.taskId)));
   if (!workers.length && !waiting.length) return null;
-  const open = (id: number) => h('button.btn', { type: 'button', onclick: () => void import('./taskview').then((m) => m.openTaskWindow(net, id)) }, '🗂️ Task');
+  const open = (id: number) => h('button.btn', { type: 'button', onclick: () => void import('./taskview').then((m) => m.openTaskWindow(net, id)) }, ...withIcon('square-kanban', 'Task'));
   return h(
     'div',
     {},
-    h('h4', {}, '🗂️ Kanban on this floor', h('span.count', {}, String(workers.length + waiting.length)), h('a', { href: kanbanUrl(store.floor), style: 'margin-left:auto;font-size:13px' }, 'Open the kanban')),
+    h('h4.queue-kanban-head', {}, ...withIcon('square-kanban', 'Kanban on this floor'), h('span.count', {}, String(workers.length + waiting.length)), h('a.queue-kanban-link', { href: kanbanUrl(store.floor) }, 'Open the kanban')),
     h(
       'ul.queue-list',
       {},
@@ -193,7 +194,7 @@ export function kanbanQueueSection(net: Net, tasks: readonly KanbanTaskCard[] = 
         h(
           'li',
           { class: 'queued' },
-          h('div.queue-main', {}, h('div.queue-title', {}, `🗂️ #${t.id} ${t.title}`), h('div.queue-meta', {}, `⏳ waiting for a desk or a slot · ${STATUS_TEXT[t.status]} · by ${t.createdBy}`)),
+          h('div.queue-main', {}, h('div.queue-title', {}, `#${t.id} ${t.title}`), h('div.queue-meta', {}, `waiting for a desk or a slot · ${STATUS_TEXT[t.status]} · by ${t.createdBy}`)),
           h('div.queue-actions', {}, open(t.id)),
         ),
       ),

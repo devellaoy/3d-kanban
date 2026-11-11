@@ -10,7 +10,7 @@
 .codex-limits .dial small { font-size: .8em; }
 .codex-limits .dial.near { --fill: var(--warn); }
 .codex-limits .dial.over { --fill: var(--bad); }
-.codex-limits .dial.over b { color: var(--bad); }
+.codex-limits .dial.over b { color: var(--danger-ink); }
 .codex-limits .cx-text { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
 .codex-limits .cx-text .reset { margin-left: 0; }
 .codex-limits .cx-whose { font-size: var(--fs-2xs); }

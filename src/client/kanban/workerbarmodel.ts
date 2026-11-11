@@ -26,10 +26,10 @@ export function tabName(w: Pick<WorkerInfo, 'name' | 'task'>): string {
   return chars.length > TAB_NAME_MAX ? `${chars.slice(0, TAB_NAME_MAX - 3).join('').trimEnd()}...` : chars.join('');
 }
 
-/** A tab's tooltip: the name, then what it's on (when it is on something), and 🐚 shell for a shell. */
+/** A tab's tooltip: the name, then what it's on (when it is on something), and "shell" for a shell. */
 export function tabTitle(w: WorkerInfo): string {
   const work = w.task?.name ?? w.title;
-  return [w.name, work, w.kind === 'shell' ? '🐚 shell' : undefined].filter(Boolean).join(' · ');
+  return [w.name, work, w.kind === 'shell' ? 'shell' : undefined].filter(Boolean).join(' · ');
 }
 
 export type BarState = 'tabs' | 'elsewhere' | 'none';

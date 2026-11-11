@@ -16,7 +16,7 @@
 .mp-item-line { font-size: var(--fs-xs); font-weight: var(--fw-semibold); color: var(--muted); overflow-wrap: anywhere; }
 .mp-item.on .mp-item-line { color: color-mix(in srgb, var(--text-on-strong) 75%, transparent); }
 .mp-none { padding: 10px; margin: 0; font-size: var(--fs-sm); font-weight: var(--fw-semibold); color: var(--muted); }
-.mp-none.bad { color: var(--bad); }
+.mp-none.bad { color: var(--danger-ink); }
 .mp-main { min-width: 0; min-height: 0; overflow: auto; padding: 16px; display: flex; flex-direction: column; gap: 14px; overflow-wrap: anywhere; }
 .mp-main > * { min-width: 0; flex: none; }
 .mp-back { display: none; align-self: flex-start; }

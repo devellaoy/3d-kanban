@@ -28,6 +28,7 @@ document disagree, fix one of them in the same change.
   `meta.get` and `pr.bundle` for projects the owner shared with them, and every other kanban message is refused.
 - Style: upstream's — TypeScript strict, ES modules with `.js` import suffixes, `node:test` tests,
   comments explain *why*, no new UI framework (client uses `h()` / `openModal` from `ui/dom.ts`).
+- The kanban's windows share one look: each is built with `modalShell` / `openShell` (`ui/shell.ts`), tabs come from `tabStrip` (`ui/tabs.ts`), buttons and pills from `ui/kit.ts` and the kit's sheets (`styles/kit-*.css`), icons from `ui/icons.ts` (Lucide; never an emoji, a glyph or a pasted SVG), and colours, lines, corners and heights from the theme's tokens. `tests/kanban-no-emoji.test.ts` holds the emoji count of the kanban's files down. See [Code layout](code-layout.md#stylesheets).
 - Server code never trusts the browser: validate every WS message field (types, lengths, enums).
 - Secrets (Jira tokens, API keys) never leave the server; the browser only sees whether the API key is set, and a Jira connection's id, name and site.
 
@@ -168,7 +169,7 @@ allowed: `todo → in_progress` (= start), `waiting|review → done`, `done → 
   hook's `last_assistant_message` as the fallback. ExitPlanMode isn't held back. A hold (and the wait after a restate, below) ends after
   `backgroundWaitMs` (3 h) without a Stop: a note says so and the run goes on with what its log says.
   **The end of a turn is the agent's own marker** (`engine/turnend.ts`, `TurnEnd.decide`, called from `turnEnded`; the contracts in §4 "Markers" ask for it: `WORK DONE` for implement, fix, resume, pr phases and investigations, `PLAN READY` / `QUESTIONS:` / ExitPlanMode for a plan, the verdict line for a review; `finalMarker` in `engine/markers.ts`). The log heuristics above only tell when a turn certainly is not the end. In order: ExitPlanMode is the plan itself and ends it; with the marker (in `text`, else in `lastText`, never in the text of an earlier turn when the office's prompt is `unheard`) the run **ends whatever the counters say** (a `console.warn` when background work or an unanswered notification is still shown: a dead teammate or a dev server the user asked to leave on must not hold the task); without it, background work out, an `unheard` prompt or an unanswered notification hold the run for the next Stop as before; a usage limit (`looksInterrupted`) or a turn with nothing to read end it on what there is; a typed prompt that took the work's end is restated (below); anything else is an **interim update**: the run is held (`TurnHolds.hold`), the task stays in progress, and nothing is written as a comment (the worker's activity and the card say it waits for the agent's final answer). Codex goes through the same path (a `task_complete` without the marker is an interim update). A held run whose agent has **rested** (`done` or `idle`) for `nudgeIdleMs` (3 min) without firing a single hook (any hook resets the timer, a subagent's or teammate's included, `Live.lastHookAt`), with the log showing nothing running, is **nudged**: the engine types the fixed `KANBAN_CONTRACTS.finish` (`finishPlan`, `finishReview` for those phases; not editable, not a prompt of the editor) with `TurnHolds.retype`, which moves `promptAt` to it like a restate, and reads the answer from that turn. The wait doubles with each nudge (3, 6, 12, 24 min) and at most `maxNudges` (4) are sent; after the last one's turn ends without the marker, or when the nudge can't be typed (no worker, `needs_input`, `exited`), the run ends **unfinished**: its last text is kept as an agent `message` comment (no result, no summary, no review round, no verdict), the run is `failed` and the task waits (`failed`, with Continue and Retry) with "The agent never gave its final answer (WORK DONE): Continue to carry on, or move it on yourself"; the same for the hold timeout with the nudges used up and for a nudge that can't be typed. A plan is the exception: it goes on with its last text under the old rules (`PLAN READY`, `QUESTIONS:`, ≥ 2 `?` → questions, else ready) and a status note. While the log shows work running the nudge waits; `backgroundWaitMs` (3 h) is the cap on that, after which the run is nudged too. The marker line itself is taken off the text before it is stored as a comment or summary (`stripWorkDone`). A teammate whose transcript ends on a `SendMessage` that approves a shutdown (`shutdown_response`) is at rest: its process died before the tool result, which used to count it as working for ever.
-  ⏹️ Stop while held ends the run as stopped and restarts the worker on its session at its desk
+  Stop while held ends the run as stopped and restarts the worker on its session at its desk
   (`workers.relaunch`, no prompt; Continue carries on there), which ends its helper agents (only in-process
   background agents are assumed to end with a restart: Bash `run_in_background` children and teammates in
   other processes may outlive it, which only affects how long Continue waits); once the turn has resumed it is Esc as usual, and a Stop hook heard while a
@@ -234,7 +235,7 @@ allowed: `todo → in_progress` (= start), `waiting|review → done`, `done → 
   a fix after a review, say), or its teammates still at work by their transcripts (they may wake the lead
   again seconds after it rests: the worker stays `done` meanwhile), waits for the worker and its teammates to rest
   (teammates polled every second), at most `busyWaitMs` (10 min), then starts as
-  usual; only after that wait does the run fail with "is busy: wait for its turn to end". ⏹️ Stop during the
+  usual; only after that wait does the run fail with "is busy: wait for its turn to end". Stop during the
   wait cancels it (it would otherwise queue behind the task's chain): the run ends as stopped, nothing typed.
 - The clients show a task's worker as working for as long as its run is running (upstream's `done` of a
   held turn is not shown); see `docs/kanban.md`.
@@ -283,7 +284,7 @@ allowed: `todo → in_progress` (= start), `waiting|review → done`, `done → 
     lacking one resolved through its repoId, number or URL); a fork's PR with the same branch name (`gh pr view
     --json isCrossRepository` must say false). The gh answers are cached (a PR's head repository never changes),
     a failed question isn't repeated for 5 minutes and links nothing meanwhile. Each such link is a `pr.linked`
-    event (`{ repo, number, by: 'branch' }`); the 🔎 Find PRs button (`kanban.pr.find`) links by the task's branch too, but in any state and for any task (done or archived included), as `{ repo, number, by: 'find', who }`, and a PR picked by hand (`kanban.pr.link`) is `by: 'manual'`; taking a link off (`kanban.pr.unlink`) is a `pr.unlinked` event (`{ repo, number, who }`), and the automatic sync does not link that PR to that task again unless a later `pr.linked` event (a Find or `kanban.pr.link`) follows it (the task's newest 500 events are read, only for a PR the sync would link); the board's `GhPull.isCrossRepository` skips a fork's PR before gh is asked. A `pr`/`pr-fix`/`pr-conflicts` turn's end asks the floor's boards for the task's git
+    event (`{ repo, number, by: 'branch' }`); the Find PRs button (`kanban.pr.find`) links by the task's branch too, but in any state and for any task (done or archived included), as `{ repo, number, by: 'find', who }`, and a PR picked by hand (`kanban.pr.link`) is `by: 'manual'`; taking a link off (`kanban.pr.unlink`) is a `pr.unlinked` event (`{ repo, number, who }`), and the automatic sync does not link that PR to that task again unless a later `pr.linked` event (a Find or `kanban.pr.link`) follows it (the task's newest 500 events are read, only for a PR the sync would link); the board's `GhPull.isCrossRepository` skips a fork's PR before gh is asked. A `pr`/`pr-fix`/`pr-conflicts` turn's end asks the floor's boards for the task's git
     repositories to refresh at once, so the link shows up quickly.
   - review: read from the final answer's last 3 non-empty lines only: the **last** of them matching
     `^\s*REVIEW:\s*(APPROVED|CHANGES_REQUESTED)\s*$` as a line of its own (emphasis allowed) decides; none →
@@ -393,7 +394,7 @@ allowed: `todo → in_progress` (= start), `waiting|review → done`, `done → 
   whose cycle ends. Work a person resumes (a comment, Retry or Continue on a task whose implementer is at
   its desk) doesn't take a slot; only when people set more such tasks going at once than the floor has
   seats can every seat be an implementer waiting on its own reviewer, and then a person frees a desk
-  (⏹️ Stop one of those tasks, then send its worker home with **X**).
+  (Stop one of those tasks, then send its worker home with **X**).
 - A new hire runs as `via.owner ?? caller.accountId ?? tasks.created_by_account` (drains, sweeps and Retry
   pass the creator's account). Upstream's sign-in rule applies (`ctx.runAs`): an owner not signed in to
   Claude gets `waiting` (`failed`) with `runAs.why`, never the office's sign-in. A hire that cuts a worktree
@@ -768,7 +769,7 @@ For a signed-in browser (the session is checked by the route table in `src/serve
   the checkout runs in the background at most every 5 minutes and is never waited for. The list carries the
   task's `project` and each repository's `primary` flag (primary first), so the browser can match a repository
   to upstream's floor id (`<project>~<repoId>`, none for the primary; `shared/kanban/repofloor.ts`). The task's
-  Changes view (`client/kanban/changesview.ts`: the task view's Changes tab, and the window C opens at a task
+  Changes view (`client/kanban/changesview.ts`: the task view's Changes tab, and, in `changeswindow.ts`, the window C opens at a task
   worker) reads these, and upstream's live `changes.*` WebSocket messages instead for All changes while the
   worker is on the page's floor. Live, what's uncommitted is the `uncommitted` count (the live list's flags
   when the worker works in the shared project folder, or until the count is read again after an update);

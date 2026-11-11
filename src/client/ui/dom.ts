@@ -1,4 +1,5 @@
 import { safeHref } from './url';
+import { icon } from './icons';
 
 type Attrs = Record<string, string | number | boolean | EventListener | undefined | null>;
 type Child = Node | string | number | null | undefined | false;
@@ -129,10 +130,17 @@ export function openModal(content: HTMLElement, opts: { escCloses?: boolean; onC
   return modal;
 }
 
+/**
+ * Where a window's own ✕ sits: in its header (a shell's rich header keeps it on its first row,
+ * ui/shell.ts) or straight on the window. A `.close` anywhere deeper is the content's, and doesn't
+ * stand in for it.
+ */
+const OWN_CLOSE = ':scope > header > .close, :scope > header .shell-row > .close, :scope > .close';
+
 /** The ✕ for a window that didn't bring its own: at the end of its header, or else on its top right corner. */
 function addCloseButton(content: HTMLElement, close: () => void) {
-  if (content.querySelector('.close')) return;
-  const x = h('button.btn.close', { type: 'button', 'aria-label': 'Close', title: 'Close (Esc)', onclick: close }, '✕');
+  if (content.querySelector(OWN_CLOSE)) return;
+  const x = h('button.btn.close', { type: 'button', 'aria-label': 'Close', title: 'Close (Esc)', onclick: close }, icon('x', { size: 18 }));
   const header = content.querySelector(':scope > header');
   if (header) return header.append(x);
   x.classList.add('corner');

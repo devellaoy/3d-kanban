@@ -1,9 +1,11 @@
-/* ⚙️ Settings: the categories down the side, the one picked on the right, a card per setting. */
+/* Settings: the categories down the side, the one picked on the right, a card per setting. */
 .modal.settings { width: min(960px, 100%); height: min(760px, calc(100vh - 32px)); }
+.shell.settings .shell-main { padding: 0; overflow: hidden; display: flex; }
+.shell.settings .settings-body { flex: 1; }
 .settings-body { flex: 1; min-height: 0; display: grid; grid-template-columns: 220px minmax(0, 1fr); }
 .settings-nav { display: flex; flex-direction: column; gap: 4px; padding: 12px 10px; overflow: auto; background: var(--paper-2); border-right: var(--bw) solid var(--ink); }
 .settings-tab { display: flex; align-items: center; gap: 10px; width: 100%; padding: 9px 12px; text-align: left; font: inherit; font-size: var(--fs-lg); font-weight: var(--fw-bold); color: var(--text); background: none; border: var(--bw-sm) solid transparent; border-radius: var(--radius-sm); cursor: pointer; }
-.settings-tab .icon { flex: none; width: 22px; font-size: var(--fs-2xl); text-align: center; }
+.settings-tab > svg { flex: none; }
 .settings-tab:hover { background: var(--field); }
 .settings-tab.on { background: var(--field); border-color: var(--ink); box-shadow: var(--shadow-sm); }
 .settings-tab:focus-visible { outline: var(--focus-ring); outline-offset: 1px; }
@@ -48,3 +50,9 @@
 .mix-name span { font-size: var(--fs-sm); color: var(--muted); line-height: 1.3; }
 .mix-row .volume .btn { min-width: 104px; }
 @media (max-width: 640px) { .mix-row { grid-template-columns: minmax(0, 1fr); } }
+/* A row of buttons under a setting's field, and a note that keeps its line breaks. */
+.seg.below { margin-top: 8px; }
+.setting-note.pre { white-space: pre-line; }
+/* A kind of sound: its icon beside its name. */
+.mix-name strong { display: inline-flex; align-items: center; gap: 6px; }
+.mix-name strong > svg { flex: none; color: var(--text-2); }

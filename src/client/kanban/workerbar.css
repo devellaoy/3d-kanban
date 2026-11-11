@@ -1,26 +1,27 @@
 /* The kanban page's bottom bar (workerbar.ts): the floor's plain workers as tabs, and the buttons for
    a new one. The mirror of the top bar (.kb-bar): the same surface, with the ink line on top. */
-.kb-wbar { flex: none; z-index: 30; display: flex; align-items: center; gap: 8px; min-width: 0; padding: 5px 14px; padding-bottom: max(5px, env(safe-area-inset-bottom)); padding-left: max(14px, env(safe-area-inset-left)); padding-right: max(14px, env(safe-area-inset-right)); background: var(--paper-2); border-top: var(--bw) solid var(--ink); color: var(--text); }
+.kb-wbar { flex: none; z-index: 30; display: flex; align-items: center; gap: 8px; min-width: 0; padding: 5px 24px; padding-bottom: max(5px, env(safe-area-inset-bottom)); padding-left: max(24px, env(safe-area-inset-left)); padding-right: max(24px, env(safe-area-inset-right)); background: var(--bar-bg); border-top: var(--bw) solid var(--ink); color: var(--text); }
 .kb-wbar-note { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--fs-sm); font-weight: var(--fw-semibold); line-height: 40px; color: var(--muted); }
 /* Another floor's project is on the board: the way back takes the tabs' place. */
-.kb-wbar .btn.small { height: 32px; }
 /* Only the two on the right keep their width: the way back gives way to a long project name. */
-.kb-wbar-actions .btn.small { flex: none; }
-.kb-wbar .kb-wbar-back { flex: 0 1 auto; min-width: 0; margin: 4px auto 4px 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; display: block; }
+.kb-wbar-actions .btn { flex: none; }
+.kb-wbar .kb-wbar-back { flex: 0 1 auto; min-width: 0; margin: 4px auto 4px 0; }
+.kb-wbar-back > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .kb-wbar-actions { flex: none; display: flex; gap: 8px; margin-left: auto; }
 
 /* The tabs: one row that scrolls sideways and never wraps. The padding is the room a tab's shadow and
    its focus ring need inside the scroller. */
 .kb-wtabs { flex: 1; min-width: 0; display: flex; align-items: center; gap: 6px; padding: 3px 3px 5px; overflow-x: auto; overflow-y: hidden; scrollbar-width: thin; overscroll-behavior-x: contain; }
-/* A tab is two buttons in one frame: the worker (opens its terminal) and a ✕ (sends it home). */
-.kb-wtab { flex: none; display: inline-flex; align-items: stretch; height: 32px; max-width: 300px; color: var(--text); background: var(--field); border: var(--bw-sm) solid var(--ink); border-radius: var(--radius-md); box-shadow: var(--shadow-xs); transition: transform .05s; }
+/* A tab is two buttons in one frame: the worker (opens its terminal) and a close button (sends it home). */
+.kb-wtab { flex: none; display: inline-flex; align-items: stretch; height: var(--ctl-h); max-width: 300px; color: var(--text); background: var(--field); border: var(--bw-sm) solid var(--line-control); border-radius: var(--radius-sm); box-shadow: var(--shadow-xs); transition: transform .05s; }
 .kb-wtab:hover { background: var(--field-hover); }
 .kb-wtab:has(.kb-wtab-open:active) { transform: translateY(var(--press)); box-shadow: var(--shadow-pressed); }
-.kb-wtab button { font: var(--fw-bold) var(--fs-sm) var(--font); color: inherit; background: none; border: 0; border-radius: calc(var(--radius-md) - var(--bw-sm)); cursor: pointer; }
+.kb-wtab-open { font: var(--fw-bold) var(--fs-sm) var(--font); color: inherit; background: none; border: 0; border-radius: calc(var(--radius-sm) - var(--bw-sm)); cursor: pointer; }
 .kb-wtab button:focus-visible { outline: var(--focus-ring); outline-offset: 0; }
 .kb-wtab-open { flex: 0 1 auto; min-width: 0; display: inline-flex; align-items: center; gap: 6px; padding: 0 4px 0 9px; }
-.kb-wtab-close { flex: none; width: 26px; padding: 0; line-height: 1; color: var(--muted); }
-.kb-wtab-close:hover { color: var(--text); background: var(--bad-soft); }
+/* The close button is the kit's small icon button, as tall as the tab. */
+.kb-wtab .kb-wtab-close { flex: none; align-self: center; width: 26px; height: 100%; min-height: 0; margin: 0; color: var(--muted); border-radius: calc(var(--radius-sm) - var(--bw-sm)); }
+.kb-wtab .kb-wtab-close:hover:not(:disabled) { color: var(--bad-ink); background: var(--bad-soft); }
 .kb-wtab-close.hidden { display: none; }
 .kb-wtab-open:has(+ .kb-wtab-close.hidden) { padding-right: 7px; }
 .kb-wtab-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -31,7 +32,7 @@
 .kb-wtab.lost { background: var(--warn-soft); }
 .kb-wtab.offline, .kb-wtab.exited { background: var(--field-off); }
 
-/* ---- Narrow screens: the buttons are their emoji, the tabs scroll ---- */
+/* ---- Narrow screens: the buttons are their icons, the tabs scroll ---- */
 @media (max-width: 700px) {
   .kb-wbar { gap: 6px; padding-top: 4px; padding-left: max(10px, env(safe-area-inset-left)); padding-right: max(10px, env(safe-area-inset-right)); }
   .kb-wbar .kb-lbl { display: none; }
@@ -41,7 +42,7 @@
 /* A phone on its side: one low row. */
 @media (max-height: 500px) {
   .kb-wbar { padding-top: 2px; padding-bottom: max(2px, env(safe-area-inset-bottom)); }
-  .kb-wbar .btn.small, .kb-wtab { height: 28px; }
+  .kb-wbar .btn, .kb-wtab { height: var(--ctl-h-sm); min-height: 0; }
   .kb-wtabs { padding-top: 2px; padding-bottom: 4px; }
   .kb-wbar-note { line-height: 34px; }
   .kb-wbar .kb-wbar-back { margin-top: 2px; margin-bottom: 4px; }

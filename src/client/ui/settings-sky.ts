@@ -3,6 +3,7 @@
 import type { Net } from '../net';
 import { store } from '../state';
 import { h } from './dom';
+import { icon, type IconName } from './icons';
 import type { SkyState } from '../../shared/protocol';
 
 /**
@@ -30,17 +31,18 @@ export function outsideSetting(net: Net, outside: { live: boolean; describe: (s:
             class: real === r ? 'on' : '',
             onclick: () => r !== !!store.sky?.realTime && net.send({ t: 'sky.clock', real: r }),
           },
-          r ? '🕰️ Real time (24 h)' : '⏩ A day every hour',
+          icon(r ? 'clock' : 'fast-forward'),
+          r ? 'Real time (24 h)' : 'A day every hour',
         ),
       ),
     );
     const rain = !!store.sky?.rain;
     const lightning = !!store.sky?.lightning;
-    const toggle = (on: boolean, label: string, send: () => void) =>
-      h('button.btn', { type: 'button', 'aria-pressed': String(on), class: on ? 'on' : '', onclick: send }, label);
+    const toggle = (on: boolean, mark: IconName, label: string, send: () => void) =>
+      h('button.btn', { type: 'button', 'aria-pressed': String(on), class: on ? 'on' : '', onclick: send }, icon(mark), label);
     weather.replaceChildren(
-      toggle(rain, '🌧️ Rain', () => net.send({ t: 'sky.weather', rain: !rain })),
-      toggle(lightning, '⚡ Lightning', () => net.send({ t: 'sky.weather', lightning: !lightning })),
+      toggle(rain, 'cloud-rain', 'Rain', () => net.send({ t: 'sky.weather', rain: !rain })),
+      toggle(lightning, 'zap', 'Lightning', () => net.send({ t: 'sky.weather', lightning: !lightning })),
     );
     const wet = !rain
       ? 'Rain and thunderstorms are kept out: a rainy forecast shows as cloudy.'

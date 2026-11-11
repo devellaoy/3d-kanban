@@ -1,11 +1,13 @@
-/* Send a prompt to a worker (ui/ask.ts) */
-.modal.ask { width: min(660px, 100%); }
-/* .seg.ask-to outranks the shared .seg row, whatever order the sheets load in. */
-.seg.ask-to { gap: 6px; }
-.ask-to .btn { padding: 5px 10px; font-size: var(--fs-sm); }
-.ask-to .btn small { font-size: var(--fs-2xs); font-weight: var(--fw-semibold); opacity: .75; }
+/* Send a prompt to a worker (ui/ask.ts): the shared shell with who it goes to, the prompt and a new
+   worker's choices. */
+.ask-form { display: flex; flex-direction: column; gap: 12px; margin: 0; }
+.ask-form > textarea.inp, .ask-form .field > textarea.inp { font-size: var(--fs-md); resize: vertical; }
+/* Who it goes to: a new worker, or one of the ones at a desk. */
+.ask-to { display: flex; flex-wrap: wrap; gap: 6px; }
+.ask-to .btn[aria-pressed=true] { color: var(--accent-soft-ink); background: var(--accent-soft); border-color: var(--accent-edge); }
+.ask-to .btn small { font-size: var(--fs-2xs); font-weight: var(--fw-medium); color: var(--muted); }
 .ask-to .btn .dot { width: 10px; height: 10px; }
-.ask-context { margin-top: 12px; font-size: var(--fs-sm); }
-.ask-context summary { cursor: pointer; font-weight: var(--fw-bold); color: var(--muted); }
-.ask-context pre { margin: 6px 0 0; white-space: pre-wrap; overflow-wrap: anywhere; font: var(--fs-xs)/1.5 var(--font-mono); background: var(--paper-2); border: var(--bw-sm) solid color-mix(in srgb, var(--text) 20%, transparent); border-radius: var(--radius-md); padding: 8px 10px; }
-.modal label.ask-wt { display: flex; gap: 8px; align-items: center; margin: 10px 0 0; cursor: pointer; }
+.ask-context { font-size: var(--fs-sm); }
+.ask-context summary { cursor: pointer; font-weight: var(--fw-semibold); color: var(--text-2); }
+.ask-context pre { margin: 6px 0 0; white-space: pre-wrap; overflow-wrap: anywhere; font: var(--fs-xs)/1.5 var(--font-mono); background: var(--paper-2); border: var(--bw-sm) solid var(--rule-soft); border-radius: var(--radius-md); padding: 8px 10px; }
+.ask-wt > svg { flex: none; color: var(--text-2); }

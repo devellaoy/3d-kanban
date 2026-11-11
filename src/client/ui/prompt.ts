@@ -1,11 +1,14 @@
 import './prompt.css';
 import type { AgentEffort, AgentProvider, LostBranch, ServerMsg, WorktreeCleanup, WorktreeState } from '../../shared/protocol';
-import { h, openModal, toast } from './dom';
+import { h, toast } from './dom';
+import { icon, type IconName } from './icons';
+import { btn, sendKeyHint } from './kit';
+import { modalShell, openShell } from './shell';
 import { store } from '../state';
 import { providerPicker, type ProviderPicker } from './provider';
 // The "Run as a kanban task" toggle in the hire dialog.
 import { kanbanSection, type KanbanOption } from '../kanban/hireform';
-import { onSendKey, sendHint } from '../kanban/sendkey';
+import { onSendKey } from '../kanban/sendkey';
 import { attachBox } from '../kanban/attachbox';
 import type { KanbanAttachment } from '../../shared/kanban/types.js';
 
@@ -25,9 +28,9 @@ export interface PromptOptions {
   providerOption?: boolean;
   /** Other floors' projects a new worker in its own worktree can work in too (see WorkerInfo.repos). */
   repoOptions?: { id: string; name: string }[];
-  /** Offer "🗂️ Run as a kanban task" (hiring only); while it's on, sending makes the task instead of calling onSubmit. */
+  /** Offer "Run as a kanban task" (hiring only); while it's on, sending makes the task instead of calling onSubmit. */
   kanbanOption?: KanbanOption;
-  /** Files can be attached (📎, paste, drop): they are uploaded to the kanban and their ids go with the hire. */
+  /** Files can be attached (the paperclip, paste, drop): they are uploaded to the kanban and their ids go with the hire. */
   attachments?: boolean;
   /** Files already uploaded that start in the list (needs `attachments`). */
   presetAttachments?: KanbanAttachment[];
@@ -71,24 +74,24 @@ export function repoPicker(options: { id: string; name: string }[] | undefined, 
     if (!wtBox.checked) for (const p of picks) p.box.checked = false;
   });
   return {
-    element: h('div.repo-picks', { role: 'group', 'aria-label': 'Other projects to work in' }, h('span', {}, '🗂️ Also work in'), ...picks.map((p) => p.el)),
+    element: h('div.repo-picks', { role: 'group', 'aria-label': 'Other projects to work in' }, h('span', {}, 'Also work in'), ...picks.map((p) => p.el)),
     value: () => picks.filter((p) => p.box.checked).map((p) => p.id),
   };
 }
 
+let formSeq = 0;
+
+/** A tick box of the prompt dialogs: the box, an optional icon and its words. */
+function tickRow(box: HTMLInputElement, label: string, mark?: IconName, title?: string): HTMLElement {
+  return h('label.check-line.prompt-tick', { for: box.id, title }, box, mark ? icon(mark, { size: 14 }) : null, label);
+}
+
 export function openPrompt(opts: PromptOptions) {
-  const ta = h('textarea', { rows: 7, placeholder: opts.placeholder ?? 'What should the worker work on?', 'aria-label': 'Prompt' }) as HTMLTextAreaElement;
+  const ta = h('textarea.inp', { rows: 7, placeholder: opts.placeholder ?? 'What should the worker work on?', 'aria-label': 'Prompt' }) as HTMLTextAreaElement;
   ta.value = opts.initial ?? '';
   const wtBox = h('input', { type: 'checkbox', id: 'wt-toggle' }) as HTMLInputElement;
   wtBox.checked = opts.worktreeDefault ?? worktreePref();
-  const wtRow = opts.worktreeOption
-    ? h(
-        'label',
-        { for: 'wt-toggle', style: 'display:flex;gap:8px;align-items:center;margin:10px 0 0;font-weight:700;cursor:pointer', title: 'Isolate this worker on its own branch so parallel workers never collide' },
-        wtBox,
-        '🌿 Work in its own git worktree & branch',
-    )
-    : null;
+  const wtRow = opts.worktreeOption ? tickRow(wtBox, 'Work in its own git worktree & branch', 'git-branch', 'Isolate this worker on its own branch so parallel workers never collide') : null;
   const extraBox = opts.toggle ? (h('input', { type: 'checkbox', id: 'extra-toggle' }) as HTMLInputElement) : null;
   if (extraBox && opts.toggle) {
     extraBox.checked = opts.toggle.checked;
@@ -103,34 +106,32 @@ export function openPrompt(opts: PromptOptions) {
       opts.toggle!.onChange(false, ta);
     });
   }
-  const extraRow = extraBox && opts.toggle ? h('label', { for: 'extra-toggle', style: 'display:flex;gap:8px;align-items:center;margin:10px 0 0;font-weight:700;cursor:pointer' }, extraBox, opts.toggle.label) : null;
+  const extraRow = extraBox && opts.toggle ? tickRow(extraBox, opts.toggle.label) : null;
   const repos = repoPicker(opts.worktreeOption ? opts.repoOptions : undefined, wtBox);
   const provider: ProviderPicker | null = opts.providerOption ? providerPicker(store.project, 'prompt-provider') : null;
-  const submit = h('button.btn.primary', { type: 'submit' }, opts.submitLabel ?? 'Send ✨');
-  const cancel = h('button.btn', { type: 'button' }, 'Cancel');
+  const formId = `prompt-form-${++formSeq}`;
+  const sendLabel = opts.submitLabel ?? 'Send';
+  const submit = btn(sendLabel, { kind: 'primary', attrs: { type: 'submit', form: formId } });
+  const cancel = btn('Cancel', { kind: 'quiet' });
   // The kanban toggle and the raw button.
   const kanban = opts.kanbanOption ? kanbanSection(opts.kanbanOption, provider) : null;
-  const rawBtn = opts.rawLabel ? h('button.btn.kb-raw', { type: 'button' }, opts.rawLabel) : null;
-  const body = h('div.body', {}, opts.warning ? h('p.setting-note.bad', { style: 'margin:0 0 10px', role: 'alert' }, opts.warning) : null, opts.subtitle ? h('p', { style: 'margin:0 0 10px;font-weight:700;color:var(--muted)' }, opts.subtitle) : null, ta, provider?.element ?? null, wtRow, extraRow, repos.element, kanban?.element ?? null);
+  const rawBtn = opts.rawLabel ? btn(opts.rawLabel, { attrs: { class: 'kb-raw' } }) : null;
+  const subtitle = opts.subtitle ? h('p.prompt-sub', {}, opts.subtitle) : null;
+  const form = h('form.prompt-form', { id: formId }, opts.warning ? h('p.setting-note.bad.prompt-warn', { role: 'alert' }, opts.warning) : null, subtitle, ta, provider?.element ?? null, wtRow, extraRow, repos.element, kanban?.element ?? null) as HTMLFormElement;
+  form.noValidate = true;
+  const shell = modalShell({ cls: `prompt${rawBtn ? ' w640' : ''}`, title: opts.title, body: form, footerLeft: [sendKeyHint()], footerRight: [cancel, rawBtn, submit] });
+  const body = shell.main;
   const files = opts.attachments ? attachBox({ target: ta, dropZone: body, insertLinks: false }) : null;
   if (files) ta.after(files.el);
   for (const a of opts.presetAttachments ?? []) files?.adopt(a);
-  const form = h(
-    'form.modal',
-    { role: 'dialog', 'aria-label': opts.title },
-    h('header', {}, h('h2', {}, opts.title)),
-    body,
-    h('footer', {}, h('span.grow', {}, sendHint()), cancel, rawBtn, submit),
-  ) as HTMLFormElement;
-  form.noValidate = true;
   // While the toggle is on, a task is made: no worktree options (the engine has its own), its own title.
   const kanbanPaint = (on: boolean) => {
     wtRow?.classList.toggle('hidden', on);
     repos.element?.classList.toggle('hidden', on);
     // The subtitle is about hiring ("start with an empty prompt"): a task needs its text, and says so below.
-    form.querySelector(':scope > .body > p:not(.setting-note)')?.classList.toggle('hidden', on);
-    form.querySelector(':scope > header > h2')!.textContent = on ? (opts.kanbanOption?.title ?? opts.title) : opts.title;
-    submit.textContent = on ? '🗂️ Create & start' : (opts.submitLabel ?? 'Send ✨');
+    subtitle?.classList.toggle('hidden', on);
+    shell.setTitle(on ? (opts.kanbanOption?.title ?? opts.title) : opts.title);
+    submit.textContent = on ? 'Create and start' : sendLabel;
     ta.placeholder = !on ? (opts.placeholder ?? 'What should the worker work on?') : kanban?.hasIssue() ? 'Anything to add? It goes above the issue’s text' : 'What’s the task? Its first line is the title';
   };
   if (kanban) {
@@ -138,7 +139,7 @@ export function openPrompt(opts: PromptOptions) {
     kanbanPaint(kanban.on());
   }
 
-  const modal = openModal(form);
+  const modal = openShell(shell);
   // A file dropped beside the body's drop zone would have the browser open it in place of the office.
   if (files) for (const type of ['dragover', 'drop']) modal.backdrop.addEventListener(type, (e) => e.preventDefault());
   cancel.addEventListener('click', () => modal.close());
@@ -196,18 +197,37 @@ export function openPrompt(opts: PromptOptions) {
   }, 30);
 }
 
+export interface ConfirmOptions {
+  /** `false` for a plain primary button. */
+  danger?: boolean;
+  /** What it is about, in mono after the title ("#144"). */
+  id?: string;
+  /** A line in bold over the explanation (the task's title, say). */
+  lead?: string;
+  /** The confirm button's icon ("trash-2" for Delete). */
+  icon?: IconName;
+}
+
 /** A yes/no question before something that can't be undone (`danger: false` for a plain primary button). */
-export function confirmDialog(title: string, body: string, confirmLabel: string, onConfirm: () => void, opts: { danger?: boolean } = {}) {
-  const yes = h(opts.danger === false ? 'button.btn.primary' : 'button.btn.danger', { type: 'button' }, confirmLabel);
-  const no = h('button.btn', { type: 'button' }, 'Never mind');
-  const el = h('div.modal', { role: 'alertdialog', 'aria-label': title }, h('header', {}, h('h2', {}, title)), h('div.body', {}, h('p', { style: 'margin:0;font-weight:700' }, body)), h('footer', {}, no, yes));
-  const modal = openModal(el);
+export function confirmDialog(title: string, body: string, confirmLabel: string, onConfirm: () => void, opts: ConfirmOptions = {}) {
+  const danger = opts.danger !== false;
+  const yes = btn(confirmLabel, { kind: danger ? 'danger' : 'primary', icon: opts.icon, attrs: { autofocus: true } });
+  const no = btn('Cancel', { kind: 'quiet' });
+  const shell = modalShell({
+    cls: `confirm w420${danger ? ' danger' : ''}`,
+    role: 'alertdialog',
+    icon: danger ? 'triangle-alert' : 'info',
+    title,
+    id: opts.id,
+    body: h('div.confirm-body', {}, opts.lead ? h('strong', {}, opts.lead) : null, h('span', {}, body)),
+    footerRight: [no, yes],
+  });
+  const modal = openShell(shell);
   no.addEventListener('click', () => modal.close());
   yes.addEventListener('click', () => {
     modal.close();
     onConfirm();
   });
-  setTimeout(() => yes.focus(), 30);
 }
 
 export interface SendHomeOptions {
@@ -273,11 +293,13 @@ export function sendHomeDialog(opts: SendHomeOptions) {
       ];
   const radios = new Map<WorktreeCleanup, HTMLInputElement>();
   let touched = false;
-  const yes = h('button.btn.danger', { type: 'submit' }, CLEANUP_LABEL.keep);
+  const formId = `send-home-${++formSeq}`;
+  const yesText = h('span', {}, CLEANUP_LABEL.keep);
+  const yes = h('button.btn.danger.lg', { type: 'submit', form: formId, autofocus: true }, icon('log-out'), yesText);
   const chosen = (): WorktreeCleanup => [...radios].find(([, r]) => r.checked)?.[0] ?? 'keep';
   const pick = (c: WorktreeCleanup) => {
     radios.get(c)!.checked = true;
-    yes.textContent = CLEANUP_LABEL[c];
+    yesText.textContent = CLEANUP_LABEL[c];
   };
   const list = h(
     'div.choices',
@@ -289,7 +311,7 @@ export function sendHomeDialog(opts: SendHomeOptions) {
         value,
         onchange: () => {
           touched = true;
-          yes.textContent = CLEANUP_LABEL[chosen()];
+          yesText.textContent = CLEANUP_LABEL[chosen()];
         },
       }) as HTMLInputElement;
       radios.set(value, r);
@@ -297,23 +319,18 @@ export function sendHomeDialog(opts: SendHomeOptions) {
     }),
   );
   const status = h('p.wt-status', {}, `Checking what ${branch} holds…`);
-  const no = h('button.btn', { type: 'button' }, 'Never mind');
+  const no = btn('Cancel', { kind: 'quiet' });
   const form = h(
-    'form.modal',
-    { role: 'dialog', 'aria-label': `Send ${opts.name} home?` },
-    h('header', {}, h('h2', {}, `Send ${opts.name} home?`)),
-    h(
-      'div.body',
-      {},
-      opts.extra ?? null,
-      h('p', { style: 'margin:0 0 12px;font-weight:700' }, `This stops the session at ${opts.where} for everyone and frees the desk. ${opts.name} worked ${across ? `in worktrees of ${across.join(', ')}, each` : 'in its own worktree'} on 🌿 ${branch}:`),
-      list,
-      status,
-    ),
-    h('footer', {}, no, yes),
+    'form.send-home',
+    { id: formId },
+    opts.extra ?? null,
+    h('p.confirm-lead', {}, `This stops the session at ${opts.where} for everyone and frees the desk. ${opts.name} worked ${across ? `in worktrees of ${across.join(', ')}, each` : 'in its own worktree'} on `, h('code.code-chip', {}, branch), ':'),
+    list,
+    status,
   ) as HTMLFormElement;
+  const shell = modalShell({ cls: 'confirm danger w480', icon: 'triangle-alert', title: `Send ${opts.name} home?`, body: form, footerRight: [no, yes] });
   pick('keep');
-  const modal = openModal(form);
+  const modal = openShell(shell);
   no.addEventListener('click', () => modal.close());
   form.addEventListener('submit', (e) => {
     e.preventDefault();
@@ -332,7 +349,6 @@ export function sendHomeDialog(opts: SendHomeOptions) {
     status.classList.toggle('warn', risky || (!!s.error && !s.repos?.length));
     if (!touched) pick(risky ? 'keep' : 'all');
   });
-  setTimeout(() => yes.focus(), 30);
 }
 
 export interface LostWorktreeOptions {
@@ -358,30 +374,32 @@ export function lostWorktreeDialog(opts: LostWorktreeOptions) {
   const { name, others } = opts;
   const { branch } = opts.worktree;
   const folder = opts.workspace ?? opts.worktree.path;
-  const title = `🌿 ${name}'s worktree was deleted`;
+  const title = `${name}'s worktree was deleted`;
   const what = {
-    here: `Its branch 🌿 ${branch} is still here. Rebuilding checks it out again in the same place, and ${name} carries on its conversation; only uncommitted changes went with the folder.`,
-    origin: `Its branch 🌿 ${branch} was deleted too, but it had been pushed: rebuilding checks origin's copy out again in the same place, and ${name} carries on its conversation.`,
-    gone: `Its branch 🌿 ${branch} was deleted too and was never pushed, so the work on it is gone. Rebuilding makes the branch again from where it started, and ${name} carries on its conversation.`,
+    here: `Its branch ${branch} is still here. Rebuilding checks it out again in the same place, and ${name} carries on its conversation; only uncommitted changes went with the folder.`,
+    origin: `Its branch ${branch} was deleted too, but it had been pushed: rebuilding checks origin's copy out again in the same place, and ${name} carries on its conversation.`,
+    gone: `Its branch ${branch} was deleted too and was never pushed, so the work on it is gone. Rebuilding makes the branch again from where it started, and ${name} carries on its conversation.`,
   }[opts.lost.branch];
-  const one = h('button.btn.primary', { type: 'button' }, 'Rebuild worktree');
-  const all = others.length ? h('button.btn', { type: 'button' }, `Rebuild all ${others.length + 1}`) : null;
-  const home = h('button.btn.danger', { type: 'button' }, 'Send home…');
-  const look = opts.openTerminal ? h('button.btn', { type: 'button' }, 'Open terminal') : null;
-  const el = h(
-    'div.modal.lost-worktree',
-    { role: 'alertdialog', 'aria-label': title },
-    h('header', {}, h('h2', {}, title)),
-    h(
-      'div.body',
+  const one = btn('Rebuild worktree', { kind: 'primary', icon: 'rotate-cw', attrs: { autofocus: true } });
+  const all = others.length ? btn(`Rebuild all ${others.length + 1}`) : null;
+  const home = btn('Send home…', { kind: 'quiet-danger', icon: 'log-out' });
+  const look = opts.openTerminal ? btn('Open the terminal', { icon: 'square-terminal' }) : null;
+  const shell = modalShell({
+    cls: 'confirm lost-worktree',
+    role: 'alertdialog',
+    icon: 'triangle-alert',
+    title,
+    body: h(
+      'div.confirm-body',
       {},
-      h('p', { style: 'margin:0 0 10px;font-weight:700' }, `${folder} was deleted outside agent-office, so ${name} ${opts.openTerminal ? 'is running in a folder that no longer exists' : "can't start there"}.`),
-      h('p.wt-status', { style: 'margin:0' }, what),
+      h('strong', {}, `${folder} was deleted outside agent-office, so ${name} ${opts.openTerminal ? 'is running in a folder that no longer exists' : "can't start there"}.`),
+      h('span', {}, what),
       others.length ? h('p.wt-status.warn', {}, `${plural(others.length, 'other worker')} on this floor lost ${others.length === 1 ? 'its worktree' : 'their worktrees'} too: ${others.join(', ')}.`) : null,
     ),
-    h('footer', {}, home, h('span.grow'), look, all, one),
-  );
-  const modal = openModal(el);
+    footerLeft: [home],
+    footerRight: [look, all, one],
+  });
+  const modal = openShell(shell);
   const then = (fn: () => void) => () => {
     modal.close();
     fn();
@@ -390,7 +408,6 @@ export function lostWorktreeDialog(opts: LostWorktreeOptions) {
   all?.addEventListener('click', then(() => opts.rebuild(true)));
   home.addEventListener('click', then(opts.sendHome));
   if (look) look.addEventListener('click', then(opts.openTerminal!));
-  setTimeout(() => one.focus(), 30);
 }
 
 /** What deleting one worktree (and its branch) would lose, in a line or two for the send-home dialog. */
@@ -400,11 +417,11 @@ function describeState(s: WorktreeState, branch: string, prefix = ''): { lines: 
   let risky = false;
   if (!s.exists) lines.push(`${prefix}The worktree folder is already gone.`);
   if (s.dirty) {
-    lines.push(`⚠️ ${prefix}${plural(s.dirty, 'uncommitted change')} in the worktree — deleting it loses them.`);
+    lines.push(`${prefix}${plural(s.dirty, 'uncommitted change')} in the worktree — deleting it loses them.`);
     risky = true;
   }
   if (s.unpushed) {
-    lines.push(`⚠️ ${prefix}${plural(s.unpushed, 'commit')} on ${branch} that no remote has — deleting the branch loses them.`);
+    lines.push(`${prefix}${plural(s.unpushed, 'commit')} on ${branch} that no remote has — deleting the branch loses them.`);
     risky = true;
   } else if (s.ahead) lines.push(`${prefix}${plural(s.ahead, 'commit')} on ${branch}, all pushed or merged.`);
   if (!lines.length) lines.push(`${prefix}Nothing on the branch yet and a clean worktree: safe to delete.`);

@@ -24,11 +24,11 @@ test('barWorkers: only the plain ones, oldest first, ties by id, whatever the in
   assert.deepEqual(barWorkers(new Map(list.map((x) => [x.id, x])).values()).map((x) => x.id), ['a', 'b', 'c']);
 });
 
-test('tabTitle: the name, its work when it has one, 🐚 shell for a shell', () => {
+test('tabTitle: the name, its work when it has one, shell for a shell', () => {
   assert.equal(tabTitle(w('Ada')), 'Ada');
   assert.equal(tabTitle(w('Ada', { title: 'Fix login' })), 'Ada · Fix login');
   assert.equal(tabTitle(w('Ada', { task: { name: 'Card', summary: '' }, title: 'Other' })), 'Ada · Card');
-  assert.equal(tabTitle(w('Sh', { kind: 'shell' })), 'Sh · 🐚 shell');
+  assert.equal(tabTitle(w('Sh', { kind: 'shell' })), 'Sh · shell');
 });
 
 test('tabName: what the worker is on as the 3D office names it, else its own name, at most 20 characters ending in "..."', () => {

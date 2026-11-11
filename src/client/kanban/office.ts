@@ -351,6 +351,11 @@ export function tabLabel(tab: WorkerTab, w: Pick<WorkerInfo, 'kanban'>): string 
   return `🗂️ Task #${kanbanOf(w)?.taskId ?? ''}`;
 }
 
+/** A tab's words without its picture, for a strip that draws an icon (worker3d.ts). */
+export function tabText(tab: WorkerTab, w: Pick<WorkerInfo, 'kanban'>): string {
+  return tab === 'terminal' ? 'Terminal' : `Task #${kanbanOf(w)?.taskId ?? ''}`;
+}
+
 /** The tab each worker's window was last on, for this page's session. */
 export class TabMemory {
   private tabs = new Map<string, WorkerTab>();

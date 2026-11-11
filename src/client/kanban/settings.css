@@ -1,47 +1,35 @@
 /* The kanban's categories of ⚙️ Settings (settings.ts): in upstream's settings window, on the 3D page
    (upstream's style.css, no kanban.css) and the kanban page alike. Every rule is scoped under .kb-set,
-   the categories' root (＋ New project's window under .kb-new-project-modal), so this file restyles
+   the categories' root (the New project window under .kb-new-project-modal), so this file restyles
    nothing of upstream's. It relies on upstream's variables
    (--ink, --paper…), .btn, .hidden and its `.modal` text boxes and labels. */
 
 .kb-set { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
 .kb-set .grow { flex: 1; }
-.kb-set .kb-muted { color: var(--muted); font-weight: var(--fw-medium); }
-.kb-set .kb-hint { display: block; margin: 4px 0 0; font-size: var(--fs-xs); font-weight: var(--fw-semibold); color: var(--muted); }
-.kb-set .kb-error { padding: 8px 10px; border: var(--bw-sm) solid var(--bad); border-radius: var(--radius-md); background: var(--bad-wash); font-weight: var(--fw-bold); }
-.kb-set .btn.small { padding: 4px 9px; font-size: var(--fs-sm); border-radius: var(--radius-md); box-shadow: var(--shadow-xs); }
 .kb-set .kb-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
-.kb-set .kb-chip { display: inline-flex; align-items: center; max-width: 100%; padding: 1px 7px; font-size: var(--fs-2xs); font-weight: var(--fw-bold); line-height: 18px; background: var(--field); border: var(--bw-sm) solid var(--ink); border-radius: var(--radius-pill); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .kb-set .kb-settings-note { margin: 0; font-size: var(--fs-xs); font-weight: var(--fw-semibold); color: var(--muted); }
 
 /* The project, and its tabs */
 .kb-set .kb-settings-project { display: flex; align-items: center; gap: 8px; margin: 0; }
-.kb-set .kb-settings-project.hidden, .kb-set .kb-tabs.hidden { display: none; }
+.kb-set .kb-settings-project.hidden, .kb-set .tabs.hidden { display: none; }
 .kb-set .kb-settings-project select { max-width: 320px; }
 .kb-set .kb-projects-head { justify-content: space-between; }
 .kb-set .kb-new-project { margin-left: auto; }
-.kb-set .kb-tabs { padding: 0; background: none; display: flex; flex-wrap: wrap; gap: 2px; overflow-x: auto; border-bottom: var(--bw) solid var(--ink); scrollbar-width: none; }
-.kb-set .kb-tab { flex: none; display: inline-flex; align-items: center; gap: 5px; padding: 7px 9px; font: var(--fw-bold) var(--fs-sm) var(--font); color: var(--text); background: transparent; border: var(--bw) solid transparent; border-bottom: 0; border-radius: var(--radius-sm) var(--radius-sm) 0 0; cursor: pointer; margin-bottom: -3px; }
-.kb-set .kb-tab:hover { background: var(--scrim); }
-.kb-set .kb-tab.on { background: var(--field); border-color: var(--ink); }
+.kb-icon-row { display: inline-flex; align-items: center; gap: 6px; }
+/* The project's tabs (the kit's strip, styles/kit-modal.css) start at the pane's edge and wrap. */
+.kb-set .tabs { padding: 0; flex-wrap: wrap; }
 
 /* Fields */
 .kb-set .kb-pane { display: flex; flex-direction: column; gap: 12px; }
 .kb-set fieldset { margin: 0; padding: 10px 14px 14px; border: var(--bw) solid var(--ink); border-radius: var(--radius-box); background: var(--field); display: flex; flex-direction: column; gap: 10px; min-width: 0; }
-.kb-set legend { padding: 0 6px; font-weight: var(--fw-heavy); font-size: var(--fs-sm); text-transform: uppercase; letter-spacing: .04em; }
-.kb-set .kb-field { display: flex; flex-direction: column; min-width: 0; }
-.kb-set .kb-field > label { margin-bottom: 4px; font-size: var(--fs-sm); }
-.kb-set select, .kb-set input[type=number], .kb-set input[type=email], .kb-set input[type=password], .kb-set input[type=text] { width: 100%; height: 44px; font: var(--fw-semibold) var(--fs-md) var(--font); color: var(--text); border: var(--bw) solid var(--ink); border-radius: var(--radius-sm); padding: 0 10px; background: var(--field); outline: none; }
+.kb-set legend { padding: 0 6px; font-weight: var(--fw-heavy); font-size: var(--fs-sm); }
+.kb-set select, .kb-set input[type=number], .kb-set input[type=email], .kb-set input[type=password], .kb-set input[type=text] { width: 100%; height: var(--field-h); font: var(--fw-semibold) var(--fs-md) var(--font); color: var(--text); border: var(--bw) solid var(--ink); border-radius: var(--radius-sm); padding: 0 10px; background: var(--field); outline: none; }
 .kb-set textarea { font-size: var(--fs-md); }
 .kb-set select:focus, .kb-set input:focus { border-color: var(--accent); }
 .kb-set select:disabled, .kb-set input:disabled, .kb-set textarea:disabled { background: var(--field-off); color: var(--muted); }
-.kb-set .kb-num { max-width: 120px; }
 .kb-set .kb-two { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; align-items: start; }
 .kb-set .kb-three { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; align-items: start; }
 .kb-set .kb-two > .kb-check, .kb-set .kb-three > .kb-check { align-self: center; }
-.kb-set .kb-check { display: inline-flex; align-items: center; gap: 8px; margin: 0; font-weight: var(--fw-bold); cursor: pointer; }
-.kb-set .kb-check input { width: 18px; height: 18px; accent-color: var(--accent); }
-.kb-set .kb-check.missing { color: var(--bad-ink); }
 .kb-set .kb-subfields { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; align-items: start; padding: 10px; border: var(--bw-sm) dashed var(--ink); border-radius: var(--radius-sm); background: var(--paper); }
 .kb-set .kb-subfields .kb-check { grid-column: 1 / -1; }
 /* ⚙️ Project's name: the box grows, its Rename button sits level with it */
@@ -77,9 +65,6 @@
 .kb-set .kb-contract h5 { margin: 8px 0 4px; font-size: var(--fs-xs); }
 
 /* Skills and secrets */
-.kb-set .kb-table { width: 100%; border-collapse: collapse; font-size: var(--fs-sm); }
-.kb-set .kb-table th, .kb-set .kb-table td { padding: 6px 8px; border-bottom: var(--bw-sm) solid var(--rule-soft); text-align: left; vertical-align: top; }
-.kb-set .kb-table th { font-weight: var(--fw-heavy); font-size: var(--fs-xs); color: var(--muted); }
 .kb-set .kb-skill-list { overflow-x: auto; }
 .kb-set .kb-path { display: block; font-size: var(--fs-2xs); }
 .kb-set .kb-skill-pick summary { cursor: pointer; font-size: var(--fs-xs); font-weight: var(--fw-bold); }
@@ -97,18 +82,18 @@
 
 /* ＋ New project (newproject.ts): its own window, stacked over Settings, so its rules are scoped under it rather than .kb-set. */
 .modal.kb-new-project-modal { width: min(560px, 100%); }
-.kb-new-project-modal .body { display: flex; flex-direction: column; gap: 10px; }
+.kb-new-project-modal .kb-np-body { display: flex; flex-direction: column; gap: 10px; }
 .kb-new-project-modal .kb-np-kinds { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
 .kb-new-project-modal .kb-np-kind { padding: 9px 12px; font: var(--fw-bold) var(--fs-md) var(--font); color: var(--text); background: var(--field); border: var(--bw) solid var(--ink); border-radius: var(--radius-sm); cursor: pointer; }
 .kb-new-project-modal .kb-np-kind:hover:not(:disabled) { background: var(--field-hover); }
 .kb-new-project-modal .kb-np-kind[aria-pressed=true] { border-color: var(--accent); background: var(--accent-soft); }
 .kb-new-project-modal .kb-np-kind:disabled { cursor: default; }
-.kb-new-project-modal input[type=text] { width: 100%; height: 44px; font: var(--fw-semibold) var(--fs-md) var(--font); color: var(--text); border: var(--bw) solid var(--ink); border-radius: var(--radius-sm); padding: 0 10px; background: var(--field); outline: none; }
+.kb-new-project-modal input[type=text] { width: 100%; height: var(--field-h); font: var(--fw-semibold) var(--fs-md) var(--font); color: var(--text); border: var(--bw) solid var(--ink); border-radius: var(--radius-sm); padding: 0 10px; background: var(--field); outline: none; }
 .kb-new-project-modal input[type=text]:focus { border-color: var(--accent); }
 .kb-new-project-modal input[type=text]:disabled { background: var(--field-off); color: var(--muted); }
 .kb-new-project-modal .kb-np-note { margin: 0; font-size: var(--fs-xs); font-weight: var(--fw-semibold); color: var(--muted); overflow-wrap: anywhere; }
 .kb-new-project-modal .kb-np-note.busy { color: var(--text); }
-.kb-new-project-modal .kb-np-err { margin: 0; font-size: var(--fs-sm); font-weight: var(--fw-bold); color: var(--bad); overflow-wrap: anywhere; }
+.kb-new-project-modal .kb-np-err { margin: 0; font-size: var(--fs-sm); font-weight: var(--fw-bold); color: var(--danger-ink); overflow-wrap: anywhere; }
 
 @media (max-width: 700px) {
   .kb-set .kb-two, .kb-set .kb-three { grid-template-columns: minmax(0, 1fr); }

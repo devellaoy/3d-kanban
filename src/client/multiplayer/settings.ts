@@ -5,9 +5,10 @@ import type { MpFloorShare } from '../../shared/multiplayer/protocol';
 import type { Net } from '../net';
 import { store } from '../state';
 import { h } from '../ui/dom';
+import { icon } from '../ui/icons';
 import { setting } from '../ui/settingrow';
 
-const STATUS: Record<string, string> = { off: '⚪ Not connected', connecting: '🟡 Connecting…', online: '🟢 Online', error: '🔴 Error' };
+const STATUS: Record<string, string> = { off: 'Not connected', connecting: 'Connecting…', online: 'Online', error: 'Error' };
 
 export function multiplayerPane(net: Net): { el: HTMLElement; close(): void } {
   const el = h('div.mp-set');
@@ -48,20 +49,20 @@ export function multiplayerPane(net: Net): { el: HTMLElement; close(): void } {
     if (!urlTouched && document.activeElement !== url) url.value = mp.url;
     pass.placeholder = mp.passwordSet ? 'saved' : 'Password (if the server has one)';
     const connected = mp.status === 'online' || mp.status === 'connecting';
-    const connect = h('button.btn.primary', { type: 'button', onclick: () => net.send({ t: 'mp.connect', url: url.value.trim(), ...(pass.value ? { password: pass.value } : {}) }) }, connected ? '🔄 Reconnect' : '🔌 Connect');
-    const toggle = h('button.btn', { type: 'button', onclick: () => net.send({ t: 'mp.online', on: mp.offline }) }, mp.offline ? '🟢 Go online' : '⚪ Go offline') as HTMLButtonElement;
+    const connect = h('button.btn.primary', { type: 'button', onclick: () => net.send({ t: 'mp.connect', url: url.value.trim(), ...(pass.value ? { password: pass.value } : {}) }) }, icon(connected ? 'refresh-cw' : 'plug'), connected ? 'Reconnect' : 'Connect');
+    const toggle = h('button.btn', { type: 'button', onclick: () => net.send({ t: 'mp.online', on: mp.offline }) }, mp.offline ? 'Go online' : 'Go offline') as HTMLButtonElement;
     toggle.disabled = !mp.configured;
     online.replaceChildren(connect, toggle);
     status.className = `setting-note${mp.status === 'error' && !mp.offline ? ' bad' : ''}`;
-    status.textContent = (mp.offline ? '⚪ Offline' : (STATUS[mp.status] ?? mp.status)) + (mp.error && !mp.offline ? ` — ${mp.error}` : '') + (mp.status === 'error' && !mp.offline && mp.signInAgain ? `. Your address and password are saved: press ${mp.login ? '🔁 Verify again' : '🔑 Verify GitHub account'}, no need to type them again.` : '');
+    status.textContent = (mp.offline ? 'Offline' : (STATUS[mp.status] ?? mp.status)) + (mp.error && !mp.offline ? ` — ${mp.error}` : '') + (mp.status === 'error' && !mp.offline && mp.signInAgain ? `. Your address and password are saved: press ${mp.login ? 'Verify again' : 'Verify GitHub account'}, no need to type them again.` : '');
     const device = mp.device;
     sign.replaceChildren(
       h('p.setting-note', {}, mp.login ? `Signed in as @${mp.login}.` : 'Other players know this office by its GitHub login. Verify yours to connect.'),
       device
         ? h('div.mp-device', {}, h('p', {}, 'Open ', h('a', { href: device.url, target: '_blank', rel: 'noopener noreferrer' }, device.url), ' and type this code:'), h('code.mp-code', {}, device.code), h('button.btn', { type: 'button', onclick: () => net.send({ t: 'mp.identity.cancel' }) }, 'Cancel'))
-        : h('button.btn', { type: 'button', onclick: () => net.send({ t: 'mp.identity.start' }) }, mp.login ? '🔁 Verify again' : '🔑 Verify GitHub account'),
+        : h('button.btn', { type: 'button', onclick: () => net.send({ t: 'mp.identity.start' }) }, icon(mp.login ? 'rotate-cw' : 'key-round'), mp.login ? 'Verify again' : 'Verify GitHub account'),
       // The token only proves who you are, but whoever holds it can say so on any relay with the same password.
-      ...(mp.login ? [h('button.btn', { type: 'button', onclick: () => net.send({ t: 'mp.identity.forget' }) }, '🗑 Forget GitHub account'), h('p.setting-note', {}, 'Deletes the stored token and disconnects. To revoke it on GitHub too: Settings → Applications → Authorized OAuth Apps → the server’s app → Revoke.')] : []),
+      ...(mp.login ? [h('button.btn', { type: 'button', onclick: () => net.send({ t: 'mp.identity.forget' }) }, icon('trash-2'), 'Forget GitHub account'), h('p.setting-note', {}, 'Deletes the stored token and disconnects. To revoke it on GitHub too: Settings → Applications → Authorized OAuth Apps → the server’s app → Revoke.')] : []),
     );
     floors.replaceChildren(...(mp.floors.length ? mp.floors.map(floorRow) : [h('p.setting-note', {}, 'No floors yet.')]));
   }

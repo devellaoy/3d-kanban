@@ -1,24 +1,20 @@
-/* 🔎 Find PRs' confirmation window (prfind.ts): opened from the task view on the kanban page and in the
-   3D office, which doesn't load kanban.css, so it brings all its own styles. Scoped under .kb-pr-find,
-   over the review picker's .kb-pr-list rules (kanban.css, officecss.ts) where both are on the page. */
-.modal.kb-pr-find { width: min(640px, 100%); }
-.modal.kb-pr-find > header h2 { white-space: normal; overflow-wrap: anywhere; line-height: 1.25; }
-.kb-pr-find > .body { display: flex; flex-direction: column; gap: 10px; }
-.kb-pr-find .kb-find-task { margin: 0; font-size: var(--fs-sm); font-weight: var(--fw-heavy); white-space: normal; overflow-wrap: anywhere; }
-.kb-pr-find .kb-note { margin: 0; font-size: var(--fs-sm); font-weight: var(--fw-semibold); color: var(--muted); }
-.kb-pr-find .kb-pr-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
-.kb-pr-find .kb-pr-list li { display: flex; flex-direction: column; align-items: stretch; gap: 2px; padding: 8px 10px; border: var(--bw-sm) solid var(--ink); border-radius: var(--radius-md); background: var(--field); }
-.kb-pr-find .kb-pr-list li:has(input:checked) { background: var(--warn-wash); }
-/* The box, then the PR's name with its state at the right; the title and the branch get rows of their own and wrap. */
-.kb-pr-find .kb-pr-list label { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 4px 10px; margin: 0; padding: 0; border: 0; background: none; font-size: var(--fs-sm); cursor: pointer; }
-.kb-pr-find .kb-pr-list input { grid-row: 1; grid-column: 1; width: 18px; height: 18px; margin: 0; accent-color: var(--accent); }
-.kb-pr-find .kb-pr-list label > a, .kb-pr-find .kb-pr-list label > b { grid-row: 1; grid-column: 2; justify-self: start; max-width: 100%; font-weight: var(--fw-heavy); overflow-wrap: anywhere; }
-.kb-pr-find .kb-pr-list .kb-pr { grid-row: 1; grid-column: 3; }
-.kb-pr-find .kb-pr-list .kb-pr-title { grid-column: 2 / -1; overflow: visible; white-space: normal; overflow-wrap: anywhere; font-weight: var(--fw-semibold); }
-.kb-pr-find .kb-pr-list code { grid-column: 2 / -1; justify-self: start; max-width: 100%; padding: 1px 4px; font-size: var(--fs-xs); overflow-wrap: anywhere; background: var(--paper); border: 1px solid var(--rule-code); border-radius: 4px; }
-/* taskview.css's PR state pill, which is scoped to the task view. */
-.kb-pr-find .kb-pr { padding: 1px 7px; font-size: var(--fs-2xs); font-weight: var(--fw-heavy); border: var(--bw-sm) solid var(--ink); border-radius: var(--radius-xs); color: var(--text); background: var(--field); white-space: nowrap; }
-.kb-pr-find .kb-pr.open { background: var(--good-soft); }
-.kb-pr-find .kb-pr.draft { background: var(--tint-grey); }
-.kb-pr-find .kb-pr.merged { background: var(--tint-violet); }
-.kb-pr-find .kb-pr.closed { background: var(--bad-soft); }
+/* The windows that pick pull requests: Link pull requests (prfind.ts) and the review picker
+   (prpicker.ts). Both are the shared shell with the kit's list box (styles/kit-modal.css); opened from
+   the task view on the kanban page and in the 3D office, which doesn't load kanban.css, so the sheet
+   brings what is their own. Tokens only. */
+.kb-prs-body { display: flex; flex-direction: column; gap: 12px; }
+.kb-prs-task { font-weight: var(--fw-semibold); overflow-wrap: anywhere; }
+.kb-prs-note { margin: 0; color: var(--text-2); }
+.kb-prs-h { margin: 4px 0 -4px; font-size: var(--fs-xs); font-weight: var(--fw-semibold); color: var(--text-2); }
+.kb-prs-error { margin: 0; padding: 8px 10px; border: var(--bw-sm) solid var(--bad); border-radius: var(--radius-md); background: var(--bad-wash); }
+.kb-prs-list { overflow: hidden; }
+.kb-prs-row { cursor: pointer; }
+.kb-prs-row > input { flex: none; margin: 0; accent-color: var(--accent); }
+.kb-prs-row:has(input:checked) { background: var(--field-hover); }
+.kb-prs-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.kb-prs-title { font-weight: var(--fw-medium); overflow-wrap: anywhere; }
+.kb-prs-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 2px 8px; font-size: var(--fs-xs); color: var(--muted); }
+.kb-prs-meta .kb-prs-name, .kb-prs-meta code { font-family: var(--font-mono); overflow-wrap: anywhere; }
+.kb-prs-meta a.kb-prs-name { color: var(--link); text-decoration: none; }
+.kb-prs-meta a.kb-prs-name:hover { text-decoration: underline; }
+.kb-prs-row > .pr-pill { flex: none; }

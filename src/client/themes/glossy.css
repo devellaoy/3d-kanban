@@ -182,6 +182,54 @@
   --fs-2xs-plus: 12px;
   --fs-avatar: 11px;
 
+  /* ---- Controls, statuses and "needs you" (the kit: styles/kit-*.css) ---- */
+  --line-control: rgba(0, 0, 0, .12);   /* the border of a control (a button, an input, a select); a step stronger than --ink where the look has hairlines */
+  --chip-edge: rgba(0, 0, 0, .08);   /* the line round a pill, badge or chip: --ink in the outlined looks, transparent in the flat ones */
+  --radius-chip: 999px;   /* the corner of a chip and a phase badge: a pill here, a few pixels in the flat looks */
+  --text-2: #3c3c41;   /* secondary text a step above --muted: a quiet button, a tab, a section label */
+  --text-neutral: #1d1d1f;   /* text on a neutral soft fill: a count badge, a draft pill */
+  --accent-soft-ink: #004c99;   /* text on --accent-soft: an active filter chip */
+  --accent-edge: rgba(0, 102, 204, .35);   /* the border of an active filter chip or a picked choice chip */
+  /* A task status: the solid colour is its column line and icon, -soft and -ink its pill. */
+  --st-todo: #946200; --st-todo-soft: #fff6d1; --st-todo-ink: #1d1d1f;
+  --st-progress: #0066cc; --st-progress-soft: #e1eeff; --st-progress-ink: #1d1d1f;
+  --st-waiting: #d70015; --st-waiting-soft: #ffe6eb; --st-waiting-ink: #1d1d1f;
+  --st-review: #1f7a35; --st-review-soft: #e2f6e5; --st-review-ink: #1d1d1f;
+  --st-hold: #8a5a1c; --st-hold-soft: #ffefd9; --st-hold-ink: #1d1d1f;
+  --st-done: #5b5b61; --st-done-soft: #ebeef0; --st-done-ink: #1d1d1f;
+  /* A run phase badge, and a pull request state. */
+  --ph-plan-soft: #fbe9fb; --ph-plan-ink: #1d1d1f;
+  --ph-implement-soft: #e1eeff; --ph-implement-ink: #1d1d1f;
+  --ph-review-soft: #e2f6e5; --ph-review-ink: #1d1d1f;
+  --ph-fix-soft: #ffe8cc; --ph-fix-ink: #1d1d1f;
+  --ph-pr-soft: #e8f1fc; --ph-pr-ink: #1d1d1f;
+  --pr-open-soft: #e3f6e8; --pr-open-ink: #1d1d1f;
+  --pr-draft-soft: #ececf0; --pr-draft-ink: #1d1d1f;
+  --pr-merged-soft: #efe8fc; --pr-merged-ink: #1d1d1f;
+  --pr-closed-soft: #ffe5e7; --pr-closed-ink: #1d1d1f;
+  --attn-edge: #d70015;   /* "needs you": the border of a card that waits for you */
+  --attn-soft: #ffe5e7;   /* ... its note and the "needs you" pill */
+  --attn-ink: #1d1d1f;   /* ... the text on --attn-soft */
+  --attn-icon: #d70015;   /* ... its icon on a plain surface */
+  --banner-edge: rgba(0, 0, 0, .08);   /* the banner on top of a task that waits: its border, */
+  --banner-bg: #fff0f2;   /* ... background, */
+  --banner-title: #1d1d1f;   /* ... title */
+  --banner-text: #1d1d1f;   /* ... and text */
+  --run-dot: #1e7e34;   /* the dot of a task whose agent is running */
+  --run-halo: rgba(30, 126, 52, .7);   /* ... and the halo round it */
+  --pin-size: 8px;   /* the pin on a card's top edge (0: no pin) */
+  --page-bg: #eef1f7;   /* the page under the kanban board (a look may lay a wash over it) */
+  --bar-bg: rgba(255, 255, 255, .35);   /* a window's header and footer, and the board's top row */
+  --col-bg: rgba(255, 255, 255, .4);   /* a board column's surface (transparent: the cards stand on the page) */
+  --col-edge: rgba(0, 0, 0, .08);   /* ... its border */
+  --col-shadow: 0 1px 2px rgba(0, 0, 0, .04), 0 8px 28px rgba(30, 42, 90, .08), inset 0 1px 0 rgba(255, 255, 255, .75);   /* ... its shadow */
+  --col-pad: 10px;   /* ... and the room between its edge and its cards */
+  --note-card-pink: #fff0f2;   /* a waiting task's card */
+  --chip-ticket: #fff6d6;   /* a ticket's chip */
+  --chip-type: #e5f7fa;   /* a type chip (Investigate) */
+  --board-bg: #d8a86a;   /* the issue and pull request boards' surface: a cork board, or the page */
+  --board-dot: rgba(0, 0, 0, .08);   /* ... and its dots */
+
   /* ---- Glass ---- */
   --glass-blur: saturate(180%) blur(28px);
 
@@ -249,6 +297,8 @@
   box-shadow: 0 1px 2px rgba(0, 0, 0, .08), 0 4px 14px rgba(0, 102, 204, .18), inset 0 1px 0 rgba(255, 255, 255, .18);
 }
 :root[data-theme="glossy"] .btn.primary:hover { background-color: var(--accent-hover); }
+/* A quiet button and an icon button (styles/kit-controls.css) are bare until hovered: no glass, hairline or shadow. */
+:root[data-theme="glossy"] .btn:is(.quiet, .quiet-danger, .icon-btn) { --field-hover: #f0f3f9; border-color: transparent; box-shadow: none; }
 /* A picked segment (the Theme row, the camera view) is the accent, as Apple's; green stays for done. */
 :root[data-theme="glossy"] .btn.on { background-color: var(--accent); color: var(--text-on-accent); }
 :root[data-theme="glossy"] .dock-btn { background-color: var(--paper); }
@@ -261,15 +311,11 @@
 :root[data-theme="glossy"] :is(textarea, input:not([type=checkbox], [type=radio], [type=range]), select) { border-color: rgba(0, 0, 0, .12); }
 :root[data-theme="glossy"] :is(textarea, input:not([type=checkbox], [type=radio], [type=range]), select):focus { border-color: var(--accent); box-shadow: 0 0 0 4px rgba(0, 102, 204, .18); }
 
-/* Windows and the ☰ menu: soft layered shadow; the header and footer a slightly whiter band of the same glass. */
+/* Windows and the ☰ menu: soft layered shadow (the header and footer's whiter band of the same glass is --bar-bg). */
 :root[data-theme="glossy"] .hud-menu { border-radius: var(--radius-lg); box-shadow: var(--shadow-lg); }
-:root[data-theme="glossy"] .modal header,
-:root[data-theme="glossy"] .modal footer { background: rgba(255, 255, 255, .35); }
 
 /* The kanban: columns a sheet of glass, headers a soft tint of their colour, cards straight with a
    small pin. */
-:root[data-theme="glossy"] .kb-col { background: rgba(255, 255, 255, .4); }
-:root[data-theme="glossy"] .kb-col-head { border-radius: calc(var(--radius) - var(--bw)) calc(var(--radius) - var(--bw)) 0 0; letter-spacing: .02em; }
 :root[data-theme="glossy"] .kb-card { border-radius: var(--radius-sm); }
 :root[data-theme="glossy"] .kb-card::before { width: 8px; height: 8px; margin-left: -4px; top: -4px; border: 0; box-shadow: 0 1px 2px rgba(0, 0, 0, .25); }
 
@@ -282,12 +328,11 @@
 :root[data-theme="glossy"] .md blockquote.alert { border-radius: var(--radius-sm); }
 
 /* The bars' controls: at least 36px tall. */
-:root[data-theme="glossy"] .kb-bar .btn.small,
-:root[data-theme="glossy"] .kb-filters select { height: 36px; }
+:root[data-theme="glossy"] :is(.kb-bar, .kb-wbar) :is(.btn, .filter-chip, .kb-search, .kb-wtab) { min-height: 36px; }
+:root[data-theme="glossy"] .kb-bar .icon-btn { min-width: 36px; }
 
 /* Room for the small controls' 36px touch targets (--hit-min, styles/base.css): each one gets the free
    space around it that its invisible hit area grows into, so the target is 36px and lands on nothing else. */
-:root[data-theme="glossy"] .kb-card-top { margin-bottom: 8px; }
 :root[data-theme="glossy"] .kb-attachments { gap: 8px; }
 :root[data-theme="glossy"] .kb-attachment { min-height: 36px; gap: 8px; padding: 0 6px 0 12px; }
 :root[data-theme="glossy"] .kb-attachment.busy { padding-right: 12px; }

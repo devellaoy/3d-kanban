@@ -2,9 +2,14 @@
 // its repositories), how (implement or investigate, a plan first or not, how many review rounds and by
 // whom, acceptance criteria) and by which agent. Unset fields take the project's and the office's defaults.
 // A new task has no title box: its title is the description's first line, or, with an issue picked by
-// 🔗 Select issue, the issue's (createmsg.ts works out which message that makes).
+// Select issue, the issue's (createmsg.ts works out which message that makes).
+//
+// The window is the shared shell (ui/shell.ts): the sections What / Where / How / Who, each a heading
+// with its hint beside its fields, and a footer of Cancel, Create and the one primary Create and start.
 
+import './create.css';
 import { h, toast } from '../ui/dom';
+import { icon, iconButton } from '../ui/icons';
 import { CLAUDE_MODELS } from '../../shared/protocol';
 import { KANBAN_EFFORTS, KANBAN_TOOLS, type KanbanEffort, type KanbanTask, type KanbanTool, type NormalizedIssue, type PlanApproval, type ReviewSettings, type TaskType } from '../../shared/kanban/types.js';
 import { KANBAN_LIMITS, type KanbanTaskInput, type KanbanTaskPatch } from '../../shared/kanban/protocol.js';
@@ -12,14 +17,16 @@ import type { KanbanApi, KanbanOk } from './api';
 import { attachBox } from './attachbox';
 import { codexLimitsChip, recheckCodexChips } from './codexlimits';
 import { newOnceKey } from './office';
-import { newTaskMsg, type NewTaskFields } from './createmsg';
+import { newTaskMsg, reviewOverride as reviewOf, reviewStart, type NewTaskFields } from './createmsg';
 import { KANBAN_DEFAULTS, REVIEW_DEFAULTS } from './defaults';
 import { openIssuePicker } from './issues';
 import { sameRepoPick } from './model';
-import { isSendKey } from './sendkey';
 import { kstore } from './store';
 import { APPROVAL_NAMES, effortName, toolName } from './labels';
-import { checkbox, dialog, field, numberInput, numberValue, run, select, showDialog, textArea, textInput } from './ui';
+import { isSendKey } from './sendkey';
+import { numberInput, numberValue, run, select, textArea, textInput } from './ui';
+import { btn, checkLine, formField, segmented, sendKeyHint } from '../ui/kit';
+import { modalShell, openShell } from '../ui/shell';
 
 export interface CreateOptions {
   project?: string;
@@ -55,45 +62,43 @@ export function openCreate(api: KanbanApi, o: CreateOptions = {}) {
 
   // --- What and where
   // Only a task being edited has a title box: a new one is titled by its first line (or its issue).
-  const title = textInput(editing?.title ?? '', { maxlength: KANBAN_LIMITS.title, required: true, autofocus: !!editing, placeholder: 'What needs doing, in a line' });
+  const title = textInput(editing?.title ?? '', { class: 'inp', maxlength: KANBAN_LIMITS.title, required: true, autofocus: !!editing, placeholder: 'What needs doing, in a line' });
   // A preset title (a task made from something else) leads the text, where the title comes from.
   const preText = [pre.title, pre.description].filter(Boolean).join('\n\n');
   const desc = textArea(editing?.description ?? preText, {
-    rows: 8,
+    rows: 5,
     maxlength: KANBAN_LIMITS.description,
     autofocus: !editing,
-    placeholder: editing ? 'The details, in Markdown. Paste or drop screenshots and files here.' : 'What needs doing? The first line becomes the title. The details in Markdown; paste or drop screenshots and files here.',
+    'aria-label': 'Description',
+    placeholder: editing ? 'The details, in Markdown. Paste or drop screenshots and files here.' : 'What needs doing? Details in Markdown; paste or drop screenshots and files here.',
     spellcheck: 'true',
   });
-  const descWrap = h('div.kb-desc-box', {}, desc);
-  const attach = attachBox({ target: desc, dropZone: descWrap, insertLinks: true });
-  descWrap.append(attach.el, h('small.kb-hint', {}, 'Markdown. Files pasted, dropped or 📎 attached go in where the cursor is.'));
-  const ticket = textInput(editing?.ticket ?? pre.ticket ?? '', { maxlength: KANBAN_LIMITS.ticket, placeholder: 'UYT-1415 / gh:owner/repo#12' });
-  const ticketUrl = textInput(editing?.ticketUrl ?? pre.ticketUrl ?? '', { maxlength: KANBAN_LIMITS.url, placeholder: 'https://…', type: 'url' });
-  const projectSel = select(projects.map((p) => [p.id, p.name] as const), editing?.project ?? pre.project ?? o.project ?? kstore.project ?? projects[0].id, { disabled: !!editing });
-  const repoBox = h('div.kb-repo-checks', { role: 'group', 'aria-label': 'Repositories' });
+  const descBox = h('div.composite.kb-nt-desc', {}, desc);
+  const attach = attachBox({ target: desc, dropZone: descBox, insertLinks: true });
+  const ticket = textInput(editing?.ticket ?? pre.ticket ?? '', { class: 'inp', maxlength: KANBAN_LIMITS.ticket, placeholder: 'UYT-1415 or gh:owner/repo#12' });
+  const ticketUrl = textInput(editing?.ticketUrl ?? pre.ticketUrl ?? '', { class: 'inp', maxlength: KANBAN_LIMITS.url, placeholder: 'https://', type: 'url' });
+  const projectSel = select(projects.map((p) => [p.id, p.name] as const), editing?.project ?? pre.project ?? o.project ?? kstore.project ?? projects[0].id, { class: 'inp', disabled: !!editing });
+  const repoBox = h('div.kb-nt-repos', { role: 'group', 'aria-label': 'Repositories' });
   let repoChecks: { id: string; box: HTMLInputElement; el: HTMLElement }[] = [];
   const paintRepos = (initial?: string[] | null) => {
     const p = kstore.projectOf(projectSel.value);
     const repos = p?.repos ?? [];
     repoChecks = repos.map((r) => {
       // The primary repository (the floor's own checkout) is always in: the engine works there whatever is picked.
-      const c = checkbox(`${r.primary ? '⭐ ' : ''}${r.name}${r.kind === 'folder' ? ' (folder)' : ''}`, r.primary || (initial ? initial.includes(r.id) : true), { value: r.id, disabled: r.primary });
-      if (r.primary) {
-        c.el.title = 'Always included: the task works in the floor’s own checkout whatever else is picked';
-        c.el.append(h('small.kb-muted', {}, ' (always included)'));
-      }
-      return { id: r.id, box: c.box, el: c.el };
+      const box = h('input', { type: 'checkbox', value: r.id, disabled: r.primary }) as HTMLInputElement;
+      box.checked = r.primary || (initial ? initial.includes(r.id) : true);
+      const el = h('label.check-chip', {}, box, `${r.name}${r.kind === 'folder' ? ' (folder)' : ''}`, r.primary ? h('span.check-chip-tag', {}, 'Primary') : null);
+      if (r.primary) el.title = 'Always included: the task works in the floor’s own checkout whatever else is picked';
+      return { id: r.id, box, el };
     });
-    repoBox.replaceChildren(...repoChecks.map((c) => c.el), ...(repos.length ? [] : [h('small.kb-muted', {}, 'The project has no repositories listed')]));
-    repoBox.classList.toggle('single', repos.length < 2);
+    repoBox.replaceChildren(...repoChecks.map((c) => c.el), ...(repos.length ? [] : [h('span.field-hint', {}, 'The project has no repositories listed')]));
   };
   paintRepos(editing ? editing.repoIds : pre.repoIds);
 
   // --- The issue it is made from (a new task only: an edit wouldn't bring the issue's text or check for its task)
   let picked: NormalizedIssue | null = null;
-  const pickBtn = h('button.btn.small', { type: 'button', title: 'Make the task from one of the project’s issues: its key, link and text go on the task, and the issue’s title is the task’s' }, '🔗 Select issue') as HTMLButtonElement;
-  const pickedChip = h('span.kb-picked.hidden');
+  const pickBtn = btn('Select issue', { kind: 'quiet', size: 'sm', icon: 'link', attrs: { title: 'Make the task from one of the project’s issues: its key, link and text go on the task, and the issue’s title is the task’s' } });
+  const pickedChip = h('div.kb-nt-picked.hidden');
   const setPicked = (issue: NormalizedIssue | null, keepFields = false) => {
     if (!keepFields && (issue || picked)) {
       ticket.value = issue?.key ?? '';
@@ -104,28 +109,41 @@ export function openCreate(api: KanbanApi, o: CreateOptions = {}) {
     ticketUrl.readOnly = !!issue;
     pickedChip.classList.toggle('hidden', !issue);
     if (!issue) return;
-    const clear = h('button.btn', { type: 'button', 'aria-label': `Unlink ${issue.key}`, title: 'Unlink the issue', onclick: () => setPicked(null) }, '✕');
-    pickedChip.replaceChildren(h('span', { title: `${issue.key} · ${issue.title}` }, `${issue.key} · ${issue.title}`), clear);
+    const clear = iconButton('x', `Unlink ${issue.key}`, { class: 'xs', onclick: () => setPicked(null) }, 14);
+    pickedChip.replaceChildren(icon('link', { size: 14 }), h('span', { title: `${issue.key} · ${issue.title}` }, h('b', {}, issue.key), ` ${issue.title}`), clear);
   };
   pickBtn.addEventListener('click', () => openIssuePicker(api, projectSel.value, (issue) => setPicked(issue), () => desc.focus()));
   // A ticket typed over the picked one is a plain ticket again: the chip would say otherwise.
   ticket.addEventListener('input', () => picked && ticket.value.trim() !== picked.key && setPicked(null, true));
+  descBox.append(h('div.composite-bar', {}, attach.el, editing ? null : pickBtn, h('span.composite-note', { title: 'Files pasted, dropped or attached go in where the cursor is.' }, 'Markdown supported')));
 
   // --- How
-  const type = select<TaskType>([['implement', 'Implement'], ['investigate', 'Investigate']], editing?.type ?? pre.type ?? 'implement');
-  const usePlan = checkbox('Plan first', editing?.usePlan ?? pre.usePlan ?? defaults?.usePlan ?? KANBAN_DEFAULTS.defaults.usePlan);
+  const type = segmented<TaskType>([['implement', 'Implement'], ['investigate', 'Investigate']], editing?.type ?? pre.type ?? 'implement', () => paintDefaults(), 'Type');
+  const usePlan = checkLine('Plan first');
+  usePlan.box.checked = editing?.usePlan ?? pre.usePlan ?? defaults?.usePlan ?? KANBAN_DEFAULTS.defaults.usePlan;
   const projSettings = () => s?.projects[projectSel.value];
   const approvalDefault = () => projSettings()?.planApproval ?? defaults?.planApproval ?? KANBAN_DEFAULTS.defaults.planApproval;
-  const approval = select<PlanApproval | ''>([['', ''], ['auto', APPROVAL_NAMES.auto], ['manual', APPROVAL_NAMES.manual]], editing ? editing.planApproval : (pre.planApproval ?? ''));
-  const useReview = checkbox('Review rounds', editing?.useReview ?? pre.useReview ?? defaults?.useReview ?? KANBAN_DEFAULTS.defaults.useReview);
+  const approval = select<PlanApproval | ''>([['', ''], ['auto', APPROVAL_NAMES.auto], ['manual', APPROVAL_NAMES.manual]], editing ? editing.planApproval : (pre.planApproval ?? ''), { class: 'inp', 'aria-label': 'Plan approval' });
+  const useReview = checkLine('Review rounds');
+  useReview.box.checked = editing?.useReview ?? pre.useReview ?? defaults?.useReview ?? KANBAN_DEFAULTS.defaults.useReview;
   const override = editing?.overrides.review ?? pre.review;
-  const reviewOverride = checkbox('Choose the reviewer', !!override && Object.keys(override).length > 0);
   const baseReview = (): ReviewSettings => ({ ...(s?.review ?? REVIEW_DEFAULTS), ...projSettings()?.review }) as ReviewSettings;
-  const rTool = select<KanbanTool>(KANBAN_TOOLS.map((x) => [x, toolName(x)] as const), override?.tool ?? baseReview().tool);
+  const baseRounds = () => baseReview().rounds ?? REVIEW_DEFAULTS.rounds;
+  // The number of rounds stands beside its tick box; a reviewer of the task's own is picked under it.
+  const reviewOverride = checkLine('Choose the reviewer');
+  const stored = reviewStart(override, baseRounds());
+  reviewOverride.box.checked = stored.choose;
+  const rTool = select<KanbanTool>(KANBAN_TOOLS.map((x) => [x, toolName(x)] as const), override?.tool ?? baseReview().tool, { class: 'inp' });
   const rModel = modelInput(override?.model ?? '', () => rTool.value as KanbanTool);
+  rModel.input.classList.add('inp');
   const rEffort = effortSelect(override?.effort, 'Default');
-  const rRounds = numberInput(override?.rounds ?? baseReview().rounds ?? REVIEW_DEFAULTS.rounds, 1, 10, { 'aria-label': 'Rounds' });
-  const rReRev = checkbox('Review the last fix too', override?.reReviewLastFix ?? baseReview().reReviewLastFix ?? REVIEW_DEFAULTS.reReviewLastFix);
+  rEffort.classList.add('inp');
+  const rRounds = numberInput(stored.rounds, 1, 10, { class: 'inp', 'aria-label': 'Number of review rounds', title: '1–10 review rounds, each followed by a fix when changes are asked for' });
+  /** Whether the number is the person's own: until then it follows the picked project's default. */
+  let roundsTouched = stored.ownRounds;
+  rRounds.addEventListener('input', () => (roundsTouched = true));
+  const rReRev = checkLine('Review the last fix too');
+  rReRev.box.checked = override?.reReviewLastFix ?? baseReview().reReviewLastFix ?? REVIEW_DEFAULTS.reReviewLastFix;
   rTool.addEventListener('change', rModel.refresh);
   // The Codex sign-in's allowance, by whichever agent is Codex.
   const codexChip = (pick: () => string) => {
@@ -134,22 +152,15 @@ export function openCreate(api: KanbanApi, o: CreateOptions = {}) {
   };
   const reviewCodex = codexChip(() => rTool.value);
   rTool.addEventListener('change', reviewCodex.paint);
-  const reviewFields = h(
-    'div.kb-subfields',
-    {},
-    field('Reviewer', rTool),
-    field('Model', rModel.el),
-    field('Effort', rEffort),
-    field('Rounds', rRounds, '1–10 review rounds, each followed by a fix when changes are asked for'),
-    reviewCodex.el,
-    rReRev.el,
-  );
-  const goal = textArea(editing?.goal ?? pre.goal ?? '', { rows: 3, maxlength: KANBAN_LIMITS.goal, placeholder: 'When is it done? One criterion per line.' });
+  const reviewFields = h('div.kb-nt-sub', {}, formField('Reviewer', rTool), formField('Model', rModel.el), formField('Effort', rEffort), reviewCodex.el, rReRev.el);
+  const goal = textArea(editing?.goal ?? pre.goal ?? '', { class: 'inp', rows: 2, maxlength: KANBAN_LIMITS.goal, placeholder: 'When is it done? One criterion per line.', title: 'The agents check the work against these' });
 
   // --- Who
-  const tool = select<KanbanTool | ''>([['', ''], ...KANBAN_TOOLS.map((x) => [x, toolName(x)] as const)], editing ? editing.tool : (pre.tool ?? ''));
+  const tool = select<KanbanTool | ''>([['', ''], ...KANBAN_TOOLS.map((x) => [x, toolName(x)] as const)], editing ? editing.tool : (pre.tool ?? ''), { class: 'inp' });
   const model = modelInput(editing?.model ?? pre.model ?? '', () => ((tool.value || defaults?.tool || KANBAN_DEFAULTS.defaults.tool) as KanbanTool));
+  model.input.classList.add('inp');
   const effort = effortSelect(editing?.effort ?? pre.effort, 'Default');
+  effort.classList.add('inp');
   tool.addEventListener('change', model.refresh);
   const toolCodex = codexChip(() => tool.value || defaults?.tool || KANBAN_DEFAULTS.defaults.tool);
   tool.addEventListener('change', toolCodex.paint);
@@ -160,13 +171,15 @@ export function openCreate(api: KanbanApi, o: CreateOptions = {}) {
     toolCodex.paint();
     reviewCodex.paint();
     model.input.placeholder = defaults?.model ? `Default (${defaults.model})` : 'Default';
-    const inv = type.value === 'investigate';
+    if (!roundsTouched) rRounds.value = String(baseRounds());
+    const inv = type.value() === 'investigate';
     usePlan.box.disabled = inv;
     approval.disabled = !usePlan.box.checked || inv;
+    rRounds.disabled = !useReview.box.checked;
     reviewOverride.box.disabled = !useReview.box.checked;
     reviewFields.classList.toggle('hidden', !reviewOverride.box.checked || !useReview.box.checked);
   };
-  for (const el of [usePlan.box, useReview.box, reviewOverride.box, type]) el.addEventListener('change', paintDefaults);
+  for (const el of [usePlan.box, useReview.box, reviewOverride.box]) el.addEventListener('change', paintDefaults);
   projectSel.addEventListener('change', () => {
     // The picked issue is the other project's.
     setPicked(null);
@@ -174,38 +187,53 @@ export function openCreate(api: KanbanApi, o: CreateOptions = {}) {
     paintDefaults();
   });
 
+  /** A section of the form: its heading and hint in the left column, its fields in the right. */
+  const section = (name: string, hint: string, ...fields: (Node | null)[]) => h('section.kb-nt-sec', { 'aria-label': name }, h('div.kb-nt-sec-head', {}, h('h3', {}, name), h('span', {}, hint)), h('div.kb-nt-sec-body', {}, ...fields));
   const body = h(
-    'form.body.kb-form',
+    'form.kb-nt-form',
     { novalidate: true },
-    h('fieldset', {}, h('legend', {}, 'What'), editing ? field('Title', title) : null, field('Description', descWrap), editing ? null : h('div.kb-ticket-pick', {}, pickBtn, pickedChip), h('div.kb-two', {}, field('Ticket', ticket), field('Ticket link', ticketUrl))),
-    h('fieldset', {}, h('legend', {}, 'Where'), field('Project', projectSel, editing ? 'A task stays in its project' : undefined), field('Repositories', repoBox, 'The repositories it works in: all of the project’s unless you pick some')),
-    h(
-      'fieldset',
-      {},
-      h('legend', {}, 'How'),
-      field('Type', type, 'Investigate: read-only, it writes a report instead of changing code'),
-      h('div.kb-two', {}, usePlan.el, field('Plan approval', approval)),
-      h('div.kb-two', {}, useReview.el, reviewOverride.el),
+    section('What', editing ? 'A task can be edited until it starts.' : 'The first line becomes the title.', editing ? formField('Title', title) : null, descBox, pickedChip, h('div.kb-nt-cols', {}, formField('Ticket', ticket), formField('Ticket link', ticketUrl))),
+    section('Where', 'All repositories unless you pick some.', h('div.kb-nt-cols', {}, formField('Project', projectSel, { hint: editing ? 'A task stays in its project' : undefined }), formField('Repositories', repoBox))),
+    section(
+      'How',
+      'Investigate is read-only and writes a report.',
+      h('div.kb-nt-how', {}, formField('Type', type.el), h('div.kb-nt-pair', {}, usePlan.el, approval), h('div.kb-nt-pair', {}, useReview.el, rRounds)),
+      reviewOverride.el,
       reviewFields,
-      field('🎯 Acceptance criteria', goal, 'The agents check the work against these'),
+      formField('Acceptance criteria', goal),
     ),
-    h('fieldset', {}, h('legend', {}, 'Who'), h('div.kb-three', {}, field('Agent', tool), field('Model', model.el), field('Effort', effort)), toolCodex.el),
+    section('Who', 'Empty fields use the project defaults.', h('div.kb-nt-who', {}, formField('Agent', tool), formField('Model', model.el), formField('Effort', effort)), toolCodex.el),
   );
 
-  const createBtn = h('button.btn', { type: 'button' }, editing ? 'Save' : 'Create') as HTMLButtonElement;
-  const startBtn = h('button.btn.primary', { type: 'button' }, '▶️ Create and start') as HTMLButtonElement;
-  const note = h('span.grow', {}, editing ? 'A task can be edited until it starts; its issue also later, in its Issue tab.' : 'Unset fields take the project’s and the office’s defaults.');
-  const d = dialog('kb-create', editing ? `Edit #${editing.id}` : '✨ New task', body, h('footer', {}, note, createBtn, editing ? null : startBtn));
-  const modal = showDialog(d, { backdropCloses: false });
+  const cancelBtn = btn('Cancel', { kind: 'quiet' });
+  const createBtn = btn(editing ? 'Save' : 'Create', { kind: editing ? 'primary' : 'secondary' });
+  const startBtn = btn('Create and start', { kind: 'primary', icon: 'play' });
+  const hint = sendKeyHint(editing ? 'saves' : 'creates the task');
+  hint.title = editing ? 'A task can be edited until it starts; its issue also later, in its Issue tab.' : 'Unset fields take the project’s and the office’s defaults.';
+  const shell = modalShell({
+    cls: 'kb-newtask w840',
+    title: editing ? 'Edit task' : 'New task',
+    id: editing ? `#${editing.id}` : h('span.kb-nt-in', {}, `in ${kstore.projectOf(projectSel.value)?.name ?? projectSel.value}`),
+    body,
+    footerLeft: [hint],
+    footerRight: [cancelBtn, createBtn, editing ? null : startBtn],
+  });
+  if (!editing) projectSel.addEventListener('change', () => (shell.head.querySelector('.kb-nt-in')!.textContent = `in ${kstore.projectOf(projectSel.value)?.name ?? projectSel.value}`));
+  const modal = openShell(shell, { backdropCloses: false });
+  cancelBtn.addEventListener('click', () => modal.close());
   paintDefaults();
 
-  const reviewValue = (): Partial<ReviewSettings> | undefined => {
-    if (!useReview.box.checked || !reviewOverride.box.checked) return undefined;
-    const out: Partial<ReviewSettings> = { tool: rTool.value as KanbanTool, rounds: numberValue(rRounds, 1, 10, REVIEW_DEFAULTS.rounds), reReviewLastFix: rReRev.box.checked };
-    if (rModel.input.value.trim()) out.model = rModel.input.value.trim();
-    if (rEffort.value) out.effort = rEffort.value as KanbanEffort;
-    return out;
-  };
+  const reviewValue = (): Partial<ReviewSettings> | undefined =>
+    reviewOf({
+      useReview: useReview.box.checked,
+      choose: reviewOverride.box.checked,
+      rounds: numberValue(rRounds, 1, 10, REVIEW_DEFAULTS.rounds),
+      baseRounds: baseRounds(),
+      tool: rTool.value as KanbanTool,
+      model: rModel.input.value,
+      effort: rEffort.value as KanbanEffort | '',
+      reReviewLastFix: rReRev.box.checked,
+    });
   const repoIds = (): string[] | null => {
     const picked = repoChecks.filter((c) => c.box.checked).map((c) => c.id);
     return picked.length === repoChecks.length ? null : picked;
@@ -230,7 +258,7 @@ export function openCreate(api: KanbanApi, o: CreateOptions = {}) {
       if (ticketUrl.value.trim() !== (editing.ticketUrl ?? '')) patch.ticketUrl = ticketUrl.value.trim() || null;
       // The same repositories picked another way (the primary one, always in, left out of an old pick) is no change.
       if (!sameRepoPick(repos, editing.repoIds, kstore.projectOf(editing.project))) patch.repoIds = repos;
-      if (type.value !== editing.type) patch.type = type.value as TaskType;
+      if (type.value() !== editing.type) patch.type = type.value();
       if (tool.value && tool.value !== editing.tool) patch.tool = tool.value as KanbanTool;
       if (model.input.value.trim() !== (editing.model ?? '')) patch.model = model.input.value.trim() || null;
       if (effort.value !== (editing.effort ?? '')) patch.effort = (effort.value as KanbanEffort) || null;
@@ -246,7 +274,7 @@ export function openCreate(api: KanbanApi, o: CreateOptions = {}) {
       if (await run(() => api.request<KanbanOk>({ t: 'kanban.task.update', id: editing.id, patch }), button, 'Saved')) modal.close();
       return;
     }
-    const rest: NewTaskFields['rest'] = { repoIds: repos, type: type.value as TaskType, usePlan: usePlan.box.checked, useReview: useReview.box.checked };
+    const rest: NewTaskFields['rest'] = { repoIds: repos, type: type.value(), usePlan: usePlan.box.checked, useReview: useReview.box.checked };
     if (approval.value) rest.planApproval = approval.value as PlanApproval;
     if (tool.value) rest.tool = tool.value as KanbanTool;
     if (model.input.value.trim()) rest.model = model.input.value.trim();

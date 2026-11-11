@@ -109,7 +109,7 @@ export class HostedBoard {
   /** Only GitHub has issues of its own: elsewhere the board shows the project's issue sources (Jira, Azure Boards). */
   private refreshIssues() {
     const label = hostLabel(this.hosted.host);
-    this.issues = { items: [], fetchedAt: Date.now(), loading: false, host: this.hosted.host, note: `${label} repositories have no issues board of their own: add the project's issue tracker (Jira, Azure Boards) in 🗂️ Kanban → Issue sources` };
+    this.issues = { items: [], fetchedAt: Date.now(), loading: false, host: this.hosted.host, note: `${label} repositories have no issues board of their own: add the project's issue tracker (Jira, Azure Boards) in Settings → Projects → Issue sources` };
     this.onIssues(this.issues);
   }
 

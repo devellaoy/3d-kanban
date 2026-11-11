@@ -9,12 +9,16 @@ import { cardId, cardLabel, isPrimaryIssue, parseGhKey } from '../../shared/kanb
 import type { Net } from '../net';
 import { store } from '../state';
 import { issuePrompt, type BoardActions } from '../ui/github/prompts';
-import { h, openModal, toast } from '../ui/dom';
+import { h, timeAgo, toast } from '../ui/dom';
+import { iconButton } from '../ui/icons';
+import { btn, detailsRail, outLink } from '../ui/kit';
+import { modalShell, openShell } from '../ui/shell';
 import { markdown } from '../ui/markdown';
 import { issueMeeting, type MeetingPreset } from '../ui/meeting';
 import { providerPicker } from '../ui/provider';
 import { openIssue, type IssueWindowExtras } from '../ui/github/issue-window';
 import { labelChip } from '../ui/github/labels';
+import { railButton, railStack, sectionHead } from '../ui/github/pieces';
 import { kanbanApi, type KanbanOk } from './api';
 import { issueActions } from './issueactions';
 import { actionIssue, actionsTarget, closesOrReopens, keyedComment, safeUrl } from './issueactionsmodel';
@@ -51,7 +55,7 @@ export function cardOfIssue(it: GhIssue): CarriedIssue {
   return { issue: isOwnIssue(it) ? it.number : 0, title: it.title, ...(it.key ? { key: it.key } : {}) };
 }
 
-/** A board card taken into your hands (✋, E at its note): what its source said is kept with it. */
+/** A board card taken into your hands (Pick it up, E at its note): what its source said is kept with it. */
 export function takeCard(it: GhIssue): CarriedIssue {
   lastTaken = it;
   return cardOfIssue(it);
@@ -97,14 +101,14 @@ export function cardFields(card: CarriedIssue): { issue?: number; issueKey?: str
   return { ...(card.issue > 0 ? { issue: card.issue } : {}), ...(card.key ? { issueKey: card.key } : {}) };
 }
 
-/** Whether the card's task is on the 📋 queue and not done. */
+/** Whether the card's task is on the task queue and not done. */
 export function cardOnQueue(card: CarriedIssue): boolean {
   const t = taskForCard({ number: card.issue, key: card.key });
   return !!t && t.status !== 'done';
 }
 
 /**
- * The 📋 queue's task for a card: the one not done, else the last one (as state.ts taskForIssue). A
+ * The task queue's task for a card: the one not done, else the last one (as state.ts taskForIssue). A
  * card with a key is its task's by that key; one of the floor's own issues also by its number when the
  * task was queued without one (an agent's, or from before). Another repository's #12 is never the floor's.
  */
@@ -119,7 +123,7 @@ export function sourceChips(it: GhIssue): (HTMLElement | string)[] {
   return [
     it.source && it.source !== 'github-repo' ? h('span.qchip', {}, SOURCE_KIND_NAMES[it.source]) : '',
     it.status && it.source !== 'github-repo' ? h('span.qchip', {}, it.status) : '',
-    it.taskId ? h('span.qchip.done', { title: 'The kanban task made from it' }, `🗂️ #${it.taskId}`) : '',
+    it.taskId ? h('span.qchip.done', { title: 'The kanban task made from it' }, `Task #${it.taskId}`) : '',
   ];
 }
 
@@ -160,7 +164,7 @@ function sourcePrompt(it: GhIssue): string {
   return `Work on ${sourceName(it)}: "${it.title}".\n\n${readHint(it)}\n\nCreate a new branch, implement the change, verify it, then ${pr}.`;
 }
 
-/** The prompt a worker gets for a board card (🤖 Hand to a worker, 📋 Add to queue, a card taken to a desk). */
+/** The prompt a worker gets for a board card (Hand to a worker, Add to queue, a card taken to a desk). */
 export function cardIssuePrompt(it: GhIssue): string {
   return isOwnIssue(it) ? issuePrompt(it) : sourcePrompt(it);
 }
@@ -171,7 +175,7 @@ export function cardPrompt(card: CarriedIssue): string {
   return sourcePrompt(sourceOf(card));
 }
 
-/** What 🤝 Meeting about a card starts with. */
+/** What a meeting about a card starts with. */
 export function cardMeeting(card: AnyCard): MeetingPreset {
   const n = numberOf(card);
   if (isOwnIssue(card)) return issueMeeting(n, card.title);
@@ -180,7 +184,7 @@ export function cardMeeting(card: AnyCard): MeetingPreset {
 }
 
 /**
- * P with a card at an empty desk, or 🗂️ Kanban task: the card's issue as a kanban task, once per ticket.
+ * P with a card at an empty desk, or Create and start in its window: the card's issue as a kanban task, once per ticket.
  * A card from the issue sources goes by the server's kanban.issues.createTask, which makes it from the
  * source's whole text, finds a task already made from it (archived too, or made a moment ago by someone
  * else) and starts one in To do at the desk. Upstream's card (no key) goes as before.
@@ -195,28 +199,28 @@ export function cardTask(net: Net, card: AnyCard, deskId: string | undefined, de
     .then((ok) => {
       if (!ok.taskId) return;
       const text = ok.startError
-        ? `🗂️ ${name} ${ok.existed ? 'is' : 'is now'} task #${ok.taskId}, but it didn't start: ${ok.startError}`
+        ? `${name} ${ok.existed ? 'is' : 'is now'} task #${ok.taskId}, but it didn't start: ${ok.startError}`
         : ok.started
-          ? `🗂️ ${name} ${ok.existed ? 'was already' : 'is now'} task #${ok.taskId}: it starts at ${deskLabel}`
-          : `🗂️ ${name} is already task #${ok.taskId}`;
+          ? `${name} ${ok.existed ? 'was already' : 'is now'} task #${ok.taskId}: it starts at ${deskLabel}`
+          : `${name} is already task #${ok.taskId}`;
       const el = toast(text, ok.started ? 'info' : 'warn');
       // The toasts don't take the mouse; this button does.
-      const open = h('button.btn.small', { type: 'button', style: 'pointer-events:auto;margin-left:8px' }, 'open');
+      const open = btn('Open', { size: 'xs', attrs: { class: 'toast-btn' } });
       open.addEventListener('click', () => {
         el.remove();
         void import('./taskview').then((m) => m.openTaskWindow(net, ok.taskId!));
       });
       el.append(open);
     })
-    .catch((err: Error) => toast(`🗂️ ${err.message}`, 'error'));
+    .catch((err: Error) => toast(err.message, 'error'));
 }
 
-/** 📋 Add to queue for a card from the issue sources: queued by its key (and the floor's own issue's number). */
+/** Add to queue for a card from the issue sources: queued by its key (and the floor's own issue's number). */
 function queueCard(net: Net, it: GhIssue, provider?: AgentProvider, model?: string, effort?: AgentEffort) {
   net.send({ t: 'queue.add', prompt: cardIssuePrompt(it), title: `${issueCardLabel(it)} ${it.title}`, ...cardFields(cardOfIssue(it)), provider, model, effort });
 }
 
-/** Fetches the card again from its source (a card opened from 🔎 Browse isn't on the board, so nothing else keeps it current). */
+/** Fetches the card again from its source (a card opened from Browse all isn't on the board, so nothing else keeps it current). */
 type Reload = () => Promise<GhIssue | undefined>;
 
 const openTaskIn3d = (net: Net) => (id: number) => void import('./taskview').then((m) => m.openTaskWindow(net, id));
@@ -247,6 +251,7 @@ function keyedExtras(net: Net, card: GhIssue, refetch?: Reload): IssueWindowExtr
     },
     closed: () => off?.(),
     postComment: async (text) => void (await api.request(keyedComment(card, to.project, text)!)),
+    openTask: openTaskIn3d(net),
   };
 }
 
@@ -274,67 +279,100 @@ export function openCard(it: GhIssue, net: Net, actions: BoardActions, opts?: { 
   openSourceIssue(it, net, keyed, opts?.reload);
 }
 
-/** The window of a card that isn't a GitHub issue of the project: what the source says, and the same actions as upstream's. */
+/** "Open in Jira", "Open on GitHub": where a card's own page is. */
+const sourceLink = (it: GhIssue) => `Open ${it.source === 'jira' || it.source === 'azure-boards' ? `in ${SOURCE_KIND_NAMES[it.source]}` : 'on GitHub'}`;
+
+/**
+ * The window of a card that isn't a GitHub issue of the project: the shared shell with what the source
+ * says (the key, the status and the source in the header, the description and the comments in the body,
+ * the status and assignee actions, the details and the ways to hand it to a worker in the rail), and
+ * its kanban task in the footer. The same actions as upstream's window.
+ */
 function openSourceIssue(first: GhIssue, net: Net, actions: BoardActions, refetch?: Reload) {
   let it = first;
   const label = issueCardLabel(it);
-  const close = h('button.btn.close', { type: 'button', 'aria-label': 'Close' }, '✕');
-  const pill = h('span.pill.done', {}, it.source ? SOURCE_KIND_NAMES[it.source] : 'issue');
-  const meta = h('div.gh-meta');
-  const body = h('div.gh-items');
+  const url = safeUrl(it.url);
+  const status = h('span.iw-status');
+  const meta = h('span.iw-meta');
+  const body = h('div.iw-desc');
+  const details = h('div.iw-details');
   const to = actionsTarget(it, store.floor);
-  const panel = to ? issueActions(kanbanApi(net), to.project, actionIssue(it), { openTask: (id) => (modal.close(), openTaskIn3d(net)(id)), onChanged: () => void reload() }) : null;
+  const api = kanbanApi(net);
+  const openTask = (id: number) => (modal.close(), openTaskIn3d(net)(id));
+  // The status and the assignee go to the rail, the comments stay under the description.
+  const side = to ? issueActions(api, to.project, actionIssue(it), { sections: ['status', 'assignee'], openTask, onChanged: () => void reload() }) : null;
+  const talk = to ? issueActions(api, to.project, actionIssue(it), { sections: ['comments'], openTask, onChanged: () => void reload() }) : null;
   const queueProvider = providerPicker(store.project, `issue-provider-${cardId(it)}`, 'Queue on');
-  const queue = h('button.btn', { type: 'button' }) as HTMLButtonElement;
-  queue.addEventListener('click', () => {
+  const queueText = h('span');
+  const queue = railButton('', 'list', () => {
     if (!queueProvider.valid()) return;
     modal.close();
     actions.queue('', '', 0, queueProvider.value(), queueProvider.model(), queueProvider.effort());
   });
+  queue.append(queueText);
   const carry = actions.pickUp;
-  const task = h('button.btn', { type: 'button' }) as HTMLButtonElement;
-  task.addEventListener('click', () => {
-    modal.close();
-    if (it.taskId) void import('./taskview').then((m) => m.openTaskWindow(net, it.taskId!));
-    else if (actions.kanbanTask) actions.kanbanTask(it);
+  const assign = () => actions.assign(sourcePrompt(it), `Hand ${label} to a worker`);
+  const kanban = actions.kanbanTask;
+  // A kanban task for it, started at a free desk, is the window's main button where the office has it.
+  const start = kanban
+    ? btn('Create and start', { kind: 'primary', icon: 'play', attrs: { title: 'A kanban task for it (plan → implement → review), started at a free desk', onclick: () => (modal.close(), kanban(it)) } })
+    : btn('Hand to a worker', { kind: 'primary', icon: 'bot', attrs: { onclick: assign } });
+  const toTask = h('button.link-btn.iw-task-link.hidden', { type: 'button', title: 'The kanban task made from it', onclick: () => it.taskId && openTask(it.taskId) }) as HTMLButtonElement;
+  const refresh = refetch ? iconButton('refresh-cw', 'Refresh', { title: 'Refresh: read it from its source again', onclick: () => void reload() }) : null;
+  const shell = modalShell({
+    cls: 'iw w840',
+    kind: 'rich',
+    title: it.title,
+    label: `Issue ${label}`,
+    id: url ? outLink(label, url, { title: 'Open it at the source' }) : label,
+    pill: status,
+    meta: [meta],
+    tools: [refresh],
+    body: h('div.iw-main', {}, h('section.iw-sec', {}, sectionHead('Description'), body), talk?.el ?? null),
+    rail: [
+      side?.el ?? null,
+      side ? h('hr.rail-sep') : null,
+      details,
+      h('hr.rail-sep'),
+      railStack(
+        'Hand it to a worker',
+        kanban ? railButton('Hand to a worker', 'bot', assign, 'A worker starts on it at a free desk, outside the kanban') : null,
+        railButton('Ask a worker', 'message-square', () => actions.ask(`${sourceName(it)}: “${it.title}”.\n\n${readHint(it)}`.trim(), `Ask about ${label}`), 'Send a worker your own prompt about this issue'),
+        railButton('Meeting', 'users', () => actions.meeting(cardMeeting(it)), 'Workers take it on together in the meeting room: a debate, lead & team, map-reduce or red / blue'),
+        carry ? railButton('Pick it up', 'hand', () => carry(it), 'Carry its card to an empty desk, a worker or the queue board, and press E there') : null,
+        queueProvider.element,
+        queue,
+      ),
+    ],
+    footerLeft: [url ? outLink(sourceLink(it), url) : null],
+    footerRight: [toTask, start],
   });
-  const el = h(
-    'div.modal.gh-window.issue',
-    { role: 'dialog', 'aria-label': `Issue ${label}` },
-    h('header', {}, pill, h('h2', { title: `${label} ${it.title}` }, `${label} ${it.title}`), close),
-    meta,
-    h('div.gh-body', {}, h('div.gh-conv', {}, h('div.gh-col', {}, body, panel?.el ?? null))),
-    h(
-      'footer',
-      {},
-      safeUrl(it.url) ? h('a.grow', { href: safeUrl(it.url), target: '_blank', rel: 'noopener noreferrer' }, `Open in ${it.source === 'jira' || it.source === 'azure-boards' ? SOURCE_KIND_NAMES[it.source] : 'GitHub'} ↗`) : h('span.grow'),
-      h('button.btn', { type: 'button', title: 'Send a worker your own prompt about this issue', onclick: () => actions.ask(`${sourceName(it)}: “${it.title}”.\n\n${readHint(it)}`.trim(), `Ask about ${label}`) }, '✍️ Ask a worker…'),
-      h('button.btn', { type: 'button', title: 'Workers take it on together in the meeting room: a debate, lead & team, map-reduce or red / blue', onclick: () => actions.meeting(cardMeeting(it)) }, '🤝 Meeting…'),
-      queueProvider.element,
-      queue,
-      carry ? h('button.btn', { type: 'button', title: 'Carry its card to an empty desk, a worker or the queue board, and press E there', onclick: () => carry(it) }, '✋ Pick it up') : null,
-      actions.kanbanTask || it.taskId ? task : null,
-      h('button.btn.primary', { type: 'button', onclick: () => actions.assign(sourcePrompt(it), `Hand ${label} to a worker`) }, '🤖 Hand to a worker'),
-    ),
-  );
+  let shownBody: string | undefined;
   const render = () => {
-    meta.replaceChildren(
-      ...[
-        it.status ? h('span.pill', {}, it.status) : null,
-        it.assignees.length ? h('span', {}, `👤 ${it.assignees.join(', ')}`) : null,
-        ...it.labels.map(labelChip),
-        it.taskId ? h('span', {}, `🗂️ task #${it.taskId}`) : null,
-      ].filter((x): x is HTMLElement => !!x),
+    shell.setTitle(it.title);
+    status.textContent = it.status ?? '';
+    status.classList.toggle('hidden', !it.status);
+    meta.textContent = `${it.source ? SOURCE_KIND_NAMES[it.source] : 'Issue'}${it.updatedAt ? ` · updated ${timeAgo(it.updatedAt)}` : ''}`;
+    details.replaceChildren(
+      detailsRail([
+        { label: 'Assignees', value: side ? null : it.assignees.join(', ') },
+        { label: 'Labels', value: it.labels.length ? h('span.iw-labels', {}, ...it.labels.map(labelChip)) : null },
+        { label: 'Source', value: it.source ? SOURCE_KIND_NAMES[it.source] : null },
+        { label: 'Task', value: it.taskId ? `Task #${it.taskId}` : h('span.iw-none', {}, 'None yet') },
+      ]),
     );
-    body.replaceChildren(it.body.trim() ? sameWindowAppLinks(markdown(it.body, safeUrl(it.url) || undefined)) : h('p.gh-quiet', {}, 'No description.'));
+    // Only when the text changed, so a repaint keeps the reader's scroll and selection.
+    if (it.body !== shownBody) body.replaceChildren((shownBody = it.body).trim() ? sameWindowAppLinks(markdown(it.body, url || undefined)) : h('p.gh-quiet', {}, 'No description.'));
     const onQueue = cardOnQueue(cardOfIssue(it));
     queueProvider.element.classList.toggle('hidden', onQueue);
     queue.disabled = onQueue;
-    queue.textContent = onQueue ? '📋 On the queue' : '📋 Add to queue';
+    queueText.textContent = onQueue ? 'On the queue' : 'Add to queue';
     queue.title = onQueue ? '' : 'A worker picks it up by itself when a desk is free and there is room under the worker limit';
-    task.textContent = it.taskId ? `↗ Task #${it.taskId}` : '🗂️ Kanban task';
-    task.title = it.taskId ? 'The kanban task made from it' : 'A kanban task for it (plan → implement → review), started at a free desk';
-    panel?.update(actionIssue(it));
+    toTask.textContent = it.taskId ? `Task #${it.taskId}` : '';
+    toTask.classList.toggle('hidden', !it.taskId);
+    start.classList.toggle('hidden', !!it.taskId && !!kanban);
+    side?.update(actionIssue(it));
+    talk?.update(actionIssue(it));
   };
   /** What the source says now, for a card that isn't on the board to keep it current. */
   const reload = async () => {
@@ -352,7 +390,6 @@ function openSourceIssue(first: GhIssue, net: Net, actions: BoardActions, refetc
     }),
     store.on('queue', render),
   ];
-  const modal = openModal(el, { doing: `📋 reading issue ${label}`, onClose: () => unsubs.forEach((u) => u()) });
-  close.addEventListener('click', () => modal.close());
+  const modal = openShell(shell, { doing: `📋 reading issue ${label}`, onClose: () => unsubs.forEach((u) => u()) });
   render();
 }
