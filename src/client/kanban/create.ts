@@ -1,15 +1,20 @@
 // A new task, or changes to one that hasn't started: what it's about, where (the project and which of
 // its repositories), how (implement or investigate, a plan first or not, how many review rounds and by
 // whom, acceptance criteria) and by which agent. Unset fields take the project's and the office's defaults.
+// A new task has no title box: its title is the description's first line, or, with an issue picked by
+// 🔗 Select issue, the issue's (createmsg.ts works out which message that makes).
 
 import { h, toast } from '../ui/dom';
 import { CLAUDE_MODELS } from '../../shared/protocol';
-import { KANBAN_EFFORTS, KANBAN_TOOLS, type KanbanEffort, type KanbanTask, type KanbanTool, type PlanApproval, type ReviewSettings, type TaskType } from '../../shared/kanban/types.js';
+import { KANBAN_EFFORTS, KANBAN_TOOLS, type KanbanEffort, type KanbanTask, type KanbanTool, type NormalizedIssue, type PlanApproval, type ReviewSettings, type TaskType } from '../../shared/kanban/types.js';
 import { KANBAN_LIMITS, type KanbanTaskInput, type KanbanTaskPatch } from '../../shared/kanban/protocol.js';
 import type { KanbanApi, KanbanOk } from './api';
 import { attachBox } from './attachbox';
 import { codexLimitsChip, recheckCodexChips } from './codexlimits';
+import { newOnceKey } from './office';
+import { newTaskMsg, type NewTaskFields } from './createmsg';
 import { KANBAN_DEFAULTS, REVIEW_DEFAULTS } from './defaults';
+import { openIssuePicker } from './issues';
 import { sameRepoPick } from './model';
 import { isSendKey } from './sendkey';
 import { kstore } from './store';
@@ -49,8 +54,17 @@ export function openCreate(api: KanbanApi, o: CreateOptions = {}) {
   if (!projects.length) return toast('No projects yet: add a floor in the 3D office first.', 'warn');
 
   // --- What and where
-  const title = textInput(editing?.title ?? pre.title ?? '', { maxlength: KANBAN_LIMITS.title, required: true, autofocus: true, placeholder: 'What needs doing, in a line' });
-  const desc = textArea(editing?.description ?? pre.description ?? '', { rows: 8, maxlength: KANBAN_LIMITS.description, placeholder: 'The details, in Markdown. Paste or drop screenshots and files here.', spellcheck: 'true' });
+  // Only a task being edited has a title box: a new one is titled by its first line (or its issue).
+  const title = textInput(editing?.title ?? '', { maxlength: KANBAN_LIMITS.title, required: true, autofocus: !!editing, placeholder: 'What needs doing, in a line' });
+  // A preset title (a task made from something else) leads the text, where the title comes from.
+  const preText = [pre.title, pre.description].filter(Boolean).join('\n\n');
+  const desc = textArea(editing?.description ?? preText, {
+    rows: 8,
+    maxlength: KANBAN_LIMITS.description,
+    autofocus: !editing,
+    placeholder: editing ? 'The details, in Markdown. Paste or drop screenshots and files here.' : 'What needs doing? The first line becomes the title. The details in Markdown; paste or drop screenshots and files here.',
+    spellcheck: 'true',
+  });
   const descWrap = h('div.kb-desc-box', {}, desc);
   const attach = attachBox({ target: desc, dropZone: descWrap, insertLinks: true });
   descWrap.append(attach.el, h('small.kb-hint', {}, 'Markdown. Files pasted, dropped or 📎 attached go in where the cursor is.'));
@@ -75,6 +89,27 @@ export function openCreate(api: KanbanApi, o: CreateOptions = {}) {
     repoBox.classList.toggle('single', repos.length < 2);
   };
   paintRepos(editing ? editing.repoIds : pre.repoIds);
+
+  // --- The issue it is made from (a new task only: an edit wouldn't bring the issue's text or check for its task)
+  let picked: NormalizedIssue | null = null;
+  const pickBtn = h('button.btn.small', { type: 'button', title: 'Make the task from one of the project’s issues: its key, link and text go on the task, and the issue’s title is the task’s' }, '🔗 Select issue') as HTMLButtonElement;
+  const pickedChip = h('span.kb-picked.hidden');
+  const setPicked = (issue: NormalizedIssue | null, keepFields = false) => {
+    if (!keepFields && (issue || picked)) {
+      ticket.value = issue?.key ?? '';
+      ticketUrl.value = issue?.url ?? '';
+    }
+    picked = issue;
+    // The link of a picked issue is the issue's own: the office takes it from there, so it isn't to edit.
+    ticketUrl.readOnly = !!issue;
+    pickedChip.classList.toggle('hidden', !issue);
+    if (!issue) return;
+    const clear = h('button.btn', { type: 'button', 'aria-label': `Unlink ${issue.key}`, title: 'Unlink the issue', onclick: () => setPicked(null) }, '✕');
+    pickedChip.replaceChildren(h('span', { title: `${issue.key} · ${issue.title}` }, `${issue.key} · ${issue.title}`), clear);
+  };
+  pickBtn.addEventListener('click', () => openIssuePicker(api, projectSel.value, (issue) => setPicked(issue), () => desc.focus()));
+  // A ticket typed over the picked one is a plain ticket again: the chip would say otherwise.
+  ticket.addEventListener('input', () => picked && ticket.value.trim() !== picked.key && setPicked(null, true));
 
   // --- How
   const type = select<TaskType>([['implement', 'Implement'], ['investigate', 'Investigate']], editing?.type ?? pre.type ?? 'implement');
@@ -133,6 +168,8 @@ export function openCreate(api: KanbanApi, o: CreateOptions = {}) {
   };
   for (const el of [usePlan.box, useReview.box, reviewOverride.box, type]) el.addEventListener('change', paintDefaults);
   projectSel.addEventListener('change', () => {
+    // The picked issue is the other project's.
+    setPicked(null);
     paintRepos();
     paintDefaults();
   });
@@ -140,7 +177,7 @@ export function openCreate(api: KanbanApi, o: CreateOptions = {}) {
   const body = h(
     'form.body.kb-form',
     { novalidate: true },
-    h('fieldset', {}, h('legend', {}, 'What'), field('Title', title), field('Description', descWrap), h('div.kb-two', {}, field('Ticket', ticket), field('Ticket link', ticketUrl))),
+    h('fieldset', {}, h('legend', {}, 'What'), editing ? field('Title', title) : null, field('Description', descWrap), editing ? null : h('div.kb-ticket-pick', {}, pickBtn, pickedChip), h('div.kb-two', {}, field('Ticket', ticket), field('Ticket link', ticketUrl))),
     h('fieldset', {}, h('legend', {}, 'Where'), field('Project', projectSel, editing ? 'A task stays in its project' : undefined), field('Repositories', repoBox, 'The repositories it works in: all of the project’s unless you pick some')),
     h(
       'fieldset',
@@ -174,9 +211,11 @@ export function openCreate(api: KanbanApi, o: CreateOptions = {}) {
     return picked.length === repoChecks.length ? null : picked;
   };
 
+  // One key for every attempt of this dialog: a resend after no answer can't make the task twice.
+  let once = newOnceKey();
   const submit = async (start: boolean, button: HTMLButtonElement) => {
     const name = title.value.trim();
-    if (!name) {
+    if (editing && !name) {
       title.focus();
       return toast('Give it a title', 'warn');
     }
@@ -207,22 +246,38 @@ export function openCreate(api: KanbanApi, o: CreateOptions = {}) {
       if (await run(() => api.request<KanbanOk>({ t: 'kanban.task.update', id: editing.id, patch }), button, 'Saved')) modal.close();
       return;
     }
-    const task: KanbanTaskInput = { project: projectSel.value, title: name, repoIds: repos, type: type.value as TaskType, usePlan: usePlan.box.checked, useReview: useReview.box.checked };
-    if (desc.value.trim()) task.description = desc.value;
-    if (ticket.value.trim()) task.ticket = ticket.value.trim();
-    if (ticketUrl.value.trim()) task.ticketUrl = ticketUrl.value.trim();
-    if (approval.value) task.planApproval = approval.value as PlanApproval;
-    if (tool.value) task.tool = tool.value as KanbanTool;
-    if (model.input.value.trim()) task.model = model.input.value.trim();
-    if (effort.value) task.effort = effort.value as KanbanEffort;
-    if (goal.value.trim()) task.goal = goal.value.trim();
+    const rest: NewTaskFields['rest'] = { repoIds: repos, type: type.value as TaskType, usePlan: usePlan.box.checked, useReview: useReview.box.checked };
+    if (approval.value) rest.planApproval = approval.value as PlanApproval;
+    if (tool.value) rest.tool = tool.value as KanbanTool;
+    if (model.input.value.trim()) rest.model = model.input.value.trim();
+    if (effort.value) rest.effort = effort.value as KanbanEffort;
+    if (goal.value.trim()) rest.goal = goal.value.trim();
     const rv = reviewValue();
-    if (rv) task.review = rv;
-    if (pre.tags?.length) task.tags = pre.tags;
+    if (rv) rest.review = rv;
+    if (pre.tags?.length) rest.tags = pre.tags;
     const ids = attach.ids();
-    if (ids.length) task.attachmentIds = ids;
-    const ok = await run(() => api.request<KanbanOk>({ t: 'kanban.task.create', task, ...(start ? { start: true } : {}) }), button);
+    if (ids.length) rest.attachmentIds = ids;
+    const issue = picked;
+    const made = newTaskMsg({ project: projectSel.value, description: desc.value, ticket: ticket.value, ticketUrl: ticketUrl.value, rest, start, once }, issue);
+    if ('error' in made) {
+      desc.focus();
+      return toast(made.error, 'warn');
+    }
+    const ok = await run(() => api.request<KanbanOk>(made.msg), button);
     if (!ok) return;
+    // An earlier send of this dialog, whose answer never came, made a task of what the form held then
+    // (other text or settings, another issue, or none): nothing was made now, and what is here stays for the next send, under a new key.
+    if (ok.earlier) {
+      once = newOnceKey();
+      return toast(`Your earlier send had already made task #${ok.taskId ?? ''}, without what you changed since: nothing was made now. Create again to make another`, 'warn');
+    }
+    // The issue got its task meanwhile: nothing was made or started, and what was written stays here.
+    if (ok.existed) {
+      setPicked(null);
+      // Nothing was made, and the next attempt is another message: it can't share this key's answer.
+      once = newOnceKey();
+      return toast(`${issue?.key ?? 'The issue'} is already task #${ok.taskId ?? ''}`, 'warn');
+    }
     modal.close();
     if (ok.startError) toast(`Created #${ok.taskId ?? ''}, but it couldn’t start: ${ok.startError}`, 'warn');
     else toast(start ? `Created and started #${ok.taskId ?? ''}` : `Created #${ok.taskId ?? ''}`);

@@ -15,6 +15,7 @@ import { COMMENTS_PAGE, publicAttachment, type TaskUpdate } from './db/repositor
 import { projectInfo } from './projects.js';
 import { answerSecrets } from './secrets-answer.js';
 import { checkRepoIds, createBoardTask } from './create.js';
+import { onceFor, requestPrint, type CreateAnswer } from './once.js';
 import { openFor, taskFolders, workerFolders } from './vscode.js';
 import { wallChanged, wallSourcesChanged } from './integrations/issues/wall.js';
 import { chmodSync, existsSync } from 'node:fs';
@@ -118,6 +119,7 @@ export function createCorePlugin(ctx: KanbanContext, subs: KanbanSubscriptions):
       t: 'kanban.snapshot',
       ...(rid ? { rid } : {}),
       project,
+      ...(includeArchived ? { includeArchived: true } : {}),
       tasks: ctx.repo.listCards(project, { includeArchived }, (t) => {
         const r = ctx.settings.effectiveReview(t.project, t.overrides);
         return { rounds: r.rounds, tool: r.tool };
@@ -193,9 +195,15 @@ export function createCorePlugin(ctx: KanbanContext, subs: KanbanSubscriptions):
     },
 
     'kanban.task.create': async (c, m) => {
-      const made = await createBoardTask(ctx, m.task, c, { start: m.start, deskId: m.deskId });
+      // A repeat of a creation (same `once`) is answered with the first one's result, never a second task.
+      const make = async (): Promise<CreateAnswer | string> => {
+        const made = await createBoardTask(ctx, m.task, c, { start: m.start, deskId: m.deskId });
+        return typeof made === 'string' ? made : { taskId: made.task.id, ...(made.startError ? { startError: made.startError } : {}) };
+      };
+      const { value: made, changed } = await onceFor(ctx).run(c, m.once, make, requestPrint('task', { task: m.task, start: !!m.start }));
       if (typeof made === 'string') return fail(c, m.rid, made);
-      ok(c, m.rid, { taskId: made.task.id, ...(made.startError ? { startError: made.startError } : {}) });
+      // The key's first request asked for something else (the form was changed since, or it was a task from an issue): that task, said to be the earlier one, so the browser keeps the form.
+      ok(c, m.rid, changed ? { taskId: made.taskId, earlier: true } : made);
     },
 
     'kanban.task.update': (c, m) => {

@@ -1,6 +1,7 @@
 import test from 'node:test';
 import { PROMPTS } from '../src/shared/prompts.js';
 import assert from 'node:assert/strict';
+import { onceFor, requestPrint } from '../src/server/kanban/once.js';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
@@ -188,6 +189,56 @@ test('a new task takes the defaults, is checked against its project, and can sta
   assert.deepEqual(kanban.ctx.repo.listEvents(1).map((e) => e.kind), ['created']);
 });
 
+test('a creation repeated with the same once key is one task; without a key it is two', async (t) => {
+  const { client, kanban } = office(t);
+  const ada = client('Ada', false);
+  const msg = { t: 'kanban.task.create', task: { project: 'web', title: 'Once' }, once: 'try-1-abcdefgh' };
+  const a = okOf(await ada.ask(msg));
+  const b = okOf(await ada.ask(msg));
+  assert.equal(b.taskId, a.taskId);
+  assert.equal(kanban.ctx.repo.listTasks('web').length, 1);
+  await ada.ask({ t: 'kanban.task.create', task: { project: 'web', title: 'Plain' } });
+  await ada.ask({ t: 'kanban.task.create', task: { project: 'web', title: 'Plain' } });
+  assert.equal(kanban.ctx.repo.listTasks('web').length, 3);
+});
+
+// The answer to a task made from an issue was lost, and the person took the issue off before sending again.
+test('the same once key after a task from an issue names that task and makes no plain one', async (t) => {
+  const { client, kanban } = office(t);
+  const ada = client('Ada', false);
+  const key = 'try-4-abcdefgh';
+  // The issues plugin keeps its answers in the same memory, under what it made.
+  const first = okOf(await ada.ask({ t: 'kanban.task.create', task: { project: 'web', title: 'Stands in for the issue’s task' } }));
+  await onceFor(kanban.ctx).run(ada.c, key, async () => ({ taskId: first.taskId as number, existed: false }), requestPrint('issue', { project: 'web', issueKey: 'gh:o/web#1', task: {}, start: false }));
+  const again = okOf(await ada.ask({ t: 'kanban.task.create', task: { project: 'web', title: 'No issue now' }, once: key }));
+  assert.equal(again.taskId, first.taskId);
+  assert.equal(again.earlier, true);
+  assert.equal(kanban.ctx.repo.listTasks('web').length, 1, 'no plain task was made');
+});
+
+// The task was made but its answer never came, and the person went on writing before sending again.
+test('the same once key with the description or a setting changed names the earlier task and makes nothing', async (t) => {
+  const { client, kanban } = office(t);
+  const ada = client('Ada', false);
+  const key = 'try-7-abcdefgh';
+  const send = (task: Record<string, unknown>, more: Record<string, unknown> = {}) => ada.ask({ t: 'kanban.task.create', task: { project: 'web', title: 'Fix it', ...task }, once: key, ...more });
+  const first = okOf(await send({ description: 'Fix it' }));
+  const changes: [Record<string, unknown>, Record<string, unknown>?][] = [[{ description: 'Fix it\n\nAnd the footer' }], [{ description: 'Fix it', useReview: false }], [{ description: 'Fix it', tool: 'codex' }], [{ description: 'Fix it' }, { start: true }]];
+  for (const [task, more] of changes) {
+    const again = okOf(await send(task, more));
+    assert.equal(again.taskId, first.taskId);
+    assert.equal(again.earlier, true, JSON.stringify([task, more]));
+  }
+  // Unchanged, it is the first one's own answer.
+  const same = okOf(await send({ description: 'Fix it' }));
+  assert.equal(same.taskId, first.taskId);
+  assert.equal(same.earlier, undefined);
+  assert.equal(kanban.ctx.repo.listTasks('web').length, 1);
+  const task = kanban.ctx.repo.getTask(first.taskId as number);
+  assert.equal(task?.description, 'Fix it');
+  assert.equal(task?.status, 'todo');
+});
+
 test('a start the engine refuses is still a created task, with why', async (t) => {
   const { client } = office(t, { answers: { start: 'The office is full' } });
   const made = okOf(await client('Ada', false).ask({ t: 'kanban.task.create', task: { project: 'web', title: 'x' }, start: true }));
@@ -226,9 +277,10 @@ test('edits: structural fields only in To do, the description locked once starte
 test('moves are the server’s to allow: start, reset, done, archive and back', async (t) => {
   const { client, kanban, live, calls } = office(t);
   const ada = client('Ada', false);
-  await ada.ask({ t: 'kanban.subscribe', project: 'web' });
+  // A snapshot says whether it has the archive in it, so a board can tell one that isn't its own.
+  assert.equal((await ada.ask({ t: 'kanban.subscribe', project: 'web' }) as { includeArchived?: boolean }).includeArchived, undefined);
   const watcher = client('Archivist', false);
-  await watcher.ask({ t: 'kanban.subscribe', project: null, includeArchived: true });
+  assert.equal((await watcher.ask({ t: 'kanban.subscribe', project: null, includeArchived: true }) as { includeArchived?: boolean }).includeArchived, true);
   await ada.ask({ t: 'kanban.task.create', task: { project: 'web', title: 'x' } });
   errorOf(await ada.ask({ t: 'kanban.task.move', id: 1, to: 'done' }), /only once it has been worked on/);
   okOf(await ada.ask({ t: 'kanban.task.move', id: 1, to: 'in_progress' }));

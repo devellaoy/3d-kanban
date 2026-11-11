@@ -457,7 +457,9 @@ answers `kanban.ok {rid, ...}` or `kanban.error {rid, message}`. Deltas are push
   `kanban.task.detail`, `kanban.comments`, `kanban.settings` …), or `kanban.ok`, or `kanban.error`. A mutation
   also pushes its delta to the subscribers, and that includes the asker when it is subscribed.
 - `kanban.subscribe {project, includeArchived?}` sets the connection's filter (one per connection) and is
-  answered with `kanban.snapshot`. `kanban.unsubscribe` and closing the socket end the deltas. A browser that
+  answered with `kanban.snapshot`, which carries `includeArchived: true` when its tasks include the archive (a
+  board takes only the snapshots that match its own archive setting, since a one-off `kanban.snapshot` another
+  view asked for reaches it too). `kanban.unsubscribe` and closing the socket end the deltas. A browser that
   never subscribes gets no kanban deltas (the 3D office's clients).
 - Lounge: `{t: 'kanban.lounge', floor, figures: LoungeFigure[]}` (`shared/kanban/lounge.ts`; `server/kanban/lounge.ts`) goes to
   everyone on that floor whenever the floor's set of figures changes (sent from `ctx.taskChanged`, which a hold, resume, delete or any
@@ -620,7 +622,7 @@ answers `kanban.ok {rid, ...}` or `kanban.error {rid, message}`. Deltas are push
       browsed copy as it does the acted-on one. **An issue opened from Browse can be queued, carried or handed to a worker even if
       the source's filters leave it off the board, so its text can reach an agent's prompt once a person starts it** (accepted: a person acts, and the scope
       is the source's own).
-  - `issues.list`, `issues.refresh`, `issues.createTask` (idempotent by ticket, archived tasks included, `kanban.ok {taskId, existed}`; `start` with `deskId` starts it, or the one already made while it waits in To do, at that desk: the 3D office's P with a card; `started` or `startError` says how it went),
+  - `issues.list`, `issues.refresh`, `issues.createTask` (`task.create` too takes an optional `once`, a request key the browser chose for one creation: a repeat with the same key from the same person, e.g. a resend after the answer timed out, gets the first creation's answer instead of a second task; `server/kanban/once.ts` keeps it for 15 minutes, as one `CreateAnswer` shape for both messages, and forgets a refusal at once; the key stands for what its first request asked for (`requestPrint`: its kind, project, issue and every field of the form, `start` too; not the desk, which a hire picks at the moment it sends), so a repeat that asks for anything else (the description, a setting or the pick was changed after an answer that never came) makes nothing and is answered `kanban.ok {taskId, earlier: true}` with the earlier task, and the dialog says so, keeps what was written and takes a new key; idempotent by ticket, archived tasks included, `kanban.ok {taskId, existed}`; `start` with `deskId` starts it, or the one already made while it waits in To do, at that desk: the 3D office's P with a card; `started` or `startError` says how it went; with `task` (`IssueTaskFields`: the create form's fields without `project`, `ticket` and `ticketUrl`, `title` optional; `shared/kanban/taskinput.ts`) the task is made by `createBoardTask` with those fields, the ticket and its link from the issue, the title `task.title` or else the issue's (whitespace collapsed, 300 characters) and the description `task.description` above the issue's text and `Source:` line, and an issue that already has a task is answered `existed: true` with nothing made and nothing started, so a form's content is never dropped for an older task: the **🔗 Select issue** pick of the create form and of the hire dialog's kanban section),
     `skills.list` are for anyone signed in.
     - Taking the issue (`integrations/issues/autoassign.ts`), after the answer:
       - when: a new task, or a To do one started from its card (not a start that failed);

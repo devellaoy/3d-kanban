@@ -5,7 +5,7 @@
 // office its card); an issue already made into a task has ↗ #id, which hands the id to `openTask`.
 
 import './browse.css';
-import { h } from '../ui/dom';
+import { h, type Modal } from '../ui/dom';
 import type { KanbanServerMsg } from '../../shared/kanban/protocol.js';
 import type { BrowseIssue, BrowseOptions, BrowseScope } from '../../shared/kanban/browse.js';
 import type { KanbanApi } from './api';
@@ -32,7 +32,8 @@ function pick(label: string, options: { v: string; label: string; disabled?: str
   return el;
 }
 
-export function openBrowse(api: KanbanApi, projectId: string, opts: BrowseOpts): void {
+/** Returns the window, so whoever opened it can close it (the issue picker does, once one is picked). */
+export function openBrowse(api: KanbanApi, projectId: string, opts: BrowseOpts): Modal {
   const projectName = kstore.projectOf(projectId)?.name ?? projectId;
   let scopes: BrowseScope[] = [];
   let github: string | undefined;
@@ -90,7 +91,7 @@ export function openBrowse(api: KanbanApi, projectId: string, opts: BrowseOpts):
   const bar = h('div.kb-br-bar', {}, scopeBox, search, jqlBtn, reset);
   const body = h('div.body', {}, bar, filters, jqlRow, peopleBox, notices, treeBox, labelList);
   const d = dialog('kb-browse-window', `🔎 Browse issues · ${projectName}`, body);
-  showDialog(d, {
+  const modal = showDialog(d, {
     onClose: () => {
       closed = true;
       gen++;
@@ -455,4 +456,5 @@ export function openBrowse(api: KanbanApi, projectId: string, opts: BrowseOpts):
       });
   };
   loadScopes();
+  return modal;
 }

@@ -23,7 +23,8 @@ Signed out, `/kanban` sends you to the sign-in page and back.
 
 The top bar has the project picker (or **All projects**), a search box (`#12`, words, a ticket id, a
 repository; **/** focuses it), counts (🗂️ on the board, 🚧 running, 🙋 waiting on you, 👀 ready for
-review), **📌 Issues**, **＋ New task** (**N**), filters (repository, state: running / needs you /
+review), **📌 Issues**, **🔀 Pull requests** (the office's pull requests board for the picked project's
+floor; under **All projects** the board of the floor this page is on, named in a note as it opens), **＋ New task** (**N**), filters (repository, state: running / needs you /
 waiting to retry / has a PR, agent, ticket or not), **🗄️ Archive** (shows archived tasks as a
 column) and **⚙️** Settings (the office's own window, as in the 3D office). Keys: see [Controls](controls.md#in-the-kanban-view).
 
@@ -108,9 +109,18 @@ task's conversation says so. Nothing about the task changes: its column, plan, r
 **＋ New task** (or make one from an issue: see *Issue sources*). Fields left unset take the project's
 and the office's defaults.
 
-- **What**: title (required), description (Markdown; paste, drop or **📎 Attach** screenshots and files,
+- **What**: description (Markdown; paste, drop or **📎 Attach** screenshots and files,
   up to 20 files of 20 MB each: each goes in where the cursor is, as a placeholder while it uploads and
   then its link, a picture shown in place), ticket (`UYT-1415`, `gh:owner/repo#12`) and ticket link.
+  There is no title to type: it is the description's first line (at most 120 characters; a line that
+  is only a pasted picture or file link is skipped), as for a hire in the office. Editing a task
+  shows its title, which can be changed there.
+- **🔗 Select issue** opens the project's issues (the same list as **📌 Issues**, with its search,
+  filters and **🔎 Browse all**) to pick the one the task is about. An issue that already has a task
+  can't be picked. The pick fills the ticket and its link, and the task is then made the way
+  **＋ Create task** makes one: its title is the issue's, its description is what you wrote followed
+  by the issue's text and link, there is one task per issue, and the issue is taken as for any task
+  made from one. **✕** on the pick clears it; a ticket typed by hand is stored as typed.
 - **Where**: the project (fixed once made) and which of its repositories (all by default; the primary
   one is always included).
 - **How**: type **Implement** or **Investigate** (read-only: writes a report instead of changing code;
@@ -128,6 +138,11 @@ those two.
 In the office, a hire at a desk and the **📋 Task queue**'s form can tick **🗂️ Run as a kanban task**
 (type, plan, review rounds and repositories; the agent is the form's own, Claude Code or Codex): the
 task is made and started at once, at that desk or, from the queue, at the next free one.
+**🔗 Select issue** is there too and works as in the create form: with an issue picked the text may be
+left empty, and the task's title is the issue's whatever you write (also in a hand-off, whose title
+is otherwise the text's first line). A hire that makes a kanban task keeps its dialog open, with what
+you wrote, until the task is made, so nothing is lost when it can't be (the issue already has a task,
+the connection is down), and it sends once however often you press send meanwhile. If the office doesn't answer in time, sending again asks the office about the same creation, so the task isn't made twice. If you changed something in between (the text, a setting, the picked issue) and the first send had gone through after all, the office says which task it made and makes nothing more, and the dialog stays open with your changes: open that task, or send once more to make another.
 
 A finished meeting's output can become a task too: **🗂️ Make a kanban task** in the meeting room opens
 that hire dialog with **🗂️ Run as a kanban task** ticked. The task is tagged `meeting:<id>`, its title is

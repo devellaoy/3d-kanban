@@ -1,18 +1,19 @@
 // Hiring in the 3D office (and the 2D view) as a kanban task: the "🗂️ Run as a kanban task" toggle and
 // its fields in upstream's hire dialogs (ui/prompt.ts openPrompt, ui/ask.ts openAsk), and a task made
-// from an issue card. Either way the office sends kanban.task.create with the desk, and the engine
-// hires its worker there (docs/kanban-architecture.md): the kanban view is another window onto the
-// same workers. What goes into the message is worked out in office.ts.
+// from an issue card. Either way the office sends kanban.task.create with the desk (or, with an issue
+// picked by 🔗 Select issue, kanban.issues.createTask), and the engine hires its worker there
+// (docs/kanban-architecture.md): the kanban view is another window onto the same workers. What goes
+// into the message is worked out in office.ts.
 
 import type { AgentEffort, AgentProvider, GhIssue } from '../../shared/protocol';
 import type { KanbanServerMsg } from '../../shared/kanban/protocol.js';
-import type { KanbanProjectInfo, KanbanSettings, KanbanTaskCard, PlanApproval, TaskType } from '../../shared/kanban/types.js';
+import type { KanbanProjectInfo, KanbanSettings, KanbanTaskCard, NormalizedIssue, PlanApproval, TaskType } from '../../shared/kanban/types.js';
 import type { Net } from '../net';
 import { store } from '../state';
 import { h, toast } from '../ui/dom';
 import { officeChoice, type ProviderPicker } from '../ui/provider';
-import { kanbanApi, type KanbanOk } from './api';
-import { hireTaskMsg, issueDescription, issueTicket, kanbanTool, STATUS_TEXT, titleFrom, type HireTaskForm } from './office';
+import { kanbanApi, KanbanError, type KanbanOk } from './api';
+import { hireTaskMsg, newOnceKey, issueDescription, issueTicket, kanbanTool, STATUS_TEXT, titleFrom, type HireTaskForm } from './office';
 
 type Snapshot = Extract<KanbanServerMsg, { t: 'kanban.snapshot' }>;
 
@@ -41,8 +42,13 @@ export interface KanbanSection {
   /** Whether the hire makes a kanban task. */
   on(): boolean;
   onChange(fn: (on: boolean) => void): void;
-  /** Makes the task and starts it at the desk; `context` goes before the text in its description. */
-  send(text: string, agent: { provider?: AgentProvider; model?: string; effort?: AgentEffort; attachmentIds?: string[] }, context?: string): void;
+  /** An issue is picked (🔗 Select issue): the task takes its title from it, so the text may be empty. */
+  hasIssue(): boolean;
+  /**
+   * Makes the task and starts it at the desk; `context` goes before the text in its description.
+   * Resolves to whether the task was made: a dialog stays open, with its text, until it was.
+   */
+  send(text: string, agent: { provider?: AgentProvider; model?: string; effort?: AgentEffort; attachmentIds?: string[] }, context?: string): Promise<boolean>;
 }
 
 /** The project's board as it is now: its repositories, the settings and its tasks (one request). */
@@ -58,6 +64,8 @@ const row = 'display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:6px 0
  */
 export function kanbanSection(opt: KanbanOption, provider: ProviderPicker | null): KanbanSection {
   const listeners: ((on: boolean) => void)[] = [];
+  // One key for the dialog's attempts, so a send repeated after no answer can't make the task twice; a made task spends it.
+  let once = newOnceKey();
   // Off in every new dialog: a hire is upstream's plain one unless this one is asked to be a task.
   const box = h('input', { type: 'checkbox' }) as HTMLInputElement;
   box.checked = !!opt.checked;
@@ -79,7 +87,25 @@ export function kanbanSection(opt: KanbanOption, provider: ProviderPicker | null
   const note = h('p.setting-note', { style: 'margin:6px 0 0' });
   const planRow = h('div', { style: row }, h('label', { style: 'display:flex;gap:6px;align-items:center;margin:0;cursor:pointer' }, plan, '📝 Plan first'), approval);
   const reviewRow = h('div', { style: row }, h('label', { style: 'display:flex;gap:6px;align-items:center;margin:0;cursor:pointer' }, review, '🔍 Review rounds'), rounds);
-  const fields = h('div.kanban-hire', { style: 'margin:4px 0 0 26px' }, h('div', { style: row }, h('span', { style: 'font-size:14px;font-weight:800' }, 'Type'), type), planRow, reviewRow, repoRow, note);
+  // 🔗 Select issue: the picker (issues.ts) comes in only when asked for, so a hire dialog stays light.
+  let issue: NormalizedIssue | undefined;
+  const issueBtn = h('button.btn', { type: 'button', style: 'padding:4px 10px;font-size:var(--fs-sm)', title: 'Make the task from one of the project’s issues: its key, link and text go on the task' }, '🔗 Select issue') as HTMLButtonElement;
+  const issueChip = h('span', { style: 'display:inline-flex;align-items:center;gap:6px;min-width:0;max-width:100%;padding:2px 4px 2px 10px;font-size:var(--fs-sm);background:var(--field);border:var(--bw-sm) solid var(--ink);border-radius:var(--radius-pill)' });
+  const issueRow = h('div', { style: `${row};min-width:0` }, issueBtn, issueChip);
+  const setIssue = (next: NormalizedIssue | undefined) => {
+    issue = next;
+    paint();
+    for (const fn of listeners) fn(on());
+  };
+  issueBtn.addEventListener('click', () => {
+    // The dialog's send key is bound to its text box: the keyboard goes back there when the picker closes.
+    const back = () => element.closest('.modal, form')?.querySelector('textarea')?.focus();
+    void import('./issues').then(
+      (m) => m.openIssuePicker(kanbanApi(opt.net), opt.project, setIssue, back),
+      (err: Error) => toast(err.message, 'error'),
+    );
+  });
+  const fields = h('div.kanban-hire', { style: 'margin:4px 0 0 26px' }, h('div', { style: row }, h('span', { style: 'font-size:14px;font-weight:800' }, 'Type'), type), planRow, reviewRow, repoRow, issueRow, note);
   const element = h('div', {}, toggle, fields);
 
   let project: KanbanProjectInfo | undefined;
@@ -100,7 +126,15 @@ export function kanbanSection(opt: KanbanOption, provider: ProviderPicker | null
     reviewRow.classList.toggle('hidden', investigate);
     approval.disabled = !plan.checked;
     rounds.disabled = !review.checked;
-    note.textContent = opt.queued
+    issueBtn.textContent = issue ? '🔗 Change issue' : '🔗 Select issue';
+    issueChip.classList.toggle('hidden', !issue);
+    if (issue) {
+      const clear = h('button.btn', { type: 'button', style: 'padding:0 7px;font-size:var(--fs-xs);box-shadow:none', 'aria-label': `Unlink ${issue.key}`, title: 'Unlink the issue', onclick: () => setIssue(undefined) }, '✕');
+      issueChip.replaceChildren(h('span', { style: 'min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap', title: `${issue.key} · ${issue.title}` }, `${issue.key} · ${issue.title}`), clear);
+    }
+    const where = opt.queued ? 'It goes on the kanban and starts at the next free desk now, or waits its turn.' : `It goes on the kanban and starts at ${opt.deskLabel} now.`;
+    if (issue) note.textContent = `The issue's title is the task's title; what you write goes above the issue's text. ${where}`;
+    else note.textContent = opt.queued
       ? "Its first line is the title and all of it the description. It goes on the kanban and starts at the next free desk now; when the project's tasks at once, the desks or the worker limit are full, it waits in In progress and starts by itself (the queue's “workers at once” doesn't count it)."
       : `Its first line is the title and all of it the description. It goes on the kanban and starts at ${opt.deskLabel} now.`;
   };
@@ -157,13 +191,15 @@ export function kanbanSection(opt: KanbanOption, provider: ProviderPicker | null
     element,
     on,
     onChange: (fn) => listeners.push(fn),
-    send(text, agent, context) {
+    hasIssue: () => on() && !!issue,
+    async send(text, agent, context) {
       const repos = project?.repos ?? [];
       const form: HireTaskForm = {
         project: opt.project,
         deskId: opt.deskId(),
-        text: context ? `${context}\n\n${text}` : text,
-        title: context ? titleFrom(text) : undefined,
+        text: context && text ? `${context}\n\n${text}` : context || text,
+        // A picked issue's title is the task's, whatever is written (the note says so).
+        title: context && text && !issue ? titleFrom(text) : undefined,
         type: type.value as TaskType,
         usePlan: plan.checked,
         planApproval: (approval.value || undefined) as PlanApproval | undefined,
@@ -173,9 +209,16 @@ export function kanbanSection(opt: KanbanOption, provider: ProviderPicker | null
         allRepoIds: repos.map((r) => r.id),
         primaryId: repos.find((r) => r.primary)?.id,
         ...(opt.tags?.length ? { tags: opt.tags } : {}),
+        ...(issue ? { issueKey: issue.key } : {}),
+        once,
         ...agent,
       };
-      createTask(opt.net, form, opt.deskLabel, opt.onCreated);
+      const made = await createTask(opt.net, form, opt.deskLabel, opt.onCreated);
+      if (made !== false) once = newOnceKey();
+      // The issue has its task now, new or from before: the pick is spent (the 📋 queue's form stays open for the next one).
+      // Not after 'earlier': this request wasn't made, and its pick is what the next send is for.
+      if ((made === true || made === 'existed') && issue) setIssue(undefined);
+      return made === true;
     },
   };
 }
@@ -192,20 +235,43 @@ function taskToast(net: Net, text: string, taskId: number, level: 'info' | 'warn
   el.append(open);
 }
 
-/** Sends the task and says how it went. Without a desk, the engine seats it at a free one or queues it. */
-export function createTask(net: Net, form: HireTaskForm, deskLabel: string, onCreated?: (taskId: number) => void) {
+/**
+ * Sends the task and says how it went. Without a desk, the engine seats it at a free one or queues it.
+ * Resolves to true when the task was made, 'existed' when the picked issue already had one (nothing
+ * was made or started), 'earlier' when an earlier send of this dialog had made a task of something else
+ * (another issue, or none: nothing was made now), and false when the office turned it down: the caller
+ * keeps its text in all but the first.
+ */
+export function createTask(net: Net, form: HireTaskForm, deskLabel: string, onCreated?: (taskId: number) => void): Promise<boolean | 'existed' | 'earlier'> {
   const made = hireTaskMsg(form);
-  if ('error' in made) return void toast(made.error, 'warn');
-  kanbanApi(net)
+  if ('error' in made) {
+    toast(made.error, 'warn');
+    return Promise.resolve(false);
+  }
+  return kanbanApi(net)
     .request<KanbanOk>(made.msg)
     .then((ok) => {
-      if (!ok.taskId) return;
+      if (!ok.taskId) return false;
+      if (ok.earlier) {
+        taskToast(net, `🗂️ Your earlier send had already made task #${ok.taskId}, without what you changed since: nothing was made now. Open it, or send again to make another`, ok.taskId, 'warn');
+        return 'earlier' as const;
+      }
+      if (ok.existed) {
+        taskToast(net, `🗂️ ${form.issueKey ?? 'The issue'} is already task #${ok.taskId}`, ok.taskId, 'warn');
+        return 'existed' as const;
+      }
       if (ok.startError) taskToast(net, `🗂️ Task #${ok.taskId} is in To do, but couldn't start: ${ok.startError}`, ok.taskId, 'warn');
       else if (!form.deskId) taskToast(net, `🗂️ Task #${ok.taskId} is on the kanban: it starts at ${deskLabel}, or waits its turn`, ok.taskId);
       else taskToast(net, `🗂️ Task #${ok.taskId} starts at ${deskLabel}`, ok.taskId);
       onCreated?.(ok.taskId);
+      return true;
     })
-    .catch((err: Error) => toast(`🗂️ ${err.message}`, 'error'));
+    .catch((err: Error) => {
+      // No answer (timeout, lost connection) isn't a refusal: the task may well be made, and sending again with the same key finds it.
+      if (err instanceof KanbanError && !err.fromOffice) toast("🗂️ No answer from the office yet: send again to check. The task isn't made twice.", 'warn');
+      else toast(`🗂️ ${err.message}`, 'error');
+      return false;
+    });
 }
 
 /**
@@ -229,7 +295,7 @@ export function issueTask(net: Net, issue: Pick<GhIssue, 'number' | 'title' | 'u
       }
       if (same) return taskToast(net, `🗂️ #${issue.number} is already task #${same.id} (${STATUS_TEXT[same.status]})`, same.id, 'warn');
       const repos = s.projects.find((p) => p.id === project)?.repos ?? [];
-      createTask(
+      void createTask(
         net,
         {
           project,
@@ -243,6 +309,7 @@ export function issueTask(net: Net, issue: Pick<GhIssue, 'number' | 'title' | 'u
           allRepoIds: repos.map((r) => r.id),
           ticket,
           ticketUrl: issue.url,
+          once: newOnceKey(),
           ...agent,
         },
         deskLabel,

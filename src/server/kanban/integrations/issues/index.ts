@@ -6,9 +6,11 @@
 import type { KanbanCaller, KanbanContext, KanbanPlugin } from '../../registry.js';
 import { hostOf } from '../../../../shared/hosting/remote.js';
 import type { IssueSourceConfig, NormalizedIssue } from '../../../../shared/kanban/types.js';
-import type { KanbanServerMsg } from '../../../../shared/kanban/protocol.js';
+import { KANBAN_LIMITS, type IssueTaskFields, type KanbanServerMsg } from '../../../../shared/kanban/protocol.js';
 import { gh } from '../../../github.js';
-import { createIntegrationTask, fail, ok, type IntegrationTaskInput } from '../util.js';
+import { createIntegrationTask, fail, ok, taskTitle, type IntegrationTaskInput } from '../util.js';
+import { createBoardTask } from '../../create.js';
+import { onceFor, requestPrint, type CreateAnswer } from '../../once.js';
 import { githubRepoSource } from './github-repo.js';
 import { githubProjectSource } from './github-project.js';
 import { jiraSource } from './jira.js';
@@ -68,6 +70,11 @@ export interface IssueTaskOptions {
   start?: boolean;
   deskId?: string;
   input?: Partial<Pick<IntegrationTaskInput, 'title' | 'description' | 'tool' | 'model' | 'effort' | 'repoIds' | 'type' | 'event'>>;
+  /**
+   * The create form's fields (the browser's path; agents use `input`). The task is then made with all of them, and an issue
+   * that already has a task is only named, never started: the form's content must not be dropped while an old task starts with old settings.
+   */
+  task?: IssueTaskFields;
   /** Asked again of the sources (every one of them) when the issue isn't known yet; an agent's request leaves that to the lookup by key, so a wrong key can't cost a full refresh. Default true. */
   refresh?: boolean;
 }
@@ -300,6 +307,7 @@ export function createIssues(ctx: KanbanContext, opts: IssuesOptions = {}) {
     if (!ctx.project(project)) return `There's no project ${project}`;
     const startOpts = opts.deskId ? { deskId: opts.deskId } : undefined;
     const existing = ctx.repo.findTaskByTicket(project, key);
+    if (existing && opts.task) return { result: { taskId: existing.id, existed: true } };
     if (existing) {
       // Made before (on the kanban, or a start that failed): one in To do starts now, at the desk asked for; any other (running, done, archived) is only named.
       if (!opts.start || existing.status !== 'todo') {
@@ -316,6 +324,26 @@ export function createIssues(ctx: KanbanContext, opts: IssuesOptions = {}) {
     let issue = find(project, key) ?? (await browsing.load(project, key));
     if (!issue && opts.refresh !== false) issue = (await refresh(project)).items.find((i) => i.key === key);
     if (!issue) return `${key} isn't among the project's issues (any more)`;
+    if (opts.task) {
+      const form = opts.task;
+      // The lookup above awaited: someone may have made this issue's task meanwhile (createBoardTask is synchronous up to creating it).
+      const raced = ctx.repo.findTaskByTicket(project, issue.key);
+      if (raced) return { result: { taskId: raced.id, existed: true } };
+      const note = form.description?.trim().slice(0, KANBAN_LIMITS.description);
+      const description = (note ? `${note}\n\n${issueDescription(issue)}` : issueDescription(issue)).slice(0, KANBAN_LIMITS.description);
+      const made = await createBoardTask(
+        ctx,
+        { ...form, project, title: taskTitle(form.title || issue.title), description, ticket: issue.key, ticketUrl: issue.url },
+        who,
+        { start: opts.start, deskId: opts.deskId, event: { ticket: issue.key } },
+      );
+      if (typeof made === 'string') return made;
+      ctx.broadcast(message(project), project);
+      wallChanged(project);
+      const r: IssueTaskResult = { taskId: made.task.id, existed: false, ...(made.startError ? { startError: made.startError } : opts.start ? { started: true } : {}) };
+      const ticket = issue.key;
+      return { result: r, ...(!opts.start ? { claim: () => takeIssueForTask(ctx, { patch, io, find }, project, ticket, who, { status: false }) } : {}) };
+    }
     const given = opts.input ?? {};
     const text = given.description?.trim();
     const made = await createIntegrationTask(
@@ -381,14 +409,22 @@ export function createIssues(ctx: KanbanContext, opts: IssuesOptions = {}) {
       },
       'kanban.issues.createTask': async (c, m) => {
         if (!ctx.project(m.project)) return fail(c, m.rid, `There's no project ${m.project}`);
-        const made = await createFromIssue(m.project, m.issueKey, c, {
-          start: m.start,
-          deskId: m.deskId,
-        });
+        // A repeat (same `once`) is answered with the first creation's result, and its claim doesn't run again.
+        let claim: (() => Promise<void>) | undefined;
+        const make = async (): Promise<CreateAnswer | string> => {
+          const made = await createFromIssue(m.project, m.issueKey, c, { start: m.start, deskId: m.deskId, task: m.task });
+          if (typeof made === 'string') return made;
+          claim = made.claim;
+          const r = made.result;
+          return { taskId: r.taskId, existed: r.existed, ...(r.startError ? { startError: r.startError } : r.started ? { started: true } : {}) };
+        };
+        // The same key sent for another issue, for a plain task, or with the form's fields changed is `changed`.
+        const { value: made, changed } = await onceFor(ctx).run(c, m.once, make, requestPrint('issue', { project: m.project, issueKey: m.issueKey, task: m.task ?? null, start: !!m.start }));
         if (typeof made === 'string') return fail(c, m.rid, made);
-        const r = made.result;
-        ok(c, m.rid, { taskId: r.taskId, existed: r.existed, ...(r.startError ? { startError: r.startError } : r.started ? { started: true } : {}) });
-        await made.claim?.();
+        // The key's first request asked for something else (a plain task, another issue's, or this one before the form changed): that task, said to be the earlier one, so the browser keeps the form.
+        ok(c, m.rid, changed ? { taskId: made.taskId, earlier: true } : made);
+        // Set by this call's own creation only: a repeat never ran `make`.
+        await claim?.();
       },
     },
     async taskStarted(taskId, who) {
