@@ -393,15 +393,18 @@ enough, elsewhere the `code` command must be on the PATH. Its tabs:
   that way, again whenever the live checkout changes (a new commit, an amend, an edit). A diff over
   2 MB is cut. The 3D worker window's 🗂️ Task tab has no Changes tab: its header's 🌿 Changes is it.
 - **PRs**: the task's pull requests with their state, **Create/Push & update PRs**, **Fix PRs** and **Resolve conflicts** (with open PRs), and
-  **🔍 Review these N PRs together**, and **🔎 Find PRs** (not on an archived task). Each row ends with
-  a **✕** that unlinks the pull request from the task (the PR itself is untouched). Find PRs is for a
-  PR the office didn't link by itself: a task that is already Done, a merged PR, a PR older than the
-  task, or one the board's floor doesn't list. It searches the task's repositories and links at once
-  the PRs of the task's own branches, in any state (merged and closed too), skipping the target
-  branch, forks and PRs that belong to another task. A PR that only mentions the ticket (among the
-  newest 100 of each repository) is not linked on its own, since several tasks can share a ticket:
-  a window lists them with their state and branch, you tick the ones that are this task's and press
-  **Link selected**. A repository that couldn't be searched, or a PR it left out, is told in a message.
+  **🔍 Review these N PRs together**, and **🔎 Find PRs** (on this tab only, not on an archived task).
+  Each row ends with a **✕** that unlinks the pull request from the task after a confirmation (the PR
+  itself is untouched); the office does not link an unlinked PR again by itself, while 🔎 Find PRs or
+  **Link selected** brings it back. Find PRs is for a PR the office didn't link by itself: a task that
+  is already Done, a merged PR, a PR older than the task, or one the board's floor doesn't list. It
+  searches the task's repositories (an answer takes 18 s at most) and links at once the PRs of the
+  task's own branches that are open or draft, or were made after the task, in any state (merged and
+  closed too), skipping the target branch, forks and PRs that belong to another task. What it is less
+  sure of is not linked on its own: a PR that only mentions the ticket (several tasks can share one),
+  and a merged or closed PR from the task's branch that is older than the task (a branch like staging
+  has many). A window lists them with their state and branch, you tick the ones that are this task's and
+  press **Link selected**. A repository that couldn't be searched, or a PR it left out, is told in a message.
 - **Issue**: the issue the task's ticket names (a Jira key, `gh:owner/repo#12`), as the issue window
   shows it: the text, status, assignee and comments, with the same actions (see *Working on an issue*)
   and a **🔄 Refresh** that reads it from the source again. A task without a ticket says so (add one

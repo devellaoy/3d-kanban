@@ -2,6 +2,7 @@
 // shared by the task view's action bar and its PRs tab.
 
 import { h, toast } from '../ui/dom';
+import { confirmDialog } from '../ui/prompt';
 import type { KanbanPrLink, KanbanTask } from '../../shared/kanban/types.js';
 import type { KanbanServerMsg } from '../../shared/kanban/protocol.js';
 import { canFixPrs, openPrs, prStatusOk, type PrMode } from '../../shared/kanban/prs.js';
@@ -50,6 +51,7 @@ export function findPrsButton(task: KanbanTask, api: KanbanApi): HTMLButtonEleme
 export function unlinkButton(task: KanbanTask, p: KanbanPrLink, req: Req): HTMLElement | string {
   if (!p.repo) return '';
   const b = h('button.btn.small.kb-unlink', { type: 'button', title: 'Unlink this pull request from the task' }, '✕') as HTMLButtonElement;
-  b.addEventListener('click', () => void req({ t: 'kanban.pr.unlink', project: task.project, taskId: task.id, repo: p.repo!, number: p.number }, b, 'Unlinked'));
+  const name = `${p.repo}#${p.number}`;
+  b.addEventListener('click', () => confirmDialog(`Unlink ${name}?`, 'The pull request itself is not touched. 🔎 Find PRs can link it again.', 'Unlink', () => void req({ t: 'kanban.pr.unlink', project: task.project, taskId: task.id, repo: p.repo!, number: p.number }, b, 'Unlinked')));
   return b;
 }

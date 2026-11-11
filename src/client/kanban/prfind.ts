@@ -1,5 +1,6 @@
-// 🔎 Find PRs found pull requests that only mention the task's ticket: they are linked to the task
-// only for the ones ticked here (kanban.pr.link). Built like the review picker (prpicker.ts).
+// 🔎 Find PRs found pull requests it isn't sure of (they mention the task's ticket, or are older
+// closed ones from a branch of the task): they are linked to the task only for the ones ticked here
+// (kanban.pr.link). Built like the review picker (prpicker.ts).
 
 import { h, toast } from '../ui/dom';
 import type { KanbanPrBundleItem } from '../../shared/kanban/types.js';
@@ -15,8 +16,7 @@ export function openFindWindow(api: KanbanApi, project: string, taskId: number, 
   const picked = new Set<KanbanPrBundleItem>();
   const link = h('button.btn.primary', { type: 'button', disabled: true }, 'Link selected') as HTMLButtonElement;
   const rows = candidates.map((p) => {
-    const other = p.taskId !== undefined && p.taskId !== taskId;
-    const box = h('input', { type: 'checkbox', disabled: other }) as HTMLInputElement;
+    const box = h('input', { type: 'checkbox' }) as HTMLInputElement;
     box.addEventListener('change', () => {
       if (box.checked) picked.add(p);
       else picked.delete(p);
@@ -24,15 +24,10 @@ export function openFindWindow(api: KanbanApi, project: string, taskId: number, 
     });
     const url = safeUrl(p.url);
     const name = url ? h('a', { href: url, target: '_blank', rel: 'noopener noreferrer' }, `${prName(p)} ↗`) : h('b', {}, prName(p));
-    return h(
-      'li',
-      { class: other ? 'other' : '' },
-      h('label', {}, box, name, h('span.kb-pr-title', { title: p.title }, p.title), h('span.kb-pr', { class: prTone(p.state) }, PR_STATE_NAMES[prTone(p.state)]), p.branch ? h('code', {}, p.branch) : ''),
-      other ? h('small.kb-muted', {}, `Belongs to task #${p.taskId}`) : '',
-    );
+    return h('li', {}, h('label', {}, box, name, h('span.kb-pr-title', { title: p.title }, p.title), h('span.kb-pr', { class: prTone(p.state) }, PR_STATE_NAMES[prTone(p.state)]), p.branch ? h('code', {}, p.branch) : ''));
   });
-  const note = h('p.kb-note', {}, 'These mention the ticket but not by one of the task’s branches, so they are not linked until you confirm.');
-  const d = dialog('kb-pr-find', `Pull requests that mention ${ticket ?? 'this task'}`, h('div.body', {}, note, h('ul.kb-pr-list', {}, ...rows)), h('footer', {}, h('span.grow'), link));
+  const note = h('p.kb-note', {}, `These mention ${ticket ?? 'the task’s ticket'} or are older closed pull requests from one of the task’s branches, so they are not linked until you confirm.`);
+  const d = dialog('kb-pr-find', 'Pull requests that may be this task’s', h('div.body', {}, note, h('ul.kb-pr-list', {}, ...rows)), h('footer', {}, h('span.grow'), link));
   const modal = showDialog(d);
   link.addEventListener('click', async () => {
     const prs = [...picked].map((p) => ({ repo: p.repo, number: p.number }));

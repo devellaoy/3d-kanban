@@ -77,7 +77,7 @@ test('a review of several PRs: each must be one of the project’s repositories�
       ghCalls.push(args);
       if (args[0] === 'pr' && args[1] === 'list') return JSON.stringify(args[3] === 'o/web' ? LISTS[0].pulls : LISTS[1].pulls);
       if (args[0] === 'pr' && args[1] === 'view' && args[2] === '77') return JSON.stringify(pr(77, 'late'));
-      throw new Error('no such PR');
+      throw new Error('GraphQL: Could not resolve to a PullRequest with the number of 404.');
     },
   });
   assert.match(String(await parts.checkReview({ project: 'web', prs: [{ repo: 'o/other', number: 1 }] })), /o\/other isn't one of the project's repositories \(o\/web, o\/api\)/);
@@ -462,13 +462,15 @@ test('findTaskPrs: the task’s branch per repository in any state, the ticket o
 function findSetup(listed: Record<string, ReturnType<typeof fpull>[] | Error>, opts: { fork?: boolean; base?: string } = {}) {
   const { ctx } = project();
   const calls: string[][] = [];
+  const timeouts: (number | undefined)[] = [];
   const parts = createPullsParts(ctx, {
-    gh: async (args) => {
+    gh: async (args, _cwd, timeout) => {
       calls.push(args);
+      timeouts.push(timeout);
       if (args[0] === 'repo') return `${opts.base ?? 'main'}\n`;
       if (args[1] === 'view') {
         const found = (listed[args[4]] instanceof Error ? [] : (listed[args[4]] ?? [])).find((p) => String(p.number) === args[2]);
-        if (!found) throw new Error('no such PR');
+        if (!found) throw new Error('GraphQL: Could not resolve to a PullRequest with the number of 404.');
         return JSON.stringify({ isCrossRepository: opts.fork ?? false, ...found });
       }
       const l = listed[args[3]];
@@ -484,14 +486,14 @@ function findSetup(listed: Record<string, ReturnType<typeof fpull>[] | Error>, o
   };
   const changed: number[] = [];
   ctx.taskChanged = (id: number) => void changed.push(id);
-  return { ctx, calls, parts, mk, changed, ws: parts.plugin.ws! };
+  return { ctx, calls, timeouts, parts, mk, changed, ws: parts.plugin.ws! };
 }
 const lastOf = <T extends KanbanServerMsg['t']>(c: { got: KanbanServerMsg[] }, t: T) => c.got.at(-1) as Extract<KanbanServerMsg, { t: T }>;
 
 test('kanban.pr.find links the task’s branch PRs (even merged, even for a done task) and refreshes states', async () => {
-  const { ctx, calls, mk, changed, ws } = findSetup({
-    'o/web': [fpull(1, 'kanban/a'), fpull(2, 'kanban/a', 'Merged one', 'MERGED'), fpull(30, 'kanban/old', 'Old state', 'MERGED')],
-    'o/api': [fpull(4, 'kanban/a-api', 'api', 'CLOSED')],
+  const { ctx, calls, timeouts, mk, changed, ws } = findSetup({
+    'o/web': [fpull(1, 'kanban/a'), fpull(2, 'kanban/a', 'Merged one', 'MERGED', { createdAt: LATER }), fpull(30, 'kanban/old', 'Old state', 'MERGED')],
+    'o/api': [fpull(4, 'kanban/a-api', 'api', 'CLOSED', { createdAt: LATER })],
   });
   const t = mk('A', undefined, 'kanban/a');
   ctx.repo.setRepoBranch(t.id, 'api', 'kanban/a-api');
@@ -508,11 +510,81 @@ test('kanban.pr.find links the task’s branch PRs (even merged, even for a done
   assert.equal((ev[0].data as any).who, 'Tester');
   assert.deepEqual(changed, [t.id]);
   assert.ok(calls.some((a) => a[1] === 'list' && a.includes('--head') && a.includes('kanban/a-api')), 'a targeted list for the branch of each repository');
+  assert.ok(timeouts.length && timeouts.every((t) => typeof t === 'number' && t <= 10_000), 'every gh call is bounded');
   assert.ok(calls.filter((a) => a[1] === 'list').every((a) => a.includes('--state') && a[a.indexOf('--state') + 1] === 'all'));
   changed.length = 0;
   await ws['kanban.pr.find']!(c, { t: 'kanban.pr.find', project: 'web', taskId: t.id });
   assert.deepEqual(lastOf(c, 'kanban.prFound').linked, [], 'a second search finds nothing new');
   assert.deepEqual(changed, [], 'and changes nothing');
+});
+
+test('kanban.pr.find: an old closed PR of a reused branch is only offered; an open old one and a newer closed one are linked', async () => {
+  const old = Array.from({ length: 30 }, (_, i) => fpull(100 + i, 'staging', `Release ${i}`, i % 2 ? 'MERGED' : 'CLOSED'));
+  const { ctx, mk, ws } = findSetup({ 'o/web': [...old, fpull(1, 'staging', 'Open but old'), fpull(2, 'staging', 'Merged after', 'MERGED', { createdAt: LATER }), fpull(3, 'staging', 'No date', 'MERGED', { createdAt: undefined })], 'o/api': [] });
+  const t = mk('A', undefined, 'staging');
+  const c = client();
+  await ws['kanban.pr.find']!(c, { t: 'kanban.pr.find', project: 'web', taskId: t.id });
+  const got = lastOf(c, 'kanban.prFound');
+  assert.deepEqual(got.linked, [{ repo: 'o/web', number: 1 }, { repo: 'o/web', number: 2 }]);
+  assert.deepEqual(got.candidates.map((x) => x.number).sort((a, b) => a - b), [3, ...old.map((p) => p.number)]);
+  assert.deepEqual(ctx.repo.listPrLinks(t.id).map((l) => l.number).sort(), [1, 2]);
+});
+
+test('kanban.pr.find uses the list’s own fork flag instead of asking again, and bounds the questions it does ask', async () => {
+  const a = findSetup({ 'o/web': [fpull(1, 'kanban/a', 'p', 'OPEN', { isCrossRepository: false })], 'o/api': [] });
+  const ta = a.mk('A', undefined, 'kanban/a');
+  await a.ws['kanban.pr.find']!(client(), { t: 'kanban.pr.find', project: 'web', taskId: ta.id });
+  assert.equal(a.calls.filter((x) => x[0] === 'pr' && x[1] === 'view').length, 0, 'no per-PR fork question');
+  assert.equal(a.ctx.repo.listPrLinks(ta.id).length, 1);
+  const b = findSetup({ 'o/web': [fpull(1, 'kanban/a')], 'o/api': [] });
+  const tb = b.mk('A', undefined, 'kanban/a');
+  await b.ws['kanban.pr.find']!(client(), { t: 'kanban.pr.find', project: 'web', taskId: tb.id });
+  const asked = b.calls.map((x, i) => [x, b.timeouts[i]] as const).filter(([x]) => x[0] === 'repo' || x[1] === 'view');
+  assert.equal(asked.length, 2, 'the fork flag was missing, so it was asked, and the default branch');
+  assert.ok(asked.every(([, t]) => typeof t === 'number' && t <= 10_000));
+});
+
+test('kanban.pr.link: checks in parallel, tells "not found" from "couldn’t be read", all or nothing', async () => {
+  const s = findSetup({ 'o/web': [fpull(5, 'x'), fpull(6, 'y')], 'o/api': [] });
+  const a = s.mk('A');
+  const ws = s.ws;
+  const c = client();
+  await ws['kanban.pr.link']!(c, { t: 'kanban.pr.link', project: 'web', taskId: a.id, prs: [{ repo: 'o/web', number: 5 }, { repo: 'o/web', number: 404 }] });
+  assert.match(lastOf(c, 'kanban.error').message, /has no pull request #404/);
+  assert.equal(s.ctx.repo.listPrLinks(a.id).length, 0);
+  assert.ok(s.timeouts.length === 2 && s.timeouts.every((t) => typeof t === 'number' && t <= 10_000), 'both read, each bounded');
+  // gh failing for another reason is not "no such PR".
+  const f = createPullsParts(s.ctx, { gh: async () => Promise.reject(new Error('Command failed\nHTTP 502: Bad Gateway')) });
+  await f.plugin.ws!['kanban.pr.link']!(c, { t: 'kanban.pr.link', project: 'web', taskId: a.id, prs: [{ repo: 'o/web', number: 5 }] });
+  assert.match(lastOf(c, 'kanban.error').message, /o\/web#5 couldn't be read \(HTTP 502: Bad Gateway\)/);
+  // Two reads in flight at once.
+  let live = 0;
+  let peak = 0;
+  const p = createPullsParts(s.ctx, { gh: async (args) => { live++; peak = Math.max(peak, live); await new Promise((r) => setTimeout(r, 10)); live--; return JSON.stringify(fpull(Number(args[2]), 'x')); } });
+  await p.plugin.ws!['kanban.pr.link']!(c, { t: 'kanban.pr.link', project: 'web', taskId: a.id, prs: [{ repo: 'o/web', number: 5 }, { repo: 'o/web', number: 6 }, { repo: 'o/web', number: 5 }] });
+  assert.equal(peak, 3);
+  assert.deepEqual(s.ctx.repo.listPrLinks(a.id).map((l) => l.number), [5, 6], 'a PR named twice is linked once');
+});
+
+test('an unlinked PR is not linked again by the branch sync; Find or Link selected brings it back', async () => {
+  const { ctx, mk, parts, ws } = findSetup({ 'o/web': [fpull(10, 'office/a', 'mine', 'OPEN', { createdAt: LATER })], 'o/api': [] });
+  const t = mk('A', undefined, 'office/a');
+  const board = [{ ...fpull(10, 'office/a', 'mine', 'OPEN', { createdAt: LATER }), repo: 'o/web' }] as unknown as GhPull[];
+  const c = client();
+  const unlink = () => ws['kanban.pr.unlink']!(c, { t: 'kanban.pr.unlink', project: 'web', taskId: t.id, repo: 'o/web', number: 10 });
+  assert.deepEqual(await parts.syncPrStates('web', board), [t.id]);
+  await unlink();
+  assert.deepEqual(await parts.syncPrStates('web', board), [], 'the sync leaves it unlinked');
+  assert.equal(ctx.repo.listPrLinks(t.id).length, 0);
+  await ws['kanban.pr.find']!(c, { t: 'kanban.pr.find', project: 'web', taskId: t.id });
+  assert.deepEqual(lastOf(c, 'kanban.prFound').linked, [{ repo: 'o/web', number: 10 }]);
+  await unlink();
+  assert.deepEqual(await parts.syncPrStates('web', board), [], 'unlinked again: still not relinked');
+  await ws['kanban.pr.link']!(c, { t: 'kanban.pr.link', project: 'web', taskId: t.id, prs: [{ repo: 'o/web', number: 10 }] });
+  assert.equal(ctx.repo.listPrLinks(t.id).length, 1);
+  await unlink();
+  assert.deepEqual(await parts.syncPrStates('web', board), []);
+  assert.equal(ctx.repo.listPrLinks(t.id).length, 0);
 });
 
 test('kanban.pr.find does not link a ticket match: the PR comes back as a candidate, even with two tasks on the ticket', async () => {

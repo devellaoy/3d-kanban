@@ -5,7 +5,6 @@
 .modal.kb-pr-find > header h2 { white-space: normal; overflow-wrap: anywhere; line-height: 1.25; }
 .kb-pr-find > .body { display: flex; flex-direction: column; gap: 10px; }
 .kb-pr-find .kb-note { margin: 0; font-size: var(--fs-sm); font-weight: var(--fw-semibold); color: var(--muted); }
-.kb-pr-find .kb-muted { color: var(--muted); font-weight: var(--fw-medium); }
 .kb-pr-find .kb-pr-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
 .kb-pr-find .kb-pr-list li { display: flex; flex-direction: column; align-items: stretch; gap: 2px; padding: 8px 10px; border: var(--bw-sm) solid var(--ink); border-radius: var(--radius-md); background: var(--field); }
 .kb-pr-find .kb-pr-list li:has(input:checked) { background: var(--warn-wash); }
@@ -16,9 +15,6 @@
 .kb-pr-find .kb-pr-list .kb-pr { grid-row: 1; grid-column: 3; }
 .kb-pr-find .kb-pr-list .kb-pr-title { grid-column: 2 / -1; overflow: visible; white-space: normal; overflow-wrap: anywhere; font-weight: var(--fw-semibold); }
 .kb-pr-find .kb-pr-list code { grid-column: 2 / -1; justify-self: start; max-width: 100%; padding: 1px 4px; font-size: var(--fs-xs); overflow-wrap: anywhere; background: var(--paper); border: 1px solid var(--rule-code); border-radius: 4px; }
-/* Another task's: it can't be ticked, and says whose it is under the row. */
-.kb-pr-find .kb-pr-list li.other label { opacity: .55; cursor: not-allowed; }
-.kb-pr-find .kb-pr-list li > small { padding-left: 28px; font-size: var(--fs-xs); }
 /* taskview.css's PR state pill, which is scoped to the task view. */
 .kb-pr-find .kb-pr { padding: 1px 7px; font-size: var(--fs-2xs); font-weight: var(--fw-heavy); border: var(--bw-sm) solid var(--ink); border-radius: var(--radius-xs); color: var(--text); background: var(--field); white-space: nowrap; }
 .kb-pr-find .kb-pr.open { background: var(--good-soft); }

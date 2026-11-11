@@ -528,7 +528,6 @@ class View implements TaskView {
     }
     holdActions(task, add, (to, extras, b) => void this.req({ t: 'kanban.task.move', id, to, ...extras }, b));
     prActionButtons(task, bar, (m, b, d) => this.req(m, b, d));
-    bar.append(findPrsButton(task, this.api) ?? '');
     if (task.status !== 'in_progress' && this.o.moveMenu) add('↔️ Move…', '', () => this.o.moveMenu?.(id), 'Move to another column (M)');
     if (!running) add('🗑️ Delete', '.danger', (b) => confirmDialog(`Delete #${id}?`, `The task, its conversation, plans and runs are deleted for good. ${hasWorker ? 'Its workers go home. ' : ''}${task.workspace ? `Its worktree (${task.workspace.worktree.path}), its branches` : 'Its branches'}${task.branch ? ` (${task.branch})` : ''} and pull requests stay.`, 'Delete', () => void this.req({ t: 'kanban.task.delete', id }, b)));
     return bar;

@@ -23,9 +23,29 @@ import { checkClosing, type ClosingMark } from './closes.js';
 import { branchPrs, findBundle, findTaskPrs, prOwners, prState, type BundleBy, type FoundList, type FoundPr, type RepoPulls } from './bundle.js';
 
 const FIELDS = 'number,title,url,state,isDraft,headRefName';
-/** What Find PRs lists: the fork flag and the date too. gh's answer is waited for 20 s at most (the browser gives up on a request at 30 s). */
+/** What Find PRs lists: the fork flag and the date too. */
 const FIND_FIELDS = `${FIELDS},createdAt,isCrossRepository`;
-const FIND_TIMEOUT_MS = 20_000;
+/**
+ * The browser gives up on a request at 30 s, so Find waits at most FIND_TIMEOUT_MS for the lists and
+ * then ASK_TIMEOUT_MS for the follow-up questions (fork, default branch): 18 s in all. A kanban.pr.link
+ * reads its PRs in parallel, each bounded by FIND_TIMEOUT_MS.
+ */
+const FIND_TIMEOUT_MS = 10_000;
+const ASK_TIMEOUT_MS = 8_000;
+/** How many of a task's newest events are read for its unlinks (TASK_EVENTS_CAP keeps 2000 at most). */
+const UNLINK_EVENTS = 500;
+
+/** `p`, or a rejection when it has no answer in `ms` (what is asked goes on, only the waiting stops). */
+function within<T>(p: Promise<T>, ms: number): Promise<T> {
+  let timer: NodeJS.Timeout;
+  return Promise.race([p, new Promise<never>((_, no) => (timer = setTimeout(() => no(new Error('no answer in time')), ms)))]).finally(() => clearTimeout(timer));
+}
+
+/** Why gh couldn't give a PR, in a few words: "not found" when its error says there is no such PR. */
+function ghWhy(err: unknown): { missing: boolean; text: string } {
+  const text = (err instanceof Error ? err.message : String(err)).split('\n').map((l) => l.trim()).filter(Boolean).at(-1) ?? 'no reason given';
+  return { missing: /could not resolve to a pull ?request|no pull requests? found|not found|404/i.test(text), text: text.slice(0, 120) };
+}
 
 /** A PR as a review names it, with what its list says about it. */
 export type ReviewPr = PrRef & { title?: string; url?: string; branch?: string };
@@ -239,18 +259,32 @@ export function createPullsParts(ctx: KanbanContext, opts: PullsOptions = {}) {
     const at = key.lastIndexOf('#');
     const hosted = hostedRepoOf(key.slice(0, at));
     if (hosted) return hostedIsFork(hosted, Number(key.slice(at + 1)));
-    const v = (JSON.parse(await runGh(['pr', 'view', key.slice(at + 1), '-R', key.slice(0, at), '--json', 'isCrossRepository'], ctx.dataDir)) as { isCrossRepository?: unknown }).isCrossRepository;
+    const v = (JSON.parse(await runGh(['pr', 'view', key.slice(at + 1), '-R', key.slice(0, at), '--json', 'isCrossRepository'], ctx.dataDir, ASK_TIMEOUT_MS)) as { isCrossRepository?: unknown }).isCrossRepository;
     return typeof v === 'boolean' ? v : undefined;
   });
   /** A repository's default branch, by gh. Key: owner/name, lower-cased. */
   const defaultBranches = asked(async (repo) => {
     const hosted = hostedRepoOf(repo);
     if (hosted) return hostedDefaultBranch(hosted);
-    return (await runGh(['repo', 'view', repo, '--json', 'defaultBranchRef', '--jq', '.defaultBranchRef.name'], ctx.dataDir)).trim() || undefined;
+    return (await runGh(['repo', 'view', repo, '--json', 'defaultBranchRef', '--jq', '.defaultBranchRef.name'], ctx.dataDir, ASK_TIMEOUT_MS)).trim() || undefined;
   });
   /** The PRs already looked at for their issue's closing line (see checkClosing), by URL. */
   const closingChecked = new Map<string, ClosingMark>();
   let stopped = false;
+
+  /**
+   * Whether the user took this PR off the task and nothing linked it again since: its last
+   * `pr.linked` / `pr.unlinked` event is the unlink. Only the newest UNLINK_EVENTS events are read; an
+   * unlink older than that is forgotten, and the branch sync may link the PR again.
+   */
+  const unlinked = (taskId: number, repo: string, number: number): boolean => {
+    let last: string | undefined;
+    for (const e of ctx.repo.listEvents(taskId, UNLINK_EVENTS)) {
+      const d = e.data as { repo?: unknown; number?: unknown } | undefined;
+      if ((e.kind === 'pr.linked' || e.kind === 'pr.unlinked') && d?.number === number && typeof d.repo === 'string' && sameRepo(d.repo, repo)) last = e.kind;
+    }
+    return last === 'pr.unlinked';
+  };
 
   /**
    * A floor's PR board has fresh lists: its tasks' linked PRs take the states GitHub has for them
@@ -258,7 +292,8 @@ export function createPullsParts(ctx: KanbanContext, opts: PullsOptions = {}) {
    * task's branch that no task of any project has linked yet are linked to it (branchPrs: whatever
    * phase opened them, however the agent worded its answer), once gh says the head isn't a fork's
    * nor the repository's default branch (a repository gh can't answer for waits for the next
-   * sync). Each such link is an event on the task. The browsers hear about the cards that changed.
+   * sync) and the user hasn't unlinked it from the task (only 🔎 Find PRs or Link selected brings
+   * it back). Each such link is an event on the task. The browsers hear about the cards that changed.
    * Returns those tasks' ids.
    */
   const syncPrStates = async (project: string, pulls: (Pick<GhPull, 'number' | 'url' | 'state' | 'isDraft' | 'repo'> & { headRefName?: string; createdAt?: string; isCrossRepository?: boolean })[]): Promise<number[]> => {
@@ -278,7 +313,7 @@ export function createPullsParts(ctx: KanbanContext, opts: PullsOptions = {}) {
     }
     // Some task's already, in any project: a link names its repository, or only its repoId, or its URL (prOwners).
     const linked = (pr: { repo: string; number: number; url: string }) => prOwners(ctx.repo.prLinksMatching(pr.number, pr.url), (proj, repoId) => reposOf(proj).find((r) => r.id === repoId)?.remote, pr).length > 0;
-    const candidates = branchPrs(project, () => ctx.repo.activeTaskBranches(), pulls, reposOf, home, linked);
+    const candidates = branchPrs(project, () => ctx.repo.activeTaskBranches(), pulls, reposOf, home, linked).filter((b) => !unlinked(b.taskId, b.repo, b.pull.number));
     const own = await Promise.all(
       candidates.map(async (b) => {
         const [fork, base] = await Promise.all([forks.get(`${b.repo.toLowerCase()}#${b.pull.number}`), defaultBranches.get(b.repo.toLowerCase())]);
@@ -332,10 +367,18 @@ export function createPullsParts(ctx: KanbanContext, opts: PullsOptions = {}) {
     return { ...base, pulls: [...pulls.values()] };
   };
 
-  /** Whether a PR on the task's branch is surely the task's own: not from a fork, not on the default branch (one gh can't answer for isn't linked). Else why not. */
+  /**
+   * Whether a PR on the task's branch is surely the task's own: not from a fork (the list says, else gh
+   * is asked), not on the default branch (one gh can't answer for isn't linked). Else why not. The
+   * answers are waited for ASK_TIMEOUT_MS at most.
+   */
   const sureOwn = async (b: FoundPr): Promise<string | undefined> => {
-    const [fork, base] = await Promise.all([forks.get(`${b.repo.toLowerCase()}#${b.pull.number}`), defaultBranches.get(b.repo.toLowerCase())]);
+    let late = false;
+    const soon = <T>(p: Promise<T | undefined>) => within(p, ASK_TIMEOUT_MS).catch(() => ((late = true), undefined));
+    const known = b.pull.isCrossRepository;
+    const [fork, base] = await Promise.all([typeof known === 'boolean' ? known : soon(forks.get(`${b.repo.toLowerCase()}#${b.pull.number}`)), soon(defaultBranches.get(b.repo.toLowerCase()))]);
     if (fork === true) return 'it comes from a fork';
+    if (late) return "it couldn't be confirmed in time that it isn't a fork's or on the default branch";
     if (fork === undefined || base === undefined) return "GitHub didn't say whether it comes from a fork or the default branch";
     return base === b.pull.headRefName ? `its branch ${base} is the repository's default branch` : undefined;
   };
@@ -360,8 +403,13 @@ export function createPullsParts(ctx: KanbanContext, opts: PullsOptions = {}) {
     }
     const { byBranch, byTicket, skipped } = findTaskPrs(lists, { ...task, branches }, ownersOf);
     const linked: PrRef[] = [];
-    const why = await Promise.all(byBranch.map(sureOwn));
-    for (const [i, b] of byBranch.entries()) {
+    // A branch match is the task's own when it is open, or was made after the task; an older closed one
+    // (a reused or long-lived branch like staging has many) is only offered, with the ticket's.
+    const mine = (b: FoundPr) => isOpen(b.pull) || Date.parse(b.pull.createdAt ?? '') >= task.createdAt;
+    const direct = byBranch.filter(mine);
+    const older = byBranch.filter((b) => !mine(b));
+    const why = await Promise.all(direct.map(sureOwn));
+    for (const [i, b] of direct.entries()) {
       if (why[i]) skipped.push({ repo: b.repo, number: b.pull.number, reason: why[i]! });
       else if (ownersOf({ repo: b.repo, number: b.pull.number, url: b.pull.url }).length) skipped.push({ repo: b.repo, number: b.pull.number, reason: 'it was linked to a task just now' });
       else {
@@ -372,7 +420,7 @@ export function createPullsParts(ctx: KanbanContext, opts: PullsOptions = {}) {
       }
     }
     if (changed.size) ctx.taskChanged(task.id);
-    const candidates = byTicket.map((t): KanbanPrBundleItem => ({ repo: t.repo, number: t.pull.number, url: t.pull.url, title: t.pull.title, state: prState(t.pull), ...(t.pull.headRefName ? { branch: t.pull.headRefName } : {}), repoId: t.repoId }));
+    const candidates = [...older, ...byTicket].map((t): KanbanPrBundleItem => ({ repo: t.repo, number: t.pull.number, url: t.pull.url, title: t.pull.title, state: prState(t.pull), ...(t.pull.headRefName ? { branch: t.pull.headRefName } : {}), repoId: t.repoId }));
     return { linked, candidates, skipped, notes };
   };
 
@@ -384,11 +432,12 @@ export function createPullsParts(ctx: KanbanContext, opts: PullsOptions = {}) {
     try {
       const hosted = hostedRepoOf(repo.remote);
       if (hosted) {
-        const v = await viewHosted(hosted, pr.number);
+        const v = await within(viewHosted(hosted, pr.number), FIND_TIMEOUT_MS);
         pull = { number: v.number, title: v.title, url: v.url, state: v.state, isDraft: v.isDraft, headRefName: v.headRefName } as GhPull;
       } else pull = JSON.parse(await runGh(['pr', 'view', String(pr.number), '-R', repo.remote, '--json', FIELDS], ctx.dataDir, FIND_TIMEOUT_MS)) as GhPull;
-    } catch {
-      return `${repo.remote} has no pull request #${pr.number}`;
+    } catch (err) {
+      const why = ghWhy(err);
+      return why.missing ? `${repo.remote} has no pull request #${pr.number}` : `${repo.remote}#${pr.number} couldn't be read (${why.text})`;
     }
     const other = ownersOf({ repo: repo.remote, number: pr.number, url: pull.url }).find((id) => id !== taskId);
     return other !== undefined ? `${repo.remote}#${pr.number} is linked to task #${other} already: unlink it there first` : { repo, pull };
@@ -422,7 +471,7 @@ export function createPullsParts(ctx: KanbanContext, opts: PullsOptions = {}) {
         const check = t ? canFixPrs(t, forkTest(polledPulls(ctx.floor(t.project)), ctx.repos(t.project))) : undefined;
         c.send({ t: 'kanban.pr.owner', ...(m.rid ? { rid: m.rid } : {}), taskId: t?.id ?? null, ...(t ? { title: t.title } : {}), fixable: check?.ok === true, ...(check && !check.ok ? { reason: check.reason } : {}) });
       },
-      // Looks for the task's PRs: its branches' are linked at once, its ticket's are only offered (kanban.pr.link takes them).
+      // Looks for the task's PRs: its branches' open or newer ones are linked at once; its ticket's and its branches' older closed ones are only offered (kanban.pr.link takes them).
       'kanban.pr.find': async (c, m) => {
         const got = await find(c, m).catch((err: Error) => err.message);
         if (typeof got === 'string') return fail(c, m.rid, got);
@@ -431,12 +480,12 @@ export function createPullsParts(ctx: KanbanContext, opts: PullsOptions = {}) {
       'kanban.pr.link': async (c, m) => {
         const got = taskOf(m.project, m.taskId);
         if (typeof got === 'string') return fail(c, m.rid, got);
-        const picked: Exclude<Awaited<ReturnType<typeof pickPr>>, string>[] = [];
-        for (const pr of m.prs) {
-          const one = await pickPr(got.repos, m.taskId, pr);
-          if (typeof one === 'string') return fail(c, m.rid, one);
-          picked.push(one);
-        }
+        // All checked at once, none written unless every one is fine.
+        const checked = await Promise.all(m.prs.map((pr) => pickPr(got.repos, m.taskId, pr)));
+        const bad = checked.find((x) => typeof x === 'string');
+        if (typeof bad === 'string') return fail(c, m.rid, bad);
+        const seen = new Set<string>();
+        const picked = (checked as Exclude<(typeof checked)[number], string>[]).filter((x) => !seen.has(`${x.repo.id}#${x.pull.number}`) && !!seen.add(`${x.repo.id}#${x.pull.number}`));
         for (const { repo, pull } of picked) {
           const had = got.task.prs.some((l) => l.repoId === repo.id && l.number === pull.number);
           ctx.repo.upsertPrLink(m.taskId, { repoId: repo.id, repo: repo.remote, number: pull.number, url: pull.url, state: prState(pull), ...(pull.headRefName ? { branch: pull.headRefName } : {}) });

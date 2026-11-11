@@ -177,7 +177,7 @@ export function findBundle(
 /** A repository's fresh PR list for findTaskPrs (`primary`: it is the project's primary repository). */
 export interface FoundList extends Omit<RepoPulls, 'pulls'> {
   primary?: boolean;
-  pulls: (RepoPulls['pulls'][number] & { isCrossRepository?: boolean })[];
+  pulls: (RepoPulls['pulls'][number] & { isCrossRepository?: boolean; createdAt?: string })[];
 }
 
 /** A PR findTaskPrs found, with the list it came from. */
@@ -190,14 +190,15 @@ export interface FoundPr {
 
 /**
  * What the "Find PRs" button looks for, for one task: `byBranch` are the PRs whose head branch is
- * the task's in that repository (sure enough to link at once), `byTicket` those whose title or
- * branch names the task's ticket (only offered: tasks of one ticket, or a similar title, share them).
- * A PR another task owns (`ownersOf`: the tasks it is linked to) is `skipped`, never taken over; one
- * this task has linked already is in none of the lists.
+ * the task's in that repository, in any state (the caller links the open and the newer ones at once
+ * and only offers an old closed one: a reused branch like staging has many), `byTicket` those whose
+ * title or branch names the task's ticket (only offered: tasks of one ticket, or a similar title,
+ * share them). A PR another task owns (`ownersOf`: the tasks it is linked to) is `skipped`, never
+ * taken over; one this task has linked already is in none of the lists.
  *
- * Unlike the automatic branchPrs this deliberately has no "only active tasks", "only open and draft"
- * or "created after the task" rule: those are exactly what leaves a PR unlinked (a task that's done,
- * a PR that merged already, one opened before the task was), and here the user asks for this task's PRs.
+ * Unlike the automatic branchPrs this deliberately has no "only active tasks" or "only open and
+ * draft" rule: those are exactly what leaves a PR unlinked (a task that's done, a PR that merged
+ * already), and here the user asks for this task's PRs.
  */
 export function findTaskPrs(
   lists: FoundList[],
