@@ -272,3 +272,25 @@ test('the issue actions are keyed by issue and checked field by field', () => {
   refused({ t: 'kanban.issue.comments', project: 'web', issueKey: 'x'.repeat(401) }, /too long/);
   refused({ t: 'kanban.issue.comments', project: 'web' }, /issueKey/);
 });
+
+test('kanban.issues.createTask takes the form fields as an optional task', () => {
+  const base = { t: 'kanban.issues.createTask', project: 'web', issueKey: 'UYT-1' };
+  assert.deepEqual(good(base), base);
+  assert.deepEqual(good({ ...base, start: true, deskId: 'desk-3' }), { ...base, start: true, deskId: 'desk-3' });
+  const task = { description: 'More', type: 'investigate', repoIds: ['api'], tool: 'codex', goal: ' Done when ', review: { rounds: 2 }, tags: ['a'], usePlan: false, useReview: true, attachmentIds: ['a'.repeat(16)] };
+  assert.deepEqual(good({ ...base, task }), { ...base, task: { ...task, goal: 'Done when' } });
+  // The title is optional and trimmed; an empty one is left out.
+  assert.deepEqual(good({ ...base, task: { title: '  Mine  ' } }), { ...base, task: { title: 'Mine' } });
+  assert.deepEqual(good({ ...base, task: { title: '   ' } }), { ...base, task: {} });
+  assert.deepEqual(good({ ...base, task: {} }), { ...base, task: {} });
+  // The issue decides these: they never come through.
+  assert.deepEqual(good({ ...base, task: { project: 'other', ticket: 'X-9', ticketUrl: 'https://x.test/9', type: 'investigate' } }), { ...base, task: { type: 'investigate' } });
+  for (const task of [
+    { title: 'x'.repeat(KANBAN_LIMITS.title + 1) },
+    { description: 'x'.repeat(KANBAN_LIMITS.description + 1) },
+    { type: 'nonsense' },
+    { repoIds: ['Bad Id!'] },
+    { repoIds: [] },
+    'text',
+  ]) assert.equal(typeof parse({ ...base, task }), 'string', JSON.stringify(task));
+});

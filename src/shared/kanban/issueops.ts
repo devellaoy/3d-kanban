@@ -6,6 +6,7 @@
 
 import type { NormalizedIssue } from './types.js';
 import { BROWSE_CLIENT_TYPE_LIST, parseBrowseMsg, type BrowseClientMsg, type BrowseServerMsg } from './browse.js';
+import { issueTaskInput, type IssueTaskFields } from './taskinput.js';
 import { KANBAN_LIMITS, PERSON_ID_RE, SOURCE_ID_RE, bad, bool, deskId, isObj, optText, project, text, type Obj, type Req } from './validate.js';
 
 /** One way to move an issue on: a Jira transition, a project's Status option, or GitHub's close / reopen. */
@@ -51,8 +52,11 @@ export type IssueOpsClientMsg =
   /** Answered with kanban.issues. */
   | Req<{ t: 'kanban.issues.list'; project: string }>
   | Req<{ t: 'kanban.issues.refresh'; project: string }>
-  /** Idempotent by ticket: answered with kanban.ok {taskId, existed}. `deskId` (with start): where its worker sits (the 3D office's P with a card). */
-  | Req<{ t: 'kanban.issues.createTask'; project: string; issueKey: string; start?: boolean; deskId?: string }>
+  /**
+   * Idempotent by ticket: answered with kanban.ok {taskId, existed}. `deskId` (with start): where its worker sits (the 3D office's P with a card).
+   * `task`: the create form's fields; the task then gets them, the issue's key, link and text, and an issue that already has a task is never started.
+   */
+  | Req<{ t: 'kanban.issues.createTask'; project: string; issueKey: string; start?: boolean; deskId?: string; task?: IssueTaskFields }>
   /** Where the issue can go from here; answered with kanban.issueTransitions. */
   | IssueReq<{ t: 'kanban.issue.transitions' }>
   /** Moves it (a transition id from kanban.issueTransitions); answered with kanban.ok. */
@@ -122,7 +126,8 @@ export function parseIssueOpsMsg(t: IssueOpsClientMsg['t'], r: Obj): Bare<IssueO
       return { t, project: proj };
     case 'kanban.issues.createTask': {
       const desk = deskId(r.deskId);
-      return { t, project: proj, issueKey: text(r.issueKey, 'issueKey', KANBAN_LIMITS.issueKey).trim(), ...(bool(r.start, 'start') ? { start: true } : {}), ...(desk ? { deskId: desk } : {}) };
+      const task = r.task !== undefined ? { task: issueTaskInput(r.task) } : {};
+      return { t, project: proj, issueKey: text(r.issueKey, 'issueKey', KANBAN_LIMITS.issueKey).trim(), ...(bool(r.start, 'start') ? { start: true } : {}), ...(desk ? { deskId: desk } : {}), ...task };
     }
   }
   const issueKey = text(r.issueKey, 'issueKey', KANBAN_LIMITS.issueKey).trim();
