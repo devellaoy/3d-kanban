@@ -7,6 +7,7 @@ import path from 'node:path';
 import type { WorkerInfo, WorkerRepo } from '../../shared/protocol.js';
 import { normalizeRepo } from '../../shared/floors.js';
 import { officePrompt } from '../prompts.js';
+import { endPty } from '../ptys.js';
 import { realish, worktreeDir, worktreesHome } from '../worktree-home.js';
 import { WORKSPACE_FILES, Worktrees, describeWork, workspaceOf, type WorktreeCleanup, type WorktreeRef, type WorktreeState } from '../worktrees.js';
 import { midTurn } from './lifecycle.js';
@@ -339,7 +340,7 @@ export class WorkerTrees {
       w.dsh = undefined;
       try {
         session?.close();
-        proc?.kill();
+        if (proc) endPty(proc);
       } catch {
         // already gone
       }

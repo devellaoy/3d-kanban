@@ -9,7 +9,7 @@ import type { PromptSource } from '../prompts.js';
 import type { GhAs } from '../signins.js';
 import type { ServiceOwner } from '../services.js';
 import { addUsage, newTracker, scanTracker, trackerUsage, zeroUsage, type Ledger } from '../usage.js';
-import { PtyHost, SCROLLBACK, type Adopted, type Pty } from '../ptys.js';
+import { PtyHost, SCROLLBACK, endPty, type Adopted, type Pty } from '../ptys.js';
 import { configuredProvider, validateWorkerEffort, validateWorkerModel } from '../agents.js';
 import { ScrollbackStore, searchTerminal, terminalTail } from '../history.js';
 import { DSH_PROFILE_DEFAULT } from '../dsh.js';
@@ -373,7 +373,7 @@ export class WorkerManager extends KanbanWorkers {
     w.dsh = undefined;
     try {
       session?.close();
-      proc?.kill();
+      if (proc) endPty(proc);
     } catch {
       // already gone
     }
@@ -611,7 +611,7 @@ export class WorkerManager extends KanbanWorkers {
       }
       if (keep && w.pty?.id) continue;
       try {
-        w.pty?.kill();
+        if (w.pty) endPty(w.pty);
       } catch {
         // ignore
       }

@@ -33,6 +33,9 @@ concurrency:
 jobs:
   release:
     runs-on: ubuntu-latest
+    # A run takes about five minutes. One that hangs fails here instead of holding the release
+    # queue (the concurrency group above) for the six hours GitHub allows.
+    timeout-minutes: 20
     permissions:
       contents: write
     steps:
