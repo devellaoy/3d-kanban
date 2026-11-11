@@ -566,6 +566,33 @@ test('kanban.pr.link: checks in parallel, tells "not found" from "couldn’t be 
   assert.deepEqual(s.ctx.repo.listPrLinks(a.id).map((l) => l.number), [5, 6], 'a PR named twice is linked once');
 });
 
+test('kanban.pr.link: two concurrent requests sharing a PR cannot both link it, and the loser writes nothing', async () => {
+  const { ctx } = project();
+  let release!: () => void;
+  const gate = new Promise<void>((r) => (release = r));
+  const parts = createPullsParts(ctx, {
+    gh: async (args) => {
+      if (args[1] === 'view' && args[2] === '6') await gate;
+      return JSON.stringify(fpull(Number(args[2]), 'x'));
+    },
+  });
+  const mk = (title: string) => ctx.repo.createTask({ project: 'web', title, tool: 'claude', usePlan: true, planApproval: 'auto', useReview: true, createdBy: 't' });
+  const a = mk('A');
+  const b = mk('B');
+  const ca = client();
+  const cb = client();
+  const ws = parts.plugin.ws!;
+  // A checks #5 (free) and waits for the slow #6; B takes #5 meanwhile.
+  const ra = ws['kanban.pr.link']!(ca, { t: 'kanban.pr.link', project: 'web', taskId: a.id, prs: [{ repo: 'o/web', number: 5 }, { repo: 'o/web', number: 6 }] });
+  await ws['kanban.pr.link']!(cb, { t: 'kanban.pr.link', project: 'web', taskId: b.id, prs: [{ repo: 'o/web', number: 5 }] });
+  release();
+  await ra;
+  assert.equal(cb.got.at(-1)?.t, 'kanban.ok');
+  assert.match(String((ca.got.at(-1) as { message?: string }).message), new RegExp(`o/web#5 is linked to task #${b.id} already`));
+  assert.deepEqual(ctx.repo.listPrLinks(b.id).map((l) => l.number), [5]);
+  assert.deepEqual(ctx.repo.listPrLinks(a.id), [], 'the loser wrote nothing, not even #6');
+});
+
 test('an unlinked PR is not linked again by the branch sync; Find or Link selected brings it back', async () => {
   const { ctx, mk, parts, ws } = findSetup({ 'o/web': [fpull(10, 'office/a', 'mine', 'OPEN', { createdAt: LATER })], 'o/api': [] });
   const t = mk('A', undefined, 'office/a');

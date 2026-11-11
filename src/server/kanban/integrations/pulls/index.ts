@@ -486,8 +486,14 @@ export function createPullsParts(ctx: KanbanContext, opts: PullsOptions = {}) {
         if (typeof bad === 'string') return fail(c, m.rid, bad);
         const seen = new Set<string>();
         const picked = (checked as Exclude<(typeof checked)[number], string>[]).filter((x) => !seen.has(`${x.repo.id}#${x.pull.number}`) && !!seen.add(`${x.repo.id}#${x.pull.number}`));
+        // Ownership again, and the task as it is now, with no await before the writes: another request may have linked a PR meanwhile.
         for (const { repo, pull } of picked) {
-          const had = got.task.prs.some((l) => l.repoId === repo.id && l.number === pull.number);
+          const other = ownersOf({ repo: repo.remote, number: pull.number, url: pull.url }).find((id) => id !== m.taskId);
+          if (other !== undefined) return fail(c, m.rid, `${repo.remote}#${pull.number} is linked to task #${other} already: unlink it there first`);
+        }
+        const now = ctx.repo.getTask(m.taskId) ?? got.task;
+        for (const { repo, pull } of picked) {
+          const had = now.prs.some((l) => l.repoId === repo.id && l.number === pull.number);
           ctx.repo.upsertPrLink(m.taskId, { repoId: repo.id, repo: repo.remote, number: pull.number, url: pull.url, state: prState(pull), ...(pull.headRefName ? { branch: pull.headRefName } : {}) });
           if (!had) ctx.repo.appendEvent(m.taskId, 'pr.linked', { repo: repo.remote, number: pull.number, by: 'manual', who: c.name });
         }
