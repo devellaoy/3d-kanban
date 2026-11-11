@@ -50,6 +50,29 @@ export interface Pty {
   onExit(cb: (e: PtyExit) => void): void;
 }
 
+/** How long a terminal gets to go on the default signal before it is killed outright. */
+export const KILL_GRACE_MS = 5000;
+
+/**
+ * Ends a terminal for good: the default signal (SIGHUP), then SIGKILL if it is still there after
+ * the grace period. A shell that gets SIGHUP while it starts up can miss it (bash notes the signal
+ * and then waits for input all the same), and its open terminal would keep this process, or the
+ * host, from ever exiting. The timer is unref'd, so it never holds up an exit by itself.
+ */
+export function endPty(proc: Pty, graceMs = KILL_GRACE_MS) {
+  let exited = false;
+  proc.onExit(() => (exited = true));
+  proc.kill();
+  setTimeout(() => {
+    if (exited) return;
+    try {
+      proc.kill('SIGKILL');
+    } catch {
+      // already gone, or Windows, where kill() takes no signal and is forceful as it is
+    }
+  }, graceMs).unref();
+}
+
 /** A terminal the host was still running when the office came back. */
 export interface Adopted {
   pty: Pty;
