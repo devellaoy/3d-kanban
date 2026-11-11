@@ -393,7 +393,20 @@ enough, elsewhere the `code` command must be on the PATH. Its tabs:
   that way, again whenever the live checkout changes (a new commit, an amend, an edit). A diff over
   2 MB is cut. The 3D worker window's 🗂️ Task tab has no Changes tab: its header's 🌿 Changes is it.
 - **PRs**: the task's pull requests with their state, **Create/Push & update PRs**, **Fix PRs** and **Resolve conflicts** (with open PRs), and
-  **🔍 Review these N PRs together**.
+  **🔍 Review these N PRs together**, and **🔎 Find PRs** (not on an archived task). Each row ends with
+  a **✕** that unlinks the pull request from the task (the PR itself is untouched). Find PRs is for a
+  PR the office didn't link by itself: a task that is already Done, a merged PR, a PR older than the
+  task, or one the board's floor doesn't list. It searches the task's repositories and links at once
+  the PRs of the task's own branches, in any state (merged and closed too), skipping the target
+  branch, forks and PRs that belong to another task. A PR that only mentions the ticket (among the
+  newest 100 of each repository) is not linked on its own, since several tasks can share a ticket:
+  a window lists them with their state and branch, you tick the ones that are this task's and press
+  **Link selected**. A repository that couldn't be searched, or a PR it left out, is told in a message.
+- **Issue**: the issue the task's ticket names (a Jira key, `gh:owner/repo#12`), as the issue window
+  shows it: the text, status, assignee and comments, with the same actions (see *Working on an issue*)
+  and a **🔄 Refresh** that reads it from the source again. A task without a ticket says so (add one
+  with **✏️ Edit**); an issue the sources can't find or you can't read shows the ticket, the reason and
+  **🔄 Try again**. The tab is in the embedded task window too, and `&tab=issue` opens it.
 
 The panel is the **shared task view** (`src/client/kanban/taskview.ts`), which the 3D office uses too
 (a window of its own, or a tab of the worker window). There it has no Terminal tab (the worker
@@ -563,7 +576,7 @@ leave it off the board: its text then reaches the agent's prompt once a person s
 
 ### Working on an issue
 
-Click an issue's title in **📌 Issues** to open its window: the text, and three things you can do to
+Click an issue's title in **📌 Issues** to open its window (a task made from an issue shows the same panel in its own **Issue** tab): the text, and three things you can do to
 the issue itself, without leaving the office. In the 3D office the same panel is in the window of a
 Jira or project card, and a numbered GitHub issue of the project (upstream's issue window, which has
 its own comments and close) gets its **status** and **assignee** there.
