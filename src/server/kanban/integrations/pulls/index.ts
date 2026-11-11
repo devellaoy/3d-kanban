@@ -347,13 +347,14 @@ export function createPullsParts(ctx: KanbanContext, opts: PullsOptions = {}) {
   /**
    * A repository's PRs of any state, asked fresh: gh's newest 100 plus, for the task's `branch`, the
    * ones from that head (the plain list is capped). A repository on Azure DevOps or Bitbucket has
-   * the floor board's list, or none to give. Rejects with the reason, worded for the user.
+   * the floor board's list, or none to give. Rejects with the reason, worded for the user; when only
+   * one of the two asks failed, the other's PRs come back with a note on what is missing.
    */
-  const freshList = async (project: string, r: ProjectRepo & { remote: string }, branch: string | undefined): Promise<FoundList> => {
+  const freshList = async (project: string, r: ProjectRepo & { remote: string }, branch: string | undefined): Promise<{ list: FoundList; notes: string[] }> => {
     const base = { repo: r.remote, repoId: r.id, primary: r.primary };
     if (hostedRepoOf(r.remote)) {
       const board = ctx.floor(project)?.githubFor(r.remote);
-      if (board && board.pulls.fetchedAt > 0 && !board.pulls.error) return { ...base, pulls: board.pulls.items };
+      if (board && board.pulls.fetchedAt > 0 && !board.pulls.error) return { list: { ...base, pulls: board.pulls.items }, notes: [] };
       throw new Error(`${r.remote}: pull requests couldn't be listed here`);
     }
     const ask = async (extra: string[]): Promise<GhPull[]> => {
@@ -364,7 +365,11 @@ export function createPullsParts(ctx: KanbanContext, opts: PullsOptions = {}) {
     if (all.status === 'rejected' && (!branch || head.status === 'rejected')) throw new Error(`${r.remote}: ${(all.reason as Error).message}`);
     const pulls = new Map<number, GhPull>();
     for (const s of [all, head]) if (s.status === 'fulfilled') for (const p of s.value) pulls.set(p.number, p);
-    return { ...base, pulls: [...pulls.values()] };
+    const why = (x: PromiseRejectedResult) => (x.reason as Error).message;
+    const notes: string[] = [];
+    if (head.status === 'rejected') notes.push(`${r.remote}: the pull requests of branch ${branch} couldn't be listed (${why(head)}), so one outside the newest 100 may be missing`);
+    if (all.status === 'rejected') notes.push(`${r.remote}: the newest pull requests couldn't be listed (${why(all)}), so ones that only mention the ticket may be missing`);
+    return { list: { ...base, pulls: [...pulls.values()] }, notes };
   };
 
   /**
@@ -392,13 +397,15 @@ export function createPullsParts(ctx: KanbanContext, opts: PullsOptions = {}) {
     const lists: FoundList[] = [];
     const notes: string[] = [];
     for (const s of settled) {
-      if (s.status === 'fulfilled') lists.push(s.value);
+      if (s.status === 'fulfilled') (lists.push(s.value.list), notes.push(...s.value.notes));
       else notes.push((s.reason as Error).message);
     }
     const changed = new Set<number>();
     // The states of what is linked already, from the fresh lists.
     for (const l of task.prs) {
-      const p = lists.find((x) => x.repoId === l.repoId)?.pulls.find((x) => x.number === l.number);
+      // By the repository the link names (its remote may have changed since), else by URL, as syncPrStates does.
+      const repo = l.repo ?? repos.find((r) => r.id === l.repoId)?.remote;
+      const p = lists.flatMap((x) => (repo && sameRepo(x.repo, repo) ? x.pulls.filter((y) => y.number === l.number) : [])).at(0) ?? lists.flatMap((x) => x.pulls).find((y) => !!l.url && y.url === l.url);
       if (p && ctx.repo.setPrLinkState(task.id, l.repoId, l.number, prState(p))) changed.add(task.id);
     }
     const owners = branchOwners(ctx.repo.activeTaskBranches(), (proj) => ctx.repos(proj));

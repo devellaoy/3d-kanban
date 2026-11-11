@@ -8,7 +8,7 @@ import type { KanbanServerMsg } from '../../shared/kanban/protocol.js';
 import { canFixPrs, openPrs, prStatusOk, type PrMode } from '../../shared/kanban/prs.js';
 import type { KanbanApi } from './api';
 import { openFindWindow } from './prfind';
-import { foundToasts } from './prfindmodel';
+import { foundToasts, goneToast } from './prfindmodel';
 import { run } from './ui';
 
 type Req = (msg: Parameters<KanbanApi['request']>[0], button?: HTMLButtonElement, done?: string) => unknown;
@@ -32,16 +32,22 @@ const finding = new Set<number>();
 /** 🔎 Find PRs: links the PRs of the task's branches, asks about the ones that only mention its ticket. Not for an archived task. */
 export function findPrsButton(task: KanbanTask, api: KanbanApi): HTMLButtonElement | null {
   if (task.status === 'archived') return null;
-  const b = h('button.btn', { type: 'button', disabled: finding.has(task.id), title: 'Look for this task’s pull requests by its branches and ticket, and link them here' }, '🔎 Find PRs') as HTMLButtonElement;
+  const b = h('button.btn', { type: 'button', disabled: finding.has(task.id), title: 'Look for this task’s pull requests by its branches and ticket, and link them here', 'data-task': String(task.id) }, '🔎 Find PRs') as HTMLButtonElement;
+  // Only this task's buttons (the view may be mounted twice, and the tab is redrawn on updates).
+  const mine = () => document.querySelectorAll<HTMLButtonElement>(`button.kb-find-prs[data-task="${task.id}"]`);
   b.addEventListener('click', async () => {
     finding.add(task.id);
-    document.querySelectorAll<HTMLButtonElement>('button.kb-find-prs').forEach((x) => (x.disabled = true));
+    mine().forEach((x) => (x.disabled = true));
     const found = await run(() => api.request<Extract<KanbanServerMsg, { t: 'kanban.prFound' }>>({ t: 'kanban.pr.find', project: task.project, taskId: task.id }));
     finding.delete(task.id);
-    document.querySelectorAll<HTMLButtonElement>('button.kb-find-prs').forEach((x) => (x.disabled = false));
+    mine().forEach((x) => (x.disabled = false));
     if (!found) return;
-    for (const t of foundToasts(found)) toast(t.text, t.kind);
-    if (found.candidates.length) openFindWindow(api, task.project, task.id, task.ticket, found.candidates);
+    // The reply may come after the task view was closed or switched to another task: then no window opens over it.
+    const shown = mine().length > 0;
+    for (const t of foundToasts(found, shown ? undefined : task.id)) toast(t.text, t.kind);
+    if (!found.candidates.length) return;
+    if (shown) openFindWindow(api, task, found.candidates);
+    else toast(goneToast(task.id, found.candidates.length));
   });
   b.classList.add('kb-find-prs');
   return b;

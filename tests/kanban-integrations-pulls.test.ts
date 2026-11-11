@@ -459,7 +459,7 @@ test('findTaskPrs: the task’s branch per repository in any state, the ticket o
 });
 
 /** A project with two repositories and a gh that lists the given pulls per repository (`--head` filters). */
-function findSetup(listed: Record<string, ReturnType<typeof fpull>[] | Error>, opts: { fork?: boolean; base?: string } = {}) {
+function findSetup(listed: Record<string, ReturnType<typeof fpull>[] | Error>, opts: { fork?: boolean; base?: string; fail?: 'head' | 'plain' } = {}) {
   const { ctx } = project();
   const calls: string[][] = [];
   const timeouts: (number | undefined)[] = [];
@@ -476,6 +476,7 @@ function findSetup(listed: Record<string, ReturnType<typeof fpull>[] | Error>, o
       const l = listed[args[3]];
       if (l instanceof Error) throw l;
       const head = args.indexOf('--head');
+      if (opts.fail && (opts.fail === 'head') === (head >= 0)) throw new Error('boom');
       return JSON.stringify((l ?? []).filter((p) => head < 0 || p.headRefName === args[head + 1]));
     },
   });
@@ -692,6 +693,32 @@ test('kanban.pr.find: skips another task’s PR, a fork, and what gh can’t vou
   }
   await ws['kanban.pr.find']!(c, { t: 'kanban.pr.find', project: 'web', taskId: 999, rid: 'n' });
   assert.match(lastOf(c, 'kanban.error').message, /no task #999/);
+});
+
+test('kanban.pr.find: a link is refreshed only from the repository it names (the project’s remote may have changed since)', async () => {
+  for (const [stored, state] of [['acme/old', 'OPEN'], ['o/web', 'MERGED']]) {
+    const { ctx, mk, ws } = findSetup({ 'o/web': [fpull(7, 'x', 'Seven', 'MERGED')], 'o/api': [] });
+    const t = mk('A');
+    ctx.repo.upsertPrLink(t.id, { repoId: 'web', repo: stored, number: 7, url: `https://github.com/${stored}/pull/7`, state: 'OPEN' });
+    await ws['kanban.pr.find']!(client(), { t: 'kanban.pr.find', project: 'web', taskId: t.id });
+    assert.equal(ctx.repo.listPrLinks(t.id)[0].state, state, stored);
+  }
+});
+
+test('kanban.pr.find: when only the branch list or only the newest-100 list fails, the other’s PRs count and a note says what is missing', async () => {
+  const lists = { 'o/web': [fpull(1, 'kanban/a'), fpull(3, 'other', 'UYT-1 follow-up', 'MERGED')], 'o/api': [] };
+  for (const fail of ['head', 'plain'] as const) {
+    const { ctx, mk, ws } = findSetup(lists, { fail });
+    const t = mk('A', 'UYT-1', 'kanban/a');
+    const c = client();
+    await ws['kanban.pr.find']!(c, { t: 'kanban.pr.find', project: 'web', taskId: t.id });
+    const got = lastOf(c, 'kanban.prFound');
+    assert.deepEqual(got.linked, [{ repo: 'o/web', number: 1 }], fail);
+    assert.deepEqual(got.candidates.map((x) => x.number), fail === 'head' ? [3] : [], fail);
+    const web = got.notes.filter((n) => n.startsWith('o/web'));
+    assert.equal(web.length, 1);
+    assert.match(web[0], fail === 'head' ? /pull requests of branch kanban\/a couldn't be listed \(boom\), so one outside the newest 100 may be missing/ : /newest pull requests couldn't be listed \(boom\), so ones that only mention the ticket may be missing/);
+  }
 });
 
 test('kanban.pr.link: checks the PR exists in a project repository, refuses another task’s, links with by: manual', async () => {

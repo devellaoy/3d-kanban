@@ -403,8 +403,8 @@ enough, elsewhere the `code` command must be on the PATH. Its tabs:
   closed too), skipping the target branch, forks and PRs that belong to another task. What it is less
   sure of is not linked on its own: a PR that only mentions the ticket (several tasks can share one),
   and a merged or closed PR from the task's branch that is older than the task (a branch like staging
-  has many), and a PR on a branch another task uses too (it may be theirs). A window lists them with their state and branch, you tick the ones that are this task's and
-  press **Link selected**; one go links 20 at most (the window counts when there are more, and the rest wait for another search). A repository that couldn't be searched, or a PR it left out, is told in a message.
+  has many), and a PR on a branch another task uses too (it may be theirs). A window titled with the task's number (and its title below) lists them with their state and branch, you tick the ones that are this task's and
+  press **Link selected**; one go links 20 at most (the window counts when there are more, and the rest wait for another search). A repository that couldn't be searched, a half of a search that failed (the task's branch list: one outside the newest 100 may be missing; the newest-100 list: ticket matches may be missing), or a PR it left out, is told in a message. If the task view was closed or another task opened before the answer came, no window opens over it: a message naming the task says to use 🔎 Find PRs again from its PRs tab.
 - **Issue**: the issue the task's ticket names (a Jira key, `gh:owner/repo#12`), as the issue window
   shows it: the title, the text, status, assignee and comments, with the same actions (see *Working on an issue*)
   and a **🔄 Refresh** that reads it from the source again. A task without a ticket says so (add one

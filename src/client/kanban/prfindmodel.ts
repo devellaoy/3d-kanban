@@ -25,12 +25,23 @@ export function linkedText(prs: readonly PrRef[], max = 4): string {
   return `Linked ${shown}${prs.length > max ? ` and ${prs.length - max} more` : ''}`;
 }
 
-/** The toasts for an answer; when there are candidates, the window that asks about them says the rest. */
-export function foundToasts(found: { linked: readonly PrRef[]; candidates: readonly unknown[]; skipped: readonly { repo: string; number: number; reason: string }[]; notes: readonly string[] }): FoundToast[] {
+/** "#12 Fix the login": the task a window or toast speaks of. */
+export const taskLabel = (t: { id: number; title: string }): string => `#${t.id} ${t.title}`;
+
+/** The one toast for candidates when the task view is gone: no window can ask, so it says where to look. */
+export const goneToast = (taskId: number, candidates: number): string => `Task #${taskId}: ${candidates} pull request${candidates === 1 ? '' : 's'} may be its. Open its PRs tab and use 🔎 Find PRs again.`;
+
+/**
+ * The toasts for an answer; when there are candidates, the window that asks about them says the rest.
+ * `taskId`: set when the task isn't the one shown any more, so each text names it.
+ */
+export function foundToasts(found: { linked: readonly PrRef[]; candidates: readonly unknown[]; skipped: readonly { repo: string; number: number; reason: string }[]; notes: readonly string[] }, taskId?: number): FoundToast[] {
   const out: FoundToast[] = [];
   if (found.linked.length) out.push({ text: linkedText(found.linked) });
-  else if (!found.candidates.length) out.push({ text: 'No pull requests found for this task' });
+  else if (!found.candidates.length) out.push({ text: taskId === undefined ? 'No pull requests found for this task' : 'No pull requests found' });
   if (found.skipped.length) out.push({ text: `Skipped ${found.skipped.slice(0, 3).map((s) => `${prName(s)} (${s.reason})`).join(', ')}${found.skipped.length > 3 ? ` and ${found.skipped.length - 3} more` : ''}`, kind: 'warn' });
-  if (found.notes.length) out.push({ text: found.notes.slice(0, 3).join(' '), kind: 'warn' });
-  return out;
+  // One toast per note: a note names its repository and what is missing, and is long.
+  for (const n of found.notes.slice(0, 3)) out.push({ text: n, kind: 'warn' });
+  if (found.notes.length > 3) out.push({ text: `and ${found.notes.length - 3} more`, kind: 'warn' });
+  return taskId === undefined ? out : out.map((t) => ({ ...t, text: `Task #${taskId}: ${t.text}` }));
 }
