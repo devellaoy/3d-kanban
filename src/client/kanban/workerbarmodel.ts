@@ -14,10 +14,10 @@ export function barWorkers(workers: Iterable<WorkerInfo>): WorkerInfo[] {
   return [...workers].filter(isPlainWorker).sort((a, b) => a.createdAt - b.createdAt || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
 }
 
-/** A tab's tooltip: the name, then what it's on (when it is on something), and 🐚 shell for a shell. */
+/** A tab's tooltip: the name, then what it's on (when it is on something), and "shell" for a shell. */
 export function tabTitle(w: WorkerInfo): string {
   const work = w.task?.name ?? w.title;
-  return [w.name, work, w.kind === 'shell' ? '🐚 shell' : undefined].filter(Boolean).join(' · ');
+  return [w.name, work, w.kind === 'shell' ? 'shell' : undefined].filter(Boolean).join(' · ');
 }
 
 export type BarState = 'tabs' | 'elsewhere' | 'none';

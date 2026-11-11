@@ -92,3 +92,11 @@ export function holdLine(hold: TaskHold, now: number): string {
   if (hold.until !== undefined) parts.push(`until ${day(hold.until)}${hold.until < now ? ' (passed)' : ''}`);
   return parts.join(' · ');
 }
+
+/** The same line without its mark, for a page that draws an icon beside it: "waiting for the API keys · until 15.11.". */
+export function holdWords(hold: TaskHold, now: number): string {
+  const parts: string[] = [hold.note?.trim() || 'On hold'];
+  if (hold.until !== undefined) parts.push(`until ${day(hold.until)}${hold.until < now ? ' (passed)' : ''}`);
+  return parts.join(' · ');
+}
+

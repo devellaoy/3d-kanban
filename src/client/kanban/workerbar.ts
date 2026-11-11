@@ -10,6 +10,7 @@ import { shownStatus } from '../../shared/status';
 import type { WorkerInfo } from '../../shared/protocol';
 import { store } from '../state';
 import { h, modalOpen, STATUS_LABEL } from '../ui/dom';
+import { icon } from '../ui/icons';
 import { barState, barWorkers, tabTitle } from './workerbarmodel';
 
 export interface WorkerBarDeps {
@@ -48,16 +49,18 @@ const setClass = (el: HTMLElement, cls: string) => {
 
 export function installWorkerBar(deps: WorkerBarDeps): { refresh(): void } {
   const tabs = new Map<string, Tab>();
-  const floorEl = h('span.kb-wbar-floor');
+  const floorName_ = h('span');
+  const floorEl = h('span.kb-wbar-floor', {}, icon('building-2'), floorName_);
   // Buttons that each open a window, not a tablist: nothing here stays selected.
   const strip = h('div.kb-wtabs', { role: 'group', 'aria-label': 'Workers on this floor' });
   const note = h('span.kb-wbar-note');
-  const back = h('button.btn.small.kb-wbar-back', { type: 'button', onclick: () => {
+  const backName = h('span');
+  const back = h('button.btn.secondary.md.kb-wbar-back', { type: 'button', onclick: () => {
     const p = deps.boardProject();
     if (p) deps.goToFloor(p);
-  } });
-  const newBtn = h('button.btn.small', { type: 'button', id: 'kb-wbar-new', title: 'Hire a worker on this floor, outside the kanban', 'aria-label': 'New task', onclick: () => deps.hireNew(floorName()) }, '✨ ', h('span.kb-lbl', {}, 'New task'));
-  const shellBtn = h('button.btn.small', { type: 'button', id: 'kb-wbar-shell', title: 'Open a shell at the next free desk', 'aria-label': 'New shell', onclick: newShell }, '🐚 ', h('span.kb-lbl', {}, 'New shell'));
+  } }, icon('corner-up-left'), backName);
+  const newBtn = h('button.btn.secondary.md', { type: 'button', id: 'kb-wbar-new', title: 'Hire a worker on this floor, outside the kanban', 'aria-label': 'New worker', onclick: () => deps.hireNew(floorName()) }, icon('plus'), h('span.kb-lbl', {}, 'New worker'));
+  const shellBtn = h('button.btn.secondary.md', { type: 'button', id: 'kb-wbar-shell', title: 'Open a shell at the next free desk', 'aria-label': 'New shell', onclick: newShell }, icon('square-terminal'), h('span.kb-lbl', {}, 'New shell'));
   const actions = h('div.kb-wbar-actions', {}, newBtn, shellBtn);
   deps.root.replaceChildren(floorEl, strip, note, back, actions);
 
@@ -111,14 +114,14 @@ export function installWorkerBar(deps: WorkerBarDeps): { refresh(): void } {
     const workers = state === 'tabs' ? barWorkers(store.workers.values()) : [];
     paintTabs(workers);
     setAttr(deps.root, 'data-state', state);
-    setText(floorEl, state === 'none' ? '' : `🏢 ${floorName() ?? ''}`);
+    setText(floorName_, state === 'none' ? '' : (floorName() ?? ''));
     floorEl.classList.toggle('hidden', state === 'none');
     strip.classList.toggle('hidden', !workers.length);
     // A closed project has no floor to go to (the board still lists it).
     const closed = state === 'elsewhere' && !store.floors.some((f) => f.id === boardProject);
     setText(note, state === 'none' ? 'No floor' : closed ? 'The picked project’s floor is closed' : state === 'tabs' && !workers.length ? 'No workers on this floor' : '');
     note.classList.toggle('hidden', !note.textContent);
-    if (state === 'elsewhere' && boardProject) setText(back, `↩ ${nameOf(boardProject) ?? boardProject}’s floor`);
+    if (state === 'elsewhere' && boardProject) setText(backName, `${nameOf(boardProject) ?? boardProject}’s floor`);
     back.classList.toggle('hidden', state !== 'elsewhere' || closed);
     newBtn.disabled = shellBtn.disabled = state !== 'tabs';
     // A visitor in someone else's office may not put a worker on its floor (shared/multiplayer/allow.ts).
