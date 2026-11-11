@@ -19,11 +19,11 @@ export interface TaskViewOptions {
    * has the worker's terminal) and nothing that only the board page can do (edit, move).
    */
   embedded?: boolean;
-  /** The Changes tab (default true); the 3D worker window has none, its header's 🌿 Changes opens the same view. */
+  /** The Changes tab (default true); the 3D worker window has none, its header's Changes button opens the same view. */
   changesTab?: boolean;
   /** The view is on the kanban page itself (in its task window, or the worker window's tab): no link back to it. */
   onKanban?: boolean;
-  /** Called by the view's own ✕ (shown only when this is given), and when the task is deleted. */
+  /** Called by the header's ✕ (shown only when this is given: a window of the task's own), and when the task is deleted. */
   onClose?: () => void;
   // The kanban page's hooks; without them the view does without what they open.
   /** The tab it opens on (a tab it doesn't show falls back to Overview). */
@@ -61,6 +61,8 @@ export interface TaskCtx {
   setTab(tab: TaskTab): void;
   /** Redraws the open tab's panel (only when it is `onlyOn`, if given). */
   paint(onlyOn?: TaskTab): void;
+  /** Puts the keyboard in the box whose `data-focus` is `key`, once the open tab is drawn. */
+  focusBox(key: string): void;
   drafts(): Map<string, string>;
   fileBox(key: string, attrs: Record<string, string | number>): FileBox;
   alive(): boolean;

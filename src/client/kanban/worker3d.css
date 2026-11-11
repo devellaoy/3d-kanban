@@ -3,4 +3,6 @@
 .modal.term .worker-tabs { background: var(--paper); }
 /* The task tab hides the whole terminal side (the terminal, its shell tabs, the keypad) at window level. */
 .modal.term.kb-on-task > :not(header, .worker-tabs, .worker-task) { display: none !important; }
-.modal.term .worker-task { flex: 1; min-height: 0; overflow: auto; background: var(--field); color: var(--text); }
+/* The task view inside is a shell of its own (header, body, footer): it scrolls its body, not the pane. */
+.modal.term .worker-task { flex: 1; min-height: 0; display: flex; flex-direction: column; overflow: hidden; background: var(--paper); color: var(--text); }
+.modal.term .worker-task.hidden { display: none; }

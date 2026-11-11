@@ -2,16 +2,17 @@
 // whose terminals can be opened (taskview.ts).
 
 import { h } from '../ui/dom';
+import { icon, type IconName } from '../ui/icons';
+import { btn, phaseBadge } from '../ui/kit';
 import { store } from '../state';
 import type { KanbanEvent, KanbanRole, KanbanRun, KanbanTask, ReviewVerdict, RunStatus } from '../../shared/kanban/types.js';
-import { TOOL_ICON } from './card';
-import { effortName, fmtDuration, fmtTime, phaseName, toolName } from './labels';
+import { effortName, fmtDuration, fmtTime, toolName } from './labels';
 import { renderMarkdown } from './md';
 import type { Detail, TaskCtx } from './taskctx';
 
 const ROLE_NAMES: Record<KanbanRole, string> = { implementer: 'Implementer', reviewer: 'Reviewer' };
 const RUN_STATUS_NAMES: Record<RunStatus, string> = { running: 'running', succeeded: 'done', failed: 'failed', stopped: 'stopped', interrupted: 'interrupted' };
-const VERDICT_NAMES: Record<ReviewVerdict, string> = { approved: '✅ approved', changes_requested: '🛠 changes requested' };
+const VERDICTS: Record<ReviewVerdict, [IconName, string]> = { approved: ['check', 'approved'], changes_requested: ['wrench', 'changes requested'] };
 
 export function runsPane(c: TaskCtx, d: Detail): HTMLElement[] {
   const runs = [...d.runs].sort((a, b) => b.startedAt - a.startedAt);
@@ -34,7 +35,7 @@ function workerLabel(id: string, role: KanbanRole, project: string): HTMLElement
   return h(
     'div.kb-worker',
     {},
-    h('span.dot', { style: `background:${w?.color ?? '#ccc'}` }),
+    h('span.dot', { style: w?.color ? `background:${w.color}` : undefined }),
     h('b', {}, w?.name ?? ROLE_NAMES[role]),
     h('small.kb-muted', {}, w ? `${ROLE_NAMES[role]} · ${w.status}` : store.floor === project ? 'That worker isn’t here any more' : 'on the project’s floor'),
   );
@@ -50,7 +51,7 @@ export function terminalPane(c: TaskCtx, task: KanbanTask): HTMLElement[] {
         'div.kb-worker-row',
         {},
         workerLabel(w.id, w.role, task.project),
-        c.o.openTerminal ? h('button.btn.primary', { type: 'button', onclick: () => c.o.openTerminal?.(w.id, task.project) }, '⌨️ Open the terminal') : null,
+        c.o.openTerminal ? btn('Open the terminal', { icon: 'square-terminal', attrs: { 'data-focus': `term-${w.id}`, onclick: () => c.o.openTerminal?.(w.id, task.project) } }) : null,
       ),
     ),
   ];
@@ -64,10 +65,10 @@ function runItem(r: KanbanRun, openTask: (id: number) => void): HTMLElement {
     h(
       'header',
       {},
-      h('span.kb-phase', { class: r.phase }, `${phaseName(r.phase)}${r.round ? ` ${r.round}` : ''}`),
-      h('span', {}, `${TOOL_ICON[r.tool]} ${toolName(r.tool)}${r.model ? ` · ${r.model}` : ''}${r.effort ? ` · ${effortName(r.effort)}` : ''}`),
+      phaseBadge(r.phase, r.round),
+      h('span.kb-run-agent', {}, icon('bot', { size: 14 }), `${toolName(r.tool)}${r.model ? ` · ${r.model}` : ''}${r.effort ? ` · ${effortName(r.effort)}` : ''}`),
       h('span.kb-run-status', { class: r.status }, RUN_STATUS_NAMES[r.status]),
-      r.verdict ? h('span.kb-verdict', { class: r.verdict }, VERDICT_NAMES[r.verdict]) : null,
+      r.verdict ? h('span.kb-verdict', { class: r.verdict }, icon(VERDICTS[r.verdict][0], { size: 13 }), VERDICTS[r.verdict][1]) : null,
       h('small.kb-muted', {}, `${fmtTime(r.startedAt)}${took ? ` · ${took}` : ''}`),
     ),
     r.error ? h('p.kb-error', {}, r.error) : null,

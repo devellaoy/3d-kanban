@@ -2,6 +2,7 @@
 // pages on demand (taskview.ts).
 
 import { h, toast } from '../ui/dom';
+import { btn } from '../ui/kit';
 import { store } from '../state';
 import type { KanbanServerMsg } from '../../shared/kanban/protocol.js';
 import type { KanbanTask } from '../../shared/kanban/types.js';
@@ -22,9 +23,9 @@ export class Conversation {
 
   private makeComposer(task: KanbanTask) {
     const ta = textArea('', { rows: 3, placeholder: 'Write a comment, answer, or tell the agent what to do next… (paste or drop files)', 'aria-label': 'Comment', 'data-focus': 'comment' });
-    const send = h('button.btn.primary', { type: 'button' }, 'Send') as HTMLButtonElement;
-    const hint = h('small.kb-muted', {}, `${sendHint()} · ${task.status === 'todo' || task.status === 'done' ? 'a comment is kept with the task' : task.status === 'on_hold' ? 'a comment is kept and given to the agent when it resumes' : 'a comment puts the agent back to work'}`);
-    const wrap = h('div.kb-composer');
+    const send = btn('Send', { icon: 'send', size: 'sm', attrs: { 'data-focus': 'act-comment' } });
+    const hint = h('span.composite-note', {}, `${sendHint()} · ${task.status === 'todo' || task.status === 'done' ? 'a comment is kept with the task' : task.status === 'on_hold' ? 'a comment is kept and given to the agent when it resumes' : 'a comment puts the agent back to work'}`);
+    const wrap = h('div.kb-composer.composite');
     const attach = attachBox({ target: ta, dropZone: wrap, insertLinks: true });
     const go = async () => {
       const text = ta.value.trim();
@@ -39,7 +40,7 @@ export class Conversation {
     };
     send.addEventListener('click', () => void go());
     onSendKey(ta, () => void go());
-    wrap.append(ta, h('div.kb-row', {}, attach.el, h('span.grow'), send), hint);
+    wrap.append(ta, h('div.composite-bar', {}, attach.el, hint, send));
     return { el: wrap, ta, attach };
   }
 
@@ -52,7 +53,7 @@ export class Conversation {
     for (const comment of [...d.comments].reverse()) list.append(commentItem(comment, byId, (id) => this.c.openTask(id), { runs, openFile }));
     if (!d.comments.length) list.append(h('li.kb-muted', {}, 'No comments yet.'));
     const more = d.commentsMore
-      ? h('button.btn.kb-older', { type: 'button', disabled: this.loadingOlder, onclick: () => void this.older() }, this.loadingOlder ? 'Loading…' : 'Older comments')
+      ? btn(this.loadingOlder ? 'Loading…' : 'Older comments', { size: 'sm', attrs: { class: 'kb-older', disabled: this.loadingOlder, 'data-focus': 'older', onclick: () => void this.older() } })
       : null;
     return [this.composer.el, list, ...(more ? [more] : [])];
   }
