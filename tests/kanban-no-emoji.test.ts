@@ -75,8 +75,6 @@ function count(file: string): number {
 const ALLOWED: Readonly<Record<string, number>> = {
   'src/client/kanban/changeswindow.ts': 2,
   'src/client/kanban/issuecards.ts': 1,
-  'src/client/kanban/issuelink.ts': 4,
-  'src/client/kanban/issuelinkmodel.ts': 1,
   'src/client/kanban/lounge3d.ts': 1,
   'src/client/kanban/loungemodel.ts': 2,
   'src/client/kanban/office.ts': 15,

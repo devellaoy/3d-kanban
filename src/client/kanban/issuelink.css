@@ -3,4 +3,4 @@
 /* The box of no issue / one that couldn't be read: its text gives way so the buttons stay on one row where there's room. */
 .kb-tv .kb-tv-issue .kb-iw-miss > p { flex-basis: 140px; }
 .kb-il-form { clear: both; display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 8px 0 10px; padding: 8px 10px; border: var(--bw-sm) dashed var(--ink); border-radius: var(--radius-sm); background: var(--field); }
-.kb-il-form > input { flex: 1 1 200px; min-width: 0; }
+.kb-il-form > input { flex: 1 1 200px; min-width: 0; height: var(--field-h); }

@@ -1,14 +1,16 @@
 // Changing the issue a task is about, from its Issue tab (issuetab.ts), whatever the task's status but
-// the archive: 🔗 picks one from the project's issues (the picker of the new-task form), ⌨️ takes a key
-// typed by hand (a project may have no issue source, or the issue isn't on its list) and ✕ unlinks. All
-// three send kanban.task.update with the ticket and its link; the task the office then broadcasts is
-// what makes the tab show the new issue.
+// the archive: one button picks an issue from the project's issues (the picker of the new-task form),
+// one takes a key typed by hand (a project may have no issue source, or the issue isn't on its list)
+// and one unlinks. All three send kanban.task.update with the ticket and its link; the task the office
+// then broadcasts is what makes the tab show the new issue.
 //
 // The buttons and the form are built once and live as long as the tab: the task view redraws on every
 // update, and what is being typed (and the keyboard's place, by data-focus) has to outlive that.
 
 import './issuelink.css';
 import { h, toast } from '../ui/dom';
+import { icon } from '../ui/icons';
+import { btn } from '../ui/kit';
 import { confirmDialog } from '../ui/prompt';
 import { KANBAN_LIMITS } from '../../shared/kanban/protocol.js';
 import type { KanbanTask } from '../../shared/kanban/types.js';
@@ -19,7 +21,7 @@ import { run, textInput } from './ui';
 export interface IssueLink {
   /** The buttons, for the tab's bar: none of them shows on an archived task. */
   buttons: HTMLElement[];
-  /** The key-by-hand form, hidden until ⌨️ opens it. */
+  /** The key-by-hand form, hidden until "Type a key" opens it. */
   form: HTMLElement;
   /** The task as it is now. */
   set(task: KanbanTask): void;
@@ -27,13 +29,14 @@ export interface IssueLink {
 
 export function issueLink(api: KanbanApi): IssueLink {
   let task: KanbanTask | null = null;
-  const pick = h('button.btn.small', { type: 'button', 'data-focus': 'issue-pick' }) as HTMLButtonElement;
-  const type = h('button.btn.small', { type: 'button', title: 'Type the issue’s key and link by hand', 'aria-expanded': 'false', 'data-focus': 'issue-type' }, '⌨️ Type a key') as HTMLButtonElement;
-  const unlink = h('button.btn.small', { type: 'button', title: 'Take the issue off the task (the issue itself is not touched)', 'data-focus': 'issue-unlink' }, '✕ Unlink') as HTMLButtonElement;
+  const pickWords = h('span');
+  const pick = h('button.btn.secondary.sm', { type: 'button', 'data-focus': 'issue-pick' }, icon('link', { size: 14 }), pickWords) as HTMLButtonElement;
+  const type = btn('Type a key', { size: 'sm', icon: 'keyboard', attrs: { title: 'Type the issue’s key and link by hand', 'aria-expanded': 'false', 'data-focus': 'issue-type' } });
+  const unlink = btn('Unlink', { kind: 'quiet', size: 'sm', icon: 'unlink', attrs: { title: 'Take the issue off the task (the issue itself is not touched)', 'data-focus': 'issue-unlink' } });
   const key = textInput('', { maxlength: KANBAN_LIMITS.ticket, placeholder: 'UYT-1415 / gh:owner/repo#12', 'aria-label': 'Issue key', 'data-focus': 'issue-key' });
   const link = textInput('', { maxlength: KANBAN_LIMITS.url, placeholder: 'https://… (optional)', type: 'url', 'aria-label': 'Issue link', 'data-focus': 'issue-link' });
-  const saveBtn = h('button.btn.small.primary', { type: 'submit', 'data-focus': 'issue-save' }, 'Save') as HTMLButtonElement;
-  const cancel = h('button.btn.small', { type: 'button', 'data-focus': 'issue-cancel' }, 'Cancel') as HTMLButtonElement;
+  const saveBtn = btn('Save', { kind: 'primary', size: 'sm', attrs: { type: 'submit', 'data-focus': 'issue-save' } });
+  const cancel = btn('Cancel', { kind: 'quiet', size: 'sm', attrs: { 'data-focus': 'issue-cancel' } });
   const form = h('form.kb-il-form.hidden', { 'aria-label': 'The issue’s key and link' }, key, link, saveBtn, cancel) as HTMLFormElement;
 
   const opened = () => !form.classList.contains('hidden');
@@ -99,7 +102,7 @@ export function issueLink(api: KanbanApi): IssueLink {
       const moved = !!task && (task.id !== next.id || task.ticket !== next.ticket || task.ticketUrl !== next.ticketUrl);
       task = next;
       const can = canChangeIssue(next);
-      pick.textContent = next.ticket ? '🔗 Change issue' : '🔗 Link an issue';
+      pickWords.textContent = next.ticket ? 'Change issue' : 'Link an issue';
       pick.title = next.ticket ? 'Pick another of the project’s issues for this task' : 'Pick one of the project’s issues for this task';
       pick.classList.toggle('hidden', !can);
       type.classList.toggle('hidden', !can);
