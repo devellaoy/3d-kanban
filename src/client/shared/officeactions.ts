@@ -22,6 +22,8 @@ import { openPrompt } from '../ui/prompt';
 import { openMeeting, type MeetingPreset } from '../ui/meeting';
 import { repoChoices } from './hiring';
 
+const NO_SEAT = 'Every desk and bean bag is taken — send a worker home first, or put a bean bag down in build mode (U)';
+
 export function officeActions(net: Net, openWorker: (id: string) => void) {
   function hire(deskId: string, prompt: string | undefined, worktree: boolean, provider?: AgentProvider, model?: string, effort?: AgentEffort, repos?: string[], extra: { attachmentIds?: string[]; meeting?: string } = {}) {
     net.send({ t: 'worker.spawn', deskId, prompt, worktree, provider, model, effort, repos: repos?.length ? repos : undefined, ...(extra.attachmentIds?.length ? { attachmentIds: extra.attachmentIds } : {}), ...(extra.meeting ? { meeting: extra.meeting } : {}) });
@@ -43,7 +45,7 @@ export function officeActions(net: Net, openWorker: (id: string) => void) {
     if (!store.project) return void toast('Pick a floor first', 'warn');
     if (officeIsFull()) return;
     const desk = freeSeat();
-    if (!desk) toast('Every desk and bean bag is taken — send a worker home first, or put a bean bag down in build mode (U)', 'warn');
+    if (!desk) toast(NO_SEAT, 'warn');
     return desk;
   }
 
@@ -61,13 +63,17 @@ export function officeActions(net: Net, openWorker: (id: string) => void) {
       providerOption: true,
       worktreeOption: !!store.project.branch,
       repoOptions: repoChoices(),
-      // A kanban task may have taken that desk while the dialog was open (the engine picks seats the same way): the next free one then.
+      // Asked before the dialog closes, so with no seat left it stays open with what was written.
+      canHire: () => (seatNow() ? undefined : NO_SEAT),
       onSubmit: (text, o) => {
-        const seat = store.workerAtDesk(desk) ? freeSeat() : desk;
-        if (!seat) return void toast('Every desk and bean bag is taken — send a worker home first, or put a bean bag down in build mode (U)', 'warn');
-        hire(seat, text || undefined, o.worktree, o.provider, o.model, o.effort, o.repos);
+        const seat = seatNow();
+        if (seat) hire(seat, text || undefined, o.worktree, o.provider, o.model, o.effort, o.repos);
       },
     });
+    // A kanban task may have taken that desk while the dialog was open (the engine picks seats the same way): the next free one then.
+    function seatNow() {
+      return store.workerAtDesk(desk!) ? freeSeat() : desk;
+    }
   }
 
   /** A shell at the next free desk; the desk's id, or undefined when nothing was sent. */
