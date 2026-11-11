@@ -433,7 +433,7 @@ enough, elsewhere the `code` command must be on the PATH. Its tabs:
   takes the issue off the task after a confirmation. Only the task's ticket and its link change: the
   task's title and text stay, and nothing is done to either issue at its source. The one change that reaches
   GitHub is the closing line of the task's PR: `Closes #8` is added for the new issue, and the line the office
-  wrote for the old one is taken out (see *Closing the issue*). The tab is in the
+  itself added for the old one is taken out (see *Closing the issue*). The tab is in the
   embedded task window too (the 3D office's as well), and `&tab=issue` opens it.
 
 The panel is the **shared task view** (`src/client/kanban/taskview.ts`), which the 3D office uses too
@@ -686,9 +686,9 @@ reads its own. A kanban task made from a card keeps the description as its own, 
   first PR: once that PR is merged or closed, a later PR from the same worker isn't edited. An account user without a sign-in gets a warning instead, and the PR is left alone. A
   description edited while the line is being added is not overwritten: the check is made again. If the PR targets a
   branch other than the repository's default branch, it still adds the line but warns once, because GitHub closes an
-  issue only when the PR reaches the default branch. When the task's issue is changed or unlinked, the line the office wrote for the old issue is taken out of the PR
-  (only that exact line; a closing keyword the author wrote stays, and the task's status comment says so), also for a done task's open PR,
-  so merging does not close the old issue. Jira tickets and GitHub project drafts have no such line. An Azure
+  issue only when the PR reaches the default branch. When the task's issue is changed or unlinked, the line the office itself added for the old issue is taken out of the PR
+  (that exact line, also from a done task's open PR), so merging does not close the old issue. A closing line the author or the
+  agent wrote is never edited: if the PR still closes the old issue, one status comment on the task says so. Jira tickets and GitHub project drafts have no such line. An Azure
   Boards work item is linked with `AB#123` and completed by the office when its pull request merges ([hosting](hosting.md#azure-boards)).
 - **Repositories on Azure DevOps and Bitbucket**: everything above works the same, with the agent using `office-pr`
   where it would use `gh`, and the PR board and linked PR states read over the host's API ([hosting](hosting.md)).
