@@ -85,3 +85,10 @@ test('the 2D view loads no three.js, and none of the 3D office: what it shares w
     assert.ok(graph(path.join(client, 'main.ts')).has(path.join(client, shared)), `the 3D office uses ${shared}`);
   }
 });
+
+test('the 2D view and the kanban page open a worker the same way', () => {
+  for (const shared of ['shared/openworker.ts']) {
+    assert.ok(graph(path.join(client, 'lite.ts')).has(path.join(client, shared)), `lite.ts uses ${shared}`);
+    assert.ok(graph(path.join(client, 'kanban', 'main.ts')).has(path.join(client, shared)), `kanban/main.ts uses ${shared}`);
+  }
+});

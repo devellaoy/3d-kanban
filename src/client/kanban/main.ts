@@ -24,6 +24,8 @@ import { moveWithDialog } from './holddialog';
 import { openIssues } from './issues';
 import { openPulls } from './pulls';
 import { officeActions } from '../shared/officeactions';
+import { workerOpener } from '../shared/openworker';
+import { installWorkerBar } from './workerbar';
 import { boardStats, deepLink, EMPTY_FILTER, filterActive, isTaskTab, parseDeepLink, STATE_FILTERS, TICKET_FILTERS, type BoardFilter, type StateFilter, type TicketFilter } from './model';
 import { kstore } from './store';
 import { TaskWindows } from './taskwindow';
@@ -287,6 +289,7 @@ function pickProject(id: string | null) {
   subscribe();
   renderBar();
   board.render();
+  workerBar.refresh();
 }
 
 function subscribe() {
@@ -300,6 +303,7 @@ function subscribe() {
       kstore.apply(snap);
       renderBar();
       board.render();
+      workerBar.refresh();
     })
     .catch((err: KanbanError) => {
       // A lost connection subscribes again when it's back.
@@ -315,13 +319,17 @@ function newTask() {
 }
 
 /** The pull requests board (and the meeting room, hiring and prompts its buttons lead to), as the 2D view has them. */
-const { boardActions } = officeActions(net, (id) => {
+const { boardActions, hireNew, openShell } = officeActions(net, (id) => {
   // "Go to its desk" is its terminal here: a task worker's in its task's window, as everywhere on this page.
   // Nothing is resumed on the way (for a waiting task that would be its Retry).
   const task = store.workers.get(id)?.kanban?.taskId;
   if (task) openTask(task, 'terminal');
   else showTerminal(id);
 });
+
+/** The bottom bar: the floor's plain workers as tabs (their terminals as the 2D view opens them), and a new worker or shell. */
+const { openWorker: openPlainWorker } = workerOpener(net, { keypad: () => window.matchMedia('(max-width: 700px)').matches });
+const workerBar = installWorkerBar({ root: $('kb-workers'), openWorker: openPlainWorker, hireNew, openShell, boardProject: () => kstore.project, projectName: (id) => kstore.projectOf(id)?.name, goToFloor: (id) => net.send({ t: 'floor.go', floor: id }) });
 
 function showIssues() {
   const p = kstore.project ?? (kstore.projectOf(store.floor ?? undefined) ? store.floor : kstore.projects[0]?.id);

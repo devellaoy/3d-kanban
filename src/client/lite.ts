@@ -9,24 +9,22 @@ import { initAppearance } from './themes';
 import { AVATAR_COLORS, loadProfile, loadSettings, saveProfile, store } from './state';
 import { randomLook } from '../shared/avatar';
 import { ROOF } from '../shared/rooftop';
-import { DESK_BY_ID } from '../shared/layout';
-import { isAsleep } from '../shared/status';
-import type { FloorInfo, WorkerInfo } from '../shared/protocol';
+import type { FloorInfo } from '../shared/protocol';
 import { $, doingNow, h, onDoingChange, onModalChange, openModal, readingNow, toast } from './ui/dom';
-import { openTerminal, openTerminalFor, routeTerminalMessage } from './ui/terminal';
-import { openChanges, openChangesFor, routeChangesMessage } from './ui/changes';
-import { lostWorktreeDialog, openPrompt, routeWorktreeMessage, sendHomeDialog } from './ui/prompt';
+import { openTerminalFor, routeTerminalMessage } from './ui/terminal';
+import { openChangesFor, routeChangesMessage } from './ui/changes';
+import { openPrompt, routeWorktreeMessage } from './ui/prompt';
 import { openBoard } from './ui/boards';
 import { routePullMessage } from './ui/pull';
 // Task workers on the 2D view.
 import { promptTaskWorker } from './kanban/office3d';
-import { sendTaskWorkerHome } from './kanban/sendhome';
 import { openQueue } from './ui/queue';
 import { openSignIns } from './ui/signins';
 import { byUrgency, waitingInOrder, waitingLabel } from './nextup';
 import { askNotifyPermission, DesktopNotifier, notifyPermission, shouldAlert, waitingOnSomeone } from './notify';
 import { workerCard } from './shared/workercard';
 import { officeActions } from './shared/officeactions';
+import { workerOpener } from './shared/openworker';
 // The tab title counts the workers waiting on someone, on every floor, as the 3D office's does.
 import { renderTitle } from './shared/title';
 
@@ -44,6 +42,8 @@ const saved = loadProfile();
 store.profile = { name: saved?.name ?? 'Guest', color: saved?.color ?? AVATAR_COLORS[1], look: saved?.look ?? randomLook() };
 const net = new Net(() => store.profile, () => null, true);
 const settings = loadSettings();
+// Its terminal has the keypad, which a phone's keyboard hasn't got the keys for.
+const { openWorker } = workerOpener(net, { keypad: () => true });
 const notifier = new DesktopNotifier(() => settings.notify, (id) => openWorker(id));
 
 /** The server version this page was loaded with. */
@@ -161,49 +161,6 @@ store.on('workers', () => {
 store.on('project', renderWorkers);
 // "3m ago" moves on by itself.
 setInterval(renderWorkers, 30_000);
-
-/** Its terminal, with the keypad, waking it up first if it's asleep. */
-function openWorker(id: string) {
-  const w = store.workers.get(id);
-  if (!w) return;
-  if (w.lost) return fixLostWorktree(w);
-  if (isAsleep(w.status)) {
-    if (!w.sessionId && w.kind !== 'shell') toast(`${w.name} has no saved session — starting a fresh one`, 'warn');
-    net.send({ t: 'worker.resume', workerId: id });
-  }
-  openTerminal(net, id, () => openChanges(net, id, () => openWorker(id)), undefined, { keypad: true });
-}
-
-/** Its worktree was deleted outside agent-office: put it back (everyone's who lost theirs), or send it home. */
-function fixLostWorktree(w: WorkerInfo) {
-  if (!w.lost || !w.worktree) return;
-  const worktree = w.worktree;
-  const others = [...store.workers.values()].filter((o) => o.lost && o.id !== w.id);
-  lostWorktreeDialog({
-    name: w.name,
-    worktree,
-    lost: w.lost,
-    workspace: w.repos?.length ? worktree.path.replace(/[\\/][^\\/]*$/, '') : undefined,
-    others: others.map((o) => o.name),
-    openTerminal: isAsleep(w.status) ? undefined : () => openTerminal(net, w.id, () => openChanges(net, w.id, () => openWorker(w.id)), undefined, { keypad: true }),
-    rebuild: (all) => {
-      toast(all ? `Rebuilding ${others.length + 1} worktrees…` : `Rebuilding ${w.name}'s worktree…`);
-      net.send({ t: 'worker.rebuild', workerId: w.id, all });
-    },
-    // A task worker's dialog has its task in it.
-    sendHome: () =>
-      sendTaskWorkerHome(net, w, DESK_BY_ID.get(w.deskId)?.label ?? 'its desk') ||
-      sendHomeDialog({
-        workerId: w.id,
-        name: w.name,
-        where: DESK_BY_ID.get(w.deskId)?.label ?? 'its desk',
-        worktree,
-        repos: w.repos?.length ? [worktree.path.split(/[\\/]/).pop() ?? 'its own', ...w.repos.map((r) => r.name)] : undefined,
-        ask: () => net.send({ t: 'worker.worktree', workerId: w.id }),
-        onConfirm: (cleanup) => net.send({ t: 'worker.kill', workerId: w.id, cleanup }),
-      }),
-  });
-}
 
 function promptWorker(id: string) {
   const w = store.workers.get(id);

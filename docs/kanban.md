@@ -28,6 +28,8 @@ floor; under **All projects** the board of the floor this page is on, named in a
 waiting to retry / has a PR, agent, ticket or not), **🗄️ Archive** (shows archived tasks as a
 column) and **⚙️** Settings (the office's own window, as in the 3D office). Keys: see [Controls](controls.md#in-the-kanban-view).
 
+A bar along the bottom of the page shows the floor's plain workers as tabs: the ones hired outside the kanban, shells included (not task workers, board agents or meeting agents). A tab opens the worker's terminal window as in the 3D office. **✨ New task** opens the 3D office's plain hire dialog (no kanban option) and **🐚 New shell** opens a shell at the next free desk and its terminal. The bar follows the board's picked project: when the page is on another floor it offers a button back to the project's floor, and under **All projects** it shows the floor the page is on, named in the bar. A tab shows the worker's colour, name and status, and one that waits on you is tinted. A visitor in someone else's office doesn't get the two buttons.
+
 ## Columns and moves
 
 | Column | Means |
