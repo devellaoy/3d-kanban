@@ -480,3 +480,12 @@ export function viaAgent(events: KanbanEvent[]): string | undefined {
   const via = (events.find((e) => e.kind === 'created')?.data as { via?: unknown } | undefined)?.via;
   return typeof via === 'string' ? via : undefined;
 }
+
+/**
+ * Where the pull requests board is: `here` (this floor's), `go` to the picked project's floor first,
+ * or `none` when the picked project has no floor to show the board of (never another project's).
+ */
+export function pullsTarget(project: string | null, floor: string | null, floors: readonly { id: string }[]): 'here' | 'go' | 'none' {
+  if (!project || project === floor) return floor ? 'here' : 'none';
+  return floors.some((f) => f.id === project) ? 'go' : 'none';
+}

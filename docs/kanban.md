@@ -23,7 +23,8 @@ Signed out, `/kanban` sends you to the sign-in page and back.
 
 The top bar has the project picker (or **All projects**), a search box (`#12`, words, a ticket id, a
 repository; **/** focuses it), counts (🗂️ on the board, 🚧 running, 🙋 waiting on you, 👀 ready for
-review), **📌 Issues**, **＋ New task** (**N**), filters (repository, state: running / needs you /
+review), **📌 Issues**, **🔀 Pull requests** (the office's pull requests board for the picked project's
+floor; under **All projects** the board of the floor this page is on, named in a note as it opens), **＋ New task** (**N**), filters (repository, state: running / needs you /
 waiting to retry / has a PR, agent, ticket or not), **🗄️ Archive** (shows archived tasks as a
 column) and **⚙️** Settings (the office's own window, as in the 3D office). Keys: see [Controls](controls.md#in-the-kanban-view).
 

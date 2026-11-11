@@ -22,6 +22,8 @@ import { tickCountdowns } from './card';
 import { openCreate } from './create';
 import { moveWithDialog } from './holddialog';
 import { openIssues } from './issues';
+import { openPulls } from './pulls';
+import { officeActions } from '../shared/officeactions';
 import { boardStats, deepLink, EMPTY_FILTER, filterActive, isTaskTab, parseDeepLink, STATE_FILTERS, TICKET_FILTERS, type BoardFilter, type StateFilter, type TicketFilter } from './model';
 import { kstore } from './store';
 import { TaskWindows } from './taskwindow';
@@ -222,7 +224,7 @@ function renderBar() {
   });
 
   bar.replaceChildren(
-    h('div.kb-bar-row', {}, h('h1.kb-brand', {}, '🗂️ ', h('span', {}, 'Kanban')), projectSel, search, h('span.grow'), statsEl, h('button.btn', { type: 'button', id: 'kb-issues', onclick: showIssues, title: "The project's issues from its issue sources: make tasks of them", 'aria-label': 'Issues' }, '📌 ', h('span.kb-lbl', {}, 'Issues')), h('button.btn.primary', { type: 'button', id: 'kb-new', onclick: () => newTask(), title: 'N' }, '＋ New task')),
+    h('div.kb-bar-row', {}, h('h1.kb-brand', {}, '🗂️ ', h('span', {}, 'Kanban')), projectSel, search, h('span.grow'), statsEl, h('button.btn', { type: 'button', id: 'kb-issues', onclick: showIssues, title: "The project's issues from its issue sources: make tasks of them", 'aria-label': 'Issues' }, '📌 ', h('span.kb-lbl', {}, 'Issues')), h('button.btn', { type: 'button', id: 'kb-pulls', onclick: () => openPulls(net, kstore.project, boardActions), title: 'The pull requests of the project’s repositories', 'aria-label': 'Pull requests' }, '🔀 ', h('span.kb-lbl', {}, 'Pull requests')), h('button.btn.primary', { type: 'button', id: 'kb-new', onclick: () => newTask(), title: 'N' }, '＋ New task')),
     h(
       'div.kb-bar-row.kb-filters',
       { role: 'group', 'aria-label': 'Filters' },
@@ -311,6 +313,15 @@ function subscribe() {
 function newTask() {
   openCreate(api, { project: kstore.project ?? store.floor ?? undefined, created: (id) => openTask(id) });
 }
+
+/** The pull requests board (and the meeting room, hiring and prompts its buttons lead to), as the 2D view has them. */
+const { boardActions } = officeActions(net, (id) => {
+  // "Go to its desk" is its terminal here: a task worker's in its task's window, as everywhere on this page.
+  // Nothing is resumed on the way (for a waiting task that would be its Retry).
+  const task = store.workers.get(id)?.kanban?.taskId;
+  if (task) openTask(task, 'terminal');
+  else showTerminal(id);
+});
 
 function showIssues() {
   const p = kstore.project ?? (kstore.projectOf(store.floor ?? undefined) ? store.floor : kstore.projects[0]?.id);
