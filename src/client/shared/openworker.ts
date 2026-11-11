@@ -9,7 +9,9 @@ import { store } from '../state';
 import { toast } from '../ui/dom';
 import { openTerminal, type TerminalOptions } from '../ui/terminal';
 import { openChanges } from '../ui/changes';
-import { lostWorktreeDialog, sendHomeDialog } from '../ui/prompt';
+import { confirmDialog, lostWorktreeDialog, sendHomeDialog } from '../ui/prompt';
+import { providerLabel } from '../ui/provider';
+import { projectOf } from '../state/workers';
 import { sendTaskWorkerHome } from '../kanban/sendhome';
 
 export function workerOpener(net: Net, opts: { keypad: () => boolean }) {
@@ -41,20 +43,36 @@ export function workerOpener(net: Net, opts: { keypad: () => boolean }) {
         toast(all ? `Rebuilding ${others.length + 1} worktrees…` : `Rebuilding ${w.name}'s worktree…`);
         net.send({ t: 'worker.rebuild', workerId: w.id, all });
       },
-      // A task worker's dialog has its task in it.
-      sendHome: () =>
-        sendTaskWorkerHome(net, w, DESK_BY_ID.get(w.deskId)?.label ?? 'its desk') ||
-        sendHomeDialog({
-          workerId: w.id,
-          name: w.name,
-          where: DESK_BY_ID.get(w.deskId)?.label ?? 'its desk',
-          worktree,
-          repos: w.repos?.length ? [worktree.path.split(/[\\/]/).pop() ?? 'its own', ...w.repos.map((r) => r.name)] : undefined,
-          ask: () => net.send({ t: 'worker.worktree', workerId: w.id }),
-          onConfirm: (cleanup) => net.send({ t: 'worker.kill', workerId: w.id, cleanup }),
-        }),
+      sendHome: () => sendHome(w.id, 'its desk'),
     });
   }
 
-  return { openWorker, fixLostWorktree };
+  /**
+   * Sends it home, asking first as X does in the 3D office: a task worker's dialog has its task in it,
+   * one with a worktree of its own picks what becomes of the worktree and its branch, and anyone else
+   * (a shell, an agent in the project's folder) is a plain confirm. `unnamed` stands in for a desk without a label.
+   */
+  function sendHome(id: string, unnamed = 'the desk') {
+    const w = store.workers.get(id);
+    if (!w) return;
+    const where = DESK_BY_ID.get(w.deskId)?.label ?? unnamed;
+    if (sendTaskWorkerHome(net, w, where)) return;
+    if (w.worktree) {
+      const worktree = w.worktree;
+      sendHomeDialog({
+        workerId: id,
+        name: w.name,
+        where,
+        worktree,
+        repos: w.repos?.length ? [worktree.path.split(/[\\/]/).pop() ?? 'its own', ...w.repos.map((r) => r.name)] : undefined,
+        ask: () => net.send({ t: 'worker.worktree', workerId: id }),
+        onConfirm: (cleanup) => net.send({ t: 'worker.kill', workerId: id, cleanup }),
+      });
+      return;
+    }
+    const session = w.kind === 'shell' ? 'shared shell' : `${providerLabel(w.provider, projectOf(id))} session`;
+    confirmDialog(`Send ${w.name} home?`, `This stops the ${session} at ${where} for everyone and frees the desk.`, 'Send home', () => net.send({ t: 'worker.kill', workerId: id }));
+  }
+
+  return { openWorker, fixLostWorktree, sendHome };
 }
