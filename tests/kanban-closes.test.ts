@@ -51,7 +51,7 @@ test('ensureClosingRef adds the line, leaves a referenced issue alone, and warns
   const url = 'https://github.com/acme/api/pull/3';
   let calls: { args: string[]; body?: string }[] = [];
   let r = await ensureClosingRef({ prUrl: url, ref: 'gh:acme/api#7', cwd: '.', run: stub({ body: 'Did it', baseRefName: 'main', closingIssuesReferences: [] }, (calls = [])), defaultBranch: 'main' });
-  assert.deepEqual(r, { edited: true });
+  assert.deepEqual(r, { edited: true, added: true });
   assert.equal(calls.find((c) => c.args[1] === 'edit')?.body, 'Did it\n\nCloses #7\n');
 
   r = await ensureClosingRef({ prUrl: url, ref: 'gh:acme/web#7', cwd: '.', run: stub({ body: '', baseRefName: 'main', closingIssuesReferences: [] }, (calls = [])), defaultBranch: 'main' });
@@ -103,7 +103,7 @@ test('checkClosing leaves a task with a run going alone, and gives up on a pull 
   const ctx = {
     dataDir: '.',
     repos: () => [{ id: 'api', primary: true, remote: 'acme/api' }],
-    repo: { prLinksOfProject: () => [link], listTasks: () => [task], latestRunId: () => undefined, repoBranches: () => ({}), addComment: (c: { text: string }) => void comments.push(c.text) },
+    repo: { prLinksOfProject: () => [link], listTasks: () => [task], listEvents: () => [], latestRunId: () => undefined, repoBranches: () => ({}), addComment: (c: { text: string }) => void comments.push(c.text) },
     taskChanged() {},
   } as unknown as Parameters<typeof checkClosing>[0];
   let views = 0;
@@ -128,7 +128,7 @@ test('a task whose issue number collides with another repository’s is still ch
   const ctx = {
     dataDir: '.',
     repos: () => [{ id: 'api', primary: true, remote: 'acme/api' }],
-    repo: { prLinksOfProject: () => [link], listTasks: () => [task], latestRunId: () => undefined, repoBranches: () => ({}), addComment() {} },
+    repo: { prLinksOfProject: () => [link], listTasks: () => [task], listEvents: () => [], latestRunId: () => undefined, repoBranches: () => ({}), addComment() {} },
     ghAs: (id?: string) => (id === 'ada' ? { env: { GH_TOKEN: 'ada' } } : undefined),
     taskChanged() {},
   } as unknown as Parameters<typeof checkClosing>[0];
@@ -283,7 +283,7 @@ test('a kanban PR is checked again after a later run of its task, which may have
   const ctx = {
     dataDir: '.',
     repos: () => [{ id: 'api', primary: true, remote: 'acme/api' }],
-    repo: { prLinksOfProject: () => [link], listTasks: () => [task], latestRunId: () => runs.at(-1)?.id, repoBranches: () => ({}), addComment() {} },
+    repo: { prLinksOfProject: () => [link], listTasks: () => [task], listEvents: () => [], latestRunId: () => runs.at(-1)?.id, repoBranches: () => ({}), addComment() {} },
     taskChanged() {},
   } as unknown as Parameters<typeof checkClosing>[0];
   let body = 'Did things';
@@ -356,7 +356,7 @@ const kctx = (task: Record<string, unknown>, link: Record<string, unknown>, extr
   ({
     dataDir: '.',
     repos: () => repos,
-    repo: { prLinksOfProject: () => [link], listTasks: () => [task], latestRunId: () => 1, repoBranches: () => ({}), addComment: (c: { text: string }) => void ((extra.comments as string[] | undefined)?.push(c.text)), },
+    repo: { prLinksOfProject: () => [link], listTasks: () => [task], listEvents: () => [], latestRunId: () => 1, repoBranches: () => ({}), addComment: (c: { text: string }) => void ((extra.comments as string[] | undefined)?.push(c.text)), },
     ghAs: extra.ghAs,
     taskChanged() {},
   }) as unknown as Parameters<typeof checkClosing>[0];
@@ -564,4 +564,78 @@ test('a plain worker’s issue goes with its first pull request, and its warning
   w.onPulls([{ ...pull, number: 10, url: 'https://github.com/retire/api/pull/10' }]);
   await wait(10);
   assert.equal(edits(), before, 'a later pull request is not edited');
+});
+
+/** A pull request whose description gh shows and edits, and the task whose ticket is changed under it. */
+function movable(first: string, extra: { updatedAt?: () => string } = {}) {
+  const pr = { body: first, edits: 0 };
+  const task: Record<string, unknown> = { id: 1, branch: 'b', ticket: 'gh:acme/api#7', status: 'review', runState: 'idle' };
+  const events: { kind: string; data: unknown }[] = [];
+  const comments: string[] = [];
+  const link = { taskId: 1, repoId: 'api', repo: 'acme/api', number: 3, url: 'https://github.com/acme/api/pull/3', state: 'OPEN', branch: 'b' };
+  const ctx = kctx(task, link, { comments });
+  (ctx.repo as unknown as { listEvents: () => unknown[] }).listEvents = () => events;
+  const io = {
+    run: async (args: string[]) => {
+      if (args[1] === 'view') return JSON.stringify({ body: pr.body, updatedAt: extra.updatedAt?.() ?? 'x', baseRefName: 'main', closingIssuesReferences: [] });
+      if (args[1] === 'edit') { pr.edits++; pr.body = (await import('node:fs')).readFileSync(args[args.indexOf('--body-file') + 1], 'utf8'); }
+      return '';
+    },
+    defaultBranch: async () => 'main',
+  };
+  const checked = new Map<string, ClosingMark>();
+  const sync = async () => (checkClosing(ctx, 'api', checked, io), await wait());
+  const retarget = (ticket: string | undefined) => { events.push({ kind: 'edited', data: { ticketWas: task.ticket } }); task.ticket = ticket; };
+  return { pr, task, comments, sync, retarget };
+}
+
+test('a ticket changed to another issue in the same run: the new line is added and the old office line is gone', async () => {
+  const t = movable('Did it');
+  await t.sync();
+  assert.equal(t.pr.body, 'Did it\n\nCloses #7\n');
+  t.retarget('gh:acme/api#8');
+  await t.sync();
+  assert.equal(t.pr.body, 'Did it\n\nCloses #8\n');
+  assert.ok(t.comments.some((c) => c.includes('Took "Closes #7"')));
+  const edits = t.pr.edits;
+  await t.sync();
+  assert.equal(t.pr.edits, edits, 'nothing more to do');
+});
+
+test('unlinking a task takes the office’s closing line out; a non-GitHub key does too', async () => {
+  for (const next of [undefined, 'UYT-12']) {
+    const t = movable('Did it\n\nCloses #7\n');
+    t.retarget(next);
+    await t.sync();
+    assert.equal(t.pr.body, 'Did it\n');
+  }
+});
+
+test('a Fixes #7 the author wrote, or Closes #7 inside prose, is not touched, and the task is told', async () => {
+  const body = 'Fixes #7 and more.\n\nThis also Closes #7 in prose.';
+  const t = movable(body);
+  t.retarget(undefined);
+  await t.sync();
+  assert.equal(t.pr.edits, 0);
+  assert.equal(t.pr.body, body);
+  assert.ok(t.comments.some((c) => /still closes acme\/api#7/.test(c)));
+});
+
+test('an old line is taken out of a done task’s open pull request, and a description edited meanwhile is looked at again', async () => {
+  let stamp = 'a';
+  const t = movable('Did it\n\nCloses #7\n', { updatedAt: () => stamp });
+  t.task.status = 'done';
+  t.retarget('gh:acme/api#8');
+  await t.sync();
+  assert.equal(t.pr.body, 'Did it\n', 'done: the old line is out, no new one is added');
+  // Concurrent edit: the second read differs from the first.
+  const c = movable('Did it\n\nCloses #7\n', { updatedAt: () => (stamp += 'x') });
+  c.retarget(undefined);
+  await c.sync();
+  assert.equal(c.pr.edits, 0, 'not overwritten');
+  assert.ok(c.comments.length === 0, 'retried silently until the tries run out');
+  await c.sync();
+  await c.sync();
+  assert.equal(c.pr.edits, 0);
+  assert.ok(c.comments.some((x) => /kept changing/.test(x)));
 });
