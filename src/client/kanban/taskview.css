@@ -60,7 +60,7 @@
 /* The body */
 .kb-tv .kb-detail-body { flex: 1; min-height: 0; overflow-y: auto; padding: 14px; display: flex; flex-direction: column; gap: 14px; font-size: var(--fs-md); }
 .kb-tv .kb-detail-body .md { padding: 4px 2px; font-size: var(--fs-md); }
-.kb-tv .kb-comment .md, .kb-tv .kb-run .md, .kb-tv .kb-summary .md, .kb-tv .kb-goal .md, .kb-tv .kb-waiting .md { padding: 0; }
+.kb-tv .kb-comment .md, .kb-tv .kb-run .md, .kb-tv .kb-goal .md, .kb-tv .kb-waiting .md { padding: 0; }
 .kb-tv .md img { max-width: 100%; }
 /* A picture attached in a description or comment (md.ts): big enough to read, a click opens it full size. */
 .kb-tv .md img.kb-inline-img { max-height: 320px; object-fit: contain; border: var(--bw-sm) solid var(--rule-soft); }
@@ -73,7 +73,7 @@
 .kb-tv .kb-waiting { padding: 10px 12px; border: var(--bw) solid var(--ink); border-radius: var(--radius-box); background: var(--bad-tint); }
 .kb-tv .kb-waiting.usage_limit { background: var(--warn-soft); }
 .kb-tv .kb-waiting textarea { margin: 8px 0 6px; }
-.kb-tv .kb-summary, .kb-tv .kb-goal { padding: 10px 12px; border: var(--bw-sm) dashed var(--ink); border-radius: var(--radius-sm); background: var(--field); }
+.kb-tv .kb-goal { padding: 10px 12px; border: var(--bw-sm) dashed var(--ink); border-radius: var(--radius-sm); background: var(--field); }
 .kb-tv .kb-meta { display: grid; grid-template-columns: max-content 1fr; gap: 6px 14px; margin: 0; font-size: var(--fs-sm); }
 .kb-tv .kb-meta dt { font-weight: var(--fw-heavy); color: var(--muted); }
 .kb-tv .kb-meta dd { margin: 0; font-weight: var(--fw-semibold); min-width: 0; overflow-wrap: anywhere; }

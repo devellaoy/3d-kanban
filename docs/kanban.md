@@ -380,7 +380,7 @@ workspace of several repositories), or the floor's checkout when it has none. On
 button is just 🧩. VS Code must be installed on the office's machine: on macOS in `/Applications` is
 enough, elsewhere the `code` command must be on the PATH. Its tabs:
 
-- **Overview**: what it waits for (with the answer box), the actions, summary, description,
+- **Overview**: what it waits for (with the answer box), the actions, description,
   acceptance criteria, **📑 Reports** (an investigation's report files: shown in place, Markdown
   rendered, or downloaded), attachments and details (type, agent, plan, review rounds, branch,
   workspace, queued comments, who made it). **✏️ Change the agent** there picks the task's agent,

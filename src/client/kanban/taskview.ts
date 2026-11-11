@@ -685,7 +685,6 @@ class View implements TaskView {
     return [
       this.actionButtons(task),
       this.waitingBox(task) ?? holdBox(task) ?? none(),
-      task.summary ? h('section.kb-summary', {}, h('h4', {}, 'Summary'), renderMarkdown(task.summary, open, '')) : none(),
       h('section.kb-desc', {}, h('h4', {}, 'Description', task.flags.descriptionLocked ? h('small.kb-muted', { title: 'The task has started: add to it with a comment instead' }, ' 🔒 locked') : null), renderMarkdown(task.description, open)),
       task.goal ? h('section.kb-goal', {}, h('h4', {}, '🎯 Acceptance criteria'), renderMarkdown(task.goal, open, '')) : none(),
       this.reportsSection() ?? none(),
