@@ -610,7 +610,8 @@ export async function engineFixture(opts: { engine?: EngineOptions; repos?: Floo
     },
     broadcasts,
     setRules: (rules) => writeFileSync(rulesFile, JSON.stringify(rules)),
-    invocations: () => (existsSync(log) ? readFileSync(log, 'utf8').split('\n').filter(Boolean).map((l) => JSON.parse(l) as Invocation) : []),
+    // Only whole lines: a fake agent may be mid-append, and a read can then see the start of its line without the end.
+    invocations: () => (existsSync(log) ? readFileSync(log, 'utf8').split('\n').slice(0, -1).filter(Boolean).map((l) => JSON.parse(l) as Invocation) : []),
     task: (id) => repo.getTask(id)!,
     newTask: (patch = {}) => repo.createTask({ project: 'proj', title: 'Fix the login redirect', description: 'After login, go back to the page you came from.', tool: 'claude', usePlan: true, planApproval: 'auto', useReview: true, createdBy: 'Ada', ...patch }),
     async waitTask(id, pred, what, timeout = 15_000) {
