@@ -489,7 +489,14 @@ answers `kanban.ok {rid, ...}` or `kanban.error {rid, message}`. Deltas are push
     `title`, `tags`, `ticket` and `ticketUrl` at any status but the archive: the task view's Issue tab
     (`client/kanban/issuelink.ts`, patches built in `issuelinkmodel.ts`) links, changes and unlinks a
     started task's issue with `patch: {ticket, ticketUrl}` (`null` clears; both are always sent, so the
-    old issue's link never stays). It only rewrites the two fields: no issue is assigned or moved.
+    old issue's link never stays). It only rewrites the two fields: no issue is assigned or moved, and
+    nothing is done to either issue at its source. A change of `ticket` logs the old one in the `edited` event
+    (`ticketWas`). `checkClosing` (`server/kanban/integrations/pulls/closes.ts`, on every board refresh) reads those
+    events: the closing line (`closingRef`) written for a GitHub issue the task no longer has is taken out of the
+    PR that closed it (only an exact line of its own, not while a run goes, with the same re-read, gh identity and
+    tries rules as adding; an author's own `Fixes #7` is left and said so in a status comment), and the new
+    issue's line is added without waiting for a new run (the mark per PR URL also keeps the issues it checked).
+    A done task with an open PR gets the removal, not an added line.
   - `task.move`: `checkMove` (moves.ts), which only looks at the column and the run state. Workers at rest don't stop a move: the engine sends them
     home first (`engine.sendWorkersHome(id, who, 'reset')`, cleanup `keep` (`all` for a PR review's reviewer in a worktree of its own), reason `released`; a run live only
     because the agent asks in its terminal is finished as `stopped`). A reset of a task with workers is for its creator or an admin (as `task.delete`).
