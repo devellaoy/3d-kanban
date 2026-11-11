@@ -812,3 +812,56 @@ test('a refresh of an issue (kanban.issue.get, fresh) updates the list’s own c
   assert.equal(await current(), 'Done', 'the panel’s reload after the refresh says Done too');
   assert.equal(issues.message('app').items[0].status, 'Done', 'and so does the list');
 });
+
+test('a refresh of a GitHub repository issue updates the list’s copy too: reading it again gives the fresh one', async () => {
+  const ctx = makeCtx([def('app', '/tmp/app', { repo: 'o/r' })]);
+  ctx.settings.setProject('app', { issueSources: [REPO_SRC, PROJECT_SOURCE] });
+  // Listed open with an assignee; closed and unassigned on GitHub since.
+  const now = { ...item(5, 'Five, retitled'), state: 'CLOSED', assignees: [] };
+  const stub = ghStub((args) => {
+    if (args[0] === 'issue' && args[1] === 'list') return JSON.stringify([{ ...item(5, 'Five'), assignees: [{ login: 'maija' }] }]);
+    if (args[0] === 'issue' && args[1] === 'view') return JSON.stringify(now);
+    return '[]';
+  });
+  const issues = createIssues(ctx, { gh: stub.gh, fetch: fetchStub(() => ({ body: {} })).fetch });
+  await issues.refresh('app');
+  const ws = issues.plugin.ws!;
+  const c = client(false, 'acc1');
+  const get = async (extra: Record<string, unknown> = {}) => {
+    await ws['kanban.issue.get']!(c, { t: 'kanban.issue.get', project: 'app', issueKey: 'gh:o/r#5', ...extra });
+    return last(c, 'kanban.issueDetail').issue;
+  };
+  const first = await get();
+  const listCalls = stub.calls.length;
+  assert.deepEqual([first.title, first.sourceId, first.assignee], ['Five', 'r', 'maija'], 'opened from the list');
+  const fresh = await get({ source: first.sourceId, fresh: true });
+  assert.deepEqual([fresh.title, fresh.sourceId], ['Five, retitled', 'r'], 'the issue read alone names the repository source, as the listed one does');
+  assert.ok(!/projectItems|node\(id|projectV2/.test(JSON.stringify(stub.calls.slice(listCalls))), 'asked through the repository source: no board is read for it');
+  const again = await get();
+  assert.equal(again.title, 'Five, retitled', 'the tab opened again: not the old list copy');
+  assert.equal(again.assignee, undefined, 'the assignee GitHub no longer has is gone, not kept from the old copy');
+  assert.equal(issues.message('app').items.find((i) => i.key === 'gh:o/r#5')!.title, 'Five, retitled');
+});
+
+test('a refresh replaces the list’s copy whole: fields the source emptied (a Jira assignee, an epic) do not stay from the old copy', async () => {
+  const ctx = makeCtx([def('app', '/tmp/app', { repo: 'o/r' })], { ghAs: () => 'no GitHub sign-in' });
+  ctx.settings.setProject('app', { issueSources: [JIRA_SRC] });
+  (ctx as unknown as { secrets: unknown }).secrets = { jiraConnections: () => JIRA_TOKEN };
+  const base = { summary: 'Jira one', status: { name: 'Backlog' }, updated: '2026-09-01' };
+  const http = fetchStub((c) => {
+    if (c.url.endsWith('/search/jql')) return { body: { issues: [{ key: 'UYT-12', fields: { ...base, assignee: { displayName: 'Maija' }, parent: { key: 'UYT-1', fields: { summary: 'The epic', issuetype: { name: 'Epic' } } } } }], isLast: true } };
+    if (c.url.includes('/issue/UYT-12')) return { body: { key: 'UYT-12', fields: { ...base, assignee: null } } };
+    return { status: 204 };
+  });
+  const issues = createIssues(ctx, { gh: ghStub(() => '').gh, fetch: http.fetch });
+  await issues.refresh('app');
+  const listed = () => issues.message('app').items[0];
+  assert.equal(listed().assignee, 'Maija');
+  const c = client(false, 'acc1');
+  await issues.plugin.ws!['kanban.issue.get']!(c, { t: 'kanban.issue.get', project: 'app', issueKey: 'UYT-12', source: JIRA_SRC.id, fresh: true });
+  assert.equal(last(c, 'kanban.issueDetail').issue.assignee, undefined);
+  assert.equal(listed().assignee, undefined, 'unassigned in Jira: the list’s copy says so too');
+  assert.equal(listed().epic, undefined, 'and the epic it was taken out of is gone');
+  await issues.plugin.ws!['kanban.issue.get']!(c, { t: 'kanban.issue.get', project: 'app', issueKey: 'UYT-12' });
+  assert.equal(last(c, 'kanban.issueDetail').issue.assignee, undefined, 'read again from the cache: still nobody');
+});
