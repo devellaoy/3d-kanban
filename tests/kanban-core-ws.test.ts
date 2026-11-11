@@ -188,6 +188,19 @@ test('a new task takes the defaults, is checked against its project, and can sta
   assert.deepEqual(kanban.ctx.repo.listEvents(1).map((e) => e.kind), ['created']);
 });
 
+test('a creation repeated with the same once key is one task; without a key it is two', async (t) => {
+  const { client, kanban } = office(t);
+  const ada = client('Ada', false);
+  const msg = { t: 'kanban.task.create', task: { project: 'web', title: 'Once' }, once: 'try-1-abcdefgh' };
+  const a = okOf(await ada.ask(msg));
+  const b = okOf(await ada.ask(msg));
+  assert.equal(b.taskId, a.taskId);
+  assert.equal(kanban.ctx.repo.listTasks('web').length, 1);
+  await ada.ask({ t: 'kanban.task.create', task: { project: 'web', title: 'Plain' } });
+  await ada.ask({ t: 'kanban.task.create', task: { project: 'web', title: 'Plain' } });
+  assert.equal(kanban.ctx.repo.listTasks('web').length, 3);
+});
+
 test('a start the engine refuses is still a created task, with why', async (t) => {
   const { client } = office(t, { answers: { start: 'The office is full' } });
   const made = okOf(await client('Ada', false).ask({ t: 'kanban.task.create', task: { project: 'web', title: 'x' }, start: true }));

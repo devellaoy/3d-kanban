@@ -139,6 +139,20 @@ const form = (f: Partial<HireTaskForm> = {}): HireTaskForm => ({
   ...f,
 });
 
+test('the hire messages carry once when given and are unchanged without it', () => {
+  const plain = hireTaskMsg(form());
+  const keyed = hireTaskMsg(form({ once: 'try-1-abcdefgh' }));
+  assert.ok('msg' in plain && 'msg' in keyed);
+  assert.equal('once' in plain.msg, false);
+  assert.deepEqual(keyed.msg, { ...plain.msg, once: 'try-1-abcdefgh' });
+  const issueKeyed = hireTaskMsg(form({ issueKey: 'gh:o/r#1', once: 'try-1-abcdefgh' }));
+  assert.ok('msg' in issueKeyed && issueKeyed.msg.t === 'kanban.issues.createTask');
+  assert.equal(issueKeyed.msg.once, 'try-1-abcdefgh');
+  const issuePlain = hireTaskMsg(form({ issueKey: 'gh:o/r#1' }));
+  assert.ok('msg' in issuePlain);
+  assert.equal('once' in issuePlain.msg, false);
+});
+
 test('the hire form’s kanban.task.create: title, description, desk and the process', () => {
   const made = hireTaskMsg(form({ planApproval: 'manual', model: 'opus', effort: 'high' }));
   assert.ok('msg' in made);

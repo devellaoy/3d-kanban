@@ -11,6 +11,7 @@ import { KANBAN_LIMITS, type KanbanTaskInput, type KanbanTaskPatch } from '../..
 import type { KanbanApi, KanbanOk } from './api';
 import { attachBox } from './attachbox';
 import { codexLimitsChip, recheckCodexChips } from './codexlimits';
+import { newOnceKey } from './office';
 import { newTaskMsg, type NewTaskFields } from './createmsg';
 import { KANBAN_DEFAULTS, REVIEW_DEFAULTS } from './defaults';
 import { openIssuePicker } from './issues';
@@ -210,6 +211,8 @@ export function openCreate(api: KanbanApi, o: CreateOptions = {}) {
     return picked.length === repoChecks.length ? null : picked;
   };
 
+  // One key for every attempt of this dialog: a resend after no answer can't make the task twice.
+  let once = newOnceKey();
   const submit = async (start: boolean, button: HTMLButtonElement) => {
     const name = title.value.trim();
     if (editing && !name) {
@@ -255,7 +258,7 @@ export function openCreate(api: KanbanApi, o: CreateOptions = {}) {
     const ids = attach.ids();
     if (ids.length) rest.attachmentIds = ids;
     const issue = picked;
-    const made = newTaskMsg({ project: projectSel.value, description: desc.value, ticket: ticket.value, ticketUrl: ticketUrl.value, rest, start }, issue);
+    const made = newTaskMsg({ project: projectSel.value, description: desc.value, ticket: ticket.value, ticketUrl: ticketUrl.value, rest, start, once }, issue);
     if ('error' in made) {
       desc.focus();
       return toast(made.error, 'warn');
@@ -265,6 +268,8 @@ export function openCreate(api: KanbanApi, o: CreateOptions = {}) {
     // The issue got its task meanwhile: nothing was made or started, and what was written stays here.
     if (ok.existed) {
       setPicked(null);
+      // Nothing was made, and the next attempt is another message: it can't share this key's answer.
+      once = newOnceKey();
       return toast(`${issue?.key ?? 'The issue'} is already task #${ok.taskId ?? ''}`, 'warn');
     }
     modal.close();

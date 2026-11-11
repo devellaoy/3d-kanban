@@ -12,8 +12,8 @@ import type { Net } from '../net';
 import { store } from '../state';
 import { h, toast } from '../ui/dom';
 import { officeChoice, type ProviderPicker } from '../ui/provider';
-import { kanbanApi, type KanbanOk } from './api';
-import { hireTaskMsg, issueDescription, issueTicket, kanbanTool, STATUS_TEXT, titleFrom, type HireTaskForm } from './office';
+import { kanbanApi, KanbanError, type KanbanOk } from './api';
+import { hireTaskMsg, newOnceKey, issueDescription, issueTicket, kanbanTool, STATUS_TEXT, titleFrom, type HireTaskForm } from './office';
 
 type Snapshot = Extract<KanbanServerMsg, { t: 'kanban.snapshot' }>;
 
@@ -64,6 +64,8 @@ const row = 'display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:6px 0
  */
 export function kanbanSection(opt: KanbanOption, provider: ProviderPicker | null): KanbanSection {
   const listeners: ((on: boolean) => void)[] = [];
+  // One key for the dialog's attempts, so a send repeated after no answer can't make the task twice; a made task spends it.
+  let once = newOnceKey();
   // Off in every new dialog: a hire is upstream's plain one unless this one is asked to be a task.
   const box = h('input', { type: 'checkbox' }) as HTMLInputElement;
   box.checked = !!opt.checked;
@@ -208,9 +210,11 @@ export function kanbanSection(opt: KanbanOption, provider: ProviderPicker | null
         primaryId: repos.find((r) => r.primary)?.id,
         ...(opt.tags?.length ? { tags: opt.tags } : {}),
         ...(issue ? { issueKey: issue.key } : {}),
+        once,
         ...agent,
       };
       const made = await createTask(opt.net, form, opt.deskLabel, opt.onCreated);
+      if (made !== false) once = newOnceKey();
       // The issue has its task now, new or from before: the pick is spent (the 📋 queue's form stays open for the next one).
       if (made !== false && issue) setIssue(undefined);
       return made === true;
@@ -256,7 +260,9 @@ export function createTask(net: Net, form: HireTaskForm, deskLabel: string, onCr
       return true;
     })
     .catch((err: Error) => {
-      toast(`🗂️ ${err.message}`, 'error');
+      // No answer (timeout, lost connection) isn't a refusal: the task may well be made, and sending again with the same key finds it.
+      if (err instanceof KanbanError && !err.fromOffice) toast("🗂️ No answer from the office yet: send again to check. The task isn't made twice.", 'warn');
+      else toast(`🗂️ ${err.message}`, 'error');
       return false;
     });
 }
@@ -296,6 +302,7 @@ export function issueTask(net: Net, issue: Pick<GhIssue, 'number' | 'title' | 'u
           allRepoIds: repos.map((r) => r.id),
           ticket,
           ticketUrl: issue.url,
+          once: newOnceKey(),
           ...agent,
         },
         deskLabel,

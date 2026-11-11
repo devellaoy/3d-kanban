@@ -18,6 +18,8 @@ export interface NewTaskFields {
   /** Everything else the form sets (type, repositories, plan and review, agent, criteria, tags, files). */
   rest: Omit<IssueTaskFields, 'title' | 'description'>;
   start?: boolean;
+  /** The dialog's request key: a resend after no answer gets the first one's answer, not a second task. */
+  once?: string;
 }
 
 /** A line that is nothing but a Markdown image or link: an attached file, which says nothing as a title. */
@@ -39,9 +41,10 @@ export function markdownTitle(description: string): string {
  */
 export function newTaskMsg(f: NewTaskFields, picked: { key: string } | null | undefined): { msg: NewTaskMsg } | { error: string } {
   const start = f.start ? { start: true } : {};
+  const once = f.once ? { once: f.once } : {};
   const description = f.description.trim() ? { description: f.description } : {};
   if (picked && f.ticket.trim() === picked.key) {
-    return { msg: { t: 'kanban.issues.createTask', project: f.project, issueKey: picked.key, ...start, task: { ...f.rest, ...description } } };
+    return { msg: { t: 'kanban.issues.createTask', project: f.project, issueKey: picked.key, ...start, task: { ...f.rest, ...description }, ...once } };
   }
   const title = markdownTitle(f.description).slice(0, KANBAN_LIMITS.title);
   if (!title) return { error: 'Say what the task is: its first line is the title' };
@@ -50,6 +53,7 @@ export function newTaskMsg(f: NewTaskFields, picked: { key: string } | null | un
       t: 'kanban.task.create',
       task: { project: f.project, title, ...f.rest, ...description, ...(f.ticket.trim() ? { ticket: f.ticket.trim() } : {}), ...(f.ticketUrl.trim() ? { ticketUrl: f.ticketUrl.trim() } : {}) },
       ...start,
+      ...once,
     },
   };
 }

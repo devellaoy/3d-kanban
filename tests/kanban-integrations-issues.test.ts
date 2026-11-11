@@ -367,6 +367,19 @@ test('createTask with a task: the form decides the settings, the issue the ticke
   assert.equal(t2.description, 'Source: https://github.com/o/app/issues/2', 'no text of the user’s: the issue’s alone');
 });
 
+test('createTask repeated with the same once key answers the first one and claims once', async () => {
+  const { ctx, issues, c, edits } = claimSetup({ ...env('/h/once-1'), issues: [{ number: 1 }] });
+  await issues.refresh('app');
+  const msg = { t: 'kanban.issues.createTask', project: 'app', issueKey: 'gh:o/app#1', task: { description: 'x' }, once: 'try-1-abcdefgh' } as never;
+  await issues.plugin.ws!['kanban.issues.createTask']!(c, msg);
+  const first = c.got.at(-1) as { t: string; taskId: number; existed: boolean };
+  await issues.plugin.ws!['kanban.issues.createTask']!(c, msg);
+  assert.equal(first.existed, false);
+  assert.deepEqual(c.got.at(-1), first);
+  assert.equal(ctx.repo.listTasks('app').length, 1);
+  assert.equal(edits().length, 1, 'the claim ran for the first only');
+});
+
 test('createTask with a task never starts an existing To do task; without one it still does', async () => {
   const { ctx, issues, c } = claimSetup({ ...env('/h/form-2'), issues: [{ number: 1 }, { number: 2 }] });
   await issues.refresh('app');

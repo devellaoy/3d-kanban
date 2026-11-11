@@ -14,6 +14,20 @@ const fields = (f: Partial<NewTaskFields> = {}): NewTaskFields => ({
   ...f,
 });
 
+test('the new-task messages carry once when given and are unchanged without it', () => {
+  const plain = newTaskMsg(fields(), null);
+  const keyed = newTaskMsg(fields({ once: 'try-1-abcdefgh' }), null);
+  assert.ok('msg' in plain && 'msg' in keyed);
+  assert.equal('once' in plain.msg, false);
+  assert.deepEqual(keyed.msg, { ...plain.msg, once: 'try-1-abcdefgh' });
+  const issue = newTaskMsg(fields({ ticket: 'gh:o/r#1', once: 'try-1-abcdefgh' }), { key: 'gh:o/r#1' });
+  assert.ok('msg' in issue && issue.msg.t === 'kanban.issues.createTask');
+  assert.equal(issue.msg.once, 'try-1-abcdefgh');
+  const issuePlain = newTaskMsg(fields({ ticket: 'gh:o/r#1' }), { key: 'gh:o/r#1' });
+  assert.ok('msg' in issuePlain);
+  assert.equal('once' in issuePlain.msg, false);
+});
+
 test('a new task without an issue: kanban.task.create, titled by the first line', () => {
   const made = newTaskMsg(fields(), null);
   assert.ok('msg' in made);

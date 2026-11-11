@@ -32,7 +32,7 @@ import type {
   TaskType,
 } from './types.js';
 import { KANBAN_EFFORTS, KANBAN_TOOLS, PR_REVIEW_MAX, TASK_STATUSES, TASK_TYPES } from './types.js';
-import { Bad, KANBAN_LIMITS, MODEL_RE, PROJECT_ID_RE, bad, bool, deskId, id, isObj, isRepoName, list, model, nullableText, oneOf, optInt, optOneOf, optText, project, text, workerId, type Obj, type Req } from './validate.js';
+import { Bad, KANBAN_LIMITS, MODEL_RE, PROJECT_ID_RE, bad, bool, deskId, id, isObj, onceKey, isRepoName, list, model, nullableText, oneOf, optInt, optOneOf, optText, project, text, workerId, type Obj, type Req } from './validate.js';
 import { PERMISSIONS, PLAN_APPROVALS, REPO_ID_RE, attachmentIds, repoIds, review, tags, taskInput, url, type KanbanTaskInput } from './taskinput.js';
 import { moveExtras } from './hold.js';
 import { PR_MODES, type PrMode } from './prs.js';
@@ -97,8 +97,9 @@ export type KanbanClientMsg =
   /**
    * Answered with kanban.ok {taskId} (and startError when start was asked for and couldn't).
    * `deskId`: with start, its worker is hired at that desk (see kanban.task.start).
+   * `once`: a key the browser chose for this creation; a repeat with the same key from the same person gets the first one's answer instead of a second task.
    */
-  | Req<{ t: 'kanban.task.create'; task: KanbanTaskInput; start?: boolean; deskId?: string }>
+  | Req<{ t: 'kanban.task.create'; task: KanbanTaskInput; start?: boolean; deskId?: string; once?: string }>
   | Req<{ t: 'kanban.task.update'; id: number; patch: KanbanTaskPatch }>
   /** A drag between columns (see moves.ts). `note`/`until`: the reason and date of a hold, or a message for the agent on a resume (see hold.ts). */
   | Req<{ t: 'kanban.task.move'; id: number; to: TaskStatus; note?: string; until?: number }>
@@ -403,7 +404,8 @@ function parse(raw: unknown): KanbanClientMsg {
     }
     case 'kanban.task.create': {
       const desk = deskId(r.deskId);
-      return m({ t: 'kanban.task.create', task: taskInput(r.task), ...(bool(r.start, 'start') ? { start: true } : {}), ...(desk ? { deskId: desk } : {}) });
+      const once = onceKey(r.once);
+      return m({ t: 'kanban.task.create', task: taskInput(r.task), ...(bool(r.start, 'start') ? { start: true } : {}), ...(desk ? { deskId: desk } : {}), ...(once ? { once } : {}) });
     }
     case 'kanban.task.update':
       return m({ t: 'kanban.task.update', id: id(r.id), patch: taskPatch(r.patch) });

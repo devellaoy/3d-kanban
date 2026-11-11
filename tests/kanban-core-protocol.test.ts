@@ -130,6 +130,16 @@ test('good messages come through rebuilt, without anything the validator did not
     refused({ t: 'kanban.task.start', id: 2, deskId }, /deskId must be a desk/);
     refused({ t: 'kanban.task.create', task: { project: 'web', title: 'x' }, deskId }, /deskId must be a desk/);
   }
+  // `once`: the browser's key for one creation, on both creating messages; absent means no field.
+  const task = { project: 'web', title: 'x' };
+  assert.deepEqual(good({ t: 'kanban.task.create', task, once: 'abcd-1234_XY' }), { t: 'kanban.task.create', task, once: 'abcd-1234_XY' });
+  assert.deepEqual(good({ t: 'kanban.issues.createTask', project: 'web', issueKey: 'gh:o/w#1', once: 'abcd-1234_XY' }), { t: 'kanban.issues.createTask', project: 'web', issueKey: 'gh:o/w#1', once: 'abcd-1234_XY' });
+  assert.equal('once' in good({ t: 'kanban.task.create', task }), false);
+  assert.equal('once' in good({ t: 'kanban.issues.createTask', project: 'web', issueKey: 'gh:o/w#1' }), false);
+  for (const once of ['short', 'has space 123', 'x'.repeat(65), 7, '', null]) {
+    refused({ t: 'kanban.task.create', task, once }, /once must be a request key/);
+    refused({ t: 'kanban.issues.createTask', project: 'web', issueKey: 'gh:o/w#1', once }, /once must be a request key/);
+  }
   assert.equal(KANBAN_CLIENT_TYPES.size, 55);
 });
 

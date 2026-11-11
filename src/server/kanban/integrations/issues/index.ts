@@ -10,6 +10,7 @@ import { KANBAN_LIMITS, type IssueTaskFields, type KanbanServerMsg } from '../..
 import { gh } from '../../../github.js';
 import { createIntegrationTask, fail, ok, taskTitle, type IntegrationTaskInput } from '../util.js';
 import { createBoardTask } from '../../create.js';
+import { onceFor } from '../../once.js';
 import { githubRepoSource } from './github-repo.js';
 import { githubProjectSource } from './github-project.js';
 import { jiraSource } from './jira.js';
@@ -397,15 +398,12 @@ export function createIssues(ctx: KanbanContext, opts: IssuesOptions = {}) {
       },
       'kanban.issues.createTask': async (c, m) => {
         if (!ctx.project(m.project)) return fail(c, m.rid, `There's no project ${m.project}`);
-        const made = await createFromIssue(m.project, m.issueKey, c, {
-          start: m.start,
-          deskId: m.deskId,
-          task: m.task,
-        });
+        // A repeat (same `once`) is answered with the first creation's result, and its claim doesn't run again.
+        const { value: made, repeated } = await onceFor(ctx).run(c, m.once, () => createFromIssue(m.project, m.issueKey, c, { start: m.start, deskId: m.deskId, task: m.task }));
         if (typeof made === 'string') return fail(c, m.rid, made);
         const r = made.result;
         ok(c, m.rid, { taskId: r.taskId, existed: r.existed, ...(r.startError ? { startError: r.startError } : r.started ? { started: true } : {}) });
-        await made.claim?.();
+        if (!repeated) await made.claim?.();
       },
     },
     async taskStarted(taskId, who) {

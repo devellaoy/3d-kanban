@@ -244,6 +244,14 @@ export interface HireTaskForm {
   tags?: string[];
   /** The issue picked for it (🔗 Select issue): the task is made from that issue, with these fields. */
   issueKey?: string;
+  /** The creation's request key (`once`): a resend after no answer gets the first one's answer, not a second task. */
+  once?: string;
+}
+
+/** A request key for one creation (`once`): the same for every attempt of a dialog. Matches ONCE_KEY_RE. */
+export function newOnceKey(): string {
+  const id = globalThis.crypto?.randomUUID?.();
+  return id ?? `k${Date.now().toString(36)}${Math.random().toString(36).slice(2, 12)}`;
 }
 
 export type TaskCreateMsg = Extract<KanbanClientMsg, { t: 'kanban.task.create' }>;
@@ -283,9 +291,10 @@ export function hireTaskMsg(f: HireTaskForm): { msg: Omit<TaskCreateMsg, 'rid'> 
     ...(f.tags?.length ? { tags: f.tags.slice(0, KANBAN_LIMITS.tags) } : {}),
   };
   const desk = f.deskId ? { deskId: f.deskId } : {};
+  const once = f.once ? { once: f.once } : {};
   if (f.issueKey) {
     const task: IssueTaskFields = { ...(f.title?.trim() ? { title } : {}), ...(text ? { description: text.slice(0, KANBAN_LIMITS.description) } : {}), ...fields, ...tail };
-    return { msg: { t: 'kanban.issues.createTask', project: f.project, issueKey: f.issueKey, start: true, ...desk, task } };
+    return { msg: { t: 'kanban.issues.createTask', project: f.project, issueKey: f.issueKey, start: true, ...desk, task, ...once } };
   }
   const { type, ...rest } = fields;
   const task: KanbanTaskInput = {
@@ -298,7 +307,7 @@ export function hireTaskMsg(f: HireTaskForm): { msg: Omit<TaskCreateMsg, 'rid'> 
     ...(f.ticketUrl ? { ticketUrl: f.ticketUrl.slice(0, KANBAN_LIMITS.url) } : {}),
     ...tail,
   };
-  return { msg: { t: 'kanban.task.create', task, start: true, ...desk } };
+  return { msg: { t: 'kanban.task.create', task, start: true, ...desk, ...once } };
 }
 
 /** An issue's ticket key, as the kanban's issue sources make it: `gh:owner/repo#12`. */

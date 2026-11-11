@@ -48,12 +48,22 @@ export const PERSON_ID_RE = /^[\w:@.-]{1,200}$/;
 /** Claude aliases (opus, sonnet[1m]) and Codex ids (gpt-5.1-codex), nothing that looks like a flag. */
 export const MODEL_RE = /^[A-Za-z0-9][\w.:/[\]-]{0,99}$/;
 
+/** A request key a browser chooses for one creation (`once`): letters, digits, `_` and `-`. */
+export const ONCE_KEY_RE = /^[A-Za-z0-9_-]{8,64}$/;
+
 // --- Validators -----------------------------------------------------------------------------------
 
 export class Bad extends Error {}
 export const bad = (why: string): never => {
   throw new Bad(why);
 };
+
+/** The optional `once` key of a creation: undefined when absent, refused when it isn't a request key. */
+export function onceKey(v: unknown): string | undefined {
+  if (v === undefined) return undefined;
+  if (typeof v !== 'string' || !ONCE_KEY_RE.test(v)) bad('once must be a request key');
+  return v as string;
+}
 
 export type Obj = Record<string, unknown>;
 export const isObj = (v: unknown): v is Obj => !!v && typeof v === 'object' && !Array.isArray(v);
