@@ -139,8 +139,9 @@ In the office, a hire at a desk and the **📋 Task queue**'s form can tick **�
 task is made and started at once, at that desk or, from the queue, at the next free one.
 **🔗 Select issue** is there too and works as in the create form: with an issue picked the text may be
 left empty, and the task's title is the issue's whatever you write (also in a hand-off, whose title
-is otherwise the text's first line). With an issue picked the dialog stays open, with what you wrote,
-until the task is made, so nothing is lost when it can't be (the issue already has a task, say).
+is otherwise the text's first line). A hire that makes a kanban task keeps its dialog open, with what
+you wrote, until the task is made, so nothing is lost when it can't be (the issue already has a task,
+the connection is down), and it sends once however often you press send meanwhile.
 
 A finished meeting's output can become a task too: **🗂️ Make a kanban task** in the meeting room opens
 that hire dialog with **🗂️ Run as a kanban task** ticked. The task is tagged `meeting:<id>`, its title is

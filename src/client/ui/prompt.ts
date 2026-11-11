@@ -144,6 +144,8 @@ export function openPrompt(opts: PromptOptions) {
   cancel.addEventListener('click', () => modal.close());
   let sending = false;
   const send = (raw?: boolean) => {
+    // One send at a time, whichever way the next one would go: the toggle or the picked issue may have changed while the office answers.
+    if (sending) return;
     const text = ta.value.trim();
     if (files?.busy()) return void toast('Files are still uploading', 'warn');
     const attachmentIds = files?.ids() ?? [];
@@ -152,13 +154,7 @@ export function openPrompt(opts: PromptOptions) {
       if (!text && !kanban.hasIssue()) return ta.focus();
       if (provider && !provider.valid()) return;
       const agent = { provider: provider?.value(), model: provider?.model(), effort: provider?.effort(), attachmentIds };
-      // Without an issue it closes at once, as it always has (the start's answer can take a while).
-      if (!kanban.hasIssue()) {
-        modal.close();
-        return void kanban.send(text, agent);
-      }
-      if (sending) return;
-      // With an issue the office may turn it down (it has a task already): the dialog stays open with what was written.
+      // The dialog closes once the office made the task: turned down (or the connection gone), it stays open with what was written.
       sending = true;
       submit.disabled = true;
       return void kanban.send(text, agent).then((made) => {

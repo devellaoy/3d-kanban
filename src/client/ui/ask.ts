@@ -112,6 +112,8 @@ export function openAsk(opts: AskOptions) {
   cancel.addEventListener('click', () => modal.close());
   let sending = false;
   const send = () => {
+    // One send at a time, whichever way the next one would go: the toggle or the picked issue may have changed while the office answers.
+    if (sending) return;
     const text = ta.value.trim();
     // A kanban task made from a picked issue takes its title from it, so it needs no text.
     if (!text && !(kanbanOn() && kanban!.hasIssue())) {
@@ -119,16 +121,10 @@ export function openAsk(opts: AskOptions) {
       return;
     }
     if (!to && provider && !provider.valid()) return;
-    // A new worker on a kanban task; the context goes first in its description. Without an issue the
-    // dialog closes at once, as it always has; with one the office may turn it down (it has a task
-    // already), so it stays open with what was written until the task is made.
+    // A new worker on a kanban task; the context goes first in its description. The dialog closes once
+    // the office made the task: turned down (or the connection gone), it stays open with what was written.
     if (kanbanOn()) {
       const agent = { provider: provider?.value(), model: provider?.model(), effort: provider?.effort() };
-      if (!kanban!.hasIssue()) {
-        modal.close();
-        return void kanban!.send(text, agent, opts.context);
-      }
-      if (sending) return;
       sending = true;
       submit.disabled = true;
       return void kanban!.send(text, agent, opts.context).then((made) => {

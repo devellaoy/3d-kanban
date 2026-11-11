@@ -155,16 +155,23 @@ export function openIssues(api: KanbanApi, projectId: string, openTask: (id: num
   );
   const openFull = (issue: BrowseIssue, scope: BrowseScope) => {
     const load = () => api.request<Extract<KanbanServerMsg, { t: 'kanban.browseIssue' }>>({ t: 'kanban.browse.issue', project: projectId, scope: scope.id, issueKey: issue.key }).then((m) => m.issue);
+    // Only the answer to the latest pick, of the browse window still open, counts: one that comes after
+    // that window (or this one) closed, or after another issue was chosen, would swap the choice.
+    const mine = ++asked;
+    const from = browsing;
+    const stale = () => closed || mine !== asked || !from?.backdrop.isConnected;
     load().then(
       (full) => {
+        if (stale()) return;
         if (!picking) return openIssueWindow(api, projectId, full, openTaskClosing, { reload: () => load().catch(() => undefined) });
         if (full.taskId) return void toast(`${full.key} is already task #${full.taskId}`, 'warn');
         browsing?.close();
         choose({ ...full, sourceId: full.sourceId ?? scope.id });
       },
-      (err: Error) => toast(err.message, 'error'),
+      (err: Error) => void (stale() || toast(err.message, 'error')),
     );
   };
+  let asked = 0;
   const openTaskClosing = (id: number) => (modal.close(), openTask(id));
   let browsing: Modal | undefined;
   browse.addEventListener('click', () => {
