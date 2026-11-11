@@ -119,13 +119,19 @@ export function openAsk(opts: AskOptions) {
       return;
     }
     if (!to && provider && !provider.valid()) return;
-    // A new worker on a kanban task; the context goes first in its description. The dialog closes
-    // once the office made the task: turned down, it stays open with what was written.
+    // A new worker on a kanban task; the context goes first in its description. Without an issue the
+    // dialog closes at once, as it always has; with one the office may turn it down (it has a task
+    // already), so it stays open with what was written until the task is made.
     if (kanbanOn()) {
+      const agent = { provider: provider?.value(), model: provider?.model(), effort: provider?.effort() };
+      if (!kanban!.hasIssue()) {
+        modal.close();
+        return void kanban!.send(text, agent, opts.context);
+      }
       if (sending) return;
       sending = true;
       submit.disabled = true;
-      return void kanban!.send(text, { provider: provider?.value(), model: provider?.model(), effort: provider?.effort() }, opts.context).then((made) => {
+      return void kanban!.send(text, agent, opts.context).then((made) => {
         sending = false;
         submit.disabled = false;
         if (made) modal.close();

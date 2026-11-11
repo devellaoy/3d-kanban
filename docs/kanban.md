@@ -138,8 +138,9 @@ In the office, a hire at a desk and the **📋 Task queue**'s form can tick **�
 (type, plan, review rounds and repositories; the agent is the form's own, Claude Code or Codex): the
 task is made and started at once, at that desk or, from the queue, at the next free one.
 **🔗 Select issue** is there too and works as in the create form: with an issue picked the text may be
-left empty. The dialog stays open, with what you wrote, when the task can't be made (the issue already
-has a task, say).
+left empty, and the task's title is the issue's whatever you write (also in a hand-off, whose title
+is otherwise the text's first line). With an issue picked the dialog stays open, with what you wrote,
+until the task is made, so nothing is lost when it can't be (the issue already has a task, say).
 
 A finished meeting's output can become a task too: **🗂️ Make a kanban task** in the meeting room opens
 that hire dialog with **🗂️ Run as a kanban task** ticked. The task is tagged `meeting:<id>`, its title is

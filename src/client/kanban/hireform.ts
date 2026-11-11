@@ -196,8 +196,8 @@ export function kanbanSection(opt: KanbanOption, provider: ProviderPicker | null
         project: opt.project,
         deskId: opt.deskId(),
         text: context && text ? `${context}\n\n${text}` : context || text,
-        // With an issue and nothing written, the title is the issue's.
-        title: context && text ? titleFrom(text) : undefined,
+        // A picked issue's title is the task's, whatever is written (the note says so).
+        title: context && text && !issue ? titleFrom(text) : undefined,
         type: type.value as TaskType,
         usePlan: plan.checked,
         planApproval: (approval.value || undefined) as PlanApproval | undefined,

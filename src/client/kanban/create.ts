@@ -99,6 +99,8 @@ export function openCreate(api: KanbanApi, o: CreateOptions = {}) {
       ticketUrl.value = issue?.url ?? '';
     }
     picked = issue;
+    // The link of a picked issue is the issue's own: the office takes it from there, so it isn't to edit.
+    ticketUrl.readOnly = !!issue;
     pickedChip.classList.toggle('hidden', !issue);
     if (!issue) return;
     const clear = h('button.btn', { type: 'button', 'aria-label': `Unlink ${issue.key}`, title: 'Unlink the issue', onclick: () => setPicked(null) }, '✕');

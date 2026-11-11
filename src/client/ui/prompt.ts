@@ -151,11 +151,17 @@ export function openPrompt(opts: PromptOptions) {
     if (kanban?.on()) {
       if (!text && !kanban.hasIssue()) return ta.focus();
       if (provider && !provider.valid()) return;
+      const agent = { provider: provider?.value(), model: provider?.model(), effort: provider?.effort(), attachmentIds };
+      // Without an issue it closes at once, as it always has (the start's answer can take a while).
+      if (!kanban.hasIssue()) {
+        modal.close();
+        return void kanban.send(text, agent);
+      }
       if (sending) return;
-      // The dialog closes once the office made the task: turned down, it stays open with what was written.
+      // With an issue the office may turn it down (it has a task already): the dialog stays open with what was written.
       sending = true;
       submit.disabled = true;
-      return void kanban.send(text, { provider: provider?.value(), model: provider?.model(), effort: provider?.effort(), attachmentIds }).then((made) => {
+      return void kanban.send(text, agent).then((made) => {
         sending = false;
         submit.disabled = false;
         if (made) modal.close();
