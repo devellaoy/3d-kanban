@@ -100,11 +100,13 @@ export function groupTransitions(ts: readonly IssueTransition[]): [string, Issue
 export const LIST_BODY = 4000;
 
 /**
- * The body to show when the issues list (cut at LIST_BODY) has the issue again: a listed body that
- * is full length may be a cut one, and when it is the start of the body held (the full one from
- * kanban.issue.get) nothing has changed, so the held body stays. A shorter listed body is whole
- * and wins; so does a full-length one that differs from the held start (the source changed).
+ * The body to keep when the issues list (cut at LIST_BODY) has the issue again. A listed body
+ * shorter than the cut is whole and wins. A full-length one may be cut: over a held body that is
+ * longer (so it was read whole, by kanban.issue.get) the held one stays, and `stale` says the listed
+ * copy is not its start any more, so the source changed and the whole body is to be read again. A
+ * held body no longer than the cut is a list copy itself, and the newer copy replaces it.
  */
-export function listedBody(held: string, listed: string): string {
-  return listed.length >= LIST_BODY && held.startsWith(listed) ? held : listed;
+export function listedBody(held: string, listed: string): { body: string; stale: boolean } {
+  if (listed.length < LIST_BODY || held.length <= LIST_BODY) return { body: listed, stale: false };
+  return { body: held, stale: !held.startsWith(listed) };
 }

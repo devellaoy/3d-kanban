@@ -34,8 +34,12 @@ export function issueView(api: KanbanApi, projectId: string, first: NormalizedIs
   const heading = opts.title ? h('h3.kb-iw-title') : null;
   const desc = h('div.kb-iw-desc');
   let shownBody: string | undefined;
+  let reloading = false;
   const reload = async () => {
-    const fresh = await opts.reload?.();
+    if (reloading) return;
+    reloading = true;
+    const fresh = await Promise.resolve(opts.reload?.()).catch(() => undefined);
+    reloading = false;
     if (!fresh) return;
     it = { ...fresh, taskId: fresh.taskId ?? it.taskId };
     paint();
@@ -63,8 +67,11 @@ export function issueView(api: KanbanApi, projectId: string, first: NormalizedIs
     if (msg.t !== 'kanban.issues' || msg.project !== projectId) return;
     const fresh = msg.items.find((i) => i.key === it.key);
     if (!fresh) return;
-    it = { ...fresh, taskId: fresh.taskId ?? it.taskId, body: listedBody(it.body, fresh.body) };
+    // A cut copy never replaces a body read whole: that one stays until the changed one is read whole too.
+    const { body, stale } = listedBody(it.body, fresh.body);
+    it = { ...fresh, taskId: fresh.taskId ?? it.taskId, body };
     paint();
+    if (stale) void reload();
   });
   paint();
   return {

@@ -66,12 +66,23 @@ test('a 3D card opened through a source hands that source to the actions panel',
   assert.equal(actionIssue(card).sourceId, 'src-2');
 });
 
-test('the issues list cuts a body: a cut copy never replaces the full one it is the start of', () => {
+test('the issues list cuts a body: a cut copy never replaces a body that was read whole', () => {
   const full = 'x'.repeat(LIST_BODY + 500);
-  assert.equal(listedBody(full, full.slice(0, LIST_BODY)), full, 'the same issue, listed cut');
-  assert.equal(listedBody(full.slice(0, LIST_BODY), full.slice(0, LIST_BODY)), full.slice(0, LIST_BODY));
-  assert.equal(listedBody(full, 'edited'), 'edited', 'a short body is whole: the source changed');
+  const cut = full.slice(0, LIST_BODY);
+  assert.deepEqual(listedBody(full, cut), { body: full, stale: false }, 'the same issue, listed cut');
+  assert.deepEqual(listedBody(full, 'edited'), { body: 'edited', stale: false }, 'a short body is whole: the source changed');
+  assert.deepEqual(listedBody('', 'new'), { body: 'new', stale: false });
+  // The held body is a list copy itself (the window opened from the list): the newer copy replaces it.
+  assert.deepEqual(listedBody(cut, 'y' + cut.slice(1)), { body: 'y' + cut.slice(1), stale: false });
+  assert.deepEqual(listedBody(cut, cut), { body: cut, stale: false });
+});
+
+test('a changed, cut list copy arriving after the whole body was read keeps the whole body and asks for a fresh read', () => {
+  const full = 'x'.repeat(LIST_BODY + 500);
   const changed = 'y' + 'x'.repeat(LIST_BODY + 100);
-  assert.equal(listedBody(full, changed.slice(0, LIST_BODY)), changed.slice(0, LIST_BODY), 'changed within the first part');
-  assert.equal(listedBody('', 'new'), 'new');
+  const got = listedBody(full, changed.slice(0, LIST_BODY));
+  assert.equal(got.body, full, 'nothing of the whole body is lost to the cut copy');
+  assert.equal(got.stale, true, 'the source changed: the whole body is to be read again');
+  // Once it has been read whole again, the same list copy is its start and changes nothing.
+  assert.deepEqual(listedBody(changed, changed.slice(0, LIST_BODY)), { body: changed, stale: false });
 });
