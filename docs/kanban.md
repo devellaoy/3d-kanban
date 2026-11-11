@@ -133,7 +133,8 @@ and the office's defaults.
 **Create** puts it in To do; **▶️ Create and start** starts it at once. A task in To do can be edited
 (**✏️ Edit**); its repositories only before its first start. From the first start the description is
 locked (add to it with a comment), and a task moved back to To do can be edited again apart from
-those two.
+those two. The issue a task is about can be linked, changed or unlinked at any time before the
+archive, in the task's **Issue** tab.
 
 In the office, a hire at a desk and the **📋 Task queue**'s form can tick **🗂️ Run as a kanban task**
 (type, plan, review rounds and repositories; the agent is the form's own, Claude Code or Codex): the
@@ -422,9 +423,16 @@ enough, elsewhere the `code` command must be on the PATH. Its tabs:
   press **Link selected**; one go links 20 at most (the window counts when there are more, and the rest wait for another search). A repository that couldn't be searched, a half of a search that failed (the task's branch list: one outside the newest 100 may be missing; the newest-100 list: ticket matches may be missing), or a PR it left out, is told in a message. If the task view was closed or another task opened before the answer came, no window opens over it: a message naming the task says to use 🔎 Find PRs again from its PRs tab.
 - **Issue**: the issue the task's ticket names (a Jira key, `gh:owner/repo#12`), as the issue window
   shows it: the title, the text, status, assignee and comments, with the same actions (see *Working on an issue*)
-  and a **🔄 Refresh** that reads it from the source again. A task without a ticket says so (add one
-  with **✏️ Edit**); an issue the sources can't find or you can't read shows the ticket, the reason and
-  **🔄 Try again**. The tab is in the embedded task window too, and `&tab=issue` opens it.
+  and a **🔄 Refresh** that reads it from the source again. A task without a ticket says so; an issue
+  the sources can't find or you can't read shows the ticket, the reason and **🔄 Try again**. The tab
+  is also where the task's issue is set or changed, at any status but the archive (so after the task
+  has started too): **🔗 Link an issue** / **🔗 Change issue** picks one from the project's issues
+  (the picker of the new-task form; an issue that already has a task can't be picked),
+  **⌨️ Type a key** takes a key and an optional link typed by hand (for a project without an issue
+  source, or an issue that isn't on the list; a link left empty clears the old one), and **✕ Unlink**
+  takes the issue off the task after a confirmation. Only the task's ticket and its link change: the
+  task's title and text stay, and nothing is done to either issue at its source. The tab is in the
+  embedded task window too (the 3D office's as well), and `&tab=issue` opens it.
 
 The panel is the **shared task view** (`src/client/kanban/taskview.ts`), which the 3D office uses too
 (a window of its own, or a tab of the worker window). There it has no Terminal tab (the worker

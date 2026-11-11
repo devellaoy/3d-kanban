@@ -486,6 +486,10 @@ answers `kanban.ok {rid, ...}` or `kanban.error {rid, message}`. Deltas are push
     task is in `todo`; `tool, model, effort, review` whenever no run is live (`isRunning` false): the next
     phase hires the new tool, whose fresh session gets the handoff. `repoIds` only before the first start. The
     description is locked from the first start (sending the unchanged text is fine). No edits while archived.
+    `title`, `tags`, `ticket` and `ticketUrl` at any status but the archive: the task view's Issue tab
+    (`client/kanban/issuelink.ts`, patches built in `issuelinkmodel.ts`) links, changes and unlinks a
+    started task's issue with `patch: {ticket, ticketUrl}` (`null` clears; both are always sent, so the
+    old issue's link never stays). It only rewrites the two fields: no issue is assigned or moved.
   - `task.move`: `checkMove` (moves.ts), which only looks at the column and the run state. Workers at rest don't stop a move: the engine sends them
     home first (`engine.sendWorkersHome(id, who, 'reset')`, cleanup `keep` (`all` for a PR review's reviewer in a worktree of its own), reason `released`; a run live only
     because the agent asks in its terminal is finished as `stopped`). A reset of a task with workers is for its creator or an admin (as `task.delete`).
