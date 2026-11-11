@@ -114,6 +114,11 @@ test('good messages come through rebuilt, without anything the validator did not
   // Repositories on Azure DevOps and Bitbucket go by the office's qualified names.
   assert.deepEqual(good({ t: 'kanban.pr.review', project: 'web', prs: [{ repo: 'azure:contoso/My Web/api', number: 3 }, { repo: 'bitbucket:acme/ui', number: 3 }] }), { t: 'kanban.pr.review', project: 'web', prs: [{ repo: 'azure:contoso/My Web/api', number: 3 }, { repo: 'bitbucket:acme/ui', number: 3 }] });
   assert.deepEqual(good({ t: 'kanban.pr.owner', project: 'web', repo: 'bitbucket:acme/ui', number: 7 }), { t: 'kanban.pr.owner', project: 'web', repo: 'bitbucket:acme/ui', number: 7 });
+  assert.deepEqual(good({ t: 'kanban.pr.find', project: 'web', taskId: 4, rid: 'r' }), { t: 'kanban.pr.find', project: 'web', taskId: 4, rid: 'r' });
+  assert.deepEqual(good({ t: 'kanban.pr.link', project: 'web', taskId: 4, prs: [{ repo: 'acme/web', number: 1 }, { repo: 'ACME/web', number: 1 }] }), { t: 'kanban.pr.link', project: 'web', taskId: 4, prs: [{ repo: 'acme/web', number: 1 }] });
+  assert.deepEqual(good({ t: 'kanban.pr.unlink', project: 'web', taskId: 4, repo: 'bitbucket:acme/ui', number: 3 }), { t: 'kanban.pr.unlink', project: 'web', taskId: 4, repo: 'bitbucket:acme/ui', number: 3 });
+  assert.deepEqual(good({ t: 'kanban.issue.get', project: 'web', issueKey: ' UYT-1 ', source: 'jira', fresh: true }), { t: 'kanban.issue.get', project: 'web', issueKey: 'UYT-1', source: 'jira', fresh: true });
+  assert.deepEqual(good({ t: 'kanban.issue.get', project: 'web', issueKey: 'UYT-1' }), { t: 'kanban.issue.get', project: 'web', issueKey: 'UYT-1' });
   assert.deepEqual(good({ t: 'kanban.project.repos.set', project: 'web', repos: [{ id: 'web', name: 'Web', dir: '/w', primary: true, kind: 'git', remote: 'acme/web' }] }), {
     t: 'kanban.project.repos.set',
     project: 'web',
@@ -130,7 +135,7 @@ test('good messages come through rebuilt, without anything the validator did not
     refused({ t: 'kanban.task.start', id: 2, deskId }, /deskId must be a desk/);
     refused({ t: 'kanban.task.create', task: { project: 'web', title: 'x' }, deskId }, /deskId must be a desk/);
   }
-  assert.equal(KANBAN_CLIENT_TYPES.size, 55);
+  assert.equal(KANBAN_CLIENT_TYPES.size, 59);
 });
 
 test("the primary repository's id is its floor's, up to 40 characters, and repoIds take it", () => {
@@ -185,6 +190,14 @@ test('bad messages are refused with a reason, and their rid is still found for t
   refused({ t: 'kanban.pr.review', project: 'web', prs: [] }, /at least one/);
   refused({ t: 'kanban.pr.review', project: 'web', prs: [{ repo: 'nope', number: 1 }] }, /owner\/name/);
   refused({ t: 'kanban.pr.review', project: 'web', prs: [{ repo: 'azure:only/two', number: 1 }] }, /azure:org\/project\/repo/);
+  refused({ t: 'kanban.pr.find', project: 'web' }, /taskId/);
+  refused({ t: 'kanban.pr.find', project: 'web', taskId: 0 }, /taskId/);
+  refused({ t: 'kanban.pr.link', project: 'web', taskId: 4, prs: [] }, /at least one/);
+  refused({ t: 'kanban.pr.link', project: 'web', taskId: 4, prs: [{ repo: 'nope', number: 1 }] }, /owner\/name/);
+  refused({ t: 'kanban.pr.unlink', project: 'web', taskId: 4, repo: 'acme/web', number: 0 }, /needs its number/);
+  refused({ t: 'kanban.pr.unlink', project: 'web', repo: 'acme/web', number: 1 }, /taskId/);
+  refused({ t: 'kanban.issue.get', project: 'web', issueKey: 'UYT-1', fresh: 'yes' }, /fresh must be true or false/);
+  refused({ t: 'kanban.issue.get', project: 'web', issueKey: 'UYT-1', source: 'bad source!' }, /issue source id/);
   refused({ t: 'kanban.pr.owner', project: 'web', repo: 'gitlab:a/b', number: 7 }, /owner\/name/);
   refused({ t: 'kanban.pr.bundle', project: 'web', branch: 'a', ticket: 'b' }, /exactly one/);
   refused({ t: 'kanban.pr.owner', project: 'web', repo: 'web', number: 7 }, /owner\/name/);

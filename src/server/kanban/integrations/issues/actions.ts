@@ -160,6 +160,19 @@ export function issueActionHandlers(ctx: KanbanContext, deps: ActionDeps): NonNu
   };
 
   return {
+    // A read of one issue for its window (no routing: an issue the office can't act on can still be shown). `fresh` loads it anew first.
+    'kanban.issue.get': async (c: KanbanClient, m: Msg<'kanban.issue.get'>): Promise<void> => {
+      if (!ctx.project(m.project)) return fail(c, m.rid, `There's no project ${m.project}`);
+      try {
+        const issue = m.fresh ? ((await deps.load(m.project, m.issueKey, m.source)) ?? deps.find(m.project, m.issueKey)) : (deps.find(m.project, m.issueKey) ?? (await deps.load(m.project, m.issueKey, m.source)));
+        if (!issue) return fail(c, m.rid, `${m.issueKey} isn't among the project's issues (any more)`);
+        deps.remember(m.project, issue);
+        c.send({ t: 'kanban.issueDetail', ...(m.rid ? { rid: m.rid } : {}), project: m.project, issueKey: m.issueKey, issue });
+      } catch (err) {
+        fail(c, m.rid, (err as Error)?.message ?? String(err));
+      }
+    },
+
     'kanban.issue.transitions': scoped<Msg<'kanban.issue.transitions'>>(async (c, m, { issue, target, io, boards }) => {
       const reply = (transitions: IssueTransition[], extra: { current?: string; cannot?: string; note?: string } = {}) =>
         c.send({ t: 'kanban.issueTransitions', ...(m.rid ? { rid: m.rid } : {}), project: m.project, issueKey: m.issueKey, transitions, ...extra });

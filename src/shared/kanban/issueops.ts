@@ -57,6 +57,8 @@ export type IssueOpsClientMsg =
   | IssueReq<{ t: 'kanban.issue.transitions' }>
   /** Moves it (a transition id from kanban.issueTransitions); answered with kanban.ok. */
   | IssueReq<{ t: 'kanban.issue.transition'; transitionId: string }>
+  /** One issue in full (from the project's issue list, else loaded); `fresh` loads it anew. Answered with kanban.issueDetail. */
+  | IssueReq<{ t: 'kanban.issue.get'; fresh?: boolean }>
   /** Answered with kanban.issueComments (newest last). */
   | IssueReq<{ t: 'kanban.issue.comments' }>
   /** Adds a comment (signed with the office's name when it goes out under a shared identity); answered with kanban.ok. */
@@ -72,6 +74,7 @@ export type IssueOpsServerMsg =
   | { t: 'kanban.issues'; rid?: string; project: string; items: NormalizedIssue[]; error?: string; fetchedAt: number; loading: boolean }
   /** `cannot`: why the choices can't be listed (and so changed) for this issue. `note`: a problem that left some choices out (the project board couldn't be read). */
   | { t: 'kanban.issueTransitions'; rid?: string; project: string; issueKey: string; current?: string; transitions: IssueTransition[]; cannot?: string; note?: string }
+  | { t: 'kanban.issueDetail'; rid?: string; project: string; issueKey: string; issue: NormalizedIssue }
   /** `cannot`: why there are no comments to show or add (a draft has none). */
   | { t: 'kanban.issueComments'; rid?: string; project: string; issueKey: string; items: IssueCommentItem[]; cannot?: string }
   /** `cannot`: why this issue can't be assigned from the office. */
@@ -85,6 +88,7 @@ export const ISSUE_OPS_CLIENT_TYPE_LIST: Readonly<Record<IssueOpsClientMsg['t'],
   'kanban.issues.createTask': true,
   'kanban.issue.transitions': true,
   'kanban.issue.transition': true,
+  'kanban.issue.get': true,
   'kanban.issue.comments': true,
   'kanban.issue.comment': true,
   'kanban.issue.people': true,
@@ -132,6 +136,8 @@ export function parseIssueOpsMsg(t: IssueOpsClientMsg['t'], r: Obj): Bare<IssueO
     case 'kanban.issue.transitions':
     case 'kanban.issue.comments':
       return { t, project: proj, issueKey, ...via };
+    case 'kanban.issue.get':
+      return { t, project: proj, issueKey, ...via, ...(bool(r.fresh, 'fresh') ? { fresh: true } : {}) };
     case 'kanban.issue.transition': {
       if (typeof r.transitionId !== 'string' || !TRANSITION_ID_RE.test(r.transitionId)) bad('transitionId must be one of the issue’s transitions');
       return { t, project: proj, issueKey, ...via, transitionId: r.transitionId as string };

@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { ghAssign, ghClaimIfUnassigned, ghComment, ghComments, ghPeople, ghStateTransition, ghStateTransitions } from '../src/server/kanban/integrations/issues/github-ops.js';
 import { jiraAssign, jiraCall, jiraComment, jiraComments, jiraPeople, jiraTransition, jiraTransitions, textToAdf } from '../src/server/kanban/integrations/issues/jira-ops.js';
 import { PROJECT_WRITE_SCOPE_ERROR, boardTransitions, projectTransition, resolveBoards } from '../src/server/kanban/integrations/issues/project-ops.js';
+import { issueActionHandlers } from '../src/server/kanban/integrations/issues/actions.js';
 import { createIssues } from '../src/server/kanban/integrations/issues/index.js';
 import { onWallIssues } from '../src/server/kanban/integrations/issues/wall.js';
 import type { IssueActIo } from '../src/server/kanban/integrations/issues/source.js';
@@ -725,4 +726,42 @@ test('reading an issue does not drop its change, and the lists do not mutate on 
   assert.equal(status(), 'Doing', 'past its time to live it is not shown');
   clock = 3000;
   assert.equal(status(), 'Shipped', 'reading did not delete it: it shows again when the clock says it is young');
+});
+
+test('kanban.issue.get: the list first, else loaded; `fresh` loads first; an unknown key is an error; the issue is remembered', async () => {
+  const ctx = makeCtx([def('app', '/tmp/app', { repo: 'o/r' })]);
+  const mk = (key: string, title: string) => ({ key, title, url: `https://github.com/o/r/issues/${key.slice(-1)}`, source: 'github-repo', sourceId: 'r' }) as never;
+  const calls: string[] = [];
+  const kept: string[] = [];
+  const listed = new Map([['gh:o/r#5', mk('gh:o/r#5', 'Listed five')]]);
+  const loadable = new Map([['gh:o/r#5', mk('gh:o/r#5', 'Fresh five')], ['gh:o/r#6', mk('gh:o/r#6', 'Loaded six')]]);
+  const ws = issueActionHandlers(ctx, {
+    find: (_p, k) => (calls.push(`find ${k}`), listed.get(k)),
+    load: async (_p, k, source) => (calls.push(`load ${k}${source ? ` via ${source}` : ''}`), loadable.get(k)),
+    patch: () => {},
+    io: () => ({}) as never,
+    remember: (_p, i) => void kept.push(i.title),
+  });
+  const get = ws['kanban.issue.get']!;
+  const c = client(false, 'acc1');
+  const last = () => c.got.at(-1) as any;
+  await get(c, { t: 'kanban.issue.get', project: 'app', issueKey: 'gh:o/r#5', rid: 'a' });
+  assert.deepEqual(last(), { t: 'kanban.issueDetail', rid: 'a', project: 'app', issueKey: 'gh:o/r#5', issue: listed.get('gh:o/r#5') });
+  assert.deepEqual(calls, ['find gh:o/r#5'], 'the list answered: nothing loaded');
+  calls.length = 0;
+  await get(c, { t: 'kanban.issue.get', project: 'app', issueKey: 'gh:o/r#6', source: 'r' });
+  assert.equal(last().issue.title, 'Loaded six');
+  assert.deepEqual(calls, ['find gh:o/r#6', 'load gh:o/r#6 via r']);
+  calls.length = 0;
+  await get(c, { t: 'kanban.issue.get', project: 'app', issueKey: 'gh:o/r#5', fresh: true });
+  assert.equal(last().issue.title, 'Fresh five');
+  assert.deepEqual(calls, ['load gh:o/r#5'], 'fresh: loaded first, the list not asked');
+  loadable.delete('gh:o/r#5');
+  await get(c, { t: 'kanban.issue.get', project: 'app', issueKey: 'gh:o/r#5', fresh: true });
+  assert.equal(last().issue.title, 'Listed five', 'fresh falls back to the list');
+  assert.deepEqual(kept, ['Listed five', 'Loaded six', 'Fresh five', 'Listed five']);
+  await get(c, { t: 'kanban.issue.get', project: 'app', issueKey: 'gh:o/r#9', rid: 'z' });
+  assert.deepEqual(last(), { t: 'kanban.error', rid: 'z', message: "gh:o/r#9 isn't among the project's issues (any more)" });
+  await get(c, { t: 'kanban.issue.get', project: 'nope', issueKey: 'gh:o/r#5' });
+  assert.match(last().message, /no project nope/);
 });
