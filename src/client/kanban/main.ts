@@ -370,7 +370,7 @@ const workerBar = installWorkerBar({ root: $('kb-workers'), openWorker: openPlai
 
 function showIssues() {
   const p = kstore.project ?? (kstore.projectOf(store.floor ?? undefined) ? store.floor : kstore.projects[0]?.id);
-  if (!p) return toast('No projects yet: add a floor in the 3D office first.', 'warn');
+  if (!p) return toast('No projects yet: add one in Settings → Projects, or at the elevator in the 3D office.', 'warn');
   openIssues(api, p, (id) => openTask(id));
 }
 

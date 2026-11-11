@@ -50,7 +50,7 @@ Offices don't talk to each other directly. Each connects out to a relay (`kanban
 
 Anyone who can sign in can drive Claude Code, OpenCode, Codex, Grok, Muse or DeepSeek Harness in that directory, and through it run commands as the user that runs the office. Treat the password, the accounts and the invite links like SSH access:
 
-- The office listens on `127.0.0.1` unless you pass `--host`, and `deploy/provision.sh` keeps it there, behind SSH, Caddy or Tailscale Serve. The sign-in link the terminal prints works once, and the office keeps only a hash of it, in memory.
+- The office listens on `127.0.0.1` unless you pass `--host`, and `deploy/provision.sh` keeps it there, behind SSH, Caddy or Tailscale Serve. The sign-in link the terminal prints works once and lands on the kanban board, and the office keeps only a hash of it, in memory.
 - Use a strong password and HTTPS. With `--trust-proxy`, cookies are `Secure` once the proxy says the request came over https.
 - Changing the shared password signs out everyone who came in with it, because those sessions are signed with a key derived from it. Account sessions carry the account's id and are checked on every request, so revoking an account, or switching the shared password off, signs those people out at once, open connections included. Account passwords are stored as scrypt hashes, and invite links carry their token after the `#`, so it never reaches a server log. Login and invite attempts are limited to 10 per 5 minutes per client.
 - Only enable `--trust-proxy` behind a proxy that appends `X-Forwarded-For` (Caddy and nginx both do). The office uses the rightmost hop.

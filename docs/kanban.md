@@ -10,6 +10,8 @@ walk up to its desk in the 3D office.
 
 ## Opening it
 
+- Starting `kanban3d` in a terminal opens the board directly, already signed in (the 3D office is
+  at `/`, and the board's **3D office** button goes back to it).
 - In the 3D office: **🗂️ Kanban** in the **☰** menu (Tab), or press **J**. It opens on the project of
   the floor you're on.
 - From the 2D view (`/lite`): **🗂️ Kanban** in the top bar.

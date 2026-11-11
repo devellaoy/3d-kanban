@@ -56,7 +56,7 @@ const agent = office.resolvedAgent;
 function floorsLine() {
   const floors = office.floors();
   const where = `new ones are cloned into ${tildify(office.projectsDir())}`;
-  if (!floors.length) return `🛗 no floors yet — ride the elevator in the office to add a project (${where})`;
+  if (!floors.length) return `🛗 no floors yet — add a project in the kanban (⚙️ Settings → 📁 Projects → New project) or by the elevator in the 3D office (${where})`;
   return `🛗 ${floors.length} floor${floors.length === 1 ? '' : 's'}: ${floors.map((f) => f.def.name).join(', ')} (${where})`;
 }
 
@@ -100,7 +100,7 @@ console.log(`
 
   ${floorsLine()}
 
-  ${[...urls].join('\n  ')}${loopback ? '\n  (only this computer can open it: --host 0.0.0.0 lets your network in)' : ''}
+  ${[...urls].map((u) => `kanban:    ${u}/kanban\n  3D office: ${u}`).join('\n\n  ')}${loopback ? '\n  (only this computer can open it: --host 0.0.0.0 lets your network in)' : ''}
 ${signIn ? `\n  sign in: ${signIn}\n           ${opened ? 'opened in your browser; ' : ''}the link works once\n` : ''}
   password: ${passwordLine()}
   default agent: ${[agent ?? `${cfg.agentCmd} (via login shell)`, ...cfg.agentArgs].join(' ')}

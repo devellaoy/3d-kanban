@@ -83,8 +83,8 @@ export async function startServer(cfg: Config, opts: StartOptions = {}) {
     hookServer.close();
   };
 
-  /** A link (path and fragment) that signs one browser in, once; see Auth.linkKey. */
-  const signInLink = () => `/login#key=${ctx.auth.linkKey()}`;
+  /** A link (path, query and fragment) that signs one browser in, once, and lands on the kanban board; see Auth.linkKey. */
+  const signInLink = () => `/login?next=/kanban#key=${ctx.auth.linkKey()}`;
 
   return {
     server,
