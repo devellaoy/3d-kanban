@@ -1,6 +1,7 @@
 // The kanban page's bottom bar: the floor's plain workers (hired outside the kanban, shells included)
-// as tabs that open the worker's terminal, and the two buttons that put a new one on the floor. Which
-// workers, their order, a tab's tooltip and the bar's state are workerbarmodel.ts; this is the DOM.
+// as tabs that open the worker's terminal (each with a close button that sends the worker home, asking
+// first as X does in the 3D office), and the two buttons that put a new one on the floor. Which workers, their
+// order, a tab's name and tooltip and the bar's state are workerbarmodel.ts; this is the DOM.
 //
 // The office sends a worker update on every status and activity change, so the tabs are kept by id
 // and only what changed is written: a click between mousedown and mouseup is never lost to a redraw,
@@ -10,13 +11,15 @@ import { shownStatus } from '../../shared/status';
 import type { WorkerInfo } from '../../shared/protocol';
 import { store } from '../state';
 import { h, modalOpen, STATUS_LABEL } from '../ui/dom';
-import { icon } from '../ui/icons';
-import { barState, barWorkers, tabTitle } from './workerbarmodel';
+import { icon, iconButton } from '../ui/icons';
+import { barState, barWorkers, tabName, tabTitle } from './workerbarmodel';
 
 export interface WorkerBarDeps {
   root: HTMLElement;
   /** The worker's terminal window, as the 3D office opens it. */
   openWorker(id: string): void;
+  /** The send-home dialog, as X opens it in the 3D office. */
+  sendHome(id: string): void;
   /** The plain hire dialog; the floor's name goes in its title. */
   hireNew(floorName?: string): void;
   /** Sends a shell to the next free desk; the desk's id, or undefined when nothing was sent. */
@@ -31,7 +34,9 @@ export interface WorkerBarDeps {
 const SHELL_WAIT_MS = 10_000;
 
 interface Tab {
-  el: HTMLButtonElement;
+  el: HTMLElement;
+  open: HTMLButtonElement;
+  close: HTMLButtonElement;
   dot: HTMLElement;
   name: HTMLElement;
   pill: HTMLElement;
@@ -49,8 +54,6 @@ const setClass = (el: HTMLElement, cls: string) => {
 
 export function installWorkerBar(deps: WorkerBarDeps): { refresh(): void } {
   const tabs = new Map<string, Tab>();
-  const floorName_ = h('span');
-  const floorEl = h('span.kb-wbar-floor', {}, icon('building-2'), floorName_);
   // Buttons that each open a window, not a tablist: nothing here stays selected.
   const strip = h('div.kb-wtabs', { role: 'group', 'aria-label': 'Workers on this floor' });
   const note = h('span.kb-wbar-note');
@@ -62,7 +65,7 @@ export function installWorkerBar(deps: WorkerBarDeps): { refresh(): void } {
   const newBtn = h('button.btn.secondary.md', { type: 'button', id: 'kb-wbar-new', title: 'Hire a worker on this floor, outside the kanban', 'aria-label': 'New worker', onclick: () => deps.hireNew(floorName()) }, icon('plus'), h('span.kb-lbl', {}, 'New worker'));
   const shellBtn = h('button.btn.secondary.md', { type: 'button', id: 'kb-wbar-shell', title: 'Open a shell at the next free desk', 'aria-label': 'New shell', onclick: newShell }, icon('square-terminal'), h('span.kb-lbl', {}, 'New shell'));
   const actions = h('div.kb-wbar-actions', {}, newBtn, shellBtn);
-  deps.root.replaceChildren(floorEl, strip, note, back, actions);
+  deps.root.replaceChildren(strip, note, back, actions);
 
   /** A floor's name: the board's for it, or the building's before the board has loaded. */
   const nameOf = (id: string) => deps.projectName(id) ?? store.floors.find((f) => f.id === id)?.name;
@@ -73,8 +76,12 @@ export function installWorkerBar(deps: WorkerBarDeps): { refresh(): void } {
     const dot = h('span.dot');
     const name = h('span.kb-wtab-name');
     const pill = h('span.pill');
-    const el = h('button.kb-wtab', { type: 'button', 'data-id': id, onclick: () => deps.openWorker(id) }, dot, name, pill);
-    return { el, dot, name, pill };
+    const open = h('button.kb-wtab-open', { type: 'button', onclick: () => deps.openWorker(id) }, dot, name, pill) as HTMLButtonElement;
+    // Its name and tooltip are set in paintTab ("Send <name> home").
+    const close = iconButton('x', 'Send home', { class: 'xs kb-wtab-close', onclick: () => deps.sendHome(id) }, 14);
+    // Two buttons side by side in one tab: a button can't hold another.
+    const el = h('div.kb-wtab', { 'data-id': id }, open, close);
+    return { el, open, close, dot, name, pill };
   }
 
   function paintTab(t: Tab, w: WorkerInfo) {
@@ -82,10 +89,14 @@ export function installWorkerBar(deps: WorkerBarDeps): { refresh(): void } {
     const shown = w.lost ? 'lost' : shownStatus(w);
     const label = w.lost ? 'worktree deleted' : (STATUS_LABEL[shown] ?? shown);
     setClass(t.el, `kb-wtab ${shown}`);
-    setAttr(t.el, 'title', tabTitle(w));
-    setAttr(t.el, 'aria-label', `${w.name}, ${label}: open its terminal`);
+    setAttr(t.open, 'title', tabTitle(w));
+    setAttr(t.open, 'aria-label', `${tabTitle(w)}, ${label}: open its terminal`);
+    setAttr(t.close, 'title', `Send ${w.name} home`);
+    setAttr(t.close, 'aria-label', `Send ${w.name} home`);
+    // A visitor in someone else's office may not send a worker home (shared/multiplayer/allow.ts).
+    t.close.classList.toggle('hidden', !!store.me.visitor);
     setAttr(t.dot, 'style', `background:${w.color}`);
-    setText(t.name, w.name);
+    setText(t.name, tabName(w));
     setClass(t.pill, `pill ${shown}`);
     setText(t.pill, label);
   }
@@ -114,8 +125,6 @@ export function installWorkerBar(deps: WorkerBarDeps): { refresh(): void } {
     const workers = state === 'tabs' ? barWorkers(store.workers.values()) : [];
     paintTabs(workers);
     setAttr(deps.root, 'data-state', state);
-    setText(floorName_, state === 'none' ? '' : (floorName() ?? ''));
-    floorEl.classList.toggle('hidden', state === 'none');
     strip.classList.toggle('hidden', !workers.length);
     // A closed project has no floor to go to (the board still lists it).
     const closed = state === 'elsewhere' && !store.floors.some((f) => f.id === boardProject);

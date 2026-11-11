@@ -1,9 +1,9 @@
 // The kanban page's bar of plain workers, without the DOM (src/client/kanban/workerbarmodel.ts): who
-// gets a tab, in what order, the tab's tooltip, and when the bar has tabs, points elsewhere or hides.
+// gets a tab, in what order, the tab's name and tooltip, and when the bar has tabs, points elsewhere or hides.
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { barState, barWorkers, isPlainWorker, tabTitle } from '../src/client/kanban/workerbarmodel.js';
+import { barState, barWorkers, isPlainWorker, tabName, tabTitle } from '../src/client/kanban/workerbarmodel.js';
 import type { WorkerInfo } from '../src/shared/protocol.js';
 
 const DESK = 'desk-1';
@@ -29,6 +29,23 @@ test('tabTitle: the name, its work when it has one, shell for a shell', () => {
   assert.equal(tabTitle(w('Ada', { title: 'Fix login' })), 'Ada · Fix login');
   assert.equal(tabTitle(w('Ada', { task: { name: 'Card', summary: '' }, title: 'Other' })), 'Ada · Card');
   assert.equal(tabTitle(w('Sh', { kind: 'shell' })), 'Sh · shell');
+});
+
+test('tabName: what the worker is on as the 3D office names it, else its own name, at most 20 characters ending in "..."', () => {
+  const on = (name: string) => w('Ada', { task: { name, summary: '' } });
+  assert.equal(tabName(w('Ada')), 'Ada');
+  assert.equal(tabName(on('Card')), 'Card');
+  assert.equal(tabName(on('')), 'Ada');
+  // The 3D office shows no title over a worker: neither does the tab.
+  assert.equal(tabName(w('Ada', { title: 'Other' })), 'Ada');
+  // Exactly 20 fits; one more is cut to 17 and "...".
+  assert.equal(tabName(on('12345678901234567890')), '12345678901234567890');
+  assert.equal(tabName(on('123456789012345678901')), '12345678901234567...');
+  assert.equal(tabName(on('Fix the login page  redirect\nloop')), 'Fix the login pag...');
+  assert.equal(tabName(w('A-very-long-worker-name-indeed')), 'A-very-long-worke...');
+  // No space before the dots, and an emoji is never cut in half.
+  assert.equal(tabName(on('Refactor the big auth module')), 'Refactor the big...');
+  assert.equal(tabName(on('😀'.repeat(21))), `${'😀'.repeat(17)}...`);
 });
 
 test('barState: none on the roof, elsewhere when the picked project is not the page floor, else tabs', () => {

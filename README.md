@@ -109,7 +109,7 @@ curl -fsSL https://raw.githubusercontent.com/devellaoy/3d-kanban/main/deploy/pro
   In its conversation the implementer's and the reviewer's comments have colours of their own, and
   URLs and (for admins) file paths are links: a path opens in VS Code on the office's machine.
   A bar along the bottom has the floor's workers from outside the kanban as tabs (a tab opens the
-  worker's terminal window), with **New worker** to hire one and **New shell** for a shell
+  worker's terminal window, its close button sends the worker home), with **New worker** to hire one and **New shell** for a shell
   ([docs/kanban.md](docs/kanban.md#opening-it)).
 - **VS Code**: the task view's head on the kanban and every worker's terminal window (3D office and
   `/lite`) open the task's or worker's folder in VS Code on the office's machine: its worktree, or all
