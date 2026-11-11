@@ -1,7 +1,8 @@
-// ⚙️ Settings' theme (the You pane): how the windows, the HUD, the kanban and the 2D view look,
+// Settings' theme (the You pane): how the windows, the HUD, the kanban and the 2D view look,
 // taking effect as you click. Its own file to keep settings.ts short.
 import { APPEARANCES, parseAppearance, setAppearance } from '../themes';
 import { h } from './dom';
+import { icon } from './icons';
 
 /** The buttons and their note, for `setting('Theme', 'you', ...row)`, and `off` to call when the window closes. */
 export function appearanceRow(): { row: [HTMLElement, HTMLElement]; off: () => void } {
@@ -24,7 +25,8 @@ export function appearanceRow(): { row: [HTMLElement, HTMLElement]; off: () => v
               if (a.id !== current()) setAppearance(a.id);
             },
           },
-          `${a.icon} ${a.label}`,
+          icon(a.icon),
+          a.label,
         ),
       ),
     );

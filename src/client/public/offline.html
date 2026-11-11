@@ -8,9 +8,9 @@
     <!-- The service worker's stand-in for a page when the office can't be reached (sw.js).
          Self-contained: it's shown with the network gone. It's served at the page's own address, so
          a reload is that page again. -->
-    <script>try{var t=localStorage.getItem('agent-office.appearance');if(t){document.documentElement.dataset.theme=t;var c={default:'#fff1de',dark:'#0f0f0f',glossy:'#eef1f7'}[t];if(c)document.querySelector('meta[name=theme-color]').content=c}}catch(e){}</script>
+    <script>try{var t=localStorage.getItem('agent-office.appearance');if(t){document.documentElement.dataset.theme=t;var c={default:'#fff1de',dark:'#0f0f0f',glossy:'#eef1f7',daylight:'#F4F5F7',midnight:'#0F1115'}[t];if(c)document.querySelector('meta[name=theme-color]').content=c}}catch(e){}</script>
     <style>
-      /* The shared tokens (themes/) are not loaded here, so the three looks' few values are set out as variables. */
+      /* The shared tokens (themes/) are not loaded here, so each look's few values are set out as variables. */
       :root {
         color-scheme: light;
         --bg: #fffaf3; --card: #fff1de; --text: #2b2d42; --muted: #7a6f65; --line: #2b2d42;
@@ -35,6 +35,22 @@
         --shadow-pressed: 0 1px 2px rgba(0, 0, 0, .06); --press: 0px;
         --blur: saturate(180%) blur(28px); --fw: 600;
         --font: -apple-system, 'SF Pro Text', 'SF Pro Display', 'Helvetica Neue', system-ui, sans-serif;
+      }
+      :root[data-theme="daylight"] {
+        color-scheme: light;
+        --bg: #F4F5F7; --card: #FFFFFF; --text: #161A22; --muted: #5F6875; --line: #E2E5EA;
+        --btn: #2952E3; --btn-text: #fff; --bw: 1px; --radius: 12px; --radius-btn: 6px;
+        --shadow: 0 24px 60px rgba(10, 14, 24, .12); --shadow-btn: none; --shadow-pressed: none; --press: 0px;
+        --fw: 600;
+        --font: 'Inter Variable', Inter, system-ui, -apple-system, 'Segoe UI', sans-serif;
+      }
+      :root[data-theme="midnight"] {
+        color-scheme: dark;
+        --bg: #0F1115; --card: #171A21; --text: #E8EAEE; --muted: #98A1AE; --line: #272C36;
+        --btn: #3F62E8; --btn-text: #fff; --bw: 1px; --radius: 12px; --radius-btn: 6px;
+        --shadow: 0 24px 60px rgba(10, 14, 24, .35); --shadow-btn: none; --shadow-pressed: none; --press: 0px;
+        --fw: 600;
+        --font: 'Inter Variable', Inter, system-ui, -apple-system, 'Segoe UI', sans-serif;
       }
       :root[data-theme="glossy"] body { background: radial-gradient(900px 640px at 0% 0%, rgba(168, 196, 255, .4), transparent 62%), radial-gradient(800px 600px at 100% 100%, rgba(255, 200, 228, .35), transparent 60%), var(--bg); }
       html, body { height: 100%; margin: 0; }

@@ -1,0 +1,5 @@
+/* The fonts of the Daylight and Midnight looks, served by the office itself (no request leaves it, and
+   the installed app has them offline once they were used). These are only @font-face rules: a browser
+   fetches a file when a look that names the family is on the page. */
+@import '@fontsource-variable/inter/index.css';
+@import '@fontsource-variable/jetbrains-mono/index.css';

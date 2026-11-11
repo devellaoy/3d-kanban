@@ -5,6 +5,7 @@
    module in ui/ and comes in with it. The colors, borders, shadows and type are tokens in themes/
    (themes/tokens.css lists them), so a theme is a file there, not a rule here. */
 @import '../themes/index.css';
+@import './fonts.css';
 /* The kit: the window frame and shell, the controls, the chips. They come before every rule here and in
    the windows' own sheets, and keep their selectors weak, so those can override them. */
 @import './kit-modal.css';
@@ -83,8 +84,6 @@ a.when:hover { text-decoration: underline; }
 .provider-summary .btn { padding: 3px 9px; font-size: var(--fs-xs); border-width: var(--bw-sm); border-radius: calc(var(--radius-md) - 1px); box-shadow: var(--shadow-xs); }
 .charsel-opts label { margin: 14px 0 8px; }
 .col-search input[type=text] { font-size: var(--fs-sm); border-width: var(--bw-sm); border-radius: calc(var(--radius-md) - 1px); padding: 5px 26px 5px 9px; }
-.gh-label-edit { padding: 1px 9px; font-size: var(--fs-xs); box-shadow: var(--shadow-xs); }
-.pd-side input[type=text] { width: 100%; font: inherit; font-size: var(--fs-sm); border: var(--bw-sm) solid var(--ink); border-radius: var(--radius-md); padding: 5px 9px; background: var(--field); outline: none; }
 .elevator .dir-change { margin-left: 6px; padding: 1px 8px; font-size: var(--fs-xs); border-width: var(--bw-sm); border-radius: calc(var(--radius-md) - 1px); box-shadow: var(--shadow-xs); vertical-align: baseline; }
 .meeting-field label { margin: 0; }
 

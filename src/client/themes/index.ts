@@ -1,12 +1,15 @@
-// The appearances of the pages (⚙️ Settings → You → Theme): which there are, which one this browser
+// The appearances of the pages (Settings → You → Theme): which there are, which one this browser
 // has chosen, and putting it on the page. Pure: no three.js and nothing touched at load, so the 2D
 // view, the sign-in pages and the tests can all use it. ("Theme" elsewhere means the holiday
 // decorations; this is the look of the windows, the HUD, the kanban and the 2D view.)
 
+import type { IconName } from '../ui/icons';
+
 export interface Appearance {
   id: string;
   label: string;
-  icon: string;
+  /** Its icon on the Theme row (a name of ui/icons.ts; only the type is imported, so this file stays free of the DOM). */
+  icon: IconName;
   /** What the browser's own controls (scrollbars, form fields) should look like. */
   colorScheme: 'light' | 'dark';
   /** The installed app's title bar colour, kept in `<meta name="theme-color">`. */
@@ -16,9 +19,11 @@ export interface Appearance {
 
 /** Every appearance. A new one is also a file `themes/<id>.css` and its `@import` in `themes/index.css`. */
 export const APPEARANCES = [
-  { id: 'default', label: 'Office', icon: '🧡', colorScheme: 'light', themeColor: '#fff1de', blurb: 'The warm, toy-like look the office has always had.' },
-  { id: 'dark', label: 'Dark', icon: '🌙', colorScheme: 'dark', themeColor: '#0f0f0f', blurb: 'Near-black surfaces, compact type and tight corners, easy on the eyes at night.' },
-  { id: 'glossy', label: 'Glossy', icon: '✨', colorScheme: 'light', themeColor: '#eef1f7', blurb: 'Translucent glass over soft colour, in the manner of modern iOS.' },
+  { id: 'default', label: 'Office', icon: 'palette', colorScheme: 'light', themeColor: '#fff1de', blurb: 'The warm, toy-like look the office has always had.' },
+  { id: 'dark', label: 'Dark', icon: 'moon', colorScheme: 'dark', themeColor: '#0f0f0f', blurb: 'Near-black surfaces, compact type and tight corners, easy on the eyes at night.' },
+  { id: 'glossy', label: 'Glossy', icon: 'sparkles', colorScheme: 'light', themeColor: '#eef1f7', blurb: 'Translucent glass over soft colour, in the manner of modern iOS.' },
+  { id: 'daylight', label: 'Daylight', icon: 'sun', colorScheme: 'light', themeColor: '#F4F5F7', blurb: 'A calm light look: white cards on a grey page, hairlines and one blue accent.' },
+  { id: 'midnight', label: 'Midnight', icon: 'star', colorScheme: 'dark', themeColor: '#0F1115', blurb: 'Daylight’s dark twin: blue-black surfaces with the same quiet lines.' },
 ] as const satisfies readonly Appearance[];
 
 export type AppearanceId = (typeof APPEARANCES)[number]['id'];
