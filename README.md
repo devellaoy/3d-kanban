@@ -108,6 +108,9 @@ curl -fsSL https://raw.githubusercontent.com/devellaoy/3d-kanban/main/deploy/pro
   investigation's reports, PRs) is one shared piece, on the kanban and in the office's windows.
   In its conversation the implementer's and the reviewer's comments have colours of their own, and
   URLs and (for admins) file paths are links: a path opens in VS Code on the office's machine.
+  A bar along the bottom has the floor's workers from outside the kanban as tabs (a tab opens the
+  worker's terminal window), with **✨ New task** to hire one and **🐚 New shell** for a shell
+  ([docs/kanban.md](docs/kanban.md#opening-it)).
 - **🧩 VSCode**: the task view's head on the kanban and every worker's terminal window (3D office and
   `/lite`) open the task's or worker's folder in VS Code on the office's machine: its worktree, or all
   its repositories' worktrees in one window. Admins only. VS Code must be installed there: on macOS in
