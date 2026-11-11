@@ -39,11 +39,14 @@
 .shell > .shell-head { gap: 10px; padding: 14px 20px; }
 .shell .shell-head h2 { flex: 0 1 auto; font-size: var(--fs-xl); }
 .shell-head > svg, .shell-row > svg { flex: none; color: var(--text-2); }
-/* The title and the id or context give way (an ellipsis each, the context first); the tools and the ✕ keep their place. */
+/* The title and the id or context give way with an ellipsis each, the context first. */
 .shell-id { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; font-family: var(--font-mono); font-size: var(--fs-xs); color: var(--muted); white-space: nowrap; }
 /* In a simple header the context takes only the room the title leaves. */
 .shell-head.simple > .shell-id { flex: 1 1 0; }
-.shell-tools { flex: none; margin-left: auto; display: flex; align-items: center; gap: 4px; }
+/* The tools give way before the title does: they wrap inside their own group, right-aligned, and the ✕ (which
+   alone never shrinks) keeps the top right corner. */
+.shell-tools { flex: 0 100 auto; min-width: 0; margin-left: auto; display: flex; flex-wrap: wrap; justify-content: flex-end; align-items: center; gap: 4px; }
+.shell-head > .close, .shell-row > .close { align-self: flex-start; }
 .shell-row > :is(.st-pill, .kb-phase, .attn-pill, .pr-pill) { flex: none; }
 /* A header's tools are a step taller than a toolbar's small buttons, level with the ✕. */
 .shell-tools > .btn.sm { height: calc(var(--ctl-h-sm) + 2px); }
