@@ -139,7 +139,7 @@ before(async () => {
     execFileSync('git', args, { cwd: project });
   }
   // A client bundle of its own, so the test needn't build one.
-  for (const page of ['index', 'login', 'claim', 'join', 'lite']) writeFileSync(path.join(publicDir, `${page}.html`), `<!doctype html><title>${page}</title>`);
+  for (const page of ['index', 'login', 'claim', 'join', 'lite', 'kanban']) writeFileSync(path.join(publicDir, `${page}.html`), `<!doctype html><title>${page}</title>`);
   writeFileSync(path.join(publicDir, 'favicon.svg'), '<svg xmlns="http://www.w3.org/2000/svg"/>');
   writeFileSync(path.join(publicDir, 'assets', 'app.js'), 'export {};\n');
   // A stand-in for Claude Code, so reading the plan's limits never runs the real one.
@@ -588,4 +588,20 @@ test('the hook server answers only workers, with their own token', async () => {
     assert.equal(res.status, 401);
     assert.match(((await res.json()) as { error: string }).error, /AGENT_OFFICE_WORKER_ID/);
   }
+});
+
+test('the terminal\'s sign-in link lands on the kanban board', async () => {
+  const link = office.signInLink();
+  assert.match(link, /^\/login\?next=\/kanban#key=/);
+  const key = link.slice(link.indexOf('#key=') + 5);
+  const ok = await post('/api/link', { key });
+  assert.equal(ok.status, 200);
+  const session = (ok.headers.get('set-cookie') ?? '').split(';')[0];
+  assert.match(session, /^ao_session_\d+=/);
+  const board = await get('/kanban', { cookie: session });
+  assert.equal(board.status, 200);
+  assert.match(await board.text(), /<title>kanban<\/title>/);
+  const out = await get('/kanban');
+  assert.equal(out.status, 302);
+  assert.equal(out.headers.get('location'), '/login?next=/kanban');
 });

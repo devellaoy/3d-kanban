@@ -297,9 +297,9 @@ The first time it starts, it walks you through setting up, right in the terminal
 2. **GitHub.** If the GitHub CLI isn't signed in, it offers to run `gh auth login` for you.
 3. **Your first project.** Pick one of your repos by number, or type `owner/name`, and the office clones it as the first floor. (To use a folder you already have instead, start with `kanban3d <folder>`, or add it from the elevator once the office is open.)
 
-Press Enter to skip a step: the elevator in the office asks for your first project too, and an admin can type the path of a folder there (starting with `/` or `~`) and press **📁 Add folder**. Then the office opens in your browser, **already signed in**, with a link that works once. The terminal also prints the office password, for signing in from another browser (it's saved in `~/agent-office/.agent-office/config.json`).
+Press Enter to skip a step: you can add your first project later in the kanban (**⚙️ Settings → 📁 Projects → New project**, for admins: a local folder or a GitHub repository), or at the elevator in the 3D office, where an admin can type the path of a folder (starting with `/` or `~`) and press **📁 Add folder**. Then the kanban board opens in your browser, **already signed in**, with a link that works once. The 3D office is at `/`, and the board's **3D office** button takes you there. The terminal also prints the office password, for signing in from another browser (it's saved in `~/agent-office/.agent-office/config.json`).
 
-Walk to an empty desk, press **E** and hire a worker. Its prompt can take files too: **📎 Attach**, paste or drop them on the dialog ([features](docs/features.md)).
+In the 3D office, walk to an empty desk, press **E** and hire a worker. Its prompt can take files too: **📎 Attach**, paste or drop them on the dialog ([features](docs/features.md)).
 
 Common options:
 

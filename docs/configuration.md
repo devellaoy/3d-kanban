@@ -21,7 +21,7 @@ kanban3d [dir] [options]
   -p, --port <n>          Port (default 4600, env PORT)
   -H, --host <addr>       Bind address (default 127.0.0.1; 0.0.0.0 lets your network in)
       --password <pw>     Office password (env AGENT_OFFICE_PASSWORD)
-      --no-open           Don't open the office in your browser when it starts
+      --no-open           Don't open the kanban in your browser when it starts
       --agent <cmd>       Default agent command (default "claude")
       --agent-args <str>  Extra args for the configured agent, e.g. "--model opus"
       --dsh-profile <n>   DeepSeek Harness profile over ACP (default "acp")

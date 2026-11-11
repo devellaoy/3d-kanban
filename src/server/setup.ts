@@ -63,10 +63,10 @@ export async function welcome(cfg: Config): Promise<void> {
 
   Every project is a floor of the building, and this one doesn't have any yet.
   Let's add your first: pick one of your GitHub repositories and the office
-  clones it. Press Enter to skip any question and do it from the office's
-  elevator instead.`);
+  clones it. Press Enter to skip any question and do it later, in the
+  kanban's settings or from the 3D office's elevator.`);
   await walkthrough(building, cfg.dataDir, !folderGiven && !building.projectsDirState().custom);
-  console.log(building.list().length ? '\n  All set. Opening the office…' : '\n  Opening the office: its elevator asks for your first project.');
+  console.log(building.list().length ? '\n  All set. Opening the kanban…' : '\n  Opening the kanban: add your first project in ⚙️ Settings → 📁 Projects, or at the elevator in the 3D office.');
 }
 
 /** `agent-office setup …`: returns the exit code. */

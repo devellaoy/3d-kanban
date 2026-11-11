@@ -19,7 +19,7 @@ export interface Config {
   project?: string;
   host: string;
   port: number;
-  /** Open the office in a browser, signed in, when it's started in a terminal (--no-open: don't). */
+  /** Open the office (on its kanban board) in a browser, signed in, when it's started in a terminal (--no-open: don't). */
   open: boolean;
   /** Plaintext password, only when known: from --password, or generated and not yet claimed. */
   password?: string;
@@ -124,7 +124,7 @@ Options:
                           is kept and the password is never displayed again.
       --reset-password    Forget the generated password (a new one is made on the
                           next start) and exit
-      --no-open           Don't open the office in your browser when it starts
+      --no-open           Don't open the kanban in your browser when it starts
                           (env AGENT_OFFICE_NO_OPEN=1)
       --agent <cmd>       Default agent command (default "claude", env AGENT_OFFICE_AGENT)
       --agent-args <str>  Extra args for the configured agent, e.g. "--model opus"
@@ -168,8 +168,8 @@ Options:
                           (env AGENT_OFFICE_SKY_CLOCK=real)
   -h, --help              Show this help
 
-Started in a terminal, the office opens in your browser already signed in, with
-a link that works once. Only this machine can reach it unless you pass --host.
+Started in a terminal, the kanban board opens in your browser already signed in,
+with a link that works once (the 3D office is at /). Only this machine can reach it unless you pass --host.
 To run it on a server for your team, see deploy/provision.sh.
 
 Voice and screen sharing need a secure context: use https (a reverse proxy,

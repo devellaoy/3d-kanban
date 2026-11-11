@@ -15,7 +15,7 @@ let going = false;
 /** Opens the pull requests board of the picked project's floor (see above). */
 export function openPulls(net: Net, project: string | null, actions: () => BoardActions) {
   const target = pullsTarget(project, store.floor, store.floors);
-  if (target === 'none') return toast(project ? 'That project has no floor open: open it in the 3D office first.' : 'No projects yet: add a floor in the 3D office first.', 'warn');
+  if (target === 'none') return toast(project ? 'That project has no floor open: open it in the 3D office first.' : 'No projects yet: add one in Settings → Projects, or at the elevator in the 3D office.', 'warn');
   if (target === 'here') {
     // Under "All projects" nothing else says whose board this is.
     if (!project) toast(`${store.floors.find((f) => f.id === store.floor)?.name ?? store.floor}’s pull requests`);
