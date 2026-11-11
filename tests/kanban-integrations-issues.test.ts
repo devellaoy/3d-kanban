@@ -326,3 +326,74 @@ test('a task made and started in one go is taken once the hook runs, not before'
   await issues.plugin.taskStarted!(made.taskId, client(true, 'acc1'));
   assert.deepEqual(edits(), [['issue', 'edit', '1', '-R', 'o/app', '--add-assignee=panu']]);
 });
+
+// --- A task made from an issue with the create form's fields ----------------------------------------
+
+test('createTask with a task: the form decides the settings, the issue the ticket, the title and the text', async () => {
+  const { ctx, issues, c, edits } = claimSetup({ ...env('/h/form-1'), issues: [{ number: 1 }, { number: 2 }] });
+  await issues.refresh('app');
+  const att = ctx.repo.addAttachment({ id: 'a'.repeat(16), name: 'x.png', mime: 'image/png', size: 1, stored: 'x', createdBy: 'T', createdAt: 1 });
+  const send = async (m: object) => {
+    await issues.plugin.ws!['kanban.issues.createTask']!(c, { t: 'kanban.issues.createTask', project: 'app', issueKey: 'gh:o/app#1', ...m } as never);
+    return c.got.at(-1) as { t: string; taskId: number; existed: boolean; started?: boolean };
+  };
+  const made = await send({ task: { description: '  Mind the cache  ', type: 'investigate', repoIds: ['app'], goal: 'Tests pass', review: { rounds: 2 }, tags: ['x'], usePlan: false, useReview: true, attachmentIds: [att.id] } });
+  assert.equal(made.t, 'kanban.ok');
+  assert.equal(made.existed, false);
+  const task = ctx.repo.getTask(made.taskId)!;
+  assert.equal(task.title, 'Issue 1', 'the issue’s title when the form gave none');
+  assert.equal(task.ticket, 'gh:o/app#1');
+  assert.equal(task.ticketUrl, 'https://github.com/o/app/issues/1');
+  assert.equal(task.description, 'Mind the cache\n\nSource: https://github.com/o/app/issues/1');
+  assert.equal(task.type, 'investigate');
+  assert.deepEqual(task.repoIds, ['app']);
+  assert.equal(task.goal, 'Tests pass');
+  assert.deepEqual(task.overrides.review, { rounds: 2 });
+  assert.deepEqual(task.tags, ['x']);
+  assert.equal(task.usePlan, false);
+  assert.equal(task.useReview, true);
+  assert.deepEqual(ctx.repo.listAttachments(task.id).map((a) => a.id), [att.id]);
+  assert.equal(edits().length, 1, 'not started: the issue is taken now');
+  // Again: only named, nothing new.
+  const again = await send({ task: { description: 'other' } });
+  assert.deepEqual(again, { t: 'kanban.ok', taskId: made.taskId, existed: true });
+  assert.equal(ctx.repo.listTasks('app').length, 1);
+  // The title the form gave is normalised like every title.
+  const longTitle = `Line one\n  line   two ${'x'.repeat(400)}`;
+  await issues.plugin.ws!['kanban.issues.createTask']!(c, { t: 'kanban.issues.createTask', project: 'app', issueKey: 'gh:o/app#2', task: { title: longTitle } });
+  const t2 = ctx.repo.getTask((c.got.at(-1) as { taskId: number }).taskId)!;
+  assert.equal(t2.title.length, 300);
+  assert.ok(t2.title.startsWith('Line one line two xxx'));
+  assert.equal(t2.description, 'Source: https://github.com/o/app/issues/2', 'no text of the user’s: the issue’s alone');
+});
+
+test('createTask with a task never starts an existing To do task; without one it still does', async () => {
+  const { ctx, issues, c } = claimSetup({ ...env('/h/form-2'), issues: [{ number: 1 }, { number: 2 }] });
+  await issues.refresh('app');
+  const mk = (n: number) => ctx.repo.createTask({ project: 'app', title: `Issue ${n}`, ticket: `gh:o/app#${n}`, tool: 'claude', usePlan: false, planApproval: 'auto', useReview: false, createdBy: 'T' });
+  const one = mk(1);
+  const two = mk(2);
+  const ws = issues.plugin.ws!['kanban.issues.createTask']!;
+  await ws(c, { t: 'kanban.issues.createTask', project: 'app', issueKey: 'gh:o/app#1', start: true, task: { description: 'mine' } });
+  assert.deepEqual(c.got.at(-1), { t: 'kanban.ok', taskId: one.id, existed: true });
+  assert.deepEqual(ctx.started, []);
+  assert.equal(ctx.repo.getTask(one.id)!.description, '', 'the old task is left as it was');
+  await ws(c, { t: 'kanban.issues.createTask', project: 'app', issueKey: 'gh:o/app#2', start: true });
+  assert.deepEqual(ctx.started, [two.id]);
+});
+
+test('createTask with a task: an unknown repository is an error and makes nothing; start and deskId start the new task', async () => {
+  const { ctx, issues, c } = claimSetup({ ...env('/h/form-3'), issues: [{ number: 1 }] });
+  await issues.refresh('app');
+  const ws = issues.plugin.ws!['kanban.issues.createTask']!;
+  await ws(c, { t: 'kanban.issues.createTask', project: 'app', issueKey: 'gh:o/app#1', task: { repoIds: ['nope'] } });
+  assert.equal(c.got.at(-1)?.t, 'kanban.error');
+  assert.match((c.got.at(-1) as { message: string }).message, /nope/);
+  assert.equal(ctx.repo.listTasks('app').length, 0);
+  await ws(c, { t: 'kanban.issues.createTask', project: 'app', issueKey: 'gh:o/app#1', start: true, deskId: 'desk-3', task: {} });
+  const r = c.got.at(-1) as { t: string; taskId: number; existed: boolean; started?: boolean };
+  assert.equal(r.t, 'kanban.ok');
+  assert.equal(r.existed, false);
+  assert.equal(r.started, true);
+  assert.deepEqual(ctx.started, [r.taskId]);
+});

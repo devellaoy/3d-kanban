@@ -130,6 +130,11 @@ export interface IntegrationTaskInput {
   event?: Record<string, unknown>;
 }
 
+/** A title as the board shows it: one line, at most 300 characters (the issue's may be anything), never empty. */
+export function taskTitle(raw: string): string {
+  return raw.replace(/\s+/g, ' ').trim().slice(0, 300) || 'Untitled';
+}
+
 /**
  * Creates a task, or finds the one its ticket already has in the project (issues → tasks is
  * idempotent by ticket, as ai-kanban's POST /api/v1/tasks was). Starts it when asked and new, or
@@ -150,7 +155,7 @@ export async function createIntegrationTask(
     existed = false;
     return ctx.repo.createTask({
       project: input.project,
-      title: input.title.replace(/\s+/g, ' ').trim().slice(0, 300) || 'Untitled',
+      title: taskTitle(input.title),
       description: input.description.slice(0, 100_000),
       type: input.type ?? 'implement',
       ...(ticket ? { ticket } : {}),
