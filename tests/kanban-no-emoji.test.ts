@@ -18,7 +18,11 @@ const rel = (f: string) => path.relative(root, f).split(path.sep).join('/');
 
 /** The folders read whole, and the single ui/ files (as name.ts and name.css). */
 const DIRS = ['kanban', 'shared', 'ui/github'];
-const UI_FILES = ['boards', 'changes', 'terminal', 'termtabs', 'prompt', 'ask', 'settings', 'appearance', 'dom', 'provider'];
+const UI_FILES = ['boards', 'changes', 'terminal', 'termtabs', 'prompt', 'ask', 'settings', 'appearance', 'dom', 'provider',
+  // Everything the Settings window draws (it opens on the kanban page too), and the shared kit.
+  'settings-panes', 'settings-mix', 'settings-carry-on', 'settings-sky', 'settings-notify', 'settings-light', 'settingrow', 'sensitivity', 'language', 'prompts', 'shell', 'tabs', 'kit', 'icons'];
+/** Single files outside ui/ and the folders above. */
+const OTHER_FILES = ['multiplayer/settingsslot.ts', 'multiplayer/settings.ts'];
 
 const PICTOGRAPH = /\p{Extended_Pictographic}|[✕＋⋯↻↺↗▾▸×]/gu;
 
@@ -60,6 +64,7 @@ function walk(dir: string, out: string[] = []): string[] {
 function files(): string[] {
   const out = DIRS.flatMap((d) => walk(path.join(client, d)));
   for (const n of UI_FILES) for (const ext of ['ts', 'css']) if (existsSync(path.join(client, 'ui', `${n}.${ext}`))) out.push(path.join(client, 'ui', `${n}.${ext}`));
+  for (const f of OTHER_FILES) out.push(path.join(client, f));
   return out.sort();
 }
 
@@ -82,6 +87,7 @@ const ALLOWED: Readonly<Record<string, number>> = {
   'src/client/ui/changes.ts': 1,
   'src/client/ui/github/issue-window.ts': 1,
   'src/client/ui/github/pull-window.ts': 1,
+  'src/client/ui/prompts.ts': 1,
   'src/client/ui/settings.ts': 1,
   'src/client/ui/terminal.ts': 1,
 };

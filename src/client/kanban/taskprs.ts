@@ -14,7 +14,7 @@ export function prsPane(c: TaskCtx, task: KanbanTask): HTMLElement[] {
   const project = c.project(task.project);
   const out: HTMLElement[] = [];
   const bar = h('div.kb-actions');
-  // Create / Push & update PRs are the footer's in Review; from Waiting and Done they are here, with what needs a pull request to look at.
+  // Create / Push & update PRs are the footer's; what needs a pull request to look at is here.
   for (const id of tabActionIds(task, c)) {
     if (id === 'review-prs') bar.append(reviewButton(c, task));
     else bar.append(actionButton(id, task, c) ?? '');

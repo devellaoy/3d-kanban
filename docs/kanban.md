@@ -393,12 +393,12 @@ The window's **footer** has the task's actions on every tab. Left: **Move**, **P
 **Start** and **Edit** (To do), **Stop** (while it runs), **Approve the plan** and **Request
 changes**, **Retry now** (a usage limit), **Retry** and **Continue** (failed or interrupted),
 **Continue without answering** (the plan's questions), **Run a review round** (in Review, and in Waiting
-too when the task has a worktree and isn't waiting on its plan), **Create PRs** / **Push & update
-PRs** (in Review) and **Resume** (on hold). The main button is the one that was highlighted in each state before: **Start**,
+too when the task has a worktree and isn't waiting on its plan) and **Resume** (on hold); **Create PRs** / **Push & update
+PRs** (an implement task in Review, Waiting or Done) stand first in this group, plain except in Review. The main button is the one that was highlighted in each state before: **Start**,
 **Approve the plan**, **Retry now**, **Retry** after a failure or an interruption (**Continue** is plain
-beside it), **Continue** after any other wait, **Create PRs** / **Push & update PRs** in Review, and **Resume**
+beside it), **Continue** after any other wait, **Create PRs** / **Push & update PRs** in Review (in the other states they are plain, at the left of the group), and **Resume**
 on hold; **Continue without answering**, an agent that is asking, a running task, Done and the archive have none. **Fix PRs**, **Resolve conflicts**, **Find PRs** and **Review these N PRs together** stay on
-the Pull requests tab, and so do **Create PRs** / **Push & update PRs** from Waiting and Done (in Review they are the footer's, never in both). Its tabs:
+the Pull requests tab. Its tabs:
 
 - **Overview**: a banner first (what it waits for, with the answer box under it, a usage limit's
   countdown, or **Open the plan** when the plan waits for approval; for a task on hold, why and until
@@ -428,7 +428,7 @@ the Pull requests tab, and so do **Create PRs** / **Push & update PRs** from Wai
   then, never waited for), read-only, with Refresh to read again. Per commit and Uncommitted are always read
   that way, again whenever the live checkout changes (a new commit, an amend, an edit). A diff over
   2 MB is cut. The 3D worker window's Task tab has no Changes tab: its header's Changes is it.
-- **Pull requests**: the task's pull requests with their state, **Create PRs** / **Push & update PRs** (from Waiting and Done; in Review the footer has them), **Fix PRs** and **Resolve conflicts** (with open PRs), and
+- **Pull requests**: the task's pull requests with their state, **Fix PRs** and **Resolve conflicts** (with open PRs), and
   **Review these N PRs together**, and **Find PRs** (on this tab only, not on an archived task).
   Each row ends with a button that unlinks the pull request from the task after a confirmation (the PR
   itself is untouched); the office does not link an unlinked PR again by itself, while Find PRs or

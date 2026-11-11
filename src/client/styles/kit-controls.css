@@ -73,10 +73,10 @@ textarea.inp { height: auto; padding: 8px 10px; line-height: 1.45; resize: verti
 .segmented > button:disabled { color: var(--muted); cursor: not-allowed; }
 
 /* A checkbox drawn as a chip (the repositories of a new task); `.check-chip-tag` is its small note ("Primary"). */
-label.check-chip { display: inline-flex; align-items: center; gap: 8px; height: var(--field-h); margin: 0; padding: 0 10px; font-size: var(--fs-sm); font-weight: var(--fw-medium); border: var(--bw) solid var(--line-control); border-radius: var(--radius-sm); background: var(--field); cursor: pointer; }
+label.check-chip { display: inline-flex; align-items: center; gap: 8px; max-width: 100%; min-height: var(--field-h); margin: 0; padding: 4px 10px; overflow-wrap: anywhere; font-size: var(--fs-sm); font-weight: var(--fw-medium); border: var(--bw) solid var(--line-control); border-radius: var(--radius-sm); background: var(--field); cursor: pointer; }
 .check-chip input { margin: 0; accent-color: var(--accent); }
 .check-chip:has(input:checked) { border-color: var(--accent-edge); background: var(--accent-soft); }
-.check-chip-tag { font-size: var(--fs-2xs); font-weight: var(--fw-semibold); color: var(--accent-soft-ink); }
+.check-chip-tag { flex: none; font-size: var(--fs-2xs); font-weight: var(--fw-semibold); color: var(--accent-soft-ink); }
 
 /* A key in a hint ("/", "⌘ Enter"). */
 .kbd { padding: 0 5px; font-family: var(--font-mono); font-size: var(--fs-2xs); color: var(--muted); border: var(--bw-sm) solid var(--ink); border-radius: var(--radius-xs); white-space: nowrap; }

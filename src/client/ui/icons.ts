@@ -12,7 +12,7 @@ import {
   Link, Unlink, TriangleAlert, User, Users, Signpost, CircleDashed, Wrench, GitPullRequestClosed, Download, Upload,
   Send, Copy, Info, CircleAlert, CircleX, Clock, Tag, Folder, FolderOpen, Sparkles, Brain, Keyboard, Undo2, LogOut,
   CornerUpLeft, ArrowUp, ArrowDown, ArrowRight, Minus, List, Filter, Star, Sun, Moon, Palette,
-  Sprout,
+  Sprout, Plug, VolumeX, Wind, CloudRain, Footprints, Armchair, FastForward, Activity,
   Bell, BellOff, Calendar, Compass, Dices, Flag, Globe, House, Image, KeyRound, Layers, Save, Shield, Video, Volume2, ChevronUp, Zap, Hash, History, AtSign, CircleHelp, TrafficCone, Scissors,
 } from 'lucide';
 
@@ -116,6 +116,14 @@ export const ICONS = {
   'shield': Shield,
   'video': Video,
   'volume-2': Volume2,
+  'volume-x': VolumeX,
+  'plug': Plug,
+  'wind': Wind,
+  'cloud-rain': CloudRain,
+  'footprints': Footprints,
+  'armchair': Armchair,
+  'fast-forward': FastForward,
+  'activity': Activity,
   'chevron-up': ChevronUp,
   'zap': Zap,
   'hash': Hash,

@@ -190,7 +190,7 @@ export function openSettings(net: Net, settings: Settings, onChange: (s: Setting
               if (!m.error && store.map.pick !== m.id) net.send({ t: 'map.set', map: m.id });
             },
           },
-          `${m.icon} ${m.name}`,
+          m.name,
         ),
       ),
     );

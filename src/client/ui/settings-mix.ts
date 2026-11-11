@@ -1,18 +1,19 @@
-// ⚙️ Settings' volume sliders (the Sound & voice pane): the office sounds' master, each kind of sound
+// Settings' volume sliders (the Sound & voice pane): the office sounds' master, each kind of sound
 // under it (see sound/mix.ts), and the jukebox. Its own file to keep settings.ts short.
 import { MIXES, type Mix, type MixLevel } from '../sound/mix';
 import type { Settings } from '../state';
 import { h } from './dom';
+import { icon, type IconName } from './icons';
 
 /** Each kind in Settings: its icon, its name (which the slider and the mute are read out by), and what it covers. */
-export const MIX_LABEL: Record<Mix, [icon: string, name: string, covers: string]> = {
-  background: ['🌬️', 'Background', 'The room’s air, the humming fridge, and the wind and the city up on the roof.'],
-  rain: ['🌧️', 'Rain', 'The rain, all round you outside or a hush behind the windows, and thunder.'],
-  thumps: ['💥', 'Jumps & thumps', 'Landing a jump, a car bumping into something, someone thrown down in the dungeon.'],
-  steps: ['👣', 'Footsteps', 'Your own and everyone else’s.'],
-  typing: ['⌨️', 'Typing & paper', 'Workers typing and fidgeting at their desks, and an issue card or a book’s pages in your hands.'],
-  effects: ['✨', 'Other effects', 'The coffee machine, the gong when someone bangs it, the dog, phones, birds and crickets, the cars and the games.'],
-  alerts: ['🔔', 'Dings & alerts', 'A worker that’s done or needs you, and the gong when a pull request merges or the queue empties. Heard from another tab too.'],
+export const MIX_LABEL: Record<Mix, [icon: IconName, name: string, covers: string]> = {
+  background: ['wind', 'Background', 'The room’s air, the humming fridge, and the wind and the city up on the roof.'],
+  rain: ['cloud-rain', 'Rain', 'The rain, all round you outside or a hush behind the windows, and thunder.'],
+  thumps: ['activity', 'Jumps & thumps', 'Landing a jump, a car bumping into something, someone thrown down in the dungeon.'],
+  steps: ['footprints', 'Footsteps', 'Your own and everyone else’s.'],
+  typing: ['keyboard', 'Typing & paper', 'Workers typing and fidgeting at their desks, and an issue card or a book’s pages in your hands.'],
+  effects: ['sparkles', 'Other effects', 'The coffee machine, the gong when someone bangs it, the dog, phones, birds and crickets, the cars and the games.'],
+  alerts: ['bell', 'Dings & alerts', 'A worker that’s done or needs you, and the gong when a pull request merges or the queue empties. Heard from another tab too.'],
 };
 
 /**
@@ -31,7 +32,7 @@ export function volumeRow(name: string, get: () => MixLevel, set: (l: MixLevel) 
     slider.value = String(v);
     slider.style.setProperty('--fill', `${v}%`);
     pct.textContent = muted ? 'Muted' : `${v}%`;
-    mute.textContent = muted ? '🔊 Unmute' : '🔇 Mute';
+    mute.replaceChildren(icon(muted ? 'volume-2' : 'volume-x'), muted ? 'Unmute' : 'Mute');
     mute.setAttribute('aria-pressed', String(muted));
     mute.classList.toggle('danger', muted);
     row.classList.toggle('muted', muted);
@@ -64,9 +65,9 @@ export function musicRow(get: () => Settings, set: (s: Settings) => void): HTMLE
 /** A slider for each kind of sound under the master, each named and saying what it covers, and the note under them. */
 export function mixRows(get: () => Settings, set: (s: Settings) => void): HTMLElement[] {
   const rows = MIXES.map((k) => {
-    const [icon, name, covers] = MIX_LABEL[k];
+    const [mark, name, covers] = MIX_LABEL[k];
     const row = volumeRow(name, () => get().mix[k], (l) => set({ ...get(), mix: { ...get().mix, [k]: l } }));
-    return h('div.mix-row', {}, h('div.mix-name', {}, h('strong', {}, `${icon} ${name}`), h('span', {}, covers)), row);
+    return h('div.mix-row', {}, h('div.mix-name', {}, h('strong', {}, icon(mark), name), h('span', {}, covers)), row);
   });
   return [h('div.mix', {}, ...rows), h('p.setting-note', {}, 'How loud each kind of sound is, under the office sounds volume above: turning that down or muting it turns them all down.')];
 }

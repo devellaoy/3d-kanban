@@ -137,7 +137,7 @@ export function actionsAt(place: ActionPlace, task: KanbanTask, c: TaskCtx): Act
 }
 
 /**
- * The footer's two groups. Left: Move, Put on hold and Delete (quiet, in the danger colour). Right also has a held task's Resume.
+ * The footer's two groups. Left: Move, Put on hold and Delete (quiet, in the danger colour). Right starts with Create / Push & update PRs, and also has a held task's Resume.
  * Right: the state's actions as secondary buttons, the one primary last, so it sits bottom right.
  */
 export function footerButtons(task: KanbanTask, c: TaskCtx): { left: HTMLElement[]; right: HTMLElement[] } {

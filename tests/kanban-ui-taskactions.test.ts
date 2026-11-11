@@ -154,10 +154,10 @@ test('representative tasks: the Plan and PRs tabs', () => {
   assert.deepEqual(idsOf(currentActions(base({ status: 'waiting', runState: 'running' }), { ...ctx0, planDraft: true }), 'plan'), []);
   const done = base({ status: 'done', prs: PR_SETS.mixed });
   assert.deepEqual(idsOf(currentActions(done, ctx0), 'prs'), ['push-prs', 'fix-prs', 'resolve-conflicts', 'find-prs', 'review-prs']);
-  // The tab draws what the footer doesn't have: Create / Push only from Waiting and Done, never in Review.
-  assert.deepEqual(tabActions(done, ctx0), ['push-prs', 'fix-prs', 'resolve-conflicts', 'find-prs', 'review-prs']);
-  assert.deepEqual(tabActions(base({ status: 'review', prs: PR_SETS.mixed }), ctx0), ['fix-prs', 'resolve-conflicts', 'find-prs', 'review-prs'], 'in Review Push & update PRs is the footer’s');
-  assert.deepEqual(tabActions(base({ status: 'waiting', waitingReason: 'failed' }), ctx0), ['create-prs', 'find-prs']);
+  // The tab draws what the footer doesn't have: Create / Push & update PRs are the footer's in every state.
+  assert.deepEqual(tabActions(done, ctx0), ['fix-prs', 'resolve-conflicts', 'find-prs', 'review-prs']);
+  assert.deepEqual(tabActions(base({ status: 'review', prs: PR_SETS.mixed }), ctx0), ['fix-prs', 'resolve-conflicts', 'find-prs', 'review-prs']);
+  assert.deepEqual(tabActions(base({ status: 'waiting', waitingReason: 'failed' }), ctx0), ['find-prs']);
   assert.deepEqual(idsOf(currentActions(base({ status: 'archived' }), ctx0), 'prs'), []);
   assert.deepEqual(idsOf(currentActions(base({ status: 'waiting', waitingReason: 'failed' }), ctx0), 'prs'), ['create-prs', 'find-prs']);
 });
@@ -166,21 +166,21 @@ test('footerActions: left, right and the primary button of representative tasks'
   const f = (t: Partial<Case['task']>, ctx = ctx0) => footerActions(base(t), ctx);
   assert.deepEqual(f({}), { left: ['move', 'delete'], right: ['start', 'edit'], primary: 'start' });
   assert.deepEqual(f({ status: 'in_progress', runState: 'running' }), { left: [], right: ['stop'], primary: null });
-  assert.deepEqual(f({ status: 'waiting', waitingReason: 'plan_approval' }), { left: ['move', 'hold', 'delete'], right: ['approve', 'request-changes'], primary: 'approve' });
+  assert.deepEqual(f({ status: 'waiting', waitingReason: 'plan_approval' }), { left: ['move', 'hold', 'delete'], right: ['create-prs', 'approve', 'request-changes'], primary: 'approve' });
   assert.deepEqual(f({ status: 'waiting', waitingReason: 'usage_limit' }).primary, 'retry-now');
   assert.equal(f({ status: 'waiting', waitingReason: 'failed' }).primary, 'retry', 'after a failure Retry is the main button (as before), Continue the plain one');
-  assert.deepEqual(f({ status: 'waiting', waitingReason: 'failed' }).right, ['retry', 'continue']);
-  assert.deepEqual(f({ status: 'waiting', waitingReason: 'plan_questions' }), { left: ['move', 'hold', 'delete'], right: ['continue-unanswered'], primary: null });
+  assert.deepEqual(f({ status: 'waiting', waitingReason: 'failed' }).right, ['create-prs', 'retry', 'continue']);
+  assert.deepEqual(f({ status: 'waiting', waitingReason: 'plan_questions' }), { left: ['move', 'hold', 'delete'], right: ['create-prs', 'continue-unanswered'], primary: null });
   assert.equal(f({ status: 'waiting', waitingReason: 'agent_asking' }).primary, null);
-  assert.deepEqual(f({ status: 'review', workspace: true }), { left: ['move', 'hold', 'delete'], right: ['review-round', 'create-prs'], primary: 'create-prs' });
+  assert.deepEqual(f({ status: 'review', workspace: true }), { left: ['move', 'hold', 'delete'], right: ['create-prs', 'review-round'], primary: 'create-prs' });
   assert.equal(f({ status: 'review', prs: PR_SETS.open }).primary, 'push-prs');
   assert.deepEqual(f({ status: 'review', type: 'investigate' }), { left: ['move', 'hold', 'delete'], right: [], primary: null });
   assert.deepEqual(f({ status: 'on_hold' }), { left: ['move', 'delete'], right: ['resume'], primary: 'resume' });
   assert.deepEqual(f({ status: 'archived' }), { left: ['move', 'delete'], right: [], primary: null });
-  // Create / Push from Waiting and Done are the Pull requests tab's, not the footer's.
-  assert.deepEqual(f({ status: 'done' }).right, []);
+  // Create / Push from Waiting and Done are in the footer too, first and plain (never the primary).
+  assert.deepEqual(f({ status: 'done' }).right, ['create-prs']);
   assert.equal(f({ status: 'done' }).primary, null);
-  assert.deepEqual(f({ status: 'waiting', waitingReason: 'stopped', prs: PR_SETS.merged }).right, ['continue']);
+  assert.deepEqual(f({ status: 'waiting', waitingReason: 'stopped', prs: PR_SETS.merged }).right, ['push-prs', 'continue']);
   assert.equal(f({ status: 'waiting', waitingReason: 'stopped' }).primary, 'continue');
   assert.deepEqual(f({ status: 'todo' }, { canEdit: false, canMove: false }), { left: ['delete'], right: ['start'], primary: 'start' });
 });
@@ -227,10 +227,11 @@ test('footerActions offers every action the view has today, once, with at most o
     assert.deepEqual(missing, [], `${c.label}: lost from the footer`);
     const extra = [...kept].filter((id) => !before.has(id));
     assert.ok(extra.every((id) => id === 'request-changes') && (!extra.length || planFeedbackShown(c.task, c.ctx)), `${c.label}: extra ${extra}`);
-    // Create / Push & update PRs: the footer in Review, the tab otherwise, whenever the old view had it.
+    // Create / Push & update PRs: in the footer only, first of the right group, whenever the old view had it.
     const create = now.some((a) => a.id === 'create-prs' || a.id === 'push-prs');
     const places = [...inFooter, ...tab].filter((id) => id === 'create-prs' || id === 'push-prs').length;
     assert.equal(places, create ? 1 : 0, `${c.label}: Create / Push in ${places} places`);
+    if (create) assert.ok(foot.right[0] === 'create-prs' || foot.right[0] === 'push-prs', `${c.label}: Create / Push is not first`);
     // Primary: one at most, one of the right-hand actions, and Create/Push only in Review.
     if (foot.primary) {
       assert.ok(foot.right.includes(foot.primary), `${c.label}: primary ${foot.primary} is not on the right`);

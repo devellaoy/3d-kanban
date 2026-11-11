@@ -145,7 +145,7 @@ export const TAB_ONLY_ACTIONS: readonly ActionId[] = ['fix-prs', 'resolve-confli
  * Which of the right-hand actions is primary, first match wins: what was the `.primary` button of the old
  * Overview bar in each state. Approve for a plan, Start for To do, Retry now for a usage limit, Retry for
  * a failed or interrupted run (Continue beside it is plain), Continue for any other wait, Create / Push
- * PRs in Review, Resume for a held task. A state with none of these has no primary.
+ * PRs in Review (plain in any other state), Resume for a held task. A state with none of these has no primary.
  */
 const PRIMARY_ORDER: readonly ActionId[] = ['approve', 'start', 'retry-now', 'retry', 'continue', 'create-prs', 'push-prs', 'resume'];
 
@@ -163,6 +163,9 @@ export function footerActions(task: ActionSubject, ctx: ActionCtx): FooterAction
     [c.delete, 'delete'],
   ]);
   const right = pick([
+    // Create / Push & update PRs: the old Overview's and the old PRs tab's conditions together. First, so that
+    // outside Review (where it is plain) it never sits beside the primary button at the end.
+    [c.createPrsOverview || c.createPrsTab, createId(task)],
     [c.stop, 'stop'],
     [c.start, 'start'],
     [c.edit, 'edit'],
@@ -174,18 +177,16 @@ export function footerActions(task: ActionSubject, ctx: ActionCtx): FooterAction
     [c.retry || c.continue, 'continue'],
     [c.continueUnanswered, 'continue-unanswered'],
     [c.reviewRound, 'review-round'],
-    // Create / Push stand here where the old Overview bar had them (Review); the PRs tab keeps them otherwise.
-    [c.createPrsOverview, createId(task)],
     // A held task's Resume is its one way on: the primary, as it was.
     [c.resume, 'resume'],
   ]);
-  const primary = PRIMARY_ORDER.find((id) => right.includes(id)) ?? null;
+  const primary = PRIMARY_ORDER.find((id) => right.includes(id) && ((id !== 'create-prs' && id !== 'push-prs') || task.status === 'review')) ?? null;
   return { left, right, primary };
 }
 
 /**
- * What the Pull requests tab draws of its own: its actions that the footer doesn't have. Create / Push &
- * update PRs are the footer's in Review and the tab's from Waiting and Done, never both.
+ * What the Pull requests tab draws of its own: its actions that the footer doesn't have (Create / Push &
+ * update PRs are the footer's in every state, so never here).
  */
 export function tabActions(task: ActionSubject, ctx: ActionCtx): ActionId[] {
   const f = footerActions(task, ctx);

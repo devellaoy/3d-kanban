@@ -67,7 +67,7 @@ a.kb-chip:hover { background: var(--field-hover); }
 .filter-chip:focus-within { outline: var(--focus-ring); outline-offset: 2px; }
 /* The same over a bar's main picker (the board's project): a control's height and line, its value in the text's weight. */
 .filter-chip.md { height: var(--ctl-h); font-size: var(--fs-sm); font-weight: var(--fw-semibold); border: var(--bw) solid var(--line-control); }
-.filter-chip-value { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.filter-chip-value { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .filter-chip.hidden { display: none; }
 
 /* ---------- Counts ---------- */

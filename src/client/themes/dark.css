@@ -216,6 +216,7 @@
   --run-dot: #19c37d;   /* the dot of a task whose agent is running */
   --run-halo: rgba(25, 195, 125, .7);   /* ... and the halo round it */
   --pin-size: 8px;   /* the pin on a card's top edge (0: no pin) */
+  --page-bg: #0f0f0f;   /* the page under the kanban board (a look may lay a wash over it) */
   --bar-bg: #121212;   /* a window's header and footer, and the board's top row */
   --col-bg: #141414;   /* a board column's surface (transparent: the cards stand on the page) */
   --col-edge: rgba(255, 255, 255, .09);   /* ... its border */
@@ -256,7 +257,6 @@
 :root[data-theme="dark"] .menu-toggle[aria-checked=true] .switch::after { background: #fff; }
 
 /* A near-black page under the kanban and the 2D view, the columns a step lighter. */
-:root[data-theme="dark"] body.kanban,
 :root[data-theme="dark"] body.lite { background: var(--bg); }
 
 /* The bars' controls: at least 36px tall. */

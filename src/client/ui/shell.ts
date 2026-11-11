@@ -67,7 +67,8 @@ const some = (c: readonly Child[] | undefined) => !!c?.some((x) => x !== null &&
 export function shellHead(o: ShellHeadOptions): { head: HTMLElement; close: HTMLButtonElement; title: HTMLElement } {
   const close = h('button.btn.close.icon-btn', { type: 'button', 'aria-label': 'Close', title: 'Close (Esc)' }, icon('x', { size: 18 })) as HTMLButtonElement;
   const title = h('h2', {}, o.title);
-  const id = o.id ? h('span.shell-id', {}, o.id) : null;
+  // The whole text is its tooltip: a long project name or key is cut with an ellipsis.
+  const id = o.id ? h('span.shell-id', { title: typeof o.id === 'string' ? o.id : (o.id as Node).textContent ?? undefined }, o.id) : null;
   const tools = h('div.shell-tools', {}, ...(o.tools ?? []));
   if (o.kind === 'rich') {
     if (some(o.tools)) tools.append(h('span.shell-sep', { 'aria-hidden': 'true' }));

@@ -4,6 +4,7 @@
 import type { Net } from '../net';
 import { store } from '../state';
 import { h, timeAgo } from './dom';
+import { icon } from './icons';
 import { setting } from './settingrow';
 
 /** The setting, kept up to date until `off`. */
@@ -16,9 +17,9 @@ export function carryOnSetting(net: Net): { section: HTMLElement; off: () => voi
     row.classList.toggle('hidden', !admin);
     row.replaceChildren(
       ...([
-        [true, '▶️ Carry on by themselves'],
-        [false, '🪑 Wait at their desks'],
-      ] as const).map(([value, label]) =>
+        [true, 'play', 'Carry on by themselves'],
+        [false, 'armchair', 'Wait at their desks'],
+      ] as const).map(([value, mark, label]) =>
         h(
           'button.btn',
           {
@@ -30,6 +31,7 @@ export function carryOnSetting(net: Net): { section: HTMLElement; off: () => voi
               if (store.carryOn.on !== value) net.send({ t: 'carryOn.set', on: value });
             },
           },
+          icon(mark),
           label,
         ),
       ),

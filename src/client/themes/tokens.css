@@ -220,6 +220,7 @@
   --run-dot: #06d6a0;   /* the dot of a task whose agent is running */
   --run-halo: rgba(6, 214, 160, .7);   /* ... and the halo round it */
   --pin-size: 14px;   /* the pin on a card's top edge (0: no pin) */
+  --page-bg: #fffaf3;   /* the page under the kanban board (a look may lay a wash over it) */
   --bar-bg: #fff1de;   /* a window's header and footer, and the board's top row */
   --col-bg: #fff1de;   /* a board column's surface (transparent: the cards stand on the page) */
   --col-edge: #2b2d42;   /* ... its border */

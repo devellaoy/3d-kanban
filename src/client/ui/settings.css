@@ -53,3 +53,6 @@
 /* A row of buttons under a setting's field, and a note that keeps its line breaks. */
 .seg.below { margin-top: 8px; }
 .setting-note.pre { white-space: pre-line; }
+/* A kind of sound: its icon beside its name. */
+.mix-name strong { display: inline-flex; align-items: center; gap: 6px; }
+.mix-name strong > svg { flex: none; color: var(--text-2); }
