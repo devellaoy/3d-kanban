@@ -52,6 +52,12 @@ export class KanbanStore {
       case 'kanban.snapshot':
         // A one-off snapshot of another project (asked for by something else) isn't the board's.
         if (msg.project !== this.project) return false;
+        // Nor is one of this project asked for with the archive the other way (the PR board's 👤 Mine,
+        // a hire form): its cards would drop the open archive's, or bring archived ones onto the board.
+        if (!!msg.includeArchived !== this.includeArchived) {
+          this.applyMeta(msg);
+          return false;
+        }
         this.tasks = new Map(msg.tasks.map((c) => [c.id, c]));
         this.projects = msg.projects;
         this.settings = msg.settings;
