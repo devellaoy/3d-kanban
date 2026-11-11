@@ -15,4 +15,4 @@
 .floor-item .floor-name { font-weight: var(--fw-heavy); font-size: var(--fs-lg); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .floor-item .floor-sub { font-size: var(--fs-xs); font-weight: var(--fw-semibold); color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .floor-item .floor-stats { display: flex; gap: 6px; font-size: var(--fs-xs); font-weight: var(--fw-bold); white-space: nowrap; }
-.floor-item .floor-stats .waiting { color: var(--bad); }
+.floor-item .floor-stats .waiting { color: var(--danger-ink); }

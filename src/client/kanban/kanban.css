@@ -84,12 +84,13 @@ label.kb-search { flex: 1 1 240px; max-width: 380px; height: var(--ctl-h); displ
 .kb-card.selected { outline: var(--focus-ring); outline-offset: 2px; transform: rotate(0deg); }
 .kb-card-top { display: flex; align-items: center; gap: 5px; min-height: 20px; }
 .kb-card .kb-id { font-family: var(--font-mono); font-size: var(--fs-2xs); font-weight: var(--fw-medium); }
-/* A short agent name (Claude, Codex) always shows whole: on a narrow card it is the phase that gives way. */
-.kb-card .kb-phase { flex: 0 1 auto; min-width: 0; padding: 0 4px; font-weight: var(--fw-semibold); overflow: hidden; text-overflow: ellipsis; }
-.kb-card-top > .run-dot { margin: 0; }
-.kb-tool { flex: none; margin-left: auto; display: inline-flex; align-items: center; gap: 3px; min-width: 0; font-size: var(--fs-2xs); color: var(--muted); white-space: nowrap; }
-.kb-tool > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
-.kb-card-top > :not(.kb-tool, .kb-phase) { flex: none; }
+/* The phase and its review round always show whole. On a card too narrow for it all, the agent's name drops
+   to the row below and out of sight, leaving its icon (the name is its tooltip). */
+.kb-card .kb-phase { flex: none; padding: 0 4px; font-weight: var(--fw-semibold); }
+.kb-card-top > .run-dot { margin: 0 2px 0 0; }
+.kb-tool { flex: 0 1 auto; margin-left: auto; display: flex; flex-wrap: wrap; justify-content: flex-end; align-items: center; column-gap: 3px; row-gap: 8px; min-width: 12px; height: 16px; overflow: hidden; font-size: var(--fs-2xs); line-height: 16px; color: var(--muted); white-space: nowrap; }
+.kb-tool > svg { height: 16px; }
+.kb-card-top > :not(.kb-tool) { flex: none; }
 .kb-tool > svg { flex: none; }
 .kb-card .kb-move { margin-right: -4px; color: var(--muted); }
 .kb-title { font-size: var(--fs-sm); font-weight: var(--fw-semibold); line-height: 1.35; overflow-wrap: anywhere; text-wrap: pretty; }

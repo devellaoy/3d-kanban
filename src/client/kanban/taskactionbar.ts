@@ -8,7 +8,7 @@ import type { IconName } from '../ui/icons';
 import { btn, type BtnOptions } from '../ui/kit';
 import type { KanbanTask } from '../../shared/kanban/types.js';
 import type { ActionId, ActionPlace, ActionSubject } from './taskactions';
-import { currentActions, footerActions } from './taskactions';
+import { currentActions, footerActions, tabActions } from './taskactions';
 import type { TaskCtx } from './taskctx';
 import { openHoldDialog, openResumeDialog } from './holddialog';
 import { findPrsButton, prModeButton } from './prbuttons';
@@ -124,6 +124,11 @@ export function planDraftOf(c: TaskCtx): boolean {
 
 const ctxOf = (c: TaskCtx) => ({ canEdit: !!c.o.edit, canMove: !!c.o.moveMenu, planDraft: planDraftOf(c) });
 
+/** The ids the Pull requests tab draws itself: its actions that the footer doesn't have. */
+export function tabActionIds(task: KanbanTask, c: TaskCtx): ActionId[] {
+  return tabActions(subjectOf(task), ctxOf(c));
+}
+
 /** The ids of the actions offered in one place of the view. */
 export function actionsAt(place: ActionPlace, task: KanbanTask, c: TaskCtx): ActionId[] {
   return currentActions(subjectOf(task), ctxOf(c))
@@ -132,7 +137,7 @@ export function actionsAt(place: ActionPlace, task: KanbanTask, c: TaskCtx): Act
 }
 
 /**
- * The footer's two groups. Left: Move, Put on hold or Resume, and Delete (quiet, in the danger colour).
+ * The footer's two groups. Left: Move, Put on hold and Delete (quiet, in the danger colour). Right also has a held task's Resume.
  * Right: the state's actions as secondary buttons, the one primary last, so it sits bottom right.
  */
 export function footerButtons(task: KanbanTask, c: TaskCtx): { left: HTMLElement[]; right: HTMLElement[] } {

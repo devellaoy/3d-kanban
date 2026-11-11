@@ -25,9 +25,9 @@ test('the picker: the first connection for the site, the named one when a source
   assert.equal(pickJiraConnection(list, { site: 'b.atlassian.net' }), b1, 'two on one site: the first');
   assert.equal(pickJiraConnection(list, { site: 'b.atlassian.net', connection: 'b2' }), b2, 'unless the source chose');
   assert.equal(pickJiraConnection(list, { site: 'A.ATLASSIAN.NET' }), a, 'the site in any case');
-  assert.throws(() => pickJiraConnection(list, { site: 'a.atlassian.net', connection: 'gone' }), /connection this source uses was removed: pick another in 📁 Projects → Issue sources/);
+  assert.throws(() => pickJiraConnection(list, { site: 'a.atlassian.net', connection: 'gone' }), /connection this source uses was removed: pick another in Settings → Projects → Issue sources/);
   assert.throws(() => pickJiraConnection(list, { site: 'b.atlassian.net', connection: 'a' }), /The Jira connection Customer A is for a.atlassian.net, not b.atlassian.net/);
-  assert.throws(() => pickJiraConnection(list, { site: 'c.atlassian.net' }), /No Jira connection for c.atlassian.net: an admin adds one in ⚙️ Settings → 🗂️ Kanban/);
+  assert.throws(() => pickJiraConnection(list, { site: 'c.atlassian.net' }), /No Jira connection for c.atlassian.net: an admin adds one in Settings → Kanban/);
   assert.throws(() => pickJiraConnection([], { site: 'a.atlassian.net' }), /No Jira connection for a.atlassian.net/);
 });
 

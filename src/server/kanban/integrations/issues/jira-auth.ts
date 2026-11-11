@@ -8,12 +8,12 @@ import type { JiraConnection } from '../../secrets.js';
 export function pickJiraConnection(list: readonly JiraConnection[], at: JiraAt): JiraConnection {
   if (at.connection !== undefined) {
     const conn = list.find((c) => c.id === at.connection);
-    if (!conn) throw new Error('The Jira connection this source uses was removed: pick another in 📁 Projects → Issue sources');
+    if (!conn) throw new Error('The Jira connection this source uses was removed: pick another in Settings → Projects → Issue sources');
     if (!sameJiraSite(conn.site, at.site)) throw new Error(`The Jira connection ${conn.name} is for ${conn.site}, not ${at.site}`);
     return conn;
   }
   const conn = list.find((c) => sameJiraSite(c.site, at.site));
-  if (!conn) throw new Error(`No Jira connection for ${at.site}: an admin adds one in ⚙️ Settings → 🗂️ Kanban`);
+  if (!conn) throw new Error(`No Jira connection for ${at.site}: an admin adds one in Settings → Kanban`);
   return conn;
 }
 

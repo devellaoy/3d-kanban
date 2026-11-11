@@ -7,16 +7,15 @@ import { icon } from '../ui/icons';
 import { btn, prPill } from '../ui/kit';
 import type { KanbanTask } from '../../shared/kanban/types.js';
 import { unlinkButton } from './prbuttons';
-import { actionButton, actionsAt } from './taskactionbar';
-import { TAB_ONLY_ACTIONS } from './taskactions';
+import { actionButton, tabActionIds } from './taskactionbar';
 import type { TaskCtx } from './taskctx';
 
 export function prsPane(c: TaskCtx, task: KanbanTask): HTMLElement[] {
   const project = c.project(task.project);
   const out: HTMLElement[] = [];
   const bar = h('div.kb-actions');
-  // Create and Push are the footer's; what needs a pull request to look at stays here.
-  for (const id of actionsAt('prs', task, c).filter((x) => TAB_ONLY_ACTIONS.includes(x))) {
+  // Create / Push & update PRs are the footer's in Review; from Waiting and Done they are here, with what needs a pull request to look at.
+  for (const id of tabActionIds(task, c)) {
     if (id === 'review-prs') bar.append(reviewButton(c, task));
     else bar.append(actionButton(id, task, c) ?? '');
   }

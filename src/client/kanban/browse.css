@@ -15,7 +15,7 @@
 .kb-browse-window .kb-br-filters select, .kb-browse-window .kb-br-filters input[type=search] { width: auto; max-width: 220px; min-width: 0; height: 32px; padding: 0 8px; font: var(--fw-bold) var(--fs-sm) var(--font); color: var(--text); background: var(--field); border: var(--bw-sm) solid var(--ink); border-radius: var(--radius-md); outline: none; }
 .kb-browse-window .kb-br-filters .kb-br-labels { width: 180px; }
 .kb-browse-window select:focus, .kb-browse-window input:focus, .kb-browse-window textarea:focus { border-color: var(--accent); }
-.kb-browse-window .btn.small { padding: 4px 10px; border-width: var(--bw-sm); }
+.kb-browse-window .btn.small { border-width: var(--bw-sm); }
 .kb-browse-window .kb-br-bar .btn.small { height: 38px; }
 .kb-br-jqlbtn[aria-pressed=true] { background: var(--warn-soft); }
 .kb-br-jql { display: flex; flex-direction: column; gap: 6px; }

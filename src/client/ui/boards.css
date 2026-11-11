@@ -27,7 +27,7 @@
 .label-pick[aria-pressed="true"] { opacity: 1; border-color: var(--ink); background: var(--field); color: var(--text); }
 .label-pick:focus-visible { outline: none; opacity: 1; box-shadow: 0 0 0 2px var(--accent); }
 .col-filter-foot { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: var(--fs-2xs); font-weight: var(--fw-semibold); color: var(--muted); }
-.col-filter-foot .btn.small { padding: 2px 8px; font-size: var(--fs-xs); border-width: var(--bw-sm); border-radius: calc(var(--radius-md) - 1px); }
+.col-filter-foot .btn.small { height: auto; padding: 2px 8px; font-size: var(--fs-xs); border-width: var(--bw-sm); border-radius: calc(var(--radius-md) - 1px); }
 .column ul { list-style: none; margin: 0; padding: 10px; display: flex; flex-direction: column; gap: 10px; overflow: auto; flex: 1; }
 .card { background: var(--note-yellow); border: var(--bw-sm) solid var(--ink); border-radius: 6px; padding: 10px 10px 8px; box-shadow: 0 3px 0 color-mix(in srgb, var(--text) 60%, transparent); cursor: pointer; position: relative; transform: rotate(calc(var(--tilt, 0deg) * var(--note-tilt))); transition: transform .1s; }
 .card:hover { transform: rotate(0deg) scale(1.02); }
@@ -56,9 +56,9 @@
 /* A card's small facts (an icon and a few words), its checks mark and its +/- counts. */
 .card .fact { display: inline-flex; align-items: center; gap: 3px; }
 .card .chk { display: inline-flex; }
-.card .chk.pass { color: var(--good); }
-.card .chk.fail { color: var(--bad); }
-.card .chk.pending { color: var(--warn); }
+.card .chk.pass { color: var(--good-ink); }
+.card .chk.fail { color: var(--danger-ink); }
+.card .chk.pending { color: var(--warn-ink); }
 .card .add { color: var(--diff-add-ink); }
 .card .del { color: var(--diff-del-ink); }
 .col-title { display: inline-flex; align-items: center; gap: 6px; }

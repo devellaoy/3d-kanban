@@ -71,6 +71,13 @@ const PAIRS: Pair[] = [
   ]),
   ...(['plan', 'implement', 'review', 'fix', 'pr'] as const).map((p): Pair => ({ fg: `--ph-${p}-ink`, bg: `--ph-${p}-soft`, min: 4.5, why: `a run phase badge (${p})` })),
   ...(['open', 'draft', 'merged', 'closed'] as const).map((p): Pair => ({ fg: `--pr-${p}-ink`, bg: `--pr-${p}-soft`, min: 4.5, why: `a pull request's state (${p})` })),
+  // Status colours as text: the -ink tokens, never the fills (--bad, --warn, --good), which are for backgrounds.
+  { fg: '--danger-ink', bg: '--paper', min: 4.5, why: 'an error line on a panel or window (a form error, a failed check)', over: { glossy: '--bg' } },
+  { fg: '--bad-ink', bg: '--paper', min: 4.5, why: 'red status text on a panel', over: { glossy: '--bg' } },
+  { fg: '--good-ink', bg: '--paper', min: 4.5, why: 'green status text on a panel (a passed check)', over: { glossy: '--bg' } },
+  { fg: '--warn-ink', bg: '--paper', min: 4.5, why: 'amber status text on a panel (a pending check)', over: { glossy: '--bg' } },
+  { fg: '--gutter-ink', bg: '--gutter-bg', min: 4.5, why: 'a diff\'s line numbers (the pull request window)', except: { default: 'the default look is frozen pixel-identical (#a39a91 on #faf6f0 is 2.6:1)', glossy: 'Glossy keeps its faint line numbers (2.5:1)' } },
+  { fg: '--gutter-ink-2', bg: '--gutter-bg', min: 4.5, why: 'a diff\'s line numbers (the Changes window)', except: { default: 'the default look is frozen pixel-identical (2.9:1)', glossy: 'Glossy keeps its faint line numbers (3.1:1)' } },
   { fg: '--attn-ink', bg: '--attn-soft', min: 4.5, why: 'the "needs you" pill and a waiting card\'s note' },
   { fg: '--attn-icon', bg: '--paper', min: 3, why: 'the "needs you" icon on a panel, a graphic: 3:1', over: { glossy: '--bg' } },
   { fg: '--banner-title', bg: '--banner-bg', min: 4.5, why: 'the title of a waiting task\'s banner' },

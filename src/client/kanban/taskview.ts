@@ -33,12 +33,11 @@ import { isRunning } from '../../shared/kanban/moves.js';
 import { kanbanApi, type KanbanApi, type KanbanOk } from './api';
 import { attachBox } from './attachbox';
 import { REVIEW_DEFAULTS } from './defaults';
-import { needsAttention, phaseBadge, showIn3dLink, tabFor, visibleTabs, type TaskTab } from './model';
+import { phaseBadge, showIn3dLink, tabFor, visibleTabs, type TaskTab } from './model';
 import { kstore } from './store';
 import { onSendKey } from './sendkey';
 import { mountChangesView, type ChangesViewHandle } from './changesview';
 import { mountIssueTab } from './issuetab';
-import { waitingName } from './labels';
 import { run, tabCount, tabStrip, textArea } from './ui';
 import { Conversation, COMMENTS_PAGE } from './taskconv';
 import { footerButtons } from './taskactionbar';
@@ -379,7 +378,6 @@ class View implements TaskView {
       meta: [
         running ? h('span.kb-pulse', { title: 'Running' }) : null,
         badge ? phasePill(badge.phase, badge.round) : null,
-        waitingReason && status === 'waiting' ? h(needsAttention({ status, waitingReason }) ? 'span.attn-pill' : 'span.st-pill', {}, waitingName(waitingReason)) : null,
       ],
       tools,
       tabs: this.strip.el,

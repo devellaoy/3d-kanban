@@ -34,12 +34,11 @@
 /* Sizes: a fixed height, so a row of controls lines up whatever the font. */
 .btn.lg { height: var(--field-h); padding: 0 14px; }
 .btn.md { height: var(--ctl-h); padding: 0 12px; }
-.btn.sm { height: var(--ctl-h-sm); padding: 0 10px; font-size: var(--fs-xs); }
+/* `.small` is the older name of `.sm`: the same button. */
+.btn.sm, .btn.small { height: var(--ctl-h-sm); padding: 0 10px; font-size: var(--fs-xs); }
 .btn.xs { height: var(--ctl-h-xs); padding: 0 6px; font-size: var(--fs-2xs); border-width: var(--bw-sm); border-radius: var(--radius-xs); }
 /* The one that matters in a sized row is a step heavier than its neighbours. */
-.btn:is(.lg, .md, .sm):is(.primary, .danger) { font-weight: var(--fw-heavy); }
-/* The older small button, sized by its padding. */
-.btn.small { padding: 4px 9px; font-size: var(--fs-sm); border-radius: var(--radius-md); box-shadow: var(--shadow-xs); }
+.btn:is(.lg, .md, .sm, .small):is(.primary, .danger) { font-weight: var(--fw-heavy); }
 
 /* A button that is only an icon (always with an aria-label and a title): square, quiet. */
 .icon-btn { display: inline-flex; align-items: center; justify-content: center; flex: none; width: calc(var(--ctl-h-sm) + 2px); height: calc(var(--ctl-h-sm) + 2px); padding: 0; border-radius: var(--radius-sm); cursor: pointer; }

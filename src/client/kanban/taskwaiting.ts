@@ -28,7 +28,10 @@ export function waitingBox(c: TaskCtx, task: KanbanTask): HTMLElement | null {
   const workerId = task.phase === 'review' || task.phase === 'pr-review' ? task.reviewerWorkerId : task.workerId;
   const terminal = asking && workerId && c.o.openTerminal ? () => c.o.openTerminal?.(workerId, task.project) : undefined;
 
-  const lines: (Node | null)[] = [task.waitingText ? renderMarkdown(task.waitingText, open, '') : null];
+  // A plan that waits says which version it is when the office gave no words of its own.
+  const version = reason === 'plan_approval' ? c.detail?.plans.reduce((n, p) => Math.max(n, p.version), 0) : 0;
+  const said = task.waitingText ? renderMarkdown(task.waitingText, open, '') : version ? h('span', {}, `Plan version ${version} is ready. Nothing is implemented until you approve it or ask for changes.`) : null;
+  const lines: (Node | null)[] = [said];
   if (task.retryAt) {
     lines.push(h('span.kb-retry', {}, icon('rotate-cw', { size: 13 }), h('span', { [RETRY_ATTR]: String(task.retryAt) }, retryText(task.retryAt)), h('small.kb-muted', {}, `· tried ${task.retryAttempts} times so far`)));
   }

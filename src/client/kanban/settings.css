@@ -93,7 +93,7 @@
 .kb-new-project-modal input[type=text]:disabled { background: var(--field-off); color: var(--muted); }
 .kb-new-project-modal .kb-np-note { margin: 0; font-size: var(--fs-xs); font-weight: var(--fw-semibold); color: var(--muted); overflow-wrap: anywhere; }
 .kb-new-project-modal .kb-np-note.busy { color: var(--text); }
-.kb-new-project-modal .kb-np-err { margin: 0; font-size: var(--fs-sm); font-weight: var(--fw-bold); color: var(--bad); overflow-wrap: anywhere; }
+.kb-new-project-modal .kb-np-err { margin: 0; font-size: var(--fs-sm); font-weight: var(--fw-bold); color: var(--danger-ink); overflow-wrap: anywhere; }
 
 @media (max-width: 700px) {
   .kb-set .kb-two, .kb-set .kb-three { grid-template-columns: minmax(0, 1fr); }

@@ -259,7 +259,7 @@ test('agent asking for a permission → continue("no") is refused and nothing is
   assert.equal(fx.repo.card(task.id)?.askingKind, 'permission');
   const before = fx.invocations().length;
 
-  assert.equal(await fx.engine.continue(task.id, ADA, 'no'), 'The agent is asking for a permission in its terminal: answer it there (⌨️ Open its terminal)');
+  assert.equal(await fx.engine.continue(task.id, ADA, 'no'), 'The agent is asking for a permission in its terminal: answer it there (Open the terminal)');
   stillAsking(fx, task.id);
   assert.equal(fx.repo.listComments(task.id).comments.filter((c) => c.authorKind === 'user').length, 0, 'a refused answer is no comment');
 
@@ -268,7 +268,7 @@ test('agent asking for a permission → continue("no") is refused and nothing is
   const now = stillAsking(fx, task.id);
   assert.deepEqual(now.pendingMessages.map((m) => m.text), ['no, keep build/'], 'queued for the turn’s end');
   assert.ok(
-    notes(fx, task.id).some((n) => n === 'The agent is asking for a permission in its terminal: answer it there (⌨️ Open its terminal). The comment is kept and goes to it once that turn is over.'),
+    notes(fx, task.id).some((n) => n === 'The agent is asking for a permission in its terminal: answer it there (Open the terminal). The comment is kept and goes to it once that turn is over.'),
     notes(fx, task.id).join(' | '),
   );
   await new Promise((r) => setTimeout(r, 300));

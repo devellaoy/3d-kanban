@@ -51,7 +51,7 @@ button { font-family: inherit; }
    color swatches, a list of things to click (services, the jukebox, the bar), a spinner and a when. */
 .seg { display: flex; gap: 8px; flex-wrap: wrap; }
 .setting-note { margin: 10px 0 0; font-size: var(--fs-sm); font-weight: var(--fw-medium); color: var(--muted); line-height: 1.4; }
-.setting-note.bad { color: var(--bad); }
+.setting-note.bad { color: var(--danger-ink); }
 .webhook { display: flex; gap: 8px; }
 .webhook input[type=text] { flex: 1; min-width: 0; }
 
