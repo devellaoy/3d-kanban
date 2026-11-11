@@ -196,6 +196,46 @@ test('the hire form: repositories keep the primary one, all of them is the defau
   assert.deepEqual(two.msg.task.repoIds, ['api', 'docs']);
 });
 
+test('the hire form with an issue picked: kanban.issues.createTask with the form’s fields', () => {
+  const made = hireTaskMsg(form({ issueKey: 'gh:acme/api#5', planApproval: 'manual', model: 'opus', attachmentIds: ['a1'], tags: ['meeting:m1'], ticket: 'IGNORED-1', ticketUrl: 'https://example.test/1' }));
+  assert.ok('msg' in made);
+  // No project, ticket or link in the fields: the office takes them from the issue. No title either: the issue's.
+  assert.deepEqual(made.msg, {
+    t: 'kanban.issues.createTask',
+    project: 'api',
+    issueKey: 'gh:acme/api#5',
+    start: true,
+    deskId: 'd3',
+    task: {
+      description: 'Fix the login\n\nIt loops on Safari.',
+      type: 'implement',
+      tool: 'claude',
+      model: 'opus',
+      usePlan: true,
+      useReview: true,
+      planApproval: 'manual',
+      review: { rounds: 2 },
+      attachmentIds: ['a1'],
+      tags: ['meeting:m1'],
+    },
+  });
+  // Nothing written: the issue alone is the task.
+  const bare = hireTaskMsg(form({ issueKey: 'UYT-12', text: '  \n ', deskId: undefined }));
+  assert.ok('msg' in bare);
+  assert.deepEqual(bare.msg, { t: 'kanban.issues.createTask', project: 'api', issueKey: 'UYT-12', start: true, task: { type: 'implement', tool: 'claude', usePlan: true, useReview: true, review: { rounds: 2 } } });
+  // A title goes along only when the form names one (a hire with a context before the text).
+  const titled = hireTaskMsg(form({ issueKey: 'UYT-12', title: 'Mind the cache', text: 'From the meeting\n\nMind the cache' }));
+  assert.ok('msg' in titled && titled.msg.t === 'kanban.issues.createTask');
+  assert.equal(titled.msg.task?.title, 'Mind the cache');
+  // The provider still has to run the kanban.
+  assert.ok('error' in hireTaskMsg(form({ issueKey: 'UYT-12', provider: 'gemini' as HireTaskForm['provider'] })));
+  // Without an issue it is the plain create, ticket and all.
+  const plain = hireTaskMsg(form({ ticket: 'UYT-9', ticketUrl: 'https://example.test/9' }));
+  assert.ok('msg' in plain && plain.msg.t === 'kanban.task.create');
+  assert.equal(plain.msg.task.ticket, 'UYT-9');
+  assert.equal(plain.msg.task.title, 'Fix the login');
+});
+
 test('the hire form says no without a title or with a provider the kanban can’t run', () => {
   assert.ok('error' in hireTaskMsg(form({ text: '  \n ' })));
   assert.ok('error' in hireTaskMsg(form({ provider: 'opencode' })));

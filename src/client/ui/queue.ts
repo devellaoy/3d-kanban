@@ -76,7 +76,8 @@ export function openQueue(net: Net, actions: QueueActions) {
   form.noValidate = true;
   const submit = () => {
     const text = ta.value.trim();
-    if (!text) {
+    // A kanban task made from a picked issue takes its title from it, so it needs no text.
+    if (!text && !kanban?.hasIssue()) {
       ta.focus();
       return;
     }

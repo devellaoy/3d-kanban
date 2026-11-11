@@ -131,7 +131,7 @@ export function openPrompt(opts: PromptOptions) {
     form.querySelector(':scope > .body > p:not(.setting-note)')?.classList.toggle('hidden', on);
     form.querySelector(':scope > header > h2')!.textContent = on ? (opts.kanbanOption?.title ?? opts.title) : opts.title;
     submit.textContent = on ? '🗂️ Create & start' : (opts.submitLabel ?? 'Send ✨');
-    ta.placeholder = on ? 'What’s the task? Its first line is the title' : (opts.placeholder ?? 'What should the worker work on?');
+    ta.placeholder = !on ? (opts.placeholder ?? 'What should the worker work on?') : kanban?.hasIssue() ? 'Anything to add? It goes above the issue’s text' : 'What’s the task? Its first line is the title';
   };
   if (kanban) {
     kanban.onChange(kanbanPaint);
@@ -142,16 +142,24 @@ export function openPrompt(opts: PromptOptions) {
   // A file dropped beside the body's drop zone would have the browser open it in place of the office.
   if (files) for (const type of ['dragover', 'drop']) modal.backdrop.addEventListener(type, (e) => e.preventDefault());
   cancel.addEventListener('click', () => modal.close());
+  let sending = false;
   const send = (raw?: boolean) => {
     const text = ta.value.trim();
     if (files?.busy()) return void toast('Files are still uploading', 'warn');
     const attachmentIds = files?.ids() ?? [];
-    // The hire makes a kanban task, which needs its text.
+    // The hire makes a kanban task, which needs its text, unless an issue was picked: its title is the task's.
     if (kanban?.on()) {
-      if (!text) return ta.focus();
+      if (!text && !kanban.hasIssue()) return ta.focus();
       if (provider && !provider.valid()) return;
-      modal.close();
-      return kanban.send(text, { provider: provider?.value(), model: provider?.model(), effort: provider?.effort(), attachmentIds });
+      if (sending) return;
+      // The dialog closes once the office made the task: turned down, it stays open with what was written.
+      sending = true;
+      submit.disabled = true;
+      return void kanban.send(text, { provider: provider?.value(), model: provider?.model(), effort: provider?.effort(), attachmentIds }).then((made) => {
+        sending = false;
+        submit.disabled = false;
+        if (made) modal.close();
+      });
     }
     if (!text && !opts.allowEmpty) {
       ta.focus();

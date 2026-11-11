@@ -110,16 +110,28 @@ export function openAsk(opts: AskOptions) {
 
   const modal = openModal(form);
   cancel.addEventListener('click', () => modal.close());
+  let sending = false;
   const send = () => {
     const text = ta.value.trim();
-    if (!text) {
+    // A kanban task made from a picked issue takes its title from it, so it needs no text.
+    if (!text && !(kanbanOn() && kanban!.hasIssue())) {
       ta.focus();
       return;
     }
     if (!to && provider && !provider.valid()) return;
+    // A new worker on a kanban task; the context goes first in its description. The dialog closes
+    // once the office made the task: turned down, it stays open with what was written.
+    if (kanbanOn()) {
+      if (sending) return;
+      sending = true;
+      submit.disabled = true;
+      return void kanban!.send(text, { provider: provider?.value(), model: provider?.model(), effort: provider?.effort() }, opts.context).then((made) => {
+        sending = false;
+        submit.disabled = false;
+        if (made) modal.close();
+      });
+    }
     modal.close();
-    // A new worker on a kanban task; the context goes first in its description.
-    if (kanbanOn()) return kanban!.send(text, { provider: provider?.value(), model: provider?.model(), effort: provider?.effort() }, opts.context);
     if (!to && opts.worktreeOption) {
       try {
         localStorage.setItem(WT_KEY, wtBox.checked ? '1' : '0');

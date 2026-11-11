@@ -6,7 +6,7 @@
 // tests/kanban-ui-office*.test.ts can run it.
 
 import type { AgentEffort, AgentProvider, WorkerInfo, WorkerTask } from '../../shared/protocol';
-import type { KanbanClientMsg, KanbanTaskInput } from '../../shared/kanban/protocol.js';
+import type { IssueTaskFields, KanbanClientMsg, KanbanTaskInput } from '../../shared/kanban/protocol.js';
 import { KANBAN_LIMITS, PROJECT_ID_RE } from '../../shared/kanban/protocol.js';
 import type { KanbanEffort, KanbanTaskCard, KanbanTool, KanbanWorkerSummary, PlanApproval, RunPhase, TaskStatus, TaskType, WaitingReason } from '../../shared/kanban/types.js';
 
@@ -242,18 +242,23 @@ export interface HireTaskForm {
   /** The title, when it isn't the text's first line (an issue's). */
   title?: string;
   tags?: string[];
+  /** The issue picked for it (🔗 Select issue): the task is made from that issue, with these fields. */
+  issueKey?: string;
 }
 
 export type TaskCreateMsg = Extract<KanbanClientMsg, { t: 'kanban.task.create' }>;
+export type IssueCreateMsg = Extract<KanbanClientMsg, { t: 'kanban.issues.createTask' }>;
 
 /**
  * The kanban.task.create a hire sends, started at its desk; or why it can't be (the text is empty,
- * or the provider can't run the kanban process).
+ * or the provider can't run the kanban process). With an issue picked (`issueKey`) it is
+ * kanban.issues.createTask instead: the office takes the title, the link and the text from the issue,
+ * so the text may be empty and a title goes along only when the form names one.
  */
-export function hireTaskMsg(f: HireTaskForm): { msg: Omit<TaskCreateMsg, 'rid'> } | { error: string } {
+export function hireTaskMsg(f: HireTaskForm): { msg: Omit<TaskCreateMsg, 'rid'> | Omit<IssueCreateMsg, 'rid'> } | { error: string } {
   const text = f.text.replace(/\r\n?/g, '\n').trim();
   const title = (f.title?.trim() ? clipText(f.title, 120) : titleFrom(text)).slice(0, KANBAN_LIMITS.title);
-  if (!title) return { error: 'Say what the task is: its first line is the title' };
+  if (!title && !f.issueKey) return { error: 'Say what the task is: its first line is the title' };
   const tool = kanbanTool(f.provider);
   if (f.provider && !tool) return { error: 'The kanban process runs on Claude Code or Codex only' };
   // The primary repository always, whatever was ticked; every one ticked is the same as all (null).
@@ -262,10 +267,7 @@ export function hireTaskMsg(f: HireTaskForm): { msg: Omit<TaskCreateMsg, 'rid'> 
   const ids = f.allRepoIds.length ? f.allRepoIds.filter((id) => picked.has(id)) : [...picked];
   const all = !f.allRepoIds.length || ids.length === f.allRepoIds.length;
   const investigate = f.type === 'investigate';
-  const task: KanbanTaskInput = {
-    project: f.project,
-    title,
-    description: text.slice(0, KANBAN_LIMITS.description),
+  const fields: IssueTaskFields = {
     type: f.type,
     ...(all ? {} : { repoIds: ids }),
     ...(tool ? { tool } : {}),
@@ -275,12 +277,28 @@ export function hireTaskMsg(f: HireTaskForm): { msg: Omit<TaskCreateMsg, 'rid'> 
     ...(investigate ? {} : { usePlan: f.usePlan, useReview: f.useReview }),
     ...(!investigate && f.usePlan && f.planApproval ? { planApproval: f.planApproval } : {}),
     ...(!investigate && f.useReview && f.rounds ? { review: { rounds: Math.min(10, Math.max(1, Math.round(f.rounds))) } } : {}),
-    ...(f.ticket ? { ticket: f.ticket.slice(0, KANBAN_LIMITS.ticket) } : {}),
-    ...(f.ticketUrl ? { ticketUrl: f.ticketUrl.slice(0, KANBAN_LIMITS.url) } : {}),
+  };
+  const tail = {
     ...(f.attachmentIds?.length ? { attachmentIds: f.attachmentIds } : {}),
     ...(f.tags?.length ? { tags: f.tags.slice(0, KANBAN_LIMITS.tags) } : {}),
   };
-  return { msg: { t: 'kanban.task.create', task, start: true, ...(f.deskId ? { deskId: f.deskId } : {}) } };
+  const desk = f.deskId ? { deskId: f.deskId } : {};
+  if (f.issueKey) {
+    const task: IssueTaskFields = { ...(f.title?.trim() ? { title } : {}), ...(text ? { description: text.slice(0, KANBAN_LIMITS.description) } : {}), ...fields, ...tail };
+    return { msg: { t: 'kanban.issues.createTask', project: f.project, issueKey: f.issueKey, start: true, ...desk, task } };
+  }
+  const { type, ...rest } = fields;
+  const task: KanbanTaskInput = {
+    project: f.project,
+    title,
+    description: text.slice(0, KANBAN_LIMITS.description),
+    type,
+    ...rest,
+    ...(f.ticket ? { ticket: f.ticket.slice(0, KANBAN_LIMITS.ticket) } : {}),
+    ...(f.ticketUrl ? { ticketUrl: f.ticketUrl.slice(0, KANBAN_LIMITS.url) } : {}),
+    ...tail,
+  };
+  return { msg: { t: 'kanban.task.create', task, start: true, ...desk } };
 }
 
 /** An issue's ticket key, as the kanban's issue sources make it: `gh:owner/repo#12`. */
