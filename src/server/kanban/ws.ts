@@ -118,6 +118,7 @@ export function createCorePlugin(ctx: KanbanContext, subs: KanbanSubscriptions):
       t: 'kanban.snapshot',
       ...(rid ? { rid } : {}),
       project,
+      ...(includeArchived ? { includeArchived: true } : {}),
       tasks: ctx.repo.listCards(project, { includeArchived }, (t) => {
         const r = ctx.settings.effectiveReview(t.project, t.overrides);
         return { rounds: r.rounds, tool: r.tool };

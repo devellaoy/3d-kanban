@@ -4,7 +4,7 @@
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { deepLink, isTaskTab, parseDeepLink, showIn3dLink, splitDiff, tabFor, TASK_TABS, visibleTabs } from '../src/client/kanban/model.js';
+import { deepLink, isTaskTab, parseDeepLink, pullsTarget, showIn3dLink, splitDiff, tabFor, TASK_TABS, visibleTabs } from '../src/client/kanban/model.js';
 import { KanbanApi } from '../src/client/kanban/api.js';
 import type { Net } from '../src/client/net.js';
 import type { ServerMsg } from '../src/shared/protocol.js';
@@ -145,4 +145,14 @@ test('a reconnect subscribes the watches again', () => {
     { t: 'kanban.subscribe', project: 'api' },
     { t: 'kanban.subscribe', project: 'api' },
   ]);
+});
+
+test('the pull requests button goes to the picked project\'s floor, else shows the floor the page is on', () => {
+  const floors = [{ id: 'api' }, { id: 'web' }];
+  assert.equal(pullsTarget('web', 'api', floors), 'go');
+  assert.equal(pullsTarget('web', 'web', floors), 'here');
+  assert.equal(pullsTarget(null, 'api', floors), 'here');
+  // A project without a floor (gone, or closed) has no board: never another project's instead.
+  assert.equal(pullsTarget('old', 'api', floors), 'none');
+  assert.equal(pullsTarget(null, null, floors), 'none');
 });

@@ -457,7 +457,9 @@ answers `kanban.ok {rid, ...}` or `kanban.error {rid, message}`. Deltas are push
   `kanban.task.detail`, `kanban.comments`, `kanban.settings` …), or `kanban.ok`, or `kanban.error`. A mutation
   also pushes its delta to the subscribers, and that includes the asker when it is subscribed.
 - `kanban.subscribe {project, includeArchived?}` sets the connection's filter (one per connection) and is
-  answered with `kanban.snapshot`. `kanban.unsubscribe` and closing the socket end the deltas. A browser that
+  answered with `kanban.snapshot`, which carries `includeArchived: true` when its tasks include the archive (a
+  board takes only the snapshots that match its own archive setting, since a one-off `kanban.snapshot` another
+  view asked for reaches it too). `kanban.unsubscribe` and closing the socket end the deltas. A browser that
   never subscribes gets no kanban deltas (the 3D office's clients).
 - Lounge: `{t: 'kanban.lounge', floor, figures: LoungeFigure[]}` (`shared/kanban/lounge.ts`; `server/kanban/lounge.ts`) goes to
   everyone on that floor whenever the floor's set of figures changes (sent from `ctx.taskChanged`, which a hold, resume, delete or any

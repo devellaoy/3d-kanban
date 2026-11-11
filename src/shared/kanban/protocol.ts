@@ -4,6 +4,7 @@
 // `kanban.error`. Deltas (no rid) go to every client subscribed to the task's project (or to all
 // projects). parseKanbanClientMsg is the one gate every browser message passes: types, lengths, enums.
 
+import type { KanbanSnapshotMsg } from './snapshot.js';
 import type {
   ImplementPermission,
   IssueSourceConfig,
@@ -190,16 +191,7 @@ export type KanbanClientType = KanbanClientMsg['t'];
 // --- Server → browser -----------------------------------------------------------------------------
 
 export type KanbanServerMsg =
-  | {
-      t: 'kanban.snapshot';
-      rid?: string;
-      project: string | null;
-      tasks: KanbanTaskCard[];
-      projects: KanbanProjectInfo[];
-      settings: KanbanSettings;
-      secrets: SecretStatus;
-      me: { admin: boolean; name: string };
-    }
+  | KanbanSnapshotMsg
   /** A card changed or appeared. */
   | { t: 'kanban.task'; task: KanbanTaskCard }
   | { t: 'kanban.task.removed'; id: number; project: string }

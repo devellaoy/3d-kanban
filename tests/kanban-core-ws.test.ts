@@ -226,9 +226,10 @@ test('edits: structural fields only in To do, the description locked once starte
 test('moves are the server’s to allow: start, reset, done, archive and back', async (t) => {
   const { client, kanban, live, calls } = office(t);
   const ada = client('Ada', false);
-  await ada.ask({ t: 'kanban.subscribe', project: 'web' });
+  // A snapshot says whether it has the archive in it, so a board can tell one that isn't its own.
+  assert.equal((await ada.ask({ t: 'kanban.subscribe', project: 'web' }) as { includeArchived?: boolean }).includeArchived, undefined);
   const watcher = client('Archivist', false);
-  await watcher.ask({ t: 'kanban.subscribe', project: null, includeArchived: true });
+  assert.equal((await watcher.ask({ t: 'kanban.subscribe', project: null, includeArchived: true }) as { includeArchived?: boolean }).includeArchived, true);
   await ada.ask({ t: 'kanban.task.create', task: { project: 'web', title: 'x' } });
   errorOf(await ada.ask({ t: 'kanban.task.move', id: 1, to: 'done' }), /only once it has been worked on/);
   okOf(await ada.ask({ t: 'kanban.task.move', id: 1, to: 'in_progress' }));

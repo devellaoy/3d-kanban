@@ -185,7 +185,7 @@ a.kb-chip:hover { background: var(--field-hover); }
   .kb-bar input[type=search] { flex-basis: 100%; max-width: none; order: 5; }
   .kb-stats { display: none; }
   #kb-project { flex: 1 1 120px; }
-  #kb-issues .kb-lbl { display: none; }
+  #kb-issues .kb-lbl, #kb-pulls .kb-lbl { display: none; }
   .modal.kb-create footer .grow { display: none; }
   .kb-filters { flex-wrap: nowrap; overflow-x: auto; padding-bottom: 2px; }
   .kb-filters select, .kb-filters .btn { flex: none; }

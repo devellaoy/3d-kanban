@@ -23,3 +23,23 @@ test('applyMeta takes the projects, settings, secrets and who you are, and leave
   assert.equal(s.loaded, false);
   assert.deepEqual(heard, ['projects', 'settings', 'me']);
 });
+
+test("a one-off snapshot of the board's project asked for without the archive leaves an open archive's cards alone", () => {
+  // The PR board's 👤 Mine (and a hire form) ask for a kanban.snapshot of their own; the bus hands
+  // every answer to the page's store too.
+  const s = new KanbanStore();
+  s.project = 'web';
+  s.includeArchived = true;
+  const snap = (ids: number[], includeArchived: boolean) =>
+    ({ t: 'kanban.snapshot', project: 'web', ...(includeArchived ? { includeArchived: true } : {}), tasks: ids.map((id) => ({ id }) as KanbanTaskCard), projects: [], settings: {} as KanbanSettings, secrets: { jira: [], apiKey: { configured: false } }, me: { admin: false, name: 'Ada' } }) as const;
+  assert.equal(s.apply(snap([1, 2], true)), true);
+  assert.equal(s.apply(snap([1], false)), false);
+  assert.deepEqual([...s.tasks.keys()], [1, 2]);
+  // What it says about the office is still news.
+  assert.equal(s.me.name, 'Ada');
+  // And the other way: archived cards never land on a board whose archive is closed.
+  s.includeArchived = false;
+  assert.equal(s.apply(snap([1], false)), true);
+  assert.equal(s.apply(snap([1, 2], true)), false);
+  assert.deepEqual([...s.tasks.keys()], [1]);
+});
