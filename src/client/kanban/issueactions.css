@@ -54,6 +54,8 @@
 .kb-iw > * { flex: none; }
 .kb-iw-top { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; }
 .kb-iw-key { font-weight: var(--fw-heavy); font-size: var(--fs-sm); }
+/* The issue's status among its chips, as the Status panel's pill has it (.kb-ia-now). */
+.kb-iw .kb-chip.status { background: var(--warn-soft); font-weight: var(--fw-heavy); }
 .kb-iw-desc { padding: 10px 12px; border: var(--bw-sm) dashed var(--ink); border-radius: var(--radius-sm); background: var(--field); overflow-wrap: anywhere; max-height: 320px; overflow-y: auto; }
 .kb-iw-desc .md { padding: 0; font-size: var(--fs-md); }
 .kb-iw-desc .md img { max-width: 100%; }

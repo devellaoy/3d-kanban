@@ -8,7 +8,6 @@ import { canFixPrs, openPrs, prStatusOk, type PrMode } from '../../shared/kanban
 import type { KanbanApi } from './api';
 import { openFindWindow } from './prfind';
 import { foundToasts } from './prfindmodel';
-import { officeCss } from './officecss';
 import { run } from './ui';
 
 type Req = (msg: Parameters<KanbanApi['request']>[0], button?: HTMLButtonElement, done?: string) => unknown;
@@ -41,10 +40,7 @@ export function findPrsButton(task: KanbanTask, api: KanbanApi): HTMLButtonEleme
     document.querySelectorAll<HTMLButtonElement>('button.kb-find-prs').forEach((x) => (x.disabled = false));
     if (!found) return;
     for (const t of foundToasts(found)) toast(t.text, t.kind);
-    if (found.candidates.length) {
-      officeCss();
-      openFindWindow(api, task.project, task.id, task.ticket, found.candidates);
-    }
+    if (found.candidates.length) openFindWindow(api, task.project, task.id, task.ticket, found.candidates);
   });
   b.classList.add('kb-find-prs');
   return b;

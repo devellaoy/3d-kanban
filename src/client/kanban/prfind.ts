@@ -9,6 +9,7 @@ import { PR_STATE_NAMES } from './labels';
 import { prTone } from './model';
 import { linkedText, prName } from './prfindmodel';
 import { dialog, run, showDialog } from './ui';
+import './prfind.css';
 
 export function openFindWindow(api: KanbanApi, project: string, taskId: number, ticket: string | undefined, candidates: KanbanPrBundleItem[]) {
   const picked = new Set<KanbanPrBundleItem>();

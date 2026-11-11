@@ -125,7 +125,7 @@ a.kb-chip:hover { background: var(--field-hover); }
 .modal.kb-create { width: min(820px, 100%); }
 .modal.kb-issues-window { width: min(900px, 100%); height: min(760px, calc(100vh - 32px)); }
 .modal.kb-move-dialog { width: min(380px, 100%); }
-.modal.kb-pr-picker, .modal.kb-pr-find { width: min(640px, 100%); }
+.modal.kb-pr-picker { width: min(640px, 100%); }
 .modal .body.kb-form { display: flex; flex-direction: column; gap: 12px; }
 .modal fieldset, .kb-pane fieldset { margin: 0; padding: 10px 14px 14px; border: var(--bw) solid var(--ink); border-radius: var(--radius-box); background: var(--field); display: flex; flex-direction: column; gap: 10px; min-width: 0; }
 .modal legend { padding: 0 6px; font-weight: var(--fw-heavy); font-size: var(--fs-sm); text-transform: uppercase; letter-spacing: .04em; }
@@ -171,8 +171,6 @@ a.kb-chip:hover { background: var(--field-hover); }
 .kb-pr-list li { display: flex; align-items: center; gap: 8px; padding: 6px 8px; border: var(--bw-sm) solid var(--ink); border-radius: var(--radius-md); background: var(--field); }
 .kb-pr-list li.this { background: var(--warn-wash); }
 .kb-pr-list .kb-pr-title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: var(--fw-bold); }
-.kb-pr-list label { display: flex; align-items: center; gap: 8px; flex: 1; min-width: 0; }
-.kb-pr-list li.other { opacity: 0.6; }
 .kb-pr-list h5 { margin: 10px 0 4px; }
 
 /* The page scrolls nowhere, so what floats over it stays put. */
