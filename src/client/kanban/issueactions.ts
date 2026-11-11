@@ -29,25 +29,28 @@ export interface IssueActionsOpts {
   onChanged?: (what: 'status' | 'assignee' | 'comment', moved?: IssueTransition) => void;
 }
 
-export function issueActions(api: KanbanApi, project: string, first: ActionIssue, opts: IssueActionsOpts = {}): { el: HTMLElement; update(issue: ActionIssue): void } {
+export function issueActions(api: KanbanApi, project: string, first: ActionIssue, opts: IssueActionsOpts = {}): { el: HTMLElement; update(issue: ActionIssue): void; reload(): void } {
   let issue = first;
   const sections = opts.sections ?? ['status', 'assignee', 'comments'];
   const openTask = opts.openTask ?? ((id: number) => location.assign(`/kanban?task=${id}`));
   const base = { project, issueKey: issue.key, ...(issue.sourceId ? { source: issue.sourceId } : {}) };
   const github = isGithubKey(issue.key);
   const el = h('div.kb-ia', { role: 'group', 'aria-label': `Actions on ${issue.key}` });
-  const errorLine = (msg: string, retry: () => void) => {
-    const again = h('button.btn.small', { type: 'button' }, 'Try again');
+  // `focus` keys the button for the task view, which puts the focus back after a redraw (data-focus).
+  const errorLine = (msg: string, retry: () => void, focus: string) => {
+    const again = h('button.btn.small', { type: 'button', 'data-focus': focus }, 'Try again');
     again.addEventListener('click', retry);
     return h('p.kb-ia-error', { role: 'alert' }, `⚠️ ${msg} `, again);
   };
   const painters: (() => void)[] = [];
+  /** What each section asked the source for, to ask again (reload): the status choices, the comments. */
+  const loaders: (() => void)[] = [];
 
   // ---- Status ----
   if (sections.includes('status')) {
     const now = h('span.kb-ia-now');
     const box = h('div.kb-ia-body');
-    const reload = h('button.btn.small.kb-ia-icon', { type: 'button', title: 'Load the choices again', 'aria-label': 'Load the status choices again' }, '↻') as HTMLButtonElement;
+    const reload = h('button.btn.small.kb-ia-icon', { type: 'button', title: 'Load the choices again', 'data-focus': 'issue-status-reload', 'aria-label': 'Load the status choices again' }, '↻') as HTMLButtonElement;
     let answer: Transitions | null = null;
     let gen = 0;
     const paintNow = () => (now.textContent = shownStatus(issue.status, answer?.current));
@@ -63,7 +66,7 @@ export function issueActions(api: KanbanApi, project: string, first: ActionIssue
           paintNow();
           paintChoices();
         })
-        .catch((err: Error) => g === gen && box.replaceChildren(errorLine(err.message, load)))
+        .catch((err: Error) => g === gen && box.replaceChildren(errorLine(err.message, load, 'issue-status-retry')))
         .finally(() => g === gen && (reload.disabled = false));
     };
     const paintChoices = () => {
@@ -73,7 +76,7 @@ export function issueActions(api: KanbanApi, project: string, first: ActionIssue
       const parts: Node[] = [];
       if (!ts.length) parts.push(h('p.kb-ia-quiet', {}, 'Nowhere to move it from here.'));
       else {
-        const sel = h('select.kb-ia-select', { 'aria-label': `Move ${issue.key} to` }) as HTMLSelectElement;
+        const sel = h('select.kb-ia-select', { 'aria-label': `Move ${issue.key} to`, 'data-focus': 'issue-status' }) as HTMLSelectElement;
         sel.append(h('option', { value: '' }, 'Move to…'));
         for (const [group, items] of groupTransitions(ts)) {
           const choices = items.map((t) => h('option', { value: t.id, disabled: !!t.needs?.length || !!t.current }, transitionLabel(t)));
@@ -105,6 +108,7 @@ export function issueActions(api: KanbanApi, project: string, first: ActionIssue
     };
     reload.addEventListener('click', load);
     painters.push(paintNow);
+    loaders.push(load);
     el.append(h('section.kb-ia-sec', {}, h('div.kb-ia-head', {}, h('h4', {}, 'Status'), now, reload), box));
     paintNow();
     load();
@@ -114,10 +118,10 @@ export function issueActions(api: KanbanApi, project: string, first: ActionIssue
   if (sections.includes('assignee')) {
     const site = github ? '' : jiraSite(issue.url);
     const who = h('span.kb-ia-now');
-    const mine = h('button.btn.small', { type: 'button' }, '🙋 Assign to me') as HTMLButtonElement;
-    const other = h('button.btn.small', { type: 'button', 'aria-expanded': 'false' }, 'Someone else…') as HTMLButtonElement;
-    const none = h('button.btn.small', { type: 'button' }, 'Unassign') as HTMLButtonElement;
-    const search = textInput('', { type: 'search', placeholder: 'Search people', 'aria-label': 'Search people to assign' });
+    const mine = h('button.btn.small', { type: 'button', 'data-focus': 'issue-assign-me' }, '🙋 Assign to me') as HTMLButtonElement;
+    const other = h('button.btn.small', { type: 'button', 'aria-expanded': 'false', 'data-focus': 'issue-assign-other' }, 'Someone else…') as HTMLButtonElement;
+    const none = h('button.btn.small', { type: 'button', 'data-focus': 'issue-unassign' }, 'Unassign') as HTMLButtonElement;
+    const search = textInput('', { type: 'search', placeholder: 'Search people', 'aria-label': 'Search people to assign', 'data-focus': 'issue-people-search' });
     const hint = h('p.kb-ia-quiet');
     const results = h('ul.kb-ia-people', { 'aria-live': 'polite' });
     const picker = h('div.kb-ia-picker', { hidden: true }, search, hint, results);
@@ -164,7 +168,7 @@ export function issueActions(api: KanbanApi, project: string, first: ActionIssue
           found = { items: a.items, query };
           paintPeople();
         })
-        .catch((err: Error) => g === gen && results.replaceChildren(h('li', {}, errorLine(err.message, () => void find()))));
+        .catch((err: Error) => g === gen && results.replaceChildren(h('li', {}, errorLine(err.message, () => void find(), 'issue-people-retry'))));
     };
     const showPicker = (on: boolean, why = '') => {
       picker.hidden = !on;
@@ -195,8 +199,8 @@ export function issueActions(api: KanbanApi, project: string, first: ActionIssue
   // ---- Comments ----
   if (sections.includes('comments')) {
     const list = h('ol.kb-ia-comments', { 'aria-label': 'Comments' });
-    const ta = textArea('', { rows: 3, placeholder: `Comment on ${issue.key} · ${sendHint()}`, 'aria-label': `Comment on ${issue.key}` });
-    const send = h('button.btn.small.primary', { type: 'button' }, 'Comment') as HTMLButtonElement;
+    const ta = textArea('', { rows: 3, placeholder: `Comment on ${issue.key} · ${sendHint()}`, 'aria-label': `Comment on ${issue.key}`, 'data-focus': 'issue-comment' });
+    const send = h('button.btn.small.primary', { type: 'button', 'data-focus': 'issue-comment-send' }, 'Comment') as HTMLButtonElement;
     const composer = h('div.kb-ia-composer', {}, ta, h('div.kb-ia-row', {}, h('small.kb-ia-quiet.grow', {}, sendHint()), send));
     let gen = 0;
     const comment = (c: IssueCommentItem) =>
@@ -217,7 +221,7 @@ export function issueActions(api: KanbanApi, project: string, first: ActionIssue
           if (a.cannot) return list.replaceChildren(h('li.kb-ia-quiet', {}, a.cannot));
           list.replaceChildren(...(a.items.length ? a.items.map(comment) : [h('li.kb-ia-quiet', {}, 'No comments yet.')]));
         })
-        .catch((err: Error) => g === gen && list.replaceChildren(h('li', {}, errorLine(err.message, load))));
+        .catch((err: Error) => g === gen && list.replaceChildren(h('li', {}, errorLine(err.message, load, 'issue-comments-retry'))));
     };
     const post = async () => {
       const text = ta.value.trim();
@@ -233,6 +237,7 @@ export function issueActions(api: KanbanApi, project: string, first: ActionIssue
     onSendKey(ta, () => void post());
     send.addEventListener('click', () => void post());
     el.append(h('section.kb-ia-sec', {}, h('div.kb-ia-head', {}, h('h4', {}, 'Comments')), h('div.kb-ia-body', {}, list, composer)));
+    loaders.push(load);
     load();
   }
 
@@ -241,6 +246,10 @@ export function issueActions(api: KanbanApi, project: string, first: ActionIssue
     update(next) {
       issue = { ...next, key: issue.key };
       for (const p of painters) p();
+    },
+    // The status as the source has it now, where it can go from there, and the comments; a comment being written stays as it is.
+    reload() {
+      for (const l of loaders) l();
     },
   };
 }

@@ -33,14 +33,15 @@ import { cardRepoNames, countdown, needsAttention, phaseBadge, prTone, showIn3dL
 import { kstore } from './store';
 import { onSendKey, sendHint } from './sendkey';
 import { holdActions, holdBox } from './holdview';
-import { prActionButtons } from './prbuttons';
+import { findPrsButton, prActionButtons, unlinkButton } from './prbuttons';
 import { mountChangesView, type ChangesViewHandle } from './changesview';
+import { mountIssueTab } from './issuetab';
 import { APPROVAL_NAMES, columnName, COUNTDOWN_UNITS, effortName, fmtDuration, fmtTime, phaseName, PR_STATE_NAMES, toolName, waitingName } from './labels';
 import { run, select, tabStrip, textArea } from './ui';
 import { apiUrl } from '../multiplayer/visit';
 
 const COMMENTS_PAGE = 30;
-const TAB_NAMES: Record<TaskTab, string> = { overview: 'Overview', conversation: 'Conversation', plan: 'Plan', runs: 'Runs', terminal: 'Terminal', changes: 'Changes', prs: 'PRs' };
+const TAB_NAMES: Record<TaskTab, string> = { overview: 'Overview', conversation: 'Conversation', plan: 'Plan', runs: 'Runs', terminal: 'Terminal', changes: 'Changes', prs: 'PRs', issue: 'Issue' };
 const TYPE_NAMES: Record<TaskType, string> = { implement: 'Implement', investigate: 'Investigate' };
 const ROLE_NAMES: Record<KanbanRole, string> = { implementer: 'Implementer', reviewer: 'Reviewer' };
 const PLAN_STATUS_NAMES: Record<PlanStatus, string> = { draft: 'draft', accepted: 'accepted', superseded: 'superseded' };
@@ -152,6 +153,7 @@ class View implements TaskView {
   private unwatch: (() => void) | null = null;
   private destroyed = false;
   /** The Changes tab's view: mounted the first time the tab opens, taken down when another tab does. */
+  private issue: ReturnType<typeof mountIssueTab> | null = null;
   private changes: { host: HTMLElement; view: ChangesViewHandle } | null = null;
   private reports: { list: KanbanReportFile[]; shown: Map<string, HTMLElement> } | null = null;
   private reportsFor = '';
@@ -196,6 +198,7 @@ class View implements TaskView {
     for (const off of this.offs) off();
     this.unwatch?.();
     this.dropChanges();
+    this.dropIssue();
     this.root.remove();
   }
 
@@ -442,6 +445,10 @@ class View implements TaskView {
       this.changes.view.setWorker(d.task.workerId);
       return;
     }
+    if (this.current === 'issue' && this.issue && this.body.firstElementChild === this.issue.host && this.body.childElementCount === 1) {
+      this.issue.setTask(d.task);
+      return;
+    }
     const content: Record<TaskTab, () => HTMLElement[]> = {
       overview: () => this.overview(d),
       conversation: () => this.conversation(d),
@@ -450,8 +457,10 @@ class View implements TaskView {
       terminal: () => this.terminal(d.task),
       changes: () => [this.changesPane(d.task)],
       prs: () => this.prs(d.task),
+      issue: () => [this.issuePane(d.task)],
     };
     if (this.current !== 'changes') this.dropChanges();
+    if (this.current !== 'issue') this.dropIssue();
     this.body.replaceChildren(...content[this.current]());
     if (keep) this.body.scrollTop = scroll;
   }
@@ -841,6 +850,18 @@ class View implements TaskView {
     this.changes = null;
   }
 
+  /** The task's Issue tab, kept across redraws so a comment being written stays; down when another tab opens. */
+  private issuePane(task: KanbanTask): HTMLElement {
+    this.issue ??= mountIssueTab(this.api, (id) => this.openTask(id));
+    this.issue.setTask(task);
+    return this.issue.host;
+  }
+
+  private dropIssue() {
+    this.issue?.destroy();
+    this.issue = null;
+  }
+
   // --- Pull requests ----------------------------------------------------------------------------
 
   private prs(task: KanbanTask): HTMLElement[] {
@@ -854,6 +875,7 @@ class View implements TaskView {
       bar.append(create);
     }
     prActionButtons(task, bar, (m, b, d) => this.req(m, b, d));
+    bar.append(findPrsButton(task, this.api) ?? '');
     const reviewable = task.prs.filter((p) => p.repo && (p.state === 'OPEN' || p.state === 'DRAFT'));
     if (reviewable.length) {
       const rev = h('button.btn', { type: 'button', title: 'One reviewer takes every pull request of the task at once' }, `🔍 Review these ${reviewable.length} PRs together`) as HTMLButtonElement;
@@ -871,7 +893,7 @@ class View implements TaskView {
         h(
           'table.kb-table',
           {},
-          h('thead', {}, h('tr', {}, h('th', {}, 'Repository'), h('th', {}, 'PR'), h('th', {}, 'State'), h('th', {}, 'Branch'), h('th', {}, 'Updated'))),
+          h('thead', {}, h('tr', {}, h('th', {}, 'Repository'), h('th', {}, 'PR'), h('th', {}, 'State'), h('th', {}, 'Branch'), h('th', {}, 'Updated'), h('th'))),
           h(
             'tbody',
             {},
@@ -884,6 +906,7 @@ class View implements TaskView {
                 h('td', {}, h('span.kb-pr', { class: prTone(p.state) }, PR_STATE_NAMES[prTone(p.state)])),
                 h('td', {}, p.branch ? h('code', {}, p.branch) : ''),
                 h('td', {}, timeAgo(p.updatedAt)),
+                h('td', {}, unlinkButton(task, p, (m, b, d) => this.req(m, b, d), project?.repos.find((r) => r.id === p.repoId)?.name)),
               ),
             ),
           ),

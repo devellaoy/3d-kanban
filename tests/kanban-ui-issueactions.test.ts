@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { toGhIssue } from '../src/shared/kanban/issuecard.js';
-import { actionIssue, actionsTarget, closesOrReopens, keyedComment, safeUrl, shownStatus, groupTransitions, isGithubKey, jiraSite, pinnedMe, transitionLabel } from '../src/client/kanban/issueactionsmodel.js';
+import { LIST_BODY, issueGetMsg, listedBody, actionIssue, actionsTarget, closesOrReopens, keyedComment, safeUrl, shownStatus, groupTransitions, isGithubKey, jiraSite, pinnedMe, transitionLabel } from '../src/client/kanban/issueactionsmodel.js';
 
 test('only a card with a key on a floor with a project gets the issue actions', () => {
   assert.equal(actionsTarget({}, 'demo'), undefined, 'upstream’s key-less issue keeps its own window as it was');
@@ -64,4 +64,42 @@ test('the status shown is the choices’ own when they name one; only a close or
 test('a 3D card opened through a source hands that source to the actions panel', () => {
   const card = toGhIssue({ source: 'jira', key: 'DEV-1', title: 't', url: 'https://x.atlassian.net/browse/DEV-1', body: '', labels: [], updatedAt: '', sourceId: 'src-2' });
   assert.equal(actionIssue(card).sourceId, 'src-2');
+});
+
+test('the issues list cuts a body: a cut copy never replaces a body that was read whole', () => {
+  const full = 'x'.repeat(LIST_BODY + 500);
+  const cut = full.slice(0, LIST_BODY);
+  assert.deepEqual(listedBody(full, true, cut), { body: full, whole: true, stale: false }, 'the same issue, listed cut');
+  assert.deepEqual(listedBody(full, true, 'edited'), { body: 'edited', whole: true, stale: false }, 'a short body is whole: the source changed');
+  assert.deepEqual(listedBody('', false, 'new'), { body: 'new', whole: true, stale: false });
+  // The held body is a list copy itself (the window opened from the list): the newer copy replaces it.
+  assert.deepEqual(listedBody(cut, false, 'y' + cut.slice(1)), { body: 'y' + cut.slice(1), whole: false, stale: false });
+  assert.deepEqual(listedBody(cut, false, cut), { body: cut, whole: false, stale: false });
+});
+
+test('a changed, cut list copy arriving after the whole body was read keeps the whole body and asks for a fresh read', () => {
+  const full = 'x'.repeat(LIST_BODY + 500);
+  const changed = 'y' + 'x'.repeat(LIST_BODY + 100);
+  const got = listedBody(full, true, changed.slice(0, LIST_BODY));
+  assert.equal(got.body, full, 'nothing of the whole body is lost to the cut copy');
+  assert.equal(got.stale, true, 'the source changed: the whole body is to be read again');
+  // Once it has been read whole again, the same list copy is its start and changes nothing.
+  assert.deepEqual(listedBody(changed, true, changed.slice(0, LIST_BODY)), { body: changed, whole: true, stale: false });
+});
+
+test('a body read whole that grows past the cut is not replaced by its cut copy: it is read whole again', () => {
+  const short = 'a'.repeat(3000);
+  const grown = short + 'b'.repeat(3000);
+  const got = listedBody(short, true, grown.slice(0, LIST_BODY));
+  assert.deepEqual(got, { body: short, whole: true, stale: true }, 'whole is known apart from the length: the short body stays until the grown one is read');
+  assert.deepEqual(listedBody(grown, true, grown.slice(0, LIST_BODY)), { body: grown, whole: true, stale: false });
+  // A body exactly at the cut that was read whole and did not change stays, and nothing is asked.
+  const exact = 'c'.repeat(LIST_BODY);
+  assert.deepEqual(listedBody(exact, true, exact), { body: exact, whole: true, stale: false });
+});
+
+test('a later read of a task’s issue names the source the issue shown came through (two Jira sites may share a key)', () => {
+  assert.deepEqual(issueGetMsg('app', 'UYT-12'), { t: 'kanban.issue.get', project: 'app', issueKey: 'UYT-12' }, 'the first read: the source is not known yet');
+  assert.deepEqual(issueGetMsg('app', 'UYT-12', { source: 'jira-b', fresh: true }), { t: 'kanban.issue.get', project: 'app', issueKey: 'UYT-12', source: 'jira-b', fresh: true });
+  assert.deepEqual(issueGetMsg('app', 'UYT-12', { source: undefined, fresh: false }), { t: 'kanban.issue.get', project: 'app', issueKey: 'UYT-12' });
 });

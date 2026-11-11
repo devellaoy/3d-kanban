@@ -225,15 +225,18 @@ export function createBrowse(ctx: KanbanContext, deps: BrowseDeps) {
         }
         return undefined;
       }
-      // The issue and its parent chain are read once and tested against each board (not one fetch per board).
-      const boards = sources.filter((s): s is ProjectConfig => s.kind === 'github-project');
+      const gh = parseGhKey(key);
+      // The repository source the issue is listed by (the one the asker names first; one with no repositories lists the project's): the issue read alone carries its id, as the listed one does.
+      const lists = (s: IssueSourceConfig) => s.kind === 'github-repo' && !!gh && (s.repos.length ? s.repos : io.projectRepos).some((r) => sameRepo(r, gh.repo));
+      const repoSource = sources.find((s) => s.id === source && lists(s)) ?? sources.find(lists);
+      // The issue and its parent chain are read once and tested against each board (not one fetch per board); not when the asker came through a repository source.
+      const boards = repoSource && repoSource.id === source ? [] : sources.filter((s): s is ProjectConfig => s.kind === 'github-project');
       const found = boards.length ? await ghGetOn(io, boards, key).catch(() => undefined) : undefined;
       if (found) return found;
-      const gh = parseGhKey(key);
       const repos = [...io.projectRepos, ...sources.flatMap((s) => (s.kind === 'github-repo' ? s.repos : []))];
       if (!gh || !repos.some((r) => sameRepo(r, gh.repo))) return undefined;
       const out = await io.gh(['issue', 'view', String(gh.number), '-R', gh.repo, '--json', 'number,title,body,url,state,assignees,labels,updatedAt'], io.cwd, 30_000);
-      return parseGhIssues(gh.repo, `[${out}]`)[0];
+      return parseGhIssues(gh.repo, `[${out}]`, repoSource?.id)[0];
     } catch {
       return undefined;
     }

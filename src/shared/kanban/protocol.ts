@@ -13,8 +13,6 @@ import type {
   KanbanEffort,
   KanbanEvent,
   KanbanPlan,
-  KanbanPrBundleItem,
-  KanbanPrBundleKey,
   KanbanProjectInfo,
   KanbanRun,
   KanbanSettings,
@@ -22,7 +20,6 @@ import type {
   KanbanTaskCard,
   KanbanTool,
   PlanApproval,
-  PrRef,
   ProjectRepo,
   ProjectSettings,
   ReviewSettings,
@@ -32,13 +29,14 @@ import type {
   TaskStatus,
   TaskType,
 } from './types.js';
-import { KANBAN_EFFORTS, KANBAN_TOOLS, PR_REVIEW_MAX, TASK_STATUSES, TASK_TYPES } from './types.js';
-import { Bad, KANBAN_LIMITS, MODEL_RE, PROJECT_ID_RE, bad, bool, deskId, id, isObj, onceKey, isRepoName, list, model, nullableText, oneOf, optInt, optOneOf, optText, project, text, workerId, type Obj, type Req } from './validate.js';
+import { KANBAN_EFFORTS, KANBAN_TOOLS, TASK_STATUSES, TASK_TYPES } from './types.js';
+import { Bad, KANBAN_LIMITS, MODEL_RE, PROJECT_ID_RE, bad, bool, deskId, id, isObj, onceKey, list, model, nullableText, oneOf, optInt, optOneOf, optText, project, text, workerId, type Obj, type Req } from './validate.js';
 import { PERMISSIONS, PLAN_APPROVALS, REPO_ID_RE, attachmentIds, repoIds, review, tags, taskInput, url, type KanbanTaskInput } from './taskinput.js';
 import { moveExtras } from './hold.js';
 import { PR_MODES, type PrMode } from './prs.js';
 import type { LoungeServerMsg } from './lounge.js';
 import { ISSUE_OPS_CLIENT_TYPE_LIST, parseIssueOpsMsg, type IssueOpsClientMsg, type IssueOpsServerMsg } from './issueops.js';
+import { PR_CLIENT_TYPE_LIST, parsePrMsg, type PrClientMsg, type PrServerMsg } from './prmsgs.js';
 import { FILE_OPS_CLIENT_TYPE_LIST, parseFileOpsMsg, type FileOpsClientMsg } from './fileops.js';
 import { JIRA_CONNECTION_CLIENT_TYPE_LIST, parseJiraConnectionMsg, type JiraConnectionClientMsg, type JiraConnectionServerMsg } from './jira-connections.js';
 
@@ -145,16 +143,7 @@ export type KanbanClientMsg =
   | Req<{ t: 'kanban.skills.sync' }>
   /** Secrets (admins). null clears; the answer only says what's configured (kanban.settings.secrets). The Jira connections: jira-connections.ts. */
   | Req<{ t: 'kanban.secrets.set'; apiKey: string | null }>
-  /**
-   * A review of several pull requests together: answered with kanban.ok {taskId, workerId} (the
-   * review's task and its reviewer). With `panel`, the floor's meeting room reviews them instead,
-   * answered with kanban.ok {} (and taskId when one was given).
-   */
-  | Req<{ t: 'kanban.pr.review'; project: string; prs: PrRef[]; taskId?: number; tool?: KanbanTool; model?: string; effort?: KanbanEffort; panel?: boolean }>
-  /** The pull requests that belong together (open and draft ones; merged and closed too with includeClosed); answered with kanban.pr.bundle. */
-  | Req<{ t: 'kanban.pr.bundle'; project: string; includeClosed?: boolean } & KanbanPrBundleKey>
-  /** The task that owns a pull request, and whether its agent can fix it now: kanban.pr.owner. */
-  | Req<{ t: 'kanban.pr.owner'; project: string; repo: string; number: number }>
+  | PrClientMsg
   | IssueOpsClientMsg
   | FileOpsClientMsg
   | JiraConnectionClientMsg;
@@ -188,8 +177,7 @@ export type KanbanServerMsg =
   | { t: 'kanban.meta'; rid?: string; projects: KanbanProjectInfo[]; settings: KanbanSettings; secrets: SecretStatus; me: { admin: boolean; name: string } }
   | { t: 'kanban.projects'; projects: KanbanProjectInfo[] }
   | { t: 'kanban.skills'; rid?: string; skills: SkillInfo[]; error?: string }
-  | { t: 'kanban.pr.bundle'; rid?: string; project: string; key: KanbanPrBundleKey; prs: KanbanPrBundleItem[]; error?: string }
-  | { t: 'kanban.pr.owner'; rid?: string; taskId: number | null; title?: string; fixable: boolean; reason?: string }
+  | PrServerMsg
   /** `earlier`: a creation's `once` key had already made `taskId` from another request (another issue, or none): nothing was made now. */
   | { t: 'kanban.ok'; rid?: string; taskId?: number; commentId?: number; workerId?: string; existed?: boolean; startError?: string; started?: true; earlier?: true }
   | IssueOpsServerMsg
@@ -242,24 +230,6 @@ function taskPatch(v: unknown): KanbanTaskPatch {
   if (!Object.keys(out).length) bad('Nothing to change');
   return out;
 }
-function prRef(x: unknown): PrRef {
-  if (!isObj(x)) bad('prs must be pull requests: {repo, number}');
-  const p = x as Obj;
-  if (typeof p.repo !== 'string' || !isRepoName(p.repo)) bad('A pull request needs its repository: owner/name on GitHub, azure:org/project/repo or bitbucket:workspace/repo');
-  if (!Number.isSafeInteger(p.number) || (p.number as number) <= 0) bad('A pull request needs its number');
-  return { repo: p.repo as string, number: p.number as number };
-}
-function prRefs(v: unknown): PrRef[] {
-  const seen = new Set<string>();
-  const prs = list(v, 'prs', PR_REVIEW_MAX, prRef).filter((p) => {
-    const key = `${p.repo.toLowerCase()}#${p.number}`;
-    if (seen.has(key)) return false;
-    seen.add(key);
-    return true;
-  });
-  if (!prs.length) bad('Pick at least one pull request');
-  return prs;
-}
 function repoInputs(v: unknown): ProjectRepoInput[] {
   return list(v, 'repos', KANBAN_LIMITS.repoIds + 1, (x) => {
     if (!isObj(x)) bad('repos must be repositories');
@@ -282,13 +252,6 @@ function repoInputs(v: unknown): ProjectRepoInput[] {
     return out;
   });
 }
-function bundleKey(r: Obj): KanbanPrBundleKey {
-  const keys = ['taskId', 'branch', 'ticket'].filter((k) => r[k] !== undefined);
-  if (keys.length !== 1) bad('Give exactly one of taskId, branch or ticket');
-  if (r.taskId !== undefined) return { taskId: id(r.taskId, 'taskId') };
-  if (r.branch !== undefined) return { branch: text(r.branch, 'The branch', KANBAN_LIMITS.branch).trim() };
-  return { ticket: text(r.ticket, 'The ticket', KANBAN_LIMITS.ticket).trim() };
-}
 
 /**
  * Every message type the browser may send, once: a type of KanbanClientMsg missing here fails the
@@ -296,6 +259,7 @@ function bundleKey(r: Obj): KanbanPrBundleKey {
  */
 export const KANBAN_CLIENT_TYPE_LIST: Readonly<Record<KanbanClientType, true>> = {
   ...ISSUE_OPS_CLIENT_TYPE_LIST,
+  ...PR_CLIENT_TYPE_LIST,
   ...FILE_OPS_CLIENT_TYPE_LIST,
   ...JIRA_CONNECTION_CLIENT_TYPE_LIST,
   'kanban.subscribe': true,
@@ -328,9 +292,6 @@ export const KANBAN_CLIENT_TYPE_LIST: Readonly<Record<KanbanClientType, true>> =
   'kanban.skills.list': true,
   'kanban.skills.sync': true,
   'kanban.secrets.set': true,
-  'kanban.pr.review': true,
-  'kanban.pr.bundle': true,
-  'kanban.pr.owner': true,
   'kanban.project.repo.clone': true,
 };
 
@@ -373,6 +334,7 @@ function parse(raw: unknown): KanbanClientMsg {
   const rid = ridOf(r);
   const m = (msg: WithoutRid<KanbanClientMsg>): KanbanClientMsg => (rid ? { ...msg, rid } : msg) as KanbanClientMsg;
   if (t in ISSUE_OPS_CLIENT_TYPE_LIST) return m(parseIssueOpsMsg(t as keyof typeof ISSUE_OPS_CLIENT_TYPE_LIST, r));
+  if (t in PR_CLIENT_TYPE_LIST) return m(parsePrMsg(t as keyof typeof PR_CLIENT_TYPE_LIST, r));
   if (t in FILE_OPS_CLIENT_TYPE_LIST) return m(parseFileOpsMsg(t as keyof typeof FILE_OPS_CLIENT_TYPE_LIST, r));
   if (t in JIRA_CONNECTION_CLIENT_TYPE_LIST) return m(parseJiraConnectionMsg(t as keyof typeof JIRA_CONNECTION_CLIENT_TYPE_LIST, r));
   const nullableProject = (v: unknown) => (v === null || v === undefined ? null : project(v));
@@ -465,25 +427,6 @@ function parse(raw: unknown): KanbanClientMsg {
       if (key.length < 16) bad('The API key must be at least 16 characters');
       return m({ t: 'kanban.secrets.set', apiKey: key });
     }
-    case 'kanban.pr.review': {
-      const taskId = r.taskId === undefined ? undefined : id(r.taskId, 'taskId');
-      const tool = optOneOf(r.tool, 'tool', KANBAN_TOOLS);
-      const mdl = model(r.model);
-      const effort = optOneOf(r.effort, 'effort', KANBAN_EFFORTS);
-      return m({
-        t: 'kanban.pr.review',
-        project: project(r.project),
-        prs: prRefs(r.prs),
-        ...(taskId !== undefined ? { taskId } : {}),
-        ...(tool ? { tool } : {}),
-        ...(mdl ? { model: mdl } : {}),
-        ...(effort ? { effort } : {}),
-        ...(bool(r.panel, 'panel') ? { panel: true } : {}),
-      });
-    }
-    case 'kanban.pr.bundle':
-      return m({ t: 'kanban.pr.bundle', project: project(r.project), ...bundleKey(r), ...(bool(r.includeClosed, 'includeClosed') ? { includeClosed: true } : {}) });
-    case 'kanban.pr.owner': return m({ t: 'kanban.pr.owner', project: project(r.project), ...prRef(r) });
   }
   return bad(`Unknown kanban message ${t.slice(0, 60)}`);
 }

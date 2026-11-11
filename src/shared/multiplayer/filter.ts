@@ -146,11 +146,13 @@ export const SERVER_MSG_OUT = {
   'kanban.settings': 'drop',
   'kanban.skills': 'drop',
   'kanban.pr.owner': 'drop',
+  'kanban.prFound': 'drop',
   'kanban.ok': 'drop',
   'kanban.secrets.jiraTested': 'drop',
   // Issues of the owner's Jira / GitHub sources: read with the owner's credentials, so not the visitor's to see.
   'kanban.issues': 'drop',
   'kanban.issueTransitions': 'drop',
+  'kanban.issueDetail': 'drop',
   'kanban.issueComments': 'drop',
   'kanban.issuePeople': 'drop',
   'kanban.browseScopes': 'drop',

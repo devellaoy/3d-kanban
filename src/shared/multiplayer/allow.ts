@@ -252,6 +252,9 @@ export const CLIENT_MSG_CLASS = {
   'kanban.secrets.jira.remove': 'deny',
   'kanban.secrets.jira.test': 'deny',
   'kanban.pr.review': 'deny',
+  'kanban.pr.find': 'deny',
+  'kanban.pr.link': 'deny',
+  'kanban.pr.unlink': 'deny',
   // Reads, but through the owner's Jira / GitHub credentials, so not covered by the visitor's repo access.
   'kanban.pr.owner': 'deny',
   'kanban.issues.list': 'deny',
@@ -259,6 +262,7 @@ export const CLIENT_MSG_CLASS = {
   'kanban.issues.createTask': 'deny',
   'kanban.issue.transitions': 'deny',
   'kanban.issue.transition': 'deny',
+  'kanban.issue.get': 'deny',
   'kanban.issue.comments': 'deny',
   'kanban.issue.comment': 'deny',
   'kanban.issue.people': 'deny',

@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { ghAssign, ghClaimIfUnassigned, ghComment, ghComments, ghPeople, ghStateTransition, ghStateTransitions } from '../src/server/kanban/integrations/issues/github-ops.js';
 import { jiraAssign, jiraCall, jiraComment, jiraComments, jiraPeople, jiraTransition, jiraTransitions, textToAdf } from '../src/server/kanban/integrations/issues/jira-ops.js';
 import { PROJECT_WRITE_SCOPE_ERROR, boardTransitions, projectTransition, resolveBoards } from '../src/server/kanban/integrations/issues/project-ops.js';
+import { issueActionHandlers } from '../src/server/kanban/integrations/issues/actions.js';
 import { createIssues } from '../src/server/kanban/integrations/issues/index.js';
 import { onWallIssues } from '../src/server/kanban/integrations/issues/wall.js';
 import type { IssueActIo } from '../src/server/kanban/integrations/issues/source.js';
@@ -725,4 +726,142 @@ test('reading an issue does not drop its change, and the lists do not mutate on 
   assert.equal(status(), 'Doing', 'past its time to live it is not shown');
   clock = 3000;
   assert.equal(status(), 'Shipped', 'reading did not delete it: it shows again when the clock says it is young');
+});
+
+test('kanban.issue.get: the list first, else loaded; `fresh` loads first; an unknown key is an error; the issue is remembered', async () => {
+  const ctx = makeCtx([def('app', '/tmp/app', { repo: 'o/r' })]);
+  const mk = (key: string, title: string) => ({ key, title, url: `https://github.com/o/r/issues/${key.slice(-1)}`, source: 'github-repo', sourceId: 'r' }) as never;
+  const calls: string[] = [];
+  const kept: string[] = [];
+  const listed = new Map([['gh:o/r#5', mk('gh:o/r#5', 'Listed five')]]);
+  const loadable = new Map([['gh:o/r#5', mk('gh:o/r#5', 'Fresh five')], ['gh:o/r#6', mk('gh:o/r#6', 'Loaded six')]]);
+  const ws = issueActionHandlers(ctx, {
+    find: (_p, k) => (calls.push(`find ${k}`), listed.get(k)),
+    load: async (_p, k, source) => (calls.push(`load ${k}${source ? ` via ${source}` : ''}`), loadable.get(k)),
+    patch: () => {},
+    io: () => ({}) as never,
+    remember: (_p, i) => void kept.push(i.title),
+  });
+  const get = ws['kanban.issue.get']!;
+  const c = client(false, 'acc1');
+  const last = () => c.got.at(-1) as any;
+  await get(c, { t: 'kanban.issue.get', project: 'app', issueKey: 'gh:o/r#5', rid: 'a' });
+  assert.deepEqual(last(), { t: 'kanban.issueDetail', rid: 'a', project: 'app', issueKey: 'gh:o/r#5', issue: listed.get('gh:o/r#5') });
+  assert.deepEqual(calls, ['find gh:o/r#5'], 'the list answered: nothing loaded');
+  calls.length = 0;
+  await get(c, { t: 'kanban.issue.get', project: 'app', issueKey: 'gh:o/r#6', source: 'r' });
+  assert.equal(last().issue.title, 'Loaded six');
+  assert.deepEqual(calls, ['find gh:o/r#6', 'load gh:o/r#6 via r']);
+  calls.length = 0;
+  await get(c, { t: 'kanban.issue.get', project: 'app', issueKey: 'gh:o/r#5', fresh: true });
+  assert.equal(last().issue.title, 'Fresh five');
+  assert.deepEqual(calls, ['load gh:o/r#5'], 'fresh: loaded first, the list not asked');
+  loadable.delete('gh:o/r#5');
+  await get(c, { t: 'kanban.issue.get', project: 'app', issueKey: 'gh:o/r#5', fresh: true });
+  assert.equal(last().issue.title, 'Listed five', 'fresh falls back to the list');
+  assert.deepEqual(kept, ['Listed five', 'Loaded six', 'Fresh five', 'Listed five']);
+  await get(c, { t: 'kanban.issue.get', project: 'app', issueKey: 'gh:o/r#9', rid: 'z' });
+  assert.deepEqual(last(), { t: 'kanban.error', rid: 'z', message: "gh:o/r#9 isn't among the project's issues (any more)" });
+  await get(c, { t: 'kanban.issue.get', project: 'nope', issueKey: 'gh:o/r#5' });
+  assert.match(last().message, /no project nope/);
+});
+
+test('kanban.issue.get: a key two Jira sources both have is read again from the source the asker names', async () => {
+  const ctx = makeCtx([def('app', '/tmp/app', { repo: 'o/r' })]);
+  const of = (sourceId: string, status: string) => ({ key: 'UYT-12', title: `Twelve at ${sourceId}`, url: `https://${sourceId}.atlassian.net/browse/UYT-12`, source: 'jira', sourceId, status }) as never;
+  const sites: Record<string, unknown> = { 'jira-a': of('jira-a', 'To Do'), 'jira-b': of('jira-b', 'Done') };
+  const ws = issueActionHandlers(ctx, {
+    // The list kept source B's copy; with no source named a load answers from the first source that has the key (A).
+    find: () => of('jira-b', 'In Progress'),
+    load: async (_p, _k, source) => sites[source ?? 'jira-a'] as never,
+    patch: () => {},
+    io: () => ({}) as never,
+    remember: () => {},
+  });
+  const c = client(false, 'acc1');
+  const last = () => c.got.at(-1) as any;
+  await ws['kanban.issue.get']!(c, { t: 'kanban.issue.get', project: 'app', issueKey: 'UYT-12' });
+  assert.equal(last().issue.sourceId, 'jira-b', 'opened from the list: source B');
+  await ws['kanban.issue.get']!(c, { t: 'kanban.issue.get', project: 'app', issueKey: 'UYT-12', source: last().issue.sourceId, fresh: true });
+  assert.deepEqual([last().issue.sourceId, last().issue.status], ['jira-b', 'Done'], 'the refresh stays with source B');
+});
+
+test('a refresh of an issue (kanban.issue.get, fresh) updates the list’s own copy: the actions after it answer with the status the source has now', async () => {
+  const ctx = makeCtx([def('app', '/tmp/app', { repo: 'o/r' })], { ghAs: () => 'no GitHub sign-in' });
+  ctx.settings.setProject('app', { issueSources: [JIRA_SRC] });
+  (ctx as unknown as { secrets: unknown }).secrets = { jiraConnections: () => JIRA_TOKEN };
+  const fields = (status: string) => ({ summary: 'Jira one', status: { name: status }, updated: '2026-09-01' });
+  const http = fetchStub((c) => {
+    // The list was fetched while it was in Backlog; someone moved it to Done in Jira since.
+    if (c.url.endsWith('/search/jql')) return { body: { issues: [{ key: 'UYT-12', fields: fields('Backlog') }], isLast: true } };
+    if (c.url.includes('/transitions') && c.method === 'GET') return { body: { transitions: [{ id: '31', name: 'Reopen', to: { name: 'Backlog' } }] } };
+    if (c.url.includes('/issue/UYT-12')) return { body: { key: 'UYT-12', fields: fields('Done') } };
+    return { status: 204 };
+  });
+  const issues = createIssues(ctx, { gh: ghStub(() => '').gh, fetch: http.fetch });
+  await issues.refresh('app');
+  const ws = issues.plugin.ws!;
+  const c = client(false, 'acc1');
+  const current = async () => {
+    await ws['kanban.issue.transitions']!(c, { t: 'kanban.issue.transitions', project: 'app', issueKey: 'UYT-12', source: JIRA_SRC.id });
+    return last(c, 'kanban.issueTransitions').current;
+  };
+  assert.equal(await current(), 'Backlog', 'before the refresh: what the list has');
+  await ws['kanban.issue.get']!(c, { t: 'kanban.issue.get', project: 'app', issueKey: 'UYT-12', source: JIRA_SRC.id, fresh: true });
+  assert.equal(last(c, 'kanban.issueDetail').issue.status, 'Done');
+  assert.equal(await current(), 'Done', 'the panel’s reload after the refresh says Done too');
+  assert.equal(issues.message('app').items[0].status, 'Done', 'and so does the list');
+});
+
+test('a refresh of a GitHub repository issue updates the list’s copy too: reading it again gives the fresh one', async () => {
+  const ctx = makeCtx([def('app', '/tmp/app', { repo: 'o/r' })]);
+  ctx.settings.setProject('app', { issueSources: [REPO_SRC, PROJECT_SOURCE] });
+  // Listed open with an assignee; closed and unassigned on GitHub since.
+  const now = { ...item(5, 'Five, retitled'), state: 'CLOSED', assignees: [] };
+  const stub = ghStub((args) => {
+    if (args[0] === 'issue' && args[1] === 'list') return JSON.stringify([{ ...item(5, 'Five'), assignees: [{ login: 'maija' }] }]);
+    if (args[0] === 'issue' && args[1] === 'view') return JSON.stringify(now);
+    return '[]';
+  });
+  const issues = createIssues(ctx, { gh: stub.gh, fetch: fetchStub(() => ({ body: {} })).fetch });
+  await issues.refresh('app');
+  const ws = issues.plugin.ws!;
+  const c = client(false, 'acc1');
+  const get = async (extra: Record<string, unknown> = {}) => {
+    await ws['kanban.issue.get']!(c, { t: 'kanban.issue.get', project: 'app', issueKey: 'gh:o/r#5', ...extra });
+    return last(c, 'kanban.issueDetail').issue;
+  };
+  const first = await get();
+  const listCalls = stub.calls.length;
+  assert.deepEqual([first.title, first.sourceId, first.assignee], ['Five', 'r', 'maija'], 'opened from the list');
+  const fresh = await get({ source: first.sourceId, fresh: true });
+  assert.deepEqual([fresh.title, fresh.sourceId], ['Five, retitled', 'r'], 'the issue read alone names the repository source, as the listed one does');
+  assert.ok(!/projectItems|node\(id|projectV2/.test(JSON.stringify(stub.calls.slice(listCalls))), 'asked through the repository source: no board is read for it');
+  const again = await get();
+  assert.equal(again.title, 'Five, retitled', 'the tab opened again: not the old list copy');
+  assert.equal(again.assignee, undefined, 'the assignee GitHub no longer has is gone, not kept from the old copy');
+  assert.equal(issues.message('app').items.find((i) => i.key === 'gh:o/r#5')!.title, 'Five, retitled');
+});
+
+test('a refresh replaces the list’s copy whole: fields the source emptied (a Jira assignee, an epic) do not stay from the old copy', async () => {
+  const ctx = makeCtx([def('app', '/tmp/app', { repo: 'o/r' })], { ghAs: () => 'no GitHub sign-in' });
+  ctx.settings.setProject('app', { issueSources: [JIRA_SRC] });
+  (ctx as unknown as { secrets: unknown }).secrets = { jiraConnections: () => JIRA_TOKEN };
+  const base = { summary: 'Jira one', status: { name: 'Backlog' }, updated: '2026-09-01' };
+  const http = fetchStub((c) => {
+    if (c.url.endsWith('/search/jql')) return { body: { issues: [{ key: 'UYT-12', fields: { ...base, assignee: { displayName: 'Maija' }, parent: { key: 'UYT-1', fields: { summary: 'The epic', issuetype: { name: 'Epic' } } } } }], isLast: true } };
+    if (c.url.includes('/issue/UYT-12')) return { body: { key: 'UYT-12', fields: { ...base, assignee: null } } };
+    return { status: 204 };
+  });
+  const issues = createIssues(ctx, { gh: ghStub(() => '').gh, fetch: http.fetch });
+  await issues.refresh('app');
+  const listed = () => issues.message('app').items[0];
+  assert.equal(listed().assignee, 'Maija');
+  const c = client(false, 'acc1');
+  await issues.plugin.ws!['kanban.issue.get']!(c, { t: 'kanban.issue.get', project: 'app', issueKey: 'UYT-12', source: JIRA_SRC.id, fresh: true });
+  assert.equal(last(c, 'kanban.issueDetail').issue.assignee, undefined);
+  assert.equal(listed().assignee, undefined, 'unassigned in Jira: the list’s copy says so too');
+  assert.equal(listed().epic, undefined, 'and the epic it was taken out of is gone');
+  await issues.plugin.ws!['kanban.issue.get']!(c, { t: 'kanban.issue.get', project: 'app', issueKey: 'UYT-12' });
+  assert.equal(last(c, 'kanban.issueDetail').issue.assignee, undefined, 'read again from the cache: still nobody');
 });

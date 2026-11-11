@@ -382,6 +382,17 @@ export function createIssues(ctx: KanbanContext, opts: IssuesOptions = {}) {
           acted.set(project, kept);
           kept.set(issue.key, { issue, at: now() });
         },
+        // The list's copy (the same key from the same source) is replaced by the fresh one whole (a field the source emptied is
+        // left out of the fresh copy, and must not stay from the old one), and the browsers and the board hear of it;
+        // a change made here that no fetch has confirmed yet still shows over it (the overlay).
+        refreshed: (project, issue) => {
+          const s = cache.get(project);
+          if (!s?.items.some((i) => i.key === issue.key && i.sourceId === issue.sourceId)) return;
+          cache.set(project, { ...s, items: s.items.map((i) => (i.key === issue.key && i.sourceId === issue.sourceId ? issue : i)) });
+          ctx.broadcast(message(project), project);
+          wallChanged(project);
+          refreshWall(project);
+        },
       }),
       'kanban.issues.list': (c, m) => {
         if (!ctx.project(m.project)) return fail(c, m.rid, `There's no project ${m.project}`);

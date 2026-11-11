@@ -317,8 +317,8 @@ export function showIn3dLink(project: string, workerId?: string, deskId?: string
 // --- The task view --------------------------------------------------------------------------------
 
 /** The tabs of a task's view (taskview.ts), in order. */
-export type TaskTab = 'overview' | 'conversation' | 'plan' | 'runs' | 'terminal' | 'changes' | 'prs';
-export const TASK_TABS: readonly TaskTab[] = ['overview', 'conversation', 'plan', 'runs', 'terminal', 'changes', 'prs'];
+export type TaskTab = 'overview' | 'conversation' | 'plan' | 'runs' | 'terminal' | 'changes' | 'prs' | 'issue';
+export const TASK_TABS: readonly TaskTab[] = ['overview', 'conversation', 'plan', 'runs', 'terminal', 'changes', 'prs', 'issue'];
 
 export function isTaskTab(v: unknown): v is TaskTab {
   return typeof v === 'string' && (TASK_TABS as readonly string[]).includes(v);

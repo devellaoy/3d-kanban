@@ -43,6 +43,8 @@ export interface ActionDeps {
   io(project: string): IssueSourceIo;
   /** Keeps the issue as it was acted on, so its window can go on (Reopen) after the list has lost it. */
   remember(project: string, issue: NormalizedIssue): void;
+  /** An issue was read again from its source on request (a refresh): the list's own copy takes what it says now, so `find` and the actions after it don't answer with the older one. */
+  refreshed?(project: string, issue: NormalizedIssue): void;
 }
 
 /** Where an issue's actions go. */
@@ -160,6 +162,21 @@ export function issueActionHandlers(ctx: KanbanContext, deps: ActionDeps): NonNu
   };
 
   return {
+    // A read of one issue for its window (no routing: an issue the office can't act on can still be shown). `fresh` loads it anew first.
+    'kanban.issue.get': async (c: KanbanClient, m: Msg<'kanban.issue.get'>): Promise<void> => {
+      if (!ctx.project(m.project)) return fail(c, m.rid, `There's no project ${m.project}`);
+      try {
+        const read = m.fresh ? await deps.load(m.project, m.issueKey, m.source) : undefined;
+        if (read) deps.refreshed?.(m.project, read);
+        const issue = read ?? deps.find(m.project, m.issueKey) ?? (m.fresh ? undefined : await deps.load(m.project, m.issueKey, m.source));
+        if (!issue) return fail(c, m.rid, `${m.issueKey} isn't among the project's issues (any more)`);
+        deps.remember(m.project, issue);
+        c.send({ t: 'kanban.issueDetail', ...(m.rid ? { rid: m.rid } : {}), project: m.project, issueKey: m.issueKey, issue });
+      } catch (err) {
+        fail(c, m.rid, (err as Error)?.message ?? String(err));
+      }
+    },
+
     'kanban.issue.transitions': scoped<Msg<'kanban.issue.transitions'>>(async (c, m, { issue, target, io, boards }) => {
       const reply = (transitions: IssueTransition[], extra: { current?: string; cannot?: string; note?: string } = {}) =>
         c.send({ t: 'kanban.issueTransitions', ...(m.rid ? { rid: m.rid } : {}), project: m.project, issueKey: m.issueKey, transitions, ...extra });

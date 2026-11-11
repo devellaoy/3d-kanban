@@ -283,7 +283,7 @@ allowed: `todo → in_progress` (= start), `waiting|review → done`, `done → 
     lacking one resolved through its repoId, number or URL); a fork's PR with the same branch name (`gh pr view
     --json isCrossRepository` must say false). The gh answers are cached (a PR's head repository never changes),
     a failed question isn't repeated for 5 minutes and links nothing meanwhile. Each such link is a `pr.linked`
-    event (`{ repo, number, by: 'branch' }`); the board's `GhPull.isCrossRepository` skips a fork's PR before gh is asked. A `pr`/`pr-fix`/`pr-conflicts` turn's end asks the floor's boards for the task's git
+    event (`{ repo, number, by: 'branch' }`); the 🔎 Find PRs button (`kanban.pr.find`) links by the task's branch too, but in any state and for any task (done or archived included), as `{ repo, number, by: 'find', who }`, and a PR picked by hand (`kanban.pr.link`) is `by: 'manual'`; taking a link off (`kanban.pr.unlink`) is a `pr.unlinked` event (`{ repo, number, who }`), and the automatic sync does not link that PR to that task again unless a later `pr.linked` event (a Find or `kanban.pr.link`) follows it (the task's newest 500 events are read, only for a PR the sync would link); the board's `GhPull.isCrossRepository` skips a fork's PR before gh is asked. A `pr`/`pr-fix`/`pr-conflicts` turn's end asks the floor's boards for the task's git
     repositories to refresh at once, so the link shows up quickly.
   - review: read from the final answer's last 3 non-empty lines only: the **last** of them matching
     `^\s*REVIEW:\s*(APPROVED|CHANGES_REQUESTED)\s*$` as a line of its own (emphasis allowed) decides; none →
@@ -446,7 +446,7 @@ allowed: `todo → in_progress` (= start), `waiting|review → done`, `done → 
 
 ## 6. WS protocol
 
-All kanban messages are `kanban.*` (`src/shared/kanban/protocol.ts`, `KanbanClientMsg` / `KanbanServerMsg`; the validators are in `validate.ts`, the issue messages in `issueops.ts`),
+All kanban messages are `kanban.*` (`src/shared/kanban/protocol.ts`, `KanbanClientMsg` / `KanbanServerMsg`; the validators are in `validate.ts`, the issue messages in `issueops.ts`, the pull request ones in `prmsgs.ts`),
 joined into upstream's `ClientMsg` / `ServerMsg` unions. Requests may carry `rid` (string); the server
 answers `kanban.ok {rid, ...}` or `kanban.error {rid, message}`. Deltas are pushed to subscribed clients
 (`kanban.subscribe {project: floorId | null}`), no polling.
@@ -523,6 +523,19 @@ answers `kanban.ok {rid, ...}` or `kanban.error {rid, message}`. Deltas are push
     the project's tasks linked to the PR (by repository, repoId or URL: `prOwners`), the newest not archived (none: `taskId` null);
     `fixable` is `canFixPrs` (shared/kanban/prs.ts: not running, not asking in its terminal, in Waiting, Review or
     Done, with an open or draft PR that isn't a fork's: the server passes the floor's polled PRs, `isCrossRepository`) and `reason` says why not. The action itself is `pr {id, mode}` with mode `'create' | 'fix' | 'conflicts'` (the same rule gates the last two).
+  - `pr.find {project, taskId}` (integrations/pulls; denied to visitors): looks for the task's own PRs in the project's
+    repositories, asked fresh (`gh pr list --state all`, the newest 100 per repository, plus one for the task's branch there
+    with `--head`, 10 s at most, then the fork and default-branch questions 8 s at most, `isCrossRepository` from the list when it has it; Azure DevOps / Bitbucket: the floor board's list, else a note). `findTaskPrs`
+    (integrations/pulls/bundle.ts): a PR whose head branch is the task's in that repository, in any state is a match; the
+    handler **links it at once** (`by: 'find'` event) when it is open or draft, or was created at or after the task (so a
+    done task's merged PR works), and gh says it isn't a fork's nor the default branch; a merged or closed one created
+    before the task (or with no readable date; a reused branch like staging has many) is **offered** with the ticket
+    matches; so is one on a (repository, branch) another active task is on too (decided like the automatic sync's `branchPrs`, which treats such a branch as nobody's: `branchOwners` in bundle.ts, any project, the task itself left out); one whose title or branch only names the ticket is **offered, never linked** (tasks share tickets);
+    one another task has linked is skipped, never taken over. The states of the task's existing links are refreshed from the
+    same lists. Answered with `kanban.prFound {taskId, linked, candidates, skipped: {repo, number, reason}[], notes}`
+    (`linked`: just linked; `candidates`: the ticket matches, the old closed branch matches and the shared-branch matches, `KanbanPrBundleItem`; `notes`: repositories that couldn't be
+    listed). `pr.link {project, taskId, prs}` links the picked ones (each must exist in a project repository and be no other
+    task's, and at most `PR_LINK_MAX` = 20 (`PR_REVIEW_MAX`) at a time; all checked in parallel, each at most 10 s, and written only if all are fine; a PR gh can't read is told as "couldn't be read (reason)", not as missing; `by: 'manual'`) and `pr.unlink {project, taskId, number, repoId?, repo?}` takes one off (at least one of `repoId` and `repo`; the link's `repoId` is preferred, so an older link stored without `repo` can be unlinked; the `pr.unlinked` event carries the resolved remote); both answer `kanban.ok {taskId}`. Neither `pr.find` nor `pr.link` overwrites a link of the task that has the same `repoId` and number but names another repository (the remote changed since): find skips that PR with the reason, link refuses the request, until the old link is unlinked.
   - `pr.review {project, prs, taskId?, tool?, model?, effort?, panel?}`: checked by integrations/pulls (the
     project exists, every PR is in one of its GitHub repositories and exists, each once, at most 20, `taskId`
     is the project's), then run by the engine (`engine.reviewPrs`, §4) and answered with
@@ -531,6 +544,10 @@ answers `kanban.ok {rid, ...}` or `kanban.error {rid, message}`. Deltas are push
     its brief, the layered `kanban.pr.panel` prompt (office + project layers), lists every PR, the review is
     posted on one of the primary repository's; a single PR from the office's PR board keeps upstream's `pull.panel`) and is answered with
     `kanban.ok {}` (`taskId` when one was given, which also gets a status comment).
+  - `issue.get {project, issueKey, source?, fresh?}` (`issueops.ts`, `integrations/issues/actions.ts`; a read, denied to visitors)
+    answers `kanban.issueDetail {project, issueKey, issue}`: the issue from the project's list, else loaded from its source;
+    `fresh: true` loads it anew first (the list's copy only when that finds nothing). The issue is remembered, so the
+    `issue.*` actions on it work afterwards. Not on the list and not loadable: `kanban.error`.
   - `issue.transitions | transition | comments | comment | people | assign` (`{project, issueKey, …}`, defined with the
     `issues.*` messages in `shared/kanban/issueops.ts`; handlers in `integrations/issues/actions.ts`; for anyone signed in) act on one
     issue of an issue source. The reads are answered with `kanban.issueTransitions {current?, transitions, cannot?, note?}`,

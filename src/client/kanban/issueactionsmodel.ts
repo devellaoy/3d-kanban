@@ -95,3 +95,28 @@ export function groupTransitions(ts: readonly IssueTransition[]): [string, Issue
   }
   return [...groups];
 }
+
+/**
+ * The read of a task's issue (kanban.issue.get). `source` is the issue source the issue shown came
+ * through: a later read names it, so a key two Jira sites both have is read from the same site again
+ * (and the actions panel, which keeps to that source, stays in step with what is shown).
+ */
+export function issueGetMsg(project: string, issueKey: string, o: { source?: string; fresh?: boolean } = {}) {
+  return { t: 'kanban.issue.get' as const, project, issueKey, ...(o.source ? { source: o.source } : {}), ...(o.fresh ? { fresh: true } : {}) };
+}
+
+/** How much of a body the office's issues list carries (LIST_BODY in the server's issues module): a plain cut, no marker. */
+export const LIST_BODY = 4000;
+
+/**
+ * The body to keep when the issues list (cut at LIST_BODY) has the issue again; `whole` says the
+ * held body was read whole (kanban.issue.get), whatever its length. A listed body shorter than the
+ * cut is whole and wins. A full-length one may be cut: over a body held whole the held one stays,
+ * and `stale` says the listed copy is not its start (the source changed, or grew past the cut), so
+ * the whole body is to be read again. A held body that is a list copy itself gives way to the newer copy.
+ */
+export function listedBody(held: string, whole: boolean, listed: string): { body: string; whole: boolean; stale: boolean } {
+  if (listed.length < LIST_BODY) return { body: listed, whole: true, stale: false };
+  if (!whole) return { body: listed, whole: false, stale: false };
+  return { body: held, whole: true, stale: !held.startsWith(listed) };
+}

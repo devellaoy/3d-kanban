@@ -16,6 +16,7 @@
 .kb-tv .kb-chip { display: inline-flex; align-items: center; gap: 3px; max-width: 100%; padding: 1px 7px; font-size: var(--fs-2xs); font-weight: var(--fw-bold); line-height: 18px; background: var(--field); border: var(--bw-sm) solid var(--ink); border-radius: var(--radius-pill); color: var(--text); text-decoration: none; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .kb-tv .kb-chip.ticket { background: var(--warn-soft); }
 .kb-tv .kb-chip.repo { background: var(--tint-blue); }
+.kb-tv .kb-chip.tag { background: var(--tint-wash); color: var(--muted); }
 .kb-tv .kb-phase { padding: 1px 7px; font-size: var(--fs-2xs); font-weight: var(--fw-heavy); border: var(--bw-sm) solid var(--ink); border-radius: var(--radius-pill); background: var(--field); white-space: nowrap; text-transform: lowercase; }
 .kb-tv .kb-phase.plan { background: var(--tint-magenta); }
 .kb-tv .kb-phase.implement, .kb-tv .kb-phase.resume { background: var(--note-blue); }
@@ -146,6 +147,13 @@
 .kb-tv .kb-table { width: 100%; border-collapse: collapse; font-size: var(--fs-sm); }
 .kb-tv .kb-table th, .kb-tv .kb-table td { padding: 6px 8px; border-bottom: var(--bw-sm) solid var(--rule-soft); text-align: left; vertical-align: top; }
 .kb-tv .kb-table th { font-weight: var(--fw-heavy); font-size: var(--fs-xs); color: var(--muted); }
+/* Six columns on a phone: a long branch wraps inside its cell, the PR's number doesn't. */
+.kb-tv .kb-table code { overflow-wrap: anywhere; -webkit-box-decoration-break: clone; box-decoration-break: clone; }
+.kb-tv .kb-table td a { white-space: nowrap; }
+/* A PR row's ✕ (prbuttons.ts): quiet until pointed at, in a column no wider than itself. */
+.kb-tv .kb-table th:last-child:empty, .kb-tv .kb-table td:has(> .kb-unlink) { width: 1%; padding: 3px 0 3px 4px; text-align: right; vertical-align: middle; }
+.kb-tv .btn.small.kb-unlink { padding: 4px 8px; line-height: 1; color: var(--muted); background: transparent; border-color: transparent; box-shadow: none; }
+.kb-tv .btn.small.kb-unlink:hover:not(:disabled), .kb-tv .btn.small.kb-unlink:focus-visible { color: var(--bad-ink); background: var(--bad-soft); border-color: var(--ink); }
 .kb-tv .kb-files { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 8px; }
 .kb-tv .kb-files li { display: flex; flex-direction: column; gap: 2px; max-width: 180px; font-size: var(--fs-xs); }
 .kb-tv .kb-thumb img { max-width: 160px; max-height: 110px; border: var(--bw-sm) solid var(--ink); border-radius: var(--radius-xs); display: block; }
@@ -163,6 +171,17 @@
 .kb-tv .kb-detail-body[data-tab=changes] { padding: 0; gap: 0; overflow: hidden; }
 .kb-tv .kb-tv-changes { flex: 1; min-height: 0; display: flex; flex-direction: column; }
 
+/* Issue: the issue window's view (issueview.ts; its styles are issueactions.css's) with 🔄 Refresh at the
+   right of its first row. The tab scrolls, so the description is as long as it is. */
+.kb-tv .kb-iw-bar { float: right; margin-left: 10px; }
+.kb-tv .kb-tv-issue .kb-iw { display: block; }
+.kb-tv .kb-tv-issue .kb-iw > * + * { margin-top: 12px; clear: both; }
+.kb-tv .kb-tv-issue .kb-iw-top { min-height: 30px; }
+.kb-tv .kb-iw-desc { max-height: none; }
+.kb-tv .kb-tv-issue > p { margin: 0; }
+.kb-tv .kb-iw-miss { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; padding: 10px 12px; border: var(--bw-sm) dashed var(--ink); border-radius: var(--radius-sm); background: var(--field); }
+.kb-tv .kb-iw-miss > p { flex: 1 1 220px; min-width: 0; margin: 0; overflow-wrap: anywhere; }
+
 /* Embedded (a 3D window's tab, or the standalone task window) */
 .kb-tv.embedded .kb-detail-head { padding: 10px 12px 8px; }
 .modal.kb-task-window { width: min(820px, 100%); height: min(860px, calc(100vh - 32px)); }
@@ -170,6 +189,7 @@
 
 @media (max-width: 700px) {
   .kb-tv textarea, .kb-tv input[type=text], .kb-tv select { font-size: 16px; }
+  .kb-tv .kb-table th, .kb-tv .kb-table td { padding-left: 4px; padding-right: 4px; }
   .kb-tv .kb-comment.user { margin-left: 0; }
   .kb-tv .kb-comment.agent { margin-right: 0; }
   .modal.kb-task-window { width: 100%; height: 100dvh; max-height: 100dvh; border: 0; border-radius: 0; }
