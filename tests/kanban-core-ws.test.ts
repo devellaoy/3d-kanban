@@ -274,6 +274,40 @@ test('edits: structural fields only in To do, the description locked once starte
   assert.equal(kanban.ctx.repo.getTask(1)!.ticket, undefined);
 });
 
+test('the issue of a task that has started can be linked, changed and unlinked, until the archive', async (t) => {
+  const { client, kanban } = office(t);
+  const ada = client('Ada', false);
+  await ada.ask({ t: 'kanban.subscribe', project: 'web' });
+  await ada.ask({ t: 'kanban.task.create', task: { project: 'web', title: 'x' } });
+  await ada.ask({ t: 'kanban.task.start', id: 1 });
+  const issue = () => {
+    const task = kanban.ctx.repo.getTask(1)!;
+    return [task.ticket, task.ticketUrl];
+  };
+  assert.ok(kanban.ctx.repo.getTask(1)!.startedAt, 'it has started');
+  // None linked yet: one is linked, and the card everyone has follows.
+  const before = ada.deltas('kanban.task').length;
+  okOf(await ada.ask({ t: 'kanban.task.update', id: 1, patch: { ticket: 'gh:acme/web#12', ticketUrl: 'https://github.com/acme/web/issues/12' } }));
+  assert.deepEqual(issue(), ['gh:acme/web#12', 'https://github.com/acme/web/issues/12']);
+  const cards = ada.deltas('kanban.task');
+  assert.ok(cards.length > before, 'the change is broadcast');
+  const last = cards[cards.length - 1];
+  assert.equal(last.t === 'kanban.task' && last.task.ticket, 'gh:acme/web#12');
+  // Another one, typed by hand without a link: the old issue's link goes.
+  okOf(await ada.ask({ t: 'kanban.task.update', id: 1, patch: { ticket: 'UYT-7', ticketUrl: null } }));
+  assert.deepEqual(issue(), ['UYT-7', undefined]);
+  await ada.ask({ t: 'kanban.task.stop', id: 1 });
+  okOf(await ada.ask({ t: 'kanban.task.update', id: 1, patch: { ticket: null, ticketUrl: null } }));
+  assert.deepEqual(issue(), [undefined, undefined]);
+  assert.deepEqual((kanban.ctx.repo.listEvents(1).filter((e) => e.kind === 'edited').at(-1)!.data as { fields: string[] }).fields, ['ticket', 'ticketUrl']);
+  errorOf(await ada.ask({ t: 'kanban.task.update', id: 1, patch: { ticket: 'UYT-8', ticketUrl: 'ftp://nope' } }), /http\(s\) URL/);
+  okOf(await ada.ask({ t: 'kanban.task.move', id: 1, to: 'done' }));
+  okOf(await ada.ask({ t: 'kanban.task.update', id: 1, patch: { ticket: 'UYT-8' } }));
+  okOf(await ada.ask({ t: 'kanban.task.move', id: 1, to: 'archived' }));
+  errorOf(await ada.ask({ t: 'kanban.task.update', id: 1, patch: { ticket: 'UYT-9' } }), /Bring it back from the archive first/);
+  assert.equal(kanban.ctx.repo.getTask(1)!.ticket, 'UYT-8');
+});
+
 test('moves are the server’s to allow: start, reset, done, archive and back', async (t) => {
   const { client, kanban, live, calls } = office(t);
   const ada = client('Ada', false);

@@ -486,6 +486,19 @@ answers `kanban.ok {rid, ...}` or `kanban.error {rid, message}`. Deltas are push
     task is in `todo`; `tool, model, effort, review` whenever no run is live (`isRunning` false): the next
     phase hires the new tool, whose fresh session gets the handoff. `repoIds` only before the first start. The
     description is locked from the first start (sending the unchanged text is fine). No edits while archived.
+    `title`, `tags`, `ticket` and `ticketUrl` at any status but the archive: the task view's Issue tab
+    (`client/kanban/issuelink.ts`, patches built in `issuelinkmodel.ts`) links, changes and unlinks a
+    started task's issue with `patch: {ticket, ticketUrl}` (`null` clears; both are always sent, so the
+    old issue's link never stays). It only rewrites the two fields: no issue is assigned or moved, and
+    nothing is done to either issue at its source. A change of `ticket` logs the old one in the `edited` event
+    (`ticketWas`); when `checkClosing` (`server/kanban/integrations/pulls/closes.ts`, on every board refresh) adds a
+    closing line it records a `closing` event `{url, ref, did: 'added'}`, and `did: 'removed'` once it has taken that line out (the latest record per pull request and issue decides, so a line the author writes back afterwards is the author's). Only a line recorded there, an exact line
+    of its own (`closingRef`), is taken out of that PR once the task has another issue or none; a line the author or the
+    agent wrote (its prompt asks for one) is never edited, and if the PR still closes the old issue (text or GitHub's
+    list) one status comment says so (a `closing` event `did: 'left'` keeps it to once). The new issue's line is added
+    without waiting for a new run (the mark per PR URL keeps the issues it checked). Jobs on one PR run in order
+    (a per-URL chain), each from the task as it is when its turn comes, so the last thing done to a PR matches the
+    task's current issue; not while a run goes. A done task with an open PR gets the removal, not an added line.
   - `task.move`: `checkMove` (moves.ts), which only looks at the column and the run state. Workers at rest don't stop a move: the engine sends them
     home first (`engine.sendWorkersHome(id, who, 'reset')`, cleanup `keep` (`all` for a PR review's reviewer in a worktree of its own), reason `released`; a run live only
     because the agent asks in its terminal is finished as `stopped`). A reset of a task with workers is for its creator or an admin (as `task.delete`).

@@ -194,7 +194,7 @@ export function openCreate(api: KanbanApi, o: CreateOptions = {}) {
 
   const createBtn = h('button.btn', { type: 'button' }, editing ? 'Save' : 'Create') as HTMLButtonElement;
   const startBtn = h('button.btn.primary', { type: 'button' }, '▶️ Create and start') as HTMLButtonElement;
-  const note = h('span.grow', {}, editing ? 'A task can be edited until it starts.' : 'Unset fields take the project’s and the office’s defaults.');
+  const note = h('span.grow', {}, editing ? 'A task can be edited until it starts; its issue also later, in its Issue tab.' : 'Unset fields take the project’s and the office’s defaults.');
   const d = dialog('kb-create', editing ? `Edit #${editing.id}` : '✨ New task', body, h('footer', {}, note, createBtn, editing ? null : startBtn));
   const modal = showDialog(d, { backdropCloses: false });
   paintDefaults();

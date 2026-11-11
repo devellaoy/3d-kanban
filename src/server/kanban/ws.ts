@@ -224,7 +224,8 @@ export function createCorePlugin(ctx: KanbanContext, subs: KanbanSubscriptions):
           else ctx.repo.unlinkAttachments([id], task.id);
         }
       }
-      ctx.repo.appendEvent(task.id, 'edited', { by: c.name, fields: Object.keys(m.patch) });
+      // A changed ticket keeps the old one in the event: the closing line written for it is taken out of the task's PR (checkClosing).
+      ctx.repo.appendEvent(task.id, 'edited', { by: c.name, fields: Object.keys(m.patch), ...('ticket' in m.patch && task.ticket ? { ticketWas: task.ticket } : {}) });
       ctx.taskChanged(task.id);
       if ('ticket' in m.patch) wallChanged(task.project);
       ok(c, m.rid, { taskId: task.id });
