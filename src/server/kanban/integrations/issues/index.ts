@@ -10,7 +10,7 @@ import { KANBAN_LIMITS, type IssueTaskFields, type KanbanServerMsg } from '../..
 import { gh } from '../../../github.js';
 import { createIntegrationTask, fail, ok, taskTitle, type IntegrationTaskInput } from '../util.js';
 import { createBoardTask } from '../../create.js';
-import { onceFor, type CreateAnswer } from '../../once.js';
+import { onceFor, requestPrint, type CreateAnswer } from '../../once.js';
 import { githubRepoSource } from './github-repo.js';
 import { githubProjectSource } from './github-project.js';
 import { jiraSource } from './jira.js';
@@ -407,10 +407,10 @@ export function createIssues(ctx: KanbanContext, opts: IssuesOptions = {}) {
           const r = made.result;
           return { taskId: r.taskId, existed: r.existed, ...(r.startError ? { startError: r.startError } : r.started ? { started: true } : {}) };
         };
-        // What it makes is the issue's task: the same key sent for another issue, or for a plain task, is `changed`.
-        const { value: made, changed } = await onceFor(ctx).run(c, m.once, make, `issue\n${m.project}\n${m.issueKey}`);
+        // The same key sent for another issue, for a plain task, or with the form's fields changed is `changed`.
+        const { value: made, changed } = await onceFor(ctx).run(c, m.once, make, requestPrint('issue', { project: m.project, issueKey: m.issueKey, task: m.task ?? null, start: !!m.start }));
         if (typeof made === 'string') return fail(c, m.rid, made);
-        // The key's first request made another task (a plain one, or another issue's): that one, said to be the earlier one.
+        // The key's first request asked for something else (a plain task, another issue's, or this one before the form changed): that task, said to be the earlier one, so the browser keeps the form.
         ok(c, m.rid, changed ? { taskId: made.taskId, earlier: true } : made);
         // Set by this call's own creation only: a repeat never ran `make`.
         await claim?.();

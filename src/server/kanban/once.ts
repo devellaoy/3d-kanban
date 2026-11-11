@@ -2,6 +2,7 @@
 // same `once` key, and gets the first one's answer instead of a second task. The server stores the task
 // before it waits for the start, so the first creation usually did happen.
 
+import { createHash } from 'node:crypto';
 import type { KanbanCaller, KanbanContext } from './registry.js';
 
 /** How long a made answer is kept after it settled. */
@@ -28,6 +29,16 @@ export interface CreateAnswer {
   existed?: boolean;
   startError?: string;
   started?: true;
+}
+
+/**
+ * What a creation asks for, as `run`'s `what`: its kind and every field that decides what is made, so a
+ * form changed after an answer that never came (a longer description, another reviewer, another issue)
+ * is not taken for the request that was made. A hash: a description may be 100 000 characters. The
+ * desk is left out on purpose, since a hire asks for whichever seat is free at the moment it sends.
+ */
+export function requestPrint(kind: 'task' | 'issue', fields: unknown): string {
+  return createHash('sha256').update(`${kind}\n${JSON.stringify(fields)}`).digest('hex');
 }
 
 export function createOnce(keepMs = ONCE_KEEP_MS, max = ONCE_MAX): Once {

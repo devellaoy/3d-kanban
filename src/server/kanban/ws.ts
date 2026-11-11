@@ -15,7 +15,7 @@ import { COMMENTS_PAGE, publicAttachment, type TaskUpdate } from './db/repositor
 import { projectInfo } from './projects.js';
 import { answerSecrets } from './secrets-answer.js';
 import { checkRepoIds, createBoardTask } from './create.js';
-import { onceFor, type CreateAnswer } from './once.js';
+import { onceFor, requestPrint, type CreateAnswer } from './once.js';
 import { openFor, taskFolders, workerFolders } from './vscode.js';
 import { wallChanged, wallSourcesChanged } from './integrations/issues/wall.js';
 import { chmodSync, existsSync } from 'node:fs';
@@ -199,9 +199,9 @@ export function createCorePlugin(ctx: KanbanContext, subs: KanbanSubscriptions):
         const made = await createBoardTask(ctx, m.task, c, { start: m.start, deskId: m.deskId });
         return typeof made === 'string' ? made : { taskId: made.task.id, ...(made.startError ? { startError: made.startError } : {}) };
       };
-      const { value: made, changed } = await onceFor(ctx).run(c, m.once, make, `task\n${m.task.project}`);
+      const { value: made, changed } = await onceFor(ctx).run(c, m.once, make, requestPrint('task', { task: m.task, start: !!m.start }));
       if (typeof made === 'string') return fail(c, m.rid, made);
-      // The key's first request made something else (a task from an issue): that one, said to be the earlier one.
+      // The key's first request asked for something else (the form was changed since, or it was a task from an issue): that task, said to be the earlier one, so the browser keeps the form.
       ok(c, m.rid, changed ? { taskId: made.taskId, earlier: true } : made);
     },
 

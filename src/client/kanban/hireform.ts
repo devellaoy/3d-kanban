@@ -253,7 +253,7 @@ export function createTask(net: Net, form: HireTaskForm, deskLabel: string, onCr
     .then((ok) => {
       if (!ok.taskId) return false;
       if (ok.earlier) {
-        taskToast(net, `🗂️ Your earlier send had already made task #${ok.taskId}, so nothing was made now. Send again to make this one too`, ok.taskId, 'warn');
+        taskToast(net, `🗂️ Your earlier send had already made task #${ok.taskId}, without what you changed since: nothing was made now. Open it, or send again to make another`, ok.taskId, 'warn');
         return 'earlier' as const;
       }
       if (ok.existed) {

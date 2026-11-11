@@ -5,7 +5,7 @@ import { ghIssueArgs, githubRepoSource, parseGhIssues } from '../src/server/kanb
 import { PROJECT_SCOPE_ERROR, filterProjectItems, githubProjectSource, parseProjectPage, projectArgs, projectError } from '../src/server/kanban/integrations/issues/github-project.js';
 import { createIssues, issueDescription } from '../src/server/kanban/integrations/issues/index.js';
 import { takeIssueForTask } from '../src/server/kanban/integrations/issues/autoassign.js';
-import { onceFor } from '../src/server/kanban/once.js';
+import { onceFor, requestPrint } from '../src/server/kanban/once.js';
 import type { IssueSourceIo } from '../src/server/kanban/integrations/issues/source.js';
 import type { IssueSourceConfig } from '../src/shared/kanban/types.js';
 import { client, def, makeCtx } from './kanban-integrations-ctx.js';
@@ -428,8 +428,35 @@ test('the same once key for another issue, or after a plain task, names the earl
   assert.equal(edits().length, 1, 'nothing claimed for the request that was not made');
   // The first send was a plain task: kanban.task.create keeps its answer in the same memory.
   const plain = 'try-3-abcdefgh';
-  await onceFor(ctx).run(c, plain, async () => ({ taskId: 77 }), 'task\napp');
+  await onceFor(ctx).run(c, plain, async () => ({ taskId: 77 }), requestPrint('task', { task: { project: 'app', title: 'x' }, start: false }));
   await ws(c, { t: 'kanban.issues.createTask', project: 'app', issueKey: 'gh:o/app#2', task: { description: 'x' }, once: plain } as never);
   assert.deepEqual(c.got.at(-1), { t: 'kanban.ok', taskId: 77, earlier: true });
   assert.equal(ctx.repo.listTasks('app').length, 1);
 });
+
+// The task was made but its answer never came, and the person went on writing before sending again.
+test('the same once key and issue with the form changed names the earlier task and keeps the change out of it', async () => {
+  const { ctx, issues, c, edits } = claimSetup({ ...env('/h/once-3'), issues: [{ number: 1 }] });
+  await issues.refresh('app');
+  const ws = issues.plugin.ws!['kanban.issues.createTask']!;
+  const key = 'try-6-abcdefgh';
+  const send = (task: Record<string, unknown>, more: Record<string, unknown> = {}) => ws(c, { t: 'kanban.issues.createTask', project: 'app', issueKey: 'gh:o/app#1', task, once: key, ...more } as never);
+  await send({ description: 'first', type: 'implement' });
+  const first = c.got.at(-1) as { taskId: number };
+  const earlier = { t: 'kanban.ok', taskId: first.taskId, earlier: true };
+  await send({ description: 'first, and more', type: 'implement' });
+  assert.deepEqual(c.got.at(-1), earlier, 'a longer description');
+  await send({ description: 'first', type: 'investigate' });
+  assert.deepEqual(c.got.at(-1), earlier, 'another setting');
+  await send({ description: 'first', type: 'implement' }, { start: true });
+  assert.deepEqual(c.got.at(-1), earlier, 'asked to start as well');
+  // Unchanged, it is still the first one's own answer.
+  await send({ description: 'first', type: 'implement' });
+  assert.deepEqual(c.got.at(-1), { t: 'kanban.ok', taskId: first.taskId, existed: false });
+  assert.equal(ctx.repo.listTasks('app').length, 1);
+  assert.match(ctx.repo.getTask(first.taskId)!.description, /^first\n\n/);
+  assert.equal(ctx.repo.getTask(first.taskId)!.type, 'implement');
+  assert.deepEqual(ctx.started, []);
+  assert.equal(edits().length, 1);
+});
+
