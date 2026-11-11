@@ -22,8 +22,8 @@
 /* Fields */
 .kb-set .kb-pane { display: flex; flex-direction: column; gap: 12px; }
 .kb-set fieldset { margin: 0; padding: 10px 14px 14px; border: var(--bw) solid var(--ink); border-radius: var(--radius-box); background: var(--field); display: flex; flex-direction: column; gap: 10px; min-width: 0; }
-.kb-set legend { padding: 0 6px; font-weight: var(--fw-heavy); font-size: var(--fs-sm); text-transform: uppercase; letter-spacing: .04em; }
-.kb-set select, .kb-set input[type=number], .kb-set input[type=email], .kb-set input[type=password], .kb-set input[type=text] { width: 100%; height: 44px; font: var(--fw-semibold) var(--fs-md) var(--font); color: var(--text); border: var(--bw) solid var(--ink); border-radius: var(--radius-sm); padding: 0 10px; background: var(--field); outline: none; }
+.kb-set legend { padding: 0 6px; font-weight: var(--fw-heavy); font-size: var(--fs-sm); }
+.kb-set select, .kb-set input[type=number], .kb-set input[type=email], .kb-set input[type=password], .kb-set input[type=text] { width: 100%; height: var(--field-h); font: var(--fw-semibold) var(--fs-md) var(--font); color: var(--text); border: var(--bw) solid var(--ink); border-radius: var(--radius-sm); padding: 0 10px; background: var(--field); outline: none; }
 .kb-set textarea { font-size: var(--fs-md); }
 .kb-set select:focus, .kb-set input:focus { border-color: var(--accent); }
 .kb-set select:disabled, .kb-set input:disabled, .kb-set textarea:disabled { background: var(--field-off); color: var(--muted); }
@@ -88,7 +88,7 @@
 .kb-new-project-modal .kb-np-kind:hover:not(:disabled) { background: var(--field-hover); }
 .kb-new-project-modal .kb-np-kind[aria-pressed=true] { border-color: var(--accent); background: var(--accent-soft); }
 .kb-new-project-modal .kb-np-kind:disabled { cursor: default; }
-.kb-new-project-modal input[type=text] { width: 100%; height: 44px; font: var(--fw-semibold) var(--fs-md) var(--font); color: var(--text); border: var(--bw) solid var(--ink); border-radius: var(--radius-sm); padding: 0 10px; background: var(--field); outline: none; }
+.kb-new-project-modal input[type=text] { width: 100%; height: var(--field-h); font: var(--fw-semibold) var(--fs-md) var(--font); color: var(--text); border: var(--bw) solid var(--ink); border-radius: var(--radius-sm); padding: 0 10px; background: var(--field); outline: none; }
 .kb-new-project-modal input[type=text]:focus { border-color: var(--accent); }
 .kb-new-project-modal input[type=text]:disabled { background: var(--field-off); color: var(--muted); }
 .kb-new-project-modal .kb-np-note { margin: 0; font-size: var(--fs-xs); font-weight: var(--fw-semibold); color: var(--muted); overflow-wrap: anywhere; }

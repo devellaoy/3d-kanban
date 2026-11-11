@@ -41,6 +41,8 @@
 .shell-head > svg, .shell-row > svg { flex: none; color: var(--text-2); }
 .shell-id { flex: none; font-family: var(--font-mono); font-size: var(--fs-xs); color: var(--muted); white-space: nowrap; }
 .shell-tools { margin-left: auto; display: flex; align-items: center; gap: 4px; min-width: 0; }
+/* A header's tools are a step taller than a toolbar's small buttons, level with the ✕. */
+.shell-tools > .btn.sm { height: calc(var(--ctl-h-sm) + 2px); }
 .shell-sep { align-self: center; height: 18px; margin: 0 4px; border-left: var(--bw-sm) solid var(--ink); }
 /* The ✕ is a quiet icon button here, whatever .close says about its size. */
 .shell-head .close { width: calc(var(--ctl-h-sm) + 2px); height: calc(var(--ctl-h-sm) + 2px); flex: none; }
@@ -65,6 +67,16 @@
 .shell > .shell-foot { justify-content: flex-start; flex-wrap: wrap; gap: 8px; padding: 12px 20px; }
 .shell-foot-left { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; min-width: 0; font-size: var(--fs-xs); color: var(--muted); }
 .shell-foot-right { margin-left: auto; display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 8px; min-width: 0; }
+
+/* A phone: a rich header's first row wraps (its tools go under the id and the status), and the ✕ keeps the top right corner. */
+@media (max-width: 700px) {
+  .shell-head.rich { position: relative; }
+  .shell-head.rich > .shell-row { flex-wrap: wrap; row-gap: 6px; padding-right: 36px; }
+  .shell-head.rich > .shell-row > * { min-width: 0; max-width: 100%; overflow: hidden; text-overflow: ellipsis; }
+  .shell-head.rich > .shell-row > .shell-tools { flex-basis: 100%; margin-left: -10px; overflow: visible; }
+  .shell-head.rich > .shell-row > .shell-tools:empty, .shell-head.rich .shell-sep { display: none; }
+  .shell-head.rich > .shell-row > .close { position: absolute; top: 10px; right: 12px; overflow: visible; }
+}
 
 /* A narrow window: the rail drops under the content, and both scroll as one. */
 @media (max-width: 900px) {

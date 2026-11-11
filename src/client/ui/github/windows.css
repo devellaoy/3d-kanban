@@ -4,10 +4,11 @@
 
 /* ---------- The frames ---------- */
 .modal.gh-window { height: min(920px, calc(100vh - 32px)); outline: none; }
-.gh-window .shell-rail { width: 300px; }
+.gh-window { --rail-w: 300px; }
 /* An issue's window: a GitHub issue, a card from the issue sources, the kanban's issue window. */
 .modal.iw { height: min(780px, calc(100vh - 32px)); }
-.iw .shell-rail { width: 280px; gap: 18px; }
+.iw { --rail-w: 280px; }
+.iw .shell-rail { gap: 18px; }
 .iw .rail-dl, .gh-window .rail-dl { grid-template-columns: 84px minmax(0, 1fr); }
 /* What a header's slot holds is drawn again without moving the slot. */
 .iw-slot { display: contents; }

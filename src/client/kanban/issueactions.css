@@ -4,7 +4,7 @@
 .kb-ia [hidden] { display: none !important; }
 .kb-ia-sec { padding: 10px 12px; border: var(--bw) solid var(--ink); border-radius: var(--radius-box); background: var(--field); min-width: 0; }
 .kb-ia-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 8px; }
-.kb-ia-head h4 { margin: 0; font-size: var(--fs-sm); font-weight: var(--fw-heavy); text-transform: uppercase; letter-spacing: .04em; }
+.kb-ia-head h4 { margin: 0; font-size: var(--fs-xs); font-weight: var(--fw-heavy); color: var(--text-2); }
 .kb-ia-now { padding: 1px 9px; font-size: var(--fs-sm); font-weight: var(--fw-heavy); border: var(--bw-sm) solid var(--ink); border-radius: var(--radius-pill); background: var(--warn-soft); overflow-wrap: anywhere; }
 .kb-ia-head .kb-ia-icon { margin-left: auto; }
 .kb-ia-body { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
@@ -65,5 +65,5 @@
 .kb-ia-error, .kb-ia-note, .kb-ia-now, .kb-ia-pin { display: inline-flex; align-items: center; gap: 6px; }
 .kb-ia-head .kb-ia-icon { justify-content: center; }
 /* In a window's details rail the sections are plain: a label, then the controls, no boxes. */
-.shell-rail .kb-ia-sec { padding: 0; border: 0; border-radius: 0; background: none; }
-.shell-rail .kb-ia-head h4 { font-size: var(--fs-xs); font-weight: var(--fw-bold); text-transform: none; letter-spacing: 0; color: var(--text-2); }
+/* Inside a shell (the rail and the body alike) a section is a heading and its rows, without a box of its own. */
+:is(.shell-rail, .shell-main) .kb-ia-sec { padding: 0; border: 0; border-radius: 0; background: none; }

@@ -224,6 +224,8 @@
   --note-card-pink: #2a1e22;   /* a waiting task's card */
   --chip-ticket: #3d3420;   /* a ticket's chip */
   --chip-type: #1f3a3d;   /* a type chip (Investigate) */
+  --board-bg: #d8a86a;   /* the issue and pull request boards' surface: a cork board, or the page */
+  --board-dot: rgba(0, 0, 0, .08);   /* ... and its dots */
 
   /* ---- Glass ---- */
   --glass-blur: none;
@@ -237,7 +239,7 @@
 :root[data-theme="dark"] body { line-height: 1.5; -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; }
 
 /* Headings and labels in sentence case, without the wide uppercase tracking of the default look. */
-:root[data-theme="dark"] :is(.kb-col-head, .modal legend, .kb-set legend, .kb-ia-head h4, .kb-tv .kb-run-status,
+:root[data-theme="dark"] :is(.kb-tv .kb-run-status,
   .lite-floor-label, .lite-h, .menu-sec, .side h3, .team h4) { text-transform: none; letter-spacing: 0; }
 :root[data-theme="dark"] .modal header h2 { letter-spacing: -.01em; }
 

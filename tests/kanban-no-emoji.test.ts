@@ -18,7 +18,7 @@ const rel = (f: string) => path.relative(root, f).split(path.sep).join('/');
 
 /** The folders read whole, and the single ui/ files (as name.ts and name.css). */
 const DIRS = ['kanban', 'shared', 'ui/github'];
-const UI_FILES = ['boards', 'changes', 'terminal', 'termtabs', 'prompt', 'ask', 'settings', 'appearance', 'dom'];
+const UI_FILES = ['boards', 'changes', 'terminal', 'termtabs', 'prompt', 'ask', 'settings', 'appearance', 'dom', 'provider'];
 
 const PICTOGRAPH = /\p{Extended_Pictographic}|[✕＋⋯↻↺↗▾▸×]/gu;
 

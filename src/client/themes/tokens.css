@@ -228,6 +228,8 @@
   --note-card-pink: #ffe3ea;   /* a waiting task's card */
   --chip-ticket: #fff3c4;   /* a ticket's chip */
   --chip-type: #e0f7fa;   /* a type chip (Investigate) */
+  --board-bg: #d8a86a;   /* the issue and pull request boards' surface: a cork board, or the page */
+  --board-dot: rgba(0, 0, 0, .08);   /* ... and its dots */
 
   /* ---- Glass ---- */
   --glass-blur: none;       /* backdrop-filter of windows and HUD panels (a glass theme blurs here) */

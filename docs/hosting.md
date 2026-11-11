@@ -19,13 +19,13 @@ with a token. It doesn't need the `az` CLI or any Bitbucket tool.
 
 | | GitHub | Azure DevOps | Bitbucket Cloud |
 |---|---|---|---|
-| **O** at a desk, and a task's 🔀 Create PRs (the agent opens the PR) | `gh` | `office-pr` | `office-pr` |
+| **O** at a desk, and a task's Create PRs (the agent opens the PR) | `gh` | `office-pr` | `office-pr` |
 | **O** on a 🐚 shell worker, and the Changes window's PR (the office opens it) | ✅ | ✅ | ✅ |
 | The 🔀 PR board, PR states on kanban tasks, a task following its PR to merged | ✅ | ✅ | ✅ |
 | Checks and reviews on the board | ✅ | statuses and branch policies (build validation, required statuses: a posted status shows the policy's state when that is worse), votes | build statuses, approvals |
 | The PR window | everything | description, checks, comments, commenting, the diff | description, checks, comments, commenting, the diff |
 | Merging, closing, labels from the office | ✅ | do it on Azure DevOps | do it on Bitbucket |
-| Fix PRs, Resolve conflicts, 🔍 Review (kanban) | ✅ | ✅ (the agent uses `office-pr`) | ✅ (the agent uses `office-pr`) |
+| Fix PRs, Resolve conflicts, Review (kanban) | ✅ | ✅ (the agent uses `office-pr`) | ✅ (the agent uses `office-pr`) |
 | 🤝 Review panel | ✅ | the review is posted as a comment | the review is posted as a comment |
 | Closing the ticket on merge | `Closes #12` | an Azure Boards work item is completed (below) | a Jira key goes in the title and branch, as before |
 | Issues | the repository's issues | Azure Boards as an issue source | Jira (an issue source) |
@@ -130,7 +130,7 @@ elsewhere. A GitHub project's prompts are unchanged.
 
 ## Azure Boards
 
-**As an issue source.** ⚙️ Settings → 📁 Projects → 📌 Issue sources → **＋ Azure Boards**:
+**As an issue source.** ⚙️ Settings → Projects → Issue sources → **Azure Boards**:
 organisation, project, assignee (`@Me` or a name or e-mail), work item types, area path, whether to
 include completed ones, and an extra WIQL condition. Cards are keyed `ab:org/project#123`. Their
 window changes the status (the work item type's own states), comments and the assignee, as you.
@@ -186,7 +186,7 @@ and the board says when it tries again.
   *rejected* or *waiting for author* vote is changes requested. The PR board's 👀 To review is
   GitHub's review requests, so it shows nothing for the other hosts.
 - Upstream's PR-window prompts (*Fix comments & merge*, *Fix conflicts & merge*) use `gh` and are hidden
-  for pull requests elsewhere. The kanban's Fix PRs and Resolve conflicts work. 🔍 Review of a pull
+  for pull requests elsewhere. The kanban's Fix PRs and Resolve conflicts work. Review of a pull
   request elsewhere goes to the kanban's reviewer even for just that one (its prompt says to use
   `office-pr`), and *Ask a worker…* adds the same note to the office's prompt.
 - Azure DevOps doesn't link a work item that isn't in the repository's organisation.

@@ -6,7 +6,7 @@ Back to the [README](../README.md).
 | --- | --- |
 | W A S D / arrows | Walk (hold Shift to run); in a car, W is the gas, S brakes and reverses, A and D steer |
 | Space | Jump (you can land on desks, couches and the cars in the garage); in a car, brake (on the test branch: the handbrake, to drift) |
-| Mouse | Look around, the same in first and third person: click the office to capture the mouse, Esc frees it. The dot in the middle of the screen (the crosshair) is what you aim at, and closing a window puts you straight back to looking around. In third person your character turns to face where the camera looks, standing still too. The third-person camera turns with the mouse with no lag, and zooming (wheel) glides. *In 3d-kanban*, ⚙️ Settings → **🧍 You** → **Mouse sensitivity** (25–200%, 100% the usual speed, kept in your browser) sets how far the mouse turns you, captured or dragging |
+| Mouse | Look around, the same in first and third person: click the office to capture the mouse, Esc frees it. The dot in the middle of the screen (the crosshair) is what you aim at, and closing a window puts you straight back to looking around. In third person your character turns to face where the camera looks, standing still too. The third-person camera turns with the mouse with no lag, and zooming (wheel) glides. *In 3d-kanban*, ⚙️ Settings → **You** → **Mouse sensitivity** (25–200%, 100% the usual speed, kept in your browser) sets how far the mouse turns you, captured or dragging |
 | Click | Use what the crosshair is on, like E (with the basketball, hold to shoot). In third person it has to be in reach of your character's eyes and in their sight, not just the camera's (no using a desk past the end of a wall beside you). With the mouse free (a touch screen), a tap in third person uses what you tapped instead, with the same reach and sight |
 | Wheel | Third person: zoom the camera in or out |
 | E | Interact: hire a worker, open its terminal, read a board, take an issue's note off the board, prompt a board agent, call a meeting in the meeting room, draw on the whiteboard, read the docs at the bookshelf, watch the TV (*in 3d-kanban*, with nobody sharing a screen, its window: put a YouTube link on it or queue one, watch it big, pause, seek, skip, change the speed, change or stop it), sit down (or get up), ride the elevator, grab a coffee, take a smoke break, tee off at the golf tee, pet the dog, pick up the basketball (then hold E and let go to shoot), order a drink at the rooftop bar, blow the DJ's air horn, step up to the dart board or the axe lane on the roof (then hold Space and let go to throw), get into one of the cars in the garage (behind the wheel, or beside whoever's driving) or out of it, knock through the north wall past the gong for 2 more desks (at the **🚧 Room to grow** sign). In the [castle](maps.md#the-castle): sit on the throne, where E is for whoever's first in line (or the Hand of the King, with nobody waiting), and speak to the Hand to send out a new worker |
@@ -18,7 +18,7 @@ Back to the [README](../README.md).
 | X | Send a worker home (frees the desk; a worker with its own worktree asks what to do with it). In the [castle](maps.md#the-castle), the Kingsguard takes it down to the dungeon |
 | L | Hang a big sign over the desk you face (*Operations*, *Code cleanup*), in one of seven colors; again to change it or take it down |
 | O | Have an agent open the pull request for a worker on its own branch (it pushes and writes it up; a kanban task's worker runs the task's PR step), or see the one it has (a worker across several projects gets one in each) |
-| J | The kanban view (`/kanban`), on the project of the floor you're on; facing a kanban task's worker, that task's conversation. Its **🏢 3D** button brings you back to the same floor |
+| J | The kanban view (`/kanban`), on the project of the floor you're on; facing a kanban task's worker, that task's conversation. Its **3D office** button brings you back to the same floor |
 | N | Go to the worker that has waited longest on someone; again for the next one |
 | Y | *In 3d-kanban*, the 📲 phone (also **📲 Phone** in the ☰ menu): every floor, then a floor's processes, then a worker's window, without walking there, and 🎵 Music, a YouTube link for you, your floor's TV or someone else. On the phone, ↑ ↓ move down the list, Enter opens, ← or Backspace goes back, and Y, Esc or ✕ puts it away. In a car Y is the car's own key (the ghost car), so open the phone from ☰ there |
 | F | Hang a picture from the web on a wall (scroll to size it, click to hang it) |
@@ -100,10 +100,10 @@ The kanban view (`/kanban`, **🗂️ Kanban** in the ☰ menu or on the 2D view
 | / | Search the cards |
 | N | New task |
 | Tab / Shift + Tab | Move between cards and buttons; Enter (or Space) on a card opens its detail |
-| M | On a card: move it to another column (the same as its **⋯** button, and what dragging it does). Columns it can't go to are greyed out with the reason |
+| M | On a card: move it to another column (the same as its **Move** button, the ellipsis, and what dragging it does). Columns it can't go to are greyed out with the reason |
 | ← / → | Between the detail's tabs; on the detail's left edge, make the panel wider or narrower |
 | Ctrl/⌘ + Enter | Send a comment or an answer; save the new-task dialog |
-| Esc | Close the window on top, then the task's detail |
+| Esc | Close the window on top (the same as its close button at the top right), then the task's detail |
 
 ## In a terminal
 

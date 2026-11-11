@@ -1,6 +1,6 @@
 /* Boards */
 .modal.board { width: min(1400px, 100%); height: min(860px, calc(100vh - 32px)); }
-.modal.board .body { flex: 1; display: flex; gap: 12px; padding: 12px; background: #d8a86a; background-image: radial-gradient(rgba(0,0,0,.08) 1px, transparent 1.5px); background-size: 9px 9px; }
+.modal.board .body { flex: 1; display: flex; gap: 12px; padding: 12px; background: var(--board-bg); background-image: radial-gradient(var(--board-dot) 1px, transparent 1.5px); background-size: 9px 9px; }
 .column { flex: 1; min-width: 220px; display: flex; flex-direction: column; background: color-mix(in srgb, var(--paper) 55%, transparent); border: var(--bw) solid var(--ink); border-radius: var(--radius-box); overflow: hidden; }
 .column h4 { margin: 0; font-size: var(--fs-md); font-weight: var(--fw-heavy); background: var(--paper); border-bottom: var(--bw) solid var(--ink); }
 /* Click a column's header to filter it by label. */

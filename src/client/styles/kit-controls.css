@@ -83,9 +83,9 @@ label.check-chip { display: inline-flex; align-items: center; gap: 8px; height: 
 .kbd { padding: 0 5px; font-family: var(--font-mono); font-size: var(--fs-2xs); color: var(--muted); border: var(--bw-sm) solid var(--ink); border-radius: var(--radius-xs); white-space: nowrap; }
 
 /* A text box with a toolbar under it, in one outline (a task's description, a comment). */
-.composite { display: flex; flex-direction: column; overflow: hidden; background: var(--field); border: var(--bw) solid var(--line-control); border-radius: var(--radius-sm); }
+.composite { flex: none; display: flex; flex-direction: column; overflow: hidden; background: var(--field); border: var(--bw) solid var(--line-control); border-radius: var(--radius-sm); }
 .composite:focus-within { border-color: var(--accent); }
-.composite > textarea, .modal .composite > textarea { width: 100%; padding: 10px 12px; font: inherit; font-size: var(--fs-md); line-height: 1.5; color: inherit; background: transparent; border: 0; border-radius: 0; outline: 0; resize: none; }
+.composite > textarea, .modal .composite > textarea { flex: none; width: 100%; padding: 10px 12px; font: inherit; font-size: var(--fs-md); line-height: 1.5; color: inherit; background: transparent; border: 0; border-radius: 0; outline: 0; resize: none; }
 .composite-bar { display: flex; align-items: center; gap: 4px; padding: 6px 8px; background: var(--paper-2); border-top: var(--bw-sm) solid var(--rule-soft); }
 .composite-note { margin-left: auto; font-size: var(--fs-xs); color: var(--muted); }
 

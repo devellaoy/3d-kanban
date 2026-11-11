@@ -226,6 +226,8 @@
   --note-card-pink: #fff0f2;   /* a waiting task's card */
   --chip-ticket: #fff6d6;   /* a ticket's chip */
   --chip-type: #e5f7fa;   /* a type chip (Investigate) */
+  --board-bg: #d8a86a;   /* the issue and pull request boards' surface: a cork board, or the page */
+  --board-dot: rgba(0, 0, 0, .08);   /* ... and its dots */
 
   /* ---- Glass ---- */
   --glass-blur: saturate(180%) blur(28px);

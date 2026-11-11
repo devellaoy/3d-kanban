@@ -82,12 +82,14 @@ label.kb-search { flex: 1 1 240px; max-width: 380px; height: var(--ctl-h); displ
 /* One that waits for you: its edge says so. */
 .kb-card.attention, .kb-card.attention:hover { border-color: var(--attn-edge); }
 .kb-card.selected { outline: var(--focus-ring); outline-offset: 2px; transform: rotate(0deg); }
-.kb-card-top { display: flex; align-items: center; gap: 6px; min-height: 20px; }
+.kb-card-top { display: flex; align-items: center; gap: 5px; min-height: 20px; }
 .kb-card .kb-id { font-family: var(--font-mono); font-size: var(--fs-2xs); font-weight: var(--fw-medium); }
-.kb-card .kb-phase { padding: 0 5px; font-weight: var(--fw-semibold); }
-.kb-tool { flex: 0 1 auto; margin-left: auto; display: inline-flex; align-items: center; gap: 4px; min-width: 0; font-size: var(--fs-2xs); color: var(--muted); white-space: nowrap; }
+/* A short agent name (Claude, Codex) always shows whole: on a narrow card it is the phase that gives way. */
+.kb-card .kb-phase { flex: 0 1 auto; min-width: 0; padding: 0 4px; font-weight: var(--fw-semibold); overflow: hidden; text-overflow: ellipsis; }
+.kb-card-top > .run-dot { margin: 0; }
+.kb-tool { flex: none; margin-left: auto; display: inline-flex; align-items: center; gap: 3px; min-width: 0; font-size: var(--fs-2xs); color: var(--muted); white-space: nowrap; }
 .kb-tool > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
-.kb-card-top > :not(.kb-tool) { flex: none; }
+.kb-card-top > :not(.kb-tool, .kb-phase) { flex: none; }
 .kb-tool > svg { flex: none; }
 .kb-card .kb-move { margin-right: -4px; color: var(--muted); }
 .kb-title { font-size: var(--fs-sm); font-weight: var(--fw-semibold); line-height: 1.35; overflow-wrap: anywhere; text-wrap: pretty; }
@@ -115,15 +117,15 @@ label.kb-search { flex: 1 1 240px; max-width: 380px; height: var(--ctl-h); displ
 /* ---- Dialogs ---- */
 .modal .body.kb-form { display: flex; flex-direction: column; gap: 12px; }
 .modal fieldset, .kb-pane fieldset { margin: 0; padding: 10px 14px 14px; border: var(--bw) solid var(--ink); border-radius: var(--radius-box); background: var(--field); display: flex; flex-direction: column; gap: 10px; min-width: 0; }
-.modal legend { padding: 0 6px; font-weight: var(--fw-heavy); font-size: var(--fs-sm); text-transform: uppercase; letter-spacing: .04em; }
+.modal legend { padding: 0 6px; font-weight: var(--fw-heavy); font-size: var(--fs-sm); }
 /* Not the kit's own fields (.inp): :where() keeps the selectors as weak as they were. */
-.modal select:where(:not(.inp)), .modal input[type=number]:where(:not(.inp)), .modal input[type=url]:where(:not(.inp)), .modal input[type=email]:where(:not(.inp)), .modal input[type=search]:where(:not(.inp)), .modal input[type=password]:where(:not(.inp)) { width: 100%; height: 44px; font: var(--fw-semibold) var(--fs-md) var(--font); color: var(--text); border: var(--bw) solid var(--ink); border-radius: var(--radius-sm); padding: 0 10px; background: var(--field); outline: none; }
+.modal select:where(:not(.inp)), .modal input[type=number]:where(:not(.inp)), .modal input[type=url]:where(:not(.inp)), .modal input[type=email]:where(:not(.inp)), .modal input[type=search]:where(:not(.inp)), .modal input[type=password]:where(:not(.inp)) { width: 100%; height: var(--field-h); font: var(--fw-semibold) var(--fs-md) var(--font); color: var(--text); border: var(--bw) solid var(--line-control); border-radius: var(--radius-sm); padding: 0 10px; background: var(--field); outline: none; }
 .modal select:focus, .modal input:focus { border-color: var(--accent); }
 .modal select:disabled, .modal input:disabled, .modal textarea:disabled { background: var(--field-off); color: var(--muted); }
 .kb-two { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; align-items: start; }
 .kb-three { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; align-items: start; }
 .kb-two > .kb-check, .kb-three > .kb-check { align-self: center; }
-.modal input[type=text]:where(:not(.inp)) { height: 44px; }
+.modal input[type=text]:where(:not(.inp)) { height: var(--field-h); }
 .kb-subfields .kb-check { grid-column: 1 / -1; }
 .kb-subfields { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; align-items: start; padding: 10px; border: var(--bw-sm) dashed var(--ink); border-radius: var(--radius-sm); background: var(--paper); }
 .kb-repo-checks { display: flex; flex-wrap: wrap; gap: 6px 16px; }

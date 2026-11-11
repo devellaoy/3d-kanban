@@ -4,7 +4,7 @@ import type { Net } from '../net';
 import { h } from '../ui/dom';
 
 export const MULTIPLAYER_PANES = [
-  { id: 'multiplayer', icon: '🌐', label: 'Multiplayer', blurb: 'Connect this office to a multiplayer server, choose which floors other players may visit, and see who you are there.' },
+  { id: 'multiplayer', label: 'Multiplayer', blurb: 'Connect this office to a multiplayer server, choose which floors other players may visit, and see who you are there.' },
 ] as const;
 export type MultiplayerSettingsPane = (typeof MULTIPLAYER_PANES)[number]['id'];
 

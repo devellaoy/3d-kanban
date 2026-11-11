@@ -16,6 +16,7 @@ import {
 } from '../../shared/providers';
 import { store } from '../state';
 import { h } from './dom';
+import { icon } from './icons';
 
 export const PROVIDER_LABEL = Object.fromEntries(AGENT_PROVIDERS.map((p) => [p, PROVIDER_META[p].label])) as Record<AgentProvider, string>;
 
@@ -419,9 +420,9 @@ export function providerPicker(project: ProjectInfo | null, id: string, label = 
   const paint = () => {
     const def = officeChoice(project);
     current.textContent = choiceLabel(def);
-    current.title = store.prompts.agent ? 'The office’s default worker, set in ⚙️ Settings' : 'The office’s default worker (its --agent); an admin can pick another in ⚙️ Settings';
+    current.title = store.prompts.agent ? 'The office’s default worker, set in Settings' : 'The office’s default worker (its --agent); an admin can pick another in Settings';
     current.classList.toggle('hidden', editing);
-    edit.textContent = editing ? '↺ Use the default' : '✏️ Edit';
+    edit.replaceChildren(icon(editing ? 'undo-2' : 'pencil', { size: 14 }), editing ? 'Use the default' : 'Edit');
     edit.title = editing ? `Back to ${choiceLabel(def)}` : 'Pick another provider, model or effort for this one';
     edit.setAttribute('aria-expanded', String(editing));
     fields.element.classList.toggle('hidden', !editing);

@@ -94,7 +94,7 @@ export function taskCard(c: KanbanTaskCard, project: KanbanProjectInfo | undefin
       h('span.kb-id', {}, `#${c.id}`),
       running ? h('span.run-dot', { role: 'img', title: 'Running', 'aria-label': 'Running' }) : null,
       badge ? h('span.kb-phase', { class: badge.phase }, `${phaseName(badge.phase)}${badge.round ? ` ${badge.round}` : ''}`) : null,
-      h('span.kb-tool', { title: `${toolName(c.tool)}${c.model ? ` · ${c.model}` : ''}${c.reviewTool && c.useReview ? ` · Reviewer: ${toolName(c.reviewTool)}` : ''}` }, icon('bot', { size: 13 }), h('span', {}, toolName(c.tool))),
+      h('span.kb-tool', { title: `${toolName(c.tool)}${c.model ? ` · ${c.model}` : ''}${c.reviewTool && c.useReview ? ` · Reviewer: ${toolName(c.reviewTool)}` : ''}` }, icon('bot', { size: 12 }), h('span', {}, toolName(c.tool))),
       moveBtn,
     ),
     h('div.kb-title', {}, c.title),

@@ -110,7 +110,6 @@ test('no sheet uses --ink for text or for a heavy line', () => {
 const ALLOWED: Readonly<Record<string, number>> = {
   'src/client/features/hanging/ui.css': 3,
   'src/client/styles/hud.css': 19,
-  'src/client/ui/boards.css': 2,
   'src/client/ui/changes.css': 2,
   'src/client/ui/character.css': 3,
   'src/client/ui/elevator.css': 1,

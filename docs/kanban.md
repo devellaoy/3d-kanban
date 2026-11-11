@@ -15,20 +15,22 @@ walk up to its desk in the 3D office.
 - From the 2D view (`/lite`): **🗂️ Kanban** in the top bar.
 - Directly: `/kanban` (the project you picked last), `/kanban?project=<floor id>`, `/kanban?task=14`
   (opens task #14's detail; `&tab=changes` on that tab: `conversation`, `plan`, `runs`, `terminal`,
-  `changes`, `prs`), `/kanban?settings=1` (opens ⚙️ Settings on **🗂️ Kanban**).
-- **🏢 3D** in the kanban's top bar goes back to the 3D office, on the floor of the project you're
-  looking at.
+  `changes`, `prs`), `/kanban?settings=1` (opens Settings on **Kanban**).
 
 Signed out, `/kanban` sends you to the sign-in page and back.
 
-The top bar has the project picker (or **All projects**), a search box (`#12`, words, a ticket id, a
-repository; **/** focuses it), counts (🗂️ on the board, 🚧 running, 🙋 waiting on you, 👀 ready for
-review), **📌 Issues**, **🔀 Pull requests** (the office's pull requests board for the picked project's
-floor; under **All projects** the board of the floor this page is on, named in a note as it opens), **＋ New task** (**N**), filters (repository, state: running / needs you /
-waiting to retry / has a PR, agent, ticket or not), **🗄️ Archive** (shows archived tasks as a
-column) and **⚙️** Settings (the office's own window, as in the 3D office). Keys: see [Controls](controls.md#in-the-kanban-view).
+The top bar has the **Kanban** name, the project picker (or **All projects**), a search box (`#12`, words, a
+ticket id, a repository; **/** focuses it), the counts (tasks on the board, how many are running, how many
+**need you**, how many are **to review**), **Issues**, **Pull requests** (the office's pull requests board for the
+picked project's floor; under **All projects** the board of the floor this page is on, named in a note as it
+opens) and **New task** (**N**). Under it is the filter row: **Filter** with a chip each for the repository
+(only when the project has more than one), the state (running / needs you / waiting to retry / has a PR),
+the agent and the ticket (with a ticket or without); a chip with a value picked is tinted, and **Clear** appears
+while any filter or the search is set. On the right of that row are **Archive** (shows archived tasks as a
+column), **3D office** (back to the 3D office, on the floor of the project you're looking at) and the
+**Settings** button (the office's own window, as in the 3D office). Keys: see [Controls](controls.md#in-the-kanban-view).
 
-A bar along the bottom of the page shows the floor's plain workers as tabs: the ones hired outside the kanban, shells included (not task workers, board agents or meeting agents). A tab opens the worker's terminal window as in the 3D office. **✨ New task** opens the 3D office's plain hire dialog (no kanban option) and **🐚 New shell** opens a shell at the next free desk and its terminal. The bar follows the board's picked project: when the page is on another floor it offers a button back to the project's floor, and under **All projects** it shows the floor the page is on, named in the bar. A tab shows the worker's colour, name and status, and one that waits on you is tinted. A visitor in someone else's office doesn't get the two buttons.
+A bar along the bottom of the page shows the floor's plain workers as tabs: the ones hired outside the kanban, shells included (not task workers, board agents or meeting agents). A tab opens the worker's terminal window as in the 3D office. **New worker** opens the 3D office's plain hire dialog (no kanban option) and **New shell** opens a shell at the next free desk and its terminal. The bar follows the board's picked project: when the page is on another floor it offers a button back to the project's floor, and under **All projects** it shows the floor the page is on, named in the bar. A tab shows the worker's colour, name and status, and one that waits on you is tinted. A visitor in someone else's office doesn't get the two buttons.
 
 ## Columns and moves
 
@@ -40,9 +42,9 @@ A bar along the bottom of the page shows the floor's plain workers as tabs: the 
 | **Review** | The automation is finished. Read the result, comment, run another review round, open PRs, or move it to Done. |
 | **On hold** | Put aside from Waiting or Review until something it depends on is there (see [On hold](#on-hold)). Its worker is at home; nothing runs. |
 | **Done** | Accepted by you: you move it here, send its implementer home with *the task is done*, or leave-on-merge sends it home once every PR of the task has merged. |
-| **Archive** | Done tasks after the archive days, and tasks archived by hand; off the board (**🗄️ Archive** shows them). |
+| **Archive** | Done tasks after the archive days, and tasks archived by hand; off the board (**Archive** shows them). |
 
-Drag a card, use its **⋯** button, or press **M** on a focused card. Columns a card can't go to are
+Drag a card, use its **Move** button (the ellipsis), or press **M** on a focused card. Columns a card can't go to are
 greyed out with the reason. What you can do by hand:
 
 - **To do → In progress** starts the task.
@@ -69,7 +71,7 @@ Some tasks can't go on yet: the API keys aren't there, another team has to answe
 Put such a task on hold instead of leaving it in Waiting or Review, where it counts as something that needs you.
 
 - **How**: drag the card of a Waiting or Review task (one that isn't running; the creator or an admin) to **On hold**,
-  use its **⋯** menu (or **M**), or press **⏸️ Put on hold** in the task view. A small dialog asks *what is it
+  use its **Move** button (or **M**), or press **Put on hold** in the task view. A small dialog asks *what is it
   waiting for?* and *hold until* (both optional; the date is only shown, the task is never resumed by itself). They
   show on the card and in the task view with who put it on hold and since when.
 - **The worker**: it goes home, its worktree and session kept on the task. In the 3D office a figure of it sits in the TV
@@ -78,8 +80,8 @@ Put such a task on hold instead of leaving it in Waiting or Review, where it cou
   sits on is left to them: the figure takes the next free seat (or stands), and moves back once they get up. A seat a
   figure sits on can't be sat on meanwhile (*… got there first*). The figures show
   on every project floor that uses the office map; a floor on a map of its own (the castle, a custom map) shows none.
-  Aiming at a figure shows "⏸️ #id title — reason · until d.m." and **E** opens the task window.
-- **Resuming**: **▶️ Resume** in the task view, or move the card to In progress (the creator or an admin, as the hold was: it starts an agent on the creator's sign-in). A dialog takes an optional message for
+  Aiming at a figure shows "#id title — reason · until d.m." and **E** opens the task window.
+- **Resuming**: **Resume** in the task view, or move the card to In progress (the creator or an admin, as the hold was: it starts an agent on the creator's sign-in). A dialog takes an optional message for
   the agent. The task carries on in the same session and worktree, with the same worker name when it is free; a worktree
   removed meanwhile (for instance by `agent-office prune`) is recreated on the task's branch. Comments written while the
   task was on hold are kept and handed to the agent then. A task put on hold while its plan waited for approval or
@@ -93,7 +95,7 @@ Put such a task on hold instead of leaving it in Waiting or Review, where it cou
 
 A task's agent (Claude or Codex) left alone in Review, Waiting or Done keeps its terminal process for as long as the office runs. After the
 *close idle agents after* hours in the settings (default 2; 0 never) of nobody touching the task, the office ends that process in place:
-the worker stays at its desk and on its card, shown as asleep ("💤 closed while idle"), its worktree and session kept, and a line in the
+the worker stays at its desk and on its card, shown as asleep ("closed while idle"), its worktree and session kept, and a line in the
 task's conversation says so. Nothing about the task changes: its column, plan, runs and PRs stay as they were.
 
 - **What counts as quiet**: the task has no run going or waiting for a desk, its agent is at rest (not working, not starting), nobody has its
@@ -108,47 +110,49 @@ task's conversation says so. Nothing about the task changes: its column, plan, r
 
 ## Creating a task
 
-**＋ New task** (or make one from an issue: see *Issue sources*). Fields left unset take the project's
-and the office's defaults.
+**New task** (or make one from an issue: see *Issue sources*). Fields left unset take the project's
+and the office's defaults. The dialog has four sections, **What**, **Where**, **How** and **Who**, each with its
+heading and a line of help on the left. Its footer has the key hint (**Ctrl/⌘ + Enter** creates the task), **Cancel**,
+**Create** and, as the one primary button, **Create and start**.
 
-- **What**: description (Markdown; paste, drop or **📎 Attach** screenshots and files,
+- **What**: description (Markdown; paste, drop or **Attach** screenshots and files,
   up to 20 files of 20 MB each: each goes in where the cursor is, as a placeholder while it uploads and
   then its link, a picture shown in place), ticket (`UYT-1415`, `gh:owner/repo#12`) and ticket link.
   There is no title to type: it is the description's first line (at most 120 characters; a line that
   is only a pasted picture or file link is skipped), as for a hire in the office. Editing a task
   shows its title, which can be changed there.
-- **🔗 Select issue** opens the project's issues (the same list as **📌 Issues**, with its search,
-  filters and **🔎 Browse all**) to pick the one the task is about. An issue that already has a task
+- **Select issue** opens the project's issues (the same list as **Issues**, with its search,
+  filters and **Browse all**) to pick the one the task is about. An issue that already has a task
   can't be picked. The pick fills the ticket and its link, and the task is then made the way
-  **＋ Create task** makes one: its title is the issue's, its description is what you wrote followed
+  **Create task** makes one: its title is the issue's, its description is what you wrote followed
   by the issue's text and link, there is one task per issue, and the issue is taken as for any task
-  made from one. **✕** on the pick clears it; a ticket typed by hand is stored as typed.
+  made from one. The clear button on the pick removes it; a ticket typed by hand is stored as typed.
 - **Where**: the project (fixed once made) and which of its repositories (all by default; the primary
   one is always included).
 - **How**: type **Implement** or **Investigate** (read-only: writes a report instead of changing code;
   no plan, review or PRs), **Plan first** and **Plan approval** (implement straight away, or wait for
   your approval), **Review rounds** on/off, **Choose the reviewer** (agent, model, effort, 1–10
-  rounds, review the last fix too) and **🎯 Acceptance criteria** (the agents check the work against
+  rounds, review the last fix too) and **Acceptance criteria** (the agents check the work against
   them).
 - **Who**: the agent (**Claude** or **Codex**), model and effort.
 
-**Create** puts it in To do; **▶️ Create and start** starts it at once. A task in To do can be edited
-(**✏️ Edit**); its repositories only before its first start. From the first start the description is
+**Create** puts it in To do; **Create and start** starts it at once. A task in To do can be edited
+(**Edit**); its repositories only before its first start. From the first start the description is
 locked (add to it with a comment), and a task moved back to To do can be edited again apart from
 those two. The issue a task is about can be linked, changed or unlinked at any time before the
 archive, in the task's **Issue** tab.
 
-In the office, a hire at a desk and the **📋 Task queue**'s form can tick **🗂️ Run as a kanban task**
+In the office, a hire at a desk and the **📋 Task queue**'s form can tick **Run as a kanban task**
 (type, plan, review rounds and repositories; the agent is the form's own, Claude Code or Codex): the
 task is made and started at once, at that desk or, from the queue, at the next free one.
-**🔗 Select issue** is there too and works as in the create form: with an issue picked the text may be
+**Select issue** is there too and works as in the create form: with an issue picked the text may be
 left empty, and the task's title is the issue's whatever you write (also in a hand-off, whose title
 is otherwise the text's first line). A hire that makes a kanban task keeps its dialog open, with what
 you wrote, until the task is made, so nothing is lost when it can't be (the issue already has a task,
 the connection is down), and it sends once however often you press send meanwhile. If the office doesn't answer in time, sending again asks the office about the same creation, so the task isn't made twice. If you changed something in between (the text, a setting, the picked issue) and the first send had gone through after all, the office says which task it made and makes nothing more, and the dialog stays open with your changes: open that task, or send once more to make another.
 
 A finished meeting's output can become a task too: **🗂️ Make a kanban task** in the meeting room opens
-that hire dialog with **🗂️ Run as a kanban task** ticked. The task is tagged `meeting:<id>`, its title is
+that hire dialog with **Run as a kanban task** ticked. The task is tagged `meeting:<id>`, its title is
 the meeting's title (the text's first line), and its description holds the output (or attaches it when it
 is long) and a line saying which meeting it came from.
 
@@ -156,11 +160,11 @@ is long) and a line saying which meeting it came from.
 
 1. **Plan** (when *Plan first* is on): the agent plans read-only. It ends with the plan (the line
    `PLAN READY`), or with `QUESTIONS:`. Questions put the task in Waiting: answer in the box and
-   **Send the answer**, or **▶️ Continue without answering** (the agent makes and names its assumptions).
+   **Send the answer**, or **Continue without answering** (the agent makes and names its assumptions).
    With plan approval *wait for approval* a finished plan waits for **Approve the plan** or
    **Request changes** in the task window's footer (Request changes opens the Plan tab with the
    keyboard in its feedback box, whose **Send** sends it); *implement straight away* accepts it by itself. The answer
-   box and the change request take files too (📎, paste or drop): they go to the planner as their paths.
+   box and the change request take files too (Attach, paste or drop): they go to the planner as their paths.
 2. **Implement**: the agent works in its own worktree (a workspace with a worktree of each repository,
    on the same branch), commits, and says what it did, ending its final answer with a line `WORK DONE`
    (the office reads that line, not the logs, to know the work is finished: see *When the office decides
@@ -175,10 +179,10 @@ is long) and a line saying which meeting it came from.
    implementer's chair, looking over its shoulder at its screen (E there opens the reviewer's terminal),
    so a review round never needs a free desk. Only when the task has no desk yet (its implementer never
    sat down) does the reviewer take the next free seat.
-4. **Review column**: read the result. **🔍 Run a review round** runs one more round by hand (it ends
+4. **Review column**: read the result. **Run a review round** runs one more round by hand (it ends
    in Review). A comment or answer doesn't start a review round when the agent changed nothing since the
    task came to Review (the task goes back to Review with a note); the button still runs one by hand.
-   **🔀 Create PRs** / **🛠️ Fix PRs** / **🔄 Resolve conflicts** start the PR phase (see below). Move it to **Done** when you accept it.
+   **Create PRs** / **Fix PRs** / **Resolve conflicts** start the PR phase (see below). Move it to **Done** when you accept it.
 
 When the agent asks something in its terminal (Waiting, *the agent is asking*), answer it there, or,
 when it asks a question, in the answer box under the Overview's banner (**Open the terminal** is on the banner): the
@@ -202,18 +206,18 @@ dev server you asked to leave on). If the agent rests for 3 minutes with nothing
 given the line, the office types a short nudge into its terminal asking for it (again after 6, 12 and 24
 minutes, four nudges at most); an agent that never gives it is not moved on: the task waits (Waiting) with its last answer shown and a
 note, and **Continue** carries on or you move it yourself (a plan's last answer is read the old way). The same goes for Codex. The old wait for background helper agents or commands (a test run,
-say) is a cap now: at most 3 hours, then the agent is nudged. ⏹️ Stop during a wait restarts the worker on its
+say) is a cap now: at most 3 hours, then the agent is nudged. Stop during a wait restarts the worker on its
 session at its desk, which ends its helper agents too.
 The worker shows as working in the 3D office and in /lite until the run ends, also while its background
 agents or teammates still work, instead of flickering between done and working.
 
-**⏹️ Stop** interrupts a running turn (Esc into its terminal) and the worker stays at its desk; that is
+**Stop** interrupts a running turn (Esc into its terminal) and the worker stays at its desk; that is
 normally all it takes. Only when Esc isn't confirmed in a few seconds (the agent doesn't rest and its log
 shows no interrupt), or when the agent waits on background agents, is it restarted on its session at its
-desk, which ends its helpers, and the conversation says so. ▶️ Continue or a message then carries on in the same
+desk, which ends its helpers, and the conversation says so. Continue or a message then carries on in the same
 terminal. A stopped worker keeps its desk (and counts towards the worker limit); **X** sends it home.
-A worker that can't be restarted (no session yet) stays at its desk, with its agent ended if it was still working (R resumes it), and the conversation says so. A failed or interrupted phase waits with **🔁 Retry** (run it again)
-and **▶️ Continue**. After an office restart a run is picked up again when its worker is still at
+A worker that can't be restarted (no session yet) stays at its desk, with its agent ended if it was still working (R resumes it), and the conversation says so. A failed or interrupted phase waits with **Retry** (run it again)
+and **Continue**. After an office restart a run is picked up again when its worker is still at
 its desk; a run whose worker went away (or exited) is marked interrupted. When the whole office was shut down (Ctrl+C) and
 started again, the agents' terminals died with it, and the runs that were mid-step **carry on by themselves**: each run is
 finished as interrupted and its task goes back in the queue, keeping its slot under the project's limit (a second shutdown doesn't lose it), and
@@ -222,7 +226,7 @@ session, with a prompt saying that the office was restarted and its background a
 turn had already finished is not run again: its result is handled as if nothing happened. Tasks that wait for you (plan
 approval, plan questions, a review decision, an agent asking something) stay waiting and nobody is nudged; for an agent that was
 asking (also at a permission prompt), a note says to answer here to carry on, whatever else is gone. When the office's daily budget has paused hiring, nothing carries on by itself: the runs are only interrupted, with a note why. When the worktree or the agent's session is gone the run is not resumed: it is
-interrupted with the reason, and **Retry** carries on in a fresh worktree or session. ⚙️ Settings → **Carry on after a restart**
+interrupted with the reason, and **Retry** carries on in a fresh worktree or session. Settings → **Carry on after a restart**
 (on by default; admins change it) turns the automatic part off: the cut-off runs are then only marked interrupted, to Retry by hand. The setting and the budget are looked at again when a queued run is about to start.
 
 ### Sending a task's worker home
@@ -235,7 +239,7 @@ did:
 - **The implementer, nothing running**: the task stays in its column. Sent home with *the task is
   done*, it goes to Done. A task in In progress with nothing running waits with Retry, and one waiting
   out a usage limit no longer carries on by itself (Retry when it should).
-- **The implementer mid-run**: the run is stopped and the task waits with **🔁 Retry** (or goes to Done
+- **The implementer mid-run**: the run is stopped and the task waits with **Retry** (or goes to Done
   with *the task is done*).
 - **The reviewer**: its review round is dropped. Comments that came in while it reviewed go to the
   agent now; otherwise the task goes to Review.
@@ -252,8 +256,8 @@ A task done this way sends its other workers at rest home too, as moving it to D
 A project runs at most *tasks at once* tasks (default 2); more are **queued** in In progress and start
 when a slot frees up. A task made from the office's 📋 Task queue with **🗂️ Run as a kanban task** starts
 the same way, at the next free desk (the queue's own *workers at once* doesn't count it), and the queue
-board lists it under *🗂️ Kanban on this floor* while it waits. A hire also needs a free desk on the project's floor and room under the office's
-worker limit (`--max-workers`, ⚙️ Settings): when there's none, the start or the phase (a reviewer's
+board lists it under *Kanban on this floor* while it waits. A hire also needs a free desk on the project's floor and room under the office's
+worker limit (`--max-workers`, Settings): when there's none, the start or the phase (a reviewer's
 hire, say) is **queued** too, with a line saying why, and starts by itself as soon as a worker goes
 home anywhere in the office (or at the next minute's look). A task counts once against the worker
 limit: its reviewer never waits for the place its own implementer (still at its desk for the fixes)
@@ -261,7 +265,7 @@ holds, though it counts while it's there, so other hires still find the office f
 keeps its task's slot of *tasks at once*, so more tasks don't start meanwhile and take the desks it's
 waiting for. A queued start keeps the desk it was
 started at; when that desk is taken by then, its worker sits at the next free one and the conversation
-says so. Later hires (after a send-home, a Retry) prefer the task's desk when it's free. ⏹️ Stop takes a
+says so. Later hires (after a send-home, a Retry) prefer the task's desk when it's free. Stop takes a
 task out of the queue, and so does moving it to Done (or the archive, or back to To do): a task out of
 the process is never hired for. A send-home that isn't **X** (a move to Done, a reset) keeps a usage-limit wait's auto-resume: the task still
 carries on by itself when the limit resets, on a new hire; only **X** in the office turns it off.
@@ -272,45 +276,45 @@ is theirs, but the hire it causes is the creator's (and resumes the creator's se
 no creator account (made on the shared password, or migrated) runs as whoever set it off, else on the
 office's own sign-in. When the creator isn't signed in to Claude, the task waits (failed) with
 upstream's sign-in message, saying whose sign-in is missing, instead of starting on the office's
-sign-in: they sign in under ☰ → 🔐 Your sign-ins, then Retry. Every
+sign-in: they sign in under ☰ → Your sign-ins, then Retry. Every
 hire that cuts a worktree fetches the base branch first (each repository's), as upstream's hires do.
 A repository with a *base branch* in the project's settings (the primary one included) gets its
 worktree cut from that branch on origin, else from the local one, whatever its checkout is on; the
 first prompt names it. When that branch is in neither, the start fails and says so. A repository
 without one starts from the branch its checkout is on, as upstream.
 
-When a task waits on a person, the office's team notifications (the Slack / Discord webhook of ⚙️
+When a task waits on a person, the office's team notifications (the Slack / Discord webhook of
 Settings or `--webhook`) get one line per transition: "🗂️ #14 <title> needs plan approval / has
 questions / is ready for review in <project>".
 
 ### Settings
 
-The kanban's settings are part of the office's ⚙️ Settings (from the ☰ menu in the 3D office, or ⚙️ in
-the kanban's top bar, which opens the same window): **🗂️ Kanban** holds the office-wide ones (*New
-tasks*, *Reviews*, *Resume*, *Archive*, the secrets and the skills the office found), **📁 Projects**
-those of the project picked at its top (and **＋ New project**, see [Projects and repositories](#projects-and-repositories)), in the tabs **⚙️ Project**, **📌 Issue sources**, **🧩 Skills**
-and **📝 Prompts**. Admins change them; everyone else sees them read-only. Changes apply to
+The kanban's settings are part of the office's Settings (from the ☰ menu in the 3D office, or from the
+Settings button in the kanban's filter row, which opens the same window): **Kanban** holds the office-wide ones (*New
+tasks*, *Reviews*, *Resume*, *Archive*, the secrets and the skills the office found), **Projects**
+those of the project picked at its top (and **New project**, see [Projects and repositories](#projects-and-repositories)), in the tabs **Project**, **Issue sources**, **Skills**
+and **Prompts**. Admins change them; everyone else sees them read-only. Changes apply to
 tasks from their next phase. The review setting that applies to a task is the office's, the project's
 over it, and the task's own over both.
 
 | Setting | Where | Default | What it does |
 |---|---|---|---|
-| Agent, model, effort | 🗂️ Kanban → New tasks | Claude, its default | The implementer of new tasks. The default model applies only when the task uses the default agent. Where Codex is the agent (or the reviewer), the task view's Agent row and the create form show a small readout of the Codex plan's 5-hour and weekly use; it is read only while it's on screen (numbers it couldn't refresh, or older than ten minutes, say *as of* the time they were read) (see [Codex limits](features.md)). |
-| Plan first | 🗂️ Kanban → New tasks | on | New tasks start with a plan. |
-| Plan approval | 🗂️ Kanban → New tasks; 📁 Projects; per task | implement straight away | *implement straight away* (`auto`) or *wait for approval* (`manual`). Set on a task when it's made. |
-| Review rounds | 🗂️ Kanban → New tasks | on | New tasks get reviewed. |
-| Implementation runs | 🗂️ Kanban → New tasks; 📁 Projects | without permission prompts | How implement, fix, resume and PR phases run. *In Codex's workspace sandbox* (`-s workspace-write -a never`) only changes Codex; Claude always runs these phases in bypass mode. |
-| Reviewer: agent, model, effort | 🗂️ Kanban → Reviews; 📁 Projects; per task | Claude | Who reviews. |
-| Rounds | 🗂️ Kanban → Reviews; 📁 Projects; per task | 2 | 1–10 review rounds. |
-| Review the last fix too | 🗂️ Kanban → Reviews; 📁 Projects; per task | off | One more review after the last round's fix. |
-| Keep the reviewer off the web | 🗂️ Kanban → Reviews; 📁 Projects | on | Claude reviewers get no WebFetch/WebSearch (Bash keeps the network, for `gh`). A Codex review round always runs in Codex's read-only sandbox (no network); a Codex multi-PR review in its workspace sandbox with the network on, for `gh`. |
-| Resume after a usage limit or a network break | 🗂️ Kanban | on, 5 tries, 6 hours | A turn cut short by a usage limit or a lost connection is retried by itself: at the reset time the message names (plus a minute); for a Codex run whose message names none, when the last of the Codex account's windows at 100% starts over (plus a minute; it reads the account's numbers afresh when the limit hits, waiting at most 5 seconds; when the percentages lag behind Codex saying the limit is reached, the fullest window's reset is taken; a Codex week that is used up gives up straight away, naming when it resets); else after 5, 10, 20… minutes (at most an hour apart). It gives up after *tries at most* or *waits at most (hours)*, naming the reset time when it knows it; then it waits for Retry. |
-| Archive done tasks after (days) | 🗂️ Kanban | 30 | 0 keeps them on the board. Checked at start-up and hourly. |
-| Close idle agents after (hours) | 🗂️ Kanban | 2 | 0–168; 0 never closes them. See [Idle agents close](#idle-agents-close). |
-| Code comment language | 📁 Projects → ⚙️ Project | English | What comments in the code are written in; *The project's own conventions* adds no rule (see [Languages](agents.md#languages)). |
-| Conversation language, public language | ⚙️ Settings → 🤖 Workers; public language also 📁 Projects → ⚙️ Project | unset (the task's language and the project's instructions) | What agents talk to you in, and what issues, PRs and commits are written in. Set, they replace the *Language* prompt with two rules (see [Languages](agents.md#languages)). |
-| Project name | 📁 Projects → ⚙️ Project (admin) | the repository's or folder's name | See *Projects and repositories*. The id, folder and repository don't change. |
-| Repositories, instructions, tasks at once | 📁 Projects → ⚙️ Project | — | See *Projects and repositories*. |
+| Agent, model, effort | Kanban → New tasks | Claude, its default | The implementer of new tasks. The default model applies only when the task uses the default agent. Where Codex is the agent (or the reviewer), the task view's Agent row and the create form show a small readout of the Codex plan's 5-hour and weekly use; it is read only while it's on screen (numbers it couldn't refresh, or older than ten minutes, say *as of* the time they were read) (see [Codex limits](features.md)). |
+| Plan first | Kanban → New tasks | on | New tasks start with a plan. |
+| Plan approval | Kanban → New tasks; Projects; per task | implement straight away | *implement straight away* (`auto`) or *wait for approval* (`manual`). Set on a task when it's made. |
+| Review rounds | Kanban → New tasks | on | New tasks get reviewed. |
+| Implementation runs | Kanban → New tasks; Projects | without permission prompts | How implement, fix, resume and PR phases run. *In Codex's workspace sandbox* (`-s workspace-write -a never`) only changes Codex; Claude always runs these phases in bypass mode. |
+| Reviewer: agent, model, effort | Kanban → Reviews; Projects; per task | Claude | Who reviews. |
+| Rounds | Kanban → Reviews; Projects; per task | 2 | 1–10 review rounds. |
+| Review the last fix too | Kanban → Reviews; Projects; per task | off | One more review after the last round's fix. |
+| Keep the reviewer off the web | Kanban → Reviews; Projects | on | Claude reviewers get no WebFetch/WebSearch (Bash keeps the network, for `gh`). A Codex review round always runs in Codex's read-only sandbox (no network); a Codex multi-PR review in its workspace sandbox with the network on, for `gh`. |
+| Resume after a usage limit or a network break | Kanban | on, 5 tries, 6 hours | A turn cut short by a usage limit or a lost connection is retried by itself: at the reset time the message names (plus a minute); for a Codex run whose message names none, when the last of the Codex account's windows at 100% starts over (plus a minute; it reads the account's numbers afresh when the limit hits, waiting at most 5 seconds; when the percentages lag behind Codex saying the limit is reached, the fullest window's reset is taken; a Codex week that is used up gives up straight away, naming when it resets); else after 5, 10, 20… minutes (at most an hour apart). It gives up after *tries at most* or *waits at most (hours)*, naming the reset time when it knows it; then it waits for Retry. |
+| Archive done tasks after (days) | Kanban | 30 | 0 keeps them on the board. Checked at start-up and hourly. |
+| Close idle agents after (hours) | Kanban | 2 | 0–168; 0 never closes them. See [Idle agents close](#idle-agents-close). |
+| Code comment language | Projects → Project | English | What comments in the code are written in; *The project's own conventions* adds no rule (see [Languages](agents.md#languages)). |
+| Conversation language, public language | Settings → Workers; public language also Projects → Project | unset (the task's language and the project's instructions) | What agents talk to you in, and what issues, PRs and commits are written in. Set, they replace the *Language* prompt with two rules (see [Languages](agents.md#languages)). |
+| Project name | Projects → Project (admin) | the repository's or folder's name | See *Projects and repositories*. The id, folder and repository don't change. |
+| Repositories, instructions, tasks at once | Projects → Project | — | See *Projects and repositories*. |
 
 ## Comments
 
@@ -346,42 +350,42 @@ back to work:
   comments from the queue.
 
 On To do, **On hold**, Done and archived tasks a comment is just kept; on a held task it is handed to the agent when the task is resumed. Comments take attachments too,
-and so do the answer box and the plan's **Request changes** (**Ctrl/⌘ + Enter** sends). A file goes into the text where the cursor is (a `![⏳ Uploading …]` placeholder until it is uploaded, then its link; a picture shows in the comment, others are links), and the message carries the files whose links are still in the text when it is sent: delete a link and that file isn't sent (a file is uploaded unattached and belongs to the task or the comment only once the message is sent or the task saved, so a removed link leaves nothing behind). Comments from before this list their files below the text. An agent can read only its own task's files (copies in `kanban/grants/task-<id>/`). After upgrading, a live agent session started before this change is relaunched once at its next turn (its launch arguments change); until then a file sent into it may need a permission prompt.
+and so do the answer box and the plan's **Request changes** (**Ctrl/⌘ + Enter** sends). A file goes into the text where the cursor is (a `![Uploading …]` placeholder until it is uploaded, then its link; a picture shows in the comment, others are links), and the message carries the files whose links are still in the text when it is sent: delete a link and that file isn't sent (a file is uploaded unattached and belongs to the task or the comment only once the message is sent or the task saved, so a removed link leaves nothing behind). Comments from before this list their files below the text. An agent can read only its own task's files (copies in `kanban/grants/task-<id>/`). After upgrading, a live agent session started before this change is relaunched once at its next turn (its launch arguments change); until then a file sent into it may need a permission prompt.
 
 In the 3D office, what you tell a task's **implementer** while the task is in progress, waiting or in
-review is a comment too: **P** ("💬 Message task #N"), the task's issue card dropped on its desk, and
+review is a comment too: **P** ("Message task #N"), the task's issue card dropped on its desk, and
 **Ask** → that worker post it as a comment from you (`worker.prompt` with `asComment`), and the engine
 follows and reviews the turn as above. Anything else typed at a worker (its terminal's say box, "Type
 straight into the terminal instead", upstream's own prompts) goes into its terminal as keys and is not a
 comment. For a task in To do, Done or the archive the office offers the ordinary prompt, and the server
 refuses a comment sent there. A task's **reviewer** refuses comments ("… is reviewing task #N"). **R** on a task worker whose task waits with
-Retry (stopped, failed, interrupted, a usage limit) is the task's 🔁 Retry. The task's agent, model,
+Retry (stopped, failed, interrupted, a usage limit) is the task's Retry. The task's agent, model,
 effort and review override can be changed whenever no run is going; the next phase picks them up, and a
 new tool starts a fresh session with the task's handoff.
 
 ## The task window
 
 Click a card (or Enter on it, or follow a `#123` link). A task with a worker opens in that worker's
-terminal window, the one **E** opens in the 3D office: tabs **🖥️ Terminal** and **🗂️ Task #N**, and in
-the header Esc, **🌿 Changes**, **🧩 VSCode** and ✕ (a task on another project's floor takes you to that
+terminal window, the one **E** opens in the 3D office: tabs **Terminal** and **Task #N**, and in
+the header Esc, **Changes**, **VSCode** and the close button (a task on another project's floor takes you to that
 floor first). The worker is the one at work: the reviewer while the task is in a review, else the
-implementer; the task's **⌨️ Open its terminal** switches to the other worker's window. **🌿 Changes**
-opens the task's Changes window and its **⌨️ Terminal** comes back; all of these stay the same open
+implementer; the task's **Open its terminal** switches to the other worker's window. **Changes**
+opens the task's Changes window and its **Terminal** comes back; all of these stay the same open
 task, so `?task=` stays in the link. `&tab=terminal` opens the Terminal tab and `&tab=changes` the
 Changes window; the link's `&tab=` follows the window's tabs. A task without a worker, or whose worker
-can't be reached, opens in a task window of its own (✕ top right, Esc closes), with the tabs below and
-**⌨️ Open the terminal**, which swaps it for the worker's window. One task window is open at a time.
-Closing it by ✕, Esc or the backdrop clears `?task=` from the link. The task's tab is kept in the
+can't be reached, opens in a task window of its own (close button top right, Esc closes), with the tabs below and
+**Open the terminal**, which swaps it for the worker's window. One task window is open at a time.
+Closing it by the close button, Esc or the backdrop clears `?task=` from the link. The task's tab is kept in the
 page's link (`&tab=`). Its head has
-**📍 Show in 3D**: the 3D office at the task's worker's desk (`/?floor=<project>&worker=<id>&desk=<id>`),
-or on its floor when it has no worker, and, for admins, **🧩 VSCode**: the task's folder opened in VS
+**Show in 3D**: the 3D office at the task's worker's desk (`/?floor=<project>&worker=<id>&desk=<id>`),
+or on its floor when it has no worker, and, for admins, **VSCode**: the task's folder opened in VS
 Code on the office's machine. A task with one repository opens its worktree; one with several opens all
 its repositories' worktrees in one window, through a generated `.code-workspace` file (kept in
 `<data>/kanban/workspaces/`); before the task has run (no worktree yet) it opens the project's
-checkout(s). Every worker's terminal window (the 3D office's **E**, and `/lite`) has the same **🧩 VSCode**
+checkout(s). Every worker's terminal window (the 3D office's **E**, and `/lite`) has the same **VSCode**
 in its header, for kanban workers and ordinary ones alike: an ordinary worker opens its worktree (or its
 workspace of several repositories), or the floor's checkout when it has none. On a narrow screen the
-button is just 🧩. VS Code must be installed on the office's machine: on macOS in `/Applications` is
+button is just the icon. VS Code must be installed on the office's machine: on macOS in `/Applications` is
 enough, elsewhere the `code` command must be on the PATH.
 
 The window's **footer** has the task's actions on every tab. Left: **Move**, **Put on hold** or
@@ -409,22 +413,22 @@ the Pull requests tab. Its tabs:
 - **Runs**: each phase run (phase, round, role, agent, status, verdict), and the task's history.
 - **Terminal**: the task worker's live terminal, as at its desk (you can type in it). A task on
   another project's floor takes you to that floor first.
-- **Changes**: the task's **Changes view**, the same one **C** (or 🌿 Changes in the worker's window)
+- **Changes**: the task's **Changes view**, the same one **C** (or Changes in the worker's window)
   opens in the 3D office: upstream's Changes window with a tab per repository of the task (and its PR
   number), the changed files down the left and one file's diff on the right (j/k or the arrows move),
   and **All changes** (the branch against its base, `origin/<base>` or the local base), **Per commit**
   (the branch's commits, the newest picked, each with its own files) and, while the task's worktree
-  has uncommitted work, **✏️ Uncommitted (n)** (the worktree against its HEAD commit). While the task's
-  worker is on this page's floor, All changes follows its checkout live, with upstream's **✅ Commit…**,
-  **🗑️ Discard all** and **🔀 Open PR…**; otherwise the office reads the task's worktree while there is
+  has uncommitted work, **Uncommitted (n)** (the worktree against its HEAD commit). While the task's
+  worker is on this page's floor, All changes follows its checkout live, with upstream's **Commit…**,
+  **Discard all** and **Open PR…**; otherwise the office reads the task's worktree while there is
   one, else the task's branch in the project's checkout (fetched from origin in the background now and
-  then, never waited for), read-only, with ↻ to read again. Per commit and Uncommitted are always read
+  then, never waited for), read-only, with Refresh to read again. Per commit and Uncommitted are always read
   that way, again whenever the live checkout changes (a new commit, an amend, an edit). A diff over
-  2 MB is cut. The 3D worker window's 🗂️ Task tab has no Changes tab: its header's 🌿 Changes is it.
-- **PRs**: the task's pull requests with their state, **Create/Push & update PRs**, **Fix PRs** and **Resolve conflicts** (with open PRs), and
-  **🔍 Review these N PRs together**, and **🔎 Find PRs** (on this tab only, not on an archived task).
-  Each row ends with a **✕** that unlinks the pull request from the task after a confirmation (the PR
-  itself is untouched); the office does not link an unlinked PR again by itself, while 🔎 Find PRs or
+  2 MB is cut. The 3D worker window's Task tab has no Changes tab: its header's Changes is it.
+- **Pull requests**: the task's pull requests with their state, **Create PRs** / **Push & update PRs**, **Fix PRs** and **Resolve conflicts** (with open PRs), and
+  **Review these N PRs together**, and **Find PRs** (on this tab only, not on an archived task).
+  Each row ends with a button that unlinks the pull request from the task after a confirmation (the PR
+  itself is untouched); the office does not link an unlinked PR again by itself, while Find PRs or
   **Link selected** brings it back. Find PRs is for a PR the office didn't link by itself: a task that
   is already Done, a merged PR, a PR older than the task, or one the board's floor doesn't list. It
   searches the task's repositories (an answer takes 18 s at most) and links at once the PRs of the
@@ -433,16 +437,16 @@ the Pull requests tab. Its tabs:
   sure of is not linked on its own: a PR that only mentions the ticket (several tasks can share one),
   and a merged or closed PR from the task's branch that is older than the task (a branch like staging
   has many), and a PR on a branch another task uses too (it may be theirs). A window titled with the task's number (and its title below) lists them with their state and branch, you tick the ones that are this task's and
-  press **Link selected**; one go links 20 at most (the window counts when there are more, and the rest wait for another search). A repository that couldn't be searched, a half of a search that failed (the task's branch list: one outside the newest 100 may be missing; the newest-100 list: ticket matches may be missing), or a PR it left out, is told in a message. If the task view was closed or another task opened before the answer came, no window opens over it: a message naming the task says to use 🔎 Find PRs again from its PRs tab.
+  press **Link selected**; one go links 20 at most (the window counts when there are more, and the rest wait for another search). A repository that couldn't be searched, a half of a search that failed (the task's branch list: one outside the newest 100 may be missing; the newest-100 list: ticket matches may be missing), or a PR it left out, is told in a message. If the task view was closed or another task opened before the answer came, no window opens over it: a message naming the task says to use Find PRs again from its PRs tab.
 - **Issue**: the issue the task's ticket names (a Jira key, `gh:owner/repo#12`), as the issue window
   shows it: the title, the text, status, assignee and comments, with the same actions (see *Working on an issue*)
-  and a **🔄 Refresh** that reads it from the source again. A task without a ticket says so; an issue
-  the sources can't find or you can't read shows the ticket, the reason and **🔄 Try again**. The tab
+  and a **Refresh** that reads it from the source again. A task without a ticket says so; an issue
+  the sources can't find or you can't read shows the ticket, the reason and **Retry**. The tab
   is also where the task's issue is set or changed, at any status but the archive (so after the task
-  has started too): **🔗 Link an issue** / **🔗 Change issue** picks one from the project's issues
+  has started too): **Link an issue** / **Change issue** picks one from the project's issues
   (the picker of the new-task form; an issue that already has a task can't be picked),
-  **⌨️ Type a key** takes a key and an optional link typed by hand (for a project without an issue
-  source, or an issue that isn't on the list; a link left empty clears the old one), and **✕ Unlink**
+  **Type a key** takes a key and an optional link typed by hand (for a project without an issue
+  source, or an issue that isn't on the list; a link left empty clears the old one), and **Unlink**
   takes the issue off the task after a confirmation. Only the task's ticket and its link change: the
   task's title and text stay, and nothing is done to either issue at its source. The one change that reaches
   GitHub is the closing line of the task's PR: `Closes #8` is added for the new issue, and the line the office
@@ -451,17 +455,31 @@ the Pull requests tab. Its tabs:
 
 The panel is the **shared task view** (`src/client/kanban/taskview.ts`, with its panes in `task*.ts`), which the 3D office uses too
 (a window of its own, or a tab of the worker window). There it has no Terminal tab (the worker
-window has the terminal, whose tab bar also has **+ New tab** for shell tabs in the worker's folder, see [Features](features.md)), no Edit or Move, no ✕ of its own in the worker window (that window's header has it), and an **Open in the kanban** link (it opens the kanban in the same window) instead of Show in 3D (and no 🧩 VSCode: the worker
+window has the terminal, whose tab bar also has **+ New tab** for shell tabs in the worker's folder, see [Features](features.md)), no Edit or Move, no close button of its own in the worker window (that window's header has it), and an **Open in the kanban** link (it opens the kanban in the same window) instead of Show in 3D (and no VSCode: the worker
 window's header has it).
 
 The office's own links (its buttons, and links in descriptions, comments and issue texts) open in the same window, so you don't get a second character in the office; external links and attachments open in a new tab. On the kanban page a link to a task (`/kanban?task=12`) in a description or comment opens it in the panel, as `#12` does, so a half-written comment isn't lost to a reload.
+
+## The kanban's other windows
+
+Every window of the kanban is built the same way (`ui/shell.ts`, see [Code layout](code-layout.md#stylesheets)): a header with its title (and the task's or issue's id) and the close button at the top right, a body, and a footer whose main button stands last on the right, with **Cancel** beside it as a quiet button. Esc and the close button close it (in the 3D office you are back to looking around at once). Icons are drawn from one set, never emoji, and the wording is the same everywhere: **Cancel**, **Create and start**, **Hire and start**, **Create task**, **Refresh**, **Retry**, **Open the terminal**, **Send**.
+
+- **Move** (from a card's Move button or **M**): a short list of columns, each with its icon; the one the task is in says *Current*, and the ones it can't go to are greyed out with the reason. The arrow keys move through it.
+- **Put on hold** / **Resume**: *What is it waiting for?* and *Hold until* (both optional), or, to resume, a message for the agent; **Cancel** and **Put on hold** / **Resume**.
+- **Delete, Send home and the like** ask first in a small window with a warning icon: **Cancel** and one red button named for what it does.
+- **Issues** (the top bar, or **Select issue** in the new-task form): a filter row (search and chips for source, status, label and assignee), **Refresh**, **Browse all**, then a row per issue with **Task #N** (opens the task made from it) or **Create task**; the footer counts the issues. Picking an issue for a new task shows **Select** instead.
+- **An issue's window**: its key, status and the quiet **Refresh** in the header, the description and comments in the body, **Status** and **Assignee** in the rail beside it, and in the footer **Open in Jira** / **Open on GitHub** (or Azure Boards) on the left and, on the right, a link to the task made from it (once there is one), **Create task** and **Create and start**.
+- **Find / Link PRs**: a list of pull requests to tick, *N of M selected* in the footer, **Cancel** and **Link selected**.
+- **A pull request's window** (the PR board): its title, state and review on top, the tabs **Conversation** and **Files changed**, the details rail (task, worker, review, changes, labels, updated) with *Hand it to a worker* (**Review**, **Review panel**, **Fix comments and merge**, **Fix via task #N**, **Ask a worker**), and in the footer **Open on GitHub** on the left and **Close pull request** and **Merge** on the right.
+- **Changes**: the repositories as tabs, the modes (**All changes**, **Per commit**, **Uncommitted**) and **Refresh**, the files and the diff, and in the footer **Discard all**, **Commit…** and **Open PR…**.
+- **Settings**: a window with the categories down the side (**You**, **Sound & voice**, **Notifications**, **Building**, **Workers**, **Kanban**, **Projects**, **Multiplayer**); the kanban's two are described under [Settings](#settings).
 
 ## Projects and repositories
 
 A project is a floor of the building. The floor's own checkout is the **primary** repository; a floor
 without more repositories is a one-repository project, as in upstream agent-office.
 
-An admin can create a project: ⚙️ Settings → **📁 Projects** → **＋ New project**, then either a **local
+An admin can create a project: Settings → **Projects** → **New project**, then either a **local
 folder** (its full path on the office's machine, `~` works) or a **GitHub repository** to clone. A folder
 is used as it is: nothing is cloned, and it needn't be a git repository. The office keeps its data in
 `<folder>/.agent-office`. Paths that are refused: a relative one, one that doesn't exist or isn't a
@@ -470,7 +488,7 @@ the office's home too), the workspace folder or a folder that contains it, and a
 floor or is inside or contains one (the same folder under another name or case counts), anything inside the data folder, and the private folders of your account (hidden folders straight under home, anything in or around `~/.ssh`, `~/.aws`, `~/.gnupg` and `~/.config`). Adding a folder with git means the office and its agents work in that repository with its own config, so add only folders you trust; the office's automatic git calls run with its file-system monitor and hooks turned off and with no external diff or text-conversion programs. A folder with git gets its `origin`'s GitHub
 repository for its issues and PRs; one without has no worktrees, branches or PRs, and the issue and PR
 boards say it isn't a git repository (the kanban's own tasks work, see *Limits*). The 3D office's elevator
-does the same: type the path (starting with `/` or `~`) into its search box and press **📁 Add folder**.
+does the same: type the path (starting with `/` or `~`) into its search box and press **Add folder**.
 
 Only admins add a folder, since it gives the project's agents that folder on the office's machine. An
 admin is an account with the admin role or, while the office has no accounts, anyone signed in with the
@@ -479,14 +497,14 @@ keeps running git there as before, while the kanban treats that project as a fol
 worktrees); a folder added later that has no `.git` of its own doesn't borrow the repository around it: the
 office only adds `.agent-office/` to that repository's exclude list and otherwise never uses its git.
 
-An admin can rename a project: ⚙️ Settings → **📁 Projects** → **⚙️ Project** → **Project name** →
+An admin can rename a project: Settings → **Projects** → **Project** → **Project name** →
 **Rename** (1-100 characters, not another project's name, in any case). The name shows in the elevator,
 the top bar, the board and the agents' prompts; the project's id, folder and GitHub repository stay.
 Agents already running keep the old name in the prompts they were sent; the next phase uses the new
 one. A primary repository called after the project (as it is until someone names it otherwise) is
 renamed with it, unless one of the project's other repositories already has the new name.
 
-⚙️ Settings → **📁 Projects** (pick the project at the top) → **⚙️ Project** → **Repositories**: **＋ Add a local
+Settings → **Projects** (pick the project at the top) → **Project** → **Repositories**: **Add a local
 repository** with its absolute folder, then name, kind (git or folder), GitHub `owner/name`, base
 branch and instructions for work in it, and **Save repositories**. At most 8 besides the primary.
 The primary's folder is changed from the elevator in the 3D office, not here. When the floor knows
@@ -511,11 +529,11 @@ plan approval, implementation mode and review settings.
 
 With several repositories, the floor's issues and PR boards show every repository's cards with a
 repository chip. The issues board has a repository filter; the PR board (E at the board) has a tab
-per repository of the project below its header (📦 All, then every repository, with its open PRs, if any).
+per repository of the project below its header (All, then every repository, with its open PRs, if any).
 
-Beside the tabs (on a one-repository floor too), **All / 👤 Mine / 👀 To review** narrows the PR board to your
+Beside the tabs (on a one-repository floor too), **All / Mine / To review** narrows the PR board to your
 own pull requests, in the picked tab or across all of them, and the tabs count only what it leaves. *Mine* is a PR
-authored by your GitHub login (your own GitHub sign-in in 🔐 Your sign-ins; on the shared password, or with the
+authored by your GitHub login (your own GitHub sign-in in Your sign-ins; on the shared password, or with the
 office's sign-in, the office's own `gh` login), or one the office opened for you under its account: a PR linked to a
 kanban task you made (the project's tasks that aren't archived), one from a worker you hired at a desk, or one whose
 description says *Opened from Agent Office by* your name. An account without a GitHub sign-in of its own gets only
@@ -526,29 +544,29 @@ floor; a visitor always sees every PR.
 
 ## Issue sources
 
-⚙️ Settings → **📁 Projects** → **📌 Issue sources**, per project: **GitHub repositories**, a **GitHub project** (Projects
-v2), **Jira** or **Azure Boards**, up to 10 per project. **📌 Issues** on the board lists them (search, and filter by
-source, status, label and assignee); **＋ Create task** makes a task in To do from one (title, body
+Settings → **Projects** → **Issue sources**, per project: **GitHub repositories**, a **GitHub project** (Projects
+v2), **Jira** or **Azure Boards**, up to 10 per project. **Issues** on the board lists them (search, and filter by
+source, status, label and assignee); **Create task** makes a task in To do from one (title, body
 plus a *Source:* link, the ticket key and link); an open GitHub issue nobody has is assigned to you then (as taking a card does), but only under your own GitHub sign-in; without one, or with an assignee already, it is left alone. An issue already made into a task shows its number
 instead, and is never made twice.
 
-**Starting a task from an issue**, from anywhere (the issue window, the board's ▶, the API, `office-tasks`, the queue, taking a card at a desk), takes the issue: it is assigned to the person who started it and moved to **In progress** on the project's GitHub Project boards that are issue sources (the board's own Status field). The option is found by name: *In progress*, *In-progress*, *Doing*, *Started*, *Working*, *WIP*, *Ongoing*, *Käynnissä* or *Työn alla*; an item already on it, or past it (Review, Done), is not moved, and a board without such an option gives a warning. Moving a Status needs `gh auth refresh -s project` on the machine whose sign-in is used. Whose gh does it: the person's own GitHub sign-in assigns and moves the Status. Someone with no account (the shared password), or whose gh is the office's by an admin's choice, has the office's gh as theirs: the Status moves under it (and a queue task or a card at a desk assigns under it too), but a kanban task is never assigned under the office's gh. Someone with an account but no GitHub sign-in gets neither: nobody is assigned, the Status does not move, and a warning says why (the Status is a write to GitHub like the assignment, so the office's shared gh is never lent to them). This holds for starting a kanban task (the issue window, the board, the API, `office-tasks`), a queue task, a card taken at a desk and a worker hired for an issue by another agent (`office-workers hire --issue`, `hire_worker`). A pull request, or an issue that is closed on GitHub now (asked fresh, not from the cached list), is left alone: nobody is assigned and no Status moves. A failed assignment doesn't stop the Status move (both are reported), and a GitHub Project draft only has its Status moved. A task made without starting only assigns.
+**Starting a task from an issue**, from anywhere (the issue window, the board, the API, `office-tasks`, the queue, taking a card at a desk), takes the issue: it is assigned to the person who started it and moved to **In progress** on the project's GitHub Project boards that are issue sources (the board's own Status field). The option is found by name: *In progress*, *In-progress*, *Doing*, *Started*, *Working*, *WIP*, *Ongoing*, *Käynnissä* or *Työn alla*; an item already on it, or past it (Review, Done), is not moved, and a board without such an option gives a warning. Moving a Status needs `gh auth refresh -s project` on the machine whose sign-in is used. Whose gh does it: the person's own GitHub sign-in assigns and moves the Status. Someone with no account (the shared password), or whose gh is the office's by an admin's choice, has the office's gh as theirs: the Status moves under it (and a queue task or a card at a desk assigns under it too), but a kanban task is never assigned under the office's gh. Someone with an account but no GitHub sign-in gets neither: nobody is assigned, the Status does not move, and a warning says why (the Status is a write to GitHub like the assignment, so the office's shared gh is never lent to them). This holds for starting a kanban task (the issue window, the board, the API, `office-tasks`), a queue task, a card taken at a desk and a worker hired for an issue by another agent (`office-workers hire --issue`, `hire_worker`). A pull request, or an issue that is closed on GitHub now (asked fresh, not from the cached list), is left alone: nobody is assigned and no Status moves. A failed assignment doesn't stop the Status move (both are reported), and a GitHub Project draft only has its Status moved. A task made without starting only assigns.
 
 | Source | Filters | Needs |
 |---|---|---|
 | GitHub repositories | repositories (none picked: every repository of the project with a GitHub remote), assignee (`@me` or a login), labels (all of them), state (open, closed, all) | `gh` signed in on the office's machine |
 | GitHub project | owner (user or organisation), project number, assignee (`@me` or a login), status, iteration | `gh auth refresh -s read:project` on the office's machine: `gh` doesn't ask for that scope by default |
-| Jira | site (`yourteam.atlassian.net`), project keys, assignee (`me`, an account id or e-mail), epic, labels, status categories to leave out (default *Done*), extra JQL (no ORDER BY) A Jira connection for the site in ⚙️ Settings → **🗂️ Kanban** → **Jira connections** (below). The source's **Connection** is *Automatic* (the first connection for its site) or one picked by name. |
-| Azure Boards | organisation, project, assignee (`@Me` or a name or e-mail), work item types, area path, completed ones too, extra WIQL condition (no ORDER BY) | The office's Azure DevOps token for the organisation in ☰ → **🔐 Your sign-ins** to read it; yours (else the office's) to change a card, see [Repositories on Azure DevOps and Bitbucket](hosting.md#azure-boards). Status, comments and assignee change as you. |
+| Jira | site (`yourteam.atlassian.net`), project keys, assignee (`me`, an account id or e-mail), epic, labels, status categories to leave out (default *Done*), extra JQL (no ORDER BY) A Jira connection for the site in Settings → **Kanban** → **Jira connections** (below). The source's **Connection** is *Automatic* (the first connection for its site) or one picked by name. |
+| Azure Boards | organisation, project, assignee (`@Me` or a name or e-mail), work item types, area path, completed ones too, extra WIQL condition (no ORDER BY) | The office's Azure DevOps token for the organisation in ☰ → **Your sign-ins** to read it; yours (else the office's) to change a card, see [Repositories on Azure DevOps and Bitbucket](hosting.md#azure-boards). Status, comments and assignee change as you. |
 
-**Jira connections.** ⚙️ Settings → **🗂️ Kanban** → **Jira connections** lists the office's Jira
+**Jira connections.** Settings → **Kanban** → **Jira connections** lists the office's Jira
 connections, each a name, a site, an e-mail and an API token (id.atlassian.com → Security → API tokens),
 so different projects can use different Jira instances (`company.atlassian.net` for one customer,
 `customer.atlassian.net` for another), or different accounts on one site. Admins add, edit, remove and
 **Test** them (*Connected as …*, Jira's name for the token's account); a token is never shown again, and
 editing one keeps its e-mail and token unless new ones are typed, except that a changed site needs the
 e-mail and the token again. A Jira source uses the connection picked in its **Connection** field, or, on *Automatic*,
-the first connection (oldest) for its site; every Jira call of the source (fetching, 🔎 Browse, status,
+the first connection (oldest) for its site; every Jira call of the source (fetching, Browse, status,
 comments, assignee) goes through that connection, and a token only ever goes to the site it was given
 for: a picked connection for another site, a removed one, or no connection for the site is an error on
 the source, not a fallback. `currentUser()` / *me* in a source's assignee filter is the connection's
@@ -556,7 +574,7 @@ account. Changing the connections fetches the projects' Jira issues again at onc
 the one Jira token from before keeps it as a connection named after its site, with nothing to re-enter.
 Issue keys tell issues apart without their site, so when a project's Jira sources are on different
 sites, each needs project keys and no key may be on two sites (saving them says so). An issue opened in
-🔎 Browse is changed through the source it was opened from (so its connection's account), one from the
+Browse is changed through the source it was opened from (so its connection's account), one from the
 list through the source that listed it.
 
 Issues are fetched again every 90 seconds while someone looks at them, every 10 minutes otherwise, and
@@ -565,10 +583,10 @@ draft issues), the Jira key, `ab:<org>/<project>#123` (Azure Boards work items, 
 
 ### Browsing all issues
 
-**📌 Issues** lists what the sources' own filters let through (your assigned issues, say). To see
-everything of a Jira project or a GitHub project board, press **🔎 Browse all** in the **📌 Issues**
+**Issues** lists what the sources' own filters let through (your assigned issues, say). To see
+everything of a Jira project or a GitHub project board, press **Browse all** in the **Issues**
 window's header (it is there when the project has a Jira source with project keys, or a GitHub project
-source). In the 3D office and `/lite` it is the **🔎 Browse** button of the 📌 Issues board. A project with
+source). In the 3D office and `/lite` it is the **Browse** button of the Issues board. A project with
 several browsable sources has a picker for which one to browse; a Jira source without project keys is
 listed greyed out (*add project keys to the Jira source*), because the Jira token reaches the whole
 site and the office only ever shows the source's own projects.
@@ -580,7 +598,7 @@ site and the office only ever shows the source's own projects.
   expression (balanced quotes and parentheses, no backslash outside quotes, no `ORDER BY`: the office
   sorts by the last update) and is added after the source's project keys. As a second guard, issues
   outside the source's projects are dropped from the results. Counts aren't shown while raw JQL is in use.
-- **Me.** On Jira it is the account you pinned with **📌 This is me** (in an issue's assignee panel; per
+- **Me.** On Jira it is the account you pinned with **This is me** (in an issue's assignee panel; per
   site, in your browser); until you have pinned one the option says so. On GitHub it is your own GitHub
   sign-in.
 - **The tree.** Jira: fix version → epic → story or task → sub-tasks. Released versions are collapsed
@@ -603,21 +621,21 @@ site and the office only ever shows the source's own projects.
   counts its stories and tasks that match (sub-tasks show under them, uncounted, as in an epic's
   done/total); with any filter beyond the status (search, type, assignee and so on) it shows no count,
   since the listed stories then include ones with a matching sub-task, which a count can't follow. **Load more** fetches the next page.
-- **Needs.** Jira: a Jira connection for the source in ⚙️ Settings → 🗂️ Kanban (as for the other Jira features). GitHub project:
+- **Needs.** Jira: a Jira connection for the source in Settings → Kanban (as for the other Jira features). GitHub project:
   `gh auth refresh -s read:project` on the office's machine; without it the window says so.
 
 Click an issue to open it. On the kanban page that is the issue window (*Working on an issue*), with
-**＋ Create task** and **▶ Create & start**, which makes the task and starts it at a free desk in one go
-(*Create & start* is also what a failed start reports: the task is made and waits in To do). In 3D and
-`/lite` it is the card window: its status, assignee and comments panel, **🗂️ Kanban task**, **🤖 Hand to a
-worker**, **📋 Add to queue**, **🤝 Meeting** and **✋ Pick it up**, as for any other card. Closing it
+**Create task** and **Create and start**, which makes the task and starts it at a free desk in one go
+(*Create and start* is also what a failed start reports: the task is made and waits in To do). In 3D and
+`/lite` it is the card window: its status and assignee in the rail and its comments under the text, **Create and start** (a kanban task for it, started at a free desk) as the main button where the office has the kanban, otherwise **Hand to a
+worker**, and **Add to queue**, **Meeting** and **Pick it up**, as for any other card. Closing it
 returns to the browse window. An issue opened from Browse stays open to changes whether or not the
 sources' list holds it, and it can be queued, carried or handed to a worker even if the source's filters
 leave it off the board: its text then reaches the agent's prompt once a person starts it.
 
 ### Working on an issue
 
-Click an issue's title in **📌 Issues** to open its window (a task made from an issue shows the same panel in its own **Issue** tab): the text, and three things you can do to
+Click an issue's title in **Issues** to open its window (a task made from an issue shows the same panel in its own **Issue** tab): the text, and three things you can do to
 the issue itself, without leaving the office. In the 3D office the same panel is in the window of a
 Jira or project card, and a numbered GitHub issue of the project (upstream's issue window, which has
 its own comments and close) gets its **status** and **assignee** there.
@@ -633,14 +651,13 @@ its own comments and close) gets its **status** and **assignee** there.
 - **Assignee.** **Assign to me**, **Someone else…** (a search of who can be assigned) or **Unassign**.
   On GitHub it makes the person the only assignee, and **Assign to me** needs your own GitHub sign-in
   (under the office's `gh` pick yourself from the list instead). Jira's token is everyone's, so the office can't know
-  which Jira user you are: pick yourself once and pin it (**📌 This is me**); your browser remembers
+  which Jira user you are: pick yourself once and pin it (**This is me**); your browser remembers
   it per site and **Assign to me** uses it. A draft can't be assigned: convert it to an issue on GitHub.
 
-Whose sign-in is used: **Jira** always the source's Jira connection in ⚙️ Settings → 🗂️ Kanban, so every Jira change
+Whose sign-in is used: **Jira** always the source's Jira connection in Settings → Kanban, so every Jira change
 (transitions, assignee, comments) is made as *that token's* Jira account, whoever clicked; only a comment
 carries the person's name (`— <name> via Agent Office`), the rest is told by the floor toast and the task
-line. Scope that token's permissions in Jira accordingly. **GitHub** writes use your own sign-in (☰ → 🔐
-Your sign-ins), or the office's `gh` when an admin chose that for you; with neither they say why and do
+line. Scope that token's permissions in Jira accordingly. **GitHub** writes use your own sign-in (☰ → Your sign-ins), or the office's `gh` when an admin chose that for you; with neither they say why and do
 nothing, as taking a card does. Reading (statuses, comments, who can be assigned) falls back to the
 office's `gh` instead of refusing. **Assign to me** on GitHub needs your own sign-in, not the office's. Changing a GitHub project's Status needs `gh`'s
 `project` scope (reading only `read:project`): run `gh auth refresh -s project` on the machine whose
@@ -653,20 +670,20 @@ changed stays open to more changes for half an hour even when the list has lost 
 
 ### On the 3D issues board
 
-A floor whose project has issue sources shows *their* issues on its 📌 Issues board (the cork on the
+A floor whose project has issue sources shows *their* issues on its Issues board (the cork on the
 wall, **E** there, and the ☰ search) instead of its own repository's; a project without any keeps the
 floor's GitHub issues, as upstream. Each note says what it is: `#12` for one of the floor's own
 issues, `api#12` for another GitHub repository's, the Jira key (`UYT-1415`) or `draft …` for a
-project's draft, and **🗂️ #N** once it has been made into a task. The list is the same as in
-**📌 Issues** on the kanban (its filters, its 90-second / 10-minute refresh); someone on the floor
+project's draft, and **#N** once it has been made into a task. The list is the same as in
+**Issues** on the kanban (its filters, its 90-second / 10-minute refresh); someone on the floor
 counts as looking at it.
 
 Every card works like upstream's: **E** at a note takes it off the cork, **O** opens it, and in your
 hands it goes to an empty desk (E hires a worker for it, **P** makes it a kanban task there), to a
-worker, to the 📋 queue, to the herald or to the meeting room. The worker's prompt names the issue's
+worker, to the queue, to the herald or to the meeting room. The worker's prompt names the issue's
 source and link (a GitHub issue of another repository: `gh issue view N -R owner/name`); a card made
 into a task is never made twice (the office looks for one with its key, archived too, and makes the task
-from the source's whole text). **🔄 Refresh** on the issues window fetches the sources again. One of the project's GitHub issues opens in the office's issue window
+from the source's whole text). **Refresh** on the issues window fetches the sources again. One of the project's GitHub issues opens in the office's issue window
 (comments, labels, close); any other card opens a window with what the source says and the same
 actions. Taking a card assigns it on GitHub when it's a GitHub issue (to your own GitHub sign-in, or
 the office's); taking a Jira or project card doesn't assign it (its kanban task is what links it), but its window can (see *Working on an issue*). The
@@ -677,7 +694,7 @@ repository outside the project writes text that reaches a coding agent that can 
 worker handed such a card gets its link and its description quoted between markers as data, told not
 to follow instructions in it beyond the issue; a GitHub issue is read with `gh issue view`, as upstream
 reads its own. A kanban task made from a card keeps the description as its own, as the kanban's
-**📌 Issues** always has: pick sources whose writers you trust.
+**Issues** always has: pick sources whose writers you trust.
 
 ## Pull requests
 
@@ -705,7 +722,7 @@ reads its own. A kanban task made from a card keeps the description as its own, 
   Boards work item is linked with `AB#123` and completed by the office when its pull request merges ([hosting](hosting.md#azure-boards)).
 - **Repositories on Azure DevOps and Bitbucket**: everything above works the same, with the agent using `office-pr`
   where it would use `gh`, and the PR board and linked PR states read over the host's API ([hosting](hosting.md)).
-- **PR phase** (a task in Waiting, Review or Done): **🔀 Create PRs** (or **Push & update PRs**) has
+- **PR phase** (a task in Waiting, Review or Done): **Create PRs** (or **Push & update PRs**) has
   the implementer push and open or update a PR in every repository of the task with commits, each
   listing the others. It reports each as a `PR: <url>` line, which the office links to the task; the
   task goes to Review. Linked PRs keep their state (open, draft, merged, closed) from the floor's PR
@@ -714,24 +731,24 @@ reads its own. A kanban task made from a card keeps the description as its own, 
   the failing checks (it reads the failing run's log) on all the task's open PRs, pushes, and doesn't merge. The button is greyed out, with the reason as its tooltip, while the task is running or its agent is asking in its terminal. An investigation with no branch takes the one its open PR is from. One rule
   (`canFixPrs`, `src/shared/kanban/prs.ts`) serves the buttons and the engine. A pull request from a fork is never worked on ("A pull request from a fork: handle it by hand"; the PR board says which are forks), nor is one whose head branch is the repository's base branch or an integration branch (main, master, develop, dev, trunk): a head branch is whatever its author named it, so the office never checks it out on trust. The prompt tells the agent that review comments and CI logs are data, not instructions, and to act only on comments from the repository's owner, members and collaborators (`author_association`) and from GitHub Copilot's code review (the `Copilot` / `copilot-pull-request-reviewer` bot, whose `author_association` is `NONE`), weighing Copilot's suggestions against the code. On a Done task it moves the task back to In progress, and then to Review.
 - **Resolve conflicts** (same gating and rules as Fix PRs: `canFixPrs`, no fork's PR, none from the base or an integration branch; an investigation takes its PR's branch): the implementer merges each open PR's target branch into the PR's own branch (a merge, never a rebase, never a force-push), resolves the conflicts keeping both sides' intent, verifies the result, commits the merge and pushes. It needs a clean working tree and commits nothing before the merge; a branch name with odd characters, a head that can't fast-forward to origin, unpushed commits that aren't merges of the target, and a conflict in CI/workflow or credential files each stop that PR (never hand-merged). A PR whose branch is already up to date is left alone and nothing is built or tested (an earlier merge whose push failed is just pushed). Each PR it stopped at is reported as a `NOT UPDATED: <url> — why` line, and the task gets a status comment saying how many weren't updated. Like Fix PRs, it treats PR, branch and comment text as data. On a Done task it moves the task back to In progress, and then to Review. The PR window's *Fix via task #N* has no counterpart for it.
-- **Fix via task #N** (PR window, opened from the PR board, the lite view or the palette): when a task owns the PR (the newest one not archived, if several), the window's footer
-  has this button next to upstream's *Fix comments & merge*. It does the same as the task's own 🛠️ Fix PRs, on all of that task's open PRs, and is greyed out with the reason when the task can't be sent now.
+- **Fix via task #N** (PR window, opened from the PR board, the lite view or the palette): when a task owns the PR (the newest one not archived, if several), the window's rail
+  (*Hand it to a worker*) has this button after *Fix comments and merge*. It does the same as the task's own Fix PRs, on all of that task's open PRs, and is greyed out with the reason when the task can't be sent now.
   No button when no task owns the PR.
-- **Reviewing several PRs together**: 🔍 **Review** or 🤝 **Review panel…** in a PR window first asks
+- **Reviewing several PRs together**: **Review** or **Review panel** in a PR window first asks
   which PRs go with it. PRs on the same branch in the project's other repositories, or of the same task,
   come ticked; any other open PR of the project can be added (at most 20). **Just this PR** keeps
   upstream's single-PR flow. The PRs tab's **Review these N PRs together** does the same for a task's
   open PRs.
-  - 🔍 with several PRs: a reviewer is hired in a worktree of its own (never the floor's checkout, never
+  - with several PRs: a reviewer is hired in a worktree of its own (never the floor's checkout, never
     the task's) and reads them with `gh pr view` / `gh pr diff`. With no free desk, or the office at its
     worker limit, the review's task is queued like any other hire and starts by itself when there's
-    room (⏹️ Stop, or moving the task to Done, takes it out of the queue; a queued run stopped that way is
-    listed as stopped before it started, and 🔁 Retry runs that one, the PR review or review round). The review is written into the task
+    room (Stop, or moving the task to Done, takes it out of the queue; a queued run stopped that way is
+    listed as stopped before it started, and Retry runs that one, the PR review or review round). The review is written into the task
     the PRs belong to when every one of them is that task's (linked to it, or opened from its branch);
     PRs of different tasks, or of no task (one of the *other open PRs*, say), get a new **investigate**
     task *PR review: owner/repo#1, …* (with the ticket they share, if any, and a line naming the tasks
     involved), which goes to Review with the reviewer's findings and verdict. Retry reviews them again.
-  - 🤝 with several PRs: one of the floor's meeting rooms (the first free one; if all are busy the panel says so and doesn't start) reviews them as one change set; the brief (the
+  - with several PRs: one of the floor's meeting rooms (the first free one; if all are busy the panel says so and doesn't start) reviews them as one change set; the brief (the
     *Review panel of several pull requests* prompt) lists every PR. The combined review is posted on
     one of them, which must be in the project's primary repository. A review panel has no token limit (the panel doesn't set a budget).
 
@@ -739,24 +756,24 @@ reads its own. A kanban task made from a card keeps the description as its own, 
 
 Every prompt the kanban sends is editable: plan, replan, branch naming, checkout, implement,
 implement (folder project), investigate, review, next review round, fix, comment, acceptance
-criteria, open PRs, fix PRs, review PRs together, the review panel of several PRs, carry on, language (used only while no language is set in ⚙️ Settings, see [Languages](agents.md#languages)), reading other tasks
+criteria, open PRs, fix PRs, review PRs together, the review panel of several PRs, carry on, language (used only while no language is set in Settings, see [Languages](agents.md#languages)), reading other tasks
 and handoff, and the smaller texts they're built from (Continue without answers, what the user said
 since, the ticket line, attached files, the project's instructions and their parts, the referenced
 tasks file, the accepted plan, what the task did, and the handoff's summary and comments). Each lists
 its `{{placeholders}}`. The text that hands a finished meeting's output on is editable too, in the office's
 prompts (group Meetings): *Handing the output on* and its pieces for a review posted on a PR, a stopped meeting and the meeting's branch.
 
-- **Office-wide**: ⚙️ Settings → 🤖 Workers → **📝 Edit the prompts…**, group **🗂️ Kanban tasks**
+- **Office-wide**: Settings → Workers → **Edit the prompts…**, group **Kanban tasks**
   (kept in the office's `prompts.json`, like upstream's prompts).
-- **Per project**: ⚙️ Settings → **📁 Projects** → **📝 Prompts** (or the *For* picker above a kanban prompt in
+- **Per project**: Settings → **Projects** → **Prompts** (or the *For* picker above a kanban prompt in
   the office's editor). A project's text wins over the office's; **Back to the office's** drops it.
   Saving the office's own text for a project stores nothing.
 - The layers, lowest first: the default → the office's → the project's.
-- **Languages**: the conversation and public language rules are the office prompts in **🌐 Languages**; set
+- **Languages**: the conversation and public language rules are the office prompts in **Languages**; set
   languages replace the *Language* prompt, and a project's or the office's rewrite of *Pull requests* that still says
   which language to write in should drop that sentence. The **Code comment language** rule (English unless the
   project picks otherwise) is added after the language rule in every prompt, whether or not a language is set.
-- **Contract blocks** (🔒, shown read-only under the prompt) are appended by the office and can't be
+- **Contract blocks** (marked with a lock, shown read-only under the prompt) are appended by the office and can't be
   changed: the `PLAN READY` / `QUESTIONS:` markers, the `REVIEW:` verdict line and the reviewer's
   rules, the implementer's and the investigation's safety rules, and the `PR:` lines. A rewritten
   prompt can't break the process.
@@ -765,7 +782,7 @@ Only admins save prompts.
 
 ## Skills
 
-⚙️ Settings → **🗂️ Kanban** → **Skills** lists every skill the office finds, with where it's from and installed and which
+Settings → **Kanban** → **Skills** lists every skill the office finds, with where it's from and installed and which
 projects use it:
 
 - the office's own (`skills/claude`, `skills/codex` in this install),
@@ -774,14 +791,14 @@ projects use it:
 - each signed-in account's Claude home (`<data>/homes/<id>/claude/skills`),
 - each project repository's `.claude/skills`.
 
-Per project (**📁 Projects** → **🧩 Skills**), pick which skills each phase (plan, implement, review, pull requests) is told to use,
+Per project (**Projects** → **Skills**), pick which skills each phase (plan, implement, review, pull requests) is told to use,
 per agent (Claude, Codex). The phase prompt names them.
 
 - **Claude**: the picked office and repository skills go into a generated plugin
   (`<data>/kanban/skills/plugin-<hash>/`) passed with `--plugin-dir`; nothing is copied into anyone's
   Claude home. Skills in the worker's own home load as always.
 - **Codex** has no such flag: the office's own skills are copied into `$CODEX_HOME/skills/` with a
-  `.office-skill.json` marker. **🔄 Sync** (admins) installs or updates them; a copy someone changed
+  `.office-skill.json` marker. **Sync** (admins) installs or updates them; a copy someone changed
   by hand, or a same-named skill the office didn't put there, is left alone and reported.
 - **office-task-refs** (bundled) is given to every task worker, Claude and Codex, whatever is picked:
   it tells the agent how to read another task it's pointed at.
@@ -792,18 +809,18 @@ The repository's `user-skills/` folder (`claude/*`, `codex/*`) holds skills for 
 `kanban-dev`, `kanban-dev-sonnet` and `kanban-ui-screenshots` for Claude, `kanban-dev` and `kanban-ui-screenshots`
 for Codex (see `user-skills/README.md`). When the server starts they are copied into `<claude home>/skills/<skill>`
 (`$CLAUDE_CONFIG_DIR`, else `~/.claude`) and `<codex home>/skills/<skill>` (`$CODEX_HOME`, else `~/.codex`),
-the way ai-kanban does. **🔄 Sync** (admins) runs it too.
+the way ai-kanban does. **Sync** (admins) runs it too.
 
 - A copy gets a `.office-user-skill.json` marker. A marked copy is overwritten when the source changed, hand
   edits included; an unchanged one isn't touched. ai-kanban's own copies (`.aikanban-sync`) are adopted the
   same way (the marker is replaced).
-- A skill of the same name with neither marker is yours and stays untouched (a warning is logged and 🔄 Sync reports it);
+- A skill of the same name with neither marker is yours and stays untouched (a warning is logged and Sync reports it);
   so does one that is a symbolic link, which is never written through.
 - Copies are built outside the folder Claude and Codex scan, in `<home>/.office-user-skills-tmp/`, and swapped
   in whole: a failed install or update leaves the old copy (or nothing) behind, and what a dead process
   left in the temp folder is cleaned on the next sync. `node_modules` isn't copied and the target's own
   survives an update. Files deleted from the source disappear from the target.
-- `AGENT_OFFICE_USER_SKILLS=off` turns the sync off, at start-up and in 🔄 Sync. Where the skills come from
+- `AGENT_OFFICE_USER_SKILLS=off` turns the sync off, at start-up and in Sync. Where the skills come from
   a linked git worktree (an agent's checkout, where `.git` is a file) both are skipped unless
   `AGENT_OFFICE_USER_SKILLS=on`, so a branch's skills don't overwrite the main checkout's. A main checkout
   and an install without git (a release) sync.
@@ -842,7 +859,7 @@ Rules for both: the hook server listens on 127.0.0.1 only, and requests from any
 refused. The `Host` header must be `127.0.0.1`, `localhost` or `[::1]` with the hook server's port (no
 DNS rebinding); an `Origin` must be that same host, and `Sec-Fetch-Site`, when sent, `same-origin` or
 `none` (no web pages); `OPTIONS` is refused and no CORS headers are ever sent; a `POST` must be
-`Content-Type: application/json` and at most 256 KB. Once an **API key** is set (⚙️ Settings → 🗂️ Kanban;
+`Content-Type: application/json` and at most 256 KB. Once an **API key** is set (Settings → Kanban;
 at least 16 characters; only its SHA-256 is kept), every `/api/v1` request must send it as
 `Authorization: Bearer <key>` or `X-API-Key: <key>`. **Starting a task** over `/api/v1` (`start: true`,
 or `/start`) is refused until a key is set, since it runs an agent as the office's user.
@@ -966,6 +983,6 @@ each worktree's own `node_modules` folder of links to its repository's packages 
   office's worker limit.
 - Folder projects (no git, see [Projects and repositories](#projects-and-repositories)) have no worktrees, change checks or PRs; a folder repository in a git
   project has no worktree of its own.
-- A 🤝 review panel of several PRs posts its review on a PR of the project's primary repository.
+- A review panel of several PRs posts its review on a PR of the project's primary repository.
 - GitHub Projects need `gh`'s `read:project` scope; Jira takes one site's token per office.
 - On Azure DevOps and Bitbucket the office doesn't merge, close or label pull requests; Bitbucket Server is not supported yet ([hosting](hosting.md#limitations)).

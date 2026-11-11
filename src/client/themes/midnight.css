@@ -70,7 +70,7 @@
   --warn-wash: #2B2110;
   --good-wash: #132119;
   --info-wash: #151B2E;
-  --comment-implementer: #151B2E;
+  --comment-implementer: #13161C;
   --comment-implementer-edge: #3F62E8;
   --comment-reviewer: #1E1933;
   --comment-reviewer-edge: #A78BFA;
@@ -221,5 +221,7 @@
   --note-card-pink: #171A21;
   --chip-ticket: #171A21;
   --chip-type: #171A21;
+  --board-bg: #0F1115;
+  --board-dot: transparent;
   --glass-blur: none;
 }

@@ -93,10 +93,13 @@ export function holdLine(hold: TaskHold, now: number): string {
   return parts.join(' · ');
 }
 
+/** A day as the pages write it: "15 Nov". */
+const dayWords = new Intl.DateTimeFormat('en-GB', { day: 'numeric', month: 'short' });
+
 /** The same line without its mark, for a page that draws an icon beside it: "waiting for the API keys · until 15.11.". */
 export function holdWords(hold: TaskHold, now: number): string {
   const parts: string[] = [hold.note?.trim() || 'On hold'];
-  if (hold.until !== undefined) parts.push(`until ${day(hold.until)}${hold.until < now ? ' (passed)' : ''}`);
+  if (hold.until !== undefined) parts.push(`until ${dayWords.format(hold.until)}${hold.until < now ? ' (passed)' : ''}`);
   return parts.join(' · ');
 }
 

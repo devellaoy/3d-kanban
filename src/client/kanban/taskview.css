@@ -92,8 +92,8 @@
 .kb-tv .kb-comment.user { background: var(--info-wash); margin-left: 24px; }
 .kb-tv .kb-comment.agent { background: var(--field); margin-right: 24px; }
 /* An agent's comment by who wrote it: tinted, with a coloured left edge, so it stands off the pane. */
-.kb-tv .kb-comment.agent.implementer { background: var(--comment-implementer); border-left: 6px solid var(--comment-implementer-edge); }
-.kb-tv .kb-comment.agent.reviewer { background: var(--comment-reviewer); border-left: 6px solid var(--comment-reviewer-edge); }
+.kb-tv .kb-comment.agent.implementer { background: var(--comment-implementer); border-left: max(3px, calc(var(--bw) * 2)) solid var(--comment-implementer-edge); }
+.kb-tv .kb-comment.agent.reviewer { background: var(--comment-reviewer); border-left: max(3px, calc(var(--bw) * 2)) solid var(--comment-reviewer-edge); }
 .kb-tv .kb-role { padding: 0 6px; font-size: var(--fs-2xs); font-weight: var(--fw-semibold); color: var(--ph-implement-ink); border-radius: var(--radius-xs); background: var(--ph-implement-soft); }
 .kb-tv .kb-role.reviewer { color: var(--ph-plan-ink); background: var(--ph-plan-soft); }
 .kb-tv .kb-comment.system { background: var(--field-quiet); border-style: dashed; font-size: var(--fs-sm); }
@@ -101,6 +101,8 @@
 .kb-tv .kb-comment header { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 0 0 4px; padding: 0; font-size: var(--fs-sm); background: none; border: 0; }
 .kb-tv .kb-comment header time { margin-left: auto; font-size: var(--fs-xs); font-weight: var(--fw-medium); color: var(--muted); }
 .kb-tv .kb-comment p { margin: 0; }
+.kb-tv .kb-who { display: inline-flex; align-items: center; gap: 5px; }
+.kb-tv .kb-who > svg { flex: none; color: var(--muted); }
 .kb-tv .kb-kind { padding: 0 6px; font-size: var(--fs-2xs); font-weight: var(--fw-semibold); border: var(--bw-sm) solid var(--chip-edge); border-radius: var(--radius-chip); background: var(--tint-grey); color: var(--text-neutral); }
 .kb-tv .kb-kind.review { background: var(--ph-review-soft); color: var(--ph-review-ink); }
 .kb-tv .kb-kind.plan, .kb-tv .kb-kind.questions { background: var(--ph-plan-soft); color: var(--ph-plan-ink); }

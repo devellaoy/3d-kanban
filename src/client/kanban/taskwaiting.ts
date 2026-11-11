@@ -50,7 +50,7 @@ export function waitingBox(c: TaskCtx, task: KanbanTask): HTMLElement | null {
 
   const fb = c.fileBox('answer', { rows: 4, placeholder: asking ? 'Your answer…' : 'Your answers… (paste or drop files)', 'aria-label': asking ? 'Answer the agent' : 'Answer' });
   const { ta, attach, wrap } = fb;
-  const send = btn('Send the answer', { icon: 'send', size: 'sm', attrs: { 'data-focus': 'act-answer' } });
+  const send = btn('Send the answer', { kind: 'primary', icon: 'send', size: 'sm', attrs: { 'data-focus': 'act-answer' } });
   const go = async () => {
     const answer = ta.value.trim();
     const ids = attach.ids();
