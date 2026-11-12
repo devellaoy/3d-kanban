@@ -1,5 +1,5 @@
 // A task's Images tab: the before/after pictures an implementer saved of the UI it changed, a pair per
-// subject side by side, read from GET /api/kanban/tasks/<id>/images (the images plugin). A picture is
+// subject side by side (under its repository's name when the task keeps them in a folder per repository), read from GET /api/kanban/tasks/<id>/images (the images plugin). A picture is
 // a link to its file in a new browser tab; Remove (asked in place, in the picture's own row) deletes one
 // before it reaches a pull request. A visitor of a shared office only reads.
 //
@@ -10,12 +10,13 @@ import './taskimages.css';
 import { h, timeAgo, toast } from '../ui/dom';
 import { icon } from '../ui/icons';
 import { btn } from '../ui/kit';
+import type { ProjectRepo } from '../../shared/kanban/types.js';
 import { pairImages, type KanbanTaskImage, type KanbanTaskImageList, type UiImageKind, type UiImagePair } from '../../shared/kanban/uitesting.js';
 import { visiting } from '../multiplayer/visit';
 import { getJson } from './api';
 import { formatSize } from './attach';
 import { fmtTime } from './labels';
-import { imagesKey, imagesUrl, imageUrl, KIND_NAMES, missingText } from './taskimagesmodel';
+import { groupImagePairs, imagesKey, imagesUrl, imageUrl, KIND_NAMES, missingText, pairLabel, type ImageGroup } from './taskimagesmodel';
 
 export interface TaskImages {
   host: HTMLElement;
@@ -26,8 +27,8 @@ export interface TaskImages {
   destroy(): void;
 }
 
-/** `onCount` hears when the number of images changes (the tab's count). */
-export function mountTaskImages(taskId: number, onCount: () => void): TaskImages {
+/** `onCount` hears when the number of images changes (the tab's count); `repos` is the task's project's repositories, as known now. */
+export function mountTaskImages(taskId: number, onCount: () => void, repos: () => readonly ProjectRepo[] = () => []): TaskImages {
   const host = h('div.kb-tv-images');
   let list: KanbanTaskImage[] | null = null;
   let error = '';
@@ -41,7 +42,8 @@ export function mountTaskImages(taskId: number, onCount: () => void): TaskImages
 
   const take = (images: KanbanTaskImage[]) => {
     const before = list?.length ?? 0;
-    const next = imagesKey(images);
+    // The headings are part of what is drawn: a repository renamed, or the projects arriving late, draws again.
+    const next = `${imagesKey(images)}#${groupImagePairs(pairImages(images), repos()).map((g) => g.title).join('|')}`;
     const same = list !== null && next === key && !error;
     list = images;
     key = next;
@@ -95,11 +97,11 @@ export function mountTaskImages(taskId: number, onCount: () => void): TaskImages
   const focus = (name: string) => void setTimeout(() => host.querySelector<HTMLElement>(`[data-focus="${CSS.escape(name)}"]`)?.focus({ preventScroll: true }), 0);
 
   /** One side of a pair: its name, size and age, the picture as a link to its file, and Remove. */
-  const side = (pair: UiImagePair, kind: UiImageKind): HTMLElement => {
+  const side = (pair: UiImagePair, kind: UiImageKind, name: string): HTMLElement => {
     const img = pair[kind];
     const label = h('span.kb-img-kind', {}, KIND_NAMES[kind]);
     if (!img) return h('figure.kb-img-side.missing', {}, h('figcaption', {}, label), h('div.kb-img-none', {}, icon('image', { size: 18 }), h('span', {}, missingText(kind))));
-    const picture = h('img', { src: imageUrl(taskId, img), alt: `${pair.subject}, ${kind}`, loading: 'lazy' }) as HTMLImageElement;
+    const picture = h('img', { src: imageUrl(taskId, img), alt: `${name}, ${kind}`, loading: 'lazy' }) as HTMLImageElement;
     const link = h('a.kb-img-link', { href: imageUrl(taskId, img), target: '_blank', rel: 'noopener noreferrer', title: `Open ${img.name} full size in a new tab` }, picture);
     picture.addEventListener('error', () => link.replaceWith(h('div.kb-img-none.bad', { role: 'alert' }, icon('triangle-alert', { size: 18 }), h('span', {}, `${img.name} could not be shown`))));
     const meta = h('small.kb-muted', { title: `${img.name} · ${fmtTime(img.mtime)}` }, `${formatSize(img.size)} · ${timeAgo(img.mtime)}`);
@@ -148,8 +150,14 @@ export function mountTaskImages(taskId: number, onCount: () => void): TaskImages
         ),
       );
     }
-    for (const pair of pairs) {
-      kids.push(h('section.kb-img-pair', { 'aria-label': pair.subject }, h('h4', {}, pair.subject), h('div.kb-img-sides', {}, side(pair, 'before'), side(pair, 'after'))));
+    const drawPair = (pair: UiImagePair, g: ImageGroup): HTMLElement => {
+      const name = pairLabel(pair, g);
+      return h('section.kb-img-pair', { 'aria-label': name }, h('h4', {}, pair.subject), h('div.kb-img-sides', {}, side(pair, 'before', name), side(pair, 'after', name)));
+    };
+    for (const g of groupImagePairs(pairs, repos())) {
+      // No folders: the pairs alone, as a task in one repository always had them.
+      if (!g.title) kids.push(...g.pairs.map((p) => drawPair(p, g)));
+      else kids.push(h('section.kb-img-group', { 'aria-label': g.title }, h('div.kb-img-group-head', {}, icon(g.repo ? 'git-branch' : 'git-pull-request', { size: 14 }), h('h3', {}, g.title), h('span.kb-muted', {}, g.hint)), ...g.pairs.map((p) => drawPair(p, g))));
     }
     host.replaceChildren(...kids.filter((k): k is Node => !!k));
   }

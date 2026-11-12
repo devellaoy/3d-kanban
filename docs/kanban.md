@@ -481,7 +481,8 @@ the Pull requests tab. Its tabs:
   task changes and when it is opened), and **Remove** deletes one image after asking in place; a visitor
   of a shared office sees the images but can't remove them. An empty tab says what goes there. The tab is
   in every task view, the 3D worker window's too, and `&tab=images` opens it. Pictures of a task in several
-  repositories are grouped under the name of their repository's folder, the ones saved straight in `ui/` first.
+  repositories are grouped under their repository's name (the folder's name when it is no repository of the
+  project), the ones saved straight in `ui/` first under **All repositories**.
 - **Pull requests**: the task's pull requests with their state, **Fix PRs** and **Resolve conflicts** (with open PRs), and
   **Review these N PRs together**, and **Find PRs** (on this tab only, not on an archived task).
   Each row ends with a button that unlinks the pull request from the task after a confirmation (the PR

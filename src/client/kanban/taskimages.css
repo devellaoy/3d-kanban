@@ -1,5 +1,5 @@
 /* A task's Images tab (taskimages.ts): a bar with Refresh, then a section per subject with its before
-   and after pictures side by side; the two drop under each other when there is no room for both. Scoped
+   and after pictures side by side (the sections of a repository's folder under its name); the two drop under each other when there is no room for both. Scoped
    under .kb-tv like the rest of the task view. Tokens only. */
 .kb-tv .kb-tv-images { display: flex; flex-direction: column; gap: 18px; min-width: 0; }
 .kb-tv .kb-img-bar { display: flex; align-items: center; gap: 8px; min-height: var(--ctl-h-sm); }
@@ -8,6 +8,14 @@
 .kb-tv .kb-img-empty { display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 36px 16px; text-align: center; color: var(--muted); border: var(--bw-sm) dashed var(--rule-code); border-radius: var(--radius-sm); }
 .kb-tv .kb-img-empty > strong { font-size: var(--fs-md); font-weight: var(--fw-semibold); color: var(--text); }
 .kb-tv .kb-img-empty > span { max-width: 52ch; line-height: 1.5; }
+
+/* A repository's pairs under its name (only in a task that keeps a folder per repository). */
+.kb-tv .kb-img-group { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
+.kb-tv .kb-img-group + .kb-img-group { margin-top: 6px; }
+.kb-tv .kb-img-group-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 8px; padding-bottom: 6px; border-bottom: var(--bw-sm) solid var(--rule-soft); color: var(--text-2); }
+.kb-tv .kb-img-group-head > svg { flex: none; align-self: center; }
+.kb-tv .kb-img-group-head > h3 { margin: 0; font-size: var(--fs-md); font-weight: var(--fw-semibold); color: var(--text); text-transform: none; letter-spacing: 0; overflow-wrap: anywhere; }
+.kb-tv .kb-img-group-head > span { font-size: var(--fs-xs); }
 
 .kb-tv .kb-img-pair { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
 .kb-tv .kb-img-pair > h4 { font-family: var(--font-mono); font-size: var(--fs-sm); color: var(--text); overflow-wrap: anywhere; }
