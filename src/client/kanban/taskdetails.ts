@@ -9,6 +9,7 @@ import { KANBAN_TOOLS, type KanbanEffort, type KanbanTool, type TaskType } from 
 import { codexLimitsChip } from './codexlimits';
 import { effortSelect, modelInput } from './create';
 import { cardRepoNames, viaAgent } from './model';
+import { taskUiTesting } from './taskimagesmodel';
 import { APPROVAL_NAMES, effortName, fmtTime, toolName } from './labels';
 import { select } from './ui';
 import type { Detail, TaskCtx } from './taskctx';
@@ -83,6 +84,8 @@ export function detailsPane(c: TaskCtx, d: Detail): HTMLElement[] {
     { label: 'Agent', value: agent },
     { label: 'Plan', value: task.usePlan ? `On · ${APPROVAL_NAMES[task.planApproval]}` : 'Off' },
     { label: 'Review', value: reviewText },
+    // Before/after screenshots of UI changes: the task's own choice, else its project's, else the office's.
+    { label: 'UI testing', value: task.type === 'investigate' ? null : taskUiTesting(c.settings(), task.project, task.overrides) ? 'On' : 'Off' },
     { label: 'Branch', value: task.branch ? withIcon('git-branch', h('code', { title: task.branch }, task.branch)) : null },
     { label: 'Workspace', value: task.workspace ? withIcon('folder', h('code', { title: task.workspace.worktree.path }, task.workspace.worktree.path)) : null },
     { label: 'Tags', value: task.tags.length ? h('span.kb-chips', {}, ...task.tags.map((x) => chip(x, 'tag'))) : null },

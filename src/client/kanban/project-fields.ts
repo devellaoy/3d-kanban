@@ -58,6 +58,7 @@ export function thisProjectFields(ps: ProjectSettings, s: KanbanSettings): { el:
     ],
     ps.implementPermission ?? '',
   );
+  const uiTesting = select<'on' | 'off' | ''>([['', `Default (${s.defaults.uiTesting ? 'On' : 'Off'})`], ['on', 'On'], ['off', 'Off']], ps.uiTesting === undefined ? '' : ps.uiTesting ? 'on' : 'off');
   const language = publicLanguageField(ps.publicLanguage);
   const comments = commentLanguageField(ps.commentLanguage);
   const overrideReview = checkbox('Its own review settings', !!ps.review);
@@ -69,7 +70,7 @@ export function thisProjectFields(ps: ProjectSettings, s: KanbanSettings): { el:
     'fieldset',
     {},
     h('legend', {}, 'This project'),
-    h('div.kb-three', {}, field('Tasks at once', maxConc), field('Plan approval', approval), field('Implementation runs', perm)),
+    h('div.kb-three', {}, field('Tasks at once', maxConc), field('Plan approval', approval), field('Implementation runs', perm), field('UI testing', uiTesting, 'Before and after screenshots of UI changes')),
     language.el,
     comments.el,
     overrideReview.el,
@@ -90,6 +91,7 @@ export function thisProjectFields(ps: ProjectSettings, s: KanbanSettings): { el:
         // null: back to the office's.
         planApproval: approval.value || null,
         implementPermission: perm.value || null,
+        uiTesting: uiTesting.value ? uiTesting.value === 'on' : null,
         publicLanguage,
         commentLanguage,
         review: overrideReview.box.checked ? { ...rv, model: rv.model ?? undefined, effort: rv.effort ?? undefined } : null,
