@@ -145,8 +145,17 @@
   --scope-you: #dff3fb;     /* the "you", "floor" and "office" tags of a setting */
   --scope-floor: #d7f7ec;
   --scope-office: #ffe6d9;
-  --hint-cost: #a5ecfb;     /* the cost in the HUD's hint, on the --strong bubble */
-  --hint-title: var(--warn);   /* the name of what you're facing in the HUD's hint, on the --strong bubble */
+  --hint-cost: #a5ecfb;     /* the cost in the HUD's hint, on the hint bubble (--hint-bg) */
+  --hint-title: var(--warn);   /* the name of what you're facing in the HUD's hint, on the hint bubble */
+  /* The HUD's hint bubble (what you're facing and its keys) and "Click to look around". A pair of its own:
+     --strong with --paper on it only reads where the two are each other's opposite, which a theme needn't keep. */
+  --hint-bg: var(--strong);       /* the bubble's fill */
+  --hint-text: var(--paper);      /* its text */
+  --hint-edge: var(--paper);      /* its border */
+  --hint-shadow: 0 4px 0 rgba(0, 0, 0, .35);
+  --hint-key-bg: var(--paper);    /* a key cap (.key) in the bubble */
+  --hint-key-text: var(--text);
+  --hint-key-shadow: var(--shadow-key);   /* the cap's edge: a theme whose bubble is the cap's colour draws a line round it here */
   --track: #f1e4d3;         /* the empty part of a meter */
 
   /* ---- Code and terminals ---- */

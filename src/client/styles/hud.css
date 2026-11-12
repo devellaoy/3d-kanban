@@ -108,11 +108,13 @@
 
 .hint {
   position: absolute; left: 50%; bottom: 28px; transform: translateX(-50%);
-  background: var(--strong); color: var(--paper); border: var(--bw) solid var(--paper); border-radius: var(--radius-box);
-  padding: 10px 16px; font-weight: var(--fw-bold); font-size: var(--fs-lg); box-shadow: 0 4px 0 rgba(0,0,0,.35);
+  background: var(--hint-bg); color: var(--hint-text); border: var(--bw) solid var(--hint-edge); border-radius: var(--radius-box);
+  padding: 10px 16px; font-weight: var(--fw-bold); font-size: var(--fs-lg); box-shadow: var(--hint-shadow);
   display: flex; gap: 14px; align-items: center; flex-wrap: wrap; justify-content: center; max-width: min(720px, calc(100vw - 380px));
   pointer-events: none !important;
 }
+/* The bubble's own key caps: a theme whose bubble is the colour of a cap gives them a fill and an edge of their own. */
+.hint .key { background: var(--hint-key-bg); color: var(--hint-key-text); box-shadow: var(--hint-key-shadow); }
 .hint .title { color: var(--hint-title); }
 .hint .cost { color: var(--hint-cost); font-weight: var(--fw-semibold); }
 /* Winding up a shot with the basketball: the marker runs up and down; let go in the green. */
@@ -139,7 +141,7 @@
 .crosshair.on { transform: scale(1.6); background: var(--accent); opacity: 1; }
 .crosshair .look-hint {
   display: none; position: absolute; top: 18px; left: 50%; transform: translateX(-50%); white-space: nowrap;
-  background: var(--strong); color: var(--paper); border-radius: var(--radius-md); padding: 4px 10px; font-size: var(--fs-sm); font-weight: var(--fw-bold);
+  background: var(--hint-bg); color: var(--hint-text); border-radius: var(--radius-md); padding: 4px 10px; font-size: var(--fs-sm); font-weight: var(--fw-bold);
 }
 .crosshair.free .look-hint { display: block; }
 .crosshair.on .look-hint { transform: translateX(-50%) scale(.625); transform-origin: top center; }

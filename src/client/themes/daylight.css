@@ -125,8 +125,16 @@
   --scope-you: #EAF0FF;
   --scope-floor: #E7F6EE;
   --scope-office: #FFF1DC;
-  --hint-cost: #A5ECFB;
-  --hint-title: #F2B94B;
+  /* The HUD's hint is a light bubble with dark text here, so its cost and title are the dark inks. */
+  --hint-cost: #0b6e8a;
+  --hint-title: var(--warn-ink);
+  --hint-bg: var(--paper);
+  --hint-text: var(--text);
+  --hint-edge: var(--line-control);
+  --hint-shadow: var(--shadow-lg);
+  --hint-key-bg: var(--field-off);
+  --hint-key-text: var(--text);
+  --hint-key-shadow: 0 0 0 1px var(--line-control), var(--shadow-key);   /* a line round the cap: its fill is close to the bubble's */
   --track: #EEF0F3;
   --code-bg: #161A22;
   --code-text: #E8EAEE;
