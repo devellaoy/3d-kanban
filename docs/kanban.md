@@ -313,6 +313,11 @@ or a comment asks for UI testing or screenshots. Investigations take none.
   folder, `<data>/kanban/grants/task-<id>/ui/`. A file with another name is not listed. The agents use the
   `kanban-ui-screenshots` skill for them when they have it, else whatever the project has for looking at
   its UI.
+- A task in **several repositories** gets a folder per repository inside it, `ui/<repo id>/`, named in the
+  prompt, and the agents save each picture in the folder of the repository whose UI it shows. The office then
+  puts it only into that repository's pull request (see [Pull requests](#pull-requests)). A picture saved
+  straight in `ui/` goes to every pull request of the task, as in a task with one repository, and so does
+  one in a folder that is no repository of the project (one removed from it since, say).
 - The task's **Images** tab shows them (see *The task window*), and **Remove** there takes one away, for
   instance before it reaches a pull request. A task started over keeps its old images until they are
   removed or retaken.
@@ -476,7 +481,9 @@ the Pull requests tab. Its tabs:
   opens full size in a new browser tab. **Refresh** reads the folder again (the tab also does when the
   task changes and when it is opened), and **Remove** deletes one image after asking in place; a visitor
   of a shared office sees the images but can't remove them. An empty tab says what goes there. The tab is
-  in every task view, the 3D worker window's too, and `&tab=images` opens it.
+  in every task view, the 3D worker window's too, and `&tab=images` opens it. Pictures of a task in several
+  repositories are grouped under their repository's name, the ones saved straight in `ui/` first under
+  **All repositories**. Only folders named like one of the project's repositories are read.
 - **Pull requests**: the task's pull requests with their state, **Fix PRs** and **Resolve conflicts** (with open PRs), and
   **Review these N PRs together**, and **Find PRs** (on this tab only, not on an archived task).
   Each row ends with a button that unlinks the pull request from the task after a confirmation (the PR
@@ -776,7 +783,7 @@ reads its own. A kanban task made from a card keeps the description as its own, 
   requests. The office does it, not the agent: when the board refreshes and a task whose PRs the office opened
   (**Create PRs**) has images, no run going and an open or draft PR on GitHub from its own branch, the office uploads
   the images with `gh pr edit --attach` and puts a **Screenshots** section at the end of the description, a heading per
-  view with its Before and After (a view with only an after counts). That happens a few seconds after the PR is opened,
+  view with its Before and After side by side in a table, each half the width (a view with only an after counts). That happens a few seconds after the PR is opened,
   and again whenever the images change (a fix round retook one, you removed one): the section is replaced, never
   repeated, and the rest of the description is left as it is. A status comment on the task says what was added. Images
   retaken in a fix round reach the description at the next refresh, which can be before **Push & update PRs** has pushed
@@ -790,6 +797,13 @@ reads its own. A kanban task made from a card keeps the description as its own, 
   every image in the Images tab takes the section out of the description (the text around it is left as it is) and says
   so on the task. A task that was never given an images folder costs no look. A task taken off hold gets the same UI
   testing instructions as a comment, by the option as it is when the task resumes.
+  In a task in several repositories each pull request gets only its own repository's pictures (the ones in
+  `ui/<repo id>/`); a repository without a pull request (nothing changed there, or it was closed) has its pictures
+  go to the primary repository's open pull request, else the first open one, under a heading that names the
+  repository (`### login-form (web)`). When the repository's pull request is **merged** and none is open, its pictures
+  go nowhere: they do not move to another repository's. Pictures straight in `ui/` go to every open pull request.
+  The office waits three minutes for a repository's pull request to show up (they are linked one repository at a time)
+  before another repository's takes its pictures.
   Known limits: a Screenshots section you delete from the PR comes back after the office restarts or when the images
   change (the office remembers what it did only in memory, and sees the section itself in the description). It works
   for GitHub.com pull requests only, that is `https://github.com/<owner>/<repo>/pull/<number>`: GitHub Enterprise hosts,
@@ -1018,7 +1032,7 @@ implementation runs, review, the board's columns), not as a plain one-off worker
 | `<data>/hosting-secrets.json`, `<data>/homes/<account>/hosting.json` | The office's and each account's Azure DevOps and Bitbucket tokens (mode 600; [hosting](hosting.md#tokens)). Never sent to a browser. |
 | `<data>/kanban/uploads/` | Attached files (mode 600); ones never attached are removed after a day. |
 | `<data>/kanban/grants/task-<id>/` | Copies of a task's attached files, the one folder its agents may read (mode 700); removed with the task. |
-| `<data>/kanban/grants/task-<id>/ui/` | The task's before and after screenshots (`<subject>-before.png`, `<subject>-after.png`; mode 700), see [UI testing](#ui-testing). |
+| `<data>/kanban/grants/task-<id>/ui/` | The task's before and after screenshots (`<subject>-before.png`, `<subject>-after.png`, in a `<repo id>/` folder each in a task in several repositories; mode 700), see [UI testing](#ui-testing). |
 | `<data>/kanban/reports/task-<id>/` | An investigation's report files. |
 | `<data>/kanban/refs/task-<id>/` | The plan phase's referenced tasks. |
 | `<data>/kanban/skills/` | Generated Claude skill plugins. |

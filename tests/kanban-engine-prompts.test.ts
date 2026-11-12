@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { existsSync, mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, realpathSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import type { FloorDef } from '../src/server/building.js';
@@ -501,7 +501,7 @@ test('UI testing: fix, comment and pull request fix runs carry their block', (t)
   const withPr = repo.getTask(task.id)!;
   const images = path.join(ctx.filesDir, 'grants', `task-${task.id}`, 'ui');
   const fix = compose.build('fix', def, withPr, 'claude', dir, { phase: 'fix', round: 1, rounds: 2, findings: 'F' });
-  assert.match(fix, /take the after pictures again under the same names/);
+  assert.match(fix, /take the after pictures again under the same name in the same folder/);
   assert.ok(fix.includes(images));
   assert.match(compose.build('resume', def, withPr, 'claude', dir, { phase: 'resume', text: 'Do UI testing too' }), /take the after pictures again/);
   assert.match(compose.build('pr.fix', def, withPr, 'claude', dir, { phase: 'pr-fix' }), /take the after pictures again/);
@@ -592,7 +592,50 @@ test('UI testing: a fresh session’s hand-off carries the block exactly once, f
     const next = compose.build(kind, def, kind === 'unhold' ? held : task, 'claude', dir, { phase, round: 1, rounds: 2, findings: 'F', text: 'Please', author: 'Ada' });
     const text = compose.handoff(def, task, dir, next);
     assert.equal(text.split(phrase).length, 2, `${kind}: the block once`);
-    assert.equal(text.split(images).length - 1, kind === 'implement' ? 1 : 1, `${kind}: the folder named`);
+    // The repositories' folders under it (this project has two) are named by their own lines.
+    assert.equal(text.split(images).length - 1 - text.split(`${images}/`).length + 1, 1, `${kind}: the folder named`);
     assert.doesNotMatch(text, /\{\{/, kind);
+  }
+});
+
+test('UI testing: a task in several git repositories gets a folder per repository, named in the block; one repository gets none and no leftover', (t) => {
+  const { def, dir, repo, compose, ctx } = setup(t);
+  const mk = (repoIds?: string[]) => repo.createTask({ project: 'proj', title: 'X', description: 'x', tool: 'claude', usePlan: false, planApproval: 'auto', useReview: false, createdBy: 'Ada', repoIds });
+  const task = mk();
+  const images = path.join(ctx.filesDir, 'grants', `task-${task.id}`, 'ui');
+  const text = compose.build('implement', def, task, 'claude', dir, { phase: 'implement' });
+  assert.ok(text.includes(`- ${path.join(images, 'proj')}: Proj`), 'the primary');
+  assert.ok(text.includes(`- ${path.join(images, 'api')}: API (acme/api)`));
+  assert.ok(!text.includes(path.join(images, 'notes')) && !existsSync(path.join(images, 'notes')), 'a folder repository is no git repository');
+  assert.match(text, /goes to every pull request/);
+  assert.ok(statSync(path.join(images, 'api')).isDirectory() && statSync(path.join(images, 'proj')).isDirectory());
+  assert.doesNotMatch(text, /\{\{/);
+  // One git repository (the folder one does not count): the block as before.
+  const one = mk(['proj']);
+  const oneText = compose.build('implement', def, one, 'claude', dir, { phase: 'implement' });
+  assert.doesNotMatch(oneText, /several repositories|\{\{/);
+  assert.ok(oneText.includes('(it exists; make it if it does not).\nName each image'), 'no stray blank line');
+  assert.deepEqual(readdirSync(path.join(ctx.filesDir, 'grants', `task-${one.id}`, 'ui')), []);
+  // The fix block names them too; the reviewer's does not.
+  assert.match(compose.build('fix', def, task, 'claude', dir, { phase: 'fix', round: 1, rounds: 2, findings: 'F' }), /several repositories/);
+});
+
+test('UI testing: a rewritten block without {{imageFolders}} gets the folders at its end', (t) => {
+  const { def, dir, repo, compose, ctx } = setup(t, { 'kanban.uiTesting': { text: 'Take pictures into {{imagesDir}}.' } });
+  const task = repo.createTask({ project: 'proj', title: 'X', description: 'x', tool: 'claude', usePlan: false, planApproval: 'auto', useReview: false, createdBy: 'Ada' });
+  const images = path.join(ctx.filesDir, 'grants', `task-${task.id}`, 'ui');
+  const text = compose.build('implement', def, task, 'claude', dir, { phase: 'implement' });
+  assert.match(text, /Take pictures into [^\n]+\.\n\nThis task changes several repositories/);
+  assert.ok(text.includes(`- ${path.join(images, 'api')}: API`));
+  assert.equal(text.split('This task changes several repositories').length, 2, 'once');
+});
+
+test('UI testing: with no repository folders the blocks render as the text without the {{imageFolders}} line', () => {
+  for (const id of ['kanban.uiTesting', 'kanban.uiTesting.onRequest', 'kanban.uiTesting.fix'] as const) {
+    const raw = KANBAN_PROMPT_DEFS[id].text;
+    assert.ok(raw.includes('\n{{imageFolders}}\n'), id);
+    const filled = resolveKanbanPrompt(id, {}, { imagesDir: '/i', imageFolders: '' });
+    assert.equal(filled, raw.replace('\n{{imageFolders}}', '').replace('{{imagesDir}}', '/i'), id);
+    assert.doesNotMatch(filled, /\n\n|\{\{/, id);
   }
 });

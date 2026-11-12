@@ -133,6 +133,11 @@ into that folder (create it if it is missing):
 - Name them `<subject>-before.png` and `<subject>-after.png`. The subject says what the view is
   (`login-form`, `board-narrow`): lowercase letters, digits, `.`, `_` and `-` only. A before and
   an after of the same view share their subject; other names are ignored.
+- If the prompt lists a folder for each repository (`.../ui/<repo>`), the task changes several
+  repositories: copy each picture into the folder of the repository whose UI it shows (the pull
+  request of that repository gets it). A picture saved straight in the images folder goes to
+  every pull request of the task. Keep a view's before and after in the same folder, and retake an
+  after picture under the same name in the same folder.
 - Take the **before** image before you change any code, and the **after** image of the same
   view, in the same state and at the same viewport, once the change works. A view that is new
   has only an after image.

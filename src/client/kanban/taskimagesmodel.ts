@@ -1,9 +1,10 @@
 // What the page works out about UI testing and a task's images without the DOM: whether a task tests
 // its UI (its own choice, else the project's, else the office's), where an image is read from, and
-// when a fetched list is another one than the list on the page (taskimages.ts draws them).
+// when a fetched list is another one than the list on the page, and which repository's pull request a
+// pair goes to (taskimages.ts draws them).
 
-import type { KanbanSettings, TaskOverrides } from '../../shared/kanban/types.js';
-import type { KanbanTaskImage, UiImageKind } from '../../shared/kanban/uitesting.js';
+import type { KanbanSettings, ProjectRepo, TaskOverrides } from '../../shared/kanban/types.js';
+import type { KanbanTaskImage, UiImageKind, UiImagePair } from '../../shared/kanban/uitesting.js';
 import { apiUrl } from '../multiplayer/visit';
 import { KANBAN_DEFAULTS } from './defaults';
 
@@ -32,7 +33,7 @@ export function imagesUrl(taskId: number): string {
 
 /** One image's file; `v` (its modified time) makes a retaken picture of the same name another address. */
 export function imageUrl(taskId: number, img: Pick<KanbanTaskImage, 'name' | 'mtime'>, bust = true): string {
-  return `${imagesUrl(taskId)}/${encodeURIComponent(img.name)}${bust ? `?v=${Math.round(img.mtime)}` : ''}`;
+  return `${imagesUrl(taskId)}/${img.name.split('/').map(encodeURIComponent).join('/')}${bust ? `?v=${Math.round(img.mtime)}` : ''}`;
 }
 
 /** The list as one string: two lists that read the same need no redraw (a redraw would fetch every picture again). */
@@ -45,4 +46,44 @@ export const KIND_NAMES: Record<UiImageKind, string> = { before: 'Before', after
 /** What stands in place of a side that has no picture. */
 export function missingText(kind: UiImageKind): string {
   return kind === 'before' ? 'No before image: the view may be new' : 'No after image yet';
+}
+
+/** The pairs of one folder of a task's images, under the heading the tab gives them. */
+export interface ImageGroup {
+  /** The folder (a repository's id); absent for the images straight in `ui/`. */
+  repo?: string;
+  /** The heading: the repository's name, else the folder's; '' when the tab needs none (no folders at all). */
+  title: string;
+  /** Which pull request these go to, beside the heading. */
+  hint: string;
+  pairs: UiImagePair[];
+}
+
+/**
+ * The pairs in their groups, in the order pairImages gave them: the images straight in `ui/` first, then a
+ * group per folder under its repository's name. A task with no folders is one group without a heading, the
+ * tab as it always was; beside folders, the images in `ui/` get a heading too, so it shows where they go.
+ */
+export function groupImagePairs(pairs: readonly UiImagePair[], repos: readonly Pick<ProjectRepo, 'id' | 'name'>[]): ImageGroup[] {
+  const folders = pairs.some((p) => p.repo);
+  const groups: ImageGroup[] = [];
+  for (const pair of pairs) {
+    let g = groups[groups.length - 1];
+    if (!g || g.repo !== pair.repo) {
+      const known = repos.find((r) => r.id === pair.repo);
+      g = !pair.repo
+        ? { title: folders ? 'All repositories' : '', hint: folders ? 'in every pull request of the task' : '', pairs: [] }
+        : known
+          ? { repo: pair.repo, title: known.name, hint: 'for this repository’s pull request, or the primary’s when it has none', pairs: [] }
+          : { repo: pair.repo, title: pair.repo, hint: 'not a repository of the project: in every pull request of the task', pairs: [] };
+      groups.push(g);
+    }
+    g.pairs.push(pair);
+  }
+  return groups;
+}
+
+/** A pair's name for assistive technology, unique in the tab: its subject, and its group when it has a heading. */
+export function pairLabel(pair: UiImagePair, group: Pick<ImageGroup, 'title'>): string {
+  return group.title ? `${pair.subject} (${group.title})` : pair.subject;
 }

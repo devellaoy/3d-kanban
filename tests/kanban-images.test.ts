@@ -4,10 +4,10 @@
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { existsSync, mkdirSync, rmSync, statSync, symlinkSync, truncateSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readdirSync, rmSync, statSync, symlinkSync, truncateSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import type { IncomingMessage, ServerResponse } from 'node:http';
-import { UI_IMAGES_MAX, UI_IMAGE_MAX_BYTES, UI_IMAGE_RE, isUiImageName, pairImages, uiImageKind, uiImageSubject, uiImageType, type KanbanTaskImage } from '../src/shared/kanban/uitesting.js';
+import { UI_IMAGES_MAX, UI_IMAGE_FOLDER_RE, UI_IMAGE_MAX_BYTES, UI_IMAGE_RE, isUiImageName, isUiImagePath, pairImages, splitUiImageName, uiImageKind, uiImageSubject, uiImageType, type KanbanTaskImage } from '../src/shared/kanban/uitesting.js';
 import { ensureUiImagesDir, imageListText, listUiImages, uiBlockId, uiImagesDir } from '../src/server/kanban/engine/uitesting.js';
 import { createImagesPlugin, findUiImage } from '../src/server/kanban/integrations/images/index.js';
 import { visitorPath } from '../src/server/multiplayer/paths.js';
@@ -37,7 +37,8 @@ test('pairImages pairs by subject, in alphabetical order, either side may be mis
 });
 
 function setup() {
-  const ctx = makeCtx();
+  const at = (id: string, primary = false) => ({ id, name: id.toUpperCase(), kind: 'git' as const, dir: `/x/${id}`, primary });
+  const ctx = makeCtx([{ id: 'p', name: 'P', dir: '/x/p', palette: 0, addedBy: 't', addedAt: 0, repos: [at('p', true), at('web'), at('api')] }]);
   const task = ctx.repo.createTask({ project: 'p', title: 'x', tool: 'claude', usePlan: false, planApproval: 'auto', useReview: false, createdBy: 'T' });
   const dir = uiImagesDir(ctx.filesDir, task.id);
   ensureUiImagesDir(dir);
@@ -179,7 +180,10 @@ test('a visitor may read the list and the images, never remove one', () => {
   assert.ok(visitorPath('GET', '/api/kanban/tasks/12/images'));
   assert.ok(visitorPath('GET', '/api/kanban/tasks/12/images/login-before.png'));
   assert.ok(!visitorPath('DELETE', '/api/kanban/tasks/12/images/login-before.png'));
-  assert.ok(!visitorPath('GET', '/api/kanban/tasks/12/images/a/b.png'));
+  assert.ok(visitorPath('GET', '/api/kanban/tasks/12/images/web/login-before.png'), 'one folder level');
+  assert.ok(!visitorPath('GET', '/api/kanban/tasks/12/images/a/b/c.png'), 'not two');
+  assert.ok(!visitorPath('GET', '/api/kanban/tasks/12/images/Web/b.png') && !visitorPath('GET', '/api/kanban/tasks/12/images/.pr-1/b.png'));
+  assert.ok(!visitorPath('DELETE', '/api/kanban/tasks/12/images/web/login-before.png'));
 });
 
 test('a ui folder that is itself a link is refused: nothing listed, served or removed', async () => {
@@ -188,11 +192,102 @@ test('a ui folder that is itself a link is refused: nothing listed, served or re
   mkdirSync(real);
   writeFileSync(path.join(real, 'a-before.png'), 'secret');
   rmSync(dir, { recursive: true });
+  mkdirSync(path.join(real, 'web'));
+  writeFileSync(path.join(real, 'web', 'b-after.png'), 'secret');
   symlinkSync(real, dir);
   assert.deepEqual(listUiImages(dir), []);
+  assert.deepEqual(listUiImages(dir, ['web']), [], 'nor a repository folder reached through the link');
+  assert.equal(findUiImage(dir, 'web/b-after.png', ['web']), undefined);
+  for (const method of ['GET', 'DELETE']) assert.equal((await call(plugin, `/api/kanban/tasks/${task.id}/images/web/b-after.png`, method)).status, 404, method);
+  assert.ok(existsSync(path.join(real, 'web', 'b-after.png')));
   assert.equal(findUiImage(dir, 'a-before.png'), undefined);
   assert.deepEqual(JSON.parse((await call(plugin, `/api/kanban/tasks/${task.id}/images`)).body).images, []);
   assert.equal((await call(plugin, `/api/kanban/tasks/${task.id}/images/a-before.png`)).status, 404);
   assert.equal((await call(plugin, `/api/kanban/tasks/${task.id}/images/a-before.png`, 'DELETE')).status, 404);
   assert.ok(existsSync(path.join(real, 'a-before.png')));
+});
+
+test('a name under ui/ splits into folder and file; the folder pattern takes a 40-character floor id', () => {
+  assert.deepEqual(splitUiImageName('web/login-after.png'), { folder: 'web', file: 'login-after.png' });
+  assert.deepEqual(splitUiImageName('login-after.png'), { file: 'login-after.png' });
+  assert.equal(uiImageKind('web/login-after.png'), 'after');
+  assert.equal(uiImageSubject('web/login-after.png'), 'login');
+  assert.ok(!isUiImageName('web/login-after.png') && isUiImagePath('web/login-after.png') && isUiImagePath('login-after.png'));
+  assert.ok(!isUiImagePath('a/b/login-after.png') && !isUiImagePath('Web/login-after.png') && !isUiImagePath('.pr-1/login-after.png') && !isUiImagePath('../login-after.png'));
+  assert.ok(UI_IMAGE_FOLDER_RE.test('-'.repeat(1) + 'a'.repeat(39)) && !UI_IMAGE_FOLDER_RE.test('a'.repeat(41)) && !UI_IMAGE_FOLDER_RE.test(''));
+});
+
+test('pairImages pairs by repository folder and subject: the root first, then each folder', () => {
+  const named = (name: string): KanbanTaskImage => ({ ...img(name), ...(name.includes('/') ? { repo: name.split('/')[0] } : {}) });
+  const pairs = pairImages(['web/a-after.png', 'api/a-after.png', 'z-after.png', 'web/a-before.png', 'a-before.png'].map(named));
+  assert.deepEqual(pairs.map((p) => [p.repo, p.subject, p.before?.name, p.after?.name]), [
+    [undefined, 'a', 'a-before.png', undefined],
+    [undefined, 'z', undefined, 'z-after.png'],
+    ['api', 'a', undefined, 'api/a-after.png'],
+    ['web', 'a', 'web/a-before.png', 'web/a-after.png'],
+  ]);
+});
+
+test('the listing reads one level of folders, real directories only, and the cap keeps the repositories\' images first', () => {
+  const { ctx, dir } = setup();
+  ensureUiImagesDir(dir, ['web', 'api', 'Bad']);
+  assert.deepEqual(readdirSync(dir).sort(), ['api', 'web'], 'a folder name that does not fit is not made');
+  const known = ['api', 'web'];
+  if (process.platform !== 'win32') assert.equal(statSync(path.join(dir, 'web')).mode & 0o777, 0o700);
+  writeFileSync(path.join(dir, 'web', 'login-after.png'), 'w');
+  writeFileSync(path.join(dir, 'api', 'login-after.png'), 'aa');
+  writeFileSync(path.join(dir, 'root-after.png'), 'r');
+  mkdirSync(path.join(dir, 'web', 'deeper'));
+  writeFileSync(path.join(dir, 'web', 'deeper', 'x-after.png'), 'x');
+  mkdirSync(path.join(dir, 'Upper'));
+  writeFileSync(path.join(dir, 'Upper', 'x-after.png'), 'x');
+  mkdirSync(path.join(dir, '.pr-abc'));
+  writeFileSync(path.join(dir, '.pr-abc', 'x-after.png'), 'x');
+  const elsewhere = path.join(ctx.filesDir, 'elsewhere');
+  mkdirSync(elsewhere);
+  writeFileSync(path.join(elsewhere, 'x-after.png'), 'secret');
+  symlinkSync(elsewhere, path.join(dir, 'linked'));
+  symlinkSync(path.join(elsewhere, 'x-after.png'), path.join(dir, 'web', 'link-after.png'));
+  mkdirSync(path.join(dir, 'scratch'));
+  writeFileSync(path.join(dir, 'scratch', 'x-after.png'), 'x');
+  const listed = [
+    ['root-after.png', undefined],
+    ['api/login-after.png', 'api'],
+    ['scratch/x-after.png', 'scratch'],
+    ['web/login-after.png', 'web'],
+  ];
+  assert.deepEqual(listUiImages(dir, known).map((i) => [i.name, i.repo]), listed, 'a folder that is no repository of the project is listed too');
+  assert.deepEqual(listUiImages(dir).map((i) => [i.name, i.repo]), listed, 'the same with no repository named');
+  for (let i = 0; i < UI_IMAGES_MAX; i++) writeFileSync(path.join(dir, 'scratch', `s${String(i).padStart(2, '0')}-after.png`), 'x');
+  for (let i = 0; i < UI_IMAGES_MAX - 3; i++) writeFileSync(path.join(dir, `r${String(i).padStart(2, '0')}-after.png`), 'x');
+  const all = listUiImages(dir, known);
+  assert.equal(all.length, UI_IMAGES_MAX);
+  assert.ok(all.some((i) => i.name === 'web/login-after.png') && all.some((i) => i.name === 'api/login-after.png'), 'the assigned ones are kept');
+  assert.equal(all.filter((i) => !i.repo).length, UI_IMAGES_MAX - 2, 'then the ones straight in the folder');
+  assert.ok(!all.some((i) => i.repo === 'scratch'), 'a folder that is no repository comes last in the cap');
+  assert.equal(all[0].repo, undefined, 'displayed with the root first');
+  assert.equal(imageListText('/d', [{ ...img('a-after.png'), name: 'web/a-after.png', repo: 'web' }]), `- a (web): after ${path.join('/d', 'web/a-after.png')}`);
+});
+
+test('an image in a repository folder is listed, served with its bare file name, removed by its path; ../ and deeper paths are 404', async () => {
+  const { task, dir, plugin } = setup();
+  ensureUiImagesDir(dir, ['web']);
+  writeFileSync(path.join(dir, 'web', 'x-after.png'), 'pic');
+  const list = JSON.parse((await call(plugin, `/api/kanban/tasks/${task.id}/images`)).body) as { images: KanbanTaskImage[] };
+  assert.deepEqual(list.images.map((i) => [i.name, i.repo]), [['web/x-after.png', 'web']]);
+  const r = await call(plugin, `/api/kanban/tasks/${task.id}/images/${encodeURIComponent('web/x-after.png')}`);
+  assert.equal(r.status, 200);
+  assert.equal(r.body, 'pic');
+  assert.equal(r.headers['content-disposition'], 'inline; filename="x-after.png"');
+  assert.equal((await call(plugin, `/api/kanban/tasks/${task.id}/images/web/x-after.png`)).status, 200, 'a literal slash works too');
+  for (const bad of ['web/../x-after.png', '../web/x-after.png', 'web/deeper/x-after.png', 'api/x-after.png']) {
+    for (const method of ['GET', 'DELETE']) {
+      const r = await call(plugin, `/api/kanban/tasks/${task.id}/images/${bad}`, method);
+      assert.ok(!r.handled || r.status === 404, `${method} ${bad}: ${r.status}`);
+    }
+  }
+  const del = await call(plugin, `/api/kanban/tasks/${task.id}/images/${encodeURIComponent('web/x-after.png')}`, 'DELETE');
+  assert.equal(del.status, 200);
+  assert.deepEqual((JSON.parse(del.body) as { images: unknown[] }).images, []);
+  assert.ok(!existsSync(path.join(dir, 'web', 'x-after.png')));
 });

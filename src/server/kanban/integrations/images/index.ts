@@ -4,6 +4,9 @@
 //   GET    /api/kanban/tasks/<id>/images/<name>  → the image
 //   DELETE /api/kanban/tasks/<id>/images/<name>  → removes it (answers the list that is left)
 //
+// A name is a path under `ui/`: `login-after.png`, or `web/login-after.png` for a picture in a repository's folder
+// (at most one folder level).
+//
 // A name is only ever looked up in the listing (never joined onto a path as given), the listing skips
 // links and names that do not fit the pattern, and the file served must still resolve inside the folder.
 // Images go out by the type of their extension with nosniff and a sandboxing CSP, never cached (an
@@ -14,15 +17,15 @@ import { createReadStream, realpathSync, rmSync } from 'node:fs';
 import path from 'node:path';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import type { KanbanContext, KanbanPlugin } from '../../registry.js';
-import { uiImageType, type KanbanTaskImage, type KanbanTaskImageList } from '../../../../shared/kanban/uitesting.js';
+import { splitUiImageName, uiImageType, type KanbanTaskImage, type KanbanTaskImageList } from '../../../../shared/kanban/uitesting.js';
 import { listUiImages, uiImagesDir, type UiImageFile } from '../../engine/uitesting.js';
 import { sendJson } from '../util.js';
 
 const ROUTE_RE = /^\/api\/kanban\/tasks\/(\d{1,12})\/images(?:\/(.+))?$/;
 
 /** The listed image called `name`, or undefined (so `../x`, absolute paths and links never match). */
-export function findUiImage(dir: string, name: string): UiImageFile | undefined {
-  const hit = listUiImages(dir).find((i) => i.name === name);
+export function findUiImage(dir: string, name: string, folders: readonly string[] = []): UiImageFile | undefined {
+  const hit = listUiImages(dir, folders).find((i) => i.name === name);
   if (!hit) return undefined;
   try {
     const rel = path.relative(realpathSync(dir), realpathSync(hit.file));
@@ -33,7 +36,7 @@ export function findUiImage(dir: string, name: string): UiImageFile | undefined 
   return hit;
 }
 
-const plain = ({ name, kind, subject, size, mtime }: KanbanTaskImage): KanbanTaskImage => ({ name, kind, subject, size, mtime });
+const plain = ({ name, repo, kind, subject, size, mtime }: KanbanTaskImage): KanbanTaskImage => ({ name, ...(repo ? { repo } : {}), kind, subject, size, mtime });
 
 export function createImagesPlugin(ctx: KanbanContext): KanbanPlugin {
   const handle = (req: IncomingMessage, res: ServerResponse, url: URL): boolean => {
@@ -45,7 +48,9 @@ export function createImagesPlugin(ctx: KanbanContext): KanbanPlugin {
     const task = ctx.repo.getTask(Number(m[1]));
     if (!task) return sendJson(res, 404, { error: `There's no task #${m[1]}` }), true;
     const dir = uiImagesDir(ctx.filesDir, task.id);
-    const list = (): KanbanTaskImageList => ({ taskId: task.id, images: listUiImages(dir).map(plain) });
+    // The project's repositories: their folders' images are the last the listing's cap drops.
+    const folders = ctx.repos(task.project).map((r) => r.id);
+    const list = (): KanbanTaskImageList => ({ taskId: task.id, images: listUiImages(dir, folders).map(plain) });
     if (m[2] === undefined) {
       if (!read) return sendJson(res, 405, { error: 'GET only' }), true;
       return sendJson(res, 200, list()), true;
@@ -56,7 +61,7 @@ export function createImagesPlugin(ctx: KanbanContext): KanbanPlugin {
     } catch {
       return sendJson(res, 400, { error: 'That image name is garbled' }), true;
     }
-    const hit = findUiImage(dir, name);
+    const hit = findUiImage(dir, name, folders);
     if (!hit) return sendJson(res, 404, { error: `Task #${task.id} has no image ${name.slice(0, 200)}` }), true;
     if (method === 'DELETE') {
       try {
@@ -69,7 +74,7 @@ export function createImagesPlugin(ctx: KanbanContext): KanbanPlugin {
     res.writeHead(200, {
       'content-type': uiImageType(name),
       'content-length': String(hit.size),
-      'content-disposition': `inline; filename="${name}"`,
+      'content-disposition': `inline; filename="${splitUiImageName(name).file}"`,
       'cache-control': 'no-store',
       'x-content-type-options': 'nosniff',
       'content-security-policy': "default-src 'none'; sandbox",

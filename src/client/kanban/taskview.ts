@@ -190,7 +190,7 @@ class View implements TaskView {
       alive: () => !this.destroyed,
     };
     this.reports = new Reports(this.c);
-    this.images = mountTaskImages(this.taskId, () => this.render());
+    this.images = mountTaskImages(this.taskId, () => this.render(), () => this.projectOf(this.task?.project ?? this.card?.project ?? '')?.repos ?? []);
     this.conv = new Conversation(this.c);
     this.offs.push(
       this.api.on((msg) => this.onMsg(msg)),

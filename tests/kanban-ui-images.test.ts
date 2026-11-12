@@ -3,15 +3,18 @@
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { imagesKey, imagesUrl, imageUrl, missingText, projectUiTesting, taskUiTesting, uiTestingPatch } from '../src/client/kanban/taskimagesmodel.js';
+import { groupImagePairs, imagesKey, imagesUrl, imageUrl, missingText, pairLabel, projectUiTesting, taskUiTesting, uiTestingPatch } from '../src/client/kanban/taskimagesmodel.js';
 import { KANBAN_DEFAULTS, projectDefaults } from '../src/client/kanban/defaults.js';
-import { pairImages, type KanbanTaskImage } from '../src/shared/kanban/uitesting.js';
+import { pairImages, splitUiImageName, uiImageKind, uiImageSubject, type KanbanTaskImage } from '../src/shared/kanban/uitesting.js';
 
 const settings = (office: boolean, project?: boolean) => ({
   defaults: { ...KANBAN_DEFAULTS.defaults, uiTesting: office },
   projects: { api: { ...projectDefaults(), ...(project === undefined ? {} : { uiTesting: project }) } },
 });
-const img = (name: string, mtime = 1000.4, size = 10): KanbanTaskImage => ({ name, kind: name.includes('-before.') ? 'before' : 'after', subject: name.replace(/-(before|after)\.[a-z]+$/, ''), size, mtime });
+const img = (name: string, mtime = 1000.4, size = 10): KanbanTaskImage => {
+  const { folder } = splitUiImageName(name);
+  return { name, ...(folder ? { repo: folder } : {}), kind: uiImageKind(name)!, subject: uiImageSubject(name)!, size, mtime };
+};
 
 test('UI testing: the task’s choice, else the project’s, else the office’s', () => {
   assert.equal(projectUiTesting(null, 'api'), KANBAN_DEFAULTS.defaults.uiTesting);
@@ -56,4 +59,38 @@ test('the tab’s pairs: a subject each, either side may be missing, and each mi
   assert.match(missingText('before'), /before/);
   assert.match(missingText('after'), /after/);
   assert.notEqual(missingText('before'), missingText('after'));
+});
+
+test('the tab’s groups: no heading without folders, else a repository’s name over its pairs and one for the rest', () => {
+  const repos = [{ id: 'shop', name: 'api' }, { id: 'web', name: 'web' }];
+  // A task in one repository: one group with no heading, so the tab is as it always was.
+  const plain = groupImagePairs(pairImages([img('login-after.png'), img('board-after.png')]), repos);
+  assert.deepEqual(plain.map((g) => [g.repo, g.title, g.hint, g.pairs.map((p) => p.subject)]), [[undefined, '', '', ['board', 'login']]]);
+  assert.equal(pairLabel(plain[0].pairs[0], plain[0]), 'board');
+  assert.deepEqual(groupImagePairs([], repos), []);
+
+  // Folders: the images in ui/ first under a heading of their own, then each folder under its repository's name
+  // (the primary's folder is the floor's id), a folder that is no repository under its own.
+  const all = pairImages([img('web/login-after.png'), img('web/login-before.png'), img('login-after.png'), img('shop/status-after.png'), img('old/login-after.png')]);
+  const groups = groupImagePairs(all, repos);
+  assert.deepEqual(groups.map((g) => [g.repo, g.title, g.pairs.map((p) => p.subject)]), [
+    [undefined, 'All repositories', ['login']],
+    ['old', 'old', ['login']],
+    ['shop', 'api', ['status']],
+    ['web', 'web', ['login']],
+  ]);
+  assert.match(groups[0].hint, /every pull request/);
+  assert.match(groups[1].hint, /not a repository/);
+  assert.match(groups[2].hint, /for this repository’s pull request, or the primary’s when it has none/);
+  // The same subject in three folders is three views, each with a name of its own.
+  assert.equal(all.length, 4);
+  const labels = groups.flatMap((g) => g.pairs.map((p) => pairLabel(p, g)));
+  assert.deepEqual(labels, ['login (All repositories)', 'login (old)', 'status (api)', 'login (web)']);
+  assert.equal(new Set(labels).size, labels.length);
+  // Folders only: no group for ui/ itself.
+  assert.deepEqual(groupImagePairs(pairImages([img('web/login-after.png')]), repos).map((g) => g.title), ['web']);
+});
+
+test('an image in a folder: its address keeps the folder in one encoded segment', () => {
+  assert.equal(imageUrl(42, img('web/login-after.png'), false), '/api/kanban/tasks/42/images/web/login-after.png');
 });
