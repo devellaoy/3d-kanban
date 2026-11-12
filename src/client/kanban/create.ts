@@ -19,6 +19,7 @@ import { codexLimitsChip, recheckCodexChips } from './codexlimits';
 import { newOnceKey } from './office';
 import { newTaskMsg, reviewOverride as reviewOf, reviewStart, type NewTaskFields } from './createmsg';
 import { KANBAN_DEFAULTS, REVIEW_DEFAULTS } from './defaults';
+import { draftApplies, draftFailure, requestIssueDraft } from './issuedraft';
 import { openIssuePicker } from './issues';
 import { sameRepoPick } from './model';
 import { kstore } from './store';
@@ -99,7 +100,37 @@ export function openCreate(api: KanbanApi, o: CreateOptions = {}) {
   let picked: NormalizedIssue | null = null;
   const pickBtn = btn('Select issue', { kind: 'quiet', size: 'sm', icon: 'link', attrs: { title: 'Make the task from one of the project’s issues: its key, link and text go on the task, and the issue’s title is the task’s' } });
   const pickedChip = h('div.kb-nt-picked.hidden');
+  // A picked issue with the description still empty: the default agent drafts a prompt into it (issuedraft.ts).
+  // The box stays the person's meanwhile, and whatever they write, pick or close first drops the answer.
+  let draftSeq = 0;
+  let open = true;
+  const drafting = h('span.kb-nt-drafting', { role: 'status' });
+  /** Voids the draft being written, if any, and takes its status line away. */
+  const dropDraft = () => {
+    draftSeq++;
+    descBox.classList.remove('drafting');
+    drafting.replaceChildren();
+  };
+  const draftFor = (issue: NormalizedIssue) => {
+    if (desc.value.trim()) return;
+    const asked = { seq: ++draftSeq, issueKey: issue.key };
+    const applies = () => draftApplies(asked, { seq: draftSeq, open, pickedKey: picked?.key, description: desc.value });
+    drafting.replaceChildren(icon('loader', { size: 14 }), h('span', {}, 'Drafting a prompt from the issue…'));
+    descBox.classList.add('drafting');
+    /** The answer, or why there is none: dropped when the form has moved on (issuedraft.ts says when). */
+    const done = (text: string, failed?: string | null) => {
+      if (!applies()) return;
+      dropDraft();
+      if (failed) return toast(failed, 'warn');
+      if (!text) return;
+      desc.value = text;
+      desc.dispatchEvent(new Event('input', { bubbles: true }));
+    };
+    requestIssueDraft(api, projectSel.value, issue).then(done, (err) => done('', draftFailure(err)));
+  };
+  desc.addEventListener('input', () => desc.value.trim() && descBox.classList.contains('drafting') && dropDraft());
   const setPicked = (issue: NormalizedIssue | null, keepFields = false) => {
+    dropDraft();
     if (!keepFields && (issue || picked)) {
       ticket.value = issue?.key ?? '';
       ticketUrl.value = issue?.url ?? '';
@@ -112,10 +143,10 @@ export function openCreate(api: KanbanApi, o: CreateOptions = {}) {
     const clear = iconButton('x', `Unlink ${issue.key}`, { class: 'xs', onclick: () => setPicked(null) }, 14);
     pickedChip.replaceChildren(icon('link', { size: 14 }), h('span', { title: `${issue.key} · ${issue.title}` }, h('b', {}, issue.key), ` ${issue.title}`), clear);
   };
-  pickBtn.addEventListener('click', () => openIssuePicker(api, projectSel.value, (issue) => setPicked(issue), () => desc.focus()));
+  pickBtn.addEventListener('click', () => openIssuePicker(api, projectSel.value, (issue) => (setPicked(issue), draftFor(issue)), () => desc.focus()));
   // A ticket typed over the picked one is a plain ticket again: the chip would say otherwise.
   ticket.addEventListener('input', () => picked && ticket.value.trim() !== picked.key && setPicked(null, true));
-  descBox.append(h('div.composite-bar', {}, attach.el, editing ? null : pickBtn, h('span.composite-note', { title: 'Files pasted, dropped or attached go in where the cursor is.' }, 'Markdown supported')));
+  descBox.append(h('div.composite-bar', {}, attach.el, editing ? null : pickBtn, editing ? null : drafting, h('span.composite-note', { title: 'Files pasted, dropped or attached go in where the cursor is.' }, 'Markdown supported')));
 
   // --- How
   const type = segmented<TaskType>([['implement', 'Implement'], ['investigate', 'Investigate']], editing?.type ?? pre.type ?? 'implement', () => paintDefaults(), 'Type');
@@ -219,7 +250,7 @@ export function openCreate(api: KanbanApi, o: CreateOptions = {}) {
     footerRight: [cancelBtn, createBtn, editing ? null : startBtn],
   });
   if (!editing) projectSel.addEventListener('change', () => (shell.head.querySelector('.kb-nt-in')!.textContent = `in ${kstore.projectOf(projectSel.value)?.name ?? projectSel.value}`));
-  const modal = openShell(shell, { backdropCloses: false });
+  const modal = openShell(shell, { backdropCloses: false, onClose: () => ((open = false), dropDraft()) });
   cancelBtn.addEventListener('click', () => modal.close());
   paintDefaults();
 
