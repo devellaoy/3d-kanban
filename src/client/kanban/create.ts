@@ -322,6 +322,8 @@ export function openCreate(api: KanbanApi, o: CreateOptions = {}) {
       desc.focus();
       return toast(made.error, 'warn');
     }
+    // What is sent is the description as it stands: a draft still on its way must not fill the box after it.
+    dropDraft();
     const ok = await run(() => api.request<KanbanOk>(made.msg), button);
     if (!ok) return;
     // An earlier send of this dialog, whose answer never came, made a task of what the form held then
