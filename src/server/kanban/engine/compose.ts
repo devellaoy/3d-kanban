@@ -295,27 +295,41 @@ export class Composer {
 
   /**
    * The UI testing block of a run of this kind (before/after images, see uitesting.ts), or '' when it has none.
-   * The images folder is made for the runs that write to it, so the agent does not have to.
+   * The images folder is made for the runs that write to it, so the agent does not have to. A task in several
+   * git repositories also gets a folder per repository, which the block names (`imageFolders`), so the office
+   * can tell which pull request a picture belongs to. `imageFolders` is always passed: fillPrompt leaves an
+   * unknown placeholder as text.
    */
-  uiBlock(task: KanbanTask, kind: UiBlockKind): string {
+  uiBlock(def: FloorDef, task: KanbanTask, kind: UiBlockKind): string {
     if (task.type === 'investigate') return '';
     const dir = uiImagesDir(this.ctx.filesDir, task.id);
     const images = listUiImages(dir);
     const id = uiBlockId(kind, this.ctx.settings.uiTesting(task.project, task.overrides), images.length > 0);
     if (!id) return '';
+    const repos = isFolderProject(def) ? [] : taskRepos(def, task).filter((r) => r.kind === 'git');
+    const folders = repos.length > 1 && kind !== 'review' ? repos : [];
     if (kind !== 'review') {
       try {
-        ensureUiImagesDir(dir);
+        ensureUiImagesDir(dir, folders.map((r) => r.id));
       } catch {
         // the agent is told to make it
       }
     }
-    return this.text(id, task.project, { imagesDir: dir, imageList: imageListText(dir, images) });
+    const imageFolders = folders.length
+      ? [
+          'This task changes several repositories, and each picture belongs to the pull request of the repository whose UI it shows. Save every picture in that repository\'s folder (they exist):',
+          ...folders.map((r) => `- ${path.join(dir, r.id)}: ${r.name}${remoteOf(r)}`),
+          'A picture saved straight in the images folder goes to every pull request of the task.',
+        ].join('\n')
+      : '';
+    const text = this.text(id, task.project, { imagesDir: dir, imageList: imageListText(dir, images), imageFolders });
+    // A rewritten block without the placeholder would lose the folders: they go at its end.
+    return imageFolders && !placeholders(kanbanPromptText(id, this.layers(task.project))).includes('imageFolders') ? `${text}\n\n${imageFolders}` : text;
   }
 
   /** A prompt that carries {{uiTesting}}, with its block; a rewritten text without the placeholder gets the block at its end, so the feature does not vanish. */
-  private withUi(id: KanbanPromptId, task: KanbanTask, kind: UiBlockKind, vars: Vars): string {
-    const block = this.uiBlock(task, kind);
+  private withUi(id: KanbanPromptId, def: FloorDef, task: KanbanTask, kind: UiBlockKind, vars: Vars): string {
+    const block = this.uiBlock(def, task, kind);
     const text = this.text(id, task.project, { ...vars, uiTesting: block });
     return block && !placeholders(kanbanPromptText(id, this.layers(task.project))).includes('uiTesting') ? `${text}\n\n${block}` : text;
   }
@@ -379,17 +393,17 @@ export class Composer {
       case 'replan':
         return seal(this.text('kanban.replan', p, { taskId: task.id, answer: this.inline(task.id, x.text ?? ''), language: v.language }));
       case 'implement':
-        return seal(this.withUi(isFolderProject(def) ? 'kanban.implement.folder' : 'kanban.implement', task, 'implement', v));
+        return seal(this.withUi(isFolderProject(def) ? 'kanban.implement.folder' : 'kanban.implement', def, task, 'implement', v));
       case 'investigate':
         return seal(this.text('kanban.investigate', p, v));
       case 'review':
-        return seal(this.withUi('kanban.review', task, 'review', v));
+        return seal(this.withUi('kanban.review', def, task, 'review', v));
       case 'rereview':
-        return seal(this.withUi('kanban.rereview', task, 'review', { taskId: task.id, round: v.round, rounds: v.rounds, fixSummary: x.fixSummary?.trim() || '(no reply)', language: v.language }));
+        return seal(this.withUi('kanban.rereview', def, task, 'review', { taskId: task.id, round: v.round, rounds: v.rounds, fixSummary: x.fixSummary?.trim() || '(no reply)', language: v.language }));
       case 'fix':
-        return seal(this.withUi('kanban.fix', task, 'fix', { taskId: task.id, round: x.round ?? 1, rounds: x.round === undefined ? 1 : v.rounds, findings: x.findings?.trim() || '(the review gave no findings; look again at what it said in its terminal)', language: v.language }));
+        return seal(this.withUi('kanban.fix', def, task, 'fix', { taskId: task.id, round: x.round ?? 1, rounds: x.round === undefined ? 1 : v.rounds, findings: x.findings?.trim() || '(the review gave no findings; look again at what it said in its terminal)', language: v.language }));
       case 'resume':
-        return seal(this.withUi('kanban.resume', task, 'comment', { taskId: task.id, author: x.author ?? 'The user', message: this.inline(task.id, x.text ?? ''), attachments: '', language: v.language }));
+        return seal(this.withUi('kanban.resume', def, task, 'comment', { taskId: task.id, author: x.author ?? 'The user', message: this.inline(task.id, x.text ?? ''), attachments: '', language: v.language }));
       case 'continue':
         return seal(this.text('kanban.continue', p, { taskId: task.id, language: v.language }));
       case 'restarted':
@@ -398,7 +412,7 @@ export class Composer {
         const hold = task.hold;
         const note = hold?.note?.trim();
         return seal(
-          this.withUi('kanban.unhold', task, 'comment', {
+          this.withUi('kanban.unhold', def, task, 'comment', {
             taskId: task.id,
             heldAt: hold ? new Date(hold.at).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' }) : 'some time ago',
             holdNote: note ? `, because: ${note}` : '',
@@ -429,7 +443,7 @@ export class Composer {
         const id = kind === 'pr.fix' ? 'kanban.pr.fix' : 'kanban.pr.conflicts';
         // `instructions` is only in the conflicts prompt; a prompt ignores variables it has no placeholder for.
         const vars = { taskId: task.id, prs: prs.join('\n'), repos: v.repos, instructions: v.instructions, language: v.language };
-        const text = kind === 'pr.fix' ? this.withUi(id, task, 'comment', vars) : this.text(id, p, vars);
+        const text = kind === 'pr.fix' ? this.withUi(id, def, task, 'comment', vars) : this.text(id, p, vars);
         // Elsewhere review comments carry no author_association: office-pr marks the ones to act on.
         const elsewhere = kind === 'pr.fix' && (x.fixPrs ?? openPrs(task)).some((pr) => (hostOfUrl(pr.url) ?? hostOf(pr.repo)) !== 'github');
         return seal(elsewhere ? `${text.trimEnd()}\n\n${this.text('kanban.pr.fixHosted', p)}` : text);

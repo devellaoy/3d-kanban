@@ -4,6 +4,9 @@
 //   GET    /api/kanban/tasks/<id>/images/<name>  → the image
 //   DELETE /api/kanban/tasks/<id>/images/<name>  → removes it (answers the list that is left)
 //
+// A name is a path under `ui/`: `login-after.png`, or `web/login-after.png` for a picture in a repository's folder
+// (at most one folder level).
+//
 // A name is only ever looked up in the listing (never joined onto a path as given), the listing skips
 // links and names that do not fit the pattern, and the file served must still resolve inside the folder.
 // Images go out by the type of their extension with nosniff and a sandboxing CSP, never cached (an
@@ -14,7 +17,7 @@ import { createReadStream, realpathSync, rmSync } from 'node:fs';
 import path from 'node:path';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import type { KanbanContext, KanbanPlugin } from '../../registry.js';
-import { uiImageType, type KanbanTaskImage, type KanbanTaskImageList } from '../../../../shared/kanban/uitesting.js';
+import { splitUiImageName, uiImageType, type KanbanTaskImage, type KanbanTaskImageList } from '../../../../shared/kanban/uitesting.js';
 import { listUiImages, uiImagesDir, type UiImageFile } from '../../engine/uitesting.js';
 import { sendJson } from '../util.js';
 
@@ -33,7 +36,7 @@ export function findUiImage(dir: string, name: string): UiImageFile | undefined 
   return hit;
 }
 
-const plain = ({ name, kind, subject, size, mtime }: KanbanTaskImage): KanbanTaskImage => ({ name, kind, subject, size, mtime });
+const plain = ({ name, repo, kind, subject, size, mtime }: KanbanTaskImage): KanbanTaskImage => ({ name, ...(repo ? { repo } : {}), kind, subject, size, mtime });
 
 export function createImagesPlugin(ctx: KanbanContext): KanbanPlugin {
   const handle = (req: IncomingMessage, res: ServerResponse, url: URL): boolean => {
@@ -69,7 +72,7 @@ export function createImagesPlugin(ctx: KanbanContext): KanbanPlugin {
     res.writeHead(200, {
       'content-type': uiImageType(name),
       'content-length': String(hit.size),
-      'content-disposition': `inline; filename="${name}"`,
+      'content-disposition': `inline; filename="${splitUiImageName(name).file}"`,
       'cache-control': 'no-store',
       'x-content-type-options': 'nosniff',
       'content-security-policy': "default-src 'none'; sandbox",
