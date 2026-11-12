@@ -33,7 +33,7 @@ export function imagesUrl(taskId: number): string {
 
 /** One image's file; `v` (its modified time) makes a retaken picture of the same name another address. */
 export function imageUrl(taskId: number, img: Pick<KanbanTaskImage, 'name' | 'mtime'>, bust = true): string {
-  return `${imagesUrl(taskId)}/${encodeURIComponent(img.name)}${bust ? `?v=${Math.round(img.mtime)}` : ''}`;
+  return `${imagesUrl(taskId)}/${img.name.split('/').map(encodeURIComponent).join('/')}${bust ? `?v=${Math.round(img.mtime)}` : ''}`;
 }
 
 /** The list as one string: two lists that read the same need no redraw (a redraw would fetch every picture again). */
@@ -74,7 +74,7 @@ export function groupImagePairs(pairs: readonly UiImagePair[], repos: readonly P
       g = !pair.repo
         ? { title: folders ? 'All repositories' : '', hint: folders ? 'in every pull request of the task' : '', pairs: [] }
         : known
-          ? { repo: pair.repo, title: known.name, hint: 'in this repository’s pull request', pairs: [] }
+          ? { repo: pair.repo, title: known.name, hint: 'for this repository’s pull request, or the primary’s when it has none', pairs: [] }
           : { repo: pair.repo, title: pair.repo, hint: 'not a repository of the project: in every pull request of the task', pairs: [] };
       groups.push(g);
     }

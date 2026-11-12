@@ -629,3 +629,13 @@ test('UI testing: a rewritten block without {{imageFolders}} gets the folders at
   assert.ok(text.includes(`- ${path.join(images, 'api')}: API`));
   assert.equal(text.split('This task changes several repositories').length, 2, 'once');
 });
+
+test('UI testing: with no repository folders the blocks render as the text without the {{imageFolders}} line', () => {
+  for (const id of ['kanban.uiTesting', 'kanban.uiTesting.onRequest', 'kanban.uiTesting.fix'] as const) {
+    const raw = KANBAN_PROMPT_DEFS[id].text;
+    assert.ok(raw.includes('\n{{imageFolders}}\n'), id);
+    const filled = resolveKanbanPrompt(id, {}, { imagesDir: '/i', imageFolders: '' });
+    assert.equal(filled, raw.replace('\n{{imageFolders}}', '').replace('{{imagesDir}}', '/i'), id);
+    assert.doesNotMatch(filled, /\n\n|\{\{/, id);
+  }
+});

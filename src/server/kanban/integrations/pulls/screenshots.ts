@@ -204,8 +204,7 @@ const setDigest = (images: readonly KanbanTaskImage[]) => (images.length ? image
 const isGithubPr = (url: string) => /^https:\/\/github\.com\/[^/]+\/[^/]+\/pull\/\d+/.test(url);
 
 /** Where each of a task's images goes: for every open or draft GitHub pull request (the keys), its own images, in the order given. */
-export function assignShots(images: readonly UiImageFile[], links: readonly KanbanPrLink[], repos: readonly ProjectRepo[]): Map<string, UiImageFile[]> {
-  const open = (l: KanbanPrLink) => l.state === 'OPEN' || l.state === 'DRAFT';
+export function assignShots(images: readonly UiImageFile[], links: readonly KanbanPrLink[], repos: readonly ProjectRepo[], opts: { fallback?: boolean } = {}): Map<string, UiImageFile[]> {
   const targets = links.filter((l) => open(l) && isGithubPr(l.url));
   const out = new Map<string, UiImageFile[]>(targets.map((l) => [l.url, []]));
   const rank = (l: KanbanPrLink) => (repos.some((r) => r.id === l.repoId) ? repos.findIndex((r) => r.id === l.repoId) : repos.length);
@@ -217,10 +216,24 @@ export function assignShots(images: readonly UiImageFile[], links: readonly Kanb
     const to = !home ? targets : targets.filter((l) => l.repoId === img.repo);
     if (to.length) for (const l of to) out.get(l.url)!.push(img);
     // Its repository's pull request is merged (or open at another host): the picture is done with; it must not turn up in another repository's.
-    else if (home && !home.some((l) => open(l) || l.state === 'MERGED') && fallback) out.get(fallback.url)!.push(img);
+    else if (opts.fallback !== false && home && !home.some((l) => open(l) || l.state === 'MERGED') && fallback) out.get(fallback.url)!.push(img);
   }
   return out;
 }
+
+const open = (l: KanbanPrLink) => l.state === 'OPEN' || l.state === 'DRAFT';
+
+/** The images that only the fallback would take: their repository has no pull request (or a closed one) while another has an open GitHub one. */
+export function fallbackShots(images: readonly UiImageFile[], links: readonly KanbanPrLink[], repos: readonly ProjectRepo[]): UiImageFile[] {
+  const withIt = assignShots(images, links, repos);
+  const without = new Set([...assignShots(images, links, repos, { fallback: false })].flatMap(([, v]) => v.map((i) => i.name)));
+  return images.filter((i) => !without.has(i.name) && [...withIt.values()].some((v) => v.includes(i)));
+}
+
+/** How long an image waits for its own repository's pull request to show up before another repository's takes it: pull requests are linked per repository, a poll apart. */
+export const FALLBACK_WAIT_MS = 3 * 60_000;
+/** Per marks map: when a task (project/id) was first seen with an image waiting for the fallback. In memory, like the marks. */
+const waiting = new WeakMap<object, Map<string, number>>();
 
 /** The task's pull requests off its own branches in the project's repositories, in any state. */
 function taskLinks(ctx: KanbanContext, project: string, task: KanbanTask, repos: readonly ProjectRepo[]): (KanbanPrLink & { taskId: number })[] {
@@ -235,12 +248,25 @@ function taskLinks(ctx: KanbanContext, project: string, task: KanbanTask, repos:
  * all of them in a task with one repository), once per digest of that share. A lone "after" counts. Fire
  * and forget; what it did, or couldn't, goes on the task as a status comment.
  */
-export function checkScreenshots(ctx: KanbanContext, project: string, marks: Map<string, ScreenshotMark>, io: { run: GhRunner }): void {
+export function checkScreenshots(ctx: KanbanContext, project: string, marks: Map<string, ScreenshotMark>, io: { run: GhRunner; now?: () => number }): void {
   const seen = new Set<string>();
+  const since = waiting.get(marks) ?? waiting.set(marks, new Map()).get(marks)!;
+  const tasks = new Set<string>();
   const repos = ctx.repos(project);
   for (const task of ctx.repo.listTasks(project)) {
     if (!task.flags.prRequested || task.runState !== 'idle') continue;
-    const shares = assignShots(listUiImages(uiImagesDir(ctx.filesDir, task.id)), taskLinks(ctx, project, task, repos), repos);
+    const all = listUiImages(uiImagesDir(ctx.filesDir, task.id), repos.map((r) => r.id));
+    const links = taskLinks(ctx, project, task, repos);
+    // The fallback only takes pictures whose repository has had no pull request for a while.
+    const key = `${project}/${task.id}`;
+    let fallback = false;
+    if (fallbackShots(all, links, repos).length) {
+      const now = (io.now ?? Date.now)();
+      tasks.add(key);
+      if (!since.has(key)) since.set(key, now);
+      fallback = now - since.get(key)! >= FALLBACK_WAIT_MS;
+    }
+    const shares = assignShots(all, links, repos, { fallback });
     if (!shares.size) continue;
     const dir = uiImagesDir(ctx.filesDir, task.id);
     // No images and no images folder: the task never had any, so there is no block of ours to take out and nothing to ask.
@@ -255,20 +281,21 @@ export function checkScreenshots(ctx: KanbanContext, project: string, marks: Map
       const tries = (same ? was.tries : 0) + 1;
       // Marked at once, so the next refresh does not queue it again while it runs.
       marks.set(url, { project, runId, digest, tries, done: true });
-      inOrder(url, () => screenshotOne(ctx, project, task.id, url, digest, runId, tries, marks, io));
+      inOrder(url, () => screenshotOne(ctx, project, task.id, url, digest, runId, tries, fallback, marks, io));
     }
   }
   for (const [url, m] of marks) if (m.project === project && !seen.has(url)) marks.delete(url);
+  for (const key of since.keys()) if (key.startsWith(`${project}/`) && !tasks.has(key)) since.delete(key);
 }
 
 /** One pull request's job, when its turn comes: from the task as it is then. */
-async function screenshotOne(ctx: KanbanContext, project: string, taskId: number, url: string, digest: string, runId: number | undefined, tries: number, marks: Map<string, ScreenshotMark>, io: { run: GhRunner }): Promise<void> {
+async function screenshotOne(ctx: KanbanContext, project: string, taskId: number, url: string, digest: string, runId: number | undefined, tries: number, fallback: boolean, marks: Map<string, ScreenshotMark>, io: { run: GhRunner }): Promise<void> {
   const task = ctx.repo.listTasks(project).find((t) => t.id === taskId);
   if (!task || task.runState !== 'idle') return void marks.delete(url);
   const dir = uiImagesDir(ctx.filesDir, taskId);
   const repos = ctx.repos(project);
   const links = taskLinks(ctx, project, task, repos);
-  const images = assignShots(listUiImages(dir), links, repos).get(url);
+  const images = assignShots(listUiImages(dir, repos.map((r) => r.id)), links, repos, { fallback }).get(url);
   // The images (or the pull requests) changed since it was queued: a later pass deals with them.
   if (!images || setDigest(images) !== digest) return void marks.delete(url);
   const editor = ghEditor(ctx.ghAs?.(task.createdByAccount));

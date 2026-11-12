@@ -57,20 +57,13 @@ function readFolder(dir: string, repo?: string): UiImageFile[] {
 
 /**
  * A task's images: regular files only (no links), whose names fit the pattern, up to the size limit, in the
- * images folder and in the folders directly inside it that are named like a repository (UI_IMAGE_FOLDER_RE;
- * real folders only), at most UI_IMAGES_MAX of them. The cap is cut subfolder images first, so pictures
+ * images folder and in the folders directly inside it that are named in `folders` (the project's repository
+ * ids; UI_IMAGE_FOLDER_RE, real folders only; any other folder is not looked in), at most UI_IMAGES_MAX of them. The cap is cut subfolder images first, so pictures
  * dropped straight in the folder cannot push out the ones assigned to a repository. In display order: the
  * images straight in the folder, then each repository's, by subject, the before before the after.
  */
-export function listUiImages(dir: string): UiImageFile[] {
-  let entries: string[];
-  try {
-    if (!lstatSync(dir).isDirectory()) return [];
-    entries = readdirSync(dir);
-  } catch {
-    return [];
-  }
-  const sub = entries.filter((f) => UI_IMAGE_FOLDER_RE.test(f)).sort().flatMap((f) => readFolder(dir, f));
+export function listUiImages(dir: string, folders: readonly string[] = []): UiImageFile[] {
+  const sub = [...new Set(folders)].filter((f) => UI_IMAGE_FOLDER_RE.test(f)).sort().flatMap((f) => readFolder(dir, f));
   const root = readFolder(dir);
   const order = (images: UiImageFile[]) => pairImages(images).flatMap((p) => [p.before, p.after]).filter((i): i is KanbanTaskImage => !!i);
   const kept = new Set([...order(sub), ...order(root)].slice(0, UI_IMAGES_MAX).map((i) => i.name));

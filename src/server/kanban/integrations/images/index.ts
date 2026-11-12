@@ -24,8 +24,8 @@ import { sendJson } from '../util.js';
 const ROUTE_RE = /^\/api\/kanban\/tasks\/(\d{1,12})\/images(?:\/(.+))?$/;
 
 /** The listed image called `name`, or undefined (so `../x`, absolute paths and links never match). */
-export function findUiImage(dir: string, name: string): UiImageFile | undefined {
-  const hit = listUiImages(dir).find((i) => i.name === name);
+export function findUiImage(dir: string, name: string, folders: readonly string[] = []): UiImageFile | undefined {
+  const hit = listUiImages(dir, folders).find((i) => i.name === name);
   if (!hit) return undefined;
   try {
     const rel = path.relative(realpathSync(dir), realpathSync(hit.file));
@@ -48,7 +48,9 @@ export function createImagesPlugin(ctx: KanbanContext): KanbanPlugin {
     const task = ctx.repo.getTask(Number(m[1]));
     if (!task) return sendJson(res, 404, { error: `There's no task #${m[1]}` }), true;
     const dir = uiImagesDir(ctx.filesDir, task.id);
-    const list = (): KanbanTaskImageList => ({ taskId: task.id, images: listUiImages(dir).map(plain) });
+    // Only the project's repositories' folders are looked in.
+    const folders = ctx.repos(task.project).map((r) => r.id);
+    const list = (): KanbanTaskImageList => ({ taskId: task.id, images: listUiImages(dir, folders).map(plain) });
     if (m[2] === undefined) {
       if (!read) return sendJson(res, 405, { error: 'GET only' }), true;
       return sendJson(res, 200, list()), true;
@@ -59,7 +61,7 @@ export function createImagesPlugin(ctx: KanbanContext): KanbanPlugin {
     } catch {
       return sendJson(res, 400, { error: 'That image name is garbled' }), true;
     }
-    const hit = findUiImage(dir, name);
+    const hit = findUiImage(dir, name, folders);
     if (!hit) return sendJson(res, 404, { error: `Task #${task.id} has no image ${name.slice(0, 200)}` }), true;
     if (method === 'DELETE') {
       try {

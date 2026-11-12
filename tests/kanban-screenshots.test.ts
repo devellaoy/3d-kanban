@@ -6,7 +6,7 @@ import assert from 'node:assert/strict';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import { assignShots, checkScreenshots, editTimeout, ensureScreenshots, imagesDigest, screenshotsBlock, withScreenshots, withoutScreenshots, type ScreenshotMark } from '../src/server/kanban/integrations/pulls/screenshots.js';
+import { FALLBACK_WAIT_MS, assignShots, checkScreenshots, editTimeout, ensureScreenshots, imagesDigest, screenshotsBlock, withScreenshots, withoutScreenshots, type ScreenshotMark } from '../src/server/kanban/integrations/pulls/screenshots.js';
 import { listUiImages } from '../src/server/kanban/engine/uitesting.js';
 
 const URL_ = 'https://github.com/acme/api/pull/3';
@@ -435,8 +435,8 @@ test('assignShots: no pull request (or a closed one) for the repository goes to 
 });
 
 const FILES = { 'web/login-before.png': 'wb', 'web/login-after.png': 'wa', 'api/db-after.png': 'ab' };
-async function runBoard(b: ReturnType<typeof board>, calls: { args: string[]; body?: string }[], marks = new Map<string, ScreenshotMark>()) {
-  const io = { run: fakeGh(() => ({ body: 'Did it', updatedAt: 't' }), calls) };
+async function runBoard(b: ReturnType<typeof board>, calls: { args: string[]; body?: string }[], marks = new Map<string, ScreenshotMark>(), now = 0) {
+  const io = { run: fakeGh(() => ({ body: 'Did it', updatedAt: 't' }), calls), now: () => now };
   checkScreenshots(b.ctx, 'api', marks, io);
   await settle();
   return marks;
@@ -455,11 +455,20 @@ test('a task in two repositories: each pull request gets its own repository’s 
   assert.deepEqual(e.web.args.filter((a, i) => e.web.args[i - 1] === '--attach').map((f) => path.basename(f)), ['web.login-before.png', 'web.login-after.png']);
 });
 
-test('the repository without a pull request sends its pictures to the primary repository’s, with its name in the heading', async () => {
+test('the repository without a pull request waits, then sends its pictures to the primary repository’s, with its name in the heading', async () => {
   const b = board({ files: FILES, webState: null });
   const calls: { args: string[]; body?: string }[] = [];
-  await runBoard(b, calls);
-  const e = edited(calls);
+  const marks = new Map<string, ScreenshotMark>();
+  await runBoard(b, calls, marks, 0);
+  // Grace not passed: only the primary's own picture is uploaded; the web ones wait.
+  let e = edited(calls);
+  assert.deepEqual(Object.keys(e), ['api']);
+  assert.equal(e.api.args.filter((a) => a === '--attach').length, 1);
+  assert.ok(!e.api.body!.includes('login'));
+  await runBoard(b, (calls.length = 0, calls), marks, FALLBACK_WAIT_MS - 1);
+  assert.deepEqual(Object.keys(edited(calls)), [], 'still waiting');
+  await runBoard(b, calls, marks, FALLBACK_WAIT_MS);
+  e = edited(calls);
   assert.deepEqual(Object.keys(e), ['api']);
   assert.match(e.api.body!, /### login \(Web\)/);
   assert.match(e.api.body!, /### db\n/, 'its own picture has a plain heading');
@@ -474,25 +483,49 @@ test('a merged repository’s pictures go nowhere, and no comment is made for th
   assert.deepEqual(b.comments, []);
 });
 
-test('the pull request of the repository appearing later takes its pictures from the primary one, whose block is taken out', async () => {
+test('the repository’s pull request linked one refresh later gets its pictures at once: one edit, one comment, nothing on the primary', async () => {
+  const b = board({ files: { 'web/login-after.png': 'wa' }, webState: null });
+  const marks = new Map<string, ScreenshotMark>();
+  const calls: { args: string[]; body?: string }[] = [];
+  await runBoard(b, calls, marks, 0);
+  assert.deepEqual(Object.keys(edited(calls)), [], 'the primary’s pull request gets nothing meanwhile');
+  b.links.push({ taskId: 1, repoId: 'web', repo: 'acme/web', number: 4, url: WEB_, state: 'OPEN', branch: 'b' });
+  await runBoard(b, calls, marks, 10_000);
+  const e = edited(calls);
+  assert.deepEqual(Object.keys(e), ['web']);
+  assert.ok(e.web.body!.includes('(./web.login-after.png)'));
+  assert.equal(b.comments.length, 1);
+  assert.ok(calls.filter((c) => c.args[1] === 'edit').length === 1);
+});
+
+test('after the fallback was used, the repository’s pull request appearing takes the pictures and the primary’s block goes', async () => {
   const b = board({ files: { 'web/login-after.png': 'wa' }, webState: null });
   const marks = new Map<string, ScreenshotMark>();
   let apiBody = 'Did it';
   const calls: { args: string[]; body?: string }[] = [];
-  const io = { run: fakeGh(() => ({ body: apiBody, updatedAt: 't' }), calls) };
-  checkScreenshots(b.ctx, 'api', marks, io);
+  const io = (now: number) => ({ run: fakeGh(() => ({ body: apiBody, updatedAt: 't' }), calls), now: () => now });
+  checkScreenshots(b.ctx, 'api', marks, io(0));
+  await settle();
+  checkScreenshots(b.ctx, 'api', marks, io(FALLBACK_WAIT_MS));
   await settle();
   assert.deepEqual(Object.keys(edited(calls)), ['api']);
   apiBody = edited(calls).api.body!;
   b.links.push({ taskId: 1, repoId: 'web', repo: 'acme/web', number: 4, url: WEB_, state: 'OPEN', branch: 'b' });
   calls.length = 0;
-  checkScreenshots(b.ctx, 'api', marks, io);
+  checkScreenshots(b.ctx, 'api', marks, io(FALLBACK_WAIT_MS + 1));
   await settle();
   const e = edited(calls);
   assert.deepEqual(Object.keys(e).sort(), ['api', 'web']);
   assert.ok(!e.api.body!.includes('agent-office:screenshots'), 'taken out of the primary');
   assert.ok(!e.api.args.includes('--attach'));
   assert.ok(e.web.body!.includes('(./web.login-after.png)'));
+});
+
+test('a folder that is no repository of the project is not listed, so its pictures reach no pull request', async () => {
+  const b = board({ files: { 'scratch/x-after.png': 's' } });
+  const calls: { args: string[]; body?: string }[] = [];
+  await runBoard(b, calls);
+  assert.deepEqual(Object.keys(edited(calls)), []);
 });
 
 test('a mix of pictures straight in ui/ and in a repository folder', async () => {
@@ -514,7 +547,7 @@ test('the staging folder holds flat links with unique names and the body, and is
   writeFileSync(path.join(dir, 'web', 'login-after.png'), 'w');
   writeFileSync(path.join(dir, 'api', 'login-after.png'), 'a');
   writeFileSync(path.join(dir, 'web.login-after.png'), 'clash');
-  const all = listUiImages(dir);
+  const all = listUiImages(dir, ['web', 'api']);
   assert.equal(all.length, 4);
   let during: { stage: string; entries: string[]; body: string } | undefined;
   const seen = fakeGh(() => ({ body: '', updatedAt: 't' }), []);
@@ -540,7 +573,7 @@ test('the staging folder holds flat links with unique names and the body, and is
   assert.equal(r2.edited, false);
   assert.ok(stage && !existsSync(stage));
   assert.deepEqual(readdirSync(dir).filter((n) => n.startsWith('.')), []);
-  assert.deepEqual(listUiImages(dir).map((i) => i.name).sort(), all.map((i) => i.name).sort(), 'the pictures are untouched');
+  assert.deepEqual(listUiImages(dir, ['web', 'api']).map((i) => i.name).sort(), all.map((i) => i.name).sort(), 'the pictures are untouched');
   void images;
 });
 

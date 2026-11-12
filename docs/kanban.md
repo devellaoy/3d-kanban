@@ -481,8 +481,8 @@ the Pull requests tab. Its tabs:
   task changes and when it is opened), and **Remove** deletes one image after asking in place; a visitor
   of a shared office sees the images but can't remove them. An empty tab says what goes there. The tab is
   in every task view, the 3D worker window's too, and `&tab=images` opens it. Pictures of a task in several
-  repositories are grouped under their repository's name (the folder's name when it is no repository of the
-  project), the ones saved straight in `ui/` first under **All repositories**.
+  repositories are grouped under their repository's name, the ones saved straight in `ui/` first under
+  **All repositories**. Only folders named like one of the project's repositories are read.
 - **Pull requests**: the task's pull requests with their state, **Fix PRs** and **Resolve conflicts** (with open PRs), and
   **Review these N PRs together**, and **Find PRs** (on this tab only, not on an archived task).
   Each row ends with a button that unlinks the pull request from the task after a confirmation (the PR
@@ -800,8 +800,9 @@ reads its own. A kanban task made from a card keeps the description as its own, 
   `ui/<repo id>/`); a repository without a pull request (nothing changed there, or it was closed) has its pictures
   go to the primary repository's open pull request, else the first open one, under a heading that names the
   repository (`### login-form (web)`). When the repository's pull request is **merged** and none is open, its pictures
-  go nowhere: they do not move to another repository's. Pictures straight in `ui/`, or in a folder that is not a
-  repository of the project, go to every open pull request.
+  go nowhere: they do not move to another repository's. Pictures straight in `ui/` go to every open pull request.
+  The office waits three minutes for a repository's pull request to show up (they are linked one repository at a time)
+  before another repository's takes its pictures.
   Known limits: a Screenshots section you delete from the PR comes back after the office restarts or when the images
   change (the office remembers what it did only in memory, and sees the section itself in the description). It works
   for GitHub.com pull requests only, that is `https://github.com/<owner>/<repo>/pull/<number>`: GitHub Enterprise hosts,

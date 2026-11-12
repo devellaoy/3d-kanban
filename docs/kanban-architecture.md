@@ -437,7 +437,7 @@ allowed: `todo → in_progress` (= start), `waiting|review → done`, `done → 
   (`uiImagesDir`; made mode 700 when a prompt that names it is composed), with no database rows: `listUiImages` reads the
   folder each time (regular files only, no links; names matching `UI_IMAGE_RE`, `<subject>-(before|after).(png|jpg|jpeg|webp)`;
   at most `UI_IMAGE_MAX_BYTES` each and `UI_IMAGES_MAX` a task, the cap cut subfolder images first; by subject, the before first) and `pairImages` pairs them
-  by folder and subject. One level of subfolders is read too, those named like `UI_IMAGE_FOLDER_RE` (`[a-z0-9-]{1,40}`, real directories only):
+  by folder and subject. One level of subfolders is read too, those the caller names (the project's repository ids, which fit `UI_IMAGE_FOLDER_RE`, `[a-z0-9-]{1,40}`; real directories only):
   an image in `ui/<repoId>/` has `name` `<repoId>/<file>` and `repo` `<repoId>`, one straight in `ui/` has no `repo`. The
   folder is inside the task's grant folder, so every run already has it as an `--add-dir` and it goes with the task (`removeGrant`).
 - Migration 6 adds `runs.held_at` (ms: when the run was held for background work, NULL otherwise; `KanbanRepository.runHeldAt` / `setRunHeld`, not on `KanbanRun`); a build that knows only 5 refuses the database.
@@ -729,8 +729,11 @@ project, so one floor's refresh never drops another's). A block with the current
 `assignShots` is the split: an image in `ui/<repoId>/` goes to the open or draft pull requests of that repository; with none (no
 link, or only a closed one) it goes to the fallback pull request, the primary repository's open one, else the first open one in the
 project's repository order, under `### <subject> (<repository name>)`; when that repository's pull request is merged (and none is
-open) it goes nowhere, so it never lands in another repository's; an image straight in `ui/` or in a folder that is no repository
-of the project goes to every open pull request. A single-repository task is that last case. Each pull request has its own set and
+open) it goes nowhere, so it never lands in another repository's; an image straight in `ui/` goes to every open pull request (a single-repository
+task is that case). Only the project's repositories' folders are read (`listUiImages(dir, folders)`, called with the repository ids; any other
+folder is ignored). The fallback waits: pull requests are linked per repository, so the primary's can exist a poll before the other's;
+the office notes when a task first had a picture waiting for it (`FALLBACK_WAIT_MS`, 3 minutes, in memory beside the marks) and uses
+the fallback only after that (`assignShots`' `fallback` option, which `screenshotOne` receives as it was queued). Each pull request has its own set and
 digest (`setDigest`) and its own mark; `screenshotOne` recomputes the split when its turn comes and compares that pull request's
 digest; one whose set is empty has its block removed. gh references stay flat: a set with a subfolder image is hard-linked (else
 copied) under flat names (`web.login-after.png`; `-2` before the extension on a clash) into a temporary `ui/.pr-<random>/`, which

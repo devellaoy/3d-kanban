@@ -81,7 +81,7 @@ test('the tab’s groups: no heading without folders, else a repository’s name
   ]);
   assert.match(groups[0].hint, /every pull request/);
   assert.match(groups[1].hint, /not a repository/);
-  assert.match(groups[2].hint, /this repository/);
+  assert.match(groups[2].hint, /for this repository’s pull request, or the primary’s when it has none/);
   // The same subject in three folders is three views, each with a name of its own.
   assert.equal(all.length, 4);
   const labels = groups.flatMap((g) => g.pairs.map((p) => pairLabel(p, g)));
@@ -92,5 +92,5 @@ test('the tab’s groups: no heading without folders, else a repository’s name
 });
 
 test('an image in a folder: its address keeps the folder in one encoded segment', () => {
-  assert.equal(imageUrl(42, img('web/login-after.png'), false), '/api/kanban/tasks/42/images/web%2Flogin-after.png');
+  assert.equal(imageUrl(42, img('web/login-after.png'), false), '/api/kanban/tasks/42/images/web/login-after.png');
 });

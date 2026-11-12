@@ -303,7 +303,7 @@ export class Composer {
   uiBlock(def: FloorDef, task: KanbanTask, kind: UiBlockKind): string {
     if (task.type === 'investigate') return '';
     const dir = uiImagesDir(this.ctx.filesDir, task.id);
-    const images = listUiImages(dir);
+    const images = listUiImages(dir, projectRepos(def).map((r) => r.id));
     const id = uiBlockId(kind, this.ctx.settings.uiTesting(task.project, task.overrides), images.length > 0);
     if (!id) return '';
     const repos = isFolderProject(def) ? [] : taskRepos(def, task).filter((r) => r.kind === 'git');

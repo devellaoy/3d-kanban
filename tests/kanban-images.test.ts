@@ -37,7 +37,8 @@ test('pairImages pairs by subject, in alphabetical order, either side may be mis
 });
 
 function setup() {
-  const ctx = makeCtx();
+  const at = (id: string, primary = false) => ({ id, name: id.toUpperCase(), kind: 'git' as const, dir: `/x/${id}`, primary });
+  const ctx = makeCtx([{ id: 'p', name: 'P', dir: '/x/p', palette: 0, addedBy: 't', addedAt: 0, repos: [at('p', true), at('web'), at('api')] }]);
   const task = ctx.repo.createTask({ project: 'p', title: 'x', tool: 'claude', usePlan: false, planApproval: 'auto', useReview: false, createdBy: 'T' });
   const dir = uiImagesDir(ctx.filesDir, task.id);
   ensureUiImagesDir(dir);
@@ -225,6 +226,7 @@ test('the listing reads one level of repository folders, real directories only, 
   const { ctx, dir } = setup();
   ensureUiImagesDir(dir, ['web', 'api', 'Bad']);
   assert.deepEqual(readdirSync(dir).sort(), ['api', 'web'], 'a folder name that does not fit is not made');
+  const known = ['api', 'web'];
   if (process.platform !== 'win32') assert.equal(statSync(path.join(dir, 'web')).mode & 0o777, 0o700);
   writeFileSync(path.join(dir, 'web', 'login-after.png'), 'w');
   writeFileSync(path.join(dir, 'api', 'login-after.png'), 'aa');
@@ -240,13 +242,16 @@ test('the listing reads one level of repository folders, real directories only, 
   writeFileSync(path.join(elsewhere, 'x-after.png'), 'secret');
   symlinkSync(elsewhere, path.join(dir, 'linked'));
   symlinkSync(path.join(elsewhere, 'x-after.png'), path.join(dir, 'web', 'link-after.png'));
-  assert.deepEqual(listUiImages(dir).map((i) => [i.name, i.repo]), [
+  mkdirSync(path.join(dir, 'scratch'));
+  writeFileSync(path.join(dir, 'scratch', 'x-after.png'), 'x');
+  assert.deepEqual(listUiImages(dir).map((i) => i.name), ['root-after.png'], 'no folder named: the root only');
+  assert.deepEqual(listUiImages(dir, known).map((i) => [i.name, i.repo]), [
     ['root-after.png', undefined],
     ['api/login-after.png', 'api'],
     ['web/login-after.png', 'web'],
   ]);
   for (let i = 0; i < UI_IMAGES_MAX; i++) writeFileSync(path.join(dir, `r${String(i).padStart(2, '0')}-after.png`), 'x');
-  const all = listUiImages(dir);
+  const all = listUiImages(dir, known);
   assert.equal(all.length, UI_IMAGES_MAX);
   assert.ok(all.some((i) => i.name === 'web/login-after.png') && all.some((i) => i.name === 'api/login-after.png'), 'the assigned ones are kept');
   assert.equal(all[0].repo, undefined, 'displayed with the root first');
