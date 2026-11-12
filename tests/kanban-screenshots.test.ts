@@ -6,10 +6,11 @@ import assert from 'node:assert/strict';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import { checkScreenshots, editTimeout, ensureScreenshots, imagesDigest, screenshotsBlock, withScreenshots, withoutScreenshots, type ScreenshotMark } from '../src/server/kanban/integrations/pulls/screenshots.js';
+import { assignShots, checkScreenshots, editTimeout, ensureScreenshots, imagesDigest, screenshotsBlock, withScreenshots, withoutScreenshots, type ScreenshotMark } from '../src/server/kanban/integrations/pulls/screenshots.js';
 import { listUiImages } from '../src/server/kanban/engine/uitesting.js';
 
 const URL_ = 'https://github.com/acme/api/pull/3';
+const WEB_ = 'https://github.com/acme/web/pull/4';
 
 function folder(files: Record<string, string>) {
   const dir = mkdtempSync(path.join(tmpdir(), 'kanban-shots-'));
@@ -106,25 +107,29 @@ test('a gh that fails (no --attach, no access) is a warning and the file is stil
 
 const run = { id: 1 };
 
-function board(opts: { runState?: string; flags?: Record<string, boolean>; url?: string; state?: string; files?: Record<string, string> } = {}) {
+function board(opts: { runState?: string; flags?: Record<string, boolean>; url?: string; state?: string; files?: Record<string, string>; webState?: string | null; apiState?: string | null } = {}) {
   const root = mkdtempSync(path.join(tmpdir(), 'kanban-shots-ctx-'));
   const dir = path.join(root, 'grants', 'task-1', 'ui');
   mkdirSync(dir, { recursive: true });
-  for (const [n, c] of Object.entries(opts.files ?? { 'a-before.png': 'x', 'a-after.png': 'y' })) writeFileSync(path.join(dir, n), c);
+  for (const [n, c] of Object.entries(opts.files ?? { 'a-before.png': 'x', 'a-after.png': 'y' })) {
+    mkdirSync(path.dirname(path.join(dir, n)), { recursive: true });
+    writeFileSync(path.join(dir, n), c);
+  }
   const task = { id: 1, branch: 'b', status: 'review', runState: opts.runState ?? 'idle', flags: opts.flags ?? { prRequested: true }, createdByAccount: undefined };
+  // webState/apiState null: that repository has no pull request.
   const links = [
-    { taskId: 1, repoId: 'api', repo: 'acme/api', number: 3, url: opts.url ?? URL_, state: opts.state ?? 'OPEN', branch: 'b' },
-    { taskId: 1, repoId: 'web', repo: 'acme/web', number: 4, url: 'https://github.com/acme/web/pull/4', state: 'OPEN', branch: 'b' },
-  ];
+    { taskId: 1, repoId: 'api', repo: 'acme/api', number: 3, url: opts.url ?? URL_, state: opts.apiState ?? opts.state ?? 'OPEN', branch: 'b' },
+    { taskId: 1, repoId: 'web', repo: 'acme/web', number: 4, url: WEB_, state: opts.webState ?? 'OPEN', branch: 'b' },
+  ].filter((l) => (l.repoId === 'web' ? opts.webState !== null : opts.apiState !== null));
   const comments: string[] = [];
   const ctx = {
     dataDir: root,
     filesDir: root,
-    repos: () => [{ id: 'api', primary: true, remote: 'acme/api' }, { id: 'web', primary: false, remote: 'acme/web' }],
+    repos: () => [{ id: 'api', name: 'API', primary: true, remote: 'acme/api' }, { id: 'web', name: 'Web', primary: false, remote: 'acme/web' }],
     repo: { prLinksOfProject: () => links, listTasks: () => [task], repoBranches: () => ({}), latestRunId: () => run.id, addComment: (c: { text: string }) => void comments.push(c.text) },
     taskChanged() {},
   } as unknown as Parameters<typeof checkScreenshots>[0];
-  return { ctx, dir, task, comments };
+  return { ctx, dir, task, comments, links };
 }
 const settle = () => new Promise((r) => setTimeout(r, 40));
 
@@ -393,4 +398,154 @@ test('withoutScreenshots keeps what is around the block byte for byte', () => {
   assert.equal(withoutScreenshots(`${b}\n\n    code first\n`), '    code first\n');
   assert.equal(withoutScreenshots(`Line one  \nline two  \n\n${b}\n`), 'Line one  \nline two  \n');
   assert.equal(withoutScreenshots(`Intro  \r\n\r\n${b}\r\n\r\n    code\r\n`), 'Intro  \n\n    code\r\n');
+});
+
+// Several repositories: an image in ui/<repoId>/ belongs to that repository's pull request.
+
+const REPOS = [
+  { id: 'api', name: 'API', kind: 'git', dir: '/a', remote: 'acme/api', primary: true },
+  { id: 'web', name: 'Web', kind: 'git', dir: '/w', remote: 'acme/web', primary: false },
+  { id: 'ops', name: 'Ops', kind: 'git', dir: '/o', remote: 'acme/ops', primary: false },
+] as const;
+const lk = (repoId: string, state: string, n = 1) => ({ repoId, repo: `acme/${repoId}`, number: n, url: `https://github.com/acme/${repoId}/pull/${n}`, state, branch: 'b', createdAt: 0, updatedAt: 0 }) as Parameters<typeof assignShots>[1][number];
+const im = (name: string) => ({ name, repo: name.includes('/') ? name.split('/')[0] : undefined, kind: 'after', subject: 'x', size: 1, mtime: 1, file: `/f/${name}` }) as Parameters<typeof assignShots>[0][number];
+const names = (m: Map<string, { name: string }[]>) => Object.fromEntries([...m].map(([u, v]) => [u.split('/')[4], v.map((i) => i.name)]));
+
+test('assignShots: a repository folder goes to that repository, the root and unknown folders to every open pull request', () => {
+  const links = [lk('api', 'OPEN'), lk('web', 'DRAFT')];
+  const r = assignShots([im('a-after.png'), im('web/b-after.png'), im('api/c-after.png'), im('nope/d-after.png')], links, REPOS as never);
+  assert.deepEqual(names(r), { api: ['a-after.png', 'api/c-after.png', 'nope/d-after.png'], web: ['a-after.png', 'web/b-after.png', 'nope/d-after.png'] });
+  // One repository: everything is as before.
+  assert.deepEqual(names(assignShots([im('a-after.png'), im('b-after.png')], [lk('api', 'OPEN')], REPOS as never)), { api: ['a-after.png', 'b-after.png'] });
+  assert.equal(assignShots([im('a-after.png')], [lk('api', 'MERGED'), lk('web', 'CLOSED')], REPOS as never).size, 0, 'no open pull request: no target');
+});
+
+test('assignShots: no pull request (or a closed one) for the repository goes to the primary repository, else the first open one; merged goes nowhere', () => {
+  const web = im('web/w-after.png');
+  assert.deepEqual(names(assignShots([web], [lk('api', 'OPEN'), lk('ops', 'OPEN')], REPOS as never)), { api: ['web/w-after.png'], ops: [] });
+  assert.deepEqual(names(assignShots([web], [lk('api', 'OPEN'), lk('web', 'CLOSED')], REPOS as never)), { api: ['web/w-after.png'] });
+  // No primary pull request: the first open one by the project's repository order, whatever the link order.
+  assert.deepEqual(names(assignShots([web], [lk('ops', 'OPEN'), lk('web', 'CLOSED'), lk('api', 'CLOSED')], REPOS as never)), { ops: ['web/w-after.png'] });
+  assert.deepEqual(names(assignShots([web], [lk('ops', 'OPEN')], [REPOS[1], REPOS[2], REPOS[0]] as never)), { ops: ['web/w-after.png'] });
+  // Merged and none open: nowhere. Open at another forge: not moved either.
+  assert.deepEqual(names(assignShots([web], [lk('api', 'OPEN'), lk('web', 'MERGED')], REPOS as never)), { api: [] });
+  assert.deepEqual(names(assignShots([web], [lk('api', 'OPEN'), { ...lk('web', 'OPEN'), url: 'https://dev.azure.com/o/p/_git/r/pullrequest/3' }], REPOS as never)), { api: [] });
+  // Merged one and an open one of the same repository: the open one gets it.
+  assert.deepEqual(names(assignShots([web], [lk('api', 'OPEN'), lk('web', 'MERGED', 1), lk('web', 'OPEN', 2)], REPOS as never)), { api: [], web: ['web/w-after.png'] });
+});
+
+const FILES = { 'web/login-before.png': 'wb', 'web/login-after.png': 'wa', 'api/db-after.png': 'ab' };
+async function runBoard(b: ReturnType<typeof board>, calls: { args: string[]; body?: string }[], marks = new Map<string, ScreenshotMark>()) {
+  const io = { run: fakeGh(() => ({ body: 'Did it', updatedAt: 't' }), calls) };
+  checkScreenshots(b.ctx, 'api', marks, io);
+  await settle();
+  return marks;
+}
+const edited = (calls: { args: string[]; body?: string }[]) => Object.fromEntries(calls.filter((c) => c.args[1] === 'edit').map((c) => [c.args[2].split('/')[4], c]));
+
+test('a task in two repositories: each pull request gets its own repository’s pictures, flat references, and the other one only a view', async () => {
+  const b = board({ files: { 'web/login-before.png': 'wb', 'web/login-after.png': 'wa' } });
+  const calls: { args: string[]; body?: string }[] = [];
+  await runBoard(b, calls);
+  const e = edited(calls);
+  assert.deepEqual(Object.keys(e), ['web'], 'the api pull request has no picture and no block: no edit');
+  assert.ok(calls.some((c) => c.args[1] === 'view' && c.args[2] === URL_), 'but it was looked at');
+  assert.match(e.web.body!, /!\[login before\]\(\.\/web\.login-before\.png\)/);
+  assert.ok(!e.web.body!.includes('(web)'), 'its own repository needs no name');
+  assert.deepEqual(e.web.args.filter((a, i) => e.web.args[i - 1] === '--attach').map((f) => path.basename(f)), ['web.login-before.png', 'web.login-after.png']);
+});
+
+test('the repository without a pull request sends its pictures to the primary repository’s, with its name in the heading', async () => {
+  const b = board({ files: FILES, webState: null });
+  const calls: { args: string[]; body?: string }[] = [];
+  await runBoard(b, calls);
+  const e = edited(calls);
+  assert.deepEqual(Object.keys(e), ['api']);
+  assert.match(e.api.body!, /### login \(Web\)/);
+  assert.match(e.api.body!, /### db\n/, 'its own picture has a plain heading');
+  assert.equal(e.api.args.filter((a) => a === '--attach').length, 3);
+});
+
+test('a merged repository’s pictures go nowhere, and no comment is made for them', async () => {
+  const b = board({ files: { 'web/login-after.png': 'wa' }, webState: 'MERGED' });
+  const calls: { args: string[]; body?: string }[] = [];
+  await runBoard(b, calls);
+  assert.deepEqual(Object.keys(edited(calls)), []);
+  assert.deepEqual(b.comments, []);
+});
+
+test('the pull request of the repository appearing later takes its pictures from the primary one, whose block is taken out', async () => {
+  const b = board({ files: { 'web/login-after.png': 'wa' }, webState: null });
+  const marks = new Map<string, ScreenshotMark>();
+  let apiBody = 'Did it';
+  const calls: { args: string[]; body?: string }[] = [];
+  const io = { run: fakeGh(() => ({ body: apiBody, updatedAt: 't' }), calls) };
+  checkScreenshots(b.ctx, 'api', marks, io);
+  await settle();
+  assert.deepEqual(Object.keys(edited(calls)), ['api']);
+  apiBody = edited(calls).api.body!;
+  b.links.push({ taskId: 1, repoId: 'web', repo: 'acme/web', number: 4, url: WEB_, state: 'OPEN', branch: 'b' });
+  calls.length = 0;
+  checkScreenshots(b.ctx, 'api', marks, io);
+  await settle();
+  const e = edited(calls);
+  assert.deepEqual(Object.keys(e).sort(), ['api', 'web']);
+  assert.ok(!e.api.body!.includes('agent-office:screenshots'), 'taken out of the primary');
+  assert.ok(!e.api.args.includes('--attach'));
+  assert.ok(e.web.body!.includes('(./web.login-after.png)'));
+});
+
+test('a mix of pictures straight in ui/ and in a repository folder', async () => {
+  const b = board({ files: { 'shared-after.png': 's', 'web/login-after.png': 'wa' } });
+  const calls: { args: string[]; body?: string }[] = [];
+  await runBoard(b, calls);
+  const e = edited(calls);
+  assert.deepEqual(Object.keys(e).sort(), ['api', 'web']);
+  assert.ok(e.api.body!.includes('(./shared-after.png)') && !e.api.body!.includes('login'));
+  assert.ok(e.web.body!.includes('(./shared-after.png)') && e.web.body!.includes('(./web.login-after.png)'));
+  // Only root pictures take the old path: the files themselves, no staging.
+  assert.ok(e.api.args.filter((a, i) => e.api.args[i - 1] === '--attach').every((f) => path.basename(path.dirname(f)) === 'ui'));
+});
+
+test('the staging folder holds flat links with unique names and the body, and is gone afterwards, also after an error', async () => {
+  const { dir, images } = folder({ 'x-after.png': 'r' });
+  mkdirSync(path.join(dir, 'web'));
+  mkdirSync(path.join(dir, 'api'));
+  writeFileSync(path.join(dir, 'web', 'login-after.png'), 'w');
+  writeFileSync(path.join(dir, 'api', 'login-after.png'), 'a');
+  writeFileSync(path.join(dir, 'web.login-after.png'), 'clash');
+  const all = listUiImages(dir);
+  assert.equal(all.length, 4);
+  let during: { stage: string; entries: string[]; body: string } | undefined;
+  const seen = fakeGh(() => ({ body: '', updatedAt: 't' }), []);
+  const run = async (args: string[], cwd: string, ms?: number, env?: Record<string, string>) => {
+    if (args[1] === 'edit') {
+      const body = args[args.indexOf('--body-file') + 1];
+      during = { stage: path.dirname(body), entries: readdirSync(path.dirname(body)).sort(), body: readFileSync(body, 'utf8') };
+      for (const f of args.filter((a, i) => args[i - 1] === '--attach')) assert.ok(existsSync(f) && path.dirname(f) === during.stage, 'attached from the staging folder');
+    }
+    return seen(args);
+  };
+  const r = await ensureScreenshots({ prUrl: URL_, images: all, dir, cwd: '.', repoId: 'api', names: new Map([['web', 'Web']]), run });
+  assert.equal(r.edited, true);
+  assert.match(path.basename(during!.stage), /^\.pr-[0-9a-f]+$/);
+  assert.ok(during!.entries.includes('web.login-after.png') && during!.entries.includes('web.login-after-2.png') && during!.entries.includes('api.login-after.png') && during!.entries.includes('x-after.png'));
+  assert.ok(during!.body.includes('### login (Web)'));
+  assert.ok(!existsSync(during!.stage), 'removed');
+  assert.deepEqual(readdirSync(dir).filter((n) => n.startsWith('.')), []);
+  // A failing gh leaves nothing behind either.
+  const bad = fakeGh(() => ({ body: '', updatedAt: 't' }), [], (a) => (a[1] === 'edit' ? new Error('boom') : undefined));
+  let stage = '';
+  const r2 = await ensureScreenshots({ prUrl: URL_, images: all, dir, cwd: '.', run: async (a, c, m, e) => { if (a[1] === 'edit') stage = path.dirname(a[a.indexOf('--body-file') + 1]); return bad(a); } });
+  assert.equal(r2.edited, false);
+  assert.ok(stage && !existsSync(stage));
+  assert.deepEqual(readdirSync(dir).filter((n) => n.startsWith('.')), []);
+  assert.deepEqual(listUiImages(dir).map((i) => i.name).sort(), all.map((i) => i.name).sort(), 'the pictures are untouched');
+  void images;
+});
+
+test('the digest tells a picture’s folder: the same file name in another repository is another set', () => {
+  const a = [{ ...im('web/x-after.png'), file: '/f' }];
+  const b = [{ ...im('api/x-after.png'), file: '/f' }];
+  assert.notEqual(imagesDigest(a), imagesDigest(b));
 });

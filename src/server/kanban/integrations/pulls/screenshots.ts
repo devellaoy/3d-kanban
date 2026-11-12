@@ -12,12 +12,17 @@
 // rewritten the description, so it is looked at once more. Nothing here throws; a pull request that
 // cannot be edited is told to the task once, not retried on every board refresh, except that a partial
 // upload (gh updated the description, then failed some uploads) is tried a few times.
+//
+// In a task with several repositories an image saved in `ui/<repoId>/` belongs to that repository's pull
+// request(s) (assignShots has the rule); each pull request has its own set and digest. gh's references stay
+// flat (`./name` next to the body file): a set with folder images is staged in a temporary folder first.
 
 import { createHash, randomBytes } from 'node:crypto';
 import { existsSync } from 'node:fs';
-import { rm, writeFile } from 'node:fs/promises';
+import { copyFile, link, mkdir, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { sameRepo } from '../../../../shared/floors.js';
+import type { KanbanPrLink, KanbanTask, ProjectRepo } from '../../../../shared/kanban/types.js';
 import { pairImages, type KanbanTaskImage } from '../../../../shared/kanban/uitesting.js';
 import { gh } from '../../../github.js';
 import type { KanbanContext } from '../../registry.js';
@@ -37,12 +42,20 @@ export function imagesDigest(images: readonly KanbanTaskImage[]): string {
   return h.digest('hex').slice(0, 16);
 }
 
-/** The description's block for these images: `./name` references, which gh turns into the uploaded files. */
-export function screenshotsBlock(images: readonly KanbanTaskImage[]): { digest: string; text: string } {
+/** How a block names the images: for a pull request of repository `repoId`, a pair from another repository's folder gets that repository's name (`names`) in its heading; `ref` is the reference to an image's file when it is not its name. */
+export interface BlockOpts {
+  repoId?: string;
+  names?: ReadonlyMap<string, string>;
+  ref?: ReadonlyMap<string, string>;
+}
+
+/** The description's block for these images: `./name` references, which gh turns into the uploaded files. The digest is of the images as they are in the task, whatever the references. */
+export function screenshotsBlock(images: readonly KanbanTaskImage[], o: BlockOpts = {}): { digest: string; text: string } {
   const digest = imagesDigest(images);
   const parts = pairImages(images).map((p) => {
-    const side = (label: string, i: KanbanTaskImage | undefined) => (i ? [`**${label}**`, '', `![${p.subject} ${label.toLowerCase()}](./${i.name})`, ''] : []);
-    return [`### ${p.subject}`, '', ...side('Before', p.before), ...side('After', p.after)].join('\n').trimEnd();
+    const side = (label: string, i: KanbanTaskImage | undefined) => (i ? [`**${label}**`, '', `![${p.subject} ${label.toLowerCase()}](./${o.ref?.get(i.name) ?? i.name})`, ''] : []);
+    const from = p.repo && p.repo !== o.repoId ? ` (${o.names?.get(p.repo) ?? p.repo})` : '';
+    return [`### ${p.subject}${from}`, '', ...side('Before', p.before), ...side('After', p.after)].join('\n').trimEnd();
   });
   return { digest, text: [`<!-- agent-office:screenshots ${digest} -->`, '## Screenshots', '', parts.join('\n\n'), '<!-- /agent-office:screenshots -->'].join('\n') };
 }
@@ -60,6 +73,9 @@ export interface EnsureScreenshots {
   /** The images' folder: the description is written there, since gh finds `./name` next to the --body-file. */
   dir: string;
   cwd: string;
+  /** The repository (ProjectRepo.id) the pull request is in, and the names of the project's repositories: for the headings of another repository's pictures. */
+  repoId?: string;
+  names?: ReadonlyMap<string, string>;
   /** gh as the account that opened the pull request (undefined: the office's own sign-in). */
   env?: Record<string, string>;
   run?: GhRunner;
@@ -94,11 +110,35 @@ export function editTimeout(images: readonly KanbanTaskImage[]): number {
   return Math.min(600_000, Math.round(60_000 + images.length * 10_000 + mb * 3_000));
 }
 
+/**
+ * The images as flat files in `stage` (made here): hard links, else copies, named `<folder>.<file>` for an
+ * image from a repository's folder (a number before the extension when that name is taken). Returns the
+ * files and the reference to each image by its name in the task.
+ */
+async function stageImages(stage: string, images: readonly UiImageFile[]): Promise<{ files: string[]; ref: Map<string, string> }> {
+  await mkdir(stage, { mode: 0o700 });
+  const ref = new Map<string, string>();
+  const taken = new Set<string>();
+  const files: string[] = [];
+  for (const i of images) {
+    const flat = i.name.replace('/', '.');
+    let name = flat;
+    for (let n = 2; taken.has(name); n++) name = flat.replace(/(\.[a-z]+)$/, `-${n}$1`);
+    taken.add(name);
+    const to = path.join(stage, name);
+    await link(i.file, to).catch(() => copyFile(i.file, to));
+    ref.set(i.name, name);
+    files.push(to);
+  }
+  return { files, ref };
+}
+
 /** Puts the images into the pull request's description unless the digest there is theirs already. */
 export async function ensureScreenshots(o: EnsureScreenshots): Promise<EnsuredScreenshots> {
   const run = o.run ?? gh;
-  const { digest, text } = o.images.length ? screenshotsBlock(o.images) : { digest: '', text: '' };
+  const digest = o.images.length ? imagesDigest(o.images) : '';
   let tmp: string | undefined;
+  let stage: string | undefined;
   try {
     let view: { body?: unknown; updatedAt?: unknown };
     try {
@@ -112,13 +152,21 @@ export async function ensureScreenshots(o: EnsureScreenshots): Promise<EnsuredSc
     // Done only when the block is this set's and gh rewrote every reference: a partial upload leaves `](./name)` behind.
     const have = BLOCK_RE.exec(body)?.[0] ?? '';
     if (!gone && OPEN_RE.exec(have)?.[1] === digest && !have.includes('](./')) return { edited: false };
-    tmp = path.join(o.dir, `.pr-body-${randomBytes(6).toString('hex')}.md`);
+    // gh finds `./name` next to the body file, so pictures from repository folders are staged flat first.
+    let files = o.images.map((i) => i.file);
+    let ref: Map<string, string> | undefined;
+    if (!gone && o.images.some((i) => i.repo)) {
+      stage = path.join(o.dir, `.pr-${randomBytes(6).toString('hex')}`);
+      ({ files, ref } = await stageImages(stage, o.images));
+    }
+    const text = gone ? '' : screenshotsBlock(o.images, { repoId: o.repoId, names: o.names, ref }).text;
+    tmp = path.join(stage ?? o.dir, `.pr-body-${randomBytes(6).toString('hex')}.md`);
     await writeFile(tmp, gone ? withoutScreenshots(body) : withScreenshots(body, text), { mode: 0o600 });
     // Someone may have edited the description since it was read: theirs isn't overwritten, it's looked at again.
     const again = JSON.parse(await run(['pr', 'view', o.prUrl, '--json', 'body,updatedAt'], o.cwd, 30_000, o.env)) as typeof view;
     if (again.body !== view.body || again.updatedAt !== view.updatedAt) return { edited: false, retry: true, warning: `Couldn't ${gone ? 'take the screenshots out of' : 'add the screenshots to'} ${o.prUrl}: the description kept changing` };
     try {
-      await run(['pr', 'edit', o.prUrl, '--body-file', tmp, ...o.images.flatMap((i) => ['--attach', i.file])], o.cwd, editTimeout(o.images), o.env);
+      await run(['pr', 'edit', o.prUrl, '--body-file', tmp, ...files.flatMap((f) => ['--attach', f])], o.cwd, editTimeout(o.images), o.env);
     } catch (err) {
       // gh may have written the description and failed some uploads: then it carries our block, and a later try finishes the job.
       const now = await run(['pr', 'view', o.prUrl, '--json', 'body,updatedAt'], o.cwd, 30_000, o.env).then((t) => (JSON.parse(t) as { body?: unknown }).body, () => undefined);
@@ -133,6 +181,7 @@ export async function ensureScreenshots(o: EnsureScreenshots): Promise<EnsuredSc
     return { edited: false, warning: `Couldn't ${o.images.length ? 'add the screenshots to' : 'take the screenshots out of'} ${o.prUrl}: ${(err as Error).message}. ${o.images.length ? 'Adding them needs gh 2.99 or newer (gh pr edit --attach) and' : 'Editing it needs'} write access to the repository.` };
   } finally {
     if (tmp) await rm(tmp, { force: true }).catch(() => undefined);
+    if (stage) await rm(stage, { recursive: true, force: true }).catch(() => undefined);
   }
 }
 
@@ -154,36 +203,59 @@ const setDigest = (images: readonly KanbanTaskImage[]) => (images.length ? image
 /** Only github.com pull requests: https://github.com/<owner>/<repo>/pull/<n> (no GitHub Enterprise hosts, no other forges). */
 const isGithubPr = (url: string) => /^https:\/\/github\.com\/[^/]+\/[^/]+\/pull\/\d+/.test(url);
 
+/** Where each of a task's images goes: for every open or draft GitHub pull request (the keys), its own images, in the order given. */
+export function assignShots(images: readonly UiImageFile[], links: readonly KanbanPrLink[], repos: readonly ProjectRepo[]): Map<string, UiImageFile[]> {
+  const open = (l: KanbanPrLink) => l.state === 'OPEN' || l.state === 'DRAFT';
+  const targets = links.filter((l) => open(l) && isGithubPr(l.url));
+  const out = new Map<string, UiImageFile[]>(targets.map((l) => [l.url, []]));
+  const rank = (l: KanbanPrLink) => (repos.some((r) => r.id === l.repoId) ? repos.findIndex((r) => r.id === l.repoId) : repos.length);
+  // The pull request an image whose own repository has none goes to: the primary repository's, else the first by the project's order.
+  const fallback = targets.find((l) => repos.find((r) => r.id === l.repoId)?.primary) ?? [...targets].sort((a, b) => rank(a) - rank(b))[0];
+  for (const img of images) {
+    const home = img.repo && repos.some((r) => r.id === img.repo) ? links.filter((l) => l.repoId === img.repo) : undefined;
+    // Straight in the folder, or in one that is no repository of the project: every pull request, as when the task had one repository.
+    const to = !home ? targets : targets.filter((l) => l.repoId === img.repo);
+    if (to.length) for (const l of to) out.get(l.url)!.push(img);
+    // Its repository's pull request is merged (or open at another host): the picture is done with; it must not turn up in another repository's.
+    else if (home && !home.some((l) => open(l) || l.state === 'MERGED') && fallback) out.get(fallback.url)!.push(img);
+  }
+  return out;
+}
+
+/** The task's pull requests off its own branches in the project's repositories, in any state. */
+function taskLinks(ctx: KanbanContext, project: string, task: KanbanTask, repos: readonly ProjectRepo[]): (KanbanPrLink & { taskId: number })[] {
+  const branches = new Set([task.branch, ...Object.values(ctx.repo.repoBranches(task.id))]);
+  return ctx.repo.prLinksOfProject(project)
+    .filter((l) => l.taskId === task.id && !!l.branch && branches.has(l.branch) && repos.some((r) => sameRepo(r.remote, l.repo ?? repos.find((x) => x.id === l.repoId)?.remote)));
+}
+
 /**
  * For each task whose pull requests the office opened (`prRequested`) and that has no run going: every
- * open GitHub pull request off the task's own branches gets the task's images (ensureScreenshots), once
- * per digest. A lone "after" counts. Fire and forget; what it did, or couldn't, goes on the task as a status comment.
+ * open GitHub pull request off the task's own branches gets its share of the task's images (assignShots;
+ * all of them in a task with one repository), once per digest of that share. A lone "after" counts. Fire
+ * and forget; what it did, or couldn't, goes on the task as a status comment.
  */
 export function checkScreenshots(ctx: KanbanContext, project: string, marks: Map<string, ScreenshotMark>, io: { run: GhRunner }): void {
   const seen = new Set<string>();
   const repos = ctx.repos(project);
   for (const task of ctx.repo.listTasks(project)) {
     if (!task.flags.prRequested || task.runState !== 'idle') continue;
-    const branches = new Set([task.branch, ...Object.values(ctx.repo.repoBranches(task.id))]);
-    const prs = ctx.repo.prLinksOfProject(project)
-      .filter((l) => (l.state === 'OPEN' || l.state === 'DRAFT') && l.taskId === task.id && isGithubPr(l.url))
-      .filter((l) => !!l.branch && branches.has(l.branch) && repos.some((r) => sameRepo(r.remote, l.repo ?? repos.find((x) => x.id === l.repoId)?.remote)));
-    if (!prs.length) continue;
+    const shares = assignShots(listUiImages(uiImagesDir(ctx.filesDir, task.id)), taskLinks(ctx, project, task, repos), repos);
+    if (!shares.size) continue;
     const dir = uiImagesDir(ctx.filesDir, task.id);
-    const images = listUiImages(dir);
     // No images and no images folder: the task never had any, so there is no block of ours to take out and nothing to ask.
-    if (!images.length && !existsSync(dir)) continue;
-    const digest = setDigest(images);
+    if (!existsSync(dir) && ![...shares.values()].some((v) => v.length)) continue;
     const runId = ctx.repo.latestRunId(task.id);
-    for (const pr of prs) {
-      seen.add(pr.url);
-      const was = marks.get(pr.url);
+    for (const [url, own] of shares) {
+      const digest = setDigest(own);
+      seen.add(url);
+      const was = marks.get(url);
       const same = was?.digest === digest && was.runId === runId;
       if (same && was.done) continue;
       const tries = (same ? was.tries : 0) + 1;
       // Marked at once, so the next refresh does not queue it again while it runs.
-      marks.set(pr.url, { project, runId, digest, tries, done: true });
-      inOrder(pr.url, () => screenshotOne(ctx, project, task.id, pr.url, digest, runId, tries, marks, io));
+      marks.set(url, { project, runId, digest, tries, done: true });
+      inOrder(url, () => screenshotOne(ctx, project, task.id, url, digest, runId, tries, marks, io));
     }
   }
   for (const [url, m] of marks) if (m.project === project && !seen.has(url)) marks.delete(url);
@@ -194,13 +266,15 @@ async function screenshotOne(ctx: KanbanContext, project: string, taskId: number
   const task = ctx.repo.listTasks(project).find((t) => t.id === taskId);
   if (!task || task.runState !== 'idle') return void marks.delete(url);
   const dir = uiImagesDir(ctx.filesDir, taskId);
-  const images = listUiImages(dir);
-  // The images changed since it was queued: a later pass deals with them.
-  if (setDigest(images) !== digest) return void marks.delete(url);
+  const repos = ctx.repos(project);
+  const links = taskLinks(ctx, project, task, repos);
+  const images = assignShots(listUiImages(dir), links, repos).get(url);
+  // The images (or the pull requests) changed since it was queued: a later pass deals with them.
+  if (!images || setDigest(images) !== digest) return void marks.delete(url);
   const editor = ghEditor(ctx.ghAs?.(task.createdByAccount));
   const r: EnsuredScreenshots = 'warning' in editor
     ? { edited: false, warning: `Not adding the screenshots to ${url}: ${editor.warning}` }
-    : await ensureScreenshots({ prUrl: url, images, dir, cwd: ctx.dataDir, env: editor.env, run: io.run });
+    : await ensureScreenshots({ prUrl: url, images, dir, cwd: ctx.dataDir, repoId: links.find((l) => l.url === url)?.repoId, names: new Map(repos.map((x) => [x.id, x.name])), env: editor.env, run: io.run });
   if (r.retry && tries < READ_TRIES) return void marks.set(url, { project, runId, digest, tries });
   marks.set(url, { project, runId, digest, tries, done: true });
   const text = r.warning ?? (r.removed ? `Took the screenshots out of the description of ${url}` : r.edited ? `Added ${images.length} screenshot${images.length === 1 ? '' : 's'} to the description of ${url}` : '');
