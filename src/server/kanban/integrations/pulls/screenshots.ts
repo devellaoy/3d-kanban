@@ -4,13 +4,17 @@
 // uploads each attached file and rewrites the body's `./name` references to the uploaded addresses).
 //
 // The block sits at the END of the description between two marker comments, the first carrying a
-// digest of the images (names, sizes, times). It is the only state: a description whose block has the
-// digest of the images now needs nothing, one with another digest has the block replaced, one without
-// it gets it appended. Nothing here throws; a pull request that cannot be edited is told to the task
-// once per digest, not retried on every board refresh. When every image is removed later the block
-// that is there stays.
+// digest of the images (names, sizes, times). The description is the truth: one whose block has the
+// digest of the images now (and no local reference left from a partial upload) needs nothing, one with
+// another digest has the block replaced, one without it gets it appended. When every image has been
+// removed, the office's block is taken out (without --attach). In memory a mark per pull request, tied
+// to the task's latest run, keeps a refresh from asking again: a new run (a PR phase, a fix) may have
+// rewritten the description, so it is looked at once more. Nothing here throws; a pull request that
+// cannot be edited is told to the task once, not retried on every board refresh, except that a partial
+// upload (gh updated the description, then failed some uploads) is tried a few times.
 
 import { createHash, randomBytes } from 'node:crypto';
+import { existsSync } from 'node:fs';
 import { rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { sameRepo } from '../../../../shared/floors.js';
@@ -64,8 +68,20 @@ export interface EnsureScreenshots {
 export interface EnsuredScreenshots {
   edited: boolean;
   warning?: string;
-  /** gh could not show the pull request: asking again later may work. */
+  /** gh could not show the pull request, or uploaded only some of the images: asking again later may work. */
   retry?: boolean;
+  /** The block was taken out (every image is gone). */
+  removed?: true;
+}
+
+/** The description without the office's block, and the blank lines it leaves: the human text around it is kept as it was. */
+export function withoutScreenshots(body: string): string {
+  const m = BLOCK_RE.exec(body);
+  if (!m) return body;
+  const before = body.slice(0, m.index);
+  const after = body.slice(m.index + m[0].length);
+  if (!after.trim()) return before.trim() ? `${before.trimEnd()}\n` : '';
+  return before.trim() ? `${before.trimEnd()}\n\n${after.trimStart()}` : after.trimStart();
 }
 
 /** How long gh may take to upload these: a minute, and more for each image and megabyte, at most ten minutes. */
@@ -77,8 +93,7 @@ export function editTimeout(images: readonly KanbanTaskImage[]): number {
 /** Puts the images into the pull request's description unless the digest there is theirs already. */
 export async function ensureScreenshots(o: EnsureScreenshots): Promise<EnsuredScreenshots> {
   const run = o.run ?? gh;
-  if (!o.images.length) return { edited: false };
-  const { digest, text } = screenshotsBlock(o.images);
+  const { digest, text } = o.images.length ? screenshotsBlock(o.images) : { digest: '', text: '' };
   let tmp: string | undefined;
   try {
     let view: { body?: unknown; updatedAt?: unknown };
@@ -88,18 +103,30 @@ export async function ensureScreenshots(o: EnsureScreenshots): Promise<EnsuredSc
       return { edited: false, retry: true, warning: `Couldn't read ${o.prUrl}: ${(err as Error).message}` };
     }
     const body = typeof view.body === 'string' ? view.body : '';
+    const gone = !o.images.length;
+    if (gone && !BLOCK_RE.test(body)) return { edited: false };
     // Done only when the block is this set's and gh rewrote every reference: a partial upload leaves `](./name)` behind.
     const have = BLOCK_RE.exec(body)?.[0] ?? '';
-    if (OPEN_RE.exec(have)?.[1] === digest && !have.includes('](./')) return { edited: false };
+    if (!gone && OPEN_RE.exec(have)?.[1] === digest && !have.includes('](./')) return { edited: false };
     tmp = path.join(o.dir, `.pr-body-${randomBytes(6).toString('hex')}.md`);
-    await writeFile(tmp, withScreenshots(body, text), { mode: 0o600 });
+    await writeFile(tmp, gone ? withoutScreenshots(body) : withScreenshots(body, text), { mode: 0o600 });
     // Someone may have edited the description since it was read: theirs isn't overwritten, it's looked at again.
     const again = JSON.parse(await run(['pr', 'view', o.prUrl, '--json', 'body,updatedAt'], o.cwd, 30_000, o.env)) as typeof view;
-    if (again.body !== view.body || again.updatedAt !== view.updatedAt) return { edited: false, retry: true, warning: `Couldn't add the screenshots to ${o.prUrl}: the description kept changing` };
-    await run(['pr', 'edit', o.prUrl, '--body-file', tmp, ...o.images.flatMap((i) => ['--attach', i.file])], o.cwd, editTimeout(o.images), o.env);
-    return { edited: true };
+    if (again.body !== view.body || again.updatedAt !== view.updatedAt) return { edited: false, retry: true, warning: `Couldn't ${gone ? 'take the screenshots out of' : 'add the screenshots to'} ${o.prUrl}: the description kept changing` };
+    try {
+      await run(['pr', 'edit', o.prUrl, '--body-file', tmp, ...o.images.flatMap((i) => ['--attach', i.file])], o.cwd, editTimeout(o.images), o.env);
+    } catch (err) {
+      // gh may have written the description and failed some uploads: then it carries our block, and a later try finishes the job.
+      const now = await run(['pr', 'view', o.prUrl, '--json', 'body,updatedAt'], o.cwd, 30_000, o.env).then((t) => (JSON.parse(t) as { body?: unknown }).body, () => undefined);
+      const carries = (t: string) => OPEN_RE.exec(BLOCK_RE.exec(t)?.[0] ?? '')?.[1] === digest;
+      if (!gone && typeof now === 'string' && carries(now) && (now !== view.body || carries(body))) {
+        return { edited: false, retry: true, warning: `Some of the screenshots could not be uploaded to ${o.prUrl}: ${(err as Error).message}` };
+      }
+      throw err;
+    }
+    return gone ? { edited: true, removed: true } : { edited: true };
   } catch (err) {
-    return { edited: false, warning: `Couldn't add the screenshots to ${o.prUrl}: ${(err as Error).message}. Adding them needs gh 2.99 or newer (gh pr edit --attach) and write access to the repository.` };
+    return { edited: false, warning: `Couldn't ${o.images.length ? 'add the screenshots to' : 'take the screenshots out of'} ${o.prUrl}: ${(err as Error).message}. ${o.images.length ? 'Adding them needs gh 2.99 or newer (gh pr edit --attach) and' : 'Editing it needs'} write access to the repository.` };
   } finally {
     if (tmp) await rm(tmp, { force: true }).catch(() => undefined);
   }
@@ -109,10 +136,16 @@ export async function ensureScreenshots(o: EnsureScreenshots): Promise<EnsuredSc
 export interface ScreenshotMark {
   /** The project whose refresh made it: a refresh only prunes its own. */
   project: string;
+  /** The task's latest run when it was dealt with: a later run may have rewritten the description. */
+  runId?: number;
+  /** The digest of the images, or 'none' for no images (the block to be taken out). */
   digest: string;
   tries: number;
   done?: true;
 }
+
+/** The digest of an image set; 'none' for the empty one. */
+const setDigest = (images: readonly KanbanTaskImage[]) => (images.length ? imagesDigest(images) : 'none');
 
 /** Only github.com pull requests: https://github.com/<owner>/<repo>/pull/<n> (no GitHub Enterprise hosts, no other forges). */
 const isGithubPr = (url: string) => /^https:\/\/github\.com\/[^/]+\/[^/]+\/pull\/\d+/.test(url);
@@ -134,36 +167,39 @@ export function checkScreenshots(ctx: KanbanContext, project: string, marks: Map
     if (!prs.length) continue;
     const dir = uiImagesDir(ctx.filesDir, task.id);
     const images = listUiImages(dir);
-    if (!images.length) continue;
-    const digest = imagesDigest(images);
+    // No images and no images folder: the task never had any, so there is no block of ours to take out and nothing to ask.
+    if (!images.length && !existsSync(dir)) continue;
+    const digest = setDigest(images);
+    const runId = ctx.repo.latestRunId(task.id);
     for (const pr of prs) {
       seen.add(pr.url);
       const was = marks.get(pr.url);
-      if (was?.digest === digest && was.done) continue;
-      const tries = (was?.digest === digest ? was.tries : 0) + 1;
+      const same = was?.digest === digest && was.runId === runId;
+      if (same && was.done) continue;
+      const tries = (same ? was.tries : 0) + 1;
       // Marked at once, so the next refresh does not queue it again while it runs.
-      marks.set(pr.url, { project, digest, tries, done: true });
-      inOrder(pr.url, () => screenshotOne(ctx, project, task.id, pr.url, digest, tries, marks, io));
+      marks.set(pr.url, { project, runId, digest, tries, done: true });
+      inOrder(pr.url, () => screenshotOne(ctx, project, task.id, pr.url, digest, runId, tries, marks, io));
     }
   }
   for (const [url, m] of marks) if (m.project === project && !seen.has(url)) marks.delete(url);
 }
 
 /** One pull request's job, when its turn comes: from the task as it is then. */
-async function screenshotOne(ctx: KanbanContext, project: string, taskId: number, url: string, digest: string, tries: number, marks: Map<string, ScreenshotMark>, io: { run: GhRunner }): Promise<void> {
+async function screenshotOne(ctx: KanbanContext, project: string, taskId: number, url: string, digest: string, runId: number | undefined, tries: number, marks: Map<string, ScreenshotMark>, io: { run: GhRunner }): Promise<void> {
   const task = ctx.repo.listTasks(project).find((t) => t.id === taskId);
   if (!task || task.runState !== 'idle') return void marks.delete(url);
   const dir = uiImagesDir(ctx.filesDir, taskId);
   const images = listUiImages(dir);
   // The images changed since it was queued: a later pass deals with them.
-  if (!images.length || imagesDigest(images) !== digest) return void marks.delete(url);
+  if (setDigest(images) !== digest) return void marks.delete(url);
   const editor = ghEditor(ctx.ghAs?.(task.createdByAccount));
   const r: EnsuredScreenshots = 'warning' in editor
     ? { edited: false, warning: `Not adding the screenshots to ${url}: ${editor.warning}` }
     : await ensureScreenshots({ prUrl: url, images, dir, cwd: ctx.dataDir, env: editor.env, run: io.run });
-  if (r.retry && tries < READ_TRIES) return void marks.set(url, { project, digest, tries });
-  marks.set(url, { project, digest, tries, done: true });
-  const text = r.warning ?? (r.edited ? `Added ${images.length} screenshot${images.length === 1 ? '' : 's'} to the description of ${url}` : '');
+  if (r.retry && tries < READ_TRIES) return void marks.set(url, { project, runId, digest, tries });
+  marks.set(url, { project, runId, digest, tries, done: true });
+  const text = r.warning ?? (r.removed ? `Took the screenshots out of the description of ${url}` : r.edited ? `Added ${images.length} screenshot${images.length === 1 ? '' : 's'} to the description of ${url}` : '');
   if (!text) return;
   ctx.repo.addComment({ taskId, authorKind: 'system', authorName: 'Kanban', kind: 'status', text });
   ctx.taskChanged(taskId);

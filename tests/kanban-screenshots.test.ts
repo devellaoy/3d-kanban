@@ -3,10 +3,10 @@
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import { checkScreenshots, editTimeout, ensureScreenshots, imagesDigest, screenshotsBlock, withScreenshots, type ScreenshotMark } from '../src/server/kanban/integrations/pulls/screenshots.js';
+import { checkScreenshots, editTimeout, ensureScreenshots, imagesDigest, screenshotsBlock, withScreenshots, withoutScreenshots, type ScreenshotMark } from '../src/server/kanban/integrations/pulls/screenshots.js';
 import { listUiImages } from '../src/server/kanban/engine/uitesting.js';
 
 const URL_ = 'https://github.com/acme/api/pull/3';
@@ -104,6 +104,8 @@ test('a gh that fails (no --attach, no access) is a warning and the file is stil
   assert.deepEqual(readdirSync(dir).filter((n) => n.startsWith('.')), []);
 });
 
+const run = { id: 1 };
+
 function board(opts: { runState?: string; flags?: Record<string, boolean>; url?: string; state?: string; files?: Record<string, string> } = {}) {
   const root = mkdtempSync(path.join(tmpdir(), 'kanban-shots-ctx-'));
   const dir = path.join(root, 'grants', 'task-1', 'ui');
@@ -119,7 +121,7 @@ function board(opts: { runState?: string; flags?: Record<string, boolean>; url?:
     dataDir: root,
     filesDir: root,
     repos: () => [{ id: 'api', primary: true, remote: 'acme/api' }, { id: 'web', primary: false, remote: 'acme/web' }],
-    repo: { prLinksOfProject: () => links, listTasks: () => [task], repoBranches: () => ({}), addComment: (c: { text: string }) => void comments.push(c.text) },
+    repo: { prLinksOfProject: () => links, listTasks: () => [task], repoBranches: () => ({}), latestRunId: () => run.id, addComment: (c: { text: string }) => void comments.push(c.text) },
     taskChanged() {},
   } as unknown as Parameters<typeof checkScreenshots>[0];
   return { ctx, dir, task, comments };
@@ -244,4 +246,146 @@ test('two floors sharing the marks: a persistent failure is tried and told once 
   assert.deepEqual(edited, [one.url, two.url]);
   assert.equal(one.comments.length, 1);
   assert.equal(two.comments.length, 1);
+});
+
+/** A pull request with a description of its own: `edit` applies the body file, as gh does (uploads rewrite `./name`), or fails as `mode` says. */
+function livePr(body: string, mode: { v: 'ok' | 'partial' | 'fail' } = { v: 'ok' }) {
+  const st = { body, rev: 0, views: 0, edits: [] as string[][] };
+  const run = async (args: string[]) => {
+    if (args[1] === 'view') {
+      st.views++;
+      return JSON.stringify({ body: st.body, updatedAt: `r${st.rev}` });
+    }
+    st.edits.push(args);
+    if (mode.v === 'fail') throw new Error('unknown flag: --attach');
+    let next = readFileSync(args[args.indexOf('--body-file') + 1], 'utf8');
+    const attached = args.filter((a, i) => args[i - 1] === '--attach').length;
+    let n = 0;
+    next = next.replace(/\]\(\.\/([^)]+)\)/g, (all, name) => (mode.v === 'partial' && n++ >= 1 ? all : `](https://github.com/user-attachments/assets/${name})`));
+    void attached;
+    st.body = next;
+    st.rev++;
+    if (mode.v === 'partial') throw new Error('upload of one file failed');
+    return '';
+  };
+  return { st, run };
+}
+const refresh = async (ctx: Parameters<typeof checkScreenshots>[0], marks: Map<string, ScreenshotMark>, run: (a: string[]) => Promise<string>) => {
+  checkScreenshots(ctx, 'api', marks, { run });
+  await settle();
+};
+/** The board with one pull request, so the counts are per pull request. */
+function oneBoard(opts: Parameters<typeof board>[0] = {}) {
+  const b = board(opts);
+  const only = [{ taskId: 1, repoId: 'api', repo: 'acme/api', number: 3, url: URL_, state: 'OPEN', branch: 'b' }];
+  (b.ctx as unknown as { repo: { prLinksOfProject: () => unknown } }).repo.prLinksOfProject = () => only;
+  return b;
+}
+
+test('a new run that rewrote the description without the block gets it back; an intact block costs a view and no edit', async () => {
+  const { ctx, comments } = oneBoard();
+  const pr = livePr('Did it');
+  const marks = new Map<string, ScreenshotMark>();
+  await refresh(ctx, marks, pr.run);
+  assert.equal(pr.st.edits.length, 1);
+  assert.equal(comments.length, 1);
+  await refresh(ctx, marks, pr.run);
+  const views = pr.st.views;
+  await refresh(ctx, marks, pr.run);
+  assert.equal(pr.st.views, views, 'same run, same images: nothing asked');
+  // A new run ends; the PR agent rewrote the description, the block is gone.
+  run.id++;
+  pr.st.body = 'Rewritten by the agent';
+  pr.st.rev++;
+  await refresh(ctx, marks, pr.run);
+  assert.equal(pr.st.edits.length, 2);
+  assert.match(pr.st.body, /^Rewritten by the agent\n\n<!-- agent-office:screenshots /);
+  assert.equal(comments.length, 2);
+  // Another run that left the block alone: a view, no edit, no comment.
+  run.id++;
+  const before = pr.st.views;
+  await refresh(ctx, marks, pr.run);
+  assert.equal(pr.st.views, before + 1);
+  assert.equal(pr.st.edits.length, 2);
+  assert.equal(comments.length, 2);
+  run.id = 1;
+});
+
+test('a partial upload is finished on a later refresh, with one Added comment', async () => {
+  const { ctx, comments } = oneBoard();
+  const mode = { v: 'partial' as 'ok' | 'partial' | 'fail' };
+  const pr = livePr('Did it', mode);
+  const marks = new Map<string, ScreenshotMark>();
+  await refresh(ctx, marks, pr.run);
+  assert.equal(pr.st.edits.length, 1);
+  assert.equal(comments.length, 0, 'not told while it is still being tried');
+  assert.match(pr.st.body, /\]\(\.\/a-/);
+  mode.v = 'ok';
+  await refresh(ctx, marks, pr.run);
+  assert.equal(pr.st.edits.length, 2);
+  assert.ok(!pr.st.body.includes('](./'));
+  assert.equal(comments.length, 1);
+  assert.match(comments[0], /^Added 2 screenshots/);
+  await refresh(ctx, marks, pr.run);
+  assert.equal(pr.st.edits.length, 2);
+});
+
+test('a partial upload that never completes is tried a few times and told once', async () => {
+  const { ctx, comments } = oneBoard();
+  const pr = livePr('Did it', { v: 'partial' });
+  const marks = new Map<string, ScreenshotMark>();
+  for (let i = 0; i < 8; i++) await refresh(ctx, marks, pr.run);
+  assert.equal(pr.st.edits.length, 3);
+  assert.equal(comments.length, 1);
+  assert.match(comments[0], /could not be uploaded/);
+});
+
+test('a total failure (the description unchanged) is told once and not retried', async () => {
+  const { ctx, comments } = oneBoard();
+  const pr = livePr('Did it', { v: 'fail' });
+  const marks = new Map<string, ScreenshotMark>();
+  for (let i = 0; i < 5; i++) await refresh(ctx, marks, pr.run);
+  assert.equal(pr.st.edits.length, 1);
+  assert.equal(comments.length, 1);
+});
+
+test('removing every image takes the block out, keeping the text around it; later refreshes ask nothing', async () => {
+  const { ctx, dir, comments } = oneBoard();
+  const human = 'Intro text\n\nMore\n';
+  const pr = livePr(human);
+  const marks = new Map<string, ScreenshotMark>();
+  await refresh(ctx, marks, pr.run);
+  assert.ok(pr.st.body.includes('agent-office:screenshots'));
+  pr.st.body += '\nFooter by a person\n';
+  for (const n of readdirSync(dir)) rmSync(path.join(dir, n));
+  await refresh(ctx, marks, pr.run);
+  assert.equal(pr.st.body, 'Intro text\n\nMore\n\nFooter by a person\n'.replace('More\n\n', 'More\n\n'));
+  const last = pr.st.edits.at(-1)!;
+  assert.ok(!last.includes('--attach'));
+  assert.match(comments.at(-1)!, /^Took the screenshots out of the description of /);
+  const [edits, views, n] = [pr.st.edits.length, pr.st.views, comments.length];
+  for (let i = 0; i < 3; i++) await refresh(ctx, marks, pr.run);
+  assert.deepEqual([pr.st.edits.length, pr.st.views, comments.length], [edits, views, n]);
+});
+
+test('with no images and no block of ours nothing is edited, and with no images folder nothing is asked', async () => {
+  const { ctx } = oneBoard({ files: {} });
+  const pr = livePr('Just text');
+  const marks = new Map<string, ScreenshotMark>();
+  for (let i = 0; i < 3; i++) await refresh(ctx, marks, pr.run);
+  assert.equal(pr.st.edits.length, 0);
+  assert.equal(pr.st.views, 1, 'one view per run');
+  const never = oneBoard({ files: {} });
+  rmSync(path.dirname(path.dirname(never.dir)), { recursive: true });
+  const gh2 = livePr('x');
+  await refresh(never.ctx, new Map(), gh2.run);
+  assert.equal(gh2.st.views, 0);
+});
+
+test('withoutScreenshots keeps what is around the block byte for byte', () => {
+  const b = screenshotsBlock(folder({ 'a-after.png': 'x' }).images).text;
+  assert.equal(withoutScreenshots(`Intro\n\n${b}\n`), 'Intro\n');
+  assert.equal(withoutScreenshots(`Intro\n\n${b}\n\nFooter\n`), 'Intro\n\nFooter\n');
+  assert.equal(withoutScreenshots(`${b}\n`), '');
+  assert.equal(withoutScreenshots('No block\n\n'), 'No block\n\n');
 });
