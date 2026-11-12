@@ -774,8 +774,13 @@ reads its own. A kanban task made from a card keeps the description as its own, 
   retaken in a fix round reach the description at the next refresh, which can be before **Push & update PRs** has pushed
   the fix's commits. It needs **gh 2.99.0 or newer** (the first with `--attach`) and write access to the repository, as the
   person who owns the task (like the closing line); when it can't (an older gh, no write access, a failed upload) the task
-  gets one comment saying why, and the same images are not tried again. Removing every image leaves the section that
-  is there. GitHub only: a PR on Azure DevOps or Bitbucket gets no section.
+  gets one comment saying why, and the same images are not tried again. If gh uploaded only some of the images (it
+  updates the description and then reports an error), the section is not counted as done: the office tries it once more
+  for those images, and tells the task if that fails too. Removing every image leaves the section that is there.
+  Known limits: a Screenshots section you delete from the PR comes back after the office restarts or when the images
+  change (the office remembers what it did only in memory, and sees the section itself in the description). It works
+  for GitHub.com pull requests only, that is `https://github.com/<owner>/<repo>/pull/<number>`: GitHub Enterprise hosts,
+  Azure DevOps and Bitbucket PRs get no section.
 - **Repositories on Azure DevOps and Bitbucket**: everything above works the same, with the agent using `office-pr`
   where it would use `gh`, and the PR board and linked PR states read over the host's API ([hosting](hosting.md)).
 - **PR phase** (a task in Waiting, Review or Done): **Create PRs** (or **Push & update PRs**) has

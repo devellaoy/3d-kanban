@@ -545,3 +545,13 @@ test('UI testing: the prompts are optional, carry the placeholder where they sho
   // Rewritten to nothing, the block is left out.
   assert.equal(resolveKanbanPrompt('kanban.uiTesting', { office: { 'kanban.uiTesting': { text: '' } } }, { imagesDir: '/x' }), '');
 });
+
+test('UI testing: a folder project’s implementer gets the block too', (t) => {
+  const { def, dir, repo, compose } = setup(t);
+  const folderDef: FloorDef = { ...def, repos: [{ id: 'proj', name: 'Proj', kind: 'folder', dir, primary: true }] };
+  const task = repo.createTask({ project: 'proj', title: 'X', description: 'x', tool: 'claude', usePlan: false, planApproval: 'auto', useReview: false, createdBy: 'Ada' });
+  const text = compose.build('implement', folderDef, task, 'claude', dir, { phase: 'implement' });
+  assert.match(text, /UI testing is on for this task/);
+  assert.ok(text.indexOf('UI testing is on') < text.indexOf('---'), 'before the contract');
+  assert.doesNotMatch(text, /\{\{/);
+});

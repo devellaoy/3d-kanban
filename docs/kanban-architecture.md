@@ -709,8 +709,13 @@ digest of the images now (`imagesDigest`: names, sizes, times), write the descri
 run `gh pr edit <url> --body-file <file> --attach <image>…` (gh 2.99+ uploads each file and rewrites the `./name`
 references), as the task's owner (`ghEditor`, as for the closing line). The block's digest in the description is the only
 stored state; in memory a `ScreenshotMark` per PR keeps a digest from being queued twice, a failed read is tried three times,
-and any other failure is told to the task once (a status comment) and not retried for that digest. A lone after counts; no
-images leaves an existing block alone; other hosts are skipped. The images can reach the description before a fix round's
+and any other failure is told to the task once (a status comment) and not retried for that digest (the marks are per
+project, so one floor's refresh never drops another's). A block with the current digest still holding a local `](./` reference
+(gh updated the description but failed some uploads) is not done: it is edited again, under the same once-per-digest memo.
+The gh timeout grows with the number and size of the images (at most ten minutes). A lone after counts; no images leaves an
+existing block alone. Limits: a section a person deletes comes back after a restart or when the images change; `isGithubPr`
+accepts only `https://github.com/<owner>/<repo>/pull/<n>` (no GitHub Enterprise, Azure DevOps or Bitbucket). The images
+folder itself must be a real directory, not a link, or nothing is listed, served or removed. The images can reach the description before a fix round's
 commits are pushed.
 
 `kanban.unhold` ("Carry on after a hold": `taskId`, `heldAt`, `holdNote`, `comments`, `language`) is the prompt a task taken off hold resumes with (§3, §4).
