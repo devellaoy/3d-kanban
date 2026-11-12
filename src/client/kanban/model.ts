@@ -317,8 +317,8 @@ export function showIn3dLink(project: string, workerId?: string, deskId?: string
 // --- The task view --------------------------------------------------------------------------------
 
 /** The tabs of a task's view (taskview.ts), in order. */
-export type TaskTab = 'overview' | 'conversation' | 'plan' | 'runs' | 'terminal' | 'changes' | 'prs' | 'issue';
-export const TASK_TABS: readonly TaskTab[] = ['overview', 'conversation', 'plan', 'runs', 'terminal', 'changes', 'prs', 'issue'];
+export type TaskTab = 'overview' | 'conversation' | 'plan' | 'runs' | 'terminal' | 'changes' | 'images' | 'prs' | 'issue';
+export const TASK_TABS: readonly TaskTab[] = ['overview', 'conversation', 'plan', 'runs', 'terminal', 'changes', 'images', 'prs', 'issue'];
 
 export function isTaskTab(v: unknown): v is TaskTab {
   return typeof v === 'string' && (TASK_TABS as readonly string[]).includes(v);
@@ -327,7 +327,8 @@ export function isTaskTab(v: unknown): v is TaskTab {
 /**
  * The tabs a task view shows: every one on the kanban page; embedded (a task window, the 3D worker
  * window's task tab), no Terminal, since that window has the worker's terminal already; and without
- * `changes` (the worker window, whose header's 🌿 Changes opens the same view), no Changes.
+ * `changes` (the worker window, whose header's 🌿 Changes opens the same view), no Changes. Images
+ * shows everywhere.
  */
 export function visibleTabs(embedded: boolean, changes = true): TaskTab[] {
   return TASK_TABS.filter((tab) => !(embedded && tab === 'terminal') && (changes || tab !== 'changes'));

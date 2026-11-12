@@ -32,8 +32,8 @@ test('the page keeps the open tab in its link', () => {
 });
 
 test('the task view shows every tab on the page, and no Terminal embedded', () => {
-  assert.deepEqual(visibleTabs(false), ['overview', 'conversation', 'plan', 'runs', 'terminal', 'changes', 'prs', 'issue']);
-  assert.deepEqual(visibleTabs(true), ['overview', 'conversation', 'plan', 'runs', 'changes', 'prs', 'issue']);
+  assert.deepEqual(visibleTabs(false), ['overview', 'conversation', 'plan', 'runs', 'terminal', 'changes', 'images', 'prs', 'issue']);
+  assert.deepEqual(visibleTabs(true), ['overview', 'conversation', 'plan', 'runs', 'changes', 'images', 'prs', 'issue']);
   assert.equal(tabFor('terminal', false), 'terminal');
   assert.equal(tabFor('terminal', true), 'overview');
   assert.equal(tabFor('changes', true), 'changes');
@@ -42,11 +42,14 @@ test('the task view shows every tab on the page, and no Terminal embedded', () =
 });
 
 test('the worker window’s task tab has no Changes tab (its header’s 🌿 Changes opens the view)', () => {
-  assert.deepEqual(visibleTabs(true, false), ['overview', 'conversation', 'plan', 'runs', 'prs', 'issue']);
-  assert.deepEqual(visibleTabs(false, false), ['overview', 'conversation', 'plan', 'runs', 'terminal', 'prs', 'issue']);
+  assert.deepEqual(visibleTabs(true, false), ['overview', 'conversation', 'plan', 'runs', 'images', 'prs', 'issue']);
+  assert.deepEqual(visibleTabs(false, false), ['overview', 'conversation', 'plan', 'runs', 'terminal', 'images', 'prs', 'issue']);
   assert.equal(tabFor('changes', true, false), 'overview');
   assert.equal(tabFor('changes', true, true), 'changes');
   assert.equal(tabFor('plan', true, false), 'plan');
+  // Images shows in every view, the worker window's too.
+  assert.equal(tabFor('images', true, false), 'images');
+  assert.deepEqual(parseDeepLink('?task=7&tab=images'), { task: 7, tab: 'images', settings: false });
 });
 
 test('📍 Show in 3D goes to the worker’s desk, or to the floor', () => {

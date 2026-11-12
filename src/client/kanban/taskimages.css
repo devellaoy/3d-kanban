@@ -1,0 +1,28 @@
+/* A task's Images tab (taskimages.ts): a bar with Refresh, then a section per subject with its before
+   and after pictures side by side; the two drop under each other when there is no room for both. Scoped
+   under .kb-tv like the rest of the task view. Tokens only. */
+.kb-tv .kb-tv-images { display: flex; flex-direction: column; gap: 18px; min-width: 0; }
+.kb-tv .kb-img-bar { display: flex; align-items: center; gap: 8px; min-height: var(--ctl-h-sm); }
+.kb-tv .kb-img-bar > .btn { flex: none; }
+
+.kb-tv .kb-img-empty { display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 36px 16px; text-align: center; color: var(--muted); border: var(--bw-sm) dashed var(--rule-code); border-radius: var(--radius-sm); }
+.kb-tv .kb-img-empty > strong { font-size: var(--fs-md); font-weight: var(--fw-semibold); color: var(--text); }
+.kb-tv .kb-img-empty > span { max-width: 52ch; line-height: 1.5; }
+
+.kb-tv .kb-img-pair { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.kb-tv .kb-img-pair > h4 { font-family: var(--font-mono); font-size: var(--fs-sm); color: var(--text); overflow-wrap: anywhere; }
+.kb-tv .kb-img-sides { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(320px, 100%), 1fr)); gap: 12px; align-items: start; }
+.kb-tv .kb-img-side { display: flex; flex-direction: column; min-width: 0; margin: 0; border: var(--bw-sm) solid var(--ink); border-radius: var(--radius-sm); background: var(--field); overflow: hidden; }
+.kb-tv .kb-img-side > figcaption { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; min-height: calc(var(--ctl-h-xs) + 12px); padding: 6px 8px 6px 12px; background: var(--paper-2); border-bottom: var(--bw-sm) solid var(--rule-soft); }
+.kb-tv .kb-img-kind { font-size: var(--fs-xs); font-weight: var(--fw-semibold); color: var(--text); }
+.kb-tv .kb-img-side > figcaption > small { flex: 1; min-width: 0; font-size: var(--fs-2xs); }
+.kb-tv .kb-img-ask { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 6px; font-size: var(--fs-2xs); font-weight: var(--fw-semibold); color: var(--text); }
+.kb-tv .kb-img-link { display: flex; justify-content: center; background: var(--field-off); }
+.kb-tv .kb-img-link > img { display: block; max-width: 100%; max-height: 460px; object-fit: contain; }
+.kb-tv .kb-img-none { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; min-height: 120px; padding: 16px; text-align: center; font-size: var(--fs-xs); color: var(--muted); }
+.kb-tv .kb-img-none.bad { color: var(--danger-ink); }
+/* A missing side is as tall as the picture beside it. */
+.kb-tv .kb-img-side.missing { align-self: stretch; border-style: dashed; border-color: var(--rule-code); background: transparent; }
+.kb-tv .kb-img-side.missing > .kb-img-none { flex: 1; }
+.kb-tv .kb-img-side.missing > figcaption { background: transparent; border-bottom-color: transparent; }
+.kb-tv .kb-img-side.missing .kb-img-kind { color: var(--muted); }
