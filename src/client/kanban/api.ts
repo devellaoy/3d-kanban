@@ -138,9 +138,10 @@ export class KanbanApi {
 
   /**
    * Sends a request and resolves to its answer: the typed reply, or kanban.ok. Rejects with a
-   * KanbanError carrying the office's reason when it says no, or when nothing comes back.
+   * KanbanError carrying the office's reason when it says no, or when nothing comes back within `ms`
+   * (longer for a request the office itself takes its time over, like an agent's draft).
    */
-  request<T extends KanbanServerMsg = KanbanServerMsg>(msg: KanbanRequest): Promise<T> {
+  request<T extends KanbanServerMsg = KanbanServerMsg>(msg: KanbanRequest, ms = ANSWER_MS): Promise<T> {
     if (!this.net.up) return Promise.reject(new KanbanError('Not connected to the office', false, true));
     this.claims(msg);
     const rid = `k${Date.now().toString(36)}${(this.seq++).toString(36)}`;
@@ -148,7 +149,7 @@ export class KanbanApi {
       const timer = setTimeout(() => {
         this.pending.delete(rid);
         reject(new KanbanError('The office didn’t answer'));
-      }, ANSWER_MS);
+      }, ms);
       this.pending.set(rid, { resolve: resolve as (m: KanbanServerMsg) => void, reject, timer });
       this.net.send({ ...msg, rid } as KanbanClientMsg);
     });

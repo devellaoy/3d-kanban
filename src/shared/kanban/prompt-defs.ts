@@ -8,6 +8,7 @@
 
 import type { PromptDef } from '../prompts.js';
 import { PR_DEFS } from './prompt-defs-pr.js';
+import { DRAFT_DEFS } from './prompt-defs-draft.js';
 import { TASK_VARS } from './prompt-defs-vars.js';
 
 // --- Placeholders several prompts share -----------------------------------------------------------
@@ -268,6 +269,7 @@ Do what the comment asks. Commit any changes locally as before (never push unles
 {{criteria}}`,
   },
   ...PR_DEFS,
+  ...DRAFT_DEFS,
   'kanban.pr.review': {
     group: 'kanban',
     label: 'Review pull requests together',

@@ -21,6 +21,8 @@ import { takeIssueForTask } from './autoassign.js';
 import { takeIssue } from './take.js';
 import { agentCreateHook } from './agent-create.js';
 import { announce, issueActionHandlers, statusIoFor, type IssuePatch } from './actions.js';
+import type { runOneShot } from '../../oneshot.js';
+import { draftHandlers } from './draft.js';
 import { jiraConnectionHandlers } from './jira-connections-ws.js';
 import { createBrowse } from './browse/index.js';
 import type { GhIssue, GhState } from '../../../../shared/protocol.js';
@@ -89,6 +91,8 @@ export interface IssuesOptions {
   gh?: IssueSourceIo['gh'];
   fetch?: typeof fetch;
   now?: () => number;
+  /** Stand-in for the agent that drafts a task prompt, for tests. */
+  oneShot?: typeof runOneShot;
 }
 
 /** What a source is called in an error line. */
@@ -361,27 +365,32 @@ export function createIssues(ctx: KanbanContext, opts: IssuesOptions = {}) {
     return { result: r, ...(!opts.start && !made.existed ? { claim: () => takeIssueForTask(ctx, { patch, io, find }, project, ticket, who, { status: false }) } : {}) };
   };
 
+  const loadIssue = async (project: string, key: string, source?: string) => {
+    const issue = await browsing.load(project, key, source);
+    if (issue) browse(project, issue);
+    return issue;
+  };
+  const rememberIssue = (project: string, issue: NormalizedIssue) => {
+    const kept = acted.get(project) ?? new Map();
+    acted.set(project, kept);
+    kept.set(issue.key, { issue, at: now() });
+  };
+  const drafting = draftHandlers(ctx, { find, load: loadIssue, remember: rememberIssue, ...(opts.oneShot ? { run: opts.oneShot } : {}) });
+
   const plugin: KanbanPlugin = {
     name: 'issues',
     // An agent's POST /office/tasks/create (this plugin owns it: it alone can look an issue up).
     hook: { '/office/tasks/create': agentCreateHook(ctx, createFromIssue) },
     ws: {
       ...browsing.ws,
+      ...drafting.ws,
       ...jiraConnectionHandlers(ctx, doFetch, browsing.connectionsChanged),
       ...issueActionHandlers(ctx, {
         find,
-        load: async (project, key, source) => {
-          const issue = await browsing.load(project, key, source);
-          if (issue) browse(project, issue);
-          return issue;
-        },
+        load: loadIssue,
         patch,
         io,
-        remember: (project, issue) => {
-          const kept = acted.get(project) ?? new Map();
-          acted.set(project, kept);
-          kept.set(issue.key, { issue, at: now() });
-        },
+        remember: rememberIssue,
         // The list's copy (the same key from the same source) is replaced by the fresh one whole (a field the source emptied is
         // left out of the fresh copy, and must not stay from the old one), and the browsers and the board hear of it;
         // a change made here that no fetch has confirmed yet still shows over it (the overlay).
@@ -456,6 +465,7 @@ export function createIssues(ctx: KanbanContext, opts: IssuesOptions = {}) {
     },
     stop() {
       clearInterval(timer);
+      drafting.stop();
       for (const t of settling.values()) clearTimeout(t);
       settling.clear();
       setWallProvider(undefined);

@@ -14,6 +14,15 @@
 .kb-newtask .kb-nt-desc > textarea { min-height: 112px; resize: vertical; }
 .kb-nt-desc .kb-attach { gap: 4px; }
 .kb-nt-desc.kb-dropping { outline-offset: 2px; }
+/* While the default agent drafts a prompt from the picked issue: a status line in the bar, in the note's
+   place (the bar keeps its height and its one row). It takes the room the buttons leave and no more, so
+   on a narrow window it is cut short with an ellipsis and nothing beside it is squeezed or wrapped. */
+.kb-nt-drafting { display: none; flex: 1 1 0; align-items: center; justify-content: flex-end; gap: 6px; min-width: 0; font-size: var(--fs-xs); color: var(--muted); }
+.kb-nt-desc.drafting .kb-nt-drafting { display: inline-flex; }
+.kb-nt-desc.drafting .composite-note { display: none; }
+.kb-nt-drafting > svg { flex: none; animation: spin 1.6s linear infinite; }
+.kb-nt-drafting > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+@media (prefers-reduced-motion: reduce) { .kb-nt-drafting > svg { animation: none; } }
 /* The issue the task is made from, with its unlink button. */
 .kb-nt-picked { align-self: flex-start; display: inline-flex; align-items: center; gap: 6px; max-width: 100%; padding: 2px 4px 2px 8px; font-size: var(--fs-xs); color: var(--accent-soft-ink); background: var(--accent-soft); border: var(--bw-sm) solid var(--accent-edge); border-radius: var(--radius-sm); }
 .kb-nt-picked > svg { flex: none; }
