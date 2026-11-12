@@ -776,7 +776,12 @@ reads its own. A kanban task made from a card keeps the description as its own, 
   person who owns the task (like the closing line); when it can't (an older gh, no write access, a failed upload) the task
   gets one comment saying why, and the same images are not tried again. If gh uploaded only some of the images (it
   updates the description and then reports an error), the section is not counted as done: the office tries it once more
-  for those images, and tells the task if that fails too. Removing every image leaves the section that is there.
+  for those images (a few times at most), and tells the task if that keeps failing. The office looks at the description once
+  per run of the task and set of images, so if a later run (the PR phase, a fix, **Push & update PRs**) rewrote it
+  without the section, the section is put back at the next refresh; one still there costs a look and no edit. Removing
+  every image in the Images tab takes the section out of the description (the text around it is left as it is) and says
+  so on the task. A task that was never given an images folder costs no look. A task taken off hold gets the same UI
+  testing instructions as a comment, by the option as it is when the task resumes.
   Known limits: a Screenshots section you delete from the PR comes back after the office restarts or when the images
   change (the office remembers what it did only in memory, and sees the section itself in the description). It works
   for GitHub.com pull requests only, that is `https://github.com/<owner>/<repo>/pull/<number>`: GitHub Enterprise hosts,

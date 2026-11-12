@@ -695,7 +695,7 @@ block prompts chosen by `uiBlockId(kind, on, images)` (`engine/uitesting.ts`), w
 `images` whether its folder has any: the implementer gets `kanban.uiTesting` (on) or `kanban.uiTesting.onRequest` (off: only
 if the task or a comment asks); a reviewer gets `kanban.uiTesting.review` (`imagesDir`, `imageList` with absolute paths)
 when the choice is on or there are images, and nothing otherwise; a fix round gets `kanban.uiTesting.fix` under the same
-condition; a comment's run, a hand-off and a PR fix get `kanban.uiTesting.fix`, else `kanban.uiTesting.onRequest`. A
+condition; a comment's run, a task taken off hold (`kanban.unhold`, which carries `{{uiTesting}}`; a hand-off's `next` is that built prompt, so the block comes once) and a PR fix get `kanban.uiTesting.fix`, else `kanban.uiTesting.onRequest`. A
 project's or the office's rewritten prompt that lost the `{{uiTesting}}` placeholder gets the block appended to its end.
 Investigations, plans and `kanban.pr.create` carry none: the pull request's screenshots are the office's work.
 
@@ -712,8 +712,12 @@ stored state; in memory a `ScreenshotMark` per PR keeps a digest from being queu
 and any other failure is told to the task once (a status comment) and not retried for that digest (the marks are per
 project, so one floor's refresh never drops another's). A block with the current digest still holding a local `](./` reference
 (gh updated the description but failed some uploads) is not done: it is edited again, under the same once-per-digest memo.
-The gh timeout grows with the number and size of the images (at most ten minutes). A lone after counts; no images leaves an
-existing block alone. Limits: a section a person deletes comes back after a restart or when the images change; `isGithubPr`
+The gh timeout grows with the number and size of the images (at most ten minutes). The marks are tied to the task's latest run (`latestRunId`): done counts only for the same run and digest, since a later
+run (PR phase, fix) may have rewritten the description; one `gh pr view` then decides whether an edit is needed. A failed
+`gh pr edit` is followed by another view: a description that now carries the block with this digest is a partial upload,
+retried on later refreshes (`READ_TRIES`) with one warning after the last; an unchanged description is a total failure,
+told once. With no images left, a description that has the block gets it removed (`withoutScreenshots`, an edit without
+`--attach`, one status comment); a task with no images folder is not asked about. A lone after counts. Limits: a section a person deletes comes back after a restart or when the images change; `isGithubPr`
 accepts only `https://github.com/<owner>/<repo>/pull/<n>` (no GitHub Enterprise, Azure DevOps or Bitbucket). The images
 folder itself must be a real directory, not a link, or nothing is listed, served or removed. The images can reach the description before a fix round's
 commits are pushed.
