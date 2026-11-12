@@ -145,6 +145,13 @@
   --scope-office: #ffefd9;
   --hint-cost: #a5ecfb;
   --hint-title: #ffcc00;   /* 11:1 on the dark --strong bubble */
+  --hint-bg: var(--strong);
+  --hint-text: var(--paper);
+  --hint-edge: var(--paper);
+  --hint-shadow: 0 4px 0 rgba(0, 0, 0, .35);
+  --hint-key-bg: var(--paper);
+  --hint-key-text: var(--text);
+  --hint-key-shadow: var(--shadow-key);
   --track: #e5e5ea;
 
   /* ---- Code and terminals ---- */

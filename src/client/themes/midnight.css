@@ -127,6 +127,14 @@
   --scope-office: #33260F;
   --hint-cost: #A5ECFB;
   --hint-title: #F2B25C;
+  /* The HUD's hint is a dark bubble with light text here: --strong is a mid grey-blue that --paper can't be read on. */
+  --hint-bg: var(--paper);
+  --hint-text: var(--text);
+  --hint-edge: var(--line-control);
+  --hint-shadow: var(--shadow-lg);
+  --hint-key-bg: var(--field-hover);
+  --hint-key-text: var(--text);
+  --hint-key-shadow: 0 0 0 1px var(--line-control), var(--shadow-key);   /* a line round the cap: its fill is close to the bubble's */
   --track: #232831;
   --code-bg: #0B0D11;
   --code-text: #E8EAEE;
