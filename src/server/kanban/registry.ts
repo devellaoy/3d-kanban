@@ -188,8 +188,8 @@ export interface KanbanContext {
   hiringPaused?(): string | undefined;
   /** Upstream's sign-in rule (RunAs): whether an account's Claude sign-in is ready, and what to tell it when it isn't. */
   runAs?: KanbanRunAs;
-  /** The Claude or Codex binary on the office's machine (cached), or null when it isn't installed; for the one-shot runs (oneshot.ts). */
-  agentBin?(tool: 'claude' | 'codex'): string | null;
+  /** The Claude binary on the office's machine (cached), or null when it isn't installed; for the one-shot runs (oneshot.ts). */
+  claudeBin?(): string | null;
   /**
    * How gh runs for an account (upstream's signins.ghAs): `{env}` as them, undefined as the office's own
    * gh (no account, or an admin's choice), or a string: why it can't (they have no GitHub sign-in).

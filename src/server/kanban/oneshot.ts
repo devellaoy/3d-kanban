@@ -1,43 +1,53 @@
-// One-shot agent runs: a single prompt to Claude Code or Codex, no tools, no session, one answer
-// (the task prompt drafted from an issue). Like the worker-naming run in server/tasks.ts, but for either tool.
+// One-shot Claude runs: a single prompt to Claude Code, no tools, no session, one answer (the task prompt
+// drafted from an issue). Like the worker-naming run in server/tasks.ts. Claude only: Codex can't switch its
+// tools off (`exec --sandbox read-only` still runs shell commands), and the issue text is not to be trusted.
 
 import { spawn } from 'node:child_process';
-import { mkdtemp, readFile, rm } from 'node:fs/promises';
+import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 
-export type OneShotTool = 'claude' | 'codex';
 export type OneShotResult = { text: string } | { error: string };
 
 export const ONESHOT_TIMEOUT_MS = 45_000;
 const REASON_MAX = 200;
 
-/** The arguments of a run; the prompt goes in on stdin, and `outFile` is where Codex writes its last message. */
-export function oneShotCommand(tool: OneShotTool, model: string | undefined, system: string, outFile: string): { args: string[] } {
-  if (tool === 'claude') {
-    return {
-      args: [
-        '-p',
-        ...(model ? ['--model', model] : []),
-        '--output-format', 'json',
-        '--system-prompt', system,
-        '--tools', '',
-        // Not the user's or the project's settings: no hooks, no MCP servers, no plugins, no transcript.
-        '--setting-sources', '',
-        '--strict-mcp-config',
-        '--disable-slash-commands',
-        '--no-session-persistence',
-      ],
-    };
-  }
-  // Codex has no system-prompt flag: the instructions go in front of the input on stdin.
-  return { args: ['exec', '--sandbox', 'read-only', '--skip-git-repo-check', '--ephemeral', '--ignore-user-config', ...(model ? ['-m', model] : []), '-o', outFile, '-'] };
+/** The arguments of a run; the prompt goes in on stdin and the system text in `systemFile`, so every argument is a plain token. */
+export function oneShotCommand(model: string | undefined, systemFile: string): { args: string[] } {
+  return {
+    args: [
+      '-p',
+      ...(model ? ['--model', model] : []),
+      '--output-format', 'json',
+      '--system-prompt-file', systemFile,
+      '--tools', '',
+      // Not the user's or the project's settings: no hooks, no MCP servers, no plugins, no transcript.
+      '--setting-sources', '',
+      '--strict-mcp-config',
+      '--disable-slash-commands',
+      '--no-session-persistence',
+    ],
+  };
+}
+
+export type SpawnPlan = { file: string; args: string[]; windowsVerbatimArguments?: boolean } | { error: string };
+
+/**
+ * What to spawn for `cmd args`. On Windows a `.cmd`/`.bat` (the npm shim) can't be started directly, so it goes
+ * through cmd.exe with every token in double quotes; characters cmd.exe would still act on inside them are refused.
+ */
+export function spawnPlan(cmd: string, args: string[], windows: boolean = process.platform === 'win32', comSpec: string = process.env.ComSpec || 'cmd.exe'): SpawnPlan {
+  if (!windows || !/\.(cmd|bat)$/i.test(cmd)) return { file: cmd, args };
+  const all = [cmd, ...args];
+  if (all.some((a) => /["%\r\n]/.test(a))) return { error: 'The agent is a .cmd file and an argument has a character cmd.exe would misread' };
+  // A backslash run before the closing quote is doubled so it can't escape it.
+  const quote = (a: string) => `"${a.replace(/(\\+)$/, '$1$1')}"`;
+  return { file: comSpec, args: ['/d', '/s', '/c', `"${all.map(quote).join(' ')}"`], windowsVerbatimArguments: true };
 }
 
 export interface OneShotOptions {
   /** The agent's binary. */
   cmd: string;
-  tool: OneShotTool;
   model?: string;
   system: string;
   input: string;
@@ -58,14 +68,17 @@ const lastLine = (s: string) => s.trim().split(/\r?\n/).filter(Boolean).pop() ??
 export function runOneShot(o: OneShotOptions): OneShotRun {
   let stop: (() => void) | undefined;
   let cancelled = false;
+  const win = process.platform === 'win32';
   const done = (async (): Promise<OneShotResult> => {
-    // Codex works in a folder of its own, empty, which also holds its answer; Claude in the temp dir, away from any CLAUDE.md.
+    // The system text goes in a file of a fresh folder, so no argument carries text (a .cmd shim can't take it safely).
     let dir: string | undefined;
     try {
-      if (o.tool === 'codex') dir = await mkdtemp(path.join(os.tmpdir(), 'kanban-oneshot-'));
+      dir = await mkdtemp(path.join(os.tmpdir(), 'kanban-oneshot-'));
+      const file = path.join(dir, 'system.txt');
+      await writeFile(file, o.system, 'utf8');
       if (cancelled) return { error: 'cancelled' };
-      const outFile = dir ? path.join(dir, 'answer.txt') : '';
-      const { args } = oneShotCommand(o.tool, o.model, o.system, outFile);
+      const plan = spawnPlan(o.cmd, oneShotCommand(o.model, file).args);
+      if ('error' in plan) return plan;
       const res = await new Promise<{ code: number | null; out: string; err: string; error?: string }>((resolve) => {
         let out = '';
         let err = '';
@@ -78,12 +91,15 @@ export function runOneShot(o: OneShotOptions): OneShotRun {
         };
         let child: ReturnType<typeof spawn>;
         try {
-          child = spawn(o.cmd, args, {
-            cwd: dir ?? os.tmpdir(),
-            env: o.tool === 'claude' ? { ...o.env, MAX_THINKING_TOKENS: '0' } : o.env,
+          child = spawn(plan.file, plan.args, {
+            // The temp dir, away from any project and its CLAUDE.md.
+            cwd: os.tmpdir(),
+            env: { ...o.env, MAX_THINKING_TOKENS: '0' },
             stdio: ['pipe', 'pipe', 'pipe'],
             // A group of its own (not on Windows), so whatever the agent started ends with it.
-            detached: process.platform !== 'win32',
+            detached: !win,
+            ...(plan.windowsVerbatimArguments ? { windowsVerbatimArguments: true } : {}),
+            windowsHide: true,
           });
         } catch (e) {
           return resolve({ code: null, out, err, error: (e as Error).message });
@@ -91,7 +107,12 @@ export function runOneShot(o: OneShotOptions): OneShotRun {
         /** Ends the agent and what it started, and answers now: a grandchild holding the pipes open must not keep the run waiting. */
         const end = (error: string) => {
           try {
-            if (process.platform !== 'win32' && child.pid) process.kill(-child.pid, 'SIGKILL');
+            if (win) {
+              // child.kill() would end only cmd.exe, not the node process under it, and ending cmd.exe first
+              // would leave taskkill no tree to walk: it is only what's left when taskkill can't start.
+              if (child.pid) spawn('taskkill', ['/pid', String(child.pid), '/T', '/F'], { stdio: 'ignore', windowsHide: true }).on('error', () => child.kill('SIGKILL')).unref();
+              else child.kill('SIGKILL');
+            } else if (child.pid) process.kill(-child.pid, 'SIGKILL');
             else child.kill('SIGKILL');
           } catch {
             child.kill('SIGKILL');
@@ -108,23 +129,19 @@ export function runOneShot(o: OneShotOptions): OneShotRun {
         child.on('error', (e) => finish({ code: null, error: e.message }));
         child.on('close', (code) => finish({ code }));
         child.stdin?.on('error', () => {});
-        child.stdin?.end(o.tool === 'codex' ? `${o.system}\n\n${o.input}` : o.input);
+        child.stdin?.end(o.input);
       });
       if (cancelled) return { error: 'cancelled' };
       if (res.error) return { error: clip(res.error) };
       // Claude says why in its JSON even when it exits with an error (a limit reached, an unknown model): that reads better than stderr's last line.
-      if (o.tool === 'claude' && res.code !== 0) {
+      if (res.code !== 0) {
         try {
           const j = JSON.parse(res.out) as { result?: unknown };
           if (typeof j.result === 'string' && j.result.trim()) return { error: clip(j.result.trim()) };
         } catch {
           // no JSON: stderr it is
         }
-      }
-      if (res.code !== 0) return { error: clip(lastLine(res.err) || `exited with code ${res.code}`) };
-      if (o.tool === 'codex') {
-        const text = await readFile(outFile, 'utf8').catch(() => '');
-        return text.trim() ? { text } : { error: 'wrote nothing' };
+        return { error: clip(lastLine(res.err) || `exited with code ${res.code}`) };
       }
       try {
         const j = JSON.parse(res.out) as { result?: unknown; is_error?: unknown };
@@ -151,16 +168,14 @@ export function runOneShot(o: OneShotOptions): OneShotRun {
 const LOOK_AGAIN_MS = 60_000;
 
 /**
- * `resolve` (which may run a login shell, see resolveCommand) per tool, looked up on first need and cached;
+ * `resolve` (which may run a login shell, see resolveCommand) looked up on first need and cached;
  * a miss is looked for again after a minute, never on every request.
  */
-export function cachedAgentBin(resolve: (tool: OneShotTool) => string | null, now: () => number = Date.now): (tool: OneShotTool) => string | null {
-  const seen = new Map<OneShotTool, { path: string | null; at: number }>();
-  return (tool) => {
-    const was = seen.get(tool);
-    if (was && (was.path !== null || now() - was.at < LOOK_AGAIN_MS)) return was.path;
-    const path = resolve(tool);
-    seen.set(tool, { path, at: now() });
-    return path;
+export function cachedClaudeBin(resolve: () => string | null, now: () => number = Date.now): () => string | null {
+  let seen: { path: string | null; at: number } | undefined;
+  return () => {
+    if (seen && (seen.path !== null || now() - seen.at < LOOK_AGAIN_MS)) return seen.path;
+    seen = { path: resolve(), at: now() };
+    return seen.path;
   };
 }

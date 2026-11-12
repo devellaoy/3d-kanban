@@ -1,5 +1,6 @@
 // kanban.issues.draft: the default agent (the kanban Settings' tool and model) writes a short task
 // prompt from an issue, for the New task form's description. One run per browser, a few at once.
+// Only Claude drafts (it runs with no tools); Codex can't switch its tools off, and the issue text is untrusted.
 
 import type { KanbanClientMsg, KanbanClientType } from '../../../../shared/kanban/protocol.js';
 import type { NormalizedIssue } from '../../../../shared/kanban/types.js';
@@ -39,9 +40,11 @@ export function cleanDraft(raw: string): string {
 
 export function draftHandlers(ctx: KanbanContext, deps: DraftDeps): { ws: NonNullable<KanbanPlugin['ws']>; stop(): void } {
   const run = deps.run ?? runOneShot;
-  /** What is running, by the browser that asked. */
-  const running = new Map<string, OneShotRun>();
+  /** The newest request of each browser (by clientId), with its run once it has one. */
+  const newest = new Map<string, { run?: OneShotRun }>();
+  let stopped = false;
   const compose = new Composer(ctx);
+  const runs = () => [...newest.values()].filter((e) => e.run).length;
 
   const draft = async (c: KanbanClient, m: Msg<'kanban.issues.draft'>): Promise<void> => {
     const empty = () => c.send({ t: 'kanban.issueDraft', ...(m.rid ? { rid: m.rid } : {}), text: '' });
@@ -49,50 +52,56 @@ export function draftHandlers(ctx: KanbanContext, deps: DraftDeps): { ws: NonNul
     // The prompt emptied (office or project) turns the drafting off: nothing but the language rule is left.
     if (!compose.text('kanban.issueDraft', m.project, { language: '' }).trim()) return empty();
     if (ctx.hiringPaused?.()) return empty();
+    const { tool, model } = ctx.settings.get().defaults;
+    // Codex has no way to run without tools, so with it as the default agent nothing is drafted.
+    if (tool === 'codex') return empty();
+    // This request is the browser's newest from here on, before any await: a slow lookup of an older one
+    // must not cancel it. The earlier request's run, if it has one, ends now.
+    const key = c.clientId;
+    const mine: { run?: OneShotRun } = {};
+    newest.get(key)?.run?.kill();
+    newest.set(key, mine);
+    const superseded = () => stopped || newest.get(key) !== mine;
     try {
       const issue = deps.find(m.project, m.issueKey) ?? (await deps.load(m.project, m.issueKey, m.source));
+      if (superseded()) return fail(c, m.rid, 'cancelled');
       if (!issue) return fail(c, m.rid, `${m.issueKey} isn't among the project's issues (any more)`);
       deps.remember(m.project, issue);
-      const { tool, model } = ctx.settings.get().defaults;
-      const kind = tool === 'codex' ? 'codex' : 'claude';
-      let env = childEnv();
-      if (kind === 'claude' && ctx.runAs && c.accountId) {
+      const env = childEnv();
+      if (ctx.runAs && c.accountId) {
         if (!ctx.runAs.claudeReady(c.accountId)) return fail(c, m.rid, ctx.runAs.why('claude'));
         ctx.runAs.apply?.(c.accountId, env);
       }
-      const cmd = ctx.agentBin?.(kind);
-      if (!cmd) return fail(c, m.rid, `${kind === 'codex' ? 'Codex' : 'Claude'} isn't available on the office's machine`);
-
-      // A new request from the same browser replaces its earlier one.
-      const key = c.clientId;
-      running.get(key)?.kill();
-      running.delete(key);
-      if (running.size >= RUNS_MAX) return fail(c, m.rid, 'The office is busy drafting, try again in a moment');
+      const cmd = ctx.claudeBin?.();
+      if (!cmd) return fail(c, m.rid, "Claude isn't available on the office's machine");
+      if (runs() >= RUNS_MAX) return fail(c, m.rid, 'The office is busy drafting, try again in a moment');
       const one = run({
         cmd,
-        tool: kind,
         ...(model ? { model } : {}),
         system: compose.text('kanban.issueDraft', m.project, { language: compose.language(m.project) }),
         input: `Issue ${issue.key}: ${issue.title}\n\n${issue.body.slice(0, BODY_MAX)}`,
         env,
       });
-      running.set(key, one);
+      mine.run = one;
       const res = await one.done;
-      if (running.get(key) === one) running.delete(key);
       if ('error' in res) return fail(c, m.rid, res.error);
       const text = cleanDraft(res.text);
       if (!text) return fail(c, m.rid, 'The agent wrote nothing');
       c.send({ t: 'kanban.issueDraft', ...(m.rid ? { rid: m.rid } : {}), text });
     } catch (err) {
       fail(c, m.rid, (err as Error)?.message ?? String(err));
+    } finally {
+      // Only its own entry: a newer request of the browser has put one of its own there.
+      if (newest.get(key) === mine) newest.delete(key);
     }
   };
 
   return {
     ws: { 'kanban.issues.draft': draft },
     stop() {
-      for (const r of running.values()) r.kill();
-      running.clear();
+      stopped = true;
+      for (const e of newest.values()) e.run?.kill();
+      newest.clear();
     },
   };
 }

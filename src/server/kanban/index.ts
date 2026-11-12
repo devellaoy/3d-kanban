@@ -73,8 +73,8 @@ export interface KanbanOffice {
   hiringPaused?(): string | undefined;
   /** Upstream's sign-in rule (signins as RunAs): task hires run on their owner's own Claude sign-in. */
   runAs?: KanbanRunAs;
-  /** The Claude or Codex binary on the office's machine (cached), or null when it isn't installed; for the one-shot runs (oneshot.ts). */
-  agentBin?(tool: 'claude' | 'codex'): string | null;
+  /** The Claude binary on the office's machine (cached), or null when it isn't installed; for the one-shot runs (oneshot.ts). */
+  claudeBin?(): string | null;
   /** How gh runs for an account (signins.ghAs), for the actions on issues (see KanbanContext.ghAs). */
   ghAs?(accountId?: string): { env: Record<string, string> } | string | undefined;
   /** The office's team notifications (upstream's webhook). */
@@ -221,7 +221,7 @@ export function installKanban(opts: KanbanInstallOptions): Kanban {
     ...(opts.capacity ? { capacity: () => opts.capacity!() } : {}),
     ...(opts.hiringPaused ? { hiringPaused: () => opts.hiringPaused!() } : {}),
     ...(opts.runAs ? { runAs: opts.runAs } : {}),
-    ...(opts.agentBin ? { agentBin: (tool: 'claude' | 'codex') => opts.agentBin!(tool) } : {}),
+    ...(opts.claudeBin ? { claudeBin: () => opts.claudeBin!() } : {}),
     ...(opts.ghAs ? { ghAs: (accountId?: string) => opts.ghAs!(accountId) } : {}),
     ...(opts.codexResetAt ? { codexResetAt: (home?: string) => opts.codexResetAt!(home) } : {}),
     ...(opts.notify ? { notify: (title: string, detail?: string, taskId?: number) => opts.notify!(title, detail, taskId) } : {}),

@@ -8,13 +8,13 @@ import { str } from '../office/input.js';
 import { mpOf } from '../multiplayer/registry.js';
 import { resolveCommand } from '../workers.js';
 import { installKanban, type Kanban } from './index.js';
-import { cachedAgentBin } from './oneshot.js';
+import { cachedClaudeBin } from './oneshot.js';
 import type { KanbanCaller, KanbanClient } from './registry.js';
 
 /** The kanban, on the building's floors, the office's prompts and the hook server (ctx.kanban). */
 export function openKanban(ctx: Ctx, hookPort: number): Kanban {
-  // The binaries the one-shot runs use: Claude as the workers' and the sign-ins' (the office's own --agent when that's Claude), Codex from the PATH.
-  const agentBin = cachedAgentBin((tool) => (tool === 'codex' ? resolveCommand('codex') : resolveCommand(configuredProvider(ctx.cfg.agentCmd) === 'claude' ? ctx.cfg.agentCmd : 'claude')));
+  // The binary the one-shot runs use: Claude as the workers' and the sign-ins' (the office's own --agent when that's Claude).
+  const claudeBin = cachedClaudeBin(() => resolveCommand(configuredProvider(ctx.cfg.agentCmd) === 'claude' ? ctx.cfg.agentCmd : 'claude'));
   return installKanban({
     dataDir: ctx.cfg.dataDir,
     floors: () => ctx.building.list(),
@@ -50,7 +50,7 @@ export function openKanban(ctx: Ctx, hookPort: number): Kanban {
     capacity: () => ctx.machine.full(),
     hiringPaused: () => ctx.ledger.hiringPaused,
     runAs: ctx.signins,
-    agentBin,
+    claudeBin,
     // GitHub writes on issues (comments, assignees) go out under the person's own gh sign-in, as taking a card does.
     ghAs: (id) => (id ? ctx.signins.ghAs(id) : undefined),
     notify: (title, detail, taskId) => ctx.webhook.announce(title, detail, taskId),
