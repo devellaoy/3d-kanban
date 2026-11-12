@@ -436,7 +436,9 @@ allowed: `todo → in_progress` (= start), `waiting|review → done`, `done → 
 - A task's UI images (`shared/kanban/uitesting.ts`, `engine/uitesting.ts`) are plain files in `kanban/grants/task-<id>/ui/`
   (`uiImagesDir`; made mode 700 when a prompt that names it is composed), with no database rows: `listUiImages` reads the
   folder each time (regular files only, no links; names matching `UI_IMAGE_RE`, `<subject>-(before|after).(png|jpg|jpeg|webp)`;
-  at most `UI_IMAGE_MAX_BYTES` each and `UI_IMAGES_MAX` a task; by subject, the before first) and `pairImages` pairs them. The
+  at most `UI_IMAGE_MAX_BYTES` each and `UI_IMAGES_MAX` a task, the cap cut subfolder images first; by subject, the before first) and `pairImages` pairs them
+  by folder and subject. One level of subfolders is read too, those named like `UI_IMAGE_FOLDER_RE` (`[a-z0-9-]{1,40}`, real directories only):
+  an image in `ui/<repoId>/` has `name` `<repoId>/<file>` and `repo` `<repoId>`, one straight in `ui/` has no `repo`. The
   folder is inside the task's grant folder, so every run already has it as an `--add-dir` and it goes with the task (`removeGrant`).
 - Migration 6 adds `runs.held_at` (ms: when the run was held for background work, NULL otherwise; `KanbanRepository.runHeldAt` / `setRunHeld`, not on `KanbanRun`); a build that knows only 5 refuses the database.
 - Migration 5 adds `runs.prompted_at` (ms: when the office last gave the run its prompt, see §4's restate); a build that knows only 4 refuses the database.
@@ -704,12 +706,17 @@ if the task or a comment asks); a reviewer gets `kanban.uiTesting.review` (`imag
 when the choice is on or there are images, and nothing otherwise; a fix round gets `kanban.uiTesting.fix` under the same
 condition; a comment's run, a task taken off hold (`kanban.unhold`, which carries `{{uiTesting}}`; a hand-off's `next` is that built prompt, so the block comes once) and a PR fix get `kanban.uiTesting.fix`, else `kanban.uiTesting.onRequest`. A
 project's or the office's rewritten prompt that lost the `{{uiTesting}}` placeholder gets the block appended to its end.
+In a task with more than one git repository (`taskRepos`, not a folder project) `uiBlock(def, task, kind)` makes a folder per
+repository in the images folder (`ensureUiImagesDir(dir, folders)`) and fills `{{imageFolders}}` of the implement, on-request and fix
+blocks with a line per folder and the instruction to save a picture where the repository whose UI it shows is; it is always passed
+(empty for one repository, a folder project and the review block, since `fillPrompt` leaves an unknown placeholder as text), and a
+rewritten block without the placeholder gets the text appended. The reviewer's `imageList` names the folder.
 Investigations, plans and `kanban.pr.create` carry none: the pull request's screenshots are the office's work.
 
 Screenshots in a pull request (`server/kanban/integrations/pulls/screenshots.ts`): `checkScreenshots` runs beside
 `checkClosing` on every board refresh. For each task with `flags.prRequested`, `runState` idle and at least one image, every
 open or draft GitHub pull request linked to the task from one of its own branches in one of the project's repositories gets
-`ensureScreenshots`: read the description (`gh pr view --json body,updatedAt`), and unless its block already carries the
+its share of the images (`assignShots(images, links, repos)`, below) through `ensureScreenshots`: read the description (`gh pr view --json body,updatedAt`), and unless its block already carries the
 digest of the images now (`imagesDigest`: names, sizes, times), write the description with the block replaced or appended
 (`<!-- agent-office:screenshots <digest> -->`, `## Screenshots`, a `### <subject>` per pair with `![…](./<name>)`,
 `<!-- /agent-office:screenshots -->`) to a dot file in the images folder, check nobody edited the description meanwhile, and
@@ -719,7 +726,15 @@ stored state; in memory a `ScreenshotMark` per PR keeps a digest from being queu
 and any other failure is told to the task once (a status comment) and not retried for that digest (the marks are per
 project, so one floor's refresh never drops another's). A block with the current digest still holding a local `](./` reference
 (gh updated the description but failed some uploads) is not done: it is edited again, under the same once-per-digest memo.
-The gh timeout grows with the number and size of the images (at most ten minutes). The marks are tied to the task's latest run (`latestRunId`): done counts only for the same run and digest, since a later
+`assignShots` is the split: an image in `ui/<repoId>/` goes to the open or draft pull requests of that repository; with none (no
+link, or only a closed one) it goes to the fallback pull request, the primary repository's open one, else the first open one in the
+project's repository order, under `### <subject> (<repository name>)`; when that repository's pull request is merged (and none is
+open) it goes nowhere, so it never lands in another repository's; an image straight in `ui/` or in a folder that is no repository
+of the project goes to every open pull request. A single-repository task is that last case. Each pull request has its own set and
+digest (`setDigest`) and its own mark; `screenshotOne` recomputes the split when its turn comes and compares that pull request's
+digest; one whose set is empty has its block removed. gh references stay flat: a set with a subfolder image is hard-linked (else
+copied) under flat names (`web.login-after.png`; `-2` before the extension on a clash) into a temporary `ui/.pr-<random>/`, which
+holds the body file too and is removed afterwards even on an error. The gh timeout grows with the number and size of the images (at most ten minutes). The marks are tied to the task's latest run (`latestRunId`): done counts only for the same run and digest, since a later
 run (PR phase, fix) may have rewritten the description; one `gh pr view` then decides whether an edit is needed. A failed
 `gh pr edit` is followed by another view: a description that now carries the block with this digest is a partial upload,
 retried on later refreshes (`READ_TRIES`) with one warning after the last; an unchanged description is a total failure,
@@ -829,12 +844,12 @@ For a signed-in browser (the session is checked by the route table in `src/serve
   `kanban/reports/task-<id>/` (no dot files, no links); a name is only looked up in that listing, served as
   `text/markdown` or `text/plain` with `nosniff` and a sandboxing CSP, at most 2 MB.
 - `GET /api/kanban/tasks/<id>/images`, `GET|HEAD …/images/<name>`, `DELETE …/images/<name>` (integrations/images): the
-  task's UI images as `KanbanTaskImageList` (`{taskId, images: [{name, kind, subject, size, mtime}]}`), one image's file,
+  task's UI images as `KanbanTaskImageList` (`{taskId, images: [{name, repo?, kind, subject, size, mtime}]}`; `name` is the path under `ui/`, `web/login-after.png` for a repository's folder), one image's file,
   and removing one (answers the list that is left). A name is only looked up in the listing (`findUiImage`, which also
   checks the file still resolves inside the folder), so `..`, absolute paths and links never match. An image is served
   by its extension's type with `nosniff`, a sandboxing CSP and `Cache-Control: no-store` (an agent retakes a picture
   under the same name; the browser adds the file's `mtime` as `?v=`). Anyone signed in may read and remove; a visitor of
-  a shared office only reads (the two GET paths are in `multiplayer/paths.ts`). The task view's Images tab
+  a shared office only reads (the two GET paths, the second with at most one folder level, are in `multiplayer/paths.ts`). The task view's Images tab
   (`client/kanban/taskimages.ts`) reads them.
 - Other `/api/kanban/*` paths go to the plugins' `http` routes (longest prefix first); unmatched paths get 404.
 
