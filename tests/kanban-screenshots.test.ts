@@ -6,7 +6,7 @@ import assert from 'node:assert/strict';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import { checkScreenshots, ensureScreenshots, imagesDigest, screenshotsBlock, withScreenshots, type ScreenshotMark } from '../src/server/kanban/integrations/pulls/screenshots.js';
+import { checkScreenshots, editTimeout, ensureScreenshots, imagesDigest, screenshotsBlock, withScreenshots, type ScreenshotMark } from '../src/server/kanban/integrations/pulls/screenshots.js';
 import { listUiImages } from '../src/server/kanban/engine/uitesting.js';
 
 const URL_ = 'https://github.com/acme/api/pull/3';
@@ -200,4 +200,48 @@ test('a concurrent edit is read again on the next refresh, three tries at most',
   }
   assert.ok(!calls.some((c) => c.args[1] === 'edit'));
   assert.equal(calls.filter((c) => c.args[1] === 'view').length, 2 * 2 * 3, 'two reads per try, three tries, two pull requests');
+});
+
+test('a block with the digest but local references left (a partial upload) is not done, and is edited again', async () => {
+  const { dir, images } = folder({ 'a-after.png': 'x', 'b-after.png': 'y' });
+  const { digest } = screenshotsBlock(images);
+  const partial = `Did it\n\n<!-- agent-office:screenshots ${digest} -->\n## Screenshots\n\n![a after](https://github.com/user-attachments/assets/1)\n![b after](./b-after.png)\n<!-- /agent-office:screenshots -->\n`;
+  const calls: { args: string[]; body?: string }[] = [];
+  const r = await ensureScreenshots({ prUrl: URL_, images, dir, cwd: '.', run: fakeGh(() => ({ body: partial, updatedAt: 't' }), calls) });
+  assert.equal(r.edited, true);
+  assert.equal(calls.filter((c) => c.args[1] === 'edit').length, 1);
+  // Only the block counts: a local reference elsewhere in the description is the author's.
+  const other = `See ![x](./x.png)\n\n<!-- agent-office:screenshots ${digest} -->\n![a after](https://github.com/user-attachments/assets/1)\n<!-- /agent-office:screenshots -->`;
+  assert.equal((await ensureScreenshots({ prUrl: URL_, images, dir, cwd: '.', run: fakeGh(() => ({ body: other, updatedAt: 't' }), []) })).edited, false);
+});
+
+test('the upload timeout grows with the images and stays bounded', () => {
+  const img = (size: number) => ({ name: 'a-after.png', kind: 'after' as const, subject: 'a', size, mtime: 1 });
+  assert.ok(editTimeout([img(1)]) < editTimeout(Array.from({ length: 10 }, () => img(5 * 1024 * 1024))));
+  assert.equal(editTimeout(Array.from({ length: 40 }, () => img(20 * 1024 * 1024))), 600_000);
+  assert.ok(editTimeout([img(1)]) >= 60_000);
+});
+
+test('two floors sharing the marks: a persistent failure is tried and told once per pull request', async () => {
+  const mk = (project: string, n: number) => {
+    const c = board();
+    const links = [{ taskId: 1, repoId: 'api', repo: 'acme/api', number: n, url: `https://github.com/acme/api/pull/${n}`, state: 'OPEN', branch: 'b' }];
+    (c.ctx as unknown as { repo: { prLinksOfProject: () => unknown } }).repo.prLinksOfProject = () => links;
+    return { ...c, project, url: links[0].url };
+  };
+  const one = mk('floor-a', 10);
+  const two = mk('floor-b', 20);
+  const calls: { args: string[] }[] = [];
+  const io = { run: fakeGh(() => ({ body: '', updatedAt: 't' }), calls, (x) => (x[1] === 'edit' ? new Error('unknown flag: --attach') : undefined)) };
+  const marks = new Map<string, ScreenshotMark>();
+  for (let i = 0; i < 4; i++) {
+    checkScreenshots(one.ctx, 'floor-a', marks, io);
+    await settle();
+    checkScreenshots(two.ctx, 'floor-b', marks, io);
+    await settle();
+  }
+  const edited = calls.filter((c) => c.args[1] === 'edit').map((c) => c.args[2]).sort();
+  assert.deepEqual(edited, [one.url, two.url]);
+  assert.equal(one.comments.length, 1);
+  assert.equal(two.comments.length, 1);
 });

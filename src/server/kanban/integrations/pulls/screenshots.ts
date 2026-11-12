@@ -68,6 +68,12 @@ export interface EnsuredScreenshots {
   retry?: boolean;
 }
 
+/** How long gh may take to upload these: a minute, and more for each image and megabyte, at most ten minutes. */
+export function editTimeout(images: readonly KanbanTaskImage[]): number {
+  const mb = images.reduce((n, i) => n + i.size, 0) / (1024 * 1024);
+  return Math.min(600_000, Math.round(60_000 + images.length * 10_000 + mb * 3_000));
+}
+
 /** Puts the images into the pull request's description unless the digest there is theirs already. */
 export async function ensureScreenshots(o: EnsureScreenshots): Promise<EnsuredScreenshots> {
   const run = o.run ?? gh;
@@ -82,13 +88,15 @@ export async function ensureScreenshots(o: EnsureScreenshots): Promise<EnsuredSc
       return { edited: false, retry: true, warning: `Couldn't read ${o.prUrl}: ${(err as Error).message}` };
     }
     const body = typeof view.body === 'string' ? view.body : '';
-    if (OPEN_RE.exec(body)?.[1] === digest) return { edited: false };
+    // Done only when the block is this set's and gh rewrote every reference: a partial upload leaves `](./name)` behind.
+    const have = BLOCK_RE.exec(body)?.[0] ?? '';
+    if (OPEN_RE.exec(have)?.[1] === digest && !have.includes('](./')) return { edited: false };
     tmp = path.join(o.dir, `.pr-body-${randomBytes(6).toString('hex')}.md`);
     await writeFile(tmp, withScreenshots(body, text), { mode: 0o600 });
     // Someone may have edited the description since it was read: theirs isn't overwritten, it's looked at again.
     const again = JSON.parse(await run(['pr', 'view', o.prUrl, '--json', 'body,updatedAt'], o.cwd, 30_000, o.env)) as typeof view;
     if (again.body !== view.body || again.updatedAt !== view.updatedAt) return { edited: false, retry: true, warning: `Couldn't add the screenshots to ${o.prUrl}: the description kept changing` };
-    await run(['pr', 'edit', o.prUrl, '--body-file', tmp, ...o.images.flatMap((i) => ['--attach', i.file])], o.cwd, 180_000, o.env);
+    await run(['pr', 'edit', o.prUrl, '--body-file', tmp, ...o.images.flatMap((i) => ['--attach', i.file])], o.cwd, editTimeout(o.images), o.env);
     return { edited: true };
   } catch (err) {
     return { edited: false, warning: `Couldn't add the screenshots to ${o.prUrl}: ${(err as Error).message}. Adding them needs gh 2.99 or newer (gh pr edit --attach) and write access to the repository.` };
@@ -99,11 +107,14 @@ export async function ensureScreenshots(o: EnsureScreenshots): Promise<EnsuredSc
 
 /** What checkScreenshots knows of a pull request: the digest it last dealt with, the tries so far and whether it is done with it. */
 export interface ScreenshotMark {
+  /** The project whose refresh made it: a refresh only prunes its own. */
+  project: string;
   digest: string;
   tries: number;
   done?: true;
 }
 
+/** Only github.com pull requests: https://github.com/<owner>/<repo>/pull/<n> (no GitHub Enterprise hosts, no other forges). */
 const isGithubPr = (url: string) => /^https:\/\/github\.com\/[^/]+\/[^/]+\/pull\/\d+/.test(url);
 
 /**
@@ -131,11 +142,11 @@ export function checkScreenshots(ctx: KanbanContext, project: string, marks: Map
       if (was?.digest === digest && was.done) continue;
       const tries = (was?.digest === digest ? was.tries : 0) + 1;
       // Marked at once, so the next refresh does not queue it again while it runs.
-      marks.set(pr.url, { digest, tries, done: true });
+      marks.set(pr.url, { project, digest, tries, done: true });
       inOrder(pr.url, () => screenshotOne(ctx, project, task.id, pr.url, digest, tries, marks, io));
     }
   }
-  for (const url of marks.keys()) if (!seen.has(url)) marks.delete(url);
+  for (const [url, m] of marks) if (m.project === project && !seen.has(url)) marks.delete(url);
 }
 
 /** One pull request's job, when its turn comes: from the task as it is then. */
@@ -150,8 +161,8 @@ async function screenshotOne(ctx: KanbanContext, project: string, taskId: number
   const r: EnsuredScreenshots = 'warning' in editor
     ? { edited: false, warning: `Not adding the screenshots to ${url}: ${editor.warning}` }
     : await ensureScreenshots({ prUrl: url, images, dir, cwd: ctx.dataDir, env: editor.env, run: io.run });
-  if (r.retry && tries < READ_TRIES) return void marks.set(url, { digest, tries });
-  marks.set(url, { digest, tries, done: true });
+  if (r.retry && tries < READ_TRIES) return void marks.set(url, { project, digest, tries });
+  marks.set(url, { project, digest, tries, done: true });
   const text = r.warning ?? (r.edited ? `Added ${images.length} screenshot${images.length === 1 ? '' : 's'} to the description of ${url}` : '');
   if (!text) return;
   ctx.repo.addComment({ taskId, authorKind: 'system', authorName: 'Kanban', kind: 'status', text });
