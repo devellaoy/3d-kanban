@@ -1,15 +1,20 @@
 // The kanban inside the office's context: installing it once the floors are
 // open, who a connection is to it, and the small lookups the office's handlers share when they touch it.
+import { configuredProvider } from '../agents.js';
 import { codexLimitsOf } from '../codex-limits/index.js';
 import type { Client } from '../office/client.js';
 import type { Ctx } from '../office/context.js';
 import { str } from '../office/input.js';
 import { mpOf } from '../multiplayer/registry.js';
+import { resolveCommand } from '../workers.js';
 import { installKanban, type Kanban } from './index.js';
+import { cachedClaudeBin } from './oneshot.js';
 import type { KanbanCaller, KanbanClient } from './registry.js';
 
 /** The kanban, on the building's floors, the office's prompts and the hook server (ctx.kanban). */
 export function openKanban(ctx: Ctx, hookPort: number): Kanban {
+  // The binary the one-shot runs use: Claude as the workers' and the sign-ins' (the office's own --agent when that's Claude).
+  const claudeBin = cachedClaudeBin(() => resolveCommand(configuredProvider(ctx.cfg.agentCmd) === 'claude' ? ctx.cfg.agentCmd : 'claude'));
   return installKanban({
     dataDir: ctx.cfg.dataDir,
     floors: () => ctx.building.list(),
@@ -45,6 +50,7 @@ export function openKanban(ctx: Ctx, hookPort: number): Kanban {
     capacity: () => ctx.machine.full(),
     hiringPaused: () => ctx.ledger.hiringPaused,
     runAs: ctx.signins,
+    claudeBin,
     // GitHub writes on issues (comments, assignees) go out under the person's own gh sign-in, as taking a card does.
     ghAs: (id) => (id ? ctx.signins.ghAs(id) : undefined),
     notify: (title, detail, taskId) => ctx.webhook.announce(title, detail, taskId),

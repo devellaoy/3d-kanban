@@ -131,6 +131,7 @@ test('good messages come through rebuilt, without anything the validator did not
   refused({ t: 'kanban.pr.unlink', project: 'web', taskId: 4, repoId: 'Bad Id!', number: 3 }, /repository id/);
   assert.deepEqual(good({ t: 'kanban.issue.get', project: 'web', issueKey: ' UYT-1 ', source: 'jira', fresh: true }), { t: 'kanban.issue.get', project: 'web', issueKey: 'UYT-1', source: 'jira', fresh: true });
   assert.deepEqual(good({ t: 'kanban.issue.get', project: 'web', issueKey: 'UYT-1' }), { t: 'kanban.issue.get', project: 'web', issueKey: 'UYT-1' });
+  assert.deepEqual(good({ t: 'kanban.issues.draft', project: 'web', issueKey: ' UYT-1 ' }), { t: 'kanban.issues.draft', project: 'web', issueKey: 'UYT-1' });
   assert.deepEqual(good({ t: 'kanban.project.repos.set', project: 'web', repos: [{ id: 'web', name: 'Web', dir: '/w', primary: true, kind: 'git', remote: 'acme/web' }] }), {
     t: 'kanban.project.repos.set',
     project: 'web',
@@ -157,7 +158,7 @@ test('good messages come through rebuilt, without anything the validator did not
     refused({ t: 'kanban.task.create', task, once }, /once must be a request key/);
     refused({ t: 'kanban.issues.createTask', project: 'web', issueKey: 'gh:o/w#1', once }, /once must be a request key/);
   }
-  assert.equal(KANBAN_CLIENT_TYPES.size, 59);
+  assert.equal(KANBAN_CLIENT_TYPES.size, 60);
 });
 
 test("the primary repository's id is its floor's, up to 40 characters, and repoIds take it", () => {

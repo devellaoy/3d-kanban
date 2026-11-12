@@ -129,6 +129,14 @@ heading and a line of help on the left. Its footer has the key hint (**Ctrl/⌘ 
   **Create task** makes one: its title is the issue's, its description is what you wrote followed
   by the issue's text and link, there is one task per issue, and the issue is taken as for any task
   made from one. The clear button on the pick removes it; a ticket typed by hand is stored as typed.
+  When the description is still empty at the pick, Claude (the default model of
+  the kanban's Settings, on your own Claude sign-in, with no tools) writes a short task prompt
+  from the issue into it (2 to 5 sentences: what is to be achieved and where the scope ends, not the
+  issue's details, which the task gets anyway). It never overwrites what you typed meanwhile; a
+  draft that fails says why in a notice and leaves the description empty, and so does (silently) one
+  skipped because hiring is paused. With Codex as the default agent no draft is written (Codex can't
+  be run without tools, and an issue's text is not to be trusted), and that is silent too. Emptying the "Task prompt from an issue"
+  prompt turns it off.
 - **Where**: the project (fixed once made) and which of its repositories (all by default; the primary
   one is always included).
 - **How**: type **Implement** or **Investigate** (read-only: writes a report instead of changing code;
@@ -822,7 +830,7 @@ reads its own. A kanban task made from a card keeps the description as its own, 
 
 Every prompt the kanban sends is editable: plan, replan, branch naming, checkout, implement,
 implement (folder project), investigate, review, next review round, fix, comment, acceptance
-criteria, open PRs, fix PRs, review PRs together, the review panel of several PRs, carry on, language (used only while no language is set in Settings, see [Languages](agents.md#languages)), reading other tasks
+criteria, the task prompt drafted from an issue, open PRs, fix PRs, review PRs together, the review panel of several PRs, carry on, language (used only while no language is set in Settings, see [Languages](agents.md#languages)), reading other tasks
 and handoff, and the smaller texts they're built from (Continue without answers, what the user said
 since, the ticket line, attached files, the project's instructions and their parts, the referenced
 tasks file, the accepted plan, what the task did, and the handoff's summary and comments). Each lists

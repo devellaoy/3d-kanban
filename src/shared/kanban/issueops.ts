@@ -64,6 +64,8 @@ export type IssueOpsClientMsg =
   | IssueReq<{ t: 'kanban.issue.transition'; transitionId: string }>
   /** One issue in full (from the project's issue list, else loaded); `fresh` loads it anew. Answered with kanban.issueDetail. */
   | IssueReq<{ t: 'kanban.issue.get'; fresh?: boolean }>
+  /** The default agent writes a short task prompt from the issue; answered with kanban.issueDraft (empty text: nothing to write). */
+  | IssueReq<{ t: 'kanban.issues.draft' }>
   /** Answered with kanban.issueComments (newest last). */
   | IssueReq<{ t: 'kanban.issue.comments' }>
   /** Adds a comment (signed with the office's name when it goes out under a shared identity); answered with kanban.ok. */
@@ -80,6 +82,8 @@ export type IssueOpsServerMsg =
   /** `cannot`: why the choices can't be listed (and so changed) for this issue. `note`: a problem that left some choices out (the project board couldn't be read). */
   | { t: 'kanban.issueTransitions'; rid?: string; project: string; issueKey: string; current?: string; transitions: IssueTransition[]; cannot?: string; note?: string }
   | { t: 'kanban.issueDetail'; rid?: string; project: string; issueKey: string; issue: NormalizedIssue }
+  /** An empty `text` means the drafting is off or there was nothing to write, not an error. */
+  | { t: 'kanban.issueDraft'; rid?: string; text: string }
   /** `cannot`: why there are no comments to show or add (a draft has none). */
   | { t: 'kanban.issueComments'; rid?: string; project: string; issueKey: string; items: IssueCommentItem[]; cannot?: string }
   /** `cannot`: why this issue can't be assigned from the office. */
@@ -94,6 +98,7 @@ export const ISSUE_OPS_CLIENT_TYPE_LIST: Readonly<Record<IssueOpsClientMsg['t'],
   'kanban.issue.transitions': true,
   'kanban.issue.transition': true,
   'kanban.issue.get': true,
+  'kanban.issues.draft': true,
   'kanban.issue.comments': true,
   'kanban.issue.comment': true,
   'kanban.issue.people': true,
@@ -141,6 +146,7 @@ export function parseIssueOpsMsg(t: IssueOpsClientMsg['t'], r: Obj): Bare<IssueO
   const via = typeof r.source === 'string' ? { source: r.source } : {};
   switch (t) {
     case 'kanban.issue.transitions':
+    case 'kanban.issues.draft':
     case 'kanban.issue.comments':
       return { t, project: proj, issueKey, ...via };
     case 'kanban.issue.get':
