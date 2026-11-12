@@ -433,6 +433,11 @@ allowed: `todo → in_progress` (= start), `waiting|review → done`, `done → 
   connections also empties the browse caches (counts, versions, sub-task parents), so nothing read with an old account is served.
 - `<officeData>/.agent-office/kanban/uploads/`, `kanban/grants/task-<id>/`, `kanban/reports/task-<id>/`, `kanban/refs/task-<id>/`,
   `kanban/skills/plugin-<hash>/` (generated Claude skill plugins), `kanban/legacy/` (migrated stream logs).
+- A task's UI images (`shared/kanban/uitesting.ts`, `engine/uitesting.ts`) are plain files in `kanban/grants/task-<id>/ui/`
+  (`uiImagesDir`; made mode 700 when a prompt that names it is composed), with no database rows: `listUiImages` reads the
+  folder each time (regular files only, no links; names matching `UI_IMAGE_RE`, `<subject>-(before|after).(png|jpg|jpeg|webp)`;
+  at most `UI_IMAGE_MAX_BYTES` each and `UI_IMAGES_MAX` a task; by subject, the before first) and `pairImages` pairs them. The
+  folder is inside the task's grant folder, so every run already has it as an `--add-dir` and it goes with the task (`removeGrant`).
 - Migration 6 adds `runs.held_at` (ms: when the run was held for background work, NULL otherwise; `KanbanRepository.runHeldAt` / `setRunHeld`, not on `KanbanRun`); a build that knows only 5 refuses the database.
 - Migration 5 adds `runs.prompted_at` (ms: when the office last gave the run its prompt, see §4's restate); a build that knows only 4 refuses the database.
 - Migration 4 adds `tasks.hold` (JSON, see `TaskHold`; parsed defensively like the other JSON columns). It raises
@@ -487,6 +492,11 @@ answers `kanban.ok {rid, ...}` or `kanban.error {rid, message}`. Deltas are push
     task is in `todo`; `tool, model, effort, review` whenever no run is live (`isRunning` false): the next
     phase hires the new tool, whose fresh session gets the handoff. `repoIds` only before the first start. The
     description is locked from the first start (sending the unchanged text is fine). No edits while archived.
+    `uiTesting` (`true`/`false`, `null` clears) is in neither list: it is merged into `overrides.uiTesting` at any status
+    but the archive, running or not, and counts from the next prompt composed. `task.create` writes it when given. What a
+    task does is `KanbanSettingsStore.uiTesting(project, overrides)`: `overrides.uiTesting ?? projects[id].uiTesting ??
+    defaults.uiTesting` (default `true`; `kanban.project.settings.set` takes `uiTesting: null` to clear the project's,
+    `kanban.settings.set` takes `defaults.uiTesting`). The browser's mirror is `client/kanban/taskimagesmodel.ts`.
     `title`, `tags`, `ticket` and `ticketUrl` at any status but the archive: the task view's Issue tab
     (`client/kanban/issuelink.ts`, patches built in `issuelinkmodel.ts`) links, changes and unlinks a
     started task's issue with `patch: {ticket, ticketUrl}` (`null` clears; both are always sent, so the
@@ -679,6 +689,30 @@ blocks (markers, safety rules) are appended by the engine and shown read-only in
 
 `{{language}}` is `Composer.language(project)`: with a conversation or public language set (office `prompts.json` `language`, project `publicLanguage`, resolved by `resolveLanguages` in `src/shared/language.ts`), the office prompts `language.talk` and `language.public` (`language.public.unset` when only the conversation language is set, so commits and branch names stay on the project's conventions; `languageRules` in `src/server/language.ts`, the office's texts via `KanbanContext.officeText`); otherwise `kanban.language`; then, unless the project's `commentLanguage` is `@project`, the `language.code` prompt (`codeRule`; the language is `resolveCommentLanguage`, English by default, carried as `code` in `resolveLanguages`' result and never stored in the office's settings). Non-kanban workers get the same rule after their first prompt from `WorkerManager` (the floor's `PromptSource.language()`, `boundPrompts`); kanban workers are skipped there, since their prompts carry it.
 
+UI testing (`src/shared/kanban/prompt-defs-ui.ts`, spread into `DEFS`; all optional, so one left empty adds nothing): the
+implement, review, re-review, fix, resume and PR-fix prompts carry `{{uiTesting}}`, filled by `Composer` with one of four
+block prompts chosen by `uiBlockId(kind, on, images)` (`engine/uitesting.ts`), where `on` is the task's choice and
+`images` whether its folder has any: the implementer gets `kanban.uiTesting` (on) or `kanban.uiTesting.onRequest` (off: only
+if the task or a comment asks); a reviewer gets `kanban.uiTesting.review` (`imagesDir`, `imageList` with absolute paths)
+when the choice is on or there are images, and nothing otherwise; a fix round gets `kanban.uiTesting.fix` under the same
+condition; a comment's run, a hand-off and a PR fix get `kanban.uiTesting.fix`, else `kanban.uiTesting.onRequest`. A
+project's or the office's rewritten prompt that lost the `{{uiTesting}}` placeholder gets the block appended to its end.
+Investigations, plans and `kanban.pr.create` carry none: the pull request's screenshots are the office's work.
+
+Screenshots in a pull request (`server/kanban/integrations/pulls/screenshots.ts`): `checkScreenshots` runs beside
+`checkClosing` on every board refresh. For each task with `flags.prRequested`, `runState` idle and at least one image, every
+open or draft GitHub pull request linked to the task from one of its own branches in one of the project's repositories gets
+`ensureScreenshots`: read the description (`gh pr view --json body,updatedAt`), and unless its block already carries the
+digest of the images now (`imagesDigest`: names, sizes, times), write the description with the block replaced or appended
+(`<!-- agent-office:screenshots <digest> -->`, `## Screenshots`, a `### <subject>` per pair with `![…](./<name>)`,
+`<!-- /agent-office:screenshots -->`) to a dot file in the images folder, check nobody edited the description meanwhile, and
+run `gh pr edit <url> --body-file <file> --attach <image>…` (gh 2.99+ uploads each file and rewrites the `./name`
+references), as the task's owner (`ghEditor`, as for the closing line). The block's digest in the description is the only
+stored state; in memory a `ScreenshotMark` per PR keeps a digest from being queued twice, a failed read is tried three times,
+and any other failure is told to the task once (a status comment) and not retried for that digest. A lone after counts; no
+images leaves an existing block alone; other hosts are skipped. The images can reach the description before a fix round's
+commits are pushed.
+
 `kanban.unhold` ("Carry on after a hold": `taskId`, `heldAt`, `holdNote`, `comments`, `language`) is the prompt a task taken off hold resumes with (§3, §4).
 `kanban.restarted` ("The office was restarted": no variables) is put in front of `kanban.continue` when a run is carried on after a full office restart (§4, "After a full restart").
 `kanban.restate` ("Restate the final answer": `taskId`, `language`) is what a run is asked when a prompt typed into its terminal took the turn its background work ended in, or came before the office's answer reached the log (§4).
@@ -778,6 +812,14 @@ For a signed-in browser (the session is checked by the route table in `src/serve
 - `GET /api/kanban/tasks/<id>/reports`, `…/reports/<name>[?download=1]` (integrations/reports): the files under
   `kanban/reports/task-<id>/` (no dot files, no links); a name is only looked up in that listing, served as
   `text/markdown` or `text/plain` with `nosniff` and a sandboxing CSP, at most 2 MB.
+- `GET /api/kanban/tasks/<id>/images`, `GET|HEAD …/images/<name>`, `DELETE …/images/<name>` (integrations/images): the
+  task's UI images as `KanbanTaskImageList` (`{taskId, images: [{name, kind, subject, size, mtime}]}`), one image's file,
+  and removing one (answers the list that is left). A name is only looked up in the listing (`findUiImage`, which also
+  checks the file still resolves inside the folder), so `..`, absolute paths and links never match. An image is served
+  by its extension's type with `nosniff`, a sandboxing CSP and `Cache-Control: no-store` (an agent retakes a picture
+  under the same name; the browser adds the file's `mtime` as `?v=`). Anyone signed in may read and remove; a visitor of
+  a shared office only reads (the two GET paths are in `multiplayer/paths.ts`). The task view's Images tab
+  (`client/kanban/taskimages.ts`) reads them.
 - Other `/api/kanban/*` paths go to the plugins' `http` routes (longest prefix first); unmatched paths get 404.
 
 ## 10. Wiring (`src/server/kanban/index.ts`)
