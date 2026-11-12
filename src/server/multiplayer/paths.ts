@@ -6,6 +6,8 @@ const ALLOWED = [
   /^\/api\/gh\/(pull|issue|labels|pull\/diff)$/,
   /^\/api\/kanban\/tasks\/\d{1,12}\/(changes|commits|commit|uncommitted|reports)$/,
   /^\/api\/kanban\/tasks\/\d{1,12}\/reports\/[^/]{1,200}$/,
+  /^\/api\/kanban\/tasks\/\d{1,12}\/images$/,
+  /^\/api\/kanban\/tasks\/\d{1,12}\/images\/[^/]{1,200}$/,
   /^\/api\/kanban\/attachments\/[A-Za-z0-9_-]{1,64}$/,
   /^\/api\/whiteboard\/file$/,
   /^\/api\/image$/,

@@ -11,6 +11,7 @@ import { createSkills } from './skills/index.js';
 import { createUserSkillsPlugin } from './userskills/index.js';
 import { createChangesPlugin } from './changes/index.js';
 import { createReportsPlugin } from './reports/index.js';
+import { createImagesPlugin } from './images/index.js';
 import { createHostingPlugin } from './hosting/index.js';
 import { createOpenFilePlugin } from '../openfile.js';
 
@@ -23,6 +24,7 @@ export const integrationPlugins: KanbanPluginFactory[] = [
   (ctx) => createUserSkillsPlugin(ctx),
   (ctx) => createChangesPlugin(ctx),
   (ctx) => createReportsPlugin(ctx),
+  (ctx) => createImagesPlugin(ctx),
   // After pulls: a board refresh has set the linked PRs' states before work items follow them.
   (ctx) => createHostingPlugin(ctx),
   (ctx) => createOpenFilePlugin(ctx),
