@@ -41,7 +41,6 @@ const CEILINGS: Readonly<Record<string, number>> = {
   'src/server/kanban/engine/orchestrator.ts': 2036,
   'src/server/kanban/db/repository.ts': 901,
   'src/client/kanban/changesview.ts': 769,
-  'src/shared/kanban/types.ts': 671,
 };
 
 const SPLIT = 'Split it along the registries instead (see docs/code-layout.md).';
