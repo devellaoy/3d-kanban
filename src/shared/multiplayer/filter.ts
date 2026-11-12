@@ -153,6 +153,7 @@ export const SERVER_MSG_OUT = {
   'kanban.issues': 'drop',
   'kanban.issueTransitions': 'drop',
   'kanban.issueDetail': 'drop',
+  'kanban.issueDraft': 'drop',
   'kanban.issueComments': 'drop',
   'kanban.issuePeople': 'drop',
   'kanban.browseScopes': 'drop',
