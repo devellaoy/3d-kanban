@@ -398,7 +398,7 @@ export class Composer {
         const hold = task.hold;
         const note = hold?.note?.trim();
         return seal(
-          this.text('kanban.unhold', p, {
+          this.withUi('kanban.unhold', task, 'comment', {
             taskId: task.id,
             heldAt: hold ? new Date(hold.at).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' }) : 'some time ago',
             holdNote: note ? `, because: ${note}` : '',

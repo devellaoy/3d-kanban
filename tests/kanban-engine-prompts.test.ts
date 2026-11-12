@@ -555,3 +555,44 @@ test('UI testing: a folder project’s implementer gets the block too', (t) => {
   assert.ok(text.indexOf('UI testing is on') < text.indexOf('---'), 'before the contract');
   assert.doesNotMatch(text, /\{\{/);
 });
+
+test('UI testing: a task taken off hold gets the block, with the option as it is then, and a rewritten text gets it appended', (t) => {
+  const { def, dir, repo, settings, compose, ctx } = setup(t);
+  const task = repo.createTask({ project: 'proj', title: 'X', description: 'x', tool: 'claude', usePlan: false, planApproval: 'auto', useReview: false, createdBy: 'Ada' });
+  const images = path.join(ctx.filesDir, 'grants', `task-${task.id}`, 'ui');
+  const held = { ...task, hold: { at: Date.now(), by: 'Ada', note: 'waiting' } } as typeof task;
+  const on = compose.build('unhold', def, held, 'claude', dir, { phase: 'implement', held: '- Ada: hi' });
+  assert.match(on, /take the after pictures again/);
+  assert.ok(on.includes(images));
+  assert.doesNotMatch(on, /\{\{/);
+  // The option was turned off while the task was on hold: the resume uses it.
+  settings.setProject('proj', { uiTesting: false });
+  const off = compose.build('unhold', def, held, 'claude', dir, { phase: 'implement' });
+  assert.match(off, /UI testing is off for this task by default/);
+  assert.doesNotMatch(off, /take the after pictures again/);
+  settings.setProject('proj', { uiTesting: true });
+  settings.setProjectPrompt('proj', 'kanban.unhold', 'Back to work on #{{taskId}}.');
+  const custom = compose.build('unhold', def, held, 'claude', dir, { phase: 'implement' });
+  assert.match(custom, /^Back to work on #\d+\.\n\nThe task keeps before and after pictures/);
+  assert.equal(custom.split('take the after pictures again').length, 2);
+});
+
+test('UI testing: a fresh session’s hand-off carries the block exactly once, for implement, fix, comment and unhold', (t) => {
+  const { def, dir, repo, compose, ctx } = setup(t);
+  const task = repo.createTask({ project: 'proj', title: 'X', description: 'x', tool: 'claude', usePlan: false, planApproval: 'auto', useReview: true, createdBy: 'Ada' });
+  const images = path.join(ctx.filesDir, 'grants', `task-${task.id}`, 'ui');
+  const held = { ...task, hold: { at: Date.now(), by: 'Ada' } } as typeof task;
+  const cases: [PromptKind, RunPhase, string][] = [
+    ['implement', 'implement', 'UI testing is on for this task'],
+    ['fix', 'fix', 'take the after pictures again'],
+    ['resume', 'resume', 'take the after pictures again'],
+    ['unhold', 'implement', 'take the after pictures again'],
+  ];
+  for (const [kind, phase, phrase] of cases) {
+    const next = compose.build(kind, def, kind === 'unhold' ? held : task, 'claude', dir, { phase, round: 1, rounds: 2, findings: 'F', text: 'Please', author: 'Ada' });
+    const text = compose.handoff(def, task, dir, next);
+    assert.equal(text.split(phrase).length, 2, `${kind}: the block once`);
+    assert.equal(text.split(images).length - 1, kind === 'implement' ? 1 : 1, `${kind}: the folder named`);
+    assert.doesNotMatch(text, /\{\{/, kind);
+  }
+});
