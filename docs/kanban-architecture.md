@@ -717,8 +717,8 @@ Screenshots in a pull request (`server/kanban/integrations/pulls/screenshots.ts`
 `checkClosing` on every board refresh. For each task with `flags.prRequested`, `runState` idle and at least one image, every
 open or draft GitHub pull request linked to the task from one of its own branches in one of the project's repositories gets
 its share of the images (`assignShots(images, links, repos)`, below) through `ensureScreenshots`: read the description (`gh pr view --json body,updatedAt`), and unless its block already carries the
-digest of the images now (`imagesDigest`: names, sizes, times), write the description with the block replaced or appended
-(`<!-- agent-office:screenshots <digest> -->`, `## Screenshots`, a `### <subject>` per pair with `![…](./<name>)`,
+digest of the images now (`imagesDigest`: names, sizes, times and the block's layout version, so a layout change rewrites the blocks once), write the description with the block replaced or appended
+(`<!-- agent-office:screenshots <digest> -->`, `## Screenshots`, a `### <subject>` per pair with a table whose one row holds the before and the after side by side, `![…](./<name>)` each,
 `<!-- /agent-office:screenshots -->`) to a dot file in the images folder, check nobody edited the description meanwhile, and
 run `gh pr edit <url> --body-file <file> --attach <image>…` (gh 2.99+ uploads each file and rewrites the `./name`
 references), as the task's owner (`ghEditor`, as for the closing line). The block's digest in the description is the only

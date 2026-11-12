@@ -29,13 +29,14 @@ function fakeGh(view: () => object, calls: { args: string[]; body?: string; dirE
   };
 }
 
-test('the block names each subject with Before and After, a lone after on its own, and its digest', () => {
+test('the block has each subject with Before and After side by side in a table, a lone after on its own, and its digest', () => {
   const { images } = folder({ 'login-before.png': 'a', 'login-after.png': 'bb', 'menu-after.jpg': 'c' });
   const { digest, text } = screenshotsBlock(images);
   assert.match(text, new RegExp(`^<!-- agent-office:screenshots ${digest} -->\n## Screenshots\n`));
   assert.ok(text.endsWith('<!-- /agent-office:screenshots -->'));
   assert.ok(text.indexOf('![login before](./login-before.png)') < text.indexOf('![login after](./login-after.png)'));
-  assert.ok(text.includes('![menu after](./menu-after.jpg)') && !text.includes('menu before'));
+  assert.ok(text.includes('### login\n\n| Before | After |\n| :---: | :---: |\n| ![login before](./login-before.png) | ![login after](./login-after.png) |'));
+  assert.ok(text.includes('### menu\n\n| After |\n| :---: |\n| ![menu after](./menu-after.jpg) |') && !text.includes('menu before'));
   assert.equal(digest, imagesDigest(images));
   assert.notEqual(digest, imagesDigest(images.slice(1)));
   assert.notEqual(digest, imagesDigest(images.map((i) => ({ ...i, mtime: i.mtime + 1 }))));

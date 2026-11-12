@@ -783,7 +783,7 @@ reads its own. A kanban task made from a card keeps the description as its own, 
   requests. The office does it, not the agent: when the board refreshes and a task whose PRs the office opened
   (**Create PRs**) has images, no run going and an open or draft PR on GitHub from its own branch, the office uploads
   the images with `gh pr edit --attach` and puts a **Screenshots** section at the end of the description, a heading per
-  view with its Before and After (a view with only an after counts). That happens a few seconds after the PR is opened,
+  view with its Before and After side by side in a table, each half the width (a view with only an after counts). That happens a few seconds after the PR is opened,
   and again whenever the images change (a fix round retook one, you removed one): the section is replaced, never
   repeated, and the rest of the description is left as it is. A status comment on the task says what was added. Images
   retaken in a fix round reach the description at the next refresh, which can be before **Push & update PRs** has pushed

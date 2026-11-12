@@ -35,9 +35,14 @@ const BLOCK_RE = /<!-- agent-office:screenshots [0-9a-f]* -->[\s\S]*?<!-- \/agen
 /** How many times a pull request gh could not show is tried (for one digest) before it is given up on. */
 const READ_TRIES = 3;
 
+/** The version of the block's layout (2: a subject's before and after side by side in a table). */
+const BLOCK_LAYOUT = 2;
+
 /** A short digest of the images: their names, sizes and times. */
 export function imagesDigest(images: readonly KanbanTaskImage[]): string {
   const h = createHash('sha256');
+  // The block's layout is part of it, so a description laid out the old way is written again.
+  h.update(`layout ${BLOCK_LAYOUT}\n`);
   for (const i of [...images].sort((a, b) => (a.name < b.name ? -1 : 1))) h.update(`${i.name}\0${i.size}\0${i.mtime}\n`);
   return h.digest('hex').slice(0, 16);
 }
@@ -53,9 +58,12 @@ export interface BlockOpts {
 export function screenshotsBlock(images: readonly KanbanTaskImage[], o: BlockOpts = {}): { digest: string; text: string } {
   const digest = imagesDigest(images);
   const parts = pairImages(images).map((p) => {
-    const side = (label: string, i: KanbanTaskImage | undefined) => (i ? [`**${label}**`, '', `![${p.subject} ${label.toLowerCase()}](./${o.ref?.get(i.name) ?? i.name})`, ''] : []);
+    // A table row holds the before and the after side by side, each half the width; a lone one has the row to itself.
+    const sides = [...(p.before ? [['Before', p.before] as const] : []), ...(p.after ? [['After', p.after] as const] : [])];
+    const cell = ([label, i]: readonly [string, KanbanTaskImage]) => `![${p.subject} ${label.toLowerCase()}](./${o.ref?.get(i.name) ?? i.name})`;
+    const row = (cells: string[]) => `| ${cells.join(' | ')} |`;
     const from = p.repo && p.repo !== o.repoId ? ` (${o.names?.get(p.repo) ?? p.repo})` : '';
-    return [`### ${p.subject}${from}`, '', ...side('Before', p.before), ...side('After', p.after)].join('\n').trimEnd();
+    return [`### ${p.subject}${from}`, '', row(sides.map(([label]) => label)), row(sides.map(() => ':---:')), row(sides.map(cell))].join('\n');
   });
   return { digest, text: [`<!-- agent-office:screenshots ${digest} -->`, '## Screenshots', '', parts.join('\n\n'), '<!-- /agent-office:screenshots -->'].join('\n') };
 }
