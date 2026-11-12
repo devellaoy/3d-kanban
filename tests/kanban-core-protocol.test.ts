@@ -83,6 +83,11 @@ test('good messages come through rebuilt, without anything the validator did not
     task: { project: 'web', title: 'Fix it', description: 'a\nb', ticket: 'UYT-1', ticketUrl: 'https://x.atlassian.net/browse/UYT-1', repoIds: ['web', 'api'], tool: 'codex', model: 'gpt-5.1-codex', effort: 'high', usePlan: false, review: { rounds: 3, tool: 'claude' }, tags: ['a', 'b'], attachmentIds: ['a'.repeat(32)] },
   });
   assert.deepEqual(good({ t: 'kanban.task.update', id: 1, patch: { ticket: '', model: null, goal: '  ', review: null } }), { t: 'kanban.task.update', id: 1, patch: { ticket: null, model: null, goal: null, review: null } });
+  assert.deepEqual(good({ t: 'kanban.task.update', id: 1, patch: { uiTesting: null } }), { t: 'kanban.task.update', id: 1, patch: { uiTesting: null } });
+  assert.deepEqual(good({ t: 'kanban.task.update', id: 1, patch: { uiTesting: false } }), { t: 'kanban.task.update', id: 1, patch: { uiTesting: false } });
+  refused({ t: 'kanban.task.update', id: 1, patch: { uiTesting: 'yes' } }, /uiTesting must be true or false/);
+  assert.equal((good({ t: 'kanban.task.create', task: { project: 'web', title: 'x', uiTesting: false } }) as { task: { uiTesting?: boolean } }).task.uiTesting, false);
+  refused({ t: 'kanban.task.create', task: { project: 'web', title: 'x', uiTesting: 1 } }, /uiTesting must be true or false/);
   assert.deepEqual(good({ t: 'kanban.task.move', id: 1, to: 'done' }), { t: 'kanban.task.move', id: 1, to: 'done' });
   assert.deepEqual(good({ t: 'kanban.task.continue', id: 1, answer: '   ' }), { t: 'kanban.task.continue', id: 1 });
   assert.deepEqual(good({ t: 'kanban.task.continue', id: 1, answer: 'x', attachmentIds: [] }), { t: 'kanban.task.continue', id: 1, answer: 'x' });

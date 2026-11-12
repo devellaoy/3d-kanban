@@ -311,3 +311,27 @@ test('the last fix is not re-reviewed by default: the rounds set are all the rev
   assert.equal(defaultKanbanSettings().review.reReviewLastFix, false);
   assert.equal(sanitizeReview({ reReviewLastFix: true }).reReviewLastFix, true, 'a saved choice still wins');
 });
+
+test('UI testing: on by default, the project over the office, the task over both, null clears the project', (t) => {
+  assert.equal(defaultKanbanSettings().defaults.uiTesting, true);
+  assert.equal(sanitizeKanbanSettings({ defaults: { uiTesting: 'no' } }).defaults.uiTesting, true, 'not a boolean: the default');
+  assert.equal(sanitizeKanbanSettings({ defaults: { uiTesting: false } }).defaults.uiTesting, false);
+  assert.equal(sanitizeProjectSettings({ uiTesting: 'x' }).uiTesting, undefined);
+  assert.equal(sanitizeProjectSettings({ uiTesting: false }).uiTesting, false);
+  const store = new KanbanSettingsStore(scratch(t));
+  assert.equal(store.uiTesting('web'), true);
+  store.set({ defaults: { uiTesting: false } as never });
+  assert.equal(store.uiTesting('web'), false, 'the office default');
+  store.setProject('web', { uiTesting: true });
+  assert.equal(store.uiTesting('web'), true, 'the project over the office');
+  assert.equal(store.uiTesting('api'), false, 'another project follows the office');
+  assert.equal(store.uiTesting('web', { uiTesting: false }), false, 'the task over both');
+  assert.equal(store.uiTesting('api', { uiTesting: true }), true);
+  assert.equal(store.uiTesting('web', {}), true, 'an old task without a value follows the project');
+  store.setProject('web', { maxConcurrent: 2 });
+  assert.equal(store.project('web').uiTesting, true, 'kept across other changes');
+  store.setProject('web', { uiTesting: null } as never);
+  assert.equal(store.project('web').uiTesting, undefined);
+  assert.equal(store.uiTesting('web'), false, 'cleared: the office again');
+  assert.equal(new KanbanSettingsStore(store.file.replace(/[^/\\]+$/, '')).uiTesting('api'), false, 'saved with the file');
+});

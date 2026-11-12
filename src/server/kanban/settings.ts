@@ -39,7 +39,7 @@ export function defaultProjectSettings(): ProjectSettings {
 export function defaultKanbanSettings(): KanbanSettings {
   return {
     schemaVersion: SETTINGS_SCHEMA_VERSION,
-    defaults: { tool: 'claude', usePlan: true, planApproval: 'auto', useReview: true, implementPermission: 'bypass' },
+    defaults: { tool: 'claude', usePlan: true, planApproval: 'auto', useReview: true, implementPermission: 'bypass', uiTesting: true },
     review: { ...DEFAULT_REVIEW },
     autoResume: { enabled: true, maxAttempts: 5, maxWaitHours: 6 },
     archiveAfterDays: 30,
@@ -187,6 +187,8 @@ export function sanitizeProjectSettings(raw: unknown, base: ProjectSettings = de
   if (approval) out.planApproval = approval;
   const permission = 'implementPermission' in r ? optOneOf(r.implementPermission, PERMISSIONS) : base.implementPermission;
   if (permission) out.implementPermission = permission;
+  const ui = 'uiTesting' in r && typeof r.uiTesting === 'boolean' ? r.uiTesting : base.uiTesting;
+  if (ui !== undefined) out.uiTesting = ui;
   // An invalid value keeps the earlier choice when a file is loaded; checking a request, and clearing (null), are setProject's.
   const lang = 'publicLanguage' in r ? cleanProjectLanguage(r.publicLanguage) ?? base.publicLanguage : base.publicLanguage;
   if (lang) out.publicLanguage = lang;
@@ -214,6 +216,7 @@ export function sanitizeKanbanSettings(raw: unknown, base: KanbanSettings = defa
     planApproval: oneOf(d.planApproval, PLAN_APPROVALS, base.defaults.planApproval),
     useReview: bool(d.useReview, base.defaults.useReview),
     implementPermission: oneOf(d.implementPermission, PERMISSIONS, base.defaults.implementPermission),
+    uiTesting: bool(d.uiTesting, base.defaults.uiTesting),
   };
   const m = 'model' in d ? model(d.model) : base.defaults.model;
   if (m) defaults.model = m;
@@ -314,6 +317,7 @@ export class KanbanSettingsStore {
     for (const k of ['publicLanguage', 'commentLanguage'] as const) if (cleared.has(k)) delete next[k];
     if (cleared.has('planApproval')) delete next.planApproval;
     if (cleared.has('implementPermission')) delete next.implementPermission;
+    if (cleared.has('uiTesting')) delete next.uiTesting;
     // Only a change of the sources is held to it: a project that loaded with a problem can still save its other settings.
     const clash = 'issueSources' in p ? jiraSourcesProblem(next.issueSources) : undefined;
     if (clash) return clash;
@@ -356,6 +360,11 @@ export class KanbanSettingsStore {
   /** How implement-like phases run for a task: the task's choice, the project's, else the office's. */
   implementPermission(project: string, overrides?: TaskOverrides): ImplementPermission {
     return overrides?.implementPermission ?? this.settings.projects[project]?.implementPermission ?? this.settings.defaults.implementPermission;
+  }
+
+  /** Whether a task takes before/after UI images: the task's choice, the project's, else the office's. */
+  uiTesting(project: string, overrides?: TaskOverrides): boolean {
+    return overrides?.uiTesting ?? this.settings.projects[project]?.uiTesting ?? this.settings.defaults.uiTesting;
   }
 
   private changed() {

@@ -82,12 +82,14 @@ export function taskUpdateFrom(ctx: KanbanContext, task: KanbanTask, patch: Kanb
   if (patch.useReview !== undefined) up.useReview = patch.useReview;
   if (patch.goal !== undefined) up.goal = patch.goal;
   if (patch.tags !== undefined) up.tags = patch.tags;
-  if (patch.review !== undefined || patch.implementPermission !== undefined) {
+  if (patch.review !== undefined || patch.implementPermission !== undefined || patch.uiTesting !== undefined) {
     const o: TaskOverrides = { ...task.overrides };
     if (patch.review === null || (patch.review && !Object.keys(patch.review).length)) delete o.review;
     else if (patch.review) o.review = patch.review;
     if (patch.implementPermission === null) delete o.implementPermission;
     else if (patch.implementPermission) o.implementPermission = patch.implementPermission;
+    if (patch.uiTesting === null) delete o.uiTesting;
+    else if (patch.uiTesting !== undefined) o.uiTesting = patch.uiTesting;
     up.overrides = o;
   }
   return up;

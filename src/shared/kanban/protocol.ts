@@ -70,6 +70,8 @@ export interface KanbanTaskPatch {
   goal?: string | null;
   review?: Partial<ReviewSettings> | null;
   implementPermission?: ImplementPermission | null;
+  /** null: back to the project's and the office's. */
+  uiTesting?: boolean | null;
   tags?: string[];
   /** The uploads the new description links: they become the task's files (uploaded unattached, so one whose link was removed is never kept). */
   attachmentIds?: string[];
@@ -225,6 +227,7 @@ function taskPatch(v: unknown): KanbanTaskPatch {
   assign('goal', goal === null ? null : goal === undefined ? undefined : goal.trim() || null);
   assign('review', r.review === null ? null : review(r.review));
   assign('implementPermission', r.implementPermission === null ? null : optOneOf(r.implementPermission, 'implementPermission', PERMISSIONS));
+  assign('uiTesting', r.uiTesting === null ? null : bool(r.uiTesting, 'uiTesting'));
   assign('tags', tags(r.tags));
   assign('attachmentIds', attachmentIds(r.attachmentIds));
   if (!Object.keys(out).length) bad('Nothing to change');
