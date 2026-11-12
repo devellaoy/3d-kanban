@@ -192,8 +192,14 @@ test('a ui folder that is itself a link is refused: nothing listed, served or re
   mkdirSync(real);
   writeFileSync(path.join(real, 'a-before.png'), 'secret');
   rmSync(dir, { recursive: true });
+  mkdirSync(path.join(real, 'web'));
+  writeFileSync(path.join(real, 'web', 'b-after.png'), 'secret');
   symlinkSync(real, dir);
   assert.deepEqual(listUiImages(dir), []);
+  assert.deepEqual(listUiImages(dir, ['web']), [], 'nor a repository folder reached through the link');
+  assert.equal(findUiImage(dir, 'web/b-after.png', ['web']), undefined);
+  for (const method of ['GET', 'DELETE']) assert.equal((await call(plugin, `/api/kanban/tasks/${task.id}/images/web/b-after.png`, method)).status, 404, method);
+  assert.ok(existsSync(path.join(real, 'web', 'b-after.png')));
   assert.equal(findUiImage(dir, 'a-before.png'), undefined);
   assert.deepEqual(JSON.parse((await call(plugin, `/api/kanban/tasks/${task.id}/images`)).body).images, []);
   assert.equal((await call(plugin, `/api/kanban/tasks/${task.id}/images/a-before.png`)).status, 404);
@@ -222,7 +228,7 @@ test('pairImages pairs by repository folder and subject: the root first, then ea
   ]);
 });
 
-test('the listing reads one level of repository folders, real directories only, and the cap cuts their images first', () => {
+test('the listing reads one level of folders, real directories only, and the cap keeps the repositories\' images first', () => {
   const { ctx, dir } = setup();
   ensureUiImagesDir(dir, ['web', 'api', 'Bad']);
   assert.deepEqual(readdirSync(dir).sort(), ['api', 'web'], 'a folder name that does not fit is not made');
@@ -244,16 +250,21 @@ test('the listing reads one level of repository folders, real directories only, 
   symlinkSync(path.join(elsewhere, 'x-after.png'), path.join(dir, 'web', 'link-after.png'));
   mkdirSync(path.join(dir, 'scratch'));
   writeFileSync(path.join(dir, 'scratch', 'x-after.png'), 'x');
-  assert.deepEqual(listUiImages(dir).map((i) => i.name), ['root-after.png'], 'no folder named: the root only');
-  assert.deepEqual(listUiImages(dir, known).map((i) => [i.name, i.repo]), [
+  const listed = [
     ['root-after.png', undefined],
     ['api/login-after.png', 'api'],
+    ['scratch/x-after.png', 'scratch'],
     ['web/login-after.png', 'web'],
-  ]);
-  for (let i = 0; i < UI_IMAGES_MAX; i++) writeFileSync(path.join(dir, `r${String(i).padStart(2, '0')}-after.png`), 'x');
+  ];
+  assert.deepEqual(listUiImages(dir, known).map((i) => [i.name, i.repo]), listed, 'a folder that is no repository of the project is listed too');
+  assert.deepEqual(listUiImages(dir).map((i) => [i.name, i.repo]), listed, 'the same with no repository named');
+  for (let i = 0; i < UI_IMAGES_MAX; i++) writeFileSync(path.join(dir, 'scratch', `s${String(i).padStart(2, '0')}-after.png`), 'x');
+  for (let i = 0; i < UI_IMAGES_MAX - 3; i++) writeFileSync(path.join(dir, `r${String(i).padStart(2, '0')}-after.png`), 'x');
   const all = listUiImages(dir, known);
   assert.equal(all.length, UI_IMAGES_MAX);
   assert.ok(all.some((i) => i.name === 'web/login-after.png') && all.some((i) => i.name === 'api/login-after.png'), 'the assigned ones are kept');
+  assert.equal(all.filter((i) => !i.repo).length, UI_IMAGES_MAX - 2, 'then the ones straight in the folder');
+  assert.ok(!all.some((i) => i.repo === 'scratch'), 'a folder that is no repository comes last in the cap');
   assert.equal(all[0].repo, undefined, 'displayed with the root first');
   assert.equal(imageListText('/d', [{ ...img('a-after.png'), name: 'web/a-after.png', repo: 'web' }]), `- a (web): after ${path.join('/d', 'web/a-after.png')}`);
 });

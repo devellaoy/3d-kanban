@@ -48,7 +48,7 @@ export function createImagesPlugin(ctx: KanbanContext): KanbanPlugin {
     const task = ctx.repo.getTask(Number(m[1]));
     if (!task) return sendJson(res, 404, { error: `There's no task #${m[1]}` }), true;
     const dir = uiImagesDir(ctx.filesDir, task.id);
-    // Only the project's repositories' folders are looked in.
+    // The project's repositories: their folders' images are the last the listing's cap drops.
     const folders = ctx.repos(task.project).map((r) => r.id);
     const list = (): KanbanTaskImageList => ({ taskId: task.id, images: listUiImages(dir, folders).map(plain) });
     if (m[2] === undefined) {

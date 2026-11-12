@@ -521,11 +521,13 @@ test('after the fallback was used, the repository’s pull request appearing tak
   assert.ok(e.web.body!.includes('(./web.login-after.png)'));
 });
 
-test('a folder that is no repository of the project is not listed, so its pictures reach no pull request', async () => {
-  const b = board({ files: { 'scratch/x-after.png': 's' } });
+test('pictures in a folder that is no repository of the project go to every open pull request', async () => {
+  const b = board({ files: { 'gone/x-after.png': 's' } });
   const calls: { args: string[]; body?: string }[] = [];
   await runBoard(b, calls);
-  assert.deepEqual(Object.keys(edited(calls)), []);
+  const e = edited(calls);
+  assert.deepEqual(Object.keys(e).sort(), ['api', 'web']);
+  assert.ok(e.api.body!.includes('(./gone.x-after.png)') && e.web.body!.includes('(./gone.x-after.png)'));
 });
 
 test('a mix of pictures straight in ui/ and in a repository folder', async () => {

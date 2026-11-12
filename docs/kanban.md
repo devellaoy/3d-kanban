@@ -316,7 +316,8 @@ or a comment asks for UI testing or screenshots. Investigations take none.
 - A task in **several repositories** gets a folder per repository inside it, `ui/<repo id>/`, named in the
   prompt, and the agents save each picture in the folder of the repository whose UI it shows. The office then
   puts it only into that repository's pull request (see [Pull requests](#pull-requests)). A picture saved
-  straight in `ui/` goes to every pull request of the task, as in a task with one repository.
+  straight in `ui/` goes to every pull request of the task, as in a task with one repository, and so does
+  one in a folder that is no repository of the project (one removed from it since, say).
 - The task's **Images** tab shows them (see *The task window*), and **Remove** there takes one away, for
   instance before it reaches a pull request. A task started over keeps its old images until they are
   removed or retaken.
