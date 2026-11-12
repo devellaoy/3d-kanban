@@ -74,14 +74,18 @@ export interface EnsuredScreenshots {
   removed?: true;
 }
 
-/** The description without the office's block, and the blank lines it leaves: the human text around it is kept as it was. */
+/**
+ * The description without the office's block. Only the block and the line breaks that set it apart go:
+ * spaces are Markdown (an indented code block after it, a hard break's two spaces before it), so the
+ * text around it keeps every one of them.
+ */
 export function withoutScreenshots(body: string): string {
   const m = BLOCK_RE.exec(body);
   if (!m) return body;
-  const before = body.slice(0, m.index);
-  const after = body.slice(m.index + m[0].length);
-  if (!after.trim()) return before.trim() ? `${before.trimEnd()}\n` : '';
-  return before.trim() ? `${before.trimEnd()}\n\n${after.trimStart()}` : after.trimStart();
+  const before = body.slice(0, m.index).replace(/(?:\r?\n)+$/, '');
+  const after = body.slice(m.index + m[0].length).replace(/^(?:\r?\n)+/, '');
+  if (!after.trim()) return before.trim() ? `${before}\n` : '';
+  return before.trim() ? `${before}\n\n${after}` : after;
 }
 
 /** How long gh may take to upload these: a minute, and more for each image and megabyte, at most ten minutes. */

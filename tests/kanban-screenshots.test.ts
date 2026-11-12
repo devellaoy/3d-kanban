@@ -388,4 +388,9 @@ test('withoutScreenshots keeps what is around the block byte for byte', () => {
   assert.equal(withoutScreenshots(`Intro\n\n${b}\n\nFooter\n`), 'Intro\n\nFooter\n');
   assert.equal(withoutScreenshots(`${b}\n`), '');
   assert.equal(withoutScreenshots('No block\n\n'), 'No block\n\n');
+  // Spaces are Markdown: an indented code block after the block stays code, a hard break before it stays a break.
+  assert.equal(withoutScreenshots(`Intro\n\n${b}\n\n    npm run build\n    npm test\n`), 'Intro\n\n    npm run build\n    npm test\n');
+  assert.equal(withoutScreenshots(`${b}\n\n    code first\n`), '    code first\n');
+  assert.equal(withoutScreenshots(`Line one  \nline two  \n\n${b}\n`), 'Line one  \nline two  \n');
+  assert.equal(withoutScreenshots(`Intro  \r\n\r\n${b}\r\n\r\n    code\r\n`), 'Intro  \n\n    code\r\n');
 });
