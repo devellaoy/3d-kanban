@@ -222,7 +222,7 @@ const sigOf = (j: ClosingJob) => [j.ref ?? '', ...j.drop, '/', ...j.leave].join(
 
 /** The work on each pull request, one after the other (an entry goes when its chain is idle). */
 const chains = new Map<string, Promise<void>>();
-function inOrder(url: string, work: () => Promise<void>): void {
+export function inOrder(url: string, work: () => Promise<void>): void {
   const next = (chains.get(url) ?? Promise.resolve()).then(work).catch((err) => console.error('agent-office: checking that a pull request closes its issue failed:', err));
   chains.set(url, next);
   void next.then(() => { if (chains.get(url) === next) chains.delete(url); });

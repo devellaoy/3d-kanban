@@ -37,6 +37,8 @@
 .kb-nt-pair > input[type=number].inp { width: 60px; max-width: none; }
 .kb-nt-sub { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; align-items: start; padding: 12px; border: var(--bw-sm) solid var(--rule-soft); border-radius: var(--radius-sm); background: var(--paper-2); }
 .kb-nt-sub > .check-line, .kb-nt-sub > .kb-codex-note { grid-column: 1 / -1; }
+/* UI testing: the tick box with its hint beside it, the hint under it when the row is full. */
+.kb-nt-ui { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 12px; }
 .kb-nt-who { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; align-items: start; }
 .kb-nt-form .kb-model { display: block; }
 .kb-nt-form textarea.inp { resize: vertical; min-height: 60px; }

@@ -257,10 +257,20 @@ test('edits: structural fields only in To do, the description locked once starte
   assert.deepEqual(task.overrides, { review: { rounds: 2 }, implementPermission: 'workspace-write' });
   okOf(await ada.ask({ t: 'kanban.task.update', id: 1, patch: { review: null, implementPermission: null } }));
   assert.deepEqual(kanban.ctx.repo.getTask(1)!.overrides, {});
+  // UI testing is the task's own choice over the project's and the office's; null goes back to them.
+  okOf(await ada.ask({ t: 'kanban.task.update', id: 1, patch: { uiTesting: false } }));
+  assert.deepEqual(kanban.ctx.repo.getTask(1)!.overrides, { uiTesting: false });
+  okOf(await ada.ask({ t: 'kanban.task.update', id: 1, patch: { uiTesting: true, implementPermission: 'workspace-write' } }));
+  assert.deepEqual(kanban.ctx.repo.getTask(1)!.overrides, { implementPermission: 'workspace-write', uiTesting: true });
+  okOf(await ada.ask({ t: 'kanban.task.update', id: 1, patch: { uiTesting: null, implementPermission: null } }));
+  assert.deepEqual(kanban.ctx.repo.getTask(1)!.overrides, {});
   errorOf(await ada.ask({ t: 'kanban.task.update', id: 1, patch: { repoIds: ['api'] } }), /isn't one of/);
   errorOf(await ada.ask({ t: 'kanban.task.update', id: 9, patch: { title: 'y' } }), /no task #9/);
 
   await ada.ask({ t: 'kanban.task.start', id: 1 });
+  // Not structural and not the executor: it can change once the task is running and a run is going.
+  okOf(await ada.ask({ t: 'kanban.task.update', id: 1, patch: { uiTesting: false } }));
+  assert.deepEqual(kanban.ctx.repo.getTask(1)!.overrides, { uiTesting: false });
   errorOf(await ada.ask({ t: 'kanban.task.update', id: 1, patch: { description: 'third' } }), /description is locked/);
   // Who carries it out only while no run is going; the rest of how it runs only in To do.
   errorOf(await ada.ask({ t: 'kanban.task.update', id: 1, patch: { tool: 'claude' } }), /tool can only be changed while no run is going/);
@@ -788,4 +798,13 @@ test('the pictures an edit lets go of are looked for in every comment of the tas
   const a = kanban.ctx.repo.getAttachment(shared);
   assert.equal(a?.taskId, 1);
   assert.equal(a?.commentId, first.id, 'the oldest comment that links it holds it');
+});
+
+test('a task made with a UI testing choice keeps it in its overrides, one made without has none', async (t) => {
+  const { client, kanban } = office(t);
+  const ada = client('Ada', false);
+  const off = okOf(await ada.ask({ t: 'kanban.task.create', task: { project: 'web', title: 'x', uiTesting: false } }));
+  const plain = okOf(await ada.ask({ t: 'kanban.task.create', task: { project: 'web', title: 'y' } }));
+  assert.deepEqual(kanban.ctx.repo.getTask(off.taskId as number)!.overrides, { uiTesting: false });
+  assert.deepEqual(kanban.ctx.repo.getTask(plain.taskId as number)!.overrides, {});
 });

@@ -115,6 +115,26 @@ Full option reference, flow-file format, logged-in sessions and worked examples:
 
 Pass the image path to Codex's **`view_image` tool**. Iterate: change, re-capture, verify.
 
+## Saving before/after images to the kanban task
+
+When the task's prompt names an images folder (a "UI testing" block with a path that ends in
+`grants/task-<id>/ui`), the kanban keeps the pictures of a UI change there: the task's Images
+tab shows them, the reviewer reads them and the office adds them to the pull request's
+description. The script writes to the OS temp directory, so **copy** the captures you want kept
+into that folder (create it if it is missing):
+
+- Name them `<subject>-before.png` and `<subject>-after.png`. The subject says what the view is
+  (`login-form`, `board-narrow`): lowercase letters, digits, `.`, `_` and `-` only. A before and
+  an after of the same view share their subject; other names are ignored.
+- Take the **before** image before you change any code, and the **after** image of the same
+  view, in the same state and at the same viewport, once the change works. A view that is new
+  has only an after image.
+- After a later fix that changes the view, capture the after image again and save it under the
+  **same name**; leave the before image as it is, and delete images that no longer apply.
+- Use test data and test accounts: these images may end up in a pull request.
+
+If the prompt names no images folder, leave the captures where the script put them.
+
 ## 5. Clean up
 
 Shut down only the dev server you started and check its port is free. Clean up identifiable

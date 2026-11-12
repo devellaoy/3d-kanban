@@ -46,6 +46,7 @@ export async function createBoardTask(
   const overrides: TaskOverrides = {};
   if (input.review && Object.keys(input.review).length) overrides.review = input.review;
   if (input.implementPermission) overrides.implementPermission = input.implementPermission;
+  if (input.uiTesting !== undefined) overrides.uiTesting = input.uiTesting;
   const task = ctx.repo.createTask({
     project: input.project,
     title: input.title,

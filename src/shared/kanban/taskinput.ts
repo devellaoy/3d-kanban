@@ -31,6 +31,8 @@ export interface KanbanTaskInput {
   goal?: string;
   review?: Partial<ReviewSettings>;
   implementPermission?: ImplementPermission;
+  /** Before/after UI images (the task's own choice over the project's and the office's). */
+  uiTesting?: boolean;
   tags?: string[];
   /** Uploaded files (POST /api/kanban/upload) to attach. */
   attachmentIds?: string[];
@@ -105,6 +107,7 @@ function sharedFields(r: Obj): IssueTaskFields {
   assign('goal', optText(r.goal, 'The acceptance criteria', KANBAN_LIMITS.goal)?.trim() || undefined);
   assign('review', review(r.review));
   assign('implementPermission', optOneOf(r.implementPermission, 'implementPermission', PERMISSIONS));
+  assign('uiTesting', bool(r.uiTesting, 'uiTesting'));
   assign('tags', tags(r.tags));
   assign('attachmentIds', attachmentIds(r.attachmentIds));
   return out;

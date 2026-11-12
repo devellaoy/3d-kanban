@@ -22,6 +22,7 @@ import { KANBAN_DEFAULTS, REVIEW_DEFAULTS } from './defaults';
 import { draftApplies, draftFailure, requestIssueDraft } from './issuedraft';
 import { openIssuePicker } from './issues';
 import { sameRepoPick } from './model';
+import { projectUiTesting, taskUiTesting, uiTestingPatch } from './taskimagesmodel';
 import { kstore } from './store';
 import { APPROVAL_NAMES, effortName, toolName } from './labels';
 import { isSendKey } from './sendkey';
@@ -184,6 +185,14 @@ export function openCreate(api: KanbanApi, o: CreateOptions = {}) {
   const reviewCodex = codexChip(() => rTool.value);
   rTool.addEventListener('change', reviewCodex.paint);
   const reviewFields = h('div.kb-nt-sub', {}, formField('Reviewer', rTool), formField('Model', rModel.el), formField('Effort', rEffort), reviewCodex.el, rReRev.el);
+  // UI testing: before/after screenshots of what the task changes. The box follows the picked project's
+  // default until it is touched; an edit opens on what the task does today.
+  const uiTest = checkLine('UI testing');
+  const uiStart = editing ? taskUiTesting(s, editing.project, editing.overrides) : (pre.uiTesting ?? projectUiTesting(s, projectSel.value));
+  uiTest.box.checked = uiStart;
+  let uiTouched = !!editing || pre.uiTesting !== undefined;
+  uiTest.box.addEventListener('change', () => (uiTouched = true));
+  const uiField = h('div.kb-nt-ui', {}, uiTest.el, h('span.field-hint', {}, 'Before and after screenshots when the task changes the UI'));
   const goal = textArea(editing?.goal ?? pre.goal ?? '', { class: 'inp', rows: 2, maxlength: KANBAN_LIMITS.goal, placeholder: 'When is it done? One criterion per line.', title: 'The agents check the work against these' });
 
   // --- Who
@@ -204,6 +213,8 @@ export function openCreate(api: KanbanApi, o: CreateOptions = {}) {
     model.input.placeholder = defaults?.model ? `Default (${defaults.model})` : 'Default';
     if (!roundsTouched) rRounds.value = String(baseRounds());
     const inv = type.value() === 'investigate';
+    if (!uiTouched) uiTest.box.checked = projectUiTesting(s, projectSel.value);
+    uiField.classList.toggle('hidden', inv);
     usePlan.box.disabled = inv;
     approval.disabled = !usePlan.box.checked || inv;
     rRounds.disabled = !useReview.box.checked;
@@ -231,6 +242,7 @@ export function openCreate(api: KanbanApi, o: CreateOptions = {}) {
       h('div.kb-nt-how', {}, formField('Type', type.el), h('div.kb-nt-pair', {}, usePlan.el, approval), h('div.kb-nt-pair', {}, useReview.el, rRounds)),
       reviewOverride.el,
       reviewFields,
+      uiField,
       formField('Acceptance criteria', goal),
     ),
     section('Who', 'Empty fields use the project defaults.', h('div.kb-nt-who', {}, formField('Agent', tool), formField('Model', model.el), formField('Effort', effort)), toolCodex.el),
@@ -297,6 +309,8 @@ export function openCreate(api: KanbanApi, o: CreateOptions = {}) {
       if (approval.value && approval.value !== editing.planApproval) patch.planApproval = approval.value as PlanApproval;
       if (useReview.box.checked !== editing.useReview) patch.useReview = useReview.box.checked;
       if (goal.value.trim() !== (editing.goal ?? '')) patch.goal = goal.value.trim() || null;
+      const ui = type.value() === 'investigate' ? undefined : uiTestingPatch(uiTest.box.checked, uiStart);
+      if (ui !== undefined) patch.uiTesting = ui;
       const rv = reviewValue();
       if (JSON.stringify(rv ?? null) !== JSON.stringify(editing.overrides.review && Object.keys(editing.overrides.review).length ? editing.overrides.review : null)) patch.review = rv ?? null;
       // Uploads wait unattached until saved, so a file whose link was taken out of the text is never kept.
@@ -311,6 +325,8 @@ export function openCreate(api: KanbanApi, o: CreateOptions = {}) {
     if (model.input.value.trim()) rest.model = model.input.value.trim();
     if (effort.value) rest.effort = effort.value as KanbanEffort;
     if (goal.value.trim()) rest.goal = goal.value.trim();
+    // Untouched, the task has no choice of its own and follows its project's.
+    if (uiTouched && type.value() !== 'investigate') rest.uiTesting = uiTest.box.checked;
     const rv = reviewValue();
     if (rv) rest.review = rv;
     if (pre.tags?.length) rest.tags = pre.tags;

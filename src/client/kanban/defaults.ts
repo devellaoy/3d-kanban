@@ -10,7 +10,7 @@ export const REVIEW_DEFAULTS: Readonly<ReviewSettings> = { tool: 'claude', round
 
 /** defaultKanbanSettings(), without schemaVersion and projects. */
 export const KANBAN_DEFAULTS: Readonly<Pick<KanbanSettings, 'defaults' | 'review' | 'autoResume' | 'archiveAfterDays' | 'idleCloseHours'>> = {
-  defaults: { tool: 'claude', usePlan: true, planApproval: 'auto', useReview: true, implementPermission: 'bypass' },
+  defaults: { tool: 'claude', usePlan: true, planApproval: 'auto', useReview: true, implementPermission: 'bypass', uiTesting: true },
   review: REVIEW_DEFAULTS,
   autoResume: { enabled: true, maxAttempts: 5, maxWaitHours: 6 },
   archiveAfterDays: 30,

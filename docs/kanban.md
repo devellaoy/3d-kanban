@@ -142,7 +142,9 @@ heading and a line of help on the left. Its footer has the key hint (**Ctrl/⌘ 
 - **How**: type **Implement** or **Investigate** (read-only: writes a report instead of changing code;
   no plan, review or PRs), **Plan first** and **Plan approval** (implement straight away, or wait for
   your approval), **Review rounds** on/off, **Choose the reviewer** (agent, model, effort, 1–10
-  rounds, review the last fix too) and **Acceptance criteria** (the agents check the work against
+  rounds, review the last fix too), **UI testing** (before and after screenshots when the task changes
+  the UI, see [UI testing](#ui-testing); ticked or not by the project's default until you touch it, and
+  not there for an investigation) and **Acceptance criteria** (the agents check the work against
   them).
 - **Who**: the agent (**Claude** or **Codex**), model and effort.
 
@@ -297,6 +299,35 @@ When a task waits on a person, the office's team notifications (the Slack / Disc
 Settings or `--webhook`) get one line per transition: "🗂️ #14 <title> needs plan approval / has
 questions / is ready for review in <project>".
 
+### UI testing
+
+With **UI testing** on (the default; set for the office, a project or one task, see *Settings*), the
+implementer of a task that changes what a user sees takes a screenshot of the view **before** it changes
+any code and one of the same view **after**, and saves them with the task. A task that doesn't touch the
+UI gets none, and an agent that can't take one (the app doesn't start, it needs a login it doesn't have)
+carries on and says so in its summary. With it off, the agent takes them only when the task's description
+or a comment asks for UI testing or screenshots. Investigations take none.
+
+- The images are files named `<subject>-before.png` and `<subject>-after.png` (png, jpg, jpeg or webp;
+  lower-case letters, digits, `.`, `_` and `-`; at most 20 MB each and 40 a task) in the task's own
+  folder, `<data>/kanban/grants/task-<id>/ui/`. A file with another name is not listed. The agents use the
+  `kanban-ui-screenshots` skill for them when they have it, else whatever the project has for looking at
+  its UI.
+- The task's **Images** tab shows them (see *The task window*), and **Remove** there takes one away, for
+  instance before it reaches a pull request. A task started over keeps its old images until they are
+  removed or retaken.
+- The **reviewer** is given the list and looks at the images: a wrong UI in them is a finding, while missing
+  images are only a note, never a reason to ask for changes.
+- A **fix round**, a comment's work and a PR fix retake the after images under the same names when they
+  change the view, and delete the ones that no longer apply.
+- Once the task has a **pull request**, the office puts the images into its description (see
+  [Pull requests](#pull-requests)).
+- The blocks the agents are given are the four **UI testing** prompts (*Prompts*), editable like the rest;
+  one left empty adds nothing.
+
+The images may end up in a pull request, so the agents are told to use test data and test accounts.
+Look at the Images tab before pressing **Create PRs** if that matters.
+
 ### Settings
 
 The kanban's settings are part of the office's Settings (from the ☰ menu in the 3D office, or from the
@@ -313,6 +344,7 @@ over it, and the task's own over both.
 | Plan first | Kanban → New tasks | on | New tasks start with a plan. |
 | Plan approval | Kanban → New tasks; Projects; per task | implement straight away | *implement straight away* (`auto`) or *wait for approval* (`manual`). Set on a task when it's made. |
 | Review rounds | Kanban → New tasks | on | New tasks get reviewed. |
+| UI testing | Kanban → New tasks; Projects → Project; per task | on | Implementers save before and after screenshots of the UI they change (see [UI testing](#ui-testing)). A project chooses *Default*, *On* or *Off*; a task's own choice (the create form's tick box) goes over both, and a task without one follows its project. |
 | Implementation runs | Kanban → New tasks; Projects | without permission prompts | How implement, fix, resume and PR phases run. *In Codex's workspace sandbox* (`-s workspace-write -a never`) only changes Codex; Claude always runs these phases in bypass mode. |
 | Reviewer: agent, model, effort | Kanban → Reviews; Projects; per task | Claude | Who reviews. |
 | Rounds | Kanban → Reviews; Projects; per task | 2 | 1–10 review rounds. |
@@ -382,7 +414,7 @@ floor first). The worker is the one at work: the reviewer while the task is in a
 implementer; the task's **Open its terminal** switches to the other worker's window. **Changes**
 opens the task's Changes window and its **Terminal** comes back; all of these stay the same open
 task, so `?task=` stays in the link. `&tab=terminal` opens the Terminal tab and `&tab=changes` the
-Changes window; the link's `&tab=` follows the window's tabs. A task without a worker, or whose worker
+Changes window (any other tab, `&tab=images` say, opens on the Task tab); the link's `&tab=` follows the window's tabs. A task without a worker, or whose worker
 can't be reached, opens in a task window of its own (close button top right, Esc closes), with the tabs below and
 **Open the terminal**, which swaps it for the worker's window. One task window is open at a time.
 Closing it by the close button, Esc or the backdrop clears `?task=` from the link. The task's tab is kept in the
@@ -414,7 +446,7 @@ the Pull requests tab. Its tabs:
   countdown, or **Open the plan** when the plan waits for approval; for a task on hold, why and until
   when), then the description, the acceptance criteria as a list, **Reports** (an investigation's report
   files: shown in place, Markdown rendered, or downloaded) and attachments. Beside it is the **Details**
-  rail: project, repositories, ticket, type, agent, plan, review rounds, branch, workspace and tags, then
+  rail: project, repositories, ticket, type, agent, plan, review rounds, UI testing (on or off, as it applies to the task), branch, workspace and tags, then
   who made it and when, since when it waits and the queued comments (under 900 px of width the rail
   drops under the content). **Change the agent** in the rail picks the task's agent, model and effort
   whenever nothing runs; the office may refuse it (the reason shows as a message). The next phase runs
@@ -438,6 +470,13 @@ the Pull requests tab. Its tabs:
   then, never waited for), read-only, with Refresh to read again. Per commit and Uncommitted are always read
   that way, again whenever the live checkout changes (a new commit, an amend, an edit). A diff over
   2 MB is cut. The 3D worker window's Task tab has no Changes tab: its header's Changes is it.
+- **Images**: the before and after screenshots of the task's UI changes (see [UI testing](#ui-testing)),
+  with their number on the tab. Each view is a row with **Before** and **After** side by side (one under
+  the other in a narrow window); a side without a picture says so (a new view has no before). A picture
+  opens full size in a new browser tab. **Refresh** reads the folder again (the tab also does when the
+  task changes and when it is opened), and **Remove** deletes one image after asking in place; a visitor
+  of a shared office sees the images but can't remove them. An empty tab says what goes there. The tab is
+  in every task view, the 3D worker window's too, and `&tab=images` opens it.
 - **Pull requests**: the task's pull requests with their state, **Fix PRs** and **Resolve conflicts** (with open PRs), and
   **Review these N PRs together**, and **Find PRs** (on this tab only, not on an archived task).
   Each row ends with a button that unlinks the pull request from the task after a confirmation (the PR
@@ -733,6 +772,28 @@ reads its own. A kanban task made from a card keeps the description as its own, 
   (that exact line, also from a done task's open PR), so merging does not close the old issue. A closing line the author or the
   agent wrote is never edited: if the PR still closes the old issue, one status comment on the task says so. Jira tickets and GitHub project drafts have no such line. An Azure
   Boards work item is linked with `AB#123` and completed by the office when its pull request merges ([hosting](hosting.md#azure-boards)).
+- **Screenshots**: a task's before and after images (see [UI testing](#ui-testing)) go into the description of its pull
+  requests. The office does it, not the agent: when the board refreshes and a task whose PRs the office opened
+  (**Create PRs**) has images, no run going and an open or draft PR on GitHub from its own branch, the office uploads
+  the images with `gh pr edit --attach` and puts a **Screenshots** section at the end of the description, a heading per
+  view with its Before and After (a view with only an after counts). That happens a few seconds after the PR is opened,
+  and again whenever the images change (a fix round retook one, you removed one): the section is replaced, never
+  repeated, and the rest of the description is left as it is. A status comment on the task says what was added. Images
+  retaken in a fix round reach the description at the next refresh, which can be before **Push & update PRs** has pushed
+  the fix's commits. It needs **gh 2.99.0 or newer** (the first with `--attach`) and write access to the repository, as the
+  person who owns the task (like the closing line); when it can't (an older gh, no write access, a failed upload) the task
+  gets one comment saying why, and the same images are not tried again. If gh uploaded only some of the images (it
+  updates the description and then reports an error), the section is not counted as done: the office tries it once more
+  for those images (a few times at most), and tells the task if that keeps failing. The office looks at the description once
+  per run of the task and set of images, so if a later run (the PR phase, a fix, **Push & update PRs**) rewrote it
+  without the section, the section is put back at the next refresh; one still there costs a look and no edit. Removing
+  every image in the Images tab takes the section out of the description (the text around it is left as it is) and says
+  so on the task. A task that was never given an images folder costs no look. A task taken off hold gets the same UI
+  testing instructions as a comment, by the option as it is when the task resumes.
+  Known limits: a Screenshots section you delete from the PR comes back after the office restarts or when the images
+  change (the office remembers what it did only in memory, and sees the section itself in the description). It works
+  for GitHub.com pull requests only, that is `https://github.com/<owner>/<repo>/pull/<number>`: GitHub Enterprise hosts,
+  Azure DevOps and Bitbucket PRs get no section.
 - **Repositories on Azure DevOps and Bitbucket**: everything above works the same, with the agent using `office-pr`
   where it would use `gh`, and the PR board and linked PR states read over the host's API ([hosting](hosting.md)).
 - **PR phase** (a task in Waiting, Review or Done): **Create PRs** (or **Push & update PRs**) has
@@ -957,6 +1018,7 @@ implementation runs, review, the board's columns), not as a plain one-off worker
 | `<data>/hosting-secrets.json`, `<data>/homes/<account>/hosting.json` | The office's and each account's Azure DevOps and Bitbucket tokens (mode 600; [hosting](hosting.md#tokens)). Never sent to a browser. |
 | `<data>/kanban/uploads/` | Attached files (mode 600); ones never attached are removed after a day. |
 | `<data>/kanban/grants/task-<id>/` | Copies of a task's attached files, the one folder its agents may read (mode 700); removed with the task. |
+| `<data>/kanban/grants/task-<id>/ui/` | The task's before and after screenshots (`<subject>-before.png`, `<subject>-after.png`; mode 700), see [UI testing](#ui-testing). |
 | `<data>/kanban/reports/task-<id>/` | An investigation's report files. |
 | `<data>/kanban/refs/task-<id>/` | The plan phase's referenced tasks. |
 | `<data>/kanban/skills/` | Generated Claude skill plugins. |

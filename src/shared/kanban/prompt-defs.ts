@@ -8,6 +8,7 @@
 
 import type { PromptDef } from '../prompts.js';
 import { PR_DEFS } from './prompt-defs-pr.js';
+import { UI_DEFS, UI_TESTING_VAR } from './prompt-defs-ui.js';
 import { DRAFT_DEFS } from './prompt-defs-draft.js';
 import { TASK_VARS } from './prompt-defs-vars.js';
 
@@ -85,6 +86,7 @@ You are in a fresh worktree on a new branch the office cut, so before anything e
     vars: {
       ...TASK_VARS,
       ...PLAN_VAR,
+      ...UI_TESTING_VAR,
       branchInstructions: "The project's branch instructions, or the “Branch naming (default)” prompt",
       ticketId: "The ticket id to put in commit messages, or 'none'",
     },
@@ -115,6 +117,8 @@ Your workspace (each folder is a git repository of its own):
 {{taskRefs}}
 
 {{skills}}
+
+{{uiTesting}}
 
 Never push, open pull requests or merge in this turn: that only happens when the user asks for a pull request. When you're done, reply with a short summary: what changed in which repository, how you verified it, and anything left open.
 
@@ -186,7 +190,7 @@ Don't change anything in the repositories: no edits, branches or commits. Read t
     group: 'kanban',
     label: 'Review',
     used: 'A review round, for the reviewer: a separate worker (its own tool, model and effort) in the same workspace, without file-editing tools. The office appends the review contract (REVIEW: APPROVED / CHANGES_REQUESTED).',
-    vars: { ...TASK_VARS, ...PLAN_VAR, ...ROUND_VARS },
+    vars: { ...TASK_VARS, ...PLAN_VAR, ...ROUND_VARS, ...UI_TESTING_VAR },
     needs: ['description'],
     text: `You are reviewing the work done for kanban task #{{taskId}} in the project {{project}}: {{title}}. This is review round {{round}} of {{rounds}}.
 
@@ -210,6 +214,8 @@ The workspace, with the task's branch in each repository:
 
 {{skills}}
 
+{{uiTesting}}
+
 Review the task's commits and any uncommitted changes in each repository against where its branch started (git log, git diff). Check that it does what was asked, that it's correct (edge cases, errors, security), that it fits the project's conventions, and that it's tested. Don't change, stage or commit anything, and run only read-only commands. List your findings, the most serious first, each with its file:line, what's wrong and what to do about it. Only ask for changes that matter; note small matters as optional.
 
 {{language}}`,
@@ -218,7 +224,7 @@ Review the task's commits and any uncommitted changes in each repository against
     group: 'kanban',
     label: 'Review · next round',
     used: "Sent to the reviewer's session for the next round, after the implementer fixed the findings. The office appends the review contract.",
-    vars: { taskId: TASK_VARS.taskId, ...ROUND_VARS, fixSummary: "The implementer's reply to the findings", language: TASK_VARS.language },
+    vars: { taskId: TASK_VARS.taskId, ...ROUND_VARS, fixSummary: "The implementer's reply to the findings", ...UI_TESTING_VAR, language: TASK_VARS.language },
     needs: ['fixSummary'],
     text: `The implementer of task #{{taskId}} has worked on your findings. Their reply:
 
@@ -226,13 +232,15 @@ Review the task's commits and any uncommitted changes in each repository against
 
 Review the changes again (round {{round}} of {{rounds}}): check that each finding was really fixed or rightly rejected, and that the fixes didn't break anything else. Still don't change any files.
 
+{{uiTesting}}
+
 {{language}}`,
   },
   'kanban.fix': {
     group: 'kanban',
     label: 'Fix review findings',
     used: "Sent to the implementer's session when a review round requests changes.",
-    vars: { taskId: TASK_VARS.taskId, ...ROUND_VARS, findings: "The reviewer's findings", language: TASK_VARS.language },
+    vars: { taskId: TASK_VARS.taskId, ...ROUND_VARS, findings: "The reviewer's findings", ...UI_TESTING_VAR, language: TASK_VARS.language },
     needs: ['findings'],
     text: `The review of task #{{taskId}} (round {{round}} of {{rounds}}) asks for changes:
 
@@ -240,13 +248,15 @@ Review the changes again (round {{round}} of {{rounds}}): check that each findin
 
 Fix every finding that is right, verify the result again, and commit locally in each repository you change (never push). If you think a finding is wrong, don't change the code for it: say why. Reply with what you did about each finding.
 
+{{uiTesting}}
+
 {{language}}`,
   },
   'kanban.resume': {
     group: 'kanban',
     label: 'Comment for the agent',
     used: "A user's comment on a task that has already been worked on, typed into the agent's session (or a resumed one).",
-    vars: { taskId: TASK_VARS.taskId, author: 'Who wrote the comment', message: 'The comment', attachments: TASK_VARS.attachments, language: TASK_VARS.language },
+    vars: { taskId: TASK_VARS.taskId, author: 'Who wrote the comment', message: 'The comment', attachments: TASK_VARS.attachments, ...UI_TESTING_VAR, language: TASK_VARS.language },
     needs: ['message'],
     text: `{{author}} commented on task #{{taskId}}:
 
@@ -255,6 +265,8 @@ Fix every finding that is right, verify the result again, and commit locally in 
 {{attachments}}
 
 Do what the comment asks. Commit any changes locally as before (never push unless the comment asks for a pull request). Reply with a short summary of what you did.
+
+{{uiTesting}}
 
 {{language}}`,
   },
@@ -269,6 +281,7 @@ Do what the comment asks. Commit any changes locally as before (never push unles
 {{criteria}}`,
   },
   ...PR_DEFS,
+  ...UI_DEFS,
   ...DRAFT_DEFS,
   'kanban.pr.review': {
     group: 'kanban',
@@ -349,6 +362,7 @@ The pull request named below (#{{posted}} of {{postedRepo}}) is only where the c
       heldAt: 'When the task was put on hold (a date)',
       holdNote: 'The reason it was put on hold, as ", because: …"; empty when none was given',
       comments: 'The messages left on the task while it was on hold, or "none"',
+      ...UI_TESTING_VAR,
       language: TASK_VARS.language,
     },
     text: `Task #{{taskId}} has been on hold since {{heldAt}}{{holdNote}}. It is back in progress now, and you carry on with it.
@@ -357,6 +371,8 @@ Messages left on the task while it was on hold:
 {{comments}}
 
 Check the worktree as it is now before you do anything (git status, git log): the branch may have fallen behind its base after this long, and other work may have landed meanwhile. Find out whether what the task was waiting for is available now, and carry on where you left off. If it is still blocked, say so clearly and stop.
+
+{{uiTesting}}
 
 {{language}}`,
   },

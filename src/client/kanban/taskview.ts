@@ -5,8 +5,8 @@
 // actions on every tab. Tabs: Overview (what it waits for, description, criteria, reports,
 // attachments), Conversation (write at the top, newest first), Plan (its versions), Runs (every phase it
 // ran), Terminal (the kanban page only: the 3D worker window has its own), Changes (the task's Changes
-// view, changesview.ts; not in the worker window, whose header has Changes for it), Pull requests and
-// Issue.
+// view, changesview.ts; not in the worker window, whose header has Changes for it), Images (the
+// before/after pictures of its UI changes, taskimages.ts), Pull requests and Issue.
 //
 // As a window of its own (openTaskModal) the view's root is the modal itself, so the header's ✕ is the
 // window's; mounted in another window (mountTaskView: the worker window's Task tab) it has no ✕.
@@ -38,6 +38,7 @@ import { kstore } from './store';
 import { onSendKey } from './sendkey';
 import { mountChangesView, type ChangesViewHandle } from './changesview';
 import { mountIssueTab } from './issuetab';
+import { mountTaskImages, type TaskImages } from './taskimages';
 import { run, tabCount, tabStrip, textArea } from './ui';
 import { Conversation, COMMENTS_PAGE } from './taskconv';
 import { footerButtons } from './taskactionbar';
@@ -52,7 +53,7 @@ import { RETRY_ATTR, retryText } from './taskwaiting';
 
 export type { TaskViewOptions } from './taskctx';
 
-const TAB_NAMES: Record<TaskTab, string> = { overview: 'Overview', conversation: 'Conversation', plan: 'Plan', runs: 'Runs', terminal: 'Terminal', changes: 'Changes', prs: 'Pull requests', issue: 'Issue' };
+const TAB_NAMES: Record<TaskTab, string> = { overview: 'Overview', conversation: 'Conversation', plan: 'Plan', runs: 'Runs', terminal: 'Terminal', changes: 'Changes', images: 'Images', prs: 'Pull requests', issue: 'Issue' };
 
 export interface TaskViewHandle {
   destroy(): void;
@@ -139,6 +140,8 @@ class View implements TaskView {
   private issue: ReturnType<typeof mountIssueTab> | null = null;
   private changes: { host: HTMLElement; view: ChangesViewHandle } | null = null;
   private reports: Reports;
+  /** The Images tab: its list is read with the task (for the tab's count), its pictures drawn once and kept. */
+  private images: TaskImages;
   private conv: Conversation;
   /** What the panes see of this view. */
   private c: TaskCtx;
@@ -187,6 +190,7 @@ class View implements TaskView {
       alive: () => !this.destroyed,
     };
     this.reports = new Reports(this.c);
+    this.images = mountTaskImages(this.taskId, () => this.render());
     this.conv = new Conversation(this.c);
     this.offs.push(
       this.api.on((msg) => this.onMsg(msg)),
@@ -220,6 +224,7 @@ class View implements TaskView {
     this.unwatch?.();
     this.dropChanges();
     this.dropIssue();
+    this.images.destroy();
     this.root.remove();
   }
 
@@ -259,6 +264,8 @@ class View implements TaskView {
       this.unwatch ??= this.api.watch(d.task.project);
       const key = `${d.task.status}:${d.task.phase ?? ''}:${d.task.runState}`;
       this.reports.follow(key);
+      // An agent saves its pictures without a word to the board: read with every fresh copy of the task.
+      this.images.refresh();
     } catch (err) {
       if (this.destroyed) return false;
       this.error = (err as Error).message;
@@ -359,7 +366,7 @@ class View implements TaskView {
     }
     const d = this.d;
     const planWaits = status === 'waiting' && waitingReason === 'plan_approval';
-    const counts: Partial<Record<TaskTab, number>> = d ? { conversation: card?.commentCount ?? d.comments.length, plan: d.plans.length, runs: d.runs.length, prs: d.task.prs.length } : {};
+    const counts: Partial<Record<TaskTab, number>> = d ? { conversation: card?.commentCount ?? d.comments.length, plan: d.plans.length, runs: d.runs.length, images: this.images.count, prs: d.task.prs.length } : {};
     this.strip = tabStrip(
       visibleTabs(this.embedded, this.changesTab).map((tab) => ({ id: tab, label: [TAB_NAMES[tab], tabCount(counts[tab], tab === 'plan' && planWaits)] })),
       this.current,
@@ -484,6 +491,9 @@ class View implements TaskView {
       this.issue.setTask(d.task);
       return;
     }
+    // The Images tab draws itself too; opening it reads the list again.
+    if (this.current === 'images' && this.body.firstElementChild === this.images.host && this.body.childElementCount === 1) return;
+    if (this.current === 'images' && !keep) this.images.refresh();
     const content: Record<TaskTab, () => HTMLElement[]> = {
       overview: () => overviewPane(this.c, d, this.reports),
       conversation: () => this.conv.pane(d),
@@ -491,6 +501,7 @@ class View implements TaskView {
       runs: () => runsPane(this.c, d),
       terminal: () => terminalPane(this.c, d.task),
       changes: () => [this.changesPane(d.task)],
+      images: () => [this.images.host],
       prs: () => prsPane(this.c, d.task),
       issue: () => [this.issuePane(d.task)],
     };

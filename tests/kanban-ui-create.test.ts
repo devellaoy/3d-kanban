@@ -115,3 +115,16 @@ test('editing a task shows its stored rounds, and saving it unchanged changes no
   const start = reviewStart(stored, 2);
   assert.deepEqual(reviewOverride(review({ rounds: start.rounds, choose: start.choose })), stored);
 });
+
+test('UI testing: the task’s choice rides both messages, and is left out when the box was not touched', () => {
+  const rest = { repoIds: null, type: 'implement' as const, usePlan: true, useReview: false };
+  const off = newTaskMsg(fields({ rest: { ...rest, uiTesting: false } }), null);
+  assert.ok('msg' in off && off.msg.t === 'kanban.task.create');
+  assert.equal(off.msg.task.uiTesting, false);
+  const issue = newTaskMsg(fields({ ticket: 'gh:o/r#1', rest: { ...rest, uiTesting: true } }), { key: 'gh:o/r#1' });
+  assert.ok('msg' in issue && issue.msg.t === 'kanban.issues.createTask');
+  assert.equal(issue.msg.task.uiTesting, true);
+  const plain = newTaskMsg(fields(), null);
+  assert.ok('msg' in plain && plain.msg.t === 'kanban.task.create');
+  assert.equal('uiTesting' in plain.msg.task, false);
+});

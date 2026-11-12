@@ -103,10 +103,14 @@ curl -fsSL https://raw.githubusercontent.com/devellaoy/3d-kanban/main/deploy/pro
   once against the limit: its reviewer never waits for its own implementer's place, and it takes no desk
   either: it stands behind the implementer's chair, watching over its shoulder); a task waiting on a person is announced on the
   office's Slack / Discord webhook. Claude Code and Codex.
+- **UI testing** (on by default; per office, project and task): the implementer of a task that changes the
+  UI saves a screenshot from before the change and one from after it, the reviewer looks at them, the
+  task's **Images** tab shows them side by side, and the office adds them to the description of the task's
+  pull request (GitHub, with `gh` 2.99.0 or newer): [docs/kanban.md](docs/kanban.md#ui-testing).
 - **A task prompt from an issue**: picking an issue in the New task form with an empty description has Claude write a short prompt into it (not with Codex as the default agent) (turn it off by emptying the "Task prompt from an issue" prompt).
 - **A kanban page** at `/kanban` (**J** or **🗂️ Kanban** in the office, a link on `/lite`). A
-  task's view (conversation, plan, runs, the change and its commits read from git, an
-  investigation's reports, PRs) is one shared piece, on the kanban and in the office's windows.
+  task's view (conversation, plan, runs, the change and its commits read from git, the before and
+  after screenshots of its UI changes, an investigation's reports, PRs) is one shared piece, on the kanban and in the office's windows.
   In its conversation the implementer's and the reviewer's comments have colours of their own, and
   URLs and (for admins) file paths are links: a path opens in VS Code on the office's machine.
   A bar along the bottom has the floor's workers from outside the kanban as tabs (a tab opens the
