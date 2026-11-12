@@ -562,6 +562,12 @@ answers `kanban.ok {rid, ...}` or `kanban.error {rid, message}`. Deltas are push
     answers `kanban.issueDetail {project, issueKey, issue}`: the issue from the project's list, else loaded from its source;
     `fresh: true` loads it anew first (the list's copy only when that finds nothing). The issue is remembered, so the
     `issue.*` actions on it work afterwards. Not on the list and not loadable: `kanban.error`.
+  - `issues.draft {project, issueKey, source?}` (`issueops.ts`, `integrations/issues/draft.ts`; denied to visitors) has the office's
+    default agent (the Settings' tool and model) write a short task prompt from the issue, for the New task form's description.
+    The issue is read as `issue.get` does, the instructions are the layered `kanban.issueDraft` prompt, and the run is one-shot
+    (`oneshot.ts`, see §10). Answered with `kanban.issueDraft {text}`; an empty `text` means the drafting is off (the prompt emptied) or
+    the office has stopped hiring, and is not an error. Failures (no project or issue, the sign-in or the binary missing, a timeout,
+    nothing written) are `kanban.error`. One run per browser (a new request cancels the earlier), at most two at once.
   - `issue.transitions | transition | comments | comment | people | assign` (`{project, issueKey, …}`, defined with the
     `issues.*` messages in `shared/kanban/issueops.ts`; handlers in `integrations/issues/actions.ts`; for anyone signed in) act on one
     issue of an issue source. The reads are answered with `kanban.issueTransitions {current?, transitions, cannot?, note?}`,
@@ -791,6 +797,11 @@ and toast. It then creates `pulls`, `refs` and the engine, and the plugins: the 
 closes the database. `startServer` (`src/server/server.ts`) calls `openKanban` (`src/server/kanban/office.ts`) once
 the floors are open and keeps the result as `ctx.kanban`; `kanbanHandlers` (WS, `kanban/ws/handlers.ts`) and
 `kanbanRoutes` (HTTP, `kanban/http/routes.ts`) join the office's own registries.
+
+`oneshot.ts` runs the kanban's one-shot agent calls (a prompt in, one answer out, no tools or session; Claude Code with
+`-p`, Codex with `exec -o`) with a timeout and `kill()`; it never rejects. The binary comes from the optional
+`agentBin(tool)` of `KanbanOffice`/`KanbanContext`, which `office.ts` provides (Claude as the workers' and sign-ins' binary,
+Codex from the PATH) and caches, so a login shell is not run per request; a miss is looked for again after a minute.
 
 "O" at a desk (`worker.pr`, `src/server/ws/handlers/workers.ts`) goes to `engine.prForWorker` first: a task worker's task gets its `pr` phase
 (`engine.pr(taskId, 'create')`); any other agent worker gets the layered `kanban.pr.create` prompt (with the `pr`
