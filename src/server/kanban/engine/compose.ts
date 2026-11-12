@@ -379,7 +379,7 @@ export class Composer {
       case 'replan':
         return seal(this.text('kanban.replan', p, { taskId: task.id, answer: this.inline(task.id, x.text ?? ''), language: v.language }));
       case 'implement':
-        return seal(isFolderProject(def) ? this.text('kanban.implement.folder', p, v) : this.withUi('kanban.implement', task, 'implement', v));
+        return seal(this.withUi(isFolderProject(def) ? 'kanban.implement.folder' : 'kanban.implement', task, 'implement', v));
       case 'investigate':
         return seal(this.text('kanban.investigate', p, v));
       case 'review':

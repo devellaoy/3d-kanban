@@ -4,7 +4,7 @@
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { existsSync, mkdirSync, statSync, symlinkSync, truncateSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, rmSync, statSync, symlinkSync, truncateSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { UI_IMAGES_MAX, UI_IMAGE_MAX_BYTES, UI_IMAGE_RE, isUiImageName, pairImages, uiImageKind, uiImageSubject, uiImageType, type KanbanTaskImage } from '../src/shared/kanban/uitesting.js';
@@ -180,4 +180,19 @@ test('a visitor may read the list and the images, never remove one', () => {
   assert.ok(visitorPath('GET', '/api/kanban/tasks/12/images/login-before.png'));
   assert.ok(!visitorPath('DELETE', '/api/kanban/tasks/12/images/login-before.png'));
   assert.ok(!visitorPath('GET', '/api/kanban/tasks/12/images/a/b.png'));
+});
+
+test('a ui folder that is itself a link is refused: nothing listed, served or removed', async () => {
+  const { ctx, task, dir, plugin } = setup();
+  const real = path.join(ctx.filesDir, 'elsewhere');
+  mkdirSync(real);
+  writeFileSync(path.join(real, 'a-before.png'), 'secret');
+  rmSync(dir, { recursive: true });
+  symlinkSync(real, dir);
+  assert.deepEqual(listUiImages(dir), []);
+  assert.equal(findUiImage(dir, 'a-before.png'), undefined);
+  assert.deepEqual(JSON.parse((await call(plugin, `/api/kanban/tasks/${task.id}/images`)).body).images, []);
+  assert.equal((await call(plugin, `/api/kanban/tasks/${task.id}/images/a-before.png`)).status, 404);
+  assert.equal((await call(plugin, `/api/kanban/tasks/${task.id}/images/a-before.png`, 'DELETE')).status, 404);
+  assert.ok(existsSync(path.join(real, 'a-before.png')));
 });

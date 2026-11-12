@@ -30,6 +30,8 @@ export function ensureUiImagesDir(dir: string): void {
 export function listUiImages(dir: string): UiImageFile[] {
   let names: string[];
   try {
+    // The folder itself must be a real folder: a link could point anywhere.
+    if (!lstatSync(dir).isDirectory()) return [];
     names = readdirSync(dir);
   } catch {
     return [];
