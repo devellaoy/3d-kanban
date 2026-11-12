@@ -129,12 +129,13 @@ heading and a line of help on the left. Its footer has the key hint (**Ctrl/⌘ 
   **Create task** makes one: its title is the issue's, its description is what you wrote followed
   by the issue's text and link, there is one task per issue, and the issue is taken as for any task
   made from one. The clear button on the pick removes it; a ticket typed by hand is stored as typed.
-  When the description is still empty at the pick, the office's default agent (the tool and model of
-  the kanban's Settings, on your own Claude sign-in or the office's Codex) writes a short task prompt
+  When the description is still empty at the pick, Claude (the default model of
+  the kanban's Settings, on your own Claude sign-in, with no tools) writes a short task prompt
   from the issue into it (2 to 5 sentences: what is to be achieved and where the scope ends, not the
   issue's details, which the task gets anyway). It never overwrites what you typed meanwhile; a
   draft that fails says why in a notice and leaves the description empty, and so does (silently) one
-  skipped because hiring is paused. Emptying the "Task prompt from an issue"
+  skipped because hiring is paused. With Codex as the default agent no draft is written (Codex can't
+  be run without tools, and an issue's text is not to be trusted), and that is silent too. Emptying the "Task prompt from an issue"
   prompt turns it off.
 - **Where**: the project (fixed once made) and which of its repositories (all by default; the primary
   one is always included).

@@ -103,7 +103,7 @@ curl -fsSL https://raw.githubusercontent.com/devellaoy/3d-kanban/main/deploy/pro
   once against the limit: its reviewer never waits for its own implementer's place, and it takes no desk
   either: it stands behind the implementer's chair, watching over its shoulder); a task waiting on a person is announced on the
   office's Slack / Discord webhook. Claude Code and Codex.
-- **A task prompt from an issue**: picking an issue in the New task form with an empty description has the default agent write a short prompt into it (turn it off by emptying the "Task prompt from an issue" prompt).
+- **A task prompt from an issue**: picking an issue in the New task form with an empty description has Claude write a short prompt into it (not with Codex as the default agent) (turn it off by emptying the "Task prompt from an issue" prompt).
 - **A kanban page** at `/kanban` (**J** or **🗂️ Kanban** in the office, a link on `/lite`). A
   task's view (conversation, plan, runs, the change and its commits read from git, an
   investigation's reports, PRs) is one shared piece, on the kanban and in the office's windows.
