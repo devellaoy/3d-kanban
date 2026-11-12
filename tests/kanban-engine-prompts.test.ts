@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import type { FloorDef } from '../src/server/building.js';
@@ -169,6 +169,7 @@ test('the workspace lines: predicted before the hire, real paths after, folders 
 test('layering: a project override and an office rewrite are what the engine sends', (t) => {
   const { def, dir, repo, settings, compose } = setup(t, { 'kanban.fix': { text: 'Office fix for #{{taskId}}: {{findings}}' } });
   const task = repo.createTask({ project: 'proj', title: 'X', tool: 'claude', usePlan: true, planApproval: 'auto', useReview: true, createdBy: 'Ada' });
+  settings.setProject('proj', { uiTesting: false });
   assert.match(compose.build('fix', def, task, 'claude', dir, { phase: 'fix', round: 1, findings: 'F' }), /^Office fix for #\d+: F\n\n---/);
   settings.setProjectPrompt('proj', 'kanban.fix', 'Project fix: {{findings}}');
   const text = compose.build('fix', def, task, 'claude', dir, { phase: 'fix', round: 1, findings: 'F' });
@@ -446,4 +447,101 @@ test('a resume prompt carries only its own message and files, none of the older 
   assert.ok(listed.includes(`new.png: ${grant}`));
   assert.doesNotMatch(compose.answerText(task.id, `a ${linked}`, own), /attached files/);
   assert.match(compose.answerText(task.id, 'a', own), /^a \(attached files/);
+});
+
+test('UI testing: the implementer gets the block with the images folder, or the on-request one with it off', (t) => {
+  const { def, dir, repo, settings, compose, ctx } = setup(t);
+  const task = repo.createTask({ project: 'proj', title: 'Restyle the board', description: 'x', tool: 'claude', usePlan: false, planApproval: 'auto', useReview: false, createdBy: 'Ada' });
+  const images = path.join(ctx.filesDir, 'grants', `task-${task.id}`, 'ui');
+  const on = compose.build('implement', def, task, 'claude', dir, { phase: 'implement' });
+  assert.match(on, /UI testing is on for this task/);
+  assert.ok(on.includes(images), 'names the folder');
+  assert.match(on, /<subject>-before\.png/);
+  assert.match(on, /kanban-ui-screenshots/);
+  assert.match(on, /do not get stuck/);
+  assert.ok(existsSync(images), 'the folder is made');
+  assert.ok(on.indexOf('UI testing is on') < on.indexOf('Never push, open pull requests'), 'in front of the closing lines');
+  assert.ok(on.endsWith(KANBAN_CONTRACTS.implementSafety));
+  // Off for the project: only when asked.
+  settings.setProject('proj', { uiTesting: false });
+  const off = compose.build('implement', def, task, 'claude', dir, { phase: 'implement' });
+  assert.doesNotMatch(off, /UI testing is on/);
+  assert.match(off, /UI testing is off for this task by default/);
+  // The task's own choice over the project's.
+  const own = repo.createTask({ project: 'proj', title: 'X', description: 'x', tool: 'claude', usePlan: false, planApproval: 'auto', useReview: false, createdBy: 'Ada', overrides: { uiTesting: true } });
+  assert.match(compose.build('implement', def, own, 'claude', dir, { phase: 'implement' }), /UI testing is on/);
+  // Not for an investigation or the plan.
+  for (const kind of ['plan', 'investigate'] as const) assert.doesNotMatch(compose.build(kind, def, task, 'claude', dir, { phase: kind === 'plan' ? 'plan' : 'implement' }), /UI testing/, kind);
+});
+
+test('UI testing: the reviewer is told to read the images and that missing ones are no finding', (t) => {
+  const { def, dir, repo, compose, ctx } = setup(t);
+  const task = repo.createTask({ project: 'proj', title: 'X', description: 'x', tool: 'claude', usePlan: false, planApproval: 'auto', useReview: true, createdBy: 'Ada' });
+  const images = path.join(ctx.filesDir, 'grants', `task-${task.id}`, 'ui');
+  const none = compose.build('review', def, task, 'claude', dir, { phase: 'review', round: 1, rounds: 2 });
+  assert.match(none, /none yet/);
+  assert.ok(!existsSync(images), 'a reviewer does not make the folder');
+  mkdirSync(images, { recursive: true });
+  writeFileSync(path.join(images, 'board-before.png'), 'x');
+  writeFileSync(path.join(images, 'board-after.png'), 'y');
+  for (const kind of ['review', 'rereview'] as const) {
+    const text = compose.build(kind, def, task, 'claude', dir, { phase: 'review', round: 2, rounds: 2, fixSummary: 'Fixed' });
+    assert.ok(text.includes(`- board: before ${path.join(images, 'board-before.png')}, after ${path.join(images, 'board-after.png')}`), kind);
+    assert.match(text, /A wrong UI in the pictures is a finding/);
+    assert.match(text, /Pictures that are missing are not/);
+    assert.match(text, /Never modify, move or delete the images/);
+    assert.ok(text.endsWith(KANBAN_CONTRACTS.review));
+  }
+});
+
+test('UI testing: fix, comment and pull request fix runs carry their block', (t) => {
+  const { def, dir, repo, settings, compose, ctx } = setup(t);
+  const task = repo.createTask({ project: 'proj', title: 'X', description: 'x', tool: 'claude', usePlan: false, planApproval: 'auto', useReview: true, createdBy: 'Ada' });
+  repo.upsertPrLink(task.id, { repoId: 'proj', repo: 'acme/proj', number: 3, url: 'https://github.com/acme/proj/pull/3', state: 'OPEN' });
+  const withPr = repo.getTask(task.id)!;
+  const images = path.join(ctx.filesDir, 'grants', `task-${task.id}`, 'ui');
+  const fix = compose.build('fix', def, withPr, 'claude', dir, { phase: 'fix', round: 1, rounds: 2, findings: 'F' });
+  assert.match(fix, /take the after pictures again under the same names/);
+  assert.ok(fix.includes(images));
+  assert.match(compose.build('resume', def, withPr, 'claude', dir, { phase: 'resume', text: 'Do UI testing too' }), /take the after pictures again/);
+  assert.match(compose.build('pr.fix', def, withPr, 'claude', dir, { phase: 'pr-fix' }), /take the after pictures again/);
+  assert.doesNotMatch(compose.build('pr.create', def, withPr, 'claude', dir, { phase: 'pr' }), /UI testing|pictures/);
+  // Off, no images: a fix round is left alone, a comment hears a request for it.
+  settings.setProject('proj', { uiTesting: false });
+  assert.doesNotMatch(compose.build('fix', def, withPr, 'claude', dir, { phase: 'fix', round: 1, rounds: 2, findings: 'F' }), /UI testing|pictures/);
+  const asked = compose.build('resume', def, withPr, 'claude', dir, { phase: 'resume', text: 'Do UI testing too' });
+  assert.match(asked, /UI testing is off for this task by default/);
+  assert.match(compose.build('pr.fix', def, withPr, 'claude', dir, { phase: 'pr-fix' }), /UI testing is off for this task by default/);
+  // The images alone are a reason for the fix block.
+  mkdirSync(images, { recursive: true });
+  writeFileSync(path.join(images, 'a-after.png'), 'x');
+  assert.match(compose.build('fix', def, withPr, 'claude', dir, { phase: 'fix', round: 1, rounds: 2, findings: 'F' }), /take the after pictures again/);
+});
+
+test('UI testing: a rewritten prompt without {{uiTesting}} gets the block at its end, before the contract; with it, where it says', (t) => {
+  const { def, dir, repo, compose } = setup(t, { 'kanban.implement': { text: 'Office implement #{{taskId}}\n\n{{uiTesting}}\n\nEnd.' }, 'kanban.fix': { text: 'Office fix: {{findings}}' } });
+  const task = repo.createTask({ project: 'proj', title: 'X', description: 'x', tool: 'claude', usePlan: false, planApproval: 'auto', useReview: true, createdBy: 'Ada' });
+  const impl = compose.build('implement', def, task, 'claude', dir, { phase: 'implement' });
+  assert.match(impl, /^Office implement #\d+\n\nUI testing is on[\s\S]*\n\nEnd\.\n\n---/);
+  assert.equal(impl.split('UI testing is on').length, 2, 'once');
+  const fix = compose.build('fix', def, task, 'claude', dir, { phase: 'fix', round: 1, rounds: 2, findings: 'F' });
+  assert.match(fix, /^Office fix: F\n\nThe task keeps before and after pictures[\s\S]*\n\n---/);
+  // A rewrite that has the placeholder but a block that is off leaves no hole.
+  const bare = setup(t, { 'kanban.review': { text: 'Review.\n\n{{uiTesting}}\n\nDone.' } });
+  const rev = bare.compose.build('review', bare.def, bare.repo.createTask({ project: 'proj', title: 'X', description: 'x', tool: 'claude', usePlan: false, planApproval: 'auto', useReview: false, createdBy: 'Ada' }), 'claude', bare.dir, { phase: 'review', round: 1, rounds: 1 });
+  assert.match(rev, /^Review\.\n\nThe implementer may have saved/);
+});
+
+test('UI testing: the prompts are optional, carry the placeholder where they should, and an investigation never has it', () => {
+  for (const id of ['kanban.uiTesting', 'kanban.uiTesting.onRequest', 'kanban.uiTesting.review', 'kanban.uiTesting.fix'] as const) {
+    assert.equal(KANBAN_PROMPT_DEFS[id].optional, true, id);
+    assert.equal(PROMPTS[id].group, 'kanban', id);
+    assert.ok(placeholders(KANBAN_PROMPT_DEFS[id].text).includes('imagesDir'), id);
+  }
+  assert.ok(placeholders(KANBAN_PROMPT_DEFS['kanban.uiTesting.review'].text).includes('imageList'));
+  const withIt = ['kanban.implement', 'kanban.review', 'kanban.rereview', 'kanban.fix', 'kanban.resume', 'kanban.pr.fix'] as const;
+  for (const id of withIt) assert.ok(placeholders(KANBAN_PROMPT_DEFS[id].text).includes('uiTesting'), id);
+  for (const id of ['kanban.plan', 'kanban.replan', 'kanban.investigate', 'kanban.pr.create', 'kanban.implement.folder', 'kanban.pr.conflicts'] as const) assert.ok(!placeholders(KANBAN_PROMPT_DEFS[id].text).includes('uiTesting'), id);
+  // Rewritten to nothing, the block is left out.
+  assert.equal(resolveKanbanPrompt('kanban.uiTesting', { office: { 'kanban.uiTesting': { text: '' } } }, { imagesDir: '/x' }), '');
 });

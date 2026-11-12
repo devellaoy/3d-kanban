@@ -15,17 +15,18 @@ import type { KanbanContext } from '../registry.js';
 import { projectRepos, parseRepoFloorId } from '../projects.js';
 import { grantFiles } from '../uploads.js';
 import { inlineFiles, unlinkedFiles } from './inlinefiles.js';
-import { resolveKanbanPrompt, withContract, type KanbanContractId, type KanbanPromptId } from '../../../shared/kanban/prompts.js';
+import { kanbanPromptText, resolveKanbanPrompt, withContract, type KanbanContractId, type KanbanPromptId } from '../../../shared/kanban/prompts.js';
 import { closingPr, closingRef, parseGhKey } from '../../../shared/kanban/issuecard.js';
 import { isPrPhase, openPrs } from '../../../shared/kanban/prs.js';
 import type { KanbanPrLink, KanbanTask, KanbanTool, ProjectRepo, RunPhase, SkillPhase, TaskWorkspace } from '../../../shared/kanban/types.js';
 import type { WorkerInfo } from '../../../shared/protocol.js';
 import type { PromptKind } from './machine.js';
 import { resolveLanguages, type LanguageSettings } from '../../../shared/language.js';
-import type { PromptId } from '../../../shared/prompts.js';
+import { placeholders, type PromptId } from '../../../shared/prompts.js';
 import { languageRules } from '../../language.js';
 import { skillHint } from '../integrations/skills/index.js';
 import { workerIssueKey } from './worker-issue.js';
+import { ensureUiImagesDir, imageListText, listUiImages, uiBlockId, uiImagesDir, type UiBlockKind } from './uitesting.js';
 import { unbuiltWorkspaces, worktreeDir } from '../../worktree-home.js';
 
 type Vars = Record<string, string | number>;
@@ -292,6 +293,33 @@ export class Composer {
     return pub ? `Write the slug in ${pub}: translate the title's words when it is written in another language.` : '';
   }
 
+  /**
+   * The UI testing block of a run of this kind (before/after images, see uitesting.ts), or '' when it has none.
+   * The images folder is made for the runs that write to it, so the agent does not have to.
+   */
+  uiBlock(task: KanbanTask, kind: UiBlockKind): string {
+    if (task.type === 'investigate') return '';
+    const dir = uiImagesDir(this.ctx.filesDir, task.id);
+    const images = listUiImages(dir);
+    const id = uiBlockId(kind, this.ctx.settings.uiTesting(task.project, task.overrides), images.length > 0);
+    if (!id) return '';
+    if (kind !== 'review') {
+      try {
+        ensureUiImagesDir(dir);
+      } catch {
+        // the agent is told to make it
+      }
+    }
+    return this.text(id, task.project, { imagesDir: dir, imageList: imageListText(dir, images) });
+  }
+
+  /** A prompt that carries {{uiTesting}}, with its block; a rewritten text without the placeholder gets the block at its end, so the feature does not vanish. */
+  private withUi(id: KanbanPromptId, task: KanbanTask, kind: UiBlockKind, vars: Vars): string {
+    const block = this.uiBlock(task, kind);
+    const text = this.text(id, task.project, { ...vars, uiTesting: block });
+    return block && !placeholders(kanbanPromptText(id, this.layers(task.project))).includes('uiTesting') ? `${text}\n\n${block}` : text;
+  }
+
   /** Every placeholder the task prompts share. */
   taskVars(def: FloorDef, task: KanbanTask, tool: KanbanTool, floorDir: string, x: ComposeExtra): Vars {
     const accepted = this.ctx.repo.acceptedPlan(task.id);
@@ -312,6 +340,8 @@ export class Composer {
         refsFile: x.refsFile ? this.text('kanban.refsFile', task.project, { file: x.refsFile }) : '',
       }),
       skills: this.skillsLine(task, tool, x.phase),
+      // Filled by build() for the prompts that carry it; empty for the others (a rewritten plan prompt may name it).
+      uiTesting: '',
       language: this.language(task.project, langs),
       plan: accepted ? this.text('kanban.acceptedPlan', task.project, { plan: accepted.text.trim() }) : '',
       branchInstructions: x.checkout
@@ -349,17 +379,17 @@ export class Composer {
       case 'replan':
         return seal(this.text('kanban.replan', p, { taskId: task.id, answer: this.inline(task.id, x.text ?? ''), language: v.language }));
       case 'implement':
-        return seal(this.text(isFolderProject(def) ? 'kanban.implement.folder' : 'kanban.implement', p, v));
+        return seal(isFolderProject(def) ? this.text('kanban.implement.folder', p, v) : this.withUi('kanban.implement', task, 'implement', v));
       case 'investigate':
         return seal(this.text('kanban.investigate', p, v));
       case 'review':
-        return seal(this.text('kanban.review', p, v));
+        return seal(this.withUi('kanban.review', task, 'review', v));
       case 'rereview':
-        return seal(this.text('kanban.rereview', p, { taskId: task.id, round: v.round, rounds: v.rounds, fixSummary: x.fixSummary?.trim() || '(no reply)', language: v.language }));
+        return seal(this.withUi('kanban.rereview', task, 'review', { taskId: task.id, round: v.round, rounds: v.rounds, fixSummary: x.fixSummary?.trim() || '(no reply)', language: v.language }));
       case 'fix':
-        return seal(this.text('kanban.fix', p, { taskId: task.id, round: x.round ?? 1, rounds: x.round === undefined ? 1 : v.rounds, findings: x.findings?.trim() || '(the review gave no findings; look again at what it said in its terminal)', language: v.language }));
+        return seal(this.withUi('kanban.fix', task, 'fix', { taskId: task.id, round: x.round ?? 1, rounds: x.round === undefined ? 1 : v.rounds, findings: x.findings?.trim() || '(the review gave no findings; look again at what it said in its terminal)', language: v.language }));
       case 'resume':
-        return seal(this.text('kanban.resume', p, { taskId: task.id, author: x.author ?? 'The user', message: this.inline(task.id, x.text ?? ''), attachments: '', language: v.language }));
+        return seal(this.withUi('kanban.resume', task, 'comment', { taskId: task.id, author: x.author ?? 'The user', message: this.inline(task.id, x.text ?? ''), attachments: '', language: v.language }));
       case 'continue':
         return seal(this.text('kanban.continue', p, { taskId: task.id, language: v.language }));
       case 'restarted':
@@ -398,7 +428,8 @@ export class Composer {
         const prs = (x.fixPrs ?? openPrs(task)).map((pr) => `- ${pr.repo ?? pr.repoId}: ${pr.url}`);
         const id = kind === 'pr.fix' ? 'kanban.pr.fix' : 'kanban.pr.conflicts';
         // `instructions` is only in the conflicts prompt; a prompt ignores variables it has no placeholder for.
-        const text = this.text(id, p, { taskId: task.id, prs: prs.join('\n'), repos: v.repos, instructions: v.instructions, language: v.language });
+        const vars = { taskId: task.id, prs: prs.join('\n'), repos: v.repos, instructions: v.instructions, language: v.language };
+        const text = kind === 'pr.fix' ? this.withUi(id, task, 'comment', vars) : this.text(id, p, vars);
         // Elsewhere review comments carry no author_association: office-pr marks the ones to act on.
         const elsewhere = kind === 'pr.fix' && (x.fixPrs ?? openPrs(task)).some((pr) => (hostOfUrl(pr.url) ?? hostOf(pr.repo)) !== 'github');
         return seal(elsewhere ? `${text.trimEnd()}\n\n${this.text('kanban.pr.fixHosted', p)}` : text);
