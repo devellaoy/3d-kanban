@@ -20,6 +20,7 @@ import type { GhRunner } from '../issues/source.js';
 import { fail, ok } from '../util.js';
 import { forkTest, polledPulls } from './prfix.js';
 import { checkClosing, type ClosingMark } from './closes.js';
+import { checkScreenshots, type ScreenshotMark } from './screenshots.js';
 import { branchOwners, branchPrs, findBundle, findTaskPrs, sharedBranch, prOwners, prState, type BundleBy, type FoundList, type FoundPr, type RepoPulls } from './bundle.js';
 
 const FIELDS = 'number,title,url,state,isDraft,headRefName';
@@ -270,6 +271,8 @@ export function createPullsParts(ctx: KanbanContext, opts: PullsOptions = {}) {
   });
   /** The PRs already looked at for their issue's closing line (see checkClosing), by URL. */
   const closingChecked = new Map<string, ClosingMark>();
+  /** The PRs the task's UI images went into (see checkScreenshots), by URL. */
+  const shotsChecked = new Map<string, ScreenshotMark>();
   let stopped = false;
 
   /**
@@ -329,6 +332,7 @@ export function createPullsParts(ctx: KanbanContext, opts: PullsOptions = {}) {
     }
     for (const id of changed) ctx.taskChanged(id);
     checkClosing(ctx, project, closingChecked, { run: runGh, defaultBranch: (repo) => defaultBranches.get(repo) });
+    checkScreenshots(ctx, project, shotsChecked, { run: runGh });
     return [...changed];
   };
 
