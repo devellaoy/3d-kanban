@@ -217,7 +217,7 @@ the line the run ends even if the office still believes something runs (a teamma
 dev server you asked to leave on). If the agent rests for 3 minutes with nothing running and still hasn't
 given the line, the office types a short nudge into its terminal asking for it (again after 6, 12 and 24
 minutes, four nudges at most); an agent that never gives it is not moved on: the task waits (Waiting) with its last answer shown and a
-note, and **Continue** carries on or you move it yourself (a plan's last answer is read the old way). The same goes for Codex. The old wait for background helper agents or commands (a test run,
+note, and **Continue** carries on or you move it yourself (a plan's last answer is read the old way). The same goes for Codex. The contracts ask the agent to check that its reply really ends with the marker, and the nudge asks for the whole answer again in its reply, because the office reads only the answer to the nudge (a bare `PLAN READY` would be an empty plan). The old wait for background helper agents or commands (a test run,
 say) is a cap now: at most 3 hours, then the agent is nudged. Stop during a wait restarts the worker on its
 session at its desk, which ends its helper agents too.
 The worker shows as working in the 3D office and in /lite until the run ends, also while its background
