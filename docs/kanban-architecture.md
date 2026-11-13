@@ -607,6 +607,14 @@ answers `kanban.ok {rid, ...}` or `kanban.error {rid, message}`. Deltas are push
       3D board (`wallChanged`, then a debounced `refreshWall`), toasts the floor and adds a status comment to the issue's task.
       The overlay is dropped when a fetch that started 10 s or more after the write completes without source errors, or after
       2 minutes, so a fetch under way (or Jira's lagging search) can't undo the change.
+  - `NormalizedIssue` (the items of `kanban.issues`) carries, for a Jira issue, its `issueType`, `hierarchy` (Jira's level of the
+    type: 1 an epic, 0 a story or task, -1 a sub-task), `subtask` (`issuetype.subtask`, nothing else decides it) and `parent`
+    (`IssueParent`: key, title, type, hierarchy, status, statusCategory, from the search's `parent.fields`, with no extra call).
+    `epic` is the parent's key only when the parent is an epic (`isEpicType`) or its type is unknown and the issue is no
+    sub-task, so a sub-task's story and an epic's initiative are no longer "epics". The list record has no `statusCategory`
+    (nothing keeps it fresh there); the browse tree's `BrowseIssue` adds it. The Issues window groups only `source === 'jira'`
+    rows (`client/kanban/issuesgroup.ts`, pure): a sub-task sits under its parent, one level, and a parent that is not in
+    the shown rows stands in as one dimmed header built from the sub-tasks' `parent`. Other sources are never grouped.
   - `browse.scopes | options | groups | count | page | children | issue | people` (`{project, scope, …}`, defined in
     `shared/kanban/browse.ts`, joined into the unions by `issueops.ts`; handlers in `integrations/issues/browse/`; for anyone
     signed in) browse **all** of a source's issues, not just its list. `scope` is an `IssueSourceConfig.id` of the project: only a

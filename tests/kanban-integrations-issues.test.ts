@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { adfToText, buildJql, jiraSource, jqlQuote } from '../src/server/kanban/integrations/issues/jira.js';
+import { adfToText, buildJql, jiraIssue, jiraSource, jqlQuote } from '../src/server/kanban/integrations/issues/jira.js';
 import { ghIssueArgs, githubRepoSource, parseGhIssues } from '../src/server/kanban/integrations/issues/github-repo.js';
 import { PROJECT_SCOPE_ERROR, filterProjectItems, githubProjectSource, parseProjectPage, projectArgs, projectError } from '../src/server/kanban/integrations/issues/github-project.js';
 import { createIssues, issueDescription } from '../src/server/kanban/integrations/issues/index.js';
@@ -61,11 +61,39 @@ test('Jira: Basic auth to the site only, pages through nextPageToken, epic falls
   assert.match(calls[1].body.jql, /"Epic Link" = "UYT-1"/, 'no issues under parent: the old field');
   assert.equal(calls[2].body.nextPageToken, 't2');
   assert.deepEqual(got.map((i) => i.key), ['UYT-2', 'UYT-3']);
-  assert.deepEqual({ ...got[0], updatedAt: '' }, { source: 'jira', sourceId: 'j', key: 'UYT-2', title: 'Two', url: 'https://team.atlassian.net/browse/UYT-2', body: 'Body', assignee: 'P', labels: ['a'], status: 'To Do', epic: 'UYT-1', project: 'UYT', updatedAt: '' });
+  assert.deepEqual({ ...got[0], updatedAt: '' }, { source: 'jira', sourceId: 'j', key: 'UYT-2', title: 'Two', url: 'https://team.atlassian.net/browse/UYT-2', body: 'Body', assignee: 'P', labels: ['a'], status: 'To Do', epic: 'UYT-1', parent: { key: 'UYT-1', title: 'UYT-1' }, project: 'UYT', updatedAt: '' });
   await assert.rejects(jiraSource.list({ ...JIRA, site: 'evil.example.com' }, io({ fetch, jira: [{ id: 'jira', name: 'team', site: 'team.atlassian.net', email: 'e', token: 't' }] })), /No Jira connection for evil.example.com/);
   await assert.rejects(jiraSource.list(JIRA, io()), /No Jira connection for team.atlassian.net/);
   const denied = (async () => new Response(JSON.stringify({ errorMessages: ['nope'] }), { status: 401 })) as unknown as typeof globalThis.fetch;
   await assert.rejects(jiraSource.list({ ...JIRA, filters: {} }, io({ fetch: denied, jira: [{ id: 'jira', name: 'team', site: 'team.atlassian.net', email: 'e', token: 't' }] })), /turned the e-mail and API token down \(401\): nope/);
+});
+
+test('Jira: a record carries its type and its parent; `epic` is set only for an epic (or an unknown parent of a non-sub-task)', () => {
+  const at = (fields: Record<string, unknown>) => jiraIssue({ key: 'UYT-9', fields: { summary: 'Nine', ...fields } }, 'team.atlassian.net', 'j')!;
+  const epic = { key: 'UYT-1', fields: { summary: 'The epic', issuetype: { name: 'Epic', hierarchyLevel: 1 }, status: { name: 'In Progress', statusCategory: { key: 'indeterminate' } } } };
+  const story = at({ issuetype: { name: 'Story', hierarchyLevel: 0 }, parent: epic });
+  assert.equal(story.epic, 'UYT-1');
+  assert.equal(story.issueType, 'Story');
+  assert.equal(story.hierarchy, 0);
+  assert.equal(story.subtask, undefined);
+  assert.deepEqual(story.parent, { key: 'UYT-1', title: 'The epic', type: 'Epic', hierarchy: 1, status: 'In Progress', statusCategory: 'indeterminate' });
+  const sub = at({ issuetype: { name: 'Sub-task', hierarchyLevel: -1, subtask: true }, parent: { key: 'UYT-5', fields: { summary: 'The story', issuetype: { name: 'Story', hierarchyLevel: 0 } } } });
+  assert.equal(sub.subtask, true);
+  assert.equal(sub.epic, undefined, 'the story of a sub-task is no epic');
+  assert.deepEqual(sub.parent, { key: 'UYT-5', title: 'The story', type: 'Story', hierarchy: 0 });
+  const initiative = at({ issuetype: { name: 'Epic', hierarchyLevel: 1 }, parent: { key: 'UYT-0', fields: { summary: 'Initiative', issuetype: { name: 'Initiative', hierarchyLevel: 2 } } } });
+  assert.equal(initiative.epic, undefined, 'an epic under an initiative is not in an epic');
+  assert.equal(initiative.parent?.key, 'UYT-0');
+  const bare = at({});
+  assert.equal(bare.issueType, undefined);
+  assert.equal(bare.parent, undefined);
+  assert.equal(bare.epic, undefined);
+  assert.equal('subtask' in bare, false);
+  const unknown = at({ issuetype: { name: 'Task' }, parent: { key: 'UYT-3' } });
+  assert.equal(unknown.epic, 'UYT-3', 'a parent of unknown type on a non-sub-task: kept as the epic');
+  const unknownSub = at({ issuetype: { name: 'Sub-task', subtask: true }, parent: { key: 'UYT-3' } });
+  assert.equal(unknownSub.epic, undefined);
+  assert.equal(unknownSub.parent?.key, 'UYT-3');
 });
 
 // --- GitHub repositories --------------------------------------------------------------------------

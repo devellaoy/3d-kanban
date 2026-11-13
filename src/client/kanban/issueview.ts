@@ -84,6 +84,8 @@ export function issueView(api: KanbanApi, projectId: string, first: NormalizedIs
       details.replaceChildren(
         detailsRail([
           { label: 'Epic', value: it.epic ? h('span.iw-with-icon', {}, icon('signpost', { size: 14 }), it.epic) : null },
+          // A sub-task's story (an issue in an epic says the epic instead).
+          { label: 'Parent', value: !it.epic && it.parent ? h('span.iw-with-icon', {}, icon('corner-up-left', { size: 14 }), `${it.parent.key} ${it.parent.title}`) : null },
           { label: 'Labels', value: it.labels.length ? h('span.iw-labels', {}, ...it.labels.map((l) => h('span.iw-label', {}, l))) : null },
           { label: 'Source', value: SOURCE_KIND_NAMES[it.source] },
           { label: 'Task', value: task ? h('button.link-btn', { type: 'button', onclick: () => openTask(task) }, `Task #${task}`) : h('span.iw-none', {}, 'None yet') },
@@ -94,7 +96,7 @@ export function issueView(api: KanbanApi, projectId: string, first: NormalizedIs
         it.status ? h('span.iw-status', {}, it.status) : '',
         h('span', {}, SOURCE_KIND_NAMES[it.source]),
         it.assignee ? h('span.iw-with-icon', {}, icon('user', { size: 13 }), it.assignee) : '',
-        it.epic ? h('span.iw-with-icon', {}, icon('signpost', { size: 13 }), it.epic) : '',
+        it.epic ? h('span.iw-with-icon', {}, icon('signpost', { size: 13 }), it.epic) : it.parent ? h('span.iw-with-icon', { title: `Parent: ${it.parent.title}` }, icon('corner-up-left', { size: 13 }), it.parent.key) : '',
         ...it.labels.slice(0, 8).map((l) => h('span.iw-label', {}, l)),
         it.updatedAt ? h('span', {}, `updated ${timeAgo(it.updatedAt)}`) : '',
       );

@@ -58,18 +58,11 @@ export interface BrowseFilters {
 
 /** One issue of a browse page: the usual record, with what the tree needs. */
 export type BrowseIssue = NormalizedIssue & {
-  /** "Story", "Bug", "Epic"; GitHub's issue type. */
-  issueType?: string;
-  /** Jira's hierarchy level of the type: 1 an epic, 0 a story or task, -1 a sub-task. */
-  hierarchy?: number;
-  subtask?: boolean;
   statusCategory?: StatusCategory;
   fixVersions?: { id: string; name: string }[];
   sprints?: { id: string; name: string; state: string }[];
   /** A GitHub project's iteration (its title). */
   iteration?: string;
-  /** The issue above this one (Jira's `parent`: the epic of a story, the story of a sub-task; GitHub's parent issue). */
-  parent?: { key: string; title: string; type?: string; hierarchy?: number; status?: string; statusCategory?: StatusCategory; /** The task made from the parent, when there is one (so an epic's header can link to it). */ taskId?: number };
   /** Sub-tasks (Jira) or sub-issues (GitHub), and how many are done. */
   childCount?: number;
   childDone?: number;

@@ -27,6 +27,20 @@ button.kb-issue-open:hover { color: var(--link); }
 .kb-issue-st { padding: 0 6px; font-weight: var(--fw-medium); color: var(--text-neutral); background: var(--tint-grey); border-radius: var(--radius-xs); }
 .kb-issue-who { display: inline-flex; align-items: center; gap: 4px; }
 .kb-issue-label { padding: 0 6px; color: var(--text-2); border: var(--bw-sm) solid var(--ink); border-radius: var(--radius-xs); }
+/* A Jira issue's type, before its key: whole beside the longest title, and on the line's baseline. */
+.kb-issue-line > .kb-chip { flex: none; align-self: center; padding: 0 6px; line-height: 16px; }
+/* A sub-task under its parent: indented behind a guide that runs through the family, and only a short rule between its members. */
+.kb-issue-row.sub { position: relative; padding-left: 48px; }
+.kb-issue-row.sub::before { content: ''; position: absolute; left: 28px; top: 0; bottom: calc(-1 * var(--bw-sm)); width: var(--bw-sm); background: var(--rule-quote); }
+.kb-issue-row:has(+ .kb-issue-row.sub) { border-bottom-color: transparent; }
+.kb-issue-row + .kb-issue-row.sub::after { content: ''; position: absolute; left: 48px; right: 0; top: calc(-1 * var(--bw-sm)); height: var(--bw-sm); background: var(--rule-soft); }
+/* A parent that isn't in the list: a low header over its sub-tasks, with nothing to press. */
+.kb-issue-group { display: flex; align-items: center; gap: 8px; min-width: 0; padding: 4px 20px; font-size: var(--fs-xs); color: var(--muted); background: var(--field-off); border-bottom: var(--bw-sm) solid var(--rule-soft); }
+.kb-issue-group > .kb-chip { flex: none; padding: 0 6px; line-height: 16px; color: var(--muted); }
+.kb-issue-group-key { flex: none; font-family: var(--font-mono); }
+.kb-issue-group-title { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* Said to a screen reader only: whose sub-task a row is, and that a header's issue isn't listed. */
+.kb-issue-sr { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip-path: inset(50%); white-space: nowrap; border: 0; }
 .kb-issue-row > .btn, .kb-issue-task, .kb-issue-taken { flex: none; }
 .kb-issue-task { display: inline-flex; align-items: center; gap: 6px; height: var(--ctl-h-sm); padding: 0 10px; font-weight: var(--fw-medium); }
 /* Picking: an issue that already has its task can't be picked again. */
@@ -41,5 +55,12 @@ button.kb-issue-open:hover { color: var(--link); }
   .modal.kb-issues-win { width: 100%; height: 100dvh; max-height: 100dvh; border: 0; border-radius: 0; box-shadow: none; }
   .kb-issues-win .kb-issues-search > input[type=search] { font-size: var(--fs-xl); }
   .kb-issue-row { flex-wrap: wrap; padding: 11px 16px; }
+  /* The title on a line of its own under the type and the key, on two lines at most: beside them and the button a narrow screen left it a word or two. */
+  .kb-issue-line { flex-wrap: wrap; row-gap: 2px; }
+  .kb-issue-line > .kb-issue-title { flex: 1 1 100%; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; white-space: normal; overflow-wrap: anywhere; }
+  .kb-issue-row.sub { padding-left: 34px; }
+  .kb-issue-row.sub::before { left: 20px; }
+  .kb-issue-row + .kb-issue-row.sub::after { left: 34px; }
+  .kb-issue-group { padding: 4px 16px; }
   .kb-issues-bar { padding: 10px 16px; }
 }
