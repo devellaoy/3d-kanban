@@ -91,31 +91,14 @@ export function jiraBrowseIssue(raw: any, site: string, sourceId: string, sprint
   const base = jiraIssue(raw, site, sourceId);
   if (!base) return undefined;
   const f = raw.fields ?? {};
-  const t = f.issuetype;
-  const p = f.parent;
   const subtasks: any[] = Array.isArray(f.subtasks) ? f.subtasks : [];
   const sprints: any[] = sprintField && Array.isArray(f[sprintField]) ? f[sprintField] : [];
   const cat = category(f.status);
   return {
     ...base,
-    ...(t?.name ? { issueType: String(t.name) } : {}),
-    ...(typeof t?.hierarchyLevel === 'number' ? { hierarchy: t.hierarchyLevel } : {}),
-    ...(t?.subtask === true ? { subtask: true } : {}),
     ...(cat ? { statusCategory: cat } : {}),
     ...(Array.isArray(f.fixVersions) && f.fixVersions.length ? { fixVersions: f.fixVersions.map((v: any) => ({ id: String(v.id), name: String(v.name ?? v.id) })) } : {}),
     ...(sprints.length ? { sprints: sprints.map((s) => ({ id: String(s.id), name: String(s.name ?? s.id), state: String(s.state ?? '') })) } : {}),
-    ...(p?.key
-      ? {
-          parent: {
-            key: String(p.key),
-            title: String(p.fields?.summary ?? p.key),
-            ...(p.fields?.issuetype?.name ? { type: String(p.fields.issuetype.name) } : {}),
-            ...(typeof p.fields?.issuetype?.hierarchyLevel === 'number' ? { hierarchy: p.fields.issuetype.hierarchyLevel } : {}),
-            ...(p.fields?.status?.name ? { status: String(p.fields.status.name) } : {}),
-            ...(category(p.fields?.status) ? { statusCategory: category(p.fields.status) } : {}),
-          },
-        }
-      : {}),
     ...(subtasks.length ? { childCount: subtasks.length, childDone: subtasks.filter((s) => category(s.fields?.status) === 'done').length } : {}),
   };
 }

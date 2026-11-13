@@ -5,6 +5,7 @@
 import type { WorkerInfo, WorkerRepo } from '../protocol.js';
 import type { IssueSourceConfig, IssueSourceKind } from './issue-sources.js';
 import type { JiraConnectionStatus } from './jira-connections.js';
+import type { StatusCategory } from './browse.js';
 
 // --- Columns, phases and runs ---------------------------------------------------------------------
 
@@ -443,6 +444,9 @@ export interface SecretStatus { jira: JiraConnectionStatus[]; apiKey: { configur
 
 // --- Issues and skills ----------------------------------------------------------------------------
 
+/** The issue above another (Jira's `parent`: the epic of a story, the story of a sub-task; GitHub's parent issue). */
+export interface IssueParent { key: string; title: string; type?: string; hierarchy?: number; status?: string; statusCategory?: StatusCategory; /** The task made from the parent, when there is one. */ taskId?: number }
+
 /** An issue from any source, the same shape for all of them. */
 export interface NormalizedIssue {
   source: IssueSourceKind;
@@ -456,7 +460,14 @@ export interface NormalizedIssue {
   assignee?: string;
   labels: string[];
   status?: string;
+  /** The key of the epic it is in: set when its parent is an epic (or of unknown type, and it is no sub-task). */
   epic?: string;
+  /** "Story", "Bug", "Epic"; GitHub's issue type. */
+  issueType?: string;
+  /** Jira's hierarchy level of the type: 1 an epic, 0 a story or task, -1 a sub-task. */
+  hierarchy?: number;
+  subtask?: boolean;
+  parent?: IssueParent;
   project?: string;
   /** owner/name for GitHub issues. */
   repo?: string;

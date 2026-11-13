@@ -866,6 +866,26 @@ test('a refresh replaces the list’s copy whole: fields the source emptied (a J
   assert.equal(last(c, 'kanban.issueDetail').issue.assignee, undefined, 'read again from the cache: still nobody');
 });
 
+test('a refresh keeps the type, the sub-task flag and the parent on the list’s copy', async () => {
+  const ctx = makeCtx([def('app', '/tmp/app', { repo: 'o/r' })], { ghAs: () => 'no GitHub sign-in' });
+  ctx.settings.setProject('app', { issueSources: [JIRA_SRC] });
+  (ctx as unknown as { secrets: unknown }).secrets = { jiraConnections: () => JIRA_TOKEN };
+  const fields = { summary: 'Jira one', status: { name: 'Backlog' }, updated: '2026-09-01', issuetype: { name: 'Sub-task', hierarchyLevel: -1, subtask: true }, parent: { key: 'UYT-5', fields: { summary: 'The story', issuetype: { name: 'Story', hierarchyLevel: 0 } } } };
+  const http = fetchStub((c) => {
+    if (c.url.endsWith('/search/jql')) return { body: { issues: [{ key: 'UYT-12', fields }], isLast: true } };
+    if (c.url.includes('/issue/UYT-12')) return { body: { key: 'UYT-12', fields: { ...fields, status: { name: 'Done' } } } };
+    return { status: 204 };
+  });
+  const issues = createIssues(ctx, { gh: ghStub(() => '').gh, fetch: http.fetch });
+  await issues.refresh('app');
+  const shape = () => { const i = issues.message('app').items[0]; return [i.issueType, i.subtask, i.parent?.key, i.epic]; };
+  assert.deepEqual(shape(), ['Sub-task', true, 'UYT-5', undefined]);
+  const c = client(false, 'acc1');
+  await issues.plugin.ws!['kanban.issue.get']!(c, { t: 'kanban.issue.get', project: 'app', issueKey: 'UYT-12', source: JIRA_SRC.id, fresh: true });
+  assert.equal(issues.message('app').items[0].status, 'Done', 'the list’s copy was replaced');
+  assert.deepEqual(shape(), ['Sub-task', true, 'UYT-5', undefined], 'and still has its type and parent');
+});
+
 // --- A Jira issue's child issues -------------------------------------------------------------------
 
 const child = (key: string, over: Record<string, unknown> = {}) => ({ key, fields: { summary: `Child ${key}`, status: { name: 'In Progress', statusCategory: { key: 'indeterminate' } }, issuetype: { name: 'Sub-task', subtask: true }, assignee: { displayName: 'Maija M' }, ...over } });

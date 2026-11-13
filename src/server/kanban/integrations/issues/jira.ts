@@ -4,6 +4,7 @@
 // user's own extra JQL is AND-ed in parentheses.
 
 import type { StatusCategory } from '../../../../shared/kanban/browse.js';
+import { isEpicType } from '../../../../shared/kanban/browsetree.js';
 import type { IssueSourceConfig, NormalizedIssue } from '../../../../shared/kanban/types.js';
 import type { JiraConnection } from '../../secrets.js';
 import { jiraAuthHeader, pickJiraConnection } from './jira-auth.js';
@@ -118,7 +119,12 @@ function block(raw: unknown, depth: number): string {
 export function jiraIssue(raw: any, site: string, sourceId?: string): NormalizedIssue | undefined {
   if (!raw || typeof raw.key !== 'string') return undefined;
   const f = raw.fields ?? {};
-  const parent = f.parent;
+  const type = f.issuetype;
+  const subtask = type?.subtask === true;
+  const p = f.parent;
+  const pt = p?.fields?.issuetype;
+  // `epic` is the parent when it is an epic; when its type isn't known, any parent of an issue that is no sub-task.
+  const epic = p?.key && (pt ? isEpicType(pt.name ? String(pt.name) : undefined, typeof pt.hierarchyLevel === 'number' ? pt.hierarchyLevel : undefined) : !subtask);
   return {
     source: 'jira',
     ...(sourceId ? { sourceId } : {}),
@@ -129,7 +135,22 @@ export function jiraIssue(raw: any, site: string, sourceId?: string): Normalized
     ...(f.assignee?.displayName ? { assignee: String(f.assignee.displayName) } : {}),
     labels: Array.isArray(f.labels) ? f.labels.map(String) : [],
     ...(f.status?.name ? { status: String(f.status.name) } : {}),
-    ...(parent?.key ? { epic: String(parent.key) } : {}),
+    ...(epic ? { epic: String(p.key) } : {}),
+    ...(type?.name ? { issueType: String(type.name) } : {}),
+    ...(typeof type?.hierarchyLevel === 'number' ? { hierarchy: type.hierarchyLevel } : {}),
+    ...(subtask ? { subtask: true } : {}),
+    ...(p?.key
+      ? {
+          parent: {
+            key: String(p.key),
+            title: String(p.fields?.summary ?? p.key),
+            ...(pt?.name ? { type: String(pt.name) } : {}),
+            ...(typeof pt?.hierarchyLevel === 'number' ? { hierarchy: pt.hierarchyLevel } : {}),
+            ...(p.fields?.status?.name ? { status: String(p.fields.status.name) } : {}),
+            ...(jiraCategory(p.fields?.status) ? { statusCategory: jiraCategory(p.fields.status) } : {}),
+          },
+        }
+      : {}),
     ...(f.project?.key ? { project: String(f.project.key) } : {}),
     updatedAt: String(f.updated ?? ''),
   };
