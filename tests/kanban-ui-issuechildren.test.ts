@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { childChipClass, childrenDone, childrenHeading, childrenMsg, childrenSummary } from '../src/client/kanban/issuechildrenmodel.js';
+import { childChipClass, childrenDone, childrenHeading, childrenMsg, childrenSummary, isNewListRead } from '../src/client/kanban/issuechildrenmodel.js';
 
 test('only a Jira issue is asked for its children, through the source it was opened by', () => {
   assert.deepEqual(childrenMsg('app', { key: 'UYT-12', source: 'jira' }), { t: 'kanban.issue.children', project: 'app', issueKey: 'UYT-12' });
@@ -29,4 +29,26 @@ test('a row’s chip takes the category’s tone, and a plain one without a cate
   assert.equal(childChipClass({ statusCategory: 'indeterminate' }), 'cat-indeterminate');
   assert.equal(childChipClass({ statusCategory: 'done' }), 'cat-done');
   assert.equal(childChipClass({}), 'cat-none');
+});
+
+test('opening the window and then pressing Refresh asks the sub-tasks again, once for that read', () => {
+  // The view as it opens: no read of the list seen yet.
+  let last: number | undefined;
+  let reloads = 0;
+  const tell = (msg: { loading: boolean; fetchedAt: number }) => {
+    if (!isNewListRead(last, msg)) return;
+    last = msg.fetchedAt;
+    reloads++;
+  };
+  // Refresh: the list says it is loading (still the old read's time), then the finished read, told twice (the answer and the broadcast).
+  tell({ loading: true, fetchedAt: 100 });
+  assert.equal(reloads, 0);
+  tell({ loading: false, fetchedAt: 200 });
+  assert.equal(reloads, 1, 'the first finished read after opening counts');
+  tell({ loading: false, fetchedAt: 200 });
+  assert.equal(reloads, 1, 'the same read is not asked after twice');
+  // The next Refresh.
+  tell({ loading: true, fetchedAt: 200 });
+  tell({ loading: false, fetchedAt: 300 });
+  assert.equal(reloads, 2);
 });

@@ -11,6 +11,7 @@ import type { NormalizedIssue } from '../../shared/kanban/types.js';
 import type { KanbanApi } from './api';
 import { issueActions } from './issueactions';
 import { issueChildren } from './issuechildren';
+import { isNewListRead } from './issuechildrenmodel';
 import { LIST_BODY, actionIssue, listedBody, safeUrl } from './issueactionsmodel';
 import { SOURCE_KIND_NAMES } from './labels';
 import { renderMarkdown } from './md';
@@ -109,9 +110,10 @@ export function issueView(api: KanbanApi, projectId: string, first: NormalizedIs
     const fresh = msg.items.find((i) => i.key === it.key);
     if (!fresh) return;
     // A new read of the list (the window's Refresh, when it has no reload of its own, is one): the sub-tasks are asked again too.
-    if (!msg.loading && msg.fetchedAt !== listAt) {
-      if (listAt !== undefined) children.reload();
+    // The first one after the window opened counts (it may be that Refresh); the same read told twice doesn't.
+    if (isNewListRead(listAt, msg)) {
       listAt = msg.fetchedAt;
+      children.reload();
     }
     // A cut copy never replaces a body read whole: that one stays until the changed one is read whole too.
     const got = listedBody(it.body, whole, fresh.body);

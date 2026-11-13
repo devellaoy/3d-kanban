@@ -38,3 +38,12 @@ export function childrenSummary(items: readonly Pick<IssueChild, 'statusCategory
 export function childChipClass(child: Pick<IssueChild, 'statusCategory'>): string {
   return `cat-${child.statusCategory ?? 'none'}`;
 }
+
+/**
+ * Whether a message about the project's issue list tells of a finished read the sub-tasks weren't asked after yet.
+ * `last`: the read they were last asked after (none since the view opened: any finished read is new, as the view
+ * can't know which read its own copy came from).
+ */
+export function isNewListRead(last: number | undefined, msg: { loading: boolean; fetchedAt: number }): boolean {
+  return !msg.loading && msg.fetchedAt !== last;
+}

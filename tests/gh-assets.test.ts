@@ -125,23 +125,32 @@ const ask = async (session: object, signin: unknown, query = `id=${ID}&floor=f&r
   const asked: unknown[] = [];
   const board = { assets, asset: async (_id: string, as?: unknown) => (asked.push(as ?? 'office'), { type: 'image/png', body: png }) };
   const ctx = { floors: new Map([['f', { githubFor: () => board }]]), signins: { ghAs: () => signin, githubLogin: () => undefined } };
-  const out = { status: 0, body: '' as string | Buffer };
-  const res = { writeHead: (s: number) => ((out.status = s), res), setHeader() {}, end: (b?: string | Buffer) => void (out.body = b ?? '') };
+  const out = { status: 0, body: '' as string | Buffer, headers: {} as Record<string, string> };
+  const res = { writeHead: (s: number, h?: Record<string, string>) => ((out.status = s), (out.headers = h ?? {}), res), setHeader() {}, end: (b?: string | Buffer) => void (out.body = b ?? '') };
   const { githubRoutes } = await import('../src/server/http/routes/github.js');
   await githubRoutes.github.handle(ctx as never, { res, url: new URL(`http://office/api/gh/asset?${query}`), path: '/api/gh/asset', session } as never);
-  return { status: out.status, asked };
+  return { status: out.status, asked, cache: out.headers['cache-control'] };
 };
+
+test('a picture is never kept by the browser: the next person signed in on it is asked about anew', async () => {
+  const first = await ask({ account: { id: 'u1' } }, { key: 'u1', env: {} });
+  assert.equal(first.status, 200);
+  assert.equal(first.cache, 'no-store');
+  // The same address, the next account on the same browser: the route runs again and refuses it.
+  const next = await ask({ account: { id: 'u2' } }, 'Sign in to GitHub first');
+  assert.deepEqual([next.status, next.asked], [403, []]);
+});
 
 test('the picture route fetches with the asker’s own GitHub sign-in, never lending the office’s', async () => {
   const mine = { key: 'u1', env: { GH_CONFIG_DIR: '/homes/u1/gh' } };
   // Nobody signed in to an account (the office's own people), or an account an admin lets act as the office.
-  assert.deepEqual(await ask({}, undefined), { status: 200, asked: ['office'] });
-  assert.deepEqual(await ask({ account: { id: 'u1' } }, undefined), { status: 200, asked: ['office'] });
+  assert.deepEqual(await ask({}, undefined), { status: 200, asked: ['office'], cache: 'no-store' });
+  assert.deepEqual(await ask({ account: { id: 'u1' } }, undefined), { status: 200, asked: ['office'], cache: 'no-store' });
   // An account with its own sign-in: GitHub answers for that person's access.
-  assert.deepEqual(await ask({ account: { id: 'u1' } }, mine), { status: 200, asked: [mine] });
+  assert.deepEqual(await ask({ account: { id: 'u1' } }, mine), { status: 200, asked: [mine], cache: 'no-store' });
   // An account that hasn't signed in to GitHub gets nothing, and neither does a visitor from another office.
-  assert.deepEqual(await ask({ account: { id: 'u2' } }, 'Sign in to GitHub first'), { status: 403, asked: [] });
-  assert.deepEqual(await ask({ visitor: { login: 'guest' } }, undefined), { status: 403, asked: [] });
+  const refused = [await ask({ account: { id: 'u2' } }, 'Sign in to GitHub first'), await ask({ visitor: { login: 'guest' } }, undefined)];
+  assert.deepEqual(refused.map((r) => [r.status, r.asked]), [[403, []], [403, []]]);
   // An id the office never showed in that repository, and a bad one.
   assert.equal((await ask({}, undefined, 'id=99999999-aaaa-4bbb-8ccc-dddddddddddd&floor=f')).status, 404);
   assert.equal((await ask({}, undefined, 'id=nope&floor=f')).status, 400);

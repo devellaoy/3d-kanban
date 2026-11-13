@@ -49,7 +49,8 @@ export const githubRoutes = {
           res.writeHead(200, {
             'content-type': r.type,
             'content-length': String(r.body.length),
-            'cache-control': 'private, max-age=86400',
+            // Whether someone gets the picture is asked each time: a copy kept by the browser would answer the next person signed in on it.
+            'cache-control': 'no-store',
             'x-content-type-options': 'nosniff',
             'content-security-policy': "default-src 'none'; style-src 'unsafe-inline'; sandbox",
             'cross-origin-resource-policy': 'same-origin',
