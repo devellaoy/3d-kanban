@@ -1,7 +1,9 @@
 // A project's issues from its issue sources (GitHub repositories, a GitHub Projects board, Jira), in
 // one list: filter chips by source, status, label and assignee, a refresh, and "Create task" on each
 // (idempotent by the issue's key: an issue already made into a task opens that task instead). Its title
-// opens the issue's own window (issuewindow.ts).
+// opens the issue's own window (issuewindow.ts). A Jira issue says its type, and a Jira sub-task sits
+// under its parent (issuesgroup.ts): under the parent's own row, or under a low header when the parent
+// isn't in the list.
 //
 // The same window is the Select issue picker of the new-task form and the hire dialogs (`pick`): its
 // rows then hand the issue back instead of making a task, and one that already has a task can't be
@@ -14,9 +16,10 @@ import { icon, iconButton } from '../ui/icons';
 import { btn } from '../ui/kit';
 import { modalShell, openShell } from '../ui/shell';
 import type { KanbanServerMsg } from '../../shared/kanban/protocol.js';
-import type { NormalizedIssue } from '../../shared/kanban/types.js';
+import type { IssueParent, NormalizedIssue } from '../../shared/kanban/types.js';
 import type { KanbanApi, KanbanOk } from './api';
 import { filterIssues } from './model';
+import { groupIssueRows } from './issuesgroup';
 import { kstore } from './store';
 import { openIssueWindow } from './issuewindow';
 import { openBrowse } from './browse';
@@ -108,12 +111,28 @@ export function openIssues(api: KanbanApi, projectId: string, openTask: (id: num
     if (focused) chips.querySelector<HTMLElement>(`select[aria-label="${focused}"]`)?.focus();
     const shown = filterIssues(items, f);
     summary.textContent = !state ? '' : shown.length === items.length ? `${items.length} issue${items.length === 1 ? '' : 's'}` : `${shown.length} of ${items.length} issues`;
-    list.replaceChildren(...shown.map(issueRow));
+    // The headers of parents that aren't shown are no issues: the count above is of `shown`.
+    list.replaceChildren(...groupIssueRows(shown).map((r) => (r.kind === 'parent' ? parentRow(r.parent) : issueRow(r.issue, r.sub))));
     if (error || state?.error) list.prepend(h('p.kb-issues-error', { role: 'alert' }, icon('triangle-alert', { size: 14 }), error || state?.error || ''));
     if (!shown.length && !error && !state?.error) list.append(h('p.kb-issues-none', {}, !state ? 'Loading…' : items.length ? 'Nothing matches the filters' : 'No issues: add an issue source in Settings → Issue sources.'));
   };
 
-  const issueRow = (i: NormalizedIssue) => {
+  /** Jira's type of an issue; GitHub's rows have none. */
+  const typeChip = (type: string | undefined) => (type ? h('span.kb-chip.type', {}, type) : null);
+
+  /** A parent that isn't in the list, as a low header over its sub-tasks: nothing can be done to it from here. */
+  const parentRow = (p: IssueParent) =>
+    h(
+      'div.kb-issue-group',
+      { title: 'Not in this list: shown for its sub-tasks' },
+      typeChip(p.type),
+      h('span.kb-issue-group-key', {}, p.key),
+      h('span.kb-issue-group-title', {}, p.title),
+      h('span.kb-issue-sr', {}, '(not in this list: shown for its sub-tasks)'),
+    );
+
+  /** `sub`: a sub-task under its parent, the row or the header above it. */
+  const issueRow = (i: NormalizedIssue, sub: boolean) => {
     let make: HTMLElement;
     if (picking) {
       make = i.taskId ? h('span.kb-issue-taken', { title: 'One task per issue' }, `Already task #${i.taskId}`) : btn('Select', { size: 'sm', attrs: { onclick: () => choose(i) } });
@@ -133,12 +152,20 @@ export function openIssues(api: KanbanApi, projectId: string, openTask: (id: num
     // Picking, the title is only text: the issue's own window makes tasks, which isn't what is asked here.
     const title = picking ? h('span.kb-issue-title', {}, i.title) : h('button.kb-issue-title.kb-issue-open', { type: 'button', title: 'Open it: status, assignee and comments', onclick: () => openIssueWindow(api, projectId, i, (id) => (modal.close(), openTask(id))) }, i.title);
     return h(
-      `div.kb-issue-row${picking && i.taskId ? '.taken' : ''}`,
+      `div.kb-issue-row${sub ? '.sub' : ''}${picking && i.taskId ? '.taken' : ''}`,
       {},
       h(
         'div.kb-issue-main',
         {},
-        h('div.kb-issue-line', {}, h('a.kb-issue-key', { href: i.url, target: '_blank', rel: 'noopener noreferrer', title: 'Open it at the source' }, i.key), title),
+        h(
+          'div.kb-issue-line',
+          {},
+          i.source === 'jira' ? typeChip(i.issueType) : null,
+          // The indent says it to the eye only.
+          sub && i.parent ? h('span.kb-issue-sr', {}, `${i.issueType ? '' : 'Sub-task '}of ${i.parent.key}`) : null,
+          h('a.kb-issue-key', { href: i.url, target: '_blank', rel: 'noopener noreferrer', title: 'Open it at the source' }, i.key),
+          title,
+        ),
         h(
           'div.kb-issue-meta',
           {},
