@@ -1,7 +1,7 @@
 import { test, mock } from 'node:test';
 import assert from 'node:assert/strict';
 import { ghAssign, ghClaimIfUnassigned, ghComment, ghComments, ghPeople, ghStateTransition, ghStateTransitions } from '../src/server/kanban/integrations/issues/github-ops.js';
-import { jiraAssign, jiraCall, jiraComment, jiraComments, jiraPeople, jiraTransition, jiraTransitions, textToAdf } from '../src/server/kanban/integrations/issues/jira-ops.js';
+import { jiraAssign, jiraCall, jiraChildren, jiraComment, jiraComments, jiraPeople, jiraTransition, jiraTransitions, textToAdf } from '../src/server/kanban/integrations/issues/jira-ops.js';
 import { PROJECT_WRITE_SCOPE_ERROR, boardTransitions, projectTransition, resolveBoards } from '../src/server/kanban/integrations/issues/project-ops.js';
 import { issueActionHandlers } from '../src/server/kanban/integrations/issues/actions.js';
 import { createIssues } from '../src/server/kanban/integrations/issues/index.js';
@@ -864,4 +864,62 @@ test('a refresh replaces the list’s copy whole: fields the source emptied (a J
   assert.equal(listed().epic, undefined, 'and the epic it was taken out of is gone');
   await issues.plugin.ws!['kanban.issue.get']!(c, { t: 'kanban.issue.get', project: 'app', issueKey: 'UYT-12' });
   assert.equal(last(c, 'kanban.issueDetail').issue.assignee, undefined, 'read again from the cache: still nobody');
+});
+
+// --- A Jira issue's child issues -------------------------------------------------------------------
+
+const child = (key: string, over: Record<string, unknown> = {}) => ({ key, fields: { summary: `Child ${key}`, status: { name: 'In Progress', statusCategory: { key: 'indeterminate' } }, issuetype: { name: 'Sub-task', subtask: true }, assignee: { displayName: 'Maija M' }, ...over } });
+
+test('Jira children: one JQL search on the parent, mapped to rows, `more` when Jira has a next page', async () => {
+  const { fetch, calls } = fetchStub(() => ({ body: { issues: [child('UYT-13'), child('UYT-14', { status: { name: 'Done', statusCategory: { key: 'done' } }, assignee: null, issuetype: { name: 'Task', subtask: false } }), { key: 'bad key', fields: {} }], nextPageToken: 'abc' } }));
+  const got = await jiraChildren(act({ fetch }), { site: SITE }, 'UYT-12');
+  assert.equal(calls[0].method, 'POST');
+  assert.equal(calls[0].url, `https://${SITE}/rest/api/3/search/jql`);
+  assert.deepEqual(calls[0].body, { jql: 'parent = "UYT-12" ORDER BY created ASC', fields: ['summary', 'status', 'issuetype', 'assignee'], maxResults: 100 });
+  assert.equal(got.more, true);
+  assert.deepEqual(got.items, [
+    { key: 'UYT-13', title: 'Child UYT-13', url: `https://${SITE}/browse/UYT-13`, status: 'In Progress', statusCategory: 'indeterminate', issueType: 'Sub-task', subtask: true, assignee: 'Maija M' },
+    { key: 'UYT-14', title: 'Child UYT-14', url: `https://${SITE}/browse/UYT-14`, status: 'Done', statusCategory: 'done', issueType: 'Task', subtask: false },
+  ]);
+  const last = fetchStub(() => ({ body: { issues: [], isLast: true } }));
+  assert.deepEqual(await jiraChildren(act({ fetch: last.fetch }), { site: SITE }, 'UYT-12'), { items: [], more: false });
+  await assert.rejects(jiraChildren(act({ fetch }), { site: SITE }, 'UYT-12" OR x = "1'), /isn’t a Jira issue key/);
+  assert.equal(calls.length, 1, 'a bad key sends nothing');
+});
+
+test('kanban.issue.children: covered children with their tasks; other issue kinds and sources get an empty list', async () => {
+  const ctx = makeCtx([def('app', '/tmp/app', { repo: 'o/r' })]);
+  ctx.settings.setProject('app', { issueSources: [JIRA_SRC, { id: 'j2', kind: 'jira', site: 'other.atlassian.net', projectKeys: ['ZZ'], filters: {} }] });
+  (ctx as unknown as { secrets: unknown }).secrets = { jiraConnections: () => JIRA_TOKEN };
+  ctx.repo.createTask({ project: 'app', title: 'From a child', ticket: 'UYT-14', tool: 'claude', usePlan: false, planApproval: 'manual', useReview: false, createdBy: 'Tester' } as never);
+  const http = fetchStub(() => ({ body: { issues: [child('UYT-13'), child('UYT-14'), child('OTHER-1')] } }));
+  const jira = { key: 'UYT-12', title: 'Parent', url: `https://${SITE}/browse/UYT-12`, source: 'jira', sourceId: 'j' } as never;
+  const gh = { key: 'gh:o/r#5', title: 'Five', url: 'https://github.com/o/r/issues/5', source: 'github-repo', sourceId: 'r' } as never;
+  const ws = issueActionHandlers(ctx, { find: (_p, k) => (k === 'UYT-12' ? jira : gh), load: async () => undefined, patch: () => {}, io: () => ({ gh: async () => '', fetch: http.fetch, cwd: '/tmp', projectRepos: [], jira: JIRA_TOKEN }) as never, remember: () => {} });
+  const c = client(false, 'acc1');
+  const reply = () => c.got.at(-1) as any;
+  await ws['kanban.issue.children']!(c, { t: 'kanban.issue.children', project: 'app', issueKey: 'UYT-12', rid: 'r1' });
+  assert.deepEqual(reply().items.map((i: any) => [i.key, i.taskId]), [['UYT-13', undefined], ['UYT-14', 1]], 'OTHER-1 belongs to no source of the project');
+  assert.equal(reply().rid, 'r1');
+  assert.equal(reply().more, undefined);
+  // The source the asker names must cover the issue, as for comments.
+  await ws['kanban.issue.children']!(c, { t: 'kanban.issue.children', project: 'app', issueKey: 'UYT-12', source: 'j2', rid: 'r2' });
+  assert.match(reply().message, /isn't a Jira source|doesn't cover/);
+  const before = http.calls.length;
+  await ws['kanban.issue.children']!(c, { t: 'kanban.issue.children', project: 'app', issueKey: 'gh:o/r#5' });
+  assert.deepEqual(reply(), { t: 'kanban.issueChildren', project: 'app', issueKey: 'gh:o/r#5', items: [] });
+  assert.equal(http.calls.length, before, 'no Jira call for a GitHub issue');
+  await ws['kanban.issue.children']!(c, { t: 'kanban.issue.children', project: 'nope', issueKey: 'UYT-12' });
+  assert.match(reply().message, /no project nope/);
+});
+
+test('kanban.issue.children: a Jira source with no project keys covers every child', async () => {
+  const ctx = makeCtx([def('app', '/tmp/app', { repo: 'o/r' })]);
+  ctx.settings.setProject('app', { issueSources: [{ id: 'j', kind: 'jira', site: SITE, projectKeys: [], filters: {} }] });
+  const http = fetchStub(() => ({ body: { issues: [child('OTHER-1')] } }));
+  const jira = { key: 'UYT-12', title: 'Parent', url: `https://${SITE}/browse/UYT-12`, source: 'jira', sourceId: 'j' } as never;
+  const ws = issueActionHandlers(ctx, { find: () => jira, load: async () => undefined, patch: () => {}, io: () => ({ gh: async () => '', fetch: http.fetch, cwd: '/tmp', projectRepos: [], jira: JIRA_TOKEN }) as never, remember: () => {} });
+  const c = client(false, 'acc1');
+  await ws['kanban.issue.children']!(c, { t: 'kanban.issue.children', project: 'app', issueKey: 'UYT-12' });
+  assert.deepEqual((c.got.at(-1) as any).items.map((i: any) => i.key), ['OTHER-1']);
 });

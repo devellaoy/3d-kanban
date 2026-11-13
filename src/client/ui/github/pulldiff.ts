@@ -1,7 +1,7 @@
 import './pulldiff.css';
 import type { GhReviewComment } from '../../../shared/protocol';
 import { h, timeAgo } from '../dom';
-import { markdown } from '../markdown';
+import { ghMarkdown } from './md';
 
 // A PR's unified diff (`gh pr diff`), split into files, and the pieces the Files tab draws with it:
 // each file's lines with inline review comments, the file list/tree, and which files you've reviewed.
@@ -182,7 +182,7 @@ export function renderThread(root: GhReviewComment, replies: Map<number, GhRevie
         'div.pd-comment',
         {},
         h('div.pd-comment-head', {}, h('b', {}, c.author), h('a', { href: c.url, target: '_blank', rel: 'noopener noreferrer', title: new Date(c.createdAt).toLocaleString() }, timeAgo(c.createdAt))),
-        markdown(c.body, itemUrl),
+        ghMarkdown(c.body, itemUrl),
       ),
     ),
   );

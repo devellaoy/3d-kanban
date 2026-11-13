@@ -2,11 +2,11 @@ import type { GhComment } from '../../../shared/protocol';
 import type { Net } from '../../net';
 import { h } from '../dom';
 import { btn } from '../kit';
-import { markdown } from '../markdown';
 import { commentWaiters } from './api';
 import { ghKey, ghRepoField } from './ghrepo';
 import { isSendKey, sendHint } from '../../kanban/sendkey';
 import { DRAFT_KEY, pref, savePref } from './prefs';
+import { ghMarkdown } from './md';
 
 // ---- Comment box --------------------------------------------------------------------------------
 
@@ -58,7 +58,7 @@ export function commentBox(kind: 'issue' | 'pull', number: number, itemUrl: stri
     preview.setAttribute('aria-pressed', String(on));
     ta.classList.toggle('hidden', on);
     shown.classList.toggle('hidden', !on);
-    if (on) shown.replaceChildren(ta.value.trim() ? markdown(ta.value, itemUrl) : h('p.gh-quiet', {}, 'Nothing to preview.'));
+    if (on) shown.replaceChildren(ta.value.trim() ? ghMarkdown(ta.value, itemUrl) : h('p.gh-quiet', {}, 'Nothing to preview.'));
     else ta.focus();
   };
   const fail = (text: string) => {

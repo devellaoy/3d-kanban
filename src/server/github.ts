@@ -8,6 +8,7 @@ import { otherHostRepo } from './hosting/index.js';
 import { hostedRepoOf, type HostedRepo } from './hosting/board.js';
 import type { HostAs } from './hosting/provider.js';
 import { HostedBoard } from './hosting/hosted-board.js';
+import { GhAssets, type GhAssetResult } from './ghassets.js';
 
 const REFRESH_MS = 90_000;
 /** How long the repo's list of labels is kept before the label picker asks GitHub again. */
@@ -141,6 +142,8 @@ export class GitHub {
   }
 
   readonly nameWithOwner?: string;
+  /** The attached pictures this board's texts hold, which the office may fetch for the windows (see ghassets.ts). */
+  readonly assets = new GhAssets();
   private readonly pullsOnly: boolean;
   private readonly off?: string;
 
@@ -220,6 +223,7 @@ export class GitHub {
         line: c.line ?? null,
         side: c.side === 'LEFT' ? 'LEFT' : 'RIGHT',
       }));
+    this.assets.note(p.body, ...[...(p.comments ?? []), ...(p.reviews ?? [])].map((c: any) => c?.body), ...reviewComments.map((c) => c.body));
     return {
       number: p.number,
       body: String(p.body ?? ''),
@@ -241,6 +245,11 @@ export class GitHub {
     };
   }
 
+  /** An attached picture's bytes, fetched with the office's gh (see ghassets.ts). */
+  asset(id: string): Promise<GhAssetResult> {
+    return this.assets.fetch(id, this.gh, this.dir);
+  }
+
   /** The PR's unified diff, as `git diff` prints it. */
   pullDiff(n: number): Promise<string> {
     // A PR over GitHub's 300-file diff limit is built from the files API instead (prfiles.ts).
@@ -250,6 +259,7 @@ export class GitHub {
   async issueDetail(n: number, me?: string): Promise<GhIssueDetail> {
     const [view, viewer] = await Promise.all([this.gh(['issue', 'view', String(n), ...repoFlag(this.target), '--json', 'number,state,body,comments'], this.dir), me ?? this.viewer()]);
     const i = JSON.parse(view);
+    this.assets.note(i.body, ...(i.comments ?? []).map((c: any) => c?.body));
     return { number: i.number, state: i.state, body: String(i.body ?? ''), comments: commentsOf(i.comments), viewer };
   }
 
@@ -264,6 +274,7 @@ export class GitHub {
       const jq = '{id: .node_id, author: {login: .user.login}, body, createdAt: .created_at, url: .html_url}';
       const out = await this.gh(['api', '--method', 'POST', repoApi(this.target, `issues/${n}/comments`), '-f', `body=${body}`, '--jq', jq], this.dir, undefined, as?.env);
       [comment] = commentsOf([JSON.parse(out)]);
+      this.assets.note(comment.body);
     } catch (err) {
       return { error: (err as Error).message };
     }
@@ -433,6 +444,7 @@ export class GitHub {
         comments: Array.isArray(i.comments) ? i.comments.length : Number(i.comments ?? 0),
         ...(this.nameWithOwner ? { repo: this.nameWithOwner } : {}),
       }));
+      this.assets.note(...fetched.map((i) => i.body));
       const items = this.relabel('issue', fetched, asked);
       this.issues = { items, fetchedAt: Date.now(), loading: false };
     } catch (err) {
@@ -484,6 +496,7 @@ export class GitHub {
         reviewRequests: (p.reviewRequests ?? []).map((r: any) => r?.login).filter((l: unknown): l is string => typeof l === 'string' && !!l),
         ...(this.nameWithOwner ? { repo: this.nameWithOwner } : {}),
       }));
+      this.assets.note(...fetched.map((p) => p.body));
       const items = this.relabel('pull', fetched, asked);
       this.pulls = { items, fetchedAt: Date.now(), loading: false, ...(viewer ? { viewer } : {}) };
     } catch (err) {
@@ -503,7 +516,10 @@ function withOpenedBy(body: string): { openedBy?: string } {
  * A floor's board for one repository: GitHub's, or a provider's for one on another host
  * (hosting/hosted-board.ts), which is `hosted` and takes that host's credentials where GitHub's takes gh's.
  */
-export type Board = Omit<GitHub, 'pullDetail' | 'comment' | 'review'> & {
+export type Board = Omit<GitHub, 'pullDetail' | 'comment' | 'review' | 'assets' | 'asset'> & {
+  /** Only GitHub's own boards have attached pictures to fetch. */
+  readonly assets?: GitHub['assets'];
+  asset?: GitHub['asset'];
   readonly hosted?: HostedRepo;
   pullDetail(n: number, me?: string, host?: HostAs): Promise<GhPullDetail>;
   comment(kind: 'issue' | 'pull', n: number, body: string, as?: GhAs, host?: HostAs): Promise<{ comment?: GhComment; error?: string }>;

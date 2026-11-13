@@ -10,7 +10,7 @@
 // floor and, when the issue has a task, a status line on it.
 
 import type { KanbanClientMsg, KanbanClientType } from '../../../../shared/kanban/protocol.js';
-import type { IssueAssignTo, IssueTransition } from '../../../../shared/kanban/issueops.js';
+import type { IssueAssignTo, IssueChild, IssueTransition } from '../../../../shared/kanban/issueops.js';
 import type { IssueSourceConfig, NormalizedIssue } from '../../../../shared/kanban/types.js';
 import { cleanJiraSite, sameJiraSite, type JiraAt } from '../../../../shared/kanban/jira-connections.js';
 import { parseGhKey } from '../../../../shared/kanban/issuecard.js';
@@ -20,7 +20,7 @@ import { jiraCovers } from './browse/jql.js';
 import { fail, ok } from '../util.js';
 import { GH_REOPEN, ghAssign, ghComment, ghComments, ghIssueState, ghPeople, ghStateTransition, ghStateTransitions } from './github-ops.js';
 import { azureActAs, azureAssign, azureComment, azureComments, azurePeople, azureTransition, azureTransitions } from './azure-ops.js';
-import { jiraAssign, jiraComment, jiraComments, jiraPeople, jiraTransition, jiraTransitions } from './jira-ops.js';
+import { jiraAssign, jiraChildren, jiraComment, jiraComments, jiraPeople, jiraTransition, jiraTransitions } from './jira-ops.js';
 import { boardTransitions, projectTransition, resolveBoards, type ProjectTarget } from './project-ops.js';
 import type { IssueActIo, IssueSourceIo } from './source.js';
 
@@ -237,6 +237,22 @@ export function issueActionHandlers(ctx: KanbanContext, deps: ActionDeps): NonNu
       const items =
         target.kind === 'jira' ? await jiraComments(io, target, m.issueKey) : target.kind === 'azure' ? await azureComments(io, azureActAs(c.accountId, target.org), target) : target.kind === 'gh' ? await ghComments(io, target.repo, target.number) : [];
       c.send({ t: 'kanban.issueComments', ...(m.rid ? { rid: m.rid } : {}), project: m.project, issueKey: m.issueKey, items, ...(target.kind === 'draft' ? { cannot: DRAFT_NO_COMMENTS } : {}) });
+    }),
+
+    // A Jira issue's sub-tasks and epic children, the ones a Jira source of the project on that site covers, each with its kanban task.
+    'kanban.issue.children': scoped<Msg<'kanban.issue.children'>>(async (c, m, { target, io }) => {
+      let items: IssueChild[] = [];
+      let more = false;
+      if (target.kind === 'jira') {
+        const read = await jiraChildren(io, target, m.issueKey);
+        const covering = ctx.settings.project(m.project).issueSources.filter((s): s is Extract<IssueSourceConfig, { kind: 'jira' }> => s.kind === 'jira' && sameJiraSite(s.site, target.site));
+        const tasks = ctx.repo.ticketTaskIds(m.project);
+        items = read.items
+          .filter((i) => covering.some((s) => jiraCovers(s, i.key)))
+          .map((i) => (tasks.has(i.key) ? { ...i, taskId: tasks.get(i.key)! } : i));
+        more = read.more;
+      }
+      c.send({ t: 'kanban.issueChildren', ...(m.rid ? { rid: m.rid } : {}), project: m.project, issueKey: m.issueKey, items, ...(more ? { more } : {}) });
     }),
 
     'kanban.issue.comment': scoped<Msg<'kanban.issue.comment'>>(async (c, m, { issue, target, io }) => {

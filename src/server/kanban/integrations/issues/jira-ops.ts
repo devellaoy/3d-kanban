@@ -3,9 +3,10 @@
 // project's own workflow, whatever its statuses are called), its comments, and its assignee.
 // Every function throws an Error with a text a person can act on.
 
-import type { IssueAssignTo, IssueCommentItem, IssuePerson, IssueTransition } from '../../../../shared/kanban/issueops.js';
+import type { IssueAssignTo, IssueChild, IssueCommentItem, IssuePerson, IssueTransition } from '../../../../shared/kanban/issueops.js';
 import type { JiraAt } from '../../../../shared/kanban/jira-connections.js';
-import { adfToText } from './jira.js';
+import { adfToText, jiraCategory } from './jira.js';
+import { JIRA_KEY_RE } from './browse/jql.js';
 import { jiraAuthHeader, pickJiraConnection } from './jira-auth.js';
 import { attribution, type IssueActIo } from './source.js';
 
@@ -13,8 +14,8 @@ const TIMEOUT_MS = 30_000;
 /** How many comments one read brings (the newest). */
 const COMMENTS = 50;
 const PEOPLE = 20;
-/** A Jira issue key; anything else never goes into a URL. */
-const KEY_RE = /^[A-Za-z][A-Za-z0-9_]*-\d+$/;
+/** How many child issues one read brings. */
+const CHILDREN = 100;
 
 /** One call to the Jira REST API of `at.site` with the connection the source names (else the first for the site); resolves to the JSON answer ({} when it has none). */
 export async function jiraCall(io: IssueActIo, at: JiraAt, method: 'GET' | 'POST' | 'PUT', path: string, body?: unknown): Promise<any> {
@@ -41,7 +42,7 @@ export async function jiraCall(io: IssueActIo, at: JiraAt, method: 'GET' | 'POST
 }
 
 const issuePath = (key: string) => {
-  if (!KEY_RE.test(key)) throw new Error(`${key} isn’t a Jira issue key`);
+  if (!JIRA_KEY_RE.test(key)) throw new Error(`${key} isn’t a Jira issue key`);
   return `/rest/api/3/issue/${encodeURIComponent(key)}`;
 };
 
@@ -129,4 +130,28 @@ export async function jiraAssign(io: IssueActIo, at: JiraAt, key: string, to: Is
   if (to && 'me' in to) throw new Error('The office doesn’t know which Jira user you are: pick yourself in the list and pin it as “This is me”');
   await jiraCall(io, at, 'PUT', `${issuePath(key)}/assignee`, { accountId: to ? to.id : null });
   return to ? (to.name ?? to.id) : undefined;
+}
+
+/** A Jira issue's child issues (its sub-tasks, or an epic's issues), oldest first; `more` when Jira has more than it brings. */
+export async function jiraChildren(io: IssueActIo, at: JiraAt, key: string): Promise<{ items: IssueChild[]; more: boolean }> {
+  // The key is checked before it goes into the JQL, where it is quoted.
+  if (!JIRA_KEY_RE.test(key)) throw new Error(`${key} isn’t a Jira issue key`);
+  const body = await jiraCall(io, at, 'POST', '/rest/api/3/search/jql', { jql: `parent = "${key}" ORDER BY created ASC`, fields: ['summary', 'status', 'issuetype', 'assignee'], maxResults: CHILDREN });
+  const items: IssueChild[] = [];
+  for (const i of Array.isArray(body.issues) ? body.issues : []) {
+    if (typeof i?.key !== 'string' || !JIRA_KEY_RE.test(i.key)) continue;
+    const f = i.fields ?? {};
+    const category = jiraCategory(f.status);
+    items.push({
+      key: i.key,
+      title: String(f.summary ?? i.key),
+      url: `https://${at.site}/browse/${encodeURIComponent(i.key)}`,
+      ...(f.status?.name ? { status: String(f.status.name) } : {}),
+      ...(category ? { statusCategory: category } : {}),
+      ...(f.issuetype?.name ? { issueType: String(f.issuetype.name) } : {}),
+      ...(typeof f.issuetype?.subtask === 'boolean' ? { subtask: f.issuetype.subtask } : {}),
+      ...(f.assignee?.displayName ? { assignee: String(f.assignee.displayName) } : {}),
+    });
+  }
+  return { items, more: !!body.nextPageToken };
 }

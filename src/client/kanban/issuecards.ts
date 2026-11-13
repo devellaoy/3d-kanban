@@ -21,6 +21,7 @@ import { labelChip } from '../ui/github/labels';
 import { railButton, railStack, sectionHead } from '../ui/github/pieces';
 import { kanbanApi, type KanbanOk } from './api';
 import { issueActions } from './issueactions';
+import { issueChildren } from './issuechildren';
 import { actionIssue, actionsTarget, closesOrReopens, keyedComment, safeUrl } from './issueactionsmodel';
 import { issueTask } from './hireform';
 import { SOURCE_KIND_NAMES } from './labels';
@@ -302,6 +303,8 @@ function openSourceIssue(first: GhIssue, net: Net, actions: BoardActions, refetc
   // The status and the assignee go to the rail, the comments stay under the description.
   const side = to ? issueActions(api, to.project, actionIssue(it), { sections: ['status', 'assignee'], openTask, onChanged: () => void reload() }) : null;
   const talk = to ? issueActions(api, to.project, actionIssue(it), { sections: ['comments'], openTask, onChanged: () => void reload() }) : null;
+  // A Jira issue's sub-tasks, between the description and the comments (issuechildren.ts).
+  const children = to ? issueChildren(api, to.project, { ...it, key: to.key }, { openTask }) : null;
   const queueProvider = providerPicker(store.project, `issue-provider-${cardId(it)}`, 'Queue on');
   const queueText = h('span');
   const queue = railButton('', 'list', () => {
@@ -328,7 +331,7 @@ function openSourceIssue(first: GhIssue, net: Net, actions: BoardActions, refetc
     pill: status,
     meta: [meta],
     tools: [refresh],
-    body: h('div.iw-main', {}, h('section.iw-sec', {}, sectionHead('Description'), body), talk?.el ?? null),
+    body: h('div.iw-main', {}, h('section.iw-sec', {}, sectionHead('Description'), body), children?.el ?? null, talk?.el ?? null),
     rail: [
       side?.el ?? null,
       side ? h('hr.rail-sep') : null,
@@ -373,6 +376,7 @@ function openSourceIssue(first: GhIssue, net: Net, actions: BoardActions, refetc
     start.classList.toggle('hidden', !!it.taskId && !!kanban);
     side?.update(actionIssue(it));
     talk?.update(actionIssue(it));
+    children?.update(it);
   };
   /** What the source says now, for a card that isn't on the board to keep it current. */
   const reload = async () => {
@@ -380,6 +384,7 @@ function openSourceIssue(first: GhIssue, net: Net, actions: BoardActions, refetc
     if (!fresh) return;
     it = fresh;
     render();
+    children?.reload();
   };
   const unsubs = [
     store.on('issues', () => {

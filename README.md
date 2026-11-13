@@ -107,7 +107,7 @@ curl -fsSL https://raw.githubusercontent.com/devellaoy/3d-kanban/main/deploy/pro
   UI saves a screenshot from before the change and one from after it, the reviewer looks at them, the
   task's **Images** tab shows them side by side, and the office adds them to the description of the task's
   pull request (GitHub, with `gh` 2.99.0 or newer; in a task in several repositories each picture goes to the
-  pull request of the repository it was taken in): [docs/kanban.md](docs/kanban.md#ui-testing).
+  pull request of the repository it was taken in; the PR window shows them for a private repository too, through the office's `gh` sign-in): [docs/kanban.md](docs/kanban.md#ui-testing).
 - **A task prompt from an issue**: picking an issue in the New task form with an empty description has Claude write a short prompt into it (not with Codex as the default agent) (turn it off by emptying the "Task prompt from an issue" prompt).
 - **A kanban page** at `/kanban` (**J** or **🗂️ Kanban** in the office, a link on `/lite`). A
   task's view (conversation, plan, runs, the change and its commits read from git, the before and
@@ -141,7 +141,7 @@ curl -fsSL https://raw.githubusercontent.com/devellaoy/3d-kanban/main/deploy/pro
   from its remote, follows their pull requests on the PR board and on kanban tasks (to merged), opens
   them with a token of yours (☰ → 🔐 Your sign-ins), and its agents use `office-pr` there instead of `gh`.
   A task's Azure Boards work item is completed when its pull request merges ([docs/hosting.md](docs/hosting.md)).
-- **Issue sources per project**: GitHub repositories, GitHub Projects v2, Jira (several Jira connections, so projects can use different Jira sites or accounts) and Azure Boards, made into tasks in a click, **🔎 browsed in full** (a tree of all of a Jira project's or board's issues, with filters), and moved on (status), commented on and assigned from the issue's window, on the kanban and in 3D. A task's issue can be linked, changed or unlinked in its **Issue** tab, after it has started too. They are also the 3D office's 📌 Issues board, cards you carry to desks, workers and the queue.
+- **Issue sources per project**: GitHub repositories, GitHub Projects v2, Jira (several Jira connections, so projects can use different Jira sites or accounts) and Azure Boards, made into tasks in a click, **🔎 browsed in full** (a tree of all of a Jira project's or board's issues, with filters), and moved on (status), commented on and assigned from the issue's window, on the kanban and in 3D; a Jira issue's window also lists its sub-tasks (with the task made from each). A task's issue can be linked, changed or unlinked in its **Issue** tab, after it has started too. They are also the 3D office's 📌 Issues board, cards you carry to desks, workers and the queue.
 - **Agent-written pull requests**: **O** at a desk and the task's PR phase have the agent push and open
   (or fix, or bring up to date with their target branches and resolve the conflicts of) the PRs in every repository.
 - **Multi-PR reviews**: 🔍 Review and 🤝 Review panel pick the PRs that belong together across the
