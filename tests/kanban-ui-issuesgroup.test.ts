@@ -51,15 +51,28 @@ test('stories and epics stay in a flat list: the epic is a hint on the row, not 
   assert.deepEqual(show(rows), ['A-2', 'A-1']);
 });
 
-test('families are per source: the same parent key on two sources makes two families', () => {
-  const a = sub('A-2', 'A-1', { sourceId: 's1' });
-  const b = sub('B-9', 'A-1', { sourceId: 's2', parent: { key: 'A-1', title: 'Other site' } });
+const at = (site: string, key: string) => `https://${site}/browse/${key}`;
+
+test('families are per Jira site: the same parent key on two sites makes two families', () => {
+  const a = sub('A-2', 'A-1', { url: at('one.example', 'A-2') });
+  const b = sub('B-9', 'A-1', { url: at('two.example', 'B-9'), parent: { key: 'A-1', title: 'Other site' } });
   const rows = groupIssueRows([a, issue('Z-1'), b]);
   assert.deepEqual(show(rows), ['^A-1', '-A-2', 'Z-1', '^A-1', '-B-9']);
   assert.equal((rows[3] as { parent: { title: string } }).parent.title, 'Other site');
-  // A parent row of another source does not adopt them; its own source's sub-task does.
-  const other = issue('A-1', { sourceId: 's3' });
+  // A parent row on another site does not adopt them; the one on their own site does.
+  const other = issue('A-1', { url: at('three.example', 'A-1') });
   assert.deepEqual(show(groupIssueRows([a, other])), ['^A-1', '-A-2', 'A-1']);
-  const own = issue('A-1', { sourceId: 's1' });
+  const own = issue('A-1', { url: at('ONE.example', 'A-1') });
   assert.deepEqual(show(groupIssueRows([a, own, b])), ['A-1', '-A-2', '^A-1', '-B-9']);
+});
+
+test('one site read by several sources is one family: the parent and the siblings may come from different sources', () => {
+  const site = 'one.example';
+  const mine = sub('A-2', 'A-1', { sourceId: 'my-subtasks', url: at(site, 'A-2') });
+  const story = issue('A-1', { sourceId: 'stories', issueType: 'Story', url: at(site, 'A-1') });
+  const theirs = sub('A-3', 'A-1', { sourceId: 'labelled', url: at(site, 'A-3') });
+  // The story's real row heads the family: no header stands in for it.
+  assert.deepEqual(show(groupIssueRows([mine, issue('Z-1', { url: at(site, 'Z-1') }), story, theirs])), ['A-1', '-A-2', '-A-3', 'Z-1']);
+  // Without the story, the siblings of two sources share one header.
+  assert.deepEqual(show(groupIssueRows([mine, theirs])), ['^A-1', '-A-2', '-A-3']);
 });
