@@ -815,8 +815,11 @@ reads its own. A kanban task made from a card keeps the description as its own, 
   for GitHub.com pull requests only, that is `https://github.com/<owner>/<repo>/pull/<number>`: GitHub Enterprise hosts,
   Azure DevOps and Bitbucket PRs get no section.
   In a private repository a picture attached this way answers only a signed-in GitHub session, so the PR window
-  (and its comments) shows it through the office's own `gh` sign-in: the browser tries the picture's address first and
-  asks the office only when that fails. The office serves only pictures it has itself shown in that repository's
+  (and its comments) shows it through a `gh` sign-in: the browser tries the picture's address first and
+  asks the office only when that fails. The office fetches it with your own GitHub sign-in (**☰ → 🔐 Your sign-ins**),
+  so GitHub decides whether you may see it; the machine's own `gh` is used only when you act as the office anyway
+  (no accounts, or an admin who chose the office's sign-in). An account without a GitHub sign-in and a visitor from
+  another office get a link instead. The office asks only for pictures it has itself shown in that repository's
   texts (description, comments, reviews, line comments), as png, jpeg, gif or webp up to 8 MB; anything else stays a link.
 - **Repositories on Azure DevOps and Bitbucket**: everything above works the same, with the agent using `office-pr`
   where it would use `gh`, and the PR board and linked PR states read over the host's API ([hosting](hosting.md)).

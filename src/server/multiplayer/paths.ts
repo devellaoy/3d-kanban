@@ -3,7 +3,7 @@
 // picture, a changed picture, the bookshelf). The router enforces this for every visitor request (ahead of the routes), and the
 // tunnel (httpgate.ts) checks the path again before it even makes the request.
 const ALLOWED = [
-  /^\/api\/gh\/(pull|issue|labels|pull\/diff|asset)$/,
+  /^\/api\/gh\/(pull|issue|labels|pull\/diff)$/,
   /^\/api\/kanban\/tasks\/\d{1,12}\/(changes|commits|commit|uncommitted|reports)$/,
   /^\/api\/kanban\/tasks\/\d{1,12}\/reports\/[^/]{1,200}$/,
   /^\/api\/kanban\/tasks\/\d{1,12}\/images$/,

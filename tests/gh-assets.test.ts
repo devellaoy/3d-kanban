@@ -97,10 +97,9 @@ test('wrong type, SVG, oversize, not found and failures are refused, and the tok
   for (const r of results) assert.ok('status' in r && !r.error.includes(TOKEN), JSON.stringify(r));
 });
 
-test('a visitor may ask for an attached picture, read-only', () => {
-  assert.ok(visitorPath('GET', '/api/gh/asset'));
-  assert.ok(!visitorPath('POST', '/api/gh/asset'));
-  assert.ok(!visitorPath('GET', '/api/gh/assets'));
+test('a visitor is never given an attached picture (it would come with someone else’s GitHub access)', () => {
+  assert.ok(!visitorPath('GET', '/api/gh/asset'));
+  assert.ok(visitorPath('GET', '/api/gh/pull'));
 });
 
 test('the same picture asked for at once is fetched once', async () => {
@@ -116,4 +115,43 @@ test('the same picture asked for at once is fetched once', async () => {
   const again = stub((n) => (n === 1 ? redirect('https://private-user-images.githubusercontent.com/1/x.png?jwt=abc') : image()));
   await a.fetch(ID, counted, '/tmp', again.fetchImpl);
   assert.equal(tokens, 2);
+});
+
+// The route: a picture's address in a text is only a reference (anyone who may comment can write another
+// repository's there), so who gets the bytes is GitHub's call with the asker's own sign-in.
+const ask = async (session: object, signin: unknown, query = `id=${ID}&floor=f&repo=acme/app`) => {
+  const assets = new GhAssets();
+  assets.note(ghAssetUrl(ID));
+  const asked: unknown[] = [];
+  const board = { assets, asset: async (_id: string, as?: unknown) => (asked.push(as ?? 'office'), { type: 'image/png', body: png }) };
+  const ctx = { floors: new Map([['f', { githubFor: () => board }]]), signins: { ghAs: () => signin, githubLogin: () => undefined } };
+  const out = { status: 0, body: '' as string | Buffer };
+  const res = { writeHead: (s: number) => ((out.status = s), res), setHeader() {}, end: (b?: string | Buffer) => void (out.body = b ?? '') };
+  const { githubRoutes } = await import('../src/server/http/routes/github.js');
+  await githubRoutes.github.handle(ctx as never, { res, url: new URL(`http://office/api/gh/asset?${query}`), path: '/api/gh/asset', session } as never);
+  return { status: out.status, asked };
+};
+
+test('the picture route fetches with the asker’s own GitHub sign-in, never lending the office’s', async () => {
+  const mine = { key: 'u1', env: { GH_CONFIG_DIR: '/homes/u1/gh' } };
+  // Nobody signed in to an account (the office's own people), or an account an admin lets act as the office.
+  assert.deepEqual(await ask({}, undefined), { status: 200, asked: ['office'] });
+  assert.deepEqual(await ask({ account: { id: 'u1' } }, undefined), { status: 200, asked: ['office'] });
+  // An account with its own sign-in: GitHub answers for that person's access.
+  assert.deepEqual(await ask({ account: { id: 'u1' } }, mine), { status: 200, asked: [mine] });
+  // An account that hasn't signed in to GitHub gets nothing, and neither does a visitor from another office.
+  assert.deepEqual(await ask({ account: { id: 'u2' } }, 'Sign in to GitHub first'), { status: 403, asked: [] });
+  assert.deepEqual(await ask({ visitor: { login: 'guest' } }, undefined), { status: 403, asked: [] });
+  // An id the office never showed in that repository, and a bad one.
+  assert.equal((await ask({}, undefined, 'id=99999999-aaaa-4bbb-8ccc-dddddddddddd&floor=f')).status, 404);
+  assert.equal((await ask({}, undefined, 'id=nope&floor=f')).status, 400);
+});
+
+test('one person’s fetch under way is never another’s answer', async () => {
+  const a = new GhAssets();
+  const runs: string[] = [];
+  const as = (who: string) => async (args: string[]) => (runs.push(who), run(args));
+  const s = stub((n) => (n % 2 ? redirect('https://private-user-images.githubusercontent.com/1/x.png?jwt=abc') : image()));
+  await Promise.all([a.fetch(ID, as('office'), '/tmp', s.fetchImpl), a.fetch(ID, as('u1'), '/tmp', s.fetchImpl, 'account:u1'), a.fetch(ID, as('u1'), '/tmp', s.fetchImpl, 'account:u1')]);
+  assert.deepEqual(runs.sort(), ['office', 'u1']);
 });

@@ -1,7 +1,9 @@
 // Fetches the pictures attached to GitHub issues and pull requests ("user attachments") with the
-// office's own gh sign-in, since in a private repository their address only answers a signed-in
-// session. Only ids the office itself saw in a repository's texts are served (see GhAssets.note), so
-// the route never becomes "fetch any attachment with the office's token".
+// asker's gh sign-in (the office's own for someone who acts as the office), since in a private
+// repository their address only answers a signed-in session. An address is only a reference anyone can
+// write into a comment, so two things hold: only ids the office itself saw in a repository's texts are
+// asked for at all (see GhAssets.note), and GitHub decides with the asker's own access whether they get
+// the picture (the route, http/routes/github.ts, never lends the office's token to an account or a visitor).
 
 import { ghAssetIds, ghAssetUrl } from '../shared/ghassets.js';
 
@@ -55,7 +57,7 @@ async function picture(res: Response): Promise<GhAssetResult> {
 
 export class GhAssets {
   private noted = new Set<string>();
-  /** The fetches under way, by id: a window asking for the same picture twice (it paints twice as it opens) shares one. */
+  /** The fetches under way, by who asks and the id: a window asking for the same picture twice (it paints twice as it opens) shares one. */
   private flying = new Map<string, Promise<GhAssetResult>>();
 
   /** Remembers the attachments the texts hold, as the ones the office may fetch. The oldest go past the cap. */
@@ -75,12 +77,17 @@ export class GhAssets {
     return this.noted.has(id.toLowerCase());
   }
 
-  /** The picture behind an attachment's address, fetched as the office's gh. The token is read for this one call and never kept or named in an error. */
-  fetch(id: string, run: Run, dir: string, fetchImpl: typeof fetch = fetch): Promise<GhAssetResult> {
-    const going = this.flying.get(id);
+  /**
+   * The picture behind an attachment's address, fetched with the gh sign-in `run` runs as. `who` names that sign-in
+   * (an account's id, else the office), so one person's fetch is never another's answer. The token is read for this
+   * one call and never kept or named in an error.
+   */
+  fetch(id: string, run: Run, dir: string, fetchImpl: typeof fetch = fetch, who = 'office'): Promise<GhAssetResult> {
+    const key = `${who}\n${id}`;
+    const going = this.flying.get(key);
     if (going) return going;
-    const p = this.load(id, run, dir, fetchImpl).finally(() => this.flying.delete(id));
-    this.flying.set(id, p);
+    const p = this.load(id, run, dir, fetchImpl).finally(() => this.flying.delete(key));
+    this.flying.set(key, p);
     return p;
   }
 
@@ -89,9 +96,9 @@ export class GhAssets {
     try {
       token = (await run(['auth', 'token', '--hostname', 'github.com'], dir)).trim();
     } catch {
-      return fail(502, "gh isn't signed in to GitHub on the office's machine");
+      return fail(502, 'No GitHub sign-in to fetch the picture with');
     }
-    if (!token) return fail(502, "gh isn't signed in to GitHub on the office's machine");
+    if (!token) return fail(502, 'No GitHub sign-in to fetch the picture with');
     try {
       const first = await fetchImpl(ghAssetUrl(id), { redirect: 'manual', headers: { authorization: `token ${token}` }, signal: AbortSignal.timeout(TIMEOUT_MS) });
       if (first.status === 404) return fail(404, 'GitHub has no such attachment (or the office has no access to it)');

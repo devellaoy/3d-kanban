@@ -35,11 +35,16 @@ export const githubRoutes = {
       if (!github) return send(res, 404, { error: notInProject(ghRepo) });
       try {
         if (p === '/api/gh/asset') {
-          // A picture the office itself showed in this repository's texts, fetched with its gh sign-in (see ghassets.ts).
+          // A picture the office itself showed in this repository's texts (see ghassets.ts). Anyone who can comment can
+          // write another repository's picture into those texts, so GitHub decides with the asker's own sign-in: the
+          // office's gh is only for who acts as the office anyway (no accounts, or an admin's choice in signins.ts).
+          if (session.visitor) return send(res, 403, { error: 'Forbidden' });
+          const as = session.account ? ctx.signins.ghAs(session.account.id) : undefined;
+          if (typeof as === 'string') return send(res, 403, { error: as });
           const id = (url.searchParams.get('id') ?? '').toLowerCase();
           if (!isGhAssetId(id)) return send(res, 400, { error: 'Bad id' });
           if (!github.assets?.has(id) || !github.asset) return send(res, 404, { error: 'No such picture' });
-          const r = await github.asset(id);
+          const r = await github.asset(id, as);
           if ('error' in r) return send(res, r.status, { error: r.error });
           res.writeHead(200, {
             'content-type': r.type,

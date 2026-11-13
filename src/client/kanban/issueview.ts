@@ -102,10 +102,17 @@ export function issueView(api: KanbanApi, projectId: string, first: NormalizedIs
     children.update(it);
     for (const fn of painted) fn(it);
   };
+  /** The list read the sub-tasks were last asked after. */
+  let listAt: number | undefined;
   const off = api.on((msg) => {
     if (msg.t !== 'kanban.issues' || msg.project !== projectId) return;
     const fresh = msg.items.find((i) => i.key === it.key);
     if (!fresh) return;
+    // A new read of the list (the window's Refresh, when it has no reload of its own, is one): the sub-tasks are asked again too.
+    if (!msg.loading && msg.fetchedAt !== listAt) {
+      if (listAt !== undefined) children.reload();
+      listAt = msg.fetchedAt;
+    }
     // A cut copy never replaces a body read whole: that one stays until the changed one is read whole too.
     const got = listedBody(it.body, whole, fresh.body);
     // Nothing to read it whole with (a window opened from the list): the newer copy, cut as it may be, beats a stale one.

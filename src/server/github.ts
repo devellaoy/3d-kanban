@@ -245,9 +245,9 @@ export class GitHub {
     };
   }
 
-  /** An attached picture's bytes, fetched with the office's gh (see ghassets.ts). */
-  asset(id: string): Promise<GhAssetResult> {
-    return this.assets.fetch(id, this.gh, this.dir);
+  /** An attached picture's bytes, fetched with `as`'s gh sign-in, else the office's (see ghassets.ts). */
+  asset(id: string, as?: GhAs, fetchImpl?: typeof fetch): Promise<GhAssetResult> {
+    return this.assets.fetch(id, (args, cwd, timeout) => this.gh(args, cwd, timeout, as?.env), this.dir, fetchImpl, as ? `account:${as.key}` : 'office');
   }
 
   /** The PR's unified diff, as `git diff` prints it. */
