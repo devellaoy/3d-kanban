@@ -5,7 +5,7 @@
 // these into the kanban's unions and calls parseIssueOpsMsg for any type in ISSUE_OPS_CLIENT_TYPE_LIST.
 
 import type { NormalizedIssue } from './types.js';
-import { BROWSE_CLIENT_TYPE_LIST, parseBrowseMsg, type BrowseClientMsg, type BrowseServerMsg } from './browse.js';
+import { BROWSE_CLIENT_TYPE_LIST, parseBrowseMsg, type BrowseClientMsg, type BrowseServerMsg, type StatusCategory } from './browse.js';
 import { issueTaskInput, type IssueTaskFields } from './taskinput.js';
 import { KANBAN_LIMITS, PERSON_ID_RE, SOURCE_ID_RE, bad, bool, deskId, isObj, onceKey, optText, project, text, type Obj, type Req } from './validate.js';
 
@@ -32,6 +32,22 @@ export interface IssueCommentItem {
   /** ISO time. */
   createdAt: string;
   url?: string;
+}
+
+/** One child issue of a Jira issue (its sub-task, or an epic's issue). */
+export interface IssueChild {
+  key: string;
+  title: string;
+  /** The issue in Jira. */
+  url: string;
+  status?: string;
+  statusCategory?: StatusCategory;
+  issueType?: string;
+  /** Whether the type is a sub-task type (else it is an issue under an epic). */
+  subtask?: boolean;
+  assignee?: string;
+  /** The kanban task made from it, when there is one. */
+  taskId?: number;
 }
 
 export interface IssuePerson {
@@ -68,6 +84,8 @@ export type IssueOpsClientMsg =
   | IssueReq<{ t: 'kanban.issues.draft' }>
   /** Answered with kanban.issueComments (newest last). */
   | IssueReq<{ t: 'kanban.issue.comments' }>
+  /** A Jira issue's child issues (sub-tasks, an epic's issues); answered with kanban.issueChildren. */
+  | IssueReq<{ t: 'kanban.issue.children' }>
   /** Adds a comment (signed with the office's name when it goes out under a shared identity); answered with kanban.ok. */
   | IssueReq<{ t: 'kanban.issue.comment'; text: string }>
   /** Who the issue can be assigned to, matching `query`; answered with kanban.issuePeople. */
@@ -86,6 +104,8 @@ export type IssueOpsServerMsg =
   | { t: 'kanban.issueDraft'; rid?: string; text: string }
   /** `cannot`: why there are no comments to show or add (a draft has none). */
   | { t: 'kanban.issueComments'; rid?: string; project: string; issueKey: string; items: IssueCommentItem[]; cannot?: string }
+  /** `more`: there are more children than the list holds. Other issue kinds answer with an empty list. */
+  | { t: 'kanban.issueChildren'; rid?: string; project: string; issueKey: string; items: IssueChild[]; more?: boolean }
   /** `cannot`: why this issue can't be assigned from the office. */
   | { t: 'kanban.issuePeople'; rid?: string; project: string; issueKey: string; items: IssuePerson[]; cannot?: string }
   | BrowseServerMsg;
@@ -100,6 +120,7 @@ export const ISSUE_OPS_CLIENT_TYPE_LIST: Readonly<Record<IssueOpsClientMsg['t'],
   'kanban.issue.get': true,
   'kanban.issues.draft': true,
   'kanban.issue.comments': true,
+  'kanban.issue.children': true,
   'kanban.issue.comment': true,
   'kanban.issue.people': true,
   'kanban.issue.assign': true,
@@ -148,6 +169,7 @@ export function parseIssueOpsMsg(t: IssueOpsClientMsg['t'], r: Obj): Bare<IssueO
     case 'kanban.issue.transitions':
     case 'kanban.issues.draft':
     case 'kanban.issue.comments':
+    case 'kanban.issue.children':
       return { t, project: proj, issueKey, ...via };
     case 'kanban.issue.get':
       return { t, project: proj, issueKey, ...via, ...(bool(r.fresh, 'fresh') ? { fresh: true } : {}) };

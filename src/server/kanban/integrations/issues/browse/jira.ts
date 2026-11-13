@@ -7,7 +7,7 @@
 import type { BrowseFilters, BrowseGroup, BrowseIssue, BrowseOptions, StatusCategory } from '../../../../../shared/kanban/browse.js';
 import type { IssuePerson } from '../../../../../shared/kanban/issueops.js';
 import type { IssueSourceConfig } from '../../../../../shared/kanban/types.js';
-import { jiraIssue } from '../jira.js';
+import { jiraIssue, jiraCategory as category } from '../jira.js';
 import { jiraCall } from '../jira-ops.js';
 import type { IssueActIo } from '../source.js';
 import { isEpic } from '../../../../../shared/kanban/browsetree.js';
@@ -85,8 +85,6 @@ const inScope = (issue: BrowseIssue, scope: Pick<JiraConfig, 'projectKeys'>): bo
   const project = (issue.project ?? keyProject(issue.key)).toUpperCase();
   return scope.projectKeys.some((k) => k.toUpperCase() === project);
 };
-
-const category = (s: any): StatusCategory | undefined => (s?.statusCategory?.key === 'new' || s?.statusCategory?.key === 'indeterminate' || s?.statusCategory?.key === 'done' ? s.statusCategory.key : undefined);
 
 /** One issue of a search or a single read as a browse issue. `sprintField`: where its sprints are. */
 export function jiraBrowseIssue(raw: any, site: string, sourceId: string, sprintField?: string): BrowseIssue | undefined {

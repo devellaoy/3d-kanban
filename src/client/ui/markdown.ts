@@ -24,10 +24,13 @@ purify.addHook('afterSanitizeAttributes', (node) => {
   }
 });
 
+/** What the passes below work on: the sanitized nodes before they join the block, or the block itself. */
+type Block = HTMLElement | DocumentFragment;
+
 const ALERTS: Record<string, string> = { NOTE: 'ℹ️ Note', TIP: '💡 Tip', IMPORTANT: '❗ Important', WARNING: '⚠️ Warning', CAUTION: '🛑 Caution' };
 
 /** `> [!NOTE]` blockquotes become callouts, as on GitHub. */
-function alerts(root: HTMLElement) {
+function alerts(root: Block) {
   for (const q of root.querySelectorAll('blockquote')) {
     const p = q.firstElementChild;
     const m = p?.tagName === 'P' ? /^\s*\[!(NOTE|TIP|IMPORTANT|WARNING|CAUTION)\]\s*/i.exec(p.textContent ?? '') : null;
@@ -46,7 +49,7 @@ function alerts(root: HTMLElement) {
 const REF_RE = /(^|[^\w/&#`])(#(\d+)|@([A-Za-z0-9](?:[A-Za-z0-9-]{0,38})))\b/g;
 
 /** Links #123 to the issue or PR and @name to the person, outside code and existing links. */
-function linkify(root: HTMLElement, repoUrl?: string) {
+function linkify(root: Block, repoUrl?: string) {
   const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, {
     acceptNode: (n) => (n.parentElement?.closest('a, code, pre') ? NodeFilter.FILTER_REJECT : NodeFilter.FILTER_ACCEPT),
   });
@@ -74,7 +77,7 @@ function linkify(root: HTMLElement, repoUrl?: string) {
 const SCHEME_RE = /^[a-z][a-z0-9+.-]*:/i;
 
 /** Relative links in a PR body mean GitHub pages: #anchors on the PR, paths in the repo. */
-function absolutize(root: HTMLElement, itemUrl: string, repoUrl: string) {
+function absolutize(root: Block, itemUrl: string, repoUrl: string) {
   const fix = (v: string, anchors: boolean) => {
     if (!v || SCHEME_RE.test(v) || v.startsWith('//')) return v;
     if (v.startsWith('#')) return anchors ? `${itemUrl.split('#')[0]}${v}` : v;
@@ -90,25 +93,67 @@ function sanitized(html: string): DocumentFragment {
   return purify.sanitize(html, { RETURN_DOM_FRAGMENT: true, FORBID_TAGS: ['style', 'form', 'button', 'select', 'textarea'], FORBID_ATTR: ['style'] });
 }
 
+/** What stands in for a picture that isn't shown: a link to it (https: only), or its alt text. */
+function imageLink(img: HTMLImageElement, src: string): HTMLElement | string {
+  const alt = (img.getAttribute('alt') ?? '').trim();
+  return /^https:/i.test(src) ? h('a', { href: src, target: '_blank', rel: 'noopener noreferrer' }, `🖼 ${alt || 'image'}`) : alt;
+}
+
 /** Swaps every picture for a link to it (https: only) or its alt text, so nothing is fetched until someone clicks. */
 function noImages(root: ParentNode) {
+  for (const img of root.querySelectorAll('img')) img.replaceWith(imageLink(img, (img.getAttribute('src') ?? '').trim()));
+}
+
+export interface MarkdownOptions {
+  /** Another address to load a picture from when its own doesn't load; none for a picture that has no other. */
+  imageFallback?: (src: string) => string | undefined;
+  /** Load such pictures from the fallback straight away (their own address is known not to answer here). */
+  fallbackFirst?: boolean;
+  /** A picture that didn't load from its own address did load from its fallback. */
+  onFallback?: () => void;
+}
+
+/**
+ * A picture that doesn't load from its own address is tried once from its fallback, and one that
+ * doesn't load from there either becomes a link to the original. The pictures load lazily, so the
+ * failure may come long after this: the listener is on from the start.
+ */
+function imageFallbacks(root: ParentNode, o: MarkdownOptions) {
   for (const img of root.querySelectorAll('img')) {
-    const alt = (img.getAttribute('alt') ?? '').trim();
     const src = (img.getAttribute('src') ?? '').trim();
-    img.replaceWith(/^https:/i.test(src) ? h('a', { href: src, target: '_blank', rel: 'noopener noreferrer' }, `🖼 ${alt || 'image'}`) : alt);
+    const other = src ? o.imageFallback?.(src) : undefined;
+    if (!other) continue;
+    const last = () => img.addEventListener('error', () => img.replaceWith(imageLink(img, src)), { once: true });
+    if (o.fallbackFirst) {
+      last();
+      img.setAttribute('src', other);
+      continue;
+    }
+    img.addEventListener(
+      'error',
+      () => {
+        last();
+        img.addEventListener('load', () => o.onFallback?.(), { once: true });
+        img.src = other;
+      },
+      { once: true },
+    );
   }
 }
 
 /** Renders markdown into a `.md` block. `itemUrl` (the issue or PR on GitHub) anchors its links. */
-export function markdown(src: string, itemUrl?: string): HTMLElement {
+export function markdown(src: string, itemUrl?: string, opts: MarkdownOptions = {}): HTMLElement {
   const el = h('div.md');
   if (!src.trim()) {
     el.append(h('p.none', {}, 'No description provided.'));
     return el;
   }
-  el.append(sanitized(md.parse(src, { async: false }) as string));
+  const html = sanitized(md.parse(src, { async: false }) as string);
   const repoUrl = itemUrl ? repoUrlOf(itemUrl) : undefined;
-  if (itemUrl && repoUrl) absolutize(el, itemUrl, repoUrl);
+  if (itemUrl && repoUrl) absolutize(html, itemUrl, repoUrl);
+  // Before the nodes join the block, as in markdownFile: no picture has started loading yet.
+  if (opts.imageFallback) imageFallbacks(html, opts);
+  el.append(html);
   alerts(el);
   linkify(el, repoUrl);
   return el;

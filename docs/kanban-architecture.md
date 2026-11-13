@@ -581,10 +581,15 @@ answers `kanban.ok {rid, ...}` or `kanban.error {rid, message}`. Deltas are push
     office has stopped hiring or the Settings' default agent is Codex (which can't run without tools, so it never drafts), and is not an error. Failures (no project or issue, the sign-in or the binary missing, a timeout,
     nothing written) are `kanban.error`. One run per browser: a request registers as its browser's newest before it looks the issue up, which ends the earlier
     one's run, and a request that is no longer the newest after the lookup (or after `stop()`) answers `cancelled` and starts nothing. At most four runs at once.
+  - `issue.children` (`kanban.issue.children`, same shape and scoping as `issue.comments`, read-only) lists a Jira issue's
+    child issues: one `POST /rest/api/3/search/jql` with `parent = "KEY" ORDER BY created ASC` (up to 100, `more` when Jira has
+    a next page), each as an `IssueChild` (`key`, `title`, `url`, `status`, `statusCategory`, `issueType`, `subtask`, `assignee`).
+    Children no Jira source of the project on that site covers are dropped, and `taskId` comes from the project's tickets.
+    Any other issue kind answers an empty list. Visitors have no access (`deny` / `drop`).
   - `issue.transitions | transition | comments | comment | people | assign` (`{project, issueKey, …}`, defined with the
     `issues.*` messages in `shared/kanban/issueops.ts`; handlers in `integrations/issues/actions.ts`; for anyone signed in) act on one
     issue of an issue source. The reads are answered with `kanban.issueTransitions {current?, transitions, cannot?, note?}`,
-    `kanban.issueComments {items, cannot?}` and `kanban.issuePeople {items, cannot?}` (names of their own, so no
+    `kanban.issueComments {items, cannot?}`, `kanban.issueChildren {items, more?}` and `kanban.issuePeople {items, cannot?}` (names of their own, so no
     answer is mistaken for a request; `cannot` says why nothing can be offered, `note` that some choices were left
     out); the writes with `kanban.ok`. A transition id is opaque to the browser: Jira's number,
     `p:<projectId>:<itemId>:<fieldId>:<optionId>` (a Projects v2 Status option, checked again against a fresh read before

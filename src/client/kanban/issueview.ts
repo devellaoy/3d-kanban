@@ -10,6 +10,8 @@ import { detailsRail, outLink } from '../ui/kit';
 import type { NormalizedIssue } from '../../shared/kanban/types.js';
 import type { KanbanApi } from './api';
 import { issueActions } from './issueactions';
+import { issueChildren } from './issuechildren';
+import { isNewListRead } from './issuechildrenmodel';
 import { LIST_BODY, actionIssue, listedBody, safeUrl } from './issueactionsmodel';
 import { SOURCE_KIND_NAMES } from './labels';
 import { renderMarkdown } from './md';
@@ -65,11 +67,13 @@ export function issueView(api: KanbanApi, projectId: string, first: NormalizedIs
   const panels = opts.split
     ? [issueActions(api, projectId, actionIssue(it), { sections: ['status', 'assignee'], openTask, onChanged }), issueActions(api, projectId, actionIssue(it), { sections: ['comments'], openTask, onChanged })]
     : [issueActions(api, projectId, actionIssue(it), { openTask, onChanged })];
+  // A Jira issue's sub-tasks, between the description and the comments (issuechildren.ts).
+  const children = issueChildren(api, projectId, it, { openTask });
   const url = safeUrl(it.url);
   top.append(url ? outLink(it.key, url, { class: 'kb-iw-key', title: 'Open it at the source' }) : h('span.kb-iw-key', {}, it.key), chips);
   const el = opts.split
-    ? h('div.iw-main', {}, h('section.iw-sec', {}, h('h3.gh-sec-h', {}, 'Description'), desc), panels[1].el)
-    : h('div.kb-iw', {}, heading, top, desc, panels[0].el);
+    ? h('div.iw-main', {}, h('section.iw-sec', {}, h('h3.gh-sec-h', {}, 'Description'), desc), children.el, panels[1].el)
+    : h('div.kb-iw', {}, heading, top, desc, children.el, panels[0].el);
   const rail = opts.split ? [panels[0].el, h('hr.rail-sep'), details] : [];
   const paint = () => {
     if (heading && heading.textContent !== it.title) heading.textContent = it.title;
@@ -96,12 +100,21 @@ export function issueView(api: KanbanApi, projectId: string, first: NormalizedIs
       );
     }
     for (const p of panels) p.update(actionIssue(it));
+    children.update(it);
     for (const fn of painted) fn(it);
   };
+  /** The list read the sub-tasks were last asked after. */
+  let listAt: number | undefined;
   const off = api.on((msg) => {
     if (msg.t !== 'kanban.issues' || msg.project !== projectId) return;
     const fresh = msg.items.find((i) => i.key === it.key);
     if (!fresh) return;
+    // A new read of the list (the window's Refresh, when it has no reload of its own, is one): the sub-tasks are asked again too.
+    // The first one after the window opened counts (it may be that Refresh); the same read told twice doesn't.
+    if (isNewListRead(listAt, msg)) {
+      listAt = msg.fetchedAt;
+      children.reload();
+    }
     // A cut copy never replaces a body read whole: that one stays until the changed one is read whole too.
     const got = listedBody(it.body, whole, fresh.body);
     // Nothing to read it whole with (a window opened from the list): the newer copy, cut as it may be, beats a stale one.
@@ -120,7 +133,9 @@ export function issueView(api: KanbanApi, projectId: string, first: NormalizedIs
       it = issue;
       whole = true;
       paint();
-      if (reread) for (const p of panels) p.reload();
+      if (!reread) return;
+      for (const p of panels) p.reload();
+      children.reload();
     },
     onPaint: (fn) => (painted.push(fn), fn(it)),
     destroy: off,

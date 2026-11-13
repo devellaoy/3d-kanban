@@ -3,7 +3,7 @@ import { AVATAR_COLORS } from '../../state';
 import { h, timeAgo } from '../dom';
 import { icon, type IconName } from '../icons';
 import { btn, type PrTone } from '../kit';
-import { markdown } from '../markdown';
+import { ghMarkdown } from './md';
 
 // ---- Small pieces ---------------------------------------------------------------------------------
 
@@ -56,7 +56,7 @@ export function commentCard(c: GhComment, itemUrl: string, verb: string, o: { re
         when(c.createdAt, c.url),
         o.review !== undefined ? reviewBadge(o.review) : null,
       ),
-      c.body.trim() || o.review === undefined ? markdown(c.body, itemUrl) : null,
+      c.body.trim() || o.review === undefined ? ghMarkdown(c.body, itemUrl) : null,
     ),
   );
 }

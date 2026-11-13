@@ -498,7 +498,7 @@ the Pull requests tab. Its tabs:
   has many), and a PR on a branch another task uses too (it may be theirs). A window titled with the task's number (and its title below) lists them with their state and branch, you tick the ones that are this task's and
   press **Link selected**; one go links 20 at most (the window counts when there are more, and the rest wait for another search). A repository that couldn't be searched, a half of a search that failed (the task's branch list: one outside the newest 100 may be missing; the newest-100 list: ticket matches may be missing), or a PR it left out, is told in a message. If the task view was closed or another task opened before the answer came, no window opens over it: a message naming the task says to use Find PRs again from its PRs tab.
 - **Issue**: the issue the task's ticket names (a Jira key, `gh:owner/repo#12`), as the issue window
-  shows it: the title, the text, status, assignee and comments, with the same actions (see *Working on an issue*)
+  shows it: the title, the text, a Jira issue's sub-tasks, status, assignee and comments, with the same actions (see *Working on an issue*)
   and a **Refresh** that reads it from the source again. A task without a ticket says so; an issue
   the sources can't find or you can't read shows the ticket, the reason and **Retry**. The tab
   is also where the task's issue is set or changed, at any status but the archive (so after the task
@@ -707,6 +707,12 @@ its own comments and close) gets its **status** and **assignee** there.
 - **Comments.** The newest 50, oldest first, and a box to add one (Enter makes a new line,
   Ctrl/⌘ + Enter sends). A comment written under an identity everyone shares ends with
   `— <your name> via Agent Office`. A draft has no comments.
+- **Sub-tasks.** A Jira issue's window lists its child issues (its sub-tasks, or the issues of an epic) between the text and
+  the comments: a status chip, the key linking to Jira, the title, the assignee, and **Task #N** when a kanban task was
+  made from it (it opens that task). Up to 100, with *More in Jira* when there are more; the list is hidden when the issue
+  has none, and for GitHub issues and visitors from another office. The heading says *Child issues* when one of them
+  is not a sub-task, and counts how many are done. Only children that a Jira source of the project covers are listed. The same
+  list is in the task's **Issue** tab and in the window of a Jira card on the 3D board.
 - **Assignee.** **Assign to me**, **Someone else…** (a search of who can be assigned) or **Unassign**.
   On GitHub it makes the person the only assignee, and **Assign to me** needs your own GitHub sign-in
   (under the office's `gh` pick yourself from the list instead). Jira's token is everyone's, so the office can't know
@@ -808,6 +814,13 @@ reads its own. A kanban task made from a card keeps the description as its own, 
   change (the office remembers what it did only in memory, and sees the section itself in the description). It works
   for GitHub.com pull requests only, that is `https://github.com/<owner>/<repo>/pull/<number>`: GitHub Enterprise hosts,
   Azure DevOps and Bitbucket PRs get no section.
+  In a private repository a picture attached this way answers only a signed-in GitHub session, so the PR window
+  (and its comments) shows it through a `gh` sign-in: the browser tries the picture's address first and
+  asks the office only when that fails. The office fetches it with your own GitHub sign-in (**☰ → 🔐 Your sign-ins**),
+  so GitHub decides whether you may see it; the machine's own `gh` is used only when you act as the office anyway
+  (no accounts, or an admin who chose the office's sign-in). An account without a GitHub sign-in and a visitor from
+  another office get a link instead. The office asks only for pictures it has itself shown in that repository's
+  texts (description, comments, reviews, line comments), as png, jpeg, gif or webp up to 8 MB; anything else stays a link.
 - **Repositories on Azure DevOps and Bitbucket**: everything above works the same, with the agent using `office-pr`
   where it would use `gh`, and the PR board and linked PR states read over the host's API ([hosting](hosting.md)).
 - **PR phase** (a task in Waiting, Review or Done): **Create PRs** (or **Push & update PRs**) has

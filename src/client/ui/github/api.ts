@@ -1,7 +1,7 @@
 import type { ServerMsg } from '../../../shared/protocol';
 import { store } from '../../state';
 // Which of the project's repositories a PR or issue is in (github/ghrepo.ts).
-import { ghWaiter, namedRepo } from './ghrepo';
+import { ghUrl, ghWaiter, namedRepo } from './ghrepo';
 
 // Talking to the office about GitHub: the reads (over HTTP, for the floor you're on), and the
 // answers to what the dialogs asked for over the socket (merged, commented, closed, labeled).
@@ -9,6 +9,11 @@ import { ghWaiter, namedRepo } from './ghrepo';
 /** The board windows ask about the floor you're on. */
 function onFloor(url: string): string {
   return store.floor ? `${url}${url.includes('?') ? '&' : '?'}floor=${encodeURIComponent(store.floor)}` : url;
+}
+
+/** The address of an /api/gh/ path for the floor you're on and (when named) one of its repositories: for an <img>, which fetches by itself. */
+export function ghSrc(path: string, repo?: string): string {
+  return onFloor(ghUrl(path, repo));
 }
 
 export async function getJson<T>(url: string): Promise<T> {

@@ -158,7 +158,7 @@ test('good messages come through rebuilt, without anything the validator did not
     refused({ t: 'kanban.task.create', task, once }, /once must be a request key/);
     refused({ t: 'kanban.issues.createTask', project: 'web', issueKey: 'gh:o/w#1', once }, /once must be a request key/);
   }
-  assert.equal(KANBAN_CLIENT_TYPES.size, 60);
+  assert.equal(KANBAN_CLIENT_TYPES.size, 61);
 });
 
 test("the primary repository's id is its floor's, up to 40 characters, and repoIds take it", () => {
@@ -280,6 +280,10 @@ test('the issue actions are keyed by issue and checked field by field', () => {
   const base = { project: 'web', issueKey: 'UYT-12' };
   assert.deepEqual(good({ t: 'kanban.issue.transitions', ...base, rid: 'r1' }), { t: 'kanban.issue.transitions', ...base, rid: 'r1' });
   assert.deepEqual(good({ t: 'kanban.issue.comments', ...base }), { t: 'kanban.issue.comments', ...base });
+  assert.deepEqual(good({ t: 'kanban.issue.children', ...base, source: 'j_1', rid: 'r2' }), { t: 'kanban.issue.children', ...base, source: 'j_1', rid: 'r2' });
+  refused({ t: 'kanban.issue.children', ...base, source: '../x' }, /issue source id/);
+  refused({ t: 'kanban.issue.children', project: 'Web!', issueKey: 'A-1' }, /floor id/);
+  refused({ t: 'kanban.issue.children', project: 'web' }, /issueKey/);
   for (const transitionId of ['31', 'p:PVT_a1:PVTI_b2:PVTSSF_c3:f75ad846', 'gh:close:not_planned', 'gh:reopen']) assert.ok(good({ t: 'kanban.issue.transition', ...base, transitionId }), transitionId);
   refused({ t: 'kanban.issue.transition', ...base, transitionId: 'a b' }, /transitionId/);
   refused({ t: 'kanban.issue.transition', ...base, transitionId: 'x'.repeat(501) }, /transitionId/);

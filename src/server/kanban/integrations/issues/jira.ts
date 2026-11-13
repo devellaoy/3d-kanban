@@ -3,6 +3,7 @@
 // fields, every value quoted and escaped, so a filter can't change what the query means; the
 // user's own extra JQL is AND-ed in parentheses.
 
+import type { StatusCategory } from '../../../../shared/kanban/browse.js';
 import type { IssueSourceConfig, NormalizedIssue } from '../../../../shared/kanban/types.js';
 import type { JiraConnection } from '../../secrets.js';
 import { jiraAuthHeader, pickJiraConnection } from './jira-auth.js';
@@ -197,3 +198,6 @@ export const jiraSource: IssueSource = {
     }
   },
 };
+
+/** A Jira status's category (what colors it), when it names one of the three. */
+export const jiraCategory = (s: any): StatusCategory | undefined => (s?.statusCategory?.key === 'new' || s?.statusCategory?.key === 'indeterminate' || s?.statusCategory?.key === 'done' ? s.statusCategory.key : undefined);

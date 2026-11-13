@@ -265,6 +265,7 @@ export const CLIENT_MSG_CLASS = {
   'kanban.issue.get': 'deny',
   'kanban.issues.draft': 'deny',
   'kanban.issue.comments': 'deny',
+  'kanban.issue.children': 'deny',
   'kanban.issue.comment': 'deny',
   'kanban.issue.people': 'deny',
   'kanban.issue.assign': 'deny',
