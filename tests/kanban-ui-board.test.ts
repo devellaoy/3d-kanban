@@ -188,6 +188,11 @@ test('issues: chips and search narrow the list', () => {
   assert.deepEqual(keys({ label: 'ai' }), ['UYT-1']);
   assert.deepEqual(keys({ assignee: 'me' }), ['UYT-2']);
   assert.deepEqual(keys({ q: 'login acme' }), ['gh:acme/web#3']);
+  const nested = [issue('UYT-5', { issueType: 'Story' }), issue('UYT-6', { issueType: 'Sub-task', subtask: true, parent: { key: 'UYT-5', title: 'Checkout flow' } })];
+  const found = (q: string) => filterIssues(nested, { q, source: '', status: '', label: '', assignee: '' }).map((i) => i.key);
+  assert.deepEqual(found('uyt-5'), ['UYT-5', 'UYT-6'], 'a story’s key finds its sub-tasks');
+  assert.deepEqual(found('checkout'), ['UYT-6'], 'and so does its title');
+  assert.deepEqual(found('sub-task'), ['UYT-6'], 'the type is searched');
 });
 
 test('the PR picker lists this PR once, then its bundle, then the others, without repeats', () => {

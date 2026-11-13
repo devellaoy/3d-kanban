@@ -387,7 +387,7 @@ export function filterIssues(items: NormalizedIssue[], f: { q: string; source: s
       (!f.status || (i.status ?? '') === f.status) &&
       (!f.label || i.labels.includes(f.label)) &&
       (!f.assignee || (i.assignee ?? '') === f.assignee) &&
-      words.every((w) => `${i.key}\n${i.title}\n${i.epic ?? ''}\n${i.repo ?? ''}`.toLowerCase().includes(w)),
+      words.every((w) => `${i.key}\n${i.title}\n${i.epic ?? ''}\n${i.issueType ?? ''}\n${i.parent?.key ?? ''}\n${i.parent?.title ?? ''}\n${i.repo ?? ''}`.toLowerCase().includes(w)),
   );
 }
 
