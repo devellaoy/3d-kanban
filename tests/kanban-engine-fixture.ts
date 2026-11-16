@@ -196,13 +196,14 @@ async function turn(prompt, answered) {
   // Once a prompt of the session has asked for the WORK DONE line, the agent gives it, as one that finished its work does (a rule's noMarker leaves its reply as it is).
   if (/WORK DONE/.test(prompt)) fs.writeFileSync(transcript + '.marker', '');
   if (!rule.noMarker && fs.existsSync(transcript + '.marker') && !/^\s*WORK DONE\s*$/m.test(rule.reply)) rule.reply = rule.reply + '\nWORK DONE';
+  // How this turn takes an Esc is set before anything is awaited: one that lands while the prompt's hook is still on its way is this turn's too.
+  silent = !!rule.escSilent;
+  escLogs = !!rule.escLogs;
+  escStopMs = rule.escStopMs;
   if (!answered) {
     if (rule.submitDelayMs) await new Promise((r) => setTimeout(r, rule.submitDelayMs));
     await post('UserPromptSubmit', { prompt });
   }
-  silent = !!rule.escSilent;
-  escLogs = !!rule.escLogs;
-  escStopMs = rule.escStopMs;
   if (silent && rule.delayMs) {
     if (await nap(rule.delayMs)) return;
   } else if (rule.delayMs) await new Promise((r) => setTimeout(r, rule.delayMs));
