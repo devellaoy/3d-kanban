@@ -13,6 +13,9 @@ type Marked = Parameters<typeof prMarks>[0];
 /** The card's icon of a review; "review required" has none, so a chip that only waits stays quiet. */
 const REVIEW_ICON: Partial<Record<PrReview, IconName>> = { APPROVED: 'circle-check', CHANGES_REQUESTED: 'circle-x' };
 
+/** Unresolved review comments: a round bubble with an exclamation mark, apart from the square bubble of a card's own comment count. */
+const UNRESOLVED_ICON: IconName = 'message-circle-exclamation-point';
+
 /** The marks for a card's PR chip, in the chip's own ink; null when it shows none. */
 export function prMarkIcons(p: Marked): HTMLElement | null {
   const m = prMarks(p);
@@ -21,7 +24,7 @@ export function prMarkIcons(p: Marked): HTMLElement | null {
   const name = m.review && REVIEW_ICON[m.review];
   const parts = [
     name ? h('span.kb-pr-mark', { title: words[0] }, icon(name, { size: 12 })) : null,
-    m.unresolved ? h('span.kb-pr-mark', { title: words.at(-1) }, icon('message-square', { size: 12 }), String(m.unresolved)) : null,
+    m.unresolved ? h('span.kb-pr-mark', { title: words.at(-1) }, icon(UNRESOLVED_ICON, { size: 12 }), String(m.unresolved)) : null,
   ].filter((x): x is HTMLElement => !!x);
   // The chip's own label says the marks in words; the icons are for the eye.
   return parts.length ? h('span.kb-pr-marks', { 'aria-hidden': 'true' }, ...parts) : null;
@@ -32,6 +35,6 @@ export function prMarkPills(p: Marked): HTMLElement[] {
   const m = prMarks(p);
   const out: HTMLElement[] = [];
   if (m.review) out.push(reviewBadge(m.review));
-  if (m.unresolved) out.push(h('span.gh-badge', { title: prMarkWords(p).at(-1) }, icon('message-square', { size: 13 }), `${m.unresolved} unresolved`));
+  if (m.unresolved) out.push(h('span.gh-badge', { title: prMarkWords(p).at(-1) }, icon(UNRESOLVED_ICON, { size: 13 }), `${m.unresolved} unresolved`));
   return out;
 }

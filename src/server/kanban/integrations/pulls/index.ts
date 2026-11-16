@@ -275,7 +275,7 @@ export function createPullsParts(ctx: KanbanContext, opts: PullsOptions = {}) {
   /** The PRs the task's UI images went into (see checkScreenshots), by URL. */
   const shotsChecked = new Map<string, ScreenshotMark>();
   let stopped = false;
-  const reviews = reviewChecker(ctx, runGh, () => stopped);
+  const reviews = reviewChecker(ctx, runGh, () => stopped, now);
 
   /**
    * Whether the user took this PR off the task and nothing linked it again since: its last
@@ -324,19 +324,17 @@ export function createPullsParts(ctx: KanbanContext, opts: PullsOptions = {}) {
         if (ctx.repo.setPrLinkMarks(l.taskId, l.repoId, l.number, { review: reviewOf(p.reviewDecision, []) })) changed.add(l.taskId);
       } else targets.push({ taskId: l.taskId, repoId: l.repoId, number: l.number, repo: exact.repo ?? home ?? repo });
     }
+    // The review marks come in on their own, announcing the cards they change (no waiting for gh here).
+    void reviews.check(targets);
     // Some task's already, in any project: a link names its repository, or only its repoId, or its URL (prOwners).
     const linked = (pr: { repo: string; number: number; url: string }) => prOwners(ctx.repo.prLinksMatching(pr.number, pr.url), (proj, repoId) => reposOf(proj).find((r) => r.id === repoId)?.remote, pr).length > 0;
     const candidates = branchPrs(project, () => ctx.repo.activeTaskBranches(), pulls, reposOf, home, linked).filter((b) => !unlinked(b.taskId, b.repo, b.pull.number));
-    const [own, marked] = await Promise.all([
-      Promise.all(
-        candidates.map(async (b) => {
-          const [fork, base] = await Promise.all([forks.get(`${b.repo.toLowerCase()}#${b.pull.number}`), defaultBranches.get(b.repo.toLowerCase())]);
-          return fork === false && base !== undefined && base !== b.branch ? b : undefined;
-        }),
-      ),
-      reviews.check(targets),
-    ]);
-    for (const id of marked) changed.add(id);
+    const own = await Promise.all(
+      candidates.map(async (b) => {
+        const [fork, base] = await Promise.all([forks.get(`${b.repo.toLowerCase()}#${b.pull.number}`), defaultBranches.get(b.repo.toLowerCase())]);
+        return fork === false && base !== undefined && base !== b.branch ? b : undefined;
+      }),
+    );
     if (stopped) return [...changed];
     for (const b of own) {
       if (!b || linked({ repo: b.repo, number: b.pull.number, url: b.pull.url })) continue;
@@ -579,5 +577,5 @@ export function createPullsParts(ctx: KanbanContext, opts: PullsOptions = {}) {
       closingChecked.clear();
     },
   };
-  return { api, plugin, checkReview, bundleItems, syncPrStates, prState };
+  return { api, plugin, checkReview, bundleItems, syncPrStates, prState, reviewsSettled: () => reviews.settled() };
 }
