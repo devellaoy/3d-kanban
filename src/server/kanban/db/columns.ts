@@ -59,6 +59,11 @@ export function json<T>(v: unknown, fallback: T): T {
     return fallback;
   }
 }
+/** `o` without its undefined fields. */
+export function clean<T extends object>(o: T): T {
+  for (const k of Object.keys(o) as (keyof T)[]) if (o[k] === undefined) delete o[k];
+  return o;
+}
 export const opt = <T>(v: unknown): T | undefined => (v === null || v === undefined ? undefined : (v as T));
 export const toDb = (field: string, v: unknown): unknown => {
   if (v === undefined || v === null) return JSON_FIELDS.has(field) && field !== 'workspace' && field !== 'queuedRun' && field !== 'hold' ? (field === 'tags' || field === 'pendingMessages' ? '[]' : '{}') : null;

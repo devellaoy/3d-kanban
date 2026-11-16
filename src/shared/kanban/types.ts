@@ -6,6 +6,7 @@ import type { WorkerInfo, WorkerRepo } from '../protocol.js';
 import type { IssueSourceConfig, IssueSourceKind } from './issue-sources.js';
 import type { JiraConnectionStatus } from './jira-connections.js';
 import type { StatusCategory } from './browse.js';
+import type { PrReview } from './prs.js';
 
 // --- Columns, phases and runs ---------------------------------------------------------------------
 
@@ -108,6 +109,9 @@ export interface KanbanPrLink {
   number: number;
   url: string;
   state: 'OPEN' | 'DRAFT' | 'MERGED' | 'CLOSED';
+  /** Review marks of an open PR, kept up with the PR board: undefined is unknown. */
+  review?: PrReview;
+  unresolved?: number;
   branch?: string;
   createdAt: number;
   updatedAt: number;
@@ -241,7 +245,7 @@ export interface KanbanTaskCard {
   waitingText?: string;
   askingKind?: AskingKind;
   retryAt?: number;
-  prs: { repoId: string; repo?: string; number: number; url: string; state: KanbanPrLink['state'] }[];
+  prs: { repoId: string; repo?: string; number: number; url: string; state: KanbanPrLink['state']; review?: PrReview; unresolved?: number }[];
   tags: string[];
   workerId?: string;
   reviewerWorkerId?: string;

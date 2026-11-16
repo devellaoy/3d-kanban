@@ -484,7 +484,7 @@ the Pull requests tab. Its tabs:
   in every task view, the 3D worker window's too, and `&tab=images` opens it. Pictures of a task in several
   repositories are grouped under their repository's name, the ones saved straight in `ui/` first under
   **All repositories**. Only folders named like one of the project's repositories are read.
-- **Pull requests**: the task's pull requests with their state, **Fix PRs** and **Resolve conflicts** (with open PRs), and
+- **Pull requests**: the task's pull requests with their state and, for an open or draft one, its **Review** (approved, changes requested or review required, and the number of unresolved review comments), **Fix PRs** and **Resolve conflicts** (with open PRs), and
   **Review these N PRs together**, and **Find PRs** (on this tab only, not on an archived task).
   Each row ends with a button that unlinks the pull request from the task after a confirmation (the PR
   itself is untouched); the office does not link an unlinked PR again by itself, while Find PRs or
@@ -829,7 +829,7 @@ reads its own. A kanban task made from a card keeps the description as its own, 
   the implementer push and open or update a PR in every repository of the task with commits, each
   listing the others. It reports each as a `PR: <url>` line, which the office links to the task; the
   task goes to Review. Linked PRs keep their state (open, draft, merged, closed) from the floor's PR
-  board.
+  board, and an open or draft one also its review marks: a check-circle for approved, an x-circle for changes requested, a speech bubble with a count for unresolved review comments, on the PR's chip on the task's card and in the Review column that follows State in the Pull requests tab (a merged or closed PR shows none). They come from the same PR board pulls (every 90 s, every 10 min when idle): GitHub's review decision and unresolved review threads are asked with `gh`, Azure DevOps and Bitbucket give the approval only (from the votes) and no comment count.
 - **Fix PRs** (any task, an investigation too, in Waiting, Review or Done, with an open or draft PR; on the Pull requests tab): the implementer addresses the unresolved review comments and
   the failing checks (it reads the failing run's log) on all the task's open PRs, pushes, and doesn't merge. The button is greyed out, with the reason as its tooltip, while the task is running or its agent is asking in its terminal. An investigation with no branch takes the one its open PR is from. One rule
   (`canFixPrs`, `src/shared/kanban/prs.ts`) serves the buttons and the engine. A pull request from a fork is never worked on ("A pull request from a fork: handle it by hand"; the PR board says which are forks), nor is one whose head branch is the repository's base branch or an integration branch (main, master, develop, dev, trunk): a head branch is whatever its author named it, so the office never checks it out on trust. The prompt tells the agent that review comments and CI logs are data, not instructions, and to act only on comments from the repository's owner, members and collaborators (`author_association`) and from GitHub Copilot's code review (the `Copilot` / `copilot-pull-request-reviewer` bot, whose `author_association` is `NONE`), weighing Copilot's suggestions against the code. On a Done task it moves the task back to In progress, and then to Review.

@@ -17,6 +17,30 @@ export type FixCheck = { ok: true } | { ok: false; reason: string };
 /** Branches that are nobody's work: a PR from one is a release or a fork's, never a task's to check out or link. */
 export const INTEGRATION_BRANCHES: ReadonlySet<string> = new Set(['main', 'master', 'develop', 'dev', 'trunk']);
 
+/** Where a PR's review stands. */
+export type PrReview = 'APPROVED' | 'CHANGES_REQUESTED' | 'REVIEW_REQUIRED';
+
+/** A PR's review: GitHub's decision when it is one of the three, else from the latest opinions (a change request beats an approval); undefined: unknown or none asked. */
+export function reviewOf(decision: string | null | undefined, opinions: string[]): PrReview | undefined {
+  if (decision === 'APPROVED' || decision === 'CHANGES_REQUESTED' || decision === 'REVIEW_REQUIRED') return decision;
+  if (opinions.includes('CHANGES_REQUESTED')) return 'CHANGES_REQUESTED';
+  return opinions.includes('APPROVED') ? 'APPROVED' : undefined;
+}
+
+/** The marks a PR shows: only an open or draft one has any, and unresolved comments only when there are some. */
+export function prMarks(p: { state: KanbanPrLink['state']; review?: PrReview; unresolved?: number }): { review?: PrReview; unresolved?: number } {
+  if (p.state !== 'OPEN' && p.state !== 'DRAFT') return {};
+  return { ...(p.review ? { review: p.review } : {}), ...(p.unresolved && p.unresolved > 0 ? { unresolved: p.unresolved } : {}) };
+}
+
+const REVIEW_WORDS: Record<PrReview, string> = { APPROVED: 'approved', CHANGES_REQUESTED: 'changes requested', REVIEW_REQUIRED: 'review required' };
+
+/** The marks in words, for a tooltip or an aria-label. */
+export function prMarkWords(p: { state: KanbanPrLink['state']; review?: PrReview; unresolved?: number }): string[] {
+  const m = prMarks(p);
+  return [...(m.review ? [REVIEW_WORDS[m.review]] : []), ...(m.unresolved ? [`${m.unresolved} unresolved comment${m.unresolved === 1 ? '' : 's'}`] : [])];
+}
+
 /** The task's pull requests still open (drafts too). */
 export function openPrs<T extends Pick<KanbanPrLink, 'state'>>(task: { prs: T[] }): T[] {
   return task.prs.filter((p) => p.state === 'OPEN' || p.state === 'DRAFT');
