@@ -65,6 +65,17 @@ test('the contracts ask for the marker the engine reads, and the nudges ask for 
   assert.equal(finishNudge('pr-review'), finishNudge('review'));
 });
 
+test('the contracts stress the marker as the last line and ask for a final check; the nudges ask for the whole answer again', () => {
+  assert.match(KANBAN_CONTRACTS.plan, /as its very last line/);
+  assert.match(KANBAN_CONTRACTS.plan, /read the end of your reply once more/);
+  for (const id of ['implementSafety', 'investigateSafety', 'pr'] as const) assert.match(KANBAN_CONTRACTS[id], /check that your reply really ends with that line/, id);
+  for (const id of ['review', 'prReview'] as const) assert.match(KANBAN_CONTRACTS[id], /check that the verdict really is the last line/, id);
+  for (const phase of ['implement', 'plan', 'review'] as const) {
+    assert.match(finishNudge(phase), /only this reply/, phase);
+    assert.match(finishNudge(phase), /again/, phase);
+  }
+});
+
 // --- The log: queued prompts, office comments, a person's turn after the office's -----------------------
 
 function scratch(t: { after(fn: () => void): void }) {

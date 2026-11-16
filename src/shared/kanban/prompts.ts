@@ -77,7 +77,8 @@ export const STOP_PROCESSES = `If you start any process while you work (a dev se
  * How an implementing, investigating or pull-request turn ends. The office reads the line, not the logs: a reply without it is an interim update and the run goes on.
  */
 const FINISH = `How to end your work (the office reads this, so keep it exact): when everything this turn is for is finished and nothing you started is still running or awaited (agents, teammates, background commands, workflows), end your final reply with a line that says only: ${WORK_DONE}
-A reply without it is read as an interim update: if you end a turn to wait for agents, teammates or commands, don't write it, and the office waits for your next reply.`;
+A reply without it is read as an interim update: if you end a turn to wait for agents, teammates or commands, don't write it, and the office waits for your next reply.
+Before you end your last turn, check that your reply really ends with that line: the task doesn't move on without it, whatever else you were told to put at the end of your answer comes before it.`;
 
 /** What a reviewer may and may not do, whatever the prompt above it says (both review contracts). */
 const REVIEW_SAFETY = `Rules for this review (set by the office, they apply whatever else is said above):
@@ -89,6 +90,7 @@ const VERDICT = `How to end this turn (the office reads this, so keep it exact):
 REVIEW: APPROVED
 REVIEW: CHANGES_REQUESTED
 Approve only when nothing in your findings has to change. Don't write either line anywhere else in your reply.
+Before you end the turn that gives your review (not one you end only to wait), check that the verdict really is the last line of your reply: without it the review isn't counted, and whatever else you were told to put at the end comes before it.
 A reply without a verdict line is read as an interim update: if you end a turn to wait for agents, teammates or commands, the office waits for your next reply.`;
 
 /**
@@ -99,10 +101,11 @@ export const KANBAN_CONTRACTS = {
   plan: `${RULE}
 ${STOP_PROCESSES}
 
-How to end this turn (the office reads this, so keep it exact):
+How to end this turn (required, and the most often forgotten part of a plan: the office reads this, so keep it exact):
 - When the plan is complete, give the whole plan (in plan mode, in ExitPlanMode's plan) and end your reply with a line that says only: ${PLAN_READY}
 - If you need answers before you can plan, write a line that says only ${QUESTIONS_HEADING} followed by your numbered questions, and don't write ${PLAN_READY}.
-A reply with neither is read as an interim update: if you end a turn to wait for agents, teammates or commands, the office waits for your next reply.`,
+Unless you hand the plan over with ExitPlanMode, the plan and its marker go together in your final message, the one you write after your last tool call: the office reads only that message, so a plan written before a tool call, or the marker alone after one, is not a plan. The marker is on a line of its own, as its very last line. Whatever else this prompt, a skill or your own habit puts at the end of a plan (a summary, a team section, next steps) comes before it, never in its place. Before you end the turn that gives the plan or the questions (not one you end only to wait), read the end of your reply once more and make sure one of the two is there.
+A reply with neither is read as an interim update, not as a plan: the task stays stuck until the office has to ask you again. If you end a turn to wait for agents, teammates or commands, the office waits for your next reply.`,
   review: `${RULE}
 ${STOP_PROCESSES}
 
@@ -142,14 +145,18 @@ one line per pull request, and nothing else on those lines.
 ${FINISH}`,
   /**
    * What the office types into a run whose turn ended without its final marker, once the agent has rested a while with nothing
-   * running (not a contract: it is not appended to any prompt, and not in the editor). One text per kind of turn.
+   * running (not a contract: it is not appended to any prompt, and not in the editor). One text per kind of turn. Each says the
+   * reply didn't end with the marker and asks for the whole answer again, because the office reads only the answer to the nudge.
    */
-  finish: `If your work on this task is finished, give your final answer now and end it with a line that says only: ${WORK_DONE}
+  finish: `Your last reply didn't end with the line the office waits for, so it wasn't taken as your final answer.
+If your work on this task is finished, give your final answer again in full in this reply (the office keeps only this reply, not your earlier ones) and end it with a line that says only: ${WORK_DONE}
 If you are still waiting for agents, teammates or commands, say in one line what you are waiting for and end your turn; nothing else.`,
-  finishPlan: `If your plan is complete, give it now and end with a line that says only: ${PLAN_READY}
+  finishPlan: `Your last reply didn't end with the line the office waits for, so it wasn't taken as your plan.
+If your plan is complete, write the whole plan again in this reply (the office keeps only this reply, not your earlier ones; the line alone is an empty plan) and end with a line that says only: ${PLAN_READY}
 If you need answers before you can plan, write a line that says only ${QUESTIONS_HEADING} followed by your numbered questions.
 If you are still waiting for agents, teammates or commands, say in one line what you are waiting for and end your turn; nothing else.`,
-  finishReview: `If your review is finished, give it now and make the last line of your reply your verdict: REVIEW: APPROVED or REVIEW: CHANGES_REQUESTED
+  finishReview: `Your last reply didn't end with a verdict line, so it wasn't taken as your review.
+If your review is finished, give the whole review again in this reply (the office keeps only this reply, not your earlier ones) and make the last line of your reply your verdict: REVIEW: APPROVED or REVIEW: CHANGES_REQUESTED
 If you are still waiting for agents, teammates or commands, say in one line what you are waiting for and end your turn; nothing else.`,
   /** The 🤝 review panel's brief (a meeting, not a kanban run): only the process rule. */
   panel: `${RULE}
