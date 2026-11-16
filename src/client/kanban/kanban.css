@@ -106,8 +106,13 @@ label.kb-search { flex: 1 1 240px; max-width: 380px; height: var(--ctl-h); displ
 .kb-meta .kb-chip.ticket { font-family: var(--font-mono); }
 .kb-meta .kb-pr { display: inline-flex; align-items: center; gap: 4px; max-width: 100%; min-width: 0; padding: 0 5px; font-weight: var(--fw-semibold); overflow: hidden; }
 .kb-meta .kb-pr > svg { flex: none; }
-.kb-meta .kb-pr-repo { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.kb-meta .kb-pr-num { flex: none; }
+/* What gives way on a tight chip, in turn: the repository's name (it shrinks a million times as readily), then the number and state; the review marks (prmarks.ts) never. */
+.kb-meta .kb-pr-repo { flex: 0 1000000 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.kb-meta .kb-pr-num { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.kb-meta .kb-pr-marks, .kb-meta .kb-pr-mark { flex: none; display: inline-flex; align-items: center; }
+.kb-meta .kb-pr-marks { gap: 4px; }
+.kb-meta .kb-pr-mark { gap: 1px; font-variant-numeric: tabular-nums; }
+.kb-meta .kb-pr-mark > svg { flex: none; }
 .kb-counts { margin-left: auto; display: inline-flex; align-items: center; gap: 10px; color: var(--muted); }
 .kb-counts > span { display: inline-flex; align-items: center; gap: 3px; font-variant-numeric: tabular-nums; }
 .kb-counts .kb-pending { color: var(--attn-ink); }

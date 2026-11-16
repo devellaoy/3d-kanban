@@ -9,6 +9,8 @@ import type { KanbanProjectInfo, KanbanTaskCard } from '../../shared/kanban/type
 import { isRunning } from '../../shared/kanban/moves.js';
 import { holdWords } from '../../shared/kanban/hold.js';
 import { countdown, needsAttention, phaseBadge, prTone } from './model';
+import { prMarkWords } from '../../shared/kanban/prs.js';
+import { prMarkIcons } from './prmarks';
 import { COUNTDOWN_UNITS, phaseName, PR_STATE_NAMES, toolName, waitingName } from './labels';
 
 const TILTS = ['-0.8deg', '0.6deg', '-0.3deg', '0.9deg', '0deg', '-0.6deg'];
@@ -54,7 +56,9 @@ export function taskCard(c: KanbanTaskCard, project: KanbanProjectInfo | undefin
   for (const p of c.prs) {
     const repo = project?.repos.find((r) => r.id === p.repoId)?.name ?? p.repo ?? p.repoId;
     const state = PR_STATE_NAMES[prTone(p.state)];
-    const label = `${repo} #${p.number}: ${state}`;
+    const marks = prMarkIcons(p);
+    // "shop-web #12: Open, approved, 3 unresolved comments": the marks in words, for the tooltip and screen readers.
+    const label = [`${repo} #${p.number}: ${state}`, ...prMarkWords(p)].join(', ');
     meta.push(
       h(
         'a.kb-pr',
@@ -64,6 +68,7 @@ export function taskCard(c: KanbanTaskCard, project: KanbanProjectInfo | undefin
         // The repository's name shrinks to an ellipsis on a narrow card; the number always shows.
         project && project.repos.length > 1 ? h('span.kb-pr-repo', {}, repo) : null,
         h('span.kb-pr-num', {}, `#${p.number} ${state}`),
+        marks,
       ),
     );
   }

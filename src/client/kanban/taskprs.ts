@@ -1,11 +1,12 @@
 // The task view's Pull requests tab: the buttons that work on the task's pull requests (fix them, resolve
-// their conflicts, find them, review them together) and the table of them (taskview.ts). Creating and
+// their conflicts, find them, review them together) and the table of them with their review marks (taskview.ts, prmarks.ts). Creating and
 // pushing them is the footer's button. Which buttons show is taskactions.ts's.
 
 import { h, timeAgo } from '../ui/dom';
 import { icon } from '../ui/icons';
 import { btn, prPill } from '../ui/kit';
 import type { KanbanTask } from '../../shared/kanban/types.js';
+import { prMarkPills } from './prmarks';
 import { unlinkButton } from './prbuttons';
 import { actionButton, tabActionIds } from './taskactionbar';
 import type { TaskCtx } from './taskctx';
@@ -26,7 +27,7 @@ export function prsPane(c: TaskCtx, task: KanbanTask): HTMLElement[] {
       h(
         'table.kb-table',
         {},
-        h('thead', {}, h('tr', {}, h('th', {}, 'Repository'), h('th', {}, 'PR'), h('th', {}, 'State'), h('th', {}, 'Branch'), h('th', {}, 'Updated'), h('th'))),
+        h('thead', {}, h('tr', {}, h('th', {}, 'Repository'), h('th', {}, 'PR'), h('th', {}, 'State'), h('th', {}, 'Review'), h('th', {}, 'Branch'), h('th', {}, 'Updated'), h('th'))),
         h(
           'tbody',
           {},
@@ -37,6 +38,7 @@ export function prsPane(c: TaskCtx, task: KanbanTask): HTMLElement[] {
               h('td', {}, project?.repos.find((r) => r.id === p.repoId)?.name ?? p.repo ?? p.repoId),
               h('td', {}, h('a.kb-pr-link', { href: p.url, target: '_blank', rel: 'noopener noreferrer' }, `#${p.number}`, icon('external-link', { size: 12 }))),
               h('td', {}, prPill(p.state)),
+              h('td.kb-pr-review', {}, ...prMarkPills(p)),
               h('td', {}, p.branch ? h('code', {}, p.branch) : ''),
               h('td', {}, timeAgo(p.updatedAt)),
               h('td', {}, unlinkButton(task, p, (m, b, d) => c.req(m, b, d), project?.repos.find((r) => r.id === p.repoId)?.name)),
