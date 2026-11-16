@@ -230,6 +230,13 @@ ALTER TABLE tasks ADD COLUMN queued_run TEXT;`),
     // typed: the comments typed into the running agent (JSON, see db/typed.ts), so a restart keeps tracking them or gives them back to the queue.
     up: (db) => db.exec('ALTER TABLE runs ADD COLUMN typed TEXT;'),
   },
+  {
+    version: 9,
+    name: 'pr link review marks',
+    // review: the PR's review decision (APPROVED, CHANGES_REQUESTED, REVIEW_REQUIRED) and unresolved: its unresolved review threads, as the PR board last had them (NULL: unknown).
+    up: (db) => db.exec(`ALTER TABLE pr_links ADD COLUMN review TEXT;
+ALTER TABLE pr_links ADD COLUMN unresolved INTEGER;`),
+  },
 ];
 
 /** The schema version this build expects. */

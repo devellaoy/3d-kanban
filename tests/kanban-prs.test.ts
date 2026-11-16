@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { canFixPrs, openPrs, prStatusOk, type PrSubject } from '../src/shared/kanban/prs.js';
+import { canFixPrs, openPrs, prMarkWords, prMarks, prStatusOk, reviewOf, type PrSubject } from '../src/shared/kanban/prs.js';
 
 const task = (extra: Partial<PrSubject> = {}): PrSubject => ({ status: 'review', runState: 'idle', prs: [{ state: 'OPEN' }], ...extra });
 
@@ -39,4 +39,23 @@ test('canFixPrs: a task whose open PRs are all forks is refused; one own PR is e
 
 test('prStatusOk: the columns pull requests are opened and fixed from', () => {
   assert.deepEqual((['todo', 'in_progress', 'waiting', 'review', 'done', 'archived'] as const).filter(prStatusOk), ['waiting', 'review', 'done']);
+});
+
+test('reviewOf: the decision wins, else the latest opinions (a change request beats an approval)', () => {
+  assert.equal(reviewOf('REVIEW_REQUIRED', ['APPROVED']), 'REVIEW_REQUIRED');
+  assert.equal(reviewOf('', ['APPROVED']), 'APPROVED');
+  assert.equal(reviewOf(null, ['APPROVED', 'CHANGES_REQUESTED']), 'CHANGES_REQUESTED');
+  assert.equal(reviewOf(undefined, ['COMMENTED']), undefined);
+  assert.equal(reviewOf('', []), undefined);
+});
+
+test('prMarks and prMarkWords: only open and draft PRs, unresolved only when there are some', () => {
+  assert.deepEqual(prMarks({ state: 'MERGED', review: 'APPROVED', unresolved: 2 }), {});
+  assert.deepEqual(prMarks({ state: 'CLOSED', unresolved: 2 }), {});
+  assert.deepEqual(prMarks({ state: 'OPEN', review: 'APPROVED', unresolved: 0 }), { review: 'APPROVED' });
+  assert.deepEqual(prMarks({ state: 'DRAFT', unresolved: 3 }), { unresolved: 3 });
+  assert.deepEqual(prMarkWords({ state: 'OPEN', review: 'CHANGES_REQUESTED', unresolved: 1 }), ['changes requested', '1 unresolved comment']);
+  assert.deepEqual(prMarkWords({ state: 'OPEN', review: 'REVIEW_REQUIRED', unresolved: 3 }), ['review required', '3 unresolved comments']);
+  assert.deepEqual(prMarkWords({ state: 'OPEN', review: 'APPROVED' }), ['approved']);
+  assert.deepEqual(prMarkWords({ state: 'MERGED', review: 'APPROVED' }), []);
 });

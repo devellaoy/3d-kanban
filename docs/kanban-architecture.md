@@ -450,7 +450,7 @@ allowed: `todo → in_progress` (= start), `waiting|review → done`, `done → 
   database, an older build refuses it ("newer than this build knows: upgrade 3d-kanban") rather than
   run on columns it doesn't know. Back up `kanban.sqlite` before trying a newer build you may roll back.
 - Tables: `tasks`, `task_repos` (optional subset), `comments`, `runs`, `plans`, `attachments`, `task_events`
-  (capped at 2000 per task), `pr_links`, `legacy_map`, `meta`. Timestamps are integer ms since epoch.
+  (capped at 2000 per task), `pr_links` (a task's linked PRs; `review` and `unresolved` are the review marks of an open PR, NULL when unknown, schema 9), `legacy_map`, `meta`. Timestamps are integer ms since epoch.
 
 ## 6. WS protocol
 
@@ -891,7 +891,7 @@ provides (the workers' and sign-ins' Claude binary) and caches, so a login shell
 (`engine.pr(taskId, 'create')`); any other agent worker gets the layered `kanban.pr.create` prompt (with the `pr`
 contract) typed into its session, or resumed with it when it's asleep. Only a shell worker answers `'fallback'`
 (`PR_FALLBACK`), and only then does upstream's own `openPr` (a draft PR without an agent) run. PR states of the
-tasks' linked PRs follow the floor's PR board (`floorPulled` → integrations/pulls `syncPrStates`): their states, and PRs from an active task's branch that no task has yet (and that aren't a fork's) get linked to it.
+tasks' linked PRs follow the floor's PR board (`floorPulled` → integrations/pulls `syncPrStates`): their states, and PRs from an active task's branch that no task has yet (and that aren't a fork's) get linked to it. The same sync keeps the review marks of the open and draft ones (matched by repository and number, not by URL alone): `review` (`APPROVED`, `CHANGES_REQUESTED`, `REVIEW_REQUIRED`) and `unresolved` (the count of unresolved review threads; undefined is unknown). For a GitHub repository `integrations/pulls/reviews.ts` (`reviewChecker`) asks one GraphQL query per repository and 20 PRs (`reviewDecision`, the latest opinionated reviews, the newest 100 review threads: a PR with more may under-count) with `gh api graphql`, started right after the board pull's states are synced and never waited for (the checker announces the cards whose marks changed itself; `reviewsSettled()` is for tests); a chunk that fails is asked one PR at a time, a PR GitHub says is gone has its marks cleared, any other failure leaves the stored marks for the next pull (logged once per repository per failure streak). In-flight state is per repository: a set of PR numbers already being asked about is not asked twice, another set for the same repository (another project's tasks) waits its turn, and a repository answered within 30 s for the same set is not asked again (one board cycle pulls a floor once per repository board plus its own), while another set asks at once. For Azure DevOps and Bitbucket the board's own `reviewDecision` (from the votes) is stored at once and `unresolved` stays unknown. `setPrLinkMarks` (`db/prlinks.ts`) writes the two columns only when they differ and never touches `updated_at`; the rules for what to show live in `shared/kanban/prs.ts` (`reviewOf`, `prMarks`, `prMarkWords`).
 
 ## Next merges
 

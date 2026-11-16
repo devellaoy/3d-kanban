@@ -26,7 +26,9 @@ import type {
   TaskOverrides,
   TaskWorkspace,
 } from '../../../shared/kanban/types.js';
-import { TASK_COLUMNS, json, opt, toDb } from './columns.js';
+import type { PrReview } from '../../../shared/kanban/prs.js';
+import { TASK_COLUMNS, clean, json, opt, toDb } from './columns.js';
+import { prLink, setPrLinkMarks } from './prlinks.js';
 
 /** The most history lines a task keeps; older ones go as new ones come. */
 export const TASK_EVENTS_CAP = 2000;
@@ -688,6 +690,9 @@ export class KanbanRepository {
     return r.changes > 0;
   }
 
+  /** A linked PR's review marks (undefined: unknown). True when they changed; updated_at stays. */
+  setPrLinkMarks(taskId: number, repoId: string, number: number, marks: { review?: PrReview; unresolved?: number }): boolean { return setPrLinkMarks(this.db, taskId, repoId, number, marks); }
+
   removePrLink(taskId: number, repoId: string, number: number) {
     this.db.prepare('DELETE FROM pr_links WHERE task_id = ? AND repo_id = ? AND number = ?').run(taskId, repoId, number);
   }
@@ -787,11 +792,6 @@ export class KanbanRepository {
   }
 }
 
-function clean<T extends object>(o: T): T {
-  for (const k of Object.keys(o) as (keyof T)[]) if (o[k] === undefined) delete o[k];
-  return o;
-}
-
 function run(r: Row): KanbanRun {
   return clean({
     id: r.id as number,
@@ -843,19 +843,6 @@ function attachment(r: Row): AttachmentRow {
   });
 }
 
-function prLink(r: Row): KanbanPrLink {
-  return clean({
-    repoId: r.repo_id as string,
-    repo: opt<string>(r.repo),
-    number: r.number as number,
-    url: r.url as string,
-    state: r.state as KanbanPrLink['state'],
-    branch: opt<string>(r.branch),
-    createdAt: r.created_at as number,
-    updatedAt: r.updated_at as number,
-  });
-}
-
 /** An attachment as browsers see it: without where it's stored. */
 export function publicAttachment(a: AttachmentRow): KanbanAttachment {
   const { stored: _, ...rest } = a;
@@ -887,7 +874,7 @@ export function toCard(t: KanbanTask, commentCount: number, review?: CardReview)
     askingKind: t.askingKind,
     hold: t.hold,
     retryAt: t.retryAt,
-    prs: t.prs.map((p) => clean({ repoId: p.repoId, repo: p.repo, number: p.number, url: p.url, state: p.state })),
+    prs: t.prs.map((p) => clean({ repoId: p.repoId, repo: p.repo, number: p.number, url: p.url, state: p.state, review: p.review, unresolved: p.unresolved })),
     tags: t.tags,
     workerId: t.workerId,
     reviewerWorkerId: t.reviewerWorkerId,

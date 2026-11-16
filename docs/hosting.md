@@ -23,6 +23,7 @@ with a token. It doesn't need the `az` CLI or any Bitbucket tool.
 | **O** on a 🐚 shell worker, and the Changes window's PR (the office opens it) | ✅ | ✅ | ✅ |
 | The 🔀 PR board, PR states on kanban tasks, a task following its PR to merged | ✅ | ✅ | ✅ |
 | Checks and reviews on the board | ✅ | statuses and branch policies (build validation, required statuses: a posted status shows the policy's state when that is worse), votes | build statuses, approvals |
+| Approval and unresolved comments on a task's PR rows | ✅ | approval only (from the votes) | approval only |
 | The PR window | everything | description, checks, comments, commenting, the diff | description, checks, comments, commenting, the diff |
 | Merging, closing, labels from the office | ✅ | do it on Azure DevOps | do it on Bitbucket |
 | Fix PRs, Resolve conflicts, Review (kanban) | ✅ | ✅ (the agent uses `office-pr`) | ✅ (the agent uses `office-pr`) |

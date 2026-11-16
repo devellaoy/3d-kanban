@@ -147,11 +147,13 @@
 .kb-tv .kb-worker-row { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border: var(--bw-sm) solid var(--ink); border-radius: var(--radius-sm); background: var(--field); }
 .kb-tv .kb-worker { flex: 1; display: flex; align-items: center; gap: 8px; min-width: 0; }
 .kb-tv .kb-worker .dot { width: 12px; height: 12px; border-radius: 50%; border: var(--bw-sm) solid var(--ink); background: var(--muted); flex: none; }
-/* Six columns on a phone: a long branch wraps inside its cell, the PR's number doesn't. */
+/* Seven columns on a phone: a long branch wraps inside its cell, the PR's number doesn't. */
 .kb-tv .kb-table td { vertical-align: middle; }
 .kb-tv .kb-table code { font-family: var(--font-mono); font-size: var(--fs-xs); overflow-wrap: anywhere; }
 .kb-tv .kb-pr-link { display: inline-flex; align-items: center; gap: 4px; font-family: var(--font-mono); font-size: var(--fs-xs); white-space: nowrap; color: var(--link); text-decoration: none; }
 .kb-tv .kb-pr-link:hover { text-decoration: underline; }
+/* The Review column's pills (prmarks.ts): side by side, under each other in a narrow cell. */
+.kb-tv .kb-pr-review .gh-badge { margin: 1px 6px 1px 0; }
 /* A PR row's unlink (prbuttons.ts): quiet until pointed at, in a column no wider than itself. */
 .kb-tv .kb-table th:last-child:empty, .kb-tv .kb-table td:has(> .kb-unlink) { width: 1%; padding: 3px 0 3px 4px; text-align: right; }
 .kb-tv .kb-unlink { color: var(--muted); }

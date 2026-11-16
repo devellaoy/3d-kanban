@@ -13,7 +13,7 @@ import {
   Send, Copy, Info, CircleAlert, CircleX, Clock, Tag, Folder, FolderOpen, Sparkles, Brain, Keyboard, Undo2, LogOut,
   CornerUpLeft, ArrowUp, ArrowDown, ArrowRight, Minus, List, Filter, Star, Sun, Moon, Palette,
   Sprout, Plug, VolumeX, Wind, CloudRain, Footprints, Armchair, FastForward, Activity,
-  Bell, BellOff, Calendar, Compass, Dices, Flag, Globe, House, Image, KeyRound, Layers, Save, Shield, Video, Volume2, ChevronUp, Zap, Hash, History, AtSign, CircleHelp, TrafficCone, Scissors,
+  Bell, BellOff, Calendar, Compass, Dices, Flag, Globe, House, Image, KeyRound, Layers, Save, Shield, Video, Volume2, ChevronUp, Zap, Hash, History, AtSign, CircleHelp, TrafficCone, Scissors, MessageCircleExclamationPoint,
 } from 'lucide';
 
 /** The icons by their Lucide (kebab-case) name. */
@@ -44,6 +44,7 @@ export const ICONS = {
   'paperclip': Paperclip,
   'bot': Bot,
   'message-square': MessageSquare,
+  'message-circle-exclamation-point': MessageCircleExclamationPoint,
   'mail': Mail,
   'square-terminal': SquareTerminal,
   'file-diff': FileDiff,

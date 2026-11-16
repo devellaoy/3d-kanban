@@ -58,7 +58,8 @@ test('MergeWatch keys by repository and number: two repositories’ #10 are two 
 const notFork = async (args: string[]) => (args[0] === 'repo' ? 'main\n' : '{"isCrossRepository":false}');
 /** A PR created after the tasks of a test were. */
 const LATER = new Date(Date.now() + 60_000).toISOString();
-const noGh = async () => Promise.reject(new Error('gh not needed'));
+/** gh that is not needed: the review marks' GraphQL gets an empty answer, anything else is refused. */
+const noGh = async (args: string[]) => (args[0] === 'api' ? '{"data":{"repository":{}}}' : Promise.reject(new Error('gh not needed')));
 
 function project() {
   const base = path.join(makeCtx().tmp, 'repos');
