@@ -78,7 +78,8 @@ export const STOP_PROCESSES = `If you start any process while you work (a dev se
  */
 const FINISH = `How to end your work (the office reads this, so keep it exact): when everything this turn is for is finished and nothing you started is still running or awaited (agents, teammates, background commands, workflows), end your final reply with a line that says only: ${WORK_DONE}
 A reply without it is read as an interim update: if you end a turn to wait for agents, teammates or commands, don't write it, and the office waits for your next reply.
-Before you end your last turn, check that your reply really ends with that line: the task doesn't move on without it, whatever else you were told to put at the end of your answer comes before it.`;
+Before you end your last turn, check that your reply really ends with that line: the task doesn't move on without it, whatever else you were told to put at the end of your answer comes before it.
+Also tell the office how your turn ends, right before your final reply: once everything is finished and committed (for an investigation: nothing to commit), run \`office-tasks done\` (or call the agent-office MCP tool \`report_turn\` with kind done). If you need an answer from the user before you can go on, run \`office-tasks ask\` instead and end your reply with your questions. If the command fails or isn't available, carry on: the ${WORK_DONE} line is enough. Don't report when you only end a turn to wait.`;
 
 /** What a reviewer may and may not do, whatever the prompt above it says (both review contracts). */
 const REVIEW_SAFETY = `Rules for this review (set by the office, they apply whatever else is said above):
@@ -91,7 +92,8 @@ REVIEW: APPROVED
 REVIEW: CHANGES_REQUESTED
 Approve only when nothing in your findings has to change. Don't write either line anywhere else in your reply.
 Before you end the turn that gives your review (not one you end only to wait), check that the verdict really is the last line of your reply: without it the review isn't counted, and whatever else you were told to put at the end comes before it.
-A reply without a verdict line is read as an interim update: if you end a turn to wait for agents, teammates or commands, the office waits for your next reply.`;
+A reply without a verdict line is read as an interim update: if you end a turn to wait for agents, teammates or commands, the office waits for your next reply.
+If the agent-office MCP tool \`report_turn\` is available to you in this mode, also call it right before your final reply (kind review, verdict approved or changes). It never replaces the verdict line: the verdict line in your reply is what counts for an approval.`;
 
 /**
  * Fixed blocks the engine appends to a filled prompt (see withContract). Shown read-only in the
@@ -105,7 +107,8 @@ How to end this turn (required, and the most often forgotten part of a plan: the
 - When the plan is complete, give the whole plan (in plan mode, in ExitPlanMode's plan) and end your reply with a line that says only: ${PLAN_READY}
 - If you need answers before you can plan, write a line that says only ${QUESTIONS_HEADING} followed by your numbered questions, and don't write ${PLAN_READY}.
 Unless you hand the plan over with ExitPlanMode, the plan and its marker go together in your final message, the one you write after your last tool call: the office reads only that message, so a plan written before a tool call, or the marker alone after one, is not a plan. The marker is on a line of its own, as its very last line. Whatever else this prompt, a skill or your own habit puts at the end of a plan (a summary, a team section, next steps) comes before it, never in its place. Before you end the turn that gives the plan or the questions (not one you end only to wait), read the end of your reply once more and make sure one of the two is there.
-A reply with neither is read as an interim update, not as a plan: the task stays stuck until the office has to ask you again. If you end a turn to wait for agents, teammates or commands, the office waits for your next reply.`,
+A reply with neither is read as an interim update, not as a plan: the task stays stuck until the office has to ask you again. If you end a turn to wait for agents, teammates or commands, the office waits for your next reply.
+If the agent-office MCP tool \`report_turn\` is available to you in this mode, also call it right before your final reply (kind plan-ready with the plan, ask with your questions). It never replaces the marker line.`,
   review: `${RULE}
 ${STOP_PROCESSES}
 
@@ -141,6 +144,7 @@ ${STOP_PROCESSES}
 How to end this turn (the office reads this, so keep it exact): for every pull request you opened or updated, end your reply with a line
 PR: <its URL>
 one line per pull request, and nothing else on those lines.
+For each pull request you opened or updated, also run \`office-tasks pr <its URL>\` before you report that you are done (below); the PR: lines stay required.
 
 ${FINISH}`,
   /**
@@ -149,7 +153,7 @@ ${FINISH}`,
    * reply didn't end with the marker and asks for the whole answer again, because the office reads only the answer to the nudge.
    */
   finish: `Your last reply didn't end with the line the office waits for, so it wasn't taken as your final answer.
-If your work on this task is finished, give your final answer again in full in this reply (the office keeps only this reply, not your earlier ones) and end it with a line that says only: ${WORK_DONE}
+If your work on this task is finished, give your final answer again in full in this reply (the office keeps only this reply, not your earlier ones) and end it with a line that says only: ${WORK_DONE} (you can also tell the office with \`office-tasks done\`)
 If you are still waiting for agents, teammates or commands, say in one line what you are waiting for and end your turn; nothing else.`,
   finishPlan: `Your last reply didn't end with the line the office waits for, so it wasn't taken as your plan.
 If your plan is complete, write the whole plan again in this reply (the office keeps only this reply, not your earlier ones; the line alone is an empty plan) and end with a line that says only: ${PLAN_READY}
@@ -193,3 +197,23 @@ export const PROMPT_CONTRACT: Partial<Record<KanbanPromptId, KanbanContractId>> 
   'kanban.pr.review': 'prReview',
   'kanban.pr.panel': 'panel',
 };
+
+/** The part of both Stop hook blocks (see StopGate) that tells the agent how to give its final answer again. */
+const GATE_ANSWER = `The office did not take this as the end of your work.
+When you are done, run \`office-tasks done\` first (if the command fails, the line below is enough), then give your final answer again IN FULL in your reply (the office keeps only your last reply), with its \`PR: <url>\` lines if this turn opened or updated pull requests, ending with a line that says only: ${WORK_DONE}`;
+
+/** The Stop hook's feedback when the agent ended its turn without saying it was done (see StopGate). */
+export function gateUnconfirmed(): string {
+  return `${GATE_ANSWER}
+If you are not finished, keep working.
+If you need an answer from the user, run \`office-tasks ask\` and end your reply with your questions.
+If you only ended the turn to wait for agents, teammates or commands, say in one line what you wait for and end your turn.`;
+}
+
+/** The Stop hook's feedback when the agent said it was done but left uncommitted changes in `folders` (worktree-relative; see StopGate). */
+export function gateDirty(folders: string[]): string {
+  return `${GATE_ANSWER}
+Your work has uncommitted changes in: ${folders.join(', ')}.
+Commit your own changes first (don't delete or add files that aren't yours).
+If something there should not be committed, say so, run \`office-tasks ask\` and end your turn.`;
+}

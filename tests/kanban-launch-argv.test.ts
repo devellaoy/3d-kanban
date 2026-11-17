@@ -91,6 +91,13 @@ test('a Claude task worker: the phase flags come before --resume and the prompt,
   const plain = JSON.parse(readFileSync(path.join(data, 'claude-hooks.json'), 'utf8'));
   assert.equal(kanbanSettings.skipDangerousModePermissionPrompt, true);
   assert.equal(plain.skipDangerousModePermissionPrompt, undefined);
+  // The same hooks and permissions, but for the Stop hook: a kanban worker's goes through the Stop gate (kanbanStopCommand, #449).
+  const plainStop = plain.hooks.Stop[0].hooks[0];
+  const kanbanStop = kanbanSettings.hooks.Stop[0].hooks[0];
+  assert.equal(kanbanStop.timeout, 40);
+  assert.ok(kanbanStop.command.includes('/office/tasks/stop?worker=') && kanbanStop.command.includes(plainStop.command), 'the gate first, the original command as its fallback');
+  Object.assign(kanbanStop, { command: plainStop.command, timeout: plainStop.timeout });
+  if (plainStop.timeout === undefined) delete kanbanStop.timeout;
   assert.deepEqual({ ...kanbanSettings, skipDangerousModePermissionPrompt: undefined }, { ...plain, skipDangerousModePermissionPrompt: undefined });
 });
 

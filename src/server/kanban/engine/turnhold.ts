@@ -43,6 +43,13 @@ export interface HeldRun {
   /** How many times the run was nudged for its final marker, and the timer of the next look at whether it is due. */
   nudges?: number;
   nudgeTimer?: NodeJS.Timeout;
+  /** How its agent announced, with a command, that its turn ends (see engine/signals.ts); only for the turn it was made in, in memory only. `signalPrs`: the pull requests it reported (normalised URLs). */
+  signal?: { kind: 'plan-ready' | 'ask' | 'done' | 'review'; verdict?: 'approved' | 'changes' };
+  signalPrs?: string[];
+  /** The Stop hook gate: how many Stops it blocked in this run, whether one was blocked and no Stop since (the worker's `done` is then the blocked turn's), and whether the run's note that the cap was reached is made. */
+  gateBlocks?: number;
+  gated?: boolean;
+  gateNoted?: boolean;
   /** Comments the office typed into the run while it worked (when, and the start of their text): its own prompts, not a person's (see readTurnResult). */
   officePrompts?: { at: number; head: string; heard?: boolean; seen?: boolean; /** The comment typed, to be queued again if the agent never got it. */ msg?: PendingMessage }[];
 }

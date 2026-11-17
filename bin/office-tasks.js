@@ -2,7 +2,9 @@
 // office-tasks: other kanban tasks, from inside `office-tasks get 14` prints task #14's
 // description, accepted plan, runs and review verdicts, latest comments, repositories and branches,
 // pull requests and report files; `office-tasks search <words>` finds tasks; `office-tasks create`
-// puts new work on the board as a task (it runs through the kanban process). The office puts it on
+// puts new work on the board as a task (it runs through the kanban process); a task's own worker
+// tells the office how its turn ends with `office-tasks done|ask|plan-ready|review|pr` (POST
+// /office/tasks/signal; kanban/signals.ts, MCP tool report_turn). The office puts it on
 // every worker's PATH and gives each its own address and token in AGENT_OFFICE_HOOK_URL,
 // AGENT_OFFICE_WORKER_ID and AGENT_OFFICE_HOOK_TOKEN; this talks to the hook server's /office/tasks
 // endpoints with them (src/server/kanban/integrations/refs; create: integrations/issues/agent-create.ts).
@@ -37,7 +39,14 @@ const USAGE = `Usage:
                                               kanban task's own worker starts up to 5 per task —
                                               past that the task waits in To do.
                                               --no-description skips reading stdin (with --issue);
-                                              stdin that sends nothing for 3 s counts as empty`;
+                                              stdin that sends nothing for 3 s counts as empty
+  office-tasks done                           (a task's own worker, while its run is going) tell the
+  office-tasks ask                            office how your turn ends, right before your final reply:
+  office-tasks plan-ready                     done = the work is finished and committed, ask = you
+  office-tasks review approved|changes        need an answer from the user, plan-ready = the plan is
+  office-tasks pr <url>                       complete, review = your verdict, pr = a pull request you
+                                              opened or updated. It never replaces the line your final
+                                              reply ends with; if it fails, carry on without it`;
 
 export class UsageError extends Error {}
 
@@ -51,6 +60,8 @@ const STDIN_IDLE_MS = 3000;
 export const EFFORTS = ['minimal', 'low', 'medium', 'high', 'xhigh', 'max'];
 export const PROVIDERS = ['claude', 'codex'];
 export const TASK_TYPES = ['implement', 'investigate'];
+const SIGNAL_KINDS = ['plan-ready', 'ask', 'done', 'review', 'pr'];
+export const VERDICTS = ['approved', 'changes'];
 
 /**
  * Reads `--flag value` and `--flag=value` options (a flag in `many` may repeat), and the words that aren't options.
@@ -119,12 +130,34 @@ function parseCreate(rest) {
   return out;
 }
 
+/** plan-ready, ask, done, review <approved|changes> and pr <url>: no options. */
+function parseSignal(kind, rest) {
+  const bad = rest.find((a) => a.startsWith('-'));
+  if (bad) throw new UsageError(`Unknown option: ${bad}`);
+  const take = (n, what) => {
+    if (rest.length !== n) throw new UsageError(n ? `${kind} takes ${what}` : `${kind} takes nothing more (it is only reported, never a message)`);
+  };
+  if (kind === 'review') {
+    take(1, 'approved or changes');
+    if (!VERDICTS.includes(rest[0])) throw new UsageError('review takes approved or changes');
+    return { cmd: 'signal', body: { kind, verdict: rest[0] } };
+  }
+  if (kind === 'pr') {
+    take(1, 'the URL of a pull request');
+    if (!/^https?:\/\/\S+$/i.test(rest[0])) throw new UsageError('pr takes the URL of a pull request');
+    return { cmd: 'signal', body: { kind, url: rest[0] } };
+  }
+  take(0);
+  return { cmd: 'signal', body: { kind } };
+}
+
 /** @param {string[]} argv */
 export function parseArgs(argv) {
   const [cmd, ...rest] = argv;
   const help = (a) => a === '-h' || a === '--help';
   if (cmd === undefined || cmd === 'help' || help(cmd) || rest.some(help)) return { cmd: 'help' };
   if (cmd === 'create' || cmd === 'new') return parseCreate(rest);
+  if (SIGNAL_KINDS.includes(cmd)) return parseSignal(cmd, rest);
   const flags = rest.filter((a) => a.startsWith('--'));
   const words = rest.filter((a) => !a.startsWith('--'));
   const known = cmd === 'get' || cmd === 'show' ? ['--tail', '--json'] : ['--json'];
@@ -152,7 +185,8 @@ export function tasksVisible(env) {
  * worker's token; without them, but with AIKANBAN_API_BASE, to the loopback /api/tasks/reference
  * (search needs the worker's token).
  * create is a POST of the task as JSON and needs the worker variables.
- * @param {'get' | 'search' | 'create'} what
+ * create and signal (how the worker's turn ends) are POSTs of JSON and need the worker variables.
+ * @param {'get' | 'search' | 'create' | 'signal'} what
  * @param {{ ref?: string, tail?: boolean, query?: string, body?: Record<string, unknown> }} args
  * @param {Record<string, string | undefined>} env
  * @returns {{ method: string, url: string, headers: Record<string, string>, body?: string, timeout: number, legacy: boolean }}
@@ -167,11 +201,11 @@ export function buildRequest(what, args, env) {
     }
     throw new Error(`${missing.join(', ')} ${missing.length === 1 ? "isn't" : "aren't"} set. office-tasks only works inside the office, from a worker's terminal.`);
   }
-  const url = new URL(`${env.AGENT_OFFICE_HOOK_URL.replace(/\/+$/, '')}/office/tasks/${what === 'get' ? 'reference' : what === 'create' ? 'create' : 'search'}`);
+  const url = new URL(`${env.AGENT_OFFICE_HOOK_URL.replace(/\/+$/, '')}/office/tasks/${what === 'get' ? 'reference' : what === 'search' ? 'search' : what}`);
   url.searchParams.set('worker', env.AGENT_OFFICE_WORKER_ID);
   const headers = { authorization: `Bearer ${env.AGENT_OFFICE_HOOK_TOKEN}` };
-  if (what === 'create') {
-    return { method: 'POST', url: url.href, headers: { ...headers, 'content-type': 'application/json' }, body: JSON.stringify(args.body ?? {}), timeout: CREATE_TIMEOUT_MS, legacy: false };
+  if (what === 'create' || what === 'signal') {
+    return { method: 'POST', url: url.href, headers: { ...headers, 'content-type': 'application/json' }, body: JSON.stringify(args.body ?? {}), timeout: what === 'create' ? CREATE_TIMEOUT_MS : TIMEOUT_MS, legacy: false };
   }
   if (what === 'get') {
     url.searchParams.set('ref', String(args.ref ?? ''));
@@ -210,7 +244,7 @@ async function send(req, fetchImpl) {
 
 /**
  * One call: resolves to the office's answer.
- * @param {'get' | 'search' | 'create'} what
+ * @param {'get' | 'search' | 'create' | 'signal'} what
  * @param {{ ref?: string, tail?: boolean, query?: string, body?: Record<string, unknown> }} args
  * @param {{ env: Record<string, string | undefined>, fetch: typeof fetch }} io
  */
@@ -273,6 +307,12 @@ export function formatCreated(answer) {
   if (answer?.startError) lines.push(`It did not start: ${answer.startError}`);
   if (answer?.note) lines.push(answer.note);
   return lines.join('\n');
+}
+
+/** What report_turn and the signal commands print once the office took it. */
+export function formatSignal(body) {
+  const k = body?.kind;
+  return `Reported: ${k === 'review' ? `review ${body.verdict}` : k === 'pr' ? `pr ${body.url}` : k}`;
 }
 
 // --- MCP tools (served by bin/office-workers.js mcp) ----------------------------------------------
@@ -341,9 +381,29 @@ export const TASK_TOOLS = [
     },
     annotations: { readOnlyHint: true, openWorldHint: false },
   },
+  {
+    name: 'report_turn',
+    title: 'Report how your turn ends',
+    description:
+      "Tells the office how your own kanban task's turn ends; it only works for a task's own worker while its run is going. " +
+      'kind: plan-ready (your plan is complete), ask (you need an answer from the user before you can go on; end your reply with your questions), done (everything is finished and committed), ' +
+      'review with verdict approved or changes (your review verdict), pr with url (a pull request you opened or updated). ' +
+      'Call it right before your final reply, never when you only end a turn to wait. It never replaces the marker line your final reply ends with.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        kind: { type: 'string', enum: SIGNAL_KINDS, description: 'How the turn ends.' },
+        verdict: { type: 'string', enum: VERDICTS, description: 'With kind review: approved or changes.' },
+        url: { type: 'string', description: 'With kind pr: the pull request URL.' },
+      },
+      required: ['kind'],
+      additionalProperties: false,
+    },
+    annotations: { destructiveHint: false, openWorldHint: false },
+  },
 ];
 
-/** Runs get_task, search_tasks or create_task; resolves to its text. */
+/** Runs get_task, search_tasks, create_task or report_turn; resolves to its text. */
 export async function runTaskTool(name, args, io) {
   const a = args && typeof args === 'object' ? args : {};
   if (name === 'get_task') {
@@ -357,6 +417,11 @@ export async function runTaskTool(name, args, io) {
     return { text: formatSearch(await call('search', { query }, io)) };
   }
   if (name === 'create_task') return { text: formatCreated(await call('create', { body: a }, io)) };
+  if (name === 'report_turn') {
+    const body = { kind: a.kind, ...(a.verdict !== undefined ? { verdict: a.verdict } : {}), ...(a.url !== undefined ? { url: a.url } : {}) };
+    await call('signal', { body }, io);
+    return { text: formatSignal(body) };
+  }
   throw new Error(`Unknown tool: ${name}`);
 }
 
@@ -419,6 +484,11 @@ export async function main(argv, io = {}) {
         out(String(answer?.task?.id ?? ''));
         err(formatCreated(answer));
       }
+      return 0;
+    }
+    if (cmd.cmd === 'signal') {
+      await call('signal', { body: cmd.body }, ctx);
+      out(formatSignal(cmd.body));
       return 0;
     }
     if (cmd.cmd === 'get') {

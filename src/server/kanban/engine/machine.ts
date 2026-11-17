@@ -91,8 +91,8 @@ export type MachineEvent =
   | { type: 'prReview' }
   /** That review's turn ended. */
   | { type: 'prReviewed'; pending?: boolean }
-  /** The agent asks something in its terminal (needs_input outside a finished plan). */
-  | { type: 'asking'; text?: string }
+  /** The agent asks something in its terminal (needs_input outside a finished plan), or announced a question and ended its run (`ended`: the run is over, so the task is idle). */
+  | { type: 'asking'; text?: string; ended?: true }
   /** The agent is working again after asking (someone answered in the terminal). */
   | { type: 'working' }
   | { type: 'stop' }
@@ -353,7 +353,7 @@ export function next(s: MachineState, e: MachineEvent, t: MachineTask, cfg: Mach
       return toReview(s, [{ type: 'reviewerHome' }]);
 
     case 'asking':
-      if (!automated) return ok(s);
+      if (!automated) return ok(e.ended ? { ...s, runState: 'idle' } : s);
       return ok(waiting(s, 'agent_asking', e.text ?? 'The agent is asking something in its terminal', { runState: 'idle' }));
 
     case 'working':

@@ -145,7 +145,7 @@ Taking upstream changes is ordinary merge or cherry-pick work, only when the use
 ## M0 spike results (2026-09-30, Claude Code 2.1.285, codex-cli 0.159.0)
 
 - Claude and Codex hooks both report `session_id` and `transcript_path` (upstream already stores them).
-  Hook output is discarded (`>/dev/null`), so the office can't answer hooks; the engine reads results instead.
+  Hook output is discarded (`>/dev/null`), so the office can't answer hooks; the engine reads results instead. The one exception is a kanban Claude worker's Stop hook (since #449): its wrapper in `kanban/launch.ts` prints the office's answer (the Stop gate, `{"decision":"block",…}`) and falls back to the original, output-discarding command when the office can't answer.
 - Claude transcript JSONL: `type: 'assistant'` lines carry `message.content[]` blocks; the turn's final
   text is the `text` blocks of the last assistant message (its lines share `message.id`) after the last
   user prompt. `ExitPlanMode` shows up as a `tool_use` block
