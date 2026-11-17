@@ -101,8 +101,9 @@ clashes with an upstream install on the same machine:
   keeps upstream's name, `bin/agent-office.js`, so upstream merges stay easy.
 - `install.sh` / `install.ps1` download the release asset `3d-kanban.tgz` from this repository's
   releases, install it in `~/.local/share/3d-kanban` (Windows `%LOCALAPPDATA%\3d-kanban`) and write
-  a `kanban3d` launcher. The fork's first release, v0.1.3, still carried `agent-office.tgz`; both
-  installers fall back to that name.
+  a `kanban3d` launcher. The fork's first release, v0.1.3, came before the rename: it still says
+  `agent-office` in its help and carried `agent-office.tgz`, but installs as `kanban3d` all the same; both
+  installers fall back to that asset name.
 - `.github/workflows/release.yml` publishes `v<major.minor>.<commits on main>` with `3d-kanban.tgz`.
 - The command starts with a letter because PowerShell reads a bare `3d-kanban` as the number `3d`
   followed by `-kanban`; `kanban3d` runs as it is in PowerShell, cmd and Git Bash.

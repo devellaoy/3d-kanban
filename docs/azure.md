@@ -1,13 +1,15 @@
 # Azure reference
 
-The full story behind `deploy/azure.sh`. The short version is in the [README](../README.md#deploy-to-azure).
+Back to the [README](../README.md). The full story behind `deploy/azure.sh`, a script that uses only the Azure CLI.
 
-It's the Azure twin of [`deploy/aws.sh`](aws.md): the same commands, the same [`deploy/provision.sh`](../deploy/provision.sh) on the machine, and the same rule that the office is only ever reached through an SSH tunnel. If you have the Azure CLI signed in (`az login`), one command gives you your own office on an Azure VM:
+You need the **Azure CLI signed in** (`az login`), `ssh`, `curl` and a clone of this repo. It's the Azure twin of [`deploy/aws.sh`](aws.md): the same commands, the same [`deploy/provision.sh`](../deploy/provision.sh) on the machine, and the same rule that the office is only ever reached through an SSH tunnel. One command gives you your own office on an Azure VM:
 
 ```bash
 git clone https://github.com/devellaoy/3d-kanban && cd 3d-kanban
-deploy/azure.sh up
+deploy/azure.sh up --project your-org/your-repo --claude-token "$(claude setup-token)"
 ```
+
+`--project` is optional: it clones that repo as the first floor. Leave it out and pick projects in the elevator.
 
 After that, the whole lifecycle is four more commands:
 
@@ -67,7 +69,7 @@ deploy/azure.sh revoke 203.0.113.7    # take an IP back off the list
 
 The office knows it was deployed with `deploy/azure.sh`, so the commands it suggests in **👥 Invite teammates** and on the **🌐 Services** board are the Azure ones.
 
-Accounts work as in the [README](../README.md#add-users). To make an invite link from your terminal:
+Accounts work as described in [Accounts and teammates](accounts.md). To make an invite link from your terminal:
 
 ```bash
 deploy/azure.sh ssh 'node /opt/agent-office/bin/agent-office.js accounts invite ada --dir "$(cat /etc/agent-office/home)"'

@@ -1,6 +1,6 @@
 # Dokploy reference
 
-The full story behind `deploy/dokploy.sh`. The short version is in the [README](../README.md#deploy-to-dokploy).
+Back to the [README](../README.md). The full story behind `deploy/dokploy.sh`.
 
 You need a **[Dokploy](https://dokploy.com) server** and an **API key** for it, plus `ssh`, `curl`, `git`, Node.js and a clone of this repo. Make the key in Dokploy under **Settings → Profile → API/CLI Keys**, and leave its rate limiting off: the script checks on the build every few seconds.
 
@@ -13,9 +13,12 @@ deploy/dokploy.sh up --url https://dokploy.example.com --claude-token "$(claude 
 After that:
 
 ```bash
-deploy/dokploy.sh open      # tunnel to the office and open it in your browser
-deploy/dokploy.sh update    # upload this checkout again, build it and redeploy it
-deploy/dokploy.sh destroy   # delete the office, its volume and everything on it (asks first)
+deploy/dokploy.sh open              # tunnel + open the office (Ctrl-C closes the tunnel)
+deploy/dokploy.sh status            # its page in Dokploy, last deployment, SSH address, who's invited
+deploy/dokploy.sh invite octocat    # let a teammate tunnel in with their GitHub SSH keys
+deploy/dokploy.sh logs              # follow the office's logs (ssh: a shell in the container)
+deploy/dokploy.sh update            # upload this checkout again, build it and redeploy it
+deploy/dokploy.sh destroy           # delete the application and its volume, and everything on it (asks first)
 ```
 
 What `up` does, in about five minutes the first time:

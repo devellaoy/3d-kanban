@@ -1,6 +1,6 @@
 # Fly.io reference
 
-The full story behind `deploy/fly.sh`. The short version is in the [README](../README.md#deploy-to-flyio).
+Back to the [README](../README.md). The full story behind `deploy/fly.sh`.
 
 You need an up-to-date **flyctl, logged in** (`fly auth login`; [install it](https://fly.io/docs/flyctl/install/) with `brew install flyctl` or `curl -L https://fly.io/install.sh | sh`, and update an old one with `fly version upgrade`), plus `ssh`, `curl`, Node.js and a clone of this repo:
 
@@ -12,9 +12,14 @@ deploy/fly.sh up --claude-token "$(claude setup-token)"
 After that:
 
 ```bash
-deploy/fly.sh open      # tunnel to the office and open it in your browser
-deploy/fly.sh update    # build this checkout again and redeploy it
-deploy/fly.sh destroy   # delete the app, its volume and everything on it (asks first)
+deploy/fly.sh open                    # tunnel + open the office (Ctrl-C closes the tunnel)
+deploy/fly.sh status                  # machine, SSH address, volume, is the office up, who's invited
+deploy/fly.sh invite octocat          # let a teammate tunnel in with their GitHub SSH keys
+deploy/fly.sh logs                    # follow the office's logs (ssh: a shell in the machine)
+deploy/fly.sh update                  # build this checkout again and redeploy it
+deploy/fly.sh resize performance-2x   # another machine size, same address and volume
+deploy/fly.sh pause                   # stop the machine (resume starts it again)
+deploy/fly.sh destroy                 # delete the app and its volume, and everything on it (asks first)
 ```
 
 What `up` does, in a few minutes the first time:
@@ -28,6 +33,8 @@ What `up` does, in a few minutes the first time:
 7. Opens an SSH tunnel and your browser at `http://localhost:4600`. **The first page shows the office password once. Write it down.** The office then keeps only a hash of it.
 
 The office listens on `127.0.0.1:4600` in its machine, and everyone reaches it through the tunnel. `localhost` counts as a secure origin, so voice and screen sharing work, with no certificates to manage. Your key logs in as `agentoffice`, the user that runs the office (`deploy/fly.sh ssh` gives you its shell). If the office's sshd is ever down, `fly ssh console -a <app>` still gets you a root shell through Fly's own SSH, which keeps port 22 in the machine (the office's sshd listens on 2222 there, and the app's public port leads to it). The office starts with no floors: ride the elevator and pick one of the repositories your GitHub token can see.
+
+`deploy/fly.sh help` lists every flag; `--name` runs several offices side by side.
 
 **What survives a restart.** A restart, a redeploy or a resize restarts the machine from a fresh copy of the image; the volume stays. On it:
 

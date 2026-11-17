@@ -1,13 +1,15 @@
 # AWS reference
 
-The full story behind `deploy/aws.sh`. The short version is in the [README](../README.md#deploy-to-aws-ec2).
+Back to the [README](../README.md). The full story behind `deploy/aws.sh`, a script that uses only the AWS CLI.
 
-If you have the AWS CLI logged in, one command gives you your own office on EC2. No Terraform needed:
+You need the **AWS CLI signed in** (`aws configure` or `aws sso login`), `ssh`, `curl` and a clone of this repo. If you have that, one command gives you your own office on EC2. No Terraform needed:
 
 ```bash
 git clone https://github.com/devellaoy/3d-kanban && cd 3d-kanban
-deploy/aws.sh up
+deploy/aws.sh up --project your-org/your-repo --claude-token "$(claude setup-token)"
 ```
+
+`--project` is optional (see below): it clones that repo as the first floor.
 
 After that, the whole lifecycle is four more commands:
 
@@ -83,12 +85,16 @@ Useful options for `up`:
 - `--allow <ip>` lets more IPs reach SSH from the start.
 - `--name <name>` runs several offices side by side.
 
+Every other flag is listed in `deploy/aws.sh help`. `--anthropic-api-key` and `--claude-token` are described next, and `--github-token` below them.
+
 **Claude sign-in.** Workers run Claude Code on the machine, so it has to be signed in there. You can do this either way:
 
 - Pass `--claude-token "$(claude setup-token)"`, which uses your Claude subscription, or `--anthropic-api-key <key>`.
 - Do nothing, and the first worker jumps with *"Claude isn't signed in — type /login"*. Open its terminal and run `/login`.
 
-That's the office's own sign-in, which workers use while you're in on the office password. Once teammates have [accounts](../README.md#add-users), each of them signs in to their own Claude in **☰ → 🔐 Your sign-ins**, and their workers run on their own plan. Admins can pick the office's own there instead.
+Codex and OpenCode aren't installed by the script: `deploy/aws.sh ssh` and install them yourself.
+
+That's the office's own sign-in, which workers use while you're in on the office password. Once teammates have [accounts](accounts.md), each of them signs in to their own Claude in **☰ → 🔐 Your sign-ins**, and their workers run on their own plan. Admins can pick the office's own there instead.
 
 **GitHub.** By default, your local `gh auth token` is used to sign in the GitHub CLI on the machine. The office uses it to list and clone your repos and to read the issue and PR boards, so it needs access to them. On the office password, commenting, merging, pushing and opening PRs use it too. People with accounts do those as themselves, with the GitHub account they sign in to in **🔐 Your sign-ins**. Every worker runs as the same user on the machine, so anyone who can use the office can get at that token: pass `--github-token <fine-grained token>` or `--no-github-token` if that's too much.
 

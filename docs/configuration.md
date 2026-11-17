@@ -2,6 +2,71 @@
 
 Back to the [README](../README.md).
 
+## Installing
+
+3d-kanban is a product of its own: it installs as the `kanban3d` command, in its own folder, beside an upstream `agent-office` install if you have one.
+
+**What you need** on the machine that runs it:
+
+- **Node.js 22 or newer** (the kanban's database module, better-sqlite3, needs 22).
+- **Python 3, make and a C++ compiler.** better-sqlite3 ships prebuilt binaries (macOS, Linux and Windows, x64 and arm64), but npm still runs its native build step on install, which fails without them, and compiles it when there is no binary for your platform. macOS: `xcode-select --install`; Debian/Ubuntu: `sudo apt install build-essential python3`; Windows: tick *Tools for Native Modules* in the Node.js installer (or install Visual Studio Build Tools with *Desktop development with C++*). The terminals' module (node-pty) comes prebuilt and needs nothing.
+- **git**, and the **GitHub CLI** signed in (`gh auth login`), for projects, worktrees and the issue and PR boards. Repositories on **Azure DevOps** or **Bitbucket** need no CLI: a token in ☰ → 🔐 Your sign-ins ([hosting](hosting.md)).
+- At least one agent CLI, signed in as the user that runs the office: **Claude Code** (`claude`), **Codex** (`codex`), **OpenCode** (`opencode`), **Grok** (`grok`), **Muse** (`muse`) or **DeepSeek Harness** (`dsh`). The kanban's tasks run on Claude Code or Codex (the office's other agents stay ordinary workers). With [accounts](accounts.md), everyone can sign in to their own Claude from the office instead.
+
+macOS and Linux:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/devellaoy/3d-kanban/main/install.sh | bash
+```
+
+Windows, in PowerShell:
+
+```powershell
+irm https://raw.githubusercontent.com/devellaoy/3d-kanban/main/install.ps1 | iex
+```
+
+The installer downloads the newest [release](https://github.com/devellaoy/3d-kanban/releases) (`3d-kanban.tgz`), installs it in `~/.local/share/3d-kanban` (Windows: `%LOCALAPPDATA%\3d-kanban`), puts a `kanban3d` command in `~/.local/bin` (Windows: `%LOCALAPPDATA%\3d-kanban\bin`, added to your PATH) and starts the office; next time just run `kanban3d`, in PowerShell, cmd and Git Bash alike. `AGENT_OFFICE_INSTALL_ONLY=1` installs without starting, `AGENT_OFFICE_VERSION=v0.1.4` picks a release; the other settings are at the top of [`install.sh`](../install.sh) and [`install.ps1`](../install.ps1).
+
+The one-line installer needs a published release: the [Release workflow](../.github/workflows/release.yml) publishes one (`v0.1.<commits on main>`, with the asset `3d-kanban.tgz`) whenever a change to the app lands on `main` and its build, tests and test install pass, a few minutes after the push (see [Name and releases](fork.md#name-and-releases)). To run the newest `main` before its release, or if the workflow failed, install from source:
+
+```bash
+git clone https://github.com/devellaoy/3d-kanban.git && cd 3d-kanban && npm install && npm install -g .
+kanban3d
+```
+
+(`npm install` also builds the client and the server; `npm install -g .` puts `kanban3d` on your PATH.)
+
+**Updating.** Run the install line again: it installs the newest release, points `kanban3d` at it and removes the versions nothing runs any more. Your data isn't touched. From source: `git pull && npm install && npm install -g .`. On a server, run the provision line again, use **⬆️ Upgrade the office** in the **☰** menu, or the deploy script's `update` ([self-hosting](self-hosting.md)).
+
+**Where things live.** The program is in the install folder above (`versions/<tag>`, and `current` names the one in use). Your data is where upstream keeps it: `~/agent-office` (see below), whose `.agent-office` folder holds the password, accounts, floors, chat and the kanban's `kanban.sqlite`, `kanban-settings.json` and uploads. The office still reads upstream's `AGENT_OFFICE_*` environment variables (`AGENT_OFFICE_HOME`, `AGENT_OFFICE_PASSWORD`, `AGENT_OFFICE_HOOK_PORT`, …), and the installers take theirs (`AGENT_OFFICE_INSTALL_DIR`, `AGENT_OFFICE_BIN_DIR`, …). An upstream `agent-office` on the same machine uses the same data folder and port by default: don't run both at once on them, or start one with `--home <another folder>` and `--port <another port>`.
+
+**Coming from ai-kanban.** The migration runs from a clone of this repository (it isn't in the release) and writes into the office's data folder (`--home` picks another). See [the guide](migration.md).
+
+## First start
+
+The first time it starts, it walks you through setting up, right in the terminal:
+
+1. **Where to clone your projects.** It suggests a code folder you already have (`~/Workspace`, `~/code`…), else `~/agent-office`. Each project goes in `<folder>/<owner>/<repo>`.
+2. **GitHub.** If the GitHub CLI isn't signed in, it offers to run `gh auth login` for you.
+3. **Your first project.** Pick one of your repos by number, or type `owner/name`, and the office clones it as the first floor. (To use a folder you already have instead, start with `kanban3d <folder>`, or add it from the elevator once the office is open.)
+
+Press Enter to skip a step: you can add your first project later in the kanban (**⚙️ Settings → 📁 Projects → New project**, for admins: a local folder or a GitHub repository), or at the elevator in the 3D office, where an admin can type the path of a folder (starting with `/` or `~`) and press **📁 Add folder**. Then the kanban board opens in your browser, **already signed in**, with a link that works once. The 3D office is at `/`, and the board's **3D office** button takes you there. The terminal also prints the office password, for signing in from another browser (it's saved in `~/agent-office/.agent-office/config.json`).
+
+In the 3D office, walk to an empty desk, press **E** and hire a worker. Its prompt can take files too: **📎 Attach**, paste or drop them on the dialog ([features](features.md)).
+
+Common options:
+
+```bash
+kanban3d ~/code/my-project              # use a project you already have as the first floor
+kanban3d --password 'correct horse'     # choose the password
+kanban3d --port 4700
+kanban3d --agent grok                   # default agent: claude, codex, opencode, grok, muse or dsh
+kanban3d --no-open                      # print the sign-in link instead of opening a browser
+kanban3d setup                          # the first-start walkthrough again (office stopped)
+```
+
+Only your computer can reach the office: it listens on `127.0.0.1`. `--host 0.0.0.0` lets your network in, but over plain http, where voice and screen sharing don't work. To share the office with a team, put it on a server: [AWS](aws.md), [Azure](azure.md), [Railway](railway.md), [Fly.io](fly.md), [Dokploy](dokploy.md) or [any Ubuntu or Debian machine](self-hosting.md). Every option is in [Command line](#command-line) below. Choosing models and providers per worker is in [agents](agents.md).
+
 ## Where the office keeps things
 
 The office keeps its data in `~/agent-office` (`--home` or `AGENT_OFFICE_HOME` to move it) and clones projects next to it, as `~/agent-office/<owner>/<repo>`. To clone them somewhere else, like `~/Workspace`, an admin picks the **Workspace folder** in ⚙️ Settings → **Building** (or start with `--projects` or `AGENT_OFFICE_PROJECTS`). Floors you already have stay where they are, and a checkout of the same repository that's already in the new folder is used as it is. The building's map is in `~/agent-office/.agent-office/map.json`, and maps of your own go in `~/agent-office/.agent-office/maps/` (see [Maps](maps.md)). The list of floors is `~/agent-office/.agent-office/floors.json`, and each account's own Claude and GitHub sign-ins are in `~/agent-office/.agent-office/homes/<account>/` (revoking the account deletes them). Each floor keeps its workers, queue, pictures in its own checkout's `.agent-office/`, and its worktrees in `<checkout>.worktrees/` beside it.
@@ -76,7 +141,7 @@ kanban3d relay --password <pw> [options]
 
 The relay closes an office's connection with code 4403 when GitHub says the token is not valid (the office then asks you to sign in again, after checking the token with GitHub itself), and with 4504 when GitHub could not be asked (a timeout or a GitHub error; the office just tries again). Behind a reverse proxy (for example Apache) pass `--trust-proxy` and make sure the relay's port is reachable only through the proxy (otherwise anyone can set `X-Forwarded-For` and get past the attempts limit); without it every office appears to come from the proxy and they all share one limit on attempts.
 
-The relay listens on `/mp` (`ws://host:4700/mp`, or `wss://` with TLS) and keeps nothing on disk. Offices type its address into ⚙️ Settings → **Multiplayer** (see [Features](features.md#multiplayer-visit-each-others-offices)); running it on a server is in [Self-hosting](self-hosting.md#run-a-multiplayer-relay).
+The relay listens on `/mp` (`ws://host:4700/mp`, or `wss://` with TLS) and keeps nothing on disk. Offices type its address into ⚙️ Settings → **Multiplayer** (see [Features](features.md)); running it on a server is in [Self-hosting](self-hosting.md#run-a-multiplayer-relay).
 
 **The GitHub OAuth App.** The relay uses it so offices can prove their GitHub login. In GitHub, go to Settings → Developer settings → OAuth Apps → **New OAuth App**, give it any name, any homepage and any callback URL (the device flow never uses it), tick **Enable Device Flow** and save. Only the **Client ID** is needed, passed as `--github-client-id`: no client secret, and offices ask GitHub for no permissions. Without a client id the relay starts but offices can't verify themselves through it.
 

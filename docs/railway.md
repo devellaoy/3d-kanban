@@ -1,6 +1,6 @@
 # Railway reference
 
-The full story behind `deploy/railway.sh`. The short version is in the [README](../README.md#deploy-to-railway).
+Back to the [README](../README.md). The full story behind `deploy/railway.sh`.
 
 You need the **Railway CLI 5 or newer, logged in** (`railway login`; update an older one with `railway upgrade` or `brew upgrade railway`), plus `ssh`, `curl`, Node.js and a clone of this repo:
 
@@ -12,9 +12,12 @@ deploy/railway.sh up --claude-token "$(claude setup-token)"
 After that:
 
 ```bash
-deploy/railway.sh open      # tunnel to the office and open it in your browser
-deploy/railway.sh update    # build this checkout again and redeploy it
-deploy/railway.sh destroy   # delete the project, its volume and everything on it (asks first)
+deploy/railway.sh open              # tunnel + open the office (Ctrl-C closes the tunnel)
+deploy/railway.sh status            # deployment, SSH address, volume, is the office up, who's invited
+deploy/railway.sh invite octocat    # let a teammate tunnel in with their GitHub SSH keys
+deploy/railway.sh logs              # follow the office's logs (ssh: a shell in the container)
+deploy/railway.sh update            # build this checkout again and redeploy it
+deploy/railway.sh destroy           # delete the project and its volume, and everything on it (asks first)
 ```
 
 What `up` does, in about five minutes the first time:
