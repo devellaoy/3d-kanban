@@ -369,7 +369,7 @@ const { openWorker: openPlainWorker, sendHome } = workerOpener(net, { keypad: ()
 const workerBar = installWorkerBar({ root: $('kb-workers'), openWorker: openPlainWorker, sendHome, hireNew, openShell, boardProject: () => kstore.project, projectName: (id) => kstore.projectOf(id)?.name, goToFloor: (id) => net.send({ t: 'floor.go', floor: id }) });
 
 function showIssues() {
-  const p = kstore.project ?? (kstore.projectOf(store.floor ?? undefined) ? store.floor : kstore.projects[0]?.id);
+  const p = kstore.project ?? (kstore.projectOf(store.floor ?? undefined) ? store.floor : orderedProjects(kstore.projects)[0]?.id);
   if (!p) return toast('No projects yet: add one in Settings → Projects, or at the elevator in the 3D office.', 'warn');
   openIssues(api, p, (id) => openTask(id));
 }
