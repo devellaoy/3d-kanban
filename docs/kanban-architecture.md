@@ -23,7 +23,7 @@ document disagree, fix one of them in the same change.
   General code (the shoulder camera, the GitHub repo picker, PR file lists and so on) lives where it
   belongs, outside these folders, and any file may be changed where that is the clean solution.
   The registries and the size guard ([Code layout](code-layout.md)) apply to the kanban like to the rest.
-- Multiplayer visitors (see [Features](features.md#multiplayer-visit-each-others-offices)) get a filtered,
+- Multiplayer visitors (see [Features](features.md)) get a filtered,
   read-only view of the kanban: only `kanban.subscribe`, `snapshot`, `task.get`, `comments.page`,
   `meta.get` and `pr.bundle` for projects the owner shared with them, and every other kanban message is refused.
 - Style: upstream's — TypeScript strict, ES modules with `.js` import suffixes, `node:test` tests,

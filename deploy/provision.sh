@@ -112,7 +112,7 @@ quiet() {
 }
 
 command -v apt-get >/dev/null 2>&1 && command -v systemctl >/dev/null 2>&1 ||
-  die "this sets up Ubuntu or Debian servers (apt and systemd). Elsewhere, see the README."
+  die "this sets up Ubuntu or Debian servers (apt and systemd). Elsewhere, see https://github.com/devellaoy/3d-kanban/blob/main/docs/self-hosting.md."
 # As root, other users' commands would start in /root, which they can't read.
 cd /
 
