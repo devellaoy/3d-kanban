@@ -16,7 +16,8 @@ import { DESK_BY_ID, deskBuilt, nextFreeSeat, watchSpotOf } from '../../../share
 import type { WorkerInfo } from '../../../shared/protocol.js';
 import { isBusy } from '../../../shared/status.js';
 import { withContract } from '../../../shared/kanban/prompts.js';
-import type { PendingMessage, AskingKind, DepartureIntent, KanbanComment, KanbanEffort, KanbanPrLink, KanbanPrReviewRequest, KanbanRole, KanbanRun, KanbanTask, KanbanTool, KanbanWorkerSummary, PrRef, ProjectRepo, QueuedRun, RunPhase } from '../../../shared/kanban/types.js';
+import type { TurnSignal } from '../../../shared/kanban/signals.js';
+import type { DepartureIntent, KanbanComment, KanbanEffort, KanbanPrLink, KanbanPrReviewRequest, KanbanRole, KanbanRun, KanbanTask, KanbanTool, KanbanWorkerSummary, PrRef, ProjectRepo, QueuedRun, RunPhase } from '../../../shared/kanban/types.js';
 import { BRANCH_PREFIX, Worktrees } from '../../worktrees.js';
 import type { AttachmentRow, NewComment, TaskUpdate } from '../db/repository.js';
 import { grantDir, grantFiles } from '../uploads.js';
@@ -34,12 +35,14 @@ import { next, prPrompt, queuedOf, runOf, stateOf, type Effect, type LastRun, ty
 import { backoffMs, looksInterrupted, notUpdatedLines, planOutcome, prLines, reviewFindings, reviewVerdict, stripPlanMarkers, stripWorkDone } from './markers.js';
 import { limitReset } from './limitreset.js';
 import { endStop, type StopRun } from './stopping.js';
-import { branchExists, checkoutLines, currentBranch, homeCleanup, hasChanges, missingFolders } from './workspace.js';
+import { branchExists, checkoutLines, currentBranch, homeCleanup, hasChanges, missingFolders, uncommitted } from './workspace.js';
 import { Handoffs } from './handoff.js';
 import { Departures } from './departures.js';
 import { Holds } from './hold.js';
 import { Restarts, receipt } from './restart.js';
-import { promptHead, TurnHolds, typeable, type HeldRun } from './turnhold.js';
+import { promptHead, TurnHolds, typeable } from './turnhold.js';
+import { agentHook, newTurn, acceptSignal, QUESTION_TOOL, StopGate, stopMessage } from './signals.js';
+import type { Live, Via } from './live.js';
 import { lostText, TurnEnd, unfinishedText } from './turnend.js';
 import { Comments } from './comments.js'; import { runTyped } from '../db/typed.js';
 import { RestWaits } from './restwait.js';
@@ -59,54 +62,14 @@ export interface EngineOptions {
   nudgeIdleMs?: number;
   /** How many times a run is nudged before it ends on its last text (4). */
   maxNudges?: number;
+  /** How many Stops of a run the Stop hook gate may block at most (2; 0 turns it off, as AGENT_OFFICE_KANBAN_STOP_GATE=off does). */
+  maxGateBlocks?: number;
   /** A phase that finds its own worker still busy (its teammates keep it working) waits this long for it to rest before it fails (10 min). */
   busyWaitMs?: number;
   /** The gap between one run carried on after an office restart and the next (5 s). */
   restartStaggerMs?: number;
   adapters?: Partial<Record<KanbanTool, TaskAgentAdapter>>;
   now?: () => number;
-}
-
-/** A run the engine started and is following, by the worker it runs on. */
-interface Live extends HeldRun {
-  round?: number;
-  role: KanbanRole;
-  tool: KanbanTool;
-  /** Claude asked to leave plan mode (ExitPlanMode): its needs_input is the finished plan. */
-  exitPlan: boolean;
-  /** What its agent's needs_input waits on, as its hooks last said (heardAsk); unknown when unset. */
-  asks?: AskingKind;
-  /** Its agent was started on a stored session (--resume) and has not been heard from yet: if it exits now, the session is gone (see exited). */
-  resumed?: boolean;
-  started?: boolean;
-  typed?: boolean; // its prompt was typed into the running agent: it has it once the agent's prompt hook or work is heard (see receipt)
-  /** False while an old process of the worker is still being ended for a relaunch: its events are not the new agent's. */
-  armed?: boolean;
-  /** What its run was asked to do (the text as it went), to start it again in a fresh session; and what is to be acknowledged once the agent has the prompt. */
-  eff?: RunEffect;
-  via?: Via;
-  ack?: () => void;
-  stopping?: { by?: string; at?: number; timer?: NodeJS.Timeout };
-  /** The work on the comments made while it stopped (`defer` in finishStopped), kept until its worker is restarted: deliverStopped starts it (see endStop). */
-  afterStop?: () => Promise<void>;
-  /** A finished turn handled after an office restart: its result is read from the run's start, the woken process's SessionStart is later. */
-  pinSince?: boolean;
-}
-
-/** What an operation carries into the effects it causes. */
-interface Via {
-  who?: KanbanCaller;
-  commentId?: number;
-  /** A pull-request review's request (reviewPrs), for its run. */
-  prReview?: KanbanPrReviewRequest;
-  /** Where a start's first hire sits (start with a desk: the 3D hire form). */
-  deskId?: string;
-  /** The hold a task is being taken off (kept for the unhold run's prompt and the worker's look). */
-  hold?: KanbanTask['hold'];
-  /** A run that works on the comments made since then (a Stop's own: see finishStopped); the older ones stay queued. */
-  pendingSince?: number;
-  /** The queued comments the run took off the task for its prompt (Comments.take): put back if its agent never gets the prompt. */
-  taken?: PendingMessage[];
 }
 
 /**
@@ -140,29 +103,17 @@ const OFFICE: KanbanCaller = { name: 'Kanban', admin: true };
 /** How the engine sends its own workers home: nothing for removed() to act on, it has seen to the task itself. */
 const ENGINE: DepartureIntent = { by: 'Kanban', reason: 'engine' };
 const SUMMARY_MAX = 20_000;
-/** How much of a Stop hook's final answer is kept (it becomes a comment, a summary, a PR comment). */
-const STOP_TEXT_MAX = 100_000;
 const PENDING_MAX = 50;
 /** The prompts a fresh session taking over work under way is handed off with. */
 const HANDOFF_KINDS = new Set<PromptKind>(['fix', 'resume', 'continue', 'restarted', 'unhold', 'pr.create', 'pr.fix', 'pr.conflicts']);
 const ESC = '\x1b';
 const RESTING = new Set(['done', 'idle', 'needs_input', 'exited']);
-/** A tool that asks the user a question in the terminal: Claude's AskUserQuestion, Codex's request_user_input. */
-const QUESTION_TOOL = /(?:^|[._])(?:AskUserQuestion|ask_user_question|request_user_input)$/;
 /** Why an answer from the kanban isn't typed into a terminal that isn't asking a question (answer). */
 const ASKS_PERMISSION = 'The agent is asking for a permission in its terminal: answer it there (Open the terminal)';
 const ASKS_UNKNOWN = 'The agent is waiting on something in its terminal: answer it there (Open the terminal)';
 
-/** A hook payload from a subagent or a teammate: Claude Code adds `agent_id` only to those. */
-const agentHook = (payload: unknown): boolean => typeof (payload as { agent_id?: unknown } | undefined)?.agent_id === 'string';
-
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 const clip = (s: string, max: number) => (s.length > max ? `${s.slice(0, max)}…` : s);
-/** The final answer a Claude Stop hook carries (`last_assistant_message`), capped; undefined without one. */
-const stopMessage = (payload: unknown) => {
-  const last = (payload as { last_assistant_message?: unknown } | undefined)?.last_assistant_message;
-  return typeof last === 'string' && last.trim() ? clip(last.trim(), STOP_TEXT_MAX) : undefined;
-};
 const sameArgs = (a: string[] | undefined, b: string[]) => !!a && a.length === b.length && a.every((x, i) => x === b[i]);
 export class Orchestrator {
   private live = new Map<string, Live>();
@@ -190,6 +141,7 @@ export class Orchestrator {
   private holds: Holds;
   private turnHolds: TurnHolds<Live>;
   private turnEnd: TurnEnd<Live>;
+  private gate: StopGate<Live>;
   private comments: Comments<Live>;
   private restarts: Restarts<Live>;
   private opts: Required<Omit<EngineOptions, 'adapters' | 'restartStaggerMs'>>;
@@ -252,6 +204,22 @@ export class Orchestrator {
       nudgeIdleMs: () => this.opts.nudgeIdleMs,
       maxNudges: () => this.opts.maxNudges,
     });
+    this.gate = new StopGate<Live>({
+      task: (id) => this.ctx.repo.getTask(id),
+      note: (task, text, runId) => this.note(task, text, runId),
+      read: async (live) => {
+        const file = this.ctx.floor(live.floorId)?.workers.transcripts(live.workerId)?.claude;
+        return file ? this.adapters.claude.readTurnResult(file, this.turnOpts(live)) : undefined;
+      },
+      uncommitted: async (live) => {
+        // The worker's own folders (the task's workspace is only kept at a turn's end).
+        const task = this.ctx.repo.getTask(live.taskId), floor = this.ctx.floor(live.floorId), info = floor?.workers.get(live.workerId);
+        const ws = info?.worktree ? { worktree: info.worktree, ...(info.repos?.length ? { repos: info.repos } : {}) } : task?.workspace;
+        return task && floor && ws && !this.folder(task.project) ? uncommitted(floor.dir, ws) : [];
+      },
+      maxBlocks: () => this.opts.maxGateBlocks,
+      readPauseMs: () => this.opts.readPauseMs,
+    });
     this.comments = new Comments<Live>({
       ctx,
       compose: this.compose,
@@ -290,6 +258,7 @@ export class Orchestrator {
       backgroundWaitMs: options.backgroundWaitMs ?? 3 * 3_600_000,
       nudgeIdleMs: options.nudgeIdleMs ?? 3 * 60_000,
       maxNudges: options.maxNudges ?? 4,
+      maxGateBlocks: process.env.AGENT_OFFICE_KANBAN_STOP_GATE === 'off' ? 0 : (options.maxGateBlocks ?? 2),
       busyWaitMs: options.busyWaitMs ?? 600_000,
       now: options.now ?? Date.now,
     };
@@ -821,6 +790,7 @@ export class Orchestrator {
 
   /** Starts a run: in the role's live worker (typed, or relaunched with the phase's flags), or a new hire. */
   private async launch(task: KanbanTask, eff: RunEffect, via: Via): Promise<string | NoRoom | undefined> {
+    this.ctx.repo.setAskingKind(task.id, undefined);
     const def = this.ctx.project(task.project);
     const floor = this.watch(task.project);
     if (!def || !floor) return "The project's floor isn't open";
@@ -1171,6 +1141,16 @@ export class Orchestrator {
 
   // --- Following workers --------------------------------------------------------------------------
 
+  /** An agent's own announcement of how its turn ends (KanbanEngineApi.signal). */
+  signal(workerId: string, sig: TurnSignal): string | void {
+    return acceptSignal(this.live.get(workerId), sig);
+  }
+
+  /** Whether a Claude Stop hook of the worker may end its turn (KanbanEngineApi.stopGate). */
+  stopGate(workerId: string, payload: unknown): Promise<{ block?: string; stale?: true }> {
+    return this.gate.decide(this.live.get(workerId), payload);
+  }
+
   private observed(floorId: string, o: WorkerObservation) {
     if (this.disposed) return;
     if (o.event === 'hook' && o.hookEvent === 'SessionStart' && !agentHook(o.payload)) {
@@ -1211,8 +1191,8 @@ export class Orchestrator {
       }
       if ((o.hookEvent === 'PreToolUse' || o.hookEvent === 'PermissionRequest') && o.tool === 'ExitPlanMode') live.exitPlan = true;
       else if (o.hookEvent === 'PreToolUse' && o.tool) live.exitPlan = false;
-      if (o.hookEvent === 'UserPromptSubmit') Object.assign(live, { stopText: undefined, restating: false });
-      else if (o.hookEvent === 'Stop' && live.tool === 'claude') live.stopText = stopMessage(o.payload);
+      if (o.hookEvent === 'UserPromptSubmit') (Object.assign(live, { stopText: undefined, restating: false }), newTurn(live));
+      else if (o.hookEvent === 'Stop') Object.assign(live, { gated: false, ...(live.tool === 'claude' ? { stopText: stopMessage(o.payload) } : {}) });
       // The resumed turn has started (these hooks also set the worker `working`): its end is a normal `done` again.
       if (live.background && (o.hookEvent === 'PreToolUse' || o.hookEvent === 'UserPromptSubmit')) this.turnHolds.release(live);
       // A Stop while stopping is the stop done (the worker may stay `done`, which emits no status).
@@ -1445,6 +1425,7 @@ export class Orchestrator {
   /** The office prompts the run now (its launch or a restate): its answer is read from that prompt's turns; the time is kept on the run for a restart. */
   private prompted(live: Live, text: string) {
     live.promptHead = promptHead(text);
+    newTurn(live);
     this.ctx.repo.updateRun(live.runId, { promptedAt: (live.promptAt = Date.now()) });
   }
 
@@ -1465,13 +1446,14 @@ export class Orchestrator {
     if (live.ended || live.restating || this.live.get(live.workerId) !== live) return;
     // Read before ending: a log that lags (the launch's result not in it yet) shows the background tasks only by now.
     // Nothing else ends the run meanwhile: they all go through `serial`, and this re-checks after the wait.
-    const read: TurnResult | undefined = await this.readResult(live);
+    const turn = live.turn, read: TurnResult | undefined = await this.readResult(live);
     if (live.ended || this.live.get(live.workerId) !== live) return;
     // The agent's final marker ends the run; a turn without it is an interim update the run waits through (see TurnEnd).
-    const ending = await this.turnEnd.decide(live, read, { planExit, force });
+    const ending = await this.turnEnd.decide(live, read, { planExit, force, turn });
     if (!ending.end) return;
     const result = ending.result;
     const unfinished = ending.unfinished;
+    const asked = ending.asked;
     live.background = false;
     live.ended = true;
     this.forget(live);
@@ -1509,6 +1491,15 @@ export class Orchestrator {
       this.finishRun(live.runId, task.project, { status: 'failed', error: why, ...(sessionId ? { sessionId } : {}) });
       this.note(task, why, live.runId);
       await this.apply(task.id, { type: 'failed', error: why });
+      void this.drain(task.project);
+      return;
+    }
+    if (asked) {
+      // The agent announced a question: it is kept as one, and the run is over; the task waits for the answer (a comment or Continue), which carries on in this phase.
+      say('questions', stripWorkDone(result.text.trim()));
+      this.finishRun(live.runId, task.project, { status: 'succeeded', summary: clip(stripWorkDone(result.text.trim()), SUMMARY_MAX), ...(sessionId ? { sessionId } : {}) });
+      this.ctx.repo.setAskingKind(task.id, 'question');
+      await this.apply(task.id, { type: 'asking', text: 'The agent asks: answer below or with a comment', ended: true });
       void this.drain(task.project);
       return;
     }

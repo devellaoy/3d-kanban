@@ -65,6 +65,30 @@ test('the contracts ask for the marker the engine reads, and the nudges ask for 
   assert.equal(finishNudge('pr-review'), finishNudge('review'));
 });
 
+test('the contracts also ask for the announcement, and say the text marker stays required', () => {
+  for (const id of ['implementSafety', 'investigateSafety', 'pr'] as const) {
+    const c = KANBAN_CONTRACTS[id];
+    assert.match(c, /run `office-tasks done` \(or call the agent-office MCP tool `report_turn` with kind done\)/, id);
+    assert.match(c, /run `office-tasks ask` instead and end your reply with your questions/, id);
+    assert.match(c, /If the command fails or isn't available, carry on: the WORK DONE line is enough/, id);
+    assert.match(c, /Don't report when you only end a turn to wait/, id);
+    assert.match(c, /end your final reply with a line that says only: WORK DONE/, id);
+  }
+  assert.match(KANBAN_CONTRACTS.pr, /office-tasks pr <its URL>`[^\n]*the PR: lines stay required/);
+  assert.doesNotMatch(KANBAN_CONTRACTS.implementSafety, /office-tasks pr/);
+  // A plan or a review may be a Codex sandbox with no network, or Claude's plan mode: only the MCP tool is named there.
+  for (const id of ['plan', 'review', 'prReview'] as const) {
+    assert.match(KANBAN_CONTRACTS[id], /If the agent-office MCP tool `report_turn` is available to you in this mode, also call it right before your final reply/, id);
+    assert.doesNotMatch(KANBAN_CONTRACTS[id], /office-tasks/, id);
+  }
+  assert.match(KANBAN_CONTRACTS.plan, /kind plan-ready with the plan, ask with your questions\)\. It never replaces the marker line/);
+  assert.match(KANBAN_CONTRACTS.review, /kind review, verdict approved or changes\)\. It never replaces the verdict line: the verdict line in your reply is what counts for an approval/);
+  assert.doesNotMatch(KANBAN_CONTRACTS.panel, /report_turn|office-tasks/);
+  assert.match(finishNudge('implement'), /office-tasks done/);
+  assert.doesNotMatch(finishNudge('plan'), /office-tasks/);
+  assert.doesNotMatch(finishNudge('review'), /office-tasks/);
+});
+
 test('the contracts stress the marker as the last line and ask for a final check; the nudges ask for the whole answer again', () => {
   assert.match(KANBAN_CONTRACTS.plan, /as its very last line/);
   assert.match(KANBAN_CONTRACTS.plan, /read the end of your reply once more/);

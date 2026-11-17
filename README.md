@@ -97,7 +97,7 @@ curl -fsSL https://raw.githubusercontent.com/devellaoy/3d-kanban/main/deploy/pro
 ## What the fork adds
 
 - **A task process**: plan (with questions, auto or manual approval) → implement → 1–10 review rounds ⇄
-  fix → the Review column → Done (a task that has to wait for something outside goes **On hold**, its worker resting in the 3D lounge: [docs/kanban.md](docs/kanban.md#on-hold)). A turn ends when the agent says so (a final `WORK DONE` line, the plan's `PLAN READY`, a review's verdict), not when the logs look quiet; a resting agent that never says it is nudged. Comments put the agent back to work, typed straight into its terminal while it works (a comment whose work changes nothing since the task came to
+  fix → the Review column → Done (a task that has to wait for something outside goes **On hold**, its worker resting in the 3D lounge: [docs/kanban.md](docs/kanban.md#on-hold)). A turn ends when the agent says so (a final `WORK DONE` line, the plan's `PLAN READY`, a review's verdict; a worker can also announce it with `office-tasks done` (not from a Codex sandbox without network), and a Claude implementer that stops without saying it is done, or leaving uncommitted changes, is sent back to work, at most twice; `AGENT_OFFICE_KANBAN_STOP_GATE=off` turns that off), not when the logs look quiet; a resting agent that never says it is nudged. Comments put the agent back to work, typed straight into its terminal while it works (a comment whose work changes nothing since the task came to
   Review doesn't start a review round), and answer it when it asks in its terminal (you can also type into a worker's terminal mid-run: a reply to you doesn't replace the run's result, and if the run's background work ended in that turn the office asks the agent to restate its final answer); usage limits are retried by themselves (a Codex one at the reset time its account reports). A task that finds no free desk or the office's
   worker limit full is queued and starts when there's room, as the account that made it (a task counts
   once against the limit: its reviewer never waits for its own implementer's place, and it takes no desk
@@ -162,7 +162,8 @@ curl -fsSL https://raw.githubusercontent.com/devellaoy/3d-kanban/main/deploy/pro
   finishes, unless it was asked to leave them running).
 - **Skills** per project, phase and agent (Claude via `--plugin-dir`, Codex synced into its home). The repository's `user-skills/` (kanban-dev and others) are synced into your own
   `~/.claude` and `~/.codex` on start, see [docs/kanban.md](docs/kanban.md#skills-synced-to-your-own-home).
-- **Task references for agents**: `office-tasks get 14`, the MCP tools `get_task` / `search_tasks`, creating
+- **Task references for agents**: `office-tasks get 14`, the MCP tools `get_task` / `search_tasks`, telling the office how a turn ends
+  (`office-tasks done | ask | plan-ready | review approved|changes | pr <url>`, the MCP tool `report_turn`), creating
   tasks from an agent (`office-tasks create`, the MCP tool `create_task`; a kanban task's worker you ask to
   delegate a piece of work starts a new task for it, up to 5 per task), and
   ai-kanban's `/api/tasks/reference` and `/api/v1` on the loopback hook server (its port is in

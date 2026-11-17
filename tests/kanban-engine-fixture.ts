@@ -652,3 +652,14 @@ export async function engineFixture(opts: { engine?: EngineOptions; repos?: Floo
 }
 
 export const ADA = { name: 'Ada', admin: true };
+
+/** Waits until the worker's agent works on a turn (its prompt was submitted), then a moment: what a test says to the engine then is said mid-turn. */
+export async function midTurn(fx: EngineFixture, workerId: string, timeout = 15_000): Promise<void> {
+  const end = Date.now() + timeout;
+  while (fx.workers.get(workerId)?.status !== 'working' && Date.now() < end) await new Promise((r) => setTimeout(r, 25));
+  assert.equal(fx.workers.get(workerId)?.status, 'working', 'the worker works on a turn');
+  await new Promise((r) => setTimeout(r, 150));
+}
+
+/** The worker's hook token, to post a hook of its agent's as the fake CLI would. */
+export const hookToken = (fx: EngineFixture, workerId: string): string => (fx.workers as unknown as { workers: Map<string, { hookToken: string }> }).workers.get(workerId)!.hookToken;

@@ -13,6 +13,7 @@ import type { LanguageSettings } from '../../shared/language.js';
 import type { PromptId } from '../../shared/prompts.js';
 import type { KanbanPrReviewRequest, KanbanTask, KanbanTaskCard, PrRef, ProjectRepo } from '../../shared/kanban/types.js';
 import type { PrMode } from '../../shared/kanban/prs.js';
+import type { TurnSignal } from '../../shared/kanban/signals.js';
 
 /** Who sent a WS message or an HTTP request from a browser. */
 export interface KanbanCaller {
@@ -109,6 +110,10 @@ export interface KanbanEngineApi {
    * reviewer (no reviewer yet when there's no room for one: the task is queued), or to why not.
    */
   reviewPrs(req: KanbanPrReviewRequest, who: KanbanCaller): Promise<{ taskId: number; workerId?: string } | string>;
+  /** An agent's own announcement of how its turn ends. Returns an error text when refused (no live run of this worker, wrong phase, …). */
+  signal(workerId: string, sig: TurnSignal): string | void;
+  /** Whether a Claude Stop hook of this worker may end its turn: `block` is the text handed back to the agent, which then goes on; `stale` says the Stop is a past turn's (a new prompt overtook it) and is to be dropped. Never throws. */
+  stopGate(workerId: string, payload: unknown): Promise<{ block?: string; stale?: true }>;
 }
 
 /** The part of upstream's RunAs (workers.ts) the engine asks before it hires as an account. */

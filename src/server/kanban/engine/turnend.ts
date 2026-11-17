@@ -9,6 +9,7 @@ import type { KanbanTask, KanbanTool } from '../../../shared/kanban/types.js';
 import type { Floor } from '../../floor.js';
 import type { TurnResult } from './adapters/types.js';
 import { finalMarker, looksInterrupted } from './markers.js';
+import { applySignal, expireSignal, withPrs, type Applied } from './signals.js';
 import { typeable, type HeldRun, type TurnHolds } from './turnhold.js';
 
 /** A run as the turn end follows it. */
@@ -38,7 +39,8 @@ export interface TurnEndDeps<L extends EndLive> {
 
 /** What a turn's end comes to: the run goes on (`end` false), or it ends on `result` (undefined: the log had none to read). */
 /** `unfinished`: the agent never gave its marker, even when asked: the run ends, but the task is not moved on (it waits for the user). */
-export type Ending = { end: false } | { end: true; result: TurnResult | undefined; unfinished?: true; lost?: NonNullable<TurnResult['lost']> };
+/** `asked`: the agent announced a question for the user (a phase that is not a plan): the run ends and the task waits for the answer. */
+export type Ending = { end: false } | { end: true; result: TurnResult | undefined; unfinished?: true; lost?: NonNullable<TurnResult['lost']>; asked?: true };
 
 /** What the marker of a phase is called, for the note that an agent never gave it. */
 const markerName = (phase: string) => (phase === 'plan' ? 'PLAN READY or QUESTIONS:' : phase === 'review' || phase === 'pr-review' ? 'a REVIEW: verdict line' : WORK_DONE);
@@ -59,16 +61,48 @@ export class TurnEnd<L extends EndLive> {
    * heard) until its next one; otherwise until the agent is nudged for its marker. A usage limit, an unreadable turn and an agent that
    * has been nudged as often as it is end the run on what there is. `force`: the hold's timeout; the run is nudged then, or ends.
    */
-  async decide(live: L, result: TurnResult | undefined, o: { planExit: boolean; force: boolean }): Promise<Ending> {
+  async decide(live: L, result: TurnResult | undefined, o: { planExit: boolean; force: boolean; /** The run's turn when this end began (before its result was read), when the caller kept it. */ turn?: number }): Promise<Ending> {
+    // The Stop gate is deciding on this turn's Stop (it reads the log and asks git): what it says comes first, a blocked Stop being no end.
+    // Until none is under way: a second Stop may have joined the wait while this stood in it.
+    const turn = 'turn' in o ? o.turn : live.turn;
+    // And again after the read below: another Stop's decision may have begun while the log was read.
+    while (live.gating && !o.planExit) {
+      while (live.gating) await live.gating.catch(() => undefined);
+      if (live.ended || live.turn !== turn) break;
+      // The same turn still: its result as the log has it now, not as it was before the wait.
+      result = (await this.deps.read(live)) ?? result;
+    }
+    if (live.ended) return { end: false };
+    // A prompt came in the wait (typed into its terminal, a comment of the office's): what was read is the turn before it, whose answer must not
+    // end the run while the new turn goes. The run is held for that turn's own Stop, and what the new turn has announced since is its own: kept.
+    if (live.turn !== turn && !o.planExit && !o.force) return this.wait(live);
+    const ending = this.judge(live, result, o);
+    // An announcement is for the turn it was made in: one this Stop did not end the run on (work still out, a turn not over) is none for the next.
+    if (!ending.end) expireSignal(live);
+    return ending;
+  }
+
+  private judge(live: L, result: TurnResult | undefined, o: { planExit: boolean; force: boolean }): Ending {
     if (o.planExit || !result) return { end: true, result };
     // A prompt or comment the log never showed in the wait for it: the answer read is an older turn's, never the run's. It ends unfinished, the comments kept.
     if (result.lost) return { end: true, result, unfinished: true, lost: result.lost };
     // A person's typed turn after the office's may have ended the work: its marker counts.
     const r = this.adopt(live, result);
+    // The agent's own announcement ends the run, on its text rewritten to carry the marker (stricter than the marker itself: see announced).
+    const said = this.announced(live, r);
+    if (said) {
+      const task = this.deps.task(live.taskId);
+      if (said.note && task) this.deps.note(task, said.note, live.runId);
+      return { end: true, result: { ...r, text: said.text }, ...(said.asked ? { asked: true as const } : {}) };
+    }
+    // A Stop the gate blocked is no end of the turn: the worker's `done` that upstream may still show is that turn's, and the agent goes on.
+    // A usage limit or lost connection that cut the turn it went on with fires no Stop, though: that still ends the run (and is retried).
+    if (live.gated && !o.force && !looksInterrupted(r.text, r.apiError)) return this.wait(live);
     // An earlier turn's marker (the office's prompt isn't in the log yet) is no answer to this one.
     if (!r.unheard && finalMarker(live.phase, `${r.text}\n${r.plan ?? ''}`, r.exitPlan)) {
       if (r.background || r.resuming) console.warn(`agent-office: kanban task #${live.taskId}: the ${live.phase} run gave its final marker while the log shows work still out (${r.background ?? 0} background); ending it`);
-      return { end: true, result: r };
+      // The pull requests it reported with the command count with the text's own marker too, not only with a `done` announcement.
+      return { end: true, result: live.signalPrs?.length ? { ...r, text: withPrs(r.text, live.signalPrs) } : r };
     }
     const running = !!(r.background || r.unheard || (r.resuming && !live.held));
     if (running && !o.force) return this.wait(live);
@@ -78,6 +112,18 @@ export class TurnEnd<L extends EndLive> {
     if (!r.complete && !r.text.trim()) return { end: true, result: r };
     if ((live.nudges ?? 0) >= this.deps.maxNudges()) return this.exhausted(live, r);
     return o.force ? this.nudge(live, r) : this.wait(live);
+  }
+
+  /**
+   * What the agent's announcement makes of the turn, when it ends the run: only on the final answer of a turn that is over (`complete`, no tool
+   * still running, no turn typed into the terminal still going), with no background work, teammates or unanswered notification in the
+   * log and no prompt of the office's unheard. Anything in the agent's shell, a helper or a teammate holds the hook token, so an announcement in
+   * the middle of work is none, and it never makes an interim text the answer; otherwise the text decides, as it does without one.
+   */
+  private announced(live: L, r: TurnResult): Applied | undefined {
+    // A turn typed into the terminal after the office's: its own final answer is the one announced, once it is over (while it runs, the run waits as before).
+    const over = r.complete && !r.toolRunning && !r.typedOpen && !(r.typed && r.interim) && !r.unheard && !r.background && !r.resuming;
+    return live.signal && over ? applySignal(live.phase, (r.typed && r.lastText) || r.text, live.signal, live.signalPrs ?? []) : undefined;
   }
 
   /** The turn read, with the final answer of a typed turn after the office's in place of the office's own when only that one has the marker. */
@@ -113,11 +159,14 @@ export class TurnEnd<L extends EndLive> {
     const status = this.deps.floor(live.floorId)?.workers.get(live.workerId)?.status;
     const quiet = Date.now() - (live.lastHookAt ?? live.promptAt ?? 0);
     if ((status !== 'done' && status !== 'idle') || quiet < interval) return this.schedule(live, status === 'done' || status === 'idle' ? interval - quiet : Math.min(interval, POLL_MAX_MS));
+    // It has rested this long without a hook: whatever Stop the gate blocked, the turn it went on with is over (Esc, a dead process), and the log decides.
+    live.gated = false;
     const result = await this.deps.read(live);
     if (live.ended || !this.deps.following(live) || live.restating) return;
     if (!result) return this.schedule(live, interval);
     if (result.lost) return this.deps.turnEnded(live, false, true);
     const r = this.adopt(live, result);
+    if (this.announced(live, r)) return this.deps.turnEnded(live, false, false);
     // The agent did finish (its Stop was missed): the turn's end is decided on what the log says.
     if (!r.unheard && finalMarker(live.phase, `${r.text}\n${r.plan ?? ''}`, r.exitPlan)) return this.deps.turnEnded(live, false, false);
     if (r.background || r.unheard || r.resuming) return this.schedule(live, interval);

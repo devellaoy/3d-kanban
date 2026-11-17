@@ -43,6 +43,26 @@ export async function hasChanges(floorDir: string, ws: TaskWorkspace | undefined
   return false;
 }
 
+/**
+ * The worktree-relative paths of the workspace's repository folders with uncommitted changes (`git status --porcelain
+ * --untracked-files=normal` says something). A folder git can't tell about, or takes longer than `timeoutMs`, is not one.
+ */
+export async function uncommitted(floorDir: string, ws: TaskWorkspace | undefined, timeoutMs = 5000): Promise<string[]> {
+  if (!ws) return [];
+  const rels = [ws.worktree.path, ...(ws.repos ?? []).map((r) => r.path)];
+  const dirty = await Promise.all(
+    repoFolders(floorDir, ws).map(async (d) => {
+      try {
+        const { stdout } = await run('git', ['-c', 'core.fsmonitor=false', 'status', '--porcelain', '--untracked-files=normal'], { cwd: d.dir, encoding: 'utf8', timeout: timeoutMs, maxBuffer: 4 * 1024 * 1024 });
+        return stdout.trim().length > 0;
+      } catch {
+        return false;
+      }
+    }),
+  );
+  return rels.filter((_, i) => dirty[i]);
+}
+
 /** The folders of a workspace with the base each started from, primary first. */
 function repoFolders(floorDir: string, ws: TaskWorkspace): { dir: string; base: string | undefined }[] {
   return [{ dir: worktreeDir(floorDir, ws.worktree.path), base: ws.worktree.base }, ...(ws.repos ?? []).map((r) => ({ dir: worktreeDir(floorDir, r.path), base: r.base }))];

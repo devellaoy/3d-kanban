@@ -220,6 +220,24 @@ minutes, four nudges at most); an agent that never gives it is not moved on: the
 note, and **Continue** carries on or you move it yourself (a plan's last answer is read the old way). The same goes for Codex. The contracts ask the agent to check that its reply really ends with the marker, and the nudge asks for the whole answer again in its reply, because the office reads only the answer to the nudge (a bare `PLAN READY` would be an empty plan). The old wait for background helper agents or commands (a test run,
 say) is a cap now: at most 3 hours, then the agent is nudged. Stop during a wait restarts the worker on its
 session at its desk, which ends its helper agents too.
+
+**Telling the office instead of only writing it.** Right before its final reply an agent can announce how the turn ends:
+`office-tasks done` (everything finished and committed), `office-tasks ask` (it needs your answer; the task then waits
+for you as *the agent asks*, and your answer or comment carries on in the same phase), `office-tasks plan-ready`,
+`office-tasks review approved|changes` and `office-tasks pr <url>`, or the MCP tool `report_turn` of the office's
+`agent-office` server (the prompts only name the tool in plan and review phases, where a shell command isn't
+available). The marker line stays required and is what counts when the announcement is missing or fails (a Codex plan, review
+or `workspace-write` sandbox has no network, so Codex agents there rely on the marker). An announcement is stricter than the marker: it ends a run only when the log shows no
+background work, unanswered notification or unheard prompt, and it expires at the next prompt. A review's `approved` never
+approves by itself (the `REVIEW: APPROVED` line must be there); `changes` is enough and wins.
+
+**The Stop gate (Claude implementers).** When a Claude worker in an implementing phase tries to stop without having said it is
+done (no `done`, no `WORK DONE` line), or has said so while its worktree still holds uncommitted changes, the office hands the
+Stop back to it with what to do (finish and say so, commit your own changes, or `office-tasks ask` if you need an answer);
+the worker stays working. At most twice per run, then the Stop goes through with a note on the task. It never blocks a plan,
+a review, an investigation's commit check, a helper agent, a ⏹️ Stop, an interrupted turn or one with background work still
+running. It lives in the worker's Stop hook, so it needs `curl`; without it, or with the office down, the worker's Stop goes
+through as before. `AGENT_OFFICE_KANBAN_STOP_GATE=off` (set when the office starts) turns it off; workers started earlier keep their old hook.
 The worker shows as working in the 3D office and in /lite until the run ends, also while its background
 agents or teammates still work, instead of flickering between done and working.
 
@@ -942,6 +960,9 @@ read the real task instead of guessing:
   part of a title; `--tail` adds the end of its worker's terminal, `--json` the raw answer) and
   `office-tasks search <words>`. It calls the hook server's `/office/tasks/reference` and
   `/office/tasks/search` with the worker's own `AGENT_OFFICE_WORKER_ID` and `AGENT_OFFICE_HOOK_TOKEN`.
+- **`office-tasks done|ask|plan-ready|review|pr`** are for a task's own worker: they tell the office how its turn
+  ends (the MCP tool `report_turn` does the same, pre-approved with the two below for a kanban task's Claude worker; see
+  "When the office decides a turn is over").
 - **MCP tools** `get_task` and `search_tasks` on the office's `agent-office` MCP server, listed to every
   agent worker; only a kanban task's Claude worker is allowed them without asking (other Claude agents
   are asked).

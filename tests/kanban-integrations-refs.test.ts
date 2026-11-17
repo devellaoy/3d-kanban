@@ -262,7 +262,8 @@ test('office-tasks: the CLI and the MCP tools, shown to workers told about tasks
   const kanbanEnv = { ...ENV, AIKANBAN_API_BASE: 'http://127.0.0.1:4455' };
   assert.equal(tasksVisible(kanbanEnv), true);
   const listed = await handleMcp({ jsonrpc: '2.0', id: 2, method: 'tools/list' }, { env: kanbanEnv, fetch: fetchOk });
-  assert.deepEqual(listed.result.tools.map((x: { name: string }) => x.name).slice(-2), ['get_task', 'search_tasks']);
+  assert.deepEqual(listed.result.tools.map((x: { name: string }) => x.name).slice(-2), ['search_tasks', 'report_turn']);
+  assert.ok(listed.result.tools.some((x: { name: string }) => x.name === 'get_task'));
   for (const t of TASK_TOOLS) assert.equal(t.inputSchema.type, 'object');
   const called = await handleMcp({ jsonrpc: '2.0', id: 3, method: 'tools/call', params: { name: 'get_task', arguments: { ref: '14' } } }, { env: kanbanEnv, fetch: fetchOk });
   assert.match(called.result.content[0].text, /# Task #14: T/);
@@ -362,7 +363,7 @@ test('office-tasks create: flags, the POST, the answer on stdout and stderr, and
   assert.match(tool.description, /Any agent may create tasks/);
   assert.deepEqual(EFFORTS, ['minimal', 'low', 'medium', 'high', 'xhigh', 'max']);
   assert.deepEqual((tool.inputSchema.properties.effort as { enum: string[] }).enum, EFFORTS);
-  assert.equal(TASK_TOOLS.length, 3);
+  assert.equal(TASK_TOOLS.length, 4);
   assert.doesNotMatch(instructions(ENV), /create_task/);
   assert.match(instructions(env), /create_task[\s\S]*hire_worker only when explicitly asked/);
   const mcp = (e: Record<string, string>, args: object) =>
@@ -380,6 +381,64 @@ test("a terminal's saved scrollback, as plain text", () => {
 test('the refs plugin allows its MCP tools for claude, and tells codex’s MCP server tasks are there', () => {
   const ctx = seeded();
   const p = createRefsPlugin(ctx);
-  assert.deepEqual(p.workerArgs!(1, 'claude', 'plan'), ['--allowedTools', 'mcp__agent-office__get_task,mcp__agent-office__search_tasks']);
+  assert.deepEqual(p.workerArgs!(1, 'claude', 'plan'), ['--allowedTools', 'mcp__agent-office__get_task,mcp__agent-office__search_tasks,mcp__agent-office__report_turn']);
   assert.deepEqual(p.workerArgs!(1, 'codex', 'plan'), ['-c', 'mcp_servers.agent-office.env.AIKANBAN_API_BASE="http://127.0.0.1:4555"']);
+});
+
+test('office-tasks: the commands that report how a turn ends', async () => {
+  const ENV = { AGENT_OFFICE_HOOK_URL: 'http://127.0.0.1:4455/', AGENT_OFFICE_WORKER_ID: 'w1', AGENT_OFFICE_HOOK_TOKEN: 'tok' };
+  assert.deepEqual(parseArgs(['done']), { cmd: 'signal', body: { kind: 'done' } });
+  assert.deepEqual(parseArgs(['ask']), { cmd: 'signal', body: { kind: 'ask' } });
+  assert.deepEqual(parseArgs(['plan-ready']), { cmd: 'signal', body: { kind: 'plan-ready' } });
+  assert.deepEqual(parseArgs(['review', 'changes']), { cmd: 'signal', body: { kind: 'review', verdict: 'changes' } });
+  assert.deepEqual(parseArgs(['pr', 'https://github.com/o/app/pull/5']), { cmd: 'signal', body: { kind: 'pr', url: 'https://github.com/o/app/pull/5' } });
+  for (const bad of [['done', 'now'], ['review'], ['review', 'maybe'], ['pr'], ['pr', 'not-a-url'], ['done', '--x']]) assert.throws(() => parseArgs(bad), UsageError, bad.join(' '));
+  const req = buildRequest('signal', { body: { kind: 'review', verdict: 'approved' } }, ENV);
+  assert.equal(req.method, 'POST');
+  assert.equal(req.url, 'http://127.0.0.1:4455/office/tasks/signal?worker=w1');
+  assert.deepEqual(req.headers, { authorization: 'Bearer tok', 'content-type': 'application/json' });
+  assert.deepEqual(JSON.parse(req.body!), { kind: 'review', verdict: 'approved' });
+  assert.throws(() => buildRequest('signal', { body: { kind: 'done' } }, {}), /only works inside the office/);
+
+  const sent: { url: string; body: unknown }[] = [];
+  const reply = (status: number, body: unknown) =>
+    (async (url: string, init: { body?: string }) => {
+      sent.push({ url, body: init.body ? JSON.parse(init.body) : undefined });
+      return new Response(JSON.stringify(body), { status });
+    }) as unknown as typeof fetch;
+  const run = async (argv: string[], fetchImpl: typeof fetch) => {
+    const out: string[] = [];
+    const err: string[] = [];
+    const code = await officeTasks(argv, { env: ENV, fetch: fetchImpl, out: (s) => out.push(s), err: (s) => err.push(s) });
+    return { code, out, err };
+  };
+  const ok = await run(['done'], reply(200, { ok: true }));
+  assert.deepEqual([ok.code, ok.out, ok.err], [0, ['Reported: done'], []]);
+  assert.deepEqual(sent[0].body, { kind: 'done' });
+  assert.deepEqual((await run(['review', 'changes'], reply(200, { ok: true }))).out, ['Reported: review changes']);
+  assert.deepEqual((await run(['pr', 'https://github.com/o/app/pull/5'], reply(200, { ok: true }))).out, ['Reported: pr https://github.com/o/app/pull/5']);
+  const refused = await run(['done'], reply(409, { error: 'Its run is not in a phase that ends with done' }));
+  assert.equal(refused.code, 1);
+  assert.deepEqual(refused.out, []);
+  assert.match(refused.err.join('\n'), /Its run is not in a phase that ends with done/);
+  const usage = await run(['review', 'maybe'], reply(200, {}));
+  assert.equal(usage.code, 2);
+  assert.match(usage.err.join('\n'), /approved or changes/);
+
+  // The MCP tool: one tool, listed to workers told about tasks, never read-only.
+  const tool = TASK_TOOLS.find((t) => t.name === 'report_turn')!;
+  assert.deepEqual(tool.annotations, { destructiveHint: false, openWorldHint: false });
+  assert.equal('readOnlyHint' in tool.annotations, false);
+  assert.deepEqual(tool.inputSchema.required, ['kind']);
+  assert.match(tool.description, /only works for a task's own worker while its run is going/);
+  const env = { ...ENV, AGENT_OFFICE_TASKS: '1' };
+  const listed = (await handleMcp({ jsonrpc: '2.0', id: 1, method: 'tools/list' }, { env, fetch: reply(200, {}) })) as { result: { tools: { name: string }[] } };
+  assert.ok(listed.result.tools.some((t) => t.name === 'report_turn'));
+  sent.length = 0;
+  const called = (await handleMcp({ jsonrpc: '2.0', id: 2, method: 'tools/call', params: { name: 'report_turn', arguments: { kind: 'review', verdict: 'changes' } } }, { env, fetch: reply(200, { ok: true }) })) as { result: { content: { text: string }[] } };
+  assert.equal(called.result.content[0].text, 'Reported: review changes');
+  assert.deepEqual(sent[0].body, { kind: 'review', verdict: 'changes' });
+  assert.match(sent[0].url, /\/office\/tasks\/signal\?worker=w1$/);
+  const no = (await handleMcp({ jsonrpc: '2.0', id: 3, method: 'tools/call', params: { name: 'report_turn', arguments: { kind: 'done' } } }, { env, fetch: reply(409, { error: 'No run' }) })) as { result: { isError?: boolean; content: { text: string }[] } };
+  assert.match(JSON.stringify(no), /No run/);
 });
