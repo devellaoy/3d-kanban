@@ -65,10 +65,12 @@ export class TurnEnd<L extends EndLive> {
     // The Stop gate is deciding on this turn's Stop (it reads the log and asks git): what it says comes first, a blocked Stop being no end.
     // Until none is under way: a second Stop may have joined the wait while this stood in it.
     const turn = 'turn' in o ? o.turn : live.turn;
-    if (live.gating && !o.planExit) {
+    // And again after the read below: another Stop's decision may have begun while the log was read.
+    while (live.gating && !o.planExit) {
       while (live.gating) await live.gating.catch(() => undefined);
+      if (live.ended || live.turn !== turn) break;
       // The same turn still: its result as the log has it now, not as it was before the wait.
-      if (!live.ended && live.turn === turn) result = (await this.deps.read(live)) ?? result;
+      result = (await this.deps.read(live)) ?? result;
     }
     if (live.ended) return { end: false };
     // A prompt came in the wait (typed into its terminal, a comment of the office's): what was read is the turn before it, whose answer must not

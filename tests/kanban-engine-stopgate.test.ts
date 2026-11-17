@@ -566,3 +566,43 @@ test('a turn typed into the terminal that is over is gated like any: an instruct
   assert.deepEqual(await lag.gate.decide(live(), stop('Did the extra thing too.\nWORK DONE')), { block: gateDirty(['wt']) });
   assert.equal(lag.calls.read, 2);
 });
+
+test('a Stop whose gate decision begins while the turn is read again after a wait is waited for too: its uncommitted changes block, and the run does not end', async () => {
+  const answers: ((folders: string[]) => void)[] = [];
+  const gate = new StopGate<GateRun>({ task: () => ({ id: 1, project: 'p', type: 'implement' }), note() {}, read: async () => turn({ text: DONE }), uncommitted: () => new Promise<string[]>((r) => answers.push(r)), maxBlocks: () => 2, readPauseMs: () => 1 });
+  const l = live();
+  const held: string[] = [];
+  // The turn end's own read of the log, which the test lets go when it wants.
+  let reading!: () => void;
+  const readBegan = new Promise<void>((r) => (reading = r));
+  let finishRead!: (r: TurnResult) => void;
+  let reads = 0;
+  const deps = { holds: { hold: (x: EndLive) => void held.push(`hold ${x.workerId}`), restate: () => false }, following: () => true, serial: (_id: number, fn: () => Promise<unknown>) => fn(), task: () => undefined, floor: () => undefined, note() {}, read: () => (reads++, reading(), new Promise<TurnResult>((r) => (finishRead = r))), turnEnded: async () => {}, nudgeIdleMs: () => 60_000, maxNudges: () => 4 } as unknown as TurnEndDeps<EndLive>;
+  const end = new TurnEnd<EndLive>(deps);
+  const tick = () => new Promise((r) => setTimeout(r, 20));
+  // The first Stop is judged (clean), the run's end waits for it and then reads the turn again.
+  const first = gate.decide(l, stop(DONE));
+  await tick();
+  let ended: Awaited<ReturnType<typeof end.decide>> | undefined;
+  const deciding = end.decide(l as EndLive, turn({ text: DONE }), { planExit: false, force: false }).then((e) => (ended = e));
+  answers[0]([]);
+  assert.deepEqual(await first, {});
+  await readBegan;
+  // A second Stop comes while that read is still out, and git finds uncommitted changes for it.
+  const second = gate.decide(l, stop(DONE));
+  await tick();
+  finishRead(turn({ text: DONE }));
+  await tick();
+  assert.equal(ended, undefined, 'the end waits for the decision that began during the read');
+  answers[1](['wt']);
+  assert.deepEqual(await second, { block: gateDirty(['wt']) }, 'the run had not ended under it');
+  await tick();
+  // The turn is read once more after that wait, then the blocked Stop holds the run.
+  assert.equal(reads, 2);
+  finishRead(turn({ text: DONE }));
+  await deciding;
+  assert.deepEqual(ended, { end: false });
+  assert.deepEqual(held, ['hold w']);
+  assert.equal(l.ended, false);
+  clearTimeout((l as EndLive).nudgeTimer);
+});
