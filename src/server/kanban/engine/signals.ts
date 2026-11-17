@@ -200,12 +200,14 @@ export class StopGate<L extends GateRun> {
     const blocks = Math.max(live.gateBlocks ?? 0, p.stop_hook_active === true ? 1 : 0);
     // The log lags a Stop: read again a moment before it is taken for what it shows.
     let r = await this.deps.read(live);
-    for (let i = 0; i < 2 && !r?.complete; i++) {
+    for (let i = 0; i < 2 && (!r?.complete || r.typedOpen); i++) {
       await sleep(this.deps.readPauseMs());
       r = await this.deps.read(live);
     }
-    if (r && (r.background || r.resuming || r.unheard || r.typed || r.toolRunning)) return {};
-    const said = stopMessage(payload) ?? r?.text ?? '';
+    // A turn typed into the terminal that still goes (or took the turn the work ended in) is not judged; one that is over is, like any: its
+    // Stop ends the run on its own answer, uncommitted changes and all, if nothing asks.
+    if (r && (r.background || r.resuming || r.unheard || r.typedOpen || (r.typed && r.interim) || r.toolRunning)) return {};
+    const said = stopMessage(payload) ?? ((r?.typed && r.lastText) || r?.text) ?? '';
     if (looksInterrupted(said, r?.apiError)) return {};
     const done = live.signal?.kind === 'done';
     // Nothing to judge it on: the log shows no answer and the Stop carried none.

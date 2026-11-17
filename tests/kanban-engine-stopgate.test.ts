@@ -116,7 +116,7 @@ test('the gate does not fire: it lets the Stop through whenever the Stop is not 
   await allowed('an announced question', live({ signal: { kind: 'ask' } }), p);
   await allowed('the gate off', live(), p, { log: turn({ text: 'Still looking.' }), max: 0 });
   await allowed('background tasks running', live(), stop('Waiting.', { background_tasks: [{ id: 'a', status: 'completed' }, { id: 'b', status: 'running' }] }));
-  for (const [what, extra] of [['background work', { background: 1 }], ['teammates resuming', { resuming: true }], ['an unheard prompt', { unheard: true as const }], ['a typed prompt', { typed: true as const }], ['a tool that still runs', { toolRunning: true }]] as const) {
+  for (const [what, extra] of [['background work', { background: 1 }], ['teammates resuming', { resuming: true }], ['an unheard prompt', { unheard: true as const }], ['a typed turn still going', { typed: true as const, typedOpen: true }], ['a typed turn that took the work\'s end', { typed: true as const, interim: true }], ['a tool that still runs', { toolRunning: true }]] as const) {
     await allowed(what, live(), p, { log: turn({ text: 'Still looking.', ...extra }) });
   }
   await allowed('a usage limit', live(), stop("You've hit your limit · resets 3pm"));
@@ -543,4 +543,26 @@ test('route and engine: a Stop no prompt overtook is passed on as ever: the work
   const { w } = await working(fx);
   assert.deepEqual(await postStop(fx, w, { last_assistant_message: 'Looked at it.', stop_hook_active: true, background_tasks: [{ id: 'b1', status: 'running' }] }), { status: 200, body: {} });
   assert.equal(fx.workers.get(w)?.status, 'done', 'upstream heard the Stop');
+});
+
+test('a turn typed into the terminal that is over is gated like any: an instruction typed in, a finished answer, a dirty worktree, and the Stop is blocked', async () => {
+  // The office's turn ended earlier; someone typed one more instruction, and the agent answered it (the log's last turn, over).
+  const typed = turn({ text: 'Changed it.', typed: true, lastText: 'Did the extra thing too.\nWORK DONE' });
+  const dirty = gateOf({ log: typed, dirty: ['wt'] });
+  const l = live();
+  assert.deepEqual(await dirty.gate.decide(l, stop('Did the extra thing too.\nWORK DONE')), { block: gateDirty(['wt']) });
+  assert.equal(dirty.calls.uncommitted, 1);
+  assert.equal(l.gated, true);
+  // Announced done instead of written: the same.
+  assert.deepEqual(await gateOf({ log: turn({ text: 'Changed it.', typed: true, lastText: 'Did the extra thing too.' }), dirty: ['wt'] }).gate.decide(live({ signal: { kind: 'done' } }), stop('Did the extra thing too.')), { block: gateDirty(['wt']) });
+  // Without the Stop's own answer the typed turn's is the one judged, not the office's before it.
+  assert.deepEqual(await gateOf({ log: typed, dirty: ['wt'] }).gate.decide(live(), {}), { block: gateDirty(['wt']) });
+  assert.deepEqual(await gateOf({ log: turn({ text: 'Changed it.\nWORK DONE', typed: true, lastText: 'Looked at the extra thing, more to do.' }) }).gate.decide(live(), {}), { block: gateUnconfirmed() });
+  // A clean worktree lets it through, as for any turn.
+  assert.deepEqual(await gateOf({ log: typed }).gate.decide(live(), stop('Did the extra thing too.\nWORK DONE')), {});
+  // The log still shows the typed turn open when the Stop comes (it lags): read again, then judged.
+  let reads = 0;
+  const lag = gateOf({ log: () => (reads++ === 0 ? turn({ text: 'Changed it.', typed: true, typedOpen: true }) : typed), dirty: ['wt'] });
+  assert.deepEqual(await lag.gate.decide(live(), stop('Did the extra thing too.\nWORK DONE')), { block: gateDirty(['wt']) });
+  assert.equal(lag.calls.read, 2);
 });
