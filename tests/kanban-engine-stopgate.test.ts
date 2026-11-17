@@ -379,3 +379,33 @@ test('a second Stop of the lead\'s while one is judged neither replaces nor ends
   assert.equal(l.gating, undefined);
   assert.equal(l.gateBlocks, 1);
 });
+
+test('the run\'s end waits until no gate decision is under way: a second Stop that joins the wait is waited for too', async () => {
+  const answers: ((folders: string[]) => void)[] = [];
+  const gate = new StopGate<GateRun>({ task: () => ({ id: 1, project: 'p', type: 'implement' }), note() {}, read: async () => turn({ text: DONE }), uncommitted: () => new Promise<string[]>((r) => answers.push(r)), maxBlocks: () => 2, readPauseMs: () => 1 });
+  const l = live();
+  const { end, held } = endOf();
+  const tick = () => new Promise((r) => setTimeout(r, 20));
+  // The first Stop is judged, and the run's end stands waiting for it.
+  const first = gate.decide(l, stop(DONE));
+  await tick();
+  let ended: Awaited<ReturnType<typeof end.decide>> | undefined;
+  const deciding = end.decide(l as EndLive, turn({ text: DONE }), { planExit: false, force: false }).then((e) => (ended = e));
+  await tick();
+  // A second Stop joins the wait; then the first is let through.
+  const second = gate.decide(l, stop(DONE));
+  await tick();
+  answers[0]([]);
+  assert.deepEqual(await first, {});
+  await tick();
+  assert.equal(ended, undefined, 'the end still waits: the second Stop is not judged yet');
+  assert.equal(answers.length, 2);
+  // The second is blocked: the run does not end on the answer the first let through.
+  answers[1](['wt']);
+  assert.deepEqual(await second, { block: gateDirty(['wt']) });
+  await deciding;
+  assert.deepEqual(ended, { end: false });
+  assert.deepEqual(held, ['hold w']);
+  assert.equal(l.gating, undefined);
+  clearTimeout((l as EndLive).nudgeTimer);
+});

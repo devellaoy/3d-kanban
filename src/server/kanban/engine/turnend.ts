@@ -63,7 +63,8 @@ export class TurnEnd<L extends EndLive> {
    */
   async decide(live: L, result: TurnResult | undefined, o: { planExit: boolean; force: boolean }): Promise<Ending> {
     // The Stop gate is deciding on this turn's Stop (it reads the log and asks git): what it says comes first, a blocked Stop being no end.
-    if (live.gating) await live.gating;
+    // Until none is under way: a second Stop may have joined the wait while this stood in it.
+    while (live.gating) await live.gating.catch(() => undefined);
     if (live.ended) return { end: false };
     const ending = this.judge(live, result, o);
     // An announcement is for the turn it was made in: one this Stop did not end the run on (work still out, a turn not over) is none for the next.
