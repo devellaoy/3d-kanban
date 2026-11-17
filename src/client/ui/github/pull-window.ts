@@ -19,9 +19,9 @@ import { FILES_KEY, mergePref, pref, savePref, TAB_KEY } from './prefs';
 import { fixAndMergePrompt, fixConflictsPrompt, type BoardActions } from './prompts';
 import { buildTree, looksGenerated, parseDiff, renderFileDiff, repliesOf, Reviewed, STATUS_WORD, treeOrder, type DiffFile, type TreeDir } from './pulldiff';
 import { pullFooter, pullRail } from './pull-rail';
-import { takeThreadChange, ThreadsUi, type ThreadChange } from './thread';
+import { ThreadsUi } from './thread';
 import { commitsBlock, eventRow, historyCut, historyError } from './timeline';
-import { groupCommits, timelineItems } from './timeline-model';
+import { groupCommits, takeThreadChange, timelineItems, type ThreadChange } from './timeline-model';
 
 // The window behind a card on the PR board, in the shared shell (ui/shell.ts). A PR opens on its
 // conversation (how it stands and its checks, the description, then its history as GitHub lists it: commits

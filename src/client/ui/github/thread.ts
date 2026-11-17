@@ -8,7 +8,7 @@ import { replyBox, replyDraftKey, type CommentBox } from './comment-box';
 import { ghRepoField } from './ghrepo';
 import { ghMarkdown } from './md';
 import { pref } from './prefs';
-import { threadByRoot } from './timeline-model';
+import { threadByRoot, type ThreadChange } from './timeline-model';
 
 // A thread of line comments on a pull request, as the Conversation tab and the Files tab both show it:
 // its comments, whether it is resolved, Resolve / Unresolve, and a box to answer it. The cards are built
@@ -30,15 +30,6 @@ export function renderThread(root: GhReviewComment, replies: Map<number, GhRevie
       ),
     ),
   );
-}
-
-/** What changed on GitHub: a reply it saved, or how a thread stands now. */
-export type ThreadChange = { reply: GhReviewComment } | { thread: string; resolved: boolean };
-/** Puts a change into what the window knows of the pull request. */
-export function takeThreadChange(d: { reviewComments: GhReviewComment[]; threads?: GhThread[] }, change: ThreadChange) {
-  if ('reply' in change) d.reviewComments.push(change.reply);
-  // Who resolved it isn't in the answer, so the name of whoever did before goes.
-  else d.threads = d.threads?.map((t) => (t.id === change.thread ? { id: t.id, rootId: t.rootId, resolved: change.resolved } : t));
 }
 
 /** The two places a thread is drawn: the Conversation tab, and under its line on the Files tab. */

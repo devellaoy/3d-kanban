@@ -2,7 +2,7 @@
 // backbone, comments and reviews stand where it names them, and the rest goes in by time.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { eventText, groupCommits, threadByRoot, timelineItems, unresolvedCount, type TimelineItem } from '../src/client/ui/github/timeline-model.ts';
+import { eventText, groupCommits, takeThreadChange, threadByRoot, timelineItems, unresolvedCount, type TimelineItem } from '../src/client/ui/github/timeline-model.ts';
 import type { GhComment, GhReviewComment, GhTimelineEvent } from '../src/shared/protocol.ts';
 
 const day = (hhmm: string) => `2026-11-16T${hhmm}:00Z`;
@@ -166,4 +166,25 @@ test('each event is told in plain words', () => {
     [{ kind: 'commit', at, oid: 'abc', headline: 'Fix it', author: 'ann', url: 'https://example.test/abc' }, 'added the commit Fix it'],
   ];
   for (const [e, words] of said) assert.equal(eventText(e), words);
+});
+
+test('resolving and reopening a thread keeps it under its review, where a comment drafted before a commit would otherwise jump', () => {
+  // Drafted at 10:00, published with its review after the 10:30 commit.
+  const d = {
+    comments: [],
+    reviews: [review('r1', '10:00')],
+    reviewComments: [line(10, '10:00')],
+    events: [commit('a', '10:30'), ref('r1', '10:00')],
+    threads: [{ id: 'T10', rootId: 10, resolved: false, resolvedBy: 'ann', review: 'r1', at: day('10:40') }],
+  };
+  const order = ['commit:a', 'r1', 'thread:10'];
+  assert.deepEqual(names(timelineItems(d)), order);
+  takeThreadChange(d, { thread: 'T10', resolved: true });
+  assert.deepEqual(d.threads, [{ id: 'T10', rootId: 10, resolved: true, review: 'r1', at: day('10:40') }]);
+  assert.deepEqual(names(timelineItems(d)), order);
+  takeThreadChange(d, { thread: 'T10', resolved: false });
+  assert.deepEqual(names(timelineItems(d)), order);
+  // A reply joins its thread and moves nothing.
+  takeThreadChange(d, { reply: line(11, '12:00', 10) });
+  assert.deepEqual(names(timelineItems(d)), order);
 });

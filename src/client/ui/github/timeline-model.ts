@@ -137,3 +137,18 @@ export function eventText(e: GhHappening): string {
       return e.what === 'restored' ? 'restored the branch' : e.name ? `deleted the ${e.name} branch` : 'deleted the branch';
   }
 }
+
+/** What changed on GitHub: a reply it saved, or how a thread stands now. */
+export type ThreadChange = { reply: GhReviewComment } | { thread: string; resolved: boolean };
+/** Puts a change into what the window knows of the pull request. */
+export function takeThreadChange(d: { reviewComments: GhReviewComment[]; threads?: GhThread[] }, change: ThreadChange) {
+  if ('reply' in change) d.reviewComments.push(change.reply);
+  else
+    d.threads = d.threads?.map((t) => {
+      if (t.id !== change.thread) return t;
+      // The rest stays, the review it came with above all: that is where it stands in the history.
+      // Who resolved it isn't in the answer, so the name of whoever did before goes.
+      const { resolvedBy: _, ...kept } = t;
+      return { ...kept, resolved: change.resolved };
+    });
+}
